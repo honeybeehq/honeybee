@@ -267,3 +267,36 @@ test("codex v6: forkThreadId → the handshake sends thread/fork {threadId: sour
   const both = codexThreadRequest({ cwd: "/tmp/w", resumeThreadId: "own", forkThreadId: "src" });
   assert.equal(both.method, "thread/resume", "a recorded session always wins over a fork seed");
 });
+
+test("codex: GPT-6 Astra model passes verbatim to start, resume, and fork", () => {
+  const cases: ReadonlyArray<{
+    options: Parameters<typeof codexThreadRequest>[0];
+    expected: ReturnType<typeof codexThreadRequest>;
+  }> = [
+    {
+      options: { cwd: "/tmp/astra", model: "gpt-6-astra" },
+      expected: {
+        method: "thread/start",
+        params: { model: "gpt-6-astra", cwd: "/tmp/astra", approvalPolicy: "never", sandbox: "danger-full-access" },
+      },
+    },
+    {
+      options: { cwd: "/tmp/astra", model: "gpt-6-astra", resumeThreadId: "resume-thread" },
+      expected: {
+        method: "thread/resume",
+        params: { threadId: "resume-thread", model: "gpt-6-astra", cwd: "/tmp/astra", approvalPolicy: "never", sandbox: "danger-full-access" },
+      },
+    },
+    {
+      options: { cwd: "/tmp/astra", model: "gpt-6-astra", forkThreadId: "source-thread" },
+      expected: {
+        method: "thread/fork",
+        params: { threadId: "source-thread", model: "gpt-6-astra", cwd: "/tmp/astra", approvalPolicy: "never", sandbox: "danger-full-access" },
+      },
+    },
+  ];
+
+  for (const { options, expected } of cases) {
+    assert.deepEqual(codexThreadRequest(options), expected);
+  }
+});

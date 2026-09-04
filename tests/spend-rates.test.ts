@@ -60,6 +60,22 @@ test("seed prices exact OpenAI models but leaves the broad family fallback unres
   assert.deepEqual(fallback.versions, []);
 });
 
+test("seed prices GPT-6 Astra at the published standard rate", () => {
+  assert.deepEqual(ruleFor("gpt-6-astra"), {
+    modelPattern: "gpt-6-astra",
+    provider: "openai",
+    note: "Standard API rate; Codex Fast mode and long-context uplifts are not represented by this flat rate.",
+    versions: [{
+      effectiveFrom: "2026-09-04",
+      inputPerMTok: 10,
+      outputPerMTok: 50,
+      cacheReadPerMTok: 1,
+      cacheWrite5mPerMTok: 12.5,
+      cacheWrite1hPerMTok: 12.5,
+    }],
+  });
+});
+
 test("seed prices Fable caching and resolves zero-token synthetic rows", () => {
   const fable = ruleFor("claude-fable-5").versions[0]!;
   assert.deepEqual(fable, {
@@ -119,6 +135,7 @@ test("ensureRatesFile upgrades stale TODO rules but preserves priced overrides",
   try {
     const path = join(dir, "rates.json");
     await writeFile(path, JSON.stringify({ rules: [
+      { modelPattern: "gpt-6-astra", provider: "openai", todo: true, versions: [] },
       { modelPattern: "gpt-5.6-sol", provider: "openai", todo: true, versions: [] },
       {
         modelPattern: "gpt-5.5",
@@ -136,12 +153,40 @@ test("ensureRatesFile upgrades stale TODO rules but preserves priced overrides",
 
     await ensureRatesFile(path);
     const table = await loadRates(path);
+    const astra = table.rules.find((rule) => rule.modelPattern === "gpt-6-astra")!;
     const sol = table.rules.find((rule) => rule.modelPattern === "gpt-5.6-sol")!;
     const custom = table.rules.find((rule) => rule.modelPattern === "gpt-5.5")!;
+    assert.deepEqual(astra, ruleFor("gpt-6-astra"));
     assert.equal(sol.todo, undefined);
     assert.equal(sol.versions[0]!.inputPerMTok, 5);
     assert.equal(custom.provider, "custom");
     assert.equal(custom.versions[0]!.inputPerMTok, 99);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("ensureRatesFile preserves an exact priced GPT-6 Astra user override", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "honeybee-rates-"));
+  try {
+    const path = join(dir, "rates.json");
+    const override: RateRule = {
+      modelPattern: "gpt-6-astra",
+      provider: "custom",
+      versions: [{
+        effectiveFrom: "2026-09-04",
+        inputPerMTok: 99,
+        outputPerMTok: 99,
+        cacheReadPerMTok: 99,
+        cacheWrite5mPerMTok: 99,
+        cacheWrite1hPerMTok: 99,
+      }],
+    };
+    await writeFile(path, JSON.stringify({ rules: [override] }));
+
+    await ensureRatesFile(path);
+    const table = await loadRates(path);
+    assert.deepEqual(table.rules.find((rule) => rule.modelPattern === "gpt-6-astra"), override);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

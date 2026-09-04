@@ -62,6 +62,7 @@ export interface OpenAiNamingRates {
 
 /** Published standard-tier prices, converted to integer nano-USD per token. */
 const OPENAI_NAMING_RATES: Readonly<Record<string, OpenAiNamingRates>> = {
+  "gpt-6-astra": { inputNanoUsd: 10_000, cachedInputNanoUsd: 1_000, cacheWriteNanoUsd: 12_500, outputNanoUsd: 50_000 },
   "gpt-5.6-sol": { inputNanoUsd: 4_000, cachedInputNanoUsd: 400, cacheWriteNanoUsd: 5_000, outputNanoUsd: 20_000 },
   "gpt-5.6-terra": { inputNanoUsd: 2_000, cachedInputNanoUsd: 200, cacheWriteNanoUsd: 2_500, outputNanoUsd: 12_000 },
   "gpt-5.6-luna": { inputNanoUsd: 200, cachedInputNanoUsd: 20, cacheWriteNanoUsd: 250, outputNanoUsd: 1_200 },

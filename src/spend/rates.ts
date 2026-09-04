@@ -149,6 +149,7 @@ export function seedRateTable(): RateTable {
     // ── OpenAI/Codex published standard API rates ───────────────────────────
     // USD per MTok: input / cached input / output. Exact model rules precede
     // the TODO family fallbacks below and win by longest-literal matching.
+    openaiRule("gpt-6-astra", "2026-09-04", 10, 1, 50, "Standard API rate; Codex Fast mode and long-context uplifts are not represented by this flat rate.", 12.5),
     openaiRule("gpt-5.6-sol", "2026-07-09", 5, 0.5, 30, "Prompts over 272K input tokens have a published long-context uplift not yet represented by this flat rate; cache writes are 1.25x input.", 6.25),
     openaiRule("gpt-5.5", "2026-04-24", 5, 0.5, 30, "Standard API rate; Codex Fast mode and long-context/service-tier uplifts are not represented."),
     openaiRule("gpt-5.4-mini", "2026-03-17", 0.75, 0.075, 4.5),

@@ -161,6 +161,23 @@ test("Apiary-shaped signed reasoning translates exactly and cannot be rewritten 
   });
 });
 
+test("GPT-6 Astra accepts exactly the Codex host effort range", () => {
+  const supportedEfforts = ["low", "medium", "high", "xhigh", "max", "ultra"];
+  for (const effort of supportedEfforts) {
+    assert.deepEqual(
+      buildHsrHarnessArgs({ driverId: "codex", model: "gpt-6-astra", reasoning: effort }),
+      ["--model", "gpt-6-astra", "-c", `model_reasoning_effort="${effort}"`],
+    );
+  }
+
+  for (const effort of ["none", "minimal"]) {
+    assert.throws(
+      () => buildHsrHarnessArgs({ driverId: "codex", model: "gpt-6-astra", reasoning: effort }),
+      (error: { code?: string }) => error.code === "CAPABILITY_MISMATCH",
+    );
+  }
+});
+
 test("the same hostile overlay DOES rewrite an untrusted spawn (the bypass is what blocks the bleed)", async () => {
   await withHostileOverlay(async (defaultYolo) => {
     const legacy = await resolveSpawnOverlays("claude", launcherParsed(), false);

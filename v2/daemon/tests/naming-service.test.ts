@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import type { ResolvedNamingConfig } from "../src/config.ts";
 import type { RecordNamingUsageInput } from "../../core/src/index.ts";
-import { TitleGeneratorService } from "../src/namingService.ts";
+import { openAiNamingRates, TitleGeneratorService } from "../src/namingService.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FAKE_CODEX = join(HERE, "fixtures", "fake-naming-codex.mjs");
@@ -22,6 +22,15 @@ function config(overrides: Partial<ResolvedNamingConfig> = {}): ResolvedNamingCo
     ...overrides,
   };
 }
+
+test("naming telemetry uses GPT-6 Astra standard nano-USD rates", () => {
+  assert.deepEqual(openAiNamingRates("gpt-6-astra"), {
+    inputNanoUsd: 10_000,
+    cachedInputNanoUsd: 1_000,
+    cacheWriteNanoUsd: 12_500,
+    outputNanoUsd: 50_000,
+  });
+});
 
 test("naming service keeps one Codex app-server warm and isolates titles in ephemeral threads", async () => {
   const dir = mkdtempSync(join(tmpdir(), "hive-naming-service-"));
