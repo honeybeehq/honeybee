@@ -212,9 +212,26 @@ export interface MessageRow {
   deliveredGeneration: number | null;
 }
 
+/** Bee ids are routing identities carried across every RPC and audit surface. */
+export const MAX_BEE_ID_BYTES = 256;
+
 /** Default and hard maximum for one node-wide mail history page. */
 export const MAIL_HISTORY_DEFAULT_LIMIT = 100;
 export const MAIL_HISTORY_MAX_LIMIT = 250;
+/** Per-message UTF-8 preview bounds written into the send-time projection. */
+export const MAIL_HISTORY_BODY_PREVIEW_BYTES = 16 * 1024;
+export const MAIL_HISTORY_SENDER_PREVIEW_BYTES = 1024;
+/** Sum of returned preview bodies per page. */
+export const MAIL_HISTORY_PAGE_BODY_BUDGET_BYTES = 1024 * 1024;
+/** Sum of individually encoded message objects per page, excluding small result framing. */
+export const MAIL_HISTORY_PAGE_JSON_BUDGET_BYTES = 2 * 1024 * 1024;
+
+export const MAIL_CANCELLATION_REASONS = ["requested", "bee_deleted"] as const;
+export type MailCancellationReason = (typeof MAIL_CANCELLATION_REASONS)[number];
+
+/** Typed admission path for mailbox traffic; consumers must not sniff bodies. */
+export const MAIL_ORIGINS = ["mail.send", "spawn.prompt", "legacy.unknown"] as const;
+export type MailOrigin = (typeof MAIL_ORIGINS)[number];
 
 /**
  * The durable outcome of one accepted send. A discriminated union prevents a
@@ -223,7 +240,7 @@ export const MAIL_HISTORY_MAX_LIMIT = 250;
 export type MailHistoryLifecycle =
   | { state: "queued" }
   | { state: "delivered"; deliveredAt: number; deliveredGeneration: number }
-  | { state: "canceled"; canceledAt: number };
+  | { state: "canceled"; canceledAt: number; reason: MailCancellationReason };
 
 /** One accepted send reconstructed from typed mail audit events, never a raw audit row. */
 export interface MailHistoryMessage {
@@ -232,7 +249,10 @@ export interface MailHistoryMessage {
   messageId: number;
   beeId: string;
   sender: string;
+  senderTruncated: boolean;
+  /** A bounded prefix of the accepted body. */
   body: string;
+  bodyTruncated: boolean;
   priority: number;
   /** Current urgency after folding any `mail.expedited` events. */
   urgency: Urgency;
@@ -256,12 +276,38 @@ export interface MailHistoryResult {
   messages: MailHistoryMessage[];
   /** Pass as `beforeSeq` for the next older page; null means no older send exists. */
   nextBeforeSeq: number | null;
-  /** Number of sends at or before `snapshotSeq`, independent of this page cursor. */
-  total: number;
-  /** True exactly when `nextBeforeSeq` is non-null. */
+  /** True exactly when another older page exists at this snapshot. */
+  hasMore: boolean;
+  /** @deprecated Rolling-compatible alias of `hasMore`. */
   truncated: boolean;
-  /** Audit high-water used for lifecycle folding and `total`. */
+  /** Audit high-water used for stable send selection and lifecycle folding. */
   snapshotSeq: number;
+}
+
+export interface MailPendingParams {
+  /** Defaults to 100 and is capped at 250. */
+  limit?: number;
+}
+
+/** One undelivered mailbox row with bounded UTF-8 previews. */
+export interface MailPendingMessage {
+  id: number;
+  beeId: string;
+  origin: MailOrigin;
+  sender: string;
+  senderTruncated: boolean;
+  body: string;
+  bodyTruncated: boolean;
+  priority: number;
+  urgency: Urgency;
+  enqueuedAt: number;
+}
+
+export interface MailPendingResult {
+  /** Undelivered rows in mailbox FIFO order. */
+  messages: MailPendingMessage[];
+  /** True when row or byte bounds leave additional pending rows undisclosed. */
+  hasMore: boolean;
 }
 
 export interface CommandRow {

@@ -152,6 +152,7 @@ import {
   type ListResult,
   type MailHistoryParams,
   type MailHistoryResult,
+  type MailPendingResult,
   type MutationResult,
   type QuestionAnswerResult,
   type QuestionAskResult,
@@ -912,19 +913,30 @@ export class HiveDaemon {
       case "send":
         return this.withIdempotency(verb, params, () => this.rpcSend(params));
       case "mail.cancel": {
-        // Direct mailbox mutation (like send): cancel an undelivered message.
-        const res = this.mustStore().cancelMessage(this.numberParam(params, "messageId"));
-        if (!res.canceled) throw new RpcError("invalid_request", `mail.cancel: message ${res.reason}`);
-        return res;
+        return this.withIdempotency(verb, params, () => {
+          // Direct mailbox mutation (like send): cancel an undelivered message.
+          const res = this.mustStore().cancelMessage(
+            this.param(params, "beeId"),
+            this.numberParam(params, "messageId"),
+          );
+          if (!res.canceled) throw new RpcError("invalid_request", `mail.cancel: message ${res.reason}`);
+          return res;
+        });
       }
       case "mail.expedite": {
         const urgency = this.param(params, "urgency");
         if (!(MESSAGE_URGENCIES as readonly string[]).includes(urgency)) {
           throw new RpcError("invalid_request", `mail.expedite: urgency must be one of ${MESSAGE_URGENCIES.join("|")}`);
         }
-        const res = this.mustStore().expediteMessage(this.numberParam(params, "messageId"), urgency as Urgency);
-        if (!res.applied) throw new RpcError("invalid_request", `mail.expedite: message ${res.reason}`);
-        return res;
+        return this.withIdempotency(verb, params, () => {
+          const res = this.mustStore().expediteMessage(
+            this.param(params, "beeId"),
+            this.numberParam(params, "messageId"),
+            urgency as Urgency,
+          );
+          if (!res.applied) throw new RpcError("invalid_request", `mail.expedite: message ${res.reason}`);
+          return res;
+        });
       }
       case "stop":
         return this.withIdempotency(verb, params, () =>
@@ -1007,6 +1019,8 @@ export class HiveDaemon {
         return { messages: this.mustStore().listMessages(this.requireBee(params)) };
       case "mail.history":
         return this.rpcMailHistory(params);
+      case "mail.pending":
+        return this.rpcMailPending(params);
       case "commands":
         return { commands: this.mustStore().listCommands({ beeId: this.requireBee(params) }) };
       case "audit.tail":
@@ -1324,7 +1338,7 @@ export class HiveDaemon {
       : this.param(params, "prompt");
     const sent = prompt == null || prompt.length === 0
       ? null
-      : store.send(id, prompt, { sender: "operator" });
+      : store.send(id, prompt, { sender: "operator", origin: "spawn.prompt" });
     if (account) this.log(`spawn.account bee=${id} account=${account.id}${accountReason ? ` reason=${JSON.stringify(accountReason)}` : ""}`);
     return {
       beeId: id,
@@ -2013,6 +2027,17 @@ export class HiveDaemon {
       ...(typeof snapshotSeq === "number" ? { snapshotSeq } : {}),
     } satisfies MailHistoryParams;
     return this.mustStore().mailHistory(query);
+  }
+
+  private rpcMailPending(params: Record<string, unknown>): MailPendingResult {
+    const limit = params.limit;
+    if (limit !== undefined && (typeof limit !== "number" || !Number.isSafeInteger(limit) || limit <= 0)) {
+      throw new RpcError("invalid_request", "mail.pending: limit must be a positive integer");
+    }
+    return this.mustStore().pendingMail(
+      this.requireBee(params),
+      typeof limit === "number" ? { limit: Math.min(limit, MAIL_HISTORY_MAX_LIMIT) } : {},
+    );
   }
 
   private rpcDeployInfo(): DeployInfoResult {

@@ -106,11 +106,8 @@
  *        raw worker output. Additive; migration = CREATE TABLE IF NOT EXISTS.
  *  v17 — provider-declared flag expiry: adds `flags.resets_at` and backfills
  *        parseable reset instants from existing resource-blocked details.
- *  v18 — bounded node-wide mail history: adds partial audit indexes for
- *        enqueue paging and selected-message lifecycle folding. No audit or
- *        mailbox row changes.
  */
-export const SCHEMA_VERSION = 18;
+export const SCHEMA_VERSION = 17;
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS meta (
@@ -559,16 +556,45 @@ export const FLAGS_ADDITIVE_COLUMNS: ReadonlyArray<readonly [name: string, ddl: 
 ];
 
 /**
- * v18 mail history reads first page `mail.enqueued` rows by seq, then fold
- * only lifecycle events for those message ids. Both indexes are partial so
- * unrelated audit traffic does not enlarge their hot working set.
+ * Additive mail-history indexes are unconditionally ensured without a schema
+ * version bump because they change no persisted data shape. Paging selects
+ * `mail.enqueued`; per-kind indexes seek the latest lifecycle row directly.
  */
 export const MAIL_HISTORY_INDEX_SQL = `
 CREATE INDEX IF NOT EXISTS audit_mail_enqueued_seq
   ON audit(seq DESC) WHERE kind = 'mail.enqueued';
-CREATE INDEX IF NOT EXISTS audit_mail_lifecycle_message_seq
-  ON audit(CAST(json_extract(payload, '$.messageId') AS INTEGER), seq)
-  WHERE kind IN ('mail.delivered','mail.expedited','mail.canceled');
+CREATE INDEX IF NOT EXISTS audit_mail_delivered_message_seq
+  ON audit(CAST(json_extract(payload, '$.messageId') AS INTEGER), seq DESC)
+  WHERE kind = 'mail.delivered';
+CREATE INDEX IF NOT EXISTS audit_mail_expedited_message_seq
+  ON audit(CAST(json_extract(payload, '$.messageId') AS INTEGER), seq DESC)
+  WHERE kind = 'mail.expedited';
+CREATE INDEX IF NOT EXISTS audit_mail_canceled_message_seq
+  ON audit(CAST(json_extract(payload, '$.messageId') AS INTEGER), seq DESC)
+  WHERE kind = 'mail.canceled';
+CREATE INDEX IF NOT EXISTS audit_bee_deleted_bee_seq
+  ON audit(bee_id, seq DESC)
+  WHERE kind = 'bee.deleted';
+`;
+
+/**
+ * Bounded send-time projection for history pages. It deliberately has no bee
+ * foreign key: deletion removes the live mailbox but not accepted-send history.
+ */
+export const MAIL_HISTORY_PROJECTION_SQL = `
+CREATE TABLE IF NOT EXISTS mail_history_enqueues (
+  seq              INTEGER PRIMARY KEY,
+  message_id       INTEGER NOT NULL UNIQUE,
+  bee_id            TEXT NOT NULL,
+  origin            TEXT NOT NULL CHECK (origin IN ('mail.send','spawn.prompt','legacy.unknown')),
+  sender            BLOB NOT NULL,
+  sender_truncated  INTEGER NOT NULL CHECK (sender_truncated IN (0, 1)),
+  body              BLOB NOT NULL,
+  body_truncated    INTEGER NOT NULL CHECK (body_truncated IN (0, 1)),
+  priority          INTEGER NOT NULL,
+  urgency           TEXT NOT NULL CHECK (urgency IN ('now','next','idle')),
+  enqueued_at       INTEGER NOT NULL
+) STRICT;
 `;
 
 export const RUNTIMES_ADDITIVE_COLUMNS: ReadonlyArray<readonly [name: string, ddl: string]> = [
