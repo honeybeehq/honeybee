@@ -23,6 +23,8 @@ import type {
   CredentialHealth,
   ExecutableResolutionSource,
   LoginFlowRow,
+  MailHistoryParams as CoreMailHistoryParams,
+  MailHistoryResult as CoreMailHistoryResult,
   MirrorAccountLimitsRow,
   MirrorAccountRow,
   MirrorLoginFlowRow,
@@ -78,6 +80,8 @@ export const DAEMON_CAPABILITIES = [
    * typed `lease_unsupported` / `lease_unavailable` refusals.
    */
   "account.lease.v1",
+  /** Bounded, backward-pageable node-wide mailbox history reconstructed from typed audit events. */
+  "mail.history.v1",
 ] as const;
 export type DaemonCapability = (typeof DAEMON_CAPABILITIES)[number];
 
@@ -176,6 +180,7 @@ export const RPC_VERBS = [
   "view",
   "list",
   "mailbox",
+  "mail.history",
   "commands",
   "deployInfo",
   "health",
@@ -892,6 +897,12 @@ export interface ListResult {
 export interface MailboxResult {
   messages: MessageRow[];
 }
+
+/** `mail.history` request params. See the core contract for cursor and bound semantics. */
+export type MailHistoryParams = CoreMailHistoryParams;
+
+/** `mail.history` returns typed messages and lifecycle state, never raw audit rows. */
+export type MailHistoryResult = CoreMailHistoryResult;
 
 export interface CommandsResult {
   commands: CommandRow[];

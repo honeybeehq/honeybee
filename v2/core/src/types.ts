@@ -212,6 +212,58 @@ export interface MessageRow {
   deliveredGeneration: number | null;
 }
 
+/** Default and hard maximum for one node-wide mail history page. */
+export const MAIL_HISTORY_DEFAULT_LIMIT = 100;
+export const MAIL_HISTORY_MAX_LIMIT = 250;
+
+/**
+ * The durable outcome of one accepted send. A discriminated union prevents a
+ * consumer from observing contradictory queued/delivered/canceled fields.
+ */
+export type MailHistoryLifecycle =
+  | { state: "queued" }
+  | { state: "delivered"; deliveredAt: number; deliveredGeneration: number }
+  | { state: "canceled"; canceledAt: number };
+
+/** One accepted send reconstructed from typed mail audit events, never a raw audit row. */
+export interface MailHistoryMessage {
+  /** The `mail.enqueued` audit sequence. `beforeSeq` pages against this value. */
+  seq: number;
+  messageId: number;
+  beeId: string;
+  sender: string;
+  body: string;
+  priority: number;
+  /** Current urgency after folding any `mail.expedited` events. */
+  urgency: Urgency;
+  enqueuedAt: number;
+  /** Timestamp of the latest expedite, or null when urgency was never changed. */
+  expeditedAt: number | null;
+  lifecycle: MailHistoryLifecycle;
+}
+
+export interface MailHistoryParams {
+  /** Defaults to 100 and is capped at 250. */
+  limit?: number;
+  /** Exclusive `MailHistoryMessage.seq` cursor for the next older page. */
+  beforeSeq?: number;
+  /** Optional result `snapshotSeq` to keep later pages on the same audit snapshot. */
+  snapshotSeq?: number;
+}
+
+export interface MailHistoryResult {
+  /** Newest sends first. */
+  messages: MailHistoryMessage[];
+  /** Pass as `beforeSeq` for the next older page; null means no older send exists. */
+  nextBeforeSeq: number | null;
+  /** Number of sends at or before `snapshotSeq`, independent of this page cursor. */
+  total: number;
+  /** True exactly when `nextBeforeSeq` is non-null. */
+  truncated: boolean;
+  /** Audit high-water used for lifecycle folding and `total`. */
+  snapshotSeq: number;
+}
+
 export interface CommandRow {
   id: number;
   verb: Verb;

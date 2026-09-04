@@ -21,6 +21,8 @@ import {
   RUNTIME_VERBS,
   SecondWriterError,
   MESSAGE_URGENCIES,
+  MAIL_HISTORY_DEFAULT_LIMIT,
+  MAIL_HISTORY_MAX_LIMIT,
   UnknownFailureCauseError,
   UnknownFlagError,
   UnknownUrgencyError,
@@ -40,6 +42,9 @@ import {
   type Flag,
   type FlagRow,
   type MessageRow,
+  type MailHistoryMessage,
+  type MailHistoryParams,
+  type MailHistoryResult,
   NAMING_USAGE_STATUSES,
   type NamingUsageRow,
   type NamingUsageStatus,
@@ -88,7 +93,7 @@ import {
   TASK_SUPPLY_SENDER_NAME,
   TASK_TRANSITIONS,
 } from "./tasks.ts";
-import { BEES_ADDITIVE_COLUMNS, FLAGS_ADDITIVE_COLUMNS, HANDLE_INDEX_SQL, IDEMPOTENCY_INDEX_SQL, MAILBOX_ADDITIVE_COLUMNS, RUNTIMES_ADDITIVE_COLUMNS, SCHEMA_SQL, SCHEMA_VERSION } from "./schema.ts";
+import { BEES_ADDITIVE_COLUMNS, FLAGS_ADDITIVE_COLUMNS, HANDLE_INDEX_SQL, IDEMPOTENCY_INDEX_SQL, MAILBOX_ADDITIVE_COLUMNS, MAIL_HISTORY_INDEX_SQL, RUNTIMES_ADDITIVE_COLUMNS, SCHEMA_SQL, SCHEMA_VERSION } from "./schema.ts";
 import {
   LOGIN_FLOW_PHASES,
   isTerminalLoginPhase,
@@ -834,6 +839,48 @@ function mapAudit(r: Row): AuditRow {
   };
 }
 
+function auditObject(value: unknown, label: string): Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new CoreError(`mail history: malformed ${label}`);
+  }
+  return value as Record<string, unknown>;
+}
+
+function auditString(value: unknown, label: string): string {
+  if (typeof value !== "string") throw new CoreError(`mail history: malformed ${label}`);
+  return value;
+}
+
+function auditNumber(value: unknown, label: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new CoreError(`mail history: malformed ${label}`);
+  }
+  return value;
+}
+
+function auditUrgency(value: unknown, label: string): Urgency {
+  if (typeof value !== "string" || !(MESSAGE_URGENCIES as readonly string[]).includes(value)) {
+    throw new CoreError(`mail history: malformed ${label}`);
+  }
+  return value as Urgency;
+}
+
+function mailHistoryEnqueue(row: AuditRow): MailHistoryMessage {
+  const message = auditObject(row.payload.message, `mail.enqueued payload at seq ${row.seq}`);
+  return {
+    seq: row.seq,
+    messageId: auditNumber(message.id, `mail.enqueued message.id at seq ${row.seq}`),
+    beeId: auditString(message.beeId, `mail.enqueued message.beeId at seq ${row.seq}`),
+    sender: auditString(message.sender, `mail.enqueued message.sender at seq ${row.seq}`),
+    body: auditString(message.body, `mail.enqueued message.body at seq ${row.seq}`),
+    priority: auditNumber(message.priority, `mail.enqueued message.priority at seq ${row.seq}`),
+    urgency: auditUrgency(message.urgency ?? "next", `mail.enqueued message.urgency at seq ${row.seq}`),
+    enqueuedAt: auditNumber(message.enqueuedAt, `mail.enqueued message.enqueuedAt at seq ${row.seq}`),
+    expeditedAt: null,
+    lifecycle: { state: "queued" },
+  };
+}
+
 export class CoreStore {
   readonly path: string;
   private readonly db: DatabaseSync;
@@ -1047,6 +1094,7 @@ export class CoreStore {
     // — after the migration — not in SCHEMA_SQL.
     this.db.exec(IDEMPOTENCY_INDEX_SQL);
     this.db.exec(HANDLE_INDEX_SQL);
+    this.db.exec(MAIL_HISTORY_INDEX_SQL);
     this.db
       .prepare(
         "INSERT INTO meta(key, value) VALUES('schema_version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
@@ -2009,6 +2057,92 @@ export class CoreStore {
   getMessage(messageId: number): MessageRow | null {
     const row = this.stmt("SELECT * FROM mailbox WHERE id = ?").get(messageId) as Row | undefined;
     return row ? mapMessage(row) : null;
+  }
+
+  /**
+   * Bounded node-wide send history from the append-only audit authority.
+   * Paging selects `mail.enqueued` rows before folding only the selected
+   * messages' lifecycle events, so unrelated audit traffic cannot evict mail.
+   */
+  mailHistory(params: MailHistoryParams = {}): MailHistoryResult {
+    const headSeq = this.lastAuditSeq();
+    const requestedSnapshot = params.snapshotSeq ?? headSeq;
+    const snapshotSeq = Number.isSafeInteger(requestedSnapshot)
+      ? Math.max(0, Math.min(headSeq, requestedSnapshot))
+      : headSeq;
+    const requestedLimit = params.limit ?? MAIL_HISTORY_DEFAULT_LIMIT;
+    const limit = Number.isFinite(requestedLimit)
+      ? Math.max(1, Math.min(MAIL_HISTORY_MAX_LIMIT, Math.floor(requestedLimit)))
+      : MAIL_HISTORY_DEFAULT_LIMIT;
+    const requestedBefore = params.beforeSeq ?? snapshotSeq + 1;
+    const beforeSeq = Number.isSafeInteger(requestedBefore)
+      ? Math.max(0, Math.min(snapshotSeq + 1, requestedBefore))
+      : snapshotSeq + 1;
+
+    const enqueueRows = this.stmt(
+      `SELECT * FROM audit
+       WHERE kind = 'mail.enqueued' AND seq <= ? AND seq < ?
+       ORDER BY seq DESC LIMIT ?`,
+    ).all(snapshotSeq, beforeSeq, limit + 1) as Row[];
+    const truncated = enqueueRows.length > limit;
+    const messages = enqueueRows.slice(0, limit).map(mapAudit).map(mailHistoryEnqueue);
+
+    if (messages.length > 0) {
+      const placeholders = messages.map(() => "?").join(",");
+      const lifecycleRows = this.stmt(
+        `SELECT * FROM audit
+         WHERE kind IN ('mail.delivered','mail.expedited','mail.canceled')
+           AND CAST(json_extract(payload, '$.messageId') AS INTEGER) IN (${placeholders})
+           AND seq <= ?
+         ORDER BY seq`,
+      ).all(...messages.map((message) => message.messageId), snapshotSeq) as Row[];
+      const byMessageId = new Map(messages.map((message) => [message.messageId, message]));
+
+      for (const row of lifecycleRows.map(mapAudit)) {
+        const messageId = auditNumber(row.payload.messageId, `${row.kind} messageId at seq ${row.seq}`);
+        const message = byMessageId.get(messageId);
+        if (!message) continue;
+        switch (row.kind) {
+          case "mail.expedited":
+            message.urgency = auditUrgency(row.payload.to, `mail.expedited to at seq ${row.seq}`);
+            message.expeditedAt =
+              row.payload.expeditedAt === undefined
+                ? row.ts
+                : auditNumber(row.payload.expeditedAt, `mail.expedited expeditedAt at seq ${row.seq}`);
+            break;
+          case "mail.delivered":
+            message.lifecycle = {
+              state: "delivered",
+              deliveredAt: auditNumber(row.payload.deliveredAt, `mail.delivered deliveredAt at seq ${row.seq}`),
+              deliveredGeneration: auditNumber(
+                row.payload.deliveredGeneration,
+                `mail.delivered deliveredGeneration at seq ${row.seq}`,
+              ),
+            };
+            break;
+          case "mail.canceled":
+            message.lifecycle = {
+              state: "canceled",
+              canceledAt:
+                row.payload.canceledAt === undefined
+                  ? row.ts
+                  : auditNumber(row.payload.canceledAt, `mail.canceled canceledAt at seq ${row.seq}`),
+            };
+            break;
+        }
+      }
+    }
+
+    const totalRow = this.stmt(
+      "SELECT COUNT(*) AS total FROM audit WHERE kind = 'mail.enqueued' AND seq <= ?",
+    ).get(snapshotSeq) as Row;
+    return {
+      messages,
+      nextBeforeSeq: truncated ? (messages[messages.length - 1]?.seq ?? null) : null,
+      total: Number(totalRow.total),
+      truncated,
+      snapshotSeq,
+    };
   }
 
   /**

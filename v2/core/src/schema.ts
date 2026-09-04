@@ -104,8 +104,13 @@
  *        sign-in (methods, phase, authorization URL / device code, requested
  *        input descriptors, typed error, revision). Carries no secret and no
  *        raw worker output. Additive; migration = CREATE TABLE IF NOT EXISTS.
+ *  v17 — provider-declared flag expiry: adds `flags.resets_at` and backfills
+ *        parseable reset instants from existing resource-blocked details.
+ *  v18 — bounded node-wide mail history: adds partial audit indexes for
+ *        enqueue paging and selected-message lifecycle folding. No audit or
+ *        mailbox row changes.
  */
-export const SCHEMA_VERSION = 17;
+export const SCHEMA_VERSION = 18;
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS meta (
@@ -552,6 +557,19 @@ export const MAILBOX_ADDITIVE_COLUMNS: ReadonlyArray<readonly [name: string, ddl
 export const FLAGS_ADDITIVE_COLUMNS: ReadonlyArray<readonly [name: string, ddl: string]> = [
   ["resets_at", "resets_at INTEGER"],
 ];
+
+/**
+ * v18 mail history reads first page `mail.enqueued` rows by seq, then fold
+ * only lifecycle events for those message ids. Both indexes are partial so
+ * unrelated audit traffic does not enlarge their hot working set.
+ */
+export const MAIL_HISTORY_INDEX_SQL = `
+CREATE INDEX IF NOT EXISTS audit_mail_enqueued_seq
+  ON audit(seq DESC) WHERE kind = 'mail.enqueued';
+CREATE INDEX IF NOT EXISTS audit_mail_lifecycle_message_seq
+  ON audit(CAST(json_extract(payload, '$.messageId') AS INTEGER), seq)
+  WHERE kind IN ('mail.delivered','mail.expedited','mail.canceled');
+`;
 
 export const RUNTIMES_ADDITIVE_COLUMNS: ReadonlyArray<readonly [name: string, ddl: string]> = [
   ["boot_evidence", "boot_evidence TEXT CHECK (boot_evidence IN ('synthetic','real'))"],

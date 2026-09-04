@@ -37,6 +37,7 @@ import {
   beeTaskList,
   isTaskStatus,
   isTaskTransitionAction,
+  MAIL_HISTORY_MAX_LIMIT,
   MESSAGE_URGENCIES,
   openCoreStore,
   recipeFor,
@@ -149,6 +150,8 @@ import {
   type InterruptResult,
   type NodeHarnessesResult,
   type ListResult,
+  type MailHistoryParams,
+  type MailHistoryResult,
   type MutationResult,
   type QuestionAnswerResult,
   type QuestionAskResult,
@@ -1002,6 +1005,8 @@ export class HiveDaemon {
         return this.rpcList(params);
       case "mailbox":
         return { messages: this.mustStore().listMessages(this.requireBee(params)) };
+      case "mail.history":
+        return this.rpcMailHistory(params);
       case "commands":
         return { commands: this.mustStore().listCommands({ beeId: this.requireBee(params) }) };
       case "audit.tail":
@@ -1981,6 +1986,33 @@ export class HiveDaemon {
     const limit = Math.max(1, Math.min(1000, rawLimit));
     const beeId = typeof params.beeId === "string" && params.beeId.length > 0 ? params.beeId : null;
     return { rows: store.auditTail(afterSeq, limit, beeId) };
+  }
+
+  private rpcMailHistory(params: Record<string, unknown>): MailHistoryResult {
+    const limit = params.limit;
+    if (limit !== undefined && (typeof limit !== "number" || !Number.isSafeInteger(limit) || limit <= 0)) {
+      throw new RpcError("invalid_request", "mail.history: limit must be a positive integer");
+    }
+    const beforeSeq = params.beforeSeq;
+    if (
+      beforeSeq !== undefined &&
+      (typeof beforeSeq !== "number" || !Number.isSafeInteger(beforeSeq) || beforeSeq < 0)
+    ) {
+      throw new RpcError("invalid_request", "mail.history: beforeSeq must be a non-negative integer");
+    }
+    const snapshotSeq = params.snapshotSeq;
+    if (
+      snapshotSeq !== undefined &&
+      (typeof snapshotSeq !== "number" || !Number.isSafeInteger(snapshotSeq) || snapshotSeq < 0)
+    ) {
+      throw new RpcError("invalid_request", "mail.history: snapshotSeq must be a non-negative integer");
+    }
+    const query = {
+      ...(typeof limit === "number" ? { limit: Math.min(limit, MAIL_HISTORY_MAX_LIMIT) } : {}),
+      ...(typeof beforeSeq === "number" ? { beforeSeq } : {}),
+      ...(typeof snapshotSeq === "number" ? { snapshotSeq } : {}),
+    } satisfies MailHistoryParams;
+    return this.mustStore().mailHistory(query);
   }
 
   private rpcDeployInfo(): DeployInfoResult {
