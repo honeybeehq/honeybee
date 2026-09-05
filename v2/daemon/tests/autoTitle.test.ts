@@ -5,6 +5,7 @@ import {
   AUTO_TITLE_WATCHDOG_MS,
   autoTitleDecision,
   autoTitleRetryBackoffMs,
+  contextSignature,
   createAutoTitleDispatcher,
   type AutoTitleBookkeeping,
   type AutoTitleDeps,
@@ -61,9 +62,10 @@ test("autoTitleDecision: thin first opener defers; second message generates", ()
   assert.equal(autoTitleDecision(untitled, ["hi", "Enable auto-titling"], undefined, NOW).action, "generate");
 });
 
-test("autoTitleDecision: substantial first message waits for output, then generates", () => {
-  assert.equal(autoTitleDecision(bee({ lastOutputAt: null }), ["Enable auto-titling"], undefined, NOW).action, "defer");
-  assert.equal(autoTitleDecision(bee({ lastOutputAt: 9 }), ["Enable auto-titling"], undefined, NOW).action, "generate");
+test("autoTitleDecision: substantial first message generates before output", () => {
+  const untitled = bee({ lastOutputAt: null });
+  assert.equal(autoTitleDecision(untitled, [], undefined, NOW).action, "defer");
+  assert.equal(autoTitleDecision(untitled, ["Enable auto-titling"], undefined, NOW).action, "generate");
 });
 
 test("autoTitleDecision: existing title and archived skip; failures retry with bounded backoff", () => {
@@ -94,6 +96,7 @@ test("dispatcher: thin opener does not burn an attempt; second message titles", 
   const messages = [mail("hi")];
   const bookkeeping = new Map<string, AutoTitleBookkeeping>();
   const titles: string[] = [];
+  let stateWrites = 0;
   const deps: AutoTitleDeps = {
     enabled: () => true,
     naming: () => ({
@@ -116,6 +119,7 @@ test("dispatcher: thin opener does not burn an attempt; second message titles", 
     },
     loadState: (id) => bookkeeping.get(id),
     saveState: (id, state) => {
+      stateWrites += 1;
       bookkeeping.set(id, state);
     },
     generate: async () => "Enable Auto Titler",
@@ -128,6 +132,11 @@ test("dispatcher: thin opener does not burn an attempt; second message titles", 
   assert.equal(titles.length, 0);
   assert.equal(bookkeeping.get(row.id)?.deferred, true);
   assert.equal(bookkeeping.get(row.id)?.attempts, 0);
+  assert.equal(stateWrites, 1);
+
+  await dispatch();
+  await settle();
+  assert.equal(stateWrites, 1);
 
   messages.push(mail("Please enable the auto-titler for grok bees.", 2));
   store.set(row.id, { ...row, lastOutputAt: 9 });
@@ -135,6 +144,54 @@ test("dispatcher: thin opener does not burn an attempt; second message titles", 
   await settle();
   assert.deepEqual(titles, ["Enable Auto Titler"]);
   assert.equal(store.get(row.id)?.title, "Enable Auto Titler");
+});
+
+test("dispatcher: persisted substantial deferral is reconsidered before output", async () => {
+  let row = bee({ lastOutputAt: null });
+  const prompt = "Clean up old branches and worktrees";
+  let bookkeeping: AutoTitleBookkeeping = {
+    attempts: 0,
+    lastAt: 0,
+    userTurns: 1,
+    deferred: true,
+    signature: contextSignature(row, [prompt]),
+  };
+  let generateCalls = 0;
+  const dispatch = createAutoTitleDispatcher({
+    enabled: () => true,
+    naming: () => ({
+      auto: true,
+      backend: "codex-app-server",
+      tool: "codex",
+      model: "gpt-5.6-luna",
+      effort: "medium",
+      generatorCwd: "/tmp",
+    }),
+    listBees: () => [row],
+    listMessages: () => [mail(prompt)],
+    getBee: () => row,
+    setTitle: (_id, title) => {
+      row = { ...row, title };
+      return { applied: true };
+    },
+    loadState: () => bookkeeping,
+    saveState: (_id, state) => {
+      bookkeeping = state;
+    },
+    generate: async () => {
+      generateCalls += 1;
+      return "Clean Up Old Worktrees";
+    },
+    now: () => NOW,
+    log: () => undefined,
+  });
+
+  await dispatch();
+  await settle();
+
+  assert.equal(generateCalls, 1);
+  assert.equal(row.title, "Clean Up Old Worktrees");
+  assert.equal(bookkeeping.deferred, false);
 });
 
 test("dispatcher: watchdog recovery ignores the stale generator completion", async () => {
