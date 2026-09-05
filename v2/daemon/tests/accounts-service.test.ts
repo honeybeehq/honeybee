@@ -519,6 +519,24 @@ test("reset transport: sends the supplied key, refreshes after redemption, and r
       assert.match(unsupported.error, /update Codex/);
     }
 
+    const writeConsumeErrorStub = (code: number, message: string) => {
+      writeFileSync(stub, [
+        "#!/usr/bin/env node",
+        "const readline = require('node:readline');",
+        `const error = ${JSON.stringify({ code, message })};`,
+        "readline.createInterface({input:process.stdin}).on('line', line => { const m=JSON.parse(line); if(m.id===1) console.log(JSON.stringify({id:1,result:{}})); if(m.id===2) console.log(JSON.stringify({id:2,error})); });",
+      ].join("\n"));
+      chmodSync(stub, 0o700);
+    };
+    writeConsumeErrorStub(-32602, "Invalid params");
+    const refused = await defaultCodexResetLimits(5_000, stub)(join(r.homes, "reset"), "fixed-key");
+    assert.equal(refused.ok, false);
+    if (!refused.ok) assert.equal(refused.code, "provider_refused");
+    writeConsumeErrorStub(-32603, "Internal error after dispatch");
+    const ambiguous = await defaultCodexResetLimits(5_000, stub)(join(r.homes, "reset"), "fixed-key");
+    assert.equal(ambiguous.ok, false);
+    if (!ambiguous.ok) assert.equal(ambiguous.code, "provider_outcome_uncertain");
+
     writeFileSync(stub, "#!/usr/bin/env node\nprocess.stdout.write('null\\n'); process.stdin.destroy();\n");
     chmodSync(stub, 0o700);
     const malformed = await defaultCodexResetLimits(5_000, stub)(join(r.homes, "reset"), "fixed-key");

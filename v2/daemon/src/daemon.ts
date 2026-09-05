@@ -2472,11 +2472,11 @@ export class HiveDaemon {
     let result: AccountResetLimitsResult;
     try {
       result = await this.mustAccounts().resetLimits(account, key, creditId as string | undefined);
+      store.recordRpcResult(key, "account.resetLimits", null, result);
     } catch (error) {
       if (error instanceof ResetLimitsRefusal) throw new RpcError(error.code, error.message);
       throw new RpcError("provider_outcome_uncertain", error instanceof Error ? error.message : String(error));
     }
-    store.recordRpcResult(key, "account.resetLimits", null, result);
     return result;
   }
 

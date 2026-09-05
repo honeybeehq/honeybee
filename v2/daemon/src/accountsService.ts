@@ -586,7 +586,14 @@ export function defaultCodexResetLimits(timeoutMs: number, command = "codex"): N
             const rpcError = recordOf(message.error);
             if (message.id === 2 && rpcError?.code === -32601) {
               fail("installed Codex does not support earned rate-limit resets; update Codex and retry", "provider_unsupported");
-            } else if (message.id === 1 || message.id === 2) {
+            } else if (message.id === 1) {
+              fail(message.error, "provider_refused");
+            } else if (message.id === 2 && (
+              rpcError?.code === -32602
+              || rpcError?.code === 401
+              || rpcError?.code === 403
+              || /unauthorized|forbidden|authentication|invalid[_ -]?grant/i.test(errorDetail(message.error))
+            )) {
               fail(message.error, "provider_refused");
             } else {
               fail(message.error, "provider_outcome_uncertain");
