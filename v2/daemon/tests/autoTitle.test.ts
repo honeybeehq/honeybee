@@ -10,6 +10,7 @@ import {
   type AutoTitleDeps,
 } from "../src/autoTitle.ts";
 import type { BeeRow, MessageRow } from "../../core/src/index.ts";
+import { generateTitle } from "../src/naming.ts";
 
 function bee(overrides: Partial<BeeRow> = {}): BeeRow {
   return {
@@ -209,6 +210,46 @@ test("dispatcher: disabled naming skips everything", async () => {
   });
   const outcomes = await dispatch();
   assert.deepEqual(outcomes, []);
+});
+
+test("dispatcher: initial Linear reference survives clamping and later turns", async () => {
+  let row = bee();
+  const task = `${"Initial context. ".repeat(60)}https://linear.app/honeybee-hq/issue/APY-9/model-changes ${"More details. ".repeat(60)}`;
+  const messages = [
+    mail("<apiary-session>Example HNY-99</apiary-session>hi"),
+    mail(task, 2),
+    mail("Please continue", 3),
+    mail("Keep the existing behavior", 4),
+    mail("Related issue APY-10", 5),
+  ];
+  const naming: AutoTitleDeps["naming"] = () => ({
+    auto: true, backend: "claude-cli", tool: "claude", model: "haiku", effort: "low", generatorCwd: "/tmp",
+  });
+  const dispatch = createAutoTitleDispatcher({
+    enabled: () => true,
+    naming,
+    listBees: () => [row],
+    listMessages: () => messages,
+    getBee: () => row,
+    setTitle: (_id, title) => {
+      row = { ...row, title };
+      return { applied: true };
+    },
+    loadState: () => undefined,
+    saveState: () => undefined,
+    generate: async (context) => {
+      assert.equal(context.initialTask, task.trim());
+      assert.equal(context.userMessages.length, 3);
+      assert.ok(context.userMessages.every((message) => !message.includes("APY-9")));
+      return generateTitle(context, { config: naming(), runner: async () => "Atomic Model Changes Admission" });
+    },
+    now: () => NOW,
+    log: () => undefined,
+  });
+  await dispatch();
+  await settle();
+  assert.deepEqual(await dispatch(), [{ beeId: row.id, ok: true, title: "APY-9: Atomic Model Changes Admission" }]);
+  assert.equal(row.title, "APY-9: Atomic Model Changes Admission");
 });
 
 test("dispatcher: archived and already-titled bees never touch the mailbox", async () => {

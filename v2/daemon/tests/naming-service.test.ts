@@ -32,6 +32,22 @@ test("naming telemetry uses GPT-6 Astra standard nano-USD rates", () => {
   });
 });
 
+test("naming service preserves the initial Linear issue even when the model omits it", async () => {
+  const service = new TitleGeneratorService({
+    fetchImpl: async () => new Response(JSON.stringify({
+      output: [{ type: "message", content: [{ type: "output_text", text: "Atomic Model Changes Admission" }] }],
+    }), { status: 200 }),
+  });
+  try {
+    const title = await service.generate({
+      userMessages: ["https://linear.app/honeybee-hq/issue/APY-9/make-model-changes-atomic-with-honeybee-working-state-admission"],
+    }, config({ backend: "openai-api", apiKey: "sk-test" }));
+    assert.equal(title, "APY-9: Atomic Model Changes Admission");
+  } finally {
+    service.close();
+  }
+});
+
 test("naming service keeps one Codex app-server warm and isolates titles in ephemeral threads", async () => {
   const dir = mkdtempSync(join(tmpdir(), "hive-naming-service-"));
   const logPath = join(dir, "rpc.jsonl");
@@ -45,7 +61,7 @@ test("naming service keeps one Codex app-server warm and isolates titles in ephe
   try {
     const generatorCwd = join(dir, "fresh-generator-cwd");
     assert.equal(await service.generate({ userMessages: ["Fix auto naming"] }, config({ generatorCwd })), "Warm Naming Service");
-    assert.equal(await service.generate({ userMessages: ["Fix another title"] }, config({ generatorCwd })), "Warm Naming Service");
+    assert.equal(await service.generate({ userMessages: ["Fix APY-9"] }, config({ generatorCwd })), "APY-9: Warm Naming Service");
     assert.equal(existsSync(generatorCwd), true);
     const calls = readFileSync(logPath, "utf8").trim().split("\n").map((line) => JSON.parse(line));
     assert.equal(calls.filter((call) => call.method === "initialize").length, 1);

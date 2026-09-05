@@ -12,6 +12,7 @@ import {
   clampUserMessage,
   generateTitle,
   isThinOpener,
+  stripSessionEnvelopes,
   type TitleContext,
 } from "./naming.ts";
 
@@ -141,7 +142,8 @@ export function createAutoTitleDispatcher(deps: AutoTitleDeps): (bees?: BeeRow[]
       // bee's mailbox — hundreds of archived/titled bees × 5 ticks/s was the
       // sustained ~250ms flush stall behind daemon connect timeouts.
       if (bee.lifecycle !== "active" || bee.title) continue;
-      const userMessages = userTaskMessages(deps.listMessages(bee.id));
+      const messages = deps.listMessages(bee.id);
+      const userMessages = userTaskMessages(messages);
       const signature = contextSignature(bee, userMessages);
       const bookkeeping = deps.loadState(bee.id);
       if (bookkeeping?.signature === signature && bookkeeping.deferred) {
@@ -180,7 +182,9 @@ export function createAutoTitleDispatcher(deps: AutoTitleDeps): (bees?: BeeRow[]
       inFlightBee = bee.id;
       const generationToken = ++nextInFlightToken;
       inFlightToken = generationToken;
-      const context: TitleContext = { beeId: bee.id, userMessages: userMessages.slice(-3) };
+      const initialTask = messages.map((message) => stripSessionEnvelopes(message.body))
+        .find((message) => !isThinOpener(message)) ?? "";
+      const context: TitleContext = { beeId: bee.id, initialTask, userMessages: userMessages.slice(-3) };
       void Promise.resolve()
         .then(() => deps.generate(context))
         .then((title) => {

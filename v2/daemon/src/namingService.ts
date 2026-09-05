@@ -443,7 +443,7 @@ export class TitleGeneratorService {
           raw = await this.codex.generate(prompt, config);
         }
       }
-      const title = normalizeGeneratedTitle(raw);
+      const title = normalizeGeneratedTitle(raw, context);
       if (!title) throw new Error(`title generator produced no usable title (${config.backend})`);
       status = "succeeded";
       return title;

@@ -14,6 +14,8 @@ import type { ResolvedNamingConfig } from "./config.ts";
 export type TitleContext = {
   /** Owning bee for durable usage attribution; ignored by prompt construction. */
   beeId?: string;
+  /** Full initial task, retained before context clamping and recent-turn selection. */
+  initialTask?: string;
   userMessages: string[];
   lastAssistant?: string;
 };
@@ -36,10 +38,30 @@ export function stripSessionEnvelopes(value: string): string {
   return value.replace(SESSION_ENVELOPE_RE, "").trim();
 }
 
+/** First issue reference in task order; unrelated URLs are consumed but ignored. */
+export function linearIssueIdentifier(value: string): string | undefined {
+  const tokens = stripSessionEnvelopes(value).matchAll(
+    /https?:\/\/[^\s<>"`]+|(?<![\w/-])[A-Z][A-Z0-9]*-\d+(?![\w-])/g,
+  );
+  for (const [token] of tokens) {
+    if (!token.startsWith("http")) return token;
+    try {
+      const url = new URL(token.replace(/[)\].,;!?]+$/, ""));
+      if (url.hostname !== "linear.app") continue;
+      const issue = url.pathname.match(/^\/[^/]+\/issue\/([a-z][a-z0-9]*-\d+)(?:\/|$)/i);
+      if (issue?.[1]) return issue[1].toUpperCase();
+    } catch {
+      // A malformed URL is task text, not a naming failure.
+    }
+  }
+  return undefined;
+}
+
 export function isThinOpener(value: string): boolean {
   const stripped = stripSessionEnvelopes(value).replace(/\s+/g, " ").trim();
   if (!stripped) return true;
   if (THIN_OPENER_RE.test(stripped)) return true;
+  if (linearIssueIdentifier(stripped)) return false;
   const words = stripped.split(/\s+/).filter(Boolean);
   return words.length === 1 && stripped.length <= 12;
 }
@@ -83,7 +105,7 @@ export function buildTitleContentPrompt(context: TitleContext): string {
   return sections.join("\n\n");
 }
 
-export function normalizeGeneratedTitle(raw: string): string | undefined {
+export function normalizeGeneratedTitle(raw: string, context?: TitleContext): string | undefined {
   const line = raw
     .split("\n")
     .map((candidate) => candidate.trim())
@@ -99,6 +121,14 @@ export function normalizeGeneratedTitle(raw: string): string | undefined {
     .replace(/\s+/g, " ")
     .trim();
   if (!title) return undefined;
+  const initialTask = context?.initialTask ?? context?.userMessages.find((message) => !isThinOpener(message));
+  const issue = initialTask ? linearIssueIdentifier(initialTask) : undefined;
+  if (issue) {
+    // Providers sometimes include the ID themselves. Canonicalize that prefix
+    // before adding it so repeated normalization remains idempotent.
+    title = title.replace(new RegExp(`^\\[?${issue}\\]?(?=$|[\\s:–—])(?:[\\s:–—-]+)?`, "i"), "");
+    title = title ? `${issue}: ${title}` : issue;
+  }
   if (title.length > GENERATED_TITLE_MAX_CHARS) {
     title = `${title.slice(0, GENERATED_TITLE_MAX_CHARS - 1).trimEnd()}…`;
   }
@@ -113,7 +143,7 @@ export async function generateTitle(
 ): Promise<string> {
   const runner = options.runner ?? runTitleGenerator;
   const raw = await runner(buildTitlePrompt(context), options.config);
-  const title = normalizeGeneratedTitle(raw);
+  const title = normalizeGeneratedTitle(raw, context);
   if (!title) {
     throw new Error(
       `title generator produced no usable title (${options.config.command ? "custom command" : options.config.tool})`,
