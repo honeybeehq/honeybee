@@ -73,8 +73,8 @@ export function contextSignature(bee: BeeRow, userMessages: readonly string[]): 
 }
 
 /**
- * Ready to generate now? Substantial first message waits for output (or a
- * second user turn). A thin opener waits for the second user message.
+ * Ready to generate now? A substantial first message is enough. No message or
+ * a thin opener waits for a later user message.
  */
 export function autoTitleDecision(
   bee: BeeRow,
@@ -94,9 +94,6 @@ export function autoTitleDecision(
   if (userMessages.length === 0) return { action: "defer", reason: "no user message" };
   if (userMessages.length === 1 && isThinOpener(userMessages[0]!)) {
     return { action: "defer", reason: "thin opener" };
-  }
-  if (userMessages.length === 1 && bee.lastOutputAt == null) {
-    return { action: "defer", reason: "waiting for output" };
   }
   return { action: "generate" };
 }
@@ -144,16 +141,16 @@ export function createAutoTitleDispatcher(deps: AutoTitleDeps): (bees?: BeeRow[]
       const userMessages = userTaskMessages(deps.listMessages(bee.id));
       const signature = contextSignature(bee, userMessages);
       const bookkeeping = deps.loadState(bee.id);
-      if (bookkeeping?.signature === signature && bookkeeping.deferred) {
-        // Same mailbox/output snapshot we already deferred on.
-        continue;
-      }
       // New mailbox/output evidence gets a fresh retry budget. An unchanged
       // task retries forever with a bounded exponential delay, so a transient
       // provider outage can never leave a bee permanently unnamed.
       const currentBookkeeping = bookkeeping?.signature === signature ? bookkeeping : undefined;
       const decision = autoTitleDecision(bee, userMessages, currentBookkeeping, now);
       if (decision.action === "skip") continue;
+      if (decision.action === "defer" && currentBookkeeping?.deferred) {
+        // Same mailbox/output snapshot still has no title-worthy task signal.
+        continue;
+      }
       probes += 1;
       if (decision.action === "defer") {
         deps.saveState(bee.id, {
