@@ -269,6 +269,7 @@ export interface PutAccountLimitsInput {
     resetsAt?: number | null;
     windowMinutes?: number | null;
   }>;
+  rateLimitResetCredits?: AccountLimitsRow["rateLimitResetCredits"];
   /** Snapshot time override; defaults to the store clock. */
   fetchedAt?: number;
 }
@@ -583,6 +584,9 @@ function mapAccountLimits(r: Row): AccountLimitsRow {
     fableResetsAt: numOrNull(r.fable_resets_at),
     fableMinutes: numOrNull(r.fable_minutes),
     displayWindows: displayWindowsOrEmpty(r.display_windows),
+    rateLimitResetCredits: r.rate_limit_reset_credits == null
+      ? null
+      : JSON.parse(String(r.rate_limit_reset_credits)) as AccountLimitsRow["rateLimitResetCredits"],
   };
 }
 
@@ -1175,6 +1179,11 @@ export class CoreStore {
       // extra buckets; the standard routing windows remain untouched.
       if (!accountLimitCols.has("display_windows")) {
         this.db.exec("ALTER TABLE account_limits ADD COLUMN display_windows TEXT NOT NULL DEFAULT '[]'");
+      }
+      // v19 -> v20: null means the provider did not expose earned resets.
+      // JSON preserves count-only responses separately from an empty array.
+      if (!accountLimitCols.has("rate_limit_reset_credits")) {
+        this.db.exec("ALTER TABLE account_limits ADD COLUMN rate_limit_reset_credits TEXT");
       }
       // v18 → v19: the unreadable_reason CHECK gains 'refresh_deferred'.
       // SQLite cannot widen a CHECK in place, so rebuild the table and carry
@@ -3781,14 +3790,15 @@ export class CoreStore {
              five_hour_pct, five_hour_resets_at, five_hour_minutes,
              weekly_pct, weekly_resets_at, weekly_minutes,
              fable_weekly_pct, fable_resets_at, fable_minutes,
-             display_windows)
-           VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             display_windows, rate_limit_reset_credits)
+           VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(account) DO UPDATE SET
              fetched_at = excluded.fetched_at, readable = excluded.readable, unreadable_reason = excluded.unreadable_reason, error = excluded.error, plan = excluded.plan,
              five_hour_pct = excluded.five_hour_pct, five_hour_resets_at = excluded.five_hour_resets_at, five_hour_minutes = excluded.five_hour_minutes,
              weekly_pct = excluded.weekly_pct, weekly_resets_at = excluded.weekly_resets_at, weekly_minutes = excluded.weekly_minutes,
              fable_weekly_pct = excluded.fable_weekly_pct, fable_resets_at = excluded.fable_resets_at, fable_minutes = excluded.fable_minutes,
-             display_windows = excluded.display_windows`,
+             display_windows = excluded.display_windows,
+             rate_limit_reset_credits = excluded.rate_limit_reset_credits`,
         )
         .run(
           accountId,
@@ -3807,6 +3817,7 @@ export class CoreStore {
             resetsAt: window.resetsAt ?? null,
             windowMinutes: window.windowMinutes ?? null,
           }))),
+          input.rateLimitResetCredits === undefined ? null : JSON.stringify(input.rateLimitResetCredits),
         );
       const limits = this.getAccountLimits(accountId) as AccountLimitsRow;
       this.audit("account_limits.put", null, { limits });

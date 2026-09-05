@@ -85,6 +85,8 @@ export const DAEMON_CAPABILITIES = [
    * typed `lease_unsupported` / `lease_unavailable` refusals.
    */
   "account.lease.v1",
+  /** Earned Codex rate-limit reset discovery and redemption. */
+  "account.reset_limits.v1",
   /** Bounded, backward-pageable node-wide mailbox history reconstructed from typed audit events. */
   "mail.history.v1",
   /** Bounded undelivered-only mailbox previews for frequent live indicators. */
@@ -129,6 +131,12 @@ export const RPC_ERROR_CODES = [
   "account_referenced",
   /** `auto` found no usable account (none registered/credentialed, all paused, or none untried). */
   "account_unavailable",
+  /** The reset may have reached Codex; retry only with the same idempotency key. */
+  "provider_outcome_uncertain",
+  /** The installed provider client lacks the requested capability. */
+  "provider_unsupported",
+  /** The provider explicitly rejected the request before applying it. */
+  "provider_refused",
   /** v16 (account login flows): the flow id is unknown (or belongs to a removed account). */
   "login_flow_not_found",
   /** v16: the verb does not apply in the flow's current phase / the field is not being requested. */
@@ -258,6 +266,7 @@ export const RPC_VERBS = [
   // v18 (additive): run the harness's real credential probe on demand.
   "account.verify",
   "account.limits",
+  "account.resetLimits",
   "account.importRegistry",
   "account.backfill",
   // v19 (RN7a, additive): mint the refresh-blanked credential lease for one
@@ -537,6 +546,12 @@ export interface AccountVerifyResult extends DedupMarkers {
 /** `account.limits {id?}` — resolve id as a selector, or refresh all accounts when omitted. */
 export interface AccountLimitsResult extends DedupMarkers {
   limits: MirrorAccountLimitsRow[];
+}
+
+/** `account.resetLimits {id, creditId?, idempotencyKey}` — consume one earned Codex reset and refresh limits. */
+export interface AccountResetLimitsResult extends DedupMarkers {
+  outcome: "reset" | "alreadyRedeemed" | "nothingToReset" | "noCredit";
+  limits: MirrorAccountLimitsRow;
 }
 
 /** `account.importRegistry {root?, dryRun?}` — the old ~/.hive/vault/accounts.json → rows (read-only on the old tree). */

@@ -340,7 +340,8 @@ test("mirror.2: value-level snapshot — a deterministic store serializes to the
       "fableWeeklyPct": null,
       "fableResetsAt": null,
       "fableMinutes": null,
-      "displayWindows": []
+      "displayWindows": [],
+      "rateLimitResetCredits": null
     }
   ],
   "tasks": [],

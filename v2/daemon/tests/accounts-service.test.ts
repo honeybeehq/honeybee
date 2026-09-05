@@ -27,7 +27,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, st
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { openCoreStore, type CoreStore } from "../../core/src/index.ts";
-import { AccountsService, defaultCodexRateLimits } from "../src/accountsService.ts";
+import { AccountsService, ResetLimitsRefusal, defaultCodexRateLimits, defaultCodexResetLimits } from "../src/accountsService.ts";
 import { activateHomeIfEmpty } from "../src/activation.ts";
 import { loadNodeConfig, type NodeConfigFile, type ResolvedNodeConfig } from "../src/config.ts";
 import { recipeFingerprint } from "../src/activation.ts";
@@ -426,7 +426,7 @@ test("limits.0: the real Codex app-server transport returns typed success and au
     ]);
     assert.deepEqual(await defaultCodexRateLimits(smokeTimeoutMs, stub)(home), {
       ok: true,
-      limits: { primary: { usedPercent: 9, windowDurationMins: 300 } },
+      limits: { primary: { usedPercent: 9, windowDurationMins: 300 }, rateLimitResetCredits: null },
     });
 
     writeStub([{ id: 1, error: { code: 401, message: "Unauthorized credential" } }]);
@@ -436,6 +436,100 @@ test("limits.0: the real Codex app-server transport returns typed success and au
       assert.equal(failed.unreadableReason, "auth_failed");
       assert.match(failed.error, /Unauthorized/);
     }
+  } finally {
+    r.cleanup();
+  }
+});
+
+test("reset limits: passes one key through consume, accepts only closed outcomes, refreshes, and preserves count-only credits", async () => {
+  const r = rig();
+  try {
+    const calls: Array<{ home: string; key: string; creditId?: string }> = [];
+    let outcome: "reset" | "alreadyRedeemed" | "nothingToReset" | "noCredit" = "reset";
+    const svc = service(r, { fetchers: { codexResetLimits: async (home, key, creditId) => {
+      calls.push({ home, key, ...(creditId ? { creditId } : {}) });
+      return {
+        ok: true,
+        outcome,
+        limits: {
+          primary: { usedPercent: 0, windowDurationMins: 300 },
+          rateLimitResetCredits: { availableCount: 3, credits: null },
+        },
+      };
+    } } });
+    const account = addAccount(r, "codex", "reset");
+    for (const expected of ["reset", "alreadyRedeemed", "nothingToReset", "noCredit"] as const) {
+      outcome = expected;
+      const result = await svc.resetLimits(account, "same-logical-key", "credit-1");
+      assert.equal(result.outcome, expected);
+      assert.deepEqual(result.limits.rateLimitResetCredits, { availableCount: 3, credits: null });
+    }
+    assert.deepEqual(calls.map((call) => call.key), Array(4).fill("same-logical-key"));
+    assert.ok(calls.every((call) => call.creditId === "credit-1"));
+
+    const wrong = addAccount(r, "claude", "wrong");
+    await assert.rejects(() => svc.resetLimits(wrong, "k"), (error: unknown) =>
+      error instanceof ResetLimitsRefusal && error.code === "harness_mismatch");
+    const uncertain = service(r, { fetchers: { codexResetLimits: async () => ({ ok: false, code: "provider_outcome_uncertain", error: "transport closed after write" }) } });
+    await assert.rejects(() => uncertain.resetLimits(account, "retry-me"), (error: unknown) =>
+      error instanceof ResetLimitsRefusal && error.code === "provider_outcome_uncertain");
+  } finally {
+    r.cleanup();
+  }
+});
+
+test("reset transport: sends the supplied key, refreshes after redemption, and rejects unknown outcomes", async () => {
+  const r = rig();
+  try {
+    const stub = join(r.dir, "codex-reset-stub");
+    const writeStub = (outcome: string) => {
+      writeFileSync(stub, [
+        "#!/usr/bin/env node",
+        "const readline = require('node:readline');",
+        "const rl = readline.createInterface({ input: process.stdin });",
+        `const outcome = ${JSON.stringify(outcome)};`,
+        "rl.on('line', line => { const m = JSON.parse(line); if (m.id === 1) console.log(JSON.stringify({id:1,result:{}})); else if (m.id === 2) console.log(JSON.stringify({id:2,result:{outcome}})); else if (m.id === 3) console.log(JSON.stringify({id:3,result:{rateLimits:{primary:{usedPercent:0,windowDurationMins:300}},rateLimitResetCredits:{availableCount:0,credits:[]}}})); });",
+      ].join("\n"));
+      chmodSync(stub, 0o700);
+    };
+    writeStub("alreadyRedeemed");
+    assert.deepEqual(await defaultCodexResetLimits(5_000, stub)(join(r.homes, "reset"), "fixed-key", "credit-x"), {
+      ok: true,
+      outcome: "alreadyRedeemed",
+      limits: {
+        primary: { usedPercent: 0, windowDurationMins: 300 },
+        rateLimitResetCredits: { availableCount: 0, credits: [] },
+      },
+    });
+    writeStub("futureOutcome");
+    const unknown = await defaultCodexResetLimits(5_000, stub)(join(r.homes, "reset"), "fixed-key");
+    assert.equal(unknown.ok, false);
+    if (!unknown.ok) assert.match(unknown.error, /unknown reset outcome/);
+
+    writeFileSync(stub, [
+      "#!/usr/bin/env node",
+      "const readline = require('node:readline');",
+      "readline.createInterface({input:process.stdin}).on('line', line => { const m=JSON.parse(line); if(m.id===1) console.log(JSON.stringify({id:1,result:{}})); if(m.id===2) console.log(JSON.stringify({id:2,error:{code:-32601,message:'Method not found'}})); });",
+    ].join("\n"));
+    chmodSync(stub, 0o700);
+    const unsupported = await defaultCodexResetLimits(5_000, stub)(join(r.homes, "reset"), "fixed-key");
+    assert.equal(unsupported.ok, false);
+    if (!unsupported.ok) {
+      assert.equal(unsupported.code, "provider_unsupported");
+      assert.match(unsupported.error, /update Codex/);
+    }
+
+    writeFileSync(stub, "#!/usr/bin/env node\nprocess.stdout.write('null\\n'); process.stdin.destroy();\n");
+    chmodSync(stub, 0o700);
+    const malformed = await defaultCodexResetLimits(5_000, stub)(join(r.homes, "reset"), "fixed-key");
+    assert.equal(malformed.ok, false);
+    if (!malformed.ok) assert.match(malformed.error, /non-object JSON-RPC frame|exited before reset completed/);
+
+    writeStub("reset");
+    writeFileSync(stub, readFileSync(stub, "utf8").replace("availableCount:0", "availableCount:0.5"));
+    const invalidCreditCount = await defaultCodexResetLimits(5_000, stub)(join(r.homes, "reset"), "fixed-key");
+    assert.equal(invalidCreditCount.ok, false);
+    if (!invalidCreditCount.ok) assert.match(invalidCreditCount.error, /invalid rateLimitResetCredits/);
   } finally {
     r.cleanup();
   }

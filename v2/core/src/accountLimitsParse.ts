@@ -31,6 +31,7 @@ export type CodexLiveRateLimits = {
   primary?: CodexLiveWindow | null;
   secondary?: CodexLiveWindow | null;
   planType?: string | null;
+  rateLimitResetCredits?: PutAccountLimitsInput["rateLimitResetCredits"];
 };
 
 type Window = NonNullable<PutAccountLimitsInput["weekly"]>;
@@ -100,7 +101,11 @@ function liveWindow(window: CodexLiveWindow): Window {
  * keeps older responses without duration metadata compatible.
  */
 export function parseCodexRateLimits(limits: CodexLiveRateLimits): PutAccountLimitsInput {
-  const out: PutAccountLimitsInput = { readable: true, ...(limits.planType ? { plan: limits.planType } : {}) };
+  const out: PutAccountLimitsInput = {
+    readable: true,
+    ...(limits.planType ? { plan: limits.planType } : {}),
+    rateLimitResetCredits: limits.rateLimitResetCredits ?? null,
+  };
   const candidates: Array<{ usage: Window; duration: number | undefined; fallback: CodexWindowSlot }> = [];
   const add = (window: CodexLiveWindow | null | undefined, fallback: CodexWindowSlot) => {
     if (!window) return;

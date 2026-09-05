@@ -32,6 +32,7 @@ import {
   type AccountGetResult,
   type AccountImportRegistryResult,
   type AccountLimitsResult,
+  type AccountResetLimitsResult,
   type AccountListResult,
   type AccountLoginGetResult,
   type AccountLoginStartResult,
@@ -198,6 +199,7 @@ const VALUE_FLAGS = new Set([
   "--dir",
   "--id",
   "--idempotency-key",
+  "--credit-id",
   "--root",
   "--arg",
   "--substrate",
@@ -648,7 +650,7 @@ const ACCOUNT_USAGE =
   "usage: hive account list [--harness h] | get <selector> | add <harness> <label> [--id id] [--home dir] [--penalty n] [--import-existing]\n" +
   "       hive account remove|pause|unpause <selector> | penalty <selector> <0-100>\n" +
   "       hive account login <selector> [--method <id>] [--remote] [--no-wait] | login-status <selector> | login-cancel <selector>\n" +
-  "       hive account capture <selector> | verify <selector> | limits [<selector>]\n" +
+  "       hive account capture <selector> | verify <selector> | limits [<selector>] | reset <selector> [--credit-id id] --idempotency-key key\n" +
   "       hive account import [--root ~/.hive] [--dry-run] | backfill [--dry-run]";
 
 const ACCOUNT_LIMITS_RPC_TIMEOUT_MS = 120_000;
@@ -908,6 +910,18 @@ async function cmdAccount(ctx: CliContext, parsed: Parsed): Promise<number> {
       );
       emit(ctx, renderAccountLimits(r.limits), r, false);
       return 0;
+    }
+    case "reset": {
+      const id = parsed.positional[2];
+      const creditId = parsed.flags.get("--credit-id") as string | undefined;
+      if (!id || !key) throw new Error(ACCOUNT_USAGE);
+      const r = await withClient(ctx, (c) => c.request<AccountResetLimitsResult>("account.resetLimits", {
+        id,
+        ...(creditId ? { creditId } : {}),
+        idempotencyKey: key,
+      }, ACCOUNT_LIMITS_RPC_TIMEOUT_MS));
+      emit(ctx, [`${r.outcome}: ${r.limits.account} has ${r.limits.rateLimitResetCredits?.availableCount ?? "unknown"} reset credit(s) remaining`], r, false);
+      return r.outcome === "reset" || r.outcome === "alreadyRedeemed" ? 0 : 1;
     }
     case "import": {
       const root = parsed.flags.get("--root") as string | undefined;

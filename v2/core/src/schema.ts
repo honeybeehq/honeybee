@@ -114,11 +114,13 @@
  *        a live runtime (which owns the rotating OAuth chain, HIVE-2) is
  *        typed distinctly from a real auth failure. SQLite cannot alter a
  *        CHECK, so the migration rebuilds the table and carries rows across.
+ *  v20 — earned Codex reset credits: adds the nullable
+ *        `account_limits.rate_limit_reset_credits` JSON snapshot.
  */
-export const SCHEMA_VERSION = 19;
+export const SCHEMA_VERSION = 20;
 
 /**
- * v19: shared between SCHEMA_SQL and the v19 migration's table rebuild so a
+ * Current shape shared between SCHEMA_SQL and the v19 table rebuild so a
  * migrated store and a fresh store cannot drift.
  */
 export const ACCOUNT_LIMITS_TABLE_SQL = `
@@ -138,7 +140,8 @@ CREATE TABLE IF NOT EXISTS account_limits (
   fable_weekly_pct     REAL,
   fable_resets_at      INTEGER,
   fable_minutes        INTEGER,
-  display_windows      TEXT NOT NULL DEFAULT '[]'
+  display_windows      TEXT NOT NULL DEFAULT '[]',
+  rate_limit_reset_credits TEXT
 ) STRICT;
 `;
 

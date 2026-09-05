@@ -55,7 +55,7 @@ import {
   type Scope,
   type Urgency,
 } from "../../core/src/index.ts";
-import { AccountsService, type CaptureOutcome, type LimitsFetchers } from "./accountsService.ts";
+import { AccountsService, ResetLimitsRefusal, type CaptureOutcome, type LimitsFetchers } from "./accountsService.ts";
 import { dirHasCredentials } from "./activation.ts";
 import { LoginFlowService, type LoginTransports } from "./loginFlows.ts";
 import type { PtySpawner } from "./loginWorker.ts";
@@ -131,6 +131,7 @@ import {
   type AccountGetResult,
   type AccountImportRegistryResult,
   type AccountLimitsResult,
+  type AccountResetLimitsResult,
   type AccountListResult,
   type AccountRemoveResult,
   type AccountUpdateResult,
@@ -913,6 +914,8 @@ export class HiveDaemon {
         return this.rpcAccountVerify(params);
       case "account.limits":
         return this.rpcAccountLimits(params);
+      case "account.resetLimits":
+        return this.rpcAccountResetLimits(params);
       case "account.importRegistry":
         return this.withIdempotency(verb, params, () => this.rpcAccountImportRegistry(params));
       case "account.backfill":
@@ -2453,6 +2456,28 @@ export class HiveDaemon {
     const ids = params.id === undefined || params.id === null ? undefined : [this.requireAccount(params).id];
     const limits = await accounts.refreshLimits(ids);
     return { limits };
+  }
+
+  private async rpcAccountResetLimits(params: Record<string, unknown>): Promise<AccountResetLimitsResult> {
+    const account = this.requireAccount(params);
+    const key = this.idempotencyKeyOf(params);
+    if (!key) throw new RpcError("invalid_request", "account.resetLimits requires a non-empty idempotencyKey");
+    const creditId = params.creditId;
+    if (creditId !== undefined && (typeof creditId !== "string" || creditId.length === 0)) {
+      throw new RpcError("invalid_request", "creditId must be a non-empty string when given");
+    }
+    const store = this.mustStore();
+    const hit = store.lookupRpcResult(key);
+    if (hit) return { ...(hit.result as AccountResetLimitsResult), deduped: true };
+    let result: AccountResetLimitsResult;
+    try {
+      result = await this.mustAccounts().resetLimits(account, key, creditId as string | undefined);
+    } catch (error) {
+      if (error instanceof ResetLimitsRefusal) throw new RpcError(error.code, error.message);
+      throw new RpcError("provider_outcome_uncertain", error instanceof Error ? error.message : String(error));
+    }
+    store.recordRpcResult(key, "account.resetLimits", null, result);
+    return result;
   }
 
   private rpcAccountImportRegistry(params: Record<string, unknown>): AccountImportRegistryResult {

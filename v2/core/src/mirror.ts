@@ -45,7 +45,11 @@ export type MirrorSealRow = SealRow;
  */
 export type MirrorAccountRow = AccountRow & { credentialHealth: CredentialHealth };
 
-/** v7: the latest limits snapshot per account, verbatim (`hive_account_limits` — the account-menu usage hint). */
+/**
+ * v7: the latest limits snapshot per account, verbatim (`hive_account_limits`).
+ * v20 adds nullable `rateLimitResetCredits`; null remains distinct from an
+ * available count of zero and `credits: null` remains distinct from `[]`.
+ */
 export type MirrorAccountLimitsRow = AccountLimitsRow;
 
 /** v11: tasks mirror as their store rows, verbatim. */
@@ -285,6 +289,7 @@ export const MIRROR_ACCOUNT_LIMITS_KEYS = [
   "fableResetsAt",
   "fableMinutes",
   "displayWindows",
+  "rateLimitResetCredits",
 ] as const;
 export const MIRROR_TASK_KEYS = [
   "id",

@@ -21,7 +21,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -32,6 +32,7 @@ import type {
   AccountCaptureResult,
   AccountGetResult,
   AccountLimitsResult,
+  AccountResetLimitsResult,
   AccountListResult,
   AccountLoginStartResult,
   AccountRemoveResult,
@@ -240,6 +241,47 @@ test("rpc.accounts.fuzzy: one selector works across account verbs, spawn agent s
     assert.equal(removed.account.id, "stub-archive");
 
     await rejects(() => client.request("account.get", { id: "gmail" }), "invalid_request");
+    client.close();
+  } finally {
+    if (daemon) await daemon.stop();
+    cleanup();
+  }
+});
+
+test("rpc account.resetLimits: duplicate keys return one effect; uncertain and wrong-harness failures stay typed", async () => {
+  const { dir, cleanup } = makeDaemonDir();
+  let daemon: DaemonHandle | null = null;
+  try {
+    const stub = join(dir, "codex-reset-stub");
+    const calls = join(dir, "reset-calls.jsonl");
+    writeFileSync(stub, [
+      "#!/usr/bin/env node",
+      "const fs = require('node:fs'); const readline = require('node:readline');",
+      `const calls = ${JSON.stringify(calls)};`,
+      "readline.createInterface({input:process.stdin}).on('line', line => { const m=JSON.parse(line); if(m.id===1) console.log(JSON.stringify({id:1,result:{}})); if(m.id===2){ fs.appendFileSync(calls, JSON.stringify(m.params)+'\\n'); console.log(JSON.stringify({id:2,result:{outcome:'reset'}})); } if(m.id===3) console.log(JSON.stringify({id:3,result:{rateLimits:{primary:{usedPercent:0,windowDurationMins:300}},rateLimitResetCredits:{availableCount:0,credits:[]}}})); });",
+    ].join("\n"));
+    chmodSync(stub, 0o700);
+    const configPath = join(dir, "config.json");
+    const config = JSON.parse(readFileSync(configPath, "utf8")) as Record<string, unknown>;
+    config.agents = { ...(config.agents as object), codex: { command: stub, adapter: "codex" } };
+    writeFileSync(configPath, JSON.stringify(config));
+
+    daemon = await startDaemon(dir);
+    const client = await daemon.client();
+    await client.request("account.add", { harness: "codex", label: "reset", id: "codex-reset" });
+    await client.request("account.add", { harness: "stub", label: "wrong", id: "stub-wrong" });
+    const first = await client.request<AccountResetLimitsResult>("account.resetLimits", { id: "codex-reset", creditId: "credit-1", idempotencyKey: "reset-key" });
+    const duplicate = await client.request<AccountResetLimitsResult>("account.resetLimits", { id: "codex-reset", creditId: "credit-1", idempotencyKey: "reset-key" });
+    assert.equal(first.outcome, "reset");
+    assert.equal(duplicate.deduped, true);
+    assert.deepEqual(first.limits.rateLimitResetCredits, { availableCount: 0, credits: [] });
+    assert.deepEqual(jsonl<{ idempotencyKey: string; creditId: string }>(calls), [{ idempotencyKey: "reset-key", creditId: "credit-1" }]);
+    await rejects(() => client.request("account.resetLimits", { id: "stub-wrong", idempotencyKey: "wrong-key" }), "harness_mismatch");
+    await rejects(() => client.request("account.resetLimits", { id: "codex-reset" }), "invalid_request");
+    writeFileSync(stub, readFileSync(stub, "utf8").replace("outcome:'reset'", "outcome:'futureOutcome'"));
+    await rejects(() => client.request("account.resetLimits", { id: "codex-reset", idempotencyKey: "retry-key" }), "provider_outcome_uncertain");
+    await rejects(() => client.request("account.resetLimits", { id: "codex-reset", idempotencyKey: "retry-key" }), "provider_outcome_uncertain");
+    assert.deepEqual(jsonl<{ idempotencyKey: string }>(calls).map((call) => call.idempotencyKey), ["reset-key", "retry-key", "retry-key"], "uncertain failures are not stored as successful dedup results");
     client.close();
   } finally {
     if (daemon) await daemon.stop();

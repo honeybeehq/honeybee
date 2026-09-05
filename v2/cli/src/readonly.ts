@@ -110,6 +110,9 @@ function mapAccountLimitsRow(r: Row): AccountLimitsRow {
     fableResetsAt: numOrNull(r.fable_resets_at),
     fableMinutes: numOrNull(r.fable_minutes),
     displayWindows: displayWindowsOrEmpty(r.display_windows),
+    rateLimitResetCredits: r.rate_limit_reset_credits == null
+      ? null
+      : JSON.parse(String(r.rate_limit_reset_credits)) as AccountLimitsRow["rateLimitResetCredits"],
   };
 }
 

@@ -52,6 +52,7 @@ import {
   type MirrorAccountRow,
   type PendingPick,
   type PutAccountLimitsInput,
+  type RateLimitResetCredits,
   type WindowUsage,
   type WindowVelocities,
 } from "../../core/src/index.ts";
@@ -92,11 +93,29 @@ export interface LimitsFetchers {
   claudeRefresh?: (refreshToken: string) => Promise<RefreshedClaudeToken | null>;
   /** `codex app-server` account/rateLimits/read against a home (default: real child process). */
   codexRateLimits?: (homePath: string) => Promise<CodexRateLimitsFetchResult>;
+  /** Consume one earned reset, then return a fresh limits snapshot. */
+  codexResetLimits?: (homePath: string, idempotencyKey: string, creditId?: string) => Promise<CodexResetLimitsFetchResult>;
 }
 
 export type CodexRateLimitsFetchResult =
   | { ok: true; limits: CodexLiveRateLimits }
   | { ok: false; unreadableReason: AccountLimitsUnreadableReason; error: string };
+
+export const CODEX_RESET_OUTCOMES = ["reset", "alreadyRedeemed", "nothingToReset", "noCredit"] as const;
+export type CodexResetOutcome = (typeof CODEX_RESET_OUTCOMES)[number];
+export type CodexResetLimitsFetchResult =
+  | { ok: true; outcome: CodexResetOutcome; limits: CodexLiveRateLimits }
+  | { ok: false; code: "provider_outcome_uncertain" | "provider_unsupported" | "provider_refused"; error: string };
+
+export class ResetLimitsRefusal extends Error {
+  readonly code: "harness_mismatch" | "provider_outcome_uncertain" | "provider_unsupported" | "provider_refused";
+
+  constructor(code: "harness_mismatch" | "provider_outcome_uncertain" | "provider_unsupported" | "provider_refused", message: string) {
+    super(message);
+    this.name = "ResetLimitsRefusal";
+    this.code = code;
+  }
+}
 
 export interface RefreshedClaudeToken {
   accessToken: string;
@@ -393,6 +412,45 @@ function codexFailure(error: unknown, fallback: AccountLimitsUnreadableReason = 
   };
 }
 
+function recordOf(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+function parseResetCredits(value: unknown): RateLimitResetCredits | null {
+  if (value === null || value === undefined) return null;
+  const object = recordOf(value);
+  if (!object || typeof object.availableCount !== "number" || !Number.isInteger(object.availableCount) || object.availableCount < 0) {
+    throw new Error("codex app-server returned invalid rateLimitResetCredits");
+  }
+  if (object.credits !== null && !Array.isArray(object.credits)) throw new Error("codex app-server returned invalid reset credit details");
+  const credits = object.credits === null ? null : object.credits.map((raw) => {
+    const credit = recordOf(raw);
+    if (!credit || typeof credit.id !== "string" || credit.id.length === 0 || typeof credit.resetType !== "string" || typeof credit.status !== "string"
+      || typeof credit.grantedAt !== "number" || !Number.isFinite(credit.grantedAt)
+      || (credit.expiresAt !== null && (typeof credit.expiresAt !== "number" || !Number.isFinite(credit.expiresAt)))
+      || (credit.title !== null && typeof credit.title !== "string") || (credit.description !== null && typeof credit.description !== "string")) {
+      throw new Error("codex app-server returned invalid reset credit detail");
+    }
+    return {
+      id: credit.id,
+      resetType: credit.resetType,
+      status: credit.status,
+      grantedAt: credit.grantedAt,
+      expiresAt: credit.expiresAt,
+      title: credit.title,
+      description: credit.description,
+    };
+  });
+  return { availableCount: object.availableCount, credits };
+}
+
+function parseCodexLimitsResult(result: unknown): CodexLiveRateLimits {
+  const outer = recordOf(result);
+  const limits = recordOf(outer?.rateLimits);
+  if (!limits || (!limits.primary && !limits.secondary)) throw new Error("codex app-server returned no rate-limit windows");
+  return { ...limits, rateLimitResetCredits: parseResetCredits(outer?.rateLimitResetCredits) } as CodexLiveRateLimits;
+}
+
 /**
  * Query `codex app-server` (JSON-RPC over stdio) for the account's live rate
  * limits, with CODEX_HOME pointed at the account's home. The same per-home
@@ -461,10 +519,11 @@ export function defaultCodexRateLimits(timeoutMs: number, command = "codex"): No
                 finish(codexFailure(message.error));
                 return;
               }
-              const rateLimits = message.result?.rateLimits as CodexLiveRateLimits | undefined;
-              finish(rateLimits && (rateLimits.primary || rateLimits.secondary)
-                ? { ok: true, limits: rateLimits }
-                : codexFailure("codex app-server returned no rate-limit windows"));
+              try {
+                finish({ ok: true, limits: parseCodexLimitsResult(message.result) });
+              } catch (error) {
+                finish(codexFailure(error));
+              }
               return;
             }
           }
@@ -478,6 +537,80 @@ export function defaultCodexRateLimits(timeoutMs: number, command = "codex"): No
       staleMs: CODEX_BOOT_LOCK_STALE_MS,
       pollMs: 25,
     }).catch((error) => codexFailure(error));
+  };
+}
+
+/** Consume one earned reset and refresh limits in the same bounded app-server session. */
+export function defaultCodexResetLimits(timeoutMs: number, command = "codex"): NonNullable<LimitsFetchers["codexResetLimits"]> {
+  return async (homePath, idempotencyKey, creditId) => {
+    const lockTimeoutMs = Math.min(CODEX_LIMITS_BOOT_LOCK_MAX_MS, Math.max(1, Math.floor(timeoutMs / 5)));
+    const rpcTimeoutMs = Math.max(1, timeoutMs - lockTimeoutMs - Math.min(250, Math.max(1, Math.floor(timeoutMs / 20))));
+    return withFileLock(join(homePath, CODEX_BOOT_LOCK_FILENAME), () => new Promise<CodexResetLimitsFetchResult>((resolvePromise) => {
+      let child: ReturnType<typeof spawnChild>;
+      try {
+        child = spawnChild(command, ["app-server"], { stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, CODEX_HOME: homePath } });
+      } catch (error) {
+        resolvePromise({ ok: false, code: "provider_refused", error: errorDetail(error) });
+        return;
+      }
+      let settled = false;
+      let outcome: CodexResetOutcome | null = null;
+      let consumeSent = false;
+      const finish = (value: CodexResetLimitsFetchResult) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        child.kill();
+        resolvePromise(value);
+      };
+      const fail = (error: unknown, code: "provider_outcome_uncertain" | "provider_unsupported" | "provider_refused" = consumeSent ? "provider_outcome_uncertain" : "provider_refused") =>
+        finish({ ok: false, code, error: errorDetail(error).slice(0, 500) });
+      const timer = setTimeout(() => fail(`codex app-server reset timed out after ${rpcTimeoutMs}ms`), rpcTimeoutMs);
+      timer.unref();
+      child.on("error", fail);
+      child.on("exit", (code, signal) => fail(`codex app-server exited before reset completed (code=${code ?? "-"}, signal=${signal ?? "-"})`));
+      child.stdin?.on("error", fail);
+      child.stderr?.on("data", () => undefined);
+      let buffer = "";
+      child.stdout?.on("data", (chunk: Buffer) => {
+        buffer += chunk.toString();
+        let newline: number;
+        while ((newline = buffer.indexOf("\n")) >= 0) {
+          const line = buffer.slice(0, newline);
+          buffer = buffer.slice(newline + 1);
+          if (!line.trim()) continue;
+          let message: Record<string, unknown> | null;
+          try { message = recordOf(JSON.parse(line)); } catch { continue; }
+          if (!message) { fail("codex app-server returned a non-object JSON-RPC frame"); return; }
+          if (message.error) {
+            const rpcError = recordOf(message.error);
+            if (message.id === 2 && rpcError?.code === -32601) {
+              fail("installed Codex does not support earned rate-limit resets; update Codex and retry", "provider_unsupported");
+            } else if (message.id === 1 || message.id === 2) {
+              fail(message.error, "provider_refused");
+            } else {
+              fail(message.error, "provider_outcome_uncertain");
+            }
+            return;
+          }
+          if (message.id === 1) {
+            child.stdin?.write(`${JSON.stringify({ jsonrpc: "2.0", method: "initialized", params: {} })}\n`);
+            consumeSent = true;
+            child.stdin?.write(`${JSON.stringify({ jsonrpc: "2.0", id: 2, method: "account/rateLimitResetCredit/consume", params: { idempotencyKey, ...(creditId ? { creditId } : {}) } })}\n`);
+          } else if (message.id === 2) {
+            const raw = recordOf(message.result)?.outcome;
+            if (typeof raw !== "string" || !(CODEX_RESET_OUTCOMES as readonly string[]).includes(raw)) { fail("codex app-server returned unknown reset outcome"); return; }
+            outcome = raw as CodexResetOutcome;
+            child.stdin?.write(`${JSON.stringify({ jsonrpc: "2.0", id: 3, method: "account/rateLimits/read", params: {} })}\n`);
+          } else if (message.id === 3) {
+            if (!outcome) { fail("codex app-server returned limits before reset outcome"); return; }
+            try { finish({ ok: true, outcome, limits: parseCodexLimitsResult(message.result) }); } catch (error) { fail(error); }
+          }
+        }
+      });
+      child.stdin?.write(`${JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { clientInfo: { name: "hive", title: "hive", version: "0.0.1" } } })}\n`);
+    }), { timeoutMs: lockTimeoutMs, staleMs: CODEX_BOOT_LOCK_STALE_MS, pollMs: 25 })
+      .catch((error) => ({ ok: false, code: "provider_refused" as const, error: errorDetail(error).slice(0, 500) }));
   };
 }
 
@@ -534,6 +667,7 @@ export class AccountsService {
       claudeUsage: opts.fetchers?.claudeUsage ?? defaultClaudeUsage(this.cfg.accounts.limitsFetchTimeoutMs),
       claudeRefresh: opts.fetchers?.claudeRefresh ?? defaultClaudeRefresh(this.cfg.accounts.limitsFetchTimeoutMs),
       codexRateLimits: opts.fetchers?.codexRateLimits ?? defaultCodexRateLimits(this.cfg.accounts.limitsFetchTimeoutMs, this.cfg.agents.codex?.command ?? "codex"),
+      codexResetLimits: opts.fetchers?.codexResetLimits ?? defaultCodexResetLimits(this.cfg.accounts.limitsFetchTimeoutMs, this.cfg.agents.codex?.command ?? "codex"),
     };
     this.providerHttp = {
       ...defaultProviderLimitsHttp(this.cfg.accounts.limitsFetchTimeoutMs),
@@ -866,6 +1000,17 @@ export class AccountsService {
       out.push(row);
     }
     return out;
+  }
+
+  async resetLimits(account: AccountRow, idempotencyKey: string, creditId?: string): Promise<{ outcome: CodexResetOutcome; limits: AccountLimitsRow }> {
+    if (account.harness !== "codex") throw new ResetLimitsRefusal("harness_mismatch", "account.resetLimits is only supported for Codex accounts");
+    const activated = activateHomeIfEmpty(account.harness, account.homePath, this.vaultDirOf(account), { yolo: true });
+    if (activated.activated) this.log(`account.activate account=${account.id} home=${account.homePath} copied=${activated.copied.join(",")} by=limits_reset`);
+    const result = await this.fetchers.codexResetLimits(account.homePath, idempotencyKey, creditId);
+    if (!result.ok) throw new ResetLimitsRefusal(result.code, result.error);
+    const input = parseCodexRateLimits(result.limits);
+    if (!input.readable) throw new ResetLimitsRefusal("provider_outcome_uncertain", input.error ?? "refreshed Codex limits are unreadable");
+    return { outcome: result.outcome, limits: this.store.putAccountLimits(account.id, input) };
   }
 
   /** Per-window velocity between the stored row and the snapshot about to replace it. */

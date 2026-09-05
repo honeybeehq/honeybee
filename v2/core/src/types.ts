@@ -416,6 +416,25 @@ export interface AccountLimitsRow {
   fableMinutes: number | null;
   /** Provider-authored display buckets that do not fit the routing windows. */
   displayWindows: AccountLimitsDisplayWindow[];
+  /** Earned Codex rate-limit resets. Null means the provider did not expose the feature. */
+  rateLimitResetCredits: RateLimitResetCredits | null;
+}
+
+export interface RateLimitResetCredit {
+  id: string;
+  resetType: string;
+  status: string;
+  grantedAt: number;
+  expiresAt: number | null;
+  title: string | null;
+  description: string | null;
+}
+
+export interface RateLimitResetCredits {
+  /** Authoritative even when the provider caps or omits detail rows. */
+  availableCount: number;
+  /** Null means only the count is known; [] means details were fetched and none are available. */
+  credits: RateLimitResetCredit[] | null;
 }
 
 /** A named provider quota shown to operators but not used as a routing primitive. */
