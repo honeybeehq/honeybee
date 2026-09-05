@@ -532,7 +532,7 @@ test("reset transport: sends the supplied key, refreshes after redemption, and r
     const refused = await defaultCodexResetLimits(5_000, stub)(join(r.homes, "reset"), "fixed-key");
     assert.equal(refused.ok, false);
     if (!refused.ok) assert.equal(refused.code, "provider_refused");
-    writeConsumeErrorStub(-32603, "Internal error after dispatch");
+    writeConsumeErrorStub(-32603, "Internal authentication refresh failed after dispatch");
     const ambiguous = await defaultCodexResetLimits(5_000, stub)(join(r.homes, "reset"), "fixed-key");
     assert.equal(ambiguous.ok, false);
     if (!ambiguous.ok) assert.equal(ambiguous.code, "provider_outcome_uncertain");

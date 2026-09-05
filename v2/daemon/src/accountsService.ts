@@ -592,7 +592,6 @@ export function defaultCodexResetLimits(timeoutMs: number, command = "codex"): N
               rpcError?.code === -32602
               || rpcError?.code === 401
               || rpcError?.code === 403
-              || /unauthorized|forbidden|authentication|invalid[_ -]?grant/i.test(errorDetail(message.error))
             )) {
               fail(message.error, "provider_refused");
             } else {
