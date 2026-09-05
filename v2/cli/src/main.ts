@@ -73,6 +73,7 @@ import {
   type SendRpcResult,
   type SnapshotResult,
   type SetArgsResult,
+  type ReconfigureResult,
   type SpawnResult,
   type TagResult,
   type ImportFromFrozenResult,
@@ -266,6 +267,7 @@ const BOOL_FLAGS = new Set([
   "--print",
   "--open",
   "--clear",
+  "--apply",
   "--rebase",
   "--from-frozen",
   "--no-parent",
@@ -3055,10 +3057,10 @@ function stripGenericModel(args: readonly string[]): string[] {
  * `hive set-model <bee> <model> | --clear` — v1's set-model, v2-shaped:
  * per-bee args surgery over `bee.setArgs`. Unlike v1 it does NOT relaunch in
  * place — the daemon owns runtimes; the change applies on the NEXT runtime
- * (stop or revive to apply now).
+ * (`--apply` requests an atomic idle restart).
  */
 async function cmdSetModel(ctx: CliContext, parsed: Parsed): Promise<number> {
-  const usage = "usage: hive set-model <bee> <model> | set-model <bee> --clear";
+  const usage = "usage: hive set-model <bee> <model> [--apply] | set-model <bee> --clear [--apply]";
   const [, needle, model] = parsed.positional;
   const clear = parsed.flags.get("--clear") === true;
   if (!needle || (!model && !clear)) throw new Error(usage);
@@ -3068,6 +3070,15 @@ async function cmdSetModel(ctx: CliContext, parsed: Parsed): Promise<number> {
     const beeId = resolveBeeIn(list.views, needle);
     const bee = list.views.find((v) => v.bee?.id === beeId)?.bee;
     const args = withModelArg(bee?.agent ?? "", bee?.args ?? null, clear ? null : (model as string));
+    if (parsed.flags.get("--apply") === true) {
+      const r = await c.request<ReconfigureResult>("bee.reconfigure", {
+        beeId, args, idempotencyKey: parsed.flags.get("--idempotency-key") as string | undefined,
+      });
+      emit(ctx, [confirm("ok", r.outcome, r.outcome === "queued"
+        ? `model change for ${beeId} queued as command ${r.commandId}; waits for idle before restarting`
+        : `model for ${beeId}: ${clear ? "harness default" : model}`)], r, false);
+      return 0;
+    }
     const r = await c.request<SetArgsResult>("bee.setArgs", {
       beeId,
       args,

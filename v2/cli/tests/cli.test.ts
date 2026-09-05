@@ -21,6 +21,35 @@ function capture(): { io: CliIo; out: string[]; err: string[] } {
   return { io: { out: (l) => out.push(stripAnsi(l)), err: (l) => err.push(stripAnsi(l)) }, out, err };
 }
 
+test("set-model --apply uses atomic admission and reports working refusal", async () => {
+  const { dir, cleanup } = makeDaemonDir();
+  let daemon: DaemonHandle | null = null;
+  try {
+    daemon = await startDaemon(dir);
+    const client = await daemon.client();
+    const { beeId } = await client.request<{ beeId: string }>("spawn", { name: "model", agent: "stub", cwd: "/tmp" });
+    await waitFor(async () => (await client.request<{ view: { runtimeState: string } }>("view", { beeId })).view.runtimeState === "idle", "stub idle");
+    const applied = capture();
+    assert.equal(await runV2Cli(["set-model", beeId, "new", "--apply", "--data-dir", dir, "--json"], applied.io), 0);
+    assert.equal(JSON.parse(applied.out[0] ?? "{}").outcome, "queued");
+    await waitFor(async () => {
+      const { view } = await client.request<{ view: { generation: number; runtimeState: string } }>("view", { beeId });
+      return view.generation === 2 && view.runtimeState === "idle";
+    }, "new model idle");
+    await client.request("send", { beeId, body: "@hang" });
+    await waitFor(async () => (await client.request<{ view: { working: boolean } }>("view", { beeId })).view.working, "working");
+    const refused = capture();
+    assert.equal(await runV2Cli(["set-model", beeId, "other", "--apply", "--data-dir", dir], refused.io), 1);
+    assert.match(refused.err.join("\n"), /runtime_refused.*working/);
+    const { bee } = await client.request<{ bee: { args: string[] } }>("view", { beeId });
+    assert.deepEqual(bee.args, ["--model", "new"]);
+    client.close();
+  } finally {
+    await daemon?.stop().catch(() => {});
+    cleanup();
+  }
+});
+
 test("cli.1: help prints and exits 0; unknown command exits 1", async () => {
   const a = capture();
   assert.equal(await runV2Cli(["help"], a.io), 0);

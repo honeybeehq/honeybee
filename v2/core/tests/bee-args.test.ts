@@ -40,6 +40,50 @@ import {
   makeFrozenFixture,
 } from "./frozen-fixture.ts";
 
+test("reconfigure admission refuses working and duplicate pending changes; stopped changes and no-ops replay", () => {
+  const h = harness();
+  const store = h.open();
+  try {
+    const { bee } = makeBee(store);
+    for (const state of ["booting", "running"] as const) {
+      if (state === "running") store.updateRuntimeState(bee.id, 1, "running");
+      const before = store.dumpState();
+      const seq = store.lastAuditSeq();
+      assert.throws(() => store.reconfigureBee(bee.id, []), /working/);
+      assert.deepEqual(store.dumpState(), before);
+      assert.equal(store.lastAuditSeq(), seq, "refusal is quiet");
+    }
+    store.updateRuntimeState(bee.id, 1, "idle");
+    const seq = store.lastAuditSeq();
+    assert.equal(store.reconfigureBee(bee.id, null).outcome, "unchanged");
+    assert.equal(store.lastAuditSeq(), seq);
+    store.updateBeeArgs(bee.id, ["--model", "old"]);
+    const result = store.reconfigureBee(bee.id, null);
+    assert.equal(result.outcome, "queued");
+    assert.deepEqual(store.getBee(bee.id)?.args, ["--model", "old"]);
+    const queued = store.dumpState();
+    assert.throws(() => store.reconfigureBee(bee.id, ["--model", "other"]), /pending model change/);
+    assert.deepEqual(store.dumpState(), queued);
+    // Null replacement args must also wait without retry/audit churn.
+    store.updateRuntimeState(bee.id, 1, "running");
+    const deferredSeq = store.lastAuditSeq();
+    assert.equal(store.claimNextCommand(), null);
+    assert.equal(store.claimNextCommand(), null);
+    assert.equal(store.lastAuditSeq(), deferredSeq);
+    store.updateRuntimeState(bee.id, 1, "stopped", { exitCause: "stopped_by_user" });
+    const cmd = store.claimNextCommand();
+    assert.ok(cmd);
+    store.completeCommand(cmd.id);
+    assert.equal(store.reconfigureBee(bee.id, []).outcome, "recorded");
+    assert.deepEqual(store.getBee(bee.id)?.args, []);
+    assert.equal(store.reconfigureBee(bee.id, null).outcome, "recorded");
+    assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
+  } finally {
+    store.close();
+    h.cleanup();
+  }
+});
+
 test("args.1: bees.args round-trips; updateBeeArgs audits bee.args_set, no-ops on identical, null clears; reviveBee applies args in the same tx; replay matches", () => {
   const h = harness();
   try {

@@ -91,6 +91,8 @@ export const DAEMON_CAPABILITIES = [
   "mail.history.v1",
   /** Bounded undelivered-only mailbox previews for frequent live indicators. */
   "mail.pending.v1",
+  /** Atomic working-state admission and deferred idle restart for model/effort changes. */
+  "bee.reconfigure.v1",
 ] as const;
 export type DaemonCapability = (typeof DAEMON_CAPABILITIES)[number];
 
@@ -227,6 +229,7 @@ export const RPC_VERBS = [
   "import.fromFrozen",
   // schema v5: replace a bee's per-bee spawn args (takes effect on the next runtime)
   "bee.setArgs",
+  "bee.reconfigure",
   // WP6 §5 cell exit path (spec 05 points 4 + 6): the WP5 driver primitives as verbs
   "cell.capture",
   "cell.remove",
@@ -887,6 +890,16 @@ export interface SetArgsResult extends DedupMarkers {
   bee: BeeRow;
   applied: boolean;
 }
+
+/**
+ * `bee.reconfigure { beeId, args: string[] | null, idempotencyKey? }`.
+ * Refuses working bees with `runtime_refused` before changing args/runtime.
+ * A queued change waits if a turn starts before execution, then replaces
+ * args and stops/revives the targeted generation. Callers must not issue
+ * their own stop/revive. Stopped bees only record args; identical args are
+ * quiet. `queued` acknowledges durable intent, not restart completion.
+ */
+export type ReconfigureResult = ReturnType<import("../../core/src/index.ts").CoreStore["reconfigureBee"]> & DedupMarkers;
 
 /**
  * `send {beeId, body, sender?, urgency?, idempotencyKey?}` — v8 adds

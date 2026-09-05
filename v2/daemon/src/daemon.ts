@@ -970,6 +970,15 @@ export class HiveDaemon {
         );
       case "bee.setArgs":
         return this.withIdempotency(verb, params, () => this.rpcSetArgs(params));
+      case "bee.reconfigure":
+        // Observation drain must commit outside the idempotency transaction:
+        // a refusal must not roll back facts already consumed from the driver.
+        this.core?.observe();
+        return this.withIdempotency(verb, params, () => {
+          const beeId = this.requireBee(params);
+          const args = this.argsParam(params, "bee.reconfigure", true);
+          return this.mustStore().reconfigureBee(beeId, args);
+        });
       case "cell.capture":
         return this.withIdempotency(verb, params, () => this.rpcCellCapture(params));
       case "cell.remove":

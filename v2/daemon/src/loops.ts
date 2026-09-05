@@ -241,6 +241,11 @@ export class DaemonCore {
     let wakesEnqueued = 0;
     for (const bee of this.store.listBees()) {
       if (this.ensureWake(bee.id)) wakesEnqueued += 1;
+      // A settled stop can outlive the driver that would have reported its
+      // exit. Reconciliation supplies the stopped fact; honor its durable
+      // restart intent even when no mailbox message needs a wake.
+      const rt = this.store.currentRuntime(bee.id);
+      if (rt?.state === "stopped") this.reviveAfterStopIfRequested(bee.id, rt.generation);
     }
     const report: BootReport = {
       adopted: rec.adopted.length,
@@ -257,17 +262,7 @@ export class DaemonCore {
 
   /** One step of daemon work. May throw ExecutorCrashError (fault injection). */
   step(): void {
-    // One crash-consistent observation fold. The journal cursor is written
-    // last inside the SAME SQLite transaction as lifecycle, flag, session,
-    // and last-output projections. A daemon death therefore leaves either
-    // all effects plus the cursor, or neither; there is no durable
-    // "completion applied, cursor stale" ambiguity to replay.
-    this.store.transact(() => {
-      this.drainObservations();
-      this.applyEvidence();
-      this.applySessionIds();
-      this.applyObservationCursors();
-    });
+    this.observe();
     this.expireFlags();
     let seq = this.store.lastAuditSeq();
     let snapshot = this.stepSnapshot();
@@ -282,6 +277,21 @@ export class DaemonCore {
       ({ snapshot, seq } = this.refreshSnapshot(snapshot, seq));
       this.i1Telemetry(snapshot.rows, snapshot.pendingByBee);
     }
+  }
+
+  /** Fold pending driver facts before an RPC makes a working-state decision. */
+  observe(): void {
+    // One crash-consistent observation fold. The journal cursor is written
+    // last inside the SAME SQLite transaction as lifecycle, flag, session,
+    // and last-output projections. A daemon death therefore leaves either
+    // all effects plus the cursor, or neither; there is no durable
+    // "completion applied, cursor stale" ambiguity to replay.
+    this.store.transact(() => {
+      this.drainObservations();
+      this.applyEvidence();
+      this.applySessionIds();
+      this.applyObservationCursors();
+    });
   }
 
   /**
@@ -542,7 +552,7 @@ export class DaemonCore {
    * "stop this generation, then start the next one" — the durable form of
    * stop → revive that a swap needs (a plain revive enqueued alongside the
    * stop would be claimed while the old process is still dying). When the
-   * runtime is observed stopped, the pending intent is honored ONCE by
+   * runtime is observed or reconciled stopped, the pending intent is honored ONCE by
    * enqueueing a `revive` (which mints generation N+1 with the new account's
    * env). Idempotent: an existing queued/running revive/wake is enough.
    */
@@ -756,7 +766,19 @@ export class DaemonCore {
         const cause: StopCause =
           cmd.args.cause === "stopped_by_user" ? "stopped_by_user" : "stopped_by_system";
         const rt = this.store.currentRuntime(cmd.beeId);
-        if (gen == null || !rt || rt.generation !== gen || rt.state === "stopped") return true;
+        if (gen == null || !rt || rt.generation !== gen) return true;
+        // claimNextCommand only admits replacement args when this generation
+        // is idle/stopped. Claim, args update and driver.stop share one
+        // synchronous executor turn with no mailbox admission between them.
+        if (cmd.args.replacementArgs !== undefined) {
+          this.store.updateBeeArgs(cmd.beeId, cmd.args.replacementArgs as string[] | null);
+          if (rt.state === "stopped") {
+            // Recovery can observe the exit before replaying this command.
+            this.reviveAfterStopIfRequested(cmd.beeId, gen);
+            return true;
+          }
+        }
+        if (rt.state === "stopped") return true;
         const { hadProcess } = this.driver.stop(cmd.beeId, gen, cause);
         if (!hadProcess) {
           // Parenthood certainty: no process exists, so the stop is a fact now.

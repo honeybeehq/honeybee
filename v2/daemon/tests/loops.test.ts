@@ -16,7 +16,7 @@ import { openCoreStore, type CoreStore } from "../../core/src/index.ts";
 import { DaemonCore, type DaemonPolicy, type I1ViolationEvent } from "../src/loops.ts";
 import { HsrDriver } from "../../driver-hsr/src/index.ts";
 import { stubAdapter } from "../../adapters/src/index.ts";
-import { AGENT_PATH, FakeDriver, sleep } from "./helpers.ts";
+import { AGENT_PATH, FakeDriver, sleep, waitFor } from "./helpers.ts";
 import { BUZ_INJECTION_MARKER } from "../src/envelope.ts";
 
 interface Rig {
@@ -74,6 +74,194 @@ function spawnIdleBee(rig: Rig, id = "bee-1"): void {
   rig.core.step();
   assert.equal(rig.store.currentRuntime(id)?.state, "idle");
 }
+
+test("model change waits when idle becomes working before command execution", () => {
+  const rig = makeRig();
+  try {
+    spawnIdleBee(rig);
+    const before = rig.store.currentRuntime("bee-1");
+    const result = rig.store.reconfigureBee("bee-1", ["--model", "new", "--effort", "high"]);
+    assert.equal(result.outcome, "queued");
+    if (result.outcome !== "queued") throw new Error("expected queued change");
+    // Apiary saw idle, but input was admitted before the command ran.
+    rig.driver.events.push({ beeId: "bee-1", generation: 1, kind: "turn_started", synthetic: true });
+    rig.core.step();
+    assert.equal(rig.driver.hasProcess("bee-1", 1), true, "must not stop the admitted turn");
+    assert.equal(rig.store.getBee("bee-1")?.args, null, "must not change args during the turn");
+    assert.equal(rig.store.getCommand(result.commandId)?.status, "queued");
+    assert.equal(rig.store.currentRuntime("bee-1")?.generation, before?.generation);
+    rig.driver.events.push({ beeId: "bee-1", generation: 1, kind: "turn_ended" });
+    rig.core.step();
+    rig.core.step();
+    rig.core.step();
+    assert.deepEqual(rig.store.getBee("bee-1")?.args, ["--model", "new", "--effort", "high"]);
+    assert.equal(rig.store.currentRuntime("bee-1")?.generation, 2);
+    assert.equal(rig.store.currentRuntime("bee-1")?.state, "idle");
+    assert.equal(rig.store.getCommand(result.commandId)?.status, "done");
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("model admission folds a delivered turn before refusing without mutation", () => {
+  const rig = makeRig();
+  try {
+    spawnIdleBee(rig);
+    rig.driver.events.push({ beeId: "bee-1", generation: 1, kind: "turn_started", synthetic: true });
+    assert.equal(rig.store.view("bee-1").working, false, "mirror still sees idle");
+    rig.core.observe();
+    const before = rig.store.dumpState();
+    assert.throws(() => rig.store.reconfigureBee("bee-1", ["--model", "new"]), /is working/);
+    assert.deepEqual(rig.store.dumpState(), before);
+    assert.equal(rig.driver.hasProcess("bee-1", 1), true);
+    assert.equal(rig.driver.starts.length, 1);
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("deferred model change does not block other commands and stale generations do not change args", () => {
+  const rig = makeRig();
+  try {
+    spawnIdleBee(rig);
+    spawnIdleBee(rig, "other");
+    const result = rig.store.reconfigureBee("bee-1", ["--model", "new"]);
+    assert.equal(result.outcome, "queued");
+    if (result.outcome !== "queued") throw new Error("expected queued change");
+    rig.driver.events.push({ beeId: "bee-1", generation: 1, kind: "turn_started" });
+    rig.store.enqueueCommand("archive", "other");
+    rig.core.step();
+    assert.equal(rig.store.getBee("other")?.lifecycle, "archived");
+    assert.equal(rig.store.getCommand(result.commandId)?.status, "queued");
+    // A different operator action replaces this generation before idle.
+    rig.driver.stop("bee-1", 1, "stopped_by_user");
+    rig.store.updateRuntimeState("bee-1", 1, "stopped", { exitCause: "stopped_by_user" });
+    rig.store.reviveBee("bee-1");
+    rig.core.step();
+    assert.equal(rig.store.getCommand(result.commandId)?.status, "done");
+    assert.equal(rig.store.getBee("bee-1")?.args, null);
+    assert.ok(rig.store.auditRows().some((r) => r.kind === "command.moot" && r.payload.commandId === result.commandId));
+  } finally {
+    rig.cleanup();
+  }
+});
+
+for (const point of ["before_effect", "after_effect"] as const) {
+  test(`model change recovers after executor crash ${point}`, () => {
+    const rig = makeRig();
+    let reopened: CoreStore | null = null;
+    try {
+      spawnIdleBee(rig);
+      rig.store.reconfigureBee("bee-1", ["--model", "new"]);
+      const crashing = new DaemonCore({
+        store: rig.store, driver: rig.driver, now: () => rig.clock.now,
+        log: (op) => rig.ops.push(op),
+        policy: { bootHangTimeoutSteps: 50, commandsPerStep: 8 },
+        faults: { executorCrash: () => point, driverTimeout: () => false },
+      });
+      assert.throws(() => crashing.step(), /executor crash/);
+      rig.store.close();
+      reopened = openCoreStore(join(rig.dir, "core.sqlite3"), { now: () => rig.clock.now, ephemeral: true });
+      const recovered = new DaemonCore({
+        store: reopened, driver: rig.driver, now: () => rig.clock.now,
+        policy: { bootHangTimeoutSteps: 50, commandsPerStep: 8 },
+        log: (op) => rig.ops.push(op),
+      });
+      recovered.boot();
+      recovered.step();
+      recovered.step();
+      recovered.step();
+      assert.deepEqual(reopened.getBee("bee-1")?.args, ["--model", "new"]);
+      assert.equal(reopened.currentRuntime("bee-1")?.state, "idle");
+      assert.equal(reopened.currentRuntime("bee-1")?.generation, 2);
+      assert.equal(rig.driver.starts.length, 2, "one replacement runtime");
+    } finally {
+      reopened?.close();
+      rig.cleanup();
+    }
+  });
+}
+
+test("model change resumes after daemon restart between settled stop and observed exit", () => {
+  const rig = makeRig();
+  let reopened: CoreStore | null = null;
+  try {
+    spawnIdleBee(rig);
+    const result = rig.store.reconfigureBee("bee-1", ["--model", "new"]);
+    assert.equal(result.outcome, "queued");
+    if (result.outcome !== "queued") throw new Error("expected queued change");
+    rig.core.step(); // stop completed, exit has not been folded
+    assert.equal(rig.store.getCommand(result.commandId)?.status, "done");
+    rig.driver.events = []; // the new driver has no old in-memory observations
+    rig.store.close();
+    reopened = openCoreStore(join(rig.dir, "core.sqlite3"), { now: () => rig.clock.now, ephemeral: true });
+    const recovered = new DaemonCore({
+      store: reopened, driver: rig.driver, now: () => rig.clock.now,
+      policy: { bootHangTimeoutSteps: 50, commandsPerStep: 8 },
+      log: (op) => rig.ops.push(op),
+    });
+    recovered.boot();
+    recovered.step();
+    recovered.step();
+    assert.deepEqual(reopened.getBee("bee-1")?.args, ["--model", "new"]);
+    assert.equal(reopened.currentRuntime("bee-1")?.state, "idle");
+    assert.equal(reopened.currentRuntime("bee-1")?.generation, 2);
+    assert.equal(rig.driver.starts.length, 2);
+  } finally {
+    reopened?.close();
+    rig.cleanup();
+  }
+});
+
+test("model change defers across real HSR input admission before the turn observation is folded", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "hb-v2-model-admission-"));
+  const store = openCoreStore(join(dir, "core.sqlite3"), { ephemeral: true });
+  const starts: Array<string[] | null> = [];
+  const driver = new HsrDriver({
+    sessionLogDir: join(dir, "logs"), stopKillGraceMs: 300,
+    resolve: (beeId) => {
+      const args = store.getBee(beeId)?.args ?? null;
+      starts.push(args);
+      return { adapter: stubAdapter, command: process.execPath, args: [AGENT_PATH, ...(args ?? [])], cwd: dir };
+    },
+  });
+  const policy: DaemonPolicy = { bootHangTimeoutSteps: 5000, commandsPerStep: 8 };
+  const core = new DaemonCore({ store, driver, policy, now: Date.now, log: () => {} });
+  try {
+    store.createBee({ id: "b", name: "b", agent: "stub", substrate: "hsr", cwd: dir });
+    store.enqueueCommand("spawn", "b");
+    await waitFor(() => { core.step(); return store.currentRuntime("b")?.state === "idle"; }, "real stub idle");
+    const result = store.reconfigureBee("b", ["--model", "new", "--effort", "high"]);
+    assert.equal(result.outcome, "queued");
+    if (result.outcome !== "queued") throw new Error("expected queued change");
+    store.send("b", "@hang");
+    // Exhausted executor budget lets delivery win this tick. The driver
+    // opens a turn synchronously, but its observation is still queued.
+    policy.commandsPerStep = 0;
+    core.step();
+    assert.equal(store.view("b").working, false);
+    assert.equal(store.undeliveredMessages("b").length, 0);
+    policy.commandsPerStep = 8;
+    core.step();
+    assert.equal(store.view("b").working, true);
+    assert.equal(store.getCommand(result.commandId)?.status, "queued");
+    assert.equal(store.getBee("b")?.args, null);
+    assert.equal(driver.hasProcess("b", 1), true);
+    assert.deepEqual(starts, [null]);
+    // Finish the fixture turn, then let the deferred command apply.
+    await waitFor(() => driver.interrupt("b", 1).interrupted, "fixture accepts interrupt");
+    await waitFor(() => {
+      core.step();
+      const rt = store.currentRuntime("b");
+      return rt?.generation === 2 && rt.state === "idle";
+    }, "new model runtime idle");
+    assert.deepEqual(starts, [null, ["--model", "new", "--effort", "high"]]);
+  } finally {
+    driver.disposeAll();
+    store.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 
 test("unit.0: a tick uses bounded batch reads, independent of bee count, re-read only after a write", () => {
   const rig = makeRig();

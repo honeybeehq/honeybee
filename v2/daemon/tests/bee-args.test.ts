@@ -17,7 +17,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { composeSpawn } from "../src/daemon.ts";
 import { ConfigError, loadNodeConfig, BUILTIN_AGENTS } from "../src/config.ts";
-import type { CommandsResult, SetArgsResult, SpawnResult, ViewResult } from "../src/protocol.ts";
+import type { CommandsResult, ReconfigureResult, SetArgsResult, SpawnResult, ViewResult } from "../src/protocol.ts";
 import { makeDaemonDir, startDaemon, waitFor, type DaemonHandle } from "./helpers.ts";
 import { codexThreadRequest } from "../../adapters/src/index.ts";
 
@@ -26,6 +26,67 @@ const bee = (o: Partial<{ cwd: string; args: string[] | null; providerSessionId:
   args: null,
   providerSessionId: null,
   ...o,
+});
+
+test("bee.reconfigure RPC refuses an active turn unchanged and restarts an idle stub once", async () => {
+  const { dir, cleanup } = makeDaemonDir();
+  let daemon: DaemonHandle | null = null;
+  try {
+    daemon = await startDaemon(dir);
+    const client = await daemon.client();
+    const { beeId } = await client.request<SpawnResult>("spawn", {
+      name: "reconfigure", agent: "stub", cwd: "/tmp", args: ["--model", "old"],
+    });
+    await waitFor(async () => (await client.request<ViewResult>("view", { beeId })).view.runtimeState === "idle", "initial idle");
+    const idle = await client.request<ViewResult>("view", { beeId });
+    assert.equal(idle.view.working, false);
+    await client.request("send", { beeId, body: "@hang" });
+    await waitFor(async () => (await client.request<ViewResult>("view", { beeId })).view.working, "admitted turn");
+    const before = await client.request<ViewResult>("view", { beeId });
+    const commandsBefore = await client.request<CommandsResult>("commands", { beeId });
+    const change = { beeId, args: ["--model", "new", "--effort", "high"], idempotencyKey: "model-change" };
+    await assert.rejects(() => client.request("bee.reconfigure", change),
+      (e: Error & { code?: string }) => e.code === "runtime_refused" && /working/.test(e.message));
+    const refused = await client.request<ViewResult>("view", { beeId });
+    assert.deepEqual(refused.bee?.args, before.bee?.args);
+    assert.deepEqual(refused.runtime, before.runtime);
+    assert.deepEqual(await client.request<CommandsResult>("commands", { beeId }), commandsBefore);
+
+    // End the fixture's hung turn explicitly; model changes never interrupt it.
+    await client.request("bee.interrupt", { beeId });
+    await waitFor(async () => (await client.request<ViewResult>("view", { beeId })).view.runtimeState === "idle", "fixture turn ended");
+    const changed = await client.request<ReconfigureResult>("bee.reconfigure", change);
+    assert.equal(changed.outcome, "queued");
+    await waitFor(async () => {
+      const { view } = await client.request<ViewResult>("view", { beeId });
+      return view.generation === 2 && view.runtimeState === "idle";
+    }, "model change restarted idle runtime");
+    const restarted = await client.request<ViewResult>("view", { beeId });
+    assert.deepEqual(restarted.bee?.args, change.args);
+    assert.notEqual(restarted.runtime?.pid, before.runtime?.pid);
+    const replay = await client.request<ReconfigureResult>("bee.reconfigure", change);
+    assert.equal(replay.deduped, true);
+    assert.equal(replay.status, "done");
+    assert.equal(replay.outcome, "queued", "replay returns original acknowledgment");
+    assert.equal((await client.request<ReconfigureResult>("bee.reconfigure", { beeId, args: change.args })).outcome, "unchanged");
+    assert.equal((await client.request<ViewResult>("view", { beeId })).view.generation, 2);
+
+    await assert.rejects(() => client.request("bee.reconfigure", { beeId, args: [1] }),
+      (e: Error & { code?: string }) => e.code === "invalid_request");
+    await assert.rejects(() => client.request("bee.reconfigure", { beeId: "ghost", args: null }),
+      (e: Error & { code?: string }) => e.code === "bee_not_found");
+    await client.request("stop", { beeId });
+    await waitFor(async () => (await client.request<ViewResult>("view", { beeId })).view.runtimeState === "stopped", "stopped");
+    assert.equal((await client.request<ReconfigureResult>("bee.reconfigure", { beeId, args: null })).outcome, "recorded");
+    const recorded = await client.request<ViewResult>("view", { beeId });
+    assert.equal(recorded.bee?.args, null);
+    assert.equal(recorded.view.runtimeState, "stopped");
+    assert.equal(recorded.view.generation, 2);
+    client.close();
+  } finally {
+    await daemon?.stop().catch(() => {});
+    cleanup();
+  }
 });
 
 test("args.daemon.1: composeSpawn precedence — claude: spec.args < defaultArgs < bee.args < --resume; later --model wins; boolean idempotent", () => {

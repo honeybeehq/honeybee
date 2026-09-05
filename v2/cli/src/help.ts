@@ -64,7 +64,7 @@ const GROUPS: Group[] = [
       ["tag", "<bee> [--add t]...", "edit tags (apiary:workspace=… moves a bee between workspaces)"],
       ["bee", "set-args <bee> -- <args…>", "per-bee harness args; applies on the NEXT runtime"],
       ["bee", "args <bee>", "show layered args"],
-      ["set-model", "<bee> <model>", "model surgery on the per-bee args (applies next runtime)"],
+      ["set-model", "<bee> <model> [--apply]", "next-runtime args; --apply requests an atomic idle restart"],
       ["attach", "<bee> [--print]", "tmux-substrate bees only (hsr/cell are pane-less: use tail)"],
       ["cell", "capture <bee> --onto <b>", "land the cell's commits onto an origin branch"],
       ["cell", "remove <bee> [--force]", "delete the cell (dirty guard) + delete the bee"],

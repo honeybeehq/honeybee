@@ -2060,6 +2060,40 @@ export class CoreStore {
     });
   }
 
+  /**
+   * Admit an args change against canonical working state. Live idle runtimes
+   * receive a generation-fenced stop with replacement args; claim waits for
+   * idle if a turn wins the race. Args stay untouched until execution.
+   */
+  reconfigureBee(beeId: string, args: string[] | null):
+    | { outcome: "queued"; commandId: number }
+    | { outcome: "recorded" | "unchanged"; bee: BeeRow } {
+    const next = normalizeBeeArgs(args, "reconfigureBee");
+    return this.tx(() => {
+      const bee = this.mustGetBee(beeId);
+      const rt = this.currentRuntime(beeId);
+      if (rt?.state === "booting" || rt?.state === "running") {
+        throw new IllegalTransitionError(`bee ${beeId} is working; retry the model change when idle`);
+      }
+      if (this.listCommands({ beeId }).some((c) =>
+        c.verb === "stop" && c.args.replacementArgs !== undefined &&
+        c.targetGeneration === (rt?.generation ?? 0) &&
+        (c.status === "queued" || c.status === "running")
+      )) {
+        throw new IllegalTransitionError(`bee ${beeId} already has a pending model change`);
+      }
+      if (sameArgs(bee.args, next)) return { outcome: "unchanged", bee };
+      if (!rt || rt.state === "stopped") {
+        this.applyArgs(beeId, next);
+        return { outcome: "recorded", bee: this.mustGetBee(beeId) };
+      }
+      const command = this.enqueueCommand("stop", beeId, {
+        cause: "stopped_by_system", replacementArgs: next, thenRevive: true,
+      });
+      return { outcome: "queued", commandId: command.id };
+    });
+  }
+
   private applyArgs(beeId: string, next: string[] | null): boolean {
     const bee = this.mustGetBee(beeId);
     if (sameArgs(bee.args, next)) return false;
@@ -2730,13 +2764,20 @@ export class CoreStore {
    * Claim the next ready command (queued → running). B6: a command whose
    * target_generation no longer matches the bee's current generation settles `done`
    * as a recorded no-op — the intent is moot, not failed — and claiming continues.
+   * Stops carrying replacementArgs wait for idle without consuming retries
+   * or blocking unrelated commands. This check shares the writer with turn
+   * admission; arguments are changed only after the command is claimed.
    */
   claimNextCommand(): CommandRow | null {
     return this.tx(() => {
       for (;;) {
         const row = this.db
           .prepare(
-            "SELECT * FROM commands WHERE status = 'queued' AND next_attempt_at <= ? ORDER BY id LIMIT 1",
+            `SELECT * FROM commands WHERE status = 'queued' AND next_attempt_at <= ?
+             AND NOT (verb = 'stop' AND json_type(args, '$.replacementArgs') IS NOT NULL
+               AND EXISTS (SELECT 1 FROM runtimes r WHERE r.bee_id = commands.bee_id
+                 AND r.generation = commands.target_generation AND r.state IN ('booting', 'running')))
+             ORDER BY id LIMIT 1`,
           )
           .get(this.now()) as Row | undefined;
         if (!row) return null;
