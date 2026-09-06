@@ -84,6 +84,88 @@ test("reconfigure admission refuses working and duplicate pending changes; stopp
   }
 });
 
+test("reconfigure admission does not materialize command history", () => {
+  const h = harness();
+  const store = h.open();
+  try {
+    const { bee } = makeBee(store);
+    store.updateRuntimeState(bee.id, 1, "running");
+    store.updateRuntimeState(bee.id, 1, "idle");
+    store.listCommands = () => {
+      throw new Error("reconfigureBee materialized command history");
+    };
+
+    assert.equal(store.reconfigureBee(bee.id, null).outcome, "unchanged");
+  } finally {
+    store.close();
+    h.cleanup();
+  }
+});
+
+test("reconfigure pending probe preserves replacement presence, status, and generation", () => {
+  const h = harness();
+  const store = h.open({ maxAttempts: 1 });
+  try {
+    const { bee } = makeBee(store);
+    store.updateRuntimeState(bee.id, 1, "running");
+    store.updateRuntimeState(bee.id, 1, "idle");
+
+    const ordinaryStop = store.enqueueCommand("stop", bee.id);
+    assert.equal(
+      store.reconfigureBee(bee.id, null).outcome,
+      "unchanged",
+      "a stop without replacementArgs is not a pending model change",
+    );
+
+    store.updateBeeArgs(bee.id, ["--model", "old"]);
+    const queued = store.reconfigureBee(bee.id, null);
+    assert.equal(queued.outcome, "queued");
+    if (queued.outcome !== "queued") throw new Error("expected queued model change");
+    assert.throws(
+      () => store.reconfigureBee(bee.id, ["--model", "other"]),
+      /pending model change/,
+      "JSON null counts as a present replacementArgs value",
+    );
+
+    const { bee: otherBee } = makeBee(store, "other");
+    store.updateRuntimeState(otherBee.id, 1, "running");
+    store.updateRuntimeState(otherBee.id, 1, "idle");
+    assert.equal(
+      store.reconfigureBee(otherBee.id, null).outcome,
+      "unchanged",
+      "a pending replacement for another bee does not block reconfiguration",
+    );
+
+    assert.equal(store.claimNextCommand()?.id, ordinaryStop.id);
+    store.completeCommand(ordinaryStop.id);
+    assert.equal(store.claimNextCommand()?.id, queued.commandId);
+    assert.throws(
+      () => store.reconfigureBee(bee.id, ["--model", "other"]),
+      /pending model change/,
+      "a running replacement remains pending",
+    );
+
+    store.reportCommandFailure(queued.commandId, "node_unreachable");
+    const afterFailure = store.reconfigureBee(bee.id, ["--model", "after-failure"]);
+    assert.equal(afterFailure.outcome, "queued", "a failed replacement is settled");
+    if (afterFailure.outcome !== "queued") throw new Error("expected replacement after failure");
+
+    store.updateRuntimeState(bee.id, 1, "stopped", { exitCause: "stopped_by_user" });
+    const generation2 = store.reviveBee(bee.id);
+    store.updateRuntimeState(bee.id, generation2.generation, "running");
+    store.updateRuntimeState(bee.id, generation2.generation, "idle");
+    const currentGeneration = store.reconfigureBee(bee.id, ["--model", "generation-2"]);
+    assert.equal(currentGeneration.outcome, "queued", "a pending replacement for an older generation is stale");
+    if (currentGeneration.outcome !== "queued") throw new Error("expected current-generation replacement");
+    assert.equal(store.getCommand(currentGeneration.commandId)?.targetGeneration, generation2.generation);
+
+    assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
+  } finally {
+    store.close();
+    h.cleanup();
+  }
+});
+
 test("args.1: bees.args round-trips; updateBeeArgs audits bee.args_set, no-ops on identical, null clears; reviveBee applies args in the same tx; replay matches", () => {
   const h = harness();
   try {
