@@ -57,3 +57,5 @@ The final command comparator passed: workload, ruler, measured boot identity, so
 Main's concurrent `fa6f5e44` change only adjusts daemon test fixture readiness ceilings. It is preserved by merge commit `ddec2cda`; no runtime source changes or measured Worker bytes change. The parent reran the affected daemon reconfiguration cases after integration: 7/7 passed. The integration manifest confirms the exact measured runtime source and built artifacts are unchanged.
 
 Final independent verdict: **no blockers**. Claude Fable traced every final table value to raw evidence, verified the measured source against the combined build, reviewed the upgrade and maintenance costs, and approved the decision trail. All findings are closed. The post-merge daemon receipt satisfies the remaining integration check.
+
+A final test-only main update (`308f7afb`) was also preserved. Parent inspection found only the freeze fixture timestamp correction; its targeted CLI case passed 1/1 on the merge result. The final integration manifest confirms no measured runtime source or artifact changed.
