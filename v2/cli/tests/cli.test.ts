@@ -54,9 +54,13 @@ test("cli.1: help prints and exits 0; unknown command exits 1", async () => {
   const a = capture();
   assert.equal(await runV2Cli(["help"], a.io), 0);
   assert.ok(a.out.join("\n").includes("hive <command>"));
+  assert.doesNotMatch(a.out.join("\n"), /runner-host/, "compatibility plumbing stays hidden");
   const b = capture();
   assert.equal(await runV2Cli(["frobnicate"], b.io), 1);
   assert.ok(b.err[0]?.includes("unknown command"));
+  const hidden = capture();
+  assert.equal(await runV2Cli(["runner-host"], hidden.io), 2);
+  assert.match(hidden.err.join("\n"), /runner-host: missing config path/);
 });
 
 test("cli.2: reads fall back to the read-only store when the daemon is down — labeled stale", async () => {

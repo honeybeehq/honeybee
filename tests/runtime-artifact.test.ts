@@ -52,6 +52,7 @@ async function seedArtifact(dir: string, options: { protocol?: string } = {}): P
     join(stage, "dist", "v2", "cli.js"),
     `// bundle\nvar PROTOCOL = ${JSON.stringify(options.protocol ?? "v2/1")};\nconsole.log(PROTOCOL);\n`,
   );
+  await writeFile(join(stage, "dist", "v2", "runner-host.js"), "// dedicated runner host\n");
   await cp(join(process.cwd(), "contracts", "execution", "v1"), join(stage, "contracts", "execution", "v1"), { recursive: true });
   await writeFile(
     join(stage, "package.json"),
@@ -163,6 +164,7 @@ test("pack writes tarball + manifest + SHA256SUMS; tarball is the stage dir with
     for (const required of [
       "dist/cli.js",
       "dist/v2/cli.js",
+      "dist/v2/runner-host.js",
       `dist/${BUILD_STAMP_FILENAME}`,
       "contracts/execution/v1/digest.json",
       "contracts/execution/v1/profile.json",

@@ -8,6 +8,7 @@
  * (the "deploys kill all hsr runtimes" incident class).
  */
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { test } from "node:test";
 import { mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -18,7 +19,14 @@ import type { DriverObservation } from "../../harness/src/driver.ts";
 import { AGENT_PATH, drainUntil as drainDriverUntil, ofKind, pidAlive, sleep } from "./helpers.ts";
 
 const FAKE_CODEX_PATH = join(dirname(AGENT_PATH), "fake-codex.mjs");
+const RUNNER_HOST_SOURCE_PATH = join(dirname(AGENT_PATH), "..", "src", "runner-host-main.ts");
 const HOST_TEST_TIMEOUT_MS = 60_000;
+
+function processCommand(pid: number): string {
+  const result = spawnSync("ps", ["-o", "command=", "-p", String(pid)], { encoding: "utf8" });
+  assert.equal(result.status, 0, result.stderr);
+  return result.stdout.trim();
+}
 
 function drainUntil(
   driver: HsrDriver,
@@ -59,6 +67,63 @@ function makeCodexDriver(dir: string): HsrDriver {
     },
   });
 }
+
+test("a source checkout defaults to the sibling TypeScript runner-host entry", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "hb-v2-runner-source-"));
+  const driver = makeDriver(dir);
+  try {
+    driver.start("bee-source", 1);
+    await drainUntil(driver, (events) => ofKind(events, "booted").length > 0);
+    const proc = driver.procOf("bee-source", 1);
+    assert.ok(proc);
+    const command = processCommand(proc.pid);
+    assert.ok(command.includes("--experimental-strip-types"), command);
+    assert.ok(command.includes(RUNNER_HOST_SOURCE_PATH), command);
+    driver.stop("bee-source", 1, "stopped_by_system");
+    await drainUntil(driver, (events) => ofKind(events, "exited").length > 0);
+  } finally {
+    driver.disposeAll();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("an explicit hostCommand remains a complete caller-owned override", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "hb-v2-runner-override-"));
+  let receivedConfigPath: string | null = null;
+  const driver = new HsrDriver({
+    sessionLogDir: join(dir, "logs"),
+    stopKillGraceMs: 400,
+    hostCommand(configPath) {
+      receivedConfigPath = configPath;
+      return {
+        command: process.execPath,
+        args: ["--no-warnings", "--experimental-strip-types", RUNNER_HOST_SOURCE_PATH, configPath],
+      };
+    },
+    resolve(): SpawnSpec {
+      return {
+        adapter: stubAdapter,
+        command: process.execPath,
+        args: [AGENT_PATH],
+        cwd: dir,
+        env: { ...process.env, STUB_TURN_MS: "5" },
+      };
+    },
+  });
+  try {
+    driver.start("bee-override", 1);
+    await drainUntil(driver, (events) => ofKind(events, "booted").length > 0);
+    assert.equal(receivedConfigPath, join(dir, "runners", "bee-override.1.json"));
+    const proc = driver.procOf("bee-override", 1);
+    assert.ok(proc);
+    assert.ok(processCommand(proc.pid).includes("--no-warnings"), "custom host argv was not preserved");
+    driver.stop("bee-override", 1, "stopped_by_system");
+    await drainUntil(driver, (events) => ofKind(events, "exited").length > 0);
+  } finally {
+    driver.disposeAll();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 
 async function waitForJournal(path: string, predicate: (text: string) => boolean): Promise<string> {
   const deadline = Date.now() + HOST_TEST_TIMEOUT_MS;
