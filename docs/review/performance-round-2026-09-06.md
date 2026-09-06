@@ -88,3 +88,29 @@ The first flat-history idle-CPU increase did not reproduce in three longer
 10-second windows per side, run in reverse order: 10.27% baseline and 10.12%
 candidate. Candidate RSS stayed higher. Neither RAM savings nor broad startup
 improvement is claimed. These details remain in the committed reports.
+
+## Legacy baseline comparison
+
+The full legacy suite failed 26 cases/files under its default concurrent run.
+The 21 affected files were rerun with one test file at a time, an empty disposable
+`HIVE_STORE_ROOT`, and Apiary parent variables removed. That run passed 233 of
+237 tests. It clears the ambient FROZEN-route failures and most timing failures;
+it is not a full-suite green run.
+
+The four remaining failures were checked against pristine `8506467f`, using the
+same Node 25.8 executable and freshly compiled baseline tests. The two descendant
+cleanup cases and the poolSweep ENOTEMPTY cleanup failure reproduce in that
+baseline (50 of 53 tests pass across the four files). The gateway reconnect
+assertion passed initially, then failed on the fifth isolated baseline repetition
+with the same high-water assertion. All four remaining failures therefore occur
+without this round's changes. No legacy source, legacy test or test-runner file
+was changed to suppress them. They remain open issues.
+
+The final daemon suite was repeated after the serialization/startup-span follow-up:
+146 unit and 158 integration tests pass (304 total). The retained verification
+index links this log and all residual baseline failure evidence. Reviewer model:
+Claude Fable 5 (`claude-fable-5`). The final attention items are the measured
+flat-history cost, higher candidate RSS and slower individual spawn observations,
+shared-host and workload scope limits, clean-shutdown trace flushing, and the
+baseline-reproduced failures. No blocking correctness defect was found in the
+changed paths.

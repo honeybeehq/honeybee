@@ -1,0 +1,27 @@
+npm warn Unknown user config "manage-package-manager-versions". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+
+> honeybee@0.0.1 v2:harness
+> NODE_COMPILE_CACHE=.cache/node-compile node --test --test-isolation=none "v2/harness/tests/*.test.ts"
+
+✔ prng: same seed yields the same stream; different seeds diverge (8.233667ms)
+✔ config: Q1 default I1 bound is 2 x (max boot delay + max turn duration), configurable (0.731458ms)
+✔ sim driver: boot/deliver/turn/stop cycle emits normalized observations (1.597417ms)
+✔ sim driver: killAll drops every pid and pending events (machine reboot) (0.230875ms)
+✔ violation ledger: structured one-liner with seed, step, bee, invariant, op tail (1.721ms)
+✔ retry exhaustion under permanent driver timeouts surfaces spawn_failed, never a zombie (553.154875ms)
+✔ sim driver v6: interrupt — booting not_ready, idle no-op, mid-turn ends the turn early (turn_ended, process live), gone no_process (0.686583ms)
+✔ spec02.1: quiet workload (no faults) — all invariants hold over long runs (4827.726417ms)
+✔ spec02.2: crash-storm workload — daemon crash every K steps, I1 still holds (3650.632167ms)
+✔ spec02.3: reboot-storm workload — repeated reboots mid-turn, zero failed states, I1 holds (4214.129208ms)
+✔ spec02.4: executor crash mid-command — replay settles idempotently, no double effects (4093.504167ms)
+✔ spec02.5: long-running turns remain live and are not mistaken for zombies (282.596666ms)
+✔ spec02.6: adversarial mix — observable faults at high rates; invariants hold; replayable from seed (9906.719458ms)
+✔ spec02.7: meta — a deliberately broken driver (drops deliveries) makes the harness FAIL (427.079167ms)
+ℹ tests 14
+ℹ suites 0
+ℹ pass 14
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 28326.408292

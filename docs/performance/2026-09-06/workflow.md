@@ -15,9 +15,9 @@ is part of this round.
 - [x] Read the astack principles index and applicable sections.
 - [x] Phase A: Frame
 - [x] Phase B: Design the workflow
-- [ ] Phase C: Run the loop
-- [ ] Phase D: Keep the audit trail
-- [ ] Phase E: Verify and hand back
+- [x] Phase C: Run the loop
+- [x] Phase D: Keep the audit trail
+- [x] Phase E: Verify and hand back
 
 ## Units
 
@@ -45,3 +45,12 @@ followed by the highest-value changes the measurements justify. Live provider
 and multi-node results remain unproven until those workloads are actually run.
 The risk level is high because the daemon owns durable state and runtime control.
 Benchmarks use disposable stores and processes with no real account credentials.
+
+## Outcome
+
+The first round is complete: see [results](results.md), the committed raw
+scorecards/profile captures and the independent review. Changed-path correctness
+checks pass; baseline-reproduced repository failures remain explicitly recorded.
+This is not a claim that all system bottlenecks are optimized or every repository
+test is green. The remaining experiments have measurements and invariants defined
+in [next-experiments.md](next-experiments.md). The live deployment is unchanged.

@@ -119,7 +119,8 @@ for later experiments. The deployed daemon had 526 retained bees and measured
 about 244 MiB RSS and 7% of one CPU core during active work. Its observed tree
 had 107 processes and approximately 7.4 GiB summed RSS, including shared pages
 and excluding re-adopted hosts outside the ancestry tree. `hived.log` was about
-138 MB versus 35 MB of core SQLite data. None of this live state was changed.
+138 MB versus 35 MB of core SQLite data. The observation tools only read process
+statistics and file metadata. The deployed binary remains unchanged.
 
 The flat-history daemon has measured costs too: its first list RPC median rises
 from 77.90 to 83.01 ms (+6.6%), while p95 improves from 184.34 to 109.21 ms.
@@ -140,5 +141,36 @@ fit their configured caps, and report zero dropped or trimmed events. The
 [index](evidence/profiles/index.json) records hashes and validation observations.
 
 Native worker profiles include fixture seeding, which dominates several stacks;
-they support attribution and are not the before/after timing scorecard. No live
-provider process was profiled or interrupted.
+they support attribution and are not the before/after timing scorecard. These
+capture runs used stub harnesses and did not attach to live provider processes.
+
+## Correctness and handoff
+
+Typechecks and the final build pass. The changed code is covered by 175 core
+tests, 14 invariant-harness tests and a final complete daemon run with 304 tests
+(146 unit plus 158 integration), all passing. The eight profiler tests are part
+of that daemon total. All 105 adapter/HSR tests pass serially after one parallel
+timeout. Nine measurement-tool tests pass, including actual interrupted-worker
+cleanup. Bulk-view regression coverage includes generations, lifecycle filtering,
+flags, rollback, deletion and audit replay.
+
+The repository is **not entirely green**: the Cell/tmux group has 123 passes,
+one skip and one echo-fixture failure, reproduced at unchanged baseline `8506467f`
+under the same Node 25.8. The full legacy run reports 26 failed cases/files; a
+serial, isolated rerun of the 21 affected files passes 233 of 237 tests. All four
+remaining failures reproduce on baseline: two descendant cleanup cases, a
+poolSweep cleanup race and an intermittent gateway reconnect assertion. The
+gateway case passed four baseline repetitions before failing on the fifth.
+No tests were weakened or unrelated runtime behavior changed to make these green.
+The [verification index and logs](evidence/verification/index.json) preserve
+commands, counts, hashes and failures. No remote CI run was available or created.
+
+[Claude Fable 5's independent review](../../review/performance-round-2026-09-06.md)
+verified the evidence chain, profiler behavior and failure classification. The
+[decision trail](decisions.tsv) records retained, rejected and inconclusive
+experiments. This round does not establish provider-native, remote-node or
+large-fleet parity; those workloads are explicitly listed for subsequent rounds.
+
+Work is committed on `perf/system-round-2026-09-06` in an isolated worktree.
+The original checkout's four unrelated untracked files are preserved. There is
+no deployment or push.

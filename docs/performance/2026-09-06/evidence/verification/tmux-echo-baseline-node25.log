@@ -1,0 +1,32 @@
+✔ spec05.deliver.type-mode: a TUI that drops pastes still receives typed delivery (3303.783042ms)
+✔ spec05.deliver.eat-first: an input that eats leading chars is caught by echo-verify and retyped (2080.194709ms)
+✔ spec05.deliver.post-turn-swallow: the paste swallowed after a completed turn is re-injected, not lost (7492.392292ms)
+✖ spec05.deliver.honest-failure: nothing ever lands → immediate echo_mismatch note, Enter never pressed (1572.889708ms)
+✔ spec05.deliver.multiline-type: typed-mode refuses multiline with a routable reason (976.032ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 4
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 18065.534583
+
+✖ failing tests:
+
+test at v2/driver-tmux/tests/deliver-verify.test.ts:80:1
+✖ spec05.deliver.honest-failure: nothing ever lands → immediate echo_mismatch note, Enter never pressed (1572.889708ms)
+  AssertionError [ERR_ASSERTION]: note surfaces IMMEDIATELY, not after a grace
+  
+  0 !== 1
+  
+      at TestContext.<anonymous> (file:///Users/trmd/Projects/trmd/honeybee/repos/honeybee/v2/driver-tmux/tests/deliver-verify.test.ts:89:12)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

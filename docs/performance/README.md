@@ -27,3 +27,6 @@ Use [the measurement runner](measure.md) for repeatable current workloads and
 [the daemon profiler](profiling.md) for bounded operational traces.
 The July startup reports above describe legacy paths; their retired cleanup
 verbs do not apply to current v2 operation.
+
+The [September results](2026-09-06/results.md) link the final scorecards, native
+profiles, verification logs and measured tradeoffs.

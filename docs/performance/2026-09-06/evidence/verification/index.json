@@ -1,0 +1,175 @@
+{
+  "node": "v25.8.0",
+  "baseline": "8506467f2a6e99d06258e5fe59726d330b2ccdf4",
+  "productionCodeUnchangedSince": "4fd0c1fa",
+  "checks": [
+    {
+      "command": "npm run check",
+      "result": "pass",
+      "note": "Root source and legacy tests are unchanged since this baseline check."
+    },
+    {
+      "command": "npm run v2:check; final daemon tsc after tracing follow-up",
+      "result": "pass"
+    },
+    {
+      "command": "npm run build",
+      "result": "pass",
+      "note": "Final production code, including lifecycle filter and serialization tracing."
+    },
+    {
+      "command": "npm run v2:test",
+      "result": "pass",
+      "tests": 175
+    },
+    {
+      "command": "npm run v2:harness",
+      "result": "pass",
+      "tests": 14
+    },
+    {
+      "command": "env -u HIVE_PARENT -u HIVE_BEE -u HIVE_BEE_ID npm run v2:daemon",
+      "result": "pass",
+      "tests": 304,
+      "groups": [
+        146,
+        158
+      ],
+      "note": "Full repeat after final serialization/startup-span changes."
+    },
+    {
+      "command": "node --test --test-concurrency=1 v2/adapters/tests/*.test.ts v2/driver-hsr/tests/*.test.ts",
+      "result": "pass",
+      "tests": 105,
+      "note": "One parallel four-second timeout passed in isolation and in this complete serial rerun."
+    },
+    {
+      "command": "npm run v2:driver2",
+      "result": "baseline failure remains",
+      "tests": 125,
+      "pass": 123,
+      "fail": 1,
+      "skipped": 1,
+      "note": "spec05.deliver.honest-failure also fails at8506467f with same Node25.8; Node24 baseline passes."
+    },
+    {
+      "command": "node --test v2/daemon/tests/performance.test.ts",
+      "result": "pass",
+      "tests": 8,
+      "note": "Also included in final daemon suite; do not double-count."
+    },
+    {
+      "command": "node --test scripts/perf/*.test.mjs",
+      "result": "pass",
+      "tests": 9
+    },
+    {
+      "command": "npm test",
+      "result": "failed",
+      "failedCasesOrFiles": 26,
+      "note": "Default concurrent run. Ambient FROZEN routing and timing failures included. No whole-suite green claim."
+    },
+    {
+      "command": "21 affected legacy files, serial with disposable HIVE_STORE_ROOT and parent variables removed",
+      "result": "baseline failures remain",
+      "tests": 237,
+      "pass": 233,
+      "fail": 4
+    },
+    {
+      "command": "Same four residual legacy files on pristine8506467f with freshly compiled tests and same Node25.8",
+      "result": "baseline reproduction",
+      "tests": 53,
+      "pass": 50,
+      "fail": 3,
+      "note": "Fourth reconnect assertion reproduced on fifth isolated baseline repetition (four pass, then fail)."
+    },
+    {
+      "command": "gh run list --limit5",
+      "result": "no runs returned",
+      "note": "No CI workflow or remote run was created. Branch was not pushed."
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "baseline-check.log",
+      "bytes": 267,
+      "sha256": "e146dfab880bfb630650e387ce1de917219b8c01b45ba7819105065c80603f52"
+    },
+    {
+      "path": "final-v2-typecheck.log",
+      "bytes": 483,
+      "sha256": "8ea85cd14d8c59992466c4428264d5da033d1c833445705468a84a3d049e3aa3"
+    },
+    {
+      "path": "final-daemon-typecheck.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "final-build.log",
+      "bytes": 730,
+      "sha256": "b60b90cff28ccdec4e04ba0e0d8f747ee6f5bf0279971612bc74b92f12fd3a66"
+    },
+    {
+      "path": "final-core-tests.log",
+      "bytes": 20184,
+      "sha256": "98b904259ba71067cafa6d03dc9d92ef999119b11a16f33825b46b2fba24bc54"
+    },
+    {
+      "path": "final-invariants.log",
+      "bytes": 1873,
+      "sha256": "89c957a9a5fa2db52ed3279bf044fc9ebd880ed4c52196d08e2c34bf429d8526"
+    },
+    {
+      "path": "final-daemon-after-serialization.log",
+      "bytes": 40756,
+      "sha256": "3528823f43acc010f5d938636bf67baa1010074d6fd1bed1441e9b24471f6493"
+    },
+    {
+      "path": "final-driver-serial.log",
+      "bytes": 11071,
+      "sha256": "f4bb8015a29b024a33f1c943b0c89512c1e81cbc7ddc57420675215f5358e455"
+    },
+    {
+      "path": "final-driver2-tests.log",
+      "bytes": 13376,
+      "sha256": "23e43edebee6bff94543b983d110b60667ef627505655805ca4b53b77abfff1b"
+    },
+    {
+      "path": "final-profiler-tests.log",
+      "bytes": 756,
+      "sha256": "80c675e6b12dcf827780b4a9479b533d9008b592e19241b7a6711cb85f9ea621"
+    },
+    {
+      "path": "final-measurement-tests.log",
+      "bytes": 885,
+      "sha256": "0eb7059d8922a6925c618356933bf35ddf13976eb9db22d7628dd106c4143d83"
+    },
+    {
+      "path": "final-legacy-tests.log",
+      "bytes": 26686,
+      "sha256": "c41df0f44899b787429bc92a4b7841ff71b8c678cae67c88a3a250af6a41c861"
+    },
+    {
+      "path": "legacy-isolated-rerun.log",
+      "bytes": 51589,
+      "sha256": "6a2b36d028be026fe01a9ece2eeb45c8e49aba8acfd4436e2086ed152fd46efb"
+    },
+    {
+      "path": "legacy-baseline-rerun.log",
+      "bytes": 7515,
+      "sha256": "8be00f6ce8219b865126fdb76c25883f56e3d257f34c5636f790250f23e6d5d6"
+    },
+    {
+      "path": "legacy-baseline-gateway-5.log",
+      "bytes": 1604,
+      "sha256": "f707d21ef5aa6c5e05aa033febbb62465bea0e910e03c4cde2ff59e88797a48f"
+    },
+    {
+      "path": "tmux-echo-baseline-node25.log",
+      "bytes": 1405,
+      "sha256": "39d40d9cc4c063b898c1bbebe6877f5021a8b10fd19f486c0b246ca7f4e5c04c"
+    }
+  ]
+}

@@ -1,0 +1,86 @@
+✔ gatewayUrlWithCell appends the cell param exactly once (13.9855ms)
+✔ connect dials with the bearer header + cell param and says hello with the bee inventory (190.090167ms)
+✔ subscribe replays exactly seq > afterSeq from the durable log, then streams live appends seamlessly (184.806083ms)
+✔ subscribe drains a long retained suffix through bounded exact pages (4258.179834ms)
+✔ a permanently backpressured gateway is closed before replay can buffer another page (4330.548292ms)
+✔ a backpressured live tail closes before enqueueing events beyond the durable gateway ack (103.182125ms)
+✔ subscribe races the live appends without dupes or holes (buffer-merge handoff) (159.508583ms)
+✔ a stale cursor gets the explicit gap and resumes from the oldest retained seq (254.932708ms)
+✔ ackEvents advances the durable on-disk watermark through the relay (240.539333ms)
+✔ a server-side drop re-dials with backoff, re-hellos, and a fresh subscribe resumes exactly (150.566209ms)
+✔ controller relays dispatch into the serve-mode methods map with rpc error mapping (93.019917ms)
+✔ presence edges are pushed best-effort when a bee's status flips (79.008291ms)
+✔ the WebSocket global is resolved lazily: import + non-connect paths survive a missing global; connect() throws clearly (1.586916ms)
+✔ a stale socket's late completion is dropped, never sent to the socket that replaced it (no id cross-talk) (96.039833ms)
+✔ subscribe validates afterSeq as a cursor: string / negative / fractional / missing all get -32602 (76.634084ms)
+✔ a well-formed but invalid request (missing method / wrong jsonrpc) gets -32600 (43.562125ms)
+runner-host connect: inbound frame over 8388608 bytes; closing socket
+✔ an oversize inbound frame drops the socket (mirrors rpc.ts 8 MiB cap) and the cell redials (107.65825ms)
+✔ parseProcessRows accepts a topology + birth census and rejects malformed rows (6.258875ms)
+✔ event append rejection awaits durable authority publication before the iterator can fail (132.988417ms)
+✔ stop reaps a setsid grandchild without touching an untracked sibling group (534.405375ms)
+✖ a natural harness exit reaps a previously observed setsid grandchild (20353.8215ms)
+✔ turn runner: learns the session id on turn 1 and resumes it on turn 2 (664.324834ms)
+✔ turn runner: every per-turn fork publishes pending before admitting the new child (587.228917ms)
+✔ turn runner: an explicit resume seeds the session id for the first turn (333.738708ms)
+✔ turn runner: stop emits the terminal exit event and ends the stream; send then throws (32.227875ms)
+✔ turn runner: a crashing turn surfaces an error and still closes the turn bracket (264.994458ms)
+✔ turn runner: child exit cannot overtake delayed final stdout and EOF (807.880833ms)
+✖ turn runner: exact turn_end advances past an inherited stdout pipe and session stop reaps descendants (6969.003208ms)
+✔ turn runner: exited child without turn_end or pipe EOF fails within a bound (345.244917ms)
+✔ turn runner: detached tool process survives its turn and dies with the session (3489.168417ms)
+✔ planPoolSweep: first observation is a baseline — no vacate edges, no syncs (4.896125ms)
+✔ planPoolSweep: inhabited→free edge syncs clean on-base members only (0.306292ms)
+✔ planPoolSweep: minFree shortfall over total free capacity (0 when unset/satisfied) (0.190167ms)
+✔ memberSweepView: occupied = live inhabitants OR unconsumed claims; on-base from config branch (0.385042ms)
+✔ memberNumberFromPath parses …/<pool>-<n>, -1 otherwise (0.2565ms)
+✔ sweeper: throttles to its interval (second call within it returns []) (53.99725ms)
+✔ detached sweeper starts one discovery lane and reports skipped repeated ticks on completion (8.320833ms)
+✔ detached sweeper close waits for the tracked lane instead of abandoning it (11.711084ms)
+✔ sweeper: GCs expired claims under the lock (17.34575ms)
+✔ sweeper: refresh-on-vacate syncs a member the tick observed going terminal (22.070875ms)
+✔ sweeper: done/sealed display state cannot vacate a positively live runtime (33.204958ms)
+✔ sweeper: HSR host death does not sync until exact child-group absence is confirmed (32.226833ms)
+✔ sweeper: refresh-on-vacate holds the claim barrier until checkout sync completes (57.399083ms)
+✔ sweeper: occupancy observation failure aborts all pool mutations (8.597916ms)
+✔ sweeper: member canonicalization failure aborts that pool before mutation (20.645667ms)
+✔ sweeper: duplicate canonical member identity preserves claims and blocks every mutation (15.48575ms)
+✔ sweeper: a member left dirty is flagged once (nudge to the departed bee's parent), never synced (44.391417ms)
+✖ sweeper: minFree pre-extends in the background and reports completion next sweep (29.260375ms)
+✔ background pre-extend revalidates after a manual extend and skips excess growth (39.709375ms)
+✔ paused background clone serializes allocator and manual extend external mutations (135.742792ms)
+✔ two pool-sweeper service instances serialize and recompute one shared pre-extend (111.3395ms)
+✔ background extend failure reports on the next tick and a later tick retries (67.80175ms)
+✔ sweeper: a broken pool discovery or sync never throws out of the sweep (23.774542ms)
+ℹ tests 53
+ℹ suites 0
+ℹ pass 50
+ℹ fail 3
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 48415.917708
+
+✖ failing tests:
+
+test at .test-dist/tests/hsr-session-base.test.js:123:1
+✖ a natural harness exit reaps a previously observed setsid grandchild (20353.8215ms)
+  Error: timed out waiting for delayed tool-use ownership sample
+      at waitFor (file:///Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-control-2026-09-06/.test-dist/tests/hsr-session-base.test.js:33:9)
+      at async TestContext.<anonymous> (file:///Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-control-2026-09-06/.test-dist/tests/hsr-session-base.test.js:137:5)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7)
+
+test at .test-dist/tests/hsr-turn-runner.test.js:329:1
+✖ turn runner: exact turn_end advances past an inherited stdout pipe and session stop reaps descendants (6969.003208ms)
+  Error: timed out waiting for inherited-pipe descendants to stop with session
+      at waitFor (file:///Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-control-2026-09-06/.test-dist/tests/hsr-turn-runner.test.js:152:9)
+      at async file:///Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-control-2026-09-06/.test-dist/tests/hsr-turn-runner.test.js:359:7
+      at async withTempStore (file:///Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-control-2026-09-06/.test-dist/tests/hsr-turn-runner.test.js:117:12)
+      at async TestContext.<anonymous> (file:///Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-control-2026-09-06/.test-dist/tests/hsr-turn-runner.test.js:330:3)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7)
+
+test at .test-dist/tests/poolSweep.test.js:450:1
+✖ sweeper: minFree pre-extends in the background and reports completion next sweep (29.260375ms)
+  [Error: ENOTEMPTY: directory not empty, rmdir '/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/honeybee-sweep-NBBCa3/pools'] { errno: -66, code: 'ENOTEMPTY', syscall: 'rmdir', path: '/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/honeybee-sweep-NBBCa3/pools' }

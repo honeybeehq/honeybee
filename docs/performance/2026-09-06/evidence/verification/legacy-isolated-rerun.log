@@ -1,0 +1,602 @@
+✔ pickCurrentSidebarBee prefers the active non-nav pane pinned by agentPaneId (8.440459ms)
+✔ pickCurrentSidebarBee falls back to any non-nav pane, then the window session (0.703417ms)
+✔ pickCurrentSidebarBee skips remote bees in the session fallback and returns undefined when nothing matches (8.094166ms)
+✔ sidebar tmux window targets exact-match the session name (0.700834ms)
+✔ bees sidebar opens as a root-left split and focuses the sidebar pane (403.665708ms)
+✔ bees sidebar toggle is quiet for tmux hotkeys (1679.133791ms)
+✔ C1: same-harness fork with a known providerSessionId bakes native resume args (3541.090834ms)
+✔ H1: pane-less HSR forks carry the same complete identity env as tmux forks (4600.700958ms)
+✔ C1: cross-harness fork (--agent codex) seeds from the latest seal, never resume (2699.847542ms)
+✔ C3: account-bound parent refuses a fork without --account, and with --account the home differs (6907.871917ms)
+✔ C3b: fork onto the parent's OWN account joins its home, skipping re-activation (same-account relaxation) (4312.677125ms)
+✔ lineage + fork.create ledger + --model are persisted (1887.562541ms)
+✔ fork smoke: the spawned fork session is actually live (2057.051125ms)
+✔ fork source stop wins lifecycle admission before any target launch (1612.562666ms)
+✔ reciprocal active-source names fail before taking nested lifecycle locks (1946.757042ms)
+✔ remote-hsr fork refuses before target reservation or publication (1307.819541ms)
+hive 0.0.1  — run any command with no/invalid args for its full usage
+
+Usage
+  hive <command> [args]
+
+Spawn & run
+  hive spawn <bee>                              start bees in detached tmux sessions (--frame to spawn a swarm)
+  hive template <list|run|define|…>             manage and run reusable single-bee spawn presets
+  hive new                                      interactive picker: choose type, account, config & folder, then spawn
+  hive run <bee> -p <prompt>                    spawn, send a prompt, optionally wait and clean up
+  hive x <bee> <prompt>                         spawn a bee and hand it a prompt, then return (fire-and-forget)
+  hive xa <bee>                                 spawn a bee and attach to it
+  hive open <bee>                               registered spawn presented where you are (link window or attach)
+
+Message
+  hive send <selector> <prompt>                 send a prompt to a bee, swarm, or colony
+  hive answer <bee> [text]                      answer a blocked HSR bee's needs-input (default: yes)
+  hive brief <selector> <text>                  send a one-time context brief
+  hive buz <send|inbox|read|…>                  addressed messaging: four-tier delivery + per-bee policy
+  hive task <add|ls|done|…>                     shared micro-task lists with gated auto-supply (task supply <bee> --on)
+  hive track <define|attach|status|…>           expected step sequences attached to one bee
+  hive rename <selector> <title>                set a bee's display title (--here for current bee, --auto to derive one, --clear)
+  hive tag <selector> <tag>...                  add/remove user tags on bees (--remove, --list)
+  hive seal <selector> --from <p>               record a typed handoff artifact
+
+Observe
+  hive list                                     show all known sessions with state (alias: ps)
+  hive state <ls|explain>                       BeeView read model: display state, requests, results, freshness (--json)
+  hive bees                                     grouped fuzzy fleet TUI; --json emits one authoritative snapshot and exits
+  hive fleet [<bee>|--all]                      orchestrator fleet trees with live state + seals (no arg: self inside a bee, else all fleets; --all forces all; --json)
+  hive gateways                                 list operator gateway advertisements and liveness
+  hive tail <session>                           capture or follow pane content
+  hive transcript <session>                     render structured transcript rows
+  hive last <session>                           print the bee's most recent assistant message or seal
+  hive wait <session>                           block until the bee goes idle or seals
+  hive search <query>                           search seals, ledger, and session records (seals find: seals only)
+  hive events                                   tail the ledger's event stream (--follow, --type <glob>, --session <bee>, --since 15m, --json)
+  hive usage [<account>]                        progress against providers' real 5h/weekly limits (--live dashboard; alias: limits)
+  hive spend <ingest|report|leverage|…>         local API-equivalent cost ledger + subscription leverage from transcripts
+
+Manage bees
+  hive attach <session>                         attach to the tmux session (nesting-safe inside tmux)
+  hive next                                     jump to the next bee needing you (needs-auth/needs-reply/needs-action/stop-failed/ready; --prev, --state)
+  hive fork <bee> [checkpoint]                  branch a bee's thread into a fresh bee (--at <turn>, --list-anchors)
+  hive handoff <bee> [-p <instr>]               compact via self-seal and start a fresh bee from the summary (--from-seal)
+  hive here                                     resolve the bee owning the current pane (--id, --json)
+  hive spawn-picker [--frame|--flow]            print frame/flow names for a display-popup spawn chord
+  hive urls [<bee>]                             list URLs printed in a bee's pane (--lines, --open, --json)
+  hive keys <print|path|check>                  print/verify the recommended tmux keybinding set
+  hive retire <bee|@swarm|colony:name>          stop a bee and archive its record (the everyday way to end bees; alias: archive)
+  hive kill <session>                           PURGE a bee: stop it and delete its record/seals/run data (rare; prompts, --yes)
+  hive promote <bee>                            move an HSR bee onto an interactive tmux pane (resume; codex/grok/opencode/kimi, --now)
+  hive set-model <bee> <model>                  change a bee's model in place, resuming its session (--clear, --fresh, --now, -- <harness flags>)
+  hive demote <bee>                             move a tmux bee back to a pane-less HSR runner (resume; codex/grok/opencode/kimi, --now)
+  hive revive <bee>                             relaunch a dead bee and resume its session (--crashed, --all, --fresh, --session <id>, --no-wait)
+  hive auth-resume <bee>                        reuse valid disk credentials (or require login), resume, and replay the failed prompt
+  hive clean --dead|--crashed|--idle|-i         remove dead/crashed metadata, kill idle bees, or clean interactively
+  hive loop <launch|start|status|stop|…>        run a bee repeatedly until a stop condition (launch = interactive dialog)
+  hive flight <start|status|ls|sweep|…>         fixed-capacity worker flights: slot leases, seal contracts, deterministic replacement
+
+Organize
+  hive colony <list|create|…>                   manage project-scoped namespaces
+  hive pool <list|status|spawn|…>               checkout pools: claim clean pro clones round-robin (also: spawn --pool)
+  hive swarm <list|inspect|destroy>             manage live or destroyed bee cohorts
+  hive frame <list|define|…>                    manage reusable swarm blueprints
+  hive flow <list|run|runs|…>                   manage and run flow definitions
+  hive comb <define|run|runs|…>                 manage immutable combs and durable graph runs
+  hive own <owner> <bee>...                     set the owned-by/reports-to edge (--clear to unset)
+  hive move <bee> --colony <c>                  reassign a bee's colony (or --owner <o> alias)
+
+Accounts
+  hive account <list|add|sync|…>                manage provider accounts in the local credential vault
+  hive activate <account>                       seed an account's credentials into a home slot (fast login)
+  hive login <account>                          interactive (re)login seat in tmux; captures fresh credentials
+  hive swap-account <bee> <account>             re-credential a bee's home and resume on another account
+  hive cell-cred mint <account> --harness <k>   mint a short-lived ephemeral credential and print it as JSON on stdout
+
+Substrate & daemon
+  hive execution repair-lease-archive <bee>     inspect/apply one proof-bound historical execution lease archive correction
+  hive node <list|register|…>                   manage substrate endpoints (local + ssh-tmux)
+  hive substrate list                           show available substrate kinds
+  hive daemon <status|logs|…>                   manage the hive daemon LaunchAgent + inspect state/logs
+  hive deploy [<sha>]                           versioned deploy to ~/.hive/runtime + daemon restart (--rollback, --list, --init)
+  hive sessions reconcile                       index sessions across all homes; flag dupes and conflicts
+  hive sync manifest                            write the syncthing include/exclude manifest
+
+Setup
+  hive config <show|set-bee|…>                  view or edit ~/.hive/config.json defaults
+  hive completion <bash|zsh|fish>               print a shell completion script (eval to install)
+
+Bees
+  claude, codex, opencode, grok, kimi, pi, droid, cursor — or any executable on PATH
+  home aliases: codex1, codex2, codex3, cc1, cc2, cc3
+  account shorthands: <tool>-<account fragment> (codex-ur, claude-thto) — see hive account list
+  <tool>-auto / --account auto: pick the least-loaded account (pace-aware: prefers unused quota expiring at the next reset)
+
+Env overrides
+  HIVE_CLAUDE_CMD="claude --model sonnet" hive spawn claude
+  HIVE_CODEX_YOLO=1 hive spawn codex
+  HIVE_CODEX_START_CONCURRENCY=2 hive x codex "task"  — bounded HSR cold starts; 0 disables
+  HIVE_DEBUG_SPAWN=1 hive spawn claude  — print a per-phase spawn timing breakdown to stderr
+  hive spawn codex2 · hive spawn claude --home ~/.claude-3 · hive spawn cc3
+
+✔ resolveDefineArgs: single arg is the source path (8.111458ms)
+✔ resolveDefineArgs: path+name in either order (0.489292ms)
+✔ resolveDefineArgs: ambiguous pair falls back to first-as-path (0.269166ms)
+✔ assertSingleBeeInvocation: passes for a single-bee invocation (0.744958ms)
+✔ assertSingleBeeInvocation: rejects --count > 1 and --frame with the hint (1.1385ms)
+✔ logLinesFlag: -n wins, --lines is the alias, fallback otherwise (0.814625ms)
+✔ logLinesFlag: negative and fractional values normalize (0.495375ms)
+✔ followFlag: -f and --follow are equivalent (0.213083ms)
+✔ resolvePromptArg: --prompt passes through, absent flags yield empty (0.285292ms)
+!  account  claude-x  ·  paused 3mo ago — proceeding
+!  account  claude-x  ·  paused 3mo ago — proceeding
+✔ resolvePromptArg: --prompt-file reads and trims; both flags reject (15.073583ms)
+✔ emitLog: emits the full text newline-terminated (0.642541ms)
+✔ emitLog: lines trims to the last N lines (trailing newline ignored) (0.249417ms)
+✔ emitLog: lines 0 means the full log; empty text emits nothing (0.329541ms)
+✔ confirmPausedAccount: no account or an active account is a no-op (0.469958ms)
+✔ confirmPausedAccount: paused account fails hard without a TTY (1.162584ms)
+✔ confirmPausedAccount: --yes and --include-paused proceed with a warning (2.1265ms)
+✔ run sends to arbitrary executables without provider readiness checks (3339.496458ms)
+✔ run --rm cleans up when known driver readiness fails (3005.767625ms)
+✔ run skips pane readiness for HSR bees and sends over the control socket (5625.124416ms)
+✔ x spawns, delivers the prompt, and keeps the session (fire-and-forget) (3841.054166ms)
+✔ x rejects swarm flags with a helpful hint (1589.903917ms)
+✔ spawn <tool>-rr --count re-resolves the account for each bee (5881.865417ms)
+✔ spawn --frame re-resolves <tool>-rr for each bee in a multi-count caste (6396.644208ms)
+✔ hive-x with no args reports the same usage as hive x (2754.867458ms)
+✔ hive-x preserves cmdX validation errors (2334.202167ms)
+✔ custom-home final harvest failure/timeout survives purge and restart, then succeeds (590.111125ms)
+✔ rebound owner and newer foreign session evidence retain quarantined work closed (561.565416ms)
+✔ quarantine is removed only after positive credential content evidence (291.716458ms)
+✔ quarantine enqueue and duplicate purge are idempotent across the crash window (406.719459ms)
+✔ retire preserves history as its retry contract while purge preserves only quarantine (484.396833ms)
+✔ writeDaemonState/readDaemonState round-trip preserves shape (38.935209ms)
+✔ readDaemonStatus reports down when no lock and no state file exist (47.152583ms)
+✔ readDaemonStatus reports running when a live lock exists for current process (48.081125ms)
+✔ readDaemonStatus does not report running for a lock written by another host (39.646208ms)
+✔ readDaemonStatus treats a lock with empty hostname as foreign (40.901625ms)
+✔ readDaemonStatus reads lock meta from disk even when daemon process is unknown (36.472583ms)
+✔ acquireLongLivedLock refuses a second acquisition while a lock is held (10.387333ms)
+✔ runDaemon (child process) refuses to start when lock is held (3821.274459ms)
+✔ runDaemon (child process) starts, writes state.json, and exits cleanly on SIGTERM (8322.04325ms)
+ℹ spawned pid=34243
+✔ daemonLoopStale judges a running loop by lastTickAt age (1.306916ms)
+✔ daemonLoopStale falls back to startedAt when the daemon never ticked (0.381167ms)
+✔ daemonTickProgressStale keys on lastSuccessfulTickAt, not the loop heartbeat (0.29175ms)
+✔ daemonTickProgressStale uses startedAt until the first successful tick (0.179333ms)
+✔ daemonRecentErrorsSaturated requires a full buffer with a fresh latest error (0.373167ms)
+✔ readDaemonStatus reports STALE for a live process whose lastTickAt is old (49.251459ms)
+✔ readDaemonStatus reports a fresh running daemon as not stale (39.91025ms)
+✔ readDaemonStatus reports STALE when tick progress is old but lastTickAt is fresh (32.540708ms)
+✔ readDaemonStatus reports STALE when recentErrors is saturated with fresh failures (39.975541ms)
+✔ readDaemonStatus does not keep a recovered daemon stale for old saturated errors (42.79175ms)
+✔ readDaemonStatus does not mark a down daemon stale (30.125875ms)
+✔ machineId is minted once and stable across calls (5.909042ms)
+✔ lockOwnedByThisMachine: machineId is authoritative — a hostname flap never makes our own lock foreign (0.484375ms)
+✔ lockOwnedByThisMachine: legacy locks without machineId fall back to hostname equality (0.312667ms)
+✔ acquireLongLivedLock stamps the persisted machineId into the lock meta (17.176208ms)
+✔ readDaemonStatus reports running despite a hostname flap when the lock's machineId matches (35.115083ms)
+✔ readDaemonStatus still treats a different machineId as foreign even when hostnames match (25.3875ms)
+hive 0.0.1  — run any command with no/invalid args for its full usage
+
+Usage
+  hive <command> [args]
+
+Spawn & run
+  hive spawn <bee>                              start bees in detached tmux sessions (--frame to spawn a swarm)
+  hive template <list|run|define|…>             manage and run reusable single-bee spawn presets
+  hive new                                      interactive picker: choose type, account, config & folder, then spawn
+  hive run <bee> -p <prompt>                    spawn, send a prompt, optionally wait and clean up
+  hive x <bee> <prompt>                         spawn a bee and hand it a prompt, then return (fire-and-forget)
+  hive xa <bee>                                 spawn a bee and attach to it
+  hive open <bee>                               registered spawn presented where you are (link window or attach)
+
+Message
+  hive send <selector> <prompt>                 send a prompt to a bee, swarm, or colony
+  hive answer <bee> [text]                      answer a blocked HSR bee's needs-input (default: yes)
+  hive brief <selector> <text>                  send a one-time context brief
+  hive buz <send|inbox|read|…>                  addressed messaging: four-tier delivery + per-bee policy
+  hive task <add|ls|done|…>                     shared micro-task lists with gated auto-supply (task supply <bee> --on)
+  hive track <define|attach|status|…>           expected step sequences attached to one bee
+  hive rename <selector> <title>                set a bee's display title (--here for current bee, --auto to derive one, --clear)
+  hive tag <selector> <tag>...                  add/remove user tags on bees (--remove, --list)
+  hive seal <selector> --from <p>               record a typed handoff artifact
+
+Observe
+  hive list                                     show all known sessions with state (alias: ps)
+  hive state <ls|explain>                       BeeView read model: display state, requests, results, freshness (--json)
+  hive bees                                     grouped fuzzy fleet TUI; --json emits one authoritative snapshot and exits
+  hive fleet [<bee>|--all]                      orchestrator fleet trees with live state + seals (no arg: self inside a bee, else all fleets; --all forces all; --json)
+  hive gateways                                 list operator gateway advertisements and liveness
+  hive tail <session>                           capture or follow pane content
+  hive transcript <session>                     render structured transcript rows
+  hive last <session>                           print the bee's most recent assistant message or seal
+  hive wait <session>                           block until the bee goes idle or seals
+  hive search <query>                           search seals, ledger, and session records (seals find: seals only)
+  hive events                                   tail the ledger's event stream (--follow, --type <glob>, --session <bee>, --since 15m, --json)
+  hive usage [<account>]                        progress against providers' real 5h/weekly limits (--live dashboard; alias: limits)
+  hive spend <ingest|report|leverage|…>         local API-equivalent cost ledger + subscription leverage from transcripts
+
+Manage bees
+  hive attach <session>                         attach to the tmux session (nesting-safe inside tmux)
+  hive next                                     jump to the next bee needing you (needs-auth/needs-reply/needs-action/stop-failed/ready; --prev, --state)
+  hive fork <bee> [checkpoint]                  branch a bee's thread into a fresh bee (--at <turn>, --list-anchors)
+  hive handoff <bee> [-p <instr>]               compact via self-seal and start a fresh bee from the summary (--from-seal)
+  hive here                                     resolve the bee owning the current pane (--id, --json)
+  hive spawn-picker [--frame|--flow]            print frame/flow names for a display-popup spawn chord
+  hive urls [<bee>]                             list URLs printed in a bee's pane (--lines, --open, --json)
+  hive keys <print|path|check>                  print/verify the recommended tmux keybinding set
+  hive retire <bee|@swarm|colony:name>          stop a bee and archive its record (the everyday way to end bees; alias: archive)
+  hive kill <session>                           PURGE a bee: stop it and delete its record/seals/run data (rare; prompts, --yes)
+  hive promote <bee>                            move an HSR bee onto an interactive tmux pane (resume; codex/grok/opencode/kimi, --now)
+  hive set-model <bee> <model>                  change a bee's model in place, resuming its session (--clear, --fresh, --now, -- <harness flags>)
+  hive demote <bee>                             move a tmux bee back to a pane-less HSR runner (resume; codex/grok/opencode/kimi, --now)
+  hive revive <bee>                             relaunch a dead bee and resume its session (--crashed, --all, --fresh, --session <id>, --no-wait)
+  hive auth-resume <bee>                        reuse valid disk credentials (or require login), resume, and replay the failed prompt
+  hive clean --dead|--crashed|--idle|-i         remove dead/crashed metadata, kill idle bees, or clean interactively
+  hive loop <launch|start|status|stop|…>        run a bee repeatedly until a stop condition (launch = interactive dialog)
+  hive flight <start|status|ls|sweep|…>         fixed-capacity worker flights: slot leases, seal contracts, deterministic replacement
+
+Organize
+  hive colony <list|create|…>                   manage project-scoped namespaces
+  hive pool <list|status|spawn|…>               checkout pools: claim clean pro clones round-robin (also: spawn --pool)
+  hive swarm <list|inspect|destroy>             manage live or destroyed bee cohorts
+  hive frame <list|define|…>                    manage reusable swarm blueprints
+  hive flow <list|run|runs|…>                   manage and run flow definitions
+  hive comb <define|run|runs|…>                 manage immutable combs and durable graph runs
+  hive own <owner> <bee>...                     set the owned-by/reports-to edge (--clear to unset)
+  hive move <bee> --colony <c>                  reassign a bee's colony (or --owner <o> alias)
+
+Accounts
+  hive account <list|add|sync|…>                manage provider accounts in the local credential vault
+  hive activate <account>                       seed an account's credentials into a home slot (fast login)
+  hive login <account>                          interactive (re)login seat in tmux; captures fresh credentials
+  hive swap-account <bee> <account>             re-credential a bee's home and resume on another account
+  hive cell-cred mint <account> --harness <k>   mint a short-lived ephemeral credential and print it as JSON on stdout
+
+Substrate & daemon
+  hive execution repair-lease-archive <bee>     inspect/apply one proof-bound historical execution lease archive correction
+  hive node <list|register|…>                   manage substrate endpoints (local + ssh-tmux)
+  hive substrate list                           show available substrate kinds
+  hive daemon <status|logs|…>                   manage the hive daemon LaunchAgent + inspect state/logs
+  hive deploy [<sha>]                           versioned deploy to ~/.hive/runtime + daemon restart (--rollback, --list, --init)
+  hive sessions reconcile                       index sessions across all homes; flag dupes and conflicts
+  hive sync manifest                            write the syncthing include/exclude manifest
+
+Setup
+  hive config <show|set-bee|…>                  view or edit ~/.hive/config.json defaults
+  hive completion <bash|zsh|fish>               print a shell completion script (eval to install)
+
+Bees
+  claude, codex, opencode, grok, kimi, pi, droid, cursor — or any executable on PATH
+  home aliases: codex1, codex2, codex3, cc1, cc2, cc3
+  account shorthands: <tool>-<account fragment> (codex-ur, claude-thto) — see hive account list
+  <tool>-auto / --account auto: pick the least-loaded account (pace-aware: prefers unused quota expiring at the next reset)
+
+Env overrides
+  HIVE_CLAUDE_CMD="claude --model sonnet" hive spawn claude
+  HIVE_CODEX_YOLO=1 hive spawn codex
+  HIVE_CODEX_START_CONCURRENCY=2 hive x codex "task"  — bounded HSR cold starts; 0 disables
+  HIVE_DEBUG_SPAWN=1 hive spawn claude  — print a per-phase spawn timing breakdown to stderr
+  hive spawn codex2 · hive spawn claude --home ~/.claude-3 · hive spawn cc3
+
+✔ agent origin (HIVE_BEE resolves to a live bee) defaults to HSR (120.449875ms)
+✔ agent-origin Kimi spawn defaults to its now-registered HSR runner (72.397333ms)
+✔ agent-origin Grok spawn defaults to its registered HSR runner (58.2105ms)
+✔ agent-origin OpenCode spawn defaults to its server-tier HSR runner (58.799ms)
+✔ user origin (no HIVE_BEE/TMUX) defaults to local-tmux node (5.392125ms)
+✔ TMUX_PANE matching a bee's agent pane is agent origin (defaults to HSR) (63.772416ms)
+✔ TMUX without a bee-pane anchor is user origin (popup / operator pane in a comb) (55.040125ms)
+✔ HIVE_BEE naming no live record is user origin (3.332ms)
+✔ explicit --substrate tmux beats the agent default (override wins) (67.045417ms)
+✔ explicit --substrate hsr with no HIVE_BEE forces HSR (3.114292ms)
+✔ spawnDefaultSubstrate honors a config override for agent origin (73.644417ms)
+✔ compactHsrEvents folds dropped usage/exhausted into checkpoints, keeps the tail verbatim (163.381875ms)
+✔ appendHsrEvent auto-compacts past the byte cap without losing usage totals (35579.3285ms)
+✔ appendHsrEvent drops settled append-chain entries (82.040708ms)
+✔ observers read only the tail of a huge legacy log and still derive state (187.458584ms)
+✔ a turn emitting hundreds of text chunks still observes as active (HIVE-55) (71.815041ms)
+✔ an unresolved needs_input buried under hundreds of events still observes as blocked (HIVE-55) (61.442375ms)
+✔ compaction preserves in-flight turn markers and unresolved needs_input (HIVE-55) (365.598417ms)
+✔ compaction preserves scoped root lifecycle when nested turns are newer (64.831291ms)
+✔ gatewayUrlWithCell appends the cell param exactly once (34.5895ms)
+✔ connect dials with the bearer header + cell param and says hello with the bee inventory (259.200833ms)
+✔ subscribe replays exactly seq > afterSeq from the durable log, then streams live appends seamlessly (216.016417ms)
+✔ subscribe drains a long retained suffix through bounded exact pages (5203.306375ms)
+✔ a permanently backpressured gateway is closed before replay can buffer another page (4263.324916ms)
+✔ a backpressured live tail closes before enqueueing events beyond the durable gateway ack (80.606375ms)
+✔ subscribe races the live appends without dupes or holes (buffer-merge handoff) (163.854666ms)
+✔ a stale cursor gets the explicit gap and resumes from the oldest retained seq (225.361208ms)
+✔ ackEvents advances the durable on-disk watermark through the relay (175.31675ms)
+✖ a server-side drop re-dials with backoff, re-hellos, and a fresh subscribe resumes exactly (122.198791ms)
+✔ controller relays dispatch into the serve-mode methods map with rpc error mapping (87.797667ms)
+✔ presence edges are pushed best-effort when a bee's status flips (71.70225ms)
+✔ the WebSocket global is resolved lazily: import + non-connect paths survive a missing global; connect() throws clearly (1.113375ms)
+✔ a stale socket's late completion is dropped, never sent to the socket that replaced it (no id cross-talk) (111.861333ms)
+✔ subscribe validates afterSeq as a cursor: string / negative / fractional / missing all get -32602 (80.731041ms)
+✔ a well-formed but invalid request (missing method / wrong jsonrpc) gets -32600 (20.388917ms)
+runner-host connect: inbound frame over 8388608 bytes; closing socket
+✔ an oversize inbound frame drops the socket (mirrors rpc.ts 8 MiB cap) and the cell redials (107.154833ms)
+✔ Grok ACP pure spawn, update, usage, permission, question, and error mapping (11.769333ms)
+✔ Grok ACP initializes/authenticates, creates or loads, and applies model, reasoning, and mode (1014.150209ms)
+✔ Grok ACP serializes multi-turn sends and emits exact per-prompt usage (738.405292ms)
+✔ Grok ACP delivers next-tool sends through the next real tool boundary (734.620542ms)
+✔ Grok ACP maps standard permissions and structured multi-question answers (813.576916ms)
+✔ Grok ACP cancel is a notification and interrupt settles the active turn (701.693709ms)
+✔ Grok ACP preserves error usage, rate/auth state, fallback usage, durable events, and safe stop (1162.859708ms)
+✔ Grok ACP stop does not wait for an unanswered interject request (805.593541ms)
+✔ next-tool send during a live turn is held until the tool boundary (934.570958ms)
+✔ next-tool send while idle delivers immediately as a fresh turn (845.919083ms)
+✔ next-tool held through a tool-less turn flushes at turn_end (980.57625ms)
+✔ interrupt ends the live turn in-band and the session stays steerable (780.734542ms)
+hive 0.0.1  — run any command with no/invalid args for its full usage
+
+Usage
+  hive <command> [args]
+
+Spawn & run
+  hive spawn <bee>                              start bees in detached tmux sessions (--frame to spawn a swarm)
+  hive template <list|run|define|…>             manage and run reusable single-bee spawn presets
+  hive new                                      interactive picker: choose type, account, config & folder, then spawn
+  hive run <bee> -p <prompt>                    spawn, send a prompt, optionally wait and clean up
+  hive x <bee> <prompt>                         spawn a bee and hand it a prompt, then return (fire-and-forget)
+  hive xa <bee>                                 spawn a bee and attach to it
+  hive open <bee>                               registered spawn presented where you are (link window or attach)
+
+Message
+  hive send <selector> <prompt>                 send a prompt to a bee, swarm, or colony
+  hive answer <bee> [text]                      answer a blocked HSR bee's needs-input (default: yes)
+  hive brief <selector> <text>                  send a one-time context brief
+  hive buz <send|inbox|read|…>                  addressed messaging: four-tier delivery + per-bee policy
+  hive task <add|ls|done|…>                     shared micro-task lists with gated auto-supply (task supply <bee> --on)
+  hive track <define|attach|status|…>           expected step sequences attached to one bee
+  hive rename <selector> <title>                set a bee's display title (--here for current bee, --auto to derive one, --clear)
+  hive tag <selector> <tag>...                  add/remove user tags on bees (--remove, --list)
+  hive seal <selector> --from <p>               record a typed handoff artifact
+
+Observe
+  hive list                                     show all known sessions with state (alias: ps)
+  hive state <ls|explain>                       BeeView read model: display state, requests, results, freshness (--json)
+  hive bees                                     grouped fuzzy fleet TUI; --json emits one authoritative snapshot and exits
+  hive fleet [<bee>|--all]                      orchestrator fleet trees with live state + seals (no arg: self inside a bee, else all fleets; --all forces all; --json)
+  hive gateways                                 list operator gateway advertisements and liveness
+  hive tail <session>                           capture or follow pane content
+  hive transcript <session>                     render structured transcript rows
+  hive last <session>                           print the bee's most recent assistant message or seal
+  hive wait <session>                           block until the bee goes idle or seals
+  hive search <query>                           search seals, ledger, and session records (seals find: seals only)
+  hive events                                   tail the ledger's event stream (--follow, --type <glob>, --session <bee>, --since 15m, --json)
+  hive usage [<account>]                        progress against providers' real 5h/weekly limits (--live dashboard; alias: limits)
+  hive spend <ingest|report|leverage|…>         local API-equivalent cost ledger + subscription leverage from transcripts
+
+Manage bees
+  hive attach <session>                         attach to the tmux session (nesting-safe inside tmux)
+  hive next                                     jump to the next bee needing you (needs-auth/needs-reply/needs-action/stop-failed/ready; --prev, --state)
+  hive fork <bee> [checkpoint]                  branch a bee's thread into a fresh bee (--at <turn>, --list-anchors)
+  hive handoff <bee> [-p <instr>]               compact via self-seal and start a fresh bee from the summary (--from-seal)
+  hive here                                     resolve the bee owning the current pane (--id, --json)
+  hive spawn-picker [--frame|--flow]            print frame/flow names for a display-popup spawn chord
+  hive urls [<bee>]                             list URLs printed in a bee's pane (--lines, --open, --json)
+  hive keys <print|path|check>                  print/verify the recommended tmux keybinding set
+  hive retire <bee|@swarm|colony:name>          stop a bee and archive its record (the everyday way to end bees; alias: archive)
+  hive kill <session>                           PURGE a bee: stop it and delete its record/seals/run data (rare; prompts, --yes)
+  hive promote <bee>                            move an HSR bee onto an interactive tmux pane (resume; codex/grok/opencode/kimi, --now)
+  hive set-model <bee> <model>                  change a bee's model in place, resuming its session (--clear, --fresh, --now, -- <harness flags>)
+  hive demote <bee>                             move a tmux bee back to a pane-less HSR runner (resume; codex/grok/opencode/kimi, --now)
+  hive revive <bee>                             relaunch a dead bee and resume its session (--crashed, --all, --fresh, --session <id>, --no-wait)
+  hive auth-resume <bee>                        reuse valid disk credentials (or require login), resume, and replay the failed prompt
+  hive clean --dead|--crashed|--idle|-i         remove dead/crashed metadata, kill idle bees, or clean interactively
+  hive loop <launch|start|status|stop|…>        run a bee repeatedly until a stop condition (launch = interactive dialog)
+  hive flight <start|status|ls|sweep|…>         fixed-capacity worker flights: slot leases, seal contracts, deterministic replacement
+
+Organize
+  hive colony <list|create|…>                   manage project-scoped namespaces
+  hive pool <list|status|spawn|…>               checkout pools: claim clean pro clones round-robin (also: spawn --pool)
+  hive swarm <list|inspect|destroy>             manage live or destroyed bee cohorts
+  hive frame <list|define|…>                    manage reusable swarm blueprints
+  hive flow <list|run|runs|…>                   manage and run flow definitions
+  hive comb <define|run|runs|…>                 manage immutable combs and durable graph runs
+  hive own <owner> <bee>...                     set the owned-by/reports-to edge (--clear to unset)
+  hive move <bee> --colony <c>                  reassign a bee's colony (or --owner <o> alias)
+
+Accounts
+  hive account <list|add|sync|…>                manage provider accounts in the local credential vault
+  hive activate <account>                       seed an account's credentials into a home slot (fast login)
+  hive login <account>                          interactive (re)login seat in tmux; captures fresh credentials
+  hive swap-account <bee> <account>             re-credential a bee's home and resume on another account
+  hive cell-cred mint <account> --harness <k>   mint a short-lived ephemeral credential and print it as JSON on stdout
+
+Substrate & daemon
+  hive execution repair-lease-archive <bee>     inspect/apply one proof-bound historical execution lease archive correction
+  hive node <list|register|…>                   manage substrate endpoints (local + ssh-tmux)
+  hive substrate list                           show available substrate kinds
+  hive daemon <status|logs|…>                   manage the hive daemon LaunchAgent + inspect state/logs
+  hive deploy [<sha>]                           versioned deploy to ~/.hive/runtime + daemon restart (--rollback, --list, --init)
+  hive sessions reconcile                       index sessions across all homes; flag dupes and conflicts
+  hive sync manifest                            write the syncthing include/exclude manifest
+
+Setup
+  hive config <show|set-bee|…>                  view or edit ~/.hive/config.json defaults
+  hive completion <bash|zsh|fish>               print a shell completion script (eval to install)
+
+Bees
+  claude, codex, opencode, grok, kimi, pi, droid, cursor — or any executable on PATH
+  home aliases: codex1, codex2, codex3, cc1, cc2, cc3
+  account shorthands: <tool>-<account fragment> (codex-ur, claude-thto) — see hive account list
+  <tool>-auto / --account auto: pick the least-loaded account (pace-aware: prefers unused quota expiring at the next reset)
+
+Env overrides
+  HIVE_CLAUDE_CMD="claude --model sonnet" hive spawn claude
+  HIVE_CODEX_YOLO=1 hive spawn codex
+  HIVE_CODEX_START_CONCURRENCY=2 hive x codex "task"  — bounded HSR cold starts; 0 disables
+  HIVE_DEBUG_SPAWN=1 hive spawn claude  — print a per-phase spawn timing breakdown to stderr
+  hive spawn codex2 · hive spawn claude --home ~/.claude-3 · hive spawn cc3
+
+✔ assertResumable: claude is rejected with the store-separation reason (4.717875ms)
+✔ assertResumable: codex with a provider session id is accepted (0.855917ms)
+✔ assertResumable: Kimi ACP and interactive sessions share a resumable session id (0.300667ms)
+✔ assertResumable: Grok ACP and interactive sessions share a resumable session id (1.254958ms)
+✔ assertResumable: OpenCode REST and interactive sessions share a resumable session id (0.399291ms)
+✔ assertResumable: a non-resume-gated harness is rejected (0.32ms)
+✔ quiesce refuses an authority-busy event snapshot instead of treating a partial turn as idle (98.12ms)
+✔ resumeArgs: claude resume uses --resume <id> (4.479709ms)
+✔ resumeArgs: codex resume is the `resume <id>` subcommand (0.229875ms)
+✔ resumeArgs: Kimi interactive resume uses --session <id> (0.552875ms)
+✔ resumeArgs: Grok interactive resume uses --resume <id> (0.215833ms)
+✔ resumeArgs: OpenCode interactive resume uses --session <id> (0.194917ms)
+✔ resumeArgs: missing session id falls back to the continue/last form (0.143333ms)
+✔ buildClaudeStreamConfig: resume emits --resume and strips --session-id (1.047334ms)
+✔ buildClaudeStreamConfig: resume is idempotent when the caller already has --resume (0.405708ms)
+✔ buildClaudeStreamConfig: a FRESH spawn keeps --session-id and never adds --resume (0.295458ms)
+✔ buildClaudeStreamConfig: resume without a sessionId is a no-op (no --resume, no strip) (0.347834ms)
+✔ tmuxSessionSurvives: a session that vanishes mid-window is a failed relaunch (12.413ms)
+✔ tmuxSessionSurvives: a session that never comes up fails fast (0.372875ms)
+✔ tmuxSessionSurvives: a session that stays up the whole window is healthy (45.848041ms)
+✔ tmuxSessionSurvives: a throwing hasSession is treated as gone (not a hang) (0.994042ms)
+✔ codexAdapter: is a server-tier adapter (thread/resume path lives in start) (0.297833ms)
+✔ round-trip: echo method returns its params (29.908292ms)
+✔ method-not-found rejects with -32601 / Method not found (7.461459ms)
+✔ handler throw rejects with the thrown message; server still serves after (7.726417ms)
+✔ notification stream: client receives all broadcasts in order (5.739625ms)
+✔ broadcast backpressure: slow client gets bounded drop-oldest queue; fast client and telemetry unaffected (HIVE-70) (164.35525ms)
+✔ concurrency: 5 in-flight calls all resolve with correct per-id results (61.448042ms)
+✔ connection lifecycle: server.close rejects pending call, resolves closed, drops count (7.82275ms)
+✔ stale socket: a leftover file with no live listener is unlinked and rebound (7.144167ms)
+✔ live socket: startRpcServer refuses a path with a running server (4.474708ms)
+✔ cellSpaceKeyForCwd names the space from either Cell layout and stays silent otherwise (10.7615ms)
+✔ Cell spawns are stamped HIVE_CELL=1 + HIVE_CELL_SPACE; non-Cell spawns are scrubbed (0.564167ms)
+✔ execution Cell relaunch fields preserve the exact Run and credential lease (4.058583ms)
+✔ Cell gh injection requires the exact signed Run-bound runtime credential lease (2.055166ms)
+✔ the real gh resolver keeps host discovery roots while the harness receives none (407.12875ms)
+✔ execution Cell host environment is an exact allowlist; ordinary HSR remains byte-compatible (0.796459ms)
+✔ execution Cells refuse credential-bearing proxy URLs while preserving public node routing (0.991958ms)
+✔ execution Cell payload accepts only the signed account's exact provider identity env (0.285209ms)
+✔ execution harness sees the broker socket but not the canonical store or ambient credentials (0.315708ms)
+✔ ordinary HSR never inherits a Cell broker capability from its parent (0.36925ms)
+✔ resolveHsrEntry derives source and built entries from the runnerHost module (0.479042ms)
+✔ resolveHsrEntry fails closed instead of relaunching an embedding test file (0.430167ms)
+✔ resolveHsrEntry re-execs a self-contained bundle when the dedicated sibling is absent (0.549416ms)
+✔ hsrEntryArgv retains an explicit __hsr-run compatibility entry (0.193666ms)
+✔ inheritableExecArgvForHsr preserves only source loaders, never embedding execution modes (0.351084ms)
+✔ waitForHsrHost observes newly published meta on the 10ms cadence (0.269042ms)
+✔ waitForHsrHost caps its final sleep at the unchanged timeout deadline (1.523084ms)
+✔ waitForHsrReadiness does not confuse a birth-admitted queued host with a controllable runtime (0.379083ms)
+✔ the dedicated source entry and __hsr-run fallback both remain executable under tsx (4886.699875ms)
+✔ the built runner-host bundle prints only its version — no runner-entry guard collision (518.013ms)
+✔ the built runner-host bundle routes __hsr-run into the bee host, not 'unknown command' (406.555958ms)
+✔ parseProcessRows accepts a topology + birth census and rejects malformed rows (5.607375ms)
+✔ event append rejection awaits durable authority publication before the iterator can fail (98.172084ms)
+✔ stop reaps a setsid grandchild without touching an untracked sibling group (534.381083ms)
+✖ a natural harness exit reaps a previously observed setsid grandchild (20368.471167ms)
+✔ Codex HSR cold starts queue visibly and admit only the configured concurrency (1690.075166ms)
+✔ same-home Codex starts serialize inside separate admission slots (1060.587875ms)
+✔ every detached HSR harness publishes booting and accepts a durable first turn (728.386959ms)
+✔ the startup gate never mistakes an adapter LockBusyError for a busy queue slot (8.955833ms)
+✔ turn runner: learns the session id on turn 1 and resumes it on turn 2 (606.620708ms)
+✔ turn runner: every per-turn fork publishes pending before admitting the new child (544.456ms)
+✔ turn runner: an explicit resume seeds the session id for the first turn (290.508916ms)
+✔ turn runner: stop emits the terminal exit event and ends the stream; send then throws (33.626ms)
+✔ turn runner: a crashing turn surfaces an error and still closes the turn bracket (302.99ms)
+✔ turn runner: child exit cannot overtake delayed final stdout and EOF (646.025167ms)
+✖ turn runner: exact turn_end advances past an inherited stdout pipe and session stop reaps descendants (6544.061167ms)
+✔ turn runner: exited child without turn_end or pipe EOF fails within a bound (365.492792ms)
+✔ turn runner: detached tool process survives its turn and dies with the session (3500.304958ms)
+✔ planPoolSweep: first observation is a baseline — no vacate edges, no syncs (5.443833ms)
+✔ planPoolSweep: inhabited→free edge syncs clean on-base members only (0.780709ms)
+✔ planPoolSweep: minFree shortfall over total free capacity (0 when unset/satisfied) (0.496458ms)
+✔ memberSweepView: occupied = live inhabitants OR unconsumed claims; on-base from config branch (0.376417ms)
+✔ memberNumberFromPath parses …/<pool>-<n>, -1 otherwise (0.270375ms)
+✔ sweeper: throttles to its interval (second call within it returns []) (68.960917ms)
+✔ detached sweeper starts one discovery lane and reports skipped repeated ticks on completion (13.4845ms)
+✔ detached sweeper close waits for the tracked lane instead of abandoning it (16.111125ms)
+✔ sweeper: GCs expired claims under the lock (27.221375ms)
+✔ sweeper: refresh-on-vacate syncs a member the tick observed going terminal (33.224167ms)
+✔ sweeper: done/sealed display state cannot vacate a positively live runtime (53.680875ms)
+✔ sweeper: HSR host death does not sync until exact child-group absence is confirmed (45.440667ms)
+✔ sweeper: refresh-on-vacate holds the claim barrier until checkout sync completes (58.296667ms)
+✔ sweeper: occupancy observation failure aborts all pool mutations (10.665583ms)
+✔ sweeper: member canonicalization failure aborts that pool before mutation (15.389375ms)
+✔ sweeper: duplicate canonical member identity preserves claims and blocks every mutation (14.852834ms)
+✔ sweeper: a member left dirty is flagged once (nudge to the departed bee's parent), never synced (50.00525ms)
+✖ sweeper: minFree pre-extends in the background and reports completion next sweep (25.917584ms)
+✔ background pre-extend revalidates after a manual extend and skips excess growth (58.542ms)
+✔ paused background clone serializes allocator and manual extend external mutations (155.625166ms)
+✔ two pool-sweeper service instances serialize and recompute one shared pre-extend (117.072416ms)
+✔ background extend failure reports on the next tick and a later tick retries (61.480375ms)
+✔ sweeper: a broken pool discovery or sync never throws out of the sweep (19.774125ms)
+✔ transactionalRetire archives the record instead of deleting it (272.840958ms)
+✔ transactionalRetire never releases ownership when event-integrity doubt lands during teardown (202.382917ms)
+✔ transactionalRetire strictly stops a live host with preexisting event-integrity doubt but never archives it (213.866084ms)
+✔ hive retire --compact compacts HSR events but preserves metadata, seals, meta, and ring (1370.785166ms)
+✔ retire compaction holds the cross-process lifecycle lock until its snapshot replacement completes (838.076ms)
+✔ transactionalRetire marks kill_failed when the session survives (120.964875ms)
+✔ retire and purge stay bounded when their post-exit credential harvest never settles (368.342417ms)
+✔ direct clean purge harvests credentials before deleting artifacts/metadata and remains bounded (252.399042ms)
+✔ clean skips stale-account harvest when a newer live record owns the shared custom home (173.463458ms)
+✔ clean honors a rebind activation stamp before the new session record is published (290.686375ms)
+✔ clean honors a ready foreign owner stamp on the nominal dedicated home (166.212958ms)
+✔ clean rejects newer live foreign evidence after a stale matching owner stamp (377.362917ms)
+✔ clean resolves symlink aliases to the foreign physical-home owner (145.329458ms)
+✔ final harvest keeps the locked physical home when its input alias is retargeted (129.609667ms)
+✔ purge contains malicious session and pool lock path components (89.424125ms)
+(node:36938) [HIVE_SESSION_RECORD_READ] HiveStoreWarning: session record scan skipped malformed/unreadable source(s): /var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hive-retire-K2Z16R/sessions/evil.json: Invalid session record identity /var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hive-retire-K2Z16R/sessions/evil.json: embedded name "CO.victim" must be canonical and match source filename "evil.json"
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ clean skips a filename-identity forgery without purging the real victim (68.08375ms)
+✔ dead-sweep purge rechecks and preserves a recovery request that appeared after selection (79.48075ms)
+✔ transactional kill revalidates shared-home ownership immediately after stop (194.801542ms)
+✔ successful retire harvests credentials only after the runtime is confirmed gone (180.0255ms)
+✔ a running record with no live session derives crashed; an explicit dead record derives dead (1.164583ms)
+✔ an archived (retired) record derives archived even without a live session (0.152916ms)
+✔ strict retire-by-name refuses archived and recordless bees with surviving event-history authority (100.804792ms)
+✔ an hsr record that is not live derives crashed when still marked running (1.205542ms)
+✔ archive filing is a same-directory rename(2) commit; crashed-commit residue never reaches readers (163.296167ms)
+✔ leftover archive temp files never materialize a phantom or corrupt session (49.216834ms)
+ℹ tests 237
+ℹ suites 0
+ℹ pass 233
+ℹ fail 4
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 207550.695459
+
+✖ failing tests:
+
+test at .test-dist/tests/hsr-gateway-connect.test.js:497:1
+✖ a server-side drop re-dials with backoff, re-hellos, and a fresh subscribe resumes exactly (122.198791ms)
+  AssertionError [ERR_ASSERTION]: re-hello advertises the durable high-water at its point-in-time snapshot
+      at file:///Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-2026-09-06/.test-dist/tests/hsr-gateway-connect.test.js:517:14
+      at async file:///Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-2026-09-06/.test-dist/tests/hsr-gateway-connect.test.js:260:7
+      at async withTempStore (file:///Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-2026-09-06/.test-dist/tests/hsr-gateway-connect.test.js:216:12)
+      at async withConnectedCell (file:///Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-2026-09-06/.test-dist/tests/hsr-gateway-connect.test.js:243:3)
+      at async TestContext.<anonymous> (file:///Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-2026-09-06/.test-dist/tests/hsr-gateway-connect.test.js:499:3)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at .test-dist/tests/hsr-session-base.test.js:123:1
+✖ a natural harness exit reaps a previously observed setsid grandchild (20368.471167ms)
+  Error: timed out waiting for delayed tool-use ownership sample
+      at waitFor (file:///Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-2026-09-06/.test-dist/tests/hsr-session-base.test.js:33:9)
+      at async TestContext.<anonymous> (file:///Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-2026-09-06/.test-dist/tests/hsr-session-base.test.js:137:5)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7)
+
+test at .test-dist/tests/hsr-turn-runner.test.js:329:1
+✖ turn runner: exact turn_end advances past an inherited stdout pipe and session stop reaps descendants (6544.061167ms)
+  Error: timed out waiting for inherited-pipe descendants to stop with session
+      at waitFor (file:///Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-2026-09-06/.test-dist/tests/hsr-turn-runner.test.js:152:9)
+      at async file:///Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-2026-09-06/.test-dist/tests/hsr-turn-runner.test.js:359:7
+      at async withTempStore (file:///Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-2026-09-06/.test-dist/tests/hsr-turn-runner.test.js:117:12)
+      at async TestContext.<anonymous> (file:///Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-2026-09-06/.test-dist/tests/hsr-turn-runner.test.js:330:3)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7)
+
+test at .test-dist/tests/poolSweep.test.js:450:1
+✖ sweeper: minFree pre-extends in the background and reports completion next sweep (25.917584ms)
+  [Error: ENOTEMPTY: directory not empty, rmdir '/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/honeybee-sweep-OEymq6/pools'] { errno: -66, code: 'ENOTEMPTY', syscall: 'rmdir', path: '/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/honeybee-sweep-OEymq6/pools' }
