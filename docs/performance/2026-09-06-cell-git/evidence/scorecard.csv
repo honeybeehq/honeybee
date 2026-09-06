@@ -1,0 +1,11 @@
+metric,before p50,after p50,unit,delta percent,scope
+Cell ready / none remote,552.977,472.344,ms,-14.58,6/7 lower
+Git processes / none remote,8,6,count,-25,7/7 lower
+Cell ready / same remote,720.486,623.916,ms,-13.4,4/7 lower
+Git processes / same remote,10,8,count,-20.0,7/7 lower
+Cell ready / split remote,635.852,514.179,ms,-19.14,7/7 lower
+Git processes / split remote,11,9,count,-18.18,7/7 lower
+Reconfigure /100k own commands,1242.346,1.021,ms,-99.92,3 fresh processes per side
+Reconfigure Node CPU,1051.529,1.991,ms,-99.81,3 fresh processes per side
+Reconfigure RSS after call,424.608,107.594,MB,-74.66,3 fresh processes per side
+Reconfigure heap used after call,182.56,9.757,MB,-94.66,3 fresh processes per side

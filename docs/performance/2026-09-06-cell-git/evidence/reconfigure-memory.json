@@ -1,0 +1,483 @@
+{
+  "schemaVersion": 1,
+  "completed": true,
+  "workload": {
+    "ownSettledCommands": 100000,
+    "reasonChars": 256,
+    "operation": "reconfigureBee(target, null)",
+    "samples": 1,
+    "gcBefore": true
+  },
+  "before": [
+    {
+      "schemaVersion": 1,
+      "completed": true,
+      "instrumented": false,
+      "timestamp": "2026-09-06T18:02:50.210Z",
+      "revision": "56be58209dd3e42c3795c9573f11f34ef7b9fca1",
+      "sourceHashes": {
+        "store.ts": "0ee57b394bbec3c3e26688afc185a94a37ea60d936d14db3f8c9520b8f732314",
+        "schema.ts": "feeee9f68b0818f2d8d5cb48e56167d5783dd59726f3321f784398238a7168ae"
+      },
+      "toolSha256": "f1ec67d6f236f6c53afd88d38f2b8f24f9e6aedde1b98e1e5e06fd88e963d86e",
+      "environment": {
+        "node": "v25.8.0",
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpu": "Apple M4 Max",
+        "hostname": "Mac.home",
+        "loadAfter": [
+          8.71240234375,
+          17.85009765625,
+          18.54150390625
+        ]
+      },
+      "workload": {
+        "ownSettledCommands": 100000,
+        "reasonChars": 256,
+        "operation": "reconfigureBee(target, null)",
+        "samples": 1,
+        "gcBefore": true
+      },
+      "wallMs": 1575.0275000000001,
+      "cpuMs": 1220.196,
+      "before": {
+        "rss": 109903872,
+        "heapTotal": 17121280,
+        "heapUsed": 9703592,
+        "external": 11388125,
+        "arrayBuffers": 20727
+      },
+      "after": {
+        "rss": 425689088,
+        "heapTotal": 303153152,
+        "heapUsed": 182559608,
+        "external": 11388181,
+        "arrayBuffers": 20743
+      },
+      "peakBeforeKiB": 107328,
+      "peakAfterKiB": 415712,
+      "profiles": [],
+      "scope": "One real unchanged-settings check; synthetic history seeded before measurement while CoreStore is closed. Explicit GC before the call removes fixture garbage. RSS includes shared/allocator pages, not private memory. Heap is observed usage, not allocated bytes. Peak RSS includes fixture setup; compare before and after high-water marks. Instrumented runs are separate from timing claims."
+    },
+    {
+      "schemaVersion": 1,
+      "completed": true,
+      "instrumented": false,
+      "timestamp": "2026-09-06T18:03:01.707Z",
+      "revision": "56be58209dd3e42c3795c9573f11f34ef7b9fca1",
+      "sourceHashes": {
+        "store.ts": "0ee57b394bbec3c3e26688afc185a94a37ea60d936d14db3f8c9520b8f732314",
+        "schema.ts": "feeee9f68b0818f2d8d5cb48e56167d5783dd59726f3321f784398238a7168ae"
+      },
+      "toolSha256": "f1ec67d6f236f6c53afd88d38f2b8f24f9e6aedde1b98e1e5e06fd88e963d86e",
+      "environment": {
+        "node": "v25.8.0",
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpu": "Apple M4 Max",
+        "hostname": "Mac.home",
+        "loadAfter": [
+          8.98388671875,
+          17.607421875,
+          18.447265625
+        ]
+      },
+      "workload": {
+        "ownSettledCommands": 100000,
+        "reasonChars": 256,
+        "operation": "reconfigureBee(target, null)",
+        "samples": 1,
+        "gcBefore": true
+      },
+      "wallMs": 1242.3456660000002,
+      "cpuMs": 1051.529,
+      "before": {
+        "rss": 106627072,
+        "heapTotal": 17121280,
+        "heapUsed": 9703232,
+        "external": 11388125,
+        "arrayBuffers": 20727
+      },
+      "after": {
+        "rss": 423149568,
+        "heapTotal": 303153152,
+        "heapUsed": 182558896,
+        "external": 11388181,
+        "arrayBuffers": 20743
+      },
+      "peakBeforeKiB": 104224,
+      "peakAfterKiB": 413232,
+      "profiles": [],
+      "scope": "One real unchanged-settings check; synthetic history seeded before measurement while CoreStore is closed. Explicit GC before the call removes fixture garbage. RSS includes shared/allocator pages, not private memory. Heap is observed usage, not allocated bytes. Peak RSS includes fixture setup; compare before and after high-water marks. Instrumented runs are separate from timing claims."
+    },
+    {
+      "schemaVersion": 1,
+      "completed": true,
+      "instrumented": false,
+      "timestamp": "2026-09-06T18:03:10.793Z",
+      "revision": "56be58209dd3e42c3795c9573f11f34ef7b9fca1",
+      "sourceHashes": {
+        "store.ts": "0ee57b394bbec3c3e26688afc185a94a37ea60d936d14db3f8c9520b8f732314",
+        "schema.ts": "feeee9f68b0818f2d8d5cb48e56167d5783dd59726f3321f784398238a7168ae"
+      },
+      "toolSha256": "f1ec67d6f236f6c53afd88d38f2b8f24f9e6aedde1b98e1e5e06fd88e963d86e",
+      "environment": {
+        "node": "v25.8.0",
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpu": "Apple M4 Max",
+        "hostname": "Mac.home",
+        "loadAfter": [
+          8.69140625,
+          17.25830078125,
+          18.31298828125
+        ]
+      },
+      "workload": {
+        "ownSettledCommands": 100000,
+        "reasonChars": 256,
+        "operation": "reconfigureBee(target, null)",
+        "samples": 1,
+        "gcBefore": true
+      },
+      "wallMs": 963.7723750000005,
+      "cpuMs": 975.453,
+      "before": {
+        "rss": 108462080,
+        "heapTotal": 17383424,
+        "heapUsed": 9703232,
+        "external": 11388125,
+        "arrayBuffers": 20727
+      },
+      "after": {
+        "rss": 424607744,
+        "heapTotal": 303153152,
+        "heapUsed": 182559984,
+        "external": 11388181,
+        "arrayBuffers": 20743
+      },
+      "peakBeforeKiB": 106000,
+      "peakAfterKiB": 414656,
+      "profiles": [],
+      "scope": "One real unchanged-settings check; synthetic history seeded before measurement while CoreStore is closed. Explicit GC before the call removes fixture garbage. RSS includes shared/allocator pages, not private memory. Heap is observed usage, not allocated bytes. Peak RSS includes fixture setup; compare before and after high-water marks. Instrumented runs are separate from timing claims."
+    }
+  ],
+  "after": [
+    {
+      "schemaVersion": 1,
+      "completed": true,
+      "instrumented": false,
+      "timestamp": "2026-09-06T18:02:54.396Z",
+      "revision": "a5480e249fba6735e91f9c795d209c288bd2bafd",
+      "sourceHashes": {
+        "store.ts": "39081081c412af983967f286a963027115c2db82b502f1933692daeedc19d74b",
+        "schema.ts": "feeee9f68b0818f2d8d5cb48e56167d5783dd59726f3321f784398238a7168ae"
+      },
+      "toolSha256": "f1ec67d6f236f6c53afd88d38f2b8f24f9e6aedde1b98e1e5e06fd88e963d86e",
+      "environment": {
+        "node": "v25.8.0",
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpu": "Apple M4 Max",
+        "hostname": "Mac.home",
+        "loadAfter": [
+          8.8955078125,
+          17.736328125,
+          18.4970703125
+        ]
+      },
+      "workload": {
+        "ownSettledCommands": 100000,
+        "reasonChars": 256,
+        "operation": "reconfigureBee(target, null)",
+        "samples": 1,
+        "gcBefore": true
+      },
+      "wallMs": 0.6551660000000084,
+      "cpuMs": 1.991,
+      "before": {
+        "rss": 107544576,
+        "heapTotal": 16596992,
+        "heapUsed": 9705856,
+        "external": 11388125,
+        "arrayBuffers": 20727
+      },
+      "after": {
+        "rss": 107593728,
+        "heapTotal": 16596992,
+        "heapUsed": 9756976,
+        "external": 11388181,
+        "arrayBuffers": 20743
+      },
+      "peakBeforeKiB": 105024,
+      "peakAfterKiB": 105072,
+      "profiles": [],
+      "scope": "One real unchanged-settings check; synthetic history seeded before measurement while CoreStore is closed. Explicit GC before the call removes fixture garbage. RSS includes shared/allocator pages, not private memory. Heap is observed usage, not allocated bytes. Peak RSS includes fixture setup; compare before and after high-water marks. Instrumented runs are separate from timing claims."
+    },
+    {
+      "schemaVersion": 1,
+      "completed": true,
+      "instrumented": false,
+      "timestamp": "2026-09-06T18:03:05.379Z",
+      "revision": "a5480e249fba6735e91f9c795d209c288bd2bafd",
+      "sourceHashes": {
+        "store.ts": "39081081c412af983967f286a963027115c2db82b502f1933692daeedc19d74b",
+        "schema.ts": "feeee9f68b0818f2d8d5cb48e56167d5783dd59726f3321f784398238a7168ae"
+      },
+      "toolSha256": "f1ec67d6f236f6c53afd88d38f2b8f24f9e6aedde1b98e1e5e06fd88e963d86e",
+      "environment": {
+        "node": "v25.8.0",
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpu": "Apple M4 Max",
+        "hostname": "Mac.home",
+        "loadAfter": [
+          8.66455078125,
+          17.39794921875,
+          18.3681640625
+        ]
+      },
+      "workload": {
+        "ownSettledCommands": 100000,
+        "reasonChars": 256,
+        "operation": "reconfigureBee(target, null)",
+        "samples": 1,
+        "gcBefore": true
+      },
+      "wallMs": 1.143000000000029,
+      "cpuMs": 0.86,
+      "before": {
+        "rss": 108363776,
+        "heapTotal": 17121280,
+        "heapUsed": 9705808,
+        "external": 11388125,
+        "arrayBuffers": 20727
+      },
+      "after": {
+        "rss": 108363776,
+        "heapTotal": 17121280,
+        "heapUsed": 9756928,
+        "external": 11388181,
+        "arrayBuffers": 20743
+      },
+      "peakBeforeKiB": 105824,
+      "peakAfterKiB": 105824,
+      "profiles": [],
+      "scope": "One real unchanged-settings check; synthetic history seeded before measurement while CoreStore is closed. Explicit GC before the call removes fixture garbage. RSS includes shared/allocator pages, not private memory. Heap is observed usage, not allocated bytes. Peak RSS includes fixture setup; compare before and after high-water marks. Instrumented runs are separate from timing claims."
+    },
+    {
+      "schemaVersion": 1,
+      "completed": true,
+      "instrumented": false,
+      "timestamp": "2026-09-06T18:03:14.177Z",
+      "revision": "a5480e249fba6735e91f9c795d209c288bd2bafd",
+      "sourceHashes": {
+        "store.ts": "39081081c412af983967f286a963027115c2db82b502f1933692daeedc19d74b",
+        "schema.ts": "feeee9f68b0818f2d8d5cb48e56167d5783dd59726f3321f784398238a7168ae"
+      },
+      "toolSha256": "f1ec67d6f236f6c53afd88d38f2b8f24f9e6aedde1b98e1e5e06fd88e963d86e",
+      "environment": {
+        "node": "v25.8.0",
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpu": "Apple M4 Max",
+        "hostname": "Mac.home",
+        "loadAfter": [
+          8.3154296875,
+          17.0380859375,
+          18.22900390625
+        ]
+      },
+      "workload": {
+        "ownSettledCommands": 100000,
+        "reasonChars": 256,
+        "operation": "reconfigureBee(target, null)",
+        "samples": 1,
+        "gcBefore": true
+      },
+      "wallMs": 1.0209580000000642,
+      "cpuMs": 2.342,
+      "before": {
+        "rss": 107446272,
+        "heapTotal": 17383424,
+        "heapUsed": 9705808,
+        "external": 11388125,
+        "arrayBuffers": 20727
+      },
+      "after": {
+        "rss": 107495424,
+        "heapTotal": 17383424,
+        "heapUsed": 9756928,
+        "external": 11388181,
+        "arrayBuffers": 20743
+      },
+      "peakBeforeKiB": 104992,
+      "peakAfterKiB": 104992,
+      "profiles": [],
+      "scope": "One real unchanged-settings check; synthetic history seeded before measurement while CoreStore is closed. Explicit GC before the call removes fixture garbage. RSS includes shared/allocator pages, not private memory. Heap is observed usage, not allocated bytes. Peak RSS includes fixture setup; compare before and after high-water marks. Instrumented runs are separate from timing claims."
+    }
+  ],
+  "comparison": [
+    {
+      "metric": "wallMs",
+      "before": {
+        "n": 3,
+        "min": 963.7723750000005,
+        "p50": 1242.3456660000002,
+        "p95": 1575.0275000000001,
+        "max": 1575.0275000000001,
+        "mean": 1260.3818470000003
+      },
+      "after": {
+        "n": 3,
+        "min": 0.6551660000000084,
+        "p50": 1.0209580000000642,
+        "p95": 1.143000000000029,
+        "max": 1.143000000000029,
+        "mean": 0.9397080000000338
+      },
+      "deltaPercent": -99.91782013428781
+    },
+    {
+      "metric": "cpuMs",
+      "before": {
+        "n": 3,
+        "min": 975.453,
+        "p50": 1051.529,
+        "p95": 1220.196,
+        "max": 1220.196,
+        "mean": 1082.3926666666666
+      },
+      "after": {
+        "n": 3,
+        "min": 0.86,
+        "p50": 1.991,
+        "p95": 2.342,
+        "max": 2.342,
+        "mean": 1.7309999999999999
+      },
+      "deltaPercent": -99.81065667233143
+    },
+    {
+      "metric": "rssBeforeBytes",
+      "before": {
+        "n": 3,
+        "min": 106627072,
+        "p50": 108462080,
+        "p95": 109903872,
+        "max": 109903872,
+        "mean": 108331008
+      },
+      "after": {
+        "n": 3,
+        "min": 107446272,
+        "p50": 107544576,
+        "p95": 108363776,
+        "max": 108363776,
+        "mean": 107784874.66666667
+      },
+      "deltaPercent": -0.8459214501510548
+    },
+    {
+      "metric": "rssAfterBytes",
+      "before": {
+        "n": 3,
+        "min": 423149568,
+        "p50": 424607744,
+        "p95": 425689088,
+        "max": 425689088,
+        "mean": 424482133.3333333
+      },
+      "after": {
+        "n": 3,
+        "min": 107495424,
+        "p50": 107593728,
+        "p95": 108363776,
+        "max": 108363776,
+        "mean": 107817642.66666667
+      },
+      "deltaPercent": -74.66044142614601
+    },
+    {
+      "metric": "heapBeforeBytes",
+      "before": {
+        "n": 3,
+        "min": 9703232,
+        "p50": 9703232,
+        "p95": 9703592,
+        "max": 9703592,
+        "mean": 9703352
+      },
+      "after": {
+        "n": 3,
+        "min": 9705808,
+        "p50": 9705808,
+        "p95": 9705856,
+        "max": 9705856,
+        "mean": 9705824
+      },
+      "deltaPercent": 0.02654785539497606
+    },
+    {
+      "metric": "heapAfterBytes",
+      "before": {
+        "n": 3,
+        "min": 182558896,
+        "p50": 182559608,
+        "p95": 182559984,
+        "max": 182559984,
+        "mean": 182559496
+      },
+      "after": {
+        "n": 3,
+        "min": 9756928,
+        "p50": 9756928,
+        "p95": 9756976,
+        "max": 9756976,
+        "mean": 9756944
+      },
+      "deltaPercent": -94.65548370371172
+    },
+    {
+      "metric": "peakBeforeBytes",
+      "before": {
+        "n": 3,
+        "min": 106725376,
+        "p50": 108544000,
+        "p95": 109903872,
+        "max": 109903872,
+        "mean": 108391082.66666667
+      },
+      "after": {
+        "n": 3,
+        "min": 107511808,
+        "p50": 107544576,
+        "p95": 108363776,
+        "max": 108363776,
+        "mean": 107806720
+      },
+      "deltaPercent": -0.9207547169811314
+    },
+    {
+      "metric": "peakAfterBytes",
+      "before": {
+        "n": 3,
+        "min": 423149568,
+        "p50": 424607744,
+        "p95": 425689088,
+        "max": 425689088,
+        "mean": 424482133.3333333
+      },
+      "after": {
+        "n": 3,
+        "min": 107511808,
+        "p50": 107593728,
+        "p95": 108363776,
+        "max": 108363776,
+        "mean": 107823104
+      },
+      "deltaPercent": -74.66044142614601
+    }
+  ]
+}

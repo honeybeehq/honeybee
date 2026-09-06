@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "completed": true,
+  "instrumented": true,
+  "timestamp": "2026-09-06T18:10:14.603Z",
+  "revision": "a5480e249fba6735e91f9c795d209c288bd2bafd",
+  "sourceHashes": {
+    "store.ts": "39081081c412af983967f286a963027115c2db82b502f1933692daeedc19d74b",
+    "schema.ts": "feeee9f68b0818f2d8d5cb48e56167d5783dd59726f3321f784398238a7168ae"
+  },
+  "toolSha256": "f1ec67d6f236f6c53afd88d38f2b8f24f9e6aedde1b98e1e5e06fd88e963d86e",
+  "environment": {
+    "node": "v25.8.0",
+    "platform": "darwin",
+    "arch": "arm64",
+    "cpu": "Apple M4 Max",
+    "hostname": "Mac.home",
+    "loadAfter": [
+      9.3310546875,
+      11.2412109375,
+      14.71875
+    ]
+  },
+  "workload": {
+    "ownSettledCommands": 100000,
+    "reasonChars": 256,
+    "operation": "reconfigureBee(target, null)",
+    "samples": 1,
+    "gcBefore": true
+  },
+  "wallMs": 1.1700839999998607,
+  "cpuMs": 1.367,
+  "before": {
+    "rss": 109707264,
+    "heapTotal": 17907712,
+    "heapUsed": 10447744,
+    "external": 11388125,
+    "arrayBuffers": 20727
+  },
+  "after": {
+    "rss": 109756416,
+    "heapTotal": 17907712,
+    "heapUsed": 10498864,
+    "external": 11388181,
+    "arrayBuffers": 20743
+  },
+  "peakBeforeKiB": 107152,
+  "peakAfterKiB": 107184,
+  "profiles": [
+    {
+      "path": "/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-cell-git-2026-09-06/.artifacts/performance/cell-git/reconfigure-profile-after.json.cpuprofile",
+      "sha256": "56ef1a1929aad143058f75c102a5481a9df83f5079cc2ab041a01a9a498c8007",
+      "compressedName": "cpuprofile.gz",
+      "compressedSha256": "ecfd2a879b790795dba3ec2140de24f8d070075b406cea495ca5f2c5d9429582",
+      "originalBytes": 901,
+      "compressedBytes": 361,
+      "samples": 1
+    },
+    {
+      "path": "/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-cell-git-2026-09-06/.artifacts/performance/cell-git/reconfigure-profile-after.json.heapprofile",
+      "sha256": "3fd265bdbda52f23fdbfd34e88a4ce6e956244eba2289a80d9e6cad64f6b6032",
+      "compressedName": "heapprofile.gz",
+      "compressedSha256": "232252cf5f2ee40e8e58bc10306dc88b39255189a04500ab37c5a6c778dbf139",
+      "originalBytes": 852,
+      "compressedBytes": 305
+    }
+  ],
+  "scope": "One real unchanged-settings check; synthetic history seeded before measurement while CoreStore is closed. Explicit GC before the call removes fixture garbage. RSS includes shared/allocator pages, not private memory. Heap is observed usage, not allocated bytes. Peak RSS includes fixture setup; compare before and after high-water marks. Instrumented runs are separate from timing claims."
+}

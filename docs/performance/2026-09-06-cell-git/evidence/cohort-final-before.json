@@ -1,0 +1,193 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "revision": "56be58209dd3e42c3795c9573f11f34ef7b9fca1",
+    "workerSha256": "c35a460c17a0e72b0a1f388524ab4d7d90d7aa096c832f24dc75a89c3af352cf"
+  },
+  "workload": {
+    "mode": "worker-cohort",
+    "samples": 3,
+    "width": 5,
+    "holdMs": 2000,
+    "trackedFiles": 203,
+    "trace2": true
+  },
+  "environment": {
+    "node": "v25.8.0",
+    "platform": "darwin",
+    "arch": "arm64",
+    "cpu": "Apple M4 Max",
+    "hostname": "Mac.home",
+    "loadBefore": [
+      9.22998046875,
+      9.65234375,
+      13.060546875
+    ],
+    "loadAfter": [
+      9.1064453125,
+      9.619140625,
+      12.97021484375
+    ]
+  },
+  "toolSha256": "df1bc649a74353cac727abba08e4b0049bd8628d215af776ce637aada13a29bc",
+  "scope": "Fresh Node process per cohort; real built workers and disposable prewarmed Git image; Node CPU excludes Git/cp children. RSS is process resident memory including shared pages, not per-worker private memory. Controlled hold starts after all workers report ready.",
+  "results": [
+    {
+      "scenario": "five-worker-image-hit",
+      "raw": [
+        {
+          "readyWallMs": 991.989333,
+          "wallMs": 2993.557208,
+          "nodeCpuMs": 650.386,
+          "nodeCpuDuringHoldMs": 2.361,
+          "idleCpuOneCorePercent": 0.11796642568301025,
+          "rssBeforeBytes": 89964544,
+          "rssAtReadyBytes": 128679936,
+          "rssAtHoldBytes": 127565824,
+          "rssAfterBytes": 127582208,
+          "workersAliveAtHold": 0,
+          "workerTailMaxMs": 6.273791999999958,
+          "gitCommandCount": 40,
+          "gitCommandWallMs": 1966.5639999999999
+        },
+        {
+          "readyWallMs": 1020.0092079999997,
+          "wallMs": 3022.9237909999993,
+          "nodeCpuMs": 598.7,
+          "nodeCpuDuringHoldMs": 4.145,
+          "idleCpuOneCorePercent": 0.20698667414049185,
+          "rssBeforeBytes": 89800704,
+          "rssAtReadyBytes": 128270336,
+          "rssAtHoldBytes": 127139840,
+          "rssAfterBytes": 127156224,
+          "workersAliveAtHold": 0,
+          "workerTailMaxMs": 17.330417000000125,
+          "gitCommandCount": 40,
+          "gitCommandWallMs": 1888.3410000000001
+        },
+        {
+          "readyWallMs": 1177.3789999999997,
+          "wallMs": 3179.5022499999995,
+          "nodeCpuMs": 739.744,
+          "nodeCpuDuringHoldMs": 2.868,
+          "idleCpuOneCorePercent": 0.14326470439478714,
+          "rssBeforeBytes": 89866240,
+          "rssAtReadyBytes": 128270336,
+          "rssAtHoldBytes": 127139840,
+          "rssAfterBytes": 127156224,
+          "workersAliveAtHold": 0,
+          "workerTailMaxMs": 4.15341699999999,
+          "gitCommandCount": 40,
+          "gitCommandWallMs": 2066.183
+        }
+      ],
+      "metrics": {
+        "readyWallMs": {
+          "n": 3,
+          "min": 991.989333,
+          "p50": 1020.0092079999997,
+          "p95": 1177.3789999999997,
+          "max": 1177.3789999999997,
+          "mean": 1063.1258469999998
+        },
+        "wallMs": {
+          "n": 3,
+          "min": 2993.557208,
+          "p50": 3022.9237909999993,
+          "p95": 3179.5022499999995,
+          "max": 3179.5022499999995,
+          "mean": 3065.3277496666665
+        },
+        "nodeCpuMs": {
+          "n": 3,
+          "min": 598.7,
+          "p50": 650.386,
+          "p95": 739.744,
+          "max": 739.744,
+          "mean": 662.9433333333333
+        },
+        "nodeCpuDuringHoldMs": {
+          "n": 3,
+          "min": 2.361,
+          "p50": 2.868,
+          "p95": 4.145,
+          "max": 4.145,
+          "mean": 3.1246666666666667
+        },
+        "idleCpuOneCorePercent": {
+          "n": 3,
+          "min": 0.11796642568301025,
+          "p50": 0.14326470439478714,
+          "p95": 0.20698667414049185,
+          "max": 0.20698667414049185,
+          "mean": 0.15607260140609638
+        },
+        "rssBeforeBytes": {
+          "n": 3,
+          "min": 89800704,
+          "p50": 89866240,
+          "p95": 89964544,
+          "max": 89964544,
+          "mean": 89877162.66666667
+        },
+        "rssAtReadyBytes": {
+          "n": 3,
+          "min": 128270336,
+          "p50": 128270336,
+          "p95": 128679936,
+          "max": 128679936,
+          "mean": 128406869.33333333
+        },
+        "rssAtHoldBytes": {
+          "n": 3,
+          "min": 127139840,
+          "p50": 127139840,
+          "p95": 127565824,
+          "max": 127565824,
+          "mean": 127281834.66666667
+        },
+        "rssAfterBytes": {
+          "n": 3,
+          "min": 127156224,
+          "p50": 127156224,
+          "p95": 127582208,
+          "max": 127582208,
+          "mean": 127298218.66666667
+        },
+        "workersAliveAtHold": {
+          "n": 3,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0,
+          "mean": 0
+        },
+        "workerTailMaxMs": {
+          "n": 3,
+          "min": 4.15341699999999,
+          "p50": 6.273791999999958,
+          "p95": 17.330417000000125,
+          "max": 17.330417000000125,
+          "mean": 9.252542000000025
+        },
+        "gitCommandCount": {
+          "n": 3,
+          "min": 40,
+          "p50": 40,
+          "p95": 40,
+          "max": 40,
+          "mean": 40
+        },
+        "gitCommandWallMs": {
+          "n": 3,
+          "min": 1888.3410000000001,
+          "p50": 1966.5639999999999,
+          "p95": 2066.183,
+          "max": 2066.183,
+          "mean": 1973.696
+        }
+      }
+    }
+  ],
+  "completed": true
+}

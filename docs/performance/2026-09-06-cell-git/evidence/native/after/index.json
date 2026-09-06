@@ -1,0 +1,82 @@
+{
+  "completed": true,
+  "timestamp": "2026-09-06T18:10:03.798Z",
+  "node": "v25.8.0",
+  "revision": "3cc958475c2f04c55e00978af6bd82bd5def19c0",
+  "workerSha256": "2ea1e4e76afe0d5a757d756b29d1383384429f8108f38d498e766e628c4bd1f9",
+  "scriptSha256": "976cba069ce4b157029e1a5c2129705eb44509598152b3c92f17602dbfbbaf5e",
+  "wrapperSha256": "034633e59f60ce8a05d48126963fcc590e279661c1fa06eff375b1e6bbb64737",
+  "workload": {
+    "trackedFiles": 203,
+    "copyMode": "image-cow",
+    "maintenance": "signaled at ready"
+  },
+  "git": {
+    "commands": [
+      [
+        "git",
+        "rev-parse",
+        "--show-object-format"
+      ],
+      [
+        "git",
+        "cat-file",
+        "-e",
+        "af37f89955253548da80a39ac5954b555b0d48e5^{commit}"
+      ],
+      [
+        "git",
+        "init",
+        "/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-v2-cell-LJVZlo/cells/profile/fixture-space-0"
+      ],
+      [
+        "git",
+        "remote",
+        "get-url",
+        "origin"
+      ],
+      [
+        "git",
+        "cat-file",
+        "-e",
+        "af37f89955253548da80a39ac5954b555b0d48e5^{commit}"
+      ],
+      [
+        "git",
+        "checkout",
+        "--force",
+        "--detach",
+        "af37f89955253548da80a39ac5954b555b0d48e5"
+      ]
+    ],
+    "commandCount": 6,
+    "wallMs": 118.91999999999999
+  },
+  "files": [
+    {
+      "name": "worker.cpuprofile",
+      "sha256": "6ac10be0579eac647255fd2ae189b8619bde560c6966f3fcec03cf2f464e92ef",
+      "compressedName": "worker.cpuprofile.gz",
+      "compressedSha256": "753ce8929ce1ba8782fbc13dd28c2c78c4fecb259d764afaf4eee67b451db74b",
+      "originalBytes": 9386,
+      "compressedBytes": 1139
+    },
+    {
+      "name": "worker.heapprofile",
+      "sha256": "a8109c8018bcb7fa17282aa9839790cbb948f72a0a1af78969fb0f80ecedf5ac",
+      "compressedName": "worker.heapprofile.gz",
+      "compressedSha256": "f757915c60272b8512c3cdc160febd6a461049eb44cea176e7f3e81e029aeb5d",
+      "originalBytes": 11072,
+      "compressedBytes": 1390
+    },
+    {
+      "name": "git-trace.jsonl",
+      "sha256": "e7afc0ffa2a7d16744b7b4531b58f27f724ca5187276a04a41f76783bf1bd225",
+      "compressedName": "git-trace.jsonl.gz",
+      "compressedSha256": "2f058b9b470c03529774e60d5a46de7e74e574d17096e057e43aa68832d18192",
+      "originalBytes": 12705,
+      "compressedBytes": 1679
+    }
+  ],
+  "scope": "Instrumented worker module import and execution; inspector CPU and sampled heap allocation profiles, not private RSS or a full heap snapshot. Profiling overhead excluded from headline timings."
+}
