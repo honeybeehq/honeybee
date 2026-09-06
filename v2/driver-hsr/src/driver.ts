@@ -41,11 +41,11 @@
  * pid adoption; silence never manufactures idle.
  */
 import { spawn, type ChildProcess } from "node:child_process";
-import { appendFileSync, closeSync, mkdirSync, openSync, readSync, statSync, writeFileSync } from "node:fs";
+import { appendFileSync, closeSync, mkdirSync, openSync, readSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { connect, type Socket } from "node:net";
-import { dirname, join, resolve as resolvePath } from "node:path";
+import { dirname, extname, join, resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readRunnerStatus, type RunnerHostConfig } from "./runner-host.ts";
 import type {
@@ -59,6 +59,14 @@ import type {
 import type { HarnessAdapter } from "../../adapters/src/index.ts";
 import { executableNotFoundDetail, type SpawnCommandResolution } from "../../core/src/executables.ts";
 import { pidAlive, verifyProcessIdentity } from "./psutil.ts";
+
+// Pin the module's physical deployment before an immutable runtime's
+// `current` symlink can move. Node normally realpaths imported modules, but
+// --preserve-symlinks deliberately does not; doing it explicitly keeps a
+// daemon loaded from release A paired with release A's runner host in both
+// modes. This resolves only our own file, never the optional sibling.
+const PINNED_HSR_MODULE_PATH = realpathSync(fileURLToPath(import.meta.url));
+const PINNED_HSR_MODULE_DIR = dirname(PINNED_HSR_MODULE_PATH);
 
 /** What `start` needs to know per bee: which agent, how to spawn it. */
 export interface SpawnSpec {
@@ -93,12 +101,16 @@ export interface HsrDriverConfig {
   runnersDir?: string;
   /**
    * How to launch the runner host for a written config file. The default
-   * invokes the sibling TS entry under --experimental-strip-types (dev and
-   * tests); the daemon overrides it with its own CLI entry in production,
-   * where v2 ships as a bundle and the source path does not exist.
+   * invokes the sibling TS entry under --experimental-strip-types in source
+   * checkouts and the dedicated sibling runner-host.js artifact from builds.
    */
   hostCommand?: (configPath: string) => { command: string; args: string[] };
 }
+
+type HostLaunch =
+  | { kind: "override"; commandFor: NonNullable<HsrDriverConfig["hostCommand"]> }
+  | { kind: "source"; entry: string }
+  | { kind: "artifact"; entry: string };
 
 /** Condition-flag evidence surfaced by adapters, stamped with process identity. */
 export interface FlagEvidence {
@@ -287,6 +299,7 @@ function recoverAdapterContext(
 
 export class HsrDriver implements RuntimeDriver {
   private readonly cfg: HsrDriverConfig;
+  private readonly hostLaunch: HostLaunch;
   private readonly now: () => number;
   private readonly graceMs: number;
   private readonly adoptTolMs: number;
@@ -308,6 +321,7 @@ export class HsrDriver implements RuntimeDriver {
 
   constructor(cfg: HsrDriverConfig) {
     this.cfg = cfg;
+    this.hostLaunch = this.selectHostLaunch();
     this.now = cfg.now ?? Date.now;
     this.graceMs = cfg.stopKillGraceMs ?? 5000;
     this.adoptTolMs = cfg.adoptToleranceMs ?? 5000;
@@ -317,6 +331,32 @@ export class HsrDriver implements RuntimeDriver {
 
   private runnersDir(): string {
     return this.cfg.runnersDir ?? resolvePath(this.cfg.sessionLogDir, "..", "runners");
+  }
+
+  private selectHostLaunch(): HostLaunch {
+    // Overrides are a complete caller-owned launch policy. In particular,
+    // embedding/tests may intentionally provide one without packaging our
+    // default sibling, so do not even inspect the sibling on this branch.
+    const override = this.cfg.hostCommand;
+    if (override) return { kind: "override", commandFor: override };
+
+    const source = extname(PINNED_HSR_MODULE_PATH) === ".ts";
+    const entry = join(PINNED_HSR_MODULE_DIR, source ? "runner-host-main.ts" : "runner-host.js");
+    try {
+      if (!statSync(entry).isFile()) throw new Error("not a regular file");
+    } catch (cause) {
+      if (source) {
+        throw new Error(
+          `hsr driver: required runner-host source entry is unavailable at ${entry}; restore the source checkout or provide hostCommand`,
+          { cause },
+        );
+      }
+      throw new Error(
+        `hsr driver: required bundled runner-host artifact is unavailable at ${entry}; rebuild or reinstall Honeybee so runner-host.js is shipped beside the v2 bundle`,
+        { cause },
+      );
+    }
+    return source ? { kind: "source", entry } : { kind: "artifact", entry };
   }
 
   private runnerPaths(
@@ -342,9 +382,14 @@ export class HsrDriver implements RuntimeDriver {
   }
 
   private hostCommandFor(configPath: string): { command: string; args: string[] } {
-    if (this.cfg.hostCommand) return this.cfg.hostCommand(configPath);
-    const entry = fileURLToPath(new URL("./runner-host-main.ts", import.meta.url));
-    return { command: process.execPath, args: ["--experimental-strip-types", entry, configPath] };
+    if (this.hostLaunch.kind === "override") return this.hostLaunch.commandFor(configPath);
+    if (this.hostLaunch.kind === "source") {
+      return {
+        command: process.execPath,
+        args: ["--experimental-strip-types", this.hostLaunch.entry, configPath],
+      };
+    }
+    return { command: process.execPath, args: [this.hostLaunch.entry, configPath] };
   }
 
   // -------------------------------------------------------------------------
