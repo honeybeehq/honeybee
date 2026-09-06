@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import {
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
@@ -18,7 +19,13 @@ import {
   type PerformanceProfiler,
 } from "../src/performance.ts";
 import { RpcServer } from "../src/rpc.ts";
-import { makeDaemonDir, sleep, startDaemon, type DaemonHandle } from "./helpers.ts";
+import {
+  makeDaemonDir,
+  sleep,
+  startDaemon,
+  waitFor,
+  type DaemonHandle,
+} from "./helpers.ts";
 
 const SECRET_PARAM = "prompt-secret-that-must-not-appear";
 const SECRET_ERROR = "provider-error-detail-that-must-not-appear";
@@ -211,6 +218,93 @@ test("artifact byte caps bound both files and report dropped events", () => {
     assert.ok(traceEvents(artifact).length < 2_000);
   } finally {
     rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("RPC serialization profiling covers responses and watcher frames", async () => {
+  const root = mkdtempSync(join(tmpdir(), "hb-perf-serialize-"));
+  const directory = join(root, "artifacts");
+  const socketPath = join(root, "rpc.sock");
+  const profiler = createPerformanceProfiler({
+    env: { HIVE_PERF_DIR: directory },
+    log: () => undefined,
+    limits: { durationMs: 60_000, sampleIntervalMs: 60_000 },
+  });
+  const server = new RpcServer({
+    socketPath,
+    log: () => undefined,
+    performance: profiler,
+    dispatch: (verb, _params, conn) => {
+      assert.equal(verb, "watch");
+      conn.subscribeWatch(0);
+      return { seq: 0, secret: SECRET_PARAM };
+    },
+  });
+  let client: RpcClient | null = null;
+  let watchFrames = 0;
+  try {
+    profiler.start();
+    await server.listen();
+    client = await RpcClient.connect(socketPath);
+    client.onEvent = () => {
+      watchFrames += 1;
+    };
+    await client.request("watch");
+    server.flushWatch(
+      1,
+      () => [
+        {
+          seq: 1,
+          ts: Date.now(),
+          kind: "performance.test",
+          beeId: null,
+          payload: { secret: SECRET_PARAM },
+        },
+      ],
+      10,
+    );
+    await waitFor(() => watchFrames === 1, "profiled watch frame", 1_000);
+  } finally {
+    client?.close();
+    await server.close();
+    profiler.stop();
+  }
+
+  try {
+    const artifact = readArtifacts(directory);
+    const stats = spanSummary(artifact, "rpc.serialize");
+    assert.equal(requireNumber(stats.count, "serialize count"), 3);
+    assert.equal(requireNumber(stats.errors, "serialize errors"), 0);
+    assert.equal(
+      traceEvents(artifact).filter((event) => event.name === "rpc.serialize").length,
+      3,
+    );
+    assert.ok(!artifact.traceText.includes(SECRET_PARAM));
+    assert.ok(!artifact.summaryText.includes(SECRET_PARAM));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("storage startup failures end the active phase as an error", async () => {
+  const { dir, cleanup } = makeDaemonDir();
+  const directory = join(dir, "performance");
+  mkdirSync(join(dir, "core.sqlite3"));
+  try {
+    await assert.rejects(
+      startDaemon(dir, { env: { HIVE_PERF_DIR: directory } }),
+      /daemon exited early/,
+    );
+
+    const artifact = readArtifacts(directory);
+    const storage = spanSummary(artifact, "daemon.start.storage");
+    assert.equal(requireNumber(storage.count, "storage count"), 1);
+    assert.equal(requireNumber(storage.errors, "storage errors"), 1);
+    const total = spanSummary(artifact, "daemon.start.total");
+    assert.equal(requireNumber(total.count, "startup total count"), 1);
+    assert.equal(requireNumber(total.errors, "startup total errors"), 1);
+  } finally {
+    cleanup();
   }
 });
 
