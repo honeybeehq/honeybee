@@ -6,7 +6,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openCoreStore } from "../../core/src/index.ts";
@@ -126,6 +126,43 @@ test("cli.accounts.1: account verbs over RPC + spawn --account + bee swap-accoun
     const usage = capture();
     assert.equal(await runV2Cli(["account", "frob", ...base], usage.io), 1);
     assert.match(usage.err[0] ?? "", /usage: hive account/);
+  } finally {
+    await daemon?.stop().catch(() => {});
+    cleanup();
+  }
+});
+
+test("cli accounts: configuration preview/import are thin RPC commands", async () => {
+  const { dir, cleanup } = makeDaemonDir();
+  const machineHome = join(dir, "machine-home");
+  const sourceHome = join(machineHome, ".codex");
+  mkdirSync(sourceHome, { recursive: true });
+  writeFileSync(join(sourceHome, "AGENTS.md"), "cli instructions\n");
+  writeFileSync(join(sourceHome, "config.toml"), 'model = "cli-model"\napi_key = "CLI_AUTH_MUST_NOT_COPY"\n');
+  let daemon: DaemonHandle | null = null;
+  try {
+    daemon = await startDaemon(dir, { env: { HOME: machineHome, CODEX_HOME: sourceHome } });
+    const base = ["--data-dir", dir];
+    assert.equal(await runV2Cli(["account", "add", "codex", "config", ...base], capture().io), 0);
+
+    const previewOutput = capture();
+    assert.equal(await runV2Cli(["account", "config", "preview", "codex-config", ...base, "--json"], previewOutput.io), 0);
+    const preview = JSON.parse(previewOutput.out[0] ?? "{}") as { accountId: string; sourceHome: string; entries: Array<{ path: string; status: string }> };
+    assert.equal(preview.accountId, "codex-config");
+    assert.equal(preview.sourceHome, sourceHome);
+    assert.equal(preview.entries.find((entry) => entry.path === "AGENTS.md")?.status, "ready");
+    assert.doesNotMatch(previewOutput.out[0] ?? "", /cli instructions|CLI_AUTH_MUST_NOT_COPY|cli-model/);
+
+    const importOutput = capture();
+    assert.equal(await runV2Cli(["account", "config", "import", "codex-config", ...base, "--json"], importOutput.io), 0);
+    const imported = JSON.parse(importOutput.out[0] ?? "{}") as { accountId: string; imported: string[]; skipped: string[] };
+    assert.equal(imported.accountId, "codex-config");
+    assert.deepEqual(imported.imported, ["AGENTS.md", "config.toml"]);
+    assert.doesNotMatch(readFileSync(join(dir, "homes", "codex-config", "config.toml"), "utf8"), /CLI_AUTH_MUST_NOT_COPY/);
+
+    const second = capture();
+    assert.equal(await runV2Cli(["account", "config", "import", "codex-config", ...base], second.io), 0);
+    assert.match(second.out[0] ?? "", /imported 0 configuration path\(s\) into codex-config; skipped/);
   } finally {
     await daemon?.stop().catch(() => {});
     cleanup();

@@ -14,6 +14,7 @@ import {
   AccountReferencedError,
   CoreError,
   SCHEMA_VERSION,
+  accountConfigImportRecipeFor,
   accountIdFor,
   isAuthFailureLimitsError,
   parseClaudeCredentials,
@@ -30,6 +31,14 @@ import { harness, makeBee } from "./helpers.ts";
 
 test("v7.recipes: the Claude recipe's CLI login is the native auth flow", () => {
   assert.deepEqual(recipeFor("claude")?.login, { command: "claude", args: ["auth", "login"] });
+});
+
+test("configuration onboarding has an explicit recipe only for the supported harnesses", () => {
+  for (const harness of ["claude", "codex", "grok", "opencode", "kimi", "cursor"]) {
+    assert.ok(accountConfigImportRecipeFor(harness)?.entries.length, harness);
+  }
+  assert.equal(accountConfigImportRecipeFor("agy"), undefined);
+  assert.equal(accountConfigImportRecipeFor("stub"), undefined);
 });
 
 test("v7.recipes: the agy recipe conforms to the HOME-based Antigravity OAuth layout and captured login cues", () => {

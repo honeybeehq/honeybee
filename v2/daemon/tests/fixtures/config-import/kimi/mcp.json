@@ -1,0 +1,31 @@
+{
+  "mcpServers": {
+    "docs": {
+      "command": "/usr/bin/docs-mcp",
+      "args": ["serve"],
+      "env": {
+        "DOCS_TOKEN": "KIMI_MCP_AUTH_MUST_NOT_COPY"
+      }
+    },
+    "remote": {
+      "type": "http",
+      "url": "https://mcp.example.test/events",
+      "headers": {
+        "Authorization": "Bearer KIMI_REMOTE_AUTH_MUST_NOT_COPY"
+      }
+    },
+    "token-url-only": {
+      "type": "http",
+      "enabled": true,
+      "url": "https://secret@example.test/events?token=KIMI_URL_AUTH_MUST_NOT_COPY"
+    },
+    "auth-only": {
+      "type": "http",
+      "enabled": true,
+      "command": [],
+      "headers": {
+        "Authorization": "Bearer KIMI_AUTH_ONLY_MUST_NOT_COPY"
+      }
+    }
+  }
+}

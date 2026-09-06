@@ -1,0 +1,28 @@
+model = "grok-code-fast-1"
+reasoning_effort = "high"
+api_key = "GROK_SOURCE_AUTH_MUST_NOT_COPY"
+
+[auth]
+access_token = "GROK_ACCESS_AUTH_MUST_NOT_COPY"
+
+[mcp_servers.docs]
+command = "/usr/bin/docs-mcp"
+args = ["serve"]
+env = { DOCS_TOKEN = "GROK_MCP_AUTH_MUST_NOT_COPY" }
+
+[mcp_servers.remote]
+type = "http"
+url = "https://mcp.example.test/events"
+enabled = true
+headers = { Authorization = "Bearer GROK_REMOTE_AUTH_MUST_NOT_COPY" }
+
+[mcp_servers.token-url-only]
+type = "http"
+url = "https://secret@example.test/events?token=GROK_URL_AUTH_MUST_NOT_COPY"
+enabled = true
+
+[mcp_servers.auth-only]
+type = "http"
+enabled = true
+command = ""
+headers = { Authorization = "Bearer GROK_AUTH_ONLY_MUST_NOT_COPY" }
