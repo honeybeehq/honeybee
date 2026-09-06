@@ -19,7 +19,10 @@ assert.ok(Number.isSafeInteger(spec.idleMs) && spec.idleMs >= 0 && spec.idleMs <
 for (const impl of spec.implementations) {
   assert.ok(typeof impl.name === 'string' && Array.isArray(impl.args));
   assert.ok(impl.args.every(x => typeof x === 'string'));
+  assert.ok(Array.isArray(impl.nodeArgs ?? []) && (impl.nodeArgs ?? []).every(x => typeof x === 'string'));
   assert.ok(existsSync(impl.entry));
+  assert.ok(Array.isArray(impl.dependencies ?? []));
+  for (const dependency of impl.dependencies ?? []) assert.ok(typeof dependency === 'string' && existsSync(dependency));
 }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 async function within(promise, ms, timeout) {
@@ -55,7 +58,9 @@ function processRow(pid) {
 }
 const raw = spec.implementations.map(() => []);
 const environment = { node: process.version, platform: process.platform, arch: process.arch, cpu: cpus()[0]?.model, hostname: hostname(), loadBefore: loadavg() };
-const implementations = spec.implementations.map(impl => ({ ...impl, entryBytes: statSync(impl.entry).size, entrySha256: createHash('sha256').update(readFileSync(impl.entry)).digest('hex') }));
+const artifact = path => ({ path, bytes: statSync(path).size, sha256: createHash('sha256').update(readFileSync(path)).digest('hex') });
+const implementations = spec.implementations.map(impl => ({ ...impl, entryBytes: statSync(impl.entry).size, entrySha256: createHash('sha256').update(readFileSync(impl.entry)).digest('hex'),
+  dependencyArtifacts: (impl.dependencies ?? []).map(artifact) }));
 async function launch(side, serial, record) {
   const dir = join(fixture, String(serial)); mkdirSync(dir);
   const config = { beeId: `perf-${serial}`, generation: 1, command: process.execPath, args: [resolve(spec.agent)], cwd: dir,
@@ -64,7 +69,7 @@ async function launch(side, serial, record) {
   const configPath = join(dir, 'config.json'); writeFileSync(configPath, JSON.stringify(config));
   const impl = implementations[side];
   const started = performance.now();
-  const child = spawn(process.execPath, [impl.entry, ...impl.args, configPath], { detached: true, stdio: ['ignore', 'ignore', 'pipe'],
+  const child = spawn(process.execPath, [...(impl.nodeArgs ?? []), impl.entry, ...impl.args, configPath], { detached: true, stdio: ['ignore', 'ignore', 'pipe'],
     env: { ...process.env, HIVE_STORE_ROOT: fixture, HIVE_V2_DATA_DIR: fixture, HIVE_NO_KEYCHAIN: '1', HIVE_PERF_DIR: '', NODE_COMPILE_CACHE: join(fixture, `compile-${side}`) } });
   let stderr = ''; child.stderr.on('data', b => { if (stderr.length < 8192) stderr += b; });
   const item = { child, exit: new Promise((res, rej) => { child.once('exit', (code, signal) => res({ code, signal })); child.once('error', rej); }) };

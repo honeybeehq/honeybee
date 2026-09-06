@@ -10,7 +10,7 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function fixture(idleMs, run) {
   const dir = mkdtempSync(join(tmpdir(), 'hb-host-tool-test-'));
   const spec = { rounds: 2, idleMs, agent: resolve('v2/driver-hsr/test-agent/agent.mjs'),
-    implementations: ['a', 'b'].map(name => ({ name, entry: resolve('v2/driver-hsr/src/runner-host-main.ts'), args: [] })) };
+    implementations: ['a', 'b'].map(name => ({ name, entry: resolve('v2/driver-hsr/src/runner-host-main.ts'), args: [], dependencies: [resolve('v2/driver-hsr/src/runner-host.ts')] })) };
   const specPath = join(dir, 'spec.json'), out = join(dir, 'result.json');
   writeFileSync(specPath, JSON.stringify(spec));
   const child = spawn(process.execPath, [tool, specPath, out], { stdio: ['ignore', 'ignore', 'pipe'] });
@@ -30,6 +30,8 @@ test('host measurement completes real turns and omits idle CPU when no idle inte
       assert.equal(result.raw.length, 2);
       assert.ok(result.raw.every(row => row.hostRssBytes > 0 && row.agentReadyMs >= row.hostReadyMs));
       assert.ok(!('idleCpuOneCorePercent' in result.metrics));
+      assert.ok(result.implementation.dependencyArtifacts[0].bytes > 0);
+      assert.match(result.implementation.dependencyArtifacts[0].sha256, /^[a-f0-9]{64}$/);
     }
     assert.equal(existsSync(JSON.parse(stderr().split('\n')[0]).dir), false);
   });
