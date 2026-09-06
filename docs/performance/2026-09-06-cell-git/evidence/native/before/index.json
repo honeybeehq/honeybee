@@ -1,0 +1,94 @@
+{
+  "completed": true,
+  "timestamp": "2026-09-06T17:21:12.948Z",
+  "node": "v25.8.0",
+  "revision": "56be58209dd3e42c3795c9573f11f34ef7b9fca1",
+  "workerSha256": "c35a460c17a0e72b0a1f388524ab4d7d90d7aa096c832f24dc75a89c3af352cf",
+  "scriptSha256": "976cba069ce4b157029e1a5c2129705eb44509598152b3c92f17602dbfbbaf5e",
+  "wrapperSha256": "034633e59f60ce8a05d48126963fcc590e279661c1fa06eff375b1e6bbb64737",
+  "workload": {
+    "trackedFiles": 203,
+    "copyMode": "image-cow",
+    "maintenance": "signaled at ready"
+  },
+  "git": {
+    "commands": [
+      [
+        "git",
+        "rev-parse",
+        "--show-object-format"
+      ],
+      [
+        "git",
+        "cat-file",
+        "-e",
+        "39aed8767bff9142b8a7bdb7ba84bff0a5c231b6^{commit}"
+      ],
+      [
+        "git",
+        "init",
+        "/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-v2-cell-rHYfHW/cells/profile/fixture-space-0"
+      ],
+      [
+        "git",
+        "config",
+        "core.hooksPath",
+        "/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-v2-cell-rHYfHW/cells/profile/box/hooks-empty"
+      ],
+      [
+        "git",
+        "config",
+        "core.fsmonitor",
+        "false"
+      ],
+      [
+        "git",
+        "remote",
+        "get-url",
+        "origin"
+      ],
+      [
+        "git",
+        "cat-file",
+        "-e",
+        "39aed8767bff9142b8a7bdb7ba84bff0a5c231b6^{commit}"
+      ],
+      [
+        "git",
+        "checkout",
+        "--force",
+        "--detach",
+        "39aed8767bff9142b8a7bdb7ba84bff0a5c231b6"
+      ]
+    ],
+    "commandCount": 8,
+    "wallMs": 143.287
+  },
+  "files": [
+    {
+      "name": "worker.cpuprofile",
+      "sha256": "560e3863bc1846a4d688095203236b87ae8dc8dc2c20090478ce0eb80af710ef",
+      "compressedName": "worker.cpuprofile.gz",
+      "compressedSha256": "8773043b3bccb3f08db4278390e9f748e5a4e5d7922659da551f9fe8462e6d15",
+      "originalBytes": 6852,
+      "compressedBytes": 914
+    },
+    {
+      "name": "worker.heapprofile",
+      "sha256": "2aee116771d3e01ea510cc8d55a50d0227aa6c212da41425891987c0e2804903",
+      "compressedName": "worker.heapprofile.gz",
+      "compressedSha256": "89e7f45fd755aa02c7e1f6e05eff46968b09fd5c7d25168b33cef02e1c848408",
+      "originalBytes": 13505,
+      "compressedBytes": 1674
+    },
+    {
+      "name": "git-trace.jsonl",
+      "sha256": "745cccf179d68c1a93d75693100903efa2cb4fa97c930ca6f8bbec048ca6d379",
+      "compressedName": "git-trace.jsonl.gz",
+      "compressedSha256": "a73738e28fc4d26d593c88f856e2bb35c71a0034e6ef2e0d931227717fa59525",
+      "originalBytes": 15290,
+      "compressedBytes": 1871
+    }
+  ],
+  "scope": "Instrumented worker module import and execution; inspector CPU and sampled heap allocation profiles, not private RSS or a full heap snapshot. Profiling overhead excluded from headline timings."
+}
