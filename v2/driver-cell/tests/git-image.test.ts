@@ -2,17 +2,28 @@
  * cache-miss fallback, and origin isolation. */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { once } from "node:events";
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { platform } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import { probeCow } from "../src/cow.ts";
+import { gitEnv } from "../src/git.ts";
 import {
   gitImageRepoKey,
   gitImagesRootForCells,
   readCurrentGitImage,
   refreshGitImage,
+  tryMaterializeGitImage,
 } from "../src/gitImage.ts";
 import { readLedger } from "../src/ledger.ts";
 import { provisionCell, type ProvisionRequest } from "../src/provision.ts";
@@ -117,6 +128,294 @@ test("git-image.provision: hot Cell copies the compact image, not origin metadat
     assert.equal(readFileSync(join(rig.origin.repo, ".git", "MERGE_MSG"), "utf8"), "origin-only state\n");
   } finally {
     rig.cleanup();
+  }
+});
+
+test("git-image.provision: fresh config avoids config subprocesses and preserves init semantics", { skip: !COW_AVAILABLE }, () => {
+  const rig = makeRig();
+  const previousPath = process.env.PATH;
+  const previousTemplateDir = process.env.GIT_TEMPLATE_DIR;
+  const previousRealGit = process.env.HONEYBEE_TEST_REAL_GIT;
+  const previousGitLog = process.env.HONEYBEE_TEST_GIT_LOG;
+  try {
+    const originRepo = join(rig.root, "origin-sha256");
+    mkdirSync(originRepo);
+    g(originRepo, ["init", "--object-format=sha256", "-b", "main"]);
+    writeFileSync(join(originRepo, "README.md"), "# sha256 fixture\n");
+    g(originRepo, ["add", "README.md"]);
+    g(originRepo, ["commit", "-m", "initial"]);
+    const sha = g(originRepo, ["rev-parse", "HEAD"]);
+
+    const cellsRoot = join(rig.root, "cells \\ \" newline\n tab\t # space");
+    const imagesRoot = join(rig.root, "images");
+    refreshGitImage(imagesRoot, originRepo, sha);
+
+    const templateDir = join(rig.root, "template");
+    const templateHooksDir = join(templateDir, "hooks");
+    mkdirSync(templateHooksDir, { recursive: true });
+    writeFileSync(
+      join(templateDir, "config"),
+      "[hive-test]\n\tfromTemplate = kept\n",
+    );
+    writeFileSync(join(templateHooksDir, "pre-commit"), "#!/bin/sh\nexit 97\n", { mode: 0o755 });
+
+    const gitLookup = spawnSync("sh", ["-c", "command -v git"], { encoding: "utf8" });
+    assert.equal(gitLookup.status, 0, gitLookup.stderr);
+    const realGit = gitLookup.stdout.trim();
+    const traceBin = join(rig.root, "trace-bin");
+    const tracePath = join(rig.root, "git-calls.log");
+    mkdirSync(traceBin);
+    writeFileSync(
+      join(traceBin, "git"),
+      "#!/bin/sh\nprintf '%s\\t%s\\n' \"$1\" \"$2\" >> \"$HONEYBEE_TEST_GIT_LOG\"\n\"$HONEYBEE_TEST_REAL_GIT\" \"$@\"\nstatus=$?\nif [ \"$status\" -eq 0 ] && [ \"$1\" = init ]; then\n  for final_arg in \"$@\"; do :; done\n  chmod 0664 \"$final_arg/.git/config\"\nfi\nexit \"$status\"\n",
+      { mode: 0o755 },
+    );
+
+    process.env.GIT_TEMPLATE_DIR = templateDir;
+    process.env.HONEYBEE_TEST_REAL_GIT = realGit;
+    process.env.HONEYBEE_TEST_GIT_LOG = tracePath;
+    process.env.PATH = `${traceBin}${delimiter}${previousPath ?? ""}`;
+    const cell = provisionCell(
+      cellsRoot,
+      {
+        beeId: "bee-config",
+        originRepo,
+        sha,
+        wrapper: "bee-config",
+        repoName: "fixture",
+        cellId: "config",
+      },
+      "cmd-config",
+      { gitImagesRoot: imagesRoot },
+    );
+    if (previousPath === undefined) delete process.env.PATH;
+    else process.env.PATH = previousPath;
+
+    assert.equal(cell.copyMode, "image-cow");
+    assert.doesNotMatch(
+      readFileSync(tracePath, "utf8"),
+      /^config\tcore\.(?:hooksPath|fsmonitor)$/mu,
+      "fresh image placement must not spawn git config",
+    );
+
+    const hooksPath = spawnSync(
+      realGit,
+      ["-C", cell.paths.spaceDir, "config", "--null", "--get", "core.hooksPath"],
+      { encoding: "utf8", env: gitEnv() },
+    );
+    assert.equal(hooksPath.status, 0, hooksPath.stderr);
+    assert.equal(hooksPath.stdout, `${cell.paths.emptyHooksDir}\0`);
+    assert.equal(g(cell.paths.spaceDir, ["config", "--type=bool", "core.fsmonitor"]), "false");
+    assert.equal(g(cell.paths.spaceDir, ["config", "hive-test.fromTemplate"]), "kept");
+    assert.equal(g(cell.paths.spaceDir, ["config", "core.repositoryformatversion"]), "1");
+    assert.match(g(cell.paths.spaceDir, ["config", "--type=bool", "core.filemode"]), /^(?:true|false)$/u);
+    assert.equal(g(cell.paths.spaceDir, ["config", "--type=bool", "core.bare"]), "false");
+    assert.equal(g(cell.paths.spaceDir, ["config", "--type=bool", "core.logallrefupdates"]), "true");
+    assert.equal(g(cell.paths.spaceDir, ["config", "extensions.objectformat"]), "sha256");
+    assert.equal(statSync(join(cell.paths.spaceDir, ".git", "config")).mode & 0o7777, 0o664);
+    assert.ok(existsSync(join(cell.paths.spaceDir, ".git", "hooks", "pre-commit")));
+
+    assert.equal(g(cell.paths.spaceDir, ["status", "--porcelain"]), "");
+    writeFileSync(join(cell.paths.spaceDir, "hook-proof.txt"), "hook stays inert\n");
+    g(cell.paths.spaceDir, ["add", "hook-proof.txt"]);
+    g(cell.paths.spaceDir, ["commit", "-m", "prove hooks are inert"]);
+  } finally {
+    if (previousPath === undefined) delete process.env.PATH;
+    else process.env.PATH = previousPath;
+    if (previousTemplateDir === undefined) delete process.env.GIT_TEMPLATE_DIR;
+    else process.env.GIT_TEMPLATE_DIR = previousTemplateDir;
+    if (previousRealGit === undefined) delete process.env.HONEYBEE_TEST_REAL_GIT;
+    else process.env.HONEYBEE_TEST_REAL_GIT = previousRealGit;
+    if (previousGitLog === undefined) delete process.env.HONEYBEE_TEST_GIT_LOG;
+    else process.env.HONEYBEE_TEST_GIT_LOG = previousGitLog;
+    rig.cleanup();
+  }
+});
+
+test("git-image.provision: Git fallback preserves control paths and replaces template safety keys", { skip: !COW_AVAILABLE }, () => {
+  const rig = makeRig();
+  const previousTemplateDir = process.env.GIT_TEMPLATE_DIR;
+  const previousFsmonitorMarker = process.env.HONEYBEE_TEST_FSMONITOR_MARKER;
+  try {
+    const cellsRoot = join(rig.root, "cells \\ \" newline\n tab\t cr\r # space");
+    const imagesRoot = join(rig.root, "images");
+    refreshGitImage(imagesRoot, rig.origin.repo, rig.origin.sha);
+
+    const templateDir = join(rig.root, "template-fallback");
+    const templateHooksDir = join(templateDir, "hooks");
+    const fsmonitorHook = join(rig.root, "template-fsmonitor");
+    const fsmonitorMarker = join(rig.root, "fsmonitor-ran");
+    mkdirSync(templateHooksDir, { recursive: true });
+    writeFileSync(
+      join(templateDir, "config"),
+      `[core]\n\thooksPath = .git/hooks\n\tfsmonitor = "${fsmonitorHook}"\n[hive-test]\n\tfromTemplate = kept\n`,
+    );
+    writeFileSync(join(templateHooksDir, "pre-commit"), "#!/bin/sh\nexit 97\n", { mode: 0o755 });
+    writeFileSync(
+      fsmonitorHook,
+      "#!/bin/sh\n: > \"$HONEYBEE_TEST_FSMONITOR_MARKER\"\nexit 1\n",
+      { mode: 0o755 },
+    );
+    process.env.GIT_TEMPLATE_DIR = templateDir;
+    process.env.HONEYBEE_TEST_FSMONITOR_MARKER = fsmonitorMarker;
+
+    const cell = provisionCell(
+      cellsRoot,
+      request(rig, "bee-config-fallback", "fallback"),
+      "cmd-config-fallback",
+      { gitImagesRoot: imagesRoot },
+    );
+    assert.equal(cell.copyMode, "image-cow");
+
+    const hooksPaths = spawnSync(
+      "git",
+      ["-C", cell.paths.spaceDir, "config", "--null", "--get-all", "core.hooksPath"],
+      { encoding: "utf8", env: gitEnv() },
+    );
+    assert.equal(hooksPaths.status, 0, hooksPaths.stderr);
+    assert.equal(hooksPaths.stdout, `${cell.paths.emptyHooksDir}\0`);
+    const fsmonitorValues = spawnSync(
+      "git",
+      ["-C", cell.paths.spaceDir, "config", "--null", "--get-all", "core.fsmonitor"],
+      { encoding: "utf8", env: gitEnv() },
+    );
+    assert.equal(fsmonitorValues.status, 0, fsmonitorValues.stderr);
+    assert.equal(fsmonitorValues.stdout, "false\0");
+    assert.equal(g(cell.paths.spaceDir, ["config", "hive-test.fromTemplate"]), "kept");
+    assert.ok(existsSync(join(cell.paths.spaceDir, ".git", "hooks", "pre-commit")));
+
+    assert.equal(g(cell.paths.spaceDir, ["status", "--porcelain"]), "");
+    writeFileSync(join(cell.paths.spaceDir, "hook-proof.txt"), "hooks stay inert\n");
+    g(cell.paths.spaceDir, ["add", "hook-proof.txt"]);
+    g(cell.paths.spaceDir, ["commit", "-m", "prove fallback hooks are inert"]);
+    assert.equal(existsSync(fsmonitorMarker), false, "template fsmonitor hook must stay inert");
+  } finally {
+    if (previousTemplateDir === undefined) delete process.env.GIT_TEMPLATE_DIR;
+    else process.env.GIT_TEMPLATE_DIR = previousTemplateDir;
+    if (previousFsmonitorMarker === undefined) delete process.env.HONEYBEE_TEST_FSMONITOR_MARKER;
+    else process.env.HONEYBEE_TEST_FSMONITOR_MARKER = previousFsmonitorMarker;
+    rig.cleanup();
+  }
+});
+
+test("git-image.provision: symlinked template config retains Git's update behavior", { skip: !COW_AVAILABLE }, () => {
+  const rig = makeRig();
+  const previousTemplateDir = process.env.GIT_TEMPLATE_DIR;
+  try {
+    const imagesRoot = gitImagesRootForCells(rig.cellsRoot);
+    refreshGitImage(imagesRoot, rig.origin.repo, rig.origin.sha);
+
+    const templateDir = join(rig.root, "template-symlink");
+    const configTarget = join(rig.root, "shared-template-config");
+    mkdirSync(templateDir);
+    writeFileSync(configTarget, "[hive-test]\n\tsymlink = kept\n");
+    symlinkSync(configTarget, join(templateDir, "config"));
+    process.env.GIT_TEMPLATE_DIR = templateDir;
+
+    const cell = provisionCell(
+      rig.cellsRoot,
+      request(rig, "bee-config-symlink", "symlink"),
+      "cmd-config-symlink",
+      { gitImagesRoot: imagesRoot },
+    );
+    assert.equal(cell.copyMode, "image-cow");
+    assert.equal(lstatSync(join(cell.paths.spaceDir, ".git", "config")).isSymbolicLink(), true);
+    assert.equal(g(cell.paths.spaceDir, ["config", "hive-test.symlink"]), "kept");
+    assert.equal(g(cell.paths.spaceDir, ["config", "core.hooksPath"]), cell.paths.emptyHooksDir);
+    assert.equal(g(cell.paths.spaceDir, ["config", "core.fsmonitor"]), "false");
+    assert.match(readFileSync(configTarget, "utf8"), /hooksPath/u);
+  } finally {
+    if (previousTemplateDir === undefined) delete process.env.GIT_TEMPLATE_DIR;
+    else process.env.GIT_TEMPLATE_DIR = previousTemplateDir;
+    rig.cleanup();
+  }
+});
+
+test("git-image.materialize: template multivalue and config lock remain cache misses", { skip: !COW_AVAILABLE }, () => {
+  const templateCases: ("multivalue" | "lock")[] = ["multivalue", "lock"];
+  const previousTemplateDir = process.env.GIT_TEMPLATE_DIR;
+  try {
+    for (const templateCase of templateCases) {
+      if (previousTemplateDir === undefined) delete process.env.GIT_TEMPLATE_DIR;
+      else process.env.GIT_TEMPLATE_DIR = previousTemplateDir;
+      const rig = makeRig();
+      try {
+        const imagesRoot = gitImagesRootForCells(rig.cellsRoot);
+        refreshGitImage(imagesRoot, rig.origin.repo, rig.origin.sha);
+        const templateDir = join(rig.root, `template-${templateCase}`);
+        mkdirSync(templateDir);
+        if (templateCase === "multivalue") {
+          writeFileSync(
+            join(templateDir, "config"),
+            "[core]\n\thooksPath = /first\n\thooksPath = /second\n",
+          );
+        } else {
+          writeFileSync(join(templateDir, "config.lock"), "occupied\n");
+        }
+        process.env.GIT_TEMPLATE_DIR = templateDir;
+
+        const boxDir = join(rig.root, `box-${templateCase}`);
+        const spaceDir = join(rig.root, `space-${templateCase}`);
+        mkdirSync(boxDir);
+        assert.equal(
+          tryMaterializeGitImage(
+            imagesRoot,
+            rig.origin.repo,
+            rig.origin.sha,
+            spaceDir,
+            boxDir,
+            join(boxDir, "hooks-empty"),
+          ),
+          null,
+        );
+        assert.equal(existsSync(spaceDir), false);
+      } finally {
+        rig.cleanup();
+      }
+    }
+  } finally {
+    if (previousTemplateDir === undefined) delete process.env.GIT_TEMPLATE_DIR;
+    else process.env.GIT_TEMPLATE_DIR = previousTemplateDir;
+  }
+});
+
+test("git-image.provision: preserves absent, same, and rewritten split remotes", { skip: !COW_AVAILABLE }, () => {
+  const remoteCases: ("absent" | "same" | "split")[] = ["absent", "same", "split"];
+  for (const remoteCase of remoteCases) {
+    const rig = makeRig();
+    try {
+      const fetchBase = `${join(rig.root, "fetch")}/`;
+      const pushBase = `${join(rig.root, "push")}/`;
+      if (remoteCase !== "absent") {
+        g(rig.origin.repo, ["remote", "add", "origin", "fixture:repo"]);
+        g(rig.origin.repo, ["config", `url.${fetchBase}.insteadOf`, "fixture:"]);
+        if (remoteCase === "split") {
+          g(rig.origin.repo, ["config", `url.${pushBase}.pushInsteadOf`, "fixture:"]);
+        }
+      }
+
+      const imagesRoot = gitImagesRootForCells(rig.cellsRoot);
+      refreshGitImage(imagesRoot, rig.origin.repo, rig.origin.sha);
+      const cell = provisionCell(
+        rig.cellsRoot,
+        request(rig, `bee-remote-${remoteCase}`, remoteCase),
+        `cmd-remote-${remoteCase}`,
+        { gitImagesRoot: imagesRoot },
+      );
+      assert.equal(cell.copyMode, "image-cow");
+
+      if (remoteCase === "absent") {
+        assert.equal(g(cell.paths.spaceDir, ["remote"]), "");
+      } else {
+        assert.equal(g(cell.paths.spaceDir, ["remote", "get-url", "origin"]), `${fetchBase}repo`);
+        assert.equal(
+          g(cell.paths.spaceDir, ["remote", "get-url", "--push", "origin"]),
+          remoteCase === "split" ? `${pushBase}repo` : `${fetchBase}repo`,
+        );
+      }
+    } finally {
+      rig.cleanup();
+    }
   }
 });
 

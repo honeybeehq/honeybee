@@ -137,7 +137,7 @@ test("provision-worker: a fresh image hit exits after ready without maintenance 
 
     assert.deepEqual(await within(run.result, 15_000, "fresh image result"), { ok: true });
     const commandsAtReady = gitCommands(tracePath);
-    assert.equal(commandsAtReady.length, 8, "fresh image placement must not run the four-command refresh");
+    assert.equal(commandsAtReady.length, 6, "fresh image placement must skip config and refresh children");
     assert.equal(await within(run.exit, 2_000, "fresh image worker exit"), 0);
     assert.deepEqual(gitCommands(tracePath), commandsAtReady, "ready must be the final Git boundary");
 
