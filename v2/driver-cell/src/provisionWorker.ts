@@ -1,5 +1,7 @@
 import { parentPort, workerData } from "node:worker_threads";
 import { gitImagesRootForCells, refreshGitImage } from "./gitImage.ts";
+import { cellPaths } from "./layout.ts";
+import { readLedger } from "./ledger.ts";
 import { provisionCell, type ProvisionRequest } from "./provision.ts";
 
 interface ProvisionWorkerData {
@@ -43,13 +45,21 @@ async function waitForMaintenanceStart(): Promise<void> {
 }
 
 const data = workerData as ProvisionWorkerData;
+let provisionedFreshImage = false;
 
 try {
-  provisionCell(data.cellsRoot, data.request, data.opId, {
+  const request = data.request;
+  const paths = cellPaths(data.cellsRoot, request.wrapper, request.repoName, request.cellId);
+  const ledger = readLedger(paths.ledgerPath);
+  // `replayed` stays false when an incomplete operation resumes. Remember the
+  // pre-call state so only a genuinely first provisioning can skip its retry.
+  const hadProvisionAttempt = ledger != null && Object.keys(ledger.operations).length > 0;
+  const cell = provisionCell(data.cellsRoot, request, data.opId, {
     disableCow: data.disableCow,
     useGitImages: data.useGitImages,
     gitImagesRoot: data.gitImagesRoot,
   });
+  provisionedFreshImage = !hadProvisionAttempt && !cell.replayed && cell.copyMode === "image-cow";
   parentPort?.postMessage({ ok: true } satisfies ProvisionWorkerResult);
 } catch (error) {
   parentPort?.postMessage({
@@ -59,10 +69,10 @@ try {
   process.exitCode = 1;
 }
 
-// Post-turn maintenance retries any foreground image miss/failure and is a
-// cheap ready check when provisioning already ensured the requested graph. A
-// cache failure must never turn a correct, provisioned Cell into a failed start.
-if (process.exitCode == null && data.useGitImages && !data.disableCow) {
+// Fresh image placement already validated the requested graph. Replays and
+// fallback placements keep the deferred retry because the image may be gone
+// or stale. A cache failure never turns a provisioned Cell into a failed start.
+if (process.exitCode == null && data.useGitImages && !data.disableCow && !provisionedFreshImage) {
   await waitForMaintenanceStart();
   try {
     refreshGitImage(
