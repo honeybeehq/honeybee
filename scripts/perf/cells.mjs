@@ -18,6 +18,8 @@ const out = resolve(option('--out', '.artifacts/performance/cells.json'));
 const samples = Number(option('--samples', '5'));
 const mode = option('--mode', 'provision');
 const holdMs = Number(option('--hold-ms', '2000'));
+const remoteMode = option('--remote-mode', 'none');
+assert.ok(['none', 'same', 'split'].includes(remoteMode));
 assert.ok(Number.isSafeInteger(samples) && samples >= 1 && samples <= 100);
 assert.ok(Number.isSafeInteger(holdMs) && holdMs >= 100 && holdMs <= 60000);
 assert.ok(['provision', 'worker'].includes(mode));
@@ -40,7 +42,7 @@ const priorTrace = process.env.GIT_TRACE2_EVENT;
 mkdirSync(dirname(out), { recursive: true });
 const traceDir = `${out}.traces`; mkdirSync(traceDir, { recursive: true });
 const report = { schemaVersion: 1, timestamp: new Date().toISOString(), source: { revision: gitCommand('rev-parse', 'HEAD'), status: gitCommand('status', '--porcelain') },
-  workload: { mode, samples, holdMs, trackedFiles: 203, warmFiles: 1000, runtime: 'source provision function / built provision-worker', trace2: true },
+  workload: { mode, samples, holdMs, remoteMode, trackedFiles: 203, warmFiles: 1000, runtime: 'source provision function / built provision-worker', trace2: true },
   environment: { node: process.version, platform: process.platform, arch: process.arch, cpu: cpus()[0]?.model, hostname: hostname(), loadBefore: loadavg() },
   toolSha256: createHash('sha256').update(readFileSync(new URL(import.meta.url))).update(readFileSync(new URL('./git-trace.mjs', import.meta.url))).digest('hex'), results: [],
   scope: 'Real disposable origin/image/checkout; warm OS caches. Node CPU excludes git/cp children; Git Trace2 supplies child command wall time. RSS includes parent and worker threads, not child processes. Logical bytes are not physical CoW allocation.' };
@@ -53,6 +55,13 @@ try {
   let sha = g(rig.origin.repo, ['rev-parse', 'HEAD']);
   const warm = join(rig.origin.repo, 'node_modules'); mkdirSync(warm);
   for (let i = 0; i < 1000; i++) writeFileSync(join(warm, `file-${i}.txt`), `dependency-${i}\n`.repeat(32));
+  // A real remote adds configuration work even though provisioning stays local.
+  const fetchUrl = 'https://example.invalid/fixture.git';
+  const pushUrl = remoteMode === 'split' ? 'ssh://git@example.invalid/fixture-push.git' : fetchUrl;
+  if (remoteMode !== 'none') {
+    g(rig.origin.repo, ['remote', 'add', 'origin', fetchUrl]);
+    if (remoteMode === 'split') g(rig.origin.repo, ['remote', 'set-url', '--push', 'origin', pushUrl]);
+  }
   const sharedImages = join(rig.root, 'images');
   const image = refreshGitImage(sharedImages, rig.origin.repo, sha);
   assert.ok(image.status === 'refreshed' || image.status === 'ready', 'fixture requires working local Git images');
@@ -107,6 +116,10 @@ try {
       assert.equal(g(cell.paths.spaceDir, ['rev-parse', 'HEAD']), sha);
       assert.equal(g(cell.paths.spaceDir, ['status', '--porcelain']), '');
       assert.deepEqual(fingerprintOrigin(rig.origin.repo), fingerprint);
+      if (remoteMode !== 'none' && scenario !== 'clone') {
+        assert.equal(g(cell.paths.spaceDir, ['remote', 'get-url', 'origin']), fetchUrl);
+        assert.equal(g(cell.paths.spaceDir, ['remote', 'get-url', '--push', 'origin']), pushUrl);
+      }
       assert.equal(readFileSync(join(cell.paths.spaceDir, 'src/file-199.txt'), 'utf8'), 'tracked-199\n'.repeat(32));
       if (scenario === 'image-warm-files') assert.equal(readFileSync(join(cell.paths.spaceDir, 'node_modules/file-999.txt'), 'utf8'), 'dependency-999\n'.repeat(32));
       rows.at(-1).logicalCellBytes = logicalBytes(cell.paths.wrapperDir);

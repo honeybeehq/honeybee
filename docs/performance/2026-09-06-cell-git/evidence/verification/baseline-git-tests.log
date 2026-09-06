@@ -1,0 +1,17 @@
+✔ git-image.refresh: publishes one validated pack-only generation without mutating the origin (1968.878917ms)
+✔ git-image.provision: hot Cell copies the compact image, not origin metadata (2573.981542ms)
+✔ git-image.provision: the first Cell builds an image in its worker and uses it (2212.418708ms)
+✔ git-image.refresh: first generation CoW-seeds origin packs and packs only the loose delta (2428.699958ms)
+✔ git-image.provision: a stale image is incrementally extended before checkout (4120.399292ms)
+✔ git-image.corruption: malformed publication is rebuilt before Cell placement (4805.119833ms)
+✔ git-image.policy: an existing image is ignored when the node policy disables local images (4184.713042ms)
+✔ git-image.lock: a provisioning contender waits for publication, then extends the image (6319.757792ms)
+✔ git-image.lock: live builder is single-flight and a stale lock is recovered (4265.729875ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 9
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 34896.1095

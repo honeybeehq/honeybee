@@ -17,7 +17,7 @@ async function run(script, args) {
 }
 
 for (const [name, script, flags] of [
-  ['individual worker', 'scripts/perf/cells.mjs', ['--mode', 'worker']],
+  ['individual worker', 'scripts/perf/cells.mjs', ['--mode', 'worker', '--remote-mode', 'split']],
   ['worker cohort', 'scripts/perf/cell-cohort.mjs', ['--width', '1']],
 ]) {
   test(`${name}: repeated captures replace Git evidence instead of adding old commands`, async () => {
@@ -29,6 +29,7 @@ for (const [name, script, flags] of [
         await run(script, ['--root', resolve('.'), '--out', out, '--samples', '1', '--hold-ms', '100', ...flags]);
         const report = JSON.parse(readFileSync(out, 'utf8'));
         assert.equal(report.completed, true);
+        if (name === 'individual worker') assert.equal(report.workload.remoteMode, 'split');
         assert.match(report.source.workerSha256, /^[a-f0-9]{64}$/);
         const next = report.results[0].metrics.gitCommandCount.p50;
         assert.ok(next > 0);
