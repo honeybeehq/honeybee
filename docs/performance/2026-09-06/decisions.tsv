@@ -1,0 +1,4 @@
+ts	phase	decision	why	evidence	result
+2026-09-06T03:41:40Z	frame	Use an isolated worktree and map before optimizing	Preserve concurrent work and capture baseline behavior before changes	workflow.md; baseline 8506467f	open
+2026-09-06T03:53:02Z	measurement	Build provider-free core, daemon, CLI and process-tree measurements	A common workload and raw samples are needed before speed claims	scripts/perf; system-map.md; .artifacts/performance/baseline-core.json	VERIFIED: benchmark smokes; initial runs exploratory under background build load
+2026-09-06T03:53:02Z	verification	Establish correctness baseline at 8506467f	Distinguish existing failures from performance regressions	.artifacts/performance/baseline-typecheck.log; .artifacts/performance/baseline-check.log; .artifacts/performance/baseline-build.log; .artifacts/performance/baseline-core-tests.log; .artifacts/performance/baseline-invariants.log	VERIFIED: typechecks and build; 174 core tests; 14 invariant tests
