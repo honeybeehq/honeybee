@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, rmSync, statSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -8,6 +8,12 @@ import { spawnSync } from 'node:child_process';
 import { distribution } from './report.mjs';
 
 const { root, samples, idleMs, scenario } = JSON.parse(process.argv[2]);
+let cleanupAction = async () => {};
+let cleanupPromise;
+const cleanupOnce = () => cleanupPromise ??= cleanupAction();
+for (const [signal, exitCode] of [['SIGTERM', 143], ['SIGINT', 130]]) {
+  process.once(signal, () => { void cleanupOnce().then(() => process.exit(exitCode), error => { console.error(error); process.exit(1); }); });
+}
 const importAt = performance.now();
 const local = path => import(pathToFileURL(join(root, path)).href);
 const { openCoreStore } = await local('v2/core/src/index.ts');
@@ -91,7 +97,7 @@ if (scenario.kind === 'core') {
     const times = [];
     for (let i = -3; i < samples; i++) {
       const t = performance.now();
-      const p = spawnSync(process.execPath, [join(root, 'dist/cli.js'), '--help'], { encoding: 'utf8', timeout: 30000, env: { ...process.env, HIVE_STORE_ROOT: dir, HIVE_V2_DATA_DIR: dir, HIVE_NO_KEYCHAIN: '1' } });
+      const p = spawnSync(process.execPath, [join(root, 'dist/cli.js'), 'help'], { encoding: 'utf8', timeout: 30000, env: { ...process.env, HIVE_STORE_ROOT: dir, HIVE_V2_DATA_DIR: dir, HIVE_NO_KEYCHAIN: '1' } });
       assert.equal(p.status, 0, p.stderr);
       assert.match(p.stdout, /hive/);
       if (i >= 0) times.push(performance.now() - t);
@@ -105,6 +111,26 @@ if (scenario.kind === 'core') {
   const { RpcClient } = await local('v2/cli/src/client.ts');
   const { dir, cleanup } = makeDaemonDir({ tickMs: 200, naming: { auto: false } });
   let daemon, client;
+  process.stderr.write(JSON.stringify({ event: 'fixture', dir }) + '\n');
+  const waitForHosts = async () => {
+    await waitFor(() => {
+      let names;
+      try { names = readdirSync(join(dir, 'runners')); } catch { return true; }
+      return names.filter(name => name.endsWith('.status.json')).every(name => {
+        try {
+          const status = JSON.parse(readFileSync(join(dir, 'runners', name), 'utf8'));
+          if (!Number.isSafeInteger(status.hostPid) || status.hostPid <= 0) return false;
+          try { process.kill(status.hostPid, 0); return false; } catch (error) { return error.code === 'ESRCH'; }
+        } catch { return false; }
+      });
+    }, 'owned runner hosts reaped', 10000);
+  };
+  cleanupAction = async () => {
+    client?.close();
+    await daemon?.shutdown({ preserveRuntimes: false });
+    await waitForHosts();
+    cleanup();
+  };
   try {
     const store = openCoreStore(join(dir, 'core.sqlite3'));
     seed(store, scenario.bees);
@@ -156,11 +182,10 @@ if (scenario.kind === 'core') {
     const stop = performance.now(); await daemon.shutdown({ preserveRuntimes: false }); daemon = undefined;
     record('daemon.shutdown', [performance.now() - stop]);
     // Let the owned runner host finish its asynchronous teardown before cleanup.
-    await sleep(1000);
+    await waitForHosts();
     observations.memoryAfter = process.memoryUsage();
   } finally {
-    client?.close(); await daemon?.shutdown({ preserveRuntimes: false });
-    cleanup();
+    await cleanupOnce();
   }
 }
 console.log(JSON.stringify({ scenario: `${scenario.kind}-${scenario.bees}${scenario.generations ? `x${scenario.generations}` : ''}`, metrics, raw, observations }));

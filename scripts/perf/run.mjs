@@ -9,7 +9,7 @@ import { compareReports } from './report.mjs';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
-function option(name, fallback) { const at = args.indexOf(name); if (at < 0) return fallback; assert.ok(args[at + 1] && !args[at + 1].startsWith('--'), `${name} requires a value`); return args[at + 1]; }
+function option(name, fallback) { const at = args.indexOf(name); if (at < 0) { assert.ok(fallback !== undefined, `${name} is required`); return fallback; } assert.ok(args[at + 1] && !args[at + 1].startsWith('--'), `${name} requires a value`); return args[at + 1]; }
 if (args.includes('--compare')) {
   const b = JSON.parse(readFileSync(option('--before'), 'utf8'));
   const a = JSON.parse(readFileSync(option('--after'), 'utf8'));
@@ -47,8 +47,8 @@ for (const scenario of scenarios) {
   const name = `${scenario.kind}-${scenario.bees}${scenario.generations ? `x${scenario.generations}` : ''}`;
   process.stderr.write(`Measuring ${name}\n`);
   const profiling = profileDir ? ['--cpu-prof', `--cpu-prof-dir=${resolve(profileDir)}`, `--cpu-prof-name=${name}.cpuprofile`, '--heap-prof', `--heap-prof-dir=${resolve(profileDir)}`, `--heap-prof-name=${name}.heapprofile`] : [];
-  const p = spawnSync(process.execPath, [...profiling, join(scriptDir, 'worker.mjs'), JSON.stringify({ root, samples, idleMs, scenario })], { cwd: root, encoding: 'utf8', timeout: 300000, maxBuffer: 16 * 1024 * 1024, env: { ...process.env, HIVE_NO_KEYCHAIN: '1', HIVE_PERF_DIR: profileDir ? resolve(profileDir) : '', NODE_COMPILE_CACHE: join(root, '.cache/performance-node') } });
-  if (p.status !== 0) throw new Error(`${name} failed (${p.status}): ${p.stderr}\n${p.stdout}`);
+  const p = spawnSync(process.execPath, [...profiling, join(scriptDir, 'worker.mjs'), JSON.stringify({ root, samples, idleMs, scenario })], { cwd: root, encoding: 'utf8', timeout: 120000 + idleMs * 3 + samples * 2000, maxBuffer: 16 * 1024 * 1024, env: { ...process.env, HIVE_NO_KEYCHAIN: '1', HIVE_PERF_DIR: profileDir ? resolve(profileDir) : '', NODE_COMPILE_CACHE: join(root, '.cache/performance-node') } });
+  if (p.status !== 0) throw new Error(`${name} failed (${p.status}; ${p.error?.message ?? p.signal ?? 'exit'}): ${p.stderr}\n${p.stdout}`);
   report.results.push(JSON.parse(p.stdout));
   writeFileSync(out, JSON.stringify(report, null, 2) + '\n');
 }

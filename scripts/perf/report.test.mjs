@@ -10,7 +10,7 @@ test('nearest-rank percentiles preserve raw samples and reject invalid observati
   assert.throws(() => distribution([NaN]));
 });
 
-const report = () => ({ schemaVersion: 1, workload: { samples: 3 }, environment: { node: '24', platform: 'darwin', arch: 'arm64', cpu: 'test', hostname: 'test' }, results: [{ scenario: 'idle', metrics: { wall: { unit: 'ms', ...distribution([2, 4, 6]) } } }] });
+const report = () => ({ schemaVersion: 1, workload: { samples: 3, scenarios: ['idle'] }, environment: { node: '24', platform: 'darwin', arch: 'arm64', cpu: 'test', hostname: 'test' }, results: [{ scenario: 'idle', metrics: { wall: { unit: 'ms', ...distribution([2, 4, 6]) } } }] });
 test('comparison computes changes and refuses incompatible evidence', () => {
   const b = report(), a = report();
   a.results[0].metrics.wall = { unit: 'ms', ...distribution([1, 2, 3]) };
@@ -18,6 +18,23 @@ test('comparison computes changes and refuses incompatible evidence', () => {
   for (const mutate of [r => r.workload.samples++, r => r.environment.node = '25', r => r.results[0].scenario = 'busy', r => r.results[0].metrics.wall.unit = 'bytes', r => r.results[0].metrics.extra = {}, r => r.schemaVersion++]) {
     const bad = report(); mutate(bad); assert.throws(() => compareReports(b, bad));
   }
-  b.results[0].metrics.wall.p50 = 0;
+  b.results[0].metrics.wall = { unit: 'ms', ...distribution([0, 0, 0]) };
   assert.equal(compareReports(b, a)[0].deltaPercent, null);
+});
+
+
+test('comparison rejects missing, nonnumeric and nonfinite metric evidence', () => {
+  for (const key of ['min', 'p50', 'p95', 'max', 'mean', 'n']) {
+    for (const value of [undefined, NaN, Infinity, '2', -1]) {
+      const bad = report(); bad.results[0].metrics.wall[key] = value;
+      assert.throws(() => compareReports(report(), bad));
+    }
+  }
+});
+
+
+test('matching partial reports cannot pass as a complete comparison', () => {
+  const before = report(), after = report();
+  before.results = []; after.results = [];
+  assert.throws(() => compareReports(before, after), /incomplete capture/);
 });

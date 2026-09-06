@@ -15,7 +15,7 @@ It never connects to the live daemon or uses a provider account.
 Use `--suite core`, `--suite daemon`, or `--suite cli` for a focused experiment.
 Use `--samples 30` for more repetitions and `--idle-ms 10000` for longer quiet
 windows. Each core workload has three warmup calls. CLI results are warm file-cache
-process startups, not cold disk boots. Startup and shutdown metrics have one sample
+process startups with the explicit Node compile cache configured by the runner, not cold disk boots or an uncached installed launch. Startup and shutdown metrics have one sample
 per scenario and need repeated runs to establish a distribution.
 
 Run the same command after the change, with a different output filename. Compare:
@@ -37,6 +37,8 @@ Core workloads cover 10 and 1,000 bees, with concentrated and distributed runtim
 history. Ninety percent are archived. The quiet step asserts that reads and ticks
 produce no audit changes. Daemon workloads cover empty and 1,000-bee stores, RPC
 health/list/snapshot, idle resource use, stub spawn, delivery, and shutdown.
+
+Core and daemon workloads execute TypeScript source with Node type stripping; the CLI workload executes the built bundle. Naming, account refresh and scale-to-zero are disabled in the disposable daemon fixture, so its idle CPU excludes those default-install background activities.
 
 The daemon benchmark runs the daemon and RPC client in the worker process. Idle
 windows issue no RPC. CPU is percent of one core; RSS and heap measurements include
@@ -76,3 +78,11 @@ birth identity changes. CPU is calculated from consecutive observations of the
 same identities. Short-lived processes can be missed. Summed RSS counts shared
 pages more than once and is not private memory. Sampling itself has a measured
 cost in each sample. Use a dedicated host for comparisons that need low noise.
+
+The process sampler caps total process records at 100,000 and marks truncation.
+`ps` CPU time resolution varies by OS; short windows can quantize low CPU use to
+zero. Use longer windows for idle comparisons. The worker handles SIGTERM/SIGINT
+by shutting down its disposable daemon and verifying runner-host exit before
+cleanup. SIGKILL and machine failure cannot run that cleanup. The runner derives
+its timeout from the requested samples and idle windows, and reports timeouts as
+failed captures rather than partial results.
