@@ -70,8 +70,8 @@ const GROUPS: Group[] = [
       ["cell", "remove <bee> [--force]", "delete the cell (dirty guard) + delete the bee"],
       ["cell", "exec <cellId> -- <argv>", "sandboxed retained-Cell exec"],
       ["cell", "retained-remove <cellId>", "delete a retained Cell without deleting the bee"],
-      ["bee", "move <bee> --to <cwd>", "same-node Cell→checkout move"],
-      ["bee", "move-get <moveId>", "read a Cell→checkout move receipt"],
+      ["cell", "move <bee> --cwd <dir>", "same-node Cell→checkout move; infers current placement and repo facts"],
+      ["cell", "move-get <moveId>", "read a Cell→checkout move receipt"],
     ],
   },
   {

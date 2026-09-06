@@ -215,10 +215,13 @@ const VALUE_FLAGS = new Set([
   "--onto",
   "--to",
   "--cell",
+  "--cell-id",
   "--placement-version",
+  "--expected-version",
   "--git-common-dir",
   "--object-format",
   "--head",
+  "--observed-head",
   "--move",
   // v6
   "--parent",
@@ -1652,8 +1655,11 @@ async function cmdMutation(
 async function cmdCell(ctx: CliContext, parsed: Parsed): Promise<number> {
   const sub = parsed.positional[1];
   const needle = parsed.positional[2];
-  const usage = "usage: hive cell capture <bee> --onto <branch> [--rebase] [--idempotency-key k] | cell remove <bee> [--force] [--idempotency-key k] | cell exec <cellId> -- <argv…> | cell retained-remove <cellId> [--force]";
+  const usage = "usage: hive cell move <bee> --cwd <dir> | cell move-get <moveId> | cell capture <bee> --onto <branch> [--rebase] [--idempotency-key k] | cell remove <bee> [--force] [--idempotency-key k] | cell exec <cellId> -- <argv…> | cell retained-remove <cellId> [--force]";
   switch (sub) {
+    case "move":
+    case "move-get":
+      return cmdBee(ctx, parsed);
     case "capture": {
       const onto = parsed.flags.get("--onto") as string | undefined;
       if (!needle || !onto) throw new Error(usage);
@@ -1795,26 +1801,40 @@ async function cmdBee(ctx: CliContext, parsed: Parsed): Promise<number> {
   switch (sub) {
     case "move": {
       if (!needle) throw new Error(usage);
-      const to = parsed.flags.get("--to");
-      const cellId = parsed.flags.get("--cell");
-      const placementRaw = parsed.flags.get("--placement-version");
-      if (typeof to !== "string" || typeof cellId !== "string" || typeof placementRaw !== "string") {
-        throw new Error("usage: hive bee move <bee> --to <cwd> --cell <cellId> --placement-version <n>");
+      const to = parsed.flags.get("--cwd") ?? parsed.flags.get("--to");
+      const cellIdFlag = parsed.flags.get("--cell-id") ?? parsed.flags.get("--cell");
+      const placementRaw = parsed.flags.get("--expected-version") ?? parsed.flags.get("--placement-version");
+      if (typeof to !== "string" || to.length === 0) {
+        throw new Error("usage: hive cell move <bee> --cwd <dir> [--expected-version N] [--cell-id ID]");
+      }
+      const expectedVersion = placementRaw === undefined ? undefined : Number(placementRaw);
+      if (expectedVersion !== undefined && (!Number.isSafeInteger(expectedVersion) || expectedVersion < 0)) {
+        throw new Error("cell move: --expected-version must be a non-negative integer");
+      }
+      if (cellIdFlag !== undefined && (typeof cellIdFlag !== "string" || cellIdFlag.length === 0)) {
+        throw new Error("cell move: --cell-id must be a nonempty Cell UUID");
       }
       const cwd = resolve(to);
       const identity = localRepoIdentity(cwd);
       if (!identity) throw new Error(`bee move: ${cwd} is not a git checkout`);
-      const observedHead = (parsed.flags.get("--head") as string | undefined) ?? revParse(cwd, "HEAD");
+      const observedHead = (parsed.flags.get("--observed-head") as string | undefined) ?? (parsed.flags.get("--head") as string | undefined) ?? revParse(cwd, "HEAD");
       if (!observedHead) throw new Error(`bee move: cannot read HEAD of ${cwd}`);
       const gitCommon = (parsed.flags.get("--git-common-dir") as string | undefined) ?? identity.gitCommonDirRealpath;
       const objectFormat = (parsed.flags.get("--object-format") as string | undefined) ?? identity.objectFormat;
       return withClient(ctx, async (c) => {
         const list = await c.request<ListResult>("list");
         const beeId = resolveBeeIn(list.views, needle);
+        const current = await c.request<ViewResult>("view", { beeId });
+        if (!current.bee) throw new Error(`cell move: bee ${beeId} not found`);
+        // Keep inferred CAS inputs stable across a retry after placement. The
+        // daemon still binds the caller's key to the complete request hash.
+        const previous = current.move?.to.cwd === cwd ? current.move : null;
+        const cellId = cellIdFlag ?? previous?.retainedCellId ?? current.bee.cellId;
+        if (!cellId) throw new Error(`cell move: bee ${beeId} has no Cell`);
         const r = await c.request<BeeMoveResult>("bee.move", {
           beeId,
           idempotencyKey: (parsed.flags.get("--idempotency-key") as string | undefined) ?? randomUUID(),
-          expected: { placementVersion: Number(placementRaw), cellId },
+          expected: { placementVersion: expectedVersion ?? previous?.from.version ?? current.bee.placementVersion, cellId },
           destination: {
             kind: "local_checkout",
             cwd,
