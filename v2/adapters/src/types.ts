@@ -115,8 +115,9 @@ export interface HarnessAdapter {
    * the WP3 manual smoke). readyAtSpawn adapters get a synthetic booted
    * observation at spawn — followed by a synthetic turn_ended when nothing
    * has been injected yet, so the store lands on idle like the driver's own
-   * phase — and start in the idle phase; stdin buffering makes early
-   * delivery safe.
+   * phase — and start in the idle phase. The host transport may still refuse
+   * `not_ready` until its socket is connected; the mailbox retries without
+   * treating daemon-local buffering as delivery.
    */
   readonly readyAtSpawn: boolean;
   /** Lines to write to the runtime's stdin immediately after spawn. */

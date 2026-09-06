@@ -405,11 +405,11 @@ test("session log survives across generations as one verbatim stream (Q1)", asyn
   }
 });
 
-test("readyAtSpawn: silent-until-input runtime is deliverable once its runner socket connects", async (t) => {
+test("readyAtSpawn: silent-until-input runtime becomes deliverable when its runner socket connects", async (t) => {
   // Encodes the WP3 smoke discovery: claude -p --input-format stream-json
   // emits NOTHING until the first stdin message. Waiting for init deadlocks;
-  // readyAtSpawn adapters open their accept point without output, then accept
-  // delivery as soon as the durable runner owns the connected write lane.
+  // readyAtSpawn adapters open their phase accept point immediately, but the
+  // mailbox stays pending until the runner socket can carry the message.
   const dir = mkdtempSync(join(tmpdir(), "hive-drv-ras-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const fake = join(dir, "silent-claude.mjs");
@@ -437,6 +437,8 @@ test("readyAtSpawn: silent-until-input runtime is deliverable once its runner so
   });
   try {
     driver.start("ras-1", 1);
+    const out = driver.deliver("ras-1", 1, 1, "hello");
+    assert.deepEqual(out, { accepted: false, reason: "not_ready" });
     await deliverUntilAccepted(driver, "ras-1", 1, 1, "hello");
     // The synthetic booted observation arrives as soon as the OS confirms the
     // spawn (the `spawn` event, milliseconds) — never gated on the runtime's
@@ -578,24 +580,41 @@ test("readyAtSpawn status poll (deterministic, no spawn): synthetic booted pairs
   }
 });
 
-test("readyAtSpawn with delivery before the driver observes OS confirmation: no synthetic turn_ended", async (t) => {
-  // Delivery after the runner socket connects opens the turn driver-side
-  // (phase running) before observe() folds the status-backed synthetic
-  // booted. A synthetic turn_ended there
-  // would idle the store under a turn that is actually in flight (the
-  // 2026-08-19 'needs your reply while working' class) — so it is suppressed.
+test("readyAtSpawn refuses delivery until the runner socket connects, then opens one real turn before the OS-status poll", async (t) => {
+  // The adapter's accept point is open at spawn, but a line buffered only in
+  // the daemon would disappear on SIGKILL after core marks it delivered. The
+  // mailbox-facing call refuses until the runner owns the connection. Once
+  // connected, delivery can still precede the status poll; its running phase
+  // suppresses the synthetic boot-to-ready turn_ended under the real turn.
   const dir = mkdtempSync(join(tmpdir(), "hive-drv-ras-race-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const fake = join(dir, "silent-claude.mjs");
   writeSilentClaude(fake);
+  let encodeCalls = 0;
+  const adapter: typeof claudeAdapter = {
+    ...claudeAdapter,
+    encodeMessage(body, context) {
+      encodeCalls += 1;
+      return claudeAdapter.encodeMessage(body, context);
+    },
+  };
   const driver = new HsrDriver({
     sessionLogDir: join(dir, "logs"),
-    resolve: () => ({ adapter: claudeAdapter, command: process.execPath, args: [fake] }),
+    resolve: () => ({ adapter, command: process.execPath, args: [fake] }),
   });
   try {
     driver.start("ras-race", 1);
+    assert.deepEqual(
+      driver.deliver("ras-race", 1, 1, "hello"),
+      { accepted: false, reason: "not_ready" },
+      "a daemon-local pending write is not delivery",
+    );
+    assert.equal(driver.consumedGeneration(1), undefined, "core must leave the mailbox row retryable");
+    assert.equal(encodeCalls, 0, "a refused socket retry does not advance adapter request state");
     await deliverUntilAccepted(driver, "ras-race", 1, 1, "hello");
-    const events = await drainUntil(driver, (e) => ofKind(e, "turn_ended").length > 0, 3000);
+    assert.equal(driver.consumedGeneration(1), 1);
+    assert.equal(encodeCalls, 1, "only the accepted attempt is encoded");
+    const events = await drainUntil(driver, (e) => ofKind(e, "turn_ended").length > 0, 15_000);
     assert.equal(ofKind(events, "booted")[0]!.synthetic, true, "spawn-event booted is synthetic");
     const ended = ofKind(events, "turn_ended");
     assert.equal(ended.length, 1, "one turn_ended: the parsed result");

@@ -210,9 +210,9 @@ interface ManagedProcess {
    */
   outboundPending: string[];
   /**
-   * Non-mail protocol lines produced before the host socket finishes
-   * connecting. Mailbox delivery refuses until the socket is connected, so
-   * durable mail never depends on this daemon-only queue.
+   * Adapter-generated non-mail protocol lines awaiting a reconnect. Mail
+   * delivery and interrupts never enter this daemon-local queue: they refuse
+   * `not_ready` until the runner connection can accept them.
    */
   pendingWrites: string[];
   /** The host reported its stdin lane could not be established: refuse
@@ -514,6 +514,9 @@ export class HsrDriver implements RuntimeDriver {
       // carried (v9: synthetic,
       // never boot evidence; an agent that fails to spawn reports spawnError
       // and exits while still booting, counting against the spawn budget).
+      // The phase accept point is open immediately, but deliver() still
+      // refuses until the runner socket is connected: daemon-local buffering
+      // cannot justify a durable mailbox delivered mark across SIGKILL.
       // The driver's phase is idle from here; the synthetic booted below is
       // paired with a synthetic turn_ended so the store lands on the same
       // idle (see pollHost) instead of a `running` no output will ever close.
@@ -596,8 +599,7 @@ export class HsrDriver implements RuntimeDriver {
       }
       if (p.pendingDeliveries.has(messageId)) return { accepted: false, reason: "not_ready" };
     }
-    if (p.hostStyle && p.socketBroken) return { accepted: false, reason: "not_ready" };
-    if (p.hostStyle && (!p.socket || p.socket.destroyed || !p.socket.writable)) {
+    if (p.hostStyle && (p.socketBroken || !p.socket || p.socket.destroyed || !p.socket.writable)) {
       // pendingWrites dies with this daemon. Refuse until the runner's socket
       // is connected so the mailbox row remains durable and retries next tick.
       return { accepted: false, reason: "not_ready" };
@@ -679,9 +681,11 @@ export class HsrDriver implements RuntimeDriver {
       return { interrupted: false, reason: "not_ready" };
     }
     if (typeof p.adapter.encodeInterrupt !== "function") return { interrupted: false, reason: "unsupported" };
+    if (p.hostStyle && (p.socketBroken || !p.socket || p.socket.destroyed || !p.socket.writable)) {
+      return { interrupted: false, reason: "not_ready" };
+    }
     const encoded = p.adapter.encodeInterrupt({ sessionId: p.sessionId, turnId: p.turnId });
     if (encoded == null) return { interrupted: false, reason: "not_ready" };
-    if (p.hostStyle && p.socketBroken) return { interrupted: false, reason: "not_ready" };
     if (!p.hostStyle && (!p.child?.stdin || p.child.stdin.destroyed || !p.child.stdin.writable)) {
       return { interrupted: false, reason: "no_process" };
     }

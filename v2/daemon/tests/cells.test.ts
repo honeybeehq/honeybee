@@ -489,14 +489,28 @@ test("cells.3: daemon SIGKILL → restart re-adopts a live cell bee at full capa
     const sent = await client.request<SendRpcResult>("send", { beeId, body: "@slow:2500 long task" });
     await waitDelivered(client, beeId, sent.messageId, "delivered to gen 1");
     await waitFor(async () => (await client.request<ViewResult>("view", { beeId })).view.runtimeState === "running", "mid-turn");
+    // deliveredAt + running are produced by the driver's synchronous accept
+    // path. The runner's own turn_started is the proof that the child consumed
+    // the prompt and this is genuinely a mid-turn recovery scenario.
     const journalPath = join(rig.dir, "runners", `${beeId}.1.observations.jsonl`);
     await waitFor(() => {
       try {
-        return readFileSync(journalPath, "utf8").includes(`"turn_started","messageId":${sent.messageId}`);
+        return readFileSync(journalPath, "utf8")
+          .split("\n")
+          .some((line) => {
+            if (line.length === 0) return false;
+            const event = JSON.parse(line) as { event?: unknown; messageId?: unknown };
+            return event.event === "turn_started" && event.messageId === sent.messageId;
+          });
       } catch {
         return false;
       }
-    }, "real turn start reached the runner journal", 8_000, 10);
+    }, "runner persisted the turn start", 8_000, 10);
+    assert.equal(
+      readFileSync(journalPath, "utf8").includes(`"turn_ended","messageId":${sent.messageId}`),
+      false,
+      "kill window is after the runner accepted the turn and before completion",
+    );
     const agentPid = (await client.request<ViewResult>("view", { beeId })).runtime?.pid as number;
     agentPids.push(agentPid);
     assert.ok(agentPid > 0);
