@@ -19,6 +19,8 @@ test('paired host comparison validates summaries against samples and preserves z
   pair.results.forEach((row, i) => { row.implementation = { name: `entry-${i}`, entrySha256: String(i) }; });
   assert.equal(compareHosts(pair)[0].deltaPercent, null);
   assert.equal(compareHosts(pair)[0].afterImplementation, 'entry-1');
+  assert.equal(compareHosts(pair)[0].pairedDeltaP50, 1);
+  assert.equal(compareHosts(pair)[0].pairsAfterLower, 0);
   pair.results[1].raw[0].wallMs = Infinity;
   assert.throws(() => compareHosts(pair), /invalid metric/);
 });

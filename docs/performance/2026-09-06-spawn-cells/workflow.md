@@ -37,9 +37,10 @@ For sustained improvement against a metric rather than a one-off fix, use the Hi
 - [x] Merge verified first round into local main.
 - [x] Capture repeated runner-host startup, RSS and CPU baselines with a real stub.
 - [x] Measure cold and warm Cell provisioning, with disposable origins and images.
-- [ ] Design and retain only optimizations supported by before/after evidence.
-- [ ] Verify lifecycle, recovery, packaging, cache correctness and cleanup.
-- [ ] Review independently, commit completed units and hand back clean worktree.
+- [x] Finish production host comparison; Cell optimization retained with verified evidence.
+- [x] Verify each lane: lifecycle, recovery, packaging, cache correctness and cleanup.
+- [x] Verify the combined build and staged Cell lifecycle.
+- [x] Review independently, commit completed units and hand back clean task worktree.
 
 The measurements separate host readiness, harness readiness, daemon-observed
 readiness, Cell checkout readiness and background maintenance. Shared RSS and

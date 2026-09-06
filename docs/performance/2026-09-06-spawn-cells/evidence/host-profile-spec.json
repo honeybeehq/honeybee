@@ -1,0 +1,37 @@
+{
+  "rounds": 2,
+  "idleMs": 0,
+  "agent": "/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-spawn-2026-09-06/v2/driver-hsr/test-agent/agent.mjs",
+  "implementations": [
+    {
+      "name": "baseline-cli",
+      "entry": "/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-2026-09-06/dist/cli.js",
+      "args": [
+        "v2",
+        "runner-host"
+      ],
+      "dependencies": [
+        "/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-2026-09-06/dist/v2/cli.js"
+      ],
+      "nodeArgs": [
+        "--cpu-prof",
+        "--cpu-prof-dir=/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-spawn-2026-09-06/.artifacts/performance/spawn/native-host-profiles/baseline-cli",
+        "--heap-prof",
+        "--heap-prof-dir=/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-spawn-2026-09-06/.artifacts/performance/spawn/native-host-profiles/baseline-cli"
+      ],
+      "revision": "17ce20721e456ad24ae1262b8f34c1987d975bdf"
+    },
+    {
+      "name": "dedicated-host",
+      "entry": "/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-spawn-2026-09-06/dist/v2/runner-host.js",
+      "args": [],
+      "nodeArgs": [
+        "--cpu-prof",
+        "--cpu-prof-dir=/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-spawn-2026-09-06/.artifacts/performance/spawn/native-host-profiles/dedicated-host",
+        "--heap-prof",
+        "--heap-prof-dir=/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-spawn-2026-09-06/.artifacts/performance/spawn/native-host-profiles/dedicated-host"
+      ],
+      "revision": "b6fe51fcf806d8a6e4cfea2e2a402e60820d3026"
+    }
+  ]
+}

@@ -1,0 +1,82 @@
+{
+  "completed": true,
+  "timestamp": "2026-09-06T07:19:46.673Z",
+  "node": "v25.8.0",
+  "revision": "b6fe51fcf806d8a6e4cfea2e2a402e60820d3026",
+  "workerSha256": "c35a460c17a0e72b0a1f388524ab4d7d90d7aa096c832f24dc75a89c3af352cf",
+  "scriptSha256": "976cba069ce4b157029e1a5c2129705eb44509598152b3c92f17602dbfbbaf5e",
+  "wrapperSha256": "034633e59f60ce8a05d48126963fcc590e279661c1fa06eff375b1e6bbb64737",
+  "workload": {
+    "trackedFiles": 203,
+    "copyMode": "image-cow",
+    "maintenance": "signaled at ready"
+  },
+  "git": {
+    "commands": [
+      [
+        "git",
+        "rev-parse",
+        "--show-object-format"
+      ],
+      [
+        "git",
+        "cat-file",
+        "-e",
+        "2d2f95a9f0f53992e371e18671487ea4fe0760d3^{commit}"
+      ],
+      [
+        "git",
+        "init",
+        "/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-v2-cell-NSB877/cells/profile/fixture-space-0"
+      ],
+      [
+        "git",
+        "config",
+        "core.hooksPath",
+        "/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-v2-cell-NSB877/cells/profile/box/hooks-empty"
+      ],
+      [
+        "git",
+        "config",
+        "core.fsmonitor",
+        "false"
+      ],
+      [
+        "git",
+        "remote",
+        "get-url",
+        "origin"
+      ],
+      [
+        "git",
+        "cat-file",
+        "-e",
+        "2d2f95a9f0f53992e371e18671487ea4fe0760d3^{commit}"
+      ],
+      [
+        "git",
+        "checkout",
+        "--force",
+        "--detach",
+        "2d2f95a9f0f53992e371e18671487ea4fe0760d3"
+      ]
+    ],
+    "commandCount": 8,
+    "wallMs": 170.012
+  },
+  "files": [
+    {
+      "name": "worker.cpuprofile",
+      "sha256": "436d8c0a30e4f2684a78a845cbd6b16dbf6db5cb885fd71d966f927019513a3d"
+    },
+    {
+      "name": "worker.heapprofile",
+      "sha256": "65fbe4564fae5f7a4913bbcf3977b28d8702e3acad8de57d19ea8a527faabe44"
+    },
+    {
+      "name": "git-trace.jsonl",
+      "sha256": "0bbe474beeb843fe7eb807ab978e5475c2492dcad4970e1a0406ad207b210bbf"
+    }
+  ],
+  "scope": "Instrumented worker module import and execution; inspector CPU and sampled heap allocation profiles, not private RSS or a full heap snapshot. Profiling overhead excluded from headline timings."
+}

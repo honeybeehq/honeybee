@@ -54,7 +54,7 @@ if (!childMode) {
     assert.deepEqual(trial.source, source); assert.equal(trial.toolSha256, toolSha256);
     raw.push(trial.row);
   }
-  report.results = [{ scenario: 'five-worker-image-hit', raw, metrics: Object.fromEntries(Object.keys(raw[0]).map(key => [key, distribution(raw.map(row => row[key]))])) }];
+  report.results = [{ scenario: width === 5 ? 'five-worker-image-hit' : `${width}-worker-image-hit`, raw, metrics: Object.fromEntries(Object.keys(raw[0]).map(key => [key, distribution(raw.map(row => row[key]))])) }];
   report.completed = true; report.environment.loadAfter = loadavg();
   writeFileSync(out, JSON.stringify(report, null, 2) + '\n');
   console.log(out);
@@ -80,6 +80,7 @@ if (!childMode) {
     for (let i = 0; i < width; i++) {
       const request = { beeId: `cohort-${i}`, originRepo: rig.origin.repo, sha, wrapper: `cohort-${i}`, repoName: 'fixture', cellId: String(i) };
       const tracePath = join(traceDir, `${i}.jsonl`);
+      writeFileSync(tracePath, '');
       const worker = new Worker(pathToFileURL(workerEntry), { execArgv: [], env: { ...process.env, GIT_TRACE2_EVENT: tracePath },
         workerData: { cellsRoot: rig.cellsRoot, request, opId: `op-${i}`, disableCow: false, useGitImages: true, gitImagesRoot: images } });
       const item = { worker, request, tracePath };

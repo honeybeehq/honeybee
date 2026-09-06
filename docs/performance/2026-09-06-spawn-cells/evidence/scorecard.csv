@@ -1,0 +1,11 @@
+Metric,Unit,Before median,After median,Change percent,Samples per side,Source
+Runner host RSS,MB,60.981,49.971,-18.1,15,host-scorecard.csv
+Runner host startup CPU,ms,390,280,-28.2,15,host-scorecard.csv
+Host readiness,ms,1938.683,1470.408,-24.2,15,host-scorecard.csv
+Agent readiness (inconclusive),ms,2936.564,3310.123,12.7,15,host-scorecard.csv
+Host idle CPU (OS resolution),% of one core,0,0,,15,host-scorecard.csv
+Worker tail (baseline includes 2s hold),ms,2421.023,2.613,-99.9,5,worker-scorecard.csv
+Git calls per worker,calls,12,8,-33.3,5,worker-scorecard.csv
+Five-worker RSS after hold,MB,132.596,124.453,-6.1,3,cohort-scorecard.csv
+Workers alive after hold,workers,5,0,-100.0,3,cohort-scorecard.csv
+Five-worker Git calls,calls,60,40,-33.3,3,cohort-scorecard.csv

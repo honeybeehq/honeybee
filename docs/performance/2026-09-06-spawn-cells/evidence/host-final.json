@@ -1,0 +1,428 @@
+{
+  "schemaVersion": 1,
+  "timestamp": "2026-09-06T07:09:41.262Z",
+  "spec": {
+    "rounds": 15,
+    "idleMs": 3000,
+    "agent": "/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-spawn-2026-09-06/v2/driver-hsr/test-agent/agent.mjs",
+    "implementations": [
+      {
+        "name": "baseline-cli",
+        "entry": "/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-2026-09-06/dist/cli.js",
+        "args": [
+          "v2",
+          "runner-host"
+        ],
+        "dependencies": [
+          "/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-2026-09-06/dist/v2/cli.js"
+        ],
+        "revision": "17ce20721e456ad24ae1262b8f34c1987d975bdf"
+      },
+      {
+        "name": "dedicated-host",
+        "entry": "/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-spawn-2026-09-06/dist/v2/runner-host.js",
+        "args": [],
+        "revision": "b6fe51fcf806d8a6e4cfea2e2a402e60820d3026"
+      }
+    ]
+  },
+  "environment": {
+    "node": "v25.8.0",
+    "platform": "darwin",
+    "arch": "arm64",
+    "cpu": "Apple M4 Max",
+    "hostname": "Mac.home",
+    "loadBefore": [
+      34.8701171875,
+      31.66748046875,
+      29.29052734375
+    ],
+    "loadAfter": [
+      30.65478515625,
+      31.3251953125,
+      29.76123046875
+    ]
+  },
+  "results": [
+    {
+      "implementation": {
+        "name": "baseline-cli",
+        "entry": "/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-2026-09-06/dist/cli.js",
+        "args": [
+          "v2",
+          "runner-host"
+        ],
+        "dependencies": [
+          "/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-2026-09-06/dist/v2/cli.js"
+        ],
+        "revision": "17ce20721e456ad24ae1262b8f34c1987d975bdf",
+        "entryBytes": 1191,
+        "entrySha256": "c09e1efcb7e449bf20a3db053c7f8903ffd68f81345e84fe66ff83ea76de5a6e",
+        "dependencyArtifacts": [
+          {
+            "path": "/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-2026-09-06/dist/v2/cli.js",
+            "bytes": 1046082,
+            "sha256": "810c1428ca7163498550e03cfade4c50d33e58401919105a892b20ca61caeef3"
+          }
+        ]
+      },
+      "metrics": {
+        "hostReadyMs": {
+          "n": 15,
+          "min": 898.1902499999997,
+          "p50": 1938.6826669999864,
+          "p95": 4638.229500000001,
+          "max": 4638.229500000001,
+          "mean": 2003.4070972666689
+        },
+        "agentReadyMs": {
+          "n": 15,
+          "min": 1598.716666000022,
+          "p50": 2936.563500000004,
+          "p95": 7687.470499999996,
+          "max": 7687.470499999996,
+          "mean": 3453.3988389333313
+        },
+        "hostRssBytes": {
+          "n": 15,
+          "min": 60653568,
+          "p50": 60981248,
+          "p95": 61227008,
+          "max": 61227008,
+          "mean": 60945203.2
+        },
+        "hostCpuToReadyMs": {
+          "n": 15,
+          "min": 330,
+          "p50": 390,
+          "p95": 440,
+          "max": 440,
+          "mean": 383.3333333333333
+        },
+        "idleCpuOneCorePercent": {
+          "n": 15,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0,
+          "mean": 0
+        },
+        "hostRssAfterIdleBytes": {
+          "n": 15,
+          "min": 60653568,
+          "p50": 60981248,
+          "p95": 61227008,
+          "max": 61227008,
+          "mean": 60945203.2
+        }
+      },
+      "raw": [
+        {
+          "hostReadyMs": 4638.229500000001,
+          "agentReadyMs": 7687.470499999996,
+          "hostRssBytes": 60653568,
+          "hostCpuToReadyMs": 380,
+          "idleCpuOneCorePercent": 0,
+          "hostRssAfterIdleBytes": 60653568
+        },
+        {
+          "hostReadyMs": 3483.6899590000103,
+          "agentReadyMs": 5381.229292000004,
+          "hostRssBytes": 60981248,
+          "hostCpuToReadyMs": 390,
+          "idleCpuOneCorePercent": 0,
+          "hostRssAfterIdleBytes": 60981248
+        },
+        {
+          "hostReadyMs": 2075.2765830000135,
+          "agentReadyMs": 3855.460042000006,
+          "hostRssBytes": 61227008,
+          "hostCpuToReadyMs": 400,
+          "idleCpuOneCorePercent": 0,
+          "hostRssAfterIdleBytes": 61227008
+        },
+        {
+          "hostReadyMs": 1364.3776669999934,
+          "agentReadyMs": 2936.563500000004,
+          "hostRssBytes": 60964864,
+          "hostCpuToReadyMs": 330,
+          "idleCpuOneCorePercent": 0,
+          "hostRssAfterIdleBytes": 60964864
+        },
+        {
+          "hostReadyMs": 1495.6915000000008,
+          "agentReadyMs": 2400.001999999993,
+          "hostRssBytes": 60833792,
+          "hostCpuToReadyMs": 400,
+          "idleCpuOneCorePercent": 0,
+          "hostRssAfterIdleBytes": 60833792
+        },
+        {
+          "hostReadyMs": 1961.690917,
+          "agentReadyMs": 2866.873250000004,
+          "hostRssBytes": 60850176,
+          "hostCpuToReadyMs": 340,
+          "idleCpuOneCorePercent": 0,
+          "hostRssAfterIdleBytes": 60850176
+        },
+        {
+          "hostReadyMs": 898.1902499999997,
+          "agentReadyMs": 1624.2429589999956,
+          "hostRssBytes": 60719104,
+          "hostCpuToReadyMs": 330,
+          "idleCpuOneCorePercent": 0,
+          "hostRssAfterIdleBytes": 60719104
+        },
+        {
+          "hostReadyMs": 2088.4821250000095,
+          "agentReadyMs": 3524.8663749999832,
+          "hostRssBytes": 60833792,
+          "hostCpuToReadyMs": 350,
+          "idleCpuOneCorePercent": 0,
+          "hostRssAfterIdleBytes": 60833792
+        },
+        {
+          "hostReadyMs": 2158.2031669999997,
+          "agentReadyMs": 3717.394459000003,
+          "hostRssBytes": 61046784,
+          "hostCpuToReadyMs": 350,
+          "idleCpuOneCorePercent": 0,
+          "hostRssAfterIdleBytes": 61046784
+        },
+        {
+          "hostReadyMs": 1938.6826669999864,
+          "agentReadyMs": 2950.3977089999826,
+          "hostRssBytes": 61046784,
+          "hostCpuToReadyMs": 410,
+          "idleCpuOneCorePercent": 0,
+          "hostRssAfterIdleBytes": 61046784
+        },
+        {
+          "hostReadyMs": 1123.1965830000117,
+          "agentReadyMs": 1598.716666000022,
+          "hostRssBytes": 60997632,
+          "hostCpuToReadyMs": 420,
+          "idleCpuOneCorePercent": 0,
+          "hostRssAfterIdleBytes": 60997632
+        },
+        {
+          "hostReadyMs": 1378.2930000000051,
+          "agentReadyMs": 2649.807208000013,
+          "hostRssBytes": 61177856,
+          "hostCpuToReadyMs": 400,
+          "idleCpuOneCorePercent": 0,
+          "hostRssAfterIdleBytes": 61177856
+        },
+        {
+          "hostReadyMs": 2926.6519160000025,
+          "agentReadyMs": 5909.239290999976,
+          "hostRssBytes": 60719104,
+          "hostCpuToReadyMs": 430,
+          "idleCpuOneCorePercent": 0,
+          "hostRssAfterIdleBytes": 60719104
+        },
+        {
+          "hostReadyMs": 1234.4743339999986,
+          "agentReadyMs": 2229.241874999978,
+          "hostRssBytes": 61112320,
+          "hostCpuToReadyMs": 380,
+          "idleCpuOneCorePercent": 0,
+          "hostRssAfterIdleBytes": 61112320
+        },
+        {
+          "hostReadyMs": 1285.976290999999,
+          "agentReadyMs": 2469.4774580000085,
+          "hostRssBytes": 61014016,
+          "hostCpuToReadyMs": 440,
+          "idleCpuOneCorePercent": 0,
+          "hostRssAfterIdleBytes": 61014016
+        }
+      ]
+    },
+    {
+      "implementation": {
+        "name": "dedicated-host",
+        "entry": "/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-spawn-2026-09-06/dist/v2/runner-host.js",
+        "args": [],
+        "revision": "b6fe51fcf806d8a6e4cfea2e2a402e60820d3026",
+        "entryBytes": 4106,
+        "entrySha256": "e9e1e934dbaf1043e013278b29f12e61161bc19ebe282919405d6e4353b3ab23",
+        "dependencyArtifacts": []
+      },
+      "metrics": {
+        "hostReadyMs": {
+          "n": 15,
+          "min": 591.3863750000019,
+          "p50": 1470.4081250000163,
+          "p95": 2729.6907500000016,
+          "max": 2729.6907500000016,
+          "mean": 1590.199386266671
+        },
+        "agentReadyMs": {
+          "n": 15,
+          "min": 1175.6163750000123,
+          "p50": 3310.1225409999897,
+          "p95": 5572.621291999996,
+          "max": 5572.621291999996,
+          "mean": 2975.003544600003
+        },
+        "hostRssBytes": {
+          "n": 15,
+          "min": 49709056,
+          "p50": 49971200,
+          "p95": 50216960,
+          "max": 50216960,
+          "mean": 49953723.733333334
+        },
+        "hostCpuToReadyMs": {
+          "n": 15,
+          "min": 250,
+          "p50": 280,
+          "p95": 320,
+          "max": 320,
+          "mean": 281.3333333333333
+        },
+        "idleCpuOneCorePercent": {
+          "n": 15,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0,
+          "mean": 0
+        },
+        "hostRssAfterIdleBytes": {
+          "n": 15,
+          "min": 49709056,
+          "p50": 49971200,
+          "p95": 50216960,
+          "max": 50216960,
+          "mean": 49953723.733333334
+        }
+      },
+      "raw": [
+        {
+          "hostReadyMs": 2639.214208999998,
+          "agentReadyMs": 5572.621291999996,
+          "hostRssBytes": 50020352,
+          "hostCpuToReadyMs": 270,
+          "idleCpuOneCorePercent": 0,
+          "hostRssAfterIdleBytes": 50020352
+        },
+        {
+          "hostReadyMs": 2729.6907500000016,
+          "agentReadyMs": 5067.621500000001,
+          "hostRssBytes": 50184192,
+          "hostCpuToReadyMs": 290,
+          "idleCpuOneCorePercent": 0,
+          "hostRssAfterIdleBytes": 50184192
+        },
+        {
+          "hostReadyMs": 1864.3683750000055,
+          "agentReadyMs": 3495.224000000002,
+          "hostRssBytes": 49758208,
+          "hostCpuToReadyMs": 300,
+          "idleCpuOneCorePercent": 0,
+          "hostRssAfterIdleBytes": 49758208
+        },
+        {
+          "hostReadyMs": 1263.747292,
+          "agentReadyMs": 2051.1545419999893,
+          "hostRssBytes": 49709056,
+          "hostCpuToReadyMs": 270,
+          "idleCpuOneCorePercent": 0,
+          "hostRssAfterIdleBytes": 49709056
+        },
+        {
+          "hostReadyMs": 2041.065042000002,
+          "agentReadyMs": 3919.8986670000013,
+          "hostRssBytes": 49889280,
+          "hostCpuToReadyMs": 260,
+          "idleCpuOneCorePercent": 0,
+          "hostRssAfterIdleBytes": 49889280
+        },
+        {
+          "hostReadyMs": 1294.3951670000097,
+          "agentReadyMs": 2237.160625000004,
+          "hostRssBytes": 49758208,
+          "hostCpuToReadyMs": 270,
+          "idleCpuOneCorePercent": 0,
+          "hostRssAfterIdleBytes": 49758208
+        },
+        {
+          "hostReadyMs": 1203.5364169999957,
+          "agentReadyMs": 1927.7152090000018,
+          "hostRssBytes": 49741824,
+          "hostCpuToReadyMs": 290,
+          "idleCpuOneCorePercent": 0,
+          "hostRssAfterIdleBytes": 49741824
+        },
+        {
+          "hostReadyMs": 900.0791249999893,
+          "agentReadyMs": 1738.6459580000082,
+          "hostRssBytes": 49790976,
+          "hostCpuToReadyMs": 270,
+          "idleCpuOneCorePercent": 0,
+          "hostRssAfterIdleBytes": 49790976
+        },
+        {
+          "hostReadyMs": 1470.4081250000163,
+          "agentReadyMs": 3610.6910000000207,
+          "hostRssBytes": 50216960,
+          "hostCpuToReadyMs": 260,
+          "idleCpuOneCorePercent": 0,
+          "hostRssAfterIdleBytes": 50216960
+        },
+        {
+          "hostReadyMs": 1989.4802079999936,
+          "agentReadyMs": 3623.908792000002,
+          "hostRssBytes": 49823744,
+          "hostCpuToReadyMs": 280,
+          "idleCpuOneCorePercent": 0,
+          "hostRssAfterIdleBytes": 49823744
+        },
+        {
+          "hostReadyMs": 643.0384580000245,
+          "agentReadyMs": 1182.684500000003,
+          "hostRssBytes": 50003968,
+          "hostCpuToReadyMs": 250,
+          "idleCpuOneCorePercent": 0,
+          "hostRssAfterIdleBytes": 50003968
+        },
+        {
+          "hostReadyMs": 591.3863750000019,
+          "agentReadyMs": 1175.6163750000123,
+          "hostRssBytes": 50200576,
+          "hostCpuToReadyMs": 300,
+          "idleCpuOneCorePercent": 0,
+          "hostRssAfterIdleBytes": 50200576
+        },
+        {
+          "hostReadyMs": 2633.9949590000033,
+          "agentReadyMs": 4179.537584000005,
+          "hostRssBytes": 50102272,
+          "hostCpuToReadyMs": 320,
+          "idleCpuOneCorePercent": 0,
+          "hostRssAfterIdleBytes": 50102272
+        },
+        {
+          "hostReadyMs": 1831.1912500000035,
+          "agentReadyMs": 3310.1225409999897,
+          "hostRssBytes": 49971200,
+          "hostCpuToReadyMs": 290,
+          "idleCpuOneCorePercent": 0,
+          "hostRssAfterIdleBytes": 49971200
+        },
+        {
+          "hostReadyMs": 757.3950420000183,
+          "agentReadyMs": 1532.4505840000056,
+          "hostRssBytes": 50135040,
+          "hostCpuToReadyMs": 300,
+          "idleCpuOneCorePercent": 0,
+          "hostRssAfterIdleBytes": 50135040
+        }
+      ]
+    }
+  ],
+  "toolSha256": "9595f7effbd5e47b3be970a14e4fa6c8a5e0c0843f3012a53a9af8b7ae35f2dc",
+  "scope": "Alternating fresh real hosts, two warmups per side; 5ms polling; warm per-side compile cache; host-only ps RSS/CPU, OS-quantized CPU; same stub; no provider inference. RSS is not private memory."
+}

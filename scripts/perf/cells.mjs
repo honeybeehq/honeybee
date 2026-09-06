@@ -71,7 +71,9 @@ try {
       const id = serial++;
       const request = { beeId: `cell-perf-${id}`, originRepo: rig.origin.repo, sha, wrapper: `perf-${id}`, repoName: 'fixture', cellId: String(id), ...(scenario === 'image-warm-files' ? { warmArtifacts: ['node_modules'] } : {}) };
       const fingerprint = fingerprintOrigin(rig.origin.repo);
-      const tracePath = join(traceDir, `${scenario}-${i}.jsonl`); process.env.GIT_TRACE2_EVENT = tracePath;
+      const tracePath = join(traceDir, `${scenario}-${i}.jsonl`);
+      // Trace2 appends. Reusing an output path must start a new capture.
+      writeFileSync(tracePath, ''); process.env.GIT_TRACE2_EVENT = tracePath;
       const images = scenario === 'image-cold' ? join(rig.root, `cold-images-${id}`) : sharedImages;
       const rssBefore = process.memoryUsage().rss, cpuBefore = process.cpuUsage(), started = performance.now();
       let cell, extra = {};

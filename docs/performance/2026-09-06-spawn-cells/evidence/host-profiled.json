@@ -1,0 +1,224 @@
+{
+  "schemaVersion": 1,
+  "timestamp": "2026-09-06T07:09:58.309Z",
+  "spec": {
+    "rounds": 2,
+    "idleMs": 0,
+    "agent": "/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-spawn-2026-09-06/v2/driver-hsr/test-agent/agent.mjs",
+    "implementations": [
+      {
+        "name": "baseline-cli",
+        "entry": "/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-2026-09-06/dist/cli.js",
+        "args": [
+          "v2",
+          "runner-host"
+        ],
+        "dependencies": [
+          "/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-2026-09-06/dist/v2/cli.js"
+        ],
+        "nodeArgs": [
+          "--cpu-prof",
+          "--cpu-prof-dir=/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-spawn-2026-09-06/.artifacts/performance/spawn/native-host-profiles/baseline-cli",
+          "--heap-prof",
+          "--heap-prof-dir=/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-spawn-2026-09-06/.artifacts/performance/spawn/native-host-profiles/baseline-cli"
+        ],
+        "revision": "17ce20721e456ad24ae1262b8f34c1987d975bdf"
+      },
+      {
+        "name": "dedicated-host",
+        "entry": "/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-spawn-2026-09-06/dist/v2/runner-host.js",
+        "args": [],
+        "nodeArgs": [
+          "--cpu-prof",
+          "--cpu-prof-dir=/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-spawn-2026-09-06/.artifacts/performance/spawn/native-host-profiles/dedicated-host",
+          "--heap-prof",
+          "--heap-prof-dir=/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-spawn-2026-09-06/.artifacts/performance/spawn/native-host-profiles/dedicated-host"
+        ],
+        "revision": "b6fe51fcf806d8a6e4cfea2e2a402e60820d3026"
+      }
+    ]
+  },
+  "environment": {
+    "node": "v25.8.0",
+    "platform": "darwin",
+    "arch": "arm64",
+    "cpu": "Apple M4 Max",
+    "hostname": "Mac.home",
+    "loadBefore": [
+      29.16064453125,
+      31.00390625,
+      29.65673828125
+    ],
+    "loadAfter": [
+      26.0966796875,
+      30.2353515625,
+      29.40625
+    ]
+  },
+  "results": [
+    {
+      "implementation": {
+        "name": "baseline-cli",
+        "entry": "/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-2026-09-06/dist/cli.js",
+        "args": [
+          "v2",
+          "runner-host"
+        ],
+        "dependencies": [
+          "/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-2026-09-06/dist/v2/cli.js"
+        ],
+        "nodeArgs": [
+          "--cpu-prof",
+          "--cpu-prof-dir=/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-spawn-2026-09-06/.artifacts/performance/spawn/native-host-profiles/baseline-cli",
+          "--heap-prof",
+          "--heap-prof-dir=/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-spawn-2026-09-06/.artifacts/performance/spawn/native-host-profiles/baseline-cli"
+        ],
+        "revision": "17ce20721e456ad24ae1262b8f34c1987d975bdf",
+        "entryBytes": 1191,
+        "entrySha256": "c09e1efcb7e449bf20a3db053c7f8903ffd68f81345e84fe66ff83ea76de5a6e",
+        "dependencyArtifacts": [
+          {
+            "path": "/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-2026-09-06/dist/v2/cli.js",
+            "bytes": 1046082,
+            "sha256": "810c1428ca7163498550e03cfade4c50d33e58401919105a892b20ca61caeef3"
+          }
+        ]
+      },
+      "metrics": {
+        "hostReadyMs": {
+          "n": 2,
+          "min": 978.745833,
+          "p50": 978.745833,
+          "p95": 1556.608209,
+          "max": 1556.608209,
+          "mean": 1267.677021
+        },
+        "agentReadyMs": {
+          "n": 2,
+          "min": 1883.7042499999998,
+          "p50": 1883.7042499999998,
+          "p95": 2600.8559590000004,
+          "max": 2600.8559590000004,
+          "mean": 2242.2801045
+        },
+        "hostRssBytes": {
+          "n": 2,
+          "min": 63815680,
+          "p50": 63815680,
+          "p95": 63881216,
+          "max": 63881216,
+          "mean": 63848448
+        },
+        "hostCpuToReadyMs": {
+          "n": 2,
+          "min": 340,
+          "p50": 340,
+          "p95": 390,
+          "max": 390,
+          "mean": 365
+        },
+        "hostRssAfterIdleBytes": {
+          "n": 2,
+          "min": 63815680,
+          "p50": 63815680,
+          "p95": 63881216,
+          "max": 63881216,
+          "mean": 63848448
+        }
+      },
+      "raw": [
+        {
+          "hostReadyMs": 978.745833,
+          "agentReadyMs": 1883.7042499999998,
+          "hostRssBytes": 63815680,
+          "hostCpuToReadyMs": 340,
+          "hostRssAfterIdleBytes": 63815680
+        },
+        {
+          "hostReadyMs": 1556.608209,
+          "agentReadyMs": 2600.8559590000004,
+          "hostRssBytes": 63881216,
+          "hostCpuToReadyMs": 390,
+          "hostRssAfterIdleBytes": 63881216
+        }
+      ]
+    },
+    {
+      "implementation": {
+        "name": "dedicated-host",
+        "entry": "/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-spawn-2026-09-06/dist/v2/runner-host.js",
+        "args": [],
+        "nodeArgs": [
+          "--cpu-prof",
+          "--cpu-prof-dir=/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-spawn-2026-09-06/.artifacts/performance/spawn/native-host-profiles/dedicated-host",
+          "--heap-prof",
+          "--heap-prof-dir=/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-spawn-2026-09-06/.artifacts/performance/spawn/native-host-profiles/dedicated-host"
+        ],
+        "revision": "b6fe51fcf806d8a6e4cfea2e2a402e60820d3026",
+        "entryBytes": 4106,
+        "entrySha256": "e9e1e934dbaf1043e013278b29f12e61161bc19ebe282919405d6e4353b3ab23",
+        "dependencyArtifacts": []
+      },
+      "metrics": {
+        "hostReadyMs": {
+          "n": 2,
+          "min": 858.7622919999994,
+          "p50": 858.7622919999994,
+          "p95": 870.393583000001,
+          "max": 870.393583000001,
+          "mean": 864.5779375000002
+        },
+        "agentReadyMs": {
+          "n": 2,
+          "min": 1597.0730409999996,
+          "p50": 1597.0730409999996,
+          "p95": 1779.0347920000004,
+          "max": 1779.0347920000004,
+          "mean": 1688.0539165
+        },
+        "hostRssBytes": {
+          "n": 2,
+          "min": 52559872,
+          "p50": 52559872,
+          "p95": 52772864,
+          "max": 52772864,
+          "mean": 52666368
+        },
+        "hostCpuToReadyMs": {
+          "n": 2,
+          "min": 230,
+          "p50": 230,
+          "p95": 290,
+          "max": 290,
+          "mean": 260
+        },
+        "hostRssAfterIdleBytes": {
+          "n": 2,
+          "min": 52559872,
+          "p50": 52559872,
+          "p95": 52772864,
+          "max": 52772864,
+          "mean": 52666368
+        }
+      },
+      "raw": [
+        {
+          "hostReadyMs": 858.7622919999994,
+          "agentReadyMs": 1779.0347920000004,
+          "hostRssBytes": 52559872,
+          "hostCpuToReadyMs": 290,
+          "hostRssAfterIdleBytes": 52559872
+        },
+        {
+          "hostReadyMs": 870.393583000001,
+          "agentReadyMs": 1597.0730409999996,
+          "hostRssBytes": 52772864,
+          "hostCpuToReadyMs": 230,
+          "hostRssAfterIdleBytes": 52772864
+        }
+      ]
+    }
+  ],
+  "toolSha256": "9595f7effbd5e47b3be970a14e4fa6c8a5e0c0843f3012a53a9af8b7ae35f2dc",
+  "scope": "Alternating fresh real hosts, two warmups per side; 5ms polling; warm per-side compile cache; host-only ps RSS/CPU, OS-quantized CPU; same stub; no provider inference. RSS is not private memory."
+}

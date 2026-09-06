@@ -105,11 +105,11 @@ There is no existence-based fallback to the full CLI. A missing sibling is a bro
 
 | File | Change |
 |---|---|
-| [driver.ts](/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-host-2026-09-06/v2/driver-hsr/src/driver.ts:79) | Extend `hostCommandFor` with source and bundled sibling resolution. Update its stale comment. |
-| [build-v2-artifact.mjs](/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-host-2026-09-06/scripts/build-v2-artifact.mjs:16) | Add an esbuild entry from `runner-host-main.ts` to `dist/v2/runner-host.js`, using the existing Node ESM settings. |
-| [daemon.ts](/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-host-2026-09-06/v2/daemon/src/daemon.ts:493) | Delete the `process.argv[1]` regex and generated `hostCommand`. Keep the shared HSR settings used by direct HSR and Cell. |
-| [main.ts](/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-host-2026-09-06/v2/cli/src/main.ts:3565) | No behavior change. Retain the hidden `runner-host` verb as compatibility plumbing. |
-| [deploy-settle.test.ts](/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-host-2026-09-06/tests/deploy-settle.test.ts:195) | Require `dist/v2/runner-host.js` in the packed archive. |
+| [driver.ts](../../../v2/driver-hsr/src/driver.ts) | Extend `hostCommandFor` with source and bundled sibling resolution. Update its stale comment. |
+| [build-v2-artifact.mjs](../../../scripts/build-v2-artifact.mjs) | Add an esbuild entry from `runner-host-main.ts` to `dist/v2/runner-host.js`, using the existing Node ESM settings. |
+| [daemon.ts](../../../v2/daemon/src/daemon.ts) | Delete the `process.argv[1]` regex and generated `hostCommand`. Keep the shared HSR settings used by direct HSR and Cell. |
+| [main.ts](../../../v2/cli/src/main.ts) | No behavior change. Retain the hidden `runner-host` verb as compatibility plumbing. |
+| [deploy-settle.test.ts](../../../tests/deploy-settle.test.ts) | Require `dist/v2/runner-host.js` in the packed archive. |
 
 No new production module is needed.
 

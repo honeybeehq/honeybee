@@ -31,15 +31,15 @@ parity; minimal caller knowledge and code; measurable RSS/CPU/startup benefit.
 - [x] Ground
 - [x] Sketch: two candidates, Fable5 and Codex5.6-sol, max effort
 - [x] Agree: automatic synthesis, no human checkpoint requested
-- [ ] Implement
-- [ ] Scrap: only if implementation invalidates the sketch
+- [x] Implement
+- Not needed: implementation did not invalidate the selected design
 
 - [x] Frame
 - [x] Fan out
 - [x] Cross-judge
 - [x] Pick
 - [x] Graft
-- [ ] Verify
+- [x] Verify
 
 Two candidates are sufficient for this bounded entry-selection decision. Fable
 also grounds the Cell lane; the parent owns measurements and final judgment.

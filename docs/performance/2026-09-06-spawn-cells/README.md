@@ -47,8 +47,8 @@ Exploratory baseline with corrected Git Trace2 attribution, three samples per sc
 These are separate sequential scenarios on a shared machine, useful for locating
 costs, not a controlled ranking of strategies. Warm files ran after stale-image
 updates in this early capture, so their timing also includes a changed pack graph.
-The current tool measures warm files before stale updates to remove that confound. The same fixture has 203 tracked
-files. Origin contents, checkout SHA, clean status and copied files are verified
+The current tool measures warm files before stale updates to remove that confound. The fixture starts with 203 tracked
+files; the stale-image scenario adds one file. Origin contents, checkout SHA, clean status and copied files are verified
 outside the timed interval. Raw samples are in [evidence](evidence/cells-baseline.json).
 
 Five baseline image-hit workers all remained alive two seconds after readiness.
@@ -79,7 +79,9 @@ A host spec contains `rounds` (2–100), `idleMs` (0–60,000), the absolute stu
 `agent` path, and exactly two `implementations`, each with `name`, absolute `entry`
 and string-array `args`. The baseline entry is `dist/cli.js` with arguments
 `["v2", "runner-host"]`; the candidate is `dist/v2/runner-host.js` with `[]`.
-The script appends its own config path. It alternates A/B order, uses two warmups
+Optional `dependencies` lists the loaded CLI bundle so its bytes and SHA-256
+are recorded alongside the entry. The script appends its own config path. It
+alternates A/B order, uses two warmups
 per side and verifies a real ready/turn/exit cycle on every launch.
 
 ## Attribution and limits
@@ -148,3 +150,78 @@ assertion; this commit changes no tmux code.
 Raw results and validated comparisons: [individual workers](evidence/worker-scorecard.csv),
 [five-worker cohorts](evidence/cohort-scorecard.csv). All percentiles in these CSVs
 are recomputed and checked against their JSON samples by `compare-spawn.mjs`.
+
+## Native host profiling
+
+For an independent profiling capture, add `nodeArgs` to each implementation:
+`["--cpu-prof", "--cpu-prof-dir=/absolute/profiles", "--heap-prof", "--heap-prof-dir=/absolute/profiles"]`.
+Create separate output directories for the two implementations first. Use a
+separate spec and output JSON; profiling overhead must not enter the headline
+comparison. The tool still verifies every ready/turn/exit cycle and reaps its
+owned hosts. V8 writes CPU sampling profiles and sampled allocation profiles at
+clean exit. Allocation profiles are not retained-heap snapshots or private RSS.
+
+## Verified runner-host result
+
+Host implementation `3a885d3e`, integrated as `b6fe51fc`, plus the verified Cell
+change. Baseline `17ce2072`. Fifteen alternating pairs, two warmups per side,
+three-second idle observations, Node 25.8.0 on Apple M4 Max/macOS.
+
+| Metric (median) | Before | After |
+|---|---:|---:|
+| Host RSS at readiness | 60.98 MB | 49.97 MB |
+| Host CPU through readiness | 390 ms | 280 ms |
+| Host readiness | 1,939 ms | 1,470 ms |
+| Agent readiness | 2,937 ms | 3,310 ms |
+| Host idle CPU observed by `ps` | 0% | 0% |
+
+RSS fell 18.1% and host startup CPU fell 28.2%; both improved in every one of the
+15 matched pairs. Host-ready median fell 24.2%. The host runs the same source
+function and protocol through a 4,106-byte executable instead of loading the
+1,046,082-byte v2 CLI bundle through its 1,191-byte launcher. The release gains
+that small additional artifact; no checkout/storage reduction is claimed.
+
+End-to-end readiness is inconclusive. The candidate was faster in 11 of 15
+matched pairs, with median paired change −416 ms and mean 3,453 → 2,975 ms, yet
+its overall median was higher. The load average was roughly 30–35, with wide
+wall-time distributions. Retain both results; do not claim a reliable full-agent
+readiness improvement or establish a regression from this capture alone.
+Idle CPU was below the roughly 0.33%-of-one-core resolution of the three-second
+observation on both sides. There is no measured idle-CPU win.
+
+The [host CSV](evidence/host-scorecard.csv) includes all metrics, paired changes,
+entry names and hashes. The [raw report](evidence/host-final.json) includes every
+sample and the baseline CLI dependency hash. The compact [combined scorecard](evidence/scorecard.csv)
+links each row back to its complete comparison.
+
+## Cell worker native profiles
+
+```sh
+node scripts/perf/profile-cell.mjs /absolute/baseline /absolute/profiles/cell-before
+node scripts/perf/profile-cell.mjs /absolute/candidate /absolute/profiles/cell-after
+```
+
+Use Node 25 and an empty output directory. This opt-in command wraps the real
+built worker in a local inspector session, captures CPU and sampled heap
+allocations, and records Git Trace2. Production workers and the timing tools do
+not load this wrapper. It validates the image path, checkout, origin, artifact
+hashes and profile contents before writing a completed index. Maintenance is
+signaled immediately at readiness, so these profiles are not timing comparisons.
+
+Both worker profile sets are valid and confirm 12 → 8 Git calls. The JavaScript
+profiles have few samples because much of the wall time is spent waiting on
+child processes; use the Git trace alongside them. They are allocation samples,
+not full heap snapshots containing object values or measurements of private RSS.
+
+Twenty-two compressed native files are retained in [the native index](evidence/native/index.json),
+with original and compressed hashes. Decompress a `.cpuprofile.gz` or
+`.heapprofile.gz` before opening it in a V8-compatible profile viewer. Host
+profiles include four executions per implementation, of which two are warmups;
+the separate [profiled report](evidence/host-profiled.json) is excluded from the
+headline scorecard. The host and Cell capture indexes retain their source and
+artifact provenance.
+
+The final tool checks passed 8/8, including actual repeated-output captures for
+both Cell tools and host interruption cleanup. The later Trace2 reset fix is
+outside the Cell optimization: retained performance runs used fresh trace paths,
+so their original recorded tool hashes and command counts remain valid.
