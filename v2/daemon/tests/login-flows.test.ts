@@ -33,6 +33,9 @@ import { waitFor } from "./helpers.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const FAKE_CLI = join(here, "..", "..", "driver-hsr", "test-agent", "fake-login-cli.mjs");
+// Process startup can exceed five seconds during concurrent builds. This is
+// a fixture readiness ceiling, not a login latency assertion.
+const CLI_READY_TIMEOUT_MS = 60_000;
 const SENTINEL_KEY = "sk-SENTINEL-API-KEY-0123456789abcdef";
 const SENTINEL_CODE = "SENTINEL-AUTH-CODE-9f8e7d6c";
 const FAKE_AGY_LOGIN = String.raw`
@@ -690,7 +693,7 @@ test("flows.boot: a live flow from a previous daemon is marked interrupted (retr
     const acct = account(r, "kimi", "boot");
     account(r, "claude", "ada.example");
     const { flow } = await first.flows.start(acct);
-    await waitFor(() => (r.store.getLoginFlow(flow.id)?.authorizationUrl ? true : null), "url", 5000, 20);
+    await waitFor(() => (r.store.getLoginFlow(flow.id)?.authorizationUrl ? true : null), "url", CLI_READY_TIMEOUT_MS, 20);
     const pid = first.flows.workerStatus(flow.id)?.pid as number;
     await first.flows.shutdown();
     assert.throws(() => process.kill(pid, 0), "shutdown kills the worker");
@@ -717,7 +720,7 @@ test("flows.boot: a live flow from a previous daemon is marked interrupted (retr
     // submit after restart is an honest interrupted answer, and retry works
     const retried = await second.flows.retry(flow.id);
     assert.equal(retried.revision, 2);
-    await waitFor(() => (r.store.getLoginFlow(flow.id)?.authorizationUrl ? true : null), "url after retry", 5000, 20);
+    await waitFor(() => (r.store.getLoginFlow(flow.id)?.authorizationUrl ? true : null), "url after retry", CLI_READY_TIMEOUT_MS, 20);
     await second.flows.shutdown();
   } finally {
     r.cleanup();
@@ -755,12 +758,12 @@ test("flows.races: a superseded worker's late exit never fails its successor; ca
     const { flows } = services(r, { transports: { openaiKeyCheck: async () => "valid" } });
     const acct = account(r, "codex", "race");
     const { flow } = await flows.start(acct);
-    await waitFor(() => (r.store.getLoginFlow(flow.id)?.authorizationUrl ? true : null), "url", 5000, 20);
+    await waitFor(() => (r.store.getLoginFlow(flow.id)?.authorizationUrl ? true : null), "url", CLI_READY_TIMEOUT_MS, 20);
     // cancel → retry immediately: the old worker is still dying while the new one starts
     flows.cancel(flow.id);
     const retried = await flows.retry(flow.id);
     assert.equal(retried.revision, 2);
-    await waitFor(() => (r.store.getLoginFlow(flow.id)?.authorizationUrl ? true : null), "url after retry", 5000, 20);
+    await waitFor(() => (r.store.getLoginFlow(flow.id)?.authorizationUrl ? true : null), "url after retry", CLI_READY_TIMEOUT_MS, 20);
     await new Promise((resolve) => setTimeout(resolve, 700));
     const after = r.store.getLoginFlow(flow.id) as LoginFlowRow;
     assert.equal(after.phase, "waiting_browser", "the first worker's exit was not attributed to revision 2");
