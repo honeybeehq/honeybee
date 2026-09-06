@@ -41,7 +41,37 @@ export interface IdentityRecipe {
    * recognizes progress. Data only — the daemon's flow service interprets it.
    */
   loginFlow: LoginRecipe;
+  /** Configuration-only onboarding entries. Credentials are never entries here. */
+  configImport?: AccountConfigImportRecipe;
 }
+
+export interface AccountConfigImportRecipe {
+  entries: readonly AccountConfigImportEntryRecipe[];
+}
+
+export type AccountConfigImportEntryRecipe =
+  | {
+      path: string;
+      kind: "directory";
+      merge: { kind: "copy" };
+    }
+  | {
+      path: string;
+      kind: "file";
+      source?:
+        | { kind: "resolved_recipe_file"; rel: string }
+        | { kind: "first_existing_vendor_file"; rels: readonly string[] };
+      merge:
+        | { kind: "copy" }
+        | { kind: "json"; safeKeys: readonly string[]; mcpKey?: "mcp" | "mcpServers"; allowComments?: boolean }
+        | {
+            kind: "toml";
+            topLevelKeys: readonly string[];
+            exactSections?: ReadonlyArray<{ path: readonly string[]; keys: readonly string[] }>;
+            childSections?: ReadonlyArray<{ path: readonly string[]; keys: readonly string[] }>;
+            profile?: "kimi";
+          };
+    };
 
 /**
  * The machine-side layout of a recipe's files. Path templates expand
@@ -234,6 +264,86 @@ const AGY_CODE_PROMPT: LoginCliCue = {
 };
 const AGY_FAILURE = ["\\bauthentication (?:failed or )?timed out\\b"];
 
+const MCP_TOML_KEYS = [
+  "type",
+  "command",
+  "args",
+  "cwd",
+  "url",
+  "enabled",
+  "timeout",
+  "startup_timeout_sec",
+  "tool_timeout_sec",
+  "env_vars",
+  "bearer_token_env_var",
+] as const;
+
+const CODEX_CONFIG_KEYS = [
+  "model",
+  "review_model",
+  "model_reasoning_effort",
+  "model_reasoning_summary",
+  "model_verbosity",
+  "approval_policy",
+  "sandbox_mode",
+  "web_search",
+  "service_tier",
+  "personality",
+  "plan_mode_reasoning_effort",
+  "project_doc_max_bytes",
+  "project_doc_fallback_filenames",
+  "hide_agent_reasoning",
+  "show_raw_agent_reasoning",
+  "disable_response_storage",
+  "file_opener",
+  "notify",
+] as const;
+
+const GENERAL_TOML_CONFIG_KEYS = [
+  "model",
+  "default_model",
+  "reasoning_effort",
+  "approval_policy",
+  "sandbox_mode",
+  "sandbox",
+  "language",
+  "theme",
+  "editor",
+  "vim_mode",
+  "mouse",
+  "bell",
+  "notifications",
+  "animation",
+  "compact",
+  "auto_update",
+] as const;
+
+const KIMI_CONFIG_KEYS = [
+  "default_permission_mode",
+  "default_plan_mode",
+  "merge_all_available_skills",
+  "extra_skill_dirs",
+  "extra_agent_dirs",
+  "builtin_product_skills",
+  "telemetry",
+] as const;
+
+const KIMI_MODEL_KEYS = [
+  "provider",
+  "model",
+  "max_context_size",
+  "max_input_size",
+  "max_output_size",
+  "capabilities",
+  "support_efforts",
+  "default_effort",
+  "off_effort",
+  "base_url",
+  "display_name",
+  "reasoning_key",
+  "adaptive_thinking",
+] as const;
+
 export const ACCOUNT_RECIPES: Readonly<Record<string, IdentityRecipe>> = {
   claude: {
     // With CLAUDE_CONFIG_DIR set, all three live inside the config dir. On
@@ -258,6 +368,40 @@ export const ACCOUNT_RECIPES: Readonly<Record<string, IdentityRecipe>> = {
           remoteCapable: true,
           fields: [LOGIN_FIELD_CODE],
           run: { mode: "direct", runner: "claude_oauth" },
+        },
+      ],
+    },
+    configImport: {
+      entries: [
+        { path: "CLAUDE.md", kind: "file", merge: { kind: "copy" } },
+        { path: "skills", kind: "directory", merge: { kind: "copy" } },
+        { path: "commands", kind: "directory", merge: { kind: "copy" } },
+        { path: "agents", kind: "directory", merge: { kind: "copy" } },
+        {
+          path: "settings.json",
+          kind: "file",
+          merge: {
+            kind: "json",
+            safeKeys: [
+              "model",
+              "outputStyle",
+              "language",
+              "permissions",
+              "cleanupPeriodDays",
+              "respectGitignore",
+              "includeCoAuthoredBy",
+              "alwaysThinkingEnabled",
+              "spinnerTipsEnabled",
+              "autoUpdatesChannel",
+              "skipDangerousModePermissionPrompt",
+            ],
+          },
+        },
+        {
+          path: ".claude.json",
+          kind: "file",
+          source: { kind: "resolved_recipe_file", rel: ".claude.json" },
+          merge: { kind: "json", safeKeys: [], mcpKey: "mcpServers" },
         },
       ],
     },
@@ -321,6 +465,27 @@ export const ACCOUNT_RECIPES: Readonly<Record<string, IdentityRecipe>> = {
         },
       ],
     },
+    configImport: {
+      entries: [
+        { path: "AGENTS.md", kind: "file", merge: { kind: "copy" } },
+        { path: "skills", kind: "directory", merge: { kind: "copy" } },
+        { path: "prompts", kind: "directory", merge: { kind: "copy" } },
+        {
+          path: "config.toml",
+          kind: "file",
+          merge: {
+            kind: "toml",
+            topLevelKeys: CODEX_CONFIG_KEYS,
+            exactSections: [
+              { path: ["features"], keys: ["*"] },
+              { path: ["notice"], keys: ["*"] },
+              { path: ["tui"], keys: ["*"] },
+            ],
+            childSections: [{ path: ["mcp_servers"], keys: MCP_TOML_KEYS }],
+          },
+        },
+      ],
+    },
   },
   opencode: {
     // opencode keeps auth under $XDG_DATA_HOME/opencode/auth.json; the
@@ -345,6 +510,25 @@ export const ACCOUNT_RECIPES: Readonly<Record<string, IdentityRecipe>> = {
           remoteCapable: true,
           fields: opencodeFields(),
           run: { mode: "direct", runner: "opencode_api_key" },
+        },
+      ],
+    },
+    configImport: {
+      entries: [
+        { path: "AGENTS.md", kind: "file", merge: { kind: "copy" } },
+        { path: "skills", kind: "directory", merge: { kind: "copy" } },
+        { path: "commands", kind: "directory", merge: { kind: "copy" } },
+        { path: "agents", kind: "directory", merge: { kind: "copy" } },
+        {
+          path: "opencode.json",
+          kind: "file",
+          source: { kind: "first_existing_vendor_file", rels: ["opencode.jsonc", "opencode.json"] },
+          merge: {
+            kind: "json",
+            safeKeys: ["$schema", "model", "small_model", "default_agent", "subagent_depth", "autoupdate", "share", "instructions", "permission", "tools", "formatter", "lsp", "plugin", "command", "agent", "watcher"],
+            mcpKey: "mcp",
+            allowComments: true,
+          },
         },
       ],
     },
@@ -376,6 +560,24 @@ export const ACCOUNT_RECIPES: Readonly<Record<string, IdentityRecipe>> = {
         },
       ],
     },
+    configImport: {
+      entries: [
+        { path: "AGENTS.md", kind: "file", merge: { kind: "copy" } },
+        { path: "skills", kind: "directory", merge: { kind: "copy" } },
+        { path: "prompts", kind: "directory", merge: { kind: "copy" } },
+        { path: "commands", kind: "directory", merge: { kind: "copy" } },
+        {
+          path: "config.toml",
+          kind: "file",
+          merge: {
+            kind: "toml",
+            topLevelKeys: GENERAL_TOML_CONFIG_KEYS,
+            exactSections: [{ path: ["tui"], keys: ["*"] }],
+            childSections: [{ path: ["mcp_servers"], keys: MCP_TOML_KEYS }],
+          },
+        },
+      ],
+    },
   },
   kimi: {
     credentialFiles: ["credentials/kimi-code.json"],
@@ -402,6 +604,43 @@ export const ACCOUNT_RECIPES: Readonly<Record<string, IdentityRecipe>> = {
             },
           },
         },
+      ],
+    },
+    configImport: {
+      entries: [
+        { path: "AGENTS.md", kind: "file", merge: { kind: "copy" } },
+        { path: "skills", kind: "directory", merge: { kind: "copy" } },
+        { path: "prompts", kind: "directory", merge: { kind: "copy" } },
+        { path: "commands", kind: "directory", merge: { kind: "copy" } },
+        {
+          path: "config.toml",
+          kind: "file",
+          merge: {
+            kind: "toml",
+            profile: "kimi",
+            topLevelKeys: KIMI_CONFIG_KEYS,
+            exactSections: [
+              { path: ["thinking"], keys: ["enabled", "effort", "keep"] },
+              { path: ["loop_control"], keys: ["max_steps_per_turn", "max_attempts_per_step", "reserved_context_size"] },
+              { path: ["background"], keys: ["max_running_tasks", "keep_alive_on_exit", "bash_auto_background_on_timeout", "bash_task_timeout_s", "print_background_mode", "print_wait_ceiling_s", "print_max_turns", "kill_grace_period_ms"] },
+              { path: ["mcp"], keys: ["startup_timeout_ms", "tool_timeout_ms"] },
+              { path: ["identity"], keys: ["name", "slug"] },
+            ],
+            childSections: [
+              { path: ["providers"], keys: ["type", "base_url"] },
+              { path: ["models"], keys: KIMI_MODEL_KEYS },
+            ],
+          },
+        },
+        {
+          path: "tui.toml",
+          kind: "file",
+          merge: {
+            kind: "toml",
+            topLevelKeys: ["theme", "render_latex", "disable_paste_burst"],
+          },
+        },
+        { path: "mcp.json", kind: "file", merge: { kind: "json", safeKeys: [], mcpKey: "mcpServers" } },
       ],
     },
   },
@@ -477,6 +716,15 @@ export const ACCOUNT_RECIPES: Readonly<Record<string, IdentityRecipe>> = {
         },
       ],
     },
+    configImport: {
+      entries: [
+        { path: "AGENTS.md", kind: "file", merge: { kind: "copy" } },
+        { path: "rules", kind: "directory", merge: { kind: "copy" } },
+        { path: "skills", kind: "directory", merge: { kind: "copy" } },
+        { path: "commands", kind: "directory", merge: { kind: "copy" } },
+        { path: "mcp.json", kind: "file", merge: { kind: "json", safeKeys: [], mcpKey: "mcpServers" } },
+      ],
+    },
   },
 };
 
@@ -520,6 +768,11 @@ export function homeEnvFor(harness: string): string | undefined {
 
 export function recipeFor(harness: string): IdentityRecipe | undefined {
   return ACCOUNT_RECIPES[harness];
+}
+
+/** The explicit allowlist and content rules for config-only onboarding. */
+export function accountConfigImportRecipeFor(harness: string): AccountConfigImportRecipe | undefined {
+  return ACCOUNT_RECIPES[harness]?.configImport;
 }
 
 /**

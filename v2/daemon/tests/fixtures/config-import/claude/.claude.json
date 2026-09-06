@@ -1,0 +1,26 @@
+{
+  "oauthAccount": {
+    "accessToken": "CLAUDE_SOURCE_AUTH_MUST_NOT_COPY"
+  },
+  "mcpServers": {
+    "docs": {
+      "command": "/usr/bin/docs-mcp",
+      "args": ["serve"],
+      "env": {
+        "DOCS_TOKEN": "CLAUDE_MCP_AUTH_MUST_NOT_COPY"
+      }
+    },
+    "token-url-only": {
+      "type": "http",
+      "enabled": true,
+      "url": "https://secret@example.test/events?token=CLAUDE_URL_AUTH_MUST_NOT_COPY"
+    },
+    "auth-only": {
+      "type": "http",
+      "enabled": true,
+      "headers": {
+        "Authorization": "Bearer CLAUDE_AUTH_ONLY_MUST_NOT_COPY"
+      }
+    }
+  }
+}

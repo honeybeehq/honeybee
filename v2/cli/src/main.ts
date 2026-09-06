@@ -11,6 +11,7 @@
  * - `daemon install|start|stop|restart|status` wraps the platform service layer.
  */
 import { execFile, spawnSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import { createInterface } from "node:readline";
 import { closeSync, existsSync, openSync, readSync, statSync } from "node:fs";
@@ -27,6 +28,8 @@ import { readFileSync, writeFileSync } from "node:fs";
 import {
   RpcError,
   type AccountAddResult,
+  type AccountConfigImportResult,
+  type AccountConfigPreviewResult,
   type AccountBackfillResult,
   type AccountCaptureResult,
   type AccountGetResult,
@@ -650,6 +653,7 @@ async function cmdSpawn(ctx: CliContext, parsed: Parsed): Promise<number> {
 
 const ACCOUNT_USAGE =
   "usage: hive account list [--harness h] | get <selector> | add <harness> <label> [--id id] [--home dir] [--penalty n] [--import-existing]\n" +
+  "       hive account config preview <selector> | config import <selector> [--idempotency-key key]\n" +
   "       hive account remove|pause|unpause <selector> | penalty <selector> <0-100>\n" +
   "       hive account login <selector> [--method <id>] [--remote] [--no-wait] | login-status <selector> | login-cancel <selector>\n" +
   "       hive account capture <selector> | verify <selector> | limits [<selector>] | reset <selector> [--credit-id id] --idempotency-key key\n" +
@@ -809,6 +813,31 @@ async function cmdAccount(ctx: CliContext, parsed: Parsed): Promise<number> {
         r,
         false,
       );
+      return 0;
+    }
+    case "config": {
+      const action = parsed.positional[2];
+      const id = parsed.positional[3];
+      if (!id || (action !== "preview" && action !== "import")) throw new Error(ACCOUNT_USAGE);
+      if (action === "preview") {
+        const result = await withClient(ctx, (client) => client.request<AccountConfigPreviewResult>("account.config.preview", { id }));
+        const lines = [
+          `${result.accountId} (${result.harness}) configuration from ${tildify(result.sourceHome)}`,
+          ...result.entries.map((entry) => `  ${entry.status === "ready" ? "+" : "="} ${entry.path}  ${entry.kind}${entry.reason ? `  (${entry.reason})` : ""}`),
+        ];
+        emit(ctx, lines, result, false);
+        return 0;
+      }
+      const result = await withClient(ctx, (client) => client.request<AccountConfigImportResult>("account.config.import", {
+        id,
+        idempotencyKey: key ?? randomUUID(),
+      }));
+      const lines = [
+        `imported ${result.imported.length} configuration path(s) into ${result.accountId}; skipped ${result.skipped.length}`,
+        ...result.imported.map((path) => `  + ${path}`),
+        ...result.skipped.map((path) => `  = ${path}`),
+      ];
+      emit(ctx, lines, result, false);
       return 0;
     }
     case "remove":

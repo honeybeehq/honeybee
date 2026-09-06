@@ -66,6 +66,8 @@ export const DAEMON_VERSION = "2.0.0-wp4";
  * client ignores the extra key) and `deployInfo` repeats the list.
  */
 export const DAEMON_CAPABILITIES = [
+  /** Configuration-only onboarding preview/import; never imports harness authentication. */
+  "account.config.import.v1",
   /** Typed, tmux-independent account login flows: account.login.* verbs + the login_flows snapshot table. */
   "account.login.flow.v1",
   /** Per-harness executable facts (`node.harnesses`), resolved with the same rule the spawn path uses. */
@@ -159,6 +161,10 @@ export const RPC_ERROR_CODES = [
    * logged-out account is never created "by import".
    */
   "no_credentials_to_import",
+  /** The selected account harness has no configuration-only import recipe. */
+  "config_import_unsupported",
+  /** The account/source/destination layout makes configuration import unsafe. */
+  "config_import_refused",
   /**
    * `bee.swapAccount` (claude): the conversation transcript the destination
    * home must hold for `--resume <seed> --fork-session` was not found in the
@@ -252,6 +258,8 @@ export const RPC_VERBS = [
   "account.list",
   "account.get",
   "account.add",
+  "account.config.preview",
+  "account.config.import",
   "account.remove",
   "account.pause",
   "account.unpause",
@@ -374,6 +382,29 @@ export interface AccountGetResult {
   credentialHealth: CredentialHealth;
   /** v16: the account's current login flow (active or its latest outcome), if any. */
   loginFlow: MirrorLoginFlowRow | null;
+}
+
+/** One allowlisted source entry considered by `account.config.preview`. */
+export interface AccountConfigPreviewEntry {
+  path: string;
+  kind: "file" | "directory";
+  status: "ready" | "skipped";
+  reason?: string;
+}
+
+/** `account.config.preview {id}` — paths and decisions only; never file contents. */
+export interface AccountConfigPreviewResult {
+  accountId: string;
+  harness: string;
+  sourceHome: string;
+  entries: AccountConfigPreviewEntry[];
+}
+
+/** `account.config.import {id,idempotencyKey}` — the exact durable result. */
+export interface AccountConfigImportResult {
+  accountId: string;
+  imported: string[];
+  skipped: string[];
 }
 
 /** v18: where `account.add {importExisting:true}` took the credential from. */

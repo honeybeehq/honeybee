@@ -56,6 +56,7 @@ import {
   type Urgency,
 } from "../../core/src/index.ts";
 import { AccountsService, ResetLimitsRefusal, type CaptureOutcome, type LimitsFetchers } from "./accountsService.ts";
+import { AccountConfigImportRefusal, AccountConfigImportService } from "./accountConfigImport.ts";
 import { dirHasCredentials } from "./activation.ts";
 import { LoginFlowService, type LoginTransports } from "./loginFlows.ts";
 import type { PtySpawner } from "./loginWorker.ts";
@@ -123,6 +124,8 @@ import {
   RpcError,
   SPAWN_SUBSTRATES,
   type AccountAddResult,
+  type AccountConfigImportResult,
+  type AccountConfigPreviewResult,
   type AccountBackfillResult,
   type AccountLeaseResult,
   type AccountCaptureResult,
@@ -361,6 +364,14 @@ export function autoswapDisabled(bee: { tags: string[]; args: string[] | null })
   return bee.tags.some(spelled) || (bee.args ?? []).some(spelled);
 }
 
+function isAccountConfigImportResult(value: unknown): value is AccountConfigImportResult {
+  if (value === null || typeof value !== "object") return false;
+  const result = value as Record<string, unknown>;
+  return typeof result.accountId === "string" &&
+    Array.isArray(result.imported) && result.imported.every((path) => typeof path === "string") &&
+    Array.isArray(result.skipped) && result.skipped.every((path) => typeof path === "string");
+}
+
 /** Verbs whose result `status` is the verb's own report, not a command status (see withIdempotency). */
 const OWN_STATUS_VERBS: ReadonlySet<RpcVerb> = new Set<RpcVerb>(["cell.capture", "cell.remove"]);
 
@@ -387,6 +398,7 @@ export class HiveDaemon {
   private readonly opLog: string[] = [];
   private accounts: AccountsService | null = null;
   private loginFlows: LoginFlowService | null = null;
+  private readonly accountConfigImport: AccountConfigImportService;
   private readonly deps: HiveDaemonDeps;
   /** v7 rotation bound: one attempt per (bee, generation) exhaustion event. */
   private readonly rotatedGenerations = new Map<string, number>();
@@ -403,6 +415,7 @@ export class HiveDaemon {
     this.deps = deps;
     this.naming = cfg.naming;
     this.performance = createPerformanceProfiler({ log: (op) => this.log(op) });
+    this.accountConfigImport = new AccountConfigImportService();
   }
 
   /** The account plane (tests reach the selector / capture / importer through it). */
@@ -938,6 +951,10 @@ export class HiveDaemon {
         return this.rpcAccountGet(params);
       case "account.add":
         return this.rpcAccountAdd(params);
+      case "account.config.preview":
+        return this.rpcAccountConfigPreview(params);
+      case "account.config.import":
+        return this.rpcAccountConfigImport(params);
       case "account.remove":
         return this.rpcAccountRemove(params);
       case "account.pause":
@@ -2274,6 +2291,49 @@ export class HiveDaemon {
       credentialHealth: this.mustAccounts().credentialHealthOf(account),
       loginFlow: store.latestLoginFlow(account.id),
     };
+  }
+
+  private rpcAccountConfigPreview(params: Record<string, unknown>): AccountConfigPreviewResult {
+    const account = this.requireAccount(params);
+    try {
+      return this.accountConfigImport.preview(account);
+    } catch (error) {
+      return this.refuseAccountConfigImport(error);
+    }
+  }
+
+  private rpcAccountConfigImport(params: Record<string, unknown>): AccountConfigImportResult {
+    const key = this.idempotencyKeyOf(params);
+    if (key === null) throw new RpcError("invalid_request", "account.config.import requires idempotencyKey");
+    const store = this.mustStore();
+    return store.transact(() => {
+      const hit = store.lookupRpcResult(key);
+      if (hit) {
+        if (hit.verb !== "account.config.import" || !isAccountConfigImportResult(hit.result)) {
+          throw new RpcError("invalid_request", "idempotencyKey was already used for a different or invalid result");
+        }
+        this.log(`rpc.dedup verb=account.config.import key=${key}`);
+        return hit.result;
+      }
+      const account = this.requireAccount(params);
+      let result: AccountConfigImportResult;
+      try {
+        result = this.accountConfigImport.import(account);
+      } catch (error) {
+        return this.refuseAccountConfigImport(error);
+      }
+      store.recordRpcResult(key, "account.config.import", null, result);
+      this.log(`account.config.import id=${account.id} imported=${result.imported.length} skipped=${result.skipped.length}`);
+      return result;
+    });
+  }
+
+  private refuseAccountConfigImport(error: unknown): never {
+    if (error instanceof AccountConfigImportRefusal) {
+      const code = error.reason === "unsupported_harness" ? "config_import_unsupported" : "config_import_refused";
+      throw new RpcError(code, error.message);
+    }
+    throw error;
   }
 
   private async rpcAccountRemove(params: Record<string, unknown>): Promise<AccountRemoveResult> {
