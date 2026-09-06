@@ -32,7 +32,8 @@ Runtime is `booting -> running <-> idle -> stopped`, with `booting -> stopped` l
 - Nothing leaves `stopped`; revive creates generation N+1.
 - Exit causes: `clean`, `crashed`, `stopped_by_user`, `stopped_by_system`,
   `machine_restart`.
-- A restart may reconcile runtimes to `stopped(machine_restart)` but creates no failure.
+- After a restart, re-adopt surviving runtimes by exact process identity. Runtimes with
+  no matching live process may reconcile to `stopped(machine_restart)` without failure.
 - Fence runtime commands by generation; stale intent audits and settles as a no-op.
 
 Condition flags are only `auth_needed`, `resource_blocked`, `spawn_failed`, and
@@ -84,8 +85,18 @@ or record a durable structured violation.
 - Keep Cell provisioning/maintenance/sampling off the RPC accept hot path.
 - Signal only exact PID/PGID plus birth identity; bound/single-flight maintenance.
 
-The daemon currently owns HSR child stdio, so daemon restart stops those runtimes. Reconcile
-them and rely on revive-on-message; do not fabricate liveness or add another state store.
+Detached runner hosts own HSR child stdio, including for Cell runtimes. Production daemon
+shutdown detaches without signaling those hosts. Preserve surviving bees across deploys
+and daemon restarts with the same process and runtime generation. The successor daemon
+verifies the stored PID and birth identity, reconnects the host socket, and resumes the
+generation's observation journal from the core's committed cursor. Keep lifecycle authority
+in SQLite; runner status and journals supply evidence, not another state store.
+
+Missing or corrupt recovery evidence requires conservative degraded adoption; never
+fabricate liveness or idle. Bee survival does not guarantee uninterrupted daemon RPC access.
+For restart behavior, inspect `v2/driver-hsr/src/runner-host.ts`,
+`v2/driver-hsr/src/driver.ts`, and `v2/daemon/src/daemon.ts`. Verify recovery with
+`v2/driver-hsr/tests/runner-host.test.ts`.
 
 ## Deployment and compatibility
 
