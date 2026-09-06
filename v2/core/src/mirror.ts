@@ -12,7 +12,7 @@
  * Changing anything here is a protocol change (bump PROTOCOL in the daemon).
  * The shape snapshot test (tests/mirror.test.ts) fails on any drift.
  */
-import type { AccountLimitsRow, AccountRow, AuditRow, BeeRow, BeeView, CredentialHealth, QuestionRow, RuntimeRow, SealRow, TaskRow, TaskSupplyRow, TemplateRow, TrackRow } from "./types.ts";
+import type { AccountLimitsRow, AccountRow, AuditRow, BeeMoveView, BeeRow, BeeView, CellRow, CredentialHealth, QuestionRow, RuntimeRow, SealRow, TaskRow, TaskSupplyRow, TemplateRow, TrackRow } from "./types.ts";
 import { LOGIN_FLOW_KEYS, type LoginFlowRow } from "./loginFlow.ts";
 
 /** One bee as apiaryd stores it: B8 view verbatim + record + current runtime. */
@@ -21,6 +21,10 @@ export interface MirrorBeeRow {
   /** null only for a view of a deleted/never-existed bee (never in snapshots). */
   bee: BeeRow | null;
   runtime: RuntimeRow | null;
+  /** v21 — latest move receipt (in-flight, complete, or failed). Null only when the bee has never moved. */
+  move: BeeMoveView | null;
+  /** v21 — active or retained Cell; null when none. Derived from cells. */
+  cell: CellRow | null;
 }
 
 /** Templates mirror as their store rows, verbatim. */
@@ -82,6 +86,9 @@ export interface MirrorSnapshot {
   taskSupply: MirrorTaskSupplyRow[];
   /** v16 (additive): account login flows, store rows verbatim. */
   loginFlows: MirrorLoginFlowRow[];
+  /** v21 (additive): Cell registry + move aggregate. */
+  cells: CellRow[];
+  beeMoves: BeeMoveView[];
 }
 
 /** A watch delta is a contiguous run of audit rows (see daemon protocol.ts WatchFrame). */
@@ -150,6 +157,14 @@ export const MIRROR_ACCOUNT_LIMITS_AUDIT_KINDS = ["account_limits.put", "account
 export const MIRROR_TASK_AUDIT_KINDS = ["task.put"] as const;
 export const MIRROR_TASK_SUPPLY_AUDIT_KINDS = ["task_supply.put"] as const;
 export const MIRROR_LOGIN_FLOW_AUDIT_KINDS = ["login_flow.put", "login_flow.removed"] as const;
+export const MIRROR_CELL_AUDIT_KINDS = ["cell.put", "cell.removed"] as const;
+export const MIRROR_BEE_MOVE_AUDIT_KINDS = [
+  "bee.move_admitted",
+  "bee.move_phase",
+  "bee.placement",
+  "bee.move_failed",
+  "bee.move_instructions",
+] as const;
 export type MirrorAccountAuditKind = (typeof MIRROR_ACCOUNT_AUDIT_KINDS)[number];
 export type MirrorAccountLimitsAuditKind = (typeof MIRROR_ACCOUNT_LIMITS_AUDIT_KINDS)[number];
 export type MirrorTemplateAuditKind = (typeof MIRROR_TEMPLATE_AUDIT_KINDS)[number];
@@ -161,7 +176,7 @@ export type MirrorTaskSupplyAuditKind = (typeof MIRROR_TASK_SUPPLY_AUDIT_KINDS)[
 export type MirrorLoginFlowAuditKind = (typeof MIRROR_LOGIN_FLOW_AUDIT_KINDS)[number];
 
 /** Key lists — the shape snapshot; a materializer's column map must cover exactly these. */
-export const MIRROR_BEE_ROW_KEYS = ["view", "bee", "runtime"] as const;
+export const MIRROR_BEE_ROW_KEYS = ["view", "bee", "runtime", "move", "cell"] as const;
 export const MIRROR_BEE_VIEW_KEYS = [
   "beeId",
   "exists",
@@ -206,6 +221,10 @@ export const MIRROR_BEE_RECORD_KEYS = [
   "account",
   // v10: additive — the pretty display handle (CL.a3f2 | null pre-backfill).
   "handle",
+  // v21: Cell→checkout placement + registry pointers.
+  "placementVersion",
+  "activeMoveId",
+  "cellId",
 ] as const;
 export const MIRROR_RUNTIME_KEYS = [
   "beeId",
@@ -317,3 +336,28 @@ export const MIRROR_TASK_SUPPLY_KEYS = ["beeId", "on", "limit", "feeds", "paused
 export const MIRROR_LOGIN_FLOW_KEYS = LOGIN_FLOW_KEYS;
 export const MIRROR_LOGIN_METHOD_KEYS = ["id", "kind", "label", "description", "remoteCapable", "fields"] as const;
 export const MIRROR_LOGIN_FIELD_KEYS = ["id", "label", "help", "required", "secret", "inputType", "placeholder", "pattern", "options", "scope"] as const;
+export const MIRROR_CELL_KEYS = [
+  "id",
+  "sourceBeeId",
+  "state",
+  "repository",
+  "originRepo",
+  "sha",
+  "wrapper",
+  "spaceName",
+  "spaceDir",
+  "sandbox",
+  "createdAt",
+  "retainedAt",
+  "removedAt",
+] as const;
+export const MIRROR_BEE_MOVE_KEYS = [
+  "id",
+  "beeId",
+  "phase",
+  "sourceGeneration",
+  "from",
+  "to",
+  "retainedCellId",
+  "failure",
+] as const;

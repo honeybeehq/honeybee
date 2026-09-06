@@ -68,6 +68,10 @@ const GROUPS: Group[] = [
       ["attach", "<bee> [--print]", "tmux-substrate bees only (hsr/cell are pane-less: use tail)"],
       ["cell", "capture <bee> --onto <b>", "land the cell's commits onto an origin branch"],
       ["cell", "remove <bee> [--force]", "delete the cell (dirty guard) + delete the bee"],
+      ["cell", "exec <cellId> -- <argv>", "sandboxed retained-Cell exec"],
+      ["cell", "retained-remove <cellId>", "delete a retained Cell without deleting the bee"],
+      ["bee", "move <bee> --to <cwd>", "same-node Cell→checkout move"],
+      ["bee", "move-get <moveId>", "read a Cell→checkout move receipt"],
     ],
   },
   {

@@ -53,7 +53,30 @@ export {
   type WarmRecord,
 } from "./ledger.ts";
 export { cowCopy, cowPlatform, probeCow, probeCowWritable, type CowPlatform } from "./cow.ts";
-export { git, tryGit, gitEnv, revParse, refSet, porcelainStatus, currentBranch, hasCommit, GitError } from "./git.ts";
+export {
+  git,
+  tryGit,
+  gitEnv,
+  revParse,
+  refSet,
+  porcelainStatus,
+  currentBranch,
+  hasCommit,
+  GitError,
+  gitCommonDirRealpath,
+  gitObjectFormat,
+  localRepoIdentity,
+} from "./git.ts";
+export {
+  runCellExec,
+  sanitizedCellExecEnv,
+  containedExecCwd,
+  decodeCappedUtf8,
+  OutputCap,
+  type CellExecSpec,
+  type CellExecOutcome,
+  type CellExecSpawned,
+} from "./exec.ts";
 export {
   CELL_GIT_IMAGE_VERSION,
   gitImageRepoKey,

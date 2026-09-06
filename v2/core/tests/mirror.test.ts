@@ -54,6 +54,8 @@ test("mirror.1: live rows carry exactly the declared keys — bees (view/bee/run
       view: store.view(bee.id),
       bee: store.getBee(bee.id),
       runtime: store.currentRuntime(bee.id),
+      move: null,
+      cell: null,
     };
     assert.deepEqual(keysOf(row), [...MIRROR_BEE_ROW_KEYS].sort());
     assert.deepEqual(keysOf(row.view), [...MIRROR_BEE_VIEW_KEYS].sort());
@@ -153,7 +155,9 @@ test("mirror.2: value-level snapshot — a deterministic store serializes to the
     });
     const snapshot: MirrorSnapshot = {
       seq: store.lastAuditSeq(),
-      bees: [{ view: store.view(bee.id), bee: store.getBee(bee.id), runtime: store.currentRuntime(bee.id) }],
+      bees: [{ view: store.view(bee.id), bee: store.getBee(bee.id), runtime: store.currentRuntime(bee.id), move: null, cell: null }],
+      cells: [],
+      beeMoves: [],
       templates: [template],
       tracks: [track],
       questions: [store.getQuestion(question.id)!],
@@ -210,7 +214,10 @@ test("mirror.2: value-level snapshot — a deterministic store serializes to the
         "forkedFrom": null,
         "forkSeed": null,
         "account": null,
-        "handle": "BEE_HANDLE"
+        "handle": "BEE_HANDLE",
+        "placementVersion": 0,
+        "activeMoveId": null,
+        "cellId": null
       },
       "runtime": {
         "beeId": "BEE_ID",
@@ -222,9 +229,13 @@ test("mirror.2: value-level snapshot — a deterministic store serializes to the
         "bootEvidence": null,
         "startedAt": 1002000,
         "updatedAt": 1002000
-      }
+      },
+      "move": null,
+      "cell": null
     }
   ],
+  "cells": [],
+  "beeMoves": [],
   "templates": [
     {
       "id": "tpl-1",

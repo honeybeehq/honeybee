@@ -143,6 +143,15 @@ export interface BeeRow {
    * a pre-v10 store opened read-only (the migration backfills on open).
    */
   handle: string | null;
+  /**
+   * v21 — increments on each committed Cell→checkout placement. CAS target
+   * for `bee.move` `expected.placementVersion`.
+   */
+  placementVersion: number;
+  /** v21 — in-flight move id; null when idle (including after complete/failed). */
+  activeMoveId: string | null;
+  /** v21 — cells.id for the bee's active or retained Cell; null if none. */
+  cellId: string | null;
 }
 
 /**
@@ -736,6 +745,122 @@ export interface StateDump {
   taskSupply: TaskSupplyRow[];
   /** v16 */
   loginFlows: LoginFlowRow[];
+  /** v21 */
+  cells: CellRow[];
+  beeMoves: BeeMoveRow[];
+  cellOps: CellOpRow[];
+}
+
+// ---------------------------------------------------------------------------
+// v21 — Cell registry + same-node Cell→checkout move
+// ---------------------------------------------------------------------------
+
+export const LOCAL_REPO_OBJECT_FORMATS = ["sha1", "sha256"] as const;
+export type LocalRepoObjectFormat = (typeof LOCAL_REPO_OBJECT_FORMATS)[number];
+
+export interface LocalRepoIdentity {
+  version: 1;
+  gitCommonDirRealpath: string;
+  objectFormat: LocalRepoObjectFormat;
+}
+
+export const CELL_STATES = ["active", "retained", "removing", "removed"] as const;
+export type CellState = (typeof CELL_STATES)[number];
+
+export interface CellRow {
+  id: string;
+  sourceBeeId: string;
+  state: CellState;
+  repository: LocalRepoIdentity;
+  originRepo: string;
+  sha: string;
+  wrapper: string;
+  spaceName: string;
+  spaceDir: string;
+  sandbox: boolean | null;
+  createdAt: number;
+  retainedAt: number | null;
+  removedAt: number | null;
+}
+
+export const BEE_MOVE_PHASES = ["stopping", "placing", "starting", "complete", "failed"] as const;
+export type BeeMovePhase = (typeof BEE_MOVE_PHASES)[number];
+
+/** Closed graph. Terminal phases have no outbound edge. */
+export const BEE_MOVE_TRANSITIONS: Readonly<Record<BeeMovePhase, readonly BeeMovePhase[]>> = {
+  stopping: ["placing", "failed"],
+  placing: ["starting", "failed"],
+  starting: ["complete", "failed"],
+  complete: [],
+  failed: [],
+};
+
+export const BEE_MOVE_FAILURE_STAGES = ["validate", "stop", "start", "context"] as const;
+export type BeeMoveFailureStage = (typeof BEE_MOVE_FAILURE_STAGES)[number];
+
+export interface BeeMoveFailure {
+  stage: BeeMoveFailureStage;
+  code: string;
+  detail: string;
+}
+
+export interface BeePlacement {
+  version: number;
+  mode: "cell" | "checkout";
+  substrate: "cell" | "hsr";
+  cwd: string;
+}
+
+/** Locked RPC/mirror view. Apiary materializes exactly these keys. */
+export interface BeeMoveView {
+  id: string;
+  beeId: string;
+  phase: BeeMovePhase;
+  sourceGeneration: number;
+  from: BeePlacement;
+  to: BeePlacement;
+  retainedCellId: string;
+  failure: BeeMoveFailure | null;
+}
+
+/** Store/dump/audit row. Projected to BeeMoveView at RPC/mirror boundaries. */
+export interface BeeMoveRow extends BeeMoveView {
+  idempotencyKey: string;
+  requestHash: string;
+  stopCommandKey: string;
+  reviveCommandKey: string;
+  instructionsPending: boolean;
+  instructionsApplied: boolean;
+  createdAt: number;
+  /** Destination HEAD captured at admission; used to revalidate before placement. */
+  observedHead: string;
+}
+
+export const CELL_OP_KINDS = ["exec", "remove"] as const;
+export type CellOpKind = (typeof CELL_OP_KINDS)[number];
+
+export const CELL_OP_STATUSES = ["queued", "running", "done", "failed", "outcome_unknown"] as const;
+export type CellOpStatus = (typeof CELL_OP_STATUSES)[number];
+
+export interface CellOpRow {
+  id: string;
+  cellId: string;
+  kind: CellOpKind;
+  idempotencyKey: string;
+  requestHash: string;
+  status: CellOpStatus;
+  argv: string[] | null;
+  cwd: string | null;
+  timeoutMs: number | null;
+  pid: number | null;
+  pidStartedAt: number | null;
+  exitCode: number | null;
+  stdout: string;
+  stderr: string;
+  truncated: boolean;
+  failure: string | null;
+  createdAt: number;
+  updatedAt: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -862,5 +987,43 @@ export class AccountReferencedError extends CoreError {
   constructor(id: string, beeIds: string[]) {
     super(`account ${id} is referenced by ${beeIds.length} bee(s): ${beeIds.join(", ")} — swap or delete them first`);
     this.beeIds = beeIds;
+  }
+}
+
+/** v21 — `bee.move` expected placementVersion/cellId does not match the bee. */
+export class StalePlacementError extends CoreError {
+  constructor(message: string) {
+    super(message);
+  }
+}
+
+/** v21 — bee already has an incomplete move. */
+export class MoveInProgressError extends CoreError {
+  readonly moveId: string;
+
+  constructor(moveId: string) {
+    super(`bee already has an in-flight move ${moveId}`);
+    this.moveId = moveId;
+  }
+}
+
+/** v21 — same idempotency key, different canonical request hash. */
+export class IdempotencyConflictError extends CoreError {
+  constructor(message = "idempotency key already bound to a different request") {
+    super(message);
+  }
+}
+
+/** v21 — cells registry lookup. */
+export class CellNotFoundError extends CoreError {
+  constructor(cellId: string) {
+    super(`cell not found: ${cellId}`);
+  }
+}
+
+/** v21 — harness cannot continue the same conversation in a new cwd. */
+export class ContinuationUnsupportedError extends CoreError {
+  constructor(message: string) {
+    super(message);
   }
 }

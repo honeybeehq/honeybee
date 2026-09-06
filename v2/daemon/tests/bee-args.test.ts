@@ -121,6 +121,26 @@ test("args.daemon.2: composeSpawn codex — model lifted into thread/start|resum
   assert.equal(plain.model, undefined);
 });
 
+test("args.daemon.2e: composeSpawn codex placement overlay is thread developerInstructions, not argv", () => {
+  const overlay = "Workspace placement changed (version 1). Your active workspace is now the regular checkout at /tmp/checkout.";
+  const r = composeSpawn(
+    BUILTIN_AGENTS.codex!,
+    "codex",
+    bee({ providerSessionId: "thread-1" }),
+    [],
+    overlay,
+  );
+  assert.deepEqual(r.args, ["app-server"]);
+  const signals = r.adapter!.parseLine(JSON.stringify({ jsonrpc: "2.0", id: 1, result: {} }));
+  assert.equal(signals[0]?.kind, "respond");
+  const lines = signals[0]?.kind === "respond" ? signals[0].lines : [];
+  const req = JSON.parse(lines[1]!) as { method: string; params: Record<string, unknown> };
+  assert.equal(req.method, "thread/resume");
+  assert.equal(req.params.threadId, "thread-1");
+  assert.equal(req.params.developerInstructions, overlay);
+  assert.equal(req.params.cwd, "/tmp/w");
+});
+
 test("args.daemon.2b: composeSpawn grok — --model/--effort lifted in front of stdio", () => {
   const spec = BUILTIN_AGENTS.grok!;
   const r = composeSpawn(spec, "grok", bee({ args: ["--model", "grok-4.6", "--effort", "high"] }));

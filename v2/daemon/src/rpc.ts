@@ -13,9 +13,14 @@ import {
   AccountNotFoundError,
   AccountReferencedError,
   BeeNotFoundError,
+  CellNotFoundError,
+  ContinuationUnsupportedError,
   CoreError,
+  IdempotencyConflictError,
   IllegalTransitionError,
+  MoveInProgressError,
   NameConflictError,
+  StalePlacementError,
   PackageError,
   QuestionNotFoundError,
   SealNotFoundError,
@@ -89,6 +94,11 @@ export function toRpcError(err: unknown): { code: RpcErrorCode; message: string 
   if (err instanceof TaskNotFoundError) return { code: "task_not_found", message: err.message };
   if (err instanceof AccountNotFoundError) return { code: "account_not_found", message: err.message };
   if (err instanceof AccountReferencedError) return { code: "account_referenced", message: err.message };
+  if (err instanceof CellNotFoundError) return { code: "cell_not_found", message: err.message };
+  if (err instanceof StalePlacementError) return { code: "stale_placement", message: err.message };
+  if (err instanceof MoveInProgressError) return { code: "move_in_progress", message: err.message };
+  if (err instanceof IdempotencyConflictError) return { code: "idempotency_conflict", message: err.message };
+  if (err instanceof ContinuationUnsupportedError) return { code: "continuation_unsupported", message: err.message };
   if (err instanceof NameConflictError) return { code: "name_conflict", message: err.message };
   if (err instanceof PackageError) return { code: "invalid_package", message: err.message };
   if (err instanceof IllegalTransitionError) {

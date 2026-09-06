@@ -58,3 +58,4 @@ export * from "./tasks.ts";
 export { replayAudit } from "./audit.ts";
 export { deriveBeeView } from "./view.ts";
 export { SCHEMA_SQL, SCHEMA_VERSION } from "./schema.ts";
+export * from "./cellMove.ts";

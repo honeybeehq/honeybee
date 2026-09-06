@@ -39,7 +39,14 @@ import {
   isTaskTransitionAction,
   MAIL_HISTORY_MAX_LIMIT,
   MESSAGE_URGENCIES,
+  ContinuationUnsupportedError,
+  MOVE_CONTINUATION_AGENTS,
+  composeDeveloperInstructions,
+  hashBeeMoveRequest,
+  hashCellOpRequest,
   openCoreStore,
+  placementContextText,
+  toBeeMoveView,
   recipeFor,
   resolveExecutable,
   resolveSpawnCommand,
@@ -47,7 +54,10 @@ import {
   serializePackage,
   type AccountRow,
   type AuditRow,
+  type BeeMoveRow,
   type BeeRow,
+  type CellOpRow,
+  type CellRow,
   type CommandRow,
   type CoreStore,
   type MirrorAccountRow,
@@ -62,20 +72,28 @@ import type { PtySpawner } from "./loginWorker.ts";
 import type { KeychainReader, KeychainWriter } from "./keychain.ts";
 import type { FlagEvidenceLike } from "./loops.ts";
 import { realPreflightProbes } from "./import-probes.ts";
-import { HsrDriver, type SpawnSpec } from "../../driver-hsr/src/index.ts";
+import { HsrDriver, pidAlive, verifyProcessIdentity, type SpawnSpec } from "../../driver-hsr/src/index.ts";
 import {
   CellDeleteRefused,
   CellDriver,
   CellRuntimeLiveError,
   cellPaths,
-  provisionRequestOf,
+  deleteCell,
+  localRepoIdentity,
+  parseSpaceName,
   readLedger,
   reserveCell,
   revParse,
+  runCellExec,
   sanitizeComponent,
   type CellSpec,
   type ReserveRequest,
 } from "../../driver-cell/src/index.ts";
+import {
+  relocateClaudeSession,
+  TranscriptConflictError,
+  TranscriptUnavailableError,
+} from "./relocateSession.ts";
 import { SubstrateRouter } from "./substrates.ts";
 import { TmuxDriver, claudeProjectKey } from "../../driver-tmux/src/index.ts";
 import { tmuxSpawnSpec } from "./tmuxHarness.ts";
@@ -143,9 +161,12 @@ import {
   type AccountVerifyResult,
   type AuditTailResult,
   type SwapAccountResult,
+  type BeeMoveResult,
   type CellCaptureMode,
   type CellCaptureResult,
+  type CellExecResult,
   type CellRemoveResult,
+  type CellRetainedRemoveResult,
   type ChildrenResult,
   type ConfigGetResult,
   type ConfigPatchResult,
@@ -221,18 +242,22 @@ function adapterFor(
   model?: string,
   forkSeed?: string | null,
   grokMcpServers: readonly GrokMcpServerStdio[] = [],
+  placementInstruction?: string | null,
 ): HarnessAdapter | null {
   switch (name) {
     case "agy":
       return agyAdapter;
     case "claude":
       return claudeAdapter;
-    case "codex":
+    case "codex": {
+      const developerInstructions = composeDeveloperInstructions(null, placementInstruction);
       return codexAdapter({
         cwd,
         ...(providerSessionId ? { resumeThreadId: providerSessionId } : forkSeed ? { forkThreadId: forkSeed } : {}),
         ...(model ? { model } : {}),
+        ...(developerInstructions ? { developerInstructions } : {}),
       });
+    }
     case "grok":
       return grokAdapter({
         cwd,
@@ -277,6 +302,7 @@ export function composeSpawn(
   adapterName: string,
   bee: { cwd: string; args: string[] | null; providerSessionId: string | null; forkSeed?: string | null },
   grokMcpServers: readonly GrokMcpServerStdio[] = [],
+  placementInstruction?: string | null,
 ): { adapter: HarnessAdapter | null; args: string[]; model: string | undefined } {
   const grammar = grammarFor(adapterName);
   // v6 fork: a fork with no session of its own yet forks the SOURCE's
@@ -290,10 +316,17 @@ export function composeSpawn(
     : forkSeed && base?.forkArgs
       ? base.forkArgs(forkSeed)
       : [];
-  const composed = composeArgv(grammar, [spec.args, spec.defaultArgs, bee.args, resume]);
+  const startup = adapterName === "claude" && placementInstruction
+    ? ["--append-system-prompt", placementInstruction]
+    : [];
+  const composed = composeArgv(grammar, [spec.args, spec.defaultArgs, bee.args, resume, startup]);
   if (adapterName === "codex") {
     const plan = codexSpawnPlan(composed);
-    return { adapter: adapterFor(adapterName, bee.cwd, bee.providerSessionId, plan.model, forkSeed, grokMcpServers), args: plan.argv, model: plan.model };
+    return {
+      adapter: adapterFor(adapterName, bee.cwd, bee.providerSessionId, plan.model, forkSeed, grokMcpServers, placementInstruction),
+      args: plan.argv,
+      model: plan.model,
+    };
   }
   if (adapterName === "grok") {
     const plan = grokSpawnPlan(composed);
@@ -362,7 +395,13 @@ export function autoswapDisabled(bee: { tags: string[]; args: string[] | null })
 }
 
 /** Verbs whose result `status` is the verb's own report, not a command status (see withIdempotency). */
-const OWN_STATUS_VERBS: ReadonlySet<RpcVerb> = new Set<RpcVerb>(["cell.capture", "cell.remove"]);
+const OWN_STATUS_VERBS: ReadonlySet<RpcVerb> = new Set<RpcVerb>([
+  "cell.capture",
+  "cell.remove",
+  "bee.move",
+  "cell.exec",
+  "cell.retained.remove",
+]);
 
 export class HiveDaemon {
   readonly cfg: ResolvedNodeConfig;
@@ -538,6 +577,9 @@ export class HiveDaemon {
       removeSessionLog: (path) => rmSync(path, { force: true }),
       onFlagEvidence: (ev) => this.applyAccountPolicy(ev),
       performance: this.performance,
+      sourceProcessAbsent: (beeId, generation) => this.sourceProcessAbsent(beeId, generation),
+      relocateSession: (move, bee) => this.relocateMoveSession(move, bee),
+      validatePlacement: (move, bee) => this.validateMoveDestination(move, bee),
     });
     drivers.end();
     this.activeStartupPhase = null;
@@ -546,6 +588,7 @@ export class HiveDaemon {
     // Behavior 2: re-adopt surviving runtimes by the identities core recorded
     // at spawn, so DaemonCore.boot()'s snapshotLive() sees them and
     // reconcileAtBoot keeps their rows live instead of stopping them.
+    this.backfillCellRegistry(store);
     this.adoptSurvivors(store, driver);
     this.lastBoot = this.core.boot();
     // v16: login workers do not survive a daemon restart (a PTY cannot be
@@ -754,7 +797,15 @@ export class HiveDaemon {
         env: Object.entries(gateway.env).map(([name, value]) => ({ name, value })),
       }))
       : [];
-    const { adapter, args } = composeSpawn(spec, adapterName, bee, grokMcpServers);
+    const instructionMove = store.placementInstructionMove(beeId);
+    const placementInstruction = instructionMove
+      ? placementContextText({
+        placementVersion: instructionMove.to.version,
+        cwd: instructionMove.to.cwd,
+        cellId: instructionMove.retainedCellId,
+      })
+      : null;
+    const { adapter, args } = composeSpawn(spec, adapterName, bee, grokMcpServers, placementInstruction);
     if (!adapter) throw new Error(`resolve: no adapter for agent '${bee.agent}'`);
     // v7 (spec 08): a bound bee runs in its account's home. The env is derived
     // from the account row (the mechanism), and an EMPTY home is activated
@@ -799,18 +850,22 @@ export class HiveDaemon {
     const bee = store.getBee(beeId);
     if (!bee) throw new Error(`resolveCell: bee ${beeId} not found`);
     if (bee.substrate !== "cell") throw new Error(`resolveCell: bee ${beeId} is on substrate '${bee.substrate}', not cell`);
-    const wrapperDir = dirname(bee.cwd);
-    const ledger = readLedger(join(wrapperDir, "box", "cell.json"));
-    if (!ledger) throw new Error(`resolveCell: bee ${beeId} has no cell ledger under ${wrapperDir} (cell removed?)`);
-    if (ledger.beeId !== beeId) throw new Error(`resolveCell: ledger under ${wrapperDir} belongs to bee ${ledger.beeId}, not ${beeId}`);
-    const provision = provisionRequestOf(ledger);
-    if (!provision) throw new Error(`resolveCell: ledger under ${wrapperDir} has a malformed space name '${ledger.spaceName}'`);
-    provision.wrapper = basename(wrapperDir);
-    const paths = cellPaths(this.cfg.cellsRoot, provision.wrapper, provision.repoName, provision.cellId);
-    if (paths.spaceDir !== bee.cwd) {
-      throw new Error(`resolveCell: bee ${beeId} cell ${bee.cwd} is outside cells root ${this.cfg.cellsRoot} (cells.root changed?)`);
-    }
-    return { provision, sandbox: ledger.sandbox ?? this.cfg.cellSandbox };
+    if (!bee.cellId) throw new Error(`resolveCell: bee ${beeId} has no cells registry id`);
+    const cell = store.getCell(bee.cellId);
+    if (!cell || cell.state === "removed") throw new Error(`resolveCell: cell ${bee.cellId} is missing from the registry`);
+    const parsed = parseSpaceName(cell.spaceName);
+    if (!parsed) throw new Error(`resolveCell: cell ${cell.id} has a malformed space name '${cell.spaceName}'`);
+    return {
+      provision: {
+        beeId,
+        originRepo: cell.originRepo,
+        sha: cell.sha,
+        wrapper: cell.wrapper,
+        repoName: parsed.repoName,
+        cellId: parsed.cellId,
+      },
+      sandbox: cell.sandbox ?? this.cfg.cellSandbox,
+    };
   }
 
   /**
@@ -843,7 +898,9 @@ export class HiveDaemon {
   private adoptSurvivors(store: CoreStore, driver: SubstrateRouter): void {
     for (const bee of store.listBees()) {
       const rt = store.currentRuntime(bee.id);
-      if (!rt || rt.state === "stopped" || rt.pid == null || rt.pidStartedAt == null) continue;
+      if (!rt || rt.pid == null || rt.pidStartedAt == null) continue;
+      const pendingMove = bee.activeMoveId != null;
+      if (rt.state === "stopped" && !pendingMove) continue;
       const lastKnownState =
         rt.state === "booting" || rt.state === "running" || rt.state === "idle" ? rt.state : undefined;
       const observationCursor = store.runtimeObservationCursor(bee.id, rt.generation);
@@ -1034,6 +1091,14 @@ export class HiveDaemon {
         return this.withIdempotency(verb, params, () => this.rpcCellCapture(params));
       case "cell.remove":
         return this.withIdempotency(verb, params, () => this.rpcCellRemove(params));
+      case "bee.move":
+        return this.rpcBeeMove(params);
+      case "bee.move.get":
+        return this.rpcBeeMoveGet(params);
+      case "cell.exec":
+        return this.rpcCellExec(params);
+      case "cell.retained.remove":
+        return this.rpcCellRetainedRemove(params);
       case "bee.rename":
         return this.withIdempotency(verb, params, () => this.rpcRename(params));
       case "bee.tag":
@@ -1407,6 +1472,21 @@ export class HiveDaemon {
     });
     if (cell) {
       reserveCell(this.cfg.cellsRoot, cell.reserve);
+      const identity = localRepoIdentity(cell.reserve.originRepo);
+      if (!identity) {
+        throw new RpcError("invalid_request", `spawn: cannot read git identity of ${cell.reserve.originRepo}`);
+      }
+      store.putCell({
+        sourceBeeId: id,
+        originRepo: cell.reserve.originRepo,
+        sha: cell.reserve.sha,
+        wrapper: cell.reserve.wrapper,
+        spaceName: `${cell.reserve.repoName}-space-${cell.reserve.cellId}`,
+        spaceDir: cell.spaceDir,
+        gitCommonDirRealpath: identity.gitCommonDirRealpath,
+        objectFormat: identity.objectFormat,
+        sandbox: cell.reserve.sandbox,
+      });
       this.log(`cell.reserve bee=${id} origin=${cell.reserve.originRepo} sha=${cell.reserve.sha} space=${cell.spaceDir}`);
     }
     const cmd = store.enqueueCommand("spawn", id, {}, key == null ? {} : { idempotencyKey: key });
@@ -1527,11 +1607,12 @@ export class HiveDaemon {
   // WP6 §5 — cell exit path (spec 05 points 4 + 6)
   // -------------------------------------------------------------------------
 
-  /** The bee must exist AND be on the cell substrate; returns the cell driver. */
+  /** The bee must exist AND have a Cell (active or retained); returns the cell driver. */
   private requireCellBee(params: Record<string, unknown>): { beeId: string; cell: CellDriver } {
     const beeId = this.requireBee(params);
     const bee = this.mustStore().getBee(beeId);
-    if (bee?.substrate !== "cell") {
+    const row = bee?.cellId ? this.mustStore().getCell(bee.cellId) : null;
+    if (!row && bee?.substrate !== "cell") {
       throw new RpcError("invalid_request", `bee ${beeId} is on substrate '${bee?.substrate}', not cell`);
     }
     const driver = this.driver;
@@ -1612,6 +1693,453 @@ export class HiveDaemon {
     result.commandId = cmd.id;
     this.log(`cell.remove bee=${beeId} status=${result.status} forced=${result.forced} delete=${cmd.id}`);
     return result;
+  }
+
+  private backfillCellRegistry(store: CoreStore): void {
+    for (const bee of store.listBees()) {
+      if (bee.substrate !== "cell" || bee.cellId) continue;
+      try {
+        const wrapperDir = dirname(bee.cwd);
+        const ledger = readLedger(join(wrapperDir, "box", "cell.json"));
+        if (!ledger || ledger.beeId !== bee.id) {
+          this.log(`cell.backfill_skip bee=${bee.id} reason=no_ledger`);
+          continue;
+        }
+        const parsed = parseSpaceName(ledger.spaceName);
+        if (!parsed) {
+          this.log(`cell.backfill_skip bee=${bee.id} reason=malformed_space`);
+          continue;
+        }
+        const identity = localRepoIdentity(ledger.origin) ?? localRepoIdentity(bee.cwd);
+        if (!identity) {
+          this.log(`cell.backfill_skip bee=${bee.id} reason=no_git_identity`);
+          continue;
+        }
+        store.putCell({
+          sourceBeeId: bee.id,
+          originRepo: ledger.origin,
+          sha: ledger.sha,
+          wrapper: ledger.wrapper || basename(wrapperDir),
+          spaceName: ledger.spaceName,
+          spaceDir: bee.cwd,
+          gitCommonDirRealpath: identity.gitCommonDirRealpath,
+          objectFormat: identity.objectFormat,
+          sandbox: ledger.sandbox ?? null,
+        });
+        this.log(`cell.backfill bee=${bee.id} space=${bee.cwd}`);
+      } catch (err) {
+        this.log(`cell.backfill_failed bee=${bee.id} ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+  }
+
+  private sourceProcessAbsent(beeId: string, generation: number): boolean {
+    if (this.driver?.hasProcess(beeId, generation)) return false;
+    const rt = this.mustStore().currentRuntime(beeId);
+    if (!rt || rt.generation !== generation) return true;
+    if (rt.pid != null) {
+      if (rt.pidStartedAt != null && verifyProcessIdentity(rt.pid, rt.pidStartedAt, this.cfg.adoptToleranceMs)) {
+        return false;
+      }
+      if (pidAlive(rt.pid)) {
+        this.log(`move.source_pid_unverified bee=${beeId} gen=${generation} pid=${rt.pid}`);
+        return false;
+      }
+    }
+    return rt.state === "stopped";
+  }
+
+  private claudeHomeFor(bee: BeeRow): string {
+    const key = homeEnvFor("claude");
+    if (bee.account) {
+      if (!this.accounts) {
+        throw new ContinuationUnsupportedError(`account-bound bee ${bee.id} has no account manager`);
+      }
+      const account = this.mustStore().getAccount(bee.account);
+      if (!account) {
+        throw new ContinuationUnsupportedError(`account-bound bee ${bee.id} references unknown account ${bee.account}`);
+      }
+      const env = this.accounts.homeEnvOf(account);
+      const home = key ? env[key] : undefined;
+      if (!home) {
+        throw new ContinuationUnsupportedError(`account ${bee.account} has no Claude home`);
+      }
+      return home;
+    }
+    const fromBee = key ? bee.env[key] : undefined;
+    if (fromBee) return fromBee;
+    return join(homedir(), ".claude");
+  }
+
+  private relocateMoveSession(move: BeeMoveRow, bee: BeeRow): "copied" | "present" | "none" {
+    if (bee.agent !== "claude") return "none";
+    const seed = bee.providerSessionId ?? bee.forkSeed;
+    if (!seed) {
+      throw new ContinuationUnsupportedError(
+        `claude move ${move.id} has no provider session id; refusing a fresh conversation as continuity`,
+      );
+    }
+    return relocateClaudeSession({
+      home: this.claudeHomeFor(bee),
+      sessionId: seed,
+      fromCwd: move.from.cwd,
+      toCwd: move.to.cwd,
+      moveId: move.id,
+    });
+  }
+
+  private validateMoveDestination(move: BeeMoveRow, _bee: BeeRow): void {
+    const cwd = move.to.cwd;
+    if (!existsSync(cwd)) {
+      throw new Error(`destination ${cwd} no longer exists`);
+    }
+    const identity = localRepoIdentity(cwd);
+    const cell = this.mustStore().getCell(move.retainedCellId);
+    if (!identity || !cell) {
+      throw new Error(`destination ${cwd} is not a git checkout of the retained cell origin`);
+    }
+    if (
+      identity.gitCommonDirRealpath !== cell.repository.gitCommonDirRealpath
+      || identity.objectFormat !== cell.repository.objectFormat
+    ) {
+      throw new Error(`destination repository at ${cwd} no longer matches the retained cell origin`);
+    }
+    if (move.observedHead) {
+      const head = revParse(cwd, "HEAD");
+      if (head !== move.observedHead) {
+        throw new Error(`destination HEAD at ${cwd} no longer matches observedHead`);
+      }
+    }
+  }
+
+  private localMoveNodeRefused(params: Record<string, unknown>, destination: Record<string, unknown>): void {
+    for (const raw of [params.node, destination.node]) {
+      if (raw == null) continue;
+      if (typeof raw !== "string") {
+        throw new RpcError("invalid_request", "bee.move: node must be a string when given");
+      }
+      const v = raw.trim().toLowerCase();
+      if (v === "" || v === "local" || v === "this") continue;
+      throw new RpcError("remote_move_unsupported", "bee.move: only the local node is supported");
+    }
+  }
+
+  private rpcBeeMove(params: Record<string, unknown>): BeeMoveResult {
+    const store = this.mustStore();
+    const beeId = this.requireBee(params);
+    const bee = store.getBee(beeId);
+    if (!bee) throw new RpcError("bee_not_found", `bee not found: ${beeId}`);
+    const dest = params.destination;
+    if (!dest || typeof dest !== "object" || Array.isArray(dest)) {
+      throw new RpcError("invalid_request", "bee.move: destination is required");
+    }
+    const destination = dest as Record<string, unknown>;
+    if (destination.kind !== "local_checkout") {
+      throw new RpcError("remote_move_unsupported", "bee.move: only local_checkout is supported");
+    }
+    this.localMoveNodeRefused(params, destination);
+    const cwd = destination.cwd;
+    if (typeof cwd !== "string" || !isAbsolute(cwd)) {
+      throw new RpcError("invalid_request", "bee.move: destination.cwd must be an absolute directory");
+    }
+    const expectedRaw = params.expected;
+    if (!expectedRaw || typeof expectedRaw !== "object" || Array.isArray(expectedRaw)) {
+      throw new RpcError("invalid_request", "bee.move: expected {placementVersion, cellId} is required");
+    }
+    const expected = expectedRaw as { placementVersion?: unknown; cellId?: unknown };
+    if (typeof expected.placementVersion !== "number" || typeof expected.cellId !== "string") {
+      throw new RpcError("invalid_request", "bee.move: expected.placementVersion and expected.cellId are required");
+    }
+    const key = this.idempotencyKeyOf(params);
+    if (key == null) throw new RpcError("invalid_request", "bee.move: idempotencyKey is required");
+    const repo = destination.repository as Record<string, unknown> | undefined;
+    const observedHead = destination.observedHead;
+    if (typeof observedHead !== "string" || observedHead.length === 0) {
+      throw new RpcError("invalid_request", "bee.move: destination.observedHead is required");
+    }
+    if (
+      !repo || repo.version !== 1
+      || typeof repo.gitCommonDirRealpath !== "string" || repo.gitCommonDirRealpath.length === 0
+      || (repo.objectFormat !== "sha1" && repo.objectFormat !== "sha256")
+    ) {
+      throw new RpcError("invalid_request", "bee.move: destination.repository {version:1, gitCommonDirRealpath, objectFormat} is required");
+    }
+    const repository = {
+      version: 1 as const,
+      gitCommonDirRealpath: repo.gitCommonDirRealpath,
+      objectFormat: repo.objectFormat as "sha1" | "sha256",
+    };
+    const requestHash = hashBeeMoveRequest({
+      beeId,
+      expected: { placementVersion: expected.placementVersion, cellId: expected.cellId },
+      destination: { kind: "local_checkout", cwd, repository, observedHead },
+    });
+    const existing = store.getBeeMoveByKey(key);
+    if (existing) {
+      if (existing.requestHash !== requestHash) throw new RpcError("idempotency_conflict", "idempotency key already bound to a different request");
+      return { ...toBeeMoveView(existing), deduped: true };
+    }
+    const continuationOk = (MOVE_CONTINUATION_AGENTS as readonly string[]).includes(bee.agent)
+      || (bee.agent === "stub" && this.cfg.cellMoveAllowStub);
+    if (!continuationOk) {
+      throw new RpcError("continuation_unsupported", `bee.move: agent '${bee.agent}' cannot continue a conversation in a new cwd`);
+    }
+    if (!existsSync(cwd)) {
+      throw new RpcError("invalid_request", "bee.move: destination.cwd must be an existing absolute directory");
+    }
+    const cell = store.getCell(expected.cellId);
+    if (!cell || cell.state === "removed") throw new RpcError("cell_not_found", `cell not found: ${expected.cellId}`);
+    const identity = localRepoIdentity(cwd);
+    if (!identity) throw new RpcError("repo_mismatch", `bee.move: ${cwd} is not a git checkout`);
+    if (
+      identity.gitCommonDirRealpath !== repository.gitCommonDirRealpath
+      || identity.objectFormat !== repository.objectFormat
+      || identity.gitCommonDirRealpath !== cell.repository.gitCommonDirRealpath
+      || identity.objectFormat !== cell.repository.objectFormat
+    ) {
+      throw new RpcError("repo_mismatch", "bee.move: destination is not the same origin checkout");
+    }
+    const head = revParse(cwd, "HEAD");
+    if (head !== observedHead) {
+      throw new RpcError("repo_mismatch", "bee.move: destination HEAD does not match observedHead");
+    }
+    const move = store.admitBeeMove({
+      beeId,
+      idempotencyKey: key,
+      requestHash,
+      expected: { placementVersion: expected.placementVersion, cellId: expected.cellId },
+      destinationCwd: cwd,
+      observedHead,
+    });
+    this.log(`bee.move bee=${beeId} move=${move.id} phase=${move.phase} dest=${cwd}`);
+    return toBeeMoveView(move);
+  }
+
+  private rpcBeeMoveGet(params: Record<string, unknown>): BeeMoveResult {
+    const moveId = this.param(params, "moveId");
+    const move = this.mustStore().getBeeMove(moveId);
+    if (!move) throw new RpcError("invalid_request", `bee.move.get: unknown move ${moveId}`);
+    return toBeeMoveView(move);
+  }
+
+  private cellExecResultFromOp(
+    op: { id: string; cellId: string; status: CellOpRow["status"]; exitCode: number | null; stdout: string; stderr: string; truncated: boolean; timeoutMs: number | null; failure: string | null },
+    deduped: boolean,
+  ): CellExecResult {
+    const failure = op.failure ?? "";
+    let reason: CellExecResult["reason"] = null;
+    if (op.status === "failed") {
+      if (failure === "busy") reason = "busy";
+      else if (failure === "cell_runtime_live") reason = "cell_runtime_live";
+      else if (failure === "no_cell") reason = "no_cell";
+      else if (failure === "containment" || /escapes|space-relative|does not exist/.test(failure)) reason = "containment";
+      else if (failure && failure !== "timeout" && failure !== "interrupted") reason = "argv_invalid";
+    }
+    return {
+      id: op.id,
+      cellId: op.cellId,
+      status: op.status,
+      exitCode: op.exitCode,
+      stdout: op.stdout,
+      stderr: op.stderr,
+      truncated: op.truncated,
+      timeoutMs: op.timeoutMs ?? 0,
+      reason,
+      ...(deduped ? { deduped: true } : {}),
+    };
+  }
+
+  private async rpcCellExec(params: Record<string, unknown>): Promise<CellExecResult> {
+    const store = this.mustStore();
+    const cellId = this.param(params, "cellId");
+    const key = this.idempotencyKeyOf(params);
+    if (key == null) throw new RpcError("invalid_request", "cell.exec: idempotencyKey is required");
+    const argv = params.argv;
+    if (!Array.isArray(argv) || argv.length === 0 || argv.some((a) => typeof a !== "string")) {
+      throw new RpcError("invalid_request", "cell.exec: argv must be a non-empty string array");
+    }
+    const timeoutMs = typeof params.timeoutMs === "number" ? params.timeoutMs : undefined;
+    const cwd = typeof params.cwd === "string" ? params.cwd : undefined;
+    const hash = hashCellOpRequest({ cellId, kind: "exec", argv, cwd: cwd ?? null, timeoutMs: timeoutMs ?? null });
+    const existing = store.getCellOpByKey(key);
+    if (existing) {
+      if (existing.requestHash !== hash || existing.kind !== "exec" || existing.cellId !== cellId) {
+        throw new RpcError("idempotency_conflict", "idempotency key already bound to a different cell.exec request");
+      }
+      if (existing.status === "running") {
+        if (existing.pid != null && pidAlive(existing.pid)) return this.cellExecResultFromOp(existing, true);
+        const unknown = store.updateCellOp(existing.id, { status: "outcome_unknown", failure: "daemon_restart" });
+        return this.cellExecResultFromOp(unknown, true);
+      }
+      if (existing.status !== "queued") return this.cellExecResultFromOp(existing, true);
+    }
+    const cell = store.getCell(cellId);
+    if (!cell || cell.state === "removed") {
+      return { id: existing?.id ?? "", cellId, status: "failed", exitCode: null, stdout: "", stderr: "", truncated: false, timeoutMs: 0, reason: "no_cell" };
+    }
+    const busy = store.listCellOps().some(
+      (op) => op.cellId === cellId && (op.status === "queued" || op.status === "running") && op.idempotencyKey !== key,
+    );
+    const persistRefusal = (failure: "busy" | "cell_runtime_live"): CellExecResult => {
+      const op = store.putCellOp({
+        cellId,
+        kind: "exec",
+        idempotencyKey: key,
+        requestHash: hash,
+        argv: argv as string[],
+        cwd: cwd ?? null,
+        timeoutMs: timeoutMs ?? null,
+      });
+      return this.cellExecResultFromOp(store.updateCellOp(op.id, { status: "failed", failure }), false);
+    };
+    if (busy) return persistRefusal("busy");
+    if (this.driver?.cell.hasProcess(cell.sourceBeeId, store.currentRuntime(cell.sourceBeeId)?.generation ?? 0)) {
+      return persistRefusal("cell_runtime_live");
+    }
+    const op = existing ?? store.putCellOp({
+      cellId,
+      kind: "exec",
+      idempotencyKey: key,
+      requestHash: hash,
+      argv: argv as string[],
+      cwd: cwd ?? null,
+      timeoutMs: timeoutMs ?? null,
+    });
+    const parsed = parseSpaceName(cell.spaceName);
+    if (!parsed) throw new RpcError("invalid_request", `cell.exec: malformed space name ${cell.spaceName}`);
+    const paths = cellPaths(this.cfg.cellsRoot, cell.wrapper, parsed.repoName, parsed.cellId);
+    try {
+      const outcome = await runCellExec(
+        paths,
+        {
+          argv: argv as string[],
+          cwd,
+          timeoutMs,
+          sandbox: cell.sandbox,
+          nodeKind: this.cfg.nodeKind,
+        },
+        (spawned) => {
+          store.updateCellOp(op.id, { status: "running", pid: spawned.pid, pidStartedAt: spawned.pidStartedAt });
+        },
+      );
+      const saved = store.updateCellOp(op.id, {
+        status: outcome.status === "timeout" || outcome.status === "interrupted" ? "failed" : "done",
+        pid: outcome.pid,
+        pidStartedAt: outcome.pidStartedAt,
+        exitCode: outcome.exitCode,
+        stdout: outcome.stdout,
+        stderr: outcome.stderr,
+        truncated: outcome.truncated,
+        failure: outcome.status === "timeout" ? "timeout" : outcome.status === "interrupted" ? "interrupted" : null,
+      });
+      return this.cellExecResultFromOp({ ...saved, timeoutMs: saved.timeoutMs ?? outcome.timeoutMs }, false);
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      const reason = /escapes|space-relative|does not exist/.test(detail) ? "containment" : "argv_invalid";
+      const saved = store.updateCellOp(op.id, { status: "failed", failure: reason === "containment" ? "containment" : detail });
+      return { ...this.cellExecResultFromOp(saved, false), reason, stderr: detail, timeoutMs: timeoutMs ?? 0 };
+    }
+  }
+
+  private parseRetainedRemoveResult(op: { stdout: string; status: string }, cell: CellRow, deduped: boolean): CellRetainedRemoveResult {
+    let parsed: { status?: CellRetainedRemoveResult["status"]; forced?: boolean; report?: CellRetainedRemoveResult["report"] } = {};
+    try {
+      parsed = op.stdout ? JSON.parse(op.stdout) as typeof parsed : {};
+    } catch {
+      parsed = {};
+    }
+    const status = parsed.status ?? (cell.state === "removed" ? "deleted" : op.status === "failed" ? "refused" : "absent");
+    return {
+      cell,
+      status,
+      forced: parsed.forced === true,
+      report: parsed.report ?? null,
+      ...(deduped ? { deduped: true } : {}),
+    };
+  }
+
+  private rpcCellRetainedRemove(params: Record<string, unknown>): CellRetainedRemoveResult {
+    const store = this.mustStore();
+    const cellId = this.param(params, "cellId");
+    const key = this.idempotencyKeyOf(params);
+    if (key == null) throw new RpcError("invalid_request", "cell.retained.remove: idempotencyKey is required");
+    const force = params.force === true;
+    const hash = hashCellOpRequest({ cellId, kind: "remove", force });
+    const existing = store.getCellOpByKey(key);
+    if (existing) {
+      if (existing.requestHash !== hash || existing.kind !== "remove" || existing.cellId !== cellId) {
+        throw new RpcError("idempotency_conflict", "idempotency key already bound to a different cell.retained.remove request");
+      }
+      const cell = store.getCell(cellId);
+      if (!cell) throw new RpcError("cell_not_found", `cell not found: ${cellId}`);
+      if (existing.status === "done" || existing.status === "failed" || existing.status === "outcome_unknown") {
+        return this.parseRetainedRemoveResult(existing, cell, true);
+      }
+      if (existing.status === "running") {
+        const parsed = parseSpaceName(cell.spaceName);
+        const gone = parsed
+          ? !existsSync(cellPaths(this.cfg.cellsRoot, cell.wrapper, parsed.repoName, parsed.cellId).wrapperDir)
+          : cell.state === "removed";
+        if (gone) {
+          const marked = cell.state === "removed" ? cell : store.markCellRemoved(cellId);
+          const saved = store.updateCellOp(existing.id, {
+            status: "done",
+            stdout: JSON.stringify({ status: "deleted", forced: force, report: null }),
+          });
+          return this.parseRetainedRemoveResult(saved, marked, true);
+        }
+        const unknown = store.updateCellOp(existing.id, { status: "outcome_unknown", failure: "daemon_restart" });
+        return this.parseRetainedRemoveResult(unknown, cell, true);
+      }
+    }
+    const cell = store.getCell(cellId);
+    if (!cell) throw new RpcError("cell_not_found", `cell not found: ${cellId}`);
+    if (cell.state === "removed") return { cell, status: "absent", forced: false, report: null };
+    if (cell.state !== "retained") {
+      throw new RpcError("invalid_request", `cell.retained.remove: cell ${cellId} is ${cell.state}, not retained`);
+    }
+    const busy = store.listCellOps().some(
+      (op) => op.cellId === cellId && (op.status === "queued" || op.status === "running") && op.idempotencyKey !== key,
+    );
+    if (busy) throw new RpcError("runtime_refused", `cell ${cellId} has an in-flight Cell operation`);
+    const driver = this.driver;
+    if (!driver) throw new RpcError("node_stopped", "daemon is shutting down");
+    if (driver.cell.hasProcess(cell.sourceBeeId, store.currentRuntime(cell.sourceBeeId)?.generation ?? 0)) {
+      throw new RpcError("runtime_refused", `cell ${cellId} still has a live Cell runtime`);
+    }
+    const op = existing ?? store.putCellOp({ cellId, kind: "remove", idempotencyKey: key, requestHash: hash });
+    const parsed = parseSpaceName(cell.spaceName);
+    if (!parsed) throw new RpcError("invalid_request", `cell.retained.remove: malformed space name ${cell.spaceName}`);
+    const paths = cellPaths(this.cfg.cellsRoot, cell.wrapper, parsed.repoName, parsed.cellId);
+    store.updateCellOp(op.id, { status: "running" });
+    try {
+      if (!existsSync(paths.wrapperDir)) {
+        const marked = store.markCellRemoved(cellId);
+        const saved = store.updateCellOp(op.id, {
+          status: "done",
+          stdout: JSON.stringify({ status: "absent", forced: false, report: null }),
+        });
+        return this.parseRetainedRemoveResult(saved, marked, false);
+      }
+      const res = deleteCell(paths.wrapperDir, { force });
+      const marked = store.markCellRemoved(cellId);
+      const status = res.deleted ? "deleted" : "absent";
+      const saved = store.updateCellOp(op.id, {
+        status: "done",
+        stdout: JSON.stringify({ status, forced: res.forced, report: res.report }),
+      });
+      return this.parseRetainedRemoveResult(saved, marked, false);
+    } catch (err) {
+      if (err instanceof CellDeleteRefused) {
+        const saved = store.updateCellOp(op.id, {
+          status: "done",
+          stdout: JSON.stringify({ status: "refused", forced: false, report: err.report }),
+        });
+        return this.parseRetainedRemoveResult(saved, cell, false);
+      }
+      store.updateCellOp(op.id, { status: "failed", failure: err instanceof Error ? err.message : String(err) });
+      throw err;
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -2055,6 +2583,8 @@ export class HiveDaemon {
       view: store.view(beeId),
       bee,
       runtime: bee ? store.currentRuntime(beeId) : null,
+      move: bee ? (() => { const m = store.latestMoveOf(bee.id); return m ? toBeeMoveView(m) : null; })() : null,
+      cell: bee?.cellId ? store.getCell(bee.cellId) : null,
     };
   }
 
@@ -2219,6 +2749,8 @@ export class HiveDaemon {
       tasks: store.listTasks(),
       taskSupply: store.listTaskSupply(),
       loginFlows: store.listLoginFlows(),
+      cells: store.listCells(),
+      beeMoves: store.listBeeMoves().map(toBeeMoveView),
     };
   }
 
