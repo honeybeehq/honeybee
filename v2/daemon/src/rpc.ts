@@ -179,7 +179,10 @@ export class RpcServer {
       helloDone: false,
       watchCursor: null,
       send: (obj: unknown) => {
-        if (!socket.destroyed) socket.write(`${JSON.stringify(obj)}\n`);
+        if (socket.destroyed) return;
+        this.performance.measureSync("rpc.serialize", () => {
+          socket.write(`${JSON.stringify(obj)}\n`);
+        });
       },
       subscribeWatch: (cursor: number) => {
         conn.watchCursor = cursor;

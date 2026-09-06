@@ -114,6 +114,7 @@ import { TelemetryStore, formatI1Violation } from "./telemetry.ts";
 import {
   createPerformanceProfiler,
   type PerformanceProfiler,
+  type PerformanceSpan,
 } from "./performance.ts";
 import { RpcServer, type RpcConn } from "./rpc.ts";
 import {
@@ -395,6 +396,7 @@ export class HiveDaemon {
   private autoTitle: ((bees?: BeeRow[]) => Promise<AutoTitleOutcome[]>) | null = null;
   private titleGenerator: TitleGeneratorService | null = null;
   private readonly performance: PerformanceProfiler;
+  private activeStartupPhase: PerformanceSpan | null = null;
 
   constructor(cfg: ResolvedNodeConfig, deps: HiveDaemonDeps = {}) {
     this.cfg = cfg;
@@ -429,6 +431,8 @@ export class HiveDaemon {
       await this.startProfiled();
       startup.end();
     } catch (error) {
+      this.activeStartupPhase?.end("error");
+      this.activeStartupPhase = null;
       startup.end("error");
       this.performance.stop();
       throw error;
@@ -437,6 +441,7 @@ export class HiveDaemon {
 
   private async startProfiled(): Promise<void> {
     const storage = this.performance.startSpan("daemon.start.storage");
+    this.activeStartupPhase = storage;
     this.telemetry = new TelemetryStore(this.cfg.telemetryPath);
     // Opening the store IS the single-daemon lock (B9): a second daemon on
     // this node dies right here with SecondWriterError.
@@ -446,7 +451,9 @@ export class HiveDaemon {
     });
     this.store = store;
     storage.end();
+    this.activeStartupPhase = null;
     const services = this.performance.startSpan("daemon.start.services");
+    this.activeStartupPhase = services;
     const codexSpec = this.cfg.agents.codex;
     this.titleGenerator = new TitleGeneratorService({
       log: (op) => this.log(op),
@@ -480,7 +487,9 @@ export class HiveDaemon {
       onCompleted: (accountId) => this.clearAccountAuthNeeded(accountId, `login completed for account ${accountId}`, "login"),
     });
     services.end();
+    this.activeStartupPhase = null;
     const drivers = this.performance.startSpan("daemon.start.drivers");
+    this.activeStartupPhase = drivers;
     const hsrConfig = {
       sessionLogDir: this.cfg.sessionLogDir,
       stopKillGraceMs: this.cfg.stopKillGraceMs,
@@ -544,7 +553,9 @@ export class HiveDaemon {
       performance: this.performance,
     });
     drivers.end();
+    this.activeStartupPhase = null;
     const reconcile = this.performance.startSpan("daemon.start.reconcile");
+    this.activeStartupPhase = reconcile;
     // Behavior 2: re-adopt surviving runtimes by the identities core recorded
     // at spawn, so DaemonCore.boot()'s snapshotLive() sees them and
     // reconcileAtBoot keeps their rows live instead of stopping them.
@@ -556,7 +567,9 @@ export class HiveDaemon {
     this.loginFlows.reconcileAtBoot();
     this.publishedSeq = store.lastAuditSeq();
     reconcile.end();
+    this.activeStartupPhase = null;
     const rpc = this.performance.startSpan("daemon.start.rpc");
+    this.activeStartupPhase = rpc;
     this.rpc = new RpcServer({
       socketPath: this.cfg.socketPath,
       log: (op) => this.log(op),
@@ -565,6 +578,7 @@ export class HiveDaemon {
     });
     await this.rpc.listen();
     rpc.end();
+    this.activeStartupPhase = null;
     this.scheduleTick(this.cfg.tickMs);
     // Loop-delay watch (2026-08-21): tick.slow attributes stalls inside the
     // tick; this catches the rest (sync RPC-handler work, keychain/tmux
@@ -653,8 +667,8 @@ export class HiveDaemon {
       this.performance.measureSync("daemon.tick.login", () =>
         this.loginFlows?.tick(),
       );
-      // Auto-title scans the whole bee roster synchronously; once a second is
-      // plenty for a title and keeps that scan off four of every five ticks.
+      // This span covers synchronous auto-title kickoff only; title generation
+      // stays detached. Once a second keeps the roster scan off most ticks.
       const autoTitle = this.autoTitle;
       if (autoTitle && tAccounts - this.lastAutoTitleAt >= AUTO_TITLE_SCAN_MS) {
         this.lastAutoTitleAt = tAccounts;
