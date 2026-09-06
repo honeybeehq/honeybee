@@ -3008,14 +3008,19 @@ export class CoreStore {
     if (bees.length === 0) return [];
     const selected = new Set(bees.map((bee) => bee.id));
 
+    // Seek the maximum generation through the (bee_id, generation) primary
+    // key. Comparing every generation with every newer one is quadratic in
+    // a bee's history, even though this read returns only its current runtime.
     const runtimes = (
       this.stmt(
         `SELECT runtime.*
-         FROM runtimes AS runtime
-         LEFT JOIN runtimes AS newer
-           ON newer.bee_id = runtime.bee_id AND newer.generation > runtime.generation
-         WHERE newer.bee_id IS NULL
-         ORDER BY runtime.bee_id`,
+         FROM bees AS bee
+         JOIN runtimes AS runtime
+           ON runtime.bee_id = bee.id
+          AND runtime.generation = (
+            SELECT MAX(latest.generation) FROM runtimes AS latest WHERE latest.bee_id = bee.id
+          )
+         ORDER BY bee.id`,
       ).all() as Row[]
     ).map(mapRuntime);
     const runtimeByBee = new Map(

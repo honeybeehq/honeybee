@@ -1,0 +1,20 @@
+{
+  "revision": "8506467f",
+  "sqlite": "3.53.4",
+  "sql": "SELECT runtime.*\n         FROM runtimes AS runtime\n         LEFT JOIN runtimes AS newer\n           ON newer.bee_id = runtime.bee_id AND newer.generation > runtime.generation\n         WHERE newer.bee_id IS NULL\n         ORDER BY runtime.bee_id",
+  "plan": [
+    {
+      "id": 5,
+      "parent": 0,
+      "notused": 212,
+      "detail": "SCAN runtime USING INDEX sqlite_autoindex_runtimes_1"
+    },
+    {
+      "id": 8,
+      "parent": 0,
+      "notused": 46,
+      "detail": "SEARCH newer USING COVERING INDEX sqlite_autoindex_runtimes_1 (bee_id=? AND generation>?) LEFT-JOIN"
+    }
+  ],
+  "note": "Empty schema with current indexes; speed claims use seeded production-store workloads, not these planner estimates."
+}
