@@ -1,0 +1,13 @@
+✔ command bee indexes install on populated reopen and preserve ordered API reads (750.023166ms)
+✔ delete is immediate and total (Q1): rows gone, pending commands settled, log path returned (91.913083ms)
+✔ delete of an active bee passes through archived on B1's graph (audited) (350.970625ms)
+✔ idem.6: replay of a settled delete returns the settled outcome — not BeeNotFound (102.3545ms)
+✔ spec01.2: send to a deleted bee fails bee-not-found; archived bee auto-unarchives (Q3) (198.034167ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2862.169917

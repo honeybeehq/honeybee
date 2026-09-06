@@ -1,0 +1,238 @@
+{
+  "schemaVersion": 1,
+  "completed": true,
+  "roots": [
+    "/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-command-control-2026-09-06",
+    "/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-command-index-author-2026-09-06"
+  ],
+  "revisions": [
+    "a5480e249fba6735e91f9c795d209c288bd2bafd",
+    "5afde02e861b9edf0f6dc60bf4a99ea9312748b7"
+  ],
+  "timestamp": "2026-09-06T19:11:34.661Z",
+  "sourceHashes": [
+    {
+      "store.ts": "39081081c412af983967f286a963027115c2db82b502f1933692daeedc19d74b",
+      "schema.ts": "feeee9f68b0818f2d8d5cb48e56167d5783dd59726f3321f784398238a7168ae"
+    },
+    {
+      "store.ts": "035a7fa5af24129f5fb6224b46944a5939b7de5f0afc91784513271f8607cca3",
+      "schema.ts": "ff2c98154659e149b4922c21046c033fd70fbcc67848759d72671377bcf21a07"
+    }
+  ],
+  "toolSha256": "45ef8a9cdb63a47ea6d2efa0e55b4882cb3f0a1308dbbf25c353c4f990273ee2",
+  "environment": {
+    "node": "v25.8.0",
+    "platform": "darwin",
+    "arch": "arm64",
+    "cpu": "Apple M4 Max",
+    "hostname": "Tormods-Mac-Studio.local",
+    "loadAfter": [
+      21.1962890625,
+      30.00927734375,
+      36.98681640625
+    ]
+  },
+  "workload": {
+    "unrelatedCommands": 100000,
+    "targetCommands": 10,
+    "uuidBeeIds": true,
+    "reasonChars": 256,
+    "normalOpenPragmas": true
+  },
+  "before": {
+    "sqliteBytes": 36478976,
+    "indexes": [
+      {
+        "name": "commands_idempotency_key",
+        "sql": "CREATE UNIQUE INDEX commands_idempotency_key\n  ON commands(idempotency_key) WHERE idempotency_key IS NOT NULL"
+      },
+      {
+        "name": "commands_ready",
+        "sql": "CREATE INDEX commands_ready ON commands(status, next_attempt_at, id)"
+      }
+    ]
+  },
+  "after": {
+    "sqliteBytes": 46776320,
+    "indexes": [
+      {
+        "name": "commands_by_bee",
+        "sql": "CREATE INDEX commands_by_bee ON commands(bee_id, id)"
+      },
+      {
+        "name": "commands_by_bee_status",
+        "sql": "CREATE INDEX commands_by_bee_status ON commands(bee_id, status, id)"
+      },
+      {
+        "name": "commands_idempotency_key",
+        "sql": "CREATE UNIQUE INDEX commands_idempotency_key\n  ON commands(idempotency_key) WHERE idempotency_key IS NOT NULL"
+      },
+      {
+        "name": "commands_ready",
+        "sql": "CREATE INDEX commands_ready ON commands(status, next_attempt_at, id)"
+      }
+    ]
+  },
+  "oldOpen": {
+    "wallMs": 17.29816700000083,
+    "cpuMs": 3.671,
+    "memoryBefore": {
+      "rss": 103972864,
+      "heapTotal": 20643840,
+      "heapUsed": 15261192,
+      "external": 12018148,
+      "arrayBuffers": 69342
+    },
+    "memoryAfter": {
+      "rss": 104054784,
+      "heapTotal": 20905984,
+      "heapUsed": 15360832,
+      "external": 12018204,
+      "arrayBuffers": 69358
+    },
+    "peakBeforeKiB": 108112,
+    "peakAfterKiB": 108112
+  },
+  "firstOpen": {
+    "wallMs": 2350.532583,
+    "cpuMs": 476.331,
+    "memoryBefore": {
+      "rss": 104103936,
+      "heapTotal": 20905984,
+      "heapUsed": 15420936,
+      "external": 12047761,
+      "arrayBuffers": 69358
+    },
+    "memoryAfter": {
+      "rss": 104153088,
+      "heapTotal": 20905984,
+      "heapUsed": 15488192,
+      "external": 12047761,
+      "arrayBuffers": 69358
+    },
+    "peakBeforeKiB": 108112,
+    "peakAfterKiB": 108112
+  },
+  "repeatOpen": [
+    {
+      "wallMs": 1.6819170000017039,
+      "cpuMs": 1.638,
+      "memoryBefore": {
+        "rss": 104185856,
+        "heapTotal": 20905984,
+        "heapUsed": 15521128,
+        "external": 12047761,
+        "arrayBuffers": 69358
+      },
+      "memoryAfter": {
+        "rss": 104185856,
+        "heapTotal": 20905984,
+        "heapUsed": 15525792,
+        "external": 12047761,
+        "arrayBuffers": 69358
+      },
+      "peakBeforeKiB": 108112,
+      "peakAfterKiB": 108112
+    },
+    {
+      "wallMs": 1.2629579999993439,
+      "cpuMs": 1.249,
+      "memoryBefore": {
+        "rss": 104185856,
+        "heapTotal": 20905984,
+        "heapUsed": 15549400,
+        "external": 12047761,
+        "arrayBuffers": 69358
+      },
+      "memoryAfter": {
+        "rss": 104185856,
+        "heapTotal": 20905984,
+        "heapUsed": 15553776,
+        "external": 12047761,
+        "arrayBuffers": 69358
+      },
+      "peakBeforeKiB": 108112,
+      "peakAfterKiB": 108112
+    },
+    {
+      "wallMs": 27.522375000000466,
+      "cpuMs": 3.067,
+      "memoryBefore": {
+        "rss": 104185856,
+        "heapTotal": 13565952,
+        "heapUsed": 11453376,
+        "external": 12047761,
+        "arrayBuffers": 69358
+      },
+      "memoryAfter": {
+        "rss": 104185856,
+        "heapTotal": 13565952,
+        "heapUsed": 11466168,
+        "external": 12047761,
+        "arrayBuffers": 69358
+      },
+      "peakBeforeKiB": 108112,
+      "peakAfterKiB": 108112
+    },
+    {
+      "wallMs": 31.338082999998733,
+      "cpuMs": 3.54,
+      "memoryBefore": {
+        "rss": 104185856,
+        "heapTotal": 13565952,
+        "heapUsed": 11486816,
+        "external": 12047761,
+        "arrayBuffers": 69358
+      },
+      "memoryAfter": {
+        "rss": 104185856,
+        "heapTotal": 13565952,
+        "heapUsed": 11492136,
+        "external": 12047761,
+        "arrayBuffers": 69358
+      },
+      "peakBeforeKiB": 108112,
+      "peakAfterKiB": 108112
+    },
+    {
+      "wallMs": 13.412333000000217,
+      "cpuMs": 3.777,
+      "memoryBefore": {
+        "rss": 104185856,
+        "heapTotal": 13565952,
+        "heapUsed": 11513232,
+        "external": 12047761,
+        "arrayBuffers": 69358
+      },
+      "memoryAfter": {
+        "rss": 104185856,
+        "heapTotal": 13565952,
+        "heapUsed": 11517840,
+        "external": 12047761,
+        "arrayBuffers": 69358
+      },
+      "peakBeforeKiB": 108112,
+      "peakAfterKiB": 108112
+    }
+  ],
+  "repeatSummary": {
+    "wallMs": {
+      "n": 5,
+      "min": 1.2629579999993439,
+      "p50": 13.412333000000217,
+      "p95": 31.338082999998733,
+      "max": 31.338082999998733,
+      "mean": 15.043533200000093
+    },
+    "cpuMs": {
+      "n": 5,
+      "min": 1.249,
+      "p50": 3.067,
+      "p95": 3.777,
+      "max": 3.777,
+      "mean": 2.6542000000000003
+    }
+  },
+  "scope": "Existing database first opened by baseline, then candidate; warm filesystem caches. First candidate open includes index construction. One upgrade sample, not a tail estimate. UUID-sized IDs complement the short-ID query fixture. Synthetic seed is not production enqueue latency."
+}

@@ -1,0 +1,30 @@
+✖ command bee indexes install on populated reopen and preserve ordered API reads (488.779083ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2303.616334
+
+✖ failing tests:
+
+test at v2/core/tests/command-indexes.test.ts:16:1
+✖ command bee indexes install on populated reopen and preserve ordered API reads (488.779083ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /USING COVERING INDEX commands_by_bee_status \(bee_id=\? AND status=\?\)/. Input:
+  
+  'SEARCH commands USING INDEX commands_by_bee (bee_id=?)'
+  
+      at TestContext.<anonymous> (file:///Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-command-index-author-2026-09-06/v2/core/tests/command-indexes.test.ts:114:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1397:25)
+      at Test.start (node:internal/test_runner/test:1257:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'SEARCH commands USING INDEX commands_by_bee (bee_id=?)',
+    expected: /USING COVERING INDEX commands_by_bee_status \(bee_id=\? AND status=\?\)/,
+    operator: 'match',
+    diff: 'simple'
+  }

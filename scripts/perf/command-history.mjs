@@ -10,6 +10,7 @@ import { performance } from 'node:perf_hooks';
 import { DatabaseSync } from 'node:sqlite';
 import { pathToFileURL } from 'node:url';
 import { distribution } from './report.mjs';
+import { bootIdentity } from './boot-identity.mjs';
 
 const root = resolve(process.argv[2] ?? '.');
 const out = resolve(process.argv[3] ?? '.artifacts/performance/command-history.json');
@@ -30,8 +31,8 @@ const revision = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 
 assert.equal(revision.status, 0);
 const report = { schemaVersion: 1, completed: false, prototype, prototypeSql: prototypes[prototype], revision: revision.stdout.trim(),
   sourceHashes: Object.fromEntries(['store.ts', 'schema.ts'].map(name => [name, digest(join(root, 'v2/core/src', name))])),
-  toolSha256: createHash('sha256').update(readFileSync(new URL(import.meta.url))).update(readFileSync(new URL('./report.mjs', import.meta.url))).digest('hex'),
-  environment: { node: process.version, platform: process.platform, arch: process.arch, cpu: cpus()[0]?.model, hostname: hostname(), loadBefore: loadavg() },
+  toolSha256: createHash('sha256').update(readFileSync(new URL(import.meta.url))).update(readFileSync(new URL('./report.mjs', import.meta.url))).update(readFileSync(new URL('./boot-identity.mjs', import.meta.url))).digest('hex'),
+  environment: { node: process.version, platform: process.platform, arch: process.arch, cpu: cpus()[0]?.model, hostname: hostname(), bootIdentity: bootIdentity(), loadBefore: loadavg() },
   workload: { mode, cases: [1000, 10000, 100000].map(unrelatedCommands => ({ name: `unrelated-${unrelatedCommands}`, unrelatedCommands, targetCommands: 10 })).concat([{ name: 'own-100000', unrelatedCommands: 1000, targetCommands: 100000 }]), unrelatedBees: 100, samples: 25, largeResultSamples: 5, warmups: 3, reasonChars: 256, transitionBatch: { commands: 1000, updatesEach: 3, samples: 5 } }, results: [],
   scope: 'Real CoreStore reads and reconfigure no-op; direct SQL seeds synthetic settled commands while the store is closed. Insert and status-transition costs use fixture transactions with synchronous OFF, not production durable command latency. durable-mixed uses normal CoreStore read pragmas and 20% failed history; ephemeral-settled uses the test memory-cache settings and all-done history. Storage is allocated SQLite pages after close, not WAL peak. No live daemon state is accessed.' };
 mkdirSync(dirname(out), { recursive: true });
@@ -83,15 +84,23 @@ try {
     }, 5);
     const plan = db.prepare('EXPLAIN QUERY PLAN SELECT * FROM commands WHERE bee_id = ? ORDER BY id').all('target');
     // These exact production query shapes can choose a different index after DDL.
+    const source = readFileSync(join(root, 'v2/core/src/store.ts'), 'utf8').replace(/\s+/g, ' ');
+    const deleteQueries = [
+      "SELECT id FROM commands WHERE bee_id = ? AND status IN ('queued','running') ORDER BY id",
+      "SELECT id FROM commands INDEXED BY commands_by_bee_status WHERE bee_id = ? AND status IN ('queued','running') ORDER BY id",
+    ].filter(sql => source.includes(sql));
+    assert.equal(deleteQueries.length, 1, 'expected exactly one known production pending-delete query');
     const queries = {
       wake: ["SELECT * FROM commands WHERE bee_id = ? AND verb = 'send_wake' AND status IN ('queued','running') AND target_generation = ? LIMIT 1", ['target', 1]],
-      deletePending: ["SELECT id FROM commands WHERE bee_id = ? AND status IN ('queued','running') ORDER BY id", ['target']],
+      deletePending: [deleteQueries[0], ['target']],
     };
-    const source = readFileSync(join(root, 'v2/core/src/store.ts'), 'utf8').replace(/\s+/g, ' ');
+    const updateSql = "UPDATE commands SET status = 'done', finished_at = ? WHERE bee_id = ? AND status IN ('queued','running')";
+    assert.ok(source.includes(updateSql), 'production pending-update query changed');
+    const pendingUpdate = { sql: updateSql, plan: db.prepare(`EXPLAIN QUERY PLAN ${updateSql}`).all(1, 'target') };
     const pendingProbes = Object.fromEntries(Object.entries(queries).map(([name, [sql, params]]) => {
       assert.ok(source.includes(sql), `production query changed: ${name}`);
       const query = db.prepare(sql);
-      return [name, { plan: db.prepare(`EXPLAIN QUERY PLAN ${sql}`).all(...params), ...measure(() => assert.deepEqual(query.all(...params), [])) }];
+      return [name, { sql, plan: db.prepare(`EXPLAIN QUERY PLAN ${sql}`).all(...params), ...measure(() => assert.deepEqual(query.all(...params), [])) }];
     }));
     const sqliteBytes = Number(db.prepare('PRAGMA page_count').get().page_count) * Number(db.prepare('PRAGMA page_size').get().page_size);
     db.close(); db = undefined;
@@ -104,7 +113,7 @@ try {
     const reconfigure = measure(() => assert.equal(store.reconfigureBee('target', null).outcome, 'unchanged'), heavySamples);
     assert.equal(store.lastAuditSeq(), seq, 'reads/no-ops must not append authority changes');
     store.close(); store = undefined;
-    report.results.push({ ...scenario, insertWallMs, insertCpuMs: (used.user + used.system) / 1000, transitions, sqliteBytes, reopenMs, plan, pendingProbes, reads, missing, queued, reconfigure });
+    report.results.push({ ...scenario, insertWallMs, insertCpuMs: (used.user + used.system) / 1000, transitions, sqliteBytes, reopenMs, plan, pendingProbes, pendingUpdate, reads, missing, queued, reconfigure });
     writeFileSync(out, JSON.stringify(report, null, 2) + '\n');
   }
   report.environment.loadAfter = loadavg(); report.completed = true;

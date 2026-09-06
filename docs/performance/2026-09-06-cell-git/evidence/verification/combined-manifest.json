@@ -1,0 +1,52 @@
+{
+  "recordedAt": "2026-09-06T19:07:29.301158+00:00",
+  "revision": "ac44cac3b5196a6a2cd2caf42112f31e6e833f93",
+  "node": "v25.8.0",
+  "cwd": "/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-cell-git-2026-09-06",
+  "sourceAndArtifactHashes": {
+    "v2/core/src/store.ts": "035a7fa5af24129f5fb6224b46944a5939b7de5f0afc91784513271f8607cca3",
+    "v2/core/src/schema.ts": "ff2c98154659e149b4922c21046c033fd70fbcc67848759d72671377bcf21a07",
+    "v2/driver-cell/src/gitImage.ts": "9b7b1dc8a762caaac402d108bbd9286630a1376b4844ea8d2d3c6232d0a19007",
+    "dist/v2/cli.js": "88f15fe7820bd7dca87df134dcf056048c2f12c65edaf90d36bae07e9c5f34e4",
+    "dist/v2/provision-worker.js": "2ea1e4e76afe0d5a757d756b29d1383384429f8108f38d498e766e628c4bd1f9",
+    "dist/v2/runner-host.js": "e9e1e934dbaf1043e013278b29f12e61161bc19ebe282919405d6e4353b3ab23"
+  },
+  "receipts": [
+    {
+      "file": "combined-v2-build.log",
+      "command": "/opt/homebrew/Cellar/node/25.8.0/bin/node scripts/build-v2-artifact.mjs",
+      "exitCode": 0,
+      "outputBytes": 108,
+      "outputSha256": "6ce73f4f2a608b3d62332b2ff95a01d2e1960b9801605b413ee3e59e2cd47347"
+    },
+    {
+      "file": "combined-core-regressions.log",
+      "command": "/opt/homebrew/Cellar/node/25.8.0/bin/node --test --test-isolation=none v2/core/tests/bee-args.test.ts v2/core/tests/command-indexes.test.ts",
+      "exitCode": 0,
+      "outputBytes": 1598,
+      "outputSha256": "431cdeeba0d96e75000926343c0011106f1bd0735b76d80d8ebdb9aa0d3c27f4"
+    },
+    {
+      "file": "combined-built-worker-tests.log",
+      "command": "/opt/homebrew/Cellar/node/25.8.0/bin/node --test scripts/perf/cells.test.mjs",
+      "exitCode": 0,
+      "outputBytes": 333,
+      "outputSha256": "b70e312e9d3a491acb31c71b9e927ea0a7491257ca4179c987638ef8c7f0ac2f"
+    },
+    {
+      "file": "final-measurement-tests.log",
+      "command": "/opt/homebrew/Cellar/node/25.8.0/bin/node --test scripts/perf/compare-reconfigure.test.mjs scripts/perf/compare-spawn.test.mjs scripts/perf/git-trace.test.mjs",
+      "exitCode": 0,
+      "outputBytes": 696,
+      "outputSha256": "960336d6f42639ef3fca62e5b337359efcd1eaa94a9f7cbd2ac7c40e97fa7a8f"
+    },
+    {
+      "file": "command-comparator-tests.log",
+      "command": "/opt/homebrew/Cellar/node/25.8.0/bin/node --test scripts/perf/compare-command-history.test.mjs",
+      "exitCode": 0,
+      "outputBytes": 428,
+      "outputSha256": "d34bdaaaaa31a5d20b2ea7963ca7762e61173697b838c4693da8f722dcb92675"
+    }
+  ],
+  "scope": "Exit codes observed by parent native execution tools. No inferred completion times. Author full builds/typechecks are retained in separate commit-named manifests."
+}

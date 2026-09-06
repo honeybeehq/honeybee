@@ -1,0 +1,108 @@
+{
+  "schemaVersion": 1,
+  "unitCommit": "5afde02e861b9edf0f6dc60bf4a99ea9312748b7",
+  "landedCommit": "ac44cac3",
+  "sourceTranscript": "/Users/trmd/.hive/v2/session-logs/50f69abe-43df-4e82-8bbf-5d3fb5019ea4.jsonl",
+  "extractedAt": "2026-09-06T19:05:16.296Z",
+  "receipts": [
+    {
+      "file": "01-delete-probe-regression-red.log",
+      "itemId": "exec-deaea5a6-49d2-4cc6-beaa-446becf8bde6",
+      "command": "/bin/zsh -lc 'NODE_COMPILE_CACHE=.cache/node-compile node --test --test-isolation=none v2/core/tests/command-indexes.test.ts'",
+      "cwd": "/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-command-index-author-2026-09-06",
+      "exitCode": 1,
+      "durationMs": 5127,
+      "completedAtMs": 1788720283285,
+      "outputBytes": 1303,
+      "outputSha256": "87573c83c1f6b34cf39a024394d62bff2bd69e5682c37bb6ff5a031fe460f65b"
+    },
+    {
+      "file": "02-delete-probe-focused-green.log",
+      "itemId": "exec-0558c632-7b14-41bf-b123-58746d2a6f0a",
+      "command": "/bin/zsh -lc 'NODE_COMPILE_CACHE=.cache/node-compile node --test --test-isolation=none v2/core/tests/command-indexes.test.ts'",
+      "cwd": "/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-command-index-author-2026-09-06",
+      "exitCode": 0,
+      "durationMs": 3910,
+      "completedAtMs": 1788720305757,
+      "outputBytes": 214,
+      "outputSha256": "266881fcf13f4440e2f6cd8aa6abf7c25c9d3c7c719287064dee736e7dba9b11"
+    },
+    {
+      "file": "03-affected-deletion-core-5.log",
+      "itemId": "exec-b68ec421-dc6b-4f92-be5e-de902d8df7f7",
+      "command": "/bin/zsh -lc \"NODE_COMPILE_CACHE=.cache/node-compile node --test --test-isolation=none --test-name-pattern='command bee indexes|delete is immediate|delete of an active|replay of a settled delete|send to a deleted bee' v2/core/tests/command-indexes.test.ts v2/core/tests/core-extra.test.ts v2/core/tests/idempotency.test.ts v2/core/tests/spec01.test.ts\"",
+      "cwd": "/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-command-index-author-2026-09-06",
+      "exitCode": 0,
+      "durationMs": 6214,
+      "completedAtMs": 1788720448045,
+      "outputBytes": 620,
+      "outputSha256": "2f7b1c7bda27a18bbd6e109150f5491033da60f71dcd0cf9a38cce8317f48ee4"
+    },
+    {
+      "file": "04-core-tsc.log",
+      "itemId": "exec-bfc5c29f-a856-4148-8465-6a7bca72ec86",
+      "command": "/bin/zsh -lc 'npx --no-install tsc -p v2/core/tsconfig.json'",
+      "cwd": "/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-command-index-author-2026-09-06",
+      "exitCode": 0,
+      "durationMs": 105108,
+      "completedAtMs": 1788720559018,
+      "outputBytes": 172,
+      "outputSha256": "0b8b76f9b4800035751c16a110157269502d24945379293b03168446bad127f2"
+    },
+    {
+      "file": "05-update-query-plan.log",
+      "itemId": "exec-c13d3846-0f15-43fb-81e3-6a9c4734df2a",
+      "command": "/bin/zsh -lc \"node --input-type=module -e 'import { DatabaseSync } from \\\"node:sqlite\\\"; import { harness, makeBee } from \\\"./v2/core/tests/helpers.ts\\\"; const h=harness(); const store=h.open(); const {bee}=makeBee(store,\\\"update-plan\\\"); store.enqueueCommand(\\\"archive\\\",bee.id); store.close(); const db=new DatabaseSync(h.path,{readOnly:true}); const q=String.fromCharCode(39); const sql=\\\"EXPLAIN QUERY PLAN UPDATE commands SET status = \\\"+q+\\\"done\\\"+q+\\\", finished_at = ? WHERE bee_id = ? AND status IN (\\\"+q+\\\"queued\\\"+q+\\\",\\\"+q+\\\"running\\\"+q+\\\")\\\"; console.log(JSON.stringify({sql,plan:db.prepare(sql).all(1,bee.id)})); db.close(); h.cleanup();'\"",
+      "cwd": "/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-command-index-author-2026-09-06",
+      "exitCode": 0,
+      "durationMs": 8718,
+      "completedAtMs": 1788720613440,
+      "outputBytes": 262,
+      "outputSha256": "69552afe813386e33619a4bdb005a5dd3e99448cad32f3b0e3388d67deda45f8"
+    },
+    {
+      "file": "06-core-178.log",
+      "itemId": "exec-238947c6-9ac8-4dc7-9a79-398fe6155e1a",
+      "command": "/bin/zsh -lc 'npm run v2:test'",
+      "cwd": "/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-command-index-author-2026-09-06",
+      "exitCode": 0,
+      "durationMs": 209678,
+      "completedAtMs": 1788720829763,
+      "outputBytes": 20581,
+      "outputSha256": "6d2a985ab001c278e0e621267ff5fbbb4c4ae16bf9c4e0a31fd02a1bb3c6bc24"
+    },
+    {
+      "file": "07-build.log",
+      "itemId": "exec-859267c7-e325-4b8c-80ee-0fe9315ef261",
+      "command": "/bin/zsh -lc 'npm run build'",
+      "cwd": "/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-command-index-author-2026-09-06",
+      "exitCode": 0,
+      "durationMs": 496245,
+      "completedAtMs": 1788721329888,
+      "outputBytes": 785,
+      "outputSha256": "82af7c294106c5ea709704057d4945107139ba1b47f478178b827bc19bc25922"
+    },
+    {
+      "file": "08-node-version.log",
+      "itemId": "exec-48c83d9e-3ea7-4812-bd9d-5ea2fae6d0dd",
+      "command": "/bin/zsh -lc 'node --version'",
+      "cwd": "/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-command-index-author-2026-09-06",
+      "exitCode": 0,
+      "durationMs": 1660,
+      "completedAtMs": 1788721481229,
+      "outputBytes": 9,
+      "outputSha256": "b67d0ced059f9313d861ddbbe734d2d1f9219106a9e036ae6d88407afa0846e6"
+    },
+    {
+      "file": "09-clean-status.log",
+      "itemId": "exec-2f589248-0f18-4f97-a212-ae0badb19206",
+      "command": "/bin/zsh -lc 'git status --short --branch'",
+      "cwd": "/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-command-index-author-2026-09-06",
+      "exitCode": 0,
+      "durationMs": 1024,
+      "completedAtMs": 1788721364086,
+      "outputBytes": 40,
+      "outputSha256": "dd2e2151c244ca636036b6bc1ac465e421928c2c3cdb8271021359f18a503493"
+    }
+  ]
+}

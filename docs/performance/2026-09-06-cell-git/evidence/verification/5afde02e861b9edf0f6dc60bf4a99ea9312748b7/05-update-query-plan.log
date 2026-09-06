@@ -1,0 +1,1 @@
+{"sql":"EXPLAIN QUERY PLAN UPDATE commands SET status = 'done', finished_at = ? WHERE bee_id = ? AND status IN ('queued','running')","plan":[{"id":5,"parent":0,"notused":54,"detail":"SEARCH commands USING INDEX commands_by_bee_status (bee_id=? AND status=?)"}]}
