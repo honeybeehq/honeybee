@@ -12,8 +12,8 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { openCoreStore, type CoreStore } from "../../core/src/index.ts";
-import { DaemonCore, type DaemonPolicy, type I1ViolationEvent } from "../src/loops.ts";
+import { hashBeeMoveRequest, openCoreStore, PLACEMENT_PREFIX_MARKER, type CoreStore } from "../../core/src/index.ts";
+import { DaemonCore, type DaemonCoreOptions, type DaemonPolicy, type I1ViolationEvent } from "../src/loops.ts";
 import { HsrDriver } from "../../driver-hsr/src/index.ts";
 import { stubAdapter } from "../../adapters/src/index.ts";
 import { AGENT_PATH, FakeDriver, sleep, waitFor } from "./helpers.ts";
@@ -30,7 +30,10 @@ interface Rig {
   cleanup: () => void;
 }
 
-function makeRig(policy: Partial<DaemonPolicy> = {}): Rig {
+function makeRig(
+  policy: Partial<DaemonPolicy> = {},
+  extra: Pick<Partial<DaemonCoreOptions>, "relocateSession" | "validatePlacement" | "sourceProcessAbsent" | "faults"> = {},
+): Rig {
   const dir = mkdtempSync(join(tmpdir(), "hb-v2-loops-"));
   const clock = { now: 1000 };
   const now = (): number => clock.now;
@@ -49,6 +52,7 @@ function makeRig(policy: Partial<DaemonPolicy> = {}): Rig {
     now,
     log: (op) => ops.push(op),
     onI1Violation: (v) => violations.push(v),
+    ...extra,
   });
   core.boot();
   return {
@@ -1483,6 +1487,262 @@ test("unit.flag-expiry: a provider-declared reset lifts resource_blocked at the 
     assert.equal(rig.store.activeFlags("bee-1").length, 1, "silence never clears a flag without a declared reset");
     assert.equal(blockedView(), true);
   } finally {
+    rig.cleanup();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Cell→checkout move: native overlay vs delivery prefix, dest crash retry.
+// ---------------------------------------------------------------------------
+
+function putActiveCell(store: CoreStore, beeId: string, cwd: string) {
+  return store.putCell({
+    sourceBeeId: beeId,
+    originRepo: "/tmp/origin",
+    sha: "abc",
+    wrapper: "w",
+    spaceName: "repo-space-c1",
+    spaceDir: cwd,
+    gitCommonDirRealpath: "/tmp/origin/.git",
+    objectFormat: "sha1",
+  });
+}
+
+function admitLocalMove(store: CoreStore, beeId: string, cellId: string, destCwd = "/tmp/checkout") {
+  const bee = store.getBee(beeId);
+  assert.ok(bee);
+  const dest = {
+    kind: "local_checkout" as const,
+    cwd: destCwd,
+    repository: { version: 1 as const, gitCommonDirRealpath: "/tmp/origin/.git", objectFormat: "sha1" as const },
+    observedHead: "abc",
+  };
+  return store.admitBeeMove({
+    beeId,
+    idempotencyKey: `move-${beeId}`,
+    requestHash: hashBeeMoveRequest({
+      beeId,
+      expected: { placementVersion: bee.placementVersion, cellId },
+      destination: dest,
+    }),
+    expected: { placementVersion: bee.placementVersion, cellId },
+    destinationCwd: dest.cwd,
+  });
+}
+
+function bootIdleExisting(rig: Rig, id: string): void {
+  rig.store.enqueueCommand("spawn", id);
+  rig.core.step();
+  rig.core.step();
+  rig.core.step();
+  assert.equal(rig.store.currentRuntime(id)?.state, "idle", `bootIdleExisting ${id}`);
+}
+
+function stepMoveUntil(rig: Rig, pred: () => boolean, what: string, max = 80): void {
+  for (let i = 0; i < max; i++) {
+    if (pred()) return;
+    const pending = rig.store.listCommands({ beeId: "bee-1", status: "queued" });
+    const next = pending.reduce((acc, c) => Math.max(acc, c.nextAttemptAt), 0);
+    if (next > rig.clock.now) rig.clock.now = next;
+    rig.core.step();
+  }
+  const move = rig.store.latestMoveOf("bee-1");
+  const rt = rig.store.currentRuntime("bee-1");
+  throw new Error(
+    `${what}; phase=${move?.phase} applied=${move?.instructionsApplied} gen=${rt?.generation} state=${rt?.state} ops=${rig.ops.slice(-20).join(" | ")}`,
+  );
+}
+
+function spawnCellForMove(rig: Rig, agent: "claude" | "codex" | "stub", id = "bee-1"): { cellId: string } {
+  rig.store.createBee({
+    id,
+    name: id,
+    agent,
+    substrate: "cell",
+    cwd: "/tmp/cell-space",
+    providerSessionId: "sid-1",
+  });
+  const cell = putActiveCell(rig.store, id, "/tmp/cell-space");
+  bootIdleExisting(rig, id);
+  return { cellId: cell.id };
+}
+
+test("move.claude: no-mail dest idle marks native overlay applied and completes", () => {
+  const relocated: string[] = [];
+  const rig = makeRig({}, { relocateSession: (move) => { relocated.push(move.id); return "copied"; } });
+  try {
+    const { cellId } = spawnCellForMove(rig, "claude");
+    const move = admitLocalMove(rig.store, "bee-1", cellId);
+    stepMoveUntil(rig, () => rig.store.latestMoveOf("bee-1")?.phase === "complete", "claude no-mail complete");
+    assert.equal(rig.store.activeMoveOf("bee-1"), null);
+    const done = rig.store.latestMoveOf("bee-1");
+    assert.equal(done?.id, move.id);
+    assert.equal(done?.instructionsApplied, true);
+    assert.equal(rig.store.getBee("bee-1")?.cwd, "/tmp/checkout");
+    assert.equal(rig.store.getBee("bee-1")?.substrate, "hsr");
+    assert.equal(rig.store.currentRuntime("bee-1")?.generation, 2);
+    assert.deepEqual(relocated, [move.id]);
+    assert.equal(rig.driver.deliveredIds.length, 0);
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("move.codex: no-mail dest idle completes without a mailbox prefix", () => {
+  const rig = makeRig();
+  try {
+    const { cellId } = spawnCellForMove(rig, "codex");
+    admitLocalMove(rig.store, "bee-1", cellId);
+    stepMoveUntil(rig, () => rig.store.latestMoveOf("bee-1")?.phase === "complete", "codex no-mail complete");
+    assert.equal(rig.store.latestMoveOf("bee-1")?.instructionsApplied, true);
+    assert.equal(rig.driver.deliveredBodies.length, 0);
+    assert.equal(rig.store.getBee("bee-1")?.cwd, "/tmp/checkout");
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("move.claude: pending mail keeps overlay pending until prefixed dest deliver", () => {
+  const rig = makeRig({}, { relocateSession: () => "copied" });
+  try {
+    const { cellId } = spawnCellForMove(rig, "claude");
+    admitLocalMove(rig.store, "bee-1", cellId);
+    const sent = rig.store.send("bee-1", "post-placement task");
+    assert.equal(sent.wakeCommand, null);
+    stepMoveUntil(
+      rig,
+      () => rig.store.latestMoveOf("bee-1")?.phase === "complete" && rig.store.undeliveredMessages("bee-1").length === 0,
+      "claude prefixed mail complete",
+    );
+    assert.ok(rig.store.getMessage(sent.message.id)?.deliveredAt);
+    assert.equal(rig.driver.deliveredIds.length, 1);
+    assert.ok(rig.driver.deliveredBodies[0]?.startsWith(PLACEMENT_PREFIX_MARKER));
+    assert.ok(rig.driver.deliveredBodies[0]?.endsWith("post-placement task"));
+    assert.equal(rig.store.latestMoveOf("bee-1")?.instructionsApplied, true);
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("move.stub: dest idle without mail does not auto-complete", () => {
+  const rig = makeRig();
+  try {
+    const { cellId } = spawnCellForMove(rig, "stub");
+    admitLocalMove(rig.store, "bee-1", cellId);
+    stepMoveUntil(rig, () => {
+      const dest = rig.store.currentRuntime("bee-1");
+      return dest?.generation === 2 && (dest.state === "idle" || dest.state === "running");
+    }, "stub dest idle");
+    for (let i = 0; i < 5; i++) rig.core.step();
+    const move = rig.store.activeMoveOf("bee-1");
+    assert.equal(move?.phase, "starting");
+    assert.equal(move?.instructionsApplied, false);
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("move.codex: dest leaving booting (handshake ack) completes no-mail without idle", () => {
+  const rig = makeRig();
+  try {
+    const { cellId } = spawnCellForMove(rig, "codex");
+    admitLocalMove(rig.store, "bee-1", cellId);
+    rig.driver.autoBoot = false;
+    stepMoveUntil(rig, () => {
+      const dest = rig.store.currentRuntime("bee-1");
+      return dest?.generation === 2 && dest.state === "booting" && rig.driver.hasProcess("bee-1", 2);
+    }, "codex dest booting");
+    assert.equal(rig.store.activeMoveOf("bee-1")?.phase, "starting");
+    assert.equal(rig.store.activeMoveOf("bee-1")?.instructionsApplied, false);
+    const live = rig.driver.snapshotLive().find((proc) => proc.beeId === "bee-1");
+    assert.ok(live);
+    rig.driver.events.push({
+      beeId: "bee-1",
+      generation: live.generation,
+      kind: "booted",
+      pid: live.pid,
+      pidStartedAt: live.pidStartedAt,
+    });
+    stepMoveUntil(rig, () => rig.store.latestMoveOf("bee-1")?.phase === "complete", "codex handshake complete");
+    assert.equal(rig.store.currentRuntime("bee-1")?.state, "running");
+    assert.equal(rig.store.latestMoveOf("bee-1")?.instructionsApplied, true);
+    assert.equal(rig.driver.deliveredIds.length, 0);
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("move.codex: dest crash while starting retries and then completes", () => {
+  const rig = makeRig();
+  try {
+    const { cellId } = spawnCellForMove(rig, "codex");
+    admitLocalMove(rig.store, "bee-1", cellId);
+    rig.driver.autoBoot = false;
+    stepMoveUntil(rig, () => {
+      const dest = rig.store.currentRuntime("bee-1");
+      return dest?.generation === 2 && dest.state === "booting" && rig.driver.hasProcess("bee-1", 2);
+    }, "codex dest booting");
+    assert.equal(rig.store.activeMoveOf("bee-1")?.phase, "starting");
+    assert.equal(rig.store.activeMoveOf("bee-1")?.instructionsApplied, false);
+    rig.driver.procs.delete("bee-1");
+    rig.driver.events.push({ beeId: "bee-1", generation: 2, kind: "exited", exitCause: "crashed" });
+    rig.core.step();
+    assert.equal(rig.store.currentRuntime("bee-1")?.state, "stopped");
+    assert.equal(rig.store.activeMoveOf("bee-1")?.phase, "starting");
+    assert.equal(rig.store.activeMoveOf("bee-1")?.instructionsApplied, false);
+    assert.ok(
+      rig.ops.some((op) => op.includes("move.dest_retry") || op.includes("boot_retry.enqueued")),
+      `expected dest retry; ops=${rig.ops.slice(-12).join(" | ")}`,
+    );
+    rig.driver.autoBoot = true;
+    stepMoveUntil(rig, () => rig.store.latestMoveOf("bee-1")?.phase === "complete", "codex dest retry complete");
+    assert.ok((rig.store.currentRuntime("bee-1")?.generation ?? 0) >= 3);
+    assert.equal(rig.store.latestMoveOf("bee-1")?.instructionsApplied, true);
+    assert.equal(rig.store.getBee("bee-1")?.cwd, "/tmp/checkout");
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("move.crash: executor crash after durable admission resumes to complete", () => {
+  const rig = makeRig();
+  let reopened: CoreStore | null = null;
+  try {
+    const { cellId } = spawnCellForMove(rig, "codex");
+    const move = admitLocalMove(rig.store, "bee-1", cellId);
+    const crashing = new DaemonCore({
+      store: rig.store,
+      driver: rig.driver,
+      now: () => rig.clock.now,
+      log: (op) => rig.ops.push(op),
+      policy: { bootHangTimeoutSteps: 50, commandsPerStep: 8 },
+      faults: { executorCrash: () => "after_effect", driverTimeout: () => false },
+    });
+    assert.throws(() => crashing.step(), /executor crash/);
+    rig.store.close();
+    reopened = openCoreStore(join(rig.dir, "core.sqlite3"), { now: () => rig.clock.now, ephemeral: true, maxAttempts: 3, backoffBaseMs: 1 });
+    const recovered = new DaemonCore({
+      store: reopened,
+      driver: rig.driver,
+      now: () => rig.clock.now,
+      policy: { bootHangTimeoutSteps: 50, commandsPerStep: 8 },
+      log: (op) => rig.ops.push(op),
+    });
+    recovered.boot();
+    for (let i = 0; i < 80; i++) {
+      if (reopened.latestMoveOf("bee-1")?.phase === "complete") break;
+      const pending = reopened.listCommands({ beeId: "bee-1", status: "queued" });
+      const next = pending.reduce((acc, c) => Math.max(acc, c.nextAttemptAt), 0);
+      if (next > rig.clock.now) rig.clock.now = next;
+      recovered.step();
+    }
+    assert.equal(reopened.latestMoveOf("bee-1")?.phase, "complete");
+    assert.equal(reopened.latestMoveOf("bee-1")?.id, move.id);
+    assert.equal(reopened.latestMoveOf("bee-1")?.instructionsApplied, true);
+    assert.equal(reopened.getBee("bee-1")?.cwd, "/tmp/checkout");
+    assert.equal(reopened.currentRuntime("bee-1")?.generation, 2);
+  } finally {
+    reopened?.close();
     rig.cleanup();
   }
 });

@@ -591,6 +591,7 @@ export class HiveDaemon {
     this.backfillCellRegistry(store);
     this.adoptSurvivors(store, driver);
     this.lastBoot = this.core.boot();
+    this.reconcileCellOpsAtBoot();
     // v16: login workers do not survive a daemon restart (a PTY cannot be
     // re-adopted): settle their flows as interrupted, then remove the
     // retired tmux login seats this node's own daemons created.
@@ -1949,9 +1950,43 @@ export class HiveDaemon {
     };
   }
 
+  private cellOpProcessPresent(op: CellOpRow): boolean {
+    if (op.pid == null) return false;
+    if (op.pidStartedAt != null && verifyProcessIdentity(op.pid, op.pidStartedAt, this.cfg.adoptToleranceMs)) {
+      return true;
+    }
+    if (pidAlive(op.pid)) {
+      this.log(`cell_op.pid_unverified op=${op.id} pid=${op.pid}`);
+      return true;
+    }
+    return false;
+  }
+
+  private settleAbsentCellOp(op: CellOpRow, reason: string): void {
+    this.mustStore().updateCellOp(op.id, { status: "outcome_unknown", failure: "daemon_restart" });
+    this.log(`cell_op.unknown op=${op.id} cell=${op.cellId} reason=${reason}`);
+  }
+
+  /** Queued ops never started; running ops reattach by pid/birth or become unknown. Never replay argv. */
+  private reconcileCellOpsAtBoot(): void {
+    for (const op of this.mustStore().listCellOps()) {
+      if (op.status === "queued") this.settleAbsentCellOp(op, "queued_across_restart");
+      else if (op.status === "running" && !this.cellOpProcessPresent(op)) this.settleAbsentCellOp(op, "process_absent");
+    }
+  }
+
+  private releaseAbsentCellOps(cellId: string): void {
+    for (const op of this.mustStore().listCellOps()) {
+      if (op.cellId !== cellId || op.status !== "running") continue;
+      if (this.cellOpProcessPresent(op)) continue;
+      this.settleAbsentCellOp(op, "process_absent");
+    }
+  }
+
   private async rpcCellExec(params: Record<string, unknown>): Promise<CellExecResult> {
     const store = this.mustStore();
     const cellId = this.param(params, "cellId");
+    this.releaseAbsentCellOps(cellId);
     const key = this.idempotencyKeyOf(params);
     if (key == null) throw new RpcError("invalid_request", "cell.exec: idempotencyKey is required");
     const argv = params.argv;
@@ -2061,6 +2096,7 @@ export class HiveDaemon {
   private rpcCellRetainedRemove(params: Record<string, unknown>): CellRetainedRemoveResult {
     const store = this.mustStore();
     const cellId = this.param(params, "cellId");
+    this.releaseAbsentCellOps(cellId);
     const key = this.idempotencyKeyOf(params);
     if (key == null) throw new RpcError("invalid_request", "cell.retained.remove: idempotencyKey is required");
     const force = params.force === true;

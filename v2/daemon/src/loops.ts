@@ -928,10 +928,18 @@ export class DaemonCore {
             // process; Codex thread/start|resume developerInstructions was
             // acknowledged by the handshake that left booting. Never mark at
             // resolveSpawnSpec — that is before account activation and spawn.
-            if ((bee.agent === "claude" || bee.agent === "codex") && !after.instructionsApplied) {
+            // Pending mail still owes the delivery-time prefix, and a dest
+            // crash before that accept point must retry with the overlay
+            // still pending on resolveSpawnSpec.
+            const pending = this.store.undeliveredMessages(bee.id);
+            if (
+              pending.length === 0
+              && (bee.agent === "claude" || bee.agent === "codex")
+              && !after.instructionsApplied
+            ) {
               this.store.markMoveInstructionsApplied(move.id);
             }
-            if (this.store.getBeeMove(move.id)?.instructionsApplied) {
+            if (pending.length === 0 && this.store.getBeeMove(move.id)?.instructionsApplied) {
               this.store.completeBeeMove(move.id);
             }
           }

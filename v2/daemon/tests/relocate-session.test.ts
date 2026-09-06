@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, linkSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -123,6 +123,32 @@ test("relocate: unrelated dest sibling with no jsonl is refused", () => {
       TranscriptConflictError,
     );
     assert.equal(existsSync(join(dest, "sid.jsonl")), false);
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("relocate: exclusive publish hardlink without marker recovers", () => {
+  const rig = home();
+  try {
+    writeSource(rig.dir, "/tmp/from", "sid", "hello\n");
+    const dest = join(rig.dir, "projects", claudeProjectKey("/tmp/to"));
+    const staging = join(dest, ".hive-move-staging-m1");
+    mkdirSync(staging, { recursive: true });
+    copyFileSync(join(rig.dir, "projects", claudeProjectKey("/tmp/from"), "sid.jsonl"), join(staging, "sid.jsonl"));
+    mkdirSync(dest, { recursive: true });
+    linkSync(join(staging, "sid.jsonl"), join(dest, "sid.jsonl"));
+    const result = relocateClaudeSession({
+      home: rig.dir,
+      sessionId: "sid",
+      fromCwd: "/tmp/from",
+      toCwd: "/tmp/to",
+      moveId: "m1",
+    });
+    assert.equal(result, "present");
+    assert.ok(existsSync(join(dest, ".hive-move-m1")));
+    assert.equal(existsSync(staging), false);
+    assert.equal(readFileSync(join(dest, "sid.jsonl"), "utf8"), "hello\n");
   } finally {
     rig.cleanup();
   }
