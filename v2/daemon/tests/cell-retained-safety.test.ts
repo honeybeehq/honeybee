@@ -126,3 +126,22 @@ test("interrupted retained removal reconciles its directory instead of exec proc
   assert.equal((await f.view()).bee?.cellId, null);
   assert.equal((await f.view()).bee?.lifecycle, "active");
 });
+
+test("interrupted retained removal with wrapper present refuses the original key and lets a fresh key delete", { timeout: 120_000 }, async (t) => {
+  const f = await retainedFixture(t);
+  await f.restart((store) => {
+    const op = store.putCellOp({ cellId: f.cell.id, kind: "remove", idempotencyKey: "remove",
+      requestHash: hashCellOpRequest({ cellId: f.cell.id, kind: "remove", force: true }) });
+    store.updateCellOp(op.id, { status: "running" });
+  });
+  const original = await f.request<CellRetainedRemoveResult>("cell.retained.remove", { cellId: f.cell.id, idempotencyKey: "remove", force: true });
+  assert.equal(original.status, "refused", JSON.stringify(original));
+  assert.equal(original.deduped, true);
+  assert.equal(existsSync(f.cell.spaceDir), true);
+  assert.equal((await f.view()).cell?.state, "retained");
+  const next = await f.request<CellRetainedRemoveResult>("cell.retained.remove", { cellId: f.cell.id, idempotencyKey: "remove-2", force: true });
+  assert.equal(next.status, "deleted", JSON.stringify(next));
+  assert.equal(existsSync(f.cell.spaceDir), false);
+  assert.equal((await f.view()).bee?.lifecycle, "active");
+  assert.equal((await f.view()).bee?.cellId, null);
+});

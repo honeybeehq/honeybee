@@ -1989,15 +1989,13 @@ export class HiveDaemon {
    * Gate: a known live PID holds. A missing exec PID is a possible orphan —
    * elapsed time is not absence, and `outcome_unknown` with
    * `process_identity_unavailable` stays closed regardless of status.
-   * A known PID that is gone releases. Remove in-flight rows hold until the
-   * remove RPC reconciles the filesystem.
+   * A known PID that is gone releases. Remove has no child process and never
+   * holds this gate.
    */
   private cellOpHoldsGate(op: CellOpRow): boolean {
+    if (op.kind === "remove") return false;
     if (op.pid != null) return this.cellOpProcessPresent(op);
-    if (op.kind === "exec") {
-      if (op.failure === "process_identity_unavailable") return true;
-      return op.status === "queued" || op.status === "running";
-    }
+    if (op.failure === "process_identity_unavailable") return true;
     return op.status === "queued" || op.status === "running";
   }
 
@@ -2013,12 +2011,31 @@ export class HiveDaemon {
   }
 
   /**
-   * Exec only. Queued/pre-PID → unknown + process_identity_unavailable (gate
-   * stays closed). Known dead PID → unknown + process_absent (gate releases).
-   * Never replay argv. Remove ops are left for filesystem reconciliation.
+   * Exec only for process identity. Queued/pre-PID → unknown +
+   * process_identity_unavailable (gate stays closed). Known dead PID →
+   * unknown + process_absent (gate releases). Never replay argv.
+   * Remove: wrapper still present → unknown/refused and no gate; wrapper
+   * gone is left running for filesystem recovery on the remove RPC.
    */
   private reconcileCellOpsAtBoot(): void {
-    for (const op of this.mustStore().listCellOps()) {
+    const store = this.mustStore();
+    for (const op of store.listCellOps()) {
+      if (op.kind === "remove") {
+        if (op.status !== "queued" && op.status !== "running") continue;
+        const cell = store.getCell(op.cellId);
+        if (!cell || cell.state === "removed") continue;
+        const parsed = parseSpaceName(cell.spaceName);
+        const gone = !parsed
+          || !existsSync(cellPaths(this.cfg.cellsRoot, cell.wrapper, parsed.repoName, parsed.cellId).wrapperDir);
+        if (!gone) {
+          store.updateCellOp(op.id, {
+            status: "outcome_unknown",
+            failure: "daemon_restart",
+            stdout: JSON.stringify({ status: "refused", forced: false, report: null }),
+          });
+        }
+        continue;
+      }
       if (op.kind !== "exec") continue;
       if (op.status === "queued" || (op.status === "running" && op.pid == null)) {
         this.settleAbsentCellOp(op, "process_identity_unavailable");
@@ -2139,7 +2156,10 @@ export class HiveDaemon {
     } catch {
       parsed = {};
     }
-    const status = parsed.status ?? (cell.state === "removed" ? "deleted" : op.status === "failed" ? "refused" : "absent");
+    const status = parsed.status
+      ?? (cell.state === "removed" ? "deleted"
+        : op.status === "failed" || op.status === "outcome_unknown" ? "refused"
+        : "absent");
     return {
       cell,
       status,
@@ -2180,7 +2200,11 @@ export class HiveDaemon {
           });
           return this.parseRetainedRemoveResult(saved, marked, true);
         }
-        const unknown = store.updateCellOp(existing.id, { status: "outcome_unknown", failure: "daemon_restart" });
+        const unknown = store.updateCellOp(existing.id, {
+          status: "outcome_unknown",
+          failure: "daemon_restart",
+          stdout: JSON.stringify({ status: "refused", forced: false, report: null }),
+        });
         return this.parseRetainedRemoveResult(unknown, cell, true);
       }
     }
