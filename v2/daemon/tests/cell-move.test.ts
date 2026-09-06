@@ -7,19 +7,25 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { pidAlive } from "../../driver-hsr/src/psutil.ts";
 import { fingerprintOrigin, g, makeOrigin } from "../../driver-cell/tests/helpers.ts";
+import { claudeProjectKey } from "../../driver-tmux/src/index.ts";
 import type { BeeMoveResult, CellExecResult, CellRetainedRemoveResult, MailboxResult, SendRpcResult, SpawnResult, ViewResult } from "../src/protocol.ts";
 import { makeDaemonDir, startDaemon, waitFor } from "./helpers.ts";
 
 const cellAgent = fileURLToPath(new URL("../../driver-cell/test-agent/agent.mjs", import.meta.url));
+const SESSION_ID = "move-fixture-conversation";
 
-async function fixture(t: TestContext) {
+async function fixture(t: TestContext, opts: { agent?: "stub" | "claude" | "codex" } = {}) {
+  const agent = opts.agent ?? "stub";
   const root = mkdtempSync(join(tmpdir(), "hb-cell-move-rpc-"));
   const origin = makeOrigin(root);
   const cellsRoot = join(root, "cells");
   mkdirSync(cellsRoot);
+  const claudeHome = join(root, "claude-home");
+  mkdirSync(claudeHome);
+  const agentSpec = { command: process.execPath, args: [cellAgent], adapter: "stub" as const, env: { STUB_SESSION_ID: SESSION_ID } };
   const rig = makeDaemonDir({
     cells: { root: cellsRoot, allowStubMove: true },
-    agents: { stub: { command: process.execPath, args: [cellAgent], adapter: "stub", env: { STUB_SESSION_ID: "move-fixture-conversation" } } },
+    agents: { stub: agentSpec, claude: agentSpec, codex: agentSpec },
   });
   let daemon = await startDaemon(rig.dir);
   let client = await daemon.client();
@@ -30,7 +36,11 @@ async function fixture(t: TestContext) {
     rmSync(root, { recursive: true, force: true });
   });
   const spawned = await client.request<SpawnResult>("spawn", {
-    name: "move-fixture", agent: "stub", substrate: "cell", cell: { originRepo: origin.repo },
+    name: "move-fixture",
+    agent,
+    substrate: "cell",
+    cell: { originRepo: origin.repo },
+    ...(agent === "claude" ? { env: { CLAUDE_CONFIG_DIR: claudeHome } } : {}),
   });
   const view = () => client.request<ViewResult>("view", { beeId: spawned.beeId });
   const before = await waitFor(async () => {
@@ -85,7 +95,23 @@ async function fixture(t: TestContext) {
     assert.ok(delivered.body.endsWith("post-placement task"));
     return after;
   };
-  return { root, origin, before, bee, cell, runtime, request, requestRpc, restart, finishMove, view };
+  const finishMoveNoMail = async (move: BeeMoveResult) => {
+    await waitFor(async () => {
+      const receipt = await requestRpc<BeeMoveResult>("bee.move.get", { moveId: move.id });
+      assert.notEqual(receipt.phase, "failed", JSON.stringify(receipt.failure));
+      return receipt.phase === "complete";
+    }, "move complete without mail", 60_000);
+    const mailbox = await requestRpc<MailboxResult>("mailbox", { beeId: bee.id });
+    assert.equal(mailbox.messages.length, 0);
+    return view();
+  };
+  if (agent === "claude") {
+    assert.equal(bee.providerSessionId, SESSION_ID);
+    const fromKey = claudeProjectKey(cell.spaceDir);
+    mkdirSync(join(claudeHome, "projects", fromKey), { recursive: true });
+    writeFileSync(join(claudeHome, "projects", fromKey, `${SESSION_ID}.jsonl`), "src-transcript\n");
+  }
+  return { root, origin, before, bee, cell, runtime, request, requestRpc, restart, finishMove, finishMoveNoMail, view, claudeHome };
 }
 
 test("cell move RPC preserves conversation, source work, mail and retained operations", { timeout: 120_000 }, async (t) => {
@@ -161,4 +187,28 @@ test("retained exec after daemon loss never replays and releases its gate after 
   assert.equal(old.status, "outcome_unknown");
   assert.equal(old.deduped, true);
   assert.equal(readFileSync(join(f.cell.spaceDir, "crash-count.txt"), "utf8"), "once\n");
+});
+
+test("cell move completes on dest idle with no mail for Codex", { timeout: 120_000 }, async (t) => {
+  const f = await fixture(t, { agent: "codex" });
+  const move = await f.requestRpc<BeeMoveResult>("bee.move", f.request);
+  const after = await f.finishMoveNoMail(move);
+  assert.equal(after.bee?.id, f.bee.id);
+  assert.equal(after.bee?.cwd, f.origin.repo);
+  assert.equal(after.bee?.substrate, "hsr");
+  assert.equal(after.runtime?.generation, f.runtime.generation + 1);
+  assert.equal(after.move?.phase, "complete");
+  assert.equal(after.bee?.providerSessionId, f.bee.providerSessionId);
+});
+
+test("cell move carries Claude transcript and completes with no mail", { timeout: 120_000 }, async (t) => {
+  const f = await fixture(t, { agent: "claude" });
+  const move = await f.requestRpc<BeeMoveResult>("bee.move", f.request);
+  const after = await f.finishMoveNoMail(move);
+  assert.equal(after.move?.phase, "complete");
+  assert.equal(after.bee?.cwd, f.origin.repo);
+  assert.equal(after.runtime?.generation, f.runtime.generation + 1);
+  const dest = join(f.claudeHome, "projects", claudeProjectKey(f.origin.repo), `${SESSION_ID}.jsonl`);
+  assert.equal(readFileSync(dest, "utf8"), "src-transcript\n");
+  assert.ok(existsSync(join(f.claudeHome, "projects", claudeProjectKey(f.origin.repo), `.hive-move-${move.id}`)));
 });

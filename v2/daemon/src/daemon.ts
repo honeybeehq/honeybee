@@ -422,6 +422,8 @@ export class HiveDaemon {
   private lastAutoTitleAt = 0;
   private lastBoot: BootReport | null = null;
   private stopping = false;
+  /** In-flight `cell.capture` cell ids — capture is sync but exec is async. */
+  private readonly capturingCells = new Set<string>();
   private publishedSeq = 0;
   private readonly opLog: string[] = [];
   private accounts: AccountsService | null = null;
@@ -839,18 +841,15 @@ export class HiveDaemon {
   }
 
   /**
-   * The cell half of a cell bee's spawn (CellDriver.resolveCell). The seed
-   * ledger the daemon wrote at spawn (`<wrapper>/box/cell.json`, reached
-   * from the bee's cwd = the space dir) is the durable allocation truth:
-   * origin, sha, layout, warm and sandbox choices all come from it, so a
-   * daemon restart re-hydrates cells without any in-memory state. Node
-   * config supplies the defaults the ledger left open (sandbox override).
+   * Registry-backed Cell layout for a bee. Used after restart to re-hydrate
+   * `cellOf` even when the bee has already moved to an HSR checkout and the
+   * allocation is retained. Active-source is enforced at spawn and legacy
+   * `cell.remove`, not here.
    */
   private resolveCellSpec(beeId: string): CellSpec {
     const store = this.mustStore();
     const bee = store.getBee(beeId);
     if (!bee) throw new Error(`resolveCell: bee ${beeId} not found`);
-    if (bee.substrate !== "cell") throw new Error(`resolveCell: bee ${beeId} is on substrate '${bee.substrate}', not cell`);
     if (!bee.cellId) throw new Error(`resolveCell: bee ${beeId} has no cells registry id`);
     const cell = store.getCell(bee.cellId);
     if (!cell || cell.state === "removed") throw new Error(`resolveCell: cell ${bee.cellId} is missing from the registry`);
@@ -1608,8 +1607,8 @@ export class HiveDaemon {
   // WP6 §5 — cell exit path (spec 05 points 4 + 6)
   // -------------------------------------------------------------------------
 
-  /** The bee must exist AND have a Cell (active or retained); returns the cell driver. */
-  private requireCellBee(params: Record<string, unknown>): { beeId: string; cell: CellDriver } {
+  /** Bee with a registry Cell (active or retained). Capture uses this; spawn/legacy remove do not. */
+  private requireCellBee(params: Record<string, unknown>): { beeId: string; cell: CellDriver; cellId: string | null } {
     const beeId = this.requireBee(params);
     const bee = this.mustStore().getBee(beeId);
     const row = bee?.cellId ? this.mustStore().getCell(bee.cellId) : null;
@@ -1618,7 +1617,23 @@ export class HiveDaemon {
     }
     const driver = this.driver;
     if (!driver) throw new RpcError("node_stopped", "daemon is shutting down");
-    return { beeId, cell: driver.cell };
+    return { beeId, cell: driver.cell, cellId: row && row.state !== "removed" ? row.id : null };
+  }
+
+  /** Legacy `cell.remove` only: an active Cell allocation. Retained cells use `cell.retained.remove`. */
+  private requireActiveCellBee(params: Record<string, unknown>): { beeId: string; cell: CellDriver; cellId: string } {
+    const beeId = this.requireBee(params);
+    const bee = this.mustStore().getBee(beeId);
+    const row = bee?.cellId ? this.mustStore().getCell(bee.cellId) : null;
+    if (!bee || bee.substrate !== "cell" || !row || row.state !== "active") {
+      throw new RpcError(
+        "invalid_request",
+        `cell.remove is for an active Cell bee; retained allocations use cell.retained.remove`,
+      );
+    }
+    const driver = this.driver;
+    if (!driver) throw new RpcError("node_stopped", "daemon is shutting down");
+    return { beeId, cell: driver.cell, cellId: row.id };
   }
 
   /**
@@ -1628,11 +1643,17 @@ export class HiveDaemon {
    * the idempotency key when given, so a replayed operation is one operation.
    */
   private rpcCellCapture(params: Record<string, unknown>): CellCaptureResult {
-    const { beeId, cell } = this.requireCellBee(params);
+    const { beeId, cell, cellId } = this.requireCellBee(params);
     const targetBranch = this.param(params, "targetBranch");
     const mode = params.mode;
     if (mode !== "merge" && mode !== "rebase") {
       throw new RpcError("invalid_request", "cell.capture: mode must be merge|rebase");
+    }
+    if (cellId) {
+      this.releaseAbsentCellOps(cellId);
+      if (this.cellHasInFlightOp(cellId)) {
+        throw new RpcError("runtime_refused", `cell ${cellId} has an in-flight Cell operation`);
+      }
     }
     const key = this.idempotencyKeyOf(params);
     const opId = `capture-${key ?? randomUUID()}`;
@@ -1649,7 +1670,13 @@ export class HiveDaemon {
         reason: "no_cell_head",
       };
     }
-    const report = cell.capture(beeId, { targetBranch, mode: mode as CellCaptureMode, opId });
+    if (cellId) this.capturingCells.add(cellId);
+    let report: CellCaptureResult;
+    try {
+      report = cell.capture(beeId, { targetBranch, mode: mode as CellCaptureMode, opId });
+    } finally {
+      if (cellId) this.capturingCells.delete(cellId);
+    }
     this.log(
       `cell.capture bee=${beeId} onto=${targetBranch} mode=${mode} status=${report.status}` +
         (report.reason ? ` reason=${report.reason}` : "") +
@@ -1665,12 +1692,16 @@ export class HiveDaemon {
    * command. A live runtime is a typed `runtime_refused` — stop it first.
    */
   private rpcCellRemove(params: Record<string, unknown>): CellRemoveResult {
-    const { beeId, cell } = this.requireCellBee(params);
+    const { beeId, cell, cellId } = this.requireActiveCellBee(params);
     const store = this.mustStore();
     if (params.force !== undefined && typeof params.force !== "boolean") {
       throw new RpcError("invalid_request", "cell.remove: force must be a boolean when given");
     }
     const force = params.force === true;
+    this.releaseAbsentCellOps(cellId);
+    if (this.cellHasInFlightOp(cellId)) {
+      throw new RpcError("runtime_refused", `cell ${cellId} has an in-flight Cell operation`);
+    }
     const rt = store.currentRuntime(beeId);
     if ((rt && rt.state !== "stopped") || (rt && this.driver?.hasProcess(beeId, rt.generation))) {
       throw new RpcError("runtime_refused", `bee ${beeId} has a live runtime (${rt.state}); stop it before removing its cell`);
@@ -1962,23 +1993,47 @@ export class HiveDaemon {
     return false;
   }
 
+  /**
+   * Gate: in-flight ops and pre-PID deaths block other Cell verbs.
+   * A missing PID is a possible live orphan — elapsed time is not absence.
+   * A known PID that is gone releases the gate.
+   */
+  private cellOpHoldsGate(op: CellOpRow): boolean {
+    if (op.status === "done" || op.status === "failed") return false;
+    if (op.pid != null) return this.cellOpProcessPresent(op);
+    return op.status === "queued" || op.status === "running" || op.status === "outcome_unknown";
+  }
+
+  private cellHasInFlightOp(cellId: string, exceptKey?: string): boolean {
+    if (this.capturingCells.has(cellId)) return true;
+    return this.mustStore().listCellOps().some(
+      (op) => op.cellId === cellId && op.idempotencyKey !== exceptKey && this.cellOpHoldsGate(op),
+    );
+  }
+
   private settleAbsentCellOp(op: CellOpRow, reason: string): void {
     this.mustStore().updateCellOp(op.id, { status: "outcome_unknown", failure: "daemon_restart" });
     this.log(`cell_op.unknown op=${op.id} cell=${op.cellId} reason=${reason}`);
   }
 
-  /** Queued ops never started; running ops reattach by pid/birth or become unknown. Never replay argv. */
+  /**
+   * Queued/running with no PID become unknown but still hold the gate
+   * (possible orphan). Running with a dead PID becomes unknown and releases.
+   * Never replay argv.
+   */
   private reconcileCellOpsAtBoot(): void {
     for (const op of this.mustStore().listCellOps()) {
       if (op.status === "queued") this.settleAbsentCellOp(op, "queued_across_restart");
-      else if (op.status === "running" && !this.cellOpProcessPresent(op)) this.settleAbsentCellOp(op, "process_absent");
+      else if (op.status === "running" && (op.pid == null || !this.cellOpProcessPresent(op))) {
+        this.settleAbsentCellOp(op, op.pid == null ? "pre_pid_restart" : "process_absent");
+      }
     }
   }
 
   private releaseAbsentCellOps(cellId: string): void {
     for (const op of this.mustStore().listCellOps()) {
       if (op.cellId !== cellId || op.status !== "running") continue;
-      if (this.cellOpProcessPresent(op)) continue;
+      if (this.cellOpHoldsGate(op)) continue;
       this.settleAbsentCellOp(op, "process_absent");
     }
   }
@@ -2002,7 +2057,9 @@ export class HiveDaemon {
         throw new RpcError("idempotency_conflict", "idempotency key already bound to a different cell.exec request");
       }
       if (existing.status === "running") {
-        if (existing.pid != null && pidAlive(existing.pid)) return this.cellExecResultFromOp(existing, true);
+        if (existing.pid != null && this.cellOpProcessPresent(existing)) {
+          return this.cellExecResultFromOp(existing, true);
+        }
         const unknown = store.updateCellOp(existing.id, { status: "outcome_unknown", failure: "daemon_restart" });
         return this.cellExecResultFromOp(unknown, true);
       }
@@ -2012,9 +2069,7 @@ export class HiveDaemon {
     if (!cell || cell.state === "removed") {
       return { id: existing?.id ?? "", cellId, status: "failed", exitCode: null, stdout: "", stderr: "", truncated: false, timeoutMs: 0, reason: "no_cell" };
     }
-    const busy = store.listCellOps().some(
-      (op) => op.cellId === cellId && (op.status === "queued" || op.status === "running") && op.idempotencyKey !== key,
-    );
+    const busy = this.cellHasInFlightOp(cellId, key);
     const persistRefusal = (failure: "busy" | "cell_runtime_live"): CellExecResult => {
       const op = store.putCellOp({
         cellId,
@@ -2040,6 +2095,8 @@ export class HiveDaemon {
       cwd: cwd ?? null,
       timeoutMs: timeoutMs ?? null,
     });
+    // Persist attempted before OS spawn so a death before PID-save never replays argv.
+    if (op.status === "queued") store.updateCellOp(op.id, { status: "running" });
     const parsed = parseSpaceName(cell.spaceName);
     if (!parsed) throw new RpcError("invalid_request", `cell.exec: malformed space name ${cell.spaceName}`);
     const paths = cellPaths(this.cfg.cellsRoot, cell.wrapper, parsed.repoName, parsed.cellId);
@@ -2054,7 +2111,7 @@ export class HiveDaemon {
           nodeKind: this.cfg.nodeKind,
         },
         (spawned) => {
-          store.updateCellOp(op.id, { status: "running", pid: spawned.pid, pidStartedAt: spawned.pidStartedAt });
+          store.updateCellOp(op.id, { pid: spawned.pid, pidStartedAt: spawned.pidStartedAt });
         },
       );
       const saved = store.updateCellOp(op.id, {
@@ -2134,10 +2191,9 @@ export class HiveDaemon {
     if (cell.state !== "retained") {
       throw new RpcError("invalid_request", `cell.retained.remove: cell ${cellId} is ${cell.state}, not retained`);
     }
-    const busy = store.listCellOps().some(
-      (op) => op.cellId === cellId && (op.status === "queued" || op.status === "running") && op.idempotencyKey !== key,
-    );
-    if (busy) throw new RpcError("runtime_refused", `cell ${cellId} has an in-flight Cell operation`);
+    if (this.cellHasInFlightOp(cellId, key)) {
+      throw new RpcError("runtime_refused", `cell ${cellId} has an in-flight Cell operation`);
+    }
     const driver = this.driver;
     if (!driver) throw new RpcError("node_stopped", "daemon is shutting down");
     if (driver.cell.hasProcess(cell.sourceBeeId, store.currentRuntime(cell.sourceBeeId)?.generation ?? 0)) {

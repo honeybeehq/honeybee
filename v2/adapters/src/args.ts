@@ -169,6 +169,9 @@ export const claudeArgGrammar: ArgGrammar = {
     "--json-schema",
     "--betas",
   ]),
+  // Claude accepts multiple --append-system-prompt flags; dest-move overlay
+  // must add, not replace, an operator-supplied prompt.
+  repeatableValueFlags: new Set(["--append-system-prompt"]),
   booleanFlags: new Set(["-p", "--print", "--verbose", "--dangerously-skip-permissions", "--continue", "-c", "--include-partial-messages", "--replay-user-messages", "--fork-session"]),
   keyedFlags: new Set(),
   aliases: { "-r": "--resume", "-c": "--continue" },

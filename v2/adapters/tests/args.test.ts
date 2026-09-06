@@ -31,6 +31,20 @@ test("args.compose.2: empty/null layers, --flag=value spelling, -r alias, repeat
   assert.deepEqual(composeArgv(claudeArgGrammar, [["--output-format", "text"], ["--output-format", "stream-json"]]), ["--output-format", "stream-json"]);
 });
 
+test("args.compose.2b: claude --append-system-prompt is repeatable so a dest overlay does not drop an earlier prompt", () => {
+  const argv = composeArgv(claudeArgGrammar, [
+    CLAUDE_BASE,
+    ["--append-system-prompt", "keep me"],
+    ["--resume", "sid-1", "--append-system-prompt", "Workspace placement changed (version 1)."],
+  ]);
+  assert.deepEqual(argv, [
+    ...CLAUDE_BASE,
+    "--append-system-prompt", "keep me",
+    "--resume", "sid-1",
+    "--append-system-prompt", "Workspace placement changed (version 1).",
+  ]);
+});
+
 test("args.compose.3: unknown flags and positionals pass through verbatim in place — never de-duplicated or re-ordered", () => {
   const argv = composeArgv(claudeArgGrammar, [
     ["/path/to/fake-claude.mjs", "-p", "--weird", "x", "--weird", "y"],

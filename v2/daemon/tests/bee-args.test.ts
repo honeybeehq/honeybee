@@ -121,6 +121,37 @@ test("args.daemon.2: composeSpawn codex — model lifted into thread/start|resum
   assert.equal(plain.model, undefined);
 });
 
+test("args.daemon.2f: composeSpawn claude placement overlay is --append-system-prompt after resume", () => {
+  const overlay = "Workspace placement changed (version 1). Your active workspace is now the regular checkout at /tmp/checkout.";
+  const r = composeSpawn(
+    BUILTIN_AGENTS.claude!,
+    "claude",
+    bee({ providerSessionId: "sid-9" }),
+    [],
+    overlay,
+  );
+  const resumeAt = r.args.lastIndexOf("--resume");
+  const overlayAt = r.args.lastIndexOf("--append-system-prompt");
+  assert.equal(r.args[resumeAt + 1], "sid-9");
+  assert.ok(overlayAt > resumeAt, "overlay follows resume");
+  assert.equal(r.args[overlayAt + 1], overlay);
+  assert.equal(r.adapter?.harness, "claude");
+});
+
+test("args.daemon.2f-keep: composeSpawn claude dest overlay keeps an existing append-system-prompt", () => {
+  const overlay = "Workspace placement changed (version 2).";
+  const r = composeSpawn(
+    BUILTIN_AGENTS.claude!,
+    "claude",
+    bee({ args: ["--append-system-prompt", "Always use conventional commits."], providerSessionId: "sid-9" }),
+    [],
+    overlay,
+  );
+  const prompts = r.args.flatMap((tok, i) => tok === "--append-system-prompt" ? [r.args[i + 1]] : []);
+  assert.deepEqual(prompts, ["Always use conventional commits.", overlay]);
+  assert.ok(r.args.includes("--resume"));
+});
+
 test("args.daemon.2e: composeSpawn codex placement overlay is thread developerInstructions, not argv", () => {
   const overlay = "Workspace placement changed (version 1). Your active workspace is now the regular checkout at /tmp/checkout.";
   const r = composeSpawn(
