@@ -86,13 +86,18 @@ async function fixture(t: TestContext, opts: { agent?: "stub" | "claude" | "code
       assert.equal(message?.body, "post-placement task");
       return message?.deliveredAt != null;
     }, "mail delivered after placement", 20_000);
-    const after = await view();
-    assert.ok(after.bee?.sessionLogPath);
-    const entries: unknown[] = readFileSync(after.bee.sessionLogPath, "utf8").trim().split("\n").map((line) => JSON.parse(line));
-    const delivered = entries.find((entry) => typeof entry === "object" && entry !== null && "type" in entry && entry.type === "message" && "id" in entry && entry.id === sent.messageId);
-    assert.ok(typeof delivered === "object" && delivered !== null && "body" in delivered && typeof delivered.body === "string");
-    assert.ok(delivered.body.startsWith("[Hive placement context."));
-    assert.ok(delivered.body.endsWith("post-placement task"));
+    const after = await waitFor(async () => {
+      const result = await view();
+      if (!result.bee?.sessionLogPath || !existsSync(result.bee.sessionLogPath)) return null;
+      const entries: unknown[] = readFileSync(result.bee.sessionLogPath, "utf8").trim().split("\n").flatMap((line) => {
+        try { return [JSON.parse(line)]; } catch { return []; }
+      });
+      const delivered = entries.find((entry) => typeof entry === "object" && entry !== null && "type" in entry && entry.type === "message" && "id" in entry && entry.id === sent.messageId);
+      if (typeof delivered !== "object" || delivered === null || !("body" in delivered) || typeof delivered.body !== "string") return null;
+      assert.ok(delivered.body.startsWith("[Hive placement context."));
+      assert.ok(delivered.body.endsWith("post-placement task"));
+      return result;
+    }, "placement prefix in dest session log", 20_000);
     return after;
   };
   const finishMoveNoMail = async (move: BeeMoveResult) => {

@@ -422,8 +422,6 @@ export class HiveDaemon {
   private lastAutoTitleAt = 0;
   private lastBoot: BootReport | null = null;
   private stopping = false;
-  /** In-flight `cell.capture` cell ids — capture is sync but exec is async. */
-  private readonly capturingCells = new Set<string>();
   private publishedSeq = 0;
   private readonly opLog: string[] = [];
   private accounts: AccountsService | null = null;
@@ -1670,13 +1668,7 @@ export class HiveDaemon {
         reason: "no_cell_head",
       };
     }
-    if (cellId) this.capturingCells.add(cellId);
-    let report: CellCaptureResult;
-    try {
-      report = cell.capture(beeId, { targetBranch, mode: mode as CellCaptureMode, opId });
-    } finally {
-      if (cellId) this.capturingCells.delete(cellId);
-    }
+    const report = cell.capture(beeId, { targetBranch, mode: mode as CellCaptureMode, opId });
     this.log(
       `cell.capture bee=${beeId} onto=${targetBranch} mode=${mode} status=${report.status}` +
         (report.reason ? ` reason=${report.reason}` : "") +
@@ -1994,45 +1986,51 @@ export class HiveDaemon {
   }
 
   /**
-   * Gate: in-flight ops and pre-PID deaths block other Cell verbs.
-   * A missing PID is a possible live orphan — elapsed time is not absence.
-   * A known PID that is gone releases the gate.
+   * Gate: a known live PID holds. A missing exec PID is a possible orphan —
+   * elapsed time is not absence, and `outcome_unknown` with
+   * `process_identity_unavailable` stays closed regardless of status.
+   * A known PID that is gone releases. Remove in-flight rows hold until the
+   * remove RPC reconciles the filesystem.
    */
   private cellOpHoldsGate(op: CellOpRow): boolean {
-    if (op.status === "done" || op.status === "failed") return false;
     if (op.pid != null) return this.cellOpProcessPresent(op);
-    return op.status === "queued" || op.status === "running" || op.status === "outcome_unknown";
+    if (op.kind === "exec") {
+      if (op.failure === "process_identity_unavailable") return true;
+      return op.status === "queued" || op.status === "running";
+    }
+    return op.status === "queued" || op.status === "running";
   }
 
   private cellHasInFlightOp(cellId: string, exceptKey?: string): boolean {
-    if (this.capturingCells.has(cellId)) return true;
     return this.mustStore().listCellOps().some(
       (op) => op.cellId === cellId && op.idempotencyKey !== exceptKey && this.cellOpHoldsGate(op),
     );
   }
 
-  private settleAbsentCellOp(op: CellOpRow, reason: string): void {
-    this.mustStore().updateCellOp(op.id, { status: "outcome_unknown", failure: "daemon_restart" });
-    this.log(`cell_op.unknown op=${op.id} cell=${op.cellId} reason=${reason}`);
+  private settleAbsentCellOp(op: CellOpRow, failure: string): void {
+    this.mustStore().updateCellOp(op.id, { status: "outcome_unknown", failure });
+    this.log(`cell_op.unknown op=${op.id} cell=${op.cellId} failure=${failure}`);
   }
 
   /**
-   * Queued/running with no PID become unknown but still hold the gate
-   * (possible orphan). Running with a dead PID becomes unknown and releases.
-   * Never replay argv.
+   * Exec only. Queued/pre-PID → unknown + process_identity_unavailable (gate
+   * stays closed). Known dead PID → unknown + process_absent (gate releases).
+   * Never replay argv. Remove ops are left for filesystem reconciliation.
    */
   private reconcileCellOpsAtBoot(): void {
     for (const op of this.mustStore().listCellOps()) {
-      if (op.status === "queued") this.settleAbsentCellOp(op, "queued_across_restart");
-      else if (op.status === "running" && (op.pid == null || !this.cellOpProcessPresent(op))) {
-        this.settleAbsentCellOp(op, op.pid == null ? "pre_pid_restart" : "process_absent");
+      if (op.kind !== "exec") continue;
+      if (op.status === "queued" || (op.status === "running" && op.pid == null)) {
+        this.settleAbsentCellOp(op, "process_identity_unavailable");
+      } else if (op.status === "running" && op.pid != null && !this.cellOpProcessPresent(op)) {
+        this.settleAbsentCellOp(op, "process_absent");
       }
     }
   }
 
   private releaseAbsentCellOps(cellId: string): void {
     for (const op of this.mustStore().listCellOps()) {
-      if (op.cellId !== cellId || op.status !== "running") continue;
+      if (op.cellId !== cellId || op.kind !== "exec" || op.status !== "running") continue;
       if (this.cellOpHoldsGate(op)) continue;
       this.settleAbsentCellOp(op, "process_absent");
     }
@@ -2060,7 +2058,8 @@ export class HiveDaemon {
         if (existing.pid != null && this.cellOpProcessPresent(existing)) {
           return this.cellExecResultFromOp(existing, true);
         }
-        const unknown = store.updateCellOp(existing.id, { status: "outcome_unknown", failure: "daemon_restart" });
+        const failure = existing.pid == null ? "process_identity_unavailable" : "process_absent";
+        const unknown = store.updateCellOp(existing.id, { status: "outcome_unknown", failure });
         return this.cellExecResultFromOp(unknown, true);
       }
       if (existing.status !== "queued") return this.cellExecResultFromOp(existing, true);
