@@ -120,3 +120,25 @@ about 244 MiB RSS and 7% of one CPU core during active work. Its observed tree
 had 107 processes and approximately 7.4 GiB summed RSS, including shared pages
 and excluding re-adopted hosts outside the ancestry tree. `hived.log` was about
 138 MB versus 35 MB of core SQLite data. None of this live state was changed.
+
+The flat-history daemon has measured costs too: its first list RPC median rises
+from 77.90 to 83.01 ms (+6.6%), while p95 improves from 184.34 to 109.21 ms.
+Stub spawn-to-idle rises from 890 to 1,224 ms in the first capture and from
+803 to 1,080 ms in the reverse-order capture. These remain individual spawn
+observations, not a latency distribution; they warrant a repeated spawn study
+before claiming startup parity or improvement. The round retains the substantial
+history gains while reporting these possible regressions explicitly.
+
+## Native capture verification
+
+The [retained profile set](evidence/profiles/README.md) contains 11 CPU profiles,
+11 sampled allocation profiles and three operational trace/summary pairs. Both
+baseline and candidate core profiles were captured, plus candidate daemon
+profiles. Every native profile contains samples. All three traces contain
+startup, tick, core, RPC serialization and resource events, end at clean shutdown,
+fit their configured caps, and report zero dropped or trimmed events. The
+[index](evidence/profiles/index.json) records hashes and validation observations.
+
+Native worker profiles include fixture seeding, which dominates several stacks;
+they support attribution and are not the before/after timing scorecard. No live
+provider process was profiled or interrupted.

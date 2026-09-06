@@ -1,0 +1,292 @@
+{
+  "scope": "Native worker CPU and sampled allocation profiles; core baseline/candidate plus candidate operational daemon traces. Imports, seed and cleanup included. No provider work or child stacks.",
+  "artifactCount": 28,
+  "artifacts": [
+    {
+      "path": "native-before/core-1000x1.cpuprofile",
+      "bytes": 35543,
+      "sha256": "5f44680325071c964d78b3bac2dc503870b6a291db53c9da9df4e89835ee2ab9",
+      "nodes": 174,
+      "samples": 41,
+      "durationMs": 1988.51
+    },
+    {
+      "path": "native-before/core-1000x1.heapprofile",
+      "bytes": 20277,
+      "sha256": "ea5990b9bd122b9bdf6cd300a4339dd1615a3f95bfafcdca827c34f9955c38be",
+      "allocationSamples": 12
+    },
+    {
+      "path": "native-before/core-1000x20.cpuprofile",
+      "bytes": 45173,
+      "sha256": "e32bef00239c71d412200f042a45335844e80a0d5bb2ef2fd0784fb38d54a99c",
+      "nodes": 195,
+      "samples": 357,
+      "durationMs": 20097.366
+    },
+    {
+      "path": "native-before/core-1000x20.heapprofile",
+      "bytes": 15357,
+      "sha256": "d1c45f4240469b49df113a34e34606e10368b122c7a20de8cdb8b7679e3f8b66",
+      "allocationSamples": 9
+    },
+    {
+      "path": "native-before/core-100x200.cpuprofile",
+      "bytes": 35807,
+      "sha256": "b163c036f9b3b52078d88e659ede28d18c1d7e599f85fbf0a5b59a1242997193",
+      "nodes": 144,
+      "samples": 518,
+      "durationMs": 29899.351
+    },
+    {
+      "path": "native-before/core-100x200.heapprofile",
+      "bytes": 22755,
+      "sha256": "80ffb798808f755f4671339fa1249af68401531e1733b152defe19df74c2139a",
+      "allocationSamples": 9
+    },
+    {
+      "path": "native-before/core-10x1.cpuprofile",
+      "bytes": 20289,
+      "sha256": "36659761a2d0f4a02691524ea62cc7cbefad6ce8340c96f77ac47bf44d91a9eb",
+      "nodes": 111,
+      "samples": 11,
+      "durationMs": 460.661
+    },
+    {
+      "path": "native-before/core-10x1.heapprofile",
+      "bytes": 14508,
+      "sha256": "f2aed3d078f119a2b8c2260c08ae841108237537f3ea195ef523ef220f700e81",
+      "allocationSamples": 11
+    },
+    {
+      "path": "native-after/core-1000x1.cpuprofile",
+      "bytes": 35204,
+      "sha256": "70c3bbe994541b5be9693680648fb98b529e43358fd5894e9121d3a6985013a2",
+      "nodes": 172,
+      "samples": 44,
+      "durationMs": 2157.936
+    },
+    {
+      "path": "native-after/core-1000x1.heapprofile",
+      "bytes": 18018,
+      "sha256": "f78666113dc8f3f5780bc24cbf4fa838facc3290023404a3da0a67c675f98537",
+      "allocationSamples": 11
+    },
+    {
+      "path": "native-after/core-1000x20.cpuprofile",
+      "bytes": 46403,
+      "sha256": "b37895a92bcd50f10592e039c4bec2d9f43a07d0c267883ea4c36bb34c3d8068",
+      "nodes": 203,
+      "samples": 362,
+      "durationMs": 20808.255
+    },
+    {
+      "path": "native-after/core-1000x20.heapprofile",
+      "bytes": 18951,
+      "sha256": "1f6ad95117838902a4b7e637c14581430237ebb01f7e58658f9e8f12e1a53c4d",
+      "allocationSamples": 10
+    },
+    {
+      "path": "native-after/core-100x200.cpuprofile",
+      "bytes": 38440,
+      "sha256": "8c897844969e118941fc0a3fcd3755913718335a9d99f105357f393dde3164ea",
+      "nodes": 166,
+      "samples": 350,
+      "durationMs": 20063.253
+    },
+    {
+      "path": "native-after/core-100x200.heapprofile",
+      "bytes": 21564,
+      "sha256": "b135280ea316ee6e392d0551d7e2af582c590fcb75fb30098aae335a3e7dae15",
+      "allocationSamples": 14
+    },
+    {
+      "path": "native-after/core-10x1.cpuprofile",
+      "bytes": 15960,
+      "sha256": "aeff0dc2b56ddff0d244bc955e74489a3eee6657dea7e797d923dda99d4b965a",
+      "nodes": 86,
+      "samples": 10,
+      "durationMs": 432.639
+    },
+    {
+      "path": "native-after/core-10x1.heapprofile",
+      "bytes": 24889,
+      "sha256": "195f0d34fa5e95e5c469d8ebc9059b78729dd7706fe164dcd9a7ab5341e5fbf0",
+      "allocationSamples": 17
+    },
+    {
+      "path": "native-daemon/daemon-0.cpuprofile",
+      "bytes": 46384,
+      "sha256": "27efd20e6c49bd040adbda2a278c4dc987264707bfe830a9c8bc09fc6c4a23a8",
+      "nodes": 234,
+      "samples": 210,
+      "durationMs": 11591.601
+    },
+    {
+      "path": "native-daemon/daemon-0.heapprofile",
+      "bytes": 26658,
+      "sha256": "6328a21260efad0d7850ef43154720c0e1180263b4b8fcce349fe46ddc85192c",
+      "allocationSamples": 17
+    },
+    {
+      "path": "native-daemon/daemon-1000.cpuprofile",
+      "bytes": 77689,
+      "sha256": "031d49755e3cad6d8d0e6b3b89c804041d2a7a96f615f37f8d215fb13a3edf4f",
+      "nodes": 370,
+      "samples": 284,
+      "durationMs": 14759.736
+    },
+    {
+      "path": "native-daemon/daemon-1000.heapprofile",
+      "bytes": 25973,
+      "sha256": "fbc32a5b9970a42157f4b4fb605242732df28428af1af66946da1f587d9106cf",
+      "allocationSamples": 17
+    },
+    {
+      "path": "native-daemon/daemon-100x200.cpuprofile",
+      "bytes": 77206,
+      "sha256": "8dda4ffe36162fbe87c03627a63c9ad8488863c09b74da757640ff0af9544f3c",
+      "nodes": 342,
+      "samples": 567,
+      "durationMs": 31771.152
+    },
+    {
+      "path": "native-daemon/daemon-100x200.heapprofile",
+      "bytes": 23889,
+      "sha256": "975b85d0fc6a171aab70b60ef588073393a050e7b9e4f4039d453da6879c9377",
+      "allocationSamples": 15
+    },
+    {
+      "path": "native-daemon/hive-perf-1788670749068-32623-100b5571-bd39-4bce-aa14-b58a768c47ec.summary.json",
+      "bytes": 12401,
+      "sha256": "3e71271a1cbc3ad3e9c4fe46ff7b8a6ac3c65fa96d81efb2c820925a266d9419",
+      "events": 1184,
+      "spanNames": [
+        "core.step.commands",
+        "core.step.delivery",
+        "core.step.flags",
+        "core.step.i1",
+        "core.step.observe",
+        "core.step.policies",
+        "core.step.snapshot",
+        "core.step.tasks",
+        "core.step.total",
+        "daemon.start.drivers",
+        "daemon.start.reconcile",
+        "daemon.start.rpc",
+        "daemon.start.services",
+        "daemon.start.storage",
+        "daemon.start.total",
+        "daemon.tick.accounts",
+        "daemon.tick.auto_title",
+        "daemon.tick.core",
+        "daemon.tick.login",
+        "daemon.tick.total",
+        "daemon.tick.watch",
+        "rpc.health",
+        "rpc.list",
+        "rpc.mailbox",
+        "rpc.send",
+        "rpc.serialize",
+        "rpc.snapshot",
+        "rpc.spawn",
+        "rpc.view"
+      ],
+      "droppedEvents": 0,
+      "stopReason": "shutdown"
+    },
+    {
+      "path": "native-daemon/hive-perf-1788670749068-32623-100b5571-bd39-4bce-aa14-b58a768c47ec.trace.json",
+      "bytes": 145482,
+      "sha256": "35544425a826e389bc26d98d6a492cd2df64f8fda707ccbf63fb12582e0b2964"
+    },
+    {
+      "path": "native-daemon/hive-perf-1788670761848-32676-f401637a-6b5d-4dd8-802f-5f46e014756b.summary.json",
+      "bytes": 12419,
+      "sha256": "30f09e9710da6cd2441ca0a05ca6e000a7938ad955e7be5825c8997493246758",
+      "events": 1204,
+      "spanNames": [
+        "core.step.commands",
+        "core.step.delivery",
+        "core.step.flags",
+        "core.step.i1",
+        "core.step.observe",
+        "core.step.policies",
+        "core.step.snapshot",
+        "core.step.tasks",
+        "core.step.total",
+        "daemon.start.drivers",
+        "daemon.start.reconcile",
+        "daemon.start.rpc",
+        "daemon.start.services",
+        "daemon.start.storage",
+        "daemon.start.total",
+        "daemon.tick.accounts",
+        "daemon.tick.auto_title",
+        "daemon.tick.core",
+        "daemon.tick.login",
+        "daemon.tick.total",
+        "daemon.tick.watch",
+        "rpc.health",
+        "rpc.list",
+        "rpc.mailbox",
+        "rpc.send",
+        "rpc.serialize",
+        "rpc.snapshot",
+        "rpc.spawn",
+        "rpc.view"
+      ],
+      "droppedEvents": 0,
+      "stopReason": "shutdown"
+    },
+    {
+      "path": "native-daemon/hive-perf-1788670761848-32676-f401637a-6b5d-4dd8-802f-5f46e014756b.trace.json",
+      "bytes": 149713,
+      "sha256": "ffd2d14c03840e3b8bf68b4cd76f89627ac97fc4b9bd68cdc9eca2c44a47b0dd"
+    },
+    {
+      "path": "native-daemon/hive-perf-1788670795566-32758-c6a97229-eecb-440e-81f5-b9cd7c5cfd1a.summary.json",
+      "bytes": 12420,
+      "sha256": "e468b7dc9e7cab16ba0afc9f94ea7f8f1441c488172229674746aab2135dd8b3",
+      "events": 1196,
+      "spanNames": [
+        "core.step.commands",
+        "core.step.delivery",
+        "core.step.flags",
+        "core.step.i1",
+        "core.step.observe",
+        "core.step.policies",
+        "core.step.snapshot",
+        "core.step.tasks",
+        "core.step.total",
+        "daemon.start.drivers",
+        "daemon.start.reconcile",
+        "daemon.start.rpc",
+        "daemon.start.services",
+        "daemon.start.storage",
+        "daemon.start.total",
+        "daemon.tick.accounts",
+        "daemon.tick.auto_title",
+        "daemon.tick.core",
+        "daemon.tick.login",
+        "daemon.tick.total",
+        "daemon.tick.watch",
+        "rpc.health",
+        "rpc.list",
+        "rpc.mailbox",
+        "rpc.send",
+        "rpc.serialize",
+        "rpc.snapshot",
+        "rpc.spawn",
+        "rpc.view"
+      ],
+      "droppedEvents": 0,
+      "stopReason": "shutdown"
+    },
+    {
+      "path": "native-daemon/hive-perf-1788670795566-32758-c6a97229-eecb-440e-81f5-b9cd7c5cfd1a.trace.json",
+      "bytes": 147298,
+      "sha256": "cf034352ede2e9ce6cf83a8493d677d4777c5b156409baa2218680385409cee9"
+    }
+  ]
+}
