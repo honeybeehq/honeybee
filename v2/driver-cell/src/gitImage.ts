@@ -16,9 +16,13 @@
 import { spawnSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import {
+  closeSync,
   cpSync,
   existsSync,
+  fchmodSync,
+  lstatSync,
   mkdirSync,
+  openSync,
   readFileSync,
   readdirSync,
   realpathSync,
@@ -171,8 +175,51 @@ function writeJsonAtomic(path: string, value: unknown): void {
 
 function configureFreshCellGit(spaceDir: string, originRepo: string, emptyHooksDir: string): void {
   mkdirSync(emptyHooksDir, { recursive: true });
-  git(spaceDir, ["config", "core.hooksPath", emptyHooksDir]);
-  git(spaceDir, ["config", "core.fsmonitor", "false"]);
+  const configPath = join(spaceDir, ".git", "config");
+  const configLockPath = `${configPath}.lock`;
+  let directConfig: { contents: Buffer; mode: number } | null = null;
+  try {
+    const stat = lstatSync(configPath);
+    const contents = readFileSync(configPath);
+    const configText = contents.toString("utf8").toLowerCase();
+    if (
+      stat.isFile()
+      && stat.nlink === 1
+      && !existsSync(configLockPath)
+      && !configText.includes("hookspath")
+      && !configText.includes("fsmonitor")
+      && !configText.includes("include")
+      && !configText.includes("\\")
+      && !/[\u0000-\u0007\u000b-\u001f\u007f]/u.test(emptyHooksDir)
+    ) {
+      directConfig = { contents, mode: stat.mode & 0o7777 };
+    }
+  } catch {
+    // Let Git retain its existing error and unusual-config behavior.
+  }
+  if (directConfig == null) {
+    git(spaceDir, ["config", "core.hooksPath", emptyHooksDir]);
+    git(spaceDir, ["config", "core.fsmonitor", "false"]);
+  } else {
+    const hooksPath = emptyHooksDir
+      .replaceAll("\\", "\\\\")
+      .replaceAll("\"", "\\\"")
+      .replaceAll("\b", "\\b")
+      .replaceAll("\t", "\\t")
+      .replaceAll("\n", "\\n");
+    const updated = Buffer.concat([
+      directConfig.contents,
+      Buffer.from(`\n[core]\n\thooksPath = "${hooksPath}"\n\tfsmonitor = false\n`),
+    ]);
+    const configLock = openSync(configLockPath, "wx", directConfig.mode);
+    try {
+      writeFileSync(configLock, updated);
+      fchmodSync(configLock, directConfig.mode);
+    } finally {
+      closeSync(configLock);
+    }
+    renameSync(configLockPath, configPath);
+  }
   const remote = tryGit(originRepo, ["remote", "get-url", "origin"]);
   if (remote.status === 0 && remote.stdout.trim().length > 0) {
     git(spaceDir, ["remote", "add", "origin", remote.stdout.trim()]);
