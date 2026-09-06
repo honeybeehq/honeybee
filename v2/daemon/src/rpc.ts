@@ -26,6 +26,11 @@ import {
 import { LeaseRefusal } from "./accountsService.ts";
 import { LoginFlowRefusal } from "./loginFlows.ts";
 import {
+  NOOP_PERFORMANCE,
+  rpcPerformanceSpanName,
+  type PerformanceRecorder,
+} from "./performance.ts";
+import {
   DAEMON_CAPABILITIES,
   PROTOCOL,
   RPC_VERBS,
@@ -55,6 +60,7 @@ export interface RpcServerOptions {
   socketPath: string;
   log: (op: string) => void;
   dispatch: RpcDispatch;
+  performance?: PerformanceRecorder;
 }
 
 interface Connection extends RpcConn {
@@ -62,6 +68,12 @@ interface Connection extends RpcConn {
   buffer: string;
   helloDone: boolean;
   watchCursor: number | null;
+}
+
+const RPC_VERB_SET = new Set<string>(RPC_VERBS);
+
+function isRpcVerb(value: unknown): value is RpcVerb {
+  return typeof value === "string" && RPC_VERB_SET.has(value);
 }
 
 /** Map any thrown error onto the closed RPC error list. */
@@ -89,12 +101,14 @@ export function toRpcError(err: unknown): { code: RpcErrorCode; message: string 
 
 export class RpcServer {
   private readonly opts: RpcServerOptions;
+  private readonly performance: PerformanceRecorder;
   private readonly server: Server;
   private readonly conns = new Set<Connection>();
   private listening = false;
 
   constructor(opts: RpcServerOptions) {
     this.opts = opts;
+    this.performance = opts.performance ?? NOOP_PERFORMANCE;
     this.server = createServer((socket) => this.onConnection(socket));
   }
 
@@ -224,10 +238,11 @@ export class RpcServer {
     }
     const id = typeof frame.id === "number" ? frame.id : -1;
     const verb = frame.verb;
-    if (typeof verb !== "string" || !(RPC_VERBS as readonly string[]).includes(verb)) {
+    if (!isRpcVerb(verb)) {
       conn.send({ id, ok: false, error: { code: "invalid_request", message: `unknown verb: ${String(verb)}` } });
       return;
     }
+    const span = this.performance.startSpan(rpcPerformanceSpanName(verb));
     const params =
       frame.params === undefined
         ? {}
@@ -235,23 +250,32 @@ export class RpcServer {
           ? (frame.params as Record<string, unknown>)
           : null;
     if (params === null) {
+      span.end("error");
       conn.send({ id, ok: false, error: { code: "invalid_request", message: "params must be an object" } });
       return;
     }
     try {
-      const result = this.opts.dispatch(verb as RpcVerb, params, conn);
+      const result = this.opts.dispatch(verb, params, conn);
       // v7: verbs with a bounded async leg (limits fetch before an auto pick,
       // the login seat's keychain baseline) return a promise; sync verbs are
       // answered on the spot exactly as before.
       if (result instanceof Promise) {
         result.then(
-          (value) => conn.send({ id, ok: true, result: value }),
-          (err) => conn.send({ id, ok: false, error: toRpcError(err) }),
+          (value) => {
+            span.end();
+            conn.send({ id, ok: true, result: value });
+          },
+          (err) => {
+            span.end("error");
+            conn.send({ id, ok: false, error: toRpcError(err) });
+          },
         );
         return;
       }
+      span.end();
       conn.send({ id, ok: true, result });
     } catch (err) {
+      span.end("error");
       conn.send({ id, ok: false, error: toRpcError(err) });
     }
   }
