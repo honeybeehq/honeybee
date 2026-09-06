@@ -72,6 +72,8 @@ export {
   sanitizedCellExecEnv,
   containedExecCwd,
   decodeCappedUtf8,
+  utf8DecodableEnd,
+  OutputBudget,
   OutputCap,
   type CellExecSpec,
   type CellExecOutcome,

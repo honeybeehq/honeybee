@@ -7,7 +7,6 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, lstatSync, realpathSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { isAbsolute, relative, resolve, sep } from "node:path";
-import { StringDecoder } from "node:string_decoder";
 import {
   CELL_EXEC_MAX_OUTPUT_BYTES,
   clampCellExecTimeout,
@@ -53,14 +52,68 @@ export function sanitizedCellExecEnv(): Record<string, string> {
   };
 }
 
-class OutputBudget {
+/**
+ * Index of the first byte that begins an incomplete UTF-8 sequence at the
+ * end of `buf`. Complete characters — including valid multibyte suffixes —
+ * are kept. Invalid leads stay so `toString("utf8")` can emit U+FFFD.
+ */
+export function utf8DecodableEnd(buf: Buffer): number {
+  let i = 0;
+  const n = buf.length;
+  while (i < n) {
+    const lead = buf[i]!;
+    if (lead <= 0x7f) {
+      i += 1;
+      continue;
+    }
+    let need = 0;
+    if (lead >= 0xc2 && lead <= 0xdf) need = 2;
+    else if (lead >= 0xe0 && lead <= 0xef) need = 3;
+    else if (lead >= 0xf0 && lead <= 0xf4) need = 4;
+    if (need === 0) {
+      i += 1;
+      continue;
+    }
+    if (i + need > n) return i;
+    let valid = true;
+    for (let k = 1; k < need; k++) {
+      if ((buf[i + k]! & 0xc0) !== 0x80) {
+        valid = false;
+        break;
+      }
+    }
+    if (!valid) {
+      i += 1;
+      continue;
+    }
+    i += need;
+  }
+  return n;
+}
+
+function decodeUtf8DropIncomplete(buf: Buffer): string {
+  const end = utf8DecodableEnd(buf);
+  if (end <= 0) return "";
+  return buf.subarray(0, end).toString("utf8");
+}
+
+function trimEncodedToCap(text: string, maxBytes: number): string {
+  if (maxBytes <= 0) return "";
+  const encoded = Buffer.byteLength(text, "utf8");
+  if (encoded <= maxBytes) return text;
+  const buf = Buffer.from(text, "utf8");
+  const slice = buf.subarray(0, maxBytes);
+  return decodeUtf8DropIncomplete(slice);
+}
+
+/** One 1 MiB budget shared by stdout and stderr: raw intake and encoded output. */
+export class OutputBudget {
   rawUsed = 0;
   encodedUsed = 0;
   truncated = false;
-  private encodedExhausted = false;
 
   takeRaw(chunk: Buffer): Buffer {
-    if (chunk.length === 0 || this.encodedExhausted) return chunk.subarray(0, 0);
+    if (chunk.length === 0) return chunk.subarray(0, 0);
     const room = CELL_EXEC_MAX_OUTPUT_BYTES - this.rawUsed;
     if (room <= 0) {
       this.truncated = true;
@@ -72,26 +125,20 @@ class OutputBudget {
     return accepted;
   }
 
-  takeText(text: string): string {
+  takeEncoded(text: string): string {
     if (text.length === 0) return "";
-    const encoded = Buffer.from(text, "utf8");
     const room = CELL_EXEC_MAX_OUTPUT_BYTES - this.encodedUsed;
-    if (encoded.length <= room) {
-      this.encodedUsed += encoded.length;
-      return text;
-    }
-    const prefix = new StringDecoder("utf8").write(encoded.subarray(0, Math.max(0, room)));
-    this.encodedUsed += Buffer.byteLength(prefix, "utf8");
-    this.encodedExhausted = true;
-    this.truncated = true;
-    return prefix;
+    const kept = trimEncodedToCap(text, room);
+    this.encodedUsed += Buffer.byteLength(kept, "utf8");
+    if (kept !== text) this.truncated = true;
+    return kept;
   }
 }
 
 export class OutputCap {
-  private chunks: string[] = [];
-  private decoder = new StringDecoder("utf8");
+  private chunks: Buffer[] = [];
   private readonly budget: OutputBudget;
+  private decoded: string | null = null;
   used = 0;
 
   constructor(budget = new OutputBudget()) {
@@ -106,17 +153,22 @@ export class OutputCap {
     const accepted = this.budget.takeRaw(chunk);
     if (accepted.length === 0) return;
     this.used += accepted.length;
-    const text = this.budget.takeText(this.decoder.write(accepted));
-    if (text.length > 0) this.chunks.push(text);
+    this.chunks.push(Buffer.from(accepted));
+    this.decoded = null;
   }
 
   text(): string {
-    if (this.chunks.length === 0) return "";
-    return this.chunks.join("");
+    if (this.decoded != null) return this.decoded;
+    if (this.chunks.length === 0) {
+      this.decoded = "";
+      return "";
+    }
+    this.decoded = this.budget.takeEncoded(decodeUtf8DropIncomplete(Buffer.concat(this.chunks)));
+    return this.decoded;
   }
 }
 
-/** Decode malformed bytes with replacement, drop an incomplete tail, and cap encoded output. */
+/** Drop an incomplete tail, replace malformed bytes, and cap encoded output at 1 MiB. */
 export function decodeCappedUtf8(buf: Buffer): string {
   const cap = new OutputCap();
   cap.push(buf);

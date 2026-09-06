@@ -8,8 +8,10 @@ import { pidAlive } from "../../driver-hsr/src/psutil.ts";
 import {
   containedExecCwd,
   decodeCappedUtf8,
+  OutputBudget,
   OutputCap,
   runCellExec,
+  utf8DecodableEnd,
 } from "../src/exec.ts";
 import { cellPaths } from "../src/layout.ts";
 
@@ -38,28 +40,57 @@ test("exec.cwd: relative-only and realpath containment rejects a symlink out of 
   }
 });
 
-test("exec.cap: raw-byte budget never exceeds 1MiB after incomplete UTF-8 trim", () => {
+test("exec.cap: incomplete tail is dropped, complete multibyte suffix is kept", () => {
+  const incomplete = Buffer.from([0x61, 0xf0, 0x9f]);
+  assert.equal(utf8DecodableEnd(incomplete), 1);
+  assert.equal(decodeCappedUtf8(incomplete), "a");
+  assert.equal(decodeCappedUtf8(incomplete).includes("�"), false);
+
+  const complete = Buffer.from("a😀", "utf8");
+  assert.equal(utf8DecodableEnd(complete), complete.length);
+  assert.equal(decodeCappedUtf8(complete), "a😀");
+
+  const twoByte = Buffer.from([0x61, 0xc2, 0xa9]); // a©
+  assert.equal(decodeCappedUtf8(twoByte), "a©");
+  assert.equal(decodeCappedUtf8(Buffer.from([0x61, 0xc2])), "a");
+});
+
+test("exec.cap: split multibyte chunks reassemble; malformed replacement stays within 1MiB", () => {
   const cap = new OutputCap();
-  cap.push(Buffer.from("aa", "utf8"));
-  cap.push(Buffer.from("😀".repeat(300_000), "utf8"));
-  assert.equal(cap.truncated, true);
-  assert.ok(cap.used <= CELL_EXEC_MAX_OUTPUT_BYTES);
-  const text = cap.text();
+  const emoji = Buffer.from("😀");
+  assert.equal(emoji.length, 4);
+  cap.push(emoji.subarray(0, 2));
+  cap.push(emoji.subarray(2));
+  assert.equal(cap.text(), "😀");
+
+  const over = new OutputCap();
+  over.push(Buffer.from("aa", "utf8"));
+  over.push(Buffer.from("😀".repeat(300_000), "utf8"));
+  assert.equal(over.truncated, true);
+  assert.ok(over.used <= CELL_EXEC_MAX_OUTPUT_BYTES);
+  const text = over.text();
   assert.ok(Buffer.byteLength(text, "utf8") <= CELL_EXEC_MAX_OUTPUT_BYTES);
   assert.equal(text.slice(0, 2), "aa");
-  const cut = Buffer.from([0x61, 0xf0, 0x9f]);
-  assert.equal(decodeCappedUtf8(cut), "a");
 
-  const malformed = Buffer.concat([
-    Buffer.alloc(Math.ceil(CELL_EXEC_MAX_OUTPUT_BYTES / 2), 0xff),
-    Buffer.from("valid-tail"),
-  ]);
+  const malformed = Buffer.alloc(CELL_EXEC_MAX_OUTPUT_BYTES, 0xff);
   const decodedMalformed = decodeCappedUtf8(malformed);
   assert.match(decodedMalformed, /�/);
   assert.ok(Buffer.byteLength(decodedMalformed, "utf8") <= CELL_EXEC_MAX_OUTPUT_BYTES);
+  assert.ok(decodedMalformed.length < malformed.length, "replacement expansion must be trimmed to the cap");
 });
 
 test("exec.cap: stdout and stderr share one 1MiB budget", async () => {
+  const budget = new OutputBudget();
+  const stdout = new OutputCap(budget);
+  const stderr = new OutputCap(budget);
+  stdout.push(Buffer.alloc(700_000, 0x61));
+  stderr.push(Buffer.alloc(700_000, 0x62));
+  assert.equal(budget.truncated, true);
+  assert.ok(stdout.used + stderr.used <= CELL_EXEC_MAX_OUTPUT_BYTES);
+  assert.ok(
+    Buffer.byteLength(stdout.text(), "utf8") + Buffer.byteLength(stderr.text(), "utf8") <= CELL_EXEC_MAX_OUTPUT_BYTES,
+  );
+
   const rig = space();
   try {
     const script = join(rig.paths.spaceDir, "both-streams.mjs");
