@@ -20,3 +20,10 @@ primary end-to-end Honeybee metric. `request_to_first_text_ms` includes model
 provider latency and is deliberately excluded from Honeybee speedup claims.
 
 See `HSR_STARTUP_RESULTS_20260720.md` for the controlled before/after summary.
+
+Current v2 performance work is documented in
+[the September system map](2026-09-06/system-map.md).
+Use [the measurement runner](measure.md) for repeatable current workloads and
+[the daemon profiler](profiling.md) for bounded operational traces.
+The July startup reports above describe legacy paths; their retired cleanup
+verbs do not apply to current v2 operation.

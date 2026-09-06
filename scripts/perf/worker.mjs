@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { performance, monitorEventLoopDelay } from 'node:perf_hooks';
 import { spawnSync } from 'node:child_process';
+import { seedStore } from './fixtures.mjs';
 import { distribution } from './report.mjs';
 
 const { root, samples, idleMs, scenario } = JSON.parse(process.argv[2]);
@@ -49,27 +50,13 @@ function bytes(path) {
   }
   return total;
 }
-function seed(store, bees, generations = 1) {
-  store.transact(() => {
-    for (let i = 0; i < bees; i++) {
-      const id = `perf-${i}`;
-      store.createBee({ id, name: id, handle: `PF.${i}`, agent: 'stub', substrate: 'hsr', cwd: '/tmp' });
-      store.updateRuntimeState(id, 1, 'stopped', { exitCause: 'clean' });
-      for (let gen = 2; gen <= generations; gen++) {
-        const rt = store.reviveBee(id);
-        store.updateRuntimeState(id, rt.generation, 'stopped', { exitCause: 'clean' });
-      }
-      if (i % 10 !== 0) store.archiveBee(id);
-    }
-  });
-}
 if (scenario.kind === 'core') {
   const dir = mkdtempSync(join(tmpdir(), 'hb-perf-'));
   let store;
   try {
     const path = join(dir, 'core.sqlite3');
     store = openCoreStore(path);
-    seed(store, scenario.bees, scenario.generations);
+    seedStore(store, scenario.bees, scenario.generations);
     observations.auditRows = store.lastAuditSeq();
     observations.storageOpenBytes = bytes(dir);
     const rows = store.listBeeViewRows();
@@ -133,7 +120,7 @@ if (scenario.kind === 'core') {
   };
   try {
     const store = openCoreStore(join(dir, 'core.sqlite3'));
-    seed(store, scenario.bees);
+    seedStore(store, scenario.bees, scenario.generations);
     store.close();
     const cfg = loadNodeConfig(dir);
     daemon = new HiveDaemon(cfg);

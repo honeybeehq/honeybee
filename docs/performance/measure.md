@@ -35,7 +35,7 @@ separate revision. Build that checkout first for CLI measurements.
 
 Core workloads cover 10 and 1,000 bees, with concentrated and distributed runtime
 history. Ninety percent are archived. The quiet step asserts that reads and ticks
-produce no audit changes. Daemon workloads cover empty and 1,000-bee stores, RPC
+produce no audit changes. Daemon workloads cover empty and 1,000-bee stores plus 100 bees with 200 generations each, RPC
 health/list/snapshot, idle resource use, stub spawn, delivery, and shutdown.
 
 Core and daemon workloads execute TypeScript source with Node type stripping; the CLI workload executes the built bundle. Naming, account refresh and scale-to-zero are disabled in the disposable daemon fixture, so its idle CPU excludes those default-install background activities.
@@ -48,6 +48,8 @@ provider inference latency. The storage metric is logical file size, not physica
 APFS allocation. The fixture seed batches writes and is outside timed operations.
 
 ## Capture CPU and allocation profiles
+
+Use `--trace-dir .artifacts/performance/traces` for operational tracing alone.
 
 Add `--profile-dir .artifacts/performance/profiles` to save a Node CPU sample
 profile and sampled heap allocation profile for each worker, plus daemon traces
@@ -86,3 +88,34 @@ by shutting down its disposable daemon and verifying runner-host exit before
 cleanup. SIGKILL and machine failure cannot run that cleanup. The runner derives
 its timeout from the requested samples and idle windows, and reports timeouts as
 failed captures rather than partial results.
+
+## Compare core revisions while alternating order
+
+When host load changes during separate runs, use two isolated source checkouts
+with the same dependencies:
+
+```sh
+node scripts/perf/paired-core.mjs \
+  --before-root /absolute/baseline-checkout \
+  --after-root /absolute/candidate-checkout \
+  --out-dir .artifacts/performance/paired
+```
+
+The runner copies a closed, checkpointed fixture database and opens one independent
+writer per copy. It verifies identical state and operation results, warms both
+implementations, then alternates A/B/B/A for each round. It records wall time and
+CPU for bulk views, active views, individual views and quiet core steps. Reports
+retain raw samples, workload identity, source revisions and a scorecard. Both
+implementations share the process heap and host; this reduces time drift but does
+not remove GC, scheduling, cache or thermal noise. It measures core operations,
+not process startup or per-revision RSS.
+
+Detached runner hosts re-adopted after a daemon restart may have parent PID 1.
+A daemon-root process tree does not include those hosts. Sample their separately
+identified PIDs when measuring the complete Honeybee footprint. The sampler does
+not infer durable ownership from process ancestry.
+
+An interrupted paired-core run can leave its temporary database directories.
+It spawns no daemon or harness processes. Completed and failed normal runs close
+both stores and remove their temporary directories. Capture reports include a
+tool digest; paired reports also hash the measured store and loop source files.

@@ -5,6 +5,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { cpus, hostname, loadavg, totalmem } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createHash } from 'node:crypto';
 import { compareReports } from './report.mjs';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
@@ -21,7 +22,7 @@ if (args.includes('--compare')) {
   process.exit(0);
 }
 if (args.includes('--help')) {
-  console.log('node scripts/perf/run.mjs [--root checkout] [--out report.json] [--samples 15] [--idle-ms 3000] [--suite core|daemon|cli|all] [--profile-dir path]\nCompare: --compare --before report.json --after report.json --out scorecard.csv');
+  console.log('node scripts/perf/run.mjs [--root checkout] [--out report.json] [--samples 15] [--idle-ms 3000] [--suite core|daemon|cli|all] [--profile-dir path] [--trace-dir path]\nCompare: --compare --before report.json --after report.json --out scorecard.csv');
   process.exit(0);
 }
 const root = resolve(option('--root', join(scriptDir, '../..')));
@@ -36,18 +37,21 @@ const cases = ['daemon', 'cli'].includes(suite) ? [] : [
   { bees: 10, generations: 1 }, { bees: 1000, generations: 1 },
   { bees: 1000, generations: 20 }, { bees: 100, generations: 200 },
 ];
-const scenarios = [...cases.map(c => ({ kind: 'core', ...c })), ...(['core', 'cli'].includes(suite) ? [] : [{ kind: 'daemon', bees: 0 }, { kind: 'daemon', bees: 1000 }]), ...(['cli', 'all'].includes(suite) ? [{ kind: 'cli', bees: 0 }] : [])];
-const workload = { suite, samples, idleMs, scenarios, warmup: 3, durability: 'WAL/NORMAL', runtime: 'source Node type stripping', instrumentation: Boolean(option('--profile-dir', '')) };
+const scenarios = [...cases.map(c => ({ kind: 'core', ...c })), ...(['core', 'cli'].includes(suite) ? [] : [{ kind: 'daemon', bees: 0 }, { kind: 'daemon', bees: 1000 }, { kind: 'daemon', bees: 100, generations: 200 }]), ...(['cli', 'all'].includes(suite) ? [{ kind: 'cli', bees: 0 }] : [])];
+const toolDigest = createHash('sha256').update(readFileSync(join(scriptDir, 'run.mjs'))).update(readFileSync(join(scriptDir, 'worker.mjs'))).update(readFileSync(join(scriptDir, 'fixtures.mjs'))).update(readFileSync(join(scriptDir, 'report.mjs'))).digest('hex');
+const workload = { suite, samples, idleMs, scenarios, toolDigest, warmup: 3, durability: 'WAL/NORMAL', runtime: 'source Node type stripping', instrumentation: Boolean(option('--profile-dir', '') || option('--trace-dir', '')), captureMode: option('--profile-dir', '') ? 'cpu-heap-trace' : option('--trace-dir', '') ? 'trace' : 'none' };
 function git(...argv) { const p = spawnSync('git', argv, { cwd: root, encoding: 'utf8' }); assert.equal(p.status, 0, p.stderr); return p.stdout.trim(); }
 const report = { schemaVersion: 1, timestamp: new Date().toISOString(), source: { root, revision: git('rev-parse', 'HEAD'), status: git('status', '--porcelain'), diff: git('diff', '--stat') }, environment: { node: process.version, platform: process.platform, arch: process.arch, hostname: hostname(), cpu: cpus()[0]?.model, logicalCpus: cpus().length, totalMemoryBytes: totalmem(), loadBefore: loadavg() }, workload, results: [] };
 mkdirSync(dirname(out), { recursive: true });
 const profileDir = option('--profile-dir', '');
+const traceDir = option('--trace-dir', profileDir);
+if (traceDir) mkdirSync(resolve(traceDir), { recursive: true });
 if (profileDir) mkdirSync(resolve(profileDir), { recursive: true });
 for (const scenario of scenarios) {
   const name = `${scenario.kind}-${scenario.bees}${scenario.generations ? `x${scenario.generations}` : ''}`;
   process.stderr.write(`Measuring ${name}\n`);
   const profiling = profileDir ? ['--cpu-prof', `--cpu-prof-dir=${resolve(profileDir)}`, `--cpu-prof-name=${name}.cpuprofile`, '--heap-prof', `--heap-prof-dir=${resolve(profileDir)}`, `--heap-prof-name=${name}.heapprofile`] : [];
-  const p = spawnSync(process.execPath, [...profiling, join(scriptDir, 'worker.mjs'), JSON.stringify({ root, samples, idleMs, scenario })], { cwd: root, encoding: 'utf8', timeout: 120000 + idleMs * 3 + samples * 2000, maxBuffer: 16 * 1024 * 1024, env: { ...process.env, HIVE_NO_KEYCHAIN: '1', HIVE_PERF_DIR: profileDir ? resolve(profileDir) : '', NODE_COMPILE_CACHE: join(root, '.cache/performance-node') } });
+  const p = spawnSync(process.execPath, [...profiling, join(scriptDir, 'worker.mjs'), JSON.stringify({ root, samples, idleMs, scenario })], { cwd: root, encoding: 'utf8', timeout: 120000 + idleMs * 3 + samples * 2000, maxBuffer: 16 * 1024 * 1024, env: { ...process.env, HIVE_NO_KEYCHAIN: '1', HIVE_PERF_DIR: traceDir ? resolve(traceDir) : '', NODE_COMPILE_CACHE: join(root, '.cache/performance-node') } });
   if (p.status !== 0) throw new Error(`${name} failed (${p.status}; ${p.error?.message ?? p.signal ?? 'exit'}): ${p.stderr}\n${p.stdout}`);
   report.results.push(JSON.parse(p.stdout));
   writeFileSync(out, JSON.stringify(report, null, 2) + '\n');

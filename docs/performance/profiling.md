@@ -9,19 +9,23 @@ store or add telemetry to durable Honeybee state.
 
 ## Record a bounded trace
 
-Run a built daemon in the foreground so that you can stop it cleanly:
+Use the provider-free runner to create disposable account, home, socket and store paths:
 
 ```sh
-HIVE_PERF_DIR=/tmp/hive-perf \
-  node dist/cli.js v2 daemon run --data-dir /tmp/hive-profile-node
+node scripts/perf/run.mjs --suite daemon \
+  --trace-dir .artifacts/performance/traces \
+  --out .artifacts/performance/traced-daemon.json
 ```
 
-Send `SIGINT` or `SIGTERM` when the workload finishes. Clean shutdown writes
-one trace file and one summary file. `SIGKILL` cannot flush either file.
+The runner shuts down each fixture after its workload. Clean shutdown writes
+one trace file and one summary file. `SIGKILL` cannot flush either file. For a
+separately configured daemon, set `HIVE_PERF_DIR` at launch and send `SIGINT` or
+`SIGTERM` after the workload.
 
 Do not point a profiling process at the store of a running daemon. The core
-store permits one writer, and an isolated `--data-dir` keeps the workload away
-from the deployed node.
+store permits one writer. A different `--data-dir` alone does not isolate
+account homes or disable naming. Use the runner or explicitly configure those
+paths and services for a standalone fixture.
 
 These optional variables adjust the recording window. Values outside the
 listed ranges are clamped. Invalid values use the default.
@@ -85,16 +89,27 @@ response or a core transition.
 
 ## Use native Node profiles offline
 
-Node's built-in profilers answer questions that span timing cannot. Put Node
-flags before `dist/cli.js`, use an isolated data directory, run the workload,
-and stop the daemon cleanly.
+Node's built-in profilers answer questions that span timing cannot. The runner
+can capture CPU and sampled allocation profiles for each worker:
+
+```sh
+node scripts/perf/run.mjs --suite daemon \
+  --profile-dir .artifacts/performance/profiles \
+  --out .artifacts/performance/profiled-daemon.json
+```
+
+For a standalone fixture, first prepare a config that isolates account homes,
+vault, sockets and agents and disables provider-backed naming and refresh.
+The following examples assume that config already exists. Put Node flags before
+`dist/cli.js` and stop the daemon cleanly.
 
 Record sampled JavaScript CPU stacks:
 
 ```sh
 mkdir -p /tmp/hive-cpu
 node --cpu-prof --cpu-prof-dir=/tmp/hive-cpu \
-  dist/cli.js v2 daemon run --data-dir /tmp/hive-profile-node
+  dist/cli.js v2 daemon run --data-dir /tmp/hive-profile-node \
+  --config /tmp/hive-profile-node/config.json
 ```
 
 Record heap-allocation samples:
@@ -102,15 +117,27 @@ Record heap-allocation samples:
 ```sh
 mkdir -p /tmp/hive-heap
 node --heap-prof --heap-prof-dir=/tmp/hive-heap \
-  dist/cli.js v2 daemon run --data-dir /tmp/hive-profile-node
+  dist/cli.js v2 daemon run --data-dir /tmp/hive-profile-node \
+  --config /tmp/hive-profile-node/config.json
 ```
 
 Capture V8 garbage-collection diagnostics:
 
 ```sh
 node --trace-gc dist/cli.js v2 daemon run \
-  --data-dir /tmp/hive-profile-node > /tmp/hive-gc.log 2>&1
+  --data-dir /tmp/hive-profile-node --config /tmp/hive-profile-node/config.json \
+  > /tmp/hive-gc.log 2>&1
 ```
 
 Load the CPU and heap files in a compatible offline viewer. GC tracing is
 text output. None of these recipes enables a live inspector socket.
+
+RPC span duration includes asynchronous waits but ends before response
+serialization and socket delivery. Nested spans overlap; summing all span totals
+double-counts work. Use the benchmark's RPC round-trip timings for client latency.
+Native worker profiles do not include stacks from separate harness or CLI child
+processes. Profile those executables explicitly when attributing child CPU.
+
+`rpc.serialize` measures JSON encoding and socket queueing for replies and watch
+frames. `daemon.tick.auto_title` measures synchronous kickoff only; asynchronous
+title generation is outside that tick span.
