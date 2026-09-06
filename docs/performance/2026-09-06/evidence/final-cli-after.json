@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "timestamp": "2026-09-06T04:55:23.394Z",
+  "source": {
+    "root": "/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-2026-09-06",
+    "revision": "f43c1716fd8dcffab8282ceb26f2a3323a9bebb4",
+    "status": "?? docs/performance/2026-09-06/evidence/final-core-after.json\n?? docs/performance/2026-09-06/evidence/final-core-before.json\n?? docs/performance/2026-09-06/evidence/final-core-scorecard.csv\n?? docs/performance/2026-09-06/evidence/profiler-overhead.json\n?? docs/performance/2026-09-06/evidence/query-plan-final.json\n?? docs/performance/2026-09-06/results.md\n?? docs/review/performance-round-2026-09-06.md",
+    "diff": ""
+  },
+  "environment": {
+    "node": "v25.8.0",
+    "platform": "darwin",
+    "arch": "arm64",
+    "hostname": "Tormods-Mac-Studio.local",
+    "cpu": "Apple M4 Max",
+    "logicalCpus": 16,
+    "totalMemoryBytes": 137438953472,
+    "loadBefore": [
+      3.8681640625,
+      4.234375,
+      7.205078125
+    ],
+    "loadAfter": [
+      4.18896484375,
+      4.2919921875,
+      7.1904296875
+    ]
+  },
+  "workload": {
+    "suite": "cli",
+    "samples": 15,
+    "idleMs": 3000,
+    "scenarios": [
+      {
+        "kind": "cli",
+        "bees": 0
+      }
+    ],
+    "toolDigest": "0f0d8572e2187edb0ae87eab97680dad8f2ff60da46f9743b50f2c2e42983e25",
+    "warmup": 3,
+    "durability": "WAL/NORMAL",
+    "runtime": "source Node type stripping",
+    "instrumentation": false,
+    "captureMode": "none"
+  },
+  "results": [
+    {
+      "scenario": "cli-0",
+      "metrics": {
+        "cli.helpProcess": {
+          "unit": "ms",
+          "n": 15,
+          "min": 384.50412499999993,
+          "p50": 436.6530410000005,
+          "p95": 469.66912499999944,
+          "max": 469.66912499999944,
+          "mean": 435.8103165333334
+        }
+      },
+      "raw": {
+        "cli.helpProcess": [
+          412.0662500000001,
+          454.013833,
+          384.50412499999993,
+          432.5464999999999,
+          436.0926250000002,
+          426.63945799999965,
+          460.9360830000005,
+          436.6530410000005,
+          443.0115000000005,
+          469.66912499999944,
+          460.42191699999967,
+          439.03620800000044,
+          445.73295899999994,
+          412.94566600000053,
+          422.88545799999974
+        ]
+      },
+      "observations": {
+        "importsMs": 100.069041,
+        "memoryBefore": {
+          "rss": 56786944,
+          "heapTotal": 11010048,
+          "heapUsed": 8085576,
+          "external": 2562632,
+          "arrayBuffers": 178705
+        },
+        "bundleBytes": 1046082
+      }
+    }
+  ]
+}

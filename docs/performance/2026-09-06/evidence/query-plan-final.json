@@ -1,0 +1,32 @@
+{
+  "revision": "working tree",
+  "sqlite": "3.53.4",
+  "sql": "SELECT runtime.*\n         FROM bees AS bee\n         JOIN runtimes AS runtime\n           ON runtime.bee_id = bee.id\n          AND runtime.generation = (\n            SELECT MAX(latest.generation) FROM runtimes AS latest WHERE latest.bee_id = bee.id\n          )\n         WHERE ? IS NULL OR bee.lifecycle = ?\n         ORDER BY bee.id",
+  "plan": [
+    {
+      "id": 6,
+      "parent": 0,
+      "notused": 223,
+      "detail": "SCAN bee USING INDEX sqlite_autoindex_bees_1"
+    },
+    {
+      "id": 12,
+      "parent": 0,
+      "notused": 46,
+      "detail": "SEARCH runtime USING INDEX sqlite_autoindex_runtimes_1 (bee_id=? AND generation=?)"
+    },
+    {
+      "id": 15,
+      "parent": 0,
+      "notused": 0,
+      "detail": "CORRELATED SCALAR SUBQUERY 1"
+    },
+    {
+      "id": 20,
+      "parent": 15,
+      "notused": 54,
+      "detail": "SEARCH latest USING COVERING INDEX sqlite_autoindex_runtimes_1 (bee_id=?)"
+    }
+  ],
+  "note": "Empty schema with current indexes; speed claims use seeded production-store workloads, not these planner estimates."
+}

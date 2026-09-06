@@ -141,3 +141,10 @@ processes. Profile those executables explicitly when attributing child CPU.
 `rpc.serialize` measures JSON encoding and socket queueing for replies and watch
 frames. `daemon.tick.auto_title` measures synchronous kickoff only; asynchronous
 title generation is outside that tick span.
+
+Run `node scripts/perf/overhead.mjs > .artifacts/performance/overhead.json` to
+measure synthetic direct, disabled and enabled call overhead in alternating order.
+The [September capture](2026-09-06/evidence/profiler-overhead.json) measured about
+2.8 µs per enabled span at the median. This excludes the instrumented operation
+and final artifact serialization; measure real workloads with profiling disabled
+for speed claims.

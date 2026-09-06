@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "timestamp": "2026-09-06T04:55:13.894Z",
+  "source": {
+    "root": "/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-control-2026-09-06",
+    "revision": "8506467f2a6e99d06258e5fe59726d330b2ccdf4",
+    "status": "",
+    "diff": ""
+  },
+  "environment": {
+    "node": "v25.8.0",
+    "platform": "darwin",
+    "arch": "arm64",
+    "hostname": "Tormods-Mac-Studio.local",
+    "cpu": "Apple M4 Max",
+    "logicalCpus": 16,
+    "totalMemoryBytes": 137438953472,
+    "loadBefore": [
+      3.931640625,
+      4.259765625,
+      7.2490234375
+    ],
+    "loadAfter": [
+      3.8681640625,
+      4.234375,
+      7.205078125
+    ]
+  },
+  "workload": {
+    "suite": "cli",
+    "samples": 15,
+    "idleMs": 3000,
+    "scenarios": [
+      {
+        "kind": "cli",
+        "bees": 0
+      }
+    ],
+    "toolDigest": "0f0d8572e2187edb0ae87eab97680dad8f2ff60da46f9743b50f2c2e42983e25",
+    "warmup": 3,
+    "durability": "WAL/NORMAL",
+    "runtime": "source Node type stripping",
+    "instrumentation": false,
+    "captureMode": "none"
+  },
+  "results": [
+    {
+      "scenario": "cli-0",
+      "metrics": {
+        "cli.helpProcess": {
+          "unit": "ms",
+          "n": 15,
+          "min": 391.7529999999997,
+          "p50": 468.50837500000034,
+          "p95": 619.1311669999996,
+          "max": 619.1311669999996,
+          "mean": 480.79496386666676
+        }
+      },
+      "raw": {
+        "cli.helpProcess": [
+          456.4214999999999,
+          421.733792,
+          425.84137499999997,
+          555.2354580000001,
+          430.6377080000002,
+          432.99929100000054,
+          468.50837500000034,
+          479.55975000000035,
+          391.7529999999997,
+          465.18466700000045,
+          547.7592079999995,
+          523.0303330000006,
+          619.1311669999996,
+          523.2972920000002,
+          470.8315419999999
+        ]
+      },
+      "observations": {
+        "importsMs": 87.79162500000001,
+        "memoryBefore": {
+          "rss": 56639488,
+          "heapTotal": 11272192,
+          "heapUsed": 7386072,
+          "external": 2539701,
+          "arrayBuffers": 155774
+        },
+        "bundleBytes": 1025031
+      }
+    }
+  ]
+}
