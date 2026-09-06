@@ -1,0 +1,15 @@
+✔ model change waits when idle becomes working before command execution (508.354083ms)
+✔ model admission folds a delivered turn before refusing without mutation (292.9825ms)
+✔ deferred model change does not block other commands and stale generations do not change args (396.178833ms)
+✔ model change recovers after executor crash before_effect (390.339708ms)
+✔ model change recovers after executor crash after_effect (559.537708ms)
+✔ model change resumes after daemon restart between settled stop and observed exit (201.540916ms)
+✔ model change defers across real HSR input admission before the turn observation is folded (9084.779ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 14963.757167

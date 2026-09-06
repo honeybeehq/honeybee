@@ -26,15 +26,24 @@ For sustained improvement against a metric rather than a one-off fix, use the Hi
 ## Execution checklist
 
 - [x] Read the astack principles index and applicable simplicity, isolation, verification, and sequencing sections.
-- [x] Inspect main and create an isolated worktree at a22c42bd. Main contains four unrelated untracked files.
+- [x] Inspect main and create an isolated worktree at a22c42bd. Main initially contained four unrelated untracked files; they were absent on a later status check. This task did not touch them.
 - [x] Capture a fresh built-worker baseline and retain earlier native Git/CPU/heap attribution.
-- [ ] Complete the narrow how explanation and review the config batching hypothesis.
-- [ ] Freeze and verify remote-aware measurement tooling.
-- [ ] Retain baseline measurements before integrating production changes.
-- [ ] Review delegated implementation and real-Git regression checks.
-- [ ] Capture alternating before/after built-worker results and five-worker cohorts.
-- [ ] Compare raw artifacts and record inconclusive metrics honestly.
-- [ ] Independent code and evidence review.
-- [ ] Commit completed units and merge locally into main.
+- [x] Complete the narrow how explanation and review the config batching hypothesis.
+- [x] Freeze and verify remote-aware measurement tooling.
+- [x] Retain baseline measurements before integrating production changes.
+- [x] Review delegated implementation and real-Git regression checks.
+- [x] Capture alternating before/after built-worker results and five-worker cohorts.
+- [x] Compare raw artifacts and record inconclusive metrics honestly.
+- [x] Independent code and evidence review.
+- [x] Commit completed units; integrate current main without conflicts.
+- Local main landing follows this final report commit; no push or deployment.
 
 Landing adaptations: local merge follows the user’s existing merge instruction. No push, PR, or runtime deployment is requested. Product preview is skipped because this is a backend optimization exercised through real built-worker fixtures. Architect is skipped while the candidate remains inside the existing private config function with no interface change. Revisit that decision if the scope changes.
+
+## Additional measured units
+
+The command-history map exposed a separate reconfiguration cost. That unit was implemented, independently reviewed, checked, measured, and committed before adding indexes. Disposable index prototypes were then compared under both test and production read pragmas. The history-only prototype was rejected. The dual-index candidate required a follow-up correction after raw pending-delete plans exposed a regression. Both the rejection and correction are retained in the decision trail.
+
+The index and query changes remain within CoreStore's private implementation, with no new interface or ownership boundary. No additional architect pass was needed. The parent owns all rulers and performance captures; isolated authors own production/test edits; Claude Fable provides independent code and evidence review. All owned broad work pauses during captures. Unrelated shared-host verification was observed and is disclosed in the report.
+
+Local CI lookup returned no runs for this unpublished branch. Author full builds and affected typechecks/tests are retained. Final integration rebuilds the combined v2 CLI, Worker, and runner-host artifacts and exercises the built Worker. Unchanged legacy suites are not repeated solely because commits were cherry-picked.
