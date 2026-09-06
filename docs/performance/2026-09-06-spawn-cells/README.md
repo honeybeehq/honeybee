@@ -23,8 +23,8 @@ into the detached runner host and Cell provisioning worker.
    30-second fallback before checking the image again. A fresh image placement
    has already ensured that graph. Replays and fallback placements need separate
    treatment because they do not prove the cache is still present.
-5. Warm artifact copying is opt-in. In this fixture, copying 1,000 dependency
-   files costs more than the image-hit checkout itself. Logical byte counts do
+5. Warm artifact copying is opt-in. The first exploratory capture included both warm-file copying and
+   extra image packs; it does not isolate the cost of those 1,000 files. Logical byte counts do
    not describe APFS physical allocation or deduplication.
 
 The host entry and worker lifetime are separate optimization units. The
@@ -33,7 +33,7 @@ part of either unit.
 
 ## Baseline
 
-Corrected Git Trace2 results, three samples per scenario:
+Exploratory baseline with corrected Git Trace2 attribution, three samples per scenario:
 
 | Cell path | Median wall time | Top-level Git commands |
 |---|---:|---:|
@@ -45,7 +45,9 @@ Corrected Git Trace2 results, three samples per scenario:
 | Image hit with 1,000 warm files | 3,377 ms | 8 |
 
 These are separate sequential scenarios on a shared machine, useful for locating
-costs, not a controlled ranking of strategies. The same fixture has 203 tracked
+costs, not a controlled ranking of strategies. Warm files ran after stale-image
+updates in this early capture, so their timing also includes a changed pack graph.
+The current tool measures warm files before stale updates to remove that confound. The same fixture has 203 tracked
 files. Origin contents, checkout SHA, clean status and copied files are verified
 outside the timed interval. Raw samples are in [evidence](evidence/cells-baseline.json).
 
@@ -66,7 +68,10 @@ npm run build
 node scripts/perf/cells.mjs --root /absolute/baseline --mode provision --samples 3 --out /absolute/results/cells-before.json
 node scripts/perf/cells.mjs --root /absolute/baseline --mode worker --samples 5 --hold-ms 2000 --out /absolute/results/worker-before.json
 node scripts/perf/cells.mjs --root /absolute/candidate --mode worker --samples 5 --hold-ms 2000 --out /absolute/results/worker-after.json
+node scripts/perf/cell-cohort.mjs --root /absolute/candidate --samples 3 --width 5 --hold-ms 2000 --out /absolute/results/cohort-after.json
 node scripts/perf/runner-host.mjs /absolute/host-spec.json /absolute/results/hosts.json
+node scripts/perf/compare-spawn.mjs cells /absolute/results/worker-before.json /absolute/results/worker-after.json /absolute/results/worker.csv
+node scripts/perf/compare-spawn.mjs hosts /absolute/results/hosts.json /absolute/results/hosts.csv
 node --test scripts/perf/git-trace.test.mjs scripts/perf/runner-host.test.mjs
 ```
 
@@ -88,7 +93,7 @@ per side and verifies a real ready/turn/exit cycle on every launch.
   nested upload-pack time twice. It does not measure total child CPU.
 - Cell RSS includes the parent and workers. Allocator retention makes sequential
   RSS deltas a poor estimate of per-worker private memory. Exiting workers is a
-  proven resource-lifetime change; its fleet RAM effect needs a separate cohort.
+  proven resource-lifetime change; the fresh-process five-worker cohort below measures its RSS effect directly.
 - Idle CPU is emitted only when an actual idle interval was requested. A zero
   at the OS sampling resolution is not proof of no CPU work.
 - Temporary origins and owned processes are cleaned up on completion and
@@ -97,3 +102,49 @@ per side and verifies a real ready/turn/exit cycle on every launch.
 
 The retained host prototype predates the final measurement-tool cleanup. It
 supports the design decision, but production results must use a fresh capture.
+
+## Verified Cell result
+
+Candidate `223f85a1`, integrated as `8a6475a3`. Individual runs use five samples;
+cohorts use three fresh processes with five concurrent workers each. Both tools
+record the exact built-worker SHA-256, and those hashes match across tools on
+both sides. The baseline is `17ce2072`.
+
+| Metric (median) | Before | After |
+|---|---:|---:|
+| Individual worker tail after ready | 2,421 ms | 2.61 ms |
+| Individual workers alive at two-second hold | 1 | 0 |
+| Git commands per individual worker | 12 | 8 |
+| Individual Node CPU, including worker | 141.4 ms | 135.1 ms |
+| Five-worker cohort RSS at hold | 132.60 MB | 124.45 MB |
+| Five-worker cohort workers alive at hold | 5 | 0 |
+| Five-worker cohort Git commands | 60 | 40 |
+| Maximum worker tail within cohort | 3,326 ms | 77.2 ms |
+| Cohort Node CPU | 712.1 ms | 700.9 ms |
+
+The baseline tail includes the imposed two-second hold before maintenance starts.
+This is not a claim that user-visible Cell spawning became 2.4 seconds faster.
+Individual readiness was 2,376 → 2,532 ms; cohort readiness was 3,689 → 4,523 ms.
+The distributions overlap substantially (baseline cohort maximum 8,918 ms), and
+Git child timing also varies. These captures do not establish a readiness win
+or a regression. The production change adds one ledger read and removes deferred
+work; foreground provision logic is unchanged.
+
+The cohort RSS reduction is 8.14 MB (6.1%) at the defined observation point.
+It includes shared pages and allocator retention. Do not multiply it into a
+private-memory forecast. Node CPU during the two-second hold was 1.82 → 3.58 ms;
+that interval includes optimized worker exit bookkeeping, so it is not a steady
+idle-CPU comparison. No idle-CPU improvement is claimed.
+
+Both tools verified the real `image-cow` path, clean checkout, correct commit,
+tracked contents, unchanged origin and worker exit. The implementation retains
+deferred retries for completed replays, incomplete-operation resumes and fallback
+placements. Five real Worker tests and eleven serial CellDriver tests passed,
+along with the Cell TypeScript check and repository build. Broader Cell checks
+had one load-sensitive boot timeout that passed earlier and on an isolated rerun.
+The combined Cell/tmux run had the previously observed tmux honest-failure timing
+assertion; this commit changes no tmux code.
+
+Raw results and validated comparisons: [individual workers](evidence/worker-scorecard.csv),
+[five-worker cohorts](evidence/cohort-scorecard.csv). All percentiles in these CSVs
+are recomputed and checked against their JSON samples by `compare-spawn.mjs`.

@@ -16,7 +16,9 @@ test('comparison derives the delta and rejects partial or incompatible Cell capt
 
 test('paired host comparison validates summaries against samples and preserves zero baselines', () => {
   const pair = { schemaVersion: 1, spec: { rounds: 2 }, results: [result([0, 0]), result([1, 2])] };
+  pair.results.forEach((row, i) => { row.implementation = { name: `entry-${i}`, entrySha256: String(i) }; });
   assert.equal(compareHosts(pair)[0].deltaPercent, null);
+  assert.equal(compareHosts(pair)[0].afterImplementation, 'entry-1');
   pair.results[1].raw[0].wallMs = Infinity;
   assert.throws(() => compareHosts(pair), /invalid metric/);
 });

@@ -44,6 +44,7 @@ const report = { schemaVersion: 1, timestamp: new Date().toISOString(), source: 
   environment: { node: process.version, platform: process.platform, arch: process.arch, cpu: cpus()[0]?.model, hostname: hostname(), loadBefore: loadavg() },
   toolSha256: createHash('sha256').update(readFileSync(new URL(import.meta.url))).update(readFileSync(new URL('./git-trace.mjs', import.meta.url))).digest('hex'), results: [],
   scope: 'Real disposable origin/image/checkout; warm OS caches. Node CPU excludes git/cp children; Git Trace2 supplies child command wall time. RSS includes parent and worker threads, not child processes. Logical bytes are not physical CoW allocation.' };
+if (mode === 'worker') report.source.workerSha256 = createHash('sha256').update(readFileSync(join(root, 'dist/v2/provision-worker.js'))).digest('hex');
 function save() { writeFileSync(out, JSON.stringify(report, null, 2) + '\n'); }
 try {
   for (let i = 0; i < 200; i++) writeFileSync(join(rig.origin.repo, 'src', `file-${i}.txt`), `tracked-${i}\n`.repeat(32));
@@ -55,7 +56,9 @@ try {
   const sharedImages = join(rig.root, 'images');
   const image = refreshGitImage(sharedImages, rig.origin.repo, sha);
   assert.ok(image.status === 'refreshed' || image.status === 'ready', 'fixture requires working local Git images');
-  const scenarios = mode === 'worker' ? ['worker-image-hit'] : ['clone', 'origin-cow', 'image-cold', 'image-hit', 'image-stale', 'image-warm-files'];
+  // Measure warm files against the same graph as image-hit, before stale-image
+  // samples append commits/packs. The stale scenario has one extra tracked file.
+  const scenarios = mode === 'worker' ? ['worker-image-hit'] : ['clone', 'origin-cow', 'image-cold', 'image-hit', 'image-warm-files', 'image-stale'];
   let serial = 0;
   for (const scenario of scenarios) {
     process.stderr.write(`Cell ${scenario}\n`);
@@ -93,6 +96,8 @@ try {
         }
       } finally { if (priorTrace === undefined) delete process.env.GIT_TRACE2_EVENT; else process.env.GIT_TRACE2_EVENT = priorTrace; }
       const wallMs = performance.now() - started, cpu = process.cpuUsage(cpuBefore);
+      const expectedMode = scenario === 'clone' ? 'clone' : scenario === 'origin-cow' ? 'cow' : 'image-cow';
+      assert.equal(cell.copyMode, expectedMode, `scenario ${scenario} requires ${expectedMode}; fallback is not comparable evidence`);
       const events = existsSync(tracePath) ? readFileSync(tracePath, 'utf8').trim().split('\n').filter(Boolean).map(JSON.parse) : [];
       const gitTrace = summarizeGitTrace(events);
       assert.ok(gitTrace.commandCount > 0, 'real provisioning must produce Git trace evidence');

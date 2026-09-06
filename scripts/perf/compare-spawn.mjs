@@ -41,7 +41,12 @@ export function compareHosts(report) {
   assert.equal(report.schemaVersion, 1);
   assert.equal(report.results.length, 2);
   for (const result of report.results) checkedMetrics(result, report.spec.rounds);
-  return rows(report.results[0], report.results[1], 'runner-host');
+  return rows(report.results[0], report.results[1], 'runner-host').map(row => ({
+    ...row, beforeImplementation: report.results[0].implementation.name,
+    afterImplementation: report.results[1].implementation.name,
+    beforeEntrySha256: report.results[0].implementation.entrySha256,
+    afterEntrySha256: report.results[1].implementation.entrySha256,
+  }));
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
