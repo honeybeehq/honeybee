@@ -1,0 +1,1737 @@
+{
+  "schemaVersion": 1,
+  "timestamp": "2026-09-06T05:55:22.256Z",
+  "source": {
+    "revision": "17ce20721e456ad24ae1262b8f34c1987d975bdf",
+    "status": "?? docs/performance/2026-09-06-spawn-cells/\n?? scripts/perf/cells.mjs\n?? scripts/perf/git-trace.mjs\n?? scripts/perf/git-trace.test.mjs\n?? scripts/perf/runner-host.mjs"
+  },
+  "workload": {
+    "mode": "provision",
+    "samples": 3,
+    "holdMs": 2000,
+    "trackedFiles": 203,
+    "warmFiles": 1000,
+    "runtime": "source provision function / built provision-worker",
+    "trace2": true
+  },
+  "environment": {
+    "node": "v25.8.0",
+    "platform": "darwin",
+    "arch": "arm64",
+    "cpu": "Apple M4 Max",
+    "hostname": "Tormods-Mac-Studio.local",
+    "loadBefore": [
+      59.48876953125,
+      47.748046875,
+      38.71240234375
+    ],
+    "loadAfter": [
+      37.32177734375,
+      45.029296875,
+      38.8505859375
+    ]
+  },
+  "toolSha256": "e659f6e57af3d776da4f59297b78ada6d436af4254607d586907cc9b877d0983",
+  "results": [
+    {
+      "scenario": "clone",
+      "metrics": {
+        "wallMs": {
+          "n": 3,
+          "min": 6945.960208999997,
+          "p50": 7951.547791999998,
+          "p95": 7991.426917000004,
+          "max": 7991.426917000004,
+          "mean": 7629.644972666666
+        },
+        "nodeCpuMs": {
+          "n": 3,
+          "min": 10.809,
+          "p50": 11.52,
+          "p95": 11.791,
+          "max": 11.791,
+          "mean": 11.373333333333335
+        },
+        "rssBeforeBytes": {
+          "n": 3,
+          "min": 80789504,
+          "p50": 81756160,
+          "p95": 81870848,
+          "max": 81870848,
+          "mean": 81472170.66666667
+        },
+        "rssAfterBytes": {
+          "n": 3,
+          "min": 80855040,
+          "p50": 81772544,
+          "p95": 81870848,
+          "max": 81870848,
+          "mean": 81499477.33333333
+        },
+        "gitCommandCount": {
+          "n": 3,
+          "min": 2,
+          "p50": 2,
+          "p95": 2,
+          "max": 2,
+          "mean": 2
+        },
+        "gitCommandWallMs": {
+          "n": 3,
+          "min": 6780.187999999999,
+          "p50": 7487.4710000000005,
+          "p95": 7696.841,
+          "max": 7696.841,
+          "mean": 7321.5
+        },
+        "logicalCellBytes": {
+          "n": 3,
+          "min": 130099,
+          "p50": 130099,
+          "p95": 130099,
+          "max": 130099,
+          "mean": 130099
+        }
+      },
+      "raw": [
+        {
+          "wallMs": 7951.547791999998,
+          "nodeCpuMs": 10.809,
+          "rssBeforeBytes": 80789504,
+          "rssAfterBytes": 80855040,
+          "gitCommandCount": 2,
+          "gitCommandWallMs": 7487.4710000000005,
+          "copyMode": "clone",
+          "commands": [
+            [
+              "git",
+              "clone",
+              "--local",
+              "--no-checkout",
+              "/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-v2-cell-zsS952/origin",
+              "/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-v2-cell-zsS952/cells/perf-0/fixture-space-0"
+            ],
+            [
+              "git",
+              "checkout",
+              "--force",
+              "--detach",
+              "ef4d1b403ed28b7574c73dad8bb9ea2ab0321f1a"
+            ]
+          ],
+          "logicalCellBytes": 130099
+        },
+        {
+          "wallMs": 7991.426917000004,
+          "nodeCpuMs": 11.52,
+          "rssBeforeBytes": 81756160,
+          "rssAfterBytes": 81772544,
+          "gitCommandCount": 2,
+          "gitCommandWallMs": 7696.841,
+          "copyMode": "clone",
+          "commands": [
+            [
+              "git",
+              "clone",
+              "--local",
+              "--no-checkout",
+              "/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-v2-cell-zsS952/origin",
+              "/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-v2-cell-zsS952/cells/perf-1/fixture-space-1"
+            ],
+            [
+              "git",
+              "checkout",
+              "--force",
+              "--detach",
+              "ef4d1b403ed28b7574c73dad8bb9ea2ab0321f1a"
+            ]
+          ],
+          "logicalCellBytes": 130099
+        },
+        {
+          "wallMs": 6945.960208999997,
+          "nodeCpuMs": 11.791,
+          "rssBeforeBytes": 81870848,
+          "rssAfterBytes": 81870848,
+          "gitCommandCount": 2,
+          "gitCommandWallMs": 6780.187999999999,
+          "copyMode": "clone",
+          "commands": [
+            [
+              "git",
+              "clone",
+              "--local",
+              "--no-checkout",
+              "/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-v2-cell-zsS952/origin",
+              "/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-v2-cell-zsS952/cells/perf-2/fixture-space-2"
+            ],
+            [
+              "git",
+              "checkout",
+              "--force",
+              "--detach",
+              "ef4d1b403ed28b7574c73dad8bb9ea2ab0321f1a"
+            ]
+          ],
+          "logicalCellBytes": 130099
+        }
+      ]
+    },
+    {
+      "scenario": "origin-cow",
+      "metrics": {
+        "wallMs": {
+          "n": 3,
+          "min": 4262.838457999998,
+          "p50": 4628.125457999995,
+          "p95": 5650.855666999996,
+          "max": 5650.855666999996,
+          "mean": 4847.27319433333
+        },
+        "nodeCpuMs": {
+          "n": 3,
+          "min": 18.629,
+          "p50": 20.704,
+          "p95": 22.236,
+          "max": 22.236,
+          "mean": 20.523
+        },
+        "rssBeforeBytes": {
+          "n": 3,
+          "min": 81952768,
+          "p50": 81969152,
+          "p95": 82051072,
+          "max": 82051072,
+          "mean": 81990997.33333333
+        },
+        "rssAfterBytes": {
+          "n": 3,
+          "min": 81952768,
+          "p50": 81969152,
+          "p95": 82067456,
+          "max": 82067456,
+          "mean": 81996458.66666667
+        },
+        "gitCommandCount": {
+          "n": 3,
+          "min": 3,
+          "p50": 3,
+          "p95": 3,
+          "max": 3,
+          "mean": 3
+        },
+        "gitCommandWallMs": {
+          "n": 3,
+          "min": 1034.974,
+          "p50": 1103.782,
+          "p95": 1161.779,
+          "max": 1161.779,
+          "mean": 1100.1783333333333
+        },
+        "logicalCellBytes": {
+          "n": 3,
+          "min": 129878,
+          "p50": 129878,
+          "p95": 129878,
+          "max": 129878,
+          "mean": 129878
+        }
+      },
+      "raw": [
+        {
+          "wallMs": 5650.855666999996,
+          "nodeCpuMs": 20.704,
+          "rssBeforeBytes": 81952768,
+          "rssAfterBytes": 81952768,
+          "gitCommandCount": 3,
+          "gitCommandWallMs": 1034.974,
+          "copyMode": "cow",
+          "commands": [
+            [
+              "git",
+              "config",
+              "core.hooksPath",
+              "/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-v2-cell-zsS952/cells/perf-3/box/hooks-empty"
+            ],
+            [
+              "git",
+              "config",
+              "core.fsmonitor",
+              "false"
+            ],
+            [
+              "git",
+              "checkout",
+              "--force",
+              "--detach",
+              "ef4d1b403ed28b7574c73dad8bb9ea2ab0321f1a"
+            ]
+          ],
+          "logicalCellBytes": 129878
+        },
+        {
+          "wallMs": 4628.125457999995,
+          "nodeCpuMs": 18.629,
+          "rssBeforeBytes": 81969152,
+          "rssAfterBytes": 81969152,
+          "gitCommandCount": 3,
+          "gitCommandWallMs": 1103.782,
+          "copyMode": "cow",
+          "commands": [
+            [
+              "git",
+              "config",
+              "core.hooksPath",
+              "/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-v2-cell-zsS952/cells/perf-4/box/hooks-empty"
+            ],
+            [
+              "git",
+              "config",
+              "core.fsmonitor",
+              "false"
+            ],
+            [
+              "git",
+              "checkout",
+              "--force",
+              "--detach",
+              "ef4d1b403ed28b7574c73dad8bb9ea2ab0321f1a"
+            ]
+          ],
+          "logicalCellBytes": 129878
+        },
+        {
+          "wallMs": 4262.838457999998,
+          "nodeCpuMs": 22.236,
+          "rssBeforeBytes": 82051072,
+          "rssAfterBytes": 82067456,
+          "gitCommandCount": 3,
+          "gitCommandWallMs": 1161.779,
+          "copyMode": "cow",
+          "commands": [
+            [
+              "git",
+              "config",
+              "core.hooksPath",
+              "/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-v2-cell-zsS952/cells/perf-5/box/hooks-empty"
+            ],
+            [
+              "git",
+              "config",
+              "core.fsmonitor",
+              "false"
+            ],
+            [
+              "git",
+              "checkout",
+              "--force",
+              "--detach",
+              "ef4d1b403ed28b7574c73dad8bb9ea2ab0321f1a"
+            ]
+          ],
+          "logicalCellBytes": 129878
+        }
+      ]
+    },
+    {
+      "scenario": "image-cold",
+      "metrics": {
+        "wallMs": {
+          "n": 3,
+          "min": 3210.4057919999905,
+          "p50": 3523.972332999998,
+          "p95": 3816.7507919999916,
+          "max": 3816.7507919999916,
+          "mean": 3517.042972333327
+        },
+        "nodeCpuMs": {
+          "n": 3,
+          "min": 53.201,
+          "p50": 56.576,
+          "p95": 60.66,
+          "max": 60.66,
+          "mean": 56.81233333333333
+        },
+        "rssBeforeBytes": {
+          "n": 3,
+          "min": 82067456,
+          "p50": 82477056,
+          "p95": 82526208,
+          "max": 82526208,
+          "mean": 82356906.66666667
+        },
+        "rssAfterBytes": {
+          "n": 3,
+          "min": 82460672,
+          "p50": 82526208,
+          "p95": 82542592,
+          "max": 82542592,
+          "mean": 82509824
+        },
+        "gitCommandCount": {
+          "n": 3,
+          "min": 19,
+          "p50": 19,
+          "p95": 19,
+          "max": 19,
+          "mean": 19
+        },
+        "gitCommandWallMs": {
+          "n": 3,
+          "min": 2041.0189999999998,
+          "p50": 2322.8720000000003,
+          "p95": 2469.452,
+          "max": 2469.452,
+          "mean": 2277.7810000000004
+        },
+        "logicalCellBytes": {
+          "n": 3,
+          "min": 135972,
+          "p50": 135972,
+          "p95": 135972,
+          "max": 135972,
+          "mean": 135972
+        }
+      },
+      "raw": [
+        {
+          "wallMs": 3816.7507919999916,
+          "nodeCpuMs": 60.66,
+          "rssBeforeBytes": 82067456,
+          "rssAfterBytes": 82460672,
+          "gitCommandCount": 19,
+          "gitCommandWallMs": 2469.452,
+          "copyMode": "image-cow",
+          "commands": [
+            [
+              "git",
+              "rev-parse",
+              "--show-object-format"
+            ],
+            [
+              "git",
+              "cat-file",
+              "-e",
+              "ef4d1b403ed28b7574c73dad8bb9ea2ab0321f1a^{commit}"
+            ],
+            [
+              "git",
+              "rev-parse",
+              "--show-object-format"
+            ],
+            [
+              "git",
+              "rev-parse",
+              "--show-object-format"
+            ],
+            [
+              "git",
+              "rev-parse",
+              "--show-object-format"
+            ],
+            [
+              "git",
+              "init",
+              "--bare",
+              "/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-v2-cell-zsS952/cold-images-6/1b265021957db4f33b0d09aa31db5230837890e49bbcc163985d3d1594c3aa9e/.staging-g-1788674193885-b3f84ed1-4f62-413a-ae6a-238368bf5aff/repo.git"
+            ],
+            [
+              "git",
+              "rev-parse",
+              "--path-format=absolute",
+              "--git-common-dir"
+            ],
+            [
+              "git",
+              "-C",
+              "/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-v2-cell-zsS952/origin",
+              "pack-objects",
+              "--quiet",
+              "--revs",
+              "--delta-base-offset",
+              "/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-v2-cell-zsS952/cold-images-6/1b265021957db4f33b0d09aa31db5230837890e49bbcc163985d3d1594c3aa9e/.staging-g-1788674193885-b3f84ed1-4f62-413a-ae6a-238368bf5aff/repo.git/objects/pack/hive"
+            ],
+            [
+              "git",
+              "update-ref",
+              "refs/hive/image/anchor",
+              "ef4d1b403ed28b7574c73dad8bb9ea2ab0321f1a"
+            ],
+            [
+              "git",
+              "cat-file",
+              "-e",
+              "ef4d1b403ed28b7574c73dad8bb9ea2ab0321f1a^{commit}"
+            ],
+            [
+              "git",
+              "fsck",
+              "--connectivity-only",
+              "--no-dangling",
+              "ef4d1b403ed28b7574c73dad8bb9ea2ab0321f1a"
+            ],
+            [
+              "git",
+              "rev-parse",
+              "--show-object-format"
+            ],
+            [
+              "git",
+              "cat-file",
+              "-e",
+              "ef4d1b403ed28b7574c73dad8bb9ea2ab0321f1a^{commit}"
+            ],
+            [
+              "git",
+              "init",
+              "/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-v2-cell-zsS952/cells/perf-6/fixture-space-6"
+            ],
+            [
+              "git",
+              "config",
+              "core.hooksPath",
+              "/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-v2-cell-zsS952/cells/perf-6/box/hooks-empty"
+            ],
+            [
+              "git",
+              "config",
+              "core.fsmonitor",
+              "false"
+            ],
+            [
+              "git",
+              "remote",
+              "get-url",
+              "origin"
+            ],
+            [
+              "git",
+              "cat-file",
+              "-e",
+              "ef4d1b403ed28b7574c73dad8bb9ea2ab0321f1a^{commit}"
+            ],
+            [
+              "git",
+              "checkout",
+              "--force",
+              "--detach",
+              "ef4d1b403ed28b7574c73dad8bb9ea2ab0321f1a"
+            ]
+          ],
+          "logicalCellBytes": 135972
+        },
+        {
+          "wallMs": 3523.972332999998,
+          "nodeCpuMs": 56.576,
+          "rssBeforeBytes": 82477056,
+          "rssAfterBytes": 82526208,
+          "gitCommandCount": 19,
+          "gitCommandWallMs": 2322.8720000000003,
+          "copyMode": "image-cow",
+          "commands": [
+            [
+              "git",
+              "rev-parse",
+              "--show-object-format"
+            ],
+            [
+              "git",
+              "cat-file",
+              "-e",
+              "ef4d1b403ed28b7574c73dad8bb9ea2ab0321f1a^{commit}"
+            ],
+            [
+              "git",
+              "rev-parse",
+              "--show-object-format"
+            ],
+            [
+              "git",
+              "rev-parse",
+              "--show-object-format"
+            ],
+            [
+              "git",
+              "rev-parse",
+              "--show-object-format"
+            ],
+            [
+              "git",
+              "init",
+              "--bare",
+              "/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-v2-cell-zsS952/cold-images-7/1b265021957db4f33b0d09aa31db5230837890e49bbcc163985d3d1594c3aa9e/.staging-g-1788674198263-7b9e2aa9-3fec-41b4-b15e-1c9ed596e803/repo.git"
+            ],
+            [
+              "git",
+              "rev-parse",
+              "--path-format=absolute",
+              "--git-common-dir"
+            ],
+            [
+              "git",
+              "-C",
+              "/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-v2-cell-zsS952/origin",
+              "pack-objects",
+              "--quiet",
+              "--revs",
+              "--delta-base-offset",
+              "/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-v2-cell-zsS952/cold-images-7/1b265021957db4f33b0d09aa31db5230837890e49bbcc163985d3d1594c3aa9e/.staging-g-1788674198263-7b9e2aa9-3fec-41b4-b15e-1c9ed596e803/repo.git/objects/pack/hive"
+            ],
+            [
+              "git",
+              "update-ref",
+              "refs/hive/image/anchor",
+              "ef4d1b403ed28b7574c73dad8bb9ea2ab0321f1a"
+            ],
+            [
+              "git",
+              "cat-file",
+              "-e",
+              "ef4d1b403ed28b7574c73dad8bb9ea2ab0321f1a^{commit}"
+            ],
+            [
+              "git",
+              "fsck",
+              "--connectivity-only",
+              "--no-dangling",
+              "ef4d1b403ed28b7574c73dad8bb9ea2ab0321f1a"
+            ],
+            [
+              "git",
+              "rev-parse",
+              "--show-object-format"
+            ],
+            [
+              "git",
+              "cat-file",
+              "-e",
+              "ef4d1b403ed28b7574c73dad8bb9ea2ab0321f1a^{commit}"
+            ],
+            [
+              "git",
+              "init",
+              "/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-v2-cell-zsS952/cells/perf-7/fixture-space-7"
+            ],
+            [
+              "git",
+              "config",
+              "core.hooksPath",
+              "/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-v2-cell-zsS952/cells/perf-7/box/hooks-empty"
+            ],
+            [
+              "git",
+              "config",
+              "core.fsmonitor",
+              "false"
+            ],
+            [
+              "git",
+              "remote",
+              "get-url",
+              "origin"
+            ],
+            [
+              "git",
+              "cat-file",
+              "-e",
+              "ef4d1b403ed28b7574c73dad8bb9ea2ab0321f1a^{commit}"
+            ],
+            [
+              "git",
+              "checkout",
+              "--force",
+              "--detach",
+              "ef4d1b403ed28b7574c73dad8bb9ea2ab0321f1a"
+            ]
+          ],
+          "logicalCellBytes": 135972
+        },
+        {
+          "wallMs": 3210.4057919999905,
+          "nodeCpuMs": 53.201,
+          "rssBeforeBytes": 82526208,
+          "rssAfterBytes": 82542592,
+          "gitCommandCount": 19,
+          "gitCommandWallMs": 2041.0189999999998,
+          "copyMode": "image-cow",
+          "commands": [
+            [
+              "git",
+              "rev-parse",
+              "--show-object-format"
+            ],
+            [
+              "git",
+              "cat-file",
+              "-e",
+              "ef4d1b403ed28b7574c73dad8bb9ea2ab0321f1a^{commit}"
+            ],
+            [
+              "git",
+              "rev-parse",
+              "--show-object-format"
+            ],
+            [
+              "git",
+              "rev-parse",
+              "--show-object-format"
+            ],
+            [
+              "git",
+              "rev-parse",
+              "--show-object-format"
+            ],
+            [
+              "git",
+              "init",
+              "--bare",
+              "/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-v2-cell-zsS952/cold-images-8/1b265021957db4f33b0d09aa31db5230837890e49bbcc163985d3d1594c3aa9e/.staging-g-1788674202634-97ba88db-814e-4daf-b000-51125813d677/repo.git"
+            ],
+            [
+              "git",
+              "rev-parse",
+              "--path-format=absolute",
+              "--git-common-dir"
+            ],
+            [
+              "git",
+              "-C",
+              "/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-v2-cell-zsS952/origin",
+              "pack-objects",
+              "--quiet",
+              "--revs",
+              "--delta-base-offset",
+              "/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-v2-cell-zsS952/cold-images-8/1b265021957db4f33b0d09aa31db5230837890e49bbcc163985d3d1594c3aa9e/.staging-g-1788674202634-97ba88db-814e-4daf-b000-51125813d677/repo.git/objects/pack/hive"
+            ],
+            [
+              "git",
+              "update-ref",
+              "refs/hive/image/anchor",
+              "ef4d1b403ed28b7574c73dad8bb9ea2ab0321f1a"
+            ],
+            [
+              "git",
+              "cat-file",
+              "-e",
+              "ef4d1b403ed28b7574c73dad8bb9ea2ab0321f1a^{commit}"
+            ],
+            [
+              "git",
+              "fsck",
+              "--connectivity-only",
+              "--no-dangling",
+              "ef4d1b403ed28b7574c73dad8bb9ea2ab0321f1a"
+            ],
+            [
+              "git",
+              "rev-parse",
+              "--show-object-format"
+            ],
+            [
+              "git",
+              "cat-file",
+              "-e",
+              "ef4d1b403ed28b7574c73dad8bb9ea2ab0321f1a^{commit}"
+            ],
+            [
+              "git",
+              "init",
+              "/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-v2-cell-zsS952/cells/perf-8/fixture-space-8"
+            ],
+            [
+              "git",
+              "config",
+              "core.hooksPath",
+              "/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-v2-cell-zsS952/cells/perf-8/box/hooks-empty"
+            ],
+            [
+              "git",
+              "config",
+              "core.fsmonitor",
+              "false"
+            ],
+            [
+              "git",
+              "remote",
+              "get-url",
+              "origin"
+            ],
+            [
+              "git",
+              "cat-file",
+              "-e",
+              "ef4d1b403ed28b7574c73dad8bb9ea2ab0321f1a^{commit}"
+            ],
+            [
+              "git",
+              "checkout",
+              "--force",
+              "--detach",
+              "ef4d1b403ed28b7574c73dad8bb9ea2ab0321f1a"
+            ]
+          ],
+          "logicalCellBytes": 135972
+        }
+      ]
+    },
+    {
+      "scenario": "image-hit",
+      "metrics": {
+        "wallMs": {
+          "n": 3,
+          "min": 926.0671670000011,
+          "p50": 1302.1210839999985,
+          "p95": 1356.701000000001,
+          "max": 1356.701000000001,
+          "mean": 1194.9630836666668
+        },
+        "nodeCpuMs": {
+          "n": 3,
+          "min": 27.555,
+          "p50": 29.983,
+          "p95": 30.376,
+          "max": 30.376,
+          "mean": 29.304666666666666
+        },
+        "rssBeforeBytes": {
+          "n": 3,
+          "min": 82608128,
+          "p50": 82608128,
+          "p95": 82608128,
+          "max": 82608128,
+          "mean": 82608128
+        },
+        "rssAfterBytes": {
+          "n": 3,
+          "min": 82608128,
+          "p50": 82608128,
+          "p95": 82624512,
+          "max": 82624512,
+          "mean": 82613589.33333333
+        },
+        "gitCommandCount": {
+          "n": 3,
+          "min": 8,
+          "p50": 8,
+          "p95": 8,
+          "max": 8,
+          "mean": 8
+        },
+        "gitCommandWallMs": {
+          "n": 3,
+          "min": 539.62,
+          "p50": 640.291,
+          "p95": 766.729,
+          "max": 766.729,
+          "mean": 648.88
+        },
+        "logicalCellBytes": {
+          "n": 3,
+          "min": 135972,
+          "p50": 135977,
+          "p95": 135977,
+          "max": 135977,
+          "mean": 135975.33333333334
+        }
+      },
+      "raw": [
+        {
+          "wallMs": 1302.1210839999985,
+          "nodeCpuMs": 27.555,
+          "rssBeforeBytes": 82608128,
+          "rssAfterBytes": 82608128,
+          "gitCommandCount": 8,
+          "gitCommandWallMs": 766.729,
+          "copyMode": "image-cow",
+          "commands": [
+            [
+              "git",
+              "rev-parse",
+              "--show-object-format"
+            ],
+            [
+              "git",
+              "cat-file",
+              "-e",
+              "ef4d1b403ed28b7574c73dad8bb9ea2ab0321f1a^{commit}"
+            ],
+            [
+              "git",
+              "init",
+              "/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-v2-cell-zsS952/cells/perf-9/fixture-space-9"
+            ],
+            [
+              "git",
+              "config",
+              "core.hooksPath",
+              "/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-v2-cell-zsS952/cells/perf-9/box/hooks-empty"
+            ],
+            [
+              "git",
+              "config",
+              "core.fsmonitor",
+              "false"
+            ],
+            [
+              "git",
+              "remote",
+              "get-url",
+              "origin"
+            ],
+            [
+              "git",
+              "cat-file",
+              "-e",
+              "ef4d1b403ed28b7574c73dad8bb9ea2ab0321f1a^{commit}"
+            ],
+            [
+              "git",
+              "checkout",
+              "--force",
+              "--detach",
+              "ef4d1b403ed28b7574c73dad8bb9ea2ab0321f1a"
+            ]
+          ],
+          "logicalCellBytes": 135972
+        },
+        {
+          "wallMs": 1356.701000000001,
+          "nodeCpuMs": 29.983,
+          "rssBeforeBytes": 82608128,
+          "rssAfterBytes": 82608128,
+          "gitCommandCount": 8,
+          "gitCommandWallMs": 640.291,
+          "copyMode": "image-cow",
+          "commands": [
+            [
+              "git",
+              "rev-parse",
+              "--show-object-format"
+            ],
+            [
+              "git",
+              "cat-file",
+              "-e",
+              "ef4d1b403ed28b7574c73dad8bb9ea2ab0321f1a^{commit}"
+            ],
+            [
+              "git",
+              "init",
+              "/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-v2-cell-zsS952/cells/perf-10/fixture-space-10"
+            ],
+            [
+              "git",
+              "config",
+              "core.hooksPath",
+              "/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-v2-cell-zsS952/cells/perf-10/box/hooks-empty"
+            ],
+            [
+              "git",
+              "config",
+              "core.fsmonitor",
+              "false"
+            ],
+            [
+              "git",
+              "remote",
+              "get-url",
+              "origin"
+            ],
+            [
+              "git",
+              "cat-file",
+              "-e",
+              "ef4d1b403ed28b7574c73dad8bb9ea2ab0321f1a^{commit}"
+            ],
+            [
+              "git",
+              "checkout",
+              "--force",
+              "--detach",
+              "ef4d1b403ed28b7574c73dad8bb9ea2ab0321f1a"
+            ]
+          ],
+          "logicalCellBytes": 135977
+        },
+        {
+          "wallMs": 926.0671670000011,
+          "nodeCpuMs": 30.376,
+          "rssBeforeBytes": 82608128,
+          "rssAfterBytes": 82624512,
+          "gitCommandCount": 8,
+          "gitCommandWallMs": 539.62,
+          "copyMode": "image-cow",
+          "commands": [
+            [
+              "git",
+              "rev-parse",
+              "--show-object-format"
+            ],
+            [
+              "git",
+              "cat-file",
+              "-e",
+              "ef4d1b403ed28b7574c73dad8bb9ea2ab0321f1a^{commit}"
+            ],
+            [
+              "git",
+              "init",
+              "/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-v2-cell-zsS952/cells/perf-11/fixture-space-11"
+            ],
+            [
+              "git",
+              "config",
+              "core.hooksPath",
+              "/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-v2-cell-zsS952/cells/perf-11/box/hooks-empty"
+            ],
+            [
+              "git",
+              "config",
+              "core.fsmonitor",
+              "false"
+            ],
+            [
+              "git",
+              "remote",
+              "get-url",
+              "origin"
+            ],
+            [
+              "git",
+              "cat-file",
+              "-e",
+              "ef4d1b403ed28b7574c73dad8bb9ea2ab0321f1a^{commit}"
+            ],
+            [
+              "git",
+              "checkout",
+              "--force",
+              "--detach",
+              "ef4d1b403ed28b7574c73dad8bb9ea2ab0321f1a"
+            ]
+          ],
+          "logicalCellBytes": 135977
+        }
+      ]
+    },
+    {
+      "scenario": "image-stale",
+      "metrics": {
+        "wallMs": {
+          "n": 3,
+          "min": 2513.808250000002,
+          "p50": 2830.415500000003,
+          "p95": 3301.814374999987,
+          "max": 3301.814374999987,
+          "mean": 2882.0127083333305
+        },
+        "nodeCpuMs": {
+          "n": 3,
+          "min": 59.755,
+          "p50": 59.978,
+          "p95": 64.851,
+          "max": 64.851,
+          "mean": 61.528
+        },
+        "rssBeforeBytes": {
+          "n": 3,
+          "min": 82624512,
+          "p50": 82640896,
+          "p95": 82657280,
+          "max": 82657280,
+          "mean": 82640896
+        },
+        "rssAfterBytes": {
+          "n": 3,
+          "min": 82640896,
+          "p50": 82657280,
+          "p95": 82657280,
+          "max": 82657280,
+          "mean": 82651818.66666667
+        },
+        "gitCommandCount": {
+          "n": 3,
+          "min": 21,
+          "p50": 21,
+          "p95": 21,
+          "max": 21,
+          "mean": 21
+        },
+        "gitCommandWallMs": {
+          "n": 3,
+          "min": 1284.8890000000001,
+          "p50": 1495.538,
+          "p95": 1701.041,
+          "max": 1701.041,
+          "mean": 1493.8226666666667
+        },
+        "logicalCellBytes": {
+          "n": 3,
+          "min": 137633,
+          "p50": 139200,
+          "p95": 140766,
+          "max": 140766,
+          "mean": 139199.66666666666
+        }
+      },
+      "raw": [
+        {
+          "wallMs": 2830.415500000003,
+          "nodeCpuMs": 59.978,
+          "rssBeforeBytes": 82624512,
+          "rssAfterBytes": 82640896,
+          "gitCommandCount": 21,
+          "gitCommandWallMs": 1701.041,
+          "copyMode": "image-cow",
+          "commands": [
+            [
+              "git",
+              "rev-parse",
+              "--show-object-format"
+            ],
+            [
+              "git",
+              "cat-file",
+              "-e",
+              "57581d372e6d5f74ff1a72b61d22149373bf927f^{commit}"
+            ],
+            [
+              "git",
+              "cat-file",
+              "-e",
+              "57581d372e6d5f74ff1a72b61d22149373bf927f^{commit}"
+            ],
+            [
+              "git",
+              "rev-parse",
+              "--show-object-format"
+            ],
+            [
+              "git",
+              "rev-parse",
+              "--show-object-format"
+            ],
+            [
+              "git",
+              "cat-file",
+              "-e",
+              "57581d372e6d5f74ff1a72b61d22149373bf927f^{commit}"
+            ],
+            [
+              "git",
+              "rev-parse",
+              "--show-object-format"
+            ],
+            [
+              "git",
+              "cat-file",
+              "-e",
+              "57581d372e6d5f74ff1a72b61d22149373bf927f^{commit}"
+            ],
+            [
+              "git",
+              "init",
+              "--bare",
+              "/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-v2-cell-zsS952/images/1b265021957db4f33b0d09aa31db5230837890e49bbcc163985d3d1594c3aa9e/.staging-g-1788674212629-329dc5c6-7c79-4d22-916c-a2dafcc4c11a/repo.git"
+            ],
+            [
+              "git",
+              "-C",
+              "/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-v2-cell-zsS952/origin",
+              "pack-objects",
+              "--quiet",
+              "--revs",
+              "--delta-base-offset",
+              "/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-v2-cell-zsS952/images/1b265021957db4f33b0d09aa31db5230837890e49bbcc163985d3d1594c3aa9e/.staging-g-1788674212629-329dc5c6-7c79-4d22-916c-a2dafcc4c11a/repo.git/objects/pack/hive"
+            ],
+            [
+              "git",
+              "update-ref",
+              "refs/hive/image/anchor",
+              "57581d372e6d5f74ff1a72b61d22149373bf927f"
+            ],
+            [
+              "git",
+              "cat-file",
+              "-e",
+              "57581d372e6d5f74ff1a72b61d22149373bf927f^{commit}"
+            ],
+            [
+              "git",
+              "fsck",
+              "--connectivity-only",
+              "--no-dangling",
+              "57581d372e6d5f74ff1a72b61d22149373bf927f"
+            ],
+            [
+              "git",
+              "rev-parse",
+              "--show-object-format"
+            ],
+            [
+              "git",
+              "cat-file",
+              "-e",
+              "57581d372e6d5f74ff1a72b61d22149373bf927f^{commit}"
+            ],
+            [
+              "git",
+              "init",
+              "/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-v2-cell-zsS952/cells/perf-12/fixture-space-12"
+            ],
+            [
+              "git",
+              "config",
+              "core.hooksPath",
+              "/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-v2-cell-zsS952/cells/perf-12/box/hooks-empty"
+            ],
+            [
+              "git",
+              "config",
+              "core.fsmonitor",
+              "false"
+            ],
+            [
+              "git",
+              "remote",
+              "get-url",
+              "origin"
+            ],
+            [
+              "git",
+              "cat-file",
+              "-e",
+              "57581d372e6d5f74ff1a72b61d22149373bf927f^{commit}"
+            ],
+            [
+              "git",
+              "checkout",
+              "--force",
+              "--detach",
+              "57581d372e6d5f74ff1a72b61d22149373bf927f"
+            ]
+          ],
+          "logicalCellBytes": 137633
+        },
+        {
+          "wallMs": 3301.814374999987,
+          "nodeCpuMs": 64.851,
+          "rssBeforeBytes": 82640896,
+          "rssAfterBytes": 82657280,
+          "gitCommandCount": 21,
+          "gitCommandWallMs": 1495.538,
+          "copyMode": "image-cow",
+          "commands": [
+            [
+              "git",
+              "rev-parse",
+              "--show-object-format"
+            ],
+            [
+              "git",
+              "cat-file",
+              "-e",
+              "b0417a33817edcbb05eefb82fbc67925e37fec53^{commit}"
+            ],
+            [
+              "git",
+              "cat-file",
+              "-e",
+              "b0417a33817edcbb05eefb82fbc67925e37fec53^{commit}"
+            ],
+            [
+              "git",
+              "rev-parse",
+              "--show-object-format"
+            ],
+            [
+              "git",
+              "rev-parse",
+              "--show-object-format"
+            ],
+            [
+              "git",
+              "cat-file",
+              "-e",
+              "b0417a33817edcbb05eefb82fbc67925e37fec53^{commit}"
+            ],
+            [
+              "git",
+              "rev-parse",
+              "--show-object-format"
+            ],
+            [
+              "git",
+              "cat-file",
+              "-e",
+              "b0417a33817edcbb05eefb82fbc67925e37fec53^{commit}"
+            ],
+            [
+              "git",
+              "init",
+              "--bare",
+              "/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-v2-cell-zsS952/images/1b265021957db4f33b0d09aa31db5230837890e49bbcc163985d3d1594c3aa9e/.staging-g-1788674217312-d4241a7a-82b4-415b-8c2a-bde7d565ae60/repo.git"
+            ],
+            [
+              "git",
+              "-C",
+              "/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-v2-cell-zsS952/origin",
+              "pack-objects",
+              "--quiet",
+              "--revs",
+              "--delta-base-offset",
+              "/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-v2-cell-zsS952/images/1b265021957db4f33b0d09aa31db5230837890e49bbcc163985d3d1594c3aa9e/.staging-g-1788674217312-d4241a7a-82b4-415b-8c2a-bde7d565ae60/repo.git/objects/pack/hive"
+            ],
+            [
+              "git",
+              "update-ref",
+              "refs/hive/image/anchor",
+              "b0417a33817edcbb05eefb82fbc67925e37fec53"
+            ],
+            [
+              "git",
+              "cat-file",
+              "-e",
+              "b0417a33817edcbb05eefb82fbc67925e37fec53^{commit}"
+            ],
+            [
+              "git",
+              "fsck",
+              "--connectivity-only",
+              "--no-dangling",
+              "b0417a33817edcbb05eefb82fbc67925e37fec53"
+            ],
+            [
+              "git",
+              "rev-parse",
+              "--show-object-format"
+            ],
+            [
+              "git",
+              "cat-file",
+              "-e",
+              "b0417a33817edcbb05eefb82fbc67925e37fec53^{commit}"
+            ],
+            [
+              "git",
+              "init",
+              "/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-v2-cell-zsS952/cells/perf-13/fixture-space-13"
+            ],
+            [
+              "git",
+              "config",
+              "core.hooksPath",
+              "/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-v2-cell-zsS952/cells/perf-13/box/hooks-empty"
+            ],
+            [
+              "git",
+              "config",
+              "core.fsmonitor",
+              "false"
+            ],
+            [
+              "git",
+              "remote",
+              "get-url",
+              "origin"
+            ],
+            [
+              "git",
+              "cat-file",
+              "-e",
+              "b0417a33817edcbb05eefb82fbc67925e37fec53^{commit}"
+            ],
+            [
+              "git",
+              "checkout",
+              "--force",
+              "--detach",
+              "b0417a33817edcbb05eefb82fbc67925e37fec53"
+            ]
+          ],
+          "logicalCellBytes": 139200
+        },
+        {
+          "wallMs": 2513.808250000002,
+          "nodeCpuMs": 59.755,
+          "rssBeforeBytes": 82657280,
+          "rssAfterBytes": 82657280,
+          "gitCommandCount": 21,
+          "gitCommandWallMs": 1284.8890000000001,
+          "copyMode": "image-cow",
+          "commands": [
+            [
+              "git",
+              "rev-parse",
+              "--show-object-format"
+            ],
+            [
+              "git",
+              "cat-file",
+              "-e",
+              "91d7bdc85b395147b9985ad80d6fa0657c2e261f^{commit}"
+            ],
+            [
+              "git",
+              "cat-file",
+              "-e",
+              "91d7bdc85b395147b9985ad80d6fa0657c2e261f^{commit}"
+            ],
+            [
+              "git",
+              "rev-parse",
+              "--show-object-format"
+            ],
+            [
+              "git",
+              "rev-parse",
+              "--show-object-format"
+            ],
+            [
+              "git",
+              "cat-file",
+              "-e",
+              "91d7bdc85b395147b9985ad80d6fa0657c2e261f^{commit}"
+            ],
+            [
+              "git",
+              "rev-parse",
+              "--show-object-format"
+            ],
+            [
+              "git",
+              "cat-file",
+              "-e",
+              "91d7bdc85b395147b9985ad80d6fa0657c2e261f^{commit}"
+            ],
+            [
+              "git",
+              "init",
+              "--bare",
+              "/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-v2-cell-zsS952/images/1b265021957db4f33b0d09aa31db5230837890e49bbcc163985d3d1594c3aa9e/.staging-g-1788674221412-2a2c03b3-5a9f-4164-9d3d-60e00b891376/repo.git"
+            ],
+            [
+              "git",
+              "-C",
+              "/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-v2-cell-zsS952/origin",
+              "pack-objects",
+              "--quiet",
+              "--revs",
+              "--delta-base-offset",
+              "/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-v2-cell-zsS952/images/1b265021957db4f33b0d09aa31db5230837890e49bbcc163985d3d1594c3aa9e/.staging-g-1788674221412-2a2c03b3-5a9f-4164-9d3d-60e00b891376/repo.git/objects/pack/hive"
+            ],
+            [
+              "git",
+              "update-ref",
+              "refs/hive/image/anchor",
+              "91d7bdc85b395147b9985ad80d6fa0657c2e261f"
+            ],
+            [
+              "git",
+              "cat-file",
+              "-e",
+              "91d7bdc85b395147b9985ad80d6fa0657c2e261f^{commit}"
+            ],
+            [
+              "git",
+              "fsck",
+              "--connectivity-only",
+              "--no-dangling",
+              "91d7bdc85b395147b9985ad80d6fa0657c2e261f"
+            ],
+            [
+              "git",
+              "rev-parse",
+              "--show-object-format"
+            ],
+            [
+              "git",
+              "cat-file",
+              "-e",
+              "91d7bdc85b395147b9985ad80d6fa0657c2e261f^{commit}"
+            ],
+            [
+              "git",
+              "init",
+              "/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-v2-cell-zsS952/cells/perf-14/fixture-space-14"
+            ],
+            [
+              "git",
+              "config",
+              "core.hooksPath",
+              "/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-v2-cell-zsS952/cells/perf-14/box/hooks-empty"
+            ],
+            [
+              "git",
+              "config",
+              "core.fsmonitor",
+              "false"
+            ],
+            [
+              "git",
+              "remote",
+              "get-url",
+              "origin"
+            ],
+            [
+              "git",
+              "cat-file",
+              "-e",
+              "91d7bdc85b395147b9985ad80d6fa0657c2e261f^{commit}"
+            ],
+            [
+              "git",
+              "checkout",
+              "--force",
+              "--detach",
+              "91d7bdc85b395147b9985ad80d6fa0657c2e261f"
+            ]
+          ],
+          "logicalCellBytes": 140766
+        }
+      ]
+    },
+    {
+      "scenario": "image-warm-files",
+      "metrics": {
+        "wallMs": {
+          "n": 3,
+          "min": 1881.8169589999889,
+          "p50": 3376.583541999993,
+          "p95": 4522.8768329999875,
+          "max": 4522.8768329999875,
+          "mean": 3260.42577799999
+        },
+        "nodeCpuMs": {
+          "n": 3,
+          "min": 28.742,
+          "p50": 33.512,
+          "p95": 36.118,
+          "max": 36.118,
+          "mean": 32.79066666666667
+        },
+        "rssBeforeBytes": {
+          "n": 3,
+          "min": 82657280,
+          "p50": 83247104,
+          "p95": 83329024,
+          "max": 83329024,
+          "mean": 83077802.66666667
+        },
+        "rssAfterBytes": {
+          "n": 3,
+          "min": 82657280,
+          "p50": 83247104,
+          "p95": 83329024,
+          "max": 83329024,
+          "mean": 83077802.66666667
+        },
+        "gitCommandCount": {
+          "n": 3,
+          "min": 8,
+          "p50": 8,
+          "p95": 8,
+          "max": 8,
+          "mean": 8
+        },
+        "gitCommandWallMs": {
+          "n": 3,
+          "min": 336.843,
+          "p50": 419.307,
+          "p95": 516.231,
+          "max": 516.231,
+          "mean": 424.127
+        },
+        "logicalCellBytes": {
+          "n": 3,
+          "min": 617284,
+          "p50": 617284,
+          "p95": 617284,
+          "max": 617284,
+          "mean": 617284
+        }
+      },
+      "raw": [
+        {
+          "wallMs": 3376.583541999993,
+          "nodeCpuMs": 36.118,
+          "rssBeforeBytes": 82657280,
+          "rssAfterBytes": 82657280,
+          "gitCommandCount": 8,
+          "gitCommandWallMs": 419.307,
+          "copyMode": "image-cow",
+          "commands": [
+            [
+              "git",
+              "rev-parse",
+              "--show-object-format"
+            ],
+            [
+              "git",
+              "cat-file",
+              "-e",
+              "91d7bdc85b395147b9985ad80d6fa0657c2e261f^{commit}"
+            ],
+            [
+              "git",
+              "init",
+              "/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-v2-cell-zsS952/cells/perf-15/fixture-space-15"
+            ],
+            [
+              "git",
+              "config",
+              "core.hooksPath",
+              "/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-v2-cell-zsS952/cells/perf-15/box/hooks-empty"
+            ],
+            [
+              "git",
+              "config",
+              "core.fsmonitor",
+              "false"
+            ],
+            [
+              "git",
+              "remote",
+              "get-url",
+              "origin"
+            ],
+            [
+              "git",
+              "cat-file",
+              "-e",
+              "91d7bdc85b395147b9985ad80d6fa0657c2e261f^{commit}"
+            ],
+            [
+              "git",
+              "checkout",
+              "--force",
+              "--detach",
+              "91d7bdc85b395147b9985ad80d6fa0657c2e261f"
+            ]
+          ],
+          "logicalCellBytes": 617284
+        },
+        {
+          "wallMs": 4522.8768329999875,
+          "nodeCpuMs": 28.742,
+          "rssBeforeBytes": 83247104,
+          "rssAfterBytes": 83247104,
+          "gitCommandCount": 8,
+          "gitCommandWallMs": 516.231,
+          "copyMode": "image-cow",
+          "commands": [
+            [
+              "git",
+              "rev-parse",
+              "--show-object-format"
+            ],
+            [
+              "git",
+              "cat-file",
+              "-e",
+              "91d7bdc85b395147b9985ad80d6fa0657c2e261f^{commit}"
+            ],
+            [
+              "git",
+              "init",
+              "/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-v2-cell-zsS952/cells/perf-16/fixture-space-16"
+            ],
+            [
+              "git",
+              "config",
+              "core.hooksPath",
+              "/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-v2-cell-zsS952/cells/perf-16/box/hooks-empty"
+            ],
+            [
+              "git",
+              "config",
+              "core.fsmonitor",
+              "false"
+            ],
+            [
+              "git",
+              "remote",
+              "get-url",
+              "origin"
+            ],
+            [
+              "git",
+              "cat-file",
+              "-e",
+              "91d7bdc85b395147b9985ad80d6fa0657c2e261f^{commit}"
+            ],
+            [
+              "git",
+              "checkout",
+              "--force",
+              "--detach",
+              "91d7bdc85b395147b9985ad80d6fa0657c2e261f"
+            ]
+          ],
+          "logicalCellBytes": 617284
+        },
+        {
+          "wallMs": 1881.8169589999889,
+          "nodeCpuMs": 33.512,
+          "rssBeforeBytes": 83329024,
+          "rssAfterBytes": 83329024,
+          "gitCommandCount": 8,
+          "gitCommandWallMs": 336.843,
+          "copyMode": "image-cow",
+          "commands": [
+            [
+              "git",
+              "rev-parse",
+              "--show-object-format"
+            ],
+            [
+              "git",
+              "cat-file",
+              "-e",
+              "91d7bdc85b395147b9985ad80d6fa0657c2e261f^{commit}"
+            ],
+            [
+              "git",
+              "init",
+              "/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-v2-cell-zsS952/cells/perf-17/fixture-space-17"
+            ],
+            [
+              "git",
+              "config",
+              "core.hooksPath",
+              "/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-v2-cell-zsS952/cells/perf-17/box/hooks-empty"
+            ],
+            [
+              "git",
+              "config",
+              "core.fsmonitor",
+              "false"
+            ],
+            [
+              "git",
+              "remote",
+              "get-url",
+              "origin"
+            ],
+            [
+              "git",
+              "cat-file",
+              "-e",
+              "91d7bdc85b395147b9985ad80d6fa0657c2e261f^{commit}"
+            ],
+            [
+              "git",
+              "checkout",
+              "--force",
+              "--detach",
+              "91d7bdc85b395147b9985ad80d6fa0657c2e261f"
+            ]
+          ],
+          "logicalCellBytes": 617284
+        }
+      ]
+    }
+  ],
+  "scope": "Real disposable origin/image/checkout; warm OS caches. Node CPU excludes git/cp children; Git Trace2 supplies child command wall time. RSS includes parent and worker threads, not child processes. Logical bytes are not physical CoW allocation.",
+  "completed": true
+}
