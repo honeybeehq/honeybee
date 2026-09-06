@@ -1601,7 +1601,12 @@ export class CoreStore {
       const livePid = current && current.state !== "stopped" ? current.pid : null;
       const at = this.now();
       const pending = this.db
-        .prepare("SELECT id FROM commands WHERE bee_id = ? AND status IN ('queued','running') ORDER BY id")
+        // Without the hint, ORDER BY id makes SQLite scan this bee's settled
+        // history through commands_by_bee before checking pending status.
+        .prepare(
+          `SELECT id FROM commands INDEXED BY commands_by_bee_status
+           WHERE bee_id = ? AND status IN ('queued','running') ORDER BY id`,
+        )
         .all(beeId) as Row[];
       const settledCommandIds = pending.map((r) => Number(r.id));
       if (settledCommandIds.length > 0) {

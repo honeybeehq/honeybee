@@ -72,6 +72,15 @@ test("command bee indexes install on populated reopen and preserve ordered API r
     assert.deepEqual(store.listCommands({ beeId: "missing" }), []);
     assert.equal(store.lastAuditSeq(), auditBeforeReads, "command history reads do not append authority events");
     assert.deepEqual(store.dumpState(), stateBeforeReads, "command history reads do not mutate authority state");
+
+    assert.equal(store.claimNextCommand()?.id, queuedOne.id);
+    const deleted = store.deleteBee(bee.id);
+    assert.deepEqual(deleted.settledCommandIds, [queuedOne.id, queuedTwo.id]);
+    assert.equal(store.getCommand(done.id)?.status, "done");
+    assert.equal(store.getCommand(failed.id)?.status, "failed");
+    assert.equal(store.getCommand(queuedOne.id)?.status, "done");
+    assert.equal(store.getCommand(queuedTwo.id)?.status, "done");
+    assert.equal(store.listCommands({ beeId: otherBee.id, status: "queued" }).length, 1);
     store.close();
 
     const check = new DatabaseSync(h.path, { readOnly: true });
@@ -96,6 +105,17 @@ test("command bee indexes install on populated reopen and preserve ordered API r
       );
       assert.match(statusPlan.join("\n"), /USING INDEX commands_by_bee_status \(bee_id=\? AND status=\?\)/);
       assert.doesNotMatch(statusPlan.join("\n"), /USE TEMP B-TREE/);
+
+      const deletePendingPlan = planDetails(
+        check,
+        `SELECT id FROM commands INDEXED BY commands_by_bee_status
+         WHERE bee_id = ? AND status IN ('queued','running') ORDER BY id`,
+        otherBee.id,
+      );
+      assert.match(
+        deletePendingPlan.join("\n"),
+        /USING COVERING INDEX commands_by_bee_status \(bee_id=\? AND status=\?\)/,
+      );
 
       const schemaVersionAfter = String(
         (check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string }).value,
