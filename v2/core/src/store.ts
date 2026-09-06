@@ -2075,11 +2075,17 @@ export class CoreStore {
       if (rt?.state === "booting" || rt?.state === "running") {
         throw new IllegalTransitionError(`bee ${beeId} is working; retry the model change when idle`);
       }
-      if (this.listCommands({ beeId }).some((c) =>
-        c.verb === "stop" && c.args.replacementArgs !== undefined &&
-        c.targetGeneration === (rt?.generation ?? 0) &&
-        (c.status === "queued" || c.status === "running")
-      )) {
+      // Stay on the pending-status index instead of materializing this bee's
+      // settled command history. json_type returns SQL NULL for a missing path
+      // but the string "null" for a present JSON null, matching !== undefined.
+      const pendingModelChange = this.stmt(
+        `SELECT 1 FROM commands INDEXED BY commands_ready
+         WHERE status IN ('queued','running') AND bee_id = ? AND verb = 'stop'
+         AND target_generation = ?
+         AND json_type(args, '$.replacementArgs') IS NOT NULL
+         LIMIT 1`,
+      ).get(beeId, rt?.generation ?? 0);
+      if (pendingModelChange !== undefined) {
         throw new IllegalTransitionError(`bee ${beeId} already has a pending model change`);
       }
       if (sameArgs(bee.args, next)) return { outcome: "unchanged", bee };
