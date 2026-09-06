@@ -696,7 +696,9 @@ test("cli.7: cutover verbs — `freeze` writes/refuses locally; `import --from-f
     assert.ok(bad.err[0]?.includes("usage: hive import --from-frozen"));
 
     // freeze: lock pid alive → refused; impossible pid → written; again → already frozen
-    fx.writeDaemonLock({ pid: process.pid, startedAt: new Date().toISOString() });
+    // This test can run more than a minute after the test process starts.
+    // The real preflight verifies process birth, so the fixture must too.
+    fx.writeDaemonLock({ pid: process.pid, startedAt: new Date(Date.now() - process.uptime() * 1000).toISOString() });
     const f0 = capture();
     assert.equal(await runV2Cli(["freeze", "--root", fx.root, "--data-dir", dir], f0.io), 1);
     assert.ok(f0.out[0]?.includes("refused") && f0.out[0]?.includes(String(process.pid)), f0.out[0]);
