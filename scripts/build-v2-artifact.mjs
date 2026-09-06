@@ -30,6 +30,12 @@ await build({
   minify: false,
   preserveSymlinks: true,
   logLevel: "silent",
+  // jsonc-parser's package main is an AMD/CommonJS wrapper with dynamic
+  // relative requires, which cannot execute inside this bundled ESM runtime.
+  // Resolve this one dependency to its published ESM build explicitly.
+  alias: {
+    "jsonc-parser": join(root, "node_modules", "jsonc-parser", "lib", "esm", "main.js"),
+  },
   // node-pty is a native optional dependency (the login worker's PTY
   // backend); it is resolved at runtime from node_modules, never bundled.
   external: ["node-pty"],
