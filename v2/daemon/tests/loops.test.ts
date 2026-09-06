@@ -19,6 +19,10 @@ import { stubAdapter } from "../../adapters/src/index.ts";
 import { AGENT_PATH, FakeDriver, sleep, waitFor } from "./helpers.ts";
 import { BUZ_INJECTION_MARKER } from "../src/envelope.ts";
 
+// Real child startup is load-dependent; assertions below still bound retries
+// and verify admission. Match the runner-host tests' process wait ceiling.
+const PROCESS_WAIT_TIMEOUT_MS = 60_000;
+
 interface Rig {
   dir: string;
   store: CoreStore;
@@ -230,7 +234,7 @@ test("model change defers across real HSR input admission before the turn observ
   try {
     store.createBee({ id: "b", name: "b", agent: "stub", substrate: "hsr", cwd: dir });
     store.enqueueCommand("spawn", "b");
-    await waitFor(() => { core.step(); return store.currentRuntime("b")?.state === "idle"; }, "real stub idle");
+    await waitFor(() => { core.step(); return store.currentRuntime("b")?.state === "idle"; }, "real stub idle", PROCESS_WAIT_TIMEOUT_MS);
     const result = store.reconfigureBee("b", ["--model", "new", "--effort", "high"]);
     assert.equal(result.outcome, "queued");
     if (result.outcome !== "queued") throw new Error("expected queued change");
@@ -934,7 +938,7 @@ test("budget.11 (end-to-end repro): a REAL readyAtSpawn process that spawns fine
     // (deliver-at-spawn is legal for readyAtSpawn). Boot retry is independent
     // of mailbox state, so both arms reach the same visible spawn_failed
     // terminal at maxAttempts instead of sometimes parking silently below it.
-    const deadline = Date.now() + 10_000;
+    const deadline = Date.now() + PROCESS_WAIT_TIMEOUT_MS;
     for (;;) {
       core.step();
       const flagged = store.activeFlags("bee-x").some((f) => f.flag === "spawn_failed");
@@ -977,7 +981,7 @@ test("budget.11 (end-to-end repro): a REAL readyAtSpawn process that spawns fine
     fixed = true;
     if (store.undeliveredMessages("bee-x").length === 0) store.send("bee-x", "hello again?");
     store.enqueueCommand("revive", "bee-x");
-    const ok = Date.now() + 10_000;
+    const ok = Date.now() + PROCESS_WAIT_TIMEOUT_MS;
     for (;;) {
       core.step();
       if (store.undeliveredMessages("bee-x").length === 0 && store.currentRuntime("bee-x")?.state === "idle") break;
