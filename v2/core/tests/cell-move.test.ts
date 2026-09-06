@@ -63,9 +63,10 @@ test("cell-move.admit: CAS, idempotency, fence, operator stop supersedes and kee
     });
     assert.equal(admitted.phase, "stopping");
     assert.equal(store.getBee(bee.id)?.activeMoveId, admitted.id);
+    const sentWhileBooting = store.send(bee.id, "hello");
+    assert.equal(sentWhileBooting.wakeCommand, null);
+    assert.equal(store.enqueueWake(bee.id).outcome, "fenced");
     store.updateRuntimeState(bee.id, 1, "stopped", { exitCause: "stopped_by_system" });
-    const sent = store.send(bee.id, "hello");
-    assert.equal(sent.wakeCommand, null);
     assert.equal(store.enqueueWake(bee.id).outcome, "fenced");
     const publicMove = store.listBeeViewRows().find((r) => r.bee.id === bee.id)?.move;
     assert.equal(publicMove?.id, admitted.id);
@@ -114,9 +115,6 @@ test("cell-move.admit: CAS, idempotency, fence, operator stop supersedes and kee
     );
 
     store.enqueueCommand("stop", bee.id, { cause: "stopped_by_user" });
-    const claimed = store.claimNextCommand();
-    assert.ok(claimed);
-    assert.equal(claimed.verb, "stop");
     assert.equal(store.getBee(bee.id)?.activeMoveId, null);
     const receipt = store.latestMoveOf(bee.id);
     assert.equal(receipt?.phase, "failed");
@@ -125,6 +123,11 @@ test("cell-move.admit: CAS, idempotency, fence, operator stop supersedes and kee
     assert.equal(row?.move?.id, admitted.id);
     assert.equal(row?.move?.phase, "failed");
     assert.equal(row?.move && "requestHash" in row.move, false);
+    // Source is already stopped: the operator stop settles as a no-op and the
+    // fenced send re-arms a wake in the same unfence transaction.
+    const claimed = store.claimNextCommand();
+    assert.ok(claimed);
+    assert.equal(claimed.verb, "send_wake");
     const wake = store.enqueueWake(bee.id);
     assert.ok(wake.outcome === "pending" || wake.outcome === "enqueued", wake.outcome);
     assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
@@ -437,9 +440,8 @@ test("cell-move.starting dest stop does not fence boot retries", () => {
     const retry = store.enqueueBootRetry(bee.id);
     assert.notEqual(retry.outcome, "fenced");
     assert.ok(retry.outcome === "enqueued" || retry.outcome === "pending", retry.outcome);
-    const stop = store.claimNextCommand();
-    assert.equal(stop?.verb, "stop");
-    store.completeCommand(stop.id);
+    // Source was marked stopped without executing the move-owned stop; claim
+    // settles that stop as already_stopped and surfaces dest start work.
     const claimed = store.claimNextCommand();
     assert.ok(claimed);
     assert.ok(claimed.verb === "revive" || claimed.verb === "send_wake", claimed.verb);

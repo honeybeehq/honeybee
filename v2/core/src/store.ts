@@ -1991,8 +1991,17 @@ export class CoreStore {
   private applyWakeIfNeeded(beeId: string): WakeResult {
     const bee = this.mustGetBee(beeId);
     const current = this.currentRuntime(beeId);
-    if (current && LIVE_STATES.includes(current.state)) return { command: null, outcome: "live" };
     const targetGeneration = current?.generation ?? 0;
+    if (bee.activeMoveId) {
+      const move = this.getBeeMove(bee.activeMoveId);
+      // stopping/placing: source must not restart, even if it is still booting
+      // or running. starting: dest boot retries must be able to re-arm.
+      if (!move || move.phase === "stopping" || move.phase === "placing") {
+        this.audit("wake.fenced", beeId, { beeId, targetGeneration, moveId: bee.activeMoveId });
+        return { command: null, outcome: "fenced" };
+      }
+    }
+    if (current && LIVE_STATES.includes(current.state)) return { command: null, outcome: "live" };
     const dupe = this.db
       .prepare(
         `SELECT * FROM commands WHERE bee_id = ? AND verb = 'send_wake'
@@ -2000,15 +2009,6 @@ export class CoreStore {
       )
       .get(beeId, targetGeneration) as Row | undefined;
     if (dupe) return { command: mapCommand(dupe), outcome: "pending" };
-    if (bee.activeMoveId) {
-      const move = this.getBeeMove(bee.activeMoveId);
-      // stopping/placing: source must not restart. starting: dest boot retries
-      // must be able to re-arm (hang-policy stop below spawn_failed).
-      if (!move || move.phase === "stopping" || move.phase === "placing") {
-        this.audit("wake.fenced", beeId, { beeId, targetGeneration, moveId: bee.activeMoveId });
-        return { command: null, outcome: "fenced" };
-      }
-    }
     const flagged = this.db
       .prepare("SELECT id FROM flags WHERE bee_id = ? AND flag = 'spawn_failed' AND cleared_at IS NULL")
       .get(beeId) as Row | undefined;
@@ -2983,6 +2983,21 @@ export class CoreStore {
               targetGeneration: command.targetGeneration,
               currentGeneration,
               finishedAt: at,
+            });
+            continue;
+          }
+          if (command.verb === "stop" && current?.state === "stopped" && command.args.replacementArgs === undefined) {
+            const at = this.now();
+            this.db
+              .prepare("UPDATE commands SET status = 'done', finished_at = ? WHERE id = ?")
+              .run(at, command.id);
+            this.audit("command.moot", command.beeId, {
+              commandId: command.id,
+              verb: command.verb,
+              targetGeneration: command.targetGeneration,
+              currentGeneration,
+              finishedAt: at,
+              reason: "already_stopped",
             });
             continue;
           }
