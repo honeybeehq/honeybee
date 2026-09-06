@@ -53,6 +53,10 @@ import {
   type RuntimeState,
 } from "../../core/src/index.ts";
 import { deliveryText, isPeerSender } from "./envelope.ts";
+import {
+  NOOP_PERFORMANCE,
+  type PerformanceRecorder,
+} from "./performance.ts";
 import type { DriverObservation, RuntimeDriver, StopCause } from "../../harness/src/driver.ts";
 
 /** Where the (injected) executor-crash fault hits, if it does. */
@@ -181,6 +185,8 @@ export interface DaemonCoreOptions {
    * evidence + automatic rotation). Absent in the harness (no accounts).
    */
   onFlagEvidence?: (ev: FlagEvidenceLike) => void;
+  /** Optional process-local timing recorder. It never writes durable core state. */
+  performance?: PerformanceRecorder;
 }
 
 const LIVE: readonly RuntimeState[] = ["booting", "running", "idle"];
@@ -200,6 +206,7 @@ export class DaemonCore {
   private readonly onI1Violation: ((violation: I1ViolationEvent) => void) | null;
   private readonly removeSessionLog: ((path: string) => void) | null;
   private readonly onFlagEvidence: ((ev: FlagEvidenceLike) => void) | null;
+  private readonly performance: PerformanceRecorder;
   /** In-memory dedup so a breach is reported once per daemon lifetime; the recorder dedups durably. */
   private readonly reportedI1 = new Set<number>();
 
@@ -213,6 +220,7 @@ export class DaemonCore {
     this.onI1Violation = opts.onI1Violation ?? null;
     this.removeSessionLog = opts.removeSessionLog ?? null;
     this.onFlagEvidence = opts.onFlagEvidence ?? null;
+    this.performance = opts.performance ?? NOOP_PERFORMANCE;
   }
 
   private get ext(): ExtendedDriver {
@@ -262,20 +270,36 @@ export class DaemonCore {
 
   /** One step of daemon work. May throw ExecutorCrashError (fault injection). */
   step(): void {
-    this.observe();
-    this.expireFlags();
+    this.performance.measureSync("core.step.total", () => this.stepPhases());
+  }
+
+  private stepPhases(): void {
+    this.performance.measureSync("core.step.observe", () => this.observe());
+    this.performance.measureSync("core.step.flags", () => this.expireFlags());
     let seq = this.store.lastAuditSeq();
-    let snapshot = this.stepSnapshot();
-    this.bootHangPolicy(snapshot.rows);
-    this.scaleToZeroPolicy(snapshot.rows, snapshot.pendingByBee);
-    this.degradedMailPolicy(snapshot.rows, snapshot.pendingByBee);
-    this.executeCommands();
-    ({ snapshot, seq } = this.refreshSnapshot(snapshot, seq));
-    this.deliveryLoop(snapshot.rows, snapshot.pendingByBee);
-    this.taskSupplyLoop();
+    let snapshot = this.performance.measureSync("core.step.snapshot", () =>
+      this.stepSnapshot(),
+    );
+    this.performance.measureSync("core.step.policies", () => {
+      this.bootHangPolicy(snapshot.rows);
+      this.scaleToZeroPolicy(snapshot.rows, snapshot.pendingByBee);
+      this.degradedMailPolicy(snapshot.rows, snapshot.pendingByBee);
+    });
+    this.performance.measureSync("core.step.commands", () => this.executeCommands());
+    ({ snapshot, seq } = this.performance.measureSync("core.step.snapshot", () =>
+      this.refreshSnapshot(snapshot, seq),
+    ));
+    this.performance.measureSync("core.step.delivery", () =>
+      this.deliveryLoop(snapshot.rows, snapshot.pendingByBee),
+    );
+    this.performance.measureSync("core.step.tasks", () => this.taskSupplyLoop());
     if (this.policy.i1DeadlineSteps != null && this.onI1Violation != null) {
-      ({ snapshot, seq } = this.refreshSnapshot(snapshot, seq));
-      this.i1Telemetry(snapshot.rows, snapshot.pendingByBee);
+      ({ snapshot, seq } = this.performance.measureSync("core.step.snapshot", () =>
+        this.refreshSnapshot(snapshot, seq),
+      ));
+      this.performance.measureSync("core.step.i1", () =>
+        this.i1Telemetry(snapshot.rows, snapshot.pendingByBee),
+      );
     }
   }
 

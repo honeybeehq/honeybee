@@ -111,6 +111,10 @@ import {
 import { createStoreAutoTitleDispatcher, type AutoTitleOutcome } from "./autoTitle.ts";
 import { TitleGeneratorService } from "./namingService.ts";
 import { TelemetryStore, formatI1Violation } from "./telemetry.ts";
+import {
+  createPerformanceProfiler,
+  type PerformanceProfiler,
+} from "./performance.ts";
 import { RpcServer, type RpcConn } from "./rpc.ts";
 import {
   DAEMON_VERSION,
@@ -390,11 +394,13 @@ export class HiveDaemon {
   private naming: ResolvedNamingConfig;
   private autoTitle: ((bees?: BeeRow[]) => Promise<AutoTitleOutcome[]>) | null = null;
   private titleGenerator: TitleGeneratorService | null = null;
+  private readonly performance: PerformanceProfiler;
 
   constructor(cfg: ResolvedNodeConfig, deps: HiveDaemonDeps = {}) {
     this.cfg = cfg;
     this.deps = deps;
     this.naming = cfg.naming;
+    this.performance = createPerformanceProfiler({ log: (op) => this.log(op) });
   }
 
   /** The account plane (tests reach the selector / capture / importer through it). */
@@ -417,6 +423,20 @@ export class HiveDaemon {
     mkdirSync(this.cfg.dataDir, { recursive: true });
     mkdirSync(this.cfg.sessionLogDir, { recursive: true });
     mkdirSync(dirname(this.cfg.logPath), { recursive: true });
+    this.performance.start();
+    const startup = this.performance.startSpan("daemon.start.total");
+    try {
+      await this.startProfiled();
+      startup.end();
+    } catch (error) {
+      startup.end("error");
+      this.performance.stop();
+      throw error;
+    }
+  }
+
+  private async startProfiled(): Promise<void> {
+    const storage = this.performance.startSpan("daemon.start.storage");
     this.telemetry = new TelemetryStore(this.cfg.telemetryPath);
     // Opening the store IS the single-daemon lock (B9): a second daemon on
     // this node dies right here with SecondWriterError.
@@ -425,6 +445,8 @@ export class HiveDaemon {
       backoffBaseMs: this.cfg.backoffBaseMs,
     });
     this.store = store;
+    storage.end();
+    const services = this.performance.startSpan("daemon.start.services");
     const codexSpec = this.cfg.agents.codex;
     this.titleGenerator = new TitleGeneratorService({
       log: (op) => this.log(op),
@@ -457,6 +479,8 @@ export class HiveDaemon {
       ...(this.deps.loginTmuxExec ? { tmuxExec: this.deps.loginTmuxExec } : {}),
       onCompleted: (accountId) => this.clearAccountAuthNeeded(accountId, `login completed for account ${accountId}`, "login"),
     });
+    services.end();
+    const drivers = this.performance.startSpan("daemon.start.drivers");
     const hsrConfig = {
       sessionLogDir: this.cfg.sessionLogDir,
       stopKillGraceMs: this.cfg.stopKillGraceMs,
@@ -517,7 +541,10 @@ export class HiveDaemon {
       onI1Violation: (v) => this.recordI1(v),
       removeSessionLog: (path) => rmSync(path, { force: true }),
       onFlagEvidence: (ev) => this.applyAccountPolicy(ev),
+      performance: this.performance,
     });
+    drivers.end();
+    const reconcile = this.performance.startSpan("daemon.start.reconcile");
     // Behavior 2: re-adopt surviving runtimes by the identities core recorded
     // at spawn, so DaemonCore.boot()'s snapshotLive() sees them and
     // reconcileAtBoot keeps their rows live instead of stopping them.
@@ -528,12 +555,16 @@ export class HiveDaemon {
     // retired tmux login seats this node's own daemons created.
     this.loginFlows.reconcileAtBoot();
     this.publishedSeq = store.lastAuditSeq();
+    reconcile.end();
+    const rpc = this.performance.startSpan("daemon.start.rpc");
     this.rpc = new RpcServer({
       socketPath: this.cfg.socketPath,
       log: (op) => this.log(op),
       dispatch: (verb, params, conn) => this.dispatch(verb, params, conn),
+      performance: this.performance,
     });
     await this.rpc.listen();
+    rpc.end();
     this.scheduleTick(this.cfg.tickMs);
     // Loop-delay watch (2026-08-21): tick.slow attributes stalls inside the
     // tick; this catches the rest (sync RPC-handler work, keychain/tmux
@@ -556,29 +587,33 @@ export class HiveDaemon {
     if (this.stopping) return;
     this.stopping = true;
     this.log(`daemon.stopping pid=${process.pid}`);
-    if (this.tickTimer) clearTimeout(this.tickTimer);
-    if (this.loopDelayTimer) clearInterval(this.loopDelayTimer);
-    this.loopDelay?.disable();
-    this.tickTimer = null;
-    this.titleGenerator?.close();
-    this.titleGenerator = null;
-    // v16: no login worker outlives the daemon (boot marks their flows interrupted).
-    await this.loginFlows?.shutdown();
-    await this.rpc?.close();
-    this.store?.close();
-    this.telemetry?.close();
-    if (options.preserveRuntimes === false) {
-      // Test/ephemeral ownership only. Production never selects this path:
-      // deploys must preserve runtimes for successor-daemon re-adoption.
-      this.driver?.disposeAll();
-    } else {
-      // Children are NOT killed: detached runtimes survive daemon restarts by
-      // design and the next boot re-adopts them (contract §3.2). Their pipe
-      // handles must not pin our event loop, though — detach them so the
-      // process can actually exit.
-      this.driver?.detachAll();
+    try {
+      if (this.tickTimer) clearTimeout(this.tickTimer);
+      if (this.loopDelayTimer) clearInterval(this.loopDelayTimer);
+      this.loopDelay?.disable();
+      this.tickTimer = null;
+      this.titleGenerator?.close();
+      this.titleGenerator = null;
+      // v16: no login worker outlives the daemon (boot marks their flows interrupted).
+      await this.loginFlows?.shutdown();
+      await this.rpc?.close();
+      this.store?.close();
+      this.telemetry?.close();
+      if (options.preserveRuntimes === false) {
+        // Test/ephemeral ownership only. Production never selects this path:
+        // deploys must preserve runtimes for successor-daemon re-adoption.
+        this.driver?.disposeAll();
+      } else {
+        // Children are NOT killed: detached runtimes survive daemon restarts by
+        // design and the next boot re-adopts them (contract §3.2). Their pipe
+        // handles must not pin our event loop, though — detach them so the
+        // process can actually exit.
+        this.driver?.detachAll();
+      }
+      this.log("daemon.stopped");
+    } finally {
+      this.performance.stop();
     }
-    this.log("daemon.stopped");
   }
 
   private scheduleTick(delayMs: number): void {
@@ -596,31 +631,44 @@ export class HiveDaemon {
     const core = this.core;
     const store = this.store;
     if (!core || !store || this.stopping) return;
+    this.performance.measureSync("daemon.tick.total", () =>
+      this.tickProfiled(core),
+    );
+  }
+
+  private tickProfiled(core: DaemonCore): void {
     const t0 = Date.now();
     let tStep = t0;
     let tAccounts = t0;
     try {
-      core.step();
+      this.performance.measureSync("daemon.tick.core", () => core.step());
       tStep = Date.now();
       this.ticks += 1;
       this.lastTickAt = tStep;
       // v7: bounded in-daemon limits refresh; v16: login-flow expiry + credential landing.
-      this.accounts?.periodicRefreshTick();
+      this.performance.measureSync("daemon.tick.accounts", () =>
+        this.accounts?.periodicRefreshTick(),
+      );
       tAccounts = Date.now();
-      this.loginFlows?.tick();
+      this.performance.measureSync("daemon.tick.login", () =>
+        this.loginFlows?.tick(),
+      );
       // Auto-title scans the whole bee roster synchronously; once a second is
       // plenty for a title and keeps that scan off four of every five ticks.
-      if (this.autoTitle && tAccounts - this.lastAutoTitleAt >= AUTO_TITLE_SCAN_MS) {
+      const autoTitle = this.autoTitle;
+      if (autoTitle && tAccounts - this.lastAutoTitleAt >= AUTO_TITLE_SCAN_MS) {
         this.lastAutoTitleAt = tAccounts;
-        void this.autoTitle()
-          .then((outcomes) => {
-            for (const outcome of outcomes) {
-              if (outcome.error) this.log(`autoTitle.error bee=${outcome.beeId} ${outcome.error}`);
-            }
-          })
-          .catch((error) => {
-            this.log(`autoTitle.error ${error instanceof Error ? error.message : String(error)}`);
-          });
+        this.performance.measureSync("daemon.tick.auto_title", () => {
+          void autoTitle()
+            .then((outcomes) => {
+              for (const outcome of outcomes) {
+                if (outcome.error) this.log(`autoTitle.error bee=${outcome.beeId} ${outcome.error}`);
+              }
+            })
+            .catch((error) => {
+              this.log(`autoTitle.error ${error instanceof Error ? error.message : String(error)}`);
+            });
+        });
       }
     } catch (err) {
       // A tick error is a bug, never a reason to abandon the node: the loops
@@ -628,7 +676,9 @@ export class HiveDaemon {
       this.tickErrors += 1;
       this.log(`tick.error ${err instanceof Error ? err.stack ?? err.message : String(err)}`);
     }
-    this.flushWatchers();
+    this.performance.measureSync("daemon.tick.watch", () =>
+      this.flushWatchers(),
+    );
     const tEnd = Date.now();
     // Accept-loop starvation attribution (2026-08-21): the daemon is single-
     // threaded, so any slow tick IS an RPC stall. Log the phase breakdown for
