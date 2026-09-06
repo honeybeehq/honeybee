@@ -177,22 +177,28 @@ function configureFreshCellGit(spaceDir: string, originRepo: string, emptyHooksD
   mkdirSync(emptyHooksDir, { recursive: true });
   const configPath = join(spaceDir, ".git", "config");
   const configLockPath = `${configPath}.lock`;
+  const maxDirectConfigBytes = 64 * 1024;
   let directConfig: { contents: Buffer; mode: number } | null = null;
   try {
     const stat = lstatSync(configPath);
-    const contents = readFileSync(configPath);
-    const configText = contents.toString("utf8").toLowerCase();
     if (
       stat.isFile()
       && stat.nlink === 1
+      && stat.size <= maxDirectConfigBytes
       && !existsSync(configLockPath)
-      && !configText.includes("hookspath")
-      && !configText.includes("fsmonitor")
-      && !configText.includes("include")
-      && !configText.includes("\\")
       && !/[\u0000-\u0007\u000b-\u001f\u007f]/u.test(emptyHooksDir)
     ) {
-      directConfig = { contents, mode: stat.mode & 0o7777 };
+      const contents = readFileSync(configPath);
+      const configText = contents.toString("utf8").toLowerCase();
+      if (
+        contents.byteLength <= maxDirectConfigBytes
+        && !configText.includes("hookspath")
+        && !configText.includes("fsmonitor")
+        && !configText.includes("include")
+        && !configText.includes("\\")
+      ) {
+        directConfig = { contents, mode: stat.mode & 0o7777 };
+      }
     }
   } catch {
     // Let Git retain its existing error and unusual-config behavior.

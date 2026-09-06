@@ -146,7 +146,7 @@ test("git-image.provision: fresh config avoids config subprocesses and preserves
     g(originRepo, ["commit", "-m", "initial"]);
     const sha = g(originRepo, ["rev-parse", "HEAD"]);
 
-    const cellsRoot = join(rig.root, "cells \\ \" newline\n tab\t # space");
+    const cellsRoot = join(rig.root, "cells \\ \" newline\n tab\t # ; unicode-雪 space");
     const imagesRoot = join(rig.root, "images");
     refreshGitImage(imagesRoot, originRepo, sha);
 
@@ -194,8 +194,8 @@ test("git-image.provision: fresh config avoids config subprocesses and preserves
     assert.equal(cell.copyMode, "image-cow");
     assert.doesNotMatch(
       readFileSync(tracePath, "utf8"),
-      /^config\tcore\.(?:hooksPath|fsmonitor)$/mu,
-      "fresh image placement must not spawn git config",
+      /^config\t/mu,
+      "fresh image placement must not spawn any git config command",
     );
 
     const hooksPath = spawnSync(
@@ -228,6 +228,41 @@ test("git-image.provision: fresh config avoids config subprocesses and preserves
     else process.env.HONEYBEE_TEST_REAL_GIT = previousRealGit;
     if (previousGitLog === undefined) delete process.env.HONEYBEE_TEST_GIT_LOG;
     else process.env.HONEYBEE_TEST_GIT_LOG = previousGitLog;
+    rig.cleanup();
+  }
+});
+
+test("git-image.provision: large template config uses Git's writer", { skip: !COW_AVAILABLE }, () => {
+  const rig = makeRig();
+  const previousTemplateDir = process.env.GIT_TEMPLATE_DIR;
+  try {
+    const imagesRoot = gitImagesRootForCells(rig.cellsRoot);
+    refreshGitImage(imagesRoot, rig.origin.repo, rig.origin.sha);
+
+    const templateDir = join(rig.root, "template-large");
+    mkdirSync(templateDir);
+    writeFileSync(
+      join(templateDir, "config"),
+      `${"# padding\n".repeat(8 * 1024)}[hive-test]\n\tlargeTemplate = kept\n`,
+    );
+    process.env.GIT_TEMPLATE_DIR = templateDir;
+
+    const cell = provisionCell(
+      rig.cellsRoot,
+      request(rig, "bee-config-large", "large"),
+      "cmd-config-large",
+      { gitImagesRoot: imagesRoot },
+    );
+    assert.equal(cell.copyMode, "image-cow");
+    const config = readFileSync(join(cell.paths.spaceDir, ".git", "config"), "utf8");
+    assert.ok(Buffer.byteLength(config) > 64 * 1024);
+    assert.equal(config.match(/^\[core\]$/gmu)?.length ?? 0, 1);
+    assert.equal(g(cell.paths.spaceDir, ["config", "hive-test.largeTemplate"]), "kept");
+    assert.equal(g(cell.paths.spaceDir, ["config", "core.hooksPath"]), cell.paths.emptyHooksDir);
+    assert.equal(g(cell.paths.spaceDir, ["config", "core.fsmonitor"]), "false");
+  } finally {
+    if (previousTemplateDir === undefined) delete process.env.GIT_TEMPLATE_DIR;
+    else process.env.GIT_TEMPLATE_DIR = previousTemplateDir;
     rig.cleanup();
   }
 });
