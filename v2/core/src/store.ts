@@ -3004,7 +3004,9 @@ export class CoreStore {
    * making `hive ls` scale as hundreds of queries on an ordinary hive.
    */
   listBeeViewRows(lifecycle: string | null = null): BeeViewRow[] {
-    const bees = this.listBees().filter((bee) => lifecycle === null || bee.lifecycle === lifecycle);
+    const bees = lifecycle === null
+      ? this.listBees()
+      : (this.stmt("SELECT * FROM bees WHERE lifecycle = ? ORDER BY id").all(lifecycle) as Row[]).map(mapBee);
     if (bees.length === 0) return [];
     const selected = new Set(bees.map((bee) => bee.id));
 
@@ -3020,8 +3022,9 @@ export class CoreStore {
           AND runtime.generation = (
             SELECT MAX(latest.generation) FROM runtimes AS latest WHERE latest.bee_id = bee.id
           )
+         WHERE ? IS NULL OR bee.lifecycle = ?
          ORDER BY bee.id`,
-      ).all() as Row[]
+      ).all(lifecycle, lifecycle) as Row[]
     ).map(mapRuntime);
     const runtimeByBee = new Map(
       runtimes
