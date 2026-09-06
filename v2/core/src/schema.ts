@@ -287,6 +287,10 @@ CREATE TABLE IF NOT EXISTS commands (
   idempotency_key   TEXT
 ) STRICT;
 CREATE INDEX IF NOT EXISTS commands_ready ON commands(status, next_attempt_at, id);
+-- bee_id, status, and id have existed since v1, so these indexes install
+-- additively on every open without changing the schema format version.
+CREATE INDEX IF NOT EXISTS commands_by_bee ON commands(bee_id, id);
+CREATE INDEX IF NOT EXISTS commands_by_bee_status ON commands(bee_id, status, id);
 -- The UNIQUE (partial) index on commands.idempotency_key lives in
 -- IDEMPOTENCY_INDEX_SQL below: it can only be created once the column exists,
 -- which on a migrated v1 store happens in the constructor's migration step.

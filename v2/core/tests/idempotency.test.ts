@@ -163,15 +163,20 @@ test("idem.7: v1 store (no stamp, no column) migrates additively to v2 on open",
   assert.equal(migrated?.verb, "stop");
   assert.equal(migrated?.idempotencyKey, null); // column added, old rows null
   store.close(); // release the EXCLUSIVE lock (B9) before inspecting directly
-  // Stamped to the current version, and the UNIQUE index is live.
+  // Stamped to the current version, and indexes over v1-stable command
+  // columns are installed alongside the migrated UNIQUE index.
   const check = new DatabaseSync(h.path, { readOnly: true });
   try {
     const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
     assert.equal(Number(version.value), SCHEMA_VERSION);
-    const idx = check
-      .prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'commands_idempotency_key'")
-      .get();
-    assert.ok(idx, "unique idempotency index exists after migration");
+    const indexes = (check
+      .prepare(
+        `SELECT name FROM sqlite_master
+         WHERE type = 'index' AND name IN ('commands_by_bee','commands_by_bee_status','commands_idempotency_key')
+         ORDER BY name`,
+      )
+      .all() as Array<{ name: string }>).map((row) => row.name);
+    assert.deepEqual(indexes, ["commands_by_bee", "commands_by_bee_status", "commands_idempotency_key"]);
   } finally {
     check.close();
   }
