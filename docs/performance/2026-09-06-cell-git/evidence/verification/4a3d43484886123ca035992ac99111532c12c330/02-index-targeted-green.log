@@ -1,0 +1,19 @@
+✔ command bee indexes install on populated reopen and preserve ordered API reads (132.7465ms)
+✔ idem.1: duplicate key returns the ORIGINAL command (queued) — deduped, nothing new enqueued (188.290792ms)
+✔ idem.2: replay while running and after settle returns the current/settled status (43.411917ms)
+✔ idem.3: replay of a settled failure returns failed — never re-executes (44.347ms)
+✔ idem.4: distinct keys (and keyless enqueues) are unaffected (55.291083ms)
+✔ idem.5: keys survive close/reopen (boot replay) — a running command requeues WITH its key (66.253959ms)
+✔ idem.6: replay of a settled delete returns the settled outcome — not BeeNotFound (72.350333ms)
+✔ idem.7: v1 store (no stamp, no column) migrates additively to v2 on open (55.32575ms)
+✔ idem.8: a NEWER store is refused with a typed schema_newer error (no silent downgrade) (58.680458ms)
+✔ idem.9: rpc_idempotency records round-trip and retention evicts the oldest beyond the bound (48.235209ms)
+✔ idem.10: rpc_idempotency records survive close/reopen (73.205791ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1212.657708

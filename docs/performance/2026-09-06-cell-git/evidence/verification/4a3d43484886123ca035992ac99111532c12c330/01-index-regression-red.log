@@ -1,0 +1,71 @@
+✖ command bee indexes install on populated reopen and preserve ordered API reads (44.074209ms)
+✔ idem.1: duplicate key returns the ORIGINAL command (queued) — deduped, nothing new enqueued (20.1975ms)
+✔ idem.2: replay while running and after settle returns the current/settled status (26.291334ms)
+✔ idem.3: replay of a settled failure returns failed — never re-executes (38.357083ms)
+✔ idem.4: distinct keys (and keyless enqueues) are unaffected (36.184583ms)
+✔ idem.5: keys survive close/reopen (boot replay) — a running command requeues WITH its key (46.141ms)
+✔ idem.6: replay of a settled delete returns the settled outcome — not BeeNotFound (44.800875ms)
+✖ idem.7: v1 store (no stamp, no column) migrates additively to v2 on open (60.367417ms)
+✔ idem.8: a NEWER store is refused with a typed schema_newer error (no silent downgrade) (51.472458ms)
+✔ idem.9: rpc_idempotency records round-trip and retention evicts the oldest beyond the bound (37.874333ms)
+✔ idem.10: rpc_idempotency records survive close/reopen (31.259167ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 9
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 697.309209
+
+✖ failing tests:
+
+test at v2/core/tests/command-indexes.test.ts:16:1
+✖ command bee indexes install on populated reopen and preserve ordered API reads (44.074209ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+  + []
+  - [
+  -   'bee_id',
+  -   'id'
+  - ]
+  
+      at TestContext.<anonymous> (file:///Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-command-index-author-2026-09-06/v2/core/tests/command-indexes.test.ts:80:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1397:25)
+      at Test.start (node:internal/test_runner/test:1257:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [],
+    expected: [Array],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at v2/core/tests/idempotency.test.ts:135:1
+✖ idem.7: v1 store (no stamp, no column) migrates additively to v2 on open (60.367417ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+    [
+  -   'commands_by_bee',
+  -   'commands_by_bee_status',
+      'commands_idempotency_key'
+    ]
+  
+      at TestContext.<anonymous> (file:///Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-command-index-author-2026-09-06/v2/core/tests/idempotency.test.ts:179:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1397:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:969:18)
+      at Test.postRun (node:internal/test_runner/test:1537:19)
+      at Test.run (node:internal/test_runner/test:1462:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:969:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [Array],
+    expected: [Array],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }

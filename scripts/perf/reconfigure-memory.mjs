@@ -14,7 +14,9 @@ import { pathToFileURL } from 'node:url';
 assert.equal(typeof global.gc, 'function', 'run with node --expose-gc');
 const root = resolve(process.argv[2] ?? '.');
 const out = resolve(process.argv[3] ?? '.artifacts/performance/reconfigure-memory.json');
-const instrumented = process.argv[4] === 'profile';
+const profileMode = process.argv[4] ?? 'none';
+assert.ok(['none', 'profile', 'allocations'].includes(profileMode));
+const instrumented = profileMode !== 'none';
 const { openCoreStore } = await import(pathToFileURL(join(root, 'v2/core/src/index.ts')).href);
 const digest = path => createHash('sha256').update(readFileSync(path)).digest('hex');
 const revision = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' });
@@ -42,7 +44,10 @@ try {
     session = new Session(); session.connect();
     await session.post('Profiler.enable'); await session.post('Profiler.start');
     await session.post('HeapProfiler.enable');
-    await session.post('HeapProfiler.startSampling', { samplingInterval: 16384 });
+    await session.post('HeapProfiler.startSampling', { samplingInterval: 16384,
+      includeObjectsCollectedByMajorGC: profileMode === 'allocations',
+      includeObjectsCollectedByMinorGC: profileMode === 'allocations',
+    });
   }
   const before = process.memoryUsage(), peakBeforeKiB = process.resourceUsage().maxRSS;
   const cpuStart = process.cpuUsage(), start = performance.now();
@@ -60,7 +65,7 @@ try {
     session.disconnect(); session = undefined;
   }
   assert.equal(store.lastAuditSeq(), seq);
-  const report = { schemaVersion: 1, completed: true, instrumented, timestamp: new Date().toISOString(), revision: revision.stdout.trim(),
+  const report = { schemaVersion: 1, completed: true, instrumented, profileMode, timestamp: new Date().toISOString(), revision: revision.stdout.trim(),
     sourceHashes: Object.fromEntries(['store.ts', 'schema.ts'].map(name => [name, digest(join(root, 'v2/core/src', name))])), toolSha256: digest(new URL(import.meta.url)),
     environment: { node: process.version, platform: process.platform, arch: process.arch, cpu: cpus()[0]?.model, hostname: hostname(), loadAfter: loadavg() },
     workload: { ownSettledCommands: 100000, reasonChars: 256, operation: 'reconfigureBee(target, null)', samples: 1, gcBefore: true },

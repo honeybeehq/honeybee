@@ -1,0 +1,17 @@
+✔ reconfigure admission refuses working and duplicate pending changes; stopped changes and no-ops replay (49.807ms)
+✔ reconfigure admission does not materialize command history (16.547083ms)
+✔ reconfigure pending probe preserves replacement presence, status, and generation (37.418084ms)
+✔ args.1: bees.args round-trips; updateBeeArgs audits bee.args_set, no-ops on identical, null clears; reviveBee applies args in the same tx; replay matches (24.120625ms)
+✔ args.2: a v4-shaped store (spawn_failures, no args column) migrates additively to v5 on open; args NULL for old rows; newer store refused (42.516625ms)
+✔ args.3: keep/drop table — claude keeps --model/--effort/--dangerously-skip-permissions, drops session-id / system prompt / plumbing; codex canonicalizes -m and -c reasoning, drops service_tier & fast_mode; unknown harness drops all (1.711417ms)
+✔ args.4: oldLaunchArgs — launchArgv preferred (program stripped); command string fallback strips env prefix + program and honours quotes; shellWords (1.416583ms)
+✔ args.5: beeArgsFromRecord — first-class model overrides the argv model; modelExtraArgs layer on top through the same table; command fallback; other harness → null (14.53875ms)
+✔ args.6: importFromFrozen writes bees.args from the fixture records and records kept/dropped args in the bee.imported provenance row (49.123042ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 9
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 515.679709

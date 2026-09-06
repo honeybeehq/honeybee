@@ -1,0 +1,24 @@
+✖ reconfigure admission does not materialize command history (315.956625ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3126.964583
+
+✖ failing tests:
+
+test at v2/core/tests/bee-args.test.ts:87:1
+✖ reconfigure admission does not materialize command history (315.956625ms)
+  Error: reconfigureBee materialized command history
+      at store.listCommands (file:///Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-command-index-author-2026-09-06/v2/core/tests/bee-args.test.ts:95:13)
+      at file:///Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-command-index-author-2026-09-06/v2/core/src/store.ts:2078:16
+      at CoreStore.tx (file:///Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-command-index-author-2026-09-06/v2/core/src/store.ts:1080:22)
+      at CoreStore.reconfigureBee (file:///Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-command-index-author-2026-09-06/v2/core/src/store.ts:2072:17)
+      at TestContext.<anonymous> (file:///Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-command-index-author-2026-09-06/v2/core/tests/bee-args.test.ts:98:24)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1397:25)
+      at Test.start (node:internal/test_runner/test:1257:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17)

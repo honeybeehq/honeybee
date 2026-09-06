@@ -1,0 +1,107 @@
+{
+  "schemaVersion": 1,
+  "unitCommit": "a5480e249fba6735e91f9c795d209c288bd2bafd",
+  "sourceTranscript": "/Users/trmd/.hive/v2/session-logs/50f69abe-43df-4e82-8bbf-5d3fb5019ea4.jsonl",
+  "extractedAt": "2026-09-06T18:40:10.216Z",
+  "receipts": [
+    {
+      "file": "01-regression-red.log",
+      "itemId": "exec-9636cb8f-c784-46ec-9d31-3110afda9aec",
+      "command": "/bin/zsh -lc \"NODE_COMPILE_CACHE=.cache/node-compile node --test --test-isolation=none --test-name-pattern='reconfigure admission does not materialize command history' v2/core/tests/bee-args.test.ts\"",
+      "cwd": "/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-command-index-author-2026-09-06",
+      "exitCode": 1,
+      "durationMs": 5298,
+      "completedAtMs": 1788717175355,
+      "outputBytes": 1410,
+      "outputSha256": "20115a259ceddea5c7914355cf7585b2cf049990d2829a607f9bb6483597a303"
+    },
+    {
+      "file": "02-focused-reconfigure-green.log",
+      "itemId": "exec-b38e4d38-215b-418a-a90e-df57031c44c4",
+      "command": "/bin/zsh -lc \"NODE_COMPILE_CACHE=.cache/node-compile node --test --test-isolation=none --test-name-pattern='reconfigure' v2/core/tests/bee-args.test.ts\"",
+      "cwd": "/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-command-index-author-2026-09-06",
+      "exitCode": 0,
+      "durationMs": 5562,
+      "completedAtMs": 1788717197274,
+      "outputBytes": 416,
+      "outputSha256": "1bc770011b8ad35ffe0bfa6de16f5e3e72983815fa03f10de0b4536564b94a1b"
+    },
+    {
+      "file": "03-bee-args-green.log",
+      "itemId": "exec-e0101897-d20d-4bf0-8f6e-5cb24c09286a",
+      "command": "/bin/zsh -lc 'NODE_COMPILE_CACHE=.cache/node-compile node --test --test-isolation=none v2/core/tests/bee-args.test.ts'",
+      "cwd": "/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-command-index-author-2026-09-06",
+      "exitCode": 0,
+      "durationMs": 6795,
+      "completedAtMs": 1788717212245,
+      "outputBytes": 1503,
+      "outputSha256": "5b0e9e71985668eaaa5d188b4e4d12759dcff0a6bcf5ade13053c94e6a8f4576"
+    },
+    {
+      "file": "04-core-tsc.log",
+      "itemId": "exec-d817f084-8af6-4e7d-bd5c-87e28f038deb",
+      "command": "/bin/zsh -lc 'npx --no-install tsc -p v2/core/tsconfig.json'",
+      "cwd": "/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-command-index-author-2026-09-06",
+      "exitCode": 0,
+      "durationMs": 11010,
+      "completedAtMs": 1788717482271,
+      "outputBytes": 172,
+      "outputSha256": "0b8b76f9b4800035751c16a110157269502d24945379293b03168446bad127f2"
+    },
+    {
+      "file": "05-daemon-reconfiguration-7.log",
+      "itemId": "exec-b4482d93-ea6a-4197-813c-8975febbce89",
+      "command": "/bin/zsh -lc \"NODE_COMPILE_CACHE=.cache/node-compile node --test --test-isolation=none --test-name-pattern='model change|model admission|deferred model change' v2/daemon/tests/loops.test.ts\"",
+      "cwd": "/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-command-index-author-2026-09-06",
+      "exitCode": 0,
+      "durationMs": 2595,
+      "completedAtMs": 1788717495619,
+      "outputBytes": 763,
+      "outputSha256": "9e6449c86208676cf455895f2820283d2b8e9bea1eb6b984a2c67469c202b176"
+    },
+    {
+      "file": "06-core-177.log",
+      "itemId": "exec-cec180be-c0ac-4d91-95a8-0167638f3fa5",
+      "command": "/bin/zsh -lc 'npm run v2:test'",
+      "cwd": "/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-command-index-author-2026-09-06",
+      "exitCode": 0,
+      "durationMs": 22479,
+      "completedAtMs": 1788717526241,
+      "outputBytes": 20359,
+      "outputSha256": "8863f25b38e391a38aefcc68979ce0052465511a0c041e8588ba28abe0aa8c99"
+    },
+    {
+      "file": "07-build.log",
+      "itemId": "exec-075470f1-afd6-406a-b0e6-70098cba1515",
+      "command": "/bin/zsh -lc 'npm run build'",
+      "cwd": "/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-command-index-author-2026-09-06",
+      "exitCode": 0,
+      "durationMs": 97153,
+      "completedAtMs": 1788717626676,
+      "outputBytes": 785,
+      "outputSha256": "82af7c294106c5ea709704057d4945107139ba1b47f478178b827bc19bc25922"
+    },
+    {
+      "file": "08-bee-args-final.log",
+      "itemId": "exec-2bb66d94-a9fb-4b24-a922-6415822cb441",
+      "command": "/bin/zsh -lc 'NODE_COMPILE_CACHE=.cache/node-compile node --test --test-isolation=none v2/core/tests/bee-args.test.ts'",
+      "cwd": "/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-command-index-author-2026-09-06",
+      "exitCode": 0,
+      "durationMs": 699,
+      "completedAtMs": 1788717652439,
+      "outputBytes": 1489,
+      "outputSha256": "c151aaa3502630d453a22811ab2233570c8cc1174b274749b3b4385cf403fcef"
+    },
+    {
+      "file": "09-core-tsc-final.log",
+      "itemId": "exec-a8094a6f-5e6c-4cb3-af3a-42d6ac05924e",
+      "command": "/bin/zsh -lc 'npx --no-install tsc -p v2/core/tsconfig.json'",
+      "cwd": "/Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-command-index-author-2026-09-06",
+      "exitCode": 0,
+      "durationMs": 7238,
+      "completedAtMs": 1788717662210,
+      "outputBytes": 172,
+      "outputSha256": "0b8b76f9b4800035751c16a110157269502d24945379293b03168446bad127f2"
+    }
+  ]
+}
