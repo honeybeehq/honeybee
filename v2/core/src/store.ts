@@ -1502,6 +1502,18 @@ export class CoreStore {
     this.db.exec(HANDLE_INDEX_SQL);
     this.db.exec(BEES_ACTIVE_MOVE_INDEX_SQL);
     this.db.exec(MAILBOX_PENDING_METADATA_INDEX_SQL);
+    // mailbox_undelivered is superseded by the covering pending-metadata
+    // index above (same (bee_id, id) prefix, same partial predicate), so it
+    // is dropped HERE — after its replacement exists — inside the same
+    // open() transaction as the migrations (the tx() wrap around
+    // ensureSchemaVersion; BEGIN IMMEDIATE/COMMIT in tx()), so a failed
+    // open rolls back as a whole. IF EXISTS makes every later open an O(1)
+    // no-op. The drop frees the index's pages for REUSE; it does not
+    // necessarily shrink the database file. A downgraded build recreates
+    // the index from its own SCHEMA_SQL by scanning the WHOLE mailbox
+    // (a partial CREATE reads every row to filter delivered history); this
+    // drop then applies again on the next upgrade.
+    this.db.exec("DROP INDEX IF EXISTS mailbox_undelivered;");
     this.db.exec(MAIL_HISTORY_INDEX_SQL);
     this.db.exec(CELLS_TABLE_SQL);
     this.db.exec(BEE_MOVES_TABLE_SQL);
@@ -3657,7 +3669,7 @@ export class CoreStore {
 
   /**
    * Whether ANY mailbox message remains undelivered — one LIMIT-1 probe on
-   * the mailbox_undelivered partial index. The mail half of
+   * the mailbox_pending_metadata covering partial index. The mail half of
    * hasStepSnapshotInputs, exposed alone: the daemon's dedup pruning must
    * clear on a zero-pending hive even while runtimes are live, and sparse
    * work rows omit stopped-target mail so they cannot answer this.

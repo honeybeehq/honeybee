@@ -139,7 +139,7 @@ test("an old noncurrent live runtime is a conservative step snapshot false posit
   );
 });
 
-test("step snapshot input indexes install on populated reopen and back both absence probes", (t) => {
+test("pending indexes migrate on reopen: covering install, old-index drop idempotency, downgrade round-trip, full-body reads", (t) => {
   const h = harness();
   t.after(() => h.cleanup());
   let store = h.open();
@@ -153,30 +153,73 @@ test("step snapshot input indexes install on populated reopen and back both abse
     store.reviveBee(bee.id);
     store.updateRuntimeState(bee.id, generation, "stopped", { exitCause: "clean" });
   }
-  assert.equal(store.hasStepSnapshotInputs(), false);
+  const mailful = makeBee(store, "mailful").bee;
+  store.updateRuntimeState(mailful.id, 1, "stopped", { exitCause: "clean" });
+  store.send(mailful.id, "first body", { urgency: "now" });
+  store.send(mailful.id, "second body");
+  store.send(mailful.id, "third body", { urgency: "idle" });
+  const expectedRows = store.undeliveredMessages(mailful.id);
+  assert.equal(expectedRows.length, 3);
+  const expectedGlobal = store.listUndeliveredMessages().map((m) => m.id);
   store.close();
 
-  const beforeReopen = new DatabaseSync(h.path);
-  let schemaVersionBefore: string;
-  try {
-    schemaVersionBefore = stringField(
-      beforeReopen.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get(),
-      "value",
-    );
-    beforeReopen.exec("DROP INDEX IF EXISTS runtimes_daemon_live");
-    beforeReopen.exec("DROP INDEX IF EXISTS mailbox_undelivered");
-  } finally {
-    beforeReopen.close();
-  }
+  const raw = (sql: string) => {
+    const db = new DatabaseSync(h.path);
+    try {
+      db.exec(sql);
+    } finally {
+      db.close();
+    }
+  };
+  const oldIndexPresent = () => {
+    const db = new DatabaseSync(h.path, { readOnly: true });
+    try {
+      return db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'mailbox_undelivered'").get() !== undefined;
+    } finally {
+      db.close();
+    }
+  };
+  const schemaVersionOf = () => {
+    const db = new DatabaseSync(h.path, { readOnly: true });
+    try {
+      return stringField(db.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get(), "value");
+    } finally {
+      db.close();
+    }
+  };
+  const schemaVersionBefore = schemaVersionOf();
 
+  // Upgrade shape: a store written by an OLD build (or after a downgrade)
+  // carries mailbox_undelivered; opening through the current build must drop
+  // it AFTER the covering replacement exists, and reinstall the runtime index.
+  raw("DROP INDEX IF EXISTS runtimes_daemon_live");
+  raw("CREATE INDEX IF NOT EXISTS mailbox_undelivered ON mailbox(bee_id, id) WHERE delivered_at IS NULL");
+  assert.equal(oldIndexPresent(), true);
   store = h.open();
-  assert.equal(store.hasStepSnapshotInputs(), false, "delivered-only mail and stopped history stay empty");
+  // Full-body reads keep exact order, content, and membership on the
+  // covering index alone (rows are still fetched for bodies, as they must be).
+  assert.deepEqual(store.undeliveredMessages(mailful.id), expectedRows, "per-bee FIFO order and full content survive the drop");
+  assert.deepEqual(store.listUndeliveredMessages().map((m) => m.id), expectedGlobal, "global pending membership survives the drop");
   store.close();
+  assert.equal(oldIndexPresent(), false, "upgrade drops the superseded index");
+
+  // Downgrade round-trip, twice: an old build would recreate it from its own
+  // SCHEMA_SQL (scanning the WHOLE mailbox to filter delivered history); the
+  // next open drops it again, idempotently.
+  for (let round = 0; round < 2; round++) {
+    raw("CREATE INDEX IF NOT EXISTS mailbox_undelivered ON mailbox(bee_id, id) WHERE delivered_at IS NULL");
+    assert.equal(oldIndexPresent(), true);
+    store = h.open();
+    store.close();
+    assert.equal(oldIndexPresent(), false, `downgrade round ${round}: re-upgrade drops it again`);
+  }
+  store = h.open(); // plain reopen: DROP IF EXISTS is a no-op on the absent index
+  store.close();
+  assert.equal(oldIndexPresent(), false);
 
   const check = new DatabaseSync(h.path, { readOnly: true });
   try {
     assert.deepEqual(indexColumns(check, "runtimes_daemon_live"), ["bee_id", "generation"]);
-    assert.deepEqual(indexColumns(check, "mailbox_undelivered"), ["bee_id", "id"]);
     assert.match(
       stringField(
         check.prepare("SELECT sql FROM sqlite_master WHERE type = 'index' AND name = 'runtimes_daemon_live'").get(),
@@ -191,22 +234,36 @@ test("step snapshot input indexes install on populated reopen and back both abse
     ).join("\n");
     assert.match(runtimePlan, /USING (?:COVERING )?INDEX runtimes_daemon_live/);
 
+    // With the old index gone, every pending access shape rides the covering
+    // metadata index: the absence probe, the per-bee full-body FIFO seek, and
+    // the global full-body list scan.
     const mailboxPlan = planDetails(
       check,
       "SELECT 1 FROM mailbox WHERE delivered_at IS NULL LIMIT 1",
     ).join("\n");
-    // Either pending partial index serves the LIMIT-1 absence probe in O(1);
-    // mailbox_pending_metadata (the covering metadata index) may win the
-    // planner's choice. The requirement is a pending-only partial index, not
-    // a specific one.
-    assert.match(mailboxPlan, /USING (?:COVERING )?INDEX (?:mailbox_undelivered|mailbox_pending_metadata)/);
+    assert.match(mailboxPlan, /USING COVERING INDEX mailbox_pending_metadata/);
+    const fifoPlan = planDetails(
+      check,
+      "SELECT * FROM mailbox WHERE bee_id = ? AND delivered_at IS NULL ORDER BY id",
+    ).join("\n");
+    assert.match(fifoPlan, /SEARCH mailbox USING INDEX mailbox_pending_metadata \(bee_id=\?\)/);
+    assert.doesNotMatch(fifoPlan, /USE TEMP B-TREE/);
+    const globalPlan = planDetails(
+      check,
+      "SELECT * FROM mailbox WHERE delivered_at IS NULL ORDER BY bee_id, id",
+    ).join("\n");
+    assert.match(globalPlan, /SCAN mailbox USING INDEX mailbox_pending_metadata/);
+    assert.doesNotMatch(globalPlan, /USE TEMP B-TREE/);
 
-    const schemaVersionAfter = stringField(
-      check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get(),
-      "value",
-    );
-    assert.equal(schemaVersionAfter, schemaVersionBefore, "additive indexes do not change the schema format");
+    assert.equal(schemaVersionOf(), schemaVersionBefore, "index migration does not change the schema format");
   } finally {
     check.close();
   }
+
+  // Emptiness proof preserved: cancel the held mail and the guard proves empty.
+  store = h.open();
+  for (const m of store.undeliveredMessages(mailful.id)) {
+    assert.deepEqual(store.cancelMessage(mailful.id, m.id), { canceled: true });
+  }
+  assert.equal(store.hasStepSnapshotInputs(), false, "delivered-only mail and stopped history stay empty");
 });

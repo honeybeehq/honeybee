@@ -291,7 +291,9 @@ CREATE TABLE IF NOT EXISTS mailbox (
   delivered_at         INTEGER,
   delivered_generation INTEGER
 ) STRICT;
-CREATE INDEX IF NOT EXISTS mailbox_undelivered ON mailbox(bee_id, id) WHERE delivered_at IS NULL;
+-- mailbox_undelivered (bee_id, id) was superseded by mailbox_pending_metadata
+-- (same prefix and partial predicate, wider covering payload); the store
+-- drops it post-migration on open.
 
 CREATE TABLE IF NOT EXISTS commands (
   id                INTEGER PRIMARY KEY AUTOINCREMENT,
