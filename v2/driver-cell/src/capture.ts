@@ -83,6 +83,15 @@ function conflictedPaths(repo: string): string[] {
     .sort();
 }
 
+/** Try an object-only clean merge in the same isolated repository as the checkout fallback. */
+function mergeWithoutCheckout(repo: string, targetTip: string, cellHead: string, message: string): string | null {
+  git(repo, ["update-ref", "--no-deref", "HEAD", targetTip]);
+  const merged = tryGit(repo, ["merge-tree", "--write-tree", targetTip, cellHead]);
+  const tree = merged.stdout.trim();
+  if (merged.status !== 0 || !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(tree)) return null;
+  return git(repo, ["commit-tree", tree, "-p", targetTip, "-p", cellHead, "-m", message]);
+}
+
 export function captureWork(req: CaptureRequest): CaptureReport {
   const { originRepo, cellSpaceDir, targetBranch, mode } = req;
   const base = { targetBranch, mode };
@@ -134,20 +143,25 @@ export function captureWork(req: CaptureRequest): CaptureReport {
 
     let resultSha: string;
     if (mode === "merge") {
-      git(scratchRepo, ["checkout", "--quiet", "--force", "--detach", targetTip]);
-      const merge = tryGit(scratchRepo, [
-        "merge",
-        "--no-ff",
-        "-m",
-        `Capture cell work into ${targetBranch}`,
-        cellHead,
-      ]);
-      if (merge.status !== 0) {
-        const conflicts = conflictedPaths(scratchRepo);
-        tryGit(scratchRepo, ["merge", "--abort"]);
-        return report({ ...base, status: "conflict", cellHead, baseTarget: targetTip, conflicts });
+      const cleanMerge = mergeWithoutCheckout(scratchRepo, targetTip, cellHead, `Capture cell work into ${targetBranch}`);
+      if (cleanMerge !== null) {
+        resultSha = cleanMerge;
+      } else {
+        git(scratchRepo, ["checkout", "--quiet", "--force", "--detach", targetTip]);
+        const merge = tryGit(scratchRepo, [
+          "merge",
+          "--no-ff",
+          "-m",
+          `Capture cell work into ${targetBranch}`,
+          cellHead,
+        ]);
+        if (merge.status !== 0) {
+          const conflicts = conflictedPaths(scratchRepo);
+          tryGit(scratchRepo, ["merge", "--abort"]);
+          return report({ ...base, status: "conflict", cellHead, baseTarget: targetTip, conflicts });
+        }
+        resultSha = git(scratchRepo, ["rev-parse", "HEAD"]);
       }
-      resultSha = git(scratchRepo, ["rev-parse", "HEAD"]);
     } else {
       git(scratchRepo, ["checkout", "--quiet", "--force", "--detach", cellHead]);
       // --empty=drop: a commit whose changes already sit on the target
