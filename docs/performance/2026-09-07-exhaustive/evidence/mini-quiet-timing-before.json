@@ -1,0 +1,159 @@
+{
+  "schemaVersion": 1,
+  "completed": true,
+  "timestamp": "2026-09-07T06:02:25.531Z",
+  "source": {
+    "root": "/private/tmp/honeybee-perf-5763a6c9-20260907/baseline",
+    "revision": "343289fe0f939ad3028550af14b4c5c068ea739e",
+    "hashes": {
+      "v2/core/src/store.ts": "035a7fa5af24129f5fb6224b46944a5939b7de5f0afc91784513271f8607cca3",
+      "v2/core/src/schema.ts": "ff2c98154659e149b4922c21046c033fd70fbcc67848759d72671377bcf21a07",
+      "v2/daemon/src/loops.ts": "d12a38a478951808773c30aea6b9ac70d83f48c66f37876f49220ab97914cafb"
+    }
+  },
+  "toolHashes": {
+    "quiet-tick.mjs": "9e739ffec42dd28c3f7b05b895c841b27960db340998fb27c3379c4703251dfa",
+    "fixtures.mjs": "3fcc682d4f9525007c129f86acca91f0a09cf9ff8e6d33ca35852a6b99396bfb",
+    "report.mjs": "d1ad61cdac530c2748345235bc546166089e31e4e9614492a761fa3db3afbba7",
+    "boot-identity.mjs": "555b2a8de914ecba13defbd76542b65b6af15d204b156fb15f58ea9b8036d0fa"
+  },
+  "environment": {
+    "node": "v24.18.0",
+    "platform": "darwin",
+    "arch": "arm64",
+    "hostname": "Mac.home",
+    "bootIdentity": {
+      "method": "darwin-kern.bootsessionuuid-sha256",
+      "sha256": "e9278b19e15e59f2422e3cbfcd73a284c146b83b5bfa40e69c3053019b6d8732"
+    },
+    "cpu": "Apple M4",
+    "loadAfter": [
+      1.61279296875,
+      1.46630859375,
+      1.20703125
+    ]
+  },
+  "workload": {
+    "bees": 1000,
+    "generations": 1,
+    "samples": 30,
+    "mode": "none",
+    "warmups": 3,
+    "gcBefore": true,
+    "durability": "WAL/NORMAL",
+    "currentRuntimes": "stopped",
+    "activeLifecycleFraction": 0.1,
+    "pendingMessages": 0,
+    "now": 1000
+  },
+  "raw": {
+    "wallMs": [
+      3.109208999999993,
+      3.259749999999997,
+      3.296208000000007,
+      3.208167000000003,
+      3.251166999999981,
+      3.098790999999977,
+      3.16220899999999,
+      3.063124999999985,
+      3.3609590000000082,
+      3.12170900000001,
+      3.1407920000000047,
+      3.0056669999999883,
+      3.2783330000000035,
+      3.0582089999999766,
+      3.5983329999999967,
+      3.0583330000000046,
+      3.13341699999998,
+      3.2236669999999776,
+      3.337832999999989,
+      2.938083000000006,
+      3.0131250000000023,
+      3.213624999999979,
+      3.154166000000032,
+      3.357084000000043,
+      3.0687500000000227,
+      3.0480420000000095,
+      3.079915999999969,
+      3.2395420000000286,
+      2.893374999999992,
+      3.0289169999999785
+    ],
+    "cpuMs": [
+      5.666,
+      4.497,
+      3.412,
+      3.212,
+      3.816,
+      3.256,
+      3.293,
+      3.064,
+      3.605,
+      3.945,
+      3.235,
+      3.008,
+      3.384,
+      3.058,
+      3.68,
+      3.06,
+      3.134,
+      3.225,
+      3.549,
+      2.982,
+      4.336,
+      3.401,
+      3.224,
+      3.501,
+      3.07,
+      3.048,
+      3.08,
+      3.424,
+      2.895,
+      4.131
+    ]
+  },
+  "metrics": {
+    "wallMs": {
+      "n": 30,
+      "min": 2.893374999999992,
+      "p50": 3.13341699999998,
+      "p95": 3.3609590000000082,
+      "max": 3.5983329999999967,
+      "mean": 3.1600167666666645
+    },
+    "cpuMs": {
+      "n": 30,
+      "min": 2.895,
+      "p50": 3.256,
+      "p95": 4.497,
+      "max": 5.666,
+      "mean": 3.4730333333333334
+    }
+  },
+  "phases": {},
+  "before": {
+    "rss": 157122560,
+    "heapTotal": 30081024,
+    "heapUsed": 11215680,
+    "external": 11811775,
+    "arrayBuffers": 143619
+  },
+  "after": {
+    "rss": 184909824,
+    "heapTotal": 50003968,
+    "heapUsed": 23573416,
+    "external": 11811831,
+    "arrayBuffers": 143635
+  },
+  "collectedAfter": {
+    "rss": 185057280,
+    "heapTotal": 48431104,
+    "heapUsed": 11290728,
+    "external": 11811831,
+    "arrayBuffers": 143635
+  },
+  "peakBeforeKiB": 153440,
+  "peakAfterKiB": 180576,
+  "profiles": [],
+  "scope": "Real core quiet steps over retained stopped bees. Imports, seeding and correctness assertions are outside the measured interval. Profile mode includes per-phase CPU/wall recording and V8 sampling, so its timing is not compared with uninstrumented timing. RSS is process resident memory, not private memory; maxRSS includes setup. Collected heap usage is not total allocation. Allocation profiles include sampled objects collected during the measured interval."
+}
