@@ -1,0 +1,93 @@
+{
+  "snapshotPath": "/private/tmp/honeybee-autotitle-cache-heap-fixture-warm.heapsnapshot",
+  "snapshotSha256": "6946dc066d1e17931f8d512b7a33cd98b1c86576de68380e8e0ac6e86a0d2988",
+  "toolSha256": "ad87cf648853f10f005ba21bc94f31a9e28e723d11c7c7c6ba6008d48c205086",
+  "scope": "Offline structural inspection of the candidate's closure-local title cache.\n\nConsumes V8's own metadata fields from a JSON heap snapshot. Follows the\ncontext slot named quietBaselines to a Map, then that Map's table to entry\nobjects with membership/signature properties. Counts observed objects only.\nThis is neither a dominator calculation nor retained-byte attribution.\nSource review must verify the slot name belongs to the intended dispatcher.\n",
+  "cacheSlots": [
+    {
+      "context": {
+        "id": 82859,
+        "type": "object",
+        "name": "system / Context",
+        "shallowBytes": 40
+      },
+      "slot": "quietBaselines",
+      "target": {
+        "id": 84365,
+        "type": "object",
+        "name": "Map",
+        "shallowBytes": 32
+      },
+      "entries": [
+        {
+          "entry": {
+            "id": 83055,
+            "type": "object",
+            "name": "Object",
+            "shallowBytes": 40
+          },
+          "membership": {
+            "id": 83059,
+            "type": "object",
+            "name": "Object",
+            "shallowBytes": 48
+          },
+          "signature": {
+            "id": 82931,
+            "type": "concatenated string",
+            "name": "(concatenated string)",
+            "shallowBytes": 32
+          }
+        },
+        {
+          "entry": {
+            "id": 82935,
+            "type": "object",
+            "name": "Object",
+            "shallowBytes": 40
+          },
+          "membership": {
+            "id": 82937,
+            "type": "object",
+            "name": "Object",
+            "shallowBytes": 48
+          },
+          "signature": {
+            "id": 82939,
+            "type": "concatenated string",
+            "name": "(concatenated string)",
+            "shallowBytes": 32
+          }
+        },
+        {
+          "entry": {
+            "id": 82841,
+            "type": "object",
+            "name": "Object",
+            "shallowBytes": 40
+          },
+          "membership": {
+            "id": 82843,
+            "type": "object",
+            "name": "Object",
+            "shallowBytes": 48
+          },
+          "signature": {
+            "id": 82845,
+            "type": "concatenated string",
+            "name": "(concatenated string)",
+            "shallowBytes": 32
+          }
+        }
+      ],
+      "table": {
+        "id": 83051,
+        "type": "array",
+        "name": "",
+        "shallowBytes": 152
+      },
+      "observedEntryObjects": 3
+    }
+  ],
+  "coreStoreObjects": 0
+}
