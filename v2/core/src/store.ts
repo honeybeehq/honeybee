@@ -4965,7 +4965,7 @@ export class CoreStore {
   listActiveBeeMoves(): BeeMoveRow[] {
     return (this.stmt(
       `SELECT m.* FROM bees b JOIN bee_moves m ON m.id = b.active_move_id
-       WHERE b.active_move_id IS NOT NULL ORDER BY m.id`,
+       WHERE b.active_move_id IS NOT NULL ORDER BY b.active_move_id`,
     ).all() as Row[]).map(mapBeeMove);
   }
 

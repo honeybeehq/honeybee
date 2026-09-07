@@ -470,3 +470,65 @@ test("cell-move.composeDeveloperInstructions preserves existing custom text", ()
   assert.equal(composeDeveloperInstructions(`keep me\n\n${overlay}`, overlay), `keep me\n\n${overlay}`);
   assert.equal(composeDeveloperInstructions(undefined, undefined), undefined);
 });
+
+test("cell-move.discovery: scans active pointers, preserves receipt order and rollback", () => {
+  const h = harness();
+  const store = h.open();
+  try {
+    const create = (name: string) => {
+      const { bee } = store.createBee({ name, agent: "claude", substrate: "cell", cwd: `/tmp/${name}` });
+      const cell = putActiveCell(store, bee.id, bee.cwd);
+      return (key: string) => store.admitBeeMove({
+        beeId: bee.id,
+        idempotencyKey: key,
+        requestHash: key,
+        expected: { placementVersion: 0, cellId: cell.id },
+        destinationCwd: "/tmp/checkout",
+      });
+    };
+    const first = create("discovery-first");
+    for (let i = 0; i < 64; i++) {
+      const receipt = first(`history-${i}`);
+      store.failBeeMove(receipt.id, { stage: "context", code: "transcript_unavailable", detail: "fixture" });
+    }
+    const active = [first("active-first"), create("discovery-second")("active-second")]
+      .sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+
+    // Capture the actual production query before its first cached preparation.
+    let discoverySql = "";
+    const prepare = DatabaseSync.prototype.prepare;
+    DatabaseSync.prototype.prepare = function (sql: string) {
+      if (sql.includes("SELECT m.* FROM bees b JOIN bee_moves m")) discoverySql = sql;
+      return prepare.call(this, sql);
+    };
+    try {
+      assert.deepEqual(store.listActiveBeeMoves(), active);
+    } finally {
+      DatabaseSync.prototype.prepare = prepare;
+    }
+    assert.ok(discoverySql, "the discovery query must be observed");
+    assert.throws(() => store.transact(() => {
+      for (const move of active) {
+        store.failBeeMove(move.id, { stage: "context", code: "transcript_unavailable", detail: "rollback" });
+      }
+      assert.deepEqual(store.listActiveBeeMoves(), []);
+      throw new Error("rollback discovery");
+    }), /rollback discovery/);
+    assert.deepEqual(store.listActiveBeeMoves(), active);
+    store.close();
+
+    const db = new DatabaseSync(h.path, { readOnly: true });
+    try {
+      const plan = db.prepare(`EXPLAIN QUERY PLAN ${discoverySql}`).all().map((row) => String(row.detail));
+      assert.ok(plan.some((line) => line.includes("bees_one_active_move")), plan.join("\n"));
+      assert.ok(!plan.some((line) => /\bSCAN m\b/.test(line)), "discovery must not walk retained move history:\n" + plan.join("\n"));
+    } finally {
+      db.close();
+    }
+    const reopened = h.open();
+    assert.deepEqual(reopened.listActiveBeeMoves(), active);
+    reopened.close();
+  } finally {
+    h.cleanup();
+  }
+});
