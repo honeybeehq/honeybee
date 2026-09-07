@@ -14,7 +14,7 @@ import { mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { HsrDriver, type SpawnSpec } from "../src/index.ts";
-import { codexAdapter, stubAdapter } from "../../adapters/src/index.ts";
+import { codexAdapter, stubAdapter, type HarnessAdapter } from "../../adapters/src/index.ts";
 import type { DriverObservation } from "../../harness/src/driver.ts";
 import { AGENT_PATH, drainUntil as drainDriverUntil, ofKind, pidAlive, sleep } from "./helpers.ts";
 
@@ -36,13 +36,13 @@ function drainUntil(
   return drainDriverUntil(driver, predicate, timeoutMs);
 }
 
-function makeDriver(dir: string): HsrDriver {
+function makeDriver(dir: string, adapter: HarnessAdapter = stubAdapter): HsrDriver {
   return new HsrDriver({
     sessionLogDir: join(dir, "logs"),
     stopKillGraceMs: 400,
     resolve(): SpawnSpec {
       return {
-        adapter: stubAdapter,
+        adapter,
         command: process.execPath,
         args: [AGENT_PATH],
         cwd: dir,
@@ -51,6 +51,135 @@ function makeDriver(dir: string): HsrDriver {
     },
   });
 }
+
+test("mail delivery stays unconsumed until the runner socket connects, then sends once", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "hb-v2-runner-connect-"));
+  const readyAtSpawnStub = { ...stubAdapter, readyAtSpawn: true } satisfies HarnessAdapter;
+  const driver = makeDriver(dir, readyAtSpawnStub);
+  try {
+    driver.start("bee-connect", 1);
+
+    // readyAtSpawn opens the harness accept point synchronously, before the
+    // detached runner host can finish listening on its Unix socket.
+    assert.deepEqual(driver.deliver("bee-connect", 1, 71, "once connected"), {
+      accepted: false,
+      reason: "not_ready",
+    });
+    assert.equal(driver.consumedGeneration(71), undefined, "mail remains durable for daemon retry");
+
+    await deliverUntilAccepted(driver, "bee-connect", 1, 71, "once connected");
+    assert.equal(driver.consumedGeneration(71), 1);
+    await waitForJournal(
+      driver.observationLogPath("bee-connect", 1),
+      (text) => text.includes('"turn_ended","messageId":71'),
+    );
+    const transcript = readFileSync(driver.sessionLogPath("bee-connect"), "utf8");
+    assert.equal(
+      transcript.match(/"type":"message","id":71/g)?.length,
+      1,
+      "the refused attempt never reaches the runner's pending write queue",
+    );
+
+    driver.stop("bee-connect", 1, "stopped_by_system");
+    await drainUntil(driver, (events) => ofKind(events, "exited").length > 0);
+  } finally {
+    driver.disposeAll();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("host delivery refuses before encoding and distinguishes write throws from backpressure", (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "hb-v2-runner-write-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  let encodes = 0;
+  const adapter = {
+    ...stubAdapter,
+    encodeMessage(body: string): string {
+      encodes += 1;
+      return JSON.stringify({ type: "message", body });
+    },
+  } satisfies HarnessAdapter;
+  type SocketProbe = {
+    destroyed: boolean;
+    writable: boolean;
+    write(frame: string): boolean;
+  };
+  type ProcessProbe = {
+    beeId: string;
+    generation: number;
+    exited: boolean;
+    degraded: boolean;
+    adapter: HarnessAdapter;
+    phase: "idle" | "running";
+    sessionId: string | null;
+    turnId: string | null;
+    pendingDeliveries: Set<number>;
+    confirmedDeliveries: Set<number>;
+    stopCause: null;
+    hostStyle: true;
+    socketBroken: boolean;
+    socket: SocketProbe | null;
+    legacySharedObservation: boolean;
+    outboundPending: string[];
+    pendingWrites: string[];
+  };
+  const driver = makeDriver(dir, adapter);
+  const procs = (driver as unknown as { procs: Map<string, ProcessProbe> }).procs;
+  const proc: ProcessProbe = {
+    beeId: "bee-write",
+    generation: 1,
+    exited: false,
+    degraded: false,
+    adapter,
+    phase: "idle",
+    sessionId: null,
+    turnId: null,
+    pendingDeliveries: new Set<number>(),
+    confirmedDeliveries: new Set<number>(),
+    stopCause: null,
+    hostStyle: true,
+    socketBroken: false,
+    socket: null,
+    legacySharedObservation: false,
+    outboundPending: [],
+    pendingWrites: [],
+  };
+  procs.set(proc.beeId, proc);
+
+  assert.deepEqual(driver.deliver(proc.beeId, 1, 72, "not connected"), {
+    accepted: false,
+    reason: "not_ready",
+  });
+  assert.equal(encodes, 0, "a refused delivery has no adapter encoding effects");
+
+  const frames: string[] = [];
+  proc.socket = {
+    destroyed: false,
+    writable: true,
+    write(frame): boolean {
+      frames.push(frame);
+      return false;
+    },
+  };
+  assert.deepEqual(driver.deliver(proc.beeId, 1, 73, "backpressure"), { accepted: true });
+  assert.equal(frames.length, 1, "socket.write(false) is one accepted write");
+  assert.equal(driver.consumedGeneration(73), 1);
+
+  proc.socket = {
+    destroyed: false,
+    writable: true,
+    write(): boolean {
+      throw new Error("synchronous socket failure");
+    },
+  };
+  assert.deepEqual(driver.deliver(proc.beeId, 1, 74, "throws"), {
+    accepted: false,
+    reason: "not_ready",
+  });
+  assert.equal(driver.consumedGeneration(74), undefined, "a thrown write leaves mail retryable");
+  assert.deepEqual(proc.pendingWrites, [], "failed mail is never parked in daemon-only memory");
+  procs.delete(proc.beeId);
+});
 
 function makeCodexDriver(dir: string): HsrDriver {
   return new HsrDriver({
@@ -169,7 +298,7 @@ test("daemon restart: the runtime survives and the successor daemon delivers at 
   try {
     first.start("bee-r", 1);
     await drainUntil(first, (e) => ofKind(e, "booted").length > 0);
-    assert.equal(first.deliver("bee-r", 1, 1, "hello before restart").accepted, true);
+    await deliverUntilAccepted(first, "bee-r", 1, 1, "hello before restart");
     await drainUntil(first, (e) => ofKind(e, "turn_ended").length > 0);
     const checkpoint = checkpointOf(first, "bee-r");
     const proc = first.procOf("bee-r", 1)!;
@@ -232,7 +361,7 @@ test("adoption replays a runner-persisted completion missed by the dead daemon",
     const checkpoint = checkpointOf(first, "bee-gap");
     const proc = first.procOf("bee-gap", 1)!;
 
-    assert.equal(first.deliver("bee-gap", 1, 55, "@slow:80 persisted before crash").accepted, true);
+    await deliverUntilAccepted(first, "bee-gap", 1, 55, "@slow:80 persisted before crash");
     const journal = first.observationLogPath("bee-gap", 1);
     await waitForJournal(journal, (text) => text.includes('"turn_ended","messageId":55'));
     // Do not call observe(): this is the crash gap — the runner owns the
@@ -264,7 +393,7 @@ test("recovery replay after the completion fold is idempotent", async () => {
     await drainUntil(first, (events) => ofKind(events, "turn_ended").length > 0);
     const checkpointBeforeTurn = checkpointOf(first, "bee-dupe");
     const proc = first.procOf("bee-dupe", 1)!;
-    assert.equal(first.deliver("bee-dupe", 1, 56, "folded but not checkpointed").accepted, true);
+    await deliverUntilAccepted(first, "bee-dupe", 1, 56, "folded but not checkpointed");
     await drainUntil(first, (events) => ofKind(events, "turn_ended").length > 0);
     const checkpointAfterFold = checkpointOf(first, "bee-dupe");
     assert.ok(checkpointAfterFold > checkpointBeforeTurn);
@@ -302,11 +431,11 @@ test("recovery preserves journal order when completion is followed by a newer tu
     const checkpoint = checkpointOf(first, "bee-newer");
     const proc = first.procOf("bee-newer", 1)!;
 
-    assert.equal(first.deliver("bee-newer", 1, 61, "first").accepted, true);
+    await deliverUntilAccepted(first, "bee-newer", 1, 61, "first");
     await drainUntil(first, (events) => ofKind(events, "turn_ended").length > 0);
     // Deliberately leave the first turn's cursor uncommitted, then start a
     // newer long-running turn before the daemon dies.
-    assert.equal(first.deliver("bee-newer", 1, 62, "@hang second").accepted, true);
+    await deliverUntilAccepted(first, "bee-newer", 1, 62, "@hang second");
     await waitForJournal(
       first.observationLogPath("bee-newer", 1),
       (text) => text.includes('"turn_started","messageId":62'),
@@ -382,7 +511,7 @@ test("a genuinely long-running silent turn stays running across adoption", async
     await drainUntil(first, (events) => ofKind(events, "turn_ended").length > 0);
     checkpointOf(first, "bee-silent");
     const proc = first.procOf("bee-silent", 1)!;
-    assert.equal(first.deliver("bee-silent", 1, 81, "@hang").accepted, true);
+    await deliverUntilAccepted(first, "bee-silent", 1, 81, "@hang");
     await drainUntil(first, (events) => ofKind(events, "turn_started").length > 0);
     await waitForJournal(
       first.observationLogPath("bee-silent", 1),

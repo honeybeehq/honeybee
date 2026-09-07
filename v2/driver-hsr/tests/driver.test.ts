@@ -27,6 +27,24 @@ import {
   sleep,
 } from "./helpers.ts";
 
+async function deliverUntilAccepted(
+  driver: HsrDriver,
+  beeId: string,
+  generation: number,
+  messageId: number,
+  body: string,
+  timeoutMs = 15_000,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const outcome = driver.deliver(beeId, generation, messageId, body);
+    if (outcome.accepted) return;
+    assert.equal(outcome.reason, "not_ready", `delivery ${messageId} refusal`);
+    if (Date.now() > deadline) throw new Error(`delivery ${messageId} was never accepted for ${beeId}`);
+    await sleep(10);
+  }
+}
+
 test("spawn: booted carries pid-at-spawn identity; own process group; verbatim session log", async () => {
   const rig = makeRig();
   try {
@@ -86,7 +104,7 @@ test("deliver: not_ready while booting (Q2); accepted at idle; ground truth + ag
     assert.equal(rig.driver.consumedGeneration(11), undefined);
 
     await drainUntil(rig.driver, (e) => ofKind(e, "turn_ended").length >= 1); // booted → idle
-    assert.deepEqual(rig.driver.deliver("bee-b", 1, 11, "hello"), { accepted: true });
+    await deliverUntilAccepted(rig.driver, "bee-b", 1, 11, "hello");
     assert.equal(rig.driver.consumedGeneration(11), 1);
 
     const events = await drainUntil(
@@ -156,13 +174,13 @@ test("crash mid-turn → exited(crashed); hang → no turn_ended, stop still wor
   try {
     rig.driver.start("bee-e", 1);
     await drainUntil(rig.driver, (e) => ofKind(e, "turn_ended").length >= 1);
-    assert.equal(rig.driver.deliver("bee-e", 1, 21, "@crash").accepted, true);
+    await deliverUntilAccepted(rig.driver, "bee-e", 1, 21, "@crash");
     const crashed = await drainUntil(rig.driver, (e) => ofKind(e, "exited").length > 0);
     assert.equal(ofKind(crashed, "exited")[0]!.exitCause, "crashed");
 
     rig.driver.start("bee-f", 1);
     await drainUntil(rig.driver, (e) => ofKind(e, "turn_ended").length >= 1);
-    assert.equal(rig.driver.deliver("bee-f", 1, 22, "@hang").accepted, true);
+    await deliverUntilAccepted(rig.driver, "bee-f", 1, 22, "@hang");
     await drainUntil(rig.driver, (e) => ofKind(e, "turn_started").length >= 1);
     await sleep(150);
     assert.deepEqual(ofKind(rig.driver.observe(), "turn_ended"), [], "a hung turn must not end");
@@ -179,7 +197,7 @@ test("clean exit after a turn → exited(clean)", async () => {
   try {
     rig.driver.start("bee-g", 1);
     await drainUntil(rig.driver, (e) => ofKind(e, "turn_ended").length >= 1);
-    assert.equal(rig.driver.deliver("bee-g", 1, 31, "done please @exit").accepted, true);
+    await deliverUntilAccepted(rig.driver, "bee-g", 1, 31, "done please @exit");
     const events = await drainUntil(rig.driver, (e) => ofKind(e, "exited").length > 0);
     assert.equal(ofKind(events, "exited")[0]!.exitCause, "clean");
     // The turn completed before the exit.
@@ -258,18 +276,18 @@ test("flag evidence: auth/rate-limit setters and their contrary-evidence clearer
     );
     assert.ok(bootEvidence.every((f) => f.beeId === "bee-j" && f.generation === 1));
 
-    assert.equal(rig.driver.deliver("bee-j", 1, 41, "@authfail").accepted, true);
+    await deliverUntilAccepted(rig.driver, "bee-j", 1, 41, "@authfail");
     await drainEvidenceUntil(rig.driver, (ev) =>
       ev.some((f) => f.flag === "auth_needed" && f.action === "set"),
     );
 
-    assert.equal(rig.driver.deliver("bee-j", 1, 42, "@ratelimit").accepted, true);
+    await deliverUntilAccepted(rig.driver, "bee-j", 1, 42, "@ratelimit");
     await drainEvidenceUntil(rig.driver, (ev) =>
       ev.some((f) => f.flag === "resource_blocked" && f.action === "set"),
     );
 
     // A successful turn clears both (the flag-clearing rule, spec 03).
-    assert.equal(rig.driver.deliver("bee-j", 1, 43, "all good now").accepted, true);
+    await deliverUntilAccepted(rig.driver, "bee-j", 1, 43, "all good now");
     const clears = await drainEvidenceUntil(rig.driver, (ev) =>
       ev.some((f) => f.flag === "auth_needed" && f.action === "clear") &&
       ev.some((f) => f.flag === "resource_blocked" && f.action === "clear"),
@@ -387,11 +405,11 @@ test("session log survives across generations as one verbatim stream (Q1)", asyn
   }
 });
 
-test("readyAtSpawn: silent-until-input runtime (claude stream-json) is deliverable at spawn", async (t) => {
+test("readyAtSpawn: silent-until-input runtime is deliverable once its runner socket connects", async (t) => {
   // Encodes the WP3 smoke discovery: claude -p --input-format stream-json
   // emits NOTHING until the first stdin message. Waiting for init deadlocks;
-  // readyAtSpawn adapters must get a synthetic booted and accept delivery
-  // immediately, with stdin buffering carrying the message.
+  // readyAtSpawn adapters open their accept point without output, then accept
+  // delivery as soon as the durable runner owns the connected write lane.
   const dir = mkdtempSync(join(tmpdir(), "hive-drv-ras-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const fake = join(dir, "silent-claude.mjs");
@@ -419,8 +437,7 @@ test("readyAtSpawn: silent-until-input runtime (claude stream-json) is deliverab
   });
   try {
     driver.start("ras-1", 1);
-    const out = driver.deliver("ras-1", 1, 1, "hello");
-    assert.equal(out.accepted, true, `deliver at spawn: ${out.reason ?? "accepted"}`);
+    await deliverUntilAccepted(driver, "ras-1", 1, 1, "hello");
     // The synthetic booted observation arrives as soon as the OS confirms the
     // spawn (the `spawn` event, milliseconds) — never gated on the runtime's
     // first output line.
@@ -482,7 +499,7 @@ test("readyAtSpawn with NOTHING to deliver: the synthetic booted is paired with 
     assert.ok(events.indexOf(booted[0]!) < events.indexOf(ended[0]!), "booted precedes its turn_ended");
     assert.equal(ofKind(events, "turn_started").length, 0, "nothing was injected: no turn opened");
     // A later delivery opens and closes a REAL turn on top of that idle.
-    assert.equal(driver.deliver("ras-idle", 1, 1, "hello").accepted, true);
+    await deliverUntilAccepted(driver, "ras-idle", 1, 1, "hello");
     const turn = await drainUntil(driver, (e) => ofKind(e, "turn_ended").length > 0, 3000);
     assert.equal(ofKind(turn, "turn_started")[0]!.synthetic, true, "deliver-opened turn_started is synthetic");
     assert.notEqual(ofKind(turn, "turn_ended")[0]!.synthetic, true, "the parsed result is the real turn_ended");
@@ -561,9 +578,10 @@ test("readyAtSpawn status poll (deterministic, no spawn): synthetic booted pairs
   }
 });
 
-test("readyAtSpawn with a delivery BEFORE the OS confirms the agent: no synthetic turn_ended — the real result closes the open turn", async (t) => {
-  // Delivery at spawn opens the turn driver-side (phase running) before the
-  // status poll mints the synthetic booted. A synthetic turn_ended there
+test("readyAtSpawn with delivery before the driver observes OS confirmation: no synthetic turn_ended", async (t) => {
+  // Delivery after the runner socket connects opens the turn driver-side
+  // (phase running) before observe() folds the status-backed synthetic
+  // booted. A synthetic turn_ended there
   // would idle the store under a turn that is actually in flight (the
   // 2026-08-19 'needs your reply while working' class) — so it is suppressed.
   const dir = mkdtempSync(join(tmpdir(), "hive-drv-ras-race-"));
@@ -576,7 +594,7 @@ test("readyAtSpawn with a delivery BEFORE the OS confirms the agent: no syntheti
   });
   try {
     driver.start("ras-race", 1);
-    assert.equal(driver.deliver("ras-race", 1, 1, "hello").accepted, true, "accept point is open at spawn");
+    await deliverUntilAccepted(driver, "ras-race", 1, 1, "hello");
     const events = await drainUntil(driver, (e) => ofKind(e, "turn_ended").length > 0, 3000);
     assert.equal(ofKind(events, "booted")[0]!.synthetic, true, "spawn-event booted is synthetic");
     const ended = ofKind(events, "turn_ended");
@@ -699,7 +717,7 @@ test("readyAtSpawn v9: the first parsed output pushes a REAL booted (boot eviden
     assert.ok(booted[1]!.pid != null && booted[1]!.pid > 0, "the real booted carries process identity");
     // Delivery into the idle accept point opens the turn driver-side —
     // synthetic; the stub's turn_ended is parsed output — real.
-    assert.equal(driver.deliver("synth-2", 1, 7, "hi").accepted, true);
+    await deliverUntilAccepted(driver, "synth-2", 1, 7, "hi");
     const turn = await drainUntil(driver, (e) => ofKind(e, "turn_ended").length > 0, 3000);
     assert.equal(ofKind(turn, "turn_started")[0]!.synthetic, true, "deliver-opened turn_started is synthetic");
     assert.notEqual(ofKind(turn, "turn_ended")[0]!.synthetic, true, "parsed turn_ended is real");
@@ -739,7 +757,7 @@ test("late init must not close an in-flight turn (cell smoke 2026-08-17 phantom 
   try {
     driver.start("li-1", 1);
     driver.observe(); // synthetic booted
-    assert.equal(driver.deliver("li-1", 1, 1, "work").accepted, true);
+    await deliverUntilAccepted(driver, "li-1", 1, 1, "work");
     const t0 = Date.now();
     let endedAt: number | null = null;
     const seen: string[] = [];
@@ -827,7 +845,7 @@ test("v6 interrupt: idle → reasoned no-op; mid-turn (hung) → in-band interru
     assert.deepEqual(rig.driver.interrupt("bee-i", 1), { interrupted: false, reason: "idle" });
 
     // a hung turn: never ends on its own
-    assert.deepEqual(rig.driver.deliver("bee-i", 1, 21, "@hang"), { accepted: true });
+    await deliverUntilAccepted(rig.driver, "bee-i", 1, 21, "@hang");
     await drainUntil(rig.driver, (e) => ofKind(e, "turn_started").length >= 1);
     await sleep(80);
     assert.deepEqual(rig.driver.observe().filter((e) => e.kind === "turn_ended"), [], "hung: no turn_ended");
@@ -842,7 +860,7 @@ test("v6 interrupt: idle → reasoned no-op; mid-turn (hung) → in-band interru
     assert.match(log, /"turn_ended","messageId":21,"ok":true,"interrupted":true/);
 
     // the runtime is idle again and takes the next message
-    assert.deepEqual(rig.driver.deliver("bee-i", 1, 22, "after"), { accepted: true });
+    await deliverUntilAccepted(rig.driver, "bee-i", 1, 22, "after");
     const next = await drainUntil(rig.driver, (e) => ofKind(e, "turn_ended").length >= 1);
     assert.equal(ofKind(next, "exited").length, 0);
     assert.match(readFileSync(rig.driver.sessionLogPath("bee-i"), "utf8"), /echo:after/);
@@ -873,7 +891,7 @@ test("v6 interrupt: a harness without an in-band interrupt answers unsupported (
     try {
       driver.start("bee-u", 1);
       await drainUntil(driver, (e) => ofKind(e, "turn_ended").length >= 1);
-      assert.deepEqual(driver.deliver("bee-u", 1, 31, "@hang"), { accepted: true });
+      await deliverUntilAccepted(driver, "bee-u", 1, 31, "@hang");
       await drainUntil(driver, (e) => ofKind(e, "turn_started").length >= 1);
       assert.deepEqual(driver.interrupt("bee-u", 1), { interrupted: false, reason: "unsupported" });
       assert.ok(driver.hasProcess("bee-u", 1));
