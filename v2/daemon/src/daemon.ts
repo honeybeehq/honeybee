@@ -73,9 +73,11 @@ import {
   readLedger,
   reserveCell,
   revParse,
+  sandboxWritableDirectory,
   sanitizeComponent,
   type CellSpec,
   type ReserveRequest,
+  type SandboxWritableDirectory,
 } from "../../driver-cell/src/index.ts";
 import { SubstrateRouter } from "./substrates.ts";
 import { TmuxDriver, claudeProjectKey } from "../../driver-tmux/src/index.ts";
@@ -505,6 +507,7 @@ export class HiveDaemon {
       nodeKind: this.cfg.nodeKind,
       resolveHarness: (beeId: string) => this.resolveSpawnSpec(beeId),
       resolveCell: (beeId: string) => this.resolveCellSpec(beeId),
+      resolveSandboxWritablePaths: (beeId: string) => this.resolveCellSandboxWritablePaths(beeId),
       hsr: hsrConfig,
       backgroundProvisioning: true,
     });
@@ -812,6 +815,21 @@ export class HiveDaemon {
       throw new Error(`resolveCell: bee ${beeId} cell ${bee.cwd} is outside cells root ${this.cfg.cellsRoot} (cells.root changed?)`);
     }
     return { provision, sandbox: ledger.sandbox ?? this.cfg.cellSandbox };
+  }
+
+  /** The exact persisted account home is the only per-bee sandbox grant. */
+  private resolveCellSandboxWritablePaths(beeId: string): readonly SandboxWritableDirectory[] {
+    const store = this.mustStore();
+    const bee = store.getBee(beeId);
+    if (!bee) throw new Error(`resolveCellSandboxWritablePaths: bee ${beeId} not found`);
+    if (!bee.account) return [];
+    const account = store.getAccount(bee.account);
+    if (!account) {
+      throw new Error(`resolveCellSandboxWritablePaths: bee ${beeId} is bound to unknown account ${bee.account}`);
+    }
+    return [sandboxWritableDirectory(account.homePath, {
+      forbiddenDirectories: [this.cfg.accounts.homesDir],
+    })];
   }
 
   /**
