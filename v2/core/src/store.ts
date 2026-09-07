@@ -2708,14 +2708,12 @@ export class CoreStore {
    * Both placeholders MUST bind the same bee.
    */
   listMessages(beeId: string): MessageRow[] {
-    const rows = this.db
-      .prepare(
-        `SELECT * FROM mailbox WHERE bee_id = ? AND delivered_at IS NULL
+    const rows = this.stmt(
+      `SELECT * FROM mailbox WHERE bee_id = ? AND delivered_at IS NULL
          UNION ALL
          SELECT * FROM mailbox WHERE bee_id = ? AND delivered_at IS NOT NULL
          ORDER BY id`,
-      )
-      .all(beeId, beeId) as Row[];
+    ).all(beeId, beeId) as Row[];
     return rows.map(mapMessage);
   }
 
