@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -53,6 +53,7 @@ test('cell-exit smoke pairs one root with itself and produces exact deterministi
     assert.ok(report.rows.every(row => row.before.n === 6 && row.after.n === 6));
     assert.match(report.environment.gitVersion, /^git version /);
     assert.equal(report.changedSourceFiles.length, 0);
+    assert.equal(Object.hasOwn(report, 'gitRusage'), false, 'default mode performs no rusage diagnostic');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -64,9 +65,34 @@ test('cell-exit rejects invalid bounds, cases, and missing arguments before any 
     ['--before', root, '--after', root, '--out', 'x.json', '--rounds', '2'],
     ['--before', root, '--after', root, '--out', 'x.json', '--scale', 'huge'],
     ['--before', root, '--after', root, '--out', 'x.json', '--case', 'unknown-case'],
+    ['--before', root, '--after', root, '--out', 'x.json', '--git-rusage'],
+    ['--before', root, '--after', root, '--out', 'x.json', '--git-rusage-python', '/python'],
   ]) {
     const run = spawnSync(process.execPath, [ruler, ...argv], { cwd: root, encoding: 'utf8', timeout: 30_000 });
     assert.equal(run.status, 1, run.stdout);
-    assert.match(run.stderr, /usage:|rounds must|scale must|unknown case/);
+    assert.match(run.stderr, /usage:|rounds must|scale must|unknown case|git-rusage/);
+  }
+});
+
+test('cell-exit records rusage setup failure and removes its owned run directory', {
+  skip: process.platform !== 'darwin',
+}, () => {
+  const dir = mkdtempSync(join(tmpdir(), 'hb-cell-exit-rusage-failure-test-'));
+  try {
+    const out = join(dir, 'report.json');
+    const run = spawnSync(process.execPath, [ruler,
+      '--before', root, '--after', root, '--out', out,
+      '--rounds', '3', '--scale', 'smoke', '--case', 'refused-checked-out',
+      '--git-rusage', '--git-rusage-python', '/definitely/missing/python',
+    ], { cwd: root, encoding: 'utf8', env: { ...process.env, TMPDIR: dir }, timeout: 60_000 });
+    assert.equal(run.status, 1, run.stdout);
+    assert.match(run.stderr, /ENOENT|no such file/i);
+    const report = JSON.parse(readFileSync(out, 'utf8'));
+    assert.equal(report.completed, false);
+    assert.equal(report.failure.scenario, 'git-rusage-setup');
+    assert.equal(report.gitRusage.provenance, null);
+    assert.deepEqual(readdirSync(dir), ['report.json'], 'owned hb-cell-exit runDir must be removed');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 });

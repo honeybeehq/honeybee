@@ -12,6 +12,10 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { bootIdentity } from './boot-identity.mjs';
 import { distribution } from './report.mjs';
 import { summarizeGitTrace } from './git-trace.mjs';
+import {
+  aggregateGitRusage, captureGitRusage, setupGitRusage,
+  validateGitRusageMode, verifyGitRusageSetup,
+} from './git-rusage.mjs';
 
 assert.equal(process.env.GIT_TRACE2_EVENT, undefined, 'unset inherited GIT_TRACE2_EVENT for uninstrumented timing');
 
@@ -40,11 +44,19 @@ function option(name, fallback) {
   assert.ok(value !== undefined && !String(value).startsWith('--'), `${name} requires a value`);
   return value;
 }
+function flag(name) {
+  const count = args.filter(value => value === name).length;
+  assert.ok(count <= 1, `${name} may be specified only once`);
+  return count === 1;
+}
 const beforeArg = option('--before', '');
 const afterArg = option('--after', '');
 const outArg = option('--out', '');
+const gitRusageEnabled = flag('--git-rusage');
+const gitRusagePython = option('--git-rusage-python', undefined);
 assert.ok(beforeArg && afterArg && outArg,
-  'usage: cell-exit.mjs --before root --after root --out report.json [--rounds 5] [--scale smoke|canonical|stress] [--case a,b] [--expected-changed files]');
+  'usage: cell-exit.mjs --before root --after root --out report.json [--rounds 5] [--scale smoke|canonical|stress] [--case a,b] [--expected-changed files] [--git-rusage --git-rusage-python /absolute/python]');
+validateGitRusageMode({ enabled: gitRusageEnabled, pythonExecutable: gitRusagePython });
 const beforeRoot = resolve(beforeArg);
 const afterRoot = resolve(afterArg);
 const out = resolve(outArg);
@@ -94,7 +106,10 @@ function gitFingerprint(root) {
     diffSha256: sha256(g('diff', '--binary', 'HEAD')),
     hashes: Object.fromEntries(files.map(p => [p, digestFile(join(root, p))])) };
 }
-const fingerprintTools = () => Object.fromEntries(['cell-exit.mjs', 'report.mjs', 'boot-identity.mjs', 'git-trace.mjs']
+const fingerprintTools = () => Object.fromEntries([
+  'cell-exit.mjs', 'report.mjs', 'boot-identity.mjs', 'git-trace.mjs',
+  'git-rusage.mjs', 'git-rusage-shim.py',
+]
   .map(p => [p, digestFile(join(scriptDir, p))]));
 
 const startedAt = new Date().toISOString();
@@ -255,11 +270,17 @@ function parseTrace2(path, retainedPath) {
 
 const cfg = SCALE[scale];
 const runDir = mkdtempSync(join(tmpdir(), 'hb-cell-exit-'));
+let gitRusageSession = null;
 const report = {
   schemaVersion: 1, completed: false, startedAt, timestamp: null,
   measurement: { startedAt: null, finishedAt: null },
   sources, changedSourceFiles, expectedChangedFiles: expectedChangedArg ?? null,
   sharedModuleIdentity: captures[0] === captures[1], toolHashes,
+  ...(gitRusageEnabled ? { gitRusage: {
+    enabled: true, diagnosticOnly: true, macOSOnly: true,
+    provenance: null,
+    rawArtifacts: [],
+  } } : {}),
   environment: { node: process.version, execArgv: process.execArgv, platform: process.platform, arch: process.arch,
     cpu: cpus()[0]?.model ?? null, logicalCpus: cpus().length, hostname: hostname(), bootIdentity: bootIdentity(),
     gitVersion: rulerGit(runDir, ['--version']).stdout.trim(),
@@ -270,7 +291,9 @@ const report = {
     pinnedDates: FIXED_DATE,
     order: 'ABBA per round; one unmeasured warmup sample per side per case; assertions and resets outside timing' },
   results: [], rows: [], failure: null,
-  scope: 'Real captureWork from both roots over disposable deterministic Git repositories. Wall time includes synchronous git children; cpuMs is the PARENT process only and excludes git child CPU. Trace2 process counts come from one separate diagnostic sample per side and are attribution evidence, never timing. Fixture setup, expectation checks, ref-set resets, and cleanup are outside timed samples. No production store, daemon, RPC, or provisioning is involved; nothing here measures whole-daemon behavior.',
+  scope: gitRusageEnabled
+    ? 'Real captureWork from both roots over disposable deterministic Git repositories. Headline wall/cpu arrays contain only the original uninstrumented ABBA calls; cpuMs remains parent Node CPU. Trace2 and Git rusage each use their own later captureWork call per side/case. The rusage call has Trace2 disabled and reports real Git plus terminated descendants waited into macOS RUSAGE_CHILDREN; wrapper CPU is excluded. Trace2 supplies matched Git-observed launch evidence, not a kernel process census. RSS is a propagated per-process maximum, not summed tree memory. Fixture setup, checks, resets, diagnostics, and cleanup stay outside headline samples. No production store, daemon, RPC, or provisioning is involved.'
+    : 'Real captureWork from both roots over disposable deterministic Git repositories. Wall time includes synchronous git children; cpuMs is the PARENT process only and excludes git child CPU. Trace2 process counts come from one separate diagnostic sample per side and are attribution evidence, never timing. Fixture setup, expectation checks, ref-set resets, and cleanup are outside timed samples. No production store, daemon, RPC, or provisioning is involved; nothing here measures whole-daemon behavior.',
 };
 const writeReport = () => {
   mkdirSync(dirname(out), { recursive: true });
@@ -295,6 +318,12 @@ process.once('SIGINT', onSigint); process.once('SIGTERM', onSigterm);
 
 try {
   writeReport();
+  if (gitRusageEnabled) {
+    active = 'git-rusage-setup';
+    gitRusageSession = setupGitRusage({ runDir, pythonExecutable: gitRusagePython });
+    report.gitRusage.provenance = { ...gitRusageSession.provenance, endFingerprints: null };
+    writeReport();
+  }
   for (const caseName of caseFilter) {
     active = caseName;
     process.stderr.write(`cell-exit: ${caseName}\n`);
@@ -308,6 +337,7 @@ try {
     assert.equal(sides[0].targetTip, sides[1].targetTip, 'fixture target tips must match across sides');
     assert.equal(sides[0].preRefs, sides[1].preRefs, 'fixture ref sets must match across sides');
     let ordinal = 0;
+    const diagnosticOpIds = [0, 1].map(side => `cell-exit-${caseName}-${side}-diagnostic`);
     const run = side => {
       const fx = sides[side];
       const request = { originRepo: fx.origin, cellSpaceDir: fx.cell, targetBranch: fx.targetBranch,
@@ -316,6 +346,12 @@ try {
       const result = captures[side](request);
       const wallMs = performance.now() - start; const used = process.cpuUsage(cpu);
       return { result, wallMs, cpuMs: (used.user + used.system) / 1000, fx };
+    };
+    const diagnosticRun = side => {
+      const fx = sides[side];
+      const request = { originRepo: fx.origin, cellSpaceDir: fx.cell, targetBranch: fx.targetBranch,
+        mode, opId: diagnosticOpIds[side] };
+      return { result: captures[side](request), fx };
     };
     const landedShas = [new Set(), new Set()];
     const sample = (side, record) => {
@@ -331,17 +367,46 @@ try {
     for (let r = 0; r < rounds; r++) for (const side of [0, 1, 1, 0]) sample(side, true);
     for (const set of landedShas) assert.ok(set.size <= 1, 'pinned dates must make landed results deterministic per side');
     assert.deepEqual([...landedShas[0]], [...landedShas[1]], 'landed results must match across sides');
-    const trace2 = [0, 1].map(side => {
+    const traceProbes = [0, 1].map(side => {
       const path = join(runDir, `${caseName}-${side}.trace2`);
       // Trace exactly the measured operation: verification/reset git calls
       // run after the env var is cleared and never enter the attribution.
       process.env.GIT_TRACE2_EVENT = path;
       let probe;
-      try { probe = run(side); } finally { delete process.env.GIT_TRACE2_EVENT; }
+      try { probe = diagnosticRun(side); } finally { delete process.env.GIT_TRACE2_EVENT; }
       const landed = verifyAndReset(caseName, sides[side], cfg, probe.result);
       if (landed != null) landedShas[side].add(landed);
-      return parseTrace2(path, `${out}.${caseName}.${side}.trace2.jsonl`);
+      return { result: probe.result, landed, path,
+        summary: parseTrace2(path, `${out}.${caseName}.${side}.trace2.jsonl`) };
     });
+    const gitRusage = gitRusageSession ? [0, 1].map(side => {
+      const sideName = side === 0 ? 'before' : 'after';
+      const captured = captureGitRusage(gitRusageSession, {
+        id: `${caseName}-${sideName}`,
+        operation: () => diagnosticRun(side),
+        retainedDir: `${out}.${caseName}.${sideName}.git-rusage-records`,
+      });
+      report.gitRusage.rawArtifacts.push({ case: caseName, side: sideName,
+        kind: 'raw-git-rusage-records', ...captured.rawArtifact });
+      writeReport();
+      if (captured.failed) throw captured.error;
+      const landed = verifyAndReset(caseName, sides[side], cfg, captured.value.result);
+      if (landed != null) landedShas[side].add(landed);
+      assert.deepEqual(captured.value.result, traceProbes[side].result,
+        'Git rusage and separate Trace2 captureWork outcomes must match');
+      assert.equal(landed, traceProbes[side].landed,
+        'Git rusage and separate Trace2 landed outcomes must match');
+      const aggregate = aggregateGitRusage({
+        recordsDir: captured.recordsDir,
+        runId: captured.runId,
+        expectedCount: traceProbes[side].summary.topLevel.commandCount,
+        expectedLauncherPid: process.pid,
+        tracePath: traceProbes[side].path,
+      });
+      return { diagnosticOnly: true, trace2Disabled: true,
+        captureOutcome: captured.value.result, landedSha: landed,
+        aggregate, rawArtifact: captured.rawArtifact };
+    }) : null;
     for (const set of landedShas) assert.ok(set.size <= 1, 'diagnostic result must preserve the measured landed SHA');
     assert.deepEqual([...landedShas[0]], [...landedShas[1]], 'diagnostic results must match across sides');
     report.results.push({
@@ -351,7 +416,10 @@ try {
       raw, order,
       metrics: Object.fromEntries([0, 1].flatMap(side => ['wallMs', 'cpuMs'].map(metric =>
         [`${side === 0 ? 'before' : 'after'}.${metric}`, distribution(raw[side][metric])]))),
-      trace2: { diagnosticOnly: true, before: trace2[0], after: trace2[1] },
+      trace2: { diagnosticOnly: true, before: traceProbes[0].summary, after: traceProbes[1].summary },
+      ...(gitRusage ? { gitRusage: {
+        diagnosticOnly: true, before: gitRusage[0], after: gitRusage[1],
+      } } : {}),
     });
     writeReport();
     for (const side of [0, 1]) {
@@ -364,6 +432,9 @@ try {
   report.measurement.finishedAt = new Date().toISOString();
   assert.deepEqual(roots.map(gitFingerprint), sources, 'source changed during capture');
   assert.deepEqual(fingerprintTools(), toolHashes, 'ruler changed during capture');
+  if (gitRusageSession) {
+    report.gitRusage.provenance.endFingerprints = verifyGitRusageSetup(gitRusageSession);
+  }
   for (const r of report.results) for (const metric of ['wallMs', 'cpuMs']) {
     const b = distribution(r.raw[0][metric]), a = distribution(r.raw[1][metric]);
     report.rows.push({ case: r.case, metric, before: b, after: a,
