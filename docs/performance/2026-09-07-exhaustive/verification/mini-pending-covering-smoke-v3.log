@@ -1,0 +1,16 @@
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+Error: database is locked
+    at file:///private/tmp/honeybee-perf-5763a6c9-20260907/honeybee-pending-covering-prototype.mjs:53:236
+    at Array.map (<anonymous>)
+    at file:///private/tmp/honeybee-perf-5763a6c9-20260907/honeybee-pending-covering-prototype.mjs:53:194
+    at Array.map (<anonymous>)
+    at file:///private/tmp/honeybee-perf-5763a6c9-20260907/honeybee-pending-covering-prototype.mjs:53:26 {
+  code: 'ERR_SQLITE_ERROR',
+  errcode: 5,
+  errstr: 'database is locked'
+}
+
+Node.js v24.18.0

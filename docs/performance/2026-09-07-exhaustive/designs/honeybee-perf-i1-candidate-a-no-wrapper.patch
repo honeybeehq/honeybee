@@ -1,0 +1,43 @@
+diff --git a/v2/core/src/store.ts b/v2/core/src/store.ts
+index a64166ba..ce01b3b9 100644
+--- a/v2/core/src/store.ts
++++ b/v2/core/src/store.ts
+@@ -988,14 +988,11 @@ function daemonBoolean(value: unknown, label: string): boolean {
+   throw new CoreError(`daemon projection: malformed ${label}`);
+ }
+ 
+-function mapDaemonPendingMessage(r: Row): { beeId: string; message: DaemonPendingMessageMeta } {
++function mapDaemonPendingMessage(r: Row): DaemonPendingMessageMeta {
+   return {
+-    beeId: daemonText(r.bee_id, "pending bee_id"),
+-    message: {
+-      id: daemonNumber(r.id, "pending id"),
+-      urgency: daemonUrgency(r.urgency, "pending urgency"),
+-      enqueuedAt: daemonNumber(r.enqueued_at, "pending enqueued_at"),
+-    },
++    id: daemonNumber(r.id, "pending id"),
++    urgency: daemonUrgency(r.urgency, "pending urgency"),
++    enqueuedAt: daemonNumber(r.enqueued_at, "pending enqueued_at"),
+   };
+ }
+ 
+@@ -3477,7 +3474,8 @@ export class CoreStore {
+        ORDER BY runtime.bee_id, message.id`,
+     ).all();
+     for (const raw of messageRows) {
+-      const { beeId, message } = mapDaemonPendingMessage(raw);
++      const beeId = daemonText(raw.bee_id, "pending bee_id");
++      const message = mapDaemonPendingMessage(raw);
+       const row = workByBee.get(beeId);
+       if (!row) throw new CoreError(`daemon projection: pending live bee ${beeId} has no runtime`);
+       row.pending.push(message);
+@@ -3551,7 +3549,8 @@ export class CoreStore {
+        ORDER BY bee_id, id`,
+     ).all();
+     for (const raw of messageRows) {
+-      const { beeId, message } = mapDaemonPendingMessage(raw);
++      const beeId = daemonText(raw.bee_id, "pending bee_id");
++      const message = mapDaemonPendingMessage(raw);
+       const group = groupByBee.get(beeId);
+       if (!group) throw new CoreError(`daemon projection: pending bee ${beeId} has no I1 facts`);
+       group.pending.push(message);

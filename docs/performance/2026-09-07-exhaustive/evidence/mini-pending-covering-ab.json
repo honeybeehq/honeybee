@@ -1,0 +1,3846 @@
+{
+  "completed": true,
+  "startedAt": "2026-09-07T11:54:55.562Z",
+  "source": {
+    "revision": "6d2677b126ec9e8b11992954bb6bc3c27311bbf1",
+    "hashes": {
+      "package-lock.json": "d7bab0bd3fce5d01591536fe5da7cd969634a4ae3428bf75b973c54a58cf36cc",
+      "package.json": "dfc54c5c0aff857519101d532ffbe6a03339903e075e3fdcb82da5d07b2e223c",
+      "v2/adapters/src/agy.ts": "ae4751062d36382252aae126e7c0ee024bbcf65009cc12adc16721e24e9dbbc7",
+      "v2/adapters/src/args.ts": "759f2e5c01bacffd8bca998ae7573c1284da38f043a6d6fdd758cba40fb030f6",
+      "v2/adapters/src/claude.ts": "78f4b15d50a1f2eba8f74fcc4672e2b008db544950c6ed03a8a8b183b7f6e046",
+      "v2/adapters/src/codex.ts": "e03c2f253f5adbd877761683bdceb02ad3725ede0ea9bb66718fb6060df902cb",
+      "v2/adapters/src/grok.ts": "71f647f0b8fb2a32427604ddf45e0a7b54a4a1b876418c7f91de8c3024c0d84f",
+      "v2/adapters/src/index.ts": "6869fe4ec44c1eeefa53ff1660a00c8556330e30acb30cc3265fb78483aadcdf",
+      "v2/adapters/src/stub.ts": "4fdfca1b8dca0cc396bd495fac99d5fcab7005b40bb598e33413a5747e8f3ccc",
+      "v2/adapters/src/types.ts": "c37098d1cb7d06a8137f1fda87ad1affcb6d8b37e325665b1e5123b029fa2dd3",
+      "v2/cli/package.json": "b8abe08ac8165e64be34b9531dace368763822e6739f3024981fc751866d3c71",
+      "v2/cli/src/bin.ts": "330f6bb9d42c72475929a6e104fa5c318051b57816acd4056b3c7523010b8a8c",
+      "v2/cli/src/client.ts": "421e107f912c5f9fae6d51cb2e3b10d8ffe83e70e6660adef03392d59739cafd",
+      "v2/cli/src/help.ts": "1343b7559d210c809233a5c3f4775c796f0d73d5f8d81221829afe419a9b0df3",
+      "v2/cli/src/index.ts": "705f8de04ba4adb8b563d11f2def4da5ae0904ec9bcd0c062d9ce2019676bfd8",
+      "v2/cli/src/main.ts": "c9b719d95d75c8979f9cf2ddb860e109e1f9a971c2b398029113b86dcd9258a6",
+      "v2/cli/src/readonly.ts": "8e94374a1e10bfe065915dded41ffdd60957d0f5aff7d692edbfc67f10b14091",
+      "v2/cli/src/render.ts": "6efc8d278c87ac8c90a6588790e5b7a80eb6dbf997254326b32098c77d6f2897",
+      "v2/cli/src/style.ts": "2f5e611fa6b1aee3c0a3afefdf0cfb9b830736ce4c3f2f9c53d73e5bee5cc5fd",
+      "v2/core/package.json": "6681873b8fe70d5d7ef1005130ff84c721c2516c8e5dcc2b3afad83771247f6d",
+      "v2/core/src/accountLimitsParse.ts": "4101b50909a9c9d79aa9761c4a5b68bc3d808ad36acca38e75c07779a51068a3",
+      "v2/core/src/accountMatch.ts": "90ebe4e125f83d28bc1a1c99cbff9b813362d3b38bbac8b97182014cb4fcf980",
+      "v2/core/src/accountRecipes.ts": "837c397aab4c9fa8a02b890372fac3e29b73d4ba8307913446309d00e715b6b7",
+      "v2/core/src/accountSelect.ts": "2536db3146b2d9a66c812e294c8d668df5e82e3bea9d2923308dff4060e01f5c",
+      "v2/core/src/audit.ts": "b25292a72b403e9e5f8c8ff785e07ef4750ccd6b0b02734afb13f2d94ad14e3c",
+      "v2/core/src/cellMove.ts": "64a0c07352dbab4226c2b173655eb412b976c4f22e4b9d158e5e829c0884d0d6",
+      "v2/core/src/executables.ts": "4a878c553014ceabcdd7e940e274d652799c2852474ada614d5c80cca1eadc7c",
+      "v2/core/src/import-frozen.ts": "c4e84004d16133eeefb38cdf07bd639dbb2d3cda2662eaa4652e986500b5507e",
+      "v2/core/src/index.ts": "f39a777c163ee60a0159749d5380a3e87ed35c93cb2f4445814b90803edcb6db",
+      "v2/core/src/loginFlow.ts": "727d42b6a98a271577cd462e128b0287e7c571e5e06104b3afb5bdff49d35460",
+      "v2/core/src/mirror.ts": "8bcbdb8763eba166d3568f02181d6523c75b7d5fd43eb084e2d5762de5dc33ab",
+      "v2/core/src/packages.ts": "e14a3c6c013211235ca84c137a93f12ead10beff01c876c2741a7e419b944f17",
+      "v2/core/src/registry.ts": "1cd3e1c5a239882474818466907b5f5b2d10501e178b0ad13d24fb2fae8123ff",
+      "v2/core/src/schema.ts": "f62d05b75228a78613729517f2eb90ef99aba9957cf403744b529e71ef0428d1",
+      "v2/core/src/store.ts": "1ca365861b06429c1025904fae4f7e4e87bb31c7c2b7e0dda5e72c1b3e42521b",
+      "v2/core/src/tasks.ts": "2f266a9640ed4b9c7ceeea18aee63ce11521cc416ecc3b5ce118ebb5c195a263",
+      "v2/core/src/types.ts": "11f505e7bda3b575731671e198d83562ab400b2772bb8eb315f1acef9dcc899a",
+      "v2/core/src/view.ts": "1af7f27540c29f4aa9e2c44d7118685f296128a8ab4579df17671ce0abb04693",
+      "v2/daemon/package.json": "42c1d42b8eef8e2ebc590bb702bc6ec8eb9dfc5ea81678c9db87fafe61cea577",
+      "v2/daemon/src/accountsService.ts": "3f13d0481bb54b793d7f0ea6d7f03536d8e5d4ae2be1a8631b17440d596a8a5b",
+      "v2/daemon/src/activation.ts": "7e7056e53671e9caea816fa1162478905ecfc9a408afbad73750ee411056bab7",
+      "v2/daemon/src/autoTitle.ts": "245e0202fd3758aac7cbf022f328ccc4b3f0e88b58303ff03b0e675bceef3e91",
+      "v2/daemon/src/bin.ts": "8ef32816d19e0c2adc85a81a740de8935c7a8bc77e94118203a761b16679754d",
+      "v2/daemon/src/config.ts": "64ea73400095dd007eadbde1eceb0b748a9efbbb343c579e930d93883368f89b",
+      "v2/daemon/src/cursorAuth.ts": "1f0d554fd3ea0351b108404d6b7912701be184e8e26ea89bd2b692a42ae4f924",
+      "v2/daemon/src/daemon.ts": "244a1bacec54a850ba111b53bd456240f04c6608ac7510cfe9d8e5b588498cbb",
+      "v2/daemon/src/envelope.ts": "dc0bff3d7706be31b3fce162e370c1e6e6b7ed8cd2eca43ab1ba6e9ccada6c7a",
+      "v2/daemon/src/gateways.ts": "5c57d479fdbfd871f31de9172da2c9011466258cb46cc764f1776af82da9145c",
+      "v2/daemon/src/homeDefaults.ts": "a63090c09cc8d102b46effa2f8f205457b0e3d73baaaca15cd836e2c0896fc3c",
+      "v2/daemon/src/import-probes.ts": "14cdeb5b7c47d1da44a8eff3e92e22a52a523dcaf250174cefd1c6c46f15529a",
+      "v2/daemon/src/index.ts": "5f8b71e1193407322cb5b44e87bd30cb8384aeb783c22803a10aca034aa691a9",
+      "v2/daemon/src/keychain.ts": "97ecd409db519ba195662dc5f41cbb2b31c36b68100a57bcdc0c1f89ef877ad5",
+      "v2/daemon/src/login/claudeOauth.ts": "9781bf55222a833a9f4461f704a9a10ccb71030a547ca978dae16428f5ce89ff",
+      "v2/daemon/src/login/cliRunner.ts": "ef14344f05033a1ecf510054d3b717db945a203c2b2c32fe3d2607058ca7d52a",
+      "v2/daemon/src/login/common.ts": "1f93ae2e3757ff297cfcd3d94fdf9e838e546a5beed67999f9e0a1b88ebedc46",
+      "v2/daemon/src/login/directKey.ts": "91224b228da3a12dc828d5290900ed1a59ed95766cc9f5f36d273d9e6b862ba2",
+      "v2/daemon/src/login/runner.ts": "53811aa26fecf68f66e6714110efb5664ad2081586b369ab159c25e044d7f17c",
+      "v2/daemon/src/login/transports.ts": "a7073ba48a5ae49cbf2d9109812bbe299ed18487f551d1bf5271bb47b7357e15",
+      "v2/daemon/src/loginFlows.ts": "4460f4a8f8e14900e106e817862cfa8a60cb0f15c6327741d23896736b708c94",
+      "v2/daemon/src/loginWorker.ts": "4a70f08d716550337509663c7586b235568b1fe7bccfbeecfc57d7bdc2fdd378",
+      "v2/daemon/src/loops.ts": "9f1ce604b108828a6a61bac683ce97c82732aa8faadf19319286a9df4cd87041",
+      "v2/daemon/src/main.ts": "7546a94f78f8817ca3a869aa63b2d62d16ffa5404ecb60d63cc742733236f903",
+      "v2/daemon/src/naming.ts": "eae82ba481b3e5b74d7d80c38ca50d6bbf64e378e48e8a7c953d35b2f0a643f5",
+      "v2/daemon/src/namingService.ts": "e8ee4b2026fea2460fb59d60db034ec694b32f76ec2cf7eeba3ea1abf6c36001",
+      "v2/daemon/src/performance.ts": "01ad16258243eea10fa089ea8aae0d396fab4f56fac1ce9f77dd953b7ec2db02",
+      "v2/daemon/src/protocol.ts": "9a0a5439d3312f9a6a6c454bf0983500e236ec49f0ca858cca169d7f08108654",
+      "v2/daemon/src/providerLimits.ts": "befe91217b50c927419389adb50527fd0867ed58d5111f13bcb669eb2b700790",
+      "v2/daemon/src/relocateSession.ts": "bb23acc8d738f024ac8a674b4c7f1366e9913c0b792df2814d9d0869c2ee04e7",
+      "v2/daemon/src/rpc.ts": "39ae485f3cbf72058c93ccbb0427833683ba9836388035065355689f717b3203",
+      "v2/daemon/src/service.ts": "e5aee133fb1f0b5a14f10633e92d5fca7812bfd4e3a0a74ad0ecf2e5ba23a4cb",
+      "v2/daemon/src/substrates.ts": "914b18b4e6e6e7cd2525f5943edb3080c031e16d08934fd4021b55ebf3c1c27c",
+      "v2/daemon/src/telemetry.ts": "0f234f5f77df593387db1ed6c08ba64ccd45f3ffa60303bbd178765aefd0980c",
+      "v2/daemon/src/tmuxHarness.ts": "aebc0a90c9ff4a03a466cdf2edc4fe282dc91388cf9966a0412801fb0bea320f",
+      "v2/daemon/tests/helpers.ts": "9d63216758bec78d1f0e6f7fa949d67ee1f4b1d90eb5efdd4a8888cda75ea0f3",
+      "v2/driver-cell/src/capture.ts": "a14dfc01a4f053e3c5f63b2cb984453ae33630ab3c91415d403f01d552906cc3",
+      "v2/driver-cell/src/cow.ts": "24eb5ce7b6536de861ca261a5d80096343115e14bc8a23e354a2e8a74f318b10",
+      "v2/driver-cell/src/driver.ts": "b513f6a7faaaaa8352a6025b28cc6768e73ea7a2470c4d9aa3686642fa3be88b",
+      "v2/driver-cell/src/exec.ts": "1c022870cd0279d92672b917e2ff8cbc52c3e7b74d47491b5e552b2eb4c72c9b",
+      "v2/driver-cell/src/git.ts": "a8bf50ed3dd720d94fa3b45c2dd6fbfbb82b534e38848af44408c2ca9a10be8d",
+      "v2/driver-cell/src/gitImage.ts": "9b7b1dc8a762caaac402d108bbd9286630a1376b4844ea8d2d3c6232d0a19007",
+      "v2/driver-cell/src/index.ts": "93522d17c0a9bf95c8f7452b24778bb8845af7fed440dc0c22c7fdd60db07661",
+      "v2/driver-cell/src/layout.ts": "68a677450c0d851cf97c50f8616fd25961ddea59dd6b8ac3c0a739042c4775f8",
+      "v2/driver-cell/src/ledger.ts": "efdf4762fab38defd8ec3e68dceba52a44a11d17962b027cb4a0302eec429834",
+      "v2/driver-cell/src/provision.ts": "8293821e57266a0b4f7a2e0e6d25c584cac6caf1ac0afad207311af57558be66",
+      "v2/driver-cell/src/provisionWorker.ts": "a651cc6000ef33f7ed52384f678543b28fea4f363113b3218d45219c510a2d4c",
+      "v2/driver-cell/src/remove.ts": "914e22bf0182c90503731cbeb9877c0d697cda5d410b224223499fab33e75aa5",
+      "v2/driver-cell/src/sandbox.ts": "be390c169c3bc8b06191997ea08c7d6b57f417df26f5bffc21bcef75713ab4ad",
+      "v2/driver-hsr/src/driver.ts": "1bda7217fa6f00701403e14c0887627711fde3038a080ace11dd5b594bc59c38",
+      "v2/driver-hsr/src/index.ts": "8f9542db7792d462ab9b10f9537b9c05f31acf9934d6c32b3f248de8beb97e5e",
+      "v2/driver-hsr/src/psutil.ts": "1beb05854deb6fbe12f206d7436648e7be2a8ae00bcfd0acd13ef3f9fb1c1edb",
+      "v2/driver-hsr/src/runner-host-main.ts": "10c4f1c2af2e2dc20bdddba51e7972bc976831c1bf40b5f5772a2519538411da",
+      "v2/driver-hsr/src/runner-host.ts": "7f1716db45160657ef2109d8a18ae064cbab065f0321b22d29f9a193a3f3c152",
+      "v2/driver-tmux/src/agy-projection.ts": "1d5284c9835d499f0e55dc52ec70a5d36175993f0ccbab7f2e21fcf60f92a9ff",
+      "v2/driver-tmux/src/claude-projection.ts": "df6d2d8967f70ac4b6796a234de83d1e325e41210794972aee41b1a7294882f6",
+      "v2/driver-tmux/src/codex-projection.ts": "2ff68aa8e4d8c802bef9abedb7595e29f038c7ba4cf81403f7efc54a03225e1b",
+      "v2/driver-tmux/src/driver.ts": "26fe0516fe49f389d1f5cad30ee0002e829ae1aba75fe6cec8a0ea886b670820",
+      "v2/driver-tmux/src/events-file.ts": "ddb2ba04f32ef325def8d5287a518659a42e41801034304bc74e4695962a0e99",
+      "v2/driver-tmux/src/grok-projection.ts": "d0d419367031c9738fc6a5a0e27ea6c8a15399b06834239b92f2c2603d406823",
+      "v2/driver-tmux/src/index.ts": "f716470ff208ac29febfe90031b025d969a2eefc5461e649d77d43813fce278d",
+      "v2/driver-tmux/src/tail.ts": "40e24f0d34401e7990581eef3eff1d1542defbc846a92339e61bb81a95a0d156",
+      "v2/driver-tmux/src/tmux.ts": "92607334202f8fb8c8cedf7b9d1454d8742a867c4c8082f7f2f6617a6c285eb9",
+      "v2/driver-tmux/src/transcript-projection.ts": "98bdd52792da1d74ddfe28332c54ae76adc8f6b52e94e1b4f233a94cabf96c78",
+      "v2/driver-tmux/src/transcripts.ts": "f23289d6199d9d2ec288f60de0a3475ce5aa41e20230763380386d4d2c545509",
+      "v2/harness/package.json": "f4808c3b41eb548c2304946690875ff29840bb3fc706247ac8cf285917aa2e3d",
+      "v2/harness/src/clock.ts": "690b130f9bb111af2099cc96d19a114258bf3bc6353d7a440d53b3141c9e2446",
+      "v2/harness/src/daemon.ts": "2b8f17080275ef72b3612e4b446b9e951d203373c70bcec7b83e3b21c91d81ef",
+      "v2/harness/src/driver.ts": "df41b313a0ab97a637eddb5a3ba2be4456293776aa46acfd3eb29af5315a1442",
+      "v2/harness/src/faults.ts": "6152e965e33f1501f9beee0f5a3c42ce18a8b71897713043716a993de48cfc20",
+      "v2/harness/src/index.ts": "200de7850d2848f5b1d2afa72fdbd1490d2919efd8f77976508416ccb7b9a191",
+      "v2/harness/src/invariants.ts": "5ab63d4da3399534d6a2d9eff705d1c6c403e14b39b5749b5863bd7d04daccbb",
+      "v2/harness/src/prng.ts": "1be8ed3684abb058b30f83b89239385928abb14d8c24616ebf925c95af4639e8",
+      "v2/harness/src/sim-driver.ts": "70b5b013351a8a089e2b13509cb3abe5d8182b18e07f920859abc68e4dd10e31",
+      "v2/harness/src/simulation.ts": "9979407c9e3483294675c47b23b802a724adcea73681ae8d8480f47f5e2d650c"
+    }
+  },
+  "toolHash": "71c4332a65a05eed53953f8cbd0a3963144d2317d8ec018aad0da3192e3c8090",
+  "sqlToolHash": "e16ef5f0cc9c265482a7ac08cc331cecb97709be12f0df4f5f9f04dcd903a754",
+  "control": false,
+  "indexSql": "CREATE INDEX mailbox_pending_metadata ON mailbox(bee_id,id,urgency,enqueued_at) WHERE delivered_at IS NULL",
+  "environment": {
+    "node": "v24.18.0",
+    "cpu": "Apple M4",
+    "boot": "1583faf8a9f0a8fec3010b321dccc6503763f95e8436be682c585ae4286c355c",
+    "loadBefore": [
+      1.4677734375,
+      1.298828125,
+      1.24951171875
+    ],
+    "loadAfter": [
+      1.44384765625,
+      1.30029296875,
+      1.2509765625
+    ]
+  },
+  "workload": {
+    "scenarios": [
+      {
+        "pending": 1000,
+        "bodyBytes": 64
+      },
+      {
+        "pending": 20000,
+        "bodyBytes": 64
+      },
+      {
+        "pending": 100,
+        "bodyBytes": 1048576
+      }
+    ],
+    "rounds": 15,
+    "order": "ABBA",
+    "warmups": 3,
+    "writeBatch": 100
+  },
+  "scope": "Offline-index mechanism prototype: one real source module and two initially byte-identical DB copies. Index installed outside reads through direct DDL; ordinary CoreStore/DaemonCore reads and durable public send+cancel writes. FakeDriver; no workers or live runtime. Shared heap/cache can cross sides. Allocation and native memory not measured. Installation is one CREATE INDEX sample, not startup. Storage measured on closed checkpointed files.",
+  "results": [
+    {
+      "scenario": {
+        "pending": 1000,
+        "bodyBytes": 64
+      },
+      "fixtureSha256": "ebfbec0048a0a408c28814cdb9292c015cc6e4384fc7985a6bb8b0725de8d7c4",
+      "install": [
+        {
+          "wallMs": 0.007082999999994399,
+          "cpuMs": 0.028,
+          "ddlExecuted": false
+        },
+        {
+          "wallMs": 0.32987500000001546,
+          "cpuMs": 0.294,
+          "ddlExecuted": true
+        }
+      ],
+      "beforeWritesStorage": [
+        {
+          "fileBytes": 1114112,
+          "pageCount": 272,
+          "freePages": 0,
+          "index": [],
+          "quickCheck": "ok"
+        },
+        {
+          "fileBytes": 1175552,
+          "pageCount": 287,
+          "freePages": 0,
+          "index": [
+            {
+              "name": "mailbox_pending_metadata",
+              "pages": 15,
+              "bytes": 61440
+            }
+          ],
+          "quickCheck": "ok"
+        }
+      ],
+      "results": {
+        "i1": {
+          "raw": [
+            [
+              {
+                "wallMs": 0.4980419999999981,
+                "cpuMs": 0.507
+              },
+              {
+                "wallMs": 0.48175000000000523,
+                "cpuMs": 0.484
+              },
+              {
+                "wallMs": 0.48554200000000947,
+                "cpuMs": 0.487
+              },
+              {
+                "wallMs": 0.4932499999999891,
+                "cpuMs": 0.498
+              },
+              {
+                "wallMs": 0.5001660000000072,
+                "cpuMs": 0.502
+              },
+              {
+                "wallMs": 0.5079580000000021,
+                "cpuMs": 0.509
+              },
+              {
+                "wallMs": 0.504792000000009,
+                "cpuMs": 0.505
+              },
+              {
+                "wallMs": 0.5043749999999818,
+                "cpuMs": 0.506
+              },
+              {
+                "wallMs": 0.5092919999999879,
+                "cpuMs": 0.51
+              },
+              {
+                "wallMs": 0.5145420000000058,
+                "cpuMs": 0.515
+              },
+              {
+                "wallMs": 0.509208000000001,
+                "cpuMs": 0.511
+              },
+              {
+                "wallMs": 0.5125420000000247,
+                "cpuMs": 0.513
+              },
+              {
+                "wallMs": 0.510707999999994,
+                "cpuMs": 0.511
+              },
+              {
+                "wallMs": 0.5300420000000088,
+                "cpuMs": 0.531
+              },
+              {
+                "wallMs": 0.6234169999999892,
+                "cpuMs": 1.148
+              },
+              {
+                "wallMs": 0.4911250000000109,
+                "cpuMs": 1.072
+              },
+              {
+                "wallMs": 0.4925829999999962,
+                "cpuMs": 1.249
+              },
+              {
+                "wallMs": 0.48033399999999915,
+                "cpuMs": 0.48
+              },
+              {
+                "wallMs": 0.5741249999999809,
+                "cpuMs": 1.709
+              },
+              {
+                "wallMs": 0.5325420000000065,
+                "cpuMs": 0.533
+              },
+              {
+                "wallMs": 0.5232499999999902,
+                "cpuMs": 0.719
+              },
+              {
+                "wallMs": 0.6057500000000005,
+                "cpuMs": 0.702
+              },
+              {
+                "wallMs": 0.49379200000001333,
+                "cpuMs": 0.495
+              },
+              {
+                "wallMs": 0.48308399999999097,
+                "cpuMs": 0.484
+              },
+              {
+                "wallMs": 0.5051249999999925,
+                "cpuMs": 0.506
+              },
+              {
+                "wallMs": 0.5534580000000062,
+                "cpuMs": 0.575
+              },
+              {
+                "wallMs": 0.5117079999999987,
+                "cpuMs": 0.512
+              },
+              {
+                "wallMs": 0.4963329999999928,
+                "cpuMs": 0.497
+              },
+              {
+                "wallMs": 0.5106250000000045,
+                "cpuMs": 0.511
+              },
+              {
+                "wallMs": 0.5194999999999936,
+                "cpuMs": 0.522
+              }
+            ],
+            [
+              {
+                "wallMs": 0.4845420000000047,
+                "cpuMs": 0.486
+              },
+              {
+                "wallMs": 0.4947080000000028,
+                "cpuMs": 0.543
+              },
+              {
+                "wallMs": 0.4828339999999969,
+                "cpuMs": 0.484
+              },
+              {
+                "wallMs": 0.6140839999999912,
+                "cpuMs": 0.716
+              },
+              {
+                "wallMs": 0.49737500000000523,
+                "cpuMs": 0.498
+              },
+              {
+                "wallMs": 0.501749999999987,
+                "cpuMs": 0.502
+              },
+              {
+                "wallMs": 0.5882919999999956,
+                "cpuMs": 0.685
+              },
+              {
+                "wallMs": 0.5137080000000083,
+                "cpuMs": 0.514
+              },
+              {
+                "wallMs": 0.5095410000000129,
+                "cpuMs": 0.511
+              },
+              {
+                "wallMs": 0.5060000000000002,
+                "cpuMs": 0.506
+              },
+              {
+                "wallMs": 0.5767910000000143,
+                "cpuMs": 0.593
+              },
+              {
+                "wallMs": 0.5017080000000078,
+                "cpuMs": 0.502
+              },
+              {
+                "wallMs": 0.5135840000000087,
+                "cpuMs": 0.514
+              },
+              {
+                "wallMs": 0.5099999999999909,
+                "cpuMs": 0.51
+              },
+              {
+                "wallMs": 0.5087910000000022,
+                "cpuMs": 1.067
+              },
+              {
+                "wallMs": 0.4936670000000163,
+                "cpuMs": 0.644
+              },
+              {
+                "wallMs": 0.48366699999999696,
+                "cpuMs": 0.961
+              },
+              {
+                "wallMs": 0.4869579999999871,
+                "cpuMs": 0.692
+              },
+              {
+                "wallMs": 0.5400830000000099,
+                "cpuMs": 0.541
+              },
+              {
+                "wallMs": 0.5152909999999906,
+                "cpuMs": 0.515
+              },
+              {
+                "wallMs": 0.5733339999999885,
+                "cpuMs": 1.457
+              },
+              {
+                "wallMs": 0.5271250000000123,
+                "cpuMs": 0.759
+              },
+              {
+                "wallMs": 0.5018330000000049,
+                "cpuMs": 0.502
+              },
+              {
+                "wallMs": 0.4778749999999832,
+                "cpuMs": 0.478
+              },
+              {
+                "wallMs": 0.47441599999999085,
+                "cpuMs": 0.475
+              },
+              {
+                "wallMs": 0.5234580000000051,
+                "cpuMs": 0.524
+              },
+              {
+                "wallMs": 0.4879589999999894,
+                "cpuMs": 0.489
+              },
+              {
+                "wallMs": 0.5162920000000213,
+                "cpuMs": 0.516
+              },
+              {
+                "wallMs": 0.5098749999999939,
+                "cpuMs": 0.51
+              },
+              {
+                "wallMs": 0.6255420000000242,
+                "cpuMs": 0.738
+              }
+            ]
+          ],
+          "metrics": [
+            {
+              "wallMs": {
+                "n": 30,
+                "p50": 0.5079580000000021,
+                "p95": 0.6057500000000005,
+                "min": 0.48033399999999915,
+                "max": 0.6234169999999892
+              },
+              "cpuMs": {
+                "n": 30,
+                "p50": 0.511,
+                "p95": 1.249,
+                "min": 0.48,
+                "max": 1.709
+              }
+            },
+            {
+              "wallMs": {
+                "n": 30,
+                "p50": 0.5087910000000022,
+                "p95": 0.6140839999999912,
+                "min": 0.47441599999999085,
+                "max": 0.6255420000000242
+              },
+              "cpuMs": {
+                "n": 30,
+                "p50": 0.514,
+                "p95": 1.067,
+                "min": 0.475,
+                "max": 1.457
+              }
+            }
+          ]
+        },
+        "work": {
+          "raw": [
+            [
+              {
+                "wallMs": 0.5600830000000201,
+                "cpuMs": 0.563
+              },
+              {
+                "wallMs": 0.578249999999997,
+                "cpuMs": 0.579
+              },
+              {
+                "wallMs": 0.5777499999999804,
+                "cpuMs": 0.578
+              },
+              {
+                "wallMs": 0.5748329999999839,
+                "cpuMs": 0.575
+              },
+              {
+                "wallMs": 0.5506249999999966,
+                "cpuMs": 0.551
+              },
+              {
+                "wallMs": 0.5605419999999981,
+                "cpuMs": 0.562
+              },
+              {
+                "wallMs": 0.5598329999999976,
+                "cpuMs": 0.56
+              },
+              {
+                "wallMs": 0.5959160000000168,
+                "cpuMs": 0.595
+              },
+              {
+                "wallMs": 0.5725410000000011,
+                "cpuMs": 0.573
+              },
+              {
+                "wallMs": 0.5881250000000193,
+                "cpuMs": 0.588
+              },
+              {
+                "wallMs": 0.6013329999999826,
+                "cpuMs": 0.601
+              },
+              {
+                "wallMs": 0.5474169999999958,
+                "cpuMs": 0.548
+              },
+              {
+                "wallMs": 0.5362090000000137,
+                "cpuMs": 0.536
+              },
+              {
+                "wallMs": 0.5908750000000111,
+                "cpuMs": 1.478
+              },
+              {
+                "wallMs": 0.5502080000000262,
+                "cpuMs": 0.551
+              },
+              {
+                "wallMs": 0.5740419999999915,
+                "cpuMs": 0.574
+              },
+              {
+                "wallMs": 0.5743329999999958,
+                "cpuMs": 1.593
+              },
+              {
+                "wallMs": 0.5865829999999903,
+                "cpuMs": 0.588
+              },
+              {
+                "wallMs": 0.6528749999999945,
+                "cpuMs": 0.789
+              },
+              {
+                "wallMs": 0.595249999999993,
+                "cpuMs": 0.596
+              },
+              {
+                "wallMs": 0.5689580000000092,
+                "cpuMs": 1.842
+              },
+              {
+                "wallMs": 0.6092920000000106,
+                "cpuMs": 0.61
+              },
+              {
+                "wallMs": 0.5883330000000058,
+                "cpuMs": 1.641
+              },
+              {
+                "wallMs": 0.5860830000000021,
+                "cpuMs": 0.587
+              },
+              {
+                "wallMs": 0.5734589999999855,
+                "cpuMs": 0.574
+              },
+              {
+                "wallMs": 0.6833330000000046,
+                "cpuMs": 1.878
+              },
+              {
+                "wallMs": 0.5548339999999996,
+                "cpuMs": 0.797
+              },
+              {
+                "wallMs": 0.5409589999999866,
+                "cpuMs": 0.541
+              },
+              {
+                "wallMs": 0.5575419999999838,
+                "cpuMs": 1.702
+              },
+              {
+                "wallMs": 0.5372079999999926,
+                "cpuMs": 0.537
+              }
+            ],
+            [
+              {
+                "wallMs": 0.5805420000000083,
+                "cpuMs": 0.582
+              },
+              {
+                "wallMs": 0.5884579999999744,
+                "cpuMs": 0.589
+              },
+              {
+                "wallMs": 0.5769999999999982,
+                "cpuMs": 0.578
+              },
+              {
+                "wallMs": 0.6931669999999883,
+                "cpuMs": 0.746
+              },
+              {
+                "wallMs": 0.5702919999999949,
+                "cpuMs": 0.571
+              },
+              {
+                "wallMs": 0.5518749999999955,
+                "cpuMs": 0.552
+              },
+              {
+                "wallMs": 0.5817499999999995,
+                "cpuMs": 0.583
+              },
+              {
+                "wallMs": 0.5738750000000152,
+                "cpuMs": 0.574
+              },
+              {
+                "wallMs": 0.5957089999999994,
+                "cpuMs": 0.597
+              },
+              {
+                "wallMs": 0.5818749999999966,
+                "cpuMs": 0.582
+              },
+              {
+                "wallMs": 0.680499999999995,
+                "cpuMs": 0.786
+              },
+              {
+                "wallMs": 0.5448340000000087,
+                "cpuMs": 0.545
+              },
+              {
+                "wallMs": 0.5447089999999832,
+                "cpuMs": 0.545
+              },
+              {
+                "wallMs": 0.5597920000000158,
+                "cpuMs": 0.562
+              },
+              {
+                "wallMs": 0.5705829999999992,
+                "cpuMs": 1.682
+              },
+              {
+                "wallMs": 0.5773750000000177,
+                "cpuMs": 1.275
+              },
+              {
+                "wallMs": 0.595832999999999,
+                "cpuMs": 0.596
+              },
+              {
+                "wallMs": 0.5636659999999836,
+                "cpuMs": 0.564
+              },
+              {
+                "wallMs": 0.6001250000000198,
+                "cpuMs": 0.6
+              },
+              {
+                "wallMs": 0.5943750000000136,
+                "cpuMs": 0.762
+              },
+              {
+                "wallMs": 0.5936669999999822,
+                "cpuMs": 1.249
+              },
+              {
+                "wallMs": 0.593874999999997,
+                "cpuMs": 1.278
+              },
+              {
+                "wallMs": 0.5969589999999982,
+                "cpuMs": 0.597
+              },
+              {
+                "wallMs": 0.5799169999999947,
+                "cpuMs": 0.58
+              },
+              {
+                "wallMs": 0.6011250000000246,
+                "cpuMs": 0.602
+              },
+              {
+                "wallMs": 0.5860830000000021,
+                "cpuMs": 0.588
+              },
+              {
+                "wallMs": 0.563083000000006,
+                "cpuMs": 1.157
+              },
+              {
+                "wallMs": 0.540834000000018,
+                "cpuMs": 1
+              },
+              {
+                "wallMs": 0.5300000000000011,
+                "cpuMs": 0.531
+              },
+              {
+                "wallMs": 0.5208339999999794,
+                "cpuMs": 0.522
+              }
+            ]
+          ],
+          "metrics": [
+            {
+              "wallMs": {
+                "n": 30,
+                "p50": 0.5740419999999915,
+                "p95": 0.6528749999999945,
+                "min": 0.5362090000000137,
+                "max": 0.6833330000000046
+              },
+              "cpuMs": {
+                "n": 30,
+                "p50": 0.579,
+                "p95": 1.842,
+                "min": 0.536,
+                "max": 1.878
+              }
+            },
+            {
+              "wallMs": {
+                "n": 30,
+                "p50": 0.5799169999999947,
+                "p95": 0.680499999999995,
+                "min": 0.5208339999999794,
+                "max": 0.6931669999999883
+              },
+              "cpuMs": {
+                "n": 30,
+                "p50": 0.588,
+                "p95": 1.278,
+                "min": 0.522,
+                "max": 1.682
+              }
+            }
+          ]
+        },
+        "step": {
+          "raw": [
+            [
+              {
+                "wallMs": 0.5430839999999932,
+                "cpuMs": 0.544
+              },
+              {
+                "wallMs": 0.5557499999999891,
+                "cpuMs": 0.556
+              },
+              {
+                "wallMs": 0.5294590000000028,
+                "cpuMs": 1.334
+              },
+              {
+                "wallMs": 0.5632920000000183,
+                "cpuMs": 0.563
+              },
+              {
+                "wallMs": 0.8432909999999936,
+                "cpuMs": 1.862
+              },
+              {
+                "wallMs": 0.5201250000000073,
+                "cpuMs": 0.728
+              },
+              {
+                "wallMs": 0.5365420000000256,
+                "cpuMs": 0.537
+              },
+              {
+                "wallMs": 0.5268329999999821,
+                "cpuMs": 0.527
+              },
+              {
+                "wallMs": 0.5257080000000087,
+                "cpuMs": 0.526
+              },
+              {
+                "wallMs": 0.5220829999999808,
+                "cpuMs": 0.523
+              },
+              {
+                "wallMs": 0.5324589999999887,
+                "cpuMs": 0.533
+              },
+              {
+                "wallMs": 0.5265830000000165,
+                "cpuMs": 0.527
+              },
+              {
+                "wallMs": 0.5322499999999764,
+                "cpuMs": 0.533
+              },
+              {
+                "wallMs": 0.5152500000000373,
+                "cpuMs": 0.515
+              },
+              {
+                "wallMs": 0.5044579999999996,
+                "cpuMs": 0.505
+              },
+              {
+                "wallMs": 0.509791000000007,
+                "cpuMs": 0.51
+              },
+              {
+                "wallMs": 0.5169999999999959,
+                "cpuMs": 0.518
+              },
+              {
+                "wallMs": 0.5401249999999891,
+                "cpuMs": 0.54
+              },
+              {
+                "wallMs": 0.5277920000000336,
+                "cpuMs": 0.528
+              },
+              {
+                "wallMs": 0.5115829999999733,
+                "cpuMs": 0.512
+              },
+              {
+                "wallMs": 0.5433750000000259,
+                "cpuMs": 0.544
+              },
+              {
+                "wallMs": 0.5329580000000078,
+                "cpuMs": 0.534
+              },
+              {
+                "wallMs": 0.6384580000000142,
+                "cpuMs": 0.672
+              },
+              {
+                "wallMs": 0.5129999999999768,
+                "cpuMs": 0.514
+              },
+              {
+                "wallMs": 0.49933300000003555,
+                "cpuMs": 0.5
+              },
+              {
+                "wallMs": 0.5060419999999795,
+                "cpuMs": 0.507
+              },
+              {
+                "wallMs": 0.5374170000000049,
+                "cpuMs": 0.539
+              },
+              {
+                "wallMs": 0.5127499999999827,
+                "cpuMs": 0.513
+              },
+              {
+                "wallMs": 0.5237919999999576,
+                "cpuMs": 0.524
+              },
+              {
+                "wallMs": 0.5460410000000024,
+                "cpuMs": 0.884
+              }
+            ],
+            [
+              {
+                "wallMs": 0.5544590000000085,
+                "cpuMs": 0.557
+              },
+              {
+                "wallMs": 0.54525000000001,
+                "cpuMs": 1.43
+              },
+              {
+                "wallMs": 0.5487909999999943,
+                "cpuMs": 1.21
+              },
+              {
+                "wallMs": 0.5169579999999883,
+                "cpuMs": 1.27
+              },
+              {
+                "wallMs": 0.530541999999997,
+                "cpuMs": 0.531
+              },
+              {
+                "wallMs": 0.5394589999999937,
+                "cpuMs": 0.54
+              },
+              {
+                "wallMs": 0.5285420000000158,
+                "cpuMs": 0.53
+              },
+              {
+                "wallMs": 0.539749999999998,
+                "cpuMs": 0.54
+              },
+              {
+                "wallMs": 0.5467090000000212,
+                "cpuMs": 0.549
+              },
+              {
+                "wallMs": 0.5384999999999991,
+                "cpuMs": 0.563
+              },
+              {
+                "wallMs": 0.5391250000000127,
+                "cpuMs": 0.539
+              },
+              {
+                "wallMs": 0.5288749999999993,
+                "cpuMs": 0.53
+              },
+              {
+                "wallMs": 0.5325420000000349,
+                "cpuMs": 0.532
+              },
+              {
+                "wallMs": 0.6139999999999759,
+                "cpuMs": 0.651
+              },
+              {
+                "wallMs": 0.5193330000000174,
+                "cpuMs": 0.519
+              },
+              {
+                "wallMs": 0.5096659999999815,
+                "cpuMs": 0.509
+              },
+              {
+                "wallMs": 0.5158749999999941,
+                "cpuMs": 0.517
+              },
+              {
+                "wallMs": 0.5177910000000452,
+                "cpuMs": 0.518
+              },
+              {
+                "wallMs": 0.5323750000000018,
+                "cpuMs": 0.533
+              },
+              {
+                "wallMs": 0.5272080000000301,
+                "cpuMs": 0.528
+              },
+              {
+                "wallMs": 0.5264159999999833,
+                "cpuMs": 0.527
+              },
+              {
+                "wallMs": 0.5417500000000359,
+                "cpuMs": 0.542
+              },
+              {
+                "wallMs": 0.5332920000000172,
+                "cpuMs": 0.534
+              },
+              {
+                "wallMs": 0.5122920000000022,
+                "cpuMs": 0.513
+              },
+              {
+                "wallMs": 0.5145829999999592,
+                "cpuMs": 0.516
+              },
+              {
+                "wallMs": 0.5321250000000077,
+                "cpuMs": 0.565
+              },
+              {
+                "wallMs": 0.5129999999999768,
+                "cpuMs": 0.514
+              },
+              {
+                "wallMs": 0.5384999999999991,
+                "cpuMs": 0.539
+              },
+              {
+                "wallMs": 0.5372500000000286,
+                "cpuMs": 0.538
+              },
+              {
+                "wallMs": 0.5252080000000205,
+                "cpuMs": 0.528
+              }
+            ]
+          ],
+          "metrics": [
+            {
+              "wallMs": {
+                "n": 30,
+                "p50": 0.5268329999999821,
+                "p95": 0.6384580000000142,
+                "min": 0.49933300000003555,
+                "max": 0.8432909999999936
+              },
+              "cpuMs": {
+                "n": 30,
+                "p50": 0.528,
+                "p95": 1.334,
+                "min": 0.5,
+                "max": 1.862
+              }
+            },
+            {
+              "wallMs": {
+                "n": 30,
+                "p50": 0.5321250000000077,
+                "p95": 0.5544590000000085,
+                "min": 0.5096659999999815,
+                "max": 0.6139999999999759
+              },
+              "cpuMs": {
+                "n": 30,
+                "p50": 0.533,
+                "p95": 1.27,
+                "min": 0.509,
+                "max": 1.43
+              }
+            }
+          ]
+        }
+      },
+      "diagnostics": [
+        [
+          {
+            "kind": "all",
+            "sql": "WITH pending_bees AS (\n         SELECT DISTINCT bee_id\n         FROM mailbox\n         WHERE delivered_at IS NULL\n       )\n       SELECT target.bee_id,\n              runtime.state AS runtime_state,\n              runtime.boot_evidence AS runtime_boot_evidence,\n              runtime.updated_at AS runtime_updated_at,\n              EXISTS (\n                SELECT 1\n                FROM flags AS flag\n                WHERE flag.bee_id = target.bee_id\n                  AND flag.cleared_at IS NULL\n              ) AS has_active_flag\n       FROM pending_bees AS target\n       LEFT JOIN runtimes AS runtime\n         ON runtime.bee_id = target.bee_id\n        AND runtime.generation = (\n          SELECT MAX(latest.generation)\n          FROM runtimes AS latest\n          WHERE latest.bee_id = target.bee_id\n        )\n       ORDER BY target.bee_id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 1,
+            "textBytes": 47,
+            "blobBytes": 0,
+            "wallMs": 0.02941699999996672,
+            "cpuMs": 0.033
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT id, bee_id, urgency, enqueued_at\n       FROM mailbox\n       WHERE delivered_at IS NULL\n       ORDER BY bee_id, id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 1000,
+            "textBytes": 40000,
+            "blobBytes": 0,
+            "wallMs": 0.25162499999999,
+            "cpuMs": 0.297
+          }
+        ],
+        [
+          {
+            "kind": "all",
+            "sql": "WITH pending_bees AS (\n         SELECT DISTINCT bee_id\n         FROM mailbox\n         WHERE delivered_at IS NULL\n       )\n       SELECT target.bee_id,\n              runtime.state AS runtime_state,\n              runtime.boot_evidence AS runtime_boot_evidence,\n              runtime.updated_at AS runtime_updated_at,\n              EXISTS (\n                SELECT 1\n                FROM flags AS flag\n                WHERE flag.bee_id = target.bee_id\n                  AND flag.cleared_at IS NULL\n              ) AS has_active_flag\n       FROM pending_bees AS target\n       LEFT JOIN runtimes AS runtime\n         ON runtime.bee_id = target.bee_id\n        AND runtime.generation = (\n          SELECT MAX(latest.generation)\n          FROM runtimes AS latest\n          WHERE latest.bee_id = target.bee_id\n        )\n       ORDER BY target.bee_id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 1,
+            "textBytes": 47,
+            "blobBytes": 0,
+            "wallMs": 0.028999999999996362,
+            "cpuMs": 0.03
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT id, bee_id, urgency, enqueued_at\n       FROM mailbox\n       WHERE delivered_at IS NULL\n       ORDER BY bee_id, id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 1000,
+            "textBytes": 40000,
+            "blobBytes": 0,
+            "wallMs": 0.24987499999997453,
+            "cpuMs": 0.251
+          }
+        ]
+      ],
+      "queryPlans": [
+        [
+          {
+            "sql": "WITH pending_bees AS (\n         SELECT DISTINCT bee_id\n         FROM mailbox\n         WHERE delivered_at IS NULL\n       )\n       SELECT target.bee_id,\n              runtime.state AS runtime_state,\n              runtime.boot_evidence AS runtime_boot_evidence,\n              runtime.updated_at AS runtime_updated_at,\n              EXISTS (\n                SELECT 1\n                FROM flags AS flag\n                WHERE flag.bee_id = target.bee_id\n                  AND flag.cleared_at IS NULL\n              ) AS has_active_flag\n       FROM pending_bees AS target\n       LEFT JOIN runtimes AS runtime\n         ON runtime.bee_id = target.bee_id\n        AND runtime.generation = (\n          SELECT MAX(latest.generation)\n          FROM runtimes AS latest\n          WHERE latest.bee_id = target.bee_id\n        )\n       ORDER BY target.bee_id",
+            "plan": [
+              {
+                "id": 2,
+                "parent": 0,
+                "notused": 0,
+                "detail": "CO-ROUTINE pending_bees"
+              },
+              {
+                "id": 6,
+                "parent": 2,
+                "notused": 214,
+                "detail": "SCAN mailbox USING INDEX mailbox_undelivered"
+              },
+              {
+                "id": 18,
+                "parent": 0,
+                "notused": 175,
+                "detail": "SCAN target"
+              },
+              {
+                "id": 21,
+                "parent": 0,
+                "notused": 46,
+                "detail": "SEARCH runtime USING INDEX sqlite_autoindex_runtimes_1 (bee_id=? AND generation=?) LEFT-JOIN"
+              },
+              {
+                "id": 26,
+                "parent": 0,
+                "notused": 0,
+                "detail": "CORRELATED SCALAR SUBQUERY 3"
+              },
+              {
+                "id": 31,
+                "parent": 26,
+                "notused": 54,
+                "detail": "SEARCH latest USING COVERING INDEX sqlite_autoindex_runtimes_1 (bee_id=?)"
+              },
+              {
+                "id": 56,
+                "parent": 0,
+                "notused": 0,
+                "detail": "CORRELATED SCALAR SUBQUERY 2"
+              },
+              {
+                "id": 61,
+                "parent": 56,
+                "notused": 62,
+                "detail": "SEARCH flag USING INDEX flags_active (bee_id=?)"
+              },
+              {
+                "id": 80,
+                "parent": 0,
+                "notused": 0,
+                "detail": "USE TEMP B-TREE FOR ORDER BY"
+              }
+            ]
+          },
+          {
+            "sql": "SELECT id, bee_id, urgency, enqueued_at\n       FROM mailbox\n       WHERE delivered_at IS NULL\n       ORDER BY bee_id, id",
+            "plan": [
+              {
+                "id": 4,
+                "parent": 0,
+                "notused": 214,
+                "detail": "SCAN mailbox USING INDEX mailbox_undelivered"
+              }
+            ]
+          }
+        ],
+        [
+          {
+            "sql": "WITH pending_bees AS (\n         SELECT DISTINCT bee_id\n         FROM mailbox\n         WHERE delivered_at IS NULL\n       )\n       SELECT target.bee_id,\n              runtime.state AS runtime_state,\n              runtime.boot_evidence AS runtime_boot_evidence,\n              runtime.updated_at AS runtime_updated_at,\n              EXISTS (\n                SELECT 1\n                FROM flags AS flag\n                WHERE flag.bee_id = target.bee_id\n                  AND flag.cleared_at IS NULL\n              ) AS has_active_flag\n       FROM pending_bees AS target\n       LEFT JOIN runtimes AS runtime\n         ON runtime.bee_id = target.bee_id\n        AND runtime.generation = (\n          SELECT MAX(latest.generation)\n          FROM runtimes AS latest\n          WHERE latest.bee_id = target.bee_id\n        )\n       ORDER BY target.bee_id",
+            "plan": [
+              {
+                "id": 2,
+                "parent": 0,
+                "notused": 0,
+                "detail": "CO-ROUTINE pending_bees"
+              },
+              {
+                "id": 6,
+                "parent": 2,
+                "notused": 214,
+                "detail": "SCAN mailbox USING INDEX mailbox_undelivered"
+              },
+              {
+                "id": 18,
+                "parent": 0,
+                "notused": 175,
+                "detail": "SCAN target"
+              },
+              {
+                "id": 21,
+                "parent": 0,
+                "notused": 46,
+                "detail": "SEARCH runtime USING INDEX sqlite_autoindex_runtimes_1 (bee_id=? AND generation=?) LEFT-JOIN"
+              },
+              {
+                "id": 26,
+                "parent": 0,
+                "notused": 0,
+                "detail": "CORRELATED SCALAR SUBQUERY 3"
+              },
+              {
+                "id": 31,
+                "parent": 26,
+                "notused": 54,
+                "detail": "SEARCH latest USING COVERING INDEX sqlite_autoindex_runtimes_1 (bee_id=?)"
+              },
+              {
+                "id": 56,
+                "parent": 0,
+                "notused": 0,
+                "detail": "CORRELATED SCALAR SUBQUERY 2"
+              },
+              {
+                "id": 61,
+                "parent": 56,
+                "notused": 62,
+                "detail": "SEARCH flag USING INDEX flags_active (bee_id=?)"
+              },
+              {
+                "id": 80,
+                "parent": 0,
+                "notused": 0,
+                "detail": "USE TEMP B-TREE FOR ORDER BY"
+              }
+            ]
+          },
+          {
+            "sql": "SELECT id, bee_id, urgency, enqueued_at\n       FROM mailbox\n       WHERE delivered_at IS NULL\n       ORDER BY bee_id, id",
+            "plan": [
+              {
+                "id": 4,
+                "parent": 0,
+                "notused": 214,
+                "detail": "SCAN mailbox USING INDEX mailbox_undelivered"
+              }
+            ]
+          }
+        ]
+      ],
+      "writeRaw": [
+        [
+          {
+            "wallMs": 10.105040999999972,
+            "cpuMs": 9.002
+          },
+          {
+            "wallMs": 9.260041999999999,
+            "cpuMs": 8.96
+          },
+          {
+            "wallMs": 9.840249999999969,
+            "cpuMs": 8.666
+          },
+          {
+            "wallMs": 9.514208999999994,
+            "cpuMs": 8.245
+          },
+          {
+            "wallMs": 8.658457999999996,
+            "cpuMs": 7.974
+          },
+          {
+            "wallMs": 9.82995900000003,
+            "cpuMs": 8.541
+          },
+          {
+            "wallMs": 8.89749999999998,
+            "cpuMs": 8.252
+          },
+          {
+            "wallMs": 9.738625000000013,
+            "cpuMs": 8.385
+          },
+          {
+            "wallMs": 9.822958000000028,
+            "cpuMs": 8.536
+          },
+          {
+            "wallMs": 9.002707999999984,
+            "cpuMs": 8.501
+          }
+        ],
+        [
+          {
+            "wallMs": 10.130415999999968,
+            "cpuMs": 8.838
+          },
+          {
+            "wallMs": 10.720416,
+            "cpuMs": 9.463
+          },
+          {
+            "wallMs": 10.382542,
+            "cpuMs": 9.088
+          },
+          {
+            "wallMs": 12.605875000000026,
+            "cpuMs": 11.404
+          },
+          {
+            "wallMs": 9.377958999999976,
+            "cpuMs": 8.839
+          },
+          {
+            "wallMs": 10.329375000000027,
+            "cpuMs": 9.035
+          },
+          {
+            "wallMs": 12.17266699999999,
+            "cpuMs": 10.975
+          },
+          {
+            "wallMs": 10.163042000000019,
+            "cpuMs": 8.977
+          },
+          {
+            "wallMs": 10.35833299999996,
+            "cpuMs": 9.072
+          },
+          {
+            "wallMs": 9.409125000000017,
+            "cpuMs": 8.811
+          }
+        ]
+      ],
+      "writeMetrics": [
+        {
+          "wallMs": {
+            "n": 10,
+            "p50": 9.514208999999994,
+            "p95": 10.105040999999972,
+            "min": 8.658457999999996,
+            "max": 10.105040999999972
+          },
+          "cpuMs": {
+            "n": 10,
+            "p50": 8.501,
+            "p95": 9.002,
+            "min": 7.974,
+            "max": 9.002
+          }
+        },
+        {
+          "wallMs": {
+            "n": 10,
+            "p50": 10.329375000000027,
+            "p95": 12.605875000000026,
+            "min": 9.377958999999976,
+            "max": 12.605875000000026
+          },
+          "cpuMs": {
+            "n": 10,
+            "p50": 9.035,
+            "p95": 11.404,
+            "min": 8.811,
+            "max": 11.404
+          }
+        }
+      ],
+      "afterWritesStorage": [
+        {
+          "fileBytes": 1994752,
+          "pageCount": 487,
+          "freePages": 0,
+          "index": [],
+          "quickCheck": "ok"
+        },
+        {
+          "fileBytes": 2056192,
+          "pageCount": 502,
+          "freePages": 0,
+          "index": [
+            {
+              "name": "mailbox_pending_metadata",
+              "pages": 15,
+              "bytes": 61440
+            }
+          ],
+          "quickCheck": "ok"
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "pending": 20000,
+        "bodyBytes": 64
+      },
+      "fixtureSha256": "2971c9e186851accd9d717c005998a20fb2837ab0dbbf1891e75e00900c1404c",
+      "install": [
+        {
+          "wallMs": 0.0014160000000629225,
+          "cpuMs": 0.008,
+          "ddlExecuted": false
+        },
+        {
+          "wallMs": 4.448167000000012,
+          "cpuMs": 4.245,
+          "ddlExecuted": true
+        }
+      ],
+      "beforeWritesStorage": [
+        {
+          "fileBytes": 16097280,
+          "pageCount": 3930,
+          "freePages": 0,
+          "index": [],
+          "quickCheck": "ok"
+        },
+        {
+          "fileBytes": 17211392,
+          "pageCount": 4202,
+          "freePages": 0,
+          "index": [
+            {
+              "name": "mailbox_pending_metadata",
+              "pages": 272,
+              "bytes": 1114112
+            }
+          ],
+          "quickCheck": "ok"
+        }
+      ],
+      "results": {
+        "i1": {
+          "raw": [
+            [
+              {
+                "wallMs": 10.675416999999925,
+                "cpuMs": 10.686
+              },
+              {
+                "wallMs": 10.848375000000033,
+                "cpuMs": 10.849
+              },
+              {
+                "wallMs": 11.809792000000016,
+                "cpuMs": 15.663
+              },
+              {
+                "wallMs": 10.795249999999896,
+                "cpuMs": 10.796
+              },
+              {
+                "wallMs": 10.501374999999825,
+                "cpuMs": 10.501
+              },
+              {
+                "wallMs": 11.895540999999866,
+                "cpuMs": 15.651
+              },
+              {
+                "wallMs": 10.540874999999915,
+                "cpuMs": 10.542
+              },
+              {
+                "wallMs": 10.583707999999888,
+                "cpuMs": 10.585
+              },
+              {
+                "wallMs": 10.45329199999992,
+                "cpuMs": 10.454
+              },
+              {
+                "wallMs": 10.666625000000067,
+                "cpuMs": 10.668
+              },
+              {
+                "wallMs": 10.509541000000127,
+                "cpuMs": 10.511
+              },
+              {
+                "wallMs": 10.63041700000008,
+                "cpuMs": 10.631
+              },
+              {
+                "wallMs": 10.551124999999956,
+                "cpuMs": 10.552
+              },
+              {
+                "wallMs": 10.519875000000184,
+                "cpuMs": 10.52
+              },
+              {
+                "wallMs": 10.41775000000007,
+                "cpuMs": 10.419
+              },
+              {
+                "wallMs": 10.54300000000012,
+                "cpuMs": 10.544
+              },
+              {
+                "wallMs": 11.820625000000064,
+                "cpuMs": 15.584
+              },
+              {
+                "wallMs": 10.666625000000067,
+                "cpuMs": 10.668
+              },
+              {
+                "wallMs": 10.472291999999925,
+                "cpuMs": 10.473
+              },
+              {
+                "wallMs": 11.842916999999943,
+                "cpuMs": 15.942
+              },
+              {
+                "wallMs": 10.36408399999982,
+                "cpuMs": 10.356
+              },
+              {
+                "wallMs": 10.435291999999663,
+                "cpuMs": 10.437
+              },
+              {
+                "wallMs": 10.47433299999966,
+                "cpuMs": 10.475
+              },
+              {
+                "wallMs": 10.347374999999829,
+                "cpuMs": 10.349
+              },
+              {
+                "wallMs": 10.452458999999635,
+                "cpuMs": 10.453
+              },
+              {
+                "wallMs": 10.519874999999956,
+                "cpuMs": 10.52
+              },
+              {
+                "wallMs": 10.546166000000085,
+                "cpuMs": 10.547
+              },
+              {
+                "wallMs": 10.577874999999949,
+                "cpuMs": 10.578
+              },
+              {
+                "wallMs": 10.439374999999927,
+                "cpuMs": 10.44
+              },
+              {
+                "wallMs": 10.53625000000011,
+                "cpuMs": 10.537
+              }
+            ],
+            [
+              {
+                "wallMs": 10.643125000000055,
+                "cpuMs": 10.644
+              },
+              {
+                "wallMs": 10.503791000000092,
+                "cpuMs": 10.506
+              },
+              {
+                "wallMs": 10.520416999999952,
+                "cpuMs": 10.52
+              },
+              {
+                "wallMs": 10.384917000000087,
+                "cpuMs": 10.385
+              },
+              {
+                "wallMs": 10.612374999999929,
+                "cpuMs": 10.613
+              },
+              {
+                "wallMs": 10.498458999999912,
+                "cpuMs": 10.499
+              },
+              {
+                "wallMs": 10.639999999999873,
+                "cpuMs": 10.641
+              },
+              {
+                "wallMs": 10.4537499999999,
+                "cpuMs": 10.454
+              },
+              {
+                "wallMs": 10.56145800000013,
+                "cpuMs": 10.562
+              },
+              {
+                "wallMs": 11.891332999999804,
+                "cpuMs": 15.89
+              },
+              {
+                "wallMs": 10.683958000000075,
+                "cpuMs": 10.684
+              },
+              {
+                "wallMs": 10.553292000000056,
+                "cpuMs": 10.548
+              },
+              {
+                "wallMs": 11.783791999999949,
+                "cpuMs": 15.796
+              },
+              {
+                "wallMs": 10.303209000000152,
+                "cpuMs": 10.296
+              },
+              {
+                "wallMs": 10.573249999999916,
+                "cpuMs": 10.574
+              },
+              {
+                "wallMs": 10.487416999999823,
+                "cpuMs": 10.488
+              },
+              {
+                "wallMs": 10.67491700000005,
+                "cpuMs": 10.676
+              },
+              {
+                "wallMs": 10.476707999999917,
+                "cpuMs": 10.478
+              },
+              {
+                "wallMs": 10.559959000000163,
+                "cpuMs": 10.56
+              },
+              {
+                "wallMs": 10.488374999999905,
+                "cpuMs": 10.49
+              },
+              {
+                "wallMs": 10.276290999999674,
+                "cpuMs": 10.277
+              },
+              {
+                "wallMs": 10.393875000000207,
+                "cpuMs": 10.395
+              },
+              {
+                "wallMs": 10.464458999999806,
+                "cpuMs": 10.465
+              },
+              {
+                "wallMs": 11.648625000000266,
+                "cpuMs": 15.342
+              },
+              {
+                "wallMs": 10.560625000000073,
+                "cpuMs": 10.56
+              },
+              {
+                "wallMs": 10.528791000000183,
+                "cpuMs": 10.529
+              },
+              {
+                "wallMs": 12.876458000000184,
+                "cpuMs": 21.303
+              },
+              {
+                "wallMs": 13.560667000000194,
+                "cpuMs": 18.364
+              },
+              {
+                "wallMs": 10.50387499999988,
+                "cpuMs": 10.506
+              },
+              {
+                "wallMs": 10.336416999999983,
+                "cpuMs": 10.337
+              }
+            ]
+          ],
+          "metrics": [
+            {
+              "wallMs": {
+                "n": 30,
+                "p50": 10.540874999999915,
+                "p95": 11.842916999999943,
+                "min": 10.347374999999829,
+                "max": 11.895540999999866
+              },
+              "cpuMs": {
+                "n": 30,
+                "p50": 10.542,
+                "p95": 15.663,
+                "min": 10.349,
+                "max": 15.942
+              }
+            },
+            {
+              "wallMs": {
+                "n": 30,
+                "p50": 10.528791000000183,
+                "p95": 12.876458000000184,
+                "min": 10.276290999999674,
+                "max": 13.560667000000194
+              },
+              "cpuMs": {
+                "n": 30,
+                "p50": 10.529,
+                "p95": 18.364,
+                "min": 10.277,
+                "max": 21.303
+              }
+            }
+          ]
+        },
+        "work": {
+          "raw": [
+            [
+              {
+                "wallMs": 11.545250000000124,
+                "cpuMs": 11.551
+              },
+              {
+                "wallMs": 11.74474999999984,
+                "cpuMs": 11.745
+              },
+              {
+                "wallMs": 11.674125000000004,
+                "cpuMs": 11.691
+              },
+              {
+                "wallMs": 11.838708999999653,
+                "cpuMs": 11.839
+              },
+              {
+                "wallMs": 11.802624999999807,
+                "cpuMs": 11.982
+              },
+              {
+                "wallMs": 11.652625000000171,
+                "cpuMs": 11.653
+              },
+              {
+                "wallMs": 11.562582999999904,
+                "cpuMs": 11.563
+              },
+              {
+                "wallMs": 11.886540999999852,
+                "cpuMs": 12.043
+              },
+              {
+                "wallMs": 11.586083000000144,
+                "cpuMs": 11.586
+              },
+              {
+                "wallMs": 11.761749999999665,
+                "cpuMs": 11.763
+              },
+              {
+                "wallMs": 11.6550000000002,
+                "cpuMs": 11.656
+              },
+              {
+                "wallMs": 11.522792000000209,
+                "cpuMs": 11.523
+              },
+              {
+                "wallMs": 11.541541999999936,
+                "cpuMs": 11.542
+              },
+              {
+                "wallMs": 11.592208000000028,
+                "cpuMs": 11.593
+              },
+              {
+                "wallMs": 11.496375000000171,
+                "cpuMs": 11.497
+              },
+              {
+                "wallMs": 11.629542000000129,
+                "cpuMs": 11.631
+              },
+              {
+                "wallMs": 11.525749999999789,
+                "cpuMs": 11.526
+              },
+              {
+                "wallMs": 11.56637499999988,
+                "cpuMs": 11.567
+              },
+              {
+                "wallMs": 11.7521670000001,
+                "cpuMs": 11.902
+              },
+              {
+                "wallMs": 11.635625000000346,
+                "cpuMs": 11.635
+              },
+              {
+                "wallMs": 11.568833000000268,
+                "cpuMs": 11.569
+              },
+              {
+                "wallMs": 12.11804200000006,
+                "cpuMs": 12.328
+              },
+              {
+                "wallMs": 11.582582999999886,
+                "cpuMs": 11.583
+              },
+              {
+                "wallMs": 11.69683299999997,
+                "cpuMs": 11.698
+              },
+              {
+                "wallMs": 11.59429100000034,
+                "cpuMs": 11.595
+              },
+              {
+                "wallMs": 11.754167000000052,
+                "cpuMs": 11.754
+              },
+              {
+                "wallMs": 11.708500000000186,
+                "cpuMs": 11.709
+              },
+              {
+                "wallMs": 11.868750000000091,
+                "cpuMs": 11.869
+              },
+              {
+                "wallMs": 11.805041999999958,
+                "cpuMs": 11.805
+              },
+              {
+                "wallMs": 11.852750000000015,
+                "cpuMs": 11.852
+              }
+            ],
+            [
+              {
+                "wallMs": 11.799332999999933,
+                "cpuMs": 11.992
+              },
+              {
+                "wallMs": 11.507624999999734,
+                "cpuMs": 11.508
+              },
+              {
+                "wallMs": 11.777541999999812,
+                "cpuMs": 11.944
+              },
+              {
+                "wallMs": 11.675666999999976,
+                "cpuMs": 11.677
+              },
+              {
+                "wallMs": 11.487666999999874,
+                "cpuMs": 11.488
+              },
+              {
+                "wallMs": 11.499915999999757,
+                "cpuMs": 11.5
+              },
+              {
+                "wallMs": 11.596082999999908,
+                "cpuMs": 11.597
+              },
+              {
+                "wallMs": 11.532541000000037,
+                "cpuMs": 11.533
+              },
+              {
+                "wallMs": 11.685042000000067,
+                "cpuMs": 11.685
+              },
+              {
+                "wallMs": 11.671332999999777,
+                "cpuMs": 11.672
+              },
+              {
+                "wallMs": 11.769249999999829,
+                "cpuMs": 11.77
+              },
+              {
+                "wallMs": 11.859583000000384,
+                "cpuMs": 12.023
+              },
+              {
+                "wallMs": 11.603207999999995,
+                "cpuMs": 11.604
+              },
+              {
+                "wallMs": 11.465499999999793,
+                "cpuMs": 11.465
+              },
+              {
+                "wallMs": 12.084000000000287,
+                "cpuMs": 12.268
+              },
+              {
+                "wallMs": 11.49758299999985,
+                "cpuMs": 11.499
+              },
+              {
+                "wallMs": 11.661833000000115,
+                "cpuMs": 11.662
+              },
+              {
+                "wallMs": 11.509791999999834,
+                "cpuMs": 11.51
+              },
+              {
+                "wallMs": 11.435500000000047,
+                "cpuMs": 11.436
+              },
+              {
+                "wallMs": 11.525583000000097,
+                "cpuMs": 11.526
+              },
+              {
+                "wallMs": 11.638999999999669,
+                "cpuMs": 11.639
+              },
+              {
+                "wallMs": 11.582167000000027,
+                "cpuMs": 11.583
+              },
+              {
+                "wallMs": 11.691499999999905,
+                "cpuMs": 11.692
+              },
+              {
+                "wallMs": 11.603874999999789,
+                "cpuMs": 11.604
+              },
+              {
+                "wallMs": 11.60174999999981,
+                "cpuMs": 11.602
+              },
+              {
+                "wallMs": 11.97262499999988,
+                "cpuMs": 12.18
+              },
+              {
+                "wallMs": 11.891999999999825,
+                "cpuMs": 11.893
+              },
+              {
+                "wallMs": 11.763707999999951,
+                "cpuMs": 11.764
+              },
+              {
+                "wallMs": 12.326958000000104,
+                "cpuMs": 12.509
+              },
+              {
+                "wallMs": 11.79266699999971,
+                "cpuMs": 11.793
+              }
+            ]
+          ],
+          "metrics": [
+            {
+              "wallMs": {
+                "n": 30,
+                "p50": 11.652625000000171,
+                "p95": 11.886540999999852,
+                "min": 11.496375000000171,
+                "max": 12.11804200000006
+              },
+              "cpuMs": {
+                "n": 30,
+                "p50": 11.653,
+                "p95": 12.043,
+                "min": 11.497,
+                "max": 12.328
+              }
+            },
+            {
+              "wallMs": {
+                "n": 30,
+                "p50": 11.638999999999669,
+                "p95": 12.084000000000287,
+                "min": 11.435500000000047,
+                "max": 12.326958000000104
+              },
+              "cpuMs": {
+                "n": 30,
+                "p50": 11.639,
+                "p95": 12.268,
+                "min": 11.436,
+                "max": 12.509
+              }
+            }
+          ]
+        },
+        "step": {
+          "raw": [
+            [
+              {
+                "wallMs": 11.146792000000005,
+                "cpuMs": 11.152
+              },
+              {
+                "wallMs": 11.20416699999987,
+                "cpuMs": 11.204
+              },
+              {
+                "wallMs": 11.231459000000086,
+                "cpuMs": 11.232
+              },
+              {
+                "wallMs": 11.282166000000416,
+                "cpuMs": 11.282
+              },
+              {
+                "wallMs": 11.181250000000091,
+                "cpuMs": 11.182
+              },
+              {
+                "wallMs": 11.224625000000287,
+                "cpuMs": 11.225
+              },
+              {
+                "wallMs": 12.522958000000017,
+                "cpuMs": 14.161
+              },
+              {
+                "wallMs": 11.163125000000036,
+                "cpuMs": 11.163
+              },
+              {
+                "wallMs": 10.972458000000188,
+                "cpuMs": 10.973
+              },
+              {
+                "wallMs": 11.960916999999881,
+                "cpuMs": 13.069
+              },
+              {
+                "wallMs": 11.002792000000227,
+                "cpuMs": 11.004
+              },
+              {
+                "wallMs": 11.077000000000226,
+                "cpuMs": 11.078
+              },
+              {
+                "wallMs": 11.065499999999702,
+                "cpuMs": 11.067
+              },
+              {
+                "wallMs": 11.017708000000312,
+                "cpuMs": 11.018
+              },
+              {
+                "wallMs": 10.918957999999748,
+                "cpuMs": 10.919
+              },
+              {
+                "wallMs": 11.057500000000346,
+                "cpuMs": 11.059
+              },
+              {
+                "wallMs": 11.114332999999988,
+                "cpuMs": 11.114
+              },
+              {
+                "wallMs": 10.890333000000282,
+                "cpuMs": 10.891
+              },
+              {
+                "wallMs": 10.912916999999652,
+                "cpuMs": 10.914
+              },
+              {
+                "wallMs": 11.039999999999964,
+                "cpuMs": 11.04
+              },
+              {
+                "wallMs": 11.801916000000347,
+                "cpuMs": 14.888
+              },
+              {
+                "wallMs": 11.062832999999955,
+                "cpuMs": 11.064
+              },
+              {
+                "wallMs": 11.000958999999966,
+                "cpuMs": 11.001
+              },
+              {
+                "wallMs": 11.814792000000125,
+                "cpuMs": 14.959
+              },
+              {
+                "wallMs": 10.796082999999726,
+                "cpuMs": 10.852
+              },
+              {
+                "wallMs": 11.083000000000084,
+                "cpuMs": 11.083
+              },
+              {
+                "wallMs": 11.059541999999965,
+                "cpuMs": 11.06
+              },
+              {
+                "wallMs": 10.913583000000017,
+                "cpuMs": 10.914
+              },
+              {
+                "wallMs": 10.831791000000067,
+                "cpuMs": 10.832
+              },
+              {
+                "wallMs": 11.020582999999988,
+                "cpuMs": 11.021
+              }
+            ],
+            [
+              {
+                "wallMs": 11.209916000000248,
+                "cpuMs": 11.21
+              },
+              {
+                "wallMs": 11.134374999999636,
+                "cpuMs": 11.134
+              },
+              {
+                "wallMs": 12.832458999999744,
+                "cpuMs": 14.068
+              },
+              {
+                "wallMs": 11.212125000000015,
+                "cpuMs": 11.213
+              },
+              {
+                "wallMs": 11.196582999999919,
+                "cpuMs": 11.197
+              },
+              {
+                "wallMs": 11.169667000000118,
+                "cpuMs": 11.17
+              },
+              {
+                "wallMs": 11.004374999999982,
+                "cpuMs": 11.005
+              },
+              {
+                "wallMs": 10.986374999999953,
+                "cpuMs": 10.987
+              },
+              {
+                "wallMs": 11.146000000000186,
+                "cpuMs": 11.146
+              },
+              {
+                "wallMs": 10.969375000000127,
+                "cpuMs": 10.97
+              },
+              {
+                "wallMs": 11.12912499999993,
+                "cpuMs": 11.13
+              },
+              {
+                "wallMs": 10.999041000000034,
+                "cpuMs": 10.999
+              },
+              {
+                "wallMs": 11.25387499999988,
+                "cpuMs": 11.256
+              },
+              {
+                "wallMs": 11.784833000000162,
+                "cpuMs": 15.002
+              },
+              {
+                "wallMs": 11.103875000000244,
+                "cpuMs": 11.105
+              },
+              {
+                "wallMs": 10.98416700000007,
+                "cpuMs": 10.985
+              },
+              {
+                "wallMs": 11.702166999999918,
+                "cpuMs": 14.841
+              },
+              {
+                "wallMs": 10.775167000000238,
+                "cpuMs": 10.776
+              },
+              {
+                "wallMs": 11.035292000000027,
+                "cpuMs": 11.035
+              },
+              {
+                "wallMs": 10.958834000000024,
+                "cpuMs": 10.958
+              },
+              {
+                "wallMs": 10.883417000000009,
+                "cpuMs": 10.884
+              },
+              {
+                "wallMs": 10.917417000000114,
+                "cpuMs": 10.919
+              },
+              {
+                "wallMs": 11.061874999999873,
+                "cpuMs": 11.062
+              },
+              {
+                "wallMs": 11.063458000000082,
+                "cpuMs": 11.064
+              },
+              {
+                "wallMs": 11.031750000000102,
+                "cpuMs": 11.033
+              },
+              {
+                "wallMs": 10.926750000000084,
+                "cpuMs": 10.927
+              },
+              {
+                "wallMs": 11.121500000000196,
+                "cpuMs": 11.122
+              },
+              {
+                "wallMs": 11.721000000000004,
+                "cpuMs": 14.914
+              },
+              {
+                "wallMs": 11.018792000000303,
+                "cpuMs": 11.019
+              },
+              {
+                "wallMs": 10.976624999999785,
+                "cpuMs": 10.977
+              }
+            ]
+          ],
+          "metrics": [
+            {
+              "wallMs": {
+                "n": 30,
+                "p50": 11.062832999999955,
+                "p95": 11.960916999999881,
+                "min": 10.796082999999726,
+                "max": 12.522958000000017
+              },
+              "cpuMs": {
+                "n": 30,
+                "p50": 11.064,
+                "p95": 14.888,
+                "min": 10.832,
+                "max": 14.959
+              }
+            },
+            {
+              "wallMs": {
+                "n": 30,
+                "p50": 11.061874999999873,
+                "p95": 11.784833000000162,
+                "min": 10.775167000000238,
+                "max": 12.832458999999744
+              },
+              "cpuMs": {
+                "n": 30,
+                "p50": 11.062,
+                "p95": 14.914,
+                "min": 10.776,
+                "max": 15.002
+              }
+            }
+          ]
+        }
+      },
+      "diagnostics": [
+        [
+          {
+            "kind": "all",
+            "sql": "WITH pending_bees AS (\n         SELECT DISTINCT bee_id\n         FROM mailbox\n         WHERE delivered_at IS NULL\n       )\n       SELECT target.bee_id,\n              runtime.state AS runtime_state,\n              runtime.boot_evidence AS runtime_boot_evidence,\n              runtime.updated_at AS runtime_updated_at,\n              EXISTS (\n                SELECT 1\n                FROM flags AS flag\n                WHERE flag.bee_id = target.bee_id\n                  AND flag.cleared_at IS NULL\n              ) AS has_active_flag\n       FROM pending_bees AS target\n       LEFT JOIN runtimes AS runtime\n         ON runtime.bee_id = target.bee_id\n        AND runtime.generation = (\n          SELECT MAX(latest.generation)\n          FROM runtimes AS latest\n          WHERE latest.bee_id = target.bee_id\n        )\n       ORDER BY target.bee_id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 1,
+            "textBytes": 47,
+            "blobBytes": 0,
+            "wallMs": 0.5363750000001346,
+            "cpuMs": 0.54
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT id, bee_id, urgency, enqueued_at\n       FROM mailbox\n       WHERE delivered_at IS NULL\n       ORDER BY bee_id, id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 20000,
+            "textBytes": 800000,
+            "blobBytes": 0,
+            "wallMs": 5.762499999999818,
+            "cpuMs": 9.227
+          }
+        ],
+        [
+          {
+            "kind": "all",
+            "sql": "WITH pending_bees AS (\n         SELECT DISTINCT bee_id\n         FROM mailbox\n         WHERE delivered_at IS NULL\n       )\n       SELECT target.bee_id,\n              runtime.state AS runtime_state,\n              runtime.boot_evidence AS runtime_boot_evidence,\n              runtime.updated_at AS runtime_updated_at,\n              EXISTS (\n                SELECT 1\n                FROM flags AS flag\n                WHERE flag.bee_id = target.bee_id\n                  AND flag.cleared_at IS NULL\n              ) AS has_active_flag\n       FROM pending_bees AS target\n       LEFT JOIN runtimes AS runtime\n         ON runtime.bee_id = target.bee_id\n        AND runtime.generation = (\n          SELECT MAX(latest.generation)\n          FROM runtimes AS latest\n          WHERE latest.bee_id = target.bee_id\n        )\n       ORDER BY target.bee_id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 1,
+            "textBytes": 47,
+            "blobBytes": 0,
+            "wallMs": 0.5864160000000993,
+            "cpuMs": 0.701
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT id, bee_id, urgency, enqueued_at\n       FROM mailbox\n       WHERE delivered_at IS NULL\n       ORDER BY bee_id, id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 20000,
+            "textBytes": 800000,
+            "blobBytes": 0,
+            "wallMs": 5.718666000000212,
+            "cpuMs": 5.719
+          }
+        ]
+      ],
+      "queryPlans": [
+        [
+          {
+            "sql": "WITH pending_bees AS (\n         SELECT DISTINCT bee_id\n         FROM mailbox\n         WHERE delivered_at IS NULL\n       )\n       SELECT target.bee_id,\n              runtime.state AS runtime_state,\n              runtime.boot_evidence AS runtime_boot_evidence,\n              runtime.updated_at AS runtime_updated_at,\n              EXISTS (\n                SELECT 1\n                FROM flags AS flag\n                WHERE flag.bee_id = target.bee_id\n                  AND flag.cleared_at IS NULL\n              ) AS has_active_flag\n       FROM pending_bees AS target\n       LEFT JOIN runtimes AS runtime\n         ON runtime.bee_id = target.bee_id\n        AND runtime.generation = (\n          SELECT MAX(latest.generation)\n          FROM runtimes AS latest\n          WHERE latest.bee_id = target.bee_id\n        )\n       ORDER BY target.bee_id",
+            "plan": [
+              {
+                "id": 2,
+                "parent": 0,
+                "notused": 0,
+                "detail": "CO-ROUTINE pending_bees"
+              },
+              {
+                "id": 6,
+                "parent": 2,
+                "notused": 214,
+                "detail": "SCAN mailbox USING INDEX mailbox_undelivered"
+              },
+              {
+                "id": 18,
+                "parent": 0,
+                "notused": 175,
+                "detail": "SCAN target"
+              },
+              {
+                "id": 21,
+                "parent": 0,
+                "notused": 46,
+                "detail": "SEARCH runtime USING INDEX sqlite_autoindex_runtimes_1 (bee_id=? AND generation=?) LEFT-JOIN"
+              },
+              {
+                "id": 26,
+                "parent": 0,
+                "notused": 0,
+                "detail": "CORRELATED SCALAR SUBQUERY 3"
+              },
+              {
+                "id": 31,
+                "parent": 26,
+                "notused": 54,
+                "detail": "SEARCH latest USING COVERING INDEX sqlite_autoindex_runtimes_1 (bee_id=?)"
+              },
+              {
+                "id": 56,
+                "parent": 0,
+                "notused": 0,
+                "detail": "CORRELATED SCALAR SUBQUERY 2"
+              },
+              {
+                "id": 61,
+                "parent": 56,
+                "notused": 62,
+                "detail": "SEARCH flag USING INDEX flags_active (bee_id=?)"
+              },
+              {
+                "id": 80,
+                "parent": 0,
+                "notused": 0,
+                "detail": "USE TEMP B-TREE FOR ORDER BY"
+              }
+            ]
+          },
+          {
+            "sql": "SELECT id, bee_id, urgency, enqueued_at\n       FROM mailbox\n       WHERE delivered_at IS NULL\n       ORDER BY bee_id, id",
+            "plan": [
+              {
+                "id": 4,
+                "parent": 0,
+                "notused": 214,
+                "detail": "SCAN mailbox USING INDEX mailbox_undelivered"
+              }
+            ]
+          }
+        ],
+        [
+          {
+            "sql": "WITH pending_bees AS (\n         SELECT DISTINCT bee_id\n         FROM mailbox\n         WHERE delivered_at IS NULL\n       )\n       SELECT target.bee_id,\n              runtime.state AS runtime_state,\n              runtime.boot_evidence AS runtime_boot_evidence,\n              runtime.updated_at AS runtime_updated_at,\n              EXISTS (\n                SELECT 1\n                FROM flags AS flag\n                WHERE flag.bee_id = target.bee_id\n                  AND flag.cleared_at IS NULL\n              ) AS has_active_flag\n       FROM pending_bees AS target\n       LEFT JOIN runtimes AS runtime\n         ON runtime.bee_id = target.bee_id\n        AND runtime.generation = (\n          SELECT MAX(latest.generation)\n          FROM runtimes AS latest\n          WHERE latest.bee_id = target.bee_id\n        )\n       ORDER BY target.bee_id",
+            "plan": [
+              {
+                "id": 2,
+                "parent": 0,
+                "notused": 0,
+                "detail": "CO-ROUTINE pending_bees"
+              },
+              {
+                "id": 6,
+                "parent": 2,
+                "notused": 214,
+                "detail": "SCAN mailbox USING INDEX mailbox_undelivered"
+              },
+              {
+                "id": 18,
+                "parent": 0,
+                "notused": 175,
+                "detail": "SCAN target"
+              },
+              {
+                "id": 21,
+                "parent": 0,
+                "notused": 46,
+                "detail": "SEARCH runtime USING INDEX sqlite_autoindex_runtimes_1 (bee_id=? AND generation=?) LEFT-JOIN"
+              },
+              {
+                "id": 26,
+                "parent": 0,
+                "notused": 0,
+                "detail": "CORRELATED SCALAR SUBQUERY 3"
+              },
+              {
+                "id": 31,
+                "parent": 26,
+                "notused": 54,
+                "detail": "SEARCH latest USING COVERING INDEX sqlite_autoindex_runtimes_1 (bee_id=?)"
+              },
+              {
+                "id": 56,
+                "parent": 0,
+                "notused": 0,
+                "detail": "CORRELATED SCALAR SUBQUERY 2"
+              },
+              {
+                "id": 61,
+                "parent": 56,
+                "notused": 62,
+                "detail": "SEARCH flag USING INDEX flags_active (bee_id=?)"
+              },
+              {
+                "id": 80,
+                "parent": 0,
+                "notused": 0,
+                "detail": "USE TEMP B-TREE FOR ORDER BY"
+              }
+            ]
+          },
+          {
+            "sql": "SELECT id, bee_id, urgency, enqueued_at\n       FROM mailbox\n       WHERE delivered_at IS NULL\n       ORDER BY bee_id, id",
+            "plan": [
+              {
+                "id": 4,
+                "parent": 0,
+                "notused": 214,
+                "detail": "SCAN mailbox USING INDEX mailbox_undelivered"
+              }
+            ]
+          }
+        ]
+      ],
+      "writeRaw": [
+        [
+          {
+            "wallMs": 9.768000000000029,
+            "cpuMs": 8.472
+          },
+          {
+            "wallMs": 9.236167000000023,
+            "cpuMs": 8.588
+          },
+          {
+            "wallMs": 10.192792000000736,
+            "cpuMs": 8.831
+          },
+          {
+            "wallMs": 10.093957999999475,
+            "cpuMs": 8.792
+          },
+          {
+            "wallMs": 8.980875000000196,
+            "cpuMs": 8.337
+          },
+          {
+            "wallMs": 10.620332999999846,
+            "cpuMs": 9.26
+          },
+          {
+            "wallMs": 9.510207999999693,
+            "cpuMs": 8.859
+          },
+          {
+            "wallMs": 9.861959000000752,
+            "cpuMs": 8.554
+          },
+          {
+            "wallMs": 10.612959000000046,
+            "cpuMs": 9.286
+          },
+          {
+            "wallMs": 8.97149999999965,
+            "cpuMs": 8.487
+          }
+        ],
+        [
+          {
+            "wallMs": 10.31787499999973,
+            "cpuMs": 9.013
+          },
+          {
+            "wallMs": 10.45116599999983,
+            "cpuMs": 9.14
+          },
+          {
+            "wallMs": 10.545791999999892,
+            "cpuMs": 9.512
+          },
+          {
+            "wallMs": 11.016832999999679,
+            "cpuMs": 9.711
+          },
+          {
+            "wallMs": 9.722374999999374,
+            "cpuMs": 9.072
+          },
+          {
+            "wallMs": 10.67712500000016,
+            "cpuMs": 9.307
+          },
+          {
+            "wallMs": 10.671542000000045,
+            "cpuMs": 9.369
+          },
+          {
+            "wallMs": 10.364666000000398,
+            "cpuMs": 9.055
+          },
+          {
+            "wallMs": 11.02454200000011,
+            "cpuMs": 9.71
+          },
+          {
+            "wallMs": 9.568582999999308,
+            "cpuMs": 8.914
+          }
+        ]
+      ],
+      "writeMetrics": [
+        {
+          "wallMs": {
+            "n": 10,
+            "p50": 9.768000000000029,
+            "p95": 10.620332999999846,
+            "min": 8.97149999999965,
+            "max": 10.620332999999846
+          },
+          "cpuMs": {
+            "n": 10,
+            "p50": 8.588,
+            "p95": 9.286,
+            "min": 8.337,
+            "max": 9.286
+          }
+        },
+        {
+          "wallMs": {
+            "n": 10,
+            "p50": 10.45116599999983,
+            "p95": 11.02454200000011,
+            "min": 9.568582999999308,
+            "max": 11.02454200000011
+          },
+          "cpuMs": {
+            "n": 10,
+            "p50": 9.14,
+            "p95": 9.711,
+            "min": 8.914,
+            "max": 9.711
+          }
+        }
+      ],
+      "afterWritesStorage": [
+        {
+          "fileBytes": 16990208,
+          "pageCount": 4148,
+          "freePages": 0,
+          "index": [],
+          "quickCheck": "ok"
+        },
+        {
+          "fileBytes": 18104320,
+          "pageCount": 4420,
+          "freePages": 0,
+          "index": [
+            {
+              "name": "mailbox_pending_metadata",
+              "pages": 272,
+              "bytes": 1114112
+            }
+          ],
+          "quickCheck": "ok"
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "pending": 100,
+        "bodyBytes": 1048576
+      },
+      "fixtureSha256": "6684bd3621157e18374a465af07441cc1758937e632ed6755f79761740009778",
+      "install": [
+        {
+          "wallMs": 0.04004199999963021,
+          "cpuMs": 0.049,
+          "ddlExecuted": false
+        },
+        {
+          "wallMs": 11.51770899999974,
+          "cpuMs": 11.471,
+          "ddlExecuted": true
+        }
+      ],
+      "beforeWritesStorage": [
+        {
+          "fileBytes": 212033536,
+          "pageCount": 51766,
+          "freePages": 0,
+          "index": [],
+          "quickCheck": "ok"
+        },
+        {
+          "fileBytes": 212045824,
+          "pageCount": 51769,
+          "freePages": 0,
+          "index": [
+            {
+              "name": "mailbox_pending_metadata",
+              "pages": 3,
+              "bytes": 12288
+            }
+          ],
+          "quickCheck": "ok"
+        }
+      ],
+      "results": {
+        "i1": {
+          "raw": [
+            [
+              {
+                "wallMs": 11.003250000000662,
+                "cpuMs": 11.011
+              },
+              {
+                "wallMs": 11.273333000000093,
+                "cpuMs": 11.275
+              },
+              {
+                "wallMs": 11.050250000000233,
+                "cpuMs": 11.051
+              },
+              {
+                "wallMs": 11.22479199999998,
+                "cpuMs": 11.226
+              },
+              {
+                "wallMs": 11.054291999999805,
+                "cpuMs": 11.056
+              },
+              {
+                "wallMs": 11.347708000000239,
+                "cpuMs": 11.348
+              },
+              {
+                "wallMs": 11.074333999999908,
+                "cpuMs": 11.076
+              },
+              {
+                "wallMs": 11.173999999999978,
+                "cpuMs": 11.175
+              },
+              {
+                "wallMs": 10.851582999999664,
+                "cpuMs": 10.852
+              },
+              {
+                "wallMs": 11.145042000000103,
+                "cpuMs": 11.146
+              },
+              {
+                "wallMs": 10.962916000000405,
+                "cpuMs": 10.964
+              },
+              {
+                "wallMs": 11.179000000000087,
+                "cpuMs": 11.181
+              },
+              {
+                "wallMs": 10.945708999999624,
+                "cpuMs": 10.946
+              },
+              {
+                "wallMs": 11.146374999999352,
+                "cpuMs": 11.147
+              },
+              {
+                "wallMs": 10.901958000000377,
+                "cpuMs": 10.903
+              },
+              {
+                "wallMs": 11.17320799999925,
+                "cpuMs": 11.175
+              },
+              {
+                "wallMs": 10.867833000000246,
+                "cpuMs": 10.868
+              },
+              {
+                "wallMs": 11.16241699999955,
+                "cpuMs": 11.163
+              },
+              {
+                "wallMs": 10.90258300000005,
+                "cpuMs": 10.902
+              },
+              {
+                "wallMs": 11.120958000000428,
+                "cpuMs": 11.122
+              },
+              {
+                "wallMs": 10.900332999999591,
+                "cpuMs": 10.902
+              },
+              {
+                "wallMs": 11.107417000000169,
+                "cpuMs": 11.108
+              },
+              {
+                "wallMs": 10.898207999999613,
+                "cpuMs": 10.898
+              },
+              {
+                "wallMs": 11.149499999999534,
+                "cpuMs": 11.15
+              },
+              {
+                "wallMs": 10.920458000000508,
+                "cpuMs": 10.921
+              },
+              {
+                "wallMs": 11.112708000000566,
+                "cpuMs": 11.113
+              },
+              {
+                "wallMs": 10.848291999999674,
+                "cpuMs": 10.849
+              },
+              {
+                "wallMs": 11.437334000000192,
+                "cpuMs": 11.426
+              },
+              {
+                "wallMs": 11.04675000000043,
+                "cpuMs": 11.048
+              },
+              {
+                "wallMs": 11.259250000000065,
+                "cpuMs": 11.26
+              }
+            ],
+            [
+              {
+                "wallMs": 11.243875000000116,
+                "cpuMs": 11.244
+              },
+              {
+                "wallMs": 11.022041999999601,
+                "cpuMs": 11.023
+              },
+              {
+                "wallMs": 11.250334000000294,
+                "cpuMs": 11.252
+              },
+              {
+                "wallMs": 11.023667000000387,
+                "cpuMs": 11.025
+              },
+              {
+                "wallMs": 11.33733299999949,
+                "cpuMs": 11.325
+              },
+              {
+                "wallMs": 11.044458000000304,
+                "cpuMs": 11.036
+              },
+              {
+                "wallMs": 11.223500000000058,
+                "cpuMs": 11.224
+              },
+              {
+                "wallMs": 10.930665999999292,
+                "cpuMs": 10.932
+              },
+              {
+                "wallMs": 11.186499999999796,
+                "cpuMs": 11.188
+              },
+              {
+                "wallMs": 10.937708000000384,
+                "cpuMs": 10.939
+              },
+              {
+                "wallMs": 11.220874999999978,
+                "cpuMs": 11.222
+              },
+              {
+                "wallMs": 10.917000000000371,
+                "cpuMs": 10.917
+              },
+              {
+                "wallMs": 11.184374999999818,
+                "cpuMs": 11.184
+              },
+              {
+                "wallMs": 10.950707999999395,
+                "cpuMs": 10.951
+              },
+              {
+                "wallMs": 11.17699999999968,
+                "cpuMs": 11.178
+              },
+              {
+                "wallMs": 10.955542000000605,
+                "cpuMs": 10.957
+              },
+              {
+                "wallMs": 11.176292000000103,
+                "cpuMs": 11.177
+              },
+              {
+                "wallMs": 10.912041999999929,
+                "cpuMs": 10.912
+              },
+              {
+                "wallMs": 11.159749999999804,
+                "cpuMs": 11.161
+              },
+              {
+                "wallMs": 10.90637499999957,
+                "cpuMs": 10.908
+              },
+              {
+                "wallMs": 11.13733400000001,
+                "cpuMs": 11.14
+              },
+              {
+                "wallMs": 10.917208999999275,
+                "cpuMs": 10.918
+              },
+              {
+                "wallMs": 11.138292000000547,
+                "cpuMs": 11.139
+              },
+              {
+                "wallMs": 10.988624999999956,
+                "cpuMs": 10.989
+              },
+              {
+                "wallMs": 11.198166999999557,
+                "cpuMs": 11.199
+              },
+              {
+                "wallMs": 10.896292000000358,
+                "cpuMs": 10.897
+              },
+              {
+                "wallMs": 11.127375000000029,
+                "cpuMs": 11.129
+              },
+              {
+                "wallMs": 10.990125000000262,
+                "cpuMs": 10.992
+              },
+              {
+                "wallMs": 11.325875000000451,
+                "cpuMs": 11.327
+              },
+              {
+                "wallMs": 11.03125,
+                "cpuMs": 11.032
+              }
+            ]
+          ],
+          "metrics": [
+            {
+              "wallMs": {
+                "n": 30,
+                "p50": 11.074333999999908,
+                "p95": 11.347708000000239,
+                "min": 10.848291999999674,
+                "max": 11.437334000000192
+              },
+              "cpuMs": {
+                "n": 30,
+                "p50": 11.076,
+                "p95": 11.348,
+                "min": 10.849,
+                "max": 11.426
+              }
+            },
+            {
+              "wallMs": {
+                "n": 30,
+                "p50": 11.044458000000304,
+                "p95": 11.325875000000451,
+                "min": 10.896292000000358,
+                "max": 11.33733299999949
+              },
+              "cpuMs": {
+                "n": 30,
+                "p50": 11.036,
+                "p95": 11.325,
+                "min": 10.897,
+                "max": 11.327
+              }
+            }
+          ]
+        },
+        "work": {
+          "raw": [
+            [
+              {
+                "wallMs": 11.14837499999885,
+                "cpuMs": 11.154
+              },
+              {
+                "wallMs": 11.352874999998676,
+                "cpuMs": 11.354
+              },
+              {
+                "wallMs": 11.16279200000099,
+                "cpuMs": 11.151
+              },
+              {
+                "wallMs": 11.634916999999405,
+                "cpuMs": 11.636
+              },
+              {
+                "wallMs": 11.270292000001064,
+                "cpuMs": 11.271
+              },
+              {
+                "wallMs": 11.565999999998894,
+                "cpuMs": 12.216
+              },
+              {
+                "wallMs": 11.318042000000787,
+                "cpuMs": 11.318
+              },
+              {
+                "wallMs": 11.530415999999605,
+                "cpuMs": 11.532
+              },
+              {
+                "wallMs": 11.28083400000105,
+                "cpuMs": 11.281
+              },
+              {
+                "wallMs": 11.518667000000278,
+                "cpuMs": 11.521
+              },
+              {
+                "wallMs": 11.260416999999507,
+                "cpuMs": 11.262
+              },
+              {
+                "wallMs": 11.513333999999304,
+                "cpuMs": 11.514
+              },
+              {
+                "wallMs": 11.247166999999536,
+                "cpuMs": 11.249
+              },
+              {
+                "wallMs": 11.546542000000045,
+                "cpuMs": 11.548
+              },
+              {
+                "wallMs": 11.283957999999984,
+                "cpuMs": 11.285
+              },
+              {
+                "wallMs": 11.174165999998877,
+                "cpuMs": 11.175
+              },
+              {
+                "wallMs": 10.90270800000144,
+                "cpuMs": 10.904
+              },
+              {
+                "wallMs": 11.271249999999782,
+                "cpuMs": 11.273
+              },
+              {
+                "wallMs": 11.005209000000832,
+                "cpuMs": 11.006
+              },
+              {
+                "wallMs": 11.231125000000247,
+                "cpuMs": 11.233
+              },
+              {
+                "wallMs": 11.075875000000451,
+                "cpuMs": 11.077
+              },
+              {
+                "wallMs": 11.290667000001122,
+                "cpuMs": 11.293
+              },
+              {
+                "wallMs": 11.108958000000712,
+                "cpuMs": 11.314
+              },
+              {
+                "wallMs": 11.335040999998455,
+                "cpuMs": 11.336
+              },
+              {
+                "wallMs": 10.991291000000274,
+                "cpuMs": 10.992
+              },
+              {
+                "wallMs": 11.320959000000585,
+                "cpuMs": 11.322
+              },
+              {
+                "wallMs": 11.176332999999431,
+                "cpuMs": 11.177
+              },
+              {
+                "wallMs": 11.244916999999987,
+                "cpuMs": 11.246
+              },
+              {
+                "wallMs": 11.01837499999965,
+                "cpuMs": 11.02
+              },
+              {
+                "wallMs": 11.249417000000903,
+                "cpuMs": 11.251
+              }
+            ],
+            [
+              {
+                "wallMs": 11.358249999999316,
+                "cpuMs": 11.36
+              },
+              {
+                "wallMs": 11.106708000001163,
+                "cpuMs": 11.107
+              },
+              {
+                "wallMs": 11.415791999999783,
+                "cpuMs": 11.417
+              },
+              {
+                "wallMs": 11.361582999999882,
+                "cpuMs": 11.362
+              },
+              {
+                "wallMs": 11.659999999999854,
+                "cpuMs": 11.661
+              },
+              {
+                "wallMs": 11.32733300000109,
+                "cpuMs": 11.329
+              },
+              {
+                "wallMs": 11.536667000000307,
+                "cpuMs": 11.537
+              },
+              {
+                "wallMs": 11.296124999998938,
+                "cpuMs": 11.297
+              },
+              {
+                "wallMs": 11.581207999999606,
+                "cpuMs": 11.581
+              },
+              {
+                "wallMs": 11.27875000000131,
+                "cpuMs": 11.281
+              },
+              {
+                "wallMs": 11.610458000001017,
+                "cpuMs": 11.613
+              },
+              {
+                "wallMs": 11.320583999999144,
+                "cpuMs": 11.321
+              },
+              {
+                "wallMs": 11.549750000000131,
+                "cpuMs": 11.55
+              },
+              {
+                "wallMs": 11.313749999999345,
+                "cpuMs": 11.315
+              },
+              {
+                "wallMs": 11.382417000000714,
+                "cpuMs": 11.371
+              },
+              {
+                "wallMs": 10.893625000000611,
+                "cpuMs": 10.895
+              },
+              {
+                "wallMs": 11.15112500000032,
+                "cpuMs": 11.151
+              },
+              {
+                "wallMs": 10.99408399999993,
+                "cpuMs": 10.995
+              },
+              {
+                "wallMs": 11.230792000000292,
+                "cpuMs": 11.232
+              },
+              {
+                "wallMs": 10.987957999999708,
+                "cpuMs": 10.989
+              },
+              {
+                "wallMs": 11.273750000000291,
+                "cpuMs": 11.275
+              },
+              {
+                "wallMs": 11.200249999999869,
+                "cpuMs": 11.201
+              },
+              {
+                "wallMs": 11.29700000000048,
+                "cpuMs": 11.299
+              },
+              {
+                "wallMs": 11.025041999999303,
+                "cpuMs": 11.026
+              },
+              {
+                "wallMs": 11.281750000000102,
+                "cpuMs": 11.282
+              },
+              {
+                "wallMs": 10.990459000000556,
+                "cpuMs": 10.991
+              },
+              {
+                "wallMs": 11.356417000000874,
+                "cpuMs": 11.358
+              },
+              {
+                "wallMs": 11.034791000000041,
+                "cpuMs": 11.036
+              },
+              {
+                "wallMs": 11.28820799999994,
+                "cpuMs": 11.29
+              },
+              {
+                "wallMs": 11.032209000000876,
+                "cpuMs": 11.033
+              }
+            ]
+          ],
+          "metrics": [
+            {
+              "wallMs": {
+                "n": 30,
+                "p50": 11.260416999999507,
+                "p95": 11.565999999998894,
+                "min": 10.90270800000144,
+                "max": 11.634916999999405
+              },
+              "cpuMs": {
+                "n": 30,
+                "p50": 11.271,
+                "p95": 11.636,
+                "min": 10.904,
+                "max": 12.216
+              }
+            },
+            {
+              "wallMs": {
+                "n": 30,
+                "p50": 11.28820799999994,
+                "p95": 11.610458000001017,
+                "min": 10.893625000000611,
+                "max": 11.659999999999854
+              },
+              "cpuMs": {
+                "n": 30,
+                "p50": 11.29,
+                "p95": 11.613,
+                "min": 10.895,
+                "max": 11.661
+              }
+            }
+          ]
+        },
+        "step": {
+          "raw": [
+            [
+              {
+                "wallMs": 11.028540999999677,
+                "cpuMs": 11.033
+              },
+              {
+                "wallMs": 11.3231250000008,
+                "cpuMs": 11.325
+              },
+              {
+                "wallMs": 11.121541999998954,
+                "cpuMs": 11.123
+              },
+              {
+                "wallMs": 11.349292000000787,
+                "cpuMs": 11.35
+              },
+              {
+                "wallMs": 11.133749999999054,
+                "cpuMs": 11.135
+              },
+              {
+                "wallMs": 11.390457999999853,
+                "cpuMs": 11.392
+              },
+              {
+                "wallMs": 11.112041000000318,
+                "cpuMs": 11.112
+              },
+              {
+                "wallMs": 11.380583000000115,
+                "cpuMs": 11.384
+              },
+              {
+                "wallMs": 11.164167000000816,
+                "cpuMs": 11.165
+              },
+              {
+                "wallMs": 11.445665999999619,
+                "cpuMs": 11.446
+              },
+              {
+                "wallMs": 11.143500000000131,
+                "cpuMs": 11.146
+              },
+              {
+                "wallMs": 11.61054200000035,
+                "cpuMs": 11.612
+              },
+              {
+                "wallMs": 11.360457999999198,
+                "cpuMs": 11.361
+              },
+              {
+                "wallMs": 11.63391700000102,
+                "cpuMs": 11.634
+              },
+              {
+                "wallMs": 11.406832999999097,
+                "cpuMs": 11.407
+              },
+              {
+                "wallMs": 11.635666000000128,
+                "cpuMs": 11.636
+              },
+              {
+                "wallMs": 11.387957999999344,
+                "cpuMs": 11.48
+              },
+              {
+                "wallMs": 11.569665999999415,
+                "cpuMs": 11.572
+              },
+              {
+                "wallMs": 11.379291999999623,
+                "cpuMs": 11.38
+              },
+              {
+                "wallMs": 11.63208399999894,
+                "cpuMs": 11.633
+              },
+              {
+                "wallMs": 11.394874999999956,
+                "cpuMs": 11.396
+              },
+              {
+                "wallMs": 11.363083000000188,
+                "cpuMs": 11.353
+              },
+              {
+                "wallMs": 10.892125000000306,
+                "cpuMs": 10.893
+              },
+              {
+                "wallMs": 11.135125000000698,
+                "cpuMs": 11.136
+              },
+              {
+                "wallMs": 10.827832999999373,
+                "cpuMs": 10.828
+              },
+              {
+                "wallMs": 11.236582999999882,
+                "cpuMs": 11.238
+              },
+              {
+                "wallMs": 10.889917000000423,
+                "cpuMs": 10.891
+              },
+              {
+                "wallMs": 11.189707999999882,
+                "cpuMs": 11.191
+              },
+              {
+                "wallMs": 10.966040999999677,
+                "cpuMs": 10.967
+              },
+              {
+                "wallMs": 11.157915999998295,
+                "cpuMs": 11.159
+              }
+            ],
+            [
+              {
+                "wallMs": 11.302417000000787,
+                "cpuMs": 11.303
+              },
+              {
+                "wallMs": 11.05987500000083,
+                "cpuMs": 11.06
+              },
+              {
+                "wallMs": 11.394333000000188,
+                "cpuMs": 11.395
+              },
+              {
+                "wallMs": 11.153167000000394,
+                "cpuMs": 11.154
+              },
+              {
+                "wallMs": 11.380584000000454,
+                "cpuMs": 11.382
+              },
+              {
+                "wallMs": 11.160208000001148,
+                "cpuMs": 11.161
+              },
+              {
+                "wallMs": 11.405832999998893,
+                "cpuMs": 11.407
+              },
+              {
+                "wallMs": 11.136916999999812,
+                "cpuMs": 11.138
+              },
+              {
+                "wallMs": 11.473374999999578,
+                "cpuMs": 11.465
+              },
+              {
+                "wallMs": 11.378375000000233,
+                "cpuMs": 11.38
+              },
+              {
+                "wallMs": 11.456459000000905,
+                "cpuMs": 11.457
+              },
+              {
+                "wallMs": 11.221874999999272,
+                "cpuMs": 11.211
+              },
+              {
+                "wallMs": 11.563624999998865,
+                "cpuMs": 11.564
+              },
+              {
+                "wallMs": 11.326415999999881,
+                "cpuMs": 11.327
+              },
+              {
+                "wallMs": 11.592749999999796,
+                "cpuMs": 11.593
+              },
+              {
+                "wallMs": 11.38933299999917,
+                "cpuMs": 11.49
+              },
+              {
+                "wallMs": 11.653666999998677,
+                "cpuMs": 11.655
+              },
+              {
+                "wallMs": 11.396167000000787,
+                "cpuMs": 11.398
+              },
+              {
+                "wallMs": 11.619166000000405,
+                "cpuMs": 11.62
+              },
+              {
+                "wallMs": 11.355665999999474,
+                "cpuMs": 11.357
+              },
+              {
+                "wallMs": 11.612999999999374,
+                "cpuMs": 11.613
+              },
+              {
+                "wallMs": 11.399540999998862,
+                "cpuMs": 11.4
+              },
+              {
+                "wallMs": 11.186666999999943,
+                "cpuMs": 11.188
+              },
+              {
+                "wallMs": 10.878125000001091,
+                "cpuMs": 10.879
+              },
+              {
+                "wallMs": 11.221958000000086,
+                "cpuMs": 11.222
+              },
+              {
+                "wallMs": 10.98095900000044,
+                "cpuMs": 10.982
+              },
+              {
+                "wallMs": 11.200333000000683,
+                "cpuMs": 11.201
+              },
+              {
+                "wallMs": 10.934166999999434,
+                "cpuMs": 10.936
+              },
+              {
+                "wallMs": 11.19433300000128,
+                "cpuMs": 11.195
+              },
+              {
+                "wallMs": 10.953333000001294,
+                "cpuMs": 10.954
+              }
+            ]
+          ],
+          "metrics": [
+            {
+              "wallMs": {
+                "n": 30,
+                "p50": 11.3231250000008,
+                "p95": 11.63391700000102,
+                "min": 10.827832999999373,
+                "max": 11.635666000000128
+              },
+              "cpuMs": {
+                "n": 30,
+                "p50": 11.325,
+                "p95": 11.634,
+                "min": 10.828,
+                "max": 11.636
+              }
+            },
+            {
+              "wallMs": {
+                "n": 30,
+                "p50": 11.326415999999881,
+                "p95": 11.619166000000405,
+                "min": 10.878125000001091,
+                "max": 11.653666999998677
+              },
+              "cpuMs": {
+                "n": 30,
+                "p50": 11.327,
+                "p95": 11.62,
+                "min": 10.879,
+                "max": 11.655
+              }
+            }
+          ]
+        }
+      },
+      "diagnostics": [
+        [
+          {
+            "kind": "all",
+            "sql": "WITH pending_bees AS (\n         SELECT DISTINCT bee_id\n         FROM mailbox\n         WHERE delivered_at IS NULL\n       )\n       SELECT target.bee_id,\n              runtime.state AS runtime_state,\n              runtime.boot_evidence AS runtime_boot_evidence,\n              runtime.updated_at AS runtime_updated_at,\n              EXISTS (\n                SELECT 1\n                FROM flags AS flag\n                WHERE flag.bee_id = target.bee_id\n                  AND flag.cleared_at IS NULL\n              ) AS has_active_flag\n       FROM pending_bees AS target\n       LEFT JOIN runtimes AS runtime\n         ON runtime.bee_id = target.bee_id\n        AND runtime.generation = (\n          SELECT MAX(latest.generation)\n          FROM runtimes AS latest\n          WHERE latest.bee_id = target.bee_id\n        )\n       ORDER BY target.bee_id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 1,
+            "textBytes": 47,
+            "blobBytes": 0,
+            "wallMs": 0.014041999998880783,
+            "cpuMs": 0.015
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT id, bee_id, urgency, enqueued_at\n       FROM mailbox\n       WHERE delivered_at IS NULL\n       ORDER BY bee_id, id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 100,
+            "textBytes": 4000,
+            "blobBytes": 0,
+            "wallMs": 10.910208999999668,
+            "cpuMs": 10.911
+          }
+        ],
+        [
+          {
+            "kind": "all",
+            "sql": "WITH pending_bees AS (\n         SELECT DISTINCT bee_id\n         FROM mailbox\n         WHERE delivered_at IS NULL\n       )\n       SELECT target.bee_id,\n              runtime.state AS runtime_state,\n              runtime.boot_evidence AS runtime_boot_evidence,\n              runtime.updated_at AS runtime_updated_at,\n              EXISTS (\n                SELECT 1\n                FROM flags AS flag\n                WHERE flag.bee_id = target.bee_id\n                  AND flag.cleared_at IS NULL\n              ) AS has_active_flag\n       FROM pending_bees AS target\n       LEFT JOIN runtimes AS runtime\n         ON runtime.bee_id = target.bee_id\n        AND runtime.generation = (\n          SELECT MAX(latest.generation)\n          FROM runtimes AS latest\n          WHERE latest.bee_id = target.bee_id\n        )\n       ORDER BY target.bee_id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 1,
+            "textBytes": 47,
+            "blobBytes": 0,
+            "wallMs": 0.017583999999260413,
+            "cpuMs": 0.021
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT id, bee_id, urgency, enqueued_at\n       FROM mailbox\n       WHERE delivered_at IS NULL\n       ORDER BY bee_id, id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 100,
+            "textBytes": 4000,
+            "blobBytes": 0,
+            "wallMs": 11.191458999999668,
+            "cpuMs": 11.192
+          }
+        ]
+      ],
+      "queryPlans": [
+        [
+          {
+            "sql": "WITH pending_bees AS (\n         SELECT DISTINCT bee_id\n         FROM mailbox\n         WHERE delivered_at IS NULL\n       )\n       SELECT target.bee_id,\n              runtime.state AS runtime_state,\n              runtime.boot_evidence AS runtime_boot_evidence,\n              runtime.updated_at AS runtime_updated_at,\n              EXISTS (\n                SELECT 1\n                FROM flags AS flag\n                WHERE flag.bee_id = target.bee_id\n                  AND flag.cleared_at IS NULL\n              ) AS has_active_flag\n       FROM pending_bees AS target\n       LEFT JOIN runtimes AS runtime\n         ON runtime.bee_id = target.bee_id\n        AND runtime.generation = (\n          SELECT MAX(latest.generation)\n          FROM runtimes AS latest\n          WHERE latest.bee_id = target.bee_id\n        )\n       ORDER BY target.bee_id",
+            "plan": [
+              {
+                "id": 2,
+                "parent": 0,
+                "notused": 0,
+                "detail": "CO-ROUTINE pending_bees"
+              },
+              {
+                "id": 6,
+                "parent": 2,
+                "notused": 214,
+                "detail": "SCAN mailbox USING INDEX mailbox_undelivered"
+              },
+              {
+                "id": 18,
+                "parent": 0,
+                "notused": 175,
+                "detail": "SCAN target"
+              },
+              {
+                "id": 21,
+                "parent": 0,
+                "notused": 46,
+                "detail": "SEARCH runtime USING INDEX sqlite_autoindex_runtimes_1 (bee_id=? AND generation=?) LEFT-JOIN"
+              },
+              {
+                "id": 26,
+                "parent": 0,
+                "notused": 0,
+                "detail": "CORRELATED SCALAR SUBQUERY 3"
+              },
+              {
+                "id": 31,
+                "parent": 26,
+                "notused": 54,
+                "detail": "SEARCH latest USING COVERING INDEX sqlite_autoindex_runtimes_1 (bee_id=?)"
+              },
+              {
+                "id": 56,
+                "parent": 0,
+                "notused": 0,
+                "detail": "CORRELATED SCALAR SUBQUERY 2"
+              },
+              {
+                "id": 61,
+                "parent": 56,
+                "notused": 62,
+                "detail": "SEARCH flag USING INDEX flags_active (bee_id=?)"
+              },
+              {
+                "id": 80,
+                "parent": 0,
+                "notused": 0,
+                "detail": "USE TEMP B-TREE FOR ORDER BY"
+              }
+            ]
+          },
+          {
+            "sql": "SELECT id, bee_id, urgency, enqueued_at\n       FROM mailbox\n       WHERE delivered_at IS NULL\n       ORDER BY bee_id, id",
+            "plan": [
+              {
+                "id": 4,
+                "parent": 0,
+                "notused": 214,
+                "detail": "SCAN mailbox USING INDEX mailbox_undelivered"
+              }
+            ]
+          }
+        ],
+        [
+          {
+            "sql": "WITH pending_bees AS (\n         SELECT DISTINCT bee_id\n         FROM mailbox\n         WHERE delivered_at IS NULL\n       )\n       SELECT target.bee_id,\n              runtime.state AS runtime_state,\n              runtime.boot_evidence AS runtime_boot_evidence,\n              runtime.updated_at AS runtime_updated_at,\n              EXISTS (\n                SELECT 1\n                FROM flags AS flag\n                WHERE flag.bee_id = target.bee_id\n                  AND flag.cleared_at IS NULL\n              ) AS has_active_flag\n       FROM pending_bees AS target\n       LEFT JOIN runtimes AS runtime\n         ON runtime.bee_id = target.bee_id\n        AND runtime.generation = (\n          SELECT MAX(latest.generation)\n          FROM runtimes AS latest\n          WHERE latest.bee_id = target.bee_id\n        )\n       ORDER BY target.bee_id",
+            "plan": [
+              {
+                "id": 2,
+                "parent": 0,
+                "notused": 0,
+                "detail": "CO-ROUTINE pending_bees"
+              },
+              {
+                "id": 6,
+                "parent": 2,
+                "notused": 214,
+                "detail": "SCAN mailbox USING INDEX mailbox_undelivered"
+              },
+              {
+                "id": 18,
+                "parent": 0,
+                "notused": 175,
+                "detail": "SCAN target"
+              },
+              {
+                "id": 21,
+                "parent": 0,
+                "notused": 46,
+                "detail": "SEARCH runtime USING INDEX sqlite_autoindex_runtimes_1 (bee_id=? AND generation=?) LEFT-JOIN"
+              },
+              {
+                "id": 26,
+                "parent": 0,
+                "notused": 0,
+                "detail": "CORRELATED SCALAR SUBQUERY 3"
+              },
+              {
+                "id": 31,
+                "parent": 26,
+                "notused": 54,
+                "detail": "SEARCH latest USING COVERING INDEX sqlite_autoindex_runtimes_1 (bee_id=?)"
+              },
+              {
+                "id": 56,
+                "parent": 0,
+                "notused": 0,
+                "detail": "CORRELATED SCALAR SUBQUERY 2"
+              },
+              {
+                "id": 61,
+                "parent": 56,
+                "notused": 62,
+                "detail": "SEARCH flag USING INDEX flags_active (bee_id=?)"
+              },
+              {
+                "id": 80,
+                "parent": 0,
+                "notused": 0,
+                "detail": "USE TEMP B-TREE FOR ORDER BY"
+              }
+            ]
+          },
+          {
+            "sql": "SELECT id, bee_id, urgency, enqueued_at\n       FROM mailbox\n       WHERE delivered_at IS NULL\n       ORDER BY bee_id, id",
+            "plan": [
+              {
+                "id": 4,
+                "parent": 0,
+                "notused": 214,
+                "detail": "SCAN mailbox USING INDEX mailbox_undelivered"
+              }
+            ]
+          }
+        ]
+      ],
+      "writeRaw": [
+        [
+          {
+            "wallMs": 10.153707999999824,
+            "cpuMs": 8.847
+          },
+          {
+            "wallMs": 8.817500000001019,
+            "cpuMs": 8.165
+          },
+          {
+            "wallMs": 9.64916600000106,
+            "cpuMs": 8.305
+          },
+          {
+            "wallMs": 9.909333999999944,
+            "cpuMs": 9.251
+          },
+          {
+            "wallMs": 10.592209000000366,
+            "cpuMs": 9.267
+          },
+          {
+            "wallMs": 10.46362500000032,
+            "cpuMs": 9.145
+          },
+          {
+            "wallMs": 9.64283400000022,
+            "cpuMs": 8.98
+          },
+          {
+            "wallMs": 10.330500000000029,
+            "cpuMs": 9.009
+          },
+          {
+            "wallMs": 9.623000000001412,
+            "cpuMs": 8.968
+          },
+          {
+            "wallMs": 10.357374999999593,
+            "cpuMs": 9.048
+          }
+        ],
+        [
+          {
+            "wallMs": 10.600334000000657,
+            "cpuMs": 10.269
+          },
+          {
+            "wallMs": 10.77495799999997,
+            "cpuMs": 12.325
+          },
+          {
+            "wallMs": 10.489665999999488,
+            "cpuMs": 9.159
+          },
+          {
+            "wallMs": 9.78887500000019,
+            "cpuMs": 9.118
+          },
+          {
+            "wallMs": 11.169459000000643,
+            "cpuMs": 9.85
+          },
+          {
+            "wallMs": 10.9549590000006,
+            "cpuMs": 9.626
+          },
+          {
+            "wallMs": 10.965916999999536,
+            "cpuMs": 9.653
+          },
+          {
+            "wallMs": 10.881457999999839,
+            "cpuMs": 9.563
+          },
+          {
+            "wallMs": 10.361000000000786,
+            "cpuMs": 9.706
+          },
+          {
+            "wallMs": 10.74145900000076,
+            "cpuMs": 9.427
+          }
+        ]
+      ],
+      "writeMetrics": [
+        {
+          "wallMs": {
+            "n": 10,
+            "p50": 9.909333999999944,
+            "p95": 10.592209000000366,
+            "min": 8.817500000001019,
+            "max": 10.592209000000366
+          },
+          "cpuMs": {
+            "n": 10,
+            "p50": 8.98,
+            "p95": 9.267,
+            "min": 8.165,
+            "max": 9.267
+          }
+        },
+        {
+          "wallMs": {
+            "n": 10,
+            "p50": 10.74145900000076,
+            "p95": 11.169459000000643,
+            "min": 9.78887500000019,
+            "max": 11.169459000000643
+          },
+          "cpuMs": {
+            "n": 10,
+            "p50": 9.626,
+            "p95": 12.325,
+            "min": 9.118,
+            "max": 12.325
+          }
+        }
+      ],
+      "afterWritesStorage": [
+        {
+          "fileBytes": 212905984,
+          "pageCount": 51979,
+          "freePages": 0,
+          "index": [],
+          "quickCheck": "ok"
+        },
+        {
+          "fileBytes": 212918272,
+          "pageCount": 51982,
+          "freePages": 0,
+          "index": [
+            {
+              "name": "mailbox_pending_metadata",
+              "pages": 3,
+              "bytes": 12288
+            }
+          ],
+          "quickCheck": "ok"
+        }
+      ]
+    }
+  ],
+  "finishedAt": "2026-09-07T11:55:06.851Z"
+}

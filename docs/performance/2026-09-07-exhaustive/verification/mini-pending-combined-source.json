@@ -1,0 +1,17 @@
+{
+  "head": "c89456a1cc373b67c1b5b9ec8a69e620e4481a1c",
+  "patchSha256": "250afe39a2d32850a4857728fd6a1e276702df3f32ca4eb73b34c237f5f8f027",
+  "files": {
+    "v2/core/src/schema.ts": "87725dc4077f28dceb08915fd22e890a485c0dd172c2d49b36949068f841786f",
+    "v2/core/src/store.ts": "9b3253cedf48c6fc1c553e3b08fbd0eecb5e48db9feaf8386a6c8956eed8a438",
+    "v2/core/tests/daemon-work.test.ts": "1795f15fb2233a25877b644095ee47a7e66b6800bf7ee16d09e2b4ed03a08ad2",
+    "v2/core/tests/i1-pending-snapshot.test.ts": "46fb3446e7d9181e7478262078637681381468a5e719f633ee3170d89f9fb248",
+    "v2/core/tests/pending-covering-index.test.ts": "3bd65e3402b704a39dcfbb7a56fd2a56d644b9a50b027765c129127d39c6514c",
+    "v2/core/tests/pending-row-modes.test.ts": "f3063ffc75bcfa4a7122b974f5d5444b557fa87f40e2dedf6b45606c639a54f3",
+    "v2/core/tests/step-snapshot-inputs.test.ts": "d9139984648960bfa85ad08a1c9b5caa2ec5e9d0c24aa6962169d4e1ffe98c3b",
+    "v2/core/tests/tasks.test.ts": "a82b1ee0b8b4d40c59d0b398894c03af5c540a97d46e3bb8a80b31969d808497"
+  },
+  "productionVerified": true,
+  "gate": "build, v2:check, 225 core, daemon unit pass; one CLI order assertion corrected in test-only patch; affected CLI suite and CLI tsc pass",
+  "testOnlyFixSha256": "3f42c14f66e9996999c3e861fd8c749c190fe7a384a6fded0ed5e9830e49d0fc"
+}

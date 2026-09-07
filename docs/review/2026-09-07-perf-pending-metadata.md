@@ -1,0 +1,11 @@
+# Pending metadata review
+
+Reviewed array mapping `bac990b7` and covering-index series `6764453a..45b7579e`, integrated as `b89d628d`. No unresolved behavior blocker identified for these changes after the native/fallback projection proofs, public mailbox transitions, old-store migration test and combined Mini runtime gates.
+
+Array mode changes SQLite row materialization only. The two SQL strings are unchanged and have no other object-row cache consumer. Both branches validate bee id before message scalars and preserve group and per-message ordering. The helper's one assertion describes the native array container contract; scalar values remain untrusted. Native and method-absent fresh connections return equal projections with the same within-step sharing and equal malformed-value errors. No facts persist between reads.
+
+The covering index must install after urgency is migrated. The pre-v8 fixture exercises that ordering through actual public open. Index maintenance follows ordinary transactional SQLite writes; tests exercise delivery, expedite, cancellation, deletion, rollback and reopen. A full core run found intended planner adoption in neighboring tests. The revised projection pins are stronger, requiring covering access; boolean predicates still require partial selective access. No data assertion was removed.
+
+The first index prototype did not produce a covering plan and is rejected. Production measurements include its successful replacement's write costs, first-open work and index bytes. Array allocation traffic is separated from retained RAM. Original adverse body timing and both opposing repeat pairs are retained. See [allocation evidence](../performance/2026-09-07-exhaustive/pending-allocation-results.md) and [covering-index evidence](../performance/2026-09-07-exhaustive/pending-covering-results.md).
+
+Combined verification exposed an unrelated CLI test whose ambiguity regex assumed registration timestamps could not tie. The replacement asserts the exact error prefix and exact unordered set of matches. The failed run remains in verification. Another agent's gateway merge later exposed compiled-test .ts import handling; that build-tool issue is separate from these runtime changes and is being corrected before final integration closes.

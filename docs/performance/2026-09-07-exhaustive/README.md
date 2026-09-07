@@ -45,3 +45,5 @@ The [workflow](workflow.md) defines the completion predicate. [The decision log]
 [Audit-tail production](audit-tail-results.md) measures 30.033 → 0.023 ms CPU for a sparse million-row history. [Dedup sweep attribution](dedup-sweep-results.md) separates sweep ticks from quiet ticks and confirms the tracked-ID allocation refinement. Both changes passed the combined build, typechecks, 218 core tests and 364 daemon/CLI tests (one platform skip). Full pending-I1 metadata allocation, audit retention, and the remaining inventory stay open.
 
 [Stop recovery by generation](stop-recovery-index-results.md) records the next accepted D05 improvement and its write, first-open and storage costs. [Cell Git resources](cell-git-rusage-results.md) adds measured descendant CPU and maximum individual-process RSS to the existing clean-merge evidence. Both keep their remaining work explicit.
+
+[Pending allocation](pending-allocation-results.md) records native row arrays and their measured allocation traffic. [Pending covering index](pending-covering-results.md) records the large-body tick improvement, migration proof and write/open/storage costs.

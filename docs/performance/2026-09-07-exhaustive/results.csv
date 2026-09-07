@@ -23,3 +23,6 @@ Landed,Wide dedup sweep refinement,10.523,9.637,ms CPU,20k pending;1tracked;6swe
 Landed; sampled attribution only,Prune allocation traffic,2188528,90856,sampled bytes,one256tick cycle;not retained memory,dedup-sweep-results.md
 Landed; same-generation residual open,Boot recovery generation index,11.386,7.256,ms CPU,100k same-generation settled commands;15samples,stop-recovery-index-results.md
 Landed; write/open/storage cost measured,Spread-generation recovery predicate,6.767,0.351,ms CPU,100k commands across200generations;UUIDkeys;30samples,stop-recovery-index-results.md
+Landed,Wide pending row materialization,10.216,5.658,ms CPU,20k held64B messages;30samples;array mapping only,pending-allocation-results.md
+Landed; sampled allocation only,Wide tick allocation traffic,315221560,150241688,sampled bytes,30profiled ticks;20kheld;not retained RAM,pending-allocation-results.md
+Landed; write/open/storage cost measured,Large-body pending tick,11.669,0.098,ms CPU,100held1MiB;oneBee;30samples;covering index only,pending-covering-results.md

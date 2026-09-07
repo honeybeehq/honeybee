@@ -1,0 +1,1412 @@
+{
+  "completed": true,
+  "startedAt": "2026-09-07T12:24:48.606Z",
+  "sources": [
+    {
+      "revision": "6d2677b126ec9e8b11992954bb6bc3c27311bbf1",
+      "hashes": {
+        "package-lock.json": "d7bab0bd3fce5d01591536fe5da7cd969634a4ae3428bf75b973c54a58cf36cc",
+        "package.json": "dfc54c5c0aff857519101d532ffbe6a03339903e075e3fdcb82da5d07b2e223c",
+        "v2/adapters/src/agy.ts": "ae4751062d36382252aae126e7c0ee024bbcf65009cc12adc16721e24e9dbbc7",
+        "v2/adapters/src/args.ts": "759f2e5c01bacffd8bca998ae7573c1284da38f043a6d6fdd758cba40fb030f6",
+        "v2/adapters/src/claude.ts": "78f4b15d50a1f2eba8f74fcc4672e2b008db544950c6ed03a8a8b183b7f6e046",
+        "v2/adapters/src/codex.ts": "e03c2f253f5adbd877761683bdceb02ad3725ede0ea9bb66718fb6060df902cb",
+        "v2/adapters/src/grok.ts": "71f647f0b8fb2a32427604ddf45e0a7b54a4a1b876418c7f91de8c3024c0d84f",
+        "v2/adapters/src/index.ts": "6869fe4ec44c1eeefa53ff1660a00c8556330e30acb30cc3265fb78483aadcdf",
+        "v2/adapters/src/stub.ts": "4fdfca1b8dca0cc396bd495fac99d5fcab7005b40bb598e33413a5747e8f3ccc",
+        "v2/adapters/src/types.ts": "c37098d1cb7d06a8137f1fda87ad1affcb6d8b37e325665b1e5123b029fa2dd3",
+        "v2/cli/package.json": "b8abe08ac8165e64be34b9531dace368763822e6739f3024981fc751866d3c71",
+        "v2/cli/src/bin.ts": "330f6bb9d42c72475929a6e104fa5c318051b57816acd4056b3c7523010b8a8c",
+        "v2/cli/src/client.ts": "421e107f912c5f9fae6d51cb2e3b10d8ffe83e70e6660adef03392d59739cafd",
+        "v2/cli/src/help.ts": "1343b7559d210c809233a5c3f4775c796f0d73d5f8d81221829afe419a9b0df3",
+        "v2/cli/src/index.ts": "705f8de04ba4adb8b563d11f2def4da5ae0904ec9bcd0c062d9ce2019676bfd8",
+        "v2/cli/src/main.ts": "c9b719d95d75c8979f9cf2ddb860e109e1f9a971c2b398029113b86dcd9258a6",
+        "v2/cli/src/readonly.ts": "8e94374a1e10bfe065915dded41ffdd60957d0f5aff7d692edbfc67f10b14091",
+        "v2/cli/src/render.ts": "6efc8d278c87ac8c90a6588790e5b7a80eb6dbf997254326b32098c77d6f2897",
+        "v2/cli/src/style.ts": "2f5e611fa6b1aee3c0a3afefdf0cfb9b830736ce4c3f2f9c53d73e5bee5cc5fd",
+        "v2/core/package.json": "6681873b8fe70d5d7ef1005130ff84c721c2516c8e5dcc2b3afad83771247f6d",
+        "v2/core/src/accountLimitsParse.ts": "4101b50909a9c9d79aa9761c4a5b68bc3d808ad36acca38e75c07779a51068a3",
+        "v2/core/src/accountMatch.ts": "90ebe4e125f83d28bc1a1c99cbff9b813362d3b38bbac8b97182014cb4fcf980",
+        "v2/core/src/accountRecipes.ts": "837c397aab4c9fa8a02b890372fac3e29b73d4ba8307913446309d00e715b6b7",
+        "v2/core/src/accountSelect.ts": "2536db3146b2d9a66c812e294c8d668df5e82e3bea9d2923308dff4060e01f5c",
+        "v2/core/src/audit.ts": "b25292a72b403e9e5f8c8ff785e07ef4750ccd6b0b02734afb13f2d94ad14e3c",
+        "v2/core/src/cellMove.ts": "64a0c07352dbab4226c2b173655eb412b976c4f22e4b9d158e5e829c0884d0d6",
+        "v2/core/src/executables.ts": "4a878c553014ceabcdd7e940e274d652799c2852474ada614d5c80cca1eadc7c",
+        "v2/core/src/import-frozen.ts": "c4e84004d16133eeefb38cdf07bd639dbb2d3cda2662eaa4652e986500b5507e",
+        "v2/core/src/index.ts": "f39a777c163ee60a0159749d5380a3e87ed35c93cb2f4445814b90803edcb6db",
+        "v2/core/src/loginFlow.ts": "727d42b6a98a271577cd462e128b0287e7c571e5e06104b3afb5bdff49d35460",
+        "v2/core/src/mirror.ts": "8bcbdb8763eba166d3568f02181d6523c75b7d5fd43eb084e2d5762de5dc33ab",
+        "v2/core/src/packages.ts": "e14a3c6c013211235ca84c137a93f12ead10beff01c876c2741a7e419b944f17",
+        "v2/core/src/registry.ts": "1cd3e1c5a239882474818466907b5f5b2d10501e178b0ad13d24fb2fae8123ff",
+        "v2/core/src/schema.ts": "f62d05b75228a78613729517f2eb90ef99aba9957cf403744b529e71ef0428d1",
+        "v2/core/src/store.ts": "1ca365861b06429c1025904fae4f7e4e87bb31c7c2b7e0dda5e72c1b3e42521b",
+        "v2/core/src/tasks.ts": "2f266a9640ed4b9c7ceeea18aee63ce11521cc416ecc3b5ce118ebb5c195a263",
+        "v2/core/src/types.ts": "11f505e7bda3b575731671e198d83562ab400b2772bb8eb315f1acef9dcc899a",
+        "v2/core/src/view.ts": "1af7f27540c29f4aa9e2c44d7118685f296128a8ab4579df17671ce0abb04693",
+        "v2/daemon/package.json": "42c1d42b8eef8e2ebc590bb702bc6ec8eb9dfc5ea81678c9db87fafe61cea577",
+        "v2/daemon/src/accountsService.ts": "3f13d0481bb54b793d7f0ea6d7f03536d8e5d4ae2be1a8631b17440d596a8a5b",
+        "v2/daemon/src/activation.ts": "7e7056e53671e9caea816fa1162478905ecfc9a408afbad73750ee411056bab7",
+        "v2/daemon/src/autoTitle.ts": "245e0202fd3758aac7cbf022f328ccc4b3f0e88b58303ff03b0e675bceef3e91",
+        "v2/daemon/src/bin.ts": "8ef32816d19e0c2adc85a81a740de8935c7a8bc77e94118203a761b16679754d",
+        "v2/daemon/src/config.ts": "64ea73400095dd007eadbde1eceb0b748a9efbbb343c579e930d93883368f89b",
+        "v2/daemon/src/cursorAuth.ts": "1f0d554fd3ea0351b108404d6b7912701be184e8e26ea89bd2b692a42ae4f924",
+        "v2/daemon/src/daemon.ts": "244a1bacec54a850ba111b53bd456240f04c6608ac7510cfe9d8e5b588498cbb",
+        "v2/daemon/src/envelope.ts": "dc0bff3d7706be31b3fce162e370c1e6e6b7ed8cd2eca43ab1ba6e9ccada6c7a",
+        "v2/daemon/src/gateways.ts": "5c57d479fdbfd871f31de9172da2c9011466258cb46cc764f1776af82da9145c",
+        "v2/daemon/src/homeDefaults.ts": "a63090c09cc8d102b46effa2f8f205457b0e3d73baaaca15cd836e2c0896fc3c",
+        "v2/daemon/src/import-probes.ts": "14cdeb5b7c47d1da44a8eff3e92e22a52a523dcaf250174cefd1c6c46f15529a",
+        "v2/daemon/src/index.ts": "5f8b71e1193407322cb5b44e87bd30cb8384aeb783c22803a10aca034aa691a9",
+        "v2/daemon/src/keychain.ts": "97ecd409db519ba195662dc5f41cbb2b31c36b68100a57bcdc0c1f89ef877ad5",
+        "v2/daemon/src/login/claudeOauth.ts": "9781bf55222a833a9f4461f704a9a10ccb71030a547ca978dae16428f5ce89ff",
+        "v2/daemon/src/login/cliRunner.ts": "ef14344f05033a1ecf510054d3b717db945a203c2b2c32fe3d2607058ca7d52a",
+        "v2/daemon/src/login/common.ts": "1f93ae2e3757ff297cfcd3d94fdf9e838e546a5beed67999f9e0a1b88ebedc46",
+        "v2/daemon/src/login/directKey.ts": "91224b228da3a12dc828d5290900ed1a59ed95766cc9f5f36d273d9e6b862ba2",
+        "v2/daemon/src/login/runner.ts": "53811aa26fecf68f66e6714110efb5664ad2081586b369ab159c25e044d7f17c",
+        "v2/daemon/src/login/transports.ts": "a7073ba48a5ae49cbf2d9109812bbe299ed18487f551d1bf5271bb47b7357e15",
+        "v2/daemon/src/loginFlows.ts": "4460f4a8f8e14900e106e817862cfa8a60cb0f15c6327741d23896736b708c94",
+        "v2/daemon/src/loginWorker.ts": "4a70f08d716550337509663c7586b235568b1fe7bccfbeecfc57d7bdc2fdd378",
+        "v2/daemon/src/loops.ts": "9f1ce604b108828a6a61bac683ce97c82732aa8faadf19319286a9df4cd87041",
+        "v2/daemon/src/main.ts": "7546a94f78f8817ca3a869aa63b2d62d16ffa5404ecb60d63cc742733236f903",
+        "v2/daemon/src/naming.ts": "eae82ba481b3e5b74d7d80c38ca50d6bbf64e378e48e8a7c953d35b2f0a643f5",
+        "v2/daemon/src/namingService.ts": "e8ee4b2026fea2460fb59d60db034ec694b32f76ec2cf7eeba3ea1abf6c36001",
+        "v2/daemon/src/performance.ts": "01ad16258243eea10fa089ea8aae0d396fab4f56fac1ce9f77dd953b7ec2db02",
+        "v2/daemon/src/protocol.ts": "9a0a5439d3312f9a6a6c454bf0983500e236ec49f0ca858cca169d7f08108654",
+        "v2/daemon/src/providerLimits.ts": "befe91217b50c927419389adb50527fd0867ed58d5111f13bcb669eb2b700790",
+        "v2/daemon/src/relocateSession.ts": "bb23acc8d738f024ac8a674b4c7f1366e9913c0b792df2814d9d0869c2ee04e7",
+        "v2/daemon/src/rpc.ts": "39ae485f3cbf72058c93ccbb0427833683ba9836388035065355689f717b3203",
+        "v2/daemon/src/service.ts": "e5aee133fb1f0b5a14f10633e92d5fca7812bfd4e3a0a74ad0ecf2e5ba23a4cb",
+        "v2/daemon/src/substrates.ts": "914b18b4e6e6e7cd2525f5943edb3080c031e16d08934fd4021b55ebf3c1c27c",
+        "v2/daemon/src/telemetry.ts": "0f234f5f77df593387db1ed6c08ba64ccd45f3ffa60303bbd178765aefd0980c",
+        "v2/daemon/src/tmuxHarness.ts": "aebc0a90c9ff4a03a466cdf2edc4fe282dc91388cf9966a0412801fb0bea320f",
+        "v2/daemon/tests/helpers.ts": "9d63216758bec78d1f0e6f7fa949d67ee1f4b1d90eb5efdd4a8888cda75ea0f3",
+        "v2/driver-cell/src/capture.ts": "a14dfc01a4f053e3c5f63b2cb984453ae33630ab3c91415d403f01d552906cc3",
+        "v2/driver-cell/src/cow.ts": "24eb5ce7b6536de861ca261a5d80096343115e14bc8a23e354a2e8a74f318b10",
+        "v2/driver-cell/src/driver.ts": "b513f6a7faaaaa8352a6025b28cc6768e73ea7a2470c4d9aa3686642fa3be88b",
+        "v2/driver-cell/src/exec.ts": "1c022870cd0279d92672b917e2ff8cbc52c3e7b74d47491b5e552b2eb4c72c9b",
+        "v2/driver-cell/src/git.ts": "a8bf50ed3dd720d94fa3b45c2dd6fbfbb82b534e38848af44408c2ca9a10be8d",
+        "v2/driver-cell/src/gitImage.ts": "9b7b1dc8a762caaac402d108bbd9286630a1376b4844ea8d2d3c6232d0a19007",
+        "v2/driver-cell/src/index.ts": "93522d17c0a9bf95c8f7452b24778bb8845af7fed440dc0c22c7fdd60db07661",
+        "v2/driver-cell/src/layout.ts": "68a677450c0d851cf97c50f8616fd25961ddea59dd6b8ac3c0a739042c4775f8",
+        "v2/driver-cell/src/ledger.ts": "efdf4762fab38defd8ec3e68dceba52a44a11d17962b027cb4a0302eec429834",
+        "v2/driver-cell/src/provision.ts": "8293821e57266a0b4f7a2e0e6d25c584cac6caf1ac0afad207311af57558be66",
+        "v2/driver-cell/src/provisionWorker.ts": "a651cc6000ef33f7ed52384f678543b28fea4f363113b3218d45219c510a2d4c",
+        "v2/driver-cell/src/remove.ts": "914e22bf0182c90503731cbeb9877c0d697cda5d410b224223499fab33e75aa5",
+        "v2/driver-cell/src/sandbox.ts": "be390c169c3bc8b06191997ea08c7d6b57f417df26f5bffc21bcef75713ab4ad",
+        "v2/driver-hsr/src/driver.ts": "1bda7217fa6f00701403e14c0887627711fde3038a080ace11dd5b594bc59c38",
+        "v2/driver-hsr/src/index.ts": "8f9542db7792d462ab9b10f9537b9c05f31acf9934d6c32b3f248de8beb97e5e",
+        "v2/driver-hsr/src/psutil.ts": "1beb05854deb6fbe12f206d7436648e7be2a8ae00bcfd0acd13ef3f9fb1c1edb",
+        "v2/driver-hsr/src/runner-host-main.ts": "10c4f1c2af2e2dc20bdddba51e7972bc976831c1bf40b5f5772a2519538411da",
+        "v2/driver-hsr/src/runner-host.ts": "7f1716db45160657ef2109d8a18ae064cbab065f0321b22d29f9a193a3f3c152",
+        "v2/driver-tmux/src/agy-projection.ts": "1d5284c9835d499f0e55dc52ec70a5d36175993f0ccbab7f2e21fcf60f92a9ff",
+        "v2/driver-tmux/src/claude-projection.ts": "df6d2d8967f70ac4b6796a234de83d1e325e41210794972aee41b1a7294882f6",
+        "v2/driver-tmux/src/codex-projection.ts": "2ff68aa8e4d8c802bef9abedb7595e29f038c7ba4cf81403f7efc54a03225e1b",
+        "v2/driver-tmux/src/driver.ts": "26fe0516fe49f389d1f5cad30ee0002e829ae1aba75fe6cec8a0ea886b670820",
+        "v2/driver-tmux/src/events-file.ts": "ddb2ba04f32ef325def8d5287a518659a42e41801034304bc74e4695962a0e99",
+        "v2/driver-tmux/src/grok-projection.ts": "d0d419367031c9738fc6a5a0e27ea6c8a15399b06834239b92f2c2603d406823",
+        "v2/driver-tmux/src/index.ts": "f716470ff208ac29febfe90031b025d969a2eefc5461e649d77d43813fce278d",
+        "v2/driver-tmux/src/tail.ts": "40e24f0d34401e7990581eef3eff1d1542defbc846a92339e61bb81a95a0d156",
+        "v2/driver-tmux/src/tmux.ts": "92607334202f8fb8c8cedf7b9d1454d8742a867c4c8082f7f2f6617a6c285eb9",
+        "v2/driver-tmux/src/transcript-projection.ts": "98bdd52792da1d74ddfe28332c54ae76adc8f6b52e94e1b4f233a94cabf96c78",
+        "v2/driver-tmux/src/transcripts.ts": "f23289d6199d9d2ec288f60de0a3475ce5aa41e20230763380386d4d2c545509",
+        "v2/harness/package.json": "f4808c3b41eb548c2304946690875ff29840bb3fc706247ac8cf285917aa2e3d",
+        "v2/harness/src/clock.ts": "690b130f9bb111af2099cc96d19a114258bf3bc6353d7a440d53b3141c9e2446",
+        "v2/harness/src/daemon.ts": "2b8f17080275ef72b3612e4b446b9e951d203373c70bcec7b83e3b21c91d81ef",
+        "v2/harness/src/driver.ts": "df41b313a0ab97a637eddb5a3ba2be4456293776aa46acfd3eb29af5315a1442",
+        "v2/harness/src/faults.ts": "6152e965e33f1501f9beee0f5a3c42ce18a8b71897713043716a993de48cfc20",
+        "v2/harness/src/index.ts": "200de7850d2848f5b1d2afa72fdbd1490d2919efd8f77976508416ccb7b9a191",
+        "v2/harness/src/invariants.ts": "5ab63d4da3399534d6a2d9eff705d1c6c403e14b39b5749b5863bd7d04daccbb",
+        "v2/harness/src/prng.ts": "1be8ed3684abb058b30f83b89239385928abb14d8c24616ebf925c95af4639e8",
+        "v2/harness/src/sim-driver.ts": "70b5b013351a8a089e2b13509cb3abe5d8182b18e07f920859abc68e4dd10e31",
+        "v2/harness/src/simulation.ts": "9979407c9e3483294675c47b23b802a724adcea73681ae8d8480f47f5e2d650c"
+      }
+    },
+    {
+      "revision": "cfbe57817809d3b1d3032bf4c767ca631911e992",
+      "hashes": {
+        "package-lock.json": "d7bab0bd3fce5d01591536fe5da7cd969634a4ae3428bf75b973c54a58cf36cc",
+        "package.json": "dfc54c5c0aff857519101d532ffbe6a03339903e075e3fdcb82da5d07b2e223c",
+        "v2/adapters/src/agy.ts": "ae4751062d36382252aae126e7c0ee024bbcf65009cc12adc16721e24e9dbbc7",
+        "v2/adapters/src/args.ts": "759f2e5c01bacffd8bca998ae7573c1284da38f043a6d6fdd758cba40fb030f6",
+        "v2/adapters/src/claude.ts": "78f4b15d50a1f2eba8f74fcc4672e2b008db544950c6ed03a8a8b183b7f6e046",
+        "v2/adapters/src/codex.ts": "e03c2f253f5adbd877761683bdceb02ad3725ede0ea9bb66718fb6060df902cb",
+        "v2/adapters/src/grok.ts": "71f647f0b8fb2a32427604ddf45e0a7b54a4a1b876418c7f91de8c3024c0d84f",
+        "v2/adapters/src/index.ts": "6869fe4ec44c1eeefa53ff1660a00c8556330e30acb30cc3265fb78483aadcdf",
+        "v2/adapters/src/stub.ts": "4fdfca1b8dca0cc396bd495fac99d5fcab7005b40bb598e33413a5747e8f3ccc",
+        "v2/adapters/src/types.ts": "c37098d1cb7d06a8137f1fda87ad1affcb6d8b37e325665b1e5123b029fa2dd3",
+        "v2/cli/package.json": "b8abe08ac8165e64be34b9531dace368763822e6739f3024981fc751866d3c71",
+        "v2/cli/src/bin.ts": "330f6bb9d42c72475929a6e104fa5c318051b57816acd4056b3c7523010b8a8c",
+        "v2/cli/src/client.ts": "421e107f912c5f9fae6d51cb2e3b10d8ffe83e70e6660adef03392d59739cafd",
+        "v2/cli/src/help.ts": "1343b7559d210c809233a5c3f4775c796f0d73d5f8d81221829afe419a9b0df3",
+        "v2/cli/src/index.ts": "705f8de04ba4adb8b563d11f2def4da5ae0904ec9bcd0c062d9ce2019676bfd8",
+        "v2/cli/src/main.ts": "c9b719d95d75c8979f9cf2ddb860e109e1f9a971c2b398029113b86dcd9258a6",
+        "v2/cli/src/readonly.ts": "8e94374a1e10bfe065915dded41ffdd60957d0f5aff7d692edbfc67f10b14091",
+        "v2/cli/src/render.ts": "6efc8d278c87ac8c90a6588790e5b7a80eb6dbf997254326b32098c77d6f2897",
+        "v2/cli/src/style.ts": "2f5e611fa6b1aee3c0a3afefdf0cfb9b830736ce4c3f2f9c53d73e5bee5cc5fd",
+        "v2/core/package.json": "6681873b8fe70d5d7ef1005130ff84c721c2516c8e5dcc2b3afad83771247f6d",
+        "v2/core/src/accountLimitsParse.ts": "4101b50909a9c9d79aa9761c4a5b68bc3d808ad36acca38e75c07779a51068a3",
+        "v2/core/src/accountMatch.ts": "90ebe4e125f83d28bc1a1c99cbff9b813362d3b38bbac8b97182014cb4fcf980",
+        "v2/core/src/accountRecipes.ts": "837c397aab4c9fa8a02b890372fac3e29b73d4ba8307913446309d00e715b6b7",
+        "v2/core/src/accountSelect.ts": "2536db3146b2d9a66c812e294c8d668df5e82e3bea9d2923308dff4060e01f5c",
+        "v2/core/src/audit.ts": "b25292a72b403e9e5f8c8ff785e07ef4750ccd6b0b02734afb13f2d94ad14e3c",
+        "v2/core/src/cellMove.ts": "64a0c07352dbab4226c2b173655eb412b976c4f22e4b9d158e5e829c0884d0d6",
+        "v2/core/src/executables.ts": "4a878c553014ceabcdd7e940e274d652799c2852474ada614d5c80cca1eadc7c",
+        "v2/core/src/import-frozen.ts": "c4e84004d16133eeefb38cdf07bd639dbb2d3cda2662eaa4652e986500b5507e",
+        "v2/core/src/index.ts": "f39a777c163ee60a0159749d5380a3e87ed35c93cb2f4445814b90803edcb6db",
+        "v2/core/src/loginFlow.ts": "727d42b6a98a271577cd462e128b0287e7c571e5e06104b3afb5bdff49d35460",
+        "v2/core/src/mirror.ts": "8bcbdb8763eba166d3568f02181d6523c75b7d5fd43eb084e2d5762de5dc33ab",
+        "v2/core/src/packages.ts": "e14a3c6c013211235ca84c137a93f12ead10beff01c876c2741a7e419b944f17",
+        "v2/core/src/registry.ts": "1cd3e1c5a239882474818466907b5f5b2d10501e178b0ad13d24fb2fae8123ff",
+        "v2/core/src/schema.ts": "1ad152562b7241850efd53e3e1cc53d830c45898996c227bc66e3440859d9cf6",
+        "v2/core/src/store.ts": "54c60fa588bc8d732e792d995333b08bc93ecc269082c8c39605ab1fba616711",
+        "v2/core/src/tasks.ts": "2f266a9640ed4b9c7ceeea18aee63ce11521cc416ecc3b5ce118ebb5c195a263",
+        "v2/core/src/types.ts": "11f505e7bda3b575731671e198d83562ab400b2772bb8eb315f1acef9dcc899a",
+        "v2/core/src/view.ts": "1af7f27540c29f4aa9e2c44d7118685f296128a8ab4579df17671ce0abb04693",
+        "v2/daemon/package.json": "42c1d42b8eef8e2ebc590bb702bc6ec8eb9dfc5ea81678c9db87fafe61cea577",
+        "v2/daemon/src/accountsService.ts": "3f13d0481bb54b793d7f0ea6d7f03536d8e5d4ae2be1a8631b17440d596a8a5b",
+        "v2/daemon/src/activation.ts": "7e7056e53671e9caea816fa1162478905ecfc9a408afbad73750ee411056bab7",
+        "v2/daemon/src/autoTitle.ts": "245e0202fd3758aac7cbf022f328ccc4b3f0e88b58303ff03b0e675bceef3e91",
+        "v2/daemon/src/bin.ts": "8ef32816d19e0c2adc85a81a740de8935c7a8bc77e94118203a761b16679754d",
+        "v2/daemon/src/config.ts": "64ea73400095dd007eadbde1eceb0b748a9efbbb343c579e930d93883368f89b",
+        "v2/daemon/src/cursorAuth.ts": "1f0d554fd3ea0351b108404d6b7912701be184e8e26ea89bd2b692a42ae4f924",
+        "v2/daemon/src/daemon.ts": "244a1bacec54a850ba111b53bd456240f04c6608ac7510cfe9d8e5b588498cbb",
+        "v2/daemon/src/envelope.ts": "dc0bff3d7706be31b3fce162e370c1e6e6b7ed8cd2eca43ab1ba6e9ccada6c7a",
+        "v2/daemon/src/gateways.ts": "5c57d479fdbfd871f31de9172da2c9011466258cb46cc764f1776af82da9145c",
+        "v2/daemon/src/homeDefaults.ts": "a63090c09cc8d102b46effa2f8f205457b0e3d73baaaca15cd836e2c0896fc3c",
+        "v2/daemon/src/import-probes.ts": "14cdeb5b7c47d1da44a8eff3e92e22a52a523dcaf250174cefd1c6c46f15529a",
+        "v2/daemon/src/index.ts": "5f8b71e1193407322cb5b44e87bd30cb8384aeb783c22803a10aca034aa691a9",
+        "v2/daemon/src/keychain.ts": "97ecd409db519ba195662dc5f41cbb2b31c36b68100a57bcdc0c1f89ef877ad5",
+        "v2/daemon/src/login/claudeOauth.ts": "9781bf55222a833a9f4461f704a9a10ccb71030a547ca978dae16428f5ce89ff",
+        "v2/daemon/src/login/cliRunner.ts": "ef14344f05033a1ecf510054d3b717db945a203c2b2c32fe3d2607058ca7d52a",
+        "v2/daemon/src/login/common.ts": "1f93ae2e3757ff297cfcd3d94fdf9e838e546a5beed67999f9e0a1b88ebedc46",
+        "v2/daemon/src/login/directKey.ts": "91224b228da3a12dc828d5290900ed1a59ed95766cc9f5f36d273d9e6b862ba2",
+        "v2/daemon/src/login/runner.ts": "53811aa26fecf68f66e6714110efb5664ad2081586b369ab159c25e044d7f17c",
+        "v2/daemon/src/login/transports.ts": "a7073ba48a5ae49cbf2d9109812bbe299ed18487f551d1bf5271bb47b7357e15",
+        "v2/daemon/src/loginFlows.ts": "4460f4a8f8e14900e106e817862cfa8a60cb0f15c6327741d23896736b708c94",
+        "v2/daemon/src/loginWorker.ts": "4a70f08d716550337509663c7586b235568b1fe7bccfbeecfc57d7bdc2fdd378",
+        "v2/daemon/src/loops.ts": "9f1ce604b108828a6a61bac683ce97c82732aa8faadf19319286a9df4cd87041",
+        "v2/daemon/src/main.ts": "7546a94f78f8817ca3a869aa63b2d62d16ffa5404ecb60d63cc742733236f903",
+        "v2/daemon/src/naming.ts": "eae82ba481b3e5b74d7d80c38ca50d6bbf64e378e48e8a7c953d35b2f0a643f5",
+        "v2/daemon/src/namingService.ts": "e8ee4b2026fea2460fb59d60db034ec694b32f76ec2cf7eeba3ea1abf6c36001",
+        "v2/daemon/src/performance.ts": "01ad16258243eea10fa089ea8aae0d396fab4f56fac1ce9f77dd953b7ec2db02",
+        "v2/daemon/src/protocol.ts": "9a0a5439d3312f9a6a6c454bf0983500e236ec49f0ca858cca169d7f08108654",
+        "v2/daemon/src/providerLimits.ts": "befe91217b50c927419389adb50527fd0867ed58d5111f13bcb669eb2b700790",
+        "v2/daemon/src/relocateSession.ts": "bb23acc8d738f024ac8a674b4c7f1366e9913c0b792df2814d9d0869c2ee04e7",
+        "v2/daemon/src/rpc.ts": "39ae485f3cbf72058c93ccbb0427833683ba9836388035065355689f717b3203",
+        "v2/daemon/src/service.ts": "e5aee133fb1f0b5a14f10633e92d5fca7812bfd4e3a0a74ad0ecf2e5ba23a4cb",
+        "v2/daemon/src/substrates.ts": "914b18b4e6e6e7cd2525f5943edb3080c031e16d08934fd4021b55ebf3c1c27c",
+        "v2/daemon/src/telemetry.ts": "0f234f5f77df593387db1ed6c08ba64ccd45f3ffa60303bbd178765aefd0980c",
+        "v2/daemon/src/tmuxHarness.ts": "aebc0a90c9ff4a03a466cdf2edc4fe282dc91388cf9966a0412801fb0bea320f",
+        "v2/daemon/tests/helpers.ts": "9d63216758bec78d1f0e6f7fa949d67ee1f4b1d90eb5efdd4a8888cda75ea0f3",
+        "v2/driver-cell/src/capture.ts": "a14dfc01a4f053e3c5f63b2cb984453ae33630ab3c91415d403f01d552906cc3",
+        "v2/driver-cell/src/cow.ts": "24eb5ce7b6536de861ca261a5d80096343115e14bc8a23e354a2e8a74f318b10",
+        "v2/driver-cell/src/driver.ts": "b513f6a7faaaaa8352a6025b28cc6768e73ea7a2470c4d9aa3686642fa3be88b",
+        "v2/driver-cell/src/exec.ts": "1c022870cd0279d92672b917e2ff8cbc52c3e7b74d47491b5e552b2eb4c72c9b",
+        "v2/driver-cell/src/git.ts": "a8bf50ed3dd720d94fa3b45c2dd6fbfbb82b534e38848af44408c2ca9a10be8d",
+        "v2/driver-cell/src/gitImage.ts": "9b7b1dc8a762caaac402d108bbd9286630a1376b4844ea8d2d3c6232d0a19007",
+        "v2/driver-cell/src/index.ts": "93522d17c0a9bf95c8f7452b24778bb8845af7fed440dc0c22c7fdd60db07661",
+        "v2/driver-cell/src/layout.ts": "68a677450c0d851cf97c50f8616fd25961ddea59dd6b8ac3c0a739042c4775f8",
+        "v2/driver-cell/src/ledger.ts": "efdf4762fab38defd8ec3e68dceba52a44a11d17962b027cb4a0302eec429834",
+        "v2/driver-cell/src/provision.ts": "8293821e57266a0b4f7a2e0e6d25c584cac6caf1ac0afad207311af57558be66",
+        "v2/driver-cell/src/provisionWorker.ts": "a651cc6000ef33f7ed52384f678543b28fea4f363113b3218d45219c510a2d4c",
+        "v2/driver-cell/src/remove.ts": "914e22bf0182c90503731cbeb9877c0d697cda5d410b224223499fab33e75aa5",
+        "v2/driver-cell/src/sandbox.ts": "be390c169c3bc8b06191997ea08c7d6b57f417df26f5bffc21bcef75713ab4ad",
+        "v2/driver-hsr/src/driver.ts": "1bda7217fa6f00701403e14c0887627711fde3038a080ace11dd5b594bc59c38",
+        "v2/driver-hsr/src/index.ts": "8f9542db7792d462ab9b10f9537b9c05f31acf9934d6c32b3f248de8beb97e5e",
+        "v2/driver-hsr/src/psutil.ts": "1beb05854deb6fbe12f206d7436648e7be2a8ae00bcfd0acd13ef3f9fb1c1edb",
+        "v2/driver-hsr/src/runner-host-main.ts": "10c4f1c2af2e2dc20bdddba51e7972bc976831c1bf40b5f5772a2519538411da",
+        "v2/driver-hsr/src/runner-host.ts": "7f1716db45160657ef2109d8a18ae064cbab065f0321b22d29f9a193a3f3c152",
+        "v2/driver-tmux/src/agy-projection.ts": "1d5284c9835d499f0e55dc52ec70a5d36175993f0ccbab7f2e21fcf60f92a9ff",
+        "v2/driver-tmux/src/claude-projection.ts": "df6d2d8967f70ac4b6796a234de83d1e325e41210794972aee41b1a7294882f6",
+        "v2/driver-tmux/src/codex-projection.ts": "2ff68aa8e4d8c802bef9abedb7595e29f038c7ba4cf81403f7efc54a03225e1b",
+        "v2/driver-tmux/src/driver.ts": "26fe0516fe49f389d1f5cad30ee0002e829ae1aba75fe6cec8a0ea886b670820",
+        "v2/driver-tmux/src/events-file.ts": "ddb2ba04f32ef325def8d5287a518659a42e41801034304bc74e4695962a0e99",
+        "v2/driver-tmux/src/grok-projection.ts": "d0d419367031c9738fc6a5a0e27ea6c8a15399b06834239b92f2c2603d406823",
+        "v2/driver-tmux/src/index.ts": "f716470ff208ac29febfe90031b025d969a2eefc5461e649d77d43813fce278d",
+        "v2/driver-tmux/src/tail.ts": "40e24f0d34401e7990581eef3eff1d1542defbc846a92339e61bb81a95a0d156",
+        "v2/driver-tmux/src/tmux.ts": "92607334202f8fb8c8cedf7b9d1454d8742a867c4c8082f7f2f6617a6c285eb9",
+        "v2/driver-tmux/src/transcript-projection.ts": "98bdd52792da1d74ddfe28332c54ae76adc8f6b52e94e1b4f233a94cabf96c78",
+        "v2/driver-tmux/src/transcripts.ts": "f23289d6199d9d2ec288f60de0a3475ce5aa41e20230763380386d4d2c545509",
+        "v2/harness/package.json": "f4808c3b41eb548c2304946690875ff29840bb3fc706247ac8cf285917aa2e3d",
+        "v2/harness/src/clock.ts": "690b130f9bb111af2099cc96d19a114258bf3bc6353d7a440d53b3141c9e2446",
+        "v2/harness/src/daemon.ts": "2b8f17080275ef72b3612e4b446b9e951d203373c70bcec7b83e3b21c91d81ef",
+        "v2/harness/src/driver.ts": "df41b313a0ab97a637eddb5a3ba2be4456293776aa46acfd3eb29af5315a1442",
+        "v2/harness/src/faults.ts": "6152e965e33f1501f9beee0f5a3c42ce18a8b71897713043716a993de48cfc20",
+        "v2/harness/src/index.ts": "200de7850d2848f5b1d2afa72fdbd1490d2919efd8f77976508416ccb7b9a191",
+        "v2/harness/src/invariants.ts": "5ab63d4da3399534d6a2d9eff705d1c6c403e14b39b5749b5863bd7d04daccbb",
+        "v2/harness/src/prng.ts": "1be8ed3684abb058b30f83b89239385928abb14d8c24616ebf925c95af4639e8",
+        "v2/harness/src/sim-driver.ts": "70b5b013351a8a089e2b13509cb3abe5d8182b18e07f920859abc68e4dd10e31",
+        "v2/harness/src/simulation.ts": "9979407c9e3483294675c47b23b802a724adcea73681ae8d8480f47f5e2d650c"
+      }
+    }
+  ],
+  "toolHash": "5ad662b28296297a8e57141b1fff7fa01480d2c814ebf788c95745fa75f19d30",
+  "sqlToolHash": "e16ef5f0cc9c265482a7ac08cc331cecb97709be12f0df4f5f9f04dcd903a754",
+  "control": false,
+  "indexSql": "CREATE INDEX mailbox_pending_metadata ON mailbox(bee_id,id,urgency,enqueued_at,delivered_at) WHERE delivered_at IS NULL",
+  "environment": {
+    "node": "v24.18.0",
+    "cpu": "Apple M4",
+    "boot": "1583faf8a9f0a8fec3010b321dccc6503763f95e8436be682c585ae4286c355c",
+    "loadBefore": [
+      1.26806640625,
+      1.978515625,
+      1.6748046875
+    ],
+    "loadAfter": [
+      1.26806640625,
+      1.978515625,
+      1.6748046875
+    ]
+  },
+  "workload": {
+    "scenarios": [
+      {
+        "pending": 20,
+        "bodyBytes": 64
+      }
+    ],
+    "rounds": 3,
+    "order": "ABBA",
+    "warmups": 3,
+    "writeBatch": 100
+  },
+  "scope": "Two immutable production roots with distinct module instances and exact schema/store source delta. Initially byte-identical pre-index databases; public constructor installs the index. ABBA fresh-file opens include first index installation with file copying, assertions and close outside clock. Held mail seeded by public API, delivered history inserted offline with real bee ID and foreign-key checks. Real CoreStore/DaemonCore reads and durable public send+cancel, send+delivery and send+expedite+cancel writes. FakeDriver; no workers or live runtime. Shared process heap/cache can cross sides. Allocation and native memory not measured. Storage measured on closed checkpointed files.",
+  "results": [
+    {
+      "scenario": {
+        "pending": 20,
+        "bodyBytes": 64
+      },
+      "fixtureSha256": "7bf3bad28a205ad39db83ab7a7365e3395f5e71cf574e7500e89bb782bec7656",
+      "openRaw": [
+        [
+          {
+            "wallMs": 0.410583000000031,
+            "cpuMs": 0.424
+          },
+          {
+            "wallMs": 0.3146669999999858,
+            "cpuMs": 0.317
+          },
+          {
+            "wallMs": 0.43329199999999446,
+            "cpuMs": 0.484
+          },
+          {
+            "wallMs": 0.31704100000001745,
+            "cpuMs": 0.319
+          },
+          {
+            "wallMs": 0.3317089999999894,
+            "cpuMs": 0.335
+          },
+          {
+            "wallMs": 0.30150000000003274,
+            "cpuMs": 0.305
+          }
+        ],
+        [
+          {
+            "wallMs": 0.6940419999999676,
+            "cpuMs": 0.679
+          },
+          {
+            "wallMs": 0.4112500000000523,
+            "cpuMs": 0.394
+          },
+          {
+            "wallMs": 0.4721670000000131,
+            "cpuMs": 0.459
+          },
+          {
+            "wallMs": 0.4087910000000079,
+            "cpuMs": 0.394
+          },
+          {
+            "wallMs": 0.3827079999999796,
+            "cpuMs": 0.368
+          },
+          {
+            "wallMs": 0.3638339999999971,
+            "cpuMs": 0.346
+          }
+        ]
+      ],
+      "openMetrics": [
+        {
+          "wallMs": {
+            "n": 6,
+            "p50": 0.31704100000001745,
+            "p95": 0.43329199999999446,
+            "min": 0.30150000000003274,
+            "max": 0.43329199999999446
+          },
+          "cpuMs": {
+            "n": 6,
+            "p50": 0.319,
+            "p95": 0.484,
+            "min": 0.305,
+            "max": 0.484
+          }
+        },
+        {
+          "wallMs": {
+            "n": 6,
+            "p50": 0.4087910000000079,
+            "p95": 0.6940419999999676,
+            "min": 0.3638339999999971,
+            "max": 0.6940419999999676
+          },
+          "cpuMs": {
+            "n": 6,
+            "p50": 0.394,
+            "p95": 0.679,
+            "min": 0.346,
+            "max": 0.679
+          }
+        }
+      ],
+      "beforeWritesStorage": [
+        {
+          "fileBytes": 339968,
+          "pageCount": 83,
+          "freePages": 0,
+          "index": [],
+          "quickCheck": "ok"
+        },
+        {
+          "fileBytes": 344064,
+          "pageCount": 84,
+          "freePages": 0,
+          "index": [
+            {
+              "name": "mailbox_pending_metadata",
+              "pages": 1,
+              "bytes": 4096
+            }
+          ],
+          "quickCheck": "ok"
+        }
+      ],
+      "results": {
+        "i1": {
+          "raw": [
+            [
+              {
+                "wallMs": 0.21662500000002183,
+                "cpuMs": 0.501
+              },
+              {
+                "wallMs": 0.022291999999993095,
+                "cpuMs": 0.022
+              },
+              {
+                "wallMs": 0.02554200000002993,
+                "cpuMs": 0.025
+              },
+              {
+                "wallMs": 0.019249999999999545,
+                "cpuMs": 0.02
+              },
+              {
+                "wallMs": 0.019125000000030923,
+                "cpuMs": 0.02
+              },
+              {
+                "wallMs": 0.025417000000004464,
+                "cpuMs": 0.026
+              }
+            ],
+            [
+              {
+                "wallMs": 0.020709000000010747,
+                "cpuMs": 0.02
+              },
+              {
+                "wallMs": 0.01954200000000128,
+                "cpuMs": 0.019
+              },
+              {
+                "wallMs": 0.02112499999998363,
+                "cpuMs": 0.021
+              },
+              {
+                "wallMs": 0.019249999999999545,
+                "cpuMs": 0.019
+              },
+              {
+                "wallMs": 0.019082999999966432,
+                "cpuMs": 0.02
+              },
+              {
+                "wallMs": 0.02433399999995345,
+                "cpuMs": 0.027
+              }
+            ]
+          ],
+          "metrics": [
+            {
+              "wallMs": {
+                "n": 6,
+                "p50": 0.022291999999993095,
+                "p95": 0.21662500000002183,
+                "min": 0.019125000000030923,
+                "max": 0.21662500000002183
+              },
+              "cpuMs": {
+                "n": 6,
+                "p50": 0.022,
+                "p95": 0.501,
+                "min": 0.02,
+                "max": 0.501
+              }
+            },
+            {
+              "wallMs": {
+                "n": 6,
+                "p50": 0.01954200000000128,
+                "p95": 0.02433399999995345,
+                "min": 0.019082999999966432,
+                "max": 0.02433399999995345
+              },
+              "cpuMs": {
+                "n": 6,
+                "p50": 0.02,
+                "p95": 0.027,
+                "min": 0.019,
+                "max": 0.027
+              }
+            }
+          ]
+        },
+        "work": {
+          "raw": [
+            [
+              {
+                "wallMs": 0.02400000000000091,
+                "cpuMs": 0.066
+              },
+              {
+                "wallMs": 0.021791000000007443,
+                "cpuMs": 0.021
+              },
+              {
+                "wallMs": 0.027792000000033568,
+                "cpuMs": 0.028
+              },
+              {
+                "wallMs": 0.022084000000006654,
+                "cpuMs": 0.023
+              },
+              {
+                "wallMs": 0.020624999999995453,
+                "cpuMs": 0.021
+              },
+              {
+                "wallMs": 0.025250000000028194,
+                "cpuMs": 0.028
+              }
+            ],
+            [
+              {
+                "wallMs": 0.02216699999996763,
+                "cpuMs": 0.024
+              },
+              {
+                "wallMs": 0.021791000000007443,
+                "cpuMs": 0.022
+              },
+              {
+                "wallMs": 0.024541999999996733,
+                "cpuMs": 0.025
+              },
+              {
+                "wallMs": 0.022375000000010914,
+                "cpuMs": 0.023
+              },
+              {
+                "wallMs": 0.020040999999991982,
+                "cpuMs": 0.02
+              },
+              {
+                "wallMs": 0.02304199999997536,
+                "cpuMs": 0.023
+              }
+            ]
+          ],
+          "metrics": [
+            {
+              "wallMs": {
+                "n": 6,
+                "p50": 0.022084000000006654,
+                "p95": 0.027792000000033568,
+                "min": 0.020624999999995453,
+                "max": 0.027792000000033568
+              },
+              "cpuMs": {
+                "n": 6,
+                "p50": 0.023,
+                "p95": 0.066,
+                "min": 0.021,
+                "max": 0.066
+              }
+            },
+            {
+              "wallMs": {
+                "n": 6,
+                "p50": 0.02216699999996763,
+                "p95": 0.024541999999996733,
+                "min": 0.020040999999991982,
+                "max": 0.024541999999996733
+              },
+              "cpuMs": {
+                "n": 6,
+                "p50": 0.023,
+                "p95": 0.025,
+                "min": 0.02,
+                "max": 0.025
+              }
+            }
+          ]
+        },
+        "step": {
+          "raw": [
+            [
+              {
+                "wallMs": 0.04045800000000099,
+                "cpuMs": 0.041
+              },
+              {
+                "wallMs": 0.05416700000000674,
+                "cpuMs": 0.118
+              },
+              {
+                "wallMs": 0.065166999999974,
+                "cpuMs": 0.152
+              },
+              {
+                "wallMs": 0.03795800000000327,
+                "cpuMs": 0.039
+              },
+              {
+                "wallMs": 0.03699999999997772,
+                "cpuMs": 0.04
+              },
+              {
+                "wallMs": 0.04341600000003609,
+                "cpuMs": 0.044
+              }
+            ],
+            [
+              {
+                "wallMs": 0.03929099999999153,
+                "cpuMs": 0.039
+              },
+              {
+                "wallMs": 0.05979200000001583,
+                "cpuMs": 0.061
+              },
+              {
+                "wallMs": 0.05904100000003609,
+                "cpuMs": 0.06
+              },
+              {
+                "wallMs": 0.03916700000002038,
+                "cpuMs": 0.131
+              },
+              {
+                "wallMs": 0.03674999999998363,
+                "cpuMs": 0.038
+              },
+              {
+                "wallMs": 0.04149999999998499,
+                "cpuMs": 0.149
+              }
+            ]
+          ],
+          "metrics": [
+            {
+              "wallMs": {
+                "n": 6,
+                "p50": 0.04045800000000099,
+                "p95": 0.065166999999974,
+                "min": 0.03699999999997772,
+                "max": 0.065166999999974
+              },
+              "cpuMs": {
+                "n": 6,
+                "p50": 0.041,
+                "p95": 0.152,
+                "min": 0.039,
+                "max": 0.152
+              }
+            },
+            {
+              "wallMs": {
+                "n": 6,
+                "p50": 0.03929099999999153,
+                "p95": 0.05979200000001583,
+                "min": 0.03674999999998363,
+                "max": 0.05979200000001583
+              },
+              "cpuMs": {
+                "n": 6,
+                "p50": 0.06,
+                "p95": 0.149,
+                "min": 0.038,
+                "max": 0.149
+              }
+            }
+          ]
+        }
+      },
+      "diagnostics": [
+        [
+          {
+            "kind": "all",
+            "sql": "WITH pending_bees AS (\n         SELECT DISTINCT bee_id\n         FROM mailbox\n         WHERE delivered_at IS NULL\n       )\n       SELECT target.bee_id,\n              runtime.state AS runtime_state,\n              runtime.boot_evidence AS runtime_boot_evidence,\n              runtime.updated_at AS runtime_updated_at,\n              EXISTS (\n                SELECT 1\n                FROM flags AS flag\n                WHERE flag.bee_id = target.bee_id\n                  AND flag.cleared_at IS NULL\n              ) AS has_active_flag\n       FROM pending_bees AS target\n       LEFT JOIN runtimes AS runtime\n         ON runtime.bee_id = target.bee_id\n        AND runtime.generation = (\n          SELECT MAX(latest.generation)\n          FROM runtimes AS latest\n          WHERE latest.bee_id = target.bee_id\n        )\n       ORDER BY target.bee_id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 1,
+            "textBytes": 47,
+            "blobBytes": 0,
+            "wallMs": 0.0077500000000441105,
+            "cpuMs": 0.011
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT id, bee_id, urgency, enqueued_at\n       FROM mailbox\n       WHERE delivered_at IS NULL\n       ORDER BY bee_id, id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 20,
+            "textBytes": 800,
+            "blobBytes": 0,
+            "wallMs": 0.008000000000038199,
+            "cpuMs": 0.009
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT runtime.bee_id,\n              runtime.generation,\n              runtime.state,\n              runtime.started_at,\n              runtime.updated_at,\n              runtime.boot_evidence\n       FROM runtimes AS runtime\n       WHERE runtime.state != 'stopped'\n         AND runtime.generation = (\n           SELECT MAX(latest.generation)\n           FROM runtimes AS latest\n           WHERE latest.bee_id = runtime.bee_id\n         )\n       ORDER BY runtime.bee_id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 1,
+            "textBytes": 47,
+            "blobBytes": 0,
+            "wallMs": 0.002958999999975731,
+            "cpuMs": 0.005
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT message.id,\n              message.bee_id,\n              message.urgency,\n              message.enqueued_at\n       FROM runtimes AS runtime\n       CROSS JOIN mailbox AS message\n       WHERE runtime.state != 'stopped'\n         AND runtime.generation = (\n           SELECT MAX(latest.generation)\n           FROM runtimes AS latest\n           WHERE latest.bee_id = runtime.bee_id\n         )\n         AND message.bee_id = runtime.bee_id\n         AND message.delivered_at IS NULL\n       ORDER BY runtime.bee_id, message.id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 20,
+            "textBytes": 800,
+            "blobBytes": 0,
+            "wallMs": 0.017499999999984084,
+            "cpuMs": 0.019
+          }
+        ],
+        [
+          {
+            "kind": "all",
+            "sql": "WITH pending_bees AS (\n         SELECT DISTINCT bee_id\n         FROM mailbox\n         WHERE delivered_at IS NULL\n       )\n       SELECT target.bee_id,\n              runtime.state AS runtime_state,\n              runtime.boot_evidence AS runtime_boot_evidence,\n              runtime.updated_at AS runtime_updated_at,\n              EXISTS (\n                SELECT 1\n                FROM flags AS flag\n                WHERE flag.bee_id = target.bee_id\n                  AND flag.cleared_at IS NULL\n              ) AS has_active_flag\n       FROM pending_bees AS target\n       LEFT JOIN runtimes AS runtime\n         ON runtime.bee_id = target.bee_id\n        AND runtime.generation = (\n          SELECT MAX(latest.generation)\n          FROM runtimes AS latest\n          WHERE latest.bee_id = target.bee_id\n        )\n       ORDER BY target.bee_id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 1,
+            "textBytes": 47,
+            "blobBytes": 0,
+            "wallMs": 0.004166999999995369,
+            "cpuMs": 0.006
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT id, bee_id, urgency, enqueued_at\n       FROM mailbox\n       WHERE delivered_at IS NULL\n       ORDER BY bee_id, id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 20,
+            "textBytes": 800,
+            "blobBytes": 0,
+            "wallMs": 0.007167000000038115,
+            "cpuMs": 0.008
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT runtime.bee_id,\n              runtime.generation,\n              runtime.state,\n              runtime.started_at,\n              runtime.updated_at,\n              runtime.boot_evidence\n       FROM runtimes AS runtime\n       WHERE runtime.state != 'stopped'\n         AND runtime.generation = (\n           SELECT MAX(latest.generation)\n           FROM runtimes AS latest\n           WHERE latest.bee_id = runtime.bee_id\n         )\n       ORDER BY runtime.bee_id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 1,
+            "textBytes": 47,
+            "blobBytes": 0,
+            "wallMs": 0.0021660000000451873,
+            "cpuMs": 0.003
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT message.id,\n              message.bee_id,\n              message.urgency,\n              message.enqueued_at\n       FROM runtimes AS runtime\n       CROSS JOIN mailbox AS message\n       WHERE runtime.state != 'stopped'\n         AND runtime.generation = (\n           SELECT MAX(latest.generation)\n           FROM runtimes AS latest\n           WHERE latest.bee_id = runtime.bee_id\n         )\n         AND message.bee_id = runtime.bee_id\n         AND message.delivered_at IS NULL\n       ORDER BY runtime.bee_id, message.id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 20,
+            "textBytes": 800,
+            "blobBytes": 0,
+            "wallMs": 0.009749999999996817,
+            "cpuMs": 0.01
+          }
+        ]
+      ],
+      "queryPlans": [
+        [
+          {
+            "sql": "WITH pending_bees AS (\n         SELECT DISTINCT bee_id\n         FROM mailbox\n         WHERE delivered_at IS NULL\n       )\n       SELECT target.bee_id,\n              runtime.state AS runtime_state,\n              runtime.boot_evidence AS runtime_boot_evidence,\n              runtime.updated_at AS runtime_updated_at,\n              EXISTS (\n                SELECT 1\n                FROM flags AS flag\n                WHERE flag.bee_id = target.bee_id\n                  AND flag.cleared_at IS NULL\n              ) AS has_active_flag\n       FROM pending_bees AS target\n       LEFT JOIN runtimes AS runtime\n         ON runtime.bee_id = target.bee_id\n        AND runtime.generation = (\n          SELECT MAX(latest.generation)\n          FROM runtimes AS latest\n          WHERE latest.bee_id = target.bee_id\n        )\n       ORDER BY target.bee_id",
+            "plan": [
+              {
+                "id": 2,
+                "parent": 0,
+                "notused": 0,
+                "detail": "CO-ROUTINE pending_bees"
+              },
+              {
+                "id": 6,
+                "parent": 2,
+                "notused": 214,
+                "detail": "SCAN mailbox USING INDEX mailbox_undelivered"
+              },
+              {
+                "id": 18,
+                "parent": 0,
+                "notused": 175,
+                "detail": "SCAN target"
+              },
+              {
+                "id": 21,
+                "parent": 0,
+                "notused": 46,
+                "detail": "SEARCH runtime USING INDEX sqlite_autoindex_runtimes_1 (bee_id=? AND generation=?) LEFT-JOIN"
+              },
+              {
+                "id": 26,
+                "parent": 0,
+                "notused": 0,
+                "detail": "CORRELATED SCALAR SUBQUERY 3"
+              },
+              {
+                "id": 31,
+                "parent": 26,
+                "notused": 54,
+                "detail": "SEARCH latest USING COVERING INDEX sqlite_autoindex_runtimes_1 (bee_id=?)"
+              },
+              {
+                "id": 56,
+                "parent": 0,
+                "notused": 0,
+                "detail": "CORRELATED SCALAR SUBQUERY 2"
+              },
+              {
+                "id": 61,
+                "parent": 56,
+                "notused": 62,
+                "detail": "SEARCH flag USING INDEX flags_active (bee_id=?)"
+              },
+              {
+                "id": 80,
+                "parent": 0,
+                "notused": 0,
+                "detail": "USE TEMP B-TREE FOR ORDER BY"
+              }
+            ]
+          },
+          {
+            "sql": "SELECT id, bee_id, urgency, enqueued_at\n       FROM mailbox\n       WHERE delivered_at IS NULL\n       ORDER BY bee_id, id",
+            "plan": [
+              {
+                "id": 4,
+                "parent": 0,
+                "notused": 214,
+                "detail": "SCAN mailbox USING INDEX mailbox_undelivered"
+              }
+            ]
+          },
+          {
+            "sql": "SELECT runtime.bee_id,\n              runtime.generation,\n              runtime.state,\n              runtime.started_at,\n              runtime.updated_at,\n              runtime.boot_evidence\n       FROM runtimes AS runtime\n       WHERE runtime.state != 'stopped'\n         AND runtime.generation = (\n           SELECT MAX(latest.generation)\n           FROM runtimes AS latest\n           WHERE latest.bee_id = runtime.bee_id\n         )\n       ORDER BY runtime.bee_id",
+            "plan": [
+              {
+                "id": 4,
+                "parent": 0,
+                "notused": 214,
+                "detail": "SCAN runtime USING INDEX runtimes_daemon_live"
+              },
+              {
+                "id": 9,
+                "parent": 0,
+                "notused": 0,
+                "detail": "CORRELATED SCALAR SUBQUERY 1"
+              },
+              {
+                "id": 14,
+                "parent": 9,
+                "notused": 54,
+                "detail": "SEARCH latest USING COVERING INDEX sqlite_autoindex_runtimes_1 (bee_id=?)"
+              }
+            ]
+          },
+          {
+            "sql": "SELECT message.id,\n              message.bee_id,\n              message.urgency,\n              message.enqueued_at\n       FROM runtimes AS runtime\n       CROSS JOIN mailbox AS message\n       WHERE runtime.state != 'stopped'\n         AND runtime.generation = (\n           SELECT MAX(latest.generation)\n           FROM runtimes AS latest\n           WHERE latest.bee_id = runtime.bee_id\n         )\n         AND message.bee_id = runtime.bee_id\n         AND message.delivered_at IS NULL\n       ORDER BY runtime.bee_id, message.id",
+            "plan": [
+              {
+                "id": 6,
+                "parent": 0,
+                "notused": 214,
+                "detail": "SCAN runtime USING INDEX runtimes_daemon_live"
+              },
+              {
+                "id": 11,
+                "parent": 0,
+                "notused": 0,
+                "detail": "CORRELATED SCALAR SUBQUERY 1"
+              },
+              {
+                "id": 16,
+                "parent": 11,
+                "notused": 54,
+                "detail": "SEARCH latest USING COVERING INDEX sqlite_autoindex_runtimes_1 (bee_id=?)"
+              },
+              {
+                "id": 30,
+                "parent": 0,
+                "notused": 61,
+                "detail": "SEARCH message USING INDEX mailbox_undelivered (bee_id=?)"
+              },
+              {
+                "id": 50,
+                "parent": 0,
+                "notused": 0,
+                "detail": "USE TEMP B-TREE FOR LAST TERM OF ORDER BY"
+              }
+            ]
+          }
+        ],
+        [
+          {
+            "sql": "WITH pending_bees AS (\n         SELECT DISTINCT bee_id\n         FROM mailbox\n         WHERE delivered_at IS NULL\n       )\n       SELECT target.bee_id,\n              runtime.state AS runtime_state,\n              runtime.boot_evidence AS runtime_boot_evidence,\n              runtime.updated_at AS runtime_updated_at,\n              EXISTS (\n                SELECT 1\n                FROM flags AS flag\n                WHERE flag.bee_id = target.bee_id\n                  AND flag.cleared_at IS NULL\n              ) AS has_active_flag\n       FROM pending_bees AS target\n       LEFT JOIN runtimes AS runtime\n         ON runtime.bee_id = target.bee_id\n        AND runtime.generation = (\n          SELECT MAX(latest.generation)\n          FROM runtimes AS latest\n          WHERE latest.bee_id = target.bee_id\n        )\n       ORDER BY target.bee_id",
+            "plan": [
+              {
+                "id": 2,
+                "parent": 0,
+                "notused": 0,
+                "detail": "CO-ROUTINE pending_bees"
+              },
+              {
+                "id": 5,
+                "parent": 2,
+                "notused": 204,
+                "detail": "SCAN mailbox USING COVERING INDEX mailbox_pending_metadata"
+              },
+              {
+                "id": 16,
+                "parent": 0,
+                "notused": 175,
+                "detail": "SCAN target"
+              },
+              {
+                "id": 19,
+                "parent": 0,
+                "notused": 46,
+                "detail": "SEARCH runtime USING INDEX sqlite_autoindex_runtimes_1 (bee_id=? AND generation=?) LEFT-JOIN"
+              },
+              {
+                "id": 24,
+                "parent": 0,
+                "notused": 0,
+                "detail": "CORRELATED SCALAR SUBQUERY 3"
+              },
+              {
+                "id": 29,
+                "parent": 24,
+                "notused": 54,
+                "detail": "SEARCH latest USING COVERING INDEX sqlite_autoindex_runtimes_1 (bee_id=?)"
+              },
+              {
+                "id": 54,
+                "parent": 0,
+                "notused": 0,
+                "detail": "CORRELATED SCALAR SUBQUERY 2"
+              },
+              {
+                "id": 59,
+                "parent": 54,
+                "notused": 62,
+                "detail": "SEARCH flag USING INDEX flags_active (bee_id=?)"
+              },
+              {
+                "id": 78,
+                "parent": 0,
+                "notused": 0,
+                "detail": "USE TEMP B-TREE FOR ORDER BY"
+              }
+            ]
+          },
+          {
+            "sql": "SELECT id, bee_id, urgency, enqueued_at\n       FROM mailbox\n       WHERE delivered_at IS NULL\n       ORDER BY bee_id, id",
+            "plan": [
+              {
+                "id": 3,
+                "parent": 0,
+                "notused": 204,
+                "detail": "SCAN mailbox USING COVERING INDEX mailbox_pending_metadata"
+              }
+            ]
+          },
+          {
+            "sql": "SELECT runtime.bee_id,\n              runtime.generation,\n              runtime.state,\n              runtime.started_at,\n              runtime.updated_at,\n              runtime.boot_evidence\n       FROM runtimes AS runtime\n       WHERE runtime.state != 'stopped'\n         AND runtime.generation = (\n           SELECT MAX(latest.generation)\n           FROM runtimes AS latest\n           WHERE latest.bee_id = runtime.bee_id\n         )\n       ORDER BY runtime.bee_id",
+            "plan": [
+              {
+                "id": 4,
+                "parent": 0,
+                "notused": 214,
+                "detail": "SCAN runtime USING INDEX runtimes_daemon_live"
+              },
+              {
+                "id": 9,
+                "parent": 0,
+                "notused": 0,
+                "detail": "CORRELATED SCALAR SUBQUERY 1"
+              },
+              {
+                "id": 14,
+                "parent": 9,
+                "notused": 54,
+                "detail": "SEARCH latest USING COVERING INDEX sqlite_autoindex_runtimes_1 (bee_id=?)"
+              }
+            ]
+          },
+          {
+            "sql": "SELECT message.id,\n              message.bee_id,\n              message.urgency,\n              message.enqueued_at\n       FROM runtimes AS runtime\n       CROSS JOIN mailbox AS message\n       WHERE runtime.state != 'stopped'\n         AND runtime.generation = (\n           SELECT MAX(latest.generation)\n           FROM runtimes AS latest\n           WHERE latest.bee_id = runtime.bee_id\n         )\n         AND message.bee_id = runtime.bee_id\n         AND message.delivered_at IS NULL\n       ORDER BY runtime.bee_id, message.id",
+            "plan": [
+              {
+                "id": 5,
+                "parent": 0,
+                "notused": 214,
+                "detail": "SCAN runtime USING INDEX runtimes_daemon_live"
+              },
+              {
+                "id": 10,
+                "parent": 0,
+                "notused": 0,
+                "detail": "CORRELATED SCALAR SUBQUERY 1"
+              },
+              {
+                "id": 15,
+                "parent": 10,
+                "notused": 54,
+                "detail": "SEARCH latest USING COVERING INDEX sqlite_autoindex_runtimes_1 (bee_id=?)"
+              },
+              {
+                "id": 29,
+                "parent": 0,
+                "notused": 55,
+                "detail": "SEARCH message USING COVERING INDEX mailbox_pending_metadata (bee_id=?)"
+              },
+              {
+                "id": 48,
+                "parent": 0,
+                "notused": 0,
+                "detail": "USE TEMP B-TREE FOR LAST TERM OF ORDER BY"
+              }
+            ]
+          }
+        ]
+      ],
+      "writes": {
+        "cancel": {
+          "raw": [
+            [
+              {
+                "wallMs": 10.124291999999969,
+                "cpuMs": 9.639
+              },
+              {
+                "wallMs": 9.095667000000049,
+                "cpuMs": 8.847
+              },
+              {
+                "wallMs": 10.27658299999996,
+                "cpuMs": 9.908
+              },
+              {
+                "wallMs": 9.829542000000004,
+                "cpuMs": 9.708
+              },
+              {
+                "wallMs": 9.71366599999999,
+                "cpuMs": 9.267
+              },
+              {
+                "wallMs": 9.66441599999996,
+                "cpuMs": 8.35
+              },
+              {
+                "wallMs": 8.905291000000034,
+                "cpuMs": 8.264
+              },
+              {
+                "wallMs": 9.83933300000001,
+                "cpuMs": 8.551
+              },
+              {
+                "wallMs": 9.929374999999936,
+                "cpuMs": 9.291
+              },
+              {
+                "wallMs": 9.510541999999987,
+                "cpuMs": 8.329
+              }
+            ],
+            [
+              {
+                "wallMs": 11.040834000000018,
+                "cpuMs": 10.466
+              },
+              {
+                "wallMs": 10.234375,
+                "cpuMs": 9.505
+              },
+              {
+                "wallMs": 10.33012500000001,
+                "cpuMs": 9.977
+              },
+              {
+                "wallMs": 9.557041999999967,
+                "cpuMs": 8.988
+              },
+              {
+                "wallMs": 10.266208000000006,
+                "cpuMs": 9.943
+              },
+              {
+                "wallMs": 11.07941599999998,
+                "cpuMs": 9.842
+              },
+              {
+                "wallMs": 11.316167000000064,
+                "cpuMs": 10.21
+              },
+              {
+                "wallMs": 9.463666999999987,
+                "cpuMs": 8.829
+              },
+              {
+                "wallMs": 10.155582999999979,
+                "cpuMs": 8.828
+              },
+              {
+                "wallMs": 10.160791000000017,
+                "cpuMs": 9.091
+              }
+            ]
+          ],
+          "metrics": [
+            {
+              "wallMs": {
+                "n": 10,
+                "p50": 9.71366599999999,
+                "p95": 10.27658299999996,
+                "min": 8.905291000000034,
+                "max": 10.27658299999996
+              },
+              "cpuMs": {
+                "n": 10,
+                "p50": 8.847,
+                "p95": 9.908,
+                "min": 8.264,
+                "max": 9.908
+              }
+            },
+            {
+              "wallMs": {
+                "n": 10,
+                "p50": 10.234375,
+                "p95": 11.316167000000064,
+                "min": 9.463666999999987,
+                "max": 11.316167000000064
+              },
+              "cpuMs": {
+                "n": 10,
+                "p50": 9.505,
+                "p95": 10.466,
+                "min": 8.828,
+                "max": 10.466
+              }
+            }
+          ]
+        },
+        "deliver": {
+          "raw": [
+            [
+              {
+                "wallMs": 10.516083999999978,
+                "cpuMs": 9.22
+              },
+              {
+                "wallMs": 10.36687500000005,
+                "cpuMs": 9.081
+              },
+              {
+                "wallMs": 10.796999999999912,
+                "cpuMs": 10.184
+              },
+              {
+                "wallMs": 11.63904100000002,
+                "cpuMs": 10.35
+              },
+              {
+                "wallMs": 10.344042000000059,
+                "cpuMs": 9.368
+              },
+              {
+                "wallMs": 9.497916000000032,
+                "cpuMs": 8.849
+              },
+              {
+                "wallMs": 10.67612500000007,
+                "cpuMs": 9.51
+              },
+              {
+                "wallMs": 9.815916000000016,
+                "cpuMs": 9.17
+              },
+              {
+                "wallMs": 11.796790999999985,
+                "cpuMs": 10.554
+              },
+              {
+                "wallMs": 11.642458999999917,
+                "cpuMs": 10.356
+              }
+            ],
+            [
+              {
+                "wallMs": 12.23862500000007,
+                "cpuMs": 10.942
+              },
+              {
+                "wallMs": 9.822124999999915,
+                "cpuMs": 9.176
+              },
+              {
+                "wallMs": 10.927999999999997,
+                "cpuMs": 9.63
+              },
+              {
+                "wallMs": 10.985082999999918,
+                "cpuMs": 9.655
+              },
+              {
+                "wallMs": 10.973582999999962,
+                "cpuMs": 9.943
+              },
+              {
+                "wallMs": 12.122083000000089,
+                "cpuMs": 10.865
+              },
+              {
+                "wallMs": 12.695375000000013,
+                "cpuMs": 11.425
+              },
+              {
+                "wallMs": 9.695499999999925,
+                "cpuMs": 9.05
+              },
+              {
+                "wallMs": 10.724417000000017,
+                "cpuMs": 9.395
+              },
+              {
+                "wallMs": 10.722082999999998,
+                "cpuMs": 9.398
+              }
+            ]
+          ],
+          "metrics": [
+            {
+              "wallMs": {
+                "n": 10,
+                "p50": 10.516083999999978,
+                "p95": 11.796790999999985,
+                "min": 9.497916000000032,
+                "max": 11.796790999999985
+              },
+              "cpuMs": {
+                "n": 10,
+                "p50": 9.368,
+                "p95": 10.554,
+                "min": 8.849,
+                "max": 10.554
+              }
+            },
+            {
+              "wallMs": {
+                "n": 10,
+                "p50": 10.927999999999997,
+                "p95": 12.695375000000013,
+                "min": 9.695499999999925,
+                "max": 12.695375000000013
+              },
+              "cpuMs": {
+                "n": 10,
+                "p50": 9.63,
+                "p95": 11.425,
+                "min": 9.05,
+                "max": 11.425
+              }
+            }
+          ]
+        },
+        "expedite-cancel": {
+          "raw": [
+            [
+              {
+                "wallMs": 13.016541999999959,
+                "cpuMs": 11.735
+              },
+              {
+                "wallMs": 12.942208999999934,
+                "cpuMs": 11.864
+              },
+              {
+                "wallMs": 11.635833000000048,
+                "cpuMs": 10.339
+              },
+              {
+                "wallMs": 12.199791000000005,
+                "cpuMs": 11.057
+              },
+              {
+                "wallMs": 12.02654199999995,
+                "cpuMs": 11.03
+              },
+              {
+                "wallMs": 13.130208000000152,
+                "cpuMs": 11.389
+              },
+              {
+                "wallMs": 13.000583000000006,
+                "cpuMs": 11.784
+              },
+              {
+                "wallMs": 13.588874999999916,
+                "cpuMs": 12.263
+              },
+              {
+                "wallMs": 11.833000000000084,
+                "cpuMs": 10.543
+              },
+              {
+                "wallMs": 11.79704199999992,
+                "cpuMs": 10.519
+              }
+            ],
+            [
+              {
+                "wallMs": 13.305916000000025,
+                "cpuMs": 11.333
+              },
+              {
+                "wallMs": 12.552291999999966,
+                "cpuMs": 11.277
+              },
+              {
+                "wallMs": 13.652208000000087,
+                "cpuMs": 11.865
+              },
+              {
+                "wallMs": 14.058167000000026,
+                "cpuMs": 13.381
+              },
+              {
+                "wallMs": 14.919624999999996,
+                "cpuMs": 13.262
+              },
+              {
+                "wallMs": 12.914084000000003,
+                "cpuMs": 11.547
+              },
+              {
+                "wallMs": 13.61829200000011,
+                "cpuMs": 12.645
+              },
+              {
+                "wallMs": 12.944250000000011,
+                "cpuMs": 11.667
+              },
+              {
+                "wallMs": 12.585833999999977,
+                "cpuMs": 11.298
+              },
+              {
+                "wallMs": 14.534124999999904,
+                "cpuMs": 12.635
+              }
+            ]
+          ],
+          "metrics": [
+            {
+              "wallMs": {
+                "n": 10,
+                "p50": 12.199791000000005,
+                "p95": 13.588874999999916,
+                "min": 11.635833000000048,
+                "max": 13.588874999999916
+              },
+              "cpuMs": {
+                "n": 10,
+                "p50": 11.057,
+                "p95": 12.263,
+                "min": 10.339,
+                "max": 12.263
+              }
+            },
+            {
+              "wallMs": {
+                "n": 10,
+                "p50": 13.305916000000025,
+                "p95": 14.919624999999996,
+                "min": 12.552291999999966,
+                "max": 14.919624999999996
+              },
+              "cpuMs": {
+                "n": 10,
+                "p50": 11.667,
+                "p95": 13.381,
+                "min": 11.277,
+                "max": 13.381
+              }
+            }
+          ]
+        }
+      },
+      "afterWritesStorage": [
+        {
+          "fileBytes": 3338240,
+          "pageCount": 815,
+          "freePages": 0,
+          "index": [],
+          "quickCheck": "ok"
+        },
+        {
+          "fileBytes": 3342336,
+          "pageCount": 816,
+          "freePages": 0,
+          "index": [
+            {
+              "name": "mailbox_pending_metadata",
+              "pages": 1,
+              "bytes": 4096
+            }
+          ],
+          "quickCheck": "ok"
+        }
+      ]
+    }
+  ],
+  "finishedAt": "2026-09-07T12:24:49.469Z"
+}
