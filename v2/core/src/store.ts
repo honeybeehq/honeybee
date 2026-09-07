@@ -3021,6 +3021,28 @@ export class CoreStore {
       }
       const isRuntimeVerb = RUNTIME_VERBS.includes(verb as Verb);
       const targetGeneration = isRuntimeVerb ? (this.currentRuntime(beeId)?.generation ?? 0) : null;
+      if (verb === "stop" && args.cause === "stopped_by_user") {
+        const pendingStarts = this.stmt(
+          `SELECT * FROM commands
+           WHERE bee_id = ? AND status = 'queued'
+             AND verb IN ('spawn', 'send_wake', 'revive')
+             AND target_generation = ?
+           ORDER BY id`,
+        ).all(beeId, targetGeneration) as Row[];
+        const finishedAt = this.now();
+        for (const row of pendingStarts) {
+          const pending = mapCommand(row);
+          this.stmt("UPDATE commands SET status = 'done', finished_at = ? WHERE id = ?").run(finishedAt, pending.id);
+          this.audit("command.moot", beeId, {
+            commandId: pending.id,
+            verb: pending.verb,
+            targetGeneration: pending.targetGeneration,
+            currentGeneration: targetGeneration,
+            finishedAt,
+            reason: "superseded_by_stop",
+          });
+        }
+      }
       const command = this.applyEnqueue(verb as Verb, beeId, args, targetGeneration, key ?? null);
       if (superseded && verb !== "delete" && this.undeliveredMessages(beeId).length > 0) {
         this.applyWakeIfNeeded(beeId);
@@ -3126,6 +3148,20 @@ export class CoreStore {
   }
 
   /**
+   * Due commands that may start a runtime. This deliberately reads the
+   * command queue, not the bee roster: account preparation is demand-driven
+   * by executable intent and inactive bees impose no per-tick work.
+   */
+  listDueRuntimeStartCommands(): CommandRow[] {
+    return (this.stmt(
+      `SELECT * FROM commands INDEXED BY commands_ready
+       WHERE status = 'queued' AND next_attempt_at <= ?
+         AND verb IN ('spawn', 'send_wake', 'revive')
+       ORDER BY id`,
+    ).all(this.now()) as Row[]).map(mapCommand);
+  }
+
+  /**
    * Claim the next ready command (queued → running). B6: a command whose
    * target_generation no longer matches the bee's current generation settles `done`
    * as a recorded no-op — the intent is moot, not failed — and claiming continues.
@@ -3133,12 +3169,26 @@ export class CoreStore {
    * or blocking unrelated commands. This check shares the writer with turn
    * admission; arguments are changed only after the command is claimed.
    */
-  claimNextCommand(): CommandRow | null {
+  claimNextCommand(options: { blockedRuntimeStartBeeIds?: ReadonlySet<string> } = {}): CommandRow | null {
     return this.tx(() => {
+      const blockedRuntimeStartBeeIds = [...(options.blockedRuntimeStartBeeIds ?? [])];
+      const blockedRuntimeStartClause = blockedRuntimeStartBeeIds.length > 0
+        ? `AND NOT (
+             bee_id IN (SELECT value FROM json_each(?))
+             AND EXISTS (
+               SELECT 1 FROM commands pending_start
+               WHERE pending_start.bee_id = commands.bee_id
+                 AND pending_start.status = 'queued'
+                 AND pending_start.verb IN ('spawn', 'send_wake', 'revive')
+                 AND pending_start.id <= commands.id
+             )
+           )`
+        : "";
       for (;;) {
         const row = this.db
           .prepare(
             `SELECT * FROM commands WHERE status = 'queued' AND next_attempt_at <= ?
+             ${blockedRuntimeStartClause}
              AND NOT (verb = 'stop' AND json_type(args, '$.replacementArgs') IS NOT NULL
                AND EXISTS (SELECT 1 FROM runtimes r WHERE r.bee_id = commands.bee_id
                  AND r.generation = commands.target_generation AND r.state IN ('booting', 'running')))
@@ -3162,7 +3212,7 @@ export class CoreStore {
              )
              ORDER BY id LIMIT 1`,
           )
-          .get(this.now()) as Row | undefined;
+          .get(this.now(), ...(blockedRuntimeStartBeeIds.length > 0 ? [JSON.stringify(blockedRuntimeStartBeeIds)] : [])) as Row | undefined;
         if (!row) return null;
         const command = mapCommand(row);
         if (

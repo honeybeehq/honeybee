@@ -10,8 +10,12 @@ export const PROTECTED_SPAWN_ENV_KEYS = new Set([
 
 const ENV_KEY = /^[A-Za-z_][A-Za-z0-9_]*$/u;
 
+export function isValidEnvName(name: string): boolean {
+  return ENV_KEY.test(name);
+}
+
 export function isValidEnvEntry(key: string, value: string): boolean {
-  return ENV_KEY.test(key) && !value.includes("\0");
+  return isValidEnvName(key) && !value.includes("\0");
 }
 
 export function assertCallerEnvAllowed(env: Record<string, string>): void {

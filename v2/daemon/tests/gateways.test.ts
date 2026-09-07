@@ -12,6 +12,7 @@ test("gateway reader accepts a live-registry shape and strips identity overrides
     socketPath: "/tmp/apiary.sock",
     shim: { command: "/opt/apiary-mcp", args: [] },
     env: { APIARY_GATEWAY: "/tmp/apiary.json", HIVE_BEE_ID: "spoofed" },
+    envVars: ["APIARY_GATEWAY_URL", "APIARY_SESSION_ID", "APIARY_AGENT_TOKEN"],
     pid: 42,
     startedAt: "2026-08-21T00:00:00.000Z",
     gatewayRev: 1,
@@ -19,6 +20,7 @@ test("gateway reader accepts a live-registry shape and strips identity overrides
     name: "apiary",
     shim: { command: "/opt/apiary-mcp", args: [] },
     env: { APIARY_GATEWAY: "/tmp/apiary.json" },
+    envVars: ["APIARY_GATEWAY_URL", "APIARY_SESSION_ID", "APIARY_AGENT_TOKEN"],
     pid: 42,
   });
 });
@@ -36,6 +38,8 @@ test("gateway reader rejects malformed commands, arguments, and environment", ()
   assert.equal(parseGatewayRecord(JSON.stringify({ ...base, shim: { command: "relative", args: [] } })), null);
   assert.equal(parseGatewayRecord(JSON.stringify({ ...base, shim: { command: "/opt/apiary-mcp", args: [3] } })), null);
   assert.equal(parseGatewayRecord(JSON.stringify({ ...base, env: { "BAD-KEY": "x" } })), null);
+  assert.equal(parseGatewayRecord(JSON.stringify({ ...base, envVars: ["APIARY_SESSION_ID", "BAD-NAME"] })), null);
+  assert.equal(parseGatewayRecord(JSON.stringify({ ...base, envVars: "APIARY_SESSION_ID" })), null);
 });
 
 test("live gateway discovery reads the Honeybee store root, not the v2 daemon data dir", () => {

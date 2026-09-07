@@ -7,6 +7,7 @@ export interface LiveGateway {
   name: string;
   shim: { command: string; args: string[] };
   env: Record<string, string>;
+  envVars?: string[];
   pid?: number;
   stateless?: boolean;
 }
@@ -35,6 +36,10 @@ export function parseGatewayRecord(raw: string): LiveGateway | null {
   if (!record.env || typeof record.env !== "object" || Array.isArray(record.env)) return null;
   const envEntries = Object.entries(record.env as Record<string, unknown>);
   if (envEntries.some(([key, item]) => !ENV_KEY.test(key) || typeof item !== "string" || item.includes("\0"))) return null;
+  if (record.envVars !== undefined && (
+    !Array.isArray(record.envVars)
+    || !record.envVars.every((name) => typeof name === "string" && ENV_KEY.test(name))
+  )) return null;
   const stateless = record.stateless === true;
   if (
     (!stateless || record.socketPath !== undefined)
@@ -46,6 +51,7 @@ export function parseGatewayRecord(raw: string): LiveGateway | null {
     name: record.name,
     shim: { command: shimRecord.command, args: [...shimRecord.args] as string[] },
     env: Object.fromEntries(envEntries.filter(([key]) => !PROTECTED_ENV.has(key))) as Record<string, string>,
+    ...(Array.isArray(record.envVars) ? { envVars: [...record.envVars] as string[] } : {}),
     ...(record.pid !== undefined ? { pid: Number(record.pid) } : {}),
     ...(stateless ? { stateless: true } : {}),
   };

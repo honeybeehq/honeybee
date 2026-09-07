@@ -1,7 +1,7 @@
 import { accessSync, constants, readFileSync, readdirSync, statSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import { storeRoot } from "./fsx.js";
-import { isValidEnvEntry, PROTECTED_SPAWN_ENV_KEYS } from "./spawnEnv.js";
+import { isValidEnvEntry, isValidEnvName, PROTECTED_SPAWN_ENV_KEYS } from "./spawnEnv.js";
 
 export type GatewayRecord = {
   name: string;
@@ -10,6 +10,8 @@ export type GatewayRecord = {
   socketPath?: string;
   shim: { command: string; args: string[] };
   env: Record<string, string>;
+  /** Environment names the consumer must forward from its own spawn env. */
+  envVars?: string[];
   /** Absent for stateless gateways — there is no daemon process. */
   pid?: number;
   startedAt: string;
@@ -73,6 +75,10 @@ function parseGatewayRecord(raw: string): GatewayRecord | null {
   if (typeof shimRecord.command !== "string" || shimRecord.command.includes("\0") || !isAbsolute(shimRecord.command)) return null;
   if (!Array.isArray(shimRecord.args) || !shimRecord.args.every((arg) => typeof arg === "string" && !arg.includes("\0"))) return null;
   if (!isStringRecord(record.env)) return null;
+  if (record.envVars !== undefined && (
+    !Array.isArray(record.envVars)
+    || !record.envVars.every((name) => typeof name === "string" && isValidEnvName(name))
+  )) return null;
   if (record.pid !== undefined || !stateless) {
     if (!Number.isSafeInteger(record.pid) || Number(record.pid) <= 0) return null;
   }
@@ -83,6 +89,7 @@ function parseGatewayRecord(raw: string): GatewayRecord | null {
     ...(typeof record.socketPath === "string" ? { socketPath: record.socketPath } : {}),
     shim: { command: shimRecord.command, args: [...shimRecord.args] as string[] },
     env: { ...record.env },
+    ...(Array.isArray(record.envVars) ? { envVars: [...record.envVars] as string[] } : {}),
     ...(record.pid !== undefined ? { pid: Number(record.pid) } : {}),
     startedAt: record.startedAt,
     gatewayRev: 1,

@@ -129,21 +129,33 @@ test("codex seeder merges named TOML tables and removes only stamped tables", as
       "",
     ].join("\n"));
 
-    await seedGatewayMcp(home, "codex", { gateways: [gateway()] });
+    await seedGatewayMcp(home, "codex", { gateways: [gateway({
+      envVars: ["APIARY_GATEWAY_URL", "APIARY_SESSION_ID", "APIARY_AGENT_TOKEN"],
+    })] });
     let config = await readFile(configPath, "utf8");
     assert.match(config, /model = "gpt-5\.5"/);
     assert.match(config, /\[mcp_servers\.user\]/);
     assert.match(
       config,
-      /\[mcp_servers\.apiary\]\ncommand = "\/opt\/apiary-mcp"\nargs = \[\]\nenv_vars = \["APIARY_GATEWAY", "HIVE_BEE", "HIVE_BEE_ID"\]/,
+      /\[mcp_servers\.apiary\]\ncommand = "\/opt\/apiary-mcp"\nargs = \[\]\nenv_vars = \["APIARY_GATEWAY", "APIARY_GATEWAY_URL", "APIARY_SESSION_ID", "APIARY_AGENT_TOKEN", "HIVE_BEE", "HIVE_BEE_ID"\]/,
     );
     const stamp = await json(join(home, ".hive-gateways.json")) as GatewayMcpStamp;
     assert.deepEqual(stamp.files["config.toml"]?.apiary, {
       command: "/opt/apiary-mcp",
       args: [],
-      envVars: ["APIARY_GATEWAY", "HIVE_BEE", "HIVE_BEE_ID"],
+      envVars: [
+        "APIARY_GATEWAY",
+        "APIARY_GATEWAY_URL",
+        "APIARY_SESSION_ID",
+        "APIARY_AGENT_TOKEN",
+        "HIVE_BEE",
+        "HIVE_BEE_ID",
+      ],
     });
-    assert.deepEqual((await seedGatewayMcp(home, "codex", { gateways: [gateway()] })).written, []);
+    assert.doesNotMatch(config, /session-secret|agent-secret/);
+    assert.deepEqual((await seedGatewayMcp(home, "codex", { gateways: [gateway({
+      envVars: ["APIARY_GATEWAY_URL", "APIARY_SESSION_ID", "APIARY_AGENT_TOKEN"],
+    })] })).written, []);
 
     await seedGatewayMcp(home, "codex", { gateways: [] });
     config = await readFile(configPath, "utf8");
