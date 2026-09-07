@@ -19,7 +19,11 @@
 import type {
   AccountStatus,
   AuditRow,
+  BeeMoveView,
   BeeRow,
+  CellOpStatus,
+  CellRow,
+  LocalRepoIdentity,
   CredentialHealth,
   ExecutableResolutionSource,
   LoginFlowRow,
@@ -95,6 +99,10 @@ export const DAEMON_CAPABILITIES = [
   "mail.pending.v1",
   /** Atomic working-state admission and deferred idle restart for model/effort changes. */
   "bee.reconfigure.v1",
+  /** Same-node Cell→regular checkout move. Remote is typed-refused. */
+  "cell.move.local.v1",
+  /** Sandboxed retained-Cell exec keyed by Cell ID. */
+  "cell.retained.exec.v1",
 ] as const;
 export type DaemonCapability = (typeof DAEMON_CAPABILITIES)[number];
 
@@ -181,6 +189,20 @@ export const RPC_ERROR_CODES = [
    * rotation failed or left under 15 minutes of TTL. Retryable.
    */
   "lease_unavailable",
+  /** v21: Cell→checkout move is local-only; remote is refused before fence/stop. */
+  "remote_move_unsupported",
+  /** v21: expected.placementVersion / cellId does not match the bee. */
+  "stale_placement",
+  /** v21: destination is not the same origin (common-dir / object format / HEAD). */
+  "repo_mismatch",
+  /** v21: bee already has an incomplete move. */
+  "move_in_progress",
+  /** v21: same idempotency key bound to a different request hash. */
+  "idempotency_conflict",
+  /** v21: harness cannot continue the same conversation in a new cwd. */
+  "continuation_unsupported",
+  /** v21: cells registry lookup. */
+  "cell_not_found",
 ] as const;
 export type RpcErrorCode = (typeof RPC_ERROR_CODES)[number];
 
@@ -235,6 +257,10 @@ export const RPC_VERBS = [
   // WP6 §5 cell exit path (spec 05 points 4 + 6): the WP5 driver primitives as verbs
   "cell.capture",
   "cell.remove",
+  "bee.move",
+  "bee.move.get",
+  "cell.exec",
+  "cell.retained.remove",
   // v6 pre-flip verb set (additive to v2/1): rename, tag, interrupt, fork,
   // parenting read, questions, seals. `spawn` also takes `parentId?`.
   "bee.rename",
@@ -929,6 +955,10 @@ export interface ViewResult {
   view: BeeView;
   bee: BeeRow | null;
   runtime: RuntimeRow | null;
+  /** v21 — latest move receipt (in-flight, complete, or failed). */
+  move: BeeMoveView | null;
+  /** v21 — active or retained Cell. */
+  cell: CellRow | null;
 }
 
 export interface ListResult {
@@ -1069,6 +1099,9 @@ export interface SnapshotResult {
   taskSupply: MirrorTaskSupplyRow[];
   /** v16 (additive): account login flows, store rows verbatim. */
   loginFlows: MirrorLoginFlowRow[];
+  /** v21 (additive): Cell registry + move aggregate. */
+  cells: CellRow[];
+  beeMoves: BeeMoveView[];
 }
 
 // ---------------------------------------------------------------------------
@@ -1223,6 +1256,57 @@ export interface CellRemoveResult extends CellDedupMarker {
   report: CellDirtyReport | null;
   /** The lifecycle delete command (deleted | absent). */
   commandId: number | null;
+}
+
+export type { BeeMoveView, CellRow, LocalRepoIdentity };
+
+export interface BeeMoveParams {
+  beeId: string;
+  idempotencyKey: string;
+  expected: { placementVersion: number; cellId: string };
+  destination: {
+    kind: "local_checkout";
+    cwd: string;
+    repository: LocalRepoIdentity;
+    observedHead: string;
+  };
+}
+
+export type BeeMoveResult = BeeMoveView & { deduped?: boolean };
+
+export interface CellExecParams {
+  cellId: string;
+  idempotencyKey: string;
+  argv: string[];
+  cwd?: string;
+  timeoutMs?: number;
+}
+
+export interface CellExecResult {
+  id: string;
+  cellId: string;
+  status: CellOpStatus;
+  exitCode: number | null;
+  stdout: string;
+  stderr: string;
+  truncated: boolean;
+  timeoutMs: number;
+  reason: "no_cell" | "cell_runtime_live" | "busy" | "argv_invalid" | "containment" | null;
+  deduped?: boolean;
+}
+
+export interface CellRetainedRemoveParams {
+  cellId: string;
+  idempotencyKey: string;
+  force?: boolean;
+}
+
+export interface CellRetainedRemoveResult {
+  cell: CellRow;
+  status: "deleted" | "refused" | "absent";
+  forced: boolean;
+  report: CellDirtyReport | null;
+  deduped?: boolean;
 }
 
 export class RpcError extends Error {

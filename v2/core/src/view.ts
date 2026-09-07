@@ -9,7 +9,7 @@ import type { BeeRow, BeeView, Flag, RuntimeRow } from "./types.ts";
 
 export function deriveBeeView(
   beeId: string,
-  bee: BeeRow | null,
+  bee: Pick<BeeRow, "lifecycle" | "lastOutputAt"> | null,
   runtime: RuntimeRow | null,
   flags: Flag[],
   opts: { readCursor?: number } = {},

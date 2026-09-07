@@ -13,8 +13,14 @@ import {
   type AuditRow,
   type TemplateRow,
   type TrackRow,
+  type BeeMoveFailure,
+  type BeeMovePhase,
+  type BeeMoveView,
+  type BeePlacement,
   type BeeRow,
   type BeeView,
+  type CellRow,
+  type CellState,
   type CommandRow,
   type ExitCause,
   type Flag,
@@ -62,6 +68,9 @@ function mapBee(r: Row): BeeRow {
     account: (r.account as string | null | undefined) ?? null,
     // v10 column; same tolerance.
     handle: (r.handle as string | null | undefined) ?? null,
+    placementVersion: Number((r.placement_version as number | null | undefined) ?? 0),
+    activeMoveId: (r.active_move_id as string | null | undefined) ?? null,
+    cellId: (r.cell_id as string | null | undefined) ?? null,
   };
 }
 
@@ -271,6 +280,8 @@ export interface StaleViewResult {
   view: BeeView;
   bee: BeeRow | null;
   runtime: RuntimeRow | null;
+  move: BeeMoveView | null;
+  cell: CellRow | null;
 }
 
 export class ReadOnlyStore {
@@ -322,6 +333,8 @@ export class ReadOnlyStore {
       ),
       bee,
       runtime: bee ? this.currentRuntime(beeId) : null,
+      move: this.latestMoveView(beeId),
+      cell: bee?.cellId ? this.getCell(bee.cellId) : null,
     };
   }
 
@@ -355,6 +368,63 @@ export class ReadOnlyStore {
   private tableExists(name: string): boolean {
     const row = this.db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(name);
     return row !== undefined;
+  }
+
+  private getCell(cellId: string): CellRow | null {
+    if (!this.tableExists("cells")) return null;
+    const r = this.db.prepare("SELECT * FROM cells WHERE id = ?").get(cellId) as Row | undefined;
+    if (!r) return null;
+    return {
+      id: r.id as string,
+      sourceBeeId: r.source_bee_id as string,
+      state: r.state as CellState,
+      repository: {
+        version: 1,
+        gitCommonDirRealpath: r.git_common_dir as string,
+        objectFormat: r.object_format as CellRow["repository"]["objectFormat"],
+      },
+      originRepo: r.origin_repo as string,
+      sha: r.sha as string,
+      wrapper: r.wrapper as string,
+      spaceName: r.space_name as string,
+      spaceDir: r.space_dir as string,
+      sandbox: r.sandbox == null ? null : Number(r.sandbox) !== 0,
+      createdAt: Number(r.created_at),
+      retainedAt: r.retained_at == null ? null : Number(r.retained_at),
+      removedAt: r.removed_at == null ? null : Number(r.removed_at),
+    };
+  }
+
+  private latestMoveView(beeId: string): BeeMoveView | null {
+    if (!this.tableExists("bee_moves")) return null;
+    const r = this.db
+      .prepare("SELECT * FROM bee_moves WHERE bee_id = ? ORDER BY created_at DESC, id DESC LIMIT 1")
+      .get(beeId) as Row | undefined;
+    if (!r) return null;
+    const placementVersion = Number(r.placement_version);
+    const fromSubstrate = r.from_substrate as BeePlacement["substrate"];
+    const toSubstrate = r.to_substrate as BeePlacement["substrate"];
+    const failure = r.failure_json == null ? null : (JSON.parse(String(r.failure_json)) as BeeMoveFailure);
+    return {
+      id: r.id as string,
+      beeId: r.bee_id as string,
+      phase: r.phase as BeeMovePhase,
+      sourceGeneration: Number(r.source_generation),
+      from: {
+        version: Math.max(0, placementVersion - 1),
+        mode: fromSubstrate === "cell" ? "cell" : "checkout",
+        substrate: fromSubstrate,
+        cwd: r.from_cwd as string,
+      },
+      to: {
+        version: placementVersion,
+        mode: toSubstrate === "hsr" ? "checkout" : "cell",
+        substrate: toSubstrate,
+        cwd: r.to_cwd as string,
+      },
+      retainedCellId: r.retained_cell_id as string,
+      failure,
+    };
   }
 
   children(beeId: string): StaleViewResult[] {

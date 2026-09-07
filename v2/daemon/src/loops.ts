@@ -46,6 +46,10 @@
 import {
   CoreError,
   RUNTIME_TRANSITIONS,
+  placementContextText,
+  prefixPlacementDelivery,
+  type BeeMoveRow,
+  type BeeRow,
   type CommandRow,
   type CoreStore,
   type DaemonStepInputs,
@@ -188,6 +192,15 @@ export interface DaemonCoreOptions {
   onFlagEvidence?: (ev: FlagEvidenceLike) => void;
   /** Optional process-local timing recorder. It never writes durable core state. */
   performance?: PerformanceRecorder;
+  /**
+   * Exact source absence for Cell move placement: in-memory hasProcess is not
+   * enough after a daemon restart (stopped row may still hold an unreaped pid).
+   */
+  sourceProcessAbsent?: (beeId: string, generation: number) => boolean;
+  /** Filesystem Claude carry; throws to fail the move without a SQLite placement. */
+  relocateSession?: (move: BeeMoveRow, bee: BeeRow) => "copied" | "present" | "none";
+  /** Revalidate dest exists/identity/HEAD after source stop, before FS copy/placement. */
+  validatePlacement?: (move: BeeMoveRow, bee: BeeRow) => void;
 }
 
 const LIVE: readonly RuntimeState[] = ["booting", "running", "idle"];
@@ -210,6 +223,9 @@ export class DaemonCore {
   private readonly removeSessionLog: ((path: string) => void) | null;
   private readonly onFlagEvidence: ((ev: FlagEvidenceLike) => void) | null;
   private readonly performance: PerformanceRecorder;
+  private readonly sourceProcessAbsent: (beeId: string, generation: number) => boolean;
+  private readonly relocateSession: ((move: BeeMoveRow, bee: BeeRow) => "copied" | "present" | "none") | null;
+  private readonly validatePlacement: ((move: BeeMoveRow, bee: BeeRow) => void) | null;
   /** In-memory dedup so a breach is reported once per daemon lifetime; the recorder dedups durably. */
   private readonly reportedI1 = new Set<number>();
 
@@ -224,6 +240,9 @@ export class DaemonCore {
     this.removeSessionLog = opts.removeSessionLog ?? null;
     this.onFlagEvidence = opts.onFlagEvidence ?? null;
     this.performance = opts.performance ?? NOOP_PERFORMANCE;
+    this.sourceProcessAbsent = opts.sourceProcessAbsent ?? ((beeId, generation) => !this.driver.hasProcess(beeId, generation));
+    this.relocateSession = opts.relocateSession ?? null;
+    this.validatePlacement = opts.validatePlacement ?? null;
   }
 
   private get ext(): ExtendedDriver {
@@ -289,6 +308,7 @@ export class DaemonCore {
       this.degradedMailPolicy(snapshot.work);
     });
     this.performance.measureSync("core.step.commands", () => this.executeCommands());
+    this.performance.measureSync("core.step.moves", () => this.reconcileMoves());
     ({ snapshot, seq } = this.performance.measureSync("core.step.snapshot", () =>
       this.refreshSnapshot(snapshot, seq),
     ));
@@ -595,6 +615,7 @@ export class DaemonCore {
    * env). Idempotent: an existing queued/running revive/wake is enough.
    */
   private reviveAfterStopIfRequested(beeId: string, generation: number): void {
+    if (this.store.getBee(beeId)?.activeMoveId) return;
     if (!this.store.hasStopThenReviveRequest(beeId, generation)) return;
     if (this.store.hasPendingReviveOrWakeCommand(beeId, generation)) return;
     // Only the generation the stop targeted; a later generation means the
@@ -677,6 +698,7 @@ export class DaemonCore {
       // Pending mail means the delivery loop is about to use this runtime —
       // stopping it now would only bounce through revive-on-message.
       if (pending.length > 0) continue;
+      if (this.store.activeMoveOf(rt.beeId)) continue;
       if (this.pendingStopExists(rt.beeId, rt.generation)) continue;
       this.store.enqueueCommand("stop", rt.beeId, { cause: "stopped_by_system", reason: "idle_window" });
       this.log(`policy.idle_stop bee=${rt.beeId} gen=${rt.generation} idleFor=${now - rt.updatedAt}`);
@@ -862,6 +884,86 @@ export class DaemonCore {
     }
   }
 
+  private sourceGone(beeId: string, generation: number): boolean {
+    return this.sourceProcessAbsent(beeId, generation);
+  }
+
+  private reconcileMoves(): void {
+    for (const move of this.store.listActiveBeeMoves()) {
+      const bee = this.store.getBee(move.beeId);
+      if (!bee) continue;
+      const rt = this.store.currentRuntime(bee.id);
+      try {
+        if (move.phase === "stopping") {
+          if (rt?.state === "stopped" && rt.generation === move.sourceGeneration && this.sourceGone(bee.id, move.sourceGeneration)) {
+            this.store.setBeeMovePhase(move.id, "placing");
+          }
+        }
+        const current = this.store.getBeeMove(move.id);
+        if (current?.phase === "placing") {
+          if (!(rt?.state === "stopped" && rt.generation === move.sourceGeneration && this.sourceGone(bee.id, move.sourceGeneration))) {
+            continue;
+          }
+          if (this.validatePlacement) this.validatePlacement(current, bee);
+          if (this.relocateSession) {
+            this.relocateSession(current, bee);
+          }
+          this.store.commitBeePlacement(move.id);
+        }
+        const after = this.store.getBeeMove(move.id);
+        if (after?.phase === "starting") {
+          const dest = this.store.currentRuntime(bee.id);
+          if (this.store.activeFlags(bee.id).some((f) => f.flag === "spawn_failed")) {
+            this.store.failBeeMove(move.id, { stage: "start", code: "spawn_failed", detail: "destination runtime failed to boot" });
+            continue;
+          }
+          if (dest && dest.generation !== move.sourceGeneration && dest.state === "stopped") {
+            const retry = this.store.enqueueBootRetry(bee.id);
+            this.log(`move.dest_retry bee=${bee.id} move=${move.id} outcome=${retry.outcome}`);
+            continue;
+          }
+          if (dest && dest.generation !== move.sourceGeneration && (dest.state === "running" || dest.state === "idle")) {
+            // Native startup overlay evidence: Claude argv was in the spawned
+            // process; Codex thread/start|resume developerInstructions was
+            // acknowledged by the handshake that left booting. Never mark at
+            // resolveSpawnSpec — that is before account activation and spawn.
+            // Pending mail still owes the delivery-time prefix, and a dest
+            // crash before that accept point must retry with the overlay
+            // still pending on resolveSpawnSpec.
+            const pending = this.store.undeliveredMessages(bee.id);
+            if (
+              pending.length === 0
+              && (bee.agent === "claude" || bee.agent === "codex")
+              && !after.instructionsApplied
+            ) {
+              this.store.markMoveInstructionsApplied(move.id);
+            }
+            if (pending.length === 0 && this.store.getBeeMove(move.id)?.instructionsApplied) {
+              this.store.completeBeeMove(move.id);
+            }
+          }
+        }
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        const continuation = err instanceof Error && err.name === "ContinuationUnsupportedError";
+        const stage = continuation || /transcript/i.test(detail) ? "context" : /repo_mismatch|no longer exists|HEAD/.test(detail) ? "validate" : "start";
+        const code = continuation
+          ? "continuation_unsupported"
+          : stage === "context"
+            ? "transcript_unavailable"
+            : stage === "validate"
+              ? "repo_mismatch"
+              : "move_failed";
+        this.log(`move.fail bee=${bee.id} move=${move.id} ${detail}`);
+        try {
+          this.store.failBeeMove(move.id, { stage, code, detail });
+        } catch (failErr) {
+          this.log(`move.fail_error bee=${bee.id} ${failErr instanceof Error ? failErr.message : String(failErr)}`);
+        }
+      }
+    }
+  }
+
   // -------------------------------------------------------------------------
   // delivery loop (v8: urgency-aware — spec 01 Q2 amendment 2026-08-18)
   // -------------------------------------------------------------------------
@@ -895,6 +997,8 @@ export class DaemonCore {
     for (const { runtime: rt, pending } of work) {
       if (rt.state === "booting") continue;
       if (pending.length === 0) continue;
+      const move = this.store.activeMoveOf(rt.beeId);
+      if (move && move.phase !== "starting") continue;
       // `running` on nothing but a SYNTHETIC boot is provisional (v9): the
       // driver's accept point is open and no real turn exists to disturb, so
       // `idle` mail is eligible. Without this, idle mail sent to a stopped
@@ -946,10 +1050,28 @@ export class DaemonCore {
       // operator/human mail is delivered bare. The mailbox row stays the
       // durable truth — the envelope is delivery-time rendering only.
       const peer = isPeerSender(msg.sender, (id) => this.store.getBee(id) != null);
-      const outcome = this.driver.deliver(rt.beeId, rt.generation, msg.id, deliveryText(msg, peer));
+      let body = deliveryText(msg, peer);
+      const instruction = this.store.placementInstructionMove(rt.beeId);
+      if (instruction && rt.generation !== instruction.sourceGeneration) {
+        body = prefixPlacementDelivery(
+          body,
+          placementContextText({
+            placementVersion: instruction.to.version,
+            cwd: instruction.to.cwd,
+            cellId: instruction.retainedCellId,
+          }),
+        );
+      }
+      const outcome = this.driver.deliver(rt.beeId, rt.generation, msg.id, body);
       if (outcome.accepted) {
         this.store.markDelivered(msg.id, rt.generation);
         this.interruptRequested.delete(msg.id);
+        if (instruction && rt.generation !== instruction.sourceGeneration) {
+          this.store.markMoveInstructionsApplied(instruction.id);
+          if (this.store.activeMoveOf(rt.beeId)?.phase === "starting") {
+            this.store.completeBeeMove(instruction.id);
+          }
+        }
         this.log(`deliver bee=${rt.beeId} msg=${msg.id} gen=${rt.generation} urgency=${msg.urgency}`);
       } else {
         this.log(`deliver.refused bee=${rt.beeId} msg=${msg.id} reason=${outcome.reason}`);

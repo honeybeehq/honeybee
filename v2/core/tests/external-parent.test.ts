@@ -139,7 +139,7 @@ test("pre-v21 creation events replay with local lineage", () => {
   }
 });
 
-test("a v20 store migrates existing parent edges to local lineage at schema v21", () => {
+test("a v20 store migrates existing parent edges to local lineage at the current schema", () => {
   const h = harness();
   let store: CoreStore | null = null;
   try {
@@ -188,7 +188,7 @@ test("a v20 store migrates existing parent edges to local lineage at schema v21"
         value: string;
       };
       assert.equal(Number(version.value), SCHEMA_VERSION);
-      assert.equal(SCHEMA_VERSION, 21);
+      assert.equal(SCHEMA_VERSION, 22);
       const column = migrated.prepare(
         "SELECT name FROM pragma_table_info('bees') WHERE name = 'parent_external'",
       ).get() as { name: string } | undefined;

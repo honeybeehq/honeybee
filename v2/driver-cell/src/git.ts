@@ -6,7 +6,10 @@
  * pinned, deterministic environment (no user global/system config, no hooks).
  */
 import { spawnSync } from "node:child_process";
+import { existsSync, realpathSync } from "node:fs";
 import { devNull } from "node:os";
+import { isAbsolute, resolve } from "node:path";
+import type { LocalRepoIdentity } from "../../core/src/types.ts";
 
 export class GitError extends Error {
   readonly args: string[];
@@ -78,6 +81,32 @@ export function isAncestor(repo: string, ancestor: string, descendant: string): 
 export function hasCommit(repo: string, sha: string): boolean {
   const res = tryGit(repo, ["cat-file", "-e", `${sha}^{commit}`]);
   return res.status === 0;
+}
+
+/** Realpath of `git rev-parse --git-common-dir` — same-node repo identity. */
+export function gitCommonDirRealpath(repo: string): string | null {
+  if (!existsSync(repo)) return null;
+  const res = tryGit(repo, ["rev-parse", "--git-common-dir"]);
+  if (res.status !== 0) return null;
+  const raw = res.stdout.trim();
+  if (raw.length === 0) return null;
+  const abs = isAbsolute(raw) ? raw : resolve(repo, raw);
+  try {
+    return realpathSync(abs);
+  } catch {
+    return abs;
+  }
+}
+
+export function gitObjectFormat(repo: string): LocalRepoIdentity["objectFormat"] {
+  const res = tryGit(repo, ["rev-parse", "--show-object-format"]);
+  return res.status === 0 && res.stdout.trim() === "sha256" ? "sha256" : "sha1";
+}
+
+export function localRepoIdentity(repo: string): LocalRepoIdentity | null {
+  const dir = gitCommonDirRealpath(repo);
+  if (!dir) return null;
+  return { version: 1, gitCommonDirRealpath: dir, objectFormat: gitObjectFormat(repo) };
 }
 
 /** The branch HEAD symbolically points at (short name), or null when detached. */

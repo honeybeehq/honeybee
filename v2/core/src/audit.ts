@@ -8,7 +8,10 @@ import type {
   AccountLimitsRow,
   AccountRow,
   AuditRow,
+  BeeMoveRow,
   BeeRow,
+  CellOpRow,
+  CellRow,
   CommandRow,
   FlagRow,
   MessageRow,
@@ -40,6 +43,9 @@ export function replayAudit(rows: AuditRow[]): StateDump {
   const tasks = new Map<string, TaskRow>();
   const taskSupply = new Map<string, TaskSupplyRow>();
   const loginFlows = new Map<string, LoginFlowRow>();
+  const cells = new Map<string, CellRow>();
+  const beeMoves = new Map<string, BeeMoveRow>();
+  const cellOps = new Map<string, CellOpRow>();
 
   const rtKey = (beeId: string, generation: number) => `${beeId}#${generation}`;
   const mustBee = (id: string): BeeRow => {
@@ -58,9 +64,13 @@ export function replayAudit(rows: AuditRow[]): StateDump {
     switch (row.kind) {
       case "bee.created": {
         const bee = p.bee as BeeRow;
-        // v21 back-compat: creation events recorded before parentExternal
-        // existed represent local lineage. Match the migrated SQL default.
-        bees.set(bee.id, { ...bee, parentExternal: bee.parentExternal ?? false });
+        bees.set(bee.id, {
+          ...bee,
+          parentExternal: bee.parentExternal ?? false,
+          placementVersion: bee.placementVersion ?? 0,
+          activeMoveId: bee.activeMoveId ?? null,
+          cellId: bee.cellId ?? null,
+        });
         break;
       }
       case "bee.archived": {
@@ -295,6 +305,62 @@ export function replayAudit(rows: AuditRow[]): StateDump {
         seals.set(seal.id, { ...seal, refs: [...seal.refs] });
         break;
       }
+      case "cell.put": {
+        const cell = p.cell as CellRow;
+        cells.set(cell.id, { ...cell, repository: { ...cell.repository } });
+        const owner = bees.get(cell.sourceBeeId);
+        if (owner) owner.cellId = cell.id;
+        break;
+      }
+      case "cell.removed": {
+        const cellId = p.cellId as string;
+        const existing = cells.get(cellId);
+        if (!existing) throw new Error(`audit replay: unknown cell ${cellId}`);
+        existing.state = "removed";
+        existing.removedAt = p.removedAt as number;
+        const owner = bees.get(existing.sourceBeeId);
+        if (owner?.cellId === cellId) owner.cellId = null;
+        break;
+      }
+      case "bee.move_admitted": {
+        const move = p.move as BeeMoveRow;
+        beeMoves.set(move.id, { ...move, from: { ...move.from }, to: { ...move.to }, observedHead: move.observedHead ?? "" });
+        const bee = mustBee(move.beeId);
+        bee.activeMoveId = move.id;
+        break;
+      }
+      case "bee.move_phase": {
+        const move = p.move as BeeMoveRow;
+        beeMoves.set(move.id, { ...move, from: { ...move.from }, to: { ...move.to }, observedHead: move.observedHead ?? "" });
+        const bee = mustBee(move.beeId);
+        if (move.phase === "complete" || move.phase === "failed") bee.activeMoveId = null;
+        else bee.activeMoveId = move.id;
+        break;
+      }
+      case "bee.placement": {
+        const bee = mustBee(p.beeId as string);
+        bee.placementVersion = p.placementVersion as number;
+        bee.cwd = p.cwd as string;
+        bee.substrate = p.substrate as string;
+        bee.cellId = (p.cellId as string | null) ?? bee.cellId;
+        break;
+      }
+      case "bee.move_failed": {
+        const move = p.move as BeeMoveRow;
+        beeMoves.set(move.id, { ...move, from: { ...move.from }, to: { ...move.to }, observedHead: move.observedHead ?? "" });
+        mustBee(move.beeId).activeMoveId = null;
+        break;
+      }
+      case "bee.move_instructions": {
+        const move = p.move as BeeMoveRow;
+        beeMoves.set(move.id, { ...move, from: { ...move.from }, to: { ...move.to }, observedHead: move.observedHead ?? "" });
+        break;
+      }
+      case "cell_op.put": {
+        const op = p.op as CellOpRow;
+        cellOps.set(op.id, { ...op, argv: op.argv === null ? null : [...op.argv] });
+        break;
+      }
       case "task.put": {
         const task = p.task as TaskRow;
         tasks.set(task.id, {
@@ -318,6 +384,7 @@ export function replayAudit(rows: AuditRow[]): StateDump {
       case "command.complete_noop":
       case "command.dedup":
       case "wake.suppressed":
+      case "wake.fenced":
       case "boot.reconciled":
         break;
       default:
@@ -343,5 +410,8 @@ export function replayAudit(rows: AuditRow[]): StateDump {
     tasks: [...tasks.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
     taskSupply: [...taskSupply.values()].sort((a, b) => (a.beeId < b.beeId ? -1 : a.beeId > b.beeId ? 1 : 0)),
     loginFlows: [...loginFlows.values()].sort((a, b) => a.createdAt - b.createdAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
+    cells: [...cells.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
+    beeMoves: [...beeMoves.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
+    cellOps: [...cellOps.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
   };
 }

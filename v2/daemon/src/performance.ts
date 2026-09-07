@@ -28,6 +28,7 @@ const STATIC_SPAN_NAMES = [
   "core.step.snapshot",
   "core.step.policies",
   "core.step.commands",
+  "core.step.moves",
   "core.step.delivery",
   "core.step.tasks",
   "core.step.i1",

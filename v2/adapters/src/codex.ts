@@ -80,6 +80,13 @@ export interface CodexAdapterOptions {
    * stops it and the spawn budget makes the failure visible.
    */
   forkThreadId?: string;
+  /**
+   * Codex app-server `thread/start` and `thread/resume` (codex-cli ≥ 0.153.4)
+   * accept `developerInstructions`. Honeybee uses this for Cell→checkout
+   * placement context. Callers must compose overlays with
+   * `composeDeveloperInstructions` so existing custom instructions survive.
+   */
+  developerInstructions?: string | null;
 }
 
 /**
@@ -126,11 +133,13 @@ const SERVER_REQUEST_REFUSAL_CODE = -32601;
 
 /** The thread request params (shape taken from the old adapter's buildCodexThreadRequestParams). */
 export function codexThreadRequest(opts: CodexAdapterOptions): { method: "thread/start" | "thread/resume" | "thread/fork"; params: Record<string, unknown> } {
+  const developerInstructions = opts.developerInstructions?.trim() ? opts.developerInstructions : undefined;
   const base = {
     ...(opts.model ? { model: opts.model } : {}),
     cwd: opts.cwd,
     approvalPolicy: "never",
     sandbox: "danger-full-access",
+    ...(developerInstructions ? { developerInstructions } : {}),
   };
   if (opts.resumeThreadId) return { method: "thread/resume", params: { threadId: opts.resumeThreadId, ...base } };
   if (opts.forkThreadId) return { method: "thread/fork", params: { threadId: opts.forkThreadId, ...base } };
