@@ -50,3 +50,16 @@ A/A compares two Unit 1 roots. A/B compares Unit 1 with 1576571c; B/A reverses t
 Mini 1576571c passed repository build, all v2 typechecks, full core, and all 64 loop tests. Mini dfecaeba passed build, all v2 typechecks, and all 65 loop tests. The added cases cover committed/rolled-back terminals, disabled I1, stopped/absent targets, exact cadence and growth triggers, revived now-message dedup, callback reentry, and 5,000 pending messages with only one initially tracked ID.
 
 A dedicated allocation diagnostic for a large pending queue and tiny tracked set remains in progress, as does the disabled-I1 probe cost check. Integration against current main and the Cell-move ordering change is still required before merging Unit 2. No unfinished or regression-bearing intermediate commit is accepted into main.
+
+## Half-million-message standing stress
+
+The same frozen ruler ran 50 cohorts of 10,000 messages per process, keeping one pending anchor throughout. Process order was Unit 1, refined candidate, refined candidate, Unit 1. All exact callback, pending-mail, source, and boot checks passed. Final memory follows the complete 256-tick settling window and forced GC; vmmap runs separately while the store remains open.
+
+| Run | Final tracked IDs | Final JS heap, bytes | Physical footprint, vmmap M | New 10,000-message cohort CPU p50, ms |
+| --- | ---: | ---: | ---: | ---: |
+| before | 500,001 | 22,172,344 | 129.7 | 9.6365 |
+| after | 1 | 11,730,888 | 121.7 | 11.3180 |
+| after-repeat | 1 | 11,731,560 | 117.0 | 11.2950 |
+| before-repeat | 500,001 | 22,172,192 | 128.2 | 9.8880 |
+
+The candidate removes 500,000 obsolete IDs, reduces final retained JS heap by about 10.44 MB in both comparisons, and has smaller observed physical footprint in both process orders. This supports a footprint improvement for this workload; the smaller experiment and all raw RSS samples remain retained. It is not a universal RSS or exact native-allocation claim. New-cohort CPU increases by about 1.4–1.7 ms per 10,000 messages. The workload excludes real workers and durable I1 recorder writes.

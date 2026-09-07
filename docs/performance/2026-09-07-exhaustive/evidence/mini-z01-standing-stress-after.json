@@ -1,0 +1,4087 @@
+{
+  "completed": true,
+  "startedAt": "2026-09-07T10:46:53.367Z",
+  "source": {
+    "revision": "dfecaeba868b47ff86dc3f179262bc969ef00501",
+    "hashes": {
+      "v2/adapters/src/agy.ts": "ae4751062d36382252aae126e7c0ee024bbcf65009cc12adc16721e24e9dbbc7",
+      "v2/adapters/src/args.ts": "c4af70fde51db0a39b2b7c37fee5df4a931516d91399cbdb93a033292d54e43d",
+      "v2/adapters/src/claude.ts": "78f4b15d50a1f2eba8f74fcc4672e2b008db544950c6ed03a8a8b183b7f6e046",
+      "v2/adapters/src/codex.ts": "47b766ce87eb9ae67986d6f970aea9511ed3162d08b44513a461ca56475bc0a0",
+      "v2/adapters/src/grok.ts": "71f647f0b8fb2a32427604ddf45e0a7b54a4a1b876418c7f91de8c3024c0d84f",
+      "v2/adapters/src/index.ts": "6869fe4ec44c1eeefa53ff1660a00c8556330e30acb30cc3265fb78483aadcdf",
+      "v2/adapters/src/stub.ts": "4fdfca1b8dca0cc396bd495fac99d5fcab7005b40bb598e33413a5747e8f3ccc",
+      "v2/adapters/src/types.ts": "c37098d1cb7d06a8137f1fda87ad1affcb6d8b37e325665b1e5123b029fa2dd3",
+      "v2/cli/src/bin.ts": "330f6bb9d42c72475929a6e104fa5c318051b57816acd4056b3c7523010b8a8c",
+      "v2/cli/src/client.ts": "421e107f912c5f9fae6d51cb2e3b10d8ffe83e70e6660adef03392d59739cafd",
+      "v2/cli/src/help.ts": "c43e898e8cf1541a874acaf77a4680c85642f4a40bc3b33122080f97a601a61e",
+      "v2/cli/src/index.ts": "705f8de04ba4adb8b563d11f2def4da5ae0904ec9bcd0c062d9ce2019676bfd8",
+      "v2/cli/src/main.ts": "e19112dded2ec84bdded0b92096baa44f318bb1399d860fc87991b3776dbb321",
+      "v2/cli/src/readonly.ts": "530ca612ea5de0079f9a8f04cb7b837e956ce2c1d1b0844a7ea87d6d2e3e4c14",
+      "v2/cli/src/render.ts": "6efc8d278c87ac8c90a6588790e5b7a80eb6dbf997254326b32098c77d6f2897",
+      "v2/cli/src/style.ts": "2f5e611fa6b1aee3c0a3afefdf0cfb9b830736ce4c3f2f9c53d73e5bee5cc5fd",
+      "v2/core/src/accountLimitsParse.ts": "4101b50909a9c9d79aa9761c4a5b68bc3d808ad36acca38e75c07779a51068a3",
+      "v2/core/src/accountMatch.ts": "90ebe4e125f83d28bc1a1c99cbff9b813362d3b38bbac8b97182014cb4fcf980",
+      "v2/core/src/accountRecipes.ts": "837c397aab4c9fa8a02b890372fac3e29b73d4ba8307913446309d00e715b6b7",
+      "v2/core/src/accountSelect.ts": "2536db3146b2d9a66c812e294c8d668df5e82e3bea9d2923308dff4060e01f5c",
+      "v2/core/src/audit.ts": "ad41ca1ce64dea003c5086d2135f48b341a0aef6f17f8b059e54658a44021f54",
+      "v2/core/src/executables.ts": "4a878c553014ceabcdd7e940e274d652799c2852474ada614d5c80cca1eadc7c",
+      "v2/core/src/import-frozen.ts": "30e2fb867899e8399abf2fb0ee8a3f36fd12982e3ba1d86a84bbc626b6cc2de7",
+      "v2/core/src/index.ts": "fe99379cbc0f5fb7cbaa4e9fc9a26a1f32a8568f7e6c1bdd55ddeeab18db488c",
+      "v2/core/src/loginFlow.ts": "727d42b6a98a271577cd462e128b0287e7c571e5e06104b3afb5bdff49d35460",
+      "v2/core/src/mirror.ts": "d8bcb404f2971de5f928345319d7a579c102235e5ed27565e9037724382ad8ce",
+      "v2/core/src/packages.ts": "e14a3c6c013211235ca84c137a93f12ead10beff01c876c2741a7e419b944f17",
+      "v2/core/src/registry.ts": "1cd3e1c5a239882474818466907b5f5b2d10501e178b0ad13d24fb2fae8123ff",
+      "v2/core/src/schema.ts": "05995f423f925cc0eaf95d80fc098e1b6ae905298dbeb6238fc54b94f19ca811",
+      "v2/core/src/store.ts": "1b79b550091588ebbc7e9daec9d44c9f8bd101258c1b8311694ca67063ee913e",
+      "v2/core/src/tasks.ts": "2f266a9640ed4b9c7ceeea18aee63ce11521cc416ecc3b5ce118ebb5c195a263",
+      "v2/core/src/types.ts": "9d09afae1e05743e29fbee6f51007219d0c6b4c6941a615268793fcc4e6c1445",
+      "v2/core/src/view.ts": "f9fb6302bd05a001ca38d7a98f9280e13f8d2222916d9f0c48efb72e148a16e7",
+      "v2/daemon/src/accountsService.ts": "3f13d0481bb54b793d7f0ea6d7f03536d8e5d4ae2be1a8631b17440d596a8a5b",
+      "v2/daemon/src/activation.ts": "7e7056e53671e9caea816fa1162478905ecfc9a408afbad73750ee411056bab7",
+      "v2/daemon/src/autoTitle.ts": "245e0202fd3758aac7cbf022f328ccc4b3f0e88b58303ff03b0e675bceef3e91",
+      "v2/daemon/src/bin.ts": "8ef32816d19e0c2adc85a81a740de8935c7a8bc77e94118203a761b16679754d",
+      "v2/daemon/src/config.ts": "637e94d4d2e22fedae9682ab1cde523d02b2cb0d5bd594441cc7443bb991900a",
+      "v2/daemon/src/cursorAuth.ts": "1f0d554fd3ea0351b108404d6b7912701be184e8e26ea89bd2b692a42ae4f924",
+      "v2/daemon/src/daemon.ts": "edfdc5756a1be5682e436b6e45e3fc3d2118de379b94bcfe12bee7f00aae34be",
+      "v2/daemon/src/envelope.ts": "dc0bff3d7706be31b3fce162e370c1e6e6b7ed8cd2eca43ab1ba6e9ccada6c7a",
+      "v2/daemon/src/gateways.ts": "5c57d479fdbfd871f31de9172da2c9011466258cb46cc764f1776af82da9145c",
+      "v2/daemon/src/homeDefaults.ts": "a63090c09cc8d102b46effa2f8f205457b0e3d73baaaca15cd836e2c0896fc3c",
+      "v2/daemon/src/import-probes.ts": "14cdeb5b7c47d1da44a8eff3e92e22a52a523dcaf250174cefd1c6c46f15529a",
+      "v2/daemon/src/index.ts": "5f8b71e1193407322cb5b44e87bd30cb8384aeb783c22803a10aca034aa691a9",
+      "v2/daemon/src/keychain.ts": "97ecd409db519ba195662dc5f41cbb2b31c36b68100a57bcdc0c1f89ef877ad5",
+      "v2/daemon/src/login/claudeOauth.ts": "9781bf55222a833a9f4461f704a9a10ccb71030a547ca978dae16428f5ce89ff",
+      "v2/daemon/src/login/cliRunner.ts": "ef14344f05033a1ecf510054d3b717db945a203c2b2c32fe3d2607058ca7d52a",
+      "v2/daemon/src/login/common.ts": "1f93ae2e3757ff297cfcd3d94fdf9e838e546a5beed67999f9e0a1b88ebedc46",
+      "v2/daemon/src/login/directKey.ts": "91224b228da3a12dc828d5290900ed1a59ed95766cc9f5f36d273d9e6b862ba2",
+      "v2/daemon/src/login/runner.ts": "53811aa26fecf68f66e6714110efb5664ad2081586b369ab159c25e044d7f17c",
+      "v2/daemon/src/login/transports.ts": "a7073ba48a5ae49cbf2d9109812bbe299ed18487f551d1bf5271bb47b7357e15",
+      "v2/daemon/src/loginFlows.ts": "4460f4a8f8e14900e106e817862cfa8a60cb0f15c6327741d23896736b708c94",
+      "v2/daemon/src/loginWorker.ts": "4a70f08d716550337509663c7586b235568b1fe7bccfbeecfc57d7bdc2fdd378",
+      "v2/daemon/src/loops.ts": "48ad674c0b085653cd9bbad9951a93109cf620976bed20c9c4159b8d988e4a72",
+      "v2/daemon/src/main.ts": "7546a94f78f8817ca3a869aa63b2d62d16ffa5404ecb60d63cc742733236f903",
+      "v2/daemon/src/naming.ts": "eae82ba481b3e5b74d7d80c38ca50d6bbf64e378e48e8a7c953d35b2f0a643f5",
+      "v2/daemon/src/namingService.ts": "e8ee4b2026fea2460fb59d60db034ec694b32f76ec2cf7eeba3ea1abf6c36001",
+      "v2/daemon/src/performance.ts": "6402c9bc311800d71d72dc5415077c75af0d9c43ad4cb2943dffc93978988bc9",
+      "v2/daemon/src/protocol.ts": "2c2b7563fcf5c1e20919316e6255c6f580880ab59bf823faa0ceeb24175e7399",
+      "v2/daemon/src/providerLimits.ts": "befe91217b50c927419389adb50527fd0867ed58d5111f13bcb669eb2b700790",
+      "v2/daemon/src/rpc.ts": "16b119147b0fc12b32194dc7c255d6fc8910aa0644306c42f9ad19bc6559508e",
+      "v2/daemon/src/service.ts": "10401a481fb25931521e2259dc4722cc43890600a4c84298f9a89d78401b707b",
+      "v2/daemon/src/substrates.ts": "914b18b4e6e6e7cd2525f5943edb3080c031e16d08934fd4021b55ebf3c1c27c",
+      "v2/daemon/src/telemetry.ts": "0f234f5f77df593387db1ed6c08ba64ccd45f3ffa60303bbd178765aefd0980c",
+      "v2/daemon/src/tmuxHarness.ts": "aebc0a90c9ff4a03a466cdf2edc4fe282dc91388cf9966a0412801fb0bea320f",
+      "v2/daemon/tests/helpers.ts": "9d63216758bec78d1f0e6f7fa949d67ee1f4b1d90eb5efdd4a8888cda75ea0f3",
+      "v2/driver-cell/src/capture.ts": "359b2fa98f2b21c7a8f43a2755c3d4b4ad03f267483b98827c2c6b022ed68e9b",
+      "v2/driver-cell/src/cow.ts": "24eb5ce7b6536de861ca261a5d80096343115e14bc8a23e354a2e8a74f318b10",
+      "v2/driver-cell/src/driver.ts": "77598ca25c7dd9374e21f9fd5275e43989a7305a2b05fd098210db8630f062e6",
+      "v2/driver-cell/src/git.ts": "049d9bd7f6aaebb6625fd0f1d8ddebcd3adf16e7d4dd7316232ba6923d196b75",
+      "v2/driver-cell/src/gitImage.ts": "9b7b1dc8a762caaac402d108bbd9286630a1376b4844ea8d2d3c6232d0a19007",
+      "v2/driver-cell/src/index.ts": "3264e7ae0f407b257b7a35e6d10a3b7f19cdc9c2d4d92cf173f02dbd861764ae",
+      "v2/driver-cell/src/layout.ts": "68a677450c0d851cf97c50f8616fd25961ddea59dd6b8ac3c0a739042c4775f8",
+      "v2/driver-cell/src/ledger.ts": "efdf4762fab38defd8ec3e68dceba52a44a11d17962b027cb4a0302eec429834",
+      "v2/driver-cell/src/provision.ts": "8293821e57266a0b4f7a2e0e6d25c584cac6caf1ac0afad207311af57558be66",
+      "v2/driver-cell/src/provisionWorker.ts": "a651cc6000ef33f7ed52384f678543b28fea4f363113b3218d45219c510a2d4c",
+      "v2/driver-cell/src/remove.ts": "914e22bf0182c90503731cbeb9877c0d697cda5d410b224223499fab33e75aa5",
+      "v2/driver-cell/src/sandbox.ts": "33ea0cefa347f21a19f39a03f36afeed14d18680f15fc22a0f1682a668001e3a",
+      "v2/driver-hsr/src/driver.ts": "a01bf7d4e955ee1cd79f6bab88c95d02928841be6f0a8ffe671a87d17a8413d3",
+      "v2/driver-hsr/src/index.ts": "8f9542db7792d462ab9b10f9537b9c05f31acf9934d6c32b3f248de8beb97e5e",
+      "v2/driver-hsr/src/psutil.ts": "1beb05854deb6fbe12f206d7436648e7be2a8ae00bcfd0acd13ef3f9fb1c1edb",
+      "v2/driver-hsr/src/runner-host-main.ts": "10c4f1c2af2e2dc20bdddba51e7972bc976831c1bf40b5f5772a2519538411da",
+      "v2/driver-hsr/src/runner-host.ts": "7f1716db45160657ef2109d8a18ae064cbab065f0321b22d29f9a193a3f3c152",
+      "v2/driver-tmux/src/agy-projection.ts": "1d5284c9835d499f0e55dc52ec70a5d36175993f0ccbab7f2e21fcf60f92a9ff",
+      "v2/driver-tmux/src/claude-projection.ts": "df6d2d8967f70ac4b6796a234de83d1e325e41210794972aee41b1a7294882f6",
+      "v2/driver-tmux/src/codex-projection.ts": "2ff68aa8e4d8c802bef9abedb7595e29f038c7ba4cf81403f7efc54a03225e1b",
+      "v2/driver-tmux/src/driver.ts": "26fe0516fe49f389d1f5cad30ee0002e829ae1aba75fe6cec8a0ea886b670820",
+      "v2/driver-tmux/src/events-file.ts": "ddb2ba04f32ef325def8d5287a518659a42e41801034304bc74e4695962a0e99",
+      "v2/driver-tmux/src/grok-projection.ts": "d0d419367031c9738fc6a5a0e27ea6c8a15399b06834239b92f2c2603d406823",
+      "v2/driver-tmux/src/index.ts": "f716470ff208ac29febfe90031b025d969a2eefc5461e649d77d43813fce278d",
+      "v2/driver-tmux/src/tail.ts": "40e24f0d34401e7990581eef3eff1d1542defbc846a92339e61bb81a95a0d156",
+      "v2/driver-tmux/src/tmux.ts": "92607334202f8fb8c8cedf7b9d1454d8742a867c4c8082f7f2f6617a6c285eb9",
+      "v2/driver-tmux/src/transcript-projection.ts": "98bdd52792da1d74ddfe28332c54ae76adc8f6b52e94e1b4f233a94cabf96c78",
+      "v2/driver-tmux/src/transcripts.ts": "f23289d6199d9d2ec288f60de0a3475ce5aa41e20230763380386d4d2c545509",
+      "v2/harness/src/clock.ts": "690b130f9bb111af2099cc96d19a114258bf3bc6353d7a440d53b3141c9e2446",
+      "v2/harness/src/daemon.ts": "2b8f17080275ef72b3612e4b446b9e951d203373c70bcec7b83e3b21c91d81ef",
+      "v2/harness/src/driver.ts": "df41b313a0ab97a637eddb5a3ba2be4456293776aa46acfd3eb29af5315a1442",
+      "v2/harness/src/faults.ts": "6152e965e33f1501f9beee0f5a3c42ce18a8b71897713043716a993de48cfc20",
+      "v2/harness/src/index.ts": "200de7850d2848f5b1d2afa72fdbd1490d2919efd8f77976508416ccb7b9a191",
+      "v2/harness/src/invariants.ts": "5ab63d4da3399534d6a2d9eff705d1c6c403e14b39b5749b5863bd7d04daccbb",
+      "v2/harness/src/prng.ts": "1be8ed3684abb058b30f83b89239385928abb14d8c24616ebf925c95af4639e8",
+      "v2/harness/src/sim-driver.ts": "70b5b013351a8a089e2b13509cb3abe5d8182b18e07f920859abc68e4dd10e31",
+      "v2/harness/src/simulation.ts": "9979407c9e3483294675c47b23b802a724adcea73681ae8d8480f47f5e2d650c"
+    }
+  },
+  "toolHash": "5453884b6bfb5e34507089c95d4b2e1da7a72073a10ebb129db8c6964daebf4a",
+  "environment": {
+    "bootUUID": "B8A697E0-666B-403F-AC95-1E990D7F5509",
+    "node": "v24.18.0",
+    "execArgv": [
+      "--expose-gc"
+    ],
+    "cpu": "Apple M4",
+    "cores": 10,
+    "loadBefore": [
+      1.158203125,
+      0.9765625,
+      1.0546875
+    ],
+    "loadAfter": [
+      1.2666015625,
+      1.009765625,
+      1.064453125
+    ]
+  },
+  "workload": {
+    "batch": 10000,
+    "cohorts": 50,
+    "standingPendingAnchor": 1,
+    "settlingTicks": 256,
+    "urgency": "next",
+    "deadline": 1,
+    "commandsPerStep": 0
+  },
+  "scope": "Real CoreStore and DaemonCore with FakeDriver and a counting I1 callback. No real process or durable I1 callback write. Public API creates then deletes each cohort Bee and all its mail while one overdue anchor stays pending throughout. Private Set cardinalities are diagnostic observations, not a new production API. Post-GC heapUsed is process retained JavaScript heap, not private/RSS memory or exact Set bytes. DB audit history remains durable. Per-step process CPU/wall samples cover new-violation, already-reported, cohort-deleted, and256settling steps; setup/GC/assertions excluded. Independent process-order repeats, not within-process paired timing. Native memory snapshot is separate from step timing.",
+  "before": {
+    "memory": {
+      "rss": 125616128,
+      "heapTotal": 20922368,
+      "heapUsed": 11169608,
+      "external": 12099914,
+      "arrayBuffers": 143643
+    },
+    "counts": {
+      "reportedI1": 1,
+      "interruptRequested": 0
+    }
+  },
+  "samples": [
+    {
+      "cohort": 1,
+      "totalViolations": 10001,
+      "pending": {
+        "reportedI1": 10001,
+        "interruptRequested": 0
+      },
+      "after": {
+        "memory": {
+          "rss": 167329792,
+          "heapTotal": 34373632,
+          "heapUsed": 11704232,
+          "external": 12162448,
+          "arrayBuffers": 143659
+        },
+        "counts": {
+          "reportedI1": 10001,
+          "interruptRequested": 0
+        }
+      }
+    },
+    {
+      "cohort": 2,
+      "totalViolations": 20001,
+      "pending": {
+        "reportedI1": 10001,
+        "interruptRequested": 0
+      },
+      "after": {
+        "memory": {
+          "rss": 188071936,
+          "heapTotal": 35225600,
+          "heapUsed": 12087056,
+          "external": 12096912,
+          "arrayBuffers": 143659
+        },
+        "counts": {
+          "reportedI1": 10001,
+          "interruptRequested": 0
+        }
+      }
+    },
+    {
+      "cohort": 3,
+      "totalViolations": 30001,
+      "pending": {
+        "reportedI1": 10001,
+        "interruptRequested": 0
+      },
+      "after": {
+        "memory": {
+          "rss": 200392704,
+          "heapTotal": 35225600,
+          "heapUsed": 12177248,
+          "external": 12096912,
+          "arrayBuffers": 143659
+        },
+        "counts": {
+          "reportedI1": 10001,
+          "interruptRequested": 0
+        }
+      }
+    },
+    {
+      "cohort": 4,
+      "totalViolations": 40001,
+      "pending": {
+        "reportedI1": 10001,
+        "interruptRequested": 0
+      },
+      "after": {
+        "memory": {
+          "rss": 201326592,
+          "heapTotal": 52264960,
+          "heapUsed": 12162056,
+          "external": 12162448,
+          "arrayBuffers": 143659
+        },
+        "counts": {
+          "reportedI1": 10001,
+          "interruptRequested": 0
+        }
+      }
+    },
+    {
+      "cohort": 5,
+      "totalViolations": 50001,
+      "pending": {
+        "reportedI1": 10001,
+        "interruptRequested": 0
+      },
+      "after": {
+        "memory": {
+          "rss": 247349248,
+          "heapTotal": 52264960,
+          "heapUsed": 12191176,
+          "external": 12096912,
+          "arrayBuffers": 143659
+        },
+        "counts": {
+          "reportedI1": 10001,
+          "interruptRequested": 0
+        }
+      }
+    },
+    {
+      "cohort": 6,
+      "totalViolations": 60001,
+      "pending": {
+        "reportedI1": 10001,
+        "interruptRequested": 0
+      },
+      "after": {
+        "memory": {
+          "rss": 247463936,
+          "heapTotal": 52264960,
+          "heapUsed": 12185408,
+          "external": 12162448,
+          "arrayBuffers": 143659
+        },
+        "counts": {
+          "reportedI1": 10001,
+          "interruptRequested": 0
+        }
+      }
+    },
+    {
+      "cohort": 7,
+      "totalViolations": 70001,
+      "pending": {
+        "reportedI1": 10001,
+        "interruptRequested": 0
+      },
+      "after": {
+        "memory": {
+          "rss": 255967232,
+          "heapTotal": 52527104,
+          "heapUsed": 12212088,
+          "external": 12096912,
+          "arrayBuffers": 143659
+        },
+        "counts": {
+          "reportedI1": 10001,
+          "interruptRequested": 0
+        }
+      }
+    },
+    {
+      "cohort": 8,
+      "totalViolations": 80001,
+      "pending": {
+        "reportedI1": 10001,
+        "interruptRequested": 0
+      },
+      "after": {
+        "memory": {
+          "rss": 256622592,
+          "heapTotal": 52527104,
+          "heapUsed": 12235200,
+          "external": 12162448,
+          "arrayBuffers": 143659
+        },
+        "counts": {
+          "reportedI1": 10001,
+          "interruptRequested": 0
+        }
+      }
+    },
+    {
+      "cohort": 9,
+      "totalViolations": 90001,
+      "pending": {
+        "reportedI1": 10001,
+        "interruptRequested": 0
+      },
+      "after": {
+        "memory": {
+          "rss": 256557056,
+          "heapTotal": 52789248,
+          "heapUsed": 12261136,
+          "external": 12096912,
+          "arrayBuffers": 143659
+        },
+        "counts": {
+          "reportedI1": 10001,
+          "interruptRequested": 0
+        }
+      }
+    },
+    {
+      "cohort": 10,
+      "totalViolations": 100001,
+      "pending": {
+        "reportedI1": 10001,
+        "interruptRequested": 0
+      },
+      "after": {
+        "memory": {
+          "rss": 256589824,
+          "heapTotal": 52789248,
+          "heapUsed": 12269392,
+          "external": 12162448,
+          "arrayBuffers": 143659
+        },
+        "counts": {
+          "reportedI1": 10001,
+          "interruptRequested": 0
+        }
+      }
+    },
+    {
+      "cohort": 11,
+      "totalViolations": 110001,
+      "pending": {
+        "reportedI1": 10001,
+        "interruptRequested": 0
+      },
+      "after": {
+        "memory": {
+          "rss": 256393216,
+          "heapTotal": 52789248,
+          "heapUsed": 12268456,
+          "external": 12096912,
+          "arrayBuffers": 143659
+        },
+        "counts": {
+          "reportedI1": 10001,
+          "interruptRequested": 0
+        }
+      }
+    },
+    {
+      "cohort": 12,
+      "totalViolations": 120001,
+      "pending": {
+        "reportedI1": 10001,
+        "interruptRequested": 0
+      },
+      "after": {
+        "memory": {
+          "rss": 256720896,
+          "heapTotal": 52789248,
+          "heapUsed": 12279496,
+          "external": 12096912,
+          "arrayBuffers": 143659
+        },
+        "counts": {
+          "reportedI1": 10001,
+          "interruptRequested": 0
+        }
+      }
+    },
+    {
+      "cohort": 13,
+      "totalViolations": 130001,
+      "pending": {
+        "reportedI1": 10001,
+        "interruptRequested": 0
+      },
+      "after": {
+        "memory": {
+          "rss": 256671744,
+          "heapTotal": 52789248,
+          "heapUsed": 12280104,
+          "external": 12162448,
+          "arrayBuffers": 143659
+        },
+        "counts": {
+          "reportedI1": 10001,
+          "interruptRequested": 0
+        }
+      }
+    },
+    {
+      "cohort": 14,
+      "totalViolations": 140001,
+      "pending": {
+        "reportedI1": 10001,
+        "interruptRequested": 0
+      },
+      "after": {
+        "memory": {
+          "rss": 247857152,
+          "heapTotal": 52789248,
+          "heapUsed": 12280712,
+          "external": 12096912,
+          "arrayBuffers": 143659
+        },
+        "counts": {
+          "reportedI1": 10001,
+          "interruptRequested": 0
+        }
+      }
+    },
+    {
+      "cohort": 15,
+      "totalViolations": 150001,
+      "pending": {
+        "reportedI1": 10001,
+        "interruptRequested": 0
+      },
+      "after": {
+        "memory": {
+          "rss": 256737280,
+          "heapTotal": 52789248,
+          "heapUsed": 12281904,
+          "external": 12162448,
+          "arrayBuffers": 143659
+        },
+        "counts": {
+          "reportedI1": 10001,
+          "interruptRequested": 0
+        }
+      }
+    },
+    {
+      "cohort": 16,
+      "totalViolations": 160001,
+      "pending": {
+        "reportedI1": 10001,
+        "interruptRequested": 0
+      },
+      "after": {
+        "memory": {
+          "rss": 256655360,
+          "heapTotal": 52789248,
+          "heapUsed": 12282512,
+          "external": 12096912,
+          "arrayBuffers": 143659
+        },
+        "counts": {
+          "reportedI1": 10001,
+          "interruptRequested": 0
+        }
+      }
+    },
+    {
+      "cohort": 17,
+      "totalViolations": 170001,
+      "pending": {
+        "reportedI1": 10001,
+        "interruptRequested": 0
+      },
+      "after": {
+        "memory": {
+          "rss": 256671744,
+          "heapTotal": 52789248,
+          "heapUsed": 12283160,
+          "external": 12162448,
+          "arrayBuffers": 209195
+        },
+        "counts": {
+          "reportedI1": 10001,
+          "interruptRequested": 0
+        }
+      }
+    },
+    {
+      "cohort": 18,
+      "totalViolations": 180001,
+      "pending": {
+        "reportedI1": 10001,
+        "interruptRequested": 0
+      },
+      "after": {
+        "memory": {
+          "rss": 250691584,
+          "heapTotal": 86343680,
+          "heapUsed": 12284264,
+          "external": 12096912,
+          "arrayBuffers": 143659
+        },
+        "counts": {
+          "reportedI1": 10001,
+          "interruptRequested": 0
+        }
+      }
+    },
+    {
+      "cohort": 19,
+      "totalViolations": 190001,
+      "pending": {
+        "reportedI1": 10001,
+        "interruptRequested": 0
+      },
+      "after": {
+        "memory": {
+          "rss": 351944704,
+          "heapTotal": 86343680,
+          "heapUsed": 12285160,
+          "external": 12096912,
+          "arrayBuffers": 143659
+        },
+        "counts": {
+          "reportedI1": 10001,
+          "interruptRequested": 0
+        }
+      }
+    },
+    {
+      "cohort": 20,
+      "totalViolations": 200001,
+      "pending": {
+        "reportedI1": 10001,
+        "interruptRequested": 0
+      },
+      "after": {
+        "memory": {
+          "rss": 352206848,
+          "heapTotal": 86343680,
+          "heapUsed": 12293704,
+          "external": 12031376,
+          "arrayBuffers": 143659
+        },
+        "counts": {
+          "reportedI1": 10001,
+          "interruptRequested": 0
+        }
+      }
+    },
+    {
+      "cohort": 21,
+      "totalViolations": 210001,
+      "pending": {
+        "reportedI1": 10001,
+        "interruptRequested": 0
+      },
+      "after": {
+        "memory": {
+          "rss": 352174080,
+          "heapTotal": 86343680,
+          "heapUsed": 12294312,
+          "external": 12031376,
+          "arrayBuffers": 143659
+        },
+        "counts": {
+          "reportedI1": 10001,
+          "interruptRequested": 0
+        }
+      }
+    },
+    {
+      "cohort": 22,
+      "totalViolations": 220001,
+      "pending": {
+        "reportedI1": 10001,
+        "interruptRequested": 0
+      },
+      "after": {
+        "memory": {
+          "rss": 352305152,
+          "heapTotal": 86343680,
+          "heapUsed": 12295432,
+          "external": 12096912,
+          "arrayBuffers": 143659
+        },
+        "counts": {
+          "reportedI1": 10001,
+          "interruptRequested": 0
+        }
+      }
+    },
+    {
+      "cohort": 23,
+      "totalViolations": 230001,
+      "pending": {
+        "reportedI1": 10001,
+        "interruptRequested": 0
+      },
+      "after": {
+        "memory": {
+          "rss": 352124928,
+          "heapTotal": 86343680,
+          "heapUsed": 12296040,
+          "external": 12031376,
+          "arrayBuffers": 143659
+        },
+        "counts": {
+          "reportedI1": 10001,
+          "interruptRequested": 0
+        }
+      }
+    },
+    {
+      "cohort": 24,
+      "totalViolations": 240001,
+      "pending": {
+        "reportedI1": 10001,
+        "interruptRequested": 0
+      },
+      "after": {
+        "memory": {
+          "rss": 352600064,
+          "heapTotal": 85557248,
+          "heapUsed": 12296648,
+          "external": 12096912,
+          "arrayBuffers": 143659
+        },
+        "counts": {
+          "reportedI1": 10001,
+          "interruptRequested": 0
+        }
+      }
+    },
+    {
+      "cohort": 25,
+      "totalViolations": 250001,
+      "pending": {
+        "reportedI1": 10001,
+        "interruptRequested": 0
+      },
+      "after": {
+        "memory": {
+          "rss": 352370688,
+          "heapTotal": 85819392,
+          "heapUsed": 12298064,
+          "external": 12031376,
+          "arrayBuffers": 143659
+        },
+        "counts": {
+          "reportedI1": 10001,
+          "interruptRequested": 0
+        }
+      }
+    },
+    {
+      "cohort": 26,
+      "totalViolations": 260001,
+      "pending": {
+        "reportedI1": 10001,
+        "interruptRequested": 0
+      },
+      "after": {
+        "memory": {
+          "rss": 352157696,
+          "heapTotal": 85557248,
+          "heapUsed": 12294576,
+          "external": 12096912,
+          "arrayBuffers": 143659
+        },
+        "counts": {
+          "reportedI1": 10001,
+          "interruptRequested": 0
+        }
+      }
+    },
+    {
+      "cohort": 27,
+      "totalViolations": 270001,
+      "pending": {
+        "reportedI1": 10001,
+        "interruptRequested": 0
+      },
+      "after": {
+        "memory": {
+          "rss": 352387072,
+          "heapTotal": 85557248,
+          "heapUsed": 12321296,
+          "external": 12031376,
+          "arrayBuffers": 143659
+        },
+        "counts": {
+          "reportedI1": 10001,
+          "interruptRequested": 0
+        }
+      }
+    },
+    {
+      "cohort": 28,
+      "totalViolations": 280001,
+      "pending": {
+        "reportedI1": 10001,
+        "interruptRequested": 0
+      },
+      "after": {
+        "memory": {
+          "rss": 352305152,
+          "heapTotal": 85557248,
+          "heapUsed": 12322400,
+          "external": 12096912,
+          "arrayBuffers": 143659
+        },
+        "counts": {
+          "reportedI1": 10001,
+          "interruptRequested": 0
+        }
+      }
+    },
+    {
+      "cohort": 29,
+      "totalViolations": 290001,
+      "pending": {
+        "reportedI1": 10001,
+        "interruptRequested": 0
+      },
+      "after": {
+        "memory": {
+          "rss": 352321536,
+          "heapTotal": 85557248,
+          "heapUsed": 12323112,
+          "external": 12031376,
+          "arrayBuffers": 143659
+        },
+        "counts": {
+          "reportedI1": 10001,
+          "interruptRequested": 0
+        }
+      }
+    },
+    {
+      "cohort": 30,
+      "totalViolations": 300001,
+      "pending": {
+        "reportedI1": 10001,
+        "interruptRequested": 0
+      },
+      "after": {
+        "memory": {
+          "rss": 352403456,
+          "heapTotal": 85557248,
+          "heapUsed": 12323720,
+          "external": 12031376,
+          "arrayBuffers": 143659
+        },
+        "counts": {
+          "reportedI1": 10001,
+          "interruptRequested": 0
+        }
+      }
+    },
+    {
+      "cohort": 31,
+      "totalViolations": 310001,
+      "pending": {
+        "reportedI1": 10001,
+        "interruptRequested": 0
+      },
+      "after": {
+        "memory": {
+          "rss": 352239616,
+          "heapTotal": 85557248,
+          "heapUsed": 12324328,
+          "external": 12096912,
+          "arrayBuffers": 143659
+        },
+        "counts": {
+          "reportedI1": 10001,
+          "interruptRequested": 0
+        }
+      }
+    },
+    {
+      "cohort": 32,
+      "totalViolations": 320001,
+      "pending": {
+        "reportedI1": 10001,
+        "interruptRequested": 0
+      },
+      "after": {
+        "memory": {
+          "rss": 352337920,
+          "heapTotal": 85557248,
+          "heapUsed": 12324936,
+          "external": 12031376,
+          "arrayBuffers": 143659
+        },
+        "counts": {
+          "reportedI1": 10001,
+          "interruptRequested": 0
+        }
+      }
+    },
+    {
+      "cohort": 33,
+      "totalViolations": 330001,
+      "pending": {
+        "reportedI1": 10001,
+        "interruptRequested": 0
+      },
+      "after": {
+        "memory": {
+          "rss": 352321536,
+          "heapTotal": 85557248,
+          "heapUsed": 12325544,
+          "external": 12096912,
+          "arrayBuffers": 143659
+        },
+        "counts": {
+          "reportedI1": 10001,
+          "interruptRequested": 0
+        }
+      }
+    },
+    {
+      "cohort": 34,
+      "totalViolations": 340001,
+      "pending": {
+        "reportedI1": 10001,
+        "interruptRequested": 0
+      },
+      "after": {
+        "memory": {
+          "rss": 352321536,
+          "heapTotal": 85557248,
+          "heapUsed": 12326152,
+          "external": 12031376,
+          "arrayBuffers": 143659
+        },
+        "counts": {
+          "reportedI1": 10001,
+          "interruptRequested": 0
+        }
+      }
+    },
+    {
+      "cohort": 35,
+      "totalViolations": 350001,
+      "pending": {
+        "reportedI1": 10001,
+        "interruptRequested": 0
+      },
+      "after": {
+        "memory": {
+          "rss": 352370688,
+          "heapTotal": 85557248,
+          "heapUsed": 12326760,
+          "external": 12096912,
+          "arrayBuffers": 143659
+        },
+        "counts": {
+          "reportedI1": 10001,
+          "interruptRequested": 0
+        }
+      }
+    },
+    {
+      "cohort": 36,
+      "totalViolations": 360001,
+      "pending": {
+        "reportedI1": 10001,
+        "interruptRequested": 0
+      },
+      "after": {
+        "memory": {
+          "rss": 352337920,
+          "heapTotal": 85557248,
+          "heapUsed": 12327368,
+          "external": 12031376,
+          "arrayBuffers": 143659
+        },
+        "counts": {
+          "reportedI1": 10001,
+          "interruptRequested": 0
+        }
+      }
+    },
+    {
+      "cohort": 37,
+      "totalViolations": 370001,
+      "pending": {
+        "reportedI1": 10001,
+        "interruptRequested": 0
+      },
+      "after": {
+        "memory": {
+          "rss": 352337920,
+          "heapTotal": 85557248,
+          "heapUsed": 12327976,
+          "external": 12096912,
+          "arrayBuffers": 143659
+        },
+        "counts": {
+          "reportedI1": 10001,
+          "interruptRequested": 0
+        }
+      }
+    },
+    {
+      "cohort": 38,
+      "totalViolations": 380001,
+      "pending": {
+        "reportedI1": 10001,
+        "interruptRequested": 0
+      },
+      "after": {
+        "memory": {
+          "rss": 352387072,
+          "heapTotal": 85557248,
+          "heapUsed": 12328584,
+          "external": 12096912,
+          "arrayBuffers": 143659
+        },
+        "counts": {
+          "reportedI1": 10001,
+          "interruptRequested": 0
+        }
+      }
+    },
+    {
+      "cohort": 39,
+      "totalViolations": 390001,
+      "pending": {
+        "reportedI1": 10001,
+        "interruptRequested": 0
+      },
+      "after": {
+        "memory": {
+          "rss": 352272384,
+          "heapTotal": 85557248,
+          "heapUsed": 12329192,
+          "external": 12031376,
+          "arrayBuffers": 143659
+        },
+        "counts": {
+          "reportedI1": 10001,
+          "interruptRequested": 0
+        }
+      }
+    },
+    {
+      "cohort": 40,
+      "totalViolations": 400001,
+      "pending": {
+        "reportedI1": 10001,
+        "interruptRequested": 0
+      },
+      "after": {
+        "memory": {
+          "rss": 352288768,
+          "heapTotal": 85557248,
+          "heapUsed": 12329800,
+          "external": 12096912,
+          "arrayBuffers": 143659
+        },
+        "counts": {
+          "reportedI1": 10001,
+          "interruptRequested": 0
+        }
+      }
+    },
+    {
+      "cohort": 41,
+      "totalViolations": 410001,
+      "pending": {
+        "reportedI1": 10001,
+        "interruptRequested": 0
+      },
+      "after": {
+        "memory": {
+          "rss": 352010240,
+          "heapTotal": 85557248,
+          "heapUsed": 12330408,
+          "external": 12031376,
+          "arrayBuffers": 143659
+        },
+        "counts": {
+          "reportedI1": 10001,
+          "interruptRequested": 0
+        }
+      }
+    },
+    {
+      "cohort": 42,
+      "totalViolations": 420001,
+      "pending": {
+        "reportedI1": 10001,
+        "interruptRequested": 0
+      },
+      "after": {
+        "memory": {
+          "rss": 352272384,
+          "heapTotal": 85557248,
+          "heapUsed": 12331016,
+          "external": 12096912,
+          "arrayBuffers": 143659
+        },
+        "counts": {
+          "reportedI1": 10001,
+          "interruptRequested": 0
+        }
+      }
+    },
+    {
+      "cohort": 43,
+      "totalViolations": 430001,
+      "pending": {
+        "reportedI1": 10001,
+        "interruptRequested": 0
+      },
+      "after": {
+        "memory": {
+          "rss": 352174080,
+          "heapTotal": 85557248,
+          "heapUsed": 12331624,
+          "external": 12031376,
+          "arrayBuffers": 143659
+        },
+        "counts": {
+          "reportedI1": 10001,
+          "interruptRequested": 0
+        }
+      }
+    },
+    {
+      "cohort": 44,
+      "totalViolations": 440001,
+      "pending": {
+        "reportedI1": 10001,
+        "interruptRequested": 0
+      },
+      "after": {
+        "memory": {
+          "rss": 352337920,
+          "heapTotal": 85557248,
+          "heapUsed": 12332232,
+          "external": 12096912,
+          "arrayBuffers": 143659
+        },
+        "counts": {
+          "reportedI1": 10001,
+          "interruptRequested": 0
+        }
+      }
+    },
+    {
+      "cohort": 45,
+      "totalViolations": 450001,
+      "pending": {
+        "reportedI1": 10001,
+        "interruptRequested": 0
+      },
+      "after": {
+        "memory": {
+          "rss": 352272384,
+          "heapTotal": 85557248,
+          "heapUsed": 12333152,
+          "external": 12031376,
+          "arrayBuffers": 143659
+        },
+        "counts": {
+          "reportedI1": 10001,
+          "interruptRequested": 0
+        }
+      }
+    },
+    {
+      "cohort": 46,
+      "totalViolations": 460001,
+      "pending": {
+        "reportedI1": 10001,
+        "interruptRequested": 0
+      },
+      "after": {
+        "memory": {
+          "rss": 352370688,
+          "heapTotal": 85557248,
+          "heapUsed": 12334616,
+          "external": 12031376,
+          "arrayBuffers": 143659
+        },
+        "counts": {
+          "reportedI1": 10001,
+          "interruptRequested": 0
+        }
+      }
+    },
+    {
+      "cohort": 47,
+      "totalViolations": 470001,
+      "pending": {
+        "reportedI1": 10001,
+        "interruptRequested": 0
+      },
+      "after": {
+        "memory": {
+          "rss": 352354304,
+          "heapTotal": 85557248,
+          "heapUsed": 12335920,
+          "external": 12096912,
+          "arrayBuffers": 143659
+        },
+        "counts": {
+          "reportedI1": 10001,
+          "interruptRequested": 0
+        }
+      }
+    },
+    {
+      "cohort": 48,
+      "totalViolations": 480001,
+      "pending": {
+        "reportedI1": 10001,
+        "interruptRequested": 0
+      },
+      "after": {
+        "memory": {
+          "rss": 352436224,
+          "heapTotal": 85557248,
+          "heapUsed": 12336528,
+          "external": 12031376,
+          "arrayBuffers": 143659
+        },
+        "counts": {
+          "reportedI1": 10001,
+          "interruptRequested": 0
+        }
+      }
+    },
+    {
+      "cohort": 49,
+      "totalViolations": 490001,
+      "pending": {
+        "reportedI1": 10001,
+        "interruptRequested": 0
+      },
+      "after": {
+        "memory": {
+          "rss": 352387072,
+          "heapTotal": 85557248,
+          "heapUsed": 12337136,
+          "external": 12096912,
+          "arrayBuffers": 143659
+        },
+        "counts": {
+          "reportedI1": 10001,
+          "interruptRequested": 0
+        }
+      }
+    },
+    {
+      "cohort": 50,
+      "totalViolations": 500001,
+      "pending": {
+        "reportedI1": 10001,
+        "interruptRequested": 0
+      },
+      "after": {
+        "memory": {
+          "rss": 352419840,
+          "heapTotal": 85557248,
+          "heapUsed": 12337744,
+          "external": 12031376,
+          "arrayBuffers": 143659
+        },
+        "counts": {
+          "reportedI1": 10001,
+          "interruptRequested": 0
+        }
+      }
+    }
+  ],
+  "tickSamples": [
+    {
+      "phase": "new-violations",
+      "wallMs": 10.368792000000099,
+      "cpuMs": 14.526,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "already-reported",
+      "wallMs": 5.1276659999999765,
+      "cpuMs": 5.406,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "cohort-deleted",
+      "wallMs": 0.03895799999997962,
+      "cpuMs": 0.042,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "new-violations",
+      "wallMs": 14.575416999999902,
+      "cpuMs": 18.253,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "already-reported",
+      "wallMs": 5.4274580000000014,
+      "cpuMs": 6.102,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "cohort-deleted",
+      "wallMs": 0.048249999999939064,
+      "cpuMs": 0.053,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "new-violations",
+      "wallMs": 12.952290999999832,
+      "cpuMs": 17.235,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "already-reported",
+      "wallMs": 4.8975410000000466,
+      "cpuMs": 5.57,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "cohort-deleted",
+      "wallMs": 0.055791999999883046,
+      "cpuMs": 0.061,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "new-violations",
+      "wallMs": 13.035208000000011,
+      "cpuMs": 14.745,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "already-reported",
+      "wallMs": 5.704958000000033,
+      "cpuMs": 7.105,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "cohort-deleted",
+      "wallMs": 0.03558300000008785,
+      "cpuMs": 0.038,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "new-violations",
+      "wallMs": 16.90783300000021,
+      "cpuMs": 19.63,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "already-reported",
+      "wallMs": 4.9715000000001055,
+      "cpuMs": 4.973,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "cohort-deleted",
+      "wallMs": 0.029708000000027823,
+      "cpuMs": 0.031,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "new-violations",
+      "wallMs": 16.767291000000114,
+      "cpuMs": 18.224,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "already-reported",
+      "wallMs": 4.999249999999847,
+      "cpuMs": 8.464,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "cohort-deleted",
+      "wallMs": 0.049250000000029104,
+      "cpuMs": 0.05,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "new-violations",
+      "wallMs": 16.586624999999913,
+      "cpuMs": 20.28,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "already-reported",
+      "wallMs": 5.000625000000127,
+      "cpuMs": 5.46,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "cohort-deleted",
+      "wallMs": 0.038333000000420725,
+      "cpuMs": 0.044,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "new-violations",
+      "wallMs": 16.616749999999683,
+      "cpuMs": 18.03,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "already-reported",
+      "wallMs": 5.046832999999879,
+      "cpuMs": 5.048,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "cohort-deleted",
+      "wallMs": 0.03295799999978044,
+      "cpuMs": 0.035,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "new-violations",
+      "wallMs": 16.56341699999939,
+      "cpuMs": 18.002,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "already-reported",
+      "wallMs": 5.09991699999955,
+      "cpuMs": 5.101,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "cohort-deleted",
+      "wallMs": 0.0384169999997539,
+      "cpuMs": 0.044,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "new-violations",
+      "wallMs": 16.680041999999958,
+      "cpuMs": 18.726,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "already-reported",
+      "wallMs": 4.87762500000008,
+      "cpuMs": 5.62,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "cohort-deleted",
+      "wallMs": 0.023916999999528343,
+      "cpuMs": 0.026,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "new-violations",
+      "wallMs": 16.60870799999975,
+      "cpuMs": 17.989,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "already-reported",
+      "wallMs": 4.9747919999999795,
+      "cpuMs": 4.975,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "cohort-deleted",
+      "wallMs": 0.034958000000187894,
+      "cpuMs": 0.038,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "new-violations",
+      "wallMs": 17.273333000000093,
+      "cpuMs": 18.762,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "already-reported",
+      "wallMs": 4.9404169999997976,
+      "cpuMs": 4.941,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "cohort-deleted",
+      "wallMs": 0.03145799999947485,
+      "cpuMs": 0.034,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "new-violations",
+      "wallMs": 16.40820900000017,
+      "cpuMs": 17.767,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "already-reported",
+      "wallMs": 4.877833999999893,
+      "cpuMs": 4.878,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "cohort-deleted",
+      "wallMs": 0.02345900000000256,
+      "cpuMs": 0.026,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "new-violations",
+      "wallMs": 16.122082999999293,
+      "cpuMs": 17.589,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "already-reported",
+      "wallMs": 4.970416000000114,
+      "cpuMs": 4.972,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "cohort-deleted",
+      "wallMs": 0.02733299999999872,
+      "cpuMs": 0.028,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "new-violations",
+      "wallMs": 16.765292000000045,
+      "cpuMs": 18.239,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "already-reported",
+      "wallMs": 4.913666000000376,
+      "cpuMs": 4.915,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "cohort-deleted",
+      "wallMs": 0.023167000000285043,
+      "cpuMs": 0.025,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "new-violations",
+      "wallMs": 16.600124999999935,
+      "cpuMs": 18.044,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "already-reported",
+      "wallMs": 4.853750000000218,
+      "cpuMs": 4.855,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "cohort-deleted",
+      "wallMs": 0.029708000000027823,
+      "cpuMs": 0.031,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "new-violations",
+      "wallMs": 16.998082999999497,
+      "cpuMs": 18.454,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "already-reported",
+      "wallMs": 4.927375000000211,
+      "cpuMs": 4.929,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "cohort-deleted",
+      "wallMs": 0.03016699999989214,
+      "cpuMs": 0.035,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "new-violations",
+      "wallMs": 16.848125000000437,
+      "cpuMs": 18.193,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "already-reported",
+      "wallMs": 4.940792000001238,
+      "cpuMs": 4.941,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "cohort-deleted",
+      "wallMs": 0.02750000000014552,
+      "cpuMs": 0.029,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "new-violations",
+      "wallMs": 9.864583000000493,
+      "cpuMs": 10.965,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "already-reported",
+      "wallMs": 4.878917000000001,
+      "cpuMs": 4.88,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "cohort-deleted",
+      "wallMs": 0.02233400000113761,
+      "cpuMs": 0.027,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "new-violations",
+      "wallMs": 9.897208000000319,
+      "cpuMs": 11.173,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "already-reported",
+      "wallMs": 4.906958000001396,
+      "cpuMs": 4.908,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "cohort-deleted",
+      "wallMs": 0.02937500000007276,
+      "cpuMs": 0.031,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "new-violations",
+      "wallMs": 10.274666999999681,
+      "cpuMs": 11.588,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "already-reported",
+      "wallMs": 5.016125000000102,
+      "cpuMs": 5.017,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "cohort-deleted",
+      "wallMs": 0.030249999999796273,
+      "cpuMs": 0.032,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "new-violations",
+      "wallMs": 10.062583999999333,
+      "cpuMs": 11.319,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "already-reported",
+      "wallMs": 4.903207999999722,
+      "cpuMs": 4.904,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "cohort-deleted",
+      "wallMs": 0.027791999998953543,
+      "cpuMs": 0.03,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "new-violations",
+      "wallMs": 10.011999999998807,
+      "cpuMs": 11.231,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "already-reported",
+      "wallMs": 4.8822090000012395,
+      "cpuMs": 4.884,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "cohort-deleted",
+      "wallMs": 0.022417000000132248,
+      "cpuMs": 0.023,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "new-violations",
+      "wallMs": 9.294584000001123,
+      "cpuMs": 10.623,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "already-reported",
+      "wallMs": 4.8336660000004485,
+      "cpuMs": 4.834,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "cohort-deleted",
+      "wallMs": 0.05062499999985448,
+      "cpuMs": 0.055,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "new-violations",
+      "wallMs": 10.028249999999389,
+      "cpuMs": 11.302,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "already-reported",
+      "wallMs": 4.94787499999984,
+      "cpuMs": 4.949,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "cohort-deleted",
+      "wallMs": 0.023417000000335975,
+      "cpuMs": 0.025,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "new-violations",
+      "wallMs": 9.868540999999823,
+      "cpuMs": 11.176,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "already-reported",
+      "wallMs": 4.9581249999992,
+      "cpuMs": 4.959,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "cohort-deleted",
+      "wallMs": 0.02500000000145519,
+      "cpuMs": 0.026,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "new-violations",
+      "wallMs": 9.60870900000009,
+      "cpuMs": 10.897,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "already-reported",
+      "wallMs": 4.9233339999991586,
+      "cpuMs": 4.924,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "cohort-deleted",
+      "wallMs": 0.03125,
+      "cpuMs": 0.033,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "new-violations",
+      "wallMs": 9.60162499999933,
+      "cpuMs": 10.859,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "already-reported",
+      "wallMs": 4.9447500000005675,
+      "cpuMs": 4.946,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "cohort-deleted",
+      "wallMs": 0.03275000000030559,
+      "cpuMs": 0.035,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "new-violations",
+      "wallMs": 9.782124999999724,
+      "cpuMs": 11.043,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "already-reported",
+      "wallMs": 4.948583999999755,
+      "cpuMs": 4.95,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "cohort-deleted",
+      "wallMs": 0.03333299999940209,
+      "cpuMs": 0.036,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "new-violations",
+      "wallMs": 9.751874999999927,
+      "cpuMs": 11.031,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "already-reported",
+      "wallMs": 4.952375000000757,
+      "cpuMs": 4.952,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "cohort-deleted",
+      "wallMs": 0.03449999999975262,
+      "cpuMs": 0.037,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "new-violations",
+      "wallMs": 9.67316700000083,
+      "cpuMs": 10.947,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "already-reported",
+      "wallMs": 4.785334000000148,
+      "cpuMs": 4.78,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "cohort-deleted",
+      "wallMs": 0.02750000000014552,
+      "cpuMs": 0.028,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "new-violations",
+      "wallMs": 10.043083999998998,
+      "cpuMs": 11.369,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "already-reported",
+      "wallMs": 5.048249999999825,
+      "cpuMs": 5.049,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "cohort-deleted",
+      "wallMs": 0.028709000000162632,
+      "cpuMs": 0.03,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "new-violations",
+      "wallMs": 10.183584000000337,
+      "cpuMs": 11.571,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "already-reported",
+      "wallMs": 5.1744999999991705,
+      "cpuMs": 5.176,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "cohort-deleted",
+      "wallMs": 0.038540999999895575,
+      "cpuMs": 0.041,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "new-violations",
+      "wallMs": 9.874292000000423,
+      "cpuMs": 11.246,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "already-reported",
+      "wallMs": 5.004125000001295,
+      "cpuMs": 5.005,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "cohort-deleted",
+      "wallMs": 0.04033300000082818,
+      "cpuMs": 0.042,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "new-violations",
+      "wallMs": 9.854000000001179,
+      "cpuMs": 11.221,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "already-reported",
+      "wallMs": 5.003584000000046,
+      "cpuMs": 5.005,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "cohort-deleted",
+      "wallMs": 0.036584000001312234,
+      "cpuMs": 0.039,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "new-violations",
+      "wallMs": 9.743624999999156,
+      "cpuMs": 11.055,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "already-reported",
+      "wallMs": 4.962750000002416,
+      "cpuMs": 4.963,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "cohort-deleted",
+      "wallMs": 0.03616699999838602,
+      "cpuMs": 0.039,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "new-violations",
+      "wallMs": 9.751124999998865,
+      "cpuMs": 11.035,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "already-reported",
+      "wallMs": 4.948249999997643,
+      "cpuMs": 4.949,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "cohort-deleted",
+      "wallMs": 0.03170799999861629,
+      "cpuMs": 0.034,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "new-violations",
+      "wallMs": 9.653207999999722,
+      "cpuMs": 10.975,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "already-reported",
+      "wallMs": 4.9053749999984575,
+      "cpuMs": 4.9,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "cohort-deleted",
+      "wallMs": 0.02845800000068266,
+      "cpuMs": 0.033,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "new-violations",
+      "wallMs": 9.81145800000013,
+      "cpuMs": 11.127,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "already-reported",
+      "wallMs": 5.008125000000291,
+      "cpuMs": 5.009,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "cohort-deleted",
+      "wallMs": 0.02558399999907124,
+      "cpuMs": 0.028,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "new-violations",
+      "wallMs": 9.941416999998182,
+      "cpuMs": 11.206,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "already-reported",
+      "wallMs": 5.030500000000757,
+      "cpuMs": 5.031,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "cohort-deleted",
+      "wallMs": 0.02712500000052387,
+      "cpuMs": 0.029,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "new-violations",
+      "wallMs": 9.8503329999985,
+      "cpuMs": 11.148,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "already-reported",
+      "wallMs": 4.926374999999098,
+      "cpuMs": 4.927,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "cohort-deleted",
+      "wallMs": 0.031749999998282874,
+      "cpuMs": 0.033,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "new-violations",
+      "wallMs": 9.916041999997105,
+      "cpuMs": 11.259,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "already-reported",
+      "wallMs": 4.96979199999987,
+      "cpuMs": 4.97,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "cohort-deleted",
+      "wallMs": 0.03129099999932805,
+      "cpuMs": 0.033,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "new-violations",
+      "wallMs": 9.881666000001132,
+      "cpuMs": 11.194,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "already-reported",
+      "wallMs": 4.987042000000656,
+      "cpuMs": 4.988,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "cohort-deleted",
+      "wallMs": 0.030291000002762303,
+      "cpuMs": 0.032,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "new-violations",
+      "wallMs": 9.74583299999722,
+      "cpuMs": 11.046,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "already-reported",
+      "wallMs": 5.041165999999066,
+      "cpuMs": 5.042,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "cohort-deleted",
+      "wallMs": 0.028084000001399545,
+      "cpuMs": 0.029,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "new-violations",
+      "wallMs": 9.988958999998431,
+      "cpuMs": 11.317,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "already-reported",
+      "wallMs": 5.003249999997934,
+      "cpuMs": 5.003,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "cohort-deleted",
+      "wallMs": 0.030999999999039574,
+      "cpuMs": 0.033,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "new-violations",
+      "wallMs": 9.923541000000114,
+      "cpuMs": 11.263,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "already-reported",
+      "wallMs": 5.058833000002778,
+      "cpuMs": 5.06,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "cohort-deleted",
+      "wallMs": 0.02841699999771663,
+      "cpuMs": 0.029,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "new-violations",
+      "wallMs": 10.073041999999987,
+      "cpuMs": 11.385,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "already-reported",
+      "wallMs": 5.022084000000177,
+      "cpuMs": 5.023,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "cohort-deleted",
+      "wallMs": 0.03125,
+      "cpuMs": 0.035,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "new-violations",
+      "wallMs": 10.180082999999286,
+      "cpuMs": 11.566,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "already-reported",
+      "wallMs": 5.051666999999725,
+      "cpuMs": 5.053,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "cohort-deleted",
+      "wallMs": 0.025166999999783002,
+      "cpuMs": 0.026,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "new-violations",
+      "wallMs": 10.099790999996912,
+      "cpuMs": 11.427,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "already-reported",
+      "wallMs": 5.03191599999991,
+      "cpuMs": 5.032,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "cohort-deleted",
+      "wallMs": 0.03483399999822723,
+      "cpuMs": 0.037,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "new-violations",
+      "wallMs": 9.68475000000035,
+      "cpuMs": 10.955,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "already-reported",
+      "wallMs": 4.922875000000204,
+      "cpuMs": 4.924,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "cohort-deleted",
+      "wallMs": 0.029540999999881024,
+      "cpuMs": 0.032,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.05045799999788869,
+      "cpuMs": 0.053,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.021292000001267297,
+      "cpuMs": 0.022,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.01845799999864539,
+      "cpuMs": 0.02,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.01708399999915855,
+      "cpuMs": 0.28,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.016541000000870554,
+      "cpuMs": 0.183,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.01616700000158744,
+      "cpuMs": 0.187,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.01633399999991525,
+      "cpuMs": 0.017,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.015791000001627253,
+      "cpuMs": 0.016,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.015708999999333173,
+      "cpuMs": 0.016,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.016082999998616287,
+      "cpuMs": 0.016,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.015500000001338776,
+      "cpuMs": 0.016,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.01541699999870616,
+      "cpuMs": 0.015,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.017040999999153428,
+      "cpuMs": 0.017,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.015583000000333413,
+      "cpuMs": 0.015,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.01525000000037835,
+      "cpuMs": 0.015,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.017958000000362517,
+      "cpuMs": 0.018,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.01733299999978044,
+      "cpuMs": 0.018,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.01541699999870616,
+      "cpuMs": 0.016,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.013875000000552973,
+      "cpuMs": 0.014,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.013332999998965533,
+      "cpuMs": 0.014,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.013332999998965533,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.02524999999877764,
+      "cpuMs": 0.026,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.015625,
+      "cpuMs": 0.016,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.013499999997293344,
+      "cpuMs": 0.014,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.01941599999918253,
+      "cpuMs": 0.066,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.014542000000801636,
+      "cpuMs": 0.015,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.014542000000801636,
+      "cpuMs": 0.015,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.013416999998298706,
+      "cpuMs": 0.018,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.027750000001105946,
+      "cpuMs": 0.107,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.01750000000174623,
+      "cpuMs": 0.051,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.015332999999372987,
+      "cpuMs": 0.016,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.01491600000008475,
+      "cpuMs": 0.016,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.014917000000423286,
+      "cpuMs": 0.015,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.014833000001090113,
+      "cpuMs": 0.015,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.014749999998457497,
+      "cpuMs": 0.016,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.014791999998124084,
+      "cpuMs": 0.015,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.014792000001762062,
+      "cpuMs": 0.015,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.01491600000008475,
+      "cpuMs": 0.015,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.015124999998079147,
+      "cpuMs": 0.017,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.015208000000711763,
+      "cpuMs": 0.015,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.015666999999666587,
+      "cpuMs": 0.016,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.014792000001762062,
+      "cpuMs": 0.016,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.014416999998502433,
+      "cpuMs": 0.014,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.0148750000007567,
+      "cpuMs": 0.015,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.013249999999970896,
+      "cpuMs": 0.014,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.013083999998343643,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.01279199999771663,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012917000000015832,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012957999999343883,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012958000002981862,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012792000001354609,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012833999997383216,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012915999999677297,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012915999999677297,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.014167000001179986,
+      "cpuMs": 0.017,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.01891599999726168,
+      "cpuMs": 0.03,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.018374999999650754,
+      "cpuMs": 0.019,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.01900000000023283,
+      "cpuMs": 0.068,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.017166999998153187,
+      "cpuMs": 0.083,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.015000000003055902,
+      "cpuMs": 0.015,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.01466699999946286,
+      "cpuMs": 0.015,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.014542000000801636,
+      "cpuMs": 0.016,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.014790999997785548,
+      "cpuMs": 0.015,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.01504199999908451,
+      "cpuMs": 0.017,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.0159590000002936,
+      "cpuMs": 0.016,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.01470800000242889,
+      "cpuMs": 0.016,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.014790999997785548,
+      "cpuMs": 0.015,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.01450000000113505,
+      "cpuMs": 0.015,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.015583000000333413,
+      "cpuMs": 0.015,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.014790999997785548,
+      "cpuMs": 0.015,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.021167000002606073,
+      "cpuMs": 0.022,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.01525000000037835,
+      "cpuMs": 0.016,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.014290999999502674,
+      "cpuMs": 0.015,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.01304099999833852,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.013083999998343643,
+      "cpuMs": 0.015,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.013332999998965533,
+      "cpuMs": 0.014,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.01320800000030431,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.01304099999833852,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.013290999999298947,
+      "cpuMs": 0.014,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.013083000001643086,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.013166000000637723,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.01391700000021956,
+      "cpuMs": 0.015,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.01299999999901047,
+      "cpuMs": 0.014,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012957999999343883,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012874999996711267,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012958999999682419,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.01283300000068266,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012834000001021195,
+      "cpuMs": 0.014,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012749999998050043,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012917000000015832,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012875000000349246,
+      "cpuMs": 0.014,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012875000000349246,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012833999997383216,
+      "cpuMs": 0.014,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012915999999677297,
+      "cpuMs": 0.014,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012833999997383216,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.013665999998920597,
+      "cpuMs": 0.014,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.013249999999970896,
+      "cpuMs": 0.014,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.013166000000637723,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012917000000015832,
+      "cpuMs": 0.014,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012749999998050043,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.013125000001309672,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.013125000001309672,
+      "cpuMs": 0.014,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012708000002021436,
+      "cpuMs": 0.462,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.013333000002603512,
+      "cpuMs": 0.021,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.019875000001775334,
+      "cpuMs": 0.021,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.01841699999931734,
+      "cpuMs": 0.018,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.018582999997306615,
+      "cpuMs": 0.051,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.014750000002095476,
+      "cpuMs": 0.015,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.014624999999796273,
+      "cpuMs": 0.016,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.01599999999962165,
+      "cpuMs": 0.017,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.014584000000468222,
+      "cpuMs": 0.015,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.014415999998163898,
+      "cpuMs": 0.015,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.014792000001762062,
+      "cpuMs": 0.015,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.01583300000129384,
+      "cpuMs": 0.016,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.014624999999796273,
+      "cpuMs": 0.015,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.014584000000468222,
+      "cpuMs": 0.015,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.014415999998163898,
+      "cpuMs": 0.014,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.014624999999796273,
+      "cpuMs": 0.014,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.0148750000007567,
+      "cpuMs": 0.015,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.014542000000801636,
+      "cpuMs": 0.015,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.014541999997163657,
+      "cpuMs": 0.016,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.013249999999970896,
+      "cpuMs": 0.014,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012957999999343883,
+      "cpuMs": 0.017,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.020416999999724794,
+      "cpuMs": 0.022,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.015834000001632376,
+      "cpuMs": 0.017,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.014457999997830484,
+      "cpuMs": 0.016,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.014624999999796273,
+      "cpuMs": 0.015,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.014542000000801636,
+      "cpuMs": 0.015,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.019041999999899417,
+      "cpuMs": 0.119,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.015166999997745734,
+      "cpuMs": 0.018,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.014709000002767425,
+      "cpuMs": 0.015,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.014374999998835847,
+      "cpuMs": 0.015,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.014584000000468222,
+      "cpuMs": 0.015,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.014750000002095476,
+      "cpuMs": 0.015,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.014542000000801636,
+      "cpuMs": 0.015,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.014665999999124324,
+      "cpuMs": 0.015,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.015834000001632376,
+      "cpuMs": 0.017,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.014750000002095476,
+      "cpuMs": 0.015,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.014375000002473826,
+      "cpuMs": 0.015,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.014250000000174623,
+      "cpuMs": 0.015,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.014417000002140412,
+      "cpuMs": 0.014,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.014333000002807239,
+      "cpuMs": 0.014,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.014625000003434252,
+      "cpuMs": 0.015,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.014209000000846572,
+      "cpuMs": 0.014,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.013458999997965293,
+      "cpuMs": 0.014,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012749999998050043,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012749999998050043,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012915999999677297,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012875000000349246,
+      "cpuMs": 0.014,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.013041999998677056,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.01858400000128313,
+      "cpuMs": 0.02,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.01279199999771663,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.024457999999867752,
+      "cpuMs": 0.812,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.013375000002270099,
+      "cpuMs": 0.014,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012917000000015832,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012958999999682419,
+      "cpuMs": 0.014,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.01283300000068266,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012875000000349246,
+      "cpuMs": 0.014,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.013124999997671694,
+      "cpuMs": 0.014,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012792000001354609,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012958999999682419,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.01283299999704468,
+      "cpuMs": 0.014,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.01304099999833852,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012917000000015832,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.0163749999992433,
+      "cpuMs": 0.016,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012915999999677297,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012957999999343883,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.01299999999901047,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012750000001688022,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012542000000394182,
+      "cpuMs": 0.012,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012750000001688022,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012834000001021195,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012958999999682419,
+      "cpuMs": 0.014,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012875000000349246,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012582999999722233,
+      "cpuMs": 0.012,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012582999999722233,
+      "cpuMs": 0.012,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012875000000349246,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012750000001688022,
+      "cpuMs": 0.014,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.013624999999592546,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.01262499999938882,
+      "cpuMs": 0.012,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012750000001688022,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012708000002021436,
+      "cpuMs": 0.014,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012958999999682419,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012708999998721993,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012667000002693385,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.01262499999938882,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012666999999055406,
+      "cpuMs": 0.014,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012542000000394182,
+      "cpuMs": 0.012,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012707999998383457,
+      "cpuMs": 0.012,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012791000001016073,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012749999998050043,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012917000000015832,
+      "cpuMs": 0.014,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.013500000000931323,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.01283300000068266,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012917000000015832,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012707999998383457,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012708000002021436,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012708000002021436,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.01299999999901047,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.01708399999915855,
+      "cpuMs": 0.018,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.01566599999932805,
+      "cpuMs": 0.018,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.013209000000642845,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.01320800000030431,
+      "cpuMs": 0.014,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.013291999999637483,
+      "cpuMs": 0.014,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.013291999999637483,
+      "cpuMs": 0.014,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.013790999997581821,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012915999999677297,
+      "cpuMs": 0.014,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012750000001688022,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.01283300000068266,
+      "cpuMs": 0.014,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.013083000001643086,
+      "cpuMs": 0.014,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012958000002981862,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012875000000349246,
+      "cpuMs": 0.014,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012750000001688022,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012917000000015832,
+      "cpuMs": 0.014,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012834000001021195,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.019082999999227468,
+      "cpuMs": 0.233,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.01320800000030431,
+      "cpuMs": 0.014,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012834000001021195,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012666999999055406,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.015583000000333413,
+      "cpuMs": 0.015,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.01262499999938882,
+      "cpuMs": 0.012,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.01262499999938882,
+      "cpuMs": 0.012,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012749999998050043,
+      "cpuMs": 0.014,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.01245800000106101,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012958999999682419,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012957999999343883,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.013541000000259373,
+      "cpuMs": 0.014,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.01266599999871687,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012707999998383457,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.01299999999901047,
+      "cpuMs": 0.014,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012791000001016073,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012749999998050043,
+      "cpuMs": 0.014,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012541999996756203,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.015874999997322448,
+      "cpuMs": 0.016,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.01262499999938882,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012500000000727596,
+      "cpuMs": 0.012,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012458999997761566,
+      "cpuMs": 0.012,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012499999997089617,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.01262499999938882,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012792000001354609,
+      "cpuMs": 0.014,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012542000000394182,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012500000000727596,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012750000001688022,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012417000001732958,
+      "cpuMs": 0.012,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.01262499999938882,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012666999999055406,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012334000002738321,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.013291999999637483,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.01241699999809498,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012625000003026798,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012708999998721993,
+      "cpuMs": 0.014,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.01224999999976717,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.012582999999722233,
+      "cpuMs": 0.013,
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 1.6820410000000265,
+      "cpuMs": 1.682,
+      "reportedI1": 1,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.016457999998237938,
+      "cpuMs": 0.016,
+      "reportedI1": 1,
+      "interruptRequested": 0
+    },
+    {
+      "phase": "settling",
+      "wallMs": 0.01450000000113505,
+      "cpuMs": 0.015,
+      "reportedI1": 1,
+      "interruptRequested": 0
+    }
+  ],
+  "beforeSettling": {
+    "memory": {
+      "rss": 352419840,
+      "heapTotal": 80838656,
+      "heapUsed": 12337928,
+      "external": 11965840,
+      "arrayBuffers": 143659
+    },
+    "counts": {
+      "reportedI1": 10001,
+      "interruptRequested": 0
+    }
+  },
+  "afterSettling": {
+    "memory": {
+      "rss": 351748096,
+      "heapTotal": 80166912,
+      "heapUsed": 11730888,
+      "external": 11965840,
+      "arrayBuffers": 143659
+    },
+    "counts": {
+      "reportedI1": 1,
+      "interruptRequested": 0
+    }
+  },
+  "nativeMemory": {
+    "status": "complete",
+    "interpretation": "vmmap summary while the store and core remain open after final forced GC; diagnostic capture, not timing",
+    "exitCode": 0,
+    "error": null,
+    "stdout": "Process:         node [57750]\nPath:            /Users/USER/*/node\nLoad Address:    0x1041a8000\nIdentifier:      node\nVersion:         0\nCode Type:       ARM64\nPlatform:        macOS\nParent Process:  Python [57611]\nTarget Type:     corpse\n\nDate/Time:       2026-09-07 12:47:16.710 +0200\nLaunch Time:     2026-09-07 12:46:53.253 +0200\nOS Version:      macOS 15.7.3 (24G419)\nReport Version:  7\nAnalysis Tool:   /usr/bin/vmmap\n\nPhysical footprint:         121.7M\nPhysical footprint (peak):  171.1M\nIdle exit:                  untracked\n----\n\nReadOnly portion of Libraries: Total=959.4M resident=186.1M(19%) swapped_out_or_unallocated=773.4M(81%)\nWritable regions: Total=1.7G written=14.4M(1%) resident=298.0M(17%) swapped_out=0K(0%) unallocated=1.4G(83%)\n\n                                VIRTUAL RESIDENT    DIRTY  SWAPPED VOLATILE   NONVOL    EMPTY   REGION \nREGION TYPE                        SIZE     SIZE     SIZE     SIZE     SIZE     SIZE     SIZE    COUNT (non-coalesced) \n===========                     ======= ========    =====  ======= ========   ======    =====  ======= \nKernel Alloc Once                   32K      16K      16K       0K       0K       0K       0K        1 \nMALLOC guard page                   96K       0K       0K       0K       0K       0K       0K        6 \nMALLOC metadata                    256K     256K     256K       0K       0K       0K       0K       13 \nMALLOC_MEDIUM                    256.0M    18.9M    3856K       0K       0K       0K       0K        2         see MALLOC ZONE table below\nMALLOC_MEDIUM (empty)            384.0M    8128K    1008K       0K       0K       0K       0K        3         see MALLOC ZONE table below\nMALLOC_NANO                      512.0M    34.7M    2464K       0K       0K       0K       0K        1         see MALLOC ZONE table below\nMALLOC_SMALL                     136.0M   129.7M    8960K       0K       0K       0K       0K       17         see MALLOC ZONE table below\nMALLOC_TINY                       5120K    4144K    4144K       0K       0K       0K       0K        5         see MALLOC ZONE table below\nMALLOC_TINY (empty)               3072K    2816K     160K       0K       0K       0K       0K        3         see MALLOC ZONE table below\nMemory Tag 255                     8.7G    86.5M    86.4M       0K       0K       0K       0K      351 \nMemory Tag 255 (reserved)           80K       0K       0K       0K       0K       0K       0K        2         reserved VM address space (unallocated)\nSTACK GUARD                       56.1M       0K       0K       0K       0K       0K       0K        7 \nStack                             48.1M     240K     240K       0K       0K       0K       0K        7 \nVM_ALLOCATE                       1824K    1072K    1072K       0K       0K       0K       0K        5 \n__AUTH                             822K     622K      97K       0K       0K       0K       0K      161 \n__AUTH_CONST                      12.8M    8736K       0K       0K       0K       0K       0K      295 \n__DATA                            3568K    2563K     748K       0K       0K       0K       0K      276 \n__DATA_CONST                      12.0M    8473K     1888       0K       0K       0K       0K      296 \n__DATA_DIRTY                       452K     383K     195K       0K       0K       0K       0K       88 \n__FONT_DATA                        2352       0K       0K       0K       0K       0K       0K        1 \n__LINKEDIT                       644.4M    29.4M       0K       0K       0K       0K       0K        2 \n__OBJC_RO                         61.4M    37.9M       0K       0K       0K       0K       0K        1 \n__OBJC_RW                         2397K    1965K      45K       0K       0K       0K       0K        1 \n__TEXT                           315.0M   156.7M       0K       0K       0K       0K       0K      305 \n__TPRO_CONST                       128K      80K      48K       0K       0K       0K       0K        2 \npage table in kernel              12.3M    12.3M    12.3M       0K       0K       0K       0K        1 \nshared memory                       48K      48K      48K       0K       0K       0K       0K        2 \nunused but dirty shlib __DATA      201K     201K     193K       0K       0K       0K       0K       65 \n===========                     ======= ========    =====  ======= ========   ======    =====  ======= \nTOTAL                             11.1G   544.7M   121.7M       0K       0K       0K       0K     1919 \nTOTAL, minus reserved VM space    11.1G   544.7M   121.7M       0K       0K       0K       0K     1919 \n\n                                 VIRTUAL   RESIDENT      DIRTY    SWAPPED ALLOCATION      BYTES DIRTY+SWAP          REGION\nMALLOC ZONE                         SIZE       SIZE       SIZE       SIZE      COUNT  ALLOCATED  FRAG SIZE  % FRAG   COUNT\n===========                      =======  =========  =========  =========  =========  =========  =========  ======  ======\nMallocHelperZone_0x10b544000      784.0M     163.3M      17.7M         0K       1746      11.7M      6140K     34%      30\nDefaultMallocZone_0x10b580000     512.0M      34.7M      2464K         0K      21691      1221K      1243K     51%       1\n===========                      =======  =========  =========  =========  =========  =========  =========  ======  ======\nTOTAL                               1.3G     198.0M      20.1M         0K      23437      12.9M      7383K     36%      31\n\n",
+    "stderr": ""
+  },
+  "finishedAt": "2026-09-07T10:47:17.076Z"
+}

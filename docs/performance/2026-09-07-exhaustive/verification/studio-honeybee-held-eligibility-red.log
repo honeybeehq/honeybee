@@ -1,0 +1,30 @@
+✖ urgency.d1: `idle` is not delivered while the runtime is running — it lands at turn end (465.181958ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5333.878084
+
+✖ failing tests:
+
+test at v2/daemon/tests/loops.test.ts:2002:1
+✖ urgency.d1: `idle` is not delivered while the runtime is running — it lands at turn end (465.181958ms)
+  AssertionError [ERR_ASSERTION]: held mail needs no move lookup before it becomes eligible
+
+  5 !== 0
+
+      at TestContext.<anonymous> (file:///Users/trmd/Projects/trmd/honeybee/repos/honeybee-perf-exhaustive-2026-09-07/v2/daemon/tests/loops.test.ts:2020:12)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1201:25)
+      at Test.start (node:internal/test_runner/test:1096:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:385:17) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 5,
+    expected: 0,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

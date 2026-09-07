@@ -7,3 +7,5 @@ The main failure risk is a planner change or accidentally bypassed live state. T
 The A/A control shows the unchanged query cost on both roots; A/B changes only store.ts. The whole-step reduction at zero active moves is attributable to discovery because command processing is disabled and all audit/driver assertions hold. Active-move measurements cover discovery alone. Neither proves full move throughput or worker responsiveness.
 
 No correctness finding remains in the reviewed diff. Combined production integration checks remain required before acceptance into main.
+
+Combined `4ebf43c9` passed core 213/213 and the serial daemon suite with 358 passes and one platform skip. The exact combined production source also passed all v2 typechecks, repository build, and the 68-test loop suite. Logs are `verification/mini-move-held-integrated-*.log` and `mini-held-eligibility-*.log`. No remaining merge gate for these two changes.

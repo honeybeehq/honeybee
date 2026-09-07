@@ -1,0 +1,11 @@
+# Standing-mail dedup review
+
+Reviewed Unit 1 baseline 0320278f through refined Unit 2 dfecaeba. The first Unit 2 revision was unsafe under a reentrant onI1Violation callback. Parent review supplied the scenario; the author reproduced it without weakening assertions. The final patch rechecks candidates against current committed state, so absence from the outer I1 snapshot alone cannot erase an ID created by an inner step.
+
+A positive membership result from a stale I1 snapshot can retain an obsolete ID for another cadence, but cannot cause duplicate interrupts or reports. The outer transaction guard remains before the zero-pending check or sweep counter mutation. Probes and deletions are synchronous, with no external callback between them. Both disabled-I1 and enabled-I1 paths use current membership for candidates. Stopped and absent-runtime mail remains protected by the mailbox query, independent of live driver state.
+
+The growth trigger is combined size since the last sweep. It does not impose an absolute memory cap and does not promise constant sweep time. Stable large sets sweep at the cadence; continued growth can sweep again after another 1,024 IDs. Scratch now scales with the tracked union, with no copy of the complete pending backlog. Remaining candidates are probed in chunks of at most 512. Query plans and the large-backlog/tiny-tracked allocation diagnostic remain part of the measurement gate.
+
+Mini build, all v2 typechecks, and 65 loop tests passed on the frozen refined revision. The standing workload removes obsolete IDs at 30,000 and 500,000 messages, with exact callback checks and no driver effects. Growth-sweep CPU increases and variable native memory at the smaller scale are documented. The half-million repeat has smaller retained JS heap and physical footprint in both orders.
+
+No remaining correctness blocker was found in the final source. Acceptance still requires the dedicated allocation/probe diagnostic and combined integration checks. Intermediate 24a4604b must never be shipped alone.

@@ -27,7 +27,7 @@ Both reports preserve raw samples, exact ordered full receipts, fixture/source/t
 
 ## Verification and limits
 
-The regression test first failed on the real history-scan plan. It then passed with the ordering change. It covers 64 public failed receipts, two active receipts, exact order/content, outer-transaction failure and rollback restoration, reopen, and the plan of the actual prepared production statement. Studio passed all 12 Cell-move core tests, core typecheck, and repository build. Mini passed the same 12 tests and both measured workloads. Combined integration verification is pending.
+The regression test first failed on the real history-scan plan. It then passed with the ordering change. It covers 64 public failed receipts, two active receipts, exact order/content, outer-transaction failure and rollback restoration, reopen, and the plan of the actual prepared production statement. Studio passed all 12 Cell-move core tests, core typecheck, and repository build. Mini passed the same 12 tests and both measured workloads. Combined `4ebf43c9` passed core 213/213 and the serial daemon suite with 358 passes and one platform skip. The exact combined production source also passed all v2 typechecks, repository build, and the 68-test loop suite. Logs are `verification/mini-move-held-integrated-*.log` and `mini-held-eligibility-*.log`.
 
 The query still reads current durable state on every call. No cross-step cache or early return bypasses move reconciliation. Per-bee `activeMoveOf` lookups in delivery and idle shutdown remain a separate performance opportunity; this change does not remove those fences.
 
