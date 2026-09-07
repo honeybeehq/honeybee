@@ -6,7 +6,7 @@ Landed; residual open,Boot recovery,174.552,11.854,ms CPU,100000 settled command
 Landed; write cost measured,No-due flag expiry,2.691,0.007,ms CPU,100000 cleared +1000 future flags,designs/flag-expiry.md
 Landed; scaling open,Empty task supplies,21.325,12.295,ms CPU,1000 enabled supplies,task-supply-results.md
 Landed; scaling open,Paused task supplies,27.28,12.796,ms CPU,1000 paused supplies,task-supply-results.md
-Held for refinement,Sparse core tick,43.459,0.026,ms CPU,10000 retained Bees;1live,sparse-first-candidate.md
-Held for refinement,Held message tick,8.517,10.458,ms CPU,10000 held64-byte messages,sparse-first-candidate.md
-Held for refinement,Large-body tick,19.053,22.153,ms CPU,100held1MiB messages,sparse-first-candidate.md
-Held for refinement,Sampled allocation traffic,3148753632,3325680,bytes,30profiled ticks;100held1MiB messages;not retained memory,sparse-first-candidate.md
+Landed,Sparse core tick,43.459,0.026,ms CPU,10000 retained Bees;1live,sparse-refined-results.md
+Landed,Held message tick,8.517,5.251,ms CPU,10000 held64-byte messages,sparse-refined-results.md
+Landed; residual open,Large-body tick,19.053,11.785,ms CPU,100held1MiB messages,sparse-refined-results.md
+Landed,Sampled allocation traffic,3148753632,2486824,bytes,30profiled ticks;100held1MiB messages;not retained memory,sparse-refined-results.md

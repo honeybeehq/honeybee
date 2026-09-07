@@ -1,0 +1,20 @@
+✖ cells.3: daemon SIGKILL → restart re-adopts a live cell bee at full capability: the missed completion folds from the journal and mail reaches the SAME generation (15703.962125ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 15789.96875
+
+✖ failing tests:
+
+test at v2/daemon/tests/cells.test.ts:474:1
+✖ cells.3: daemon SIGKILL → restart re-adopts a live cell bee at full capability: the missed completion folds from the journal and mail reaches the SAME generation (15703.962125ms)
+  Error: waitFor timeout: survivor turn folded by the successor
+      at waitFor (file:///private/tmp/honeybee-perf-5763a6c9-20260907/sparse-candidate/v2/daemon/tests/helpers.ts:34:38)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///private/tmp/honeybee-perf-5763a6c9-20260907/sparse-candidate/v2/daemon/tests/cells.test.ts:516:5)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3)

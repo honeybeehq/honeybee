@@ -1,0 +1,1071 @@
+{
+  "completed": true,
+  "purpose": "uninstrumented read-hotspot timings",
+  "expectedChangedFiles": [
+    "v2/core/src/schema.ts"
+  ],
+  "changedSourceFiles": [
+    "v2/core/src/schema.ts"
+  ],
+  "beforeSource": {
+    "root": "/private/tmp/honeybee-perf-5763a6c9-20260907/c22-candidate",
+    "revision": "6cc402deedb2bd309e8ada42f95ea41e740b8f7e",
+    "hashes": {
+      "v2/adapters/src/agy.ts": "ae4751062d36382252aae126e7c0ee024bbcf65009cc12adc16721e24e9dbbc7",
+      "v2/adapters/src/args.ts": "c4af70fde51db0a39b2b7c37fee5df4a931516d91399cbdb93a033292d54e43d",
+      "v2/adapters/src/claude.ts": "78f4b15d50a1f2eba8f74fcc4672e2b008db544950c6ed03a8a8b183b7f6e046",
+      "v2/adapters/src/codex.ts": "47b766ce87eb9ae67986d6f970aea9511ed3162d08b44513a461ca56475bc0a0",
+      "v2/adapters/src/grok.ts": "71f647f0b8fb2a32427604ddf45e0a7b54a4a1b876418c7f91de8c3024c0d84f",
+      "v2/adapters/src/index.ts": "6869fe4ec44c1eeefa53ff1660a00c8556330e30acb30cc3265fb78483aadcdf",
+      "v2/adapters/src/stub.ts": "4fdfca1b8dca0cc396bd495fac99d5fcab7005b40bb598e33413a5747e8f3ccc",
+      "v2/adapters/src/types.ts": "c37098d1cb7d06a8137f1fda87ad1affcb6d8b37e325665b1e5123b029fa2dd3",
+      "v2/cli/src/bin.ts": "330f6bb9d42c72475929a6e104fa5c318051b57816acd4056b3c7523010b8a8c",
+      "v2/cli/src/client.ts": "421e107f912c5f9fae6d51cb2e3b10d8ffe83e70e6660adef03392d59739cafd",
+      "v2/cli/src/help.ts": "c43e898e8cf1541a874acaf77a4680c85642f4a40bc3b33122080f97a601a61e",
+      "v2/cli/src/index.ts": "705f8de04ba4adb8b563d11f2def4da5ae0904ec9bcd0c062d9ce2019676bfd8",
+      "v2/cli/src/main.ts": "e19112dded2ec84bdded0b92096baa44f318bb1399d860fc87991b3776dbb321",
+      "v2/cli/src/readonly.ts": "530ca612ea5de0079f9a8f04cb7b837e956ce2c1d1b0844a7ea87d6d2e3e4c14",
+      "v2/cli/src/render.ts": "6efc8d278c87ac8c90a6588790e5b7a80eb6dbf997254326b32098c77d6f2897",
+      "v2/cli/src/style.ts": "2f5e611fa6b1aee3c0a3afefdf0cfb9b830736ce4c3f2f9c53d73e5bee5cc5fd",
+      "v2/core/src/accountLimitsParse.ts": "4101b50909a9c9d79aa9761c4a5b68bc3d808ad36acca38e75c07779a51068a3",
+      "v2/core/src/accountMatch.ts": "90ebe4e125f83d28bc1a1c99cbff9b813362d3b38bbac8b97182014cb4fcf980",
+      "v2/core/src/accountRecipes.ts": "837c397aab4c9fa8a02b890372fac3e29b73d4ba8307913446309d00e715b6b7",
+      "v2/core/src/accountSelect.ts": "2536db3146b2d9a66c812e294c8d668df5e82e3bea9d2923308dff4060e01f5c",
+      "v2/core/src/audit.ts": "ad41ca1ce64dea003c5086d2135f48b341a0aef6f17f8b059e54658a44021f54",
+      "v2/core/src/executables.ts": "4a878c553014ceabcdd7e940e274d652799c2852474ada614d5c80cca1eadc7c",
+      "v2/core/src/import-frozen.ts": "30e2fb867899e8399abf2fb0ee8a3f36fd12982e3ba1d86a84bbc626b6cc2de7",
+      "v2/core/src/index.ts": "f5bd52177373c73763454a3995bee1033b5241b1021ff62902e72c2884895ae1",
+      "v2/core/src/loginFlow.ts": "727d42b6a98a271577cd462e128b0287e7c571e5e06104b3afb5bdff49d35460",
+      "v2/core/src/mirror.ts": "d8bcb404f2971de5f928345319d7a579c102235e5ed27565e9037724382ad8ce",
+      "v2/core/src/packages.ts": "e14a3c6c013211235ca84c137a93f12ead10beff01c876c2741a7e419b944f17",
+      "v2/core/src/registry.ts": "1cd3e1c5a239882474818466907b5f5b2d10501e178b0ad13d24fb2fae8123ff",
+      "v2/core/src/schema.ts": "05995f423f925cc0eaf95d80fc098e1b6ae905298dbeb6238fc54b94f19ca811",
+      "v2/core/src/store.ts": "e98eb03905b9c89357bcfebcb64a66caf3aa4c2b7744a97725151d51d5456cd6",
+      "v2/core/src/tasks.ts": "2f266a9640ed4b9c7ceeea18aee63ce11521cc416ecc3b5ce118ebb5c195a263",
+      "v2/core/src/types.ts": "9d09afae1e05743e29fbee6f51007219d0c6b4c6941a615268793fcc4e6c1445",
+      "v2/core/src/view.ts": "f9fb6302bd05a001ca38d7a98f9280e13f8d2222916d9f0c48efb72e148a16e7",
+      "v2/daemon/src/accountsService.ts": "3f13d0481bb54b793d7f0ea6d7f03536d8e5d4ae2be1a8631b17440d596a8a5b",
+      "v2/daemon/src/activation.ts": "7e7056e53671e9caea816fa1162478905ecfc9a408afbad73750ee411056bab7",
+      "v2/daemon/src/autoTitle.ts": "245e0202fd3758aac7cbf022f328ccc4b3f0e88b58303ff03b0e675bceef3e91",
+      "v2/daemon/src/bin.ts": "8ef32816d19e0c2adc85a81a740de8935c7a8bc77e94118203a761b16679754d",
+      "v2/daemon/src/config.ts": "637e94d4d2e22fedae9682ab1cde523d02b2cb0d5bd594441cc7443bb991900a",
+      "v2/daemon/src/cursorAuth.ts": "1f0d554fd3ea0351b108404d6b7912701be184e8e26ea89bd2b692a42ae4f924",
+      "v2/daemon/src/daemon.ts": "edfdc5756a1be5682e436b6e45e3fc3d2118de379b94bcfe12bee7f00aae34be",
+      "v2/daemon/src/envelope.ts": "dc0bff3d7706be31b3fce162e370c1e6e6b7ed8cd2eca43ab1ba6e9ccada6c7a",
+      "v2/daemon/src/gateways.ts": "5c57d479fdbfd871f31de9172da2c9011466258cb46cc764f1776af82da9145c",
+      "v2/daemon/src/homeDefaults.ts": "a63090c09cc8d102b46effa2f8f205457b0e3d73baaaca15cd836e2c0896fc3c",
+      "v2/daemon/src/import-probes.ts": "14cdeb5b7c47d1da44a8eff3e92e22a52a523dcaf250174cefd1c6c46f15529a",
+      "v2/daemon/src/index.ts": "5f8b71e1193407322cb5b44e87bd30cb8384aeb783c22803a10aca034aa691a9",
+      "v2/daemon/src/keychain.ts": "97ecd409db519ba195662dc5f41cbb2b31c36b68100a57bcdc0c1f89ef877ad5",
+      "v2/daemon/src/login/claudeOauth.ts": "9781bf55222a833a9f4461f704a9a10ccb71030a547ca978dae16428f5ce89ff",
+      "v2/daemon/src/login/cliRunner.ts": "ef14344f05033a1ecf510054d3b717db945a203c2b2c32fe3d2607058ca7d52a",
+      "v2/daemon/src/login/common.ts": "1f93ae2e3757ff297cfcd3d94fdf9e838e546a5beed67999f9e0a1b88ebedc46",
+      "v2/daemon/src/login/directKey.ts": "91224b228da3a12dc828d5290900ed1a59ed95766cc9f5f36d273d9e6b862ba2",
+      "v2/daemon/src/login/runner.ts": "53811aa26fecf68f66e6714110efb5664ad2081586b369ab159c25e044d7f17c",
+      "v2/daemon/src/login/transports.ts": "a7073ba48a5ae49cbf2d9109812bbe299ed18487f551d1bf5271bb47b7357e15",
+      "v2/daemon/src/loginFlows.ts": "4460f4a8f8e14900e106e817862cfa8a60cb0f15c6327741d23896736b708c94",
+      "v2/daemon/src/loginWorker.ts": "4a70f08d716550337509663c7586b235568b1fe7bccfbeecfc57d7bdc2fdd378",
+      "v2/daemon/src/loops.ts": "19de9b41cde6220362c014f8c3fbfe2b0407cba19655a472f41cec58cf39d405",
+      "v2/daemon/src/main.ts": "7546a94f78f8817ca3a869aa63b2d62d16ffa5404ecb60d63cc742733236f903",
+      "v2/daemon/src/naming.ts": "eae82ba481b3e5b74d7d80c38ca50d6bbf64e378e48e8a7c953d35b2f0a643f5",
+      "v2/daemon/src/namingService.ts": "e8ee4b2026fea2460fb59d60db034ec694b32f76ec2cf7eeba3ea1abf6c36001",
+      "v2/daemon/src/performance.ts": "75bbf106a1a24fe67d2fc475bd34d7111dec4a5b36b237ec28691459977c3190",
+      "v2/daemon/src/protocol.ts": "2c2b7563fcf5c1e20919316e6255c6f580880ab59bf823faa0ceeb24175e7399",
+      "v2/daemon/src/providerLimits.ts": "befe91217b50c927419389adb50527fd0867ed58d5111f13bcb669eb2b700790",
+      "v2/daemon/src/rpc.ts": "16b119147b0fc12b32194dc7c255d6fc8910aa0644306c42f9ad19bc6559508e",
+      "v2/daemon/src/service.ts": "10401a481fb25931521e2259dc4722cc43890600a4c84298f9a89d78401b707b",
+      "v2/daemon/src/substrates.ts": "914b18b4e6e6e7cd2525f5943edb3080c031e16d08934fd4021b55ebf3c1c27c",
+      "v2/daemon/src/telemetry.ts": "0f234f5f77df593387db1ed6c08ba64ccd45f3ffa60303bbd178765aefd0980c",
+      "v2/daemon/src/tmuxHarness.ts": "aebc0a90c9ff4a03a466cdf2edc4fe282dc91388cf9966a0412801fb0bea320f",
+      "v2/daemon/tests/helpers.ts": "9d63216758bec78d1f0e6f7fa949d67ee1f4b1d90eb5efdd4a8888cda75ea0f3",
+      "v2/driver-cell/src/capture.ts": "359b2fa98f2b21c7a8f43a2755c3d4b4ad03f267483b98827c2c6b022ed68e9b",
+      "v2/driver-cell/src/cow.ts": "24eb5ce7b6536de861ca261a5d80096343115e14bc8a23e354a2e8a74f318b10",
+      "v2/driver-cell/src/driver.ts": "77598ca25c7dd9374e21f9fd5275e43989a7305a2b05fd098210db8630f062e6",
+      "v2/driver-cell/src/git.ts": "049d9bd7f6aaebb6625fd0f1d8ddebcd3adf16e7d4dd7316232ba6923d196b75",
+      "v2/driver-cell/src/gitImage.ts": "9b7b1dc8a762caaac402d108bbd9286630a1376b4844ea8d2d3c6232d0a19007",
+      "v2/driver-cell/src/index.ts": "3264e7ae0f407b257b7a35e6d10a3b7f19cdc9c2d4d92cf173f02dbd861764ae",
+      "v2/driver-cell/src/layout.ts": "68a677450c0d851cf97c50f8616fd25961ddea59dd6b8ac3c0a739042c4775f8",
+      "v2/driver-cell/src/ledger.ts": "efdf4762fab38defd8ec3e68dceba52a44a11d17962b027cb4a0302eec429834",
+      "v2/driver-cell/src/provision.ts": "8293821e57266a0b4f7a2e0e6d25c584cac6caf1ac0afad207311af57558be66",
+      "v2/driver-cell/src/provisionWorker.ts": "a651cc6000ef33f7ed52384f678543b28fea4f363113b3218d45219c510a2d4c",
+      "v2/driver-cell/src/remove.ts": "914e22bf0182c90503731cbeb9877c0d697cda5d410b224223499fab33e75aa5",
+      "v2/driver-cell/src/sandbox.ts": "33ea0cefa347f21a19f39a03f36afeed14d18680f15fc22a0f1682a668001e3a",
+      "v2/driver-hsr/src/driver.ts": "a01bf7d4e955ee1cd79f6bab88c95d02928841be6f0a8ffe671a87d17a8413d3",
+      "v2/driver-hsr/src/index.ts": "8f9542db7792d462ab9b10f9537b9c05f31acf9934d6c32b3f248de8beb97e5e",
+      "v2/driver-hsr/src/psutil.ts": "1beb05854deb6fbe12f206d7436648e7be2a8ae00bcfd0acd13ef3f9fb1c1edb",
+      "v2/driver-hsr/src/runner-host-main.ts": "10c4f1c2af2e2dc20bdddba51e7972bc976831c1bf40b5f5772a2519538411da",
+      "v2/driver-hsr/src/runner-host.ts": "7f1716db45160657ef2109d8a18ae064cbab065f0321b22d29f9a193a3f3c152",
+      "v2/driver-tmux/src/agy-projection.ts": "1d5284c9835d499f0e55dc52ec70a5d36175993f0ccbab7f2e21fcf60f92a9ff",
+      "v2/driver-tmux/src/claude-projection.ts": "df6d2d8967f70ac4b6796a234de83d1e325e41210794972aee41b1a7294882f6",
+      "v2/driver-tmux/src/codex-projection.ts": "2ff68aa8e4d8c802bef9abedb7595e29f038c7ba4cf81403f7efc54a03225e1b",
+      "v2/driver-tmux/src/driver.ts": "26fe0516fe49f389d1f5cad30ee0002e829ae1aba75fe6cec8a0ea886b670820",
+      "v2/driver-tmux/src/events-file.ts": "ddb2ba04f32ef325def8d5287a518659a42e41801034304bc74e4695962a0e99",
+      "v2/driver-tmux/src/grok-projection.ts": "d0d419367031c9738fc6a5a0e27ea6c8a15399b06834239b92f2c2603d406823",
+      "v2/driver-tmux/src/index.ts": "f716470ff208ac29febfe90031b025d969a2eefc5461e649d77d43813fce278d",
+      "v2/driver-tmux/src/tail.ts": "40e24f0d34401e7990581eef3eff1d1542defbc846a92339e61bb81a95a0d156",
+      "v2/driver-tmux/src/tmux.ts": "92607334202f8fb8c8cedf7b9d1454d8742a867c4c8082f7f2f6617a6c285eb9",
+      "v2/driver-tmux/src/transcript-projection.ts": "98bdd52792da1d74ddfe28332c54ae76adc8f6b52e94e1b4f233a94cabf96c78",
+      "v2/driver-tmux/src/transcripts.ts": "f23289d6199d9d2ec288f60de0a3475ce5aa41e20230763380386d4d2c545509",
+      "v2/harness/src/clock.ts": "690b130f9bb111af2099cc96d19a114258bf3bc6353d7a440d53b3141c9e2446",
+      "v2/harness/src/daemon.ts": "2b8f17080275ef72b3612e4b446b9e951d203373c70bcec7b83e3b21c91d81ef",
+      "v2/harness/src/driver.ts": "df41b313a0ab97a637eddb5a3ba2be4456293776aa46acfd3eb29af5315a1442",
+      "v2/harness/src/faults.ts": "6152e965e33f1501f9beee0f5a3c42ce18a8b71897713043716a993de48cfc20",
+      "v2/harness/src/index.ts": "200de7850d2848f5b1d2afa72fdbd1490d2919efd8f77976508416ccb7b9a191",
+      "v2/harness/src/invariants.ts": "5ab63d4da3399534d6a2d9eff705d1c6c403e14b39b5749b5863bd7d04daccbb",
+      "v2/harness/src/prng.ts": "1be8ed3684abb058b30f83b89239385928abb14d8c24616ebf925c95af4639e8",
+      "v2/harness/src/sim-driver.ts": "70b5b013351a8a089e2b13509cb3abe5d8182b18e07f920859abc68e4dd10e31",
+      "v2/harness/src/simulation.ts": "9979407c9e3483294675c47b23b802a724adcea73681ae8d8480f47f5e2d650c"
+    },
+    "status": "",
+    "diffSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "afterSource": {
+    "root": "/private/tmp/honeybee-perf-5763a6c9-20260907/c18-candidate",
+    "revision": "c5d7986323607082874bdfd0c74fcbff234da496",
+    "hashes": {
+      "v2/adapters/src/agy.ts": "ae4751062d36382252aae126e7c0ee024bbcf65009cc12adc16721e24e9dbbc7",
+      "v2/adapters/src/args.ts": "c4af70fde51db0a39b2b7c37fee5df4a931516d91399cbdb93a033292d54e43d",
+      "v2/adapters/src/claude.ts": "78f4b15d50a1f2eba8f74fcc4672e2b008db544950c6ed03a8a8b183b7f6e046",
+      "v2/adapters/src/codex.ts": "47b766ce87eb9ae67986d6f970aea9511ed3162d08b44513a461ca56475bc0a0",
+      "v2/adapters/src/grok.ts": "71f647f0b8fb2a32427604ddf45e0a7b54a4a1b876418c7f91de8c3024c0d84f",
+      "v2/adapters/src/index.ts": "6869fe4ec44c1eeefa53ff1660a00c8556330e30acb30cc3265fb78483aadcdf",
+      "v2/adapters/src/stub.ts": "4fdfca1b8dca0cc396bd495fac99d5fcab7005b40bb598e33413a5747e8f3ccc",
+      "v2/adapters/src/types.ts": "c37098d1cb7d06a8137f1fda87ad1affcb6d8b37e325665b1e5123b029fa2dd3",
+      "v2/cli/src/bin.ts": "330f6bb9d42c72475929a6e104fa5c318051b57816acd4056b3c7523010b8a8c",
+      "v2/cli/src/client.ts": "421e107f912c5f9fae6d51cb2e3b10d8ffe83e70e6660adef03392d59739cafd",
+      "v2/cli/src/help.ts": "c43e898e8cf1541a874acaf77a4680c85642f4a40bc3b33122080f97a601a61e",
+      "v2/cli/src/index.ts": "705f8de04ba4adb8b563d11f2def4da5ae0904ec9bcd0c062d9ce2019676bfd8",
+      "v2/cli/src/main.ts": "e19112dded2ec84bdded0b92096baa44f318bb1399d860fc87991b3776dbb321",
+      "v2/cli/src/readonly.ts": "530ca612ea5de0079f9a8f04cb7b837e956ce2c1d1b0844a7ea87d6d2e3e4c14",
+      "v2/cli/src/render.ts": "6efc8d278c87ac8c90a6588790e5b7a80eb6dbf997254326b32098c77d6f2897",
+      "v2/cli/src/style.ts": "2f5e611fa6b1aee3c0a3afefdf0cfb9b830736ce4c3f2f9c53d73e5bee5cc5fd",
+      "v2/core/src/accountLimitsParse.ts": "4101b50909a9c9d79aa9761c4a5b68bc3d808ad36acca38e75c07779a51068a3",
+      "v2/core/src/accountMatch.ts": "90ebe4e125f83d28bc1a1c99cbff9b813362d3b38bbac8b97182014cb4fcf980",
+      "v2/core/src/accountRecipes.ts": "837c397aab4c9fa8a02b890372fac3e29b73d4ba8307913446309d00e715b6b7",
+      "v2/core/src/accountSelect.ts": "2536db3146b2d9a66c812e294c8d668df5e82e3bea9d2923308dff4060e01f5c",
+      "v2/core/src/audit.ts": "ad41ca1ce64dea003c5086d2135f48b341a0aef6f17f8b059e54658a44021f54",
+      "v2/core/src/executables.ts": "4a878c553014ceabcdd7e940e274d652799c2852474ada614d5c80cca1eadc7c",
+      "v2/core/src/import-frozen.ts": "30e2fb867899e8399abf2fb0ee8a3f36fd12982e3ba1d86a84bbc626b6cc2de7",
+      "v2/core/src/index.ts": "f5bd52177373c73763454a3995bee1033b5241b1021ff62902e72c2884895ae1",
+      "v2/core/src/loginFlow.ts": "727d42b6a98a271577cd462e128b0287e7c571e5e06104b3afb5bdff49d35460",
+      "v2/core/src/mirror.ts": "d8bcb404f2971de5f928345319d7a579c102235e5ed27565e9037724382ad8ce",
+      "v2/core/src/packages.ts": "e14a3c6c013211235ca84c137a93f12ead10beff01c876c2741a7e419b944f17",
+      "v2/core/src/registry.ts": "1cd3e1c5a239882474818466907b5f5b2d10501e178b0ad13d24fb2fae8123ff",
+      "v2/core/src/schema.ts": "68ad4cb7b027f895763c7d698b066bdd86cc004fb4be3cffd615860d24a0c56a",
+      "v2/core/src/store.ts": "e98eb03905b9c89357bcfebcb64a66caf3aa4c2b7744a97725151d51d5456cd6",
+      "v2/core/src/tasks.ts": "2f266a9640ed4b9c7ceeea18aee63ce11521cc416ecc3b5ce118ebb5c195a263",
+      "v2/core/src/types.ts": "9d09afae1e05743e29fbee6f51007219d0c6b4c6941a615268793fcc4e6c1445",
+      "v2/core/src/view.ts": "f9fb6302bd05a001ca38d7a98f9280e13f8d2222916d9f0c48efb72e148a16e7",
+      "v2/daemon/src/accountsService.ts": "3f13d0481bb54b793d7f0ea6d7f03536d8e5d4ae2be1a8631b17440d596a8a5b",
+      "v2/daemon/src/activation.ts": "7e7056e53671e9caea816fa1162478905ecfc9a408afbad73750ee411056bab7",
+      "v2/daemon/src/autoTitle.ts": "245e0202fd3758aac7cbf022f328ccc4b3f0e88b58303ff03b0e675bceef3e91",
+      "v2/daemon/src/bin.ts": "8ef32816d19e0c2adc85a81a740de8935c7a8bc77e94118203a761b16679754d",
+      "v2/daemon/src/config.ts": "637e94d4d2e22fedae9682ab1cde523d02b2cb0d5bd594441cc7443bb991900a",
+      "v2/daemon/src/cursorAuth.ts": "1f0d554fd3ea0351b108404d6b7912701be184e8e26ea89bd2b692a42ae4f924",
+      "v2/daemon/src/daemon.ts": "edfdc5756a1be5682e436b6e45e3fc3d2118de379b94bcfe12bee7f00aae34be",
+      "v2/daemon/src/envelope.ts": "dc0bff3d7706be31b3fce162e370c1e6e6b7ed8cd2eca43ab1ba6e9ccada6c7a",
+      "v2/daemon/src/gateways.ts": "5c57d479fdbfd871f31de9172da2c9011466258cb46cc764f1776af82da9145c",
+      "v2/daemon/src/homeDefaults.ts": "a63090c09cc8d102b46effa2f8f205457b0e3d73baaaca15cd836e2c0896fc3c",
+      "v2/daemon/src/import-probes.ts": "14cdeb5b7c47d1da44a8eff3e92e22a52a523dcaf250174cefd1c6c46f15529a",
+      "v2/daemon/src/index.ts": "5f8b71e1193407322cb5b44e87bd30cb8384aeb783c22803a10aca034aa691a9",
+      "v2/daemon/src/keychain.ts": "97ecd409db519ba195662dc5f41cbb2b31c36b68100a57bcdc0c1f89ef877ad5",
+      "v2/daemon/src/login/claudeOauth.ts": "9781bf55222a833a9f4461f704a9a10ccb71030a547ca978dae16428f5ce89ff",
+      "v2/daemon/src/login/cliRunner.ts": "ef14344f05033a1ecf510054d3b717db945a203c2b2c32fe3d2607058ca7d52a",
+      "v2/daemon/src/login/common.ts": "1f93ae2e3757ff297cfcd3d94fdf9e838e546a5beed67999f9e0a1b88ebedc46",
+      "v2/daemon/src/login/directKey.ts": "91224b228da3a12dc828d5290900ed1a59ed95766cc9f5f36d273d9e6b862ba2",
+      "v2/daemon/src/login/runner.ts": "53811aa26fecf68f66e6714110efb5664ad2081586b369ab159c25e044d7f17c",
+      "v2/daemon/src/login/transports.ts": "a7073ba48a5ae49cbf2d9109812bbe299ed18487f551d1bf5271bb47b7357e15",
+      "v2/daemon/src/loginFlows.ts": "4460f4a8f8e14900e106e817862cfa8a60cb0f15c6327741d23896736b708c94",
+      "v2/daemon/src/loginWorker.ts": "4a70f08d716550337509663c7586b235568b1fe7bccfbeecfc57d7bdc2fdd378",
+      "v2/daemon/src/loops.ts": "19de9b41cde6220362c014f8c3fbfe2b0407cba19655a472f41cec58cf39d405",
+      "v2/daemon/src/main.ts": "7546a94f78f8817ca3a869aa63b2d62d16ffa5404ecb60d63cc742733236f903",
+      "v2/daemon/src/naming.ts": "eae82ba481b3e5b74d7d80c38ca50d6bbf64e378e48e8a7c953d35b2f0a643f5",
+      "v2/daemon/src/namingService.ts": "e8ee4b2026fea2460fb59d60db034ec694b32f76ec2cf7eeba3ea1abf6c36001",
+      "v2/daemon/src/performance.ts": "75bbf106a1a24fe67d2fc475bd34d7111dec4a5b36b237ec28691459977c3190",
+      "v2/daemon/src/protocol.ts": "2c2b7563fcf5c1e20919316e6255c6f580880ab59bf823faa0ceeb24175e7399",
+      "v2/daemon/src/providerLimits.ts": "befe91217b50c927419389adb50527fd0867ed58d5111f13bcb669eb2b700790",
+      "v2/daemon/src/rpc.ts": "16b119147b0fc12b32194dc7c255d6fc8910aa0644306c42f9ad19bc6559508e",
+      "v2/daemon/src/service.ts": "10401a481fb25931521e2259dc4722cc43890600a4c84298f9a89d78401b707b",
+      "v2/daemon/src/substrates.ts": "914b18b4e6e6e7cd2525f5943edb3080c031e16d08934fd4021b55ebf3c1c27c",
+      "v2/daemon/src/telemetry.ts": "0f234f5f77df593387db1ed6c08ba64ccd45f3ffa60303bbd178765aefd0980c",
+      "v2/daemon/src/tmuxHarness.ts": "aebc0a90c9ff4a03a466cdf2edc4fe282dc91388cf9966a0412801fb0bea320f",
+      "v2/daemon/tests/helpers.ts": "9d63216758bec78d1f0e6f7fa949d67ee1f4b1d90eb5efdd4a8888cda75ea0f3",
+      "v2/driver-cell/src/capture.ts": "359b2fa98f2b21c7a8f43a2755c3d4b4ad03f267483b98827c2c6b022ed68e9b",
+      "v2/driver-cell/src/cow.ts": "24eb5ce7b6536de861ca261a5d80096343115e14bc8a23e354a2e8a74f318b10",
+      "v2/driver-cell/src/driver.ts": "77598ca25c7dd9374e21f9fd5275e43989a7305a2b05fd098210db8630f062e6",
+      "v2/driver-cell/src/git.ts": "049d9bd7f6aaebb6625fd0f1d8ddebcd3adf16e7d4dd7316232ba6923d196b75",
+      "v2/driver-cell/src/gitImage.ts": "9b7b1dc8a762caaac402d108bbd9286630a1376b4844ea8d2d3c6232d0a19007",
+      "v2/driver-cell/src/index.ts": "3264e7ae0f407b257b7a35e6d10a3b7f19cdc9c2d4d92cf173f02dbd861764ae",
+      "v2/driver-cell/src/layout.ts": "68a677450c0d851cf97c50f8616fd25961ddea59dd6b8ac3c0a739042c4775f8",
+      "v2/driver-cell/src/ledger.ts": "efdf4762fab38defd8ec3e68dceba52a44a11d17962b027cb4a0302eec429834",
+      "v2/driver-cell/src/provision.ts": "8293821e57266a0b4f7a2e0e6d25c584cac6caf1ac0afad207311af57558be66",
+      "v2/driver-cell/src/provisionWorker.ts": "a651cc6000ef33f7ed52384f678543b28fea4f363113b3218d45219c510a2d4c",
+      "v2/driver-cell/src/remove.ts": "914e22bf0182c90503731cbeb9877c0d697cda5d410b224223499fab33e75aa5",
+      "v2/driver-cell/src/sandbox.ts": "33ea0cefa347f21a19f39a03f36afeed14d18680f15fc22a0f1682a668001e3a",
+      "v2/driver-hsr/src/driver.ts": "a01bf7d4e955ee1cd79f6bab88c95d02928841be6f0a8ffe671a87d17a8413d3",
+      "v2/driver-hsr/src/index.ts": "8f9542db7792d462ab9b10f9537b9c05f31acf9934d6c32b3f248de8beb97e5e",
+      "v2/driver-hsr/src/psutil.ts": "1beb05854deb6fbe12f206d7436648e7be2a8ae00bcfd0acd13ef3f9fb1c1edb",
+      "v2/driver-hsr/src/runner-host-main.ts": "10c4f1c2af2e2dc20bdddba51e7972bc976831c1bf40b5f5772a2519538411da",
+      "v2/driver-hsr/src/runner-host.ts": "7f1716db45160657ef2109d8a18ae064cbab065f0321b22d29f9a193a3f3c152",
+      "v2/driver-tmux/src/agy-projection.ts": "1d5284c9835d499f0e55dc52ec70a5d36175993f0ccbab7f2e21fcf60f92a9ff",
+      "v2/driver-tmux/src/claude-projection.ts": "df6d2d8967f70ac4b6796a234de83d1e325e41210794972aee41b1a7294882f6",
+      "v2/driver-tmux/src/codex-projection.ts": "2ff68aa8e4d8c802bef9abedb7595e29f038c7ba4cf81403f7efc54a03225e1b",
+      "v2/driver-tmux/src/driver.ts": "26fe0516fe49f389d1f5cad30ee0002e829ae1aba75fe6cec8a0ea886b670820",
+      "v2/driver-tmux/src/events-file.ts": "ddb2ba04f32ef325def8d5287a518659a42e41801034304bc74e4695962a0e99",
+      "v2/driver-tmux/src/grok-projection.ts": "d0d419367031c9738fc6a5a0e27ea6c8a15399b06834239b92f2c2603d406823",
+      "v2/driver-tmux/src/index.ts": "f716470ff208ac29febfe90031b025d969a2eefc5461e649d77d43813fce278d",
+      "v2/driver-tmux/src/tail.ts": "40e24f0d34401e7990581eef3eff1d1542defbc846a92339e61bb81a95a0d156",
+      "v2/driver-tmux/src/tmux.ts": "92607334202f8fb8c8cedf7b9d1454d8742a867c4c8082f7f2f6617a6c285eb9",
+      "v2/driver-tmux/src/transcript-projection.ts": "98bdd52792da1d74ddfe28332c54ae76adc8f6b52e94e1b4f233a94cabf96c78",
+      "v2/driver-tmux/src/transcripts.ts": "f23289d6199d9d2ec288f60de0a3475ce5aa41e20230763380386d4d2c545509",
+      "v2/harness/src/clock.ts": "690b130f9bb111af2099cc96d19a114258bf3bc6353d7a440d53b3141c9e2446",
+      "v2/harness/src/daemon.ts": "2b8f17080275ef72b3612e4b446b9e951d203373c70bcec7b83e3b21c91d81ef",
+      "v2/harness/src/driver.ts": "df41b313a0ab97a637eddb5a3ba2be4456293776aa46acfd3eb29af5315a1442",
+      "v2/harness/src/faults.ts": "6152e965e33f1501f9beee0f5a3c42ce18a8b71897713043716a993de48cfc20",
+      "v2/harness/src/index.ts": "200de7850d2848f5b1d2afa72fdbd1490d2919efd8f77976508416ccb7b9a191",
+      "v2/harness/src/invariants.ts": "5ab63d4da3399534d6a2d9eff705d1c6c403e14b39b5749b5863bd7d04daccbb",
+      "v2/harness/src/prng.ts": "1be8ed3684abb058b30f83b89239385928abb14d8c24616ebf925c95af4639e8",
+      "v2/harness/src/sim-driver.ts": "70b5b013351a8a089e2b13509cb3abe5d8182b18e07f920859abc68e4dd10e31",
+      "v2/harness/src/simulation.ts": "9979407c9e3483294675c47b23b802a724adcea73681ae8d8480f47f5e2d650c"
+    },
+    "status": "",
+    "diffSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "beforeEnvironment": {
+    "node": "v24.18.0",
+    "platform": "darwin",
+    "release": "24.6.0",
+    "osVersion": "Darwin Kernel Version 24.6.0: Wed Nov  5 21:34:00 PST 2025; root:xnu-11417.140.69.705.2~1/RELEASE_ARM64_T8132",
+    "arch": "arm64",
+    "hostname": "Mac.home",
+    "bootIdentity": {
+      "method": "darwin-kern.bootsessionuuid-sha256",
+      "sha256": "e9278b19e15e59f2422e3cbfcd73a284c146b83b5bfa40e69c3053019b6d8732"
+    },
+    "cpu": "Apple M4",
+    "logicalCpus": 10,
+    "totalMemoryBytes": 17179869184,
+    "execArgv": [],
+    "nodeCompileCache": null,
+    "nodeOptionsSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "loadBefore": [
+      0.896484375,
+      1.0283203125,
+      1.216796875
+    ],
+    "loadAfter": [
+      1.1455078125,
+      1.07666015625,
+      1.2314453125
+    ]
+  },
+  "afterEnvironment": {
+    "node": "v24.18.0",
+    "platform": "darwin",
+    "release": "24.6.0",
+    "osVersion": "Darwin Kernel Version 24.6.0: Wed Nov  5 21:34:00 PST 2025; root:xnu-11417.140.69.705.2~1/RELEASE_ARM64_T8132",
+    "arch": "arm64",
+    "hostname": "Mac.home",
+    "bootIdentity": {
+      "method": "darwin-kern.bootsessionuuid-sha256",
+      "sha256": "e9278b19e15e59f2422e3cbfcd73a284c146b83b5bfa40e69c3053019b6d8732"
+    },
+    "cpu": "Apple M4",
+    "logicalCpus": 10,
+    "totalMemoryBytes": 17179869184,
+    "execArgv": [],
+    "nodeCompileCache": null,
+    "nodeOptionsSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "loadBefore": [
+      1.1455078125,
+      1.07666015625,
+      1.2314453125
+    ],
+    "loadAfter": [
+      1.2939453125,
+      1.1083984375,
+      1.24169921875
+    ]
+  },
+  "toolHashes": {
+    "read-hotspots.mjs": "6db79d9d8d54772f7c15c6f60fbb050b55675bfc9b9b8c0c114a44a3826101fd",
+    "sql-trace.mjs": "e16ef5f0cc9c265482a7ac08cc331cecb97709be12f0df4f5f9f04dcd903a754",
+    "report.mjs": "d1ad61cdac530c2748345235bc546166089e31e4e9614492a761fa3db3afbba7",
+    "boot-identity.mjs": "555b2a8de914ecba13defbd76542b65b6af15d204b156fb15f58ea9b8036d0fa"
+  },
+  "workload": {
+    "scale": "canonical",
+    "samples": 15,
+    "warmups": 3,
+    "scenarios": [
+      {
+        "id": "d05-boot-recovery-0-false",
+        "inventoryId": "D05",
+        "kind": "boot-recovery",
+        "operation": "DaemonCore.boot",
+        "fixture": {
+          "settledCommands": 0,
+          "thenRevive": false
+        }
+      },
+      {
+        "id": "d05-boot-recovery-1000-false",
+        "inventoryId": "D05",
+        "kind": "boot-recovery",
+        "operation": "DaemonCore.boot",
+        "fixture": {
+          "settledCommands": 1000,
+          "thenRevive": false
+        }
+      },
+      {
+        "id": "d05-boot-recovery-100000-false",
+        "inventoryId": "D05",
+        "kind": "boot-recovery",
+        "operation": "DaemonCore.boot",
+        "fixture": {
+          "settledCommands": 100000,
+          "thenRevive": false
+        }
+      },
+      {
+        "id": "d05-pending-stop-0-true",
+        "inventoryId": "D05",
+        "kind": "pending-stop",
+        "operation": "DaemonCore.step",
+        "fixture": {
+          "settledCommands": 0,
+          "futureQueuedStop": true
+        }
+      },
+      {
+        "id": "d05-pending-stop-1000-true",
+        "inventoryId": "D05",
+        "kind": "pending-stop",
+        "operation": "DaemonCore.step",
+        "fixture": {
+          "settledCommands": 1000,
+          "futureQueuedStop": true
+        }
+      },
+      {
+        "id": "d05-pending-stop-100000-true",
+        "inventoryId": "D05",
+        "kind": "pending-stop",
+        "operation": "DaemonCore.step",
+        "fixture": {
+          "settledCommands": 100000,
+          "futureQueuedStop": true
+        }
+      },
+      {
+        "id": "c07-flag-expiry-100000-1000",
+        "inventoryId": "C07",
+        "kind": "flag-expiry",
+        "operation": "CoreStore.expireFlags",
+        "fixture": {
+          "clearedFlags": 100000,
+          "activeFutureFlags": 1000
+        }
+      },
+      {
+        "id": "c09-held-idle-64",
+        "inventoryId": "C09",
+        "kind": "held-idle",
+        "operation": "DaemonCore.step",
+        "fixture": {
+          "bodyBytes": 64
+        }
+      },
+      {
+        "id": "c09-stopped-pending-64",
+        "inventoryId": "C09",
+        "kind": "stopped-pending",
+        "operation": "DaemonCore.step",
+        "fixture": {
+          "bodyBytes": 64
+        }
+      },
+      {
+        "id": "c09-pending-page-64",
+        "inventoryId": "C09",
+        "kind": "pending-page",
+        "operation": "CoreStore.pendingMail",
+        "fixture": {
+          "bodyBytes": 64
+        }
+      },
+      {
+        "id": "c09-held-idle-1048576",
+        "inventoryId": "C09",
+        "kind": "held-idle",
+        "operation": "DaemonCore.step",
+        "fixture": {
+          "bodyBytes": 1048576
+        }
+      },
+      {
+        "id": "c09-stopped-pending-1048576",
+        "inventoryId": "C09",
+        "kind": "stopped-pending",
+        "operation": "DaemonCore.step",
+        "fixture": {
+          "bodyBytes": 1048576
+        }
+      },
+      {
+        "id": "c09-pending-page-1048576",
+        "inventoryId": "C09",
+        "kind": "pending-page",
+        "operation": "CoreStore.pendingMail",
+        "fixture": {
+          "bodyBytes": 1048576
+        }
+      },
+      {
+        "id": "c10-full-100000-100000-0",
+        "inventoryId": "C10",
+        "kind": "full",
+        "operation": "CoreStore.listMessages",
+        "fixture": {
+          "totalMessages": 100000,
+          "targetMessages": 100000,
+          "unrelatedMessages": 0
+        }
+      },
+      {
+        "id": "c10-sparse-100020-20-100000",
+        "inventoryId": "C10",
+        "kind": "sparse",
+        "operation": "CoreStore.listMessages",
+        "fixture": {
+          "totalMessages": 100020,
+          "targetMessages": 20,
+          "unrelatedMessages": 100000
+        }
+      },
+      {
+        "id": "c22-enabled-empty-0",
+        "inventoryId": "C22",
+        "kind": "enabled-empty",
+        "operation": "DaemonCore.step",
+        "fixture": {
+          "supplies": 0
+        }
+      },
+      {
+        "id": "c22-enabled-empty-100",
+        "inventoryId": "C22",
+        "kind": "enabled-empty",
+        "operation": "DaemonCore.step",
+        "fixture": {
+          "supplies": 100
+        }
+      },
+      {
+        "id": "c22-enabled-empty-1000",
+        "inventoryId": "C22",
+        "kind": "enabled-empty",
+        "operation": "DaemonCore.step",
+        "fixture": {
+          "supplies": 1000
+        }
+      },
+      {
+        "id": "c22-enabled-paused-100",
+        "inventoryId": "C22",
+        "kind": "enabled-paused",
+        "operation": "DaemonCore.step",
+        "fixture": {
+          "supplies": 100
+        }
+      },
+      {
+        "id": "c22-enabled-paused-1000",
+        "inventoryId": "C22",
+        "kind": "enabled-paused",
+        "operation": "DaemonCore.step",
+        "fixture": {
+          "supplies": 1000
+        }
+      },
+      {
+        "id": "c25-audit-tail-1000000-20",
+        "inventoryId": "C25",
+        "kind": "audit-tail",
+        "operation": "CoreStore.auditTail",
+        "fixture": {
+          "unrelatedAuditRows": 1000000,
+          "targetAuditRows": 20
+        }
+      },
+      {
+        "id": "c18-rpc-hit-10000",
+        "inventoryId": "C18",
+        "kind": "rpc-hit",
+        "operation": "CoreStore.lookupRpcResult",
+        "fixture": {
+          "retainedRows": 10000
+        }
+      },
+      {
+        "id": "c18-rpc-insert-10000-9981-19",
+        "inventoryId": "C18",
+        "kind": "rpc-insert",
+        "operation": "CoreStore.recordRpcResult",
+        "fixture": {
+          "retentionRows": 10000,
+          "seedRows": 9981,
+          "distinctWrites": 19
+        }
+      },
+      {
+        "id": "c18-rpc-eviction-10000-10000-19",
+        "inventoryId": "C18",
+        "kind": "rpc-eviction",
+        "operation": "CoreStore.recordRpcResult",
+        "fixture": {
+          "retentionRows": 10000,
+          "seedRows": 10000,
+          "distinctWrites": 19
+        }
+      }
+    ],
+    "timingInstrumentation": "none",
+    "diagnosticInstrumentation": "one separate post-timing captureSql call per case",
+    "durability": "CoreStore production defaults: WAL/NORMAL during every timed operation",
+    "fixtureSeed": "offline SQLite with synchronous=OFF while CoreStore is closed",
+    "fixedNow": 1800000000000
+  },
+  "rows": [
+    {
+      "scenario": "d05-boot-recovery-0-false",
+      "metric": "operation.wall",
+      "unit": "ms",
+      "before": 0.05275000000000318,
+      "after": 0.05116599999999494,
+      "deltaPercent": -3.002843601911187,
+      "beforeP95": 0.07091599999998266,
+      "afterP95": 0.07133300000000986,
+      "n": 15
+    },
+    {
+      "scenario": "d05-boot-recovery-0-false",
+      "metric": "operation.cpu",
+      "unit": "ms",
+      "before": 0.054,
+      "after": 0.052,
+      "deltaPercent": -3.703703703703709,
+      "beforeP95": 0.122,
+      "afterP95": 0.128,
+      "n": 15
+    },
+    {
+      "scenario": "d05-boot-recovery-1000-false",
+      "metric": "operation.wall",
+      "unit": "ms",
+      "before": 0.15083300000000577,
+      "after": 0.14579200000000014,
+      "deltaPercent": -3.3421068333888693,
+      "beforeP95": 0.1722910000000013,
+      "afterP95": 0.17150000000000887,
+      "n": 15
+    },
+    {
+      "scenario": "d05-boot-recovery-1000-false",
+      "metric": "operation.cpu",
+      "unit": "ms",
+      "before": 0.152,
+      "after": 0.148,
+      "deltaPercent": -2.631578947368418,
+      "beforeP95": 0.199,
+      "afterP95": 0.191,
+      "n": 15
+    },
+    {
+      "scenario": "d05-boot-recovery-100000-false",
+      "metric": "operation.wall",
+      "unit": "ms",
+      "before": 11.441000000000031,
+      "after": 11.426000000000045,
+      "deltaPercent": -0.1311074206798879,
+      "beforeP95": 11.698709000000008,
+      "afterP95": 11.886292000000026,
+      "n": 15
+    },
+    {
+      "scenario": "d05-boot-recovery-100000-false",
+      "metric": "operation.cpu",
+      "unit": "ms",
+      "before": 11.442,
+      "after": 11.427,
+      "deltaPercent": -0.13109596224436526,
+      "beforeP95": 11.7,
+      "afterP95": 11.887,
+      "n": 15
+    },
+    {
+      "scenario": "d05-pending-stop-0-true",
+      "metric": "operation.wall",
+      "unit": "ms",
+      "before": 0.0382089999998243,
+      "after": 0.03879099999994651,
+      "deltaPercent": 1.5232013403252642,
+      "beforeP95": 0.06199999999989814,
+      "afterP95": 0.06166700000017045,
+      "n": 15
+    },
+    {
+      "scenario": "d05-pending-stop-0-true",
+      "metric": "operation.cpu",
+      "unit": "ms",
+      "before": 0.046,
+      "after": 0.04,
+      "deltaPercent": -13.043478260869556,
+      "beforeP95": 0.125,
+      "afterP95": 0.133,
+      "n": 15
+    },
+    {
+      "scenario": "d05-pending-stop-1000-true",
+      "metric": "operation.wall",
+      "unit": "ms",
+      "before": 0.028833000000076936,
+      "after": 0.030250000000023647,
+      "deltaPercent": 4.914507681971814,
+      "beforeP95": 0.034874999999829015,
+      "afterP95": 0.035332999999809545,
+      "n": 15
+    },
+    {
+      "scenario": "d05-pending-stop-1000-true",
+      "metric": "operation.cpu",
+      "unit": "ms",
+      "before": 0.029,
+      "after": 0.031,
+      "deltaPercent": 6.896551724137923,
+      "beforeP95": 0.037,
+      "afterP95": 0.038,
+      "n": 15
+    },
+    {
+      "scenario": "d05-pending-stop-100000-true",
+      "metric": "operation.wall",
+      "unit": "ms",
+      "before": 0.033083000000260654,
+      "after": 0.03170899999986432,
+      "deltaPercent": -4.153190461522572,
+      "beforeP95": 0.04641700000001947,
+      "afterP95": 0.04554099999995742,
+      "n": 15
+    },
+    {
+      "scenario": "d05-pending-stop-100000-true",
+      "metric": "operation.cpu",
+      "unit": "ms",
+      "before": 0.035,
+      "after": 0.035,
+      "deltaPercent": 0,
+      "beforeP95": 0.095,
+      "afterP95": 0.091,
+      "n": 15
+    },
+    {
+      "scenario": "c07-flag-expiry-100000-1000",
+      "metric": "operation.wall",
+      "unit": "ms",
+      "before": 2.263500000000022,
+      "after": 2.291334000000006,
+      "deltaPercent": 1.2296885354532439,
+      "beforeP95": 2.2916669999999613,
+      "afterP95": 2.65566600000011,
+      "n": 15
+    },
+    {
+      "scenario": "c07-flag-expiry-100000-1000",
+      "metric": "operation.cpu",
+      "unit": "ms",
+      "before": 2.269,
+      "after": 2.292,
+      "deltaPercent": 1.013662406346394,
+      "beforeP95": 2.375,
+      "afterP95": 2.909,
+      "n": 15
+    },
+    {
+      "scenario": "c09-held-idle-64",
+      "metric": "operation.wall",
+      "unit": "ms",
+      "before": 0.03333399999974063,
+      "after": 0.0316250000000764,
+      "deltaPercent": -5.126897461083358,
+      "beforeP95": 0.04279099999985192,
+      "afterP95": 0.04216599999972459,
+      "n": 15
+    },
+    {
+      "scenario": "c09-held-idle-64",
+      "metric": "operation.cpu",
+      "unit": "ms",
+      "before": 0.035,
+      "after": 0.032,
+      "deltaPercent": -8.571428571428575,
+      "beforeP95": 0.07,
+      "afterP95": 0.064,
+      "n": 15
+    },
+    {
+      "scenario": "c09-stopped-pending-64",
+      "metric": "operation.wall",
+      "unit": "ms",
+      "before": 0.027458999999907974,
+      "after": 0.028000000000247383,
+      "deltaPercent": 1.970210132711392,
+      "beforeP95": 0.029917000000295957,
+      "afterP95": 0.03062499999987267,
+      "n": 15
+    },
+    {
+      "scenario": "c09-stopped-pending-64",
+      "metric": "operation.cpu",
+      "unit": "ms",
+      "before": 0.028,
+      "after": 0.029,
+      "deltaPercent": 3.571428571428581,
+      "beforeP95": 0.03,
+      "afterP95": 0.032,
+      "n": 15
+    },
+    {
+      "scenario": "c09-pending-page-64",
+      "metric": "operation.wall",
+      "unit": "ms",
+      "before": 0.014874999999847205,
+      "after": 0.01341599999977916,
+      "deltaPercent": -9.808403361902728,
+      "beforeP95": 0.024875000000065484,
+      "afterP95": 0.023082999999587628,
+      "n": 15
+    },
+    {
+      "scenario": "c09-pending-page-64",
+      "metric": "operation.cpu",
+      "unit": "ms",
+      "before": 0.015,
+      "after": 0.014,
+      "deltaPercent": -6.666666666666665,
+      "beforeP95": 0.054,
+      "afterP95": 0.048,
+      "n": 15
+    },
+    {
+      "scenario": "c09-held-idle-1048576",
+      "metric": "operation.wall",
+      "unit": "ms",
+      "before": 0.15395800000032978,
+      "after": 0.14549999999962893,
+      "deltaPercent": -5.493706076126436,
+      "beforeP95": 0.16466700000000856,
+      "afterP95": 0.17858300000034433,
+      "n": 15
+    },
+    {
+      "scenario": "c09-held-idle-1048576",
+      "metric": "operation.cpu",
+      "unit": "ms",
+      "before": 0.154,
+      "after": 0.146,
+      "deltaPercent": -5.1948051948051965,
+      "beforeP95": 0.164,
+      "afterP95": 0.179,
+      "n": 15
+    },
+    {
+      "scenario": "c09-stopped-pending-1048576",
+      "metric": "operation.wall",
+      "unit": "ms",
+      "before": 0.2170419999997648,
+      "after": 0.20587499999965075,
+      "deltaPercent": -5.145087126052172,
+      "beforeP95": 0.27404200000000856,
+      "afterP95": 0.24404199999980847,
+      "n": 15
+    },
+    {
+      "scenario": "c09-stopped-pending-1048576",
+      "metric": "operation.cpu",
+      "unit": "ms",
+      "before": 0.217,
+      "after": 0.207,
+      "deltaPercent": -4.608294930875578,
+      "beforeP95": 0.274,
+      "afterP95": 0.244,
+      "n": 15
+    },
+    {
+      "scenario": "c09-pending-page-1048576",
+      "metric": "operation.wall",
+      "unit": "ms",
+      "before": 0.02562499999976353,
+      "after": 0.025833000000147877,
+      "deltaPercent": 0.8117073185805346,
+      "beforeP95": 0.02679199999965931,
+      "afterP95": 0.032458999999562366,
+      "n": 15
+    },
+    {
+      "scenario": "c09-pending-page-1048576",
+      "metric": "operation.cpu",
+      "unit": "ms",
+      "before": 0.026,
+      "after": 0.026,
+      "deltaPercent": 0,
+      "beforeP95": 0.03,
+      "afterP95": 0.032,
+      "n": 15
+    },
+    {
+      "scenario": "c10-full-100000-100000-0",
+      "metric": "operation.wall",
+      "unit": "ms",
+      "before": 105.24487499999987,
+      "after": 102.97987499999999,
+      "deltaPercent": -2.1521237970018703,
+      "beforeP95": 112.44849999999951,
+      "afterP95": 119.09641699999975,
+      "n": 15
+    },
+    {
+      "scenario": "c10-full-100000-100000-0",
+      "metric": "operation.cpu",
+      "unit": "ms",
+      "before": 130.531,
+      "after": 133.955,
+      "deltaPercent": 2.623131669871537,
+      "beforeP95": 182.434,
+      "afterP95": 202.985,
+      "n": 15
+    },
+    {
+      "scenario": "c10-sparse-100020-20-100000",
+      "metric": "operation.wall",
+      "unit": "ms",
+      "before": 3.487042000000656,
+      "after": 3.5071250000000873,
+      "deltaPercent": 0.5759322657836519,
+      "beforeP95": 3.5357920000005834,
+      "afterP95": 3.555790999999772,
+      "n": 15
+    },
+    {
+      "scenario": "c10-sparse-100020-20-100000",
+      "metric": "operation.cpu",
+      "unit": "ms",
+      "before": 3.487,
+      "after": 3.509,
+      "deltaPercent": 0.6309148264984188,
+      "beforeP95": 3.632,
+      "afterP95": 3.615,
+      "n": 15
+    },
+    {
+      "scenario": "c22-enabled-empty-0",
+      "metric": "operation.wall",
+      "unit": "ms",
+      "before": 0.02275000000008731,
+      "after": 0.0224579999994603,
+      "deltaPercent": -1.2835164862676551,
+      "beforeP95": 0.028959000000213564,
+      "afterP95": 0.029958000000078755,
+      "n": 15
+    },
+    {
+      "scenario": "c22-enabled-empty-0",
+      "metric": "operation.cpu",
+      "unit": "ms",
+      "before": 0.023,
+      "after": 0.023,
+      "deltaPercent": 0,
+      "beforeP95": 0.066,
+      "afterP95": 0.038,
+      "n": 15
+    },
+    {
+      "scenario": "c22-enabled-empty-100",
+      "metric": "operation.wall",
+      "unit": "ms",
+      "before": 1.2460000000000946,
+      "after": 1.2185829999998532,
+      "deltaPercent": -2.2004012841283505,
+      "beforeP95": 1.2954579999995985,
+      "afterP95": 1.2782079999997222,
+      "n": 15
+    },
+    {
+      "scenario": "c22-enabled-empty-100",
+      "metric": "operation.cpu",
+      "unit": "ms",
+      "before": 1.252,
+      "after": 1.222,
+      "deltaPercent": -2.396166134185307,
+      "beforeP95": 1.658,
+      "afterP95": 1.644,
+      "n": 15
+    },
+    {
+      "scenario": "c22-enabled-empty-1000",
+      "metric": "operation.wall",
+      "unit": "ms",
+      "before": 12.456207999999606,
+      "after": 12.547332999999526,
+      "deltaPercent": 0.7315629282998781,
+      "beforeP95": 22.533124999999927,
+      "afterP95": 20.46654099999978,
+      "n": 15
+    },
+    {
+      "scenario": "c22-enabled-empty-1000",
+      "metric": "operation.cpu",
+      "unit": "ms",
+      "before": 12.585,
+      "after": 12.634,
+      "deltaPercent": 0.389352403655141,
+      "beforeP95": 23.368,
+      "afterP95": 23.033,
+      "n": 15
+    },
+    {
+      "scenario": "c22-enabled-paused-100",
+      "metric": "operation.wall",
+      "unit": "ms",
+      "before": 1.2432079999998678,
+      "after": 1.228041999999732,
+      "deltaPercent": -1.219908494808375,
+      "beforeP95": 1.2712500000006912,
+      "afterP95": 1.2674999999999272,
+      "n": 15
+    },
+    {
+      "scenario": "c22-enabled-paused-100",
+      "metric": "operation.cpu",
+      "unit": "ms",
+      "before": 1.245,
+      "after": 1.228,
+      "deltaPercent": -1.3654618473895708,
+      "beforeP95": 3.71,
+      "afterP95": 3.796,
+      "n": 15
+    },
+    {
+      "scenario": "c22-enabled-paused-1000",
+      "metric": "operation.wall",
+      "unit": "ms",
+      "before": 12.628666000000521,
+      "after": 12.475040999999692,
+      "deltaPercent": -1.2164784467403211,
+      "beforeP95": 21.152500000000146,
+      "afterP95": 20.80304099999921,
+      "n": 15
+    },
+    {
+      "scenario": "c22-enabled-paused-1000",
+      "metric": "operation.cpu",
+      "unit": "ms",
+      "before": 12.629,
+      "after": 12.479,
+      "deltaPercent": -1.1877424974265582,
+      "beforeP95": 22.849,
+      "afterP95": 20.894,
+      "n": 15
+    },
+    {
+      "scenario": "c25-audit-tail-1000000-20",
+      "metric": "operation.wall",
+      "unit": "ms",
+      "before": 28.907000000000153,
+      "after": 29.793125000000146,
+      "deltaPercent": 3.0654339779291773,
+      "beforeP95": 29.457957999999962,
+      "afterP95": 30.320666999999958,
+      "n": 15
+    },
+    {
+      "scenario": "c25-audit-tail-1000000-20",
+      "metric": "operation.cpu",
+      "unit": "ms",
+      "before": 28.908,
+      "after": 29.793,
+      "deltaPercent": 3.061436280614349,
+      "beforeP95": 29.459,
+      "afterP95": 30.321,
+      "n": 15
+    },
+    {
+      "scenario": "c18-rpc-hit-10000",
+      "metric": "operation.wall",
+      "unit": "ms",
+      "before": 0.005417000000306871,
+      "after": 0.006290999999691849,
+      "deltaPercent": 16.134391717472152,
+      "beforeP95": 0.007999999999810825,
+      "afterP95": 0.009874999999738066,
+      "n": 15
+    },
+    {
+      "scenario": "c18-rpc-hit-10000",
+      "metric": "operation.cpu",
+      "unit": "ms",
+      "before": 0.006,
+      "after": 0.006,
+      "deltaPercent": 0,
+      "beforeP95": 0.01,
+      "afterP95": 0.011,
+      "n": 15
+    },
+    {
+      "scenario": "c18-rpc-insert-10000-9981-19",
+      "metric": "operation.wall",
+      "unit": "ms",
+      "before": 0.016499999999723514,
+      "after": 0.0224579999994603,
+      "deltaPercent": 36.109090908100725,
+      "beforeP95": 0.018958000000566244,
+      "afterP95": 0.028417000000445114,
+      "n": 15
+    },
+    {
+      "scenario": "c18-rpc-insert-10000-9981-19",
+      "metric": "operation.cpu",
+      "unit": "ms",
+      "before": 0.017,
+      "after": 0.024,
+      "deltaPercent": 41.17647058823528,
+      "beforeP95": 0.066,
+      "afterP95": 0.086,
+      "n": 15
+    },
+    {
+      "scenario": "c18-rpc-eviction-10000-10000-19",
+      "metric": "operation.wall",
+      "unit": "ms",
+      "before": 0.23458300000129384,
+      "after": 0.042749999999614374,
+      "deltaPercent": -81.77617303923192,
+      "beforeP95": 0.25354200000037963,
+      "afterP95": 0.04749999999967258,
+      "n": 15
+    },
+    {
+      "scenario": "c18-rpc-eviction-10000-10000-19",
+      "metric": "operation.cpu",
+      "unit": "ms",
+      "before": 0.236,
+      "after": 0.043,
+      "deltaPercent": -81.77966101694916,
+      "beforeP95": 0.254,
+      "afterP95": 0.051,
+      "n": 15
+    }
+  ],
+  "comparatorSha256": "6da4cee227ed000f833ff7edf8d9f09bb1eb0bea59ecb0b062f4ec633d4c71b0"
+}
