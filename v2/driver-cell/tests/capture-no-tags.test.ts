@@ -7,7 +7,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { captureWork, type CaptureMode, type CaptureReport } from "../src/capture.ts";
 import { provisionCell } from "../src/provision.ts";
 import { commitInCell, commitOn, fingerprintOrigin, fsckClean, g, makeRig } from "./helpers.ts";
@@ -170,7 +170,10 @@ function assertScratchCloneTrace(fixture: Fixture, tracePath: string, spec: Case
   assert.equal(clones.length, 1, `${spec.name}: expected exactly one scratch clone`);
   const clone = clones[0];
   assert.ok(clone);
-  assert.deepEqual(clone.slice(0, 6), ["git", "clone", "--quiet", "--shared", "--no-checkout", "--no-tags"]);
+  const executable = clone[0];
+  assert.ok(executable);
+  assert.equal(basename(executable), "git");
+  assert.deepEqual(clone.slice(1, 6), ["clone", "--quiet", "--shared", "--no-checkout", "--no-tags"]);
   assert.equal(clone.length, 8);
   assert.equal(clone[6], fixture.rig.origin.repo);
   const destination = clone[7];
