@@ -110,11 +110,13 @@ test("v6.parenting: parent_id at create; children read; archive parent leaves ch
     const { bee: c2 } = store.createBee({ name: "c2", agent: "stub", substrate: "hsr", cwd: "/tmp", parentId: parent.id });
     const { bee: grandchild } = store.createBee({ name: "g", agent: "stub", substrate: "hsr", cwd: "/tmp", parentId: c1.id });
     assert.equal(c1.parentId, parent.id);
+    assert.equal(c1.parentExternal, false);
     assert.deepEqual(store.listChildren(parent.id).map((b) => b.id).sort(), [c1.id, c2.id].sort());
     assert.deepEqual(store.listChildren(c1.id).map((b) => b.id), [grandchild.id]);
     // bee.created carries parentId (the mirror learns it from the row)
     const created = store.auditRows().find((r) => r.kind === "bee.created" && r.beeId === c1.id);
     assert.equal((created?.payload.bee as { parentId: string }).parentId, parent.id);
+    assert.equal((created?.payload.bee as { parentExternal: boolean }).parentExternal, false);
 
     // archive parent ≠ archive children
     store.archiveBee(parent.id);
@@ -160,6 +162,7 @@ test("v6.fork-seed: forkedFrom/forkSeed at create; recording the fork's own sess
       forkSeed: "src-session",
     });
     assert.equal(fork.forkedFrom, source.id);
+    assert.equal(fork.parentExternal, false, "fork lineage is always local");
     assert.equal(fork.forkSeed, "src-session");
     assert.equal(fork.providerSessionId, null, "the fork owns no session until its runtime reports one");
     store.recordFork(fork.id, source.id, "src-session");
@@ -303,6 +306,7 @@ test("v6.migration: a v5 store opens as v6 — parent_id/forked_from/fork_seed a
     const store = h.open();
     const old = store.getBee("old-1");
     assert.equal(old?.parentId, null);
+    assert.equal(old?.parentExternal, false, "pre-v21 rows migrate as local lineage");
     assert.equal(old?.forkedFrom, null);
     assert.equal(old?.forkSeed, null);
     assert.equal(old?.providerSessionId, "sid-old", "v3 data intact");
@@ -317,9 +321,9 @@ test("v6.migration: a v5 store opens as v6 — parent_id/forked_from/fork_seed a
     try {
       const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
       assert.equal(Number(version.value), SCHEMA_VERSION);
-      assert.equal(SCHEMA_VERSION, 20);
+      assert.equal(SCHEMA_VERSION, 21);
       const cols = (check.prepare("SELECT name FROM pragma_table_info('bees')").all() as Array<{ name: string }>).map((c) => c.name);
-      for (const c of ["parent_id", "forked_from", "fork_seed", "args", "spawn_failures"]) assert.ok(cols.includes(c), c);
+      for (const c of ["parent_id", "parent_external", "forked_from", "fork_seed", "args", "spawn_failures"]) assert.ok(cols.includes(c), c);
       const tables = (check.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{ name: string }>).map((t) => t.name);
       assert.ok(tables.includes("questions") && tables.includes("seals"));
     } finally {

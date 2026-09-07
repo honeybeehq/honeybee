@@ -73,7 +73,11 @@ function checkInvariants(dump: StateDump): void {
     if (q.deliveryMessageId != null) assert.ok(dump.mailbox.some((m) => m.id === q.deliveryMessageId && m.beeId === q.beeId));
   }
   for (const sl of dump.seals) assert.ok(beeIds.has(sl.beeId));
-  for (const bee of dump.bees) if (bee.parentId != null) assert.ok(beeIds.has(bee.parentId), `dangling parent ${bee.parentId}`);
+  for (const bee of dump.bees) {
+    if (bee.parentId != null && !bee.parentExternal) {
+      assert.ok(beeIds.has(bee.parentId), `dangling local parent ${bee.parentId}`);
+    }
+  }
   // v7: a bee's account binding names a live account (remove refuses while
   // referenced); limits rows and cursors only ever name live accounts.
   const accountIds = new Set(dump.accounts.map((a) => a.id));

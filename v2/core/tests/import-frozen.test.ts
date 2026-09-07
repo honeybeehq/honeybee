@@ -145,6 +145,7 @@ test("import.2: mapping — id preserved, provider session id + harness home env
     assert.equal(claude.sessionLogPath, join(fx.root, "homes", "claude-fixture-account", "projects", "-tmp-fixture-apiary", `${CLAUDE_HSR_SESSION_ID}.jsonl`));
     assert.deepEqual(claude.env, { CLAUDE_CONFIG_DIR: join(fx.root, "homes", "claude-fixture-account") });
     assert.equal(claude.importedFrom, "frozen");
+    assert.equal(claude.parentExternal, false, "frozen imports default to local lineage");
     assert.equal(claude.createdAt, Date.parse("2026-08-17T11:48:37.633Z"));
     assert.equal(claude.lifecycle, "active");
     const rt = store.currentRuntime("CL.fe6f");
@@ -422,13 +423,14 @@ test("import.9: store v3 — recordProviderSessionId is bee-scoped, idempotent, 
     assert.equal(old?.importedFrom, null);
     assert.equal(old?.spawnFailures, 0); // v4 column, defaulted by the migration
     assert.equal(old?.args, null); // v5 column, NULL by the migration
+    assert.equal(old?.parentExternal, false); // v21 column, false by the migration
     store.recordProviderSessionId("old-1", "after-migration");
     store.close();
     const check = new DatabaseSync(h2.path, { readOnly: true });
     try {
       const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
       assert.equal(Number(version.value), SCHEMA_VERSION);
-      assert.equal(SCHEMA_VERSION, 20);
+      assert.equal(SCHEMA_VERSION, 21);
     } finally {
       check.close();
     }

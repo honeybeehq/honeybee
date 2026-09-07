@@ -116,8 +116,12 @@
  *        CHECK, so the migration rebuilds the table and carries rows across.
  *  v20 — earned Codex reset credits: adds the nullable
  *        `account_limits.rate_limit_reset_credits` JSON snapshot.
+ *  v21 — bounded external-parent lineage: adds `bees.parent_external`, a
+ *        required boolean flag that distinguishes a globally unique parent
+ *        owned outside this node from the existing local soft reference.
+ *        Existing rows default to local lineage (`0`).
  */
-export const SCHEMA_VERSION = 20;
+export const SCHEMA_VERSION = 21;
 
 /**
  * Current shape shared between SCHEMA_SQL and the v19 table rebuild so a
@@ -186,8 +190,12 @@ CREATE TABLE IF NOT EXISTS bees (
   -- spec args < spec defaultArgs < bee args < resume args; later wins per flag).
   args             TEXT,
   -- v6: the bee that spawned this one (soft reference — no FK, so a parent
-  -- may be deleted; delete ORPHANS children by nulling this, never cascades).
+  -- may be deleted; delete ORPHANS local children by nulling this, never
+  -- cascades).
   parent_id        TEXT,
+  -- v21: true when parent_id names a parent owned outside this node. This is
+  -- durable provenance, never a local foreign key or a delete-cascade edge.
+  parent_external  INTEGER NOT NULL DEFAULT 0 CHECK (parent_external IN (0,1)),
   -- v6: provenance — the bee this one was forked from (soft reference).
   forked_from      TEXT,
   -- v6: one-shot fork seed — the SOURCE's provider session id the first
@@ -536,7 +544,8 @@ CREATE TABLE IF NOT EXISTS tracks (
 /**
  * Additive columns on `bees` since v2 — name → ADD COLUMN clause (migration =
  * add iff missing). v3: provider_session_id, env, imported_from; v4:
- * spawn_failures; v5: args; v6: parent_id, forked_from, fork_seed; v7: account.
+ * spawn_failures; v5: args; v6: parent_id, forked_from, fork_seed; v7:
+ * account; v21: parent_external.
  */
 export const BEES_ADDITIVE_COLUMNS: ReadonlyArray<readonly [name: string, ddl: string]> = [
   ["provider_session_id", "provider_session_id TEXT"],
@@ -545,6 +554,7 @@ export const BEES_ADDITIVE_COLUMNS: ReadonlyArray<readonly [name: string, ddl: s
   ["spawn_failures", "spawn_failures INTEGER NOT NULL DEFAULT 0"],
   ["args", "args TEXT"],
   ["parent_id", "parent_id TEXT"],
+  ["parent_external", "parent_external INTEGER NOT NULL DEFAULT 0 CHECK (parent_external IN (0,1))"],
   ["forked_from", "forked_from TEXT"],
   ["fork_seed", "fork_seed TEXT"],
   ["account", "account TEXT"],
