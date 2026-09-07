@@ -36,3 +36,6 @@ No regression observed,Pending over same-Bee delivered history,0.024,0.024,ms CP
 Baseline; candidate pending,Cell capture packed-tag scaling,90.703625,162.514209,ms wall,0 versus10k tags;12files14commits,cell-ref-fanout-results.md
 Landed,Repeated empty mailbox read,6.981,0.311,us CPU/call,1000calls/batch;warmed constant SQL,mailbox-statement-cache-results.md
 Landed,Repeated twenty-row mailbox read,25.957,18.438,us CPU/call,1000calls/batch;warmed constant SQL,mailbox-statement-cache-results.md
+Landed,Cell capture with10k packed tags,163.662834,97.631292,ms wall,12samples/side;4process ABBA;12files14commits,cell-no-tags-results.md
+Landed; temporary snapshot,Cell scratch clone logical bytes,757684,27704,bytes,10k packed tags;after no-checkout clone,cell-no-tags-results.md
+Diagnostic; max individual process,Cell capture Git RSS,16220160,8093696,bytes,first paired diagnostic at10k tags;not whole-tree RAM,cell-no-tags-results.md

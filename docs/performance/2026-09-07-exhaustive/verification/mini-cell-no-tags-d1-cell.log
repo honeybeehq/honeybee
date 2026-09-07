@@ -1,0 +1,114 @@
+✔ shared no-tags clone keeps tag-only objects available by OID through its alternate (158.499417ms)
+✖ packed source tags do not change clean merge, checkout-conflict, or rebase capture semantics (789.917125ms)
+✔ parity: clean merges, attributes, renames, modes, gitlinks, conflicts, case collisions, and forced fallback (7358.794042ms)
+✔ capture.branch-create: cell work lands as a new branch; only that branch appears (201.448334ms)
+✔ capture.fast-forward: existing target advances by CAS (166.141416ms)
+✔ capture.merge: diverged target gets a merge commit; origin worktree untouched (313.201209ms)
+✔ capture.rebase: cell commits replay onto the target tip (269.454917ms)
+✔ capture.rebase: work already on the target in rewritten form reports nothing_to_capture (349.569833ms)
+✔ capture.conflict: structured report, origin ref-set bit-identical, transient ref gone (708.256875ms)
+✔ capture.refusals: checked-out target, moved target, nothing to capture (286.639875ms)
+✔ cell-driver.roundtrip: start provisions the cell, runtime runs in the space, full turn cycle (388.818541ms)
+✔ cell-driver.background: start returns before provisioning and later boots from the durable ledger (260.337833ms)
+✔ cell-driver.background: first Cell ensures the image before boot and the next Cell stays hot (726.315375ms)
+✔ cell-driver.background: satellites do not build the workstation-local Git image (301.456459ms)
+✔ cell-driver.background: worker exit without a result becomes a boot failure (73.874167ms)
+✔ cell-driver.exit-path: work committed in the live cell captures out; removeCell guards (461.272667ms)
+✔ cell-driver.restart-hydration: a fresh driver re-hydrates cells from cell.json (capture + delete work) (327.151083ms)
+✔ cell-driver.reserved-only: a cell reserved (seed ledger) but never started removes outright; sessions delegate; typed live-runtime refusal (232.963625ms)
+✔ cell-driver.sandboxed: per-cell override ON wraps the spawn in Seatbelt; the turn still works (darwin) (429.3895ms)
+✔ cell-driver.workstation-default: sandbox stays OFF without an override (A4) (243.588125ms)
+✔ cell-driver.account-home: the bee resolver adds one exact sandbox grant and ignores harness env (108.225958ms)
+✔ cell-driver.restart: a successor daemon re-adopts a live cell runtime from the ledger at full capability (577.177541ms)
+✔ exec.cwd: relative-only and realpath containment rejects a symlink out of the space (1.841834ms)
+✔ exec.cap: incomplete tail is dropped, complete multibyte suffix is kept (0.204333ms)
+✔ exec.cap: split multibyte chunks reassemble; malformed replacement stays within 1MiB (14.405708ms)
+✔ exec.cap: stdout and stderr share one 1MiB budget (28.777ms)
+✔ exec.spawn: an onSpawned failure terminates and reaps the process (3.106041ms)
+✔ exec.spawn: argv spawn errors reject with their cause (0.803584ms)
+✔ exec.timeout: SIGTERM-ignoring child is SIGKILL-reaped before resolve (1513.061917ms)
+✔ git-image.refresh: publishes one validated pack-only generation without mutating the origin (181.570708ms)
+✔ git-image.provision: hot Cell copies the compact image, not origin metadata (179.262041ms)
+✔ git-image.provision: fresh config avoids config subprocesses and preserves init semantics (401.096291ms)
+✔ git-image.provision: large template config uses Git's writer (200.226334ms)
+✔ git-image.provision: Git fallback preserves control paths and replaces template safety keys (230.31125ms)
+✔ git-image.provision: symlinked template config retains Git's update behavior (185.145333ms)
+✔ git-image.materialize: template multivalue and config lock remain cache misses (305.8505ms)
+✔ git-image.provision: preserves absent, same, and rewritten split remotes (803.856042ms)
+✔ git-image.provision: the first Cell builds an image in its worker and uses it (174.865792ms)
+✔ git-image.refresh: first generation CoW-seeds origin packs and packs only the loose delta (185.749167ms)
+✔ git-image.provision: a stale image is incrementally extended before checkout (297.110416ms)
+✔ git-image.corruption: malformed publication is rebuilt before Cell placement (221.5075ms)
+✔ git-image.policy: an existing image is ignored when the node policy disables local images (139.659917ms)
+✔ git-image.lock: a provisioning contender waits for publication, then extends the image (488.876667ms)
+✔ git-image.lock: live builder is single-flight and a stale lock is recovered (321.670833ms)
+✔ provision-worker: a fresh image hit exits after ready without maintenance Git children (315.268209ms)
+✔ provision-worker: a replayed ledger rebuilds a missing image after maintenance starts (531.734458ms)
+✔ provision-worker: an incomplete image operation keeps maintenance after replay resumes (440.018792ms)
+✔ provision-worker: image failure fallback keeps the deferred retry (312.868541ms)
+✔ provision-worker: provisioning errors stay failed and do not enter maintenance (70.446958ms)
+✔ provision.cow: CoW path places .git, records copy_mode=cow, hygiene applied (170.385625ms)
+✔ provision.clone: fallback places a fresh .git, records copy_mode=clone, needs no hygiene (74.071ms)
+✔ provision.layout: wrapper/space/box shape and clean space checkout (64.794334ms)
+✔ provision.replay: interrupted provisioning (partial space, no recorded step) replays idempotently (78.514166ms)
+✔ provision.replay: mismatched bee/sha refuses instead of clobbering (73.50375ms)
+✔ provision.warm: CoW copy-in of listed artifact dirs (A5) (182.46ms)
+✔ provision.warm: no CoW → cold, no fallback copy (the A5 ruling) (80.71675ms)
+✔ provision.warm: nothing listed → cold(none_listed), default off (69.405583ms)
+✔ provision.reserve: reserveCell writes the seed ledger (origin/sha/warm/sandbox, no operations); provisionCell then provisions against it; the inverse (provisionRequestOf) round-trips; mismatches refuse (70.093584ms)
+✔ delete.clean: a pristine cell deletes without force (83.412125ms)
+✔ delete.dirty-uncommitted: refuses without force; force deletes (A2) (98.283333ms)
+✔ delete.dirty-unpushed: commits the origin never saw refuse; captured work deletes clean (381.707ms)
+✔ delete.origin-gone: unknown origin counts as dirty (refuse without force) (179.71875ms)
+✔ delete.shape: refuses anything that is not a -space- shaped cell wrapper (37.731875ms)
+✔ delete.half-provisioned: a wrapper whose space has no .git deletes fine (37.069792ms)
+✔ sandbox.defaults: workstation OFF, satellite ON, cloud OFF (A4) (0.348167ms)
+✔ sandbox.override: per-cell override beats the node-kind default (0.055667ms)
+✔ sandbox.profile: Seatbelt profile confines writes to cell + harness paths, allows the rest (23.510625ms)
+✔ sandbox.bwrap: argv is read-only root + rw cell/harness binds + net (pure, all platforms) (0.200167ms)
+✔ sandbox.account-home: bwrap grants the exact bound home, never its parent or a sibling (1.09475ms)
+✔ sandbox.account-home validation rejects relative, missing, root, OS-home, and broad symlink targets (0.929666ms)
+✔ sandbox.wrap: platform dispatch (darwin sandbox-exec -f, linux bwrap, other throws) (0.130584ms)
+✔ sandbox.seatbelt-real: sandbox-exec confines writes to the cell (darwin) (25.777ms)
+﹣ sandbox.bwrap-real: bwrap confines writes to the cell (linux — metal-3 gate) (0.084ms) # SKIP
+ℹ tests 73
+ℹ suites 0
+ℹ pass 71
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 24788.232292
+
+✖ failing tests:
+
+test at v2/driver-cell/tests/capture-no-tags.test.ts:315:1
+✖ packed source tags do not change clean merge, checkout-conflict, or rebase capture semantics (789.917125ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+
+    [
+  +   '/Library/Developer/CommandLineTools/usr/bin/git',
+  -   'git',
+      'clone',
+      '--quiet',
+      '--shared',
+      '--no-checkout',
+      '--no-tags'
+
+      at assertScratchCloneTrace (file:///private/tmp/honeybee-perf-5763a6c9-20260907/cell-no-tags-d1/v2/driver-cell/tests/capture-no-tags.test.ts:173:10)
+      at runCapture (file:///private/tmp/honeybee-perf-5763a6c9-20260907/cell-no-tags-d1/v2/driver-cell/tests/capture-no-tags.test.ts:266:3)
+      at TestContext.<anonymous> (file:///private/tmp/honeybee-perf-5763a6c9-20260907/cell-no-tags-d1/v2/driver-cell/tests/capture-no-tags.test.ts:334:31)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [ '/Library/Developer/CommandLineTools/usr/bin/git', 'clone', '--quiet', '--shared', '--no-checkout', '--no-tags' ],
+    expected: [ 'git', 'clone', '--quiet', '--shared', '--no-checkout', '--no-tags' ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }

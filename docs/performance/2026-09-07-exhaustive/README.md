@@ -56,3 +56,5 @@ The [workflow](workflow.md) defines the completion predicate. [The decision log]
 [Sparse mailbox history](c10-mailbox-history-results.md) records the ordered UNION improvement and its giant-read, write, open and storage costs. [Cell ref fanout](cell-ref-fanout-results.md) adds packed-tag, scratch-storage and clone-resource baselines for the next isolated candidate.
 
 [Mailbox statement reuse](mailbox-statement-cache-results.md) records the subsequent C03 gain. [Automatic-title investigation](autotitle-read-investigation.md) records call counts, rejected shortcuts and rollback constraints for future work.
+
+[Cell tag omission](cell-no-tags-results.md) records the accepted follow-up with paired wall, Git CPU, maximum individual RSS and temporary clone storage evidence.
