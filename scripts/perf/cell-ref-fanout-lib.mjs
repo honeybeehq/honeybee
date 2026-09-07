@@ -2,6 +2,53 @@ import assert from 'node:assert/strict';
 import { lstatSync, readdirSync } from 'node:fs';
 import { basename, join } from 'node:path';
 
+const LEGACY_SCRATCH_CLONE_FLAGS = ['--quiet', '--shared', '--no-checkout'];
+
+/**
+ * Derive the storage diagnostic's clone policy from production Trace2 evidence.
+ * The accepted language is deliberately closed: the legacy flags, optionally
+ * augmented by one --no-tags while retaining the legacy flag order.
+ */
+export function deriveScratchClonePolicy(rootArgv) {
+  assert.ok(Array.isArray(rootArgv), 'Trace2 root argv is required');
+  for (const argv of rootArgv) {
+    assert.ok(Array.isArray(argv) && argv.length > 0,
+      'every Trace2 root argv entry must be a non-empty array');
+    assert.ok(argv.every(value => typeof value === 'string'),
+      'every Trace2 root argv value must be a string');
+  }
+  const cloneArgv = rootArgv.filter(argv => basename(argv[0]) === 'git' && argv[1] === 'clone');
+  assert.equal(cloneArgv.length, 1,
+    'Trace2 must contain exactly one direct production git clone command');
+
+  const capturedArgv = cloneArgv[0];
+  assert.ok(capturedArgv.length >= 2 + LEGACY_SCRATCH_CLONE_FLAGS.length + 2,
+    'production clone argv is missing flags or positional paths');
+  const origin = capturedArgv.at(-2);
+  const scratchRepo = capturedArgv.at(-1);
+  assert.ok(origin.length > 0 && !origin.startsWith('-'),
+    'production clone origin must be a positional path');
+  assert.ok(scratchRepo.length > 0 && !scratchRepo.startsWith('-'),
+    'production clone destination must be a positional path');
+
+  const flags = capturedArgv.slice(2, -2);
+  assert.ok(flags.every(value => value.startsWith('--')),
+    'production clone options must precede the two positional paths');
+  const noTagsCount = flags.filter(value => value === '--no-tags').length;
+  assert.ok(noTagsCount === 0 || noTagsCount === 1,
+    'production clone flags may contain at most one --no-tags');
+  assert.deepEqual(flags.filter(value => value !== '--no-tags'), LEGACY_SCRATCH_CLONE_FLAGS,
+    'production clone flags must be the legacy shape with only optional --no-tags');
+  assert.equal(flags.length, LEGACY_SCRATCH_CLONE_FLAGS.length + noTagsCount,
+    'production clone flags contain an unsupported option');
+
+  return {
+    capturedArgv: [...capturedArgv],
+    flags: [...flags],
+    excludesTags: noTagsCount === 1,
+  };
+}
+
 /**
  * Rotate three ref counts through every position, then mirror the rotations.
  * Each flattened value is one measured captureWork call.

@@ -15,6 +15,7 @@ import { bootIdentity } from './boot-identity.mjs';
 import {
   attributeMaintenanceDescendants,
   balancedRefSchedule,
+  deriveScratchClonePolicy,
   summarizeScratchTree,
 } from './cell-ref-fanout-lib.mjs';
 import {
@@ -874,16 +875,37 @@ try {
   }
   report.fixtureParity.normalizedTraceRootArgvMatched = true;
   report.fixtureParity.objectOnlyTraceValidated = true;
+
+  const scratchClonePolicyByRefCount = new Map(report.results.map(result => [
+    result.refCount,
+    deriveScratchClonePolicy(result.trace2.summary.rootArgv),
+  ]));
+  const expectedScratchClonePolicy = scratchClonePolicyByRefCount.get(options.refCounts[0]);
+  assert.ok(expectedScratchClonePolicy, 'captured production scratch clone policy is required');
+  for (const policy of scratchClonePolicyByRefCount.values()) {
+    assert.deepEqual({ flags: policy.flags, excludesTags: policy.excludesTags }, {
+      flags: expectedScratchClonePolicy.flags,
+      excludesTags: expectedScratchClonePolicy.excludesTags,
+    }, 'captured production scratch clone policy must match across ref counts');
+  }
+  report.fixtureParity.scratchClonePolicyMatched = true;
   writeReport();
 
   mkdirSync(join(runDir, 'scratch-storage'), { recursive: true });
   mkdirSync(join(runDir, 'scratch-traces'), { recursive: true });
   for (const fixture of fixtures) {
     const result = resultByCount.get(fixture.refCount);
+    const scratchClonePolicy = scratchClonePolicyByRefCount.get(fixture.refCount);
+    assert.ok(scratchClonePolicy, `missing scratch clone policy for ${fixture.refCount} refs`);
+    const expectedSyntheticTagCount = scratchClonePolicy.excludesTags ? 0 : fixture.refCount;
     result.scratchStorage = {
       diagnosticOnly: true,
       cloneTrace2Instrumented: true,
-      cloneCommand: ['git', 'clone', '--quiet', '--shared', '--no-checkout', '<origin>', '<scratchRepo>'],
+      cloneCommand: ['git', 'clone', ...scratchClonePolicy.flags, '<origin>', '<scratchRepo>'],
+      productionTraceCloneArgv: scratchClonePolicy.capturedArgv,
+      cloneFlags: scratchClonePolicy.flags,
+      excludesTags: scratchClonePolicy.excludesTags,
+      expectedSyntheticTagCount,
       snapshotPoint: 'immediately after no-checkout clone and before capture merge objects',
       originStorage: summarizeScratchTree(join(fixture.origin, '.git')),
       originCountObjects: parseCountObjects(fixture.origin),
@@ -930,7 +952,7 @@ try {
         let cloneRun;
         try {
           cloneRun = rulerGit(sampleRoot,
-            ['clone', '--quiet', '--shared', '--no-checkout', fixture.origin, scratchRepo],
+            ['clone', ...scratchStorage.cloneFlags, fixture.origin, scratchRepo],
             { allowFail: true });
         } finally {
           delete process.env.GIT_TRACE2_EVENT;
@@ -954,7 +976,8 @@ try {
         assert.deepEqual(readdirSync(scratchRepo).sort(), ['.git'],
           'no-checkout scratch clone must not materialize files');
         const tags = refRecords(scratchRepo, TAG_PREFIX);
-        assert.equal(tags.length, fixture.refCount, 'scratch synthetic tag count mismatch');
+        assert.equal(tags.length, scratchStorage.expectedSyntheticTagCount,
+          'scratch synthetic tag count does not match the captured production clone policy');
         assert.ok(tags.every(tag => tag.object === fixture.baseSha),
           'scratch synthetic tags must retain the base target');
         const alternatesPath = join(scratchRepo, '.git', 'objects', 'info', 'alternates');

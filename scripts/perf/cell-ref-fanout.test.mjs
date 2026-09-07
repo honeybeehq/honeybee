@@ -1,19 +1,42 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import {
+  existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync,
+} from 'node:fs';
+import { devNull, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import {
   attributeMaintenanceDescendants,
   balancedRefSchedule,
+  deriveScratchClonePolicy,
 } from './cell-ref-fanout-lib.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '../..');
 const ruler = join(root, 'scripts/perf/cell-ref-fanout.mjs');
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
+
+function checkedGit(cwd, args) {
+  const run = spawnSync('git', args, {
+    cwd,
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      GIT_CONFIG_GLOBAL: devNull,
+      GIT_CONFIG_NOSYSTEM: '1',
+      GIT_TERMINAL_PROMPT: '0',
+      GIT_AUTHOR_NAME: 'cell-ref-fanout-test',
+      GIT_AUTHOR_EMAIL: 'cell-ref-fanout-test@example.invalid',
+      GIT_COMMITTER_NAME: 'cell-ref-fanout-test',
+      GIT_COMMITTER_EMAIL: 'cell-ref-fanout-test@example.invalid',
+    },
+  });
+  assert.equal(run.status, 0,
+    `git ${args.join(' ')} failed: ${run.error ?? ''}\n${run.stderr}`);
+  return run.stdout.trim();
+}
 
 test('balancedRefSchedule gives every count equal samples and balanced positions', () => {
   const counts = [0, 1_000, 10_000];
@@ -54,6 +77,75 @@ test('maintenance descendants remain attributed even with a nonzero outcome', ()
   assert.deepEqual(result.observed[0].attributedRootArgv, ['git', 'clone', '--shared']);
   assert.deepEqual(result.observed[1].attributedRootArgv, ['git', 'clone', '--shared']);
   assert.equal(result.nonzeroOutcomes, 1);
+});
+
+test('scratch clone policy accepts only legacy flags plus optional --no-tags', () => {
+  const origin = '/fixture/origin';
+  const scratch = '/fixture/scratch';
+  const oldClone = ['/usr/bin/git', 'clone', '--quiet', '--shared', '--no-checkout', origin, scratch];
+  const noTagsClone = [
+    '/usr/bin/git', 'clone', '--quiet', '--no-tags', '--shared', '--no-checkout', origin, scratch,
+  ];
+  assert.deepEqual(deriveScratchClonePolicy([
+    ['/usr/bin/git', 'merge-tree', '--write-tree', 'a', 'b'],
+    oldClone,
+  ]), {
+    capturedArgv: oldClone,
+    flags: ['--quiet', '--shared', '--no-checkout'],
+    excludesTags: false,
+  });
+  assert.deepEqual(deriveScratchClonePolicy([noTagsClone]), {
+    capturedArgv: noTagsClone,
+    flags: ['--quiet', '--no-tags', '--shared', '--no-checkout'],
+    excludesTags: true,
+  });
+
+  for (const rootArgv of [
+    [],
+    [oldClone, oldClone],
+    [['/usr/bin/git', 'clone', '--quiet', '--no-checkout', origin, scratch]],
+    [['/usr/bin/git', 'clone', '--quiet', '--shared', '--filter=blob:none', '--no-checkout', origin, scratch]],
+    [['/usr/bin/git', 'clone', '--quiet', '--no-tags', '--shared', '--no-tags', '--no-checkout', origin, scratch]],
+    [['/usr/bin/git', 'clone', '--shared', '--quiet', '--no-checkout', origin, scratch]],
+    [['/usr/bin/git', 'clone', '--quiet', '--shared', '--no-checkout', origin, scratch, '/extra']],
+  ]) {
+    assert.throws(() => deriveScratchClonePolicy(rootArgv));
+  }
+});
+
+test('scratch clone policy drives real Git tag transfer diagnostics', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'hb-cell-ref-clone-policy-test-'));
+  try {
+    const origin = join(dir, 'origin');
+    mkdirSync(origin);
+    checkedGit(origin, ['init', '--quiet']);
+    writeFileSync(join(origin, 'fixture.txt'), 'fixture\n');
+    checkedGit(origin, ['add', 'fixture.txt']);
+    checkedGit(origin, ['commit', '--quiet', '-m', 'fixture']);
+    checkedGit(origin, ['tag', 'hive-fixture/000001']);
+
+    for (const scenario of [
+      { name: 'legacy', extra: [], expectedTags: ['refs/tags/hive-fixture/000001'] },
+      { name: 'no-tags', extra: ['--no-tags'], expectedTags: [] },
+    ]) {
+      const capturedDestination = join(dir, `captured-${scenario.name}`);
+      const capturedArgv = [
+        '/usr/bin/git', 'clone', '--quiet', '--shared', ...scenario.extra, '--no-checkout',
+        origin, capturedDestination,
+      ];
+      const policy = deriveScratchClonePolicy([capturedArgv]);
+      const scratch = join(dir, scenario.name);
+      checkedGit(dir, ['clone', ...policy.flags, origin, scratch]);
+      const refs = checkedGit(scratch,
+        ['for-each-ref', '--format=%(refname)', 'refs/tags/hive-fixture'])
+        .split('\n').filter(Boolean);
+      assert.deepEqual(refs, scenario.expectedTags);
+      assert.equal(policy.excludesTags, scenario.expectedTags.length === 0);
+      assert.deepEqual(readdirSync(scratch).sort(), ['.git']);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('cell-ref-fanout smoke preserves fixture parity and separates all diagnostics', {
@@ -142,9 +234,16 @@ test('cell-ref-fanout smoke preserves fixture parity and separates all diagnosti
       assert.equal(result.scratchStorage.raw.length, 3);
       assert.equal(result.scratchStorage.cleanupWallMs.n, 3);
       assert.equal(result.scratchStorage.cleanupParentCpuMs.n, 3);
+      assert.equal(result.scratchStorage.expectedSyntheticTagCount,
+        result.scratchStorage.excludesTags ? 0 : result.refCount);
+      assert.deepEqual(result.scratchStorage.cloneCommand,
+        ['git', 'clone', ...result.scratchStorage.cloneFlags, '<origin>', '<scratchRepo>']);
+      assert.ok(result.trace2.summary.rootArgv.some(argv =>
+        JSON.stringify(argv) === JSON.stringify(result.scratchStorage.productionTraceCloneArgv)));
       for (const sample of result.scratchStorage.raw) {
         assert.equal(sample.semanticCheck.passed, true);
-        assert.equal(sample.storage.syntheticTagCount, result.refCount);
+        assert.equal(sample.storage.syntheticTagCount,
+          result.scratchStorage.expectedSyntheticTagCount);
         assert.equal(sample.storage.alternatesMatchesOrigin, true);
         assert.equal(sample.storage.localMaintenanceAuto, null);
         assert.equal(sample.storage.localGcAuto, null);
@@ -162,6 +261,7 @@ test('cell-ref-fanout smoke preserves fixture parity and separates all diagnosti
     assert.match(report.interpretation.sumOfMedians.label, /descriptive/i);
     assert.equal(report.fixtureParity.normalizedTraceRootArgvMatched, true);
     assert.equal(report.fixtureParity.objectOnlyTraceValidated, true);
+    assert.equal(report.fixtureParity.scratchClonePolicyMatched, true);
     assert.equal(report.rows.length, 4, 'two headline metrics against zero-ref baseline');
     assert.ok(readdirSync(dir).every(name => !name.startsWith('hb-cell-ref-fanout-')),
       'ruler-owned working directory must be removed');
