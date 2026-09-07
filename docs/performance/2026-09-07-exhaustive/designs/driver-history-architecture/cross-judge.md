@@ -1,7 +1,7 @@
 # H10 unit 1 architecture cross-judge
 
-Date: 2026-09-07  
-Source baseline: `501710c18515c4ac077a643c50daba2ce9043958`  
+Date: 2026-09-07
+Source baseline: `501710c18515c4ac077a643c50daba2ce9043958`
 Scope: read-only comparison of the frozen Fable and Sol packages. No implementation,
 tests, hosts, Mini access, or benchmark work was performed.
 
