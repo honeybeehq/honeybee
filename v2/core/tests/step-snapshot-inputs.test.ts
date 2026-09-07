@@ -246,8 +246,9 @@ test("pending indexes migrate on reopen: covering install, old-index drop idempo
   // the interleaved sends give each bee numerically interleaved ids, so a
   // grouped-by-bee sequence cannot be globally ascending by id.
   const orderKeys = after.global.map((r) => {
-    const row = r as { bee_id?: unknown; id?: unknown };
-    return { beeId: String(row.bee_id), id: Number(row.id) };
+    assert.ok(typeof r.bee_id === "string");
+    assert.ok(typeof r.id === "number");
+    return { beeId: r.bee_id, id: r.id };
   });
   const sorted = [...orderKeys].sort((x, y) => (x.beeId < y.beeId ? -1 : x.beeId > y.beeId ? 1 : x.id - y.id));
   assert.deepEqual(orderKeys, sorted, "global rows are ordered by bee_id then id");
