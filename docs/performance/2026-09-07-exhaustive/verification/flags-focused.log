@@ -1,0 +1,32 @@
+✔ send to a live runtime does not enqueue a wake (1344.46575ms)
+✔ runner observation cursors are monotonic and fenced to the live generation (576.434292ms)
+✔ turn completion commits idle and the last-output fact in one store transaction (823.0585ms)
+✔ repeat sends to a stopped bee dedupe to one pending send_wake (712.273584ms)
+✔ unknown verb and unknown failure cause throw (closed lists) (1100.198ms)
+✔ command protocol: settle requires a claim; backoff grows exponentially (519.29025ms)
+✔ backoff doubles per attempt (814.988875ms)
+✔ ephemeral: skip fsync but keep B9 exclusive locking and in-process crash/reopen (1201.7575ms)
+✔ mailbox is per-bee FIFO; priority column is reserved and unused in ordering (Q2) (839.472ms)
+✔ batch undelivered read preserves per-bee FIFO and excludes delivered rows (1318.591583ms)
+✔ delivery marks are fenced: stale generation and non-live generation are recorded no-ops (599.056291ms)
+✔ delete is immediate and total (Q1): rows gone, pending commands settled, log path returned (658.193083ms)
+✔ delete of an active bee passes through archived on B1's graph (audited) (353.264375ms)
+✔ revive: only from stopped; reviving an archived bee unarchives it (1189.81675ms)
+✔ exit causes: required on stopped, rejected elsewhere (403.603375ms)
+✔ boot requeue touches only running commands (651.485625ms)
+✔ currentRuntime is the highest generation; generations are append-only history (379.642666ms)
+✔ createBee rejects duplicate ids; bee ops on unknown ids are bee-not-found (523.177584ms)
+✔ claim skips commands whose backoff is still in the future (440.326333ms)
+✔ pid at spawn: a mid-boot runtime survives daemon restart via re-adoption (WP2 finding) (116.708584ms)
+✔ audit reads are boundable: LIMIT'd ascending rows and a real SQL tail (2026-08-21 flush stall) (302.291709ms)
+✔ flags: a provider-declared reset expires resource_blocked at the instant; open-ended flags wait for contrary evidence (574.754583ms)
+✔ v17.migration: a v16 store gains flags.resets_at and open rate-limit rows are backfilled from the adapter's textual reset hint (1215.996791ms)
+✔ flag expiry index installs on populated reopen and preserves due order, audit, and rollback (2263.876708ms)
+ℹ tests 24
+ℹ suites 0
+ℹ pass 24
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 34480.252041

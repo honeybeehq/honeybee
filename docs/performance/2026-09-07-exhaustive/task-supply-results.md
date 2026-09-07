@@ -21,4 +21,4 @@ A separate paired public-API experiment, `designs/task-supply-paired.mjs`, compa
 | Ten open 4 KiB questions per target | 4.680 ms | 1.954 ms |
 | Ten held 4 KiB messages per target | 5.135 ms | 1.951 ms |
 
-The paired report is `evidence/mini-task-supply-positive-c22.json`. Every sample preserved identical effect hashes across both implementations and restored initial state/audit after rollback. These experiments measure local CoreStore work, not provider execution or process readiness. Parent integration verification and final landing are pending.
+The paired report is `evidence/mini-task-supply-positive-c22.json`. Every sample preserved identical effect hashes across both implementations and restored initial state/audit after rollback. These experiments measure local CoreStore work, not provider execution or process readiness. Integrated as `7dfd8ca3`. Parent integration at `c027f347` passed 190 core tests, 69 daemon loop/account/argument tests, all eight v2 TypeScript checks, and the repository build on Node 24.18.0. [The independent parent review](../../review/2026-09-07-perf-task-supply.md) found no blockers.
