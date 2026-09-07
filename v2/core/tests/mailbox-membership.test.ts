@@ -94,9 +94,13 @@ test("delivery and urgency changes preserve combined membership", (t) => {
 
   assert.deepEqual(store.expediteMessage(bee.id, second.id, "now"), { applied: true });
   assert.deepEqual(store.readMailboxMembership(bee.id), baseline, "urgency is outside membership");
-  assert.deepEqual(store.markDelivered(first.id, runtime.generation), { applied: true });
-  assert.deepEqual(store.readMailboxMembership(bee.id), baseline, "moving one row between arms is silent");
   assert.deepEqual(store.markDelivered(second.id, runtime.generation), { applied: true });
+  assert.deepEqual(
+    store.readMailboxMembership(bee.id),
+    baseline,
+    "the global maximum stays exact when the highest id is delivered and a lower id remains pending",
+  );
+  assert.deepEqual(store.markDelivered(first.id, runtime.generation), { applied: true });
   assert.deepEqual(store.readMailboxMembership(bee.id), baseline, "an all-delivered mailbox is identical");
 });
 
@@ -249,6 +253,7 @@ test("production aggregate uses both partial indexes and validates SQLite scalar
 
   const bee = makeBee(store, "membership-plan").bee;
   const malformedBee = makeBee(store, "malformed-membership").bee;
+  const unsafeIntegerBee = makeBee(store, "unsafe-integer-membership").bee;
   const delivered = store.send(bee.id, "delivered plan row").message;
   const pending = store.send(bee.id, "pending plan row").message;
   assert.deepEqual(store.markDelivered(delivered.id, 1), { applied: true });
@@ -275,16 +280,41 @@ test("production aggregate uses both partial indexes and validates SQLite scalar
 
   const corrupt = new DatabaseSync(h.path);
   try {
-    corrupt.prepare(
+    const insert = corrupt.prepare(
       `INSERT INTO mailbox(id, bee_id, sender, body, priority, urgency, enqueued_at)
-       VALUES(-1, ?, 'fixture', 'invalid negative id', 0, 'next', 1)`,
-    ).run(malformedBee.id);
+       VALUES(?, ?, 'fixture', ?, 0, 'next', 1)`,
+    );
+    insert.run(-1, malformedBee.id, "invalid negative id");
+    insert.run(9_007_199_254_740_993n, unsafeIntegerBee.id, "unsafe integer id");
   } finally {
     corrupt.close();
   }
   store = h.open();
+  store.transact(() => {
+    assert.deepEqual(
+      store.readMailboxMembership(malformedBee.id),
+      { kind: "transaction_open" },
+      "an outer transaction returns before reading a malformed aggregate",
+    );
+    store.transact(() => {
+      assert.deepEqual(
+        store.readMailboxMembership(malformedBee.id),
+        { kind: "transaction_open" },
+        "a nested transaction returns before reading a malformed aggregate",
+      );
+    });
+  });
   assert.throws(
     () => store.readMailboxMembership(malformedBee.id),
     /readMailboxMembership: malformed max_message_id/,
+  );
+  assert.throws(
+    () => store.readMailboxMembership(unsafeIntegerBee.id),
+    (error: unknown) => {
+      assert.ok(error instanceof RangeError, "node:sqlite reports an unsafe integer as RangeError");
+      assert.equal(Reflect.get(error, "code"), "ERR_OUT_OF_RANGE");
+      assert.match(error.message, /too large to be represented as a JavaScript number/);
+      return true;
+    },
   );
 });

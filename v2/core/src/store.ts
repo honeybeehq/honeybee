@@ -2759,6 +2759,16 @@ export class CoreStore {
    * only moves a row between the two exhaustive partial-index arms, so the
    * combined count/global max stays stable. Same-connection reads inside an
    * open transaction are explicitly uncacheable.
+   *
+   * Compare committed fields only for the same Bee id and the same live
+   * CoreStore. Equal fields are a one-way proof that both reads saw the same
+   * ordered `(id, body)` rows under Core's immutable-id/body contract. A
+   * caller must reread on inequality; not every intervening mutation changes
+   * the fields. Missing Bees and present Bees with empty mailboxes both return
+   * count zero and a null maximum. If SQLite returns an integer outside
+   * JavaScript's safe range, node:sqlite throws its native RangeError before
+   * this method can map the aggregate; this statement does not enable BigInt
+   * reads.
    */
   readMailboxMembership(beeId: string): MailboxMembership {
     if (this.txDepth > 0) return { kind: "transaction_open" };
