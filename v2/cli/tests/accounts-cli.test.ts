@@ -220,7 +220,14 @@ test("cli.accounts.4: fuzzy selectors work through spawn shorthand and account/s
 
     const ambiguous = capture();
     assert.equal(await runV2Cli(["account", "get", "gmail", ...base], ambiguous.io), 1);
-    assert.match(ambiguous.err[0] ?? "", /invalid_request.*ambiguous account.*stub-owner-gmail\.com.*codex-coder-gmail\.com/i);
+    const error = ambiguous.err[0] ?? "";
+    const prefix = "hive: error (invalid_request): ambiguous account 'gmail': ";
+    assert.ok(error.startsWith(prefix), error);
+    // Registration timestamps can tie; account id then determines match order.
+    assert.deepEqual(error.slice(prefix.length).split(", ").sort(), [
+      "codex-coder-gmail.com",
+      "stub-owner-gmail.com",
+    ]);
   } finally {
     await daemon?.stop().catch(() => {});
     cleanup();
