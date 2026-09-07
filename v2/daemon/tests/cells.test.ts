@@ -489,6 +489,14 @@ test("cells.3: daemon SIGKILL → restart re-adopts a live cell bee at full capa
     const sent = await client.request<SendRpcResult>("send", { beeId, body: "@slow:2500 long task" });
     await waitDelivered(client, beeId, sent.messageId, "delivered to gen 1");
     await waitFor(async () => (await client.request<ViewResult>("view", { beeId })).view.runtimeState === "running", "mid-turn");
+    const journalPath = join(rig.dir, "runners", `${beeId}.1.observations.jsonl`);
+    await waitFor(() => {
+      try {
+        return readFileSync(journalPath, "utf8").includes(`"turn_started","messageId":${sent.messageId}`);
+      } catch {
+        return false;
+      }
+    }, "real turn start reached the runner journal", 8_000, 10);
     const agentPid = (await client.request<ViewResult>("view", { beeId })).runtime?.pid as number;
     agentPids.push(agentPid);
     assert.ok(agentPid > 0);
