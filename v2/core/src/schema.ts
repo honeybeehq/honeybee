@@ -507,6 +507,8 @@ CREATE TABLE IF NOT EXISTS audit (
   bee_id  TEXT,
   payload TEXT NOT NULL
 ) STRICT;
+CREATE INDEX IF NOT EXISTS audit_by_bee
+  ON audit(bee_id) WHERE bee_id IS NOT NULL;
 
 -- Templates + tracks (spec 06 §1.4.1): hive-owned registries; scope + source are
 -- data on the row; names are unique per scope; steps are an ordered JSON array.

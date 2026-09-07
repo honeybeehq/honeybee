@@ -2862,7 +2862,7 @@ export class CoreStore {
     snapshotSeq: number,
   ): { seq: number; ts: number } | null {
     const row = this.stmt(
-      `SELECT seq, ts FROM audit
+      `SELECT seq, ts FROM audit INDEXED BY audit_bee_deleted_bee_seq
        WHERE kind = 'bee.deleted' AND bee_id = ? AND seq <= ?
        ORDER BY seq DESC LIMIT 1`,
     ).get(beeId, snapshotSeq) as Row | undefined;
