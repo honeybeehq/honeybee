@@ -6,7 +6,12 @@
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import type { BeeRow, CoreStore, MessageRow } from "../../core/src/index.ts";
+import type {
+  BeeRow,
+  CommittedMailboxMembership,
+  CoreStore,
+  MessageRow,
+} from "../../core/src/index.ts";
 import type { ResolvedNamingConfig } from "./config.ts";
 import {
   clampUserMessage,
@@ -58,6 +63,14 @@ export function autoTitleRetryBackoffMs(attempts: number): number {
   return Math.min(AUTO_TITLE_MAX_RETRY_BACKOFF_MS, AUTO_TITLE_RETRY_BACKOFF_MS * (2 ** exponent));
 }
 
+function isAutoTitleRetryBackoffActive(
+  bookkeeping: AutoTitleBookkeeping | undefined,
+  now: number,
+): boolean {
+  if (!bookkeeping?.lastAt || bookkeeping.deferred) return false;
+  return now - bookkeeping.lastAt < autoTitleRetryBackoffMs(bookkeeping.attempts);
+}
+
 export function userTaskMessages(messages: readonly MessageRow[]): string[] {
   const out: string[] = [];
   for (const message of messages) {
@@ -87,11 +100,7 @@ export function autoTitleDecision(
 ): { action: "skip"; reason: string } | { action: "defer"; reason: string } | { action: "generate" } {
   if (bee.lifecycle !== "active") return { action: "skip", reason: "not active" };
   if (bee.title) return { action: "skip", reason: "already titled" };
-  if (
-    bookkeeping?.lastAt &&
-    now - bookkeeping.lastAt < autoTitleRetryBackoffMs(bookkeeping.attempts) &&
-    !bookkeeping.deferred
-  ) {
+  if (isAutoTitleRetryBackoffActive(bookkeeping, now)) {
     return { action: "skip", reason: "backoff" };
   }
   if (userMessages.length === 0) return { action: "defer", reason: "no user message" };
@@ -101,13 +110,40 @@ export function autoTitleDecision(
   return { action: "generate" };
 }
 
-export function createAutoTitleDispatcher(deps: AutoTitleDeps): (bees?: BeeRow[]) => Promise<AutoTitleOutcome[]> {
+type StoreMailboxReuse = Pick<CoreStore, "listMessages" | "readMailboxMembership">;
+
+type QuietBaseline = Readonly<{
+  membership: CommittedMailboxMembership;
+  signature: string;
+}>;
+
+function sameMailboxMembership(
+  left: CommittedMailboxMembership,
+  right: CommittedMailboxMembership,
+): boolean {
+  return left.messageCount === right.messageCount && left.maxMessageId === right.maxMessageId;
+}
+
+function canReuseQuietBaseline(
+  baseline: QuietBaseline,
+  bookkeeping: AutoTitleBookkeeping | undefined,
+  now: number,
+): boolean {
+  if (bookkeeping?.signature !== baseline.signature) return false;
+  return bookkeeping.deferred || isAutoTitleRetryBackoffActive(bookkeeping, now);
+}
+
+function createAutoTitleDispatcherImpl(
+  deps: AutoTitleDeps,
+  storeReuse: StoreMailboxReuse | null,
+): (bees?: BeeRow[]) => Promise<AutoTitleOutcome[]> {
   let inFlight = false;
   let inFlightSince = 0;
   let inFlightBee = "";
   let inFlightToken = 0;
   let nextInFlightToken = 0;
   const finished: AutoTitleOutcome[] = [];
+  const quietBaselines = storeReuse === null ? null : new Map<string, QuietBaseline>();
 
   return async (bees) => {
     const outcomes = finished.splice(0);
@@ -132,6 +168,17 @@ export function createAutoTitleDispatcher(deps: AutoTitleDeps): (bees?: BeeRow[]
     // Rows read from the store on this very call are current; a caller-
     // supplied list may be stale, so only those are re-read per bee.
     const freshRows = bees === undefined;
+    if (freshRows && quietBaselines !== null) {
+      const activeUntitledIds = new Set<string>();
+      for (const candidate of records) {
+        if (candidate.lifecycle === "active" && !candidate.title) {
+          activeUntitledIds.add(candidate.id);
+        }
+      }
+      for (const cachedBeeId of quietBaselines.keys()) {
+        if (!activeUntitledIds.has(cachedBeeId)) quietBaselines.delete(cachedBeeId);
+      }
+    }
     let probes = 0;
     for (const candidate of records) {
       if (probes >= AUTO_TITLE_CONTEXT_PROBES_PER_TICK) break;
@@ -141,9 +188,38 @@ export function createAutoTitleDispatcher(deps: AutoTitleDeps): (bees?: BeeRow[]
       // bee's mailbox — hundreds of archived/titled bees × 5 ticks/s was the
       // sustained ~250ms flush stall behind daemon connect timeouts.
       if (bee.lifecycle !== "active" || bee.title) continue;
-      const messages = deps.listMessages(bee.id);
-      const userMessages = userTaskMessages(messages);
-      const signature = contextSignature(bee, userMessages);
+      let messages: MessageRow[];
+      let userMessages: string[];
+      let signature: string;
+      if (freshRows && storeReuse !== null && quietBaselines !== null) {
+        const before = storeReuse.readMailboxMembership(bee.id);
+        if (before.kind === "committed") {
+          const baseline = quietBaselines.get(bee.id);
+          if (
+            baseline &&
+            sameMailboxMembership(before, baseline.membership) &&
+            canReuseQuietBaseline(baseline, deps.loadState(bee.id), now)
+          ) {
+            continue;
+          }
+        }
+
+        messages = storeReuse.listMessages(bee.id);
+        userMessages = userTaskMessages(messages);
+        signature = contextSignature(bee, userMessages);
+        const after = storeReuse.readMailboxMembership(bee.id);
+        if (
+          before.kind === "committed" &&
+          after.kind === "committed" &&
+          sameMailboxMembership(before, after)
+        ) {
+          quietBaselines.set(bee.id, { membership: after, signature });
+        }
+      } else {
+        messages = deps.listMessages(bee.id);
+        userMessages = userTaskMessages(messages);
+        signature = contextSignature(bee, userMessages);
+      }
       const bookkeeping = deps.loadState(bee.id);
       if (bookkeeping?.signature === signature && bookkeeping.deferred) {
         // Same task context we already deferred on.
@@ -227,6 +303,10 @@ export function createAutoTitleDispatcher(deps: AutoTitleDeps): (bees?: BeeRow[]
   };
 }
 
+export function createAutoTitleDispatcher(deps: AutoTitleDeps): (bees?: BeeRow[]) => Promise<AutoTitleOutcome[]> {
+  return createAutoTitleDispatcherImpl(deps, null);
+}
+
 export function createStoreAutoTitleDispatcher(
   store: CoreStore,
   options: {
@@ -238,7 +318,7 @@ export function createStoreAutoTitleDispatcher(
   },
 ): (bees?: BeeRow[]) => Promise<AutoTitleOutcome[]> {
   const state = loadBookkeepingFile(options.statePath);
-  return createAutoTitleDispatcher({
+  return createAutoTitleDispatcherImpl({
     enabled: () => options.naming().auto,
     naming: options.naming,
     listBees: () => store.listBees(),
@@ -255,7 +335,7 @@ export function createStoreAutoTitleDispatcher(
       ((context) => generateTitle(context, { config: options.naming() })),
     now: options.now ?? Date.now,
     log: options.log ?? (() => undefined),
-  });
+  }, store);
 }
 
 function loadBookkeepingFile(path: string): Map<string, AutoTitleBookkeeping> {
