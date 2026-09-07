@@ -48,6 +48,7 @@ import {
   RUNTIME_TRANSITIONS,
   type CommandRow,
   type CoreStore,
+  type DaemonStepInputs,
   type DaemonWorkRow,
   type I1PendingBee,
   type RuntimeState,
@@ -191,9 +192,12 @@ export interface DaemonCoreOptions {
 
 const LIVE: readonly RuntimeState[] = ["booting", "running", "idle"];
 
-interface StepSnapshot {
-  work: DaemonWorkRow[];
-}
+type StepSnapshot =
+  | DaemonStepInputs
+  | {
+    readonly work: readonly DaemonWorkRow[];
+    readonly i1: null;
+  };
 
 export class DaemonCore {
   protected readonly store: CoreStore;
@@ -292,9 +296,9 @@ export class DaemonCore {
       this.deliveryLoop(snapshot.work),
     );
     this.performance.measureSync("core.step.tasks", () => this.taskSupplyLoop());
-    if (this.policy.i1DeadlineSteps != null && this.onI1Violation != null) {
+    if (this.i1Enabled()) {
       const i1Snapshot = this.performance.measureSync("core.step.snapshot", () =>
-        this.store.readI1PendingSnapshot(),
+        this.finalI1Snapshot(snapshot, seq),
       );
       this.performance.measureSync("core.step.i1", () =>
         this.i1Telemetry(i1Snapshot),
@@ -330,6 +334,17 @@ export class DaemonCore {
     return { snapshot: this.stepSnapshot(), seq };
   }
 
+  private i1Enabled(): boolean {
+    return this.policy.i1DeadlineSteps != null && this.onI1Violation != null;
+  }
+
+  /** Reuse only within this step, after proving delivery and task supply made no durable change. */
+  private finalI1Snapshot(snapshot: StepSnapshot, takenAtSeq: number): readonly I1PendingBee[] {
+    const seq = this.store.lastAuditSeq();
+    if (snapshot.i1 !== null && seq === takenAtSeq) return snapshot.i1;
+    return this.store.readI1PendingSnapshot();
+  }
+
   /**
    * One sparse read-model snapshot replaces the old per-policy N+1 store
    * walks. Work is refreshed across the command boundary where the step
@@ -337,9 +352,11 @@ export class DaemonCore {
    */
   private stepSnapshot(): StepSnapshot {
     if (!this.store.hasStepSnapshotInputs()) {
-      return { work: [] };
+      if (this.i1Enabled()) return { work: [], i1: [] };
+      return { work: [], i1: null };
     }
-    return { work: this.store.readDaemonWork() };
+    if (this.i1Enabled()) return this.store.readDaemonStepInputs();
+    return { work: this.store.readDaemonWork(), i1: null };
   }
 
   /**

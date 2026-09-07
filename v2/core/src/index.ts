@@ -18,6 +18,7 @@ export {
   type DaemonWorkRow,
   type I1RuntimeFact,
   type I1PendingBee,
+  type DaemonStepInputs,
   type CreateBeeInput,
   type SendResult,
   type WakeResult,

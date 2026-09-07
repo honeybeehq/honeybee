@@ -244,6 +244,24 @@ export interface I1PendingBee {
   pending: readonly DaemonPendingMessageMeta[];
 }
 
+/** One same-step acquisition shared by daemon work and I1 telemetry. */
+export interface DaemonStepInputs {
+  readonly work: readonly DaemonWorkRow[];
+  readonly i1: readonly I1PendingBee[];
+}
+
+interface MutableI1PendingBee {
+  beeId: string;
+  runtime: I1RuntimeFact | null;
+  hasActiveFlag: boolean;
+  pending: DaemonPendingMessageMeta[];
+}
+
+interface I1PendingSnapshotData {
+  rows: MutableI1PendingBee[];
+  byBee: Map<string, MutableI1PendingBee>;
+}
+
 /** `tagBee` outcome: the row after the edit plus what actually changed. */
 export interface TagResult {
   bee: BeeRow;
@@ -3191,12 +3209,8 @@ export class CoreStore {
   // B8 — derived reads (the ONLY place these questions are answered)
   // -------------------------------------------------------------------------
 
-  /**
-   * Fresh daemon policy/delivery input. Only current live runtimes are
-   * projected, and pending messages stay body-free until delivery selects one.
-   */
-  readDaemonWork(): DaemonWorkRow[] {
-    const runtimeRows: Row[] = this.stmt(
+  private readDaemonLiveRuntimes(): DaemonLiveRuntime[] {
+    const rows: Row[] = this.stmt(
       `SELECT runtime.bee_id,
               runtime.generation,
               runtime.state,
@@ -3212,11 +3226,20 @@ export class CoreStore {
          )
        ORDER BY runtime.bee_id`,
     ).all();
+    return rows.map(mapDaemonLiveRuntime);
+  }
+
+  /**
+   * Fresh daemon policy/delivery input. Only current live runtimes are
+   * projected, and pending messages stay body-free until delivery selects one.
+   */
+  readDaemonWork(): DaemonWorkRow[] {
+    const runtimes = this.readDaemonLiveRuntimes();
     const work: Array<{
       runtime: DaemonLiveRuntime;
       pending: DaemonPendingMessageMeta[];
-    }> = runtimeRows.map((row) => ({
-      runtime: mapDaemonLiveRuntime(row),
+    }> = runtimes.map((runtime) => ({
+      runtime,
       pending: [],
     }));
     if (work.length === 0) return work;
@@ -3251,11 +3274,30 @@ export class CoreStore {
   }
 
   /**
+   * Fresh same-step input for an I1-enabled daemon. Live work rows reuse the
+   * exact pending arrays already built for I1, so mailbox metadata is read and
+   * allocated once. Callers must not retain this result across daemon steps.
+   */
+  readDaemonStepInputs(): DaemonStepInputs {
+    const runtimes = this.readDaemonLiveRuntimes();
+    const i1 = this.readI1PendingSnapshotData();
+    const work: DaemonWorkRow[] = runtimes.map((runtime) => ({
+      runtime,
+      pending: i1.byBee.get(runtime.beeId)?.pending ?? [],
+    }));
+    return { work, i1: i1.rows };
+  }
+
+  /**
    * Fresh, body-free I1 input. Groups and messages preserve the old
    * listBeeViewRows/listUndeliveredMessages order without hydrating either
    * complete bee rows or mailbox bodies.
    */
   readI1PendingSnapshot(): I1PendingBee[] {
+    return this.readI1PendingSnapshotData().rows;
+  }
+
+  private readI1PendingSnapshotData(): I1PendingSnapshotData {
     const factRows: Row[] = this.stmt(
       `WITH pending_bees AS (
          SELECT DISTINCT bee_id
@@ -3282,12 +3324,7 @@ export class CoreStore {
         )
        ORDER BY target.bee_id`,
     ).all();
-    const groups: Array<{
-      beeId: string;
-      runtime: I1RuntimeFact | null;
-      hasActiveFlag: boolean;
-      pending: DaemonPendingMessageMeta[];
-    }> = factRows.map((row) => ({
+    const groups: MutableI1PendingBee[] = factRows.map((row) => ({
       beeId: daemonText(row.bee_id, "I1 bee_id"),
       runtime: mapI1RuntimeFact(row),
       hasActiveFlag: daemonBoolean(row.has_active_flag, "I1 active-flag bit"),
@@ -3307,7 +3344,7 @@ export class CoreStore {
       if (!group) throw new CoreError(`daemon projection: pending bee ${beeId} has no I1 facts`);
       group.pending.push(message);
     }
-    return groups;
+    return { rows: groups, byBee: groupByBee };
   }
 
   /** Whether runtime or mailbox facts require a daemon step snapshot. */

@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { harness } from "./helpers.ts";
-import type { CoreStore, DaemonLiveRuntime, RuntimeRow } from "../src/index.ts";
+import type { CoreStore, DaemonLiveRuntime, I1RuntimeFact, RuntimeRow } from "../src/index.ts";
 
 function createBee(store: CoreStore, id: string) {
   return store.createBee({ id, name: id, agent: "stub", substrate: "hsr", cwd: "/tmp" });
@@ -17,6 +17,15 @@ function liveRuntime(runtime: RuntimeRow | null): DaemonLiveRuntime {
     startedAt: runtime.startedAt,
     updatedAt: runtime.updatedAt,
     bootEvidence: runtime.bootEvidence,
+  };
+}
+
+function i1Runtime(runtime: RuntimeRow | null): I1RuntimeFact {
+  if (!runtime) throw new Error("expected current runtime");
+  return {
+    state: runtime.state,
+    bootEvidence: runtime.bootEvidence,
+    updatedAt: runtime.updatedAt,
   };
 }
 
@@ -90,6 +99,66 @@ test("daemon work projects only current live consumer fields and body-free pendi
   assert.equal(JSON.stringify(projected).includes("peer-z"), false);
   assert.equal(store.getMessage(zFirst.id)?.body, "z-body-marker-first");
   assert.equal(store.getMessage(zFirst.id)?.sender, "peer-z", "the existing full read remains unchanged");
+});
+
+test("daemon step inputs share one pending projection between live work and exact I1 rows", (t) => {
+  const h = harness();
+  t.after(() => h.cleanup());
+  const store = h.open();
+  t.after(() => store.close());
+
+  const live = createBee(store, "a-live-archived");
+  store.updateRuntimeState(live.bee.id, live.runtime.generation, "running", {
+    pid: 101,
+    pidStartedAt: 100,
+  });
+  const first = store.send(live.bee.id, "shared-body-marker-first", { urgency: "idle" }).message;
+  const second = store.send(live.bee.id, "shared-body-marker-second", { urgency: "next" }).message;
+  store.archiveBee(live.bee.id);
+
+  const stopped = createBee(store, "z-stopped");
+  store.updateRuntimeState(stopped.bee.id, stopped.runtime.generation, "stopped", { exitCause: "clean" });
+  const stoppedMessage = store.send(stopped.bee.id, "stopped-body-marker").message;
+
+  const inputs = store.readDaemonStepInputs();
+  assert.deepEqual(inputs, {
+    work: [{
+      runtime: liveRuntime(store.currentRuntime(live.bee.id)),
+      pending: [
+        { id: first.id, urgency: "idle", enqueuedAt: first.enqueuedAt },
+        { id: second.id, urgency: "next", enqueuedAt: second.enqueuedAt },
+      ],
+    }],
+    i1: [
+      {
+        beeId: live.bee.id,
+        runtime: i1Runtime(store.currentRuntime(live.bee.id)),
+        hasActiveFlag: false,
+        pending: [
+          { id: first.id, urgency: "idle", enqueuedAt: first.enqueuedAt },
+          { id: second.id, urgency: "next", enqueuedAt: second.enqueuedAt },
+        ],
+      },
+      {
+        beeId: stopped.bee.id,
+        runtime: i1Runtime(store.currentRuntime(stopped.bee.id)),
+        hasActiveFlag: false,
+        pending: [{ id: stoppedMessage.id, urgency: "next", enqueuedAt: stoppedMessage.enqueuedAt }],
+      },
+    ],
+  });
+
+  const liveI1 = inputs.i1.find((row) => row.beeId === live.bee.id);
+  assert.ok(liveI1);
+  assert.strictEqual(inputs.work[0]?.pending, liveI1.pending);
+  assert.strictEqual(inputs.work[0]?.pending[0], liveI1.pending[0]);
+  assert.equal(JSON.stringify(inputs).includes("body-marker"), false);
+
+  const next = store.readDaemonStepInputs();
+  assert.notStrictEqual(next, inputs);
+  assert.notStrictEqual(next.work, inputs.work);
+  assert.notStrictEqual(next.i1, inputs.i1);
+  assert.notStrictEqual(next.work[0]?.pending, inputs.work[0]?.pending);
 });
 
 test("daemon work ignores an old live generation when the current generation is stopped", (t) => {
