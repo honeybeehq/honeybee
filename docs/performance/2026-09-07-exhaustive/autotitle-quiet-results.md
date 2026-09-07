@@ -88,3 +88,8 @@ The [profile archive manifest](evidence/mini-autotitle-v1-profile-archive.json) 
 ## Remaining work
 
 S14 remains open for the empty/cold/all-changed costs, full roster materialization, and O(index entries) membership probes. S15 provider queue/process behavior and S16 bookkeeping rewrite/storage costs remain separate unmeasured inventory entries. The next bounded study examines roster allocation using the existing profiles before proposing another production change. This acceptance completes one measured candidate, not the exhaustive performance program.
+
+
+## Author handoff received after parent verification
+
+The [frozen author handoff](designs/autotitle-architecture/author-freeze-handoff.md) records seven Unit1 and ten Unit2 focused tests, 20 combined autoTitle tests, and Core/daemon typechecks. It also records one failed author test-instrumentation attempt: a cumulative `getBee` counter included legitimate calls made by `deleteBee`. The corrected assertion uses the dispatch-specific delta; production source did not change. Two further cases produced the final ten-test suite. Original author stdout was session-visible but not retained as log files, so this is an author report. The parent combined Mini logs remain the independent acceptance evidence.
