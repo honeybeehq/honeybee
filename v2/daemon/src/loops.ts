@@ -304,6 +304,7 @@ export class DaemonCore {
         this.i1Telemetry(i1Snapshot),
       );
     }
+    this.performance.measureSync("core.step.prune", () => this.pruneDeliveryDedup());
   }
 
   /** Fold pending driver facts before an RPC makes a working-state decision. */
@@ -993,5 +994,25 @@ export class DaemonCore {
         this.log(`i1.violation bee=${beeId} msg=${m.id} deadline=${deadline}`);
       });
     }
+  }
+
+  /**
+   * Committed zero-pending clear of the delivery dedup sets. Once no
+   * undelivered mail exists in COMMITTED state, every retained message id is
+   * terminal (delivered_at never unsets; canceled/bee-deleted rows are gone)
+   * and can never be interrupt-eligible or overdue again. Never prunes
+   * inside an open transaction: a step under public store.transact reads
+   * uncommitted delivery/cancel/delete facts, and clearing on those before
+   * an outer rollback would resurrect messages without their dedup entries
+   * (duplicate interrupts and I1 reports). The mail-only probe is deliberate
+   * — live runtimes must not block the clear, and sparse work rows omit
+   * stopped-target mail. A standing pending backlog keeps its entries.
+   */
+  private pruneDeliveryDedup(): void {
+    if (this.reportedI1.size === 0 && this.interruptRequested.size === 0) return;
+    if (this.store.inTransaction) return;
+    if (this.store.hasUndeliveredMessages()) return;
+    this.reportedI1.clear();
+    this.interruptRequested.clear();
   }
 }

@@ -31,6 +31,7 @@ const STATIC_SPAN_NAMES = [
   "core.step.delivery",
   "core.step.tasks",
   "core.step.i1",
+  "core.step.prune",
 ] as const;
 
 type StaticSpanName = (typeof STATIC_SPAN_NAMES)[number];

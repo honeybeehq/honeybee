@@ -3118,6 +3118,16 @@ export class CoreStore {
     return this.tx(fn);
   }
 
+  /**
+   * Whether a (possibly nested) transaction is open on this connection.
+   * Same-connection reads inside an open transaction see uncommitted state;
+   * callers that must act only on committed facts (the daemon's dedup
+   * pruning) check this and defer instead.
+   */
+  get inTransaction(): boolean {
+    return this.txDepth > 0;
+  }
+
   /** The recorded result for a caller-supplied RPC idempotency key, if any. */
   lookupRpcResult(key: string): RpcIdempotencyRecord | null {
     const row = this.db
@@ -3352,6 +3362,17 @@ export class CoreStore {
     if (this.stmt("SELECT 1 FROM runtimes WHERE state != 'stopped' LIMIT 1").get() !== undefined) {
       return true;
     }
+    return this.hasUndeliveredMessages();
+  }
+
+  /**
+   * Whether ANY mailbox message remains undelivered — one LIMIT-1 probe on
+   * the mailbox_undelivered partial index. The mail half of
+   * hasStepSnapshotInputs, exposed alone: the daemon's dedup pruning must
+   * clear on a zero-pending hive even while runtimes are live, and sparse
+   * work rows omit stopped-target mail so they cannot answer this.
+   */
+  hasUndeliveredMessages(): boolean {
     return this.stmt("SELECT 1 FROM mailbox WHERE delivered_at IS NULL LIMIT 1").get() !== undefined;
   }
 

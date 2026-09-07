@@ -2280,3 +2280,140 @@ test("unit.flag-expiry: a provider-declared reset lifts resource_blocked at the 
     rig.cleanup();
   }
 });
+
+// ---------------------------------------------------------------------------
+// Z01 unit 1 — committed global zero-pending pruning of the delivery dedup sets
+// ---------------------------------------------------------------------------
+
+/** Test-only view of DaemonCore's in-memory dedup sets (TS-private, runtime-visible). */
+function dedupSets(core: DaemonCore): { reportedI1: Set<number>; interruptRequested: Set<number> } {
+  const reportedI1: unknown = Reflect.get(core, "reportedI1");
+  const interruptRequested: unknown = Reflect.get(core, "interruptRequested");
+  assert.ok(reportedI1 instanceof Set, "DaemonCore.reportedI1 moved or changed shape");
+  assert.ok(interruptRequested instanceof Set, "DaemonCore.interruptRequested moved or changed shape");
+  return { reportedI1, interruptRequested };
+}
+
+test("z01.a: an outer rollback never loses dedup state and a committed clear follows", () => {
+  const rig = makeRig({ i1DeadlineSteps: 10 });
+  try {
+    spawnIdleBee(rig, "z01-roll");
+    rig.driver.acceptDeliveries = false;
+    const msg = rig.store.send("z01-roll", "urgent work", { urgency: "now" }).message;
+    rig.driver.events.push({ beeId: "z01-roll", generation: 1, kind: "turn_started" });
+    rig.clock.now += 100;
+    rig.core.step(); // running turn → one interrupt; overdue → one violation
+    assert.equal(rig.driver.interrupts.length, 1);
+    assert.deepEqual(rig.violations.map((v) => v.messageId), [msg.id]);
+    assert.equal(dedupSets(rig.core).interruptRequested.has(msg.id), true);
+    assert.equal(dedupSets(rig.core).reportedI1.has(msg.id), true);
+    rig.core.step(); // fold the interrupt's turn_ended; refused delivery keeps the message pending
+    assert.equal(rig.driver.interrupts.length, 1);
+    assert.equal(rig.violations.length, 1);
+
+    const terminalPaths: ReadonlyArray<readonly [string, () => void]> = [
+      ["markDelivered", () => assert.deepEqual(rig.store.markDelivered(msg.id, 1), { applied: true })],
+      ["cancelMessage", () => assert.deepEqual(rig.store.cancelMessage("z01-roll", msg.id), { canceled: true })],
+      ["deleteBee", () => assert.equal(rig.store.deleteBee("z01-roll").beeId, "z01-roll")],
+    ];
+    for (const [name, terminal] of terminalPaths) {
+      assert.throws(
+        () => rig.store.transact(() => {
+          terminal(); // uncommitted terminal fact
+          rig.core.step(); // prune must skip: inTransaction
+          throw new Error(`outer rollback ${name}`);
+        }),
+        new RegExp(`outer rollback ${name}`),
+      );
+      assert.equal(dedupSets(rig.core).interruptRequested.has(msg.id), true, `${name} rollback must not lose interrupt dedup`);
+      assert.equal(dedupSets(rig.core).reportedI1.has(msg.id), true, `${name} rollback must not lose I1 dedup`);
+      assert.equal(rig.store.undeliveredMessages("z01-roll").length, 1, `${name} rollback restored the pending message`);
+    }
+
+    rig.driver.events.push({ beeId: "z01-roll", generation: 1, kind: "turn_started" });
+    rig.clock.now += 100;
+    rig.core.step(); // running again with the message still pending
+    assert.equal(rig.driver.interrupts.length, 1, "retained dedup prevents a duplicate interrupt");
+    assert.equal(rig.violations.length, 1, "retained dedup prevents a duplicate violation");
+
+    assert.deepEqual(rig.store.markDelivered(msg.id, 1), { applied: true }); // committed terminal
+    rig.core.step();
+    assert.equal(dedupSets(rig.core).reportedI1.size, 0, "committed zero pending clears reportedI1");
+    assert.equal(dedupSets(rig.core).interruptRequested.size, 0, "committed zero pending clears interruptRequested");
+    assert.equal(rig.violations.length, 1);
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("z01.b: a live-runtime hive with zero pending still clears (mail-only probe)", () => {
+  const rig = makeRig({ i1DeadlineSteps: 10 });
+  try {
+    spawnIdleBee(rig, "z01-live");
+    rig.driver.acceptDeliveries = false;
+    const msg = rig.store.send("z01-live", "overdue next", { urgency: "next" }).message;
+    rig.clock.now += 100;
+    rig.core.step();
+    rig.core.step();
+    assert.deepEqual(rig.violations.map((v) => v.messageId), [msg.id]);
+    assert.equal(dedupSets(rig.core).reportedI1.size, 1);
+    assert.equal(dedupSets(rig.core).interruptRequested.size, 0, "next urgency never interrupts");
+
+    assert.deepEqual(rig.store.markDelivered(msg.id, 1), { applied: true });
+    rig.core.step();
+    assert.equal(rig.store.currentRuntime("z01-live")?.state, "idle", "the runtime stays live");
+    assert.equal(dedupSets(rig.core).reportedI1.size, 0, "live runtime must not block the zero-pending clear");
+    rig.clock.now += 1_000;
+    rig.core.step();
+    assert.equal(rig.violations.length, 1);
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("z01.c: with I1 disabled an interrupted-then-canceled id is cleared without hydration", () => {
+  const rig = makeRig({});
+  try {
+    spawnIdleBee(rig, "z01-noi1");
+    const msg = rig.store.send("z01-noi1", "urgent then gone", { urgency: "now" }).message;
+    rig.driver.events.push({ beeId: "z01-noi1", generation: 1, kind: "turn_started" });
+    rig.core.step();
+    assert.equal(rig.driver.interrupts.length, 1);
+    assert.equal(dedupSets(rig.core).interruptRequested.has(msg.id), true);
+    assert.equal(dedupSets(rig.core).reportedI1.size, 0, "reportedI1 never grows with I1 disabled");
+
+    assert.deepEqual(rig.store.cancelMessage("z01-noi1", msg.id), { canceled: true });
+    rig.core.step();
+    assert.equal(dedupSets(rig.core).interruptRequested.size, 0, "canceled id cleared with I1 disabled");
+    rig.driver.events.push({ beeId: "z01-noi1", generation: 1, kind: "turn_started" });
+    rig.core.step();
+    assert.equal(rig.driver.interrupts.length, 1, "no interrupt without pending mail");
+    assert.equal(rig.violations.length, 0);
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("z01.d: stopped-target pending mail is retained until the bee is deleted", () => {
+  const rig = makeRig({ i1DeadlineSteps: 10, commandsPerStep: 0 });
+  try {
+    const { bee, runtime } = rig.store.createBee({
+      id: "z01-stop", name: "z01-stop", agent: "stub", substrate: "hsr", cwd: "/tmp",
+    });
+    rig.store.updateRuntimeState(bee.id, runtime.generation, "stopped", { exitCause: "clean" });
+    const msg = rig.store.send(bee.id, "parked mail", { urgency: "next" }).message;
+    rig.clock.now += 100;
+    rig.core.step();
+    assert.deepEqual(rig.violations.map((v) => v.messageId), [msg.id]);
+    for (let i = 0; i < 3; i++) rig.core.step();
+    assert.equal(dedupSets(rig.core).reportedI1.has(msg.id), true, "pending stopped-target mail is never pruned");
+    assert.equal(rig.violations.length, 1, "dedup holds while the message stays pending");
+
+    rig.store.deleteBee(bee.id);
+    rig.core.step();
+    assert.equal(dedupSets(rig.core).reportedI1.size, 0, "cascade deletion terminalizes the id");
+    assert.equal(rig.violations.length, 1);
+  } finally {
+    rig.cleanup();
+  }
+});
