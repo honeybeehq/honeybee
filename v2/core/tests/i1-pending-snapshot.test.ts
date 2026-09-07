@@ -204,7 +204,9 @@ test("I1 pending snapshot stays complete and index-backed for a large body-free 
       "ORDER BY bee_id, id",
     ].join("\n");
     const pendingPlan = planDetails(check, pendingSql).join("\n");
-    assert.match(pendingPlan, /USING INDEX mailbox_undelivered/);
+    // Intended adoption: the covering pending-metadata index serves the
+    // body-free projection without row fetches.
+    assert.match(pendingPlan, /USING COVERING INDEX mailbox_pending_metadata/);
     assert.doesNotMatch(pendingPlan, /USE TEMP B-TREE/);
 
     const factsSql = [
@@ -226,7 +228,8 @@ test("I1 pending snapshot stays complete and index-backed for a large body-free 
       "ORDER BY target.bee_id",
     ].join("\n");
     const factsPlan = planDetails(check, factsSql).join("\n");
-    assert.match(factsPlan, /USING (?:COVERING )?INDEX mailbox_undelivered/);
+    // Intended adoption: the pending_bees CTE scans the covering metadata index.
+    assert.match(factsPlan, /USING COVERING INDEX mailbox_pending_metadata/);
     assert.match(factsPlan, /sqlite_autoindex_runtimes_1/);
     assert.match(factsPlan, /USING (?:COVERING )?INDEX flags_active/);
     assert.doesNotMatch(factsPlan, /SCAN (?:runtime|flag)\b/);

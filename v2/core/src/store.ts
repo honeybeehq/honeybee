@@ -119,7 +119,7 @@ import {
   TASK_SUPPLY_SENDER_NAME,
   TASK_TRANSITIONS,
 } from "./tasks.ts";
-import { ACCOUNT_LIMITS_TABLE_SQL, BEES_ADDITIVE_COLUMNS, BEES_ACTIVE_MOVE_INDEX_SQL, BEE_MOVES_TABLE_SQL, CELLS_TABLE_SQL, CELL_OPS_TABLE_SQL, FLAGS_ADDITIVE_COLUMNS, FLAGS_EXPIRY_INDEX_SQL, HANDLE_INDEX_SQL, IDEMPOTENCY_INDEX_SQL, MAILBOX_ADDITIVE_COLUMNS, MAIL_HISTORY_INDEX_SQL, MAIL_HISTORY_PROJECTION_SQL, RUNTIMES_ADDITIVE_COLUMNS, SCHEMA_SQL, SCHEMA_VERSION } from "./schema.ts";
+import { ACCOUNT_LIMITS_TABLE_SQL, BEES_ADDITIVE_COLUMNS, BEES_ACTIVE_MOVE_INDEX_SQL, MAILBOX_PENDING_METADATA_INDEX_SQL, BEE_MOVES_TABLE_SQL, CELLS_TABLE_SQL, CELL_OPS_TABLE_SQL, FLAGS_ADDITIVE_COLUMNS, FLAGS_EXPIRY_INDEX_SQL, HANDLE_INDEX_SQL, IDEMPOTENCY_INDEX_SQL, MAILBOX_ADDITIVE_COLUMNS, MAIL_HISTORY_INDEX_SQL, MAIL_HISTORY_PROJECTION_SQL, RUNTIMES_ADDITIVE_COLUMNS, SCHEMA_SQL, SCHEMA_VERSION } from "./schema.ts";
 import { beeMoveReviveKey, beeMoveStopKey, beeMoveTransitionLegal, toBeeMoveView } from "./cellMove.ts";
 import {
   LOGIN_FLOW_PHASES,
@@ -988,15 +988,26 @@ function daemonBoolean(value: unknown, label: string): boolean {
   throw new CoreError(`daemon projection: malformed ${label}`);
 }
 
-function mapDaemonPendingMessage(r: Row): { beeId: string; message: DaemonPendingMessageMeta } {
+function mapDaemonPendingMessage(
+  id: unknown,
+  urgency: unknown,
+  enqueuedAt: unknown,
+): DaemonPendingMessageMeta {
   return {
-    beeId: daemonText(r.bee_id, "pending bee_id"),
-    message: {
-      id: daemonNumber(r.id, "pending id"),
-      urgency: daemonUrgency(r.urgency, "pending urgency"),
-      enqueuedAt: daemonNumber(r.enqueued_at, "pending enqueued_at"),
-    },
+    id: daemonNumber(id, "pending id"),
+    urgency: daemonUrgency(urgency, "pending urgency"),
+    enqueuedAt: daemonNumber(enqueuedAt, "pending enqueued_at"),
   };
+}
+
+function daemonStatementArrayRows(
+  statement: ReturnType<DatabaseSync["prepare"]>,
+): readonly (readonly unknown[])[] {
+  statement.setReturnArrays(true);
+  // Node guarantees array rows in this mode, but its declarations do not
+  // refine all() accordingly. Individual values remain untrusted below.
+  const rows: unknown = statement.all();
+  return rows as readonly (readonly unknown[])[];
 }
 
 function mapI1RuntimeFact(r: Row): I1RuntimeFact | null {
@@ -1490,6 +1501,7 @@ export class CoreStore {
     this.db.exec(IDEMPOTENCY_INDEX_SQL);
     this.db.exec(HANDLE_INDEX_SQL);
     this.db.exec(BEES_ACTIVE_MOVE_INDEX_SQL);
+    this.db.exec(MAILBOX_PENDING_METADATA_INDEX_SQL);
     this.db.exec(MAIL_HISTORY_INDEX_SQL);
     this.db.exec(CELLS_TABLE_SQL);
     this.db.exec(BEE_MOVES_TABLE_SQL);
@@ -3459,7 +3471,7 @@ export class CoreStore {
     const workByBee = new Map(work.map((row) => [row.runtime.beeId, row]));
     // CROSS JOIN deliberately keeps the sparse live-runtime scan outermost;
     // each live bee then seeks only its own undelivered mailbox prefix.
-    const messageRows: Row[] = this.stmt(
+    const messageStatement = this.stmt(
       `SELECT message.id,
               message.bee_id,
               message.urgency,
@@ -3475,12 +3487,25 @@ export class CoreStore {
          AND message.bee_id = runtime.bee_id
          AND message.delivered_at IS NULL
        ORDER BY runtime.bee_id, message.id`,
-    ).all();
-    for (const raw of messageRows) {
-      const { beeId, message } = mapDaemonPendingMessage(raw);
-      const row = workByBee.get(beeId);
-      if (!row) throw new CoreError(`daemon projection: pending live bee ${beeId} has no runtime`);
-      row.pending.push(message);
+    );
+    if (typeof messageStatement.setReturnArrays === "function") {
+      const messageRows = daemonStatementArrayRows(messageStatement);
+      for (const raw of messageRows) {
+        const beeId = daemonText(raw[1], "pending bee_id");
+        const message = mapDaemonPendingMessage(raw[0], raw[2], raw[3]);
+        const row = workByBee.get(beeId);
+        if (!row) throw new CoreError(`daemon projection: pending live bee ${beeId} has no runtime`);
+        row.pending.push(message);
+      }
+    } else {
+      const messageRows: Row[] = messageStatement.all();
+      for (const raw of messageRows) {
+        const beeId = daemonText(raw.bee_id, "pending bee_id");
+        const message = mapDaemonPendingMessage(raw.id, raw.urgency, raw.enqueued_at);
+        const row = workByBee.get(beeId);
+        if (!row) throw new CoreError(`daemon projection: pending live bee ${beeId} has no runtime`);
+        row.pending.push(message);
+      }
     }
     return work;
   }
@@ -3544,17 +3569,30 @@ export class CoreStore {
     }));
     const groupByBee = new Map(groups.map((group) => [group.beeId, group]));
 
-    const messageRows: Row[] = this.stmt(
+    const messageStatement = this.stmt(
       `SELECT id, bee_id, urgency, enqueued_at
        FROM mailbox
        WHERE delivered_at IS NULL
        ORDER BY bee_id, id`,
-    ).all();
-    for (const raw of messageRows) {
-      const { beeId, message } = mapDaemonPendingMessage(raw);
-      const group = groupByBee.get(beeId);
-      if (!group) throw new CoreError(`daemon projection: pending bee ${beeId} has no I1 facts`);
-      group.pending.push(message);
+    );
+    if (typeof messageStatement.setReturnArrays === "function") {
+      const messageRows = daemonStatementArrayRows(messageStatement);
+      for (const raw of messageRows) {
+        const beeId = daemonText(raw[1], "pending bee_id");
+        const message = mapDaemonPendingMessage(raw[0], raw[2], raw[3]);
+        const group = groupByBee.get(beeId);
+        if (!group) throw new CoreError(`daemon projection: pending bee ${beeId} has no I1 facts`);
+        group.pending.push(message);
+      }
+    } else {
+      const messageRows: Row[] = messageStatement.all();
+      for (const raw of messageRows) {
+        const beeId = daemonText(raw.bee_id, "pending bee_id");
+        const message = mapDaemonPendingMessage(raw.id, raw.urgency, raw.enqueued_at);
+        const group = groupByBee.get(beeId);
+        if (!group) throw new CoreError(`daemon projection: pending bee ${beeId} has no I1 facts`);
+        group.pending.push(message);
+      }
     }
     return { rows: groups, byBee: groupByBee };
   }

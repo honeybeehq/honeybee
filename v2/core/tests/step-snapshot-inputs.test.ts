@@ -195,7 +195,11 @@ test("step snapshot input indexes install on populated reopen and back both abse
       check,
       "SELECT 1 FROM mailbox WHERE delivered_at IS NULL LIMIT 1",
     ).join("\n");
-    assert.match(mailboxPlan, /USING (?:COVERING )?INDEX mailbox_undelivered/);
+    // Either pending partial index serves the LIMIT-1 absence probe in O(1);
+    // mailbox_pending_metadata (the covering metadata index) may win the
+    // planner's choice. The requirement is a pending-only partial index, not
+    // a specific one.
+    assert.match(mailboxPlan, /USING (?:COVERING )?INDEX (?:mailbox_undelivered|mailbox_pending_metadata)/);
 
     const schemaVersionAfter = stringField(
       check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get(),

@@ -733,6 +733,19 @@ export const BEES_ACTIVE_MOVE_INDEX_SQL =
   "CREATE UNIQUE INDEX IF NOT EXISTS bees_one_active_move ON bees(active_move_id) WHERE active_move_id IS NOT NULL;";
 
 /**
+ * Covering source for the daemon's body-free pending-metadata projections
+ * (readI1PendingSnapshot / readDaemonWork): every column those queries touch
+ * is in the key, so held large bodies are never fetched per tick. The
+ * trailing `delivered_at` key is REQUIRED for the covering plan — the query
+ * text references it, and a partial index's WHERE clause does not satisfy a
+ * column reference. No body and no JSON expression, ever. Created after the
+ * v8 additive `mailbox.urgency` column, so a pre-v8 store is migrated before
+ * it is indexed.
+ */
+export const MAILBOX_PENDING_METADATA_INDEX_SQL =
+  "CREATE INDEX IF NOT EXISTS mailbox_pending_metadata ON mailbox(bee_id, id, urgency, enqueued_at, delivered_at) WHERE delivered_at IS NULL;";
+
+/**
  * Additive columns on `mailbox` since v7 — same add-iff-missing discipline as
  * BEES_ADDITIVE_COLUMNS. v8: urgency.
  */

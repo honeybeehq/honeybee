@@ -292,7 +292,9 @@ test("daemon work naturally uses sparse runtime and live-driven mailbox indexes"
     ].join("\n");
     const mailboxPlan = planDetails(check, mailboxSql).join("\n");
     assert.match(mailboxPlan, /SCAN runtime USING INDEX runtimes_daemon_live/);
-    assert.match(mailboxPlan, /SEARCH message USING INDEX mailbox_undelivered \(bee_id=\?\)/);
+    // The pending-metadata covering index is the intended access path: the
+    // projection must never fetch mailbox rows (bodies) for metadata.
+    assert.match(mailboxPlan, /SEARCH message USING COVERING INDEX mailbox_pending_metadata \(bee_id=\?\)/);
     assert.doesNotMatch(mailboxPlan, /SCAN message\b/);
   } finally {
     check.close();
