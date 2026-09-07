@@ -49,6 +49,7 @@ import {
   type BeeViewRow,
   type CommandRow,
   type CoreStore,
+  type I1PendingBee,
   type MessageRow,
   type RuntimeState,
 } from "../../core/src/index.ts";
@@ -294,11 +295,11 @@ export class DaemonCore {
     );
     this.performance.measureSync("core.step.tasks", () => this.taskSupplyLoop());
     if (this.policy.i1DeadlineSteps != null && this.onI1Violation != null) {
-      ({ snapshot, seq } = this.performance.measureSync("core.step.snapshot", () =>
-        this.refreshSnapshot(snapshot, seq),
-      ));
+      const i1Snapshot = this.performance.measureSync("core.step.snapshot", () =>
+        this.store.readI1PendingSnapshot(),
+      );
       this.performance.measureSync("core.step.i1", () =>
-        this.i1Telemetry(snapshot.rows, snapshot.pendingByBee),
+        this.i1Telemetry(i1Snapshot),
       );
     }
   }
@@ -946,13 +947,12 @@ export class DaemonCore {
    * aware deadlines, and a suspended clock while a closed-list flag is active
    * (a visibly blocked bee is at an external boundary — I3/I6 territory).
    */
-  private i1Telemetry(rows: BeeViewRow[], pendingByBee: Map<string, MessageRow[]>): void {
+  private i1Telemetry(rows: readonly I1PendingBee[]): void {
     const bound = this.policy.i1DeadlineSteps as number;
     const record = this.onI1Violation as (violation: I1ViolationEvent) => void;
     const now = this.now();
-    for (const { bee, runtime: rt, view } of rows) {
-      if (view.flags.length > 0) continue;
-      const pending = pendingByBee.get(bee.id) ?? [];
+    for (const { beeId, runtime: rt, hasActiveFlag, pending } of rows) {
+      if (hasActiveFlag) continue;
       pending.forEach((m, pos) => {
         // v8 (Q2 amendment): an `idle` message's deadline clock starts when it
         // becomes ELIGIBLE (the runtime not `running`), not at enqueue — a
@@ -971,8 +971,8 @@ export class DaemonCore {
         if (now <= deadline || this.reportedI1.has(m.id)) return;
         this.reportedI1.add(m.id);
         const detail = `message ${m.id} undelivered past deadline (enqueued=${m.enqueuedAt} urgency=${m.urgency} pos=${pos} deadline=${deadline} now=${now})`;
-        record({ detectedAt: now, beeId: bee.id, messageId: m.id, enqueuedAt: m.enqueuedAt, deadline, detail });
-        this.log(`i1.violation bee=${bee.id} msg=${m.id} deadline=${deadline}`);
+        record({ detectedAt: now, beeId, messageId: m.id, enqueuedAt: m.enqueuedAt, deadline, detail });
+        this.log(`i1.violation bee=${beeId} msg=${m.id} deadline=${deadline}`);
       });
     }
   }

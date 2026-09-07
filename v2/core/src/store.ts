@@ -206,6 +206,25 @@ export interface BeeViewRow {
   view: BeeView;
 }
 
+/** Body-free mailbox facts shared by daemon work and I1 telemetry. */
+export type DaemonPendingMessageMeta = Readonly<
+  Pick<MessageRow, "id" | "urgency" | "enqueuedAt">
+>;
+
+/** Current runtime facts used by I1. Stopped and absent runtimes remain meaningful. */
+export type I1RuntimeFact = Readonly<
+  Pick<RuntimeRow, "state" | "bootEvidence" | "updatedAt">
+>;
+
+/** One complete pending queue plus the current facts that govern its I1 clock. */
+export interface I1PendingBee {
+  beeId: string;
+  runtime: I1RuntimeFact | null;
+  hasActiveFlag: boolean;
+  /** Mailbox-id order. The array index is the exact zero-based FIFO position. */
+  pending: readonly DaemonPendingMessageMeta[];
+}
+
 /** `tagBee` outcome: the row after the edit plus what actually changed. */
 export interface TagResult {
   bee: BeeRow;
@@ -758,6 +777,86 @@ function normalizePenalty(value: unknown, where: string): number {
 function sameArgs(a: string[] | null, b: string[] | null): boolean {
   if (a === null || b === null) return a === b;
   return a.length === b.length && a.every((v, i) => v === b[i]);
+}
+
+function daemonText(value: unknown, label: string): string {
+  if (typeof value !== "string") throw new CoreError(`daemon projection: malformed ${label}`);
+  return value;
+}
+
+function daemonNumber(value: unknown, label: string): number {
+  if (typeof value !== "number" && typeof value !== "bigint") {
+    throw new CoreError(`daemon projection: malformed ${label}`);
+  }
+  const number = Number(value);
+  if (!Number.isFinite(number)) throw new CoreError(`daemon projection: malformed ${label}`);
+  return number;
+}
+
+function daemonUrgency(value: unknown, label: string): Urgency {
+  switch (value) {
+    case "now":
+    case "next":
+    case "idle":
+      return value;
+    default:
+      throw new CoreError(`daemon projection: malformed ${label}`);
+  }
+}
+
+function daemonRuntimeState(value: unknown, label: string): RuntimeState {
+  switch (value) {
+    case "booting":
+    case "running":
+    case "idle":
+    case "stopped":
+      return value;
+    default:
+      throw new CoreError(`daemon projection: malformed ${label}`);
+  }
+}
+
+function daemonBootEvidence(value: unknown, label: string): RuntimeRow["bootEvidence"] {
+  if (value == null) return null;
+  switch (value) {
+    case "synthetic":
+      return "synthetic";
+    case "real":
+      return "real";
+    default:
+      throw new CoreError(`daemon projection: malformed ${label}`);
+  }
+}
+
+function daemonBoolean(value: unknown, label: string): boolean {
+  if (value === 0 || value === 0n) return false;
+  if (value === 1 || value === 1n) return true;
+  throw new CoreError(`daemon projection: malformed ${label}`);
+}
+
+function mapDaemonPendingMessage(r: Row): { beeId: string; message: DaemonPendingMessageMeta } {
+  return {
+    beeId: daemonText(r.bee_id, "pending bee_id"),
+    message: {
+      id: daemonNumber(r.id, "pending id"),
+      urgency: daemonUrgency(r.urgency, "pending urgency"),
+      enqueuedAt: daemonNumber(r.enqueued_at, "pending enqueued_at"),
+    },
+  };
+}
+
+function mapI1RuntimeFact(r: Row): I1RuntimeFact | null {
+  if (r.runtime_state == null) {
+    if (r.runtime_boot_evidence != null || r.runtime_updated_at != null) {
+      throw new CoreError("daemon projection: absent I1 runtime has runtime facts");
+    }
+    return null;
+  }
+  return {
+    state: daemonRuntimeState(r.runtime_state, "I1 runtime state"),
+    bootEvidence: daemonBootEvidence(r.runtime_boot_evidence, "I1 runtime boot evidence"),
+    updatedAt: daemonNumber(r.runtime_updated_at, "I1 runtime updated_at"),
+  };
 }
 
 function mapRuntime(r: Row): RuntimeRow {
@@ -3048,6 +3147,66 @@ export class CoreStore {
   // -------------------------------------------------------------------------
   // B8 — derived reads (the ONLY place these questions are answered)
   // -------------------------------------------------------------------------
+
+  /**
+   * Fresh, body-free I1 input. Groups and messages preserve the old
+   * listBeeViewRows/listUndeliveredMessages order without hydrating either
+   * complete bee rows or mailbox bodies.
+   */
+  readI1PendingSnapshot(): I1PendingBee[] {
+    const factRows: Row[] = this.stmt(
+      `WITH pending_bees AS (
+         SELECT DISTINCT bee_id
+         FROM mailbox
+         WHERE delivered_at IS NULL
+       )
+       SELECT target.bee_id,
+              runtime.state AS runtime_state,
+              runtime.boot_evidence AS runtime_boot_evidence,
+              runtime.updated_at AS runtime_updated_at,
+              EXISTS (
+                SELECT 1
+                FROM flags AS flag
+                WHERE flag.bee_id = target.bee_id
+                  AND flag.cleared_at IS NULL
+              ) AS has_active_flag
+       FROM pending_bees AS target
+       LEFT JOIN runtimes AS runtime
+         ON runtime.bee_id = target.bee_id
+        AND runtime.generation = (
+          SELECT MAX(latest.generation)
+          FROM runtimes AS latest
+          WHERE latest.bee_id = target.bee_id
+        )
+       ORDER BY target.bee_id`,
+    ).all();
+    const groups: Array<{
+      beeId: string;
+      runtime: I1RuntimeFact | null;
+      hasActiveFlag: boolean;
+      pending: DaemonPendingMessageMeta[];
+    }> = factRows.map((row) => ({
+      beeId: daemonText(row.bee_id, "I1 bee_id"),
+      runtime: mapI1RuntimeFact(row),
+      hasActiveFlag: daemonBoolean(row.has_active_flag, "I1 active-flag bit"),
+      pending: [],
+    }));
+    const groupByBee = new Map(groups.map((group) => [group.beeId, group]));
+
+    const messageRows: Row[] = this.stmt(
+      `SELECT id, bee_id, urgency, enqueued_at
+       FROM mailbox
+       WHERE delivered_at IS NULL
+       ORDER BY bee_id, id`,
+    ).all();
+    for (const raw of messageRows) {
+      const { beeId, message } = mapDaemonPendingMessage(raw);
+      const group = groupByBee.get(beeId);
+      if (!group) throw new CoreError(`daemon projection: pending bee ${beeId} has no I1 facts`);
+      group.pending.push(message);
+    }
+    return groups;
+  }
 
   /** Whether runtime or mailbox facts require the daemon's full step snapshot. */
   hasStepSnapshotInputs(): boolean {

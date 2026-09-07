@@ -96,6 +96,38 @@ function spawnIdleBee(rig: Rig, id = "bee-1"): void {
   assert.equal(rig.store.currentRuntime(id)?.state, "idle");
 }
 
+function legacyI1Oracle(store: CoreStore, bound: number, now: number): I1ViolationEvent[] {
+  const pendingByBee = new Map<string, ReturnType<CoreStore["listUndeliveredMessages"]>>();
+  for (const message of store.listUndeliveredMessages()) {
+    const pending = pendingByBee.get(message.beeId);
+    if (pending) pending.push(message);
+    else pendingByBee.set(message.beeId, [message]);
+  }
+  const violations: I1ViolationEvent[] = [];
+  for (const { bee, runtime, view } of store.listBeeViewRows()) {
+    if (view.flags.length > 0) continue;
+    const pending = pendingByBee.get(bee.id) ?? [];
+    pending.forEach((message, position) => {
+      let base = message.enqueuedAt;
+      if (message.urgency === "idle") {
+        if (runtime?.state === "running" && runtime.bootEvidence === "real") return;
+        base = Math.max(base, runtime?.updatedAt ?? message.enqueuedAt);
+      }
+      const deadline = base + (position + 1) * bound;
+      if (now <= deadline) return;
+      violations.push({
+        detectedAt: now,
+        beeId: bee.id,
+        messageId: message.id,
+        enqueuedAt: message.enqueuedAt,
+        deadline,
+        detail: `message ${message.id} undelivered past deadline (enqueued=${message.enqueuedAt} urgency=${message.urgency} pos=${position} deadline=${deadline} now=${now})`,
+      });
+    });
+  }
+  return violations;
+}
+
 test("model change waits when idle becomes working before command execution", () => {
   const rig = makeRig();
   try {
@@ -567,13 +599,118 @@ test("unit.0e: task supply refreshes the snapshot before I1 in the same tick", (
     assert.ok(fed?.mailboxMessageId != null);
     assert.equal(rig.store.currentRuntime(bee.id)?.state, "stopped");
     assert.equal(rig.store.undeliveredMessages(bee.id).length, 1);
-    assert.equal(viewReads, 1, "only the final post-task acquisition materializes bee rows");
-    assert.equal(mailboxReads, 1, "only the final post-task acquisition materializes mailbox rows");
+    assert.equal(viewReads, 0, "neither the initial empty branch nor final I1 hydrates bee rows");
+    assert.equal(mailboxReads, 0, "final I1 reads metadata instead of full mailbox rows");
     assert.deepEqual(
       rig.violations.map((violation) => violation.messageId),
       [fed?.mailboxMessageId],
       "the final acquisition includes mail added after delivery by task supply",
     );
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("unit.0f: fresh final I1 re-ranks the queue after delivery", () => {
+  const rig = makeRig({ i1DeadlineSteps: 10 });
+  try {
+    spawnIdleBee(rig, "rerank-after-delivery");
+    const first = rig.store.send("rerank-after-delivery", "deliver first").message;
+    const second = rig.store.send("rerank-after-delivery", "becomes head").message;
+    rig.clock.now = second.enqueuedAt + 11;
+
+    rig.core.step();
+
+    assert.equal(rig.store.getMessage(first.id)?.deliveredGeneration, 1);
+    assert.equal(rig.store.getMessage(second.id)?.deliveredAt, null);
+    const deadline = second.enqueuedAt + 10;
+    assert.deepEqual(rig.violations, [{
+      detectedAt: rig.clock.now,
+      beeId: "rerank-after-delivery",
+      messageId: second.id,
+      enqueuedAt: second.enqueuedAt,
+      deadline,
+      detail: `message ${second.id} undelivered past deadline (enqueued=${second.enqueuedAt} urgency=next pos=0 deadline=${deadline} now=${rig.clock.now})`,
+    }]);
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("unit.0g: linear I1 metadata matches the full-snapshot oracle exactly", () => {
+  const rig = makeRig({ commandsPerStep: 0, i1DeadlineSteps: 10 });
+  try {
+    const running = rig.store.createBee({
+      id: "a-running-archived",
+      name: "a-running-archived",
+      agent: "stub",
+      substrate: "hsr",
+      cwd: "/tmp",
+    });
+    rig.store.updateRuntimeState(running.bee.id, running.runtime.generation, "running", {
+      pid: 101,
+      pidStartedAt: 100,
+    });
+    const heldIdle = rig.store.send(running.bee.id, "held idle", { urgency: "idle" }).message;
+    rig.store.send(running.bee.id, "eligible behind idle", { urgency: "next" });
+    rig.store.archiveBee(running.bee.id);
+
+    const stopped = rig.store.createBee({
+      id: "b-stopped",
+      name: "b-stopped",
+      agent: "stub",
+      substrate: "hsr",
+      cwd: "/tmp",
+    });
+    rig.store.updateRuntimeState(stopped.bee.id, stopped.runtime.generation, "stopped", { exitCause: "clean" });
+    rig.store.send(stopped.bee.id, "stopped pending", { urgency: "now" });
+
+    const synthetic = rig.store.createBee({
+      id: "c-synthetic-running",
+      name: "c-synthetic-running",
+      agent: "stub",
+      substrate: "hsr",
+      cwd: "/tmp",
+    });
+    rig.store.updateRuntimeState(synthetic.bee.id, synthetic.runtime.generation, "running", { synthetic: true });
+    rig.store.send(synthetic.bee.id, "synthetic idle is eligible", { urgency: "idle" });
+
+    const booting = rig.store.createBee({
+      id: "d-booting",
+      name: "d-booting",
+      agent: "stub",
+      substrate: "hsr",
+      cwd: "/tmp",
+    });
+    rig.store.send(booting.bee.id, "booting pending", { urgency: "next" });
+
+    const flagged = rig.store.createBee({
+      id: "e-flagged",
+      name: "e-flagged",
+      agent: "stub",
+      substrate: "hsr",
+      cwd: "/tmp",
+    });
+    rig.store.send(flagged.bee.id, "suppressed by flag", { urgency: "next" });
+    rig.store.setFlag(flagged.bee.id, "resource_blocked", "declared boundary");
+
+    rig.clock.now += 31;
+    const expected = legacyI1Oracle(rig.store, 10, rig.clock.now);
+    rig.core.step();
+
+    assert.ok(expected.length > 0);
+    assert.equal(expected.some((violation) => violation.messageId === heldIdle.id), false);
+    assert.match(expected[0]?.detail ?? "", /pos=1 /, "the held idle predecessor still consumes position zero");
+    assert.deepEqual(rig.violations, expected);
+    assert.deepEqual(
+      rig.ops.filter((op) => op.startsWith("i1.violation ")),
+      expected.map((violation) =>
+        `i1.violation bee=${violation.beeId} msg=${violation.messageId} deadline=${violation.deadline}`,
+      ),
+    );
+
+    rig.core.step();
+    assert.deepEqual(rig.violations, expected, "reported message ids remain deduplicated on later ticks");
   } finally {
     rig.cleanup();
   }
