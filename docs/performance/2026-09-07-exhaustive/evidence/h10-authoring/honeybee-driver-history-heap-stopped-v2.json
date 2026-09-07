@@ -1,0 +1,70 @@
+{
+  "snapshotPath": "/private/tmp/honeybee-driver-history-snapshot-100000.json.stopped.heapsnapshot",
+  "snapshotSha256": "95e62e055d6a657abdf0f7a0d99d23ff1ef9d0adf84cd3d9ff1a5229628c512b",
+  "toolSha256": "41af5368e9e35a512ee673c16ab2e3ee3428862164c1cf3782d93a0930de2bac",
+  "scope": "Offline structural analysis of HsrDriver.consumed in V8 heap snapshots (v2).\n\nFinds HsrDriver instances and CLASSIFIES the `consumed` property target as\nmap / not_map / missing using the actual node type (\"object\") and name\n(\"Map\") BEFORE calling anything a consumedMap or traversing a table. Only a\nclassified map is traversed. Reports SHALLOW self bytes and bounded\nretaining structure. Structural anomalies are recorded as JSON evidence and\nthe report is WRITTEN BEFORE a nonzero exit.\n\nSmi scope, fixture-qualified: for small numeric ids/generations within smi\nrange (like the 1..100000/gen-1 baseline fixture) keys and values are\nstored inline and emit NO edges, so edge counts must never be read as entry\ncounts there; larger numerics would be heap numbers with real edges and a\ndifferent byte shape. Entry-count authority stays external (probe receipt).\nNo dominator or retained-byte attribution; no whole-process claims.\n",
+  "hsrDriverInstances": 1,
+  "classificationCounts": {
+    "map": 1
+  },
+  "findings": [
+    {
+      "driver": {
+        "id": 72023,
+        "type": "object",
+        "name": "HsrDriver",
+        "shallowBytes": 224,
+        "edgeCount": 13
+      },
+      "consumedTarget": {
+        "id": 72039,
+        "type": "object",
+        "name": "Map",
+        "shallowBytes": 32,
+        "edgeCount": 3
+      },
+      "classification": "map",
+      "table": {
+        "id": 72053,
+        "type": "array",
+        "name": "",
+        "shallowBytes": 3670056,
+        "edgeCount": 1
+      },
+      "tableOutgoingEdgeCountsByType": {
+        "internal": 1
+      },
+      "smiNote": "fixture-qualified: small in-smi-range numeric keys/values are stored inline and emit no edges, so these edge counts never enumerate entries; larger numerics would be heap numbers with real edges",
+      "driverRetainers": [
+        {
+          "fromType": "object",
+          "fromName": "system / Context",
+          "fromId": 7199,
+          "edgeType": "context",
+          "edgeName": "driver"
+        }
+      ],
+      "consumedTargetRetainers": [
+        {
+          "fromType": "object",
+          "fromName": "HsrDriver",
+          "fromId": 72023,
+          "edgeType": "property",
+          "edgeName": "consumed"
+        }
+      ],
+      "tableRetainers": [
+        {
+          "fromType": "object",
+          "fromName": "Map",
+          "fromId": 72039,
+          "edgeType": "internal",
+          "edgeName": "table"
+        }
+      ]
+    }
+  ],
+  "anomalies": [],
+  "completed": true,
+  "totalNodes": 80125
+}

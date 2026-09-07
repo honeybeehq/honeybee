@@ -1,0 +1,11 @@
+# Driver-history design and measurement review
+
+The selected H10 unit covers built-in daemon HSR and Cell-inner-HSR. Existing concrete drivers keep history by default. An explicit construction opt-out allocates no history Map and makes both diagnostic queries throw. This is design approval, not production or performance acceptance.
+
+The parent and independent judge both select the same small policy. The existing two internal HSR acceptance sites remain the only recorder writes, preserving their independence from Core's accepted-outcome decision. Cell forwards the shared HSR configuration without a source change. Core state, RPC, CLI, Tmux and SimDriver remain outside the production delta.
+
+The review adds explicit-true coverage, a real CoreStore/DaemonCore direct and confirmed delivery differential, and an actual HiveDaemon construction test. The latter must prove that both built-in HSR paths disable recording while Tmux keeps its existing default. No production diagnostic API is needed. The external-sink alternative breaks defaults and permits arbitrary callback effects. The class-split alternative adds driver families and leaves a shared Cell interface unresolved.
+
+The paired ruler is approved after separate structural smokes and a preserved Mini zero-count socket race. V4 waits for both parsed boot and connection before sampling. Its first Mini A/A canonical run passes all 12 children and exact wire, observation, cursor and queue assertions. Memory readings are whole driver-process occupancy after best-effort GC. Snapshot mode is separate and diagnostic-only. The revised heap analyzer classifies Map/null/non-Map/missing targets and writes structural anomalies before failing; positive, released and malformed-table controls pass.
+
+Production review and broad verification remain pending on the isolated implementation. No before/after improvement is accepted by this review. The [synthesis](../performance/2026-09-07-exhaustive/designs/driver-history-architecture/synthesis.md), [independent judge](../performance/2026-09-07-exhaustive/designs/driver-history-architecture/cross-judge.md) and [Mini control](../performance/2026-09-07-exhaustive/driver-history-baseline.md) contain the detailed evidence and corrections.

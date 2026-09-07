@@ -1,0 +1,267 @@
+{
+  "snapshotPath": "/private/tmp/honeybee-driver-history-heap-control-live.heapsnapshot",
+  "snapshotSha256": "0a4cbd5c186b7ca47f21eca38db9fce37bcaf616744b04afb346585c4cfa2402",
+  "toolSha256": "41af5368e9e35a512ee673c16ab2e3ee3428862164c1cf3782d93a0930de2bac",
+  "scope": "Offline structural analysis of HsrDriver.consumed in V8 heap snapshots (v2).\n\nFinds HsrDriver instances and CLASSIFIES the `consumed` property target as\nmap / not_map / missing using the actual node type (\"object\") and name\n(\"Map\") BEFORE calling anything a consumedMap or traversing a table. Only a\nclassified map is traversed. Reports SHALLOW self bytes and bounded\nretaining structure. Structural anomalies are recorded as JSON evidence and\nthe report is WRITTEN BEFORE a nonzero exit.\n\nSmi scope, fixture-qualified: for small numeric ids/generations within smi\nrange (like the 1..100000/gen-1 baseline fixture) keys and values are\nstored inline and emit NO edges, so edge counts must never be read as entry\ncounts there; larger numerics would be heap numbers with real edges and a\ndifferent byte shape. Entry-count authority stays external (probe receipt).\nNo dominator or retained-byte attribution; no whole-process claims.\n",
+  "hsrDriverInstances": 4,
+  "classificationCounts": {
+    "map": 1,
+    "not_map": 2,
+    "missing": 1
+  },
+  "findings": [
+    {
+      "driver": {
+        "id": 78243,
+        "type": "object",
+        "name": "HsrDriver",
+        "shallowBytes": 112,
+        "edgeCount": 3
+      },
+      "consumedTarget": {
+        "id": 78251,
+        "type": "object",
+        "name": "Map",
+        "shallowBytes": 32,
+        "edgeCount": 3
+      },
+      "classification": "map",
+      "table": {
+        "id": 78253,
+        "type": "array",
+        "name": "",
+        "shallowBytes": 14376,
+        "edgeCount": 1
+      },
+      "tableOutgoingEdgeCountsByType": {
+        "internal": 1
+      },
+      "smiNote": "fixture-qualified: small in-smi-range numeric keys/values are stored inline and emit no edges, so these edge counts never enumerate entries; larger numerics would be heap numbers with real edges",
+      "driverRetainers": [
+        {
+          "fromType": "object",
+          "fromName": "Array",
+          "fromId": 31583,
+          "edgeType": "element",
+          "edgeName": "[0]"
+        },
+        {
+          "fromType": "array",
+          "fromName": "(object elements)",
+          "fromId": 78241,
+          "edgeType": "internal",
+          "edgeName": "0"
+        }
+      ],
+      "consumedTargetRetainers": [
+        {
+          "fromType": "object",
+          "fromName": "HsrDriver",
+          "fromId": 78243,
+          "edgeType": "property",
+          "edgeName": "consumed"
+        }
+      ],
+      "tableRetainers": [
+        {
+          "fromType": "object",
+          "fromName": "Map",
+          "fromId": 78251,
+          "edgeType": "internal",
+          "edgeName": "table"
+        }
+      ]
+    },
+    {
+      "driver": {
+        "id": 78245,
+        "type": "object",
+        "name": "HsrDriver",
+        "shallowBytes": 112,
+        "edgeCount": 3
+      },
+      "consumedTarget": {
+        "id": 63,
+        "type": "hidden",
+        "name": "null",
+        "shallowBytes": 0,
+        "edgeCount": 3
+      },
+      "classification": "not_map",
+      "driverRetainers": [
+        {
+          "fromType": "object",
+          "fromName": "Array",
+          "fromId": 31583,
+          "edgeType": "element",
+          "edgeName": "[1]"
+        },
+        {
+          "fromType": "array",
+          "fromName": "(object elements)",
+          "fromId": 78241,
+          "edgeType": "internal",
+          "edgeName": "1"
+        }
+      ],
+      "consumedTargetRetainers": [
+        {
+          "fromType": "synthetic",
+          "fromName": "(Read-only roots)",
+          "fromId": 29,
+          "edgeType": "internal",
+          "edgeName": "null_value"
+        },
+        {
+          "fromType": "object",
+          "fromName": "Object",
+          "fromId": 6629,
+          "edgeType": "property",
+          "edgeName": "__proto__"
+        },
+        {
+          "fromType": "object",
+          "fromName": "Map",
+          "fromId": 6631,
+          "edgeType": "property",
+          "edgeName": "__proto__"
+        },
+        {
+          "fromType": "object",
+          "fromName": "Set",
+          "fromId": 6633,
+          "edgeType": "property",
+          "edgeName": "__proto__"
+        },
+        {
+          "fromType": "object",
+          "fromName": "WeakMap",
+          "fromId": 6635,
+          "edgeType": "property",
+          "edgeName": "__proto__"
+        },
+        {
+          "fromType": "object",
+          "fromName": "WeakSet",
+          "fromId": 6637,
+          "edgeType": "property",
+          "edgeName": "__proto__"
+        },
+        {
+          "fromType": "object",
+          "fromName": "process",
+          "fromId": 6639,
+          "edgeType": "property",
+          "edgeName": "domain"
+        },
+        {
+          "fromType": "object",
+          "fromName": "Generator",
+          "fromId": 6721,
+          "edgeType": "property",
+          "edgeName": "__proto__"
+        },
+        {
+          "fromType": "object",
+          "fromName": "Generator",
+          "fromId": 6737,
+          "edgeType": "property",
+          "edgeName": "__proto__"
+        },
+        {
+          "fromType": "object",
+          "fromName": "Object",
+          "fromId": 6755,
+          "edgeType": "property",
+          "edgeName": "__proto__"
+        },
+        {
+          "fromType": "object",
+          "fromName": "Object",
+          "fromId": 31029,
+          "edgeType": "property",
+          "edgeName": "__proto__"
+        },
+        {
+          "fromType": "object",
+          "fromName": "Object",
+          "fromId": 32303,
+          "edgeType": "property",
+          "edgeName": "__proto__"
+        }
+      ]
+    },
+    {
+      "driver": {
+        "id": 78247,
+        "type": "object",
+        "name": "HsrDriver",
+        "shallowBytes": 112,
+        "edgeCount": 3
+      },
+      "consumedTarget": {
+        "id": 78255,
+        "type": "object",
+        "name": "Object",
+        "shallowBytes": 32,
+        "edgeCount": 2
+      },
+      "classification": "not_map",
+      "driverRetainers": [
+        {
+          "fromType": "object",
+          "fromName": "Array",
+          "fromId": 31583,
+          "edgeType": "element",
+          "edgeName": "[2]"
+        },
+        {
+          "fromType": "array",
+          "fromName": "(object elements)",
+          "fromId": 78241,
+          "edgeType": "internal",
+          "edgeName": "2"
+        }
+      ],
+      "consumedTargetRetainers": [
+        {
+          "fromType": "object",
+          "fromName": "HsrDriver",
+          "fromId": 78247,
+          "edgeType": "property",
+          "edgeName": "consumed"
+        }
+      ]
+    },
+    {
+      "driver": {
+        "id": 78249,
+        "type": "object",
+        "name": "HsrDriver",
+        "shallowBytes": 112,
+        "edgeCount": 2
+      },
+      "classification": "missing",
+      "consumedTarget": null,
+      "driverRetainers": [
+        {
+          "fromType": "object",
+          "fromName": "Array",
+          "fromId": 31583,
+          "edgeType": "element",
+          "edgeName": "[3]"
+        },
+        {
+          "fromType": "array",
+          "fromName": "(object elements)",
+          "fromId": 78241,
+          "edgeType": "internal",
+          "edgeName": "3"
+        }
+      ]
+    }
+  ],
+  "anomalies": [],
+  "completed": true,
+  "totalNodes": 46263
+}

@@ -1,0 +1,30 @@
+{
+  "completed": true,
+  "scope": "Offline synthetic metadata mutation removes one recognized Map table edge name without corrupting offsets; proves report-before-exit1. Existing positive/null/object/missing/released outputs asserted separately. No runtime or memory claims.",
+  "toolSha256": "41af5368e9e35a512ee673c16ab2e3ee3428862164c1cf3782d93a0930de2bac",
+  "controls": [
+    {
+      "path": "/tmp/honeybee-driver-history-heap-control-live.json",
+      "sha256": "4b523cdc464bc7a659632363c7a054420e943c63de439317cde37c94c998f0a9",
+      "expectedClassificationCounts": {
+        "map": 1,
+        "not_map": 2,
+        "missing": 1
+      }
+    },
+    {
+      "path": "/tmp/honeybee-driver-history-heap-control-released.json",
+      "sha256": "2327ade8a8c627cf09e6fd6cb58677fdab78870d0dcd700a4503263aa9c301ed",
+      "expectedClassificationCounts": {}
+    }
+  ],
+  "anomaly": {
+    "input": "/tmp/honeybee-driver-history-heap-control-anomaly.heapsnapshot",
+    "inputSha256": "8ccab494e85ab7c2903fdd3fbcc17daeaac26436648b516c38e01c575c30a929",
+    "output": "/tmp/honeybee-driver-history-heap-control-anomaly.json",
+    "outputSha256": "e034c38eec551589ca0a1962a4f60b46e2adf35cc7f56fdc7557d1771a5eff1a",
+    "exitCode": 1,
+    "stdout": "{\"snapshot\": \"honeybee-driver-history-heap-control-anomaly.heapsnapshot\", \"hsrDriverInstances\": 4, \"classificationCounts\": {\"map\": 1, \"not_map\": 2, \"missing\": 1}, \"tableShallowBytes\": [], \"anomalies\": 1}\n",
+    "stderr": ""
+  }
+}

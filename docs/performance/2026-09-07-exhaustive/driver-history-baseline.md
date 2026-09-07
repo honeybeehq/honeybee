@@ -17,20 +17,34 @@ The [100,000-id report](evidence/honeybee-driver-history-probe-100000.json) reco
 
 The [separate snapshot-mode report](evidence/honeybee-driver-history-snapshot-100000.json) labels every memory reading diagnostic-only. Snapshot collection materially changes later heap occupancy, so those numeric phases must not be compared with the table above. [Compressed snapshots](evidence/driver-history-snapshot-archive.json) preserve stopped and released structures for independent inspection. Numeric Map keys and values commonly appear as smis without heap edges; counting table edges as entries would be invalid.
 
-The [parent plan](designs/driver-history/parent-plan.md) proposes measurement and regression obligations. Its smallest provisional option preserves existing driver defaults while explicitly omitting historical recording in the daemon's built-in drivers. The shared HSR configuration already reaches Cell's inner driver. No retention policy or architecture is accepted yet. Default API behavior, true acknowledgement sets, and driver outcomes must remain exact.
+The [selected design](designs/driver-history-architecture/synthesis.md) preserves existing driver defaults and explicitly disables historical recording in the daemon's built-in HSR drivers. The shared HSR configuration already reaches Cell's inner driver. Implementation is authorized in an isolated worktree, but no production candidate is accepted yet. Default API behavior, acknowledgement sets, and driver outcomes must remain exact.
 
-Next gates are independent ownership/heap findings, architecture alternatives, an exact-source before/before control and candidate ruler, then implementation and broad serial verification. This study advances H10 and the corresponding tmux retention question. It does not close either item.
+Ownership, heap analysis, architecture comparison and the first exact-source Mini control are complete. Implementation, broad serial verification and candidate comparisons remain. This study advances H10 and the corresponding tmux retention question. It does not close either item.
 
 
 ## Independent heap finding
 
 The [source-aligned heap analysis](designs/driver-history/heap-study.md) finds exactly one stopped HsrDriver, one consumed Map, and its backing array with 3,670,056 shallow bytes. The backing array exposes one internal edge and zero element edges despite the externally proven 100,000 entries. On release, neither the driver nor its consumed Map remains. This directly measures that table node, not a dominator total or whole-process savings.
 
-The [analyzer](tools/honeybee-driver-history-heap-analyze.py) is accepted only for the source-verified baseline Map shape. It currently labels any consumed-property target a Map without checking its type/name. The actual stopped output was independently checked to be object/Map; a future null/disabled-recorder candidate requires classification changes before using this tool. Numeric values without heap edges are a property of this small-integer fixture, not all numeric ids. The author's addendum records both limits. Parent interpretation does not rely on the optional backing-layout arithmetic.
+The [revised analyzer](tools/honeybee-driver-history-heap-analyze.py) checks each consumed target's type and name before classifying it as map, not_map or missing. The original remains as v1. Synthetic Map, null, plain-object, missing-property and released controls pass. A parent metadata-mutation control proves that a missing table edge produces a JSON anomaly report before exit 1. Source alignment remains required for each candidate. Numeric values without heap edges are a property of this small-integer fixture, not all numeric ids. Parent interpretation does not rely on the optional backing-layout arithmetic.
 
 
 ## Ownership and first-unit scope
 
 The independent study confirms that these maps are per-driver-lifetime accepted-delivery recorders, not complete event histories or durable audit. Repeated ids overwrite generation without increasing count. A new driver has no old history. No Core/RPC/CLI/RuntimeDriver/ExtendedDriver path consumes it. Default concrete classes remain source-public, so their historical query behavior must stay compatible.
 
-A generic wrapper recording returned `accepted:true` is rejected because it would trust the same outcome as Core and weaken the invariant test. Existing internal record sites remain the evidence origin. Tmux has a deliberate echo-mismatch assume-best accepted path without Enter, so its recorder must not be described as universal model consumption. The first design unit covers HSR and Cell only; Tmux needs its own semantic/measurement unit. Disabled-query behavior and ownership shape remain unselected while two independent design packages are prepared.
+A generic wrapper recording returned `accepted:true` is rejected because it would trust the same outcome as Core and weaken the invariant test. Existing internal record sites remain the evidence origin. Tmux has a deliberate echo-mismatch assume-best accepted path without Enter, so its recorder must not be described as universal model consumption. The first design unit covers HSR and Cell only; Tmux needs its own semantic and measurement unit. Both independent designs and the cross-judge select a default-on construction policy with a null history field when explicitly disabled. Both disabled queries throw instead of presenting missing evidence as an empty history.
+
+## Mini A/A control
+
+The reviewed v4 ruler completed 12 independent serial children on two distinct, runtime-identical checkouts at 8e57e746. Each count ran in A-B-B-A order. All input frames, transcript bytes, observation bytes, outcomes, session evidence and recovery cursors matched exact oracles. Both protocol sets, write queues, partial output and socket write buffers were empty at the delivered reading. Every owned-fixture receipt ends in fixture_removed.
+
+| Delivered ids | Stopped heapUsed, side A bytes | Stopped heapUsed, side B bytes | Released heapUsed, all four runs bytes |
+| --- | --- | --- | --- |
+| 0 | 9,928,680 / 9,926,744 | 9,928,728 / 9,928,656 | 9,925,952–9,927,944 |
+| 10,000 | 10,558,616 / 10,564,216 | 10,557,680 / 10,557,816 | 10,095,320–10,101,848 |
+| 100,000 | 13,774,144 / 13,773,272 | 13,774,064 / 13,772,736 | 10,099,088–10,100,488 |
+
+These are whole driver-process managed-heap readings after best-effort collection. They exclude the separate host and agent and do not attribute exact Map bytes. RSS and all other raw phases remain in the [canonical control report](evidence/h10-mini/mini-h10-aa-canonical-v4.json). There are two independent observations per side per count, so the table describes variation rather than an estimated population distribution. No candidate win, CPU gain or Tmux result is claimed.
+
+The initial Mini v3 smoke failed before completing a child because the zero-message fixture observed boot before the socket connection. Its report and cleanup receipt are retained. V4 explicitly waits for boot and connection before its booted reading, then requires the same zero queues before delivery-state sampling. The failure changed the ruler, not production. The [review and append-only corrections](designs/driver-history-architecture/ruler-review.md) and [authoring attempts](designs/driver-history-architecture/ruler-attempts.md) record the sequence. Any zero-count run could encounter the earlier race; the observed failure was count 0, run 0.

@@ -1,0 +1,43 @@
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+AssertionError [ERR_ASSERTION]: /tmp/honeybee-perf-5763a6c9-20260907/mini-h10-aa-smoke-v3.json.n0.run0.json: node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:
+
+  assert(socket&&typeof socket==='object')
+
+    at liveState (file:///private/tmp/honeybee-perf-5763a6c9-20260907/honeybee-driver-history-ruler-v3.mjs:93:42)
+    at file:///private/tmp/honeybee-perf-5763a6c9-20260907/honeybee-driver-history-ruler-v3.mjs:124:38
+    at until (file:///private/tmp/honeybee-perf-5763a6c9-20260907/honeybee-driver-history-ruler-v3.mjs:73:68)
+    at child (file:///private/tmp/honeybee-perf-5763a6c9-20260907/honeybee-driver-history-ruler-v3.mjs:124:11)
+    at async file:///private/tmp/honeybee-perf-5763a6c9-20260907/honeybee-driver-history-ruler-v3.mjs:159:45 {
+  generatedMessage: true,
+  code: 'ERR_ASSERTION',
+  actual: null,
+  expected: true,
+  operator: '==',
+  diff: 'simple'
+}
+
+Node.js v24.18.0
+
+
+1 !== 0
+
+    at file:///private/tmp/honeybee-perf-5763a6c9-20260907/honeybee-driver-history-ruler-v3.mjs:182:16
+    at ModuleJob.run (node:internal/modules/esm/module_job:439:25)
+    at async node:internal/modules/esm/loader:643:26
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5) {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: 1,
+  expected: 0,
+  operator: 'strictEqual',
+  diff: 'simple'
+}
+
+Node.js v24.18.0
