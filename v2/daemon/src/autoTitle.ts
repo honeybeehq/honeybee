@@ -68,14 +68,16 @@ export function userTaskMessages(messages: readonly MessageRow[]): string[] {
 }
 
 export function contextSignature(bee: BeeRow, userMessages: readonly string[]): string {
-  return [bee.lifecycle, String(bee.lastOutputAt ?? ""), String(userMessages.length), userMessages[0] ?? ""].join(
+  // Output is not naming context. Dropping its old signature field also
+  // invalidates persisted deferrals that waited for the first turn to finish.
+  return [bee.lifecycle, String(userMessages.length), userMessages[0] ?? ""].join(
     "\0",
   );
 }
 
 /**
- * Ready to generate now? Substantial first message waits for output (or a
- * second user turn). A thin opener waits for the second user message.
+ * A substantial first message is enough to name a bee, even during its first
+ * turn. A thin opener waits for the second user message.
  */
 export function autoTitleDecision(
   bee: BeeRow,
@@ -95,9 +97,6 @@ export function autoTitleDecision(
   if (userMessages.length === 0) return { action: "defer", reason: "no user message" };
   if (userMessages.length === 1 && isThinOpener(userMessages[0]!)) {
     return { action: "defer", reason: "thin opener" };
-  }
-  if (userMessages.length === 1 && bee.lastOutputAt == null) {
-    return { action: "defer", reason: "waiting for output" };
   }
   return { action: "generate" };
 }
@@ -147,10 +146,10 @@ export function createAutoTitleDispatcher(deps: AutoTitleDeps): (bees?: BeeRow[]
       const signature = contextSignature(bee, userMessages);
       const bookkeeping = deps.loadState(bee.id);
       if (bookkeeping?.signature === signature && bookkeeping.deferred) {
-        // Same mailbox/output snapshot we already deferred on.
+        // Same task context we already deferred on.
         continue;
       }
-      // New mailbox/output evidence gets a fresh retry budget. An unchanged
+      // New task context gets a fresh retry budget. An unchanged
       // task retries forever with a bounded exponential delay, so a transient
       // provider outage can never leave a bee permanently unnamed.
       const currentBookkeeping = bookkeeping?.signature === signature ? bookkeeping : undefined;

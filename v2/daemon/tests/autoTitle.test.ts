@@ -62,8 +62,8 @@ test("autoTitleDecision: thin first opener defers; second message generates", ()
   assert.equal(autoTitleDecision(untitled, ["hi", "Enable auto-titling"], undefined, NOW).action, "generate");
 });
 
-test("autoTitleDecision: substantial first message waits for output, then generates", () => {
-  assert.equal(autoTitleDecision(bee({ lastOutputAt: null }), ["Enable auto-titling"], undefined, NOW).action, "defer");
+test("autoTitleDecision: substantial first message generates before the first turn finishes", () => {
+  assert.equal(autoTitleDecision(bee({ lastOutputAt: null }), ["Enable auto-titling"], undefined, NOW).action, "generate");
   assert.equal(autoTitleDecision(bee({ lastOutputAt: 9 }), ["Enable auto-titling"], undefined, NOW).action, "generate");
 });
 
@@ -87,6 +87,48 @@ test("autoTitleDecision: existing title and archived skip; failures retry with b
 
 function settle(): Promise<void> {
   return new Promise((resolve) => setImmediate(resolve));
+}
+
+for (const previouslyDeferred of [false, true]) {
+  test(`dispatcher: first task titles without output, persisted deferral=${previouslyDeferred}`, async () => {
+    let row = bee({ agent: "claude", lastOutputAt: null });
+    const task = "Fix subagents not being displayed under their parents in the agent list";
+    const bookkeeping = new Map<string, AutoTitleBookkeeping>();
+    if (previouslyDeferred) {
+      // Exact persisted shape from the policy that waited for lastOutputAt.
+      bookkeeping.set(row.id, {
+        attempts: 0, lastAt: 0, userTurns: 1, deferred: true,
+        signature: ["active", "", "1", task].join("\0"),
+      });
+    }
+    const dispatch = createAutoTitleDispatcher({
+      enabled: () => true,
+      naming: () => ({
+        auto: true, backend: "codex-app-server", tool: "codex",
+        model: "gpt-5.6-luna", effort: "none", generatorCwd: "/tmp",
+      }),
+      listBees: () => [row],
+      listMessages: () => [mail(`<apiary-session>Injected instructions</apiary-session>\n\n${task}`)],
+      getBee: () => row,
+      setTitle: (_id, title) => {
+        row = { ...row, title };
+        return { applied: true };
+      },
+      loadState: (id) => bookkeeping.get(id),
+      saveState: (id, state) => bookkeeping.set(id, state),
+      generate: async (context) => {
+        assert.equal(context.initialTask, task);
+        return "Fix Subagent Grouping";
+      },
+      now: () => NOW,
+      log: () => undefined,
+    });
+    await dispatch();
+    await settle();
+    assert.equal(row.title, "Fix Subagent Grouping");
+    assert.equal(row.lastOutputAt, null);
+    assert.equal(bookkeeping.get(row.id)?.attempts, 1);
+  });
 }
 
 test("dispatcher: thin opener does not burn an attempt; second message titles", async () => {
