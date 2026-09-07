@@ -201,6 +201,14 @@ export interface DaemonCoreOptions {
   relocateSession?: (move: BeeMoveRow, bee: BeeRow) => "copied" | "present" | "none";
   /** Revalidate dest exists/identity/HEAD after source stop, before FS copy/placement. */
   validatePlacement?: (move: BeeMoveRow, bee: BeeRow) => void;
+  /**
+   * Process-local readiness gate, refreshed before every claim. All commands
+   * for a blocked bee wait so later same-bee intent cannot overtake its start;
+   * unrelated bees continue through the executor.
+   */
+  blockedRuntimeStartBeeIds?: () => ReadonlySet<string>;
+  /** Throws at the start boundary to use the normal bounded command retry path. */
+  assertRuntimeStartReady?: (command: CommandRow) => void;
 }
 
 const LIVE: readonly RuntimeState[] = ["booting", "running", "idle"];
@@ -233,6 +241,8 @@ export class DaemonCore {
   private readonly sourceProcessAbsent: (beeId: string, generation: number) => boolean;
   private readonly relocateSession: ((move: BeeMoveRow, bee: BeeRow) => "copied" | "present" | "none") | null;
   private readonly validatePlacement: ((move: BeeMoveRow, bee: BeeRow) => void) | null;
+  private readonly blockedRuntimeStartBeeIds: () => ReadonlySet<string>;
+  private readonly assertRuntimeStartReady: (command: CommandRow) => void;
   /** In-memory dedup so a breach is reported once per daemon lifetime; the recorder dedups durably. */
   private readonly reportedI1 = new Set<number>();
   /** Committed ticks since the last dedup sweep (or clear). */
@@ -254,6 +264,8 @@ export class DaemonCore {
     this.sourceProcessAbsent = opts.sourceProcessAbsent ?? ((beeId, generation) => !this.driver.hasProcess(beeId, generation));
     this.relocateSession = opts.relocateSession ?? null;
     this.validatePlacement = opts.validatePlacement ?? null;
+    this.blockedRuntimeStartBeeIds = opts.blockedRuntimeStartBeeIds ?? (() => new Set());
+    this.assertRuntimeStartReady = opts.assertRuntimeStartReady ?? (() => undefined);
   }
 
   private get ext(): ExtendedDriver {
@@ -741,7 +753,9 @@ export class DaemonCore {
 
   private executeCommands(): void {
     for (let i = 0; i < this.policy.commandsPerStep; i++) {
-      const cmd = this.store.claimNextCommand();
+      const cmd = this.store.claimNextCommand({
+        blockedRuntimeStartBeeIds: this.blockedRuntimeStartBeeIds(),
+      });
       if (!cmd) return;
       const crash = this.faults?.executorCrash() ?? "none";
       if (crash === "before_effect") {
@@ -776,6 +790,7 @@ export class DaemonCore {
    */
   private startRuntime(cmd: CommandRow, generation: number): boolean {
     try {
+      this.assertRuntimeStartReady(cmd);
       this.driver.start(cmd.beeId, generation);
       return true;
     } catch (err) {

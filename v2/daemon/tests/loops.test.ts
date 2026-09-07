@@ -52,7 +52,15 @@ function isStepSnapshot(value: unknown): value is CapturedStepSnapshot {
 
 function makeRig(
   policy: Partial<DaemonPolicy> = {},
-  extra: Pick<Partial<DaemonCoreOptions>, "relocateSession" | "validatePlacement" | "sourceProcessAbsent" | "faults" | "performance"> = {},
+  extra: Pick<Partial<DaemonCoreOptions>,
+    | "relocateSession"
+    | "validatePlacement"
+    | "sourceProcessAbsent"
+    | "faults"
+    | "performance"
+    | "blockedRuntimeStartBeeIds"
+    | "assertRuntimeStartReady"
+  > = {},
 ): Rig {
   const dir = mkdtempSync(join(tmpdir(), "hb-v2-loops-"));
   const clock = { now: 1000 };
@@ -89,6 +97,96 @@ function makeRig(
     },
   };
 }
+
+test("account readiness blocks only affected starts; unrelated stop and mail progress; a same-bee stop cancels the deferred start", () => {
+  const blocked = new Set<string>();
+  const rig = makeRig({}, {
+    blockedRuntimeStartBeeIds: () => blocked,
+    assertRuntimeStartReady: (command) => {
+      if (blocked.has(command.beeId)) throw new Error(`unexpected start while ${command.beeId} is pending`);
+    },
+  });
+  try {
+    spawnIdleBee(rig, "stop-target");
+    spawnIdleBee(rig, "mail-target");
+    const { bee } = rig.store.createBee({ id: "pending", name: "pending", agent: "stub", substrate: "hsr", cwd: "/tmp" });
+    const deferred = rig.store.enqueueCommand("spawn", bee.id);
+    blocked.add(bee.id);
+    const sent = rig.store.send("mail-target", "still flows").message;
+    const unrelatedStop = rig.store.enqueueCommand("stop", "stop-target", { cause: "stopped_by_user" });
+
+    rig.core.step();
+    assert.equal(rig.store.getCommand(deferred.id)?.status, "queued");
+    assert.equal(rig.store.getCommand(unrelatedStop.id)?.status, "done");
+    assert.equal(rig.store.getMessage(sent.id)?.deliveredGeneration, 1);
+
+    const ownStop = rig.store.enqueueCommand("stop", bee.id, { cause: "stopped_by_user" });
+    assert.equal(rig.store.getCommand(deferred.id)?.status, "done", "stop moots the not-yet-started generation");
+    rig.core.step();
+    assert.equal(rig.store.getCommand(ownStop.id)?.status, "done");
+    assert.equal(rig.store.currentRuntime(bee.id)?.state, "stopped");
+    blocked.delete(bee.id);
+    rig.core.step();
+    assert.equal(rig.driver.starts.some((start) => start.beeId === bee.id), false, "seed completion cannot resurrect a stopped bee");
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("account readiness failure uses the existing bounded command retry before launch", () => {
+  let fail = true;
+  const rig = makeRig({}, {
+    assertRuntimeStartReady: () => {
+      if (fail) throw new Error("gateway activation failed");
+    },
+  });
+  try {
+    const { bee } = rig.store.createBee({ id: "retry", name: "retry", agent: "stub", substrate: "hsr", cwd: "/tmp" });
+    const command = rig.store.enqueueCommand("spawn", bee.id);
+    rig.core.step();
+    const retry = rig.store.getCommand(command.id);
+    assert.equal(retry?.status, "queued");
+    assert.equal(retry?.attempts, 1);
+    assert.equal(rig.driver.starts.length, 0);
+
+    fail = false;
+    rig.clock.now = retry?.nextAttemptAt ?? rig.clock.now;
+    rig.core.step();
+    assert.equal(rig.store.getCommand(command.id)?.status, "done");
+    assert.deepEqual(rig.driver.starts, [{ beeId: bee.id, generation: 1 }]);
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("readiness sees an automatic revive enqueued inside the current core step", () => {
+  let holdRevive = false;
+  const rig = makeRig({}, {
+    blockedRuntimeStartBeeIds: () => new Set(
+      rig.store.listDueRuntimeStartCommands()
+        .filter((command) => holdRevive && command.verb === "revive")
+        .map((command) => command.beeId),
+    ),
+  });
+  try {
+    spawnIdleBee(rig);
+    holdRevive = true;
+    rig.store.enqueueCommand("stop", "bee-1", { cause: "stopped_by_system", thenRevive: true });
+    rig.core.step();
+    rig.core.step();
+    const revive = rig.store.listCommands({ beeId: "bee-1" }).find((command) => command.verb === "revive");
+    assert.ok(revive);
+    assert.equal(revive.status, "queued");
+    assert.equal(revive.attempts, 0, "preparation must not consume the spawn failure budget");
+    assert.equal(rig.driver.starts.length, 1);
+    holdRevive = false;
+    rig.core.step();
+    assert.equal(rig.store.getCommand(revive.id)?.status, "done");
+    assert.equal(rig.driver.starts.length, 2);
+  } finally {
+    rig.cleanup();
+  }
+});
 
 function spawnIdleBee(rig: Rig, id = "bee-1"): void {
   rig.store.createBee({ id, name: id, agent: "stub", substrate: "hsr", cwd: "/tmp" });

@@ -17,7 +17,9 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, statSync } from "node
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
+import { liveGateways } from "./gateways.ts";
 import { withFileLock } from "../../../src/lock.ts";
+import { seedGatewayMcp, type GatewayMcpSeedResult } from "../../../src/accounts/gatewayMcpSeed.ts";
 import {
   AUTO_PICK_DEBIT_PERCENT,
   accountActiveBees,
@@ -143,6 +145,8 @@ export interface AccountsServiceOptions {
    * fake so no real codex runs. Default: the real `codex exec` runner.
    */
   codexLeaseRefresh?: (homePath: string) => Promise<void>;
+  /** Common native MCP reconciler; injected so activation tests stay hermetic. */
+  gatewayMcpSeeder?: (homePath: string, harness: string) => Promise<GatewayMcpSeedResult>;
 }
 
 type ClaudeCredential = {
@@ -660,6 +664,7 @@ export class AccountsService {
   /** v19: at most one lease mint per account; concurrent callers join it. */
   private readonly leaseMints = new Map<string, Promise<EphemeralCredential>>();
   private readonly codexLeaseRefresh: (homePath: string) => Promise<void>;
+  private readonly gatewayMcpSeeder: (homePath: string, harness: string) => Promise<GatewayMcpSeedResult>;
 
   constructor(opts: AccountsServiceOptions) {
     this.store = opts.store;
@@ -680,6 +685,8 @@ export class AccountsService {
       ...opts.providerHttp,
     };
     this.codexLeaseRefresh = opts.codexLeaseRefresh ?? defaultCodexLeaseRefresh(this.cfg.agents.codex?.command ?? "codex");
+    this.gatewayMcpSeeder = opts.gatewayMcpSeeder
+      ?? ((homePath, harness) => seedGatewayMcp(homePath, harness, { gateways: liveGateways(), disabled: process.env.HIVE_GATEWAYS_DISABLE === "1", failOnError: true }));
   }
 
   // -------------------------------------------------------------------------
@@ -1714,14 +1721,7 @@ export class AccountsService {
   // activation hook (spawn resolve)
   // -------------------------------------------------------------------------
 
-  /**
-   * Called from the driver's spawn resolve for a bee bound to an account: if
-   * the account's home is EMPTY, activate it from the vault (+ home
-   * defaults); a populated home is left alone byte for byte. Never writes the
-   * vault. Claude on macOS additionally seeds the home's Keychain item from
-   * the vault credential (best-effort, async, injected writer).
-   */
-  activateForSpawn(account: AccountRow, bee: { cwd: string }): ActivationResult {
+  private activateHomeForSpawn(account: AccountRow, bee: { cwd: string }): ActivationResult {
     const result = activateHomeIfEmpty(account.harness, account.homePath, this.vaultDirOf(account), { trustCwd: bee.cwd, yolo: true });
     if (result.activated) {
       this.log(`account.activate account=${account.id} home=${account.homePath} copied=${result.copied.join(",")}`);
@@ -1730,6 +1730,23 @@ export class AccountsService {
           if (seeded) this.log(`account.activate.keychain account=${account.id} seeded=true`);
         });
       }
+    }
+    return result;
+  }
+
+  /**
+   * Complete account readiness before a queued runtime command is claimed:
+   * activate an empty home, then reconcile Honeybee-owned native MCP entries
+   * through the common multi-harness seeder. A populated home still skips
+   * credential/default activation, but its owned gateway entries converge.
+   */
+  async activateForSpawn(account: AccountRow, bee: { cwd: string }): Promise<ActivationResult> {
+    const result = this.activateHomeForSpawn(account, bee);
+    const gatewaySeed = await this.gatewayMcpSeeder(account.homePath, account.harness);
+    if (gatewaySeed.written.length > 0) {
+      this.log(`account.activate.gateways account=${account.id} written=${gatewaySeed.written.join(",")}`);
+    } else if (gatewaySeed.status === "skipped") {
+      this.log(`account.activate.gateways account=${account.id} skipped=${JSON.stringify(gatewaySeed.reason ?? "unknown")}`);
     }
     return result;
   }

@@ -66,7 +66,13 @@ import {
   type Scope,
   type Urgency,
 } from "../../core/src/index.ts";
-import { AccountsService, ResetLimitsRefusal, type CaptureOutcome, type LimitsFetchers } from "./accountsService.ts";
+import {
+  AccountsService,
+  ResetLimitsRefusal,
+  type AccountsServiceOptions,
+  type CaptureOutcome,
+  type LimitsFetchers,
+} from "./accountsService.ts";
 import { dirHasCredentials } from "./activation.ts";
 import { LoginFlowService, type LoginTransports } from "./loginFlows.ts";
 import type { PtySpawner } from "./loginWorker.ts";
@@ -117,7 +123,7 @@ import {
   type HarnessAdapter,
   type GrokMcpServerStdio,
 } from "../../adapters/src/index.ts";
-import { liveGateways } from "./gateways.ts";
+import { liveGateways, type LiveGateway } from "./gateways.ts";
 import { DaemonCore, type BootReport, type I1ViolationEvent } from "./loops.ts";
 import {
   ConfigError,
@@ -383,6 +389,33 @@ export interface HiveDaemonDeps {
   loginTransports?: Partial<LoginTransports>;
   loginSpawner?: PtySpawner | null;
   loginTmuxExec?: (args: string[]) => { status: number | null; stdout: string };
+  /** Hermetic test seam for account-home native MCP reconciliation. */
+  gatewayMcpSeeder?: AccountsServiceOptions["gatewayMcpSeeder"];
+}
+
+type AccountActivationState = {
+  key: string;
+  status: "pending" | "ready" | "failed";
+  task: Promise<void>;
+  error?: string;
+};
+
+
+function gatewayActivationRevision(gateways: readonly LiveGateway[]): string {
+  const namesOnly = gateways.map((gateway) => ({
+    name: gateway.name,
+    command: gateway.shim.command,
+    args: gateway.shim.args,
+    envNames: Object.keys(gateway.env).sort(),
+    envVars: gateway.envVars ?? [],
+  }));
+  return createHash("sha256").update(JSON.stringify(namesOnly)).digest("hex");
+}
+
+function activationFailureName(error: unknown): string {
+  if (!(error instanceof Error)) return "unknown_error";
+  const code = (error as NodeJS.ErrnoException).code;
+  return code ? `${error.name}(${code})` : error.name;
 }
 
 /** Rate-limit cause classifier for resource_blocked evidence (spec 08 rotation trigger). */
@@ -429,6 +462,12 @@ export class HiveDaemon {
   private readonly opLog: string[] = [];
   private accounts: AccountsService | null = null;
   private loginFlows: LoginFlowService | null = null;
+  /** Tracked filesystem readiness; no lock wait runs inside the core/store writer. */
+  private readonly accountActivations = new Map<string, AccountActivationState>();
+  private accountActivationCandidates = new Map<string, { commandId: number; attempts: number }>();
+  private gatewayActivationRevision = "";
+  private activationRevisionEpoch = -1;
+  private tickEpoch = 0;
   private readonly deps: HiveDaemonDeps;
   /** v7 rotation bound: one attempt per (bee, generation) exhaustion event. */
   private readonly rotatedGenerations = new Map<string, number>();
@@ -517,6 +556,7 @@ export class HiveDaemon {
       keychainReader: this.deps.keychainReader,
       keychainWriter: this.deps.keychainWriter,
       fetchers: this.deps.fetchers,
+      ...(this.deps.gatewayMcpSeeder ? { gatewayMcpSeeder: this.deps.gatewayMcpSeeder } : {}),
     });
     this.loginFlows = new LoginFlowService({
       store,
@@ -584,6 +624,8 @@ export class HiveDaemon {
       sourceProcessAbsent: (beeId, generation) => this.sourceProcessAbsent(beeId, generation),
       relocateSession: (move, bee) => this.relocateMoveSession(move, bee),
       validatePlacement: (move, bee) => this.validateMoveDestination(move, bee),
+      blockedRuntimeStartBeeIds: () => this.prepareRuntimeStartCommands(),
+      assertRuntimeStartReady: (command) => this.assertRuntimeStartReady(command),
     });
     drivers.end();
     this.activeStartupPhase = null;
@@ -680,9 +722,135 @@ export class HiveDaemon {
     const core = this.core;
     const store = this.store;
     if (!core || !store || this.stopping) return;
+    this.tickEpoch += 1;
     this.performance.measureSync("daemon.tick.total", () =>
       this.tickProfiled(core),
     );
+  }
+
+  private accountActivationKey(
+    bee: BeeRow,
+    account: AccountRow,
+    command: { commandId: number; attempts: number },
+  ): string {
+    return JSON.stringify([
+      this.gatewayActivationRevision,
+      command.commandId,
+      command.attempts,
+      account.id,
+      account.harness,
+      account.homePath,
+      bee.cwd,
+    ]);
+  }
+
+  /**
+   * Start account filesystem readiness outside SQLite transactions. Promises
+   * remain tracked; core skips only affected runtime-start commands while
+   * other bees and non-start work continue.
+   */
+  private refreshAccountActivations(): void {
+    const store = this.store;
+    const accounts = this.accounts;
+    if (!store || !accounts) return;
+    const candidates = new Map<string, { commandId: number; attempts: number }>();
+    for (const command of store.listDueRuntimeStartCommands()) {
+      if (!candidates.has(command.beeId)) {
+        candidates.set(command.beeId, { commandId: command.id, attempts: command.attempts });
+      }
+    }
+    this.accountActivationCandidates = candidates;
+    if (candidates.size === 0) {
+      for (const [beeId, state] of this.accountActivations) {
+        if (state.status !== "pending") this.accountActivations.delete(beeId);
+      }
+      return;
+    }
+    if (this.activationRevisionEpoch !== this.tickEpoch) {
+      this.gatewayActivationRevision = gatewayActivationRevision(liveGateways());
+      this.activationRevisionEpoch = this.tickEpoch;
+    }
+
+    for (const [beeId, command] of candidates) {
+      const bee = store.getBee(beeId);
+      if (!bee?.account) {
+        this.accountActivations.delete(beeId);
+        continue;
+      }
+      const account = store.getAccount(bee.account);
+      if (!account) continue;
+      const key = this.accountActivationKey(bee, account, command);
+      const current = this.accountActivations.get(beeId);
+      if (current?.key === key) continue;
+      // A stale preparation may still own the per-home filesystem lock. Let it
+      // settle before starting the replacement key; the mismatched state keeps
+      // this candidate blocked in the meantime.
+      if (current?.status === "pending") continue;
+
+      const state: AccountActivationState = {
+        key,
+        status: "pending",
+        task: Promise.resolve(),
+      };
+      // Defer even the synchronous home-activation prefix until after this
+      // executor turn. Slow filesystem work never holds the SQLite writer or
+      // prevents unrelated commands in the same core step from progressing.
+      const task = Promise.resolve().then(() => accounts.activateForSpawn(account, bee)).then(
+        () => {
+          if (this.accountActivations.get(beeId) === state) state.status = "ready";
+        },
+        (error: unknown) => {
+          if (this.accountActivations.get(beeId) !== state) return;
+          state.status = "failed";
+          state.error = activationFailureName(error);
+          this.log(`account.activate.gateways_failed bee=${beeId} account=${account.id} error=${state.error}`);
+        },
+      );
+      state.task = task;
+      this.accountActivations.set(beeId, state);
+    }
+
+    for (const [beeId, state] of this.accountActivations) {
+      if (!candidates.has(beeId) && state.status !== "pending") this.accountActivations.delete(beeId);
+    }
+  }
+
+  /** Refresh the bounded due-start set immediately before a command claim. */
+  private prepareRuntimeStartCommands(): ReadonlySet<string> {
+    this.refreshAccountActivations();
+    return this.blockedRuntimeStartBeeIds();
+  }
+
+  private blockedRuntimeStartBeeIds(): ReadonlySet<string> {
+    const blocked = new Set<string>();
+    const store = this.store;
+    if (!store) return blocked;
+    for (const [beeId, command] of this.accountActivationCandidates) {
+      const bee = store.getBee(beeId);
+      if (!bee?.account) continue;
+      const account = store.getAccount(bee.account);
+      if (!account) continue;
+      const state = this.accountActivations.get(beeId);
+      const current = state?.key === this.accountActivationKey(bee, account, command);
+      if (!current || state.status === "pending") blocked.add(beeId);
+    }
+    return blocked;
+  }
+
+  private assertRuntimeStartReady(command: CommandRow): void {
+    const store = this.mustStore();
+    const beeId = command.beeId;
+    const bee = store.getBee(beeId);
+    if (!bee?.account) return;
+    const account = store.getAccount(bee.account);
+    if (!account) return;
+    const state = this.accountActivations.get(beeId);
+    const key = this.accountActivationKey(bee, account, { commandId: command.id, attempts: command.attempts });
+    if (state?.key === key && state.status === "ready") return;
+    if (state?.key === key && state.status === "failed") {
+      throw new Error(`account gateway activation failed: ${state.error ?? "unknown_error"}`);
+    }
+    throw new Error("account gateway activation is not ready");
   }
 
   private tickProfiled(core: DaemonCore): void {
@@ -813,13 +981,12 @@ export class HiveDaemon {
     const { adapter, args } = composeSpawn(spec, adapterName, bee, grokMcpServers, placementInstruction);
     if (!adapter) throw new Error(`resolve: no adapter for agent '${bee.agent}'`);
     // v7 (spec 08): a bound bee runs in its account's home. The env is derived
-    // from the account row (the mechanism), and an EMPTY home is activated
-    // from the vault right here — a populated home is never touched.
+    // from the account row. The tracked pre-claim readiness gate has already
+    // activated the home and reconciled its native MCP config.
     let accountEnv: Record<string, string> = {};
     if (bee.account && this.accounts) {
       const account = store.getAccount(bee.account);
       if (!account) throw new Error(`resolve: bee ${beeId} is bound to unknown account ${bee.account}`);
-      this.accounts.activateForSpawn(account, bee);
       accountEnv = { ...this.accounts.homeEnvOf(account), ...this.accounts.credentialEnvOf(account) };
     }
     const env = { ...(process.env as Record<string, string>), ...(spec.env ?? {}), ...bee.env, ...accountEnv, ...beeIdentityEnv(bee) };
@@ -899,7 +1066,6 @@ export class HiveDaemon {
     if (bee.account && this.accounts) {
       const account = store.getAccount(bee.account);
       if (!account) throw new Error(`resolveTmux: bee ${beeId} is bound to unknown account ${bee.account}`);
-      this.accounts.activateForSpawn(account, bee);
       accountEnv = { ...this.accounts.homeEnvOf(account), ...this.accounts.credentialEnvOf(account) };
     }
     const env = { ...(process.env as Record<string, string>), ...(spec.env ?? {}), ...bee.env, ...accountEnv, ...beeIdentityEnv(bee) };

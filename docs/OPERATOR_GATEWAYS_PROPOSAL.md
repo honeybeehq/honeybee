@@ -221,6 +221,14 @@ to understand tokens, only carry them.
 
 ## 6. Gateway MCP-config seeding
 
+V2 account activation reconciles native MCP configuration before claiming a
+runtime-start command. Pending filesystem work gates only affected command
+ordering; unrelated agents continue. Readiness is tied to the command attempt,
+account, home, cwd, and gateway shape. Explicit user stops supersede queued starts
+for that generation. Shared writing lives in `src/accounts/gatewayMcpSeed.ts`;
+legacy and v2 discovery supply their own validated records. Registry `envVars`
+declares names to forward from the bee environment, without storing their values.
+
 The piece that makes gateway access *automatic*: every harness home carries
 MCP config launching each live gateway's shim, so a bee's harness connects
 without the bee doing anything.

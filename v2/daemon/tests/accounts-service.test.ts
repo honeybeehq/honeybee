@@ -33,6 +33,7 @@ import { loadNodeConfig, type NodeConfigFile, type ResolvedNodeConfig } from "..
 import { recipeFingerprint } from "../src/activation.ts";
 import { parseCursorAuth } from "../src/cursorAuth.ts";
 import { waitFor } from "./helpers.ts";
+import { seedGatewayMcp } from "../../../src/accounts/gatewayMcpSeed.ts";
 
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
@@ -116,7 +117,14 @@ function limitsRow(r: Rig, id: string, weekly: number, fiveHour: number, weeklyR
 }
 
 function service(r: Rig, extra: Partial<ConstructorParameters<typeof AccountsService>[0]> = {}): AccountsService {
-  return new AccountsService({ store: r.store, cfg: r.cfg, log: (op) => r.log.push(op), now: r.now, ...extra });
+  return new AccountsService({
+    store: r.store,
+    cfg: r.cfg,
+    log: (op) => r.log.push(op),
+    now: r.now,
+    gatewayMcpSeeder: async () => ({ status: "seeded", written: [] }),
+    ...extra,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -1032,7 +1040,7 @@ test("activation.1: an EMPTY home is activated from the vault (+ home defaults, 
     // codex: vault has auth.json + config.toml
     const codex = addAccount(r, "codex", "a", { vault: { "auth.json": '{"tokens":"vault"}', "config.toml": 'model = "custom"\n' } });
     const vaultBefore = recipeFingerprint(join(r.vault, "codex", codex.id), "codex");
-    const first = svc.activateForSpawn(codex, { cwd: "/tmp/w" });
+    const first = await svc.activateForSpawn(codex, { cwd: "/tmp/w" });
     assert.equal(first.activated, true);
     assert.deepEqual(first.copied, ["auth.json", "config.toml", ".codex/auth.json"]);
     assert.equal(readFileSync(join(codex.homePath, "auth.json"), "utf8"), '{"tokens":"vault"}');
@@ -1048,7 +1056,7 @@ test("activation.1: an EMPTY home is activated from the vault (+ home defaults, 
     const homeBefore = recipeFingerprint(codex.homePath, "codex");
     // …and the next spawns do NOTHING to it, and never touch the vault
     for (let i = 0; i < 3; i += 1) {
-      const again = svc.activateForSpawn(codex, { cwd: "/tmp/w" });
+      const again = await svc.activateForSpawn(codex, { cwd: "/tmp/w" });
       assert.equal(again.activated, false);
       assert.equal(again.reason, "home_populated");
     }
@@ -1056,7 +1064,7 @@ test("activation.1: an EMPTY home is activated from the vault (+ home defaults, 
     assert.deepEqual(recipeFingerprint(join(r.vault, "codex", codex.id), "codex"), vaultBefore, "no vault write from a spawn");
     // claude: credentials + acceptance + settings defaults + keychain seed
     const claude = addAccount(r, "claude", "b", { vault: { ".credentials.json": JSON.stringify({ claudeAiOauth: { accessToken: "t", expiresAt: 1 } }), ".claude.json": JSON.stringify({ projects: {} }), "settings.json": JSON.stringify({ model: "opus" }) } });
-    const act = svc.activateForSpawn(claude, { cwd: "/tmp/repo" });
+    const act = await svc.activateForSpawn(claude, { cwd: "/tmp/repo" });
     assert.equal(act.activated, true);
     const settings = JSON.parse(readFileSync(join(claude.homePath, "settings.json"), "utf8")) as Record<string, unknown>;
     assert.equal(settings.skipDangerousModePermissionPrompt, true);
@@ -1070,12 +1078,58 @@ test("activation.1: an EMPTY home is activated from the vault (+ home defaults, 
     assert.match(written[0]?.[1] ?? "", /"accessToken":"t"/);
     // an empty vault + empty home: nothing to activate (a login flow is the way in)
     const bare = r.store.createAccount({ id: "claude-bare", harness: "claude", homePath: join(r.homes, "claude-bare"), label: "bare" });
-    assert.equal(svc.activateForSpawn(bare, { cwd: "/tmp" }).reason, "vault_empty");
+    assert.equal((await svc.activateForSpawn(bare, { cwd: "/tmp" })).reason, "vault_empty");
     assert.equal(existsSync(join(r.homes, "claude-bare", ".credentials.json")), false);
     // a fresh claude home with no vault settings.json gets the default model
     const fresh = addAccount(r, "claude", "fresh", { vault: { ".credentials.json": "{}" } });
-    svc.activateForSpawn(fresh, { cwd: "/tmp" });
+    await svc.activateForSpawn(fresh, { cwd: "/tmp" });
     assert.equal((JSON.parse(readFileSync(join(fresh.homePath, "settings.json"), "utf8")) as { model: string }).model, "opus[1m]");
+  } finally {
+    r.cleanup();
+  }
+});
+
+test("activation.2: a populated account waits for the common gateway seeder, preserves operator config, and stores only forwarded names", async () => {
+  const r = rig();
+  try {
+    const account = addAccount(r, "codex", "gateway");
+    mkdirSync(account.homePath, { recursive: true });
+    writeFileSync(join(account.homePath, "auth.json"), '{"tokens":"operator"}');
+    writeFileSync(join(account.homePath, "config.toml"), 'model = "operator-model"\n');
+    let release!: () => void;
+    const delayed = new Promise<void>((resolve) => { release = resolve; });
+    const gateway = {
+      name: "apiary",
+      protocol: "mcp",
+      shim: { command: "/opt/apiary-mcp", args: ["gateway-shim"] },
+      env: {},
+      envVars: ["APIARY_GATEWAY_URL", "APIARY_SESSION_ID", "APIARY_AGENT_TOKEN"],
+      startedAt: "2026-09-07T13:06:00.000Z",
+      gatewayRev: 1,
+      stateless: true,
+    };
+    const svc = service(r, {
+      gatewayMcpSeeder: async (homePath, harness) => {
+        await delayed;
+        return seedGatewayMcp(homePath, harness, { gateways: [gateway] });
+      },
+    });
+
+    let settled = false;
+    const activation = svc.activateForSpawn(account, { cwd: "/tmp/work" }).then((result) => {
+      settled = true;
+      return result;
+    });
+    await Promise.resolve();
+    assert.equal(settled, false, "activation must not report readiness before native MCP reconciliation");
+    release();
+    assert.equal((await activation).reason, "home_populated");
+
+    const config = readFileSync(join(account.homePath, "config.toml"), "utf8");
+    assert.match(config, /^model = "operator-model"$/m);
+    assert.match(config, /env_vars = \["APIARY_GATEWAY_URL", "APIARY_SESSION_ID", "APIARY_AGENT_TOKEN", "HIVE_BEE", "HIVE_BEE_ID"\]/);
+    assert.doesNotMatch(config, /session-secret|agent-secret/, "gateway secret values are never rendered");
+    assert.ok(r.log.some((line) => line.includes("account.activate.gateways") && line.includes("config.toml")));
   } finally {
     r.cleanup();
   }

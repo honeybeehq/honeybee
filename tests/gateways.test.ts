@@ -72,6 +72,25 @@ test("gateway registry tolerates malformed files and reports pid liveness", asyn
   });
 });
 
+test("gateway registry accepts name-only environment forwarding and rejects malformed names", async () => {
+  await withStore(async (root) => {
+    await writeGateway(root, "apiary", gateway({
+      env: {},
+      envVars: ["APIARY_GATEWAY_URL", "APIARY_SESSION_ID", "APIARY_AGENT_TOKEN"],
+    }));
+    await writeGateway(root, "bad", {
+      ...gateway({ name: "bad" }),
+      envVars: ["APIARY_SESSION_ID", "BAD-NAME"],
+    });
+
+    assert.deepEqual(liveGateways().map(({ name, env, envVars }) => ({ name, env, envVars })), [{
+      name: "apiary",
+      env: {},
+      envVars: ["APIARY_GATEWAY_URL", "APIARY_SESSION_ID", "APIARY_AGENT_TOKEN"],
+    }]);
+  });
+});
+
 test("gateway liveness uses kill(pid, 0) and treats EPERM as live", () => {
   const calls: Array<[number, number]> = [];
   assert.equal(gatewayPidIsLive(42, (pid, signal) => { calls.push([pid, signal]); }), true);
