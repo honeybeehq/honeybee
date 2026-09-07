@@ -1,0 +1,78 @@
+{
+  "completed": true,
+  "scope": "Studio structural baseline using public HsrDriver delivery through a real detached runner host and provider-free input-counting child. Not paired performance evidence. Memory is whole-process occupancy after best-effort GC; no exact recorder attribution. Historic count remains N after runtime stop. No heap snapshots or provider work. Temporary fixture removed only after exact host exit.",
+  "revision": "501710c18515c4ac077a643c50daba2ce9043958",
+  "root": "/Users/trmd/Projects/trmd/honeybee/repos/honeybee",
+  "toolHash": "631f9ab5495c687cc5361e60985a890862f696c08c4b087337cb94261e1a6f1f",
+  "sourceHashes": {
+    "v2/driver-hsr/src/driver.ts": "1bda7217fa6f00701403e14c0887627711fde3038a080ace11dd5b594bc59c38",
+    "v2/driver-hsr/src/runner-host.ts": "7f1716db45160657ef2109d8a18ae064cbab065f0321b22d29f9a193a3f3c152",
+    "v2/adapters/src/stub.ts": "4fdfca1b8dca0cc396bd495fac99d5fcab7005b40bb598e33413a5747e8f3ccc"
+  },
+  "agentSourceSha256": "1d1268f8bab73f2e92171af4d7d77c8bb93fdab7df7fe35c4192646ac849da26",
+  "node": "v24.20.0",
+  "count": 1000,
+  "host": {
+    "pid": 82036,
+    "pidStartedAt": 1788799830038,
+    "observationCursor": 0
+  },
+  "phases": [
+    {
+      "phase": "constructed",
+      "memoryUsage": {
+        "rss": 98729984,
+        "heapTotal": 15646720,
+        "heapUsed": 9760192,
+        "external": 9764601,
+        "arrayBuffers": 143791
+      }
+    },
+    {
+      "phase": "booted",
+      "memoryUsage": {
+        "rss": 99532800,
+        "heapTotal": 15646720,
+        "heapUsed": 9938008,
+        "external": 9764641,
+        "arrayBuffers": 143791
+      }
+    },
+    {
+      "phase": "deliveredAndDrained",
+      "memoryUsage": {
+        "rss": 100155392,
+        "heapTotal": 15908864,
+        "heapUsed": 10132488,
+        "external": 9795049,
+        "arrayBuffers": 143791
+      }
+    },
+    {
+      "phase": "stopped",
+      "memoryUsage": {
+        "rss": 100204544,
+        "heapTotal": 15908864,
+        "heapUsed": 10131656,
+        "external": 9795049,
+        "arrayBuffers": 143791
+      }
+    },
+    {
+      "phase": "released",
+      "memoryUsage": {
+        "rss": 100204544,
+        "heapTotal": 15908864,
+        "heapUsed": 10099784,
+        "external": 9795049,
+        "arrayBuffers": 143791
+      }
+    }
+  ],
+  "receipt": {
+    "count": 1000,
+    "lastId": 1000,
+    "allSequential": true
+  },
+  "gcProtocol": "3 x gc, timer turn after each, then timer turn before memoryUsage"
+}

@@ -62,3 +62,5 @@ The [workflow](workflow.md) defines the completion predicate. [The decision log]
 [Automatic-title architecture grounding](autotitle-architecture-grounding.md) records measured query costs and executable cache/transaction counterexamples. The selected synthesis and subsequent treatment results are linked below.
 
 [Automatic-title quiet design and A/A baseline](autotitle-quiet-design.md) records the selected first implementation slice. [Treatment results](autotitle-quiet-results.md) record the accepted cache, its workload regressions, and its CPU/allocation/process-memory evidence.
+
+[Driver delivery-history baseline](driver-history-baseline.md) confirms historical record retention after a real runtime stops and defines the next RAM investigation.
