@@ -37,17 +37,14 @@ interface Rig {
 }
 
 interface CapturedStepSnapshot {
-  rows: unknown[];
-  pendingByBee: Map<unknown, unknown>;
+  work: unknown[];
 }
 
 function isStepSnapshot(value: unknown): value is CapturedStepSnapshot {
   return value !== null
     && typeof value === "object"
-    && "rows" in value
-    && Array.isArray(value.rows)
-    && "pendingByBee" in value
-    && value.pendingByBee instanceof Map;
+    && "work" in value
+    && Array.isArray(value.work);
 }
 
 function makeRig(policy: Partial<DaemonPolicy> = {}, performance?: PerformanceRecorder): Rig {
@@ -330,34 +327,25 @@ test("unit.0: a tick uses bounded batch reads, independent of bee count, re-read
       rig.store.createBee({ id, name: id, agent: "stub", substrate: "hsr", cwd: "/tmp" });
     }
 
-    let viewReads = 0;
-    let mailboxReads = 0;
-    const listBeeViewRows = rig.store.listBeeViewRows.bind(rig.store);
-    const listUndeliveredMessages = rig.store.listUndeliveredMessages.bind(rig.store);
-    rig.store.listBeeViewRows = () => {
-      viewReads++;
-      return listBeeViewRows();
-    };
-    rig.store.listUndeliveredMessages = () => {
-      mailboxReads++;
-      return listUndeliveredMessages();
+    let workReads = 0;
+    const readDaemonWork = rig.store.readDaemonWork.bind(rig.store);
+    rig.store.readDaemonWork = () => {
+      workReads++;
+      return readDaemonWork();
     };
 
     rig.core.step();
     // A quiet tick changes nothing between the policy and delivery phases, so
     // the delivery phase reuses the policy snapshot (audit seq unchanged).
-    assert.equal(viewReads, 1, "an idle tick takes one bee snapshot");
-    assert.equal(mailboxReads, 1, "an idle tick takes one mailbox snapshot");
+    assert.equal(workReads, 1, "an unchanged tick takes one sparse work snapshot");
 
     // A queued command is claimed and executed between the policy and
     // delivery phases — a store write (audited) after the policy snapshot —
     // so delivery re-reads exactly once on that tick.
     rig.store.enqueueCommand("stop", "batch-0", { cause: "stopped_by_system", reason: "test" });
-    viewReads = 0;
-    mailboxReads = 0;
+    workReads = 0;
     rig.core.step();
-    assert.equal(viewReads, 2, "a tick whose command phase wrote re-reads the bee snapshot before delivery");
-    assert.equal(mailboxReads, 2, "a tick whose command phase wrote re-reads the mailbox snapshot before delivery");
+    assert.equal(workReads, 2, "a tick whose command phase wrote re-reads sparse work before delivery");
   } finally {
     rig.cleanup();
   }
@@ -400,14 +388,8 @@ test("unit.0a: the empty proof skips full snapshots and returns fresh containers
     rig.core.step();
 
     assert.equal(captured.length, 2, "each tick acquires its own empty snapshot");
-    assert.deepEqual(captured.map((snapshot) => snapshot.rows), [[], []]);
-    assert.deepEqual(captured.map((snapshot) => snapshot.pendingByBee.size), [0, 0]);
-    assert.notEqual(captured[0]?.rows, captured[1]?.rows, "empty row arrays are fresh across ticks");
-    assert.notEqual(
-      captured[0]?.pendingByBee,
-      captured[1]?.pendingByBee,
-      "empty mailbox maps are fresh across ticks",
-    );
+    assert.deepEqual(captured.map((snapshot) => snapshot.work), [[], []]);
+    assert.notEqual(captured[0]?.work, captured[1]?.work, "empty work arrays are fresh across ticks");
   } finally {
     rig.cleanup();
   }
@@ -426,20 +408,14 @@ test("unit.0b: a revive command refreshes an initially empty snapshot in the sam
     rig.store.updateRuntimeState(bee.id, runtime.generation, "stopped", { exitCause: "clean" });
     rig.store.enqueueCommand("revive", bee.id);
 
-    let viewReads = 0;
-    let mailboxReads = 0;
+    let workReads = 0;
     const seenRuntimeStates: Array<string | null> = [];
-    const listBeeViewRows = rig.store.listBeeViewRows.bind(rig.store);
-    const listUndeliveredMessages = rig.store.listUndeliveredMessages.bind(rig.store);
-    rig.store.listBeeViewRows = () => {
-      viewReads += 1;
-      const rows = listBeeViewRows();
-      seenRuntimeStates.push(rows.find((row) => row.bee.id === bee.id)?.runtime?.state ?? null);
-      return rows;
-    };
-    rig.store.listUndeliveredMessages = () => {
-      mailboxReads += 1;
-      return listUndeliveredMessages();
+    const readDaemonWork = rig.store.readDaemonWork.bind(rig.store);
+    rig.store.readDaemonWork = () => {
+      workReads += 1;
+      const work = readDaemonWork();
+      seenRuntimeStates.push(work.find((row) => row.runtime.beeId === bee.id)?.runtime.state ?? null);
+      return work;
     };
 
     rig.core.step();
@@ -447,8 +423,7 @@ test("unit.0b: a revive command refreshes an initially empty snapshot in the sam
     assert.equal(rig.store.currentRuntime(bee.id)?.generation, 2);
     assert.equal(rig.store.currentRuntime(bee.id)?.state, "booting");
     assert.deepEqual(seenRuntimeStates, ["booting"], "the post-command acquisition sees the revived runtime");
-    assert.equal(viewReads, 1, "the initial empty acquisition does not materialize bee rows");
-    assert.equal(mailboxReads, 1, "the initial empty acquisition does not materialize mailbox rows");
+    assert.equal(workReads, 1, "the initial empty acquisition does not materialize sparse work");
   } finally {
     rig.cleanup();
   }
@@ -575,8 +550,10 @@ test("unit.0e: task supply refreshes the snapshot before I1 in the same tick", (
 
     let viewReads = 0;
     let mailboxReads = 0;
+    let workReads = 0;
     const listBeeViewRows = rig.store.listBeeViewRows.bind(rig.store);
     const listUndeliveredMessages = rig.store.listUndeliveredMessages.bind(rig.store);
+    const readDaemonWork = rig.store.readDaemonWork.bind(rig.store);
     rig.store.listBeeViewRows = () => {
       viewReads += 1;
       return listBeeViewRows();
@@ -584,6 +561,10 @@ test("unit.0e: task supply refreshes the snapshot before I1 in the same tick", (
     rig.store.listUndeliveredMessages = () => {
       mailboxReads += 1;
       return listUndeliveredMessages();
+    };
+    rig.store.readDaemonWork = () => {
+      workReads += 1;
+      return readDaemonWork();
     };
     const tryFeedTaskSupply = rig.store.tryFeedTaskSupply.bind(rig.store);
     rig.store.tryFeedTaskSupply = (beeId) => {
@@ -601,6 +582,7 @@ test("unit.0e: task supply refreshes the snapshot before I1 in the same tick", (
     assert.equal(rig.store.undeliveredMessages(bee.id).length, 1);
     assert.equal(viewReads, 0, "neither the initial empty branch nor final I1 hydrates bee rows");
     assert.equal(mailboxReads, 0, "final I1 reads metadata instead of full mailbox rows");
+    assert.equal(workReads, 0, "task supply runs after delivery, so only the fresh final I1 sees its mail");
     assert.deepEqual(
       rig.violations.map((violation) => violation.messageId),
       [fed?.mailboxMessageId],
@@ -763,6 +745,53 @@ test("unit.2: scale-to-zero never stops an idle bee with undelivered mail", () =
     rig.core.step();
     rig.core.step();
     assert.equal(rig.store.currentRuntime("bee-1")?.state, "stopped");
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("unit.0h: delivery hydrates bodies only for the selected target", () => {
+  const rig = makeRig();
+  try {
+    spawnIdleBee(rig, "b-idle-target");
+    spawnIdleBee(rig, "c-running-target");
+    startTurn(rig, "c-running-target");
+
+    const booting = rig.store.createBee({
+      id: "a-booting-target",
+      name: "a-booting-target",
+      agent: "stub",
+      substrate: "hsr",
+      cwd: "/tmp",
+    });
+    const bootingMessage = rig.store.send(booting.bee.id, "unselected booting body").message;
+    const selected = rig.store.send("b-idle-target", "selected body").message;
+    const queuedBehind = rig.store.send("b-idle-target", "unselected queued body").message;
+    const heldIdle = rig.store.send("c-running-target", "unselected held idle body", {
+      urgency: "idle",
+    }).message;
+    const interrupting = rig.store.send("c-running-target", "unselected interrupt body", {
+      urgency: "now",
+    }).message;
+
+    const fetched: number[] = [];
+    const getMessage = rig.store.getMessage.bind(rig.store);
+    rig.store.getMessage = (messageId) => {
+      fetched.push(messageId);
+      return getMessage(messageId);
+    };
+
+    rig.core.step();
+
+    assert.ok(fetched.length > 0, "the chosen idle-runtime delivery hydrates its body");
+    assert.deepEqual([...new Set(fetched)], [selected.id]);
+    assert.deepEqual(rig.driver.deliveredIds.slice(-1), [selected.id]);
+    assert.equal(getMessage(selected.id)?.deliveredGeneration, 1);
+    for (const message of [bootingMessage, queuedBehind, heldIdle, interrupting]) {
+      assert.equal(getMessage(message.id)?.deliveredAt, null);
+      assert.equal(fetched.includes(message.id), false, `message ${message.id} was not selected for hydration`);
+    }
+    assert.deepEqual(rig.driver.interrupts.slice(-1), [{ beeId: "c-running-target", generation: 1 }]);
   } finally {
     rig.cleanup();
   }

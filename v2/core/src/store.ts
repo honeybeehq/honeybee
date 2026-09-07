@@ -211,6 +211,25 @@ export type DaemonPendingMessageMeta = Readonly<
   Pick<MessageRow, "id" | "urgency" | "enqueuedAt">
 >;
 
+/** Runtime states that can affect daemon policy or delivery work. */
+export type DaemonLiveRuntimeState = "booting" | "running" | "idle";
+
+/** Only the current live-runtime fields consumed by the daemon step. */
+export interface DaemonLiveRuntime {
+  beeId: string;
+  generation: number;
+  state: DaemonLiveRuntimeState;
+  startedAt: number;
+  updatedAt: number;
+  bootEvidence: RuntimeRow["bootEvidence"];
+}
+
+/** One current live runtime and its body-free pending queue. */
+export interface DaemonWorkRow {
+  runtime: DaemonLiveRuntime;
+  pending: readonly DaemonPendingMessageMeta[];
+}
+
 /** Current runtime facts used by I1. Stopped and absent runtimes remain meaningful. */
 export type I1RuntimeFact = Readonly<
   Pick<RuntimeRow, "state" | "bootEvidence" | "updatedAt">
@@ -816,8 +835,21 @@ function daemonRuntimeState(value: unknown, label: string): RuntimeState {
   }
 }
 
+function daemonLiveRuntimeState(value: unknown, label: string): DaemonLiveRuntimeState {
+  switch (value) {
+    case "booting":
+      return "booting";
+    case "running":
+      return "running";
+    case "idle":
+      return "idle";
+    default:
+      throw new CoreError(`daemon projection: malformed ${label}`);
+  }
+}
+
 function daemonBootEvidence(value: unknown, label: string): RuntimeRow["bootEvidence"] {
-  if (value == null) return null;
+  if (value === null) return null;
   switch (value) {
     case "synthetic":
       return "synthetic";
@@ -856,6 +888,17 @@ function mapI1RuntimeFact(r: Row): I1RuntimeFact | null {
     state: daemonRuntimeState(r.runtime_state, "I1 runtime state"),
     bootEvidence: daemonBootEvidence(r.runtime_boot_evidence, "I1 runtime boot evidence"),
     updatedAt: daemonNumber(r.runtime_updated_at, "I1 runtime updated_at"),
+  };
+}
+
+function mapDaemonLiveRuntime(r: Row): DaemonLiveRuntime {
+  return {
+    beeId: daemonText(r.bee_id, "live runtime bee_id"),
+    generation: daemonNumber(r.generation, "live runtime generation"),
+    state: daemonLiveRuntimeState(r.state, "live runtime state"),
+    startedAt: daemonNumber(r.started_at, "live runtime started_at"),
+    updatedAt: daemonNumber(r.updated_at, "live runtime updated_at"),
+    bootEvidence: daemonBootEvidence(r.boot_evidence, "live runtime boot evidence"),
   };
 }
 
@@ -3149,6 +3192,65 @@ export class CoreStore {
   // -------------------------------------------------------------------------
 
   /**
+   * Fresh daemon policy/delivery input. Only current live runtimes are
+   * projected, and pending messages stay body-free until delivery selects one.
+   */
+  readDaemonWork(): DaemonWorkRow[] {
+    const runtimeRows: Row[] = this.stmt(
+      `SELECT runtime.bee_id,
+              runtime.generation,
+              runtime.state,
+              runtime.started_at,
+              runtime.updated_at,
+              runtime.boot_evidence
+       FROM runtimes AS runtime
+       WHERE runtime.state != 'stopped'
+         AND runtime.generation = (
+           SELECT MAX(latest.generation)
+           FROM runtimes AS latest
+           WHERE latest.bee_id = runtime.bee_id
+         )
+       ORDER BY runtime.bee_id`,
+    ).all();
+    const work: Array<{
+      runtime: DaemonLiveRuntime;
+      pending: DaemonPendingMessageMeta[];
+    }> = runtimeRows.map((row) => ({
+      runtime: mapDaemonLiveRuntime(row),
+      pending: [],
+    }));
+    if (work.length === 0) return work;
+
+    const workByBee = new Map(work.map((row) => [row.runtime.beeId, row]));
+    // CROSS JOIN deliberately keeps the sparse live-runtime scan outermost;
+    // each live bee then seeks only its own undelivered mailbox prefix.
+    const messageRows: Row[] = this.stmt(
+      `SELECT message.id,
+              message.bee_id,
+              message.urgency,
+              message.enqueued_at
+       FROM runtimes AS runtime
+       CROSS JOIN mailbox AS message
+       WHERE runtime.state != 'stopped'
+         AND runtime.generation = (
+           SELECT MAX(latest.generation)
+           FROM runtimes AS latest
+           WHERE latest.bee_id = runtime.bee_id
+         )
+         AND message.bee_id = runtime.bee_id
+         AND message.delivered_at IS NULL
+       ORDER BY runtime.bee_id, message.id`,
+    ).all();
+    for (const raw of messageRows) {
+      const { beeId, message } = mapDaemonPendingMessage(raw);
+      const row = workByBee.get(beeId);
+      if (!row) throw new CoreError(`daemon projection: pending live bee ${beeId} has no runtime`);
+      row.pending.push(message);
+    }
+    return work;
+  }
+
+  /**
    * Fresh, body-free I1 input. Groups and messages preserve the old
    * listBeeViewRows/listUndeliveredMessages order without hydrating either
    * complete bee rows or mailbox bodies.
@@ -3208,7 +3310,7 @@ export class CoreStore {
     return groups;
   }
 
-  /** Whether runtime or mailbox facts require the daemon's full step snapshot. */
+  /** Whether runtime or mailbox facts require a daemon step snapshot. */
   hasStepSnapshotInputs(): boolean {
     if (this.stmt("SELECT 1 FROM runtimes WHERE state != 'stopped' LIMIT 1").get() !== undefined) {
       return true;

@@ -46,11 +46,10 @@
 import {
   CoreError,
   RUNTIME_TRANSITIONS,
-  type BeeViewRow,
   type CommandRow,
   type CoreStore,
+  type DaemonWorkRow,
   type I1PendingBee,
-  type MessageRow,
   type RuntimeState,
 } from "../../core/src/index.ts";
 import { deliveryText, isPeerSender } from "./envelope.ts";
@@ -193,8 +192,7 @@ export interface DaemonCoreOptions {
 const LIVE: readonly RuntimeState[] = ["booting", "running", "idle"];
 
 interface StepSnapshot {
-  rows: BeeViewRow[];
-  pendingByBee: Map<string, MessageRow[]>;
+  work: DaemonWorkRow[];
 }
 
 export class DaemonCore {
@@ -282,16 +280,16 @@ export class DaemonCore {
       this.stepSnapshot(),
     );
     this.performance.measureSync("core.step.policies", () => {
-      this.bootHangPolicy(snapshot.rows);
-      this.scaleToZeroPolicy(snapshot.rows, snapshot.pendingByBee);
-      this.degradedMailPolicy(snapshot.rows, snapshot.pendingByBee);
+      this.bootHangPolicy(snapshot.work);
+      this.scaleToZeroPolicy(snapshot.work);
+      this.degradedMailPolicy(snapshot.work);
     });
     this.performance.measureSync("core.step.commands", () => this.executeCommands());
     ({ snapshot, seq } = this.performance.measureSync("core.step.snapshot", () =>
       this.refreshSnapshot(snapshot, seq),
     ));
     this.performance.measureSync("core.step.delivery", () =>
-      this.deliveryLoop(snapshot.rows, snapshot.pendingByBee),
+      this.deliveryLoop(snapshot.work),
     );
     this.performance.measureSync("core.step.tasks", () => this.taskSupplyLoop());
     if (this.policy.i1DeadlineSteps != null && this.onI1Violation != null) {
@@ -333,21 +331,15 @@ export class DaemonCore {
   }
 
   /**
-   * One bounded read-model snapshot replaces the old per-policy N+1 store
-   * walks. Rows are refreshed across command/delivery boundaries where the
-   * step itself may have changed runtime or mailbox truth.
+   * One sparse read-model snapshot replaces the old per-policy N+1 store
+   * walks. Work is refreshed across the command boundary where the step
+   * itself may have changed runtime or mailbox truth.
    */
   private stepSnapshot(): StepSnapshot {
     if (!this.store.hasStepSnapshotInputs()) {
-      return { rows: [], pendingByBee: new Map() };
+      return { work: [] };
     }
-    const pendingByBee = new Map<string, MessageRow[]>();
-    for (const message of this.store.listUndeliveredMessages()) {
-      const pending = pendingByBee.get(message.beeId);
-      if (pending) pending.push(message);
-      else pendingByBee.set(message.beeId, [message]);
-    }
-    return { rows: this.store.listBeeViewRows(), pendingByBee };
+    return { work: this.store.readDaemonWork() };
   }
 
   /**
@@ -642,14 +634,14 @@ export class DaemonCore {
     return this.store.hasPendingStopCommand(beeId, generation);
   }
 
-  private bootHangPolicy(rows: BeeViewRow[]): void {
+  private bootHangPolicy(work: readonly DaemonWorkRow[]): void {
     const now = this.now();
-    for (const { bee, runtime: rt } of rows) {
-      if (!rt || rt.state !== "booting") continue;
+    for (const { runtime: rt } of work) {
+      if (rt.state !== "booting") continue;
       if (now - rt.startedAt <= this.policy.bootHangTimeoutSteps) continue;
-      if (this.pendingStopExists(bee.id, rt.generation)) continue;
-      this.store.enqueueCommand("stop", bee.id, { cause: "stopped_by_system", reason: "hang_policy" });
-      this.log(`policy.hang_stop bee=${bee.id} gen=${rt.generation} state=${rt.state}`);
+      if (this.pendingStopExists(rt.beeId, rt.generation)) continue;
+      this.store.enqueueCommand("stop", rt.beeId, { cause: "stopped_by_system", reason: "hang_policy" });
+      this.log(`policy.hang_stop bee=${rt.beeId} gen=${rt.generation} state=${rt.state}`);
     }
   }
 
@@ -657,19 +649,19 @@ export class DaemonCore {
   // scale-to-zero — idle → stop(stopped_by_system) after the idle window
   // -------------------------------------------------------------------------
 
-  private scaleToZeroPolicy(rows: BeeViewRow[], pendingByBee: Map<string, MessageRow[]>): void {
+  private scaleToZeroPolicy(work: readonly DaemonWorkRow[]): void {
     const window = this.policy.idleWindowSteps;
     if (window == null) return;
     const now = this.now();
-    for (const { bee, runtime: rt } of rows) {
-      if (!rt || rt.state !== "idle") continue;
+    for (const { runtime: rt, pending } of work) {
+      if (rt.state !== "idle") continue;
       if (now - rt.updatedAt <= window) continue;
       // Pending mail means the delivery loop is about to use this runtime —
       // stopping it now would only bounce through revive-on-message.
-      if ((pendingByBee.get(bee.id)?.length ?? 0) > 0) continue;
-      if (this.pendingStopExists(bee.id, rt.generation)) continue;
-      this.store.enqueueCommand("stop", bee.id, { cause: "stopped_by_system", reason: "idle_window" });
-      this.log(`policy.idle_stop bee=${bee.id} gen=${rt.generation} idleFor=${now - rt.updatedAt}`);
+      if (pending.length > 0) continue;
+      if (this.pendingStopExists(rt.beeId, rt.generation)) continue;
+      this.store.enqueueCommand("stop", rt.beeId, { cause: "stopped_by_system", reason: "idle_window" });
+      this.log(`policy.idle_stop bee=${rt.beeId} gen=${rt.generation} idleFor=${now - rt.updatedAt}`);
     }
   }
 
@@ -677,15 +669,14 @@ export class DaemonCore {
   // degraded-runtime policy — re-adopted processes cannot accept deliveries
   // -------------------------------------------------------------------------
 
-  private degradedMailPolicy(rows: BeeViewRow[], pendingByBee: Map<string, MessageRow[]>): void {
+  private degradedMailPolicy(work: readonly DaemonWorkRow[]): void {
     if (typeof this.ext.isDegraded !== "function") return;
-    for (const { bee, runtime: rt } of rows) {
-      if (!rt || !LIVE.includes(rt.state)) continue;
-      if (!this.ext.isDegraded(bee.id, rt.generation)) continue;
-      if ((pendingByBee.get(bee.id)?.length ?? 0) === 0) continue;
-      if (this.pendingStopExists(bee.id, rt.generation)) continue;
-      this.store.enqueueCommand("stop", bee.id, { cause: "stopped_by_system", reason: "degraded_runtime" });
-      this.log(`policy.degraded_stop bee=${bee.id} gen=${rt.generation}`);
+    for (const { runtime: rt, pending } of work) {
+      if (!this.ext.isDegraded(rt.beeId, rt.generation)) continue;
+      if (pending.length === 0) continue;
+      if (this.pendingStopExists(rt.beeId, rt.generation)) continue;
+      this.store.enqueueCommand("stop", rt.beeId, { cause: "stopped_by_system", reason: "degraded_runtime" });
+      this.log(`policy.degraded_stop bee=${rt.beeId} gen=${rt.generation}`);
     }
   }
 
@@ -882,10 +873,9 @@ export class DaemonCore {
    * message waiting out a turn does not block a later `next`/`now` message
    * from delivering at the next accept point.
    */
-  private deliveryLoop(rows: BeeViewRow[], pendingByBee: Map<string, MessageRow[]>): void {
-    for (const { bee, runtime: rt } of rows) {
-      if (!rt || rt.state === "stopped" || rt.state === "booting") continue;
-      const pending = pendingByBee.get(bee.id) ?? [];
+  private deliveryLoop(work: readonly DaemonWorkRow[]): void {
+    for (const { runtime: rt, pending } of work) {
+      if (rt.state === "booting") continue;
       if (pending.length === 0) continue;
       // `running` on nothing but a SYNTHETIC boot is provisional (v9): the
       // driver's accept point is open and no real turn exists to disturb, so
@@ -904,7 +894,7 @@ export class DaemonCore {
         // whole FIFO, which keeps delivering in enqueue order.
         const urgent = eligible.find((m) => m.urgency === "now" && !this.interruptRequested.has(m.id));
         if (urgent) {
-          const res = this.driver.interrupt(bee.id, rt.generation);
+          const res = this.driver.interrupt(rt.beeId, rt.generation);
           // no_process / not_ready resolve on later steps (exit observation,
           // driver-side boot skew) — retry then. interrupted / idle /
           // unsupported are final: the accept point exists or never will.
@@ -912,7 +902,7 @@ export class DaemonCore {
             this.interruptRequested.add(urgent.id);
           }
           this.log(
-            `deliver.interrupt bee=${bee.id} msg=${urgent.id} gen=${rt.generation} interrupted=${res.interrupted}` +
+            `deliver.interrupt bee=${rt.beeId} msg=${urgent.id} gen=${rt.generation} interrupted=${res.interrupted}` +
               (res.reason ? ` reason=${res.reason}` : ""),
           );
           // A successful interrupt closes the current accept point
@@ -922,18 +912,29 @@ export class DaemonCore {
           if (res.interrupted) continue;
         }
       }
-      const msg = eligible[0] as (typeof eligible)[number];
+      const selected = eligible[0];
+      if (!selected) continue;
+      const msg = this.store.getMessage(selected.id);
+      if (
+        !msg ||
+        msg.beeId !== rt.beeId ||
+        msg.deliveredAt !== null ||
+        msg.urgency !== selected.urgency ||
+        msg.enqueuedAt !== selected.enqueuedAt
+      ) {
+        throw new CoreError(`daemon projection: selected message ${selected.id} changed before delivery`);
+      }
       // Peer-sent mail carries the sender-attribution envelope (envelope.ts);
       // operator/human mail is delivered bare. The mailbox row stays the
       // durable truth — the envelope is delivery-time rendering only.
       const peer = isPeerSender(msg.sender, (id) => this.store.getBee(id) != null);
-      const outcome = this.driver.deliver(bee.id, rt.generation, msg.id, deliveryText(msg, peer));
+      const outcome = this.driver.deliver(rt.beeId, rt.generation, msg.id, deliveryText(msg, peer));
       if (outcome.accepted) {
         this.store.markDelivered(msg.id, rt.generation);
         this.interruptRequested.delete(msg.id);
-        this.log(`deliver bee=${bee.id} msg=${msg.id} gen=${rt.generation} urgency=${msg.urgency}`);
+        this.log(`deliver bee=${rt.beeId} msg=${msg.id} gen=${rt.generation} urgency=${msg.urgency}`);
       } else {
-        this.log(`deliver.refused bee=${bee.id} msg=${msg.id} reason=${outcome.reason}`);
+        this.log(`deliver.refused bee=${rt.beeId} msg=${msg.id} reason=${outcome.reason}`);
       }
     }
   }
