@@ -6,7 +6,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
-import { replayAudit, type AuditRow, type CoreStore } from "../src/index.ts";
+import { replayAudit, SCHEMA_VERSION, type AuditRow, type CoreStore } from "../src/index.ts";
 import { harness } from "./helpers.ts";
 
 const PARENT_ID = "15ecdadc-f4b1-4265-9fac-9516a5ada650";
@@ -135,6 +135,69 @@ test("pre-v21 creation events replay with local lineage", () => {
     assert.deepEqual(replayAudit(legacy), store.dumpState());
   } finally {
     store.close();
+    h.cleanup();
+  }
+});
+
+test("a v20 store migrates existing parent edges to local lineage at schema v21", () => {
+  const h = harness();
+  let store: CoreStore | null = null;
+  try {
+    store = h.open();
+    const parent = store.createBee({
+      id: "migration-parent",
+      name: "migration-parent",
+      agent: "stub",
+      substrate: "hsr",
+      cwd: "/tmp",
+    }).bee;
+    const child = store.createBee({
+      id: "migration-child",
+      name: "migration-child",
+      agent: "stub",
+      substrate: "hsr",
+      cwd: "/tmp",
+      parentId: parent.id,
+    }).bee;
+    store.close();
+    store = null;
+
+    const v20 = new DatabaseSync(h.path);
+    try {
+      v20.exec("ALTER TABLE bees DROP COLUMN parent_external");
+      v20.prepare("UPDATE meta SET value = '20' WHERE key = 'schema_version'").run();
+      const columns = (v20.prepare("SELECT name FROM pragma_table_info('bees')").all() as Array<{
+        name: string;
+      }>).map((column) => column.name);
+      assert.equal(columns.includes("parent_external"), false, "the fixture has the v20 bee shape");
+    } finally {
+      v20.close();
+    }
+
+    store = h.open();
+    assert.deepEqual(store.listBees().map((bee) => bee.id).sort(), [child.id, parent.id].sort());
+    assert.equal(store.getBee(parent.id)?.parentExternal, false);
+    assert.equal(store.getBee(child.id)?.parentId, parent.id, "migration retains the existing parent edge");
+    assert.equal(store.getBee(child.id)?.parentExternal, false);
+    store.close();
+    store = null;
+
+    const migrated = new DatabaseSync(h.path, { readOnly: true });
+    try {
+      const version = migrated.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as {
+        value: string;
+      };
+      assert.equal(Number(version.value), SCHEMA_VERSION);
+      assert.equal(SCHEMA_VERSION, 21);
+      const column = migrated.prepare(
+        "SELECT name FROM pragma_table_info('bees') WHERE name = 'parent_external'",
+      ).get() as { name: string } | undefined;
+      assert.equal(column?.name, "parent_external");
+    } finally {
+      migrated.close();
+    }
+  } finally {
+    store?.close();
     h.cleanup();
   }
 });
