@@ -26,3 +26,5 @@ Landed; write/open/storage cost measured,Spread-generation recovery predicate,6.
 Landed,Wide pending row materialization,10.216,5.658,ms CPU,20k held64B messages;30samples;array mapping only,pending-allocation-results.md
 Landed; sampled allocation only,Wide tick allocation traffic,315221560,150241688,sampled bytes,30profiled ticks;20kheld;not retained RAM,pending-allocation-results.md
 Landed; write/open/storage cost measured,Large-body pending tick,11.669,0.098,ms CPU,100held1MiB;oneBee;30samples;covering index only,pending-covering-results.md
+Landed; read tradeoff retained,Remove duplicate pending index,1085440,0,bytes in old index,20k pending;pages reusable;no immediate file shrink,pending-index-removal-results.md
+Landed; A/A variation retained,Pending send/expedite/cancel CPU,13.346,12.77,ms CPU per100cycles,20k pending;10samples;full-read possible2–3%cost,pending-index-removal-results.md
