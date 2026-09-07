@@ -297,4 +297,60 @@ test("parity: clean merges, attributes, renames, modes, gitlinks, conflicts, cas
     });
     parity(fx, shims, "case-collision");
   }
+
+  // 9. criss-cross ancestry: target and cell tips share TWO merge bases, so
+  //    the merge engines must construct a virtual ancestor. The fixture
+  //    asserts >1 merge base before capturing; the clean top/bottom edits
+  //    keep the final merge on the fast path so the object engine's
+  //    multi-base handling is what parity actually measures.
+  {
+    const name = "criss-cross";
+    const { repo: origin } = makeOrigin(root, name);
+    g(origin, ["config", "maintenance.auto", "false"]);
+    g(origin, ["config", "gc.auto", "0"]);
+    writeFileSync(join(origin, "seed.txt"), "top\nmiddle\nbottom\n");
+    g(origin, ["add", "-A"]);
+    g(origin, ["commit", "-m", "seed"]);
+    const shaper = join(root, `${name}-shaper`);
+    g(root, ["clone", "--quiet", origin, shaper]);
+    g(shaper, ["checkout", "--quiet", "-b", "side-x", "main"]);
+    writeFileSync(join(shaper, "seed.txt"), "top-x\nmiddle\nbottom\n");
+    g(shaper, ["commit", "-am", "x1"]);
+    const x1 = g(shaper, ["rev-parse", "HEAD"]);
+    g(shaper, ["checkout", "--quiet", "-b", "side-y", "main"]);
+    writeFileSync(join(shaper, "seed.txt"), "top\nmiddle\nbottom-y\n");
+    g(shaper, ["commit", "-am", "y1"]);
+    const y1 = g(shaper, ["rev-parse", "HEAD"]);
+    g(shaper, ["checkout", "--quiet", "-b", "landing", "side-y"]);
+    g(shaper, ["merge", "--no-edit", "side-x"]); // cross merge 1 (clean)
+    writeFileSync(join(shaper, "seed.txt"), "top-target\nmiddle\nbottom-y\n");
+    g(shaper, ["commit", "-am", "t1"]);
+    g(shaper, ["checkout", "--quiet", "-b", "cellline", "side-x"]);
+    g(shaper, ["merge", "--no-edit", "side-y"]); // cross merge 2 (clean)
+    g(shaper, ["push", "--quiet", "origin", "landing:refs/heads/landing", "cellline:refs/heads/cellline"]);
+    rmSync(shaper, { recursive: true, force: true });
+    const cell = join(root, `${name}-cell`);
+    g(root, ["clone", "--quiet", origin, cell]);
+    g(cell, ["checkout", "--quiet", "cellline"]);
+    writeFileSync(join(cell, "seed.txt"), "top-x\nmiddle\nbottom-cell\n");
+    g(cell, ["commit", "-am", "cell work"]);
+    g(origin, ["update-ref", "-d", "refs/heads/cellline"]); // origin keeps main + landing only
+    const fx: Fixture = {
+      root,
+      origin,
+      cell,
+      targetTip: g(origin, ["rev-parse", "refs/heads/landing"]),
+      cellHead: g(cell, ["rev-parse", "HEAD"]),
+    };
+    const bases = g(cell, ["merge-base", "--all", "origin/landing", "HEAD"]).split("\n").filter(Boolean).sort();
+    assert.ok(bases.length > 1, "criss-cross fixture must have more than one merge base");
+    assert.deepEqual(bases, [x1, y1].sort(), "criss-cross merge bases must be exactly the two cross points");
+    const { object } = parity(fx, shims, "criss-cross");
+    assert.equal(object.report.status, "landed");
+    assert.equal(
+      g(fx.origin, ["show", `${object.report.resultSha as string}:seed.txt`]),
+      "top-target\nmiddle\nbottom-cell",
+      "criss-cross merge must combine the target's top edit with the cell's bottom edit",
+    );
+  }
 });
