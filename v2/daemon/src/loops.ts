@@ -337,6 +337,9 @@ export class DaemonCore {
    * step itself may have changed runtime or mailbox truth.
    */
   private stepSnapshot(): StepSnapshot {
+    if (!this.store.hasStepSnapshotInputs()) {
+      return { rows: [], pendingByBee: new Map() };
+    }
     const pendingByBee = new Map<string, MessageRow[]>();
     for (const message of this.store.listUndeliveredMessages()) {
       const pending = pendingByBee.get(message.beeId);

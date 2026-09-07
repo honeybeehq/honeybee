@@ -226,6 +226,11 @@ CREATE TABLE IF NOT EXISTS runtimes (
   PRIMARY KEY (bee_id, generation),
   CHECK ((state = 'stopped') = (exit_cause IS NOT NULL))
 ) STRICT;
+-- The runtime side of a daemon snapshot cannot affect a tick when every
+-- retained generation is stopped. This partial index also installs on every
+-- open, so existing stores gain the absence proof without a format migration.
+CREATE INDEX IF NOT EXISTS runtimes_daemon_live
+  ON runtimes(bee_id, generation) WHERE state != 'stopped';
 
 -- v15: applied cursor into one runner-owned, output-only journal per runtime
 -- generation. This is recovery metadata, not a competing lifecycle state.

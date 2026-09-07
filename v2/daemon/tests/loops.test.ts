@@ -10,10 +10,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { openCoreStore, type CoreStore } from "../../core/src/index.ts";
+import { beeTaskList, openCoreStore, type CoreStore } from "../../core/src/index.ts";
 import { DaemonCore, type DaemonPolicy, type I1ViolationEvent } from "../src/loops.ts";
+import type { PerformanceRecorder } from "../src/performance.ts";
 import { HsrDriver } from "../../driver-hsr/src/index.ts";
 import { stubAdapter } from "../../adapters/src/index.ts";
 import { AGENT_PATH, FakeDriver, sleep, waitFor } from "./helpers.ts";
@@ -34,7 +36,21 @@ interface Rig {
   cleanup: () => void;
 }
 
-function makeRig(policy: Partial<DaemonPolicy> = {}): Rig {
+interface CapturedStepSnapshot {
+  rows: unknown[];
+  pendingByBee: Map<unknown, unknown>;
+}
+
+function isStepSnapshot(value: unknown): value is CapturedStepSnapshot {
+  return value !== null
+    && typeof value === "object"
+    && "rows" in value
+    && Array.isArray(value.rows)
+    && "pendingByBee" in value
+    && value.pendingByBee instanceof Map;
+}
+
+function makeRig(policy: Partial<DaemonPolicy> = {}, performance?: PerformanceRecorder): Rig {
   const dir = mkdtempSync(join(tmpdir(), "hb-v2-loops-"));
   const clock = { now: 1000 };
   const now = (): number => clock.now;
@@ -53,6 +69,7 @@ function makeRig(policy: Partial<DaemonPolicy> = {}): Rig {
     now,
     log: (op) => ops.push(op),
     onI1Violation: (v) => violations.push(v),
+    performance,
   });
   core.boot();
   return {
@@ -308,6 +325,254 @@ test("unit.0: a tick uses bounded batch reads, independent of bee count, re-read
   }
 });
 
+test("unit.0a: the empty proof skips full snapshots and returns fresh containers without skipping flag expiry", () => {
+  const captured: CapturedStepSnapshot[] = [];
+  const performance: PerformanceRecorder = {
+    startSpan: () => ({ end: () => undefined }),
+    measureSync: <T>(_name: string, operation: () => T): T => {
+      const result = operation();
+      if (isStepSnapshot(result)) captured.push(result);
+      return result;
+    },
+  };
+  const rig = makeRig({}, performance);
+  try {
+    const { bee, runtime } = rig.store.createBee({
+      id: "quiet-archived",
+      name: "quiet-archived",
+      agent: "stub",
+      substrate: "hsr",
+      cwd: "/tmp",
+    });
+    rig.store.updateRuntimeState(bee.id, runtime.generation, "stopped", { exitCause: "clean" });
+    rig.store.archiveBee(bee.id);
+    rig.store.setFlag(bee.id, "resource_blocked", "expires before the snapshot", {
+      resetsAt: rig.clock.now,
+    });
+
+    rig.store.listBeeViewRows = () => {
+      throw new Error("empty proof unexpectedly read full bee views");
+    };
+    rig.store.listUndeliveredMessages = () => {
+      throw new Error("empty proof unexpectedly read full mailbox rows");
+    };
+
+    rig.core.step();
+    assert.deepEqual(rig.store.activeFlags(bee.id), [], "flag expiry remains ahead of snapshot acquisition");
+    rig.core.step();
+
+    assert.equal(captured.length, 2, "each tick acquires its own empty snapshot");
+    assert.deepEqual(captured.map((snapshot) => snapshot.rows), [[], []]);
+    assert.deepEqual(captured.map((snapshot) => snapshot.pendingByBee.size), [0, 0]);
+    assert.notEqual(captured[0]?.rows, captured[1]?.rows, "empty row arrays are fresh across ticks");
+    assert.notEqual(
+      captured[0]?.pendingByBee,
+      captured[1]?.pendingByBee,
+      "empty mailbox maps are fresh across ticks",
+    );
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("unit.0b: a revive command refreshes an initially empty snapshot in the same tick", () => {
+  const rig = makeRig();
+  try {
+    const { bee, runtime } = rig.store.createBee({
+      id: "revive-refresh",
+      name: "revive-refresh",
+      agent: "stub",
+      substrate: "hsr",
+      cwd: "/tmp",
+    });
+    rig.store.updateRuntimeState(bee.id, runtime.generation, "stopped", { exitCause: "clean" });
+    rig.store.enqueueCommand("revive", bee.id);
+
+    let viewReads = 0;
+    let mailboxReads = 0;
+    const seenRuntimeStates: Array<string | null> = [];
+    const listBeeViewRows = rig.store.listBeeViewRows.bind(rig.store);
+    const listUndeliveredMessages = rig.store.listUndeliveredMessages.bind(rig.store);
+    rig.store.listBeeViewRows = () => {
+      viewReads += 1;
+      const rows = listBeeViewRows();
+      seenRuntimeStates.push(rows.find((row) => row.bee.id === bee.id)?.runtime?.state ?? null);
+      return rows;
+    };
+    rig.store.listUndeliveredMessages = () => {
+      mailboxReads += 1;
+      return listUndeliveredMessages();
+    };
+
+    rig.core.step();
+
+    assert.equal(rig.store.currentRuntime(bee.id)?.generation, 2);
+    assert.equal(rig.store.currentRuntime(bee.id)?.state, "booting");
+    assert.deepEqual(seenRuntimeStates, ["booting"], "the post-command acquisition sees the revived runtime");
+    assert.equal(viewReads, 1, "the initial empty acquisition does not materialize bee rows");
+    assert.equal(mailboxReads, 1, "the initial empty acquisition does not materialize mailbox rows");
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("unit.0c: an outer rollback and reused audit sequence cannot preserve an uncommitted snapshot", () => {
+  const rig = makeRig({ commandsPerStep: 0, bootHangTimeoutSteps: 50 });
+  try {
+    const { bee, runtime } = rig.store.createBee({
+      id: "rollback-refresh",
+      name: "rollback-refresh",
+      agent: "stub",
+      substrate: "hsr",
+      cwd: "/tmp",
+    });
+    const committedSeq = rig.store.lastAuditSeq();
+    let uncommittedSeq = -1;
+
+    assert.throws(
+      () => rig.store.transact(() => {
+        rig.store.updateRuntimeState(bee.id, runtime.generation, "running", { synthetic: true });
+        rig.core.step();
+        assert.equal(rig.store.currentRuntime(bee.id)?.state, "running");
+        uncommittedSeq = rig.store.lastAuditSeq();
+        throw new Error("rollback after successful nested step");
+      }),
+      /rollback after successful nested step/,
+    );
+
+    assert.equal(rig.store.currentRuntime(bee.id)?.state, "booting");
+    assert.equal(rig.store.lastAuditSeq(), committedSeq);
+    rig.store.renameBee(bee.id, "sequence-reused");
+    assert.equal(rig.store.lastAuditSeq(), uncommittedSeq, "SQLite reused the rolled-back audit sequence");
+
+    rig.clock.now = runtime.startedAt + 51;
+    rig.core.step();
+    const hangStops = rig.store.listCommands({ beeId: bee.id, status: "queued" })
+      .filter((command) => command.verb === "stop" && command.args.reason === "hang_policy");
+    assert.equal(hangStops.length, 1, "the next tick reads fresh booting state and applies the hang policy");
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("unit.0d: I1 sees stopped-runtime and absent-runtime mail", () => {
+  const dir = mkdtempSync(join(tmpdir(), "hb-v2-step-snapshot-mail-"));
+  const path = join(dir, "core.sqlite3");
+  const clock = { now: 1_000 };
+  const now = (): number => clock.now;
+  let store: CoreStore | null = openCoreStore(path, { now, ephemeral: true });
+  try {
+    const stopped = store.createBee({
+      id: "stopped-runtime",
+      name: "stopped-runtime",
+      agent: "stub",
+      substrate: "hsr",
+      cwd: "/tmp",
+    });
+    store.updateRuntimeState(stopped.bee.id, stopped.runtime.generation, "stopped", { exitCause: "clean" });
+    const stoppedMessage = store.send(stopped.bee.id, "pending while stopped").message;
+
+    const absent = store.createBee({
+      id: "absent-runtime",
+      name: "absent-runtime",
+      agent: "stub",
+      substrate: "hsr",
+      cwd: "/tmp",
+    });
+    const absentMessage = store.send(absent.bee.id, "pending without a runtime").message;
+    store.close();
+
+    const fixture = new DatabaseSync(path);
+    try {
+      fixture.prepare("DELETE FROM runtimes WHERE bee_id = ?").run(absent.bee.id);
+    } finally {
+      fixture.close();
+    }
+
+    store = openCoreStore(path, { now, ephemeral: true });
+    const driver = new FakeDriver(now);
+    const violations: I1ViolationEvent[] = [];
+    const core = new DaemonCore({
+      store,
+      driver,
+      policy: { bootHangTimeoutSteps: 50, commandsPerStep: 0, i1DeadlineSteps: 10 },
+      now,
+      log: () => undefined,
+      onI1Violation: (violation) => violations.push(violation),
+    });
+    core.boot();
+    assert.equal(store.currentRuntime(stopped.bee.id)?.state, "stopped");
+    assert.equal(store.currentRuntime(absent.bee.id), null);
+
+    clock.now = 1_011;
+    core.step();
+    assert.deepEqual(
+      violations.map((violation) => violation.messageId).sort((a, b) => a - b),
+      [stoppedMessage.id, absentMessage.id].sort((a, b) => a - b),
+    );
+  } finally {
+    store?.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("unit.0e: task supply refreshes the snapshot before I1 in the same tick", () => {
+  const rig = makeRig({ i1DeadlineSteps: 1 });
+  try {
+    const { bee, runtime } = rig.store.createBee({
+      id: "task-refresh",
+      name: "task-refresh",
+      agent: "stub",
+      substrate: "hsr",
+      cwd: "/tmp",
+    });
+    rig.store.updateRuntimeState(bee.id, runtime.generation, "stopped", { exitCause: "clean" });
+    rig.store.setTaskSupply(bee.id, { on: true });
+    const task = rig.store.addTask({
+      list: beeTaskList(bee.id),
+      title: "same-tick snapshot refresh",
+      originKind: "user",
+      originSender: "operator",
+    }).task;
+
+    let viewReads = 0;
+    let mailboxReads = 0;
+    const listBeeViewRows = rig.store.listBeeViewRows.bind(rig.store);
+    const listUndeliveredMessages = rig.store.listUndeliveredMessages.bind(rig.store);
+    rig.store.listBeeViewRows = () => {
+      viewReads += 1;
+      return listBeeViewRows();
+    };
+    rig.store.listUndeliveredMessages = () => {
+      mailboxReads += 1;
+      return listUndeliveredMessages();
+    };
+    const tryFeedTaskSupply = rig.store.tryFeedTaskSupply.bind(rig.store);
+    rig.store.tryFeedTaskSupply = (beeId) => {
+      const result = tryFeedTaskSupply(beeId);
+      if (result !== null) rig.clock.now += 2;
+      return result;
+    };
+
+    rig.core.step();
+
+    const fed = rig.store.getTask(task.id);
+    assert.equal(fed?.status, "queued");
+    assert.ok(fed?.mailboxMessageId != null);
+    assert.equal(rig.store.currentRuntime(bee.id)?.state, "stopped");
+    assert.equal(rig.store.undeliveredMessages(bee.id).length, 1);
+    assert.equal(viewReads, 1, "only the final post-task acquisition materializes bee rows");
+    assert.equal(mailboxReads, 1, "only the final post-task acquisition materializes mailbox rows");
+    assert.deepEqual(
+      rig.violations.map((violation) => violation.messageId),
+      [fed?.mailboxMessageId],
+      "the final acquisition includes mail added after delivery by task supply",
+    );
+  } finally {
+    rig.cleanup();
+  }
+});
+
 test("unit.1: scale-to-zero — idle past the window stops with stopped_by_system; send revives (Q4 + Q3)", () => {
   const rig = makeRig({ idleWindowSteps: 100 });
   try {
@@ -357,6 +622,66 @@ test("unit.2: scale-to-zero never stops an idle bee with undelivered mail", () =
     assert.equal(rig.store.currentRuntime("bee-1")?.state, "stopped");
   } finally {
     rig.cleanup();
+  }
+});
+
+test("unit.time-boundaries: archived boot hang, idle stop, and I1 remain strict", () => {
+  const bootRig = makeRig({ bootHangTimeoutSteps: 50, commandsPerStep: 0 });
+  try {
+    const { bee, runtime } = bootRig.store.createBee({
+      id: "archived-booting",
+      name: "archived-booting",
+      agent: "stub",
+      substrate: "hsr",
+      cwd: "/tmp",
+    });
+    bootRig.store.archiveBee(bee.id);
+    bootRig.clock.now = runtime.startedAt + 50;
+    bootRig.core.step();
+    assert.equal(
+      bootRig.store.listCommands({ beeId: bee.id, status: "queued" }).filter((command) => command.verb === "stop").length,
+      0,
+      "boot hang does not fire at equality",
+    );
+    bootRig.clock.now = runtime.startedAt + 51;
+    bootRig.core.step();
+    assert.equal(
+      bootRig.store.listCommands({ beeId: bee.id, status: "queued" }).filter((command) => command.verb === "stop").length,
+      1,
+      "archiving does not hide a live runtime after the strict boundary",
+    );
+  } finally {
+    bootRig.cleanup();
+  }
+
+  const idleRig = makeRig({ idleWindowSteps: 100 });
+  try {
+    spawnIdleBee(idleRig);
+    const runtime = idleRig.store.currentRuntime("bee-1");
+    assert.ok(runtime);
+    idleRig.clock.now = runtime.updatedAt + 100;
+    idleRig.core.step();
+    assert.equal(idleRig.ops.filter((op) => op.startsWith("policy.idle_stop bee=bee-1")).length, 0);
+    idleRig.clock.now = runtime.updatedAt + 101;
+    idleRig.core.step();
+    assert.equal(idleRig.ops.filter((op) => op.startsWith("policy.idle_stop bee=bee-1")).length, 1);
+  } finally {
+    idleRig.cleanup();
+  }
+
+  const i1Rig = makeRig({ i1DeadlineSteps: 200 });
+  try {
+    spawnIdleBee(i1Rig);
+    i1Rig.driver.acceptDeliveries = false;
+    const message = i1Rig.store.send("bee-1", "strict I1 boundary").message;
+    i1Rig.clock.now = message.enqueuedAt + 200;
+    i1Rig.core.step();
+    assert.equal(i1Rig.violations.length, 0, "I1 does not fire at equality");
+    i1Rig.clock.now = message.enqueuedAt + 201;
+    i1Rig.core.step();
+    assert.deepEqual(i1Rig.violations.map((violation) => violation.messageId), [message.id]);
+  } finally {
+    i1Rig.cleanup();
   }
 });
 

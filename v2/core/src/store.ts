@@ -2996,6 +2996,14 @@ export class CoreStore {
   // B8 — derived reads (the ONLY place these questions are answered)
   // -------------------------------------------------------------------------
 
+  /** Whether runtime or mailbox facts require the daemon's full step snapshot. */
+  hasStepSnapshotInputs(): boolean {
+    if (this.stmt("SELECT 1 FROM runtimes WHERE state != 'stopped' LIMIT 1").get() !== undefined) {
+      return true;
+    }
+    return this.stmt("SELECT 1 FROM mailbox WHERE delivered_at IS NULL LIMIT 1").get() !== undefined;
+  }
+
   view(beeId: string, opts: { readCursor?: number } = {}): BeeView {
     const bee = this.getBee(beeId);
     return deriveBeeView(
