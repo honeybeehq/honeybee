@@ -151,7 +151,7 @@ function buildFixture(caseName, dir, cfg) {
   const needsDiverged = ['merge-land', 'rebase-land', 'merge-conflict', 'rebase-conflict'].includes(caseName);
   let targetTip = null;
   if (needsDiverged) {
-    rulerGit(dir, ['clone', '--quiet', origin, shaper]);
+    rulerGit(dir, ['clone', '--quiet', '--config', 'maintenance.auto=false', '--config', 'gc.auto=0', origin, shaper]);
     const files = [['origin-only.txt', `origin ${caseName}\n`]];
     if (caseName.includes('conflict')) files.push(['shared.txt', 'shared origin edit\n']);
     commitFiles(shaper, files, 'origin advance');
@@ -161,7 +161,7 @@ function buildFixture(caseName, dir, cfg) {
     rulerGit(origin, ['branch', target, baseSha]);
     targetTip = baseSha;
   } else if (caseName === 'nothing') {
-    rulerGit(dir, ['clone', '--quiet', origin, shaper]);
+    rulerGit(dir, ['clone', '--quiet', '--config', 'maintenance.auto=false', '--config', 'gc.auto=0', origin, shaper]);
     rulerGit(shaper, ['fetch', '--quiet', cell, 'HEAD']);
     rulerGit(shaper, ['checkout', '--quiet', '--detach', cellHead]);
     commitFiles(shaper, [['ahead.txt', 'target ahead\n']], 'ahead of cell');
@@ -266,7 +266,7 @@ const report = {
     nodeCompileCache: process.env.NODE_COMPILE_CACHE ?? null,
     nodeOptionsSha256: sha256(process.env.NODE_OPTIONS ?? ''), loadBefore, loadAfter: null },
   workload: { scale, rounds, warmups: 1, cases: caseFilter,
-    fixture: { ...cfg, autoMaintenance: 'maintenance.auto/gc.auto disabled repo-locally for deterministic teardown' },
+    fixture: { ...cfg, autoMaintenance: 'maintenance.auto/gc.auto disabled repo-locally in origin, Cell, and shaper fixtures; production scratch clone keeps defaults' },
     pinnedDates: FIXED_DATE,
     order: 'ABBA per round; one unmeasured warmup sample per side per case; assertions and resets outside timing' },
   results: [], rows: [], failure: null,

@@ -1,0 +1,18 @@
+cell-exit: merge-land
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+Error: ENOTEMPTY, Directory not empty: /var/folders/kt/qwk3wjvj3t97b1_z2pj4r4sm0000gn/T/hb-cell-exit-2cof62/merge-land-0/shaper '/var/folders/kt/qwk3wjvj3t97b1_z2pj4r4sm0000gn/T/hb-cell-exit-2cof62/merge-land-0/shaper'
+    at rmSync (node:fs:1222:18)
+    at buildFixture (file:///private/tmp/honeybee-perf-5763a6c9-20260907/verify-integrated/scripts/perf/cell-exit.mjs:171:3)
+    at file:///private/tmp/honeybee-perf-5763a6c9-20260907/verify-integrated/scripts/perf/cell-exit.mjs:305:14
+    at Array.map (<anonymous>)
+    at file:///private/tmp/honeybee-perf-5763a6c9-20260907/verify-integrated/scripts/perf/cell-exit.mjs:302:26 {
+  errno: 66,
+  code: 'ENOTEMPTY',
+  path: '/var/folders/kt/qwk3wjvj3t97b1_z2pj4r4sm0000gn/T/hb-cell-exit-2cof62/merge-land-0/shaper',
+  syscall: 'rm'
+}
+
+Node.js v24.18.0

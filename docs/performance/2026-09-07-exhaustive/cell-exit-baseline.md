@@ -1,6 +1,6 @@
 # Cell capture baseline
 
-Two distinct identical checkouts at production `c027f347`, Apple Git 2.39.5, Node 24.18.0, M4 Mini. The hardened frozen ruler completed all eight cases with exact report, result SHA/tree/parent, HEAD, working-tree, and ref assertions. Smoke uses 3 ABBA rounds; canonical uses 15 rounds (30 samples per side), 2,000 tracked files, and 12 Cell commits. Stress is a separate pending capture.
+Two distinct identical checkouts at production `c027f347`, Apple Git 2.39.5, Node 24.18.0, M4 Mini. The hardened frozen ruler completed all eight cases with exact report, result SHA/tree/parent, HEAD, working-tree, and ref assertions. Smoke uses 3 ABBA rounds; canonical uses 15 rounds (30 samples per side), 2,000 tracked files, and 12 Cell commits. The first 10,000-file stress capture failed during shaper fixture teardown before recording any cases; its incomplete report and log are retained. A revised fixture disables automatic maintenance in both shaper clones as well as origin/Cell. The production scratch clone still keeps its defaults. The revised ruler passes 2/2 tests and the repository build; the stress rerun is separate.
 
 | Case | A wall p50, ms | A control wall p50, ms |
 | --- | ---: | ---: |
