@@ -1,0 +1,40 @@
+✔ individual worker: repeated captures replace Git evidence instead of adding old commands (20282.324ms)
+✔ worker cohort: repeated captures replace Git evidence instead of adding old commands (10836.611334ms)
+✔ command comparison recomputes medians rather than trusting a reported summary (120.673875ms)
+✔ command comparison rejects the actual pending-history plan regression and incompatible evidence (160.42075ms)
+✔ command comparison allows renamed hosts only with matching measured OS boot identity (32.71325ms)
+✔ recomputes quiet timing, preserves zero baselines, and permits measured hostname drift (196.369917ms)
+✔ refuses mixed machines, boots, modes, tools, overlapping captures and incomplete evidence (87.51975ms)
+✔ enforces the claimed change set and committed source when requested (13.43175ms)
+✔ read-hotspot comparison accepts a verified control and explicit source delta (150.41175ms)
+✔ read-hotspot comparison rejects incomplete, contaminated, mismatched, and forged captures (101.188375ms)
+✔ reconfigure comparison recomputes distributions and converts peak RSS units (95.606708ms)
+✔ reconfigure comparison rejects mixed profiling, source, workload, and invalid samples (69.001833ms)
+✔ comparison derives the delta and rejects partial or incompatible Cell captures (292.886333ms)
+✔ paired host comparison validates summaries against samples and preserves zero baselines (24.065125ms)
+✔ Git command attribution excludes nested children without losing parent time (9.351875ms)
+✔ Git attribution refuses incomplete or invalid duration evidence (3.86875ms)
+✔ ps parsing accepts macOS/Linux clock formats and rejects malformed input (71.823375ms)
+✔ descendants are found independent of table order (0.869209ms)
+✔ CPU deltas exclude reused PIDs, new processes and counter regressions (12.992708ms)
+✔ read-hotspots CLI parsing keeps smoke cheap and rejects unknown input (33.919666ms)
+✔ canonical plan names every requested read hotspot and exact large history sizes (2.91575ms)
+✔ one real smoke case writes a complete report with raw timing and separate SQL diagnostics (3531.511209ms)
+✔ nearest-rank percentiles preserve raw samples and reject invalid observations (38.370333ms)
+✔ comparison computes changes and refuses incompatible evidence (163.190708ms)
+✔ comparison rejects missing, nonnumeric and nonfinite metric evidence (23.041ms)
+✔ matching partial reports cannot pass as a complete comparison (37.867916ms)
+✔ host measurement completes real turns and omits idle CPU when no idle interval was requested (16226.060458ms)
+✔ SIGTERM reaps the active host and removes its disposable fixture without publishing results (2019.622541ms)
+✔ counts cached reads, returned bytes, prepares and writes without retaining values (8.673042ms)
+✔ restores native methods after SQL failure and rejects partial iterator accounting (134.469667ms)
+✔ daemon worker completes a real stub workload and removes its owned fixture (7726.562417ms)
+✔ SIGTERM during an owned runtime cleans up detached hosts and the fixture (4379.624416ms)
+ℹ tests 32
+ℹ suites 0
+ℹ pass 32
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 33335.619333

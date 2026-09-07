@@ -1,0 +1,2601 @@
+{
+  "schemaVersion": 1,
+  "completed": true,
+  "startedAt": "2026-09-07T06:30:17.713Z",
+  "timestamp": "2026-09-07T06:30:24.621Z",
+  "sources": [
+    {
+      "root": "/tmp/honeybee-perf-5763a6c9-20260907/baseline",
+      "revision": "343289fe0f939ad3028550af14b4c5c068ea739e",
+      "hashes": {
+        "v2/adapters/src/agy.ts": "ae4751062d36382252aae126e7c0ee024bbcf65009cc12adc16721e24e9dbbc7",
+        "v2/adapters/src/args.ts": "c4af70fde51db0a39b2b7c37fee5df4a931516d91399cbdb93a033292d54e43d",
+        "v2/adapters/src/claude.ts": "78f4b15d50a1f2eba8f74fcc4672e2b008db544950c6ed03a8a8b183b7f6e046",
+        "v2/adapters/src/codex.ts": "47b766ce87eb9ae67986d6f970aea9511ed3162d08b44513a461ca56475bc0a0",
+        "v2/adapters/src/grok.ts": "71f647f0b8fb2a32427604ddf45e0a7b54a4a1b876418c7f91de8c3024c0d84f",
+        "v2/adapters/src/index.ts": "6869fe4ec44c1eeefa53ff1660a00c8556330e30acb30cc3265fb78483aadcdf",
+        "v2/adapters/src/stub.ts": "4fdfca1b8dca0cc396bd495fac99d5fcab7005b40bb598e33413a5747e8f3ccc",
+        "v2/adapters/src/types.ts": "c37098d1cb7d06a8137f1fda87ad1affcb6d8b37e325665b1e5123b029fa2dd3",
+        "v2/cli/src/bin.ts": "330f6bb9d42c72475929a6e104fa5c318051b57816acd4056b3c7523010b8a8c",
+        "v2/cli/src/client.ts": "421e107f912c5f9fae6d51cb2e3b10d8ffe83e70e6660adef03392d59739cafd",
+        "v2/cli/src/help.ts": "c43e898e8cf1541a874acaf77a4680c85642f4a40bc3b33122080f97a601a61e",
+        "v2/cli/src/index.ts": "705f8de04ba4adb8b563d11f2def4da5ae0904ec9bcd0c062d9ce2019676bfd8",
+        "v2/cli/src/main.ts": "e19112dded2ec84bdded0b92096baa44f318bb1399d860fc87991b3776dbb321",
+        "v2/cli/src/readonly.ts": "530ca612ea5de0079f9a8f04cb7b837e956ce2c1d1b0844a7ea87d6d2e3e4c14",
+        "v2/cli/src/render.ts": "6efc8d278c87ac8c90a6588790e5b7a80eb6dbf997254326b32098c77d6f2897",
+        "v2/cli/src/style.ts": "2f5e611fa6b1aee3c0a3afefdf0cfb9b830736ce4c3f2f9c53d73e5bee5cc5fd",
+        "v2/core/src/accountLimitsParse.ts": "4101b50909a9c9d79aa9761c4a5b68bc3d808ad36acca38e75c07779a51068a3",
+        "v2/core/src/accountMatch.ts": "90ebe4e125f83d28bc1a1c99cbff9b813362d3b38bbac8b97182014cb4fcf980",
+        "v2/core/src/accountRecipes.ts": "837c397aab4c9fa8a02b890372fac3e29b73d4ba8307913446309d00e715b6b7",
+        "v2/core/src/accountSelect.ts": "2536db3146b2d9a66c812e294c8d668df5e82e3bea9d2923308dff4060e01f5c",
+        "v2/core/src/audit.ts": "ad41ca1ce64dea003c5086d2135f48b341a0aef6f17f8b059e54658a44021f54",
+        "v2/core/src/executables.ts": "4a878c553014ceabcdd7e940e274d652799c2852474ada614d5c80cca1eadc7c",
+        "v2/core/src/import-frozen.ts": "30e2fb867899e8399abf2fb0ee8a3f36fd12982e3ba1d86a84bbc626b6cc2de7",
+        "v2/core/src/index.ts": "f5bd52177373c73763454a3995bee1033b5241b1021ff62902e72c2884895ae1",
+        "v2/core/src/loginFlow.ts": "727d42b6a98a271577cd462e128b0287e7c571e5e06104b3afb5bdff49d35460",
+        "v2/core/src/mirror.ts": "d8bcb404f2971de5f928345319d7a579c102235e5ed27565e9037724382ad8ce",
+        "v2/core/src/packages.ts": "e14a3c6c013211235ca84c137a93f12ead10beff01c876c2741a7e419b944f17",
+        "v2/core/src/registry.ts": "1cd3e1c5a239882474818466907b5f5b2d10501e178b0ad13d24fb2fae8123ff",
+        "v2/core/src/schema.ts": "ff2c98154659e149b4922c21046c033fd70fbcc67848759d72671377bcf21a07",
+        "v2/core/src/store.ts": "035a7fa5af24129f5fb6224b46944a5939b7de5f0afc91784513271f8607cca3",
+        "v2/core/src/tasks.ts": "2f266a9640ed4b9c7ceeea18aee63ce11521cc416ecc3b5ce118ebb5c195a263",
+        "v2/core/src/types.ts": "9d09afae1e05743e29fbee6f51007219d0c6b4c6941a615268793fcc4e6c1445",
+        "v2/core/src/view.ts": "f9fb6302bd05a001ca38d7a98f9280e13f8d2222916d9f0c48efb72e148a16e7",
+        "v2/daemon/src/accountsService.ts": "3f13d0481bb54b793d7f0ea6d7f03536d8e5d4ae2be1a8631b17440d596a8a5b",
+        "v2/daemon/src/activation.ts": "7e7056e53671e9caea816fa1162478905ecfc9a408afbad73750ee411056bab7",
+        "v2/daemon/src/autoTitle.ts": "245e0202fd3758aac7cbf022f328ccc4b3f0e88b58303ff03b0e675bceef3e91",
+        "v2/daemon/src/bin.ts": "8ef32816d19e0c2adc85a81a740de8935c7a8bc77e94118203a761b16679754d",
+        "v2/daemon/src/config.ts": "637e94d4d2e22fedae9682ab1cde523d02b2cb0d5bd594441cc7443bb991900a",
+        "v2/daemon/src/cursorAuth.ts": "1f0d554fd3ea0351b108404d6b7912701be184e8e26ea89bd2b692a42ae4f924",
+        "v2/daemon/src/daemon.ts": "edfdc5756a1be5682e436b6e45e3fc3d2118de379b94bcfe12bee7f00aae34be",
+        "v2/daemon/src/envelope.ts": "dc0bff3d7706be31b3fce162e370c1e6e6b7ed8cd2eca43ab1ba6e9ccada6c7a",
+        "v2/daemon/src/gateways.ts": "5c57d479fdbfd871f31de9172da2c9011466258cb46cc764f1776af82da9145c",
+        "v2/daemon/src/homeDefaults.ts": "a63090c09cc8d102b46effa2f8f205457b0e3d73baaaca15cd836e2c0896fc3c",
+        "v2/daemon/src/import-probes.ts": "14cdeb5b7c47d1da44a8eff3e92e22a52a523dcaf250174cefd1c6c46f15529a",
+        "v2/daemon/src/index.ts": "5f8b71e1193407322cb5b44e87bd30cb8384aeb783c22803a10aca034aa691a9",
+        "v2/daemon/src/keychain.ts": "97ecd409db519ba195662dc5f41cbb2b31c36b68100a57bcdc0c1f89ef877ad5",
+        "v2/daemon/src/login/claudeOauth.ts": "9781bf55222a833a9f4461f704a9a10ccb71030a547ca978dae16428f5ce89ff",
+        "v2/daemon/src/login/cliRunner.ts": "ef14344f05033a1ecf510054d3b717db945a203c2b2c32fe3d2607058ca7d52a",
+        "v2/daemon/src/login/common.ts": "1f93ae2e3757ff297cfcd3d94fdf9e838e546a5beed67999f9e0a1b88ebedc46",
+        "v2/daemon/src/login/directKey.ts": "91224b228da3a12dc828d5290900ed1a59ed95766cc9f5f36d273d9e6b862ba2",
+        "v2/daemon/src/login/runner.ts": "53811aa26fecf68f66e6714110efb5664ad2081586b369ab159c25e044d7f17c",
+        "v2/daemon/src/login/transports.ts": "a7073ba48a5ae49cbf2d9109812bbe299ed18487f551d1bf5271bb47b7357e15",
+        "v2/daemon/src/loginFlows.ts": "4460f4a8f8e14900e106e817862cfa8a60cb0f15c6327741d23896736b708c94",
+        "v2/daemon/src/loginWorker.ts": "4a70f08d716550337509663c7586b235568b1fe7bccfbeecfc57d7bdc2fdd378",
+        "v2/daemon/src/loops.ts": "d12a38a478951808773c30aea6b9ac70d83f48c66f37876f49220ab97914cafb",
+        "v2/daemon/src/main.ts": "7546a94f78f8817ca3a869aa63b2d62d16ffa5404ecb60d63cc742733236f903",
+        "v2/daemon/src/naming.ts": "eae82ba481b3e5b74d7d80c38ca50d6bbf64e378e48e8a7c953d35b2f0a643f5",
+        "v2/daemon/src/namingService.ts": "e8ee4b2026fea2460fb59d60db034ec694b32f76ec2cf7eeba3ea1abf6c36001",
+        "v2/daemon/src/performance.ts": "75bbf106a1a24fe67d2fc475bd34d7111dec4a5b36b237ec28691459977c3190",
+        "v2/daemon/src/protocol.ts": "2c2b7563fcf5c1e20919316e6255c6f580880ab59bf823faa0ceeb24175e7399",
+        "v2/daemon/src/providerLimits.ts": "befe91217b50c927419389adb50527fd0867ed58d5111f13bcb669eb2b700790",
+        "v2/daemon/src/rpc.ts": "16b119147b0fc12b32194dc7c255d6fc8910aa0644306c42f9ad19bc6559508e",
+        "v2/daemon/src/service.ts": "10401a481fb25931521e2259dc4722cc43890600a4c84298f9a89d78401b707b",
+        "v2/daemon/src/substrates.ts": "914b18b4e6e6e7cd2525f5943edb3080c031e16d08934fd4021b55ebf3c1c27c",
+        "v2/daemon/src/telemetry.ts": "0f234f5f77df593387db1ed6c08ba64ccd45f3ffa60303bbd178765aefd0980c",
+        "v2/daemon/src/tmuxHarness.ts": "aebc0a90c9ff4a03a466cdf2edc4fe282dc91388cf9966a0412801fb0bea320f",
+        "v2/daemon/tests/helpers.ts": "9d63216758bec78d1f0e6f7fa949d67ee1f4b1d90eb5efdd4a8888cda75ea0f3",
+        "v2/driver-cell/src/capture.ts": "359b2fa98f2b21c7a8f43a2755c3d4b4ad03f267483b98827c2c6b022ed68e9b",
+        "v2/driver-cell/src/cow.ts": "24eb5ce7b6536de861ca261a5d80096343115e14bc8a23e354a2e8a74f318b10",
+        "v2/driver-cell/src/driver.ts": "77598ca25c7dd9374e21f9fd5275e43989a7305a2b05fd098210db8630f062e6",
+        "v2/driver-cell/src/git.ts": "049d9bd7f6aaebb6625fd0f1d8ddebcd3adf16e7d4dd7316232ba6923d196b75",
+        "v2/driver-cell/src/gitImage.ts": "9b7b1dc8a762caaac402d108bbd9286630a1376b4844ea8d2d3c6232d0a19007",
+        "v2/driver-cell/src/index.ts": "3264e7ae0f407b257b7a35e6d10a3b7f19cdc9c2d4d92cf173f02dbd861764ae",
+        "v2/driver-cell/src/layout.ts": "68a677450c0d851cf97c50f8616fd25961ddea59dd6b8ac3c0a739042c4775f8",
+        "v2/driver-cell/src/ledger.ts": "efdf4762fab38defd8ec3e68dceba52a44a11d17962b027cb4a0302eec429834",
+        "v2/driver-cell/src/provision.ts": "8293821e57266a0b4f7a2e0e6d25c584cac6caf1ac0afad207311af57558be66",
+        "v2/driver-cell/src/provisionWorker.ts": "a651cc6000ef33f7ed52384f678543b28fea4f363113b3218d45219c510a2d4c",
+        "v2/driver-cell/src/remove.ts": "914e22bf0182c90503731cbeb9877c0d697cda5d410b224223499fab33e75aa5",
+        "v2/driver-cell/src/sandbox.ts": "33ea0cefa347f21a19f39a03f36afeed14d18680f15fc22a0f1682a668001e3a",
+        "v2/driver-hsr/src/driver.ts": "a01bf7d4e955ee1cd79f6bab88c95d02928841be6f0a8ffe671a87d17a8413d3",
+        "v2/driver-hsr/src/index.ts": "8f9542db7792d462ab9b10f9537b9c05f31acf9934d6c32b3f248de8beb97e5e",
+        "v2/driver-hsr/src/psutil.ts": "1beb05854deb6fbe12f206d7436648e7be2a8ae00bcfd0acd13ef3f9fb1c1edb",
+        "v2/driver-hsr/src/runner-host-main.ts": "10c4f1c2af2e2dc20bdddba51e7972bc976831c1bf40b5f5772a2519538411da",
+        "v2/driver-hsr/src/runner-host.ts": "7f1716db45160657ef2109d8a18ae064cbab065f0321b22d29f9a193a3f3c152",
+        "v2/driver-tmux/src/agy-projection.ts": "1d5284c9835d499f0e55dc52ec70a5d36175993f0ccbab7f2e21fcf60f92a9ff",
+        "v2/driver-tmux/src/claude-projection.ts": "df6d2d8967f70ac4b6796a234de83d1e325e41210794972aee41b1a7294882f6",
+        "v2/driver-tmux/src/codex-projection.ts": "2ff68aa8e4d8c802bef9abedb7595e29f038c7ba4cf81403f7efc54a03225e1b",
+        "v2/driver-tmux/src/driver.ts": "26fe0516fe49f389d1f5cad30ee0002e829ae1aba75fe6cec8a0ea886b670820",
+        "v2/driver-tmux/src/events-file.ts": "ddb2ba04f32ef325def8d5287a518659a42e41801034304bc74e4695962a0e99",
+        "v2/driver-tmux/src/grok-projection.ts": "d0d419367031c9738fc6a5a0e27ea6c8a15399b06834239b92f2c2603d406823",
+        "v2/driver-tmux/src/index.ts": "f716470ff208ac29febfe90031b025d969a2eefc5461e649d77d43813fce278d",
+        "v2/driver-tmux/src/tail.ts": "40e24f0d34401e7990581eef3eff1d1542defbc846a92339e61bb81a95a0d156",
+        "v2/driver-tmux/src/tmux.ts": "92607334202f8fb8c8cedf7b9d1454d8742a867c4c8082f7f2f6617a6c285eb9",
+        "v2/driver-tmux/src/transcript-projection.ts": "98bdd52792da1d74ddfe28332c54ae76adc8f6b52e94e1b4f233a94cabf96c78",
+        "v2/driver-tmux/src/transcripts.ts": "f23289d6199d9d2ec288f60de0a3475ce5aa41e20230763380386d4d2c545509",
+        "v2/harness/src/clock.ts": "690b130f9bb111af2099cc96d19a114258bf3bc6353d7a440d53b3141c9e2446",
+        "v2/harness/src/daemon.ts": "2b8f17080275ef72b3612e4b446b9e951d203373c70bcec7b83e3b21c91d81ef",
+        "v2/harness/src/driver.ts": "df41b313a0ab97a637eddb5a3ba2be4456293776aa46acfd3eb29af5315a1442",
+        "v2/harness/src/faults.ts": "6152e965e33f1501f9beee0f5a3c42ce18a8b71897713043716a993de48cfc20",
+        "v2/harness/src/index.ts": "200de7850d2848f5b1d2afa72fdbd1490d2919efd8f77976508416ccb7b9a191",
+        "v2/harness/src/invariants.ts": "5ab63d4da3399534d6a2d9eff705d1c6c403e14b39b5749b5863bd7d04daccbb",
+        "v2/harness/src/prng.ts": "1be8ed3684abb058b30f83b89239385928abb14d8c24616ebf925c95af4639e8",
+        "v2/harness/src/sim-driver.ts": "70b5b013351a8a089e2b13509cb3abe5d8182b18e07f920859abc68e4dd10e31",
+        "v2/harness/src/simulation.ts": "9979407c9e3483294675c47b23b802a724adcea73681ae8d8480f47f5e2d650c"
+      }
+    },
+    {
+      "root": "/tmp/honeybee-perf-5763a6c9-20260907/baseline",
+      "revision": "343289fe0f939ad3028550af14b4c5c068ea739e",
+      "hashes": {
+        "v2/adapters/src/agy.ts": "ae4751062d36382252aae126e7c0ee024bbcf65009cc12adc16721e24e9dbbc7",
+        "v2/adapters/src/args.ts": "c4af70fde51db0a39b2b7c37fee5df4a931516d91399cbdb93a033292d54e43d",
+        "v2/adapters/src/claude.ts": "78f4b15d50a1f2eba8f74fcc4672e2b008db544950c6ed03a8a8b183b7f6e046",
+        "v2/adapters/src/codex.ts": "47b766ce87eb9ae67986d6f970aea9511ed3162d08b44513a461ca56475bc0a0",
+        "v2/adapters/src/grok.ts": "71f647f0b8fb2a32427604ddf45e0a7b54a4a1b876418c7f91de8c3024c0d84f",
+        "v2/adapters/src/index.ts": "6869fe4ec44c1eeefa53ff1660a00c8556330e30acb30cc3265fb78483aadcdf",
+        "v2/adapters/src/stub.ts": "4fdfca1b8dca0cc396bd495fac99d5fcab7005b40bb598e33413a5747e8f3ccc",
+        "v2/adapters/src/types.ts": "c37098d1cb7d06a8137f1fda87ad1affcb6d8b37e325665b1e5123b029fa2dd3",
+        "v2/cli/src/bin.ts": "330f6bb9d42c72475929a6e104fa5c318051b57816acd4056b3c7523010b8a8c",
+        "v2/cli/src/client.ts": "421e107f912c5f9fae6d51cb2e3b10d8ffe83e70e6660adef03392d59739cafd",
+        "v2/cli/src/help.ts": "c43e898e8cf1541a874acaf77a4680c85642f4a40bc3b33122080f97a601a61e",
+        "v2/cli/src/index.ts": "705f8de04ba4adb8b563d11f2def4da5ae0904ec9bcd0c062d9ce2019676bfd8",
+        "v2/cli/src/main.ts": "e19112dded2ec84bdded0b92096baa44f318bb1399d860fc87991b3776dbb321",
+        "v2/cli/src/readonly.ts": "530ca612ea5de0079f9a8f04cb7b837e956ce2c1d1b0844a7ea87d6d2e3e4c14",
+        "v2/cli/src/render.ts": "6efc8d278c87ac8c90a6588790e5b7a80eb6dbf997254326b32098c77d6f2897",
+        "v2/cli/src/style.ts": "2f5e611fa6b1aee3c0a3afefdf0cfb9b830736ce4c3f2f9c53d73e5bee5cc5fd",
+        "v2/core/src/accountLimitsParse.ts": "4101b50909a9c9d79aa9761c4a5b68bc3d808ad36acca38e75c07779a51068a3",
+        "v2/core/src/accountMatch.ts": "90ebe4e125f83d28bc1a1c99cbff9b813362d3b38bbac8b97182014cb4fcf980",
+        "v2/core/src/accountRecipes.ts": "837c397aab4c9fa8a02b890372fac3e29b73d4ba8307913446309d00e715b6b7",
+        "v2/core/src/accountSelect.ts": "2536db3146b2d9a66c812e294c8d668df5e82e3bea9d2923308dff4060e01f5c",
+        "v2/core/src/audit.ts": "ad41ca1ce64dea003c5086d2135f48b341a0aef6f17f8b059e54658a44021f54",
+        "v2/core/src/executables.ts": "4a878c553014ceabcdd7e940e274d652799c2852474ada614d5c80cca1eadc7c",
+        "v2/core/src/import-frozen.ts": "30e2fb867899e8399abf2fb0ee8a3f36fd12982e3ba1d86a84bbc626b6cc2de7",
+        "v2/core/src/index.ts": "f5bd52177373c73763454a3995bee1033b5241b1021ff62902e72c2884895ae1",
+        "v2/core/src/loginFlow.ts": "727d42b6a98a271577cd462e128b0287e7c571e5e06104b3afb5bdff49d35460",
+        "v2/core/src/mirror.ts": "d8bcb404f2971de5f928345319d7a579c102235e5ed27565e9037724382ad8ce",
+        "v2/core/src/packages.ts": "e14a3c6c013211235ca84c137a93f12ead10beff01c876c2741a7e419b944f17",
+        "v2/core/src/registry.ts": "1cd3e1c5a239882474818466907b5f5b2d10501e178b0ad13d24fb2fae8123ff",
+        "v2/core/src/schema.ts": "ff2c98154659e149b4922c21046c033fd70fbcc67848759d72671377bcf21a07",
+        "v2/core/src/store.ts": "035a7fa5af24129f5fb6224b46944a5939b7de5f0afc91784513271f8607cca3",
+        "v2/core/src/tasks.ts": "2f266a9640ed4b9c7ceeea18aee63ce11521cc416ecc3b5ce118ebb5c195a263",
+        "v2/core/src/types.ts": "9d09afae1e05743e29fbee6f51007219d0c6b4c6941a615268793fcc4e6c1445",
+        "v2/core/src/view.ts": "f9fb6302bd05a001ca38d7a98f9280e13f8d2222916d9f0c48efb72e148a16e7",
+        "v2/daemon/src/accountsService.ts": "3f13d0481bb54b793d7f0ea6d7f03536d8e5d4ae2be1a8631b17440d596a8a5b",
+        "v2/daemon/src/activation.ts": "7e7056e53671e9caea816fa1162478905ecfc9a408afbad73750ee411056bab7",
+        "v2/daemon/src/autoTitle.ts": "245e0202fd3758aac7cbf022f328ccc4b3f0e88b58303ff03b0e675bceef3e91",
+        "v2/daemon/src/bin.ts": "8ef32816d19e0c2adc85a81a740de8935c7a8bc77e94118203a761b16679754d",
+        "v2/daemon/src/config.ts": "637e94d4d2e22fedae9682ab1cde523d02b2cb0d5bd594441cc7443bb991900a",
+        "v2/daemon/src/cursorAuth.ts": "1f0d554fd3ea0351b108404d6b7912701be184e8e26ea89bd2b692a42ae4f924",
+        "v2/daemon/src/daemon.ts": "edfdc5756a1be5682e436b6e45e3fc3d2118de379b94bcfe12bee7f00aae34be",
+        "v2/daemon/src/envelope.ts": "dc0bff3d7706be31b3fce162e370c1e6e6b7ed8cd2eca43ab1ba6e9ccada6c7a",
+        "v2/daemon/src/gateways.ts": "5c57d479fdbfd871f31de9172da2c9011466258cb46cc764f1776af82da9145c",
+        "v2/daemon/src/homeDefaults.ts": "a63090c09cc8d102b46effa2f8f205457b0e3d73baaaca15cd836e2c0896fc3c",
+        "v2/daemon/src/import-probes.ts": "14cdeb5b7c47d1da44a8eff3e92e22a52a523dcaf250174cefd1c6c46f15529a",
+        "v2/daemon/src/index.ts": "5f8b71e1193407322cb5b44e87bd30cb8384aeb783c22803a10aca034aa691a9",
+        "v2/daemon/src/keychain.ts": "97ecd409db519ba195662dc5f41cbb2b31c36b68100a57bcdc0c1f89ef877ad5",
+        "v2/daemon/src/login/claudeOauth.ts": "9781bf55222a833a9f4461f704a9a10ccb71030a547ca978dae16428f5ce89ff",
+        "v2/daemon/src/login/cliRunner.ts": "ef14344f05033a1ecf510054d3b717db945a203c2b2c32fe3d2607058ca7d52a",
+        "v2/daemon/src/login/common.ts": "1f93ae2e3757ff297cfcd3d94fdf9e838e546a5beed67999f9e0a1b88ebedc46",
+        "v2/daemon/src/login/directKey.ts": "91224b228da3a12dc828d5290900ed1a59ed95766cc9f5f36d273d9e6b862ba2",
+        "v2/daemon/src/login/runner.ts": "53811aa26fecf68f66e6714110efb5664ad2081586b369ab159c25e044d7f17c",
+        "v2/daemon/src/login/transports.ts": "a7073ba48a5ae49cbf2d9109812bbe299ed18487f551d1bf5271bb47b7357e15",
+        "v2/daemon/src/loginFlows.ts": "4460f4a8f8e14900e106e817862cfa8a60cb0f15c6327741d23896736b708c94",
+        "v2/daemon/src/loginWorker.ts": "4a70f08d716550337509663c7586b235568b1fe7bccfbeecfc57d7bdc2fdd378",
+        "v2/daemon/src/loops.ts": "d12a38a478951808773c30aea6b9ac70d83f48c66f37876f49220ab97914cafb",
+        "v2/daemon/src/main.ts": "7546a94f78f8817ca3a869aa63b2d62d16ffa5404ecb60d63cc742733236f903",
+        "v2/daemon/src/naming.ts": "eae82ba481b3e5b74d7d80c38ca50d6bbf64e378e48e8a7c953d35b2f0a643f5",
+        "v2/daemon/src/namingService.ts": "e8ee4b2026fea2460fb59d60db034ec694b32f76ec2cf7eeba3ea1abf6c36001",
+        "v2/daemon/src/performance.ts": "75bbf106a1a24fe67d2fc475bd34d7111dec4a5b36b237ec28691459977c3190",
+        "v2/daemon/src/protocol.ts": "2c2b7563fcf5c1e20919316e6255c6f580880ab59bf823faa0ceeb24175e7399",
+        "v2/daemon/src/providerLimits.ts": "befe91217b50c927419389adb50527fd0867ed58d5111f13bcb669eb2b700790",
+        "v2/daemon/src/rpc.ts": "16b119147b0fc12b32194dc7c255d6fc8910aa0644306c42f9ad19bc6559508e",
+        "v2/daemon/src/service.ts": "10401a481fb25931521e2259dc4722cc43890600a4c84298f9a89d78401b707b",
+        "v2/daemon/src/substrates.ts": "914b18b4e6e6e7cd2525f5943edb3080c031e16d08934fd4021b55ebf3c1c27c",
+        "v2/daemon/src/telemetry.ts": "0f234f5f77df593387db1ed6c08ba64ccd45f3ffa60303bbd178765aefd0980c",
+        "v2/daemon/src/tmuxHarness.ts": "aebc0a90c9ff4a03a466cdf2edc4fe282dc91388cf9966a0412801fb0bea320f",
+        "v2/daemon/tests/helpers.ts": "9d63216758bec78d1f0e6f7fa949d67ee1f4b1d90eb5efdd4a8888cda75ea0f3",
+        "v2/driver-cell/src/capture.ts": "359b2fa98f2b21c7a8f43a2755c3d4b4ad03f267483b98827c2c6b022ed68e9b",
+        "v2/driver-cell/src/cow.ts": "24eb5ce7b6536de861ca261a5d80096343115e14bc8a23e354a2e8a74f318b10",
+        "v2/driver-cell/src/driver.ts": "77598ca25c7dd9374e21f9fd5275e43989a7305a2b05fd098210db8630f062e6",
+        "v2/driver-cell/src/git.ts": "049d9bd7f6aaebb6625fd0f1d8ddebcd3adf16e7d4dd7316232ba6923d196b75",
+        "v2/driver-cell/src/gitImage.ts": "9b7b1dc8a762caaac402d108bbd9286630a1376b4844ea8d2d3c6232d0a19007",
+        "v2/driver-cell/src/index.ts": "3264e7ae0f407b257b7a35e6d10a3b7f19cdc9c2d4d92cf173f02dbd861764ae",
+        "v2/driver-cell/src/layout.ts": "68a677450c0d851cf97c50f8616fd25961ddea59dd6b8ac3c0a739042c4775f8",
+        "v2/driver-cell/src/ledger.ts": "efdf4762fab38defd8ec3e68dceba52a44a11d17962b027cb4a0302eec429834",
+        "v2/driver-cell/src/provision.ts": "8293821e57266a0b4f7a2e0e6d25c584cac6caf1ac0afad207311af57558be66",
+        "v2/driver-cell/src/provisionWorker.ts": "a651cc6000ef33f7ed52384f678543b28fea4f363113b3218d45219c510a2d4c",
+        "v2/driver-cell/src/remove.ts": "914e22bf0182c90503731cbeb9877c0d697cda5d410b224223499fab33e75aa5",
+        "v2/driver-cell/src/sandbox.ts": "33ea0cefa347f21a19f39a03f36afeed14d18680f15fc22a0f1682a668001e3a",
+        "v2/driver-hsr/src/driver.ts": "a01bf7d4e955ee1cd79f6bab88c95d02928841be6f0a8ffe671a87d17a8413d3",
+        "v2/driver-hsr/src/index.ts": "8f9542db7792d462ab9b10f9537b9c05f31acf9934d6c32b3f248de8beb97e5e",
+        "v2/driver-hsr/src/psutil.ts": "1beb05854deb6fbe12f206d7436648e7be2a8ae00bcfd0acd13ef3f9fb1c1edb",
+        "v2/driver-hsr/src/runner-host-main.ts": "10c4f1c2af2e2dc20bdddba51e7972bc976831c1bf40b5f5772a2519538411da",
+        "v2/driver-hsr/src/runner-host.ts": "7f1716db45160657ef2109d8a18ae064cbab065f0321b22d29f9a193a3f3c152",
+        "v2/driver-tmux/src/agy-projection.ts": "1d5284c9835d499f0e55dc52ec70a5d36175993f0ccbab7f2e21fcf60f92a9ff",
+        "v2/driver-tmux/src/claude-projection.ts": "df6d2d8967f70ac4b6796a234de83d1e325e41210794972aee41b1a7294882f6",
+        "v2/driver-tmux/src/codex-projection.ts": "2ff68aa8e4d8c802bef9abedb7595e29f038c7ba4cf81403f7efc54a03225e1b",
+        "v2/driver-tmux/src/driver.ts": "26fe0516fe49f389d1f5cad30ee0002e829ae1aba75fe6cec8a0ea886b670820",
+        "v2/driver-tmux/src/events-file.ts": "ddb2ba04f32ef325def8d5287a518659a42e41801034304bc74e4695962a0e99",
+        "v2/driver-tmux/src/grok-projection.ts": "d0d419367031c9738fc6a5a0e27ea6c8a15399b06834239b92f2c2603d406823",
+        "v2/driver-tmux/src/index.ts": "f716470ff208ac29febfe90031b025d969a2eefc5461e649d77d43813fce278d",
+        "v2/driver-tmux/src/tail.ts": "40e24f0d34401e7990581eef3eff1d1542defbc846a92339e61bb81a95a0d156",
+        "v2/driver-tmux/src/tmux.ts": "92607334202f8fb8c8cedf7b9d1454d8742a867c4c8082f7f2f6617a6c285eb9",
+        "v2/driver-tmux/src/transcript-projection.ts": "98bdd52792da1d74ddfe28332c54ae76adc8f6b52e94e1b4f233a94cabf96c78",
+        "v2/driver-tmux/src/transcripts.ts": "f23289d6199d9d2ec288f60de0a3475ce5aa41e20230763380386d4d2c545509",
+        "v2/harness/src/clock.ts": "690b130f9bb111af2099cc96d19a114258bf3bc6353d7a440d53b3141c9e2446",
+        "v2/harness/src/daemon.ts": "2b8f17080275ef72b3612e4b446b9e951d203373c70bcec7b83e3b21c91d81ef",
+        "v2/harness/src/driver.ts": "df41b313a0ab97a637eddb5a3ba2be4456293776aa46acfd3eb29af5315a1442",
+        "v2/harness/src/faults.ts": "6152e965e33f1501f9beee0f5a3c42ce18a8b71897713043716a993de48cfc20",
+        "v2/harness/src/index.ts": "200de7850d2848f5b1d2afa72fdbd1490d2919efd8f77976508416ccb7b9a191",
+        "v2/harness/src/invariants.ts": "5ab63d4da3399534d6a2d9eff705d1c6c403e14b39b5749b5863bd7d04daccbb",
+        "v2/harness/src/prng.ts": "1be8ed3684abb058b30f83b89239385928abb14d8c24616ebf925c95af4639e8",
+        "v2/harness/src/sim-driver.ts": "70b5b013351a8a089e2b13509cb3abe5d8182b18e07f920859abc68e4dd10e31",
+        "v2/harness/src/simulation.ts": "9979407c9e3483294675c47b23b802a724adcea73681ae8d8480f47f5e2d650c"
+      }
+    }
+  ],
+  "toolHashes": {
+    "paired-step.mjs": "36cf573e9069788da9ba2fefb8a59bacee0f7e19f03a9891878ce08ce590e440",
+    "fixtures.mjs": "3fcc682d4f9525007c129f86acca91f0a09cf9ff8e6d33ca35852a6b99396bfb",
+    "report.mjs": "d1ad61cdac530c2748345235bc546166089e31e4e9614492a761fa3db3afbba7",
+    "boot-identity.mjs": "555b2a8de914ecba13defbd76542b65b6af15d204b156fb15f58ea9b8036d0fa"
+  },
+  "environment": {
+    "node": "v24.18.0",
+    "execArgv": [],
+    "platform": "darwin",
+    "arch": "arm64",
+    "cpu": "Apple M4",
+    "hostname": "Mac.home",
+    "bootIdentity": {
+      "method": "darwin-kern.bootsessionuuid-sha256",
+      "sha256": "e9278b19e15e59f2422e3cbfcd73a284c146b83b5bfa40e69c3053019b6d8732"
+    },
+    "loadBefore": [
+      1.48095703125,
+      1.2314453125,
+      1.18212890625
+    ],
+    "loadAfter": [
+      1.5224609375,
+      1.244140625,
+      1.1865234375
+    ]
+  },
+  "workload": {
+    "scenarios": [
+      {
+        "name": "empty",
+        "bees": 0,
+        "generations": 1,
+        "live": 0,
+        "pending": 0,
+        "bodyBytes": 0
+      },
+      {
+        "name": "retained-1000",
+        "bees": 1000,
+        "generations": 20,
+        "live": 0,
+        "pending": 0,
+        "bodyBytes": 0
+      },
+      {
+        "name": "retained-10000",
+        "bees": 10000,
+        "generations": 1,
+        "live": 0,
+        "pending": 0,
+        "bodyBytes": 0
+      },
+      {
+        "name": "sparse-live",
+        "bees": 1000,
+        "generations": 20,
+        "live": 1,
+        "pending": 0,
+        "bodyBytes": 0
+      },
+      {
+        "name": "all-live",
+        "bees": 1000,
+        "generations": 1,
+        "live": 1000,
+        "pending": 0,
+        "bodyBytes": 0
+      },
+      {
+        "name": "held-mail",
+        "bees": 10,
+        "generations": 1,
+        "live": 1,
+        "pending": 1000,
+        "bodyBytes": 1024
+      },
+      {
+        "name": "write-every-tick",
+        "bees": 1000,
+        "generations": 1,
+        "live": 1,
+        "pending": 0,
+        "bodyBytes": 0,
+        "rename": true
+      }
+    ],
+    "rounds": 3,
+    "order": "ABBA each round; three step warmups per side",
+    "durability": "WAL/NORMAL"
+  },
+  "results": [
+    {
+      "scenario": {
+        "name": "empty",
+        "bees": 0,
+        "generations": 1,
+        "live": 0,
+        "pending": 0,
+        "bodyBytes": 0
+      },
+      "seededBytes": 274432,
+      "firstOpen": [
+        {
+          "wallMs": 0.4007090000000062,
+          "cpuMs": 0.417
+        },
+        {
+          "wallMs": 0.33745799999999804,
+          "cpuMs": 0.339
+        }
+      ],
+      "closedBytes": [
+        389120,
+        389120
+      ],
+      "raw": [
+        [
+          {
+            "wallMs": 0.034874999999999545,
+            "cpuMs": 0.042
+          },
+          {
+            "wallMs": 0.04870800000000486,
+            "cpuMs": 0.124
+          },
+          {
+            "wallMs": 0.028583999999995058,
+            "cpuMs": 0.036
+          },
+          {
+            "wallMs": 0.027040999999996984,
+            "cpuMs": 0.032
+          },
+          {
+            "wallMs": 0.024750000000011596,
+            "cpuMs": 0.025
+          },
+          {
+            "wallMs": 0.02483399999999847,
+            "cpuMs": 0.025
+          }
+        ],
+        [
+          {
+            "wallMs": 0.030041999999994573,
+            "cpuMs": 0.031
+          },
+          {
+            "wallMs": 0.03854199999999253,
+            "cpuMs": 0.061
+          },
+          {
+            "wallMs": 0.02616700000000094,
+            "cpuMs": 0.027
+          },
+          {
+            "wallMs": 0.0264580000000052,
+            "cpuMs": 0.102
+          },
+          {
+            "wallMs": 0.030916999999988093,
+            "cpuMs": 0.116
+          },
+          {
+            "wallMs": 0.027290999999991072,
+            "cpuMs": 0.028
+          }
+        ]
+      ],
+      "writeRaw": [
+        [
+          {
+            "wallMs": 2.999417000000008,
+            "cpuMs": 3.127
+          },
+          {
+            "wallMs": 2.354292000000001,
+            "cpuMs": 2.388
+          },
+          {
+            "wallMs": 2.3477079999999972,
+            "cpuMs": 2.348
+          },
+          {
+            "wallMs": 4.5880420000000015,
+            "cpuMs": 9.344
+          },
+          {
+            "wallMs": 3.37254200000001,
+            "cpuMs": 2.956
+          },
+          {
+            "wallMs": 1.9731250000000102,
+            "cpuMs": 2.008
+          }
+        ],
+        [
+          {
+            "wallMs": 2.373625000000004,
+            "cpuMs": 2.4
+          },
+          {
+            "wallMs": 2.276875000000004,
+            "cpuMs": 2.278
+          },
+          {
+            "wallMs": 2.3108330000000024,
+            "cpuMs": 2.311
+          },
+          {
+            "wallMs": 2.4162079999999975,
+            "cpuMs": 2.533
+          },
+          {
+            "wallMs": 3.261166000000003,
+            "cpuMs": 2.628
+          },
+          {
+            "wallMs": 2.0635000000000048,
+            "cpuMs": 2.052
+          }
+        ]
+      ],
+      "repeatOpen": [
+        [
+          {
+            "wallMs": 0.5716660000000218,
+            "cpuMs": 0.537
+          },
+          {
+            "wallMs": 0.34195899999997437,
+            "cpuMs": 0.342
+          },
+          {
+            "wallMs": 0.3069579999999803,
+            "cpuMs": 0.308
+          },
+          {
+            "wallMs": 0.2990000000000066,
+            "cpuMs": 0.3
+          },
+          {
+            "wallMs": 0.2995420000000024,
+            "cpuMs": 0.303
+          }
+        ],
+        [
+          {
+            "wallMs": 0.41345800000001987,
+            "cpuMs": 0.537
+          },
+          {
+            "wallMs": 0.3361250000000098,
+            "cpuMs": 0.38
+          },
+          {
+            "wallMs": 0.28916699999999196,
+            "cpuMs": 0.289
+          },
+          {
+            "wallMs": 0.30400000000000205,
+            "cpuMs": 0.306
+          },
+          {
+            "wallMs": 0.29912500000000364,
+            "cpuMs": 0.335
+          }
+        ]
+      ],
+      "order": [
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0
+      ]
+    },
+    {
+      "scenario": {
+        "name": "retained-1000",
+        "bees": 1000,
+        "generations": 20,
+        "live": 0,
+        "pending": 0,
+        "bodyBytes": 0
+      },
+      "seededBytes": 18223104,
+      "firstOpen": [
+        {
+          "wallMs": 0.831000000000131,
+          "cpuMs": 0.57
+        },
+        {
+          "wallMs": 0.382082999999966,
+          "cpuMs": 0.361
+        }
+      ],
+      "closedBytes": [
+        18333696,
+        18333696
+      ],
+      "raw": [
+        [
+          {
+            "wallMs": 4.319209000000001,
+            "cpuMs": 4.326
+          },
+          {
+            "wallMs": 4.058249999999816,
+            "cpuMs": 4.51
+          },
+          {
+            "wallMs": 4.0398750000001655,
+            "cpuMs": 4.032
+          },
+          {
+            "wallMs": 4.097457999999733,
+            "cpuMs": 4.098
+          },
+          {
+            "wallMs": 4.165750000000116,
+            "cpuMs": 4.242
+          },
+          {
+            "wallMs": 4.314541999999619,
+            "cpuMs": 5.96
+          }
+        ],
+        [
+          {
+            "wallMs": 4.289792000000034,
+            "cpuMs": 4.29
+          },
+          {
+            "wallMs": 4.403291000000081,
+            "cpuMs": 4.704
+          },
+          {
+            "wallMs": 4.00916600000005,
+            "cpuMs": 4.238
+          },
+          {
+            "wallMs": 4.145915999999943,
+            "cpuMs": 6.219
+          },
+          {
+            "wallMs": 4.3415829999999005,
+            "cpuMs": 4.612
+          },
+          {
+            "wallMs": 5.354665999999725,
+            "cpuMs": 10.831
+          }
+        ]
+      ],
+      "writeRaw": [
+        [
+          {
+            "wallMs": 3.545541999999841,
+            "cpuMs": 2.943
+          },
+          {
+            "wallMs": 2.5734590000001845,
+            "cpuMs": 2.566
+          },
+          {
+            "wallMs": 2.588583000000199,
+            "cpuMs": 2.589
+          },
+          {
+            "wallMs": 2.6222499999998945,
+            "cpuMs": 2.623
+          },
+          {
+            "wallMs": 3.544999999999618,
+            "cpuMs": 2.886
+          },
+          {
+            "wallMs": 1.9417499999999563,
+            "cpuMs": 1.943
+          }
+        ],
+        [
+          {
+            "wallMs": 2.5896669999997357,
+            "cpuMs": 2.59
+          },
+          {
+            "wallMs": 2.4507920000000922,
+            "cpuMs": 2.451
+          },
+          {
+            "wallMs": 2.5614999999997963,
+            "cpuMs": 2.563
+          },
+          {
+            "wallMs": 2.518290999999863,
+            "cpuMs": 2.519
+          },
+          {
+            "wallMs": 3.702375000000302,
+            "cpuMs": 3.011
+          },
+          {
+            "wallMs": 1.995792000000165,
+            "cpuMs": 1.997
+          }
+        ]
+      ],
+      "repeatOpen": [
+        [
+          {
+            "wallMs": 0.6993750000001455,
+            "cpuMs": 0.68
+          },
+          {
+            "wallMs": 0.422041000000263,
+            "cpuMs": 0.424
+          },
+          {
+            "wallMs": 0.37312500000007276,
+            "cpuMs": 0.374
+          },
+          {
+            "wallMs": 0.3497090000000753,
+            "cpuMs": 0.35
+          },
+          {
+            "wallMs": 0.3395829999999478,
+            "cpuMs": 0.34
+          }
+        ],
+        [
+          {
+            "wallMs": 0.4861249999999018,
+            "cpuMs": 0.447
+          },
+          {
+            "wallMs": 0.3300420000000486,
+            "cpuMs": 0.331
+          },
+          {
+            "wallMs": 0.32483400000000984,
+            "cpuMs": 0.325
+          },
+          {
+            "wallMs": 0.32524999999986903,
+            "cpuMs": 0.326
+          },
+          {
+            "wallMs": 0.3217920000001868,
+            "cpuMs": 0.322
+          }
+        ]
+      ],
+      "order": [
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0
+      ]
+    },
+    {
+      "scenario": {
+        "name": "retained-10000",
+        "bees": 10000,
+        "generations": 1,
+        "live": 0,
+        "pending": 0,
+        "bodyBytes": 0
+      },
+      "seededBytes": 12976128,
+      "firstOpen": [
+        {
+          "wallMs": 0.6957079999997404,
+          "cpuMs": 0.552
+        },
+        {
+          "wallMs": 0.4629580000000715,
+          "cpuMs": 0.443
+        }
+      ],
+      "closedBytes": [
+        13086720,
+        13086720
+      ],
+      "raw": [
+        [
+          {
+            "wallMs": 32.445500000000266,
+            "cpuMs": 33.691
+          },
+          {
+            "wallMs": 31.79137499999979,
+            "cpuMs": 31.867
+          },
+          {
+            "wallMs": 31.516708000000108,
+            "cpuMs": 31.518
+          },
+          {
+            "wallMs": 31.289832999999817,
+            "cpuMs": 31.345
+          },
+          {
+            "wallMs": 31.53295799999978,
+            "cpuMs": 31.535
+          },
+          {
+            "wallMs": 30.90770799999973,
+            "cpuMs": 30.966
+          }
+        ],
+        [
+          {
+            "wallMs": 31.350792000000183,
+            "cpuMs": 31.379
+          },
+          {
+            "wallMs": 31.37112500000012,
+            "cpuMs": 31.373
+          },
+          {
+            "wallMs": 31.783374999999978,
+            "cpuMs": 31.833
+          },
+          {
+            "wallMs": 31.479957999999897,
+            "cpuMs": 31.48
+          },
+          {
+            "wallMs": 31.8676660000001,
+            "cpuMs": 31.927
+          },
+          {
+            "wallMs": 32.13829100000021,
+            "cpuMs": 32.112
+          }
+        ]
+      ],
+      "writeRaw": [
+        [
+          {
+            "wallMs": 2.852292000000034,
+            "cpuMs": 2.858
+          },
+          {
+            "wallMs": 2.725459000000228,
+            "cpuMs": 2.725
+          },
+          {
+            "wallMs": 2.703541999999743,
+            "cpuMs": 2.703
+          },
+          {
+            "wallMs": 2.6691249999998945,
+            "cpuMs": 2.669
+          },
+          {
+            "wallMs": 3.862166999999772,
+            "cpuMs": 2.935
+          },
+          {
+            "wallMs": 1.8562090000000353,
+            "cpuMs": 1.856
+          }
+        ],
+        [
+          {
+            "wallMs": 2.680666000000201,
+            "cpuMs": 2.681
+          },
+          {
+            "wallMs": 2.6968339999998534,
+            "cpuMs": 2.698
+          },
+          {
+            "wallMs": 2.70995800000037,
+            "cpuMs": 2.71
+          },
+          {
+            "wallMs": 2.6644579999997404,
+            "cpuMs": 2.665
+          },
+          {
+            "wallMs": 3.0162500000001273,
+            "cpuMs": 2.361
+          },
+          {
+            "wallMs": 1.821957999999995,
+            "cpuMs": 1.823
+          }
+        ]
+      ],
+      "repeatOpen": [
+        [
+          {
+            "wallMs": 0.6428329999998823,
+            "cpuMs": 0.607
+          },
+          {
+            "wallMs": 0.4486249999999927,
+            "cpuMs": 0.45
+          },
+          {
+            "wallMs": 0.3586249999998472,
+            "cpuMs": 0.36
+          },
+          {
+            "wallMs": 0.3387910000001284,
+            "cpuMs": 0.34
+          },
+          {
+            "wallMs": 0.32166700000016135,
+            "cpuMs": 0.322
+          }
+        ],
+        [
+          {
+            "wallMs": 0.4279999999998836,
+            "cpuMs": 0.394
+          },
+          {
+            "wallMs": 0.30587500000001455,
+            "cpuMs": 0.306
+          },
+          {
+            "wallMs": 0.2960830000001806,
+            "cpuMs": 0.296
+          },
+          {
+            "wallMs": 0.3013750000000073,
+            "cpuMs": 0.301
+          },
+          {
+            "wallMs": 0.3015829999994821,
+            "cpuMs": 0.301
+          }
+        ]
+      ],
+      "order": [
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0
+      ]
+    },
+    {
+      "scenario": {
+        "name": "sparse-live",
+        "bees": 1000,
+        "generations": 20,
+        "live": 1,
+        "pending": 0,
+        "bodyBytes": 0
+      },
+      "seededBytes": 18223104,
+      "firstOpen": [
+        {
+          "wallMs": 1.00787500000024,
+          "cpuMs": 0.543
+        },
+        {
+          "wallMs": 0.4362920000003214,
+          "cpuMs": 0.416
+        }
+      ],
+      "closedBytes": [
+        18333696,
+        18333696
+      ],
+      "raw": [
+        [
+          {
+            "wallMs": 4.187041999999565,
+            "cpuMs": 4.195
+          },
+          {
+            "wallMs": 4.188750000000255,
+            "cpuMs": 4.19
+          },
+          {
+            "wallMs": 5.259417000000212,
+            "cpuMs": 7.888
+          },
+          {
+            "wallMs": 4.185124999999971,
+            "cpuMs": 4.185
+          },
+          {
+            "wallMs": 4.227290999999241,
+            "cpuMs": 4.228
+          },
+          {
+            "wallMs": 4.263082999999824,
+            "cpuMs": 4.265
+          }
+        ],
+        [
+          {
+            "wallMs": 4.177708000000166,
+            "cpuMs": 4.177
+          },
+          {
+            "wallMs": 4.186749999999847,
+            "cpuMs": 4.642
+          },
+          {
+            "wallMs": 4.095749999999498,
+            "cpuMs": 4.096
+          },
+          {
+            "wallMs": 4.155625000000327,
+            "cpuMs": 4.157
+          },
+          {
+            "wallMs": 4.239542000000256,
+            "cpuMs": 4.241
+          },
+          {
+            "wallMs": 4.256666999999652,
+            "cpuMs": 4.257
+          }
+        ]
+      ],
+      "writeRaw": [
+        [
+          {
+            "wallMs": 2.951665999999932,
+            "cpuMs": 2.956
+          },
+          {
+            "wallMs": 2.6877089999998134,
+            "cpuMs": 2.689
+          },
+          {
+            "wallMs": 2.8025840000000244,
+            "cpuMs": 2.803
+          },
+          {
+            "wallMs": 2.759541000000354,
+            "cpuMs": 2.76
+          },
+          {
+            "wallMs": 4.077874999999949,
+            "cpuMs": 3.135
+          },
+          {
+            "wallMs": 1.843707999999424,
+            "cpuMs": 1.845
+          }
+        ],
+        [
+          {
+            "wallMs": 2.754334000000199,
+            "cpuMs": 2.756
+          },
+          {
+            "wallMs": 2.7365829999998823,
+            "cpuMs": 2.737
+          },
+          {
+            "wallMs": 2.766834000000017,
+            "cpuMs": 2.768
+          },
+          {
+            "wallMs": 2.721875000000182,
+            "cpuMs": 2.723
+          },
+          {
+            "wallMs": 3.6540420000001177,
+            "cpuMs": 3.001
+          },
+          {
+            "wallMs": 1.856999999999971,
+            "cpuMs": 1.858
+          }
+        ]
+      ],
+      "repeatOpen": [
+        [
+          {
+            "wallMs": 0.5964999999996508,
+            "cpuMs": 0.567
+          },
+          {
+            "wallMs": 0.35195800000019517,
+            "cpuMs": 0.353
+          },
+          {
+            "wallMs": 0.31554200000027777,
+            "cpuMs": 0.316
+          },
+          {
+            "wallMs": 0.30025000000023283,
+            "cpuMs": 0.301
+          },
+          {
+            "wallMs": 0.2976250000001528,
+            "cpuMs": 0.299
+          }
+        ],
+        [
+          {
+            "wallMs": 0.41029100000014296,
+            "cpuMs": 0.372
+          },
+          {
+            "wallMs": 0.28787499999998545,
+            "cpuMs": 0.288
+          },
+          {
+            "wallMs": 0.29320800000004965,
+            "cpuMs": 0.295
+          },
+          {
+            "wallMs": 0.28724999999940337,
+            "cpuMs": 0.288
+          },
+          {
+            "wallMs": 0.28570899999976973,
+            "cpuMs": 0.286
+          }
+        ]
+      ],
+      "order": [
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0
+      ]
+    },
+    {
+      "scenario": {
+        "name": "all-live",
+        "bees": 1000,
+        "generations": 1,
+        "live": 1000,
+        "pending": 0,
+        "bodyBytes": 0
+      },
+      "seededBytes": 2183168,
+      "firstOpen": [
+        {
+          "wallMs": 0.5474169999997684,
+          "cpuMs": 0.534
+        },
+        {
+          "wallMs": 0.4276669999999285,
+          "cpuMs": 0.408
+        }
+      ],
+      "closedBytes": [
+        2293760,
+        2293760
+      ],
+      "raw": [
+        [
+          {
+            "wallMs": 3.0818749999998545,
+            "cpuMs": 3.277
+          },
+          {
+            "wallMs": 3.1049169999996593,
+            "cpuMs": 3.106
+          },
+          {
+            "wallMs": 3.1030000000000655,
+            "cpuMs": 3.102
+          },
+          {
+            "wallMs": 3.1122080000004644,
+            "cpuMs": 3.112
+          },
+          {
+            "wallMs": 3.119374999999309,
+            "cpuMs": 3.121
+          },
+          {
+            "wallMs": 3.1192909999999756,
+            "cpuMs": 3.12
+          }
+        ],
+        [
+          {
+            "wallMs": 3.0820000000003347,
+            "cpuMs": 3.082
+          },
+          {
+            "wallMs": 3.109042000000045,
+            "cpuMs": 3.11
+          },
+          {
+            "wallMs": 3.094708000000537,
+            "cpuMs": 3.095
+          },
+          {
+            "wallMs": 3.13012499999968,
+            "cpuMs": 3.131
+          },
+          {
+            "wallMs": 3.1184579999999187,
+            "cpuMs": 3.119
+          },
+          {
+            "wallMs": 3.124084000000039,
+            "cpuMs": 3.124
+          }
+        ]
+      ],
+      "writeRaw": [
+        [
+          {
+            "wallMs": 2.5075000000006185,
+            "cpuMs": 2.509
+          },
+          {
+            "wallMs": 2.4506250000004,
+            "cpuMs": 2.452
+          },
+          {
+            "wallMs": 2.4340830000001006,
+            "cpuMs": 2.434
+          },
+          {
+            "wallMs": 2.4310420000001614,
+            "cpuMs": 2.431
+          },
+          {
+            "wallMs": 3.6052920000001905,
+            "cpuMs": 2.912
+          },
+          {
+            "wallMs": 2.0636249999997744,
+            "cpuMs": 2.064
+          }
+        ],
+        [
+          {
+            "wallMs": 2.457249999999476,
+            "cpuMs": 2.458
+          },
+          {
+            "wallMs": 2.3859999999995125,
+            "cpuMs": 2.387
+          },
+          {
+            "wallMs": 2.405999999999949,
+            "cpuMs": 2.407
+          },
+          {
+            "wallMs": 2.418459000000439,
+            "cpuMs": 2.419
+          },
+          {
+            "wallMs": 3.462999999999738,
+            "cpuMs": 2.811
+          },
+          {
+            "wallMs": 2.0398340000001554,
+            "cpuMs": 2.04
+          }
+        ]
+      ],
+      "repeatOpen": [
+        [
+          {
+            "wallMs": 0.5681249999997817,
+            "cpuMs": 0.531
+          },
+          {
+            "wallMs": 0.3590830000002825,
+            "cpuMs": 0.36
+          },
+          {
+            "wallMs": 0.3205419999994774,
+            "cpuMs": 0.321
+          },
+          {
+            "wallMs": 0.310750000000553,
+            "cpuMs": 0.312
+          },
+          {
+            "wallMs": 0.30599999999958527,
+            "cpuMs": 0.307
+          }
+        ],
+        [
+          {
+            "wallMs": 0.42854200000056153,
+            "cpuMs": 0.391
+          },
+          {
+            "wallMs": 0.3013750000000073,
+            "cpuMs": 0.302
+          },
+          {
+            "wallMs": 0.30958300000020245,
+            "cpuMs": 0.309
+          },
+          {
+            "wallMs": 0.29441700000006676,
+            "cpuMs": 0.295
+          },
+          {
+            "wallMs": 0.29737499999919237,
+            "cpuMs": 0.298
+          }
+        ]
+      ],
+      "order": [
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0
+      ]
+    },
+    {
+      "scenario": {
+        "name": "held-mail",
+        "bees": 10,
+        "generations": 1,
+        "live": 1,
+        "pending": 1000,
+        "bodyBytes": 1024
+      },
+      "seededBytes": 4431872,
+      "firstOpen": [
+        {
+          "wallMs": 0.41258300000026793,
+          "cpuMs": 0.419
+        },
+        {
+          "wallMs": 0.30783400000018446,
+          "cpuMs": 0.309
+        }
+      ],
+      "closedBytes": [
+        4546560,
+        4546560
+      ],
+      "raw": [
+        [
+          {
+            "wallMs": 0.9207079999996495,
+            "cpuMs": 0.924
+          },
+          {
+            "wallMs": 0.936916000000565,
+            "cpuMs": 0.937
+          },
+          {
+            "wallMs": 0.9182920000002923,
+            "cpuMs": 0.919
+          },
+          {
+            "wallMs": 0.9430830000001151,
+            "cpuMs": 1.114
+          },
+          {
+            "wallMs": 0.9300419999999576,
+            "cpuMs": 0.93
+          },
+          {
+            "wallMs": 0.9361250000001746,
+            "cpuMs": 0.937
+          }
+        ],
+        [
+          {
+            "wallMs": 0.9458330000006754,
+            "cpuMs": 0.949
+          },
+          {
+            "wallMs": 0.9407499999997526,
+            "cpuMs": 1.48
+          },
+          {
+            "wallMs": 0.9239589999997406,
+            "cpuMs": 0.925
+          },
+          {
+            "wallMs": 0.9439160000001721,
+            "cpuMs": 0.945
+          },
+          {
+            "wallMs": 0.9425000000001091,
+            "cpuMs": 0.943
+          },
+          {
+            "wallMs": 1.372457999999824,
+            "cpuMs": 1.498
+          }
+        ]
+      ],
+      "writeRaw": [
+        [
+          {
+            "wallMs": 2.4219169999996666,
+            "cpuMs": 2.399
+          },
+          {
+            "wallMs": 2.133292000000438,
+            "cpuMs": 2.134
+          },
+          {
+            "wallMs": 2.218499999999949,
+            "cpuMs": 2.219
+          },
+          {
+            "wallMs": 2.2758340000000317,
+            "cpuMs": 2.283
+          },
+          {
+            "wallMs": 3.2499589999997625,
+            "cpuMs": 2.618
+          },
+          {
+            "wallMs": 1.9553329999998823,
+            "cpuMs": 2.087
+          }
+        ],
+        [
+          {
+            "wallMs": 2.21349999999984,
+            "cpuMs": 2.191
+          },
+          {
+            "wallMs": 2.185958000000028,
+            "cpuMs": 2.586
+          },
+          {
+            "wallMs": 2.2752500000005966,
+            "cpuMs": 2.275
+          },
+          {
+            "wallMs": 2.280000000000655,
+            "cpuMs": 2.28
+          },
+          {
+            "wallMs": 3.0676250000005894,
+            "cpuMs": 2.407
+          },
+          {
+            "wallMs": 1.879000000000815,
+            "cpuMs": 1.88
+          }
+        ]
+      ],
+      "repeatOpen": [
+        [
+          {
+            "wallMs": 0.5640419999999722,
+            "cpuMs": 0.541
+          },
+          {
+            "wallMs": 0.3375420000002123,
+            "cpuMs": 0.338
+          },
+          {
+            "wallMs": 0.3032499999999345,
+            "cpuMs": 0.304
+          },
+          {
+            "wallMs": 0.29633299999932206,
+            "cpuMs": 0.297
+          },
+          {
+            "wallMs": 0.31045799999992596,
+            "cpuMs": 0.31
+          }
+        ],
+        [
+          {
+            "wallMs": 0.43354200000067067,
+            "cpuMs": 0.397
+          },
+          {
+            "wallMs": 0.4042920000001686,
+            "cpuMs": 0.405
+          },
+          {
+            "wallMs": 0.33487499999955617,
+            "cpuMs": 0.336
+          },
+          {
+            "wallMs": 0.30441699999937555,
+            "cpuMs": 0.305
+          },
+          {
+            "wallMs": 0.30274999999983265,
+            "cpuMs": 0.303
+          }
+        ]
+      ],
+      "order": [
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0
+      ]
+    },
+    {
+      "scenario": {
+        "name": "write-every-tick",
+        "bees": 1000,
+        "generations": 1,
+        "live": 1,
+        "pending": 0,
+        "bodyBytes": 0,
+        "rename": true
+      },
+      "seededBytes": 1536000,
+      "firstOpen": [
+        {
+          "wallMs": 0.47837500000059663,
+          "cpuMs": 0.474
+        },
+        {
+          "wallMs": 0.35662500000034925,
+          "cpuMs": 0.349
+        }
+      ],
+      "closedBytes": [
+        1642496,
+        1642496
+      ],
+      "raw": [
+        [
+          {
+            "wallMs": 3.090541999999914,
+            "cpuMs": 3.096
+          },
+          {
+            "wallMs": 3.1029170000001614,
+            "cpuMs": 3.103
+          },
+          {
+            "wallMs": 3.1200840000001335,
+            "cpuMs": 3.12
+          },
+          {
+            "wallMs": 3.1130000000002838,
+            "cpuMs": 3.113
+          },
+          {
+            "wallMs": 3.091042000000016,
+            "cpuMs": 3.09
+          },
+          {
+            "wallMs": 3.111667000000125,
+            "cpuMs": 3.115
+          }
+        ],
+        [
+          {
+            "wallMs": 4.71454199999971,
+            "cpuMs": 5.058
+          },
+          {
+            "wallMs": 3.0818749999998545,
+            "cpuMs": 3.082
+          },
+          {
+            "wallMs": 3.10412499999984,
+            "cpuMs": 3.105
+          },
+          {
+            "wallMs": 3.0846250000004147,
+            "cpuMs": 3.086
+          },
+          {
+            "wallMs": 3.1215830000001006,
+            "cpuMs": 3.122
+          },
+          {
+            "wallMs": 3.097541000000092,
+            "cpuMs": 3.097
+          }
+        ]
+      ],
+      "writeRaw": [
+        [
+          {
+            "wallMs": 2.5834169999998267,
+            "cpuMs": 2.585
+          },
+          {
+            "wallMs": 2.388042000000496,
+            "cpuMs": 2.389
+          },
+          {
+            "wallMs": 2.405374999999367,
+            "cpuMs": 2.405
+          },
+          {
+            "wallMs": 2.4954999999999927,
+            "cpuMs": 2.496
+          },
+          {
+            "wallMs": 3.7423750000007203,
+            "cpuMs": 2.809
+          },
+          {
+            "wallMs": 2.1457919999993464,
+            "cpuMs": 2.147
+          }
+        ],
+        [
+          {
+            "wallMs": 2.449166999999761,
+            "cpuMs": 2.449
+          },
+          {
+            "wallMs": 2.380333000000064,
+            "cpuMs": 2.381
+          },
+          {
+            "wallMs": 2.4470000000001164,
+            "cpuMs": 2.447
+          },
+          {
+            "wallMs": 2.421459000000141,
+            "cpuMs": 2.422
+          },
+          {
+            "wallMs": 3.2899579999993875,
+            "cpuMs": 2.632
+          },
+          {
+            "wallMs": 2.0912500000004,
+            "cpuMs": 2.092
+          }
+        ]
+      ],
+      "repeatOpen": [
+        [
+          {
+            "wallMs": 0.5999579999997877,
+            "cpuMs": 0.543
+          },
+          {
+            "wallMs": 0.3096660000001066,
+            "cpuMs": 0.311
+          },
+          {
+            "wallMs": 0.29112499999973807,
+            "cpuMs": 0.292
+          },
+          {
+            "wallMs": 0.28874999999970896,
+            "cpuMs": 0.288
+          },
+          {
+            "wallMs": 0.2866249999997308,
+            "cpuMs": 0.287
+          }
+        ],
+        [
+          {
+            "wallMs": 0.39870799999971496,
+            "cpuMs": 0.36
+          },
+          {
+            "wallMs": 0.2828330000002097,
+            "cpuMs": 0.283
+          },
+          {
+            "wallMs": 0.2796669999997903,
+            "cpuMs": 0.28
+          },
+          {
+            "wallMs": 0.28224999999929423,
+            "cpuMs": 0.283
+          },
+          {
+            "wallMs": 0.2831669999995938,
+            "cpuMs": 0.283
+          }
+        ]
+      ],
+      "order": [
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0
+      ]
+    }
+  ],
+  "rows": [
+    {
+      "scenario": "empty",
+      "operation": "step",
+      "metric": "wallMs",
+      "before": {
+        "n": 6,
+        "min": 0.024750000000011596,
+        "p50": 0.027040999999996984,
+        "p95": 0.04870800000000486,
+        "max": 0.04870800000000486,
+        "mean": 0.03146533333333442
+      },
+      "after": {
+        "n": 6,
+        "min": 0.02616700000000094,
+        "p50": 0.027290999999991072,
+        "p95": 0.03854199999999253,
+        "max": 0.03854199999999253,
+        "mean": 0.029902833333328733
+      },
+      "deltaPercent": 0.9245220220928108
+    },
+    {
+      "scenario": "empty",
+      "operation": "step",
+      "metric": "cpuMs",
+      "before": {
+        "n": 6,
+        "min": 0.025,
+        "p50": 0.032,
+        "p95": 0.124,
+        "max": 0.124,
+        "mean": 0.04733333333333334
+      },
+      "after": {
+        "n": 6,
+        "min": 0.027,
+        "p50": 0.031,
+        "p95": 0.116,
+        "max": 0.116,
+        "mean": 0.06083333333333333
+      },
+      "deltaPercent": -3.125
+    },
+    {
+      "scenario": "empty",
+      "operation": "tenDurableLifecycleCycles",
+      "metric": "wallMs",
+      "before": {
+        "n": 6,
+        "min": 1.9731250000000102,
+        "p50": 2.354292000000001,
+        "p95": 4.5880420000000015,
+        "max": 4.5880420000000015,
+        "mean": 2.939187666666671
+      },
+      "after": {
+        "n": 6,
+        "min": 2.0635000000000048,
+        "p50": 2.3108330000000024,
+        "p95": 3.261166000000003,
+        "max": 3.261166000000003,
+        "mean": 2.450367833333336
+      },
+      "deltaPercent": -1.845947741401599
+    },
+    {
+      "scenario": "empty",
+      "operation": "tenDurableLifecycleCycles",
+      "metric": "cpuMs",
+      "before": {
+        "n": 6,
+        "min": 2.008,
+        "p50": 2.388,
+        "p95": 9.344,
+        "max": 9.344,
+        "mean": 3.6951666666666667
+      },
+      "after": {
+        "n": 6,
+        "min": 2.052,
+        "p50": 2.311,
+        "p95": 2.628,
+        "max": 2.628,
+        "mean": 2.367
+      },
+      "deltaPercent": -3.2244556113902867
+    },
+    {
+      "scenario": "empty",
+      "operation": "repeatOpen",
+      "metric": "wallMs",
+      "before": {
+        "n": 5,
+        "min": 0.2990000000000066,
+        "p50": 0.3069579999999803,
+        "p95": 0.5716660000000218,
+        "max": 0.5716660000000218,
+        "mean": 0.36382499999999707
+      },
+      "after": {
+        "n": 5,
+        "min": 0.28916699999999196,
+        "p50": 0.30400000000000205,
+        "p95": 0.41345800000001987,
+        "max": 0.41345800000001987,
+        "mean": 0.32837500000000547
+      },
+      "deltaPercent": -0.9636497501216645
+    },
+    {
+      "scenario": "empty",
+      "operation": "repeatOpen",
+      "metric": "cpuMs",
+      "before": {
+        "n": 5,
+        "min": 0.3,
+        "p50": 0.308,
+        "p95": 0.537,
+        "max": 0.537,
+        "mean": 0.358
+      },
+      "after": {
+        "n": 5,
+        "min": 0.289,
+        "p50": 0.335,
+        "p95": 0.537,
+        "max": 0.537,
+        "mean": 0.3694
+      },
+      "deltaPercent": 8.766233766233778
+    },
+    {
+      "scenario": "retained-1000",
+      "operation": "step",
+      "metric": "wallMs",
+      "before": {
+        "n": 6,
+        "min": 4.0398750000001655,
+        "p50": 4.097457999999733,
+        "p95": 4.319209000000001,
+        "max": 4.319209000000001,
+        "mean": 4.165847333333242
+      },
+      "after": {
+        "n": 6,
+        "min": 4.00916600000005,
+        "p50": 4.289792000000034,
+        "p95": 5.354665999999725,
+        "max": 5.354665999999725,
+        "mean": 4.424068999999956
+      },
+      "deltaPercent": 4.693983440472449
+    },
+    {
+      "scenario": "retained-1000",
+      "operation": "step",
+      "metric": "cpuMs",
+      "before": {
+        "n": 6,
+        "min": 4.032,
+        "p50": 4.242,
+        "p95": 5.96,
+        "max": 5.96,
+        "mean": 4.528
+      },
+      "after": {
+        "n": 6,
+        "min": 4.238,
+        "p50": 4.612,
+        "p95": 10.831,
+        "max": 10.831,
+        "mean": 5.815666666666668
+      },
+      "deltaPercent": 8.72230080150873
+    },
+    {
+      "scenario": "retained-1000",
+      "operation": "tenDurableLifecycleCycles",
+      "metric": "wallMs",
+      "before": {
+        "n": 6,
+        "min": 1.9417499999999563,
+        "p50": 2.588583000000199,
+        "p95": 3.545541999999841,
+        "max": 3.545541999999841,
+        "mean": 2.8027639999999487
+      },
+      "after": {
+        "n": 6,
+        "min": 1.995792000000165,
+        "p50": 2.518290999999863,
+        "p95": 3.702375000000302,
+        "max": 3.702375000000302,
+        "mean": 2.636402833333326
+      },
+      "deltaPercent": -2.7154624750425405
+    },
+    {
+      "scenario": "retained-1000",
+      "operation": "tenDurableLifecycleCycles",
+      "metric": "cpuMs",
+      "before": {
+        "n": 6,
+        "min": 1.943,
+        "p50": 2.589,
+        "p95": 2.943,
+        "max": 2.943,
+        "mean": 2.5916666666666663
+      },
+      "after": {
+        "n": 6,
+        "min": 1.997,
+        "p50": 2.519,
+        "p95": 3.011,
+        "max": 3.011,
+        "mean": 2.5218333333333334
+      },
+      "deltaPercent": -2.703746620316716
+    },
+    {
+      "scenario": "retained-1000",
+      "operation": "repeatOpen",
+      "metric": "wallMs",
+      "before": {
+        "n": 5,
+        "min": 0.3395829999999478,
+        "p50": 0.37312500000007276,
+        "p95": 0.6993750000001455,
+        "max": 0.6993750000001455,
+        "mean": 0.43676660000010087
+      },
+      "after": {
+        "n": 5,
+        "min": 0.3217920000001868,
+        "p50": 0.32524999999986903,
+        "p95": 0.4861249999999018,
+        "max": 0.4861249999999018,
+        "mean": 0.3576086000000032
+      },
+      "deltaPercent": -12.83082077057136
+    },
+    {
+      "scenario": "retained-1000",
+      "operation": "repeatOpen",
+      "metric": "cpuMs",
+      "before": {
+        "n": 5,
+        "min": 0.34,
+        "p50": 0.374,
+        "p95": 0.68,
+        "max": 0.68,
+        "mean": 0.43360000000000004
+      },
+      "after": {
+        "n": 5,
+        "min": 0.322,
+        "p50": 0.326,
+        "p95": 0.447,
+        "max": 0.447,
+        "mean": 0.3502
+      },
+      "deltaPercent": -12.834224598930478
+    },
+    {
+      "scenario": "retained-10000",
+      "operation": "step",
+      "metric": "wallMs",
+      "before": {
+        "n": 6,
+        "min": 30.90770799999973,
+        "p50": 31.516708000000108,
+        "p95": 32.445500000000266,
+        "max": 32.445500000000266,
+        "mean": 31.580680333333248
+      },
+      "after": {
+        "n": 6,
+        "min": 31.350792000000183,
+        "p50": 31.479957999999897,
+        "p95": 32.13829100000021,
+        "max": 32.13829100000021,
+        "mean": 31.665201166666748
+      },
+      "deltaPercent": -0.11660481799117273
+    },
+    {
+      "scenario": "retained-10000",
+      "operation": "step",
+      "metric": "cpuMs",
+      "before": {
+        "n": 6,
+        "min": 30.966,
+        "p50": 31.518,
+        "p95": 33.691,
+        "max": 33.691,
+        "mean": 31.820333333333334
+      },
+      "after": {
+        "n": 6,
+        "min": 31.373,
+        "p50": 31.48,
+        "p95": 32.112,
+        "max": 32.112,
+        "mean": 31.684
+      },
+      "deltaPercent": -0.12056602576305808
+    },
+    {
+      "scenario": "retained-10000",
+      "operation": "tenDurableLifecycleCycles",
+      "metric": "wallMs",
+      "before": {
+        "n": 6,
+        "min": 1.8562090000000353,
+        "p50": 2.703541999999743,
+        "p95": 3.862166999999772,
+        "max": 3.862166999999772,
+        "mean": 2.7781323333332844
+      },
+      "after": {
+        "n": 6,
+        "min": 1.821957999999995,
+        "p50": 2.680666000000201,
+        "p95": 3.0162500000001273,
+        "max": 3.0162500000001273,
+        "mean": 2.598354000000048
+      },
+      "deltaPercent": -0.8461492367991319
+    },
+    {
+      "scenario": "retained-10000",
+      "operation": "tenDurableLifecycleCycles",
+      "metric": "cpuMs",
+      "before": {
+        "n": 6,
+        "min": 1.856,
+        "p50": 2.703,
+        "p95": 2.935,
+        "max": 2.935,
+        "mean": 2.6243333333333334
+      },
+      "after": {
+        "n": 6,
+        "min": 1.823,
+        "p50": 2.665,
+        "p95": 2.71,
+        "max": 2.71,
+        "mean": 2.4896666666666665
+      },
+      "deltaPercent": -1.4058453570107265
+    },
+    {
+      "scenario": "retained-10000",
+      "operation": "repeatOpen",
+      "metric": "wallMs",
+      "before": {
+        "n": 5,
+        "min": 0.32166700000016135,
+        "p50": 0.3586249999998472,
+        "p95": 0.6428329999998823,
+        "max": 0.6428329999998823,
+        "mean": 0.4221082000000024
+      },
+      "after": {
+        "n": 5,
+        "min": 0.2960830000001806,
+        "p50": 0.3015829999994821,
+        "p95": 0.4279999999998836,
+        "max": 0.4279999999998836,
+        "mean": 0.32658319999991364
+      },
+      "deltaPercent": -15.905751132907465
+    },
+    {
+      "scenario": "retained-10000",
+      "operation": "repeatOpen",
+      "metric": "cpuMs",
+      "before": {
+        "n": 5,
+        "min": 0.322,
+        "p50": 0.36,
+        "p95": 0.607,
+        "max": 0.607,
+        "mean": 0.41579999999999995
+      },
+      "after": {
+        "n": 5,
+        "min": 0.296,
+        "p50": 0.301,
+        "p95": 0.394,
+        "max": 0.394,
+        "mean": 0.3196
+      },
+      "deltaPercent": -16.388888888888886
+    },
+    {
+      "scenario": "sparse-live",
+      "operation": "step",
+      "metric": "wallMs",
+      "before": {
+        "n": 6,
+        "min": 4.185124999999971,
+        "p50": 4.188750000000255,
+        "p95": 5.259417000000212,
+        "max": 5.259417000000212,
+        "mean": 4.385117999999845
+      },
+      "after": {
+        "n": 6,
+        "min": 4.095749999999498,
+        "p50": 4.177708000000166,
+        "p95": 4.256666999999652,
+        "max": 4.256666999999652,
+        "mean": 4.185340333333291
+      },
+      "deltaPercent": -0.26361086243122944
+    },
+    {
+      "scenario": "sparse-live",
+      "operation": "step",
+      "metric": "cpuMs",
+      "before": {
+        "n": 6,
+        "min": 4.185,
+        "p50": 4.195,
+        "p95": 7.888,
+        "max": 7.888,
+        "mean": 4.825166666666667
+      },
+      "after": {
+        "n": 6,
+        "min": 4.096,
+        "p50": 4.177,
+        "p95": 4.642,
+        "max": 4.642,
+        "mean": 4.261666666666667
+      },
+      "deltaPercent": -0.42908224076282364
+    },
+    {
+      "scenario": "sparse-live",
+      "operation": "tenDurableLifecycleCycles",
+      "metric": "wallMs",
+      "before": {
+        "n": 6,
+        "min": 1.843707999999424,
+        "p50": 2.759541000000354,
+        "p95": 4.077874999999949,
+        "max": 4.077874999999949,
+        "mean": 2.853847166666583
+      },
+      "after": {
+        "n": 6,
+        "min": 1.856999999999971,
+        "p50": 2.7365829999998823,
+        "p95": 3.6540420000001177,
+        "max": 3.6540420000001177,
+        "mean": 2.748444666666728
+      },
+      "deltaPercent": -0.8319499511139195
+    },
+    {
+      "scenario": "sparse-live",
+      "operation": "tenDurableLifecycleCycles",
+      "metric": "cpuMs",
+      "before": {
+        "n": 6,
+        "min": 1.845,
+        "p50": 2.76,
+        "p95": 3.135,
+        "max": 3.135,
+        "mean": 2.698
+      },
+      "after": {
+        "n": 6,
+        "min": 1.858,
+        "p50": 2.737,
+        "p95": 3.001,
+        "max": 3.001,
+        "mean": 2.6405
+      },
+      "deltaPercent": -0.8333333333333193
+    },
+    {
+      "scenario": "sparse-live",
+      "operation": "repeatOpen",
+      "metric": "wallMs",
+      "before": {
+        "n": 5,
+        "min": 0.2976250000001528,
+        "p50": 0.31554200000027777,
+        "p95": 0.5964999999996508,
+        "max": 0.5964999999996508,
+        "mean": 0.3723750000001019
+      },
+      "after": {
+        "n": 5,
+        "min": 0.28570899999976973,
+        "p50": 0.28787499999998545,
+        "p95": 0.41029100000014296,
+        "max": 0.41029100000014296,
+        "mean": 0.3128665999998702
+      },
+      "deltaPercent": -8.768087924988743
+    },
+    {
+      "scenario": "sparse-live",
+      "operation": "repeatOpen",
+      "metric": "cpuMs",
+      "before": {
+        "n": 5,
+        "min": 0.299,
+        "p50": 0.316,
+        "p95": 0.567,
+        "max": 0.567,
+        "mean": 0.36719999999999997
+      },
+      "after": {
+        "n": 5,
+        "min": 0.286,
+        "p50": 0.288,
+        "p95": 0.372,
+        "max": 0.372,
+        "mean": 0.30579999999999996
+      },
+      "deltaPercent": -8.860759493670889
+    },
+    {
+      "scenario": "all-live",
+      "operation": "step",
+      "metric": "wallMs",
+      "before": {
+        "n": 6,
+        "min": 3.0818749999998545,
+        "p50": 3.1049169999996593,
+        "p95": 3.119374999999309,
+        "max": 3.119374999999309,
+        "mean": 3.1067776666665545
+      },
+      "after": {
+        "n": 6,
+        "min": 3.0820000000003347,
+        "p50": 3.109042000000045,
+        "p95": 3.13012499999968,
+        "max": 3.13012499999968,
+        "mean": 3.109736166666759
+      },
+      "deltaPercent": 0.13285379288354715
+    },
+    {
+      "scenario": "all-live",
+      "operation": "step",
+      "metric": "cpuMs",
+      "before": {
+        "n": 6,
+        "min": 3.102,
+        "p50": 3.112,
+        "p95": 3.277,
+        "max": 3.277,
+        "mean": 3.139666666666667
+      },
+      "after": {
+        "n": 6,
+        "min": 3.082,
+        "p50": 3.11,
+        "p95": 3.131,
+        "max": 3.131,
+        "mean": 3.1101666666666667
+      },
+      "deltaPercent": -0.06426735218509894
+    },
+    {
+      "scenario": "all-live",
+      "operation": "tenDurableLifecycleCycles",
+      "metric": "wallMs",
+      "before": {
+        "n": 6,
+        "min": 2.0636249999997744,
+        "p50": 2.4340830000001006,
+        "p95": 3.6052920000001905,
+        "max": 3.6052920000001905,
+        "mean": 2.582027833333541
+      },
+      "after": {
+        "n": 6,
+        "min": 2.0398340000001554,
+        "p50": 2.405999999999949,
+        "p95": 3.462999999999738,
+        "max": 3.462999999999738,
+        "mean": 2.528423833333212
+      },
+      "deltaPercent": -1.1537404435325471
+    },
+    {
+      "scenario": "all-live",
+      "operation": "tenDurableLifecycleCycles",
+      "metric": "cpuMs",
+      "before": {
+        "n": 6,
+        "min": 2.064,
+        "p50": 2.434,
+        "p95": 2.912,
+        "max": 2.912,
+        "mean": 2.467
+      },
+      "after": {
+        "n": 6,
+        "min": 2.04,
+        "p50": 2.407,
+        "p95": 2.811,
+        "max": 2.811,
+        "mean": 2.4203333333333337
+      },
+      "deltaPercent": -1.1092851273623694
+    },
+    {
+      "scenario": "all-live",
+      "operation": "repeatOpen",
+      "metric": "wallMs",
+      "before": {
+        "n": 5,
+        "min": 0.30599999999958527,
+        "p50": 0.3205419999994774,
+        "p95": 0.5681249999997817,
+        "max": 0.5681249999997817,
+        "mean": 0.37289999999993595
+      },
+      "after": {
+        "n": 5,
+        "min": 0.29441700000006676,
+        "p50": 0.3013750000000073,
+        "p95": 0.42854200000056153,
+        "max": 0.42854200000056153,
+        "mean": 0.32625840000000605
+      },
+      "deltaPercent": -5.979559620736563
+    },
+    {
+      "scenario": "all-live",
+      "operation": "repeatOpen",
+      "metric": "cpuMs",
+      "before": {
+        "n": 5,
+        "min": 0.307,
+        "p50": 0.321,
+        "p95": 0.531,
+        "max": 0.531,
+        "mean": 0.36619999999999997
+      },
+      "after": {
+        "n": 5,
+        "min": 0.295,
+        "p50": 0.302,
+        "p95": 0.391,
+        "max": 0.391,
+        "mean": 0.319
+      },
+      "deltaPercent": -5.919003115264799
+    },
+    {
+      "scenario": "held-mail",
+      "operation": "step",
+      "metric": "wallMs",
+      "before": {
+        "n": 6,
+        "min": 0.9182920000002923,
+        "p50": 0.9300419999999576,
+        "p95": 0.9430830000001151,
+        "max": 0.9430830000001151,
+        "mean": 0.9308610000001257
+      },
+      "after": {
+        "n": 6,
+        "min": 0.9239589999997406,
+        "p50": 0.9425000000001091,
+        "p95": 1.372457999999824,
+        "max": 1.372457999999824,
+        "mean": 1.011569333333379
+      },
+      "deltaPercent": 1.3395093985166362
+    },
+    {
+      "scenario": "held-mail",
+      "operation": "step",
+      "metric": "cpuMs",
+      "before": {
+        "n": 6,
+        "min": 0.919,
+        "p50": 0.93,
+        "p95": 1.114,
+        "max": 1.114,
+        "mean": 0.9601666666666667
+      },
+      "after": {
+        "n": 6,
+        "min": 0.925,
+        "p50": 0.945,
+        "p95": 1.498,
+        "max": 1.498,
+        "mean": 1.1233333333333333
+      },
+      "deltaPercent": 1.6129032258064502
+    },
+    {
+      "scenario": "held-mail",
+      "operation": "tenDurableLifecycleCycles",
+      "metric": "wallMs",
+      "before": {
+        "n": 6,
+        "min": 1.9553329999998823,
+        "p50": 2.218499999999949,
+        "p95": 3.2499589999997625,
+        "max": 3.2499589999997625,
+        "mean": 2.3758058333332883
+      },
+      "after": {
+        "n": 6,
+        "min": 1.879000000000815,
+        "p50": 2.21349999999984,
+        "p95": 3.0676250000005894,
+        "max": 3.0676250000005894,
+        "mean": 2.316888833333754
+      },
+      "deltaPercent": -0.22537750732969375
+    },
+    {
+      "scenario": "held-mail",
+      "operation": "tenDurableLifecycleCycles",
+      "metric": "cpuMs",
+      "before": {
+        "n": 6,
+        "min": 2.087,
+        "p50": 2.219,
+        "p95": 2.618,
+        "max": 2.618,
+        "mean": 2.2899999999999996
+      },
+      "after": {
+        "n": 6,
+        "min": 1.88,
+        "p50": 2.275,
+        "p95": 2.586,
+        "max": 2.586,
+        "mean": 2.269833333333333
+      },
+      "deltaPercent": 2.5236593059936974
+    },
+    {
+      "scenario": "held-mail",
+      "operation": "repeatOpen",
+      "metric": "wallMs",
+      "before": {
+        "n": 5,
+        "min": 0.29633299999932206,
+        "p50": 0.31045799999992596,
+        "p95": 0.5640419999999722,
+        "max": 0.5640419999999722,
+        "mean": 0.3623249999998734
+      },
+      "after": {
+        "n": 5,
+        "min": 0.30274999999983265,
+        "p50": 0.33487499999955617,
+        "p95": 0.43354200000067067,
+        "max": 0.43354200000067067,
+        "mean": 0.3559751999999207
+      },
+      "deltaPercent": 7.864831957828766
+    },
+    {
+      "scenario": "held-mail",
+      "operation": "repeatOpen",
+      "metric": "cpuMs",
+      "before": {
+        "n": 5,
+        "min": 0.297,
+        "p50": 0.31,
+        "p95": 0.541,
+        "max": 0.541,
+        "mean": 0.358
+      },
+      "after": {
+        "n": 5,
+        "min": 0.303,
+        "p50": 0.336,
+        "p95": 0.405,
+        "max": 0.405,
+        "mean": 0.3492
+      },
+      "deltaPercent": 8.387096774193559
+    },
+    {
+      "scenario": "write-every-tick",
+      "operation": "step",
+      "metric": "wallMs",
+      "before": {
+        "n": 6,
+        "min": 3.090541999999914,
+        "p50": 3.1029170000001614,
+        "p95": 3.1200840000001335,
+        "max": 3.1200840000001335,
+        "mean": 3.104875333333439
+      },
+      "after": {
+        "n": 6,
+        "min": 3.0818749999998545,
+        "p50": 3.097541000000092,
+        "p95": 4.71454199999971,
+        "max": 4.71454199999971,
+        "mean": 3.367381833333335
+      },
+      "deltaPercent": -0.17325632622686715
+    },
+    {
+      "scenario": "write-every-tick",
+      "operation": "step",
+      "metric": "cpuMs",
+      "before": {
+        "n": 6,
+        "min": 3.09,
+        "p50": 3.103,
+        "p95": 3.12,
+        "max": 3.12,
+        "mean": 3.1061666666666667
+      },
+      "after": {
+        "n": 6,
+        "min": 3.082,
+        "p50": 3.097,
+        "p95": 5.058,
+        "max": 5.058,
+        "mean": 3.4250000000000007
+      },
+      "deltaPercent": -0.19336126329358994
+    },
+    {
+      "scenario": "write-every-tick",
+      "operation": "tenDurableLifecycleCycles",
+      "metric": "wallMs",
+      "before": {
+        "n": 6,
+        "min": 2.1457919999993464,
+        "p50": 2.405374999999367,
+        "p95": 3.7423750000007203,
+        "max": 3.7423750000007203,
+        "mean": 2.626750166666625
+      },
+      "after": {
+        "n": 6,
+        "min": 2.0912500000004,
+        "p50": 2.421459000000141,
+        "p95": 3.2899579999993875,
+        "max": 3.2899579999993875,
+        "mean": 2.5131944999999782
+      },
+      "deltaPercent": 0.6686691264679245
+    },
+    {
+      "scenario": "write-every-tick",
+      "operation": "tenDurableLifecycleCycles",
+      "metric": "cpuMs",
+      "before": {
+        "n": 6,
+        "min": 2.147,
+        "p50": 2.405,
+        "p95": 2.809,
+        "max": 2.809,
+        "mean": 2.4718333333333335
+      },
+      "after": {
+        "n": 6,
+        "min": 2.092,
+        "p50": 2.422,
+        "p95": 2.632,
+        "max": 2.632,
+        "mean": 2.4038333333333335
+      },
+      "deltaPercent": 0.7068607068607236
+    },
+    {
+      "scenario": "write-every-tick",
+      "operation": "repeatOpen",
+      "metric": "wallMs",
+      "before": {
+        "n": 5,
+        "min": 0.2866249999997308,
+        "p50": 0.29112499999973807,
+        "p95": 0.5999579999997877,
+        "max": 0.5999579999997877,
+        "mean": 0.35522479999981443
+      },
+      "after": {
+        "n": 5,
+        "min": 0.2796669999997903,
+        "p50": 0.2828330000002097,
+        "p95": 0.39870799999971496,
+        "max": 0.39870799999971496,
+        "mean": 0.3053249999997206
+      },
+      "deltaPercent": -2.848261056087864
+    },
+    {
+      "scenario": "write-every-tick",
+      "operation": "repeatOpen",
+      "metric": "cpuMs",
+      "before": {
+        "n": 5,
+        "min": 0.287,
+        "p50": 0.292,
+        "p95": 0.543,
+        "max": 0.543,
+        "mean": 0.3442
+      },
+      "after": {
+        "n": 5,
+        "min": 0.28,
+        "p50": 0.283,
+        "p95": 0.36,
+        "max": 0.36,
+        "mean": 0.29779999999999995
+      },
+      "deltaPercent": -3.082191780821919
+    }
+  ],
+  "scope": "Real CoreStore and DaemonCore with FakeDriver, source runtime. One process alternates both implementations over copied identical databases. No provider/process readiness or whole-daemon idle claim. First open is one sample per scenario and includes candidate index installation; repeat open includes close/checkpoint. Closed bytes include the subsequent identical lifecycle writes. Write batches grow the same retained history on both sides; every mutation commits with production durability. RSS and private memory are not measured here."
+}

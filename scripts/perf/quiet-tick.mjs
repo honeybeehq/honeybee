@@ -79,6 +79,7 @@ try {
   });
   const stateDigest = () => createHash('sha256').update(JSON.stringify(store.dumpState())).digest('hex');
   const state = stateDigest();
+  const auditSeq = store.lastAuditSeq();
   for (let i = 0; i < 3; i++) core.step();
   for (const key of Object.keys(phases)) delete phases[key];
   global.gc();
@@ -110,6 +111,7 @@ try {
     session.disconnect(); session = undefined;
   }
   assert.equal(stateDigest(), state, 'quiet ticks must not change durable state');
+  assert.equal(store.lastAuditSeq(), auditSeq, 'quiet ticks must not append audit events');
   global.gc();
   const collectedAfter = process.memoryUsage();
   assert.deepEqual(sourceFingerprint(), { revision: source.revision, hashes: source.hashes }, 'source changed during capture');
@@ -120,7 +122,7 @@ try {
   }
   const report = { schemaVersion: 2, completed: true, startedAt, timestamp: new Date().toISOString(),
     measurement: { startedAt: measurementStartedAt, finishedAt: measurementFinishedAt },
-    source, toolHashes,
+    source, toolHashes, auditSeq,
     environment: { node: process.version, platform: process.platform, arch: process.arch, hostname: hostname(),
       bootIdentity: bootIdentity(), cpu: cpus()[0]?.model, logicalCpus: cpus().length,
       execArgv: process.execArgv, nodeCompileCache: process.env.NODE_COMPILE_CACHE ?? null,
