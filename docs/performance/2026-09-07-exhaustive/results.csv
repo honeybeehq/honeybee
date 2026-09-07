@@ -1,0 +1,12 @@
+Status,Measurement,Before,After,Unit,Workload,Evidence
+Landed,Quiet core tick,3.241,0.022,ms CPU,1000 stopped Bees,empty-snapshot-results.md
+Landed,Real daemon idle,9.715,0.467,% of one CPU core,1000 stopped Bees; isolated daemon,empty-snapshot-results.md
+Landed,Existing stop check,176.946,0.036,ms CPU,100000 settled commands,command-probe-results.md
+Landed; residual open,Boot recovery,174.552,11.854,ms CPU,100000 settled commands,command-probe-results.md
+Landed; write cost measured,No-due flag expiry,2.691,0.007,ms CPU,100000 cleared +1000 future flags,designs/flag-expiry.md
+Landed; scaling open,Empty task supplies,21.325,12.295,ms CPU,1000 enabled supplies,task-supply-results.md
+Landed; scaling open,Paused task supplies,27.28,12.796,ms CPU,1000 paused supplies,task-supply-results.md
+Held for refinement,Sparse core tick,43.459,0.026,ms CPU,10000 retained Bees;1live,sparse-first-candidate.md
+Held for refinement,Held message tick,8.517,10.458,ms CPU,10000 held64-byte messages,sparse-first-candidate.md
+Held for refinement,Large-body tick,19.053,22.153,ms CPU,100held1MiB messages,sparse-first-candidate.md
+Held for refinement,Sampled allocation traffic,3148753632,3325680,bytes,30profiled ticks;100held1MiB messages;not retained memory,sparse-first-candidate.md

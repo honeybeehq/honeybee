@@ -11,6 +11,9 @@ import { performance } from 'node:perf_hooks';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { bootIdentity } from './boot-identity.mjs';
 import { distribution } from './report.mjs';
+import { summarizeGitTrace } from './git-trace.mjs';
+
+assert.equal(process.env.GIT_TRACE2_EVENT, undefined, 'unset inherited GIT_TRACE2_EVENT for uninstrumented timing');
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 // Pinned dates make every fixture AND every measured merge/rebase commit
@@ -75,6 +78,10 @@ function rulerGit(cwd, argv, opts = {}) {
 const refDigest = repo => sha256(rulerGit(repo, ['for-each-ref']).stdout);
 const rev = (repo, ref) => rulerGit(repo, ['rev-parse', '--verify', `${ref}^{commit}`]).stdout.trim();
 const showFile = (repo, sha, path) => rulerGit(repo, ['show', `${sha}:${path}`]).stdout;
+const headState = repo => ({
+  symbolic: rulerGit(repo, ['symbolic-ref', '--quiet', 'HEAD'], { allowFail: true }).stdout.trim(),
+  commit: rev(repo, 'HEAD'),
+});
 
 function gitFingerprint(root) {
   const g = (...argv) => {
@@ -87,7 +94,7 @@ function gitFingerprint(root) {
     diffSha256: sha256(g('diff', '--binary', 'HEAD')),
     hashes: Object.fromEntries(files.map(p => [p, digestFile(join(root, p))])) };
 }
-const fingerprintTools = () => Object.fromEntries(['cell-exit.mjs', 'report.mjs', 'boot-identity.mjs']
+const fingerprintTools = () => Object.fromEntries(['cell-exit.mjs', 'report.mjs', 'boot-identity.mjs', 'git-trace.mjs']
   .map(p => [p, digestFile(join(scriptDir, p))]));
 
 const startedAt = new Date().toISOString();
@@ -163,7 +170,7 @@ function buildFixture(caseName, dir, cfg) {
   } // branch-create: no target branch; refused-checked-out: target is 'main'.
   rmSync(shaper, { recursive: true, force: true });
   const targetBranch = caseName === 'refused-checked-out' ? 'main' : target;
-  return { origin, cell, targetBranch, baseSha, cellHead, targetTip, preRefs: refDigest(origin) };
+  return { origin, cell, targetBranch, baseSha, cellHead, targetTip, preRefs: refDigest(origin), originHead: headState(origin), cellHeadState: headState(cell), cellRefs: refDigest(cell) };
 }
 
 // Exact expectations per case; resultSha checked structurally + cross-side.
@@ -189,6 +196,10 @@ function expectedReport(caseName, fx) {
 
 /** Assert one sample's full outcome outside timing, then reset the fixture. */
 function verifyAndReset(caseName, fx, cfg, report) {
+  assert.deepEqual(headState(fx.origin), fx.originHead, 'origin HEAD must remain unchanged');
+  assert.deepEqual(headState(fx.cell), fx.cellHeadState, 'Cell HEAD must remain unchanged');
+  assert.equal(refDigest(fx.cell), fx.cellRefs, 'Cell refs must remain unchanged');
+  assert.equal(rulerGit(fx.cell, ['status', '--porcelain']).stdout, '', 'Cell working tree must remain unchanged');
   const expected = expectedReport(caseName, fx);
   const landedResult = report.resultSha;
   if (expected.status === 'landed' && expected.resultSha === null) {
@@ -221,24 +232,23 @@ function verifyAndReset(caseName, fx, cfg, report) {
   return landedResult;
 }
 
-function parseTrace2(path) {
-  let raw = '';
-  try { raw = readFileSync(path, 'utf8'); } catch { return { processes: 0, children: 0, commands: {} }; }
-  const commands = {}; let processes = 0, children = 0;
-  for (const line of raw.split('\n')) {
-    if (!line.trim()) continue;
-    let ev; try { ev = JSON.parse(line); } catch { continue; }
-    if (ev.event === 'start') {
-      processes += 1;
-      const argv = Array.isArray(ev.argv) ? ev.argv.map(String) : [];
-      // Local-transport children run as dashed binaries (git-upload-pack <path>).
-      const dashed = (argv[0] ?? '').match(/git-([a-z-]+)$/);
-      const name = dashed ? dashed[1] : (argv.slice(1).find(a => !a.startsWith('-')) ?? 'unknown');
-      commands[name] = (commands[name] ?? 0) + 1;
-    }
-    if (ev.event === 'child_start') children += 1;
+function parseTrace2(path, retainedPath) {
+  const bytes = readFileSync(path);
+  const events = bytes.toString('utf8').split('\n').filter(line => line.trim()).map(line => JSON.parse(line));
+  assert.ok(events.every(event => event && typeof event === 'object' && typeof event.event === 'string'), 'malformed Git trace event');
+  const topLevel = summarizeGitTrace(events);
+  assert.ok(topLevel.commandCount > 0, 'missing Git operation trace');
+  const commands = {};
+  const starts = events.filter(event => event.event === 'start');
+  for (const event of starts) {
+    assert.ok(Array.isArray(event.argv) && event.argv.every(arg => typeof arg === 'string'), 'malformed Git argv');
+    const dashed = (event.argv[0] ?? '').match(/git-([a-z-]+)$/);
+    const name = dashed ? dashed[1] : (event.argv.slice(1).find(arg => !arg.startsWith('-')) ?? 'unknown');
+    commands[name] = (commands[name] ?? 0) + 1;
   }
-  return { processes, children, commands };
+  writeFileSync(retainedPath, bytes);
+  return { processes: starts.length, children: events.filter(event => event.event === 'child_start').length,
+    commands, topLevel, artifact: { path: retainedPath, bytes: bytes.length, sha256: sha256(bytes) } };
 }
 
 // --- run -------------------------------------------------------------------
@@ -330,8 +340,10 @@ try {
       try { probe = run(side); } finally { delete process.env.GIT_TRACE2_EVENT; }
       const landed = verifyAndReset(caseName, sides[side], cfg, probe.result);
       if (landed != null) landedShas[side].add(landed);
-      return parseTrace2(path);
+      return parseTrace2(path, `${out}.${caseName}.${side}.trace2.jsonl`);
     });
+    for (const set of landedShas) assert.ok(set.size <= 1, 'diagnostic result must preserve the measured landed SHA');
+    assert.deepEqual([...landedShas[0]], [...landedShas[1]], 'diagnostic results must match across sides');
     report.results.push({
       case: caseName, mode,
       setup: { baseSha: sides[0].baseSha, cellHead: sides[0].cellHead, targetTip: sides[0].targetTip,
@@ -357,6 +369,9 @@ try {
     report.rows.push({ case: r.case, metric, before: b, after: a,
       deltaPercent: b.p50 === 0 ? null : (a.p50 / b.p50 - 1) * 100 });
   }
+  assert.deepEqual(bootIdentity(), report.environment.bootIdentity, 'boot changed during capture');
+  assert.equal(rulerGit(runDir, ['--version']).stdout.trim(), report.environment.gitVersion, 'Git version changed during capture');
+  assert.equal(report.results.length, caseFilter.length, 'incomplete cases');
   report.environment.loadAfter = loadavg();
   report.timestamp = new Date().toISOString();
   report.completed = true;

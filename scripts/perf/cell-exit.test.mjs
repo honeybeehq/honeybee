@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -32,6 +33,14 @@ test('cell-exit smoke pairs one root with itself and produces exact deterministi
       assert.equal(result.order.length, 12);
       assert.deepEqual([...new Set(result.order)].sort(), [0, 1]);
       assert.equal(result.trace2.diagnosticOnly, true);
+      for (const side of ['before', 'after']) {
+        const trace = result.trace2[side];
+        const bytes = readFileSync(trace.artifact.path);
+        assert.equal(createHash('sha256').update(bytes).digest('hex'), trace.artifact.sha256);
+        assert.ok(trace.topLevel.commandCount > 0);
+        assert.ok(trace.topLevel.commandCount <= trace.processes, 'nested Git commands are not double-counted in root duration');
+        assert.ok(trace.topLevel.wallMs >= 0);
+      }
     }
     const merge = report.results.find(r => r.case === 'merge-land');
     assert.match(merge.setup.landedSha, /^[a-f0-9]{40}$/, 'pinned dates make the landed sha reportable');
