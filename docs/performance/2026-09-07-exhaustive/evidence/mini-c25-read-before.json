@@ -1,0 +1,5154 @@
+{
+  "schemaVersion": 1,
+  "completed": true,
+  "startedAt": "2026-09-07T11:13:09.913Z",
+  "timestamp": "2026-09-07T11:13:18.312Z",
+  "measurement": {
+    "startedAt": "2026-09-07T11:13:10.038Z",
+    "finishedAt": "2026-09-07T11:13:18.298Z"
+  },
+  "source": {
+    "root": "/private/tmp/honeybee-perf-5763a6c9-20260907/integrated-7eb",
+    "revision": "7eb8ecb7b28fa6e6ec3607deb41097a77f26caaa",
+    "hashes": {
+      "v2/adapters/src/agy.ts": "ae4751062d36382252aae126e7c0ee024bbcf65009cc12adc16721e24e9dbbc7",
+      "v2/adapters/src/args.ts": "759f2e5c01bacffd8bca998ae7573c1284da38f043a6d6fdd758cba40fb030f6",
+      "v2/adapters/src/claude.ts": "78f4b15d50a1f2eba8f74fcc4672e2b008db544950c6ed03a8a8b183b7f6e046",
+      "v2/adapters/src/codex.ts": "e03c2f253f5adbd877761683bdceb02ad3725ede0ea9bb66718fb6060df902cb",
+      "v2/adapters/src/grok.ts": "71f647f0b8fb2a32427604ddf45e0a7b54a4a1b876418c7f91de8c3024c0d84f",
+      "v2/adapters/src/index.ts": "6869fe4ec44c1eeefa53ff1660a00c8556330e30acb30cc3265fb78483aadcdf",
+      "v2/adapters/src/stub.ts": "4fdfca1b8dca0cc396bd495fac99d5fcab7005b40bb598e33413a5747e8f3ccc",
+      "v2/adapters/src/types.ts": "c37098d1cb7d06a8137f1fda87ad1affcb6d8b37e325665b1e5123b029fa2dd3",
+      "v2/cli/src/bin.ts": "330f6bb9d42c72475929a6e104fa5c318051b57816acd4056b3c7523010b8a8c",
+      "v2/cli/src/client.ts": "421e107f912c5f9fae6d51cb2e3b10d8ffe83e70e6660adef03392d59739cafd",
+      "v2/cli/src/help.ts": "1343b7559d210c809233a5c3f4775c796f0d73d5f8d81221829afe419a9b0df3",
+      "v2/cli/src/index.ts": "705f8de04ba4adb8b563d11f2def4da5ae0904ec9bcd0c062d9ce2019676bfd8",
+      "v2/cli/src/main.ts": "c9b719d95d75c8979f9cf2ddb860e109e1f9a971c2b398029113b86dcd9258a6",
+      "v2/cli/src/readonly.ts": "8e94374a1e10bfe065915dded41ffdd60957d0f5aff7d692edbfc67f10b14091",
+      "v2/cli/src/render.ts": "6efc8d278c87ac8c90a6588790e5b7a80eb6dbf997254326b32098c77d6f2897",
+      "v2/cli/src/style.ts": "2f5e611fa6b1aee3c0a3afefdf0cfb9b830736ce4c3f2f9c53d73e5bee5cc5fd",
+      "v2/core/src/accountLimitsParse.ts": "4101b50909a9c9d79aa9761c4a5b68bc3d808ad36acca38e75c07779a51068a3",
+      "v2/core/src/accountMatch.ts": "90ebe4e125f83d28bc1a1c99cbff9b813362d3b38bbac8b97182014cb4fcf980",
+      "v2/core/src/accountRecipes.ts": "837c397aab4c9fa8a02b890372fac3e29b73d4ba8307913446309d00e715b6b7",
+      "v2/core/src/accountSelect.ts": "2536db3146b2d9a66c812e294c8d668df5e82e3bea9d2923308dff4060e01f5c",
+      "v2/core/src/audit.ts": "b25292a72b403e9e5f8c8ff785e07ef4750ccd6b0b02734afb13f2d94ad14e3c",
+      "v2/core/src/cellMove.ts": "64a0c07352dbab4226c2b173655eb412b976c4f22e4b9d158e5e829c0884d0d6",
+      "v2/core/src/executables.ts": "4a878c553014ceabcdd7e940e274d652799c2852474ada614d5c80cca1eadc7c",
+      "v2/core/src/import-frozen.ts": "c4e84004d16133eeefb38cdf07bd639dbb2d3cda2662eaa4652e986500b5507e",
+      "v2/core/src/index.ts": "f39a777c163ee60a0159749d5380a3e87ed35c93cb2f4445814b90803edcb6db",
+      "v2/core/src/loginFlow.ts": "727d42b6a98a271577cd462e128b0287e7c571e5e06104b3afb5bdff49d35460",
+      "v2/core/src/mirror.ts": "8bcbdb8763eba166d3568f02181d6523c75b7d5fd43eb084e2d5762de5dc33ab",
+      "v2/core/src/packages.ts": "e14a3c6c013211235ca84c137a93f12ead10beff01c876c2741a7e419b944f17",
+      "v2/core/src/registry.ts": "1cd3e1c5a239882474818466907b5f5b2d10501e178b0ad13d24fb2fae8123ff",
+      "v2/core/src/schema.ts": "05d20522860531838aa553d3bb60f49776bb228abe9e895756b66178027481ed",
+      "v2/core/src/store.ts": "e5bc7f0c34322b67138f64e749087058d3198c51ae6b46ae715029f3a1455748",
+      "v2/core/src/tasks.ts": "2f266a9640ed4b9c7ceeea18aee63ce11521cc416ecc3b5ce118ebb5c195a263",
+      "v2/core/src/types.ts": "11f505e7bda3b575731671e198d83562ab400b2772bb8eb315f1acef9dcc899a",
+      "v2/core/src/view.ts": "1af7f27540c29f4aa9e2c44d7118685f296128a8ab4579df17671ce0abb04693",
+      "v2/daemon/src/accountsService.ts": "3f13d0481bb54b793d7f0ea6d7f03536d8e5d4ae2be1a8631b17440d596a8a5b",
+      "v2/daemon/src/activation.ts": "7e7056e53671e9caea816fa1162478905ecfc9a408afbad73750ee411056bab7",
+      "v2/daemon/src/autoTitle.ts": "245e0202fd3758aac7cbf022f328ccc4b3f0e88b58303ff03b0e675bceef3e91",
+      "v2/daemon/src/bin.ts": "8ef32816d19e0c2adc85a81a740de8935c7a8bc77e94118203a761b16679754d",
+      "v2/daemon/src/config.ts": "64ea73400095dd007eadbde1eceb0b748a9efbbb343c579e930d93883368f89b",
+      "v2/daemon/src/cursorAuth.ts": "1f0d554fd3ea0351b108404d6b7912701be184e8e26ea89bd2b692a42ae4f924",
+      "v2/daemon/src/daemon.ts": "244a1bacec54a850ba111b53bd456240f04c6608ac7510cfe9d8e5b588498cbb",
+      "v2/daemon/src/envelope.ts": "dc0bff3d7706be31b3fce162e370c1e6e6b7ed8cd2eca43ab1ba6e9ccada6c7a",
+      "v2/daemon/src/gateways.ts": "5c57d479fdbfd871f31de9172da2c9011466258cb46cc764f1776af82da9145c",
+      "v2/daemon/src/homeDefaults.ts": "a63090c09cc8d102b46effa2f8f205457b0e3d73baaaca15cd836e2c0896fc3c",
+      "v2/daemon/src/import-probes.ts": "14cdeb5b7c47d1da44a8eff3e92e22a52a523dcaf250174cefd1c6c46f15529a",
+      "v2/daemon/src/index.ts": "5f8b71e1193407322cb5b44e87bd30cb8384aeb783c22803a10aca034aa691a9",
+      "v2/daemon/src/keychain.ts": "97ecd409db519ba195662dc5f41cbb2b31c36b68100a57bcdc0c1f89ef877ad5",
+      "v2/daemon/src/login/claudeOauth.ts": "9781bf55222a833a9f4461f704a9a10ccb71030a547ca978dae16428f5ce89ff",
+      "v2/daemon/src/login/cliRunner.ts": "ef14344f05033a1ecf510054d3b717db945a203c2b2c32fe3d2607058ca7d52a",
+      "v2/daemon/src/login/common.ts": "1f93ae2e3757ff297cfcd3d94fdf9e838e546a5beed67999f9e0a1b88ebedc46",
+      "v2/daemon/src/login/directKey.ts": "91224b228da3a12dc828d5290900ed1a59ed95766cc9f5f36d273d9e6b862ba2",
+      "v2/daemon/src/login/runner.ts": "53811aa26fecf68f66e6714110efb5664ad2081586b369ab159c25e044d7f17c",
+      "v2/daemon/src/login/transports.ts": "a7073ba48a5ae49cbf2d9109812bbe299ed18487f551d1bf5271bb47b7357e15",
+      "v2/daemon/src/loginFlows.ts": "4460f4a8f8e14900e106e817862cfa8a60cb0f15c6327741d23896736b708c94",
+      "v2/daemon/src/loginWorker.ts": "4a70f08d716550337509663c7586b235568b1fe7bccfbeecfc57d7bdc2fdd378",
+      "v2/daemon/src/loops.ts": "0ac725bde06c430489ea4643a236f275a9f642f32ea8f172f96839c1218fc8fa",
+      "v2/daemon/src/main.ts": "7546a94f78f8817ca3a869aa63b2d62d16ffa5404ecb60d63cc742733236f903",
+      "v2/daemon/src/naming.ts": "eae82ba481b3e5b74d7d80c38ca50d6bbf64e378e48e8a7c953d35b2f0a643f5",
+      "v2/daemon/src/namingService.ts": "e8ee4b2026fea2460fb59d60db034ec694b32f76ec2cf7eeba3ea1abf6c36001",
+      "v2/daemon/src/performance.ts": "01ad16258243eea10fa089ea8aae0d396fab4f56fac1ce9f77dd953b7ec2db02",
+      "v2/daemon/src/protocol.ts": "9a0a5439d3312f9a6a6c454bf0983500e236ec49f0ca858cca169d7f08108654",
+      "v2/daemon/src/providerLimits.ts": "befe91217b50c927419389adb50527fd0867ed58d5111f13bcb669eb2b700790",
+      "v2/daemon/src/relocateSession.ts": "bb23acc8d738f024ac8a674b4c7f1366e9913c0b792df2814d9d0869c2ee04e7",
+      "v2/daemon/src/rpc.ts": "39ae485f3cbf72058c93ccbb0427833683ba9836388035065355689f717b3203",
+      "v2/daemon/src/service.ts": "e5aee133fb1f0b5a14f10633e92d5fca7812bfd4e3a0a74ad0ecf2e5ba23a4cb",
+      "v2/daemon/src/substrates.ts": "914b18b4e6e6e7cd2525f5943edb3080c031e16d08934fd4021b55ebf3c1c27c",
+      "v2/daemon/src/telemetry.ts": "0f234f5f77df593387db1ed6c08ba64ccd45f3ffa60303bbd178765aefd0980c",
+      "v2/daemon/src/tmuxHarness.ts": "aebc0a90c9ff4a03a466cdf2edc4fe282dc91388cf9966a0412801fb0bea320f",
+      "v2/daemon/tests/helpers.ts": "9d63216758bec78d1f0e6f7fa949d67ee1f4b1d90eb5efdd4a8888cda75ea0f3",
+      "v2/driver-cell/src/capture.ts": "a14dfc01a4f053e3c5f63b2cb984453ae33630ab3c91415d403f01d552906cc3",
+      "v2/driver-cell/src/cow.ts": "24eb5ce7b6536de861ca261a5d80096343115e14bc8a23e354a2e8a74f318b10",
+      "v2/driver-cell/src/driver.ts": "b513f6a7faaaaa8352a6025b28cc6768e73ea7a2470c4d9aa3686642fa3be88b",
+      "v2/driver-cell/src/exec.ts": "1c022870cd0279d92672b917e2ff8cbc52c3e7b74d47491b5e552b2eb4c72c9b",
+      "v2/driver-cell/src/git.ts": "a8bf50ed3dd720d94fa3b45c2dd6fbfbb82b534e38848af44408c2ca9a10be8d",
+      "v2/driver-cell/src/gitImage.ts": "9b7b1dc8a762caaac402d108bbd9286630a1376b4844ea8d2d3c6232d0a19007",
+      "v2/driver-cell/src/index.ts": "93522d17c0a9bf95c8f7452b24778bb8845af7fed440dc0c22c7fdd60db07661",
+      "v2/driver-cell/src/layout.ts": "68a677450c0d851cf97c50f8616fd25961ddea59dd6b8ac3c0a739042c4775f8",
+      "v2/driver-cell/src/ledger.ts": "efdf4762fab38defd8ec3e68dceba52a44a11d17962b027cb4a0302eec429834",
+      "v2/driver-cell/src/provision.ts": "8293821e57266a0b4f7a2e0e6d25c584cac6caf1ac0afad207311af57558be66",
+      "v2/driver-cell/src/provisionWorker.ts": "a651cc6000ef33f7ed52384f678543b28fea4f363113b3218d45219c510a2d4c",
+      "v2/driver-cell/src/remove.ts": "914e22bf0182c90503731cbeb9877c0d697cda5d410b224223499fab33e75aa5",
+      "v2/driver-cell/src/sandbox.ts": "be390c169c3bc8b06191997ea08c7d6b57f417df26f5bffc21bcef75713ab4ad",
+      "v2/driver-hsr/src/driver.ts": "1bda7217fa6f00701403e14c0887627711fde3038a080ace11dd5b594bc59c38",
+      "v2/driver-hsr/src/index.ts": "8f9542db7792d462ab9b10f9537b9c05f31acf9934d6c32b3f248de8beb97e5e",
+      "v2/driver-hsr/src/psutil.ts": "1beb05854deb6fbe12f206d7436648e7be2a8ae00bcfd0acd13ef3f9fb1c1edb",
+      "v2/driver-hsr/src/runner-host-main.ts": "10c4f1c2af2e2dc20bdddba51e7972bc976831c1bf40b5f5772a2519538411da",
+      "v2/driver-hsr/src/runner-host.ts": "7f1716db45160657ef2109d8a18ae064cbab065f0321b22d29f9a193a3f3c152",
+      "v2/driver-tmux/src/agy-projection.ts": "1d5284c9835d499f0e55dc52ec70a5d36175993f0ccbab7f2e21fcf60f92a9ff",
+      "v2/driver-tmux/src/claude-projection.ts": "df6d2d8967f70ac4b6796a234de83d1e325e41210794972aee41b1a7294882f6",
+      "v2/driver-tmux/src/codex-projection.ts": "2ff68aa8e4d8c802bef9abedb7595e29f038c7ba4cf81403f7efc54a03225e1b",
+      "v2/driver-tmux/src/driver.ts": "26fe0516fe49f389d1f5cad30ee0002e829ae1aba75fe6cec8a0ea886b670820",
+      "v2/driver-tmux/src/events-file.ts": "ddb2ba04f32ef325def8d5287a518659a42e41801034304bc74e4695962a0e99",
+      "v2/driver-tmux/src/grok-projection.ts": "d0d419367031c9738fc6a5a0e27ea6c8a15399b06834239b92f2c2603d406823",
+      "v2/driver-tmux/src/index.ts": "f716470ff208ac29febfe90031b025d969a2eefc5461e649d77d43813fce278d",
+      "v2/driver-tmux/src/tail.ts": "40e24f0d34401e7990581eef3eff1d1542defbc846a92339e61bb81a95a0d156",
+      "v2/driver-tmux/src/tmux.ts": "92607334202f8fb8c8cedf7b9d1454d8742a867c4c8082f7f2f6617a6c285eb9",
+      "v2/driver-tmux/src/transcript-projection.ts": "98bdd52792da1d74ddfe28332c54ae76adc8f6b52e94e1b4f233a94cabf96c78",
+      "v2/driver-tmux/src/transcripts.ts": "f23289d6199d9d2ec288f60de0a3475ce5aa41e20230763380386d4d2c545509",
+      "v2/harness/src/clock.ts": "690b130f9bb111af2099cc96d19a114258bf3bc6353d7a440d53b3141c9e2446",
+      "v2/harness/src/daemon.ts": "2b8f17080275ef72b3612e4b446b9e951d203373c70bcec7b83e3b21c91d81ef",
+      "v2/harness/src/driver.ts": "df41b313a0ab97a637eddb5a3ba2be4456293776aa46acfd3eb29af5315a1442",
+      "v2/harness/src/faults.ts": "6152e965e33f1501f9beee0f5a3c42ce18a8b71897713043716a993de48cfc20",
+      "v2/harness/src/index.ts": "200de7850d2848f5b1d2afa72fdbd1490d2919efd8f77976508416ccb7b9a191",
+      "v2/harness/src/invariants.ts": "5ab63d4da3399534d6a2d9eff705d1c6c403e14b39b5749b5863bd7d04daccbb",
+      "v2/harness/src/prng.ts": "1be8ed3684abb058b30f83b89239385928abb14d8c24616ebf925c95af4639e8",
+      "v2/harness/src/sim-driver.ts": "70b5b013351a8a089e2b13509cb3abe5d8182b18e07f920859abc68e4dd10e31",
+      "v2/harness/src/simulation.ts": "9979407c9e3483294675c47b23b802a724adcea73681ae8d8480f47f5e2d650c"
+    },
+    "status": "",
+    "diffSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "toolHashes": {
+    "read-hotspots.mjs": "6db79d9d8d54772f7c15c6f60fbb050b55675bfc9b9b8c0c114a44a3826101fd",
+    "sql-trace.mjs": "e16ef5f0cc9c265482a7ac08cc331cecb97709be12f0df4f5f9f04dcd903a754",
+    "report.mjs": "d1ad61cdac530c2748345235bc546166089e31e4e9614492a761fa3db3afbba7",
+    "boot-identity.mjs": "555b2a8de914ecba13defbd76542b65b6af15d204b156fb15f58ea9b8036d0fa"
+  },
+  "environment": {
+    "node": "v24.18.0",
+    "platform": "darwin",
+    "release": "24.6.0",
+    "osVersion": "Darwin Kernel Version 24.6.0: Wed Nov  5 21:34:00 PST 2025; root:xnu-11417.140.69.705.2~1/RELEASE_ARM64_T8132",
+    "arch": "arm64",
+    "hostname": "Mac.home",
+    "bootIdentity": {
+      "method": "darwin-kern.bootsessionuuid-sha256",
+      "sha256": "e9278b19e15e59f2422e3cbfcd73a284c146b83b5bfa40e69c3053019b6d8732"
+    },
+    "cpu": "Apple M4",
+    "logicalCpus": 10,
+    "totalMemoryBytes": 17179869184,
+    "execArgv": [],
+    "nodeCompileCache": null,
+    "nodeOptionsSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "loadBefore": [
+      1.603515625,
+      1.6181640625,
+      1.4228515625
+    ],
+    "loadAfter": [
+      1.51025390625,
+      1.59716796875,
+      1.4169921875
+    ]
+  },
+  "workload": {
+    "scale": "canonical",
+    "samples": 15,
+    "warmups": 3,
+    "scenarios": [
+      {
+        "id": "d05-boot-recovery-0-false",
+        "inventoryId": "D05",
+        "kind": "boot-recovery",
+        "operation": "DaemonCore.boot",
+        "fixture": {
+          "settledCommands": 0,
+          "thenRevive": false
+        }
+      },
+      {
+        "id": "d05-boot-recovery-1000-false",
+        "inventoryId": "D05",
+        "kind": "boot-recovery",
+        "operation": "DaemonCore.boot",
+        "fixture": {
+          "settledCommands": 1000,
+          "thenRevive": false
+        }
+      },
+      {
+        "id": "d05-boot-recovery-100000-false",
+        "inventoryId": "D05",
+        "kind": "boot-recovery",
+        "operation": "DaemonCore.boot",
+        "fixture": {
+          "settledCommands": 100000,
+          "thenRevive": false
+        }
+      },
+      {
+        "id": "d05-pending-stop-0-true",
+        "inventoryId": "D05",
+        "kind": "pending-stop",
+        "operation": "DaemonCore.step",
+        "fixture": {
+          "settledCommands": 0,
+          "futureQueuedStop": true
+        }
+      },
+      {
+        "id": "d05-pending-stop-1000-true",
+        "inventoryId": "D05",
+        "kind": "pending-stop",
+        "operation": "DaemonCore.step",
+        "fixture": {
+          "settledCommands": 1000,
+          "futureQueuedStop": true
+        }
+      },
+      {
+        "id": "d05-pending-stop-100000-true",
+        "inventoryId": "D05",
+        "kind": "pending-stop",
+        "operation": "DaemonCore.step",
+        "fixture": {
+          "settledCommands": 100000,
+          "futureQueuedStop": true
+        }
+      },
+      {
+        "id": "c07-flag-expiry-100000-1000",
+        "inventoryId": "C07",
+        "kind": "flag-expiry",
+        "operation": "CoreStore.expireFlags",
+        "fixture": {
+          "clearedFlags": 100000,
+          "activeFutureFlags": 1000
+        }
+      },
+      {
+        "id": "c09-held-idle-64",
+        "inventoryId": "C09",
+        "kind": "held-idle",
+        "operation": "DaemonCore.step",
+        "fixture": {
+          "bodyBytes": 64
+        }
+      },
+      {
+        "id": "c09-stopped-pending-64",
+        "inventoryId": "C09",
+        "kind": "stopped-pending",
+        "operation": "DaemonCore.step",
+        "fixture": {
+          "bodyBytes": 64
+        }
+      },
+      {
+        "id": "c09-pending-page-64",
+        "inventoryId": "C09",
+        "kind": "pending-page",
+        "operation": "CoreStore.pendingMail",
+        "fixture": {
+          "bodyBytes": 64
+        }
+      },
+      {
+        "id": "c09-held-idle-1048576",
+        "inventoryId": "C09",
+        "kind": "held-idle",
+        "operation": "DaemonCore.step",
+        "fixture": {
+          "bodyBytes": 1048576
+        }
+      },
+      {
+        "id": "c09-stopped-pending-1048576",
+        "inventoryId": "C09",
+        "kind": "stopped-pending",
+        "operation": "DaemonCore.step",
+        "fixture": {
+          "bodyBytes": 1048576
+        }
+      },
+      {
+        "id": "c09-pending-page-1048576",
+        "inventoryId": "C09",
+        "kind": "pending-page",
+        "operation": "CoreStore.pendingMail",
+        "fixture": {
+          "bodyBytes": 1048576
+        }
+      },
+      {
+        "id": "c10-full-100000-100000-0",
+        "inventoryId": "C10",
+        "kind": "full",
+        "operation": "CoreStore.listMessages",
+        "fixture": {
+          "totalMessages": 100000,
+          "targetMessages": 100000,
+          "unrelatedMessages": 0
+        }
+      },
+      {
+        "id": "c10-sparse-100020-20-100000",
+        "inventoryId": "C10",
+        "kind": "sparse",
+        "operation": "CoreStore.listMessages",
+        "fixture": {
+          "totalMessages": 100020,
+          "targetMessages": 20,
+          "unrelatedMessages": 100000
+        }
+      },
+      {
+        "id": "c22-enabled-empty-0",
+        "inventoryId": "C22",
+        "kind": "enabled-empty",
+        "operation": "DaemonCore.step",
+        "fixture": {
+          "supplies": 0
+        }
+      },
+      {
+        "id": "c22-enabled-empty-100",
+        "inventoryId": "C22",
+        "kind": "enabled-empty",
+        "operation": "DaemonCore.step",
+        "fixture": {
+          "supplies": 100
+        }
+      },
+      {
+        "id": "c22-enabled-empty-1000",
+        "inventoryId": "C22",
+        "kind": "enabled-empty",
+        "operation": "DaemonCore.step",
+        "fixture": {
+          "supplies": 1000
+        }
+      },
+      {
+        "id": "c22-enabled-paused-100",
+        "inventoryId": "C22",
+        "kind": "enabled-paused",
+        "operation": "DaemonCore.step",
+        "fixture": {
+          "supplies": 100
+        }
+      },
+      {
+        "id": "c22-enabled-paused-1000",
+        "inventoryId": "C22",
+        "kind": "enabled-paused",
+        "operation": "DaemonCore.step",
+        "fixture": {
+          "supplies": 1000
+        }
+      },
+      {
+        "id": "c25-audit-tail-1000000-20",
+        "inventoryId": "C25",
+        "kind": "audit-tail",
+        "operation": "CoreStore.auditTail",
+        "fixture": {
+          "unrelatedAuditRows": 1000000,
+          "targetAuditRows": 20
+        }
+      },
+      {
+        "id": "c18-rpc-hit-10000",
+        "inventoryId": "C18",
+        "kind": "rpc-hit",
+        "operation": "CoreStore.lookupRpcResult",
+        "fixture": {
+          "retainedRows": 10000
+        }
+      },
+      {
+        "id": "c18-rpc-insert-10000-9981-19",
+        "inventoryId": "C18",
+        "kind": "rpc-insert",
+        "operation": "CoreStore.recordRpcResult",
+        "fixture": {
+          "retentionRows": 10000,
+          "seedRows": 9981,
+          "distinctWrites": 19
+        }
+      },
+      {
+        "id": "c18-rpc-eviction-10000-10000-19",
+        "inventoryId": "C18",
+        "kind": "rpc-eviction",
+        "operation": "CoreStore.recordRpcResult",
+        "fixture": {
+          "retentionRows": 10000,
+          "seedRows": 10000,
+          "distinctWrites": 19
+        }
+      }
+    ],
+    "timingInstrumentation": "none",
+    "diagnosticInstrumentation": "one separate post-timing captureSql call per case",
+    "durability": "CoreStore production defaults: WAL/NORMAL during every timed operation",
+    "fixtureSeed": "offline SQLite with synchronous=OFF while CoreStore is closed",
+    "fixedNow": 1800000000000
+  },
+  "results": [
+    {
+      "scenario": "d05-boot-recovery-0-false",
+      "inventoryId": "D05",
+      "operation": "DaemonCore.boot",
+      "fixture": {
+        "settledCommands": 0,
+        "thenRevive": false
+      },
+      "completed": true,
+      "measurement": {
+        "startedAt": "2026-09-07T11:13:10.043Z",
+        "finishedAt": "2026-09-07T11:13:10.044Z"
+      },
+      "setup": {
+        "count": 0,
+        "firstId": null,
+        "lastId": null,
+        "orderSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "runtimeState": "stopped",
+        "driverLiveProcesses": 0
+      },
+      "raw": {
+        "wallMs": [
+          0.07370800000001054,
+          0.06766700000000014,
+          0.06379199999997809,
+          0.06104100000001722,
+          0.06341699999998696,
+          0.05920800000001236,
+          0.06216600000001904,
+          0.050750000000022055,
+          0.0524170000000197,
+          0.049041000000016766,
+          0.04683299999999235,
+          0.050667000000004236,
+          0.047584000000000515,
+          0.04666599999998766,
+          0.04841600000000312
+        ],
+        "cpuMs": [
+          0.089,
+          0.07,
+          0.098,
+          0.064,
+          0.107,
+          0.073,
+          0.096,
+          0.051,
+          0.053,
+          0.049,
+          0.048,
+          0.051,
+          0.049,
+          0.047,
+          0.049
+        ]
+      },
+      "metrics": {
+        "operation.wall": {
+          "unit": "ms",
+          "n": 15,
+          "min": 0.04666599999998766,
+          "p50": 0.0524170000000197,
+          "p95": 0.07370800000001054,
+          "max": 0.07370800000001054,
+          "mean": 0.05622486666667138
+        },
+        "operation.cpu": {
+          "unit": "ms",
+          "n": 15,
+          "min": 0.047,
+          "p50": 0.053,
+          "p95": 0.107,
+          "max": 0.107,
+          "mean": 0.06626666666666668
+        }
+      },
+      "sqlDiagnostic": {
+        "instrumented": true,
+        "timingUse": "diagnostic-only; excluded from raw samples and speed comparisons",
+        "statements": [
+          {
+            "kind": "exec",
+            "sql": "BEGIN IMMEDIATE",
+            "calls": 2,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.006292000000001963,
+            "cpuMs": 0.013000000000000001
+          },
+          {
+            "kind": "prepare",
+            "sql": "SELECT * FROM runtimes WHERE state != 'stopped' ORDER BY bee_id, generation",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.005290999999999713,
+            "cpuMs": 0.006
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT * FROM runtimes WHERE state != 'stopped' ORDER BY bee_id, generation",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0037089999999864176,
+            "cpuMs": 0.004
+          },
+          {
+            "kind": "prepare",
+            "sql": "INSERT INTO audit(ts, kind, bee_id, payload) VALUES(?, ?, ?, ?)",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.005083000000013271,
+            "cpuMs": 0.007
+          },
+          {
+            "kind": "run",
+            "sql": "INSERT INTO audit(ts, kind, bee_id, payload) VALUES(?, ?, ?, ?)",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.002124999999978172,
+            "cpuMs": 0.003
+          },
+          {
+            "kind": "exec",
+            "sql": "COMMIT",
+            "calls": 2,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.01066600000001472,
+            "cpuMs": 0.012
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT * FROM bees ORDER BY id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 1,
+            "textBytes": 136,
+            "blobBytes": 0,
+            "wallMs": 0.003500000000002501,
+            "cpuMs": 0.004
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT * FROM bees WHERE id = ?",
+            "calls": 2,
+            "errors": 0,
+            "rows": 2,
+            "textBytes": 272,
+            "blobBytes": 0,
+            "wallMs": 0.006416999999999007,
+            "cpuMs": 0.007
+          },
+          {
+            "kind": "prepare",
+            "sql": "SELECT * FROM mailbox WHERE bee_id = ? AND delivered_at IS NULL ORDER BY id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.006667000000021517,
+            "cpuMs": 0.007
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT * FROM mailbox WHERE bee_id = ? AND delivered_at IS NULL ORDER BY id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0008750000000077307,
+            "cpuMs": 0.002
+          },
+          {
+            "kind": "prepare",
+            "sql": "SELECT * FROM runtimes WHERE bee_id = ? ORDER BY generation DESC LIMIT 1",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0047919999999805896,
+            "cpuMs": 0.027
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT * FROM runtimes WHERE bee_id = ? ORDER BY generation DESC LIMIT 1",
+            "calls": 1,
+            "errors": 0,
+            "rows": 1,
+            "textBytes": 18,
+            "blobBytes": 0,
+            "wallMs": 0.002082999999998947,
+            "cpuMs": 0.004
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT 1 FROM commands\n       WHERE bee_id = ? AND status IN ('done','running')\n         AND verb = 'stop' AND target_generation = ?\n         AND json_type(args, '$.thenRevive') = 'true'\n       LIMIT 1",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0027910000000019863,
+            "cpuMs": 0.003
+          }
+        ]
+      },
+      "correctness": {
+        "exactSettledHistoryRetained": true,
+        "thenReviveMatched": false,
+        "bootAuditRows": 19,
+        "authoritySeqBefore": 4,
+        "authoritySeqAfter": 23
+      },
+      "failure": null
+    },
+    {
+      "scenario": "d05-boot-recovery-1000-false",
+      "inventoryId": "D05",
+      "operation": "DaemonCore.boot",
+      "fixture": {
+        "settledCommands": 1000,
+        "thenRevive": false
+      },
+      "completed": true,
+      "measurement": {
+        "startedAt": "2026-09-07T11:13:10.057Z",
+        "finishedAt": "2026-09-07T11:13:10.059Z"
+      },
+      "setup": {
+        "count": 1000,
+        "firstId": 1,
+        "lastId": 1000,
+        "orderSha256": "0915313291dc654993d2b9b7706a157b7b5f74fe659bdb4a61af86b878b3d7c1",
+        "runtimeState": "stopped",
+        "driverLiveProcesses": 0
+      },
+      "raw": {
+        "wallMs": [
+          0.15454199999999219,
+          0.1734170000000006,
+          0.15483299999999645,
+          0.15304199999999923,
+          0.1570419999999899,
+          0.1579579999999794,
+          0.1540409999999781,
+          0.15629100000001017,
+          0.15583300000000122,
+          0.1582909999999913,
+          0.15262500000000045,
+          0.15187499999998977,
+          0.15637499999999704,
+          0.15345800000000054,
+          0.15900000000002024
+        ],
+        "cpuMs": [
+          0.158,
+          0.174,
+          0.155,
+          0.154,
+          0.158,
+          0.212,
+          0.156,
+          0.157,
+          0.156,
+          0.158,
+          0.153,
+          0.152,
+          0.157,
+          0.154,
+          0.159
+        ]
+      },
+      "metrics": {
+        "operation.wall": {
+          "unit": "ms",
+          "n": 15,
+          "min": 0.15187499999998977,
+          "p50": 0.15583300000000122,
+          "p95": 0.1734170000000006,
+          "max": 0.1734170000000006,
+          "mean": 0.15657486666666312
+        },
+        "operation.cpu": {
+          "unit": "ms",
+          "n": 15,
+          "min": 0.152,
+          "p50": 0.157,
+          "p95": 0.212,
+          "max": 0.212,
+          "mean": 0.16086666666666663
+        }
+      },
+      "sqlDiagnostic": {
+        "instrumented": true,
+        "timingUse": "diagnostic-only; excluded from raw samples and speed comparisons",
+        "statements": [
+          {
+            "kind": "exec",
+            "sql": "BEGIN IMMEDIATE",
+            "calls": 2,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.002124999999978172,
+            "cpuMs": 0.006
+          },
+          {
+            "kind": "prepare",
+            "sql": "SELECT * FROM runtimes WHERE state != 'stopped' ORDER BY bee_id, generation",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.005832999999995536,
+            "cpuMs": 0.007
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT * FROM runtimes WHERE state != 'stopped' ORDER BY bee_id, generation",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.001125000000001819,
+            "cpuMs": 0.001
+          },
+          {
+            "kind": "prepare",
+            "sql": "INSERT INTO audit(ts, kind, bee_id, payload) VALUES(?, ?, ?, ?)",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.004792000000009011,
+            "cpuMs": 0.005
+          },
+          {
+            "kind": "run",
+            "sql": "INSERT INTO audit(ts, kind, bee_id, payload) VALUES(?, ?, ?, ?)",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0025420000000053733,
+            "cpuMs": 0.003
+          },
+          {
+            "kind": "exec",
+            "sql": "COMMIT",
+            "calls": 2,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.013417000000004009,
+            "cpuMs": 0.013
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT * FROM bees ORDER BY id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 1,
+            "textBytes": 139,
+            "blobBytes": 0,
+            "wallMs": 0.007374999999996135,
+            "cpuMs": 0.009
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT * FROM bees WHERE id = ?",
+            "calls": 2,
+            "errors": 0,
+            "rows": 2,
+            "textBytes": 278,
+            "blobBytes": 0,
+            "wallMs": 0.00620800000001509,
+            "cpuMs": 0.007
+          },
+          {
+            "kind": "prepare",
+            "sql": "SELECT * FROM mailbox WHERE bee_id = ? AND delivered_at IS NULL ORDER BY id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.005041000000005624,
+            "cpuMs": 0.005
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT * FROM mailbox WHERE bee_id = ? AND delivered_at IS NULL ORDER BY id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0009589999999946031,
+            "cpuMs": 0.001
+          },
+          {
+            "kind": "prepare",
+            "sql": "SELECT * FROM runtimes WHERE bee_id = ? ORDER BY generation DESC LIMIT 1",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.004165999999997894,
+            "cpuMs": 0.004
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT * FROM runtimes WHERE bee_id = ? ORDER BY generation DESC LIMIT 1",
+            "calls": 1,
+            "errors": 0,
+            "rows": 1,
+            "textBytes": 18,
+            "blobBytes": 0,
+            "wallMs": 0.002207999999995991,
+            "cpuMs": 0.003
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT 1 FROM commands\n       WHERE bee_id = ? AND status IN ('done','running')\n         AND verb = 'stop' AND target_generation = ?\n         AND json_type(args, '$.thenRevive') = 'true'\n       LIMIT 1",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.10949999999999704,
+            "cpuMs": 0.109
+          }
+        ]
+      },
+      "correctness": {
+        "exactSettledHistoryRetained": true,
+        "thenReviveMatched": false,
+        "bootAuditRows": 19,
+        "authoritySeqBefore": 4,
+        "authoritySeqAfter": 23
+      },
+      "failure": null
+    },
+    {
+      "scenario": "d05-boot-recovery-100000-false",
+      "inventoryId": "D05",
+      "operation": "DaemonCore.boot",
+      "fixture": {
+        "settledCommands": 100000,
+        "thenRevive": false
+      },
+      "completed": true,
+      "measurement": {
+        "startedAt": "2026-09-07T11:13:10.912Z",
+        "finishedAt": "2026-09-07T11:13:11.088Z"
+      },
+      "setup": {
+        "count": 100000,
+        "firstId": 1,
+        "lastId": 100000,
+        "orderSha256": "17ed5422017f86374a205ac4daba70db6e00683971138a5cc42fa9f8377f3218",
+        "runtimeState": "stopped",
+        "driverLiveProcesses": 0
+      },
+      "raw": {
+        "wallMs": [
+          11.855665999999928,
+          12.264625000000024,
+          11.879708000000164,
+          11.903458,
+          11.723332999999911,
+          11.820917000000009,
+          11.735875000000078,
+          11.683790999999928,
+          11.623417000000018,
+          11.640083000000004,
+          11.55941699999994,
+          11.533333000000084,
+          11.634667000000036,
+          11.59616600000004,
+          11.618999999999915
+        ],
+        "cpuMs": [
+          11.863,
+          12.266,
+          11.88,
+          11.904,
+          11.723,
+          11.822,
+          11.735,
+          11.683,
+          11.624,
+          11.641,
+          11.56,
+          11.534,
+          11.635,
+          11.597,
+          11.619
+        ]
+      },
+      "metrics": {
+        "operation.wall": {
+          "unit": "ms",
+          "n": 15,
+          "min": 11.533333000000084,
+          "p50": 11.683790999999928,
+          "p95": 12.264625000000024,
+          "max": 12.264625000000024,
+          "mean": 11.738230400000004
+        },
+        "operation.cpu": {
+          "unit": "ms",
+          "n": 15,
+          "min": 11.534,
+          "p50": 11.683,
+          "p95": 12.266,
+          "max": 12.266,
+          "mean": 11.739066666666666
+        }
+      },
+      "sqlDiagnostic": {
+        "instrumented": true,
+        "timingUse": "diagnostic-only; excluded from raw samples and speed comparisons",
+        "statements": [
+          {
+            "kind": "exec",
+            "sql": "BEGIN IMMEDIATE",
+            "calls": 2,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0021670000003268797,
+            "cpuMs": 0.004
+          },
+          {
+            "kind": "prepare",
+            "sql": "SELECT * FROM runtimes WHERE state != 'stopped' ORDER BY bee_id, generation",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.005583999999998923,
+            "cpuMs": 0.007
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT * FROM runtimes WHERE state != 'stopped' ORDER BY bee_id, generation",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.005583999999998923,
+            "cpuMs": 0.007
+          },
+          {
+            "kind": "prepare",
+            "sql": "INSERT INTO audit(ts, kind, bee_id, payload) VALUES(?, ?, ?, ?)",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.005832999999938693,
+            "cpuMs": 0.006
+          },
+          {
+            "kind": "run",
+            "sql": "INSERT INTO audit(ts, kind, bee_id, payload) VALUES(?, ?, ?, ?)",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0072079999999914435,
+            "cpuMs": 0.008
+          },
+          {
+            "kind": "exec",
+            "sql": "COMMIT",
+            "calls": 2,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.01520699999991848,
+            "cpuMs": 0.015
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT * FROM bees ORDER BY id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 1,
+            "textBytes": 141,
+            "blobBytes": 0,
+            "wallMs": 0.004959000000098968,
+            "cpuMs": 0.006
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT * FROM bees WHERE id = ?",
+            "calls": 2,
+            "errors": 0,
+            "rows": 2,
+            "textBytes": 282,
+            "blobBytes": 0,
+            "wallMs": 0.0061659999998937565,
+            "cpuMs": 0.007
+          },
+          {
+            "kind": "prepare",
+            "sql": "SELECT * FROM mailbox WHERE bee_id = ? AND delivered_at IS NULL ORDER BY id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.005458000000089669,
+            "cpuMs": 0.006
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT * FROM mailbox WHERE bee_id = ? AND delivered_at IS NULL ORDER BY id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0015410000000883883,
+            "cpuMs": 0.003
+          },
+          {
+            "kind": "prepare",
+            "sql": "SELECT * FROM runtimes WHERE bee_id = ? ORDER BY generation DESC LIMIT 1",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.006041999999979453,
+            "cpuMs": 0.007
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT * FROM runtimes WHERE bee_id = ? ORDER BY generation DESC LIMIT 1",
+            "calls": 1,
+            "errors": 0,
+            "rows": 1,
+            "textBytes": 18,
+            "blobBytes": 0,
+            "wallMs": 0.0032919999998739513,
+            "cpuMs": 0.004
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT 1 FROM commands\n       WHERE bee_id = ? AND status IN ('done','running')\n         AND verb = 'stop' AND target_generation = ?\n         AND json_type(args, '$.thenRevive') = 'true'\n       LIMIT 1",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 11.588416999999936,
+            "cpuMs": 11.589
+          }
+        ]
+      },
+      "correctness": {
+        "exactSettledHistoryRetained": true,
+        "thenReviveMatched": false,
+        "bootAuditRows": 19,
+        "authoritySeqBefore": 4,
+        "authoritySeqAfter": 23
+      },
+      "failure": null
+    },
+    {
+      "scenario": "d05-pending-stop-0-true",
+      "inventoryId": "D05",
+      "operation": "DaemonCore.step",
+      "fixture": {
+        "settledCommands": 0,
+        "futureQueuedStop": true
+      },
+      "completed": true,
+      "measurement": {
+        "startedAt": "2026-09-07T11:13:11.277Z",
+        "finishedAt": "2026-09-07T11:13:11.277Z"
+      },
+      "setup": {
+        "count": 1,
+        "firstId": 1,
+        "lastId": 1,
+        "orderSha256": "1ecbcdb2890c16ed141262a4ed904ca09408ed01965a6ff701da4a6fc60ec850",
+        "pendingStopId": 1,
+        "pendingStopNotBefore": 1800086400000,
+        "runtimeState": "booting"
+      },
+      "raw": {
+        "wallMs": [
+          0.04595799999992778,
+          0.05662499999993997,
+          0.04920900000001893,
+          0.044290999999930136,
+          0.042665999999826454,
+          0.055459000000155356,
+          0.075458000000026,
+          0.05220799999983683,
+          0.043083000000024185,
+          0.04295899999988251,
+          0.04062500000009095,
+          0.03899999999998727,
+          0.03787499999998545,
+          0.038917000000083135,
+          0.03633399999989706
+        ],
+        "cpuMs": [
+          0.051,
+          0.06,
+          0.125,
+          0.075,
+          0.043,
+          0.056,
+          0.153,
+          0.151,
+          0.085,
+          0.044,
+          0.041,
+          0.04,
+          0.038,
+          0.039,
+          0.037
+        ]
+      },
+      "metrics": {
+        "operation.wall": {
+          "unit": "ms",
+          "n": 15,
+          "min": 0.03633399999989706,
+          "p50": 0.043083000000024185,
+          "p95": 0.075458000000026,
+          "max": 0.075458000000026,
+          "mean": 0.04671113333330747
+        },
+        "operation.cpu": {
+          "unit": "ms",
+          "n": 15,
+          "min": 0.037,
+          "p50": 0.051,
+          "p95": 0.153,
+          "max": 0.153,
+          "mean": 0.0692
+        }
+      },
+      "sqlDiagnostic": {
+        "instrumented": true,
+        "timingUse": "diagnostic-only; excluded from raw samples and speed comparisons",
+        "statements": [
+          {
+            "kind": "exec",
+            "sql": "BEGIN IMMEDIATE",
+            "calls": 3,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0023759999999128922,
+            "cpuMs": 0.006
+          },
+          {
+            "kind": "exec",
+            "sql": "COMMIT",
+            "calls": 3,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0017920000002504821,
+            "cpuMs": 0.004
+          },
+          {
+            "kind": "prepare",
+            "sql": "SELECT * FROM flags WHERE cleared_at IS NULL AND resets_at IS NOT NULL AND resets_at <= ? ORDER BY id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.004999999999881766,
+            "cpuMs": 0.005
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT * FROM flags WHERE cleared_at IS NULL AND resets_at IS NOT NULL AND resets_at <= ? ORDER BY id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0011669999998957792,
+            "cpuMs": 0.002
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT MAX(seq) AS seq FROM audit",
+            "calls": 2,
+            "errors": 0,
+            "rows": 2,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.001834000000371816,
+            "cpuMs": 0.003
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' LIMIT 1",
+            "calls": 1,
+            "errors": 0,
+            "rows": 1,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0009159999999610591,
+            "cpuMs": 0.001
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT runtime.bee_id,\n              runtime.generation,\n              runtime.state,\n              runtime.started_at,\n              runtime.updated_at,\n              runtime.boot_evidence\n       FROM runtimes AS runtime\n       WHERE runtime.state != 'stopped'\n         AND runtime.generation = (\n           SELECT MAX(latest.generation)\n           FROM runtimes AS latest\n           WHERE latest.bee_id = runtime.bee_id\n         )\n       ORDER BY runtime.bee_id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 1,
+            "textBytes": 13,
+            "blobBytes": 0,
+            "wallMs": 0.002083000000084212,
+            "cpuMs": 0.003
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT message.id,\n              message.bee_id,\n              message.urgency,\n              message.enqueued_at\n       FROM runtimes AS runtime\n       CROSS JOIN mailbox AS message\n       WHERE runtime.state != 'stopped'\n         AND runtime.generation = (\n           SELECT MAX(latest.generation)\n           FROM runtimes AS latest\n           WHERE latest.bee_id = runtime.bee_id\n         )\n         AND message.bee_id = runtime.bee_id\n         AND message.delivered_at IS NULL\n       ORDER BY runtime.bee_id, message.id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0013750000000527507,
+            "cpuMs": 0.002
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT 1 FROM commands\n       WHERE bee_id = ? AND status IN ('queued','running')\n         AND verb = 'stop' AND target_generation = ?\n       LIMIT 1",
+            "calls": 1,
+            "errors": 0,
+            "rows": 1,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.01799999999980173,
+            "cpuMs": 0.018
+          },
+          {
+            "kind": "prepare",
+            "sql": "SELECT * FROM commands WHERE status = 'queued' AND next_attempt_at <= ?\n             AND NOT (verb = 'stop' AND json_type(args, '$.replacementArgs') IS NOT NULL\n               AND EXISTS (SELECT 1 FROM runtimes r WHERE r.bee_id = commands.bee_id\n                 AND r.generation = commands.target_generation AND r.state IN ('booting', 'running')))\n             AND NOT (\n               verb IN ('spawn', 'send_wake')\n               AND EXISTS (\n                 SELECT 1 FROM bees b\n                 JOIN bee_moves m ON m.id = b.active_move_id\n                 WHERE b.id = commands.bee_id\n                   AND m.phase IN ('stopping', 'placing')\n               )\n             )\n             AND NOT (\n               verb = 'revive'\n               AND EXISTS (\n                 SELECT 1 FROM bees b\n                 JOIN bee_moves m ON m.id = b.active_move_id\n                 WHERE b.id = commands.bee_id\n                   AND (m.phase != 'starting' OR commands.idempotency_key IS NULL OR commands.idempotency_key != m.revive_command_key)\n               )\n             )\n             ORDER BY id LIMIT 1",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.018915999999990163,
+            "cpuMs": 0.019
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT * FROM commands WHERE status = 'queued' AND next_attempt_at <= ?\n             AND NOT (verb = 'stop' AND json_type(args, '$.replacementArgs') IS NOT NULL\n               AND EXISTS (SELECT 1 FROM runtimes r WHERE r.bee_id = commands.bee_id\n                 AND r.generation = commands.target_generation AND r.state IN ('booting', 'running')))\n             AND NOT (\n               verb IN ('spawn', 'send_wake')\n               AND EXISTS (\n                 SELECT 1 FROM bees b\n                 JOIN bee_moves m ON m.id = b.active_move_id\n                 WHERE b.id = commands.bee_id\n                   AND m.phase IN ('stopping', 'placing')\n               )\n             )\n             AND NOT (\n               verb = 'revive'\n               AND EXISTS (\n                 SELECT 1 FROM bees b\n                 JOIN bee_moves m ON m.id = b.active_move_id\n                 WHERE b.id = commands.bee_id\n                   AND (m.phase != 'starting' OR commands.idempotency_key IS NULL OR commands.idempotency_key != m.revive_command_key)\n               )\n             )\n             ORDER BY id LIMIT 1",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0017089999998916028,
+            "cpuMs": 0.002
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT m.* FROM bees b JOIN bee_moves m ON m.id = b.active_move_id\n       WHERE b.active_move_id IS NOT NULL ORDER BY m.id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0006669999997939158,
+            "cpuMs": 0.001
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT * FROM task_supply ORDER BY bee_id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0005419999999958236,
+            "cpuMs": 0.001
+          }
+        ]
+      },
+      "correctness": {
+        "steps": 19,
+        "quietAuthority": true,
+        "futureStopRetained": true,
+        "authoritySeqBefore": 2,
+        "authoritySeqAfter": 2
+      },
+      "failure": null
+    },
+    {
+      "scenario": "d05-pending-stop-1000-true",
+      "inventoryId": "D05",
+      "operation": "DaemonCore.step",
+      "fixture": {
+        "settledCommands": 1000,
+        "futureQueuedStop": true
+      },
+      "completed": true,
+      "measurement": {
+        "startedAt": "2026-09-07T11:13:11.294Z",
+        "finishedAt": "2026-09-07T11:13:11.295Z"
+      },
+      "setup": {
+        "count": 1001,
+        "firstId": 1,
+        "lastId": 1001,
+        "orderSha256": "d024318e6e3f7d73555c23ce8af3823a26eeb2627b4fd9a7ccba07d78b664a75",
+        "pendingStopId": 1001,
+        "pendingStopNotBefore": 1800086400000,
+        "runtimeState": "booting"
+      },
+      "raw": {
+        "wallMs": [
+          0.04104200000006131,
+          0.04091700000003584,
+          0.036833000000115135,
+          0.035708999999997104,
+          0.035667000000103144,
+          0.03462500000000546,
+          0.03520800000001145,
+          0.03491700000017772,
+          0.03429199999982302,
+          0.03429200000005039,
+          0.034333000000060565,
+          0.035041999999975815,
+          0.034791000000041095,
+          0.06341699999984485,
+          0.034958000000187894
+        ],
+        "cpuMs": [
+          0.043,
+          0.042,
+          0.037,
+          0.037,
+          0.036,
+          0.036,
+          0.035,
+          0.035,
+          0.035,
+          0.035,
+          0.036,
+          0.036,
+          0.036,
+          0.064,
+          0.035
+        ]
+      },
+      "metrics": {
+        "operation.wall": {
+          "unit": "ms",
+          "n": 15,
+          "min": 0.03429199999982302,
+          "p50": 0.035041999999975815,
+          "p95": 0.06341699999984485,
+          "max": 0.06341699999984485,
+          "mean": 0.03773620000003272
+        },
+        "operation.cpu": {
+          "unit": "ms",
+          "n": 15,
+          "min": 0.035,
+          "p50": 0.036,
+          "p95": 0.064,
+          "max": 0.064,
+          "mean": 0.038533333333333336
+        }
+      },
+      "sqlDiagnostic": {
+        "instrumented": true,
+        "timingUse": "diagnostic-only; excluded from raw samples and speed comparisons",
+        "statements": [
+          {
+            "kind": "exec",
+            "sql": "BEGIN IMMEDIATE",
+            "calls": 3,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.002707999999756794,
+            "cpuMs": 0.006
+          },
+          {
+            "kind": "exec",
+            "sql": "COMMIT",
+            "calls": 3,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0020839999999680003,
+            "cpuMs": 0.003
+          },
+          {
+            "kind": "prepare",
+            "sql": "SELECT * FROM flags WHERE cleared_at IS NULL AND resets_at IS NOT NULL AND resets_at <= ? ORDER BY id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0060000000000854925,
+            "cpuMs": 0.007
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT * FROM flags WHERE cleared_at IS NULL AND resets_at IS NOT NULL AND resets_at <= ? ORDER BY id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.001125000000001819,
+            "cpuMs": 0.003
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT MAX(seq) AS seq FROM audit",
+            "calls": 2,
+            "errors": 0,
+            "rows": 2,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0017510000000129367,
+            "cpuMs": 0.002
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' LIMIT 1",
+            "calls": 1,
+            "errors": 0,
+            "rows": 1,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.000959000000193555,
+            "cpuMs": 0.002
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT runtime.bee_id,\n              runtime.generation,\n              runtime.state,\n              runtime.started_at,\n              runtime.updated_at,\n              runtime.boot_evidence\n       FROM runtimes AS runtime\n       WHERE runtime.state != 'stopped'\n         AND runtime.generation = (\n           SELECT MAX(latest.generation)\n           FROM runtimes AS latest\n           WHERE latest.bee_id = runtime.bee_id\n         )\n       ORDER BY runtime.bee_id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 1,
+            "textBytes": 13,
+            "blobBytes": 0,
+            "wallMs": 0.0025000000000545697,
+            "cpuMs": 0.037
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT message.id,\n              message.bee_id,\n              message.urgency,\n              message.enqueued_at\n       FROM runtimes AS runtime\n       CROSS JOIN mailbox AS message\n       WHERE runtime.state != 'stopped'\n         AND runtime.generation = (\n           SELECT MAX(latest.generation)\n           FROM runtimes AS latest\n           WHERE latest.bee_id = runtime.bee_id\n         )\n         AND message.bee_id = runtime.bee_id\n         AND message.delivered_at IS NULL\n       ORDER BY runtime.bee_id, message.id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0016250000001036824,
+            "cpuMs": 0.002
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT 1 FROM commands\n       WHERE bee_id = ? AND status IN ('queued','running')\n         AND verb = 'stop' AND target_generation = ?\n       LIMIT 1",
+            "calls": 1,
+            "errors": 0,
+            "rows": 1,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.003167000000075859,
+            "cpuMs": 0.003
+          },
+          {
+            "kind": "prepare",
+            "sql": "SELECT * FROM commands WHERE status = 'queued' AND next_attempt_at <= ?\n             AND NOT (verb = 'stop' AND json_type(args, '$.replacementArgs') IS NOT NULL\n               AND EXISTS (SELECT 1 FROM runtimes r WHERE r.bee_id = commands.bee_id\n                 AND r.generation = commands.target_generation AND r.state IN ('booting', 'running')))\n             AND NOT (\n               verb IN ('spawn', 'send_wake')\n               AND EXISTS (\n                 SELECT 1 FROM bees b\n                 JOIN bee_moves m ON m.id = b.active_move_id\n                 WHERE b.id = commands.bee_id\n                   AND m.phase IN ('stopping', 'placing')\n               )\n             )\n             AND NOT (\n               verb = 'revive'\n               AND EXISTS (\n                 SELECT 1 FROM bees b\n                 JOIN bee_moves m ON m.id = b.active_move_id\n                 WHERE b.id = commands.bee_id\n                   AND (m.phase != 'starting' OR commands.idempotency_key IS NULL OR commands.idempotency_key != m.revive_command_key)\n               )\n             )\n             ORDER BY id LIMIT 1",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.021250000000009095,
+            "cpuMs": 0.034
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT * FROM commands WHERE status = 'queued' AND next_attempt_at <= ?\n             AND NOT (verb = 'stop' AND json_type(args, '$.replacementArgs') IS NOT NULL\n               AND EXISTS (SELECT 1 FROM runtimes r WHERE r.bee_id = commands.bee_id\n                 AND r.generation = commands.target_generation AND r.state IN ('booting', 'running')))\n             AND NOT (\n               verb IN ('spawn', 'send_wake')\n               AND EXISTS (\n                 SELECT 1 FROM bees b\n                 JOIN bee_moves m ON m.id = b.active_move_id\n                 WHERE b.id = commands.bee_id\n                   AND m.phase IN ('stopping', 'placing')\n               )\n             )\n             AND NOT (\n               verb = 'revive'\n               AND EXISTS (\n                 SELECT 1 FROM bees b\n                 JOIN bee_moves m ON m.id = b.active_move_id\n                 WHERE b.id = commands.bee_id\n                   AND (m.phase != 'starting' OR commands.idempotency_key IS NULL OR commands.idempotency_key != m.revive_command_key)\n               )\n             )\n             ORDER BY id LIMIT 1",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.002208999999993466,
+            "cpuMs": 0.003
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT m.* FROM bees b JOIN bee_moves m ON m.id = b.active_move_id\n       WHERE b.active_move_id IS NOT NULL ORDER BY m.id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0006250000001273293,
+            "cpuMs": 0.001
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT * FROM task_supply ORDER BY bee_id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0004999999998744897,
+            "cpuMs": 0.001
+          }
+        ]
+      },
+      "correctness": {
+        "steps": 19,
+        "quietAuthority": true,
+        "futureStopRetained": true,
+        "authoritySeqBefore": 2,
+        "authoritySeqAfter": 2
+      },
+      "failure": null
+    },
+    {
+      "scenario": "d05-pending-stop-100000-true",
+      "inventoryId": "D05",
+      "operation": "DaemonCore.step",
+      "fixture": {
+        "settledCommands": 100000,
+        "futureQueuedStop": true
+      },
+      "completed": true,
+      "measurement": {
+        "startedAt": "2026-09-07T11:13:12.186Z",
+        "finishedAt": "2026-09-07T11:13:12.187Z"
+      },
+      "setup": {
+        "count": 100001,
+        "firstId": 1,
+        "lastId": 100001,
+        "orderSha256": "f534512303c9b1f68e1ee15c5165221a45c74cbbbfc114a2636c95662432e552",
+        "pendingStopId": 100001,
+        "pendingStopNotBefore": 1800086400000,
+        "runtimeState": "booting"
+      },
+      "raw": {
+        "wallMs": [
+          0.04204200000003766,
+          0.03958299999976589,
+          0.042374999999992724,
+          0.03787499999998545,
+          0.037458000000242464,
+          0.03654199999982666,
+          0.03633300000001327,
+          0.040582999999969616,
+          0.0402910000002521,
+          0.04754200000024866,
+          0.04149999999981446,
+          0.03883300000006784,
+          0.0413340000000062,
+          0.040042000000084954,
+          0.03929199999993216
+        ],
+        "cpuMs": [
+          0.049,
+          0.041,
+          0.043,
+          0.04,
+          0.038,
+          0.037,
+          0.037,
+          0.042,
+          0.041,
+          0.048,
+          0.042,
+          0.04,
+          0.041,
+          0.041,
+          0.04
+        ]
+      },
+      "metrics": {
+        "operation.wall": {
+          "unit": "ms",
+          "n": 15,
+          "min": 0.03633300000001327,
+          "p50": 0.040042000000084954,
+          "p95": 0.04754200000024866,
+          "max": 0.04754200000024866,
+          "mean": 0.04010833333334934
+        },
+        "operation.cpu": {
+          "unit": "ms",
+          "n": 15,
+          "min": 0.037,
+          "p50": 0.041,
+          "p95": 0.049,
+          "max": 0.049,
+          "mean": 0.04133333333333333
+        }
+      },
+      "sqlDiagnostic": {
+        "instrumented": true,
+        "timingUse": "diagnostic-only; excluded from raw samples and speed comparisons",
+        "statements": [
+          {
+            "kind": "exec",
+            "sql": "BEGIN IMMEDIATE",
+            "calls": 3,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.002540999999837368,
+            "cpuMs": 0.004
+          },
+          {
+            "kind": "exec",
+            "sql": "COMMIT",
+            "calls": 3,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0018760000002657762,
+            "cpuMs": 0.002
+          },
+          {
+            "kind": "prepare",
+            "sql": "SELECT * FROM flags WHERE cleared_at IS NULL AND resets_at IS NOT NULL AND resets_at <= ? ORDER BY id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.006083000000216998,
+            "cpuMs": 0.006
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT * FROM flags WHERE cleared_at IS NULL AND resets_at IS NOT NULL AND resets_at <= ? ORDER BY id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0012499999997999112,
+            "cpuMs": 0.001
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT MAX(seq) AS seq FROM audit",
+            "calls": 2,
+            "errors": 0,
+            "rows": 2,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0018759999998110288,
+            "cpuMs": 0.003
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' LIMIT 1",
+            "calls": 1,
+            "errors": 0,
+            "rows": 1,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0011250000002291927,
+            "cpuMs": 0.001
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT runtime.bee_id,\n              runtime.generation,\n              runtime.state,\n              runtime.started_at,\n              runtime.updated_at,\n              runtime.boot_evidence\n       FROM runtimes AS runtime\n       WHERE runtime.state != 'stopped'\n         AND runtime.generation = (\n           SELECT MAX(latest.generation)\n           FROM runtimes AS latest\n           WHERE latest.bee_id = runtime.bee_id\n         )\n       ORDER BY runtime.bee_id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 1,
+            "textBytes": 13,
+            "blobBytes": 0,
+            "wallMs": 0.0019170000000485743,
+            "cpuMs": 0.002
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT message.id,\n              message.bee_id,\n              message.urgency,\n              message.enqueued_at\n       FROM runtimes AS runtime\n       CROSS JOIN mailbox AS message\n       WHERE runtime.state != 'stopped'\n         AND runtime.generation = (\n           SELECT MAX(latest.generation)\n           FROM runtimes AS latest\n           WHERE latest.bee_id = runtime.bee_id\n         )\n         AND message.bee_id = runtime.bee_id\n         AND message.delivered_at IS NULL\n       ORDER BY runtime.bee_id, message.id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0014999999998508429,
+            "cpuMs": 0.002
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT 1 FROM commands\n       WHERE bee_id = ? AND status IN ('queued','running')\n         AND verb = 'stop' AND target_generation = ?\n       LIMIT 1",
+            "calls": 1,
+            "errors": 0,
+            "rows": 1,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0036660000000665605,
+            "cpuMs": 0.005
+          },
+          {
+            "kind": "prepare",
+            "sql": "SELECT * FROM commands WHERE status = 'queued' AND next_attempt_at <= ?\n             AND NOT (verb = 'stop' AND json_type(args, '$.replacementArgs') IS NOT NULL\n               AND EXISTS (SELECT 1 FROM runtimes r WHERE r.bee_id = commands.bee_id\n                 AND r.generation = commands.target_generation AND r.state IN ('booting', 'running')))\n             AND NOT (\n               verb IN ('spawn', 'send_wake')\n               AND EXISTS (\n                 SELECT 1 FROM bees b\n                 JOIN bee_moves m ON m.id = b.active_move_id\n                 WHERE b.id = commands.bee_id\n                   AND m.phase IN ('stopping', 'placing')\n               )\n             )\n             AND NOT (\n               verb = 'revive'\n               AND EXISTS (\n                 SELECT 1 FROM bees b\n                 JOIN bee_moves m ON m.id = b.active_move_id\n                 WHERE b.id = commands.bee_id\n                   AND (m.phase != 'starting' OR commands.idempotency_key IS NULL OR commands.idempotency_key != m.revive_command_key)\n               )\n             )\n             ORDER BY id LIMIT 1",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.024459000000206288,
+            "cpuMs": 0.025
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT * FROM commands WHERE status = 'queued' AND next_attempt_at <= ?\n             AND NOT (verb = 'stop' AND json_type(args, '$.replacementArgs') IS NOT NULL\n               AND EXISTS (SELECT 1 FROM runtimes r WHERE r.bee_id = commands.bee_id\n                 AND r.generation = commands.target_generation AND r.state IN ('booting', 'running')))\n             AND NOT (\n               verb IN ('spawn', 'send_wake')\n               AND EXISTS (\n                 SELECT 1 FROM bees b\n                 JOIN bee_moves m ON m.id = b.active_move_id\n                 WHERE b.id = commands.bee_id\n                   AND m.phase IN ('stopping', 'placing')\n               )\n             )\n             AND NOT (\n               verb = 'revive'\n               AND EXISTS (\n                 SELECT 1 FROM bees b\n                 JOIN bee_moves m ON m.id = b.active_move_id\n                 WHERE b.id = commands.bee_id\n                   AND (m.phase != 'starting' OR commands.idempotency_key IS NULL OR commands.idempotency_key != m.revive_command_key)\n               )\n             )\n             ORDER BY id LIMIT 1",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0021660000002157176,
+            "cpuMs": 0.004
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT m.* FROM bees b JOIN bee_moves m ON m.id = b.active_move_id\n       WHERE b.active_move_id IS NOT NULL ORDER BY m.id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0006249999996725819,
+            "cpuMs": 0.001
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT * FROM task_supply ORDER BY bee_id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0005000000001018634,
+            "cpuMs": 0.001
+          }
+        ]
+      },
+      "correctness": {
+        "steps": 19,
+        "quietAuthority": true,
+        "futureStopRetained": true,
+        "authoritySeqBefore": 2,
+        "authoritySeqAfter": 2
+      },
+      "failure": null
+    },
+    {
+      "scenario": "c07-flag-expiry-100000-1000",
+      "inventoryId": "C07",
+      "operation": "CoreStore.expireFlags",
+      "fixture": {
+        "clearedFlags": 100000,
+        "activeFutureFlags": 1000
+      },
+      "completed": true,
+      "measurement": {
+        "startedAt": "2026-09-07T11:13:12.736Z",
+        "finishedAt": "2026-09-07T11:13:12.737Z"
+      },
+      "setup": {
+        "total": 101000,
+        "active": 1000,
+        "cleared": 100000,
+        "due": 0,
+        "activeOrderSha256": "d36e008b62447c6cfbd1d0b478648bb6d3659796e151ae46d5d44da06b31da7b",
+        "futureResetAt": 1800086400000
+      },
+      "raw": {
+        "wallMs": [
+          0.00633300000026793,
+          0.010291000000052009,
+          0.01141700000016499,
+          0.008832999999867752,
+          0.009624999999687134,
+          0.0071250000000873115,
+          0.007124999999632564,
+          0.006209000000126252,
+          0.006041999999979453,
+          0.006124999999883585,
+          0.006541999999626569,
+          0.007250000000112777,
+          0.00641700000005585,
+          0.006917000000157714,
+          0.006250000000363798
+        ],
+        "cpuMs": [
+          0.012,
+          0.012,
+          0.031,
+          0.014,
+          0.011,
+          0.008,
+          0.007,
+          0.006,
+          0.007,
+          0.006,
+          0.007,
+          0.008,
+          0.008,
+          0.017,
+          0.007
+        ]
+      },
+      "metrics": {
+        "operation.wall": {
+          "unit": "ms",
+          "n": 15,
+          "min": 0.006041999999979453,
+          "p50": 0.006917000000157714,
+          "p95": 0.01141700000016499,
+          "max": 0.01141700000016499,
+          "mean": 0.007500066666671046
+        },
+        "operation.cpu": {
+          "unit": "ms",
+          "n": 15,
+          "min": 0.006,
+          "p50": 0.008,
+          "p95": 0.031,
+          "max": 0.031,
+          "mean": 0.010733333333333336
+        }
+      },
+      "sqlDiagnostic": {
+        "instrumented": true,
+        "timingUse": "diagnostic-only; excluded from raw samples and speed comparisons",
+        "statements": [
+          {
+            "kind": "exec",
+            "sql": "BEGIN IMMEDIATE",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0011669999998957792,
+            "cpuMs": 0.002
+          },
+          {
+            "kind": "prepare",
+            "sql": "SELECT * FROM flags WHERE cleared_at IS NULL AND resets_at IS NOT NULL AND resets_at <= ? ORDER BY id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.006375000000389264,
+            "cpuMs": 0.008
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT * FROM flags WHERE cleared_at IS NULL AND resets_at IS NOT NULL AND resets_at <= ? ORDER BY id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.001209000000017113,
+            "cpuMs": 0.002
+          },
+          {
+            "kind": "exec",
+            "sql": "COMMIT",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0007499999996980478,
+            "cpuMs": 0.001
+          }
+        ]
+      },
+      "correctness": {
+        "calls": 19,
+        "quietAuthority": true,
+        "futureFlagsRetained": 1000,
+        "authoritySeqBefore": 5000,
+        "authoritySeqAfter": 5000
+      },
+      "failure": null
+    },
+    {
+      "scenario": "c09-held-idle-64",
+      "inventoryId": "C09",
+      "operation": "DaemonCore.step",
+      "fixture": {
+        "bodyBytes": 64
+      },
+      "completed": true,
+      "measurement": {
+        "startedAt": "2026-09-07T11:13:12.747Z",
+        "finishedAt": "2026-09-07T11:13:12.748Z"
+      },
+      "setup": {
+        "runtimeState": "running",
+        "messageId": 1,
+        "messageBodyBytes": 64,
+        "urgency": "idle",
+        "wakeId": null,
+        "wakeNotBefore": null,
+        "pendingProjectionBodyBytes": 64
+      },
+      "raw": {
+        "wallMs": [
+          0.03962500000034197,
+          0.03766700000005585,
+          0.037624999999934516,
+          0.05024999999977808,
+          0.03712499999983265,
+          0.0382089999998243,
+          0.04279199999973571,
+          0.04141600000002654,
+          0.03962500000034197,
+          0.04079099999989921,
+          0.03954199999998309,
+          0.037542000000030384,
+          0.03404199999977209,
+          0.03412499999967622,
+          0.03429200000027777
+        ],
+        "cpuMs": [
+          0.042,
+          0.038,
+          0.038,
+          0.073,
+          0.039,
+          0.038,
+          0.044,
+          0.042,
+          0.041,
+          0.041,
+          0.04,
+          0.038,
+          0.034,
+          0.034,
+          0.034
+        ]
+      },
+      "metrics": {
+        "operation.wall": {
+          "unit": "ms",
+          "n": 15,
+          "min": 0.03404199999977209,
+          "p50": 0.0382089999998243,
+          "p95": 0.05024999999977808,
+          "max": 0.05024999999977808,
+          "mean": 0.038977866666634026
+        },
+        "operation.cpu": {
+          "unit": "ms",
+          "n": 15,
+          "min": 0.034,
+          "p50": 0.039,
+          "p95": 0.073,
+          "max": 0.073,
+          "mean": 0.04106666666666667
+        }
+      },
+      "sqlDiagnostic": {
+        "instrumented": true,
+        "timingUse": "diagnostic-only; excluded from raw samples and speed comparisons",
+        "statements": [
+          {
+            "kind": "exec",
+            "sql": "BEGIN IMMEDIATE",
+            "calls": 3,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0018759999993562815,
+            "cpuMs": 0.003
+          },
+          {
+            "kind": "exec",
+            "sql": "COMMIT",
+            "calls": 3,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0015829999997549749,
+            "cpuMs": 0.003
+          },
+          {
+            "kind": "prepare",
+            "sql": "SELECT * FROM flags WHERE cleared_at IS NULL AND resets_at IS NOT NULL AND resets_at <= ? ORDER BY id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.004292000000077678,
+            "cpuMs": 0.005
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT * FROM flags WHERE cleared_at IS NULL AND resets_at IS NOT NULL AND resets_at <= ? ORDER BY id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0009580000000823929,
+            "cpuMs": 0.002
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT MAX(seq) AS seq FROM audit",
+            "calls": 2,
+            "errors": 0,
+            "rows": 2,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0016239999999925203,
+            "cpuMs": 0.003
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' LIMIT 1",
+            "calls": 1,
+            "errors": 0,
+            "rows": 1,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0009580000000823929,
+            "cpuMs": 0.001
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT runtime.bee_id,\n              runtime.generation,\n              runtime.state,\n              runtime.started_at,\n              runtime.updated_at,\n              runtime.boot_evidence\n       FROM runtimes AS runtime\n       WHERE runtime.state != 'stopped'\n         AND runtime.generation = (\n           SELECT MAX(latest.generation)\n           FROM runtimes AS latest\n           WHERE latest.bee_id = runtime.bee_id\n         )\n       ORDER BY runtime.bee_id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 1,
+            "textBytes": 17,
+            "blobBytes": 0,
+            "wallMs": 0.0016249999998763087,
+            "cpuMs": 0.002
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT message.id,\n              message.bee_id,\n              message.urgency,\n              message.enqueued_at\n       FROM runtimes AS runtime\n       CROSS JOIN mailbox AS message\n       WHERE runtime.state != 'stopped'\n         AND runtime.generation = (\n           SELECT MAX(latest.generation)\n           FROM runtimes AS latest\n           WHERE latest.bee_id = runtime.bee_id\n         )\n         AND message.bee_id = runtime.bee_id\n         AND message.delivered_at IS NULL\n       ORDER BY runtime.bee_id, message.id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 1,
+            "textBytes": 10,
+            "blobBytes": 0,
+            "wallMs": 0.002167000000099506,
+            "cpuMs": 0.003
+          },
+          {
+            "kind": "prepare",
+            "sql": "SELECT * FROM commands WHERE status = 'queued' AND next_attempt_at <= ?\n             AND NOT (verb = 'stop' AND json_type(args, '$.replacementArgs') IS NOT NULL\n               AND EXISTS (SELECT 1 FROM runtimes r WHERE r.bee_id = commands.bee_id\n                 AND r.generation = commands.target_generation AND r.state IN ('booting', 'running')))\n             AND NOT (\n               verb IN ('spawn', 'send_wake')\n               AND EXISTS (\n                 SELECT 1 FROM bees b\n                 JOIN bee_moves m ON m.id = b.active_move_id\n                 WHERE b.id = commands.bee_id\n                   AND m.phase IN ('stopping', 'placing')\n               )\n             )\n             AND NOT (\n               verb = 'revive'\n               AND EXISTS (\n                 SELECT 1 FROM bees b\n                 JOIN bee_moves m ON m.id = b.active_move_id\n                 WHERE b.id = commands.bee_id\n                   AND (m.phase != 'starting' OR commands.idempotency_key IS NULL OR commands.idempotency_key != m.revive_command_key)\n               )\n             )\n             ORDER BY id LIMIT 1",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.017458999999689695,
+            "cpuMs": 0.017
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT * FROM commands WHERE status = 'queued' AND next_attempt_at <= ?\n             AND NOT (verb = 'stop' AND json_type(args, '$.replacementArgs') IS NOT NULL\n               AND EXISTS (SELECT 1 FROM runtimes r WHERE r.bee_id = commands.bee_id\n                 AND r.generation = commands.target_generation AND r.state IN ('booting', 'running')))\n             AND NOT (\n               verb IN ('spawn', 'send_wake')\n               AND EXISTS (\n                 SELECT 1 FROM bees b\n                 JOIN bee_moves m ON m.id = b.active_move_id\n                 WHERE b.id = commands.bee_id\n                   AND m.phase IN ('stopping', 'placing')\n               )\n             )\n             AND NOT (\n               verb = 'revive'\n               AND EXISTS (\n                 SELECT 1 FROM bees b\n                 JOIN bee_moves m ON m.id = b.active_move_id\n                 WHERE b.id = commands.bee_id\n                   AND (m.phase != 'starting' OR commands.idempotency_key IS NULL OR commands.idempotency_key != m.revive_command_key)\n               )\n             )\n             ORDER BY id LIMIT 1",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.001625000000331056,
+            "cpuMs": 0.002
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT m.* FROM bees b JOIN bee_moves m ON m.id = b.active_move_id\n       WHERE b.active_move_id IS NOT NULL ORDER BY m.id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.000875000000178261,
+            "cpuMs": 0.001
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT m.* FROM bees b JOIN bee_moves m ON m.id = b.active_move_id WHERE b.id = ?",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0010839999999916472,
+            "cpuMs": 0.003
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT * FROM task_supply ORDER BY bee_id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0005420000002231973,
+            "cpuMs": 0.001
+          }
+        ]
+      },
+      "correctness": {
+        "calls": 19,
+        "quietAuthority": true,
+        "messageStillPending": true,
+        "wakeIntentDelayedButRetained": false,
+        "authoritySeqBefore": 4,
+        "authoritySeqAfter": 4
+      },
+      "failure": null
+    },
+    {
+      "scenario": "c09-stopped-pending-64",
+      "inventoryId": "C09",
+      "operation": "DaemonCore.step",
+      "fixture": {
+        "bodyBytes": 64
+      },
+      "completed": true,
+      "measurement": {
+        "startedAt": "2026-09-07T11:13:12.753Z",
+        "finishedAt": "2026-09-07T11:13:12.753Z"
+      },
+      "setup": {
+        "runtimeState": "stopped",
+        "messageId": 1,
+        "messageBodyBytes": 64,
+        "urgency": "next",
+        "wakeId": 1,
+        "wakeNotBefore": 1800086400000,
+        "pendingProjectionBodyBytes": 64
+      },
+      "raw": {
+        "wallMs": [
+          0.031458999999813386,
+          0.031083000000307948,
+          0.031207999999878666,
+          0.030500000000301952,
+          0.030416999999943073,
+          0.029958000000078755,
+          0.03016699999989214,
+          0.02979200000027049,
+          0.029333000000406173,
+          0.029416999999739346,
+          0.03195800000003146,
+          0.033083000000260654,
+          0.032124999999723514,
+          0.03187500000012733,
+          0.03212500000017826
+        ],
+        "cpuMs": [
+          0.034,
+          0.032,
+          0.032,
+          0.031,
+          0.031,
+          0.031,
+          0.031,
+          0.03,
+          0.031,
+          0.03,
+          0.032,
+          0.033,
+          0.032,
+          0.033,
+          0.032
+        ]
+      },
+      "metrics": {
+        "operation.wall": {
+          "unit": "ms",
+          "n": 15,
+          "min": 0.029333000000406173,
+          "p50": 0.031083000000307948,
+          "p95": 0.033083000000260654,
+          "max": 0.033083000000260654,
+          "mean": 0.03096666666673021
+        },
+        "operation.cpu": {
+          "unit": "ms",
+          "n": 15,
+          "min": 0.03,
+          "p50": 0.032,
+          "p95": 0.034,
+          "max": 0.034,
+          "mean": 0.03166666666666668
+        }
+      },
+      "sqlDiagnostic": {
+        "instrumented": true,
+        "timingUse": "diagnostic-only; excluded from raw samples and speed comparisons",
+        "statements": [
+          {
+            "kind": "exec",
+            "sql": "BEGIN IMMEDIATE",
+            "calls": 3,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.001999999999497959,
+            "cpuMs": 0.001
+          },
+          {
+            "kind": "exec",
+            "sql": "COMMIT",
+            "calls": 3,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0017920000000231084,
+            "cpuMs": 0.007
+          },
+          {
+            "kind": "prepare",
+            "sql": "SELECT * FROM flags WHERE cleared_at IS NULL AND resets_at IS NOT NULL AND resets_at <= ? ORDER BY id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.004707999999936874,
+            "cpuMs": 0.005
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT * FROM flags WHERE cleared_at IS NULL AND resets_at IS NOT NULL AND resets_at <= ? ORDER BY id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0011249999997744453,
+            "cpuMs": 0.001
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT MAX(seq) AS seq FROM audit",
+            "calls": 2,
+            "errors": 0,
+            "rows": 2,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.00204200000007404,
+            "cpuMs": 0.003
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' LIMIT 1",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0005830000000059954,
+            "cpuMs": 0.001
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT 1 FROM mailbox WHERE delivered_at IS NULL LIMIT 1",
+            "calls": 1,
+            "errors": 0,
+            "rows": 1,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0010419999998703133,
+            "cpuMs": 0.001
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT runtime.bee_id,\n              runtime.generation,\n              runtime.state,\n              runtime.started_at,\n              runtime.updated_at,\n              runtime.boot_evidence\n       FROM runtimes AS runtime\n       WHERE runtime.state != 'stopped'\n         AND runtime.generation = (\n           SELECT MAX(latest.generation)\n           FROM runtimes AS latest\n           WHERE latest.bee_id = runtime.bee_id\n         )\n       ORDER BY runtime.bee_id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0006250000001273293,
+            "cpuMs": 0.001
+          },
+          {
+            "kind": "prepare",
+            "sql": "SELECT * FROM commands WHERE status = 'queued' AND next_attempt_at <= ?\n             AND NOT (verb = 'stop' AND json_type(args, '$.replacementArgs') IS NOT NULL\n               AND EXISTS (SELECT 1 FROM runtimes r WHERE r.bee_id = commands.bee_id\n                 AND r.generation = commands.target_generation AND r.state IN ('booting', 'running')))\n             AND NOT (\n               verb IN ('spawn', 'send_wake')\n               AND EXISTS (\n                 SELECT 1 FROM bees b\n                 JOIN bee_moves m ON m.id = b.active_move_id\n                 WHERE b.id = commands.bee_id\n                   AND m.phase IN ('stopping', 'placing')\n               )\n             )\n             AND NOT (\n               verb = 'revive'\n               AND EXISTS (\n                 SELECT 1 FROM bees b\n                 JOIN bee_moves m ON m.id = b.active_move_id\n                 WHERE b.id = commands.bee_id\n                   AND (m.phase != 'starting' OR commands.idempotency_key IS NULL OR commands.idempotency_key != m.revive_command_key)\n               )\n             )\n             ORDER BY id LIMIT 1",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.02233399999977337,
+            "cpuMs": 0.022
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT * FROM commands WHERE status = 'queued' AND next_attempt_at <= ?\n             AND NOT (verb = 'stop' AND json_type(args, '$.replacementArgs') IS NOT NULL\n               AND EXISTS (SELECT 1 FROM runtimes r WHERE r.bee_id = commands.bee_id\n                 AND r.generation = commands.target_generation AND r.state IN ('booting', 'running')))\n             AND NOT (\n               verb IN ('spawn', 'send_wake')\n               AND EXISTS (\n                 SELECT 1 FROM bees b\n                 JOIN bee_moves m ON m.id = b.active_move_id\n                 WHERE b.id = commands.bee_id\n                   AND m.phase IN ('stopping', 'placing')\n               )\n             )\n             AND NOT (\n               verb = 'revive'\n               AND EXISTS (\n                 SELECT 1 FROM bees b\n                 JOIN bee_moves m ON m.id = b.active_move_id\n                 WHERE b.id = commands.bee_id\n                   AND (m.phase != 'starting' OR commands.idempotency_key IS NULL OR commands.idempotency_key != m.revive_command_key)\n               )\n             )\n             ORDER BY id LIMIT 1",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0024590000002717716,
+            "cpuMs": 0.004
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT m.* FROM bees b JOIN bee_moves m ON m.id = b.active_move_id\n       WHERE b.active_move_id IS NOT NULL ORDER BY m.id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0010839999999916472,
+            "cpuMs": 0.002
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT * FROM task_supply ORDER BY bee_id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0007089999999152496,
+            "cpuMs": 0.001
+          }
+        ]
+      },
+      "correctness": {
+        "calls": 19,
+        "quietAuthority": true,
+        "messageStillPending": true,
+        "wakeIntentDelayedButRetained": true,
+        "authoritySeqBefore": 6,
+        "authoritySeqAfter": 6
+      },
+      "failure": null
+    },
+    {
+      "scenario": "c09-pending-page-64",
+      "inventoryId": "C09",
+      "operation": "CoreStore.pendingMail",
+      "fixture": {
+        "bodyBytes": 64
+      },
+      "completed": true,
+      "measurement": {
+        "startedAt": "2026-09-07T11:13:12.758Z",
+        "finishedAt": "2026-09-07T11:13:12.758Z"
+      },
+      "setup": {
+        "runtimeState": "stopped",
+        "messageId": 1,
+        "messageBodyBytes": 64,
+        "urgency": "next",
+        "wakeId": 1,
+        "wakeNotBefore": 1800086400000,
+        "pendingProjectionBodyBytes": 64
+      },
+      "raw": {
+        "wallMs": [
+          0.022249999999985448,
+          0.016000000000076398,
+          0.02204200000005585,
+          0.02341599999999744,
+          0.019499999999879947,
+          0.016000000000076398,
+          0.015124999999898137,
+          0.017041000000062922,
+          0.012459000000035303,
+          0.01141700000016499,
+          0.011291999999684776,
+          0.011125000000447471,
+          0.011083999999755179,
+          0.010999999999967258,
+          0.010999999999967258
+        ],
+        "cpuMs": [
+          0.023,
+          0.017,
+          0.023,
+          0.025,
+          0.059,
+          0.017,
+          0.016,
+          0.051,
+          0.012,
+          0.012,
+          0.012,
+          0.011,
+          0.012,
+          0.012,
+          0.011
+        ]
+      },
+      "metrics": {
+        "operation.wall": {
+          "unit": "ms",
+          "n": 15,
+          "min": 0.010999999999967258,
+          "p50": 0.015124999999898137,
+          "p95": 0.02341599999999744,
+          "max": 0.02341599999999744,
+          "mean": 0.015383400000003652
+        },
+        "operation.cpu": {
+          "unit": "ms",
+          "n": 15,
+          "min": 0.011,
+          "p50": 0.016,
+          "p95": 0.059,
+          "max": 0.059,
+          "mean": 0.02086666666666667
+        }
+      },
+      "sqlDiagnostic": {
+        "instrumented": true,
+        "timingUse": "diagnostic-only; excluded from raw samples and speed comparisons",
+        "statements": [
+          {
+            "kind": "all",
+            "sql": "SELECT h.*\n       FROM mailbox m\n       JOIN mail_history_enqueues h ON h.message_id = m.id\n       WHERE m.bee_id = ? AND m.delivered_at IS NULL\n       ORDER BY m.id\n       LIMIT ?",
+            "calls": 1,
+            "errors": 0,
+            "rows": 1,
+            "textBytes": 19,
+            "blobBytes": 72,
+            "wallMs": 0.009667000000263215,
+            "cpuMs": 0.011
+          }
+        ]
+      },
+      "correctness": {
+        "calls": 19,
+        "quietAuthority": true,
+        "messageStillPending": true,
+        "wakeIntentDelayedButRetained": true,
+        "authoritySeqBefore": 6,
+        "authoritySeqAfter": 6
+      },
+      "failure": null
+    },
+    {
+      "scenario": "c09-held-idle-1048576",
+      "inventoryId": "C09",
+      "operation": "DaemonCore.step",
+      "fixture": {
+        "bodyBytes": 1048576
+      },
+      "completed": true,
+      "measurement": {
+        "startedAt": "2026-09-07T11:13:12.771Z",
+        "finishedAt": "2026-09-07T11:13:12.771Z"
+      },
+      "setup": {
+        "runtimeState": "running",
+        "messageId": 1,
+        "messageBodyBytes": 1048576,
+        "urgency": "idle",
+        "wakeId": null,
+        "wakeNotBefore": null,
+        "pendingProjectionBodyBytes": 16384
+      },
+      "raw": {
+        "wallMs": [
+          0.044958999999835214,
+          0.04354200000034325,
+          0.04204200000003766,
+          0.04620900000008987,
+          0.04608299999972587,
+          0.045834000000013475,
+          0.04599999999982174,
+          0.04749999999967258,
+          0.04508399999986068,
+          0.04258299999992232,
+          0.047000000000025466,
+          0.044957999999951426,
+          0.044874999999592546,
+          0.04100000000016735,
+          0.04266700000016499
+        ],
+        "cpuMs": [
+          0.048,
+          0.045,
+          0.042,
+          0.047,
+          0.046,
+          0.046,
+          0.047,
+          0.048,
+          0.045,
+          0.043,
+          0.047,
+          0.045,
+          0.045,
+          0.041,
+          0.043
+        ]
+      },
+      "metrics": {
+        "operation.wall": {
+          "unit": "ms",
+          "n": 15,
+          "min": 0.04100000000016735,
+          "p50": 0.044958999999835214,
+          "p95": 0.04749999999967258,
+          "max": 0.04749999999967258,
+          "mean": 0.044689066666614964
+        },
+        "operation.cpu": {
+          "unit": "ms",
+          "n": 15,
+          "min": 0.041,
+          "p50": 0.045,
+          "p95": 0.048,
+          "max": 0.048,
+          "mean": 0.045200000000000004
+        }
+      },
+      "sqlDiagnostic": {
+        "instrumented": true,
+        "timingUse": "diagnostic-only; excluded from raw samples and speed comparisons",
+        "statements": [
+          {
+            "kind": "exec",
+            "sql": "BEGIN IMMEDIATE",
+            "calls": 3,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0019159999997100385,
+            "cpuMs": 0.005
+          },
+          {
+            "kind": "exec",
+            "sql": "COMMIT",
+            "calls": 3,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0016239999999925203,
+            "cpuMs": 0.002
+          },
+          {
+            "kind": "prepare",
+            "sql": "SELECT * FROM flags WHERE cleared_at IS NULL AND resets_at IS NOT NULL AND resets_at <= ? ORDER BY id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.004500000000007276,
+            "cpuMs": 0.006
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT * FROM flags WHERE cleared_at IS NULL AND resets_at IS NOT NULL AND resets_at <= ? ORDER BY id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0009169999998448475,
+            "cpuMs": 0.002
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT MAX(seq) AS seq FROM audit",
+            "calls": 2,
+            "errors": 0,
+            "rows": 2,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0014989999999670545,
+            "cpuMs": 0.002
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' LIMIT 1",
+            "calls": 1,
+            "errors": 0,
+            "rows": 1,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0009170000002995948,
+            "cpuMs": 0.001
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT runtime.bee_id,\n              runtime.generation,\n              runtime.state,\n              runtime.started_at,\n              runtime.updated_at,\n              runtime.boot_evidence\n       FROM runtimes AS runtime\n       WHERE runtime.state != 'stopped'\n         AND runtime.generation = (\n           SELECT MAX(latest.generation)\n           FROM runtimes AS latest\n           WHERE latest.bee_id = runtime.bee_id\n         )\n       ORDER BY runtime.bee_id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 1,
+            "textBytes": 17,
+            "blobBytes": 0,
+            "wallMs": 0.0016660000001138542,
+            "cpuMs": 0.002
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT message.id,\n              message.bee_id,\n              message.urgency,\n              message.enqueued_at\n       FROM runtimes AS runtime\n       CROSS JOIN mailbox AS message\n       WHERE runtime.state != 'stopped'\n         AND runtime.generation = (\n           SELECT MAX(latest.generation)\n           FROM runtimes AS latest\n           WHERE latest.bee_id = runtime.bee_id\n         )\n         AND message.bee_id = runtime.bee_id\n         AND message.delivered_at IS NULL\n       ORDER BY runtime.bee_id, message.id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 1,
+            "textBytes": 10,
+            "blobBytes": 0,
+            "wallMs": 0.006916000000273925,
+            "cpuMs": 0.007
+          },
+          {
+            "kind": "prepare",
+            "sql": "SELECT * FROM commands WHERE status = 'queued' AND next_attempt_at <= ?\n             AND NOT (verb = 'stop' AND json_type(args, '$.replacementArgs') IS NOT NULL\n               AND EXISTS (SELECT 1 FROM runtimes r WHERE r.bee_id = commands.bee_id\n                 AND r.generation = commands.target_generation AND r.state IN ('booting', 'running')))\n             AND NOT (\n               verb IN ('spawn', 'send_wake')\n               AND EXISTS (\n                 SELECT 1 FROM bees b\n                 JOIN bee_moves m ON m.id = b.active_move_id\n                 WHERE b.id = commands.bee_id\n                   AND m.phase IN ('stopping', 'placing')\n               )\n             )\n             AND NOT (\n               verb = 'revive'\n               AND EXISTS (\n                 SELECT 1 FROM bees b\n                 JOIN bee_moves m ON m.id = b.active_move_id\n                 WHERE b.id = commands.bee_id\n                   AND (m.phase != 'starting' OR commands.idempotency_key IS NULL OR commands.idempotency_key != m.revive_command_key)\n               )\n             )\n             ORDER BY id LIMIT 1",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.018040999999811902,
+            "cpuMs": 0.018
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT * FROM commands WHERE status = 'queued' AND next_attempt_at <= ?\n             AND NOT (verb = 'stop' AND json_type(args, '$.replacementArgs') IS NOT NULL\n               AND EXISTS (SELECT 1 FROM runtimes r WHERE r.bee_id = commands.bee_id\n                 AND r.generation = commands.target_generation AND r.state IN ('booting', 'running')))\n             AND NOT (\n               verb IN ('spawn', 'send_wake')\n               AND EXISTS (\n                 SELECT 1 FROM bees b\n                 JOIN bee_moves m ON m.id = b.active_move_id\n                 WHERE b.id = commands.bee_id\n                   AND m.phase IN ('stopping', 'placing')\n               )\n             )\n             AND NOT (\n               verb = 'revive'\n               AND EXISTS (\n                 SELECT 1 FROM bees b\n                 JOIN bee_moves m ON m.id = b.active_move_id\n                 WHERE b.id = commands.bee_id\n                   AND (m.phase != 'starting' OR commands.idempotency_key IS NULL OR commands.idempotency_key != m.revive_command_key)\n               )\n             )\n             ORDER BY id LIMIT 1",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.005874999999832653,
+            "cpuMs": 0.007
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT m.* FROM bees b JOIN bee_moves m ON m.id = b.active_move_id\n       WHERE b.active_move_id IS NOT NULL ORDER BY m.id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0005410000003394089,
+            "cpuMs": 0.002
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT m.* FROM bees b JOIN bee_moves m ON m.id = b.active_move_id WHERE b.id = ?",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0008749999997235136,
+            "cpuMs": 0.001
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT * FROM task_supply ORDER BY bee_id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.000416000000313943,
+            "cpuMs": 0
+          }
+        ]
+      },
+      "correctness": {
+        "calls": 19,
+        "quietAuthority": true,
+        "messageStillPending": true,
+        "wakeIntentDelayedButRetained": false,
+        "authoritySeqBefore": 4,
+        "authoritySeqAfter": 4
+      },
+      "failure": null
+    },
+    {
+      "scenario": "c09-stopped-pending-1048576",
+      "inventoryId": "C09",
+      "operation": "DaemonCore.step",
+      "fixture": {
+        "bodyBytes": 1048576
+      },
+      "completed": true,
+      "measurement": {
+        "startedAt": "2026-09-07T11:13:12.793Z",
+        "finishedAt": "2026-09-07T11:13:12.793Z"
+      },
+      "setup": {
+        "runtimeState": "stopped",
+        "messageId": 1,
+        "messageBodyBytes": 1048576,
+        "urgency": "next",
+        "wakeId": 1,
+        "wakeNotBefore": 1800086400000,
+        "pendingProjectionBodyBytes": 16384
+      },
+      "raw": {
+        "wallMs": [
+          0.03624999999965439,
+          0.032541999999921245,
+          0.03266600000006292,
+          0.033875000000080036,
+          0.03170899999986432,
+          0.030249999999796273,
+          0.031165999999757332,
+          0.03045799999972587,
+          0.02962500000012369,
+          0.029666000000361237,
+          0.031375000000025466,
+          0.03254100000003746,
+          0.030209000000013475,
+          0.02966599999990649,
+          0.02991599999995742
+        ],
+        "cpuMs": [
+          0.04,
+          0.033,
+          0.034,
+          0.034,
+          0.032,
+          0.03,
+          0.031,
+          0.031,
+          0.03,
+          0.029,
+          0.031,
+          0.034,
+          0.03,
+          0.03,
+          0.03
+        ]
+      },
+      "metrics": {
+        "operation.wall": {
+          "unit": "ms",
+          "n": 15,
+          "min": 0.02962500000012369,
+          "p50": 0.031165999999757332,
+          "p95": 0.03624999999965439,
+          "max": 0.03624999999965439,
+          "mean": 0.03146093333328584
+        },
+        "operation.cpu": {
+          "unit": "ms",
+          "n": 15,
+          "min": 0.029,
+          "p50": 0.031,
+          "p95": 0.04,
+          "max": 0.04,
+          "mean": 0.03193333333333335
+        }
+      },
+      "sqlDiagnostic": {
+        "instrumented": true,
+        "timingUse": "diagnostic-only; excluded from raw samples and speed comparisons",
+        "statements": [
+          {
+            "kind": "exec",
+            "sql": "BEGIN IMMEDIATE",
+            "calls": 3,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0017909999992298253,
+            "cpuMs": 0.003
+          },
+          {
+            "kind": "exec",
+            "sql": "COMMIT",
+            "calls": 3,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0014580000001842564,
+            "cpuMs": 0.003
+          },
+          {
+            "kind": "prepare",
+            "sql": "SELECT * FROM flags WHERE cleared_at IS NULL AND resets_at IS NOT NULL AND resets_at <= ? ORDER BY id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.004250000000411092,
+            "cpuMs": 0.004
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT * FROM flags WHERE cleared_at IS NULL AND resets_at IS NOT NULL AND resets_at <= ? ORDER BY id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0010830000001078588,
+            "cpuMs": 0.001
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT MAX(seq) AS seq FROM audit",
+            "calls": 2,
+            "errors": 0,
+            "rows": 2,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0014590000000680448,
+            "cpuMs": 0.002
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' LIMIT 1",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0005420000002231973,
+            "cpuMs": 0
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT 1 FROM mailbox WHERE delivered_at IS NULL LIMIT 1",
+            "calls": 1,
+            "errors": 0,
+            "rows": 1,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.000792000000274129,
+            "cpuMs": 0.001
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT runtime.bee_id,\n              runtime.generation,\n              runtime.state,\n              runtime.started_at,\n              runtime.updated_at,\n              runtime.boot_evidence\n       FROM runtimes AS runtime\n       WHERE runtime.state != 'stopped'\n         AND runtime.generation = (\n           SELECT MAX(latest.generation)\n           FROM runtimes AS latest\n           WHERE latest.bee_id = runtime.bee_id\n         )\n       ORDER BY runtime.bee_id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0005000000001018634,
+            "cpuMs": 0.001
+          },
+          {
+            "kind": "prepare",
+            "sql": "SELECT * FROM commands WHERE status = 'queued' AND next_attempt_at <= ?\n             AND NOT (verb = 'stop' AND json_type(args, '$.replacementArgs') IS NOT NULL\n               AND EXISTS (SELECT 1 FROM runtimes r WHERE r.bee_id = commands.bee_id\n                 AND r.generation = commands.target_generation AND r.state IN ('booting', 'running')))\n             AND NOT (\n               verb IN ('spawn', 'send_wake')\n               AND EXISTS (\n                 SELECT 1 FROM bees b\n                 JOIN bee_moves m ON m.id = b.active_move_id\n                 WHERE b.id = commands.bee_id\n                   AND m.phase IN ('stopping', 'placing')\n               )\n             )\n             AND NOT (\n               verb = 'revive'\n               AND EXISTS (\n                 SELECT 1 FROM bees b\n                 JOIN bee_moves m ON m.id = b.active_move_id\n                 WHERE b.id = commands.bee_id\n                   AND (m.phase != 'starting' OR commands.idempotency_key IS NULL OR commands.idempotency_key != m.revive_command_key)\n               )\n             )\n             ORDER BY id LIMIT 1",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.018000000000029104,
+            "cpuMs": 0.018
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT * FROM commands WHERE status = 'queued' AND next_attempt_at <= ?\n             AND NOT (verb = 'stop' AND json_type(args, '$.replacementArgs') IS NOT NULL\n               AND EXISTS (SELECT 1 FROM runtimes r WHERE r.bee_id = commands.bee_id\n                 AND r.generation = commands.target_generation AND r.state IN ('booting', 'running')))\n             AND NOT (\n               verb IN ('spawn', 'send_wake')\n               AND EXISTS (\n                 SELECT 1 FROM bees b\n                 JOIN bee_moves m ON m.id = b.active_move_id\n                 WHERE b.id = commands.bee_id\n                   AND m.phase IN ('stopping', 'placing')\n               )\n             )\n             AND NOT (\n               verb = 'revive'\n               AND EXISTS (\n                 SELECT 1 FROM bees b\n                 JOIN bee_moves m ON m.id = b.active_move_id\n                 WHERE b.id = commands.bee_id\n                   AND (m.phase != 'starting' OR commands.idempotency_key IS NULL OR commands.idempotency_key != m.revive_command_key)\n               )\n             )\n             ORDER BY id LIMIT 1",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.00179100000013932,
+            "cpuMs": 0.002
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT m.* FROM bees b JOIN bee_moves m ON m.id = b.active_move_id\n       WHERE b.active_move_id IS NOT NULL ORDER BY m.id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0005000000001018634,
+            "cpuMs": 0
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT * FROM task_supply ORDER BY bee_id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.00045799999998052954,
+            "cpuMs": 0
+          }
+        ]
+      },
+      "correctness": {
+        "calls": 19,
+        "quietAuthority": true,
+        "messageStillPending": true,
+        "wakeIntentDelayedButRetained": true,
+        "authoritySeqBefore": 6,
+        "authoritySeqAfter": 6
+      },
+      "failure": null
+    },
+    {
+      "scenario": "c09-pending-page-1048576",
+      "inventoryId": "C09",
+      "operation": "CoreStore.pendingMail",
+      "fixture": {
+        "bodyBytes": 1048576
+      },
+      "completed": true,
+      "measurement": {
+        "startedAt": "2026-09-07T11:13:12.816Z",
+        "finishedAt": "2026-09-07T11:13:12.816Z"
+      },
+      "setup": {
+        "runtimeState": "stopped",
+        "messageId": 1,
+        "messageBodyBytes": 1048576,
+        "urgency": "next",
+        "wakeId": 1,
+        "wakeNotBefore": 1800086400000,
+        "pendingProjectionBodyBytes": 16384
+      },
+      "raw": {
+        "wallMs": [
+          0.026833999999780644,
+          0.027000000000043656,
+          0.026374999999916326,
+          0.025957999999718595,
+          0.02645799999982046,
+          0.026292000000012195,
+          0.026416000000153872,
+          0.02583299999969313,
+          0.02579199999991033,
+          0.025583999999980733,
+          0.025749999999788997,
+          0.02616600000010294,
+          0.025833000000147877,
+          0.02562499999976353,
+          0.02562500000021828
+        ],
+        "cpuMs": [
+          0.029,
+          0.028,
+          0.026,
+          0.026,
+          0.027,
+          0.027,
+          0.026,
+          0.027,
+          0.026,
+          0.026,
+          0.027,
+          0.026,
+          0.025,
+          0.026,
+          0.025
+        ]
+      },
+      "metrics": {
+        "operation.wall": {
+          "unit": "ms",
+          "n": 15,
+          "min": 0.025583999999980733,
+          "p50": 0.025957999999718595,
+          "p95": 0.027000000000043656,
+          "max": 0.027000000000043656,
+          "mean": 0.026102733333270105
+        },
+        "operation.cpu": {
+          "unit": "ms",
+          "n": 15,
+          "min": 0.025,
+          "p50": 0.026,
+          "p95": 0.029,
+          "max": 0.029,
+          "mean": 0.026466666666666677
+        }
+      },
+      "sqlDiagnostic": {
+        "instrumented": true,
+        "timingUse": "diagnostic-only; excluded from raw samples and speed comparisons",
+        "statements": [
+          {
+            "kind": "all",
+            "sql": "SELECT h.*\n       FROM mailbox m\n       JOIN mail_history_enqueues h ON h.message_id = m.id\n       WHERE m.bee_id = ? AND m.delivered_at IS NULL\n       ORDER BY m.id\n       LIMIT ?",
+            "calls": 1,
+            "errors": 0,
+            "rows": 1,
+            "textBytes": 19,
+            "blobBytes": 16392,
+            "wallMs": 0.011916999999812106,
+            "cpuMs": 0.012
+          }
+        ]
+      },
+      "correctness": {
+        "calls": 19,
+        "quietAuthority": true,
+        "messageStillPending": true,
+        "wakeIntentDelayedButRetained": true,
+        "authoritySeqBefore": 6,
+        "authoritySeqAfter": 6
+      },
+      "failure": null
+    },
+    {
+      "scenario": "c10-full-100000-100000-0",
+      "inventoryId": "C10",
+      "operation": "CoreStore.listMessages",
+      "fixture": {
+        "totalMessages": 100000,
+        "targetMessages": 100000,
+        "unrelatedMessages": 0
+      },
+      "completed": true,
+      "measurement": {
+        "startedAt": "2026-09-07T11:13:13.433Z",
+        "finishedAt": "2026-09-07T11:13:15.079Z"
+      },
+      "setup": {
+        "total": 100000,
+        "target": 100000,
+        "unrelated": 0,
+        "undelivered": 0,
+        "targetFirstId": 1,
+        "targetLastId": 100000,
+        "targetOrderSha256": "b2bc7d3f8b652d2ec96865b68ad8f80e22cca174abe1aed7889e242a747d590f",
+        "bodyBytesPerRow": 128
+      },
+      "raw": {
+        "wallMs": [
+          107.96291700000029,
+          111.40987500000028,
+          114.47729100000015,
+          114.16637500000024,
+          106.73387500000035,
+          106.76374999999962,
+          106.71258299999954,
+          106.50304100000085,
+          113.78858300000047,
+          115.42658399999982,
+          107.37112500000057,
+          107.69829200000004,
+          106.96262500000012,
+          107.28854200000023,
+          112.97304199999962
+        ],
+        "cpuMs": [
+          131.112,
+          135.872,
+          183.737,
+          137.854,
+          130.152,
+          130.41,
+          130.153,
+          129.957,
+          186.259,
+          139.274,
+          130.773,
+          131.097,
+          130.394,
+          130.808,
+          183.428
+        ]
+      },
+      "metrics": {
+        "operation.wall": {
+          "unit": "ms",
+          "n": 15,
+          "min": 106.50304100000085,
+          "p50": 107.69829200000004,
+          "p95": 115.42658399999982,
+          "max": 115.42658399999982,
+          "mean": 109.74923333333348
+        },
+        "operation.cpu": {
+          "unit": "ms",
+          "n": 15,
+          "min": 129.957,
+          "p50": 131.097,
+          "p95": 186.259,
+          "max": 186.259,
+          "mean": 142.752
+        }
+      },
+      "sqlDiagnostic": {
+        "instrumented": true,
+        "timingUse": "diagnostic-only; excluded from raw samples and speed comparisons",
+        "statements": [
+          {
+            "kind": "prepare",
+            "sql": "SELECT * FROM mailbox WHERE bee_id = ? ORDER BY id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.00795899999957328,
+            "cpuMs": 0.01
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT * FROM mailbox WHERE bee_id = ? ORDER BY id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 100000,
+            "textBytes": 14500000,
+            "blobBytes": 0,
+            "wallMs": 78.4725840000001,
+            "cpuMs": 102.339
+          }
+        ]
+      },
+      "correctness": {
+        "calls": 19,
+        "quietAuthority": true,
+        "exactTargetOrderRetained": true,
+        "authoritySeqBefore": 8,
+        "authoritySeqAfter": 8
+      },
+      "failure": null
+    },
+    {
+      "scenario": "c10-sparse-100020-20-100000",
+      "inventoryId": "C10",
+      "operation": "CoreStore.listMessages",
+      "fixture": {
+        "totalMessages": 100020,
+        "targetMessages": 20,
+        "unrelatedMessages": 100000
+      },
+      "completed": true,
+      "measurement": {
+        "startedAt": "2026-09-07T11:13:15.557Z",
+        "finishedAt": "2026-09-07T11:13:15.612Z"
+      },
+      "setup": {
+        "total": 100020,
+        "target": 20,
+        "unrelated": 100000,
+        "undelivered": 0,
+        "targetFirstId": 5001,
+        "targetLastId": 100020,
+        "targetOrderSha256": "2f021d4ca2a9e705df51fcfd0ada699961c176316fd1246a916bae42cdd9c7db",
+        "bodyBytesPerRow": 128
+      },
+      "raw": {
+        "wallMs": [
+          3.6807079999998678,
+          3.707499999999527,
+          3.7093329999997877,
+          3.725333000000319,
+          3.668374999999287,
+          3.6602499999999054,
+          3.6769580000000133,
+          3.6672499999995125,
+          3.6705830000000788,
+          3.6494590000002063,
+          3.665874999999687,
+          3.639291999999841,
+          3.6472090000006574,
+          3.6359169999996084,
+          3.636083999999755
+        ],
+        "cpuMs": [
+          3.687,
+          3.708,
+          3.71,
+          3.725,
+          3.669,
+          3.66,
+          3.677,
+          3.667,
+          3.777,
+          3.651,
+          3.666,
+          3.64,
+          3.648,
+          3.636,
+          3.636
+        ]
+      },
+      "metrics": {
+        "operation.wall": {
+          "unit": "ms",
+          "n": 15,
+          "min": 3.6359169999996084,
+          "p50": 3.6672499999995125,
+          "p95": 3.725333000000319,
+          "max": 3.725333000000319,
+          "mean": 3.6693417333332037
+        },
+        "operation.cpu": {
+          "unit": "ms",
+          "n": 15,
+          "min": 3.636,
+          "p50": 3.667,
+          "p95": 3.777,
+          "max": 3.777,
+          "mean": 3.6771333333333334
+        }
+      },
+      "sqlDiagnostic": {
+        "instrumented": true,
+        "timingUse": "diagnostic-only; excluded from raw samples and speed comparisons",
+        "statements": [
+          {
+            "kind": "prepare",
+            "sql": "SELECT * FROM mailbox WHERE bee_id = ? ORDER BY id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.004792000000634289,
+            "cpuMs": 0.006
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT * FROM mailbox WHERE bee_id = ? ORDER BY id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 20,
+            "textBytes": 2900,
+            "blobBytes": 0,
+            "wallMs": 3.6920409999993353,
+            "cpuMs": 3.692
+          }
+        ]
+      },
+      "correctness": {
+        "calls": 19,
+        "quietAuthority": true,
+        "exactTargetOrderRetained": true,
+        "authoritySeqBefore": 8,
+        "authoritySeqAfter": 8
+      },
+      "failure": null
+    },
+    {
+      "scenario": "c22-enabled-empty-0",
+      "inventoryId": "C22",
+      "operation": "DaemonCore.step",
+      "fixture": {
+        "supplies": 0
+      },
+      "completed": true,
+      "measurement": {
+        "startedAt": "2026-09-07T11:13:15.624Z",
+        "finishedAt": "2026-09-07T11:13:15.625Z"
+      },
+      "setup": {
+        "supplies": 0,
+        "paused": 0,
+        "tasks": 0,
+        "pendingMessages": 0,
+        "runningRuntimes": 0,
+        "supplyOrderSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "raw": {
+        "wallMs": [
+          0.037250000000312866,
+          0.033999999999650754,
+          0.033290999999735504,
+          0.032541000000492204,
+          0.034416999999848485,
+          0.03758300000026793,
+          0.03608299999996234,
+          0.03545799999938026,
+          0.04066599999987375,
+          0.03891699999985576,
+          0.03695900000002439,
+          0.046124999999847205,
+          0.035874999999577994,
+          0.03720800000064628,
+          0.03616700000020501
+        ],
+        "cpuMs": [
+          0.04,
+          0.035,
+          0.034,
+          0.033,
+          0.035,
+          0.037,
+          0.037,
+          0.035,
+          0.042,
+          0.04,
+          0.114,
+          0.096,
+          0.036,
+          0.038,
+          0.037
+        ]
+      },
+      "metrics": {
+        "operation.wall": {
+          "unit": "ms",
+          "n": 15,
+          "min": 0.032541000000492204,
+          "p50": 0.03616700000020501,
+          "p95": 0.046124999999847205,
+          "max": 0.046124999999847205,
+          "mean": 0.03683599999997871
+        },
+        "operation.cpu": {
+          "unit": "ms",
+          "n": 15,
+          "min": 0.033,
+          "p50": 0.037,
+          "p95": 0.114,
+          "max": 0.114,
+          "mean": 0.04593333333333334
+        }
+      },
+      "sqlDiagnostic": {
+        "instrumented": true,
+        "timingUse": "diagnostic-only; excluded from raw samples and speed comparisons",
+        "statements": [
+          {
+            "kind": "exec",
+            "sql": "BEGIN IMMEDIATE",
+            "calls": 3,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0029990000002726447,
+            "cpuMs": 0.004
+          },
+          {
+            "kind": "exec",
+            "sql": "COMMIT",
+            "calls": 3,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0016660000001138542,
+            "cpuMs": 0.003
+          },
+          {
+            "kind": "prepare",
+            "sql": "SELECT * FROM flags WHERE cleared_at IS NULL AND resets_at IS NOT NULL AND resets_at <= ? ORDER BY id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.004957999999533058,
+            "cpuMs": 0.005
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT * FROM flags WHERE cleared_at IS NULL AND resets_at IS NOT NULL AND resets_at <= ? ORDER BY id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0011249999997744453,
+            "cpuMs": 0.002
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT MAX(seq) AS seq FROM audit",
+            "calls": 2,
+            "errors": 0,
+            "rows": 2,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.002251000000796921,
+            "cpuMs": 0.002
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' LIMIT 1",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0009589999999661813,
+            "cpuMs": 0.001
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT 1 FROM mailbox WHERE delivered_at IS NULL LIMIT 1",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0007079999995767139,
+            "cpuMs": 0.001
+          },
+          {
+            "kind": "prepare",
+            "sql": "SELECT * FROM commands WHERE status = 'queued' AND next_attempt_at <= ?\n             AND NOT (verb = 'stop' AND json_type(args, '$.replacementArgs') IS NOT NULL\n               AND EXISTS (SELECT 1 FROM runtimes r WHERE r.bee_id = commands.bee_id\n                 AND r.generation = commands.target_generation AND r.state IN ('booting', 'running')))\n             AND NOT (\n               verb IN ('spawn', 'send_wake')\n               AND EXISTS (\n                 SELECT 1 FROM bees b\n                 JOIN bee_moves m ON m.id = b.active_move_id\n                 WHERE b.id = commands.bee_id\n                   AND m.phase IN ('stopping', 'placing')\n               )\n             )\n             AND NOT (\n               verb = 'revive'\n               AND EXISTS (\n                 SELECT 1 FROM bees b\n                 JOIN bee_moves m ON m.id = b.active_move_id\n                 WHERE b.id = commands.bee_id\n                   AND (m.phase != 'starting' OR commands.idempotency_key IS NULL OR commands.idempotency_key != m.revive_command_key)\n               )\n             )\n             ORDER BY id LIMIT 1",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.02045799999996234,
+            "cpuMs": 0.022
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT * FROM commands WHERE status = 'queued' AND next_attempt_at <= ?\n             AND NOT (verb = 'stop' AND json_type(args, '$.replacementArgs') IS NOT NULL\n               AND EXISTS (SELECT 1 FROM runtimes r WHERE r.bee_id = commands.bee_id\n                 AND r.generation = commands.target_generation AND r.state IN ('booting', 'running')))\n             AND NOT (\n               verb IN ('spawn', 'send_wake')\n               AND EXISTS (\n                 SELECT 1 FROM bees b\n                 JOIN bee_moves m ON m.id = b.active_move_id\n                 WHERE b.id = commands.bee_id\n                   AND m.phase IN ('stopping', 'placing')\n               )\n             )\n             AND NOT (\n               verb = 'revive'\n               AND EXISTS (\n                 SELECT 1 FROM bees b\n                 JOIN bee_moves m ON m.id = b.active_move_id\n                 WHERE b.id = commands.bee_id\n                   AND (m.phase != 'starting' OR commands.idempotency_key IS NULL OR commands.idempotency_key != m.revive_command_key)\n               )\n             )\n             ORDER BY id LIMIT 1",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0019170000005033216,
+            "cpuMs": 0.003
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT m.* FROM bees b JOIN bee_moves m ON m.id = b.active_move_id\n       WHERE b.active_move_id IS NOT NULL ORDER BY m.id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0010419999998703133,
+            "cpuMs": 0.002
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT * FROM task_supply ORDER BY bee_id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0009170000002995948,
+            "cpuMs": 0.002
+          }
+        ]
+      },
+      "correctness": {
+        "calls": 19,
+        "quietAuthority": true,
+        "suppliesRetained": 0,
+        "pausedSuppliesRetained": 0,
+        "authoritySeqBefore": 0,
+        "authoritySeqAfter": 0
+      },
+      "failure": null
+    },
+    {
+      "scenario": "c22-enabled-empty-100",
+      "inventoryId": "C22",
+      "operation": "DaemonCore.step",
+      "fixture": {
+        "supplies": 100
+      },
+      "completed": true,
+      "measurement": {
+        "startedAt": "2026-09-07T11:13:15.652Z",
+        "finishedAt": "2026-09-07T11:13:15.668Z"
+      },
+      "setup": {
+        "supplies": 100,
+        "paused": 0,
+        "tasks": 0,
+        "pendingMessages": 0,
+        "runningRuntimes": 100,
+        "supplyOrderSha256": "2ba5a20489e677820b69538e4ea49b024b6bcf17a4ee2a015a23dd3fe71de230"
+      },
+      "raw": {
+        "wallMs": [
+          1.0470420000001468,
+          1.0884580000001733,
+          1.0875420000002123,
+          1.0236660000000484,
+          1.0460409999996045,
+          1.0975829999997586,
+          1.0417909999996482,
+          1.037666000000172,
+          1.046915999999328,
+          1.0775830000002316,
+          1.054917000000387,
+          1.0470830000003843,
+          1.0687079999997877,
+          1.0501659999999902,
+          1.059541999999965
+        ],
+        "cpuMs": [
+          1.129,
+          1.376,
+          1.452,
+          1.023,
+          1.222,
+          1.499,
+          1.043,
+          1.038,
+          1.047,
+          1.077,
+          1.056,
+          1.047,
+          1.069,
+          1.05,
+          1.06
+        ]
+      },
+      "metrics": {
+        "operation.wall": {
+          "unit": "ms",
+          "n": 15,
+          "min": 1.0236660000000484,
+          "p50": 1.0501659999999902,
+          "p95": 1.0975829999997586,
+          "max": 1.0975829999997586,
+          "mean": 1.058313599999989
+        },
+        "operation.cpu": {
+          "unit": "ms",
+          "n": 15,
+          "min": 1.023,
+          "p50": 1.06,
+          "p95": 1.499,
+          "max": 1.499,
+          "mean": 1.1458666666666666
+        }
+      },
+      "sqlDiagnostic": {
+        "instrumented": true,
+        "timingUse": "diagnostic-only; excluded from raw samples and speed comparisons",
+        "statements": [
+          {
+            "kind": "exec",
+            "sql": "BEGIN IMMEDIATE",
+            "calls": 203,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.08721699999387056,
+            "cpuMs": 0.1550000000000001
+          },
+          {
+            "kind": "exec",
+            "sql": "COMMIT",
+            "calls": 203,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.11181699999269767,
+            "cpuMs": 0.6720000000000002
+          },
+          {
+            "kind": "prepare",
+            "sql": "SELECT * FROM flags WHERE cleared_at IS NULL AND resets_at IS NOT NULL AND resets_at <= ? ORDER BY id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.004791999999724794,
+            "cpuMs": 0.005
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT * FROM flags WHERE cleared_at IS NULL AND resets_at IS NOT NULL AND resets_at <= ? ORDER BY id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0010000000002037268,
+            "cpuMs": 0.002
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT MAX(seq) AS seq FROM audit",
+            "calls": 2,
+            "errors": 0,
+            "rows": 2,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.001623999999537773,
+            "cpuMs": 0.002
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' LIMIT 1",
+            "calls": 1,
+            "errors": 0,
+            "rows": 1,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0010419999998703133,
+            "cpuMs": 0.002
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT runtime.bee_id,\n              runtime.generation,\n              runtime.state,\n              runtime.started_at,\n              runtime.updated_at,\n              runtime.boot_evidence\n       FROM runtimes AS runtime\n       WHERE runtime.state != 'stopped'\n         AND runtime.generation = (\n           SELECT MAX(latest.generation)\n           FROM runtimes AS latest\n           WHERE latest.bee_id = runtime.bee_id\n         )\n       ORDER BY runtime.bee_id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 100,
+            "textBytes": 2400,
+            "blobBytes": 0,
+            "wallMs": 0.04908400000022084,
+            "cpuMs": 0.049
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT message.id,\n              message.bee_id,\n              message.urgency,\n              message.enqueued_at\n       FROM runtimes AS runtime\n       CROSS JOIN mailbox AS message\n       WHERE runtime.state != 'stopped'\n         AND runtime.generation = (\n           SELECT MAX(latest.generation)\n           FROM runtimes AS latest\n           WHERE latest.bee_id = runtime.bee_id\n         )\n         AND message.bee_id = runtime.bee_id\n         AND message.delivered_at IS NULL\n       ORDER BY runtime.bee_id, message.id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0184159999998883,
+            "cpuMs": 0.019
+          },
+          {
+            "kind": "prepare",
+            "sql": "SELECT * FROM commands WHERE status = 'queued' AND next_attempt_at <= ?\n             AND NOT (verb = 'stop' AND json_type(args, '$.replacementArgs') IS NOT NULL\n               AND EXISTS (SELECT 1 FROM runtimes r WHERE r.bee_id = commands.bee_id\n                 AND r.generation = commands.target_generation AND r.state IN ('booting', 'running')))\n             AND NOT (\n               verb IN ('spawn', 'send_wake')\n               AND EXISTS (\n                 SELECT 1 FROM bees b\n                 JOIN bee_moves m ON m.id = b.active_move_id\n                 WHERE b.id = commands.bee_id\n                   AND m.phase IN ('stopping', 'placing')\n               )\n             )\n             AND NOT (\n               verb = 'revive'\n               AND EXISTS (\n                 SELECT 1 FROM bees b\n                 JOIN bee_moves m ON m.id = b.active_move_id\n                 WHERE b.id = commands.bee_id\n                   AND (m.phase != 'starting' OR commands.idempotency_key IS NULL OR commands.idempotency_key != m.revive_command_key)\n               )\n             )\n             ORDER BY id LIMIT 1",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.019833000000289758,
+            "cpuMs": 0.02
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT * FROM commands WHERE status = 'queued' AND next_attempt_at <= ?\n             AND NOT (verb = 'stop' AND json_type(args, '$.replacementArgs') IS NOT NULL\n               AND EXISTS (SELECT 1 FROM runtimes r WHERE r.bee_id = commands.bee_id\n                 AND r.generation = commands.target_generation AND r.state IN ('booting', 'running')))\n             AND NOT (\n               verb IN ('spawn', 'send_wake')\n               AND EXISTS (\n                 SELECT 1 FROM bees b\n                 JOIN bee_moves m ON m.id = b.active_move_id\n                 WHERE b.id = commands.bee_id\n                   AND m.phase IN ('stopping', 'placing')\n               )\n             )\n             AND NOT (\n               verb = 'revive'\n               AND EXISTS (\n                 SELECT 1 FROM bees b\n                 JOIN bee_moves m ON m.id = b.active_move_id\n                 WHERE b.id = commands.bee_id\n                   AND (m.phase != 'starting' OR commands.idempotency_key IS NULL OR commands.idempotency_key != m.revive_command_key)\n               )\n             )\n             ORDER BY id LIMIT 1",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0020830000003115856,
+            "cpuMs": 0.002
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT m.* FROM bees b JOIN bee_moves m ON m.id = b.active_move_id\n       WHERE b.active_move_id IS NOT NULL ORDER BY m.id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0006249999996725819,
+            "cpuMs": 0
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT * FROM task_supply ORDER BY bee_id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 100,
+            "textBytes": 1300,
+            "blobBytes": 0,
+            "wallMs": 0.02829100000053586,
+            "cpuMs": 0.028
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT * FROM task_supply WHERE bee_id = ?",
+            "calls": 100,
+            "errors": 0,
+            "rows": 100,
+            "textBytes": 1300,
+            "blobBytes": 0,
+            "wallMs": 0.11549899999954505,
+            "cpuMs": 0.1720000000000001
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT * FROM tasks WHERE list = ? ORDER BY sort_order, id",
+            "calls": 100,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.050875999997515464,
+            "cpuMs": 0.08900000000000007
+          },
+          {
+            "kind": "prepare",
+            "sql": "SELECT * FROM runtimes WHERE bee_id = ? ORDER BY generation DESC LIMIT 1",
+            "calls": 100,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.39288500000384374,
+            "cpuMs": 0.44500000000000034
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT * FROM runtimes WHERE bee_id = ? ORDER BY generation DESC LIMIT 1",
+            "calls": 100,
+            "errors": 0,
+            "rows": 100,
+            "textBytes": 2400,
+            "blobBytes": 0,
+            "wallMs": 0.16767199999685545,
+            "cpuMs": 0.19900000000000015
+          }
+        ]
+      },
+      "correctness": {
+        "calls": 19,
+        "quietAuthority": true,
+        "suppliesRetained": 100,
+        "pausedSuppliesRetained": 0,
+        "authoritySeqBefore": 400,
+        "authoritySeqAfter": 400
+      },
+      "failure": null
+    },
+    {
+      "scenario": "c22-enabled-empty-1000",
+      "inventoryId": "C22",
+      "operation": "DaemonCore.step",
+      "fixture": {
+        "supplies": 1000
+      },
+      "completed": true,
+      "measurement": {
+        "startedAt": "2026-09-07T11:13:15.887Z",
+        "finishedAt": "2026-09-07T11:13:16.051Z"
+      },
+      "setup": {
+        "supplies": 1000,
+        "paused": 0,
+        "tasks": 0,
+        "pendingMessages": 0,
+        "runningRuntimes": 1000,
+        "supplyOrderSha256": "4bb31733a153437b87caf2633b71f80849d7b6cf1da77ea37a8e45b36e1e4ebe"
+      },
+      "raw": {
+        "wallMs": [
+          10.968249999999898,
+          10.724291999999878,
+          10.821208000000297,
+          10.803624999999556,
+          17.766708000000108,
+          10.018583000000035,
+          10.198208000000704,
+          10.278208000000632,
+          10.44170800000029,
+          10.369333000000552,
+          10.301124999999956,
+          10.27783400000044,
+          10.32404200000019,
+          10.349458000000595,
+          10.398541999999907
+        ],
+        "cpuMs": [
+          10.975,
+          10.726,
+          11.569,
+          10.803,
+          18.241,
+          11.471,
+          10.422,
+          11.627,
+          10.442,
+          10.37,
+          12.202,
+          10.279,
+          10.324,
+          10.35,
+          10.4
+        ]
+      },
+      "metrics": {
+        "operation.wall": {
+          "unit": "ms",
+          "n": 15,
+          "min": 10.018583000000035,
+          "p50": 10.369333000000552,
+          "p95": 17.766708000000108,
+          "max": 17.766708000000108,
+          "mean": 10.936074933333536
+        },
+        "operation.cpu": {
+          "unit": "ms",
+          "n": 15,
+          "min": 10.279,
+          "p50": 10.726,
+          "p95": 18.241,
+          "max": 18.241,
+          "mean": 11.346733333333335
+        }
+      },
+      "sqlDiagnostic": {
+        "instrumented": true,
+        "timingUse": "diagnostic-only; excluded from raw samples and speed comparisons",
+        "statements": [
+          {
+            "kind": "exec",
+            "sql": "BEGIN IMMEDIATE",
+            "calls": 2003,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.81137500001023,
+            "cpuMs": 1.4489999999999617
+          },
+          {
+            "kind": "exec",
+            "sql": "COMMIT",
+            "calls": 2003,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.9794430000092689,
+            "cpuMs": 2.2099999999999427
+          },
+          {
+            "kind": "prepare",
+            "sql": "SELECT * FROM flags WHERE cleared_at IS NULL AND resets_at IS NOT NULL AND resets_at <= ? ORDER BY id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.004791000000295753,
+            "cpuMs": 0.005
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT * FROM flags WHERE cleared_at IS NULL AND resets_at IS NOT NULL AND resets_at <= ? ORDER BY id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.001209000000017113,
+            "cpuMs": 0.002
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT MAX(seq) AS seq FROM audit",
+            "calls": 2,
+            "errors": 0,
+            "rows": 2,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0018329999993511592,
+            "cpuMs": 0.003
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' LIMIT 1",
+            "calls": 1,
+            "errors": 0,
+            "rows": 1,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0010000000002037268,
+            "cpuMs": 0.001
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT runtime.bee_id,\n              runtime.generation,\n              runtime.state,\n              runtime.started_at,\n              runtime.updated_at,\n              runtime.boot_evidence\n       FROM runtimes AS runtime\n       WHERE runtime.state != 'stopped'\n         AND runtime.generation = (\n           SELECT MAX(latest.generation)\n           FROM runtimes AS latest\n           WHERE latest.bee_id = runtime.bee_id\n         )\n       ORDER BY runtime.bee_id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 1000,
+            "textBytes": 24000,
+            "blobBytes": 0,
+            "wallMs": 0.5567909999999756,
+            "cpuMs": 0.557
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT message.id,\n              message.bee_id,\n              message.urgency,\n              message.enqueued_at\n       FROM runtimes AS runtime\n       CROSS JOIN mailbox AS message\n       WHERE runtime.state != 'stopped'\n         AND runtime.generation = (\n           SELECT MAX(latest.generation)\n           FROM runtimes AS latest\n           WHERE latest.bee_id = runtime.bee_id\n         )\n         AND message.bee_id = runtime.bee_id\n         AND message.delivered_at IS NULL\n       ORDER BY runtime.bee_id, message.id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.17212500000005093,
+            "cpuMs": 0.175
+          },
+          {
+            "kind": "prepare",
+            "sql": "SELECT * FROM commands WHERE status = 'queued' AND next_attempt_at <= ?\n             AND NOT (verb = 'stop' AND json_type(args, '$.replacementArgs') IS NOT NULL\n               AND EXISTS (SELECT 1 FROM runtimes r WHERE r.bee_id = commands.bee_id\n                 AND r.generation = commands.target_generation AND r.state IN ('booting', 'running')))\n             AND NOT (\n               verb IN ('spawn', 'send_wake')\n               AND EXISTS (\n                 SELECT 1 FROM bees b\n                 JOIN bee_moves m ON m.id = b.active_move_id\n                 WHERE b.id = commands.bee_id\n                   AND m.phase IN ('stopping', 'placing')\n               )\n             )\n             AND NOT (\n               verb = 'revive'\n               AND EXISTS (\n                 SELECT 1 FROM bees b\n                 JOIN bee_moves m ON m.id = b.active_move_id\n                 WHERE b.id = commands.bee_id\n                   AND (m.phase != 'starting' OR commands.idempotency_key IS NULL OR commands.idempotency_key != m.revive_command_key)\n               )\n             )\n             ORDER BY id LIMIT 1",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.021542000000408734,
+            "cpuMs": 0.022
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT * FROM commands WHERE status = 'queued' AND next_attempt_at <= ?\n             AND NOT (verb = 'stop' AND json_type(args, '$.replacementArgs') IS NOT NULL\n               AND EXISTS (SELECT 1 FROM runtimes r WHERE r.bee_id = commands.bee_id\n                 AND r.generation = commands.target_generation AND r.state IN ('booting', 'running')))\n             AND NOT (\n               verb IN ('spawn', 'send_wake')\n               AND EXISTS (\n                 SELECT 1 FROM bees b\n                 JOIN bee_moves m ON m.id = b.active_move_id\n                 WHERE b.id = commands.bee_id\n                   AND m.phase IN ('stopping', 'placing')\n               )\n             )\n             AND NOT (\n               verb = 'revive'\n               AND EXISTS (\n                 SELECT 1 FROM bees b\n                 JOIN bee_moves m ON m.id = b.active_move_id\n                 WHERE b.id = commands.bee_id\n                   AND (m.phase != 'starting' OR commands.idempotency_key IS NULL OR commands.idempotency_key != m.revive_command_key)\n               )\n             )\n             ORDER BY id LIMIT 1",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0024169999996956903,
+            "cpuMs": 0.003
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT m.* FROM bees b JOIN bee_moves m ON m.id = b.active_move_id\n       WHERE b.active_move_id IS NOT NULL ORDER BY m.id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0006670000002486631,
+            "cpuMs": 0.001
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT * FROM task_supply ORDER BY bee_id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 1000,
+            "textBytes": 13000,
+            "blobBytes": 0,
+            "wallMs": 0.27520800000002055,
+            "cpuMs": 0.276
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT * FROM task_supply WHERE bee_id = ?",
+            "calls": 1000,
+            "errors": 0,
+            "rows": 1000,
+            "textBytes": 13000,
+            "blobBytes": 0,
+            "wallMs": 1.1730760000145892,
+            "cpuMs": 1.503999999999978
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT * FROM tasks WHERE list = ? ORDER BY sort_order, id",
+            "calls": 1000,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.4589220000043497,
+            "cpuMs": 0.8820000000000006
+          },
+          {
+            "kind": "prepare",
+            "sql": "SELECT * FROM runtimes WHERE bee_id = ? ORDER BY generation DESC LIMIT 1",
+            "calls": 1000,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 4.172451000002184,
+            "cpuMs": 8.22699999999991
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT * FROM runtimes WHERE bee_id = ? ORDER BY generation DESC LIMIT 1",
+            "calls": 1000,
+            "errors": 0,
+            "rows": 1000,
+            "textBytes": 24000,
+            "blobBytes": 0,
+            "wallMs": 1.5830409999935,
+            "cpuMs": 2.107999999999975
+          }
+        ]
+      },
+      "correctness": {
+        "calls": 19,
+        "quietAuthority": true,
+        "suppliesRetained": 1000,
+        "pausedSuppliesRetained": 0,
+        "authoritySeqBefore": 4000,
+        "authoritySeqAfter": 4000
+      },
+      "failure": null
+    },
+    {
+      "scenario": "c22-enabled-paused-100",
+      "inventoryId": "C22",
+      "operation": "DaemonCore.step",
+      "fixture": {
+        "supplies": 100
+      },
+      "completed": true,
+      "measurement": {
+        "startedAt": "2026-09-07T11:13:16.132Z",
+        "finishedAt": "2026-09-07T11:13:16.148Z"
+      },
+      "setup": {
+        "supplies": 100,
+        "paused": 100,
+        "tasks": 100,
+        "pendingMessages": 100,
+        "runningRuntimes": 100,
+        "supplyOrderSha256": "2ba5a20489e677820b69538e4ea49b024b6bcf17a4ee2a015a23dd3fe71de230"
+      },
+      "raw": {
+        "wallMs": [
+          1.059374999999818,
+          1.100749999999607,
+          1.0676669999993464,
+          1.1023329999998168,
+          1.1059999999997672,
+          1.0794169999999212,
+          1.0993340000004537,
+          1.086167000000387,
+          1.0920829999995476,
+          1.103874999999789,
+          1.1013339999999516,
+          1.0625,
+          1.0823749999999563,
+          1.0794580000001588,
+          1.0699169999998048
+        ],
+        "cpuMs": [
+          1.064,
+          1.286,
+          1.068,
+          1.324,
+          1.106,
+          1.08,
+          3.924,
+          1.086,
+          1.626,
+          1.105,
+          1.101,
+          1.062,
+          1.083,
+          1.079,
+          1.069
+        ]
+      },
+      "metrics": {
+        "operation.wall": {
+          "unit": "ms",
+          "n": 15,
+          "min": 1.059374999999818,
+          "p50": 1.086167000000387,
+          "p95": 1.1059999999997672,
+          "max": 1.1059999999997672,
+          "mean": 1.0861723333332216
+        },
+        "operation.cpu": {
+          "unit": "ms",
+          "n": 15,
+          "min": 1.062,
+          "p50": 1.086,
+          "p95": 3.924,
+          "max": 3.924,
+          "mean": 1.3375333333333332
+        }
+      },
+      "sqlDiagnostic": {
+        "instrumented": true,
+        "timingUse": "diagnostic-only; excluded from raw samples and speed comparisons",
+        "statements": [
+          {
+            "kind": "exec",
+            "sql": "BEGIN IMMEDIATE",
+            "calls": 203,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.07312300000467076,
+            "cpuMs": 0.12700000000000009
+          },
+          {
+            "kind": "exec",
+            "sql": "COMMIT",
+            "calls": 203,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.08382800000163115,
+            "cpuMs": 0.1290000000000001
+          },
+          {
+            "kind": "prepare",
+            "sql": "SELECT * FROM flags WHERE cleared_at IS NULL AND resets_at IS NOT NULL AND resets_at <= ? ORDER BY id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.005083000000013271,
+            "cpuMs": 0.005
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT * FROM flags WHERE cleared_at IS NULL AND resets_at IS NOT NULL AND resets_at <= ? ORDER BY id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0011669999994410318,
+            "cpuMs": 0.001
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT MAX(seq) AS seq FROM audit",
+            "calls": 2,
+            "errors": 0,
+            "rows": 2,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0016249999998763087,
+            "cpuMs": 0.002
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' LIMIT 1",
+            "calls": 1,
+            "errors": 0,
+            "rows": 1,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0010000000002037268,
+            "cpuMs": 0.001
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT runtime.bee_id,\n              runtime.generation,\n              runtime.state,\n              runtime.started_at,\n              runtime.updated_at,\n              runtime.boot_evidence\n       FROM runtimes AS runtime\n       WHERE runtime.state != 'stopped'\n         AND runtime.generation = (\n           SELECT MAX(latest.generation)\n           FROM runtimes AS latest\n           WHERE latest.bee_id = runtime.bee_id\n         )\n       ORDER BY runtime.bee_id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 100,
+            "textBytes": 2400,
+            "blobBytes": 0,
+            "wallMs": 0.051375000000007276,
+            "cpuMs": 0.052
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT message.id,\n              message.bee_id,\n              message.urgency,\n              message.enqueued_at\n       FROM runtimes AS runtime\n       CROSS JOIN mailbox AS message\n       WHERE runtime.state != 'stopped'\n         AND runtime.generation = (\n           SELECT MAX(latest.generation)\n           FROM runtimes AS latest\n           WHERE latest.bee_id = runtime.bee_id\n         )\n         AND message.bee_id = runtime.bee_id\n         AND message.delivered_at IS NULL\n       ORDER BY runtime.bee_id, message.id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 100,
+            "textBytes": 1700,
+            "blobBytes": 0,
+            "wallMs": 0.07141699999920093,
+            "cpuMs": 0.071
+          },
+          {
+            "kind": "prepare",
+            "sql": "SELECT * FROM commands WHERE status = 'queued' AND next_attempt_at <= ?\n             AND NOT (verb = 'stop' AND json_type(args, '$.replacementArgs') IS NOT NULL\n               AND EXISTS (SELECT 1 FROM runtimes r WHERE r.bee_id = commands.bee_id\n                 AND r.generation = commands.target_generation AND r.state IN ('booting', 'running')))\n             AND NOT (\n               verb IN ('spawn', 'send_wake')\n               AND EXISTS (\n                 SELECT 1 FROM bees b\n                 JOIN bee_moves m ON m.id = b.active_move_id\n                 WHERE b.id = commands.bee_id\n                   AND m.phase IN ('stopping', 'placing')\n               )\n             )\n             AND NOT (\n               verb = 'revive'\n               AND EXISTS (\n                 SELECT 1 FROM bees b\n                 JOIN bee_moves m ON m.id = b.active_move_id\n                 WHERE b.id = commands.bee_id\n                   AND (m.phase != 'starting' OR commands.idempotency_key IS NULL OR commands.idempotency_key != m.revive_command_key)\n               )\n             )\n             ORDER BY id LIMIT 1",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.020125000000007276,
+            "cpuMs": 0.021
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT * FROM commands WHERE status = 'queued' AND next_attempt_at <= ?\n             AND NOT (verb = 'stop' AND json_type(args, '$.replacementArgs') IS NOT NULL\n               AND EXISTS (SELECT 1 FROM runtimes r WHERE r.bee_id = commands.bee_id\n                 AND r.generation = commands.target_generation AND r.state IN ('booting', 'running')))\n             AND NOT (\n               verb IN ('spawn', 'send_wake')\n               AND EXISTS (\n                 SELECT 1 FROM bees b\n                 JOIN bee_moves m ON m.id = b.active_move_id\n                 WHERE b.id = commands.bee_id\n                   AND m.phase IN ('stopping', 'placing')\n               )\n             )\n             AND NOT (\n               verb = 'revive'\n               AND EXISTS (\n                 SELECT 1 FROM bees b\n                 JOIN bee_moves m ON m.id = b.active_move_id\n                 WHERE b.id = commands.bee_id\n                   AND (m.phase != 'starting' OR commands.idempotency_key IS NULL OR commands.idempotency_key != m.revive_command_key)\n               )\n             )\n             ORDER BY id LIMIT 1",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0019170000005033216,
+            "cpuMs": 0.002
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT m.* FROM bees b JOIN bee_moves m ON m.id = b.active_move_id\n       WHERE b.active_move_id IS NOT NULL ORDER BY m.id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0005830000000059954,
+            "cpuMs": 0.001
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT m.* FROM bees b JOIN bee_moves m ON m.id = b.active_move_id WHERE b.id = ?",
+            "calls": 100,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.059879999996155675,
+            "cpuMs": 0.10600000000000008
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT * FROM task_supply ORDER BY bee_id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 100,
+            "textBytes": 1300,
+            "blobBytes": 0,
+            "wallMs": 4.126249999999345,
+            "cpuMs": 4.296
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT * FROM task_supply WHERE bee_id = ?",
+            "calls": 100,
+            "errors": 0,
+            "rows": 100,
+            "textBytes": 1300,
+            "blobBytes": 0,
+            "wallMs": 0.0953730000046562,
+            "cpuMs": 0.11900000000000009
+          },
+          {
+            "kind": "prepare",
+            "sql": "SELECT * FROM runtimes WHERE bee_id = ? ORDER BY generation DESC LIMIT 1",
+            "calls": 100,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.36304399999517045,
+            "cpuMs": 0.3980000000000003
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT * FROM runtimes WHERE bee_id = ? ORDER BY generation DESC LIMIT 1",
+            "calls": 100,
+            "errors": 0,
+            "rows": 100,
+            "textBytes": 2400,
+            "blobBytes": 0,
+            "wallMs": 0.14616399999886198,
+            "cpuMs": 0.17600000000000013
+          }
+        ]
+      },
+      "correctness": {
+        "calls": 19,
+        "quietAuthority": true,
+        "suppliesRetained": 100,
+        "pausedSuppliesRetained": 100,
+        "authoritySeqBefore": 800,
+        "authoritySeqAfter": 800
+      },
+      "failure": null
+    },
+    {
+      "scenario": "c22-enabled-paused-1000",
+      "inventoryId": "C22",
+      "operation": "DaemonCore.step",
+      "fixture": {
+        "supplies": 1000
+      },
+      "completed": true,
+      "measurement": {
+        "startedAt": "2026-09-07T11:13:16.551Z",
+        "finishedAt": "2026-09-07T11:13:16.716Z"
+      },
+      "setup": {
+        "supplies": 1000,
+        "paused": 1000,
+        "tasks": 1000,
+        "pendingMessages": 1000,
+        "runningRuntimes": 1000,
+        "supplyOrderSha256": "4bb31733a153437b87caf2633b71f80849d7b6cf1da77ea37a8e45b36e1e4ebe"
+      },
+      "raw": {
+        "wallMs": [
+          11.00604199999998,
+          10.953499999999622,
+          11.030875000000378,
+          11.087166999999681,
+          10.843832999999904,
+          10.890332999999373,
+          10.948916000000281,
+          11.008250000000771,
+          10.90270800000053,
+          11.125375000000531,
+          10.755165999999917,
+          10.88025000000016,
+          10.970124999999825,
+          11.022165999999743,
+          11.00091699999939
+        ],
+        "cpuMs": [
+          11.011,
+          10.954,
+          11.032,
+          11.088,
+          10.844,
+          10.89,
+          10.949,
+          11.008,
+          10.946,
+          11.126,
+          10.755,
+          10.881,
+          10.971,
+          11.022,
+          11.001
+        ]
+      },
+      "metrics": {
+        "operation.wall": {
+          "unit": "ms",
+          "n": 15,
+          "min": 10.755165999999917,
+          "p50": 10.970124999999825,
+          "p95": 11.125375000000531,
+          "max": 11.125375000000531,
+          "mean": 10.961708200000006
+        },
+        "operation.cpu": {
+          "unit": "ms",
+          "n": 15,
+          "min": 10.755,
+          "p50": 10.971,
+          "p95": 11.126,
+          "max": 11.126,
+          "mean": 10.9652
+        }
+      },
+      "sqlDiagnostic": {
+        "instrumented": true,
+        "timingUse": "diagnostic-only; excluded from raw samples and speed comparisons",
+        "statements": [
+          {
+            "kind": "exec",
+            "sql": "BEGIN IMMEDIATE",
+            "calls": 2003,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.7447390000097585,
+            "cpuMs": 1.3109999999999757
+          },
+          {
+            "kind": "exec",
+            "sql": "COMMIT",
+            "calls": 2003,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.8429390000301282,
+            "cpuMs": 1.4119999999999662
+          },
+          {
+            "kind": "prepare",
+            "sql": "SELECT * FROM flags WHERE cleared_at IS NULL AND resets_at IS NOT NULL AND resets_at <= ? ORDER BY id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.008249999999861757,
+            "cpuMs": 0.009
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT * FROM flags WHERE cleared_at IS NULL AND resets_at IS NOT NULL AND resets_at <= ? ORDER BY id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0014170000004014582,
+            "cpuMs": 0.003
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT MAX(seq) AS seq FROM audit",
+            "calls": 2,
+            "errors": 0,
+            "rows": 2,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.002165999999306223,
+            "cpuMs": 0.004
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' LIMIT 1",
+            "calls": 1,
+            "errors": 0,
+            "rows": 1,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0012500000002546585,
+            "cpuMs": 0.002
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT runtime.bee_id,\n              runtime.generation,\n              runtime.state,\n              runtime.started_at,\n              runtime.updated_at,\n              runtime.boot_evidence\n       FROM runtimes AS runtime\n       WHERE runtime.state != 'stopped'\n         AND runtime.generation = (\n           SELECT MAX(latest.generation)\n           FROM runtimes AS latest\n           WHERE latest.bee_id = runtime.bee_id\n         )\n       ORDER BY runtime.bee_id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 1000,
+            "textBytes": 24000,
+            "blobBytes": 0,
+            "wallMs": 17.219625000000633,
+            "cpuMs": 17.372
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT message.id,\n              message.bee_id,\n              message.urgency,\n              message.enqueued_at\n       FROM runtimes AS runtime\n       CROSS JOIN mailbox AS message\n       WHERE runtime.state != 'stopped'\n         AND runtime.generation = (\n           SELECT MAX(latest.generation)\n           FROM runtimes AS latest\n           WHERE latest.bee_id = runtime.bee_id\n         )\n         AND message.bee_id = runtime.bee_id\n         AND message.delivered_at IS NULL\n       ORDER BY runtime.bee_id, message.id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 1000,
+            "textBytes": 17000,
+            "blobBytes": 0,
+            "wallMs": 0.6790829999999914,
+            "cpuMs": 0.68
+          },
+          {
+            "kind": "prepare",
+            "sql": "SELECT * FROM commands WHERE status = 'queued' AND next_attempt_at <= ?\n             AND NOT (verb = 'stop' AND json_type(args, '$.replacementArgs') IS NOT NULL\n               AND EXISTS (SELECT 1 FROM runtimes r WHERE r.bee_id = commands.bee_id\n                 AND r.generation = commands.target_generation AND r.state IN ('booting', 'running')))\n             AND NOT (\n               verb IN ('spawn', 'send_wake')\n               AND EXISTS (\n                 SELECT 1 FROM bees b\n                 JOIN bee_moves m ON m.id = b.active_move_id\n                 WHERE b.id = commands.bee_id\n                   AND m.phase IN ('stopping', 'placing')\n               )\n             )\n             AND NOT (\n               verb = 'revive'\n               AND EXISTS (\n                 SELECT 1 FROM bees b\n                 JOIN bee_moves m ON m.id = b.active_move_id\n                 WHERE b.id = commands.bee_id\n                   AND (m.phase != 'starting' OR commands.idempotency_key IS NULL OR commands.idempotency_key != m.revive_command_key)\n               )\n             )\n             ORDER BY id LIMIT 1",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0340409999998883,
+            "cpuMs": 0.034
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT * FROM commands WHERE status = 'queued' AND next_attempt_at <= ?\n             AND NOT (verb = 'stop' AND json_type(args, '$.replacementArgs') IS NOT NULL\n               AND EXISTS (SELECT 1 FROM runtimes r WHERE r.bee_id = commands.bee_id\n                 AND r.generation = commands.target_generation AND r.state IN ('booting', 'running')))\n             AND NOT (\n               verb IN ('spawn', 'send_wake')\n               AND EXISTS (\n                 SELECT 1 FROM bees b\n                 JOIN bee_moves m ON m.id = b.active_move_id\n                 WHERE b.id = commands.bee_id\n                   AND m.phase IN ('stopping', 'placing')\n               )\n             )\n             AND NOT (\n               verb = 'revive'\n               AND EXISTS (\n                 SELECT 1 FROM bees b\n                 JOIN bee_moves m ON m.id = b.active_move_id\n                 WHERE b.id = commands.bee_id\n                   AND (m.phase != 'starting' OR commands.idempotency_key IS NULL OR commands.idempotency_key != m.revive_command_key)\n               )\n             )\n             ORDER BY id LIMIT 1",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0044580000003406894,
+            "cpuMs": 0.005
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT m.* FROM bees b JOIN bee_moves m ON m.id = b.active_move_id\n       WHERE b.active_move_id IS NOT NULL ORDER BY m.id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0007500000001527951,
+            "cpuMs": 0.001
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT m.* FROM bees b JOIN bee_moves m ON m.id = b.active_move_id WHERE b.id = ?",
+            "calls": 1000,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.48059399999874586,
+            "cpuMs": 0.7180000000000005
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT * FROM task_supply ORDER BY bee_id",
+            "calls": 1,
+            "errors": 0,
+            "rows": 1000,
+            "textBytes": 13000,
+            "blobBytes": 0,
+            "wallMs": 0.2577499999997599,
+            "cpuMs": 0.258
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT * FROM task_supply WHERE bee_id = ?",
+            "calls": 1000,
+            "errors": 0,
+            "rows": 1000,
+            "textBytes": 13000,
+            "blobBytes": 0,
+            "wallMs": 1.1096039999911227,
+            "cpuMs": 2.0439999999999765
+          },
+          {
+            "kind": "prepare",
+            "sql": "SELECT * FROM runtimes WHERE bee_id = ? ORDER BY generation DESC LIMIT 1",
+            "calls": 1000,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 3.659769000008964,
+            "cpuMs": 3.9529999999999976
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT * FROM runtimes WHERE bee_id = ? ORDER BY generation DESC LIMIT 1",
+            "calls": 1000,
+            "errors": 0,
+            "rows": 1000,
+            "textBytes": 24000,
+            "blobBytes": 0,
+            "wallMs": 1.5595479999974486,
+            "cpuMs": 1.86799999999998
+          }
+        ]
+      },
+      "correctness": {
+        "calls": 19,
+        "quietAuthority": true,
+        "suppliesRetained": 1000,
+        "pausedSuppliesRetained": 1000,
+        "authoritySeqBefore": 8000,
+        "authoritySeqAfter": 8000
+      },
+      "failure": null
+    },
+    {
+      "scenario": "c25-audit-tail-1000000-20",
+      "inventoryId": "C25",
+      "operation": "CoreStore.auditTail",
+      "fixture": {
+        "unrelatedAuditRows": 1000000,
+        "targetAuditRows": 20
+      },
+      "completed": true,
+      "measurement": {
+        "startedAt": "2026-09-07T11:13:17.741Z",
+        "finishedAt": "2026-09-07T11:13:18.192Z"
+      },
+      "setup": {
+        "baselineAuditRows": 8,
+        "totalAuditRows": 1000028,
+        "targetAuditRowsIncludingSetup": 24,
+        "fixtureTargetAuditRows": 20,
+        "targetFirstSeq": 50009,
+        "targetLastSeq": 1000028,
+        "targetOrderSha256": "7fb9293bac616f81dd60570199c8cc5a2b0c95763c9fdd95a194e28081e737f3"
+      },
+      "raw": {
+        "wallMs": [
+          30.47612500000014,
+          30.467999999999847,
+          30.03216599999996,
+          29.568834000000606,
+          30.147375000000466,
+          30.21758300000056,
+          30.159708000000137,
+          30.222665999999663,
+          30.060583999999835,
+          29.585541999999805,
+          29.942250000000058,
+          29.94275000000016,
+          30.024124999999913,
+          29.92304200000035,
+          29.93487500000083
+        ],
+        "cpuMs": [
+          30.468,
+          30.461,
+          30.033,
+          29.57,
+          30.148,
+          30.218,
+          30.161,
+          30.223,
+          30.05,
+          29.587,
+          29.943,
+          29.943,
+          30.025,
+          29.924,
+          29.935
+        ]
+      },
+      "metrics": {
+        "operation.wall": {
+          "unit": "ms",
+          "n": 15,
+          "min": 29.568834000000606,
+          "p50": 30.03216599999996,
+          "p95": 30.47612500000014,
+          "max": 30.47612500000014,
+          "mean": 30.04704166666682
+        },
+        "operation.cpu": {
+          "unit": "ms",
+          "n": 15,
+          "min": 29.57,
+          "p50": 30.033,
+          "p95": 30.468,
+          "max": 30.468,
+          "mean": 30.045933333333327
+        }
+      },
+      "sqlDiagnostic": {
+        "instrumented": true,
+        "timingUse": "diagnostic-only; excluded from raw samples and speed comparisons",
+        "statements": [
+          {
+            "kind": "prepare",
+            "sql": "SELECT * FROM audit WHERE seq > ? AND bee_id = ? ORDER BY seq DESC LIMIT ?",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.006124999999883585,
+            "cpuMs": 0.009
+          },
+          {
+            "kind": "all",
+            "sql": "SELECT * FROM audit WHERE seq > ? AND bee_id = ? ORDER BY seq DESC LIMIT ?",
+            "calls": 1,
+            "errors": 0,
+            "rows": 20,
+            "textBytes": 970,
+            "blobBytes": 0,
+            "wallMs": 29.91187499999978,
+            "cpuMs": 29.913
+          }
+        ]
+      },
+      "correctness": {
+        "calls": 19,
+        "quietAuthority": true,
+        "exactSparseTailRetained": true,
+        "authoritySeqBefore": 1000028,
+        "authoritySeqAfter": 1000028
+      },
+      "failure": null
+    },
+    {
+      "scenario": "c18-rpc-hit-10000",
+      "inventoryId": "C18",
+      "operation": "CoreStore.lookupRpcResult",
+      "fixture": {
+        "retainedRows": 10000
+      },
+      "completed": true,
+      "measurement": {
+        "startedAt": "2026-09-07T11:13:18.266Z",
+        "finishedAt": "2026-09-07T11:13:18.266Z"
+      },
+      "setup": {
+        "initialRows": 10000,
+        "hitKey": "seed-009999",
+        "retentionRows": 10000
+      },
+      "raw": {
+        "wallMs": [
+          0.006583000000318862,
+          0.0057079999987763586,
+          0.005791999999928521,
+          0.0057500000002619345,
+          0.005499999999301508,
+          0.006290999999691849,
+          0.00854099999924074,
+          0.006708000000799075,
+          0.005624999999781721,
+          0.005458999999973457,
+          0.006333999999696971,
+          0.005165999999007909,
+          0.004999999999199645,
+          0.0046249999995779945,
+          0.005875000000742148
+        ],
+        "cpuMs": [
+          0.01,
+          0.007,
+          0.007,
+          0.006,
+          0.006,
+          0.007,
+          0.009,
+          0.008,
+          0.006,
+          0.005,
+          0.007,
+          0.005,
+          0.005,
+          0.005,
+          0.006
+        ]
+      },
+      "metrics": {
+        "operation.wall": {
+          "unit": "ms",
+          "n": 15,
+          "min": 0.0046249999995779945,
+          "p50": 0.0057500000002619345,
+          "p95": 0.00854099999924074,
+          "max": 0.00854099999924074,
+          "mean": 0.005930466666419913
+        },
+        "operation.cpu": {
+          "unit": "ms",
+          "n": 15,
+          "min": 0.005,
+          "p50": 0.006,
+          "p95": 0.01,
+          "max": 0.01,
+          "mean": 0.0066000000000000026
+        }
+      },
+      "sqlDiagnostic": {
+        "instrumented": true,
+        "timingUse": "diagnostic-only; excluded from raw samples and speed comparisons",
+        "statements": [
+          {
+            "kind": "prepare",
+            "sql": "SELECT * FROM rpc_idempotency WHERE key = ?",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0027500000014697434,
+            "cpuMs": 0.004
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT * FROM rpc_idempotency WHERE key = ?",
+            "calls": 1,
+            "errors": 0,
+            "rows": 1,
+            "textBytes": 31,
+            "blobBytes": 0,
+            "wallMs": 0.002291999999215477,
+            "cpuMs": 0.002
+          }
+        ]
+      },
+      "correctness": {
+        "calls": 19,
+        "quietAuthority": true,
+        "distinctKeysWritten": 0,
+        "retainedRows": 10000,
+        "firstSeedPresent": true,
+        "nextUnevictedSeedPresent": true,
+        "allNewKeysRetained": true,
+        "authoritySeqBefore": 0,
+        "authoritySeqAfter": 0
+      },
+      "failure": null
+    },
+    {
+      "scenario": "c18-rpc-insert-10000-9981-19",
+      "inventoryId": "C18",
+      "operation": "CoreStore.recordRpcResult",
+      "fixture": {
+        "retentionRows": 10000,
+        "seedRows": 9981,
+        "distinctWrites": 19
+      },
+      "completed": true,
+      "measurement": {
+        "startedAt": "2026-09-07T11:13:18.282Z",
+        "finishedAt": "2026-09-07T11:13:18.282Z"
+      },
+      "setup": {
+        "initialRows": 9981,
+        "hitKey": null,
+        "retentionRows": 10000
+      },
+      "raw": {
+        "wallMs": [
+          0.01937499999985448,
+          0.021957999999358435,
+          0.02087500000016007,
+          0.02179200000136916,
+          0.01808299999902374,
+          0.026165999999648193,
+          0.026292000000466942,
+          0.021290999999109772,
+          0.021708000000216998,
+          0.01929099999870232,
+          0.018791000000419444,
+          0.017291000000113854,
+          0.01708399999915855,
+          0.0165419999993901,
+          0.016999999999825377
+        ],
+        "cpuMs": [
+          0.02,
+          0.022,
+          0.02,
+          0.023,
+          0.018,
+          0.029,
+          0.027,
+          0.022,
+          0.023,
+          0.019,
+          0.02,
+          0.017,
+          0.017,
+          0.017,
+          0.017
+        ]
+      },
+      "metrics": {
+        "operation.wall": {
+          "unit": "ms",
+          "n": 15,
+          "min": 0.0165419999993901,
+          "p50": 0.01937499999985448,
+          "p95": 0.026292000000466942,
+          "max": 0.026292000000466942,
+          "mean": 0.020235933333121164
+        },
+        "operation.cpu": {
+          "unit": "ms",
+          "n": 15,
+          "min": 0.017,
+          "p50": 0.02,
+          "p95": 0.029,
+          "max": 0.029,
+          "mean": 0.020733333333333333
+        }
+      },
+      "sqlDiagnostic": {
+        "instrumented": true,
+        "timingUse": "diagnostic-only; excluded from raw samples and speed comparisons",
+        "statements": [
+          {
+            "kind": "exec",
+            "sql": "BEGIN IMMEDIATE",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0007079999995767139,
+            "cpuMs": 0.001
+          },
+          {
+            "kind": "prepare",
+            "sql": "INSERT INTO rpc_idempotency(key, verb, command_id, result, created_at) VALUES(?, ?, ?, ?, ?)",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.001833000000260654,
+            "cpuMs": 0.002
+          },
+          {
+            "kind": "run",
+            "sql": "INSERT INTO rpc_idempotency(key, verb, command_id, result, created_at) VALUES(?, ?, ?, ?, ?)",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0014999999984866008,
+            "cpuMs": 0.003
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT COUNT(*) AS n FROM rpc_idempotency",
+            "calls": 1,
+            "errors": 0,
+            "rows": 1,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0009580000005371403,
+            "cpuMs": 0.001
+          },
+          {
+            "kind": "exec",
+            "sql": "COMMIT",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.01712500000030559,
+            "cpuMs": 0.017
+          }
+        ]
+      },
+      "correctness": {
+        "calls": 19,
+        "quietAuthority": true,
+        "distinctKeysWritten": 19,
+        "retainedRows": 10000,
+        "firstSeedPresent": true,
+        "nextUnevictedSeedPresent": true,
+        "allNewKeysRetained": true,
+        "authoritySeqBefore": 0,
+        "authoritySeqAfter": 0
+      },
+      "failure": null
+    },
+    {
+      "scenario": "c18-rpc-eviction-10000-10000-19",
+      "inventoryId": "C18",
+      "operation": "CoreStore.recordRpcResult",
+      "fixture": {
+        "retentionRows": 10000,
+        "seedRows": 10000,
+        "distinctWrites": 19
+      },
+      "completed": true,
+      "measurement": {
+        "startedAt": "2026-09-07T11:13:18.295Z",
+        "finishedAt": "2026-09-07T11:13:18.296Z"
+      },
+      "setup": {
+        "initialRows": 10000,
+        "hitKey": null,
+        "retentionRows": 10000
+      },
+      "raw": {
+        "wallMs": [
+          0.03900000000066939,
+          0.036792000000787084,
+          0.03725000000122236,
+          0.03900000000066939,
+          0.03633400000035181,
+          0.04641699999956472,
+          0.03704199999992852,
+          0.03554199999962293,
+          0.037000000000261934,
+          0.03504200000134006,
+          0.036250000001018634,
+          0.03504199999952107,
+          0.03566599999976461,
+          0.03554199999962293,
+          0.03900000000066939
+        ],
+        "cpuMs": [
+          0.04,
+          0.038,
+          0.038,
+          0.039,
+          0.037,
+          0.046,
+          0.038,
+          0.037,
+          0.038,
+          0.035,
+          0.037,
+          0.036,
+          0.036,
+          0.036,
+          0.04
+        ]
+      },
+      "metrics": {
+        "operation.wall": {
+          "unit": "ms",
+          "n": 15,
+          "min": 0.03504199999952107,
+          "p50": 0.036792000000787084,
+          "p95": 0.04641699999956472,
+          "max": 0.04641699999956472,
+          "mean": 0.03739460000033432
+        },
+        "operation.cpu": {
+          "unit": "ms",
+          "n": 15,
+          "min": 0.035,
+          "p50": 0.038,
+          "p95": 0.046,
+          "max": 0.046,
+          "mean": 0.03806666666666666
+        }
+      },
+      "sqlDiagnostic": {
+        "instrumented": true,
+        "timingUse": "diagnostic-only; excluded from raw samples and speed comparisons",
+        "statements": [
+          {
+            "kind": "exec",
+            "sql": "BEGIN IMMEDIATE",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0008330000000569271,
+            "cpuMs": 0.001
+          },
+          {
+            "kind": "prepare",
+            "sql": "INSERT INTO rpc_idempotency(key, verb, command_id, result, created_at) VALUES(?, ?, ?, ?, ?)",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0020000000004074536,
+            "cpuMs": 0.002
+          },
+          {
+            "kind": "run",
+            "sql": "INSERT INTO rpc_idempotency(key, verb, command_id, result, created_at) VALUES(?, ?, ?, ?, ?)",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0017499999994470272,
+            "cpuMs": 0.002
+          },
+          {
+            "kind": "get",
+            "sql": "SELECT COUNT(*) AS n FROM rpc_idempotency",
+            "calls": 1,
+            "errors": 0,
+            "rows": 1,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.0011249999988649506,
+            "cpuMs": 0.001
+          },
+          {
+            "kind": "prepare",
+            "sql": "DELETE FROM rpc_idempotency WHERE key IN (SELECT key FROM rpc_idempotency ORDER BY created_at, rowid LIMIT ?)",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.004000000000814907,
+            "cpuMs": 0.004
+          },
+          {
+            "kind": "run",
+            "sql": "DELETE FROM rpc_idempotency WHERE key IN (SELECT key FROM rpc_idempotency ORDER BY created_at, rowid LIMIT ?)",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.01391700000021956,
+            "cpuMs": 0.015
+          },
+          {
+            "kind": "exec",
+            "sql": "COMMIT",
+            "calls": 1,
+            "errors": 0,
+            "rows": 0,
+            "textBytes": 0,
+            "blobBytes": 0,
+            "wallMs": 0.02466699999968114,
+            "cpuMs": 0.025
+          }
+        ]
+      },
+      "correctness": {
+        "calls": 19,
+        "quietAuthority": true,
+        "distinctKeysWritten": 19,
+        "retainedRows": 10000,
+        "firstSeedPresent": false,
+        "nextUnevictedSeedPresent": true,
+        "allNewKeysRetained": true,
+        "authoritySeqBefore": 0,
+        "authoritySeqAfter": 0
+      },
+      "failure": null
+    }
+  ],
+  "failure": null,
+  "scope": "Real CoreStore reads and real DaemonCore loops use FakeDriver over fresh owned temporary stores. No provider, process driver, live daemon, installed runtime, or live store is accessed. Synthetic command, flag, delivered-mail, audit, and RPC histories are inserted only while CoreStore is closed. They are read-cost fixtures, not durable enqueue, delivery, or audit-replay evidence. Fixture setup, warmups, semantic checks, cleanup, and SQL diagnostics are outside uninstrumented CPU/wall samples. SQL diagnostic timings include observer overhead and are attribution evidence only."
+}

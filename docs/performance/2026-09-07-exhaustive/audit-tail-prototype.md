@@ -15,6 +15,6 @@ Global tail CPU remains0.076–0.081ms. A/A per-Bee pairs are40.366/40.398,39.80
 
 The cost is about43.3MiB per million non-null UUID-scoped audit rows, plus roughly3.5–5.2microseconds per measured rename. Those costs are accepted for the proposed sparse-tail improvement. Long-term audit retention and daemon-down JS filtering remain open.
 
-The natural plan exposes a required companion fix: SQLite starts using the general index for `latestBeeDeletedRow`, which can scan a dense Bee history. The production candidate must preserve the existing narrower `audit_bee_deleted_bee_seq` plan explicitly. Its semantic and historical-cursor tests, full verification, and immutable production before/after measurements remain pending. No production result is inferred from offline installation alone.
+The natural plan exposes a required companion fix: SQLite starts using the general index for `latestBeeDeletedRow`, which can scan a dense Bee history. The production candidate must preserve the existing narrower `audit_bee_deleted_bee_seq` plan explicitly. The [production result](audit-tail-results.md) now includes that companion fix, semantic and historical-cursor tests, full verification, and immutable before/after measurements. This prototype remains a separate offline-index experiment.
 
 Evidence: `mini-c25-canonical-{aa,ab}.json`, [frozen ruler](designs/c25-ruler.mjs), and Studio structural smokes. [Design and alternative index shapes](designs/audit-tail.md).

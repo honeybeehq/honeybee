@@ -1,6 +1,6 @@
 # Dedup retention while pending mail never drains
 
-Unit 2 is a candidate, not yet merged. `24a4604b` introduced a bounded sweep on top of accepted Unit 1. Parent review found that a reentrant `onI1Violation` callback could create and track a new pending message after the outer step read its I1 basis. The outer sweep could then forget that live ID and interrupt it twice. Test z01.i reproduced the regression on 24a4604b, passed on Unit 1, and passes with `1576571c`. That fix verifies would-delete IDs against current committed mailbox membership. No callback-contract assumption or relaxed assertion was used to excuse the bug.
+Unit 2 is accepted as consolidated integration `b60e1310`, after measurement and combined verification. `24a4604b` introduced a bounded sweep on top of accepted Unit 1. Parent review found that a reentrant `onI1Violation` callback could create and track a new pending message after the outer step read its I1 basis. The outer sweep could then forget that live ID and interrupt it twice. Test z01.i reproduced the regression on 24a4604b, passed on Unit 1, and passes with `1576571c`. That fix verifies would-delete IDs against current committed mailbox membership. No callback-contract assumption or relaxed assertion was used to excuse the bug.
 
 `dfecaeba` refines temporary allocation. The sweep now starts with a Set of tracked IDs, subtracts IDs known pending in the current step's I1 metadata, and verifies remaining candidates in chunks of at most 512. It removes only IDs still absent from committed state. The disabled-I1 path uses the same candidate probes without an I1 basis. Scratch scales with tracked IDs rather than all pending messages. The existing outer-transaction guard prevents forgetting rollback-restorable mail.
 
@@ -45,11 +45,11 @@ The [cycle ruler](designs/dedup-cycle.mjs) times 256 consecutive steps per sampl
 
 A/A compares two Unit 1 roots. A/B compares Unit 1 with 1576571c; B/A reverses that pair. Refinement compares 1576571c with dfecaeba. Final compares Unit 1 with dfecaeba. Stable large-backlog CPU is essentially unchanged within the observed control/order variation. These samples support the retention/cost assessment; they do not establish a steady CPU speedup.
 
-## Verification and remaining acceptance
+## Verification and acceptance
 
 Mini 1576571c passed repository build, all v2 typechecks, full core, and all 64 loop tests. Mini dfecaeba passed build, all v2 typechecks, and all 65 loop tests. The added cases cover committed/rolled-back terminals, disabled I1, stopped/absent targets, exact cadence and growth triggers, revived now-message dedup, callback reentry, and 5,000 pending messages with only one initially tracked ID.
 
-A dedicated allocation diagnostic for a large pending queue and tiny tracked set remains in progress, as does the disabled-I1 probe cost check. Integration against current main and the Cell-move ordering change is still required before merging Unit 2. No unfinished or regression-bearing intermediate commit is accepted into main.
+The [dedicated allocation/probe diagnostic](dedup-sweep-results.md) passed: the 20,000-pending sweep tick fell 10.523 → 9.637 ms CPU and prune-attributed sampled allocation fell 2,188,528 → 90,856 bytes. Disabled-I1 sweep CPU stayed 0.289 ms. Combined integration with C25 and both Cell read changes passed build, all v2 typechecks, 218 core tests, and 364 daemon/CLI tests with one platform skip. No regression-bearing intermediate commit is accepted independently.
 
 ## Half-million-message standing stress
 

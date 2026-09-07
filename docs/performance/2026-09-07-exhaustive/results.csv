@@ -17,3 +17,7 @@ Landed; stress six samples,Clean Cell merge stress,1615.594,120.456,ms wall,1000
 Landed,Quiet tick with retained Cell moves,2.792,0.012,ms CPU,100000 historical move receipts; no active move,cell-move-discovery-results.md
 Landed; blocked-move cost measured,Held fleet tick with I1,35.066,26.002,ms CPU,10000 real-running Bees with one held idle message each,held-fleet-results.md
 Landed; blocked-move cost measured,Held fleet tick without I1,27.723,18.879,ms CPU,10000 real-running Bees with one held idle message each,held-fleet-results.md
+Landed; write/storage cost measured,Sparse per-Bee audit tail,30.033,0.023,ms CPU,20target among1M unrelated;15samples,audit-tail-results.md
+Landed; growth CPU cost measured,Standing-mail retained heap,22172344,11730888,bytes JS heap,500k terminal messages;1pending anchor;postGC,retained-standing-candidate.md
+Landed,Wide dedup sweep refinement,10.523,9.637,ms CPU,20k pending;1tracked;6sweep ticks per side,dedup-sweep-results.md
+Landed; sampled attribution only,Prune allocation traffic,2188528,90856,sampled bytes,one256tick cycle;not retained memory,dedup-sweep-results.md
