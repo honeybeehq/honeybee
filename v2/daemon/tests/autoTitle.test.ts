@@ -37,8 +37,11 @@ function bee(overrides: Partial<BeeRow> = {}): BeeRow {
     forkSeed: null,
     account: null,
     handle: "GR.1",
+    placementVersion: 0,
+    activeMoveId: null,
+    cellId: null,
     ...overrides,
-  };
+  } as BeeRow;
 }
 
 function mail(body: string, id = 1): MessageRow {

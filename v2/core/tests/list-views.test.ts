@@ -64,7 +64,7 @@ test("list views preserve latest generations, flags, ordering and replay across 
     for (const lifecycle of [null, "active", "archived", "deleted", "unknown"]) {
       const expected = store.listBees()
         .filter(bee => lifecycle === null || bee.lifecycle === lifecycle)
-        .map(bee => ({ bee, runtime: store.currentRuntime(bee.id), view: store.view(bee.id) }));
+        .map(bee => ({ bee, runtime: store.currentRuntime(bee.id), view: store.view(bee.id), move: null, cell: null }));
       assert.deepEqual(store.listBeeViewRows(lifecycle), expected);
     }
     assert.equal(store.lastAuditSeq(), seq, "read projection never writes audit rows");

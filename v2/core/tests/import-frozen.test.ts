@@ -430,7 +430,7 @@ test("import.9: store v3 — recordProviderSessionId is bee-scoped, idempotent, 
     try {
       const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
       assert.equal(Number(version.value), SCHEMA_VERSION);
-      assert.equal(SCHEMA_VERSION, 21);
+      assert.equal(SCHEMA_VERSION, 22);
     } finally {
       check.close();
     }

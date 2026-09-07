@@ -10,6 +10,7 @@
  *   immediately by default; --wait blocks until the delivery mark.
  * - `daemon install|start|stop|restart|status` wraps the platform service layer.
  */
+import { randomUUID } from "node:crypto";
 import { execFile, spawnSync } from "node:child_process";
 import { homedir } from "node:os";
 import { createInterface } from "node:readline";
@@ -51,8 +52,11 @@ import {
   type ListResult,
   type MailboxResult,
   type CommandsResult,
+  type BeeMoveResult,
   type CellCaptureResult,
+  type CellExecResult,
   type CellRemoveResult,
+  type CellRetainedRemoveResult,
   type QuestionAnswerResult,
   type QuestionAskResult,
   type QuestionListResult,
@@ -119,6 +123,7 @@ import {
   type TranscriptTurnStream,
 } from "../../driver-tmux/src/transcripts.ts";
 import { sessionNameFor } from "../../driver-tmux/src/driver.ts";
+import { localRepoIdentity, revParse } from "../../driver-cell/src/git.ts";
 import {
   agyArgGrammar,
   claudeArgGrammar,
@@ -208,6 +213,16 @@ const VALUE_FLAGS = new Set([
   "--sha",
   "--warm",
   "--onto",
+  "--to",
+  "--cell",
+  "--cell-id",
+  "--placement-version",
+  "--expected-version",
+  "--git-common-dir",
+  "--object-format",
+  "--head",
+  "--observed-head",
+  "--move",
   // v6
   "--parent",
   "--name",
@@ -1640,8 +1655,11 @@ async function cmdMutation(
 async function cmdCell(ctx: CliContext, parsed: Parsed): Promise<number> {
   const sub = parsed.positional[1];
   const needle = parsed.positional[2];
-  const usage = "usage: hive cell capture <bee> --onto <branch> [--rebase] [--idempotency-key k] | cell remove <bee> [--force] [--idempotency-key k]";
+  const usage = "usage: hive cell move <bee> --cwd <dir> | cell move-get <moveId> | cell capture <bee> --onto <branch> [--rebase] [--idempotency-key k] | cell remove <bee> [--force] [--idempotency-key k] | cell exec <cellId> -- <argv…> | cell retained-remove <cellId> [--force]";
   switch (sub) {
+    case "move":
+    case "move-get":
+      return cmdBee(ctx, parsed);
     case "capture": {
       const onto = parsed.flags.get("--onto") as string | undefined;
       if (!needle || !onto) throw new Error(usage);
@@ -1719,6 +1737,53 @@ async function cmdCell(ctx: CliContext, parsed: Parsed): Promise<number> {
         return ctx.json || r.status !== "refused" ? 0 : 2;
       });
     }
+    case "exec": {
+      if (!needle) throw new Error(usage);
+      const argv = parsed.rest ?? parsed.positional.slice(3);
+      if (argv.length === 0) throw new Error("usage: hive cell exec <cellId> -- <argv…>");
+      const timeoutRaw = parsed.flags.get("--timeout");
+      const timeoutMs = typeof timeoutRaw === "string" ? Number(timeoutRaw) : undefined;
+      const cwd = parsed.flags.get("--cwd");
+      return withClient(ctx, async (c) => {
+        const r = await c.request<CellExecResult>("cell.exec", {
+          cellId: needle,
+          argv,
+          ...(typeof cwd === "string" ? { cwd } : {}),
+          ...(timeoutMs != null && Number.isFinite(timeoutMs) ? { timeoutMs } : {}),
+          idempotencyKey: (parsed.flags.get("--idempotency-key") as string | undefined) ?? randomUUID(),
+        });
+        const lines = [
+          confirm(
+            r.status === "done" ? "ok" : "err",
+            `cell.exec ${r.status}`,
+            `exit ${r.exitCode ?? "—"}`,
+            r.deduped,
+          ),
+        ];
+        if (r.stdout) lines.push(r.stdout);
+        if (r.stderr) lines.push(r.stderr);
+        emit(ctx, lines, r, false);
+        return ctx.json || r.status === "done" ? 0 : 2;
+      });
+    }
+    case "retained-remove":
+    case "rm-retained": {
+      if (!needle) throw new Error(usage);
+      return withClient(ctx, async (c) => {
+        const r = await c.request<CellRetainedRemoveResult>("cell.retained.remove", {
+          cellId: needle,
+          force: parsed.flags.get("--force") === true,
+          idempotencyKey: (parsed.flags.get("--idempotency-key") as string | undefined) ?? randomUUID(),
+        });
+        emit(
+          ctx,
+          [confirm(r.status === "refused" ? "err" : "ok", `cell ${r.status}`, needle, r.deduped)],
+          r,
+          false,
+        );
+        return ctx.json || r.status !== "refused" ? 0 : 2;
+      });
+    }
     default:
       throw new Error(usage);
   }
@@ -1732,8 +1797,64 @@ async function cmdCell(ctx: CliContext, parsed: Parsed): Promise<number> {
 async function cmdBee(ctx: CliContext, parsed: Parsed): Promise<number> {
   const sub = parsed.positional[1];
   const needle = parsed.positional[2];
-  const usage = "usage: hive bee set-args <bee> -- <args…> | bee set-args <bee> --clear | bee args <bee> | bee swap-account <bee> <account>";
+  const usage = "usage: hive bee set-args <bee> -- <args…> | bee set-args <bee> --clear | bee args <bee> | bee swap-account <bee> <account> | bee move <bee> --to <cwd> --cell <id> --placement-version n | bee move-get <moveId>";
   switch (sub) {
+    case "move": {
+      if (!needle) throw new Error(usage);
+      const to = parsed.flags.get("--cwd") ?? parsed.flags.get("--to");
+      const cellIdFlag = parsed.flags.get("--cell-id") ?? parsed.flags.get("--cell");
+      const placementRaw = parsed.flags.get("--expected-version") ?? parsed.flags.get("--placement-version");
+      if (typeof to !== "string" || to.length === 0) {
+        throw new Error("usage: hive cell move <bee> --cwd <dir> [--expected-version N] [--cell-id ID]");
+      }
+      const expectedVersion = placementRaw === undefined ? undefined : Number(placementRaw);
+      if (expectedVersion !== undefined && (!Number.isSafeInteger(expectedVersion) || expectedVersion < 0)) {
+        throw new Error("cell move: --expected-version must be a non-negative integer");
+      }
+      if (cellIdFlag !== undefined && (typeof cellIdFlag !== "string" || cellIdFlag.length === 0)) {
+        throw new Error("cell move: --cell-id must be a nonempty Cell UUID");
+      }
+      const cwd = resolve(to);
+      const identity = localRepoIdentity(cwd);
+      if (!identity) throw new Error(`bee move: ${cwd} is not a git checkout`);
+      const observedHead = (parsed.flags.get("--observed-head") as string | undefined) ?? (parsed.flags.get("--head") as string | undefined) ?? revParse(cwd, "HEAD");
+      if (!observedHead) throw new Error(`bee move: cannot read HEAD of ${cwd}`);
+      const gitCommon = (parsed.flags.get("--git-common-dir") as string | undefined) ?? identity.gitCommonDirRealpath;
+      const objectFormat = (parsed.flags.get("--object-format") as string | undefined) ?? identity.objectFormat;
+      return withClient(ctx, async (c) => {
+        const list = await c.request<ListResult>("list");
+        const beeId = resolveBeeIn(list.views, needle);
+        const current = await c.request<ViewResult>("view", { beeId });
+        if (!current.bee) throw new Error(`cell move: bee ${beeId} not found`);
+        // Keep inferred CAS inputs stable across a retry after placement. The
+        // daemon still binds the caller's key to the complete request hash.
+        const previous = current.move?.to.cwd === cwd ? current.move : null;
+        const cellId = cellIdFlag ?? previous?.retainedCellId ?? current.bee.cellId;
+        if (!cellId) throw new Error(`cell move: bee ${beeId} has no Cell`);
+        const r = await c.request<BeeMoveResult>("bee.move", {
+          beeId,
+          idempotencyKey: (parsed.flags.get("--idempotency-key") as string | undefined) ?? randomUUID(),
+          expected: { placementVersion: expectedVersion ?? previous?.from.version ?? current.bee.placementVersion, cellId },
+          destination: {
+            kind: "local_checkout",
+            cwd,
+            repository: { version: 1, gitCommonDirRealpath: gitCommon, objectFormat },
+            observedHead,
+          },
+        });
+        emit(ctx, [confirm("ok", `bee.move ${r.phase}`, `${beeId} → ${cwd}`, r.deduped)], r, false);
+        return 0;
+      });
+    }
+    case "move-get": {
+      const moveId = needle;
+      if (!moveId) throw new Error(usage);
+      return withClient(ctx, async (c) => {
+        const r = await c.request<BeeMoveResult>("bee.move.get", { moveId });
+        emit(ctx, [confirm("ok", `bee.move ${r.phase}`, r.id, r.deduped)], r, false);
+        return 0;
+      });
+    }
     case "swap-account": {
       const account = parsed.positional[3];
       if (!needle || !account) throw new Error(usage);

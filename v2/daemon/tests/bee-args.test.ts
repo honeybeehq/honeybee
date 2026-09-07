@@ -121,6 +121,57 @@ test("args.daemon.2: composeSpawn codex — model lifted into thread/start|resum
   assert.equal(plain.model, undefined);
 });
 
+test("args.daemon.2f: composeSpawn claude placement overlay is --append-system-prompt after resume", () => {
+  const overlay = "Workspace placement changed (version 1). Your active workspace is now the regular checkout at /tmp/checkout.";
+  const r = composeSpawn(
+    BUILTIN_AGENTS.claude!,
+    "claude",
+    bee({ providerSessionId: "sid-9" }),
+    [],
+    overlay,
+  );
+  const resumeAt = r.args.lastIndexOf("--resume");
+  const overlayAt = r.args.lastIndexOf("--append-system-prompt");
+  assert.equal(r.args[resumeAt + 1], "sid-9");
+  assert.ok(overlayAt > resumeAt, "overlay follows resume");
+  assert.equal(r.args[overlayAt + 1], overlay);
+  assert.equal(r.adapter?.harness, "claude");
+});
+
+test("args.daemon.2f-keep: composeSpawn claude dest overlay keeps an existing append-system-prompt", () => {
+  const overlay = "Workspace placement changed (version 2).";
+  const r = composeSpawn(
+    BUILTIN_AGENTS.claude!,
+    "claude",
+    bee({ args: ["--append-system-prompt", "Always use conventional commits."], providerSessionId: "sid-9" }),
+    [],
+    overlay,
+  );
+  const prompts = r.args.flatMap((tok, i) => tok === "--append-system-prompt" ? [r.args[i + 1]] : []);
+  assert.deepEqual(prompts, ["Always use conventional commits.", overlay]);
+  assert.ok(r.args.includes("--resume"));
+});
+
+test("args.daemon.2e: composeSpawn codex placement overlay is thread developerInstructions, not argv", () => {
+  const overlay = "Workspace placement changed (version 1). Your active workspace is now the regular checkout at /tmp/checkout.";
+  const r = composeSpawn(
+    BUILTIN_AGENTS.codex!,
+    "codex",
+    bee({ providerSessionId: "thread-1" }),
+    [],
+    overlay,
+  );
+  assert.deepEqual(r.args, ["app-server"]);
+  const signals = r.adapter!.parseLine(JSON.stringify({ jsonrpc: "2.0", id: 1, result: {} }));
+  assert.equal(signals[0]?.kind, "respond");
+  const lines = signals[0]?.kind === "respond" ? signals[0].lines : [];
+  const req = JSON.parse(lines[1]!) as { method: string; params: Record<string, unknown> };
+  assert.equal(req.method, "thread/resume");
+  assert.equal(req.params.threadId, "thread-1");
+  assert.equal(req.params.developerInstructions, overlay);
+  assert.equal(req.params.cwd, "/tmp/w");
+});
+
 test("args.daemon.2b: composeSpawn grok — --model/--effort lifted in front of stdio", () => {
   const spec = BUILTIN_AGENTS.grok!;
   const r = composeSpawn(spec, "grok", bee({ args: ["--model", "grok-4.6", "--effort", "high"] }));

@@ -300,3 +300,37 @@ test("codex: GPT-6 Astra model passes verbatim to start, resume, and fork", () =
     assert.deepEqual(codexThreadRequest(options), expected);
   }
 });
+
+test("codex: developerInstructions ride on thread/start and thread/resume, not as a replacement of cwd/model", () => {
+  const overlay = "Workspace placement changed (version 2).";
+  const start = codexThreadRequest({ cwd: "/tmp/to", model: "gpt-5.6-sol", developerInstructions: overlay });
+  assert.equal(start.method, "thread/start");
+  assert.equal(start.params.developerInstructions, overlay);
+  assert.equal(start.params.cwd, "/tmp/to");
+  const resume = codexThreadRequest({
+    cwd: "/tmp/to",
+    resumeThreadId: "thread-1",
+    developerInstructions: overlay,
+  });
+  assert.equal(resume.method, "thread/resume");
+  assert.equal(resume.params.threadId, "thread-1");
+  assert.equal(resume.params.developerInstructions, overlay);
+  const handshake = onlyRespond(
+    codexAdapter({ cwd: "/tmp/to", resumeThreadId: "thread-1", developerInstructions: overlay }).parseLine(
+      JSON.stringify({ jsonrpc: "2.0", id: 1, result: {} }),
+    ),
+  );
+  const req = JSON.parse(handshake[1]!) as { method: string; params: Record<string, unknown> };
+  assert.equal(req.method, "thread/resume");
+  assert.equal(req.params.developerInstructions, overlay);
+  const preserved = "Always use conventional commits.";
+  const composed = `${preserved}\n\n${overlay}`;
+  const keep = codexThreadRequest({
+    cwd: "/tmp/to",
+    resumeThreadId: "thread-1",
+    developerInstructions: composed,
+  });
+  assert.equal(keep.params.developerInstructions, composed);
+  assert.match(String(keep.params.developerInstructions), /conventional commits/);
+  assert.equal(codexThreadRequest({ cwd: "/tmp/to", developerInstructions: "  " }).params.developerInstructions, undefined);
+});

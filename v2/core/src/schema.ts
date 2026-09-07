@@ -120,8 +120,10 @@
  *        required boolean flag that distinguishes a globally unique parent
  *        owned outside this node from the existing local soft reference.
  *        Existing rows default to local lineage (`0`).
+ *  v22 — Cell→checkout move: `bees.placement_version`, `bees.active_move_id`,
+ *        `bees.cell_id`, plus `cells`, `bee_moves`, and `cell_ops` tables.
  */
-export const SCHEMA_VERSION = 21;
+export const SCHEMA_VERSION = 22;
 
 /**
  * Current shape shared between SCHEMA_SQL and the v19 table rebuild so a
@@ -210,7 +212,13 @@ CREATE TABLE IF NOT EXISTS bees (
   -- v10: short human display id (CL.a3f2 — harness prefix + hex), minted by
   -- the owning node at spawn; unique per node (partial index below). The
   -- UUID above stays the canonical id everywhere machines talk.
-  handle           TEXT
+  handle           TEXT,
+  -- v22: Cell→checkout placement generation (CAS for bee.move).
+  placement_version INTEGER NOT NULL DEFAULT 0,
+  -- v22: in-flight bee_moves.id; NULL when idle (complete/failed receipts remain).
+  active_move_id   TEXT,
+  -- v22: cells.id for the active or retained Cell.
+  cell_id          TEXT
 ) STRICT;
 -- Note: 'deleted' never appears as a stored lifecycle — Q1 says delete removes the
 -- record row immediately, so a missing row IS the deleted state.
@@ -539,6 +547,67 @@ CREATE TABLE IF NOT EXISTS tracks (
   updated_at  INTEGER NOT NULL,
   UNIQUE (scope, name)
 ) STRICT;
+
+CREATE TABLE IF NOT EXISTS cells (
+  id              TEXT PRIMARY KEY,
+  source_bee_id   TEXT NOT NULL,
+  state           TEXT NOT NULL CHECK (state IN ('active','retained','removing','removed')),
+  git_common_dir  TEXT NOT NULL,
+  object_format   TEXT NOT NULL CHECK (object_format IN ('sha1','sha256')),
+  origin_repo     TEXT NOT NULL,
+  sha             TEXT NOT NULL,
+  wrapper         TEXT NOT NULL,
+  space_name      TEXT NOT NULL,
+  space_dir       TEXT NOT NULL,
+  sandbox         INTEGER,
+  created_at      INTEGER NOT NULL,
+  retained_at     INTEGER,
+  removed_at      INTEGER
+) STRICT;
+
+CREATE TABLE IF NOT EXISTS bee_moves (
+  id                    TEXT PRIMARY KEY,
+  bee_id                TEXT NOT NULL,
+  idempotency_key       TEXT NOT NULL UNIQUE,
+  request_hash          TEXT NOT NULL,
+  phase                 TEXT NOT NULL CHECK (phase IN ('stopping','placing','starting','complete','failed')),
+  source_generation     INTEGER NOT NULL,
+  from_cwd              TEXT NOT NULL,
+  from_substrate        TEXT NOT NULL,
+  to_cwd                TEXT NOT NULL,
+  to_substrate          TEXT NOT NULL DEFAULT 'hsr',
+  retained_cell_id      TEXT NOT NULL,
+  stop_command_key      TEXT NOT NULL,
+  revive_command_key    TEXT NOT NULL,
+  placement_version     INTEGER NOT NULL,
+  instructions_pending  INTEGER NOT NULL DEFAULT 1,
+  instructions_applied  INTEGER NOT NULL DEFAULT 0,
+  failure_json          TEXT,
+  observed_head         TEXT NOT NULL DEFAULT '',
+  created_at            INTEGER NOT NULL,
+  updated_at            INTEGER NOT NULL
+) STRICT;
+
+CREATE TABLE IF NOT EXISTS cell_ops (
+  id              TEXT PRIMARY KEY,
+  cell_id         TEXT NOT NULL,
+  kind            TEXT NOT NULL CHECK (kind IN ('exec','remove')),
+  idempotency_key TEXT NOT NULL UNIQUE,
+  request_hash    TEXT NOT NULL,
+  status          TEXT NOT NULL CHECK (status IN ('queued','running','done','failed','outcome_unknown')),
+  argv_json       TEXT,
+  cwd             TEXT,
+  timeout_ms      INTEGER,
+  pid             INTEGER,
+  pid_started_at  INTEGER,
+  exit_code       INTEGER,
+  stdout          TEXT NOT NULL DEFAULT '',
+  stderr          TEXT NOT NULL DEFAULT '',
+  truncated       INTEGER NOT NULL DEFAULT 0,
+  failure         TEXT,
+  created_at      INTEGER NOT NULL,
+  updated_at      INTEGER NOT NULL
+) STRICT;
 `;
 
 /**
@@ -564,7 +633,77 @@ export const BEES_ADDITIVE_COLUMNS: ReadonlyArray<readonly [name: string, ddl: s
   ["fork_seed", "fork_seed TEXT"],
   ["account", "account TEXT"],
   ["handle", "handle TEXT"],
+  ["placement_version", "placement_version INTEGER NOT NULL DEFAULT 0"],
+  ["active_move_id", "active_move_id TEXT"],
+  ["cell_id", "cell_id TEXT"],
 ];
+
+export const CELLS_TABLE_SQL = `
+CREATE TABLE IF NOT EXISTS cells (
+  id              TEXT PRIMARY KEY,
+  source_bee_id   TEXT NOT NULL,
+  state           TEXT NOT NULL CHECK (state IN ('active','retained','removing','removed')),
+  git_common_dir  TEXT NOT NULL,
+  object_format   TEXT NOT NULL CHECK (object_format IN ('sha1','sha256')),
+  origin_repo     TEXT NOT NULL,
+  sha             TEXT NOT NULL,
+  wrapper         TEXT NOT NULL,
+  space_name      TEXT NOT NULL,
+  space_dir       TEXT NOT NULL,
+  sandbox         INTEGER,
+  created_at      INTEGER NOT NULL,
+  retained_at     INTEGER,
+  removed_at      INTEGER
+) STRICT;
+`;
+
+export const BEE_MOVES_TABLE_SQL = `
+CREATE TABLE IF NOT EXISTS bee_moves (
+  id                    TEXT PRIMARY KEY,
+  bee_id                TEXT NOT NULL,
+  idempotency_key       TEXT NOT NULL UNIQUE,
+  request_hash          TEXT NOT NULL,
+  phase                 TEXT NOT NULL CHECK (phase IN ('stopping','placing','starting','complete','failed')),
+  source_generation     INTEGER NOT NULL,
+  from_cwd              TEXT NOT NULL,
+  from_substrate        TEXT NOT NULL,
+  to_cwd                TEXT NOT NULL,
+  to_substrate          TEXT NOT NULL DEFAULT 'hsr',
+  retained_cell_id      TEXT NOT NULL,
+  stop_command_key      TEXT NOT NULL,
+  revive_command_key    TEXT NOT NULL,
+  placement_version     INTEGER NOT NULL,
+  instructions_pending  INTEGER NOT NULL DEFAULT 1,
+  instructions_applied  INTEGER NOT NULL DEFAULT 0,
+  failure_json          TEXT,
+  observed_head         TEXT NOT NULL DEFAULT '',
+  created_at            INTEGER NOT NULL,
+  updated_at            INTEGER NOT NULL
+) STRICT;
+`;
+
+export const CELL_OPS_TABLE_SQL = `
+CREATE TABLE IF NOT EXISTS cell_ops (
+  id              TEXT PRIMARY KEY,
+  cell_id         TEXT NOT NULL,
+  kind            TEXT NOT NULL CHECK (kind IN ('exec','remove')),
+  idempotency_key TEXT NOT NULL UNIQUE,
+  request_hash    TEXT NOT NULL,
+  status          TEXT NOT NULL CHECK (status IN ('queued','running','done','failed','outcome_unknown')),
+  argv_json       TEXT,
+  cwd             TEXT,
+  timeout_ms      INTEGER,
+  pid             INTEGER,
+  pid_started_at  INTEGER,
+  exit_code       INTEGER,
+  stdout          TEXT NOT NULL DEFAULT '',
+  stderr          TEXT NOT NULL DEFAULT '',
+  truncated       INTEGER NOT NULL DEFAULT 0,
+  failure         TEXT,
+  created_at      INTEGER NOT NULL,
+  updated_at      INTEGER NOT NULL
+) STRICT;
+`;
 
 /**
  * v10 — handle uniqueness per node. Partial (NULL allowed mid-migration);
@@ -572,6 +711,13 @@ export const BEES_ADDITIVE_COLUMNS: ReadonlyArray<readonly [name: string, ddl: s
  */
 export const HANDLE_INDEX_SQL =
   "CREATE UNIQUE INDEX IF NOT EXISTS bees_handle ON bees(handle) WHERE handle IS NOT NULL;";
+
+/**
+ * v22 — at most one in-flight move pointer per bee. Created after additive
+ * `bees.active_move_id` so a v20 store is not indexed before the column exists.
+ */
+export const BEES_ACTIVE_MOVE_INDEX_SQL =
+  "CREATE UNIQUE INDEX IF NOT EXISTS bees_one_active_move ON bees(active_move_id) WHERE active_move_id IS NOT NULL;";
 
 /**
  * Additive columns on `mailbox` since v7 — same add-iff-missing discipline as

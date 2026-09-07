@@ -42,8 +42,17 @@ import {
   type AccountRow,
   type AccountStatus,
   type AuditRow,
+  type BeeMoveFailure,
+  type BeeMovePhase,
+  type BeeMoveRow,
+  type BeeMoveView,
   type BeeRow,
   type BeeView,
+  type CellOpKind,
+  type CellOpRow,
+  type CellOpStatus,
+  type CellRow,
+  type CellState,
   type CommandRow,
   type ExitCause,
   type FailureCause,
@@ -75,7 +84,11 @@ import {
   ACCOUNT_STATUSES,
   AccountNotFoundError,
   AccountReferencedError,
+  CellNotFoundError,
+  IdempotencyConflictError,
+  MoveInProgressError,
   NameConflictError,
+  StalePlacementError,
   QuestionNotFoundError,
   QuestionNotOpenError,
   SchemaVersionError,
@@ -106,7 +119,8 @@ import {
   TASK_SUPPLY_SENDER_NAME,
   TASK_TRANSITIONS,
 } from "./tasks.ts";
-import { ACCOUNT_LIMITS_TABLE_SQL, BEES_ADDITIVE_COLUMNS, FLAGS_ADDITIVE_COLUMNS, FLAGS_EXPIRY_INDEX_SQL, HANDLE_INDEX_SQL, IDEMPOTENCY_INDEX_SQL, MAILBOX_ADDITIVE_COLUMNS, MAIL_HISTORY_INDEX_SQL, MAIL_HISTORY_PROJECTION_SQL, RUNTIMES_ADDITIVE_COLUMNS, SCHEMA_SQL, SCHEMA_VERSION } from "./schema.ts";
+import { ACCOUNT_LIMITS_TABLE_SQL, BEES_ADDITIVE_COLUMNS, BEES_ACTIVE_MOVE_INDEX_SQL, BEE_MOVES_TABLE_SQL, CELLS_TABLE_SQL, CELL_OPS_TABLE_SQL, FLAGS_ADDITIVE_COLUMNS, FLAGS_EXPIRY_INDEX_SQL, HANDLE_INDEX_SQL, IDEMPOTENCY_INDEX_SQL, MAILBOX_ADDITIVE_COLUMNS, MAIL_HISTORY_INDEX_SQL, MAIL_HISTORY_PROJECTION_SQL, RUNTIMES_ADDITIVE_COLUMNS, SCHEMA_SQL, SCHEMA_VERSION } from "./schema.ts";
+import { beeMoveReviveKey, beeMoveStopKey, beeMoveTransitionLegal, toBeeMoveView } from "./cellMove.ts";
 import {
   LOGIN_FLOW_PHASES,
   isTerminalLoginPhase,
@@ -204,6 +218,10 @@ export interface BeeViewRow {
   bee: BeeRow;
   runtime: RuntimeRow | null;
   view: BeeView;
+  /** v22 — latest move receipt (in-flight, complete, or failed). Null only when the bee has never moved. */
+  move: BeeMoveView | null;
+  /** v22 — active or retained Cell; null when none. */
+  cell: CellRow | null;
 }
 
 /** `tagBee` outcome: the row after the edit plus what actually changed. */
@@ -363,8 +381,9 @@ export interface WakeResult {
    * no_mail    — nothing undelivered (enqueueWake only)
    * suppressed — `spawn_failed` is set: visibly blocked, no wake until an
    *              operator revive or contrary evidence clears it
+   * fenced     — an in-flight Cell→checkout move holds delivery/start
    */
-  outcome: "enqueued" | "pending" | "live" | "no_mail" | "suppressed";
+  outcome: "enqueued" | "pending" | "live" | "no_mail" | "suppressed" | "fenced";
 }
 
 export interface DeleteResult {
@@ -471,6 +490,91 @@ function mapBee(r: Row): BeeRow {
     forkSeed: (r.fork_seed as string | null) ?? null,
     account: (r.account as string | null) ?? null,
     handle: (r.handle as string | null) ?? null,
+    placementVersion: Number(r.placement_version ?? 0),
+    activeMoveId: (r.active_move_id as string | null) ?? null,
+    cellId: (r.cell_id as string | null) ?? null,
+  };
+}
+
+function mapCell(r: Row): CellRow {
+  return {
+    id: r.id as string,
+    sourceBeeId: r.source_bee_id as string,
+    state: r.state as CellState,
+    repository: {
+      version: 1,
+      gitCommonDirRealpath: r.git_common_dir as string,
+      objectFormat: r.object_format as CellRow["repository"]["objectFormat"],
+    },
+    originRepo: r.origin_repo as string,
+    sha: r.sha as string,
+    wrapper: r.wrapper as string,
+    spaceName: r.space_name as string,
+    spaceDir: r.space_dir as string,
+    sandbox: r.sandbox == null ? null : Number(r.sandbox) !== 0,
+    createdAt: Number(r.created_at),
+    retainedAt: r.retained_at == null ? null : Number(r.retained_at),
+    removedAt: r.removed_at == null ? null : Number(r.removed_at),
+  };
+}
+
+function mapBeeMove(r: Row): BeeMoveRow {
+  const placementVersion = Number(r.placement_version);
+  const fromCwd = r.from_cwd as string;
+  const toCwd = r.to_cwd as string;
+  const fromSubstrate = r.from_substrate as "cell" | "hsr";
+  const toSubstrate = r.to_substrate as "cell" | "hsr";
+  const failure = r.failure_json == null ? null : (JSON.parse(String(r.failure_json)) as BeeMoveFailure);
+  return {
+    id: r.id as string,
+    beeId: r.bee_id as string,
+    phase: r.phase as BeeMovePhase,
+    sourceGeneration: Number(r.source_generation),
+    from: {
+      version: Math.max(0, placementVersion - 1),
+      mode: fromSubstrate === "cell" ? "cell" : "checkout",
+      substrate: fromSubstrate,
+      cwd: fromCwd,
+    },
+    to: {
+      version: placementVersion,
+      mode: toSubstrate === "hsr" ? "checkout" : "cell",
+      substrate: toSubstrate,
+      cwd: toCwd,
+    },
+    retainedCellId: r.retained_cell_id as string,
+    failure,
+    idempotencyKey: r.idempotency_key as string,
+    requestHash: r.request_hash as string,
+    stopCommandKey: r.stop_command_key as string,
+    reviveCommandKey: r.revive_command_key as string,
+    instructionsPending: Number(r.instructions_pending) !== 0,
+    instructionsApplied: Number(r.instructions_applied) !== 0,
+    createdAt: Number(r.created_at),
+    observedHead: String(r.observed_head ?? ""),
+  };
+}
+
+function mapCellOp(r: Row): CellOpRow {
+  return {
+    id: r.id as string,
+    cellId: r.cell_id as string,
+    kind: r.kind as CellOpKind,
+    idempotencyKey: r.idempotency_key as string,
+    requestHash: r.request_hash as string,
+    status: r.status as CellOpStatus,
+    argv: r.argv_json == null ? null : (JSON.parse(String(r.argv_json)) as string[]),
+    cwd: (r.cwd as string | null) ?? null,
+    timeoutMs: r.timeout_ms == null ? null : Number(r.timeout_ms),
+    pid: r.pid == null ? null : Number(r.pid),
+    pidStartedAt: r.pid_started_at == null ? null : Number(r.pid_started_at),
+    exitCode: r.exit_code == null ? null : Number(r.exit_code),
+    stdout: String(r.stdout ?? ""),
+    stderr: String(r.stderr ?? ""),
+    truncated: Number(r.truncated ?? 0) !== 0,
+    failure: (r.failure as string | null) ?? null,
+    createdAt: Number(r.created_at),
+    updatedAt: Number(r.updated_at),
   };
 }
 
@@ -1225,7 +1329,11 @@ export class CoreStore {
     this.db.exec(FLAGS_EXPIRY_INDEX_SQL);
     this.db.exec(IDEMPOTENCY_INDEX_SQL);
     this.db.exec(HANDLE_INDEX_SQL);
+    this.db.exec(BEES_ACTIVE_MOVE_INDEX_SQL);
     this.db.exec(MAIL_HISTORY_INDEX_SQL);
+    this.db.exec(CELLS_TABLE_SQL);
+    this.db.exec(BEE_MOVES_TABLE_SQL);
+    this.db.exec(CELL_OPS_TABLE_SQL);
     const hadMailHistoryProjection = this.stmt(
       "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'mail_history_enqueues'",
     ).get() !== undefined;
@@ -1607,6 +1715,13 @@ export class CoreStore {
   deleteBee(beeId: string): DeleteResult {
     return this.tx(() => {
       const bee = this.mustGetBee(beeId);
+      if (bee.activeMoveId) {
+        this.applySupersedeBeeMove(bee.activeMoveId, {
+          stage: "validate",
+          code: "superseded",
+          detail: "bee deleted",
+        });
+      }
       if (bee.lifecycle === "active") this.applyArchive(beeId);
       const current = this.currentRuntime(beeId);
       const livePid = current && current.state !== "stopped" ? current.pid : null;
@@ -1896,8 +2011,17 @@ export class CoreStore {
   private applyWakeIfNeeded(beeId: string): WakeResult {
     const bee = this.mustGetBee(beeId);
     const current = this.currentRuntime(beeId);
-    if (current && LIVE_STATES.includes(current.state)) return { command: null, outcome: "live" };
     const targetGeneration = current?.generation ?? 0;
+    if (bee.activeMoveId) {
+      const move = this.getBeeMove(bee.activeMoveId);
+      // stopping/placing: source must not restart, even if it is still booting
+      // or running. starting: dest boot retries must be able to re-arm.
+      if (!move || move.phase === "stopping" || move.phase === "placing") {
+        this.audit("wake.fenced", beeId, { beeId, targetGeneration, moveId: bee.activeMoveId });
+        return { command: null, outcome: "fenced" };
+      }
+    }
+    if (current && LIVE_STATES.includes(current.state)) return { command: null, outcome: "live" };
     const dupe = this.db
       .prepare(
         `SELECT * FROM commands WHERE bee_id = ? AND verb = 'send_wake'
@@ -2722,9 +2846,26 @@ export class CoreStore {
         }
       }
       this.mustGetBee(beeId);
+      let superseded = false;
+      if (this.lifecycleCommandSupersedesMove(verb as Verb, args, key ?? null)) {
+        const live = this.mustGetBee(beeId);
+        const move = live.activeMoveId ? this.getBeeMove(live.activeMoveId) : null;
+        if (move && key !== move.stopCommandKey && key !== move.reviveCommandKey) {
+          this.applySupersedeBeeMove(move.id, {
+            stage: verb === "stop" ? "stop" : "validate",
+            code: "superseded",
+            detail: `operator ${verb}`,
+          });
+          superseded = true;
+        }
+      }
       const isRuntimeVerb = RUNTIME_VERBS.includes(verb as Verb);
       const targetGeneration = isRuntimeVerb ? (this.currentRuntime(beeId)?.generation ?? 0) : null;
-      return { ...this.applyEnqueue(verb as Verb, beeId, args, targetGeneration, key ?? null), deduped: false };
+      const command = this.applyEnqueue(verb as Verb, beeId, args, targetGeneration, key ?? null);
+      if (superseded && verb !== "delete" && this.undeliveredMessages(beeId).length > 0) {
+        this.applyWakeIfNeeded(beeId);
+      }
+      return { ...command, deduped: false };
     });
   }
 
@@ -2841,11 +2982,57 @@ export class CoreStore {
              AND NOT (verb = 'stop' AND json_type(args, '$.replacementArgs') IS NOT NULL
                AND EXISTS (SELECT 1 FROM runtimes r WHERE r.bee_id = commands.bee_id
                  AND r.generation = commands.target_generation AND r.state IN ('booting', 'running')))
+             AND NOT (
+               verb IN ('spawn', 'send_wake')
+               AND EXISTS (
+                 SELECT 1 FROM bees b
+                 JOIN bee_moves m ON m.id = b.active_move_id
+                 WHERE b.id = commands.bee_id
+                   AND m.phase IN ('stopping', 'placing')
+               )
+             )
+             AND NOT (
+               verb = 'revive'
+               AND EXISTS (
+                 SELECT 1 FROM bees b
+                 JOIN bee_moves m ON m.id = b.active_move_id
+                 WHERE b.id = commands.bee_id
+                   AND (m.phase != 'starting' OR commands.idempotency_key IS NULL OR commands.idempotency_key != m.revive_command_key)
+               )
+             )
              ORDER BY id LIMIT 1`,
           )
           .get(this.now()) as Row | undefined;
         if (!row) return null;
         const command = mapCommand(row);
+        if (
+          (command.verb === "stop" || command.verb === "archive" || command.verb === "delete" || command.verb === "revive")
+        ) {
+          const bee = this.getBee(command.beeId);
+          const move = bee?.activeMoveId ? this.getBeeMove(bee.activeMoveId) : null;
+          if (move && command.idempotencyKey !== move.stopCommandKey && command.idempotencyKey !== move.reviveCommandKey) {
+            if (command.enqueuedAt >= move.createdAt && this.lifecycleCommandSupersedesMove(command.verb, command.args, command.idempotencyKey)) {
+              this.applySupersedeBeeMove(move.id, {
+                stage: command.verb === "stop" ? "stop" : "validate",
+                code: "superseded",
+                detail: `operator ${command.verb}`,
+              });
+              this.rearmWakeIfFencedMail(command.beeId);
+            } else if (command.verb === "revive" || command.args.thenRevive === true) {
+              const at = this.now();
+              this.db.prepare("UPDATE commands SET status = 'done', finished_at = ? WHERE id = ?").run(at, command.id);
+              this.audit("command.moot", command.beeId, {
+                commandId: command.id,
+                verb: command.verb,
+                targetGeneration: command.targetGeneration,
+                currentGeneration: this.currentRuntime(command.beeId)?.generation ?? 0,
+                finishedAt: at,
+                reason: "stale_before_move",
+              });
+              continue;
+            }
+          }
+        }
         if (command.targetGeneration != null) {
           const current = this.currentRuntime(command.beeId);
           const currentGeneration = current?.generation ?? 0;
@@ -2860,6 +3047,21 @@ export class CoreStore {
               targetGeneration: command.targetGeneration,
               currentGeneration,
               finishedAt: at,
+            });
+            continue;
+          }
+          if (command.verb === "stop" && current?.state === "stopped" && command.args.replacementArgs === undefined) {
+            const at = this.now();
+            this.db
+              .prepare("UPDATE commands SET status = 'done', finished_at = ? WHERE id = ?")
+              .run(at, command.id);
+            this.audit("command.moot", command.beeId, {
+              commandId: command.id,
+              verb: command.verb,
+              targetGeneration: command.targetGeneration,
+              currentGeneration,
+              finishedAt: at,
+              reason: "already_stopped",
             });
             continue;
           }
@@ -3114,12 +3316,21 @@ export class CoreStore {
       flagsByBee.set(row.beeId, [...(flagsByBee.get(row.beeId) ?? []), row.flag]);
     }
 
+    const cellsById = new Map(this.listCells().map((cell) => [cell.id, cell] as const));
+    const latestMoveByBee = new Map<string, BeeMoveRow>();
+    for (const row of this.stmt("SELECT * FROM bee_moves ORDER BY created_at, id").all() as Row[]) {
+      const move = mapBeeMove(row);
+      latestMoveByBee.set(move.beeId, move);
+    }
     return bees.map((bee) => {
       const runtime = runtimeByBee.get(bee.id) ?? null;
+      const move = latestMoveByBee.get(bee.id) ?? null;
       return {
         bee,
         runtime,
         view: deriveBeeView(bee.id, bee, runtime, flagsByBee.get(bee.id) ?? []),
+        move: move ? toBeeMoveView(move) : null,
+        cell: bee.cellId ? (cellsById.get(bee.cellId) ?? null) : null,
       };
     });
   }
@@ -4316,6 +4527,505 @@ export class CoreStore {
     return rows.map(mapAudit).reverse();
   }
 
+  // -------------------------------------------------------------------------
+  // v22 — cells registry + bee_moves + cell_ops
+  // -------------------------------------------------------------------------
+
+  putCell(input: {
+    id?: string;
+    sourceBeeId: string;
+    originRepo: string;
+    sha: string;
+    wrapper: string;
+    spaceName: string;
+    spaceDir: string;
+    gitCommonDirRealpath: string;
+    objectFormat: CellRow["repository"]["objectFormat"];
+    sandbox?: boolean | null;
+  }): CellRow {
+    return this.tx(() => {
+      this.mustGetBee(input.sourceBeeId);
+      const id = input.id ?? randomUUID();
+      const at = this.now();
+      this.db
+        .prepare(
+          `INSERT INTO cells(id, source_bee_id, state, git_common_dir, object_format, origin_repo, sha, wrapper, space_name, space_dir, sandbox, created_at)
+           VALUES(?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          id,
+          input.sourceBeeId,
+          input.gitCommonDirRealpath,
+          input.objectFormat,
+          input.originRepo,
+          input.sha,
+          input.wrapper,
+          input.spaceName,
+          input.spaceDir,
+          input.sandbox == null ? null : input.sandbox ? 1 : 0,
+          at,
+        );
+      this.stmt("UPDATE bees SET cell_id = ? WHERE id = ?").run(id, input.sourceBeeId);
+      const cell = this.mustGetCell(id);
+      this.audit("cell.put", input.sourceBeeId, { cell, previous: null });
+      return cell;
+    });
+  }
+
+  getCell(cellId: string): CellRow | null {
+    const row = this.stmt("SELECT * FROM cells WHERE id = ?").get(cellId) as Row | undefined;
+    return row ? mapCell(row) : null;
+  }
+
+  listCells(): CellRow[] {
+    return (this.stmt("SELECT * FROM cells ORDER BY id").all() as Row[]).map(mapCell);
+  }
+
+  private mustGetCell(cellId: string): CellRow {
+    const cell = this.getCell(cellId);
+    if (!cell) throw new CellNotFoundError(cellId);
+    return cell;
+  }
+
+  retainCell(cellId: string): CellRow {
+    return this.tx(() => {
+      const cell = this.mustGetCell(cellId);
+      if (cell.state === "retained") return cell;
+      const at = this.now();
+      this.stmt("UPDATE cells SET state = 'retained', retained_at = ? WHERE id = ?").run(at, cellId);
+      const next = this.mustGetCell(cellId);
+      this.audit("cell.put", cell.sourceBeeId, { cell: next, previous: cell });
+      return next;
+    });
+  }
+
+  markCellRemoved(cellId: string): CellRow {
+    return this.tx(() => {
+      const cell = this.mustGetCell(cellId);
+      if (cell.state === "removed") return cell;
+      const at = this.now();
+      this.stmt("UPDATE cells SET state = 'removed', removed_at = ? WHERE id = ?").run(at, cellId);
+      const bee = this.getBee(cell.sourceBeeId);
+      if (bee?.cellId === cellId) {
+        this.stmt("UPDATE bees SET cell_id = NULL WHERE id = ?").run(cell.sourceBeeId);
+      }
+      this.audit("cell.removed", cell.sourceBeeId, { cellId, removedAt: at });
+      return this.mustGetCell(cellId);
+    });
+  }
+
+  getBeeMove(moveId: string): BeeMoveRow | null {
+    const row = this.stmt("SELECT * FROM bee_moves WHERE id = ?").get(moveId) as Row | undefined;
+    return row ? mapBeeMove(row) : null;
+  }
+
+  getBeeMoveByKey(idempotencyKey: string): BeeMoveRow | null {
+    const row = this.stmt("SELECT * FROM bee_moves WHERE idempotency_key = ?").get(idempotencyKey) as Row | undefined;
+    return row ? mapBeeMove(row) : null;
+  }
+
+  listBeeMoves(): BeeMoveRow[] {
+    return (this.stmt("SELECT * FROM bee_moves ORDER BY id").all() as Row[]).map(mapBeeMove);
+  }
+
+  latestMoveOf(beeId: string): BeeMoveRow | null {
+    const row = this.stmt("SELECT * FROM bee_moves WHERE bee_id = ? ORDER BY created_at DESC, id DESC LIMIT 1").get(
+      beeId,
+    ) as Row | undefined;
+    return row ? mapBeeMove(row) : null;
+  }
+
+  activeMoveOf(beeId: string): BeeMoveRow | null {
+    const bee = this.getBee(beeId);
+    if (!bee?.activeMoveId) return null;
+    return this.getBeeMove(bee.activeMoveId);
+  }
+
+  /** Latest move whose dest instruction is still owed, including failed-after-placement. */
+  placementInstructionMove(beeId: string): BeeMoveRow | null {
+    const move = this.latestMoveOf(beeId);
+    if (!move || move.instructionsApplied || !move.instructionsPending) return null;
+    return move;
+  }
+
+  private mustBeeMove(moveId: string): BeeMoveRow {
+    const move = this.getBeeMove(moveId);
+    if (!move) throw new CoreError(`bee move not found: ${moveId}`);
+    return move;
+  }
+
+  admitBeeMove(input: {
+    beeId: string;
+    idempotencyKey: string;
+    requestHash: string;
+    expected: { placementVersion: number; cellId: string };
+    destinationCwd: string;
+    observedHead?: string;
+  }): BeeMoveRow {
+    if (typeof input.idempotencyKey !== "string" || input.idempotencyKey.length === 0) {
+      throw new CoreError("admitBeeMove: idempotencyKey is required");
+    }
+    return this.tx(() => {
+      const existing = this.stmt("SELECT * FROM bee_moves WHERE idempotency_key = ?").get(input.idempotencyKey) as
+        | Row
+        | undefined;
+      if (existing) {
+        const record = mapBeeMove(existing);
+        if (record.requestHash !== input.requestHash) throw new IdempotencyConflictError();
+        return record;
+      }
+      const bee = this.mustGetBee(input.beeId);
+      if (bee.activeMoveId) throw new MoveInProgressError(bee.activeMoveId);
+      if (bee.substrate !== "cell") {
+        throw new CoreError(`admitBeeMove: bee ${input.beeId} is on substrate '${bee.substrate}', not cell`);
+      }
+      if (bee.cellId !== input.expected.cellId || bee.placementVersion !== input.expected.placementVersion) {
+        throw new StalePlacementError(
+          `expected placementVersion ${input.expected.placementVersion} cell ${input.expected.cellId}; ` +
+            `have ${bee.placementVersion} cell ${bee.cellId ?? "none"}`,
+        );
+      }
+      const cell = this.mustGetCell(input.expected.cellId);
+      if (cell.state !== "active") throw new CellNotFoundError(input.expected.cellId);
+      const rt = this.currentRuntime(input.beeId);
+      const sourceGeneration = rt?.generation ?? 0;
+      const id = randomUUID();
+      const nextVersion = bee.placementVersion + 1;
+      const stopKey = beeMoveStopKey(id, sourceGeneration);
+      const reviveKey = beeMoveReviveKey(id);
+      const at = this.now();
+      this.db
+        .prepare(
+          `INSERT INTO bee_moves(id, bee_id, idempotency_key, request_hash, phase, source_generation, from_cwd, from_substrate, to_cwd, to_substrate, retained_cell_id, stop_command_key, revive_command_key, placement_version, instructions_pending, instructions_applied, observed_head, created_at, updated_at)
+           VALUES(?, ?, ?, ?, 'stopping', ?, ?, 'cell', ?, 'hsr', ?, ?, ?, ?, 1, 0, ?, ?, ?)`,
+        )
+        .run(
+          id,
+          input.beeId,
+          input.idempotencyKey,
+          input.requestHash,
+          sourceGeneration,
+          bee.cwd,
+          input.destinationCwd,
+          cell.id,
+          stopKey,
+          reviveKey,
+          nextVersion,
+          input.observedHead ?? "",
+          at,
+          at,
+        );
+      this.stmt("UPDATE bees SET active_move_id = ? WHERE id = ?").run(id, input.beeId);
+      this.mootCommandsQueuedBeforeMove(input.beeId, at, stopKey, reviveKey);
+      this.applyEnqueue("stop", input.beeId, { cause: "stopped_by_system", reason: "bee.move" }, sourceGeneration, stopKey);
+      const move = this.mustBeeMove(id);
+      this.audit("bee.move_admitted", input.beeId, { move });
+      return move;
+    });
+  }
+
+  setBeeMovePhase(moveId: string, phase: BeeMovePhase): BeeMoveRow {
+    return this.tx(() => this.applySetBeeMovePhase(moveId, phase));
+  }
+
+  /** Placement commit: retain cell, flip cwd/substrate, enqueue revive, phase starting. */
+  commitBeePlacement(moveId: string): BeeMoveRow {
+    return this.tx(() => {
+      const previous = this.mustBeeMove(moveId);
+      const bee = this.mustGetBee(previous.beeId);
+      if (previous.phase === "complete") return previous;
+      if (previous.phase === "starting" && bee.activeMoveId === moveId) return previous;
+      if (bee.activeMoveId !== moveId) {
+        throw new IllegalTransitionError(`commitBeePlacement: move ${moveId} is not the bee's active move`);
+      }
+      if (previous.phase !== "placing") {
+        throw new IllegalTransitionError(`commitBeePlacement: move ${moveId} is ${previous.phase}, not placing`);
+      }
+      const rt = this.currentRuntime(previous.beeId);
+      if (!rt || rt.generation !== previous.sourceGeneration || rt.state !== "stopped") {
+        throw new IllegalTransitionError(
+          `commitBeePlacement: source generation ${previous.sourceGeneration} is not stopped`,
+        );
+      }
+      this.retainCell(previous.retainedCellId);
+      this.db
+        .prepare("UPDATE bees SET substrate = 'hsr', cwd = ?, placement_version = ? WHERE id = ?")
+        .run(previous.to.cwd, previous.to.version, previous.beeId);
+      this.applyEnqueue("revive", previous.beeId, { reason: "bee.move" }, previous.sourceGeneration, previous.reviveCommandKey);
+      const next = this.mustGetBee(previous.beeId);
+      this.audit("bee.placement", previous.beeId, {
+        beeId: previous.beeId,
+        placementVersion: next.placementVersion,
+        cwd: next.cwd,
+        previousCwd: bee.cwd,
+        substrate: next.substrate,
+        previousSubstrate: bee.substrate,
+        cellId: next.cellId,
+      });
+      return this.applySetBeeMovePhase(moveId, "starting");
+    });
+  }
+
+  failBeeMove(moveId: string, failure: BeeMoveFailure): BeeMoveRow {
+    return this.tx(() => {
+      const move = this.applyFailBeeMove(moveId, failure);
+      this.rearmWakeIfFencedMail(move.beeId);
+      return move;
+    });
+  }
+
+  supersedeBeeMove(beeId: string, detail: string): BeeMoveRow | null {
+    return this.tx(() => {
+      const bee = this.getBee(beeId);
+      if (!bee?.activeMoveId) return null;
+      const move = this.applySupersedeBeeMove(bee.activeMoveId, { stage: "validate", code: "superseded", detail });
+      this.rearmWakeIfFencedMail(beeId);
+      return move;
+    });
+  }
+
+  completeBeeMove(moveId: string): BeeMoveRow {
+    return this.tx(() => {
+      const previous = this.mustBeeMove(moveId);
+      if (previous.phase === "complete") return previous;
+      const bee = this.mustGetBee(previous.beeId);
+      if (bee.activeMoveId !== moveId) {
+        throw new IllegalTransitionError(`completeBeeMove: move ${moveId} is not the bee's active move`);
+      }
+      this.stmt("UPDATE bee_moves SET instructions_pending = 0, instructions_applied = 1, updated_at = ? WHERE id = ?").run(
+        this.now(),
+        moveId,
+      );
+      const moved = this.applySetBeeMovePhase(moveId, "complete");
+      this.stmt("UPDATE bees SET active_move_id = NULL WHERE id = ? AND active_move_id = ?").run(previous.beeId, moveId);
+      return this.mustBeeMove(moved.id);
+    });
+  }
+
+  markMoveInstructionsApplied(moveId: string): BeeMoveRow {
+    return this.tx(() => {
+      const previous = this.mustBeeMove(moveId);
+      if (previous.instructionsApplied) return previous;
+      const at = this.now();
+      this.stmt(
+        "UPDATE bee_moves SET instructions_applied = 1, instructions_pending = 0, updated_at = ? WHERE id = ?",
+      ).run(at, moveId);
+      const move = this.mustBeeMove(moveId);
+      this.audit("bee.move_instructions", previous.beeId, { moveId, beeId: previous.beeId, move });
+      return move;
+    });
+  }
+
+  private applySetBeeMovePhase(moveId: string, phase: BeeMovePhase): BeeMoveRow {
+    const previous = this.mustBeeMove(moveId);
+    if (previous.phase === phase) return previous;
+    if (!beeMoveTransitionLegal(previous.phase, phase)) {
+      throw new IllegalTransitionError(`bee move ${moveId}: ${previous.phase} → ${phase} is not a legal transition`);
+    }
+    if (phase !== "failed" && phase !== "complete") {
+      const bee = this.mustGetBee(previous.beeId);
+      if (bee.activeMoveId !== moveId) {
+        throw new IllegalTransitionError(`bee move ${moveId} is not the bee's active move`);
+      }
+    }
+    if (phase === "placing") {
+      const rt = this.currentRuntime(previous.beeId);
+      if (!rt || rt.generation !== previous.sourceGeneration || rt.state !== "stopped") {
+        throw new IllegalTransitionError(
+          `bee move ${moveId}: placing requires source generation ${previous.sourceGeneration} stopped`,
+        );
+      }
+    }
+    const at = this.now();
+    this.stmt("UPDATE bee_moves SET phase = ?, updated_at = ? WHERE id = ?").run(phase, at, moveId);
+    const move = this.mustBeeMove(moveId);
+    this.audit("bee.move_phase", previous.beeId, {
+      moveId,
+      beeId: previous.beeId,
+      phase,
+      previous: previous.phase,
+      move,
+    });
+    return move;
+  }
+
+  private applyFailBeeMove(moveId: string, failure: BeeMoveFailure): BeeMoveRow {
+    const previous = this.mustBeeMove(moveId);
+    if (previous.phase === "failed") return previous;
+    if (previous.phase === "complete") {
+      throw new IllegalTransitionError(`bee move ${moveId} is already complete`);
+    }
+    const bee = this.mustGetBee(previous.beeId);
+    const placed = bee.substrate === previous.to.substrate && bee.cwd === previous.to.cwd
+      && bee.placementVersion === previous.to.version;
+    const at = this.now();
+    this.stmt(
+      "UPDATE bee_moves SET failure_json = ?, instructions_pending = ?, updated_at = ? WHERE id = ?",
+    ).run(JSON.stringify(failure), placed ? 1 : 0, at, moveId);
+    this.applySetBeeMovePhase(moveId, "failed");
+    this.stmt("UPDATE bees SET active_move_id = NULL WHERE id = ? AND active_move_id = ?").run(previous.beeId, moveId);
+    const move = this.mustBeeMove(moveId);
+    this.audit("bee.move_failed", previous.beeId, { moveId, beeId: previous.beeId, failure, move });
+    return move;
+  }
+
+  private rearmWakeIfFencedMail(beeId: string): void {
+    if (this.undeliveredMessages(beeId).length === 0) return;
+    this.applyWakeIfNeeded(beeId);
+  }
+
+  /** Operator archive/delete/revive or an explicit user stop, not hang/idle/move stops. */
+  private lifecycleCommandSupersedesMove(
+    verb: Verb,
+    args: Record<string, unknown>,
+    _key: string | null,
+  ): boolean {
+    if (verb === "archive" || verb === "delete" || verb === "revive") return true;
+    return verb === "stop" && args.cause === "stopped_by_user";
+  }
+
+  private mootCommandsQueuedBeforeMove(
+    beeId: string,
+    admittedAt: number,
+    stopKey: string,
+    reviveKey: string,
+  ): void {
+    const pending = this.listCommands({ beeId }).filter(
+      (c) =>
+        (c.status === "queued" || c.status === "running") &&
+        c.enqueuedAt <= admittedAt &&
+        c.idempotencyKey !== stopKey &&
+        c.idempotencyKey !== reviveKey &&
+        (c.verb === "spawn" || c.verb === "send_wake" || c.verb === "revive" || c.args.thenRevive === true),
+    );
+    const at = this.now();
+    for (const cmd of pending) {
+      this.db.prepare("UPDATE commands SET status = 'done', finished_at = ? WHERE id = ?").run(at, cmd.id);
+      this.audit("command.moot", beeId, {
+        commandId: cmd.id,
+        verb: cmd.verb,
+        targetGeneration: cmd.targetGeneration,
+        currentGeneration: this.currentRuntime(beeId)?.generation ?? 0,
+        finishedAt: at,
+        reason: "stale_before_move",
+      });
+    }
+  }
+
+  private applySupersedeBeeMove(moveId: string, failure: BeeMoveFailure): BeeMoveRow {
+    const previous = this.mustBeeMove(moveId);
+    const move = this.applyFailBeeMove(moveId, failure);
+    for (const key of [previous.stopCommandKey, previous.reviveCommandKey]) {
+      const cmd = this.getCommandByIdempotencyKey(key);
+      if (cmd && (cmd.status === "queued" || cmd.status === "running")) {
+        const at = this.now();
+        this.db.prepare("UPDATE commands SET status = 'done', finished_at = ? WHERE id = ?").run(at, cmd.id);
+        this.audit("command.moot", cmd.beeId, {
+          commandId: cmd.id,
+          verb: cmd.verb,
+          targetGeneration: cmd.targetGeneration,
+          currentGeneration: this.currentRuntime(cmd.beeId)?.generation ?? 0,
+          finishedAt: at,
+          reason: "move_superseded",
+        });
+      }
+    }
+    return move;
+  }
+
+  putCellOp(input: {
+    id?: string;
+    cellId: string;
+    kind: CellOpKind;
+    idempotencyKey: string;
+    requestHash: string;
+    argv?: string[] | null;
+    cwd?: string | null;
+    timeoutMs?: number | null;
+  }): CellOpRow {
+    return this.tx(() => {
+      const existing = this.stmt("SELECT * FROM cell_ops WHERE idempotency_key = ?").get(input.idempotencyKey) as
+        | Row
+        | undefined;
+      if (existing) {
+        const op = mapCellOp(existing);
+        if (op.requestHash !== input.requestHash || op.kind !== input.kind || op.cellId !== input.cellId) {
+          throw new IdempotencyConflictError();
+        }
+        return op;
+      }
+      this.mustGetCell(input.cellId);
+      const id = input.id ?? randomUUID();
+      const at = this.now();
+      this.db
+        .prepare(
+          `INSERT INTO cell_ops(id, cell_id, kind, idempotency_key, request_hash, status, argv_json, cwd, timeout_ms, stdout, stderr, truncated, created_at, updated_at)
+           VALUES(?, ?, ?, ?, ?, 'queued', ?, ?, ?, '', '', 0, ?, ?)`,
+        )
+        .run(
+          id,
+          input.cellId,
+          input.kind,
+          input.idempotencyKey,
+          input.requestHash,
+          input.argv == null ? null : JSON.stringify(input.argv),
+          input.cwd ?? null,
+          input.timeoutMs ?? null,
+          at,
+          at,
+        );
+      const op = this.mustGetCellOp(id);
+      this.audit("cell_op.put", null, { op });
+      return op;
+    });
+  }
+
+  getCellOp(id: string): CellOpRow | null {
+    const row = this.stmt("SELECT * FROM cell_ops WHERE id = ?").get(id) as Row | undefined;
+    return row ? mapCellOp(row) : null;
+  }
+
+  getCellOpByKey(idempotencyKey: string): CellOpRow | null {
+    const row = this.stmt("SELECT * FROM cell_ops WHERE idempotency_key = ?").get(idempotencyKey) as Row | undefined;
+    return row ? mapCellOp(row) : null;
+  }
+
+  listCellOps(): CellOpRow[] {
+    return (this.stmt("SELECT * FROM cell_ops ORDER BY id").all() as Row[]).map(mapCellOp);
+  }
+
+  private mustGetCellOp(id: string): CellOpRow {
+    const op = this.getCellOp(id);
+    if (!op) throw new CoreError(`cell op not found: ${id}`);
+    return op;
+  }
+
+  updateCellOp(id: string, patch: Partial<Pick<CellOpRow, "status" | "pid" | "pidStartedAt" | "exitCode" | "stdout" | "stderr" | "truncated" | "failure">>): CellOpRow {
+    return this.tx(() => {
+      const op = this.mustGetCellOp(id);
+      const next: CellOpRow = { ...op, ...patch, updatedAt: this.now() };
+      this.db
+        .prepare(
+          `UPDATE cell_ops SET status = ?, pid = ?, pid_started_at = ?, exit_code = ?, stdout = ?, stderr = ?, truncated = ?, failure = ?, updated_at = ? WHERE id = ?`,
+        )
+        .run(
+          next.status,
+          next.pid,
+          next.pidStartedAt,
+          next.exitCode,
+          next.stdout,
+          next.stderr,
+          next.truncated ? 1 : 0,
+          next.failure,
+          next.updatedAt,
+          id,
+        );
+      const saved = this.mustGetCellOp(id);
+      this.audit("cell_op.put", null, { op: saved });
+      return saved;
+    });
+  }
+
   /** Deterministic snapshot of all replayable state (meta and audit excluded). */
   dumpState(): StateDump {
     return {
@@ -4336,6 +5046,9 @@ export class CoreStore {
       tasks: (this.stmt("SELECT * FROM tasks ORDER BY id").all() as Row[]).map(mapTask),
       taskSupply: (this.stmt("SELECT * FROM task_supply ORDER BY bee_id").all() as Row[]).map(mapTaskSupply),
       loginFlows: this.listLoginFlows(),
+      cells: this.listCells(),
+      beeMoves: this.listBeeMoves(),
+      cellOps: this.listCellOps(),
     };
   }
 }

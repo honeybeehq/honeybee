@@ -123,6 +123,8 @@ export interface CellsConfig {
   sandbox?: boolean;
   /** Per-repo warm-cell artifact dirs (A5, opt-in), keyed by origin repo path. */
   warm?: Record<string, string[]>;
+  /** Test-only: allow agent `stub` on bee.move. Default false. */
+  allowStubMove?: boolean;
 }
 
 /** The raw (all-optional) shape of config.json. */
@@ -184,6 +186,8 @@ export interface ResolvedNodeConfig {
   cellSandbox: boolean | null;
   /** Per-repo warm-cell artifact dirs (A5). */
   cellWarm: Record<string, string[]>;
+  /** Test-only stub continuation for bee.move. */
+  cellMoveAllowStub: boolean;
   idleWindowMs: number;
   bootHangTimeoutMs: number;
   bootAllowanceMs: number;
@@ -299,16 +303,17 @@ function nodeKindOf(raw: Record<string, unknown>): NodeKind {
   return v as NodeKind;
 }
 
-function cellsOf(raw: Record<string, unknown>): { root?: string; sandbox: boolean | null; warm: Record<string, string[]> } {
+function cellsOf(raw: Record<string, unknown>): { root?: string; sandbox: boolean | null; warm: Record<string, string[]>; allowStubMove: boolean } {
   const v = raw.cells;
-  if (v === undefined) return { sandbox: null, warm: {} };
+  if (v === undefined) return { sandbox: null, warm: {}, allowStubMove: false };
   if (v === null || typeof v !== "object" || Array.isArray(v)) {
     throw new ConfigError("config: cells must be an object of {root?, sandbox?, warm?}");
   }
   const c = v as Record<string, unknown>;
-  const out: { root?: string; sandbox: boolean | null; warm: Record<string, string[]> } = {
+  const out: { root?: string; sandbox: boolean | null; warm: Record<string, string[]>; allowStubMove: boolean } = {
     sandbox: null,
     warm: {},
+    allowStubMove: false,
   };
   if (c.root !== undefined) {
     if (typeof c.root !== "string" || c.root.length === 0) {
@@ -330,6 +335,10 @@ function cellsOf(raw: Record<string, unknown>): { root?: string; sandbox: boolea
       }
       out.warm[repo] = dirs as string[];
     }
+  }
+  if (c.allowStubMove !== undefined) {
+    if (typeof c.allowStubMove !== "boolean") throw new ConfigError("config: cells.allowStubMove must be a boolean");
+    out.allowStubMove = c.allowStubMove;
   }
   return out;
 }
@@ -572,6 +581,7 @@ export function loadNodeConfig(dataDir: string, configPath?: string): ResolvedNo
     cellsRoot: cells.root ?? join(dataDir, "cells"),
     cellSandbox: cells.sandbox,
     cellWarm: cells.warm,
+    cellMoveAllowStub: cells.allowStubMove,
     idleWindowMs: num(raw, "idleWindowMs", DEFAULTS.idleWindowMs),
     bootHangTimeoutMs,
     bootAllowanceMs,
