@@ -42,9 +42,11 @@ import { provisionCell, type ProvisionedCell, type ProvisionRequest } from "./pr
 import { deleteCell, type DeleteResult } from "./remove.ts";
 import {
   defaultWritablePaths,
+  mergeSandboxWritablePaths,
   sandboxEnabled,
   wrapWithSandbox,
   type NodeKind,
+  type SandboxWritableDirectory,
 } from "./sandbox.ts";
 
 /** What the cell driver needs to know per bee, beyond the harness spawn. */
@@ -65,8 +67,13 @@ export interface CellDriverConfig {
   resolveCell(beeId: string): CellSpec;
   /** Inner HSR driver settings (session logs, stop grace, …). */
   hsr: Omit<HsrDriverConfig, "resolve">;
-  /** Extra sandbox-writable paths (defaults: harness homes + caches). */
+  /** Baseline sandbox-writable paths (defaults: harness homes + caches). */
   sandboxWritablePaths?: string[];
+  /**
+   * Additional authoritative paths for this bee. Callers must derive these
+   * from trusted state, never from the harness spawn environment.
+   */
+  resolveSandboxWritablePaths?(beeId: string): readonly SandboxWritableDirectory[];
   /** Tests: force the clone fallback / cold cells. */
   disableCow?: boolean;
   /** Daemon mode: provision Cells off the RPC/event-loop hot lane. */
@@ -496,7 +503,10 @@ export class CellDriver implements RuntimeDriver {
     const wrapped = wrapWithSandbox(
       {
         cellDir: cell.paths.wrapperDir,
-        writablePaths: this.cfg.sandboxWritablePaths ?? defaultWritablePaths(),
+        writablePaths: mergeSandboxWritablePaths(
+          this.cfg.sandboxWritablePaths ?? defaultWritablePaths(),
+          this.cfg.resolveSandboxWritablePaths?.(beeId) ?? [],
+        ),
       },
       harness.command,
       harness.args,

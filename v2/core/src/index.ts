@@ -9,6 +9,7 @@ export {
   openCoreStore,
   HANDLE_RE,
   handlePrefix,
+  requireBeeId,
   type CoreStoreOptions,
   type BeeViewRow,
   type CreateBeeInput,

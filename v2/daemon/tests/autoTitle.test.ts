@@ -32,6 +32,7 @@ function bee(overrides: Partial<BeeRow> = {}): BeeRow {
     spawnFailures: 0,
     args: null,
     parentId: null,
+    parentExternal: false,
     forkedFrom: null,
     forkSeed: null,
     account: null,

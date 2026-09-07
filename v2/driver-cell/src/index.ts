@@ -26,13 +26,17 @@ export {
 export {
   bwrapArgs,
   defaultWritablePaths,
+  mergeSandboxWritablePaths,
   NODE_KINDS,
   sandboxDefaultFor,
   sandboxEnabled,
+  sandboxWritableDirectory,
   seatbeltProfile,
   wrapWithSandbox,
   type NodeKind,
   type SandboxPolicy,
+  type SandboxWritableDirectory,
+  type SandboxWritableDirectoryOptions,
   type WrappedCommand,
 } from "./sandbox.ts";
 export {

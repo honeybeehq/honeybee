@@ -10,9 +10,9 @@
  * Defaults by node kind (A4): workstation OFF, satellite ON, cloud gateway
  * OFF (the ephemeral VM is the boundary there). Per-cell override wins.
  */
-import { realpathSync } from "node:fs";
+import { realpathSync, statSync } from "node:fs";
 import { homedir, platform } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join, parse, relative, resolve as resolvePath, sep } from "node:path";
 
 export type NodeKind = "workstation" | "satellite" | "cloud";
 
@@ -63,6 +63,71 @@ export function defaultWritablePaths(home: string = homedir()): string[] {
     join(home, ".local", "share", "pnpm"),
     join(home, "Library", "Caches"),
   ];
+}
+
+/** A canonical existing directory admitted through the narrow per-bee seam. */
+export interface SandboxWritableDirectory {
+  readonly path: string;
+}
+
+export interface SandboxWritableDirectoryOptions {
+  /** Directories (and their ancestors) that are too broad to grant. */
+  forbiddenDirectories?: readonly string[];
+}
+
+function canonicalPath(path: string): string {
+  try {
+    return realpathSync(path);
+  } catch {
+    return resolvePath(path);
+  }
+}
+
+/** True when `parent` is equal to or an ancestor of `child`. */
+function containsPath(parent: string, child: string): boolean {
+  const rel = relative(parent, child);
+  return rel === "" || (rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
+}
+
+/**
+ * Validate and canonicalize a bee-specific writable directory. Unlike the
+ * legacy baseline list, this authority seam never resolves relative input or
+ * tolerates a missing path. Symlink aliases are judged by their real target.
+ */
+export function sandboxWritableDirectory(
+  path: string,
+  options: SandboxWritableDirectoryOptions = {},
+): SandboxWritableDirectory {
+  if (!isAbsolute(path)) throw new Error(`cell sandbox: bee writable path must be absolute: ${path}`);
+  let canonical: string;
+  try {
+    if (!statSync(path).isDirectory()) throw new Error("not a directory");
+    canonical = realpathSync(path);
+  } catch {
+    throw new Error(`cell sandbox: bee writable path must be an existing directory: ${path}`);
+  }
+
+  const osHome = canonicalPath(homedir());
+  if (canonical === parse(canonical).root || containsPath(canonical, osHome)) {
+    throw new Error(`cell sandbox: bee writable path is too broad: ${path} resolves to ${canonical}`);
+  }
+  for (const forbidden of options.forbiddenDirectories ?? []) {
+    const target = canonicalPath(forbidden);
+    if (containsPath(canonical, target)) {
+      throw new Error(
+        `cell sandbox: bee writable path resolves to or contains forbidden directory ${target}: ${path}`,
+      );
+    }
+  }
+  return { path: canonical };
+}
+
+/** Preserve baseline spellings; append validated per-bee grants once each. */
+export function mergeSandboxWritablePaths(
+  baseline: readonly string[],
+  beeSpecific: readonly SandboxWritableDirectory[],
+): string[] {
+  return [...new Set([...baseline, ...beeSpecific.map((directory) => directory.path)])];
 }
 
 const SB_ESCAPE = /(["\\])/g;

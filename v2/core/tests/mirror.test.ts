@@ -207,6 +207,7 @@ test("mirror.2: value-level snapshot — a deterministic store serializes to the
         "spawnFailures": 0,
         "args": null,
         "parentId": null,
+        "parentExternal": false,
         "forkedFrom": null,
         "forkSeed": null,
         "account": null,

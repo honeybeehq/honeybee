@@ -7,7 +7,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
 import { platform } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -17,7 +17,12 @@ import { CellDriver, CellRuntimeLiveError } from "../src/driver.ts";
 import { gitImagesRootForCells, readCurrentGitImage } from "../src/gitImage.ts";
 import { reserveCell } from "../src/provision.ts";
 import { probeCow } from "../src/cow.ts";
-import { defaultScratchPaths, type NodeKind } from "../src/sandbox.ts";
+import {
+  defaultScratchPaths,
+  sandboxWritableDirectory,
+  type NodeKind,
+  type SandboxWritableDirectory,
+} from "../src/sandbox.ts";
 import { commitInCell, makeRig, type CellTestRig } from "./helpers.ts";
 import { pidAlive } from "../../driver-hsr/tests/helpers.ts";
 
@@ -35,6 +40,10 @@ function makeDriver(
     disableCow?: boolean;
     gitImagesRoot?: string;
     nodeKind?: NodeKind;
+    sandboxWritablePaths?: string[];
+    resolveSandboxWritablePaths?: (beeId: string) => readonly SandboxWritableDirectory[];
+    harnessEnv?: Record<string, string>;
+    hostCommand?: (configPath: string) => { command: string; args: string[] };
   } = {},
 ): CellDriver {
   return new CellDriver({
@@ -44,7 +53,7 @@ function makeDriver(
       adapter: stubAdapter,
       command: process.execPath,
       args: [AGENT_PATH],
-      env: { ...(process.env as Record<string, string>), STUB_TURN_MS: "5" },
+      env: { ...(process.env as Record<string, string>), STUB_TURN_MS: "5", ...(opts.harnessEnv ?? {}) },
     }),
     resolveCell: (beeId: string) => ({
       provision: {
@@ -57,11 +66,16 @@ function makeDriver(
       },
       sandbox: opts.sandbox ?? null,
     }),
-    hsr: { sessionLogDir: join(rig.root, "logs"), stopKillGraceMs: 400 },
+    hsr: {
+      sessionLogDir: join(rig.root, "logs"),
+      stopKillGraceMs: 400,
+      ...(opts.hostCommand ? { hostCommand: opts.hostCommand } : {}),
+    },
     // Sandboxed runs must still reach the OS tmp + the node binary; the
     // default scratch list covers it. Harness "home" writes go to the logs
     // dir via the driver, outside the sandboxed child.
-    sandboxWritablePaths: defaultScratchPaths(),
+    sandboxWritablePaths: opts.sandboxWritablePaths ?? defaultScratchPaths(),
+    resolveSandboxWritablePaths: opts.resolveSandboxWritablePaths,
     disableCow: opts.disableCow ?? true,
     backgroundProvisioning: opts.backgroundProvisioning,
     provisionWorkerUrl: opts.provisionWorkerUrl,
@@ -356,6 +370,74 @@ test("cell-driver.workstation-default: sandbox stays OFF without an override (A4
     assert.ok(!existsSync(cell.paths.sandboxProfilePath), "no profile → no sandbox wrap");
     driver.stop("bee-1", 1, "stopped_by_user");
     await drainUntil(driver, (e) => e.some((x) => x.kind === "exited"));
+  } finally {
+    driver.disposeAll();
+    await sleep(10);
+    rig.cleanup();
+  }
+});
+
+test("cell-driver.account-home: the bee resolver adds one exact sandbox grant and ignores harness env", {
+  skip: platform() !== "darwin" && platform() !== "linux",
+}, async () => {
+  const rig = makeRig();
+  const homesRoot = join(rig.root, "account-homes");
+  const accountHome = join(homesRoot, "codex-primary");
+  const siblingHome = join(homesRoot, "codex-sibling");
+  const baseline = join(rig.root, "baseline-cache");
+  mkdirSync(accountHome, { recursive: true });
+  mkdirSync(siblingHome);
+  mkdirSync(baseline);
+  const accountGrant = sandboxWritableDirectory(accountHome, { forbiddenDirectories: [homesRoot] });
+  const canonicalHomesRoot = realpathSync(homesRoot);
+  const canonicalSiblingHome = realpathSync(siblingHome);
+  const runnerConfigs: Array<{ beeId: string; command: string; args: string[] }> = [];
+  const resolverCalls: string[] = [];
+  const driver = makeDriver(rig, {
+    sandbox: true,
+    sandboxWritablePaths: [baseline, `${baseline}/.`],
+    harnessEnv: { CODEX_HOME: siblingHome },
+    resolveSandboxWritablePaths: (beeId) => {
+      resolverCalls.push(beeId);
+      return beeId === "bee-1" ? [accountGrant, accountGrant] : [];
+    },
+    hostCommand: (configPath) => {
+      runnerConfigs.push(JSON.parse(readFileSync(configPath, "utf8")) as {
+        beeId: string;
+        command: string;
+        args: string[];
+      });
+      return { command: process.execPath, args: ["-e", ""] };
+    },
+  });
+  try {
+    driver.start("bee-1", 1);
+    driver.start("bee-2", 1);
+    assert.deepEqual(resolverCalls, ["bee-1", "bee-2"]);
+
+    if (platform() === "linux") {
+      const bound = runnerConfigs.find((config) => config.beeId === "bee-1");
+      const unbound = runnerConfigs.find((config) => config.beeId === "bee-2");
+      assert.equal(bound?.command, "bwrap");
+      assert.equal(unbound?.command, "bwrap");
+      const bindTrySources = (config: typeof bound): Array<string | undefined> =>
+        (config?.args ?? []).flatMap((arg, index, args) => arg === "--bind-try" ? [args[index + 1]] : []);
+      assert.equal(bindTrySources(bound).filter((path) => path === accountGrant.path).length, 1);
+      assert.equal(bindTrySources(bound).includes(canonicalHomesRoot), false);
+      assert.equal(bindTrySources(bound).includes(canonicalSiblingHome), false);
+      assert.equal(bindTrySources(unbound).includes(accountGrant.path), false);
+      assert.equal(bindTrySources(unbound).includes(canonicalSiblingHome), false,
+        "an env-supplied CODEX_HOME is not sandbox authority");
+      assert.equal(bindTrySources(unbound).filter((path) => path === baseline).length, 1);
+    } else {
+      const boundProfile = readFileSync(driver.cellOf("bee-1")!.paths.sandboxProfilePath, "utf8");
+      const unboundProfile = readFileSync(driver.cellOf("bee-2")!.paths.sandboxProfilePath, "utf8");
+      assert.equal(boundProfile.includes(`  (subpath "${accountGrant.path}")`), true);
+      assert.equal(boundProfile.includes(`  (subpath "${canonicalHomesRoot}")`), false);
+      assert.equal(boundProfile.includes(canonicalSiblingHome), false);
+      assert.equal(unboundProfile.includes(accountGrant.path) || unboundProfile.includes(canonicalSiblingHome), false,
+        "unbound sandbox grants do not follow harness env");
+    }
   } finally {
     driver.disposeAll();
     await sleep(10);

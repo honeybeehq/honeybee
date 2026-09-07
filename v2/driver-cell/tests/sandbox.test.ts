@@ -7,11 +7,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { platform, tmpdir } from "node:os";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { homedir, platform, tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   bwrapArgs,
+  defaultWritablePaths,
+  mergeSandboxWritablePaths,
+  sandboxWritableDirectory,
   sandboxDefaultFor,
   sandboxEnabled,
   seatbeltProfile,
@@ -63,6 +66,79 @@ test("sandbox.bwrap: argv is read-only root + rw cell/harness binds + net (pure,
   assert.match(joined, /--share-net/);
   assert.match(joined, /--die-with-parent/);
   assert.ok(joined.endsWith("-- node agent.mjs"));
+});
+
+test("sandbox.account-home: bwrap grants the exact bound home, never its parent or a sibling", () => {
+  const root = mkdtempSync(join(tmpdir(), "hb-v2-account-home-"));
+  try {
+    const homesRoot = join(root, "homes");
+    const accountHome = join(homesRoot, "codex-primary");
+    const siblingHome = join(homesRoot, "codex-sibling");
+    mkdirSync(accountHome, { recursive: true });
+    mkdirSync(siblingHome);
+    const baseline = defaultWritablePaths("/home/hive");
+    const accountGrant = sandboxWritableDirectory(accountHome, { forbiddenDirectories: [homesRoot] });
+    const writablePaths = mergeSandboxWritablePaths(
+      baseline,
+      [accountGrant],
+    );
+    const args = bwrapArgs(
+      { cellDir: "/cells/bee-1", writablePaths, scratchPaths: [] },
+      "codex",
+      ["app-server"],
+    );
+    const bindTrySources = args.flatMap((arg, index) =>
+      arg === "--bind-try" ? [args[index + 1]] : []
+    );
+
+    assert.equal(bindTrySources.filter((path) => path === accountGrant.path).length, 1);
+    assert.equal(bindTrySources.includes(realpathSync(homesRoot)), false);
+    assert.equal(bindTrySources.includes(realpathSync(siblingHome)), false);
+    assert.deepEqual(
+      mergeSandboxWritablePaths(baseline, []),
+      baseline,
+      "an unbound bee retains exactly the default writable homes and caches",
+    );
+    assert.deepEqual(
+      mergeSandboxWritablePaths(["relative-legacy-cache"], []),
+      ["relative-legacy-cache"],
+      "the existing baseline override is not reinterpreted by the new authority seam",
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("sandbox.account-home validation rejects relative, missing, root, OS-home, and broad symlink targets", () => {
+  const root = mkdtempSync(join(tmpdir(), "hb-v2-account-home-invalid-"));
+  try {
+    const homesRoot = join(root, "homes");
+    const accountHome = join(homesRoot, "codex-primary");
+    const rootAlias = join(root, "root-alias");
+    const homeAlias = join(root, "home-alias");
+    const homesAlias = join(root, "homes-alias");
+    mkdirSync(accountHome, { recursive: true });
+    symlinkSync("/", rootAlias, "dir");
+    symlinkSync(homedir(), homeAlias, "dir");
+    symlinkSync(homesRoot, homesAlias, "dir");
+
+    assert.throws(() => sandboxWritableDirectory("relative/account"), /must be absolute/);
+    assert.throws(() => sandboxWritableDirectory(join(root, "missing")), /existing directory/);
+    assert.throws(() => sandboxWritableDirectory("/"), /too broad/);
+    assert.throws(() => sandboxWritableDirectory(rootAlias), /too broad/);
+    assert.throws(() => sandboxWritableDirectory(homedir()), /too broad/);
+    assert.throws(() => sandboxWritableDirectory(homeAlias), /too broad/);
+    assert.throws(
+      () => sandboxWritableDirectory(homesAlias, { forbiddenDirectories: [homesRoot] }),
+      /forbidden directory/,
+    );
+    assert.equal(
+      sandboxWritableDirectory(accountHome, { forbiddenDirectories: [homesRoot] }).path,
+      realpathSync(accountHome),
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("sandbox.wrap: platform dispatch (darwin sandbox-exec -f, linux bwrap, other throws)", () => {
