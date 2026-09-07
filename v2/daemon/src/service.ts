@@ -130,7 +130,10 @@ Description=Honeybee v2 hive daemon (${spec.label})
 [Service]
 Type=simple
 ExecStart=${exec}
-${cwdLine}${envLines}Restart=always
+${cwdLine}${envLines}# Honeybee owns detached runner process groups; daemon stop/restart preserves them for re-adoption.
+# Ephemeral workers are stopped during clean daemon shutdown, and explicit bee stop/delete reaps its runner group.
+KillMode=process
+Restart=always
 RestartSec=2
 StandardOutput=append:${spec.logPath}
 StandardError=append:${spec.logPath}

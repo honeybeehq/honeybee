@@ -73,6 +73,9 @@ Description=Honeybee v2 hive daemon (dev.honeybee.hive.v2.test)
 Type=simple
 ExecStart="/usr/local/bin/node" "/opt/hive/dist/cli.js" "v2" "daemon" "run" "--data-dir" "/data/v2"
 Environment="HIVE_V2_DATA_DIR=/data/v2"
+# Honeybee owns detached runner process groups; daemon stop/restart preserves them for re-adoption.
+# Ephemeral workers are stopped during clean daemon shutdown, and explicit bee stop/delete reaps its runner group.
+KillMode=process
 Restart=always
 RestartSec=2
 StandardOutput=append:/data/v2/hived.log
@@ -86,8 +89,10 @@ test("service.1: launchd plist snapshot", () => {
   assert.equal(renderLaunchdPlist(SPEC), PLIST_SNAPSHOT);
 });
 
-test("service.2: systemd user unit snapshot", () => {
-  assert.equal(renderSystemdUnit(SPEC), UNIT_SNAPSHOT);
+test("service.2: systemd owns only the daemon process so detached bee runtimes survive restart", () => {
+  const unit = renderSystemdUnit(SPEC);
+  assert.equal(unit, UNIT_SNAPSHOT);
+  assert.match(unit, /^KillMode=process$/m, "systemd must leave Honeybee-owned runner process groups alive");
 });
 
 // ---------------------------------------------------------------------------
