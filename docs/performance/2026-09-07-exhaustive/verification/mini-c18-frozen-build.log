@@ -1,0 +1,10 @@
+
+> honeybee@0.0.1 build
+> tsc -p tsconfig.json && node scripts/build-runner-host-artifact.mjs && node scripts/build-v2-artifact.mjs && node scripts/build-cli-entry.mjs
+
+runner-host artifact 1b553e3486ad990ef9e82005938ebc290d3cb79418d6739e5003839cc7f7968d (1618654 bytes) staged under /private/tmp/honeybee-perf-5763a6c9-20260907/c18-verify-frozen/dist/hsr/artifacts
+v2 artifacts staged at dist/v2/cli.js, dist/v2/provision-worker.js, and dist/v2/runner-host.js (4106 bytes)
+dependency-light cli entry staged at dist/cli.js
+
+> honeybee@0.0.1 postbuild
+> chmod +x dist/cli.js dist/cli-x.js

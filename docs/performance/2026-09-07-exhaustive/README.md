@@ -6,6 +6,8 @@ The first measured cost is D02: every quiet core tick builds a full retained-bee
 
 [The next baseline matrix](read-hotspots-baseline.md) measures 24 cases across command history, flags, pending bodies, mailbox history, task supplies, audit tails, and RPC idempotency. [D05 command predicates](command-probe-results.md) now reduce the 100,000-command pending-stop check from 176.946 to 0.036 ms CPU and recovery from 174.552 to 11.854 ms. The remaining recovery scan stays open. [Sparse fleet and held-body baselines](sparse-work-baseline.md) cover seven additional workloads. [Task-supply results](task-supply-results.md) cover both negative gates and exact positive effects. [The flag-index prototype](designs/flag-expiry.md) records read, write, expiry-burst, and storage tradeoffs. Every inventory item retains its own disposition; partial coverage does not close a subsystem.
 
+The [retained bookkeeping baseline](retained-bookkeeping-baseline.md) found 30,000 obsolete I1 IDs after 30 create/delete cohorts. The [Cell exit ruler review](reviews/cell-exit-ruler.md) records its correctness checks and measurement limits. [The compact scorecard](results.csv) separates landed gains from candidates held for refinement.
+
 ## Baseline evidence
 
 | Files under `evidence/` | Status and use |
