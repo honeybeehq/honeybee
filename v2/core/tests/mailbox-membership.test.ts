@@ -296,11 +296,21 @@ test("production aggregate uses both partial indexes and validates SQLite scalar
       { kind: "transaction_open" },
       "an outer transaction returns before reading a malformed aggregate",
     );
+    assert.deepEqual(
+      store.readMailboxMembership(unsafeIntegerBee.id),
+      { kind: "transaction_open" },
+      "an outer transaction avoids unsafe integer materialization",
+    );
     store.transact(() => {
       assert.deepEqual(
         store.readMailboxMembership(malformedBee.id),
         { kind: "transaction_open" },
         "a nested transaction returns before reading a malformed aggregate",
+      );
+      assert.deepEqual(
+        store.readMailboxMembership(unsafeIntegerBee.id),
+        { kind: "transaction_open" },
+        "a nested transaction avoids unsafe integer materialization",
       );
     });
   });
