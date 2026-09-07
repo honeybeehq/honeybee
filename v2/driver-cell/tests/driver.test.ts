@@ -98,6 +98,25 @@ async function drainUntil(
   }
 }
 
+// A boot observation can precede the detached runner socket accepting input.
+// Retry only that transient refusal; every other refusal remains a test failure.
+async function deliverUntilAccepted(
+  driver: CellDriver,
+  beeId: string,
+  generation: number,
+  messageId: number,
+  body: string,
+): Promise<void> {
+  const deadline = Date.now() + 5000;
+  for (;;) {
+    const outcome = driver.deliver(beeId, generation, messageId, body);
+    if (outcome.accepted) return;
+    assert.equal(outcome.reason, "not_ready", `delivery ${messageId} refusal`);
+    if (Date.now() > deadline) throw new Error(`delivery ${messageId} was never accepted for ${beeId}`);
+    await sleep(10);
+  }
+}
+
 test("cell-driver.roundtrip: start provisions the cell, runtime runs in the space, full turn cycle", async () => {
   const rig = makeRig();
   const driver = makeDriver(rig);
@@ -109,8 +128,7 @@ test("cell-driver.roundtrip: start provisions the cell, runtime runs in the spac
     assert.ok(existsSync(join(cell.paths.spaceDir, "README.md")));
 
     await drainUntil(driver, (e) => e.some((x) => x.kind === "booted"));
-    const outcome = driver.deliver("bee-1", 1, 1, "hello cell");
-    assert.equal(outcome.accepted, true);
+    await deliverUntilAccepted(driver, "bee-1", 1, 1, "hello cell");
     await drainUntil(driver, (e) => e.some((x) => x.kind === "turn_ended"));
 
     // Delegation truth: the inner HSR driver owns the process + ground truth.
@@ -167,8 +185,7 @@ test("cell-driver.background: first Cell ensures the image before boot and the n
     assert.equal(driver.cellOf("bee-1")?.copyMode, "image-cow");
 
     // The post-turn maintenance lane remains a cheap ready/retry check.
-    const delivered = driver.deliver("bee-1", 1, 1, "prime image after first turn");
-    assert.equal(delivered.accepted, true);
+    await deliverUntilAccepted(driver, "bee-1", 1, 1, "prime image after first turn");
     await drainUntil(driver, (events) => events.some((event) => event.kind === "turn_ended"), 15_000);
 
     const deadline = Date.now() + 15_000;
@@ -347,7 +364,7 @@ test(
       await drainUntil(driver, (e) => e.some((x) => x.kind === "booted"), 8000);
       // The profile was materialized into the box (driver-owned, not the checkout).
       assert.ok(existsSync(cell.paths.sandboxProfilePath));
-      assert.equal(driver.deliver("bee-1", 1, 1, "hello sandboxed").accepted, true);
+      await deliverUntilAccepted(driver, "bee-1", 1, 1, "hello sandboxed");
       await drainUntil(driver, (e) => e.some((x) => x.kind === "turn_ended"), 8000);
       driver.stop("bee-1", 1, "stopped_by_user");
       await drainUntil(driver, (e) => e.some((x) => x.kind === "exited"), 8000);
@@ -452,7 +469,7 @@ test("cell-driver.restart: a successor daemon re-adopts a live cell runtime from
   try {
     first.start("bee-1", 1);
     await drainUntil(first, (e) => e.some((x) => x.kind === "booted"));
-    assert.equal(first.deliver("bee-1", 1, 1, "before restart").accepted, true);
+    await deliverUntilAccepted(first, "bee-1", 1, 1, "before restart");
     await drainUntil(first, (e) => e.some((x) => x.kind === "turn_ended"));
     const checkpoint = checkpointOf(first, "bee-1");
     const proc = first.procOf("bee-1", 1)!;
