@@ -3,6 +3,7 @@ import { cp, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises"
 import { join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
+import { rewriteRelativeTypeScriptImports } from "./rewrite-test-imports.mjs";
 import { stageRunnerHostArtifact } from "./runner-host-artifact.mjs";
 
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
@@ -54,6 +55,7 @@ const stampInputs = [
   ...assetFiles,
   join(root, "package.json"),
   join(root, "scripts", "build-tests.mjs"),
+  join(root, "scripts", "rewrite-test-imports.mjs"),
   join(root, "scripts", "runner-host-artifact.mjs"),
 ];
 const stamp = await fingerprint(stampInputs);
@@ -83,6 +85,15 @@ await build({
   packages: "external",
   target: "node20",
   logLevel: "warning",
+  plugins: [{
+    name: "rewrite-relative-typescript-imports",
+    setup(build) {
+      build.onLoad({ filter: /\.(cts|mts|ts)$/ }, async ({ path }) => ({
+        contents: rewriteRelativeTypeScriptImports(await readFile(path, "utf8"), path),
+        loader: "ts",
+      }));
+    },
+  }],
 });
 
 // A handful of tests and source modules resolve fixtures/contracts relative to
