@@ -126,7 +126,7 @@ test("deliver: not_ready while booting (Q2); accepted at idle; ground truth + ag
   }
 });
 
-test("stop: TERM honored → exited(stopped_by_user); dead-already is hadProcess:false", async () => {
+test("bee stop owns detached runner cleanup: TERM honored → exited(stopped_by_user); dead-already is hadProcess:false", async () => {
   const rig = makeRig();
   try {
     rig.driver.start("bee-c", 1);
@@ -138,7 +138,7 @@ test("stop: TERM honored → exited(stopped_by_user); dead-already is hadProcess
     assert.equal(ofKind(events, "exited")[0]!.exitCause, "stopped_by_user");
     assert.ok(!rig.driver.hasProcess("bee-c", 1));
     await sleep(20);
-    assert.ok(!pidAlive(pid), "process must actually be gone");
+    assert.ok(!pidAlive(pid), "explicit bee stop must reap the detached runner host");
 
     // A second stop is a truthful no-op, never an error (spec point 4).
     assert.deepEqual(rig.driver.stop("bee-c", 1, "stopped_by_user"), { hadProcess: false });

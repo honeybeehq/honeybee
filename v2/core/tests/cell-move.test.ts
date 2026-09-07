@@ -62,6 +62,7 @@ test("cell-move.admit: CAS, idempotency, fence, operator stop supersedes and kee
       destinationCwd: dest.cwd,
     });
     assert.equal(admitted.phase, "stopping");
+    assert.deepEqual(store.listActiveBeeMoves().map((move) => move.id), [admitted.id]);
     assert.equal(store.getBee(bee.id)?.activeMoveId, admitted.id);
     const sentWhileBooting = store.send(bee.id, "hello");
     assert.equal(sentWhileBooting.wakeCommand, null);
@@ -116,6 +117,7 @@ test("cell-move.admit: CAS, idempotency, fence, operator stop supersedes and kee
 
     store.enqueueCommand("stop", bee.id, { cause: "stopped_by_user" });
     assert.equal(store.getBee(bee.id)?.activeMoveId, null);
+    assert.deepEqual(store.listActiveBeeMoves(), [], "failed receipts are not reconciliation work");
     const receipt = store.latestMoveOf(bee.id);
     assert.equal(receipt?.phase, "failed");
     assert.equal(receipt?.failure?.code, "superseded");

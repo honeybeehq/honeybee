@@ -224,6 +224,62 @@ export interface BeeViewRow {
   cell: CellRow | null;
 }
 
+/** Body-free mailbox facts shared by daemon work and I1 telemetry. */
+export type DaemonPendingMessageMeta = Readonly<
+  Pick<MessageRow, "id" | "urgency" | "enqueuedAt">
+>;
+
+/** Runtime states that can affect daemon policy or delivery work. */
+export type DaemonLiveRuntimeState = "booting" | "running" | "idle";
+
+/** Only the current live-runtime fields consumed by the daemon step. */
+export interface DaemonLiveRuntime {
+  beeId: string;
+  generation: number;
+  state: DaemonLiveRuntimeState;
+  startedAt: number;
+  updatedAt: number;
+  bootEvidence: RuntimeRow["bootEvidence"];
+}
+
+/** One current live runtime and its body-free pending queue. */
+export interface DaemonWorkRow {
+  runtime: DaemonLiveRuntime;
+  pending: readonly DaemonPendingMessageMeta[];
+}
+
+/** Current runtime facts used by I1. Stopped and absent runtimes remain meaningful. */
+export type I1RuntimeFact = Readonly<
+  Pick<RuntimeRow, "state" | "bootEvidence" | "updatedAt">
+>;
+
+/** One complete pending queue plus the current facts that govern its I1 clock. */
+export interface I1PendingBee {
+  beeId: string;
+  runtime: I1RuntimeFact | null;
+  hasActiveFlag: boolean;
+  /** Mailbox-id order. The array index is the exact zero-based FIFO position. */
+  pending: readonly DaemonPendingMessageMeta[];
+}
+
+/** One same-step acquisition shared by daemon work and I1 telemetry. */
+export interface DaemonStepInputs {
+  readonly work: readonly DaemonWorkRow[];
+  readonly i1: readonly I1PendingBee[];
+}
+
+interface MutableI1PendingBee {
+  beeId: string;
+  runtime: I1RuntimeFact | null;
+  hasActiveFlag: boolean;
+  pending: DaemonPendingMessageMeta[];
+}
+
+interface I1PendingSnapshotData {
+  rows: MutableI1PendingBee[];
+  byBee: Map<string, MutableI1PendingBee>;
+}
+
 /** `tagBee` outcome: the row after the edit plus what actually changed. */
 export interface TagResult {
   bee: BeeRow;
@@ -862,6 +918,110 @@ function normalizePenalty(value: unknown, where: string): number {
 function sameArgs(a: string[] | null, b: string[] | null): boolean {
   if (a === null || b === null) return a === b;
   return a.length === b.length && a.every((v, i) => v === b[i]);
+}
+
+function daemonText(value: unknown, label: string): string {
+  if (typeof value !== "string") throw new CoreError(`daemon projection: malformed ${label}`);
+  return value;
+}
+
+function daemonNumber(value: unknown, label: string): number {
+  if (typeof value !== "number" && typeof value !== "bigint") {
+    throw new CoreError(`daemon projection: malformed ${label}`);
+  }
+  const number = Number(value);
+  if (!Number.isFinite(number)) throw new CoreError(`daemon projection: malformed ${label}`);
+  return number;
+}
+
+function daemonUrgency(value: unknown, label: string): Urgency {
+  switch (value) {
+    case "now":
+    case "next":
+    case "idle":
+      return value;
+    default:
+      throw new CoreError(`daemon projection: malformed ${label}`);
+  }
+}
+
+function daemonRuntimeState(value: unknown, label: string): RuntimeState {
+  switch (value) {
+    case "booting":
+    case "running":
+    case "idle":
+    case "stopped":
+      return value;
+    default:
+      throw new CoreError(`daemon projection: malformed ${label}`);
+  }
+}
+
+function daemonLiveRuntimeState(value: unknown, label: string): DaemonLiveRuntimeState {
+  switch (value) {
+    case "booting":
+      return "booting";
+    case "running":
+      return "running";
+    case "idle":
+      return "idle";
+    default:
+      throw new CoreError(`daemon projection: malformed ${label}`);
+  }
+}
+
+function daemonBootEvidence(value: unknown, label: string): RuntimeRow["bootEvidence"] {
+  if (value === null) return null;
+  switch (value) {
+    case "synthetic":
+      return "synthetic";
+    case "real":
+      return "real";
+    default:
+      throw new CoreError(`daemon projection: malformed ${label}`);
+  }
+}
+
+function daemonBoolean(value: unknown, label: string): boolean {
+  if (value === 0 || value === 0n) return false;
+  if (value === 1 || value === 1n) return true;
+  throw new CoreError(`daemon projection: malformed ${label}`);
+}
+
+function mapDaemonPendingMessage(r: Row): { beeId: string; message: DaemonPendingMessageMeta } {
+  return {
+    beeId: daemonText(r.bee_id, "pending bee_id"),
+    message: {
+      id: daemonNumber(r.id, "pending id"),
+      urgency: daemonUrgency(r.urgency, "pending urgency"),
+      enqueuedAt: daemonNumber(r.enqueued_at, "pending enqueued_at"),
+    },
+  };
+}
+
+function mapI1RuntimeFact(r: Row): I1RuntimeFact | null {
+  if (r.runtime_state == null) {
+    if (r.runtime_boot_evidence != null || r.runtime_updated_at != null) {
+      throw new CoreError("daemon projection: absent I1 runtime has runtime facts");
+    }
+    return null;
+  }
+  return {
+    state: daemonRuntimeState(r.runtime_state, "I1 runtime state"),
+    bootEvidence: daemonBootEvidence(r.runtime_boot_evidence, "I1 runtime boot evidence"),
+    updatedAt: daemonNumber(r.runtime_updated_at, "I1 runtime updated_at"),
+  };
+}
+
+function mapDaemonLiveRuntime(r: Row): DaemonLiveRuntime {
+  return {
+    beeId: daemonText(r.bee_id, "live runtime bee_id"),
+    generation: daemonNumber(r.generation, "live runtime generation"),
+    state: daemonLiveRuntimeState(r.state, "live runtime state"),
+    startedAt: daemonNumber(r.started_at, "live runtime started_at"),
+    updatedAt: daemonNumber(r.updated_at, "live runtime updated_at"),
+    bootEvidence: daemonBootEvidence(r.boot_evidence, "live runtime boot evidence"),
+  };
 }
 
 function mapRuntime(r: Row): RuntimeRow {
@@ -3251,7 +3411,145 @@ export class CoreStore {
   // B8 — derived reads (the ONLY place these questions are answered)
   // -------------------------------------------------------------------------
 
-  /** Whether runtime or mailbox facts require the daemon's full step snapshot. */
+  private readDaemonLiveRuntimes(): DaemonLiveRuntime[] {
+    const rows: Row[] = this.stmt(
+      `SELECT runtime.bee_id,
+              runtime.generation,
+              runtime.state,
+              runtime.started_at,
+              runtime.updated_at,
+              runtime.boot_evidence
+       FROM runtimes AS runtime
+       WHERE runtime.state != 'stopped'
+         AND runtime.generation = (
+           SELECT MAX(latest.generation)
+           FROM runtimes AS latest
+           WHERE latest.bee_id = runtime.bee_id
+         )
+       ORDER BY runtime.bee_id`,
+    ).all();
+    return rows.map(mapDaemonLiveRuntime);
+  }
+
+  /**
+   * Fresh daemon policy/delivery input. Only current live runtimes are
+   * projected, and pending messages stay body-free until delivery selects one.
+   */
+  readDaemonWork(): DaemonWorkRow[] {
+    const runtimes = this.readDaemonLiveRuntimes();
+    const work: Array<{
+      runtime: DaemonLiveRuntime;
+      pending: DaemonPendingMessageMeta[];
+    }> = runtimes.map((runtime) => ({
+      runtime,
+      pending: [],
+    }));
+    if (work.length === 0) return work;
+
+    const workByBee = new Map(work.map((row) => [row.runtime.beeId, row]));
+    // CROSS JOIN deliberately keeps the sparse live-runtime scan outermost;
+    // each live bee then seeks only its own undelivered mailbox prefix.
+    const messageRows: Row[] = this.stmt(
+      `SELECT message.id,
+              message.bee_id,
+              message.urgency,
+              message.enqueued_at
+       FROM runtimes AS runtime
+       CROSS JOIN mailbox AS message
+       WHERE runtime.state != 'stopped'
+         AND runtime.generation = (
+           SELECT MAX(latest.generation)
+           FROM runtimes AS latest
+           WHERE latest.bee_id = runtime.bee_id
+         )
+         AND message.bee_id = runtime.bee_id
+         AND message.delivered_at IS NULL
+       ORDER BY runtime.bee_id, message.id`,
+    ).all();
+    for (const raw of messageRows) {
+      const { beeId, message } = mapDaemonPendingMessage(raw);
+      const row = workByBee.get(beeId);
+      if (!row) throw new CoreError(`daemon projection: pending live bee ${beeId} has no runtime`);
+      row.pending.push(message);
+    }
+    return work;
+  }
+
+  /**
+   * Fresh same-step input for an I1-enabled daemon. Live work rows reuse the
+   * exact pending arrays already built for I1, so mailbox metadata is read and
+   * allocated once. Callers must not retain this result across daemon steps.
+   */
+  readDaemonStepInputs(): DaemonStepInputs {
+    const runtimes = this.readDaemonLiveRuntimes();
+    const i1 = this.readI1PendingSnapshotData();
+    const work: DaemonWorkRow[] = runtimes.map((runtime) => ({
+      runtime,
+      pending: i1.byBee.get(runtime.beeId)?.pending ?? [],
+    }));
+    return { work, i1: i1.rows };
+  }
+
+  /**
+   * Fresh, body-free I1 input. Groups and messages preserve the old
+   * listBeeViewRows/listUndeliveredMessages order without hydrating either
+   * complete bee rows or mailbox bodies.
+   */
+  readI1PendingSnapshot(): I1PendingBee[] {
+    return this.readI1PendingSnapshotData().rows;
+  }
+
+  private readI1PendingSnapshotData(): I1PendingSnapshotData {
+    const factRows: Row[] = this.stmt(
+      `WITH pending_bees AS (
+         SELECT DISTINCT bee_id
+         FROM mailbox
+         WHERE delivered_at IS NULL
+       )
+       SELECT target.bee_id,
+              runtime.state AS runtime_state,
+              runtime.boot_evidence AS runtime_boot_evidence,
+              runtime.updated_at AS runtime_updated_at,
+              EXISTS (
+                SELECT 1
+                FROM flags AS flag
+                WHERE flag.bee_id = target.bee_id
+                  AND flag.cleared_at IS NULL
+              ) AS has_active_flag
+       FROM pending_bees AS target
+       LEFT JOIN runtimes AS runtime
+         ON runtime.bee_id = target.bee_id
+        AND runtime.generation = (
+          SELECT MAX(latest.generation)
+          FROM runtimes AS latest
+          WHERE latest.bee_id = target.bee_id
+        )
+       ORDER BY target.bee_id`,
+    ).all();
+    const groups: MutableI1PendingBee[] = factRows.map((row) => ({
+      beeId: daemonText(row.bee_id, "I1 bee_id"),
+      runtime: mapI1RuntimeFact(row),
+      hasActiveFlag: daemonBoolean(row.has_active_flag, "I1 active-flag bit"),
+      pending: [],
+    }));
+    const groupByBee = new Map(groups.map((group) => [group.beeId, group]));
+
+    const messageRows: Row[] = this.stmt(
+      `SELECT id, bee_id, urgency, enqueued_at
+       FROM mailbox
+       WHERE delivered_at IS NULL
+       ORDER BY bee_id, id`,
+    ).all();
+    for (const raw of messageRows) {
+      const { beeId, message } = mapDaemonPendingMessage(raw);
+      const group = groupByBee.get(beeId);
+      if (!group) throw new CoreError(`daemon projection: pending bee ${beeId} has no I1 facts`);
+      group.pending.push(message);
+    }
+    return { rows: groups, byBee: groupByBee };
+  }
+
+  /** Whether runtime or mailbox facts require a daemon step snapshot. */
   hasStepSnapshotInputs(): boolean {
     if (this.stmt("SELECT 1 FROM runtimes WHERE state != 'stopped' LIMIT 1").get() !== undefined) {
       return true;
@@ -4636,9 +4934,18 @@ export class CoreStore {
   }
 
   activeMoveOf(beeId: string): BeeMoveRow | null {
-    const bee = this.getBee(beeId);
-    if (!bee?.activeMoveId) return null;
-    return this.getBeeMove(bee.activeMoveId);
+    const row = this.stmt(
+      "SELECT m.* FROM bees b JOIN bee_moves m ON m.id = b.active_move_id WHERE b.id = ?",
+    ).get(beeId) as Row | undefined;
+    return row ? mapBeeMove(row) : null;
+  }
+
+  /** Move reconciliation reads only admitted work, not the full bee roster or receipt history. */
+  listActiveBeeMoves(): BeeMoveRow[] {
+    return (this.stmt(
+      `SELECT m.* FROM bees b JOIN bee_moves m ON m.id = b.active_move_id
+       WHERE b.active_move_id IS NOT NULL ORDER BY m.id`,
+    ).all() as Row[]).map(mapBeeMove);
   }
 
   /** Latest move whose dest instruction is still owed, including failed-after-placement. */
