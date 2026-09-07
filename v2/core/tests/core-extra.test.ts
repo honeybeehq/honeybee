@@ -508,6 +508,8 @@ test("v17.migration: a v16 store gains flags.resets_at and open rate-limit rows 
     try {
       const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
       assert.equal(Number(version.value), SCHEMA_VERSION);
+      assert.ok(check.prepare("SELECT 1 FROM sqlite_schema WHERE type = 'index' AND name = 'flags_due'").get(),
+        "expiry index is installed after the v16 column migration");
     } finally {
       check.close();
     }

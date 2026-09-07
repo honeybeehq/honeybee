@@ -106,7 +106,7 @@ import {
   TASK_SUPPLY_SENDER_NAME,
   TASK_TRANSITIONS,
 } from "./tasks.ts";
-import { ACCOUNT_LIMITS_TABLE_SQL, BEES_ADDITIVE_COLUMNS, FLAGS_ADDITIVE_COLUMNS, HANDLE_INDEX_SQL, IDEMPOTENCY_INDEX_SQL, MAILBOX_ADDITIVE_COLUMNS, MAIL_HISTORY_INDEX_SQL, MAIL_HISTORY_PROJECTION_SQL, RUNTIMES_ADDITIVE_COLUMNS, SCHEMA_SQL, SCHEMA_VERSION } from "./schema.ts";
+import { ACCOUNT_LIMITS_TABLE_SQL, BEES_ADDITIVE_COLUMNS, FLAGS_ADDITIVE_COLUMNS, FLAGS_EXPIRY_INDEX_SQL, HANDLE_INDEX_SQL, IDEMPOTENCY_INDEX_SQL, MAILBOX_ADDITIVE_COLUMNS, MAIL_HISTORY_INDEX_SQL, MAIL_HISTORY_PROJECTION_SQL, RUNTIMES_ADDITIVE_COLUMNS, SCHEMA_SQL, SCHEMA_VERSION } from "./schema.ts";
 import {
   LOGIN_FLOW_PHASES,
   isTerminalLoginPhase,
@@ -1220,8 +1220,9 @@ export class CoreStore {
         this.stmt("UPDATE bees SET handle = ? WHERE id = ?").run(handle, id);
       }
     }
-    // The partial UNIQUE indexes need their columns, so they are created here
+    // These indexes need their columns, so they are created here
     // — after the migration — not in SCHEMA_SQL.
+    this.db.exec(FLAGS_EXPIRY_INDEX_SQL);
     this.db.exec(IDEMPOTENCY_INDEX_SQL);
     this.db.exec(HANDLE_INDEX_SQL);
     this.db.exec(MAIL_HISTORY_INDEX_SQL);

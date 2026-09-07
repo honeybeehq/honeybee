@@ -592,6 +592,12 @@ export const FLAGS_ADDITIVE_COLUMNS: ReadonlyArray<readonly [name: string, ddl: 
   ["resets_at", "resets_at INTEGER"],
 ];
 
+/** Installed after additive migration: pre-v17 flags have no resets_at column. */
+export const FLAGS_EXPIRY_INDEX_SQL = `
+CREATE INDEX IF NOT EXISTS flags_due ON flags(resets_at, id)
+WHERE cleared_at IS NULL AND resets_at IS NOT NULL;
+`;
+
 /**
  * v18 mail-history indexes. They are ensured after additive migrations because
  * paging selects `mail.enqueued` and lifecycle folds need direct point seeks.
