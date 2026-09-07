@@ -256,12 +256,18 @@ test("model change defers across real HSR input admission before the turn observ
     assert.equal(result.outcome, "queued");
     if (result.outcome !== "queued") throw new Error("expected queued change");
     store.send("b", "@hang");
-    // Exhausted executor budget lets delivery win this tick. The driver
-    // opens a turn synchronously, but its observation is still queued.
+    // Keep the executor disabled until the runner socket admits the input.
+    // The driver opens a turn synchronously on that delivery, but its
+    // observation is still queued until the next core step.
     policy.commandsPerStep = 0;
-    core.step();
-    assert.equal(store.view("b").working, false);
-    assert.equal(store.undeliveredMessages("b").length, 0);
+    await waitFor(() => {
+      core.step();
+      assert.equal(store.getCommand(result.commandId)?.status, "queued", "model change stays deferred");
+      assert.equal(store.getBee("b")?.args, null, "pending model args stay unapplied");
+      assert.equal(driver.hasProcess("b", 1), true, "admission wait preserves generation 1");
+      return store.undeliveredMessages("b").length === 0;
+    }, "real HSR input admitted", PROCESS_WAIT_TIMEOUT_MS);
+    assert.equal(store.view("b").working, false, "turn observation remains queued in the admission tick");
     policy.commandsPerStep = 8;
     core.step();
     assert.equal(store.view("b").working, true);
