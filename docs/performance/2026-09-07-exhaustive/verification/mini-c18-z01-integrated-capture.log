@@ -1,0 +1,16 @@
+{"cwd": "/private/tmp/honeybee-perf-5763a6c9-20260907/verify-c18-z01-integrated", "head": "6e4447d4dd1358fa2930c9b82f4a9cc11bc994f7", "command": ["node", "--test", "v2/driver-cell/tests/capture.test.ts"]}
+✔ capture.branch-create: cell work lands as a new branch; only that branch appears (193.368792ms)
+✔ capture.fast-forward: existing target advances by CAS (156.893083ms)
+✔ capture.merge: diverged target gets a merge commit; origin worktree untouched (301.548416ms)
+✔ capture.rebase: cell commits replay onto the target tip (252.0975ms)
+✔ capture.rebase: work already on the target in rewritten form reports nothing_to_capture (281.461959ms)
+✔ capture.conflict: structured report, origin ref-set bit-identical, transient ref gone (402.167584ms)
+✔ capture.refusals: checked-out target, moved target, nothing to capture (216.796458ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1869.661458

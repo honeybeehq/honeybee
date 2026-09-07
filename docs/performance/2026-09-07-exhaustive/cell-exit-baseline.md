@@ -1,6 +1,6 @@
 # Cell capture baseline
 
-Two distinct identical checkouts at production `c027f347`, Apple Git 2.39.5, Node 24.18.0, M4 Mini. The hardened frozen ruler completed all eight cases with exact report, result SHA/tree/parent, HEAD, working-tree, and ref assertions. Smoke uses 3 ABBA rounds; canonical uses 15 rounds (30 samples per side), 2,000 tracked files, and 12 Cell commits. The first 10,000-file stress capture failed during shaper fixture teardown before recording any cases; its incomplete report and log are retained. A revised fixture disables automatic maintenance in both shaper clones as well as origin/Cell. The production scratch clone still keeps its defaults. The revised ruler passes 2/2 tests and the repository build; the stress rerun is separate.
+Two distinct identical checkouts at production `c027f347`, Apple Git 2.39.5, Node 24.18.0, M4 Mini. The hardened frozen ruler completed all eight cases with exact report, result SHA/tree/parent, HEAD, working-tree, and ref assertions. Smoke uses 3 ABBA rounds; canonical uses 15 rounds (30 samples per side), 2,000 tracked files, and 12 Cell commits. The first 10,000-file stress capture failed during shaper fixture teardown before recording any cases; its incomplete report and log are retained. A revised fixture disables automatic maintenance in both shaper clones as well as origin/Cell. The production scratch clone still keeps its defaults. The revised ruler passes 2/2 tests and the repository build; the separate stress rerun completed all eight cases with six samples per side.
 
 | Case | A wall p50, ms | A control wall p50, ms |
 | --- | ---: | ---: |
@@ -18,3 +18,20 @@ These are unchanged-code controls, not optimization gains. Rebase landing differ
 A separate merge diagnostic has 13 top-level Git commands (19 including nested commands). Checkout accounts for 184.756 ms and merge 57.244 ms of 278.427 ms summed top-level traced Git duration. This diagnostic is separate from uninstrumented wall samples and includes instrumentation; it identifies checkout as a target, not a speedup estimate. Parent CPU excludes Git child CPU.
 
 Reports and hashed raw traces are `evidence/mini-cell-exit-aa-{smoke,canonical}.json` and adjacent sidecars. Fixture maintenance settings, same-module limitations, and review are in [the ruler review](reviews/cell-exit-ruler.md). No Cell production change is accepted from these controls alone.
+
+## Revised 10,000-file control
+
+The fixture-repaired ruler is frozen separately from the earlier canonical ruler. These are unchanged-code controls, not before/after improvements. Production scratch maintenance remains enabled. The failed original setup remains in the evidence.
+
+| Case | A wall p50, ms | Control wall p50, ms |
+| --- | ---: | ---: |
+| merge-land | 1541.96 | 1553.98 |
+| rebase-land | 2564.33 | 2606.31 |
+| merge-conflict | 1799.91 | 1727.34 |
+| rebase-conflict | 1857.90 | 1793.78 |
+| fast-forward | 67.38 | 67.69 |
+| branch-create | 56.32 | 56.66 |
+| nothing | 51.18 | 50.84 |
+| refused-checked-out | 13.41 | 13.09 |
+
+Source: `mini-cell-exit-aa-stress-v2.json` and its 16 hashed Trace2 sidecars. Six observations per side characterize this stress control; they do not establish tail percentiles.

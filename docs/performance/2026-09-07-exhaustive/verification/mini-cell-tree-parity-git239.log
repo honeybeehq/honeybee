@@ -1,0 +1,16 @@
+{"cwd": "/private/tmp/honeybee-perf-5763a6c9-20260907/verify-cell-tree-3584", "head": "3584cd9ca7e51cca518388cfa95693c093622817", "command": ["node", "--test", "--test-concurrency=1", "v2/driver-cell/tests/capture-tree-parity.test.ts", "v2/driver-cell/tests/capture.test.ts"]}
+✔ parity: clean merges, attributes, renames, modes, gitlinks, conflicts, case collisions, and forced fallback (5532.338667ms)
+✔ capture.branch-create: cell work lands as a new branch; only that branch appears (193.779291ms)
+✔ capture.fast-forward: existing target advances by CAS (155.057333ms)
+✔ capture.merge: diverged target gets a merge commit; origin worktree untouched (293.217291ms)
+✔ capture.rebase: cell commits replay onto the target tip (251.69775ms)
+✔ capture.conflict: structured report, origin ref-set bit-identical, transient ref gone (412.865583ms)
+✔ capture.refusals: checked-out target, moved target, nothing to capture (216.311875ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 7173.460459
