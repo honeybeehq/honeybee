@@ -3578,6 +3578,20 @@ export class CoreStore {
     return this.stmt("SELECT 1 FROM mailbox WHERE delivered_at IS NULL LIMIT 1").get() !== undefined;
   }
 
+  /**
+   * Which of the given message ids are still undelivered. Ids only — never
+   * bodies — and scaled to the CALLER's list (bounded chunks), never to the
+   * total pending backlog: the daemon's dedup sweep uses this as its
+   * membership basis when I1 metadata is not being read.
+   */
+  undeliveredMessageIdsAmong(ids: readonly number[]): number[] {
+    if (ids.length === 0) return [];
+    const rows = this.stmt(
+      "SELECT id FROM mailbox WHERE delivered_at IS NULL AND id IN (SELECT value FROM json_each(?))",
+    ).all(JSON.stringify(ids)) as Row[];
+    return rows.map((row) => Number(row.id));
+  }
+
   view(beeId: string, opts: { readCursor?: number } = {}): BeeView {
     const bee = this.getBee(beeId);
     return deriveBeeView(

@@ -2687,3 +2687,298 @@ test("z01.d: stopped-target pending mail is retained until the bee is deleted", 
     rig.cleanup();
   }
 });
+
+test("z01.e: a permanent >1024 backlog sweeps on growth or cadence only, retaining stopped and absent pending", () => {
+  const dir = mkdtempSync(join(tmpdir(), "hb-v2-dedup-sweep-"));
+  const path = join(dir, "core.sqlite3");
+  const clock = { now: 1_000 };
+  const now = (): number => clock.now;
+  let store: CoreStore | null = openCoreStore(path, { now, ephemeral: true });
+  const violations: I1ViolationEvent[] = [];
+  try {
+    store.createBee({ id: "z01-bulk", name: "z01-bulk", agent: "stub", substrate: "hsr", cwd: "/tmp" });
+    store.updateRuntimeState("z01-bulk", 1, "stopped", { exitCause: "clean" });
+    store.createBee({ id: "z01-absent", name: "z01-absent", agent: "stub", substrate: "hsr", cwd: "/tmp" });
+    store.close();
+    const fixture = new DatabaseSync(path);
+    try {
+      fixture.prepare("DELETE FROM runtimes WHERE bee_id = ?").run("z01-absent");
+    } finally {
+      fixture.close();
+    }
+    store = openCoreStore(path, { now, ephemeral: true });
+    const bulk: number[] = [];
+    for (let i = 0; i < 1_100; i++) bulk.push(store.send("z01-bulk", `bulk ${i}`).message.id);
+    const absent: number[] = [];
+    for (let i = 0; i < 5; i++) absent.push(store.send("z01-absent", `absent ${i}`).message.id);
+    const core = new DaemonCore({
+      store,
+      driver: new FakeDriver(now),
+      policy: { bootHangTimeoutSteps: 50, commandsPerStep: 0, i1DeadlineSteps: 1 },
+      now,
+      log: () => undefined,
+      onI1Violation: (violation) => violations.push(violation),
+    });
+    core.boot();
+    clock.now = 1_000_000;
+    core.step(); // 1105 violations; growth 1105 ≥ 1024 sweeps immediately, retaining every pending id
+    assert.equal(violations.length, 1_105);
+    assert.equal(dedupSets(core).reportedI1.size, 1_105);
+
+    const canceled = bulk[0] as number;
+    assert.deepEqual(store.cancelMessage("z01-bulk", canceled), { canceled: true });
+    for (let i = 0; i < 255; i++) core.step();
+    assert.equal(dedupSets(core).reportedI1.has(canceled), true,
+      "a stable >1024 backlog must not re-sweep every tick (growth is zero)");
+    core.step(); // 256th committed tick since the sweep: cadence fires
+    assert.equal(dedupSets(core).reportedI1.has(canceled), false, "cadence sweep prunes the terminal id");
+    assert.equal(dedupSets(core).reportedI1.size, 1_104);
+    assert.ok(absent.every((id) => dedupSets(core).reportedI1.has(id)), "absent-runtime pending is retained");
+
+    const canceledAgain = bulk[1] as number;
+    assert.deepEqual(store.cancelMessage("z01-bulk", canceledAgain), { canceled: true });
+    for (let i = 0; i < 1_030; i++) store.send("z01-bulk", `growth ${i}`);
+    clock.now += 1_000_000; // the new mail must actually pass its deadlines
+    core.step(); // 1030 new violations push growth past 1024: sweep fires without waiting for cadence
+    assert.equal(dedupSets(core).reportedI1.has(canceledAgain), false, "growth sweep prunes the terminal id");
+    assert.ok(absent.every((id) => dedupSets(core).reportedI1.has(id)), "absent-runtime pending survives every sweep");
+    assert.equal(violations.length, 1_105 + 1_030, "dedup held for every retained id");
+  } finally {
+    store?.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("z01.f: the I1-disabled sweep probes tracked ids in bounded chunks, never all pending", () => {
+  const rig = makeRig({});
+  try {
+    spawnIdleBee(rig, "z01-p1");
+    spawnIdleBee(rig, "z01-p2");
+    rig.driver.acceptDeliveries = false;
+    const first = rig.store.send("z01-p1", "urgent one", { urgency: "now" }).message;
+    const second = rig.store.send("z01-p2", "urgent two", { urgency: "now" }).message;
+    const probeCalls: number[][] = [];
+    const real = rig.store.undeliveredMessageIdsAmong.bind(rig.store);
+    rig.store.undeliveredMessageIdsAmong = (ids) => {
+      probeCalls.push([...ids]);
+      return real(ids);
+    };
+    rig.driver.events.push({ beeId: "z01-p1", generation: 1, kind: "turn_started" });
+    rig.driver.events.push({ beeId: "z01-p2", generation: 1, kind: "turn_started" });
+    rig.core.step();
+    assert.equal(rig.driver.interrupts.length, 2);
+    assert.equal(dedupSets(rig.core).interruptRequested.size, 2);
+
+    assert.deepEqual(rig.store.cancelMessage("z01-p1", first.id), { canceled: true });
+    // The interrupt tick already counted toward the cadence: 254 more ticks
+    // reach 255 committed ticks since the sets were last empty.
+    for (let i = 0; i < 254; i++) rig.core.step();
+    assert.deepEqual(probeCalls, [], "no membership probes before the sweep is due");
+    assert.equal(dedupSets(rig.core).interruptRequested.has(first.id), true);
+    rig.core.step(); // 256th committed tick: cadence sweep via the membership-probe basis
+    assert.equal(probeCalls.length, 1, "one bounded probe pass at the sweep");
+    const probed = probeCalls[0] ?? [];
+    assert.ok(probed.length <= 512);
+    assert.deepEqual([...probed].sort((a, b) => a - b), [first.id, second.id].sort((a, b) => a - b),
+      "probes cover exactly the tracked ids, not the pending backlog");
+    assert.equal(dedupSets(rig.core).interruptRequested.has(first.id), false, "canceled id pruned");
+    assert.equal(dedupSets(rig.core).interruptRequested.has(second.id), true, "pending id retained");
+    assert.equal(dedupSets(rig.core).reportedI1.size, 0, "reportedI1 never grows with I1 disabled");
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("z01.g: an outer rollback never lets the sweep forget, and the terminal id prunes once committed", () => {
+  const rig = makeRig({ i1DeadlineSteps: 10, commandsPerStep: 0 });
+  try {
+    const { bee, runtime } = rig.store.createBee({
+      id: "z01-sweep-roll", name: "z01-sweep-roll", agent: "stub", substrate: "hsr", cwd: "/tmp",
+    });
+    rig.store.updateRuntimeState(bee.id, runtime.generation, "stopped", { exitCause: "clean" });
+    const ids: number[] = [];
+    for (let i = 0; i < 5; i++) ids.push(rig.store.send(bee.id, `msg ${i}`).message.id);
+    rig.clock.now += 1_000;
+    rig.core.step();
+    assert.equal(dedupSets(rig.core).reportedI1.size, 5);
+
+    const target = ids[0] as number;
+    assert.throws(
+      () => rig.store.transact(() => {
+        assert.deepEqual(rig.store.cancelMessage(bee.id, target), { canceled: true });
+        rig.core.step(); // in-transaction: no sweep, no counter movement, no forgetting
+        throw new Error("outer rollback sweep");
+      }),
+      /outer rollback sweep/,
+    );
+    assert.equal(dedupSets(rig.core).reportedI1.has(target), true, "rollback must not lose the entry");
+    for (let i = 0; i < 256; i++) rig.core.step();
+    assert.equal(dedupSets(rig.core).reportedI1.has(target), true,
+      "the cadence sweep reads committed state: the rolled-back cancel keeps the id pending and retained");
+
+    assert.deepEqual(rig.store.cancelMessage(bee.id, target), { canceled: true });
+    for (let i = 0; i < 1_030; i++) rig.store.send(bee.id, `growth ${i}`);
+    rig.clock.now += 100_000;
+    rig.core.step(); // growth sweep prunes the now-committed terminal id
+    assert.equal(dedupSets(rig.core).reportedI1.has(target), false);
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("z01.h: retained now-mail stays deduped across revive and cadence sweeps", () => {
+  const rig = makeRig({ i1DeadlineSteps: 10 });
+  try {
+    spawnIdleBee(rig, "z01-revive");
+    rig.driver.acceptDeliveries = false;
+    const msg = rig.store.send("z01-revive", "urgent across revive", { urgency: "now" }).message;
+    rig.driver.events.push({ beeId: "z01-revive", generation: 1, kind: "turn_started" });
+    rig.clock.now += 100;
+    rig.core.step();
+    assert.equal(rig.driver.interrupts.length, 1);
+    assert.equal(dedupSets(rig.core).interruptRequested.has(msg.id), true);
+
+    // Kill the generation; revive-on-message mints generation 2.
+    rig.driver.procs.delete("z01-revive");
+    rig.driver.events.push({ beeId: "z01-revive", generation: 1, kind: "exited", exitCause: "crashed" });
+    for (let i = 0; i < 260; i++) rig.core.step(); // revive, boot, refused deliveries, ≥1 cadence sweep
+    assert.equal(rig.store.currentRuntime("z01-revive")?.generation, 2);
+    assert.equal(dedupSets(rig.core).interruptRequested.has(msg.id), true,
+      "sweeps retain the still-pending id across the revive");
+
+    rig.driver.events.push({ beeId: "z01-revive", generation: 2, kind: "turn_started" });
+    rig.core.step();
+    assert.equal(rig.driver.interrupts.length, 1, "one interrupt per message per daemon lifetime, across generations");
+    assert.deepEqual(rig.violations.map((v) => v.messageId), [msg.id], "one violation per message across sweeps");
+
+    assert.deepEqual(rig.store.markDelivered(msg.id, 2), { applied: true });
+    rig.core.step();
+    assert.equal(dedupSets(rig.core).interruptRequested.size, 0);
+    assert.equal(dedupSets(rig.core).reportedI1.size, 0);
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("z01.i: a reentrant onI1Violation step cannot make the outer sweep erase live dedup ids", () => {
+  const dir = mkdtempSync(join(tmpdir(), "hb-v2-dedup-reentry-"));
+  const path = join(dir, "core.sqlite3");
+  const clock = { now: 1_000 };
+  const now = (): number => clock.now;
+  const store: CoreStore = openCoreStore(path, { now, ephemeral: true });
+  const driver = new FakeDriver(now);
+  driver.acceptDeliveries = false;
+  const violations: I1ViolationEvent[] = [];
+  let reenterArmed = false;
+  let reentries = 0;
+  let reentrantId: number | null = null;
+  // The callback is PUBLIC surface: nothing forbids it from sending more mail
+  // and re-entering core.step(). The inner step legitimately grows the dedup
+  // sets with ids the OUTER step's I1 basis has never seen.
+  const core: DaemonCore = new DaemonCore({
+    store,
+    driver,
+    policy: { bootHangTimeoutSteps: 1_000_000_000, commandsPerStep: 0, i1DeadlineSteps: 1 },
+    now,
+    log: () => undefined,
+    onI1Violation: (violation) => {
+      violations.push(violation);
+      if (!reenterArmed) return;
+      reenterArmed = false;
+      reentries += 1;
+      reentrantId = store.send("z01-runner", "urgent from callback", { urgency: "now" }).message.id;
+      core.step(); // inner step interrupts for the new now-message
+    },
+  });
+  try {
+    store.createBee({ id: "z01-backlog", name: "z01-backlog", agent: "stub", substrate: "hsr", cwd: "/tmp" });
+    store.updateRuntimeState("z01-backlog", 1, "stopped", { exitCause: "clean" });
+    for (let i = 0; i < 1_100; i++) store.send("z01-backlog", `held ${i}`);
+    store.createBee({ id: "z01-runner", name: "z01-runner", agent: "stub", substrate: "hsr", cwd: "/tmp" });
+    store.updateRuntimeState("z01-runner", 1, "running", { pid: 4_242, pidStartedAt: 1_000 });
+    driver.procs.set("z01-runner", { generation: 1, pid: 4_242, pidStartedAt: 1_000, degraded: false });
+    core.boot();
+    clock.now += 1_000_000;
+    core.step(); // 1100 violations; first sweep (growth) retains all and resets counters
+    assert.equal(violations.length, 1_100);
+    for (let i = 0; i < 254; i++) core.step(); // prime the cadence: 254 committed ticks since the sweep
+    const trigger = store.send("z01-backlog", "trigger", { urgency: "next" }).message;
+    clock.now += 1_000_000;
+    reenterArmed = true;
+    core.step(); // outer tick: trigger violates → callback sends + re-enters → outer cadence sweep runs last
+    assert.equal(reentries, 1);
+    assert.equal(driver.interrupts.length, 1, "the inner step interrupted once for the callback's message");
+    assert.ok(reentrantId != null);
+    assert.equal(store.undeliveredMessages("z01-runner").length, 1, "the callback's message is still pending");
+    assert.equal(
+      dedupSets(core).interruptRequested.has(reentrantId as number),
+      true,
+      "the outer sweep must not erase a live id the inner step tracked after the outer basis was read",
+    );
+    core.step();
+    assert.equal(
+      driver.interrupts.length,
+      1,
+      "one interrupt per message per daemon lifetime — a second one means the sweep forgot",
+    );
+    assert.deepEqual(violations.filter((v) => v.messageId === trigger.id).length, 1);
+  } finally {
+    store.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("z01.j: huge pending metadata with a tiny tracked set probes O(tracked), never O(pending)", () => {
+  const dir = mkdtempSync(join(tmpdir(), "hb-v2-dedup-wide-"));
+  const path = join(dir, "core.sqlite3");
+  const clock = { now: 1_000 };
+  const now = (): number => clock.now;
+  const store: CoreStore = openCoreStore(path, { now, ephemeral: true });
+  const violations: I1ViolationEvent[] = [];
+  const probeCalls: number[][] = [];
+  const real = store.undeliveredMessageIdsAmong.bind(store);
+  store.undeliveredMessageIdsAmong = (ids) => {
+    probeCalls.push([...ids]);
+    return real(ids);
+  };
+  try {
+    store.createBee({ id: "z01-wide", name: "z01-wide", agent: "stub", substrate: "hsr", cwd: "/tmp" });
+    store.updateRuntimeState("z01-wide", 1, "stopped", { exitCause: "clean" });
+    const tracked = store.send("z01-wide", "first and only overdue").message; // FIFO position 0
+    for (let i = 0; i < 5_000; i++) store.send("z01-wide", `future ${i}`);
+    const core = new DaemonCore({
+      store,
+      driver: new FakeDriver(now),
+      policy: { bootHangTimeoutSteps: 1_000_000_000, commandsPerStep: 0, i1DeadlineSteps: 1_000 },
+      now,
+      log: () => undefined,
+      onI1Violation: (violation) => violations.push(violation),
+    });
+    core.boot();
+    clock.now = tracked.enqueuedAt + 1_500; // only position 0's deadline has passed
+    core.step();
+    assert.deepEqual(violations.map((v) => v.messageId), [tracked.id], "exactly one tracked id among 5000 pending");
+    for (let i = 0; i < 255; i++) core.step();
+    // 256th committed tick: cadence sweep. The tracked id is still pending,
+    // so basis subtraction empties the candidates and NO probe runs.
+    assert.deepEqual(probeCalls, [], "a pending tracked id is resolved by basis subtraction alone");
+    assert.equal(dedupSets(core).reportedI1.has(tracked.id), true);
+
+    assert.deepEqual(store.cancelMessage("z01-wide", tracked.id), { canceled: true });
+    for (let i = 0; i < 255; i++) core.step();
+    assert.deepEqual(probeCalls, [], "no probes between sweeps");
+    assert.equal(dedupSets(core).reportedI1.has(tracked.id), true);
+    core.step(); // next cadence sweep: the canceled id survives subtraction and is probed alone
+    assert.equal(probeCalls.length, 1, "one probe pass for the terminal candidate");
+    assert.deepEqual(probeCalls[0], [tracked.id], "probe args are the tracked candidate only — not the 5000 pending");
+    assert.equal(dedupSets(core).reportedI1.has(tracked.id), false, "confirmed-terminal id deleted");
+    // Canceling position 0 promoted the next message into an overdue position,
+    // so exactly one LIVE id is now tracked — and the passing probe-args
+    // assert above proves basis subtraction removed it before any probe.
+    assert.equal(dedupSets(core).reportedI1.size, 1, "the position-shifted live id stays tracked");
+    assert.equal(store.listUndeliveredMessages().length, 5_000, "the wide backlog itself is untouched");
+  } finally {
+    store.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

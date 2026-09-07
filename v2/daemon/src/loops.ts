@@ -205,6 +205,13 @@ export interface DaemonCoreOptions {
 
 const LIVE: readonly RuntimeState[] = ["booting", "running", "idle"];
 
+/** Dedup sweep cadence: at most one bounded pass per this many committed ticks. */
+const DEDUP_SWEEP_CADENCE_TICKS = 256;
+/** Dedup sweep growth trigger: combined-set growth since the last sweep. */
+const DEDUP_SWEEP_GROWTH = 1024;
+/** Membership-probe chunk bound for the I1-disabled sweep basis. */
+const DEDUP_PROBE_CHUNK = 512;
+
 type StepSnapshot =
   | DaemonStepInputs
   | {
@@ -228,6 +235,10 @@ export class DaemonCore {
   private readonly validatePlacement: ((move: BeeMoveRow, bee: BeeRow) => void) | null;
   /** In-memory dedup so a breach is reported once per daemon lifetime; the recorder dedups durably. */
   private readonly reportedI1 = new Set<number>();
+  /** Committed ticks since the last dedup sweep (or clear). */
+  private sweepTicks = 0;
+  /** Combined dedup-set size recorded by the last sweep — growth trigger baseline. */
+  private sizeAtLastSweep = 0;
 
   constructor(opts: DaemonCoreOptions) {
     this.store = opts.store;
@@ -316,15 +327,19 @@ export class DaemonCore {
       this.deliveryLoop(snapshot.work),
     );
     this.performance.measureSync("core.step.tasks", () => this.taskSupplyLoop());
+    // This step's freshest committed I1 metadata, held ONLY for the duration
+    // of this step as the sweep's membership basis; never cached across ticks.
+    let latestI1: readonly I1PendingBee[] | null = null;
     if (this.i1Enabled()) {
       const i1Snapshot = this.performance.measureSync("core.step.snapshot", () =>
         this.finalI1Snapshot(snapshot, seq),
       );
+      latestI1 = i1Snapshot;
       this.performance.measureSync("core.step.i1", () =>
         this.i1Telemetry(i1Snapshot),
       );
     }
-    this.performance.measureSync("core.step.prune", () => this.pruneDeliveryDedup());
+    this.performance.measureSync("core.step.prune", () => this.pruneDeliveryDedup(latestI1));
   }
 
   /** Fold pending driver facts before an RPC makes a working-state decision. */
@@ -1128,13 +1143,66 @@ export class DaemonCore {
    * an outer rollback would resurrect messages without their dedup entries
    * (duplicate interrupts and I1 reports). The mail-only probe is deliberate
    * — live runtimes must not block the clear, and sparse work rows omit
-   * stopped-target mail. A standing pending backlog keeps its entries.
+   * stopped-target mail. Under a standing backlog, pending ids are always
+   * retained and terminal ids leave via the bounded sweep below.
    */
-  private pruneDeliveryDedup(): void {
-    if (this.reportedI1.size === 0 && this.interruptRequested.size === 0) return;
+  private pruneDeliveryDedup(latestI1: readonly I1PendingBee[] | null): void {
+    if (this.reportedI1.size === 0 && this.interruptRequested.size === 0) {
+      this.resetSweepState(0);
+      return;
+    }
     if (this.store.inTransaction) return;
-    if (this.store.hasUndeliveredMessages()) return;
-    this.reportedI1.clear();
-    this.interruptRequested.clear();
+    if (!this.store.hasUndeliveredMessages()) {
+      this.reportedI1.clear();
+      this.interruptRequested.clear();
+      this.resetSweepState(0);
+      return;
+    }
+    // Bounded nonempty sweep. Trigger: combined-size GROWTH since the last
+    // sweep or the step cadence, both reset after every sweep regardless of
+    // how much was pruned. A STABLE retained backlog can never re-fire the
+    // growth term, so it sweeps at most once per cadence window; sustained
+    // ≥threshold growth sweeps as often as it grows, bounded by that growth.
+    this.sweepTicks += 1;
+    const size = this.reportedI1.size + this.interruptRequested.size;
+    if (this.sweepTicks < DEDUP_SWEEP_CADENCE_TICKS && size - this.sizeAtLastSweep < DEDUP_SWEEP_GROWTH) return;
+    // Scratch scales with the TRACKED ids, never the pending backlog: start
+    // from the tracked union, subtract every id the step's I1 basis proves
+    // pending (early stop once none remain), then re-verify the remainder
+    // against committed state before deleting. The re-verify is the reentry
+    // guard: the public onI1Violation callback may have re-entered
+    // core.step() after the basis was read, so basis absence alone never
+    // deletes. Probes are chunked and sized to the surviving candidates.
+    const candidates = new Set<number>();
+    for (const set of [this.reportedI1, this.interruptRequested]) {
+      for (const id of set) candidates.add(id);
+    }
+    if (latestI1 !== null) {
+      subtract: for (const bee of latestI1) {
+        for (const m of bee.pending) {
+          candidates.delete(m.id);
+          if (candidates.size === 0) break subtract;
+        }
+      }
+    }
+    // I1-disabled shares the same machinery: with no basis to subtract, every
+    // tracked id goes straight to the committed membership probes (fresh by
+    // construction — probed here, after any reentrant step returned).
+    const recheck = [...candidates];
+    for (let at = 0; at < recheck.length; at += DEDUP_PROBE_CHUNK) {
+      for (const id of this.store.undeliveredMessageIdsAmong(recheck.slice(at, at + DEDUP_PROBE_CHUNK))) {
+        candidates.delete(id);
+      }
+    }
+    for (const id of candidates) {
+      this.reportedI1.delete(id);
+      this.interruptRequested.delete(id);
+    }
+    this.resetSweepState(this.reportedI1.size + this.interruptRequested.size);
+  }
+
+  private resetSweepState(size: number): void {
+    this.sweepTicks = 0;
+    this.sizeAtLastSweep = size;
   }
 }
