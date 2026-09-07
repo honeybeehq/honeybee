@@ -153,14 +153,23 @@ test("pending indexes migrate on reopen: covering install, old-index drop idempo
     store.reviveBee(bee.id);
     store.updateRuntimeState(bee.id, generation, "stopped", { exitCause: "clean" });
   }
-  const mailful = makeBee(store, "mailful").bee;
-  store.updateRuntimeState(mailful.id, 1, "stopped", { exitCause: "clean" });
-  store.send(mailful.id, "first body", { urgency: "now" });
-  store.send(mailful.id, "second body");
-  store.send(mailful.id, "third body", { urgency: "idle" });
-  const expectedRows = store.undeliveredMessages(mailful.id);
-  assert.equal(expectedRows.length, 3);
-  const expectedGlobal = store.listUndeliveredMessages().map((m) => m.id);
+  // TWO pending bees with INTERLEAVED sends: the global projection must
+  // group by bee_id then id, which differs from pure send (id) order.
+  const mailA = makeBee(store, "mail-a").bee;
+  store.updateRuntimeState(mailA.id, 1, "stopped", { exitCause: "clean" });
+  const mailB = makeBee(store, "mail-b").bee;
+  store.updateRuntimeState(mailB.id, 1, "stopped", { exitCause: "clean" });
+  store.send(mailA.id, "a first", { urgency: "now" });
+  store.send(mailB.id, "b first");
+  store.send(mailA.id, "a second");
+  store.send(mailB.id, "b second", { urgency: "idle" });
+  store.send(mailA.id, "a third", { urgency: "idle" });
+  const publicFifoA = store.undeliveredMessages(mailA.id);
+  const publicFifoB = store.undeliveredMessages(mailB.id);
+  assert.equal(publicFifoA.length, 3);
+  assert.equal(publicFifoB.length, 2);
+  const publicGlobal = store.listUndeliveredMessages();
+  assert.equal(publicGlobal.length, 5);
   store.close();
 
   const raw = (sql: string) => {
@@ -195,13 +204,56 @@ test("pending indexes migrate on reopen: covering install, old-index drop idempo
   raw("DROP INDEX IF EXISTS runtimes_daemon_live");
   raw("CREATE INDEX IF NOT EXISTS mailbox_undelivered ON mailbox(bee_id, id) WHERE delivered_at IS NULL");
   assert.equal(oldIndexPresent(), true);
-  store = h.open();
-  // Full-body reads keep exact order, content, and membership on the
-  // covering index alone (rows are still fetched for bodies, as they must be).
-  assert.deepEqual(store.undeliveredMessages(mailful.id), expectedRows, "per-bee FIFO order and full content survive the drop");
-  assert.deepEqual(store.listUndeliveredMessages().map((m) => m.id), expectedGlobal, "global pending membership survives the drop");
+
+  // BEFORE snapshots read UNDER old+covering (raw connection — the public
+  // open would drop the old index first). The per-bee plan is asserted to
+  // actually use the old index here, so the baseline genuinely exercises it.
+  const FIFO_SQL = "SELECT * FROM mailbox WHERE bee_id = ? AND delivered_at IS NULL ORDER BY id";
+  const GLOBAL_SQL = "SELECT * FROM mailbox WHERE delivered_at IS NULL ORDER BY bee_id, id";
+  const rawReads = (path: string) => {
+    const db = new DatabaseSync(path, { readOnly: true });
+    try {
+      return {
+        fifoPlan: planDetails(db, FIFO_SQL).join("\n"),
+        fifoA: db.prepare(FIFO_SQL).all(mailA.id),
+        fifoB: db.prepare(FIFO_SQL).all(mailB.id),
+        global: db.prepare(GLOBAL_SQL).all(),
+      };
+    } finally {
+      db.close();
+    }
+  };
+  const before = rawReads(h.path);
+  assert.match(before.fifoPlan, /USING INDEX mailbox_undelivered/, "the before baseline must be served by the old index");
+  assert.equal(before.global.length, 5);
+
+  store = h.open(); // upgrade: the drop runs after the covering install
+  // Public full-body reads keep exact order, content, and membership.
+  assert.deepEqual(store.undeliveredMessages(mailA.id), publicFifoA, "per-bee FIFO unchanged for mail-a");
+  assert.deepEqual(store.undeliveredMessages(mailB.id), publicFifoB, "per-bee FIFO unchanged for mail-b");
+  assert.deepEqual(store.listUndeliveredMessages(), publicGlobal, "global full rows unchanged across the drop");
   store.close();
   assert.equal(oldIndexPresent(), false, "upgrade drops the superseded index");
+
+  // AFTER snapshots on new-only, full-row deepEqual against the old+covering
+  // baseline — the old-vs-new proof the drop must pass.
+  const after = rawReads(h.path);
+  assert.match(after.fifoPlan, /USING INDEX mailbox_pending_metadata/, "the after reads ride the covering index");
+  assert.deepEqual(after.fifoA, before.fifoA, "full per-bee rows identical old+covering vs new-only");
+  assert.deepEqual(after.fifoB, before.fifoB, "full per-bee rows identical old+covering vs new-only");
+  assert.deepEqual(after.global, before.global, "full global rows identical old+covering vs new-only");
+  // Explicit bee_id-then-id order, and it genuinely differs from send order:
+  // the interleaved sends give each bee numerically interleaved ids, so a
+  // grouped-by-bee sequence cannot be globally ascending by id.
+  const orderKeys = after.global.map((r) => {
+    const row = r as { bee_id?: unknown; id?: unknown };
+    return { beeId: String(row.bee_id), id: Number(row.id) };
+  });
+  const sorted = [...orderKeys].sort((x, y) => (x.beeId < y.beeId ? -1 : x.beeId > y.beeId ? 1 : x.id - y.id));
+  assert.deepEqual(orderKeys, sorted, "global rows are ordered by bee_id then id");
+  const globalIds = orderKeys.map((k) => k.id);
+  assert.notDeepEqual(globalIds, [...globalIds].sort((a, b) => a - b), "grouping by bee reorders the interleaved sends");
+  assert.deepEqual(publicGlobal.map((m) => m.id), globalIds, "the public global list rides the same bee_id-then-id order");
 
   // Downgrade round-trip, twice: an old build would recreate it from its own
   // SCHEMA_SQL (scanning the WHOLE mailbox to filter delivered history); the
@@ -262,8 +314,10 @@ test("pending indexes migrate on reopen: covering install, old-index drop idempo
 
   // Emptiness proof preserved: cancel the held mail and the guard proves empty.
   store = h.open();
-  for (const m of store.undeliveredMessages(mailful.id)) {
-    assert.deepEqual(store.cancelMessage(mailful.id, m.id), { canceled: true });
+  for (const target of [mailA.id, mailB.id]) {
+    for (const m of store.undeliveredMessages(target)) {
+      assert.deepEqual(store.cancelMessage(target, m.id), { canceled: true });
+    }
   }
   assert.equal(store.hasStepSnapshotInputs(), false, "delivered-only mail and stopped history stay empty");
 });
