@@ -1,0 +1,65 @@
+{
+  "snapshotPath": "/private/tmp/honeybee-driver-history-snapshot-100000.json.stopped.heapsnapshot",
+  "snapshotSha256": "95e62e055d6a657abdf0f7a0d99d23ff1ef9d0adf84cd3d9ff1a5229628c512b",
+  "toolSha256": "77ab0b69f3e4534ee2d144ff8797f9f7cb99e21a73b22e7a2b5db8f29fa6ae8d",
+  "scope": "Offline structural analysis of HsrDriver.consumed in V8 heap snapshots.\n\nFinds HsrDriver instances, follows the `consumed` property edge to its Map\nand the Map's internal `table`, and reports SHALLOW self bytes plus the\nretaining structure (bounded incoming-edge listing per node of interest).\nNumeric keys/values are smis stored inline in the backing store: they emit\nNO edges, so edge counts are reported by type as evidence that edges must\nnever be counted as entries; the entry count authority is the probe's\nexternally proven receipt. Existence-only comparison across snapshots; no\ndominator or retained-byte attribution, no whole-process claims.\n",
+  "hsrDriverInstances": 1,
+  "findings": [
+    {
+      "driver": {
+        "id": 72023,
+        "type": "object",
+        "name": "HsrDriver",
+        "shallowBytes": 224,
+        "edgeCount": 13
+      },
+      "hasConsumedProperty": true,
+      "consumedMap": {
+        "id": 72039,
+        "type": "object",
+        "name": "Map",
+        "shallowBytes": 32,
+        "edgeCount": 3
+      },
+      "table": {
+        "id": 72053,
+        "type": "array",
+        "name": "",
+        "shallowBytes": 3670056,
+        "edgeCount": 1
+      },
+      "tableOutgoingEdgeCountsByType": {
+        "internal": 1
+      },
+      "smiNote": "numeric keys/values are smis stored inline: outgoing edges on the table do NOT enumerate entries and must never be counted as such",
+      "driverRetainers": [
+        {
+          "fromType": "object",
+          "fromName": "system / Context",
+          "fromId": 7199,
+          "edgeType": "context",
+          "edgeName": "driver"
+        }
+      ],
+      "consumedMapRetainers": [
+        {
+          "fromType": "object",
+          "fromName": "HsrDriver",
+          "fromId": 72023,
+          "edgeType": "property",
+          "edgeName": "consumed"
+        }
+      ],
+      "tableRetainers": [
+        {
+          "fromType": "object",
+          "fromName": "Map",
+          "fromId": 72039,
+          "edgeType": "internal",
+          "edgeName": "table"
+        }
+      ]
+    }
+  ],
+  "totalNodes": 80125
+}

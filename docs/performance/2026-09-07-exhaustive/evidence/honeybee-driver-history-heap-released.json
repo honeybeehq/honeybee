@@ -1,0 +1,9 @@
+{
+  "snapshotPath": "/private/tmp/honeybee-driver-history-snapshot-100000.json.released.heapsnapshot",
+  "snapshotSha256": "11719202e32a9159dc64ce01fd04cff16ad56220d771b5009030178f3f4e5e73",
+  "toolSha256": "77ab0b69f3e4534ee2d144ff8797f9f7cb99e21a73b22e7a2b5db8f29fa6ae8d",
+  "scope": "Offline structural analysis of HsrDriver.consumed in V8 heap snapshots.\n\nFinds HsrDriver instances, follows the `consumed` property edge to its Map\nand the Map's internal `table`, and reports SHALLOW self bytes plus the\nretaining structure (bounded incoming-edge listing per node of interest).\nNumeric keys/values are smis stored inline in the backing store: they emit\nNO edges, so edge counts are reported by type as evidence that edges must\nnever be counted as entries; the entry count authority is the probe's\nexternally proven receipt. Existence-only comparison across snapshots; no\ndominator or retained-byte attribution, no whole-process claims.\n",
+  "hsrDriverInstances": 0,
+  "findings": [],
+  "totalNodes": 80062
+}

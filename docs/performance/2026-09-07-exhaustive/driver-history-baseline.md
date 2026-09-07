@@ -20,3 +20,10 @@ The [separate snapshot-mode report](evidence/honeybee-driver-history-snapshot-10
 The [parent plan](designs/driver-history/parent-plan.md) proposes measurement and regression obligations. Its smallest provisional option preserves existing driver defaults while explicitly omitting historical recording in the daemon's built-in drivers. The shared HSR configuration already reaches Cell's inner driver. No retention policy or architecture is accepted yet. Default API behavior, true acknowledgement sets, and driver outcomes must remain exact.
 
 Next gates are independent ownership/heap findings, architecture alternatives, an exact-source before/before control and candidate ruler, then implementation and broad serial verification. This study advances H10 and the corresponding tmux retention question. It does not close either item.
+
+
+## Independent heap finding
+
+The [source-aligned heap analysis](designs/driver-history/heap-study.md) finds exactly one stopped HsrDriver, one consumed Map, and its backing array with 3,670,056 shallow bytes. The backing array exposes one internal edge and zero element edges despite the externally proven 100,000 entries. On release, neither the driver nor its consumed Map remains. This directly measures that table node, not a dominator total or whole-process savings.
+
+The [analyzer](tools/honeybee-driver-history-heap-analyze.py) is accepted only for the source-verified baseline Map shape. It currently labels any consumed-property target a Map without checking its type/name. The actual stopped output was independently checked to be object/Map; a future null/disabled-recorder candidate requires classification changes before using this tool. Numeric values without heap edges are a property of this small-integer fixture, not all numeric ids. The author's addendum records both limits. Parent interpretation does not rely on the optional backing-layout arithmetic.
