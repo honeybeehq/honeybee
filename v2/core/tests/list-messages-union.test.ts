@@ -18,9 +18,10 @@ const UNION_SQL = `SELECT * FROM mailbox WHERE bee_id = ? AND delivered_at IS NU
 // row comparison (NOT production SQL anymore; used only as the oracle).
 const LEGACY_SQL = "SELECT * FROM mailbox WHERE bee_id = ? ORDER BY id";
 
-// Every production mailbox statement (13) for the no-theft matrix. All but
-// the dump-state read are asserted verbatim-in-source; the delivered-only
-// index must appear in NO plan except the union's delivered arm.
+// The 12 production mailbox statements plus ONE test-only delivered-arm
+// content probe for the no-theft matrix. The production statements are
+// asserted verbatim-in-source; the delivered-only index must appear in NO
+// plan except the union's delivered arm and the test-only probe.
 const MATRIX: Array<{ name: string; sql: string; pin: RegExp }> = [
   {
     name: "listMessages (union)",
@@ -137,14 +138,30 @@ const MATRIX: Array<{ name: string; sql: string; pin: RegExp }> = [
   },
 ];
 
+function textField(row: unknown, field: string): string {
+  if (row === null || typeof row !== "object") throw new Error(`missing SQLite row for ${field}`);
+  const value: unknown = Reflect.get(row, field);
+  if (typeof value !== "string") throw new Error(`SQLite ${field} field is not text`);
+  return value;
+}
+
+function numberField(row: unknown, field: string): number {
+  if (row === null || typeof row !== "object") throw new Error(`missing SQLite row for ${field}`);
+  const value: unknown = Reflect.get(row, field);
+  if (typeof value !== "number") throw new Error(`SQLite ${field} field is not a number`);
+  return value;
+}
+
+/** meta values are TEXT; parse the validated text as a strict integer. */
+function integerText(row: unknown, field: string): number {
+  const value = Number(textField(row, field));
+  if (!Number.isInteger(value)) throw new Error(`SQLite ${field} field is not integer text`);
+  return value;
+}
+
 function planOf(db: DatabaseSync, sql: string): string {
   return db.prepare(`EXPLAIN QUERY PLAN ${sql}`).all()
-    .map((row) => {
-      if (row === null || typeof row !== "object" || !("detail" in row) || typeof row.detail !== "string") {
-        throw new Error("SQLite detail field is not text");
-      }
-      return row.detail;
-    })
+    .map((row) => textField(row, "detail"))
     .join("\n");
 }
 
@@ -237,6 +254,11 @@ test("listMessages union survives outer rollback of deliver and cancel with exac
         const inside = store.listMessages(bee.id);
         // Inside the open transaction the compound read sees its own
         // uncommitted writes: second moved arms, third gone entirely.
+        assert.deepEqual(
+          inside,
+          oracleRows(store, [first.id, second.id, third.id]),
+          "inside the tx the compound read equals the PK oracle over uncommitted state",
+        );
         assert.deepEqual(inside.map((m) => [m.id, m.deliveredAt !== null]), [
           [first.id, true],
           [second.id, true],
@@ -315,19 +337,19 @@ test("the union statement is production SQL, merges without a sort, and steals n
       }
     }
 
-    const sql = check.prepare(
+    const indexSql = check.prepare(
       "SELECT sql FROM sqlite_master WHERE type = 'index' AND name = 'mailbox_delivered_by_bee'",
-    ).get() as { sql?: unknown };
-    assert.match(String(sql.sql), /WHERE delivered_at IS NOT NULL/, "partial predicate present");
+    ).get();
+    assert.match(textField(indexSql, "sql"), /WHERE delivered_at IS NOT NULL/, "partial predicate present");
     const cols = check.prepare("SELECT name FROM pragma_index_info('mailbox_delivered_by_bee') ORDER BY seqno")
-      .all().map((row) => (row as { name?: unknown }).name);
+      .all().map((row) => textField(row, "name"));
     assert.deepEqual(cols, ["bee_id"], "single key column; id order comes from the implicit rowid");
   } finally {
     check.close();
   }
 
-  // Delivered-arm content via the pinned covering read: exactly the
-  // delivered ids, and pending mail never appears in it.
+  // Delivered-arm content via the test-pinned read (non-covering, as pinned
+  // above): exactly the delivered ids, and pending mail never appears in it.
   store = h.open();
   const pending2 = store.send(bee.id, "still pending").message;
   store.close();
@@ -335,7 +357,7 @@ test("the union statement is production SQL, merges without a sort, and steals n
   try {
     const deliveredIds = content.prepare(
       "SELECT id FROM mailbox WHERE bee_id = ? AND delivered_at IS NOT NULL ORDER BY id",
-    ).all(bee.id).map((row) => Number((row as { id?: unknown }).id));
+    ).all(bee.id).map((row) => numberField(row, "id"));
     assert.deepEqual(deliveredIds, [delivered.id]);
     assert.ok(!deliveredIds.includes(pending2.id), "pending mail is outside the delivered arm");
   } finally {
@@ -378,8 +400,7 @@ test("mailbox_delivered_by_bee installs on existing stores, pre-v8 stores, and t
   const versionOf = () => {
     const db = new DatabaseSync(h.path, { readOnly: true });
     try {
-      const row = db.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value?: unknown };
-      return Number(row.value);
+      return integerText(db.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get(), "value");
     } finally {
       db.close();
     }
@@ -406,8 +427,8 @@ test("mailbox_delivered_by_bee installs on existing stores, pre-v8 stores, and t
         "INSERT INTO mailbox(bee_id, sender, body, priority, urgency, enqueued_at, delivered_at, delivered_generation) VALUES(?, 'operator', 'old-build pending', 0, 'next', 99, NULL, NULL)",
       ).run(bee.id);
       db.prepare("UPDATE mailbox SET delivered_at = 100, delivered_generation = 1 WHERE body = 'old-build pending'").run();
-      const integrity = db.prepare("PRAGMA integrity_check").get() as { integrity_check?: unknown };
-      assert.equal(String(integrity.integrity_check), "ok", "old-build writes keep the index consistent");
+      const integrity = db.prepare("PRAGMA integrity_check").get();
+      assert.equal(textField(integrity, "integrity_check"), "ok", "old-build writes keep the index consistent");
     } finally {
       db.close();
     }
@@ -473,8 +494,10 @@ test("mailbox_delivered_by_bee installs on existing stores, pre-v8 stores, and t
       true,
       "delivered index installed on the pre-v8 store",
     );
-    const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value?: unknown };
-    assert.equal(Number(version.value), SCHEMA_VERSION);
+    assert.equal(
+      integerText(check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get(), "value"),
+      SCHEMA_VERSION,
+    );
   } finally {
     check.close();
   }
