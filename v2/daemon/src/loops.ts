@@ -584,15 +584,8 @@ export class DaemonCore {
    * env). Idempotent: an existing queued/running revive/wake is enough.
    */
   private reviveAfterStopIfRequested(beeId: string, generation: number): void {
-    const cmds = this.store.listCommands({ beeId });
-    const requested = cmds.some(
-      (c) => c.verb === "stop" && c.targetGeneration === generation && c.args.thenRevive === true && (c.status === "done" || c.status === "running"),
-    );
-    if (!requested) return;
-    const pending = cmds.some(
-      (c) => (c.verb === "revive" || c.verb === "send_wake") && (c.status === "queued" || c.status === "running") && (c.targetGeneration ?? 0) >= generation,
-    );
-    if (pending) return;
+    if (!this.store.hasStopThenReviveRequest(beeId, generation)) return;
+    if (this.store.hasPendingReviveOrWakeCommand(beeId, generation)) return;
     // Only the generation the stop targeted; a later generation means the
     // revive already happened (or the operator moved on).
     const rt = this.store.currentRuntime(beeId);
@@ -645,14 +638,7 @@ export class DaemonCore {
   // -------------------------------------------------------------------------
 
   private pendingStopExists(beeId: string, generation: number): boolean {
-    return this.store
-      .listCommands({ beeId })
-      .some(
-        (c) =>
-          c.verb === "stop" &&
-          (c.status === "queued" || c.status === "running") &&
-          c.targetGeneration === generation,
-      );
+    return this.store.hasPendingStopCommand(beeId, generation);
   }
 
   private bootHangPolicy(rows: BeeViewRow[]): void {

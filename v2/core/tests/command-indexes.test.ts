@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
+import type { CoreStore } from "../src/index.ts";
 import { harness, makeBee } from "./helpers.ts";
 
 function indexColumns(db: DatabaseSync, name: string): string[] {
@@ -117,6 +118,25 @@ test("command bee indexes install on populated reopen and preserve ordered API r
         /USING COVERING INDEX commands_by_bee_status \(bee_id=\? AND status=\?\)/,
       );
 
+      for (const predicateSql of [
+        `SELECT 1 FROM commands
+         WHERE bee_id = ? AND status IN ('done','running') AND verb = 'stop'
+           AND target_generation = 1 AND json_type(args, '$.thenRevive') = 'true' LIMIT 1`,
+        `SELECT 1 FROM commands
+         WHERE bee_id = ? AND status IN ('queued','running') AND verb IN ('revive','send_wake')
+           AND COALESCE(target_generation, 0) >= 1 LIMIT 1`,
+        `SELECT 1 FROM commands
+         WHERE bee_id = ? AND status IN ('queued','running') AND verb = 'stop'
+           AND target_generation = 1 LIMIT 1`,
+      ]) {
+        const predicatePlan = planDetails(check, predicateSql, bee.id).join("\n");
+        assert.match(
+          predicatePlan,
+          /USING INDEX commands_by_bee_status \(bee_id=\? AND status=\?\)/,
+        );
+        assert.doesNotMatch(predicatePlan, /USE TEMP B-TREE/);
+      }
+
       const schemaVersionAfter = String(
         (check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string }).value,
       );
@@ -126,6 +146,150 @@ test("command bee indexes install on populated reopen and preserve ordered API r
     }
   } finally {
     store.close();
+    h.cleanup();
+  }
+});
+
+test("command stop-revive predicate requires a strict true value and exact status and generation", () => {
+  const h = harness();
+  const store = h.open({ maxAttempts: 1 });
+  try {
+    const { bee } = makeBee(store, "stop-revive-probe");
+    for (const args of [
+      {},
+      { thenRevive: null },
+      { thenRevive: false },
+      { thenRevive: 1 },
+      { thenRevive: "true" },
+    ]) {
+      const command = store.enqueueCommand("stop", bee.id, args);
+      assert.equal(store.claimNextCommand()?.id, command.id);
+      store.completeCommand(command.id);
+    }
+    const otherVerb = store.enqueueCommand("archive", bee.id, { thenRevive: true });
+    assert.equal(store.claimNextCommand()?.id, otherVerb.id);
+    store.completeCommand(otherVerb.id);
+
+    assert.equal(store.hasStopThenReviveRequest(bee.id, 1), false);
+
+    const failed = store.enqueueCommand("stop", bee.id, { thenRevive: true });
+    assert.equal(store.hasStopThenReviveRequest(bee.id, 1), false, "queued does not request revival");
+    assert.equal(store.claimNextCommand()?.id, failed.id);
+    assert.equal(store.hasStopThenReviveRequest(bee.id, 1), true, "running requests revival");
+    assert.equal(store.reportCommandFailure(failed.id, "node_unreachable").status, "failed");
+    assert.equal(store.hasStopThenReviveRequest(bee.id, 1), false, "failed does not request revival");
+
+    const done = store.enqueueCommand("stop", bee.id, { thenRevive: true });
+    assert.equal(store.claimNextCommand()?.id, done.id);
+    store.completeCommand(done.id);
+    assert.equal(store.hasStopThenReviveRequest(bee.id, 1), true, "done requests revival");
+    assert.equal(store.hasStopThenReviveRequest(bee.id, 2), false, "generation matching is exact");
+    assert.equal(store.hasStopThenReviveRequest("missing", 1), false);
+
+    const historyBefore = store.listCommands({ beeId: bee.id });
+    const stateBefore = store.dumpState();
+    const auditBefore = store.lastAuditSeq();
+    assert.equal(store.hasStopThenReviveRequest(bee.id, 1), true);
+    assert.equal(store.hasStopThenReviveRequest(bee.id, 2), false);
+    assert.equal(store.lastAuditSeq(), auditBefore, "the stop-revive predicate is read-only");
+    assert.deepEqual(store.dumpState(), stateBefore);
+    assert.deepEqual(store.listCommands({ beeId: bee.id }), historyBefore, "complete ordered history is unchanged");
+  } finally {
+    store.close();
+    h.cleanup();
+  }
+});
+
+test("command pending predicates preserve statuses, generation rules, null fallback, and future intent", () => {
+  const h = harness();
+  let store: CoreStore | null = h.open({ maxAttempts: 3, backoffBaseMs: 10_000 });
+  try {
+    for (const beeId of ["negative", "equal-revive", "above-wake", "null-wake", "stop-match", "running"]) {
+      store.createBee({ id: beeId, name: beeId, agent: "stub", substrate: "hsr", cwd: "/tmp" });
+    }
+    store.close();
+    store = null;
+
+    const future = 9_000_000_000;
+    const fixture = new DatabaseSync(h.path);
+    try {
+      const insert = fixture.prepare(
+        `INSERT INTO commands(
+           verb, bee_id, args, target_generation, status, attempts,
+           next_attempt_at, enqueued_at, finished_at, failure_cause, idempotency_key
+         ) VALUES(?, ?, '{}', ?, ?, 0, ?, 1, ?, NULL, NULL)`,
+      );
+      for (const row of [
+        { beeId: "negative", verb: "revive", status: "done", target: 10 },
+        { beeId: "negative", verb: "send_wake", status: "failed", target: 10 },
+        { beeId: "negative", verb: "revive", status: "queued", target: 9 },
+        { beeId: "negative", verb: "archive", status: "queued", target: 11 },
+        { beeId: "negative", verb: "stop", status: "queued", target: 9 },
+        { beeId: "negative", verb: "stop", status: "done", target: 10 },
+        { beeId: "negative", verb: "stop", status: "failed", target: 10 },
+        { beeId: "equal-revive", verb: "revive", status: "queued", target: 10 },
+        { beeId: "above-wake", verb: "send_wake", status: "queued", target: 11 },
+        { beeId: "null-wake", verb: "send_wake", status: "queued", target: null },
+        { beeId: "stop-match", verb: "stop", status: "queued", target: 7 },
+      ]) {
+        insert.run(
+          row.verb,
+          row.beeId,
+          row.target,
+          row.status,
+          future,
+          row.status === "queued" ? null : 2,
+        );
+      }
+    } finally {
+      fixture.close();
+    }
+
+    store = h.open({ maxAttempts: 3, backoffBaseMs: 10_000 });
+    assert.equal(store.hasPendingReviveOrWakeCommand("negative", 10), false);
+    assert.equal(store.hasPendingStopCommand("negative", 10), false);
+    assert.equal(store.hasPendingReviveOrWakeCommand("equal-revive", 10), true, "future equal revive is pending");
+    assert.equal(store.hasPendingReviveOrWakeCommand("equal-revive", 11), false);
+    assert.equal(store.hasPendingReviveOrWakeCommand("above-wake", 10), true, "future later wake is pending");
+    assert.equal(store.hasPendingReviveOrWakeCommand("null-wake", 0), true, "null falls back to generation zero");
+    assert.equal(store.hasPendingReviveOrWakeCommand("null-wake", 1), false);
+    assert.equal(store.hasPendingStopCommand("stop-match", 7), true, "future exact stop is pending");
+    assert.equal(store.hasPendingStopCommand("stop-match", 8), false);
+
+    const runningRevive = store.enqueueCommand("revive", "running");
+    assert.equal(store.hasPendingReviveOrWakeCommand("running", 1), true, "queued revive is pending");
+    assert.equal(store.claimNextCommand()?.id, runningRevive.id);
+    assert.equal(store.hasPendingReviveOrWakeCommand("running", 1), true, "running revive is pending");
+    store.completeCommand(runningRevive.id);
+    assert.equal(store.hasPendingReviveOrWakeCommand("running", 1), false, "done revive is not pending");
+
+    const runningStop = store.enqueueCommand("stop", "running");
+    assert.equal(store.hasPendingStopCommand("running", 1), true, "queued stop is pending");
+    assert.equal(store.claimNextCommand()?.id, runningStop.id);
+    assert.equal(store.hasPendingStopCommand("running", 1), true, "running stop is pending");
+    store.completeCommand(runningStop.id);
+    assert.equal(store.hasPendingStopCommand("running", 1), false, "done stop is not pending");
+
+    const historyBefore = store.listCommands({ beeId: "negative" });
+    assert.deepEqual(
+      historyBefore.map((command) => command.id),
+      [...historyBefore.map((command) => command.id)].sort((a, b) => a - b),
+    );
+    const stateBefore = store.dumpState();
+    const auditBefore = store.lastAuditSeq();
+    assert.equal(store.hasPendingReviveOrWakeCommand("equal-revive", 10), true);
+    assert.equal(store.hasPendingReviveOrWakeCommand("null-wake", 1), false);
+    assert.equal(store.hasPendingStopCommand("stop-match", 7), true);
+    assert.equal(store.hasPendingStopCommand("missing", 1), false);
+    assert.equal(store.lastAuditSeq(), auditBefore, "pending command predicates are read-only");
+    assert.deepEqual(store.dumpState(), stateBefore);
+    assert.deepEqual(
+      store.listCommands({ beeId: "negative" }),
+      historyBefore,
+      "complete ordered history is unchanged",
+    );
+  } finally {
+    store?.close();
     h.cleanup();
   }
 });

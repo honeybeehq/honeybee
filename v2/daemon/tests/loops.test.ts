@@ -1368,6 +1368,137 @@ test("unit.9 (spec 08 swap): a `stop {thenRevive}` command revives the NEXT gene
   }
 });
 
+test("D05 boot command probes avoid full history and keep strict thenRevive and future-wake behavior", () => {
+  const rig = makeRig();
+  try {
+    const falseRequest = rig.store.createBee({
+      id: "d05-false-request",
+      name: "d05-false-request",
+      agent: "stub",
+      substrate: "hsr",
+      cwd: "/tmp",
+    });
+    rig.store.updateRuntimeState(falseRequest.bee.id, falseRequest.runtime.generation, "stopped", {
+      exitCause: "clean",
+    });
+    for (const args of [
+      {},
+      { thenRevive: null },
+      { thenRevive: false },
+      { thenRevive: 1 },
+      { thenRevive: "true" },
+    ]) {
+      const command = rig.store.enqueueCommand("stop", falseRequest.bee.id, args);
+      assert.equal(rig.store.claimNextCommand()?.id, command.id);
+      rig.store.completeCommand(command.id);
+    }
+
+    const coveredRequest = rig.store.createBee({
+      id: "d05-covered-request",
+      name: "d05-covered-request",
+      agent: "stub",
+      substrate: "hsr",
+      cwd: "/tmp",
+    });
+    rig.store.updateRuntimeState(coveredRequest.bee.id, coveredRequest.runtime.generation, "stopped", {
+      exitCause: "clean",
+    });
+    const request = rig.store.enqueueCommand("stop", coveredRequest.bee.id, { thenRevive: true });
+    assert.equal(rig.store.claimNextCommand()?.id, request.id);
+    rig.store.completeCommand(request.id);
+    const pendingWake = rig.store.enqueueCommand("send_wake", coveredRequest.bee.id);
+    assert.equal(rig.store.claimNextCommand()?.id, pendingWake.id);
+    const retry = rig.store.reportCommandFailure(pendingWake.id, "node_unreachable");
+    assert.equal(retry.status, "queued");
+    assert.ok(retry.nextAttemptAt != null && retry.nextAttemptAt > rig.clock.now);
+
+    const falseHistory = rig.store.listCommands({ beeId: falseRequest.bee.id });
+    const coveredHistory = rig.store.listCommands({ beeId: coveredRequest.bee.id });
+    const auditBefore = rig.store.lastAuditSeq();
+    const listCommands = rig.store.listCommands.bind(rig.store);
+    const reports: ReturnType<DaemonCore["boot"]>[] = [];
+    rig.store.listCommands = () => {
+      throw new Error("D05 daemon path materialized command history");
+    };
+    try {
+      reports.push(rig.core.boot(), rig.core.boot());
+    } finally {
+      rig.store.listCommands = listCommands;
+    }
+
+    for (const report of reports) {
+      assert.deepEqual(report, {
+        adopted: 0,
+        stoppedByReconcile: 0,
+        requeuedCommands: 0,
+        orphansReaped: 0,
+        wakesEnqueued: 0,
+      });
+    }
+    assert.deepEqual(rig.store.listCommands({ beeId: falseRequest.bee.id }), falseHistory);
+    assert.deepEqual(rig.store.listCommands({ beeId: coveredRequest.bee.id }), coveredHistory);
+    assert.equal(rig.store.getCommand(pendingWake.id)?.status, "queued");
+    assert.equal(rig.store.getCommand(pendingWake.id)?.nextAttemptAt, retry.nextAttemptAt);
+    assert.equal(rig.store.currentRuntime(falseRequest.bee.id)?.state, "stopped");
+    assert.equal(rig.store.currentRuntime(coveredRequest.bee.id)?.state, "stopped");
+    assert.deepEqual(rig.driver.starts, []);
+    assert.deepEqual(rig.driver.events, []);
+    const bootAudit = rig.store.auditRows(auditBefore);
+    assert.equal(bootAudit.length, 2);
+    assert.ok(bootAudit.every((row) => row.kind === "boot.reconciled"));
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("D05 pending-stop probe treats a future retry as pending and remains a repeated-step no-op", () => {
+  const rig = makeRig({ bootHangTimeoutSteps: 50, commandsPerStep: 0 });
+  try {
+    const { bee, runtime } = rig.store.createBee({
+      id: "d05-pending-stop",
+      name: "d05-pending-stop",
+      agent: "stub",
+      substrate: "hsr",
+      cwd: "/tmp",
+    });
+    rig.clock.now = runtime.startedAt + 51;
+    const stop = rig.store.enqueueCommand("stop", bee.id, {
+      cause: "stopped_by_system",
+      reason: "hang_policy",
+    });
+    assert.equal(rig.store.claimNextCommand()?.id, stop.id);
+    const retry = rig.store.reportCommandFailure(stop.id, "node_unreachable");
+    assert.equal(retry.status, "queued");
+    assert.ok(retry.nextAttemptAt != null && retry.nextAttemptAt > rig.clock.now);
+
+    const historyBefore = rig.store.listCommands({ beeId: bee.id });
+    const stateBefore = rig.store.dumpState();
+    const auditBefore = rig.store.lastAuditSeq();
+    const listCommands = rig.store.listCommands.bind(rig.store);
+    rig.store.listCommands = () => {
+      throw new Error("D05 daemon path materialized command history");
+    };
+    try {
+      rig.core.step();
+      rig.core.step();
+    } finally {
+      rig.store.listCommands = listCommands;
+    }
+
+    assert.equal(rig.store.lastAuditSeq(), auditBefore);
+    assert.deepEqual(rig.store.dumpState(), stateBefore);
+    assert.deepEqual(rig.store.listCommands({ beeId: bee.id }), historyBefore);
+    assert.equal(rig.store.getCommand(stop.id)?.status, "queued");
+    assert.equal(rig.store.getCommand(stop.id)?.nextAttemptAt, retry.nextAttemptAt);
+    assert.equal(rig.store.currentRuntime(bee.id)?.state, "booting");
+    assert.deepEqual(rig.driver.starts, []);
+    assert.deepEqual(rig.driver.events, []);
+    assert.equal(rig.ops.filter((op) => op.startsWith("policy.hang_stop bee=d05-pending-stop")).length, 0);
+  } finally {
+    rig.cleanup();
+  }
+});
+
 test("unit.10 (spec 08): the onFlagEvidence hook fires after each applied evidence and a throwing hook never stalls the loop", () => {
   const dir = mkdtempSync(join(tmpdir(), "hb-v2-loops-"));
   const clock = { now: 1000 };

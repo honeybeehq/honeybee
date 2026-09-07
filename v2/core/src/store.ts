@@ -2768,6 +2768,38 @@ export class CoreStore {
     return row ? mapCommand(row) : null;
   }
 
+  /** Whether this generation has a settled or in-flight stop with explicit restart intent. */
+  hasStopThenReviveRequest(beeId: string, generation: number): boolean {
+    return this.stmt(
+      `SELECT 1 FROM commands
+       WHERE bee_id = ? AND status IN ('done','running')
+         AND verb = 'stop' AND target_generation = ?
+         AND json_type(args, '$.thenRevive') = 'true'
+       LIMIT 1`,
+    ).get(beeId, generation) !== undefined;
+  }
+
+  /** Whether queued or in-flight start intent already covers this generation or a later one. */
+  hasPendingReviveOrWakeCommand(beeId: string, minimumGeneration: number): boolean {
+    return this.stmt(
+      `SELECT 1 FROM commands
+       WHERE bee_id = ? AND status IN ('queued','running')
+         AND verb IN ('revive','send_wake')
+         AND COALESCE(target_generation, 0) >= ?
+       LIMIT 1`,
+    ).get(beeId, minimumGeneration) !== undefined;
+  }
+
+  /** Whether this exact generation already has a queued or in-flight stop. */
+  hasPendingStopCommand(beeId: string, generation: number): boolean {
+    return this.stmt(
+      `SELECT 1 FROM commands
+       WHERE bee_id = ? AND status IN ('queued','running')
+         AND verb = 'stop' AND target_generation = ?
+       LIMIT 1`,
+    ).get(beeId, generation) !== undefined;
+  }
+
   listCommands(filter: { beeId?: string; status?: CommandRow["status"] } = {}): CommandRow[] {
     let sql = "SELECT * FROM commands";
     const where: string[] = [];
