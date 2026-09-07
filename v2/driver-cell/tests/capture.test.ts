@@ -151,6 +151,41 @@ test("capture.rebase: cell commits replay onto the target tip", () => {
   }
 });
 
+test("capture.rebase: work already on the target in rewritten form reports nothing_to_capture", () => {
+  const rig = makeRig();
+  try {
+    const cell = provisioned(rig);
+    commitInCell(cell.paths.spaceDir, "cell-side.ts", "c\n", "cell work");
+    // The same change reached the target folded into a different commit —
+    // different patch-id, so the rebase cannot auto-drop it as a cherry-pick;
+    // it must drop the pick when it replays to nothing.
+    g(rig.origin.repo, ["checkout", "-b", "target"]);
+    writeFileSync(join(rig.origin.repo, "cell-side.ts"), "c\n");
+    writeFileSync(join(rig.origin.repo, "origin-side.ts"), "o\n");
+    g(rig.origin.repo, ["add", "."]);
+    g(rig.origin.repo, ["commit", "-m", "landed elsewhere"]);
+    g(rig.origin.repo, ["checkout", "main"]);
+    const targetBefore = g(rig.origin.repo, ["rev-parse", "refs/heads/target"]);
+    const before = fingerprintOrigin(rig.origin.repo);
+
+    const report = captureWork({
+      originRepo: rig.origin.repo,
+      cellSpaceDir: cell.paths.spaceDir,
+      targetBranch: "target",
+      mode: "rebase",
+      opId: "cmd-empty-1",
+    });
+    assert.equal(report.status, "nothing_to_capture");
+    assert.equal(g(rig.origin.repo, ["rev-parse", "refs/heads/target"]), targetBefore);
+    const after = fingerprintOrigin(rig.origin.repo);
+    assert.equal(after.refs, before.refs);
+    assertNoHiveRefs(rig.origin.repo);
+    assert.ok(fsckClean(rig.origin.repo));
+  } finally {
+    rig.cleanup();
+  }
+});
+
 test("capture.conflict: structured report, origin ref-set bit-identical, transient ref gone", () => {
   const rig = makeRig();
   try {

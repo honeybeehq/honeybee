@@ -150,13 +150,22 @@ export function captureWork(req: CaptureRequest): CaptureReport {
       resultSha = git(scratchRepo, ["rev-parse", "HEAD"]);
     } else {
       git(scratchRepo, ["checkout", "--quiet", "--force", "--detach", cellHead]);
-      const rebase = tryGit(scratchRepo, ["rebase", targetTip]);
+      // --empty=drop: a commit whose changes already sit on the target
+      // (landed earlier in rewritten form) replays to nothing — drop it
+      // instead of stopping the sequencer, which would read as a conflict
+      // with zero conflicted paths.
+      const rebase = tryGit(scratchRepo, ["rebase", "--empty=drop", targetTip]);
       if (rebase.status !== 0) {
         const conflicts = conflictedPaths(scratchRepo);
         tryGit(scratchRepo, ["rebase", "--abort"]);
         return report({ ...base, status: "conflict", cellHead, baseTarget: targetTip, conflicts });
       }
       resultSha = git(scratchRepo, ["rev-parse", "HEAD"]);
+    }
+
+    if (resultSha === targetTip) {
+      // Every commit dropped in replay: the target already holds this work.
+      return report({ ...base, status: "nothing_to_capture", cellHead, baseTarget: targetTip });
     }
 
     // 3. Result objects into the origin (transient ref again — force-update
