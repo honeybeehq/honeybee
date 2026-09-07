@@ -15,6 +15,7 @@ import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import {
   CoreError,
+  openCoreStore,
   SCHEMA_VERSION,
   SchemaVersionError,
   replayAudit,
@@ -228,4 +229,128 @@ test("idem.10: rpc_idempotency records survive close/reopen", () => {
   assert.deepEqual(store.lookupRpcResult("persist")?.result, { beeId: "b1", commandId: 1 });
   store.close();
   h.cleanup();
+});
+
+test("idem.11: RPC retention preserves timestamp/rowid order across clock and cap changes", () => {
+  const h = harness();
+  let clock = 100;
+  let store = openCoreStore(h.path, {
+    now: () => clock,
+    maxRpcIdempotencyRows: 4,
+    ephemeral: true,
+  });
+  try {
+    store.recordRpcResult("z-first", "spawn", 1, { value: "first" });
+    store.recordRpcResult("a-second", "send", null, null);
+    clock = 50;
+    store.recordRpcResult("backward", "stop", 3, { value: "backward" });
+    clock = 100;
+    store.recordRpcResult("m-third", "archive", 4, { value: "third-at-100" });
+    const nullRecord = store.lookupRpcResult("a-second");
+    assert.deepEqual(nullRecord, {
+      key: "a-second",
+      verb: "send",
+      commandId: null,
+      result: null,
+      createdAt: 100,
+    });
+
+    store.close();
+    store = openCoreStore(h.path, {
+      now: () => clock,
+      maxRpcIdempotencyRows: 3,
+      ephemeral: true,
+    });
+    assert.throws(
+      () => store.recordRpcResult("a-second", "delete", 99, { replacement: true }),
+      /UNIQUE constraint failed: rpc_idempotency\.key/,
+    );
+    for (const key of ["z-first", "a-second", "backward", "m-third"]) {
+      assert.ok(store.lookupRpcResult(key), `failed duplicate must not prune ${key}`);
+    }
+    assert.deepEqual(store.lookupRpcResult("a-second"), nullRecord, "failed duplicate keeps the original null result");
+
+    clock = 150;
+    store.recordRpcResult("new", "unarchive", 5, { value: "new" });
+    assert.equal(store.lookupRpcResult("backward"), null, "the backward-clock row is oldest");
+    assert.equal(store.lookupRpcResult("z-first"), null, "equal timestamps evict by the earlier rowid, not key");
+    assert.ok(store.lookupRpcResult("a-second"));
+    assert.ok(store.lookupRpcResult("m-third"));
+    assert.ok(store.lookupRpcResult("new"));
+
+    store.close();
+    store = openCoreStore(h.path, {
+      now: () => clock,
+      maxRpcIdempotencyRows: 5,
+      ephemeral: true,
+    });
+    clock = 25;
+    store.recordRpcResult("backward-under-raised-cap", "send", null, { value: "kept" });
+    clock = 200;
+    store.recordRpcResult("fifth", "stop", null, { value: "also kept" });
+    store.close();
+    store = openCoreStore(h.path, {
+      now: () => clock,
+      maxRpcIdempotencyRows: 5,
+      ephemeral: true,
+    });
+    for (const key of ["a-second", "m-third", "new", "backward-under-raised-cap", "fifth"]) {
+      assert.ok(store.lookupRpcResult(key), `${key} survives reopen at the raised cap`);
+    }
+  } finally {
+    store.close();
+    h.cleanup();
+  }
+});
+
+test("idem.12: RPC retention index reinstalls and naturally satisfies the exact eviction order", () => {
+  const h = harness();
+  let store = h.open({ maxRpcIdempotencyRows: 10 });
+  try {
+    for (let i = 0; i < 6; i += 1) {
+      store.recordRpcResult(`plan-${i}`, "send", null, { i });
+    }
+    store.close();
+
+    const before = new DatabaseSync(h.path);
+    let schemaVersion: string;
+    try {
+      schemaVersion = String(
+        (before.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string }).value,
+      );
+      before.exec("DROP INDEX IF EXISTS rpc_idempotency_created_at");
+    } finally {
+      before.close();
+    }
+
+    store = h.open({ maxRpcIdempotencyRows: 10 });
+    store.close();
+    const check = new DatabaseSync(h.path, { readOnly: true });
+    try {
+      const columns = (check
+        .prepare("SELECT name FROM pragma_index_info('rpc_idempotency_created_at') ORDER BY seqno")
+        .all() as Array<{ name: string }>).map((row) => row.name);
+      assert.deepEqual(columns, ["created_at"]);
+      const plan = (check
+        .prepare(
+          `EXPLAIN QUERY PLAN DELETE FROM rpc_idempotency
+           WHERE key IN (
+             SELECT key FROM rpc_idempotency ORDER BY created_at, rowid LIMIT ?
+           )`,
+        )
+        .all(2) as Array<{ detail: string }>).map((row) => row.detail).join("\n");
+      assert.match(plan, /SCAN rpc_idempotency USING INDEX rpc_idempotency_created_at/);
+      assert.doesNotMatch(plan, /USE TEMP B-TREE/);
+      assert.equal(
+        String((check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string }).value),
+        schemaVersion,
+        "additive index installation does not bump the schema version",
+      );
+    } finally {
+      check.close();
+    }
+  } finally {
+    store.close();
+    h.cleanup();
+  }
 });

@@ -326,6 +326,7 @@ CREATE TABLE IF NOT EXISTS rpc_idempotency (
   result     TEXT NOT NULL,
   created_at INTEGER NOT NULL
 ) STRICT;
+CREATE INDEX IF NOT EXISTS rpc_idempotency_created_at ON rpc_idempotency(created_at);
 
 -- v6: a bee's question to the operator (spec: pre-flip verbs). Open until
 -- answered; the answer is ALSO delivered to the bee as an ordinary mailbox
