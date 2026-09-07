@@ -139,7 +139,7 @@ export function captureWork(req: CaptureRequest): CaptureReport {
     // origin's working tree and index never see conflict state.
     scratch = mkdtempSync(join(tmpdir(), "hive-capture-"));
     const scratchRepo = join(scratch, "repo");
-    git(scratch, ["clone", "--quiet", "--shared", "--no-checkout", originRepo, scratchRepo]);
+    git(scratch, ["clone", "--quiet", "--shared", "--no-checkout", "--no-tags", originRepo, scratchRepo]);
 
     let resultSha: string;
     if (mode === "merge") {
