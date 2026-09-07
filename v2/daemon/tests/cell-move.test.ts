@@ -182,6 +182,9 @@ test("retained exec after daemon loss never replays and releases its gate after 
   const pending = f.requestRpc<CellExecResult>("cell.exec", exec).catch(() => null);
   await waitFor(() => existsSync(join(f.cell.spaceDir, "exec-pid.txt")), "exec has started", 10_000);
   const execPid = Number(readFileSync(join(f.cell.spaceDir, "exec-pid.txt"), "utf8"));
+  // The child can write its PID before the daemon persists the spawn identity.
+  // An RPC response fences that synchronous prefix before we kill the daemon.
+  await f.view();
   await f.restart();
   await pending;
   await waitFor(() => !pidAlive(execPid), "orphan exec absent", 15_000);
