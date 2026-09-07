@@ -37,6 +37,21 @@ First scans are separate fixed-before-then-after observations in a warm process 
 
 Separate read-count diagnostics prove the mechanism. One-changed drops 1,000 full reads to one, with 1,001 membership reads. All-changed keeps 1,000 full reads and adds 2,000 membership reads. Ten-giants drops ten full reads to zero with ten membership reads. Expiry's launch-plus-drain diagnostic cycle drops two full reads to one with three membership reads; only the launching scan was timed.
 
+## Tail observations
+
+The 30-sample p95 values below are descriptive observations from the same runs, not stable tail estimates or service-level guarantees. Whole-process CPU includes work such as GC that can move between samples. Empty and one-changed CPU p95 regress even where the one-changed median improves. All-changed regresses at both median and tail. The large quiet mailbox gains remain at p95.
+
+| Scenario | Before CPU p95 ms | After CPU p95 ms | Before wall p95 ms | After wall p95 ms |
+|---|---:|---:|---:|---:|
+| empty-fleet | 5.410 | 6.882 | 2.953 | 3.288 |
+| thin-fleet | 8.370 | 5.852 | 4.547 | 3.467 |
+| envelope-giant | 189.510 | 3.391 | 126.104 | 3.390 |
+| backoff-giant | 197.054 | 3.393 | 152.802 | 3.392 |
+| one-changed | 7.890 | 9.348 | 4.602 | 3.604 |
+| all-changed | 55.752 | 62.593 | 55.745 | 62.015 |
+| expiry-giant | 212.344 | 208.136 | 175.881 | 177.420 |
+| ten-giants | 358.151 | 6.797 | 282.055 | 6.759 |
+
 ## Allocation traffic and process memory
 
 Separate V8 sampling replays report bytes allocated during one quiet scan, including collected objects. These are sampled traffic, not retained heap or native memory.
