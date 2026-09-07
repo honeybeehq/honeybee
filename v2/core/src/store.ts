@@ -2699,11 +2699,23 @@ export class CoreStore {
     return rows.map(mapMessage);
   }
 
-  /** All messages for a bee, delivered or not, per-bee FIFO order. */
+  /**
+   * All messages for a bee, delivered or not, per-bee FIFO order. One
+   * statement over two disjoint, exhaustive partitions of the bee's rows:
+   * each arm rides its own partial index in id order (partial-prefix
+   * equality plus the implicit trailing rowid), so SQLite merges the arms
+   * without a sort where a plain bee_id read would scan the whole mailbox.
+   * Both placeholders MUST bind the same bee.
+   */
   listMessages(beeId: string): MessageRow[] {
     const rows = this.db
-      .prepare("SELECT * FROM mailbox WHERE bee_id = ? ORDER BY id")
-      .all(beeId) as Row[];
+      .prepare(
+        `SELECT * FROM mailbox WHERE bee_id = ? AND delivered_at IS NULL
+         UNION ALL
+         SELECT * FROM mailbox WHERE bee_id = ? AND delivered_at IS NOT NULL
+         ORDER BY id`,
+      )
+      .all(beeId, beeId) as Row[];
     return rows.map(mapMessage);
   }
 

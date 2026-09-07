@@ -295,6 +295,17 @@ CREATE TABLE IF NOT EXISTS mailbox (
 -- (same prefix and partial predicate, wider covering payload); the store
 -- drops it post-migration on open.
 
+-- Delivered-history arm of listMessages' two-arm UNION ALL read. A
+-- delivered-only partial index can serve no pending-predicate statement
+-- (disjoint predicates), so it cannot steal any plan from
+-- mailbox_pending_metadata. Entries are added at markDelivered, never at
+-- send — the predicate is still EVALUATED on every mailbox insert; zero
+-- ENTRY mutation on send is the claim, not zero CPU cost. Mail canceled
+-- before delivery never enters. Implicit trailing rowid keeps each bee's
+-- entries in id order, so the union's arms merge without a sort.
+CREATE INDEX IF NOT EXISTS mailbox_delivered_by_bee
+  ON mailbox(bee_id) WHERE delivered_at IS NOT NULL;
+
 CREATE TABLE IF NOT EXISTS commands (
   id                INTEGER PRIMARY KEY AUTOINCREMENT,
   verb              TEXT NOT NULL CHECK (verb IN ('spawn','send_wake','stop','revive','archive','unarchive','delete')),
