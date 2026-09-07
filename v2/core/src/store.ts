@@ -2377,6 +2377,12 @@ export class CoreStore {
     return rows.map(mapMessage);
   }
 
+  private hasUndeliveredMessage(beeId: string): boolean {
+    return this.stmt(
+      "SELECT 1 FROM mailbox WHERE bee_id = ? AND delivered_at IS NULL LIMIT 1",
+    ).get(beeId) !== undefined;
+  }
+
   /** All undelivered mail in per-bee FIFO order (daemon tick batch read). */
   listUndeliveredMessages(): MessageRow[] {
     const rows = this.stmt(
@@ -4196,12 +4202,18 @@ export class CoreStore {
    */
   tryFeedTaskSupply(beeId: string): { fed: TaskRow; supply: TaskSupplyRow } | null {
     return this.tx(() => {
-      const bee = this.getBee(beeId);
-      if (!bee) return null;
       const supply = this.getTaskSupply(beeId);
+      // This method exposes only feed-or-null, so terminal gates can return
+      // before loading unrelated rows without changing public reason ordering.
+      if (!supply.on || supply.paused || supply.feeds >= supply.limit) return null;
       const tasks = this.listTasks({ list: beeTaskList(beeId) });
-      const needsInput = this.listQuestions({ beeId, open: true }).length > 0;
-      const mailboxEmpty = this.undeliveredMessages(beeId).length === 0;
+      if (tasks.length === 0) return null;
+      const needsInput = this.stmt(
+        "SELECT 1 FROM questions WHERE bee_id = ? AND status = 'open' LIMIT 1",
+      ).get(beeId) !== undefined;
+      if (needsInput) return null;
+      const mailboxEmpty = !this.hasUndeliveredMessage(beeId);
+      if (!mailboxEmpty) return null;
       const decision = evaluateSupplyGate({ supply, needsInput, mailboxEmpty, tasks });
       if (!decision.feed) return null;
       const task = decision.feed;
@@ -4240,7 +4252,7 @@ export class CoreStore {
     return this.tx(() => {
       const rt = this.currentRuntime(beeId);
       if (rt && (rt.state === "booting" || rt.state === "running")) return null;
-      if (this.undeliveredMessages(beeId).length > 0) return null;
+      if (this.hasUndeliveredMessage(beeId)) return null;
       const inflight = this.listTasks({ list: beeTaskList(beeId) }).find(
         (task) => (task.status === "queued" || (task.status === "in-progress" && task.fedAt !== null)) && task.stalledAt === null && task.fedAt !== null,
       );
