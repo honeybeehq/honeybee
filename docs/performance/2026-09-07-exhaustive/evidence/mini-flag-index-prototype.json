@@ -1,0 +1,3193 @@
+{
+  "completed": true,
+  "startedAt": "2026-09-07T08:15:04.463Z",
+  "source": {
+    "revision": "f3ed9b7595cfcf51093af4e3700e04ae49198249",
+    "hashes": {
+      "v2/adapters/src/agy.ts": "ae4751062d36382252aae126e7c0ee024bbcf65009cc12adc16721e24e9dbbc7",
+      "v2/adapters/src/args.ts": "c4af70fde51db0a39b2b7c37fee5df4a931516d91399cbdb93a033292d54e43d",
+      "v2/adapters/src/claude.ts": "78f4b15d50a1f2eba8f74fcc4672e2b008db544950c6ed03a8a8b183b7f6e046",
+      "v2/adapters/src/codex.ts": "47b766ce87eb9ae67986d6f970aea9511ed3162d08b44513a461ca56475bc0a0",
+      "v2/adapters/src/grok.ts": "71f647f0b8fb2a32427604ddf45e0a7b54a4a1b876418c7f91de8c3024c0d84f",
+      "v2/adapters/src/index.ts": "6869fe4ec44c1eeefa53ff1660a00c8556330e30acb30cc3265fb78483aadcdf",
+      "v2/adapters/src/stub.ts": "4fdfca1b8dca0cc396bd495fac99d5fcab7005b40bb598e33413a5747e8f3ccc",
+      "v2/adapters/src/types.ts": "c37098d1cb7d06a8137f1fda87ad1affcb6d8b37e325665b1e5123b029fa2dd3",
+      "v2/cli/src/bin.ts": "330f6bb9d42c72475929a6e104fa5c318051b57816acd4056b3c7523010b8a8c",
+      "v2/cli/src/client.ts": "421e107f912c5f9fae6d51cb2e3b10d8ffe83e70e6660adef03392d59739cafd",
+      "v2/cli/src/help.ts": "c43e898e8cf1541a874acaf77a4680c85642f4a40bc3b33122080f97a601a61e",
+      "v2/cli/src/index.ts": "705f8de04ba4adb8b563d11f2def4da5ae0904ec9bcd0c062d9ce2019676bfd8",
+      "v2/cli/src/main.ts": "e19112dded2ec84bdded0b92096baa44f318bb1399d860fc87991b3776dbb321",
+      "v2/cli/src/readonly.ts": "530ca612ea5de0079f9a8f04cb7b837e956ce2c1d1b0844a7ea87d6d2e3e4c14",
+      "v2/cli/src/render.ts": "6efc8d278c87ac8c90a6588790e5b7a80eb6dbf997254326b32098c77d6f2897",
+      "v2/cli/src/style.ts": "2f5e611fa6b1aee3c0a3afefdf0cfb9b830736ce4c3f2f9c53d73e5bee5cc5fd",
+      "v2/core/src/accountLimitsParse.ts": "4101b50909a9c9d79aa9761c4a5b68bc3d808ad36acca38e75c07779a51068a3",
+      "v2/core/src/accountMatch.ts": "90ebe4e125f83d28bc1a1c99cbff9b813362d3b38bbac8b97182014cb4fcf980",
+      "v2/core/src/accountRecipes.ts": "837c397aab4c9fa8a02b890372fac3e29b73d4ba8307913446309d00e715b6b7",
+      "v2/core/src/accountSelect.ts": "2536db3146b2d9a66c812e294c8d668df5e82e3bea9d2923308dff4060e01f5c",
+      "v2/core/src/audit.ts": "ad41ca1ce64dea003c5086d2135f48b341a0aef6f17f8b059e54658a44021f54",
+      "v2/core/src/executables.ts": "4a878c553014ceabcdd7e940e274d652799c2852474ada614d5c80cca1eadc7c",
+      "v2/core/src/import-frozen.ts": "30e2fb867899e8399abf2fb0ee8a3f36fd12982e3ba1d86a84bbc626b6cc2de7",
+      "v2/core/src/index.ts": "f5bd52177373c73763454a3995bee1033b5241b1021ff62902e72c2884895ae1",
+      "v2/core/src/loginFlow.ts": "727d42b6a98a271577cd462e128b0287e7c571e5e06104b3afb5bdff49d35460",
+      "v2/core/src/mirror.ts": "d8bcb404f2971de5f928345319d7a579c102235e5ed27565e9037724382ad8ce",
+      "v2/core/src/packages.ts": "e14a3c6c013211235ca84c137a93f12ead10beff01c876c2741a7e419b944f17",
+      "v2/core/src/registry.ts": "1cd3e1c5a239882474818466907b5f5b2d10501e178b0ad13d24fb2fae8123ff",
+      "v2/core/src/schema.ts": "05995f423f925cc0eaf95d80fc098e1b6ae905298dbeb6238fc54b94f19ca811",
+      "v2/core/src/store.ts": "78ba5cb597f5f5b0aa17cb073936b7aafe93e807a6bd6cc6c9d1d06afef8edd6",
+      "v2/core/src/tasks.ts": "2f266a9640ed4b9c7ceeea18aee63ce11521cc416ecc3b5ce118ebb5c195a263",
+      "v2/core/src/types.ts": "9d09afae1e05743e29fbee6f51007219d0c6b4c6941a615268793fcc4e6c1445",
+      "v2/core/src/view.ts": "f9fb6302bd05a001ca38d7a98f9280e13f8d2222916d9f0c48efb72e148a16e7",
+      "v2/daemon/src/accountsService.ts": "3f13d0481bb54b793d7f0ea6d7f03536d8e5d4ae2be1a8631b17440d596a8a5b",
+      "v2/daemon/src/activation.ts": "7e7056e53671e9caea816fa1162478905ecfc9a408afbad73750ee411056bab7",
+      "v2/daemon/src/autoTitle.ts": "245e0202fd3758aac7cbf022f328ccc4b3f0e88b58303ff03b0e675bceef3e91",
+      "v2/daemon/src/bin.ts": "8ef32816d19e0c2adc85a81a740de8935c7a8bc77e94118203a761b16679754d",
+      "v2/daemon/src/config.ts": "637e94d4d2e22fedae9682ab1cde523d02b2cb0d5bd594441cc7443bb991900a",
+      "v2/daemon/src/cursorAuth.ts": "1f0d554fd3ea0351b108404d6b7912701be184e8e26ea89bd2b692a42ae4f924",
+      "v2/daemon/src/daemon.ts": "edfdc5756a1be5682e436b6e45e3fc3d2118de379b94bcfe12bee7f00aae34be",
+      "v2/daemon/src/envelope.ts": "dc0bff3d7706be31b3fce162e370c1e6e6b7ed8cd2eca43ab1ba6e9ccada6c7a",
+      "v2/daemon/src/gateways.ts": "5c57d479fdbfd871f31de9172da2c9011466258cb46cc764f1776af82da9145c",
+      "v2/daemon/src/homeDefaults.ts": "a63090c09cc8d102b46effa2f8f205457b0e3d73baaaca15cd836e2c0896fc3c",
+      "v2/daemon/src/import-probes.ts": "14cdeb5b7c47d1da44a8eff3e92e22a52a523dcaf250174cefd1c6c46f15529a",
+      "v2/daemon/src/index.ts": "5f8b71e1193407322cb5b44e87bd30cb8384aeb783c22803a10aca034aa691a9",
+      "v2/daemon/src/keychain.ts": "97ecd409db519ba195662dc5f41cbb2b31c36b68100a57bcdc0c1f89ef877ad5",
+      "v2/daemon/src/login/claudeOauth.ts": "9781bf55222a833a9f4461f704a9a10ccb71030a547ca978dae16428f5ce89ff",
+      "v2/daemon/src/login/cliRunner.ts": "ef14344f05033a1ecf510054d3b717db945a203c2b2c32fe3d2607058ca7d52a",
+      "v2/daemon/src/login/common.ts": "1f93ae2e3757ff297cfcd3d94fdf9e838e546a5beed67999f9e0a1b88ebedc46",
+      "v2/daemon/src/login/directKey.ts": "91224b228da3a12dc828d5290900ed1a59ed95766cc9f5f36d273d9e6b862ba2",
+      "v2/daemon/src/login/runner.ts": "53811aa26fecf68f66e6714110efb5664ad2081586b369ab159c25e044d7f17c",
+      "v2/daemon/src/login/transports.ts": "a7073ba48a5ae49cbf2d9109812bbe299ed18487f551d1bf5271bb47b7357e15",
+      "v2/daemon/src/loginFlows.ts": "4460f4a8f8e14900e106e817862cfa8a60cb0f15c6327741d23896736b708c94",
+      "v2/daemon/src/loginWorker.ts": "4a70f08d716550337509663c7586b235568b1fe7bccfbeecfc57d7bdc2fdd378",
+      "v2/daemon/src/loops.ts": "19de9b41cde6220362c014f8c3fbfe2b0407cba19655a472f41cec58cf39d405",
+      "v2/daemon/src/main.ts": "7546a94f78f8817ca3a869aa63b2d62d16ffa5404ecb60d63cc742733236f903",
+      "v2/daemon/src/naming.ts": "eae82ba481b3e5b74d7d80c38ca50d6bbf64e378e48e8a7c953d35b2f0a643f5",
+      "v2/daemon/src/namingService.ts": "e8ee4b2026fea2460fb59d60db034ec694b32f76ec2cf7eeba3ea1abf6c36001",
+      "v2/daemon/src/performance.ts": "75bbf106a1a24fe67d2fc475bd34d7111dec4a5b36b237ec28691459977c3190",
+      "v2/daemon/src/protocol.ts": "2c2b7563fcf5c1e20919316e6255c6f580880ab59bf823faa0ceeb24175e7399",
+      "v2/daemon/src/providerLimits.ts": "befe91217b50c927419389adb50527fd0867ed58d5111f13bcb669eb2b700790",
+      "v2/daemon/src/rpc.ts": "16b119147b0fc12b32194dc7c255d6fc8910aa0644306c42f9ad19bc6559508e",
+      "v2/daemon/src/service.ts": "10401a481fb25931521e2259dc4722cc43890600a4c84298f9a89d78401b707b",
+      "v2/daemon/src/substrates.ts": "914b18b4e6e6e7cd2525f5943edb3080c031e16d08934fd4021b55ebf3c1c27c",
+      "v2/daemon/src/telemetry.ts": "0f234f5f77df593387db1ed6c08ba64ccd45f3ffa60303bbd178765aefd0980c",
+      "v2/daemon/src/tmuxHarness.ts": "aebc0a90c9ff4a03a466cdf2edc4fe282dc91388cf9966a0412801fb0bea320f",
+      "v2/driver-cell/src/capture.ts": "359b2fa98f2b21c7a8f43a2755c3d4b4ad03f267483b98827c2c6b022ed68e9b",
+      "v2/driver-cell/src/cow.ts": "24eb5ce7b6536de861ca261a5d80096343115e14bc8a23e354a2e8a74f318b10",
+      "v2/driver-cell/src/driver.ts": "77598ca25c7dd9374e21f9fd5275e43989a7305a2b05fd098210db8630f062e6",
+      "v2/driver-cell/src/git.ts": "049d9bd7f6aaebb6625fd0f1d8ddebcd3adf16e7d4dd7316232ba6923d196b75",
+      "v2/driver-cell/src/gitImage.ts": "9b7b1dc8a762caaac402d108bbd9286630a1376b4844ea8d2d3c6232d0a19007",
+      "v2/driver-cell/src/index.ts": "3264e7ae0f407b257b7a35e6d10a3b7f19cdc9c2d4d92cf173f02dbd861764ae",
+      "v2/driver-cell/src/layout.ts": "68a677450c0d851cf97c50f8616fd25961ddea59dd6b8ac3c0a739042c4775f8",
+      "v2/driver-cell/src/ledger.ts": "efdf4762fab38defd8ec3e68dceba52a44a11d17962b027cb4a0302eec429834",
+      "v2/driver-cell/src/provision.ts": "8293821e57266a0b4f7a2e0e6d25c584cac6caf1ac0afad207311af57558be66",
+      "v2/driver-cell/src/provisionWorker.ts": "a651cc6000ef33f7ed52384f678543b28fea4f363113b3218d45219c510a2d4c",
+      "v2/driver-cell/src/remove.ts": "914e22bf0182c90503731cbeb9877c0d697cda5d410b224223499fab33e75aa5",
+      "v2/driver-cell/src/sandbox.ts": "33ea0cefa347f21a19f39a03f36afeed14d18680f15fc22a0f1682a668001e3a",
+      "v2/driver-hsr/src/driver.ts": "a01bf7d4e955ee1cd79f6bab88c95d02928841be6f0a8ffe671a87d17a8413d3",
+      "v2/driver-hsr/src/index.ts": "8f9542db7792d462ab9b10f9537b9c05f31acf9934d6c32b3f248de8beb97e5e",
+      "v2/driver-hsr/src/psutil.ts": "1beb05854deb6fbe12f206d7436648e7be2a8ae00bcfd0acd13ef3f9fb1c1edb",
+      "v2/driver-hsr/src/runner-host-main.ts": "10c4f1c2af2e2dc20bdddba51e7972bc976831c1bf40b5f5772a2519538411da",
+      "v2/driver-hsr/src/runner-host.ts": "7f1716db45160657ef2109d8a18ae064cbab065f0321b22d29f9a193a3f3c152",
+      "v2/driver-tmux/src/agy-projection.ts": "1d5284c9835d499f0e55dc52ec70a5d36175993f0ccbab7f2e21fcf60f92a9ff",
+      "v2/driver-tmux/src/claude-projection.ts": "df6d2d8967f70ac4b6796a234de83d1e325e41210794972aee41b1a7294882f6",
+      "v2/driver-tmux/src/codex-projection.ts": "2ff68aa8e4d8c802bef9abedb7595e29f038c7ba4cf81403f7efc54a03225e1b",
+      "v2/driver-tmux/src/driver.ts": "26fe0516fe49f389d1f5cad30ee0002e829ae1aba75fe6cec8a0ea886b670820",
+      "v2/driver-tmux/src/events-file.ts": "ddb2ba04f32ef325def8d5287a518659a42e41801034304bc74e4695962a0e99",
+      "v2/driver-tmux/src/grok-projection.ts": "d0d419367031c9738fc6a5a0e27ea6c8a15399b06834239b92f2c2603d406823",
+      "v2/driver-tmux/src/index.ts": "f716470ff208ac29febfe90031b025d969a2eefc5461e649d77d43813fce278d",
+      "v2/driver-tmux/src/tail.ts": "40e24f0d34401e7990581eef3eff1d1542defbc846a92339e61bb81a95a0d156",
+      "v2/driver-tmux/src/tmux.ts": "92607334202f8fb8c8cedf7b9d1454d8742a867c4c8082f7f2f6617a6c285eb9",
+      "v2/driver-tmux/src/transcript-projection.ts": "98bdd52792da1d74ddfe28332c54ae76adc8f6b52e94e1b4f233a94cabf96c78",
+      "v2/driver-tmux/src/transcripts.ts": "f23289d6199d9d2ec288f60de0a3475ce5aa41e20230763380386d4d2c545509",
+      "v2/harness/src/clock.ts": "690b130f9bb111af2099cc96d19a114258bf3bc6353d7a440d53b3141c9e2446",
+      "v2/harness/src/daemon.ts": "2b8f17080275ef72b3612e4b446b9e951d203373c70bcec7b83e3b21c91d81ef",
+      "v2/harness/src/driver.ts": "df41b313a0ab97a637eddb5a3ba2be4456293776aa46acfd3eb29af5315a1442",
+      "v2/harness/src/faults.ts": "6152e965e33f1501f9beee0f5a3c42ce18a8b71897713043716a993de48cfc20",
+      "v2/harness/src/index.ts": "200de7850d2848f5b1d2afa72fdbd1490d2919efd8f77976508416ccb7b9a191",
+      "v2/harness/src/invariants.ts": "5ab63d4da3399534d6a2d9eff705d1c6c403e14b39b5749b5863bd7d04daccbb",
+      "v2/harness/src/prng.ts": "1be8ed3684abb058b30f83b89239385928abb14d8c24616ebf925c95af4639e8",
+      "v2/harness/src/sim-driver.ts": "70b5b013351a8a089e2b13509cb3abe5d8182b18e07f920859abc68e4dd10e31",
+      "v2/harness/src/simulation.ts": "9979407c9e3483294675c47b23b802a724adcea73681ae8d8480f47f5e2d650c"
+    }
+  },
+  "status": "",
+  "toolHash": "5b9a71bf4c7efa07f11350647075ea6c8d823115036a4cf9db75cee4bcffbdd3",
+  "index": "CREATE INDEX flags_due_prototype ON flags(resets_at, id) WHERE cleared_at IS NULL AND resets_at IS NOT NULL",
+  "sql": "SELECT * FROM flags WHERE cleared_at IS NULL AND resets_at IS NOT NULL AND resets_at <= ? ORDER BY id",
+  "rounds": 15,
+  "environment": {
+    "bootUUID": "B8A697E0-666B-403F-AC95-1E990D7F5509",
+    "node": "v24.18.0",
+    "execArgv": [],
+    "cpu": "Apple M4",
+    "cores": 10,
+    "loadBefore": [
+      1.2451171875,
+      1.35693359375,
+      1.29931640625
+    ],
+    "loadAfter": [
+      1.22509765625,
+      1.3505859375,
+      1.29736328125
+    ]
+  },
+  "scope": "Prototype index only; same exact CoreStore module and SQLite authority on copied disposable databases. Not a production speedup claim. Raw seeded history is outside timing. Durable flag writes use production WAL/NORMAL. Parent CPU includes SQLite, excludes no child work because measured operations launch none. One index-install sample is not a percentile. Reads and writes are ABBA; assertions outside timing.",
+  "results": [
+    {
+      "spec": {
+        "name": "empty",
+        "cleared": 0,
+        "active": 0,
+        "due": 0
+      },
+      "install": {
+        "wallMs": 0.331957999999986,
+        "cpuMs": 0.328
+      },
+      "storage": [
+        {
+          "bytes": 278528,
+          "plan": [
+            {
+              "id": 3,
+              "parent": 0,
+              "notused": 216,
+              "detail": "SCAN flags"
+            }
+          ]
+        },
+        {
+          "bytes": 282624,
+          "plan": [
+            {
+              "id": 4,
+              "parent": 0,
+              "notused": 173,
+              "detail": "SEARCH flags USING INDEX flags_due_prototype (resets_at>? AND resets_at<?)"
+            },
+            {
+              "id": 23,
+              "parent": 0,
+              "notused": 0,
+              "detail": "USE TEMP B-TREE FOR ORDER BY"
+            }
+          ]
+        }
+      ],
+      "expiry": {
+        "raw": [
+          [
+            {
+              "wallMs": 0.00454199999995808,
+              "cpuMs": 0.006
+            },
+            {
+              "wallMs": 0.004500000000007276,
+              "cpuMs": 0.005
+            },
+            {
+              "wallMs": 0.004332999999974163,
+              "cpuMs": 0.005
+            },
+            {
+              "wallMs": 0.004250000000013188,
+              "cpuMs": 0.004
+            },
+            {
+              "wallMs": 0.005540999999993801,
+              "cpuMs": 0.006
+            },
+            {
+              "wallMs": 0.0043330000000310065,
+              "cpuMs": 0.004
+            },
+            {
+              "wallMs": 0.004292000000020835,
+              "cpuMs": 0.005
+            },
+            {
+              "wallMs": 0.004332999999974163,
+              "cpuMs": 0.006
+            },
+            {
+              "wallMs": 0.005832999999995536,
+              "cpuMs": 0.007
+            },
+            {
+              "wallMs": 0.0038329999999859865,
+              "cpuMs": 0.004
+            },
+            {
+              "wallMs": 0.0037499999999681677,
+              "cpuMs": 0.004
+            },
+            {
+              "wallMs": 0.004791000000011536,
+              "cpuMs": 0.006
+            },
+            {
+              "wallMs": 0.003834000000040305,
+              "cpuMs": 0.004
+            },
+            {
+              "wallMs": 0.004000000000019099,
+              "cpuMs": 0.005
+            },
+            {
+              "wallMs": 0.003792000000032658,
+              "cpuMs": 0.005
+            },
+            {
+              "wallMs": 0.003875000000050477,
+              "cpuMs": 0.005
+            },
+            {
+              "wallMs": 0.003959000000008928,
+              "cpuMs": 0.004
+            },
+            {
+              "wallMs": 0.0037919999999758147,
+              "cpuMs": 0.004
+            },
+            {
+              "wallMs": 0.0038329999999859865,
+              "cpuMs": 0.004
+            },
+            {
+              "wallMs": 0.0049579999999878055,
+              "cpuMs": 0.005
+            },
+            {
+              "wallMs": 0.0038329999999859865,
+              "cpuMs": 0.083
+            },
+            {
+              "wallMs": 0.004000000000019099,
+              "cpuMs": 0.037
+            },
+            {
+              "wallMs": 0.003917000000001281,
+              "cpuMs": 0.004
+            },
+            {
+              "wallMs": 0.003916000000003805,
+              "cpuMs": 0.004
+            },
+            {
+              "wallMs": 0.003999999999962256,
+              "cpuMs": 0.005
+            },
+            {
+              "wallMs": 0.005291999999997188,
+              "cpuMs": 0.006
+            },
+            {
+              "wallMs": 0.003917000000001281,
+              "cpuMs": 0.005
+            },
+            {
+              "wallMs": 0.003958000000011452,
+              "cpuMs": 0.004
+            },
+            {
+              "wallMs": 0.0038749999999936335,
+              "cpuMs": 0.004
+            },
+            {
+              "wallMs": 0.004041000000029271,
+              "cpuMs": 0.005
+            }
+          ],
+          [
+            {
+              "wallMs": 0.006750000000010914,
+              "cpuMs": 0.091
+            },
+            {
+              "wallMs": 0.006041999999979453,
+              "cpuMs": 0.008
+            },
+            {
+              "wallMs": 0.0049999999999954525,
+              "cpuMs": 0.005
+            },
+            {
+              "wallMs": 0.005125000000020918,
+              "cpuMs": 0.005
+            },
+            {
+              "wallMs": 0.006332999999983713,
+              "cpuMs": 0.007
+            },
+            {
+              "wallMs": 0.004874999999969987,
+              "cpuMs": 0.005
+            },
+            {
+              "wallMs": 0.004833000000019183,
+              "cpuMs": 0.006
+            },
+            {
+              "wallMs": 0.0050420000000030996,
+              "cpuMs": 0.005
+            },
+            {
+              "wallMs": 0.005125000000020918,
+              "cpuMs": 0.006
+            },
+            {
+              "wallMs": 0.005124999999964075,
+              "cpuMs": 0.005
+            },
+            {
+              "wallMs": 0.004332999999974163,
+              "cpuMs": 0.005
+            },
+            {
+              "wallMs": 0.004250000000013188,
+              "cpuMs": 0.005
+            },
+            {
+              "wallMs": 0.0044170000000463006,
+              "cpuMs": 0.005
+            },
+            {
+              "wallMs": 0.004457999999999629,
+              "cpuMs": 0.005
+            },
+            {
+              "wallMs": 0.004416999999989457,
+              "cpuMs": 0.005
+            },
+            {
+              "wallMs": 0.004457999999999629,
+              "cpuMs": 0.007
+            },
+            {
+              "wallMs": 0.004457999999999629,
+              "cpuMs": 0.006
+            },
+            {
+              "wallMs": 0.004416000000048825,
+              "cpuMs": 0.005
+            },
+            {
+              "wallMs": 0.00541699999996581,
+              "cpuMs": 0.005
+            },
+            {
+              "wallMs": 0.00458400000002257,
+              "cpuMs": 0.006
+            },
+            {
+              "wallMs": 0.004457999999999629,
+              "cpuMs": 0.006
+            },
+            {
+              "wallMs": 0.004625000000032742,
+              "cpuMs": 0.005
+            },
+            {
+              "wallMs": 0.004458999999997104,
+              "cpuMs": 0.005
+            },
+            {
+              "wallMs": 0.00591700000001083,
+              "cpuMs": 0.007
+            },
+            {
+              "wallMs": 0.004625000000032742,
+              "cpuMs": 0.065
+            },
+            {
+              "wallMs": 0.004542000000014923,
+              "cpuMs": 0.011
+            },
+            {
+              "wallMs": 0.004583999999965727,
+              "cpuMs": 0.004
+            },
+            {
+              "wallMs": 0.0054580000000328255,
+              "cpuMs": 0.006
+            },
+            {
+              "wallMs": 0.004708000000050561,
+              "cpuMs": 0.005
+            },
+            {
+              "wallMs": 0.00454199999995808,
+              "cpuMs": 0.005
+            }
+          ]
+        ],
+        "summary": [
+          {
+            "wallMs": {
+              "n": 30,
+              "p50": 0.003999999999962256,
+              "p95": 0.005540999999993801,
+              "min": 0.0037499999999681677,
+              "max": 0.005832999999995536
+            },
+            "cpuMs": {
+              "n": 30,
+              "p50": 0.005,
+              "p95": 0.037,
+              "min": 0.004,
+              "max": 0.083
+            }
+          },
+          {
+            "wallMs": {
+              "n": 30,
+              "p50": 0.004625000000032742,
+              "p95": 0.006332999999983713,
+              "min": 0.004250000000013188,
+              "max": 0.006750000000010914
+            },
+            "cpuMs": {
+              "n": 30,
+              "p50": 0.005,
+              "p95": 0.065,
+              "min": 0.004,
+              "max": 0.091
+            }
+          }
+        ]
+      },
+      "durableTenSetClearCycles": {
+        "raw": [
+          [
+            {
+              "wallMs": 0.6819999999999595,
+              "cpuMs": 0.682
+            },
+            {
+              "wallMs": 0.6474170000000186,
+              "cpuMs": 0.648
+            },
+            {
+              "wallMs": 0.6410419999999704,
+              "cpuMs": 0.641
+            },
+            {
+              "wallMs": 0.6322499999999991,
+              "cpuMs": 0.633
+            },
+            {
+              "wallMs": 0.6269159999999943,
+              "cpuMs": 0.627
+            },
+            {
+              "wallMs": 0.650874999999985,
+              "cpuMs": 0.651
+            },
+            {
+              "wallMs": 1.3989579999999933,
+              "cpuMs": 0.702
+            },
+            {
+              "wallMs": 0.5038749999999936,
+              "cpuMs": 0.506
+            },
+            {
+              "wallMs": 0.5006660000000238,
+              "cpuMs": 0.501
+            },
+            {
+              "wallMs": 0.5511249999999563,
+              "cpuMs": 0.551
+            },
+            {
+              "wallMs": 0.53287499999999,
+              "cpuMs": 0.533
+            },
+            {
+              "wallMs": 0.530749999999955,
+              "cpuMs": 0.531
+            },
+            {
+              "wallMs": 0.5147499999999923,
+              "cpuMs": 0.515
+            },
+            {
+              "wallMs": 0.5170410000000061,
+              "cpuMs": 0.518
+            },
+            {
+              "wallMs": 0.515124999999955,
+              "cpuMs": 0.516
+            },
+            {
+              "wallMs": 0.5142500000000041,
+              "cpuMs": 0.514
+            },
+            {
+              "wallMs": 1.429916999999989,
+              "cpuMs": 1.483
+            },
+            {
+              "wallMs": 0.5029579999999783,
+              "cpuMs": 0.504
+            },
+            {
+              "wallMs": 1.3032080000000406,
+              "cpuMs": 0.66
+            },
+            {
+              "wallMs": 0.5992089999999735,
+              "cpuMs": 1.013
+            },
+            {
+              "wallMs": 0.5043329999999742,
+              "cpuMs": 0.505
+            },
+            {
+              "wallMs": 0.48920799999996234,
+              "cpuMs": 0.489
+            },
+            {
+              "wallMs": 0.49670800000001236,
+              "cpuMs": 0.497
+            },
+            {
+              "wallMs": 0.5028750000000173,
+              "cpuMs": 0.545
+            },
+            {
+              "wallMs": 0.4991669999999999,
+              "cpuMs": 0.5
+            },
+            {
+              "wallMs": 0.49341699999996536,
+              "cpuMs": 0.493
+            },
+            {
+              "wallMs": 0.49883299999999053,
+              "cpuMs": 0.499
+            },
+            {
+              "wallMs": 0.4987920000000372,
+              "cpuMs": 0.5
+            },
+            {
+              "wallMs": 0.5043750000000387,
+              "cpuMs": 0.505
+            },
+            {
+              "wallMs": 0.5015409999999747,
+              "cpuMs": 0.502
+            }
+          ],
+          [
+            {
+              "wallMs": 0.7422919999999635,
+              "cpuMs": 0.742
+            },
+            {
+              "wallMs": 1.2899589999999534,
+              "cpuMs": 1.399
+            },
+            {
+              "wallMs": 0.7115000000000009,
+              "cpuMs": 0.712
+            },
+            {
+              "wallMs": 1.581707999999992,
+              "cpuMs": 0.897
+            },
+            {
+              "wallMs": 0.5462079999999787,
+              "cpuMs": 0.547
+            },
+            {
+              "wallMs": 0.5510419999999954,
+              "cpuMs": 0.552
+            },
+            {
+              "wallMs": 0.6693329999999946,
+              "cpuMs": 1.242
+            },
+            {
+              "wallMs": 0.5521249999999895,
+              "cpuMs": 0.553
+            },
+            {
+              "wallMs": 0.5481669999999781,
+              "cpuMs": 0.549
+            },
+            {
+              "wallMs": 0.5552079999999933,
+              "cpuMs": 0.555
+            },
+            {
+              "wallMs": 0.5671250000000327,
+              "cpuMs": 0.567
+            },
+            {
+              "wallMs": 0.5753750000000082,
+              "cpuMs": 0.576
+            },
+            {
+              "wallMs": 0.5698749999999677,
+              "cpuMs": 0.57
+            },
+            {
+              "wallMs": 1.3814590000000067,
+              "cpuMs": 0.74
+            },
+            {
+              "wallMs": 0.5672500000000014,
+              "cpuMs": 0.567
+            },
+            {
+              "wallMs": 0.5550000000000068,
+              "cpuMs": 0.555
+            },
+            {
+              "wallMs": 0.5449999999999591,
+              "cpuMs": 0.546
+            },
+            {
+              "wallMs": 0.543124999999975,
+              "cpuMs": 0.544
+            },
+            {
+              "wallMs": 0.5950829999999883,
+              "cpuMs": 0.839
+            },
+            {
+              "wallMs": 0.5400000000000205,
+              "cpuMs": 0.541
+            },
+            {
+              "wallMs": 0.54362500000002,
+              "cpuMs": 0.544
+            },
+            {
+              "wallMs": 0.5430410000000165,
+              "cpuMs": 0.544
+            },
+            {
+              "wallMs": 0.5509580000000369,
+              "cpuMs": 0.553
+            },
+            {
+              "wallMs": 1.4109579999999937,
+              "cpuMs": 0.715
+            },
+            {
+              "wallMs": 0.5610000000000355,
+              "cpuMs": 0.562
+            },
+            {
+              "wallMs": 0.5354159999999979,
+              "cpuMs": 0.536
+            },
+            {
+              "wallMs": 0.5503750000000309,
+              "cpuMs": 0.55
+            },
+            {
+              "wallMs": 0.5428329999999733,
+              "cpuMs": 0.544
+            },
+            {
+              "wallMs": 0.5616249999999923,
+              "cpuMs": 0.563
+            },
+            {
+              "wallMs": 0.5437919999999963,
+              "cpuMs": 0.545
+            }
+          ]
+        ],
+        "summary": [
+          {
+            "wallMs": {
+              "n": 30,
+              "p50": 0.5147499999999923,
+              "p95": 1.3989579999999933,
+              "min": 0.48920799999996234,
+              "max": 1.429916999999989
+            },
+            "cpuMs": {
+              "n": 30,
+              "p50": 0.516,
+              "p95": 1.013,
+              "min": 0.489,
+              "max": 1.483
+            }
+          },
+          {
+            "wallMs": {
+              "n": 30,
+              "p50": 0.5550000000000068,
+              "p95": 1.4109579999999937,
+              "min": 0.5354159999999979,
+              "max": 1.581707999999992
+            },
+            "cpuMs": {
+              "n": 30,
+              "p50": 0.555,
+              "p95": 1.242,
+              "min": 0.536,
+              "max": 1.399
+            }
+          }
+        ]
+      },
+      "correctness": {
+        "orderedDueRows": true,
+        "rollbackRestoredAudit": true,
+        "finalStateAndAuditEqual": true
+      }
+    },
+    {
+      "spec": {
+        "name": "history-future",
+        "cleared": 100000,
+        "active": 1000,
+        "due": 0
+      },
+      "install": {
+        "wallMs": 2.8409169999999904,
+        "cpuMs": 2.625
+      },
+      "storage": [
+        {
+          "bytes": 8204288,
+          "plan": [
+            {
+              "id": 3,
+              "parent": 0,
+              "notused": 216,
+              "detail": "SCAN flags"
+            }
+          ]
+        },
+        {
+          "bytes": 8228864,
+          "plan": [
+            {
+              "id": 4,
+              "parent": 0,
+              "notused": 173,
+              "detail": "SEARCH flags USING INDEX flags_due_prototype (resets_at>? AND resets_at<?)"
+            },
+            {
+              "id": 23,
+              "parent": 0,
+              "notused": 0,
+              "detail": "USE TEMP B-TREE FOR ORDER BY"
+            }
+          ]
+        }
+      ],
+      "expiry": {
+        "raw": [
+          [
+            {
+              "wallMs": 1.9822920000000295,
+              "cpuMs": 1.983
+            },
+            {
+              "wallMs": 1.964666999999963,
+              "cpuMs": 1.965
+            },
+            {
+              "wallMs": 1.978666999999973,
+              "cpuMs": 1.98
+            },
+            {
+              "wallMs": 1.9680000000000746,
+              "cpuMs": 1.968
+            },
+            {
+              "wallMs": 1.9623329999999441,
+              "cpuMs": 1.963
+            },
+            {
+              "wallMs": 1.9714999999999918,
+              "cpuMs": 1.972
+            },
+            {
+              "wallMs": 2.001209000000017,
+              "cpuMs": 2.001
+            },
+            {
+              "wallMs": 1.9903339999999616,
+              "cpuMs": 1.992
+            },
+            {
+              "wallMs": 2.0030000000000427,
+              "cpuMs": 2.003
+            },
+            {
+              "wallMs": 1.987374999999929,
+              "cpuMs": 1.988
+            },
+            {
+              "wallMs": 2.027917000000002,
+              "cpuMs": 2.029
+            },
+            {
+              "wallMs": 1.9895419999999149,
+              "cpuMs": 1.989
+            },
+            {
+              "wallMs": 1.9999169999999822,
+              "cpuMs": 1.999
+            },
+            {
+              "wallMs": 2.0567089999999553,
+              "cpuMs": 2.058
+            },
+            {
+              "wallMs": 2.0134579999999005,
+              "cpuMs": 2.014
+            },
+            {
+              "wallMs": 1.9769999999999754,
+              "cpuMs": 1.978
+            },
+            {
+              "wallMs": 1.989500000000021,
+              "cpuMs": 1.99
+            },
+            {
+              "wallMs": 1.9963750000000573,
+              "cpuMs": 1.997
+            },
+            {
+              "wallMs": 1.9930419999999458,
+              "cpuMs": 1.994
+            },
+            {
+              "wallMs": 1.9846659999999474,
+              "cpuMs": 1.985
+            },
+            {
+              "wallMs": 1.9968330000000378,
+              "cpuMs": 1.997
+            },
+            {
+              "wallMs": 2.0135420000000295,
+              "cpuMs": 2.014
+            },
+            {
+              "wallMs": 1.9904169999999795,
+              "cpuMs": 1.991
+            },
+            {
+              "wallMs": 2.002166999999986,
+              "cpuMs": 2.15
+            },
+            {
+              "wallMs": 1.9828750000000355,
+              "cpuMs": 2.014
+            },
+            {
+              "wallMs": 2.0462499999999864,
+              "cpuMs": 2.046
+            },
+            {
+              "wallMs": 2.0329169999999976,
+              "cpuMs": 2.034
+            },
+            {
+              "wallMs": 1.985667000000035,
+              "cpuMs": 1.986
+            },
+            {
+              "wallMs": 1.9946249999999281,
+              "cpuMs": 1.995
+            },
+            {
+              "wallMs": 1.993832999999995,
+              "cpuMs": 1.995
+            }
+          ],
+          [
+            {
+              "wallMs": 0.006292000000030384,
+              "cpuMs": 0.008
+            },
+            {
+              "wallMs": 0.005167000000028565,
+              "cpuMs": 0.005
+            },
+            {
+              "wallMs": 0.005125000000020918,
+              "cpuMs": 0.005
+            },
+            {
+              "wallMs": 0.0049579999999878055,
+              "cpuMs": 0.005
+            },
+            {
+              "wallMs": 0.005125000000020918,
+              "cpuMs": 0.006
+            },
+            {
+              "wallMs": 0.005165999999917403,
+              "cpuMs": 0.006
+            },
+            {
+              "wallMs": 0.005249999999932697,
+              "cpuMs": 0.007
+            },
+            {
+              "wallMs": 0.006499999999959982,
+              "cpuMs": 0.007
+            },
+            {
+              "wallMs": 0.00537500000007185,
+              "cpuMs": 0.005
+            },
+            {
+              "wallMs": 0.004415999999991982,
+              "cpuMs": 0.004
+            },
+            {
+              "wallMs": 0.004667000000040389,
+              "cpuMs": 0.005
+            },
+            {
+              "wallMs": 0.004792000000065855,
+              "cpuMs": 0.006
+            },
+            {
+              "wallMs": 0.004791999999952168,
+              "cpuMs": 0.005
+            },
+            {
+              "wallMs": 0.004333999999971638,
+              "cpuMs": 0.005
+            },
+            {
+              "wallMs": 0.0053339999999479915,
+              "cpuMs": 0.006
+            },
+            {
+              "wallMs": 0.005292000000054031,
+              "cpuMs": 0.007
+            },
+            {
+              "wallMs": 0.005250000000046384,
+              "cpuMs": 0.006
+            },
+            {
+              "wallMs": 0.00508399999989706,
+              "cpuMs": 0.005
+            },
+            {
+              "wallMs": 0.005333000000064203,
+              "cpuMs": 0.006
+            },
+            {
+              "wallMs": 0.005165999999917403,
+              "cpuMs": 0.005
+            },
+            {
+              "wallMs": 0.00670799999988958,
+              "cpuMs": 0.007
+            },
+            {
+              "wallMs": 0.0050420000000030996,
+              "cpuMs": 0.007
+            },
+            {
+              "wallMs": 0.005625000000009095,
+              "cpuMs": 0.017
+            },
+            {
+              "wallMs": 0.006582999999977801,
+              "cpuMs": 0.007
+            },
+            {
+              "wallMs": 0.005708999999910702,
+              "cpuMs": 0.006
+            },
+            {
+              "wallMs": 0.0049999999999954525,
+              "cpuMs": 0.006
+            },
+            {
+              "wallMs": 0.005792000000042208,
+              "cpuMs": 0.007
+            },
+            {
+              "wallMs": 0.004625000000032742,
+              "cpuMs": 0.005
+            },
+            {
+              "wallMs": 0.0048750000000836735,
+              "cpuMs": 0.006
+            },
+            {
+              "wallMs": 0.004749999999944521,
+              "cpuMs": 0.005
+            }
+          ]
+        ],
+        "summary": [
+          {
+            "wallMs": {
+              "n": 30,
+              "p50": 1.9904169999999795,
+              "p95": 2.0462499999999864,
+              "min": 1.9623329999999441,
+              "max": 2.0567089999999553
+            },
+            "cpuMs": {
+              "n": 30,
+              "p50": 1.994,
+              "p95": 2.058,
+              "min": 1.963,
+              "max": 2.15
+            }
+          },
+          {
+            "wallMs": {
+              "n": 30,
+              "p50": 0.005165999999917403,
+              "p95": 0.006582999999977801,
+              "min": 0.004333999999971638,
+              "max": 0.00670799999988958
+            },
+            "cpuMs": {
+              "n": 30,
+              "p50": 0.006,
+              "p95": 0.008,
+              "min": 0.004,
+              "max": 0.017
+            }
+          }
+        ]
+      },
+      "durableTenSetClearCycles": {
+        "raw": [
+          [
+            {
+              "wallMs": 0.6631250000000364,
+              "cpuMs": 0.664
+            },
+            {
+              "wallMs": 0.65462500000001,
+              "cpuMs": 0.655
+            },
+            {
+              "wallMs": 0.6580419999999094,
+              "cpuMs": 0.658
+            },
+            {
+              "wallMs": 0.6699999999999591,
+              "cpuMs": 0.672
+            },
+            {
+              "wallMs": 0.6368750000000318,
+              "cpuMs": 0.637
+            },
+            {
+              "wallMs": 0.6407910000000356,
+              "cpuMs": 0.641
+            },
+            {
+              "wallMs": 1.3707919999999376,
+              "cpuMs": 0.722
+            },
+            {
+              "wallMs": 0.49366700000007313,
+              "cpuMs": 0.494
+            },
+            {
+              "wallMs": 0.4988749999999982,
+              "cpuMs": 0.5
+            },
+            {
+              "wallMs": 0.5047500000000582,
+              "cpuMs": 0.505
+            },
+            {
+              "wallMs": 0.5050839999998971,
+              "cpuMs": 0.506
+            },
+            {
+              "wallMs": 0.5101660000000265,
+              "cpuMs": 0.511
+            },
+            {
+              "wallMs": 0.49787500000002183,
+              "cpuMs": 0.499
+            },
+            {
+              "wallMs": 0.5049579999999878,
+              "cpuMs": 0.505
+            },
+            {
+              "wallMs": 0.4969580000000633,
+              "cpuMs": 0.498
+            },
+            {
+              "wallMs": 0.50324999999998,
+              "cpuMs": 0.504
+            },
+            {
+              "wallMs": 0.5156670000000076,
+              "cpuMs": 0.516
+            },
+            {
+              "wallMs": 0.5187089999999444,
+              "cpuMs": 0.519
+            },
+            {
+              "wallMs": 1.341957999999977,
+              "cpuMs": 0.66
+            },
+            {
+              "wallMs": 0.5003749999999627,
+              "cpuMs": 0.501
+            },
+            {
+              "wallMs": 0.5048329999999623,
+              "cpuMs": 0.505
+            },
+            {
+              "wallMs": 0.5743750000000318,
+              "cpuMs": 0.704
+            },
+            {
+              "wallMs": 0.5098329999999578,
+              "cpuMs": 0.51
+            },
+            {
+              "wallMs": 0.5309590000000526,
+              "cpuMs": 0.531
+            },
+            {
+              "wallMs": 0.5056250000000091,
+              "cpuMs": 0.506
+            },
+            {
+              "wallMs": 0.5179580000000215,
+              "cpuMs": 0.518
+            },
+            {
+              "wallMs": 0.5282079999999496,
+              "cpuMs": 0.529
+            },
+            {
+              "wallMs": 0.5269170000000258,
+              "cpuMs": 0.527
+            },
+            {
+              "wallMs": 0.5170829999999569,
+              "cpuMs": 0.518
+            },
+            {
+              "wallMs": 0.5369590000000244,
+              "cpuMs": 0.537
+            }
+          ],
+          [
+            {
+              "wallMs": 0.7242919999999913,
+              "cpuMs": 0.725
+            },
+            {
+              "wallMs": 0.7284590000000435,
+              "cpuMs": 0.729
+            },
+            {
+              "wallMs": 0.7428330000000187,
+              "cpuMs": 0.743
+            },
+            {
+              "wallMs": 2.480041999999912,
+              "cpuMs": 1.027
+            },
+            {
+              "wallMs": 0.5612499999999727,
+              "cpuMs": 0.562
+            },
+            {
+              "wallMs": 0.5546249999999873,
+              "cpuMs": 0.555
+            },
+            {
+              "wallMs": 0.5770839999998998,
+              "cpuMs": 0.578
+            },
+            {
+              "wallMs": 0.5514160000000174,
+              "cpuMs": 0.552
+            },
+            {
+              "wallMs": 0.5591670000000022,
+              "cpuMs": 0.56
+            },
+            {
+              "wallMs": 0.5489160000000766,
+              "cpuMs": 0.549
+            },
+            {
+              "wallMs": 1.5571249999999281,
+              "cpuMs": 1.599
+            },
+            {
+              "wallMs": 0.5554580000000442,
+              "cpuMs": 0.557
+            },
+            {
+              "wallMs": 0.548082999999906,
+              "cpuMs": 0.549
+            },
+            {
+              "wallMs": 1.3721249999999827,
+              "cpuMs": 0.753
+            },
+            {
+              "wallMs": 0.5365410000000566,
+              "cpuMs": 0.537
+            },
+            {
+              "wallMs": 0.5483329999999569,
+              "cpuMs": 0.549
+            },
+            {
+              "wallMs": 0.5492080000000215,
+              "cpuMs": 0.549
+            },
+            {
+              "wallMs": 0.5421249999999418,
+              "cpuMs": 0.543
+            },
+            {
+              "wallMs": 0.544208000000026,
+              "cpuMs": 0.545
+            },
+            {
+              "wallMs": 0.5494590000000699,
+              "cpuMs": 0.55
+            },
+            {
+              "wallMs": 0.5672080000000506,
+              "cpuMs": 0.568
+            },
+            {
+              "wallMs": 0.5750829999999496,
+              "cpuMs": 0.586
+            },
+            {
+              "wallMs": 0.5974999999999682,
+              "cpuMs": 0.599
+            },
+            {
+              "wallMs": 1.4087919999999485,
+              "cpuMs": 0.767
+            },
+            {
+              "wallMs": 0.5597500000000082,
+              "cpuMs": 0.56
+            },
+            {
+              "wallMs": 0.5678750000000719,
+              "cpuMs": 0.569
+            },
+            {
+              "wallMs": 0.5661660000000666,
+              "cpuMs": 0.567
+            },
+            {
+              "wallMs": 0.5656250000000682,
+              "cpuMs": 0.565
+            },
+            {
+              "wallMs": 0.5696669999999813,
+              "cpuMs": 0.571
+            },
+            {
+              "wallMs": 0.5892910000000029,
+              "cpuMs": 0.59
+            }
+          ]
+        ],
+        "summary": [
+          {
+            "wallMs": {
+              "n": 30,
+              "p50": 0.5170829999999569,
+              "p95": 1.341957999999977,
+              "min": 0.49366700000007313,
+              "max": 1.3707919999999376
+            },
+            "cpuMs": {
+              "n": 30,
+              "p50": 0.518,
+              "p95": 0.704,
+              "min": 0.494,
+              "max": 0.722
+            }
+          },
+          {
+            "wallMs": {
+              "n": 30,
+              "p50": 0.5656250000000682,
+              "p95": 1.5571249999999281,
+              "min": 0.5365410000000566,
+              "max": 2.480041999999912
+            },
+            "cpuMs": {
+              "n": 30,
+              "p50": 0.565,
+              "p95": 1.027,
+              "min": 0.537,
+              "max": 1.599
+            }
+          }
+        ]
+      },
+      "correctness": {
+        "orderedDueRows": true,
+        "rollbackRestoredAudit": true,
+        "finalStateAndAuditEqual": true
+      }
+    },
+    {
+      "spec": {
+        "name": "active-future",
+        "cleared": 0,
+        "active": 20000,
+        "due": 0
+      },
+      "install": {
+        "wallMs": 2.8480829999998605,
+        "cpuMs": 2.568
+      },
+      "storage": [
+        {
+          "bytes": 30638080,
+          "plan": [
+            {
+              "id": 3,
+              "parent": 0,
+              "notused": 216,
+              "detail": "SCAN flags"
+            }
+          ]
+        },
+        {
+          "bytes": 30982144,
+          "plan": [
+            {
+              "id": 4,
+              "parent": 0,
+              "notused": 173,
+              "detail": "SEARCH flags USING INDEX flags_due_prototype (resets_at>? AND resets_at<?)"
+            },
+            {
+              "id": 23,
+              "parent": 0,
+              "notused": 0,
+              "detail": "USE TEMP B-TREE FOR ORDER BY"
+            }
+          ]
+        }
+      ],
+      "expiry": {
+        "raw": [
+          [
+            {
+              "wallMs": 0.4732920000001286,
+              "cpuMs": 0.474
+            },
+            {
+              "wallMs": 0.4948330000001988,
+              "cpuMs": 0.495
+            },
+            {
+              "wallMs": 0.4684580000002825,
+              "cpuMs": 0.469
+            },
+            {
+              "wallMs": 0.5005420000002232,
+              "cpuMs": 0.502
+            },
+            {
+              "wallMs": 0.48070899999993344,
+              "cpuMs": 0.481
+            },
+            {
+              "wallMs": 0.4930840000001808,
+              "cpuMs": 0.493
+            },
+            {
+              "wallMs": 0.47850000000016735,
+              "cpuMs": 0.479
+            },
+            {
+              "wallMs": 0.49575000000004366,
+              "cpuMs": 0.496
+            },
+            {
+              "wallMs": 0.486250000000382,
+              "cpuMs": 0.487
+            },
+            {
+              "wallMs": 0.4957079999999223,
+              "cpuMs": 0.496
+            },
+            {
+              "wallMs": 0.4923749999998108,
+              "cpuMs": 0.493
+            },
+            {
+              "wallMs": 0.48674999999957436,
+              "cpuMs": 0.487
+            },
+            {
+              "wallMs": 0.4997920000000704,
+              "cpuMs": 0.501
+            },
+            {
+              "wallMs": 0.49599999999963984,
+              "cpuMs": 0.496
+            },
+            {
+              "wallMs": 0.5042909999997391,
+              "cpuMs": 0.505
+            },
+            {
+              "wallMs": 0.4880840000000717,
+              "cpuMs": 0.488
+            },
+            {
+              "wallMs": 0.49079100000017206,
+              "cpuMs": 0.491
+            },
+            {
+              "wallMs": 0.5042499999999563,
+              "cpuMs": 0.505
+            },
+            {
+              "wallMs": 0.48704200000020137,
+              "cpuMs": 0.487
+            },
+            {
+              "wallMs": 0.49933299999975134,
+              "cpuMs": 0.5
+            },
+            {
+              "wallMs": 0.5044579999998859,
+              "cpuMs": 0.504
+            },
+            {
+              "wallMs": 0.5023750000000291,
+              "cpuMs": 0.503
+            },
+            {
+              "wallMs": 0.5057499999998072,
+              "cpuMs": 0.506
+            },
+            {
+              "wallMs": 0.48737500000015643,
+              "cpuMs": 0.488
+            },
+            {
+              "wallMs": 0.503624999999829,
+              "cpuMs": 0.504
+            },
+            {
+              "wallMs": 0.5012499999997999,
+              "cpuMs": 0.502
+            },
+            {
+              "wallMs": 0.5067920000001322,
+              "cpuMs": 0.507
+            },
+            {
+              "wallMs": 0.48945800000001327,
+              "cpuMs": 0.49
+            },
+            {
+              "wallMs": 0.4879169999999249,
+              "cpuMs": 0.488
+            },
+            {
+              "wallMs": 0.49774999999999636,
+              "cpuMs": 0.498
+            }
+          ],
+          [
+            {
+              "wallMs": 0.00508399999989706,
+              "cpuMs": 0.005
+            },
+            {
+              "wallMs": 0.0049579999999878055,
+              "cpuMs": 0.005
+            },
+            {
+              "wallMs": 0.005458000000089669,
+              "cpuMs": 0.007
+            },
+            {
+              "wallMs": 0.0046249999995779945,
+              "cpuMs": 0.005
+            },
+            {
+              "wallMs": 0.005041999999775726,
+              "cpuMs": 0.005
+            },
+            {
+              "wallMs": 0.004708999999820662,
+              "cpuMs": 0.005
+            },
+            {
+              "wallMs": 0.00454200000012861,
+              "cpuMs": 0.004
+            },
+            {
+              "wallMs": 0.00537499999973079,
+              "cpuMs": 0.005
+            },
+            {
+              "wallMs": 0.005250000000160071,
+              "cpuMs": 0.006
+            },
+            {
+              "wallMs": 0.004915999999866472,
+              "cpuMs": 0.005
+            },
+            {
+              "wallMs": 0.005375000000185537,
+              "cpuMs": 0.006
+            },
+            {
+              "wallMs": 0.005000000000109139,
+              "cpuMs": 0.006
+            },
+            {
+              "wallMs": 0.0050409999998919375,
+              "cpuMs": 0.005
+            },
+            {
+              "wallMs": 0.004999999999654392,
+              "cpuMs": 0.006
+            },
+            {
+              "wallMs": 0.005124999999679858,
+              "cpuMs": 0.006
+            },
+            {
+              "wallMs": 0.005041999999775726,
+              "cpuMs": 0.005
+            },
+            {
+              "wallMs": 0.005250000000160071,
+              "cpuMs": 0.007
+            },
+            {
+              "wallMs": 0.00491699999975026,
+              "cpuMs": 0.005
+            },
+            {
+              "wallMs": 0.005333000000064203,
+              "cpuMs": 0.005
+            },
+            {
+              "wallMs": 0.004790999999841006,
+              "cpuMs": 0.005
+            },
+            {
+              "wallMs": 0.006374999999934516,
+              "cpuMs": 0.007
+            },
+            {
+              "wallMs": 0.004959000000326341,
+              "cpuMs": 0.005
+            },
+            {
+              "wallMs": 0.0054169999998521234,
+              "cpuMs": 0.006
+            },
+            {
+              "wallMs": 0.005083000000013271,
+              "cpuMs": 0.006
+            },
+            {
+              "wallMs": 0.005249999999705324,
+              "cpuMs": 0.007
+            },
+            {
+              "wallMs": 0.004999999999654392,
+              "cpuMs": 0.006
+            },
+            {
+              "wallMs": 0.005500000000211003,
+              "cpuMs": 0.007
+            },
+            {
+              "wallMs": 0.004666000000270287,
+              "cpuMs": 0.005
+            },
+            {
+              "wallMs": 0.004958999999871594,
+              "cpuMs": 0.006
+            },
+            {
+              "wallMs": 0.004707999999936874,
+              "cpuMs": 0.005
+            }
+          ]
+        ],
+        "summary": [
+          {
+            "wallMs": {
+              "n": 30,
+              "p50": 0.4948330000001988,
+              "p95": 0.5057499999998072,
+              "min": 0.4684580000002825,
+              "max": 0.5067920000001322
+            },
+            "cpuMs": {
+              "n": 30,
+              "p50": 0.495,
+              "p95": 0.506,
+              "min": 0.469,
+              "max": 0.507
+            }
+          },
+          {
+            "wallMs": {
+              "n": 30,
+              "p50": 0.0050409999998919375,
+              "p95": 0.005500000000211003,
+              "min": 0.00454200000012861,
+              "max": 0.006374999999934516
+            },
+            "cpuMs": {
+              "n": 30,
+              "p50": 0.005,
+              "p95": 0.007,
+              "min": 0.004,
+              "max": 0.007
+            }
+          }
+        ]
+      },
+      "durableTenSetClearCycles": {
+        "raw": [
+          [
+            {
+              "wallMs": 0.6796249999997599,
+              "cpuMs": 0.681
+            },
+            {
+              "wallMs": 0.6617080000000897,
+              "cpuMs": 0.662
+            },
+            {
+              "wallMs": 0.6807499999999891,
+              "cpuMs": 0.681
+            },
+            {
+              "wallMs": 0.6647080000002461,
+              "cpuMs": 0.666
+            },
+            {
+              "wallMs": 0.65433400000029,
+              "cpuMs": 0.655
+            },
+            {
+              "wallMs": 0.6715830000002825,
+              "cpuMs": 0.672
+            },
+            {
+              "wallMs": 1.3888340000003154,
+              "cpuMs": 0.738
+            },
+            {
+              "wallMs": 0.5270829999999478,
+              "cpuMs": 0.528
+            },
+            {
+              "wallMs": 0.5284580000002279,
+              "cpuMs": 0.529
+            },
+            {
+              "wallMs": 0.5248750000000655,
+              "cpuMs": 0.525
+            },
+            {
+              "wallMs": 0.4994579999997768,
+              "cpuMs": 0.5
+            },
+            {
+              "wallMs": 0.5158750000000509,
+              "cpuMs": 0.517
+            },
+            {
+              "wallMs": 0.5049169999997503,
+              "cpuMs": 0.505
+            },
+            {
+              "wallMs": 0.5087919999996302,
+              "cpuMs": 0.51
+            },
+            {
+              "wallMs": 0.5001670000001468,
+              "cpuMs": 0.5
+            },
+            {
+              "wallMs": 0.5034590000000208,
+              "cpuMs": 0.503
+            },
+            {
+              "wallMs": 0.5112079999998969,
+              "cpuMs": 0.511
+            },
+            {
+              "wallMs": 0.5105419999999867,
+              "cpuMs": 0.512
+            },
+            {
+              "wallMs": 1.3070419999999103,
+              "cpuMs": 0.652
+            },
+            {
+              "wallMs": 0.5182079999999587,
+              "cpuMs": 0.519
+            },
+            {
+              "wallMs": 0.5090000000000146,
+              "cpuMs": 0.509
+            },
+            {
+              "wallMs": 0.5160829999999805,
+              "cpuMs": 0.518
+            },
+            {
+              "wallMs": 0.5087499999999636,
+              "cpuMs": 0.509
+            },
+            {
+              "wallMs": 0.5157079999999041,
+              "cpuMs": 0.516
+            },
+            {
+              "wallMs": 0.5406670000002123,
+              "cpuMs": 0.541
+            },
+            {
+              "wallMs": 0.5208339999999225,
+              "cpuMs": 0.521
+            },
+            {
+              "wallMs": 0.5107920000000377,
+              "cpuMs": 0.511
+            },
+            {
+              "wallMs": 0.5230000000001382,
+              "cpuMs": 0.524
+            },
+            {
+              "wallMs": 0.5349580000001879,
+              "cpuMs": 0.536
+            },
+            {
+              "wallMs": 0.5450420000001941,
+              "cpuMs": 0.546
+            }
+          ],
+          [
+            {
+              "wallMs": 0.7350000000001273,
+              "cpuMs": 0.735
+            },
+            {
+              "wallMs": 0.7676249999999527,
+              "cpuMs": 0.768
+            },
+            {
+              "wallMs": 0.7562090000001263,
+              "cpuMs": 0.757
+            },
+            {
+              "wallMs": 1.6292920000000777,
+              "cpuMs": 0.943
+            },
+            {
+              "wallMs": 0.5779159999997319,
+              "cpuMs": 0.579
+            },
+            {
+              "wallMs": 0.5672499999996035,
+              "cpuMs": 0.569
+            },
+            {
+              "wallMs": 0.5563750000001164,
+              "cpuMs": 0.557
+            },
+            {
+              "wallMs": 0.5546250000002146,
+              "cpuMs": 0.556
+            },
+            {
+              "wallMs": 0.5644999999999527,
+              "cpuMs": 0.565
+            },
+            {
+              "wallMs": 0.5594170000003942,
+              "cpuMs": 0.56
+            },
+            {
+              "wallMs": 0.5559590000002572,
+              "cpuMs": 0.556
+            },
+            {
+              "wallMs": 0.5614160000000084,
+              "cpuMs": 0.561
+            },
+            {
+              "wallMs": 0.5602090000002136,
+              "cpuMs": 0.561
+            },
+            {
+              "wallMs": 1.3755000000001019,
+              "cpuMs": 0.733
+            },
+            {
+              "wallMs": 0.5454999999997199,
+              "cpuMs": 0.546
+            },
+            {
+              "wallMs": 0.5474590000003445,
+              "cpuMs": 0.548
+            },
+            {
+              "wallMs": 0.5567500000001928,
+              "cpuMs": 0.558
+            },
+            {
+              "wallMs": 0.5602499999999964,
+              "cpuMs": 0.56
+            },
+            {
+              "wallMs": 0.5723749999997381,
+              "cpuMs": 0.573
+            },
+            {
+              "wallMs": 0.5949590000000171,
+              "cpuMs": 0.681
+            },
+            {
+              "wallMs": 0.5608330000000024,
+              "cpuMs": 0.561
+            },
+            {
+              "wallMs": 0.5622089999997115,
+              "cpuMs": 0.563
+            },
+            {
+              "wallMs": 0.5669170000001031,
+              "cpuMs": 0.567
+            },
+            {
+              "wallMs": 1.363832999999886,
+              "cpuMs": 0.721
+            },
+            {
+              "wallMs": 0.5857079999996131,
+              "cpuMs": 0.587
+            },
+            {
+              "wallMs": 0.5698340000003554,
+              "cpuMs": 0.57
+            },
+            {
+              "wallMs": 0.578125,
+              "cpuMs": 0.578
+            },
+            {
+              "wallMs": 0.5748750000002474,
+              "cpuMs": 0.576
+            },
+            {
+              "wallMs": 0.5693750000000364,
+              "cpuMs": 0.57
+            },
+            {
+              "wallMs": 0.5886249999998654,
+              "cpuMs": 0.589
+            }
+          ]
+        ],
+        "summary": [
+          {
+            "wallMs": {
+              "n": 30,
+              "p50": 0.5208339999999225,
+              "p95": 1.3070419999999103,
+              "min": 0.4994579999997768,
+              "max": 1.3888340000003154
+            },
+            "cpuMs": {
+              "n": 30,
+              "p50": 0.521,
+              "p95": 0.681,
+              "min": 0.5,
+              "max": 0.738
+            }
+          },
+          {
+            "wallMs": {
+              "n": 30,
+              "p50": 0.5672499999996035,
+              "p95": 1.3755000000001019,
+              "min": 0.5454999999997199,
+              "max": 1.6292920000000777
+            },
+            "cpuMs": {
+              "n": 30,
+              "p50": 0.569,
+              "p95": 0.768,
+              "min": 0.546,
+              "max": 0.943
+            }
+          }
+        ]
+      },
+      "correctness": {
+        "orderedDueRows": true,
+        "rollbackRestoredAudit": true,
+        "finalStateAndAuditEqual": true
+      }
+    },
+    {
+      "spec": {
+        "name": "history-due",
+        "cleared": 100000,
+        "active": 1000,
+        "due": 1000
+      },
+      "install": {
+        "wallMs": 2.7613750000000437,
+        "cpuMs": 2.577
+      },
+      "storage": [
+        {
+          "bytes": 8200192,
+          "plan": [
+            {
+              "id": 3,
+              "parent": 0,
+              "notused": 216,
+              "detail": "SCAN flags"
+            }
+          ]
+        },
+        {
+          "bytes": 8224768,
+          "plan": [
+            {
+              "id": 4,
+              "parent": 0,
+              "notused": 173,
+              "detail": "SEARCH flags USING INDEX flags_due_prototype (resets_at>? AND resets_at<?)"
+            },
+            {
+              "id": 23,
+              "parent": 0,
+              "notused": 0,
+              "detail": "USE TEMP B-TREE FOR ORDER BY"
+            }
+          ]
+        }
+      ],
+      "expiry": {
+        "raw": [
+          [
+            {
+              "wallMs": 13.02166699999998,
+              "cpuMs": 13.293
+            },
+            {
+              "wallMs": 12.805790999999772,
+              "cpuMs": 12.789
+            },
+            {
+              "wallMs": 12.73520899999994,
+              "cpuMs": 12.735
+            },
+            {
+              "wallMs": 12.885458000000199,
+              "cpuMs": 12.886
+            },
+            {
+              "wallMs": 12.810833000000002,
+              "cpuMs": 12.812
+            },
+            {
+              "wallMs": 12.968499999999949,
+              "cpuMs": 12.969
+            },
+            {
+              "wallMs": 13.859750000000076,
+              "cpuMs": 13.861
+            },
+            {
+              "wallMs": 12.824666999999863,
+              "cpuMs": 12.825
+            },
+            {
+              "wallMs": 12.844499999999698,
+              "cpuMs": 12.846
+            },
+            {
+              "wallMs": 12.242334000000028,
+              "cpuMs": 12.242
+            },
+            {
+              "wallMs": 12.32400000000007,
+              "cpuMs": 12.324
+            },
+            {
+              "wallMs": 12.298249999999825,
+              "cpuMs": 12.298
+            },
+            {
+              "wallMs": 12.359249999999975,
+              "cpuMs": 12.36
+            },
+            {
+              "wallMs": 12.356291000000056,
+              "cpuMs": 13.83
+            },
+            {
+              "wallMs": 12.470667000000503,
+              "cpuMs": 12.471
+            },
+            {
+              "wallMs": 12.475333000000319,
+              "cpuMs": 12.475
+            },
+            {
+              "wallMs": 12.519709000000148,
+              "cpuMs": 12.52
+            },
+            {
+              "wallMs": 12.879667000000154,
+              "cpuMs": 12.881
+            },
+            {
+              "wallMs": 12.826708999999937,
+              "cpuMs": 12.827
+            },
+            {
+              "wallMs": 12.884584000000359,
+              "cpuMs": 12.886
+            },
+            {
+              "wallMs": 12.85504200000014,
+              "cpuMs": 12.856
+            },
+            {
+              "wallMs": 12.438749999999345,
+              "cpuMs": 12.44
+            },
+            {
+              "wallMs": 12.506792000000132,
+              "cpuMs": 12.508
+            },
+            {
+              "wallMs": 12.67962499999976,
+              "cpuMs": 12.681
+            },
+            {
+              "wallMs": 12.60308299999997,
+              "cpuMs": 12.604
+            },
+            {
+              "wallMs": 12.599333000000115,
+              "cpuMs": 12.599
+            },
+            {
+              "wallMs": 12.578207999999904,
+              "cpuMs": 12.579
+            },
+            {
+              "wallMs": 12.630208000000493,
+              "cpuMs": 12.632
+            },
+            {
+              "wallMs": 12.61633299999994,
+              "cpuMs": 12.616
+            },
+            {
+              "wallMs": 12.095833000000312,
+              "cpuMs": 12.096
+            }
+          ],
+          [
+            {
+              "wallMs": 11.796749999999975,
+              "cpuMs": 11.798
+            },
+            {
+              "wallMs": 11.075790999999754,
+              "cpuMs": 11.355
+            },
+            {
+              "wallMs": 11.321374999999989,
+              "cpuMs": 11.322
+            },
+            {
+              "wallMs": 11.393958999999995,
+              "cpuMs": 11.395
+            },
+            {
+              "wallMs": 11.095166999999947,
+              "cpuMs": 11.084
+            },
+            {
+              "wallMs": 10.877500000000055,
+              "cpuMs": 10.879
+            },
+            {
+              "wallMs": 12.368708999999853,
+              "cpuMs": 12.37
+            },
+            {
+              "wallMs": 11.157958999999664,
+              "cpuMs": 11.159
+            },
+            {
+              "wallMs": 50.847334000000046,
+              "cpuMs": 52.956
+            },
+            {
+              "wallMs": 10.493082999999842,
+              "cpuMs": 10.493
+            },
+            {
+              "wallMs": 10.633958999999777,
+              "cpuMs": 10.635
+            },
+            {
+              "wallMs": 10.643917000000329,
+              "cpuMs": 10.644
+            },
+            {
+              "wallMs": 10.809582999999748,
+              "cpuMs": 10.81
+            },
+            {
+              "wallMs": 10.75,
+              "cpuMs": 10.864
+            },
+            {
+              "wallMs": 10.771874999999454,
+              "cpuMs": 10.772
+            },
+            {
+              "wallMs": 10.813624999999774,
+              "cpuMs": 10.814
+            },
+            {
+              "wallMs": 10.99725000000035,
+              "cpuMs": 10.998
+            },
+            {
+              "wallMs": 11.016916999999921,
+              "cpuMs": 11.018
+            },
+            {
+              "wallMs": 11.090042000000722,
+              "cpuMs": 11.091
+            },
+            {
+              "wallMs": 11.125291999999718,
+              "cpuMs": 11.126
+            },
+            {
+              "wallMs": 11.11658400000033,
+              "cpuMs": 11.117
+            },
+            {
+              "wallMs": 10.59441599999991,
+              "cpuMs": 10.582
+            },
+            {
+              "wallMs": 11.035750000000007,
+              "cpuMs": 11.036
+            },
+            {
+              "wallMs": 11.009208000000399,
+              "cpuMs": 11.01
+            },
+            {
+              "wallMs": 11.110999999999876,
+              "cpuMs": 11.111
+            },
+            {
+              "wallMs": 11.016333000000486,
+              "cpuMs": 11.017
+            },
+            {
+              "wallMs": 11.030666999999994,
+              "cpuMs": 11.031
+            },
+            {
+              "wallMs": 10.993083000000297,
+              "cpuMs": 10.993
+            },
+            {
+              "wallMs": 11.070624999999382,
+              "cpuMs": 11.071
+            },
+            {
+              "wallMs": 66.03562500000044,
+              "cpuMs": 69.958
+            }
+          ]
+        ],
+        "summary": [
+          {
+            "wallMs": {
+              "n": 30,
+              "p50": 12.61633299999994,
+              "p95": 13.02166699999998,
+              "min": 12.095833000000312,
+              "max": 13.859750000000076
+            },
+            "cpuMs": {
+              "n": 30,
+              "p50": 12.632,
+              "p95": 13.83,
+              "min": 12.096,
+              "max": 13.861
+            }
+          },
+          {
+            "wallMs": {
+              "n": 30,
+              "p50": 11.030666999999994,
+              "p95": 50.847334000000046,
+              "min": 10.493082999999842,
+              "max": 66.03562500000044
+            },
+            "cpuMs": {
+              "n": 30,
+              "p50": 11.031,
+              "p95": 52.956,
+              "min": 10.493,
+              "max": 69.958
+            }
+          }
+        ]
+      },
+      "durableTenSetClearCycles": {
+        "raw": [
+          [
+            {
+              "wallMs": 0.6586669999996957,
+              "cpuMs": 0.66
+            },
+            {
+              "wallMs": 0.6662919999998849,
+              "cpuMs": 0.666
+            },
+            {
+              "wallMs": 0.6699589999998352,
+              "cpuMs": 0.67
+            },
+            {
+              "wallMs": 0.6696660000006887,
+              "cpuMs": 0.67
+            },
+            {
+              "wallMs": 0.6534580000006827,
+              "cpuMs": 0.653
+            },
+            {
+              "wallMs": 0.6850830000003043,
+              "cpuMs": 0.685
+            },
+            {
+              "wallMs": 1.4412909999991825,
+              "cpuMs": 0.801
+            },
+            {
+              "wallMs": 0.5207909999999174,
+              "cpuMs": 0.52
+            },
+            {
+              "wallMs": 0.5023330000003625,
+              "cpuMs": 0.503
+            },
+            {
+              "wallMs": 0.5084580000002461,
+              "cpuMs": 0.508
+            },
+            {
+              "wallMs": 0.513875000000553,
+              "cpuMs": 0.514
+            },
+            {
+              "wallMs": 0.5057499999993524,
+              "cpuMs": 0.506
+            },
+            {
+              "wallMs": 0.504917000000205,
+              "cpuMs": 0.507
+            },
+            {
+              "wallMs": 0.510707999999795,
+              "cpuMs": 0.511
+            },
+            {
+              "wallMs": 0.5011670000003505,
+              "cpuMs": 0.501
+            },
+            {
+              "wallMs": 0.504624999999578,
+              "cpuMs": 0.505
+            },
+            {
+              "wallMs": 0.5137500000000728,
+              "cpuMs": 0.514
+            },
+            {
+              "wallMs": 0.5115409999998519,
+              "cpuMs": 0.512
+            },
+            {
+              "wallMs": 1.2895420000004378,
+              "cpuMs": 0.643
+            },
+            {
+              "wallMs": 0.5004579999995258,
+              "cpuMs": 0.5
+            },
+            {
+              "wallMs": 0.5025420000001759,
+              "cpuMs": 0.504
+            },
+            {
+              "wallMs": 0.5137500000000728,
+              "cpuMs": 0.514
+            },
+            {
+              "wallMs": 0.4974579999998241,
+              "cpuMs": 0.497
+            },
+            {
+              "wallMs": 0.518207999999504,
+              "cpuMs": 0.518
+            },
+            {
+              "wallMs": 0.5232500000001892,
+              "cpuMs": 0.524
+            },
+            {
+              "wallMs": 0.519083999999566,
+              "cpuMs": 0.519
+            },
+            {
+              "wallMs": 0.5207499999996799,
+              "cpuMs": 0.521
+            },
+            {
+              "wallMs": 0.5174999999999272,
+              "cpuMs": 0.518
+            },
+            {
+              "wallMs": 0.5213749999993524,
+              "cpuMs": 0.522
+            },
+            {
+              "wallMs": 0.527791999999863,
+              "cpuMs": 0.527
+            }
+          ],
+          [
+            {
+              "wallMs": 0.7704169999997248,
+              "cpuMs": 0.772
+            },
+            {
+              "wallMs": 0.7752920000002632,
+              "cpuMs": 0.776
+            },
+            {
+              "wallMs": 0.765625,
+              "cpuMs": 0.766
+            },
+            {
+              "wallMs": 2.1798330000001442,
+              "cpuMs": 1.128
+            },
+            {
+              "wallMs": 0.6218749999998181,
+              "cpuMs": 0.622
+            },
+            {
+              "wallMs": 0.5997500000003129,
+              "cpuMs": 0.6
+            },
+            {
+              "wallMs": 0.5924590000004173,
+              "cpuMs": 0.594
+            },
+            {
+              "wallMs": 0.5755829999998241,
+              "cpuMs": 0.576
+            },
+            {
+              "wallMs": 0.5792920000003505,
+              "cpuMs": 0.579
+            },
+            {
+              "wallMs": 0.5885829999997441,
+              "cpuMs": 0.589
+            },
+            {
+              "wallMs": 0.6056250000001455,
+              "cpuMs": 0.605
+            },
+            {
+              "wallMs": 0.5782080000008136,
+              "cpuMs": 0.58
+            },
+            {
+              "wallMs": 0.5767910000004122,
+              "cpuMs": 0.578
+            },
+            {
+              "wallMs": 1.399333999999726,
+              "cpuMs": 0.789
+            },
+            {
+              "wallMs": 0.5529579999993075,
+              "cpuMs": 0.554
+            },
+            {
+              "wallMs": 0.5522500000006403,
+              "cpuMs": 0.552
+            },
+            {
+              "wallMs": 0.5661250000002838,
+              "cpuMs": 0.568
+            },
+            {
+              "wallMs": 0.5608749999992142,
+              "cpuMs": 0.562
+            },
+            {
+              "wallMs": 0.5532499999999345,
+              "cpuMs": 0.554
+            },
+            {
+              "wallMs": 0.5545000000001892,
+              "cpuMs": 0.555
+            },
+            {
+              "wallMs": 0.5623329999998532,
+              "cpuMs": 0.563
+            },
+            {
+              "wallMs": 0.5644579999998314,
+              "cpuMs": 0.564
+            },
+            {
+              "wallMs": 0.5606659999994008,
+              "cpuMs": 0.562
+            },
+            {
+              "wallMs": 1.3722090000001117,
+              "cpuMs": 0.729
+            },
+            {
+              "wallMs": 0.5632089999999152,
+              "cpuMs": 0.563
+            },
+            {
+              "wallMs": 0.5740000000005239,
+              "cpuMs": 0.575
+            },
+            {
+              "wallMs": 0.5761249999995925,
+              "cpuMs": 0.576
+            },
+            {
+              "wallMs": 0.6087499999994179,
+              "cpuMs": 0.609
+            },
+            {
+              "wallMs": 0.5753749999994398,
+              "cpuMs": 0.576
+            },
+            {
+              "wallMs": 0.6039170000003651,
+              "cpuMs": 0.605
+            }
+          ]
+        ],
+        "summary": [
+          {
+            "wallMs": {
+              "n": 30,
+              "p50": 0.5174999999999272,
+              "p95": 1.2895420000004378,
+              "min": 0.4974579999998241,
+              "max": 1.4412909999991825
+            },
+            "cpuMs": {
+              "n": 30,
+              "p50": 0.518,
+              "p95": 0.685,
+              "min": 0.497,
+              "max": 0.801
+            }
+          },
+          {
+            "wallMs": {
+              "n": 30,
+              "p50": 0.5767910000004122,
+              "p95": 1.399333999999726,
+              "min": 0.5522500000006403,
+              "max": 2.1798330000001442
+            },
+            "cpuMs": {
+              "n": 30,
+              "p50": 0.578,
+              "p95": 0.789,
+              "min": 0.552,
+              "max": 1.128
+            }
+          }
+        ]
+      },
+      "correctness": {
+        "orderedDueRows": true,
+        "rollbackRestoredAudit": true,
+        "finalStateAndAuditEqual": true
+      }
+    },
+    {
+      "spec": {
+        "name": "all-due",
+        "cleared": 0,
+        "active": 1000,
+        "due": 1000
+      },
+      "install": {
+        "wallMs": 0.45870900000045367,
+        "cpuMs": 0.441
+      },
+      "storage": [
+        {
+          "bytes": 1798144,
+          "plan": [
+            {
+              "id": 3,
+              "parent": 0,
+              "notused": 216,
+              "detail": "SCAN flags"
+            }
+          ]
+        },
+        {
+          "bytes": 1822720,
+          "plan": [
+            {
+              "id": 4,
+              "parent": 0,
+              "notused": 173,
+              "detail": "SEARCH flags USING INDEX flags_due_prototype (resets_at>? AND resets_at<?)"
+            },
+            {
+              "id": 23,
+              "parent": 0,
+              "notused": 0,
+              "detail": "USE TEMP B-TREE FOR ORDER BY"
+            }
+          ]
+        }
+      ],
+      "expiry": {
+        "raw": [
+          [
+            {
+              "wallMs": 10.540583000000879,
+              "cpuMs": 10.542
+            },
+            {
+              "wallMs": 10.4965830000001,
+              "cpuMs": 10.497
+            },
+            {
+              "wallMs": 10.477167000000009,
+              "cpuMs": 10.479
+            },
+            {
+              "wallMs": 10.590750000000298,
+              "cpuMs": 10.591
+            },
+            {
+              "wallMs": 10.515250000000378,
+              "cpuMs": 10.515
+            },
+            {
+              "wallMs": 10.604041999999936,
+              "cpuMs": 10.604
+            },
+            {
+              "wallMs": 11.21862499999952,
+              "cpuMs": 11.22
+            },
+            {
+              "wallMs": 10.516708000000108,
+              "cpuMs": 10.516
+            },
+            {
+              "wallMs": 10.631499999999505,
+              "cpuMs": 10.632
+            },
+            {
+              "wallMs": 10.642083000000639,
+              "cpuMs": 10.646
+            },
+            {
+              "wallMs": 10.671166999999514,
+              "cpuMs": 10.671
+            },
+            {
+              "wallMs": 10.653583000000253,
+              "cpuMs": 10.654
+            },
+            {
+              "wallMs": 10.589916999999332,
+              "cpuMs": 10.59
+            },
+            {
+              "wallMs": 64.17937499999971,
+              "cpuMs": 66.68
+            },
+            {
+              "wallMs": 9.572291999999834,
+              "cpuMs": 9.573
+            },
+            {
+              "wallMs": 9.734750000000531,
+              "cpuMs": 9.736
+            },
+            {
+              "wallMs": 9.689832999999453,
+              "cpuMs": 9.691
+            },
+            {
+              "wallMs": 9.781958999999915,
+              "cpuMs": 9.786
+            },
+            {
+              "wallMs": 9.863333000000239,
+              "cpuMs": 9.864
+            },
+            {
+              "wallMs": 9.906041000000187,
+              "cpuMs": 9.906
+            },
+            {
+              "wallMs": 10.016083000000435,
+              "cpuMs": 10.017
+            },
+            {
+              "wallMs": 10.0287500000004,
+              "cpuMs": 10.03
+            },
+            {
+              "wallMs": 9.946208999999726,
+              "cpuMs": 9.947
+            },
+            {
+              "wallMs": 9.744167000000743,
+              "cpuMs": 9.732
+            },
+            {
+              "wallMs": 10.017874999999549,
+              "cpuMs": 10.017
+            },
+            {
+              "wallMs": 10.376583999999639,
+              "cpuMs": 10.378
+            },
+            {
+              "wallMs": 10.359292000000096,
+              "cpuMs": 10.359
+            },
+            {
+              "wallMs": 10.423832999999831,
+              "cpuMs": 10.423
+            },
+            {
+              "wallMs": 10.453749999999673,
+              "cpuMs": 10.455
+            },
+            {
+              "wallMs": 10.474167000000307,
+              "cpuMs": 10.475
+            }
+          ],
+          [
+            {
+              "wallMs": 11.111582999999882,
+              "cpuMs": 11.112
+            },
+            {
+              "wallMs": 10.81329100000039,
+              "cpuMs": 10.814
+            },
+            {
+              "wallMs": 10.929125000000568,
+              "cpuMs": 10.93
+            },
+            {
+              "wallMs": 10.908666000000267,
+              "cpuMs": 10.91
+            },
+            {
+              "wallMs": 11.03766700000051,
+              "cpuMs": 11.038
+            },
+            {
+              "wallMs": 11.815083999999842,
+              "cpuMs": 11.816
+            },
+            {
+              "wallMs": 11.615250000000742,
+              "cpuMs": 11.616
+            },
+            {
+              "wallMs": 10.920208999999886,
+              "cpuMs": 10.92
+            },
+            {
+              "wallMs": 11.042250000000422,
+              "cpuMs": 11.041
+            },
+            {
+              "wallMs": 11.108500000000276,
+              "cpuMs": 13.728
+            },
+            {
+              "wallMs": 11.035167000000001,
+              "cpuMs": 11.039
+            },
+            {
+              "wallMs": 11.145416999999725,
+              "cpuMs": 13.662
+            },
+            {
+              "wallMs": 11.008375000000342,
+              "cpuMs": 11.009
+            },
+            {
+              "wallMs": 11.005083999999442,
+              "cpuMs": 11.004
+            },
+            {
+              "wallMs": 10.088665999999648,
+              "cpuMs": 10.09
+            },
+            {
+              "wallMs": 10.15625,
+              "cpuMs": 10.157
+            },
+            {
+              "wallMs": 10.13591600000018,
+              "cpuMs": 10.137
+            },
+            {
+              "wallMs": 10.113125000000764,
+              "cpuMs": 10.115
+            },
+            {
+              "wallMs": 10.269749999999476,
+              "cpuMs": 10.27
+            },
+            {
+              "wallMs": 10.291207999999642,
+              "cpuMs": 10.293
+            },
+            {
+              "wallMs": 10.43158399999993,
+              "cpuMs": 10.432
+            },
+            {
+              "wallMs": 10.390542000000096,
+              "cpuMs": 10.39
+            },
+            {
+              "wallMs": 10.371291000000383,
+              "cpuMs": 10.371
+            },
+            {
+              "wallMs": 10.40979199999947,
+              "cpuMs": 10.41
+            },
+            {
+              "wallMs": 10.633084000000053,
+              "cpuMs": 10.633
+            },
+            {
+              "wallMs": 10.819083999999748,
+              "cpuMs": 10.819
+            },
+            {
+              "wallMs": 10.844041999999718,
+              "cpuMs": 10.844
+            },
+            {
+              "wallMs": 10.82341600000018,
+              "cpuMs": 10.824
+            },
+            {
+              "wallMs": 10.90954199999942,
+              "cpuMs": 10.912
+            },
+            {
+              "wallMs": 10.882416999999805,
+              "cpuMs": 10.883
+            }
+          ]
+        ],
+        "summary": [
+          {
+            "wallMs": {
+              "n": 30,
+              "p50": 10.453749999999673,
+              "p95": 11.21862499999952,
+              "min": 9.572291999999834,
+              "max": 64.17937499999971
+            },
+            "cpuMs": {
+              "n": 30,
+              "p50": 10.455,
+              "p95": 11.22,
+              "min": 9.573,
+              "max": 66.68
+            }
+          },
+          {
+            "wallMs": {
+              "n": 30,
+              "p50": 10.844041999999718,
+              "p95": 11.615250000000742,
+              "min": 10.088665999999648,
+              "max": 11.815083999999842
+            },
+            "cpuMs": {
+              "n": 30,
+              "p50": 10.844,
+              "p95": 13.662,
+              "min": 10.09,
+              "max": 13.728
+            }
+          }
+        ]
+      },
+      "durableTenSetClearCycles": {
+        "raw": [
+          [
+            {
+              "wallMs": 0.6870419999995647,
+              "cpuMs": 0.687
+            },
+            {
+              "wallMs": 0.6933749999998327,
+              "cpuMs": 0.695
+            },
+            {
+              "wallMs": 0.6850000000004002,
+              "cpuMs": 0.686
+            },
+            {
+              "wallMs": 0.6736250000003565,
+              "cpuMs": 0.674
+            },
+            {
+              "wallMs": 0.6512920000004669,
+              "cpuMs": 0.652
+            },
+            {
+              "wallMs": 0.666957999999795,
+              "cpuMs": 0.668
+            },
+            {
+              "wallMs": 1.3911250000001019,
+              "cpuMs": 0.755
+            },
+            {
+              "wallMs": 0.5212080000001151,
+              "cpuMs": 0.521
+            },
+            {
+              "wallMs": 0.5208749999992506,
+              "cpuMs": 0.522
+            },
+            {
+              "wallMs": 0.5477080000000569,
+              "cpuMs": 0.548
+            },
+            {
+              "wallMs": 0.5402500000000146,
+              "cpuMs": 0.54
+            },
+            {
+              "wallMs": 0.5682079999996859,
+              "cpuMs": 0.568
+            },
+            {
+              "wallMs": 0.5405000000000655,
+              "cpuMs": 0.54
+            },
+            {
+              "wallMs": 0.5229580000004717,
+              "cpuMs": 0.524
+            },
+            {
+              "wallMs": 0.5201250000000073,
+              "cpuMs": 0.521
+            },
+            {
+              "wallMs": 0.5420000000003711,
+              "cpuMs": 0.542
+            },
+            {
+              "wallMs": 0.5641249999998763,
+              "cpuMs": 0.564
+            },
+            {
+              "wallMs": 0.5469160000002375,
+              "cpuMs": 0.547
+            },
+            {
+              "wallMs": 1.346042000000125,
+              "cpuMs": 0.707
+            },
+            {
+              "wallMs": 0.5301250000002256,
+              "cpuMs": 0.531
+            },
+            {
+              "wallMs": 0.5287499999994907,
+              "cpuMs": 0.529
+            },
+            {
+              "wallMs": 0.5559590000002572,
+              "cpuMs": 0.555
+            },
+            {
+              "wallMs": 0.5305410000000848,
+              "cpuMs": 0.532
+            },
+            {
+              "wallMs": 0.5336250000000291,
+              "cpuMs": 0.535
+            },
+            {
+              "wallMs": 0.5287920000000668,
+              "cpuMs": 0.531
+            },
+            {
+              "wallMs": 0.5499580000005153,
+              "cpuMs": 0.55
+            },
+            {
+              "wallMs": 0.540208999999777,
+              "cpuMs": 0.54
+            },
+            {
+              "wallMs": 0.569999999999709,
+              "cpuMs": 0.57
+            },
+            {
+              "wallMs": 0.529791999999361,
+              "cpuMs": 0.53
+            },
+            {
+              "wallMs": 0.5558750000000146,
+              "cpuMs": 0.557
+            }
+          ],
+          [
+            {
+              "wallMs": 0.7527079999999842,
+              "cpuMs": 0.754
+            },
+            {
+              "wallMs": 0.7658750000000509,
+              "cpuMs": 0.766
+            },
+            {
+              "wallMs": 0.75841599999967,
+              "cpuMs": 0.758
+            },
+            {
+              "wallMs": 2.1693340000001626,
+              "cpuMs": 1.07
+            },
+            {
+              "wallMs": 0.6133339999996679,
+              "cpuMs": 0.614
+            },
+            {
+              "wallMs": 0.6211670000002414,
+              "cpuMs": 0.623
+            },
+            {
+              "wallMs": 0.6016659999995682,
+              "cpuMs": 0.602
+            },
+            {
+              "wallMs": 0.5879160000004049,
+              "cpuMs": 0.589
+            },
+            {
+              "wallMs": 0.6320419999992737,
+              "cpuMs": 0.633
+            },
+            {
+              "wallMs": 0.6173749999998108,
+              "cpuMs": 0.618
+            },
+            {
+              "wallMs": 0.6170420000007653,
+              "cpuMs": 0.618
+            },
+            {
+              "wallMs": 0.6263749999998254,
+              "cpuMs": 0.626
+            },
+            {
+              "wallMs": 0.5958339999997406,
+              "cpuMs": 0.596
+            },
+            {
+              "wallMs": 1.4147919999995793,
+              "cpuMs": 0.764
+            },
+            {
+              "wallMs": 0.571791000000303,
+              "cpuMs": 0.572
+            },
+            {
+              "wallMs": 0.5857500000001892,
+              "cpuMs": 0.586
+            },
+            {
+              "wallMs": 0.5987500000001091,
+              "cpuMs": 0.599
+            },
+            {
+              "wallMs": 0.5849170000001322,
+              "cpuMs": 0.585
+            },
+            {
+              "wallMs": 0.5742909999999029,
+              "cpuMs": 0.574
+            },
+            {
+              "wallMs": 0.565375000000131,
+              "cpuMs": 0.567
+            },
+            {
+              "wallMs": 0.6070410000002084,
+              "cpuMs": 0.607
+            },
+            {
+              "wallMs": 0.5897909999994226,
+              "cpuMs": 0.59
+            },
+            {
+              "wallMs": 0.601292000000285,
+              "cpuMs": 0.601
+            },
+            {
+              "wallMs": 1.406833000000006,
+              "cpuMs": 0.773
+            },
+            {
+              "wallMs": 0.5909169999995356,
+              "cpuMs": 0.591
+            },
+            {
+              "wallMs": 0.5848340000002281,
+              "cpuMs": 0.585
+            },
+            {
+              "wallMs": 0.6117500000000291,
+              "cpuMs": 0.613
+            },
+            {
+              "wallMs": 0.5905839999995806,
+              "cpuMs": 0.591
+            },
+            {
+              "wallMs": 0.6201249999994616,
+              "cpuMs": 0.62
+            },
+            {
+              "wallMs": 0.5902079999996204,
+              "cpuMs": 0.59
+            }
+          ]
+        ],
+        "summary": [
+          {
+            "wallMs": {
+              "n": 30,
+              "p50": 0.5469160000002375,
+              "p95": 1.346042000000125,
+              "min": 0.5201250000000073,
+              "max": 1.3911250000001019
+            },
+            "cpuMs": {
+              "n": 30,
+              "p50": 0.547,
+              "p95": 0.707,
+              "min": 0.521,
+              "max": 0.755
+            }
+          },
+          {
+            "wallMs": {
+              "n": 30,
+              "p50": 0.6016659999995682,
+              "p95": 1.4147919999995793,
+              "min": 0.565375000000131,
+              "max": 2.1693340000001626
+            },
+            "cpuMs": {
+              "n": 30,
+              "p50": 0.602,
+              "p95": 0.773,
+              "min": 0.567,
+              "max": 1.07
+            }
+          }
+        ]
+      },
+      "correctness": {
+        "orderedDueRows": true,
+        "rollbackRestoredAudit": true,
+        "finalStateAndAuditEqual": true
+      }
+    }
+  ],
+  "finishedAt": "2026-09-07T08:15:09.949Z"
+}
