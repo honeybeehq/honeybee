@@ -4,7 +4,7 @@ This round starts at `343289fe`. The requested GPT-6 Astra/ultra inventory is co
 
 The first measured cost is D02: every quiet core tick builds a full retained-bee snapshot. Two independent designs and a cross-judge produced [the implementation decision](quiet-tick-design.md). The implemented guard reduces the 1,000-stopped-Bee core tick from 3.241 to 0.022 ms CPU and real-daemon idle CPU from 9.715% to 0.467% of one core. [The results](empty-snapshot-results.md) include the lifecycle-write and storage costs, controls, native profiles, and correctness review. Sparse live fleets and large pending queues remain open.
 
-[The next baseline matrix](read-hotspots-baseline.md) measures 24 cases across command history, flags, pending bodies, mailbox history, task supplies, audit tails, and RPC idempotency. D05 command predicates are the next implementation unit. Every inventory item retains its own disposition; partial coverage does not close a subsystem.
+[The next baseline matrix](read-hotspots-baseline.md) measures 24 cases across command history, flags, pending bodies, mailbox history, task supplies, audit tails, and RPC idempotency. [D05 command predicates](command-probe-results.md) now reduce the 100,000-command pending-stop check from 176.946 to 0.036 ms CPU and recovery from 174.552 to 11.854 ms. The remaining recovery scan stays open. [Sparse fleet and held-body baselines](sparse-work-baseline.md) cover seven additional workloads. Every inventory item retains its own disposition; partial coverage does not close a subsystem.
 
 ## Baseline evidence
 

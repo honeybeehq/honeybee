@@ -1,0 +1,29 @@
+✔ cell-driver.roundtrip: start provisions the cell, runtime runs in the space, full turn cycle (4174.892042ms)
+✔ cell-driver.background: start returns before provisioning and later boots from the durable ledger (3888.470625ms)
+✔ cell-driver.background: first Cell ensures the image before boot and the next Cell stays hot (10430.354917ms)
+✔ cell-driver.background: satellites do not build the workstation-local Git image (4497.105417ms)
+✔ cell-driver.background: worker exit without a result becomes a boot failure (566.1475ms)
+✔ cell-driver.exit-path: work committed in the live cell captures out; removeCell guards (4953.384833ms)
+✔ cell-driver.restart-hydration: a fresh driver re-hydrates cells from cell.json (capture + delete work) (4271.163334ms)
+✔ cell-driver.reserved-only: a cell reserved (seed ledger) but never started removes outright; sessions delegate; typed live-runtime refusal (3225.612708ms)
+✔ cell-driver.sandboxed: per-cell override ON wraps the spawn in Seatbelt; the turn still works (darwin) (3164.639708ms)
+✔ cell-driver.workstation-default: sandbox stays OFF without an override (A4) (3294.71425ms)
+✔ cell-driver.account-home: the bee resolver adds one exact sandbox grant and ignores harness env (1971.993833ms)
+✔ cell-driver.restart: a successor daemon re-adopts a live cell runtime from the ledger at full capability (4893.947083ms)
+✔ sandbox.defaults: workstation OFF, satellite ON, cloud OFF (A4) (13.433458ms)
+✔ sandbox.override: per-cell override beats the node-kind default (1.72575ms)
+✔ sandbox.profile: Seatbelt profile confines writes to cell + harness paths, allows the rest (99.407583ms)
+✔ sandbox.bwrap: argv is read-only root + rw cell/harness binds + net (pure, all platforms) (1.877042ms)
+✔ sandbox.account-home: bwrap grants the exact bound home, never its parent or a sibling (29.272208ms)
+✔ sandbox.account-home validation rejects relative, missing, root, OS-home, and broad symlink targets (31.596584ms)
+✔ sandbox.wrap: platform dispatch (darwin sandbox-exec -f, linux bwrap, other throws) (1.138125ms)
+✔ sandbox.seatbelt-real: sandbox-exec confines writes to the cell (darwin) (509.17175ms)
+﹣ sandbox.bwrap-real: bwrap confines writes to the cell (linux — metal-3 gate) (2.445959ms) # SKIP
+ℹ tests 21
+ℹ suites 0
+ℹ pass 20
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 53188.463959
