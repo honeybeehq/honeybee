@@ -88,7 +88,7 @@ await build({
   plugins: [{
     name: "rewrite-relative-typescript-imports",
     setup(build) {
-      build.onLoad({ filter: /\.(cts|mts|ts)$/ }, async ({ path }) => ({
+      build.onLoad({ filter: /\.ts$/ }, async ({ path }) => ({
         contents: rewriteRelativeTypeScriptImports(await readFile(path, "utf8"), path),
         loader: "ts",
       }));

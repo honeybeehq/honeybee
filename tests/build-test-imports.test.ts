@@ -17,7 +17,7 @@ async function rewrite(source: string, fileName = "fixture.ts"): Promise<string>
   return output;
 }
 
-test("test-build import rewriting changes only relative literal TypeScript module specifiers", async () => {
+test("test-build import rewriting changes only relative literal .ts module specifiers", async () => {
   const source = [
     'import plain from "./plain.ts";',
     "export { named } from '../named.mts';",
@@ -37,11 +37,11 @@ test("test-build import rewriting changes only relative literal TypeScript modul
 
   assert.equal(await rewrite(source), [
     'import plain from "./plain.js";',
-    'export { named } from "../named.mjs";',
-    'export * from "./legacy.cjs";',
+    "export { named } from '../named.mts';",
+    'export * from "./legacy.cts";',
     'const lazy = import("./lazy.js");',
     'const escaped = import("./escaped.js");',
-    'const template = import("./template.mjs");',
+    'const template = import(`./template.mts`);',
     'const ordinary = "./ordinary.ts";',
     'const escapedOrdinary = "\\\"./quoted.ts\\\"";',
     'const asset = new URL("./asset.ts", import.meta.url);',
@@ -53,19 +53,20 @@ test("test-build import rewriting changes only relative literal TypeScript modul
   ].join("\n"));
 });
 
-test("rewritten relative imports load as separate emitted ESM modules", async () => {
+test("static and escaped dynamic imports load the same emitted ESM module", async () => {
   const dir = await mkdtemp(join(tmpdir(), "honeybee-test-imports-"));
   try {
-    const entry = await rewrite(
-      'import { marker } from "./dependency.ts"; export const observed = marker;',
-      join(dir, "entry.ts"),
-    );
+    const entry = await rewrite([
+      'import { marker as staticMarker } from "./dependency.ts";',
+      'const dynamicModule = await import("./dependency\\u002ets");',
+      "export const sameInstance = staticMarker === dynamicModule.marker;",
+    ].join("\n"), join(dir, "entry.ts"));
     await writeFile(join(dir, "package.json"), '{"type":"module"}\n');
     await writeFile(join(dir, "entry.mjs"), entry);
-    await writeFile(join(dir, "dependency.js"), 'export const marker = "loaded";\n');
+    await writeFile(join(dir, "dependency.js"), "export const marker = {};\n");
     const loaded: unknown = await import(pathToFileURL(join(dir, "entry.mjs")).href);
     assert.ok(loaded && typeof loaded === "object");
-    assert.equal(Reflect.get(loaded, "observed"), "loaded");
+    assert.equal(Reflect.get(loaded, "sameInstance"), true);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

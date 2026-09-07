@@ -1,18 +1,9 @@
 import ts from "typescript";
 
-const OUTPUT_EXTENSIONS = [
-  [".mts", ".mjs"],
-  [".cts", ".cjs"],
-  [".ts", ".js"],
-];
-
 function outputSpecifier(specifier) {
   if (!specifier.startsWith("./") && !specifier.startsWith("../")) return undefined;
-  if (/\.d\.(?:mts|cts|ts)$/u.test(specifier)) return undefined;
-  for (const [input, output] of OUTPUT_EXTENSIONS) {
-    if (specifier.endsWith(input)) return `${specifier.slice(0, -input.length)}${output}`;
-  }
-  return undefined;
+  if (specifier.endsWith(".d.ts") || !specifier.endsWith(".ts")) return undefined;
+  return `${specifier.slice(0, -".ts".length)}.js`;
 }
 
 function literalModuleSpecifier(node) {
@@ -31,8 +22,8 @@ function literalModuleSpecifier(node) {
 }
 
 /**
- * Rewrite only ESM module-specifier literals that TypeScript would emit with a
- * JavaScript extension. All other source bytes are retained verbatim.
+ * Rewrite relative `.ts` ESM module-specifier literals to match this builder's
+ * `.js` output. All other source bytes are retained verbatim.
  */
 export function rewriteRelativeTypeScriptImports(source, fileName = "source.ts") {
   const sourceFile = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, false, ts.ScriptKind.TS);
