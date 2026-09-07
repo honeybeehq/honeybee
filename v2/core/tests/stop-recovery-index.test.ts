@@ -120,8 +120,10 @@ test("index installs on reopen without parsing legacy args; plans pin the probe 
   for (const sql of [STOP_RECOVERY_SQL, PENDING_STOP_SQL, PENDING_REVIVE_SQL]) {
     assert.ok(storeSource.includes(sql), "literal statement drifted from store.ts");
   }
-  makeBee(store, "legacy");
-  makeBee(store, "nullgen");
+  // createBee mints UUID ids — the offline inserts below must target the
+  // REAL bees, not literal-name orphans (raw connections skip FK checks).
+  const legacyId = makeBee(store, "legacy").bee.id;
+  const nullgenId = makeBee(store, "nullgen").bee.id;
   store.close();
   store = null;
 
@@ -137,16 +139,19 @@ test("index installs on reopen without parsing legacy args; plans pin the probe 
         next_attempt_at, enqueued_at, finished_at, failure_cause, idempotency_key)
        VALUES(?, ?, ?, ?, 'done', 1, 0, 0, 1, NULL, NULL)`,
     );
-    // Malformed HISTORICAL args on rows the selected query never picks: the
-    // index build must succeed because it never parses args.
-    for (let i = 0; i < 3; i++) insert.run("stop", "legacy", "not json {{{", 7);
+    // Malformed HISTORICAL args (external corruption — the store only ever
+    // writes valid JSON): the index build must succeed because it never
+    // parses args. The bucket holds ONLY malformed rows, so both index paths
+    // must raise; with mixed buckets, LIMIT 1 row order across indexes is
+    // deliberately unspecified and not asserted anywhere here.
+    for (let i = 0; i < 3; i++) insert.run("stop", legacyId, "not json {{{", 7);
     // Valid-JSON true stop with NULL generation: excluded by `=` for every generation.
-    insert.run("stop", "nullgen", JSON.stringify({ thenRevive: true }), null);
-    // Control BEFORE the index exists: the original residual behavior throws
-    // on the malformed row's own bucket and answers false elsewhere.
+    insert.run("stop", nullgenId, JSON.stringify({ thenRevive: true }), null);
+    // Control BEFORE the index exists: the residual behavior on the original
+    // plan — false on an empty bucket, a JSON error on the all-malformed one.
     const raw = fixture.prepare(STOP_RECOVERY_SQL);
-    assert.equal(raw.get("legacy", 8), undefined, "pre-index: empty bucket answers false");
-    assert.throws(() => raw.get("legacy", 7), /malformed JSON|JSON/, "pre-index: residual json_type raises on the malformed bucket");
+    assert.equal(raw.get(legacyId, 8), undefined, "pre-index: empty bucket answers false");
+    assert.throws(() => raw.get(legacyId, 7), /malformed JSON|JSON/, "pre-index: residual json_type raises on the all-malformed bucket");
   } finally {
     fixture.close();
   }
@@ -171,7 +176,8 @@ test("index installs on reopen without parsing legacy args; plans pin the probe 
     for (const [name, sql, expected] of [
       ["pending-stop", PENDING_STOP_SQL, /USING INDEX commands_by_bee_status/],
       ["pending-revive", PENDING_REVIVE_SQL, /USING INDEX commands_by_bee_status/],
-      ["claim", "SELECT * FROM commands WHERE status = 'queued' AND next_attempt_at <= ? ORDER BY id LIMIT 1", /USING INDEX commands_ready/],
+      // STRUCTURAL pin only — the real claim statement is captured live below.
+      ["claim-structural", "SELECT * FROM commands WHERE status = 'queued' AND next_attempt_at <= ? ORDER BY id LIMIT 1", /USING INDEX commands_ready/],
       ["list", "SELECT * FROM commands WHERE bee_id = ? ORDER BY id", /USING INDEX commands_by_bee/],
     ] as const) {
       const plan = planDetails(check, sql).join("\n");
@@ -185,9 +191,41 @@ test("index installs on reopen without parsing legacy args; plans pin the probe 
   // Selected query behavior remains ORIGINAL with the index in place
   // (this reopen also proves the IF NOT EXISTS install is idempotent).
   store = h.open();
-  assert.equal(store.hasStopThenReviveRequest("legacy", 8), false, "empty bucket answers false without touching malformed rows");
-  assert.throws(() => store!.hasStopThenReviveRequest("legacy", 7), /malformed JSON|JSON/,
-    "the residual json_type still raises on the malformed bucket, exactly as before the index");
-  assert.equal(store.hasStopThenReviveRequest("nullgen", 1), false, "NULL target_generation rows are excluded by =");
-  assert.equal(store.hasStopThenReviveRequest("nullgen", 0), false);
+  assert.equal(store.hasStopThenReviveRequest(legacyId, 8), false, "empty bucket answers false without touching malformed rows");
+  assert.throws(() => store!.hasStopThenReviveRequest(legacyId, 7), /malformed JSON|JSON/,
+    "the residual json_type still raises on the all-malformed bucket (row order across indexes is unspecified; the store itself only writes valid JSON)");
+  assert.equal(store.hasStopThenReviveRequest(nullgenId, 1), false, "NULL target_generation rows are excluded by =");
+  assert.equal(store.hasStopThenReviveRequest(nullgenId, 0), false);
+
+  // ACTUAL claim proof: capture the statements a real public claim prepares
+  // on this fresh connection (SQL text only — behavior passes through), then
+  // EXPLAIN each captured commands read: none may adopt the new index.
+  const claimer = makeBee(store, "claimer").bee;
+  const claimTarget = store.enqueueCommand("archive", claimer.id);
+  const captured: string[] = [];
+  const proto = DatabaseSync.prototype as unknown as { prepare(sql: string): unknown };
+  const originalPrepare = proto.prepare;
+  proto.prepare = function (this: unknown, sql: string): unknown {
+    captured.push(sql);
+    return originalPrepare.call(this, sql);
+  };
+  try {
+    assert.equal(store.claimNextCommand()?.id, claimTarget.id);
+  } finally {
+    proto.prepare = originalPrepare;
+  }
+  store.completeCommand(claimTarget.id);
+  const claimReads = captured.filter((sql) => sql.includes("FROM commands"));
+  assert.ok(claimReads.some((sql) => sql.includes("status = 'queued'")), "capture must include the live claim scan");
+  store.close();
+  store = null;
+  const actual = new DatabaseSync(h.path, { readOnly: true });
+  try {
+    for (const sql of claimReads) {
+      const plan = planDetails(actual, sql).join("\n");
+      assert.doesNotMatch(plan, /commands_stop_recovery/, `actual claim statement must not adopt the stop-recovery index:\n${sql}`);
+    }
+  } finally {
+    actual.close();
+  }
 });
