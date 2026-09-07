@@ -203,9 +203,9 @@ interface ManagedProcess {
    */
   outboundPending: string[];
   /**
-   * Lines accepted before the host socket finished connecting (the host
-   * needs a few ms to boot and listen). Flushed in order on connect — the
-   * accept-at-spawn contract the kernel-buffered stdin pipe used to give.
+   * Non-mail protocol lines produced before the host socket finishes
+   * connecting. Mailbox delivery refuses until the socket is connected, so
+   * durable mail never depends on this daemon-only queue.
    */
   pendingWrites: string[];
   /** The host reported its stdin lane could not be established: refuse
@@ -499,10 +499,12 @@ export class HsrDriver implements RuntimeDriver {
 
     if (spec.adapter.readyAtSpawn) {
       // claude stream-json emits nothing until the first stdin message: the
-      // accept point opens now (stdin buffers safely in the host). The
-      // synthetic `booted` OBSERVATION waits for the host's status file to
-      // confirm the AGENT process exists — the same "OS confirmed the spawn"
-      // semantics the direct child's `spawn` event carried (v9: synthetic,
+      // harness accept point opens now. Delivery still waits for the runner
+      // socket, leaving startup mail durable instead of buffering it in the
+      // daemon. The synthetic `booted` OBSERVATION waits for the host's
+      // status file to confirm the AGENT process exists — the same
+      // "OS confirmed the spawn" semantics the direct child's `spawn` event
+      // carried (v9: synthetic,
       // never boot evidence; an agent that fails to spawn reports spawnError
       // and exits while still booting, counting against the spawn budget).
       // The driver's phase is idle from here; the synthetic booted below is
@@ -587,6 +589,16 @@ export class HsrDriver implements RuntimeDriver {
       }
       if (p.pendingDeliveries.has(messageId)) return { accepted: false, reason: "not_ready" };
     }
+    if (p.hostStyle && p.socketBroken) return { accepted: false, reason: "not_ready" };
+    if (p.hostStyle && (!p.socket || p.socket.destroyed || !p.socket.writable)) {
+      // pendingWrites dies with this daemon. Refuse until the runner's socket
+      // is connected so the mailbox row remains durable and retries next tick.
+      return { accepted: false, reason: "not_ready" };
+    }
+    if (!p.hostStyle && (!p.child?.stdin || p.child.stdin.destroyed || !p.child.stdin.writable)) {
+      // stdin gone means the process is dying; its exit observation follows.
+      return { accepted: false, reason: "no_process" };
+    }
     const encoded = p.adapter.encodeMessage(body, {
       sessionId: p.sessionId,
       messageId,
@@ -594,16 +606,10 @@ export class HsrDriver implements RuntimeDriver {
       turnId: p.turnId,
     });
     if (encoded == null) return { accepted: false, reason: "not_ready" };
-    if (p.hostStyle && p.socketBroken) return { accepted: false, reason: "not_ready" };
-    if (!p.hostStyle && (!p.child?.stdin || p.child.stdin.destroyed || !p.child.stdin.writable)) {
-      // stdin gone means the process is dying; its exit observation follows.
-      return { accepted: false, reason: "no_process" };
-    }
-    // Host-style: a still-connecting socket queues the line and flushes on
-    // connect — the same accept-at-spawn guarantee the kernel-buffered stdin
-    // pipe gave. A host that never comes up exits and rotates the generation,
-    // exactly like a child that died after a buffered write.
-    this.writeLine(p, encoded);
+    // Host-style reaches here only with a connected write lane. Node's
+    // socket.write(false) means accepted with backpressure, not rejected; the
+    // write remains one delivery and must never trigger a duplicate retry.
+    if (!this.writeLine(p, encoded)) return { accepted: false, reason: "not_ready" };
     if (p.adapter.confirmsDelivery) p.pendingDeliveries.add(messageId);
     else this.consumed.set(messageId, generation);
     if (p.phase === "idle") {
@@ -1177,7 +1183,7 @@ export class HsrDriver implements RuntimeDriver {
   // internals
   // -------------------------------------------------------------------------
 
-  private writeLine(p: ManagedProcess, line: string): void {
+  private writeLine(p: ManagedProcess, line: string): boolean {
     if (process.env.HIVE_SPAWN_TRACE) {
       appendFileSync(process.env.HIVE_SPAWN_TRACE, JSON.stringify({ write: line.slice(0, 160), at: Date.now(), stack: new Error().stack?.split("\n").slice(2, 6).join(" | ") }) + "\n");
     }
@@ -1188,24 +1194,32 @@ export class HsrDriver implements RuntimeDriver {
       // The HOST is the transcript's single writer. v15 observation journals
       // are output-only, so outbound suppression is needed only while talking
       // to an adopted legacy host that still tails the shared transcript.
+      const outboundLength = p.outboundPending.length;
       try {
         if (p.legacySharedObservation) p.outboundPending.push(line);
-        if (p.socket && !p.socket.destroyed) {
+        if (p.socket && !p.socket.destroyed && p.socket.writable) {
+          // Ignore the boolean result: false reports backpressure after Node
+          // accepted the bytes into its write buffer, not a rejected write.
           p.socket.write(`${JSON.stringify({ op: "write", line })}\n`);
+          return true;
         } else {
           p.pendingWrites.push(line);
           this.connectSocket(p);
+          return false;
         }
       } catch {
         // A write race against a dying host; its exit observation follows.
+        p.outboundPending.length = outboundLength;
+        return false;
       }
-      return;
     }
     this.appendSessionLog(p.beeId, line);
     try {
       p.child?.stdin?.write(`${line}\n`);
+      return true;
     } catch {
       // A write race against a dying child; its exit observation follows.
+      return false;
     }
   }
 
