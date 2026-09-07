@@ -2005,16 +2005,24 @@ test("urgency.d1: `idle` is not delivered while the runtime is running — it la
     spawnIdleBee(rig);
     startTurn(rig);
     const res = rig.store.send("bee-1", "when you are done", { urgency: "idle" });
+    let activeMoveReads = 0;
+    const activeMoveOf = rig.store.activeMoveOf.bind(rig.store);
+    rig.store.activeMoveOf = (beeId) => {
+      activeMoveReads++;
+      return activeMoveOf(beeId);
+    };
     for (let i = 0; i < 5; i++) {
       rig.clock.now += 10;
       rig.core.step();
     }
     assert.deepEqual(rig.driver.deliveredIds, [], "held for the whole turn");
     assert.equal(rig.driver.interrupts.length, 0, "idle never interrupts");
+    assert.equal(activeMoveReads, 0, "held mail needs no move lookup before it becomes eligible");
     // Turn ends → same step: observation drains to idle, delivery loop delivers.
     rig.driver.events.push({ beeId: "bee-1", generation: 1, kind: "turn_ended" });
     rig.core.step();
     assert.deepEqual(rig.driver.deliveredIds, [res.message.id]);
+    assert.equal(activeMoveReads, 1, "eligible mail still checks the live move fence");
     assert.equal(rig.store.getMessage(res.message.id)?.deliveredGeneration, 1);
   } finally {
     rig.cleanup();

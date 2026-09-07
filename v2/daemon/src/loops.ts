@@ -997,8 +997,6 @@ export class DaemonCore {
     for (const { runtime: rt, pending } of work) {
       if (rt.state === "booting") continue;
       if (pending.length === 0) continue;
-      const move = this.store.activeMoveOf(rt.beeId);
-      if (move && move.phase !== "starting") continue;
       // `running` on nothing but a SYNTHETIC boot is provisional (v9): the
       // driver's accept point is open and no real turn exists to disturb, so
       // `idle` mail is eligible. Without this, idle mail sent to a stopped
@@ -1009,6 +1007,8 @@ export class DaemonCore {
       const trulyMidTurn = rt.state === "running" && rt.bootEvidence === "real";
       const eligible = trulyMidTurn ? pending.filter((m) => m.urgency !== "idle") : pending;
       if (eligible.length === 0) continue;
+      const move = this.store.activeMoveOf(rt.beeId);
+      if (move && move.phase !== "starting") continue;
       if (rt.state === "running") {
         // Mid-turn `now`: interrupt first (the v6 verb), then deliver. One
         // interrupt per message; an eligible `now` behind an undelivered
