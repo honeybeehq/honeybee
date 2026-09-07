@@ -268,6 +268,18 @@ export interface DaemonStepInputs {
   readonly i1: readonly I1PendingBee[];
 }
 
+/** Committed, body-free identity of one Bee's mailbox membership. */
+export type CommittedMailboxMembership = Readonly<{
+  kind: "committed";
+  messageCount: number;
+  maxMessageId: number | null;
+}>;
+
+/** An open transaction makes same-connection aggregate results uncacheable. */
+export type MailboxMembership =
+  | CommittedMailboxMembership
+  | Readonly<{ kind: "transaction_open" }>;
+
 interface MutableI1PendingBee {
   beeId: string;
   runtime: I1RuntimeFact | null;
@@ -507,6 +519,31 @@ export interface PutTrackInput extends NormalizeOptions {
 const LIVE_STATES: readonly RuntimeState[] = ["booting", "running", "idle"];
 
 type Row = Record<string, unknown>;
+
+function mailboxMembershipInteger(value: unknown, field: string): number {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
+    throw new CoreError(`readMailboxMembership: malformed ${field}`);
+  }
+  return value;
+}
+
+function mapMailboxMembership(row: unknown): CommittedMailboxMembership {
+  if (row === null || typeof row !== "object") {
+    throw new CoreError("readMailboxMembership: missing aggregate row");
+  }
+  const messageCount = mailboxMembershipInteger(
+    Reflect.get(row, "message_count"),
+    "message_count",
+  );
+  const rawMaxMessageId: unknown = Reflect.get(row, "max_message_id");
+  const maxMessageId = rawMaxMessageId === null
+    ? null
+    : mailboxMembershipInteger(rawMaxMessageId, "max_message_id");
+  if ((messageCount === 0) !== (maxMessageId === null)) {
+    throw new CoreError("readMailboxMembership: inconsistent aggregate row");
+  }
+  return { kind: "committed", messageCount, maxMessageId };
+}
 
 /**
  * v10 — pretty handle shape: harness prefix + '.' + lowercase hex
@@ -2715,6 +2752,29 @@ export class CoreStore {
          ORDER BY id`,
     ).all(beeId, beeId) as Row[];
     return rows.map(mapMessage);
+  }
+
+  /**
+   * Body-free mailbox membership for quiet store-backed consumers. Delivery
+   * only moves a row between the two exhaustive partial-index arms, so the
+   * combined count/global max stays stable. Same-connection reads inside an
+   * open transaction are explicitly uncacheable.
+   */
+  readMailboxMembership(beeId: string): MailboxMembership {
+    if (this.txDepth > 0) return { kind: "transaction_open" };
+    const row: unknown = this.stmt(
+      `SELECT SUM(row_count) AS message_count, MAX(max_id) AS max_message_id
+       FROM (
+         SELECT COUNT(*) AS row_count, MAX(id) AS max_id
+         FROM mailbox
+         WHERE bee_id = ? AND delivered_at IS NULL
+         UNION ALL
+         SELECT COUNT(*) AS row_count, MAX(id) AS max_id
+         FROM mailbox
+         WHERE bee_id = ? AND delivered_at IS NOT NULL
+       )`,
+    ).get(beeId, beeId);
+    return mapMailboxMembership(row);
   }
 
   /** Bounded undelivered-only mailbox snapshot for frequent live indicators. */

@@ -19,6 +19,8 @@ export {
   type I1RuntimeFact,
   type I1PendingBee,
   type DaemonStepInputs,
+  type CommittedMailboxMembership,
+  type MailboxMembership,
   type CreateBeeInput,
   type SendResult,
   type WakeResult,
