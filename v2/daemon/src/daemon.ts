@@ -41,6 +41,7 @@ import {
   MESSAGE_URGENCIES,
   openCoreStore,
   recipeFor,
+  requireBeeId,
   resolveExecutable,
   resolveSpawnCommand,
   TASK_TRANSITION_ACTIONS,
@@ -72,9 +73,11 @@ import {
   readLedger,
   reserveCell,
   revParse,
+  sandboxWritableDirectory,
   sanitizeComponent,
   type CellSpec,
   type ReserveRequest,
+  type SandboxWritableDirectory,
 } from "../../driver-cell/src/index.ts";
 import { SubstrateRouter } from "./substrates.ts";
 import { TmuxDriver, claudeProjectKey } from "../../driver-tmux/src/index.ts";
@@ -504,6 +507,7 @@ export class HiveDaemon {
       nodeKind: this.cfg.nodeKind,
       resolveHarness: (beeId: string) => this.resolveSpawnSpec(beeId),
       resolveCell: (beeId: string) => this.resolveCellSpec(beeId),
+      resolveSandboxWritablePaths: (beeId: string) => this.resolveCellSandboxWritablePaths(beeId),
       hsr: hsrConfig,
       backgroundProvisioning: true,
     });
@@ -811,6 +815,21 @@ export class HiveDaemon {
       throw new Error(`resolveCell: bee ${beeId} cell ${bee.cwd} is outside cells root ${this.cfg.cellsRoot} (cells.root changed?)`);
     }
     return { provision, sandbox: ledger.sandbox ?? this.cfg.cellSandbox };
+  }
+
+  /** The exact persisted account home is the only per-bee sandbox grant. */
+  private resolveCellSandboxWritablePaths(beeId: string): readonly SandboxWritableDirectory[] {
+    const store = this.mustStore();
+    const bee = store.getBee(beeId);
+    if (!bee) throw new Error(`resolveCellSandboxWritablePaths: bee ${beeId} not found`);
+    if (!bee.account) return [];
+    const account = store.getAccount(bee.account);
+    if (!account) {
+      throw new Error(`resolveCellSandboxWritablePaths: bee ${beeId} is bound to unknown account ${bee.account}`);
+    }
+    return [sandboxWritableDirectory(account.homePath, {
+      forbiddenDirectories: [this.cfg.accounts.homesDir],
+    })];
   }
 
   /**
@@ -1378,7 +1397,7 @@ export class HiveDaemon {
     const tags = Array.isArray(params.tags) && params.tags.every((t) => typeof t === "string")
       ? (params.tags as string[])
       : [];
-    const parentId = this.parentParam(params);
+    const parent = this.parentParam(params);
     const id = typeof params.id === "string" && params.id.length > 0 ? params.id : randomUUID();
     const driver = this.driver;
     // v7: the account is resolved BEFORE the row is written ('auto' is never
@@ -1401,7 +1420,8 @@ export class HiveDaemon {
       tags,
       sessionLogPath: driver ? driver.sessionLogPath(id) : undefined,
       args: params.args === undefined ? undefined : this.argsParam(params, "spawn", false),
-      parentId,
+      parentId: parent.parentId,
+      parentExternal: parent.parentExternal,
       env: { ...requestedEnv, ...accountEnv },
       ...(account ? { account: account.id } : {}),
     });
@@ -1618,13 +1638,26 @@ export class HiveDaemon {
   // v6 — pre-flip verb set: rename, tag, interrupt, fork, parenting, questions, seals
   // -------------------------------------------------------------------------
 
-  /** `parentId?` — the calling bee; must exist (soft ref, but never a dangling one at spawn). */
-  private parentParam(params: Record<string, unknown>): string | null {
+  /** Parse the paired local/external parent claim at the spawn RPC boundary. */
+  private parentParam(params: Record<string, unknown>): { parentId: string | null; parentExternal: boolean } {
+    const external = params.parentExternal;
+    if (external !== undefined && typeof external !== "boolean") {
+      throw new RpcError("invalid_request", "parentExternal must be a boolean when given");
+    }
     const v = params.parentId;
-    if (v === undefined || v === null) return null;
+    if (external === true) {
+      if (v === undefined || v === null) {
+        throw new RpcError("invalid_request", "parentExternal true requires parentId");
+      }
+      return {
+        parentId: requireBeeId(v, "spawn: parentId"),
+        parentExternal: true,
+      };
+    }
+    if (v === undefined || v === null) return { parentId: null, parentExternal: false };
     if (typeof v !== "string" || v.length === 0) throw new RpcError("invalid_request", "parentId must be a non-empty string when given");
     if (!this.mustStore().getBee(v)) throw new RpcError("bee_not_found", `parent bee not found: ${v}`);
-    return v;
+    return { parentId: v, parentExternal: false };
   }
 
   private stringListParam(params: Record<string, unknown>, key: string, verb: string): string[] | undefined {
@@ -1794,6 +1827,7 @@ export class HiveDaemon {
       env: { ...source.env },
       args: source.args,
       parentId: source.id,
+      parentExternal: false,
       forkedFrom: source.id,
       forkSeed,
       // v7: a fork runs on the source's account (same identity, same home).

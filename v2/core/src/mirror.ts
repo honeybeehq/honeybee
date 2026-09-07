@@ -107,7 +107,7 @@ export type MirrorDelta = AuditRow;
  *   bee.renamed        → { beeId, name, previous }                     (bee row: name)
  *   bee.titled         → { beeId, title, previous, source }            (bee row: title)
  *   bee.tagged         → { beeId, tags, previous, added, removed }     (bee row: tags)
- *   bee.orphaned       → { beeId, parentId, reason }                   (bee row: parentId → null)
+ *   bee.orphaned       → { beeId, parentId, reason }                   (local bee row: parentId → null)
  *   bee.forked         → { beeId, forkedFrom, forkSeed }               (informational; row via bee.created)
  *   bee.interrupted    → { beeId, generation, interrupted, reason }    (informational; no row change)
  *   question.asked     → { question: QuestionRow }                     (questions table: insert)
@@ -198,8 +198,10 @@ export const MIRROR_BEE_RECORD_KEYS = [
   // v5: additive — per-bee spawn args (string[] | null).
   "args",
   // v6: additive — parenting (parentId), fork provenance (forkedFrom) and the
-  // one-shot fork seed (forkSeed; null once consumed).
+  // one-shot fork seed (forkSeed; null once consumed). v21 adds the external
+  // ownership claim; old snapshots and creation events mean false.
   "parentId",
+  "parentExternal",
   "forkedFrom",
   "forkSeed",
   // v7: additive — the account binding (accounts.id | null).

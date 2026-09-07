@@ -178,6 +178,8 @@ export interface CreateBeeInput {
   args?: string[] | null;
   /** v6 — the spawning bee (soft reference); absent = operator/apiary-spawned root. */
   parentId?: string | null;
+  /** v21 — `parentId` is owned outside this node; absent = local lineage. */
+  parentExternal?: boolean;
   /** v6 — fork provenance: the source bee id. */
   forkedFrom?: string | null;
   /** v6 — one-shot fork seed: the source's provider session id to fork from on the first runtime. */
@@ -373,7 +375,7 @@ export interface DeleteResult {
   livePid: number | null;
   /** Pending (queued/running) commands settled as moot by the delete. */
   settledCommandIds: number[];
-  /** v6 — children whose parent_id was nulled (orphaned, never cascaded). */
+  /** v21 — local children whose parent_id was nulled (never external claims). */
   orphanedChildIds: string[];
 }
 
@@ -464,6 +466,7 @@ function mapBee(r: Row): BeeRow {
     spawnFailures: Number(r.spawn_failures ?? 0),
     args: parseArgsColumn(r.args),
     parentId: (r.parent_id as string | null) ?? null,
+    parentExternal: Number(r.parent_external ?? 0) === 1,
     forkedFrom: (r.forked_from as string | null) ?? null,
     forkSeed: (r.fork_seed as string | null) ?? null,
     account: (r.account as string | null) ?? null,
@@ -719,11 +722,11 @@ function wellFormedUtf16(value: string): string {
   return normalized;
 }
 
-function requireBeeId(value: unknown): string {
-  const id = requireNonEmpty(value, "createBee: bee id");
-  if (id !== wellFormedUtf16(id)) throw new CoreError("createBee: bee id must be well-formed UTF-16");
+export function requireBeeId(value: unknown, where = "bee id"): string {
+  const id = requireNonEmpty(value, where);
+  if (id !== wellFormedUtf16(id)) throw new CoreError(`${where} must be well-formed UTF-16`);
   if (Buffer.byteLength(id, "utf8") > MAX_BEE_ID_BYTES) {
-    throw new CoreError(`createBee: bee id must be at most ${MAX_BEE_ID_BYTES} UTF-8 bytes`);
+    throw new CoreError(`${where} must be at most ${MAX_BEE_ID_BYTES} UTF-8 bytes`);
   }
   return id;
 }
@@ -1419,8 +1422,13 @@ export class CoreStore {
 
   createBee(input: CreateBeeInput): { bee: BeeRow; runtime: RuntimeRow } {
     return this.tx(() => {
-      const id = requireBeeId(input.id ?? randomUUID());
+      const id = requireBeeId(input.id ?? randomUUID(), "createBee: bee id");
       if (this.getBee(id)) throw new CoreError(`bee already exists: ${id}`);
+      if (input.parentExternal !== undefined && typeof input.parentExternal !== "boolean") {
+        throw new CoreError("createBee: parentExternal must be a boolean when given");
+      }
+      const parentExternal = input.parentExternal ?? false;
+      if (parentExternal) requireBeeId(input.parentId, "createBee: external parentId");
       let handle: string;
       if (input.handle !== undefined) {
         requireNonEmpty(input.handle, "createBee: handle");
@@ -1445,8 +1453,9 @@ export class CoreStore {
       this.db
         .prepare(
           `INSERT INTO bees(id, name, agent, substrate, cwd, title, tags, session_log_path, lifecycle, created_at,
-                            provider_session_id, env, imported_from, args, parent_id, forked_from, fork_seed, account, handle)
-           VALUES(?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                            provider_session_id, env, imported_from, args, parent_id, parent_external, forked_from,
+                            fork_seed, account, handle)
+           VALUES(?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           id,
@@ -1463,6 +1472,7 @@ export class CoreStore {
           input.importedFrom ?? null,
           args === null ? null : JSON.stringify(args),
           input.parentId ?? null,
+          parentExternal ? 1 : 0,
           input.forkedFrom ?? null,
           input.forkSeed ?? null,
           account,
@@ -1614,9 +1624,13 @@ export class CoreStore {
           .prepare("UPDATE commands SET status = 'done', finished_at = ? WHERE bee_id = ? AND status IN ('queued','running')")
           .run(at, beeId);
       }
-      // v6 parenting policy: delete ORPHANS children (parent_id → null,
-      // audited per child), never cascades. Archive touches no child at all.
-      const orphanedChildIds = this.listChildren(beeId).map((c) => c.id);
+      // v21 parenting policy: delete ORPHANS only local children
+      // (parent_id → null, audited per child). External parent claims are
+      // provenance owned outside this node, even if the ID also exists
+      // locally, so deletion never clears them. Archive touches no child.
+      const orphanedChildIds = (this.stmt(
+        "SELECT id FROM bees WHERE parent_id = ? AND parent_external = 0 ORDER BY id",
+      ).all(beeId) as Row[]).map((child) => String(child.id));
       for (const childId of orphanedChildIds) {
         this.stmt("UPDATE bees SET parent_id = NULL WHERE id = ?").run(childId);
         this.audit("bee.orphaned", childId, { beeId: childId, parentId: beeId, reason: "parent_deleted" });

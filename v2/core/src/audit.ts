@@ -58,7 +58,9 @@ export function replayAudit(rows: AuditRow[]): StateDump {
     switch (row.kind) {
       case "bee.created": {
         const bee = p.bee as BeeRow;
-        bees.set(bee.id, { ...bee });
+        // v21 back-compat: creation events recorded before parentExternal
+        // existed represent local lineage. Match the migrated SQL default.
+        bees.set(bee.id, { ...bee, parentExternal: bee.parentExternal ?? false });
         break;
       }
       case "bee.archived": {

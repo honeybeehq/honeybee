@@ -936,6 +936,7 @@ export function importFromFrozen(store: CoreStore, frozenRoot: string, opts: Fro
         env: b.env,
         args: b.args,
         importedFrom: "frozen",
+        parentExternal: false,
         createdAt: b.createdAt,
         // v10: an old-world id IS a pretty handle (CL.7920) — keep it as the
         // display handle so the operator's known references survive the

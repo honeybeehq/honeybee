@@ -54,6 +54,8 @@ function mapBee(r: Row): BeeRow {
     args: r.args == null ? null : (JSON.parse(String(r.args)) as string[]),
     // v6 columns; same tolerance.
     parentId: (r.parent_id as string | null | undefined) ?? null,
+    // v21 column; old stores and snapshots are local lineage.
+    parentExternal: Number((r.parent_external as number | null | undefined) ?? 0) === 1,
     forkedFrom: (r.forked_from as string | null | undefined) ?? null,
     forkSeed: (r.fork_seed as string | null | undefined) ?? null,
     // v7 column; same tolerance.

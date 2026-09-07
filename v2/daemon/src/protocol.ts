@@ -66,6 +66,8 @@ export const DAEMON_VERSION = "2.0.0-wp4";
  * client ignores the extra key) and `deployInfo` repeats the list.
  */
 export const DAEMON_CAPABILITIES = [
+  /** Spawn may retain a parent owned outside this node via `{parentId, parentExternal:true}`. */
+  "spawn.external_parent.v1",
   /** Typed, tmux-independent account login flows: account.login.* verbs + the login_flows snapshot table. */
   "account.login.flow.v1",
   /** Per-harness executable facts (`node.harnesses`), resolved with the same rule the spawn path uses. */
@@ -848,8 +850,11 @@ export type { TaskTransitionAction };
  * headless adapter protocol.
  * v6: `spawn` also takes `parentId?` — the calling bee (the CLI fills it from
  * HIVE_BEE_ID; apiary passes it explicitly). The parent must exist
- * (`bee_not_found` otherwise); the child's runtime env is stamped
- * HIVE_BEE / HIVE_BEE_ID / HIVE_PARENT.
+ * (`bee_not_found` otherwise). Capability `spawn.external_parent.v1` adds
+ * `parentExternal?: boolean`: true requires a valid Bee ID in `parentId`,
+ * bypasses local lookup, and persists the foreign-lineage claim. False or
+ * absent keeps the local behavior. The child's runtime env is stamped
+ * HIVE_BEE / HIVE_BEE_ID / HIVE_PARENT; HIVE_PARENT stays the bare Bee ID.
  */
 export const SPAWN_SUBSTRATES = ["hsr", "cell", "tmux"] as const;
 export type SpawnSubstrate = (typeof SPAWN_SUBSTRATES)[number];
