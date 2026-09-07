@@ -1,0 +1,13 @@
+✔ listMessages union returns identical rows across mailbox states and never mixes bees (9.680833ms)
+✔ listMessages union survives outer rollback of deliver and cancel with exact rows (3.274833ms)
+✔ listMessages union holds on same-bee heavy delivered history with a tiny pending tail (88.057459ms)
+✔ the union statement is production SQL, merges without a sort, and steals no plans (7.76825ms)
+✔ mailbox_delivered_by_bee installs on existing stores, pre-v8 stores, and tolerates downgrades (13.475875ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 203.573208
