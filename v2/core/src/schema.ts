@@ -312,6 +312,16 @@ CREATE INDEX IF NOT EXISTS commands_ready ON commands(status, next_attempt_at, i
 -- additively on every open without changing the schema format version.
 CREATE INDEX IF NOT EXISTS commands_by_bee ON commands(bee_id, id);
 CREATE INDEX IF NOT EXISTS commands_by_bee_status ON commands(bee_id, status, id);
+-- Stop-recovery probe (hasStopThenReviveRequest): seek (bee, generation)
+-- among the stop rows that can carry restart intent instead of walking the
+-- bee's whole settled-status bucket. Deliberately NO JSON expression — the
+-- index build never parses historical args, so malformed legacy args cannot
+-- fail an open; the json_type test stays a residual row filter. A history
+-- concentrated in ONE generation keeps that residual (every bucket row still
+-- pays the filter); the win is spread generations, mixed verbs, and
+-- off-bucket negatives.
+CREATE INDEX IF NOT EXISTS commands_stop_recovery
+  ON commands(bee_id, target_generation) WHERE verb = 'stop' AND status IN ('done','running');
 -- The UNIQUE (partial) index on commands.idempotency_key lives in
 -- IDEMPOTENCY_INDEX_SQL below: it can only be created once the column exists,
 -- which on a migrated v1 store happens in the constructor's migration step.

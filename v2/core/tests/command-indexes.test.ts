@@ -118,22 +118,31 @@ test("command bee indexes install on populated reopen and preserve ordered API r
         /USING COVERING INDEX commands_by_bee_status \(bee_id=\? AND status=\?\)/,
       );
 
-      for (const predicateSql of [
-        `SELECT 1 FROM commands
+      for (const [predicateSql, expectedIndex] of [
+        // The stop-recovery predicate seeks its dedicated partial index; the
+        // pending predicates cannot (their queued status falls outside its
+        // WHERE) and keep the settled-history bucket index.
+        [
+          `SELECT 1 FROM commands
          WHERE bee_id = ? AND status IN ('done','running') AND verb = 'stop'
            AND target_generation = 1 AND json_type(args, '$.thenRevive') = 'true' LIMIT 1`,
-        `SELECT 1 FROM commands
+          /USING INDEX commands_stop_recovery \(bee_id=\? AND target_generation=\?\)/,
+        ],
+        [
+          `SELECT 1 FROM commands
          WHERE bee_id = ? AND status IN ('queued','running') AND verb IN ('revive','send_wake')
            AND COALESCE(target_generation, 0) >= 1 LIMIT 1`,
-        `SELECT 1 FROM commands
+          /USING INDEX commands_by_bee_status \(bee_id=\? AND status=\?\)/,
+        ],
+        [
+          `SELECT 1 FROM commands
          WHERE bee_id = ? AND status IN ('queued','running') AND verb = 'stop'
            AND target_generation = 1 LIMIT 1`,
-      ]) {
-        const predicatePlan = planDetails(check, predicateSql, bee.id).join("\n");
-        assert.match(
-          predicatePlan,
           /USING INDEX commands_by_bee_status \(bee_id=\? AND status=\?\)/,
-        );
+        ],
+      ] as const) {
+        const predicatePlan = planDetails(check, predicateSql, bee.id).join("\n");
+        assert.match(predicatePlan, expectedIndex);
         assert.doesNotMatch(predicatePlan, /USE TEMP B-TREE/);
       }
 
