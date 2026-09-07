@@ -1,0 +1,124 @@
+{
+  "completed": true,
+  "runs": [
+    {
+      "input": "/tmp/honeybee-autotitle-cache-heap-fixture-warm.heapsnapshot",
+      "output": "/tmp/honeybee-autotitle-evidence/honeybee-autotitle-cache-heap-fixture-warm.heapsnapshot.structure-v2.json",
+      "exitCode": 0,
+      "cacheSlots": 1,
+      "entryCounts": [
+        3
+      ],
+      "violations": []
+    },
+    {
+      "input": "/tmp/honeybee-autotitle-cache-heap-fixture-released.heapsnapshot",
+      "output": "/tmp/honeybee-autotitle-evidence/honeybee-autotitle-cache-heap-fixture-released.heapsnapshot.structure-v2.json",
+      "exitCode": 0,
+      "cacheSlots": 0,
+      "entryCounts": [],
+      "violations": []
+    },
+    {
+      "input": "/tmp/honeybee-autotitle-cache-heap-invalid.heapsnapshot",
+      "output": "/tmp/honeybee-autotitle-evidence/honeybee-autotitle-cache-heap-invalid.heapsnapshot.structure-v2.json",
+      "exitCode": 1,
+      "cacheSlots": 1,
+      "entryCounts": [
+        2
+      ],
+      "violations": [
+        {
+          "code": "membership_kind",
+          "contextId": 103673,
+          "entryId": 103677,
+          "observed": {
+            "id": 32881,
+            "type": "string",
+            "name": "transaction_open",
+            "shallowBytes": 32
+          }
+        },
+        {
+          "code": "signature_type",
+          "contextId": 103673,
+          "entryId": 103689,
+          "observed": {
+            "id": 103693,
+            "type": "object",
+            "name": "Object",
+            "shallowBytes": 32
+          }
+        }
+      ]
+    },
+    {
+      "input": "/tmp/honeybee-autotitle-evidence/mini-autotitle-v1-retained-canonical-snapshot.json.run0-side0.released.heapsnapshot.gz",
+      "output": "/tmp/honeybee-autotitle-evidence/mini-autotitle-v1-retained-canonical-snapshot.json.run0-side0.released.heapsnapshot.gz.structure-v2.json",
+      "exitCode": 0,
+      "cacheSlots": 0,
+      "entryCounts": [],
+      "violations": []
+    },
+    {
+      "input": "/tmp/honeybee-autotitle-evidence/mini-autotitle-v1-retained-canonical-snapshot.json.run0-side0.warm.heapsnapshot.gz",
+      "output": "/tmp/honeybee-autotitle-evidence/mini-autotitle-v1-retained-canonical-snapshot.json.run0-side0.warm.heapsnapshot.gz.structure-v2.json",
+      "exitCode": 0,
+      "cacheSlots": 0,
+      "entryCounts": [],
+      "violations": []
+    },
+    {
+      "input": "/tmp/honeybee-autotitle-evidence/mini-autotitle-v1-retained-canonical-snapshot.json.run1-side1.released.heapsnapshot.gz",
+      "output": "/tmp/honeybee-autotitle-evidence/mini-autotitle-v1-retained-canonical-snapshot.json.run1-side1.released.heapsnapshot.gz.structure-v2.json",
+      "exitCode": 0,
+      "cacheSlots": 0,
+      "entryCounts": [],
+      "violations": []
+    },
+    {
+      "input": "/tmp/honeybee-autotitle-evidence/mini-autotitle-v1-retained-canonical-snapshot.json.run1-side1.warm.heapsnapshot.gz",
+      "output": "/tmp/honeybee-autotitle-evidence/mini-autotitle-v1-retained-canonical-snapshot.json.run1-side1.warm.heapsnapshot.gz.structure-v2.json",
+      "exitCode": 0,
+      "cacheSlots": 1,
+      "entryCounts": [
+        1001
+      ],
+      "violations": []
+    },
+    {
+      "input": "/tmp/honeybee-autotitle-evidence/mini-autotitle-v1-retained-canonical-snapshot.json.run2-side1.released.heapsnapshot.gz",
+      "output": "/tmp/honeybee-autotitle-evidence/mini-autotitle-v1-retained-canonical-snapshot.json.run2-side1.released.heapsnapshot.gz.structure-v2.json",
+      "exitCode": 0,
+      "cacheSlots": 0,
+      "entryCounts": [],
+      "violations": []
+    },
+    {
+      "input": "/tmp/honeybee-autotitle-evidence/mini-autotitle-v1-retained-canonical-snapshot.json.run2-side1.warm.heapsnapshot.gz",
+      "output": "/tmp/honeybee-autotitle-evidence/mini-autotitle-v1-retained-canonical-snapshot.json.run2-side1.warm.heapsnapshot.gz.structure-v2.json",
+      "exitCode": 0,
+      "cacheSlots": 1,
+      "entryCounts": [
+        1001
+      ],
+      "violations": []
+    },
+    {
+      "input": "/tmp/honeybee-autotitle-evidence/mini-autotitle-v1-retained-canonical-snapshot.json.run3-side0.released.heapsnapshot.gz",
+      "output": "/tmp/honeybee-autotitle-evidence/mini-autotitle-v1-retained-canonical-snapshot.json.run3-side0.released.heapsnapshot.gz.structure-v2.json",
+      "exitCode": 0,
+      "cacheSlots": 0,
+      "entryCounts": [],
+      "violations": []
+    },
+    {
+      "input": "/tmp/honeybee-autotitle-evidence/mini-autotitle-v1-retained-canonical-snapshot.json.run3-side0.warm.heapsnapshot.gz",
+      "output": "/tmp/honeybee-autotitle-evidence/mini-autotitle-v1-retained-canonical-snapshot.json.run3-side0.warm.heapsnapshot.gz.structure-v2.json",
+      "exitCode": 0,
+      "cacheSlots": 0,
+      "entryCounts": [],
+      "violations": []
+    }
+  ]
+}

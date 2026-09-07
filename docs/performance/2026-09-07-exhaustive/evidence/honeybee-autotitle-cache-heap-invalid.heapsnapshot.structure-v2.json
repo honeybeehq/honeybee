@@ -1,0 +1,99 @@
+{
+  "snapshotPath": "/private/tmp/honeybee-autotitle-cache-heap-invalid.heapsnapshot",
+  "snapshotSha256": "b83fe0f13a1fc36ac6056203ef27543c9c227fa8a2e12d7a27ac5d414a49e4e5",
+  "toolSha256": "7a9e39d4ec0c4bc9f827d91de7bdbad0e70208213118a7d691bba0c0995529c4",
+  "scope": "Offline structural inspection of the candidate's closure-local title cache.\n\nConsumes V8's own metadata fields from a JSON heap snapshot. Follows the\ncontext slot named quietBaselines to a Map, then that Map's table to entry\nobjects with membership/signature properties. Counts observed objects only.\nThis is neither a dominator calculation nor retained-byte attribution.\nSource review must verify the slot name belongs to the intended dispatcher.\nViolations cover recognized entry objects with both property edges only;\nmissing properties and SMI-valued fields need separate source/behavior checks.\n",
+  "cacheSlots": [
+    {
+      "context": {
+        "id": 103673,
+        "type": "object",
+        "name": "system / Context",
+        "shallowBytes": 40
+      },
+      "slot": "quietBaselines",
+      "target": {
+        "id": 103675,
+        "type": "object",
+        "name": "Map",
+        "shallowBytes": 32
+      },
+      "entries": [
+        {
+          "entry": {
+            "id": 103677,
+            "type": "object",
+            "name": "Object",
+            "shallowBytes": 40
+          },
+          "membership": {
+            "id": 103679,
+            "type": "object",
+            "name": "Object",
+            "shallowBytes": 32
+          },
+          "signature": {
+            "id": 935,
+            "type": "string",
+            "name": "x",
+            "shallowBytes": 0
+          }
+        },
+        {
+          "entry": {
+            "id": 103689,
+            "type": "object",
+            "name": "Object",
+            "shallowBytes": 40
+          },
+          "membership": {
+            "id": 103691,
+            "type": "object",
+            "name": "Object",
+            "shallowBytes": 32
+          },
+          "signature": {
+            "id": 103693,
+            "type": "object",
+            "name": "Object",
+            "shallowBytes": 32
+          }
+        }
+      ],
+      "slotState": "map",
+      "table": {
+        "id": 103699,
+        "type": "array",
+        "name": "",
+        "shallowBytes": 152
+      },
+      "observedEntryObjects": 2
+    }
+  ],
+  "violations": [
+    {
+      "code": "membership_kind",
+      "contextId": 103673,
+      "entryId": 103677,
+      "observed": {
+        "id": 32881,
+        "type": "string",
+        "name": "transaction_open",
+        "shallowBytes": 32
+      }
+    },
+    {
+      "code": "signature_type",
+      "contextId": 103673,
+      "entryId": 103689,
+      "observed": {
+        "id": 103693,
+        "type": "object",
+        "name": "Object",
+        "shallowBytes": 32
+      }
+    }
+  ],
+  "completed": true,
+  "coreStoreObjects": 0
+}

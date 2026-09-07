@@ -39,3 +39,13 @@ Landed,Repeated twenty-row mailbox read,25.957,18.438,us CPU/call,1000calls/batc
 Landed,Cell capture with10k packed tags,163.662834,97.631292,ms wall,12samples/side;4process ABBA;12files14commits,cell-no-tags-results.md
 Landed; temporary snapshot,Cell scratch clone logical bytes,757684,27704,bytes,10k packed tags;after no-checkout clone,cell-no-tags-results.md
 Diagnostic; max individual process,Cell capture Git RSS,16220160,8093696,bytes,first paired diagnostic at10k tags;not whole-tree RAM,cell-no-tags-results.md
+Landed,Automatic title empty-fleet,2.851,3.133,ms CPU/scan,30 samples per side; workload in report,autotitle-quiet-results.md
+Landed,Automatic title thin-fleet,4.37,3.302,ms CPU/scan,30 samples per side; workload in report,autotitle-quiet-results.md
+Landed,Automatic title envelope-giant,142.554,3.158,ms CPU/scan,30 samples per side; workload in report,autotitle-quiet-results.md
+Landed,Automatic title backoff-giant,179.312,3.161,ms CPU/scan,30 samples per side; workload in report,autotitle-quiet-results.md
+Landed,Automatic title one-changed,4.396,3.342,ms CPU/scan,30 samples per side; workload in report,autotitle-quiet-results.md
+Landed,Automatic title all-changed,38.59,39.972,ms CPU/scan,30 samples per side; workload in report,autotitle-quiet-results.md
+Landed,Automatic title expiry-giant,191.469,193.726,ms CPU/scan,30 samples per side; workload in report,autotitle-quiet-results.md
+Landed,Automatic title ten-giants,311.354,6.395,ms CPU/scan,30 samples per side; workload in report,autotitle-quiet-results.md
+Landed,"Automatic title warm RSS, descriptive runs",842989568..849018880,451821568..452100096,"bytes, whole process",1000 small + 1 giant; independent ABBA processes; no cache-byte attribution,autotitle-quiet-results.md
+Landed,"Automatic title warm heap occupancy, descriptive runs",6862136..6871056,11932872,"bytes, post-GC managed heap",Same fixture; most difference persists after release,autotitle-quiet-results.md

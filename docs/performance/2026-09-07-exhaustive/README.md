@@ -59,6 +59,6 @@ The [workflow](workflow.md) defines the completion predicate. [The decision log]
 
 [Cell tag omission](cell-no-tags-results.md) records the accepted follow-up with paired wall, Git CPU, maximum individual RSS and temporary clone storage evidence.
 
-[Automatic-title architecture grounding](autotitle-architecture-grounding.md) records measured query costs and executable cache/transaction counterexamples. Design synthesis is pending; no title-cache production change is accepted.
+[Automatic-title architecture grounding](autotitle-architecture-grounding.md) records measured query costs and executable cache/transaction counterexamples. The selected synthesis and subsequent treatment results are linked below.
 
-[Automatic-title quiet design and A/A baseline](autotitle-quiet-design.md) records the selected first implementation slice. Treatment performance acceptance remains pending.
+[Automatic-title quiet design and A/A baseline](autotitle-quiet-design.md) records the selected first implementation slice. [Treatment results](autotitle-quiet-results.md) record the accepted cache, its workload regressions, and its CPU/allocation/process-memory evidence.

@@ -1,0 +1,1614 @@
+{
+  "completed": true,
+  "startedAt": "2026-09-07T16:21:12.463Z",
+  "roots": [
+    "/private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-baseline-3228",
+    "/private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-candidate-8e57"
+  ],
+  "sources": [
+    {
+      "revision": "322815d9dd0af4d63471c17dc27a9ab90cecca7a",
+      "hashes": {
+        "package-lock.json": "d7bab0bd3fce5d01591536fe5da7cd969634a4ae3428bf75b973c54a58cf36cc",
+        "package.json": "dfc54c5c0aff857519101d532ffbe6a03339903e075e3fdcb82da5d07b2e223c",
+        "v2/adapters/src/agy.ts": "ae4751062d36382252aae126e7c0ee024bbcf65009cc12adc16721e24e9dbbc7",
+        "v2/adapters/src/args.ts": "759f2e5c01bacffd8bca998ae7573c1284da38f043a6d6fdd758cba40fb030f6",
+        "v2/adapters/src/claude.ts": "78f4b15d50a1f2eba8f74fcc4672e2b008db544950c6ed03a8a8b183b7f6e046",
+        "v2/adapters/src/codex.ts": "e03c2f253f5adbd877761683bdceb02ad3725ede0ea9bb66718fb6060df902cb",
+        "v2/adapters/src/grok.ts": "71f647f0b8fb2a32427604ddf45e0a7b54a4a1b876418c7f91de8c3024c0d84f",
+        "v2/adapters/src/index.ts": "6869fe4ec44c1eeefa53ff1660a00c8556330e30acb30cc3265fb78483aadcdf",
+        "v2/adapters/src/stub.ts": "4fdfca1b8dca0cc396bd495fac99d5fcab7005b40bb598e33413a5747e8f3ccc",
+        "v2/adapters/src/types.ts": "c37098d1cb7d06a8137f1fda87ad1affcb6d8b37e325665b1e5123b029fa2dd3",
+        "v2/cli/package.json": "b8abe08ac8165e64be34b9531dace368763822e6739f3024981fc751866d3c71",
+        "v2/cli/src/bin.ts": "330f6bb9d42c72475929a6e104fa5c318051b57816acd4056b3c7523010b8a8c",
+        "v2/cli/src/client.ts": "421e107f912c5f9fae6d51cb2e3b10d8ffe83e70e6660adef03392d59739cafd",
+        "v2/cli/src/help.ts": "1343b7559d210c809233a5c3f4775c796f0d73d5f8d81221829afe419a9b0df3",
+        "v2/cli/src/index.ts": "705f8de04ba4adb8b563d11f2def4da5ae0904ec9bcd0c062d9ce2019676bfd8",
+        "v2/cli/src/main.ts": "c9b719d95d75c8979f9cf2ddb860e109e1f9a971c2b398029113b86dcd9258a6",
+        "v2/cli/src/readonly.ts": "8e94374a1e10bfe065915dded41ffdd60957d0f5aff7d692edbfc67f10b14091",
+        "v2/cli/src/render.ts": "6efc8d278c87ac8c90a6588790e5b7a80eb6dbf997254326b32098c77d6f2897",
+        "v2/cli/src/style.ts": "2f5e611fa6b1aee3c0a3afefdf0cfb9b830736ce4c3f2f9c53d73e5bee5cc5fd",
+        "v2/core/package.json": "6681873b8fe70d5d7ef1005130ff84c721c2516c8e5dcc2b3afad83771247f6d",
+        "v2/core/src/accountLimitsParse.ts": "4101b50909a9c9d79aa9761c4a5b68bc3d808ad36acca38e75c07779a51068a3",
+        "v2/core/src/accountMatch.ts": "90ebe4e125f83d28bc1a1c99cbff9b813362d3b38bbac8b97182014cb4fcf980",
+        "v2/core/src/accountRecipes.ts": "837c397aab4c9fa8a02b890372fac3e29b73d4ba8307913446309d00e715b6b7",
+        "v2/core/src/accountSelect.ts": "2536db3146b2d9a66c812e294c8d668df5e82e3bea9d2923308dff4060e01f5c",
+        "v2/core/src/audit.ts": "b25292a72b403e9e5f8c8ff785e07ef4750ccd6b0b02734afb13f2d94ad14e3c",
+        "v2/core/src/cellMove.ts": "64a0c07352dbab4226c2b173655eb412b976c4f22e4b9d158e5e829c0884d0d6",
+        "v2/core/src/executables.ts": "4a878c553014ceabcdd7e940e274d652799c2852474ada614d5c80cca1eadc7c",
+        "v2/core/src/import-frozen.ts": "c4e84004d16133eeefb38cdf07bd639dbb2d3cda2662eaa4652e986500b5507e",
+        "v2/core/src/index.ts": "f39a777c163ee60a0159749d5380a3e87ed35c93cb2f4445814b90803edcb6db",
+        "v2/core/src/loginFlow.ts": "727d42b6a98a271577cd462e128b0287e7c571e5e06104b3afb5bdff49d35460",
+        "v2/core/src/mirror.ts": "8bcbdb8763eba166d3568f02181d6523c75b7d5fd43eb084e2d5762de5dc33ab",
+        "v2/core/src/packages.ts": "e14a3c6c013211235ca84c137a93f12ead10beff01c876c2741a7e419b944f17",
+        "v2/core/src/registry.ts": "1cd3e1c5a239882474818466907b5f5b2d10501e178b0ad13d24fb2fae8123ff",
+        "v2/core/src/schema.ts": "5521ca43cd2db4987d811aa28a21174618cffbdcf8f44793f6896b13c07aeb7e",
+        "v2/core/src/store.ts": "6a11139e98cb03f68bf0da31c58a2cb4864166faf439258b25fafcff40bef151",
+        "v2/core/src/tasks.ts": "2f266a9640ed4b9c7ceeea18aee63ce11521cc416ecc3b5ce118ebb5c195a263",
+        "v2/core/src/types.ts": "11f505e7bda3b575731671e198d83562ab400b2772bb8eb315f1acef9dcc899a",
+        "v2/core/src/view.ts": "1af7f27540c29f4aa9e2c44d7118685f296128a8ab4579df17671ce0abb04693",
+        "v2/daemon/package.json": "42c1d42b8eef8e2ebc590bb702bc6ec8eb9dfc5ea81678c9db87fafe61cea577",
+        "v2/daemon/src/accountsService.ts": "f3075d475192ac3365f2e44530f453890e9da420ced4d8eebe6eb1c0d9c80ff3",
+        "v2/daemon/src/activation.ts": "7e7056e53671e9caea816fa1162478905ecfc9a408afbad73750ee411056bab7",
+        "v2/daemon/src/autoTitle.ts": "245e0202fd3758aac7cbf022f328ccc4b3f0e88b58303ff03b0e675bceef3e91",
+        "v2/daemon/src/bin.ts": "8ef32816d19e0c2adc85a81a740de8935c7a8bc77e94118203a761b16679754d",
+        "v2/daemon/src/config.ts": "64ea73400095dd007eadbde1eceb0b748a9efbbb343c579e930d93883368f89b",
+        "v2/daemon/src/cursorAuth.ts": "1f0d554fd3ea0351b108404d6b7912701be184e8e26ea89bd2b692a42ae4f924",
+        "v2/daemon/src/daemon.ts": "37cd4d03a456d076100671fe6da175ea72bbc449d8661c761543a0a27669c6ca",
+        "v2/daemon/src/envelope.ts": "dc0bff3d7706be31b3fce162e370c1e6e6b7ed8cd2eca43ab1ba6e9ccada6c7a",
+        "v2/daemon/src/gateways.ts": "818fbb3682812f389fef5c1e1947cb9b140f32af4fb38b70e363941d13218e1c",
+        "v2/daemon/src/homeDefaults.ts": "a63090c09cc8d102b46effa2f8f205457b0e3d73baaaca15cd836e2c0896fc3c",
+        "v2/daemon/src/import-probes.ts": "14cdeb5b7c47d1da44a8eff3e92e22a52a523dcaf250174cefd1c6c46f15529a",
+        "v2/daemon/src/index.ts": "5f8b71e1193407322cb5b44e87bd30cb8384aeb783c22803a10aca034aa691a9",
+        "v2/daemon/src/keychain.ts": "97ecd409db519ba195662dc5f41cbb2b31c36b68100a57bcdc0c1f89ef877ad5",
+        "v2/daemon/src/login/claudeOauth.ts": "9781bf55222a833a9f4461f704a9a10ccb71030a547ca978dae16428f5ce89ff",
+        "v2/daemon/src/login/cliRunner.ts": "ef14344f05033a1ecf510054d3b717db945a203c2b2c32fe3d2607058ca7d52a",
+        "v2/daemon/src/login/common.ts": "1f93ae2e3757ff297cfcd3d94fdf9e838e546a5beed67999f9e0a1b88ebedc46",
+        "v2/daemon/src/login/directKey.ts": "91224b228da3a12dc828d5290900ed1a59ed95766cc9f5f36d273d9e6b862ba2",
+        "v2/daemon/src/login/runner.ts": "53811aa26fecf68f66e6714110efb5664ad2081586b369ab159c25e044d7f17c",
+        "v2/daemon/src/login/transports.ts": "a7073ba48a5ae49cbf2d9109812bbe299ed18487f551d1bf5271bb47b7357e15",
+        "v2/daemon/src/loginFlows.ts": "4460f4a8f8e14900e106e817862cfa8a60cb0f15c6327741d23896736b708c94",
+        "v2/daemon/src/loginWorker.ts": "4a70f08d716550337509663c7586b235568b1fe7bccfbeecfc57d7bdc2fdd378",
+        "v2/daemon/src/loops.ts": "a82353cb45bbe0189399b81e74e8f1c5e5c2c659eaad959cb550f4f4a83ac13b",
+        "v2/daemon/src/main.ts": "7546a94f78f8817ca3a869aa63b2d62d16ffa5404ecb60d63cc742733236f903",
+        "v2/daemon/src/naming.ts": "eae82ba481b3e5b74d7d80c38ca50d6bbf64e378e48e8a7c953d35b2f0a643f5",
+        "v2/daemon/src/namingService.ts": "e8ee4b2026fea2460fb59d60db034ec694b32f76ec2cf7eeba3ea1abf6c36001",
+        "v2/daemon/src/performance.ts": "01ad16258243eea10fa089ea8aae0d396fab4f56fac1ce9f77dd953b7ec2db02",
+        "v2/daemon/src/protocol.ts": "9a0a5439d3312f9a6a6c454bf0983500e236ec49f0ca858cca169d7f08108654",
+        "v2/daemon/src/providerLimits.ts": "befe91217b50c927419389adb50527fd0867ed58d5111f13bcb669eb2b700790",
+        "v2/daemon/src/relocateSession.ts": "bb23acc8d738f024ac8a674b4c7f1366e9913c0b792df2814d9d0869c2ee04e7",
+        "v2/daemon/src/rpc.ts": "39ae485f3cbf72058c93ccbb0427833683ba9836388035065355689f717b3203",
+        "v2/daemon/src/service.ts": "e5aee133fb1f0b5a14f10633e92d5fca7812bfd4e3a0a74ad0ecf2e5ba23a4cb",
+        "v2/daemon/src/substrates.ts": "914b18b4e6e6e7cd2525f5943edb3080c031e16d08934fd4021b55ebf3c1c27c",
+        "v2/daemon/src/telemetry.ts": "0f234f5f77df593387db1ed6c08ba64ccd45f3ffa60303bbd178765aefd0980c",
+        "v2/daemon/src/tmuxHarness.ts": "aebc0a90c9ff4a03a466cdf2edc4fe282dc91388cf9966a0412801fb0bea320f",
+        "v2/driver-cell/src/capture.ts": "fcbceddea7ae205f9d011cb6f9df2a7e500597296505d18bfcb425c97acfae5d",
+        "v2/driver-cell/src/cow.ts": "24eb5ce7b6536de861ca261a5d80096343115e14bc8a23e354a2e8a74f318b10",
+        "v2/driver-cell/src/driver.ts": "b513f6a7faaaaa8352a6025b28cc6768e73ea7a2470c4d9aa3686642fa3be88b",
+        "v2/driver-cell/src/exec.ts": "1c022870cd0279d92672b917e2ff8cbc52c3e7b74d47491b5e552b2eb4c72c9b",
+        "v2/driver-cell/src/git.ts": "a8bf50ed3dd720d94fa3b45c2dd6fbfbb82b534e38848af44408c2ca9a10be8d",
+        "v2/driver-cell/src/gitImage.ts": "9b7b1dc8a762caaac402d108bbd9286630a1376b4844ea8d2d3c6232d0a19007",
+        "v2/driver-cell/src/index.ts": "93522d17c0a9bf95c8f7452b24778bb8845af7fed440dc0c22c7fdd60db07661",
+        "v2/driver-cell/src/layout.ts": "68a677450c0d851cf97c50f8616fd25961ddea59dd6b8ac3c0a739042c4775f8",
+        "v2/driver-cell/src/ledger.ts": "efdf4762fab38defd8ec3e68dceba52a44a11d17962b027cb4a0302eec429834",
+        "v2/driver-cell/src/provision.ts": "8293821e57266a0b4f7a2e0e6d25c584cac6caf1ac0afad207311af57558be66",
+        "v2/driver-cell/src/provisionWorker.ts": "a651cc6000ef33f7ed52384f678543b28fea4f363113b3218d45219c510a2d4c",
+        "v2/driver-cell/src/remove.ts": "914e22bf0182c90503731cbeb9877c0d697cda5d410b224223499fab33e75aa5",
+        "v2/driver-cell/src/sandbox.ts": "be390c169c3bc8b06191997ea08c7d6b57f417df26f5bffc21bcef75713ab4ad",
+        "v2/driver-hsr/src/driver.ts": "1bda7217fa6f00701403e14c0887627711fde3038a080ace11dd5b594bc59c38",
+        "v2/driver-hsr/src/index.ts": "8f9542db7792d462ab9b10f9537b9c05f31acf9934d6c32b3f248de8beb97e5e",
+        "v2/driver-hsr/src/psutil.ts": "1beb05854deb6fbe12f206d7436648e7be2a8ae00bcfd0acd13ef3f9fb1c1edb",
+        "v2/driver-hsr/src/runner-host-main.ts": "10c4f1c2af2e2dc20bdddba51e7972bc976831c1bf40b5f5772a2519538411da",
+        "v2/driver-hsr/src/runner-host.ts": "7f1716db45160657ef2109d8a18ae064cbab065f0321b22d29f9a193a3f3c152",
+        "v2/driver-tmux/src/agy-projection.ts": "1d5284c9835d499f0e55dc52ec70a5d36175993f0ccbab7f2e21fcf60f92a9ff",
+        "v2/driver-tmux/src/claude-projection.ts": "df6d2d8967f70ac4b6796a234de83d1e325e41210794972aee41b1a7294882f6",
+        "v2/driver-tmux/src/codex-projection.ts": "2ff68aa8e4d8c802bef9abedb7595e29f038c7ba4cf81403f7efc54a03225e1b",
+        "v2/driver-tmux/src/driver.ts": "26fe0516fe49f389d1f5cad30ee0002e829ae1aba75fe6cec8a0ea886b670820",
+        "v2/driver-tmux/src/events-file.ts": "ddb2ba04f32ef325def8d5287a518659a42e41801034304bc74e4695962a0e99",
+        "v2/driver-tmux/src/grok-projection.ts": "d0d419367031c9738fc6a5a0e27ea6c8a15399b06834239b92f2c2603d406823",
+        "v2/driver-tmux/src/index.ts": "f716470ff208ac29febfe90031b025d969a2eefc5461e649d77d43813fce278d",
+        "v2/driver-tmux/src/tail.ts": "40e24f0d34401e7990581eef3eff1d1542defbc846a92339e61bb81a95a0d156",
+        "v2/driver-tmux/src/tmux.ts": "92607334202f8fb8c8cedf7b9d1454d8742a867c4c8082f7f2f6617a6c285eb9",
+        "v2/driver-tmux/src/transcript-projection.ts": "98bdd52792da1d74ddfe28332c54ae76adc8f6b52e94e1b4f233a94cabf96c78",
+        "v2/driver-tmux/src/transcripts.ts": "f23289d6199d9d2ec288f60de0a3475ce5aa41e20230763380386d4d2c545509",
+        "v2/harness/package.json": "f4808c3b41eb548c2304946690875ff29840bb3fc706247ac8cf285917aa2e3d",
+        "v2/harness/src/clock.ts": "690b130f9bb111af2099cc96d19a114258bf3bc6353d7a440d53b3141c9e2446",
+        "v2/harness/src/daemon.ts": "2b8f17080275ef72b3612e4b446b9e951d203373c70bcec7b83e3b21c91d81ef",
+        "v2/harness/src/driver.ts": "df41b313a0ab97a637eddb5a3ba2be4456293776aa46acfd3eb29af5315a1442",
+        "v2/harness/src/faults.ts": "6152e965e33f1501f9beee0f5a3c42ce18a8b71897713043716a993de48cfc20",
+        "v2/harness/src/index.ts": "200de7850d2848f5b1d2afa72fdbd1490d2919efd8f77976508416ccb7b9a191",
+        "v2/harness/src/invariants.ts": "5ab63d4da3399534d6a2d9eff705d1c6c403e14b39b5749b5863bd7d04daccbb",
+        "v2/harness/src/prng.ts": "1be8ed3684abb058b30f83b89239385928abb14d8c24616ebf925c95af4639e8",
+        "v2/harness/src/sim-driver.ts": "70b5b013351a8a089e2b13509cb3abe5d8182b18e07f920859abc68e4dd10e31",
+        "v2/harness/src/simulation.ts": "9979407c9e3483294675c47b23b802a724adcea73681ae8d8480f47f5e2d650c"
+      }
+    },
+    {
+      "revision": "8e57e74615801f6e294f209ac9f2cb29c2ce4f55",
+      "hashes": {
+        "package-lock.json": "d7bab0bd3fce5d01591536fe5da7cd969634a4ae3428bf75b973c54a58cf36cc",
+        "package.json": "dfc54c5c0aff857519101d532ffbe6a03339903e075e3fdcb82da5d07b2e223c",
+        "v2/adapters/src/agy.ts": "ae4751062d36382252aae126e7c0ee024bbcf65009cc12adc16721e24e9dbbc7",
+        "v2/adapters/src/args.ts": "759f2e5c01bacffd8bca998ae7573c1284da38f043a6d6fdd758cba40fb030f6",
+        "v2/adapters/src/claude.ts": "78f4b15d50a1f2eba8f74fcc4672e2b008db544950c6ed03a8a8b183b7f6e046",
+        "v2/adapters/src/codex.ts": "e03c2f253f5adbd877761683bdceb02ad3725ede0ea9bb66718fb6060df902cb",
+        "v2/adapters/src/grok.ts": "71f647f0b8fb2a32427604ddf45e0a7b54a4a1b876418c7f91de8c3024c0d84f",
+        "v2/adapters/src/index.ts": "6869fe4ec44c1eeefa53ff1660a00c8556330e30acb30cc3265fb78483aadcdf",
+        "v2/adapters/src/stub.ts": "4fdfca1b8dca0cc396bd495fac99d5fcab7005b40bb598e33413a5747e8f3ccc",
+        "v2/adapters/src/types.ts": "c37098d1cb7d06a8137f1fda87ad1affcb6d8b37e325665b1e5123b029fa2dd3",
+        "v2/cli/package.json": "b8abe08ac8165e64be34b9531dace368763822e6739f3024981fc751866d3c71",
+        "v2/cli/src/bin.ts": "330f6bb9d42c72475929a6e104fa5c318051b57816acd4056b3c7523010b8a8c",
+        "v2/cli/src/client.ts": "421e107f912c5f9fae6d51cb2e3b10d8ffe83e70e6660adef03392d59739cafd",
+        "v2/cli/src/help.ts": "1343b7559d210c809233a5c3f4775c796f0d73d5f8d81221829afe419a9b0df3",
+        "v2/cli/src/index.ts": "705f8de04ba4adb8b563d11f2def4da5ae0904ec9bcd0c062d9ce2019676bfd8",
+        "v2/cli/src/main.ts": "c9b719d95d75c8979f9cf2ddb860e109e1f9a971c2b398029113b86dcd9258a6",
+        "v2/cli/src/readonly.ts": "8e94374a1e10bfe065915dded41ffdd60957d0f5aff7d692edbfc67f10b14091",
+        "v2/cli/src/render.ts": "6efc8d278c87ac8c90a6588790e5b7a80eb6dbf997254326b32098c77d6f2897",
+        "v2/cli/src/style.ts": "2f5e611fa6b1aee3c0a3afefdf0cfb9b830736ce4c3f2f9c53d73e5bee5cc5fd",
+        "v2/core/package.json": "6681873b8fe70d5d7ef1005130ff84c721c2516c8e5dcc2b3afad83771247f6d",
+        "v2/core/src/accountLimitsParse.ts": "4101b50909a9c9d79aa9761c4a5b68bc3d808ad36acca38e75c07779a51068a3",
+        "v2/core/src/accountMatch.ts": "90ebe4e125f83d28bc1a1c99cbff9b813362d3b38bbac8b97182014cb4fcf980",
+        "v2/core/src/accountRecipes.ts": "837c397aab4c9fa8a02b890372fac3e29b73d4ba8307913446309d00e715b6b7",
+        "v2/core/src/accountSelect.ts": "2536db3146b2d9a66c812e294c8d668df5e82e3bea9d2923308dff4060e01f5c",
+        "v2/core/src/audit.ts": "b25292a72b403e9e5f8c8ff785e07ef4750ccd6b0b02734afb13f2d94ad14e3c",
+        "v2/core/src/cellMove.ts": "64a0c07352dbab4226c2b173655eb412b976c4f22e4b9d158e5e829c0884d0d6",
+        "v2/core/src/executables.ts": "4a878c553014ceabcdd7e940e274d652799c2852474ada614d5c80cca1eadc7c",
+        "v2/core/src/import-frozen.ts": "c4e84004d16133eeefb38cdf07bd639dbb2d3cda2662eaa4652e986500b5507e",
+        "v2/core/src/index.ts": "1d9ab7425149fe17615ac98f8986911abda59fc475b9db5ecae59d1b1754cdb8",
+        "v2/core/src/loginFlow.ts": "727d42b6a98a271577cd462e128b0287e7c571e5e06104b3afb5bdff49d35460",
+        "v2/core/src/mirror.ts": "8bcbdb8763eba166d3568f02181d6523c75b7d5fd43eb084e2d5762de5dc33ab",
+        "v2/core/src/packages.ts": "e14a3c6c013211235ca84c137a93f12ead10beff01c876c2741a7e419b944f17",
+        "v2/core/src/registry.ts": "1cd3e1c5a239882474818466907b5f5b2d10501e178b0ad13d24fb2fae8123ff",
+        "v2/core/src/schema.ts": "5521ca43cd2db4987d811aa28a21174618cffbdcf8f44793f6896b13c07aeb7e",
+        "v2/core/src/store.ts": "ca02ca670bc743a0c8fb1a0acd01406010989d1f0640b852822c9ddc1ef48a03",
+        "v2/core/src/tasks.ts": "2f266a9640ed4b9c7ceeea18aee63ce11521cc416ecc3b5ce118ebb5c195a263",
+        "v2/core/src/types.ts": "11f505e7bda3b575731671e198d83562ab400b2772bb8eb315f1acef9dcc899a",
+        "v2/core/src/view.ts": "1af7f27540c29f4aa9e2c44d7118685f296128a8ab4579df17671ce0abb04693",
+        "v2/daemon/package.json": "42c1d42b8eef8e2ebc590bb702bc6ec8eb9dfc5ea81678c9db87fafe61cea577",
+        "v2/daemon/src/accountsService.ts": "f3075d475192ac3365f2e44530f453890e9da420ced4d8eebe6eb1c0d9c80ff3",
+        "v2/daemon/src/activation.ts": "7e7056e53671e9caea816fa1162478905ecfc9a408afbad73750ee411056bab7",
+        "v2/daemon/src/autoTitle.ts": "ffececcc9fa976b3a10cf025a90ee9ce12c211324eeddd9a14e383638d6e768d",
+        "v2/daemon/src/bin.ts": "8ef32816d19e0c2adc85a81a740de8935c7a8bc77e94118203a761b16679754d",
+        "v2/daemon/src/config.ts": "64ea73400095dd007eadbde1eceb0b748a9efbbb343c579e930d93883368f89b",
+        "v2/daemon/src/cursorAuth.ts": "1f0d554fd3ea0351b108404d6b7912701be184e8e26ea89bd2b692a42ae4f924",
+        "v2/daemon/src/daemon.ts": "37cd4d03a456d076100671fe6da175ea72bbc449d8661c761543a0a27669c6ca",
+        "v2/daemon/src/envelope.ts": "dc0bff3d7706be31b3fce162e370c1e6e6b7ed8cd2eca43ab1ba6e9ccada6c7a",
+        "v2/daemon/src/gateways.ts": "818fbb3682812f389fef5c1e1947cb9b140f32af4fb38b70e363941d13218e1c",
+        "v2/daemon/src/homeDefaults.ts": "a63090c09cc8d102b46effa2f8f205457b0e3d73baaaca15cd836e2c0896fc3c",
+        "v2/daemon/src/import-probes.ts": "14cdeb5b7c47d1da44a8eff3e92e22a52a523dcaf250174cefd1c6c46f15529a",
+        "v2/daemon/src/index.ts": "5f8b71e1193407322cb5b44e87bd30cb8384aeb783c22803a10aca034aa691a9",
+        "v2/daemon/src/keychain.ts": "97ecd409db519ba195662dc5f41cbb2b31c36b68100a57bcdc0c1f89ef877ad5",
+        "v2/daemon/src/login/claudeOauth.ts": "9781bf55222a833a9f4461f704a9a10ccb71030a547ca978dae16428f5ce89ff",
+        "v2/daemon/src/login/cliRunner.ts": "ef14344f05033a1ecf510054d3b717db945a203c2b2c32fe3d2607058ca7d52a",
+        "v2/daemon/src/login/common.ts": "1f93ae2e3757ff297cfcd3d94fdf9e838e546a5beed67999f9e0a1b88ebedc46",
+        "v2/daemon/src/login/directKey.ts": "91224b228da3a12dc828d5290900ed1a59ed95766cc9f5f36d273d9e6b862ba2",
+        "v2/daemon/src/login/runner.ts": "53811aa26fecf68f66e6714110efb5664ad2081586b369ab159c25e044d7f17c",
+        "v2/daemon/src/login/transports.ts": "a7073ba48a5ae49cbf2d9109812bbe299ed18487f551d1bf5271bb47b7357e15",
+        "v2/daemon/src/loginFlows.ts": "4460f4a8f8e14900e106e817862cfa8a60cb0f15c6327741d23896736b708c94",
+        "v2/daemon/src/loginWorker.ts": "4a70f08d716550337509663c7586b235568b1fe7bccfbeecfc57d7bdc2fdd378",
+        "v2/daemon/src/loops.ts": "a82353cb45bbe0189399b81e74e8f1c5e5c2c659eaad959cb550f4f4a83ac13b",
+        "v2/daemon/src/main.ts": "7546a94f78f8817ca3a869aa63b2d62d16ffa5404ecb60d63cc742733236f903",
+        "v2/daemon/src/naming.ts": "eae82ba481b3e5b74d7d80c38ca50d6bbf64e378e48e8a7c953d35b2f0a643f5",
+        "v2/daemon/src/namingService.ts": "e8ee4b2026fea2460fb59d60db034ec694b32f76ec2cf7eeba3ea1abf6c36001",
+        "v2/daemon/src/performance.ts": "01ad16258243eea10fa089ea8aae0d396fab4f56fac1ce9f77dd953b7ec2db02",
+        "v2/daemon/src/protocol.ts": "9a0a5439d3312f9a6a6c454bf0983500e236ec49f0ca858cca169d7f08108654",
+        "v2/daemon/src/providerLimits.ts": "befe91217b50c927419389adb50527fd0867ed58d5111f13bcb669eb2b700790",
+        "v2/daemon/src/relocateSession.ts": "bb23acc8d738f024ac8a674b4c7f1366e9913c0b792df2814d9d0869c2ee04e7",
+        "v2/daemon/src/rpc.ts": "39ae485f3cbf72058c93ccbb0427833683ba9836388035065355689f717b3203",
+        "v2/daemon/src/service.ts": "e5aee133fb1f0b5a14f10633e92d5fca7812bfd4e3a0a74ad0ecf2e5ba23a4cb",
+        "v2/daemon/src/substrates.ts": "914b18b4e6e6e7cd2525f5943edb3080c031e16d08934fd4021b55ebf3c1c27c",
+        "v2/daemon/src/telemetry.ts": "0f234f5f77df593387db1ed6c08ba64ccd45f3ffa60303bbd178765aefd0980c",
+        "v2/daemon/src/tmuxHarness.ts": "aebc0a90c9ff4a03a466cdf2edc4fe282dc91388cf9966a0412801fb0bea320f",
+        "v2/driver-cell/src/capture.ts": "fcbceddea7ae205f9d011cb6f9df2a7e500597296505d18bfcb425c97acfae5d",
+        "v2/driver-cell/src/cow.ts": "24eb5ce7b6536de861ca261a5d80096343115e14bc8a23e354a2e8a74f318b10",
+        "v2/driver-cell/src/driver.ts": "b513f6a7faaaaa8352a6025b28cc6768e73ea7a2470c4d9aa3686642fa3be88b",
+        "v2/driver-cell/src/exec.ts": "1c022870cd0279d92672b917e2ff8cbc52c3e7b74d47491b5e552b2eb4c72c9b",
+        "v2/driver-cell/src/git.ts": "a8bf50ed3dd720d94fa3b45c2dd6fbfbb82b534e38848af44408c2ca9a10be8d",
+        "v2/driver-cell/src/gitImage.ts": "9b7b1dc8a762caaac402d108bbd9286630a1376b4844ea8d2d3c6232d0a19007",
+        "v2/driver-cell/src/index.ts": "93522d17c0a9bf95c8f7452b24778bb8845af7fed440dc0c22c7fdd60db07661",
+        "v2/driver-cell/src/layout.ts": "68a677450c0d851cf97c50f8616fd25961ddea59dd6b8ac3c0a739042c4775f8",
+        "v2/driver-cell/src/ledger.ts": "efdf4762fab38defd8ec3e68dceba52a44a11d17962b027cb4a0302eec429834",
+        "v2/driver-cell/src/provision.ts": "8293821e57266a0b4f7a2e0e6d25c584cac6caf1ac0afad207311af57558be66",
+        "v2/driver-cell/src/provisionWorker.ts": "a651cc6000ef33f7ed52384f678543b28fea4f363113b3218d45219c510a2d4c",
+        "v2/driver-cell/src/remove.ts": "914e22bf0182c90503731cbeb9877c0d697cda5d410b224223499fab33e75aa5",
+        "v2/driver-cell/src/sandbox.ts": "be390c169c3bc8b06191997ea08c7d6b57f417df26f5bffc21bcef75713ab4ad",
+        "v2/driver-hsr/src/driver.ts": "1bda7217fa6f00701403e14c0887627711fde3038a080ace11dd5b594bc59c38",
+        "v2/driver-hsr/src/index.ts": "8f9542db7792d462ab9b10f9537b9c05f31acf9934d6c32b3f248de8beb97e5e",
+        "v2/driver-hsr/src/psutil.ts": "1beb05854deb6fbe12f206d7436648e7be2a8ae00bcfd0acd13ef3f9fb1c1edb",
+        "v2/driver-hsr/src/runner-host-main.ts": "10c4f1c2af2e2dc20bdddba51e7972bc976831c1bf40b5f5772a2519538411da",
+        "v2/driver-hsr/src/runner-host.ts": "7f1716db45160657ef2109d8a18ae064cbab065f0321b22d29f9a193a3f3c152",
+        "v2/driver-tmux/src/agy-projection.ts": "1d5284c9835d499f0e55dc52ec70a5d36175993f0ccbab7f2e21fcf60f92a9ff",
+        "v2/driver-tmux/src/claude-projection.ts": "df6d2d8967f70ac4b6796a234de83d1e325e41210794972aee41b1a7294882f6",
+        "v2/driver-tmux/src/codex-projection.ts": "2ff68aa8e4d8c802bef9abedb7595e29f038c7ba4cf81403f7efc54a03225e1b",
+        "v2/driver-tmux/src/driver.ts": "26fe0516fe49f389d1f5cad30ee0002e829ae1aba75fe6cec8a0ea886b670820",
+        "v2/driver-tmux/src/events-file.ts": "ddb2ba04f32ef325def8d5287a518659a42e41801034304bc74e4695962a0e99",
+        "v2/driver-tmux/src/grok-projection.ts": "d0d419367031c9738fc6a5a0e27ea6c8a15399b06834239b92f2c2603d406823",
+        "v2/driver-tmux/src/index.ts": "f716470ff208ac29febfe90031b025d969a2eefc5461e649d77d43813fce278d",
+        "v2/driver-tmux/src/tail.ts": "40e24f0d34401e7990581eef3eff1d1542defbc846a92339e61bb81a95a0d156",
+        "v2/driver-tmux/src/tmux.ts": "92607334202f8fb8c8cedf7b9d1454d8742a867c4c8082f7f2f6617a6c285eb9",
+        "v2/driver-tmux/src/transcript-projection.ts": "98bdd52792da1d74ddfe28332c54ae76adc8f6b52e94e1b4f233a94cabf96c78",
+        "v2/driver-tmux/src/transcripts.ts": "f23289d6199d9d2ec288f60de0a3475ce5aa41e20230763380386d4d2c545509",
+        "v2/harness/package.json": "f4808c3b41eb548c2304946690875ff29840bb3fc706247ac8cf285917aa2e3d",
+        "v2/harness/src/clock.ts": "690b130f9bb111af2099cc96d19a114258bf3bc6353d7a440d53b3141c9e2446",
+        "v2/harness/src/daemon.ts": "2b8f17080275ef72b3612e4b446b9e951d203373c70bcec7b83e3b21c91d81ef",
+        "v2/harness/src/driver.ts": "df41b313a0ab97a637eddb5a3ba2be4456293776aa46acfd3eb29af5315a1442",
+        "v2/harness/src/faults.ts": "6152e965e33f1501f9beee0f5a3c42ce18a8b71897713043716a993de48cfc20",
+        "v2/harness/src/index.ts": "200de7850d2848f5b1d2afa72fdbd1490d2919efd8f77976508416ccb7b9a191",
+        "v2/harness/src/invariants.ts": "5ab63d4da3399534d6a2d9eff705d1c6c403e14b39b5749b5863bd7d04daccbb",
+        "v2/harness/src/prng.ts": "1be8ed3684abb058b30f83b89239385928abb14d8c24616ebf925c95af4639e8",
+        "v2/harness/src/sim-driver.ts": "70b5b013351a8a089e2b13509cb3abe5d8182b18e07f920859abc68e4dd10e31",
+        "v2/harness/src/simulation.ts": "9979407c9e3483294675c47b23b802a724adcea73681ae8d8480f47f5e2d650c"
+      }
+    }
+  ],
+  "runtimeDiff": [
+    "v2/core/src/index.ts",
+    "v2/core/src/store.ts",
+    "v2/daemon/src/autoTitle.ts"
+  ],
+  "toolHash": "93260cb415729fa2e7c619bf584ab88a63de86ecdf7d5c953215f3a5b226c90f",
+  "control": false,
+  "scale": "canonical",
+  "sizes": {
+    "fleet": 1000,
+    "giantRows": 100000,
+    "giants": 10,
+    "giantEachRows": 20000,
+    "warmupRounds": 3,
+    "measuredRounds": 15,
+    "expiryWarmupRounds": 3,
+    "expiryMeasuredRounds": 15
+  },
+  "proposedCanonicalSizes": {
+    "fleet": 1000,
+    "giantRows": 100000,
+    "giants": 10,
+    "giantEachRows": 20000,
+    "warmupRounds": 3,
+    "measuredRounds": 15,
+    "expiryWarmupRounds": 3,
+    "expiryMeasuredRounds": 15
+  },
+  "environment": {
+    "node": "v24.18.0",
+    "cpu": "Apple M4",
+    "boot": "1583faf8a9f0a8fec3010b321dccc6503763f95e8436be682c585ae4286c355c",
+    "loadBefore": [
+      0.94921875,
+      0.8486328125,
+      0.853515625
+    ],
+    "loadAfter": [
+      1.1103515625,
+      0.9111328125,
+      0.875
+    ]
+  },
+  "sourceChecks": {
+    "factorySignaturePresent": [
+      true,
+      true
+    ],
+    "note": "recorded as data; candidate internals are not constrained by this tool"
+  },
+  "schedule": {
+    "abbaOrder": [
+      0,
+      1,
+      1,
+      0
+    ],
+    "clockRule": "+1000 ms per scan; expiry cycles jump to lastClaim+600001 before the timed scan and +1000 for the untimed drain scan",
+    "mutationRule": "scenario mutations run OUTSIDE clocks, before a scan, keyed to the side-local scan index (one-changed: fleet[index % fleet]; all-changed: every fleet bee in one transaction)",
+    "firstScanRule": "one separately-reported first scan per side (order side0 then side1), then warmupRounds x ABBA, then measuredRounds x ABBA"
+  },
+  "scope": "Transition unit only: changed-membership, backoff-expiry, and multi-giant stress shapes, CPU/wall per timed scan with raw paired ABBA samples retained. Mutations, settles, drains, sidecar/state oracles, and read-count diagnostics all run OUTSIDE the clocks. Envelope-only appends change committed id membership while the normalized signature stays thin/deferred (verified with the BEFORE module's own helpers), so scenarios 1-2 price misses without generation work. Scenario 3 uses a deterministic rejecting mock provider: scan timing EXCLUDES mock completion, and mock timing is not a production generation measurement; provider context (beeId, initialTask, last-three clamped user messages), retry counts, sidecar bytes, and drained outcome streams are asserted exactly on BOTH sides each cycle. Scenario 4 is a measured multi-giant stress shape, not an extrapolation. Offline giant rows are labeled (zero audit rows after the public seed, asserted) and every offline row is full-nine-field PK-proven before copies. Read-count diagnostics wrap public store methods with pass-through interception outside timing and restore them in finally; ONLY the BEFORE side's counts are asserted (known baseline semantics: deferred/backoff fleets are fully read); candidate-side counts are recorded as data because an accepted implementation may legitimately read fewer; in A/A control both sides must match. No allocation, retained-memory, Mini, broad-suite, or production claims; structural smoke on a contended workstation proves wiring, not performance.",
+  "scenarios": [
+    {
+      "name": "one-changed",
+      "fleet": 1000,
+      "fixtureSha256": "982e0bbf20ee982639ecf6b0fca3fcd4bcc7a8cd186f8fcc5b58ea35d49b45dd",
+      "sidecarSha256": "1600552f6e1e3e185b86ca8a0be3172fb76f6d67a5dd95756d581569421d32d2",
+      "mutationsPerSide": 38,
+      "messagesAppendedPerMutation": 1,
+      "firstScan": [
+        {
+          "wallMs": 5.351540999999997,
+          "cpuMs": 6.358
+        },
+        {
+          "wallMs": 8.06574999999998,
+          "cpuMs": 9.402
+        }
+      ],
+      "raw": [
+        [
+          {
+            "wallMs": 4.602041999999983,
+            "cpuMs": 4.612
+          },
+          {
+            "wallMs": 4.5731250000000045,
+            "cpuMs": 7.309
+          },
+          {
+            "wallMs": 4.346165999999982,
+            "cpuMs": 4.791
+          },
+          {
+            "wallMs": 4.640250000000037,
+            "cpuMs": 4.647
+          },
+          {
+            "wallMs": 4.291457999999977,
+            "cpuMs": 4.396
+          },
+          {
+            "wallMs": 4.351042000000007,
+            "cpuMs": 4.353
+          },
+          {
+            "wallMs": 4.4360829999999964,
+            "cpuMs": 4.437
+          },
+          {
+            "wallMs": 4.294083999999998,
+            "cpuMs": 4.288
+          },
+          {
+            "wallMs": 4.298833999999999,
+            "cpuMs": 4.3
+          },
+          {
+            "wallMs": 4.396833000000015,
+            "cpuMs": 4.398
+          },
+          {
+            "wallMs": 4.403667000000041,
+            "cpuMs": 4.405
+          },
+          {
+            "wallMs": 4.359417000000008,
+            "cpuMs": 4.455
+          },
+          {
+            "wallMs": 4.32937499999997,
+            "cpuMs": 4.331
+          },
+          {
+            "wallMs": 4.488083000000017,
+            "cpuMs": 4.489
+          },
+          {
+            "wallMs": 4.23358300000001,
+            "cpuMs": 4.304
+          },
+          {
+            "wallMs": 4.2466249999999945,
+            "cpuMs": 4.248
+          },
+          {
+            "wallMs": 4.48720899999995,
+            "cpuMs": 8.96
+          },
+          {
+            "wallMs": 4.319874999999968,
+            "cpuMs": 4.321
+          },
+          {
+            "wallMs": 4.533042000000023,
+            "cpuMs": 4.537
+          },
+          {
+            "wallMs": 4.3557500000000005,
+            "cpuMs": 4.356
+          },
+          {
+            "wallMs": 4.408375000000035,
+            "cpuMs": 4.409
+          },
+          {
+            "wallMs": 4.355625000000032,
+            "cpuMs": 7.89
+          },
+          {
+            "wallMs": 4.226749999999981,
+            "cpuMs": 4.228
+          },
+          {
+            "wallMs": 4.342375000000004,
+            "cpuMs": 4.346
+          },
+          {
+            "wallMs": 4.202083000000016,
+            "cpuMs": 4.631
+          },
+          {
+            "wallMs": 4.3479169999999385,
+            "cpuMs": 4.348
+          },
+          {
+            "wallMs": 4.419708000000014,
+            "cpuMs": 4.42
+          },
+          {
+            "wallMs": 4.277625000000057,
+            "cpuMs": 4.278
+          },
+          {
+            "wallMs": 4.3174999999999955,
+            "cpuMs": 4.319
+          },
+          {
+            "wallMs": 4.3083330000000615,
+            "cpuMs": 4.309
+          }
+        ],
+        [
+          {
+            "wallMs": 3.6041250000000105,
+            "cpuMs": 4.238
+          },
+          {
+            "wallMs": 3.6361670000000004,
+            "cpuMs": 8.483
+          },
+          {
+            "wallMs": 3.358542,
+            "cpuMs": 3.354
+          },
+          {
+            "wallMs": 3.377749999999992,
+            "cpuMs": 3.915
+          },
+          {
+            "wallMs": 3.250541999999996,
+            "cpuMs": 3.252
+          },
+          {
+            "wallMs": 3.312082999999973,
+            "cpuMs": 3.313
+          },
+          {
+            "wallMs": 3.089666999999963,
+            "cpuMs": 3.272
+          },
+          {
+            "wallMs": 3.216042000000016,
+            "cpuMs": 3.216
+          },
+          {
+            "wallMs": 3.300707999999986,
+            "cpuMs": 3.301
+          },
+          {
+            "wallMs": 3.497250000000008,
+            "cpuMs": 4.905
+          },
+          {
+            "wallMs": 3.3314170000000445,
+            "cpuMs": 3.333
+          },
+          {
+            "wallMs": 3.3313340000000267,
+            "cpuMs": 3.332
+          },
+          {
+            "wallMs": 3.355165999999997,
+            "cpuMs": 3.356
+          },
+          {
+            "wallMs": 3.3684579999999755,
+            "cpuMs": 3.37
+          },
+          {
+            "wallMs": 3.2636250000000473,
+            "cpuMs": 3.268
+          },
+          {
+            "wallMs": 3.256084000000044,
+            "cpuMs": 3.249
+          },
+          {
+            "wallMs": 3.301458000000025,
+            "cpuMs": 4.835
+          },
+          {
+            "wallMs": 3.219959000000017,
+            "cpuMs": 3.225
+          },
+          {
+            "wallMs": 3.3492499999999836,
+            "cpuMs": 9.348
+          },
+          {
+            "wallMs": 3.466625000000022,
+            "cpuMs": 3.58
+          },
+          {
+            "wallMs": 3.3596670000000017,
+            "cpuMs": 3.362
+          },
+          {
+            "wallMs": 3.4192919999999845,
+            "cpuMs": 9.908
+          },
+          {
+            "wallMs": 3.341042000000016,
+            "cpuMs": 3.342
+          },
+          {
+            "wallMs": 3.3750420000000076,
+            "cpuMs": 3.376
+          },
+          {
+            "wallMs": 3.274000000000001,
+            "cpuMs": 3.275
+          },
+          {
+            "wallMs": 3.376875000000041,
+            "cpuMs": 3.377
+          },
+          {
+            "wallMs": 3.2208329999999705,
+            "cpuMs": 3.254
+          },
+          {
+            "wallMs": 3.2325419999999667,
+            "cpuMs": 3.234
+          },
+          {
+            "wallMs": 3.3267079999999396,
+            "cpuMs": 3.327
+          },
+          {
+            "wallMs": 3.322125000000028,
+            "cpuMs": 3.424
+          }
+        ]
+      ],
+      "metrics": [
+        {
+          "scanWallMs": {
+            "n": 30,
+            "p50": 4.3479169999999385,
+            "p95": 4.602041999999983,
+            "min": 4.202083000000016,
+            "max": 4.640250000000037
+          },
+          "scanCpuMs": {
+            "n": 30,
+            "p50": 4.396,
+            "p95": 7.89,
+            "min": 4.228,
+            "max": 8.96
+          }
+        },
+        {
+          "scanWallMs": {
+            "n": 30,
+            "p50": 3.3313340000000267,
+            "p95": 3.6041250000000105,
+            "min": 3.089666999999963,
+            "max": 3.6361670000000004
+          },
+          "scanCpuMs": {
+            "n": 30,
+            "p50": 3.342,
+            "p95": 9.348,
+            "min": 3.216,
+            "max": 9.908
+          }
+        }
+      ],
+      "diagnostics": [
+        {
+          "side": 0,
+          "listMessages": 1000,
+          "readMailboxMembership": 0,
+          "membershipMethodPresent": false
+        },
+        {
+          "side": 1,
+          "listMessages": 1,
+          "readMailboxMembership": 1001,
+          "membershipMethodPresent": true
+        }
+      ],
+      "rotation": [
+        "530f861b-dc81-4cc5-ba30-0cff10f50e4b",
+        "2ea24283-1df8-476a-8a06-284a42f520fd",
+        "596356a8-58ed-4afb-ba64-11a6701a8849",
+        "c66ae689-2a3f-4f08-8e4b-933e0229b6e9",
+        "917d1527-e59b-473d-b8df-a4de9d2d170d",
+        "dfe8aea7-9274-43a2-9ce6-3149320ec6db",
+        "f7f550c0-0312-48dd-bb35-e5d535b803af",
+        "897fb78e-09ca-4a5d-a0cf-027549a85b31",
+        "08c2c85d-a0a1-4e2a-a007-151ee1b6f50e",
+        "d137f72b-0847-4eed-a6e5-197b438c3564",
+        "51ee02fb-3395-44fd-a083-f26573f1637e",
+        "db33061e-7cbf-4b91-9a01-f143f5563cd8",
+        "e3cc9d78-df6e-4d3e-85f6-9c9129ed16fa",
+        "19a5c4db-e23e-436c-9005-95b32c93b30f",
+        "00a4a53c-91ff-4176-9185-f2483a5b5d7a",
+        "1ee96693-2d3e-4b66-9685-8c0f2b1317ee",
+        "4675d59a-985d-42c6-9bf9-4910a3fb08ea",
+        "826c5906-ec4c-4e7c-b42d-b43d28d5b73e",
+        "7df08e9b-817d-4413-9008-32bb9d326436",
+        "806b311d-3e7f-4cb1-8e59-2fc647c2e6fc",
+        "f5812b95-b718-4048-a7c1-657cfba55712",
+        "28bd42b9-4857-4114-886b-102525eb22e2",
+        "2c0efabd-b0d6-4440-b89a-aee6d7062dcd",
+        "37131e4b-a25c-43cc-9159-a1c5993d9302",
+        "334473d9-a627-4e6b-a5e1-9439206ca8d0",
+        "5df090f7-1f3d-44aa-9da1-1a108d6d034f",
+        "a2a5d5a5-4d72-4cb7-a5b4-f989c88ab19b",
+        "d9e9d7a2-d927-4e6f-9a0d-a7049e806b7d",
+        "7fbcb1e1-95ff-4d51-b5a3-c39d6b085422",
+        "03913ef0-23cd-4c90-86fc-0f40a02e74f6",
+        "46e035ed-d84b-4ece-a4ba-ff194e86ce67",
+        "985cd13e-a1a8-4ac2-805f-4e8e735e53ae",
+        "08630ba0-6e65-4e33-b497-855bbb1a4cf1",
+        "d1850a5a-87fd-4c20-b357-a65667c74c30",
+        "6cc4e21b-6911-4096-a710-7fe538166d72",
+        "b5ea5752-3cc2-4227-9550-ec73a9b6756a",
+        "50891b8f-1f9f-4fe3-bea5-cc7768fbd235",
+        "efa6df05-5a2b-4ef4-ac22-38ad6fa67c4a"
+      ]
+    },
+    {
+      "name": "all-changed",
+      "fleet": 1000,
+      "fixtureSha256": "982e0bbf20ee982639ecf6b0fca3fcd4bcc7a8cd186f8fcc5b58ea35d49b45dd",
+      "sidecarSha256": "1600552f6e1e3e185b86ca8a0be3172fb76f6d67a5dd95756d581569421d32d2",
+      "mutationsPerSide": 38,
+      "messagesAppendedPerMutation": 1000,
+      "firstScan": [
+        {
+          "wallMs": 6.006416000000058,
+          "cpuMs": 6.476
+        },
+        {
+          "wallMs": 8.329332999999906,
+          "cpuMs": 9.492
+        }
+      ],
+      "raw": [
+        [
+          {
+            "wallMs": 16.273167000000058,
+            "cpuMs": 16.451
+          },
+          {
+            "wallMs": 18.66833399999996,
+            "cpuMs": 19.174
+          },
+          {
+            "wallMs": 15.633916,
+            "cpuMs": 15.641
+          },
+          {
+            "wallMs": 19.356917000000067,
+            "cpuMs": 20.904
+          },
+          {
+            "wallMs": 17.28141699999992,
+            "cpuMs": 17.545
+          },
+          {
+            "wallMs": 21.474833000000217,
+            "cpuMs": 21.962
+          },
+          {
+            "wallMs": 24.500750000000153,
+            "cpuMs": 30.835
+          },
+          {
+            "wallMs": 22.27945899999986,
+            "cpuMs": 22.285
+          },
+          {
+            "wallMs": 23.876291000000037,
+            "cpuMs": 23.883
+          },
+          {
+            "wallMs": 28.45679199999995,
+            "cpuMs": 28.942
+          },
+          {
+            "wallMs": 29.281582999999955,
+            "cpuMs": 29.603
+          },
+          {
+            "wallMs": 31.764999999999873,
+            "cpuMs": 32.173
+          },
+          {
+            "wallMs": 32.431375000000116,
+            "cpuMs": 32.7
+          },
+          {
+            "wallMs": 34.607540999999856,
+            "cpuMs": 34.994
+          },
+          {
+            "wallMs": 36.597833000000264,
+            "cpuMs": 42.751
+          },
+          {
+            "wallMs": 38.133749999999964,
+            "cpuMs": 38.59
+          },
+          {
+            "wallMs": 39.326416999999765,
+            "cpuMs": 39.61
+          },
+          {
+            "wallMs": 41.29716699999972,
+            "cpuMs": 41.734
+          },
+          {
+            "wallMs": 39.035499999999956,
+            "cpuMs": 39.042
+          },
+          {
+            "wallMs": 43.83529200000066,
+            "cpuMs": 44.25
+          },
+          {
+            "wallMs": 45.73541699999987,
+            "cpuMs": 46.039
+          },
+          {
+            "wallMs": 47.488249999999425,
+            "cpuMs": 47.904
+          },
+          {
+            "wallMs": 48.96391600000061,
+            "cpuMs": 49.18
+          },
+          {
+            "wallMs": 50.93712500000038,
+            "cpuMs": 51.368
+          },
+          {
+            "wallMs": 51.458958000000166,
+            "cpuMs": 51.685
+          },
+          {
+            "wallMs": 53.909458000000086,
+            "cpuMs": 54.292
+          },
+          {
+            "wallMs": 53.59291699999994,
+            "cpuMs": 53.601
+          },
+          {
+            "wallMs": 53.70758300000034,
+            "cpuMs": 53.716
+          },
+          {
+            "wallMs": 55.745458999999755,
+            "cpuMs": 55.752
+          },
+          {
+            "wallMs": 56.67937500000062,
+            "cpuMs": 56.687
+          }
+        ],
+        [
+          {
+            "wallMs": 17.45337500000005,
+            "cpuMs": 18.241
+          },
+          {
+            "wallMs": 17.4518750000002,
+            "cpuMs": 17.464
+          },
+          {
+            "wallMs": 18.73504200000002,
+            "cpuMs": 19.921
+          },
+          {
+            "wallMs": 23.3856659999999,
+            "cpuMs": 24.678
+          },
+          {
+            "wallMs": 20.763958000000002,
+            "cpuMs": 20.775
+          },
+          {
+            "wallMs": 26.08379200000013,
+            "cpuMs": 26.498
+          },
+          {
+            "wallMs": 25.66379199999983,
+            "cpuMs": 25.886
+          },
+          {
+            "wallMs": 28.547500000000127,
+            "cpuMs": 29.002
+          },
+          {
+            "wallMs": 27.229749999999967,
+            "cpuMs": 27.235
+          },
+          {
+            "wallMs": 32.51404199999979,
+            "cpuMs": 33.204
+          },
+          {
+            "wallMs": 33.082834000000275,
+            "cpuMs": 33.285
+          },
+          {
+            "wallMs": 34.684999999999945,
+            "cpuMs": 35.099
+          },
+          {
+            "wallMs": 36.064124999999876,
+            "cpuMs": 36.318
+          },
+          {
+            "wallMs": 38.08512500000006,
+            "cpuMs": 38.461
+          },
+          {
+            "wallMs": 39.69804199999999,
+            "cpuMs": 39.972
+          },
+          {
+            "wallMs": 41.984709000000294,
+            "cpuMs": 42.387
+          },
+          {
+            "wallMs": 43.05429099999992,
+            "cpuMs": 43.339
+          },
+          {
+            "wallMs": 45.292417000000114,
+            "cpuMs": 45.674
+          },
+          {
+            "wallMs": 46.26879199999985,
+            "cpuMs": 46.587
+          },
+          {
+            "wallMs": 48.66229199999998,
+            "cpuMs": 58.774
+          },
+          {
+            "wallMs": 49.89558299999953,
+            "cpuMs": 50.064
+          },
+          {
+            "wallMs": 48.06745900000078,
+            "cpuMs": 48.075
+          },
+          {
+            "wallMs": 52.68054200000006,
+            "cpuMs": 52.856
+          },
+          {
+            "wallMs": 52.93674999999985,
+            "cpuMs": 53.442
+          },
+          {
+            "wallMs": 56.00862500000039,
+            "cpuMs": 56.169
+          },
+          {
+            "wallMs": 59.04612499999985,
+            "cpuMs": 65.823
+          },
+          {
+            "wallMs": 62.01491700000042,
+            "cpuMs": 62.405
+          },
+          {
+            "wallMs": 60.37462500000038,
+            "cpuMs": 60.904
+          },
+          {
+            "wallMs": 62.20787500000006,
+            "cpuMs": 62.593
+          },
+          {
+            "wallMs": 61.733000000000175,
+            "cpuMs": 61.741
+          }
+        ]
+      ],
+      "metrics": [
+        {
+          "scanWallMs": {
+            "n": 30,
+            "p50": 36.597833000000264,
+            "p95": 55.745458999999755,
+            "min": 15.633916,
+            "max": 56.67937500000062
+          },
+          "scanCpuMs": {
+            "n": 30,
+            "p50": 38.59,
+            "p95": 55.752,
+            "min": 15.641,
+            "max": 56.687
+          }
+        },
+        {
+          "scanWallMs": {
+            "n": 30,
+            "p50": 39.69804199999999,
+            "p95": 62.01491700000042,
+            "min": 17.4518750000002,
+            "max": 62.20787500000006
+          },
+          "scanCpuMs": {
+            "n": 30,
+            "p50": 39.972,
+            "p95": 62.593,
+            "min": 17.464,
+            "max": 65.823
+          }
+        }
+      ],
+      "diagnostics": [
+        {
+          "side": 0,
+          "listMessages": 1000,
+          "readMailboxMembership": 0,
+          "membershipMethodPresent": false
+        },
+        {
+          "side": 1,
+          "listMessages": 1000,
+          "readMailboxMembership": 2000,
+          "membershipMethodPresent": true
+        }
+      ],
+      "rotation": null
+    },
+    {
+      "name": "expiry-giant",
+      "giantRows": 100000,
+      "fixtureSha256": "f72bb250fa98b6a7a47b55a94dfa10027e00946a983967f01003fb48c317b12f",
+      "sidecarSha256": "062fc38067753513858ee7730130b88dfd9bf250827dd5e6b8b4b9a9e2daefa3",
+      "offlineMailboxRows": 100000,
+      "auditRowsAdded": 0,
+      "launchesPerSide": 38,
+      "accounting": {
+        "firstCycle": 1,
+        "warmupCycles": 6,
+        "measuredCycles": 30,
+        "diagnosticCycles": 1,
+        "scansPerCycle": 2
+      },
+      "finalAttempts": 45,
+      "expectedContextShape": {
+        "initialTaskChars": 76,
+        "lastUserMessages": 3
+      },
+      "firstCycle": [
+        {
+          "wallMs": 161.44604099999924,
+          "cpuMs": 203.301
+        },
+        {
+          "wallMs": 183.36054200000035,
+          "cpuMs": 267.721
+        }
+      ],
+      "raw": [
+        [
+          {
+            "wallMs": 162.76324999999997,
+            "cpuMs": 192.593
+          },
+          {
+            "wallMs": 158.59612500000003,
+            "cpuMs": 186.563
+          },
+          {
+            "wallMs": 154.33608400000048,
+            "cpuMs": 183.035
+          },
+          {
+            "wallMs": 175.8809999999994,
+            "cpuMs": 206.448
+          },
+          {
+            "wallMs": 165.20091599999978,
+            "cpuMs": 196.434
+          },
+          {
+            "wallMs": 164.90862500000003,
+            "cpuMs": 207.724
+          },
+          {
+            "wallMs": 153.30291699999907,
+            "cpuMs": 181.809
+          },
+          {
+            "wallMs": 166.7308749999993,
+            "cpuMs": 210.329
+          },
+          {
+            "wallMs": 154.55758400000013,
+            "cpuMs": 183.09
+          },
+          {
+            "wallMs": 169.41587499999878,
+            "cpuMs": 197.95
+          },
+          {
+            "wallMs": 170.53845799999908,
+            "cpuMs": 235.304
+          },
+          {
+            "wallMs": 157.60954100000163,
+            "cpuMs": 185.487
+          },
+          {
+            "wallMs": 161.6529589999991,
+            "cpuMs": 191.469
+          },
+          {
+            "wallMs": 161.00154100000145,
+            "cpuMs": 188.399
+          },
+          {
+            "wallMs": 155.86154199999874,
+            "cpuMs": 185.595
+          },
+          {
+            "wallMs": 158.57895899999858,
+            "cpuMs": 187.561
+          },
+          {
+            "wallMs": 167.25066700000025,
+            "cpuMs": 201.887
+          },
+          {
+            "wallMs": 162.4215409999997,
+            "cpuMs": 190.26
+          },
+          {
+            "wallMs": 152.109375,
+            "cpuMs": 180.175
+          },
+          {
+            "wallMs": 177.070416999999,
+            "cpuMs": 208.51
+          },
+          {
+            "wallMs": 164.9462080000012,
+            "cpuMs": 194.319
+          },
+          {
+            "wallMs": 166.79449999999997,
+            "cpuMs": 211.179
+          },
+          {
+            "wallMs": 153.05087500000081,
+            "cpuMs": 181.634
+          },
+          {
+            "wallMs": 168.11570900000152,
+            "cpuMs": 212.344
+          },
+          {
+            "wallMs": 153.55404199999975,
+            "cpuMs": 182.324
+          },
+          {
+            "wallMs": 165.75258400000166,
+            "cpuMs": 209.526
+          },
+          {
+            "wallMs": 153.70091599999796,
+            "cpuMs": 181.672
+          },
+          {
+            "wallMs": 163.5957500000004,
+            "cpuMs": 207.292
+          },
+          {
+            "wallMs": 155.075582999998,
+            "cpuMs": 183.063
+          },
+          {
+            "wallMs": 164.997374999999,
+            "cpuMs": 210.362
+          }
+        ],
+        [
+          {
+            "wallMs": 166.12066700000105,
+            "cpuMs": 196.205
+          },
+          {
+            "wallMs": 170.2532080000001,
+            "cpuMs": 199.805
+          },
+          {
+            "wallMs": 175.16129199999887,
+            "cpuMs": 205.706
+          },
+          {
+            "wallMs": 163.8559580000001,
+            "cpuMs": 192.39
+          },
+          {
+            "wallMs": 176.4460829999989,
+            "cpuMs": 206.886
+          },
+          {
+            "wallMs": 160.1490419999991,
+            "cpuMs": 187.372
+          },
+          {
+            "wallMs": 161.91720800000076,
+            "cpuMs": 190.518
+          },
+          {
+            "wallMs": 165.39249999999993,
+            "cpuMs": 193.178
+          },
+          {
+            "wallMs": 161.24424999999974,
+            "cpuMs": 189.852
+          },
+          {
+            "wallMs": 166.03304200000093,
+            "cpuMs": 193.489
+          },
+          {
+            "wallMs": 162.6642920000013,
+            "cpuMs": 192.088
+          },
+          {
+            "wallMs": 171.8591669999987,
+            "cpuMs": 201.436
+          },
+          {
+            "wallMs": 176.86345900000015,
+            "cpuMs": 205.877
+          },
+          {
+            "wallMs": 160.28662500000064,
+            "cpuMs": 188.682
+          },
+          {
+            "wallMs": 163.5430419999975,
+            "cpuMs": 192.486
+          },
+          {
+            "wallMs": 174.21466699999655,
+            "cpuMs": 202.481
+          },
+          {
+            "wallMs": 167.90545900000143,
+            "cpuMs": 198.918
+          },
+          {
+            "wallMs": 160.2697079999998,
+            "cpuMs": 188.611
+          },
+          {
+            "wallMs": 177.42029099999854,
+            "cpuMs": 208.136
+          },
+          {
+            "wallMs": 163.74912499999846,
+            "cpuMs": 193.784
+          },
+          {
+            "wallMs": 180.2217500000006,
+            "cpuMs": 211.915
+          },
+          {
+            "wallMs": 162.6808749999982,
+            "cpuMs": 190.687
+          },
+          {
+            "wallMs": 161.58641599999828,
+            "cpuMs": 190.066
+          },
+          {
+            "wallMs": 166.21158400000058,
+            "cpuMs": 193.726
+          },
+          {
+            "wallMs": 164.87625000000116,
+            "cpuMs": 196.754
+          },
+          {
+            "wallMs": 169.25937499999782,
+            "cpuMs": 197.96
+          },
+          {
+            "wallMs": 160.18737500000134,
+            "cpuMs": 189.081
+          },
+          {
+            "wallMs": 166.10758400000122,
+            "cpuMs": 194.344
+          },
+          {
+            "wallMs": 160.3234169999996,
+            "cpuMs": 189.725
+          },
+          {
+            "wallMs": 166.31124999999884,
+            "cpuMs": 194.261
+          }
+        ]
+      ],
+      "metrics": [
+        {
+          "scanWallMs": {
+            "n": 30,
+            "p50": 162.4215409999997,
+            "p95": 175.8809999999994,
+            "min": 152.109375,
+            "max": 177.070416999999
+          },
+          "scanCpuMs": {
+            "n": 30,
+            "p50": 191.469,
+            "p95": 212.344,
+            "min": 180.175,
+            "max": 235.304
+          }
+        },
+        {
+          "scanWallMs": {
+            "n": 30,
+            "p50": 165.39249999999993,
+            "p95": 177.42029099999854,
+            "min": 160.1490419999991,
+            "max": 180.2217500000006
+          },
+          "scanCpuMs": {
+            "n": 30,
+            "p50": 193.726,
+            "p95": 208.136,
+            "min": 187.372,
+            "max": 211.915
+          }
+        }
+      ],
+      "diagnostics": [
+        {
+          "side": 0,
+          "listMessages": 2,
+          "readMailboxMembership": 0,
+          "membershipMethodPresent": false
+        },
+        {
+          "side": 1,
+          "listMessages": 1,
+          "readMailboxMembership": 3,
+          "membershipMethodPresent": true
+        }
+      ],
+      "note": "mock-provider completion excluded from timed spans; fake-provider timing is not a production generation measurement"
+    },
+    {
+      "name": "ten-giants",
+      "giants": 10,
+      "rowsPerGiant": 20000,
+      "totalRows": 200000,
+      "fixtureSha256": "f9b048ee5911791baf726b8a5acdcc8bb65e0ad8619e5711b60570869b479811",
+      "sidecarSha256": "75009e6d56919fff06668cd2f8b0eedbcc3b13fa2155285f276c1a7172395282",
+      "offlineMailboxRows": 200000,
+      "auditRowsAdded": 0,
+      "firstScan": [
+        {
+          "wallMs": 269.59158300000126,
+          "cpuMs": 313.456
+        },
+        {
+          "wallMs": 268.24779200000194,
+          "cpuMs": 281.993
+        }
+      ],
+      "raw": [
+        [
+          {
+            "wallMs": 270.8702090000006,
+            "cpuMs": 318.558
+          },
+          {
+            "wallMs": 281.3470410000009,
+            "cpuMs": 351.339
+          },
+          {
+            "wallMs": 272.53116600000067,
+            "cpuMs": 318.888
+          },
+          {
+            "wallMs": 273.2596250000024,
+            "cpuMs": 307.543
+          },
+          {
+            "wallMs": 270.1994589999995,
+            "cpuMs": 311.02
+          },
+          {
+            "wallMs": 280.3914170000062,
+            "cpuMs": 358.151
+          },
+          {
+            "wallMs": 268.33808300000237,
+            "cpuMs": 304.404
+          },
+          {
+            "wallMs": 274.99349999999686,
+            "cpuMs": 312.559
+          },
+          {
+            "wallMs": 271.42620799999713,
+            "cpuMs": 308.389
+          },
+          {
+            "wallMs": 280.1789579999968,
+            "cpuMs": 356.073
+          },
+          {
+            "wallMs": 266.9398749999964,
+            "cpuMs": 306.623
+          },
+          {
+            "wallMs": 273.5656670000026,
+            "cpuMs": 310.085
+          },
+          {
+            "wallMs": 271.7127079999991,
+            "cpuMs": 313.038
+          },
+          {
+            "wallMs": 283.6322910000017,
+            "cpuMs": 359.095
+          },
+          {
+            "wallMs": 268.8029999999999,
+            "cpuMs": 307.334
+          },
+          {
+            "wallMs": 269.6774590000059,
+            "cpuMs": 306.348
+          },
+          {
+            "wallMs": 274.37704099999974,
+            "cpuMs": 311.354
+          },
+          {
+            "wallMs": 278.8355840000004,
+            "cpuMs": 350.475
+          },
+          {
+            "wallMs": 272.16441699999996,
+            "cpuMs": 318.787
+          },
+          {
+            "wallMs": 268.8733340000035,
+            "cpuMs": 303.068
+          },
+          {
+            "wallMs": 273.762999999999,
+            "cpuMs": 310.903
+          },
+          {
+            "wallMs": 282.0554590000029,
+            "cpuMs": 336.593
+          },
+          {
+            "wallMs": 268.8235000000059,
+            "cpuMs": 310.319
+          },
+          {
+            "wallMs": 269.72320800000307,
+            "cpuMs": 305.936
+          },
+          {
+            "wallMs": 276.66054099999747,
+            "cpuMs": 313.518
+          },
+          {
+            "wallMs": 274.5595420000027,
+            "cpuMs": 337.555
+          },
+          {
+            "wallMs": 267.17383300000074,
+            "cpuMs": 306.926
+          },
+          {
+            "wallMs": 274.65516699999716,
+            "cpuMs": 311.025
+          },
+          {
+            "wallMs": 274.21958400000585,
+            "cpuMs": 315.288
+          },
+          {
+            "wallMs": 278.02491700000246,
+            "cpuMs": 352.698
+          }
+        ],
+        [
+          {
+            "wallMs": 6.557541000001947,
+            "cpuMs": 6.559
+          },
+          {
+            "wallMs": 6.633832999999868,
+            "cpuMs": 6.297
+          },
+          {
+            "wallMs": 6.663958000001003,
+            "cpuMs": 6.666
+          },
+          {
+            "wallMs": 6.302625000000262,
+            "cpuMs": 6.304
+          },
+          {
+            "wallMs": 6.494291999995767,
+            "cpuMs": 6.495
+          },
+          {
+            "wallMs": 6.18291699999827,
+            "cpuMs": 6.184
+          },
+          {
+            "wallMs": 6.780333000002429,
+            "cpuMs": 6.781
+          },
+          {
+            "wallMs": 6.296542000003683,
+            "cpuMs": 6.297
+          },
+          {
+            "wallMs": 6.712124999998196,
+            "cpuMs": 6.945
+          },
+          {
+            "wallMs": 6.326541999995243,
+            "cpuMs": 6.378
+          },
+          {
+            "wallMs": 6.56183400000009,
+            "cpuMs": 6.563
+          },
+          {
+            "wallMs": 6.22704099999828,
+            "cpuMs": 6.228
+          },
+          {
+            "wallMs": 6.547707999998238,
+            "cpuMs": 6.548
+          },
+          {
+            "wallMs": 6.283125000001746,
+            "cpuMs": 6.284
+          },
+          {
+            "wallMs": 6.6585829999967245,
+            "cpuMs": 6.66
+          },
+          {
+            "wallMs": 6.3104999999995925,
+            "cpuMs": 6.311
+          },
+          {
+            "wallMs": 6.75887500000681,
+            "cpuMs": 6.76
+          },
+          {
+            "wallMs": 6.3912080000009155,
+            "cpuMs": 6.391
+          },
+          {
+            "wallMs": 6.686916000006022,
+            "cpuMs": 6.688
+          },
+          {
+            "wallMs": 6.393875000001572,
+            "cpuMs": 6.395
+          },
+          {
+            "wallMs": 6.64679199999955,
+            "cpuMs": 6.647
+          },
+          {
+            "wallMs": 6.234749999995984,
+            "cpuMs": 6.236
+          },
+          {
+            "wallMs": 6.701207999998587,
+            "cpuMs": 6.703
+          },
+          {
+            "wallMs": 6.313874999999825,
+            "cpuMs": 6.314
+          },
+          {
+            "wallMs": 6.580083000000741,
+            "cpuMs": 6.581
+          },
+          {
+            "wallMs": 6.2690829999992275,
+            "cpuMs": 6.269
+          },
+          {
+            "wallMs": 6.672917000003508,
+            "cpuMs": 6.797
+          },
+          {
+            "wallMs": 6.224167000000307,
+            "cpuMs": 6.217
+          },
+          {
+            "wallMs": 6.544415999997,
+            "cpuMs": 6.545
+          },
+          {
+            "wallMs": 6.292084000000614,
+            "cpuMs": 6.293
+          }
+        ]
+      ],
+      "metrics": [
+        {
+          "scanWallMs": {
+            "n": 30,
+            "p50": 273.2596250000024,
+            "p95": 282.0554590000029,
+            "min": 266.9398749999964,
+            "max": 283.6322910000017
+          },
+          "scanCpuMs": {
+            "n": 30,
+            "p50": 311.354,
+            "p95": 358.151,
+            "min": 303.068,
+            "max": 359.095
+          }
+        },
+        {
+          "scanWallMs": {
+            "n": 30,
+            "p50": 6.494291999995767,
+            "p95": 6.75887500000681,
+            "min": 6.18291699999827,
+            "max": 6.780333000002429
+          },
+          "scanCpuMs": {
+            "n": 30,
+            "p50": 6.395,
+            "p95": 6.797,
+            "min": 6.184,
+            "max": 6.945
+          }
+        }
+      ],
+      "diagnostics": [
+        {
+          "side": 0,
+          "listMessages": 10,
+          "readMailboxMembership": 0,
+          "membershipMethodPresent": false
+        },
+        {
+          "side": 1,
+          "listMessages": 0,
+          "readMailboxMembership": 10,
+          "membershipMethodPresent": true
+        }
+      ]
+    }
+  ],
+  "finishedAt": "2026-09-07T16:21:53.196Z"
+}

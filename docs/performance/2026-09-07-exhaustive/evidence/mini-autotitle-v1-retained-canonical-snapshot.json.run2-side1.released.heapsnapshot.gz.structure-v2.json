@@ -1,0 +1,10 @@
+{
+  "snapshotPath": "/private/tmp/honeybee-autotitle-evidence/mini-autotitle-v1-retained-canonical-snapshot.json.run2-side1.released.heapsnapshot.gz",
+  "snapshotSha256": "f991eb578c1644399680c313596074cba3a0dff9e49957a1f82d403d53783973",
+  "toolSha256": "7a9e39d4ec0c4bc9f827d91de7bdbad0e70208213118a7d691bba0c0995529c4",
+  "scope": "Offline structural inspection of the candidate's closure-local title cache.\n\nConsumes V8's own metadata fields from a JSON heap snapshot. Follows the\ncontext slot named quietBaselines to a Map, then that Map's table to entry\nobjects with membership/signature properties. Counts observed objects only.\nThis is neither a dominator calculation nor retained-byte attribution.\nSource review must verify the slot name belongs to the intended dispatcher.\nViolations cover recognized entry objects with both property edges only;\nmissing properties and SMI-valued fields need separate source/behavior checks.\n",
+  "cacheSlots": [],
+  "violations": [],
+  "completed": true,
+  "coreStoreObjects": 0
+}

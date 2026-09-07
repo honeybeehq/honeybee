@@ -1,0 +1,1824 @@
+{
+  "scope": "Single replay per side/scenario outside CPU clocks. V8 sampled allocation traffic including collected objects, not retained/native bytes. Full frame ancestry preserved; totals are head selfSize sums.",
+  "profiles": [
+    {
+      "profile": "mini-autotitle-v1-quiet-canonical-profile.json.backoff-giant.0.heapprofile.gz",
+      "compressedSha256": "bf2fc7a58254983ca7f5a8a92e29bb5cae65e8d26e7ee38c463becd4b8281d13",
+      "sampledBytes": 219029760,
+      "allocations": [
+        {
+          "sampledBytes": 115476056,
+          "ancestry": [
+            {
+              "functionName": "(root)",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "87",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/honeybee-autotitle-quiet-ruler.mjs",
+              "lineNumber": 0,
+              "columnNumber": 0
+            },
+            {
+              "functionName": "",
+              "scriptId": "218",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-baseline-3228/v2/daemon/src/autoTitle.ts",
+              "lineNumber": 111,
+              "columnNumber": 9
+            },
+            {
+              "functionName": "userTaskMessages",
+              "scriptId": "218",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-baseline-3228/v2/daemon/src/autoTitle.ts",
+              "lineNumber": 60,
+              "columnNumber": 32
+            },
+            {
+              "functionName": "replace",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            }
+          ]
+        },
+        {
+          "sampledBytes": 75308728,
+          "ancestry": [
+            {
+              "functionName": "(root)",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "87",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/honeybee-autotitle-quiet-ruler.mjs",
+              "lineNumber": 0,
+              "columnNumber": 0
+            },
+            {
+              "functionName": "",
+              "scriptId": "218",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-baseline-3228/v2/daemon/src/autoTitle.ts",
+              "lineNumber": 111,
+              "columnNumber": 9
+            },
+            {
+              "functionName": "listMessages",
+              "scriptId": "218",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-baseline-3228/v2/daemon/src/autoTitle.ts",
+              "lineNumber": 244,
+              "columnNumber": 18
+            },
+            {
+              "functionName": "listMessages",
+              "scriptId": "179",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-baseline-3228/v2/core/src/store.ts",
+              "lineNumber": 2709,
+              "columnNumber": 14
+            }
+          ]
+        },
+        {
+          "sampledBytes": 9672576,
+          "ancestry": [
+            {
+              "functionName": "(root)",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "87",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/honeybee-autotitle-quiet-ruler.mjs",
+              "lineNumber": 0,
+              "columnNumber": 0
+            },
+            {
+              "functionName": "",
+              "scriptId": "218",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-baseline-3228/v2/daemon/src/autoTitle.ts",
+              "lineNumber": 111,
+              "columnNumber": 9
+            },
+            {
+              "functionName": "userTaskMessages",
+              "scriptId": "218",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-baseline-3228/v2/daemon/src/autoTitle.ts",
+              "lineNumber": 60,
+              "columnNumber": 32
+            },
+            {
+              "functionName": "trim",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            }
+          ]
+        },
+        {
+          "sampledBytes": 9481920,
+          "ancestry": [
+            {
+              "functionName": "(root)",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "87",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/honeybee-autotitle-quiet-ruler.mjs",
+              "lineNumber": 0,
+              "columnNumber": 0
+            },
+            {
+              "functionName": "",
+              "scriptId": "218",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-baseline-3228/v2/daemon/src/autoTitle.ts",
+              "lineNumber": 111,
+              "columnNumber": 9
+            },
+            {
+              "functionName": "listMessages",
+              "scriptId": "218",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-baseline-3228/v2/daemon/src/autoTitle.ts",
+              "lineNumber": 244,
+              "columnNumber": 18
+            },
+            {
+              "functionName": "listMessages",
+              "scriptId": "179",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-baseline-3228/v2/core/src/store.ts",
+              "lineNumber": 2709,
+              "columnNumber": 14
+            },
+            {
+              "functionName": "map",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "mapMessage",
+              "scriptId": "179",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-baseline-3228/v2/core/src/store.ts",
+              "lineNumber": 1074,
+              "columnNumber": 19
+            }
+          ]
+        },
+        {
+          "sampledBytes": 8281560,
+          "ancestry": [
+            {
+              "functionName": "(root)",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "87",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/honeybee-autotitle-quiet-ruler.mjs",
+              "lineNumber": 0,
+              "columnNumber": 0
+            },
+            {
+              "functionName": "",
+              "scriptId": "218",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-baseline-3228/v2/daemon/src/autoTitle.ts",
+              "lineNumber": 111,
+              "columnNumber": 9
+            },
+            {
+              "functionName": "userTaskMessages",
+              "scriptId": "218",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-baseline-3228/v2/daemon/src/autoTitle.ts",
+              "lineNumber": 60,
+              "columnNumber": 32
+            }
+          ]
+        },
+        {
+          "sampledBytes": 800016,
+          "ancestry": [
+            {
+              "functionName": "(root)",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "87",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/honeybee-autotitle-quiet-ruler.mjs",
+              "lineNumber": 0,
+              "columnNumber": 0
+            },
+            {
+              "functionName": "",
+              "scriptId": "218",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-baseline-3228/v2/daemon/src/autoTitle.ts",
+              "lineNumber": 111,
+              "columnNumber": 9
+            },
+            {
+              "functionName": "listMessages",
+              "scriptId": "218",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-baseline-3228/v2/daemon/src/autoTitle.ts",
+              "lineNumber": 244,
+              "columnNumber": 18
+            },
+            {
+              "functionName": "listMessages",
+              "scriptId": "179",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-baseline-3228/v2/core/src/store.ts",
+              "lineNumber": 2709,
+              "columnNumber": 14
+            },
+            {
+              "functionName": "map",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            }
+          ]
+        },
+        {
+          "sampledBytes": 8904,
+          "ancestry": [
+            {
+              "functionName": "(root)",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "87",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/honeybee-autotitle-quiet-ruler.mjs",
+              "lineNumber": 0,
+              "columnNumber": 0
+            },
+            {
+              "functionName": "",
+              "scriptId": "218",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-baseline-3228/v2/daemon/src/autoTitle.ts",
+              "lineNumber": 111,
+              "columnNumber": 9
+            },
+            {
+              "functionName": "listBees",
+              "scriptId": "218",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-baseline-3228/v2/daemon/src/autoTitle.ts",
+              "lineNumber": 243,
+              "columnNumber": 14
+            },
+            {
+              "functionName": "listBees",
+              "scriptId": "179",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-baseline-3228/v2/core/src/store.ts",
+              "lineNumber": 1785,
+              "columnNumber": 10
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "profile": "mini-autotitle-v1-quiet-canonical-profile.json.backoff-giant.1.heapprofile.gz",
+      "compressedSha256": "1f65be4966088ee31fe6af9e49ac5daa87fd36ba556dc735adbcc94b7b78e28c",
+      "sampledBytes": 4104,
+      "allocations": [
+        {
+          "sampledBytes": 4104,
+          "ancestry": [
+            {
+              "functionName": "(root)",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "87",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/honeybee-autotitle-quiet-ruler.mjs",
+              "lineNumber": 0,
+              "columnNumber": 0
+            },
+            {
+              "functionName": "",
+              "scriptId": "221",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-candidate-8e57/v2/daemon/src/autoTitle.ts",
+              "lineNumber": 147,
+              "columnNumber": 9
+            },
+            {
+              "functionName": "readMailboxMembership",
+              "scriptId": "202",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-candidate-8e57/v2/core/src/store.ts",
+              "lineNumber": 2772,
+              "columnNumber": 23
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "profile": "mini-autotitle-v1-quiet-canonical-profile.json.empty-fleet.0.heapprofile.gz",
+      "compressedSha256": "b072b1ddb46ffde910a99d2565e37501cb845edcca1a5c7000cc78f3c1b69e6d",
+      "sampledBytes": 2442624,
+      "allocations": [
+        {
+          "sampledBytes": 1923680,
+          "ancestry": [
+            {
+              "functionName": "(root)",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "87",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/honeybee-autotitle-quiet-ruler.mjs",
+              "lineNumber": 0,
+              "columnNumber": 0
+            },
+            {
+              "functionName": "",
+              "scriptId": "218",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-baseline-3228/v2/daemon/src/autoTitle.ts",
+              "lineNumber": 111,
+              "columnNumber": 9
+            },
+            {
+              "functionName": "listBees",
+              "scriptId": "218",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-baseline-3228/v2/daemon/src/autoTitle.ts",
+              "lineNumber": 243,
+              "columnNumber": 14
+            },
+            {
+              "functionName": "listBees",
+              "scriptId": "179",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-baseline-3228/v2/core/src/store.ts",
+              "lineNumber": 1785,
+              "columnNumber": 10
+            }
+          ]
+        },
+        {
+          "sampledBytes": 268192,
+          "ancestry": [
+            {
+              "functionName": "(root)",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "87",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/honeybee-autotitle-quiet-ruler.mjs",
+              "lineNumber": 0,
+              "columnNumber": 0
+            },
+            {
+              "functionName": "",
+              "scriptId": "218",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-baseline-3228/v2/daemon/src/autoTitle.ts",
+              "lineNumber": 111,
+              "columnNumber": 9
+            },
+            {
+              "functionName": "listBees",
+              "scriptId": "218",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-baseline-3228/v2/daemon/src/autoTitle.ts",
+              "lineNumber": 243,
+              "columnNumber": 14
+            },
+            {
+              "functionName": "listBees",
+              "scriptId": "179",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-baseline-3228/v2/core/src/store.ts",
+              "lineNumber": 1785,
+              "columnNumber": 10
+            },
+            {
+              "functionName": "map",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "mapBee",
+              "scriptId": "179",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-baseline-3228/v2/core/src/store.ts",
+              "lineNumber": 523,
+              "columnNumber": 15
+            }
+          ]
+        },
+        {
+          "sampledBytes": 115384,
+          "ancestry": [
+            {
+              "functionName": "(root)",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "87",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/honeybee-autotitle-quiet-ruler.mjs",
+              "lineNumber": 0,
+              "columnNumber": 0
+            },
+            {
+              "functionName": "",
+              "scriptId": "218",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-baseline-3228/v2/daemon/src/autoTitle.ts",
+              "lineNumber": 111,
+              "columnNumber": 9
+            }
+          ]
+        },
+        {
+          "sampledBytes": 86384,
+          "ancestry": [
+            {
+              "functionName": "(root)",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "87",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/honeybee-autotitle-quiet-ruler.mjs",
+              "lineNumber": 0,
+              "columnNumber": 0
+            },
+            {
+              "functionName": "",
+              "scriptId": "218",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-baseline-3228/v2/daemon/src/autoTitle.ts",
+              "lineNumber": 111,
+              "columnNumber": 9
+            },
+            {
+              "functionName": "join",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            }
+          ]
+        },
+        {
+          "sampledBytes": 24680,
+          "ancestry": [
+            {
+              "functionName": "(root)",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "87",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/honeybee-autotitle-quiet-ruler.mjs",
+              "lineNumber": 0,
+              "columnNumber": 0
+            },
+            {
+              "functionName": "",
+              "scriptId": "218",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-baseline-3228/v2/daemon/src/autoTitle.ts",
+              "lineNumber": 111,
+              "columnNumber": 9
+            },
+            {
+              "functionName": "next",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            }
+          ]
+        },
+        {
+          "sampledBytes": 8016,
+          "ancestry": [
+            {
+              "functionName": "(root)",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "87",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/honeybee-autotitle-quiet-ruler.mjs",
+              "lineNumber": 0,
+              "columnNumber": 0
+            },
+            {
+              "functionName": "",
+              "scriptId": "218",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-baseline-3228/v2/daemon/src/autoTitle.ts",
+              "lineNumber": 111,
+              "columnNumber": 9
+            },
+            {
+              "functionName": "listBees",
+              "scriptId": "218",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-baseline-3228/v2/daemon/src/autoTitle.ts",
+              "lineNumber": 243,
+              "columnNumber": 14
+            },
+            {
+              "functionName": "listBees",
+              "scriptId": "179",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-baseline-3228/v2/core/src/store.ts",
+              "lineNumber": 1785,
+              "columnNumber": 10
+            },
+            {
+              "functionName": "map",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            }
+          ]
+        },
+        {
+          "sampledBytes": 7984,
+          "ancestry": [
+            {
+              "functionName": "(root)",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "87",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/honeybee-autotitle-quiet-ruler.mjs",
+              "lineNumber": 0,
+              "columnNumber": 0
+            },
+            {
+              "functionName": "fn",
+              "scriptId": "13",
+              "url": "node:internal/util",
+              "lineNumber": 476,
+              "columnNumber": 13
+            },
+            {
+              "functionName": "Promise",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "13",
+              "url": "node:internal/util",
+              "lineNumber": 477,
+              "columnNumber": 23
+            },
+            {
+              "functionName": "post",
+              "scriptId": "165",
+              "url": "node:inspector",
+              "lineNumber": 114,
+              "columnNumber": 6
+            }
+          ]
+        },
+        {
+          "sampledBytes": 4200,
+          "ancestry": [
+            {
+              "functionName": "(root)",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "87",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/honeybee-autotitle-quiet-ruler.mjs",
+              "lineNumber": 0,
+              "columnNumber": 0
+            }
+          ]
+        },
+        {
+          "sampledBytes": 4104,
+          "ancestry": [
+            {
+              "functionName": "(root)",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "87",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/honeybee-autotitle-quiet-ruler.mjs",
+              "lineNumber": 0,
+              "columnNumber": 0
+            },
+            {
+              "functionName": "fn",
+              "scriptId": "13",
+              "url": "node:internal/util",
+              "lineNumber": 476,
+              "columnNumber": 13
+            },
+            {
+              "functionName": "Promise",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "13",
+              "url": "node:internal/util",
+              "lineNumber": 477,
+              "columnNumber": 23
+            },
+            {
+              "functionName": "post",
+              "scriptId": "165",
+              "url": "node:inspector",
+              "lineNumber": 114,
+              "columnNumber": 6
+            },
+            {
+              "functionName": "",
+              "scriptId": "165",
+              "url": "node:inspector",
+              "lineNumber": 65,
+              "columnNumber": 38
+            },
+            {
+              "functionName": "#onMessage",
+              "scriptId": "165",
+              "url": "node:inspector",
+              "lineNumber": 83,
+              "columnNumber": 12
+            },
+            {
+              "functionName": "delete",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "profile": "mini-autotitle-v1-quiet-canonical-profile.json.empty-fleet.1.heapprofile.gz",
+      "compressedSha256": "16638e53f274e4b43831b1e9310335504e313f2727f296b65965c7ce63066a03",
+      "sampledBytes": 2752672,
+      "allocations": [
+        {
+          "sampledBytes": 2006232,
+          "ancestry": [
+            {
+              "functionName": "(root)",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "87",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/honeybee-autotitle-quiet-ruler.mjs",
+              "lineNumber": 0,
+              "columnNumber": 0
+            },
+            {
+              "functionName": "",
+              "scriptId": "221",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-candidate-8e57/v2/daemon/src/autoTitle.ts",
+              "lineNumber": 147,
+              "columnNumber": 9
+            },
+            {
+              "functionName": "listBees",
+              "scriptId": "221",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-candidate-8e57/v2/daemon/src/autoTitle.ts",
+              "lineNumber": 323,
+              "columnNumber": 14
+            },
+            {
+              "functionName": "listBees",
+              "scriptId": "202",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-candidate-8e57/v2/core/src/store.ts",
+              "lineNumber": 1822,
+              "columnNumber": 10
+            }
+          ]
+        },
+        {
+          "sampledBytes": 317744,
+          "ancestry": [
+            {
+              "functionName": "(root)",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "87",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/honeybee-autotitle-quiet-ruler.mjs",
+              "lineNumber": 0,
+              "columnNumber": 0
+            },
+            {
+              "functionName": "",
+              "scriptId": "221",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-candidate-8e57/v2/daemon/src/autoTitle.ts",
+              "lineNumber": 147,
+              "columnNumber": 9
+            },
+            {
+              "functionName": "listBees",
+              "scriptId": "221",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-candidate-8e57/v2/daemon/src/autoTitle.ts",
+              "lineNumber": 323,
+              "columnNumber": 14
+            },
+            {
+              "functionName": "listBees",
+              "scriptId": "202",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-candidate-8e57/v2/core/src/store.ts",
+              "lineNumber": 1822,
+              "columnNumber": 10
+            },
+            {
+              "functionName": "map",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "mapBee",
+              "scriptId": "202",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-candidate-8e57/v2/core/src/store.ts",
+              "lineNumber": 560,
+              "columnNumber": 15
+            }
+          ]
+        },
+        {
+          "sampledBytes": 228264,
+          "ancestry": [
+            {
+              "functionName": "(root)",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "87",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/honeybee-autotitle-quiet-ruler.mjs",
+              "lineNumber": 0,
+              "columnNumber": 0
+            },
+            {
+              "functionName": "",
+              "scriptId": "221",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-candidate-8e57/v2/daemon/src/autoTitle.ts",
+              "lineNumber": 147,
+              "columnNumber": 9
+            }
+          ]
+        },
+        {
+          "sampledBytes": 152280,
+          "ancestry": [
+            {
+              "functionName": "(root)",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "87",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/honeybee-autotitle-quiet-ruler.mjs",
+              "lineNumber": 0,
+              "columnNumber": 0
+            },
+            {
+              "functionName": "",
+              "scriptId": "221",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-candidate-8e57/v2/daemon/src/autoTitle.ts",
+              "lineNumber": 147,
+              "columnNumber": 9
+            },
+            {
+              "functionName": "next",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            }
+          ]
+        },
+        {
+          "sampledBytes": 35960,
+          "ancestry": [
+            {
+              "functionName": "(root)",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "87",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/honeybee-autotitle-quiet-ruler.mjs",
+              "lineNumber": 0,
+              "columnNumber": 0
+            },
+            {
+              "functionName": "",
+              "scriptId": "221",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-candidate-8e57/v2/daemon/src/autoTitle.ts",
+              "lineNumber": 147,
+              "columnNumber": 9
+            },
+            {
+              "functionName": "add",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            }
+          ]
+        },
+        {
+          "sampledBytes": 12192,
+          "ancestry": [
+            {
+              "functionName": "(root)",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "87",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/honeybee-autotitle-quiet-ruler.mjs",
+              "lineNumber": 0,
+              "columnNumber": 0
+            },
+            {
+              "functionName": "",
+              "scriptId": "221",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-candidate-8e57/v2/daemon/src/autoTitle.ts",
+              "lineNumber": 147,
+              "columnNumber": 9
+            },
+            {
+              "functionName": "listBees",
+              "scriptId": "221",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-candidate-8e57/v2/daemon/src/autoTitle.ts",
+              "lineNumber": 323,
+              "columnNumber": 14
+            },
+            {
+              "functionName": "listBees",
+              "scriptId": "202",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-candidate-8e57/v2/core/src/store.ts",
+              "lineNumber": 1822,
+              "columnNumber": 10
+            },
+            {
+              "functionName": "map",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "profile": "mini-autotitle-v1-quiet-canonical-profile.json.envelope-giant.0.heapprofile.gz",
+      "compressedSha256": "749f26c8b42827be21fbe0ee4681f7ce136bf0cbf4f23a798774060294dfe45a",
+      "sampledBytes": 89862320,
+      "allocations": [
+        {
+          "sampledBytes": 73880360,
+          "ancestry": [
+            {
+              "functionName": "(root)",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "87",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/honeybee-autotitle-quiet-ruler.mjs",
+              "lineNumber": 0,
+              "columnNumber": 0
+            },
+            {
+              "functionName": "",
+              "scriptId": "218",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-baseline-3228/v2/daemon/src/autoTitle.ts",
+              "lineNumber": 111,
+              "columnNumber": 9
+            },
+            {
+              "functionName": "listMessages",
+              "scriptId": "218",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-baseline-3228/v2/daemon/src/autoTitle.ts",
+              "lineNumber": 244,
+              "columnNumber": 18
+            },
+            {
+              "functionName": "listMessages",
+              "scriptId": "179",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-baseline-3228/v2/core/src/store.ts",
+              "lineNumber": 2709,
+              "columnNumber": 14
+            }
+          ]
+        },
+        {
+          "sampledBytes": 9465312,
+          "ancestry": [
+            {
+              "functionName": "(root)",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "87",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/honeybee-autotitle-quiet-ruler.mjs",
+              "lineNumber": 0,
+              "columnNumber": 0
+            },
+            {
+              "functionName": "",
+              "scriptId": "218",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-baseline-3228/v2/daemon/src/autoTitle.ts",
+              "lineNumber": 111,
+              "columnNumber": 9
+            },
+            {
+              "functionName": "listMessages",
+              "scriptId": "218",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-baseline-3228/v2/daemon/src/autoTitle.ts",
+              "lineNumber": 244,
+              "columnNumber": 18
+            },
+            {
+              "functionName": "listMessages",
+              "scriptId": "179",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-baseline-3228/v2/core/src/store.ts",
+              "lineNumber": 2709,
+              "columnNumber": 14
+            },
+            {
+              "functionName": "map",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "mapMessage",
+              "scriptId": "179",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-baseline-3228/v2/core/src/store.ts",
+              "lineNumber": 1074,
+              "columnNumber": 19
+            }
+          ]
+        },
+        {
+          "sampledBytes": 5707688,
+          "ancestry": [
+            {
+              "functionName": "(root)",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "87",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/honeybee-autotitle-quiet-ruler.mjs",
+              "lineNumber": 0,
+              "columnNumber": 0
+            },
+            {
+              "functionName": "",
+              "scriptId": "218",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-baseline-3228/v2/daemon/src/autoTitle.ts",
+              "lineNumber": 111,
+              "columnNumber": 9
+            },
+            {
+              "functionName": "userTaskMessages",
+              "scriptId": "218",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-baseline-3228/v2/daemon/src/autoTitle.ts",
+              "lineNumber": 60,
+              "columnNumber": 32
+            }
+          ]
+        },
+        {
+          "sampledBytes": 800016,
+          "ancestry": [
+            {
+              "functionName": "(root)",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "87",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/honeybee-autotitle-quiet-ruler.mjs",
+              "lineNumber": 0,
+              "columnNumber": 0
+            },
+            {
+              "functionName": "",
+              "scriptId": "218",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-baseline-3228/v2/daemon/src/autoTitle.ts",
+              "lineNumber": 111,
+              "columnNumber": 9
+            },
+            {
+              "functionName": "listMessages",
+              "scriptId": "218",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-baseline-3228/v2/daemon/src/autoTitle.ts",
+              "lineNumber": 244,
+              "columnNumber": 18
+            },
+            {
+              "functionName": "listMessages",
+              "scriptId": "179",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-baseline-3228/v2/core/src/store.ts",
+              "lineNumber": 2709,
+              "columnNumber": 14
+            },
+            {
+              "functionName": "map",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            }
+          ]
+        },
+        {
+          "sampledBytes": 4800,
+          "ancestry": [
+            {
+              "functionName": "(root)",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "87",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/honeybee-autotitle-quiet-ruler.mjs",
+              "lineNumber": 0,
+              "columnNumber": 0
+            },
+            {
+              "functionName": "",
+              "scriptId": "218",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-baseline-3228/v2/daemon/src/autoTitle.ts",
+              "lineNumber": 111,
+              "columnNumber": 9
+            },
+            {
+              "functionName": "listBees",
+              "scriptId": "218",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-baseline-3228/v2/daemon/src/autoTitle.ts",
+              "lineNumber": 243,
+              "columnNumber": 14
+            },
+            {
+              "functionName": "listBees",
+              "scriptId": "179",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-baseline-3228/v2/core/src/store.ts",
+              "lineNumber": 1785,
+              "columnNumber": 10
+            }
+          ]
+        },
+        {
+          "sampledBytes": 4144,
+          "ancestry": [
+            {
+              "functionName": "(root)",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "87",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/honeybee-autotitle-quiet-ruler.mjs",
+              "lineNumber": 0,
+              "columnNumber": 0
+            },
+            {
+              "functionName": "",
+              "scriptId": "218",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-baseline-3228/v2/daemon/src/autoTitle.ts",
+              "lineNumber": 111,
+              "columnNumber": 9
+            },
+            {
+              "functionName": "listBees",
+              "scriptId": "218",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-baseline-3228/v2/daemon/src/autoTitle.ts",
+              "lineNumber": 243,
+              "columnNumber": 14
+            },
+            {
+              "functionName": "listBees",
+              "scriptId": "179",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-baseline-3228/v2/core/src/store.ts",
+              "lineNumber": 1785,
+              "columnNumber": 10
+            },
+            {
+              "functionName": "map",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "mapBee",
+              "scriptId": "179",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-baseline-3228/v2/core/src/store.ts",
+              "lineNumber": 523,
+              "columnNumber": 15
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "profile": "mini-autotitle-v1-quiet-canonical-profile.json.envelope-giant.1.heapprofile.gz",
+      "compressedSha256": "2a27281385c21e37b405f5cc9da51b2400527ae39b71fb915543575db57bb7b1",
+      "sampledBytes": 8536,
+      "allocations": [
+        {
+          "sampledBytes": 4416,
+          "ancestry": [
+            {
+              "functionName": "(root)",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "87",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/honeybee-autotitle-quiet-ruler.mjs",
+              "lineNumber": 0,
+              "columnNumber": 0
+            },
+            {
+              "functionName": "",
+              "scriptId": "221",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-candidate-8e57/v2/daemon/src/autoTitle.ts",
+              "lineNumber": 147,
+              "columnNumber": 9
+            }
+          ]
+        },
+        {
+          "sampledBytes": 4120,
+          "ancestry": [
+            {
+              "functionName": "(root)",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "87",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/honeybee-autotitle-quiet-ruler.mjs",
+              "lineNumber": 0,
+              "columnNumber": 0
+            },
+            {
+              "functionName": "",
+              "scriptId": "221",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-candidate-8e57/v2/daemon/src/autoTitle.ts",
+              "lineNumber": 147,
+              "columnNumber": 9
+            },
+            {
+              "functionName": "next",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "profile": "mini-autotitle-v1-quiet-canonical-profile.json.thin-fleet.0.heapprofile.gz",
+      "compressedSha256": "38f8f3e237f9c6566fd8930c43a4d4715da16f02b2f6f7ceb2ee79900a26484c",
+      "sampledBytes": 3988904,
+      "allocations": [
+        {
+          "sampledBytes": 3447880,
+          "ancestry": [
+            {
+              "functionName": "(root)",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "87",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/honeybee-autotitle-quiet-ruler.mjs",
+              "lineNumber": 0,
+              "columnNumber": 0
+            },
+            {
+              "functionName": "",
+              "scriptId": "218",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-baseline-3228/v2/daemon/src/autoTitle.ts",
+              "lineNumber": 111,
+              "columnNumber": 9
+            }
+          ]
+        },
+        {
+          "sampledBytes": 321960,
+          "ancestry": [
+            {
+              "functionName": "(root)",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "87",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/honeybee-autotitle-quiet-ruler.mjs",
+              "lineNumber": 0,
+              "columnNumber": 0
+            },
+            {
+              "functionName": "",
+              "scriptId": "218",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-baseline-3228/v2/daemon/src/autoTitle.ts",
+              "lineNumber": 111,
+              "columnNumber": 9
+            },
+            {
+              "functionName": "mapBee",
+              "scriptId": "179",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-baseline-3228/v2/core/src/store.ts",
+              "lineNumber": 523,
+              "columnNumber": 15
+            }
+          ]
+        },
+        {
+          "sampledBytes": 124320,
+          "ancestry": [
+            {
+              "functionName": "(root)",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "87",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/honeybee-autotitle-quiet-ruler.mjs",
+              "lineNumber": 0,
+              "columnNumber": 0
+            },
+            {
+              "functionName": "",
+              "scriptId": "218",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-baseline-3228/v2/daemon/src/autoTitle.ts",
+              "lineNumber": 111,
+              "columnNumber": 9
+            },
+            {
+              "functionName": "mapMessage",
+              "scriptId": "179",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-baseline-3228/v2/core/src/store.ts",
+              "lineNumber": 1074,
+              "columnNumber": 19
+            }
+          ]
+        },
+        {
+          "sampledBytes": 90544,
+          "ancestry": [
+            {
+              "functionName": "(root)",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "87",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/honeybee-autotitle-quiet-ruler.mjs",
+              "lineNumber": 0,
+              "columnNumber": 0
+            },
+            {
+              "functionName": "",
+              "scriptId": "218",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-baseline-3228/v2/daemon/src/autoTitle.ts",
+              "lineNumber": 111,
+              "columnNumber": 9
+            },
+            {
+              "functionName": "join",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            }
+          ]
+        },
+        {
+          "sampledBytes": 4200,
+          "ancestry": [
+            {
+              "functionName": "(root)",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "87",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/honeybee-autotitle-quiet-ruler.mjs",
+              "lineNumber": 0,
+              "columnNumber": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "profile": "mini-autotitle-v1-quiet-canonical-profile.json.thin-fleet.1.heapprofile.gz",
+      "compressedSha256": "5dd6bd337078f60063b1d3fcd111e8a29dab424047dd24bd22ef737c17859e45",
+      "sampledBytes": 2884912,
+      "allocations": [
+        {
+          "sampledBytes": 2492400,
+          "ancestry": [
+            {
+              "functionName": "(root)",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "87",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/honeybee-autotitle-quiet-ruler.mjs",
+              "lineNumber": 0,
+              "columnNumber": 0
+            },
+            {
+              "functionName": "",
+              "scriptId": "221",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-candidate-8e57/v2/daemon/src/autoTitle.ts",
+              "lineNumber": 147,
+              "columnNumber": 9
+            }
+          ]
+        },
+        {
+          "sampledBytes": 356552,
+          "ancestry": [
+            {
+              "functionName": "(root)",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "87",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/honeybee-autotitle-quiet-ruler.mjs",
+              "lineNumber": 0,
+              "columnNumber": 0
+            },
+            {
+              "functionName": "",
+              "scriptId": "221",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-candidate-8e57/v2/daemon/src/autoTitle.ts",
+              "lineNumber": 147,
+              "columnNumber": 9
+            },
+            {
+              "functionName": "mapBee",
+              "scriptId": "202",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-candidate-8e57/v2/core/src/store.ts",
+              "lineNumber": 560,
+              "columnNumber": 15
+            }
+          ]
+        },
+        {
+          "sampledBytes": 35960,
+          "ancestry": [
+            {
+              "functionName": "(root)",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            },
+            {
+              "functionName": "",
+              "scriptId": "87",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/honeybee-autotitle-quiet-ruler.mjs",
+              "lineNumber": 0,
+              "columnNumber": 0
+            },
+            {
+              "functionName": "",
+              "scriptId": "221",
+              "url": "file:///private/tmp/honeybee-perf-5763a6c9-20260907/autotitle-candidate-8e57/v2/daemon/src/autoTitle.ts",
+              "lineNumber": 147,
+              "columnNumber": 9
+            },
+            {
+              "functionName": "add",
+              "scriptId": "0",
+              "url": "",
+              "lineNumber": -1,
+              "columnNumber": -1
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

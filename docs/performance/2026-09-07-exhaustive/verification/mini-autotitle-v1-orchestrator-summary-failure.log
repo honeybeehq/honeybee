@@ -1,0 +1,6 @@
+The orchestrator failed AFTER mini-autotitle-v1-quiet-canonical-none.json completed successfully and passed all ruler invariants. Its optional summary printer accessed s['name'], but the quiet ruler has a different scenario schema.
+Traceback (most recent call last):
+  File "/tmp/honeybee-perf-5763a6c9-20260907/honeybee-mini-autotitle-candidate-captures.py", line 25, in <module>
+    print(s['name'],json.dumps(s.get('metrics',s.get('summary',{})))[:1200],flush=True)
+KeyError: 'name'
+The source roots, rulers and completed report are unchanged. Resume script removes only optional printing and explicitly lists the four remaining captures; completed reports are not rerun or overwritten.

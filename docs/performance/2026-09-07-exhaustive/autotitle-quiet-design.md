@@ -2,7 +2,7 @@
 
 The selected [synthesis](designs/autotitle-architecture/synthesis.md) uses a read-only committed mailbox identity and caches only the exact signature needed to skip unchanged defer/backoff scans. The general dependency factory and caller-supplied rosters keep their full-read behavior. A possible title launch still reads and normalizes the full mailbox as today.
 
-This is an implementation decision, not performance acceptance. Core Unit1 is frozen at bc6554b6 in the isolated candidate worktree and passes Mini build, all v2 typechecks and all 237 Core tests. Unit2 dispatcher implementation is active. No automatic-title cache is integrated in main.
+The combined candidate is accepted at `8e57e746`. [Treatment results](autotitle-quiet-results.md) record all correctness gates, CPU gains, empty/all-changed regressions, and memory limits. The following A/A section preserves the pre-treatment baseline.
 
 The [independent judge](designs/autotitle-architecture/cross-judge.md) preferred Sol's private store-backed boundary and Fable's derived SQLite identity. The [smaller-slice addendum](designs/autotitle-architecture/smaller-first-slice-addendum.md) agrees that full summary and selected-body launch changes can wait. The Core transaction token remains an alternative; its [contract corrections](designs/autotitle-architecture/sol/core-contract-addendum.md) are retained but not selected for this slice.
 
@@ -29,6 +29,6 @@ Giant mailbox rows are seeded offline without synthetic enqueue audit/projection
 
 The [v1 draft](tools/honeybee-autotitle-quiet-ruler-v1.mjs) and [v2 revision](tools/honeybee-autotitle-quiet-ruler-v2.mjs) remain byte-exact. V1 timed only synchronous dispatch entry and used an all-pending giant fixture. V2 fixes those measurement boundaries and the exact source gate. Final bytes change only the interleaved-history and audit-count wording. Studio v1/v2 smoke reports and heap profiles retain their original hashes. They prove structural wiring, not performance, and their differing fixtures must not be mixed with final Mini captures.
 
-Next gates are Core and daemon behavior tests, broad serial Mini verification, treatment captures, changed/expiry and multi-giant workloads, and separate retained-memory measurement. The new cache's RAM cost must be priced independently from any reduction in allocation traffic. No schema, persistent sidecar field, writer hook, scan-cadence change, provider call, push, or deployment is part of this candidate work.
+The implementation has passed Core and daemon behavior tests, broad serial Mini verification, quiet/changed/expiry/multi-giant captures, and separate process-memory and heap-structure checks. Exact cache byte attribution remains unclaimed. No schema, persistent sidecar field, writer hook, scan-cadence change, provider call, push, or deployment is part of this candidate work.
 
 The [memory baseline](autotitle-memory-baseline.md) records the approved process ruler, its limitations and the canonical identical-source control.

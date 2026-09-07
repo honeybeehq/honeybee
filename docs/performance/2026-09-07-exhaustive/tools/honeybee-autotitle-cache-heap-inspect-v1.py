@@ -5,8 +5,6 @@ context slot named quietBaselines to a Map, then that Map's table to entry
 objects with membership/signature properties. Counts observed objects only.
 This is neither a dominator calculation nor retained-byte attribution.
 Source review must verify the slot name belongs to the intended dispatcher.
-Violations cover recognized entry objects with both property edges only;
-missing properties and SMI-valued fields need separate source/behavior checks.
 """
 import argparse,gzip,hashlib,json
 from pathlib import Path
@@ -28,30 +26,24 @@ def outgoing(i):
   typ=et[edges[e+ef.index('type')]];key=edges[e+ef.index('name_or_index')]
   yield typ, key if typ in ['element','hidden'] else strings[key], edges[e+ef.index('to_node')]
 def properties(i):return {name:to for typ,name,to in outgoing(i) if typ=='property'}
-found=[];violations=[]
+found=[]
 for i in starts:
  for typ,name,target in outgoing(i):
   if typ!='context' or name!='quietBaselines':continue
   item={'context':node(i),'slot':name,'target':node(target),'entries':[]}
   if item['target']['type']=='object' and item['target']['name']=='Map':
    tables=[to for t,n,to in outgoing(target) if t=='internal' and n=='table'];assert len(tables)==1
-   item['slotState']='map';item['table']=node(tables[0]);seen=set()
+   item['table']=node(tables[0]);seen=set()
    for t,n,value in outgoing(tables[0]):
     if t=='weak' or value in seen:continue
     seen.add(value);pr=properties(value)
     if 'membership' not in pr or 'signature' not in pr:continue
     membership=pr['membership'];mp=properties(membership)
-    kind=node(mp['kind']) if 'kind' in mp else None
-    if kind is None or kind['name']!='committed':
-     violations.append({'code':'membership_kind','contextId':node(i)['id'],'entryId':node(value)['id'],'observed':kind})
-    sig=node(pr['signature'])
-    if sig['type'] not in ['string','concatenated string','sliced string']:
-     violations.append({'code':'signature_type','contextId':node(i)['id'],'entryId':node(value)['id'],'observed':sig})
+    assert 'kind' in mp and node(mp['kind'])['name']=='committed'
+    sig=node(pr['signature']);assert sig['type'] in ['string','concatenated string','sliced string']
     item['entries'].append({'entry':node(value),'membership':node(membership),'signature':sig})
    item['observedEntryObjects']=len(item['entries'])
-  else:item['slotState']='not_map'
   found.append(item)
-result={'snapshotPath':str(source.resolve()),'snapshotSha256':hashlib.sha256(data).hexdigest(),'toolSha256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),'scope':__doc__,'cacheSlots':found,'violations':violations,'completed':True,'coreStoreObjects':sum(node(i)['type']=='object' and node(i)['name']=='CoreStore' for i in starts)}
+result={'snapshotPath':str(source.resolve()),'snapshotSha256':hashlib.sha256(data).hexdigest(),'toolSha256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),'scope':__doc__,'cacheSlots':found,'coreStoreObjects':sum(node(i)['type']=='object' and node(i)['name']=='CoreStore' for i in starts)}
 out=Path(a.out);assert not out.exists();out.write_text(json.dumps(result,indent=2)+'\n')
-print(json.dumps({'cacheSlots':len(found),'mapEntryCounts':[x.get('observedEntryObjects') for x in found],'coreStoreObjects':result['coreStoreObjects'],'violations':len(violations)}))
-raise SystemExit(1 if violations else 0)
+print(json.dumps({'cacheSlots':len(found),'mapEntryCounts':[x.get('observedEntryObjects') for x in found],'coreStoreObjects':result['coreStoreObjects']}))
