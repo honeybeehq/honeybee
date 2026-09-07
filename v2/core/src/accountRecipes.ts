@@ -248,6 +248,9 @@ function opencodeFields(): LoginFieldDescriptor[] {
 
 /** Generic cue set for CLIs that print a sign-in URL and may ask for a pasted code or an API key. */
 const GENERIC_URL = "(https?://[^\\s'\"<>)\\]]+)";
+// Codex prints its local callback listener before the sign-in link. Only
+// the authorization endpoint is a browser target, including for custom issuers.
+const CODEX_BROWSER_URL = "(https?://[^/\\s'\"<>)\\]]+/oauth/authorize\\?[^\\s'\"<>)\\]]+)";
 // A prompt is a line that ENDS in a prompt terminator (`:` / `>`); a device
 // line such as "Enter this one-time code: ABCD-1234" ends in the code and
 // is never an ask.
@@ -431,7 +434,7 @@ export const ACCOUNT_RECIPES: Readonly<Record<string, IdentityRecipe>> = {
             cli: {
               tty: false,
               env: { BROWSER: "true" },
-              cues: { url: GENERIC_URL, prompts: [], failure: GENERIC_FAILURE },
+              cues: { url: CODEX_BROWSER_URL, prompts: [], failure: GENERIC_FAILURE },
               landing: "home_mtime",
             },
           },

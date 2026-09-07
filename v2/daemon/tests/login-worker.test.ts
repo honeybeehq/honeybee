@@ -12,7 +12,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, st
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { LOGIN_FIELD_CODE, type LoginCliSpec } from "../../core/src/index.ts";
+import { LOGIN_FIELD_CODE, recipeFor, type LoginCliSpec } from "../../core/src/index.ts";
 import { LoginOutputParser, LoginWorker, cleanTerminalText, ensurePtySpawnHelperExecutable, loadNodePtySpawner, pipeSpawner, type LoginWorkerEvent } from "../src/loginWorker.ts";
 import { waitFor } from "./helpers.ts";
 
@@ -28,6 +28,25 @@ const CUES: LoginCliSpec["cues"] = {
   ],
   failure: ["\\b(login|authentication) (failed|error)\\b"],
 };
+
+test("worker.parser: Codex browser login ignores its callback listener in every chunk layout", () => {
+  const method = recipeFor("codex")?.loginFlow?.methods.find((candidate) => candidate.id === "codex-browser");
+  assert.ok(method?.run.mode === "cli");
+  const url = "https://auth.openai.com/oauth/authorize?client_id=fixture&redirect_uri=http%3A%2F%2Flocalhost%3A1455%2Fauth%2Fcallback&state=synthetic";
+  const output = `Starting local login server on http://localhost:1455.\nIf your browser did not open, navigate to this URL to authenticate:\n\n${url}\n`;
+  // The callback banner must never become a transient browser-open event,
+  // whether PTY writes arrive together, split inside a URL, or byte by byte.
+  for (const chunks of [[output], [...output], [output.slice(0, 65), output.slice(65)]]) {
+    const parser: LoginOutputParser = new LoginOutputParser({ cues: method.run.cli.cues, settleMs: 50 });
+    for (const [index, chunk] of chunks.entries()) {
+      const state = parser.feed(chunk, index);
+      assert.ok(state.url === null || state.url === url, `unexpected browser target: ${state.url}`);
+    }
+    assert.equal(parser.state().url, url);
+    parser.feed("Callback received at http://localhost:1455/auth/callback?code=synthetic\n", output.length + 1);
+    assert.equal(parser.state().url, url, "callback diagnostics cannot replace the authorization URL");
+  }
+});
 
 test("worker.clean: ANSI/OSC sequences are stripped and \\r redraws resolve to the last overwrite", () => {
   assert.equal(cleanTerminalText("\u001b[36m⠋ Starting\r\u001b[K⠙ Starting login\r\u001b[K⠹ Done\u001b[0m\nnext"), "⠹ Done\nnext");
