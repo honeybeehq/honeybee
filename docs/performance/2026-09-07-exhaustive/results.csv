@@ -34,3 +34,5 @@ Landed; tradeoffs recorded,Sparse mailbox history,3.744,0.032,ms CPU,20 target r
 Accepted cost,All-target mailbox history,129.112,136.142,ms CPU,100k target rows,c10-mailbox-history-results.md
 No regression observed,Pending over same-Bee delivered history,0.024,0.024,ms CPU,20pending plus100k delivered,c10-mailbox-history-results.md
 Baseline; candidate pending,Cell capture packed-tag scaling,90.703625,162.514209,ms wall,0 versus10k tags;12files14commits,cell-ref-fanout-results.md
+Landed,Repeated empty mailbox read,6.981,0.311,us CPU/call,1000calls/batch;warmed constant SQL,mailbox-statement-cache-results.md
+Landed,Repeated twenty-row mailbox read,25.957,18.438,us CPU/call,1000calls/batch;warmed constant SQL,mailbox-statement-cache-results.md

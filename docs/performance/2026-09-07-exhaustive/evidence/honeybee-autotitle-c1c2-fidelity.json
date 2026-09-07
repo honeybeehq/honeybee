@@ -1,0 +1,148 @@
+{
+  "c1": {
+    "decisionFlip": {
+      "rows": 4,
+      "firstK": 3,
+      "real": "generate",
+      "firstKModel": "defer",
+      "note": "envelope-only rows are unbounded; no fixed k survives"
+    },
+    "countDrift": {
+      "realCount": 1,
+      "rowCount": 3
+    },
+    "initialTaskDiffers": {
+      "clampedLength": 700,
+      "initialTaskLength": 837
+    }
+  },
+  "giantStates": {
+    "substantive": {
+      "fresh": "generate",
+      "withFailedAttempts": {
+        "action": "skip",
+        "reason": "backoff"
+      },
+      "note": "valid sustained giant read state is backoff (or repeated launches); defer unreachable"
+    },
+    "envelopeOnly": {
+      "rows": 1000,
+      "userMessages": 0,
+      "decision": "defer",
+      "note": "deferred giant requires an envelope/whitespace-only flood"
+    }
+  },
+  "c2": {
+    "steps": [
+      {
+        "name": "send",
+        "before": {
+          "max": 3,
+          "count": 3
+        },
+        "after": {
+          "max": 4,
+          "count": 4
+        },
+        "detected": true,
+        "signatureChanged": true,
+        "expectDetect": true
+      },
+      {
+        "name": "cancel highest pending",
+        "before": {
+          "max": 4,
+          "count": 4
+        },
+        "after": {
+          "max": 3,
+          "count": 3
+        },
+        "detected": true,
+        "signatureChanged": true,
+        "expectDetect": true
+      },
+      {
+        "name": "cancel old + send new (count restored)",
+        "before": {
+          "max": 3,
+          "count": 3
+        },
+        "after": {
+          "max": 5,
+          "count": 3
+        },
+        "detected": true,
+        "signatureChanged": true,
+        "expectDetect": true
+      },
+      {
+        "name": "send then cancel the same message (net no-op)",
+        "before": {
+          "max": 5,
+          "count": 3
+        },
+        "after": {
+          "max": 5,
+          "count": 3
+        },
+        "detected": false,
+        "signatureChanged": false,
+        "expectDetect": false
+      },
+      {
+        "name": "markDelivered (membership-neutral)",
+        "before": {
+          "max": 5,
+          "count": 3
+        },
+        "after": {
+          "max": 5,
+          "count": 3
+        },
+        "detected": false,
+        "signatureChanged": false,
+        "expectDetect": false
+      },
+      {
+        "name": "expedite urgency (membership-neutral)",
+        "before": {
+          "max": 5,
+          "count": 3
+        },
+        "after": {
+          "max": 5,
+          "count": 3
+        },
+        "detected": false,
+        "signatureChanged": false,
+        "expectDetect": false
+      },
+      {
+        "name": "rollback of send+cancel",
+        "before": {
+          "max": 5,
+          "count": 3
+        },
+        "after": {
+          "max": 5,
+          "count": 3
+        },
+        "detected": false,
+        "signatureChanged": false,
+        "expectDetect": false
+      },
+      {
+        "name": "cancel delivered refused",
+        "detected": false,
+        "signatureChanged": false
+      },
+      {
+        "name": "no id reuse after cancel-highest",
+        "freed": 5,
+        "next": 7
+      }
+    ],
+    "note": "soundness held on every step: no signature change went undetected"
+  }
+}

@@ -1,0 +1,306 @@
+{
+  "probesPerTick": 8,
+  "scenarios": [
+    {
+      "state": "titled",
+      "size": 1,
+      "ticks": 5,
+      "note": "lifecycle/title pre-skip: no mailbox reads at all",
+      "readsPerTick": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "steadyReadsPerTick": 0,
+      "totalReads": 0,
+      "totalSaves": 0,
+      "totalGenerates": 0
+    },
+    {
+      "state": "titled",
+      "size": 100,
+      "ticks": 5,
+      "note": "lifecycle/title pre-skip: no mailbox reads at all",
+      "readsPerTick": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "steadyReadsPerTick": 0,
+      "totalReads": 0,
+      "totalSaves": 0,
+      "totalGenerates": 0
+    },
+    {
+      "state": "titled",
+      "size": 1000,
+      "ticks": 5,
+      "note": "lifecycle/title pre-skip: no mailbox reads at all",
+      "readsPerTick": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "steadyReadsPerTick": 0,
+      "totalReads": 0,
+      "totalSaves": 0,
+      "totalGenerates": 0
+    },
+    {
+      "state": "deferred",
+      "size": 1,
+      "ticks": 5,
+      "note": "deferred-signature continue is AFTER the read and BEFORE probes++",
+      "readsPerTick": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "steadyReadsPerTick": 1,
+      "totalReads": 5,
+      "totalSaves": 0,
+      "totalGenerates": 0
+    },
+    {
+      "state": "deferred",
+      "size": 100,
+      "ticks": 5,
+      "note": "deferred-signature continue is AFTER the read and BEFORE probes++",
+      "readsPerTick": [
+        100,
+        100,
+        100,
+        100,
+        100
+      ],
+      "steadyReadsPerTick": 100,
+      "totalReads": 500,
+      "totalSaves": 0,
+      "totalGenerates": 0
+    },
+    {
+      "state": "deferred",
+      "size": 1000,
+      "ticks": 5,
+      "note": "deferred-signature continue is AFTER the read and BEFORE probes++",
+      "readsPerTick": [
+        1000,
+        1000,
+        1000,
+        1000,
+        1000
+      ],
+      "steadyReadsPerTick": 1000,
+      "totalReads": 5000,
+      "totalSaves": 0,
+      "totalGenerates": 0
+    },
+    {
+      "state": "backoff",
+      "size": 1,
+      "ticks": 5,
+      "note": "backoff skip is AFTER the read and consumes no probe",
+      "readsPerTick": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "steadyReadsPerTick": 1,
+      "totalReads": 5,
+      "totalSaves": 0,
+      "totalGenerates": 0
+    },
+    {
+      "state": "backoff",
+      "size": 100,
+      "ticks": 5,
+      "note": "backoff skip is AFTER the read and consumes no probe",
+      "readsPerTick": [
+        100,
+        100,
+        100,
+        100,
+        100
+      ],
+      "steadyReadsPerTick": 100,
+      "totalReads": 500,
+      "totalSaves": 0,
+      "totalGenerates": 0
+    },
+    {
+      "state": "backoff",
+      "size": 1000,
+      "ticks": 5,
+      "note": "backoff skip is AFTER the read and consumes no probe",
+      "readsPerTick": [
+        1000,
+        1000,
+        1000,
+        1000,
+        1000
+      ],
+      "steadyReadsPerTick": 1000,
+      "totalReads": 5000,
+      "totalSaves": 0,
+      "totalGenerates": 0
+    },
+    {
+      "state": "empty",
+      "size": 1,
+      "ticks": 4,
+      "note": "defer transitions are capped at 8/scan; reads ramp by 8/scan to the full set",
+      "readsPerTick": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "steadyReadsPerTick": 1,
+      "totalReads": 4,
+      "totalSaves": 1,
+      "totalGenerates": 0
+    },
+    {
+      "state": "empty",
+      "size": 100,
+      "ticks": 16,
+      "note": "defer transitions are capped at 8/scan; reads ramp by 8/scan to the full set",
+      "readsPerTick": [
+        8,
+        16,
+        24,
+        32,
+        40,
+        48,
+        "…",
+        100,
+        100,
+        100
+      ],
+      "steadyReadsPerTick": 100,
+      "totalReads": 1024,
+      "totalSaves": 100,
+      "totalGenerates": 0
+    },
+    {
+      "state": "empty",
+      "size": 1000,
+      "ticks": 128,
+      "note": "defer transitions are capped at 8/scan; reads ramp by 8/scan to the full set",
+      "readsPerTick": [
+        8,
+        16,
+        24,
+        32,
+        40,
+        48,
+        "…",
+        1000,
+        1000,
+        1000
+      ],
+      "steadyReadsPerTick": 1000,
+      "totalReads": 66000,
+      "totalSaves": 1000,
+      "totalGenerates": 0
+    },
+    {
+      "state": "thin",
+      "size": 1,
+      "ticks": 4,
+      "note": "defer transitions are capped at 8/scan; reads ramp by 8/scan to the full set",
+      "readsPerTick": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "steadyReadsPerTick": 1,
+      "totalReads": 4,
+      "totalSaves": 1,
+      "totalGenerates": 0
+    },
+    {
+      "state": "thin",
+      "size": 100,
+      "ticks": 16,
+      "note": "defer transitions are capped at 8/scan; reads ramp by 8/scan to the full set",
+      "readsPerTick": [
+        8,
+        16,
+        24,
+        32,
+        40,
+        48,
+        "…",
+        100,
+        100,
+        100
+      ],
+      "steadyReadsPerTick": 100,
+      "totalReads": 1024,
+      "totalSaves": 100,
+      "totalGenerates": 0
+    },
+    {
+      "state": "thin",
+      "size": 1000,
+      "ticks": 128,
+      "note": "defer transitions are capped at 8/scan; reads ramp by 8/scan to the full set",
+      "readsPerTick": [
+        8,
+        16,
+        24,
+        32,
+        40,
+        48,
+        "…",
+        1000,
+        1000,
+        1000
+      ],
+      "steadyReadsPerTick": 1000,
+      "totalReads": 66000,
+      "totalSaves": 1000,
+      "totalGenerates": 0
+    },
+    {
+      "state": "deferred",
+      "size": 1000,
+      "ticks": 3,
+      "note": "in-flight slot: early return, zero reads until resolve/watchdog (45s)",
+      "readsPerTick": [
+        1001,
+        0,
+        0
+      ],
+      "steadyReadsPerTick": 0,
+      "totalReads": 1001,
+      "totalSaves": 1,
+      "totalGenerates": 1
+    },
+    {
+      "state": "deferred+rich-first",
+      "size": 1001,
+      "ticks": 1,
+      "readsPerTick": [
+        1
+      ],
+      "steadyReadsPerTick": 1,
+      "totalReads": 1,
+      "totalSaves": 1,
+      "totalGenerates": 1,
+      "note": "generate at roster head: 1 read then break — order decides everything"
+    }
+  ]
+}

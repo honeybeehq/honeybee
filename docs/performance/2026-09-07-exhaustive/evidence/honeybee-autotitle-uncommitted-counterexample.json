@@ -1,0 +1,24 @@
+{
+  "completed": true,
+  "scope": "Real CoreStore; cache is hypothetical. Equal max/count across rollback does not prove body identity if the earlier read was uncommitted.",
+  "speculative": {
+    "pair": {
+      "maxId": 1,
+      "count": 1
+    },
+    "bodies": [
+      "speculative body A"
+    ],
+    "inTransaction": true
+  },
+  "committed": {
+    "pair": {
+      "maxId": 1,
+      "count": 1
+    },
+    "bodies": [
+      "committed body B"
+    ],
+    "inTransaction": false
+  }
+}

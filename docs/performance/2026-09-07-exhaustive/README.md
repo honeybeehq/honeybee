@@ -54,3 +54,5 @@ The [workflow](workflow.md) defines the completion predicate. [The decision log]
 
 [Final integration review](../../review/2026-09-07-perf-pending-integration.md) records passing v2 gates and the exact 67-failure legacy compiled-suite control. Both task and main integration preserve the newer gateway work.
 [Sparse mailbox history](c10-mailbox-history-results.md) records the ordered UNION improvement and its giant-read, write, open and storage costs. [Cell ref fanout](cell-ref-fanout-results.md) adds packed-tag, scratch-storage and clone-resource baselines for the next isolated candidate.
+
+[Mailbox statement reuse](mailbox-statement-cache-results.md) records the subsequent C03 gain. [Automatic-title investigation](autotitle-read-investigation.md) records call counts, rejected shortcuts and rollback constraints for future work.
