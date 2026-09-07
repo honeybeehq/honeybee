@@ -1,0 +1,90 @@
+✖ cell-driver.roundtrip: start provisions the cell, runtime runs in the space, full turn cycle (200.5995ms)
+✔ cell-driver.background: start returns before provisioning and later boots from the durable ledger (246.46175ms)
+✖ cell-driver.background: first Cell ensures the image before boot and the next Cell stays hot (291.377667ms)
+✔ cell-driver.background: satellites do not build the workstation-local Git image (301.3655ms)
+✔ cell-driver.background: worker exit without a result becomes a boot failure (76.371417ms)
+✔ cell-driver.exit-path: work committed in the live cell captures out; removeCell guards (297.355375ms)
+✔ cell-driver.restart-hydration: a fresh driver re-hydrates cells from cell.json (capture + delete work) (298.851417ms)
+✔ cell-driver.reserved-only: a cell reserved (seed ledger) but never started removes outright; sessions delegate; typed live-runtime refusal (207.567ms)
+✖ cell-driver.sandboxed: per-cell override ON wraps the spawn in Seatbelt; the turn still works (darwin) (241.822042ms)
+✔ cell-driver.workstation-default: sandbox stays OFF without an override (A4) (215.755708ms)
+✔ cell-driver.account-home: the bee resolver adds one exact sandbox grant and ignores harness env (106.493167ms)
+✖ cell-driver.restart: a successor daemon re-adopts a live cell runtime from the ledger at full capability (194.633208ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 8
+ℹ fail 4
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2761.942375
+
+✖ failing tests:
+
+test at v2/driver-cell/tests/driver.test.ts:101:1
+✖ cell-driver.roundtrip: start provisions the cell, runtime runs in the space, full turn cycle (200.5995ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  false !== true
+
+      at TestContext.<anonymous> (file:///private/tmp/honeybee-perf-5763a6c9-20260907/verify-c18-z01-integrated/v2/driver-cell/tests/driver.test.ts:113:12)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at v2/driver-cell/tests/driver.test.ts:153:1
+✖ cell-driver.background: first Cell ensures the image before boot and the next Cell stays hot (291.377667ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  false !== true
+
+      at TestContext.<anonymous> (file:///private/tmp/honeybee-perf-5763a6c9-20260907/verify-c18-z01-integrated/v2/driver-cell/tests/driver.test.ts:171:12)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at v2/driver-cell/tests/driver.test.ts:337:1
+✖ cell-driver.sandboxed: per-cell override ON wraps the spawn in Seatbelt; the turn still works (darwin) (241.822042ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  false !== true
+
+      at TestContext.<anonymous> (file:///private/tmp/honeybee-perf-5763a6c9-20260907/verify-c18-z01-integrated/v2/driver-cell/tests/driver.test.ts:350:14)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at v2/driver-cell/tests/driver.test.ts:448:1
+✖ cell-driver.restart: a successor daemon re-adopts a live cell runtime from the ledger at full capability (194.633208ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  false !== true
+
+      at TestContext.<anonymous> (file:///private/tmp/honeybee-perf-5763a6c9-20260907/verify-c18-z01-integrated/v2/driver-cell/tests/driver.test.ts:455:12)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

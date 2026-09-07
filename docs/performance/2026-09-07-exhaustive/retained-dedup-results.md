@@ -14,9 +14,22 @@ On the M4 Mini with Node 24.18.0, the frozen cohort ruler ran baseline `824485f9
 | Post-GC JS heap, bytes | 12,177,400 | 11,531,096 | 11,531,096 | 12,177,400 |
 | Process RSS, bytes | 163,020,800 | 171,163,648 | 180,109,312 | 169,050,112 |
 
-Both repeats show 646,304 fewer bytes of final retained JavaScript heap. This is a process heap observation, not exact Set bytes or private memory. RSS increased in both candidate runs; no RSS reduction is claimed. Initial RSS and every cohort sample are retained in `mini-z01-retained-{before,after}-{1,2}.json`. The RSS behavior needs a larger repeated cohort experiment before attributing it to allocator noise or a persistent cost.
+Both repeats show 646,304 fewer bytes of final retained JavaScript heap. This is a process heap observation, not exact Set bytes or private memory. RSS increased in both candidate runs; no RSS reduction is claimed. Initial RSS and every cohort sample are retained in `mini-z01-retained-{before,after}-{1,2}.json`. The larger repeated experiment below also has higher candidate RSS; this cost remains unexplained and is not dismissed as noise.
 
 The fixture uses real CoreStore and DaemonCore with FakeDriver and a counting callback. Durable audit history remains. It does not exercise real worker delivery, durable I1 callback writes, or `rotatedGenerations`. Clearing when the queue never reaches zero remains Unit 2, not an implemented result.
+
+## Half-million-message stress
+
+The same frozen ruler then ran 50 cohorts of 10,000 messages per process in baseline/candidate/candidate/baseline order. All callback, pending-mail, and driver assertions passed. Reports are `mini-z01-retained-stress-{before,after,after-repeat,before-repeat}.json`.
+
+| Final observation | Baseline 1 | Candidate 1 | Candidate 2 | Baseline 2 |
+| --- | ---: | ---: | ---: | ---: |
+| Obsolete I1 IDs | 500,000 | 0 | 0 | 500,000 |
+| Post-GC JS heap, bytes | 22,024,152 | 11,547,376 | 11,547,448 | 22,024,112 |
+| JS heap capacity, bytes | 95,649,792 | 85,147,648 | 84,885,504 | 95,911,936 |
+| Process RSS, bytes | 355,434,496 | 375,570,432 | 371,605,504 | 369,426,432 |
+
+Final retained JS heap is about 10.48 MB smaller in both comparisons. Candidate retained heap stays near 11.55 MB as settled cohorts accumulate; baseline retains all half-million numeric IDs. Candidate RSS is still about 2–20 MB higher at the last sample, despite lower JS heap capacity. The native/resident component needs separate attribution. Unit 1 is accepted for removing unbounded obsolete bookkeeping, not as an improvement to total resident memory. Full RSS/heap trajectories remain available, including jumps and plateaus.
 
 ## CPU cost and allocation controls
 
@@ -37,3 +50,9 @@ All seven quiet timing and separate allocation pairs pass the strict comparator 
 Four new tests cover outer rollback after delivered/cancelled/deleted messages, live-empty clearing, I1-disabled interrupt clearing, and stopped-pending retention. They inspect Sets without adding a public diagnostic API. Frozen candidate verification passed build, all v2 typechecks, core 191/191, and loops 59/59 on Mini. The author's earlier Studio budget-test timeout under load is retained in the author handoff; the isolated rerun passed.
 
 Combined revision `6e4447d4`, including current main's runner-service and empty-rebase repairs, passed build, all v2 typechecks, core 201/201, serial daemon 271 pass and one platform skip, and capture 7/7. Logs are `verification/mini-c18-z01-integrated-*.log`.
+
+## Native memory attribution
+
+A separate frozen diagnostic runs the same500000-message fixture and invokes `vmmap -summary` after final GC while CoreStore and DaemonCore remain open. The tool emits a corpse snapshot. In its first pair, physical footprint is129.1M before and117.4M after (vmmap units); Memory Tag255 dirty pages are96.1M→86.3M, and malloc allocated bytes are12.9M on both sides. RSS in this pair is367296512→356728832 bytes, reversing the earlier direction. These snapshots support reduced physical footprint in this pair and show why the previous RSS observations alone did not identify a leak. They do not establish a general RSS gain or an exact native allocation origin. Raw summaries and process samples are `mini-z01-native-{before,after}.json`; the separate ruler is [retained-native.mjs](designs/retained-native.mjs). The reverse-order repeat reports candidate122.4M versus baseline129.0M physical footprint, and86.1M versus96.1M Memory Tag255 dirty pages. Malloc allocated bytes remain12.9M each. Candidate RSS342605824 versus baseline367443968 again differs from the earlier RSS-only runs. Both native pairs support a smaller physical footprint for this fixture, without turning variable RSS into a universal memory claim. Reports with `-repeat` preserve the reverse capture.
+
+Final integration with main24058e1f and Cell merge optimization: core212/212; daemon299 pass/one platform skip; CLI59/59; adapters70/70; full Cell70 pass/one skip after the existing test-readiness repair; build and all v2 checks pass.

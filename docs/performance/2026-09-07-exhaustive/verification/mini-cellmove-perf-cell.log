@@ -1,0 +1,150 @@
+{"tree": "7d7e6287cb9de1e7dbd5b5914b882b213894a2c9", "command": ["node", "--test", "--test-concurrency=1", "v2/driver-cell/tests/capture-tree-parity.test.ts", "v2/driver-cell/tests/capture.test.ts", "v2/driver-cell/tests/driver.test.ts", "v2/driver-cell/tests/exec.test.ts", "v2/driver-cell/tests/git-image.test.ts", "v2/driver-cell/tests/provision-worker.test.ts", "v2/driver-cell/tests/provision.test.ts", "v2/driver-cell/tests/remove.test.ts", "v2/driver-cell/tests/sandbox.test.ts"]}
+✔ parity: clean merges, attributes, renames, modes, gitlinks, conflicts, case collisions, and forced fallback (5669.263458ms)
+✔ capture.branch-create: cell work lands as a new branch; only that branch appears (199.037583ms)
+✔ capture.fast-forward: existing target advances by CAS (159.519833ms)
+✔ capture.merge: diverged target gets a merge commit; origin worktree untouched (300.616ms)
+✔ capture.rebase: cell commits replay onto the target tip (257.13075ms)
+✔ capture.rebase: work already on the target in rewritten form reports nothing_to_capture (272.5475ms)
+✔ capture.conflict: structured report, origin ref-set bit-identical, transient ref gone (423.141958ms)
+✔ capture.refusals: checked-out target, moved target, nothing to capture (221.444917ms)
+✖ cell-driver.roundtrip: start provisions the cell, runtime runs in the space, full turn cycle (197.367291ms)
+✔ cell-driver.background: start returns before provisioning and later boots from the durable ledger (239.331ms)
+✖ cell-driver.background: first Cell ensures the image before boot and the next Cell stays hot (293.025167ms)
+✔ cell-driver.background: satellites do not build the workstation-local Git image (301.614042ms)
+✔ cell-driver.background: worker exit without a result becomes a boot failure (77.334875ms)
+✔ cell-driver.exit-path: work committed in the live cell captures out; removeCell guards (300.031125ms)
+✔ cell-driver.restart-hydration: a fresh driver re-hydrates cells from cell.json (capture + delete work) (300.437292ms)
+✔ cell-driver.reserved-only: a cell reserved (seed ledger) but never started removes outright; sessions delegate; typed live-runtime refusal (206.500208ms)
+✖ cell-driver.sandboxed: per-cell override ON wraps the spawn in Seatbelt; the turn still works (darwin) (241.733583ms)
+✔ cell-driver.workstation-default: sandbox stays OFF without an override (A4) (216.377791ms)
+✔ cell-driver.account-home: the bee resolver adds one exact sandbox grant and ignores harness env (107.002167ms)
+✖ cell-driver.restart: a successor daemon re-adopts a live cell runtime from the ledger at full capability (191.659542ms)
+✔ exec.cwd: relative-only and realpath containment rejects a symlink out of the space (1.717416ms)
+✔ exec.cap: incomplete tail is dropped, complete multibyte suffix is kept (0.206541ms)
+✔ exec.cap: split multibyte chunks reassemble; malformed replacement stays within 1MiB (13.612084ms)
+✔ exec.cap: stdout and stderr share one 1MiB budget (26.749083ms)
+✔ exec.spawn: an onSpawned failure terminates and reaps the process (2.822583ms)
+✔ exec.spawn: argv spawn errors reject with their cause (0.859416ms)
+✔ exec.timeout: SIGTERM-ignoring child is SIGKILL-reaped before resolve (1513.674916ms)
+✔ git-image.refresh: publishes one validated pack-only generation without mutating the origin (178.378292ms)
+✔ git-image.provision: hot Cell copies the compact image, not origin metadata (180.310875ms)
+✔ git-image.provision: fresh config avoids config subprocesses and preserves init semantics (407.091708ms)
+✔ git-image.provision: large template config uses Git's writer (162.771959ms)
+✔ git-image.provision: Git fallback preserves control paths and replaces template safety keys (178.649042ms)
+✔ git-image.provision: symlinked template config retains Git's update behavior (158.046583ms)
+✔ git-image.materialize: template multivalue and config lock remain cache misses (231.151959ms)
+✔ git-image.provision: preserves absent, same, and rewritten split remotes (473.523459ms)
+✔ git-image.provision: the first Cell builds an image in its worker and uses it (152.0195ms)
+✔ git-image.refresh: first generation CoW-seeds origin packs and packs only the loose delta (169.715875ms)
+✔ git-image.provision: a stale image is incrementally extended before checkout (291.304334ms)
+✔ git-image.corruption: malformed publication is rebuilt before Cell placement (217.406125ms)
+✔ git-image.policy: an existing image is ignored when the node policy disables local images (126.328041ms)
+✔ git-image.lock: a provisioning contender waits for publication, then extends the image (435.616833ms)
+✔ git-image.lock: live builder is single-flight and a stale lock is recovered (285.576459ms)
+✔ provision-worker: a fresh image hit exits after ready without maintenance Git children (179.98775ms)
+✔ provision-worker: a replayed ledger rebuilds a missing image after maintenance starts (371.833ms)
+✔ provision-worker: an incomplete image operation keeps maintenance after replay resumes (362.741583ms)
+✔ provision-worker: image failure fallback keeps the deferred retry (306.167ms)
+✔ provision-worker: provisioning errors stay failed and do not enter maintenance (69.873292ms)
+✔ provision.cow: CoW path places .git, records copy_mode=cow, hygiene applied (148.379792ms)
+✔ provision.clone: fallback places a fresh .git, records copy_mode=clone, needs no hygiene (73.545625ms)
+✔ provision.layout: wrapper/space/box shape and clean space checkout (63.855875ms)
+✔ provision.replay: interrupted provisioning (partial space, no recorded step) replays idempotently (68.028417ms)
+✔ provision.replay: mismatched bee/sha refuses instead of clobbering (58.034667ms)
+✔ provision.warm: CoW copy-in of listed artifact dirs (A5) (144.416834ms)
+✔ provision.warm: no CoW → cold, no fallback copy (the A5 ruling) (58.252875ms)
+✔ provision.warm: nothing listed → cold(none_listed), default off (57.305ms)
+✔ provision.reserve: reserveCell writes the seed ledger (origin/sha/warm/sandbox, no operations); provisionCell then provisions against it; the inverse (provisionRequestOf) round-trips; mismatches refuse (58.299333ms)
+✔ delete.clean: a pristine cell deletes without force (75.091666ms)
+✔ delete.dirty-uncommitted: refuses without force; force deletes (A2) (80.793542ms)
+✔ delete.dirty-unpushed: commits the origin never saw refuse; captured work deletes clean (177.429958ms)
+✔ delete.origin-gone: unknown origin counts as dirty (refuse without force) (102.147833ms)
+✔ delete.shape: refuses anything that is not a -space- shaped cell wrapper (32.078834ms)
+✔ delete.half-provisioned: a wrapper whose space has no .git deletes fine (32.258833ms)
+✔ sandbox.defaults: workstation OFF, satellite ON, cloud OFF (A4) (0.311416ms)
+✔ sandbox.override: per-cell override beats the node-kind default (0.048416ms)
+✔ sandbox.profile: Seatbelt profile confines writes to cell + harness paths, allows the rest (35.383083ms)
+✔ sandbox.bwrap: argv is read-only root + rw cell/harness binds + net (pure, all platforms) (0.099333ms)
+✔ sandbox.account-home: bwrap grants the exact bound home, never its parent or a sibling (1.022625ms)
+✔ sandbox.account-home validation rejects relative, missing, root, OS-home, and broad symlink targets (0.944083ms)
+✔ sandbox.wrap: platform dispatch (darwin sandbox-exec -f, linux bwrap, other throws) (0.119125ms)
+✔ sandbox.seatbelt-real: sandbox-exec confines writes to the cell (darwin) (22.018584ms)
+﹣ sandbox.bwrap-real: bwrap confines writes to the cell (linux — metal-3 gate) (0.079166ms) # SKIP
+ℹ tests 71
+ℹ suites 0
+ℹ pass 66
+ℹ fail 4
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 18634.108958
+
+✖ failing tests:
+
+test at v2/driver-cell/tests/driver.test.ts:101:1
+✖ cell-driver.roundtrip: start provisions the cell, runtime runs in the space, full turn cycle (197.367291ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  false !== true
+
+      at TestContext.<anonymous> (file:///private/tmp/honeybee-perf-5763a6c9-20260907/verify-cellmove-perf-combined/v2/driver-cell/tests/driver.test.ts:113:12)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at v2/driver-cell/tests/driver.test.ts:153:1
+✖ cell-driver.background: first Cell ensures the image before boot and the next Cell stays hot (293.025167ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  false !== true
+
+      at TestContext.<anonymous> (file:///private/tmp/honeybee-perf-5763a6c9-20260907/verify-cellmove-perf-combined/v2/driver-cell/tests/driver.test.ts:171:12)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at v2/driver-cell/tests/driver.test.ts:337:1
+✖ cell-driver.sandboxed: per-cell override ON wraps the spawn in Seatbelt; the turn still works (darwin) (241.733583ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  false !== true
+
+      at TestContext.<anonymous> (file:///private/tmp/honeybee-perf-5763a6c9-20260907/verify-cellmove-perf-combined/v2/driver-cell/tests/driver.test.ts:350:14)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at v2/driver-cell/tests/driver.test.ts:448:1
+✖ cell-driver.restart: a successor daemon re-adopts a live cell runtime from the ledger at full capability (191.659542ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  false !== true
+
+      at TestContext.<anonymous> (file:///private/tmp/honeybee-perf-5763a6c9-20260907/verify-cellmove-perf-combined/v2/driver-cell/tests/driver.test.ts:455:12)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

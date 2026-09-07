@@ -25,3 +25,5 @@ The separate strict 24-case canonical matrix corroborates eviction CPU 0.236→0
 The exact frozen candidate passed Mini build, all v2 typechecks, and full core 188/188 on its base. The focused 12 tests include timestamp ties in an order different from key order, backwards clock values, cap changes, duplicate-key rollback, null results, reopen/index reinstall, and the natural exact DELETE plan. No schema version bump is introduced. Combined revision `6e4447d4` also passed build, all v2 typechecks, core 201/201, serial daemon 271 pass with one platform skip, and all seven current capture tests. This includes the concurrent runner-service and empty-rebase repairs. Logs are `verification/mini-c18-z01-integrated-*.log`.
 
 [Review](../../review/2026-09-07-perf-rpc-retention.md). Larger configured caps, RPC payload serialization, and non-retention RPC paths remain separate inventory items.
+
+The subsequent Cell-move/current-main integration also passes core212, daemon299/one skip, CLI59, adapters70, and Cell70/one skip after the unrelated test-readiness repair, with build and typechecks.

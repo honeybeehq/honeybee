@@ -1,0 +1,2859 @@
+{
+  "schemaVersion": 1,
+  "completed": true,
+  "startedAt": "2026-09-07T09:51:05.926Z",
+  "timestamp": "2026-09-07T09:51:25.218Z",
+  "measurement": {
+    "startedAt": "2026-09-07T09:51:07.109Z",
+    "finishedAt": "2026-09-07T09:51:25.156Z"
+  },
+  "sources": [
+    {
+      "root": "/private/tmp/honeybee-perf-5763a6c9-20260907/cell-tree-before",
+      "revision": "b86921c696b1669efaedd09d33fb89d0825143e6",
+      "status": "",
+      "diffSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "hashes": {
+        "v2/adapters/src/agy.ts": "ae4751062d36382252aae126e7c0ee024bbcf65009cc12adc16721e24e9dbbc7",
+        "v2/adapters/src/args.ts": "c4af70fde51db0a39b2b7c37fee5df4a931516d91399cbdb93a033292d54e43d",
+        "v2/adapters/src/claude.ts": "78f4b15d50a1f2eba8f74fcc4672e2b008db544950c6ed03a8a8b183b7f6e046",
+        "v2/adapters/src/codex.ts": "47b766ce87eb9ae67986d6f970aea9511ed3162d08b44513a461ca56475bc0a0",
+        "v2/adapters/src/grok.ts": "71f647f0b8fb2a32427604ddf45e0a7b54a4a1b876418c7f91de8c3024c0d84f",
+        "v2/adapters/src/index.ts": "6869fe4ec44c1eeefa53ff1660a00c8556330e30acb30cc3265fb78483aadcdf",
+        "v2/adapters/src/stub.ts": "4fdfca1b8dca0cc396bd495fac99d5fcab7005b40bb598e33413a5747e8f3ccc",
+        "v2/adapters/src/types.ts": "c37098d1cb7d06a8137f1fda87ad1affcb6d8b37e325665b1e5123b029fa2dd3",
+        "v2/cli/src/bin.ts": "330f6bb9d42c72475929a6e104fa5c318051b57816acd4056b3c7523010b8a8c",
+        "v2/cli/src/client.ts": "421e107f912c5f9fae6d51cb2e3b10d8ffe83e70e6660adef03392d59739cafd",
+        "v2/cli/src/help.ts": "c43e898e8cf1541a874acaf77a4680c85642f4a40bc3b33122080f97a601a61e",
+        "v2/cli/src/index.ts": "705f8de04ba4adb8b563d11f2def4da5ae0904ec9bcd0c062d9ce2019676bfd8",
+        "v2/cli/src/main.ts": "e19112dded2ec84bdded0b92096baa44f318bb1399d860fc87991b3776dbb321",
+        "v2/cli/src/readonly.ts": "9bd9a8d276c4b037941215ddf38fd79089f7a18a4d8f4caff0a0d38906562650",
+        "v2/cli/src/render.ts": "6efc8d278c87ac8c90a6588790e5b7a80eb6dbf997254326b32098c77d6f2897",
+        "v2/cli/src/style.ts": "2f5e611fa6b1aee3c0a3afefdf0cfb9b830736ce4c3f2f9c53d73e5bee5cc5fd",
+        "v2/core/src/accountLimitsParse.ts": "4101b50909a9c9d79aa9761c4a5b68bc3d808ad36acca38e75c07779a51068a3",
+        "v2/core/src/accountMatch.ts": "90ebe4e125f83d28bc1a1c99cbff9b813362d3b38bbac8b97182014cb4fcf980",
+        "v2/core/src/accountRecipes.ts": "837c397aab4c9fa8a02b890372fac3e29b73d4ba8307913446309d00e715b6b7",
+        "v2/core/src/accountSelect.ts": "2536db3146b2d9a66c812e294c8d668df5e82e3bea9d2923308dff4060e01f5c",
+        "v2/core/src/audit.ts": "bc1eec642077f9e9ab2b8817235c74c8b142e2bdd492c6ab35b9b0f72cc1a39f",
+        "v2/core/src/executables.ts": "4a878c553014ceabcdd7e940e274d652799c2852474ada614d5c80cca1eadc7c",
+        "v2/core/src/import-frozen.ts": "c4e84004d16133eeefb38cdf07bd639dbb2d3cda2662eaa4652e986500b5507e",
+        "v2/core/src/index.ts": "77927fb72704ad1b7944ba14fce24f4d9072429caa09f7474f91c0fcbdb4fcc7",
+        "v2/core/src/loginFlow.ts": "727d42b6a98a271577cd462e128b0287e7c571e5e06104b3afb5bdff49d35460",
+        "v2/core/src/mirror.ts": "197e5a8451acf0b0ac06291bb66ffe6906a478896607efb7c4b6463c5d054a2b",
+        "v2/core/src/packages.ts": "e14a3c6c013211235ca84c137a93f12ead10beff01c876c2741a7e419b944f17",
+        "v2/core/src/registry.ts": "1cd3e1c5a239882474818466907b5f5b2d10501e178b0ad13d24fb2fae8123ff",
+        "v2/core/src/schema.ts": "78488dfb4491ceae4e2ea38214da96ffb9c1dfd0d7ba15c1c8eddcec91a2d38b",
+        "v2/core/src/store.ts": "a0fb04cf57cff65acf6ff6bbda1ac18afa92f48b41fcf43bca521ea0e0cbe3ca",
+        "v2/core/src/tasks.ts": "2f266a9640ed4b9c7ceeea18aee63ce11521cc416ecc3b5ce118ebb5c195a263",
+        "v2/core/src/types.ts": "e885603df1c54245859d199290b6c5b2666449668ec0e626109443e95887fd28",
+        "v2/core/src/view.ts": "f9fb6302bd05a001ca38d7a98f9280e13f8d2222916d9f0c48efb72e148a16e7",
+        "v2/daemon/src/accountsService.ts": "3f13d0481bb54b793d7f0ea6d7f03536d8e5d4ae2be1a8631b17440d596a8a5b",
+        "v2/daemon/src/activation.ts": "7e7056e53671e9caea816fa1162478905ecfc9a408afbad73750ee411056bab7",
+        "v2/daemon/src/autoTitle.ts": "245e0202fd3758aac7cbf022f328ccc4b3f0e88b58303ff03b0e675bceef3e91",
+        "v2/daemon/src/bin.ts": "8ef32816d19e0c2adc85a81a740de8935c7a8bc77e94118203a761b16679754d",
+        "v2/daemon/src/config.ts": "637e94d4d2e22fedae9682ab1cde523d02b2cb0d5bd594441cc7443bb991900a",
+        "v2/daemon/src/cursorAuth.ts": "1f0d554fd3ea0351b108404d6b7912701be184e8e26ea89bd2b692a42ae4f924",
+        "v2/daemon/src/daemon.ts": "a24aa11ab09643af62a387282f728975b5b7079dae6e29cc5eac0e5a5b475014",
+        "v2/daemon/src/envelope.ts": "dc0bff3d7706be31b3fce162e370c1e6e6b7ed8cd2eca43ab1ba6e9ccada6c7a",
+        "v2/daemon/src/gateways.ts": "5c57d479fdbfd871f31de9172da2c9011466258cb46cc764f1776af82da9145c",
+        "v2/daemon/src/homeDefaults.ts": "a63090c09cc8d102b46effa2f8f205457b0e3d73baaaca15cd836e2c0896fc3c",
+        "v2/daemon/src/import-probes.ts": "14cdeb5b7c47d1da44a8eff3e92e22a52a523dcaf250174cefd1c6c46f15529a",
+        "v2/daemon/src/index.ts": "5f8b71e1193407322cb5b44e87bd30cb8384aeb783c22803a10aca034aa691a9",
+        "v2/daemon/src/keychain.ts": "97ecd409db519ba195662dc5f41cbb2b31c36b68100a57bcdc0c1f89ef877ad5",
+        "v2/daemon/src/login/claudeOauth.ts": "9781bf55222a833a9f4461f704a9a10ccb71030a547ca978dae16428f5ce89ff",
+        "v2/daemon/src/login/cliRunner.ts": "ef14344f05033a1ecf510054d3b717db945a203c2b2c32fe3d2607058ca7d52a",
+        "v2/daemon/src/login/common.ts": "1f93ae2e3757ff297cfcd3d94fdf9e838e546a5beed67999f9e0a1b88ebedc46",
+        "v2/daemon/src/login/directKey.ts": "91224b228da3a12dc828d5290900ed1a59ed95766cc9f5f36d273d9e6b862ba2",
+        "v2/daemon/src/login/runner.ts": "53811aa26fecf68f66e6714110efb5664ad2081586b369ab159c25e044d7f17c",
+        "v2/daemon/src/login/transports.ts": "a7073ba48a5ae49cbf2d9109812bbe299ed18487f551d1bf5271bb47b7357e15",
+        "v2/daemon/src/loginFlows.ts": "4460f4a8f8e14900e106e817862cfa8a60cb0f15c6327741d23896736b708c94",
+        "v2/daemon/src/loginWorker.ts": "4a70f08d716550337509663c7586b235568b1fe7bccfbeecfc57d7bdc2fdd378",
+        "v2/daemon/src/loops.ts": "88be9f38d85e4d299b8b94836ad20545c89269c2cb13453fb6685e3f71941a67",
+        "v2/daemon/src/main.ts": "7546a94f78f8817ca3a869aa63b2d62d16ffa5404ecb60d63cc742733236f903",
+        "v2/daemon/src/naming.ts": "eae82ba481b3e5b74d7d80c38ca50d6bbf64e378e48e8a7c953d35b2f0a643f5",
+        "v2/daemon/src/namingService.ts": "e8ee4b2026fea2460fb59d60db034ec694b32f76ec2cf7eeba3ea1abf6c36001",
+        "v2/daemon/src/performance.ts": "75bbf106a1a24fe67d2fc475bd34d7111dec4a5b36b237ec28691459977c3190",
+        "v2/daemon/src/protocol.ts": "f1a1028b3305745ffeec73ff3dd51da1e5922b348a6075a0194fd51ab190019a",
+        "v2/daemon/src/providerLimits.ts": "befe91217b50c927419389adb50527fd0867ed58d5111f13bcb669eb2b700790",
+        "v2/daemon/src/rpc.ts": "16b119147b0fc12b32194dc7c255d6fc8910aa0644306c42f9ad19bc6559508e",
+        "v2/daemon/src/service.ts": "10401a481fb25931521e2259dc4722cc43890600a4c84298f9a89d78401b707b",
+        "v2/daemon/src/substrates.ts": "914b18b4e6e6e7cd2525f5943edb3080c031e16d08934fd4021b55ebf3c1c27c",
+        "v2/daemon/src/telemetry.ts": "0f234f5f77df593387db1ed6c08ba64ccd45f3ffa60303bbd178765aefd0980c",
+        "v2/daemon/src/tmuxHarness.ts": "aebc0a90c9ff4a03a466cdf2edc4fe282dc91388cf9966a0412801fb0bea320f",
+        "v2/daemon/tests/helpers.ts": "9d63216758bec78d1f0e6f7fa949d67ee1f4b1d90eb5efdd4a8888cda75ea0f3",
+        "v2/driver-cell/src/capture.ts": "359b2fa98f2b21c7a8f43a2755c3d4b4ad03f267483b98827c2c6b022ed68e9b",
+        "v2/driver-cell/src/cow.ts": "24eb5ce7b6536de861ca261a5d80096343115e14bc8a23e354a2e8a74f318b10",
+        "v2/driver-cell/src/driver.ts": "b513f6a7faaaaa8352a6025b28cc6768e73ea7a2470c4d9aa3686642fa3be88b",
+        "v2/driver-cell/src/git.ts": "049d9bd7f6aaebb6625fd0f1d8ddebcd3adf16e7d4dd7316232ba6923d196b75",
+        "v2/driver-cell/src/gitImage.ts": "9b7b1dc8a762caaac402d108bbd9286630a1376b4844ea8d2d3c6232d0a19007",
+        "v2/driver-cell/src/index.ts": "833b1fadb9a689529ff5037a7d717d8053bcc77b8d6d90d0ec6536d7d3bb1c6b",
+        "v2/driver-cell/src/layout.ts": "68a677450c0d851cf97c50f8616fd25961ddea59dd6b8ac3c0a739042c4775f8",
+        "v2/driver-cell/src/ledger.ts": "efdf4762fab38defd8ec3e68dceba52a44a11d17962b027cb4a0302eec429834",
+        "v2/driver-cell/src/provision.ts": "8293821e57266a0b4f7a2e0e6d25c584cac6caf1ac0afad207311af57558be66",
+        "v2/driver-cell/src/provisionWorker.ts": "a651cc6000ef33f7ed52384f678543b28fea4f363113b3218d45219c510a2d4c",
+        "v2/driver-cell/src/remove.ts": "914e22bf0182c90503731cbeb9877c0d697cda5d410b224223499fab33e75aa5",
+        "v2/driver-cell/src/sandbox.ts": "be390c169c3bc8b06191997ea08c7d6b57f417df26f5bffc21bcef75713ab4ad",
+        "v2/driver-hsr/src/driver.ts": "1bda7217fa6f00701403e14c0887627711fde3038a080ace11dd5b594bc59c38",
+        "v2/driver-hsr/src/index.ts": "8f9542db7792d462ab9b10f9537b9c05f31acf9934d6c32b3f248de8beb97e5e",
+        "v2/driver-hsr/src/psutil.ts": "1beb05854deb6fbe12f206d7436648e7be2a8ae00bcfd0acd13ef3f9fb1c1edb",
+        "v2/driver-hsr/src/runner-host-main.ts": "10c4f1c2af2e2dc20bdddba51e7972bc976831c1bf40b5f5772a2519538411da",
+        "v2/driver-hsr/src/runner-host.ts": "7f1716db45160657ef2109d8a18ae064cbab065f0321b22d29f9a193a3f3c152",
+        "v2/driver-tmux/src/agy-projection.ts": "1d5284c9835d499f0e55dc52ec70a5d36175993f0ccbab7f2e21fcf60f92a9ff",
+        "v2/driver-tmux/src/claude-projection.ts": "df6d2d8967f70ac4b6796a234de83d1e325e41210794972aee41b1a7294882f6",
+        "v2/driver-tmux/src/codex-projection.ts": "2ff68aa8e4d8c802bef9abedb7595e29f038c7ba4cf81403f7efc54a03225e1b",
+        "v2/driver-tmux/src/driver.ts": "26fe0516fe49f389d1f5cad30ee0002e829ae1aba75fe6cec8a0ea886b670820",
+        "v2/driver-tmux/src/events-file.ts": "ddb2ba04f32ef325def8d5287a518659a42e41801034304bc74e4695962a0e99",
+        "v2/driver-tmux/src/grok-projection.ts": "d0d419367031c9738fc6a5a0e27ea6c8a15399b06834239b92f2c2603d406823",
+        "v2/driver-tmux/src/index.ts": "f716470ff208ac29febfe90031b025d969a2eefc5461e649d77d43813fce278d",
+        "v2/driver-tmux/src/tail.ts": "40e24f0d34401e7990581eef3eff1d1542defbc846a92339e61bb81a95a0d156",
+        "v2/driver-tmux/src/tmux.ts": "92607334202f8fb8c8cedf7b9d1454d8742a867c4c8082f7f2f6617a6c285eb9",
+        "v2/driver-tmux/src/transcript-projection.ts": "98bdd52792da1d74ddfe28332c54ae76adc8f6b52e94e1b4f233a94cabf96c78",
+        "v2/driver-tmux/src/transcripts.ts": "f23289d6199d9d2ec288f60de0a3475ce5aa41e20230763380386d4d2c545509",
+        "v2/harness/src/clock.ts": "690b130f9bb111af2099cc96d19a114258bf3bc6353d7a440d53b3141c9e2446",
+        "v2/harness/src/daemon.ts": "2b8f17080275ef72b3612e4b446b9e951d203373c70bcec7b83e3b21c91d81ef",
+        "v2/harness/src/driver.ts": "df41b313a0ab97a637eddb5a3ba2be4456293776aa46acfd3eb29af5315a1442",
+        "v2/harness/src/faults.ts": "6152e965e33f1501f9beee0f5a3c42ce18a8b71897713043716a993de48cfc20",
+        "v2/harness/src/index.ts": "200de7850d2848f5b1d2afa72fdbd1490d2919efd8f77976508416ccb7b9a191",
+        "v2/harness/src/invariants.ts": "5ab63d4da3399534d6a2d9eff705d1c6c403e14b39b5749b5863bd7d04daccbb",
+        "v2/harness/src/prng.ts": "1be8ed3684abb058b30f83b89239385928abb14d8c24616ebf925c95af4639e8",
+        "v2/harness/src/sim-driver.ts": "70b5b013351a8a089e2b13509cb3abe5d8182b18e07f920859abc68e4dd10e31",
+        "v2/harness/src/simulation.ts": "9979407c9e3483294675c47b23b802a724adcea73681ae8d8480f47f5e2d650c"
+      }
+    },
+    {
+      "root": "/private/tmp/honeybee-perf-5763a6c9-20260907/cell-tree-after",
+      "revision": "6984a6a2fa5d80df159459831bce8e6baf604912",
+      "status": "",
+      "diffSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "hashes": {
+        "v2/adapters/src/agy.ts": "ae4751062d36382252aae126e7c0ee024bbcf65009cc12adc16721e24e9dbbc7",
+        "v2/adapters/src/args.ts": "c4af70fde51db0a39b2b7c37fee5df4a931516d91399cbdb93a033292d54e43d",
+        "v2/adapters/src/claude.ts": "78f4b15d50a1f2eba8f74fcc4672e2b008db544950c6ed03a8a8b183b7f6e046",
+        "v2/adapters/src/codex.ts": "47b766ce87eb9ae67986d6f970aea9511ed3162d08b44513a461ca56475bc0a0",
+        "v2/adapters/src/grok.ts": "71f647f0b8fb2a32427604ddf45e0a7b54a4a1b876418c7f91de8c3024c0d84f",
+        "v2/adapters/src/index.ts": "6869fe4ec44c1eeefa53ff1660a00c8556330e30acb30cc3265fb78483aadcdf",
+        "v2/adapters/src/stub.ts": "4fdfca1b8dca0cc396bd495fac99d5fcab7005b40bb598e33413a5747e8f3ccc",
+        "v2/adapters/src/types.ts": "c37098d1cb7d06a8137f1fda87ad1affcb6d8b37e325665b1e5123b029fa2dd3",
+        "v2/cli/src/bin.ts": "330f6bb9d42c72475929a6e104fa5c318051b57816acd4056b3c7523010b8a8c",
+        "v2/cli/src/client.ts": "421e107f912c5f9fae6d51cb2e3b10d8ffe83e70e6660adef03392d59739cafd",
+        "v2/cli/src/help.ts": "c43e898e8cf1541a874acaf77a4680c85642f4a40bc3b33122080f97a601a61e",
+        "v2/cli/src/index.ts": "705f8de04ba4adb8b563d11f2def4da5ae0904ec9bcd0c062d9ce2019676bfd8",
+        "v2/cli/src/main.ts": "e19112dded2ec84bdded0b92096baa44f318bb1399d860fc87991b3776dbb321",
+        "v2/cli/src/readonly.ts": "9bd9a8d276c4b037941215ddf38fd79089f7a18a4d8f4caff0a0d38906562650",
+        "v2/cli/src/render.ts": "6efc8d278c87ac8c90a6588790e5b7a80eb6dbf997254326b32098c77d6f2897",
+        "v2/cli/src/style.ts": "2f5e611fa6b1aee3c0a3afefdf0cfb9b830736ce4c3f2f9c53d73e5bee5cc5fd",
+        "v2/core/src/accountLimitsParse.ts": "4101b50909a9c9d79aa9761c4a5b68bc3d808ad36acca38e75c07779a51068a3",
+        "v2/core/src/accountMatch.ts": "90ebe4e125f83d28bc1a1c99cbff9b813362d3b38bbac8b97182014cb4fcf980",
+        "v2/core/src/accountRecipes.ts": "837c397aab4c9fa8a02b890372fac3e29b73d4ba8307913446309d00e715b6b7",
+        "v2/core/src/accountSelect.ts": "2536db3146b2d9a66c812e294c8d668df5e82e3bea9d2923308dff4060e01f5c",
+        "v2/core/src/audit.ts": "bc1eec642077f9e9ab2b8817235c74c8b142e2bdd492c6ab35b9b0f72cc1a39f",
+        "v2/core/src/executables.ts": "4a878c553014ceabcdd7e940e274d652799c2852474ada614d5c80cca1eadc7c",
+        "v2/core/src/import-frozen.ts": "c4e84004d16133eeefb38cdf07bd639dbb2d3cda2662eaa4652e986500b5507e",
+        "v2/core/src/index.ts": "77927fb72704ad1b7944ba14fce24f4d9072429caa09f7474f91c0fcbdb4fcc7",
+        "v2/core/src/loginFlow.ts": "727d42b6a98a271577cd462e128b0287e7c571e5e06104b3afb5bdff49d35460",
+        "v2/core/src/mirror.ts": "197e5a8451acf0b0ac06291bb66ffe6906a478896607efb7c4b6463c5d054a2b",
+        "v2/core/src/packages.ts": "e14a3c6c013211235ca84c137a93f12ead10beff01c876c2741a7e419b944f17",
+        "v2/core/src/registry.ts": "1cd3e1c5a239882474818466907b5f5b2d10501e178b0ad13d24fb2fae8123ff",
+        "v2/core/src/schema.ts": "78488dfb4491ceae4e2ea38214da96ffb9c1dfd0d7ba15c1c8eddcec91a2d38b",
+        "v2/core/src/store.ts": "a0fb04cf57cff65acf6ff6bbda1ac18afa92f48b41fcf43bca521ea0e0cbe3ca",
+        "v2/core/src/tasks.ts": "2f266a9640ed4b9c7ceeea18aee63ce11521cc416ecc3b5ce118ebb5c195a263",
+        "v2/core/src/types.ts": "e885603df1c54245859d199290b6c5b2666449668ec0e626109443e95887fd28",
+        "v2/core/src/view.ts": "f9fb6302bd05a001ca38d7a98f9280e13f8d2222916d9f0c48efb72e148a16e7",
+        "v2/daemon/src/accountsService.ts": "3f13d0481bb54b793d7f0ea6d7f03536d8e5d4ae2be1a8631b17440d596a8a5b",
+        "v2/daemon/src/activation.ts": "7e7056e53671e9caea816fa1162478905ecfc9a408afbad73750ee411056bab7",
+        "v2/daemon/src/autoTitle.ts": "245e0202fd3758aac7cbf022f328ccc4b3f0e88b58303ff03b0e675bceef3e91",
+        "v2/daemon/src/bin.ts": "8ef32816d19e0c2adc85a81a740de8935c7a8bc77e94118203a761b16679754d",
+        "v2/daemon/src/config.ts": "637e94d4d2e22fedae9682ab1cde523d02b2cb0d5bd594441cc7443bb991900a",
+        "v2/daemon/src/cursorAuth.ts": "1f0d554fd3ea0351b108404d6b7912701be184e8e26ea89bd2b692a42ae4f924",
+        "v2/daemon/src/daemon.ts": "a24aa11ab09643af62a387282f728975b5b7079dae6e29cc5eac0e5a5b475014",
+        "v2/daemon/src/envelope.ts": "dc0bff3d7706be31b3fce162e370c1e6e6b7ed8cd2eca43ab1ba6e9ccada6c7a",
+        "v2/daemon/src/gateways.ts": "5c57d479fdbfd871f31de9172da2c9011466258cb46cc764f1776af82da9145c",
+        "v2/daemon/src/homeDefaults.ts": "a63090c09cc8d102b46effa2f8f205457b0e3d73baaaca15cd836e2c0896fc3c",
+        "v2/daemon/src/import-probes.ts": "14cdeb5b7c47d1da44a8eff3e92e22a52a523dcaf250174cefd1c6c46f15529a",
+        "v2/daemon/src/index.ts": "5f8b71e1193407322cb5b44e87bd30cb8384aeb783c22803a10aca034aa691a9",
+        "v2/daemon/src/keychain.ts": "97ecd409db519ba195662dc5f41cbb2b31c36b68100a57bcdc0c1f89ef877ad5",
+        "v2/daemon/src/login/claudeOauth.ts": "9781bf55222a833a9f4461f704a9a10ccb71030a547ca978dae16428f5ce89ff",
+        "v2/daemon/src/login/cliRunner.ts": "ef14344f05033a1ecf510054d3b717db945a203c2b2c32fe3d2607058ca7d52a",
+        "v2/daemon/src/login/common.ts": "1f93ae2e3757ff297cfcd3d94fdf9e838e546a5beed67999f9e0a1b88ebedc46",
+        "v2/daemon/src/login/directKey.ts": "91224b228da3a12dc828d5290900ed1a59ed95766cc9f5f36d273d9e6b862ba2",
+        "v2/daemon/src/login/runner.ts": "53811aa26fecf68f66e6714110efb5664ad2081586b369ab159c25e044d7f17c",
+        "v2/daemon/src/login/transports.ts": "a7073ba48a5ae49cbf2d9109812bbe299ed18487f551d1bf5271bb47b7357e15",
+        "v2/daemon/src/loginFlows.ts": "4460f4a8f8e14900e106e817862cfa8a60cb0f15c6327741d23896736b708c94",
+        "v2/daemon/src/loginWorker.ts": "4a70f08d716550337509663c7586b235568b1fe7bccfbeecfc57d7bdc2fdd378",
+        "v2/daemon/src/loops.ts": "88be9f38d85e4d299b8b94836ad20545c89269c2cb13453fb6685e3f71941a67",
+        "v2/daemon/src/main.ts": "7546a94f78f8817ca3a869aa63b2d62d16ffa5404ecb60d63cc742733236f903",
+        "v2/daemon/src/naming.ts": "eae82ba481b3e5b74d7d80c38ca50d6bbf64e378e48e8a7c953d35b2f0a643f5",
+        "v2/daemon/src/namingService.ts": "e8ee4b2026fea2460fb59d60db034ec694b32f76ec2cf7eeba3ea1abf6c36001",
+        "v2/daemon/src/performance.ts": "75bbf106a1a24fe67d2fc475bd34d7111dec4a5b36b237ec28691459977c3190",
+        "v2/daemon/src/protocol.ts": "f1a1028b3305745ffeec73ff3dd51da1e5922b348a6075a0194fd51ab190019a",
+        "v2/daemon/src/providerLimits.ts": "befe91217b50c927419389adb50527fd0867ed58d5111f13bcb669eb2b700790",
+        "v2/daemon/src/rpc.ts": "16b119147b0fc12b32194dc7c255d6fc8910aa0644306c42f9ad19bc6559508e",
+        "v2/daemon/src/service.ts": "10401a481fb25931521e2259dc4722cc43890600a4c84298f9a89d78401b707b",
+        "v2/daemon/src/substrates.ts": "914b18b4e6e6e7cd2525f5943edb3080c031e16d08934fd4021b55ebf3c1c27c",
+        "v2/daemon/src/telemetry.ts": "0f234f5f77df593387db1ed6c08ba64ccd45f3ffa60303bbd178765aefd0980c",
+        "v2/daemon/src/tmuxHarness.ts": "aebc0a90c9ff4a03a466cdf2edc4fe282dc91388cf9966a0412801fb0bea320f",
+        "v2/daemon/tests/helpers.ts": "9d63216758bec78d1f0e6f7fa949d67ee1f4b1d90eb5efdd4a8888cda75ea0f3",
+        "v2/driver-cell/src/capture.ts": "9becf9f17f166dd879bb63f711a2f5dc8c4873b0529f27e46d159500779f3ae5",
+        "v2/driver-cell/src/cow.ts": "24eb5ce7b6536de861ca261a5d80096343115e14bc8a23e354a2e8a74f318b10",
+        "v2/driver-cell/src/driver.ts": "b513f6a7faaaaa8352a6025b28cc6768e73ea7a2470c4d9aa3686642fa3be88b",
+        "v2/driver-cell/src/git.ts": "049d9bd7f6aaebb6625fd0f1d8ddebcd3adf16e7d4dd7316232ba6923d196b75",
+        "v2/driver-cell/src/gitImage.ts": "9b7b1dc8a762caaac402d108bbd9286630a1376b4844ea8d2d3c6232d0a19007",
+        "v2/driver-cell/src/index.ts": "833b1fadb9a689529ff5037a7d717d8053bcc77b8d6d90d0ec6536d7d3bb1c6b",
+        "v2/driver-cell/src/layout.ts": "68a677450c0d851cf97c50f8616fd25961ddea59dd6b8ac3c0a739042c4775f8",
+        "v2/driver-cell/src/ledger.ts": "efdf4762fab38defd8ec3e68dceba52a44a11d17962b027cb4a0302eec429834",
+        "v2/driver-cell/src/provision.ts": "8293821e57266a0b4f7a2e0e6d25c584cac6caf1ac0afad207311af57558be66",
+        "v2/driver-cell/src/provisionWorker.ts": "a651cc6000ef33f7ed52384f678543b28fea4f363113b3218d45219c510a2d4c",
+        "v2/driver-cell/src/remove.ts": "914e22bf0182c90503731cbeb9877c0d697cda5d410b224223499fab33e75aa5",
+        "v2/driver-cell/src/sandbox.ts": "be390c169c3bc8b06191997ea08c7d6b57f417df26f5bffc21bcef75713ab4ad",
+        "v2/driver-hsr/src/driver.ts": "1bda7217fa6f00701403e14c0887627711fde3038a080ace11dd5b594bc59c38",
+        "v2/driver-hsr/src/index.ts": "8f9542db7792d462ab9b10f9537b9c05f31acf9934d6c32b3f248de8beb97e5e",
+        "v2/driver-hsr/src/psutil.ts": "1beb05854deb6fbe12f206d7436648e7be2a8ae00bcfd0acd13ef3f9fb1c1edb",
+        "v2/driver-hsr/src/runner-host-main.ts": "10c4f1c2af2e2dc20bdddba51e7972bc976831c1bf40b5f5772a2519538411da",
+        "v2/driver-hsr/src/runner-host.ts": "7f1716db45160657ef2109d8a18ae064cbab065f0321b22d29f9a193a3f3c152",
+        "v2/driver-tmux/src/agy-projection.ts": "1d5284c9835d499f0e55dc52ec70a5d36175993f0ccbab7f2e21fcf60f92a9ff",
+        "v2/driver-tmux/src/claude-projection.ts": "df6d2d8967f70ac4b6796a234de83d1e325e41210794972aee41b1a7294882f6",
+        "v2/driver-tmux/src/codex-projection.ts": "2ff68aa8e4d8c802bef9abedb7595e29f038c7ba4cf81403f7efc54a03225e1b",
+        "v2/driver-tmux/src/driver.ts": "26fe0516fe49f389d1f5cad30ee0002e829ae1aba75fe6cec8a0ea886b670820",
+        "v2/driver-tmux/src/events-file.ts": "ddb2ba04f32ef325def8d5287a518659a42e41801034304bc74e4695962a0e99",
+        "v2/driver-tmux/src/grok-projection.ts": "d0d419367031c9738fc6a5a0e27ea6c8a15399b06834239b92f2c2603d406823",
+        "v2/driver-tmux/src/index.ts": "f716470ff208ac29febfe90031b025d969a2eefc5461e649d77d43813fce278d",
+        "v2/driver-tmux/src/tail.ts": "40e24f0d34401e7990581eef3eff1d1542defbc846a92339e61bb81a95a0d156",
+        "v2/driver-tmux/src/tmux.ts": "92607334202f8fb8c8cedf7b9d1454d8742a867c4c8082f7f2f6617a6c285eb9",
+        "v2/driver-tmux/src/transcript-projection.ts": "98bdd52792da1d74ddfe28332c54ae76adc8f6b52e94e1b4f233a94cabf96c78",
+        "v2/driver-tmux/src/transcripts.ts": "f23289d6199d9d2ec288f60de0a3475ce5aa41e20230763380386d4d2c545509",
+        "v2/harness/src/clock.ts": "690b130f9bb111af2099cc96d19a114258bf3bc6353d7a440d53b3141c9e2446",
+        "v2/harness/src/daemon.ts": "2b8f17080275ef72b3612e4b446b9e951d203373c70bcec7b83e3b21c91d81ef",
+        "v2/harness/src/driver.ts": "df41b313a0ab97a637eddb5a3ba2be4456293776aa46acfd3eb29af5315a1442",
+        "v2/harness/src/faults.ts": "6152e965e33f1501f9beee0f5a3c42ce18a8b71897713043716a993de48cfc20",
+        "v2/harness/src/index.ts": "200de7850d2848f5b1d2afa72fdbd1490d2919efd8f77976508416ccb7b9a191",
+        "v2/harness/src/invariants.ts": "5ab63d4da3399534d6a2d9eff705d1c6c403e14b39b5749b5863bd7d04daccbb",
+        "v2/harness/src/prng.ts": "1be8ed3684abb058b30f83b89239385928abb14d8c24616ebf925c95af4639e8",
+        "v2/harness/src/sim-driver.ts": "70b5b013351a8a089e2b13509cb3abe5d8182b18e07f920859abc68e4dd10e31",
+        "v2/harness/src/simulation.ts": "9979407c9e3483294675c47b23b802a724adcea73681ae8d8480f47f5e2d650c"
+      }
+    }
+  ],
+  "changedSourceFiles": [
+    "v2/driver-cell/src/capture.ts"
+  ],
+  "expectedChangedFiles": "v2/driver-cell/src/capture.ts",
+  "sharedModuleIdentity": false,
+  "toolHashes": {
+    "cell-exit.mjs": "cb2d81e23f602341cb6fcf2092be773c412770f0b052cdc549a17d75394dae2e",
+    "report.mjs": "d1ad61cdac530c2748345235bc546166089e31e4e9614492a761fa3db3afbba7",
+    "boot-identity.mjs": "555b2a8de914ecba13defbd76542b65b6af15d204b156fb15f58ea9b8036d0fa",
+    "git-trace.mjs": "94123d224beb40723a85093e70b4c05a84482786cb7ee528c6a5cca3c7cffbbb"
+  },
+  "environment": {
+    "node": "v24.18.0",
+    "execArgv": [],
+    "platform": "darwin",
+    "arch": "arm64",
+    "cpu": "Apple M4",
+    "logicalCpus": 10,
+    "hostname": "Mac.home",
+    "bootIdentity": {
+      "method": "darwin-kern.bootsessionuuid-sha256",
+      "sha256": "e9278b19e15e59f2422e3cbfcd73a284c146b83b5bfa40e69c3053019b6d8732"
+    },
+    "gitVersion": "git version 2.39.5 (Apple Git-154)",
+    "nodeCompileCache": null,
+    "nodeOptionsSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "loadBefore": [
+      1.28662109375,
+      1.17333984375,
+      1.38134765625
+    ],
+    "loadAfter": [
+      1.48828125,
+      1.22607421875,
+      1.39501953125
+    ]
+  },
+  "workload": {
+    "scale": "smoke",
+    "rounds": 3,
+    "warmups": 1,
+    "cases": [
+      "merge-land",
+      "rebase-land",
+      "merge-conflict",
+      "rebase-conflict",
+      "fast-forward",
+      "branch-create",
+      "nothing",
+      "refused-checked-out"
+    ],
+    "fixture": {
+      "baseFiles": 12,
+      "cellCommits": 3,
+      "bodyLines": 8,
+      "autoMaintenance": "maintenance.auto/gc.auto disabled repo-locally in origin, Cell, and shaper fixtures; production scratch clone keeps defaults"
+    },
+    "pinnedDates": "2026-09-07T00:00:00Z",
+    "order": "ABBA per round; one unmeasured warmup sample per side per case; assertions and resets outside timing"
+  },
+  "results": [
+    {
+      "case": "merge-land",
+      "mode": "merge",
+      "setup": {
+        "baseSha": "f67fba303473aca5f1ef181a0140012c717e6e38",
+        "cellHead": "938e893aa4c23dfed9d7503199247b4a976cdee5",
+        "targetTip": "6cba38b8bc592a3eba5c3b68b9dcb30206b6e93d",
+        "targetBranch": "capture-target",
+        "landedSha": "9e40576f8eca62c3dab6556f39346c65221ea5f4"
+      },
+      "raw": [
+        {
+          "wallMs": [
+            98.89754100000005,
+            98.36454200000003,
+            98.99454200000014,
+            112.60533299999997,
+            99.53695900000002,
+            99.63275000000021
+          ],
+          "cpuMs": [
+            7.204,
+            6.219,
+            5.857,
+            5.913,
+            5.854,
+            5.715
+          ]
+        },
+        {
+          "wallMs": [
+            89.29649999999992,
+            89.73708300000021,
+            88.7159999999999,
+            88.74204200000031,
+            88.47250000000031,
+            89.03008299999965
+          ],
+          "cpuMs": [
+            5.302,
+            5.223,
+            5.238,
+            5.001,
+            4.985,
+            5.147
+          ]
+        }
+      ],
+      "order": [
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0
+      ],
+      "metrics": {
+        "before.wallMs": {
+          "n": 6,
+          "min": 98.36454200000003,
+          "p50": 98.99454200000014,
+          "p95": 112.60533299999997,
+          "max": 112.60533299999997,
+          "mean": 101.33861116666674
+        },
+        "before.cpuMs": {
+          "n": 6,
+          "min": 5.715,
+          "p50": 5.857,
+          "p95": 7.204,
+          "max": 7.204,
+          "mean": 6.127
+        },
+        "after.wallMs": {
+          "n": 6,
+          "min": 88.47250000000031,
+          "p50": 88.74204200000031,
+          "p95": 89.73708300000021,
+          "max": 89.73708300000021,
+          "mean": 88.99903466666672
+        },
+        "after.cpuMs": {
+          "n": 6,
+          "min": 4.985,
+          "p50": 5.147,
+          "p95": 5.302,
+          "max": 5.302,
+          "mean": 5.149333333333334
+        }
+      },
+      "trace2": {
+        "diagnosticOnly": true,
+        "before": {
+          "processes": 19,
+          "children": 6,
+          "commands": {
+            "rev-parse": 3,
+            "symbolic-ref": 1,
+            "fetch": 2,
+            "upload-pack": 2,
+            "rev-list": 2,
+            "merge-base": 2,
+            "clone": 1,
+            "checkout": 1,
+            "merge": 1,
+            "stash": 1,
+            "maintenance": 1,
+            "update-ref": 2
+          },
+          "topLevel": {
+            "commands": [
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "rev-parse",
+                "--verify",
+                "--quiet",
+                "HEAD^{commit}"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "symbolic-ref",
+                "--quiet",
+                "--short",
+                "HEAD"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "fetch",
+                "--no-tags",
+                "/var/folders/kt/qwk3wjvj3t97b1_z2pj4r4sm0000gn/T/hb-cell-exit-TYlSu9/merge-land-0/cell/space",
+                "+HEAD:refs/hive/capture/cell-exit-merge-land-0-14"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "rev-parse",
+                "--verify",
+                "--quiet",
+                "refs/heads/capture-target^{commit}"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "merge-base",
+                "--is-ancestor",
+                "938e893aa4c23dfed9d7503199247b4a976cdee5",
+                "6cba38b8bc592a3eba5c3b68b9dcb30206b6e93d"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "merge-base",
+                "--is-ancestor",
+                "6cba38b8bc592a3eba5c3b68b9dcb30206b6e93d",
+                "938e893aa4c23dfed9d7503199247b4a976cdee5"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "clone",
+                "--quiet",
+                "--shared",
+                "--no-checkout",
+                "/var/folders/kt/qwk3wjvj3t97b1_z2pj4r4sm0000gn/T/hb-cell-exit-TYlSu9/merge-land-0/origin",
+                "/var/folders/kt/qwk3wjvj3t97b1_z2pj4r4sm0000gn/T/hive-capture-D0wlvG/repo"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "checkout",
+                "--quiet",
+                "--force",
+                "--detach",
+                "6cba38b8bc592a3eba5c3b68b9dcb30206b6e93d"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "merge",
+                "--no-ff",
+                "-m",
+                "Capture cell work into capture-target",
+                "938e893aa4c23dfed9d7503199247b4a976cdee5"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "rev-parse",
+                "HEAD"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "fetch",
+                "--no-tags",
+                "/var/folders/kt/qwk3wjvj3t97b1_z2pj4r4sm0000gn/T/hive-capture-D0wlvG/repo",
+                "+9e40576f8eca62c3dab6556f39346c65221ea5f4:refs/hive/capture/cell-exit-merge-land-0-14"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "update-ref",
+                "refs/heads/capture-target",
+                "9e40576f8eca62c3dab6556f39346c65221ea5f4",
+                "6cba38b8bc592a3eba5c3b68b9dcb30206b6e93d"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "update-ref",
+                "-d",
+                "refs/hive/capture/cell-exit-merge-land-0-14"
+              ]
+            ],
+            "commandCount": 13,
+            "wallMs": 45.06200000000001
+          },
+          "artifact": {
+            "path": "/private/tmp/honeybee-perf-5763a6c9-20260907/evidence/mini-cell-tree-ab-smoke.json.merge-land.0.trace2.jsonl",
+            "bytes": 59535,
+            "sha256": "f83aa808cb2811651547f05399dee18651c8ebafabb92c98427f55f7b5e044f6"
+          }
+        },
+        "after": {
+          "processes": 17,
+          "children": 4,
+          "commands": {
+            "rev-parse": 2,
+            "symbolic-ref": 1,
+            "fetch": 2,
+            "upload-pack": 2,
+            "rev-list": 2,
+            "merge-base": 2,
+            "clone": 1,
+            "update-ref": 3,
+            "merge-tree": 1,
+            "commit-tree": 1
+          },
+          "topLevel": {
+            "commands": [
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "rev-parse",
+                "--verify",
+                "--quiet",
+                "HEAD^{commit}"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "symbolic-ref",
+                "--quiet",
+                "--short",
+                "HEAD"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "fetch",
+                "--no-tags",
+                "/var/folders/kt/qwk3wjvj3t97b1_z2pj4r4sm0000gn/T/hb-cell-exit-TYlSu9/merge-land-1/cell/space",
+                "+HEAD:refs/hive/capture/cell-exit-merge-land-1-15"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "rev-parse",
+                "--verify",
+                "--quiet",
+                "refs/heads/capture-target^{commit}"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "merge-base",
+                "--is-ancestor",
+                "938e893aa4c23dfed9d7503199247b4a976cdee5",
+                "6cba38b8bc592a3eba5c3b68b9dcb30206b6e93d"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "merge-base",
+                "--is-ancestor",
+                "6cba38b8bc592a3eba5c3b68b9dcb30206b6e93d",
+                "938e893aa4c23dfed9d7503199247b4a976cdee5"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "clone",
+                "--quiet",
+                "--shared",
+                "--no-checkout",
+                "/var/folders/kt/qwk3wjvj3t97b1_z2pj4r4sm0000gn/T/hb-cell-exit-TYlSu9/merge-land-1/origin",
+                "/var/folders/kt/qwk3wjvj3t97b1_z2pj4r4sm0000gn/T/hive-capture-i4or2j/repo"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "update-ref",
+                "--no-deref",
+                "HEAD",
+                "6cba38b8bc592a3eba5c3b68b9dcb30206b6e93d"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "merge-tree",
+                "--write-tree",
+                "6cba38b8bc592a3eba5c3b68b9dcb30206b6e93d",
+                "938e893aa4c23dfed9d7503199247b4a976cdee5"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "commit-tree",
+                "17d6e4fd2224833ca239af4740ccc1630be622a9",
+                "-p",
+                "6cba38b8bc592a3eba5c3b68b9dcb30206b6e93d",
+                "-p",
+                "938e893aa4c23dfed9d7503199247b4a976cdee5",
+                "-m",
+                "Capture cell work into capture-target"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "fetch",
+                "--no-tags",
+                "/var/folders/kt/qwk3wjvj3t97b1_z2pj4r4sm0000gn/T/hive-capture-i4or2j/repo",
+                "+9e40576f8eca62c3dab6556f39346c65221ea5f4:refs/hive/capture/cell-exit-merge-land-1-15"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "update-ref",
+                "refs/heads/capture-target",
+                "9e40576f8eca62c3dab6556f39346c65221ea5f4",
+                "6cba38b8bc592a3eba5c3b68b9dcb30206b6e93d"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "update-ref",
+                "-d",
+                "refs/hive/capture/cell-exit-merge-land-1-15"
+              ]
+            ],
+            "commandCount": 13,
+            "wallMs": 35.787000000000006
+          },
+          "artifact": {
+            "path": "/private/tmp/honeybee-perf-5763a6c9-20260907/evidence/mini-cell-tree-ab-smoke.json.merge-land.1.trace2.jsonl",
+            "bytes": 35189,
+            "sha256": "472939593515ffdb0fc61c19ac00ce3b4d4b273582d9cc53d55c368e994f533e"
+          }
+        }
+      }
+    },
+    {
+      "case": "rebase-land",
+      "mode": "rebase",
+      "setup": {
+        "baseSha": "f67fba303473aca5f1ef181a0140012c717e6e38",
+        "cellHead": "9f9be37d461537d2d3998696fd771b087b8ec10b",
+        "targetTip": "7819cb98c46d534c6f95fc0e7684efa47969472e",
+        "targetBranch": "capture-target",
+        "landedSha": "7bfff903e4600c42294030305a11e2ff48291307"
+      },
+      "raw": [
+        {
+          "wallMs": [
+            104.12316700000065,
+            104.17508300000009,
+            103.51929199999995,
+            103.7186670000001,
+            104.44558400000005,
+            103.56841600000007
+          ],
+          "cpuMs": [
+            5.698,
+            5.963,
+            5.747,
+            5.783,
+            5.827,
+            5.642
+          ]
+        },
+        {
+          "wallMs": [
+            104.6347910000004,
+            103.43008299999929,
+            104.65741699999944,
+            103.65729099999953,
+            104.11433299999953,
+            103.8301249999995
+          ],
+          "cpuMs": [
+            5.975,
+            5.767,
+            5.935,
+            5.822,
+            6.044,
+            5.826
+          ]
+        }
+      ],
+      "order": [
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0
+      ],
+      "metrics": {
+        "before.wallMs": {
+          "n": 6,
+          "min": 103.51929199999995,
+          "p50": 103.7186670000001,
+          "p95": 104.44558400000005,
+          "max": 104.44558400000005,
+          "mean": 103.92503483333348
+        },
+        "before.cpuMs": {
+          "n": 6,
+          "min": 5.642,
+          "p50": 5.747,
+          "p95": 5.963,
+          "max": 5.963,
+          "mean": 5.776666666666667
+        },
+        "after.wallMs": {
+          "n": 6,
+          "min": 103.43008299999929,
+          "p50": 103.8301249999995,
+          "p95": 104.65741699999944,
+          "max": 104.65741699999944,
+          "mean": 104.05400666666628
+        },
+        "after.cpuMs": {
+          "n": 6,
+          "min": 5.767,
+          "p50": 5.826,
+          "p95": 6.044,
+          "max": 6.044,
+          "mean": 5.894833333333334
+        }
+      },
+      "trace2": {
+        "diagnosticOnly": true,
+        "before": {
+          "processes": 18,
+          "children": 5,
+          "commands": {
+            "rev-parse": 3,
+            "symbolic-ref": 1,
+            "fetch": 2,
+            "upload-pack": 2,
+            "rev-list": 2,
+            "merge-base": 2,
+            "clone": 1,
+            "checkout": 1,
+            "rebase": 1,
+            "notes": 1,
+            "update-ref": 2
+          },
+          "topLevel": {
+            "commands": [
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "rev-parse",
+                "--verify",
+                "--quiet",
+                "HEAD^{commit}"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "symbolic-ref",
+                "--quiet",
+                "--short",
+                "HEAD"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "fetch",
+                "--no-tags",
+                "/var/folders/kt/qwk3wjvj3t97b1_z2pj4r4sm0000gn/T/hb-cell-exit-TYlSu9/rebase-land-0/cell/space",
+                "+HEAD:refs/hive/capture/cell-exit-rebase-land-0-14"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "rev-parse",
+                "--verify",
+                "--quiet",
+                "refs/heads/capture-target^{commit}"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "merge-base",
+                "--is-ancestor",
+                "9f9be37d461537d2d3998696fd771b087b8ec10b",
+                "7819cb98c46d534c6f95fc0e7684efa47969472e"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "merge-base",
+                "--is-ancestor",
+                "7819cb98c46d534c6f95fc0e7684efa47969472e",
+                "9f9be37d461537d2d3998696fd771b087b8ec10b"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "clone",
+                "--quiet",
+                "--shared",
+                "--no-checkout",
+                "/var/folders/kt/qwk3wjvj3t97b1_z2pj4r4sm0000gn/T/hb-cell-exit-TYlSu9/rebase-land-0/origin",
+                "/var/folders/kt/qwk3wjvj3t97b1_z2pj4r4sm0000gn/T/hive-capture-mTGZks/repo"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "checkout",
+                "--quiet",
+                "--force",
+                "--detach",
+                "9f9be37d461537d2d3998696fd771b087b8ec10b"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "rebase",
+                "7819cb98c46d534c6f95fc0e7684efa47969472e"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "rev-parse",
+                "HEAD"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "fetch",
+                "--no-tags",
+                "/var/folders/kt/qwk3wjvj3t97b1_z2pj4r4sm0000gn/T/hive-capture-mTGZks/repo",
+                "+7bfff903e4600c42294030305a11e2ff48291307:refs/hive/capture/cell-exit-rebase-land-0-14"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "update-ref",
+                "refs/heads/capture-target",
+                "7bfff903e4600c42294030305a11e2ff48291307",
+                "7819cb98c46d534c6f95fc0e7684efa47969472e"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "update-ref",
+                "-d",
+                "refs/hive/capture/cell-exit-rebase-land-0-14"
+              ]
+            ],
+            "commandCount": 13,
+            "wallMs": 52.281
+          },
+          "artifact": {
+            "path": "/private/tmp/honeybee-perf-5763a6c9-20260907/evidence/mini-cell-tree-ab-smoke.json.rebase-land.0.trace2.jsonl",
+            "bytes": 80341,
+            "sha256": "aceab589bfaa28b98411e76f7c924b371fc59d8498c43405670e95fea92ea9af"
+          }
+        },
+        "after": {
+          "processes": 18,
+          "children": 5,
+          "commands": {
+            "rev-parse": 3,
+            "symbolic-ref": 1,
+            "fetch": 2,
+            "upload-pack": 2,
+            "rev-list": 2,
+            "merge-base": 2,
+            "clone": 1,
+            "checkout": 1,
+            "rebase": 1,
+            "notes": 1,
+            "update-ref": 2
+          },
+          "topLevel": {
+            "commands": [
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "rev-parse",
+                "--verify",
+                "--quiet",
+                "HEAD^{commit}"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "symbolic-ref",
+                "--quiet",
+                "--short",
+                "HEAD"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "fetch",
+                "--no-tags",
+                "/var/folders/kt/qwk3wjvj3t97b1_z2pj4r4sm0000gn/T/hb-cell-exit-TYlSu9/rebase-land-1/cell/space",
+                "+HEAD:refs/hive/capture/cell-exit-rebase-land-1-15"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "rev-parse",
+                "--verify",
+                "--quiet",
+                "refs/heads/capture-target^{commit}"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "merge-base",
+                "--is-ancestor",
+                "9f9be37d461537d2d3998696fd771b087b8ec10b",
+                "7819cb98c46d534c6f95fc0e7684efa47969472e"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "merge-base",
+                "--is-ancestor",
+                "7819cb98c46d534c6f95fc0e7684efa47969472e",
+                "9f9be37d461537d2d3998696fd771b087b8ec10b"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "clone",
+                "--quiet",
+                "--shared",
+                "--no-checkout",
+                "/var/folders/kt/qwk3wjvj3t97b1_z2pj4r4sm0000gn/T/hb-cell-exit-TYlSu9/rebase-land-1/origin",
+                "/var/folders/kt/qwk3wjvj3t97b1_z2pj4r4sm0000gn/T/hive-capture-YmBwIB/repo"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "checkout",
+                "--quiet",
+                "--force",
+                "--detach",
+                "9f9be37d461537d2d3998696fd771b087b8ec10b"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "rebase",
+                "7819cb98c46d534c6f95fc0e7684efa47969472e"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "rev-parse",
+                "HEAD"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "fetch",
+                "--no-tags",
+                "/var/folders/kt/qwk3wjvj3t97b1_z2pj4r4sm0000gn/T/hive-capture-YmBwIB/repo",
+                "+7bfff903e4600c42294030305a11e2ff48291307:refs/hive/capture/cell-exit-rebase-land-1-15"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "update-ref",
+                "refs/heads/capture-target",
+                "7bfff903e4600c42294030305a11e2ff48291307",
+                "7819cb98c46d534c6f95fc0e7684efa47969472e"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "update-ref",
+                "-d",
+                "refs/hive/capture/cell-exit-rebase-land-1-15"
+              ]
+            ],
+            "commandCount": 13,
+            "wallMs": 49.648
+          },
+          "artifact": {
+            "path": "/private/tmp/honeybee-perf-5763a6c9-20260907/evidence/mini-cell-tree-ab-smoke.json.rebase-land.1.trace2.jsonl",
+            "bytes": 80341,
+            "sha256": "f4cfae64dfccd109c7cdbf3bcf79b4cab46993b9d42ee9d0b27a17f91add199d"
+          }
+        }
+      }
+    },
+    {
+      "case": "merge-conflict",
+      "mode": "merge",
+      "setup": {
+        "baseSha": "f67fba303473aca5f1ef181a0140012c717e6e38",
+        "cellHead": "ecfef24e78584184988f3c3290da45a6f593c388",
+        "targetTip": "b5366ce2dacefc2d286f698b07486a8d865b9cbd",
+        "targetBranch": "capture-target",
+        "landedSha": null
+      },
+      "raw": [
+        {
+          "wallMs": [
+            89.37337500000012,
+            88.53883300000052,
+            89.57074999999895,
+            88.83716599999934,
+            89.6770830000005,
+            88.64050000000134
+          ],
+          "cpuMs": [
+            5.645,
+            5.441,
+            5.72,
+            5.545,
+            5.638,
+            5.489
+          ]
+        },
+        {
+          "wallMs": [
+            101.19241599999987,
+            100.00158300000021,
+            101.05112499999996,
+            100.30591600000116,
+            99.80079099999966,
+            99.7949580000004
+          ],
+          "cpuMs": [
+            6.286,
+            6.231,
+            6.272,
+            6.176,
+            6.137,
+            6.149
+          ]
+        }
+      ],
+      "order": [
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0
+      ],
+      "metrics": {
+        "before.wallMs": {
+          "n": 6,
+          "min": 88.53883300000052,
+          "p50": 88.83716599999934,
+          "p95": 89.6770830000005,
+          "max": 89.6770830000005,
+          "mean": 89.10628450000013
+        },
+        "before.cpuMs": {
+          "n": 6,
+          "min": 5.441,
+          "p50": 5.545,
+          "p95": 5.72,
+          "max": 5.72,
+          "mean": 5.579666666666665
+        },
+        "after.wallMs": {
+          "n": 6,
+          "min": 99.7949580000004,
+          "p50": 100.00158300000021,
+          "p95": 101.19241599999987,
+          "max": 101.19241599999987,
+          "mean": 100.35779816666688
+        },
+        "after.cpuMs": {
+          "n": 6,
+          "min": 6.137,
+          "p50": 6.176,
+          "p95": 6.286,
+          "max": 6.286,
+          "mean": 6.208500000000001
+        }
+      },
+      "trace2": {
+        "diagnosticOnly": true,
+        "before": {
+          "processes": 16,
+          "children": 4,
+          "commands": {
+            "rev-parse": 2,
+            "symbolic-ref": 1,
+            "fetch": 1,
+            "upload-pack": 2,
+            "rev-list": 1,
+            "merge-base": 2,
+            "clone": 1,
+            "checkout": 1,
+            "merge": 2,
+            "stash": 1,
+            "diff": 1,
+            "update-ref": 1
+          },
+          "topLevel": {
+            "commands": [
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "rev-parse",
+                "--verify",
+                "--quiet",
+                "HEAD^{commit}"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "symbolic-ref",
+                "--quiet",
+                "--short",
+                "HEAD"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "fetch",
+                "--no-tags",
+                "/var/folders/kt/qwk3wjvj3t97b1_z2pj4r4sm0000gn/T/hb-cell-exit-TYlSu9/merge-conflict-0/cell/space",
+                "+HEAD:refs/hive/capture/cell-exit-merge-conflict-0-14"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "rev-parse",
+                "--verify",
+                "--quiet",
+                "refs/heads/capture-target^{commit}"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "merge-base",
+                "--is-ancestor",
+                "ecfef24e78584184988f3c3290da45a6f593c388",
+                "b5366ce2dacefc2d286f698b07486a8d865b9cbd"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "merge-base",
+                "--is-ancestor",
+                "b5366ce2dacefc2d286f698b07486a8d865b9cbd",
+                "ecfef24e78584184988f3c3290da45a6f593c388"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "clone",
+                "--quiet",
+                "--shared",
+                "--no-checkout",
+                "/var/folders/kt/qwk3wjvj3t97b1_z2pj4r4sm0000gn/T/hb-cell-exit-TYlSu9/merge-conflict-0/origin",
+                "/var/folders/kt/qwk3wjvj3t97b1_z2pj4r4sm0000gn/T/hive-capture-P2z4s6/repo"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "checkout",
+                "--quiet",
+                "--force",
+                "--detach",
+                "b5366ce2dacefc2d286f698b07486a8d865b9cbd"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "merge",
+                "--no-ff",
+                "-m",
+                "Capture cell work into capture-target",
+                "ecfef24e78584184988f3c3290da45a6f593c388"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "diff",
+                "--name-only",
+                "--diff-filter=U"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "merge",
+                "--abort"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "update-ref",
+                "-d",
+                "refs/hive/capture/cell-exit-merge-conflict-0-14"
+              ]
+            ],
+            "commandCount": 12,
+            "wallMs": 41.726
+          },
+          "artifact": {
+            "path": "/private/tmp/honeybee-perf-5763a6c9-20260907/evidence/mini-cell-tree-ab-smoke.json.merge-conflict.0.trace2.jsonl",
+            "bytes": 58946,
+            "sha256": "e0c43c07ef3b01bd47ad1224a05201bf0071c72cb85e5cce4cc8f9e5dbb37c1b"
+          }
+        },
+        "after": {
+          "processes": 18,
+          "children": 4,
+          "commands": {
+            "rev-parse": 2,
+            "symbolic-ref": 1,
+            "fetch": 1,
+            "upload-pack": 2,
+            "rev-list": 1,
+            "merge-base": 2,
+            "clone": 1,
+            "update-ref": 2,
+            "merge-tree": 1,
+            "checkout": 1,
+            "merge": 2,
+            "stash": 1,
+            "diff": 1
+          },
+          "topLevel": {
+            "commands": [
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "rev-parse",
+                "--verify",
+                "--quiet",
+                "HEAD^{commit}"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "symbolic-ref",
+                "--quiet",
+                "--short",
+                "HEAD"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "fetch",
+                "--no-tags",
+                "/var/folders/kt/qwk3wjvj3t97b1_z2pj4r4sm0000gn/T/hb-cell-exit-TYlSu9/merge-conflict-1/cell/space",
+                "+HEAD:refs/hive/capture/cell-exit-merge-conflict-1-15"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "rev-parse",
+                "--verify",
+                "--quiet",
+                "refs/heads/capture-target^{commit}"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "merge-base",
+                "--is-ancestor",
+                "ecfef24e78584184988f3c3290da45a6f593c388",
+                "b5366ce2dacefc2d286f698b07486a8d865b9cbd"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "merge-base",
+                "--is-ancestor",
+                "b5366ce2dacefc2d286f698b07486a8d865b9cbd",
+                "ecfef24e78584184988f3c3290da45a6f593c388"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "clone",
+                "--quiet",
+                "--shared",
+                "--no-checkout",
+                "/var/folders/kt/qwk3wjvj3t97b1_z2pj4r4sm0000gn/T/hb-cell-exit-TYlSu9/merge-conflict-1/origin",
+                "/var/folders/kt/qwk3wjvj3t97b1_z2pj4r4sm0000gn/T/hive-capture-0yYcqw/repo"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "update-ref",
+                "--no-deref",
+                "HEAD",
+                "b5366ce2dacefc2d286f698b07486a8d865b9cbd"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "merge-tree",
+                "--write-tree",
+                "b5366ce2dacefc2d286f698b07486a8d865b9cbd",
+                "ecfef24e78584184988f3c3290da45a6f593c388"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "checkout",
+                "--quiet",
+                "--force",
+                "--detach",
+                "b5366ce2dacefc2d286f698b07486a8d865b9cbd"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "merge",
+                "--no-ff",
+                "-m",
+                "Capture cell work into capture-target",
+                "ecfef24e78584184988f3c3290da45a6f593c388"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "diff",
+                "--name-only",
+                "--diff-filter=U"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "merge",
+                "--abort"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "update-ref",
+                "-d",
+                "refs/hive/capture/cell-exit-merge-conflict-1-15"
+              ]
+            ],
+            "commandCount": 14,
+            "wallMs": 42.867
+          },
+          "artifact": {
+            "path": "/private/tmp/honeybee-perf-5763a6c9-20260907/evidence/mini-cell-tree-ab-smoke.json.merge-conflict.1.trace2.jsonl",
+            "bytes": 64813,
+            "sha256": "1007af5d071cb59fda494141373ca326d8a8f46732986a6e7fe268ec41026406"
+          }
+        }
+      }
+    },
+    {
+      "case": "rebase-conflict",
+      "mode": "rebase",
+      "setup": {
+        "baseSha": "f67fba303473aca5f1ef181a0140012c717e6e38",
+        "cellHead": "d41b6a605ce0c32edc962fb53d2cbd0acb27d045",
+        "targetTip": "8331c92d15db87db2c813a2dd9b2a69e04173ab0",
+        "targetBranch": "capture-target",
+        "landedSha": null
+      },
+      "raw": [
+        {
+          "wallMs": [
+            94.07195800000045,
+            94.59279199999946,
+            93.17999999999847,
+            94.33450000000084,
+            95.28654199999983,
+            94.26675000000068
+          ],
+          "cpuMs": [
+            5.644,
+            6.067,
+            5.7,
+            5.653,
+            5.797,
+            5.806
+          ]
+        },
+        {
+          "wallMs": [
+            93.59220800000003,
+            94.85241700000006,
+            93.68499999999949,
+            94.58308299999953,
+            108.74295800000073,
+            94.71637499999997
+          ],
+          "cpuMs": [
+            5.65,
+            5.819,
+            5.681,
+            5.849,
+            5.596,
+            5.763
+          ]
+        }
+      ],
+      "order": [
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0
+      ],
+      "metrics": {
+        "before.wallMs": {
+          "n": 6,
+          "min": 93.17999999999847,
+          "p50": 94.26675000000068,
+          "p95": 95.28654199999983,
+          "max": 95.28654199999983,
+          "mean": 94.28875699999996
+        },
+        "before.cpuMs": {
+          "n": 6,
+          "min": 5.644,
+          "p50": 5.7,
+          "p95": 6.067,
+          "max": 6.067,
+          "mean": 5.777833333333334
+        },
+        "after.wallMs": {
+          "n": 6,
+          "min": 93.59220800000003,
+          "p50": 94.58308299999953,
+          "p95": 108.74295800000073,
+          "max": 108.74295800000073,
+          "mean": 96.69534016666664
+        },
+        "after.cpuMs": {
+          "n": 6,
+          "min": 5.596,
+          "p50": 5.681,
+          "p95": 5.849,
+          "max": 5.849,
+          "mean": 5.726333333333334
+        }
+      },
+      "trace2": {
+        "diagnosticOnly": true,
+        "before": {
+          "processes": 16,
+          "children": 4,
+          "commands": {
+            "rev-parse": 2,
+            "symbolic-ref": 1,
+            "fetch": 1,
+            "upload-pack": 2,
+            "rev-list": 1,
+            "merge-base": 2,
+            "clone": 1,
+            "checkout": 1,
+            "rebase": 2,
+            "diff": 1,
+            "maintenance": 1,
+            "update-ref": 1
+          },
+          "topLevel": {
+            "commands": [
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "rev-parse",
+                "--verify",
+                "--quiet",
+                "HEAD^{commit}"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "symbolic-ref",
+                "--quiet",
+                "--short",
+                "HEAD"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "fetch",
+                "--no-tags",
+                "/var/folders/kt/qwk3wjvj3t97b1_z2pj4r4sm0000gn/T/hb-cell-exit-TYlSu9/rebase-conflict-0/cell/space",
+                "+HEAD:refs/hive/capture/cell-exit-rebase-conflict-0-14"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "rev-parse",
+                "--verify",
+                "--quiet",
+                "refs/heads/capture-target^{commit}"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "merge-base",
+                "--is-ancestor",
+                "d41b6a605ce0c32edc962fb53d2cbd0acb27d045",
+                "8331c92d15db87db2c813a2dd9b2a69e04173ab0"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "merge-base",
+                "--is-ancestor",
+                "8331c92d15db87db2c813a2dd9b2a69e04173ab0",
+                "d41b6a605ce0c32edc962fb53d2cbd0acb27d045"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "clone",
+                "--quiet",
+                "--shared",
+                "--no-checkout",
+                "/var/folders/kt/qwk3wjvj3t97b1_z2pj4r4sm0000gn/T/hb-cell-exit-TYlSu9/rebase-conflict-0/origin",
+                "/var/folders/kt/qwk3wjvj3t97b1_z2pj4r4sm0000gn/T/hive-capture-t8gdNl/repo"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "checkout",
+                "--quiet",
+                "--force",
+                "--detach",
+                "d41b6a605ce0c32edc962fb53d2cbd0acb27d045"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "rebase",
+                "8331c92d15db87db2c813a2dd9b2a69e04173ab0"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "diff",
+                "--name-only",
+                "--diff-filter=U"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "rebase",
+                "--abort"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "update-ref",
+                "-d",
+                "refs/hive/capture/cell-exit-rebase-conflict-0-14"
+              ]
+            ],
+            "commandCount": 12,
+            "wallMs": 43.993
+          },
+          "artifact": {
+            "path": "/private/tmp/honeybee-perf-5763a6c9-20260907/evidence/mini-cell-tree-ab-smoke.json.rebase-conflict.0.trace2.jsonl",
+            "bytes": 65695,
+            "sha256": "bedd1a5774597986d1400f3ec42324d22b4a0031c72d6a11ce4d279ef71f1f72"
+          }
+        },
+        "after": {
+          "processes": 16,
+          "children": 4,
+          "commands": {
+            "rev-parse": 2,
+            "symbolic-ref": 1,
+            "fetch": 1,
+            "upload-pack": 2,
+            "rev-list": 1,
+            "merge-base": 2,
+            "clone": 1,
+            "checkout": 1,
+            "rebase": 2,
+            "diff": 1,
+            "maintenance": 1,
+            "update-ref": 1
+          },
+          "topLevel": {
+            "commands": [
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "rev-parse",
+                "--verify",
+                "--quiet",
+                "HEAD^{commit}"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "symbolic-ref",
+                "--quiet",
+                "--short",
+                "HEAD"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "fetch",
+                "--no-tags",
+                "/var/folders/kt/qwk3wjvj3t97b1_z2pj4r4sm0000gn/T/hb-cell-exit-TYlSu9/rebase-conflict-1/cell/space",
+                "+HEAD:refs/hive/capture/cell-exit-rebase-conflict-1-15"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "rev-parse",
+                "--verify",
+                "--quiet",
+                "refs/heads/capture-target^{commit}"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "merge-base",
+                "--is-ancestor",
+                "d41b6a605ce0c32edc962fb53d2cbd0acb27d045",
+                "8331c92d15db87db2c813a2dd9b2a69e04173ab0"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "merge-base",
+                "--is-ancestor",
+                "8331c92d15db87db2c813a2dd9b2a69e04173ab0",
+                "d41b6a605ce0c32edc962fb53d2cbd0acb27d045"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "clone",
+                "--quiet",
+                "--shared",
+                "--no-checkout",
+                "/var/folders/kt/qwk3wjvj3t97b1_z2pj4r4sm0000gn/T/hb-cell-exit-TYlSu9/rebase-conflict-1/origin",
+                "/var/folders/kt/qwk3wjvj3t97b1_z2pj4r4sm0000gn/T/hive-capture-saS3pd/repo"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "checkout",
+                "--quiet",
+                "--force",
+                "--detach",
+                "d41b6a605ce0c32edc962fb53d2cbd0acb27d045"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "rebase",
+                "8331c92d15db87db2c813a2dd9b2a69e04173ab0"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "diff",
+                "--name-only",
+                "--diff-filter=U"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "rebase",
+                "--abort"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "update-ref",
+                "-d",
+                "refs/hive/capture/cell-exit-rebase-conflict-1-15"
+              ]
+            ],
+            "commandCount": 12,
+            "wallMs": 43.681000000000004
+          },
+          "artifact": {
+            "path": "/private/tmp/honeybee-perf-5763a6c9-20260907/evidence/mini-cell-tree-ab-smoke.json.rebase-conflict.1.trace2.jsonl",
+            "bytes": 65695,
+            "sha256": "3e63193df73a239a45e16678c6e6644b6d2916d17e479ace221bc38c3bb3c402"
+          }
+        }
+      }
+    },
+    {
+      "case": "fast-forward",
+      "mode": "merge",
+      "setup": {
+        "baseSha": "f67fba303473aca5f1ef181a0140012c717e6e38",
+        "cellHead": "a039326e59fe455240075896423cb6847cbe1d8c",
+        "targetTip": "f67fba303473aca5f1ef181a0140012c717e6e38",
+        "targetBranch": "capture-target",
+        "landedSha": "a039326e59fe455240075896423cb6847cbe1d8c"
+      },
+      "raw": [
+        {
+          "wallMs": [
+            47.5358750000014,
+            47.77033300000039,
+            47.115625000000364,
+            47.60016600000017,
+            47.393082999999024,
+            52.46020900000076
+          ],
+          "cpuMs": [
+            1.817,
+            1.942,
+            1.939,
+            1.902,
+            1.904,
+            2.504
+          ]
+        },
+        {
+          "wallMs": [
+            47.732708999999886,
+            47.4356659999994,
+            47.464625000000524,
+            47.59174999999959,
+            47.48962500000016,
+            47.22041700000045
+          ],
+          "cpuMs": [
+            1.888,
+            1.909,
+            1.786,
+            1.896,
+            1.858,
+            1.82
+          ]
+        }
+      ],
+      "order": [
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0
+      ],
+      "metrics": {
+        "before.wallMs": {
+          "n": 6,
+          "min": 47.115625000000364,
+          "p50": 47.5358750000014,
+          "p95": 52.46020900000076,
+          "max": 52.46020900000076,
+          "mean": 48.312548500000354
+        },
+        "before.cpuMs": {
+          "n": 6,
+          "min": 1.817,
+          "p50": 1.904,
+          "p95": 2.504,
+          "max": 2.504,
+          "mean": 2.0013333333333336
+        },
+        "after.wallMs": {
+          "n": 6,
+          "min": 47.22041700000045,
+          "p50": 47.464625000000524,
+          "p95": 47.732708999999886,
+          "max": 47.732708999999886,
+          "mean": 47.489132000000005
+        },
+        "after.cpuMs": {
+          "n": 6,
+          "min": 1.786,
+          "p50": 1.858,
+          "p95": 1.909,
+          "max": 1.909,
+          "mean": 1.8595
+        }
+      },
+      "trace2": {
+        "diagnosticOnly": true,
+        "before": {
+          "processes": 10,
+          "children": 2,
+          "commands": {
+            "rev-parse": 2,
+            "symbolic-ref": 1,
+            "fetch": 1,
+            "upload-pack": 1,
+            "rev-list": 1,
+            "merge-base": 2,
+            "update-ref": 2
+          },
+          "topLevel": {
+            "commands": [
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "rev-parse",
+                "--verify",
+                "--quiet",
+                "HEAD^{commit}"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "symbolic-ref",
+                "--quiet",
+                "--short",
+                "HEAD"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "fetch",
+                "--no-tags",
+                "/var/folders/kt/qwk3wjvj3t97b1_z2pj4r4sm0000gn/T/hb-cell-exit-TYlSu9/fast-forward-0/cell/space",
+                "+HEAD:refs/hive/capture/cell-exit-fast-forward-0-14"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "rev-parse",
+                "--verify",
+                "--quiet",
+                "refs/heads/capture-target^{commit}"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "merge-base",
+                "--is-ancestor",
+                "a039326e59fe455240075896423cb6847cbe1d8c",
+                "f67fba303473aca5f1ef181a0140012c717e6e38"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "merge-base",
+                "--is-ancestor",
+                "f67fba303473aca5f1ef181a0140012c717e6e38",
+                "a039326e59fe455240075896423cb6847cbe1d8c"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "update-ref",
+                "refs/heads/capture-target",
+                "a039326e59fe455240075896423cb6847cbe1d8c",
+                "f67fba303473aca5f1ef181a0140012c717e6e38"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "update-ref",
+                "-d",
+                "refs/hive/capture/cell-exit-fast-forward-0-14"
+              ]
+            ],
+            "commandCount": 8,
+            "wallMs": 16.679
+          },
+          "artifact": {
+            "path": "/private/tmp/honeybee-perf-5763a6c9-20260907/evidence/mini-cell-tree-ab-smoke.json.fast-forward.0.trace2.jsonl",
+            "bytes": 18445,
+            "sha256": "d4470584d1476adcaf3b1b422b6834aaf49be33d027018b5b52a98c930dbd81f"
+          }
+        },
+        "after": {
+          "processes": 10,
+          "children": 2,
+          "commands": {
+            "rev-parse": 2,
+            "symbolic-ref": 1,
+            "fetch": 1,
+            "upload-pack": 1,
+            "rev-list": 1,
+            "merge-base": 2,
+            "update-ref": 2
+          },
+          "topLevel": {
+            "commands": [
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "rev-parse",
+                "--verify",
+                "--quiet",
+                "HEAD^{commit}"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "symbolic-ref",
+                "--quiet",
+                "--short",
+                "HEAD"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "fetch",
+                "--no-tags",
+                "/var/folders/kt/qwk3wjvj3t97b1_z2pj4r4sm0000gn/T/hb-cell-exit-TYlSu9/fast-forward-1/cell/space",
+                "+HEAD:refs/hive/capture/cell-exit-fast-forward-1-15"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "rev-parse",
+                "--verify",
+                "--quiet",
+                "refs/heads/capture-target^{commit}"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "merge-base",
+                "--is-ancestor",
+                "a039326e59fe455240075896423cb6847cbe1d8c",
+                "f67fba303473aca5f1ef181a0140012c717e6e38"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "merge-base",
+                "--is-ancestor",
+                "f67fba303473aca5f1ef181a0140012c717e6e38",
+                "a039326e59fe455240075896423cb6847cbe1d8c"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "update-ref",
+                "refs/heads/capture-target",
+                "a039326e59fe455240075896423cb6847cbe1d8c",
+                "f67fba303473aca5f1ef181a0140012c717e6e38"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "update-ref",
+                "-d",
+                "refs/hive/capture/cell-exit-fast-forward-1-15"
+              ]
+            ],
+            "commandCount": 8,
+            "wallMs": 16.644000000000002
+          },
+          "artifact": {
+            "path": "/private/tmp/honeybee-perf-5763a6c9-20260907/evidence/mini-cell-tree-ab-smoke.json.fast-forward.1.trace2.jsonl",
+            "bytes": 18445,
+            "sha256": "bb0bda2f47b77f3a6ff6510c9022ef8ba2e0a09654dbd27bebd3b4de868ec804"
+          }
+        }
+      }
+    },
+    {
+      "case": "branch-create",
+      "mode": "merge",
+      "setup": {
+        "baseSha": "f67fba303473aca5f1ef181a0140012c717e6e38",
+        "cellHead": "6fea535fedcdfc9dbcccc1b902d260bf23ce8c7e",
+        "targetTip": null,
+        "targetBranch": "capture-target",
+        "landedSha": "6fea535fedcdfc9dbcccc1b902d260bf23ce8c7e"
+      },
+      "raw": [
+        {
+          "wallMs": [
+            37.16599999999926,
+            37.6033750000006,
+            37.23925000000054,
+            37.172333999998955,
+            37.367833999998766,
+            37.8690000000006
+          ],
+          "cpuMs": [
+            1.399,
+            1.351,
+            1.445,
+            1.282,
+            1.477,
+            1.402
+          ]
+        },
+        {
+          "wallMs": [
+            37.48175000000083,
+            37.21141700000044,
+            37.25358299999971,
+            37.170500000000175,
+            37.442041000000245,
+            37.06804200000079
+          ],
+          "cpuMs": [
+            1.402,
+            1.583,
+            1.441,
+            1.386,
+            1.763,
+            1.495
+          ]
+        }
+      ],
+      "order": [
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0
+      ],
+      "metrics": {
+        "before.wallMs": {
+          "n": 6,
+          "min": 37.16599999999926,
+          "p50": 37.23925000000054,
+          "p95": 37.8690000000006,
+          "max": 37.8690000000006,
+          "mean": 37.40296549999979
+        },
+        "before.cpuMs": {
+          "n": 6,
+          "min": 1.282,
+          "p50": 1.399,
+          "p95": 1.477,
+          "max": 1.477,
+          "mean": 1.3926666666666667
+        },
+        "after.wallMs": {
+          "n": 6,
+          "min": 37.06804200000079,
+          "p50": 37.21141700000044,
+          "p95": 37.48175000000083,
+          "max": 37.48175000000083,
+          "mean": 37.27122216666703
+        },
+        "after.cpuMs": {
+          "n": 6,
+          "min": 1.386,
+          "p50": 1.441,
+          "p95": 1.763,
+          "max": 1.763,
+          "mean": 1.5116666666666667
+        }
+      },
+      "trace2": {
+        "diagnosticOnly": true,
+        "before": {
+          "processes": 8,
+          "children": 2,
+          "commands": {
+            "rev-parse": 2,
+            "symbolic-ref": 1,
+            "fetch": 1,
+            "upload-pack": 1,
+            "rev-list": 1,
+            "update-ref": 2
+          },
+          "topLevel": {
+            "commands": [
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "rev-parse",
+                "--verify",
+                "--quiet",
+                "HEAD^{commit}"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "symbolic-ref",
+                "--quiet",
+                "--short",
+                "HEAD"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "fetch",
+                "--no-tags",
+                "/var/folders/kt/qwk3wjvj3t97b1_z2pj4r4sm0000gn/T/hb-cell-exit-TYlSu9/branch-create-0/cell/space",
+                "+HEAD:refs/hive/capture/cell-exit-branch-create-0-14"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "rev-parse",
+                "--verify",
+                "--quiet",
+                "refs/heads/capture-target^{commit}"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "update-ref",
+                "refs/heads/capture-target",
+                "6fea535fedcdfc9dbcccc1b902d260bf23ce8c7e",
+                ""
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "update-ref",
+                "-d",
+                "refs/hive/capture/cell-exit-branch-create-0-14"
+              ]
+            ],
+            "commandCount": 6,
+            "wallMs": 14.023
+          },
+          "artifact": {
+            "path": "/private/tmp/honeybee-perf-5763a6c9-20260907/evidence/mini-cell-tree-ab-smoke.json.branch-create.0.trace2.jsonl",
+            "bytes": 15651,
+            "sha256": "dffd9c8f646ab4ccf7a2c7b4f3b0b80b7e115c6e8ffca86d4ce5ea6085044b50"
+          }
+        },
+        "after": {
+          "processes": 8,
+          "children": 2,
+          "commands": {
+            "rev-parse": 2,
+            "symbolic-ref": 1,
+            "fetch": 1,
+            "upload-pack": 1,
+            "rev-list": 1,
+            "update-ref": 2
+          },
+          "topLevel": {
+            "commands": [
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "rev-parse",
+                "--verify",
+                "--quiet",
+                "HEAD^{commit}"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "symbolic-ref",
+                "--quiet",
+                "--short",
+                "HEAD"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "fetch",
+                "--no-tags",
+                "/var/folders/kt/qwk3wjvj3t97b1_z2pj4r4sm0000gn/T/hb-cell-exit-TYlSu9/branch-create-1/cell/space",
+                "+HEAD:refs/hive/capture/cell-exit-branch-create-1-15"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "rev-parse",
+                "--verify",
+                "--quiet",
+                "refs/heads/capture-target^{commit}"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "update-ref",
+                "refs/heads/capture-target",
+                "6fea535fedcdfc9dbcccc1b902d260bf23ce8c7e",
+                ""
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "update-ref",
+                "-d",
+                "refs/hive/capture/cell-exit-branch-create-1-15"
+              ]
+            ],
+            "commandCount": 6,
+            "wallMs": 14.283999999999999
+          },
+          "artifact": {
+            "path": "/private/tmp/honeybee-perf-5763a6c9-20260907/evidence/mini-cell-tree-ab-smoke.json.branch-create.1.trace2.jsonl",
+            "bytes": 15651,
+            "sha256": "54ddd8cacd24570715d039a146cdf11da005c0f31871f2eba96900202a1a364c"
+          }
+        }
+      }
+    },
+    {
+      "case": "nothing",
+      "mode": "merge",
+      "setup": {
+        "baseSha": "f67fba303473aca5f1ef181a0140012c717e6e38",
+        "cellHead": "c5d3bec899f4c78bb8a5f1593de9779a2e4da6e8",
+        "targetTip": "536c8604aedaebc4d78c593b707dc0d2f2da59c4",
+        "targetBranch": "capture-target",
+        "landedSha": null
+      },
+      "raw": [
+        {
+          "wallMs": [
+            37.714749999999185,
+            37.405666000002384,
+            37.016333999999915,
+            37.318209000000934,
+            37.1282919999976,
+            37.27970899999855
+          ],
+          "cpuMs": [
+            1.482,
+            1.378,
+            1.419,
+            1.354,
+            1.293,
+            1.293
+          ]
+        },
+        {
+          "wallMs": [
+            37.4575420000001,
+            38.20854200000031,
+            37.553916999997455,
+            36.97450000000026,
+            37.86766600000192,
+            37.16716699999961
+          ],
+          "cpuMs": [
+            1.459,
+            1.516,
+            1.523,
+            1.379,
+            1.373,
+            1.376
+          ]
+        }
+      ],
+      "order": [
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0
+      ],
+      "metrics": {
+        "before.wallMs": {
+          "n": 6,
+          "min": 37.016333999999915,
+          "p50": 37.27970899999855,
+          "p95": 37.714749999999185,
+          "max": 37.714749999999185,
+          "mean": 37.31049333333309
+        },
+        "before.cpuMs": {
+          "n": 6,
+          "min": 1.293,
+          "p50": 1.354,
+          "p95": 1.482,
+          "max": 1.482,
+          "mean": 1.3698333333333332
+        },
+        "after.wallMs": {
+          "n": 6,
+          "min": 36.97450000000026,
+          "p50": 37.4575420000001,
+          "p95": 38.20854200000031,
+          "max": 38.20854200000031,
+          "mean": 37.53822233333327
+        },
+        "after.cpuMs": {
+          "n": 6,
+          "min": 1.373,
+          "p50": 1.379,
+          "p95": 1.523,
+          "max": 1.523,
+          "mean": 1.4376666666666669
+        }
+      },
+      "trace2": {
+        "diagnosticOnly": true,
+        "before": {
+          "processes": 8,
+          "children": 2,
+          "commands": {
+            "rev-parse": 2,
+            "symbolic-ref": 1,
+            "fetch": 1,
+            "upload-pack": 1,
+            "rev-list": 1,
+            "merge-base": 1,
+            "update-ref": 1
+          },
+          "topLevel": {
+            "commands": [
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "rev-parse",
+                "--verify",
+                "--quiet",
+                "HEAD^{commit}"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "symbolic-ref",
+                "--quiet",
+                "--short",
+                "HEAD"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "fetch",
+                "--no-tags",
+                "/var/folders/kt/qwk3wjvj3t97b1_z2pj4r4sm0000gn/T/hb-cell-exit-TYlSu9/nothing-0/cell/space",
+                "+HEAD:refs/hive/capture/cell-exit-nothing-0-14"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "rev-parse",
+                "--verify",
+                "--quiet",
+                "refs/heads/capture-target^{commit}"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "merge-base",
+                "--is-ancestor",
+                "c5d3bec899f4c78bb8a5f1593de9779a2e4da6e8",
+                "536c8604aedaebc4d78c593b707dc0d2f2da59c4"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "update-ref",
+                "-d",
+                "refs/hive/capture/cell-exit-nothing-0-14"
+              ]
+            ],
+            "commandCount": 6,
+            "wallMs": 14.145
+          },
+          "artifact": {
+            "path": "/private/tmp/honeybee-perf-5763a6c9-20260907/evidence/mini-cell-tree-ab-smoke.json.nothing.0.trace2.jsonl",
+            "bytes": 15593,
+            "sha256": "b13517846d732f8c51db1b71b2698c4651ad1dfb319281f9742249cae26102a3"
+          }
+        },
+        "after": {
+          "processes": 8,
+          "children": 2,
+          "commands": {
+            "rev-parse": 2,
+            "symbolic-ref": 1,
+            "fetch": 1,
+            "upload-pack": 1,
+            "rev-list": 1,
+            "merge-base": 1,
+            "update-ref": 1
+          },
+          "topLevel": {
+            "commands": [
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "rev-parse",
+                "--verify",
+                "--quiet",
+                "HEAD^{commit}"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "symbolic-ref",
+                "--quiet",
+                "--short",
+                "HEAD"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "fetch",
+                "--no-tags",
+                "/var/folders/kt/qwk3wjvj3t97b1_z2pj4r4sm0000gn/T/hb-cell-exit-TYlSu9/nothing-1/cell/space",
+                "+HEAD:refs/hive/capture/cell-exit-nothing-1-15"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "rev-parse",
+                "--verify",
+                "--quiet",
+                "refs/heads/capture-target^{commit}"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "merge-base",
+                "--is-ancestor",
+                "c5d3bec899f4c78bb8a5f1593de9779a2e4da6e8",
+                "536c8604aedaebc4d78c593b707dc0d2f2da59c4"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "update-ref",
+                "-d",
+                "refs/hive/capture/cell-exit-nothing-1-15"
+              ]
+            ],
+            "commandCount": 6,
+            "wallMs": 14.477
+          },
+          "artifact": {
+            "path": "/private/tmp/honeybee-perf-5763a6c9-20260907/evidence/mini-cell-tree-ab-smoke.json.nothing.1.trace2.jsonl",
+            "bytes": 15593,
+            "sha256": "c50d1fb93cd4e8f0aa57da8283790e4f3c9e130f38f0d667b75cd1da98f5f2da"
+          }
+        }
+      }
+    },
+    {
+      "case": "refused-checked-out",
+      "mode": "merge",
+      "setup": {
+        "baseSha": "f67fba303473aca5f1ef181a0140012c717e6e38",
+        "cellHead": "16bf7dda0f28d1e883a36567c3fcb024f7154b97",
+        "targetTip": null,
+        "targetBranch": "main",
+        "landedSha": null
+      },
+      "raw": [
+        {
+          "wallMs": [
+            9.426250000000437,
+            9.27495899999849,
+            9.46900000000096,
+            9.522874999998749,
+            9.469750000000204,
+            9.565875000000233
+          ],
+          "cpuMs": [
+            0.486,
+            0.446,
+            0.496,
+            0.503,
+            0.446,
+            0.474
+          ]
+        },
+        {
+          "wallMs": [
+            9.389499999997497,
+            9.296708000001672,
+            9.293375000001106,
+            9.501208000001498,
+            9.240458000000217,
+            9.503292000001238
+          ],
+          "cpuMs": [
+            0.475,
+            0.463,
+            0.46,
+            0.47,
+            0.471,
+            0.438
+          ]
+        }
+      ],
+      "order": [
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0
+      ],
+      "metrics": {
+        "before.wallMs": {
+          "n": 6,
+          "min": 9.27495899999849,
+          "p50": 9.46900000000096,
+          "p95": 9.565875000000233,
+          "max": 9.565875000000233,
+          "mean": 9.454784833333179
+        },
+        "before.cpuMs": {
+          "n": 6,
+          "min": 0.446,
+          "p50": 0.474,
+          "p95": 0.503,
+          "max": 0.503,
+          "mean": 0.4751666666666667
+        },
+        "after.wallMs": {
+          "n": 6,
+          "min": 9.240458000000217,
+          "p50": 9.296708000001672,
+          "p95": 9.503292000001238,
+          "max": 9.503292000001238,
+          "mean": 9.370756833333871
+        },
+        "after.cpuMs": {
+          "n": 6,
+          "min": 0.438,
+          "p50": 0.463,
+          "p95": 0.475,
+          "max": 0.475,
+          "mean": 0.4628333333333334
+        }
+      },
+      "trace2": {
+        "diagnosticOnly": true,
+        "before": {
+          "processes": 2,
+          "children": 0,
+          "commands": {
+            "rev-parse": 1,
+            "symbolic-ref": 1
+          },
+          "topLevel": {
+            "commands": [
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "rev-parse",
+                "--verify",
+                "--quiet",
+                "HEAD^{commit}"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "symbolic-ref",
+                "--quiet",
+                "--short",
+                "HEAD"
+              ]
+            ],
+            "commandCount": 2,
+            "wallMs": 1.654
+          },
+          "artifact": {
+            "path": "/private/tmp/honeybee-perf-5763a6c9-20260907/evidence/mini-cell-tree-ab-smoke.json.refused-checked-out.0.trace2.jsonl",
+            "bytes": 2661,
+            "sha256": "b846d279d5d739c4f3d6ce0716651cd84ceb720768a746f70caba071abe6f324"
+          }
+        },
+        "after": {
+          "processes": 2,
+          "children": 0,
+          "commands": {
+            "rev-parse": 1,
+            "symbolic-ref": 1
+          },
+          "topLevel": {
+            "commands": [
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "rev-parse",
+                "--verify",
+                "--quiet",
+                "HEAD^{commit}"
+              ],
+              [
+                "/Library/Developer/CommandLineTools/usr/bin/git",
+                "symbolic-ref",
+                "--quiet",
+                "--short",
+                "HEAD"
+              ]
+            ],
+            "commandCount": 2,
+            "wallMs": 1.637
+          },
+          "artifact": {
+            "path": "/private/tmp/honeybee-perf-5763a6c9-20260907/evidence/mini-cell-tree-ab-smoke.json.refused-checked-out.1.trace2.jsonl",
+            "bytes": 2661,
+            "sha256": "84050eb44c5efe147c89063c30c9282a26f0c6437e253a67a500b6031615deb1"
+          }
+        }
+      }
+    }
+  ],
+  "rows": [
+    {
+      "case": "merge-land",
+      "metric": "wallMs",
+      "before": {
+        "n": 6,
+        "min": 98.36454200000003,
+        "p50": 98.99454200000014,
+        "p95": 112.60533299999997,
+        "max": 112.60533299999997,
+        "mean": 101.33861116666674
+      },
+      "after": {
+        "n": 6,
+        "min": 88.47250000000031,
+        "p50": 88.74204200000031,
+        "p95": 89.73708300000021,
+        "max": 89.73708300000021,
+        "mean": 88.99903466666672
+      },
+      "deltaPercent": -10.356631580759078
+    },
+    {
+      "case": "merge-land",
+      "metric": "cpuMs",
+      "before": {
+        "n": 6,
+        "min": 5.715,
+        "p50": 5.857,
+        "p95": 7.204,
+        "max": 7.204,
+        "mean": 6.127
+      },
+      "after": {
+        "n": 6,
+        "min": 4.985,
+        "p50": 5.147,
+        "p95": 5.302,
+        "max": 5.302,
+        "mean": 5.149333333333334
+      },
+      "deltaPercent": -12.122246884070343
+    },
+    {
+      "case": "rebase-land",
+      "metric": "wallMs",
+      "before": {
+        "n": 6,
+        "min": 103.51929199999995,
+        "p50": 103.7186670000001,
+        "p95": 104.44558400000005,
+        "max": 104.44558400000005,
+        "mean": 103.92503483333348
+      },
+      "after": {
+        "n": 6,
+        "min": 103.43008299999929,
+        "p50": 103.8301249999995,
+        "p95": 104.65741699999944,
+        "max": 104.65741699999944,
+        "mean": 104.05400666666628
+      },
+      "deltaPercent": 0.10746185158685417
+    },
+    {
+      "case": "rebase-land",
+      "metric": "cpuMs",
+      "before": {
+        "n": 6,
+        "min": 5.642,
+        "p50": 5.747,
+        "p95": 5.963,
+        "max": 5.963,
+        "mean": 5.776666666666667
+      },
+      "after": {
+        "n": 6,
+        "min": 5.767,
+        "p50": 5.826,
+        "p95": 6.044,
+        "max": 6.044,
+        "mean": 5.894833333333334
+      },
+      "deltaPercent": 1.3746302418653267
+    },
+    {
+      "case": "merge-conflict",
+      "metric": "wallMs",
+      "before": {
+        "n": 6,
+        "min": 88.53883300000052,
+        "p50": 88.83716599999934,
+        "p95": 89.6770830000005,
+        "max": 89.6770830000005,
+        "mean": 89.10628450000013
+      },
+      "after": {
+        "n": 6,
+        "min": 99.7949580000004,
+        "p50": 100.00158300000021,
+        "p95": 101.19241599999987,
+        "max": 101.19241599999987,
+        "mean": 100.35779816666688
+      },
+      "deltaPercent": 12.567281806356757
+    },
+    {
+      "case": "merge-conflict",
+      "metric": "cpuMs",
+      "before": {
+        "n": 6,
+        "min": 5.441,
+        "p50": 5.545,
+        "p95": 5.72,
+        "max": 5.72,
+        "mean": 5.579666666666665
+      },
+      "after": {
+        "n": 6,
+        "min": 6.137,
+        "p50": 6.176,
+        "p95": 6.286,
+        "max": 6.286,
+        "mean": 6.208500000000001
+      },
+      "deltaPercent": 11.379621280432817
+    },
+    {
+      "case": "rebase-conflict",
+      "metric": "wallMs",
+      "before": {
+        "n": 6,
+        "min": 93.17999999999847,
+        "p50": 94.26675000000068,
+        "p95": 95.28654199999983,
+        "max": 95.28654199999983,
+        "mean": 94.28875699999996
+      },
+      "after": {
+        "n": 6,
+        "min": 93.59220800000003,
+        "p50": 94.58308299999953,
+        "p95": 108.74295800000073,
+        "max": 108.74295800000073,
+        "mean": 96.69534016666664
+      },
+      "deltaPercent": 0.33557219273905314
+    },
+    {
+      "case": "rebase-conflict",
+      "metric": "cpuMs",
+      "before": {
+        "n": 6,
+        "min": 5.644,
+        "p50": 5.7,
+        "p95": 6.067,
+        "max": 6.067,
+        "mean": 5.777833333333334
+      },
+      "after": {
+        "n": 6,
+        "min": 5.596,
+        "p50": 5.681,
+        "p95": 5.849,
+        "max": 5.849,
+        "mean": 5.726333333333334
+      },
+      "deltaPercent": -0.33333333333334103
+    },
+    {
+      "case": "fast-forward",
+      "metric": "wallMs",
+      "before": {
+        "n": 6,
+        "min": 47.115625000000364,
+        "p50": 47.5358750000014,
+        "p95": 52.46020900000076,
+        "max": 52.46020900000076,
+        "mean": 48.312548500000354
+      },
+      "after": {
+        "n": 6,
+        "min": 47.22041700000045,
+        "p50": 47.464625000000524,
+        "p95": 47.732708999999886,
+        "max": 47.732708999999886,
+        "mean": 47.489132000000005
+      },
+      "deltaPercent": -0.14988679602694344
+    },
+    {
+      "case": "fast-forward",
+      "metric": "cpuMs",
+      "before": {
+        "n": 6,
+        "min": 1.817,
+        "p50": 1.904,
+        "p95": 2.504,
+        "max": 2.504,
+        "mean": 2.0013333333333336
+      },
+      "after": {
+        "n": 6,
+        "min": 1.786,
+        "p50": 1.858,
+        "p95": 1.909,
+        "max": 1.909,
+        "mean": 1.8595
+      },
+      "deltaPercent": -2.4159663865546133
+    },
+    {
+      "case": "branch-create",
+      "metric": "wallMs",
+      "before": {
+        "n": 6,
+        "min": 37.16599999999926,
+        "p50": 37.23925000000054,
+        "p95": 37.8690000000006,
+        "max": 37.8690000000006,
+        "mean": 37.40296549999979
+      },
+      "after": {
+        "n": 6,
+        "min": 37.06804200000079,
+        "p50": 37.21141700000044,
+        "p95": 37.48175000000083,
+        "max": 37.48175000000083,
+        "mean": 37.27122216666703
+      },
+      "deltaPercent": -0.07474103264727416
+    },
+    {
+      "case": "branch-create",
+      "metric": "cpuMs",
+      "before": {
+        "n": 6,
+        "min": 1.282,
+        "p50": 1.399,
+        "p95": 1.477,
+        "max": 1.477,
+        "mean": 1.3926666666666667
+      },
+      "after": {
+        "n": 6,
+        "min": 1.386,
+        "p50": 1.441,
+        "p95": 1.763,
+        "max": 1.763,
+        "mean": 1.5116666666666667
+      },
+      "deltaPercent": 3.0021443888491817
+    },
+    {
+      "case": "nothing",
+      "metric": "wallMs",
+      "before": {
+        "n": 6,
+        "min": 37.016333999999915,
+        "p50": 37.27970899999855,
+        "p95": 37.714749999999185,
+        "max": 37.714749999999185,
+        "mean": 37.31049333333309
+      },
+      "after": {
+        "n": 6,
+        "min": 36.97450000000026,
+        "p50": 37.4575420000001,
+        "p95": 38.20854200000031,
+        "max": 38.20854200000031,
+        "mean": 37.53822233333327
+      },
+      "deltaPercent": 0.4770235733373429
+    },
+    {
+      "case": "nothing",
+      "metric": "cpuMs",
+      "before": {
+        "n": 6,
+        "min": 1.293,
+        "p50": 1.354,
+        "p95": 1.482,
+        "max": 1.482,
+        "mean": 1.3698333333333332
+      },
+      "after": {
+        "n": 6,
+        "min": 1.373,
+        "p50": 1.379,
+        "p95": 1.523,
+        "max": 1.523,
+        "mean": 1.4376666666666669
+      },
+      "deltaPercent": 1.846381093057592
+    },
+    {
+      "case": "refused-checked-out",
+      "metric": "wallMs",
+      "before": {
+        "n": 6,
+        "min": 9.27495899999849,
+        "p50": 9.46900000000096,
+        "p95": 9.565875000000233,
+        "max": 9.565875000000233,
+        "mean": 9.454784833333179
+      },
+      "after": {
+        "n": 6,
+        "min": 9.240458000000217,
+        "p50": 9.296708000001672,
+        "p95": 9.503292000001238,
+        "max": 9.503292000001238,
+        "mean": 9.370756833333871
+      },
+      "deltaPercent": -1.819537437947727
+    },
+    {
+      "case": "refused-checked-out",
+      "metric": "cpuMs",
+      "before": {
+        "n": 6,
+        "min": 0.446,
+        "p50": 0.474,
+        "p95": 0.503,
+        "max": 0.503,
+        "mean": 0.4751666666666667
+      },
+      "after": {
+        "n": 6,
+        "min": 0.438,
+        "p50": 0.463,
+        "p95": 0.475,
+        "max": 0.475,
+        "mean": 0.4628333333333334
+      },
+      "deltaPercent": -2.320675105485226
+    }
+  ],
+  "failure": null,
+  "scope": "Real captureWork from both roots over disposable deterministic Git repositories. Wall time includes synchronous git children; cpuMs is the PARENT process only and excludes git child CPU. Trace2 process counts come from one separate diagnostic sample per side and are attribution evidence, never timing. Fixture setup, expectation checks, ref-set resets, and cleanup are outside timed samples. No production store, daemon, RPC, or provisioning is involved; nothing here measures whole-daemon behavior."
+}
