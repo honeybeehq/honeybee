@@ -1,0 +1,1053 @@
+{
+  "completed": true,
+  "node": "v24.20.0",
+  "sqlite": {
+    "version": "3.53.4"
+  },
+  "scope": "Structural scratch on actual schema, 20 public-API rows, no performance timing claims.",
+  "results": {
+    "pending": {
+      "sql": "SELECT COUNT(*) AS count, MAX(id) AS maxId FROM mailbox WHERE bee_id = ? AND delivered_at IS NULL",
+      "rows": [
+        {
+          "count": 7,
+          "maxId": 19
+        }
+      ],
+      "plan": [
+        {
+          "id": 3,
+          "parent": 0,
+          "notused": 55,
+          "detail": "SEARCH mailbox USING COVERING INDEX mailbox_pending_metadata (bee_id=?)"
+        }
+      ],
+      "opcodes": [
+        {
+          "addr": 0,
+          "opcode": "Init",
+          "p1": 0,
+          "p2": 18,
+          "p3": 0,
+          "p4": null,
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 1,
+          "opcode": "Null",
+          "p1": 0,
+          "p2": 1,
+          "p3": 3,
+          "p4": null,
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 2,
+          "opcode": "OpenRead",
+          "p1": 1,
+          "p2": 75,
+          "p3": 0,
+          "p4": "k(6,,,,,,)",
+          "p5": 2,
+          "comment": null
+        },
+        {
+          "addr": 3,
+          "opcode": "Variable",
+          "p1": 1,
+          "p2": 4,
+          "p3": 0,
+          "p4": null,
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 4,
+          "opcode": "IsNull",
+          "p1": 4,
+          "p2": 13,
+          "p3": 0,
+          "p4": null,
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 5,
+          "opcode": "Affinity",
+          "p1": 4,
+          "p2": 1,
+          "p3": 0,
+          "p4": "B",
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 6,
+          "opcode": "SeekGE",
+          "p1": 1,
+          "p2": 13,
+          "p3": 4,
+          "p4": "1",
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 7,
+          "opcode": "IdxGT",
+          "p1": 1,
+          "p2": 13,
+          "p3": 4,
+          "p4": "1",
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 8,
+          "opcode": "AggStep",
+          "p1": 0,
+          "p2": 0,
+          "p3": 2,
+          "p4": "count(0)",
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 9,
+          "opcode": "IdxRowid",
+          "p1": 1,
+          "p2": 5,
+          "p3": 0,
+          "p4": null,
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 10,
+          "opcode": "CollSeq",
+          "p1": 0,
+          "p2": 0,
+          "p3": 0,
+          "p4": "BINARY-8",
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 11,
+          "opcode": "AggStep",
+          "p1": 0,
+          "p2": 5,
+          "p3": 3,
+          "p4": "max(1)",
+          "p5": 1,
+          "comment": null
+        },
+        {
+          "addr": 12,
+          "opcode": "Next",
+          "p1": 1,
+          "p2": 7,
+          "p3": 0,
+          "p4": null,
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 13,
+          "opcode": "AggFinal",
+          "p1": 2,
+          "p2": 0,
+          "p3": 0,
+          "p4": "count(0)",
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 14,
+          "opcode": "AggFinal",
+          "p1": 3,
+          "p2": 1,
+          "p3": 0,
+          "p4": "max(1)",
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 15,
+          "opcode": "Copy",
+          "p1": 2,
+          "p2": 6,
+          "p3": 1,
+          "p4": null,
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 16,
+          "opcode": "ResultRow",
+          "p1": 6,
+          "p2": 2,
+          "p3": 0,
+          "p4": null,
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 17,
+          "opcode": "Halt",
+          "p1": 0,
+          "p2": 0,
+          "p3": 0,
+          "p4": null,
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 18,
+          "opcode": "Transaction",
+          "p1": 0,
+          "p2": 0,
+          "p3": 51,
+          "p4": "0",
+          "p5": 1,
+          "comment": null
+        },
+        {
+          "addr": 19,
+          "opcode": "Goto",
+          "p1": 0,
+          "p2": 1,
+          "p3": 0,
+          "p4": null,
+          "p5": 0,
+          "comment": null
+        }
+      ]
+    },
+    "delivered": {
+      "sql": "SELECT COUNT(*) AS count, MAX(id) AS maxId FROM mailbox WHERE bee_id = ? AND delivered_at IS NOT NULL",
+      "rows": [
+        {
+          "count": 13,
+          "maxId": 20
+        }
+      ],
+      "plan": [
+        {
+          "id": 4,
+          "parent": 0,
+          "notused": 61,
+          "detail": "SEARCH mailbox USING INDEX mailbox_delivered_by_bee (bee_id=?)"
+        }
+      ],
+      "opcodes": [
+        {
+          "addr": 0,
+          "opcode": "Init",
+          "p1": 0,
+          "p2": 20,
+          "p3": 0,
+          "p4": null,
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 1,
+          "opcode": "Null",
+          "p1": 0,
+          "p2": 1,
+          "p3": 3,
+          "p4": null,
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 2,
+          "opcode": "OpenRead",
+          "p1": 0,
+          "p2": 16,
+          "p3": 0,
+          "p4": "8",
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 3,
+          "opcode": "OpenRead",
+          "p1": 1,
+          "p2": 17,
+          "p3": 0,
+          "p4": "k(2,,)",
+          "p5": 2,
+          "comment": null
+        },
+        {
+          "addr": 4,
+          "opcode": "Variable",
+          "p1": 1,
+          "p2": 4,
+          "p3": 0,
+          "p4": null,
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 5,
+          "opcode": "IsNull",
+          "p1": 4,
+          "p2": 15,
+          "p3": 0,
+          "p4": null,
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 6,
+          "opcode": "Affinity",
+          "p1": 4,
+          "p2": 1,
+          "p3": 0,
+          "p4": "B",
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 7,
+          "opcode": "SeekGE",
+          "p1": 1,
+          "p2": 15,
+          "p3": 4,
+          "p4": "1",
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 8,
+          "opcode": "IdxGT",
+          "p1": 1,
+          "p2": 15,
+          "p3": 4,
+          "p4": "1",
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 9,
+          "opcode": "DeferredSeek",
+          "p1": 1,
+          "p2": 0,
+          "p3": 0,
+          "p4": null,
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 10,
+          "opcode": "AggStep",
+          "p1": 0,
+          "p2": 0,
+          "p3": 2,
+          "p4": "count(0)",
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 11,
+          "opcode": "IdxRowid",
+          "p1": 1,
+          "p2": 5,
+          "p3": 0,
+          "p4": null,
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 12,
+          "opcode": "CollSeq",
+          "p1": 0,
+          "p2": 0,
+          "p3": 0,
+          "p4": "BINARY-8",
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 13,
+          "opcode": "AggStep",
+          "p1": 0,
+          "p2": 5,
+          "p3": 3,
+          "p4": "max(1)",
+          "p5": 1,
+          "comment": null
+        },
+        {
+          "addr": 14,
+          "opcode": "Next",
+          "p1": 1,
+          "p2": 8,
+          "p3": 1,
+          "p4": null,
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 15,
+          "opcode": "AggFinal",
+          "p1": 2,
+          "p2": 0,
+          "p3": 0,
+          "p4": "count(0)",
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 16,
+          "opcode": "AggFinal",
+          "p1": 3,
+          "p2": 1,
+          "p3": 0,
+          "p4": "max(1)",
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 17,
+          "opcode": "Copy",
+          "p1": 2,
+          "p2": 6,
+          "p3": 1,
+          "p4": null,
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 18,
+          "opcode": "ResultRow",
+          "p1": 6,
+          "p2": 2,
+          "p3": 0,
+          "p4": null,
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 19,
+          "opcode": "Halt",
+          "p1": 0,
+          "p2": 0,
+          "p3": 0,
+          "p4": null,
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 20,
+          "opcode": "Transaction",
+          "p1": 0,
+          "p2": 0,
+          "p3": 51,
+          "p4": "0",
+          "p5": 1,
+          "comment": null
+        },
+        {
+          "addr": 21,
+          "opcode": "Goto",
+          "p1": 0,
+          "p2": 1,
+          "p3": 0,
+          "p4": null,
+          "p5": 0,
+          "comment": null
+        }
+      ]
+    },
+    "combined": {
+      "sql": "SELECT SUM(count) AS count, MAX(maxId) AS maxId FROM (SELECT COUNT(*) AS count, MAX(id) AS maxId FROM mailbox WHERE bee_id = ? AND delivered_at IS NULL UNION ALL SELECT COUNT(*) AS count, MAX(id) AS maxId FROM mailbox WHERE bee_id = ? AND delivered_at IS NOT NULL)",
+      "rows": [
+        {
+          "count": 20,
+          "maxId": 20
+        }
+      ],
+      "plan": [
+        {
+          "id": 2,
+          "parent": 0,
+          "notused": 0,
+          "detail": "CO-ROUTINE (subquery-2)"
+        },
+        {
+          "id": 3,
+          "parent": 2,
+          "notused": 0,
+          "detail": "COMPOUND QUERY"
+        },
+        {
+          "id": 4,
+          "parent": 3,
+          "notused": 0,
+          "detail": "LEFT-MOST SUBQUERY"
+        },
+        {
+          "id": 7,
+          "parent": 4,
+          "notused": 55,
+          "detail": "SEARCH mailbox USING COVERING INDEX mailbox_pending_metadata (bee_id=?)"
+        },
+        {
+          "id": 22,
+          "parent": 3,
+          "notused": 0,
+          "detail": "UNION ALL"
+        },
+        {
+          "id": 26,
+          "parent": 22,
+          "notused": 61,
+          "detail": "SEARCH mailbox USING INDEX mailbox_delivered_by_bee (bee_id=?)"
+        },
+        {
+          "id": 44,
+          "parent": 0,
+          "notused": 26,
+          "detail": "SCAN (subquery-2)"
+        }
+      ],
+      "opcodes": [
+        {
+          "addr": 0,
+          "opcode": "Init",
+          "p1": 0,
+          "p2": 51,
+          "p3": 0,
+          "p4": null,
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 1,
+          "opcode": "InitCoroutine",
+          "p1": 1,
+          "p2": 37,
+          "p3": 2,
+          "p4": null,
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 2,
+          "opcode": "Null",
+          "p1": 0,
+          "p2": 2,
+          "p3": 4,
+          "p4": null,
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 3,
+          "opcode": "OpenRead",
+          "p1": 3,
+          "p2": 75,
+          "p3": 0,
+          "p4": "k(6,,,,,,)",
+          "p5": 2,
+          "comment": null
+        },
+        {
+          "addr": 4,
+          "opcode": "Variable",
+          "p1": 1,
+          "p2": 5,
+          "p3": 0,
+          "p4": null,
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 5,
+          "opcode": "IsNull",
+          "p1": 5,
+          "p2": 14,
+          "p3": 0,
+          "p4": null,
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 6,
+          "opcode": "Affinity",
+          "p1": 5,
+          "p2": 1,
+          "p3": 0,
+          "p4": "B",
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 7,
+          "opcode": "SeekGE",
+          "p1": 3,
+          "p2": 14,
+          "p3": 5,
+          "p4": "1",
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 8,
+          "opcode": "IdxGT",
+          "p1": 3,
+          "p2": 14,
+          "p3": 5,
+          "p4": "1",
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 9,
+          "opcode": "AggStep",
+          "p1": 0,
+          "p2": 0,
+          "p3": 3,
+          "p4": "count(0)",
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 10,
+          "opcode": "IdxRowid",
+          "p1": 3,
+          "p2": 6,
+          "p3": 0,
+          "p4": null,
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 11,
+          "opcode": "CollSeq",
+          "p1": 0,
+          "p2": 0,
+          "p3": 0,
+          "p4": "BINARY-8",
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 12,
+          "opcode": "AggStep",
+          "p1": 0,
+          "p2": 6,
+          "p3": 4,
+          "p4": "max(1)",
+          "p5": 1,
+          "comment": null
+        },
+        {
+          "addr": 13,
+          "opcode": "Next",
+          "p1": 3,
+          "p2": 8,
+          "p3": 0,
+          "p4": null,
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 14,
+          "opcode": "AggFinal",
+          "p1": 3,
+          "p2": 0,
+          "p3": 0,
+          "p4": "count(0)",
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 15,
+          "opcode": "AggFinal",
+          "p1": 4,
+          "p2": 1,
+          "p3": 0,
+          "p4": "max(1)",
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 16,
+          "opcode": "Copy",
+          "p1": 3,
+          "p2": 7,
+          "p3": 1,
+          "p4": null,
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 17,
+          "opcode": "Yield",
+          "p1": 1,
+          "p2": 0,
+          "p3": 0,
+          "p4": null,
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 18,
+          "opcode": "Null",
+          "p1": 0,
+          "p2": 9,
+          "p3": 11,
+          "p4": null,
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 19,
+          "opcode": "OpenRead",
+          "p1": 1,
+          "p2": 16,
+          "p3": 0,
+          "p4": "8",
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 20,
+          "opcode": "OpenRead",
+          "p1": 4,
+          "p2": 17,
+          "p3": 0,
+          "p4": "k(2,,)",
+          "p5": 2,
+          "comment": null
+        },
+        {
+          "addr": 21,
+          "opcode": "Variable",
+          "p1": 2,
+          "p2": 12,
+          "p3": 0,
+          "p4": null,
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 22,
+          "opcode": "IsNull",
+          "p1": 12,
+          "p2": 32,
+          "p3": 0,
+          "p4": null,
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 23,
+          "opcode": "Affinity",
+          "p1": 12,
+          "p2": 1,
+          "p3": 0,
+          "p4": "B",
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 24,
+          "opcode": "SeekGE",
+          "p1": 4,
+          "p2": 32,
+          "p3": 12,
+          "p4": "1",
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 25,
+          "opcode": "IdxGT",
+          "p1": 4,
+          "p2": 32,
+          "p3": 12,
+          "p4": "1",
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 26,
+          "opcode": "DeferredSeek",
+          "p1": 4,
+          "p2": 0,
+          "p3": 1,
+          "p4": null,
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 27,
+          "opcode": "AggStep",
+          "p1": 0,
+          "p2": 0,
+          "p3": 10,
+          "p4": "count(0)",
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 28,
+          "opcode": "IdxRowid",
+          "p1": 4,
+          "p2": 6,
+          "p3": 0,
+          "p4": null,
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 29,
+          "opcode": "CollSeq",
+          "p1": 0,
+          "p2": 0,
+          "p3": 0,
+          "p4": "BINARY-8",
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 30,
+          "opcode": "AggStep",
+          "p1": 0,
+          "p2": 6,
+          "p3": 11,
+          "p4": "max(1)",
+          "p5": 1,
+          "comment": null
+        },
+        {
+          "addr": 31,
+          "opcode": "Next",
+          "p1": 4,
+          "p2": 25,
+          "p3": 1,
+          "p4": null,
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 32,
+          "opcode": "AggFinal",
+          "p1": 10,
+          "p2": 0,
+          "p3": 0,
+          "p4": "count(0)",
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 33,
+          "opcode": "AggFinal",
+          "p1": 11,
+          "p2": 1,
+          "p3": 0,
+          "p4": "max(1)",
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 34,
+          "opcode": "Copy",
+          "p1": 10,
+          "p2": 7,
+          "p3": 1,
+          "p4": null,
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 35,
+          "opcode": "Yield",
+          "p1": 1,
+          "p2": 0,
+          "p3": 0,
+          "p4": null,
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 36,
+          "opcode": "EndCoroutine",
+          "p1": 1,
+          "p2": 0,
+          "p3": 0,
+          "p4": null,
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 37,
+          "opcode": "Null",
+          "p1": 0,
+          "p2": 13,
+          "p3": 16,
+          "p4": null,
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 38,
+          "opcode": "InitCoroutine",
+          "p1": 1,
+          "p2": 0,
+          "p3": 2,
+          "p4": null,
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 39,
+          "opcode": "Yield",
+          "p1": 1,
+          "p2": 46,
+          "p3": 0,
+          "p4": null,
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 40,
+          "opcode": "Copy",
+          "p1": 7,
+          "p2": 17,
+          "p3": 0,
+          "p4": null,
+          "p5": 2,
+          "comment": null
+        },
+        {
+          "addr": 41,
+          "opcode": "AggStep",
+          "p1": 0,
+          "p2": 17,
+          "p3": 15,
+          "p4": "sum(1)",
+          "p5": 1,
+          "comment": null
+        },
+        {
+          "addr": 42,
+          "opcode": "Copy",
+          "p1": 8,
+          "p2": 17,
+          "p3": 0,
+          "p4": null,
+          "p5": 2,
+          "comment": null
+        },
+        {
+          "addr": 43,
+          "opcode": "CollSeq",
+          "p1": 0,
+          "p2": 0,
+          "p3": 0,
+          "p4": "BINARY-8",
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 44,
+          "opcode": "AggStep",
+          "p1": 0,
+          "p2": 17,
+          "p3": 16,
+          "p4": "max(1)",
+          "p5": 1,
+          "comment": null
+        },
+        {
+          "addr": 45,
+          "opcode": "Goto",
+          "p1": 0,
+          "p2": 39,
+          "p3": 0,
+          "p4": null,
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 46,
+          "opcode": "AggFinal",
+          "p1": 15,
+          "p2": 1,
+          "p3": 0,
+          "p4": "sum(1)",
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 47,
+          "opcode": "AggFinal",
+          "p1": 16,
+          "p2": 1,
+          "p3": 0,
+          "p4": "max(1)",
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 48,
+          "opcode": "Copy",
+          "p1": 15,
+          "p2": 18,
+          "p3": 1,
+          "p4": null,
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 49,
+          "opcode": "ResultRow",
+          "p1": 18,
+          "p2": 2,
+          "p3": 0,
+          "p4": null,
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 50,
+          "opcode": "Halt",
+          "p1": 0,
+          "p2": 0,
+          "p3": 0,
+          "p4": null,
+          "p5": 0,
+          "comment": null
+        },
+        {
+          "addr": 51,
+          "opcode": "Transaction",
+          "p1": 0,
+          "p2": 0,
+          "p3": 51,
+          "p4": "0",
+          "p5": 1,
+          "comment": null
+        },
+        {
+          "addr": 52,
+          "opcode": "Goto",
+          "p1": 0,
+          "p2": 1,
+          "p3": 0,
+          "p4": null,
+          "p5": 0,
+          "comment": null
+        }
+      ]
+    }
+  }
+}

@@ -58,3 +58,5 @@ The [workflow](workflow.md) defines the completion predicate. [The decision log]
 [Mailbox statement reuse](mailbox-statement-cache-results.md) records the subsequent C03 gain. [Automatic-title investigation](autotitle-read-investigation.md) records call counts, rejected shortcuts and rollback constraints for future work.
 
 [Cell tag omission](cell-no-tags-results.md) records the accepted follow-up with paired wall, Git CPU, maximum individual RSS and temporary clone storage evidence.
+
+[Automatic-title architecture grounding](autotitle-architecture-grounding.md) records measured query costs and executable cache/transaction counterexamples. Design synthesis is pending; no title-cache production change is accepted.

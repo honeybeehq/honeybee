@@ -1,0 +1,25 @@
+{
+  "completed": true,
+  "scope": "Counterexamples to design predicates and independently paired dependency reads; this is not a test of an implemented optimization.",
+  "lastAtZero": {
+    "realDecision": {
+      "action": "generate"
+    },
+    "sketchSkips": true
+  },
+  "readThenMutate": {
+    "observedBodyCount": 1,
+    "currentBodyCount": 2,
+    "recordedStamp": "[2,2]",
+    "gateWouldSkip": true,
+    "expected": {
+      "action": "generate"
+    }
+  },
+  "speculativeReturnedSnapshot": {
+    "committedBefore": "[2,2]",
+    "committedAfter": "[2,2]",
+    "speculativeBodyCount": 3,
+    "committedBodyCount": 2
+  }
+}

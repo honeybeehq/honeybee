@@ -1,0 +1,10 @@
+{
+  "completed": true,
+  "scope": "Actual public nested transaction contract: caught inner error does not roll back its earlier SQL; outer transaction can commit it. A new version tracker must stage at SQL mutation, not successful method return. This is design evidence, not a proposed change to transaction semantics.",
+  "caught": true,
+  "committedBodies": [
+    "inserted before nested audit throws"
+  ],
+  "auditRowsBefore": 3,
+  "auditRowsAfter": 3
+}

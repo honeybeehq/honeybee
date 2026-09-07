@@ -1,0 +1,52 @@
+{
+  "completed": true,
+  "node": "v24.20.0",
+  "scope": "Actual node:sqlite authority connection; changes include rollback work and unrelated writes. Tokens would need separate store identity on reopen. No performance or cache implementation claim.",
+  "observations": [
+    {
+      "label": "initial",
+      "n": 9,
+      "inTransaction": false
+    },
+    {
+      "label": "send",
+      "n": 13,
+      "inTransaction": false
+    },
+    {
+      "label": "nested-write",
+      "n": 17,
+      "inTransaction": true
+    },
+    {
+      "label": "after-rollback",
+      "n": 17,
+      "inTransaction": false
+    },
+    {
+      "label": "missing-mark-throws",
+      "n": 17,
+      "inTransaction": false
+    },
+    {
+      "label": "delivery",
+      "n": 19,
+      "inTransaction": false
+    },
+    {
+      "label": "duplicate-delivery-audited-no-op",
+      "n": 20,
+      "inTransaction": false
+    },
+    {
+      "label": "delete-cascade",
+      "n": 26,
+      "inTransaction": false
+    },
+    {
+      "label": "reopened-new-instance",
+      "n": 3,
+      "inTransaction": false
+    }
+  ]
+}

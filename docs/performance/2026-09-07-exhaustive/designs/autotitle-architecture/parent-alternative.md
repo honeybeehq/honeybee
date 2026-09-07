@@ -1,0 +1,9 @@
+# Alternative to price before adding mailbox commit hooks
+
+A store-instance token plus SQLite total_changes() could invalidate daemon summaries conservatively without per-bee counters or transaction publication hooks. It would be checked only outside transactions. Any connection write, including unrelated durable activity and rolled-back work, would force a new read. A reopened CoreStore supplies a new identity so restore/import cannot reuse a prior instance token. The trusted store wrapper must pair a direct read with its token; arbitrary independently provided callbacks cannot guarantee that pairing.
+
+This is a hypothesis, not an accepted design. It trades false invalidations under a busy daemon for a small read-only core method and no new writable state. A quiet whole-store giant benefits; a giant sharing a daemon with any per-tick writer can still full-read every scan. Measure those two workloads explicitly before preferring it to the two authored alternatives. A global quiet shortcut followed by per-bee COUNT/MAX adds another cache tier and is not automatically justified. Do not layer it in without pricing the simpler designs.
+
+SQLite total_changes semantics need direct proofs for successful writes, nested rollback, cascade, no-op writes, and connection replacement. This document makes no API semantic assertion without those checks.
+
+The local actual-store proof now passes on Node24.20.0. Send increments13 from9, nested speculative send increments17 and rollback retains17, missing delivery throws without changing17, delivery increments19, its audited duplicate increments20, delete cascade increments26, and a fresh reopened connection resets to3. These are monotone observations within one instance and a demonstrated need for an instance fence. Audit false invalidations are observed. Two incorrect diagnostic expectations and their source-backed corrections are recorded in parent-notes.md. No timing or completed cache behavior is claimed.
