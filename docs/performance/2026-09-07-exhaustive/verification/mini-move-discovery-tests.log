@@ -1,0 +1,20 @@
+✔ cell-move.admit: CAS, idempotency, fence, operator stop supersedes and keeps failed receipt (6.883917ms)
+✔ cell-move.placement: CAS source stopped, legal transitions, instructions survive dest fail (4.051792ms)
+✔ cell-move.stale stop queued before admit does not cancel the move (2.84025ms)
+✔ cell-move.pre-placement fail unfences and does not keep instructions (2.794417ms)
+✔ cell-move.deleteBee keeps retained cell identity (2.445084ms)
+✔ cell-move.schema v20 store migrates to v22 (3.870042ms)
+✔ cell-move.schema v21 store migrates to v22 (4.209042ms)
+✔ cell-move.unfence re-arms a wake for mail accepted during the fence (2.754375ms)
+✔ cell-move.dumpState beeMoves order matches audit replay (2.832583ms)
+✔ cell-move.starting dest stop does not fence boot retries (2.997166ms)
+✔ cell-move.composeDeveloperInstructions preserves existing custom text (0.062042ms)
+✔ cell-move.discovery: scans active pointers, preserves receipt order and rollback (21.346ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 12
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 135.439083
