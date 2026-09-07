@@ -28,3 +28,5 @@ Landed; sampled allocation only,Wide tick allocation traffic,315221560,150241688
 Landed; write/open/storage cost measured,Large-body pending tick,11.669,0.098,ms CPU,100held1MiB;oneBee;30samples;covering index only,pending-covering-results.md
 Landed; read tradeoff retained,Remove duplicate pending index,1085440,0,bytes in old index,20k pending;pages reusable;no immediate file shrink,pending-index-removal-results.md
 Landed; A/A variation retained,Pending send/expedite/cancel CPU,13.346,12.77,ms CPU per100cycles,20k pending;10samples;full-read possible2–3%cost,pending-index-removal-results.md
+Landed; combined current main,Wide pending tick CPU,10.519,5.161,ms CPU,20k held64B;30samples;main2c3b vs10c25;AA10.575,pending-combined-results.md
+Landed; combined current main,Large-body pending tick CPU,11.219,0.151,ms CPU,100liveBees100held1MiB;30samples;AA11.893,pending-combined-results.md

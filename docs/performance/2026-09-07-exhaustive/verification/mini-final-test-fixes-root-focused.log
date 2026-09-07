@@ -1,0 +1,44 @@
+
+> honeybee@0.0.1 pretest
+> npm run build:test
+
+
+> honeybee@0.0.1 build:test
+> node scripts/build-tests.mjs
+
+
+> honeybee@0.0.1 test
+> node scripts/run-tests.mjs tests/build-test-imports.test.ts tests/gateway-mcp.test.ts tests/gateways.test.ts
+
+✔ test-build import rewriting changes only relative literal .ts module specifiers (110.66725ms)
+✔ static and escaped dynamic imports load the same emitted ESM module (2.667875ms)
+✔ claude seeder merges, updates, stays idempotent, and reconciles dead gateways (17.228709ms)
+✔ claude seeder changes only mcpServers bytes in the mixed state file (2.389333ms)
+✔ reconcile preserves a stamped entry that someone changed and relinquishes ownership (3.58675ms)
+✔ a live gateway upserts a colliding unowned entry, then stamps the write (2.120875ms)
+✔ codex seeder merges named TOML tables and removes only stamped tables (6.023209ms)
+✔ codex seeder upgrades an existing owned gateway entry with MCP env forwarding (2.2245ms)
+✔ malformed target configs and stamps are untouched (4.794833ms)
+✔ grok seeder uses Codex TOML tables without env_vars (4.962416ms)
+✔ pi seeder writes mcp.json in Claude mcpServers shape (4.856167ms)
+✔ pi native gateway home is PI_CODING_AGENT_DIR or ~/.pi/agent (1.901125ms)
+✔ opencode seeder merges local mcp entries and forwards identity env by template (8.3775ms)
+✔ kit ownership manifest makes honeybee defer the whole target file (11.045958ms)
+✔ empty registry is a no-op and unsupported harnesses skip (0.304458ms)
+✔ the gateway disable switch freezes existing seeded state (2.157791ms)
+✔ gateway registry tolerates malformed files and reports pid liveness (5.559917ms)
+✔ gateway registry accepts name-only environment forwarding and rejects malformed names (1.016875ms)
+✔ gateway liveness uses kill(pid, 0) and treats EPERM as live (0.116083ms)
+✔ registry cache notices file mtimes and the disable switch is immediate (7.286792ms)
+✔ gateway env merges before caller env and cannot shadow protected identity/home keys (1.230959ms)
+✔ hive gateways lists valid live and stale advertisements (193.600083ms)
+✔ stateless gateways parse without socketPath/pid and are live iff the shim is executable (1.5375ms)
+✔ stateless gateways may still carry socketPath/pid, validated as usual (0.759625ms)
+ℹ tests 24
+ℹ suites 0
+ℹ pass 24
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 437.066834

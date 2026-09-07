@@ -25,4 +25,4 @@ The index installs after the pre-v8 urgency migration. A raw version-7 fixture w
 
 Standalone Mini build, all v2 checks, all 221 core tests and 364 daemon/CLI tests passed, with one platform skip. Combined production passed 225 core tests and all daemon behavior checks; the unrelated CLI ambiguity assertion was fixed separately. The failed core run and failed smoke iterations are retained. Early prototype smokes corrected a wrong method name and a diagnostic connection opened while the writer retained its exclusive lock. None of those smoke timings govern acceptance.
 
-The older mailbox_undelivered index is retained in this accepted change. Removing its redundant entries is a separate candidate with read, write, first-open and page-reuse measurements pending. This keeps that tradeoff independent of the covering-index decision.
+The older mailbox_undelivered index is retained in this accepted change. The subsequent [index-removal decision](pending-index-removal-results.md) independently accepted removing its redundant entries after read, write, first-open and page-reuse measurements. The covering-only numbers above still include both indexes.

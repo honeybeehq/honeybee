@@ -49,3 +49,7 @@ The [workflow](workflow.md) defines the completion predicate. [The decision log]
 [Pending allocation](pending-allocation-results.md) records native row arrays and their measured allocation traffic. [Pending covering index](pending-covering-results.md) records the large-body tick improvement, migration proof and write/open/storage costs.
 
 [Pending index removal](pending-index-removal-results.md) records the separate write and page-reuse decision, including possible full-message read cost.
+
+[Combined pending results](pending-combined-results.md) compare the accepted runtime with current main, preserving its independent gateway changes.
+
+[Final integration review](../../review/2026-09-07-perf-pending-integration.md) records passing v2 gates and the exact 67-failure legacy compiled-suite control. Both task and main integration preserve the newer gateway work.
