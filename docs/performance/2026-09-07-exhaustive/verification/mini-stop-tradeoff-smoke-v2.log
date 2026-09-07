@@ -1,0 +1,18 @@
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+101 !== undefined
+
+    at file:///private/tmp/honeybee-perf-5763a6c9-20260907/honeybee-stop-recovery-tradeoff.mjs:73:78 {
+  generatedMessage: true,
+  code: 'ERR_ASSERTION',
+  actual: 101,
+  expected: undefined,
+  operator: 'strictEqual',
+  diff: 'simple'
+}
+
+Node.js v24.18.0

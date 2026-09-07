@@ -43,3 +43,5 @@ The [workflow](workflow.md) defines the completion predicate. [The decision log]
 [Held-fleet delivery](held-fleet-results.md) cuts the 10,000-Bee core tick from 35.066 to 26.002 ms CPU with I1 enabled. Its opposing blocked-move case and full verification are retained. CM01 and CM02 track these Cell-move features, which arrived after the original 153-item inventory.
 
 [Audit-tail production](audit-tail-results.md) measures 30.033 → 0.023 ms CPU for a sparse million-row history. [Dedup sweep attribution](dedup-sweep-results.md) separates sweep ticks from quiet ticks and confirms the tracked-ID allocation refinement. Both changes passed the combined build, typechecks, 218 core tests and 364 daemon/CLI tests (one platform skip). Full pending-I1 metadata allocation, audit retention, and the remaining inventory stay open.
+
+[Stop recovery by generation](stop-recovery-index-results.md) records the next accepted D05 improvement and its write, first-open and storage costs. [Cell Git resources](cell-git-rusage-results.md) adds measured descendant CPU and maximum individual-process RSS to the existing clean-merge evidence. Both keep their remaining work explicit.

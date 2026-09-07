@@ -1,0 +1,25 @@
+✔ cell-exit smoke pairs one root with itself and produces exact deterministic evidence (7476.006042ms)
+✔ cell-exit rejects invalid bounds, cases, and missing arguments before any fixture work (131.666708ms)
+✔ cell-exit records rusage setup failure and removes its owned run directory (119.038459ms)
+✔ aggregates complete rusage and exact Trace2 evidence without summing RSS (1.172917ms)
+✔ normalizes only the captureWork-owned randomized scratch repo component (0.044791ms)
+✔ accepts repeated same-code root exits and preserves their count (0.1045ms)
+✔ rejects a root exit outcome mismatch between separate diagnostics (0.535709ms)
+✔ rejects conflicting repeated Trace2 root exit outcomes (0.133875ms)
+✔ rejects unmatched Trace2 child identity (0.150916ms)
+✔ rejects duplicate Trace2 child starts and exits by exact identity (0.161375ms)
+✔ rejects argv differences outside the one owned scratch component (0.138334ms)
+✔ rejects an unexpected direct launcher PID (0.110209ms)
+✔ rejects an incomplete direct-record count (0.101125ms)
+✔ raw reader rejects interrupted or foreign files instead of inventing a summary (5.398708ms)
+✔ raw reader rejects foreign run IDs and internally inconsistent counters (0.973458ms)
+✔ rusage mode is inert by default and rejects ambiguous or non-macOS opt-in (0.19575ms)
+✔ setup materializes the explicit interpreter shebang and verifies all executable hashes (261.018125ms)
+ℹ tests 17
+ℹ suites 0
+ℹ pass 17
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 8059.315375

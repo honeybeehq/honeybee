@@ -21,3 +21,5 @@ Landed; write/storage cost measured,Sparse per-Bee audit tail,30.033,0.023,ms CP
 Landed; growth CPU cost measured,Standing-mail retained heap,22172344,11730888,bytes JS heap,500k terminal messages;1pending anchor;postGC,retained-standing-candidate.md
 Landed,Wide dedup sweep refinement,10.523,9.637,ms CPU,20k pending;1tracked;6sweep ticks per side,dedup-sweep-results.md
 Landed; sampled attribution only,Prune allocation traffic,2188528,90856,sampled bytes,one256tick cycle;not retained memory,dedup-sweep-results.md
+Landed; same-generation residual open,Boot recovery generation index,11.386,7.256,ms CPU,100k same-generation settled commands;15samples,stop-recovery-index-results.md
+Landed; write/open/storage cost measured,Spread-generation recovery predicate,6.767,0.351,ms CPU,100k commands across200generations;UUIDkeys;30samples,stop-recovery-index-results.md
