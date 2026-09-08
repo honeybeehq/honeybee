@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createClaudeProjector } from "../src/claude-projection.ts";
+import { checkpointVerifiedProjector } from "./checkpoint-helpers.ts";
+const createClaudeProjector = () => checkpointVerifiedProjector("claude");
 import { createTranscriptProjector } from "../src/transcripts.ts";
 
 const line = (value: unknown): string => JSON.stringify(value);

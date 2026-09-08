@@ -1,3 +1,4 @@
+import { projectorCheckpoint } from "./transcript-projection.ts";
 import type {
   TranscriptIsoTs,
   TranscriptProjectedImage,
@@ -171,6 +172,7 @@ function dominantModel(modelUsage: JsonObject | null): string | undefined {
 export function createClaudeProjector(): TranscriptProjector {
   return {
     harness: "claude",
+    checkpoint: () => projectorCheckpoint("claude", {}),
     pushLine(line: string): TranscriptProjectedEvent[] {
       let row: JsonObject | null;
       try {

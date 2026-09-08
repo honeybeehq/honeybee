@@ -1,3 +1,7 @@
+import {
+  projectorCheckpoint, checkpointRecord, checkpointEntries, checkpointNullable,
+  checkpointString, checkpointStrings, checkpointBoolean, checkpointNumber,
+} from "./transcript-projection.ts";
 /**
  * agy stream-json projection, captured from agy 1.1.24 on 2026-09-02.
  * HSR logs both the user envelopes written to stdin and agy's stdout lines.
@@ -91,16 +95,52 @@ function printableOutput(value: unknown): string | undefined {
   }
 }
 
-export function createAgyProjector(): TranscriptProjector {
-  let threadId: string | undefined;
-  let sawAssistantText = false;
-  let previousResultUsage: TranscriptTokenUsage | undefined;
-  let previousNumTurns: number | undefined;
-  let previousDurationSeconds: number | undefined;
-  const assistantFragments = new Map<string, AssistantFragment>();
-  const emittedAssistantMessages = new Set<string>();
-  const emittedToolCalls = new Set<string>();
-  const emittedToolResults = new Set<string>();
+
+interface AgyCheckpointState {
+  threadId: string | null;
+  sawAssistantText: boolean;
+  previousResultUsage: TranscriptTokenUsage | null;
+  previousNumTurns: number | null;
+  previousDurationSeconds: number | null;
+  assistantFragments: Array<[string, AssistantFragment]>;
+  emittedAssistantMessages: string[];
+  emittedToolCalls: string[];
+  emittedToolResults: string[];
+}
+function isUsage(value: unknown): boolean {
+  const v = asObject(value);
+  return !!v && Object.keys(v).every((key) => USAGE_KEYS.some((allowed) => allowed === key) && checkpointNumber(v[key]));
+}
+function isFragment(value: unknown): boolean {
+  const v = asObject(value);
+  return !!v && checkpointRecord(v, { text: checkpointString,
+    ...(Object.hasOwn(v, "providerEventId") ? { providerEventId: checkpointString } : {}),
+  });
+}
+
+export function isAgyCheckpointState(value: unknown): value is AgyCheckpointState {
+  return checkpointRecord(value, {
+    threadId: checkpointNullable(checkpointString),
+    sawAssistantText: checkpointBoolean,
+    previousResultUsage: checkpointNullable(isUsage),
+    previousNumTurns: checkpointNullable(checkpointNumber),
+    previousDurationSeconds: checkpointNullable(checkpointNumber),
+    assistantFragments: checkpointEntries(isFragment),
+    emittedAssistantMessages: checkpointStrings,
+    emittedToolCalls: checkpointStrings,
+    emittedToolResults: checkpointStrings,
+  });
+}
+export function createAgyProjector(restored?: AgyCheckpointState): TranscriptProjector {
+  let threadId: string | undefined = restored?.threadId ?? undefined;
+  let sawAssistantText = restored?.sawAssistantText ?? false;
+  let previousResultUsage: TranscriptTokenUsage | undefined = restored?.previousResultUsage ?? undefined;
+  let previousNumTurns: number | undefined = restored?.previousNumTurns ?? undefined;
+  let previousDurationSeconds: number | undefined = restored?.previousDurationSeconds ?? undefined;
+  const assistantFragments = new Map<string, AssistantFragment>(restored?.assistantFragments);
+  const emittedAssistantMessages = new Set<string>(restored?.emittedAssistantMessages);
+  const emittedToolCalls = new Set<string>(restored?.emittedToolCalls);
+  const emittedToolResults = new Set<string>(restored?.emittedToolResults);
 
   function rememberThread(value: unknown): void {
     const next = nonEmptyString(value);
@@ -261,6 +301,20 @@ export function createAgyProjector(): TranscriptProjector {
 
   return {
     harness: "agy",
+    checkpoint() {
+      return projectorCheckpoint("agy", {
+        threadId: threadId ?? null,
+        sawAssistantText: sawAssistantText,
+        previousResultUsage: previousResultUsage ?? null,
+        previousNumTurns: previousNumTurns ?? null,
+        previousDurationSeconds: previousDurationSeconds ?? null,
+        assistantFragments: [...assistantFragments],
+        emittedAssistantMessages: [...emittedAssistantMessages],
+        emittedToolCalls: [...emittedToolCalls],
+        emittedToolResults: [...emittedToolResults],
+      } satisfies AgyCheckpointState);
+    },
+
     pushLine(line: string): TranscriptProjectedEvent[] {
       let row: JsonObject | undefined;
       try {

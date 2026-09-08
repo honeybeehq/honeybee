@@ -101,6 +101,86 @@ export interface TranscriptProjector {
   readonly harness: string;
   pushLine(line: string): TranscriptProjectedEvent[];
   flush(): TranscriptProjectedEvent[];
+  /** Detached snapshot; does not flush or change subsequent projection. */
+  checkpoint(): TranscriptProjectorCheckpoint;
 }
 
 export type TranscriptProjectorFactory = () => TranscriptProjector;
+
+/** Bump for event semantic changes; stored projections must then be rebuilt. */
+export const TRANSCRIPT_PROJECTION_VERSION = 1;
+/** Bump for checkpoint schema changes. Restore deliberately does not migrate. */
+export const TRANSCRIPT_PROJECTOR_STATE_VERSION = 1;
+export const TRANSCRIPT_CHECKPOINT_MAX_BYTES = 4 * 1024 * 1024;
+
+export interface TranscriptProjectorCheckpoint {
+  harness: string;
+  projectionVersion: number;
+  stateVersion: number;
+  /** Provider-owned JSON. Consumers must not interpret this value. */
+  state: unknown;
+}
+export type TranscriptProjectorRestoreFailure =
+  | "invalid_checkpoint"
+  | "harness_mismatch"
+  | "projection_version_mismatch"
+  | "state_version_mismatch"
+  | "state_too_large";
+export type TranscriptProjectorRestoreResult =
+  | { ok: true; projector: TranscriptProjector }
+  | { ok: false; reason: TranscriptProjectorRestoreFailure };
+
+export function projectorCheckpoint(harness: string, state: unknown): TranscriptProjectorCheckpoint {
+  return {
+    harness,
+    projectionVersion: TRANSCRIPT_PROJECTION_VERSION,
+    stateVersion: TRANSCRIPT_PROJECTOR_STATE_VERSION,
+    state: structuredClone(state),
+  };
+}
+
+export type CheckpointValidator = (value: unknown) => boolean;
+export const checkpointString: CheckpointValidator = (value) => typeof value === "string";
+export const checkpointBoolean: CheckpointValidator = (value) => typeof value === "boolean";
+export const checkpointNumber: CheckpointValidator = (value) => typeof value === "number" && Number.isFinite(value);
+export const checkpointNullable = (validate: CheckpointValidator): CheckpointValidator =>
+  (value) => value === null || validate(value);
+export const checkpointStrings: CheckpointValidator = (value) =>
+  Array.isArray(value) && value.every(checkpointString) && new Set(value).size === value.length;
+
+/** Exact owned records. Arbitrary provider payloads use checkpointJson instead. */
+export function checkpointRecord(value: unknown, fields: Record<string, CheckpointValidator>): boolean {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  const entries = Object.entries(value);
+  return entries.length === Object.keys(fields).length
+    && entries.every(([key, entry]) => Object.hasOwn(fields, key) && fields[key]!(entry));
+}
+export const checkpointEntries = (validate: CheckpointValidator): CheckpointValidator => (value) =>
+  Array.isArray(value)
+  && value.every((entry) => Array.isArray(entry) && entry.length === 2
+    && typeof entry[0] === "string" && validate(entry[1]))
+  && new Set(value.map((entry) => entry[0])).size === value.length;
+
+/** Reject lossy/non-JSON values, cycles, accessors and exotic object instances. */
+export function checkpointJson(value: unknown, ancestors = new Set<object>()): boolean {
+  if (value === null || typeof value === "string" || typeof value === "boolean") return true;
+  if (typeof value === "number") return Number.isFinite(value);
+  if (typeof value !== "object" || ancestors.has(value)) return false;
+  const proto = Object.getPrototypeOf(value);
+  if (!Array.isArray(value) && proto !== Object.prototype && proto !== null) return false;
+  ancestors.add(value);
+  try {
+    const keys = Reflect.ownKeys(value);
+    if (Array.isArray(value) && (keys.length !== value.length + 1
+      || keys.some((key, index) => index < value.length ? key !== String(index) : key !== "length"))) return false;
+    return keys.every((key) => {
+      if (Array.isArray(value) && key === "length") return true;
+      if (typeof key !== "string") return false;
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      return descriptor !== undefined && descriptor.enumerable === true && "value" in descriptor
+        && checkpointJson(descriptor.value, ancestors);
+    });
+  } finally {
+    ancestors.delete(value);
+  }
+}

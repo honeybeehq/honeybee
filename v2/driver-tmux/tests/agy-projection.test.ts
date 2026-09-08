@@ -5,7 +5,8 @@
  */
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createAgyProjector } from "../src/agy-projection.ts";
+import { checkpointVerifiedProjector } from "./checkpoint-helpers.ts";
+const createAgyProjector = () => checkpointVerifiedProjector("agy");
 import type { TranscriptProjectedEvent } from "../src/transcript-projection.ts";
 import {
   agyTranscriptRenderer,

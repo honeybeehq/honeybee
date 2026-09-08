@@ -1,3 +1,7 @@
+import {
+  projectorCheckpoint, checkpointRecord, checkpointEntries, checkpointJson,
+  checkpointNullable, checkpointString, checkpointStrings, checkpointBoolean,
+} from "./transcript-projection.ts";
 import type {
   TranscriptFileChange,
   TranscriptIsoTs,
@@ -366,18 +370,35 @@ function forkSnapshotEvents(result: JsonObject): TranscriptProjectedEvent[] {
   return events;
 }
 
+interface CodexCheckpointState {
+  startedItems: Array<[string, JsonObject]>;
+  currentModel: string | null;
+  rolloutMessages: string[];
+  forkRequestIds: string[];
+  rolloutTurnOpen: boolean;
+}
+
+export function isCodexCheckpointState(value: unknown): value is CodexCheckpointState {
+  return checkpointRecord(value, {
+    startedItems: checkpointEntries((v) => v !== null && typeof v === "object" && !Array.isArray(v) && checkpointJson(v)),
+    currentModel: checkpointNullable(checkpointString),
+    rolloutMessages: checkpointStrings,
+    forkRequestIds: checkpointStrings,
+    rolloutTurnOpen: checkpointBoolean,
+  });
+}
 /**
  * Stateful projection of Codex app-server session logs plus native rollout
  * rows. App-server request/notification envelopes are authoritative for HSR;
  * nested turn items are intentionally never replayed from turn/completed.
  */
-export function createCodexProjector(): TranscriptProjector {
-  const startedItems = new Map<string, JsonObject>();
+export function createCodexProjector(restored?: CodexCheckpointState): TranscriptProjector {
+  const startedItems = new Map<string, JsonObject>(restored?.startedItems);
   /** Model named on the client's thread/start or turn/start — usage attribution. */
-  let currentModel: string | undefined;
-  const rolloutMessages = new Set<string>();
-  const forkRequestIds = new Set<string>();
-  let rolloutTurnOpen = false;
+  let currentModel: string | undefined = restored?.currentModel ?? undefined;
+  const rolloutMessages = new Set<string>(restored?.rolloutMessages);
+  const forkRequestIds = new Set<string>(restored?.forkRequestIds);
+  let rolloutTurnOpen = restored?.rolloutTurnOpen ?? false;
 
   const emitRolloutMessage = (
     role: "user" | "assistant",
@@ -464,6 +485,16 @@ export function createCodexProjector(): TranscriptProjector {
 
   return {
     harness: "codex",
+    checkpoint() {
+      return projectorCheckpoint("codex", {
+        startedItems: [...startedItems],
+        currentModel: currentModel ?? null,
+        rolloutMessages: [...rolloutMessages],
+        forkRequestIds: [...forkRequestIds],
+        rolloutTurnOpen: rolloutTurnOpen,
+      } satisfies CodexCheckpointState);
+    },
+
     pushLine(line: string): TranscriptProjectedEvent[] {
       const row = parseLine(line);
       if (!row) return [];

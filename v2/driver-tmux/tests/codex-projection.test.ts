@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { createCodexProjector } from "../src/codex-projection.ts";
+import { checkpointVerifiedProjector } from "./checkpoint-helpers.ts";
+const createCodexProjector = () => checkpointVerifiedProjector("codex");
 import { renderTranscriptLines } from "../src/transcripts.ts";
 import type { TranscriptProjectedEvent } from "../src/transcript-projection.ts";
 

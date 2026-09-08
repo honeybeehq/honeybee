@@ -1,3 +1,7 @@
+import {
+  projectorCheckpoint, checkpointRecord, checkpointEntries, checkpointJson,
+  checkpointNullable, checkpointString, checkpointStrings, checkpointBoolean,
+} from "./transcript-projection.ts";
 import type {
   TranscriptIsoTs,
   TranscriptProjectedEvent,
@@ -247,6 +251,40 @@ function finiteNumberField(value: JsonObject, ...keys: string[]): number | undef
   return undefined;
 }
 
+interface GrokCheckpointState {
+  openChunk: OpenChunk | null;
+  pendingPromptMirror: string | null;
+  tools: Array<[string, ToolState]>;
+  seenCompactions: string[];
+}
+function isOpenChunk(value: unknown): boolean {
+  const v = asObject(value);
+  if (!v) return false;
+  const ts = checkpointNullable(checkpointString);
+  if (v.kind === "message") return checkpointRecord(v, {
+    kind: (x) => x === "message", role: (x) => x === "user" || x === "assistant", text: checkpointString, ts,
+  });
+  return checkpointRecord(v, { kind: (x) => x === "thinking", redacted: checkpointBoolean, ts,
+    ...(Object.hasOwn(v, "text") ? { text: checkpointString } : {}),
+  });
+}
+function isToolState(value: unknown): boolean {
+  const v = asObject(value);
+  return !!v && checkpointRecord(v, {
+    name: checkpointString, callEmitted: checkpointBoolean, resultEmitted: checkpointBoolean,
+    ...(Object.hasOwn(v, "input") ? { input: checkpointJson } : {}),
+    ...(Object.hasOwn(v, "status") ? { status: checkpointString } : {}),
+  });
+}
+
+export function isGrokCheckpointState(value: unknown): value is GrokCheckpointState {
+  return checkpointRecord(value, {
+    openChunk: checkpointNullable(isOpenChunk),
+    pendingPromptMirror: checkpointNullable(checkpointString),
+    tools: checkpointEntries(isToolState),
+    seenCompactions: checkpointStrings,
+  });
+}
 /**
  * Project Grok's published ACP session log and native chat_history rows.
  *
@@ -254,11 +292,11 @@ function finiteNumberField(value: JsonObject, ...keys: string[]): number | undef
  * projector therefore owns a single open chunk buffer and only publishes it
  * when the stream changes shape or the caller explicitly flushes at EOF.
  */
-export function createGrokProjector(): TranscriptProjector {
-  let openChunk: OpenChunk | undefined;
-  let pendingPromptMirror: string | undefined;
-  const tools = new Map<string, ToolState>();
-  const seenCompactions = new Set<string>();
+export function createGrokProjector(restored?: GrokCheckpointState): TranscriptProjector {
+  let openChunk: OpenChunk | undefined = restored?.openChunk ?? undefined;
+  let pendingPromptMirror: string | undefined = restored?.pendingPromptMirror ?? undefined;
+  const tools = new Map<string, ToolState>(restored?.tools);
+  const seenCompactions = new Set<string>(restored?.seenCompactions);
 
   function flushOpenChunk(): TranscriptProjectedEvent[] {
     const chunk = openChunk;
@@ -484,6 +522,15 @@ export function createGrokProjector(): TranscriptProjector {
 
   return {
     harness: "grok",
+    checkpoint() {
+      return projectorCheckpoint("grok", {
+        openChunk: openChunk ?? null,
+        pendingPromptMirror: pendingPromptMirror ?? null,
+        tools: [...tools],
+        seenCompactions: [...seenCompactions],
+      } satisfies GrokCheckpointState);
+    },
+
     pushLine(line: string): TranscriptProjectedEvent[] {
       const row = jsonObject(line);
       if (!row) return [];

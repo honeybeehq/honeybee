@@ -1,3 +1,8 @@
+import {
+  projectorCheckpoint, checkpointJson, checkpointRecord,
+  TRANSCRIPT_CHECKPOINT_MAX_BYTES, TRANSCRIPT_PROJECTION_VERSION, TRANSCRIPT_PROJECTOR_STATE_VERSION,
+  type TranscriptProjectorRestoreResult,
+} from "./transcript-projection.ts";
 /**
  * Transcript-file observers (WP5, spec 05 observation source 2 — the
  * MANDATORY baseline for every supported harness under A3).
@@ -39,10 +44,10 @@
  */
 import { readdirSync, realpathSync, statSync, type Dirent } from "node:fs";
 import { join, resolve } from "node:path";
-import { createAgyProjector } from "./agy-projection.ts";
+import { isAgyCheckpointState, createAgyProjector } from "./agy-projection.ts";
 import { createClaudeProjector } from "./claude-projection.ts";
-import { createCodexProjector } from "./codex-projection.ts";
-import { createGrokProjector, isGrokCompactionSummary } from "./grok-projection.ts";
+import { isCodexCheckpointState, createCodexProjector } from "./codex-projection.ts";
+import { isGrokCheckpointState, createGrokProjector, isGrokCompactionSummary } from "./grok-projection.ts";
 import type { TranscriptProjectedEvent, TranscriptProjector } from "./transcript-projection.ts";
 
 export type TranscriptEvent =
@@ -501,9 +506,10 @@ export const TRANSCRIPT_RENDERERS: Record<string, TranscriptRenderer> = {
  * back to the claude-shaped projector (the most common envelope) — callers
  * can always reach the verbatim lines with `--raw`.
  */
-function projectorFromRenderer(renderer: TranscriptRenderer): TranscriptProjector {
+function projectorFromRenderer(renderer: TranscriptRenderer, checkpointHarness = renderer.harness): TranscriptProjector {
   return {
     harness: renderer.harness,
+    checkpoint: () => projectorCheckpoint(checkpointHarness, {}),
     pushLine(line: string): TranscriptProjectedEvent[] {
       return renderer.renderLine(line).map((turn): TranscriptProjectedEvent => {
         if (turn.role === "tool") {
@@ -532,7 +538,47 @@ export function createTranscriptProjector(harness: string): TranscriptProjector 
     case "claude":
       return createClaudeProjector();
     default:
-      return projectorFromRenderer(claudeTranscriptRenderer);
+      return projectorFromRenderer(claudeTranscriptRenderer, harness);
+  }
+}
+
+/** Restore only exact compatible, bounded JSON checkpoints. Rebuild from source on failure. */
+export function restoreTranscriptProjector(harness: string, checkpoint: unknown): TranscriptProjectorRestoreResult {
+  try {
+    if (!checkpointJson(checkpoint)) return { ok: false, reason: "invalid_checkpoint" };
+    const serialized = JSON.stringify(checkpoint);
+    if (new TextEncoder().encode(serialized).byteLength > TRANSCRIPT_CHECKPOINT_MAX_BYTES) {
+      return { ok: false, reason: "state_too_large" };
+    }
+    if (!checkpointRecord(checkpoint, {
+      harness: (v) => typeof v === "string",
+      projectionVersion: (v) => typeof v === "number" && Number.isInteger(v),
+      stateVersion: (v) => typeof v === "number" && Number.isInteger(v),
+      state: () => true,
+    })) return { ok: false, reason: "invalid_checkpoint" };
+    // JSON validation and exact envelope validation above establish this shape.
+    const envelope = checkpoint as { harness: string; projectionVersion: number; stateVersion: number; state: unknown };
+    if (envelope.harness !== harness) return { ok: false, reason: "harness_mismatch" };
+    if (envelope.projectionVersion !== TRANSCRIPT_PROJECTION_VERSION) return { ok: false, reason: "projection_version_mismatch" };
+    if (envelope.stateVersion !== TRANSCRIPT_PROJECTOR_STATE_VERSION) return { ok: false, reason: "state_version_mismatch" };
+    // Detach before constructing maps so later consumer mutations cannot affect projection.
+    const state: unknown = structuredClone(envelope.state);
+    switch (harness) {
+      case "codex":
+        if (isCodexCheckpointState(state)) return { ok: true, projector: createCodexProjector(state) };
+        break;
+      case "grok":
+        if (isGrokCheckpointState(state)) return { ok: true, projector: createGrokProjector(state) };
+        break;
+      case "agy":
+        if (isAgyCheckpointState(state)) return { ok: true, projector: createAgyProjector(state) };
+        break;
+      default:
+        if (checkpointRecord(state, {})) return { ok: true, projector: createTranscriptProjector(harness) };
+    }
+    return { ok: false, reason: "invalid_checkpoint" };
+  } catch {
+    return { ok: false, reason: "invalid_checkpoint" };
   }
 }
 

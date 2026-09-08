@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createGrokProjector } from "../src/grok-projection.ts";
+import { checkpointVerifiedProjector } from "./checkpoint-helpers.ts";
+const createGrokProjector = () => checkpointVerifiedProjector("grok");
 import type { TranscriptProjectedEvent } from "../src/transcript-projection.ts";
 import { lastAssistantText, type TranscriptTurn } from "../src/transcripts.ts";
 
