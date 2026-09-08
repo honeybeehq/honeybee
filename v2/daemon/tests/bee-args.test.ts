@@ -114,7 +114,7 @@ test("args.daemon.2: composeSpawn codex — model lifted into thread/start|resum
   // the adapter's thread request carries the lifted model + the resume id
   const req = codexThreadRequest({ cwd: "/tmp/w", model: r.model, resumeThreadId: "thread-1" });
   assert.equal(req.method, "thread/resume");
-  assert.deepEqual(req.params, { threadId: "thread-1", model: "gpt-5.6-sol", cwd: "/tmp/w", approvalPolicy: "never", sandbox: "danger-full-access" });
+  assert.deepEqual(req.params, { threadId: "thread-1", model: "gpt-5.6-sol", cwd: "/tmp/w", approvalPolicy: "never", sandbox: "danger-full-access", excludeTurns: true });
   // no model anywhere → none in the request
   const plain = composeSpawn(BUILTIN_AGENTS.codex!, "codex", bee());
   assert.deepEqual(plain.args, ["app-server"]);
