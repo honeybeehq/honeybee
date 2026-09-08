@@ -89,3 +89,10 @@ Deterministic regressions reproduce both acknowledgment orderings through
 the real HSR delivery and Codex encoding paths. Both fail on the original
 code and pass with the guard; a distinct-message interrupt counterexample
 passes before and after the fix.
+
+The complete repair was deployed with `hive deploy` at
+`997b53b46253bc2f979ae2155e395fdb16f53736`. Clean-checkout type checks, the
+production build, and all 751 deployment tests passed. After activation,
+Hive and Apiary both reported generation 64 running with real boot evidence,
+no condition flags, and the original Codex conversation ID. The deployment
+preserved that active runtime.
