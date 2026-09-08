@@ -128,8 +128,11 @@ export interface RuntimeDriver {
    * turn/interrupt, tmux C-c). Never blocks, never throws for a missing or
    * idle runtime: the outcome says what happened. A successful interrupt is
    * confirmed by the ordinary `turn_ended` observation that follows.
+   * `deliveryMessageId` identifies an urgent mailbox delivery that prompted
+   * the request. A driver must not interrupt when that exact delivery already
+   * owns the current turn but still awaits mailbox settlement.
    */
-  interrupt(beeId: string, generation: number): InterruptOutcome;
+  interrupt(beeId: string, generation: number, deliveryMessageId?: number): InterruptOutcome;
 
   /** Drain observations accumulated since the last drain, in event order. */
   observe(): DriverObservation[];

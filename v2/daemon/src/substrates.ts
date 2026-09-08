@@ -84,8 +84,8 @@ export class SubstrateRouter implements RuntimeDriver {
     return this.driverFor(beeId, generation).stop(beeId, generation, cause);
   }
 
-  interrupt(beeId: string, generation: number): InterruptOutcome {
-    return this.driverFor(beeId, generation).interrupt(beeId, generation);
+  interrupt(beeId: string, generation: number, deliveryMessageId?: number): InterruptOutcome {
+    return this.driverFor(beeId, generation).interrupt(beeId, generation, deliveryMessageId);
   }
 
   observe(): DriverObservation[] {

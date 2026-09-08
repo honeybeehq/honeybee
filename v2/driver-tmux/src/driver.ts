@@ -463,7 +463,7 @@ export class TmuxDriver implements RuntimeDriver {
    * observer stack confirms the outcome as the ordinary turn_ended. Idle /
    * dying / gone: a reasoned no-op, never an error.
    */
-  interrupt(beeId: string, generation: number): InterruptOutcome {
+  interrupt(beeId: string, generation: number, _deliveryMessageId?: number): InterruptOutcome {
     const p = this.procs.get(beeId);
     if (!p || p.generation !== generation || p.exited) return { interrupted: false, reason: "no_process" };
     if (p.stopCause != null) return { interrupted: false, reason: "not_ready" };

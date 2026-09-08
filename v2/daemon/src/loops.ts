@@ -1046,7 +1046,9 @@ export class DaemonCore {
         // whole FIFO, which keeps delivering in enqueue order.
         const urgent = eligible.find((m) => m.urgency === "now" && !this.interruptRequested.has(m.id));
         if (urgent) {
-          const res = this.driver.interrupt(rt.beeId, rt.generation);
+          // Give the driver the triggering mailbox id so an asynchronously
+          // confirmed delivery cannot interrupt the turn it just opened.
+          const res = this.driver.interrupt(rt.beeId, rt.generation, urgent.id);
           // no_process / not_ready resolve on later steps (exit observation,
           // driver-side boot skew) — retry then. interrupted / idle /
           // unsupported are final: the accept point exists or never will.

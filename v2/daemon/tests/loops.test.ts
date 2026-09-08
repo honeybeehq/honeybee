@@ -16,6 +16,7 @@ import { join } from "node:path";
 import { beeTaskList, hashBeeMoveRequest, openCoreStore, PLACEMENT_PREFIX_MARKER, type CoreStore } from "../../core/src/index.ts";
 import { DaemonCore, type DaemonCoreOptions, type DaemonPolicy, type I1ViolationEvent } from "../src/loops.ts";
 import type { PerformanceRecorder } from "../src/performance.ts";
+import { SubstrateRouter } from "../src/substrates.ts";
 import { HsrDriver } from "../../driver-hsr/src/index.ts";
 import { codexAdapter, stubAdapter, type AdapterSignal } from "../../adapters/src/index.ts";
 import { AGENT_PATH, FakeDriver, sleep, waitFor } from "./helpers.ts";
@@ -2428,6 +2429,25 @@ test("urgency.d3c: a distinct later `now` message still interrupts an async-conf
   } finally {
     rig.cleanup();
   }
+});
+
+test("urgency.d3d: the substrate router forwards the urgent delivery identity", () => {
+  const calls: unknown[][] = [];
+  const outcome = Reflect.apply(
+    SubstrateRouter.prototype.interrupt,
+    {
+      driverFor: () => ({
+        interrupt: (...args: unknown[]) => {
+          calls.push(args);
+          return { interrupted: false, reason: "not_ready" };
+        },
+      }),
+    },
+    ["bee-routed", 7, 42],
+  );
+
+  assert.deepEqual(calls, [["bee-routed", 7, 42]]);
+  assert.deepEqual(outcome, { interrupted: false, reason: "not_ready" });
 });
 
 test("urgency.d4: ordering — urgency governs WHEN a message is eligible; among eligible, enqueue order wins", () => {

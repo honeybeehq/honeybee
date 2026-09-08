@@ -659,12 +659,18 @@ export class HsrDriver implements RuntimeDriver {
    * dying / degraded / no channel: a reasoned no-op, never an error. SIGINT
    * is never used — it kills a headless child outright.
    */
-  interrupt(beeId: string, generation: number): InterruptOutcome {
+  interrupt(beeId: string, generation: number, deliveryMessageId?: number): InterruptOutcome {
     const p = this.procs.get(beeId);
     if (!p || p.generation !== generation || p.exited) return { interrupted: false, reason: "no_process" };
     if (p.degraded || p.adapter == null) return { interrupted: false, reason: "not_ready" };
     if (p.phase === "booting" || p.stopCause != null) return { interrupted: false, reason: "not_ready" };
     if (p.phase === "idle") return { interrupted: false, reason: "idle" };
+    if (
+      deliveryMessageId !== undefined
+      && (p.pendingDeliveries.has(deliveryMessageId) || p.confirmedDeliveries.has(deliveryMessageId))
+    ) {
+      return { interrupted: false, reason: "not_ready" };
+    }
     if (typeof p.adapter.encodeInterrupt !== "function") return { interrupted: false, reason: "unsupported" };
     const encoded = p.adapter.encodeInterrupt({ sessionId: p.sessionId, turnId: p.turnId });
     if (encoded == null) return { interrupted: false, reason: "not_ready" };
