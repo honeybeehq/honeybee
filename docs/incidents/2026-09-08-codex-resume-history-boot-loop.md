@@ -57,3 +57,29 @@ while the first command is queued, running, or done awaiting exit evidence.
 Regression coverage checks metadata-only readiness, bounded retries with
 pending mail, delayed and duplicate exit observations, stale generations,
 and the distinction between queued, running, done, and failed stop commands.
+
+## Recovery and urgent-message race
+
+The metadata-only resume and boot-budget fixes passed the deployment gate
+and were deployed at `62990cf354cd69499e9ca8e05e8c0bb38d325aa7`. Stopping the
+old booting generation allowed the pending mailbox message to wake generation
+64, which resumed the same Codex conversation in approximately five seconds.
+
+Live verification exposed a separate delivery race. The queued operator
+message had urgency `now`. The driver wrote its `turn/start`, changed to
+running, and awaited the asynchronous acknowledgment. Before the daemon
+settled that receipt, its next delivery pass interpreted the still-pending
+message as a request to interrupt. It interrupted the turn that the same
+message had just started. The protocol journal contained `turn/start`, its
+acknowledgment, and `turn/interrupt` targeting that newly started turn.
+
+The original message was replayed once with normal (`next`) priority and a
+stable repair idempotency key. The bee answered it and began handling the
+operator's subsequent follow-up in the same generation. No conversation
+history was discarded.
+
+The driver must distinguish an urgent message awaiting its own receipt from
+a new urgent message interrupting earlier work. That protection must cover
+both the interval before acknowledgment and the acknowledged receipt waiting
+for the daemon to settle delivery. A socket write alone must not mark mail
+as delivered. Explicit operator interrupts remain independent of this guard.
