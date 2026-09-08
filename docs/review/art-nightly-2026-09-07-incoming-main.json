@@ -1,0 +1,73 @@
+{
+  "previousMain": "98cc89c3180b25272c31f67e438adea1380921c2",
+  "incomingMain": "02aa424e486d36f2f828eb710ce217575e277e57",
+  "count": 13,
+  "alreadyInFrozenCandidates": true,
+  "reviewed": [
+    {
+      "sha": "92b21dd621db02fca8022ae34fbee68cd67719f6",
+      "outcome": "reviewed; inherited evidence-manifest mismatch fixed locally; no unresolved product regression in this evidence-only change",
+      "evidence": "Archived transition v1 intercepted the wrong provider layer, mislabeled 60 samples as 30 and included immediate promise completion. Canonical v2 fixes these rulers. Initial invalid heap v1 failure-before-write is superseded by 92757d8. Historical evidence is qualified, not silently replaced. Source ledger: /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence-reviewed.json; diff: /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence/92b21dd621db02fca8022ae34fbee68cd67719f6.patch; checks: /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence/validation.json, /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence/typescript-syntax.log, /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence/archive-digest-checks.json, /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence/manifest-checks.json, /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence/measurement-checks.json, /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence/fresh-proofs/checks.json, /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence/heap-controls/checks.json, /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence/tool-review-0-39.json, /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence/tool-review-40-67.json, /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence/supersession.json, /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence/tool-review-68.json."
+    },
+    {
+      "sha": "1847b6e3b33a5358dff17d8792ae621149a912e3",
+      "outcome": "reviewed clean on branch tip 02aa424e; byte-equivalent rebases add validated transaction-aware mailbox membership",
+      "evidence": ".audit/source-inventory/patch-groups.json,.audit/evidence-autotitle-core.log"
+    },
+    {
+      "sha": "e033a1b1d6eea1b4a07e6fb1e47fb23acdf744d5",
+      "outcome": "reviewed clean on branch tip 02aa424e; byte-equivalent rebases reuse only committed unchanged mailbox context and preserve retry/watchdog semantics",
+      "evidence": ".audit/source-inventory/patch-groups.json,.audit/evidence-autotitle-daemon.log"
+    },
+    {
+      "sha": "90515db221d5c31cc7878485f452e385d644862a",
+      "outcome": "reviewed clean on branch tip 02aa424e; byte-equivalent rebases document and test the immutable mailbox membership proof",
+      "evidence": ".audit/source-inventory/patch-groups.json,.audit/evidence-autotitle-core.log"
+    },
+    {
+      "sha": "8e57e74615801f6e294f209ac9f2cb29c2ce4f55",
+      "outcome": "reviewed clean on branch tip 02aa424e; byte-equivalent rebases cover malformed SQLite values and transaction guards",
+      "evidence": ".audit/source-inventory/patch-groups.json,.audit/evidence-autotitle-core.log"
+    },
+    {
+      "sha": "92757d838b4bbac20a3e42dcffb03a65e68bd362",
+      "outcome": "reviewed; inherited evidence-manifest mismatch fixed locally; no unresolved product regression in this evidence-only change",
+      "evidence": "Accepted quiet cache has 30 ABBA samples and explicitly prices empty, all-changed and expiry costs plus retained heap growth. Positive warm/released heap and invalid membership/signature controls reproduced inspector behavior. V2 writes invalid evidence before exiting nonzero. Source ledger: /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence-reviewed.json; diff: /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence/92757d838b4bbac20a3e42dcffb03a65e68bd362.patch; checks: /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence/validation.json, /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence/typescript-syntax.log, /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence/archive-digest-checks.json, /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence/manifest-checks.json, /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence/measurement-checks.json, /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence/fresh-proofs/checks.json, /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence/heap-controls/checks.json, /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence/tool-review-0-39.json, /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence/tool-review-40-67.json, /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence/supersession.json, /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence/tool-review-68.json."
+    },
+    {
+      "sha": "501710c18515c4ac077a643c50daba2ce9043958",
+      "outcome": "reviewed clean; root documentation review validated the exact diff and evidence inventory",
+      "evidence": "/Users/trmd/.hive/crew/art/reviews/2026-09-07/root-docs-reviewed.json (lane=honeybee entry; validationPath=root-docs-validation.json; exact evidence text incorporated in final report)"
+    },
+    {
+      "sha": "64561d612c91a97dd928ef67f5ba6e13e5a5e4c8",
+      "outcome": "reviewed; inherited evidence-manifest mismatch fixed locally; no unresolved product regression in this evidence-only change",
+      "evidence": "Real HSR public delivery fixture covers 0, 1k, 10k and 100k messages and receipt/stop accounting. Whole-process diagnostics and heap snapshots are separate from delivery operation timings; no candidate driver-history gain is claimed. Source ledger: /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence-reviewed.json; diff: /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence/64561d612c91a97dd928ef67f5ba6e13e5a5e4c8.patch; checks: /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence/validation.json, /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence/typescript-syntax.log, /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence/archive-digest-checks.json, /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence/manifest-checks.json, /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence/measurement-checks.json, /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence/fresh-proofs/checks.json, /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence/heap-controls/checks.json, /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence/tool-review-0-39.json, /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence/tool-review-40-67.json, /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence/supersession.json, /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence/tool-review-68.json."
+    },
+    {
+      "sha": "c6cf01f20a911ab6a0b424da7aa2bc7e5dd65f16",
+      "outcome": "reviewed; inherited evidence-manifest mismatch fixed locally; no unresolved product regression in this evidence-only change",
+      "evidence": "Baseline heap v1 assumes a Map and is superseded by 4db80bc classification. The 100k SMI control measures 3,670,056 shallow table bytes, not retained RSS or entry edges. Fresh positive, negative, released and corrupted table controls behaved as specified. Source ledger: /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence-reviewed.json; diff: /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence/c6cf01f20a911ab6a0b424da7aa2bc7e5dd65f16.patch; checks: /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence/validation.json, /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence/typescript-syntax.log, /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence/archive-digest-checks.json, /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence/manifest-checks.json, /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence/measurement-checks.json, /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence/fresh-proofs/checks.json, /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence/heap-controls/checks.json, /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence/tool-review-0-39.json, /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence/tool-review-40-67.json, /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence/supersession.json, /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence/tool-review-68.json."
+    },
+    {
+      "sha": "c744057247490691ba6a96b243e623f4e933dbe6",
+      "outcome": "reviewed clean; root documentation review validated the exact diff and evidence inventory",
+      "evidence": "/Users/trmd/.hive/crew/art/reviews/2026-09-07/root-docs-reviewed.json (lane=honeybee entry; validationPath=root-docs-validation.json; exact evidence text incorporated in final report)"
+    },
+    {
+      "sha": "4db80bcc68d0bedcca87e4f7baa47bf95283907c",
+      "outcome": "reviewed; inherited evidence-manifest mismatch fixed locally; no unresolved product regression in this evidence-only change",
+      "evidence": "Driver-history opt-out remains a design, not an implemented memory win. Canonical v4 waits for boot and connection and records owned process cleanup. Heap v2 distinguishes actual Map, null and missing properties; backing-table shallow bytes are not retained size. AA12 contains two independent child observations per side. Source ledger: /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence-reviewed.json; diff: /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence/4db80bcc68d0bedcca87e4f7baa47bf95283907c.patch; checks: /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence/validation.json, /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence/typescript-syntax.log, /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence/archive-digest-checks.json, /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence/manifest-checks.json, /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence/measurement-checks.json, /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence/fresh-proofs/checks.json, /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence/heap-controls/checks.json, /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence/tool-review-0-39.json, /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence/tool-review-40-67.json, /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence/supersession.json, /Users/trmd/.hive/crew/art/reviews/2026-09-07/honeybee-parent-evidence/tool-review-68.json."
+    },
+    {
+      "sha": "488710edf9cf62f9b6c4d747a4b9609d45fba7ae",
+      "outcome": "reviewed clean; root documentation review validated the exact diff and evidence inventory",
+      "evidence": "/Users/trmd/.hive/crew/art/reviews/2026-09-07/root-docs-reviewed.json (lane=honeybee entry; validationPath=root-docs-validation.json; exact evidence text incorporated in final report)"
+    },
+    {
+      "sha": "02aa424e486d36f2f828eb710ce217575e277e57",
+      "outcome": "reviewed clean; root documentation review validated the exact diff and evidence inventory",
+      "evidence": "/Users/trmd/.hive/crew/art/reviews/2026-09-07/root-docs-reviewed.json (lane=honeybee entry; validationPath=root-docs-validation.json; exact evidence text incorporated in final report)"
+    }
+  ]
+}

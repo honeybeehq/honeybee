@@ -4,16 +4,16 @@ These excerpts and SHA-256 digests make the local verification record readable i
 
 Source and fix revisions below refer to the reviewed feature branches where indicated. Publishing this document does not publish those feature branches or claim a live UI/model run.
 
-- Same-millisecond Cell receipts could select an older UUID instead of the latest insertion. Source `4d0f34dd19798c9f86cc914f4c4f03030dc482c4`; repair `0472a91c99d7a75c19429b6bffc9988e57c2a272`. Integrated in this publication as a27668070e69da6ecef87bd8f8a7b90f5f2f6d13.
-- Retained Cell RPC and CLI optional arguments silently accepted wrong types. Source `4d0f34dd19798c9f86cc914f4c4f03030dc482c4`; repair `0472a91c99d7a75c19429b6bffc9988e57c2a272`. Integrated in this publication as a27668070e69da6ecef87bd8f8a7b90f5f2f6d13.
-- External lineage ID collisions appeared as local children. Source `eb4a77c2a5356864bd9c495b3deb290ab04860e4`; repair `ac33d942ccd7f522092cd3e8f7d7029e53a0a46a`. Integrated in this publication as 6e10b33b841965c8ad7bee41c081376fd3ec8864.
+- Same-millisecond Cell receipts could select an older UUID instead of the latest insertion. Source `4d0f34dd19798c9f86cc914f4c4f03030dc482c4`; repair `0472a91c99d7a75c19429b6bffc9988e57c2a272`. Integrated in this publication as f868ea70fa7a226a2072d2b34dbad2c8a79b80e1.
+- Retained Cell RPC and CLI optional arguments silently accepted wrong types. Source `4d0f34dd19798c9f86cc914f4c4f03030dc482c4`; repair `0472a91c99d7a75c19429b6bffc9988e57c2a272`. Integrated in this publication as f868ea70fa7a226a2072d2b34dbad2c8a79b80e1.
+- External lineage ID collisions appeared as local children. Source `eb4a77c2a5356864bd9c495b3deb290ab04860e4`; repair `ac33d942ccd7f522092cd3e8f7d7029e53a0a46a`. Integrated in this publication as 663aaf39e5baeaa1cf51ffc21aa1ea6e70e23909.
 - Managed runtime-artifact same-SHA verification omitted complete manifest bytes. Source `d7d7072477dfd03e77778d78625fceb42ee571bf`; repair `d20df402a62beea1e0f98354cf15bf641de5060d`. fixed and verified on owning branch art/nightly-2026-09-07-runtime-artifact-fix; not pushed.
 - Runtime-artifact release same-SHA verification omitted complete manifest bytes. Source `19572e1ee96412a8fd63dc02809328ea6f79bc5d`; repair `29dce91870e0c5a4106d30db248dfea8d705226f`. fixed and verified on owning branch art/nightly-2026-09-07-runtime-release-fix; parent independently reviewed; not pushed.
 - Initial bounded dedup sweep could forget a reentrantly-added live ID. Source `24a4604ba7d4e3c0965d67cc7dc3cf84b43ce98e`; repair `1576571cd45dd5235bfc7ee8aedfd1702fd99bbd`. superseded before frozen main; correction retained in b60e1310dc3da1da33dafed85653ba1b7c648b7f.
-- Evidence manifest checksummed CRLF bytes instead of the committed LF CSV. Source `487972cf1f6a7818766b422d116d6f997c0c8129`; repair `30154e6a4ffb04a70aed4195813739fef511201f`. verified and committed on parent main publication branch; 1484 current manifest entries pass; Included in this publication.
-- Archived dedup fixture count field excluded scenario-specific messages. Source `6d2677b126ec9e8b11992954bb6bc3c27311bbf1`; repair `cc30665984bdddf42a1f02e2ac2a835102745143`. corrected by parent publication erratum; immutable archives preserved; fresh original-v3 probe confirmed 20 background, 21 wide, and 276 probe rows; Included in this publication.
-- Same-millisecond Cell receipts could select an older UUID instead of latest insertion. Source `4d0f34dd19798c9f86cc914f4c4f03030dc482c4`; repair `a27668070e69da6ecef87bd8f8a7b90f5f2f6d13`. Included in this publication.
-- Retained Cell RPC optional arguments silently accepted wrong types. Source `4d0f34dd19798c9f86cc914f4c4f03030dc482c4`; repair `a27668070e69da6ecef87bd8f8a7b90f5f2f6d13`. Included in this publication.
+- Evidence manifest checksummed CRLF bytes instead of the committed LF CSV. Source `487972cf1f6a7818766b422d116d6f997c0c8129`; repair `30154e6a4ffb04a70aed4195813739fef511201f`. Integrated in this publication as aad40964f9e27981abce0cc12f1b70b6b48e16b0.
+- Archived dedup fixture count field excluded scenario-specific messages. Source `6d2677b126ec9e8b11992954bb6bc3c27311bbf1`; repair `cc30665984bdddf42a1f02e2ac2a835102745143`. Integrated in this publication as ab0d9599d2fffdcfaeb7c5e855672d5c73187bf4.
+- Same-millisecond Cell receipts could select an older UUID instead of latest insertion. Source `4d0f34dd19798c9f86cc914f4c4f03030dc482c4`; repair `a27668070e69da6ecef87bd8f8a7b90f5f2f6d13`. Integrated in this publication as f868ea70fa7a226a2072d2b34dbad2c8a79b80e1.
+- Retained Cell RPC optional arguments silently accepted wrong types. Source `4d0f34dd19798c9f86cc914f4c4f03030dc482c4`; repair `a27668070e69da6ecef87bd8f8a7b90f5f2f6d13`. Integrated in this publication as f868ea70fa7a226a2072d2b34dbad2c8a79b80e1.
 
 ## check-cell-pnpm-check.log
 
@@ -798,4 +798,78 @@ Recorded exit: `0`. Original bytes: `227`. SHA-256: `1ff553476748b15af6a7b1e9785
 ℹ skipped 0
 ℹ todo 0
 ℹ duration_ms 6061.140458
+```
+
+## focused.log
+
+Command: `node --test --test-concurrency=1 v2/core/tests/mailbox-membership.test.ts v2/daemon/tests/auto-title-membership-cache.test.ts v2/core/tests/external-parent.test.ts v2/daemon/tests/external-parent.test.ts v2/core/tests/cell-move.test.ts v2/daemon/tests/cell-move.test.ts v2/cli/tests/cell-move.test.ts`
+
+Recorded exit: `0`. Original bytes: `4008`. SHA-256: `f3b5fa819aae7bdb70d1b1701aa3f6c8b1a71c6a44cd96e91dca76c0d992f8e9`.
+
+```text
+✔ cell-move.admit: CAS, idempotency, fence, operator stop supersedes and keeps failed receipt (99.441208ms)
+✔ cell-move.placement: CAS source stopped, legal transitions, instructions survive dest fail (34.368792ms)
+✔ cell-move.stale stop queued before admit does not cancel the move (35.504375ms)
+✔ cell-move.pre-placement fail unfences and does not keep instructions (33.4095ms)
+✔ cell-move.deleteBee keeps retained cell identity (19.177125ms)
+✔ spawn external-parent validation, mirroring, replay, restart, and delete policy (1794.864375ms)
+ℹ tests 42
+ℹ suites 0
+ℹ pass 42
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 43580.823417
+```
+
+## manifest.log
+
+Command: `python3 /Users/trmd/.hive/crew/art/reviews/2026-09-07/check-honeybee-manifest.py /Users/trmd/.hive/crew/art/reviews/worktrees/honeybee-2026-09-07-publish`
+
+Recorded exit: `0`. Original bytes: `38`. SHA-256: `04020ebfea0a806f18034f811b5d6b872bbf07711f797e355c0e230faad836f4`.
+
+```text
+{
+  "entries": 1875,
+  "errors": []
+}
+```
+
+## check.log
+
+Command: `pnpm check`
+
+Recorded exit: `0`. Original bytes: `168`. SHA-256: `9c6df241f06415534a1df1f14661e09eaf12aec0509ed6e6ca4586709f5f9447`.
+
+```text
+> honeybee@0.0.1 check /Users/trmd/.hive/crew/art/reviews/worktrees/honeybee-2026-09-07-publish
+> tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit
+```
+
+## v2-check.log
+
+Command: `pnpm v2:check`
+
+Recorded exit: `0`. Original bytes: `384`. SHA-256: `5ef90fe0b1da1bf0105b23326c03dfacddc820845c6dbd1a41407fcac90e5467`.
+
+```text
+> honeybee@0.0.1 v2:check /Users/trmd/.hive/crew/art/reviews/worktrees/honeybee-2026-09-07-publish
+> tsc -p v2/core/tsconfig.json && tsc -p v2/harness/tsconfig.json && tsc -p v2/adapters/tsconfig.json && tsc -p v2/driver-hsr/tsconfig.json && tsc -p v2/daemon/tsconfig.json && tsc -p v2/cli/tsconfig.json && tsc -p v2/driver-cell/tsconfig.json && tsc -p v2/driver-tmux/tsconfig.json
+```
+
+## build.log
+
+Command: `pnpm build`
+
+Recorded exit: `0`. Original bytes: `745`. SHA-256: `2ff4a5b5c52513c5369021ef89f71ca46f646be11ec395c10736791201b322bb`.
+
+```text
+> honeybee@0.0.1 build /Users/trmd/.hive/crew/art/reviews/worktrees/honeybee-2026-09-07-publish
+> tsc -p tsconfig.json && node scripts/build-runner-host-artifact.mjs && node scripts/build-v2-artifact.mjs && node scripts/build-cli-entry.mjs
+runner-host artifact 87f87fc12e71923281e931739fd987faf7ac2d1135faf0eb656065d8b6e2521f (1618627 bytes) staged under /Users/trmd/.hive/crew/art/reviews/worktrees/honeybee-2026-09-07-publish/dist/hsr/artifacts
+v2 artifacts staged at dist/v2/cli.js, dist/v2/provision-worker.js, and dist/v2/runner-host.js (4106 bytes)
+dependency-light cli entry staged at dist/cli.js
+> honeybee@0.0.1 postbuild /Users/trmd/.hive/crew/art/reviews/worktrees/honeybee-2026-09-07-publish
+> chmod +x dist/cli.js dist/cli-x.js
 ```
