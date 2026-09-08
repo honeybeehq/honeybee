@@ -2111,15 +2111,21 @@ export class CoreStore {
       const runtime = this.currentRuntime(beeId);
       this.audit("runtime.updated", beeId, { runtime });
       if (opts.recordOutput === true) this.applyRecordOutput(beeId, at);
-      // Spawn-failure budget (contract §4.2 spawn_failed, B5 bounded): a
-      // runtime that dies on its own having proven NOTHING — still booting,
-      // or running only on a synthetic booted (the 2026-08-18 soak loop) —
-      // is a boot failure; REAL evidence (adapter-parsed output) is the
-      // contrary evidence that resets the budget.
-      if (state === "stopped" && (opts.exitCause === "crashed" || opts.exitCause === "clean")) {
-        if (current.state === "booting" || current.bootEvidence === "synthetic") {
-          this.applySpawnFailure(beeId, generation, opts.exitCause, opts.exitDetail);
-        }
+      // Spawn-failure budget (contract §4.2 spawn_failed, B5 bounded): an
+      // unproven runtime either died on its own or exhausted the daemon's boot
+      // deadline. The durable, generation-fenced stop command distinguishes a
+      // hang-policy stop from ordinary system stops without changing exitCause.
+      const unprovenBoot = current.state === "booting" || current.bootEvidence === "synthetic";
+      const naturalBootExit = opts.exitCause === "crashed" || opts.exitCause === "clean";
+      const executedHangStop = opts.exitCause === "stopped_by_system"
+        && this.hasExecutedBootHangStopCommand(beeId, generation);
+      if (state === "stopped" && unprovenBoot && (naturalBootExit || executedHangStop)) {
+        this.applySpawnFailure(
+          beeId,
+          generation,
+          opts.exitCause!,
+          opts.exitDetail ?? (executedHangStop ? "hang_policy" : undefined),
+        );
       } else if (current.state === "booting" && state === "running" && bootEvidence === "real") {
         this.applySpawnFailuresReset(beeId, `runtime booted (generation ${generation})`);
       }
@@ -3232,6 +3238,30 @@ export class CoreStore {
       `SELECT 1 FROM commands
        WHERE bee_id = ? AND status IN ('queued','running')
          AND verb = 'stop' AND target_generation = ?
+       LIMIT 1`,
+    ).get(beeId, generation) !== undefined;
+  }
+
+  /** Whether this generation already has one non-failed boot-hang stop intent. */
+  hasBootHangStopCommand(beeId: string, generation: number): boolean {
+    return this.stmt(
+      `SELECT 1 FROM commands
+       WHERE bee_id = ? AND status IN ('queued','running','done')
+         AND verb = 'stop' AND target_generation = ?
+         AND json_extract(args, '$.cause') = 'stopped_by_system'
+         AND json_extract(args, '$.reason') = 'hang_policy'
+       LIMIT 1`,
+    ).get(beeId, generation) !== undefined;
+  }
+
+  /** Running covers the synchronous hadProcess=false transition; done covers asynchronous exit evidence. */
+  private hasExecutedBootHangStopCommand(beeId: string, generation: number): boolean {
+    return this.stmt(
+      `SELECT 1 FROM commands
+       WHERE bee_id = ? AND status IN ('running','done')
+         AND verb = 'stop' AND target_generation = ?
+         AND json_extract(args, '$.cause') = 'stopped_by_system'
+         AND json_extract(args, '$.reason') = 'hang_policy'
        LIMIT 1`,
     ).get(beeId, generation) !== undefined;
   }

@@ -979,6 +979,7 @@ test("unit.1: scale-to-zero — idle past the window stops with stopped_by_syste
     const rt = rig.store.currentRuntime("bee-1");
     assert.equal(rt?.state, "stopped");
     assert.equal(rt?.exitCause, "stopped_by_system");
+    assert.equal(rig.store.getBee("bee-1")?.spawnFailures, 0, "scale-to-zero is not a boot failure");
     // Revive-on-message undoes it.
     const res = rig.store.send("bee-1", "wake up");
     assert.ok(res.wakeCommand, "send to a stopped bee must enqueue send_wake");
@@ -1500,22 +1501,75 @@ test("budget.7: a runtime that reached running/idle and then crashed is not a sp
     }
     assert.deepEqual(rig.store.activeFlags("bee-1"), []);
     assert.equal(rig.store.currentRuntime("bee-1")?.state, "idle");
-    // Hang-policy stops of a booting runtime are not boot failures either.
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("budget.7b: repeated boot hangs exhaust one budget and issue one stop per generation", () => {
+  const rig = makeRig({ i1DeadlineSteps: 10_000 });
+  try {
     rig.driver.autoBoot = false;
-    rig.driver.procs.delete("bee-1");
-    rig.driver.events.push({ beeId: "bee-1", generation: 4, kind: "exited", exitCause: "crashed" });
-    rig.core.step(); // → wake
-    rig.core.step(); // → revive gen 5, booting forever
-    assert.equal(rig.store.currentRuntime("bee-1")?.state, "booting");
-    rig.clock.now += 100; // past bootHangTimeoutSteps (50)
-    rig.core.step(); // hang policy enqueues stop
-    rig.core.step(); // stop executes → exited(stopped_by_system)
-    rig.core.step(); // drain (→ wake → gen 6 booting again; slow loop, bounded by the hang timeout)
-    const gen5 = rig.store.listRuntimes("bee-1").find((r) => r.generation === 5);
-    assert.equal(gen5?.state, "stopped");
-    assert.equal(gen5?.exitCause, "stopped_by_system");
-    assert.equal(rig.store.getBee("bee-1")?.spawnFailures, 0, "a boot hang stopped by policy is not a spawn failure");
-    assert.deepEqual(rig.store.activeFlags("bee-1"), []);
+    const stopCalls: Array<{ beeId: string; generation: number }> = [];
+    rig.driver.stop = (beeId, generation) => {
+      stopCalls.push({ beeId, generation });
+      // Match an asynchronous driver: signaling succeeds, but the exit
+      // observation does not arrive until a later daemon tick.
+      return { hadProcess: true };
+    };
+
+    rig.store.createBee({ id: "bee-1", name: "bee-1", agent: "stub", substrate: "hsr", cwd: "/tmp" });
+    rig.store.enqueueCommand("spawn", "bee-1");
+    const message = rig.store.send("bee-1", "remain durable").message;
+    rig.core.step();
+
+    for (let generation = 1; generation <= 3; generation++) {
+      const runtime = rig.store.currentRuntime("bee-1")!;
+      assert.equal(runtime.generation, generation);
+      assert.equal(runtime.state, "booting");
+      rig.clock.now = runtime.startedAt + 51;
+
+      rig.core.step(); // enqueue and execute the hang-policy stop
+      rig.core.step(); // exit observation is still delayed
+      const hangStops = rig.store.listCommands({ beeId: "bee-1" }).filter(
+        (command) => command.verb === "stop"
+          && command.targetGeneration === generation
+          && command.args.reason === "hang_policy",
+      );
+      assert.equal(hangStops.length, 1, `generation ${generation} has one stop command`);
+      assert.equal(stopCalls.filter((call) => call.generation === generation).length, 1);
+
+      rig.driver.procs.delete("bee-1");
+      const exit = {
+        beeId: "bee-1",
+        generation,
+        kind: "exited" as const,
+        exitCause: "stopped_by_system" as const,
+      };
+      rig.driver.events.push(exit, exit); // duplicate exit replay is idempotent
+      rig.core.step();
+      assert.equal(rig.store.getBee("bee-1")?.spawnFailures, generation, "duplicate exit evidence charges once");
+
+      if (generation < 3) {
+        const wake = rig.store.listCommands({ beeId: "bee-1", status: "queued" })
+          .find((command) => command.verb === "send_wake");
+        assert.ok(wake, "a below-budget hang schedules a backed-off wake");
+        assert.ok(wake.nextAttemptAt > wake.enqueuedAt);
+        rig.clock.now = wake.nextAttemptAt;
+        rig.core.step();
+      }
+    }
+
+    assert.deepEqual(rig.store.activeFlags("bee-1").map((flag) => flag.flag), ["spawn_failed"]);
+    assert.equal(rig.store.undeliveredMessages("bee-1").map((mail) => mail.id).includes(message.id), true);
+    assert.equal(
+      rig.store.listCommands({ beeId: "bee-1", status: "queued" })
+        .some((command) => command.verb === "send_wake"),
+      false,
+    );
+    rig.clock.now += 10_000;
+    rig.core.step();
+    assert.equal(rig.driver.starts.length, 3, "spawn_failed suppresses further churn");
   } finally {
     rig.cleanup();
   }

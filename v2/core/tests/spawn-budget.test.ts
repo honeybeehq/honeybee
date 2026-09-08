@@ -112,7 +112,7 @@ test("budget.1b: a prompt-less boot failure retries on the same bounded policy",
   store.close();
 });
 
-test("budget.2: a crash after running/idle is NOT a spawn failure; system/user stops and machine restarts during boot do not count", (t) => {
+test("budget.2: a crash after running/idle is NOT a spawn failure; generic system/user stops and machine restarts during boot do not count", (t) => {
   const h = harness();
   t.after(() => h.cleanup());
   const store = h.open({ maxAttempts: 2, backoffBaseMs: 100 });
@@ -129,9 +129,9 @@ test("budget.2: a crash after running/idle is NOT a spawn failure; system/user s
   store.updateRuntimeState(bee.id, 2, "idle");
   store.updateRuntimeState(bee.id, 2, "stopped", { exitCause: "clean" });
   assert.equal(store.getBee(bee.id)?.spawnFailures, 0);
-  // Stops during boot that are not the process dying on its own do not count.
+  // Stops during boot without a hang-policy command do not count.
   store.reviveBee(bee.id);
-  store.updateRuntimeState(bee.id, 3, "stopped", { exitCause: "stopped_by_system" }); // boot-hang policy
+  store.updateRuntimeState(bee.id, 3, "stopped", { exitCause: "stopped_by_system" });
   store.reviveBee(bee.id);
   store.updateRuntimeState(bee.id, 4, "stopped", { exitCause: "stopped_by_user" });
   store.reviveBee(bee.id);
@@ -145,6 +145,75 @@ test("budget.2: a crash after running/idle is NOT a spawn failure; system/user s
   store.reviveBee(bee.id);
   bootCrash(store, bee.id);
   assert.deepEqual(store.activeFlags(bee.id).map((f) => f.flag), ["spawn_failed"]);
+  assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
+  store.close();
+});
+
+test("budget.2b: a hang-policy stop during an unproven boot counts on the per-bee budget", (t) => {
+  const h = harness();
+  t.after(() => h.cleanup());
+  const store = h.open({ maxAttempts: 2, backoffBaseMs: 100 });
+  const { bee } = makeBee(store);
+  store.send(bee.id, "keep this pending");
+
+  // A queued intent has not stopped anything and cannot spend the budget.
+  const queued = store.enqueueCommand("stop", bee.id, {
+    cause: "stopped_by_system",
+    reason: "hang_policy",
+  });
+  store.updateRuntimeState(bee.id, 1, "stopped", { exitCause: "stopped_by_system" });
+  assert.equal(store.getBee(bee.id)?.spawnFailures, 0);
+  assert.equal(store.claimNextCommand(), null, "the queued generation-1 stop is mooted after the exit");
+  assert.equal(store.getCommand(queued.id)?.status, "done");
+
+  // An old generation's settled hang stop is not evidence for a later stop.
+  store.reviveBee(bee.id);
+  store.updateRuntimeState(bee.id, 2, "stopped", { exitCause: "stopped_by_system" });
+  assert.equal(store.getBee(bee.id)?.spawnFailures, 0, "hang lookup is generation-fenced");
+
+  // A terminal command failure says the stop effect did not succeed.
+  store.reviveBee(bee.id);
+  const failed = store.enqueueCommand("stop", bee.id, {
+    cause: "stopped_by_system",
+    reason: "hang_policy",
+  });
+  assert.equal(store.claimNextCommand()?.id, failed.id);
+  assert.equal(store.reportCommandFailure(failed.id, "node_unreachable").status, "queued");
+  assert.equal(store.claimNextCommand()?.id, failed.id);
+  assert.equal(store.reportCommandFailure(failed.id, "node_unreachable").status, "failed");
+  store.updateRuntimeState(bee.id, 3, "stopped", { exitCause: "stopped_by_system" });
+  assert.equal(store.getBee(bee.id)?.spawnFailures, 0, "a failed hang stop does not count");
+  store.clearFlag(bee.id, "node_unreachable", "test cleanup");
+
+  // hadProcess=false records the exit while the command is still running.
+  store.reviveBee(bee.id);
+  const running = store.enqueueCommand("stop", bee.id, {
+    cause: "stopped_by_system",
+    reason: "hang_policy",
+  });
+  assert.equal(store.claimNextCommand()?.id, running.id);
+  store.updateRuntimeState(bee.id, 4, "stopped", { exitCause: "stopped_by_system" });
+  assert.equal(store.getBee(bee.id)?.spawnFailures, 1, "a running hang stop counts");
+  store.completeCommand(running.id);
+
+  // The asynchronous path observes the exit after command completion.
+  store.reviveBee(bee.id);
+  const done = store.enqueueCommand("stop", bee.id, {
+    cause: "stopped_by_system",
+    reason: "hang_policy",
+  });
+  assert.equal(store.claimNextCommand()?.id, done.id);
+  store.completeCommand(done.id);
+  store.updateRuntimeState(bee.id, 5, "stopped", { exitCause: "stopped_by_system" });
+  assert.equal(store.getBee(bee.id)?.spawnFailures, 2, "a completed hang stop counts");
+
+  const stale = store.updateRuntimeState(bee.id, 4, "stopped", { exitCause: "stopped_by_system" });
+  assert.deepEqual(stale, { applied: false });
+  assert.equal(store.getBee(bee.id)?.spawnFailures, 2, "stale exit replay cannot charge twice");
+
+  assert.deepEqual(store.activeFlags(bee.id).map((flag) => flag.flag), ["spawn_failed"]);
+  assert.equal(store.enqueueWake(bee.id).outcome, "suppressed");
+  assert.equal(store.undeliveredMessages(bee.id).length, 1);
   assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
   store.close();
 });

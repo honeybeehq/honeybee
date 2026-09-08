@@ -490,9 +490,8 @@ export class DaemonCore {
       return;
     }
     if (target === "stopped") {
-      // v9: a generation whose running state came only from a synthetic
-      // booted (bootEvidence 'synthetic') is still a boot failure when it
-      // dies on its own — same budget as an exit during `booting`.
+      // A generation with no real boot evidence remains countable whether it
+      // exits on its own or the executed boot-hang policy stops it.
       const countable = rt.state === "booting" || rt.bootEvidence === "synthetic";
       const failuresBefore = countable ? (this.store.getBee(obs.beeId)?.spawnFailures ?? 0) : null;
       let bootRetryNeeded = false;
@@ -504,8 +503,8 @@ export class DaemonCore {
         `obs.exited bee=${obs.beeId} gen=${obs.generation} cause=${obs.exitCause}${obs.detail ? ` detail=${obs.detail}` : ""}`,
       );
       if (failuresBefore != null) {
-        // The store counts a boot exit iff the process died on its own
-        // (crashed/clean) — one budget per bee across wake-driven revives.
+        // The store counts natural crashed/clean exits and executed hang-policy
+        // stops on one per-bee budget across wake-driven revives.
         const failures = this.store.getBee(obs.beeId)?.spawnFailures ?? 0;
         if (failures > failuresBefore) {
           const flagged = this.store.activeFlags(obs.beeId).some((f) => f.flag === "spawn_failed");
@@ -706,6 +705,7 @@ export class DaemonCore {
       if (rt.state !== "booting") continue;
       if (now - rt.startedAt <= this.policy.bootHangTimeoutSteps) continue;
       if (this.pendingStopExists(rt.beeId, rt.generation)) continue;
+      if (this.store.hasBootHangStopCommand(rt.beeId, rt.generation)) continue;
       this.store.enqueueCommand("stop", rt.beeId, { cause: "stopped_by_system", reason: "hang_policy" });
       this.log(`policy.hang_stop bee=${rt.beeId} gen=${rt.generation} state=${rt.state}`);
     }
