@@ -2249,6 +2249,12 @@ export class HiveDaemon {
     if (!Array.isArray(argv) || argv.length === 0 || argv.some((a) => typeof a !== "string")) {
       throw new RpcError("invalid_request", "cell.exec: argv must be a non-empty string array");
     }
+    if (params.timeoutMs !== undefined && typeof params.timeoutMs !== "number") {
+      throw new RpcError("invalid_request", "cell.exec: timeoutMs must be a number when given");
+    }
+    if (params.cwd !== undefined && typeof params.cwd !== "string") {
+      throw new RpcError("invalid_request", "cell.exec: cwd must be a string when given");
+    }
     const timeoutMs = typeof params.timeoutMs === "number" ? params.timeoutMs : undefined;
     const cwd = typeof params.cwd === "string" ? params.cwd : undefined;
     const hash = hashCellOpRequest({ cellId, kind: "exec", argv, cwd: cwd ?? null, timeoutMs: timeoutMs ?? null });
@@ -2361,6 +2367,9 @@ export class HiveDaemon {
     this.releaseAbsentCellOps(cellId);
     const key = this.idempotencyKeyOf(params);
     if (key == null) throw new RpcError("invalid_request", "cell.retained.remove: idempotencyKey is required");
+    if (params.force !== undefined && typeof params.force !== "boolean") {
+      throw new RpcError("invalid_request", "cell.retained.remove: force must be a boolean when given");
+    }
     const force = params.force === true;
     const hash = hashCellOpRequest({ cellId, kind: "remove", force });
     const existing = store.getCellOpByKey(key);

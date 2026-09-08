@@ -1,11 +1,12 @@
 /** Local placement and retained operations over real disposable daemons. */
 import { test, type TestContext } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { pidAlive } from "../../driver-hsr/src/psutil.ts";
+import { localRepoIdentity } from "../../driver-cell/src/git.ts";
 import { fingerprintOrigin, g, makeOrigin } from "../../driver-cell/tests/helpers.ts";
 import { claudeProjectKey } from "../../driver-tmux/src/index.ts";
 import type { BeeMoveResult, CellExecResult, CellRetainedRemoveResult, MailboxResult, SendRpcResult, SpawnResult, ViewResult } from "../src/protocol.ts";
@@ -157,6 +158,70 @@ test("cell move RPC preserves conversation, source work, mail and retained opera
   assert.notEqual(survivor.bee?.lifecycle, "deleted");
   assert.equal(survivor.bee?.cellId, null);
   assert.equal(survivor.runtime?.generation, after.runtime?.generation);
+});
+
+test("cell move refuses its Cell worktree as a regular-checkout destination before fencing", { timeout: 120_000 }, async (t) => {
+  const f = await fixture(t);
+  const alias = join(f.root, "cell-space-alias");
+  symlinkSync(f.cell.spaceDir, alias, "dir");
+  const destinations = [...new Set([f.cell.spaceDir, realpathSync(f.cell.spaceDir), alias])];
+  for (const [index, cwd] of destinations.entries()) {
+    const repository = localRepoIdentity(cwd);
+    assert.ok(repository);
+    const request = {
+      ...f.request,
+      idempotencyKey: `source-cell-destination-${index}`,
+      destination: {
+        kind: "local_checkout",
+        cwd,
+        repository,
+        observedHead: g(cwd, ["rev-parse", "HEAD"]),
+      },
+    };
+    await assert.rejects(
+      f.requestRpc("bee.move", request),
+      (error: unknown) => error instanceof Error && "code" in error && error.code === "repo_mismatch",
+    );
+    const after = await f.view();
+    assert.equal(after.bee?.activeMoveId, null);
+    assert.equal(after.bee?.substrate, "cell");
+    assert.equal(after.bee?.cwd, f.cell.spaceDir);
+    assert.equal(after.runtime?.generation, f.runtime.generation);
+  }
+});
+
+test("retained Cell RPCs reject invalid optional parameter types before binding idempotency keys", { timeout: 120_000 }, async (t) => {
+  const f = await fixture(t);
+  const move = await f.requestRpc<BeeMoveResult>("bee.move", f.request);
+  await f.finishMove(move);
+  const invalidRequest = (error: unknown) =>
+    error instanceof Error && "code" in error && error.code === "invalid_request";
+  await assert.rejects(
+    f.requestRpc("cell.exec", {
+      cellId: f.cell.id,
+      idempotencyKey: "invalid-cwd",
+      argv: [process.execPath, "-e", "process.exit(0)"],
+      cwd: 42,
+    }),
+    invalidRequest,
+  );
+  await assert.rejects(
+    f.requestRpc("cell.exec", {
+      cellId: f.cell.id,
+      idempotencyKey: "invalid-timeout",
+      argv: [process.execPath, "-e", "process.exit(0)"],
+      timeoutMs: "1000",
+    }),
+    invalidRequest,
+  );
+  await assert.rejects(
+    f.requestRpc("cell.retained.remove", {
+      cellId: f.cell.id,
+      idempotencyKey: "invalid-force",
+      force: "yes",
+    }),
+    invalidRequest,
+  );
 });
 
 test("cell move survives daemon loss after durable admission", { timeout: 120_000 }, async (t) => {

@@ -43,6 +43,17 @@ test("documented cell move CLI infers placement, preserves explicit CAS and read
   const moveId = receipt.id;
   await client.request("send", { beeId: spawned.beeId, body: "continue", idempotencyKey: "task" });
   await waitFor(async () => (await client.request<BeeMoveResult>("bee.move.get", { moveId })).phase === "complete", "move complete", 60_000);
+  const invalidExecOut: string[] = [];
+  const invalidExecErr: string[] = [];
+  const invalidExec = await runV2Cli([
+    "cell", "exec", before.cell.id,
+    "--timeout", "wat",
+    "--data-dir", rig.dir,
+    "--json",
+    "--", process.execPath, "-e", "process.exit(0)",
+  ], { out: (line) => invalidExecOut.push(line), err: (line) => invalidExecErr.push(line) });
+  assert.equal(invalidExec, 1);
+  assert.match(invalidExecErr.join("\n"), /--timeout must be a finite number/);
   const get = await run(["cell", "move-get", moveId]);
   assert.equal(get.code, 0, get.err.join("\n"));
   assert.equal(JSON.parse(get.out[0] ?? "{}").phase, "complete");

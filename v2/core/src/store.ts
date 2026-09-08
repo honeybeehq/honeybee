@@ -3833,7 +3833,7 @@ export class CoreStore {
 
     const cellsById = new Map(this.listCells().map((cell) => [cell.id, cell] as const));
     const latestMoveByBee = new Map<string, BeeMoveRow>();
-    for (const row of this.stmt("SELECT * FROM bee_moves ORDER BY created_at, id").all() as Row[]) {
+    for (const row of this.stmt("SELECT * FROM bee_moves ORDER BY created_at, rowid").all() as Row[]) {
       const move = mapBeeMove(row);
       latestMoveByBee.set(move.beeId, move);
     }
@@ -5144,7 +5144,7 @@ export class CoreStore {
   }
 
   latestMoveOf(beeId: string): BeeMoveRow | null {
-    const row = this.stmt("SELECT * FROM bee_moves WHERE bee_id = ? ORDER BY created_at DESC, id DESC LIMIT 1").get(
+    const row = this.stmt("SELECT * FROM bee_moves WHERE bee_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1").get(
       beeId,
     ) as Row | undefined;
     return row ? mapBeeMove(row) : null;

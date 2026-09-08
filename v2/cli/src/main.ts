@@ -1743,6 +1743,9 @@ async function cmdCell(ctx: CliContext, parsed: Parsed): Promise<number> {
       if (argv.length === 0) throw new Error("usage: hive cell exec <cellId> -- <argv…>");
       const timeoutRaw = parsed.flags.get("--timeout");
       const timeoutMs = typeof timeoutRaw === "string" ? Number(timeoutRaw) : undefined;
+      if (timeoutRaw !== undefined && (timeoutMs === undefined || !Number.isFinite(timeoutMs))) {
+        throw new Error("cell exec: --timeout must be a finite number");
+      }
       const cwd = parsed.flags.get("--cwd");
       return withClient(ctx, async (c) => {
         const r = await c.request<CellExecResult>("cell.exec", {

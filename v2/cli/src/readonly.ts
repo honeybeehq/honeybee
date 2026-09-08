@@ -398,7 +398,7 @@ export class ReadOnlyStore {
   private latestMoveView(beeId: string): BeeMoveView | null {
     if (!this.tableExists("bee_moves")) return null;
     const r = this.db
-      .prepare("SELECT * FROM bee_moves WHERE bee_id = ? ORDER BY created_at DESC, id DESC LIMIT 1")
+      .prepare("SELECT * FROM bee_moves WHERE bee_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1")
       .get(beeId) as Row | undefined;
     if (!r) return null;
     const placementVersion = Number(r.placement_version);

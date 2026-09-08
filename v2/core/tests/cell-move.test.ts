@@ -14,6 +14,7 @@ import {
   StalePlacementError,
   composeDeveloperInstructions,
   hashBeeMoveRequest,
+  openCoreStore,
   replayAudit,
   type CellRow,
 } from "../src/index.ts";
@@ -416,6 +417,48 @@ test("cell-move.dumpState beeMoves order matches audit replay", () => {
     assert.ok(store.dumpState().beeMoves[0]?.requestHash);
     assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
   } finally {
+    h.cleanup();
+  }
+});
+
+test("cell-move.latest receipt follows insertion order when admission timestamps tie", () => {
+  const h = harness();
+  let store = openCoreStore(h.path, { now: () => 1_000, ephemeral: true });
+  try {
+    const { bee } = store.createBee({
+      name: "same-millisecond",
+      agent: "codex",
+      substrate: "cell",
+      cwd: "/tmp/cell-space",
+    });
+    const cell = putActiveCell(store, bee.id, bee.cwd);
+    const admit = (idempotencyKey: string) => store.admitBeeMove({
+      beeId: bee.id,
+      idempotencyKey,
+      requestHash: idempotencyKey,
+      expected: { placementVersion: 0, cellId: cell.id },
+      destinationCwd: "/tmp/checkout",
+    });
+    const older = admit("older");
+    store.failBeeMove(older.id, { stage: "validate", code: "older_failed", detail: "fixture" });
+    const newer = admit("newer");
+    store.close();
+
+    const db = new DatabaseSync(h.path);
+    try {
+      db.prepare("UPDATE bee_moves SET id = 'zzzz-old' WHERE id = ?").run(older.id);
+      db.prepare("UPDATE bee_moves SET id = 'aaaa-new' WHERE id = ?").run(newer.id);
+      db.prepare("UPDATE bees SET active_move_id = 'aaaa-new' WHERE id = ?").run(bee.id);
+    } finally {
+      db.close();
+    }
+
+    store = openCoreStore(h.path, { now: () => 1_000, ephemeral: true });
+    assert.equal(store.latestMoveOf(bee.id)?.id, "aaaa-new");
+    assert.equal(store.placementInstructionMove(bee.id)?.id, "aaaa-new");
+    assert.equal(store.listBeeViewRows()[0]?.move?.id, "aaaa-new");
+  } finally {
+    store.close();
     h.cleanup();
   }
 });
