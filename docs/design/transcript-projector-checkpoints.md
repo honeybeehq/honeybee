@@ -54,3 +54,38 @@ complete checkpoint. This includes item starts, fork responses, rollout dedupe, 
 thinking/message chunks, prompt mirrors, tool updates and compaction dedupe.
 Separate tests cover malformed envelopes and nested state, exact versions, mismatched
 harnesses, empty stateless/unknown state, alias isolation and the byte limit.
+
+## Persistence and version maintenance
+
+Take the checkpoint after the last state-mutating call whose events will be committed
+in the same transaction. Do not call `flush()` or `pushLine()` between taking that
+checkpoint and committing it with its cursor and events. Flushing changes pending state.
+
+Use `serializeTranscriptCheckpoint` to obtain `{ ok: true, json, bytes }` or a typed
+`invalid_checkpoint` / `state_too_large` failure, using the same checks as restore.
+This helper checks JSON representability and size, not provider schema compatibility;
+restore owns schema validation. Persist its JSON string verbatim. JSON escaping preserves
+lone UTF-16 surrogates in open chunks or prompt mirrors; transcoding decoded string
+fields through UTF-8 TEXT can replace them and change subsequent projection.
+
+`projector.harness` describes the projection dialect; `checkpoint().harness` stores the
+registry key. Always pass the identical requested key to create and restore, with no
+normalization between them. A future provider can use the Claude fallback dialect while
+retaining its own registry key in the checkpoint.
+
+Both version fences are global. A Grok state schema change therefore invalidates Codex
+and Agy checkpoints too. This deliberately favors simple compatibility decisions.
+The test-only source digest covers all six projector modules. Source changes require
+reviewing versions, bumping the relevant constant, and refreshing the fixture with:
+
+```sh
+UPDATE_TRANSCRIPT_CHECKPOINT_DIGEST=1 node --test v2/driver-tmux/tests/checkpoint-digest.test.ts
+```
+
+The refresh command refuses a changed digest with unchanged versions. The digest is
+conservative and also flags comments or refactors; use the state version to invalidate
+checkpoints when event semantics remain unchanged. The digest adds no runtime dependency.
+
+Grok retains tool pairing and dedupe flags but drops tool input after emitting its call.
+The event already contains that input, and future updates never re-emit the call. This
+keeps large file-write arguments out of every subsequent checkpoint without evicting IDs.

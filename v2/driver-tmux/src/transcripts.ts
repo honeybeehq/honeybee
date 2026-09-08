@@ -1,6 +1,6 @@
 import {
-  projectorCheckpoint, checkpointJson, checkpointRecord,
-  TRANSCRIPT_CHECKPOINT_MAX_BYTES, TRANSCRIPT_PROJECTION_VERSION, TRANSCRIPT_PROJECTOR_STATE_VERSION,
+  projectorCheckpoint, checkpointRecord, serializeTranscriptCheckpoint,
+  TRANSCRIPT_PROJECTION_VERSION, TRANSCRIPT_PROJECTOR_STATE_VERSION,
   type TranscriptProjectorRestoreResult,
 } from "./transcript-projection.ts";
 /**
@@ -545,11 +545,8 @@ export function createTranscriptProjector(harness: string): TranscriptProjector 
 /** Restore only exact compatible, bounded JSON checkpoints. Rebuild from source on failure. */
 export function restoreTranscriptProjector(harness: string, checkpoint: unknown): TranscriptProjectorRestoreResult {
   try {
-    if (!checkpointJson(checkpoint)) return { ok: false, reason: "invalid_checkpoint" };
-    const serialized = JSON.stringify(checkpoint);
-    if (new TextEncoder().encode(serialized).byteLength > TRANSCRIPT_CHECKPOINT_MAX_BYTES) {
-      return { ok: false, reason: "state_too_large" };
-    }
+    const serialized = serializeTranscriptCheckpoint(checkpoint);
+    if (!serialized.ok) return serialized;
     if (!checkpointRecord(checkpoint, {
       harness: (v) => typeof v === "string",
       projectionVersion: (v) => typeof v === "number" && Number.isInteger(v),

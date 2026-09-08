@@ -1,3 +1,5 @@
+import { Buffer } from "node:buffer";
+
 /**
  * Pane-ready transcript projection (G3).
  *
@@ -98,6 +100,8 @@ export type TranscriptProjectedEvent =
  * pushLine returns events derivable so far; flush emits held pairing/chunks.
  */
 export interface TranscriptProjector {
+  /** Projection dialect. For fallback projectors this can differ from the registry key.
+   * Pass the identical requested key to create/restore; checkpoint().harness retains it. */
   readonly harness: string;
   pushLine(line: string): TranscriptProjectedEvent[];
   flush(): TranscriptProjectedEvent[];
@@ -182,5 +186,23 @@ export function checkpointJson(value: unknown, ancestors = new Set<object>()): b
     });
   } finally {
     ancestors.delete(value);
+  }
+}
+
+export type TranscriptCheckpointSerializationResult =
+  | { ok: true; json: string; bytes: number }
+  | { ok: false; reason: "invalid_checkpoint" | "state_too_large" };
+
+/** Serialize verbatim for persistence, with the same JSON/byte checks as restore. */
+export function serializeTranscriptCheckpoint(checkpoint: unknown): TranscriptCheckpointSerializationResult {
+  try {
+    if (!checkpointJson(checkpoint)) return { ok: false, reason: "invalid_checkpoint" };
+    const json = JSON.stringify(checkpoint);
+    const bytes = Buffer.byteLength(json, "utf8");
+    return bytes > TRANSCRIPT_CHECKPOINT_MAX_BYTES
+      ? { ok: false, reason: "state_too_large" }
+      : { ok: true, json, bytes };
+  } catch {
+    return { ok: false, reason: "invalid_checkpoint" };
   }
 }

@@ -384,6 +384,9 @@ export function createGrokProjector(restored?: GrokCheckpointState): TranscriptP
       state.callEmitted = true;
     }
 
+    // The call event owns its input now; later updates need only pairing/dedupe state.
+    delete state.input;
+
     const terminal = isTerminalToolStatus(state.status);
     const hasOutput = hasField(update, "rawOutput", "raw_output", "output", "result");
     const outputValue = hasOutput ? toolOutput(update) : terminal ? update.content : undefined;

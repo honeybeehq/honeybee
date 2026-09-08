@@ -23,6 +23,7 @@ export {
   grokTranscriptRenderer,
   lastAssistantText,
   createTranscriptProjector,
+  restoreTranscriptProjector,
   createTranscriptTurnStream,
   renderTranscriptLines,
   stubTranscriptRenderer,
@@ -38,6 +39,14 @@ export {
 } from "./transcripts.ts";
 export { createCodexProjector } from "./codex-projection.ts";
 export {
+  serializeTranscriptCheckpoint,
+  TRANSCRIPT_CHECKPOINT_MAX_BYTES,
+  TRANSCRIPT_PROJECTION_VERSION,
+  TRANSCRIPT_PROJECTOR_STATE_VERSION,
+  type TranscriptCheckpointSerializationResult,
+  type TranscriptProjectorCheckpoint,
+  type TranscriptProjectorRestoreResult,
+  type TranscriptProjectorRestoreFailure,
   type TranscriptFileChange,
   type TranscriptIsoTs,
   type TranscriptMessageRole,

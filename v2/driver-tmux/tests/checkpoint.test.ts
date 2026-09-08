@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createTranscriptProjector, restoreTranscriptProjector } from "../src/transcripts.ts";
-import { TRANSCRIPT_CHECKPOINT_MAX_BYTES } from "../src/transcript-projection.ts";
+import { serializeTranscriptCheckpoint, TRANSCRIPT_CHECKPOINT_MAX_BYTES } from "../src/transcript-projection.ts";
 
 for (const harness of ["codex", "grok", "agy", "claude", "stub", "unknown-provider"]) {
   test(`${harness}: exact checkpoint validation`, () => {
@@ -78,4 +78,54 @@ test("provider-owned nested state rejects unknown fields, bad types and duplicat
     checkpoint.state = { ...checkpoint.state as object, ...patch as object };
     assert.deepEqual(restoreTranscriptProjector(harness, checkpoint), { ok: false, reason: "invalid_checkpoint" });
   }
+});
+
+
+test("fallback dialect differs from the exact checkpoint registry key", () => {
+  const projector = createTranscriptProjector("future-provider");
+  assert.equal(projector.harness, "claude");
+  assert.equal(projector.checkpoint().harness, "future-provider");
+  assert.ok(restoreTranscriptProjector("future-provider", projector.checkpoint()).ok);
+  assert.deepEqual(restoreTranscriptProjector(projector.harness, projector.checkpoint()), {
+    ok: false, reason: "harness_mismatch",
+  });
+});
+
+test("Grok retains tool dedupe without retaining already emitted large inputs", () => {
+  let projector = createTranscriptProjector("grok");
+  const input = { content: "x".repeat(100_000) };
+  const update = (payload: unknown) => JSON.stringify({ method: "session/update", params: { update: payload } });
+  for (let index = 0; index < 50; index++) {
+    const toolCallId = `tool-${index}`;
+    assert.deepEqual(projector.pushLine(update({ sessionUpdate: "tool_call", toolCallId, title: "write", rawInput: input })), [
+      { kind: "tool_call", ts: null, callId: toolCallId, name: "write", input },
+    ]);
+    const checkpoint = projector.checkpoint();
+    assert.ok(Buffer.byteLength(JSON.stringify(checkpoint)) < 10_000);
+    const restored = restoreTranscriptProjector("grok", JSON.parse(JSON.stringify(checkpoint)));
+    assert.ok(restored.ok);
+    projector = restored.projector;
+    const completion = update({ sessionUpdate: "tool_call_update", toolCallId, rawInput: input, status: "completed", rawOutput: "written" });
+    assert.deepEqual(projector.pushLine(completion), [
+      { kind: "tool_result", ts: null, callId: toolCallId, name: "write", isError: false, output: "written" },
+    ]);
+    assert.deepEqual(projector.pushLine(completion), []);
+  }
+  assert.ok(Buffer.byteLength(JSON.stringify(projector.checkpoint())) < 10_000);
+});
+
+test("shared serialization preserves lone surrogates through UTF-8 JSON storage", () => {
+  const projector = createTranscriptProjector("grok");
+  projector.pushLine(JSON.stringify({ method: "session/update", params: { update: {
+    sessionUpdate: "agent_message_chunk", content: "\ud800",
+  } } }));
+  const serialized = serializeTranscriptCheckpoint(projector.checkpoint());
+  assert.ok(serialized.ok);
+  assert.equal(serialized.bytes, Buffer.byteLength(serialized.json, "utf8"));
+  const restored = restoreTranscriptProjector("grok", JSON.parse(Buffer.from(serialized.json, "utf8").toString("utf8")));
+  assert.ok(restored.ok);
+  assert.deepEqual(restored.projector.flush(), projector.flush());
+  assert.deepEqual(serializeTranscriptCheckpoint({ value: "x".repeat(TRANSCRIPT_CHECKPOINT_MAX_BYTES) }), {
+    ok: false, reason: "state_too_large",
+  });
 });
