@@ -29,6 +29,8 @@ const bee = (o: Partial<{ cwd: string; args: string[] | null; providerSessionId:
 });
 
 test("bee.reconfigure RPC refuses an active turn unchanged and restarts an idle stub once", async () => {
+  // Match the daemon fixture's startup bound on loaded release hosts.
+  const startupTimeoutMs = 60_000;
   const { dir, cleanup } = makeDaemonDir();
   let daemon: DaemonHandle | null = null;
   try {
@@ -37,7 +39,7 @@ test("bee.reconfigure RPC refuses an active turn unchanged and restarts an idle 
     const { beeId } = await client.request<SpawnResult>("spawn", {
       name: "reconfigure", agent: "stub", cwd: "/tmp", args: ["--model", "old"],
     });
-    await waitFor(async () => (await client.request<ViewResult>("view", { beeId })).view.runtimeState === "idle", "initial idle");
+    await waitFor(async () => (await client.request<ViewResult>("view", { beeId })).view.runtimeState === "idle", "initial idle", startupTimeoutMs);
     const idle = await client.request<ViewResult>("view", { beeId });
     assert.equal(idle.view.working, false);
     await client.request("send", { beeId, body: "@hang" });
@@ -60,7 +62,7 @@ test("bee.reconfigure RPC refuses an active turn unchanged and restarts an idle 
     await waitFor(async () => {
       const { view } = await client.request<ViewResult>("view", { beeId });
       return view.generation === 2 && view.runtimeState === "idle";
-    }, "model change restarted idle runtime");
+    }, "model change restarted idle runtime", startupTimeoutMs);
     const restarted = await client.request<ViewResult>("view", { beeId });
     assert.deepEqual(restarted.bee?.args, change.args);
     assert.notEqual(restarted.runtime?.pid, before.runtime?.pid);
