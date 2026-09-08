@@ -17,7 +17,7 @@ import { beeTaskList, hashBeeMoveRequest, openCoreStore, PLACEMENT_PREFIX_MARKER
 import { DaemonCore, type DaemonCoreOptions, type DaemonPolicy, type I1ViolationEvent } from "../src/loops.ts";
 import type { PerformanceRecorder } from "../src/performance.ts";
 import { HsrDriver } from "../../driver-hsr/src/index.ts";
-import { stubAdapter } from "../../adapters/src/index.ts";
+import { codexAdapter, stubAdapter, type AdapterSignal } from "../../adapters/src/index.ts";
 import { AGENT_PATH, FakeDriver, sleep, waitFor } from "./helpers.ts";
 import { BUZ_INJECTION_MARKER } from "../src/envelope.ts";
 
@@ -2216,6 +2216,215 @@ test("urgency.d3: `now` to an idle runtime is a plain delivery — no interrupt"
     rig.core.step();
     assert.deepEqual(rig.driver.deliveredIds, [res.message.id]);
     assert.equal(rig.driver.interrupts.length, 0);
+  } finally {
+    rig.cleanup();
+  }
+});
+
+interface AsyncDeliveryProcessProbe {
+  beeId: string;
+  generation: number;
+  pid: number;
+  pidStartedAt: number;
+  child: object;
+  adapter: ReturnType<typeof codexAdapter>;
+  degraded: false;
+  phase: "idle" | "running";
+  sessionId: string;
+  turnId: string | null;
+  pendingDeliveries: Set<number>;
+  confirmedDeliveries: Set<number>;
+  stopCause: null;
+  killTimer: null;
+  stdoutRest: Buffer;
+  exited: false;
+  hostStyle: true;
+  agentPid: number;
+  socket: {
+    destroyed: false;
+    writable: true;
+    write(frame: string): boolean;
+  };
+  socketRetry: null;
+  socketPath: null;
+  statusPath: null;
+  observationPath: null;
+  logOffset: number;
+  initialObservationCursor: number;
+  pendingObservationCursor: null;
+  legacySharedObservation: false;
+  outboundPending: string[];
+  pendingWrites: string[];
+  socketBroken: false;
+  spawnError: null;
+  commandResolution: null;
+  realEvidence: true;
+}
+
+interface AsyncDeliveryRig {
+  dir: string;
+  store: CoreStore;
+  driver: HsrDriver;
+  core: DaemonCore;
+  proc: AsyncDeliveryProcessProbe;
+  frames: string[];
+  signal(signal: AdapterSignal): void;
+  cleanup(): void;
+}
+
+function makeAsyncDeliveryRig(): AsyncDeliveryRig {
+  const dir = mkdtempSync(join(tmpdir(), "hb-v2-now-ack-race-"));
+  const store = openCoreStore(join(dir, "core.sqlite3"), { ephemeral: true });
+  const adapter = codexAdapter({ cwd: dir });
+  const driver = new HsrDriver({
+    sessionLogDir: join(dir, "logs"),
+    resolve: () => {
+      throw new Error("process-free delivery rig must never spawn");
+    },
+  });
+  const core = new DaemonCore({
+    store,
+    driver,
+    policy: { bootHangTimeoutSteps: 5000, commandsPerStep: 8 },
+    now: Date.now,
+    log: () => {},
+  });
+  core.boot();
+  const { bee, runtime } = store.createBee({
+    id: "ack-race",
+    name: "ack-race",
+    agent: "codex",
+    substrate: "hsr",
+    cwd: dir,
+  });
+  store.updateRuntimeState(bee.id, runtime.generation, "running", { pid: 4242, pidStartedAt: 1000 });
+  store.updateRuntimeState(bee.id, runtime.generation, "idle");
+
+  const frames: string[] = [];
+  const proc: AsyncDeliveryProcessProbe = {
+    beeId: bee.id,
+    generation: runtime.generation,
+    pid: 4242,
+    pidStartedAt: 1000,
+    child: {},
+    adapter,
+    degraded: false,
+    phase: "idle",
+    sessionId: "root-thread",
+    turnId: null,
+    pendingDeliveries: new Set(),
+    confirmedDeliveries: new Set(),
+    stopCause: null,
+    killTimer: null,
+    stdoutRest: Buffer.alloc(0),
+    exited: false,
+    hostStyle: true,
+    agentPid: 4243,
+    socket: {
+      destroyed: false,
+      writable: true,
+      write(frame): boolean {
+        frames.push(frame);
+        return true;
+      },
+    },
+    socketRetry: null,
+    socketPath: null,
+    statusPath: null,
+    observationPath: null,
+    logOffset: 0,
+    initialObservationCursor: 0,
+    pendingObservationCursor: null,
+    legacySharedObservation: false,
+    outboundPending: [],
+    pendingWrites: [],
+    socketBroken: false,
+    spawnError: null,
+    commandResolution: null,
+    realEvidence: true,
+  };
+  const procs: unknown = Reflect.get(driver, "procs");
+  if (!(procs instanceof Map)) throw new Error("HsrDriver process registry moved or changed shape");
+  procs.set(proc.beeId, proc);
+  const onSignal: unknown = Reflect.get(driver, "onSignal");
+  if (typeof onSignal !== "function") throw new Error("HsrDriver signal seam moved or changed shape");
+
+  return {
+    dir,
+    store,
+    driver,
+    core,
+    proc,
+    frames,
+    signal: (signal) => Reflect.apply(onSignal, driver, [proc, signal]),
+    cleanup: () => {
+      procs.delete(proc.beeId);
+      store.close();
+      rmSync(dir, { recursive: true, force: true });
+    },
+  };
+}
+
+function interruptFrameCount(frames: readonly string[]): number {
+  return frames.filter((frame) => frame.includes("turn/interrupt")).length;
+}
+
+test("urgency.d3a: a confirmed Codex `now` delivery never interrupts the turn it just started", () => {
+  const rig = makeAsyncDeliveryRig();
+  try {
+    const sent = rig.store.send(rig.proc.beeId, "keep this exact turn alive", { urgency: "now" }).message;
+    rig.core.step();
+    assert.equal(rig.proc.pendingDeliveries.has(sent.id), true);
+    assert.equal(rig.store.getMessage(sent.id)?.deliveredAt, null, "a write is not delivery confirmation");
+
+    rig.signal({ kind: "delivery_confirmed", messageId: sent.id });
+    rig.signal({ kind: "turn_started", threadId: rig.proc.sessionId, turnId: "turn-1" });
+    rig.core.step();
+
+    assert.equal(interruptFrameCount(rig.frames), 0, "the confirmed delivery must not interrupt its own turn");
+    assert.equal(rig.driver.consumedGeneration(sent.id), 1);
+    assert.equal(rig.store.getMessage(sent.id)?.deliveredGeneration, 1);
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("urgency.d3b: a pending Codex `now` delivery never interrupts the turn it just started", () => {
+  const rig = makeAsyncDeliveryRig();
+  try {
+    const sent = rig.store.send(rig.proc.beeId, "keep this exact turn alive", { urgency: "now" }).message;
+    rig.core.step();
+    rig.signal({ kind: "turn_started", threadId: rig.proc.sessionId, turnId: "turn-2" });
+    rig.core.step();
+
+    assert.equal(interruptFrameCount(rig.frames), 0, "the unacknowledged delivery must not interrupt its own turn");
+    assert.equal(rig.proc.pendingDeliveries.has(sent.id), true);
+    assert.equal(rig.driver.consumedGeneration(sent.id), undefined);
+    assert.equal(rig.store.getMessage(sent.id)?.deliveredAt, null);
+
+    rig.signal({ kind: "delivery_confirmed", messageId: sent.id });
+    rig.core.step();
+    assert.equal(interruptFrameCount(rig.frames), 0, "the ACK retry must remain protected until mailbox settlement");
+    assert.equal(rig.driver.consumedGeneration(sent.id), 1);
+    assert.equal(rig.store.getMessage(sent.id)?.deliveredGeneration, 1);
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("urgency.d3c: a distinct later `now` message still interrupts an async-confirmed turn", () => {
+  const rig = makeAsyncDeliveryRig();
+  try {
+    const active = rig.store.send(rig.proc.beeId, "existing turn").message;
+    rig.core.step();
+    rig.signal({ kind: "delivery_confirmed", messageId: active.id });
+    rig.signal({ kind: "turn_started", threadId: rig.proc.sessionId, turnId: "turn-3" });
+    const urgent = rig.store.send(rig.proc.beeId, "interrupt the other work", { urgency: "now" }).message;
+    rig.core.step();
+
+    assert.equal(interruptFrameCount(rig.frames), 1, "a different urgent message still interrupts existing work");
+    assert.equal(rig.store.getMessage(active.id)?.deliveredAt, null, "interrupt settles before FIFO delivery retries");
+    assert.equal(rig.store.getMessage(urgent.id)?.deliveredAt, null);
   } finally {
     rig.cleanup();
   }
