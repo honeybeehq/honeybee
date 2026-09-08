@@ -66,6 +66,11 @@ test("external parent flag survives restart and local deletion never orphans the
     assert.equal(local.parentExternal, false, "ordinary children default to local lineage");
     assert.equal(external.parentExternal, true);
     assert.equal(external.parentId, PARENT_ID);
+    assert.deepEqual(
+      store.listChildren(parent.id).map((child) => child.id),
+      [local.id],
+      "an external ID collision is not a child of the local bee",
+    );
     const created = store.auditRows().find((row) => row.kind === "bee.created" && row.beeId === external.id);
     assert.equal((created?.payload.bee as { parentExternal?: unknown }).parentExternal, true,
       "the semantic creation event carries the external-lineage claim");

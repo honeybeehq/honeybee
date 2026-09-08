@@ -1884,9 +1884,11 @@ export class CoreStore {
     });
   }
 
-  /** v6 — the bees whose parent_id is this bee (any lifecycle), by id. */
+  /** v21 — local children of this bee (any lifecycle), by id. */
   listChildren(beeId: string): BeeRow[] {
-    const rows = this.stmt("SELECT * FROM bees WHERE parent_id = ? ORDER BY id").all(beeId) as Row[];
+    const rows = this.stmt(
+      "SELECT * FROM bees WHERE parent_id = ? AND parent_external = 0 ORDER BY id",
+    ).all(beeId) as Row[];
     return rows.map(mapBee);
   }
 

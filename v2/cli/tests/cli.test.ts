@@ -112,6 +112,43 @@ test("cli.2: reads fall back to the read-only store when the daemon is down — 
   }
 });
 
+test("cli.children: stale reads exclude external lineage that collides with a local bee id", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "hb-v2-cli-external-parent-"));
+  try {
+    const store = openCoreStore(join(dir, "core.sqlite3"));
+    store.createBee({ id: "local-parent", name: "local-parent", agent: "stub", substrate: "hsr", cwd: "/tmp" });
+    const local = store.createBee({
+      id: "local-child",
+      name: "local-child",
+      agent: "stub",
+      substrate: "hsr",
+      cwd: "/tmp",
+      parentId: "local-parent",
+    }).bee;
+    store.createBee({
+      id: "external-child",
+      name: "external-child",
+      agent: "stub",
+      substrate: "hsr",
+      cwd: "/tmp",
+      parentId: "local-parent",
+      parentExternal: true,
+    });
+    store.close();
+
+    const result = capture();
+    assert.equal(await runV2Cli(["children", "local-parent", "--data-dir", dir, "--json"], result.io), 0);
+    const parsed = JSON.parse(result.out[0] ?? "{}") as {
+      stale?: boolean;
+      children: Array<{ bee: { id: string } }>;
+    };
+    assert.equal(parsed.stale, true);
+    assert.deepEqual(parsed.children.map((view) => view.bee.id), [local.id]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("cli.3: mutations NEVER fall back — daemon down means a loud, typed failure", async () => {
   const dir = mkdtempSync(join(tmpdir(), "hb-v2-cli-"));
   try {

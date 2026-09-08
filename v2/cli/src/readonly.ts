@@ -428,7 +428,9 @@ export class ReadOnlyStore {
   }
 
   children(beeId: string): StaleViewResult[] {
-    return this.listBees().filter((b) => b.parentId === beeId).map((b) => this.view(b.id));
+    return this.listBees()
+      .filter((b) => b.parentId === beeId && !b.parentExternal)
+      .map((b) => this.view(b.id));
   }
 
   questions(filter: { beeId?: string; open?: boolean } = {}): QuestionRow[] {

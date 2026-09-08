@@ -759,7 +759,7 @@ export interface ForkResult extends DedupMarkers {
   bee: BeeRow;
 }
 
-/** `bee.children {beeId}` — bees whose parentId is this bee (any lifecycle), as view results. */
+/** `bee.children {beeId}` — local children of this bee (any lifecycle), as view results. */
 export interface ChildrenResult {
   beeId: string;
   children: ViewResult[];

@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import { beeIdentityEnv } from "../src/daemon.ts";
 import {
   RpcError,
+  type ChildrenResult,
   type CommandsResult,
   type DeployInfoResult,
   type HelloFrame,
@@ -213,6 +214,12 @@ test("spawn external-parent validation, mirroring, replay, restart, and delete p
       (await client.request<ViewResult>("view", { beeId: externalCollision.beeId })).bee?.parentExternal,
       true,
       "a locally present non-UUID Bee ID may still be stored as an external claim",
+    );
+    const children = await client.request<ChildrenResult>("bee.children", { beeId: localParent.beeId });
+    assert.deepEqual(
+      children.children.map((child) => child.bee?.id),
+      [localChild.beeId],
+      "external lineage is not projected as a local child",
     );
 
     const deleted = await client.request<MutationResult>("delete", { beeId: localParent.beeId });
