@@ -121,20 +121,41 @@ test("idem-rpc.2: send replay returns the original message — mailbox has exact
     daemon = await startDaemon(dir);
     const client = await daemon.client();
     const spawned = await client.request<SpawnResult>("spawn", { name: "worker", agent: "stub", cwd: "/tmp" });
+    const sender = await client.request<SpawnResult>("spawn", { name: "sender", agent: "stub", cwd: "/tmp" });
     const first = await client.request<SendRpcResult>("send", {
       beeId: spawned.beeId,
       body: "hello once",
+      sender: sender.beeId,
       idempotencyKey: "send-1",
     });
     const replay = await client.request<SendRpcResult>("send", {
       beeId: spawned.beeId,
       body: "hello once",
+      sender: sender.beeId,
       idempotencyKey: "send-1",
     });
     assert.equal(replay.deduped, true);
     assert.equal(replay.messageId, first.messageId);
     const { messages } = await client.request<MailboxResult>("mailbox", { beeId: spawned.beeId });
     assert.equal(messages.filter((m) => m.body === "hello once").length, 1);
+    assert.equal(messages.find((m) => m.id === first.messageId)?.sender, sender.beeId);
+
+    await assert.rejects(
+      client.request("send", {
+        beeId: spawned.beeId,
+        body: "forged",
+        sender: "CO.not-a-real-bee",
+        idempotencyKey: "send-invalid-sender",
+      }),
+      (error: unknown) => error instanceof RpcError && error.code === "invalid_request",
+    );
+    const retryAfterRefusal = await client.request<SendRpcResult>("send", {
+      beeId: spawned.beeId,
+      body: "valid retry",
+      sender: sender.beeId,
+      idempotencyKey: "send-invalid-sender",
+    });
+    assert.ok(retryAfterRefusal.messageId > 0, "a refused sender claim does not consume the idempotency key");
 
     // A DIFFERENT key is a fresh send.
     const other = await client.request<SendRpcResult>("send", {

@@ -225,7 +225,7 @@ test("v6.rpc.3: bee.fork (claude) — forks the source session into a NEW one (-
   try {
     daemon = await startDaemon(dir);
     const client = await daemon.client();
-    type Boot = { argv: string[]; env: { HIVE_BEE: string | null; HIVE_BEE_ID: string | null; HIVE_PARENT: string | null }; sessionId: string; resumed: string | null; forked: boolean };
+    type Boot = { argv: string[]; env: { HIVE_BEE: string | null; HIVE_BEE_ID: string | null; HIVE_V2_DATA_DIR: string | null; HIVE_PARENT: string | null }; sessionId: string; resumed: string | null; forked: boolean };
 
     // source: boot + first message so it reports its session id
     const src = await client.request<SpawnResult>("spawn", { name: "src", agent: "claude", cwd: dir, args: ["--model", "opus"], tags: ["team:a"] });
@@ -236,6 +236,7 @@ test("v6.rpc.3: bee.fork (claude) — forks the source session into a NEW one (-
     const srcBoot = jsonl<Boot>(argvLog)[0]!;
     assert.equal(srcBoot.env.HIVE_BEE, "src");
     assert.equal(srcBoot.env.HIVE_BEE_ID, src.beeId);
+    assert.equal(srcBoot.env.HIVE_V2_DATA_DIR, dir, "the real HSR process inherits its daemon authority");
     assert.equal(srcBoot.env.HIVE_PARENT, null, "a root bee has no parent stamp");
 
     // fork

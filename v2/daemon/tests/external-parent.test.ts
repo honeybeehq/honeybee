@@ -147,6 +147,8 @@ test("spawn external-parent validation, mirroring, replay, restart, and delete p
     assert.ok(view.bee);
     assert.equal(beeIdentityEnv(view.bee).HIVE_PARENT, EXTERNAL_PARENT_ID,
       "HIVE_PARENT remains the bare Bee ID");
+    assert.equal(beeIdentityEnv(view.bee, rig.dir).HIVE_V2_DATA_DIR, rig.dir,
+      "the runtime identity is bound to its daemon authority");
 
     const snapshot = await client.request<SnapshotResult>("snapshot");
     assert.equal(snapshot.views.find((candidate) => candidate.bee?.id === first.beeId)?.bee?.parentExternal, true);

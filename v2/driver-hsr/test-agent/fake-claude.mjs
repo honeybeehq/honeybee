@@ -28,7 +28,7 @@
  * session ID: …"]`, exit 1). This is the bee.swapAccount regression shape:
  * a conversation that only exists in the SOURCE account's home.
  *
- * env FAKE_CLAUDE_ARGV_LOG   append {argv, cwd, env:{CLAUDE_CONFIG_DIR, HIVE_BEE, HIVE_BEE_ID, HIVE_PARENT}, sessionId, resumed, forked} per boot
+ * env FAKE_CLAUDE_ARGV_LOG   append {argv, cwd, env:{CLAUDE_CONFIG_DIR, HIVE_BEE, HIVE_BEE_ID, HIVE_V2_DATA_DIR, HIVE_PARENT}, sessionId, resumed, forked} per boot
  * env FAKE_CLAUDE_FAIL_RESUME=1  exit 1 on --resume ("No conversation found") — the failure shape
  */
 import { appendFileSync, existsSync, mkdirSync, readdirSync, realpathSync } from "node:fs";
@@ -52,7 +52,7 @@ const sessionId = resumed && !forked ? resumed : (pinned ?? randomUUID());
 if (process.env.FAKE_CLAUDE_ARGV_LOG) {
   appendFileSync(
     process.env.FAKE_CLAUDE_ARGV_LOG,
-    `${JSON.stringify({ argv, cwd: process.cwd(), env: { CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR ?? null, HIVE_BEE: process.env.HIVE_BEE ?? null, HIVE_BEE_ID: process.env.HIVE_BEE_ID ?? null, HIVE_PARENT: process.env.HIVE_PARENT ?? null }, sessionId, resumed: resumed ?? null, forked })}\n`,
+    `${JSON.stringify({ argv, cwd: process.cwd(), env: { CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR ?? null, HIVE_BEE: process.env.HIVE_BEE ?? null, HIVE_BEE_ID: process.env.HIVE_BEE_ID ?? null, HIVE_V2_DATA_DIR: process.env.HIVE_V2_DATA_DIR ?? null, HIVE_PARENT: process.env.HIVE_PARENT ?? null }, sessionId, resumed: resumed ?? null, forked })}\n`,
   );
 }
 

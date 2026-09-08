@@ -389,6 +389,46 @@ function selfBeeId(env: Record<string, string | undefined> = process.env): strin
   return typeof id === "string" && id.length > 0 ? id : null;
 }
 
+/**
+ * Bind a send to the identity that Honeybee stamped on this runtime. The
+ * stable id is authoritative; HIVE_BEE remains useful for the legacy buz
+ * command whose preamble passes the bee name in --sender. The data-directory
+ * stamp binds both values to one daemon authority. An operator shell, or a
+ * shell pointed at another authority, sends without a peer claim.
+ */
+export function resolveSendSender(
+  views: ViewResult[],
+  explicitSender: string | undefined,
+  dataDir: string,
+  env: Record<string, string | undefined> = process.env,
+): string | undefined {
+  const senderId = env.HIVE_BEE_ID?.trim();
+  const senderName = env.HIVE_BEE?.trim();
+  const identityDataDir = env.HIVE_V2_DATA_DIR?.trim();
+  if (identityDataDir && resolve(identityDataDir) !== resolve(dataDir)) {
+    if (explicitSender !== undefined) {
+      throw new Error("send: --sender belongs to a different Honeybee authority than the selected data directory");
+    }
+    return undefined;
+  }
+  if (!senderId) {
+    if (senderName) throw new Error("send: HIVE_BEE is set but HIVE_BEE_ID is missing; refusing an unauthenticated bee sender");
+    if (explicitSender !== undefined) {
+      throw new Error("send: --sender requires the calling bee identity from HIVE_BEE_ID; human senders must use buz --sender-human");
+    }
+    return undefined;
+  }
+  if (explicitSender !== undefined) {
+    const claimedId = explicitSender === senderId || explicitSender === senderName
+      ? senderId
+      : resolveBeeIn(views, explicitSender);
+    if (claimedId !== senderId) {
+      throw new Error(`send: --sender ${explicitSender} does not match the calling bee ${senderName ?? senderId}`);
+    }
+  }
+  return senderId;
+}
+
 interface CliContext {
   cfg: ResolvedNodeConfig;
   io: CliIo;
@@ -1565,7 +1605,7 @@ async function cmdTaskLists(ctx: CliContext, _parsed: Parsed): Promise<number> {
   return 0;
 }
 
-async function cmdSend(ctx: CliContext, parsed: Parsed): Promise<number> {
+async function cmdSend(ctx: CliContext, parsed: Parsed, options: { humanSender?: string } = {}): Promise<number> {
   const [, needle, ...bodyParts] = parsed.positional;
   const body = bodyParts.join(" ");
   if (!needle || body.length === 0) {
@@ -1574,10 +1614,20 @@ async function cmdSend(ctx: CliContext, parsed: Parsed): Promise<number> {
   return withClient(ctx, async (c) => {
     const list = await c.request<ListResult>("list");
     const beeId = resolveBeeIn(list.views, needle);
+    const humanSender = options.humanSender?.trim();
+    if (options.humanSender !== undefined && !humanSender) {
+      throw new Error("buz: --sender-human must be a non-empty name");
+    }
+    if (humanSender && (process.env.HIVE_BEE_ID?.trim() || process.env.HIVE_BEE?.trim())) {
+      throw new Error("buz: a bee runtime cannot claim a human sender");
+    }
+    const sender = humanSender
+      ? `human:${humanSender}`
+      : resolveSendSender(list.views, parsed.flags.get("--sender") as string | undefined, ctx.cfg.dataDir);
     const result = await c.request<SendRpcResult>("send", {
       beeId,
       body,
-      sender: parsed.flags.get("--sender") as string | undefined,
+      sender,
       // v8: delivery urgency (validated by the daemon; omitted = next).
       urgency: parsed.flags.get("--urgency") as string | undefined,
       idempotencyKey: parsed.flags.get("--idempotency-key") as string | undefined,
@@ -2026,18 +2076,14 @@ async function cmdBuz(ctx: CliContext, parsed: Parsed): Promise<number> {
       if (senderHuman !== undefined && parsed.flags.has("--sender")) {
         throw new Error("buz: --sender and --sender-human are mutually exclusive");
       }
-      const sender = senderHuman
-        ? `human:${senderHuman}`
-        : ((parsed.flags.get("--sender") as string | undefined) ?? process.env.HIVE_BEE_ID);
       const fwd: Parsed = { ...parsed, positional: ["send", target, prompt], flags: new Map(parsed.flags) };
       fwd.flags.delete("--prompt");
       fwd.flags.delete("--tier");
       fwd.flags.delete("--sender-human");
-      if (sender !== undefined) fwd.flags.set("--sender", sender);
       if (tier !== undefined && !parsed.flags.has("--urgency")) {
         fwd.flags.set("--urgency", TIER_TO_URGENCY[tier] as string);
       }
-      return cmdSend(ctx, fwd);
+      return cmdSend(ctx, fwd, senderHuman === undefined ? {} : { humanSender: senderHuman });
     }
     case "inbox": {
       const target = parsed.positional[2] ?? process.env.HIVE_BEE_ID;

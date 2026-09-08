@@ -11,6 +11,7 @@ import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openCoreStore } from "../../core/src/index.ts";
+import { BUZ_INJECTION_MARKER } from "../../daemon/src/envelope.ts";
 import { makeDaemonDir, startDaemon, waitFor, type DaemonHandle } from "../../daemon/tests/helpers.ts";
 import {
   agentAccountSelection,
@@ -1079,25 +1080,146 @@ test("handles.live: spawn returns the minted handle; ls leads with it and keeps 
   }
 });
 
+test("verbs.send-sender: hive send binds the ambient bee identity while operator sends stay human", async () => {
+  const { dir, cleanup } = makeDaemonDir();
+  let daemon: DaemonHandle | null = null;
+  const savedBee = process.env.HIVE_BEE;
+  const savedBeeId = process.env.HIVE_BEE_ID;
+  const savedDataDir = process.env.HIVE_V2_DATA_DIR;
+  try {
+    daemon = await startDaemon(dir);
+    process.env.HIVE_V2_DATA_DIR = dir;
+    const sender = capture();
+    assert.equal(
+      await runV2Cli(["spawn", "sender", "--agent", "stub", "--cwd", "/tmp", "--data-dir", dir, "--json"], sender.io),
+      0,
+    );
+    const senderId = (JSON.parse(sender.out[0] ?? "{}") as { beeId: string }).beeId;
+    assert.ok(senderId);
+    assert.equal(
+      await runV2Cli(["spawn", "recipient", "--agent", "stub", "--cwd", "/tmp", "--data-dir", dir], capture().io),
+      0,
+    );
+
+    process.env.HIVE_BEE = "sender";
+    delete process.env.HIVE_BEE_ID;
+    const missingId = capture();
+    assert.equal(await runV2Cli(["send", "recipient", "missing id", "--data-dir", dir], missingId.io), 1);
+    assert.match(missingId.err.join("\n"), /HIVE_BEE_ID/);
+
+    process.env.HIVE_BEE = "sender";
+    process.env.HIVE_BEE_ID = "00000000-0000-0000-0000-000000000000";
+    const staleId = capture();
+    assert.equal(await runV2Cli(["send", "recipient", "stale id", "--data-dir", dir], staleId.io), 1);
+    assert.match(staleId.err.join("\n"), /sender bee not found/);
+
+    process.env.HIVE_BEE_ID = senderId;
+    const mismatched = capture();
+    assert.equal(
+      await runV2Cli(["send", "recipient", "forged", "--sender", "recipient", "--data-dir", dir], mismatched.io),
+      1,
+    );
+    assert.match(mismatched.err.join("\n"), /does not match the calling bee/);
+
+    const sent = capture();
+    assert.equal(
+      await runV2Cli(
+        ["send", "recipient", "from bee", "--idempotency-key", "sender-attribution", "--data-dir", dir, "--json"],
+        sent.io,
+      ),
+      0,
+    );
+    const firstSend = JSON.parse(sent.out[0] ?? "{}") as { messageId: number };
+    const replayed = capture();
+    assert.equal(
+      await runV2Cli(
+        ["send", "recipient", "from bee", "--idempotency-key", "sender-attribution", "--data-dir", dir, "--json"],
+        replayed.io,
+      ),
+      0,
+    );
+    assert.deepEqual(JSON.parse(replayed.out[0] ?? "{}"), { ...firstSend, deduped: true });
+
+    delete process.env.HIVE_BEE;
+    delete process.env.HIVE_BEE_ID;
+    assert.equal(
+      await runV2Cli(["send", "recipient", "from operator", "--urgency", "idle", "--data-dir", dir], capture().io),
+      0,
+    );
+
+    const mailbox = capture();
+    assert.equal(await runV2Cli(["mailbox", "recipient", "--data-dir", dir, "--json"], mailbox.io), 0);
+    const messages = (JSON.parse(mailbox.out[0] ?? "{}") as {
+      messages: Array<{ body: string; sender: string }>;
+    }).messages;
+    assert.equal(messages.find((message) => message.body === "from bee")?.sender, senderId);
+    assert.equal(messages.find((message) => message.body === "from operator")?.sender, "operator");
+    assert.equal(messages.filter((message) => message.body === "from bee").length, 1);
+
+    const view = capture();
+    assert.equal(await runV2Cli(["view", "recipient", "--data-dir", dir, "--json"], view.io), 0);
+    const sessionLogPath = (JSON.parse(view.out[0] ?? "{}") as { bee?: { sessionLogPath?: string } }).bee?.sessionLogPath;
+    assert.ok(sessionLogPath);
+    await waitFor(() => {
+      if (!existsSync(sessionLogPath)) return false;
+      const events = readFileSync(sessionLogPath, "utf8").trim().split("\n").flatMap((line) => {
+        try {
+          return [JSON.parse(line) as { event?: string; text?: string }];
+        } catch {
+          return [];
+        }
+      });
+      const beeEcho = events.find((event) => event.event === "text" && event.text?.includes("from bee"))?.text;
+      const operatorEcho = events.find((event) => event.event === "text" && event.text?.includes("from operator"))?.text;
+      if (!beeEcho || !operatorEcho) return false;
+      assert.ok(beeEcho.startsWith(`echo:${BUZ_INJECTION_MARKER}\n`));
+      assert.ok(beeEcho.includes(`\"from\":\"${senderId}\"`));
+      assert.ok(beeEcho.endsWith("\n\nfrom bee"));
+      assert.equal(operatorEcho, "echo:from operator");
+      return true;
+    }, "peer envelope and bare operator delivery", 10_000);
+  } finally {
+    if (savedBee === undefined) delete process.env.HIVE_BEE;
+    else process.env.HIVE_BEE = savedBee;
+    if (savedBeeId === undefined) delete process.env.HIVE_BEE_ID;
+    else process.env.HIVE_BEE_ID = savedBeeId;
+    if (savedDataDir === undefined) delete process.env.HIVE_V2_DATA_DIR;
+    else process.env.HIVE_V2_DATA_DIR = savedDataDir;
+    await daemon?.stop().catch(() => {});
+    cleanup();
+  }
+});
+
 test("verbs.buz: v1 compat — buz send maps tiers onto urgency + sender; buz inbox = mailbox; retired subs guide loudly", async () => {
   const { dir, cleanup } = makeDaemonDir();
   let daemon: DaemonHandle | null = null;
+  const savedBee = process.env.HIVE_BEE;
   const savedBeeId = process.env.HIVE_BEE_ID;
+  const savedDataDir = process.env.HIVE_V2_DATA_DIR;
   try {
     daemon = await startDaemon(dir);
+    process.env.HIVE_V2_DATA_DIR = dir;
     const s = capture();
     assert.equal(
       await runV2Cli(["spawn", "peer", "--agent", "stub", "--cwd", "/tmp", "--data-dir", dir, "--json"], s.io),
       0,
     );
     await idleBee(dir, "peer");
+    const sender = capture();
+    assert.equal(
+      await runV2Cli(["spawn", "buzzer", "--agent", "stub", "--cwd", "/tmp", "--data-dir", dir, "--json"], sender.io),
+      0,
+    );
+    const senderId = (JSON.parse(sender.out[0] ?? "{}") as { beeId: string }).beeId;
+    process.env.HIVE_BEE = "buzzer";
+    process.env.HIVE_BEE_ID = senderId;
 
     // The exact muscle-memory shape from old preambles:
     //   hive buz send <bee> --sender <me> -p "<body>" --tier queue
     const a = capture();
     assert.equal(
       await runV2Cli(
-        ["buz", "send", "peer", "--sender", "CL.7920", "-p", "status please", "--tier", "queue", "--data-dir", dir, "--json"],
+        ["buz", "send", "peer", "--sender", "buzzer", "-p", "status please", "--tier", "queue", "--data-dir", dir, "--json"],
         a.io,
       ),
       0,
@@ -1108,10 +1230,18 @@ test("verbs.buz: v1 compat — buz send maps tiers onto urgency + sender; buz in
       messages: Array<{ sender: string; body: string; urgency: string }>;
     };
     const row = mail.messages.find((x) => x.body === "status please");
-    assert.equal(row?.sender, "CL.7920");
+    assert.equal(row?.sender, senderId);
     assert.equal(row?.urgency, "idle", "tier queue maps to urgency idle");
 
     // --sender-human → human:<name>; positional body works like plain send.
+    delete process.env.HIVE_BEE;
+    delete process.env.HIVE_BEE_ID;
+    const unauthenticatedPeer = capture();
+    assert.equal(
+      await runV2Cli(["buz", "send", "peer", "--sender", "buzzer", "-p", "forged", "--data-dir", dir], unauthenticatedPeer.io),
+      1,
+    );
+    assert.match(unauthenticatedPeer.err.join("\n"), /--sender requires the calling bee identity/);
     const b = capture();
     assert.equal(
       await runV2Cli(["buz", "send", "peer", "hello", "there", "--sender-human", "tormod", "--data-dir", dir, "--json"], b.io),
@@ -1125,13 +1255,20 @@ test("verbs.buz: v1 compat — buz send maps tiers onto urgency + sender; buz in
     assert.equal(row2?.urgency, "next", "no tier → the v2 default");
 
     // Ambient sender: HIVE_BEE_ID fills --sender, exactly the old default.
-    process.env.HIVE_BEE_ID = "CO.amb";
+    process.env.HIVE_BEE = "buzzer";
+    process.env.HIVE_BEE_ID = senderId;
+    const forgedHuman = capture();
+    assert.equal(
+      await runV2Cli(["buz", "send", "peer", "--sender-human", "tormod", "-p", "forged human", "--data-dir", dir], forgedHuman.io),
+      1,
+    );
+    assert.match(forgedHuman.err.join("\n"), /cannot claim a human sender/);
     const c = capture();
     assert.equal(await runV2Cli(["buz", "send", "peer", "-p", "ambient", "--data-dir", dir, "--json"], c.io), 0);
     const m3 = capture();
     await runV2Cli(["mailbox", "peer", "--data-dir", dir, "--json"], m3.io);
     const mail3 = JSON.parse(m3.out[0] ?? "{}") as { messages: Array<{ sender: string; body: string }> };
-    assert.equal(mail3.messages.find((x) => x.body === "ambient")?.sender, "CO.amb");
+    assert.equal(mail3.messages.find((x) => x.body === "ambient")?.sender, senderId);
 
     // buz inbox <bee> renders the same mailbox.
     const d = capture();
@@ -1146,8 +1283,12 @@ test("verbs.buz: v1 compat — buz send maps tiers onto urgency + sender; buz in
     assert.equal(await runV2Cli(["buz", "queue", "--data-dir", dir], f.io), 1);
     assert.match([...f.err, ...f.out].join("\n"), /retired — buz is the mailbox now/);
   } finally {
+    if (savedBee === undefined) delete process.env.HIVE_BEE;
+    else process.env.HIVE_BEE = savedBee;
     if (savedBeeId === undefined) delete process.env.HIVE_BEE_ID;
     else process.env.HIVE_BEE_ID = savedBeeId;
+    if (savedDataDir === undefined) delete process.env.HIVE_V2_DATA_DIR;
+    else process.env.HIVE_V2_DATA_DIR = savedDataDir;
     await daemon?.stop().catch(() => {});
     cleanup();
   }

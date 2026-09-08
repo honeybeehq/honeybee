@@ -348,14 +348,19 @@ export function composeSpawn(
  * v6 — the honeybee-owned identity env every runtime is stamped with, AFTER
  * every other env source (agent spec, per-bee env) so nothing can override
  * it. HIVE_BEE / HIVE_BEE_ID are what agents' skills read (`hive v2 ask`,
- * `hive v2 seal`, `hive v2 spawn` fill their bee/parent from them);
+ * `hive v2 seal`, `hive v2 spawn` fill their bee/parent from them), while
+ * HIVE_V2_DATA_DIR binds those identity stamps to this daemon authority;
  * HIVE_PARENT is set iff the bee was spawned by another bee — the child's
  * "you were spawned by <parent>; report back to it" fact.
  */
-export function beeIdentityEnv(bee: { id: string; name: string; parentId: string | null }): Record<string, string> {
+export function beeIdentityEnv(
+  bee: { id: string; name: string; parentId: string | null },
+  dataDir?: string,
+): Record<string, string> {
   return {
     HIVE_BEE: bee.name,
     HIVE_BEE_ID: bee.id,
+    ...(dataDir ? { HIVE_V2_DATA_DIR: dataDir } : {}),
     ...(bee.parentId ? { HIVE_PARENT: bee.parentId } : {}),
   };
 }
@@ -989,7 +994,13 @@ export class HiveDaemon {
       if (!account) throw new Error(`resolve: bee ${beeId} is bound to unknown account ${bee.account}`);
       accountEnv = { ...this.accounts.homeEnvOf(account), ...this.accounts.credentialEnvOf(account) };
     }
-    const env = { ...(process.env as Record<string, string>), ...(spec.env ?? {}), ...bee.env, ...accountEnv, ...beeIdentityEnv(bee) };
+    const env = {
+      ...(process.env as Record<string, string>),
+      ...(spec.env ?? {}),
+      ...bee.env,
+      ...accountEnv,
+      ...beeIdentityEnv(bee, this.cfg.dataDir),
+    };
     // F8 — one resolution rule: the bare harness command is resolved to an
     // absolute path at spawn time with the SAME core rule every probe uses
     // (PATH of the exact spawn env, then the fallback dirs). Nothing found
@@ -1068,7 +1079,13 @@ export class HiveDaemon {
       if (!account) throw new Error(`resolveTmux: bee ${beeId} is bound to unknown account ${bee.account}`);
       accountEnv = { ...this.accounts.homeEnvOf(account), ...this.accounts.credentialEnvOf(account) };
     }
-    const env = { ...(process.env as Record<string, string>), ...(spec.env ?? {}), ...bee.env, ...accountEnv, ...beeIdentityEnv(bee) };
+    const env = {
+      ...(process.env as Record<string, string>),
+      ...(spec.env ?? {}),
+      ...bee.env,
+      ...accountEnv,
+      ...beeIdentityEnv(bee, this.cfg.dataDir),
+    };
     // Same F8 resolution rule as HSR: the TUI seat must not ENOENT on a CLI
     // the node's probes can see.
     const { command, resolution } = resolveSpawnCommand(spec.command, { env });
@@ -2873,7 +2890,19 @@ export class HiveDaemon {
     const store = this.mustStore();
     const beeId = this.param(params, "beeId");
     const body = this.param(params, "body");
-    const sender = typeof params.sender === "string" && params.sender.length > 0 ? params.sender : "operator";
+    let sender = "operator";
+    if (params.sender !== undefined && params.sender !== null) {
+      if (typeof params.sender !== "string" || params.sender.length === 0) {
+        throw new RpcError("invalid_request", "send: sender must be a non-empty string when given");
+      }
+      sender = params.sender;
+      if (sender !== "operator" && !sender.startsWith("human:") && store.getBee(sender) == null) {
+        throw new RpcError("invalid_request", `send: sender bee not found: ${sender}`);
+      }
+      if (sender.startsWith("human:") && sender.slice("human:".length).trim().length === 0) {
+        throw new RpcError("invalid_request", "send: human sender name must not be empty");
+      }
+    }
     // v8: optional delivery urgency (spec 01 Q2 amendment); omitted = 'next'.
     let urgency: Urgency = "next";
     if (params.urgency !== undefined && params.urgency !== null) {

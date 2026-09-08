@@ -33,6 +33,11 @@ test("envelope.2: only POSITIVELY-identified peers envelope — operator, humans
   assert.equal(isPeerSender("human:tormod", none), false);
   assert.equal(isPeerSender("tormod", none), false, "answeredBy names are people (v6.rpc.6)");
   assert.equal(isPeerSender("CO.a3f", none), true, "handle grammar is peer evidence");
+  assert.equal(
+    isPeerSender("b7cd0186-d02e-4337-87af-e6679402aa65", none),
+    true,
+    "a validated v2 bee id remains peer evidence after its bee is removed",
+  );
   assert.equal(isPeerSender("some-uuid", knows), true, "a store-known bee id is peer evidence");
   assert.equal(isPeerSender("some-uuid", none), false);
 });

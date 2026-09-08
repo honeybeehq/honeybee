@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createServer } from "node:net";
 import { openCoreStore } from "../../core/src/index.ts";
 import { makeDaemonDir, startDaemon, waitFor, type DaemonHandle } from "../../daemon/tests/helpers.ts";
 import { runV2Cli, serviceEnv, serviceExecArgs, serviceLabel, type CliIo } from "../src/main.ts";
@@ -202,6 +203,86 @@ test("cli.3b: a misspelled flag is a LOUD error (never a silent no-op), and spaw
     assert.doesNotMatch([...tf.err, ...tf.out].join("\n"), /unknown flag/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("cli.send-sender-wire: the real CLI request carries the authority-bound ambient bee id", async () => {
+  const { dir, cleanup } = makeDaemonDir();
+  const socketPath = join(dir, "fake.sock");
+  const requests: Array<{ id: number; verb: string; params: Record<string, unknown> }> = [];
+  const server = createServer((socket) => {
+    socket.setEncoding("utf8");
+    socket.write(`${JSON.stringify({ protocol: "v2/1" })}\n`);
+    let buffer = "";
+    socket.on("data", (chunk: string) => {
+      buffer += chunk;
+      for (;;) {
+        const newline = buffer.indexOf("\n");
+        if (newline < 0) return;
+        const line = buffer.slice(0, newline);
+        buffer = buffer.slice(newline + 1);
+        const frame = JSON.parse(line) as { id?: number; verb?: string; params?: Record<string, unknown> };
+        if (typeof frame.id !== "number" || typeof frame.verb !== "string") continue;
+        const request = { id: frame.id, verb: frame.verb, params: frame.params ?? {} };
+        requests.push(request);
+        if (request.verb === "list") {
+          socket.write(`${JSON.stringify({
+            id: request.id,
+            ok: true,
+            result: {
+              views: [{
+                bee: { id: "diagnostic-target", name: "diagnostic-target", handle: "CO.test", agent: "codex", lifecycle: "active" },
+                view: { beeId: "diagnostic-target", reachable: true },
+                runtime: null,
+              }],
+            },
+          })}\n`);
+        } else if (request.verb === "send") {
+          socket.write(`${JSON.stringify({
+            id: request.id,
+            ok: false,
+            error: { code: "invalid_request", message: "captured without mutation" },
+          })}\n`);
+        }
+      }
+    });
+  });
+  const savedBee = process.env.HIVE_BEE;
+  const savedBeeId = process.env.HIVE_BEE_ID;
+  const savedDataDir = process.env.HIVE_V2_DATA_DIR;
+  try {
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(socketPath, resolve);
+    });
+    process.env.HIVE_BEE = "apiary-waggle";
+    process.env.HIVE_BEE_ID = "b7cd0186-d02e-4337-87af-e6679402aa65";
+    process.env.HIVE_V2_DATA_DIR = dir;
+    const result = capture();
+    assert.equal(
+      await runV2Cli(["send", "diagnostic-target", "sender attribution probe", "--socket", socketPath, "--data-dir", dir], result.io),
+      1,
+    );
+    assert.deepEqual(requests.map(({ id: _id, ...request }) => request), [
+      { verb: "list", params: {} },
+      {
+        verb: "send",
+        params: {
+          beeId: "diagnostic-target",
+          body: "sender attribution probe",
+          sender: "b7cd0186-d02e-4337-87af-e6679402aa65",
+        },
+      },
+    ]);
+  } finally {
+    if (savedBee === undefined) delete process.env.HIVE_BEE;
+    else process.env.HIVE_BEE = savedBee;
+    if (savedBeeId === undefined) delete process.env.HIVE_BEE_ID;
+    else process.env.HIVE_BEE_ID = savedBeeId;
+    if (savedDataDir === undefined) delete process.env.HIVE_V2_DATA_DIR;
+    else process.env.HIVE_V2_DATA_DIR = savedDataDir;
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    cleanup();
   }
 });
 

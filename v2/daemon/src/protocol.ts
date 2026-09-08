@@ -935,6 +935,9 @@ export type ReconfigureResult = ReturnType<import("../../core/src/index.ts").Cor
 /**
  * `send {beeId, body, sender?, urgency?, idempotencyKey?}` — v8 adds
  * `urgency?: 'now'|'next'|'idle'` (spec 01 Q2 amendment; omitted = 'next').
+ * An omitted sender is the operator; `human:<name>` is explicit human mail;
+ * every other sender must be an existing bee id. The CLI binds a peer id
+ * from the daemon-stamped HIVE_BEE_ID and HIVE_V2_DATA_DIR authority pair.
  * Urgency governs when the message becomes eligible for delivery (`now`
  * interrupts the current turn; `idle` waits for the runtime to leave
  * `running`); it never reorders the per-bee FIFO and never affects the
