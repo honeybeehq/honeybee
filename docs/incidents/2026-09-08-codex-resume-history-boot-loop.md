@@ -78,8 +78,14 @@ stable repair idempotency key. The bee answered it and began handling the
 operator's subsequent follow-up in the same generation. No conversation
 history was discarded.
 
-The driver must distinguish an urgent message awaiting its own receipt from
-a new urgent message interrupting earlier work. That protection must cover
-both the interval before acknowledgment and the acknowledged receipt waiting
-for the daemon to settle delivery. A socket write alone must not mark mail
-as delivered. Explicit operator interrupts remain independent of this guard.
+The repair passes the urgent mailbox message ID through the substrate router
+and Cell driver to HSR. HSR refuses an interrupt caused by that exact message
+while its receipt is pending or confirmed but not yet settled. The existing
+delivery retry then records delivery only after acknowledgment. A different
+urgent message still interrupts earlier work, and explicit operator interrupts
+omit the message ID and retain their behavior.
+
+Deterministic regressions reproduce both acknowledgment orderings through
+the real HSR delivery and Codex encoding paths. Both fail on the original
+code and pass with the guard; a distinct-message interrupt counterexample
+passes before and after the fix.
