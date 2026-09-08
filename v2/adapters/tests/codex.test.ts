@@ -208,8 +208,9 @@ test("codex: turn delivery responses confirm or refuse the mailbox message; erro
   if (signals[1]!.kind === "flag") assert.equal(signals[1]!.flag, "auth_needed");
 });
 
-test("codex: resumeThreadId (spec 07 §F) — handshake sends thread/resume {threadId,…} instead of thread/start; the response's thread.id → booted; no argv resume", () => {
-  const resumed = codexAdapter({ cwd: "/tmp/work", resumeThreadId: "01a00e69-6ee4-7cd1-955c-befcbe8d9540" });
+test("codex: resume requests metadata only and reaches idle with the preserved conversation id", () => {
+  const threadId = "01a00e69-6ee4-7cd1-955c-befcbe8d9540";
+  const resumed = codexAdapter({ cwd: "/tmp/work", resumeThreadId: threadId });
   assert.equal(resumed.resumeArgs, undefined, "codex resumes through its protocol, not argv");
   const lines = onlyRespond(resumed.parseLine(JSON.stringify({ jsonrpc: "2.0", id: 1, result: { userAgent: "codex" } })));
   assert.equal(lines.length, 2);
@@ -217,16 +218,18 @@ test("codex: resumeThreadId (spec 07 §F) — handshake sends thread/resume {thr
     jsonrpc: "2.0",
     id: 2,
     method: "thread/resume",
-    params: { threadId: "01a00e69-6ee4-7cd1-955c-befcbe8d9540", cwd: "/tmp/work", approvalPolicy: "never", sandbox: "danger-full-access" },
+    params: { threadId, cwd: "/tmp/work", approvalPolicy: "never", sandbox: "danger-full-access", excludeTurns: true },
   });
   // fresh (no resumeThreadId) still starts a thread
   const fresh = codexAdapter({ cwd: "/tmp/work" });
   const freshLines = onlyRespond(fresh.parseLine(JSON.stringify({ jsonrpc: "2.0", id: 1, result: {} })));
   assert.equal((JSON.parse(freshLines[1]!) as { method: string }).method, "thread/start");
-  // resume ack with the thread echoed → booted with the SAME id
-  const booted = resumed.parseLine(JSON.stringify({ jsonrpc: "2.0", id: 2, result: { thread: { id: "01a00e69-6ee4-7cd1-955c-befcbe8d9540" } } }));
-  assert.equal(booted[0]?.kind, "booted");
-  if (booted[0]?.kind === "booted") assert.equal(booted[0].sessionId, "01a00e69-6ee4-7cd1-955c-befcbe8d9540");
+  // Metadata-only resume omits thread.turns but still proves readiness.
+  assert.deepEqual(resumed.parseLine(JSON.stringify({ jsonrpc: "2.0", id: 2, result: { thread: { id: threadId } } })), [
+    { kind: "booted", sessionId: threadId },
+    { kind: "flag", flag: "spawn_failed", action: "clear", detail: "runtime booted" },
+    { kind: "turn_ended" },
+  ]);
   // resume ack without a thread body → falls back to the requested id (old adapter behavior)
   const bare = resumed.parseLine(JSON.stringify({ jsonrpc: "2.0", id: 2, result: {} }));
   assert.equal(bare[0]?.kind, "booted");
@@ -284,7 +287,7 @@ test("codex: GPT-6 Astra model passes verbatim to start, resume, and fork", () =
       options: { cwd: "/tmp/astra", model: "gpt-6-astra", resumeThreadId: "resume-thread" },
       expected: {
         method: "thread/resume",
-        params: { threadId: "resume-thread", model: "gpt-6-astra", cwd: "/tmp/astra", approvalPolicy: "never", sandbox: "danger-full-access" },
+        params: { threadId: "resume-thread", model: "gpt-6-astra", cwd: "/tmp/astra", approvalPolicy: "never", sandbox: "danger-full-access", excludeTurns: true },
       },
     },
     {
@@ -314,6 +317,7 @@ test("codex: developerInstructions ride on thread/start and thread/resume, not a
   });
   assert.equal(resume.method, "thread/resume");
   assert.equal(resume.params.threadId, "thread-1");
+  assert.equal(resume.params.excludeTurns, true);
   assert.equal(resume.params.developerInstructions, overlay);
   const handshake = onlyRespond(
     codexAdapter({ cwd: "/tmp/to", resumeThreadId: "thread-1", developerInstructions: overlay }).parseLine(
@@ -322,6 +326,7 @@ test("codex: developerInstructions ride on thread/start and thread/resume, not a
   );
   const req = JSON.parse(handshake[1]!) as { method: string; params: Record<string, unknown> };
   assert.equal(req.method, "thread/resume");
+  assert.equal(req.params.excludeTurns, true);
   assert.equal(req.params.developerInstructions, overlay);
   const preserved = "Always use conventional commits.";
   const composed = `${preserved}\n\n${overlay}`;

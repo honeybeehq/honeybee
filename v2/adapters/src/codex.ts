@@ -141,7 +141,8 @@ export function codexThreadRequest(opts: CodexAdapterOptions): { method: "thread
     sandbox: "danger-full-access",
     ...(developerInstructions ? { developerInstructions } : {}),
   };
-  if (opts.resumeThreadId) return { method: "thread/resume", params: { threadId: opts.resumeThreadId, ...base } };
+  // Codex keeps turn history in the rollout; readiness only needs thread metadata.
+  if (opts.resumeThreadId) return { method: "thread/resume", params: { threadId: opts.resumeThreadId, ...base, excludeTurns: true } };
   if (opts.forkThreadId) return { method: "thread/fork", params: { threadId: opts.forkThreadId, ...base } };
   return { method: "thread/start", params: base };
 }
