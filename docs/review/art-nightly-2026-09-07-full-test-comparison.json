@@ -1,0 +1,49 @@
+{
+  "fixedHead": "0472a91c99d7a75c19429b6bffc9988e57c2a272",
+  "frozenBase": "98cc89c3180b25272c31f67e438adea1380921c2",
+  "command": "pnpm build && pnpm test",
+  "fixed": {
+    "buildExitCode": 0,
+    "testExitCode": 1,
+    "failureNames": 32,
+    "buildEvidence": ".audit/check-pnpm-build.log",
+    "testEvidence": ".audit/check-pnpm-test-after-build.log"
+  },
+  "baseline": {
+    "buildExitCode": 0,
+    "testExitCode": 1,
+    "failureNames": 48,
+    "buildEvidence": ".audit/check-frozen-base-build.log",
+    "testEvidence": ".audit/check-frozen-base-test.log"
+  },
+  "exactNameOverlap": 27,
+  "fixedOnly": [
+    {
+      "name": "hive node register/update reject --ssh-args without the = form",
+      "classification": "concurrency-only: passed in isolation on fixed and frozen-base heads"
+    },
+    {
+      "name": "run sends to arbitrary executables without provider readiness checks",
+      "classification": "present in the older repaired-main 67-name baseline"
+    },
+    {
+      "name": "x spawns, delivers the prompt, and keeps the session (fire-and-forget)",
+      "classification": "present in the older repaired-main 67-name baseline"
+    },
+    {
+      "name": "spawn <tool>-rr --count re-resolves the account for each bee",
+      "classification": "present in the older repaired-main 67-name baseline"
+    },
+    {
+      "name": "sweeper: minFree pre-extends in the background and reports completion next sweep",
+      "classification": "reproduced in isolation on fixed and frozen-base heads"
+    }
+  ],
+  "isolatedCommand": "pnpm test -- tests/cli-flags.test.ts tests/poolSweep.test.ts",
+  "isolatedFixedExitCode": 1,
+  "isolatedBaselineExitCode": 1,
+  "isolatedFixedEvidence": ".audit/check-current-only-failures-isolated.log",
+  "isolatedBaselineEvidence": ".audit/check-frozen-only-failures-isolated.log",
+  "olderBaselineEvidence": ".audit/branch-autotitle/docs/performance/2026-09-07-exhaustive/verification/mini-root-main-repaired-control-proof.json",
+  "conclusion": "The broad compiled suite remains red on both exact heads. No fixed-only failure is attributable to the changed Cell or external-lineage paths; all affected suites and parent integration gates pass."
+}

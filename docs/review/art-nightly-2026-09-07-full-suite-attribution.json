@@ -1,0 +1,405 @@
+{
+  "schemaVersion": 1,
+  "lane": "honeybee-full-suite-attribution",
+  "generatedAt": "2026-09-08T07:00:00+02:00",
+  "reviewer": {
+    "beeId": "008b12c9-1071-4013-ab6c-11b3700ed294",
+    "beeName": "art-review-apiary-runtime-20260907",
+    "parentId": "b90596a2-cb43-440d-8958-3960d5e0b0e1"
+  },
+  "scope": {
+    "repository": "github.com/honeybeehq/honeybee",
+    "worktree": "/Users/trmd/.hive/crew/art/reviews/worktrees/honeybee-2026-09-07",
+    "requestedLog": "/Users/trmd/.hive/crew/art/reviews/worktrees/honeybee-2026-09-07/.audit/check-pnpm-test-after-build.log",
+    "requestedLogSha256": "1f97b07c90b96d5fc9d54f0e01e01e4236d2c75b6ffc73802e1070709ff4bd36",
+    "observedFailureRecords": 32,
+    "coverageLedger": "/Users/trmd/.hive/crew/art/reviews/2026-09-07/coverage.json",
+    "coverageLedgerSha256": "196e6d9fed2c566cf28b1e5ce92dd79c25377550b4cbfc88f72033005ca73cf6",
+    "candidateCount": 143,
+    "frozenMain": "98cc89c3180b25272c31f67e438adea1380921c2",
+    "windowPredecessor": "ae93050e194a9b4929e26a029f62783ba80581a1",
+    "preWindowControlBaseline": "8506467f2a6e99d06258e5fe59726d330b2ccdf4",
+    "reviewMode": "read-only source/history attribution",
+    "testsRerunByThisReview": false
+  },
+  "verdict": {
+    "classification": "pre-window legacy failures and whole-suite timing/process instability",
+    "credibleInWindowRegressions": [],
+    "candidateFollowUpsRequired": [],
+    "exactPreWindowFailureMatches": 22,
+    "legacyUnchangedWithoutExactPreWindowFailureRecord": 10,
+    "exactFrozenMainMatches": 27,
+    "repeatedAcrossBothSavedMainLaneRuns": 25,
+    "allFailingTestBlobsIdenticalFromPreWindowControlThroughFrozenMain": true,
+    "failingTestBlobCount": 24,
+    "primaryPathCount": 40,
+    "primaryPathsUnchangedAcrossWindow": 38,
+    "primaryPathsChangedAcrossWindow": 2,
+    "summary": "No failure has a credible causal link to a daily candidate. Twenty-two exact names already failed in committed September 6 evidence, and an independently running exact-98cc89c3 suite repeated 27 of the requested 32 before this ledger was finalized. The remaining ten execute test and primary callsite blobs introduced in June-August and unchanged across the daily window; where their exact failure onset was not captured before the window, they are conservatively labeled legacy/unchanged rather than directly reproduced pre-window failures. The only two changed primary paths are a behavior-preserving environment-key helper extraction and the compiled-test import rewriter; neither matches the symptoms, and the same dominant failure families predate both patches."
+  },
+  "preWindowEvidence": {
+    "verificationIndex": {
+      "gitObject": "ae93050e194a9b4929e26a029f62783ba80581a1:docs/performance/2026-09-06/evidence/verification/index.json",
+      "sha256": "8eacf6bb26e6d51ef7e82a04edd953060c56d246c998924f89ef7754ba575b49",
+      "declaredBaseline": "8506467f2a6e99d06258e5fe59726d330b2ccdf4",
+      "baselineCommittedAt": "2026-09-05T21:23:03+02:00",
+      "facts": {
+        "defaultNpmTestFailureCount": 26,
+        "isolatedAffectedTests": 237,
+        "isolatedPass": 233,
+        "isolatedFail": 4,
+        "pristineBaselineResidualTests": 53,
+        "pristineBaselineResidualPass": 50,
+        "pristineBaselineResidualFail": 3,
+        "node": "v25.8.0"
+      }
+    },
+    "defaultConcurrentRun": {
+      "gitObject": "ae93050e194a9b4929e26a029f62783ba80581a1:docs/performance/2026-09-06/evidence/verification/final-legacy-tests.log",
+      "sha256": "c41df0f44899b787429bc92a4b7841ff71b8c678cae67c88a3a250af6a41c861",
+      "exactCurrentFailureIdsPresent": [1, 3, 4, 5, 6, 8, 9, 11, 12, 13, 14, 15, 16, 17, 18, 22, 25, 26, 27, 28, 30, 31]
+    },
+    "isolatedRerun": {
+      "gitObject": "ae93050e194a9b4929e26a029f62783ba80581a1:docs/performance/2026-09-06/evidence/verification/legacy-isolated-rerun.log",
+      "sha256": "6a2b36d028be026fe01a9ece2eeb45c8e49aba8acfd4436e2086ed152fd46efb",
+      "currentFailureIdsThatPassedInIsolation": [1, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 16, 18, 25, 26, 31],
+      "currentFailureIdsThatStillFailed": [17, 27, 28, 30],
+      "interpretation": "The same source switches between pass and fail under different suite schedules, while four process/race cases remain reproducible even in the historical isolated set."
+    },
+    "sameDayEarlierSavedRun": {
+      "path": "/Users/trmd/.hive/crew/art/reviews/worktrees/honeybee-2026-09-07/.audit/check-pnpm-test.log",
+      "sha256": "0aa03a8d9a3d615df3ca7aeb0091f8349b402bb039fdb796feff90a0cbd8b2d3",
+      "failureRecords": 41,
+      "currentFailureIdsRepeated": [1, 2, 3, 4, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 22, 24, 25, 26, 27, 28, 30, 31, 32],
+      "interpretation": "Twenty-five requested failures recur, while both runs also contain different failures in the same CLI/OpenCode/HSR timing families. This is evidence of schedule-sensitive whole-suite behavior, not evidence of a candidate regression."
+    },
+    "independentExactFrozenMainRun": {
+      "path": "/Users/trmd/.hive/crew/art/reviews/worktrees/honeybee-2026-09-07/.audit/check-frozen-base-test.log",
+      "sha256": "b4779a399aa19c003e083be96363d695fa1b6318a9871ebdd8aba12faf30720b",
+      "worktree": "/Users/trmd/.hive/crew/art/reviews/worktrees/honeybee-2026-09-07/.audit/frozen-baseline-full",
+      "verifiedHead": "98cc89c3180b25272c31f67e438adea1380921c2",
+      "failureRecords": 48,
+      "requestedFailureIdsRepeated": [1, 3, 4, 6, 8, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 31, 32],
+      "requestedFailureIdsAbsent": [2, 5, 7, 9, 30],
+      "qualifier": "This independently establishes exact frozen-main recurrence for 27 cases. It does not by itself establish pre-window age; that conclusion comes from the September 6 evidence and path history above. This review did not launch the run."
+    },
+    "supplementalNotUsedForPreWindowAttribution": {
+      "commit": "f468aba8a1d2c6cc78848b688b70d54a088db7fb",
+      "gitObject": "f468aba8a1d2c6cc78848b688b70d54a088db7fb:docs/performance/2026-09-07-exhaustive/verification/mini-root-main-repaired-control-proof.json",
+      "facts": {
+        "emittedModulesCompared": 693,
+        "candidateOnlyFailures": 0,
+        "baselineOnlyFailures": 0,
+        "failureNamesEachSide": 67
+      },
+      "qualifier": "This proves equality across the later repaired controls only. It is supplemental and was not used to claim that failures predate the daily window."
+    }
+  },
+  "candidateIntersection": {
+    "method": "Union each exact coverage candidate's full -m diff paths and intersect with 24 failing tests plus 40 primary harness/callsite paths.",
+    "candidatesWithPrimaryPathHits": 8,
+    "candidatesWithoutPrimaryPathHits": 135,
+    "hits": [
+      {
+        "sha": "34f259f3b77dd14165006dcacdf23fefbf4e0de3",
+        "onMain": true,
+        "path": "scripts/build-tests.mjs",
+        "assessment": "noncausal test-infrastructure repair: rewrites relative TypeScript import extensions in emitted test modules"
+      },
+      {
+        "sha": "6a58ca316cf07e69b0b36cc84fbf2364d3007a56",
+        "onMain": true,
+        "path": "scripts/build-tests.mjs",
+        "assessment": "noncausal follow-up: restricts import rewriting to emitted .ts inputs"
+      },
+      {
+        "sha": "d987cc5d7e3e83455364ff9bf26a4ec2eaacdde1",
+        "onMain": false,
+        "path": "scripts/build-tests.mjs",
+        "assessment": "branch-only patch-equivalent copy of 34f259f3; absent as this SHA from frozen main"
+      },
+      {
+        "sha": "70e11367a7b1220ee6834145237e3605c2404aaf",
+        "onMain": false,
+        "path": "scripts/build-tests.mjs",
+        "assessment": "branch-only patch-equivalent copy of 6a58ca31; absent as this SHA from frozen main"
+      },
+      {
+        "sha": "b26aab080a8287fa2c14116107bc08f3741c16a4",
+        "onMain": true,
+        "path": "src/spawnEnv.ts",
+        "assessment": "noncausal behavior-preserving extraction: isValidEnvEntry delegates to isValidEnvName, which applies the identical ENV_KEY regular expression; no new I/O, wait, process, lock, or cleanup behavior"
+      },
+      {
+        "sha": "f91d4af8dc909fd2c16bf84df25d7d6e5519f57a",
+        "onMain": true,
+        "path": "src/spawnEnv.ts",
+        "assessment": "merge view of the same b26aab08 helper extraction; no independent behavior change"
+      },
+      {
+        "sha": "19572e1ee96412a8fd63dc02809328ea6f79bc5d",
+        "onMain": false,
+        "path": "src/parse.ts",
+        "assessment": "branch-only runtime-artifact work, not present in frozen main and therefore unable to cause this frozen-main suite"
+      },
+      {
+        "sha": "d7d7072477dfd03e77778d78625fceb42ee571bf",
+        "onMain": false,
+        "path": "src/parse.ts",
+        "assessment": "branch-only successor, not present in frozen main and therefore unable to cause this frozen-main suite"
+      }
+    ]
+  },
+  "families": [
+    {
+      "id": "compiled-legacy-cli",
+      "failureIds": [1, 4, 5, 6, 7, 8, 9, 10, 11, 12, 26],
+      "tests": ["tests/beesSidebar.test.ts", "tests/cli-helpers.unit.test.ts", "tests/cli-run.test.ts", "tests/cli-spawn-account-swarm.test.ts", "tests/cli-x.test.ts", "tests/hsr-runner-entry.test.ts"],
+      "callsites": ["tests/cli-entry.mjs", "src/cli.ts", "src/cli-x.ts", "src/commands/run.ts", "src/commands/spawn.ts", "src/hsr/runner-entry.ts", "scripts/run-tests.mjs", "scripts/build-tests.mjs"],
+      "observedPattern": "missing compiled v2 CLI artifact, CLI child timeout/exit, or compiled/source entry disagreement under the concurrent legacy suite",
+      "preWindowAssessment": "Eight exact names in this family already fail in the September 6 default run; most pass in the historical isolated rerun. The x and frame cases passed historically but use identical test/command blobs and fail as sibling process timeouts in the saved runs."
+    },
+    {
+      "id": "legacy-cli-lock-child-timing",
+      "failureIds": [2, 3, 14],
+      "tests": ["tests/cli-flags.test.ts", "tests/cli-fork.test.ts", "tests/daemon-status.test.ts"],
+      "callsites": ["src/commands/node.ts", "src/commands/fork.ts", "src/lifecycle.ts", "src/daemon/index.ts", "src/fsx.ts"],
+      "observedPattern": "30-second command timeout, a five-second fail-fast timing oracle missed by 1.47 seconds, and an eight-second daemon state-file startup timeout",
+      "preWindowAssessment": "Fork and daemon failures are exact September 6 matches. The node timeout recurs in both saved current runs, but has no exact pre-window failure record; its test dates to June and its command path is unchanged."
+    },
+    {
+      "id": "credential-sync-budget",
+      "failureIds": [13, 31],
+      "tests": ["tests/credential-harvest-recovery.test.ts", "tests/retire.test.ts"],
+      "callsites": ["src/kill.ts", "src/accounts/credentialHarvestQueue.ts", "src/lock.ts"],
+      "observedPattern": "the deliberately tiny 20 ms final credential-sync budget expires under suite load",
+      "preWindowAssessment": "Both exact failures occur in the September 6 default run and pass in its isolated rerun."
+    },
+    {
+      "id": "hsr-worker-and-compaction",
+      "failureIds": [15, 16, 22],
+      "tests": ["tests/hsr-default-policy.test.ts", "tests/hsr-events-compaction.test.ts", "tests/hsr-promote.test.ts"],
+      "callsites": ["src/config.ts", "src/hsr/runDir.ts", "src/commands/migrate.ts"],
+      "observedPattern": "two file-worker failures without subtest diagnostics and one 60-second event-compaction timeout",
+      "preWindowAssessment": "All three exact file/name outcomes occur in the September 6 default run."
+    },
+    {
+      "id": "hsr-protocol-scheduling",
+      "failureIds": [17, 18, 25],
+      "tests": ["tests/hsr-gateway-connect.test.ts", "tests/hsr-grok-adapter.test.ts", "tests/hsr-rpc.test.ts"],
+      "callsites": ["src/hsr/gatewayConnect.ts", "src/hsr/adapters/grok.ts", "src/hsr/adapters/acpRpc.ts", "src/hsr/rpc.ts"],
+      "observedPattern": "point-in-time high-water, next-tool event, and backpressure scheduling assertions",
+      "preWindowAssessment": "All three exact failures occur in the September 6 default run; all can pass in historical isolated execution, while the gateway reconnect assertion also failed in the isolated run and on a fifth pristine-baseline repetition."
+    },
+    {
+      "id": "opencode-startup",
+      "failureIds": [19, 20, 21],
+      "tests": ["tests/hsr-opencode-adapter.test.ts"],
+      "callsites": ["src/hsr/adapters/opencode.ts", "src/hsr/sessionBase.ts"],
+      "observedPattern": "the fake OpenCode server does not publish its startup URL within 1500-2000 ms",
+      "preWindowAssessment": "These exact names were not recorded failing before the window. The complete test and adapter blobs have been unchanged since August; the earlier saved current run fails six different tests in this same file at roughly the same 3.2-3.6 second startup boundary, which supports file-level process contention rather than a candidate code change."
+    },
+    {
+      "id": "remote-mirror-child-startup",
+      "failureIds": [23, 24],
+      "tests": ["tests/hsr-remote-mirror.test.ts"],
+      "callsites": ["src/hsr/remoteEventMirror.ts", "src/hsr/remoteHost.ts", "src/hsr/remoteTransport.ts", "src/substrates/remote-hsr.ts"],
+      "observedPattern": "a real child remoteHost serve process does not expose its Unix socket within the test's eight-second wait",
+      "preWindowAssessment": "The exact backfill name lacks a pre-window failure record; the subscribe/replay name recurs in both saved current runs. All test and primary source blobs date to July-August and are unchanged across the window."
+    },
+    {
+      "id": "process-tree-reaping",
+      "failureIds": [27, 28],
+      "tests": ["tests/hsr-session-base.test.ts", "tests/hsr-turn-runner.test.ts"],
+      "callsites": ["src/hsr/sessionBase.ts", "src/hsr/turnRunner.ts"],
+      "observedPattern": "delayed process-group ownership sampling and descendant-stop deadlines",
+      "preWindowAssessment": "Both exact failures occur in the September 6 default run, the isolated rerun, and the pristine 8506467f residual control."
+    },
+    {
+      "id": "lock-heartbeat-timing",
+      "failureIds": [29],
+      "tests": ["tests/lock.test.ts"],
+      "callsites": ["src/lock.ts"],
+      "observedPattern": "the guard file was already removed when assert.rejects expected ENOENT from a later read",
+      "preWindowAssessment": "No exact pre-window failure record. The test and implementation are the same d631c4d6 blobs from August 7 and no daily candidate touches them."
+    },
+    {
+      "id": "background-cleanup-races",
+      "failureIds": [30, 32],
+      "tests": ["tests/poolSweep.test.ts", "tests/session-metadata.test.ts"],
+      "callsites": ["src/daemon/poolSweep.ts", "src/pool.ts", "src/sessionMetadata.ts", "src/store.ts", "src/lock.ts"],
+      "observedPattern": "test-finally recursive removal races a still-active background writer and reports ENOTEMPTY",
+      "preWindowAssessment": "The pool case is an exact September 6 and pristine-baseline residual failure. The transcript ownership case recurs in both saved current runs but has no exact pre-window failure record; its test and callsite blobs are unchanged since July-August."
+    }
+  ],
+  "legacyHistoryForNonExactCases": [
+    {
+      "failureId": 2,
+      "testIntroduced": "8a275a6060e30ea84db365ef4675c3e2f096738e",
+      "introducedAt": "2026-06-10T09:40:48+02:00",
+      "latestPrimarySourceCommitsBeforeWindow": ["3b782c1585688b684370c7312518f5bcd273068e", "04b501d19e6a3d4c46bb5f887b02f74787324032", "888aa8993abf585f57048502d52fb7f3c159c52f"]
+    },
+    {
+      "failureId": 7,
+      "testIntroduced": "f72762ee2d0d5be7a43910dfea4366d2058c812a",
+      "introducedAt": "2026-06-09T08:28:53+02:00",
+      "latestPrimarySourceCommitsBeforeWindow": ["e76feee9f9ac8e2e059208d94ff9b4b7b4711853", "56ffc4c363248ca3c0ba02340e626287a22c157f"]
+    },
+    {
+      "failureId": 10,
+      "testIntroduced": "27507cfdda4796c86c6ea88444166a1d01530561",
+      "introducedAt": "2026-07-03T15:00:16+02:00",
+      "latestPrimarySourceCommitsBeforeWindow": ["e76feee9f9ac8e2e059208d94ff9b4b7b4711853", "0179f3bdc782553c441288186b3c85e7418009b1", "712a2a975b32ce191841b453ea2559bd0c18c6be"]
+    },
+    {
+      "failureId": 19,
+      "testIntroduced": "8808b110fd67ec984b8f53f26b4a0b143716ed0e",
+      "introducedAt": "2026-07-18T14:31:03+02:00",
+      "latestPrimarySourceCommitsBeforeWindow": ["085563999318348aae5e00c8991eeb0c11249079"]
+    },
+    {
+      "failureId": 20,
+      "testIntroduced": "8808b110fd67ec984b8f53f26b4a0b143716ed0e",
+      "introducedAt": "2026-07-18T14:31:03+02:00",
+      "latestPrimarySourceCommitsBeforeWindow": ["085563999318348aae5e00c8991eeb0c11249079", "53e10e14da4c26cd506a8485f0dc763cd330092a"]
+    },
+    {
+      "failureId": 21,
+      "testIntroduced": "53e10e14da4c26cd506a8485f0dc763cd330092a",
+      "introducedAt": "2026-08-16T04:39:02+02:00",
+      "latestPrimarySourceCommitsBeforeWindow": ["085563999318348aae5e00c8991eeb0c11249079", "53e10e14da4c26cd506a8485f0dc763cd330092a"]
+    },
+    {
+      "failureId": 23,
+      "testIntroduced": "c18170804fd5d7f6fd3dfdafe645d51918b40fc9",
+      "introducedAt": "2026-07-22T16:22:41+02:00",
+      "latestPrimarySourceCommitsBeforeWindow": ["7b7d7b44230d608263b17f1ec722fbc901e630d4", "53e10e14da4c26cd506a8485f0dc763cd330092a"]
+    },
+    {
+      "failureId": 24,
+      "testIntroduced": "1ce564bd744571eda557d78a7bbf7c25fbfde6a7",
+      "introducedAt": "2026-07-03T12:06:47+02:00",
+      "latestPrimarySourceCommitsBeforeWindow": ["7b7d7b44230d608263b17f1ec722fbc901e630d4", "53e10e14da4c26cd506a8485f0dc763cd330092a"]
+    },
+    {
+      "failureId": 29,
+      "testIntroduced": "d631c4d63e9bfa206f0f0993299778c4397d7012",
+      "introducedAt": "2026-08-07T13:29:14+02:00",
+      "latestPrimarySourceCommitsBeforeWindow": ["d631c4d63e9bfa206f0f0993299778c4397d7012"]
+    },
+    {
+      "failureId": 32,
+      "testIntroduced": "f06c75bb84fc2be505d9359688f25a6154aeedb9",
+      "introducedAt": "2026-07-22T09:28:59+02:00",
+      "latestPrimarySourceCommitsBeforeWindow": ["53e10e14da4c26cd506a8485f0dc763cd330092a", "d631c4d63e9bfa206f0f0993299778c4397d7012", "7e613cf93eda83c19d0834bc665608c33ee62084"]
+    }
+  ],
+  "failures": [
+    {"id": 1, "logLine": 198, "title": "bees sidebar toggle is quiet for tmux hotkeys", "test": "tests/beesSidebar.test.ts:110", "family": "compiled-legacy-cli", "symptom": "CLI child exits 1 because the compiled v2 CLI artifact cannot be loaded", "attribution": "pre-window exact failure", "confidence": "high", "preWindowEvidenceLine": 195, "repeatedCurrentRun": true, "followUp": false},
+    {"id": 2, "logLine": 217, "title": "hive node register/update reject --ssh-args without the = form", "test": "tests/cli-flags.test.ts:128", "family": "legacy-cli-lock-child-timing", "symptom": "30-second test timeout", "attribution": "legacy unchanged; exact pre-window failure not captured", "confidence": "medium", "preWindowEvidenceLine": null, "repeatedCurrentRun": true, "followUp": false},
+    {"id": 3, "logLine": 219, "title": "reciprocal active-source names fail before taking nested lifecycle locks", "test": "tests/cli-fork.test.ts:451", "family": "legacy-cli-lock-child-timing", "symptom": "correct refusal exceeded a five-second timing oracle", "attribution": "pre-window exact failure", "confidence": "high", "preWindowEvidenceLine": 214, "repeatedCurrentRun": true, "followUp": false},
+    {"id": 4, "logLine": 231, "title": ".test-dist/tests/cli-helpers.unit.test.js", "test": "tests/cli-helpers.unit.test.ts", "family": "compiled-legacy-cli", "symptom": "test worker failed without a subtest diagnostic", "attribution": "pre-window exact file failure", "confidence": "high for window attribution; low for root cause", "preWindowEvidenceLine": 226, "repeatedCurrentRun": true, "followUp": false},
+    {"id": 5, "logLine": 233, "title": "run sends to arbitrary executables without provider readiness checks", "test": "tests/cli-run.test.ts:21", "family": "compiled-legacy-cli", "symptom": "CLI result code 1 instead of 0", "attribution": "pre-window exact failure", "confidence": "high", "preWindowEvidenceLine": 228, "repeatedCurrentRun": false, "followUp": false},
+    {"id": 6, "logLine": 249, "title": "run skips pane readiness for HSR bees and sends over the control socket", "test": "tests/cli-run.test.ts:97", "family": "compiled-legacy-cli", "symptom": "CLI result code 1 instead of 0", "attribution": "pre-window exact failure", "confidence": "high", "preWindowEvidenceLine": 260, "repeatedCurrentRun": true, "followUp": false},
+    {"id": 7, "logLine": 265, "title": "x spawns, delivers the prompt, and keeps the session (fire-and-forget)", "test": "tests/cli-run.test.ts:137", "family": "compiled-legacy-cli", "symptom": "CLI result code 1 instead of 0", "attribution": "legacy unchanged; passed in pre-window isolated evidence, exact pre-window failure not captured", "confidence": "medium", "preWindowEvidenceLine": null, "repeatedCurrentRun": false, "followUp": false},
+    {"id": 8, "logLine": 281, "title": "x rejects swarm flags with a helpful hint", "test": "tests/cli-run.test.ts:165", "family": "compiled-legacy-cli", "symptom": "missing-v2-artifact error replaces expected validation text", "attribution": "pre-window exact failure", "confidence": "high", "preWindowEvidenceLine": 276, "repeatedCurrentRun": true, "followUp": false},
+    {"id": 9, "logLine": 296, "title": "spawn <tool>-rr --count re-resolves the account for each bee", "test": "tests/cli-spawn-account-swarm.test.ts:113", "family": "compiled-legacy-cli", "symptom": "CLI child is SIGTERM-killed after 20 seconds after publishing two of three records", "attribution": "pre-window exact failure", "confidence": "high", "preWindowEvidenceLine": 291, "repeatedCurrentRun": true, "followUp": false},
+    {"id": 10, "logLine": 315, "title": "spawn --frame re-resolves <tool>-rr for each bee in a multi-count caste", "test": "tests/cli-spawn-account-swarm.test.ts:140", "family": "compiled-legacy-cli", "symptom": "CLI child is SIGTERM-killed after 20 seconds after publishing two of three records", "attribution": "legacy unchanged; passed in pre-window isolated evidence, exact pre-window failure not captured", "confidence": "medium", "preWindowEvidenceLine": null, "repeatedCurrentRun": true, "followUp": false},
+    {"id": 11, "logLine": 334, "title": "hive-x with no args reports the same usage as hive x", "test": "tests/cli-x.test.ts:8", "family": "compiled-legacy-cli", "symptom": "fast compiled entry and full CLI disagree because full CLI reports missing v2 artifact", "attribution": "pre-window exact failure", "confidence": "high", "preWindowEvidenceLine": 310, "repeatedCurrentRun": true, "followUp": false},
+    {"id": 12, "logLine": 351, "title": "hive-x preserves cmdX validation errors", "test": "tests/cli-x.test.ts:19", "family": "compiled-legacy-cli", "symptom": "fast compiled entry returns validation while full CLI reports missing v2 artifact", "attribution": "pre-window exact failure", "confidence": "high", "preWindowEvidenceLine": 327, "repeatedCurrentRun": true, "followUp": false},
+    {"id": 13, "logLine": 369, "title": "custom-home final harvest failure/timeout survives purge and restart, then succeeds", "test": "tests/credential-harvest-recovery.test.ts:124", "family": "credential-sync-budget", "symptom": "final credential sync exceeds 20 ms", "attribution": "pre-window exact failure", "confidence": "high", "preWindowEvidenceLine": 344, "repeatedCurrentRun": true, "followUp": false},
+    {"id": 14, "logLine": 381, "title": "runDaemon (child process) starts, writes state.json, and exits cleanly on SIGTERM", "test": "tests/daemon-status.test.ts:170", "family": "legacy-cli-lock-child-timing", "symptom": "state.json is not written within eight seconds", "attribution": "pre-window exact failure", "confidence": "high", "preWindowEvidenceLine": 356, "repeatedCurrentRun": true, "followUp": false},
+    {"id": 15, "logLine": 397, "title": ".test-dist/tests/hsr-default-policy.test.js", "test": "tests/hsr-default-policy.test.ts", "family": "hsr-worker-and-compaction", "symptom": "test worker failed without a subtest diagnostic", "attribution": "pre-window exact file failure", "confidence": "high for window attribution; low for root cause", "preWindowEvidenceLine": 372, "repeatedCurrentRun": true, "followUp": false},
+    {"id": 16, "logLine": 399, "title": "appendHsrEvent auto-compacts past the byte cap without losing usage totals", "test": "tests/hsr-events-compaction.test.ts:131", "family": "hsr-worker-and-compaction", "symptom": "60-second test timeout", "attribution": "pre-window exact failure", "confidence": "high", "preWindowEvidenceLine": 374, "repeatedCurrentRun": true, "followUp": false},
+    {"id": 17, "logLine": 401, "title": "a server-side drop re-dials with backoff, re-hellos, and a fresh subscribe resumes exactly", "test": "tests/hsr-gateway-connect.test.ts:611", "family": "hsr-protocol-scheduling", "symptom": "re-hello point-in-time durable high-water assertion misses", "attribution": "pre-window exact failure, including isolated/pristine repetition evidence", "confidence": "high", "preWindowEvidenceLine": 376, "repeatedCurrentRun": true, "followUp": false},
+    {"id": 18, "logLine": 417, "title": "Grok ACP delivers next-tool sends through the next real tool boundary", "test": "tests/hsr-grok-adapter.test.ts:229", "family": "hsr-protocol-scheduling", "symptom": "interjected text event is absent at assertion time", "attribution": "pre-window exact failure", "confidence": "high", "preWindowEvidenceLine": 392, "repeatedCurrentRun": true, "followUp": false},
+    {"id": 19, "logLine": 432, "title": "resume refuses a session owned by another bee and startup rejects bad Basic auth", "test": "tests/hsr-opencode-adapter.test.ts:687", "family": "opencode-startup", "symptom": "fake OpenCode startup URL exceeds 1500 ms", "attribution": "legacy unchanged; exact pre-window failure not captured", "confidence": "medium", "preWindowEvidenceLine": null, "repeatedCurrentRun": false, "followUp": false},
+    {"id": 20, "logLine": 453, "title": "stop is idempotent and terminates the whole OpenCode process group", "test": "tests/hsr-opencode-adapter.test.ts:728", "family": "opencode-startup", "symptom": "fake OpenCode startup URL exceeds 2000 ms", "attribution": "legacy unchanged; exact pre-window failure not captured", "confidence": "medium", "preWindowEvidenceLine": null, "repeatedCurrentRun": false, "followUp": false},
+    {"id": 21, "logLine": 460, "title": "natural child close waits for an in-flight final SSE event before sealing exit", "test": "tests/hsr-opencode-adapter.test.ts:753", "family": "opencode-startup", "symptom": "fake OpenCode startup URL exceeds 2000 ms", "attribution": "legacy unchanged; exact pre-window failure not captured", "confidence": "medium", "preWindowEvidenceLine": null, "repeatedCurrentRun": false, "followUp": false},
+    {"id": 22, "logLine": 467, "title": ".test-dist/tests/hsr-promote.test.js", "test": "tests/hsr-promote.test.ts", "family": "hsr-worker-and-compaction", "symptom": "test worker failed without a subtest diagnostic", "attribution": "pre-window exact file failure", "confidence": "high for window attribution; low for root cause", "preWindowEvidenceLine": 424, "repeatedCurrentRun": true, "followUp": false},
+    {"id": 23, "logLine": 469, "title": "remote event mirror: backfills events emitted before the observe subscription attached (no duplicates)", "test": "tests/hsr-remote-mirror.test.ts:1251", "family": "remote-mirror-child-startup", "symptom": "remote serve socket does not appear within eight seconds", "attribution": "legacy unchanged; exact pre-window failure not captured", "confidence": "medium", "preWindowEvidenceLine": null, "repeatedCurrentRun": false, "followUp": false},
+    {"id": 24, "logLine": 477, "title": "remote event mirror: subscribe → replay events/ring locally → deriveState + usage → teardown on disappear", "test": "tests/hsr-remote-mirror.test.ts:1387", "family": "remote-mirror-child-startup", "symptom": "remote serve socket does not appear within eight seconds", "attribution": "legacy unchanged; exact pre-window failure not captured", "confidence": "medium-high because it repeats in both saved current runs", "preWindowEvidenceLine": null, "repeatedCurrentRun": true, "followUp": false},
+    {"id": 25, "logLine": 485, "title": "broadcast backpressure: slow client gets bounded drop-oldest queue; fast client and telemetry unaffected (HIVE-70)", "test": "tests/hsr-rpc.test.ts:122", "family": "hsr-protocol-scheduling", "symptom": "five-second backpressure condition wait expires", "attribution": "pre-window exact failure", "confidence": "high", "preWindowEvidenceLine": 426, "repeatedCurrentRun": true, "followUp": false},
+    {"id": 26, "logLine": 493, "title": "the dedicated source entry and __hsr-run fallback both remain executable under tsx", "test": "tests/hsr-runner-entry.test.ts:512", "family": "compiled-legacy-cli", "symptom": "source CLI returns unknown command instead of the runner payload guard", "attribution": "pre-window exact failure", "confidence": "high", "preWindowEvidenceLine": 434, "repeatedCurrentRun": true, "followUp": false},
+    {"id": 27, "logLine": 512, "title": "a natural harness exit reaps a previously observed setsid grandchild", "test": "tests/hsr-session-base.test.ts:128", "family": "process-tree-reaping", "symptom": "delayed tool-use ownership sample does not arrive within 20 seconds", "attribution": "pre-window exact and pristine-baseline residual failure", "confidence": "high", "preWindowEvidenceLine": 453, "repeatedCurrentRun": true, "followUp": false},
+    {"id": 28, "logLine": 518, "title": "turn runner: exact turn_end advances past an inherited stdout pipe and session stop reaps descendants", "test": "tests/hsr-turn-runner.test.ts:364", "family": "process-tree-reaping", "symptom": "inherited-pipe descendants do not stop within the test deadline", "attribution": "pre-window exact and pristine-baseline residual failure", "confidence": "high", "preWindowEvidenceLine": 471, "repeatedCurrentRun": true, "followUp": false},
+    {"id": 29, "logLine": 526, "title": "heartbeat recovers a generation guard abandoned by a proven-dead stealer", "test": "tests/lock.test.ts:227", "family": "lock-heartbeat-timing", "symptom": "assert.rejects sees a resolved guard-file read instead of ENOENT", "attribution": "legacy unchanged; exact pre-window failure not captured", "confidence": "medium", "preWindowEvidenceLine": null, "repeatedCurrentRun": false, "followUp": false},
+    {"id": 30, "logLine": 539, "title": "sweeper: minFree pre-extends in the background and reports completion next sweep", "test": "tests/poolSweep.test.ts:508", "family": "background-cleanup-races", "symptom": "recursive temp cleanup races background pool writes and returns ENOTEMPTY", "attribution": "pre-window exact and pristine-baseline residual failure", "confidence": "high", "preWindowEvidenceLine": 479, "repeatedCurrentRun": true, "followUp": false},
+    {"id": 31, "logLine": 541, "title": "retire and purge stay bounded when their post-exit credential harvest never settles", "test": "tests/retire.test.ts:324", "family": "credential-sync-budget", "symptom": "final credential sync exceeds 20 ms", "attribution": "pre-window exact failure", "confidence": "high", "preWindowEvidenceLine": 503, "repeatedCurrentRun": true, "followUp": false},
+    {"id": 32, "logLine": 552, "title": "concurrent bootstrap refreshes serialize only on the shared transcript identity", "test": "tests/session-metadata.test.ts:286", "family": "background-cleanup-races", "symptom": "recursive temp cleanup races transcript-ownership writes and returns ENOTEMPTY", "attribution": "legacy unchanged; exact pre-window failure not captured", "confidence": "medium-high because it repeats in both saved current runs", "preWindowEvidenceLine": null, "repeatedCurrentRun": true, "followUp": false}
+  ],
+  "testBlobProof": {
+    "comparedCommits": ["8506467f2a6e99d06258e5fe59726d330b2ccdf4", "ae93050e194a9b4929e26a029f62783ba80581a1", "98cc89c3180b25272c31f67e438adea1380921c2"],
+    "allSame": true,
+    "paths": [
+      {"path": "tests/beesSidebar.test.ts", "blob": "db4b487df6b19e25f951635993b684846426a301"},
+      {"path": "tests/cli-flags.test.ts", "blob": "8d73700283ed646216d8de624a5955bd2b2fa767"},
+      {"path": "tests/cli-fork.test.ts", "blob": "7723de702807efdcd3501622d713dd8af0b1b8c0"},
+      {"path": "tests/cli-helpers.unit.test.ts", "blob": "5442777743663ac84765b776b0aecf14b5665084"},
+      {"path": "tests/cli-run.test.ts", "blob": "ec5877786fa8f08e83c4e03603917ba88c0798e6"},
+      {"path": "tests/cli-spawn-account-swarm.test.ts", "blob": "06b76fa3b54630599fea800e0c50d0b5ffeaedbd"},
+      {"path": "tests/cli-x.test.ts", "blob": "68ffbd0f7687411447bb89b70e843d501717315a"},
+      {"path": "tests/credential-harvest-recovery.test.ts", "blob": "d16edabcb184cb7d52ba57136a7a2ce97e82f6ca"},
+      {"path": "tests/daemon-status.test.ts", "blob": "8be3bfd8511bc6a10ddbcda4e8649ba545ac4ba2"},
+      {"path": "tests/hsr-default-policy.test.ts", "blob": "cb379da5b5b185dd68314b8c46b27e7eafbc20da"},
+      {"path": "tests/hsr-events-compaction.test.ts", "blob": "0b4b50f13b5c8cd8ca082e2e2f8c312b473670bf"},
+      {"path": "tests/hsr-gateway-connect.test.ts", "blob": "8e0a3d732fd3f43d380410861ab3dd976c8b3788"},
+      {"path": "tests/hsr-grok-adapter.test.ts", "blob": "11055c8b7323e504e59b7e3566835f1ff4f5ef04"},
+      {"path": "tests/hsr-opencode-adapter.test.ts", "blob": "0d33b0912fd9407abbdc63954076bad1c28a6744"},
+      {"path": "tests/hsr-promote.test.ts", "blob": "2151fdeaca0d35c3c7de2e1673ffc73330fc115e"},
+      {"path": "tests/hsr-remote-mirror.test.ts", "blob": "bce31434f7c461fbe73b3fa04061e9eefc7b7166"},
+      {"path": "tests/hsr-rpc.test.ts", "blob": "800c8e91e771e0be47e7067d173c710de398b250"},
+      {"path": "tests/hsr-runner-entry.test.ts", "blob": "61199d2b5ac3a3b067d277dec1ba7ab32cea28ef"},
+      {"path": "tests/hsr-session-base.test.ts", "blob": "ca71ebf8a7690f99a59bbdeb16d94afeaa74f53e"},
+      {"path": "tests/hsr-turn-runner.test.ts", "blob": "f21c8c2f61a9b53a6cb357e88f1a68f82a664df5"},
+      {"path": "tests/lock.test.ts", "blob": "f1f485e3fb8698ed5201d5aeb30cbdf346eb241b"},
+      {"path": "tests/poolSweep.test.ts", "blob": "4fce89bd840d6de9a6c6479d1a7bf77b969ec6bc"},
+      {"path": "tests/retire.test.ts", "blob": "ee6c48378cf844cb4ae67909e9471725cca10e7a"},
+      {"path": "tests/session-metadata.test.ts", "blob": "0f64b1fb329846e21d36d71a267f01fa317cc079"}
+    ]
+  },
+  "primaryPathProof": {
+    "comparedCommits": ["ae93050e194a9b4929e26a029f62783ba80581a1", "98cc89c3180b25272c31f67e438adea1380921c2"],
+    "unchangedPaths": ["tests/cli-entry.mjs", "src/cli.ts", "src/cli-x.ts", "src/commands/node.ts", "src/node.ts", "src/parse.ts", "src/commands/fork.ts", "src/lifecycle.ts", "src/commands/run.ts", "src/commands/spawn.ts", "src/accounts.ts", "src/frame.ts", "src/kill.ts", "src/accounts/credentialHarvestQueue.ts", "src/daemon/index.ts", "src/fsx.ts", "src/config.ts", "src/hsr/runDir.ts", "src/hsr/gatewayConnect.ts", "src/hsr/adapters/grok.ts", "src/hsr/adapters/acpRpc.ts", "src/hsr/adapters/opencode.ts", "src/commands/migrate.ts", "src/hsr/remoteEventMirror.ts", "src/hsr/remoteHost.ts", "src/hsr/remoteTransport.ts", "src/substrates/remote-hsr.ts", "src/hsr/rpc.ts", "src/hsr/runner-entry.ts", "src/hsr/runnerHost.ts", "src/hsr/sessionBase.ts", "src/hsr/turnRunner.ts", "src/lock.ts", "src/daemon/poolSweep.ts", "src/pool.ts", "src/sessionMetadata.ts", "src/store.ts", "scripts/run-tests.mjs"],
+    "changedPaths": [
+      {"path": "src/spawnEnv.ts", "preWindowBlob": "3f633864fc1219c00f719cadd9e3ae8e2ddfc6a8", "frozenBlob": "0a87219bf612375ab58aa8df4fc9a599c441a19c", "assessment": "behavior-preserving helper extraction"},
+      {"path": "scripts/build-tests.mjs", "preWindowBlob": "5ce78d3afff8c82a90b2a1096e8ec6b024b3315e", "frozenBlob": "6d2c18e5d8f077b149b623e8f58d18a75c6dc09e", "assessment": "test import-extension rewrite; not a production path and not causal to exact pre-window failures"}
+    ]
+  },
+  "commands": [
+    {"command": "rg -n '^✖ ' .audit/check-pnpm-test-after-build.log", "exitCode": 0, "purpose": "enumerate the requested 32 failure records and exact log lines"},
+    {"command": "jq '.repositories[] | select(.identity==\"github.com/honeybeehq/honeybee\")' /Users/trmd/.hive/crew/art/reviews/2026-09-07/coverage.json", "exitCode": 0, "purpose": "read the exact frozen main and all 143 supplied candidates"},
+    {"command": "git show ae93050e194a9b4929e26a029f62783ba80581a1:docs/performance/2026-09-06/evidence/verification/index.json", "exitCode": 0, "purpose": "read committed pre-window baseline metadata"},
+    {"command": "git show ae93050e194a9b4929e26a029f62783ba80581a1:docs/performance/2026-09-06/evidence/verification/final-legacy-tests.log", "exitCode": 0, "purpose": "match exact failures against the committed pre-window default-suite log"},
+    {"command": "git show ae93050e194a9b4929e26a029f62783ba80581a1:docs/performance/2026-09-06/evidence/verification/legacy-isolated-rerun.log", "exitCode": 0, "purpose": "separate schedule-sensitive passes from persistent baseline failures"},
+    {"command": "git diff --name-status ae93050e194a9b4929e26a029f62783ba80581a1 98cc89c3180b25272c31f67e438adea1380921c2 -- src tests scripts package.json", "exitCode": 0, "purpose": "identify every in-window main change near the failure set"},
+    {"command": "git ls-tree -r <8506467f|ae93050e|98cc89c3> -- tests", "exitCode": 0, "purpose": "prove all 24 failing test blobs are identical across the control, window predecessor, and frozen main"},
+    {"command": "git show -m --format=@@%H --name-only --no-renames --diff-filter=AMDR <all 143 exact coverage candidates>", "exitCode": 0, "purpose": "intersect every supplied candidate, including merge-parent views and branch-only variants, with test and callsite paths"},
+    {"command": "git log ae93050e --reverse -S '<test title>' -- <test path>; git log -1 ae93050e -- <source paths>", "exitCode": 0, "purpose": "date the ten non-exact cases and their primary source paths before the window"},
+    {"command": "shasum -a 256 <requested and historical evidence logs>", "exitCode": 0, "purpose": "pin evidence bytes"}
+  ],
+  "limitations": [
+    "The requested log does not embed its source SHA. The worktree was at 0472a91c99d7a75c19429b6bffc9988e57c2a272 when inspected; its only changes from frozen main are v2 review fixes, and none of the 24 failing tests or 40 primary paths differs from frozen main beyond the two already classified paths.",
+    "Failures 2, 7, 10, 19, 20, 21, 23, 24, 29, and 32 have no saved exact same-name failure before the window. Their legacy attribution is based on identical pre-window test/callsite blobs, zero causal candidate diffs, recurring sibling-family failures, and current-run schedule variation; it is not represented as an exact pre-window runtime reproduction.",
+    "The three file-level worker failures expose no subtest stack, so this review can attribute their age but cannot isolate their internal failing assertion from the saved log alone.",
+    "HBworker's independently launched exact-98cc89c3 run completed while this ledger was being finalized. Its 48 failures and 27/32 overlap are recorded as frozen-main recurrence only, not as proof of pre-window age.",
+    "No benchmark, focused test, or full suite was rerun by this review, per the read-only/no-rerun constraint."
+  ],
+  "notifications": [
+    {
+      "recipient": "b90596a2-cb43-440d-8958-3960d5e0b0e1",
+      "messageId": 4536,
+      "kind": "interim no-in-window-defect conclusion"
+    },
+    {
+      "recipient": "b90596a2-cb43-440d-8958-3960d5e0b0e1",
+      "messageId": 4541,
+      "kind": "final result receipt"
+    },
+    {
+      "recipient": "f4c6a16b-47d1-4c1f-a538-22568c321054",
+      "messageId": 4542,
+      "kind": "final no-defect attribution receipt"
+    }
+  ]
+}
