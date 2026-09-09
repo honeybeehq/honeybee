@@ -50,8 +50,11 @@ corrupt checkpoints. Consumers may add their own version for wrapper semantics.
 Every existing Agy, Claude, Codex and Grok projector fixture runs paired streams.
 One projects uninterrupted. The other checkpoints, JSON serializes, restores at the
 empty boundary and after every push and flush, and compares each emitted batch and
-complete checkpoint. This includes item starts, fork responses, rollout dedupe, open
-thinking/message chunks, prompt mirrors, tool updates and compaction dedupe.
+complete checkpoint. This includes item starts, fork responses, rollout message dedupe,
+repeated Codex turn opens, open thinking/message chunks, prompt mirrors, Grok tool
+updates and compaction dedupe. Explicit Agy replays cross checkpoint boundaries after
+an emitted tool ACTIVE, tool terminal update and assistant DONE with text, proving that
+all three emitted-identity sets suppress duplicates after restore.
 Separate tests cover malformed envelopes and nested state, exact versions, mismatched
 harnesses, empty stateless/unknown state, alias isolation and the byte limit.
 

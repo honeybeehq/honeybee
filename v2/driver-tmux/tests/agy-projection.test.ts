@@ -121,6 +121,18 @@ function project(lines: readonly string[]): TranscriptProjectedEvent[] {
   return events;
 }
 
+test("agy projector: replayed calls, results and replies stay deduplicated across checkpoints", () => {
+  const projector = createAgyProjector();
+  for (const line of TOOL_TURN_FIXTURE) {
+    const events = projector.pushLine(line);
+    if (events.some((event) => event.kind === "tool_call" || event.kind === "tool_result"
+      || (event.kind === "message" && event.role === "assistant"))) {
+      // Includes the assistant text_delta, so forgetting its ID would emit it again.
+      assert.deepEqual(projector.pushLine(line), []);
+    }
+  }
+});
+
 test("agy projector: captured tool turn maps user, tool pair, reply, usage suffix, and result", () => {
   const events = project(TOOL_TURN_FIXTURE);
   assert.deepEqual(events.map((event) => event.kind), [

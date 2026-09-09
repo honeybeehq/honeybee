@@ -299,6 +299,9 @@ test("codex projector: interrupted turn completion is an end only and never re-r
 test("codex projector: native rollout messages and tools remain projected without duplicate copies", () => {
   const events = project([
     j({ timestamp: "2026-08-20T10:00:00Z", type: "event_msg", payload: { type: "task_started" } }),
+    // The paired stream restores between these two opens of the same turn.
+    j({ timestamp: "2026-08-20T10:00:00Z", type: "turn_context", payload: {} }),
+    j({ timestamp: "2026-08-20T10:00:00Z", type: "event_msg", payload: { type: "task_started" } }),
     j({ timestamp: "2026-08-20T10:00:01Z", type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text: "do it" }] } }),
     j({ timestamp: "2026-08-20T10:00:02Z", type: "event_msg", payload: { type: "user_message", message: "do it" } }),
     j({ timestamp: "2026-08-20T10:00:03Z", type: "response_item", payload: { type: "message", role: "assistant", id: "msg-1", content: [{ type: "output_text", text: "done" }] } }),
