@@ -22,6 +22,21 @@ const TERMINAL_TOOL_STATES = new Set(["DONE", "ERROR", "FAILED", "CANCELED"]);
 const ERROR_TOOL_STATES = new Set(["ERROR", "FAILED", "CANCELED"]);
 const USAGE_KEYS = ["input", "output", "cacheRead", "cacheWrite", "reasoning", "total"] as const;
 
+/** Each emitted-identity set retains its most recent distinct emissions in FIFO order. */
+export const AGY_DEDUPE_LIMIT = 1024;
+
+function rememberEmission(identities: Set<string>, id: string): void {
+  identities.add(id);
+  if (identities.size > AGY_DEDUPE_LIMIT) {
+    const oldest = identities.values().next();
+    if (!oldest.done) identities.delete(oldest.value);
+  }
+}
+
+function isEmittedIdentities(value: unknown): boolean {
+  return Array.isArray(value) && value.length <= AGY_DEDUPE_LIMIT && checkpointStrings(value);
+}
+
 function asObject(value: unknown): JsonObject | undefined {
   return value != null && typeof value === "object" && !Array.isArray(value)
     ? value as JsonObject
@@ -126,9 +141,9 @@ export function isAgyCheckpointState(value: unknown): value is AgyCheckpointStat
     previousNumTurns: checkpointNullable(checkpointNumber),
     previousDurationSeconds: checkpointNullable(checkpointNumber),
     assistantFragments: checkpointEntries(isFragment),
-    emittedAssistantMessages: checkpointStrings,
-    emittedToolCalls: checkpointStrings,
-    emittedToolResults: checkpointStrings,
+    emittedAssistantMessages: isEmittedIdentities,
+    emittedToolCalls: isEmittedIdentities,
+    emittedToolResults: isEmittedIdentities,
   });
 }
 export function createAgyProjector(restored?: AgyCheckpointState): TranscriptProjector {
@@ -198,7 +213,7 @@ export function createAgyProjector(restored?: AgyCheckpointState): TranscriptPro
       const fragment = assistantFragments.get(eventId);
       assistantFragments.delete(eventId);
       if (!fragment || fragment.text.trim().length === 0) return [];
-      emittedAssistantMessages.add(eventId);
+      rememberEmission(emittedAssistantMessages, eventId);
       sawAssistantText = true;
       return [assistantMessage(fragment)];
     }
@@ -209,7 +224,7 @@ export function createAgyProjector(restored?: AgyCheckpointState): TranscriptPro
     const name = nonEmptyString(update.tool_name) ?? nonEmptyString(info?.name) ?? "tool";
     const callId = toolCallId(update);
     if (state === "ACTIVE" && !emittedToolCalls.has(callId)) {
-      emittedToolCalls.add(callId);
+      rememberEmission(emittedToolCalls, callId);
       return [{
         kind: "tool_call",
         ts: null,
@@ -220,7 +235,7 @@ export function createAgyProjector(restored?: AgyCheckpointState): TranscriptPro
       }];
     }
     if (state && TERMINAL_TOOL_STATES.has(state) && !emittedToolResults.has(callId)) {
-      emittedToolResults.add(callId);
+      rememberEmission(emittedToolResults, callId);
       const output = printableOutput(info?.output) ?? printableOutput(info?.error);
       return [{
         kind: "tool_result",
@@ -355,7 +370,7 @@ export function createAgyProjector(restored?: AgyCheckpointState): TranscriptPro
       const events: TranscriptProjectedEvent[] = [];
       for (const [eventId, fragment] of assistantFragments) {
         if (fragment.text.trim().length === 0) continue;
-        emittedAssistantMessages.add(eventId);
+        rememberEmission(emittedAssistantMessages, eventId);
         events.push(assistantMessage(fragment));
       }
       assistantFragments.clear();

@@ -99,3 +99,12 @@ checkpoints when event semantics remain unchanged. The digest adds no runtime de
 Grok retains tool pairing and dedupe flags but drops tool input after emitting its call.
 The event already contains that input, and future updates never re-emit the call. This
 keeps large file-write arguments out of every subsequent checkpoint without evicting IDs.
+
+Agy retains at most 1,024 identities in each of its emitted call, result and assistant
+message sets. Each set evicts the oldest distinct emission first; duplicate updates do
+not refresh that order. Checkpoints preserve FIFO order, including across result records,
+so retained identities dedupe identically after restore. Replays older than the window
+can emit again. A thread change clears the sets. Restore rejects sets over the limit;
+the projection and state version bumps fence the former unbounded behavior and schema.
+Tests exercise all three sets at capacity, eviction immediately after restore, repeated
+identities on both sides of the window, and assistant fragments emitted by `flush()`.

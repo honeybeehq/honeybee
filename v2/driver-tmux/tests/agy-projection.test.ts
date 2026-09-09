@@ -5,12 +5,14 @@
  */
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { AGY_DEDUPE_LIMIT, isAgyCheckpointState } from "../src/agy-projection.ts";
 import { checkpointVerifiedProjector } from "./checkpoint-helpers.ts";
 const createAgyProjector = () => checkpointVerifiedProjector("agy");
 import type { TranscriptProjectedEvent } from "../src/transcript-projection.ts";
 import {
   agyTranscriptRenderer,
   createTranscriptProjector,
+  restoreTranscriptProjector,
   lastAssistantText,
   renderTranscriptLines,
   TRANSCRIPT_RENDERERS,
@@ -131,6 +133,70 @@ test("agy projector: replayed calls, results and replies stay deduplicated acros
       assert.deepEqual(projector.pushLine(line), []);
     }
   }
+});
+
+test("agy projector: bounded FIFO dedupe preserves replay and eviction order after restore", () => {
+  const uninterrupted = createTranscriptProjector("agy");
+  const lines = (index: number) => [
+    { step_type: "tool", state: "ACTIVE" },
+    { step_type: "tool", state: "DONE" },
+    { step_type: "agent_response", state: "DONE", text_delta: `reply ${index}` },
+  ].map((update) => j({ event: "step_update", step_update: {
+    conversation_id: SESSION_ID, step_index: index, ...update,
+  } }));
+  for (let index = 0; index < AGY_DEDUPE_LIMIT; index++) {
+    for (const line of lines(index)) assert.equal(uninterrupted.pushLine(line).length, 1);
+  }
+  // Replaying the oldest ID does not refresh its FIFO position.
+  for (const line of lines(0)) assert.deepEqual(uninterrupted.pushLine(line), []);
+  // A result is not proof that prior step IDs cannot recur.
+  uninterrupted.pushLine(j({ event: "result", result: { conversation_id: SESSION_ID, status: "SUCCESS" } }));
+  const checkpoint = uninterrupted.checkpoint();
+  const restored = restoreTranscriptProjector("agy", JSON.parse(JSON.stringify(checkpoint)));
+  assert.ok(restored.ok);
+  const resumed = restored.projector;
+  const push = (index: number, expected: number) => {
+    for (const line of lines(index)) {
+      const events = uninterrupted.pushLine(line);
+      assert.equal(events.length, expected);
+      assert.deepEqual(resumed.pushLine(line), events);
+    }
+  };
+  push(0, 0); // Still retained across result and checkpoint.
+  push(AGY_DEDUPE_LIMIT, 1); // Evicts zero in each set.
+  push(1, 0); // Next-oldest remains retained.
+  push(0, 1); // Outside the window: both streams emit again.
+  for (let index = AGY_DEDUPE_LIMIT + 1; index < AGY_DEDUPE_LIMIT * 2; index++) push(index, 1);
+  assert.deepEqual(resumed.checkpoint(), uninterrupted.checkpoint());
+  const state = resumed.checkpoint().state;
+  assert.ok(isAgyCheckpointState(state));
+  for (const field of ["emittedToolCalls", "emittedToolResults", "emittedAssistantMessages"] as const) {
+    assert.equal(state[field].length, AGY_DEDUPE_LIMIT);
+    assert.equal(state[field][0], `agy:${SESSION_ID}:0`);
+    assert.deepEqual(restoreTranscriptProjector("agy", {
+      ...checkpoint, state: { ...state, [field]: [...state[field], "one-too-many"] },
+    }), { ok: false, reason: "invalid_checkpoint" });
+  }
+  assert.ok(Buffer.byteLength(JSON.stringify(resumed.checkpoint())) < 200_000);
+});
+
+test("agy projector: flushed assistant fragments also obey the dedupe bound", () => {
+  const projector = createTranscriptProjector("agy");
+  for (let index = 0; index <= AGY_DEDUPE_LIMIT; index++) {
+    projector.pushLine(j({ event: "step_update", step_update: {
+      conversation_id: SESSION_ID, step_index: index, step_type: "agent_response",
+      state: "ACTIVE", text_delta: `reply ${index}`,
+    } }));
+  }
+  const restored = restoreTranscriptProjector("agy", JSON.parse(JSON.stringify(projector.checkpoint())));
+  assert.ok(restored.ok);
+  const events = projector.flush();
+  assert.equal(events.length, AGY_DEDUPE_LIMIT + 1);
+  assert.deepEqual(restored.projector.flush(), events);
+  const state = restored.projector.checkpoint().state;
+  assert.ok(isAgyCheckpointState(state));
+  assert.equal(state.emittedAssistantMessages.length, AGY_DEDUPE_LIMIT);
+  assert.equal(state.emittedAssistantMessages[0], `agy:${SESSION_ID}:1`);
 });
 
 test("agy projector: captured tool turn maps user, tool pair, reply, usage suffix, and result", () => {
