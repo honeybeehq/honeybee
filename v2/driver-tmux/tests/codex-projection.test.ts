@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { createCodexProjector } from "../src/codex-projection.ts";
+import { checkpointVerifiedProjector } from "./checkpoint-helpers.ts";
+const createCodexProjector = () => checkpointVerifiedProjector("codex");
 import { renderTranscriptLines } from "../src/transcripts.ts";
 import type { TranscriptProjectedEvent } from "../src/transcript-projection.ts";
 
@@ -297,6 +298,9 @@ test("codex projector: interrupted turn completion is an end only and never re-r
 
 test("codex projector: native rollout messages and tools remain projected without duplicate copies", () => {
   const events = project([
+    j({ timestamp: "2026-08-20T10:00:00Z", type: "event_msg", payload: { type: "task_started" } }),
+    // The paired stream restores between these two opens of the same turn.
+    j({ timestamp: "2026-08-20T10:00:00Z", type: "turn_context", payload: {} }),
     j({ timestamp: "2026-08-20T10:00:00Z", type: "event_msg", payload: { type: "task_started" } }),
     j({ timestamp: "2026-08-20T10:00:01Z", type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text: "do it" }] } }),
     j({ timestamp: "2026-08-20T10:00:02Z", type: "event_msg", payload: { type: "user_message", message: "do it" } }),

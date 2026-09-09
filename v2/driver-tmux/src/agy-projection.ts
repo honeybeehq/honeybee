@@ -2,6 +2,10 @@
  * agy stream-json projection, captured from agy 1.1.24 on 2026-09-02.
  * HSR logs both the user envelopes written to stdin and agy's stdout lines.
  */
+import {
+  projectorCheckpoint, checkpointRecord, checkpointEntries, checkpointNullable,
+  checkpointString, checkpointStrings, checkpointBoolean, checkpointNumber,
+} from "./transcript-projection.ts";
 import type {
   TranscriptProjectedEvent,
   TranscriptProjector,
@@ -17,6 +21,21 @@ interface AssistantFragment {
 const TERMINAL_TOOL_STATES = new Set(["DONE", "ERROR", "FAILED", "CANCELED"]);
 const ERROR_TOOL_STATES = new Set(["ERROR", "FAILED", "CANCELED"]);
 const USAGE_KEYS = ["input", "output", "cacheRead", "cacheWrite", "reasoning", "total"] as const;
+
+/** Each emitted-identity set retains its most recent distinct emissions in FIFO order. */
+export const AGY_DEDUPE_LIMIT = 1024;
+
+function rememberEmission(identities: Set<string>, id: string): void {
+  identities.add(id);
+  if (identities.size > AGY_DEDUPE_LIMIT) {
+    const oldest = identities.values().next();
+    if (!oldest.done) identities.delete(oldest.value);
+  }
+}
+
+function isEmittedIdentities(value: unknown): boolean {
+  return Array.isArray(value) && value.length <= AGY_DEDUPE_LIMIT && checkpointStrings(value);
+}
 
 function asObject(value: unknown): JsonObject | undefined {
   return value != null && typeof value === "object" && !Array.isArray(value)
@@ -91,16 +110,52 @@ function printableOutput(value: unknown): string | undefined {
   }
 }
 
-export function createAgyProjector(): TranscriptProjector {
-  let threadId: string | undefined;
-  let sawAssistantText = false;
-  let previousResultUsage: TranscriptTokenUsage | undefined;
-  let previousNumTurns: number | undefined;
-  let previousDurationSeconds: number | undefined;
-  const assistantFragments = new Map<string, AssistantFragment>();
-  const emittedAssistantMessages = new Set<string>();
-  const emittedToolCalls = new Set<string>();
-  const emittedToolResults = new Set<string>();
+
+interface AgyCheckpointState {
+  threadId: string | null;
+  sawAssistantText: boolean;
+  previousResultUsage: TranscriptTokenUsage | null;
+  previousNumTurns: number | null;
+  previousDurationSeconds: number | null;
+  assistantFragments: Array<[string, AssistantFragment]>;
+  emittedAssistantMessages: string[];
+  emittedToolCalls: string[];
+  emittedToolResults: string[];
+}
+function isUsage(value: unknown): boolean {
+  const v = asObject(value);
+  return !!v && Object.keys(v).every((key) => USAGE_KEYS.some((allowed) => allowed === key) && checkpointNumber(v[key]));
+}
+function isFragment(value: unknown): boolean {
+  const v = asObject(value);
+  return !!v && checkpointRecord(v, { text: checkpointString,
+    ...(Object.hasOwn(v, "providerEventId") ? { providerEventId: checkpointString } : {}),
+  });
+}
+
+export function isAgyCheckpointState(value: unknown): value is AgyCheckpointState {
+  return checkpointRecord(value, {
+    threadId: checkpointNullable(checkpointString),
+    sawAssistantText: checkpointBoolean,
+    previousResultUsage: checkpointNullable(isUsage),
+    previousNumTurns: checkpointNullable(checkpointNumber),
+    previousDurationSeconds: checkpointNullable(checkpointNumber),
+    assistantFragments: checkpointEntries(isFragment),
+    emittedAssistantMessages: isEmittedIdentities,
+    emittedToolCalls: isEmittedIdentities,
+    emittedToolResults: isEmittedIdentities,
+  });
+}
+export function createAgyProjector(restored?: AgyCheckpointState): TranscriptProjector {
+  let threadId: string | undefined = restored?.threadId ?? undefined;
+  let sawAssistantText = restored?.sawAssistantText ?? false;
+  let previousResultUsage: TranscriptTokenUsage | undefined = restored?.previousResultUsage ?? undefined;
+  let previousNumTurns: number | undefined = restored?.previousNumTurns ?? undefined;
+  let previousDurationSeconds: number | undefined = restored?.previousDurationSeconds ?? undefined;
+  const assistantFragments = new Map<string, AssistantFragment>(restored?.assistantFragments);
+  const emittedAssistantMessages = new Set<string>(restored?.emittedAssistantMessages);
+  const emittedToolCalls = new Set<string>(restored?.emittedToolCalls);
+  const emittedToolResults = new Set<string>(restored?.emittedToolResults);
 
   function rememberThread(value: unknown): void {
     const next = nonEmptyString(value);
@@ -158,7 +213,7 @@ export function createAgyProjector(): TranscriptProjector {
       const fragment = assistantFragments.get(eventId);
       assistantFragments.delete(eventId);
       if (!fragment || fragment.text.trim().length === 0) return [];
-      emittedAssistantMessages.add(eventId);
+      rememberEmission(emittedAssistantMessages, eventId);
       sawAssistantText = true;
       return [assistantMessage(fragment)];
     }
@@ -169,7 +224,7 @@ export function createAgyProjector(): TranscriptProjector {
     const name = nonEmptyString(update.tool_name) ?? nonEmptyString(info?.name) ?? "tool";
     const callId = toolCallId(update);
     if (state === "ACTIVE" && !emittedToolCalls.has(callId)) {
-      emittedToolCalls.add(callId);
+      rememberEmission(emittedToolCalls, callId);
       return [{
         kind: "tool_call",
         ts: null,
@@ -180,7 +235,7 @@ export function createAgyProjector(): TranscriptProjector {
       }];
     }
     if (state && TERMINAL_TOOL_STATES.has(state) && !emittedToolResults.has(callId)) {
-      emittedToolResults.add(callId);
+      rememberEmission(emittedToolResults, callId);
       const output = printableOutput(info?.output) ?? printableOutput(info?.error);
       return [{
         kind: "tool_result",
@@ -261,6 +316,20 @@ export function createAgyProjector(): TranscriptProjector {
 
   return {
     harness: "agy",
+    checkpoint() {
+      return projectorCheckpoint("agy", {
+        threadId: threadId ?? null,
+        sawAssistantText: sawAssistantText,
+        previousResultUsage: previousResultUsage ?? null,
+        previousNumTurns: previousNumTurns ?? null,
+        previousDurationSeconds: previousDurationSeconds ?? null,
+        assistantFragments: [...assistantFragments],
+        emittedAssistantMessages: [...emittedAssistantMessages],
+        emittedToolCalls: [...emittedToolCalls],
+        emittedToolResults: [...emittedToolResults],
+      } satisfies AgyCheckpointState);
+    },
+
     pushLine(line: string): TranscriptProjectedEvent[] {
       let row: JsonObject | undefined;
       try {
@@ -301,7 +370,7 @@ export function createAgyProjector(): TranscriptProjector {
       const events: TranscriptProjectedEvent[] = [];
       for (const [eventId, fragment] of assistantFragments) {
         if (fragment.text.trim().length === 0) continue;
-        emittedAssistantMessages.add(eventId);
+        rememberEmission(emittedAssistantMessages, eventId);
         events.push(assistantMessage(fragment));
       }
       assistantFragments.clear();
