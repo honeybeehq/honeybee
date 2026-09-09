@@ -40,7 +40,7 @@ Native Codex started-item payloads and Grok tool inputs allow arbitrary JSON fie
 because those are provider data, not checkpoint schema. Non-JSON values are rejected.
 Snapshot and restore both detach nested data from the consumer.
 
-Both versions start at 1. Bump `projectionVersion` when event semantics change and
+Both versions began at 1. Bump `projectionVersion` when event semantics change and
 `stateVersion` when the persisted state schema changes. Both are global exact fences;
 there is no implicit migration. Consumers rebuild from source after incompatible or
 corrupt checkpoints. Consumers may add their own version for wrapper semantics.
@@ -78,8 +78,15 @@ retaining its own registry key in the checkpoint.
 
 Both version fences are global. A Grok state schema change therefore invalidates Codex
 and Agy checkpoints too. This deliberately favors simple compatibility decisions.
-The test-only source digest covers all six projector modules. Source changes require
-reviewing versions, bumping the relevant constant, and refreshing the fixture with:
+The test-only source digest covers the three stateful projector modules (Codex, Grok,
+Agy), plus the explicitly marked `checkpoint-digest:start/end` regions containing the
+registry/restore in `transcripts.ts` and checkpoint envelope/validators/serialization in
+`transcript-projection.ts`. Keep new shared checkpoint logic inside these regions.
+Claude, event types, observation parsers and renderer implementations are excluded: their
+edits do not automatically require discarding every harness's checkpoint. Event semantic
+changes in excluded code still require a reviewed `projectionVersion` bump. Included
+source changes require reviewing versions, bumping the relevant constant, and refreshing
+the fixture with:
 
 ```sh
 UPDATE_TRANSCRIPT_CHECKPOINT_DIGEST=1 node --test v2/driver-tmux/tests/checkpoint-digest.test.ts

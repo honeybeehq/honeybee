@@ -14,8 +14,10 @@ for (const harness of ["codex", "grok", "agy", "claude", "stub", "unknown-provid
     }
     for (const [field, value, reason] of [
       ["harness", "other", "harness_mismatch"],
-      ["projectionVersion", 2, "projection_version_mismatch"],
-      ["stateVersion", 2, "state_version_mismatch"],
+      ["projectionVersion", checkpoint.projectionVersion + 1, "projection_version_mismatch"],
+      ["projectionVersion", checkpoint.projectionVersion - 1, "projection_version_mismatch"],
+      ["stateVersion", checkpoint.stateVersion + 1, "state_version_mismatch"],
+      ["stateVersion", checkpoint.stateVersion - 1, "state_version_mismatch"],
     ] as const) {
       assert.deepEqual(restoreTranscriptProjector(harness, { ...checkpoint, [field]: value }), { ok: false, reason });
     }

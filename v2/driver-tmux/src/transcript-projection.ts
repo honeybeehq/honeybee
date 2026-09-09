@@ -111,10 +111,11 @@ export interface TranscriptProjector {
 
 export type TranscriptProjectorFactory = () => TranscriptProjector;
 
+// checkpoint-digest:start
 /** Bump for event semantic changes; stored projections must then be rebuilt. */
 export const TRANSCRIPT_PROJECTION_VERSION = 1;
 /** Bump for checkpoint schema changes. Restore deliberately does not migrate. */
-export const TRANSCRIPT_PROJECTOR_STATE_VERSION = 1;
+export const TRANSCRIPT_PROJECTOR_STATE_VERSION = 2;
 export const TRANSCRIPT_CHECKPOINT_MAX_BYTES = 4 * 1024 * 1024;
 
 export interface TranscriptProjectorCheckpoint {
@@ -206,3 +207,5 @@ export function serializeTranscriptCheckpoint(checkpoint: unknown): TranscriptCh
     return { ok: false, reason: "invalid_checkpoint" };
   }
 }
+
+// checkpoint-digest:end

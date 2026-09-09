@@ -501,6 +501,7 @@ export const TRANSCRIPT_RENDERERS: Record<string, TranscriptRenderer> = {
   stub: stubTranscriptRenderer,
 };
 
+// checkpoint-digest:start
 /**
  * Render a batch of raw jsonl lines for a harness. An unknown harness falls
  * back to the claude-shaped projector (the most common envelope) — callers
@@ -578,6 +579,8 @@ export function restoreTranscriptProjector(harness: string, checkpoint: unknown)
     return { ok: false, reason: "invalid_checkpoint" };
   }
 }
+
+// checkpoint-digest:end
 
 export interface TranscriptTurnStream {
   pushLine(line: string): TranscriptTurn[];
