@@ -43,3 +43,76 @@ Isolated artifact simplification: `f20bb16feb6afbc9c907f360997a74f9c0bf88a4` on 
 Isolated release simplification: `e7e500f254573652a01e1be8be52fb1cc3ec378a` on `art/nightly-2026-09-08-release-simplify`, based on `29dce91870e0c5a4106d30db248dfea8d705226f`.
 
 Run `python3 docs/review/art-nightly-2026-09-08-evidence/verify.py` in a clone containing the candidate objects to verify the portable identity and arithmetic evidence. This passed in the owned worktree. Root consumes `honeybee-result.json` and `honeybee-simplification.json` in the dated Art review directory. Historical root artifacts and live runtime state were left intact.
+
+## Coordinator integration: tmux parent inheritance
+
+The daemon repair removes configured HIVE_PARENT for roots, but omitted tmux -e values still inherit the server environment. A real Node process on a private test socket reproduced stale-server-parent after the daemon repair. Commit `2e5e19de925a6c63fb57ae79d1d7b849a87df103` clears HIVE_PARENT in the launched root process with env -u, leaving explicit child identity unchanged. It does not mutate the tmux server environment.
+
+The focused check failed before the driver repair and passed after. The first broader run exposed a test probe partial-write race, with 13/14 passing; the probe now publishes atomically. The final affected suite passes 14/14, and v2 typecheck and build pass. Worker verification remains separately recorded above.
+
+### honeybee-tmux-parent-red
+
+Command: `node --test --test-name-pattern=tmux.parent-env v2/driver-tmux/tests/driver.test.ts`. Exit 1. Log SHA-256 `d2e87d2e62f7cb155c556e25918be2140854a53b413b5bc0768c8b385c873f20`.
+
+```text
+ℹ tests 1
+ℹ pass 0
+ℹ fail 1
+  + 'stale-server-parent'
+    actual: 'stale-server-parent',
+```
+
+### honeybee-tmux-parent-green
+
+Command: `node --test --test-name-pattern=tmux.parent-env v2/driver-tmux/tests/driver.test.ts`. Exit 0. Log SHA-256 `46baf5ba96b5aa473dffca9283d13311bd423c86bf3890f164c0f16a9510dab0`.
+
+```text
+ℹ tests 1
+ℹ pass 1
+ℹ fail 0
+```
+
+### honeybee-tmux-parent-suite
+
+Command: `node --test --test-concurrency=1 v2/driver-tmux/tests/driver.test.ts v2/driver-tmux/tests/delivery.test.ts v2/driver-tmux/tests/eq-matrix.test.ts`. Exit 1. Log SHA-256 `978955d0e9864a7d21fa19dc351718d320041d68ffa325f5b6c9c0c1f203434d`.
+
+```text
+ℹ tests 14
+ℹ pass 13
+ℹ fail 1
+  SyntaxError: Unexpected end of JSON input
+```
+
+### honeybee-tmux-parent-suite-final
+
+Command: `node --test --test-concurrency=1 v2/driver-tmux/tests/driver.test.ts v2/driver-tmux/tests/delivery.test.ts v2/driver-tmux/tests/eq-matrix.test.ts`. Exit 0. Log SHA-256 `60102cc419c83b46d9da9e17942eddc36a945ea71d8a8d5284fd275c70d1c547`.
+
+```text
+ℹ tests 14
+ℹ pass 14
+ℹ fail 0
+```
+
+### honeybee-root-v2-typecheck
+
+Command: `npm run v2:check`. Exit 0. Log SHA-256 `8ea85cd14d8c59992466c4428264d5da033d1c833445705468a84a3d049e3aa3`.
+
+```text
+npm warn Unknown user config "manage-package-manager-versions". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+
+> honeybee@0.0.1 v2:check
+> tsc -p v2/core/tsconfig.json && tsc -p v2/harness/tsconfig.json && tsc -p v2/adapters/tsconfig.json && tsc -p v2/driver-hsr/tsconfig.json && tsc -p v2/daemon/tsconfig.json && tsc -p v2/cli/tsconfig.json && tsc -p v2/driver-cell/tsconfig.json && tsc -p v2/driver-tmux/tsconfig.json
+
+```
+
+### honeybee-root-build
+
+Command: `npm run build`. Exit 0. Log SHA-256 `51d7ad7e33f1d2a8a79021624af26cbdd0573fc98695685acc2827a22057d5d8`.
+
+```text
+dependency-light cli entry staged at dist/cli.js
+
+> honeybee@0.0.1 postbuild
+> chmod +x dist/cli.js dist/cli-x.js
+
+```

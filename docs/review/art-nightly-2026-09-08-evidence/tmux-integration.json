@@ -1,0 +1,91 @@
+{
+  "sourceReview": "honeybee-result.json",
+  "repository": "github.com/honeybeehq/honeybee",
+  "fixCommit": "2e5e19de925a6c63fb57ae79d1d7b849a87df103",
+  "severity": "medium",
+  "finding": "Root tmux process inherits stale HIVE_PARENT from private server despite daemon env deletion",
+  "checks": [
+    {
+      "cwd": "/Users/trmd/.hive/crew/art/reviews/worktrees/honeybee-2026-09-08",
+      "command": [
+        "node",
+        "--test",
+        "--test-name-pattern=tmux.parent-env",
+        "v2/driver-tmux/tests/driver.test.ts"
+      ],
+      "startedAt": "2026-09-09T02:29:40.883307+00:00",
+      "evidence": "/Users/trmd/.hive/crew/art/reviews/2026-09-08/honeybee-tmux-parent-red.log",
+      "exitCode": 1,
+      "elapsedSeconds": 2.254
+    },
+    {
+      "cwd": "/Users/trmd/.hive/crew/art/reviews/worktrees/honeybee-2026-09-08",
+      "command": [
+        "node",
+        "--test",
+        "--test-name-pattern=tmux.parent-env",
+        "v2/driver-tmux/tests/driver.test.ts"
+      ],
+      "startedAt": "2026-09-09T02:31:26.060378+00:00",
+      "evidence": "/Users/trmd/.hive/crew/art/reviews/2026-09-08/honeybee-tmux-parent-green.log",
+      "exitCode": 0,
+      "elapsedSeconds": 10.979
+    },
+    {
+      "cwd": "/Users/trmd/.hive/crew/art/reviews/worktrees/honeybee-2026-09-08",
+      "command": [
+        "node",
+        "--test",
+        "--test-concurrency=1",
+        "v2/driver-tmux/tests/driver.test.ts",
+        "v2/driver-tmux/tests/delivery.test.ts",
+        "v2/driver-tmux/tests/eq-matrix.test.ts"
+      ],
+      "startedAt": "2026-09-09T02:31:49.791881+00:00",
+      "evidence": "/Users/trmd/.hive/crew/art/reviews/2026-09-08/honeybee-tmux-parent-suite.log",
+      "exitCode": 1,
+      "elapsedSeconds": 46.598
+    },
+    {
+      "cwd": "/Users/trmd/.hive/crew/art/reviews/worktrees/honeybee-2026-09-08",
+      "command": [
+        "node",
+        "--test",
+        "--test-concurrency=1",
+        "v2/driver-tmux/tests/driver.test.ts",
+        "v2/driver-tmux/tests/delivery.test.ts",
+        "v2/driver-tmux/tests/eq-matrix.test.ts"
+      ],
+      "startedAt": "2026-09-09T02:34:59.171039+00:00",
+      "evidence": "/Users/trmd/.hive/crew/art/reviews/2026-09-08/honeybee-tmux-parent-suite-final.log",
+      "exitCode": 0,
+      "elapsedSeconds": 37.81
+    },
+    {
+      "cwd": "/Users/trmd/.hive/crew/art/reviews/worktrees/honeybee-2026-09-08",
+      "command": [
+        "npm",
+        "run",
+        "v2:check"
+      ],
+      "startedAt": "2026-09-09T02:31:51.357370+00:00",
+      "evidence": "/Users/trmd/.hive/crew/art/reviews/2026-09-08/honeybee-root-v2-typecheck.log",
+      "exitCode": 0,
+      "elapsedSeconds": 193.061
+    },
+    {
+      "cwd": "/Users/trmd/.hive/crew/art/reviews/worktrees/honeybee-2026-09-08",
+      "command": [
+        "npm",
+        "run",
+        "build"
+      ],
+      "startedAt": "2026-09-09T02:35:00.341609+00:00",
+      "evidence": "/Users/trmd/.hive/crew/art/reviews/2026-09-08/honeybee-root-build.log",
+      "exitCode": 0,
+      "elapsedSeconds": 65.099
+    }
+  ],
+  "complete": true,
+  "simplificationDisposition": "Repair adds necessary process-boundary clearing; second pass retains it because omission does not unset inherited tmux variables."
+}
