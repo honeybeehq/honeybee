@@ -217,7 +217,7 @@ test("v6.rpc.3: bee.fork (claude) — forks the source session into a NEW one (-
         command: process.execPath,
         args: [FAKE_CLAUDE, "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose"],
         adapter: "claude",
-        env: { FAKE_CLAUDE_ARGV_LOG: argvLog },
+        env: { FAKE_CLAUDE_ARGV_LOG: argvLog, HIVE_PARENT: "forged-spec-parent" },
       },
     },
   });

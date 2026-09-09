@@ -1001,6 +1001,8 @@ export class HiveDaemon {
       ...accountEnv,
       ...beeIdentityEnv(bee, this.cfg.dataDir),
     };
+    // Absence is authoritative too: a root must not inherit a configured parent.
+    if (!bee.parentId) delete env.HIVE_PARENT;
     // F8 — one resolution rule: the bare harness command is resolved to an
     // absolute path at spawn time with the SAME core rule every probe uses
     // (PATH of the exact spawn env, then the fallback dirs). Nothing found
@@ -1086,6 +1088,8 @@ export class HiveDaemon {
       ...accountEnv,
       ...beeIdentityEnv(bee, this.cfg.dataDir),
     };
+    // Absence is authoritative too: a root must not inherit a configured parent.
+    if (!bee.parentId) delete env.HIVE_PARENT;
     // Same F8 resolution rule as HSR: the TUI seat must not ENOENT on a CLI
     // the node's probes can see.
     const { command, resolution } = resolveSpawnCommand(spec.command, { env });
