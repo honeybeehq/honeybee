@@ -6,9 +6,42 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { TmuxServer } from "../src/tmux.ts";
 import { drainUntil, kinds, makeRig, sleep } from "./helpers.ts";
 import { pidAlive } from "../../driver-hsr/src/psutil.ts";
+
+test("tmux.parent-env: roots clear the server's inherited parent while children keep their explicit parent", async () => {
+  const rig = makeRig();
+  const previousParent = process.env.HIVE_PARENT;
+  try {
+    process.env.HIVE_PARENT = "stale-server-parent";
+    const probe = join(rig.dir, "parent-probe.mjs");
+    writeFileSync(probe, `import { writeFileSync, renameSync } from 'node:fs'; const dest = process.env.TMUX_PARENT_CAPTURE; writeFileSync(dest + '.tmp', JSON.stringify({ parent: process.env.HIVE_PARENT ?? null })); renameSync(dest + '.tmp', dest);`);
+    const captures: Record<string, { parent: string | null }> = {};
+    for (const [beeId, parent] of [["root", null], ["child", "canonical-parent"]] as const) {
+      const capture = join(rig.dir, `${beeId}.json`);
+      rig.configure(beeId, "transcript", {
+        NODE_OPTIONS: `--import=${pathToFileURL(probe).href}`,
+        TMUX_PARENT_CAPTURE: capture,
+        ...(parent === null ? {} : { HIVE_PARENT: parent }),
+      });
+      rig.driver.start(beeId, 1);
+      const deadline = Date.now() + 6000;
+      while (!existsSync(capture) && Date.now() < deadline) await sleep(20);
+      assert.ok(existsSync(capture), `${beeId} must reach the real process probe`);
+      captures[beeId] = JSON.parse(readFileSync(capture, "utf8"));
+    }
+    assert.equal(captures.child?.parent, "canonical-parent");
+    assert.equal(captures.root?.parent, null, "root process must not inherit the tmux server's parent");
+  } finally {
+    if (previousParent === undefined) delete process.env.HIVE_PARENT;
+    else process.env.HIVE_PARENT = previousParent;
+    rig.cleanup();
+  }
+});
 
 test("tmux.roundtrip: spawn on the private socket, deliver, observe a full turn, clean @exit", async () => {
   const rig = makeRig();

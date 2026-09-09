@@ -255,7 +255,11 @@ export class TmuxDriver implements RuntimeDriver {
       HIVE_BEE_ID: beeId,
     };
     for (const [k, v] of Object.entries(env)) envFlags.push("-e", `${k}=${v}`);
-    const shellCommand = [spec.command, ...spec.args].map(shQuote).join(" ");
+    const argv = [spec.command, ...spec.args];
+    // Omitted -e values still inherit the tmux server's environment. Clear
+    // the root's parent in the launched process, including on reused servers.
+    if (!Object.hasOwn(env, "HIVE_PARENT")) argv.unshift("/usr/bin/env", "-u", "HIVE_PARENT");
+    const shellCommand = argv.map(shQuote).join(" ");
     let paneId: string;
     let pid: number;
     const spawnedAt = this.now();
