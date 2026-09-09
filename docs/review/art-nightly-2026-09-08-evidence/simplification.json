@@ -1,0 +1,261 @@
+{
+  "skillPath": "/Users/trmd/.hive/homes/codex-tormod-arbeidsark.no/skills/radically-simplify/SKILL.md",
+  "skillSha256": "67e2e706af704089b682ce1197152e384762f1d22968ad06928ac62c5e29eb45",
+  "baseSha": "a60e679f9cb62896caa08c0c53dff9b0d5e86485",
+  "candidateShas": [
+    "a60e679f9cb62896caa08c0c53dff9b0d5e86485",
+    "009be006dd4bb6ebaef64fef56ff87989da250a7",
+    "d46b9182bebb5f24a806264ea4960f819854a865",
+    "997b53b46253bc2f979ae2155e395fdb16f53736",
+    "75db6dcf1b271d0c196b1619093dfe0bbcb7ae55",
+    "195c85b3e75d96e44d8f311c4ba79ef4277e4601",
+    "6b4e9af3a24af8f04f18d686f01245b5cdc8a8b1",
+    "94708ad44dd56334bb3295d4d9be2de33e6b89de",
+    "b1f0ebb1629a3d1b34acfb622a931e53009b7360",
+    "64fbfe4702052cced13f5fc14ffb618e6907b9de",
+    "62990cf354cd69499e9ca8e05e8c0bb38d325aa7",
+    "30891a78cc5f56bda63b33f7c497aa4bb08ff43f",
+    "740ca44323151f437cd19344d81355f6c5e6306b",
+    "047c6f584c952e50d4a99391535e3cf41951b779",
+    "418edbec6d632a5c2dd236c61b1b3288445c6908",
+    "58de2ab63161b0ffb096ec409c0ab3f305095926",
+    "3442932c57cc4e102b8e457c9940dbea283a42c6",
+    "6b9ced6d506f0b6f7d109b9251c035c4bba94e40",
+    "f868ea70fa7a226a2072d2b34dbad2c8a79b80e1",
+    "ab0d9599d2fffdcfaeb7c5e855672d5c73187bf4",
+    "aad40964f9e27981abce0cc12f1b70b6b48e16b0",
+    "663aaf39e5baeaa1cf51ffc21aa1ea6e70e23909",
+    "99d91d5f381b3ce17d947249a213eecf5218c848",
+    "0472a91c99d7a75c19429b6bffc9988e57c2a272",
+    "29dce91870e0c5a4106d30db248dfea8d705226f",
+    "d20df402a62beea1e0f98354cf15bf641de5060d",
+    "ac33d942ccd7f522092cd3e8f7d7029e53a0a46a"
+  ],
+  "branchBaselines": [
+    "64fbfe4702052cced13f5fc14ffb618e6907b9de",
+    "d20df402a62beea1e0f98354cf15bf641de5060d",
+    "29dce91870e0c5a4106d30db248dfea8d705226f"
+  ],
+  "modules": [
+    {
+      "path": "v2/cli/src/main.ts",
+      "callers": "cmdSend, cmdBuz, cmdCell, resolveSendSender",
+      "disposition": "Retain identity selection and authority mismatch handling; human override and legacy sender aliases have distinct error contracts. Timeout parsing must reject NaN before JSON serialization.",
+      "firstPass": true,
+      "secondPass": true
+    },
+    {
+      "path": "v2/cli/src/readonly.ts",
+      "callers": "children, latestMoveView",
+      "disposition": "Retain stale reader boundary. Sharing CoreStore would open the writable authority. External lineage filter and rowid tie-break match writable projection.",
+      "firstPass": true,
+      "secondPass": true
+    },
+    {
+      "path": "v2/core/src/store.ts",
+      "callers": "listChildren, updateRuntimeState, hang-stop probes, latestMoveOf, listBeeViewRows, listTaskSupply",
+      "disposition": "Retain generation predicates and queued/running/done distinction. Deriving execution from queued intent would mischarge failures. Branch SQL optimization already eliminates disabled-row mapping without cache.",
+      "firstPass": true,
+      "secondPass": true
+    },
+    {
+      "path": "v2/daemon/src/daemon.ts",
+      "callers": "rpcSend, resolveSpawnSpec, resolveTmuxSpec, rpcCellExec, rpcCellRetainedRemove, viewOf",
+      "disposition": "Remove redundant post-validation type discrimination. Repair root parent env absence. Retain account/driver distinctions and RPC admission validation.",
+      "firstPass": true,
+      "secondPass": true
+    },
+    {
+      "path": "v2/daemon/src/envelope.ts",
+      "callers": "isPeerSender, deliveryText, urgencyToTier",
+      "disposition": "Retain UUID recognition for deleted senders and legacy handle support. Stored old operator rows lack recoverable peer provenance; do not rewrite historical mail.",
+      "firstPass": true,
+      "secondPass": true
+    },
+    {
+      "path": "v2/daemon/src/protocol.ts",
+      "callers": "SendRpcResult/ChildrenResult and send documentation",
+      "disposition": "Public wire contracts remain; deleting fields or narrowing external consumer assumptions lacks compatibility proof.",
+      "firstPass": true,
+      "secondPass": true
+    },
+    {
+      "path": "v2/daemon/src/loops.ts",
+      "callers": "bootHangPolicy, scaleToZeroPolicy, degradedMailPolicy, deliveryLoop, taskSupplyLoop, applyObservation",
+      "disposition": "Remove private pendingStopExists forwarding at all three callers. Retain FIFO eligibility, interruptRequested and store-side executed hang evidence.",
+      "firstPass": true,
+      "secondPass": true
+    },
+    {
+      "path": "v2/daemon/src/substrates.ts",
+      "callers": "SubstrateRouter.interrupt, driverFor",
+      "disposition": "Retain wrapper because it chooses the correct driver by exact generation; forwarding the ID is the required routing boundary.",
+      "firstPass": true,
+      "secondPass": true
+    },
+    {
+      "path": "v2/driver-hsr/src/driver.ts",
+      "callers": "interrupt, deliver, onSignal, recover observation evidence",
+      "disposition": "Retain pending versus confirmed receipts: socket write is not acceptance, and acknowledgment is not durable mailbox settlement. Keep journal replay and conservative adoption.",
+      "firstPass": true,
+      "secondPass": true
+    },
+    {
+      "path": "v2/driver-cell/src/driver.ts",
+      "callers": "CellDriver.interrupt/inner and spawn resolution",
+      "disposition": "Retain delegation boundary: Cell provisioning/placement differs from HSR process ownership. Removing the Cell layer would move lifecycle work into the wrong owner.",
+      "firstPass": true,
+      "secondPass": true
+    },
+    {
+      "path": "v2/driver-tmux/src/driver.ts",
+      "callers": "interrupt and synchronous deliver",
+      "disposition": "Retain optional unused message ID to implement the common interface; tmux has synchronous acceptance and different interrupt mechanics.",
+      "firstPass": true,
+      "secondPass": true
+    },
+    {
+      "path": "v2/harness/src/driver.ts",
+      "callers": "RuntimeDriver.interrupt contract",
+      "disposition": "Retain optional identity so explicit operator interrupts remain supported. Required identity would break existing callers.",
+      "firstPass": true,
+      "secondPass": true
+    },
+    {
+      "path": "v2/adapters/src/codex.ts",
+      "callers": "codexThreadRequest and parseLine/encodeMessage",
+      "disposition": "Retain distinct start/resume/fork branches. Only resume can request metadata while preserving existing thread. Shared base already owns common parameters.",
+      "firstPass": true,
+      "secondPass": true
+    },
+    {
+      "path": "src/deployRuntime.ts [artifact and release branches only]",
+      "callers": "deployRuntimeArtifact, artifactManifestForInstalled, rollback, commands/deploy.ts",
+      "disposition": "Remove duplicate parsed artifactHash/bootstrap comparisons now implied by exact manifest-byte equality. Keep manifest parsing for existing error diagnostics, payload checks and ordering before effects.",
+      "firstPass": true,
+      "secondPass": true
+    },
+    {
+      "path": "scripts/performance/task-supply-benchmark.mjs [task-supply branch only]",
+      "callers": "fingerprint, fixture seed, ABBA measurement, state/effect checks, save",
+      "disposition": "Retain A/A, ABBA warmup, before/after fingerprint and state assertions. Removing scaffolding would weaken reproducibility or lose partial-failure evidence. No shared product abstraction needed.",
+      "firstPass": true,
+      "secondPass": true
+    },
+    {
+      "path": "v2/driver-hsr/test-agent/fake-claude.mjs",
+      "callers": "FAKE_CLAUDE_ARGV_LOG and preflip tests",
+      "disposition": "Retain diagnostic env projection: it proves actual child identity without dumping credentials. Parent sentinel strengthens the existing behavioral test.",
+      "firstPass": true,
+      "secondPass": true
+    }
+  ],
+  "candidates": [
+    {
+      "id": "S1",
+      "location": "v2/daemon/src/loops.ts:pendingStopExists",
+      "disposition": "implemented",
+      "complexityRemoved": "private pass-through method and alternate name for store predicate",
+      "replacement": "three direct store.hasPendingStopCommand calls",
+      "contracts": [
+        "same receiver, beeId and generation",
+        "same call count and policy ordering",
+        "same queued/running stop suppression"
+      ],
+      "beforeEvidence": "simplify-before.log:8/8",
+      "afterEvidence": "simplify-after.log:8/8",
+      "commit": "6600660bc4d549befb4d5e22d9ac0712468d0718"
+    },
+    {
+      "id": "S2",
+      "location": "v2/daemon/src/daemon.ts:rpcCellExec",
+      "disposition": "implemented",
+      "complexityRemoved": "two repeated typeof decisions after rejecting all other types",
+      "replacement": "read validated params directly",
+      "contracts": [
+        "same error strings/order",
+        "same omitted values",
+        "same idempotency hash and effect admission"
+      ],
+      "beforeEvidence": "integration.log:Cell RPC and move cases pass before change",
+      "afterEvidence": "cell-simplify-after.log:2/2",
+      "commit": "6600660bc4d549befb4d5e22d9ac0712468d0718"
+    },
+    {
+      "id": "S3",
+      "location": "src/deployRuntime.ts:existing immutable directory, two branches",
+      "disposition": "implemented",
+      "complexityRemoved": "two field equality decisions already implied by manifest-byte equality",
+      "replacement": "one exact byte comparison; keep parse and payload checks",
+      "contracts": [
+        "malformed manifest diagnostic unchanged",
+        "same corpus/dist checks",
+        "same immutable mismatch error",
+        "no effects before successful verification",
+        "rollback compatibility remains separately checked"
+      ],
+      "proof": "Identical bytes parsed by the same deterministic parser imply identical artifactHash and bootstrap.digest. Unequal bytes already reject through the identical mismatch error; malformed installed manifests are still parsed first.",
+      "beforeEvidence": "artifact.log:15/15; release.log:15/15",
+      "afterEvidence": "artifact-after.log:15/15; release-after.log:15/15; both check/v2:check/build exit 0",
+      "commits": [
+        "f20bb16feb6afbc9c907f360997a74f9c0bf88a4",
+        "e7e500f254573652a01e1be8be52fb1cc3ec378a"
+      ]
+    },
+    {
+      "id": "S4",
+      "location": "v2/core/src/store.ts:hang-stop probes",
+      "disposition": "retained",
+      "reason": "Pending suppression and executed-stop accounting require different statuses. A boolean-mode generic query hides this lifecycle distinction and adds a parameter without removing a concept."
+    },
+    {
+      "id": "S5",
+      "location": "v2/driver-hsr/src/driver.ts:receipt sets and loops.interruptRequested",
+      "disposition": "retained",
+      "reason": "Pending, confirmed and mailbox-settled are distinct asynchronous facts. Collapsing them would allow logical double delivery or self-interrupt; two ACK orderings and distinct later urgency require them."
+    },
+    {
+      "id": "S6",
+      "location": "v2/daemon/src/envelope.ts:peer recognition",
+      "disposition": "retained",
+      "reason": "UUID, legacy handle and current-store lookup cover different durable inputs. Removing any loses provenance after sender deletion or breaks non-UUID imported identities."
+    },
+    {
+      "id": "S7",
+      "location": "v2/core/src/store.ts:listTaskSupply [branch]",
+      "disposition": "superseded",
+      "reason": "Reviewed candidate 64fbfe4702052cced13f5fc14ffb618e6907b9de already replaces decode-then-filter with SQL selection. No new cache/index needed. It remains branch-only; not brought onto main."
+    },
+    {
+      "id": "S8",
+      "location": "v2/daemon/src/daemon.ts:spawn env composition",
+      "disposition": "retained",
+      "reason": "Two small root-parent deletion guards preserve driver-specific account and command resolution. Extracting another exported/general merge utility would add API and obscure precedence; no need after the four-line repair."
+    },
+    {
+      "id": "S9",
+      "location": "runtime artifact validation and benchmark evidence",
+      "disposition": "retained",
+      "reason": "Do not remove parsing, payload rehashes, rollback checks, ABBA controls or fingerprint assertions. They establish separate failure/measurement contracts despite similar shape."
+    }
+  ],
+  "preservedContracts": [
+    "transactional durable FIFO mailbox and caller idempotency",
+    "generation fencing and bounded spawn retries",
+    "detached runner survival and committed observation cursor recovery",
+    "bare operator/human input and durable peer envelope",
+    "Cell move receipt order, validation and retained operation gates",
+    "schema compatibility and immutable artifact bytes",
+    "public APIs, diagnostic errors, supported runtime kinds and no increased per-tick work"
+  ],
+  "secondPass": "Revisited all recorded modules and relevant callers after local changes. No further compatible opportunity with sufficient proof; all concrete alternatives have resolved dispositions.",
+  "checksPath": "docs/review/art-nightly-2026-09-08-evidence/checks.json",
+  "commits": [
+    "6600660bc4d549befb4d5e22d9ac0712468d0718",
+    "f20bb16feb6afbc9c907f360997a74f9c0bf88a4",
+    "e7e500f254573652a01e1be8be52fb1cc3ec378a"
+  ],
+  "remainingWork": [],
+  "complete": true,
+  "repairBaseline": "88c967839d90d3133c459c116fa25e2f12c42b69"
+}

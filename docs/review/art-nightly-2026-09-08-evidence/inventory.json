@@ -1,0 +1,498 @@
+[
+  {
+    "sha": "a60e679f9cb62896caa08c0c53dff9b0d5e86485",
+    "committedAt": 1788889168,
+    "parents": [
+      "d46b9182bebb5f24a806264ea4960f819854a865"
+    ],
+    "subject": "fix(v2): preserve peer sender attribution",
+    "newlyReachableMain": true,
+    "onMain": true,
+    "files": [
+      "v2/cli/src/main.ts",
+      "v2/cli/tests/cli.test.ts",
+      "v2/cli/tests/verbs-cli.test.ts",
+      "v2/daemon/src/daemon.ts",
+      "v2/daemon/src/envelope.ts",
+      "v2/daemon/src/protocol.ts",
+      "v2/daemon/tests/envelope.test.ts",
+      "v2/daemon/tests/external-parent.test.ts",
+      "v2/daemon/tests/idempotency.test.ts",
+      "v2/daemon/tests/preflip-verbs.test.ts",
+      "v2/driver-hsr/test-agent/fake-claude.mjs"
+    ],
+    "diffSha256": "d973e9dfaebbcb20eb59c41182ec9e937acd84ecbee08f074ae5994bd1cc0c38",
+    "patchId": "b03c7857b3b198e99da270d4a23fda66b6bccc6f",
+    "status": "reviewed; see outcomes.json and check receipts"
+  },
+  {
+    "sha": "009be006dd4bb6ebaef64fef56ff87989da250a7",
+    "committedAt": 1788878745,
+    "parents": [
+      "d46b9182bebb5f24a806264ea4960f819854a865"
+    ],
+    "subject": "docs: review scheduled Honeybee performance changes",
+    "onMain": false,
+    "files": [
+      "docs/review/speedy-performance-2026-09-08-e1127ef64682f649c9327766.md"
+    ],
+    "diffSha256": "74d08da51925a8e34262d6d207d2fc503493cc1dbd264c925f6805bd3b10028f",
+    "patchId": "dfc0e8c17bb02698b3667d814ace1a34544a14b2",
+    "status": "reviewed; see outcomes.json and check receipts"
+  },
+  {
+    "sha": "d46b9182bebb5f24a806264ea4960f819854a865",
+    "committedAt": 1788859509,
+    "parents": [
+      "997b53b46253bc2f979ae2155e395fdb16f53736"
+    ],
+    "subject": "docs: record verified Codex incident recovery",
+    "newlyReachableMain": true,
+    "onMain": true,
+    "files": [
+      "docs/incidents/2026-09-08-codex-resume-history-boot-loop.md"
+    ],
+    "diffSha256": "9ff9e7c55bd91e482c47adf85f1d5c967c35e71b61656fa570f39681ff1d288b",
+    "patchId": "9e2abe74cb07e757915a8f06dce4f05fe964f9be",
+    "status": "reviewed; see outcomes.json and check receipts"
+  },
+  {
+    "sha": "997b53b46253bc2f979ae2155e395fdb16f53736",
+    "committedAt": 1788859012,
+    "parents": [
+      "75db6dcf1b271d0c196b1619093dfe0bbcb7ae55"
+    ],
+    "subject": "fix(daemon): avoid urgent delivery self-interrupt",
+    "newlyReachableMain": true,
+    "onMain": true,
+    "files": [
+      "v2/daemon/src/loops.ts",
+      "v2/daemon/src/substrates.ts",
+      "v2/daemon/tests/loops.test.ts",
+      "v2/driver-cell/src/driver.ts",
+      "v2/driver-hsr/src/driver.ts",
+      "v2/driver-tmux/src/driver.ts",
+      "v2/harness/src/driver.ts"
+    ],
+    "diffSha256": "81ab46289709989aed7e8ca7e2678b92c2c9822d30286be379ca27f45478549a",
+    "patchId": "33c52312ce678f7f0af9ce4a4b6eaa08839ca482",
+    "status": "reviewed; see outcomes.json and check receipts"
+  },
+  {
+    "sha": "75db6dcf1b271d0c196b1619093dfe0bbcb7ae55",
+    "committedAt": 1788859012,
+    "parents": [
+      "6b4e9af3a24af8f04f18d686f01245b5cdc8a8b1"
+    ],
+    "subject": "test(daemon): reproduce urgent delivery self-interrupt",
+    "newlyReachableMain": true,
+    "onMain": true,
+    "files": [
+      "v2/daemon/tests/loops.test.ts"
+    ],
+    "diffSha256": "676cc89da4f74fd7e6dc3aec35cc9e4977a6b4fa56d584ddf93d396164064542",
+    "patchId": "12d52cce6561ba37cb6f4038b102571fe014f89f",
+    "status": "reviewed; see outcomes.json and check receipts"
+  },
+  {
+    "sha": "195c85b3e75d96e44d8f311c4ba79ef4277e4601",
+    "committedAt": 1788858962,
+    "parents": [
+      "94708ad44dd56334bb3295d4d9be2de33e6b89de"
+    ],
+    "subject": "fix(daemon): avoid urgent delivery self-interrupt",
+    "onMain": false,
+    "files": [
+      "v2/daemon/src/loops.ts",
+      "v2/daemon/src/substrates.ts",
+      "v2/daemon/tests/loops.test.ts",
+      "v2/driver-cell/src/driver.ts",
+      "v2/driver-hsr/src/driver.ts",
+      "v2/driver-tmux/src/driver.ts",
+      "v2/harness/src/driver.ts"
+    ],
+    "diffSha256": "cc3829833d92fc65287607668984bbc81afc45d56eca76be1d9f06846fcff9b2",
+    "patchId": "33c52312ce678f7f0af9ce4a4b6eaa08839ca482",
+    "status": "reviewed; see outcomes.json and check receipts"
+  },
+  {
+    "sha": "6b4e9af3a24af8f04f18d686f01245b5cdc8a8b1",
+    "committedAt": 1788858587,
+    "parents": [
+      "b1f0ebb1629a3d1b34acfb622a931e53009b7360"
+    ],
+    "subject": "docs: explain acknowledgment race repair",
+    "newlyReachableMain": true,
+    "onMain": true,
+    "files": [
+      "docs/incidents/2026-09-08-codex-resume-history-boot-loop.md"
+    ],
+    "diffSha256": "47a9028b270b9a0be4db637c9bef3caee8d35147737e9a0675eb801f6ca5e316",
+    "patchId": "2aa66a15ee0c7804f4d43708caa27b2fb1ff7d2e",
+    "status": "reviewed; see outcomes.json and check receipts"
+  },
+  {
+    "sha": "94708ad44dd56334bb3295d4d9be2de33e6b89de",
+    "committedAt": 1788858233,
+    "parents": [
+      "62990cf354cd69499e9ca8e05e8c0bb38d325aa7"
+    ],
+    "subject": "test(daemon): reproduce urgent delivery self-interrupt",
+    "onMain": false,
+    "files": [
+      "v2/daemon/tests/loops.test.ts"
+    ],
+    "diffSha256": "ceca6c86bc91545c642ee3abeb1125b46369d94de18aa0a1d023dad7a98d333e",
+    "patchId": "12d52cce6561ba37cb6f4038b102571fe014f89f",
+    "status": "reviewed; see outcomes.json and check receipts"
+  },
+  {
+    "sha": "b1f0ebb1629a3d1b34acfb622a931e53009b7360",
+    "committedAt": 1788857553,
+    "parents": [
+      "62990cf354cd69499e9ca8e05e8c0bb38d325aa7"
+    ],
+    "subject": "docs: record Codex recovery and urgent delivery race",
+    "newlyReachableMain": true,
+    "onMain": true,
+    "files": [
+      "docs/incidents/2026-09-08-codex-resume-history-boot-loop.md"
+    ],
+    "diffSha256": "e12b8b3eb35b5cecd85689bee42f2d219ecf18c4de8275c4b5f199850d546566",
+    "patchId": "7c9004faaab83f4569924eb6999c0388145493fa",
+    "status": "reviewed; see outcomes.json and check receipts"
+  },
+  {
+    "sha": "64fbfe4702052cced13f5fc14ffb618e6907b9de",
+    "committedAt": 1788857046,
+    "parents": [
+      "62990cf354cd69499e9ca8e05e8c0bb38d325aa7"
+    ],
+    "subject": "perf(core): filter enabled task supplies before decoding",
+    "onMain": false,
+    "files": [
+      "docs/performance/2026-09-08-task-supply/after-profile-summary.json",
+      "docs/performance/2026-09-08-task-supply/after-profile.json",
+      "docs/performance/2026-09-08-task-supply/after-profile.json.cpuprofile",
+      "docs/performance/2026-09-08-task-supply/baseline-aa.json",
+      "docs/performance/2026-09-08-task-supply/baseline-profile-summary.json",
+      "docs/performance/2026-09-08-task-supply/baseline-profile.json",
+      "docs/performance/2026-09-08-task-supply/baseline-profile.json.cpuprofile",
+      "docs/performance/2026-09-08-task-supply/build.log",
+      "docs/performance/2026-09-08-task-supply/closing-review.md",
+      "docs/performance/2026-09-08-task-supply/core-suite.log",
+      "docs/performance/2026-09-08-task-supply/implementation-verification.json",
+      "docs/performance/2026-09-08-task-supply/paired-ab.json",
+      "docs/performance/2026-09-08-task-supply/verification.json",
+      "docs/review/speedy-task-supply-2026-09-08.md",
+      "scripts/performance/task-supply-benchmark.mjs",
+      "v2/core/src/store.ts",
+      "v2/core/tests/tasks.test.ts",
+      "v2/daemon/tests/loops.test.ts"
+    ],
+    "diffSha256": "22a87ffe9d2221fef101dd862e5efb51de0aa6fe8d9c540197d3d695887fdd4a",
+    "patchId": "a6b357cb70c4365f7d2d212fcffb8a8c2914c7eb",
+    "status": "reviewed; see outcomes.json and check receipts"
+  },
+  {
+    "sha": "62990cf354cd69499e9ca8e05e8c0bb38d325aa7",
+    "committedAt": 1788854983,
+    "parents": [
+      "30891a78cc5f56bda63b33f7c497aa4bb08ff43f"
+    ],
+    "subject": "test(daemon): allow fixture startup on loaded hosts",
+    "newlyReachableMain": true,
+    "onMain": true,
+    "files": [
+      "v2/daemon/tests/bee-args.test.ts"
+    ],
+    "diffSha256": "26faef65e026ac33ef06e371ce0f185da2c25a387423159cd8307da0dda509cf",
+    "patchId": "e9399bebfb202489d1628b78784d212cd5a9fa05",
+    "status": "reviewed; see outcomes.json and check receipts"
+  },
+  {
+    "sha": "30891a78cc5f56bda63b33f7c497aa4bb08ff43f",
+    "committedAt": 1788853297,
+    "parents": [
+      "740ca44323151f437cd19344d81355f6c5e6306b"
+    ],
+    "subject": "test(daemon): expect metadata-only Codex resume",
+    "newlyReachableMain": true,
+    "onMain": true,
+    "files": [
+      "v2/daemon/tests/bee-args.test.ts"
+    ],
+    "diffSha256": "d3afc8a1fc3cd8b9db94dcde55e0f76cfd3fe2ae5d7f1463b0f92bf77ef71bee",
+    "patchId": "5bd572094676ad281562d54129e9d2561c16ef08",
+    "status": "reviewed; see outcomes.json and check receipts"
+  },
+  {
+    "sha": "740ca44323151f437cd19344d81355f6c5e6306b",
+    "committedAt": 1788852679,
+    "parents": [
+      "047c6f584c952e50d4a99391535e3cf41951b779"
+    ],
+    "subject": "docs: explain large Codex resume boot loop",
+    "newlyReachableMain": true,
+    "onMain": true,
+    "files": [
+      "docs/incidents/2026-09-08-codex-resume-history-boot-loop.md"
+    ],
+    "diffSha256": "ba59c55f6017e5ee8296a2cdec26e26b42619553a7be15e0fc815b0c2e63c6ee",
+    "patchId": "3dd47b7acb69177db8ed60392fc87a6f17028b4c",
+    "status": "reviewed; see outcomes.json and check receipts"
+  },
+  {
+    "sha": "047c6f584c952e50d4a99391535e3cf41951b779",
+    "committedAt": 1788852679,
+    "parents": [
+      "58de2ab63161b0ffb096ec409c0ab3f305095926"
+    ],
+    "subject": "fix(v2): bound boot-hang retries",
+    "newlyReachableMain": true,
+    "onMain": true,
+    "files": [
+      "v2/core/src/store.ts",
+      "v2/core/tests/spawn-budget.test.ts",
+      "v2/daemon/src/loops.ts",
+      "v2/daemon/tests/loops.test.ts"
+    ],
+    "diffSha256": "ef35f6f641bad195618f65c0a8ba37bc8ca531a3583101dd7c8c074936068eab",
+    "patchId": "7f95f9d12d9540c311f71b1dd736915a6f8116d2",
+    "status": "reviewed; see outcomes.json and check receipts"
+  },
+  {
+    "sha": "418edbec6d632a5c2dd236c61b1b3288445c6908",
+    "committedAt": 1788852663,
+    "parents": [
+      "3442932c57cc4e102b8e457c9940dbea283a42c6"
+    ],
+    "subject": "fix(v2): bound boot-hang retries",
+    "onMain": false,
+    "files": [
+      "v2/core/src/store.ts",
+      "v2/core/tests/spawn-budget.test.ts",
+      "v2/daemon/src/loops.ts",
+      "v2/daemon/tests/loops.test.ts"
+    ],
+    "diffSha256": "772196d3d276b7322c870fd81f2c233a9d407fd48a5437b35cd5fb3c4012b5a2",
+    "patchId": "7f95f9d12d9540c311f71b1dd736915a6f8116d2",
+    "status": "reviewed; see outcomes.json and check receipts"
+  },
+  {
+    "sha": "58de2ab63161b0ffb096ec409c0ab3f305095926",
+    "committedAt": 1788852140,
+    "parents": [
+      "3442932c57cc4e102b8e457c9940dbea283a42c6"
+    ],
+    "subject": "fix(adapters): avoid hydrating Codex turns on resume",
+    "newlyReachableMain": true,
+    "onMain": true,
+    "files": [
+      "v2/adapters/src/codex.ts",
+      "v2/adapters/tests/codex.test.ts"
+    ],
+    "diffSha256": "e830fe4e218512ec8412e011c95a06c87326278d0d84bf3f959f8210887f4a48",
+    "patchId": "bb89446b51426cd6ec7f92e085a2b27976de949a",
+    "status": "reviewed; see outcomes.json and check receipts"
+  },
+  {
+    "sha": "3442932c57cc4e102b8e457c9940dbea283a42c6",
+    "committedAt": 1788844494,
+    "parents": [
+      "6b9ced6d506f0b6f7d109b9251c035c4bba94e40"
+    ],
+    "subject": "docs(review): verify Honeybee repairs after main advance",
+    "onMain": true,
+    "files": [
+      "docs/review/art-nightly-2026-09-07-evidence.md",
+      "docs/review/art-nightly-2026-09-07-incoming-main.json",
+      "docs/review/art-nightly-2026-09-07-legacy-callsite-equivalence.json",
+      "docs/review/art-nightly-2026-09-07-main-fix-equivalence.json",
+      "docs/review/art-nightly-2026-09-07.md"
+    ],
+    "diffSha256": "7e7d7f7d87c239ff3ad3224cdf127d9a6ea76c4d7688af618922d68ec0a2df30",
+    "patchId": "602e2ffbbf5bb662ad2d454bf9a1ad539f9c222c",
+    "status": "reviewed; see outcomes.json and check receipts"
+  },
+  {
+    "sha": "6b9ced6d506f0b6f7d109b9251c035c4bba94e40",
+    "committedAt": 1788844202,
+    "parents": [
+      "f868ea70fa7a226a2072d2b34dbad2c8a79b80e1"
+    ],
+    "subject": "docs(review): publish complete Honeybee regression findings",
+    "onMain": true,
+    "files": [
+      "docs/review/art-nightly-2026-09-07-evidence.md",
+      "docs/review/art-nightly-2026-09-07-full-suite-attribution.json",
+      "docs/review/art-nightly-2026-09-07-full-test-comparison.json",
+      "docs/review/art-nightly-2026-09-07-honeybee.md",
+      "docs/review/art-nightly-2026-09-07-outcomes.json",
+      "docs/review/art-nightly-2026-09-07.md"
+    ],
+    "diffSha256": "a32314b2d0a4253d3a18326cb1e3c8e1a91c57175dab8916bd5cb364aedf23c3",
+    "patchId": "5ed001b3e0288932ac12e07e8170259f283baa4d",
+    "status": "reviewed; see outcomes.json and check receipts"
+  },
+  {
+    "sha": "f868ea70fa7a226a2072d2b34dbad2c8a79b80e1",
+    "committedAt": 1788844201,
+    "parents": [
+      "ab0d9599d2fffdcfaeb7c5e855672d5c73187bf4"
+    ],
+    "subject": "fix(v2): harden Cell move projections and RPC inputs",
+    "onMain": true,
+    "files": [
+      "v2/cli/src/main.ts",
+      "v2/cli/src/readonly.ts",
+      "v2/cli/tests/cell-move.test.ts",
+      "v2/core/src/store.ts",
+      "v2/core/tests/cell-move.test.ts",
+      "v2/daemon/src/daemon.ts",
+      "v2/daemon/tests/cell-move.test.ts"
+    ],
+    "diffSha256": "fa303fd92f325daa7401fa4f57d7c536194c7150235e4142f112943908440a7c",
+    "patchId": "d378d4f67e55d405be0aedb98bd34fd4f48ff05b",
+    "status": "reviewed; see outcomes.json and check receipts"
+  },
+  {
+    "sha": "ab0d9599d2fffdcfaeb7c5e855672d5c73187bf4",
+    "committedAt": 1788844201,
+    "parents": [
+      "aad40964f9e27981abce0cc12f1b70b6b48e16b0"
+    ],
+    "subject": "docs(review): clarify archived dedup fixture counts",
+    "onMain": true,
+    "files": [
+      "docs/review/art-nightly-2026-09-07-evidence-errata.md"
+    ],
+    "diffSha256": "88e9b33cda9f22e97fe73dfe03c309734e1b4da4e0abe3fa2e7a19bbdaa985a0",
+    "patchId": "cd84a8ce24532fe9c1585f41fa2f65e5deb0f094",
+    "status": "reviewed; see outcomes.json and check receipts"
+  },
+  {
+    "sha": "aad40964f9e27981abce0cc12f1b70b6b48e16b0",
+    "committedAt": 1788844200,
+    "parents": [
+      "663aaf39e5baeaa1cf51ffc21aa1ea6e70e23909"
+    ],
+    "subject": "docs(perf): correct checksum for normalized scorecard",
+    "onMain": true,
+    "files": [
+      "docs/performance/2026-09-07-exhaustive/evidence-manifest.json",
+      "docs/review/art-nightly-2026-09-07-manifest.md"
+    ],
+    "diffSha256": "3fa1e42c246ab2b1c2070103234ca7bd276e09803ef1f307649ff61dbd18d7fd",
+    "patchId": "777bf196fec50326dbd82908b4cb832ac074bef8",
+    "status": "reviewed; see outcomes.json and check receipts"
+  },
+  {
+    "sha": "663aaf39e5baeaa1cf51ffc21aa1ea6e70e23909",
+    "committedAt": 1788844200,
+    "parents": [
+      "02aa424e486d36f2f828eb710ce217575e277e57"
+    ],
+    "subject": "fix(v2): exclude external lineage from local children",
+    "onMain": true,
+    "files": [
+      "v2/cli/src/readonly.ts",
+      "v2/cli/tests/cli.test.ts",
+      "v2/core/src/store.ts",
+      "v2/core/tests/external-parent.test.ts",
+      "v2/daemon/src/protocol.ts",
+      "v2/daemon/tests/external-parent.test.ts"
+    ],
+    "diffSha256": "726d66a77065bc6dd4e685197420c760371d767628466701bd6fd68f69978565",
+    "patchId": "bfdd600456ca1216e0223bedbf8ba5ad35dabf6a",
+    "status": "reviewed; see outcomes.json and check receipts"
+  },
+  {
+    "sha": "99d91d5f381b3ce17d947249a213eecf5218c848",
+    "committedAt": 1788843882,
+    "parents": [
+      "0472a91c99d7a75c19429b6bffc9988e57c2a272"
+    ],
+    "subject": "docs(review): record exhaustive 2026-09-07 Honeybee review",
+    "onMain": false,
+    "files": [
+      "docs/review/art-nightly-2026-09-07-honeybee.md"
+    ],
+    "diffSha256": "ae348cdd6b220f6b4ab7822300b61b7a1fd27a5afb792a3edc428639983f86ac",
+    "patchId": "de35fe9cb313d68105ad3ee2315f5b76fe194d27",
+    "status": "reviewed; see outcomes.json and check receipts"
+  },
+  {
+    "sha": "0472a91c99d7a75c19429b6bffc9988e57c2a272",
+    "committedAt": 1788840054,
+    "parents": [
+      "ac33d942ccd7f522092cd3e8f7d7029e53a0a46a"
+    ],
+    "subject": "fix(v2): harden Cell move projections and RPC inputs",
+    "onMain": false,
+    "files": [
+      "v2/cli/src/main.ts",
+      "v2/cli/src/readonly.ts",
+      "v2/cli/tests/cell-move.test.ts",
+      "v2/core/src/store.ts",
+      "v2/core/tests/cell-move.test.ts",
+      "v2/daemon/src/daemon.ts",
+      "v2/daemon/tests/cell-move.test.ts"
+    ],
+    "diffSha256": "b8685bba3861ae583cc9f14e8b779776655c448778253c63812446f7b6fab70e",
+    "patchId": "d378d4f67e55d405be0aedb98bd34fd4f48ff05b",
+    "status": "reviewed; see outcomes.json and check receipts"
+  },
+  {
+    "sha": "29dce91870e0c5a4106d30db248dfea8d705226f",
+    "committedAt": 1788836759,
+    "parents": [
+      "19572e1ee96412a8fd63dc02809328ea6f79bc5d"
+    ],
+    "subject": "fix(deploy): verify installed runtime manifest bytes",
+    "onMain": false,
+    "files": [
+      "src/deployRuntime.ts",
+      "tests/deploy-artifact.test.ts"
+    ],
+    "diffSha256": "72721016576c65bc73f21402809ddeb3f1b1cd5517c0a94e03183dea9355da9c",
+    "patchId": "53f861ed0db485b856fe24fd238add030df6a26c",
+    "status": "reviewed; see outcomes.json and check receipts"
+  },
+  {
+    "sha": "d20df402a62beea1e0f98354cf15bf641de5060d",
+    "committedAt": 1788836731,
+    "parents": [
+      "d7d7072477dfd03e77778d78625fceb42ee571bf"
+    ],
+    "subject": "fix(deploy): verify installed runtime manifest bytes",
+    "onMain": false,
+    "files": [
+      "src/deployRuntime.ts",
+      "tests/deploy-artifact.test.ts"
+    ],
+    "diffSha256": "9f47b7138dcba50f8053386ba65f91b00c6aa05e04678ef8a63dbd871f5be2b7",
+    "patchId": "53f861ed0db485b856fe24fd238add030df6a26c",
+    "status": "reviewed; see outcomes.json and check receipts"
+  },
+  {
+    "sha": "ac33d942ccd7f522092cd3e8f7d7029e53a0a46a",
+    "committedAt": 1788835410,
+    "parents": [
+      "98cc89c3180b25272c31f67e438adea1380921c2"
+    ],
+    "subject": "fix(v2): exclude external lineage from local children",
+    "onMain": false,
+    "files": [
+      "v2/cli/src/readonly.ts",
+      "v2/cli/tests/cli.test.ts",
+      "v2/core/src/store.ts",
+      "v2/core/tests/external-parent.test.ts",
+      "v2/daemon/src/protocol.ts",
+      "v2/daemon/tests/external-parent.test.ts"
+    ],
+    "diffSha256": "a9cfc6a5652b150f4b4c52c6eda2cd320c6c6dc7c29837d5a062d82fb23e41f5",
+    "patchId": "bfdd600456ca1216e0223bedbf8ba5ad35dabf6a",
+    "status": "reviewed; see outcomes.json and check receipts"
+  }
+]

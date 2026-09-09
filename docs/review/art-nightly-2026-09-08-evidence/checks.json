@@ -1,0 +1,418 @@
+[
+  {
+    "name": "install",
+    "command": "npm ci --ignore-scripts",
+    "cwd": "/Users/trmd/.hive/crew/art/reviews/worktrees/honeybee-2026-09-08",
+    "exitCode": 0,
+    "evidence": "docs/review/art-nightly-2026-09-08-evidence/checks.md#install",
+    "rawLog": "/Users/trmd/.hive/crew/art/reviews/2026-09-08/honeybee-logs/install.log",
+    "sha256": "c6aa4d1e34b9dc7832019a34087d7799b0a528874eed368c8f68f7a6b5279088",
+    "bytes": 517,
+    "counts": {
+      "tests": 0,
+      "pass": 0,
+      "fail": 0,
+      "skipped": 0
+    }
+  },
+  {
+    "name": "check",
+    "command": "npm run check && npm run v2:check",
+    "cwd": "/Users/trmd/.hive/crew/art/reviews/worktrees/honeybee-2026-09-08",
+    "exitCode": 0,
+    "evidence": "docs/review/art-nightly-2026-09-08-evidence/checks.md#check",
+    "rawLog": "/Users/trmd/.hive/crew/art/reviews/2026-09-08/honeybee-logs/check.log",
+    "sha256": "4c2ce24df3399dfb9f5aea3c7cd9431dc00f4f11708a41971a243693af1c2fb4",
+    "bytes": 750,
+    "counts": {
+      "tests": 0,
+      "pass": 0,
+      "fail": 0,
+      "skipped": 0
+    }
+  },
+  {
+    "name": "build",
+    "command": "npm run build",
+    "cwd": "/Users/trmd/.hive/crew/art/reviews/worktrees/honeybee-2026-09-08",
+    "exitCode": 0,
+    "evidence": "docs/review/art-nightly-2026-09-08-evidence/checks.md#build",
+    "rawLog": "/Users/trmd/.hive/crew/art/reviews/2026-09-08/honeybee-logs/build.log",
+    "sha256": "51d7ad7e33f1d2a8a79021624af26cbdd0573fc98695685acc2827a22057d5d8",
+    "bytes": 763,
+    "counts": {
+      "tests": 0,
+      "pass": 0,
+      "fail": 0,
+      "skipped": 0
+    }
+  },
+  {
+    "name": "focused",
+    "command": "node --test --test-concurrency=2 v2/core/tests/spawn-budget.test.ts v2/core/tests/cell-move.test.ts v2/core/tests/external-parent.test.ts v2/core/tests/tasks.test.ts v2/adapters/tests/codex.test.ts v2/daemon/tests/envelope.test.ts v2/daemon/tests/loops.test.ts v2/driver-hsr/tests/runner-host.test.ts",
+    "cwd": "/Users/trmd/.hive/crew/art/reviews/worktrees/honeybee-2026-09-08",
+    "exitCode": 1,
+    "evidence": "docs/review/art-nightly-2026-09-08-evidence/checks.md#focused",
+    "rawLog": "/Users/trmd/.hive/crew/art/reviews/2026-09-08/honeybee-logs/focused.log",
+    "sha256": "e31bbced026026b6cb005daf6271322105047a606efa0d3917eb297a5d86aaab",
+    "bytes": 17125,
+    "counts": {
+      "tests": 148,
+      "pass": 147,
+      "fail": 1,
+      "skipped": 0
+    }
+  },
+  {
+    "name": "integration",
+    "command": "node scripts/run-v2-daemon-tests.mjs v2/daemon/tests/bee-args.test.ts v2/daemon/tests/idempotency.test.ts v2/daemon/tests/external-parent.test.ts v2/daemon/tests/cell-move.test.ts v2/daemon/tests/preflip-verbs.test.ts v2/cli/tests/cli.test.ts v2/cli/tests/verbs-cli.test.ts v2/cli/tests/cell-move.test.ts",
+    "cwd": "/Users/trmd/.hive/crew/art/reviews/worktrees/honeybee-2026-09-08",
+    "exitCode": 1,
+    "evidence": "docs/review/art-nightly-2026-09-08-evidence/checks.md#integration",
+    "rawLog": "/Users/trmd/.hive/crew/art/reviews/2026-09-08/honeybee-logs/integration.log",
+    "sha256": "7dbdb6f0028fa59321e9259545fbcebe6ca2639e5631b57edd4f80fd04a99fac",
+    "bytes": 11137,
+    "counts": {
+      "tests": 81,
+      "pass": 80,
+      "fail": 1,
+      "skipped": 0
+    }
+  },
+  {
+    "name": "supply",
+    "command": "node --test v2/core/tests/tasks.test.ts && node scripts/run-v2-daemon-tests.mjs v2/daemon/tests/loops.test.ts",
+    "cwd": "/Users/trmd/.hive/crew/art/reviews/worktrees/honeybee-2026-09-08-task-supply",
+    "exitCode": 0,
+    "evidence": "docs/review/art-nightly-2026-09-08-evidence/checks.md#supply",
+    "rawLog": "/Users/trmd/.hive/crew/art/reviews/2026-09-08/honeybee-logs/supply.log",
+    "sha256": "24e3d4525db7d30c4107396aecea4cceb29cb9312566a88c94ff56f6e9f11a2d",
+    "bytes": 10344,
+    "counts": {
+      "tests": 89,
+      "pass": 89,
+      "fail": 0,
+      "skipped": 0
+    }
+  },
+  {
+    "name": "artifact",
+    "command": "node --import tsx --test tests/deploy-artifact.test.ts",
+    "cwd": "/Users/trmd/.hive/crew/art/reviews/worktrees/honeybee-2026-09-08-artifact",
+    "exitCode": 0,
+    "evidence": "docs/review/art-nightly-2026-09-08-evidence/checks.md#artifact",
+    "rawLog": "/Users/trmd/.hive/crew/art/reviews/2026-09-08/honeybee-logs/artifact.log",
+    "sha256": "a4c07c38674ab7af61481d3dc4c908f4d242b17397c60feea66db4a0337f81ba",
+    "bytes": 1644,
+    "counts": {
+      "tests": 15,
+      "pass": 15,
+      "fail": 0,
+      "skipped": 0
+    }
+  },
+  {
+    "name": "release",
+    "command": "node --import tsx --test tests/deploy-artifact.test.ts",
+    "cwd": "/Users/trmd/.hive/crew/art/reviews/worktrees/honeybee-2026-09-08-release",
+    "exitCode": 0,
+    "evidence": "docs/review/art-nightly-2026-09-08-evidence/checks.md#release",
+    "rawLog": "/Users/trmd/.hive/crew/art/reviews/2026-09-08/honeybee-logs/release.log",
+    "sha256": "d26b7a2d75ce50b2dfe37bdff5b91b21c9ab9bc39c7833de96c7b7d9827e411f",
+    "bytes": 1648,
+    "counts": {
+      "tests": 15,
+      "pass": 15,
+      "fail": 0,
+      "skipped": 0
+    }
+  },
+  {
+    "name": "simplify-before",
+    "command": "node scripts/run-v2-daemon-tests.mjs '--test-name-pattern=unit.1:|budget.7b:|degraded|urgency.d3' v2/daemon/tests/loops.test.ts",
+    "cwd": "/Users/trmd/.hive/crew/art/reviews/worktrees/honeybee-2026-09-08",
+    "exitCode": 0,
+    "evidence": "docs/review/art-nightly-2026-09-08-evidence/checks.md#simplify-before",
+    "rawLog": "/Users/trmd/.hive/crew/art/reviews/2026-09-08/honeybee-logs/simplify-before.log",
+    "sha256": "639ff13b60bd425048f4e4ec5de3b9503ea484a898ac2de5397b4c2b3d0fc817",
+    "bytes": 944,
+    "counts": {
+      "tests": 8,
+      "pass": 8,
+      "fail": 0,
+      "skipped": 0
+    }
+  },
+  {
+    "name": "simplify-after",
+    "command": "node scripts/run-v2-daemon-tests.mjs '--test-name-pattern=unit.1:|budget.7b:|degraded|urgency.d3' v2/daemon/tests/loops.test.ts",
+    "cwd": "/Users/trmd/.hive/crew/art/reviews/worktrees/honeybee-2026-09-08",
+    "exitCode": 0,
+    "evidence": "docs/review/art-nightly-2026-09-08-evidence/checks.md#simplify-after",
+    "rawLog": "/Users/trmd/.hive/crew/art/reviews/2026-09-08/honeybee-logs/simplify-after.log",
+    "sha256": "5eeed097ea2bbd5a032d50cd36269c69f4f19f37bb8c3a421566c628c4f9b53f",
+    "bytes": 940,
+    "counts": {
+      "tests": 8,
+      "pass": 8,
+      "fail": 0,
+      "skipped": 0
+    }
+  },
+  {
+    "name": "simplify-typecheck",
+    "command": "./node_modules/.bin/tsc -p v2/daemon/tsconfig.json",
+    "cwd": "/Users/trmd/.hive/crew/art/reviews/worktrees/honeybee-2026-09-08",
+    "exitCode": 0,
+    "evidence": "docs/review/art-nightly-2026-09-08-evidence/checks.md#simplify-typecheck",
+    "rawLog": "/Users/trmd/.hive/crew/art/reviews/2026-09-08/honeybee-logs/simplify-typecheck.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "bytes": 0,
+    "counts": {
+      "tests": 0,
+      "pass": 0,
+      "fail": 0,
+      "skipped": 0
+    }
+  },
+  {
+    "name": "cell-simplify-after",
+    "command": "node scripts/run-v2-daemon-tests.mjs '--test-name-pattern=retained Cell RPCs reject|cell move RPC preserves' v2/daemon/tests/cell-move.test.ts",
+    "cwd": "/Users/trmd/.hive/crew/art/reviews/worktrees/honeybee-2026-09-08",
+    "exitCode": 0,
+    "evidence": "docs/review/art-nightly-2026-09-08-evidence/checks.md#cell-simplify-after",
+    "rawLog": "/Users/trmd/.hive/crew/art/reviews/2026-09-08/honeybee-logs/cell-simplify-after.log",
+    "sha256": "dc5272ff131ec6d5d8a59b4f0aae967e93cf00f315a80135a5acf4ed03de096f",
+    "bytes": 327,
+    "counts": {
+      "tests": 2,
+      "pass": 2,
+      "fail": 0,
+      "skipped": 0
+    }
+  },
+  {
+    "name": "budget-retry",
+    "command": "node scripts/run-v2-daemon-tests.mjs '--test-name-pattern=budget.11' v2/daemon/tests/loops.test.ts",
+    "cwd": "/Users/trmd/.hive/crew/art/reviews/worktrees/honeybee-2026-09-08",
+    "exitCode": 0,
+    "evidence": "docs/review/art-nightly-2026-09-08-evidence/checks.md#budget-retry",
+    "rawLog": "/Users/trmd/.hive/crew/art/reviews/2026-09-08/honeybee-logs/budget-retry.log",
+    "sha256": "f2421887d7cbabd5f8607c868479bf93f267df11e87c048bcd401e591a719ac4",
+    "bytes": 474,
+    "counts": {
+      "tests": 2,
+      "pass": 2,
+      "fail": 0,
+      "skipped": 0
+    }
+  },
+  {
+    "name": "parent-red",
+    "command": "node scripts/run-v2-daemon-tests.mjs '--test-name-pattern=v6.rpc.3:' v2/daemon/tests/preflip-verbs.test.ts",
+    "cwd": "/Users/trmd/.hive/crew/art/reviews/worktrees/honeybee-2026-09-08",
+    "exitCode": 1,
+    "evidence": "docs/review/art-nightly-2026-09-08-evidence/checks.md#parent-red",
+    "rawLog": "/Users/trmd/.hive/crew/art/reviews/2026-09-08/honeybee-logs/parent-red.log",
+    "sha256": "42e2f60d26d70208ef95e6eeabcad80c39af67e6b5d1da7a43aa22816e9e0392",
+    "bytes": 1441,
+    "counts": {
+      "tests": 1,
+      "pass": 0,
+      "fail": 1,
+      "skipped": 0
+    }
+  },
+  {
+    "name": "parent-green",
+    "command": "node scripts/run-v2-daemon-tests.mjs '--test-name-pattern=v6.rpc.3:' v2/daemon/tests/preflip-verbs.test.ts",
+    "cwd": "/Users/trmd/.hive/crew/art/reviews/worktrees/honeybee-2026-09-08",
+    "exitCode": 0,
+    "evidence": "docs/review/art-nightly-2026-09-08-evidence/checks.md#parent-green",
+    "rawLog": "/Users/trmd/.hive/crew/art/reviews/2026-09-08/honeybee-logs/parent-green.log",
+    "sha256": "b368b7ce693d0cd8c72747a9065f791756252fbe5e59dd79c83bfda5f9f9b62e",
+    "bytes": 404,
+    "counts": {
+      "tests": 1,
+      "pass": 1,
+      "fail": 0,
+      "skipped": 0
+    }
+  },
+  {
+    "name": "final-tests",
+    "command": "node scripts/run-v2-daemon-tests.mjs v2/daemon/tests/loops.test.ts v2/daemon/tests/bee-args.test.ts v2/daemon/tests/preflip-verbs.test.ts v2/daemon/tests/cell-move.test.ts",
+    "cwd": "/Users/trmd/.hive/crew/art/reviews/worktrees/honeybee-2026-09-08",
+    "exitCode": 0,
+    "evidence": "docs/review/art-nightly-2026-09-08-evidence/checks.md#final-tests",
+    "rawLog": "/Users/trmd/.hive/crew/art/reviews/2026-09-08/honeybee-logs/final-tests.log",
+    "sha256": "f48efe135f6a6afb2c456e8cd95adbb164cdde79d27c749a03d43904597cdf9d",
+    "bytes": 13037,
+    "counts": {
+      "tests": 108,
+      "pass": 108,
+      "fail": 0,
+      "skipped": 0
+    }
+  },
+  {
+    "name": "final-check",
+    "command": "npm run check && npm run v2:check",
+    "cwd": "/Users/trmd/.hive/crew/art/reviews/worktrees/honeybee-2026-09-08",
+    "exitCode": 0,
+    "evidence": "docs/review/art-nightly-2026-09-08-evidence/checks.md#final-check",
+    "rawLog": "/Users/trmd/.hive/crew/art/reviews/2026-09-08/honeybee-logs/final-check.log",
+    "sha256": "4c2ce24df3399dfb9f5aea3c7cd9431dc00f4f11708a41971a243693af1c2fb4",
+    "bytes": 750,
+    "counts": {
+      "tests": 0,
+      "pass": 0,
+      "fail": 0,
+      "skipped": 0
+    }
+  },
+  {
+    "name": "final-build",
+    "command": "npm run build",
+    "cwd": "/Users/trmd/.hive/crew/art/reviews/worktrees/honeybee-2026-09-08",
+    "exitCode": 0,
+    "evidence": "docs/review/art-nightly-2026-09-08-evidence/checks.md#final-build",
+    "rawLog": "/Users/trmd/.hive/crew/art/reviews/2026-09-08/honeybee-logs/final-build.log",
+    "sha256": "51d7ad7e33f1d2a8a79021624af26cbdd0573fc98695685acc2827a22057d5d8",
+    "bytes": 763,
+    "counts": {
+      "tests": 0,
+      "pass": 0,
+      "fail": 0,
+      "skipped": 0
+    }
+  },
+  {
+    "name": "artifact-after",
+    "command": "node --import tsx --test tests/deploy-artifact.test.ts",
+    "cwd": "/Users/trmd/.hive/crew/art/reviews/worktrees/honeybee-2026-09-08-artifact",
+    "exitCode": 0,
+    "evidence": "docs/review/art-nightly-2026-09-08-evidence/checks.md#artifact-after",
+    "rawLog": "/Users/trmd/.hive/crew/art/reviews/2026-09-08/honeybee-logs/artifact-after.log",
+    "sha256": "0f67d3e7112ee8fbd9fd888b63d790816bfdcdccdfbe09327b14d1d6119791cf",
+    "bytes": 1647,
+    "counts": {
+      "tests": 15,
+      "pass": 15,
+      "fail": 0,
+      "skipped": 0
+    }
+  },
+  {
+    "name": "artifact-check",
+    "command": "npm run check && npm run v2:check",
+    "cwd": "/Users/trmd/.hive/crew/art/reviews/worktrees/honeybee-2026-09-08-artifact",
+    "exitCode": 0,
+    "evidence": "docs/review/art-nightly-2026-09-08-evidence/checks.md#artifact-check",
+    "rawLog": "/Users/trmd/.hive/crew/art/reviews/2026-09-08/honeybee-logs/artifact-check.log",
+    "sha256": "4c2ce24df3399dfb9f5aea3c7cd9431dc00f4f11708a41971a243693af1c2fb4",
+    "bytes": 750,
+    "counts": {
+      "tests": 0,
+      "pass": 0,
+      "fail": 0,
+      "skipped": 0
+    }
+  },
+  {
+    "name": "artifact-build",
+    "command": "npm run build",
+    "cwd": "/Users/trmd/.hive/crew/art/reviews/worktrees/honeybee-2026-09-08-artifact",
+    "exitCode": 0,
+    "evidence": "docs/review/art-nightly-2026-09-08-evidence/checks.md#artifact-build",
+    "rawLog": "/Users/trmd/.hive/crew/art/reviews/2026-09-08/honeybee-logs/artifact-build.log",
+    "sha256": "f186e8d5654ea9fb7b5d5c6fbce55d62b222f371242e2bb6b73b3c7797696ba7",
+    "bytes": 799,
+    "counts": {
+      "tests": 0,
+      "pass": 0,
+      "fail": 0,
+      "skipped": 0
+    }
+  },
+  {
+    "name": "release-after",
+    "command": "node --import tsx --test tests/deploy-artifact.test.ts",
+    "cwd": "/Users/trmd/.hive/crew/art/reviews/worktrees/honeybee-2026-09-08-release",
+    "exitCode": 0,
+    "evidence": "docs/review/art-nightly-2026-09-08-evidence/checks.md#release-after",
+    "rawLog": "/Users/trmd/.hive/crew/art/reviews/2026-09-08/honeybee-logs/release-after.log",
+    "sha256": "99b3618dda7714cc5602b495bb8078727dcae328892321aa48cc4a152101ccc5",
+    "bytes": 1649,
+    "counts": {
+      "tests": 15,
+      "pass": 15,
+      "fail": 0,
+      "skipped": 0
+    }
+  },
+  {
+    "name": "release-check",
+    "command": "npm run check && npm run v2:check",
+    "cwd": "/Users/trmd/.hive/crew/art/reviews/worktrees/honeybee-2026-09-08-release",
+    "exitCode": 0,
+    "evidence": "docs/review/art-nightly-2026-09-08-evidence/checks.md#release-check",
+    "rawLog": "/Users/trmd/.hive/crew/art/reviews/2026-09-08/honeybee-logs/release-check.log",
+    "sha256": "4c2ce24df3399dfb9f5aea3c7cd9431dc00f4f11708a41971a243693af1c2fb4",
+    "bytes": 750,
+    "counts": {
+      "tests": 0,
+      "pass": 0,
+      "fail": 0,
+      "skipped": 0
+    }
+  },
+  {
+    "name": "release-build",
+    "command": "npm run build",
+    "cwd": "/Users/trmd/.hive/crew/art/reviews/worktrees/honeybee-2026-09-08-release",
+    "exitCode": 0,
+    "evidence": "docs/review/art-nightly-2026-09-08-evidence/checks.md#release-build",
+    "rawLog": "/Users/trmd/.hive/crew/art/reviews/2026-09-08/honeybee-logs/release-build.log",
+    "sha256": "849f3523fae03b1373d94ca23f11ad779df1e1b3d01f3a482f114ec0eadbfbe0",
+    "bytes": 798,
+    "counts": {
+      "tests": 0,
+      "pass": 0,
+      "fail": 0,
+      "skipped": 0
+    }
+  },
+  {
+    "name": "supply-check",
+    "command": "npm run check && npm run v2:check",
+    "cwd": "/Users/trmd/.hive/crew/art/reviews/worktrees/honeybee-2026-09-08-task-supply",
+    "exitCode": 0,
+    "evidence": "docs/review/art-nightly-2026-09-08-evidence/checks.md#supply-check",
+    "rawLog": "/Users/trmd/.hive/crew/art/reviews/2026-09-08/honeybee-logs/supply-check.log",
+    "sha256": "4c2ce24df3399dfb9f5aea3c7cd9431dc00f4f11708a41971a243693af1c2fb4",
+    "bytes": 750,
+    "counts": {
+      "tests": 0,
+      "pass": 0,
+      "fail": 0,
+      "skipped": 0
+    }
+  },
+  {
+    "name": "supply-build",
+    "command": "npm run build",
+    "cwd": "/Users/trmd/.hive/crew/art/reviews/worktrees/honeybee-2026-09-08-task-supply",
+    "exitCode": 0,
+    "evidence": "docs/review/art-nightly-2026-09-08-evidence/checks.md#supply-build",
+    "rawLog": "/Users/trmd/.hive/crew/art/reviews/2026-09-08/honeybee-logs/supply-build.log",
+    "sha256": "cb3c43fbf3134c642fbc2b4fb34e9e8be3af7a22f3b651c58897858b84e3fdea",
+    "bytes": 775,
+    "counts": {
+      "tests": 0,
+      "pass": 0,
+      "fail": 0,
+      "skipped": 0
+    }
+  }
+]
