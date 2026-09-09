@@ -1,11 +1,11 @@
-import {
-  projectorCheckpoint, checkpointRecord, checkpointEntries, checkpointNullable,
-  checkpointString, checkpointStrings, checkpointBoolean, checkpointNumber,
-} from "./transcript-projection.ts";
 /**
  * agy stream-json projection, captured from agy 1.1.24 on 2026-09-02.
  * HSR logs both the user envelopes written to stdin and agy's stdout lines.
  */
+import {
+  projectorCheckpoint, checkpointRecord, checkpointEntries, checkpointNullable,
+  checkpointString, checkpointStrings, checkpointBoolean, checkpointNumber,
+} from "./transcript-projection.ts";
 import type {
   TranscriptProjectedEvent,
   TranscriptProjector,

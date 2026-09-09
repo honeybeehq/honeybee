@@ -1,8 +1,3 @@
-import {
-  projectorCheckpoint, checkpointRecord, serializeTranscriptCheckpoint,
-  TRANSCRIPT_PROJECTION_VERSION, TRANSCRIPT_PROJECTOR_STATE_VERSION,
-  type TranscriptProjectorRestoreResult,
-} from "./transcript-projection.ts";
 /**
  * Transcript-file observers (WP5, spec 05 observation source 2 — the
  * MANDATORY baseline for every supported harness under A3).
@@ -42,6 +37,11 @@ import {
  *    (tests/transcripts.test.ts), NOT from a captured live stream — verify
  *    in a real-grok smoke before relying on it in production.
  */
+import {
+  projectorCheckpoint, checkpointRecord, serializeTranscriptCheckpoint,
+  TRANSCRIPT_PROJECTION_VERSION, TRANSCRIPT_PROJECTOR_STATE_VERSION,
+  type TranscriptProjectorRestoreResult,
+} from "./transcript-projection.ts";
 import { readdirSync, realpathSync, statSync, type Dirent } from "node:fs";
 import { join, resolve } from "node:path";
 import { isAgyCheckpointState, createAgyProjector } from "./agy-projection.ts";
