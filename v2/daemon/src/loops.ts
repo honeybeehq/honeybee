@@ -695,16 +695,12 @@ export class DaemonCore {
   // boot-hang policy — bounded recovery for a missing readiness handshake
   // -------------------------------------------------------------------------
 
-  private pendingStopExists(beeId: string, generation: number): boolean {
-    return this.store.hasPendingStopCommand(beeId, generation);
-  }
-
   private bootHangPolicy(work: readonly DaemonWorkRow[]): void {
     const now = this.now();
     for (const { runtime: rt } of work) {
       if (rt.state !== "booting") continue;
       if (now - rt.startedAt <= this.policy.bootHangTimeoutSteps) continue;
-      if (this.pendingStopExists(rt.beeId, rt.generation)) continue;
+      if (this.store.hasPendingStopCommand(rt.beeId, rt.generation)) continue;
       if (this.store.hasBootHangStopCommand(rt.beeId, rt.generation)) continue;
       this.store.enqueueCommand("stop", rt.beeId, { cause: "stopped_by_system", reason: "hang_policy" });
       this.log(`policy.hang_stop bee=${rt.beeId} gen=${rt.generation} state=${rt.state}`);
@@ -726,7 +722,7 @@ export class DaemonCore {
       // stopping it now would only bounce through revive-on-message.
       if (pending.length > 0) continue;
       if (this.store.activeMoveOf(rt.beeId)) continue;
-      if (this.pendingStopExists(rt.beeId, rt.generation)) continue;
+      if (this.store.hasPendingStopCommand(rt.beeId, rt.generation)) continue;
       this.store.enqueueCommand("stop", rt.beeId, { cause: "stopped_by_system", reason: "idle_window" });
       this.log(`policy.idle_stop bee=${rt.beeId} gen=${rt.generation} idleFor=${now - rt.updatedAt}`);
     }
@@ -741,7 +737,7 @@ export class DaemonCore {
     for (const { runtime: rt, pending } of work) {
       if (!this.ext.isDegraded(rt.beeId, rt.generation)) continue;
       if (pending.length === 0) continue;
-      if (this.pendingStopExists(rt.beeId, rt.generation)) continue;
+      if (this.store.hasPendingStopCommand(rt.beeId, rt.generation)) continue;
       this.store.enqueueCommand("stop", rt.beeId, { cause: "stopped_by_system", reason: "degraded_runtime" });
       this.log(`policy.degraded_stop bee=${rt.beeId} gen=${rt.generation}`);
     }

@@ -2272,8 +2272,8 @@ export class HiveDaemon {
     if (params.cwd !== undefined && typeof params.cwd !== "string") {
       throw new RpcError("invalid_request", "cell.exec: cwd must be a string when given");
     }
-    const timeoutMs = typeof params.timeoutMs === "number" ? params.timeoutMs : undefined;
-    const cwd = typeof params.cwd === "string" ? params.cwd : undefined;
+    const timeoutMs = params.timeoutMs;
+    const cwd = params.cwd;
     const hash = hashCellOpRequest({ cellId, kind: "exec", argv, cwd: cwd ?? null, timeoutMs: timeoutMs ?? null });
     const existing = store.getCellOpByKey(key);
     if (existing) {
