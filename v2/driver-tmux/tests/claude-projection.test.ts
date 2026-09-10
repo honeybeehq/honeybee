@@ -236,3 +236,23 @@ test("claude projector: an errored result projects a halt (interrupt) carrying t
   const ok = p2.pushLine(line({ type: "result", subtype: "success", is_error: false, stop_reason: "end_turn" }));
   assert.deepEqual(ok.map((e) => e.kind), ["turn_end"]);
 });
+
+
+test("claude projector: out-of-range numeric timestamps preserve events with an unknown timestamp", () => {
+  for (const timestamp of [8.64e15 + 1, -8.64e15 - 1, 1e20, NaN, Infinity, -Infinity, "invalid-date", "1e20"]) {
+    const projector = createTranscriptProjector("claude");
+    assert.deepEqual(projector.pushLine(JSON.stringify({
+      type: "assistant", timestamp, message: { content: "still visible" },
+    })), [{ kind: "message", ts: null, role: "assistant", text: "still visible" }]);
+  }
+  const timestamp = "2026-09-09T12:00:00+02:00";
+  assert.deepEqual(createTranscriptProjector("claude").pushLine(JSON.stringify({
+    type: "assistant", timestamp, message: { content: "original string" },
+  })), [{ kind: "message", ts: timestamp, role: "assistant", text: "original string" }]);
+  for (const timestamp of [8.64e15, -8.64e15, 0, 0.5, -0.5]) {
+    const projector = createTranscriptProjector("claude");
+    assert.deepEqual(projector.pushLine(JSON.stringify({
+      type: "assistant", timestamp, message: { content: "valid boundary" },
+    })), [{ kind: "message", ts: new Date(timestamp).toISOString(), role: "assistant", text: "valid boundary" }]);
+  }
+});

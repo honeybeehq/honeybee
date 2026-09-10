@@ -75,7 +75,10 @@ function resultErrorReason(row: JsonObject): string | undefined {
 function lineTimestamp(row: JsonObject): TranscriptIsoTs {
   const raw = row.timestamp;
   if (typeof raw === "string" && !Number.isNaN(Date.parse(raw))) return raw;
-  if (typeof raw === "number" && Number.isFinite(raw)) return new Date(raw).toISOString();
+  if (typeof raw === "number" && Number.isFinite(raw)) {
+    const date = new Date(raw);
+    if (!Number.isNaN(date.getTime())) return date.toISOString();
+  }
   return NO_TS;
 }
 
