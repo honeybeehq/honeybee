@@ -48,6 +48,7 @@ import { isAgyCheckpointState, createAgyProjector } from "./agy-projection.ts";
 import { createClaudeProjector } from "./claude-projection.ts";
 import { isCodexCheckpointState, createCodexProjector } from "./codex-projection.ts";
 import { isGrokCheckpointState, createGrokProjector, isGrokCompactionSummary } from "./grok-projection.ts";
+import { createKimiProjector } from "./kimi-projection.ts";
 import type { TranscriptProjectedEvent, TranscriptProjector } from "./transcript-projection.ts";
 
 export type TranscriptEvent =
@@ -534,6 +535,8 @@ export function createTranscriptProjector(harness: string): TranscriptProjector 
       return createCodexProjector();
     case "grok":
       return createGrokProjector();
+    case "kimi":
+      return createKimiProjector();
     case "stub":
       return projectorFromRenderer(stubTranscriptRenderer);
     case "claude":
@@ -567,6 +570,9 @@ export function restoreTranscriptProjector(harness: string, checkpoint: unknown)
         break;
       case "grok":
         if (isGrokCheckpointState(state)) return { ok: true, projector: createGrokProjector(state) };
+        break;
+      case "kimi":
+        if (isGrokCheckpointState(state)) return { ok: true, projector: createKimiProjector(state) };
         break;
       case "agy":
         if (isAgyCheckpointState(state)) return { ok: true, projector: createAgyProjector(state) };

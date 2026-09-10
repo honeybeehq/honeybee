@@ -4,7 +4,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { test } from "node:test";
 import { TRANSCRIPT_PROJECTION_VERSION, TRANSCRIPT_PROJECTOR_STATE_VERSION } from "../src/transcript-projection.ts";
 
-const statefulFiles = ["codex-projection", "grok-projection", "agy-projection"];
+const statefulFiles = ["codex-projection", "grok-projection", "agy-projection", "kimi-projection"];
 const sharedFiles = ["transcripts", "transcript-projection"];
 const fixture = new URL("./fixtures/checkpoint-digest.json", import.meta.url);
 

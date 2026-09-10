@@ -114,6 +114,8 @@ import {
   codexAdapter,
   codexArgGrammar,
   grokAdapter,
+  kimiAdapter,
+  kimiSpawnPlan,
   grokArgGrammar,
   grokSpawnPlan,
   codexSpawnPlan,
@@ -232,7 +234,7 @@ import {
   type ViewResult,
 } from "./protocol.ts";
 
-const ADAPTER_NAMES = ["agy", "claude", "codex", "grok", "stub"] as const;
+const ADAPTER_NAMES = ["agy", "claude", "codex", "grok", "kimi", "stub"] as const;
 
 /**
  * Adapter for a bee. `providerSessionId` (bee row, spec 07 §F) selects the
@@ -275,6 +277,8 @@ function adapterFor(
       });
     case "stub":
       return stubAdapter;
+    case "kimi":
+      return kimiAdapter({ cwd, mcpServers: grokMcpServers, ...(providerSessionId ? { resumeSessionId: providerSessionId } : {}) });
     default:
       return null;
   }
@@ -329,6 +333,14 @@ export function composeSpawn(
     ? ["--append-system-prompt", placementInstruction]
     : [];
   const composed = composeArgv(grammar, [spec.args, spec.defaultArgs, bee.args, resume, startup]);
+  if (adapterName === "kimi") {
+    const plan = kimiSpawnPlan(composed);
+    return {
+      adapter: kimiAdapter({ cwd: bee.cwd, model: plan.model, mode: plan.mode, mcpServers: grokMcpServers,
+        ...(bee.providerSessionId ? { resumeSessionId: bee.providerSessionId } : {}) }),
+      args: plan.argv, model: plan.model,
+    };
+  }
   if (adapterName === "codex") {
     const plan = codexSpawnPlan(composed);
     return {
@@ -967,7 +979,7 @@ export class HiveDaemon {
     const spec = this.cfg.agents[bee.agent];
     if (!spec) throw new Error(`resolve: no agent spec for '${bee.agent}'`);
     const adapterName = spec.adapter ?? bee.agent;
-    const grokMcpServers: GrokMcpServerStdio[] = adapterName === "grok"
+    const grokMcpServers: GrokMcpServerStdio[] = adapterName === "grok" || adapterName === "kimi"
       ? liveGateways().map((gateway) => ({
         name: gateway.name,
         command: gateway.shim.command,

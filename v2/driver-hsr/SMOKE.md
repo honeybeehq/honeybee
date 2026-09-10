@@ -212,3 +212,25 @@ Result log (cell smokes):
 | 2026-08-17 | stub | (runner proof) | ALL 24 PASS | copy_mode=cow on APFS; sandboxed stub wrote + committed in-cell; outside write denied; total 0.9s |
 | | claude | | | (operator runs `npm run v2:smoke:cell -- claude`) |
 | 2026-08-17 | claude (cell) | trmd/CL.7920 | ALL 24 PASS | 10.4s; real claude wrote+committed inside Seatbelt, capture landed, origin bit-identical; fixed late-init phantom turn_ended + added -p permission bypass |
+
+## Kimi Code (v2 ACP)
+
+Kimi uses the native `kimi acp` adapter. `--model`, `--yolo`, `--auto`, and
+`--plan` are applied through `session/set_config_option` before the runtime
+accepts mail. Never use a Claude stream wrapper or combine `--prompt` with
+`--yolo`. A node's old `agents.kimi` override wins over built-ins; remove the
+benchmark override after deploying the native adapter.
+
+Verify a new session with two short prompts, stop it between prompts, and
+check that the second reply recalls the first prompt and retains the provider
+session ID. Repeat a send's idempotency key and check that it returns the same
+mailbox row. The shared Kimi transcript projector must display both replies
+and close each turn on the ACP prompt result. Startup and permission-mode
+failures must never mark the runtime ready.
+
+A benchmark-generated `benchmark-kimi-*` ID is not a real Kimi session and
+cannot be resumed. Preserve that bee's history; start new work in a native
+session instead of silently replacing its conversation. Default/plan mode
+cancels tool permission requests; yolo/auto selects a provider-offered
+allow-once option. Interactive choice questions are not yet exposed by the
+v2 adapter contract.
