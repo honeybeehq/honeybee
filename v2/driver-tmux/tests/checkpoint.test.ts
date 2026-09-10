@@ -131,3 +131,32 @@ test("shared serialization preserves lone surrogates through UTF-8 JSON storage"
     ok: false, reason: "state_too_large",
   });
 });
+
+
+test("Grok restored tool inputs remain available only to an un-emitted call", () => {
+  for (const callEmitted of [false, true]) {
+    for (const replacement of [undefined, null, { text: "replacement" }]) {
+      const checkpoint = createTranscriptProjector("grok").checkpoint();
+      const priorInput = { text: "restored" };
+      checkpoint.state = {
+        openChunk: null, pendingPromptMirror: null, seenCompactions: [],
+        tools: [["restored-tool", { name: "write", input: priorInput, callEmitted, resultEmitted: false }]],
+      };
+      const restored = restoreTranscriptProjector("grok", checkpoint);
+      assert.ok(restored.ok);
+      const update = JSON.stringify({ method: "session/update", params: { update: {
+        sessionUpdate: "tool_call_update", toolCallId: "restored-tool", status: "completed", rawOutput: "done",
+        ...(replacement !== undefined ? { rawInput: replacement } : {}),
+      } } });
+      const result = { kind: "tool_result", ts: null, callId: "restored-tool", name: "write", isError: false, output: "done" };
+      assert.deepEqual(restored.projector.pushLine(update), callEmitted ? [result] : [
+        { kind: "tool_call", ts: null, callId: "restored-tool", name: "write", input: replacement === undefined ? priorInput : replacement }, result,
+      ]);
+      assert.deepEqual(restored.projector.checkpoint().state, {
+        openChunk: null, pendingPromptMirror: null, seenCompactions: [],
+        tools: [["restored-tool", { name: "write", status: "completed", callEmitted: true, resultEmitted: true }]],
+      });
+      assert.deepEqual(restored.projector.pushLine(update), []);
+    }
+  }
+});

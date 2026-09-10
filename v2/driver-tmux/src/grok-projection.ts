@@ -362,10 +362,10 @@ export function createGrokProjector(restored?: GrokCheckpointState): TranscriptP
     const previous = tools.get(callId);
     const name = stringField(update, "title", "name", "kind") ?? previous?.name ?? "tool";
     const nextInput = firstDefined(update, "rawInput", "raw_input", "input");
+    const input = nextInput !== undefined ? nextInput : previous?.input;
     const status = stringField(update, "status") ?? previous?.status;
     const state: ToolState = {
       name,
-      ...(nextInput !== undefined ? { input: nextInput } : previous?.input !== undefined ? { input: previous.input } : {}),
       ...(status ? { status } : {}),
       callEmitted: previous?.callEmitted ?? false,
       resultEmitted: previous?.resultEmitted ?? false,
@@ -379,13 +379,10 @@ export function createGrokProjector(restored?: GrokCheckpointState): TranscriptP
         ts,
         callId,
         name: state.name,
-        ...(state.input !== undefined ? { input: state.input } : {}),
+        ...(input !== undefined ? { input } : {}),
       });
       state.callEmitted = true;
     }
-
-    // The call event owns its input now; later updates need only pairing/dedupe state.
-    delete state.input;
 
     const terminal = isTerminalToolStatus(state.status);
     const hasOutput = hasField(update, "rawOutput", "raw_output", "output", "result");

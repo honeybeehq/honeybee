@@ -113,7 +113,7 @@ export type TranscriptProjectorFactory = () => TranscriptProjector;
 /** Bump for event semantic changes; stored projections must then be rebuilt. */
 export const TRANSCRIPT_PROJECTION_VERSION = 3;
 /** Bump for checkpoint schema changes. Restore deliberately does not migrate. */
-export const TRANSCRIPT_PROJECTOR_STATE_VERSION = 4;
+export const TRANSCRIPT_PROJECTOR_STATE_VERSION = 5;
 export const TRANSCRIPT_CHECKPOINT_MAX_BYTES = 4 * 1024 * 1024;
 
 export interface TranscriptProjectorCheckpoint {
