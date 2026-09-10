@@ -70,7 +70,7 @@ test("import.int: frozen import over RPC → revive resumes claude (--resume) an
     fx.writeRecord("xr-dfc1452083e3.json", codexHsrRecord(fx.root, { runnerPid: NO_SUCH_PID + 1, runnerFingerprint: { pgid: NO_SUCH_PID + 1, startedAt: "Tue Aug 18 08:54:30 2026" } }));
     fx.writeRecord("done.json", claudeHsrRecord(fx.root, { id: "CL.done", name: "done-bee", status: "done" }));
     fx.writeRecord("kf.json", claudeHsrRecord(fx.root, { id: "CL.kf", name: "kf-bee", status: "kill_failed", runnerPid: NO_SUCH_PID + 2 }));
-    fx.writeRecord("kimi.json", claudeHsrRecord(fx.root, { id: "KM.1", name: "kimi-bee", agent: "kimi", runnerPid: NO_SUCH_PID + 3 }));
+    fx.writeRecord("unknown.json", claudeHsrRecord(fx.root, { id: "XX.1", name: "unknown-bee", agent: "unknown-harness", runnerPid: NO_SUCH_PID + 3 }));
     const claudeHome = join(fx.root, "homes", "claude-fixture-account");
     const codexHome = join(fx.root, "homes", "codex-fixture-account");
     // The imported session LIVES in the imported home: claude (and the fake)
