@@ -579,6 +579,7 @@ test("general dependencies retain exact callback order during synchronous reentr
     placementVersion: 0,
     activeMoveId: null,
     cellId: null,
+    activeHandoffId: null,
   };
   const message: MessageRow = {
     id: 1,

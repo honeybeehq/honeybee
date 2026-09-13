@@ -13,6 +13,10 @@ import {
   type AuditRow,
   type TemplateRow,
   type TrackRow,
+  type BeeHandoffFailure,
+  type BeeHandoffPhase,
+  type BeeHandoffStopAt,
+  type BeeHandoffView,
   type BeeMoveFailure,
   type BeeMovePhase,
   type BeeMoveView,
@@ -71,6 +75,8 @@ function mapBee(r: Row): BeeRow {
     placementVersion: Number((r.placement_version as number | null | undefined) ?? 0),
     activeMoveId: (r.active_move_id as string | null | undefined) ?? null,
     cellId: (r.cell_id as string | null | undefined) ?? null,
+    // v23 column; same tolerance.
+    activeHandoffId: (r.active_handoff_id as string | null | undefined) ?? null,
   };
 }
 
@@ -282,6 +288,7 @@ export interface StaleViewResult {
   runtime: RuntimeRow | null;
   move: BeeMoveView | null;
   cell: CellRow | null;
+  handoff: BeeHandoffView | null;
 }
 
 export class ReadOnlyStore {
@@ -336,6 +343,7 @@ export class ReadOnlyStore {
       runtime,
       move: this.latestMoveView(beeId),
       cell: bee?.cellId ? this.getCell(bee.cellId) : null,
+      handoff: this.latestHandoffView(beeId),
     };
   }
 
@@ -393,6 +401,43 @@ export class ReadOnlyStore {
       createdAt: Number(r.created_at),
       retainedAt: r.retained_at == null ? null : Number(r.retained_at),
       removedAt: r.removed_at == null ? null : Number(r.removed_at),
+    };
+  }
+
+  /** v23 — tolerate a pre-v23 store file (no table): null. */
+  private latestHandoffView(beeId: string): BeeHandoffView | null {
+    if (!this.tableExists("bee_handoffs")) return null;
+    const r = this.db
+      .prepare("SELECT * FROM bee_handoffs WHERE bee_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1")
+      .get(beeId) as Row | undefined;
+    if (!r) return null;
+    const args = (v: unknown): string[] | null => (v == null ? null : (JSON.parse(String(v)) as string[]));
+    return {
+      id: r.id as string,
+      beeId: r.bee_id as string,
+      phase: r.phase as BeeHandoffPhase,
+      sourceGeneration: Number(r.source_generation),
+      targetGeneration: r.target_generation == null ? null : Number(r.target_generation),
+      from: {
+        agent: r.from_agent as string,
+        args: args(r.from_args),
+        account: (r.from_account as string | null) ?? null,
+        providerSessionId: (r.from_provider_session_id as string | null) ?? null,
+        segmentId: r.from_segment_id as string,
+      },
+      to: {
+        agent: r.to_agent as string,
+        args: args(r.to_args),
+        account: (r.to_account as string | null) ?? null,
+        segmentId: (r.to_segment_id as string | null) ?? null,
+      },
+      instruction: (r.instruction as string | null) ?? null,
+      stopAt: r.stop_at as BeeHandoffStopAt,
+      seedMessageId: r.seed_message_id == null ? null : Number(r.seed_message_id),
+      context: r.context_json == null ? null : (JSON.parse(String(r.context_json)) as BeeHandoffView["context"]),
+      failure: r.failure_json == null ? null : (JSON.parse(String(r.failure_json)) as BeeHandoffFailure),
+      createdAt: Number(r.created_at),
+      updatedAt: Number(r.updated_at),
     };
   }
 

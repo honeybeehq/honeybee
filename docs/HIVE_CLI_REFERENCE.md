@@ -1147,6 +1147,43 @@ Resolution prefers `$TMUX_PANE` (matching a bee by `agentPaneId`) and falls back
 to the current session name (matching `tmuxTarget`, for solo combs and legacy
 bees). Errors cleanly when not inside tmux or when no bee matches.
 
+### `hive handoff`
+
+Hand the **same bee** to a fresh provider thread — a same-family context reset
+or a cross-family model change (Codex → Claude). Where `fork` creates another
+bee, `handoff` keeps the bee id, handle, name, tags, parent, mailbox, Cell and
+history and only moves execution ownership. The daemon owns the whole
+operation (v2 `bee.handoff`, capability `bee.handoff.v1`); see
+`docs/design/handoff-contract.md` for the wire contract.
+
+```sh
+hive handoff <bee> --to <agent> [--model <m> | --args -- <args…>]
+             [--account <a>|auto|rr|none] [-p <instruction>] [--now]
+             [--idempotency-key <k>] [--wait [--timeout <ms>]]
+hive handoff get <handoffId>
+hive handoff status <bee>
+```
+
+- `--to <agent>` — the target harness (any configured agent). Same agent = a
+  context reset on a new thread.
+- `--model <m>` — target per-bee args via the harness's model flag; `--args --`
+  passes them verbatim. Omitted: same-family keeps the bee's args, cross-family
+  drops them (they name another CLI's flags).
+- `--account` — target-harness account selector; default `auto` (or the bee's
+  own account for a same-family handoff); `none` = unbound.
+- `-p <instruction>` — an operator note carried into the persisted context and
+  the seed the new thread opens with.
+- `--now` — stop the source immediately; default waits for its current turn to
+  end (a working bee is not cut short).
+- `--wait` — block until `complete` (exit 0) or `failed` (exit 1).
+
+Phases: `stopping → summarizing → starting → complete | failed`. Queued mail
+is preserved and delivered after the context seed, in order. Before the switch
+a failure leaves the bee on its old harness (a live source is revived
+automatically); after the switch it stays on the target with the seed queued.
+`hive stop`, `archive`, `delete` or `revive` during a handoff cancel it
+(`failed` + `superseded`).
+
 ## Keybindings and In-tmux Affordances
 
 The keybinding LAYER — picker verbs the `display-popup` chords invoke, the

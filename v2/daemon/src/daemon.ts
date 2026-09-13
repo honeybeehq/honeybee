@@ -16,7 +16,7 @@
  *  - behavior 6 (service mgmt)     → service.ts (wired by the CLI)
  *  - behavior 7 (config)           → config.ts
  */
-import { copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
+import { closeSync, copyFileSync, cpSync, existsSync, mkdirSync, openSync, readdirSync, readSync, rmSync, statSync } from "node:fs";
 import { execFile } from "node:child_process";
 import type { InterruptOutcome } from "../../harness/src/driver.ts";
 import { appendFileSync } from "node:fs";
@@ -41,11 +41,16 @@ import {
   MESSAGE_URGENCIES,
   ContinuationUnsupportedError,
   MOVE_CONTINUATION_AGENTS,
+  BEE_HANDOFF_STOP_AT,
+  HANDOFF_TRANSCRIPT_TAIL_BYTES,
   composeDeveloperInstructions,
+  hashBeeHandoffRequest,
   hashBeeMoveRequest,
+  segmentSessionLogPath,
   hashCellOpRequest,
   openCoreStore,
   placementContextText,
+  toBeeHandoffView,
   toBeeMoveView,
   recipeFor,
   requireBeeId,
@@ -55,8 +60,13 @@ import {
   serializePackage,
   type AccountRow,
   type AuditRow,
+  type BeeHandoffRow,
+  type BeeHandoffStopAt,
   type BeeMoveRow,
   type BeeRow,
+  type HandoffContext,
+  type HandoffContextTurn,
+  type TranscriptSegmentRow,
   type CellOpRow,
   type CellRow,
   type CommandRow,
@@ -104,7 +114,7 @@ import {
   TranscriptUnavailableError,
 } from "./relocateSession.ts";
 import { SubstrateRouter } from "./substrates.ts";
-import { TmuxDriver, claudeProjectKey } from "../../driver-tmux/src/index.ts";
+import { TmuxDriver, claudeProjectKey, renderTranscriptLines } from "../../driver-tmux/src/index.ts";
 import { tmuxSpawnSpec } from "./tmuxHarness.ts";
 import {
   agyAdapter,
@@ -173,6 +183,8 @@ import {
   type AuditTailResult,
   type SwapAccountResult,
   type BeeMoveResult,
+  type BeeHandoffResult,
+  type BeeHandoffGetResult,
   type CellCaptureMode,
   type CellCaptureResult,
   type CellExecResult,
@@ -408,6 +420,11 @@ export interface HiveDaemonDeps {
   loginTmuxExec?: (args: string[]) => { status: number | null; stdout: string };
   /** Hermetic test seam for account-home native MCP reconciliation. */
   gatewayMcpSeeder?: AccountsServiceOptions["gatewayMcpSeeder"];
+  /**
+   * v23: optional LLM-backed refinement of the extractive handoff context.
+   * Absent = the deterministic extractive artifact is the seed.
+   */
+  summarizeHandoff?: (input: { handoff: BeeHandoffRow; bee: BeeRow; base: HandoffContext }) => Promise<HandoffContext>;
 }
 
 type AccountActivationState = {
@@ -454,6 +471,7 @@ const OWN_STATUS_VERBS: ReadonlySet<RpcVerb> = new Set<RpcVerb>([
   "bee.move",
   "cell.exec",
   "cell.retained.remove",
+  "bee.handoff",
 ]);
 
 export class HiveDaemon {
@@ -589,8 +607,15 @@ export class HiveDaemon {
     this.activeStartupPhase = null;
     const drivers = this.performance.startSpan("daemon.start.drivers");
     this.activeStartupPhase = drivers;
+    // v23: the bee row owns its CURRENT session log file (a handoff opens a
+    // new transcript segment with its own file); drivers ask the store. Only
+    // Honeybee-owned files (under sessionLogDir) are honored: a frozen import
+    // records the OLD world's transcript path on the row, and the native
+    // stream must never be appended to that file.
+    const sessionLogPathFor = (beeId: string): string | null => this.ownedSessionLogPath(store.getBee(beeId)?.sessionLogPath ?? null);
     const hsrConfig = {
       sessionLogDir: this.cfg.sessionLogDir,
+      sessionLogPathFor,
       stopKillGraceMs: this.cfg.stopKillGraceMs,
       adoptToleranceMs: this.cfg.adoptToleranceMs,
     };
@@ -612,6 +637,7 @@ export class HiveDaemon {
       socketPath: join(this.cfg.dataDir, "tmux.sock"),
       eventsDir: join(this.cfg.dataDir, "tmux-events"),
       sessionLogDir: this.cfg.sessionLogDir,
+      sessionLogPathFor,
       resolve: (beeId: string) => this.resolveTmuxSpec(beeId),
       stopKillGraceMs: this.cfg.stopKillGraceMs,
       adoptToleranceMs: this.cfg.adoptToleranceMs,
@@ -643,6 +669,8 @@ export class HiveDaemon {
       validatePlacement: (move, bee) => this.validateMoveDestination(move, bee),
       blockedRuntimeStartBeeIds: () => this.prepareRuntimeStartCommands(),
       assertRuntimeStartReady: (command) => this.assertRuntimeStartReady(command),
+      readHandoffTranscript: (bee, segments) => this.readHandoffTranscript(bee, segments),
+      ...(this.deps.summarizeHandoff ? { summarizeHandoff: this.deps.summarizeHandoff } : {}),
     });
     drivers.end();
     this.activeStartupPhase = null;
@@ -1311,6 +1339,13 @@ export class HiveDaemon {
         return this.rpcBeeMove(params);
       case "bee.move.get":
         return this.rpcBeeMoveGet(params);
+      case "bee.handoff":
+        // Observation drain must commit outside the admission transaction: a
+        // refusal must not roll back facts already consumed from the driver.
+        this.core?.observe();
+        return this.rpcBeeHandoff(params);
+      case "bee.handoff.get":
+        return this.rpcBeeHandoffGet(params);
       case "cell.exec":
         return this.rpcCellExec(params);
       case "cell.retained.remove":
@@ -2165,6 +2200,181 @@ export class HiveDaemon {
     return toBeeMoveView(move);
   }
 
+  // -------------------------------------------------------------------------
+  // v23 — durable session handoff
+  // -------------------------------------------------------------------------
+
+  /**
+   * `bee.handoff`: validate everything the daemon owns (target harness spec +
+   * adapter, args shape, target account for the TARGET harness, stopAt) with
+   * the source untouched, then admit through the core (dedupe by key, CAS on
+   * expected.generation, fence, enqueue the stop). Summarization and the
+   * switch run later in the daemon loop, never here.
+   */
+  private rpcBeeHandoff(params: Record<string, unknown>): BeeHandoffResult {
+    const store = this.mustStore();
+    const key = this.idempotencyKeyOf(params);
+    if (key == null) throw new RpcError("invalid_request", "bee.handoff: idempotencyKey is required");
+    const beeId = this.param(params, "beeId");
+    const expectedRaw = params.expected;
+    if (expectedRaw === null || typeof expectedRaw !== "object" || Array.isArray(expectedRaw)) {
+      throw new RpcError("invalid_request", "bee.handoff: expected {generation, agent?} is required");
+    }
+    const expectedObj = expectedRaw as Record<string, unknown>;
+    if (typeof expectedObj.generation !== "number" || !Number.isInteger(expectedObj.generation) || expectedObj.generation < 0) {
+      throw new RpcError("invalid_request", "bee.handoff: expected.generation must be a non-negative integer");
+    }
+    if (expectedObj.agent !== undefined && (typeof expectedObj.agent !== "string" || expectedObj.agent.length === 0)) {
+      throw new RpcError("invalid_request", "bee.handoff: expected.agent must be a non-empty string when given");
+    }
+    const expected: { generation: number; agent?: string } = {
+      generation: expectedObj.generation,
+      ...(typeof expectedObj.agent === "string" ? { agent: expectedObj.agent } : {}),
+    };
+    const targetRaw = params.target;
+    if (targetRaw === null || typeof targetRaw !== "object" || Array.isArray(targetRaw)) {
+      throw new RpcError("invalid_request", "bee.handoff: target {agent, args?, account?} is required");
+    }
+    const targetObj = targetRaw as Record<string, unknown>;
+    const targetAgent = this.param(targetObj, "agent");
+    const instruction = params.instruction === undefined || params.instruction === null
+      ? null
+      : this.param(params, "instruction");
+    const stopAtRaw = params.stopAt ?? "idle";
+    if (typeof stopAtRaw !== "string" || !(BEE_HANDOFF_STOP_AT as readonly string[]).includes(stopAtRaw)) {
+      throw new RpcError("invalid_request", `bee.handoff: stopAt must be one of ${BEE_HANDOFF_STOP_AT.join("|")}`);
+    }
+    const stopAt = stopAtRaw as BeeHandoffStopAt;
+    const bee = store.getBee(beeId);
+    if (!bee) throw new RpcError("bee_not_found", `bee not found: ${beeId}`);
+    // Args: explicit wins; omitted keeps the bee's args for a same-family
+    // handoff and drops them across families (they name another CLI's flags).
+    const args = targetObj.args === undefined
+      ? (targetAgent === bee.agent ? bee.args : null)
+      : this.argsParam(targetObj, "bee.handoff", true);
+    const accountRequest = targetObj.account === undefined
+      ? (targetAgent === bee.agent && bee.account ? bee.account : "auto")
+      : this.accountParam(targetObj);
+    const requestHash = hashBeeHandoffRequest({
+      beeId,
+      expected,
+      target: { agent: targetAgent, args, account: accountRequest },
+      instruction,
+      stopAt,
+    });
+    const existing = store.getBeeHandoffByKey(key);
+    if (existing) {
+      if (existing.requestHash !== requestHash) throw new RpcError("idempotency_conflict", "idempotency key already bound to a different bee.handoff request");
+      return { ...toBeeHandoffView(existing), deduped: true };
+    }
+    if (bee.lifecycle !== "active") {
+      throw new RpcError("lifecycle_refused", `bee.handoff: bee ${beeId} is ${bee.lifecycle}; unarchive it first`);
+    }
+    if (bee.activeHandoffId) throw new RpcError("handoff_in_progress", `bee ${beeId} already has an in-flight handoff ${bee.activeHandoffId}`);
+    if (bee.activeMoveId) throw new RpcError("move_in_progress", `bee ${beeId} has an in-flight move ${bee.activeMoveId}`);
+    const targetSpec = this.cfg.agents[targetAgent];
+    const targetAdapter = targetSpec?.adapter ?? targetAgent;
+    if (!targetSpec || !(ADAPTER_NAMES as readonly string[]).includes(targetAdapter)) {
+      throw new RpcError("invalid_request", `bee.handoff: unknown target agent '${targetAgent}' (no spawn spec/adapter configured)`);
+    }
+    if (bee.substrate === "tmux" && targetAgent !== bee.agent) {
+      // The tmux seat's TUI harness is baked into the pane; only the headless substrates re-resolve the harness per generation.
+      throw new RpcError("invalid_request", `bee.handoff: bee ${beeId} runs the ${bee.agent} TUI on tmux; cross-family handoff is available on hsr/cell bees`);
+    }
+    const { account, reason } = this.resolveSpawnAccount(accountRequest, targetAgent, { args: args ?? [] });
+    // The switch installs the target account's home env over the bee's own
+    // env minus the SOURCE harness home key (a Codex home must not leak into
+    // a Claude runtime and vice versa).
+    const env = { ...bee.env };
+    const sourceHomeKey = homeEnvFor(bee.agent);
+    if (sourceHomeKey) delete env[sourceHomeKey];
+    const targetHomeKey = homeEnvFor(targetAgent);
+    if (targetHomeKey) delete env[targetHomeKey];
+    const targetEnv = { ...env, ...(account && this.accounts ? this.accounts.homeEnvOf(account) : {}) };
+    // The target segment's log lives beside the bee's canonical Honeybee log
+    // (never beside a foreign/imported transcript path).
+    const nextOrdinal = (store.currentTranscriptSegment(beeId)?.ordinal ?? 0) + 1;
+    const targetSessionLogPath = bee.substrate === "tmux" && !this.cfg.sessionLogDir
+      ? null
+      : segmentSessionLogPath(this.canonicalSessionLogPath(beeId), nextOrdinal);
+    const handoff = store.admitBeeHandoff({
+      beeId,
+      idempotencyKey: key,
+      requestHash,
+      expected,
+      target: { agent: targetAgent, args, account: account?.id ?? null, env: targetEnv },
+      instruction,
+      stopAt,
+      targetSessionLogPath,
+    });
+    this.log(
+      `bee.handoff bee=${beeId} handoff=${handoff.id} ${bee.agent}→${targetAgent} gen=${handoff.sourceGeneration} stopAt=${stopAt} account=${account?.id ?? "-"}${reason ? ` reason=${JSON.stringify(reason)}` : ""}`,
+    );
+    return toBeeHandoffView(handoff);
+  }
+
+  /** A session log path this daemon owns (under its sessionLogDir); anything else is foreign evidence. */
+  private ownedSessionLogPath(path: string | null): string | null {
+    if (!path) return null;
+    const dir = resolve(this.cfg.sessionLogDir);
+    const target = resolve(path);
+    return target.startsWith(`${dir}/`) ? target : null;
+  }
+
+  /** The canonical Honeybee session log for a bee (segment 0), whatever the row says. */
+  private canonicalSessionLogPath(beeId: string): string {
+    return join(this.cfg.sessionLogDir, `${beeId}.jsonl`);
+  }
+
+  private rpcBeeHandoffGet(params: Record<string, unknown>): BeeHandoffGetResult {
+    const handoffId = this.param(params, "handoffId");
+    const handoff = this.mustStore().getBeeHandoff(handoffId);
+    if (!handoff) throw new RpcError("handoff_not_found", `handoff not found: ${handoffId}`);
+    return toBeeHandoffView(handoff);
+  }
+
+  /**
+   * Bounded read of the source transcript for the context artifact: the
+   * tail of every pre-handoff segment's session log, rendered with the
+   * harness that WROTE it (never the target's). Runs after the source is
+   * quiesced (its host has closed the file), off the RPC path.
+   */
+  private readHandoffTranscript(bee: BeeRow, segments: TranscriptSegmentRow[]): { turns: HandoffContextTurn[]; truncated: boolean } {
+    const turns: HandoffContextTurn[] = [];
+    let truncated = false;
+    let budget = HANDOFF_TRANSCRIPT_TAIL_BYTES;
+    // Newest segment first so the tail budget favors recent history.
+    const ordered = [...segments].sort((a, b) => b.ordinal - a.ordinal);
+    const rendered: Array<{ ordinal: number; turns: HandoffContextTurn[] }> = [];
+    for (const segment of ordered) {
+      if (!segment.path || !existsSync(segment.path) || budget <= 0) {
+        if (segment.path && budget <= 0) truncated = true;
+        continue;
+      }
+      const size = statSync(segment.path).size;
+      const start = Math.max(0, size - budget);
+      if (start > 0) truncated = true;
+      const buf = Buffer.alloc(size - start);
+      const fd = openSync(segment.path, "r");
+      try {
+        readSync(fd, buf, 0, buf.length, start);
+      } finally {
+        closeSync(fd);
+      }
+      budget -= buf.length;
+      let text = buf.toString("utf8");
+      if (start > 0) {
+        const nl = text.indexOf("\n");
+        text = nl < 0 ? "" : text.slice(nl + 1);
+      }
+      const lines = text.split("\n").filter((l) => l.length > 0);
+      rendered.push({ ordinal: segment.ordinal, turns: renderTranscriptLines(segment.harness, lines) });
+    }
+    rendered.sort((a, b) => a.ordinal - b.ordinal);
+    for (const r of rendered) turns.push(...r.turns);
+    return { turns, truncated };
+  }
+
   private cellExecResultFromOp(
     op: { id: string; cellId: string; status: CellOpRow["status"]; exitCode: number | null; stdout: string; stderr: string; truncated: boolean; timeoutMs: number | null; failure: string | null },
     deduped: boolean,
@@ -2954,6 +3164,7 @@ export class HiveDaemon {
       runtime: bee ? store.currentRuntime(beeId) : null,
       move: bee ? (() => { const m = store.latestMoveOf(bee.id); return m ? toBeeMoveView(m) : null; })() : null,
       cell: bee?.cellId ? store.getCell(bee.cellId) : null,
+      handoff: bee ? (() => { const h = store.latestHandoffOf(bee.id); return h ? toBeeHandoffView(h) : null; })() : null,
     };
   }
 
@@ -3120,6 +3331,8 @@ export class HiveDaemon {
       loginFlows: store.listLoginFlows(),
       cells: store.listCells(),
       beeMoves: store.listBeeMoves().map(toBeeMoveView),
+      beeHandoffs: store.listBeeHandoffs().map(toBeeHandoffView),
+      transcriptSegments: store.listTranscriptSegments(),
     };
   }
 

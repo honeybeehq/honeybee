@@ -16,9 +16,12 @@ import {
   CellNotFoundError,
   ContinuationUnsupportedError,
   CoreError,
+  HandoffInProgressError,
+  HandoffNotFoundError,
   IdempotencyConflictError,
   IllegalTransitionError,
   MoveInProgressError,
+  StaleGenerationError,
   NameConflictError,
   StalePlacementError,
   PackageError,
@@ -98,6 +101,9 @@ export function toRpcError(err: unknown): { code: RpcErrorCode; message: string 
   if (err instanceof StalePlacementError) return { code: "stale_placement", message: err.message };
   if (err instanceof MoveInProgressError) return { code: "move_in_progress", message: err.message };
   if (err instanceof IdempotencyConflictError) return { code: "idempotency_conflict", message: err.message };
+  if (err instanceof HandoffInProgressError) return { code: "handoff_in_progress", message: err.message };
+  if (err instanceof StaleGenerationError) return { code: "stale_generation", message: err.message };
+  if (err instanceof HandoffNotFoundError) return { code: "handoff_not_found", message: err.message };
   if (err instanceof ContinuationUnsupportedError) return { code: "continuation_unsupported", message: err.message };
   if (err instanceof NameConflictError) return { code: "name_conflict", message: err.message };
   if (err instanceof PackageError) return { code: "invalid_package", message: err.message };

@@ -19,6 +19,8 @@
 import type {
   AccountStatus,
   AuditRow,
+  BeeHandoffStopAt,
+  BeeHandoffView,
   BeeMoveView,
   BeeRow,
   CellOpStatus,
@@ -53,6 +55,7 @@ import type {
   RuntimeRow,
   TemplatePackage,
   TrackPackage,
+  TranscriptSegmentRow,
   Urgency,
 } from "../../core/src/index.ts";
 import type { BootReport } from "./loops.ts";
@@ -103,6 +106,14 @@ export const DAEMON_CAPABILITIES = [
   "cell.move.local.v1",
   /** Sandboxed retained-Cell exec keyed by Cell ID. */
   "cell.retained.exec.v1",
+  /**
+   * v23 (2026-09-13): durable session handoff — `bee.handoff` /
+   * `bee.handoff.get`, the `handoff` mirror-row key, the `beeHandoffs` +
+   * `transcriptSegments` snapshot tables and their audit kinds. Same-family
+   * context resets and cross-family model changes (Codex → Claude) keep the
+   * bee identity, mailbox, Cell and history; only execution ownership moves.
+   */
+  "bee.handoff.v1",
 ] as const;
 export type DaemonCapability = (typeof DAEMON_CAPABILITIES)[number];
 
@@ -203,6 +214,12 @@ export const RPC_ERROR_CODES = [
   "continuation_unsupported",
   /** v21: cells registry lookup. */
   "cell_not_found",
+  /** v23: bee already has an incomplete handoff (different request). */
+  "handoff_in_progress",
+  /** v23: expected.generation (or expected.agent) does not match the bee. */
+  "stale_generation",
+  /** v23: `bee.handoff.get` lookup. */
+  "handoff_not_found",
 ] as const;
 export type RpcErrorCode = (typeof RPC_ERROR_CODES)[number];
 
@@ -261,6 +278,9 @@ export const RPC_VERBS = [
   "bee.move.get",
   "cell.exec",
   "cell.retained.remove",
+  // v23: durable session handoff (same-family reset / cross-family change).
+  "bee.handoff",
+  "bee.handoff.get",
   // v6 pre-flip verb set (additive to v2/1): rename, tag, interrupt, fork,
   // parenting read, questions, seals. `spawn` also takes `parentId?`.
   "bee.rename",
@@ -962,6 +982,8 @@ export interface ViewResult {
   move: BeeMoveView | null;
   /** v21 — active or retained Cell. */
   cell: CellRow | null;
+  /** v23 — latest handoff receipt (in-flight, complete, or failed). */
+  handoff: BeeHandoffView | null;
 }
 
 export interface ListResult {
@@ -1105,6 +1127,9 @@ export interface SnapshotResult {
   /** v21 (additive): Cell registry + move aggregate. */
   cells: CellRow[];
   beeMoves: BeeMoveView[];
+  /** v23 (additive): handoff receipts + transcript segments (store rows verbatim). */
+  beeHandoffs: BeeHandoffView[];
+  transcriptSegments: TranscriptSegmentRow[];
 }
 
 // ---------------------------------------------------------------------------
@@ -1311,6 +1336,72 @@ export interface CellRetainedRemoveResult {
   report: CellDirtyReport | null;
   deduped?: boolean;
 }
+
+export type { BeeHandoffView, BeeHandoffStopAt, TranscriptSegmentRow };
+
+/**
+ * `bee.handoff` (capability `bee.handoff.v1`) — hand the SAME bee to a fresh
+ * provider thread, optionally on another harness (Codex → Claude). Identity,
+ * name/handle, tags, parent, mailbox, Cell/placement, dirty files and the
+ * history all stay; only execution ownership changes. Idempotent by the
+ * REQUIRED caller key: same key + same canonical request → the original
+ * receipt (`deduped: true`), same key + different request →
+ * `idempotency_conflict`. Replay works across daemon restarts and lost
+ * responses (the receipt is durable at admission).
+ *
+ * Validation happens BEFORE anything changes (source untouched on refusal):
+ * `invalid_request` (unknown agent / bad args / bad stopAt), `stale_generation`
+ * (expected.generation or expected.agent mismatch — the CAS), `handoff_in_progress`,
+ * `move_in_progress`, `lifecycle_refused` (archived bee), `account_not_found` /
+ * `account_paused` / `harness_mismatch` / `account_unavailable` (target
+ * account resolution for the TARGET harness: explicit id, `auto` (default),
+ * `rr`, or null = unbound).
+ *
+ * Phases (BeeHandoffView.phase; deltas via the bee.handoff_* audit kinds):
+ *   stopping    — the source generation is quiesced at the boundary: `stopAt`
+ *                 `idle` (default) waits for its current turn to end, `now`
+ *                 stops it immediately. Wakes, starts and deliveries are fenced;
+ *                 `send` keeps inserting (FIFO preserved). Operator stop /
+ *                 archive / delete / revive supersede (failed + superseded).
+ *   summarizing — source stopped and its process gone; the context artifact
+ *                 is built off the RPC path (durable facts + a bounded read of
+ *                 the source transcript).
+ *   starting    — the switch tx committed: source segment closed, target
+ *                 segment opened with its own log file, bee flipped to the
+ *                 target harness/args/account with NO provider thread, the seed
+ *                 mailbox row inserted, the fenced revive enqueued. The target
+ *                 runtime receives the seed first; queued user mail follows in
+ *                 its original order.
+ *   complete    — the seed was accepted by the target runtime.
+ *   failed      — typed `failure {stage, code, detail}`. Before the switch the
+ *                 bee is unchanged (still its old harness, stopped): fenced
+ *                 mail re-arms its wake and a source that was live at admission
+ *                 is revived automatically. After the switch the bee stays on
+ *                 the target with the seed queued; `revive` or new mail retries.
+ *
+ * Provider thread ids are never reused across harnesses: the source thread id
+ * is recorded on the closed transcript segment; the target boots fresh.
+ */
+export interface BeeHandoffParams {
+  beeId: string;
+  idempotencyKey: string;
+  expected: { generation: number; agent?: string };
+  target: {
+    agent: string;
+    /** Per-bee harness args for the target; omitted = keep the bee's args for a same-family handoff, none for cross-family. */
+    args?: string[] | null;
+    /** Target-harness account selector: explicit id, 'auto' (default), 'rr', or null = unbound. */
+    account?: string | null;
+  };
+  /** Operator instruction carried into the context artifact and the seed. */
+  instruction?: string;
+  stopAt?: BeeHandoffStopAt;
+}
+
+export type BeeHandoffResult = BeeHandoffView & { deduped?: boolean };
+
+/** `bee.handoff.get {handoffId}` → BeeHandoffView; unknown id → `handoff_not_found`. */
+export type BeeHandoffGetResult = BeeHandoffView;
 
 export class RpcError extends Error {
   readonly code: RpcErrorCode;

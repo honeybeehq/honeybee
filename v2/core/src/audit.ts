@@ -8,6 +8,7 @@ import type {
   AccountLimitsRow,
   AccountRow,
   AuditRow,
+  BeeHandoffRow,
   BeeMoveRow,
   BeeRow,
   CellOpRow,
@@ -24,6 +25,7 @@ import type {
   TaskSupplyRow,
   TemplateRow,
   TrackRow,
+  TranscriptSegmentRow,
 } from "./types.ts";
 import type { LoginFlowRow } from "./loginFlow.ts";
 
@@ -46,6 +48,16 @@ export function replayAudit(rows: AuditRow[]): StateDump {
   const cells = new Map<string, CellRow>();
   const beeMoves = new Map<string, BeeMoveRow>();
   const cellOps = new Map<string, CellOpRow>();
+  const beeHandoffs = new Map<string, BeeHandoffRow>();
+  const transcriptSegments = new Map<string, TranscriptSegmentRow>();
+  const cloneHandoff = (h: BeeHandoffRow): BeeHandoffRow => ({
+    ...h,
+    from: { ...h.from, args: h.from.args === null ? null : [...h.from.args] },
+    to: { ...h.to, args: h.to.args === null ? null : [...h.to.args] },
+    targetEnv: { ...h.targetEnv },
+    context: h.context === null ? null : structuredClone(h.context),
+    failure: h.failure === null ? null : { ...h.failure },
+  });
 
   const rtKey = (beeId: string, generation: number) => `${beeId}#${generation}`;
   const mustBee = (id: string): BeeRow => {
@@ -70,6 +82,7 @@ export function replayAudit(rows: AuditRow[]): StateDump {
           placementVersion: bee.placementVersion ?? 0,
           activeMoveId: bee.activeMoveId ?? null,
           cellId: bee.cellId ?? null,
+          activeHandoffId: bee.activeHandoffId ?? null,
         });
         break;
       }
@@ -172,6 +185,7 @@ export function replayAudit(rows: AuditRow[]): StateDump {
         for (const [k, q] of questions) if (q.beeId === beeId) questions.delete(k);
         for (const [k, sl] of seals) if (sl.beeId === beeId) seals.delete(k);
         for (const [k, t] of tasks) if (t.beeId === beeId) tasks.delete(k);
+        for (const [k, sg] of transcriptSegments) if (sg.beeId === beeId) transcriptSegments.delete(k);
         taskSupply.delete(beeId);
         for (const id of p.settledCommandIds as number[]) {
           const command = mustCommand(id);
@@ -361,6 +375,53 @@ export function replayAudit(rows: AuditRow[]): StateDump {
         cellOps.set(op.id, { ...op, argv: op.argv === null ? null : [...op.argv] });
         break;
       }
+      case "transcript_segment.put": {
+        const segment = p.segment as TranscriptSegmentRow;
+        transcriptSegments.set(segment.id, { ...segment });
+        break;
+      }
+      case "bee.handoff_admitted": {
+        const handoff = p.handoff as BeeHandoffRow;
+        beeHandoffs.set(handoff.id, cloneHandoff(handoff));
+        mustBee(handoff.beeId).activeHandoffId = handoff.id;
+        break;
+      }
+      case "bee.handoff_phase": {
+        const handoff = p.handoff as BeeHandoffRow;
+        beeHandoffs.set(handoff.id, cloneHandoff(handoff));
+        const bee = mustBee(handoff.beeId);
+        if (handoff.phase === "complete" || handoff.phase === "failed") bee.activeHandoffId = null;
+        else bee.activeHandoffId = handoff.id;
+        break;
+      }
+      case "bee.handoff_failed": {
+        const handoff = p.handoff as BeeHandoffRow;
+        beeHandoffs.set(handoff.id, cloneHandoff(handoff));
+        mustBee(handoff.beeId).activeHandoffId = null;
+        break;
+      }
+      case "bee.handoff_context": {
+        const handoff = beeHandoffs.get(p.handoffId as string);
+        if (!handoff) throw new Error(`audit replay: unknown handoff ${String(p.handoffId)}`);
+        handoff.context = structuredClone(p.context as BeeHandoffRow["context"]);
+        handoff.seedMessageId = p.seedMessageId as number;
+        handoff.to = { ...handoff.to, segmentId: p.targetSegmentId as string };
+        handoff.targetGeneration = p.targetGeneration as number;
+        break;
+      }
+      case "bee.handoff_switched": {
+        const bee = mustBee(p.beeId as string);
+        bee.agent = p.agent as string;
+        const args = p.args as string[] | null;
+        bee.args = args === null ? null : [...args];
+        bee.account = (p.account as string | null) ?? null;
+        bee.env = { ...(p.env as Record<string, string>) };
+        bee.providerSessionId = null;
+        bee.forkSeed = null;
+        bee.sessionLogPath = (p.sessionLogPath as string | null) ?? null;
+        bee.spawnFailures = 0;
+        break;
+      }
       case "task.put": {
         const task = p.task as TaskRow;
         tasks.set(task.id, {
@@ -386,6 +447,7 @@ export function replayAudit(rows: AuditRow[]): StateDump {
       case "wake.suppressed":
       case "wake.fenced":
       case "boot.reconciled":
+      case "bee.provider_session_fenced":
         break;
       default:
         throw new Error(`audit replay: unknown audit kind ${row.kind}`);
@@ -413,5 +475,9 @@ export function replayAudit(rows: AuditRow[]): StateDump {
     cells: [...cells.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
     beeMoves: [...beeMoves.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
     cellOps: [...cellOps.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
+    beeHandoffs: [...beeHandoffs.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
+    transcriptSegments: [...transcriptSegments.values()].sort((a, b) =>
+      a.beeId !== b.beeId ? (a.beeId < b.beeId ? -1 : 1) : a.ordinal - b.ordinal,
+    ),
   };
 }

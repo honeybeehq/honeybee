@@ -56,6 +56,7 @@ test("mirror.1: live rows carry exactly the declared keys — bees (view/bee/run
       runtime: store.currentRuntime(bee.id),
       move: null,
       cell: null,
+      handoff: null,
     };
     assert.deepEqual(keysOf(row), [...MIRROR_BEE_ROW_KEYS].sort());
     assert.deepEqual(keysOf(row.view), [...MIRROR_BEE_VIEW_KEYS].sort());
@@ -155,9 +156,11 @@ test("mirror.2: value-level snapshot — a deterministic store serializes to the
     });
     const snapshot: MirrorSnapshot = {
       seq: store.lastAuditSeq(),
-      bees: [{ view: store.view(bee.id), bee: store.getBee(bee.id), runtime: store.currentRuntime(bee.id), move: null, cell: null }],
+      bees: [{ view: store.view(bee.id), bee: store.getBee(bee.id), runtime: store.currentRuntime(bee.id), move: null, cell: null, handoff: null }],
       cells: [],
       beeMoves: [],
+      beeHandoffs: [],
+      transcriptSegments: [],
       templates: [template],
       tracks: [track],
       questions: [store.getQuestion(question.id)!],
@@ -175,7 +178,7 @@ test("mirror.2: value-level snapshot — a deterministic store serializes to the
     assert.equal(
       text,
       `{
-  "seq": 10,
+  "seq": 11,
   "bees": [
     {
       "view": {
@@ -218,7 +221,8 @@ test("mirror.2: value-level snapshot — a deterministic store serializes to the
         "handle": "BEE_HANDLE",
         "placementVersion": 0,
         "activeMoveId": null,
-        "cellId": null
+        "cellId": null,
+        "activeHandoffId": null
       },
       "runtime": {
         "beeId": "BEE_ID",
@@ -232,11 +236,14 @@ test("mirror.2: value-level snapshot — a deterministic store serializes to the
         "updatedAt": 1002000
       },
       "move": null,
-      "cell": null
+      "cell": null,
+      "handoff": null
     }
   ],
   "cells": [],
   "beeMoves": [],
+  "beeHandoffs": [],
+  "transcriptSegments": [],
   "templates": [
     {
       "id": "tpl-1",
@@ -262,8 +269,8 @@ test("mirror.2: value-level snapshot — a deterministic store serializes to the
       "tags": [
         "git"
       ],
-      "createdAt": 1005000,
-      "updatedAt": 1005000
+      "createdAt": 1006000,
+      "updatedAt": 1006000
     }
   ],
   "tracks": [
@@ -285,8 +292,8 @@ test("mirror.2: value-level snapshot — a deterministic store serializes to the
         }
       ],
       "tags": [],
-      "createdAt": 1007000,
-      "updatedAt": 1007000
+      "createdAt": 1008000,
+      "updatedAt": 1008000
     }
   ],
   "questions": [
@@ -301,8 +308,8 @@ test("mirror.2: value-level snapshot — a deterministic store serializes to the
       ],
       "status": "answered",
       "answer": "yes",
-      "askedAt": 1009000,
-      "answeredAt": 1013000,
+      "askedAt": 1010000,
+      "answeredAt": 1014000,
       "answeredBy": "operator",
       "deliveryMessageId": 1
     }
@@ -317,7 +324,7 @@ test("mirror.2: value-level snapshot — a deterministic store serializes to the
       "refs": [
         "main@abc"
       ],
-      "createdAt": 1015000
+      "createdAt": 1016000
     }
   ],
   "accounts": [
@@ -330,15 +337,15 @@ test("mirror.2: value-level snapshot — a deterministic store serializes to the
       "penalty": 5,
       "lastLoginAt": null,
       "exhaustedAt": null,
-      "addedAt": 1017000,
-      "updatedAt": 1017000,
+      "addedAt": 1018000,
+      "updatedAt": 1018000,
       "credentialHealth": "absent"
     }
   ],
   "accountLimits": [
     {
       "account": "codex-work",
-      "fetchedAt": 1019000,
+      "fetchedAt": 1020000,
       "readable": true,
       "unreadableReason": null,
       "error": null,

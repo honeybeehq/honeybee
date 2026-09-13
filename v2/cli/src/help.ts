@@ -12,6 +12,8 @@ const GROUPS: Group[] = [
       ["xa", "<agent> [--name n]", "spawn + attach (e.g. claude-gmail fuzzy, codex-auto least-loaded, claude-rr round-robin)"],
       ["run", "<name> -p <prompt>", "spawn, send, wait, print the reply, archive (--keep skips)"],
       ["fork", "<bee> [--name n]", "new bee, same shape, continues the source's conversation"],
+      ["handoff", "<bee> --to <agent> [--model m]", "SAME bee, fresh provider thread seeded with a context summary; cross-family ok (codex → claude)"],
+      ["handoff", "get <id> | status <bee>", "read a handoff receipt (phase, context, failure)"],
     ],
   },
   {
