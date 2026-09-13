@@ -324,15 +324,16 @@ export class ReadOnlyStore {
 
   view(beeId: string): StaleViewResult {
     const bee = this.getBee(beeId);
+    const runtime = bee ? this.currentRuntime(beeId) : null;
     return {
       view: deriveBeeView(
         beeId,
         bee,
-        bee ? this.currentRuntime(beeId) : null,
+        runtime,
         bee ? this.activeFlags(beeId) : [],
       ),
       bee,
-      runtime: bee ? this.currentRuntime(beeId) : null,
+      runtime,
       move: this.latestMoveView(beeId),
       cell: bee?.cellId ? this.getCell(bee.cellId) : null,
     };
