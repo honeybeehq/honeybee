@@ -160,6 +160,8 @@ export interface BeeRow {
   activeMoveId: string | null;
   /** v21 — cells.id for the bee's active or retained Cell; null if none. */
   cellId: string | null;
+  /** v23 — in-flight handoff id; null when idle (complete/failed receipts remain). */
+  activeHandoffId: string | null;
 }
 
 /**
@@ -247,7 +249,7 @@ export const MAIL_CANCELLATION_REASONS = ["requested", "bee_deleted"] as const;
 export type MailCancellationReason = (typeof MAIL_CANCELLATION_REASONS)[number];
 
 /** Typed admission path for mailbox traffic; consumers must not sniff bodies. */
-export const MAIL_ORIGINS = ["mail.send", "spawn.prompt", "legacy.unknown"] as const;
+export const MAIL_ORIGINS = ["mail.send", "spawn.prompt", "legacy.unknown", "handoff.seed"] as const;
 export type MailOrigin = (typeof MAIL_ORIGINS)[number];
 
 /**
@@ -757,6 +759,9 @@ export interface StateDump {
   cells: CellRow[];
   beeMoves: BeeMoveRow[];
   cellOps: CellOpRow[];
+  /** v23 */
+  beeHandoffs: BeeHandoffRow[];
+  transcriptSegments: TranscriptSegmentRow[];
 }
 
 // ---------------------------------------------------------------------------
@@ -869,6 +874,147 @@ export interface CellOpRow {
   failure: string | null;
   createdAt: number;
   updatedAt: number;
+}
+
+// ---------------------------------------------------------------------------
+// v23 — durable session handoff (same-family context reset or cross-family
+// model change) + transcript segments
+// ---------------------------------------------------------------------------
+
+/**
+ * One contiguous run of a bee's session log written by ONE harness under ONE
+ * provider thread. A bee starts with segment 0 (its spawn harness); every
+ * handoff closes the open segment at the source generation and opens the
+ * next one with the target harness and a fresh log file. Apiary rebuilds the
+ * full conversation by parsing each segment's `path` with that segment's
+ * `harness`, in `ordinal` order. Derived transcript data, never lifecycle.
+ */
+export interface TranscriptSegmentRow {
+  id: string;
+  beeId: string;
+  /** 0-based, dense, stable ordering within the bee. */
+  ordinal: number;
+  /** The harness that wrote this segment (the bee's agent at the time). */
+  harness: string;
+  /** Provider thread/session id the segment's runtimes reported; null until known. */
+  providerSessionId: string | null;
+  /** First runtime generation that logged into this segment. */
+  fromGeneration: number;
+  /** Last generation of the segment; null while the segment is open. */
+  toGeneration: number | null;
+  /** Session log file (outside the DB); null when the driver keeps no log. */
+  path: string | null;
+  /** The handoff that opened this segment; null for segment 0. */
+  handoffId: string | null;
+  createdAt: number;
+  closedAt: number | null;
+}
+
+export const BEE_HANDOFF_PHASES = ["stopping", "summarizing", "starting", "complete", "failed"] as const;
+export type BeeHandoffPhase = (typeof BEE_HANDOFF_PHASES)[number];
+
+/** Closed graph. Terminal phases have no outbound edge. */
+export const BEE_HANDOFF_TRANSITIONS: Readonly<Record<BeeHandoffPhase, readonly BeeHandoffPhase[]>> = {
+  stopping: ["summarizing", "failed"],
+  summarizing: ["starting", "failed"],
+  starting: ["complete", "failed"],
+  complete: [],
+  failed: [],
+};
+
+export const BEE_HANDOFF_FAILURE_STAGES = ["validate", "stop", "context", "switch", "start"] as const;
+export type BeeHandoffFailureStage = (typeof BEE_HANDOFF_FAILURE_STAGES)[number];
+
+export interface BeeHandoffFailure {
+  stage: BeeHandoffFailureStage;
+  code: string;
+  detail: string;
+}
+
+/** When the source runtime is quiesced: at its next idle point, or immediately. */
+export const BEE_HANDOFF_STOP_AT = ["idle", "now"] as const;
+export type BeeHandoffStopAt = (typeof BEE_HANDOFF_STOP_AT)[number];
+
+/** One readable transcript turn carried into the context artifact. */
+export interface HandoffContextTurn {
+  role: "user" | "assistant" | "tool" | "system";
+  text: string;
+}
+
+/**
+ * The persisted context artifact a handoff seeds the fresh provider thread
+ * with. Built OFF the RPC path after the source is quiesced, from durable
+ * facts (mailbox, seals, tasks, questions) plus a bounded read of the
+ * source transcript. `summarizer` names how it was built; `extractive` is the
+ * deterministic built-in.
+ */
+export interface HandoffContext {
+  version: 1;
+  summarizer: string;
+  generatedAt: number;
+  /** The originating task: the first operator/human message (spawn prompt) or the title. */
+  task: string | null;
+  /** The operator's handoff instruction, verbatim. */
+  instruction: string | null;
+  constraints: string[];
+  decisions: string[];
+  completedWork: string[];
+  outstandingWork: string[];
+  /** Bounded tail of readable turns from the source transcript. */
+  recentTurns: HandoffContextTurn[];
+  transcript: {
+    /** Every segment before the handoff (ordinal order); the new segment is not part of the artifact. */
+    segments: Array<Pick<TranscriptSegmentRow, "id" | "ordinal" | "harness" | "providerSessionId" | "path" | "fromGeneration" | "toGeneration">>;
+    /** Whether the transcript read was truncated to its tail. */
+    truncated: boolean;
+  };
+  mailbox: {
+    /** Delivered messages whose bodies are part of the source transcript (summarized). */
+    summarizedMessageIds: number[];
+    /** Undelivered messages at the switch: they stay queued and follow the seed. */
+    queuedMessageIds: number[];
+  };
+}
+
+export interface BeeHandoffSide {
+  agent: string;
+  args: string[] | null;
+  account: string | null;
+}
+
+/** Locked RPC/mirror view. Apiary materializes exactly these keys. */
+export interface BeeHandoffView {
+  id: string;
+  beeId: string;
+  phase: BeeHandoffPhase;
+  /** The generation quiesced at the boundary. */
+  sourceGeneration: number;
+  /** The first generation on the target harness; null until the switch. */
+  targetGeneration: number | null;
+  from: BeeHandoffSide & { providerSessionId: string | null; segmentId: string };
+  to: BeeHandoffSide & { segmentId: string | null };
+  instruction: string | null;
+  stopAt: BeeHandoffStopAt;
+  /** The mailbox row carrying the context seed (delivered first on the target); null until the switch. */
+  seedMessageId: number | null;
+  context: HandoffContext | null;
+  failure: BeeHandoffFailure | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** Store/dump/audit row. Projected to BeeHandoffView at RPC/mirror boundaries. */
+export interface BeeHandoffRow extends BeeHandoffView {
+  idempotencyKey: string;
+  requestHash: string;
+  stopCommandKey: string;
+  reviveCommandKey: string;
+  /** Whether the source runtime was live at admission (recovery revives it on a pre-switch failure). */
+  sourceWasLive: boolean;
+  /** Per-bee env the switch installs (the target account's home env layered over the bee's own). */
+  targetEnv: Record<string, string>;
+  /** Session log file the target segment writes to. */
+  targetSessionLogPath: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -1033,5 +1179,29 @@ export class CellNotFoundError extends CoreError {
 export class ContinuationUnsupportedError extends CoreError {
   constructor(message: string) {
     super(message);
+  }
+}
+
+/** v23 — `bee.handoff` expected.generation does not match the bee's current generation. */
+export class StaleGenerationError extends CoreError {
+  constructor(message: string) {
+    super(message);
+  }
+}
+
+/** v23 — bee already has an incomplete handoff. */
+export class HandoffInProgressError extends CoreError {
+  readonly handoffId: string;
+
+  constructor(handoffId: string) {
+    super(`bee already has an in-flight handoff ${handoffId}`);
+    this.handoffId = handoffId;
+  }
+}
+
+/** v23 — handoff lookup. */
+export class HandoffNotFoundError extends CoreError {
+  constructor(id: string) {
+    super(`handoff not found: ${id}`);
   }
 }

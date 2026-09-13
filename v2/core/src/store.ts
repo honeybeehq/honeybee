@@ -46,6 +46,17 @@ import {
   type BeeMovePhase,
   type BeeMoveRow,
   type BeeMoveView,
+  type BeeHandoffFailure,
+  type BeeHandoffPhase,
+  type BeeHandoffRow,
+  type BeeHandoffStopAt,
+  type BeeHandoffView,
+  type HandoffContext,
+  type TranscriptSegmentRow,
+  HandoffInProgressError,
+  HandoffNotFoundError,
+  StaleGenerationError,
+  BEE_HANDOFF_STOP_AT,
   type BeeRow,
   type BeeView,
   type CellOpKind,
@@ -119,8 +130,18 @@ import {
   TASK_SUPPLY_SENDER_NAME,
   TASK_TRANSITIONS,
 } from "./tasks.ts";
-import { ACCOUNT_LIMITS_TABLE_SQL, BEES_ADDITIVE_COLUMNS, BEES_ACTIVE_MOVE_INDEX_SQL, MAILBOX_PENDING_METADATA_INDEX_SQL, BEE_MOVES_TABLE_SQL, CELLS_TABLE_SQL, CELL_OPS_TABLE_SQL, FLAGS_ADDITIVE_COLUMNS, FLAGS_EXPIRY_INDEX_SQL, HANDLE_INDEX_SQL, IDEMPOTENCY_INDEX_SQL, MAILBOX_ADDITIVE_COLUMNS, MAIL_HISTORY_INDEX_SQL, MAIL_HISTORY_PROJECTION_SQL, RUNTIMES_ADDITIVE_COLUMNS, SCHEMA_SQL, SCHEMA_VERSION } from "./schema.ts";
+import { ACCOUNT_LIMITS_TABLE_SQL, BEES_ADDITIVE_COLUMNS, BEES_ACTIVE_MOVE_INDEX_SQL, BEES_ACTIVE_HANDOFF_INDEX_SQL, BEE_HANDOFFS_TABLE_SQL, TRANSCRIPT_SEGMENTS_TABLE_SQL, MAILBOX_PENDING_METADATA_INDEX_SQL, BEE_MOVES_TABLE_SQL, CELLS_TABLE_SQL, CELL_OPS_TABLE_SQL, FLAGS_ADDITIVE_COLUMNS, FLAGS_EXPIRY_INDEX_SQL, HANDLE_INDEX_SQL, IDEMPOTENCY_INDEX_SQL, MAILBOX_ADDITIVE_COLUMNS, MAIL_HISTORY_INDEX_SQL, MAIL_HISTORY_PROJECTION_SQL, RUNTIMES_ADDITIVE_COLUMNS, SCHEMA_SQL, SCHEMA_VERSION } from "./schema.ts";
 import { beeMoveReviveKey, beeMoveStopKey, beeMoveTransitionLegal, toBeeMoveView } from "./cellMove.ts";
+import {
+  HANDOFF_SEED_SENDER,
+  beeHandoffReviveKey,
+  beeHandoffStopKey,
+  beeHandoffTransitionLegal,
+  handoffFencesSource,
+  renderHandoffSeed,
+  segmentSessionLogPath,
+  toBeeHandoffView,
+} from "./handoff.ts";
 import {
   LOGIN_FLOW_PHASES,
   isTerminalLoginPhase,
@@ -222,6 +243,8 @@ export interface BeeViewRow {
   move: BeeMoveView | null;
   /** v22 — active or retained Cell; null when none. */
   cell: CellRow | null;
+  /** v23 — latest handoff receipt (in-flight, complete, or failed). Null only when the bee has never handed off. */
+  handoff: BeeHandoffView | null;
 }
 
 /** Body-free mailbox facts shared by daemon work and I1 telemetry. */
@@ -586,6 +609,60 @@ function mapBee(r: Row): BeeRow {
     placementVersion: Number(r.placement_version ?? 0),
     activeMoveId: (r.active_move_id as string | null) ?? null,
     cellId: (r.cell_id as string | null) ?? null,
+    activeHandoffId: (r.active_handoff_id as string | null) ?? null,
+  };
+}
+
+function mapTranscriptSegment(r: Row): TranscriptSegmentRow {
+  return {
+    id: r.id as string,
+    beeId: r.bee_id as string,
+    ordinal: Number(r.ordinal),
+    harness: r.harness as string,
+    providerSessionId: (r.provider_session_id as string | null) ?? null,
+    fromGeneration: Number(r.from_generation),
+    toGeneration: r.to_generation == null ? null : Number(r.to_generation),
+    path: (r.path as string | null) ?? null,
+    handoffId: (r.handoff_id as string | null) ?? null,
+    createdAt: Number(r.created_at),
+    closedAt: r.closed_at == null ? null : Number(r.closed_at),
+  };
+}
+
+function mapBeeHandoff(r: Row): BeeHandoffRow {
+  return {
+    id: r.id as string,
+    beeId: r.bee_id as string,
+    phase: r.phase as BeeHandoffPhase,
+    sourceGeneration: Number(r.source_generation),
+    targetGeneration: r.target_generation == null ? null : Number(r.target_generation),
+    from: {
+      agent: r.from_agent as string,
+      args: parseArgsColumn(r.from_args),
+      account: (r.from_account as string | null) ?? null,
+      providerSessionId: (r.from_provider_session_id as string | null) ?? null,
+      segmentId: r.from_segment_id as string,
+    },
+    to: {
+      agent: r.to_agent as string,
+      args: parseArgsColumn(r.to_args),
+      account: (r.to_account as string | null) ?? null,
+      segmentId: (r.to_segment_id as string | null) ?? null,
+    },
+    instruction: (r.instruction as string | null) ?? null,
+    stopAt: r.stop_at as BeeHandoffStopAt,
+    seedMessageId: r.seed_message_id == null ? null : Number(r.seed_message_id),
+    context: r.context_json == null ? null : (JSON.parse(String(r.context_json)) as HandoffContext),
+    failure: r.failure_json == null ? null : (JSON.parse(String(r.failure_json)) as BeeHandoffFailure),
+    createdAt: Number(r.created_at),
+    updatedAt: Number(r.updated_at),
+    idempotencyKey: r.idempotency_key as string,
+    requestHash: r.request_hash as string,
+    stopCommandKey: r.stop_command_key as string,
+    reviveCommandKey: r.revive_command_key as string,
+    sourceWasLive: Number(r.source_was_live ?? 0) === 1,
+    targetEnv: JSON.parse((r.to_env as string | null) ?? "{}") as Record<string, string>,
+    targetSessionLogPath: (r.to_session_log_path as string | null) ?? null,
   };
 }
 
@@ -1538,6 +1615,7 @@ export class CoreStore {
     this.db.exec(IDEMPOTENCY_INDEX_SQL);
     this.db.exec(HANDLE_INDEX_SQL);
     this.db.exec(BEES_ACTIVE_MOVE_INDEX_SQL);
+    this.db.exec(BEES_ACTIVE_HANDOFF_INDEX_SQL);
     this.db.exec(MAILBOX_PENDING_METADATA_INDEX_SQL);
     // mailbox_undelivered is superseded by the covering pending-metadata
     // index above (same (bee_id, id) prefix, same partial predicate), so it
@@ -1555,6 +1633,45 @@ export class CoreStore {
     this.db.exec(CELLS_TABLE_SQL);
     this.db.exec(BEE_MOVES_TABLE_SQL);
     this.db.exec(CELL_OPS_TABLE_SQL);
+    this.db.exec(BEE_HANDOFFS_TABLE_SQL);
+    this.db.exec(TRANSCRIPT_SEGMENTS_TABLE_SQL);
+    // v22 → v23: every existing bee gets its segment 0 (its spawn harness,
+    // its current session log) so Apiary can parse pre-handoff history with
+    // the harness that wrote it. Idempotent: bees with a segment are skipped.
+    if (stored < 23) {
+      const unsegmented = this.stmt(
+        `SELECT b.id, b.agent, b.provider_session_id, b.session_log_path, b.created_at FROM bees b
+         WHERE NOT EXISTS (SELECT 1 FROM transcript_segments s WHERE s.bee_id = b.id) ORDER BY b.id`,
+      ).all() as Row[];
+      for (const b of unsegmented) {
+        this.insertTranscriptSegment({
+          beeId: String(b.id),
+          ordinal: 0,
+          harness: String(b.agent),
+          providerSessionId: (b.provider_session_id as string | null) ?? null,
+          fromGeneration: 1,
+          path: (b.session_log_path as string | null) ?? null,
+          handoffId: null,
+          createdAt: Number(b.created_at),
+        });
+      }
+    }
+    // v22 → v23: the mail-history origin CHECK gains 'handoff.seed'. SQLite
+    // cannot widen a CHECK in place, so rebuild the projection table and
+    // carry the rows across (same discipline as the v19 limits rebuild).
+    const historyDdl = this.stmt(
+      "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'mail_history_enqueues'",
+    ).get() as Row | undefined;
+    if (historyDdl !== undefined && !String(historyDdl.sql).includes("handoff.seed")) {
+      const carried = [
+        "seq", "message_id", "bee_id", "origin", "sender", "sender_truncated", "body",
+        "body_truncated", "priority", "urgency", "enqueued_at",
+      ].join(", ");
+      this.db.exec("ALTER TABLE mail_history_enqueues RENAME TO mail_history_enqueues_v22");
+      this.db.exec(MAIL_HISTORY_PROJECTION_SQL);
+      this.db.exec(`INSERT INTO mail_history_enqueues(${carried}) SELECT ${carried} FROM mail_history_enqueues_v22`);
+      this.db.exec("DROP TABLE mail_history_enqueues_v22");
+    }
     const hadMailHistoryProjection = this.stmt(
       "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'mail_history_enqueues'",
     ).get() !== undefined;
@@ -1737,6 +1854,22 @@ export class CoreStore {
    * growth path means exhaustion degrades to longer handles, never failure
    * (a hard bound guards a broken rng).
    */
+  /**
+   * v23: ids drawn from the store's injected `random` (the sim seeds it so a
+   * replayed run reproduces the same segment/handoff ids); production keeps
+   * Math.random, which is what the crypto uuid would give us in spirit.
+   */
+  private mintId(): string {
+    const hex = "0123456789abcdef";
+    let out = "";
+    for (let i = 0; i < 32; i += 1) {
+      const nibble = i === 12 ? 4 : i === 16 ? 8 + Math.floor(this.random() * 4) : Math.floor(this.random() * 16);
+      out += hex[nibble];
+      if (i === 7 || i === 11 || i === 15 || i === 19) out += "-";
+    }
+    return out;
+  }
+
   private mintHandle(agent: string): string {
     const prefix = handlePrefix(agent);
     const taken = this.stmt("SELECT 1 FROM bees WHERE handle = ?");
@@ -1810,6 +1943,17 @@ export class CoreStore {
         );
       const bee = this.mustGetBee(id);
       this.audit("bee.created", id, { bee });
+      // v23: segment 0 — the spawn harness owns the session log from generation 1.
+      this.insertTranscriptSegment({
+        beeId: id,
+        ordinal: 0,
+        harness: input.agent,
+        providerSessionId: input.providerSessionId ?? null,
+        fromGeneration: 1,
+        path: input.sessionLogPath ?? null,
+        handoffId: null,
+        createdAt: at,
+      });
       const runtime = this.insertRuntime(id, 1, at, input.proc);
       return { bee, runtime };
     });
@@ -1940,6 +2084,13 @@ export class CoreStore {
       const bee = this.mustGetBee(beeId);
       if (bee.activeMoveId) {
         this.applySupersedeBeeMove(bee.activeMoveId, {
+          stage: "validate",
+          code: "superseded",
+          detail: "bee deleted",
+        });
+      }
+      if (bee.activeHandoffId) {
+        this.applySupersedeBeeHandoff(bee.activeHandoffId, {
           stage: "validate",
           code: "superseded",
           detail: "bee deleted",
@@ -2250,6 +2401,15 @@ export class CoreStore {
         return { command: null, outcome: "fenced" };
       }
     }
+    if (bee.activeHandoffId) {
+      const handoff = this.getBeeHandoff(bee.activeHandoffId);
+      // stopping/summarizing: the source must not restart on the old harness.
+      // starting: target boot retries must be able to re-arm.
+      if (!handoff || handoffFencesSource(handoff.phase)) {
+        this.audit("wake.fenced", beeId, { beeId, targetGeneration, handoffId: bee.activeHandoffId });
+        return { command: null, outcome: "fenced" };
+      }
+    }
     if (current && LIVE_STATES.includes(current.state)) return { command: null, outcome: "live" };
     const dupe = this.db
       .prepare(
@@ -2487,12 +2647,29 @@ export class CoreStore {
    * generation); an identical value is a silent no-op, so replays and late
    * duplicate boots never spam the audit log.
    */
-  recordProviderSessionId(beeId: string, providerSessionId: string): { applied: boolean } {
+  recordProviderSessionId(beeId: string, providerSessionId: string, generation?: number): { applied: boolean } {
     if (typeof providerSessionId !== "string" || providerSessionId.length === 0) {
       throw new CoreError("recordProviderSessionId: providerSessionId must be a non-empty string");
     }
     return this.tx(() => {
       const bee = this.mustGetBee(beeId);
+      // v23: a session id belongs to the transcript segment whose generations
+      // reported it. A closed segment (the source side of a handoff) records
+      // it for transcript reconstruction ONLY — the bee's live thread pointer
+      // must never be re-pointed at another provider's conversation.
+      const segment = generation === undefined ? null : this.transcriptSegmentForGeneration(beeId, generation);
+      if (segment && segment.toGeneration !== null) {
+        if (segment.providerSessionId === providerSessionId) return { applied: false };
+        this.applySegmentProviderSession(segment.id, providerSessionId);
+        this.audit("bee.provider_session_fenced", beeId, {
+          beeId,
+          generation,
+          providerSessionId,
+          segmentId: segment.id,
+          currentProviderSessionId: bee.providerSessionId,
+        });
+        return { applied: false };
+      }
       if (bee.providerSessionId === providerSessionId) return { applied: false };
       // v6: learning the fork's OWN session id consumes the one-shot fork
       // seed — from here on the bee resumes its own conversation.
@@ -2505,6 +2682,8 @@ export class CoreStore {
         previous: bee.providerSessionId,
         ...(bee.forkSeed != null ? { forkSeedConsumed: bee.forkSeed } : {}),
       });
+      const open = this.currentTranscriptSegment(beeId);
+      if (open && open.providerSessionId !== providerSessionId) this.applySegmentProviderSession(open.id, providerSessionId);
       return { applied: true };
     });
   }
@@ -3130,6 +3309,15 @@ export class CoreStore {
           });
           superseded = true;
         }
+        const handoff = live.activeHandoffId ? this.getBeeHandoff(live.activeHandoffId) : null;
+        if (handoff && key !== handoff.stopCommandKey && key !== handoff.reviveCommandKey) {
+          this.applySupersedeBeeHandoff(handoff.id, {
+            stage: verb === "stop" ? "stop" : "validate",
+            code: "superseded",
+            detail: `operator ${verb}`,
+          });
+          superseded = true;
+        }
       }
       const isRuntimeVerb = RUNTIME_VERBS.includes(verb as Verb);
       const targetGeneration = isRuntimeVerb ? (this.currentRuntime(beeId)?.generation ?? 0) : null;
@@ -3328,6 +3516,9 @@ export class CoreStore {
              AND NOT (verb = 'stop' AND json_type(args, '$.replacementArgs') IS NOT NULL
                AND EXISTS (SELECT 1 FROM runtimes r WHERE r.bee_id = commands.bee_id
                  AND r.generation = commands.target_generation AND r.state IN ('booting', 'running')))
+             AND NOT (verb = 'stop' AND json_extract(args, '$.waitForIdle') IS 1
+               AND EXISTS (SELECT 1 FROM runtimes r WHERE r.bee_id = commands.bee_id
+                 AND r.generation = commands.target_generation AND r.state IN ('booting', 'running')))
              AND NOT (
                verb IN ('spawn', 'send_wake')
                AND EXISTS (
@@ -3344,6 +3535,24 @@ export class CoreStore {
                  JOIN bee_moves m ON m.id = b.active_move_id
                  WHERE b.id = commands.bee_id
                    AND (m.phase != 'starting' OR commands.idempotency_key IS NULL OR commands.idempotency_key != m.revive_command_key)
+               )
+             )
+             AND NOT (
+               verb IN ('spawn', 'send_wake')
+               AND EXISTS (
+                 SELECT 1 FROM bees b
+                 JOIN bee_handoffs h ON h.id = b.active_handoff_id
+                 WHERE b.id = commands.bee_id
+                   AND h.phase IN ('stopping', 'summarizing')
+               )
+             )
+             AND NOT (
+               verb = 'revive'
+               AND EXISTS (
+                 SELECT 1 FROM bees b
+                 JOIN bee_handoffs h ON h.id = b.active_handoff_id
+                 WHERE b.id = commands.bee_id
+                   AND (h.phase != 'starting' OR commands.idempotency_key IS NULL OR commands.idempotency_key != h.revive_command_key)
                )
              )
              ORDER BY id LIMIT 1`,
@@ -3374,6 +3583,29 @@ export class CoreStore {
                 currentGeneration: this.currentRuntime(command.beeId)?.generation ?? 0,
                 finishedAt: at,
                 reason: "stale_before_move",
+              });
+              continue;
+            }
+          }
+          const handoff = bee?.activeHandoffId ? this.getBeeHandoff(bee.activeHandoffId) : null;
+          if (handoff && command.idempotencyKey !== handoff.stopCommandKey && command.idempotencyKey !== handoff.reviveCommandKey) {
+            if (command.enqueuedAt >= handoff.createdAt && this.lifecycleCommandSupersedesMove(command.verb, command.args, command.idempotencyKey)) {
+              this.applySupersedeBeeHandoff(handoff.id, {
+                stage: command.verb === "stop" ? "stop" : "validate",
+                code: "superseded",
+                detail: `operator ${command.verb}`,
+              });
+              this.rearmWakeIfFencedMail(command.beeId);
+            } else if (command.verb === "revive" || command.args.thenRevive === true) {
+              const at = this.now();
+              this.db.prepare("UPDATE commands SET status = 'done', finished_at = ? WHERE id = ?").run(at, command.id);
+              this.audit("command.moot", command.beeId, {
+                commandId: command.id,
+                verb: command.verb,
+                targetGeneration: command.targetGeneration,
+                currentGeneration: this.currentRuntime(command.beeId)?.generation ?? 0,
+                finishedAt: at,
+                reason: "stale_before_handoff",
               });
               continue;
             }
@@ -3867,15 +4099,22 @@ export class CoreStore {
       const move = mapBeeMove(row);
       latestMoveByBee.set(move.beeId, move);
     }
+    const latestHandoffByBee = new Map<string, BeeHandoffRow>();
+    for (const row of this.stmt("SELECT * FROM bee_handoffs ORDER BY created_at, rowid").all() as Row[]) {
+      const handoff = mapBeeHandoff(row);
+      latestHandoffByBee.set(handoff.beeId, handoff);
+    }
     return bees.map((bee) => {
       const runtime = runtimeByBee.get(bee.id) ?? null;
       const move = latestMoveByBee.get(bee.id) ?? null;
+      const handoff = latestHandoffByBee.get(bee.id) ?? null;
       return {
         bee,
         runtime,
         view: deriveBeeView(bee.id, bee, runtime, flagsByBee.get(bee.id) ?? []),
         move: move ? toBeeMoveView(move) : null,
         cell: bee.cellId ? (cellsById.get(bee.cellId) ?? null) : null,
+        handoff: handoff ? toBeeHandoffView(handoff) : null,
       };
     });
   }
@@ -5230,6 +5469,7 @@ export class CoreStore {
       }
       const bee = this.mustGetBee(input.beeId);
       if (bee.activeMoveId) throw new MoveInProgressError(bee.activeMoveId);
+      if (bee.activeHandoffId) throw new HandoffInProgressError(bee.activeHandoffId);
       if (bee.substrate !== "cell") {
         throw new CoreError(`admitBeeMove: bee ${input.beeId} is on substrate '${bee.substrate}', not cell`);
       }
@@ -5443,6 +5683,7 @@ export class CoreStore {
     admittedAt: number,
     stopKey: string,
     reviveKey: string,
+    reason = "stale_before_move",
   ): void {
     const pending = this.listCommands({ beeId }).filter(
       (c) =>
@@ -5461,7 +5702,7 @@ export class CoreStore {
         targetGeneration: cmd.targetGeneration,
         currentGeneration: this.currentRuntime(beeId)?.generation ?? 0,
         finishedAt: at,
-        reason: "stale_before_move",
+        reason,
       });
     }
   }
@@ -5485,6 +5726,470 @@ export class CoreStore {
       }
     }
     return move;
+  }
+
+  // -------------------------------------------------------------------------
+  // v23 — transcript segments + bee_handoffs
+  // -------------------------------------------------------------------------
+
+  private insertTranscriptSegment(input: {
+    id?: string;
+    beeId: string;
+    ordinal: number;
+    harness: string;
+    providerSessionId: string | null;
+    fromGeneration: number;
+    path: string | null;
+    handoffId: string | null;
+    createdAt?: number;
+  }): TranscriptSegmentRow {
+    // Deterministic by construction (bee + ordinal are unique): no rng draw.
+    const id = input.id ?? `seg:${input.beeId}:${input.ordinal}`;
+    const at = input.createdAt ?? this.now();
+    this.db
+      .prepare(
+        `INSERT INTO transcript_segments(id, bee_id, ordinal, harness, provider_session_id, from_generation, to_generation, path, handoff_id, created_at, closed_at)
+         VALUES(?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, NULL)`,
+      )
+      .run(id, input.beeId, input.ordinal, input.harness, input.providerSessionId, input.fromGeneration, input.path, input.handoffId, at);
+    const segment = this.mustTranscriptSegment(id);
+    this.audit("transcript_segment.put", input.beeId, { segment });
+    return segment;
+  }
+
+  private mustTranscriptSegment(id: string): TranscriptSegmentRow {
+    const row = this.stmt("SELECT * FROM transcript_segments WHERE id = ?").get(id) as Row | undefined;
+    if (!row) throw new CoreError(`transcript segment not found: ${id}`);
+    return mapTranscriptSegment(row);
+  }
+
+  private applySegmentProviderSession(segmentId: string, providerSessionId: string): TranscriptSegmentRow {
+    this.stmt("UPDATE transcript_segments SET provider_session_id = ? WHERE id = ?").run(providerSessionId, segmentId);
+    const segment = this.mustTranscriptSegment(segmentId);
+    this.audit("transcript_segment.put", segment.beeId, { segment });
+    return segment;
+  }
+
+  private applyCloseSegment(segmentId: string, toGeneration: number, at: number): TranscriptSegmentRow {
+    this.stmt("UPDATE transcript_segments SET to_generation = ?, closed_at = ? WHERE id = ?").run(toGeneration, at, segmentId);
+    const segment = this.mustTranscriptSegment(segmentId);
+    this.audit("transcript_segment.put", segment.beeId, { segment });
+    return segment;
+  }
+
+  /** All segments (ordinal order within a bee); `beeId` narrows to one bee. */
+  listTranscriptSegments(beeId?: string): TranscriptSegmentRow[] {
+    const rows = beeId === undefined
+      ? (this.stmt("SELECT * FROM transcript_segments ORDER BY bee_id, ordinal").all() as Row[])
+      : (this.stmt("SELECT * FROM transcript_segments WHERE bee_id = ? ORDER BY ordinal").all(beeId) as Row[]);
+    return rows.map(mapTranscriptSegment);
+  }
+
+  /** The open segment (highest ordinal) a bee's runtimes currently log into; null for an unknown bee. */
+  currentTranscriptSegment(beeId: string): TranscriptSegmentRow | null {
+    const row = this.stmt("SELECT * FROM transcript_segments WHERE bee_id = ? ORDER BY ordinal DESC LIMIT 1").get(beeId) as Row | undefined;
+    return row ? mapTranscriptSegment(row) : null;
+  }
+
+  /** The segment whose generation range covers `generation` (closed or open). */
+  transcriptSegmentForGeneration(beeId: string, generation: number): TranscriptSegmentRow | null {
+    const row = this.stmt(
+      `SELECT * FROM transcript_segments WHERE bee_id = ? AND from_generation <= ?
+         AND (to_generation IS NULL OR to_generation >= ?) ORDER BY ordinal DESC LIMIT 1`,
+    ).get(beeId, generation, generation) as Row | undefined;
+    return row ? mapTranscriptSegment(row) : null;
+  }
+
+  getBeeHandoff(handoffId: string): BeeHandoffRow | null {
+    const row = this.stmt("SELECT * FROM bee_handoffs WHERE id = ?").get(handoffId) as Row | undefined;
+    return row ? mapBeeHandoff(row) : null;
+  }
+
+  getBeeHandoffByKey(idempotencyKey: string): BeeHandoffRow | null {
+    const row = this.stmt("SELECT * FROM bee_handoffs WHERE idempotency_key = ?").get(idempotencyKey) as Row | undefined;
+    return row ? mapBeeHandoff(row) : null;
+  }
+
+  listBeeHandoffs(): BeeHandoffRow[] {
+    return (this.stmt("SELECT * FROM bee_handoffs ORDER BY id").all() as Row[]).map(mapBeeHandoff);
+  }
+
+  latestHandoffOf(beeId: string): BeeHandoffRow | null {
+    const row = this.stmt("SELECT * FROM bee_handoffs WHERE bee_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1").get(
+      beeId,
+    ) as Row | undefined;
+    return row ? mapBeeHandoff(row) : null;
+  }
+
+  activeHandoffOf(beeId: string): BeeHandoffRow | null {
+    const row = this.stmt(
+      "SELECT h.* FROM bees b JOIN bee_handoffs h ON h.id = b.active_handoff_id WHERE b.id = ?",
+    ).get(beeId) as Row | undefined;
+    return row ? mapBeeHandoff(row) : null;
+  }
+
+  /** Handoff reconciliation reads only admitted work, not the full bee roster. */
+  listActiveBeeHandoffs(): BeeHandoffRow[] {
+    return (this.stmt(
+      `SELECT h.* FROM bees b JOIN bee_handoffs h ON h.id = b.active_handoff_id
+       WHERE b.active_handoff_id IS NOT NULL ORDER BY b.active_handoff_id`,
+    ).all() as Row[]).map(mapBeeHandoff);
+  }
+
+  /**
+   * The undelivered handoff seed for a bee, if any. The seed is Honeybee-
+   * owned context, not user mail: the delivery loop hands it to the target
+   * runtime BEFORE any queued user message, whatever the enqueue order —
+   * FIFO among user mail is untouched.
+   */
+  pendingHandoffSeedMessageId(beeId: string): number | null {
+    const row = this.stmt(
+      `SELECT h.seed_message_id AS id FROM bee_handoffs h
+       JOIN mailbox m ON m.id = h.seed_message_id
+       WHERE h.bee_id = ? AND m.delivered_at IS NULL
+       ORDER BY h.created_at DESC, h.rowid DESC LIMIT 1`,
+    ).get(beeId) as Row | undefined;
+    return row ? Number(row.id) : null;
+  }
+
+  private mustBeeHandoff(handoffId: string): BeeHandoffRow {
+    const handoff = this.getBeeHandoff(handoffId);
+    if (!handoff) throw new HandoffNotFoundError(handoffId);
+    return handoff;
+  }
+
+  /**
+   * Admit a handoff (one core tx): dedupe by caller key (same hash → the
+   * original receipt; different hash → IdempotencyConflictError); refuse a
+   * second in-flight handoff or an in-flight move; CAS the source generation;
+   * record both sides verbatim; enqueue the generation-fenced stop; fence the
+   * bee. Preparation refusals leave the source untouched. The daemon has
+   * already validated harness/args/account (it owns those tables).
+   */
+  admitBeeHandoff(input: {
+    beeId: string;
+    idempotencyKey: string;
+    requestHash: string;
+    expected: { generation: number; agent?: string };
+    target: { agent: string; args: string[] | null; account: string | null; env: Record<string, string> };
+    instruction: string | null;
+    stopAt: BeeHandoffStopAt;
+    /** Session log file for the target segment; default = `<bee log>.s<n>.jsonl` beside the bee's current log. */
+    targetSessionLogPath?: string | null;
+  }): BeeHandoffRow {
+    if (typeof input.idempotencyKey !== "string" || input.idempotencyKey.length === 0) {
+      throw new CoreError("admitBeeHandoff: idempotencyKey is required");
+    }
+    if (!(BEE_HANDOFF_STOP_AT as readonly string[]).includes(input.stopAt)) {
+      throw new CoreError(`admitBeeHandoff: stopAt must be one of ${BEE_HANDOFF_STOP_AT.join(", ")}`);
+    }
+    const targetArgs = normalizeBeeArgs(input.target.args, "admitBeeHandoff");
+    return this.tx(() => {
+      const existing = this.getBeeHandoffByKey(input.idempotencyKey);
+      if (existing) {
+        if (existing.requestHash !== input.requestHash) throw new IdempotencyConflictError();
+        return existing;
+      }
+      const bee = this.mustGetBee(input.beeId);
+      if (bee.lifecycle !== "active") throw new IllegalTransitionError(`bee ${input.beeId} is ${bee.lifecycle}; unarchive it before a handoff`);
+      if (bee.activeHandoffId) throw new HandoffInProgressError(bee.activeHandoffId);
+      if (bee.activeMoveId) throw new MoveInProgressError(bee.activeMoveId);
+      const rt = this.currentRuntime(input.beeId);
+      const sourceGeneration = rt?.generation ?? 0;
+      if (sourceGeneration !== input.expected.generation) {
+        throw new StaleGenerationError(
+          `expected generation ${input.expected.generation}; bee ${input.beeId} is at generation ${sourceGeneration}`,
+        );
+      }
+      if (input.expected.agent !== undefined && input.expected.agent !== bee.agent) {
+        throw new StaleGenerationError(`expected agent ${input.expected.agent}; bee ${input.beeId} runs ${bee.agent}`);
+      }
+      if (input.target.account !== null) this.mustGetAccount(input.target.account);
+      const segment = this.currentTranscriptSegment(input.beeId);
+      if (!segment) throw new CoreError(`admitBeeHandoff: bee ${input.beeId} has no transcript segment`);
+      let id = this.mintId();
+      for (let attempt = 0; this.getBeeHandoff(id) && attempt < 8; attempt += 1) id = this.mintId();
+      if (this.getBeeHandoff(id)) throw new CoreError("admitBeeHandoff: could not mint a free handoff id (broken rng?)");
+      const stopKey = beeHandoffStopKey(id, sourceGeneration);
+      const reviveKey = beeHandoffReviveKey(id);
+      const sourceWasLive = rt != null && LIVE_STATES.includes(rt.state);
+      const at = this.now();
+      const targetLog = input.targetSessionLogPath === undefined
+        ? segmentSessionLogPath(bee.sessionLogPath, segment.ordinal + 1)
+        : input.targetSessionLogPath;
+      this.db
+        .prepare(
+          `INSERT INTO bee_handoffs(id, bee_id, idempotency_key, request_hash, phase, source_generation, target_generation,
+             from_agent, from_args, from_account, from_provider_session_id, from_segment_id,
+             to_agent, to_args, to_account, to_segment_id, to_env, to_session_log_path,
+             instruction, stop_at, source_was_live, stop_command_key, revive_command_key, seed_message_id,
+             context_json, failure_json, created_at, updated_at)
+           VALUES(?, ?, ?, ?, 'stopping', ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?)`,
+        )
+        .run(
+          id,
+          input.beeId,
+          input.idempotencyKey,
+          input.requestHash,
+          sourceGeneration,
+          bee.agent,
+          bee.args === null ? null : JSON.stringify(bee.args),
+          bee.account,
+          bee.providerSessionId,
+          segment.id,
+          input.target.agent,
+          targetArgs === null ? null : JSON.stringify(targetArgs),
+          input.target.account,
+          JSON.stringify(input.target.env),
+          targetLog,
+          input.instruction,
+          input.stopAt,
+          sourceWasLive ? 1 : 0,
+          stopKey,
+          reviveKey,
+          at,
+          at,
+        );
+      this.stmt("UPDATE bees SET active_handoff_id = ? WHERE id = ?").run(id, input.beeId);
+      this.mootCommandsQueuedBeforeMove(input.beeId, at, stopKey, reviveKey, "stale_before_handoff");
+      // Already-stopped sources still admit: the stop settles as a no-op and
+      // the reconcile loop advances on the stopped fact.
+      this.applyEnqueue(
+        "stop",
+        input.beeId,
+        { cause: "stopped_by_system", reason: "bee.handoff", ...(input.stopAt === "idle" ? { waitForIdle: true } : {}) },
+        sourceGeneration,
+        stopKey,
+      );
+      const handoff = this.mustBeeHandoff(id);
+      this.audit("bee.handoff_admitted", input.beeId, { handoff });
+      return handoff;
+    });
+  }
+
+  setBeeHandoffPhase(handoffId: string, phase: BeeHandoffPhase): BeeHandoffRow {
+    return this.tx(() => this.applySetBeeHandoffPhase(handoffId, phase));
+  }
+
+  /**
+   * The switch (one tx): persist the context artifact, close the source
+   * segment at the source generation, open the target segment, flip the bee
+   * to the target harness/args/account/env with NO provider thread (a fresh
+   * thread — never another provider's id), reset its spawn budget, insert the
+   * seed mailbox row, enqueue the fenced revive, phase `starting`. Requires
+   * phase `summarizing` and the source generation stopped.
+   */
+  switchBeeHandoff(handoffId: string, context: HandoffContext): BeeHandoffRow {
+    return this.tx(() => {
+      const previous = this.mustBeeHandoff(handoffId);
+      if (previous.phase === "starting" || previous.phase === "complete") return previous;
+      const bee = this.mustGetBee(previous.beeId);
+      if (bee.activeHandoffId !== handoffId) {
+        throw new IllegalTransitionError(`switchBeeHandoff: handoff ${handoffId} is not the bee's active handoff`);
+      }
+      if (previous.phase !== "summarizing") {
+        throw new IllegalTransitionError(`switchBeeHandoff: handoff ${handoffId} is ${previous.phase}, not summarizing`);
+      }
+      const rt = this.currentRuntime(previous.beeId);
+      if (!rt || rt.generation !== previous.sourceGeneration || rt.state !== "stopped") {
+        throw new IllegalTransitionError(`switchBeeHandoff: source generation ${previous.sourceGeneration} is not stopped`);
+      }
+      const at = this.now();
+      const sourceSegment = this.mustTranscriptSegment(previous.from.segmentId);
+      if (sourceSegment.toGeneration === null) {
+        if (bee.providerSessionId && sourceSegment.providerSessionId !== bee.providerSessionId) {
+          this.applySegmentProviderSession(sourceSegment.id, bee.providerSessionId);
+        }
+        this.applyCloseSegment(sourceSegment.id, previous.sourceGeneration, at);
+      }
+      const targetSegment = this.insertTranscriptSegment({
+        beeId: previous.beeId,
+        ordinal: sourceSegment.ordinal + 1,
+        harness: previous.to.agent,
+        providerSessionId: null,
+        fromGeneration: previous.sourceGeneration + 1,
+        path: previous.targetSessionLogPath,
+        handoffId,
+        createdAt: at,
+      });
+      const targetArgs = previous.to.args;
+      this.db
+        .prepare(
+          `UPDATE bees SET agent = ?, args = ?, account = ?, env = ?, provider_session_id = NULL, fork_seed = NULL,
+             session_log_path = ?, spawn_failures = 0 WHERE id = ?`,
+        )
+        .run(
+          previous.to.agent,
+          targetArgs === null ? null : JSON.stringify(targetArgs),
+          previous.to.account,
+          JSON.stringify(previous.targetEnv),
+          previous.targetSessionLogPath,
+          previous.beeId,
+        );
+      const switched = this.mustGetBee(previous.beeId);
+      this.audit("bee.handoff_switched", previous.beeId, {
+        beeId: previous.beeId,
+        handoffId,
+        agent: switched.agent,
+        previousAgent: bee.agent,
+        args: switched.args,
+        previousArgs: bee.args,
+        account: switched.account,
+        previousAccount: bee.account,
+        env: switched.env,
+        previousEnv: bee.env,
+        previousProviderSessionId: bee.providerSessionId,
+        previousForkSeed: bee.forkSeed,
+        sessionLogPath: switched.sessionLogPath,
+        previousSessionLogPath: bee.sessionLogPath,
+        previousSpawnFailures: bee.spawnFailures,
+        segmentId: targetSegment.id,
+      });
+      // spawn_failed described the OLD harness; the target starts with a fresh budget.
+      const flagged = this.activeFlags(previous.beeId).some((f) => f.flag === "spawn_failed");
+      if (flagged) this.clearFlag(previous.beeId, "spawn_failed", `handoff ${handoffId}: target harness starts fresh`);
+      const seedBody = renderHandoffSeed(context, { beeName: bee.name, fromAgent: bee.agent, toAgent: previous.to.agent });
+      const seed = this.send(previous.beeId, seedBody, { sender: HANDOFF_SEED_SENDER, origin: "handoff.seed" });
+      this.stmt(
+        "UPDATE bee_handoffs SET context_json = ?, to_segment_id = ?, seed_message_id = ?, target_generation = ?, updated_at = ? WHERE id = ?",
+      ).run(JSON.stringify(context), targetSegment.id, seed.message.id, previous.sourceGeneration + 1, at, handoffId);
+      this.audit("bee.handoff_context", previous.beeId, {
+        handoffId,
+        beeId: previous.beeId,
+        context,
+        seedMessageId: seed.message.id,
+        targetSegmentId: targetSegment.id,
+        targetGeneration: previous.sourceGeneration + 1,
+      });
+      this.applyEnqueue("revive", previous.beeId, { reason: "bee.handoff" }, previous.sourceGeneration, previous.reviveCommandKey);
+      return this.applySetBeeHandoffPhase(handoffId, "starting");
+    });
+  }
+
+  completeBeeHandoff(handoffId: string): BeeHandoffRow {
+    return this.tx(() => {
+      const previous = this.mustBeeHandoff(handoffId);
+      if (previous.phase === "complete") return previous;
+      const bee = this.mustGetBee(previous.beeId);
+      if (bee.activeHandoffId !== handoffId) {
+        throw new IllegalTransitionError(`completeBeeHandoff: handoff ${handoffId} is not the bee's active handoff`);
+      }
+      const done = this.applySetBeeHandoffPhase(handoffId, "complete");
+      this.stmt("UPDATE bees SET active_handoff_id = NULL WHERE id = ? AND active_handoff_id = ?").run(previous.beeId, handoffId);
+      return this.mustBeeHandoff(done.id);
+    });
+  }
+
+  /**
+   * Typed failure. Before the switch the bee is untouched apart from being
+   * stopped: the fence lifts, fenced mail re-arms its wake, and a source that
+   * was live at admission is revived on its OLD harness (durable recovery,
+   * no operator step). After the switch the bee stays on the target harness
+   * with the seed queued; an operator `revive` (or new mail) retries.
+   */
+  failBeeHandoff(handoffId: string, failure: BeeHandoffFailure): BeeHandoffRow {
+    return this.tx(() => {
+      const before = this.mustBeeHandoff(handoffId);
+      const handoff = this.applyFailBeeHandoff(handoffId, failure);
+      if (handoff.phase === "failed" && before.phase !== "failed") this.recoverAfterHandoffFailure(handoff, before.phase);
+      return handoff;
+    });
+  }
+
+  supersedeBeeHandoff(beeId: string, detail: string): BeeHandoffRow | null {
+    return this.tx(() => {
+      const bee = this.getBee(beeId);
+      if (!bee?.activeHandoffId) return null;
+      const handoff = this.applySupersedeBeeHandoff(bee.activeHandoffId, { stage: "validate", code: "superseded", detail });
+      this.rearmWakeIfFencedMail(beeId);
+      return handoff;
+    });
+  }
+
+  private recoverAfterHandoffFailure(handoff: BeeHandoffRow, phaseBefore: BeeHandoffPhase): void {
+    if (handoffFencesSource(phaseBefore)) {
+      if (this.undeliveredMessages(handoff.beeId).length > 0) {
+        this.applyWakeIfNeeded(handoff.beeId);
+        return;
+      }
+      if (handoff.sourceWasLive && !this.hasPendingReviveOrWakeCommand(handoff.beeId, handoff.sourceGeneration)) {
+        const rt = this.currentRuntime(handoff.beeId);
+        if (rt && rt.state === "stopped") {
+          this.applyEnqueue("revive", handoff.beeId, { reason: "handoff_recovery", handoffId: handoff.id }, rt.generation, null);
+        }
+      }
+      return;
+    }
+    this.rearmWakeIfFencedMail(handoff.beeId);
+  }
+
+  private applySetBeeHandoffPhase(handoffId: string, phase: BeeHandoffPhase): BeeHandoffRow {
+    const previous = this.mustBeeHandoff(handoffId);
+    if (previous.phase === phase) return previous;
+    if (!beeHandoffTransitionLegal(previous.phase, phase)) {
+      throw new IllegalTransitionError(`bee handoff ${handoffId}: ${previous.phase} → ${phase} is not a legal transition`);
+    }
+    if (phase !== "failed" && phase !== "complete") {
+      const bee = this.mustGetBee(previous.beeId);
+      if (bee.activeHandoffId !== handoffId) {
+        throw new IllegalTransitionError(`bee handoff ${handoffId} is not the bee's active handoff`);
+      }
+    }
+    if (phase === "summarizing") {
+      const rt = this.currentRuntime(previous.beeId);
+      if (!rt || rt.generation !== previous.sourceGeneration || rt.state !== "stopped") {
+        throw new IllegalTransitionError(
+          `bee handoff ${handoffId}: summarizing requires source generation ${previous.sourceGeneration} stopped`,
+        );
+      }
+    }
+    const at = this.now();
+    this.stmt("UPDATE bee_handoffs SET phase = ?, updated_at = ? WHERE id = ?").run(phase, at, handoffId);
+    const handoff = this.mustBeeHandoff(handoffId);
+    this.audit("bee.handoff_phase", previous.beeId, {
+      handoffId,
+      beeId: previous.beeId,
+      phase,
+      previous: previous.phase,
+      handoff,
+    });
+    return handoff;
+  }
+
+  private applyFailBeeHandoff(handoffId: string, failure: BeeHandoffFailure): BeeHandoffRow {
+    const previous = this.mustBeeHandoff(handoffId);
+    if (previous.phase === "failed") return previous;
+    if (previous.phase === "complete") {
+      throw new IllegalTransitionError(`bee handoff ${handoffId} is already complete`);
+    }
+    const at = this.now();
+    this.stmt("UPDATE bee_handoffs SET failure_json = ?, updated_at = ? WHERE id = ?").run(JSON.stringify(failure), at, handoffId);
+    this.applySetBeeHandoffPhase(handoffId, "failed");
+    this.stmt("UPDATE bees SET active_handoff_id = NULL WHERE id = ? AND active_handoff_id = ?").run(previous.beeId, handoffId);
+    const handoff = this.mustBeeHandoff(handoffId);
+    this.audit("bee.handoff_failed", previous.beeId, { handoffId, beeId: previous.beeId, failure, handoff });
+    return handoff;
+  }
+
+  private applySupersedeBeeHandoff(handoffId: string, failure: BeeHandoffFailure): BeeHandoffRow {
+    const previous = this.mustBeeHandoff(handoffId);
+    const handoff = this.applyFailBeeHandoff(handoffId, failure);
+    for (const key of [previous.stopCommandKey, previous.reviveCommandKey]) {
+      const cmd = this.getCommandByIdempotencyKey(key);
+      if (cmd && (cmd.status === "queued" || cmd.status === "running")) {
+        const at = this.now();
+        this.db.prepare("UPDATE commands SET status = 'done', finished_at = ? WHERE id = ?").run(at, cmd.id);
+        this.audit("command.moot", cmd.beeId, {
+          commandId: cmd.id,
+          verb: cmd.verb,
+          targetGeneration: cmd.targetGeneration,
+          currentGeneration: this.currentRuntime(cmd.beeId)?.generation ?? 0,
+          finishedAt: at,
+          reason: "handoff_superseded",
+        });
+      }
+    }
+    return handoff;
   }
 
   putCellOp(input: {
@@ -5603,6 +6308,8 @@ export class CoreStore {
       cells: this.listCells(),
       beeMoves: this.listBeeMoves(),
       cellOps: this.listCellOps(),
+      beeHandoffs: this.listBeeHandoffs(),
+      transcriptSegments: this.listTranscriptSegments(),
     };
   }
 }

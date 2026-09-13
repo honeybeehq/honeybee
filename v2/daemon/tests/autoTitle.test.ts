@@ -40,6 +40,7 @@ function bee(overrides: Partial<BeeRow> = {}): BeeRow {
     placementVersion: 0,
     activeMoveId: null,
     cellId: null,
+    activeHandoffId: null,
     ...overrides,
   } as BeeRow;
 }

@@ -46,16 +46,22 @@
 import {
   CoreError,
   RUNTIME_TRANSITIONS,
+  buildExtractiveHandoffContext,
+  handoffFencesSource,
   placementContextText,
   prefixPlacementDelivery,
+  type BeeHandoffRow,
   type BeeMoveRow,
   type BeeRow,
   type CommandRow,
   type CoreStore,
   type DaemonStepInputs,
   type DaemonWorkRow,
+  type HandoffContext,
+  type HandoffContextTurn,
   type I1PendingBee,
   type RuntimeState,
+  type TranscriptSegmentRow,
 } from "../../core/src/index.ts";
 import { deliveryText, isPeerSender } from "./envelope.ts";
 import {
@@ -209,6 +215,19 @@ export interface DaemonCoreOptions {
   blockedRuntimeStartBeeIds?: () => ReadonlySet<string>;
   /** Throws at the start boundary to use the normal bounded command retry path. */
   assertRuntimeStartReady?: (command: CommandRow) => void;
+  /**
+   * v23 handoff: a bounded read of the SOURCE transcript (rendered with the
+   * source harness) for the extractive context builder. Runs after the source
+   * is quiesced, never on the RPC path. Absent (the harness sim): the context
+   * is built from durable store facts alone.
+   */
+  readHandoffTranscript?: (bee: BeeRow, segments: TranscriptSegmentRow[]) => { turns: HandoffContextTurn[]; truncated: boolean };
+  /**
+   * v23 handoff: optional refinement of the extractive context (an LLM-backed
+   * summarizer). Async; the handoff stays `summarizing` until it settles, and
+   * a rejection fails the handoff at stage `context` (source recoverable).
+   */
+  summarizeHandoff?: (input: { handoff: BeeHandoffRow; bee: BeeRow; base: HandoffContext }) => Promise<HandoffContext>;
 }
 
 const LIVE: readonly RuntimeState[] = ["booting", "running", "idle"];
@@ -243,6 +262,10 @@ export class DaemonCore {
   private readonly validatePlacement: ((move: BeeMoveRow, bee: BeeRow) => void) | null;
   private readonly blockedRuntimeStartBeeIds: () => ReadonlySet<string>;
   private readonly assertRuntimeStartReady: (command: CommandRow) => void;
+  private readonly readHandoffTranscript: ((bee: BeeRow, segments: TranscriptSegmentRow[]) => { turns: HandoffContextTurn[]; truncated: boolean }) | null;
+  private readonly summarizeHandoff: ((input: { handoff: BeeHandoffRow; bee: BeeRow; base: HandoffContext }) => Promise<HandoffContext>) | null;
+  /** Handoffs whose async summarizer is in flight (process-local; a restart simply re-runs it). */
+  private readonly summarizing = new Set<string>();
   /** In-memory dedup so a breach is reported once per daemon lifetime; the recorder dedups durably. */
   private readonly reportedI1 = new Set<number>();
   /** Committed ticks since the last dedup sweep (or clear). */
@@ -266,6 +289,8 @@ export class DaemonCore {
     this.validatePlacement = opts.validatePlacement ?? null;
     this.blockedRuntimeStartBeeIds = opts.blockedRuntimeStartBeeIds ?? (() => new Set());
     this.assertRuntimeStartReady = opts.assertRuntimeStartReady ?? (() => undefined);
+    this.readHandoffTranscript = opts.readHandoffTranscript ?? null;
+    this.summarizeHandoff = opts.summarizeHandoff ?? null;
   }
 
   private get ext(): ExtendedDriver {
@@ -332,6 +357,7 @@ export class DaemonCore {
     });
     this.performance.measureSync("core.step.commands", () => this.executeCommands());
     this.performance.measureSync("core.step.moves", () => this.reconcileMoves());
+    this.performance.measureSync("core.step.handoffs", () => this.reconcileHandoffs());
     ({ snapshot, seq } = this.performance.measureSync("core.step.snapshot", () =>
       this.refreshSnapshot(snapshot, seq),
     ));
@@ -641,7 +667,8 @@ export class DaemonCore {
    * env). Idempotent: an existing queued/running revive/wake is enough.
    */
   private reviveAfterStopIfRequested(beeId: string, generation: number): void {
-    if (this.store.getBee(beeId)?.activeMoveId) return;
+    const bee = this.store.getBee(beeId);
+    if (bee?.activeMoveId || bee?.activeHandoffId) return;
     if (!this.store.hasStopThenReviveRequest(beeId, generation)) return;
     if (this.store.hasPendingReviveOrWakeCommand(beeId, generation)) return;
     // Only the generation the stop targeted; a later generation means the
@@ -663,10 +690,24 @@ export class DaemonCore {
     for (const ev of this.ext.observeSessions()) {
       const rt = this.store.getBee(ev.beeId) ? this.store.currentRuntime(ev.beeId) : null;
       if (!rt || rt.generation !== ev.generation) {
+        // v23: a stale generation that belongs to a CLOSED transcript segment
+        // (the source side of a handoff) still gets its thread id recorded on
+        // that segment — transcript reconstruction evidence only; the store
+        // never lets it touch the bee's live thread pointer.
+        const segment = rt ? this.store.transcriptSegmentForGeneration(ev.beeId, ev.generation) : null;
+        if (segment && segment.toGeneration !== null) {
+          this.store.recordProviderSessionId(ev.beeId, ev.sessionId, ev.generation);
+          this.log(`session.fenced bee=${ev.beeId} gen=${ev.generation} segment=${segment.id} id=${ev.sessionId}`);
+          continue;
+        }
         this.log(`session.skip bee=${ev.beeId} gen=${ev.generation} reason=${rt ? "stale_generation" : "no_bee"}`);
         continue;
       }
-      const { applied } = this.store.recordProviderSessionId(ev.beeId, ev.sessionId);
+      // v23: the generation rides along so a late init from a handed-off
+      // source generation lands on its closed transcript segment, never on
+      // the bee's live thread pointer (the target harness must not resume
+      // another provider's conversation).
+      const { applied } = this.store.recordProviderSessionId(ev.beeId, ev.sessionId, ev.generation);
       if (applied) this.log(`session.recorded bee=${ev.beeId} gen=${ev.generation} id=${ev.sessionId}`);
     }
   }
@@ -722,6 +763,7 @@ export class DaemonCore {
       // stopping it now would only bounce through revive-on-message.
       if (pending.length > 0) continue;
       if (this.store.activeMoveOf(rt.beeId)) continue;
+      if (this.store.activeHandoffOf(rt.beeId)) continue;
       if (this.store.hasPendingStopCommand(rt.beeId, rt.generation)) continue;
       this.store.enqueueCommand("stop", rt.beeId, { cause: "stopped_by_system", reason: "idle_window" });
       this.log(`policy.idle_stop bee=${rt.beeId} gen=${rt.generation} idleFor=${now - rt.updatedAt}`);
@@ -991,6 +1033,132 @@ export class DaemonCore {
   }
 
   // -------------------------------------------------------------------------
+  // v23 — session handoff reconciliation
+  // -------------------------------------------------------------------------
+
+  /**
+   * Drive each admitted handoff through its durable phases. Every step reads
+   * committed state and is idempotent, so a daemon death anywhere resumes on
+   * the next boot: stopping → (source stopped AND process gone) → summarizing
+   * → (context built) → switch tx → starting → (seed delivered) → complete.
+   */
+  private reconcileHandoffs(): void {
+    for (const handoff of this.store.listActiveBeeHandoffs()) {
+      const bee = this.store.getBee(handoff.beeId);
+      if (!bee) continue;
+      const rt = this.store.currentRuntime(bee.id);
+      try {
+        if (handoff.phase === "stopping") {
+          if (rt?.state === "stopped" && rt.generation === handoff.sourceGeneration && this.sourceGone(bee.id, handoff.sourceGeneration)) {
+            this.store.setBeeHandoffPhase(handoff.id, "summarizing");
+          }
+        }
+        const current = this.store.getBeeHandoff(handoff.id);
+        if (current?.phase === "summarizing") {
+          if (!(rt?.state === "stopped" && rt.generation === handoff.sourceGeneration && this.sourceGone(bee.id, handoff.sourceGeneration))) {
+            continue;
+          }
+          this.buildHandoffContext(current, bee);
+        }
+        const after = this.store.getBeeHandoff(handoff.id);
+        if (after?.phase === "starting") {
+          const dest = this.store.currentRuntime(bee.id);
+          if (this.store.activeFlags(bee.id).some((f) => f.flag === "spawn_failed")) {
+            this.store.failBeeHandoff(handoff.id, { stage: "start", code: "spawn_failed", detail: "target runtime failed to boot" });
+            continue;
+          }
+          if (dest && dest.generation !== handoff.sourceGeneration && dest.state === "stopped") {
+            const retry = this.store.enqueueBootRetry(bee.id);
+            this.log(`handoff.dest_retry bee=${bee.id} handoff=${handoff.id} outcome=${retry.outcome}`);
+            continue;
+          }
+          const seed = after.seedMessageId == null ? null : this.store.getMessage(after.seedMessageId);
+          if (seed && seed.deliveredAt != null) this.store.completeBeeHandoff(handoff.id);
+        }
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        const phase = this.store.getBeeHandoff(handoff.id)?.phase ?? handoff.phase;
+        const stage = phase === "summarizing" ? "context" : phase === "starting" ? "start" : "stop";
+        this.log(`handoff.fail bee=${bee.id} handoff=${handoff.id} stage=${stage} ${detail}`);
+        try {
+          this.store.failBeeHandoff(handoff.id, { stage, code: "handoff_failed", detail });
+        } catch (failErr) {
+          this.log(`handoff.fail_error bee=${bee.id} ${failErr instanceof Error ? failErr.message : String(failErr)}`);
+        }
+      }
+    }
+  }
+
+  /** The extractive artifact from durable facts + the (optional) transcript read, then the switch tx. */
+  private buildHandoffContext(handoff: BeeHandoffRow, bee: BeeRow): void {
+    if (this.summarizing.has(handoff.id)) return;
+    const segments = this.store.listTranscriptSegments(bee.id).filter((s) => s.ordinal <= (this.store.currentTranscriptSegment(bee.id)?.ordinal ?? 0));
+    let transcript: { turns: HandoffContextTurn[]; truncated: boolean } = { turns: [], truncated: false };
+    if (this.readHandoffTranscript) {
+      try {
+        transcript = this.readHandoffTranscript(bee, segments);
+      } catch (err) {
+        throw new Error(`transcript read failed: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    const base = buildExtractiveHandoffContext({
+      bee: { id: bee.id, name: bee.name, title: bee.title, cwd: bee.cwd, substrate: bee.substrate, agent: bee.agent, args: bee.args, cellId: bee.cellId },
+      target: { agent: handoff.to.agent, args: handoff.to.args },
+      instruction: handoff.instruction,
+      turns: transcript.turns,
+      transcriptTruncated: transcript.truncated,
+      segments,
+      messages: this.store.listMessages(bee.id),
+      seals: this.store.listSeals({ beeId: bee.id }),
+      tasks: this.store.listTasks({ beeId: bee.id }),
+      questions: this.store.listQuestions({ beeId: bee.id }),
+      now: this.now(),
+    });
+    if (!this.summarizeHandoff) {
+      this.switchHandoff(handoff.id, base);
+      return;
+    }
+    this.summarizing.add(handoff.id);
+    this.summarizeHandoff({ handoff, bee, base })
+      .then((context) => {
+        this.summarizing.delete(handoff.id);
+        try {
+          this.switchHandoff(handoff.id, context);
+        } catch (err) {
+          const detail = err instanceof Error ? err.message : String(err);
+          this.log(`handoff.switch_error bee=${bee.id} handoff=${handoff.id} ${detail}`);
+          this.failHandoffQuietly(handoff.id, { stage: "switch", code: "handoff_failed", detail });
+        }
+      })
+      .catch((err: unknown) => {
+        this.summarizing.delete(handoff.id);
+        const detail = err instanceof Error ? err.message : String(err);
+        this.log(`handoff.summarize_error bee=${bee.id} handoff=${handoff.id} ${detail}`);
+        this.failHandoffQuietly(handoff.id, { stage: "context", code: "summarizer_failed", detail });
+      });
+  }
+
+  private switchHandoff(handoffId: string, context: HandoffContext): void {
+    // Re-read: an operator supersede (or a restart) may have moved on meanwhile.
+    const current = this.store.getBeeHandoff(handoffId);
+    if (!current || current.phase !== "summarizing") return;
+    const switched = this.store.switchBeeHandoff(handoffId, context);
+    this.log(
+      `handoff.switched bee=${switched.beeId} handoff=${handoffId} ${switched.from.agent}→${switched.to.agent} seed=${switched.seedMessageId ?? "-"} segment=${switched.to.segmentId ?? "-"}`,
+    );
+  }
+
+  private failHandoffQuietly(handoffId: string, failure: { stage: "context" | "switch"; code: string; detail: string }): void {
+    try {
+      const current = this.store.getBeeHandoff(handoffId);
+      if (!current || current.phase === "complete" || current.phase === "failed") return;
+      this.store.failBeeHandoff(handoffId, failure);
+    } catch (err) {
+      this.log(`handoff.fail_error handoff=${handoffId} ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  // -------------------------------------------------------------------------
   // delivery loop (v8: urgency-aware — spec 01 Q2 amendment 2026-08-18)
   // -------------------------------------------------------------------------
 
@@ -1035,6 +1203,14 @@ export class DaemonCore {
       if (eligible.length === 0) continue;
       const move = this.store.activeMoveOf(rt.beeId);
       if (move && move.phase !== "starting") continue;
+      // v23: a quiescing source takes no new turn; the target runtime receives
+      // the context seed before any queued user mail (FIFO among user mail
+      // is untouched — the seed is Honeybee-owned context, not a message
+      // that jumped the queue).
+      const handoff = this.store.activeHandoffOf(rt.beeId);
+      if (handoff && handoffFencesSource(handoff.phase)) continue;
+      const seedId = this.store.pendingHandoffSeedMessageId(rt.beeId);
+      const seed = seedId == null ? null : pending.find((m) => m.id === seedId) ?? null;
       if (rt.state === "running") {
         // Mid-turn `now`: interrupt first (the v6 verb), then deliver. One
         // interrupt per message; an eligible `now` behind an undelivered
@@ -1062,7 +1238,7 @@ export class DaemonCore {
           if (res.interrupted) continue;
         }
       }
-      const selected = eligible[0];
+      const selected = seed ?? eligible[0];
       if (!selected) continue;
       const msg = this.store.getMessage(selected.id);
       if (
@@ -1098,6 +1274,13 @@ export class DaemonCore {
           this.store.markMoveInstructionsApplied(instruction.id);
           if (this.store.activeMoveOf(rt.beeId)?.phase === "starting") {
             this.store.completeBeeMove(instruction.id);
+          }
+        }
+        if (seed && msg.id === seed.id) {
+          const active = this.store.activeHandoffOf(rt.beeId);
+          if (active?.phase === "starting" && active.seedMessageId === msg.id) {
+            this.store.completeBeeHandoff(active.id);
+            this.log(`handoff.complete bee=${rt.beeId} handoff=${active.id} gen=${rt.generation}`);
           }
         }
         this.log(`deliver bee=${rt.beeId} msg=${msg.id} gen=${rt.generation} urgency=${msg.urgency}`);

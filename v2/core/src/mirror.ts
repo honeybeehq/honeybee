@@ -12,7 +12,7 @@
  * Changing anything here is a protocol change (bump PROTOCOL in the daemon).
  * The shape snapshot test (tests/mirror.test.ts) fails on any drift.
  */
-import type { AccountLimitsRow, AccountRow, AuditRow, BeeMoveView, BeeRow, BeeView, CellRow, CredentialHealth, QuestionRow, RuntimeRow, SealRow, TaskRow, TaskSupplyRow, TemplateRow, TrackRow } from "./types.ts";
+import type { AccountLimitsRow, AccountRow, AuditRow, BeeHandoffView, BeeMoveView, BeeRow, BeeView, CellRow, CredentialHealth, QuestionRow, RuntimeRow, SealRow, TaskRow, TaskSupplyRow, TemplateRow, TrackRow, TranscriptSegmentRow } from "./types.ts";
 import { LOGIN_FLOW_KEYS, type LoginFlowRow } from "./loginFlow.ts";
 
 /** One bee as apiaryd stores it: B8 view verbatim + record + current runtime. */
@@ -25,7 +25,12 @@ export interface MirrorBeeRow {
   move: BeeMoveView | null;
   /** v21 — active or retained Cell; null when none. Derived from cells. */
   cell: CellRow | null;
+  /** v23 — latest handoff receipt (in-flight, complete, or failed). Null only when the bee has never handed off. */
+  handoff: BeeHandoffView | null;
 }
+
+/** v23: transcript segments mirror as their store rows, verbatim (`hive_transcript_segments`). */
+export type MirrorTranscriptSegmentRow = TranscriptSegmentRow;
 
 /** Templates mirror as their store rows, verbatim. */
 export type MirrorTemplateRow = TemplateRow;
@@ -89,6 +94,9 @@ export interface MirrorSnapshot {
   /** v21 (additive): Cell registry + move aggregate. */
   cells: CellRow[];
   beeMoves: BeeMoveView[];
+  /** v23 (additive): handoff receipts + transcript segments. */
+  beeHandoffs: BeeHandoffView[];
+  transcriptSegments: MirrorTranscriptSegmentRow[];
 }
 
 /** A watch delta is a contiguous run of audit rows (see daemon protocol.ts WatchFrame). */
@@ -147,6 +155,23 @@ export type MirrorDelta = AuditRow;
  *   login_flow.removed → { flowId, account, reason }                     (login_flows table: delete)
  * account.removed is preceded by one login_flow.removed per flow of that
  * account in the same transaction, so a materializer never cascades itself.
+ * v23 (session handoff) adds, all additive:
+ *   bee.handoff_admitted → { handoff: BeeHandoffRow }                 (bee_handoffs: insert; bee row: activeHandoffId)
+ *   bee.handoff_phase    → { handoffId, beeId, phase, previous, handoff } (bee_handoffs: upsert; terminal phases clear activeHandoffId)
+ *   bee.handoff_context  → { handoffId, beeId, context, seedMessageId, targetSegmentId, targetGeneration }
+ *                                                                        (bee_handoffs: context/seed/target fields; the following
+ *                                                                         bee.handoff_phase carries the full row)
+ *   bee.handoff_switched → { beeId, handoffId, agent, previousAgent, args, previousArgs, account, previousAccount,
+ *                            env, previousEnv, previousProviderSessionId, previousForkSeed, sessionLogPath,
+ *                            previousSessionLogPath, previousSpawnFailures, segmentId }
+ *                                                                        (bee row: agent/args/account/env/sessionLogPath changed;
+ *                                                                         providerSessionId + forkSeed → null; spawnFailures → 0)
+ *   bee.handoff_failed   → { handoffId, beeId, failure, handoff }        (bee_handoffs: upsert; bee row: activeHandoffId → null)
+ *   transcript_segment.put → { segment: TranscriptSegmentRow }           (transcript_segments: upsert)
+ *   bee.provider_session_fenced → { beeId, generation, providerSessionId, segmentId, currentProviderSessionId }
+ *                                                                        (informational: a stale generation's session id was
+ *                                                                         recorded on its closed segment, never on the bee)
+ * bee.deleted cascades transcript_segments for that beeId; handoff receipts remain.
  */
 export const MIRROR_TEMPLATE_AUDIT_KINDS = ["template.put", "template.deleted"] as const;
 export const MIRROR_TRACK_AUDIT_KINDS = ["track.put", "track.deleted"] as const;
@@ -165,6 +190,14 @@ export const MIRROR_BEE_MOVE_AUDIT_KINDS = [
   "bee.move_failed",
   "bee.move_instructions",
 ] as const;
+export const MIRROR_BEE_HANDOFF_AUDIT_KINDS = [
+  "bee.handoff_admitted",
+  "bee.handoff_phase",
+  "bee.handoff_context",
+  "bee.handoff_switched",
+  "bee.handoff_failed",
+] as const;
+export const MIRROR_TRANSCRIPT_SEGMENT_AUDIT_KINDS = ["transcript_segment.put", "bee.deleted"] as const;
 export type MirrorAccountAuditKind = (typeof MIRROR_ACCOUNT_AUDIT_KINDS)[number];
 export type MirrorAccountLimitsAuditKind = (typeof MIRROR_ACCOUNT_LIMITS_AUDIT_KINDS)[number];
 export type MirrorTemplateAuditKind = (typeof MIRROR_TEMPLATE_AUDIT_KINDS)[number];
@@ -176,7 +209,7 @@ export type MirrorTaskSupplyAuditKind = (typeof MIRROR_TASK_SUPPLY_AUDIT_KINDS)[
 export type MirrorLoginFlowAuditKind = (typeof MIRROR_LOGIN_FLOW_AUDIT_KINDS)[number];
 
 /** Key lists — the shape snapshot; a materializer's column map must cover exactly these. */
-export const MIRROR_BEE_ROW_KEYS = ["view", "bee", "runtime", "move", "cell"] as const;
+export const MIRROR_BEE_ROW_KEYS = ["view", "bee", "runtime", "move", "cell", "handoff"] as const;
 export const MIRROR_BEE_VIEW_KEYS = [
   "beeId",
   "exists",
@@ -227,6 +260,8 @@ export const MIRROR_BEE_RECORD_KEYS = [
   "placementVersion",
   "activeMoveId",
   "cellId",
+  // v23: in-flight handoff pointer.
+  "activeHandoffId",
 ] as const;
 export const MIRROR_RUNTIME_KEYS = [
   "beeId",
@@ -362,4 +397,49 @@ export const MIRROR_BEE_MOVE_KEYS = [
   "to",
   "retainedCellId",
   "failure",
+] as const;
+export const MIRROR_BEE_HANDOFF_KEYS = [
+  "id",
+  "beeId",
+  "phase",
+  "sourceGeneration",
+  "targetGeneration",
+  "from",
+  "to",
+  "instruction",
+  "stopAt",
+  "seedMessageId",
+  "context",
+  "failure",
+  "createdAt",
+  "updatedAt",
+] as const;
+export const MIRROR_BEE_HANDOFF_FROM_KEYS = ["agent", "args", "account", "providerSessionId", "segmentId"] as const;
+export const MIRROR_BEE_HANDOFF_TO_KEYS = ["agent", "args", "account", "segmentId"] as const;
+export const MIRROR_HANDOFF_CONTEXT_KEYS = [
+  "version",
+  "summarizer",
+  "generatedAt",
+  "task",
+  "instruction",
+  "constraints",
+  "decisions",
+  "completedWork",
+  "outstandingWork",
+  "recentTurns",
+  "transcript",
+  "mailbox",
+] as const;
+export const MIRROR_TRANSCRIPT_SEGMENT_KEYS = [
+  "id",
+  "beeId",
+  "ordinal",
+  "harness",
+  "providerSessionId",
+  "fromGeneration",
+  "toGeneration",
+  "path",
+  "handoffId",
+  "createdAt",
+  "closedAt",
 ] as const;

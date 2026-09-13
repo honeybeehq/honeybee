@@ -122,8 +122,14 @@
  *        Existing rows default to local lineage (`0`).
  *  v22 — Cell→checkout move: `bees.placement_version`, `bees.active_move_id`,
  *        `bees.cell_id`, plus `cells`, `bee_moves`, and `cell_ops` tables.
+ *  v23 — durable session handoff: `bees.active_handoff_id`, the
+ *        `bee_handoffs` receipt table, the `transcript_segments` table (one
+ *        row per harness/provider-thread run of a bee's session log; segment
+ *        0 is backfilled for every existing bee from its agent + session log
+ *        path), and the `mail_history_enqueues.origin` CHECK widened with
+ *        `handoff.seed` (table rebuild, rows carried across).
  */
-export const SCHEMA_VERSION = 22;
+export const SCHEMA_VERSION = 23;
 
 /**
  * Current shape shared between SCHEMA_SQL and the v19 table rebuild so a
@@ -218,7 +224,9 @@ CREATE TABLE IF NOT EXISTS bees (
   -- v22: in-flight bee_moves.id; NULL when idle (complete/failed receipts remain).
   active_move_id   TEXT,
   -- v22: cells.id for the active or retained Cell.
-  cell_id          TEXT
+  cell_id          TEXT,
+  -- v23: in-flight bee_handoffs.id; NULL when idle (terminal receipts remain).
+  active_handoff_id TEXT
 ) STRICT;
 -- Note: 'deleted' never appears as a stored lifecycle — Q1 says delete removes the
 -- record row immediately, so a missing row IS the deleted state.
@@ -662,6 +670,7 @@ export const BEES_ADDITIVE_COLUMNS: ReadonlyArray<readonly [name: string, ddl: s
   ["placement_version", "placement_version INTEGER NOT NULL DEFAULT 0"],
   ["active_move_id", "active_move_id TEXT"],
   ["cell_id", "cell_id TEXT"],
+  ["active_handoff_id", "active_handoff_id TEXT"],
 ];
 
 export const CELLS_TABLE_SQL = `
@@ -745,6 +754,71 @@ export const HANDLE_INDEX_SQL =
 export const BEES_ACTIVE_MOVE_INDEX_SQL =
   "CREATE UNIQUE INDEX IF NOT EXISTS bees_one_active_move ON bees(active_move_id) WHERE active_move_id IS NOT NULL;";
 
+/** v23 — at most one in-flight handoff pointer per bee (after the additive column). */
+export const BEES_ACTIVE_HANDOFF_INDEX_SQL =
+  "CREATE UNIQUE INDEX IF NOT EXISTS bees_one_active_handoff ON bees(active_handoff_id) WHERE active_handoff_id IS NOT NULL;";
+
+/**
+ * v23 — handoff receipts. One row per admitted handoff; `active_handoff_id`
+ * on the bee points at the in-flight one. Sides are recorded verbatim at
+ * admission so a receipt stays readable after the bee changes again.
+ */
+export const BEE_HANDOFFS_TABLE_SQL = `
+CREATE TABLE IF NOT EXISTS bee_handoffs (
+  id                         TEXT PRIMARY KEY,
+  bee_id                     TEXT NOT NULL,
+  idempotency_key            TEXT NOT NULL UNIQUE,
+  request_hash               TEXT NOT NULL,
+  phase                      TEXT NOT NULL CHECK (phase IN ('stopping','summarizing','starting','complete','failed')),
+  source_generation          INTEGER NOT NULL,
+  target_generation          INTEGER,
+  from_agent                 TEXT NOT NULL,
+  from_args                  TEXT,
+  from_account               TEXT,
+  from_provider_session_id   TEXT,
+  from_segment_id            TEXT NOT NULL,
+  to_agent                   TEXT NOT NULL,
+  to_args                    TEXT,
+  to_account                 TEXT,
+  to_segment_id              TEXT,
+  to_env                     TEXT NOT NULL DEFAULT '{}',
+  to_session_log_path        TEXT,
+  instruction                TEXT,
+  stop_at                    TEXT NOT NULL CHECK (stop_at IN ('idle','now')),
+  source_was_live            INTEGER NOT NULL DEFAULT 0 CHECK (source_was_live IN (0,1)),
+  stop_command_key           TEXT NOT NULL,
+  revive_command_key         TEXT NOT NULL,
+  seed_message_id            INTEGER,
+  context_json               TEXT,
+  failure_json               TEXT,
+  created_at                 INTEGER NOT NULL,
+  updated_at                 INTEGER NOT NULL
+) STRICT;
+CREATE INDEX IF NOT EXISTS bee_handoffs_bee ON bee_handoffs(bee_id, created_at);
+`;
+
+/**
+ * v23 — transcript segments: the (harness, provider thread, generation
+ * range, path) runs Apiary parses to rebuild one conversation across
+ * handoffs. Cascades with the bee (derived transcript data).
+ */
+export const TRANSCRIPT_SEGMENTS_TABLE_SQL = `
+CREATE TABLE IF NOT EXISTS transcript_segments (
+  id                   TEXT PRIMARY KEY,
+  bee_id               TEXT NOT NULL REFERENCES bees(id) ON DELETE CASCADE,
+  ordinal              INTEGER NOT NULL CHECK (ordinal >= 0),
+  harness              TEXT NOT NULL,
+  provider_session_id  TEXT,
+  from_generation      INTEGER NOT NULL CHECK (from_generation >= 1),
+  to_generation        INTEGER,
+  path                 TEXT,
+  handoff_id           TEXT,
+  created_at           INTEGER NOT NULL,
+  closed_at            INTEGER,
+  UNIQUE (bee_id, ordinal)
+) STRICT;
+`;
+
 /**
  * Covering source for the daemon's body-free pending-metadata projections
  * (readI1PendingSnapshot / readDaemonWork): every column those queries touch
@@ -813,7 +887,7 @@ CREATE TABLE IF NOT EXISTS mail_history_enqueues (
   seq              INTEGER PRIMARY KEY,
   message_id       INTEGER NOT NULL UNIQUE,
   bee_id            TEXT NOT NULL,
-  origin            TEXT NOT NULL CHECK (origin IN ('mail.send','spawn.prompt','legacy.unknown')),
+  origin            TEXT NOT NULL CHECK (origin IN ('mail.send','spawn.prompt','legacy.unknown','handoff.seed')),
   sender            BLOB NOT NULL,
   sender_truncated  INTEGER NOT NULL CHECK (sender_truncated IN (0, 1)),
   body              BLOB NOT NULL,

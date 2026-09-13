@@ -99,6 +99,8 @@ export interface TmuxDriverConfig {
    * same way they see HSR bees.
    */
   sessionLogDir?: string;
+  /** v23: the bee's current session log file (handoff segments); absent = `<sessionLogDir>/<beeId>.jsonl`. */
+  sessionLogPathFor?: (beeId: string) => string | null;
   resolve(beeId: string): TmuxSpawnSpec;
   stopKillGraceMs?: number;
   adoptToleranceMs?: number;
@@ -579,7 +581,8 @@ export class TmuxDriver implements RuntimeDriver {
   }
 
   sessionLogPath(beeId: string): string | null {
-    return this.cfg.sessionLogDir ? join(this.cfg.sessionLogDir, `${beeId}.jsonl`) : null;
+    if (!this.cfg.sessionLogDir) return null;
+    return this.cfg.sessionLogPathFor?.(beeId) ?? join(this.cfg.sessionLogDir, `${beeId}.jsonl`);
   }
 
   observeDeliveryNotes(): DeliveryNote[] {
@@ -810,10 +813,10 @@ export class TmuxDriver implements RuntimeDriver {
   }
 
   private mirrorSessionLog(beeId: string, line: string): void {
-    const dir = this.cfg.sessionLogDir;
-    if (!dir) return;
+    const path = this.sessionLogPath(beeId);
+    if (!path) return;
     try {
-      appendFileSync(join(dir, `${beeId}.jsonl`), `${line}\n`);
+      appendFileSync(path, `${line}\n`);
     } catch {
       // Diagnostics only — observation still folds the line.
     }

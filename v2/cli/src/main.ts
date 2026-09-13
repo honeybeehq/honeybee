@@ -46,6 +46,8 @@ import {
   type SwapAccountResult,
   type ChildrenResult,
   type ForkResult,
+  type BeeHandoffResult,
+  type BeeHandoffGetResult,
   type HealthResult,
   type NodeHarnessesResult,
   type InterruptResult,
@@ -229,6 +231,9 @@ const VALUE_FLAGS = new Set([
   "--prompt",
   "--body",
   "--by",
+  // v23 (handoff)
+  "--model",
+  "--instruction",
   // v7 (accounts)
   "--account",
   "--home",
@@ -274,6 +279,8 @@ const BOOL_FLAGS = new Set([
   "--dry-run",
   "--force",
   "--wait",
+  // v23 (handoff): stop the source immediately instead of at its idle boundary.
+  "--now",
   "--follow",
   "--no-follow",
   "--raw",
@@ -1109,6 +1116,106 @@ async function cmdFork(ctx: CliContext, parsed: Parsed): Promise<number> {
     );
     return 0;
   });
+}
+
+/**
+ * `hive handoff <bee> --to <agent> [--model m | --args -- …] [--account a]
+ * [-p instruction] [--now] [--idempotency-key k] [--wait]` — the SAME bee on a
+ * fresh provider thread, optionally on another harness (Codex → Claude).
+ * `hive handoff get <id>` reads a receipt; `hive handoff status <bee>` the
+ * bee's latest one. Fork stays the separate verb that creates ANOTHER bee.
+ */
+async function cmdHandoff(ctx: CliContext, parsed: Parsed): Promise<number> {
+  const usage = "usage: hive handoff <bee> --to <agent> [--model m] [--args -- <args…>] [--account a|auto|rr|none] [-p instruction] [--now] [--idempotency-key k] [--wait [--timeout ms]] | handoff get <handoffId> | handoff status <bee>";
+  const sub = parsed.positional[1];
+  if (sub === "get") {
+    const handoffId = parsed.positional[2];
+    if (!handoffId) throw new Error(usage);
+    return withClient(ctx, async (c) => {
+      const r = await c.request<BeeHandoffGetResult>("bee.handoff.get", { handoffId });
+      emit(ctx, renderHandoffLines(r), r, false);
+      return 0;
+    });
+  }
+  if (sub === "status") {
+    const needle = parsed.positional[2];
+    if (!needle) throw new Error(usage);
+    return withClient(ctx, async (c) => {
+      const list = await c.request<ListResult>("list");
+      const beeId = resolveBeeIn(list.views, needle);
+      const view = await c.request<ViewResult>("view", { beeId });
+      if (!view.handoff) {
+        emit(ctx, [confirm("info", "no handoff", `${beeId} has never been handed off`)], { beeId, handoff: null }, false);
+        return 0;
+      }
+      emit(ctx, renderHandoffLines(view.handoff), view.handoff, false);
+      return 0;
+    });
+  }
+  const needle = sub;
+  const to = parsed.flags.get("--to") as string | undefined;
+  if (!needle || !to) throw new Error(usage);
+  const model = parsed.flags.get("--model") as string | undefined;
+  const explicitArgs = parsed.rest ?? (parsed.args.length > 0 ? parsed.args : undefined);
+  if (model !== undefined && explicitArgs !== undefined) throw new Error(`handoff: pass either --model or -- <args…>, not both\n${usage}`);
+  const accountFlag = parsed.flags.get("--account") as string | undefined;
+  const instruction = (parsed.flags.get("-p") ?? parsed.flags.get("--prompt") ?? parsed.flags.get("--instruction")) as string | undefined;
+  const stopAt = parsed.flags.get("--now") === true ? "now" : "idle";
+  const wait = parsed.flags.get("--wait") === true;
+  const timeoutMs = numFlag(parsed, "--timeout", 600_000);
+  return withClient(ctx, async (c) => {
+    const list = await c.request<ListResult>("list");
+    const beeId = resolveBeeIn(list.views, needle);
+    const current = list.views.find((v) => v.bee?.id === beeId);
+    if (!current?.bee) throw new Error(`handoff: bee ${beeId} not found`);
+    const generation = current.runtime?.generation ?? 0;
+    const target: Record<string, unknown> = { agent: to };
+    if (explicitArgs !== undefined) target.args = explicitArgs;
+    else if (model !== undefined) target.args = withModelArg(to, to === current.bee.agent ? current.bee.args : null, model);
+    if (accountFlag !== undefined) target.account = accountFlag === "none" ? null : accountFlag;
+    const r = await c.request<BeeHandoffResult>("bee.handoff", {
+      beeId,
+      idempotencyKey: (parsed.flags.get("--idempotency-key") as string | undefined) ?? randomUUID(),
+      expected: { generation, agent: current.bee.agent },
+      target,
+      ...(instruction !== undefined ? { instruction } : {}),
+      stopAt,
+    });
+    if (!wait) {
+      emit(ctx, [confirm("ok", r.deduped ? `handoff ${r.phase} (replayed)` : `handoff ${r.phase}`, `${beeId} ${r.from.agent} → ${r.to.agent} (${r.id}; stops at ${r.stopAt})`, r.deduped)], r, false);
+      return 0;
+    }
+    const deadline = Date.now() + timeoutMs;
+    let latest = r;
+    while (latest.phase !== "complete" && latest.phase !== "failed") {
+      if (Date.now() > deadline) {
+        ctx.io.err(`${red(bold("timeout:"))} handoff ${latest.id} still ${latest.phase} after ${timeoutMs}ms`);
+        emit(ctx, [], latest, false);
+        return 1;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      latest = await c.request<BeeHandoffGetResult>("bee.handoff.get", { handoffId: r.id });
+    }
+    emit(ctx, renderHandoffLines(latest), latest, false);
+    return latest.phase === "complete" ? 0 : 1;
+  });
+}
+
+function renderHandoffLines(h: BeeHandoffResult): string[] {
+  const lines = [
+    confirm(
+      h.phase === "failed" ? "err" : h.phase === "complete" ? "ok" : "info",
+      `handoff ${h.phase}`,
+      `${h.beeId} ${h.from.agent} → ${h.to.agent} (${h.id}; source gen ${h.sourceGeneration}${h.targetGeneration != null ? ` → target gen ${h.targetGeneration}` : ""})`,
+      h.deduped,
+    ),
+  ];
+  if (h.failure) lines.push(`  ${red("failure:")} ${h.failure.stage}/${h.failure.code} — ${h.failure.detail}`);
+  if (h.seedMessageId != null) lines.push(`  ${dim("seed message")} ${h.seedMessageId}`);
+  if (h.context) {
+    lines.push(`  ${dim("context")} ${h.context.summarizer}: ${h.context.recentTurns.length} recent turns, ${h.context.completedWork.length} completed, ${h.context.outstandingWork.length} outstanding, ${h.context.mailbox.queuedMessageIds.length} queued messages follow`);
+  }
+  return lines;
 }
 
 async function cmdChildren(ctx: CliContext, parsed: Parsed): Promise<number> {
@@ -3650,6 +3757,8 @@ export async function runV2Cli(argv: string[], io: CliIo = defaultIo): Promise<n
         return await cmdInterrupt(ctx, parsed);
       case "fork":
         return await cmdFork(ctx, parsed);
+      case "handoff":
+        return await cmdHandoff(ctx, parsed);
       case "children":
         return await cmdChildren(ctx, parsed);
       case "ask":

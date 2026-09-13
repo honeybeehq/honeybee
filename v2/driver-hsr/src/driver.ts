@@ -89,6 +89,13 @@ export interface HsrDriverConfig {
   resolve(beeId: string): SpawnSpec;
   /** Directory for session logs; one `<beeId>.jsonl` per bee, verbatim native stream. */
   sessionLogDir: string;
+  /**
+   * v23: the bee's CURRENT session log file when the store has moved it (a
+   * handoff opens a new transcript segment with its own file so the target
+   * harness never appends to a log the source harness wrote). Null/absent =
+   * the default `<sessionLogDir>/<beeId>.jsonl`.
+   */
+  sessionLogPathFor?: (beeId: string) => string | null;
   /** Bounded wait between TERM and KILL escalation (spec point 4). Default 5000ms. */
   stopKillGraceMs?: number;
   /** Start-time tolerance for cross-restart re-adoption identity checks. Default 5000ms. */
@@ -1117,9 +1124,9 @@ export class HsrDriver implements RuntimeDriver {
     return out;
   }
 
-  /** Verbatim native-stream session log path for a bee (Q1). */
+  /** Verbatim native-stream session log path for a bee (Q1; v23: the current transcript segment's file). */
   sessionLogPath(beeId: string): string {
-    return join(this.cfg.sessionLogDir, `${beeId}.jsonl`);
+    return this.cfg.sessionLogPathFor?.(beeId) ?? join(this.cfg.sessionLogDir, `${beeId}.jsonl`);
   }
 
   /** Output-only recovery journal for exactly one runtime generation. */
