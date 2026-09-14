@@ -244,6 +244,7 @@ test("v6.rpc.3: bee.fork (claude) — forks the source session into a NEW one (-
     assert.equal(fork.forkedFrom, src.beeId);
     assert.equal(fork.forkSeed, srcSession);
     assert.equal(fork.bee.parentId, src.beeId);
+    assert.equal(fork.bee.createdById, src.beeId);
     assert.equal(fork.bee.forkedFrom, src.beeId);
     assert.equal(fork.bee.forkSeed, srcSession);
     assert.equal(fork.bee.providerSessionId, null, "no session of its own yet");

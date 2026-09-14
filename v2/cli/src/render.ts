@@ -217,6 +217,7 @@ export function renderBeeView(v: ViewResult, stale: boolean): string[] {
   if (bee.account) details.push(["account", bee.account]);
   if (bee.args && bee.args.length > 0) details.push(["args", JSON.stringify(bee.args)]);
   if (bee.tags.length > 0) details.push(["tags", bee.tags.join(",")]);
+  if (bee.createdById) details.push(["created by", bee.createdById]);
   if (bee.parentId) details.push(["parent", bee.parentId]);
   if (bee.lastOutputAt != null) details.push(["last out", `${formatRelativeTime(bee.lastOutputAt)} ago`]);
   if (bee.providerSessionId) details.push(["session", bee.providerSessionId]);

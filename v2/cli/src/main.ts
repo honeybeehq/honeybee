@@ -77,6 +77,7 @@ import {
   type SendRpcResult,
   type SnapshotResult,
   type SetArgsResult,
+  type SetParentResult,
   type ReconfigureResult,
   type SpawnResult,
   type TagResult,
@@ -282,6 +283,7 @@ const BOOL_FLAGS = new Set([
   "--print",
   "--open",
   "--clear",
+  "--external",
   "--apply",
   "--rebase",
   "--from-frozen",
@@ -1852,6 +1854,23 @@ async function cmdBee(ctx: CliContext, parsed: Parsed): Promise<number> {
   const needle = parsed.positional[2];
   const usage = "usage: hive bee set-args <bee> -- <args…> | bee set-args <bee> --clear | bee args <bee> | bee swap-account <bee> <account> | bee move <bee> --to <cwd> --cell <id> --placement-version n | bee move-get <moveId>";
   switch (sub) {
+    case "detach":
+    case "set-parent": {
+      const parent = parsed.positional[3];
+      if (!needle || (sub === "set-parent" && !parent)) throw new Error("usage: hive bee detach <bee> | hive bee set-parent <bee> <parent> [--external] [--idempotency-key KEY]");
+      return withClient(ctx, async (c) => {
+        const list = await c.request<ListResult>("list");
+        const beeId = resolveBeeIn(list.views, needle);
+        const parentExternal = sub === "set-parent" && parsed.flags.get("--external") === true;
+        const parentId = sub === "detach" ? null : parentExternal ? parent! : resolveBeeIn(list.views, parent!);
+        const result = await c.request<SetParentResult>("bee.setParent", {
+          beeId, parentId, parentExternal,
+          idempotencyKey: (parsed.flags.get("--idempotency-key") as string | undefined) ?? randomUUID(),
+        });
+        emit(ctx, [confirm(result.applied ? "ok" : "info", result.applied ? "set parent" : "unchanged", `${beeId}: ${result.bee.parentId ?? "(none)"}`, result.deduped)], result, false);
+        return 0;
+      });
+    }
     case "move": {
       if (!needle) throw new Error(usage);
       const to = parsed.flags.get("--cwd") ?? parsed.flags.get("--to");

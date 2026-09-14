@@ -1,3 +1,4 @@
+import { recordedCreator } from "./provenance.ts";
 /**
  * The v2 core store — the single serialized write API (B9).
  *
@@ -192,6 +193,8 @@ export interface CreateBeeInput {
   args?: string[] | null;
   /** v6 — the spawning bee (soft reference); absent = operator/apiary-spawned root. */
   parentId?: string | null;
+  /** Internal creation/import provenance override; an explicit null stays null. */
+  createdById?: string | null;
   /** v21 — `parentId` is owned outside this node; absent = local lineage. */
   parentExternal?: boolean;
   /** v6 — fork provenance: the source bee id. */
@@ -495,6 +498,7 @@ export interface EnqueuedCommand extends CommandRow {
 
 /** A recorded RPC mutation result (the rpc_idempotency table). */
 export interface RpcIdempotencyRecord {
+  requestHash: string | null;
   key: string;
   verb: string;
   /** The command the mutation enqueued, when it enqueued one. */
@@ -577,6 +581,7 @@ function mapBee(r: Row): BeeRow {
     importedFrom: (r.imported_from as string | null) ?? null,
     spawnFailures: Number(r.spawn_failures ?? 0),
     args: parseArgsColumn(r.args),
+    createdById: (r.created_by_id as string | null) ?? null,
     parentId: (r.parent_id as string | null) ?? null,
     parentExternal: Number(r.parent_external ?? 0) === 1,
     forkedFrom: (r.forked_from as string | null) ?? null,
@@ -1445,6 +1450,20 @@ export class CoreStore {
       for (const [name, ddl] of BEES_ADDITIVE_COLUMNS) {
         if (!beeCols.has(name)) this.db.exec(`ALTER TABLE bees ADD COLUMN ${ddl}`);
       }
+      if (!beeCols.has("created_by_id")) {
+        for (const bee of this.listBees()) {
+          const creation = this.stmt("SELECT payload FROM audit WHERE kind = 'bee.created' AND bee_id = ? ORDER BY seq LIMIT 1").get(bee.id) as Row | undefined;
+          const original = creation ? (JSON.parse(String(creation.payload)) as { bee?: Parameters<typeof recordedCreator>[0] }).bee : undefined;
+          const createdById = original && Object.hasOwn(original, "createdById") ? recordedCreator(original)
+            : recordedCreator(original ?? {}) ?? recordedCreator({ parentId: bee.parentId, tags: bee.tags });
+          this.stmt("UPDATE bees SET created_by_id = ? WHERE id = ?").run(createdById, bee.id);
+          // A complete additive projection also makes old audit replay agree with migration.
+          this.audit("bee.parent_set", bee.id, { beeId: bee.id, parentId: bee.parentId,
+            parentExternal: bee.parentExternal, createdById, tags: bee.tags });
+        }
+      }
+      const rpcCols = this.stmt("SELECT name FROM pragma_table_info('rpc_idempotency')").all() as Row[];
+      if (!rpcCols.some((c) => c.name === "request_hash")) this.db.exec("ALTER TABLE rpc_idempotency ADD COLUMN request_hash TEXT");
       // v7 → v8: additive urgency column on mailbox (spec 01 Q2 amendment).
       const mailCols = new Set(
         (this.stmt("SELECT name FROM pragma_table_info('mailbox')").all() as Row[]).map((c) => String(c.name)),
@@ -1534,8 +1553,12 @@ export class CoreStore {
     }
     // These indexes need their columns, so they are created here
     // — after the migration — not in SCHEMA_SQL.
+    this.db.exec(`CREATE TRIGGER IF NOT EXISTS bees_creator_immutable
+      BEFORE UPDATE OF created_by_id ON bees WHEN NEW.created_by_id IS NOT OLD.created_by_id
+      BEGIN SELECT RAISE(ABORT, 'createdById is immutable'); END;`);
     this.db.exec(FLAGS_EXPIRY_INDEX_SQL);
     this.db.exec(IDEMPOTENCY_INDEX_SQL);
+    this.db.exec("CREATE INDEX IF NOT EXISTS rpc_idempotency_evictable ON rpc_idempotency(created_at) WHERE verb != 'bee.setParent'");
     this.db.exec(HANDLE_INDEX_SQL);
     this.db.exec(BEES_ACTIVE_MOVE_INDEX_SQL);
     this.db.exec(MAILBOX_PENDING_METADATA_INDEX_SQL);
@@ -1784,8 +1807,8 @@ export class CoreStore {
         .prepare(
           `INSERT INTO bees(id, name, agent, substrate, cwd, title, tags, session_log_path, lifecycle, created_at,
                             provider_session_id, env, imported_from, args, parent_id, parent_external, forked_from,
-                            fork_seed, account, handle)
-           VALUES(?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                            fork_seed, account, handle, created_by_id)
+           VALUES(?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           id,
@@ -1807,11 +1830,43 @@ export class CoreStore {
           input.forkSeed ?? null,
           account,
           handle,
+          recordedCreator(input),
         );
       const bee = this.mustGetBee(id);
       this.audit("bee.created", id, { bee });
       const runtime = this.insertRuntime(id, 1, at, input.proc);
       return { bee, runtime };
+    });
+  }
+
+  /** Active lineage only: no runtime, mail, workspace or descendant writes. */
+  setBeeParent(beeId: string, parentId: string | null, parentExternal: boolean): { bee: BeeRow; applied: boolean } {
+    requireBeeId(beeId, "setBeeParent: beeId");
+    if (typeof parentExternal !== "boolean") throw new CoreError("parentExternal must be a boolean");
+    if (parentId !== null) requireBeeId(parentId, "setBeeParent: parentId");
+    parentExternal = parentId !== null && parentExternal;
+    return this.tx(() => {
+      const bee = this.mustGetBee(beeId);
+      if (bee.lifecycle === "deleted") throw new CoreError("cannot reparent a deleted bee");
+      if (parentId === beeId) throw new CoreError("a bee cannot parent itself");
+      if (parentId !== null) {
+        const parent = parentExternal ? null : this.getBee(parentId);
+        if (!parentExternal && !parent) throw new CoreError(`parent bee not found: ${parentId}`);
+        if (parent?.lifecycle === "deleted") throw new CoreError("parent bee is deleted");
+        const seen = new Set([beeId]);
+        let cursor = parent;
+        while (cursor) {
+          if (seen.has(cursor.id)) throw new CoreError("parent would create a cycle");
+          seen.add(cursor.id);
+          cursor = cursor.parentExternal || !cursor.parentId ? null : this.getBee(cursor.parentId);
+        }
+      }
+      const tags = bee.tags.filter((tag) => !tag.startsWith("apiary:parent="));
+      if (bee.parentId === parentId && bee.parentExternal === parentExternal && tags.length === bee.tags.length) return { bee, applied: false };
+      this.stmt("UPDATE bees SET parent_id = ?, parent_external = ?, tags = ? WHERE id = ?")
+        .run(parentId, parentExternal ? 1 : 0, JSON.stringify(tags), beeId);
+      this.audit("bee.parent_set", beeId, { beeId, parentId, parentExternal, createdById: bee.createdById, tags });
+      return { bee: this.mustGetBee(beeId), applied: true };
     });
   }
 
@@ -1971,7 +2026,7 @@ export class CoreStore {
         "SELECT id FROM bees WHERE parent_id = ? AND parent_external = 0 ORDER BY id",
       ).all(beeId) as Row[]).map((child) => String(child.id));
       for (const childId of orphanedChildIds) {
-        this.stmt("UPDATE bees SET parent_id = NULL WHERE id = ?").run(childId);
+        this.setBeeParent(childId, null, false);
         this.audit("bee.orphaned", childId, { beeId: childId, parentId: beeId, reason: "parent_deleted" });
       }
       // ON DELETE CASCADE removes runtimes, flags, mailbox, questions, seals,
@@ -3523,6 +3578,7 @@ export class CoreStore {
       .get(key) as Row | undefined;
     if (!row) return null;
     return {
+      requestHash: (row.request_hash as string | null) ?? null,
       key: row.key as string,
       verb: row.verb as string,
       commandId: row.command_id == null ? null : Number(row.command_id),
@@ -3533,23 +3589,24 @@ export class CoreStore {
 
   /**
    * Record a keyed RPC mutation's result. Retention: the newest
-   * maxRpcIdempotencyRows records are kept; the oldest beyond that are
+   * maxRpcIdempotencyRows ordinary records are kept; parent mutation receipts
+   * are permanent. The oldest ordinary records beyond that are
    * evicted here (bounded queue — same philosophy as B5). NOT audited and NOT
    * in StateDump: dedup records are infrastructure, like meta.
    */
-  recordRpcResult(key: string, verb: string, commandId: number | null, result: unknown): void {
+  recordRpcResult(key: string, verb: string, commandId: number | null, result: unknown, requestHash: string | null = null): void {
     this.tx(() => {
       this.db
-        .prepare("INSERT INTO rpc_idempotency(key, verb, command_id, result, created_at) VALUES(?, ?, ?, ?, ?)")
-        .run(key, verb, commandId, JSON.stringify(result ?? null), this.now());
+        .prepare("INSERT INTO rpc_idempotency(key, verb, command_id, result, created_at, request_hash) VALUES(?, ?, ?, ?, ?, ?)")
+        .run(key, verb, commandId, JSON.stringify(result ?? null), this.now(), requestHash);
       const count = Number(
-        (this.stmt("SELECT COUNT(*) AS n FROM rpc_idempotency").get() as Row).n,
+        (this.stmt("SELECT COUNT(*) AS n FROM rpc_idempotency WHERE verb != 'bee.setParent'").get() as Row).n,
       );
       const excess = count - this.maxRpcIdempotencyRows;
       if (excess > 0) {
         this.db
           .prepare(
-            "DELETE FROM rpc_idempotency WHERE key IN (SELECT key FROM rpc_idempotency ORDER BY created_at, rowid LIMIT ?)",
+            "DELETE FROM rpc_idempotency WHERE key IN (SELECT key FROM rpc_idempotency WHERE verb != 'bee.setParent' ORDER BY created_at, rowid LIMIT ?)",
           )
           .run(excess);
       }

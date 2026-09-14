@@ -110,16 +110,18 @@ export interface BeeRow {
    */
   args: string[] | null;
   /**
-   * v6 — the bee that spawned this one (the RPC caller identified itself as
+   * v23 — the durable active parent of this bee (the RPC caller identified itself as
    * a bee: `spawn {parentId}` / `bee.fork`). A soft reference: the parent may
    * be archived (children unaffected) or deleted. Local children are then
    * orphaned: this becomes null and is audited as `bee.orphaned`. External
    * parent claims stay intact and never cascade.
    */
   parentId: string | null;
+  /** v23 — immutable creator provenance. Null is preserved for human-created roots. */
+  createdById: string | null;
   /**
    * v21 — true when `parentId` is a globally unique parent owned outside
-   * this node. External lineage is durable provenance, not a local foreign
+   * this node. External parentage is a soft ownership claim, not a local foreign
    * key: local deletion never clears it. False for roots, local children,
    * forks, imports, and rows migrated from older stores.
    */

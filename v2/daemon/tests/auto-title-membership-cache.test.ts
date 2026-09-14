@@ -570,6 +570,7 @@ test("general dependencies retain exact callback order during synchronous reentr
     importedFrom: null,
     spawnFailures: 0,
     args: null,
+    createdById: null,
     parentId: null,
     parentExternal: false,
     forkedFrom: null,

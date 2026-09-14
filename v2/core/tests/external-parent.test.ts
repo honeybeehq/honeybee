@@ -193,7 +193,7 @@ test("a v20 store migrates existing parent edges to local lineage at the current
         value: string;
       };
       assert.equal(Number(version.value), SCHEMA_VERSION);
-      assert.equal(SCHEMA_VERSION, 22);
+      assert.equal(SCHEMA_VERSION, 23);
       const column = migrated.prepare(
         "SELECT name FROM pragma_table_info('bees') WHERE name = 'parent_external'",
       ).get() as { name: string } | undefined;

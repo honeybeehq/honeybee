@@ -123,7 +123,8 @@
  *  v22 — Cell→checkout move: `bees.placement_version`, `bees.active_move_id`,
  *        `bees.cell_id`, plus `cells`, `bee_moves`, and `cell_ops` tables.
  */
-export const SCHEMA_VERSION = 22;
+// v23: immutable creator history and durable request-bound parent mutations.
+export const SCHEMA_VERSION = 23;
 
 /**
  * Current shape shared between SCHEMA_SQL and the v19 table rebuild so a
@@ -194,6 +195,7 @@ CREATE TABLE IF NOT EXISTS bees (
   -- v6: the bee that spawned this one (soft reference — no FK, so a parent
   -- may be deleted; delete ORPHANS local children by nulling this, never
   -- cascades).
+  created_by_id    TEXT,
   parent_id        TEXT,
   -- v21: true when parent_id names a parent owned outside this node. This is
   -- durable provenance, never a local foreign key or a delete-cascade edge.
@@ -347,10 +349,12 @@ CREATE INDEX IF NOT EXISTS commands_stop_recovery
 -- replayed mutation (same caller-supplied idempotencyKey) answers with the
 -- ORIGINAL outcome instead of executing twice. Not part of StateDump/audit
 -- replay (infrastructure, like meta). Bounded: the store keeps the newest
--- maxRpcIdempotencyRows rows (default 10 000) and evicts the oldest beyond
+-- maxRpcIdempotencyRows ordinary rows (default 10 000); bee.setParent rows
+-- are retained permanently. It evicts the oldest ordinary rows beyond
 -- that — v2 never prunes command rows today, so this table (not command-row
 -- retention) is the dedup memory that outlives any future pruning.
 CREATE TABLE IF NOT EXISTS rpc_idempotency (
+  request_hash TEXT,
   key        TEXT PRIMARY KEY,
   verb       TEXT NOT NULL,
   command_id INTEGER,
@@ -654,6 +658,7 @@ export const BEES_ADDITIVE_COLUMNS: ReadonlyArray<readonly [name: string, ddl: s
   ["spawn_failures", "spawn_failures INTEGER NOT NULL DEFAULT 0"],
   ["args", "args TEXT"],
   ["parent_id", "parent_id TEXT"],
+  ["created_by_id", "created_by_id TEXT"],
   ["parent_external", "parent_external INTEGER NOT NULL DEFAULT 0 CHECK (parent_external IN (0,1))"],
   ["forked_from", "forked_from TEXT"],
   ["fork_seed", "fork_seed TEXT"],

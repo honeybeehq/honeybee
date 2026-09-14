@@ -1,3 +1,4 @@
+import { recordedCreator } from "./provenance.ts";
 /**
  * Audit replay — the audit table is a complete, ordered record of every write.
  * `replayAudit` folds the audit rows into a StateDump that must deep-equal the
@@ -66,6 +67,7 @@ export function replayAudit(rows: AuditRow[]): StateDump {
         const bee = p.bee as BeeRow;
         bees.set(bee.id, {
           ...bee,
+          createdById: recordedCreator(bee),
           parentExternal: bee.parentExternal ?? false,
           placementVersion: bee.placementVersion ?? 0,
           activeMoveId: bee.activeMoveId ?? null,
@@ -111,6 +113,14 @@ export function replayAudit(rows: AuditRow[]): StateDump {
       }
       case "bee.tagged": {
         mustBee(p.beeId as string).tags = [...(p.tags as string[])];
+        break;
+      }
+      case "bee.parent_set": {
+        const bee = mustBee(p.beeId as string);
+        bee.parentId = p.parentId as string | null;
+        bee.parentExternal = p.parentExternal as boolean;
+        bee.createdById = p.createdById as string | null;
+        bee.tags = [...(p.tags as string[])];
         break;
       }
       case "bee.orphaned": {

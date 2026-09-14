@@ -430,11 +430,33 @@ test("import.9: store v3 — recordProviderSessionId is bee-scoped, idempotent, 
     try {
       const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
       assert.equal(Number(version.value), SCHEMA_VERSION);
-      assert.equal(SCHEMA_VERSION, 22);
+      assert.equal(SCHEMA_VERSION, 23);
     } finally {
       check.close();
     }
   } finally {
     h2.cleanup();
   }
+});
+
+test("frozen import preserves creator evidence and deliberate null without consuming legacy placement tags", () => {
+  const fx = makeFrozenFixture(); const h = harness(); const store = h.open();
+  try {
+    fx.writeMarker();
+    for (const [id, extra] of [
+      ["explicit", { spawnedById: "creator" }],
+      ["tagged", { tags: ["apiary:parent=legacy-creator", "apiary:top-level"] }],
+      ["human", { createdById: null, tags: ["apiary:parent=placement"] }],
+    ] as const) fx.writeRecord(`${id}.json`, claudeHsrRecord(fx.root, { id, name: id, ...extra }));
+    const result = importFromFrozen(store, fx.root, { probes: deadProbes });
+    assert.equal(result.applied, true);
+    assert.equal(store.getBee("explicit")?.createdById, "creator");
+    assert.equal(store.getBee("tagged")?.createdById, "legacy-creator");
+    assert.deepEqual(store.getBee("tagged")?.tags, ["apiary:parent=legacy-creator", "apiary:top-level"]);
+    assert.equal(store.getBee("human")?.createdById, null);
+    store.setBeeParent("tagged", null, false);
+    assert.equal(store.getBee("tagged")?.createdById, "legacy-creator");
+    assert.deepEqual(store.getBee("tagged")?.tags, ["apiary:top-level"]);
+    assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
+  } finally { store.close(); h.cleanup(); fx.cleanup(); }
 });

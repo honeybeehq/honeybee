@@ -1,3 +1,4 @@
+import { recordedCreator } from "./provenance.ts";
 /**
  * `hive v2 import --from-frozen` — the WP7 importer (spec 07 B3/B4, §F).
  *
@@ -90,6 +91,7 @@ export interface FrozenRecord {
   substrate: string | null;
   title: string | null;
   tags: string[];
+  createdById: string | null;
   providerSessionId: string | null;
   transcriptPath: string | null;
   homePath: string | null;
@@ -145,6 +147,7 @@ export interface FrozenBeeInput {
   cwd: string;
   title: string | undefined;
   tags: string[];
+  createdById: string | null;
   sessionLogPath: string | undefined;
   providerSessionId: string | undefined;
   env: Record<string, string>;
@@ -267,6 +270,8 @@ export function parseFrozenRecord(path: string, raw: unknown): ParsedFrozenRecor
       substrate: str(r.substrate),
       title: str(r.title),
       tags,
+      createdById: Object.hasOwn(r, "createdById") && r.createdById === null ? null
+        : recordedCreator({ parentId: str(r.createdById) ?? str(r.spawnedById) ?? str(r.parentId), tags }),
       providerSessionId: str(r.providerSessionId),
       transcriptPath: str(r.transcriptPath),
       homePath: str(r.homePath),
@@ -658,6 +663,7 @@ export function mapFrozenRecord(record: FrozenRecord, frozenRoot: string, meta: 
     cwd: record.cwd,
     title: record.title ?? undefined,
     tags: record.tags,
+    createdById: record.createdById,
     sessionLogPath: record.transcriptPath ?? undefined,
     providerSessionId: providerSessionId ?? undefined,
     env,
@@ -931,6 +937,7 @@ export function importFromFrozen(store: CoreStore, frozenRoot: string, opts: Fro
         cwd: b.cwd,
         title: b.title,
         tags: b.tags,
+        createdById: b.createdById,
         sessionLogPath: b.sessionLogPath,
         providerSessionId: b.providerSessionId,
         env: b.env,

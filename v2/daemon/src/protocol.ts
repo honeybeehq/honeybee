@@ -72,6 +72,7 @@ export const DAEMON_VERSION = "2.0.0-wp4";
 export const DAEMON_CAPABILITIES = [
   /** Spawn may retain a parent owned outside this node via `{parentId, parentExternal:true}`. */
   "spawn.external_parent.v1",
+  "bee.setParent.v1",
   /** Typed, tmux-independent account login flows: account.login.* verbs + the login_flows snapshot table. */
   "account.login.flow.v1",
   /** Per-harness executable facts (`node.harnesses`), resolved with the same rule the spawn path uses. */
@@ -253,6 +254,7 @@ export const RPC_VERBS = [
   "import.fromFrozen",
   // schema v5: replace a bee's per-bee spawn args (takes effect on the next runtime)
   "bee.setArgs",
+  "bee.setParent",
   "bee.reconfigure",
   // WP6 §5 cell exit path (spec 05 points 4 + 6): the WP5 driver primitives as verbs
   "cell.capture",
@@ -1320,4 +1322,21 @@ export class RpcError extends Error {
     this.name = "RpcError";
     this.code = code;
   }
+}
+
+/** v23: address the child owning node. Null detaches; a parent restores an edge.
+ * All request fields required. Null normalizes parentExternal to false.
+ * Durable keys are bound to the normalized request and retained without eviction.
+ * Local parents must exist; external references are explicit soft claims.
+ */
+export interface SetParentParams {
+  beeId: string;
+  parentId: string | null;
+  parentExternal: boolean;
+  idempotencyKey: string;
+}
+export interface SetParentResult {
+  bee: BeeRow;
+  applied: boolean;
+  deduped?: true;
 }

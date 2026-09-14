@@ -248,6 +248,7 @@ test("idem.11: RPC retention preserves timestamp/rowid order across clock and ca
     store.recordRpcResult("m-third", "archive", 4, { value: "third-at-100" });
     const nullRecord = store.lookupRpcResult("a-second");
     assert.deepEqual(nullRecord, {
+      requestHash: null,
       key: "a-second",
       verb: "send",
       commandId: null,

@@ -1292,6 +1292,8 @@ export class HiveDaemon {
             params,
           ),
         );
+      case "bee.setParent":
+        return this.rpcSetParent(params);
       case "bee.setArgs":
         return this.withIdempotency(verb, params, () => this.rpcSetArgs(params));
       case "bee.reconfigure":
@@ -1461,6 +1463,29 @@ export class HiveDaemon {
     return v as string[];
   }
 
+  private rpcSetParent(params: Record<string, unknown>) {
+    const beeId = requireBeeId(params.beeId, "bee.setParent: beeId");
+    const parentId = params.parentId === null ? null : requireBeeId(params.parentId, "bee.setParent: parentId");
+    if (typeof params.parentExternal !== "boolean") throw new RpcError("invalid_request", "parentExternal must be a boolean");
+    const parentExternal = parentId !== null && params.parentExternal;
+    const key = this.idempotencyKeyOf(params);
+    if (!key) throw new RpcError("invalid_request", "bee.setParent requires idempotencyKey");
+    const requestHash = JSON.stringify({ beeId, parentId, parentExternal });
+    const store = this.mustStore();
+    return store.transact(() => {
+      const hit = store.lookupRpcResult(key);
+      if (hit) {
+        if (hit.verb !== "bee.setParent" || hit.requestHash !== requestHash) throw new RpcError("idempotency_conflict", "idempotencyKey is bound to a different request");
+        return { ...(hit.result as object), deduped: true };
+      }
+      this.requireBee({ beeId });
+      if (parentId !== null && !parentExternal && !store.getBee(parentId)) throw new RpcError("bee_not_found", `parent bee not found: ${parentId}`);
+      const result = store.setBeeParent(beeId, parentId, parentExternal);
+      store.recordRpcResult(key, "bee.setParent", null, result, requestHash);
+      return result;
+    });
+  }
+
   private rpcSetArgs(params: Record<string, unknown>): SetArgsResult {
     const beeId = this.requireBee(params);
     const args = this.argsParam(params, "bee.setArgs", true);
@@ -1505,6 +1530,7 @@ export class HiveDaemon {
     return store.transact(() => {
       const hit = store.lookupRpcResult(key);
       if (hit) {
+        if (hit.verb === "bee.setParent" && verb !== hit.verb) throw new RpcError("idempotency_conflict", "idempotencyKey is bound to bee.setParent");
         this.log(`rpc.dedup verb=${verb} key=${key}`);
         const replay = { ...(hit.result as T), deduped: true as const };
         // Command-backed results carry the command's CURRENT status on
@@ -3298,6 +3324,7 @@ export class HiveDaemon {
     if (key != null) {
       const hit = store.lookupRpcResult(key);
       if (hit) {
+        if (hit.verb === "bee.setParent" && verb !== hit.verb) throw new RpcError("idempotency_conflict", "idempotencyKey is bound to bee.setParent");
         this.log(`rpc.dedup verb=${verb} key=${key}`);
         return { ...(hit.result as T), deduped: true as const };
       }
