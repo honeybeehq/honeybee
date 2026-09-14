@@ -158,11 +158,18 @@ type ClaudeCredential = {
   oauth: Record<string, unknown>;
 };
 
+/**
+ * The outcome of a daemon-owned Claude OAuth refresh. `rejected` and
+ * `temporary` split the old `refresh_failed`: a rejected refresh token cannot
+ * recover automatically (request login), while a temporary transport error is
+ * uncertain (keep last-known-good, retry, never a login prompt). HIVE-2.
+ */
 type ClaudeRefreshOutcome =
   | { kind: "ok"; credential: ClaudeCredential }
   | { kind: "live_runtime" }
   | { kind: "no_refresh_token" }
-  | { kind: "refresh_failed" };
+  | { kind: "rejected" }
+  | { kind: "temporary"; detail: string };
 
 // ---------------------------------------------------------------------------
 // selection results
@@ -363,16 +370,40 @@ function defaultClaudeUsage(timeoutMs: number): NonNullable<LimitsFetchers["clau
 }
 
 function defaultClaudeRefresh(timeoutMs: number): NonNullable<LimitsFetchers["claudeRefresh"]> {
+  // Contract with refreshClaudeCredential: return a token = success; return
+  // `null` = the refresh token was REJECTED (recovery cannot proceed → login);
+  // THROW = a temporary/uncertain failure (retry, never a login). The refresh
+  // token is never included in a thrown message.
   return async (refreshToken) => {
-    const response = await fetch(CLAUDE_OAUTH_TOKEN_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ grant_type: "refresh_token", refresh_token: refreshToken, client_id: CLAUDE_OAUTH_CLIENT_ID }),
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-    if (!response.ok) return null;
-    const fresh = (await response.json()) as { access_token?: unknown; refresh_token?: unknown; expires_in?: unknown; scope?: unknown };
-    if (typeof fresh.access_token !== "string") return null;
+    let response: Response;
+    try {
+      response = await fetch(CLAUDE_OAUTH_TOKEN_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ grant_type: "refresh_token", refresh_token: refreshToken, client_id: CLAUDE_OAUTH_CLIENT_ID }),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+    } catch (err) {
+      // Network error / timeout / abort: outcome UNCERTAIN, the token may
+      // still be valid — temporary.
+      throw new Error(`claude OAuth refresh transport error: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    if (!response.ok) {
+      // 400/401/403 = the refresh token itself was refused (invalid_grant /
+      // invalid_request / unauthorized) → rejected. 408/429/5xx = provider
+      // backpressure or outage → temporary.
+      if (response.status === 400 || response.status === 401 || response.status === 403) return null;
+      throw new Error(`claude OAuth refresh HTTP ${response.status}`);
+    }
+    let fresh: { access_token?: unknown; refresh_token?: unknown; expires_in?: unknown; scope?: unknown };
+    try {
+      fresh = (await response.json()) as typeof fresh;
+    } catch (err) {
+      throw new Error(`claude OAuth refresh: unparseable token response (${err instanceof Error ? err.message : String(err)})`);
+    }
+    // A 2xx with no access token is an uncertain provider response, not proof
+    // the refresh token is dead — temporary, not rejected.
+    if (typeof fresh.access_token !== "string") throw new Error("claude OAuth refresh: 2xx response missing access_token");
     return {
       accessToken: fresh.access_token,
       refreshToken: typeof fresh.refresh_token === "string" ? fresh.refresh_token : refreshToken,
@@ -1101,9 +1132,13 @@ export class AccountsService {
           const refreshed = await this.refreshClaudeCredential(account);
           if (refreshed.kind === "ok") credential = refreshed.credential;
           else if (refreshed.kind === "live_runtime") {
-            return { readable: false, unreadableReason: "refresh_deferred", error: "OAuth token expired; the running Claude owns refresh for this account" };
+            return { readable: false, unreadableReason: "refresh_deferred", error: "OAuth token expired; a healthy running Claude owns refresh for this account" };
           } else if (refreshed.kind === "no_refresh_token") {
             return { readable: false, unreadableReason: "auth_expired", error: "OAuth token expired and has no refresh token; log in: hive v2 account login " + account.id };
+          } else if (refreshed.kind === "temporary") {
+            // Uncertain: the refresh token may still be valid. Keep last-good
+            // (provider_error is a transient reason) and retry; never a login.
+            return { readable: false, unreadableReason: "provider_error", error: "OAuth refresh temporarily failed (" + refreshed.detail + "); will retry" };
           } else {
             return { readable: false, unreadableReason: "auth_failed", error: "OAuth refresh failed; log in: hive v2 account login " + account.id };
           }
@@ -1191,6 +1226,75 @@ export class AccountsService {
   }
 
   /**
+   * A live runtime owns the rotating refresh chain only while it can still
+   * authenticate. A session that has itself raised `auth_needed` (its access
+   * token died server-side and it cannot refresh) is NOT a refresh owner:
+   * deferring to it strands the whole account. HIVE-2 field incident: two
+   * sessions on one account both failed auth, stayed alive, and the daemon
+   * deferred refresh to them indefinitely. Excluding unhealthy sessions here
+   * lets the daemon take over the refresh itself when no healthy session
+   * remains.
+   */
+  private hasHealthyLiveRuntime(accountId: string): boolean {
+    return this.store.listBees().some((bee) => {
+      if (bee.account !== accountId) return false;
+      const runtime = this.store.currentRuntime(bee.id);
+      if (runtime === null || runtime.state === "stopped") return false;
+      return !this.store.activeFlags(bee.id).some((flag) => flag.flag === "auth_needed");
+    });
+  }
+
+  /**
+   * Coordinated per-account Claude OAuth recovery (HIVE-2). Enqueues the
+   * account into the single-flight background limits lane, which: re-reads the
+   * freshest credential, refreshes it through the daemon's own OAuth refresher
+   * when expired (no longer deferred to a session that has itself failed
+   * auth), probes the result, and transitions status `ok` / `auth_needed` from
+   * the probe's verdict. Idempotent — a caller joins an in-flight recovery for
+   * the same account; competing refreshes cannot race (the per-account
+   * single-flight in refreshClaudeCredential). Requesting login is left to the
+   * probe: only a rejected/absent refresh drives `auth_needed`.
+   */
+  scheduleClaudeRecovery(accountId: string): void {
+    const account = this.store.getAccount(accountId);
+    if (!account || account.harness !== "claude") return;
+    this.log(`account.recover account=${accountId} lane=limits`);
+    this.enqueueLimitsRefresh([accountId]);
+  }
+
+  /**
+   * Boot/restart: re-attempt coordinated recovery for every Claude account
+   * left `auth_needed`, so a daemon restart mid-incident does not leave an
+   * account stranded until the next periodic sweep.
+   */
+  scheduleRecoveryForAuthNeededClaude(): void {
+    const ids = this.store
+      .listAccounts({ harness: "claude" })
+      .filter((account) => account.status === "auth_needed")
+      .map((account) => account.id);
+    if (ids.length === 0) return;
+    this.log(`account.recover.boot count=${ids.length}`);
+    this.enqueueLimitsRefresh(ids);
+  }
+
+  /**
+   * Sync freshness of the account's on-disk Claude credential (home then
+   * vault; the keychain is async and deliberately skipped here). The daemon's
+   * flag policy uses this to preserve a freshly-refreshed credential against a
+   * DELAYED `auth_needed` from an older session: a still-valid token means the
+   * failure is likely stale, so the account is verified via a coordinated
+   * recovery probe rather than blindly flipped to `auth_needed`.
+   */
+  claudeCredentialFresh(account: Pick<AccountRow, "harness" | "homePath" | "id">): boolean {
+    if (account.harness !== "claude") return false;
+    for (const path of [join(account.homePath, ".credentials.json"), join(this.vaultDirOf(account), ".credentials.json")]) {
+      const parsed = parseClaudeCredentials(readIfFile(path));
+      if (parsed && parsed.expiresAt > this.now()) return true;
+    }
+    return false;
+  }
+
+  /**
    * Rotate one expired Claude chain exactly once and persist the new chain to
    * the account's only home, Keychain item, and vault backup. A live runtime
    * owns its own refresh and is never raced by the daemon. `minTtlMs` is the
@@ -1201,14 +1305,31 @@ export class AccountsService {
     const joined = this.claudeRefreshes.get(account.id);
     if (joined) return joined;
     const pending = (async (): Promise<ClaudeRefreshOutcome> => {
-      if (this.hasLiveRuntime(account.id)) return { kind: "live_runtime" };
-      // Re-read inside the single-flight boundary: another limits caller or
-      // harness may have advanced the chain after the first read.
+      // Defer only to a HEALTHY live runtime (one not itself blocked on
+      // auth_needed): a session that has failed authentication cannot rotate
+      // the chain, so the daemon must not defer to it (HIVE-2).
+      if (this.hasHealthyLiveRuntime(account.id)) return { kind: "live_runtime" };
+      // Check for newer credentials first: re-read inside the single-flight
+      // boundary — another limits caller or a healthy session may have
+      // advanced the chain after the first read.
       const credential = await this.freshestClaudeCredential(account);
       if (credential && credential.expiresAt - this.now() > minTtlMs) return { kind: "ok", credential };
       if (!credential?.refreshToken) return { kind: "no_refresh_token" };
-      const refreshed = await this.fetchers.claudeRefresh(credential.refreshToken);
-      if (!refreshed) return { kind: "refresh_failed" };
+      // Injected-boundary contract: a returned token = success; `null` = the
+      // refresh token was REJECTED (recovery cannot proceed → login); a THROW
+      // = a temporary/uncertain transport failure (retry, never a login).
+      let refreshed: RefreshedClaudeToken | null;
+      try {
+        refreshed = await this.fetchers.claudeRefresh(credential.refreshToken);
+      } catch (err) {
+        const detail = (err instanceof Error ? err.message : String(err)).slice(0, 200);
+        this.log(`account.refresh.temporary account=${account.id} detail=${JSON.stringify(detail)}`);
+        return { kind: "temporary", detail };
+      }
+      if (!refreshed) {
+        this.log(`account.refresh.rejected account=${account.id}`);
+        return { kind: "rejected" };
+      }
       const oauth: Record<string, unknown> = {
         ...credential.oauth,
         accessToken: refreshed.accessToken,
@@ -1386,9 +1507,11 @@ export class AccountsService {
       const refreshed = await this.refreshClaudeCredential(account, CLAUDE_MIN_SHIP_TTL_MS);
       if (refreshed.kind === "ok") credential = refreshed.credential;
       else if (refreshed.kind === "live_runtime") {
-        throw new LeaseRefusal("lease_unavailable", `claude OAuth token for ${account.id} is at/near expiry and the running Claude owns refresh; retry shortly`);
+        throw new LeaseRefusal("lease_unavailable", `claude OAuth token for ${account.id} is at/near expiry and a healthy running Claude owns refresh; retry shortly`);
       } else if (refreshed.kind === "no_refresh_token") {
         throw new LeaseRefusal("lease_unavailable", `claude OAuth token for ${account.id} is at/near expiry with no refresh chain; log in: hive v2 account login ${account.id}`);
+      } else if (refreshed.kind === "temporary") {
+        throw new LeaseRefusal("lease_unavailable", `claude OAuth refresh for ${account.id} hit a temporary error (${refreshed.detail}); retry shortly`);
       } else {
         throw new LeaseRefusal("lease_unavailable", `claude OAuth refresh failed for ${account.id}; log in: hive v2 account login ${account.id}`);
       }

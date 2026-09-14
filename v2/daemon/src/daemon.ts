@@ -687,6 +687,10 @@ export class HiveDaemon {
     // re-adopted): settle their flows as interrupted, then remove the
     // retired tmux login seats this node's own daemons created.
     this.loginFlows.reconcileAtBoot();
+    // HIVE-2: a restart mid-incident re-attempts coordinated recovery for any
+    // Claude account left auth_needed, rather than stranding it until the next
+    // periodic limits sweep.
+    this.accounts?.scheduleRecoveryForAuthNeededClaude();
     this.publishedSeq = store.lastAuditSeq();
     reconcile.end();
     this.activeStartupPhase = null;
@@ -3803,9 +3807,25 @@ export class HiveDaemon {
     if (!account) return;
     if (ev.flag === "auth_needed") {
       if (ev.action === "set") {
-        if (account.status !== "paused" && store.setAccountStatus(account.id, "auth_needed", `bee ${bee.id}: ${ev.detail.slice(0, 200)}`).applied) {
+        // Delayed-error preservation (HIVE-2): a still-valid on-disk Claude
+        // credential means a newer session (or the daemon) already recovered
+        // this account, so THIS auth_needed is likely a delayed 401 from an
+        // older session. Don't clobber the fresh credential to auth_needed;
+        // let the coordinated recovery probe be the arbiter — if the token is
+        // truly dead server-side, that probe's 401 sets auth_needed.
+        const preserve = account.harness === "claude"
+          && account.status !== "auth_needed"
+          && accounts.claudeCredentialFresh(account);
+        if (preserve) {
+          this.log(`account.auth_needed_deferred account=${account.id} bee=${bee.id} gen=${ev.generation} reason=fresh_credential`);
+        } else if (account.status !== "paused" && store.setAccountStatus(account.id, "auth_needed", `bee ${bee.id}: ${ev.detail.slice(0, 200)}`).applied) {
           this.log(`account.auth_needed account=${account.id} bee=${bee.id} gen=${ev.generation}`);
         }
+        // Coordinated per-account recovery: re-check newer credentials,
+        // refresh through the daemon's own refresher (no longer deferred to a
+        // session that has itself failed auth), and request login only when
+        // that refresh is rejected or absent.
+        if (account.harness === "claude") accounts.scheduleClaudeRecovery(account.id);
       } else if (account.status === "auth_needed") {
         store.setAccountStatus(account.id, "ok", `bee ${bee.id}: ${ev.detail.slice(0, 200)}`);
         this.log(`account.auth_ok account=${account.id} bee=${bee.id} gen=${ev.generation}`);

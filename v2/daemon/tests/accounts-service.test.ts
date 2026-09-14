@@ -826,6 +826,182 @@ test("limits.1b: expired Claude chains refresh once, persist home + keychain + v
   }
 });
 
+// ---------------------------------------------------------------------------
+// HIVE-2: coordinated Claude OAuth recovery when sessions share one account
+// ---------------------------------------------------------------------------
+
+/** Seed an expired claude chain into both the vault and the home. */
+function seedExpiredClaude(r: Rig, label: string, refreshToken: string | null, opts: { status?: "ok" | "auth_needed" } = {}) {
+  const oauth: Record<string, unknown> = { accessToken: "stale-access", expiresAt: r.now() - 1, subscriptionType: "max" };
+  if (refreshToken !== null) oauth.refreshToken = refreshToken;
+  const account = addAccount(r, "claude", label, { status: opts.status ?? "ok", vault: { ".credentials.json": JSON.stringify({ claudeAiOauth: oauth }) } });
+  mkdirSync(account.homePath, { recursive: true });
+  writeFileSync(join(account.homePath, ".credentials.json"), readFileSync(join(r.vault, "claude", account.id, ".credentials.json"), "utf8"));
+  return account;
+}
+
+test("hive2.1: two sessions sharing one account that both failed auth do NOT strand refresh — the daemon takes it over and recovers", async () => {
+  const r = rig();
+  try {
+    let refreshCalls = 0;
+    const svc = service(r, {
+      fetchers: {
+        claudeRefresh: async (token) => {
+          refreshCalls += 1;
+          assert.equal(token, "stale-refresh");
+          return { accessToken: "recovered-access", refreshToken: "rotated-refresh", expiresAt: r.now() + HOUR };
+        },
+        claudeUsage: async () => ({ five_hour: { utilization: 3 }, seven_day: { utilization: 8 } }),
+      },
+      keychainReader: async () => null,
+    });
+    // The account was already flagged auth_needed by the failing sessions.
+    const account = seedExpiredClaude(r, "shared", "stale-refresh", { status: "auth_needed" });
+    for (const [name, pid] of [["session-a", 101], ["session-b", 102]] as const) {
+      const { bee } = r.store.createBee({ name, agent: "claude", substrate: "hsr", cwd: "/tmp", account: account.id });
+      r.store.updateRuntimeState(bee.id, 1, "running", { pid, pidStartedAt: 1 });
+      r.store.setFlag(bee.id, "auth_needed", "OAuth access token has been revoked");
+    }
+    const [row] = await svc.refreshLimits([account.id]);
+    assert.equal(refreshCalls, 1, "refresh is NOT deferred to sessions that have themselves failed auth");
+    assert.equal(row?.readable, true, "the recovered token probes clean");
+    assert.equal(r.store.getAccount(account.id)?.status, "ok", "the account recovers instead of stranding indefinitely");
+    for (const p of [join(account.homePath, ".credentials.json"), join(r.vault, "claude", account.id, ".credentials.json")]) {
+      const doc = JSON.parse(readFileSync(p, "utf8")) as { claudeAiOauth?: { accessToken?: string } };
+      assert.equal(doc.claudeAiOauth?.accessToken, "recovered-access", "the rotated chain is persisted");
+    }
+  } finally {
+    r.cleanup();
+  }
+});
+
+test("hive2.2: a single HEALTHY session still owns refresh even when an unhealthy sibling is present (no regression on rotating tokens)", async () => {
+  const r = rig();
+  try {
+    let refreshCalls = 0;
+    const svc = service(r, {
+      fetchers: { claudeRefresh: async () => { refreshCalls += 1; return null; } },
+      keychainReader: async () => null,
+    });
+    const account = seedExpiredClaude(r, "mixed", "stale-refresh");
+    // One session is healthy (mid-turn, rotating its own token), one has failed.
+    const healthy = r.store.createBee({ name: "healthy", agent: "claude", substrate: "hsr", cwd: "/tmp", account: account.id });
+    r.store.updateRuntimeState(healthy.bee.id, 1, "running", { pid: 201, pidStartedAt: 1 });
+    const failed = r.store.createBee({ name: "failed", agent: "claude", substrate: "hsr", cwd: "/tmp", account: account.id });
+    r.store.updateRuntimeState(failed.bee.id, 1, "running", { pid: 202, pidStartedAt: 1 });
+    r.store.setFlag(failed.bee.id, "auth_needed", "revoked");
+    const [row] = await svc.refreshLimits([account.id]);
+    assert.equal(refreshCalls, 0, "the daemon still defers to the healthy session's rotating refresh chain");
+    assert.equal(row?.unreadableReason, "refresh_deferred");
+    assert.equal(r.store.getAccount(account.id)?.status, "ok");
+  } finally {
+    r.cleanup();
+  }
+});
+
+test("hive2.3: rejected refresh requests login; temporary/timeout refresh keeps last-good and never requests login", async () => {
+  const r = rig();
+  try {
+    // Rejected: the injected refresher returns null (invalid_grant shape).
+    const rejectedSvc = service(r, { fetchers: { claudeRefresh: async () => null }, keychainReader: async () => null });
+    const rejected = seedExpiredClaude(r, "rejected", "dead-refresh");
+    const [rejRow] = await rejectedSvc.refreshLimits([rejected.id]);
+    assert.equal(rejRow?.unreadableReason, "auth_failed");
+    assert.match(rejRow?.error ?? "", /refresh failed/);
+    assert.equal(r.store.getAccount(rejected.id)?.status, "auth_needed", "a rejected refresh token needs a login");
+
+    // Temporary: the refresher throws (network/timeout). A readable row exists.
+    for (const detail of ["fetch failed", "The operation timed out"]) {
+      const tempSvc = service(r, {
+        fetchers: { claudeRefresh: async () => { throw new Error(detail); } },
+        keychainReader: async () => null,
+      });
+      const temp = seedExpiredClaude(r, `temp-${detail.length}`, "live-refresh");
+      const lastGood = r.store.putAccountLimits(temp.id, { readable: true, plan: "max", weekly: { usedPercent: 21 } });
+      const [tempRow] = await tempSvc.refreshLimits([temp.id]);
+      assert.equal(tempRow?.readable, true, "a temporary error cannot erase the last-known-good snapshot");
+      assert.deepEqual(r.store.getAccountLimits(temp.id), lastGood);
+      assert.equal(r.store.getAccount(temp.id)?.status, "ok", "a temporary error never requests login");
+      assert.ok(r.log.some((line) => line.includes(`account.refresh.temporary account=${temp.id}`)));
+    }
+  } finally {
+    r.cleanup();
+  }
+});
+
+test("hive2.4: daemon-restart recovery re-attempts every auth_needed Claude account and leaves other harnesses alone", async () => {
+  const r = rig();
+  try {
+    let claudeRefreshes = 0;
+    let codexProbes = 0;
+    const svc = service(r, {
+      fetchers: {
+        claudeRefresh: async () => { claudeRefreshes += 1; return { accessToken: "fresh", refreshToken: "rot", expiresAt: r.now() + HOUR }; },
+        claudeUsage: async () => ({ five_hour: { utilization: 1 }, seven_day: { utilization: 2 } }),
+        codexRateLimits: async () => { codexProbes += 1; return { ok: false, unreadableReason: "auth_failed", error: "nope" }; },
+      },
+      keychainReader: async () => null,
+    });
+    const claude = seedExpiredClaude(r, "restarted", "stale-refresh", { status: "auth_needed" });
+    const codex = addAccount(r, "codex", "restarted", { status: "auth_needed" });
+    const okClaude = addAccount(r, "claude", "healthy-import"); // status ok → not re-attempted
+    svc.scheduleRecoveryForAuthNeededClaude();
+    await waitFor(() => (r.store.getAccount(claude.id)?.status === "ok" ? true : null), "claude account recovered after restart");
+    assert.equal(claudeRefreshes, 1, "the auth_needed claude account was refreshed on restart");
+    assert.equal(codexProbes, 0, "restart recovery is scoped to Claude accounts");
+    assert.equal(r.store.getAccount(codex.id)?.status, "auth_needed", "the codex account is untouched by claude recovery");
+    assert.equal(r.store.getAccount(okClaude.id)?.status, "ok");
+    assert.ok(r.log.some((line) => line.includes("account.recover.boot count=1")));
+  } finally {
+    r.cleanup();
+  }
+});
+
+test("hive2.5: reauthentication landing DURING recovery is used without a network refresh (check newer credentials first)", async () => {
+  const r = rig();
+  try {
+    let refreshCalls = 0;
+    const svc = service(r, {
+      fetchers: {
+        claudeRefresh: async () => { refreshCalls += 1; return null; },
+        claudeUsage: async (token) => { assert.equal(token, "relogged-access"); return { five_hour: { utilization: 4 }, seven_day: { utilization: 9 } }; },
+      },
+      keychainReader: async () => null,
+    });
+    const account = seedExpiredClaude(r, "relogin", "stale-refresh", { status: "auth_needed" });
+    // A human re-login lands a FRESH credential on disk before recovery runs.
+    writeFileSync(join(account.homePath, ".credentials.json"), JSON.stringify({ claudeAiOauth: { accessToken: "relogged-access", refreshToken: "relogged-refresh", expiresAt: r.now() + HOUR, subscriptionType: "max" } }));
+    const [row] = await svc.refreshLimits([account.id]);
+    assert.equal(refreshCalls, 0, "a valid landed credential is used directly — no refresh, no login");
+    assert.equal(row?.readable, true);
+    assert.equal(r.store.getAccount(account.id)?.status, "ok", "recovery clears auth_needed off the landed credential");
+  } finally {
+    r.cleanup();
+  }
+});
+
+test("hive2.6: claudeCredentialFresh preserves a still-valid on-disk token against a delayed error", () => {
+  const r = rig();
+  try {
+    const svc = service(r);
+    const fresh = addAccount(r, "claude", "fresh", { vault: { ".credentials.json": JSON.stringify({ claudeAiOauth: { accessToken: "a", expiresAt: r.now() + HOUR } }) } });
+    mkdirSync(fresh.homePath, { recursive: true });
+    writeFileSync(join(fresh.homePath, ".credentials.json"), JSON.stringify({ claudeAiOauth: { accessToken: "a", expiresAt: r.now() + HOUR } }));
+    assert.equal(svc.claudeCredentialFresh(fresh), true, "an unexpired home token is preserved");
+
+    const expired = seedExpiredClaude(r, "expired", "r");
+    assert.equal(svc.claudeCredentialFresh(expired), false, "an expired token is not preservable");
+
+    const absent = addAccount(r, "claude", "absent", { vault: { ".credentials.json": "{}" } });
+    assert.equal(svc.claudeCredentialFresh(absent), false, "no oauth block is not preservable");
+
+    const codex = addAccount(r, "codex", "x");
+    assert.equal(svc.claudeCredentialFresh(codex), false, "non-claude accounts are never claude-fresh");
+  } finally {
+    r.cleanup();
+  }
+});
+
 test("limits.1c: Grok, Kimi, Cursor, MiniMax, and z.ai use their real provider windows; rotating OAuth chains persist", async () => {
   const r = rig();
   try {
