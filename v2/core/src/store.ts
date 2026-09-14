@@ -1858,7 +1858,11 @@ export class CoreStore {
         while (cursor) {
           if (seen.has(cursor.id)) throw new CoreError("parent would create a cycle");
           seen.add(cursor.id);
-          cursor = cursor.parentExternal || !cursor.parentId ? null : this.getBee(cursor.parentId);
+          // Apiary still projects the first legacy tag as active placement
+          // until setParent settles it. Durable edges win; creator history
+          // never participates in the active ancestry graph.
+          const nextParentId = cursor.parentId ?? cursor.tags.find((tag) => tag.startsWith("apiary:parent="))?.slice("apiary:parent=".length);
+          cursor = cursor.parentExternal || !nextParentId ? null : this.getBee(nextParentId);
         }
       }
       const tags = bee.tags.filter((tag) => !tag.startsWith("apiary:parent="));

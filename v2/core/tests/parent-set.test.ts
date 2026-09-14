@@ -114,3 +114,26 @@ test("parent RPC results are retained beyond ordinary idempotency eviction", () 
     assert.ok(store.lookupRpcResult("other2"));
   } finally { store.close(); h.cleanup(); }
 });
+
+
+test("Undo rejects legacy-only ancestor cycles; durable edges win and external edges stop", () => {
+  const h = harness(); const store = h.open();
+  try {
+    create(store, "former-parent");
+    create(store, "target", { parentId: "former-parent" });
+    store.setBeeParent("target", null, false);
+    store.tagBee("former-parent", { add: ["apiary:parent=target"] });
+    const before = store.dumpState(); const audit = store.auditRows();
+    assert.throws(() => store.setBeeParent("target", "former-parent", false), /cycle/);
+    assert.deepEqual(store.dumpState(), before); assert.deepEqual(store.auditRows(), audit);
+    create(store, "safe-root");
+    create(store, "durable-wins", { parentId: "safe-root", tags: ["apiary:parent=target"] });
+    assert.equal(store.setBeeParent("target", "durable-wins", false).applied, true);
+    create(store, "first-tag-wins", { tags: ["apiary:parent=safe-root", "apiary:parent=target"] });
+    assert.equal(store.setBeeParent("target", "first-tag-wins", false).applied, true);
+    create(store, "external-stop", { parentId: "target", parentExternal: true, tags: ["apiary:parent=target"] });
+    assert.equal(store.setBeeParent("target", "external-stop", false).applied, true);
+    assert.equal(store.getBee("target")?.createdById, "former-parent");
+    assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
+  } finally { store.close(); h.cleanup(); }
+});

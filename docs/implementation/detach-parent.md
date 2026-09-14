@@ -27,7 +27,10 @@ of runtime state. Deleted bees have no durable row and therefore refuse as missi
 External claims follow existing spawn authority: a nonempty bounded bee ID can
 reference another node without a local row; a colliding local ID is not that
 external parent. Remote lifecycle/cycles cannot be established by this node.
-Local cycle traversal stops at an external edge. Null always clears the external
+Local cycle traversal uses the durable parent ID, falling back to the first
+`apiary:parent=` tag suffix only when no durable edge exists (matching Apiary's
+legacy placement). It never follows `createdById` and stops at an external edge.
+Undo therefore refuses when a former parent has become a legacy-only descendant. Null always clears the external
 flag; self-parent is rejected even with an external flag.
 
 Schema 23 adds nullable `created_by_id` and an immutable-column trigger. Creation
@@ -63,7 +66,7 @@ Verified gates for this implementation:
 
 - `npm run check` and `npm run v2:check`.
 - `npm run build` (including standalone v2 daemon/CLI and runner host bundles).
-- `npm run v2:test`: 246 passing core tests.
+- `npm run v2:test`: 247 passing core tests.
 - Targeted daemon suites: parent-set, external-parent, preflip-verbs, idempotency,
   import-frozen (16 tests); parent-set also verifies SIGKILL/restart replay.
 - `node --test v2/cli/tests/parent-set.test.ts`: CLI/RPC and offline refusal.
