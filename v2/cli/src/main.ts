@@ -1719,8 +1719,14 @@ async function cmdSend(ctx: CliContext, parsed: Parsed, options: { humanSender?:
     throw new Error("usage: hive send <bee> <message…> [--urgency now|next|idle] [--sender s] [--wait] [--timeout ms] [--idempotency-key k]");
   }
   return withClient(ctx, async (c) => {
-    const list = await c.request<ListResult>("list");
-    const beeId = resolveBeeIn(list.views, needle);
+    // Exact IDs need no hive-wide list. Explicit sender aliases still use the
+    // full resolver, and a UUID-shaped name falls back when no exact bee exists.
+    const exact = parsed.flags.get("--sender") === undefined &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(needle)
+      ? await c.request<ViewResult>("view", { beeId: needle })
+      : null;
+    const views = exact?.bee?.id === needle ? [exact] : (await c.request<ListResult>("list")).views;
+    const beeId = resolveBeeIn(views, needle);
     const humanSender = options.humanSender?.trim();
     if (options.humanSender !== undefined && !humanSender) {
       throw new Error("buz: --sender-human must be a non-empty name");
@@ -1730,7 +1736,7 @@ async function cmdSend(ctx: CliContext, parsed: Parsed, options: { humanSender?:
     }
     const sender = humanSender
       ? `human:${humanSender}`
-      : resolveSendSender(list.views, parsed.flags.get("--sender") as string | undefined, ctx.cfg.dataDir);
+      : resolveSendSender(views, parsed.flags.get("--sender") as string | undefined, ctx.cfg.dataDir);
     const result = await c.request<SendRpcResult>("send", {
       beeId,
       body,

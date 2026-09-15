@@ -293,12 +293,14 @@ export interface StaleViewResult {
 
 export class ReadOnlyStore {
   private readonly db: DatabaseSync;
+  private readonly stmts = new Map<string, ReturnType<DatabaseSync["prepare"]>>();
 
   constructor(storePath: string) {
     this.db = new DatabaseSync(storePath, { readOnly: true });
   }
 
   close(): void {
+    this.stmts.clear();
     try {
       this.db.close();
     } catch {
@@ -306,8 +308,17 @@ export class ReadOnlyStore {
     }
   }
 
+  /** Cache fixed query plans, never rows; every get/all executes a fresh read. */
+  private stmt(sql: string): ReturnType<DatabaseSync["prepare"]> {
+    const cached = this.stmts.get(sql);
+    if (cached) return cached;
+    const statement = this.db.prepare(sql);
+    this.stmts.set(sql, statement);
+    return statement;
+  }
+
   getBee(beeId: string): BeeRow | null {
-    const row = this.db.prepare("SELECT * FROM bees WHERE id = ?").get(beeId) as Row | undefined;
+    const row = this.stmt("SELECT * FROM bees WHERE id = ?").get(beeId) as Row | undefined;
     return row ? mapBee(row) : null;
   }
 
@@ -316,15 +327,15 @@ export class ReadOnlyStore {
   }
 
   currentRuntime(beeId: string): RuntimeRow | null {
-    const row = this.db
-      .prepare("SELECT * FROM runtimes WHERE bee_id = ? ORDER BY generation DESC LIMIT 1")
+    const row = this
+      .stmt("SELECT * FROM runtimes WHERE bee_id = ? ORDER BY generation DESC LIMIT 1")
       .get(beeId) as Row | undefined;
     return row ? mapRuntime(row) : null;
   }
 
   activeFlags(beeId: string): Flag[] {
-    const rows = this.db
-      .prepare("SELECT flag FROM flags WHERE bee_id = ? AND cleared_at IS NULL ORDER BY id")
+    const rows = this
+      .stmt("SELECT flag FROM flags WHERE bee_id = ? AND cleared_at IS NULL ORDER BY id")
       .all(beeId) as Row[];
     return rows.map((r) => r.flag as Flag);
   }
@@ -375,13 +386,13 @@ export class ReadOnlyStore {
 
   /** v6 — tolerate a pre-v6 store file (no table): empty. */
   private tableExists(name: string): boolean {
-    const row = this.db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(name);
+    const row = this.stmt("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(name);
     return row !== undefined;
   }
 
   private getCell(cellId: string): CellRow | null {
     if (!this.tableExists("cells")) return null;
-    const r = this.db.prepare("SELECT * FROM cells WHERE id = ?").get(cellId) as Row | undefined;
+    const r = this.stmt("SELECT * FROM cells WHERE id = ?").get(cellId) as Row | undefined;
     if (!r) return null;
     return {
       id: r.id as string,
@@ -407,8 +418,8 @@ export class ReadOnlyStore {
   /** v23 — tolerate a pre-v23 store file (no table): null. */
   private latestHandoffView(beeId: string): BeeHandoffView | null {
     if (!this.tableExists("bee_handoffs")) return null;
-    const r = this.db
-      .prepare("SELECT * FROM bee_handoffs WHERE bee_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1")
+    const r = this
+      .stmt("SELECT * FROM bee_handoffs WHERE bee_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1")
       .get(beeId) as Row | undefined;
     if (!r) return null;
     const args = (v: unknown): string[] | null => (v == null ? null : (JSON.parse(String(v)) as string[]));
@@ -443,8 +454,8 @@ export class ReadOnlyStore {
 
   private latestMoveView(beeId: string): BeeMoveView | null {
     if (!this.tableExists("bee_moves")) return null;
-    const r = this.db
-      .prepare("SELECT * FROM bee_moves WHERE bee_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1")
+    const r = this
+      .stmt("SELECT * FROM bee_moves WHERE bee_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1")
       .get(beeId) as Row | undefined;
     if (!r) return null;
     const placementVersion = Number(r.placement_version);

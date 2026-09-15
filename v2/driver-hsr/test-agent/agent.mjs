@@ -23,6 +23,7 @@
  *     "@authfail"  turn emits a login-required auth error, ends ok:false
  *     "@ratelimit" turn emits a rejected rate-limit event, ends ok:false
  *     "@slow:<ms>" turn takes <ms> instead of STUB_TURN_MS (interrupt tests)
+ *     "@wait-file:<path>" keep the turn running until the fixture creates the file
  *   {"type":"interrupt"} (v6): ends the CURRENT turn now — emits
  *     {"event":"turn_ended","messageId":n,"ok":true,"interrupted":true},
  *     un-hangs a "@hang" turn, and keeps working the queue. Idle: ignored.
@@ -30,6 +31,7 @@
  * Messages arriving mid-turn are queued and worked FIFO (the accept point).
  */
 import { createInterface } from "node:readline";
+import { existsSync } from "node:fs";
 
 const env = process.env;
 const bootDelayMs = Number(env.STUB_BOOT_DELAY_MS ?? "0");
@@ -82,7 +84,12 @@ function workNext() {
   }
   const slow = /@slow:(\d+)/.exec(body);
   const thisTurnMs = slow ? Number(slow[1]) : turnMs;
-  turnTimer = setTimeout(() => {
+  const releaseFile = /@wait-file:(\S+)/.exec(body)?.[1];
+  const finishTurn = () => {
+    if (releaseFile && !existsSync(releaseFile)) {
+      turnTimer = setTimeout(finishTurn, 10);
+      return;
+    }
     turnTimer = null;
     if (body.includes("@crash")) {
       // turn_started was written a full turn ago (pipe flushed); die mid-turn.
@@ -106,7 +113,8 @@ function workNext() {
       return;
     }
     workNext();
-  }, thisTurnMs);
+  };
+  turnTimer = setTimeout(finishTurn, thisTurnMs);
 }
 
 const rl = createInterface({ input: process.stdin });

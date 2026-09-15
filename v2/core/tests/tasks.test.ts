@@ -319,6 +319,93 @@ test("tasks.supply: missing, terminal gates, and empty lists avoid unrelated row
   }
 });
 
+test("tasks.supply.list: filters only on true and keeps ordered paused and exhausted rows", () => {
+  const h = harness();
+  try {
+    const store = h.open();
+    const createBee = (id: string) => store.createBee({
+      id,
+      name: id,
+      agent: "claude",
+      substrate: "tmux",
+      cwd: "/tmp/w",
+    }).bee;
+
+    const disabled = createBee("supply-z-disabled");
+    const transition = createBee("supply-n-transition");
+    const paused = createBee("supply-a-paused");
+    const exhausted = createBee("supply-m-exhausted");
+    store.setTaskSupply(disabled.id, { on: false });
+    store.setTaskSupply(transition.id, { on: false });
+
+    store.setTaskSupply(paused.id, { on: true, limit: 1 });
+    const pausedTask = store.addTask({
+      list: beeTaskList(paused.id),
+      title: "trip the breaker",
+      originKind: "user",
+      originSender: "operator",
+    }).task;
+    const pausedFeed = store.tryFeedTaskSupply(paused.id);
+    assert.equal(pausedFeed?.fed.id, pausedTask.id);
+    assert.deepEqual(pausedFeed?.supply, {
+      beeId: paused.id,
+      on: true,
+      limit: 1,
+      feeds: 1,
+      paused: true,
+    });
+
+    store.setTaskSupply(exhausted.id, { on: true, limit: 2 });
+    const exhaustedTask = store.addTask({
+      list: beeTaskList(exhausted.id),
+      title: "reach the lowered limit",
+      originKind: "user",
+      originSender: "operator",
+    }).task;
+    assert.equal(store.tryFeedTaskSupply(exhausted.id)?.fed.id, exhaustedTask.id);
+    store.transitionTask(exhaustedTask.id, "done");
+    const exhaustedSupply = store.setTaskSupply(exhausted.id, { limit: 1 });
+    assert.equal(exhaustedSupply.feeds, exhaustedSupply.limit);
+    assert.equal(exhaustedSupply.paused, false);
+
+    const allBeeIds = [paused.id, exhausted.id, transition.id, disabled.id];
+    assert.deepEqual(store.listTaskSupply().map((row) => row.beeId), allBeeIds);
+    assert.deepEqual(store.listTaskSupply({ on: false }).map((row) => row.beeId), allBeeIds);
+    assert.deepEqual(
+      store.listTaskSupply({ on: true }).map((row) => row.beeId),
+      [paused.id, exhausted.id],
+    );
+
+    const rollback = new Error("roll back supply transition");
+    assert.throws(
+      () => store.transact(() => {
+        store.setTaskSupply(transition.id, { on: true });
+        assert.deepEqual(
+          store.listTaskSupply({ on: true }).map((row) => row.beeId),
+          [paused.id, exhausted.id, transition.id],
+        );
+        throw rollback;
+      }),
+      (error) => error === rollback,
+    );
+    assert.equal(store.getTaskSupply(transition.id).on, false);
+    assert.deepEqual(
+      store.listTaskSupply({ on: true }).map((row) => row.beeId),
+      [paused.id, exhausted.id],
+    );
+
+    store.setTaskSupply(transition.id, { on: true });
+    const filtered = store.listTaskSupply({ on: true });
+    assert.deepEqual(filtered.map((row) => row.beeId), [paused.id, exhausted.id, transition.id]);
+    assert.equal(filtered.find((row) => row.beeId === paused.id)?.paused, true);
+    assert.equal(filtered.find((row) => row.beeId === exhausted.id)?.feeds, exhaustedSupply.limit);
+    assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
+    store.close();
+  } finally {
+    h.cleanup();
+  }
+});
+
 test("tasks.supply: boolean probes use the existing partial indexes", () => {
   const h = harness();
   try {

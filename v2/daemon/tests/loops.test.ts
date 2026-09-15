@@ -761,6 +761,49 @@ test("unit.0e: task supply refreshes the snapshot before I1 in the same tick", (
   }
 });
 
+test("unit.0e.1: limit-tripped task supply stalls after its mail drains on a later tick", () => {
+  const rig = makeRig();
+  try {
+    const beeId = "task-limit-stall";
+    spawnIdleBee(rig, beeId);
+    rig.store.setTaskSupply(beeId, { on: true, limit: 1 });
+    const task = rig.store.addTask({
+      list: beeTaskList(beeId),
+      title: "stall after delivery",
+      originKind: "user",
+      originSender: "operator",
+    }).task;
+
+    rig.core.step();
+
+    const fed = rig.store.getTask(task.id);
+    assert.equal(fed?.status, "queued");
+    assert.ok(fed?.fedAt != null);
+    assert.equal(fed?.stalledAt, null, "pending supply mail prevents a same-tick stall");
+    assert.deepEqual(rig.store.getTaskSupply(beeId), {
+      beeId,
+      on: true,
+      limit: 1,
+      feeds: 1,
+      paused: true,
+    });
+    const messageId = fed?.mailboxMessageId;
+    assert.ok(messageId != null);
+    assert.equal(rig.store.getMessage(messageId)?.deliveredAt, null);
+
+    rig.core.step();
+
+    assert.deepEqual(rig.driver.deliveredIds, [messageId]);
+    assert.ok(rig.store.getMessage(messageId)?.deliveredAt != null);
+    assert.equal(rig.store.undeliveredMessages(beeId).length, 0);
+    const stalled = rig.store.getTask(task.id);
+    assert.equal(stalled?.status, "queued");
+    assert.ok(stalled?.stalledAt != null, "the paused enabled supply remains in the later loop iteration");
+  } finally {
+    rig.cleanup();
+  }
+});
+
 test("unit.0f: fresh final I1 re-ranks the queue after delivery", () => {
   const rig = makeRig({ i1DeadlineSteps: 10 });
   try {
