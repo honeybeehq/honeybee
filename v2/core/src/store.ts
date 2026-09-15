@@ -2148,9 +2148,9 @@ export class CoreStore {
   // -------------------------------------------------------------------------
 
   currentRuntime(beeId: string): RuntimeRow | null {
-    const row = this.db
-      .prepare("SELECT * FROM runtimes WHERE bee_id = ? ORDER BY generation DESC LIMIT 1")
-      .get(beeId) as Row | undefined;
+    const row = this.stmt(
+      "SELECT * FROM runtimes WHERE bee_id = ? ORDER BY generation DESC LIMIT 1",
+    ).get(beeId) as Row | undefined;
     return row ? mapRuntime(row) : null;
   }
 
@@ -2834,9 +2834,9 @@ export class CoreStore {
   }
 
   activeFlags(beeId: string): FlagRow[] {
-    const rows = this.db
-      .prepare("SELECT * FROM flags WHERE bee_id = ? AND cleared_at IS NULL ORDER BY id")
-      .all(beeId) as Row[];
+    const rows = this.stmt(
+      "SELECT * FROM flags WHERE bee_id = ? AND cleared_at IS NULL ORDER BY id",
+    ).all(beeId) as Row[];
     return rows.map(mapFlag);
   }
 
@@ -5165,8 +5165,10 @@ export class CoreStore {
   }
 
   listTaskSupply(filter: { on?: boolean } = {}): TaskSupplyRow[] {
-    const rows = (this.stmt("SELECT * FROM task_supply ORDER BY bee_id").all() as Row[]).map(mapTaskSupply);
-    return filter.on === true ? rows.filter((r) => r.on) : rows;
+    const query = filter.on === true
+      ? "SELECT * FROM task_supply WHERE enabled = 1 ORDER BY bee_id"
+      : "SELECT * FROM task_supply ORDER BY bee_id";
+    return (this.stmt(query).all() as Row[]).map(mapTaskSupply);
   }
 
   setTaskSupply(beeId: string, patch: SetTaskSupplyInput): TaskSupplyRow {

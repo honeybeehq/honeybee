@@ -94,7 +94,15 @@ export function segmentSessionLogPath(basePath: string | null, ordinal: number):
 }
 
 function clip(text: string, max: number): string {
-  const t = text.replace(/\s+\n/g, "\n").trim();
+  // Consume each multi-character whitespace run once; retrying a newline match at every
+  // space can stall the daemon on a long line without a newline.
+  const normalized = text.includes("\n")
+    ? text.replace(/\s{2,}/g, (run) => {
+        const newline = run.lastIndexOf("\n");
+        return newline < 0 ? run : run.slice(newline);
+      })
+    : text;
+  const t = normalized.trim();
   return t.length <= max ? t : `${t.slice(0, max - 1)}…`;
 }
 
