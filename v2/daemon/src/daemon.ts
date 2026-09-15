@@ -2247,13 +2247,17 @@ export class HiveDaemon {
     const stopAt = stopAtRaw as BeeHandoffStopAt;
     const bee = store.getBee(beeId);
     if (!bee) throw new RpcError("bee_not_found", `bee not found: ${beeId}`);
+    const existing = store.getBeeHandoffByKey(key);
+    // Replays expand omitted defaults against the original source, even after
+    // this or a later handoff has changed the bee's harness, args or account.
+    const source = existing?.from ?? bee;
     // Args: explicit wins; omitted keeps the bee's args for a same-family
     // handoff and drops them across families (they name another CLI's flags).
     const args = targetObj.args === undefined
-      ? (targetAgent === bee.agent ? bee.args : null)
+      ? (targetAgent === source.agent ? source.args : null)
       : this.argsParam(targetObj, "bee.handoff", true);
     const accountRequest = targetObj.account === undefined
-      ? (targetAgent === bee.agent && bee.account ? bee.account : "auto")
+      ? (targetAgent === source.agent && source.account ? source.account : "auto")
       : this.accountParam(targetObj);
     const requestHash = hashBeeHandoffRequest({
       beeId,
@@ -2262,7 +2266,6 @@ export class HiveDaemon {
       instruction,
       stopAt,
     });
-    const existing = store.getBeeHandoffByKey(key);
     if (existing) {
       if (existing.requestHash !== requestHash) throw new RpcError("idempotency_conflict", "idempotency key already bound to a different bee.handoff request");
       return { ...toBeeHandoffView(existing), deduped: true };

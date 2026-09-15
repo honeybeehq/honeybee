@@ -117,6 +117,32 @@ function handoffRequest(v: ViewResult, target: Record<string, unknown>, extra: R
 
 const rejectsCode = (code: string) => (error: unknown) => error instanceof Error && "code" in error && (error as { code: string }).code === code;
 
+test("handoff.rpc.replay-defaults: omitted target defaults stay bound to the original source after later switches", { timeout: 180_000 }, async (t) => {
+  const f = await fixture(t);
+  const account = await f.rpc<AccountAddResult>("account.add", { harness: "codex", label: "replay", idempotencyKey: "replay-account" });
+  mkdirSync(account.account.homePath, { recursive: true });
+  writeFileSync(join(account.account.homePath, "auth.json"), JSON.stringify({ tokens: { access_token: "fixture", refresh_token: "fixture" } }));
+  const before = await f.spawnIdle("replay", "claude", { args: ["--model", "opus"] });
+  const request = handoffRequest(before, { agent: "codex" }, { idempotencyKey: "replay-defaults" });
+  const first = await f.rpc<BeeHandoffResult>("bee.handoff", request);
+  assert.equal(first.to.account, account.account.id);
+  await f.waitPhase(first.id, ["complete"], "first handoff complete");
+  const replay = await f.rpc<BeeHandoffResult>("bee.handoff", request);
+  assert.equal(replay.id, first.id);
+  assert.equal(replay.deduped, true);
+
+  const current = await f.view(before.bee!.id);
+  const next = await f.rpc<BeeHandoffResult>("bee.handoff", handoffRequest(current,
+    { agent: "claude", args: ["--model", "sonnet"], account: null },
+    { idempotencyKey: "later-switch" }));
+  await f.waitPhase(next.id, ["complete"], "later handoff complete");
+  const afterLaterSwitch = await f.rpc<BeeHandoffResult>("bee.handoff", request);
+  assert.equal(afterLaterSwitch.id, first.id);
+  assert.equal(afterLaterSwitch.deduped, true);
+  await assert.rejects(f.rpc("bee.handoff", { ...request, instruction: "different request" }), rejectsCode("idempotency_conflict"));
+  await assert.rejects(f.rpc("bee.handoff", { ...request, expected: { generation: 99 } }), rejectsCode("idempotency_conflict"));
+});
+
 test("handoff.rpc: capability, validation, idempotency, typed refusals, and unavailable target accounts", { timeout: 120_000 }, async (t) => {
   const f = await fixture(t);
   const info = await f.rpc<DeployInfoResult>("deployInfo", {});
@@ -163,10 +189,17 @@ test("handoff.rpc.cross-family: claude → codex on an idle hsr bee keeps identi
   assert.equal(v.bee?.providerSessionId, "claude-session");
   const hello = await f.rpc<SendRpcResult>("send", { beeId: v.bee!.id, body: "hello source" });
   await waitFor(async () => (await f.rpc<MailboxResult>("mailbox", { beeId: v.bee!.id })).messages.find((m) => m.id === hello.messageId)?.deliveredAt != null, "hello delivered");
+  const releaseFile = join(f.root, "release-source");
+  const held = await f.rpc<SendRpcResult>("send", { beeId: v.bee!.id, body: `@wait-file:${releaseFile}` });
+  await waitFor(async () => (await f.rpc<MailboxResult>("mailbox", { beeId: v.bee!.id })).messages.find((m) => m.id === held.messageId)?.deliveredAt != null, "held source turn delivered");
+  await waitFor(async () => (await f.view(v.bee!.id)).view.working, "source held before handoff");
   const segment0Path = (await f.view(v.bee!.id)).bee!.sessionLogPath!;
   const admitted = await f.rpc<BeeHandoffResult>("bee.handoff", handoffRequest(v, { agent: "codex", account: codexAccount.account.id }, { instruction: "switch to codex and continue" }));
   const q1 = await f.rpc<SendRpcResult>("send", { beeId: v.bee!.id, body: "queued A", idempotencyKey: "qa" });
   const q2 = await f.rpc<SendRpcResult>("send", { beeId: v.bee!.id, body: "queued B", urgency: "now", idempotencyKey: "qb" });
+  // Hold the source until both messages exist, so the context snapshot must
+  // contain both regardless of RPC scheduling or host load.
+  writeFileSync(releaseFile, "release");
   const done = await f.waitPhase(admitted.id, ["complete"], "cross-family handoff");
   const after = await f.view(v.bee!.id);
   // Identity + placement preserved; execution ownership moved.
@@ -284,7 +317,8 @@ test("handoff.rpc.working+stopped: stopAt=idle waits for the running turn, stopA
 test("handoff.rpc.disconnect+crash: a lost response replays to the same operation; SIGKILL during stopping and starting resumes", { timeout: 180_000 }, async (t) => {
   const f = await fixture(t, { stubEnv: { STUB_SURVIVE_STDIN_CLOSE: "1" } });
   const v = await f.spawnIdle("dc", "claude");
-  await f.rpc("send", { beeId: v.bee!.id, body: "@slow:4000" });
+  const releaseFile = join(f.root, "release-after-restart");
+  await f.rpc("send", { beeId: v.bee!.id, body: `@wait-file:${releaseFile}` });
   await waitFor(async () => (await f.view(v.bee!.id)).view.working, "source turn running");
   const sourcePid = (await f.view(v.bee!.id)).runtime!.pid!;
   // Disconnect right after sending the request (before the response).
@@ -308,6 +342,7 @@ test("handoff.rpc.disconnect+crash: a lost response replays to the same operatio
   const afterBoot = await f.rpc<BeeHandoffResult>("bee.handoff", request);
   assert.equal(afterBoot.id, replay.id);
   assert.equal(afterBoot.deduped, true);
+  writeFileSync(releaseFile, "release");
   const starting = await f.waitPhase(replay.id, ["starting", "complete"], "switch after restart");
   // Crash again during starting.
   await f.restart();
