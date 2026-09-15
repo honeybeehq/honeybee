@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { spawn, type ChildProcess } from "node:child_process";
+import { execFile, spawn, type ChildProcess } from "node:child_process";
+import { promisify } from "node:util";
 import { once } from "node:events";
 import { mkdtemp, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { hostname, tmpdir } from "node:os";
@@ -26,6 +27,102 @@ async function withTempDir(fn: (dir: string) => Promise<void>): Promise<void> {
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
+
+for (const failure of ["none", "heartbeat", "rename"] as const) {
+  test(`release drains a slow heartbeat and reports cleanup errors (failure: ${failure})`, async () => {
+    // Isolate builtin instrumentation from this file and every other test.
+    await promisify(execFile)(process.execPath, [
+      ...(import.meta.url.endsWith(".ts") ? ["--import", "tsx"] : []),
+      "--input-type=module", "--eval", `
+      import assert from "node:assert/strict";
+      import fs from "node:fs/promises";
+      import { syncBuiltinESMExports } from "node:module";
+      import { tmpdir } from "node:os";
+      import { join } from "node:path";
+      import { withFileLock, readFileLockIdentity, removeFileLockIfOwner } from ${JSON.stringify(new URL("../src/lock.js", import.meta.url).href)};
+      const dir = await fs.mkdtemp(join(tmpdir(), "hb-heartbeat-release-"));
+      const path = join(dir, "fixture.lock");
+      let enterHeartbeat;
+      const entered = new Promise(resolve => { enterHeartbeat = resolve; });
+      const original = fs.utimes;
+      const originalRename = fs.rename;
+      const keepAlive = setInterval(() => {}, 1000);
+      fs.utimes = async (target, ...args) => {
+        if (target === path) {
+          enterHeartbeat();
+          // Exceed the real release guard deadline after entering the real heartbeat.
+          await new Promise(resolve => setTimeout(resolve, 1500));
+          if (${failure === "heartbeat"}) throw new Error("injected heartbeat failure");
+        }
+        return original(target, ...args);
+      };
+      fs.rename = async (source, ...args) => {
+        if (source === path && ${failure === "rename"}) throw Object.assign(new Error("private path"), { code: "EACCES" });
+        return originalRename(source, ...args);
+      };
+      syncBuiltinESMExports();
+      try {
+        const locked = withFileLock(path, () => entered, { staleMs: 150 });
+        if (${failure === "rename"}) {
+          await assert.rejects(locked, { name: "FileLockReleaseError", code: "FILE_LOCK_RELEASE_FAILED" });
+          const identity = await readFileLockIdentity(path);
+          assert.equal(identity.owner.pid, process.pid);
+          fs.rename = originalRename;
+          syncBuiltinESMExports();
+          assert.equal(await removeFileLockIfOwner(path, identity), true);
+        } else {
+          await locked;
+        }
+        assert.equal(await readFileLockIdentity(path), null, "release left its live-owner lock behind");
+        await withFileLock(path, async () => {}, { timeoutMs: 200, staleMs: 10 });
+      } finally {
+        fs.utimes = original;
+        fs.rename = originalRename;
+        syncBuiltinESMExports();
+        clearInterval(keepAlive);
+        await fs.rm(dir, { recursive: true, force: true });
+      }
+    `], { timeout: 60_000 });
+  });
+}
+
+for (const callbackFails of [false, true]) {
+  test(`release reports blocked cleanup and preserves callback failure (${callbackFails})`, async () => {
+    await withTempDir(async (dir) => {
+      const path = join(dir, "blocked-release.lock");
+      const callbackError = new Error("callback failure");
+      await assert.rejects(withFileLock(path, async () => {
+        const identity = await readFileLockIdentity(path);
+        assert.ok(identity);
+        await writeFile(fileLockMutationGuardPath(path, identity), JSON.stringify({
+          pid: process.pid, hostname: hostname(), token: "live-mutator", lockFingerprint: identity.fingerprint,
+        }));
+        if (callbackFails) throw callbackError;
+      }), (error: unknown) => {
+        if (callbackFails) {
+          assert.ok(error instanceof AggregateError);
+          assert.equal(error.errors[0], callbackError);
+          assert.equal(error.errors[1].name, "FileLockReleaseError");
+        } else {
+          assert.ok(error instanceof Error);
+          assert.equal(error.name, "FileLockReleaseError");
+        }
+        return true;
+      });
+      assert.equal((await readFileLockIdentity(path))?.owner.pid, process.pid);
+    });
+  });
+}
+
+test("callback failure releases normally and preserves the original thrown value", async () => {
+  await withTempDir(async (dir) => {
+    const path = join(dir, "callback-error.lock");
+    const error = new Error("callback failure");
+    await assert.rejects(withFileLock(path, async () => { throw error; }), (caught) => caught === error);
+    assert.equal(await readFileLockIdentity(path), null);
+    assert.equal(await withFileLock(path, async () => 42), 42);
+  });
+});
 
 const TEST_PROCESS_BIRTH = "test:current-process-birth";
 const currentProcessProbe = async (pid: number) =>
@@ -250,13 +347,15 @@ test("heartbeat recovers a generation guard abandoned by a proven-dead stealer",
     const staleAt = new Date(Date.now() - 10_000);
     await utimes(path, staleAt, staleAt);
 
-    await sleep(120);
+    // Wait for the observed effect, not a fixed 120ms scheduling window.
+    const deadline = performance.now() + 5_000;
+    while ((await stat(path)).mtimeMs <= staleAt.getTime() && performance.now() < deadline) await sleep(20);
     const refreshed = await stat(path);
-    assert.ok(Date.now() - refreshed.mtimeMs < 500, "live holder heartbeat resumed after dead-guard recovery");
-    await assert.rejects(readFile(guardPath, "utf8"), (error: NodeJS.ErrnoException) => error.code === "ENOENT");
+    assert.ok(refreshed.mtimeMs > staleAt.getTime(), "live holder heartbeat resumed after dead-guard recovery");
 
     releaseHolder();
     await holder;
+    await assert.rejects(readFile(guardPath, "utf8"), (error: NodeJS.ErrnoException) => error.code === "ENOENT");
   });
 });
 

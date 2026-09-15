@@ -24,6 +24,8 @@ import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { monitorEventLoopDelay, type IntervalHistogram } from "node:perf_hooks";
+import { getSystemErrorMap } from "node:util";
+import { GatewayMcpSeedLockError } from "../../../src/accounts/gatewayMcpSeed.ts";
 import {
   accountIdFor,
   matchAccount,
@@ -446,10 +448,15 @@ function gatewayActivationRevision(gateways: readonly LiveGateway[]): string {
   return createHash("sha256").update(JSON.stringify(namesOnly)).digest("hex");
 }
 
-function activationFailureName(error: unknown): string {
+const SYSTEM_ERROR_CODES = new Set([...getSystemErrorMap().values()].map(([name]) => name));
+
+export function activationFailureName(error: unknown): string {
+  if (error instanceof GatewayMcpSeedLockError) return error.diagnostic;
   if (!(error instanceof Error)) return "unknown_error";
   const code = (error as NodeJS.ErrnoException).code;
-  return code ? `${error.name}(${code})` : error.name;
+  // Both name and code are writable strings on arbitrary errors. Only emit
+  // known errno values; never copy arbitrary exception text into daemon logs.
+  return code && SYSTEM_ERROR_CODES.has(code) ? `Error(${code})` : "Error";
 }
 
 /** Rate-limit cause classifier for resource_blocked evidence (spec 08 rotation trigger). */

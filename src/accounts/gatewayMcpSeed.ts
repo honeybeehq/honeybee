@@ -2,7 +2,7 @@ import { readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { atomicWriteFile } from "../fsx.ts";
-import { withFileLock } from "../lock.ts";
+import { FileLockReleaseError, FileLockTimeoutError, withFileLock } from "../lock.ts";
 function tomlLines(input: string): string[] {
   const trimmed = input.replace(/\s+$/u, "");
   return trimmed.length === 0 ? [] : trimmed.split(/\r?\n/u);
@@ -40,6 +40,20 @@ export type SeedGatewayMcpOptions = {
   /** Let a readiness gate retry transient lock/filesystem failures. */
   failOnError?: boolean;
 };
+
+/** Only fixed stage/code names and numeric lock metadata may reach activation logs. */
+export class GatewayMcpSeedLockError extends Error {
+  readonly diagnostic: string;
+
+  constructor(error: FileLockTimeoutError | FileLockReleaseError, cause: unknown = error) {
+    const diagnostic = error instanceof FileLockTimeoutError
+      ? `stage=gateway_mcp_lock operation=acquire code=FILE_LOCK_TIMEOUT timeoutMs=${Math.round(error.timeoutMs)} waitMs=${Math.round(error.waitMs)} ownerPid=${error.ownerPid ?? "unknown"}`
+      : "stage=gateway_mcp_lock operation=release code=FILE_LOCK_RELEASE_FAILED";
+    super(diagnostic, { cause });
+    this.name = "GatewayMcpSeedLockError";
+    this.diagnostic = diagnostic;
+  }
+}
 
 type StampRead = { status: "missing"; stamp: GatewayMcpStamp } | { status: "ok"; stamp: GatewayMcpStamp } | { status: "invalid" };
 type FileRead = { status: "missing"; text: "" } | { status: "ok"; text: string } | { status: "unreadable" };
@@ -669,8 +683,15 @@ export async function seedGatewayMcp(
       return reconcileLocked(homePath, dialect, gateways, stampRead.stamp);
     });
   } catch (error) {
-    if (options.failOnError) throw error;
-    const reason = error instanceof Error ? error.message : String(error);
+    // A callback + cleanup double failure preserves both causes in withFileLock.
+    const lockError = error instanceof AggregateError
+      ? error.errors.find((cause: unknown) => cause instanceof FileLockReleaseError)
+      : error;
+    const failure = lockError instanceof FileLockTimeoutError || lockError instanceof FileLockReleaseError
+      ? new GatewayMcpSeedLockError(lockError, error)
+      : error;
+    if (options.failOnError) throw failure;
+    const reason = failure instanceof Error ? failure.message : String(failure);
     gatewayMcpDebug(`seeding skipped for ${homePath}: ${reason}`);
     return { status: "skipped", reason, written: [] };
   }

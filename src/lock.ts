@@ -41,6 +41,30 @@ export type LockAcquiredInfo = LockWaitInfo & {
   waited: boolean;
 };
 
+export class FileLockTimeoutError extends Error {
+  readonly code = "FILE_LOCK_TIMEOUT";
+  readonly timeoutMs: number;
+  readonly waitMs: number;
+  readonly ownerPid: number | undefined;
+
+  constructor(path: string, timeoutMs: number, info: LockWaitInfo) {
+    super(`Timed out waiting for lock: ${path}`);
+    this.name = "FileLockTimeoutError";
+    this.timeoutMs = timeoutMs;
+    this.waitMs = info.waitMs;
+    this.ownerPid = info.owner?.pid;
+  }
+}
+
+export class FileLockReleaseError extends Error {
+  readonly code = "FILE_LOCK_RELEASE_FAILED";
+
+  constructor(options?: ErrorOptions) {
+    super("File lock release could not confirm removal of its owner generation", options);
+    this.name = "FileLockReleaseError";
+  }
+}
+
 export type LockOptions = {
   timeoutMs?: number;
   /**
@@ -238,10 +262,40 @@ async function refreshFileLockIfOwner(
 
 export async function withFileLock<T>(path: string, fn: () => Promise<T>, options: LockOptions = {}): Promise<T> {
   const lock = await acquireFileLock(path, options);
+  let result: T;
   try {
-    return await fn();
-  } finally {
-    await lock.release();
+    result = await fn();
+  } catch (error) {
+    try {
+      await lock.release();
+    } catch (releaseError) {
+      throw new AggregateError([error, releaseError], "File lock callback and release both failed");
+    }
+    throw error;
+  }
+  await lock.release();
+  return result;
+}
+
+async function releaseFileLock(path: string, expected: FileLockOwnerIdentity, context: LockProtocolContext): Promise<void> {
+  try {
+    const removed = await removeFileLockIfOwnerContext(path, expected, {
+      suffix: "released",
+      guardTimeoutMs: 1_000,
+    }, context);
+    if (removed) return;
+    // A failed guard acquisition or rename is not a successful release.
+    // Absence/replacement is harmless, but an unreadable path is ambiguous.
+    const raw = await readFile(path, "utf8").catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return null;
+      throw error;
+    });
+    if (raw !== null && createHash("sha256").update(raw).digest("hex") === expected.fingerprint) {
+      throw new FileLockReleaseError();
+    }
+  } catch (error) {
+    if (error instanceof FileLockReleaseError) throw error;
+    throw new FileLockReleaseError({ cause: error });
   }
 }
 
@@ -257,7 +311,7 @@ async function acquireFileLock(path: string, options: LockOptions): Promise<Lock
   const throwTimeout = (): never => {
     const info = { waitMs: Math.max(0, performance.now() - started), owner: firstOwner };
     safeCallback(() => options.onTimeout?.(info));
-    throw new Error(`Timed out waiting for lock: ${path}`);
+    throw new FileLockTimeoutError(path, timeoutMs, info);
   };
 
   await mkdir(dirname(path), { recursive: true });
@@ -279,12 +333,11 @@ async function acquireFileLock(path: string, options: LockOptions): Promise<Lock
       if (!published) throw Object.assign(new Error(`Lock exists: ${path}`), { code: "EEXIST" });
       const expected = identityFromRaw(rawIdentity, Date.now())!;
       const heartbeatMs = Math.max(50, Math.floor(staleMs / 3));
-      let heartbeatRunning = false;
+      let heartbeatTask: Promise<unknown> | null = null;
       const heartbeat = setInterval(() => {
-        if (heartbeatRunning) return;
-        heartbeatRunning = true;
-        void refreshFileLockIfOwner(path, expected, heartbeatMs, context)
-          .finally(() => { heartbeatRunning = false; });
+        if (heartbeatTask) return;
+        heartbeatTask = refreshFileLockIfOwner(path, expected, heartbeatMs, context)
+          .finally(() => { heartbeatTask = null; });
       }, heartbeatMs);
       heartbeat.unref?.();
       const acquired: LockAcquiredInfo = {
@@ -297,10 +350,10 @@ async function acquireFileLock(path: string, options: LockOptions): Promise<Lock
         acquired,
         release: async () => {
           clearInterval(heartbeat);
-          await removeFileLockIfOwnerContext(path, expected, {
-            suffix: "released",
-            guardTimeoutMs: 1_000,
-          }, context).catch(() => undefined);
+          // Clearing the timer does not stop an async heartbeat already holding
+          // the generation guard. Drain it before competing for that guard.
+          await heartbeatTask;
+          await releaseFileLock(path, expected, context);
         },
       };
     } catch (error) {
