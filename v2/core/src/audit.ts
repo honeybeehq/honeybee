@@ -256,6 +256,10 @@ export function replayAudit(rows: AuditRow[]): StateDump {
         commands.set(command.id, { ...command });
         break;
       }
+      case "command.reconnect_result": {
+        mustCommand(p.commandId as number).args = p.args as Record<string, unknown>;
+        break;
+      }
       case "command.claimed": {
         mustCommand(p.commandId as number).status = "running";
         break;

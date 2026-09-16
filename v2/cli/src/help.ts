@@ -67,6 +67,7 @@ const GROUPS: Group[] = [
       ["archive", "<bee>", "file the bee; send auto-unarchives"],
       ["unarchive", "<bee>", "return an archived bee to active"],
       ["delete", "<bee>", "remove the bee and owned durable data"],
+      ["reconnect-tools", "<bee> [--command-id id]", "reconnect native tools in the same session; read durable status"],
       ["interrupt", "<bee>", "stop the current TURN, keep the runtime (idle = no-op)"],
       ["rename", "<bee> <new-name>", "rename (names are labels; the id is the identity)"],
       ["tag", "<bee> [--add t]...", "edit tags (apiary:workspace=… moves a bee between workspaces)"],

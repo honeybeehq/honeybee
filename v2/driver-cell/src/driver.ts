@@ -203,6 +203,11 @@ export class CellDriver implements RuntimeDriver {
     return this.inner.stop(beeId, generation, cause);
   }
 
+  reconnectToolsSupport(beeId: string, generation: number) { return this.inner.reconnectToolsSupport(beeId, generation); }
+  reconnectTools(beeId: string, generation: number, commandId: number, prepare: (apply: (targets: string[]) => Promise<void>, home: string) => Promise<void>) {
+    return this.inner.reconnectTools(beeId, generation, commandId, prepare);
+  }
+
   interrupt(beeId: string, generation: number, deliveryMessageId?: number): InterruptOutcome {
     return this.inner.interrupt(beeId, generation, deliveryMessageId);
   }

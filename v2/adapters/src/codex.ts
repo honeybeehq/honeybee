@@ -164,6 +164,11 @@ export function codexAdapter(opts: CodexAdapterOptions): HarnessAdapter {
   function parseLine(line: string): AdapterSignal[] {
     const msg = parseJsonLine(line);
     if (!msg) return [];
+    if (typeof msg.id === "string" && /^hive-reconnect-(?:tools-[1-9][0-9]*|config-[1-9][0-9]*-[A-Za-z0-9_-]+)$/.test(msg.id)) {
+      if (msg.error) return [{ kind: "tools_control_result", requestId: msg.id, error: "Codex rejected MCP control request" }];
+      if (Object.prototype.hasOwnProperty.call(msg, "result")) return [{ kind: "tools_control_result", requestId: msg.id }];
+      return [];
+    }
 
     // A `method` marks a notification or a server→client request; a message
     // without one is a response to something we sent. Classify method-bearing
@@ -270,6 +275,15 @@ export function codexAdapter(opts: CodexAdapterOptions): HarnessAdapter {
       })];
     },
     parseLine,
+    encodeReconnectToolsNonce(commandId: number, gateway: string, nonce: string): string {
+      // Restricted to the Honeybee-owned marker on a validated gateway name.
+      return JSON.stringify({ jsonrpc: "2.0", id: `hive-reconnect-config-${commandId}-${gateway}`, method: "config/value/write", params: {
+        keyPath: `mcp_servers.${gateway}.env.HONEYBEE_MCP_RECONNECT_NONCE`, value: nonce, mergeStrategy: "replace",
+      } });
+    },
+    encodeReconnectTools(commandId: number): string {
+      return JSON.stringify({ jsonrpc: "2.0", id: `hive-reconnect-tools-${commandId}`, method: "config/mcpServer/reload" });
+    },
     encodeMessage(body: string, ctx: EncodeContext): string | null {
       if (!ctx.sessionId) return null; // thread id not learned yet → not_ready
       if (ctx.turnActive && !ctx.turnId) return null; // cannot safely steer without the native precondition

@@ -1,3 +1,4 @@
+import type { ReconnectToolsReceipt, ReconnectToolsError } from "./reconnectTools.ts";
 import { threadOperationView, type ThreadOperationRow, type ThreadOperationPhase } from "./threadOperation.ts";
 import { THREAD_OPERATIONS_TABLE_SQL } from "./schema.ts";
 /**
@@ -1554,6 +1555,18 @@ export class CoreStore {
       const cols = this.stmt("SELECT name FROM pragma_table_info('commands')").all() as Row[];
       if (!cols.some((c) => c.name === "idempotency_key")) {
         this.db.exec("ALTER TABLE commands ADD COLUMN idempotency_key TEXT");
+      }
+      // v26: widen the closed command vocabulary, preserving ids and receipts.
+      const commandsDdl = String((this.db.prepare("SELECT sql FROM sqlite_master WHERE name = 'commands'").get() as Row).sql);
+      if (!commandsDdl.includes("'reconnect_tools'")) {
+        const columns = "id,verb,bee_id,args,target_generation,status,attempts,next_attempt_at,enqueued_at,finished_at,failure_cause,idempotency_key";
+        const sequence = Number((this.db.prepare("SELECT seq FROM sqlite_sequence WHERE name = 'commands'").get() as Row | undefined)?.seq ?? 0);
+        this.db.exec("ALTER TABLE commands RENAME TO commands_v25");
+        this.db.exec(commandsDdl.replace("'delete'", "'delete','reconnect_tools'"));
+        this.db.exec(`INSERT INTO commands(${columns}) SELECT ${columns} FROM commands_v25`);
+        this.db.exec("DROP TABLE commands_v25");
+        this.db.prepare("UPDATE sqlite_sequence SET seq = MAX(seq, ?) WHERE name = 'commands'").run(sequence);
+        this.db.exec(SCHEMA_SQL); // restore the command indexes removed with the old table
       }
       // v2 → v3: additive bee columns (provider_session_id, env, imported_from);
       // v3 → v4: spawn_failures; v4 → v5: args. Same discipline: add iff
@@ -3570,6 +3583,14 @@ export class CoreStore {
           .prepare(
             `SELECT * FROM commands WHERE status = 'queued' AND next_attempt_at <= ?
              ${blockedRuntimeStartClause}
+             AND NOT (verb = 'reconnect_tools' AND EXISTS (
+               SELECT 1 FROM runtimes r WHERE r.bee_id = commands.bee_id
+               AND r.generation = commands.target_generation AND r.state IN ('booting','running')
+             ))
+             AND NOT (verb = 'reconnect_tools' AND EXISTS (SELECT 1 FROM commands previous
+               WHERE previous.bee_id = commands.bee_id AND previous.verb = 'reconnect_tools'
+               AND previous.status = 'running'))
+
              AND NOT (verb IN ('spawn','send_wake','revive') AND EXISTS (
                SELECT 1 FROM thread_operations t WHERE t.successor_bee_id = commands.bee_id
                AND t.phase NOT IN ('starting','ready')
@@ -3680,6 +3701,9 @@ export class CoreStore {
           const current = this.currentRuntime(command.beeId);
           const currentGeneration = current?.generation ?? 0;
           if (currentGeneration !== command.targetGeneration) {
+            if (command.verb === "reconnect_tools") {
+              this.setReconnectResult(command.id, { outcome: "stale_generation", threadId: null, targets: [], modelTools: "not_refreshed" }, null);
+            }
             const at = this.now();
             this.db
               .prepare("UPDATE commands SET status = 'done', finished_at = ? WHERE id = ?")
@@ -3714,6 +3738,65 @@ export class CoreStore {
         return { ...command, status: "running" };
       }
     });
+  }
+
+  /** Reconnect owns a typed receipt; it never turns a tool-control failure into runtime failure. */
+  setReconnectTargets(id: number, targets: string[]): void {
+    this.tx(() => {
+      const command = this.getCommand(id);
+      if (!command || command.verb !== "reconnect_tools" || command.status !== "running") throw new CoreError("not a running reconnect command");
+      if (JSON.stringify(command.args.reconnectTargets) === JSON.stringify(targets)) return;
+      const args = { ...command.args, reconnectTargets: targets };
+      this.db.prepare("UPDATE commands SET args = ? WHERE id = ?").run(JSON.stringify(args), id);
+      this.audit("command.reconnect_result", command.beeId, { commandId: id, args });
+    });
+  }
+
+  setReconnectResult(id: number, receipt: ReconnectToolsReceipt | null, error: ReconnectToolsError | null): void {
+    this.tx(() => {
+      const command = this.getCommand(id);
+      if (!command || command.verb !== "reconnect_tools") throw new CoreError("not a reconnect command");
+      const args = { ...command.args, reconnectResult: { receipt, error } };
+      this.db.prepare("UPDATE commands SET args = ? WHERE id = ?").run(JSON.stringify(args), id);
+      this.audit("command.reconnect_result", command.beeId, { commandId: id, args });
+    });
+  }
+
+  settleReconnect(id: number, receipt: ReconnectToolsReceipt | null, error: ReconnectToolsError | null): void {
+    this.tx(() => {
+      const command = this.getCommand(id);
+      if (!command || command.status !== "running") return;
+      if (this.currentRuntime(command.beeId)?.generation !== command.targetGeneration) {
+        receipt = { outcome: "stale_generation", threadId: null, targets: [], modelTools: "not_refreshed" };
+        error = null;
+      } else if (receipt?.outcome === "reloaded") {
+        receipt = { ...receipt, targets: (command.args.reconnectTargets as string[] | undefined) ?? receipt.targets };
+      }
+      this.setReconnectResult(id, receipt, error);
+      if (!error) { this.completeCommand(id); return; }
+      const at = this.now();
+      this.db.prepare("UPDATE commands SET status = 'failed', finished_at = ?, failure_cause = 'resource_blocked' WHERE id = ?").run(at, id);
+      this.audit("command.failed", command.beeId, { commandId: id, attempts: command.attempts, finishedAt: at, failureCause: "resource_blocked" });
+    });
+  }
+
+  deferReconnect(id: number): void {
+    this.tx(() => {
+      const command = this.getCommand(id);
+      if (!command || command.status !== "running") return;
+      const attempts = command.attempts + 1;
+      if (attempts >= this.maxAttempts) {
+        this.settleReconnect(id, null, { code: "reconnect_not_ready", message: "Runtime control did not become ready after bounded retries" });
+        return;
+      }
+      const nextAttemptAt = this.now() + 1000 * 2 ** command.attempts;
+      this.db.prepare("UPDATE commands SET status = 'queued', attempts = ?, next_attempt_at = ? WHERE id = ?").run(attempts, nextAttemptAt, id);
+      this.audit("command.requeued", command.beeId, { commandId: id, attempts, nextAttemptAt });
+    });
+  }
+
+  hasPendingReconnect(beeId: string, generation: number): boolean {
+    return this.stmt("SELECT 1 FROM commands WHERE bee_id = ? AND target_generation = ? AND verb = 'reconnect_tools' AND status IN ('queued','running') LIMIT 1").get(beeId, generation) !== undefined;
   }
 
   /** Settle a claimed command as done. Re-completing a settled command is a recorded no-op. */

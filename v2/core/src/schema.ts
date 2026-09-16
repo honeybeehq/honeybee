@@ -138,7 +138,8 @@
  *  v25 — thread fork/handoff operation receipts, pinned source prefixes, and
  *        durable copy/compaction/start readiness. Additive table and indexes.
  */
-export const SCHEMA_VERSION = 25;
+/** v26 widens the generation-fenced command vocabulary with reconnect_tools. */
+export const SCHEMA_VERSION = 26;
 
 /**
  * Current shape shared between SCHEMA_SQL and the v19 table rebuild so a
@@ -325,7 +326,7 @@ CREATE INDEX IF NOT EXISTS mailbox_delivered_by_bee
 
 CREATE TABLE IF NOT EXISTS commands (
   id                INTEGER PRIMARY KEY AUTOINCREMENT,
-  verb              TEXT NOT NULL CHECK (verb IN ('spawn','send_wake','stop','revive','archive','unarchive','delete')),
+  verb              TEXT NOT NULL CHECK (verb IN ('spawn','send_wake','stop','revive','archive','unarchive','delete','reconnect_tools')),
   bee_id            TEXT NOT NULL,
   args              TEXT NOT NULL DEFAULT '{}',
   target_generation INTEGER,

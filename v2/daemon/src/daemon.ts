@@ -1,3 +1,4 @@
+import { reconnectToolsResult, type ReconnectToolsResult } from "../../core/src/reconnectTools.ts";
 import { ThreadOperations } from "./threadOperations.ts";
 import { codexHistoryPath, pinThreadHistory, readThreadHistory } from "./threadHistory.ts";
 import { threadOperationView, type ThreadOperationRow } from "../../core/src/threadOperation.ts";
@@ -720,6 +721,13 @@ export class HiveDaemon {
       readHandoffTranscript: (bee, segments) => this.readHandoffTranscript(bee, segments),
       ...(this.deps.summarizeHandoff ? { summarizeHandoff: this.deps.summarizeHandoff } : {}),
       cellCaptureExecutor: this.cellCaptureExecutor(store),
+      reconnectTools: command => driver.reconnectTools(command.beeId, command.targetGeneration!, command.id, async (apply, home) => {
+        await this.accounts!.reconnectGatewayTools(home, async targets => {
+          if (this.stopping) throw new Error("Daemon is shutting down");
+          store.setReconnectTargets(command.id, targets);
+          await apply(targets);
+        });
+      }),
     });
     drivers.end();
     this.activeStartupPhase = null;
@@ -787,6 +795,7 @@ export class HiveDaemon {
       await this.loginFlows?.shutdown();
       await this.threadOperations?.shutdown();
       await this.rpc?.close();
+      this.core?.detachReconnectOwner();
       this.store?.close();
       this.telemetry?.close();
       if (options.preserveRuntimes === false) {
@@ -1290,6 +1299,8 @@ export class HiveDaemon {
     if (verb === "bee.fork") for (const key of Object.keys(params)) if (!["beeId", "name", "id", "idempotencyKey"].includes(key)) throw new RpcError("thread_unsupported", `Fork is a plain copy and does not accept '${key}'`);
     if (typeof params.idempotencyKey === "string" && verb !== "thread.fork" && verb !== "thread.handoff" && this.mustStore().threadOperationByKey(params.idempotencyKey)) throw new RpcError("idempotency_conflict", "Key belongs to a thread operation");
     if (typeof params.idempotencyKey === "string") {
+      const reconnect = this.mustStore().getCommandByIdempotencyKey(params.idempotencyKey);
+      if (reconnect?.verb === "reconnect_tools" && (verb !== "bee.reconnectTools" || reconnect.beeId !== params.beeId)) throw new RpcError("idempotency_conflict", "Key belongs to a reconnect command");
       const prior = this.mustStore().lookupRpcResult(params.idempotencyKey);
       if (prior && (verb === "thread.operation.retry" || prior.verb === "thread.operation.retry")
         && (prior.verb !== verb || (prior.result as { operation?: { id?: string } }).operation?.id !== params.operationId)) {
@@ -1464,6 +1475,14 @@ export class HiveDaemon {
         return this.withIdempotency(verb, params, () => this.rpcRename(params));
       case "bee.tag":
         return this.withIdempotency(verb, params, () => this.rpcTag(params));
+      case "bee.reconnectTools":
+        return this.rpcReconnectTools(params);
+      case "bee.reconnectTools.get": {
+        const beeId = this.requireBee(params);
+        const command = this.mustStore().getCommand(this.numberParam(params, "commandId"));
+        if (!command || command.beeId !== beeId || command.verb !== "reconnect_tools") throw new RpcError("reconnect_not_found", "Reconnect command not found for this bee");
+        return reconnectToolsResult(command);
+      }
       case "bee.interrupt":
         return this.withIdempotency(verb, params, () => this.rpcInterrupt(params));
       case "thread.capabilities":
@@ -3193,6 +3212,29 @@ export class HiveDaemon {
     const res = this.mustStore().tagBee(beeId, { add, remove });
     this.log(`bee.tag bee=${beeId} applied=${res.applied} added=${JSON.stringify(res.added)} removed=${JSON.stringify(res.removed)}`);
     return { bee: res.bee, applied: res.applied, added: res.added, removed: res.removed };
+  }
+
+  private rpcReconnectTools(params: Record<string, unknown>): ReconnectToolsResult {
+    for (const key of Object.keys(params)) if (!["beeId", "idempotencyKey"].includes(key)) throw new RpcError("invalid_request", `Reconnect does not accept '${key}'`);
+    const store = this.mustStore();
+    const beeId = this.requireBee(params);
+    const key = this.idempotencyKeyOf(params);
+    if (key) {
+      const prior = store.getCommandByIdempotencyKey(key);
+      if (prior) {
+        if (prior.verb !== "reconnect_tools" || prior.beeId !== beeId) throw new RpcError("idempotency_conflict", "Key belongs to another command");
+        return reconnectToolsResult(prior);
+      }
+      if (store.lookupRpcResult(key)) throw new RpcError("idempotency_conflict", "Key belongs to another mutation");
+    }
+    const bee = store.getBee(beeId)!;
+    const rt = store.currentRuntime(beeId);
+    if (bee.agent !== "codex" || !["hsr", "cell"].includes(bee.substrate)) throw new RpcError("reconnect_unsupported", "Reconnect tools requires a Codex HSR or Cell runtime");
+    if (bee.activeMoveId || bee.activeHandoffId) throw new RpcError("reconnect_not_ready", "A move or handoff currently owns this bee");
+    if (!rt || rt.state === "stopped") throw new RpcError("reconnect_not_ready", "Reconnect requires the existing live runtime");
+    const support = this.driver?.reconnectToolsSupport(beeId, rt.generation);
+    if (!support?.supported) throw new RpcError("reconnect_unsupported", support?.reason ?? "Runtime control unavailable");
+    return reconnectToolsResult(store.enqueueCommand("reconnect_tools", beeId, {}, key ? { idempotencyKey: key } : {}));
   }
 
   /**

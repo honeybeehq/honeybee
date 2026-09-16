@@ -1,3 +1,4 @@
+import type { ReconnectToolsReceipt } from "../../core/src/reconnectTools.ts";
 /**
  * HsrDriver — the first real substrate driver (WP3 of the reset).
  *
@@ -41,7 +42,7 @@
  * pid adoption; silence never manufactures idle.
  */
 import { spawn, type ChildProcess } from "node:child_process";
-import { appendFileSync, closeSync, mkdirSync, openSync, readSync, realpathSync, statSync, writeFileSync } from "node:fs";
+import { appendFileSync, closeSync, mkdirSync, openSync, readFileSync, readSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { connect, type Socket } from "node:net";
@@ -172,6 +173,7 @@ interface ManagedProcess {
   pendingDeliveries: Set<number>;
   /** Durable protocol acknowledgements waiting for the daemon to mark mailbox truth. */
   confirmedDeliveries: Set<number>;
+  reconnectReplies: Map<string, string | null>;
   /** First requested stop cause; fixes the exit cause of a signaled process. */
   stopCause: StopCause | null;
   killTimer: NodeJS.Timeout | null;
@@ -237,6 +239,7 @@ interface RecoveredAdapterContext {
   sessionId: string | null;
   turnId: string | null;
   confirmedDeliveries: Set<number>;
+  reconnectReplies: Map<string, string | null>;
 }
 
 /**
@@ -254,6 +257,7 @@ function recoverAdapterContext(
   let sessionId = providerSessionId;
   let turnId: string | null = null;
   const confirmedDeliveries = new Set<number>();
+  const reconnectReplies = new Map<string, string | null>();
   let fd: number | null = null;
   try {
     fd = openSync(path, "r");
@@ -279,6 +283,7 @@ function recoverAdapterContext(
             sessionId = signal.sessionId;
             continue;
           }
+          if (signal.kind === "tools_control_result") { reconnectReplies.set(signal.requestId, signal.error ?? null); continue; }
           if (signal.kind === "delivery_confirmed") {
             confirmedDeliveries.add(signal.messageId);
             continue;
@@ -301,10 +306,17 @@ function recoverAdapterContext(
   } finally {
     if (fd != null) closeSync(fd);
   }
-  return { sessionId, turnId, confirmedDeliveries };
+  return { sessionId, turnId, confirmedDeliveries, reconnectReplies };
+}
+
+export class ReconnectToolsControlError extends Error {
+  readonly code: string;
+  constructor(code: string, message: string) { super(message); this.code = code; }
 }
 
 export class HsrDriver implements RuntimeDriver {
+  private readonly reconnecting = new Set<string>();
+  private detached = false;
   private readonly cfg: HsrDriverConfig;
   private readonly hostLaunch: HostLaunch;
   private readonly now: () => number;
@@ -464,6 +476,7 @@ export class HsrDriver implements RuntimeDriver {
       turnId: null,
       pendingDeliveries: new Set(),
       confirmedDeliveries: new Set(),
+      reconnectReplies: new Map(),
       stopCause: null,
       killTimer: null,
       stdoutRest: Buffer.alloc(0),
@@ -577,6 +590,7 @@ export class HsrDriver implements RuntimeDriver {
     if (!p || p.generation !== generation || p.exited) {
       return { accepted: false, reason: "no_process" };
     }
+    if (this.reconnecting.has(`${beeId}:${generation}`)) return { accepted: false, reason: "not_ready" };
     // A re-adopted process has no stdin (pipes died with the previous daemon).
     // Refuse deterministically; the daemon's degraded-runtime policy rotates
     // the generation so the mailbox record reaches a fresh runtime.
@@ -633,6 +647,74 @@ export class HsrDriver implements RuntimeDriver {
     return p.adapter.confirmsDelivery
       ? { accepted: false, reason: "not_ready" }
       : { accepted: true };
+  }
+
+  /** Existing v15+ hosts already support the fixed adapter request and durable reply evidence. */
+  reconnectToolsSupport(beeId: string, generation: number): { supported: boolean; reason?: string } {
+    const p = this.procs.get(beeId);
+    if (!p || p.generation !== generation || p.exited) return { supported: false, reason: "runtime_unavailable" };
+    if (!p.adapter?.encodeReconnectTools || !p.adapter?.encodeReconnectToolsNonce) return { supported: false, reason: "unsupported_harness" };
+    if (p.degraded || !p.hostStyle || p.legacySharedObservation || !p.observationPath) return { supported: false, reason: "unsupported_runner_host" };
+    const status = p.statusPath ? readRunnerStatus(p.statusPath) : null;
+    if (!status || status.beeId !== beeId || status.generation !== generation || status.observationError) return { supported: false, reason: "unsupported_runner_host" };
+    return { supported: true };
+  }
+
+  async reconnectTools(beeId: string, generation: number, commandId: number, prepare: (apply: (targets: string[]) => Promise<void>, home: string) => Promise<void>): Promise<ReconnectToolsReceipt> {
+    const support = this.reconnectToolsSupport(beeId, generation);
+    if (!support.supported) throw new ReconnectToolsControlError(support.reason!, support.reason!);
+    const p = this.procs.get(beeId)!;
+    const reloadId = `hive-reconnect-tools-${commandId}`;
+    const ready = (): void => {
+      if (this.detached) throw new ReconnectToolsControlError("owner_detached", "Runtime owner detached; successor will recover the command");
+      this.pumpHostTail(p);
+      if (this.procs.get(beeId) !== p || p.exited || p.stopCause != null) throw new ReconnectToolsControlError("runtime_unavailable", "The owning runtime is no longer available");
+      if (p.phase !== "idle" || p.pendingDeliveries.size > 0 || !p.sessionId || !p.socket?.writable || p.socket.destroyed || p.socketBroken) throw new ReconnectToolsControlError("not_ready", "Waiting for the owning turn to end and its control connection to be ready");
+    };
+    this.pumpHostTail(p);
+    // A durable acknowledgement is sufficient for recovery even before the
+    // adopted socket reconnects. Readiness is required only for a new effect.
+    if (!p.reconnectReplies.has(reloadId)) ready();
+    if (this.reconnecting.has(`${beeId}:${generation}`)) throw new ReconnectToolsControlError("not_ready", "Reconnect already in progress");
+    this.reconnecting.add(`${beeId}:${generation}`);
+    try {
+      // Replies before the committed cursor are recovered on adoption, so a
+      // daemon crash after the effect never requires another reload.
+      let targetsApplied: string[] = [];
+      if (!p.reconnectReplies.has(reloadId)) {
+        const config = JSON.parse(readFileSync(this.runnerPaths(beeId, generation).config, "utf8")) as RunnerHostConfig;
+        if (config.beeId !== beeId || config.generation !== generation) throw new ReconnectToolsControlError("unsupported_runner_host", "Native config home ownership cannot be verified");
+        const home = config.env?.CODEX_HOME || (config.env?.HOME ? join(config.env.HOME, ".codex") : null);
+        if (!home) throw new ReconnectToolsControlError("config_home_unavailable", "The owning runtime has no recorded native config home");
+        await prepare(async targets => {
+          targetsApplied = targets;
+          if (targets.length === 0) throw new ReconnectToolsControlError("no_managed_gateways", "No live Honeybee-managed MCP gateways to reconnect");
+          if (targets.some(name => !/^[A-Za-z0-9_-]+$/.test(name))) throw new ReconnectToolsControlError("unsupported_gateway_name", "Gateway name cannot be addressed safely by the native config API");
+          const deadline = Date.now() + 30_000;
+          const request = async (id: string, line: string): Promise<void> => {
+            ready();
+            p.reconnectReplies.delete(id);
+            if (!this.writeLine(p, line)) throw new ReconnectToolsControlError("not_ready", "Control connection is unavailable");
+            while (!p.reconnectReplies.has(id)) {
+              if (this.detached) throw new ReconnectToolsControlError("owner_detached", "Runtime owner detached");
+              this.pumpHostTail(p);
+              if (p.exited || p.stopCause != null) throw new ReconnectToolsControlError("runtime_unavailable", "Runtime exited before MCP acknowledgement");
+              if (Date.now() >= deadline) throw new ReconnectToolsControlError("reload_timeout", "No MCP acknowledgement; outcome is unknown");
+              if (!p.reconnectReplies.has(id)) await new Promise<void>(resolve => setTimeout(resolve, 20));
+            }
+            if (p.reconnectReplies.get(id)) throw new ReconnectToolsControlError("reload_rejected", p.reconnectReplies.get(id)!);
+          };
+          for (const target of targets) {
+            await request(`hive-reconnect-config-${commandId}-${target}`, p.adapter!.encodeReconnectToolsNonce!(commandId, target, `${beeId}-${generation}-${commandId}`));
+          }
+          await request(reloadId, p.adapter!.encodeReconnectTools!(commandId));
+        }, home);
+      }
+      if (!p.reconnectReplies.has(reloadId)) throw new ReconnectToolsControlError("reload_unconfirmed", "No native reload acknowledgement was observed");
+      const error = p.reconnectReplies.get(reloadId);
+      if (error) throw new ReconnectToolsControlError("reload_rejected", error);
+      return { outcome: "reloaded", threadId: p.sessionId, targets: targetsApplied, modelTools: "refresh_pending_next_turn" };
+    } finally { this.reconnecting.delete(`${beeId}:${generation}`); }
   }
 
   stop(beeId: string, generation: number, cause: StopCause): { hadProcess: boolean } {
@@ -925,6 +1007,7 @@ export class HsrDriver implements RuntimeDriver {
           sessionId: providerSessionId ?? null,
           turnId: null,
           confirmedDeliveries: new Set(),
+          reconnectReplies: new Map(),
         };
         if (exactGenerationIdentity) {
           let journalSize: number | null = null;
@@ -988,6 +1071,7 @@ export class HsrDriver implements RuntimeDriver {
             turnId: lastKnownState === "running" ? recovered.turnId : null,
             pendingDeliveries: new Set(),
             confirmedDeliveries: recovered.confirmedDeliveries,
+            reconnectReplies: recovered.reconnectReplies,
             stopCause: null,
             killTimer: null,
             stdoutRest: Buffer.alloc(0),
@@ -1035,6 +1119,7 @@ export class HsrDriver implements RuntimeDriver {
       turnId: null,
       pendingDeliveries: new Set(),
       confirmedDeliveries: new Set(),
+      reconnectReplies: new Map(),
       stopCause: null,
       killTimer: null,
       stdoutRest: Buffer.alloc(0),
@@ -1162,6 +1247,7 @@ export class HsrDriver implements RuntimeDriver {
    * that survive it stay adoptable.
    */
   detachAll(): void {
+    this.detached = true;
     for (const p of this.procs.values()) {
       if (p.killTimer) {
         clearTimeout(p.killTimer);
@@ -1309,6 +1395,9 @@ export class HsrDriver implements RuntimeDriver {
       }
     }
     switch (signal.kind) {
+      case "tools_control_result":
+        p.reconnectReplies.set(signal.requestId, signal.error ?? null);
+        return;
       case "booted": {
         if (signal.sessionId) {
           // Late init still carries it (claude emits system/init only after the

@@ -4,6 +4,7 @@
  */
 export {
   HsrDriver,
+  ReconnectToolsControlError,
   type FlagEvidence,
   type ObservationCursorEvidence,
   type SessionEvidence,

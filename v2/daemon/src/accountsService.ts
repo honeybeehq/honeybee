@@ -1863,6 +1863,14 @@ export class AccountsService {
    * through the common multi-harness seeder. A populated home still skips
    * credential/default activation, but its owned gateway entries converge.
    */
+  async reconnectGatewayTools(home: string, afterSeed: (targets: string[]) => Promise<void>): Promise<void> {
+    const result = await seedGatewayMcp(home, "codex", {
+      gateways: liveGateways(), disabled: process.env.HIVE_GATEWAYS_DISABLE === "1", failOnError: true,
+      afterSeed,
+    });
+    if (result.status !== "seeded") throw new Error(`Gateway config reconciliation refused: ${result.reason ?? "unknown"}`);
+  }
+
   async activateForSpawn(account: AccountRow, bee: { cwd: string }): Promise<ActivationResult> {
     const result = this.activateHomeForSpawn(account, bee);
     const gatewaySeed = await this.gatewayMcpSeeder(account.homePath, account.harness);

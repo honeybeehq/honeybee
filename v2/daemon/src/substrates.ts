@@ -84,6 +84,16 @@ export class SubstrateRouter implements RuntimeDriver {
     return this.driverFor(beeId, generation).stop(beeId, generation, cause);
   }
 
+  reconnectToolsSupport(beeId: string, generation: number) {
+    const driver = this.driverFor(beeId, generation);
+    return "reconnectToolsSupport" in driver ? driver.reconnectToolsSupport(beeId, generation) : { supported: false, reason: "unsupported_harness" };
+  }
+  reconnectTools(beeId: string, generation: number, commandId: number, prepare: (apply: (targets: string[]) => Promise<void>, home: string) => Promise<void>) {
+    const driver = this.driverFor(beeId, generation);
+    if (!("reconnectTools" in driver)) throw new Error("unsupported_harness");
+    return driver.reconnectTools(beeId, generation, commandId, prepare);
+  }
+
   interrupt(beeId: string, generation: number, deliveryMessageId?: number): InterruptOutcome {
     return this.driverFor(beeId, generation).interrupt(beeId, generation, deliveryMessageId);
   }

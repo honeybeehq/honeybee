@@ -1,3 +1,4 @@
+export type { ReconnectToolsResult, ReconnectToolsReceipt, ReconnectToolsError } from "../../core/src/reconnectTools.ts";
 import type { ThreadOperationView } from "../../core/src/threadOperation.ts";
 /**
  * The v2 RPC surface (spec 04 "RPC surface") — shared by the daemon's server
@@ -78,6 +79,7 @@ export const DAEMON_VERSION = "2.0.0-wp4";
  * client ignores the extra key) and `deployInfo` repeats the list.
  */
 export const DAEMON_CAPABILITIES = [
+  "bee.reconnectTools.v1",
   "thread.operations.v1",
   "thread.handoff.codex.hsr.v1",
   /** Spawn may retain a parent owned outside this node via `{parentId, parentExternal:true}`. */
@@ -142,6 +144,7 @@ export interface HelloFrame {
 
 /** Closed-list, typed errors — never fuzzy (spec 04). */
 export const RPC_ERROR_CODES = [
+  "reconnect_unsupported", "reconnect_not_ready", "reconnect_not_found",
   "thread_unsupported", "thread_remote_unsupported", "thread_history_unavailable", "thread_operation_not_found", "thread_not_ready", "thread_busy",
   "bee_not_found",
   "node_stopped",
@@ -260,6 +263,7 @@ export const RPC_ERROR_CODES = [
 export type RpcErrorCode = (typeof RPC_ERROR_CODES)[number];
 
 export const RPC_VERBS = [
+  "bee.reconnectTools", "bee.reconnectTools.get",
   "thread.fork", "thread.handoff", "thread.operation.get", "thread.operation.retry", "thread.transcript", "thread.capabilities",
   // the seven mutations — thin wrappers over store + queue
   "spawn",

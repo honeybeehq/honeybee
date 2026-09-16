@@ -1,3 +1,4 @@
+import type { ReconnectToolsReceipt } from "../../core/src/reconnectTools.ts";
 /**
  * DaemonCore — the daemon's loop cores (WP4 of the reset), extracted from the
  * WP2 SimDaemon so one implementation serves both worlds:
@@ -239,6 +240,7 @@ export interface DaemonCoreOptions {
    * wait with reason `executor` instead of pretending to run.
    */
   cellCaptureExecutor?: CellCaptureExecutor;
+  reconnectTools?: (command: CommandRow) => Promise<ReconnectToolsReceipt>;
 }
 
 /** v24: what the action scheduler needs from the Cell landing owner. Read-only except `capture`. */
@@ -287,6 +289,8 @@ export class DaemonCore {
   private readonly readHandoffTranscript: ((bee: BeeRow, segments: TranscriptSegmentRow[]) => { turns: HandoffContextTurn[]; truncated: boolean }) | null;
   private readonly summarizeHandoff: ((input: { handoff: BeeHandoffRow; bee: BeeRow; base: HandoffContext }) => Promise<HandoffContext>) | null;
   private readonly cellCapture: CellCaptureExecutor | null;
+  private readonly reconnectTools: DaemonCoreOptions["reconnectTools"];
+  private reconnectOwnerClosed = false;
   /** Handoffs whose async summarizer is in flight (process-local; a restart simply re-runs it). */
   private readonly summarizing = new Set<string>();
   /** In-memory dedup so a breach is reported once per daemon lifetime; the recorder dedups durably. */
@@ -316,7 +320,11 @@ export class DaemonCore {
     this.readHandoffTranscript = opts.readHandoffTranscript ?? null;
     this.summarizeHandoff = opts.summarizeHandoff ?? null;
     this.cellCapture = opts.cellCaptureExecutor ?? null;
+    this.reconnectTools = opts.reconnectTools;
   }
+
+  /** Late asynchronous replies belong to the successor after shutdown. */
+  detachReconnectOwner(): void { this.reconnectOwnerClosed = true; }
 
   private get ext(): ExtendedDriver {
     return this.driver as ExtendedDriver;
@@ -792,6 +800,7 @@ export class DaemonCore {
       // Pending mail means the delivery loop is about to use this runtime —
       // stopping it now would only bounce through revive-on-message.
       if (pending.length > 0) continue;
+      if (this.store.hasPendingReconnect(rt.beeId, rt.generation)) continue;
       if (this.store.activeMoveOf(rt.beeId)) continue;
       if (this.store.activeHandoffOf(rt.beeId)) continue;
       if (this.store.hasPendingStopCommand(rt.beeId, rt.generation)) continue;
@@ -880,6 +889,29 @@ export class DaemonCore {
   /** Execute one claimed command. Returns true when the caller should settle it done. */
   private execute(cmd: CommandRow): boolean {
     switch (cmd.verb) {
+      case "reconnect_tools": {
+        const rt = this.store.currentRuntime(cmd.beeId);
+        if (!rt || rt.state === "stopped") {
+          this.store.settleReconnect(cmd.id, null, { code: "runtime_unavailable", message: "The owning runtime has stopped" });
+          return false;
+        }
+        const execute = this.reconnectTools;
+        if (!execute) {
+          this.store.settleReconnect(cmd.id, null, { code: "unsupported_harness", message: "No reconnect executor" });
+          return false;
+        }
+        void Promise.resolve().then(() => execute(cmd)).then(
+          receipt => { if (!this.reconnectOwnerClosed) this.store.settleReconnect(cmd.id, receipt, null); },
+          (error: unknown) => {
+            if (this.reconnectOwnerClosed) return;
+            const code = (error as { code?: string })?.code ?? "reconnect_failed";
+            if (code === "owner_detached") return;
+            if (code === "not_ready") this.store.deferReconnect(cmd.id);
+            else this.store.settleReconnect(cmd.id, null, { code, message: error instanceof Error ? error.message : "Reconnect failed" });
+          },
+        );
+        return false;
+      }
       case "archive": {
         const bee = this.store.getBee(cmd.beeId);
         if (bee?.lifecycle === "active") this.store.archiveBee(cmd.beeId);
@@ -1435,6 +1467,7 @@ export class DaemonCore {
   private deliveryLoop(work: readonly DaemonWorkRow[]): void {
     for (const { runtime: rt, pending } of work) {
       if (rt.state === "booting") continue;
+      if (rt.state === "idle" && this.store.hasPendingReconnect(rt.beeId, rt.generation)) continue;
       const threadOperation = this.store.threadOperationForSuccessor(rt.beeId);
       if (threadOperation && threadOperation.phase !== "ready") continue;
       if (pending.length === 0) continue;

@@ -34,6 +34,7 @@ export type Flag = (typeof FLAGS)[number];
 export const VERBS = [
   "spawn",
   "send_wake",
+  "reconnect_tools",
   "stop",
   "revive",
   "archive",
@@ -43,7 +44,7 @@ export const VERBS = [
 export type Verb = (typeof VERBS)[number];
 
 /** Verbs whose intent is bound to a specific runtime generation (B6 fencing). */
-export const RUNTIME_VERBS: readonly Verb[] = ["spawn", "send_wake", "stop", "revive"];
+export const RUNTIME_VERBS: readonly Verb[] = ["spawn", "send_wake", "stop", "revive", "reconnect_tools"];
 
 export const COMMAND_STATUSES = ["queued", "running", "done", "failed"] as const;
 export type CommandStatus = (typeof COMMAND_STATUSES)[number];

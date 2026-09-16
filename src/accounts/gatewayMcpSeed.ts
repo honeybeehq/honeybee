@@ -39,6 +39,8 @@ export type SeedGatewayMcpOptions = {
   disabled?: boolean;
   /** Let a readiness gate retry transient lock/filesystem failures. */
   failOnError?: boolean;
+  /** Owner effect after reconciliation, under the same native-config lock. */
+  afterSeed?: (managedGatewayNames: string[]) => Promise<void>;
 };
 
 /** Only fixed stage/code names and numeric lock metadata may reach activation logs. */
@@ -436,7 +438,26 @@ function tomlKey(name: string): string {
   return /^[A-Za-z0-9_-]+$/u.test(name) ? name : JSON.stringify(name);
 }
 
-function renderCodexEntry(name: string, entry: McpEntry): string {
+function renderCodexEntry(name: string, entry: McpEntry, previous?: string): string {
+  // Honeybee owns executable selection and forwarded environment names, not
+  // optional/required policy, timeouts, enabled state or a user's literal env.
+  const extra: string[] = [];
+  if (previous) {
+    const lines = previous.split("\n").slice(1);
+    for (let index = 0; index < lines.length; index++) {
+      const line = lines[index]!;
+      const owned = /^\s*(?:command|args|env_vars|["'](?:command|args|env_vars)["'])\s*=/.test(line);
+      const assignment = /^\s*[^=]+=(.*)$/.exec(line);
+      let balance = assignment ? scanTomlValue(assignment[1]!, { square: 0, curly: 0 }) : null;
+      if (!owned) extra.push(line);
+      while (balance && (balance.square > 0 || balance.curly > 0) && index + 1 < lines.length) {
+        const continuation = lines[++index]!;
+        if (!owned) extra.push(continuation);
+        balance = scanTomlValue(continuation, balance);
+      }
+    }
+    while (extra.at(-1)?.trim() === "") extra.pop();
+  }
   return [
     `[mcp_servers.${tomlKey(name)}]`,
     `command = ${JSON.stringify(entry.command)}`,
@@ -444,6 +465,7 @@ function renderCodexEntry(name: string, entry: McpEntry): string {
     ...(entry.envVars
       ? [`env_vars = [${entry.envVars.map((envVar) => JSON.stringify(envVar)).join(", ")}]`]
       : []),
+    ...extra,
   ].join("\n");
 }
 
@@ -538,6 +560,22 @@ function codexSections(lines: string[]): TomlSection[] | null {
   });
 }
 
+/** A reconnect-owned nonce must not leave an invalid command-less server on retirement. */
+function codexChildSections(lines: string[], name: string): Array<TomlSection & { child: string }> {
+  const children: Array<TomlSection & { child: string }> = [];
+  for (let start = 0; start < lines.length; start++) {
+    const match = /^\s*\[mcp_servers\.("(?:\\.|[^"\\])*"|[A-Za-z0-9_-]+)\.([^\]]+)\]\s*(?:#.*)?$/u.exec(lines[start]!);
+    if (!match) continue;
+    const raw = match[1]!;
+    const found = raw.startsWith('"') ? JSON.parse(raw) as string : raw;
+    if (found !== name) continue;
+    const next = lines.findIndex((line, index) => index > start && /^\s*\[/.test(line));
+    const end = next === -1 ? lines.length : next;
+    children.push({ name, child: match[2]!, start, end, raw: lines.slice(start, end).join("\n").trim() });
+  }
+  return children;
+}
+
 function appendTomlSection(lines: string[], rendered: string): string[] {
   const out = [...lines];
   while (out.length > 0 && out[out.length - 1] === "") out.pop();
@@ -568,7 +606,7 @@ function reconcileCodex(
     const current = sections.find((section) => section.name === name);
     const next = desired[name];
     if (next) {
-      if (current) lines = replaceTomlSection(lines, current, renderCodexEntry(name, next));
+      if (current) lines = replaceTomlSection(lines, current, renderCodexEntry(name, next, current.raw));
       else lines = appendTomlSection(lines, renderCodexEntry(name, next));
       nextOwned[name] = next;
       continue;
@@ -577,7 +615,14 @@ function reconcileCodex(
       continue;
     }
     if (current.raw !== renderCodexEntry(name, prior)) continue;
-    lines = replaceTomlSection(lines, current, null);
+    const children = codexChildSections(lines, name);
+    const onlyOwnedNonce = children.every(section => section.child === "env"
+      && section.raw.split("\n").slice(1).every(line => !line.trim() || line.trim().startsWith("#")
+        || /^\s*HONEYBEE_MCP_RECONNECT_NONCE\s*=\s*"(?:\\.|[^"\\])*"\s*(?:#.*)?$/.test(line)));
+    if (!onlyOwnedNonce) continue; // literal user env or other nested settings retain the whole server
+    for (const section of [...children, current].sort((a, b) => b.start - a.start)) {
+      lines = replaceTomlSection(lines, section, null);
+    }
   }
 
   for (const [name, entry] of Object.entries(desired)) {
@@ -585,7 +630,7 @@ function reconcileCodex(
     const sections = codexSections(lines);
     if (!sections) return null;
     const current = sections.find((section) => section.name === name);
-    const rendered = renderCodexEntry(name, entry);
+    const rendered = renderCodexEntry(name, entry, current?.raw);
     if (current?.raw === rendered) continue;
     if (current) lines = replaceTomlSection(lines, current, rendered);
     else lines = appendTomlSection(lines, rendered);
@@ -672,7 +717,7 @@ export async function seedGatewayMcp(
   try {
     const gateways = options.gateways;
     const stampExists = (await stat(join(homePath, STAMP_FILE)).catch(() => null))?.isFile() === true;
-    if (gateways.length === 0 && !stampExists) return { status: "seeded", written: [] };
+    if (gateways.length === 0 && !stampExists && !options.afterSeed) return { status: "seeded", written: [] };
     return await withFileLock(join(homePath, ".hive-gateways.lock"), async () => {
       const stampRead = await readStamp(homePath);
       if (stampRead.status === "invalid") {
@@ -680,8 +725,13 @@ export async function seedGatewayMcp(
         gatewayMcpDebug(`skipping ${homePath}: ${reason}`);
         return { status: "skipped" as const, reason, written: [] };
       }
-      return reconcileLocked(homePath, dialect, gateways, stampRead.stamp);
-    });
+      const result = await reconcileLocked(homePath, dialect, gateways, stampRead.stamp);
+      if (result.status === "seeded") await options.afterSeed?.([...new Set(gateways.map(gateway => gateway.name))]);
+      return result;
+    // A reconnect holds this lock through its bounded 30s native round trip.
+    // Account activation must be able to wait behind that owner without
+    // consuming a spawn attempt at the generic lock's 10s default.
+    }, { timeoutMs: 45_000 });
   } catch (error) {
     // A callback + cleanup double failure preserves both causes in withFileLock.
     const lockError = error instanceof AggregateError

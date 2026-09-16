@@ -201,6 +201,7 @@ interface Parsed {
 const LIST_FLAGS = new Set(["--add", "--remove", "--option", "--ref", "--env", "--input", "--output"]);
 
 const VALUE_FLAGS = new Set([
+  "--command-id",
   "--agent",
   "--cwd",
   "--title",
@@ -1117,6 +1118,22 @@ async function cmdTag(ctx: CliContext, parsed: Parsed): Promise<number> {
       false,
     );
     return 0;
+  });
+}
+
+async function cmdReconnectTools(ctx: CliContext, parsed: Parsed): Promise<number> {
+  const needle = parsed.positional[1];
+  if (!needle) throw new Error("usage: hive reconnect-tools <bee> [--idempotency-key k] | hive reconnect-tools <bee> --command-id <id>");
+  return withClient(ctx, async c => {
+    const list = await c.request<ListResult>("list");
+    const beeId = resolveBeeIn(list.views, needle);
+    const commandId = parsed.flags.get("--command-id");
+    const result = await c.request<import("../../daemon/src/protocol.ts").ReconnectToolsResult>(
+      commandId === undefined ? "bee.reconnectTools" : "bee.reconnectTools.get",
+      commandId === undefined ? { beeId, idempotencyKey: parsed.flags.get("--idempotency-key") } : { beeId, commandId: Number(commandId) },
+    );
+    emit(ctx, [`Reconnect tools: ${result.state} (command ${result.commandId}, generation ${result.generation})`, ...(result.error ? [result.error.message] : []), ...(result.receipt ? [result.receipt.modelTools === "refresh_pending_next_turn" ? "Reconnect requested; refresh pending the next normal turn." : "Generation changed; tools were not refreshed."] : [])], result, false);
+    return result.state === "failed" ? 1 : 0;
   });
 }
 
@@ -4033,6 +4050,8 @@ export async function runV2Cli(argv: string[], io: CliIo = defaultIo): Promise<n
         return await cmdRename(ctx, parsed);
       case "tag":
         return await cmdTag(ctx, parsed);
+      case "reconnect-tools":
+        return await cmdReconnectTools(ctx, parsed);
       case "interrupt":
         return await cmdInterrupt(ctx, parsed);
       case "thread-operation":

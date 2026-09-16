@@ -64,6 +64,11 @@ rl.on("line", (raw) => {
       threadId = randomUUID();
       emit({ jsonrpc: "2.0", id: msg.id, result: { thread: { id: threadId, cwd: msg.params?.cwd ?? null, forkedFrom: String(msg.params?.threadId ?? "") } } });
       return;
+    case "config/value/write":
+    case "config/mcpServer/reload":
+      if (process.env.FAKE_CODEX_REJECT_RECONNECT === "1") emit({ id: msg.id, error: { code: -32601, message: "unsupported MCP control" } });
+      else setTimeout(() => emit({ id: msg.id, result: {} }), Number(process.env.FAKE_CODEX_RECONNECT_DELAY_MS ?? "0"));
+      return;
     case "turn/start": {
       const turnId = randomUUID();
       currentTurnId = turnId;

@@ -25,6 +25,7 @@
 export type AdapterFlag = "auth_needed" | "resource_blocked" | "spawn_failed";
 
 export type AdapterSignal =
+  | { kind: "tools_control_result"; requestId: string; error?: string }
   /**
    * The CLI signaled readiness. `sessionId` is the provider session/thread id
    * when the stream carries one (claude system/init, codex thread/start).
@@ -158,6 +159,9 @@ export interface HarnessAdapter {
    * child outright, so it is never used as a fallback).
    */
   encodeInterrupt?(ctx: InterruptContext): string | null;
+  /** Fixed MCP control request, never arbitrary RPC forwarding. */
+  encodeReconnectTools?(commandId: number): string;
+  encodeReconnectToolsNonce?(commandId: number, gateway: string, nonce: string): string;
 }
 
 // ---------------------------------------------------------------------------
