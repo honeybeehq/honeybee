@@ -7,6 +7,8 @@
 import type {
   AccountLimitsRow,
   AccountRow,
+  ActionQueueView,
+  ActionView,
   AuditRow,
   BeeHandoffRow,
   BeeMoveRow,
@@ -50,6 +52,8 @@ export function replayAudit(rows: AuditRow[]): StateDump {
   const cellOps = new Map<string, CellOpRow>();
   const beeHandoffs = new Map<string, BeeHandoffRow>();
   const transcriptSegments = new Map<string, TranscriptSegmentRow>();
+  const actions = new Map<string, ActionView>();
+  const actionQueues = new Map<string, ActionQueueView>();
   const cloneHandoff = (h: BeeHandoffRow): BeeHandoffRow => ({
     ...h,
     from: { ...h.from, args: h.from.args === null ? null : [...h.from.args] },
@@ -186,6 +190,8 @@ export function replayAudit(rows: AuditRow[]): StateDump {
         for (const [k, sl] of seals) if (sl.beeId === beeId) seals.delete(k);
         for (const [k, t] of tasks) if (t.beeId === beeId) tasks.delete(k);
         for (const [k, sg] of transcriptSegments) if (sg.beeId === beeId) transcriptSegments.delete(k);
+        for (const [k, a] of actions) if (a.beeId === beeId) actions.delete(k);
+        actionQueues.delete(beeId);
         taskSupply.delete(beeId);
         for (const id of p.settledCommandIds as number[]) {
           const command = mustCommand(id);
@@ -449,6 +455,20 @@ export function replayAudit(rows: AuditRow[]): StateDump {
       case "boot.reconciled":
       case "bee.provider_session_fenced":
         break;
+      // v24: action queue — the payload carries the full view (hold/controls
+      // included, token never), so the mirror needs no derivation.
+      case "action.put": {
+        const action = structuredClone(p.action as ActionView);
+        actions.set(action.id, action);
+        break;
+      }
+      case "action_queue.put": {
+        const queue = structuredClone(p.queue as ActionQueueView);
+        actionQueues.set(queue.beeId, queue);
+        break;
+      }
+      case "action.report_rejected":
+        break;
       default:
         throw new Error(`audit replay: unknown audit kind ${row.kind}`);
     }
@@ -479,5 +499,7 @@ export function replayAudit(rows: AuditRow[]): StateDump {
     transcriptSegments: [...transcriptSegments.values()].sort((a, b) =>
       a.beeId !== b.beeId ? (a.beeId < b.beeId ? -1 : 1) : a.ordinal - b.ordinal,
     ),
+    actions: [...actions.values()].sort((a, b) => (a.beeId !== b.beeId ? (a.beeId < b.beeId ? -1 : 1) : a.position - b.position)),
+    actionQueues: [...actionQueues.values()].sort((a, b) => (a.beeId < b.beeId ? -1 : a.beeId > b.beeId ? 1 : 0)),
   };
 }

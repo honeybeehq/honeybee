@@ -46,10 +46,13 @@
 import {
   CoreError,
   RUNTIME_TRANSITIONS,
+  actionIsActive,
+  actionPredecessor,
   buildExtractiveHandoffContext,
   handoffFencesSource,
   placementContextText,
   prefixPlacementDelivery,
+  type ActionRow,
   type BeeHandoffRow,
   type BeeMoveRow,
   type BeeRow,
@@ -63,6 +66,7 @@ import {
   type RuntimeState,
   type TranscriptSegmentRow,
 } from "../../core/src/index.ts";
+import type { CaptureReport } from "../../driver-cell/src/index.ts";
 import { deliveryText, isPeerSender } from "./envelope.ts";
 import {
   NOOP_PERFORMANCE,
@@ -228,6 +232,22 @@ export interface DaemonCoreOptions {
    * a rejection fails the handoff at stage `context` (source recoverable).
    */
   summarizeHandoff?: (input: { handoff: BeeHandoffRow; bee: BeeRow; base: HandoffContext }) => Promise<HandoffContext>;
+  /**
+   * v24 actions: the Cell landing owner behind `land` actions (the daemon
+   * composes it over CellDriver + the cells registry). Absent: `land` actions
+   * wait with reason `executor` instead of pretending to run.
+   */
+  cellCaptureExecutor?: CellCaptureExecutor;
+}
+
+/** v24: what the action scheduler needs from the Cell landing owner. Read-only except `capture`. */
+export interface CellCaptureExecutor {
+  /** Current Cell facts for the bee, or null when it has no active provisioned Cell. */
+  inspect(beeId: string): { cellId: string; originRepo: string; spaceDir: string; head: string | null; busy: boolean } | null;
+  /** The real landing (driver-cell captureWork): refusals/conflicts are REPORTS, not throws. */
+  capture(beeId: string, opts: { targetBranch: string; mode: "merge" | "rebase"; opId: string }): CaptureReport;
+  /** Read-only recovery probe: does the origin's target branch already contain `cellHead`? */
+  landed(beeId: string, opts: { targetBranch: string; cellHead: string }): { landed: boolean; targetTip: string | null } | null;
 }
 
 const LIVE: readonly RuntimeState[] = ["booting", "running", "idle"];
@@ -264,6 +284,7 @@ export class DaemonCore {
   private readonly assertRuntimeStartReady: (command: CommandRow) => void;
   private readonly readHandoffTranscript: ((bee: BeeRow, segments: TranscriptSegmentRow[]) => { turns: HandoffContextTurn[]; truncated: boolean }) | null;
   private readonly summarizeHandoff: ((input: { handoff: BeeHandoffRow; bee: BeeRow; base: HandoffContext }) => Promise<HandoffContext>) | null;
+  private readonly cellCapture: CellCaptureExecutor | null;
   /** Handoffs whose async summarizer is in flight (process-local; a restart simply re-runs it). */
   private readonly summarizing = new Set<string>();
   /** In-memory dedup so a breach is reported once per daemon lifetime; the recorder dedups durably. */
@@ -291,6 +312,7 @@ export class DaemonCore {
     this.assertRuntimeStartReady = opts.assertRuntimeStartReady ?? (() => undefined);
     this.readHandoffTranscript = opts.readHandoffTranscript ?? null;
     this.summarizeHandoff = opts.summarizeHandoff ?? null;
+    this.cellCapture = opts.cellCaptureExecutor ?? null;
   }
 
   private get ext(): ExtendedDriver {
@@ -316,6 +338,10 @@ export class DaemonCore {
         this.log(`boot.reap bee=${p.beeId} gen=${p.generation}`);
       }
     }
+    // v24: a capture that was running when the daemon died has an unknown
+    // outcome; hold it as uncertain and let the scheduler reconcile it.
+    const uncertain = this.store.markInFlightCaptureActionsUncertain("daemon restarted while the capture was in flight; reconciling with the Cell owner");
+    for (const id of uncertain) this.log(`action.boot_uncertain action=${id}`);
     let wakesEnqueued = 0;
     for (const bee of this.store.listBees()) {
       if (this.ensureWake(bee.id)) wakesEnqueued += 1;
@@ -358,6 +384,7 @@ export class DaemonCore {
     this.performance.measureSync("core.step.commands", () => this.executeCommands());
     this.performance.measureSync("core.step.moves", () => this.reconcileMoves());
     this.performance.measureSync("core.step.handoffs", () => this.reconcileHandoffs());
+    this.performance.measureSync("core.step.actions", () => this.reconcileActions());
     ({ snapshot, seq } = this.performance.measureSync("core.step.snapshot", () =>
       this.refreshSnapshot(snapshot, seq),
     ));
@@ -1169,6 +1196,219 @@ export class DaemonCore {
    * message earns at most one fresh interrupt — idempotent and correct
    * (the message IS still urgent).
    */
+  // -------------------------------------------------------------------------
+  // v24 — action queue scheduling (one execution lane per bee)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Drive every bee with open actions: settle the active action from its
+   * owner's receipt (archive command, capture report, recovery probe) or,
+   * when the lane is free and unpaused, release the head of the queue iff its
+   * positional predecessor succeeded. Agent instructions ride the mailbox
+   * (default urgency `next`: the next accept point, never an interrupt).
+   */
+  private reconcileActions(): void {
+    for (const beeId of this.store.listOpenActionBeeIds()) {
+      try {
+        this.reconcileActionLane(beeId);
+      } catch (err) {
+        if (err instanceof CoreError) {
+          this.log(`action.lane_error bee=${beeId} ${err.name}: ${err.message}`);
+          continue;
+        }
+        throw err;
+      }
+    }
+  }
+
+  private reconcileActionLane(beeId: string): void {
+    if (!this.store.getBee(beeId)) return;
+    const lane = this.store.listActionsOf(beeId);
+    const active = lane.find((a) => actionIsActive(a));
+    if (active) {
+      if (active.executor === "lifecycle.archive" && active.status === "running") {
+        const res = this.store.reconcileArchiveAction(active.id);
+        if (res.settled) this.log(`action.settled bee=${beeId} action=${active.id} kind=${active.kind} status=${res.action.status}`);
+      } else if (active.executor === "cell.capture") {
+        if (active.status === "waiting" && active.waitingReason === "uncertain") this.reconcileUncertainCapture(active);
+        else if (active.status === "waiting" && active.waitingReason === "executor") this.runCellCapture(active);
+        else if (active.status === "running") {
+          // Captures run synchronously inside one step; a `running` capture
+          // seen by a later step lost its receipt (an executor throw between
+          // begin and settle). Never guess: hold it as uncertain.
+          this.store.settleAction(active.id, active.attempt, { kind: "uncertain", detail: "capture attempt has no receipt; reconciling with the Cell owner" });
+        }
+      }
+      return;
+    }
+    const queue = this.store.getActionQueue(beeId);
+    if (queue?.paused) return;
+    const head = lane.filter((a) => a.status === "queued").sort((a, b) => a.position - b.position)[0];
+    if (!head) return;
+    const predecessor = actionPredecessor(head, lane);
+    if (predecessor && predecessor.status !== "succeeded") return;
+    this.dispatchAction(head);
+  }
+
+  private dispatchAction(head: ActionRow): void {
+    switch (head.executor) {
+      case "agent": {
+        const res = this.store.dispatchAgentAction(head.id);
+        this.log(`action.dispatch bee=${head.beeId} action=${head.id} kind=${head.kind} attempt=${res.action.attempt} status=${res.action.status} msg=${res.messageId ?? "-"}`);
+        return;
+      }
+      case "lifecycle.archive": {
+        const res = this.store.dispatchArchiveAction(head.id);
+        this.log(`action.dispatch bee=${head.beeId} action=${head.id} kind=${head.kind} attempt=${res.action.attempt} status=${res.action.status} cmd=${res.commandId ?? "-"}`);
+        return;
+      }
+      case "cell.capture":
+        this.runCellCapture(head);
+        return;
+      case "external": {
+        const res = this.store.holdActionForExecutor(head.id, `no external executor has claimed kind '${head.kind}' yet (claim through action.claim)`);
+        this.log(`action.offer bee=${head.beeId} action=${head.id} kind=${head.kind} attempt=${res.action.attempt} status=${res.action.status}`);
+        return;
+      }
+      default:
+        throw new CoreError(`action ${head.id}: unknown executor ${String(head.executor)}`);
+    }
+  }
+
+  private captureInputs(resolved: Record<string, unknown>): { targetBranch: string; mode: "merge" | "rebase"; commit: string | null } | { error: string } {
+    const targetBranch = resolved.targetBranch;
+    if (typeof targetBranch !== "string" || targetBranch.trim().length === 0) return { error: "targetBranch must be a non-empty string" };
+    const mode = resolved.mode === undefined || resolved.mode === null ? "merge" : resolved.mode;
+    if (mode !== "merge" && mode !== "rebase") return { error: "mode must be merge|rebase" };
+    const commit = resolved.commit === undefined || resolved.commit === null ? null : resolved.commit;
+    if (commit !== null && typeof commit !== "string") return { error: "commit must be a string" };
+    return { targetBranch: targetBranch.trim(), mode, commit };
+  }
+
+  /**
+   * cell.capture: preconditions are revalidated against the bee's CURRENT
+   * placement and Cell HEAD right before the effect (never against
+   * acceptance-time assumptions); the attempt is opened before the capture
+   * so a crash mid-effect recovers as `uncertain`, not as a silent repeat.
+   */
+  private runCellCapture(row: ActionRow): void {
+    const exec = this.cellCapture;
+    if (!exec) {
+      this.store.holdActionForExecutor(row.id, "the cell.capture executor is not available on this daemon");
+      return;
+    }
+    const bee = this.store.getBee(row.beeId);
+    if (!bee) return;
+    const facts = exec.inspect(row.beeId);
+    if (facts && facts.busy) {
+      this.store.holdActionForExecutor(row.id, "the Cell has an in-flight operation; the capture waits for it");
+      return;
+    }
+    const begun = this.store.beginCellCaptureAttempt(row.id, { expectedHead: facts?.head ?? null });
+    const attempt = begun.action.attempt;
+    if (!begun.resolved) return;
+    // Placement is the Cell owner's call (`inspect` consults the registry + driver); the substrate is the bee's.
+    if (bee.substrate !== "cell" || !facts) {
+      this.store.settleAction(row.id, attempt, { kind: "failed", code: "placement_changed", detail: `bee ${row.beeId} is not on an active Cell (substrate ${bee.substrate}, cell ${bee.cellId ?? "none"}); land applies to Cell work only`, retryable: false });
+      return;
+    }
+    const inputs = this.captureInputs(begun.resolved);
+    if ("error" in inputs) {
+      this.store.settleAction(row.id, attempt, { kind: "failed", code: "invalid_input", detail: inputs.error, retryable: false });
+      return;
+    }
+    if (facts.head === null) {
+      this.store.settleAction(row.id, attempt, { kind: "failed", code: "no_cell_head", detail: "the Cell checkout has no HEAD commit", retryable: true });
+      return;
+    }
+    if (inputs.commit !== null && !facts.head.startsWith(inputs.commit) && !inputs.commit.startsWith(facts.head)) {
+      this.store.settleAction(row.id, attempt, { kind: "failed", code: "precondition_failed", detail: `Cell HEAD is ${facts.head}, not the intended commit ${inputs.commit}; the work moved after it was committed`, retryable: true });
+      return;
+    }
+    this.executeCapture(row, attempt, facts.head, inputs);
+  }
+
+  private executeCapture(row: ActionRow, attempt: number, cellHead: string, inputs: { targetBranch: string; mode: "merge" | "rebase" }): void {
+    const exec = this.cellCapture as CellCaptureExecutor;
+    let report: CaptureReport;
+    try {
+      report = exec.capture(row.beeId, { targetBranch: inputs.targetBranch, mode: inputs.mode, opId: `action-${row.id}-a${attempt}` });
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      this.log(`action.capture_error bee=${row.beeId} action=${row.id} ${detail}`);
+      this.store.settleAction(row.id, attempt, { kind: "failed", code: "capture_error", detail, retryable: true });
+      return;
+    }
+    const receipt = { ...report } as unknown as Record<string, unknown>;
+    switch (report.status) {
+      case "landed":
+        this.store.settleAction(row.id, attempt, {
+          kind: "succeeded",
+          outputs: { resultSha: report.resultSha, targetBranch: report.targetBranch, cellHead: report.cellHead ?? cellHead, alreadyLanded: false, baseTarget: report.baseTarget },
+          receipt,
+        });
+        break;
+      case "nothing_to_capture":
+        this.store.settleAction(row.id, attempt, {
+          kind: "succeeded",
+          outputs: { resultSha: report.baseTarget, targetBranch: report.targetBranch, cellHead: report.cellHead ?? cellHead, alreadyLanded: true, baseTarget: report.baseTarget },
+          receipt,
+          detail: "the target branch already contained the Cell HEAD",
+        });
+        break;
+      case "conflict":
+        this.store.settleAction(row.id, attempt, { kind: "failed", code: "conflict", detail: `conflicts in ${report.conflicts.join(", ")}`, retryable: true, receipt });
+        break;
+      case "refused":
+        this.store.settleAction(row.id, attempt, { kind: "failed", code: `refused_${report.reason ?? "unknown"}`, detail: `capture refused: ${report.reason ?? "unknown"}`, retryable: true, receipt });
+        break;
+      default:
+        throw new CoreError(`action ${row.id}: unknown capture status ${String((report as { status: unknown }).status)}`);
+    }
+    this.log(`action.capture bee=${row.beeId} action=${row.id} attempt=${attempt} status=${report.status}${report.resultSha ? ` result=${report.resultSha}` : ""}`);
+  }
+
+  /**
+   * Recovery after a lost capture receipt: ask the Cell owner whether the
+   * target branch already contains the HEAD the attempt captured. Yes → the
+   * effect happened; settle succeeded (`reconciled`). No → the origin is
+   * bit-identical by the capture's A1 guarantee, so the same attempt runs
+   * again after re-checking its preconditions. Never a blind repeat.
+   */
+  private reconcileUncertainCapture(row: ActionRow): void {
+    const exec = this.cellCapture;
+    if (!exec) return;
+    const expectedHead = row.dispatch?.expectedHead ?? null;
+    const resolved = row.resolvedInputs ?? null;
+    if (!expectedHead || !resolved) {
+      this.log(`action.uncertain_unreconcilable bee=${row.beeId} action=${row.id} reason=no_expected_head`);
+      return;
+    }
+    const inputs = this.captureInputs(resolved);
+    if ("error" in inputs) return;
+    const probe = exec.landed(row.beeId, { targetBranch: inputs.targetBranch, cellHead: expectedHead });
+    if (!probe) return;
+    if (probe.landed) {
+      this.store.settleAction(row.id, row.attempt, {
+        kind: "succeeded",
+        outputs: { resultSha: probe.targetTip, targetBranch: inputs.targetBranch, cellHead: expectedHead, alreadyLanded: true, baseTarget: null },
+        receipt: { probe: "landed", targetTip: probe.targetTip },
+        detail: "reconciled after a lost receipt: the target branch contains the captured HEAD",
+        reconciled: true,
+      });
+      this.log(`action.reconciled bee=${row.beeId} action=${row.id} attempt=${row.attempt} landed=true tip=${probe.targetTip ?? "-"}`);
+      return;
+    }
+    const facts = exec.inspect(row.beeId);
+    if (!facts || facts.busy) return;
+    if (facts.head !== expectedHead) {
+      this.store.settleAction(row.id, row.attempt, { kind: "failed", code: "precondition_failed", detail: `Cell HEAD is ${facts.head ?? "absent"}, not the captured ${expectedHead}; the capture did not land and the work moved`, retryable: true });
+      return;
+    }
+    this.log(`action.reconcile_rerun bee=${row.beeId} action=${row.id} attempt=${row.attempt}`);
+    this.executeCapture(row, row.attempt, expectedHead, inputs);
+  }
+
   private readonly interruptRequested = new Set<number>();
 
   /**

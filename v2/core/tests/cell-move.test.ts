@@ -332,7 +332,7 @@ test(`cell-move.schema v${previousVersion} store migrates to v22`, () => {
     try {
       const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
       assert.equal(Number(version.value), SCHEMA_VERSION);
-      assert.equal(SCHEMA_VERSION, 23);
+      assert.equal(SCHEMA_VERSION, 24);
       const cols = (check.prepare("SELECT name FROM pragma_table_info('bees')").all() as Array<{ name: string }>).map((c) => c.name);
       assert.ok(cols.includes("placement_version"));
       assert.ok(cols.includes("active_move_id"));

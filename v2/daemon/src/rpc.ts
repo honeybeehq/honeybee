@@ -12,6 +12,13 @@ import type { AuditRow } from "../../core/src/index.ts";
 import {
   AccountNotFoundError,
   AccountReferencedError,
+  ActionClaimedError,
+  ActionKindUnknownError,
+  ActionNotFoundError,
+  ActionRefusedError,
+  ActionReorderInvalidError,
+  ActionStaleAttemptError,
+  ActionUnauthorizedError,
   BeeNotFoundError,
   CellNotFoundError,
   ContinuationUnsupportedError,
@@ -104,6 +111,13 @@ export function toRpcError(err: unknown): { code: RpcErrorCode; message: string 
   if (err instanceof HandoffInProgressError) return { code: "handoff_in_progress", message: err.message };
   if (err instanceof StaleGenerationError) return { code: "stale_generation", message: err.message };
   if (err instanceof HandoffNotFoundError) return { code: "handoff_not_found", message: err.message };
+  if (err instanceof ActionNotFoundError) return { code: "action_not_found", message: err.message };
+  if (err instanceof ActionRefusedError) return { code: "action_refused", message: err.message };
+  if (err instanceof ActionReorderInvalidError) return { code: "action_reorder_invalid", message: err.message };
+  if (err instanceof ActionStaleAttemptError) return { code: "action_stale_attempt", message: err.message };
+  if (err instanceof ActionUnauthorizedError) return { code: "action_unauthorized", message: err.message };
+  if (err instanceof ActionKindUnknownError) return { code: "action_kind_unknown", message: err.message };
+  if (err instanceof ActionClaimedError) return { code: "action_claimed", message: err.message };
   if (err instanceof ContinuationUnsupportedError) return { code: "continuation_unsupported", message: err.message };
   if (err instanceof NameConflictError) return { code: "name_conflict", message: err.message };
   if (err instanceof PackageError) return { code: "invalid_package", message: err.message };

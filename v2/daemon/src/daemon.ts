@@ -54,6 +54,14 @@ import {
   placementContextText,
   toBeeHandoffView,
   toBeeMoveView,
+  ACTION_STATUSES,
+  BUILTIN_ACTION_DEFINITIONS,
+  emptyActionCounts,
+  hashActionEnqueueRequest,
+  toActionQueueView,
+  toActionView,
+  type ActionQueueView,
+  type ActionStatus,
   recipeFor,
   requireBeeId,
   resolveExecutable,
@@ -90,7 +98,7 @@ import { dirHasCredentials } from "./activation.ts";
 import { LoginFlowService, type LoginTransports } from "./loginFlows.ts";
 import type { PtySpawner } from "./loginWorker.ts";
 import type { KeychainReader, KeychainWriter } from "./keychain.ts";
-import type { FlagEvidenceLike } from "./loops.ts";
+import type { CellCaptureExecutor, FlagEvidenceLike } from "./loops.ts";
 import { realPreflightProbes } from "./import-probes.ts";
 import { HsrDriver, pidAlive, verifyProcessIdentity, type SpawnSpec } from "../../driver-hsr/src/index.ts";
 import {
@@ -104,6 +112,7 @@ import {
   readLedger,
   reserveCell,
   revParse,
+  isAncestor,
   sandboxWritableDirectory,
   runCellExec,
   sanitizeComponent,
@@ -190,6 +199,18 @@ import {
   type BeeMoveResult,
   type BeeHandoffResult,
   type BeeHandoffGetResult,
+  type ActionCancelResult,
+  type ActionClaimResult,
+  type ActionDefinitionsResult,
+  type ActionEnqueueResult,
+  type ActionGetResult,
+  type ActionListResult,
+  type ActionQueueControlResult,
+  type ActionQueueGetResult,
+  type ActionReorderResult,
+  type ActionReportOutcome,
+  type ActionReportResult,
+  type ActionRetryResult,
   type CellCaptureMode,
   type CellCaptureResult,
   type CellExecResult,
@@ -691,6 +712,7 @@ export class HiveDaemon {
       assertRuntimeStartReady: (command) => this.assertRuntimeStartReady(command),
       readHandoffTranscript: (bee, segments) => this.readHandoffTranscript(bee, segments),
       ...(this.deps.summarizeHandoff ? { summarizeHandoff: this.deps.summarizeHandoff } : {}),
+      cellCaptureExecutor: this.cellCaptureExecutor(store),
     });
     drivers.end();
     this.activeStartupPhase = null;
@@ -1374,6 +1396,34 @@ export class HiveDaemon {
         return this.rpcBeeHandoff(params);
       case "bee.handoff.get":
         return this.rpcBeeHandoffGet(params);
+      case "action.enqueue":
+        return this.rpcActionEnqueue(params);
+      case "action.get":
+        return this.rpcActionGet(params);
+      case "action.list":
+        return this.rpcActionList(params);
+      case "action.definitions":
+        return { definitions: [...BUILTIN_ACTION_DEFINITIONS] } satisfies ActionDefinitionsResult;
+      case "action.cancel":
+        return this.withIdempotency(verb, params, () => this.rpcActionCancel(params));
+      case "action.reorder":
+        return this.withIdempotency(verb, params, () => this.rpcActionReorder(params));
+      case "action.retry":
+        return this.withIdempotency(verb, params, () => this.rpcActionRetry(params));
+      case "action.queue.get":
+        return { queue: this.actionQueueView(this.mustStore(), this.requireBee(params)) } satisfies ActionQueueGetResult;
+      case "action.queue.pause":
+        return this.withIdempotency(verb, params, () => this.rpcActionQueueControl(params, "pause"));
+      case "action.queue.resume":
+        return this.withIdempotency(verb, params, () => this.rpcActionQueueControl(params, "resume"));
+      case "action.report":
+        // Not under withIdempotency: a refused report audits its rejection in
+        // its own transaction (the wrapper's rollback would drop it), and the
+        // report path is idempotent per attempt by construction. A caller key
+        // still replays the recorded result (rpc_idempotency, outside any tx).
+        return this.rpcActionReportIdempotent(params);
+      case "action.claim":
+        return this.rpcActionClaim(params);
       case "cell.exec":
         return this.rpcCellExec(params);
       case "cell.retained.remove":
@@ -2355,6 +2405,248 @@ export class HiveDaemon {
   /** The canonical Honeybee session log for a bee (segment 0), whatever the row says. */
   private canonicalSessionLogPath(beeId: string): string {
     return join(this.cfg.sessionLogDir, `${beeId}.jsonl`);
+  }
+
+  // -------------------------------------------------------------------------
+  // v24 — durable per-bee action queue
+  // -------------------------------------------------------------------------
+
+  private objectParam(params: Record<string, unknown>, key: string, verb: string): Record<string, unknown> | undefined {
+    const v = params[key];
+    if (v === undefined || v === null) return undefined;
+    if (typeof v !== "object" || Array.isArray(v)) throw new RpcError("invalid_request", `${verb}: ${key} must be an object`);
+    return v as Record<string, unknown>;
+  }
+
+  private optionalBool(params: Record<string, unknown>, key: string, verb: string): boolean {
+    const v = params[key];
+    if (v === undefined || v === null) return false;
+    if (typeof v !== "boolean") throw new RpcError("invalid_request", `${verb}: ${key} must be a boolean when given`);
+    return v;
+  }
+
+  private optionalString(params: Record<string, unknown>, key: string, verb: string): string | null {
+    const v = params[key];
+    if (v === undefined || v === null) return null;
+    if (typeof v !== "string") throw new RpcError("invalid_request", `${verb}: ${key} must be a string when given`);
+    return v;
+  }
+
+  private actionQueueView(store: CoreStore, beeId: string): ActionQueueView {
+    const queue = store.getActionQueue(beeId);
+    if (queue) return toActionQueueView(queue);
+    const at = this.nowMs();
+    return { beeId, paused: false, pausedAt: null, activeActionId: null, counts: emptyActionCounts(), createdAt: at, updatedAt: at };
+  }
+
+  private nowMs(): number {
+    return Date.now();
+  }
+
+  private rpcActionEnqueue(params: Record<string, unknown>): ActionEnqueueResult {
+    const store = this.mustStore();
+    const beeId = this.requireBee(params);
+    const key = this.idempotencyKeyOf(params);
+    if (key == null) throw new RpcError("invalid_request", "action.enqueue: idempotencyKey is required");
+    const rawItems = params.items;
+    if (!Array.isArray(rawItems) || rawItems.length === 0) throw new RpcError("invalid_request", "action.enqueue: items must be a non-empty array");
+    const items = rawItems.map((raw, index) => {
+      if (raw === null || typeof raw !== "object" || Array.isArray(raw)) throw new RpcError("invalid_request", `action.enqueue: items[${index}] must be an object`);
+      const item = raw as Record<string, unknown>;
+      if (typeof item.kind !== "string" || item.kind.length === 0) throw new RpcError("invalid_request", `action.enqueue: items[${index}].kind is required`);
+      const version = item.version === undefined || item.version === null ? null : item.version;
+      if (version !== null && (typeof version !== "number" || !Number.isInteger(version) || version < 1)) {
+        throw new RpcError("invalid_request", `action.enqueue: items[${index}].version must be a positive integer when given`);
+      }
+      const inputs = this.objectParam(item, "inputs", `action.enqueue items[${index}]`) ?? {};
+      const clientRef = this.optionalString(item, "clientRef", `action.enqueue items[${index}]`);
+      const title = this.optionalString(item, "title", `action.enqueue items[${index}]`);
+      return { kind: item.kind, version, inputs, clientRef, title };
+    });
+    const requestHash = hashActionEnqueueRequest({ beeId, items });
+    const res = store.enqueueActions({ beeId, idempotencyKey: key, requestHash, items });
+    this.log(`action.enqueue bee=${beeId} key=${key} items=${items.map((i) => i.kind).join(",")} deduped=${res.deduped}`);
+    const lane = store.listActionsOf(beeId);
+    const queue = store.getActionQueue(beeId);
+    return {
+      actions: res.actions.map((row) => toActionView(row, lane, queue)),
+      queue: this.actionQueueView(store, beeId),
+      deduped: res.deduped,
+    };
+  }
+
+  private rpcActionGet(params: Record<string, unknown>): ActionGetResult {
+    const store = this.mustStore();
+    const actionId = this.param(params, "actionId");
+    if (!store.getAction(actionId)) throw new RpcError("action_not_found", `action not found: ${actionId}`);
+    return { action: store.actionView(actionId) };
+  }
+
+  private rpcActionList(params: Record<string, unknown>): ActionListResult {
+    const store = this.mustStore();
+    const beeId = params.beeId === undefined || params.beeId === null ? undefined : this.requireBee(params);
+    const statuses = this.stringListParam(params, "statuses", "action.list");
+    if (statuses && statuses.some((s) => !(ACTION_STATUSES as readonly string[]).includes(s))) {
+      throw new RpcError("invalid_request", `action.list: statuses must be among ${ACTION_STATUSES.join("|")}`);
+    }
+    return { actions: store.listActionViews({ ...(beeId ? { beeId } : {}), ...(statuses ? { statuses: statuses as ActionStatus[] } : {}) }) };
+  }
+
+  private rpcActionCancel(params: Record<string, unknown>): ActionCancelResult {
+    const store = this.mustStore();
+    const actionId = this.param(params, "actionId");
+    if (!store.getAction(actionId)) throw new RpcError("action_not_found", `action not found: ${actionId}`);
+    const force = this.optionalBool(params, "force", "action.cancel");
+    const res = store.cancelAction(actionId, { force });
+    this.log(`action.cancel action=${actionId} force=${force} applied=${res.applied} status=${res.action.status}`);
+    return res;
+  }
+
+  private rpcActionRetry(params: Record<string, unknown>): ActionRetryResult {
+    const store = this.mustStore();
+    const actionId = this.param(params, "actionId");
+    if (!store.getAction(actionId)) throw new RpcError("action_not_found", `action not found: ${actionId}`);
+    const force = this.optionalBool(params, "force", "action.retry");
+    const res = store.retryAction(actionId, { force });
+    this.log(`action.retry action=${actionId} force=${force} attempt=${res.action.attempt} status=${res.action.status}`);
+    return res;
+  }
+
+  private rpcActionReorder(params: Record<string, unknown>): ActionReorderResult {
+    const store = this.mustStore();
+    const beeId = this.requireBee(params);
+    const order = this.stringListParam(params, "order", "action.reorder");
+    if (!order) throw new RpcError("invalid_request", "action.reorder: order must be an array of action ids");
+    const res = store.reorderActions(beeId, order);
+    this.log(`action.reorder bee=${beeId} order=${order.join(",")}`);
+    return res;
+  }
+
+  private rpcActionQueueControl(params: Record<string, unknown>, verb: "pause" | "resume"): ActionQueueControlResult {
+    const store = this.mustStore();
+    const beeId = this.requireBee(params);
+    const res = verb === "pause" ? store.pauseActionQueue(beeId) : store.resumeActionQueue(beeId);
+    this.log(`action.queue.${verb} bee=${beeId} applied=${res.applied}`);
+    return res;
+  }
+
+  private rpcActionReportIdempotent(params: Record<string, unknown>): ActionReportResult | (ActionReportResult & { deduped: true }) {
+    const key = this.idempotencyKeyOf(params);
+    const store = this.mustStore();
+    if (key != null) {
+      const hit = store.lookupRpcResult(key);
+      if (hit) {
+        this.log(`rpc.dedup verb=action.report key=${key}`);
+        return { ...(hit.result as ActionReportResult), deduped: true as const };
+      }
+    }
+    const result = this.rpcActionReport(params);
+    if (key != null) store.transact(() => store.recordRpcResult(key, "action.report", null, result));
+    return result;
+  }
+
+  private rpcActionReport(params: Record<string, unknown>): ActionReportResult {
+    const store = this.mustStore();
+    const actionId = this.param(params, "actionId");
+    if (!store.getAction(actionId)) throw new RpcError("action_not_found", `action not found: ${actionId}`);
+    const attempt = this.numberParam(params, "attempt");
+    const token = this.param(params, "token");
+    const kind = params.kind;
+    if (kind !== "progress" && kind !== "question" && kind !== "result") {
+      throw new RpcError("invalid_request", "action.report: kind must be progress|question|result");
+    }
+    const beeId = this.optionalString(params, "beeId", "action.report");
+    if (beeId !== null && !store.getBee(beeId)) throw new RpcError("bee_not_found", `bee not found: ${beeId}`);
+    const executor = this.optionalString(params, "executor", "action.report");
+    const outcome = params.outcome === undefined || params.outcome === null ? null : params.outcome;
+    if (outcome !== null && outcome !== "succeeded" && outcome !== "failed" && outcome !== "uncertain") {
+      throw new RpcError("invalid_request", "action.report: outcome must be succeeded|failed|uncertain");
+    }
+    if (kind === "result" && outcome === null) throw new RpcError("invalid_request", "action.report: result reports need an outcome");
+    const question = this.objectParam(params, "question", "action.report");
+    if (kind === "question" && (!question || typeof question.text !== "string" || question.text.length === 0)) {
+      throw new RpcError("invalid_request", "action.report: question reports need question.text");
+    }
+    const failure = this.objectParam(params, "failure", "action.report");
+    const res = store.reportAction({
+      actionId,
+      attempt,
+      token,
+      reporter: { beeId, executor },
+      kind,
+      note: this.optionalString(params, "note", "action.report"),
+      question: question
+        ? { text: String(question.text), options: this.stringListParam(question, "options", "action.report question") ?? null }
+        : null,
+      outcome: outcome as ActionReportOutcome | null,
+      outputs: this.objectParam(params, "outputs", "action.report") ?? null,
+      receipt: this.objectParam(params, "receipt", "action.report") ?? null,
+      detail: this.optionalString(params, "detail", "action.report"),
+      failure: failure
+        ? {
+            code: this.optionalString(failure, "code", "action.report failure"),
+            detail: this.optionalString(failure, "detail", "action.report failure"),
+            retryable: typeof failure.retryable === "boolean" ? failure.retryable : null,
+          }
+        : null,
+    });
+    this.log(`action.report action=${actionId} attempt=${attempt} kind=${kind}${outcome ? ` outcome=${outcome}` : ""} by=${beeId ?? executor ?? "?"} applied=${res.applied} status=${res.action.status}`);
+    return res;
+  }
+
+  private rpcActionClaim(params: Record<string, unknown>): ActionClaimResult {
+    const store = this.mustStore();
+    const executor = this.param(params, "executor");
+    const actionId = this.optionalString(params, "actionId", "action.claim");
+    if (actionId !== null && !store.getAction(actionId)) throw new RpcError("action_not_found", `action not found: ${actionId}`);
+    const beeId = params.beeId === undefined || params.beeId === null ? null : this.requireBee(params);
+    const kinds = this.stringListParam(params, "kinds", "action.claim") ?? null;
+    const res = store.claimAction({ executor, actionId, kinds, beeId });
+    if (!res) return { claim: null };
+    this.log(`action.claim executor=${executor} action=${res.action.id} attempt=${res.action.attempt} deduped=${res.deduped}`);
+    return { claim: { action: res.action, attempt: res.action.attempt, token: res.token, resolvedInputs: res.resolvedInputs, deduped: res.deduped } };
+  }
+
+  /**
+   * The Cell landing owner as the action scheduler sees it: registry + driver
+   * facts, the real `captureWork`, and a read-only landed probe for recovery.
+   */
+  private cellCaptureExecutor(store: CoreStore): CellCaptureExecutor {
+    const cellOf = (beeId: string) => {
+      const bee = store.getBee(beeId);
+      if (!bee || bee.substrate !== "cell" || !bee.cellId) return null;
+      const row = store.getCell(bee.cellId);
+      if (!row || row.state !== "active") return null;
+      const cell = this.driver?.cell.cellOf(beeId);
+      if (!cell) return null;
+      return { row, cell };
+    };
+    return {
+      inspect: (beeId) => {
+        const found = cellOf(beeId);
+        if (!found) return null;
+        this.releaseAbsentCellOps(found.row.id);
+        return {
+          cellId: found.row.id,
+          originRepo: found.cell.originRepo,
+          spaceDir: found.cell.paths.spaceDir,
+          head: revParse(found.cell.paths.spaceDir, "HEAD"),
+          busy: this.cellHasInFlightOp(found.row.id),
+        };
+      },
+      capture: (beeId, opts) => {
+        const driver = this.driver;
+        if (!driver) throw new Error("daemon is shutting down");
+        return driver.cell.capture(beeId, opts);
+      },
+      landed: (beeId, opts) => {
+        const found = cellOf(beeId);
+        if (!found) return null;
+        const tip = revParse(found.cell.originRepo, `refs/heads/${opts.targetBranch}`);
+        if (tip === null) return { landed: false, targetTip: null };
+        return { landed: isAncestor(found.cell.originRepo, opts.cellHead, tip), targetTip: tip };
+      },
+    };
   }
 
   private rpcBeeHandoffGet(params: Record<string, unknown>): BeeHandoffGetResult {
@@ -3364,6 +3656,8 @@ export class HiveDaemon {
       beeMoves: store.listBeeMoves().map(toBeeMoveView),
       beeHandoffs: store.listBeeHandoffs().map(toBeeHandoffView),
       transcriptSegments: store.listTranscriptSegments(),
+      actions: store.listActionViews(),
+      actionQueues: store.listActionQueueViews(),
     };
   }
 

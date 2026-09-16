@@ -12,7 +12,7 @@
  * Changing anything here is a protocol change (bump PROTOCOL in the daemon).
  * The shape snapshot test (tests/mirror.test.ts) fails on any drift.
  */
-import type { AccountLimitsRow, AccountRow, AuditRow, BeeHandoffView, BeeMoveView, BeeRow, BeeView, CellRow, CredentialHealth, QuestionRow, RuntimeRow, SealRow, TaskRow, TaskSupplyRow, TemplateRow, TrackRow, TranscriptSegmentRow } from "./types.ts";
+import type { AccountLimitsRow, AccountRow, ActionQueueView, ActionView, AuditRow, BeeHandoffView, BeeMoveView, BeeRow, BeeView, CellRow, CredentialHealth, QuestionRow, RuntimeRow, SealRow, TaskRow, TaskSupplyRow, TemplateRow, TrackRow, TranscriptSegmentRow } from "./types.ts";
 import { LOGIN_FLOW_KEYS, type LoginFlowRow } from "./loginFlow.ts";
 
 /** One bee as apiaryd stores it: B8 view verbatim + record + current runtime. */
@@ -97,7 +97,16 @@ export interface MirrorSnapshot {
   /** v23 (additive): handoff receipts + transcript segments. */
   beeHandoffs: BeeHandoffView[];
   transcriptSegments: MirrorTranscriptSegmentRow[];
+  /** v24 (additive): per-bee action queues — every action view + queue summary. */
+  actions: MirrorActionRow[];
+  actionQueues: MirrorActionQueueRow[];
 }
+
+/** v24: actions mirror as their locked views (`hive_actions`); hold/controls are derived server-side. */
+export type MirrorActionRow = ActionView;
+
+/** v24: per-bee queue summary (`hive_action_queues`). */
+export type MirrorActionQueueRow = ActionQueueView;
 
 /** A watch delta is a contiguous run of audit rows (see daemon protocol.ts WatchFrame). */
 export type MirrorDelta = AuditRow;
@@ -172,6 +181,16 @@ export type MirrorDelta = AuditRow;
  *                                                                        (informational: a stale generation's session id was
  *                                                                         recorded on its closed segment, never on the bee)
  * bee.deleted cascades transcript_segments for that beeId; handoff receipts remain.
+ * v24 (action queue) adds, all additive:
+ *   action.put             → { action: ActionView, previous: ActionStatus | null, reason }
+ *                                                                        (actions table: upsert the view verbatim; a
+ *                                                                         lane change re-emits every sibling whose derived
+ *                                                                         hold/controls changed, so no client derivation)
+ *   action_queue.put       → { queue: ActionQueueView, reason }          (action_queues table: upsert)
+ *   action.report_rejected → { actionId, beeId, attempt, currentAttempt, kind, reporter, reason }
+ *                                                                        (informational: a stale/unauthorized/duplicate-
+ *                                                                         conflicting report was refused; no row change)
+ * bee.deleted cascades actions + action_queues for that beeId.
  */
 export const MIRROR_TEMPLATE_AUDIT_KINDS = ["template.put", "template.deleted"] as const;
 export const MIRROR_TRACK_AUDIT_KINDS = ["track.put", "track.deleted"] as const;
@@ -198,6 +217,8 @@ export const MIRROR_BEE_HANDOFF_AUDIT_KINDS = [
   "bee.handoff_failed",
 ] as const;
 export const MIRROR_TRANSCRIPT_SEGMENT_AUDIT_KINDS = ["transcript_segment.put", "bee.deleted"] as const;
+export const MIRROR_ACTION_AUDIT_KINDS = ["action.put", "bee.deleted"] as const;
+export const MIRROR_ACTION_QUEUE_AUDIT_KINDS = ["action_queue.put", "bee.deleted"] as const;
 export type MirrorAccountAuditKind = (typeof MIRROR_ACCOUNT_AUDIT_KINDS)[number];
 export type MirrorAccountLimitsAuditKind = (typeof MIRROR_ACCOUNT_LIMITS_AUDIT_KINDS)[number];
 export type MirrorTemplateAuditKind = (typeof MIRROR_TEMPLATE_AUDIT_KINDS)[number];
@@ -443,3 +464,50 @@ export const MIRROR_TRANSCRIPT_SEGMENT_KEYS = [
   "createdAt",
   "closedAt",
 ] as const;
+export const MIRROR_ACTION_KEYS = [
+  "id",
+  "beeId",
+  "position",
+  "clientRef",
+  "kind",
+  "definitionVersion",
+  "executor",
+  "title",
+  "definition",
+  "inputs",
+  "resolvedInputs",
+  "status",
+  "waitingReason",
+  "waitingDetail",
+  "hold",
+  "attempt",
+  "dispatch",
+  "progress",
+  "questionId",
+  "result",
+  "failure",
+  "attempts",
+  "controls",
+  "createdAt",
+  "updatedAt",
+  "finishedAt",
+] as const;
+export const MIRROR_ACTION_DEFINITION_KEYS = ["kind", "version", "executor", "title", "description", "inputs", "outputs", "instruction"] as const;
+export const MIRROR_ACTION_DISPATCH_KEYS = [
+  "attempt",
+  "dispatchedAt",
+  "generation",
+  "messageId",
+  "deliveredAt",
+  "deliveredGeneration",
+  "operationKey",
+  "claimedBy",
+  "claimedAt",
+  "expectedHead",
+] as const;
+export const MIRROR_ACTION_RESULT_KEYS = ["outputs", "receipt", "detail", "reconciled", "attempt", "at"] as const;
+export const MIRROR_ACTION_FAILURE_KEYS = ["code", "detail", "retryable", "attempt", "at"] as const;
+export const MIRROR_ACTION_HOLD_KEYS = ["reason", "actionId", "actionStatus"] as const;
+export const MIRROR_ACTION_CONTROLS_KEYS = ["cancel", "forceCancel", "retry", "forceRetry", "reorder"] as const;
+export const MIRROR_ACTION_ATTEMPT_KEYS = ["attempt", "dispatchedAt", "generation", "messageId", "deliveredAt", "claimedBy", "operationKey", "outcome", "finishedAt"] as const;
+export const MIRROR_ACTION_QUEUE_KEYS = ["beeId", "paused", "pausedAt", "activeActionId", "counts", "createdAt", "updatedAt"] as const;

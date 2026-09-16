@@ -18,6 +18,10 @@
  */
 import type {
   AccountStatus,
+  ActionDefinition,
+  ActionQueueView,
+  ActionStatus,
+  ActionView,
   AuditRow,
   BeeHandoffStopAt,
   BeeHandoffView,
@@ -116,6 +120,14 @@ export const DAEMON_CAPABILITIES = [
    * bee identity, mailbox, Cell and history; only execution ownership moves.
    */
   "bee.handoff.v1",
+  /**
+   * v24 (2026-09-16): durable per-bee action queue — `action.*` verbs, the
+   * `actions` + `actionQueues` snapshot tables and their `action.put` /
+   * `action_queue.put` deltas, the authenticated `action.report` path and
+   * the external-executor `action.claim` path. See
+   * docs/design/action-queue-contract.md.
+   */
+  "bee.actions.v1",
 ] as const;
 export type DaemonCapability = (typeof DAEMON_CAPABILITIES)[number];
 
@@ -226,6 +238,20 @@ export const RPC_ERROR_CODES = [
   "stale_generation",
   /** v23: `bee.handoff.get` lookup. */
   "handoff_not_found",
+  /** v24: `action.*` lookup. */
+  "action_not_found",
+  /** v24: the action's status/executor does not permit the control or report (cancel a settled action, retry a running one, …). */
+  "action_refused",
+  /** v24: `action.reorder` omits/adds queued ids or would point an output reference forward. */
+  "action_reorder_invalid",
+  /** v24: `action.report` names an attempt older than the current one (late result of a superseded attempt). */
+  "action_stale_attempt",
+  /** v24: the reporter is not the assigned bee/claimant or presents the wrong attempt token. */
+  "action_unauthorized",
+  /** v24: `action.enqueue` named a kind/version no definition provides. */
+  "action_kind_unknown",
+  /** v24: `action.claim` on an attempt already claimed by another executor. */
+  "action_claimed",
 ] as const;
 export type RpcErrorCode = (typeof RPC_ERROR_CODES)[number];
 
@@ -349,6 +375,19 @@ export const RPC_VERBS = [
   "task.lists",
   "task.supply.get",
   "task.supply.set",
+  // v24: durable per-bee action queue (capability bee.actions.v1).
+  "action.enqueue",
+  "action.get",
+  "action.list",
+  "action.definitions",
+  "action.cancel",
+  "action.reorder",
+  "action.retry",
+  "action.queue.get",
+  "action.queue.pause",
+  "action.queue.resume",
+  "action.report",
+  "action.claim",
 ] as const;
 export type RpcVerb = (typeof RPC_VERBS)[number];
 
@@ -1161,6 +1200,9 @@ export interface SnapshotResult {
   /** v23 (additive): handoff receipts + transcript segments (store rows verbatim). */
   beeHandoffs: BeeHandoffView[];
   transcriptSegments: TranscriptSegmentRow[];
+  /** v24 (additive): every action view + per-bee queue summary. */
+  actions: ActionView[];
+  actionQueues: ActionQueueView[];
 }
 
 // ---------------------------------------------------------------------------
@@ -1433,6 +1475,151 @@ export type BeeHandoffResult = BeeHandoffView & { deduped?: boolean };
 
 /** `bee.handoff.get {handoffId}` → BeeHandoffView; unknown id → `handoff_not_found`. */
 export type BeeHandoffGetResult = BeeHandoffView;
+
+// ---------------------------------------------------------------------------
+// v24 — durable per-bee action queue (capability `bee.actions.v1`).
+// Full contract: docs/design/action-queue-contract.md.
+// ---------------------------------------------------------------------------
+
+export type { ActionDefinition, ActionQueueView, ActionStatus, ActionView };
+
+/** One item of `action.enqueue`. Inputs may hold `{$ref:{item:<earlier index>, output}}` or `{$ref:{action:<id>, output}}`. */
+export interface ActionEnqueueItem {
+  kind: string;
+  /** Definition version; omitted = the newest built-in. */
+  version?: number | null;
+  inputs?: Record<string, unknown>;
+  /** Client correlation handle echoed on the view (Waggle outbox id, palette entry id, …). */
+  clientRef?: string | null;
+  title?: string | null;
+}
+
+/**
+ * `action.enqueue {beeId, idempotencyKey, items}` — accept one ordered
+ * sequence (a single action is a one-item sequence). Appended after the bee's
+ * current tail; concurrent requests order by commit. Same key + same
+ * canonical request hash replays the original acceptance (`deduped: true`),
+ * also after a daemon restart; same key + different hash →
+ * `idempotency_conflict`. Errors: `bee_not_found`, `action_kind_unknown`,
+ * `invalid_request` (bad inputs / forward or unknown `$ref`).
+ */
+export interface ActionEnqueueParams {
+  beeId: string;
+  idempotencyKey: string;
+  items: ActionEnqueueItem[];
+}
+
+export interface ActionEnqueueResult {
+  actions: ActionView[];
+  queue: ActionQueueView;
+  deduped: boolean;
+}
+
+/** `action.get {actionId}` → `action_not_found` when absent. */
+export interface ActionGetResult {
+  action: ActionView;
+}
+
+/** `action.list {beeId?, statuses?}` — lane order (bee, position). */
+export interface ActionListResult {
+  actions: ActionView[];
+}
+
+/** `action.definitions {}` — the built-in registry (kind@version, executor, inputs, outputs). */
+export interface ActionDefinitionsResult {
+  definitions: ActionDefinition[];
+}
+
+/** `action.cancel {actionId, force?, idempotencyKey?}` — see controls.cancel / controls.forceCancel. */
+export interface ActionCancelResult extends DedupMarkers {
+  action: ActionView;
+  applied: boolean;
+}
+
+/** `action.reorder {beeId, order: string[], idempotencyKey?}` — exactly the queued ids, new order. */
+export interface ActionReorderResult extends DedupMarkers {
+  actions: ActionView[];
+}
+
+/** `action.retry {actionId, force?, idempotencyKey?}` — a NEW attempt (see controls.retry / controls.forceRetry). */
+export interface ActionRetryResult extends DedupMarkers {
+  action: ActionView;
+}
+
+/** `action.queue.get {beeId}` — the summary (a bee that never queued has a default, unpaused summary). */
+export interface ActionQueueGetResult {
+  queue: ActionQueueView;
+}
+
+/** `action.queue.pause|resume {beeId, idempotencyKey?}` — pausing stops RELEASES only; active work continues. */
+export interface ActionQueueControlResult extends DedupMarkers {
+  queue: ActionQueueView;
+  applied: boolean;
+}
+
+export type ActionReportKind = "progress" | "question" | "result";
+export type ActionReportOutcome = "succeeded" | "failed" | "uncertain";
+
+/**
+ * `action.report` — the authenticated result path. The agent calls it from
+ * inside its runtime (`hive action report …`; the CLI binds `beeId` from
+ * HIVE_BEE_ID) with the attempt token carried in the delivered instruction;
+ * an external executor calls it after `action.claim` with `executor` and the
+ * claim token. `attempt` must be the action's current attempt
+ * (`action_stale_attempt` otherwise) and the token must match
+ * (`action_unauthorized`). A repeated result with the same outcome is a
+ * quiet `deduped`; a different outcome for a settled attempt is
+ * `action_refused`. Missing/invalid required outputs are `invalid_request`
+ * and leave the action running.
+ */
+export interface ActionReportParams {
+  actionId: string;
+  attempt: number;
+  token: string;
+  /** Agent reports: the reporting bee (must own the action). */
+  beeId?: string | null;
+  /** Executor reports: the claimant's name. */
+  executor?: string | null;
+  kind: ActionReportKind;
+  /** progress: the note. */
+  note?: string | null;
+  /** question: opens a `questions` row; the action waits (`input`) until `question.answer`. */
+  question?: { text: string; options?: string[] | null } | null;
+  /** result: */
+  outcome?: ActionReportOutcome | null;
+  outputs?: Record<string, unknown> | null;
+  receipt?: Record<string, unknown> | null;
+  detail?: string | null;
+  failure?: { code?: string | null; detail?: string | null; retryable?: boolean | null } | null;
+  idempotencyKey?: string;
+}
+
+export interface ActionReportResult extends DedupMarkers {
+  action: ActionView;
+  accepted: true;
+  /** False when the report changed nothing (duplicate). */
+  applied: boolean;
+  question: MirrorQuestionRow | null;
+}
+
+/**
+ * `action.claim {executor, actionId?, kinds?, beeId?}` — an external
+ * executor takes the oldest offered attempt (status `waiting`/`executor`)
+ * matching the filter, or the named action. Returns null when nothing is
+ * offered. Re-claiming by the same executor is idempotent (`deduped`);
+ * another executor's attempt is `action_claimed`. The claimant must then
+ * `action.report` with `executor` + `token`.
+ */
+export interface ActionClaimParams {
+  executor: string;
+  actionId?: string | null;
+  kinds?: string[] | null;
+  beeId?: string | null;
+}
+
+export interface ActionClaimResult {
+  claim: { action: ActionView; attempt: number; token: string; resolvedInputs: Record<string, unknown>; deduped: boolean } | null;
+}
 
 export class RpcError extends Error {
   readonly code: RpcErrorCode;

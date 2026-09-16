@@ -62,6 +62,7 @@ export {
   tryGit,
   gitEnv,
   revParse,
+  isAncestor,
   refSet,
   porcelainStatus,
   currentBranch,

@@ -67,6 +67,19 @@ compatibility onto this mailbox. Allow `mail.cancel`/`mail.expedite` only before
 Measure every accepted message with invariant-1 telemetry: deliver within the policy bound
 or record a durable structured violation.
 
+## Action queue (v24)
+
+- One execution lane per bee; release the next action only after its predecessor
+  `succeeded`. Failure, cancellation, a question or an uncertain outcome hold downstream.
+- Delivery, turn end, idle, elapsed time and transcript text never complete an action:
+  only an attempt-fenced `action.report` (bee + token) or an owner receipt
+  (`cell.capture` report, archive command) does.
+- Agent instructions are ordinary mail (`origin: action.dispatch`, default urgency `next`).
+  Structured kinds stay with their owners; unavailable executors mean `waiting/executor`.
+- Retry is a new attempt; reconcile is a result for the same attempt. A capture whose
+  receipt was lost is probed through the Cell owner, never repeated blindly.
+- Contract: `docs/design/action-queue-contract.md`.
+
 ## Commands and recovery
 
 - Use `queued -> running -> done | failed`; replay interrupted commands as `queued` on boot.

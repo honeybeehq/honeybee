@@ -57,6 +57,28 @@ import {
   HandoffNotFoundError,
   StaleGenerationError,
   BEE_HANDOFF_STOP_AT,
+  ActionClaimedError,
+  ActionKindUnknownError,
+  ActionNotFoundError,
+  ActionRefusedError,
+  ActionReorderInvalidError,
+  ActionStaleAttemptError,
+  ActionUnauthorizedError,
+  type ActionAttemptOutcome,
+  type ActionAttemptRecord,
+  type ActionDefinition,
+  type ActionDispatch,
+  type ActionEnqueueRow,
+  type ActionExecutor,
+  type ActionFailure,
+  type ActionProgress,
+  type ActionQueueRow,
+  type ActionQueueView,
+  type ActionResult,
+  type ActionRow,
+  type ActionStatus,
+  type ActionView,
+  type ActionWaitingReason,
   type BeeRow,
   type BeeView,
   type CellOpKind,
@@ -130,8 +152,26 @@ import {
   TASK_SUPPLY_SENDER_NAME,
   TASK_TRANSITIONS,
 } from "./tasks.ts";
-import { ACCOUNT_LIMITS_TABLE_SQL, BEES_ADDITIVE_COLUMNS, BEES_ACTIVE_MOVE_INDEX_SQL, BEES_ACTIVE_HANDOFF_INDEX_SQL, BEE_HANDOFFS_TABLE_SQL, TRANSCRIPT_SEGMENTS_TABLE_SQL, MAILBOX_PENDING_METADATA_INDEX_SQL, BEE_MOVES_TABLE_SQL, CELLS_TABLE_SQL, CELL_OPS_TABLE_SQL, FLAGS_ADDITIVE_COLUMNS, FLAGS_EXPIRY_INDEX_SQL, HANDLE_INDEX_SQL, IDEMPOTENCY_INDEX_SQL, MAILBOX_ADDITIVE_COLUMNS, MAIL_HISTORY_INDEX_SQL, MAIL_HISTORY_PROJECTION_SQL, RUNTIMES_ADDITIVE_COLUMNS, SCHEMA_SQL, SCHEMA_VERSION } from "./schema.ts";
+import { ACTIONS_TABLE_SQL, ACCOUNT_LIMITS_TABLE_SQL, BEES_ADDITIVE_COLUMNS, BEES_ACTIVE_MOVE_INDEX_SQL, BEES_ACTIVE_HANDOFF_INDEX_SQL, BEE_HANDOFFS_TABLE_SQL, TRANSCRIPT_SEGMENTS_TABLE_SQL, MAILBOX_PENDING_METADATA_INDEX_SQL, BEE_MOVES_TABLE_SQL, CELLS_TABLE_SQL, CELL_OPS_TABLE_SQL, FLAGS_ADDITIVE_COLUMNS, FLAGS_EXPIRY_INDEX_SQL, HANDLE_INDEX_SQL, IDEMPOTENCY_INDEX_SQL, MAILBOX_ADDITIVE_COLUMNS, MAIL_HISTORY_INDEX_SQL, MAIL_HISTORY_PROJECTION_SQL, RUNTIMES_ADDITIVE_COLUMNS, SCHEMA_SQL, SCHEMA_VERSION } from "./schema.ts";
 import { beeMoveReviveKey, beeMoveStopKey, beeMoveTransitionLegal, toBeeMoveView } from "./cellMove.ts";
+import {
+  ACTION_DISPATCH_SENDER,
+  ACTION_TERMINAL_STATUSES,
+  actionOperationKey,
+  actionRefTargets,
+  actionTransitionLegal,
+  deriveActionControls,
+  emptyActionCounts,
+  findActionDefinition,
+  isActionItemRef,
+  isActionOutputRef,
+  renderActionInstruction,
+  requestedOutputNames,
+  resolveActionInputs,
+  toActionQueueView,
+  toActionView,
+  validateActionOutputs,
+} from "./actions.ts";
 import {
   HANDOFF_SEED_SENDER,
   beeHandoffReviveKey,
@@ -157,6 +197,7 @@ import {
   fieldsEqual,
   normalizeTemplate,
   normalizeTrack,
+  stableStringify,
   type NormalizeOptions,
   type TemplateFields,
   type TrackFields,
@@ -1635,6 +1676,8 @@ export class CoreStore {
     this.db.exec(CELL_OPS_TABLE_SQL);
     this.db.exec(BEE_HANDOFFS_TABLE_SQL);
     this.db.exec(TRANSCRIPT_SEGMENTS_TABLE_SQL);
+    // v24: the action queue tables are additive (CREATE IF NOT EXISTS).
+    this.db.exec(ACTIONS_TABLE_SQL);
     // v22 → v23: every existing bee gets its segment 0 (its spawn harness,
     // its current session log) so Apiary can parse pre-handoff history with
     // the harness that wrote it. Idempotent: bees with a segment are skipped.
@@ -1656,21 +1699,23 @@ export class CoreStore {
         });
       }
     }
-    // v22 → v23: the mail-history origin CHECK gains 'handoff.seed'. SQLite
-    // cannot widen a CHECK in place, so rebuild the projection table and
-    // carry the rows across (same discipline as the v19 limits rebuild).
+    // v22 → v23 → v24: the mail-history origin CHECK gains 'handoff.seed'
+    // (v23) and 'action.dispatch' (v24). SQLite cannot widen a CHECK in
+    // place, so rebuild the projection table and carry the rows across (same
+    // discipline as the v19 limits rebuild).
     const historyDdl = this.stmt(
       "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'mail_history_enqueues'",
     ).get() as Row | undefined;
-    if (historyDdl !== undefined && !String(historyDdl.sql).includes("handoff.seed")) {
+    if (historyDdl !== undefined && !String(historyDdl.sql).includes("action.dispatch")) {
       const carried = [
         "seq", "message_id", "bee_id", "origin", "sender", "sender_truncated", "body",
         "body_truncated", "priority", "urgency", "enqueued_at",
       ].join(", ");
-      this.db.exec("ALTER TABLE mail_history_enqueues RENAME TO mail_history_enqueues_v22");
+      this.db.exec("DROP TABLE IF EXISTS mail_history_enqueues_prev");
+      this.db.exec("ALTER TABLE mail_history_enqueues RENAME TO mail_history_enqueues_prev");
       this.db.exec(MAIL_HISTORY_PROJECTION_SQL);
-      this.db.exec(`INSERT INTO mail_history_enqueues(${carried}) SELECT ${carried} FROM mail_history_enqueues_v22`);
-      this.db.exec("DROP TABLE mail_history_enqueues_v22");
+      this.db.exec(`INSERT INTO mail_history_enqueues(${carried}) SELECT ${carried} FROM mail_history_enqueues_prev`);
+      this.db.exec("DROP TABLE mail_history_enqueues_prev");
     }
     const hadMailHistoryProjection = this.stmt(
       "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'mail_history_enqueues'",
@@ -3182,6 +3227,8 @@ export class CoreStore {
       const canceledAt = this.now();
       this.stmt("DELETE FROM mailbox WHERE id = ?").run(messageId);
       this.auditMailCanceled(message, "requested", canceledAt);
+      // v24: withdrawing a dispatched action instruction fails that attempt (typed, retryable).
+      this.applyActionDispatchCanceled(messageId, canceledAt);
       return { canceled: true };
     });
   }
@@ -3240,6 +3287,8 @@ export class CoreStore {
         .prepare("UPDATE mailbox SET delivered_at = ?, delivered_generation = ? WHERE id = ?")
         .run(at, generation, messageId);
       this.audit("mail.delivered", message.beeId, { messageId, deliveredAt: at, deliveredGeneration: generation });
+      // v24: an action instruction reached its runtime — delivery evidence only, never completion.
+      this.applyActionDelivered(messageId, generation, at);
       return { applied: true };
     });
   }
@@ -4347,6 +4396,8 @@ export class CoreStore {
         answeredBy,
         deliveryMessageId: send.message.id,
       });
+      // v24: an action waiting for this answer resumes its attempt (the answer is ordinary mail).
+      this.applyActionQuestionAnswered(questionId);
       return { question: updated, send };
     });
   }
@@ -6287,6 +6338,1075 @@ export class CoreStore {
     });
   }
 
+  // -------------------------------------------------------------------------
+  // v24 — per-bee action queue
+  // -------------------------------------------------------------------------
+
+  private mapActionRow(r: Row): ActionRow {
+    return {
+      id: r.id as string,
+      beeId: r.bee_id as string,
+      position: Number(r.position),
+      clientRef: (r.client_ref as string | null) ?? null,
+      kind: r.kind as string,
+      definitionVersion: Number(r.definition_version),
+      executor: r.executor as ActionExecutor,
+      title: r.title as string,
+      definition: JSON.parse(String(r.definition_json)) as ActionDefinition,
+      inputs: JSON.parse(String(r.inputs_json)) as Record<string, unknown>,
+      resolvedInputs: r.resolved_inputs_json == null ? null : (JSON.parse(String(r.resolved_inputs_json)) as Record<string, unknown>),
+      status: r.status as ActionStatus,
+      waitingReason: (r.waiting_reason as ActionWaitingReason | null) ?? null,
+      waitingDetail: (r.waiting_detail as string | null) ?? null,
+      attempt: Number(r.attempt),
+      dispatch: r.dispatch_json == null ? null : (JSON.parse(String(r.dispatch_json)) as ActionDispatch),
+      progress: r.progress_json == null ? null : (JSON.parse(String(r.progress_json)) as ActionProgress),
+      questionId: (r.question_id as string | null) ?? null,
+      result: r.result_json == null ? null : (JSON.parse(String(r.result_json)) as ActionResult),
+      failure: r.failure_json == null ? null : (JSON.parse(String(r.failure_json)) as ActionFailure),
+      attempts: JSON.parse(String(r.attempts_json)) as ActionAttemptRecord[],
+      createdAt: Number(r.created_at),
+      updatedAt: Number(r.updated_at),
+      finishedAt: r.finished_at == null ? null : Number(r.finished_at),
+      enqueueKey: r.enqueue_key as string,
+      attemptToken: (r.attempt_token as string | null) ?? null,
+    };
+  }
+
+  getAction(actionId: string): ActionRow | null {
+    const row = this.stmt("SELECT * FROM actions WHERE id = ?").get(actionId) as Row | undefined;
+    return row ? this.mapActionRow(row) : null;
+  }
+
+  private mustGetAction(actionId: string): ActionRow {
+    const action = this.getAction(actionId);
+    if (!action) throw new ActionNotFoundError(actionId);
+    return action;
+  }
+
+  /** The bee's whole lane in position order (terminal rows included: predecessors are derived from them). */
+  listActionsOf(beeId: string): ActionRow[] {
+    return (this.stmt("SELECT * FROM actions WHERE bee_id = ? ORDER BY position").all(beeId) as Row[]).map((r) => this.mapActionRow(r));
+  }
+
+  listActions(filter: { beeId?: string; statuses?: readonly ActionStatus[] } = {}): ActionRow[] {
+    const where: string[] = [];
+    const params: Array<string> = [];
+    if (filter.beeId !== undefined) {
+      where.push("bee_id = ?");
+      params.push(filter.beeId);
+    }
+    if (filter.statuses && filter.statuses.length > 0) {
+      where.push(`status IN (${filter.statuses.map(() => "?").join(",")})`);
+      params.push(...filter.statuses);
+    }
+    const sql = `SELECT * FROM actions${where.length > 0 ? ` WHERE ${where.join(" AND ")}` : ""} ORDER BY bee_id, position`;
+    return (this.stmt(sql).all(...params) as Row[]).map((r) => this.mapActionRow(r));
+  }
+
+  /** Bees with at least one queued/running/waiting action (the scheduler's roster). */
+  listOpenActionBeeIds(): string[] {
+    return (this.stmt("SELECT DISTINCT bee_id FROM actions WHERE status IN ('queued','running','waiting') ORDER BY bee_id").all() as Row[]).map(
+      (r) => r.bee_id as string,
+    );
+  }
+
+  getActionQueue(beeId: string): ActionQueueRow | null {
+    const row = this.stmt("SELECT * FROM action_queues WHERE bee_id = ?").get(beeId) as Row | undefined;
+    return row ? this.mapActionQueue(row) : null;
+  }
+
+  listActionQueues(): ActionQueueRow[] {
+    return (this.stmt("SELECT * FROM action_queues ORDER BY bee_id").all() as Row[]).map((r) => this.mapActionQueue(r));
+  }
+
+  private mapActionQueue(r: Row): ActionQueueRow {
+    const beeId = r.bee_id as string;
+    const counts = emptyActionCounts();
+    for (const c of this.stmt("SELECT status, COUNT(*) AS n FROM actions WHERE bee_id = ? GROUP BY status").all(beeId) as Row[]) {
+      counts[c.status as ActionStatus] = Number(c.n);
+    }
+    const active = this.stmt("SELECT id FROM actions WHERE bee_id = ? AND status IN ('running','waiting') ORDER BY position LIMIT 1").get(beeId) as
+      | Row
+      | undefined;
+    return {
+      beeId,
+      paused: Number(r.paused) === 1,
+      pausedAt: r.paused_at == null ? null : Number(r.paused_at),
+      activeActionId: active ? (active.id as string) : null,
+      counts,
+      createdAt: Number(r.created_at),
+      updatedAt: Number(r.updated_at),
+      nextPosition: Number(r.next_position),
+    };
+  }
+
+  private ensureActionQueue(beeId: string): ActionQueueRow {
+    const existing = this.getActionQueue(beeId);
+    if (existing) return existing;
+    this.mustGetBee(beeId);
+    const at = this.now();
+    this.stmt("INSERT INTO action_queues(bee_id, paused, paused_at, next_position, created_at, updated_at) VALUES(?, 0, NULL, 1, ?, ?)").run(beeId, at, at);
+    return this.getActionQueue(beeId) as ActionQueueRow;
+  }
+
+  actionView(actionId: string): ActionView {
+    const row = this.mustGetAction(actionId);
+    return toActionView(row, this.listActionsOf(row.beeId), this.getActionQueue(row.beeId));
+  }
+
+  /** Views for the mirror: every action grouped by bee, holds/controls derived per lane. */
+  listActionViews(filter: { beeId?: string; statuses?: readonly ActionStatus[] } = {}): ActionView[] {
+    const rows = this.listActions(filter);
+    const lanes = new Map<string, ActionRow[]>();
+    const queues = new Map<string, ActionQueueRow | null>();
+    const out: ActionView[] = [];
+    for (const row of rows) {
+      let lane = lanes.get(row.beeId);
+      if (!lane) {
+        lane = this.listActionsOf(row.beeId);
+        lanes.set(row.beeId, lane);
+        queues.set(row.beeId, this.getActionQueue(row.beeId));
+      }
+      out.push(toActionView(row, lane, queues.get(row.beeId) ?? null));
+    }
+    return out;
+  }
+
+  listActionQueueViews(): ActionQueueView[] {
+    return this.listActionQueues().map(toActionQueueView);
+  }
+
+  getActionEnqueue(idempotencyKey: string): ActionEnqueueRow | null {
+    const row = this.stmt("SELECT * FROM action_enqueues WHERE idempotency_key = ?").get(idempotencyKey) as Row | undefined;
+    if (!row) return null;
+    return {
+      idempotencyKey: row.idempotency_key as string,
+      requestHash: row.request_hash as string,
+      beeId: row.bee_id as string,
+      actionIds: JSON.parse(String(row.action_ids_json)) as string[],
+      createdAt: Number(row.created_at),
+    };
+  }
+
+  /**
+   * Every lane mutation runs inside this wrapper: it audits `action.put` for
+   * each row whose VIEW changed (a status change on one action changes its
+   * successors' derived hold) and `action_queue.put` when the queue summary
+   * changed, so the mirror is always exactly "store at seq N" with no client
+   * derivation.
+   */
+  private withActionLaneAudit<T>(beeId: string, reason: string, fn: () => T): T {
+    return this.tx(() => {
+      const before = new Map<string, ActionView>();
+      for (const view of this.listActionViews({ beeId })) before.set(view.id, view);
+      const queueBefore = this.getActionQueue(beeId);
+      const out = fn();
+      for (const view of this.listActionViews({ beeId })) {
+        const previous = before.get(view.id) ?? null;
+        if (previous && stableStringify(previous) === stableStringify(view)) continue;
+        this.audit("action.put", beeId, { action: view, previous: previous?.status ?? null, reason });
+      }
+      const queueAfter = this.getActionQueue(beeId);
+      if (queueAfter && (!queueBefore || stableStringify(toActionQueueView(queueBefore)) !== stableStringify(toActionQueueView(queueAfter)))) {
+        this.audit("action_queue.put", beeId, { queue: toActionQueueView(queueAfter), reason });
+      }
+      return out;
+    });
+  }
+
+  private mintActionToken(): string {
+    const hex = "0123456789abcdef";
+    let out = "";
+    for (let i = 0; i < 20; i += 1) out += hex[Math.floor(this.random() * 16)];
+    return out;
+  }
+
+  private mintActionId(): string {
+    let id = this.mintId();
+    for (let attempt = 0; this.getAction(id) && attempt < 8; attempt += 1) id = this.mintId();
+    if (this.getAction(id)) throw new CoreError("enqueueActions: could not mint a free action id (broken rng?)");
+    return id;
+  }
+
+  /**
+   * Accept one ordered sequence (one tx): dedupe by the caller key (same hash →
+   * the original actions, `deduped: true`; different hash →
+   * IdempotencyConflictError); validate every kind/version and every `$ref`
+   * (same-request `item` refs are rewritten to the minted ids; `action` refs
+   * must name an earlier action of the same bee); append at the queue's
+   * cursor so concurrent appends order by commit.
+   */
+  enqueueActions(input: {
+    beeId: string;
+    idempotencyKey: string;
+    requestHash: string;
+    items: Array<{ kind: string; version?: number | null; inputs?: Record<string, unknown>; clientRef?: string | null; title?: string | null }>;
+  }): { actions: ActionRow[]; deduped: boolean } {
+    if (typeof input.idempotencyKey !== "string" || input.idempotencyKey.length === 0) {
+      throw new CoreError("enqueueActions: idempotencyKey is required");
+    }
+    if (!Array.isArray(input.items) || input.items.length === 0) throw new CoreError("enqueueActions: items must be a non-empty array");
+    return this.withActionLaneAudit(input.beeId, "accepted", () => {
+      const existing = this.getActionEnqueue(input.idempotencyKey);
+      if (existing) {
+        if (existing.requestHash !== input.requestHash) throw new IdempotencyConflictError();
+        // The receipt outlives its bee (dedup memory); a replay after `delete` is bee_not_found, not a phantom.
+        if (!existing.actionIds.every((id) => this.getAction(id))) this.mustGetBee(input.beeId);
+        return { actions: existing.actionIds.map((id) => this.mustGetAction(id)), deduped: true };
+      }
+      this.mustGetBee(input.beeId);
+      const queue = this.ensureActionQueue(input.beeId);
+      const lane = this.listActionsOf(input.beeId);
+      const ids = input.items.map(() => this.mintActionId());
+      const at = this.now();
+      const rows: ActionRow[] = [];
+      let position = queue.nextPosition;
+      input.items.forEach((item, index) => {
+        const version = item.version === undefined || item.version === null ? null : item.version;
+        const definition = findActionDefinition(item.kind, version);
+        if (!definition) throw new ActionKindUnknownError(item.kind, version);
+        const rawInputs = item.inputs ?? {};
+        if (rawInputs === null || typeof rawInputs !== "object" || Array.isArray(rawInputs)) throw new CoreError("enqueueActions: inputs must be an object");
+        const inputs: Record<string, unknown> = {};
+        for (const [name, value] of Object.entries(rawInputs)) {
+          if (isActionItemRef(value)) {
+            const target = value.$ref.item;
+            if (target >= index) throw new CoreError(`enqueueActions: item ${index} input '${name}' refers to item ${target}, which is not earlier in the request`);
+            inputs[name] = { $ref: { action: ids[target], output: value.$ref.output } };
+          } else if (isActionOutputRef(value)) {
+            const target = lane.find((a) => a.id === value.$ref.action);
+            if (!target) throw new CoreError(`enqueueActions: item ${index} input '${name}' refers to unknown action ${value.$ref.action}`);
+            inputs[name] = value;
+          } else {
+            inputs[name] = value;
+          }
+        }
+        for (const spec of definition.inputs) {
+          if (spec.required && (inputs[spec.name] === undefined || inputs[spec.name] === null || inputs[spec.name] === "")) {
+            throw new CoreError(`enqueueActions: item ${index} (${definition.kind}) requires input '${spec.name}'`);
+          }
+        }
+        if (inputs.urgency !== undefined && !(MESSAGE_URGENCIES as readonly string[]).includes(String(inputs.urgency))) {
+          throw new UnknownUrgencyError(String(inputs.urgency));
+        }
+        const title = typeof item.title === "string" && item.title.length > 0
+          ? item.title
+          : typeof inputs.title === "string" && inputs.title.length > 0
+            ? inputs.title
+            : definition.title;
+        const id = ids[index] as string;
+        this.db
+          .prepare(
+            `INSERT INTO actions(id, bee_id, position, client_ref, kind, definition_version, executor, title, definition_json, inputs_json,
+               resolved_inputs_json, status, waiting_reason, waiting_detail, attempt, attempt_token, dispatch_json, dispatch_message_id, operation_key,
+               progress_json, question_id, result_json, failure_json, attempts_json, enqueue_key, created_at, updated_at, finished_at)
+             VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'queued', NULL, NULL, 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '[]', ?, ?, ?, NULL)`,
+          )
+          .run(
+            id,
+            input.beeId,
+            position,
+            item.clientRef ?? null,
+            definition.kind,
+            definition.version,
+            definition.executor,
+            title,
+            JSON.stringify(definition),
+            JSON.stringify(inputs),
+            input.idempotencyKey,
+            at,
+            at,
+          );
+        position += 1;
+        rows.push(this.mustGetAction(id));
+      });
+      this.stmt("UPDATE action_queues SET next_position = ?, updated_at = ? WHERE bee_id = ?").run(position, at, input.beeId);
+      this.stmt("INSERT INTO action_enqueues(idempotency_key, request_hash, bee_id, action_ids_json, created_at) VALUES(?, ?, ?, ?, ?)").run(
+        input.idempotencyKey,
+        input.requestHash,
+        input.beeId,
+        JSON.stringify(ids),
+        at,
+      );
+      return { actions: rows, deduped: false };
+    });
+  }
+
+  private updateActionRow(actionId: string, patch: Partial<ActionRow> & { dispatchMessageId?: number | null; operationKey?: string | null }): ActionRow {
+    const current = this.mustGetAction(actionId);
+    const next: ActionRow = { ...current, ...patch, updatedAt: this.now() };
+    if (patch.status !== undefined && patch.status !== current.status && !actionTransitionLegal(current.status, patch.status)) {
+      throw new IllegalTransitionError(`action ${actionId}: ${current.status} → ${patch.status} is not a legal transition`);
+    }
+    const dispatchMessageId = patch.dispatchMessageId !== undefined ? patch.dispatchMessageId : (next.dispatch?.messageId ?? null);
+    const operationKey = patch.operationKey !== undefined ? patch.operationKey : (next.dispatch?.operationKey ?? null);
+    this.db
+      .prepare(
+        `UPDATE actions SET position = ?, resolved_inputs_json = ?, status = ?, waiting_reason = ?, waiting_detail = ?, attempt = ?, attempt_token = ?,
+           dispatch_json = ?, dispatch_message_id = ?, operation_key = ?, progress_json = ?, question_id = ?, result_json = ?, failure_json = ?,
+           attempts_json = ?, updated_at = ?, finished_at = ? WHERE id = ?`,
+      )
+      .run(
+        next.position,
+        next.resolvedInputs === null ? null : JSON.stringify(next.resolvedInputs),
+        next.status,
+        next.waitingReason,
+        next.waitingDetail,
+        next.attempt,
+        next.attemptToken,
+        next.dispatch === null ? null : JSON.stringify(next.dispatch),
+        dispatchMessageId,
+        operationKey,
+        next.progress === null ? null : JSON.stringify(next.progress),
+        next.questionId,
+        next.result === null ? null : JSON.stringify(next.result),
+        next.failure === null ? null : JSON.stringify(next.failure),
+        JSON.stringify(next.attempts),
+        next.updatedAt,
+        next.finishedAt,
+        actionId,
+      );
+    return this.mustGetAction(actionId);
+  }
+
+  /** Move the current attempt into history with `outcome` (no-op before the first dispatch). */
+  private closeActionAttempt(row: ActionRow, outcome: ActionAttemptOutcome, at: number): ActionAttemptRecord[] {
+    if (row.attempt === 0 || !row.dispatch) return row.attempts;
+    if (row.attempts.some((a) => a.attempt === row.attempt)) return row.attempts;
+    return [
+      ...row.attempts,
+      {
+        attempt: row.attempt,
+        dispatchedAt: row.dispatch.dispatchedAt,
+        generation: row.dispatch.generation,
+        messageId: row.dispatch.messageId,
+        deliveredAt: row.dispatch.deliveredAt,
+        claimedBy: row.dispatch.claimedBy,
+        operationKey: row.dispatch.operationKey,
+        outcome,
+        finishedAt: at,
+      },
+    ];
+  }
+
+  pauseActionQueue(beeId: string): { queue: ActionQueueView; applied: boolean } {
+    return this.withActionLaneAudit(beeId, "paused", () => {
+      const queue = this.ensureActionQueue(beeId);
+      if (queue.paused) return { queue: toActionQueueView(queue), applied: false };
+      const at = this.now();
+      this.stmt("UPDATE action_queues SET paused = 1, paused_at = ?, updated_at = ? WHERE bee_id = ?").run(at, at, beeId);
+      return { queue: toActionQueueView(this.getActionQueue(beeId) as ActionQueueRow), applied: true };
+    });
+  }
+
+  resumeActionQueue(beeId: string): { queue: ActionQueueView; applied: boolean } {
+    return this.withActionLaneAudit(beeId, "resumed", () => {
+      const queue = this.ensureActionQueue(beeId);
+      if (!queue.paused) return { queue: toActionQueueView(queue), applied: false };
+      const at = this.now();
+      this.stmt("UPDATE action_queues SET paused = 0, paused_at = NULL, updated_at = ? WHERE bee_id = ?").run(at, beeId);
+      return { queue: toActionQueueView(this.getActionQueue(beeId) as ActionQueueRow), applied: true };
+    });
+  }
+
+  /**
+   * Cancel pending work. Queued, undelivered-agent and unclaimed-external
+   * attempts cancel outright (the dispatch mail is withdrawn). Delivered /
+   * claimed / in-flight attempts need `force` — effects may already be under
+   * way and are NOT undone; a late report for the attempt is refused. A
+   * running lifecycle archive is never cancelled (its command settles
+   * shortly). Terminal actions are a quiet no-op.
+   */
+  cancelAction(actionId: string, opts: { force?: boolean; reason?: string } = {}): { action: ActionView; applied: boolean } {
+    const target = this.mustGetAction(actionId);
+    return this.withActionLaneAudit(target.beeId, "cancelled", () => {
+      const row = this.mustGetAction(actionId);
+      if (ACTION_TERMINAL_STATUSES.includes(row.status)) return { action: this.actionView(actionId), applied: false };
+      const controls = deriveActionControls(row);
+      if (!controls.cancel) {
+        if (!controls.forceCancel) throw new ActionRefusedError(`action ${actionId} is ${row.status} (${row.executor}) and cannot be cancelled now`);
+        if (!opts.force) throw new ActionRefusedError(`action ${actionId} is ${row.status} with effects under way; pass force to cancel tracking`);
+      }
+      const at = this.now();
+      if (row.executor === "agent" && row.dispatch?.messageId != null && row.dispatch.deliveredAt == null) {
+        const message = this.getMessage(row.dispatch.messageId);
+        if (message && message.deliveredAt == null) {
+          this.stmt("DELETE FROM mailbox WHERE id = ?").run(message.id);
+          this.auditMailCanceled(message, "requested", at);
+        }
+      }
+      this.updateActionRow(actionId, {
+        status: "cancelled",
+        waitingReason: null,
+        waitingDetail: null,
+        attemptToken: null,
+        attempts: this.closeActionAttempt(row, "cancelled", at),
+        failure: row.failure,
+        finishedAt: at,
+      });
+      return { action: this.actionView(actionId), applied: true };
+    });
+  }
+
+  /**
+   * A NEW execution attempt for a failed action (or, with `force`, for an
+   * attempt whose outcome is uncertain — the caller asserts the effect did
+   * not happen or may safely happen again). Never a replay of the old
+   * attempt: the token rotates and the old attempt is closed in history.
+   */
+  retryAction(actionId: string, opts: { force?: boolean } = {}): { action: ActionView } {
+    const target = this.mustGetAction(actionId);
+    return this.withActionLaneAudit(target.beeId, "retried", () => {
+      const row = this.mustGetAction(actionId);
+      const controls = deriveActionControls(row);
+      if (!controls.retry) {
+        if (!controls.forceRetry) throw new ActionRefusedError(`action ${actionId} is ${row.status} and cannot be retried`);
+        if (!opts.force) {
+          throw new ActionRefusedError(
+            `action ${actionId} attempt ${row.attempt} has an uncertain outcome; reconcile it through action.report or pass force to start a new attempt`,
+          );
+        }
+      }
+      const at = this.now();
+      this.updateActionRow(actionId, {
+        status: "queued",
+        waitingReason: null,
+        waitingDetail: null,
+        attemptToken: null,
+        dispatch: null,
+        dispatchMessageId: null,
+        operationKey: null,
+        progress: null,
+        questionId: null,
+        result: null,
+        failure: null,
+        resolvedInputs: null,
+        attempts: this.closeActionAttempt(row, row.status === "failed" ? "failed" : "superseded", at),
+        finishedAt: null,
+      });
+      return { action: this.actionView(actionId) };
+    });
+  }
+
+  /**
+   * Reorder the QUEUED subset. `order` must list exactly the bee's queued
+   * action ids; every `$ref` into another queued action must still point
+   * backwards afterwards. Running/waiting/terminal rows keep their positions.
+   */
+  reorderActions(beeId: string, order: string[]): { actions: ActionView[] } {
+    return this.withActionLaneAudit(beeId, "reordered", () => {
+      this.mustGetBee(beeId);
+      const lane = this.listActionsOf(beeId);
+      const queued = lane.filter((a) => a.status === "queued");
+      const queuedIds = new Set(queued.map((a) => a.id));
+      if (order.length !== queued.length || new Set(order).size !== order.length || order.some((id) => !queuedIds.has(id))) {
+        throw new ActionReorderInvalidError(
+          `reorderActions: order must list exactly the ${queued.length} queued action(s) of bee ${beeId} once each`,
+        );
+      }
+      const byId = new Map(lane.map((a) => [a.id, a] as const));
+      const indexOf = new Map(order.map((id, i) => [id, i] as const));
+      for (const id of order) {
+        const row = byId.get(id) as ActionRow;
+        for (const ref of actionRefTargets(row.inputs)) {
+          if (!queuedIds.has(ref.action)) continue;
+          if ((indexOf.get(ref.action) as number) >= (indexOf.get(id) as number)) {
+            throw new ActionReorderInvalidError(
+              `reorderActions: action ${id} input '${ref.input}' references ${ref.action}, which would run after it`,
+            );
+          }
+        }
+      }
+      const positions = queued.map((a) => a.position).sort((a, b) => a - b);
+      const at = this.now();
+      // Two passes through the UNIQUE(bee_id, position) index: park, then place.
+      order.forEach((id, i) => this.stmt("UPDATE actions SET position = ?, updated_at = ? WHERE id = ?").run(-(i + 1), at, id));
+      order.forEach((id, i) => this.stmt("UPDATE actions SET position = ?, updated_at = ? WHERE id = ?").run(positions[i] as number, at, id));
+      return { actions: this.listActionViews({ beeId }) };
+    });
+  }
+
+  private dispatchUrgency(inputs: Record<string, unknown>): Urgency {
+    const raw = inputs.urgency;
+    return typeof raw === "string" && (MESSAGE_URGENCIES as readonly string[]).includes(raw) ? (raw as Urgency) : "next";
+  }
+
+  private failActionRow(row: ActionRow, code: string, detail: string, retryable: boolean, at: number): ActionRow {
+    return this.updateActionRow(row.id, {
+      status: "failed",
+      waitingReason: null,
+      waitingDetail: null,
+      failure: { code, detail, retryable, attempt: row.attempt, at },
+      attempts: this.closeActionAttempt(row, "failed", at),
+      finishedAt: at,
+    });
+  }
+
+  /**
+   * Resolve the `$ref` inputs of a queued action for its next attempt. An
+   * unresolvable reference fails the action (typed `input_unresolved`) instead
+   * of dispatching with a hole.
+   */
+  private resolveForDispatch(row: ActionRow, at: number): Record<string, unknown> | null {
+    const res = resolveActionInputs(row.inputs, (id) => this.getAction(id));
+    if (res.ok) return res.resolved;
+    this.failActionRow(row, "input_unresolved", `input '${res.input}' references action ${res.action} output '${res.output}': ${res.reason}`, true, at);
+    return null;
+  }
+
+  /**
+   * Agent executor: one tx — new attempt + token, inputs resolved, the
+   * instruction inserted through the ordinary mailbox (`origin:
+   * action.dispatch`, urgency from the inputs, default `next`: the next
+   * accept point, never an interrupt). Delivery is the delivery loop's job.
+   */
+  dispatchAgentAction(actionId: string): { action: ActionView; messageId: number | null } {
+    const target = this.mustGetAction(actionId);
+    return this.withActionLaneAudit(target.beeId, "dispatched", () => {
+      const row = this.mustGetAction(actionId);
+      if (row.status !== "queued") throw new ActionRefusedError(`action ${actionId} is ${row.status}, not queued`);
+      if (row.executor !== "agent") throw new ActionRefusedError(`action ${actionId} is executed by ${row.executor}, not the agent`);
+      const at = this.now();
+      const resolved = this.resolveForDispatch(row, at);
+      if (resolved === null) return { action: this.actionView(actionId), messageId: null };
+      const attempt = row.attempt + 1;
+      const token = this.mintActionToken();
+      const body = renderActionInstruction(row, resolved, token, attempt);
+      const sent = this.send(row.beeId, body, { sender: ACTION_DISPATCH_SENDER, origin: "action.dispatch", urgency: this.dispatchUrgency(resolved) });
+      const generation = this.currentRuntime(row.beeId)?.generation ?? null;
+      this.updateActionRow(actionId, {
+        status: "running",
+        waitingReason: null,
+        waitingDetail: null,
+        attempt,
+        attemptToken: token,
+        resolvedInputs: resolved,
+        dispatch: {
+          attempt,
+          dispatchedAt: at,
+          generation,
+          messageId: sent.message.id,
+          deliveredAt: null,
+          deliveredGeneration: null,
+          operationKey: null,
+          claimedBy: null,
+          claimedAt: null,
+          expectedHead: null,
+        },
+        dispatchMessageId: sent.message.id,
+        operationKey: null,
+        progress: null,
+        questionId: null,
+        result: null,
+        failure: null,
+      });
+      return { action: this.actionView(actionId), messageId: sent.message.id };
+    });
+  }
+
+  /** Called from markDelivered (same tx): the instruction reached the runtime. Never completion. */
+  private applyActionDelivered(messageId: number, generation: number, at: number): void {
+    const row = this.stmt("SELECT * FROM actions WHERE dispatch_message_id = ? AND status IN ('running','waiting')").get(messageId) as Row | undefined;
+    if (!row) return;
+    const action = this.mapActionRow(row);
+    if (!action.dispatch || action.dispatch.messageId !== messageId) return;
+    const view = this.actionView(action.id);
+    this.updateActionRow(action.id, { dispatch: { ...action.dispatch, deliveredAt: at, deliveredGeneration: generation } });
+    const after = this.actionView(action.id);
+    this.audit("action.put", action.beeId, { action: after, previous: view.status, reason: "delivered" });
+  }
+
+  /** Called from cancelMessage (same tx): the undelivered instruction was withdrawn by mail.cancel. */
+  private applyActionDispatchCanceled(messageId: number, at: number): void {
+    const row = this.stmt("SELECT * FROM actions WHERE dispatch_message_id = ? AND status IN ('running','waiting')").get(messageId) as Row | undefined;
+    if (!row) return;
+    const action = this.mapActionRow(row);
+    if (!action.dispatch || action.dispatch.messageId !== messageId || action.dispatch.deliveredAt != null) return;
+    this.withActionLaneAudit(action.beeId, "dispatch_cancelled", () => {
+      this.failActionRow(this.mustGetAction(action.id), "dispatch_cancelled", `mailbox message ${messageId} carrying the instruction was cancelled before delivery`, true, at);
+    });
+  }
+
+  /** Called from answerQuestion (same tx): the agent's question was answered; the attempt resumes. */
+  private applyActionQuestionAnswered(questionId: string): void {
+    const row = this.stmt("SELECT * FROM actions WHERE question_id = ? AND status = 'waiting' AND waiting_reason = 'input'").get(questionId) as
+      | Row
+      | undefined;
+    if (!row) return;
+    const action = this.mapActionRow(row);
+    this.withActionLaneAudit(action.beeId, "question_answered", () => {
+      this.updateActionRow(action.id, { status: "running", waitingReason: null, waitingDetail: null });
+    });
+  }
+
+  /**
+   * lifecycle.archive executor: enqueue the bee's `archive` command under the
+   * attempt's key (idempotent replay returns the same command). An already
+   * archived bee succeeds immediately with the existing archivedAt.
+   */
+  dispatchArchiveAction(actionId: string): { action: ActionView; commandId: number | null } {
+    const target = this.mustGetAction(actionId);
+    return this.withActionLaneAudit(target.beeId, "dispatched", () => {
+      const row = this.mustGetAction(actionId);
+      if (row.status !== "queued") throw new ActionRefusedError(`action ${actionId} is ${row.status}, not queued`);
+      if (row.executor !== "lifecycle.archive") throw new ActionRefusedError(`action ${actionId} is executed by ${row.executor}`);
+      const at = this.now();
+      const resolved = this.resolveForDispatch(row, at);
+      if (resolved === null) return { action: this.actionView(actionId), commandId: null };
+      const attempt = row.attempt + 1;
+      const key = actionOperationKey(actionId, attempt);
+      const bee = this.mustGetBee(row.beeId);
+      const dispatch: ActionDispatch = {
+        attempt,
+        dispatchedAt: at,
+        generation: this.currentRuntime(row.beeId)?.generation ?? null,
+        messageId: null,
+        deliveredAt: null,
+        deliveredGeneration: null,
+        operationKey: key,
+        claimedBy: null,
+        claimedAt: null,
+        expectedHead: null,
+      };
+      if (bee.lifecycle === "archived") {
+        this.updateActionRow(actionId, {
+          status: "succeeded",
+          attempt,
+          attemptToken: null,
+          resolvedInputs: resolved,
+          dispatch,
+          dispatchMessageId: null,
+          operationKey: key,
+          result: { outputs: { archivedAt: bee.archivedAt }, receipt: { alreadyArchived: true }, detail: "bee was already archived", reconciled: false, attempt, at },
+          failure: null,
+          finishedAt: at,
+        });
+        return { action: this.actionView(actionId), commandId: null };
+      }
+      const cmd = this.enqueueCommand("archive", row.beeId, { reason: "action", actionId }, { idempotencyKey: key });
+      this.updateActionRow(actionId, {
+        status: "running",
+        waitingReason: null,
+        waitingDetail: null,
+        attempt,
+        attemptToken: null,
+        resolvedInputs: resolved,
+        dispatch,
+        dispatchMessageId: null,
+        operationKey: key,
+        progress: null,
+        questionId: null,
+        result: null,
+        failure: null,
+      });
+      return { action: this.actionView(actionId), commandId: cmd.id };
+    });
+  }
+
+  /** lifecycle.archive: settle from the command's authoritative outcome (called by the scheduler each step). */
+  reconcileArchiveAction(actionId: string): { action: ActionView; settled: boolean } {
+    const target = this.mustGetAction(actionId);
+    return this.withActionLaneAudit(target.beeId, "reconciled", () => {
+      const row = this.mustGetAction(actionId);
+      if (row.status !== "running" || row.executor !== "lifecycle.archive" || !row.dispatch?.operationKey) {
+        return { action: this.actionView(actionId), settled: false };
+      }
+      const cmd = this.getCommandByIdempotencyKey(row.dispatch.operationKey);
+      if (!cmd) {
+        const at = this.now();
+        this.failActionRow(row, "operation_missing", `archive command ${row.dispatch.operationKey} is not in the command queue`, true, at);
+        return { action: this.actionView(actionId), settled: true };
+      }
+      if (cmd.status === "queued" || cmd.status === "running") return { action: this.actionView(actionId), settled: false };
+      const at = this.now();
+      if (cmd.status === "failed") {
+        this.failActionRow(row, `command_${cmd.failureCause ?? "failed"}`, `archive command ${cmd.id} failed`, true, at);
+        return { action: this.actionView(actionId), settled: true };
+      }
+      const bee = this.mustGetBee(row.beeId);
+      const archivedAt = bee.archivedAt ?? cmd.finishedAt ?? at;
+      this.updateActionRow(actionId, {
+        status: "succeeded",
+        result: { outputs: { archivedAt }, receipt: { commandId: cmd.id, commandStatus: cmd.status, lifecycle: bee.lifecycle }, detail: null, reconciled: false, attempt: row.attempt, at },
+        attempts: this.closeActionAttempt(row, "succeeded", at),
+        finishedAt: at,
+      });
+      return { action: this.actionView(actionId), settled: true };
+    });
+  }
+
+  /**
+   * A released action whose executor is not available right now (an internal
+   * executor hook missing on this daemon, or an external kind with no
+   * claimant yet). External kinds get their attempt + token here so a claim
+   * can authenticate; internal kinds keep the attempt for the real dispatch.
+   */
+  holdActionForExecutor(actionId: string, detail: string): { action: ActionView } {
+    const target = this.mustGetAction(actionId);
+    return this.withActionLaneAudit(target.beeId, "executor_unavailable", () => {
+      const row = this.mustGetAction(actionId);
+      if (row.status === "waiting" && row.waitingReason === "executor") {
+        if (row.waitingDetail !== detail) this.updateActionRow(actionId, { waitingDetail: detail });
+        return { action: this.actionView(actionId) };
+      }
+      if (row.status !== "queued") throw new ActionRefusedError(`action ${actionId} is ${row.status}, not queued`);
+      const at = this.now();
+      const resolved = this.resolveForDispatch(row, at);
+      if (resolved === null) return { action: this.actionView(actionId) };
+      if (row.executor === "external") {
+        const attempt = row.attempt + 1;
+        this.updateActionRow(actionId, {
+          status: "waiting",
+          waitingReason: "executor",
+          waitingDetail: detail,
+          attempt,
+          attemptToken: this.mintActionToken(),
+          resolvedInputs: resolved,
+          dispatch: {
+            attempt,
+            dispatchedAt: at,
+            generation: this.currentRuntime(row.beeId)?.generation ?? null,
+            messageId: null,
+            deliveredAt: null,
+            deliveredGeneration: null,
+            operationKey: actionOperationKey(actionId, attempt),
+            claimedBy: null,
+            claimedAt: null,
+            expectedHead: null,
+          },
+          dispatchMessageId: null,
+          operationKey: actionOperationKey(actionId, attempt),
+          progress: null,
+          questionId: null,
+          result: null,
+          failure: null,
+        });
+      } else {
+        this.updateActionRow(actionId, { status: "waiting", waitingReason: "executor", waitingDetail: detail, resolvedInputs: resolved });
+      }
+      return { action: this.actionView(actionId) };
+    });
+  }
+
+  /**
+   * cell.capture executor: open the attempt BEFORE the effect (crash-safe:
+   * a daemon that dies mid-capture finds a `running` capture at boot and
+   * reconciles it instead of repeating it blindly). Accepts a queued action
+   * or one held for the executor.
+   */
+  beginCellCaptureAttempt(actionId: string, input: { expectedHead: string | null }): { action: ActionView; resolved: Record<string, unknown> | null } {
+    const target = this.mustGetAction(actionId);
+    return this.withActionLaneAudit(target.beeId, "dispatched", () => {
+      const row = this.mustGetAction(actionId);
+      if (row.executor !== "cell.capture") throw new ActionRefusedError(`action ${actionId} is executed by ${row.executor}`);
+      if (!(row.status === "queued" || (row.status === "waiting" && row.waitingReason === "executor"))) {
+        throw new ActionRefusedError(`action ${actionId} is ${row.status}, not queued`);
+      }
+      const at = this.now();
+      const resolved = this.resolveForDispatch(row, at);
+      if (resolved === null) return { action: this.actionView(actionId), resolved: null };
+      const attempt = row.attempt + 1;
+      const key = actionOperationKey(actionId, attempt);
+      this.updateActionRow(actionId, {
+        status: "running",
+        waitingReason: null,
+        waitingDetail: null,
+        attempt,
+        attemptToken: null,
+        resolvedInputs: resolved,
+        dispatch: {
+          attempt,
+          dispatchedAt: at,
+          generation: this.currentRuntime(row.beeId)?.generation ?? null,
+          messageId: null,
+          deliveredAt: null,
+          deliveredGeneration: null,
+          operationKey: key,
+          claimedBy: null,
+          claimedAt: null,
+          expectedHead: input.expectedHead,
+        },
+        dispatchMessageId: null,
+        operationKey: key,
+        progress: null,
+        questionId: null,
+        result: null,
+        failure: null,
+      });
+      return { action: this.actionView(actionId), resolved };
+    });
+  }
+
+  /**
+   * Boot recovery: a capture that was `running` when the daemon died has an
+   * unknown outcome (the git effect may have completed with its ack lost).
+   * Mark it uncertain; the scheduler reconciles through the Cell owner
+   * (probe first, never a blind repeat). Returns the affected ids.
+   */
+  markInFlightCaptureActionsUncertain(detail: string): string[] {
+    const rows = this.listActions({ statuses: ["running"] }).filter((a) => a.executor === "cell.capture");
+    const ids: string[] = [];
+    for (const row of rows) {
+      this.withActionLaneAudit(row.beeId, "boot_uncertain", () => {
+        this.updateActionRow(row.id, { status: "waiting", waitingReason: "uncertain", waitingDetail: detail });
+      });
+      ids.push(row.id);
+    }
+    return ids;
+  }
+
+  /**
+   * External executor claim: the oldest offered attempt matching the filter
+   * (or the named action). Re-claiming by the same executor returns the same
+   * attempt + token; a different executor is `ActionClaimedError`.
+   */
+  claimAction(input: { executor: string; actionId?: string | null; kinds?: readonly string[] | null; beeId?: string | null }): {
+    action: ActionView;
+    token: string;
+    resolvedInputs: Record<string, unknown>;
+    deduped: boolean;
+  } | null {
+    const executor = requireNonEmpty(input.executor, "claimAction: executor");
+    return this.tx(() => {
+      let row: ActionRow | null = null;
+      if (input.actionId) {
+        row = this.mustGetAction(input.actionId);
+        if (row.executor !== "external") throw new ActionRefusedError(`action ${row.id} is executed by ${row.executor}, not an external executor`);
+        if (row.dispatch?.claimedBy && row.dispatch.claimedBy !== executor && !ACTION_TERMINAL_STATUSES.includes(row.status)) {
+          throw new ActionClaimedError(`action ${row.id} attempt ${row.attempt} is claimed by ${row.dispatch.claimedBy}`);
+        }
+        if (!(row.status === "waiting" && row.waitingReason === "executor") && !(row.status === "running" && row.dispatch?.claimedBy === executor)) {
+          throw new ActionRefusedError(`action ${row.id} is ${row.status}${row.dispatch?.claimedBy ? ` (claimed by ${row.dispatch.claimedBy})` : ""}`);
+        }
+      } else {
+        const candidates = this.listActions({ ...(input.beeId ? { beeId: input.beeId } : {}), statuses: ["waiting", "running"] })
+          .filter((a) => a.executor === "external")
+          .filter((a) => (a.status === "waiting" && a.waitingReason === "executor" && a.dispatch?.claimedBy == null) || (a.status === "running" && a.dispatch?.claimedBy === executor))
+          .filter((a) => !input.kinds || input.kinds.length === 0 || input.kinds.includes(a.kind))
+          .sort((a, b) => (a.dispatch?.dispatchedAt ?? 0) - (b.dispatch?.dispatchedAt ?? 0) || a.position - b.position);
+        row = candidates[0] ?? null;
+      }
+      if (!row || !row.dispatch || !row.attemptToken) return null;
+      if (row.dispatch.claimedBy && row.dispatch.claimedBy !== executor) {
+        throw new ActionClaimedError(`action ${row.id} attempt ${row.attempt} is claimed by ${row.dispatch.claimedBy}`);
+      }
+      if (row.dispatch.claimedBy === executor && row.status === "running") {
+        return { action: this.actionView(row.id), token: row.attemptToken, resolvedInputs: row.resolvedInputs ?? {}, deduped: true };
+      }
+      const id = row.id;
+      const dispatch = row.dispatch;
+      const token = row.attemptToken;
+      const resolved = row.resolvedInputs ?? {};
+      this.withActionLaneAudit(row.beeId, "claimed", () => {
+        this.updateActionRow(id, {
+          status: "running",
+          waitingReason: null,
+          waitingDetail: null,
+          dispatch: { ...dispatch, claimedBy: executor, claimedAt: this.now() },
+        });
+      });
+      return { action: this.actionView(id), token, resolvedInputs: resolved, deduped: false };
+    });
+  }
+
+  /**
+   * The authenticated report path (agent through `hive action report`,
+   * external executors after a claim). Validates assignment (bee / claimant),
+   * the attempt number (older = ActionStaleAttemptError, audited) and the
+   * attempt token. A repeated result with the same outcome is a quiet
+   * `deduped`; a different outcome for a settled attempt is refused.
+   */
+  reportAction(input: {
+    actionId: string;
+    attempt: number;
+    token: string;
+    reporter: { beeId?: string | null; executor?: string | null };
+    kind: "progress" | "question" | "result";
+    note?: string | null;
+    question?: { text: string; options?: string[] | null } | null;
+    outcome?: "succeeded" | "failed" | "uncertain" | null;
+    outputs?: Record<string, unknown> | null;
+    receipt?: Record<string, unknown> | null;
+    detail?: string | null;
+    failure?: { code?: string | null; detail?: string | null; retryable?: boolean | null } | null;
+  }): { action: ActionView; accepted: true; applied: boolean; deduped: boolean; question: QuestionRow | null } {
+    const target = this.mustGetAction(input.actionId);
+    // A refused report is audited in its OWN transaction (the throw must not
+    // roll the informational row back) and never touches the action.
+    const reject = (reason: string, message: string): never => {
+      this.tx(() => {
+        this.audit("action.report_rejected", target.beeId, {
+          actionId: target.id,
+          beeId: target.beeId,
+          attempt: input.attempt,
+          currentAttempt: target.attempt,
+          kind: input.kind,
+          reporter: { beeId: input.reporter.beeId ?? null, executor: input.reporter.executor ?? null },
+          reason,
+        });
+      });
+      if (reason === "stale_attempt") throw new ActionStaleAttemptError(message);
+      if (reason === "unauthorized") throw new ActionUnauthorizedError(message);
+      throw new ActionRefusedError(message);
+    };
+    if (this.txDepth > 0) throw new CoreError("reportAction: must not run inside an outer transaction (rejections audit separately)");
+    {
+      const row = target;
+      if (!Number.isInteger(input.attempt) || input.attempt < 1) throw new CoreError("reportAction: attempt must be a positive integer");
+      if (input.attempt < row.attempt) return reject("stale_attempt", `action ${row.id}: attempt ${input.attempt} is stale (current attempt ${row.attempt})`);
+      if (input.attempt > row.attempt || row.attempt === 0) return reject("unknown_attempt", `action ${row.id}: attempt ${input.attempt} has not been dispatched (current attempt ${row.attempt})`);
+      if (row.executor === "agent") {
+        if (!input.reporter.beeId) return reject("unauthorized", `action ${row.id}: agent reports must carry the reporting bee id`);
+        if (input.reporter.beeId !== row.beeId) return reject("unauthorized", `action ${row.id} belongs to bee ${row.beeId}, not ${input.reporter.beeId}`);
+      } else if (row.executor === "external") {
+        if (!input.reporter.executor) return reject("unauthorized", `action ${row.id}: executor reports must name the executor`);
+        if (row.dispatch?.claimedBy !== input.reporter.executor) {
+          return reject("unauthorized", `action ${row.id} attempt ${row.attempt} is claimed by ${row.dispatch?.claimedBy ?? "nobody"}, not ${input.reporter.executor}`);
+        }
+      } else {
+        return reject("refused", `action ${row.id} is executed by ${row.executor}; its outcome comes from the operation receipt, not a report`);
+      }
+      if (!row.attemptToken || input.token !== row.attemptToken) return reject("unauthorized", `action ${row.id}: attempt token does not match attempt ${row.attempt}`);
+      const terminal = ACTION_TERMINAL_STATUSES.includes(row.status);
+      if (input.kind === "question" && terminal) return reject("refused", `action ${row.id} is already ${row.status}`);
+      if (input.kind === "result" && terminal) {
+        const outcome = input.outcome;
+        if (!((row.status === "succeeded" && outcome === "succeeded") || (row.status === "failed" && outcome === "failed"))) {
+          if (outcome === "succeeded" || outcome === "failed" || outcome === "uncertain") {
+            return reject("refused", `action ${row.id} is already ${row.status}; a ${outcome} result for attempt ${row.attempt} is refused`);
+          }
+        }
+      }
+    }
+    return this.tx(() => {
+      const row = this.mustGetAction(input.actionId);
+      const at = this.now();
+      const terminal = ACTION_TERMINAL_STATUSES.includes(row.status);
+      const finish = (applied: boolean, deduped: boolean, question: QuestionRow | null = null) => ({
+        action: this.actionView(row.id),
+        accepted: true as const,
+        applied,
+        deduped,
+        question,
+      });
+      if (input.kind === "progress") {
+        const note = requireNonEmpty(input.note, "reportAction: note");
+        if (terminal) return finish(false, true);
+        this.withActionLaneAudit(row.beeId, "progress", () => {
+          this.updateActionRow(row.id, { progress: { note, at, attempt: row.attempt } });
+        });
+        return finish(true, false);
+      }
+      if (input.kind === "question") {
+        const text = requireNonEmpty(input.question?.text, "reportAction: question.text");
+        if (terminal) throw new ActionRefusedError(`action ${row.id} is already ${row.status}`);
+        if (row.status === "waiting" && row.waitingReason === "input" && row.questionId) {
+          const open = this.getQuestion(row.questionId);
+          if (open && open.status === "open") return finish(false, true, open);
+        }
+        const question = this.askQuestion(row.beeId, { text, options: input.question?.options ?? null });
+        this.withActionLaneAudit(row.beeId, "question", () => {
+          this.updateActionRow(row.id, { status: "waiting", waitingReason: "input", waitingDetail: `question ${question.id}`, questionId: question.id });
+        });
+        return finish(true, false, question);
+      }
+      const outcome = input.outcome;
+      if (outcome !== "succeeded" && outcome !== "failed" && outcome !== "uncertain") throw new CoreError("reportAction: result outcome must be succeeded|failed|uncertain");
+      if (terminal) {
+        if ((row.status === "succeeded" && outcome === "succeeded") || (row.status === "failed" && outcome === "failed")) return finish(false, true);
+        throw new ActionRefusedError(`action ${row.id} is already ${row.status}; a ${outcome} result for attempt ${row.attempt} is refused`);
+      }
+      const reconciled = row.status === "waiting" && row.waitingReason === "uncertain";
+      if (outcome === "uncertain") {
+        if (reconciled) return finish(false, true);
+        this.withActionLaneAudit(row.beeId, "uncertain", () => {
+          this.updateActionRow(row.id, { status: "waiting", waitingReason: "uncertain", waitingDetail: input.detail ?? "reporter could not establish the outcome" });
+        });
+        return finish(true, false);
+      }
+      if (outcome === "succeeded") {
+        const outputs = input.outputs ?? {};
+        if (outputs === null || typeof outputs !== "object" || Array.isArray(outputs)) throw new CoreError("reportAction: outputs must be an object");
+        const check = validateActionOutputs(row.definition, outputs, requestedOutputNames(row.resolvedInputs ?? row.inputs));
+        if (!check.ok) throw new CoreError(`reportAction: output '${check.output}' ${check.reason === "missing" ? "is required" : check.reason === "not_string" ? "must be a string" : "does not match the required pattern"}`);
+        this.withActionLaneAudit(row.beeId, "succeeded", () => {
+          this.updateActionRow(row.id, {
+            status: "succeeded",
+            waitingReason: null,
+            waitingDetail: null,
+            result: { outputs, receipt: input.receipt ?? null, detail: input.detail ?? null, reconciled, attempt: row.attempt, at },
+            failure: null,
+            attempts: this.closeActionAttempt(row, "succeeded", at),
+            finishedAt: at,
+          });
+        });
+        return finish(true, false);
+      }
+      this.withActionLaneAudit(row.beeId, "failed", () => {
+        this.failActionRow(
+          row,
+          input.failure?.code && input.failure.code.length > 0 ? input.failure.code : "reported_failure",
+          input.failure?.detail ?? input.detail ?? "the executor reported failure",
+          input.failure?.retryable ?? true,
+          at,
+        );
+      });
+      return finish(true, false);
+    });
+  }
+
+  /**
+   * Structured executors settle from the owner's receipt (cell.capture
+   * report). Attempt-fenced like reports; a stale attempt is a recorded
+   * no-op. `reconciled` marks outcomes established by recovery.
+   */
+  settleAction(
+    actionId: string,
+    attempt: number,
+    outcome:
+      | { kind: "succeeded"; outputs: Record<string, unknown>; receipt: Record<string, unknown> | null; detail?: string | null; reconciled?: boolean }
+      | { kind: "failed"; code: string; detail: string; retryable: boolean; receipt?: Record<string, unknown> | null }
+      | { kind: "uncertain"; detail: string },
+  ): { action: ActionView; applied: boolean } {
+    const target = this.mustGetAction(actionId);
+    return this.withActionLaneAudit(target.beeId, `settled_${outcome.kind}`, () => {
+      const row = this.mustGetAction(actionId);
+      if (row.attempt !== attempt) {
+        this.audit("action.report_rejected", row.beeId, { actionId, beeId: row.beeId, attempt, currentAttempt: row.attempt, kind: "settle", reporter: { executor: row.executor }, reason: attempt < row.attempt ? "stale_attempt" : "unknown_attempt" });
+        return { action: this.actionView(actionId), applied: false };
+      }
+      if (ACTION_TERMINAL_STATUSES.includes(row.status)) return { action: this.actionView(actionId), applied: false };
+      const at = this.now();
+      if (outcome.kind === "uncertain") {
+        this.updateActionRow(actionId, { status: "waiting", waitingReason: "uncertain", waitingDetail: outcome.detail });
+        return { action: this.actionView(actionId), applied: true };
+      }
+      if (outcome.kind === "failed") {
+        this.updateActionRow(actionId, {
+          status: "failed",
+          waitingReason: null,
+          waitingDetail: null,
+          failure: { code: outcome.code, detail: outcome.detail, retryable: outcome.retryable, attempt: row.attempt, at },
+          result: outcome.receipt ? { outputs: {}, receipt: outcome.receipt, detail: outcome.detail, reconciled: false, attempt: row.attempt, at } : null,
+          attempts: this.closeActionAttempt(row, "failed", at),
+          finishedAt: at,
+        });
+        return { action: this.actionView(actionId), applied: true };
+      }
+      this.updateActionRow(actionId, {
+        status: "succeeded",
+        waitingReason: null,
+        waitingDetail: null,
+        result: { outputs: outcome.outputs, receipt: outcome.receipt, detail: outcome.detail ?? null, reconciled: outcome.reconciled === true, attempt: row.attempt, at },
+        failure: null,
+        attempts: this.closeActionAttempt(row, "succeeded", at),
+        finishedAt: at,
+      });
+      return { action: this.actionView(actionId), applied: true };
+    });
+  }
+
   /** Deterministic snapshot of all replayable state (meta and audit excluded). */
   dumpState(): StateDump {
     return {
@@ -6312,6 +7432,8 @@ export class CoreStore {
       cellOps: this.listCellOps(),
       beeHandoffs: this.listBeeHandoffs(),
       transcriptSegments: this.listTranscriptSegments(),
+      actions: this.listActionViews(),
+      actionQueues: this.listActionQueueViews(),
     };
   }
 }

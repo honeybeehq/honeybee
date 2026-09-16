@@ -128,8 +128,15 @@
  *        0 is backfilled for every existing bee from its agent + session log
  *        path), and the `mail_history_enqueues.origin` CHECK widened with
  *        `handoff.seed` (table rebuild, rows carried across).
+ *  v24 — durable per-bee action queue: the `actions` table (one queued
+ *        instance per accepted action: definition snapshot, inputs, ordering,
+ *        attempt + dispatch + result state), `action_queues` (per-bee pause
+ *        flag + append cursor), `action_enqueues` (idempotency receipts of
+ *        accepted enqueue requests), and the `mail_history_enqueues.origin`
+ *        CHECK widened with `action.dispatch` (table rebuild, rows carried
+ *        across). Additive; migration = CREATE TABLE IF NOT EXISTS.
  */
-export const SCHEMA_VERSION = 23;
+export const SCHEMA_VERSION = 24;
 
 /**
  * Current shape shared between SCHEMA_SQL and the v19 table rebuild so a
@@ -820,6 +827,66 @@ CREATE TABLE IF NOT EXISTS transcript_segments (
 `;
 
 /**
+ * v24 — the per-bee action queue. One row per accepted action instance.
+ * `position` orders the bee's lane (unique per bee; reorder rewrites the
+ * queued subset). The definition snapshot and raw inputs are immutable after
+ * acceptance; everything else is execution state. The attempt token is the
+ * capability a reporter must present and never leaves the store.
+ */
+export const ACTIONS_TABLE_SQL = `
+CREATE TABLE IF NOT EXISTS actions (
+  id                   TEXT PRIMARY KEY,
+  bee_id               TEXT NOT NULL REFERENCES bees(id) ON DELETE CASCADE,
+  position             INTEGER NOT NULL,
+  client_ref           TEXT,
+  kind                 TEXT NOT NULL,
+  definition_version   INTEGER NOT NULL,
+  executor             TEXT NOT NULL CHECK (executor IN ('agent','cell.capture','lifecycle.archive','external')),
+  title                TEXT NOT NULL,
+  definition_json      TEXT NOT NULL,
+  inputs_json          TEXT NOT NULL,
+  resolved_inputs_json TEXT,
+  status               TEXT NOT NULL CHECK (status IN ('queued','running','waiting','succeeded','failed','cancelled')),
+  waiting_reason       TEXT CHECK (waiting_reason IN ('input','executor','uncertain')),
+  waiting_detail       TEXT,
+  attempt              INTEGER NOT NULL DEFAULT 0,
+  attempt_token        TEXT,
+  dispatch_json        TEXT,
+  dispatch_message_id  INTEGER,
+  operation_key        TEXT,
+  progress_json        TEXT,
+  question_id          TEXT,
+  result_json          TEXT,
+  failure_json         TEXT,
+  attempts_json        TEXT NOT NULL DEFAULT '[]',
+  enqueue_key          TEXT NOT NULL,
+  created_at           INTEGER NOT NULL,
+  updated_at           INTEGER NOT NULL,
+  finished_at          INTEGER,
+  UNIQUE (bee_id, position)
+) STRICT;
+CREATE INDEX IF NOT EXISTS actions_bee_status ON actions(bee_id, status, position);
+CREATE INDEX IF NOT EXISTS actions_open ON actions(bee_id, position) WHERE status IN ('queued','running','waiting');
+CREATE INDEX IF NOT EXISTS actions_dispatch_message ON actions(dispatch_message_id) WHERE dispatch_message_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS actions_question ON actions(question_id) WHERE question_id IS NOT NULL;
+CREATE TABLE IF NOT EXISTS action_queues (
+  bee_id        TEXT PRIMARY KEY REFERENCES bees(id) ON DELETE CASCADE,
+  paused        INTEGER NOT NULL DEFAULT 0 CHECK (paused IN (0,1)),
+  paused_at     INTEGER,
+  next_position INTEGER NOT NULL DEFAULT 1,
+  created_at    INTEGER NOT NULL,
+  updated_at    INTEGER NOT NULL
+) STRICT;
+CREATE TABLE IF NOT EXISTS action_enqueues (
+  idempotency_key TEXT PRIMARY KEY,
+  request_hash    TEXT NOT NULL,
+  bee_id          TEXT NOT NULL,
+  action_ids_json TEXT NOT NULL,
+  created_at      INTEGER NOT NULL
+) STRICT;
+`;
+
+/**
  * Covering source for the daemon's body-free pending-metadata projections
  * (readI1PendingSnapshot / readDaemonWork): every column those queries touch
  * is in the key, so held large bodies are never fetched per tick. The
@@ -887,7 +954,7 @@ CREATE TABLE IF NOT EXISTS mail_history_enqueues (
   seq              INTEGER PRIMARY KEY,
   message_id       INTEGER NOT NULL UNIQUE,
   bee_id            TEXT NOT NULL,
-  origin            TEXT NOT NULL CHECK (origin IN ('mail.send','spawn.prompt','legacy.unknown','handoff.seed')),
+  origin            TEXT NOT NULL CHECK (origin IN ('mail.send','spawn.prompt','legacy.unknown','handoff.seed','action.dispatch')),
   sender            BLOB NOT NULL,
   sender_truncated  INTEGER NOT NULL CHECK (sender_truncated IN (0, 1)),
   body              BLOB NOT NULL,

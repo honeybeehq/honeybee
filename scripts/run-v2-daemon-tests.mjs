@@ -22,6 +22,7 @@ const UNIT_FILES = new Set([
   "v2/daemon/tests/envelope.test.ts",
   "v2/daemon/tests/loops.test.ts",
   "v2/daemon/tests/handoff.test.ts",
+  "v2/daemon/tests/actions.test.ts",
   "v2/daemon/tests/relocate-session.test.ts",
   "v2/daemon/tests/service.test.ts",
   "v2/daemon/tests/telemetry.test.ts",

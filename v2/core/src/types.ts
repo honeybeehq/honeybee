@@ -249,7 +249,7 @@ export const MAIL_CANCELLATION_REASONS = ["requested", "bee_deleted"] as const;
 export type MailCancellationReason = (typeof MAIL_CANCELLATION_REASONS)[number];
 
 /** Typed admission path for mailbox traffic; consumers must not sniff bodies. */
-export const MAIL_ORIGINS = ["mail.send", "spawn.prompt", "legacy.unknown", "handoff.seed"] as const;
+export const MAIL_ORIGINS = ["mail.send", "spawn.prompt", "legacy.unknown", "handoff.seed", "action.dispatch"] as const;
 export type MailOrigin = (typeof MAIL_ORIGINS)[number];
 
 /**
@@ -762,6 +762,9 @@ export interface StateDump {
   /** v23 */
   beeHandoffs: BeeHandoffRow[];
   transcriptSegments: TranscriptSegmentRow[];
+  /** v24 — action views (the token never leaves the store) + per-bee queues. */
+  actions: ActionView[];
+  actionQueues: ActionQueueView[];
 }
 
 // ---------------------------------------------------------------------------
@@ -1018,6 +1021,238 @@ export interface BeeHandoffRow extends BeeHandoffView {
 }
 
 // ---------------------------------------------------------------------------
+// v24 — durable per-bee action queue (Apiary Ctrl+X sequences). One action is
+// one unit of work; the queue is the bee's ad hoc ordered sequence. Action
+// state is separate from bee lifecycle, runtime state and mailbox delivery:
+// delivering the instruction (or a turn ending) never completes an action —
+// only an authenticated structured report or an authoritative operation
+// receipt does.
+// ---------------------------------------------------------------------------
+
+/**
+ * Who executes an action. `agent`: the bee itself, instructed through the
+ * mailbox, reporting through `action.report`. `cell.capture`: Honeybee's Cell
+ * landing owner (the `cell.capture` receipt). `lifecycle.archive`: the bee's
+ * lifecycle command queue. `external`: an executor outside Honeybee (Apiary's
+ * GitHub/git operations) that claims the attempt and reports its receipt.
+ */
+export const ACTION_EXECUTORS = ["agent", "cell.capture", "lifecycle.archive", "external"] as const;
+export type ActionExecutor = (typeof ACTION_EXECUTORS)[number];
+
+export const ACTION_STATUSES = ["queued", "running", "waiting", "succeeded", "failed", "cancelled"] as const;
+export type ActionStatus = (typeof ACTION_STATUSES)[number];
+
+/** Closed graph. Terminal statuses have no outbound edge except `failed → queued` (retry). */
+export const ACTION_TRANSITIONS: Readonly<Record<ActionStatus, readonly ActionStatus[]>> = {
+  // queued → succeeded: a structured operation whose effect already holds settles at dispatch (e.g. archive of an archived bee).
+  queued: ["running", "waiting", "succeeded", "failed", "cancelled"],
+  running: ["waiting", "succeeded", "failed", "cancelled"],
+  waiting: ["running", "succeeded", "failed", "cancelled", "queued"],
+  succeeded: [],
+  failed: ["queued"],
+  cancelled: [],
+};
+
+/**
+ * Why a released action is not progressing. `input`: the agent asked a
+ * question (the linked `questions` row is open). `executor`: the executor
+ * that owns this kind is not available / has not claimed the attempt.
+ * `uncertain`: the attempt's effect may or may not have happened; nothing
+ * downstream runs until the owner reconciles it or an operator retries.
+ */
+export const ACTION_WAITING_REASONS = ["input", "executor", "uncertain"] as const;
+export type ActionWaitingReason = (typeof ACTION_WAITING_REASONS)[number];
+
+/** Why a queued action has not been released (derived, never stored). */
+export const ACTION_HOLD_REASONS = ["paused", "predecessor_active", "predecessor_failed", "lane_busy"] as const;
+export type ActionHoldReason = (typeof ACTION_HOLD_REASONS)[number];
+
+/** How an attempt ended (attempt history; the action row carries the current one). */
+export const ACTION_ATTEMPT_OUTCOMES = ["succeeded", "failed", "cancelled", "uncertain", "superseded"] as const;
+export type ActionAttemptOutcome = (typeof ACTION_ATTEMPT_OUTCOMES)[number];
+
+export interface ActionOutputSpec {
+  name: string;
+  required: boolean;
+  /** Regex source the reported value must match (strings only); null = any string. */
+  pattern: string | null;
+  description: string;
+}
+
+export interface ActionInputSpec {
+  name: string;
+  required: boolean;
+  description: string;
+}
+
+/**
+ * A reusable, versioned action definition. Built-ins are code constants
+ * (`BUILTIN_ACTION_DEFINITIONS`); a queued instance snapshots the definition
+ * it was accepted with, so a later definition change never retargets queued
+ * work.
+ */
+export interface ActionDefinition {
+  kind: string;
+  version: number;
+  executor: ActionExecutor;
+  title: string;
+  description: string;
+  inputs: ActionInputSpec[];
+  outputs: ActionOutputSpec[];
+  /** Agent executor: the instruction body (before the report footer). Null for structured executors. */
+  instruction: string | null;
+}
+
+/** A reference to a predecessor's output, allowed as any top-level input value. */
+export interface ActionOutputRef {
+  $ref: { action: string; output: string };
+}
+
+export interface ActionDispatch {
+  attempt: number;
+  dispatchedAt: number;
+  /** Runtime generation current at dispatch (agent: the generation the instruction was enqueued under). */
+  generation: number | null;
+  /** agent: the mailbox row carrying the instruction. */
+  messageId: number | null;
+  deliveredAt: number | null;
+  deliveredGeneration: number | null;
+  /** lifecycle.archive: the command idempotency key; cell.capture: the capture op id. */
+  operationKey: string | null;
+  /** external: the executor name that claimed the attempt; null until claimed. */
+  claimedBy: string | null;
+  claimedAt: number | null;
+  /** cell.capture: the Cell HEAD observed right before the capture ran (recovery probe target). */
+  expectedHead: string | null;
+}
+
+export interface ActionProgress {
+  note: string;
+  at: number;
+  attempt: number;
+}
+
+export interface ActionResult {
+  outputs: Record<string, unknown>;
+  /** The owner's receipt verbatim (cell.capture report, archive command id, executor receipt). */
+  receipt: Record<string, unknown> | null;
+  detail: string | null;
+  /** True when the outcome was established by recovery/reconciliation rather than a live report. */
+  reconciled: boolean;
+  attempt: number;
+  at: number;
+}
+
+export interface ActionFailure {
+  code: string;
+  detail: string;
+  retryable: boolean;
+  attempt: number;
+  at: number;
+}
+
+export interface ActionAttemptRecord {
+  attempt: number;
+  dispatchedAt: number | null;
+  generation: number | null;
+  messageId: number | null;
+  deliveredAt: number | null;
+  claimedBy: string | null;
+  operationKey: string | null;
+  outcome: ActionAttemptOutcome | null;
+  finishedAt: number | null;
+}
+
+export interface ActionHold {
+  reason: ActionHoldReason;
+  /** The predecessor blocking this action (predecessor_* reasons). */
+  actionId: string | null;
+  actionStatus: ActionStatus | null;
+}
+
+/** Which controls apply right now (derived, so Apiary never guesses). */
+export interface ActionControls {
+  cancel: boolean;
+  /** Cancel is only allowed with `force` (effects may already be under way). */
+  forceCancel: boolean;
+  retry: boolean;
+  /** Retry is only allowed with `force` (the last attempt's outcome is uncertain). */
+  forceRetry: boolean;
+  reorder: boolean;
+}
+
+/** Locked RPC/mirror view. Apiary materializes exactly these keys. Never carries the attempt token. */
+export interface ActionView {
+  id: string;
+  beeId: string;
+  /** Dense-ish per-bee ordering; reorder rewrites the queued subset. */
+  position: number;
+  /** Client correlation handle echoed from the enqueue request. */
+  clientRef: string | null;
+  kind: string;
+  definitionVersion: number;
+  executor: ActionExecutor;
+  title: string;
+  definition: ActionDefinition;
+  /** Raw inputs as accepted (may contain `$ref` values). */
+  inputs: Record<string, unknown>;
+  /** Inputs with every `$ref` resolved at the latest dispatch; null before the first dispatch. */
+  resolvedInputs: Record<string, unknown> | null;
+  status: ActionStatus;
+  waitingReason: ActionWaitingReason | null;
+  /** Free-text detail for the waiting reason (e.g. which executor is missing). */
+  waitingDetail: string | null;
+  hold: ActionHold | null;
+  /** Current attempt number; 0 before the first dispatch. */
+  attempt: number;
+  dispatch: ActionDispatch | null;
+  progress: ActionProgress | null;
+  /** The open/answered question raised by the current attempt. */
+  questionId: string | null;
+  result: ActionResult | null;
+  failure: ActionFailure | null;
+  /** Earlier attempts (the current one is described by `dispatch`/`result`/`failure`). */
+  attempts: ActionAttemptRecord[];
+  controls: ActionControls;
+  createdAt: number;
+  updatedAt: number;
+  finishedAt: number | null;
+}
+
+/** Store row. Projected to ActionView at RPC/mirror boundaries (token dropped, hold/controls derived). */
+export interface ActionRow extends Omit<ActionView, "hold" | "controls"> {
+  /** The idempotency key of the accepting enqueue request. */
+  enqueueKey: string;
+  /** Capability the current attempt's reporter must present; rotated per attempt; null when idle. */
+  attemptToken: string | null;
+}
+
+export interface ActionQueueView {
+  beeId: string;
+  paused: boolean;
+  pausedAt: number | null;
+  /** The one running/waiting action in the bee's execution lane, if any. */
+  activeActionId: string | null;
+  counts: Record<ActionStatus, number>;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** Store row for the per-bee queue. `nextPosition` orders concurrent appends deterministically. */
+export interface ActionQueueRow extends ActionQueueView {
+  nextPosition: number;
+}
+
+/** The receipt of one accepted enqueue request (idempotency memory for `action.enqueue`). */
+export interface ActionEnqueueRow {
+  idempotencyKey: string;
+  requestHash: string;
+  beeId: string;
+  actionIds: string[];
+  createdAt: number;
+}
+
+// ---------------------------------------------------------------------------
 // Errors — all core errors derive from CoreError so callers can distinguish
 // contract violations (throw) from bugs.
 // ---------------------------------------------------------------------------
@@ -1205,3 +1440,32 @@ export class HandoffNotFoundError extends CoreError {
     super(`handoff not found: ${id}`);
   }
 }
+
+/** v24 — action lookup. */
+export class ActionNotFoundError extends CoreError {
+  constructor(id: string) {
+    super(`action not found: ${id}`);
+  }
+}
+
+/** v24 — the action's status does not permit the requested control/report. */
+export class ActionRefusedError extends CoreError {}
+
+/** v24 — a reorder would leave an output reference pointing forward, or omits/adds queued ids. */
+export class ActionReorderInvalidError extends CoreError {}
+
+/** v24 — a report names an attempt older than the action's current one. */
+export class ActionStaleAttemptError extends CoreError {}
+
+/** v24 — the reporter is not the assigned bee/executor or presents the wrong attempt token. */
+export class ActionUnauthorizedError extends CoreError {}
+
+/** v24 — enqueue named a kind/version that no definition provides. */
+export class ActionKindUnknownError extends CoreError {
+  constructor(kind: string, version: number | null) {
+    super(`unknown action kind: ${kind}${version === null ? "" : `@${version}`}`);
+  }
+}
+
+/** v24 — `action.claim` on an attempt already claimed by another executor. */
+export class ActionClaimedError extends CoreError {}

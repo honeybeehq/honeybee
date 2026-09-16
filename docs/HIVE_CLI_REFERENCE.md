@@ -1184,6 +1184,40 @@ automatically); after the switch it stays on the target with the seed queued.
 `hive stop`, `archive`, `delete` or `revive` during a handoff cancel it
 (`failed` + `superseded`).
 
+### `hive action`
+
+The per-bee **action queue** (v2 `action.*`, capability `bee.actions.v1`; wire
+contract in `docs/design/action-queue-contract.md`). An action is one unit of
+work — an agent instruction (`commit`, `fix`, `name_branch`, `instruction`), a
+Cell landing (`land`, the `cell.capture` receipt), a lifecycle `archive`, or an
+external operation Apiary executes (`push`, `open_pr`). Actions run one at a
+time per bee, each released only after its predecessor **succeeded**; a
+finished turn never completes an action — only a report or a receipt does.
+
+```sh
+hive action enqueue <bee> <kind> [--input k=v|k:=json]... [--title t] [--idempotency-key k]
+hive action enqueue <bee> --items-json '[{"kind":"commit"},{"kind":"land","inputs":{"targetBranch":"main","commit":{"$ref":{"item":0,"output":"commitSha"}}}},{"kind":"archive"}]'
+hive action list [--bee b] [--status s] | action get <id> | action definitions
+hive action cancel <id> [--force] | action retry <id> [--force]
+hive action pause <bee> | action resume <bee> | action reorder <bee> <id>...
+hive action report <id> --attempt n --token t (--succeeded [--output k=v]... | --failed [--code c] [--detail d] | --uncertain [--detail d] | --ask "q" [--option o]... | --progress "note") [--bee b]
+hive action claim --executor <name> [--kind k] [--bee b] [--action id]
+```
+
+- `report` is the bee-side verb: the delivered instruction names the exact
+  command (id, attempt, token); the bee is `HIVE_BEE_ID` unless `--bee` is
+  given. `--ask` opens an ordinary question and holds the queue until it is
+  answered; `--uncertain` holds it until the same attempt is reconciled.
+- `cancel` withdraws pending work (an undelivered instruction is removed from
+  the mailbox); `--force` stops tracking an in-flight attempt without undoing
+  its effects. `retry` starts a **new** attempt of a failed action; `--force`
+  is required when the last attempt's outcome is uncertain.
+- `pause` stops new releases only; the active attempt continues. `reorder`
+  takes exactly the queued ids and refuses an order that would point an output
+  reference forward.
+- `claim` is for external executors (Apiary): it takes an offered attempt and
+  returns the token to report with.
+
 ## Keybindings and In-tmux Affordances
 
 The keybinding LAYER — picker verbs the `display-popup` chords invoke, the

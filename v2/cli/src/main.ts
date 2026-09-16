@@ -50,6 +50,17 @@ import {
   type ForkResult,
   type BeeHandoffResult,
   type BeeHandoffGetResult,
+  type ActionCancelResult,
+  type ActionClaimResult,
+  type ActionDefinitionsResult,
+  type ActionEnqueueResult,
+  type ActionGetResult,
+  type ActionListResult,
+  type ActionQueueControlResult,
+  type ActionReorderResult,
+  type ActionReportResult,
+  type ActionRetryResult,
+  type ActionView,
   type HealthResult,
   type NodeHarnessesResult,
   type InterruptResult,
@@ -187,7 +198,7 @@ interface Parsed {
 }
 
 /** Repeatable value flags collected into `lists` (v6 verbs). */
-const LIST_FLAGS = new Set(["--add", "--remove", "--option", "--ref", "--env"]);
+const LIST_FLAGS = new Set(["--add", "--remove", "--option", "--ref", "--env", "--input", "--output"]);
 
 const VALUE_FLAGS = new Set([
   "--agent",
@@ -236,6 +247,16 @@ const VALUE_FLAGS = new Set([
   // v23 (handoff)
   "--model",
   "--instruction",
+  // v24 (action queue)
+  "--attempt",
+  "--token",
+  "--ask",
+  "--progress",
+  "--detail",
+  "--code",
+  "--executor",
+  "--items-json",
+  "--action",
   // v7 (accounts)
   "--account",
   "--home",
@@ -283,6 +304,10 @@ const BOOL_FLAGS = new Set([
   "--wait",
   // v23 (handoff): stop the source immediately instead of at its idle boundary.
   "--now",
+  // v24 (action report outcomes)
+  "--succeeded",
+  "--failed",
+  "--uncertain",
   "--follow",
   "--no-follow",
   "--raw",
@@ -1144,6 +1169,188 @@ async function cmdFork(ctx: CliContext, parsed: Parsed): Promise<number> {
     );
     return 0;
   });
+}
+
+/** `k=v` (string) or `k:=<json>` pairs from a repeatable flag. */
+function kvPairs(values: string[] | undefined, flag: string): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const raw of values ?? []) {
+    const json = raw.indexOf(":=");
+    const eq = raw.indexOf("=");
+    if (json > 0 && (eq < 0 || json < eq)) {
+      const key = raw.slice(0, json);
+      try {
+        out[key] = JSON.parse(raw.slice(json + 2));
+      } catch {
+        throw new Error(`${flag} ${key}: value after := must be JSON`);
+      }
+      continue;
+    }
+    if (eq <= 0) throw new Error(`${flag} expects key=value (or key:=json), got '${raw}'`);
+    out[raw.slice(0, eq)] = raw.slice(eq + 1);
+  }
+  return out;
+}
+
+function actionLine(a: ActionView): string {
+  const status = a.status === "succeeded" ? "ok" : a.status === "failed" ? "err" : "info";
+  const where = a.status === "waiting" ? ` (${a.waitingReason}${a.waitingDetail ? `: ${a.waitingDetail}` : ""})` : a.hold ? ` (held: ${a.hold.reason}${a.hold.actionId ? ` by ${a.hold.actionId}` : ""})` : "";
+  const detail = a.failure ? ` — ${a.failure.code}: ${a.failure.detail}` : a.result ? ` — ${Object.entries(a.result.outputs).map(([k, v]) => `${k}=${typeof v === "string" ? v : JSON.stringify(v)}`).join(" ")}` : "";
+  return confirm(status, `${a.status}${where}`, `#${a.position} ${a.kind}@${a.definitionVersion} ${a.id} attempt ${a.attempt}${detail}`);
+}
+
+/**
+ * `hive action …` — the per-bee action queue (capability bee.actions.v1).
+ * `report` is the bee-side verb (the token comes from the delivered
+ * instruction; the bee is HIVE_BEE_ID unless --bee is given).
+ */
+async function cmdAction(ctx: CliContext, parsed: Parsed): Promise<number> {
+  const usage = [
+    "usage: hive action list [--bee b] [--status s]",
+    "       hive action get <actionId> | action definitions",
+    "       hive action enqueue <bee> <kind> [--input k=v|k:=json]... [--title t] [--idempotency-key k]",
+    "       hive action enqueue <bee> --items-json '[{\"kind\":\"commit\"},{\"kind\":\"land\",\"inputs\":{\"targetBranch\":\"main\",\"commit\":{\"$ref\":{\"item\":0,\"output\":\"commitSha\"}}}}]'",
+    "       hive action cancel <actionId> [--force] | action retry <actionId> [--force]",
+    "       hive action pause <bee> | action resume <bee> | action reorder <bee> <actionId>...",
+    "       hive action report <actionId> --attempt n --token t (--succeeded [--output k=v]... | --failed [--code c] [--detail d] | --uncertain [--detail d] | --ask \"question\" [--option o]... | --progress \"note\") [--bee b]",
+    "       hive action claim --executor <name> [--kind k] [--bee b] [--action id]",
+  ].join("\n");
+  const sub = parsed.positional[1];
+  const key = parsed.flags.get("--idempotency-key") as string | undefined;
+  switch (sub) {
+    case "list":
+      return withClient(ctx, async (c) => {
+        const beeFlag = parsed.flags.get("--bee") as string | undefined;
+        const beeId = beeFlag ? resolveBeeIn((await c.request<ListResult>("list")).views, beeFlag) : undefined;
+        const status = parsed.flags.get("--status") as string | undefined;
+        const r = await c.request<ActionListResult>("action.list", { ...(beeId ? { beeId } : {}), ...(status ? { statuses: [status] } : {}) });
+        emit(ctx, r.actions.length === 0 ? [dim("no actions")] : r.actions.map(actionLine), r, false);
+        return 0;
+      });
+    case "get": {
+      const actionId = parsed.positional[2];
+      if (!actionId) throw new Error(usage);
+      return withClient(ctx, async (c) => {
+        const r = await c.request<ActionGetResult>("action.get", { actionId });
+        emit(ctx, [actionLine(r.action)], r, false);
+        return 0;
+      });
+    }
+    case "definitions":
+      return withClient(ctx, async (c) => {
+        const r = await c.request<ActionDefinitionsResult>("action.definitions", {});
+        emit(ctx, r.definitions.map((d) => `${d.kind}@${d.version} ${dim(`[${d.executor}]`)} ${d.title} — ${d.description}`), r, false);
+        return 0;
+      });
+    case "enqueue": {
+      const needle = parsed.positional[2];
+      const kind = parsed.positional[3];
+      const itemsJson = parsed.flags.get("--items-json") as string | undefined;
+      if (!needle || (!kind && !itemsJson)) throw new Error(usage);
+      let items: unknown;
+      if (itemsJson) {
+        items = JSON.parse(itemsJson);
+      } else {
+        const inputs = kvPairs(parsed.lists.get("--input"), "--input");
+        const title = parsed.flags.get("--title") as string | undefined;
+        items = [{ kind, inputs, ...(title ? { title } : {}) }];
+      }
+      return withClient(ctx, async (c) => {
+        const beeId = resolveBeeIn((await c.request<ListResult>("list")).views, needle);
+        const r = await c.request<ActionEnqueueResult>("action.enqueue", { beeId, idempotencyKey: key ?? randomUUID(), items });
+        emit(ctx, [confirm("ok", r.deduped ? "accepted (replayed)" : "accepted", `${r.actions.length} action(s) on ${beeId}${r.queue.paused ? " (queue paused)" : ""}`, r.deduped), ...r.actions.map(actionLine)], r, false);
+        return 0;
+      });
+    }
+    case "cancel":
+    case "retry": {
+      const actionId = parsed.positional[2];
+      if (!actionId) throw new Error(usage);
+      return withClient(ctx, async (c) => {
+        const force = parsed.flags.get("--force") === true;
+        const r = await c.request<ActionCancelResult | ActionRetryResult>(sub === "cancel" ? "action.cancel" : "action.retry", { actionId, force, ...(key ? { idempotencyKey: key } : {}) });
+        emit(ctx, [confirm("ok", sub === "cancel" ? "cancelled" : "retried", `${actionId} is ${r.action.status} (attempt ${r.action.attempt})`, r.deduped), actionLine(r.action)], r, false);
+        return 0;
+      });
+    }
+    case "pause":
+    case "resume": {
+      const needle = parsed.positional[2];
+      if (!needle) throw new Error(usage);
+      return withClient(ctx, async (c) => {
+        const beeId = resolveBeeIn((await c.request<ListResult>("list")).views, needle);
+        const r = await c.request<ActionQueueControlResult>(sub === "pause" ? "action.queue.pause" : "action.queue.resume", { beeId, ...(key ? { idempotencyKey: key } : {}) });
+        emit(ctx, [confirm("ok", `queue ${r.queue.paused ? "paused" : "running"}`, `${beeId}${r.applied ? "" : " (unchanged)"}`, r.deduped)], r, false);
+        return 0;
+      });
+    }
+    case "reorder": {
+      const needle = parsed.positional[2];
+      const order = parsed.positional.slice(3);
+      if (!needle || order.length === 0) throw new Error(usage);
+      return withClient(ctx, async (c) => {
+        const beeId = resolveBeeIn((await c.request<ListResult>("list")).views, needle);
+        const r = await c.request<ActionReorderResult>("action.reorder", { beeId, order, ...(key ? { idempotencyKey: key } : {}) });
+        emit(ctx, [confirm("ok", "reordered", beeId, r.deduped), ...r.actions.filter((a) => a.status === "queued").map(actionLine)], r, false);
+        return 0;
+      });
+    }
+    case "report": {
+      const actionId = parsed.positional[2];
+      const attempt = numFlag(parsed, "--attempt", NaN);
+      const token = parsed.flags.get("--token") as string | undefined;
+      if (!actionId || !Number.isInteger(attempt) || !token) throw new Error(usage);
+      const ask = parsed.flags.get("--ask") as string | undefined;
+      const progress = parsed.flags.get("--progress") as string | undefined;
+      const outcome = parsed.flags.get("--succeeded") === true ? "succeeded" : parsed.flags.get("--failed") === true ? "failed" : parsed.flags.get("--uncertain") === true ? "uncertain" : null;
+      const kinds = [ask !== undefined, progress !== undefined, outcome !== null].filter(Boolean).length;
+      if (kinds !== 1) throw new Error(`action report: pass exactly one of --succeeded | --failed | --uncertain | --ask | --progress\n${usage}`);
+      const detail = parsed.flags.get("--detail") as string | undefined;
+      const code = parsed.flags.get("--code") as string | undefined;
+      const executor = parsed.flags.get("--executor") as string | undefined;
+      return withClient(ctx, async (c) => {
+        const beeId = executor ? null : await targetBee(c, parsed, "action report");
+        const body: Record<string, unknown> = { actionId, attempt, token, ...(beeId ? { beeId } : {}), ...(executor ? { executor } : {}), ...(key ? { idempotencyKey: key } : {}) };
+        if (ask !== undefined) {
+          const options = parsed.lists.get("--option");
+          Object.assign(body, { kind: "question", question: { text: ask, ...(options && options.length > 0 ? { options } : {}) } });
+        } else if (progress !== undefined) {
+          Object.assign(body, { kind: "progress", note: progress });
+        } else {
+          Object.assign(body, {
+            kind: "result",
+            outcome,
+            ...(outcome === "succeeded" ? { outputs: kvPairs(parsed.lists.get("--output"), "--output") } : {}),
+            ...(detail !== undefined ? { detail } : {}),
+            ...(outcome === "failed" ? { failure: { ...(code ? { code } : {}), ...(detail ? { detail } : {}) } } : {}),
+          });
+        }
+        const r = await c.request<ActionReportResult>("action.report", body);
+        const what = ask !== undefined ? `asked question ${r.question?.id ?? "?"} (the answer arrives in your mailbox)` : progress !== undefined ? "progress noted" : `${outcome} recorded`;
+        emit(ctx, [confirm("ok", r.applied ? "reported" : "reported (already recorded)", `${actionId} attempt ${attempt}: ${what}; action is ${r.action.status}`, r.deduped)], r, false);
+        return 0;
+      });
+    }
+    case "claim": {
+      const executor = parsed.flags.get("--executor") as string | undefined;
+      if (!executor) throw new Error(usage);
+      return withClient(ctx, async (c) => {
+        const beeFlag = parsed.flags.get("--bee") as string | undefined;
+        const beeId = beeFlag ? resolveBeeIn((await c.request<ListResult>("list")).views, beeFlag) : undefined;
+        const kind = parsed.flags.get("--kind") as string | undefined;
+        const actionId = parsed.flags.get("--action") as string | undefined;
+        const r = await c.request<ActionClaimResult>("action.claim", { executor, ...(beeId ? { beeId } : {}), ...(kind ? { kinds: [kind] } : {}), ...(actionId ? { actionId } : {}) });
+        if (!r.claim) {
+          emit(ctx, [dim("nothing to claim")], r, false);
+          return 0;
+        }
+        emit(ctx, [confirm("ok", r.claim.deduped ? "claimed (replayed)" : "claimed", `${r.claim.action.id} attempt ${r.claim.attempt} token ${r.claim.token}`, r.claim.deduped), actionLine(r.claim.action)], r, false);
+        return 0;
+      });
+    }
+    default:
+      throw new Error(usage);
+  }
 }
 
 /**
@@ -3793,6 +4000,8 @@ export async function runV2Cli(argv: string[], io: CliIo = defaultIo): Promise<n
         return await cmdFork(ctx, parsed);
       case "handoff":
         return await cmdHandoff(ctx, parsed);
+      case "action":
+        return await cmdAction(ctx, parsed);
       case "children":
         return await cmdChildren(ctx, parsed);
       case "ask":

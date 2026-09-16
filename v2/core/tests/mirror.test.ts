@@ -161,6 +161,8 @@ test("mirror.2: value-level snapshot — a deterministic store serializes to the
       beeMoves: [],
       beeHandoffs: [],
       transcriptSegments: [],
+      actions: [],
+      actionQueues: [],
       templates: [template],
       tracks: [track],
       questions: [store.getQuestion(question.id)!],
@@ -244,6 +246,8 @@ test("mirror.2: value-level snapshot — a deterministic store serializes to the
   "beeMoves": [],
   "beeHandoffs": [],
   "transcriptSegments": [],
+  "actions": [],
+  "actionQueues": [],
   "templates": [
     {
       "id": "tpl-1",
