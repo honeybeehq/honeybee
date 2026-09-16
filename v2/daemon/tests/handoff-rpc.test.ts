@@ -371,7 +371,10 @@ test("handoff.rpc.cell: a Cell bee hands off in place — same Cell, cwd, dirty 
   const admitted = await f.rpc<BeeHandoffResult>("bee.handoff", handoffRequest(v, { agent: "codex" }));
   const post = await f.rpc<SendRpcResult>("send", { beeId: v.bee!.id, body: "@sh pwd > where.txt" });
   const done = await f.waitPhase(admitted.id, ["complete"], "cell handoff");
-  await waitFor(async () => existsSync(join(v.cell!.spaceDir, "where.txt")), "target wrote in the same cell");
+  await waitFor(async () => {
+    const path = join(v.cell!.spaceDir, "where.txt");
+    return existsSync(path) && readFileSync(path, "utf8").trim().length > 0;
+  }, "target wrote in the same cell");
   const after = await f.view(v.bee!.id);
   assert.equal(after.bee?.substrate, "cell");
   assert.equal(after.bee?.cwd, v.bee?.cwd);

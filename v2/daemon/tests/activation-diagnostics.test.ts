@@ -22,7 +22,7 @@ test("gateway lock timeout identifies the blocked stage safely, then the real se
         assert.equal(error.name, "GatewayMcpSeedLockError");
         const diagnostic = activationFailureName(error);
         assert.match(diagnostic, /stage=gateway_mcp_lock operation=acquire code=FILE_LOCK_TIMEOUT/);
-        assert.match(diagnostic, /timeoutMs=10000 waitMs=\d+ ownerPid=\d+/);
+        assert.match(diagnostic, /timeoutMs=45000 waitMs=\d+ ownerPid=\d+/);
         assert.doesNotMatch(diagnostic, /private|fixture-secret|PRIVATE|config\.toml/);
         assert.equal(diagnostic.includes(home), false);
         return true;

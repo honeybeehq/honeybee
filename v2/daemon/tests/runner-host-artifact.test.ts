@@ -77,6 +77,9 @@ function captureProcess(child: ChildProcess): CapturedProcess {
 function runtimeEnv(dir: string): NodeJS.ProcessEnv {
   return {
     ...process.env,
+    // Disposable daemons do not contain the bee running this test suite.
+    HIVE_BEE_ID: undefined,
+    HIVE_BEE: undefined,
     HIVE_V2_DATA_DIR: dir,
     HIVE_NO_KEYCHAIN: "1",
     HIVE_TEST_REAP_RUNTIMES_ON_SHUTDOWN: "1",
