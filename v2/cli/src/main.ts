@@ -12,7 +12,6 @@
  */
 import { randomUUID } from "node:crypto";
 import { execFile, spawnSync } from "node:child_process";
-import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import { createInterface } from "node:readline";
 import { closeSync, existsSync, openSync, readSync, statSync } from "node:fs";
