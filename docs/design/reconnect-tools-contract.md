@@ -95,6 +95,20 @@ installed Codex against a deterministic local Responses endpoint:
 HONEYBEE_REAL_CODEX_RECONNECT=1 node --test v2/driver-hsr/tests/harness/codex-mcp-reconnect.test.ts
 ```
 
+The real-owner acceptance test also drives the actual Honeybee socket and
+detached host with installed Codex and local deterministic inference:
+
+```sh
+HONEYBEE_REAL_CODEX_RECONNECT=1 node --test v2/daemon/tests/reconnect-tools.real-codex.test.ts
+```
+
+It queues reconnect during active inference, verifies same-key replay and the
+same bee/process/generation/thread, changes registered shim arguments, and then
+reconnects the unchanged registration again. Model requests must receive each
+new tool generation on a normal turn after native startup readiness. The test
+also preserves unrelated native settings and the fixture's configured timeout;
+it does not change production timeout policy or touch real account homes.
+
 Codex 0.154.0 keeps the same process and thread while the model tool definitions
 change after the native nonce write and reload. An unchanged-config reload is a
 negative control and retains stale tools. Repeated nonce changes refresh again.
