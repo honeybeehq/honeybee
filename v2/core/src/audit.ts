@@ -1,3 +1,4 @@
+import type { ThreadOperationRow } from "./threadOperation.ts";
 /**
  * Audit replay — the audit table is a complete, ordered record of every write.
  * `replayAudit` folds the audit rows into a StateDump that must deep-equal the
@@ -32,6 +33,7 @@ import type {
 import type { LoginFlowRow } from "./loginFlow.ts";
 
 export function replayAudit(rows: AuditRow[]): StateDump {
+  const threadOperations = new Map<string, ThreadOperationRow>();
   const bees = new Map<string, BeeRow>();
   const runtimes = new Map<string, RuntimeRow>(); // key beeId#generation
   const flags = new Map<number, FlagRow>();
@@ -78,6 +80,11 @@ export function replayAudit(rows: AuditRow[]): StateDump {
   for (const row of rows) {
     const p = row.payload;
     switch (row.kind) {
+      case "thread_operation.put": {
+        const operation = structuredClone(p.row as ThreadOperationRow);
+        threadOperations.set(operation.id, operation);
+        break;
+      }
       case "bee.created": {
         const bee = p.bee as BeeRow;
         bees.set(bee.id, {
@@ -475,6 +482,7 @@ export function replayAudit(rows: AuditRow[]): StateDump {
   }
 
   return {
+    threadOperations: [...threadOperations.values()].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
     bees: [...bees.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
     runtimes: [...runtimes.values()].sort((a, b) =>
       a.beeId !== b.beeId ? (a.beeId < b.beeId ? -1 : 1) : a.generation - b.generation,

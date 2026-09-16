@@ -209,7 +209,7 @@ test("v6.rpc.2: bee.interrupt — idle no-op; mid-turn (hung) interrupt → turn
   }
 });
 
-test("v6.rpc.3: bee.fork (claude) — forks the source session into a NEW one (--resume <src> --fork-session), records the fork's own id (seed consumed), parentId/forkedFrom set, HIVE_* env stamps; revive resumes the fork's own id; prompt lands as first mail; replay dedups", async () => {
+test("v6.rpc.3: bee.fork (claude) — forks the source session into a NEW one (--resume <src> --fork-session), records the fork's own id (seed consumed), parentId/forkedFrom set, HIVE_* env stamps; revive resumes the fork's own id; copy has no prompt; replay dedups", async () => {
   const argvLog = join(process.env.TMPDIR ?? "/tmp", `hb-v6-fork-${process.pid}-${Date.now()}.jsonl`);
   const { dir, cleanup } = makeDaemonDir({
     agents: {
@@ -240,7 +240,7 @@ test("v6.rpc.3: bee.fork (claude) — forks the source session into a NEW one (-
     assert.equal(srcBoot.env.HIVE_PARENT, null, "a root bee has no parent stamp");
 
     // fork
-    const fork = await client.request<ForkResult>("bee.fork", { beeId: src.beeId, name: "src-b", prompt: "carry on", idempotencyKey: "fork-1" });
+    const fork = await client.request<ForkResult>("bee.fork", { beeId: src.beeId, name: "src-b", idempotencyKey: "fork-1" });
     assert.equal(fork.forkedFrom, src.beeId);
     assert.equal(fork.forkSeed, srcSession);
     assert.equal(fork.bee.parentId, src.beeId);
@@ -252,14 +252,16 @@ test("v6.rpc.3: bee.fork (claude) — forks the source session into a NEW one (-
     assert.equal(fork.bee.cwd, dir);
     assert.deepEqual(fork.bee.args, ["--model", "opus"], "same args");
     assert.deepEqual(fork.bee.tags, ["team:a"], "same tags");
-    assert.ok(fork.messageId != null, "prompt enqueued as the fork's first mail");
-    const replay = await client.request<ForkResult>("bee.fork", { beeId: src.beeId, name: "src-b", prompt: "carry on", idempotencyKey: "fork-1" });
+    assert.equal(fork.messageId, null, "fork never enqueues a prompt");
+    await assert.rejects(client.request("bee.fork", { beeId: src.beeId, prompt: "carry on" }), /plain copy/);
+    const replay = await client.request<ForkResult>("bee.fork", { beeId: src.beeId, name: "src-b", idempotencyKey: "fork-1" });
     assert.equal(replay.deduped, true);
     assert.equal(replay.beeId, fork.beeId, "no second fork minted");
     assert.equal((await client.request<ListResult>("list")).views.length, 2);
 
     // the fork boots with --resume <src> --fork-session and reports a NEW id
-    await waitDelivered(client, fork.beeId, fork.messageId as number, "fork prompt delivered");
+    const continuation = await client.request<SendRpcResult>("send", { beeId: fork.beeId, body: "carry on" });
+    await waitDelivered(client, fork.beeId, continuation.messageId, "explicit later message delivered");
     const forkSession = await waitFor(async () => (await client.request<ViewResult>("view", { beeId: fork.beeId })).bee?.providerSessionId, "fork's own session id recorded");
     assert.notEqual(forkSession, srcSession, "the fork owns a NEW session");
     await waitState(client, fork.beeId, "idle", "fork idle");
@@ -297,13 +299,9 @@ test("v6.rpc.3: bee.fork (claude) — forks the source session into a NEW one (-
     assert.deepEqual(revived.argv.slice(revived.argv.indexOf("--resume")), ["--resume", forkSession]);
     assert.equal((await client.request<ViewResult>("view", { beeId: fork.beeId })).bee?.providerSessionId, forkSession, "continuity kept across the revive");
 
-    // a fork of a bee with NO session boots fresh, provenance still recorded
+    // No conversation means there is nothing to copy; refuse explicitly.
     const fresh = await client.request<SpawnResult>("spawn", { name: "never-spoke", agent: "claude", cwd: dir });
-    const forkFresh = await client.request<ForkResult>("bee.fork", { beeId: fresh.beeId });
-    assert.equal(forkFresh.forkSeed, null);
-    assert.equal(forkFresh.bee.name, "never-spoke-fork");
-    assert.equal(forkFresh.bee.forkedFrom, fresh.beeId);
-    assert.equal(forkFresh.messageId, null);
+    await assert.rejects(client.request("bee.fork", { beeId: fresh.beeId }), error => error instanceof RpcError && error.code === "thread_history_unavailable");
     client.close();
   } finally {
     await daemon?.stop();
@@ -329,7 +327,7 @@ test("v6.rpc.4: bee.fork (codex) — the fork's handshake sends thread/fork {thr
       20_000,
     );
     await waitState(client, src.beeId, "idle", "codex source idle");
-    const fork = await client.request<ForkResult>("bee.fork", { beeId: src.beeId, prompt: "go on" });
+    const fork = await client.request<ForkResult>("bee.fork", { beeId: src.beeId });
     assert.equal(fork.forkSeed, srcThread);
     const forkThread = await waitFor(
       async () => (await client.request<ViewResult>("view", { beeId: fork.beeId })).bee?.providerSessionId,
@@ -337,7 +335,9 @@ test("v6.rpc.4: bee.fork (codex) — the fork's handshake sends thread/fork {thr
       20_000,
     );
     assert.notEqual(forkThread, srcThread);
-    await waitDelivered(client, fork.beeId, fork.messageId as number, "codex fork prompt delivered");
+    assert.equal(fork.messageId, null);
+    const continuation = await client.request<SendRpcResult>("send", { beeId: fork.beeId, body: "go on" });
+    await waitDelivered(client, fork.beeId, continuation.messageId, "explicit later codex message delivered");
     await waitState(client, fork.beeId, "idle", "codex fork idle");
     const calls = jsonl<{ method: string; params: Record<string, unknown> | null }>(rpcLog);
     const forkCall = calls.find((c) => c.method === "thread/fork");

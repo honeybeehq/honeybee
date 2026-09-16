@@ -1141,17 +1141,56 @@ async function cmdInterrupt(ctx: CliContext, parsed: Parsed): Promise<number> {
   });
 }
 
+async function cmdThreadOperationControl(ctx: CliContext, parsed: Parsed): Promise<number> {
+  const [, action, operationId] = parsed.positional;
+  if (!operationId || (action !== "get" && action !== "retry")) throw new Error("usage: hive thread-operation get|retry <operation-id> [--idempotency-key key]");
+  return withClient(ctx, async c => {
+    const result = await c.request<import("../../daemon/src/protocol.ts").ThreadOperationGetResult>(action === "get" ? "thread.operation.get" : "thread.operation.retry", {
+      operationId,
+      ...(action === "retry" ? { idempotencyKey: parsed.flags.get("--idempotency-key") ?? randomUUID() } : {}),
+    });
+    emit(ctx, [`${result.operation.id}: ${result.operation.successorBeeId} (${result.operation.phase})${result.operation.failure ? `: ${result.operation.failure.code}` : ""}`], result, false);
+    return 0;
+  });
+}
+
+async function cmdThreadOperation(ctx: CliContext, parsed: Parsed): Promise<number> {
+  const [command, needle] = parsed.positional;
+  if (!needle) throw new Error("usage: hive thread-fork|thread-handoff <bee> [--instruction text] [--idempotency-key key]");
+  const kind = command === "thread-fork" ? "fork" : "handoff";
+  validateThreadArgs(parsed, kind === "handoff");
+  return withClient(ctx, async c => {
+    const list = await c.request<ListResult>("list");
+    const beeId = resolveBeeIn(list.views, needle);
+    const view = await c.request<ViewResult>("view", { beeId });
+    const result = await c.request<import("../../daemon/src/protocol.ts").ThreadOperationResult>(kind === "fork" ? "thread.fork" : "thread.handoff", {
+      beeId, sourceProviderSessionId: view.bee?.providerSessionId,
+      idempotencyKey: parsed.flags.get("--idempotency-key") ?? randomUUID(),
+      ...(parsed.flags.has("--name") ? { name: parsed.flags.get("--name") } : {}),
+      ...(kind === "handoff" ? { instruction: parsed.flags.get("--instruction") } : {}),
+    });
+    emit(ctx, [`${result.operation.id}: ${result.operation.sourceBeeId} → ${result.operation.successorBeeId} (${result.operation.phase})`], result, false);
+    return 0;
+  });
+}
+
+function validateThreadArgs(parsed: Parsed, handoff: boolean): void {
+  const allowed = new Set(["--name", "--idempotency-key", "--data-dir", "--config", "--socket", "--json", ...(handoff ? ["--instruction"] : [])]);
+  for (const flag of parsed.flags.keys()) if (!allowed.has(flag)) throw new Error(`${parsed.positional[0]} does not accept ${flag}`);
+  if (parsed.positional.length !== 2 || parsed.tags.length || parsed.args.length || parsed.lists.size || parsed.rest !== null) throw new Error(`${parsed.positional[0]} accepts one source bee and documented options only`);
+}
+
 async function cmdFork(ctx: CliContext, parsed: Parsed): Promise<number> {
   const [, needle, ...promptParts] = parsed.positional;
-  if (!needle) throw new Error("usage: hive fork <bee> [--name n] [--prompt p | prompt…] [--idempotency-key k]");
-  const prompt = (parsed.flags.get("--prompt") as string | undefined) ?? (promptParts.length > 0 ? promptParts.join(" ") : undefined);
+  if (!needle) throw new Error("usage: hive fork <bee> [--name n] [--idempotency-key k]");
+  if (promptParts.length || parsed.flags.has("--prompt") || parsed.flags.has("--instruction") || parsed.flags.has("--compact")) throw new Error("Fork is a plain conversation copy; use thread-handoff for instructed compaction");
+  validateThreadArgs(parsed, false);
   return withClient(ctx, async (c) => {
     const list = await c.request<ListResult>("list");
     const beeId = resolveBeeIn(list.views, needle);
     const r = await c.request<ForkResult>("bee.fork", {
       beeId,
       ...(parsed.flags.has("--name") ? { name: parsed.flags.get("--name") as string } : {}),
-      ...(prompt !== undefined ? { prompt } : {}),
       idempotencyKey: parsed.flags.get("--idempotency-key") as string | undefined,
     });
     emit(
@@ -3996,6 +4035,11 @@ export async function runV2Cli(argv: string[], io: CliIo = defaultIo): Promise<n
         return await cmdTag(ctx, parsed);
       case "interrupt":
         return await cmdInterrupt(ctx, parsed);
+      case "thread-operation":
+        return await cmdThreadOperationControl(ctx, parsed);
+      case "thread-fork":
+      case "thread-handoff":
+        return await cmdThreadOperation(ctx, parsed);
       case "fork":
         return await cmdFork(ctx, parsed);
       case "handoff":

@@ -1,3 +1,5 @@
+import { threadOperationView, type ThreadOperationRow, type ThreadOperationPhase } from "./threadOperation.ts";
+import { THREAD_OPERATIONS_TABLE_SQL } from "./schema.ts";
 /**
  * The v2 core store — the single serialized write API (B9).
  *
@@ -1678,6 +1680,7 @@ export class CoreStore {
     this.db.exec(TRANSCRIPT_SEGMENTS_TABLE_SQL);
     // v24: the action queue tables are additive (CREATE IF NOT EXISTS).
     this.db.exec(ACTIONS_TABLE_SQL);
+    this.db.exec(THREAD_OPERATIONS_TABLE_SQL);
     // v22 → v23: every existing bee gets its segment 0 (its spawn harness,
     // its current session log) so Apiary can parse pre-handoff history with
     // the harness that wrote it. Idempotent: bees with a segment are skipped.
@@ -2141,6 +2144,9 @@ export class CoreStore {
           detail: "bee deleted",
         });
       }
+      const thread = this.threadOperationForSuccessor(beeId);
+      if (thread) this.writeThreadOperation({ ...thread, phase: "failed", transcriptReady: false,
+        failure: { stage: thread.phase === "copying" || thread.phase === "compacting" ? thread.phase : "starting", code: "successor_deleted", detail: "Successor was deleted", retryable: false }, updatedAt: this.now() });
       if (bee.lifecycle === "active") this.applyArchive(beeId);
       const current = this.currentRuntime(beeId);
       const livePid = current && current.state !== "stopped" ? current.pid : null;
@@ -2437,6 +2443,8 @@ export class CoreStore {
     const bee = this.mustGetBee(beeId);
     const current = this.currentRuntime(beeId);
     const targetGeneration = current?.generation ?? 0;
+    const thread = this.threadOperationForSuccessor(beeId);
+    if (thread && thread.phase !== "ready" && thread.phase !== "starting") return { command: null, outcome: "fenced" };
     if (bee.activeMoveId) {
       const move = this.getBeeMove(bee.activeMoveId);
       // stopping/placing: source must not restart, even if it is still booting
@@ -3562,6 +3570,14 @@ export class CoreStore {
           .prepare(
             `SELECT * FROM commands WHERE status = 'queued' AND next_attempt_at <= ?
              ${blockedRuntimeStartClause}
+             AND NOT (verb IN ('spawn','send_wake','revive') AND EXISTS (
+               SELECT 1 FROM thread_operations t WHERE t.successor_bee_id = commands.bee_id
+               AND t.phase NOT IN ('starting','ready')
+             ))
+             AND NOT (verb = 'archive' AND EXISTS (
+               SELECT 1 FROM thread_operations t WHERE t.successor_bee_id = commands.bee_id
+               AND t.phase != 'ready'
+             ))
              AND NOT (verb = 'stop' AND json_type(args, '$.replacementArgs') IS NOT NULL
                AND EXISTS (SELECT 1 FROM runtimes r WHERE r.bee_id = commands.bee_id
                  AND r.generation = commands.target_generation AND r.state IN ('booting', 'running')))
@@ -5782,6 +5798,102 @@ export class CoreStore {
   }
 
   // -------------------------------------------------------------------------
+  // v25 — thread fork / native compaction. The spawn command is admitted in
+  // the same transaction but cannot run until the copy/compaction gate opens.
+  getThreadOperation(id: string): ThreadOperationRow | null {
+    const row = this.stmt("SELECT row_json FROM thread_operations WHERE id = ?").get(id) as Row | undefined;
+    return row ? JSON.parse(String(row.row_json)) as ThreadOperationRow : null;
+  }
+
+  threadOperationByKey(key: string): ThreadOperationRow | null {
+    const row = this.stmt("SELECT row_json FROM thread_operations WHERE idempotency_key = ?").get(key) as Row | undefined;
+    return row ? JSON.parse(String(row.row_json)) as ThreadOperationRow : null;
+  }
+
+  threadOperationForSuccessor(beeId: string): ThreadOperationRow | null {
+    const row = this.stmt("SELECT row_json FROM thread_operations WHERE successor_bee_id = ?").get(beeId) as Row | undefined;
+    return row ? JSON.parse(String(row.row_json)) as ThreadOperationRow : null;
+  }
+
+  listThreadOperations(pendingOnly = false): ThreadOperationRow[] {
+    return (this.stmt(`SELECT row_json FROM thread_operations ${pendingOnly ? "WHERE phase NOT IN ('ready','failed')" : ""} ORDER BY id`).all() as Row[])
+      .map(row => JSON.parse(String(row.row_json)) as ThreadOperationRow);
+  }
+
+  admitThreadOperation(input: Omit<ThreadOperationRow, "commandId" | "continuationMessageId" | "createdAt" | "updatedAt" | "phase" | "transcriptReady" | "compacted" | "attempt" | "worker" | "failure">, successor: CreateBeeInput): ThreadOperationRow {
+    return this.tx(() => {
+      const previous = this.threadOperationByKey(input.idempotencyKey);
+      if (previous) {
+        if (previous.requestHash !== input.requestHash) throw new IdempotencyConflictError("thread operation key is already bound to another request");
+        return previous;
+      }
+      if (input.kind === "fork" && input.instruction !== null) throw new CoreError("Fork cannot accept an instruction");
+      if (input.kind === "handoff" && !input.instruction?.trim()) throw new CoreError("Handoff requires a compaction instruction");
+      this.mustGetBee(input.sourceBeeId);
+      if (successor.id !== input.successorBeeId) throw new CoreError("successor identity mismatch");
+      const created = this.createBee(successor);
+      this.updateRuntimeState(input.successorBeeId, created.runtime.generation, "stopped", { exitCause: "stopped_by_system" });
+      this.recordFork(input.successorBeeId, input.sourceBeeId, null);
+      this.recordProviderSessionId(input.successorBeeId, input.successorProviderSessionId);
+      const command = this.enqueueCommand("spawn", input.successorBeeId, { threadOperationId: input.id });
+      const at = this.now();
+      const row: ThreadOperationRow = { ...input, commandId: command.id, continuationMessageId: null,
+        phase: "copying", transcriptReady: false, compacted: false, attempt: 0, worker: null, failure: null, createdAt: at, updatedAt: at };
+      this.writeThreadOperation(row);
+      if (input.kind === "handoff") {
+        row.continuationMessageId = this.send(input.successorBeeId, "Continue from the compacted conversation.", { sender: "honeybee", origin: "spawn.prompt" }).message.id;
+        this.writeThreadOperation(row);
+      }
+      return row;
+    });
+  }
+
+  updateThreadOperation(id: string, patch: Partial<Pick<ThreadOperationRow, "phase" | "transcriptReady" | "compacted" | "attempt" | "worker" | "failure">>): ThreadOperationRow {
+    return this.tx(() => {
+      const old = this.getThreadOperation(id);
+      if (!old) throw new CoreError(`thread operation not found: ${id}`);
+      const phase = patch.phase ?? old.phase;
+      const edges: Record<ThreadOperationPhase, ThreadOperationPhase[]> = {
+        copying: ["compacting", "starting", "failed"], compacting: ["starting", "failed"], starting: ["ready", "failed"], ready: [], failed: [],
+      };
+      if (phase !== old.phase && !edges[old.phase].includes(phase)) throw new IllegalTransitionError(`thread operation ${old.phase} -> ${phase}`);
+      const row = { ...old, ...patch };
+      if (row.kind === "fork" && (row.compacted || row.phase === "compacting")) throw new CoreError("Fork cannot request compaction");
+      if (row.phase === "failed" && !row.failure) throw new CoreError("Thread failure requires a typed reason");
+      if ((row.phase === "starting" || row.phase === "ready") && (!row.transcriptReady || (row.kind === "handoff" && !row.compacted))) throw new CoreError("thread readiness requires history and compaction");
+      if (JSON.stringify(row) === JSON.stringify(old)) return old;
+      row.updatedAt = this.now();
+      this.writeThreadOperation(row);
+      return row;
+    });
+  }
+
+  retryThreadOperation(id: string): ThreadOperationRow {
+    return this.tx(() => {
+      const row = this.getThreadOperation(id);
+      if (!row) throw new CoreError(`thread operation not found: ${id}`);
+      if (row.phase !== "failed") return row;
+      if (!row.failure?.retryable || !this.getBee(row.successorBeeId)) throw new CoreError("thread operation is not recoverable");
+      row.phase = row.failure.stage;
+      row.failure = null;
+      row.attempt = 0;
+      row.updatedAt = this.now();
+      if (row.phase === "starting") {
+        this.resetSpawnFailures(row.successorBeeId, `thread operation ${id} retry`);
+        this.enqueueCommand("revive", row.successorBeeId, { threadOperationId: id });
+      }
+      this.writeThreadOperation(row);
+      return row;
+    });
+  }
+
+  private writeThreadOperation(row: ThreadOperationRow): void {
+    this.stmt(`INSERT INTO thread_operations(id, idempotency_key, successor_bee_id, phase, row_json) VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET phase = excluded.phase, row_json = excluded.row_json`)
+      .run(row.id, row.idempotencyKey, row.successorBeeId, row.phase, JSON.stringify(row));
+    this.audit("thread_operation.put", row.successorBeeId, { operation: threadOperationView(row), row });
+  }
+
   // v23 — transcript segments + bee_handoffs
   // -------------------------------------------------------------------------
 
@@ -7434,6 +7546,7 @@ export class CoreStore {
       transcriptSegments: this.listTranscriptSegments(),
       actions: this.listActionViews(),
       actionQueues: this.listActionQueueViews(),
+      threadOperations: this.listThreadOperations(),
     };
   }
 }

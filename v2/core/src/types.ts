@@ -1,3 +1,4 @@
+import type { ThreadOperationRow } from "./threadOperation.ts";
 /**
  * Closed vocabularies and row shapes for the v2 core store.
  * Spec: docs/design/specs/reset-01-core.md — the lists here are CLOSED (contract §4, invariant 4).
@@ -736,6 +737,7 @@ export interface TrackRow {
 
 /** Deterministic full-store snapshot (audit excluded); comparison target for replay. */
 export interface StateDump {
+  threadOperations: ThreadOperationRow[];
   bees: BeeRow[];
   runtimes: RuntimeRow[];
   flags: FlagRow[];

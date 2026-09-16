@@ -977,7 +977,9 @@ export class HsrDriver implements RuntimeDriver {
             // bees: it promised a turn_ended that could never come. Without a
             // hint, "running" remains the conservative claim; the next tailed
             // edge corrects it, and elapsed time alone never changes it.
-            phase: lastKnownState === "idle" ? "idle" : "running",
+            // Preserve booting too: otherwise pumpHostOutput treats the first
+            // completed handshake as late boot and discards its idle edge.
+            phase: lastKnownState ?? "running",
             // The durable provider thread is a bee fact. Adapter-local active
             // turn and accepted-request evidence are replayed from the exact
             // generation journal so a daemon deploy cannot strand either a

@@ -155,6 +155,7 @@ test("mirror.2: value-level snapshot — a deterministic store serializes to the
       weekly: { usedPercent: 40, resetsAt: 3_000_000, windowMinutes: 10_080 },
     });
     const snapshot: MirrorSnapshot = {
+      threadOperations: [],
       seq: store.lastAuditSeq(),
       bees: [{ view: store.view(bee.id), bee: store.getBee(bee.id), runtime: store.currentRuntime(bee.id), move: null, cell: null, handoff: null }],
       cells: [],
@@ -180,6 +181,7 @@ test("mirror.2: value-level snapshot — a deterministic store serializes to the
     assert.equal(
       text,
       `{
+  "threadOperations": [],
   "seq": 11,
   "bees": [
     {

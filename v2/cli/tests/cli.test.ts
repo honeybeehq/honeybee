@@ -703,18 +703,13 @@ test("cli.4e: v6 verbs — rename, tag, interrupt, fork, children, spawn --paren
     assert.equal(await runV2Cli(["seal", "get", "nope", "--data-dir", dir], sgn.io), 1);
     assert.ok(sgn.err[0]?.includes("seal_not_found"), sgn.err[0]);
 
-    // fork (stub: no fork mechanism → boots fresh; provenance + parent recorded)
+    // Unsupported harnesses refuse rather than silently booting a fresh conversation.
     const f = capture();
-    assert.equal(await runV2Cli(["fork", "chief", "--name", "chief-b", "take", "over", "--data-dir", dir, "--json"], f.io), 0);
-    const forked = JSON.parse(f.out[0] ?? "{}") as { beeId: string; forkedFrom: string; messageId: number | null; bee: { name: string; parentId: string; forkedFrom: string } };
-    assert.equal(forked.forkedFrom, boss);
-    assert.equal(forked.bee.name, "chief-b");
-    assert.equal(forked.bee.parentId, boss);
-    assert.ok(forked.messageId != null, "positional prompt enqueued");
-    await idle("chief-b");
-    const chf = capture();
-    assert.equal(await runV2Cli(["children", "chief", "--data-dir", dir, "--json"], chf.io), 0);
-    assert.equal((JSON.parse(chf.out[0] ?? "{}") as { children: unknown[] }).children.length, 3);
+    assert.equal(await runV2Cli(["fork", "chief", "--name", "chief-b", "--data-dir", dir, "--json"], f.io), 1);
+    assert.match(f.err.join(" "), /thread_unsupported|thread_history_unavailable/);
+    const invalidFork = capture();
+    assert.equal(await runV2Cli(["fork", "chief", "take", "over", "--data-dir", dir], invalidFork.io), 1);
+    assert.match(invalidFork.err.join(" "), /plain conversation copy/);
 
     // stale fallbacks: stop the daemon; children / question list / seal list / seal get read the store directly
     await daemon.stop();
@@ -723,7 +718,7 @@ test("cli.4e: v6 verbs — rename, tag, interrupt, fork, children, spawn --paren
     assert.equal(await runV2Cli(["children", "chief", "--data-dir", dir, "--json"], sch.io), 0);
     const staleKids = JSON.parse(sch.out[0] ?? "{}") as { stale?: boolean; children: unknown[] };
     assert.equal(staleKids.stale, true);
-    assert.equal(staleKids.children.length, 3);
+    assert.equal(staleKids.children.length, 2);
     const sql = capture();
     assert.equal(await runV2Cli(["question", "list", "--data-dir", dir, "--json"], sql.io), 0);
     const staleQ = JSON.parse(sql.out[0] ?? "{}") as { stale?: boolean; questions: Array<{ status: string }> };

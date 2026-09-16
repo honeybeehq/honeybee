@@ -71,3 +71,5 @@ export { SCHEMA_SQL, SCHEMA_VERSION } from "./schema.ts";
 export * from "./cellMove.ts";
 export * from "./handoff.ts";
 export * from "./actions.ts";
+
+export * from "./threadOperation.ts";

@@ -59,6 +59,8 @@ const TURN_REQUEST_ID_BASE = 1000;
 export interface CodexAdapterOptions {
   cwd: string;
   model?: string;
+  /** Preserve the native source provider for deterministic thread operations. */
+  modelProvider?: string;
   /**
    * Harness-native resume (spec 07 §F): when set, the handshake sends
    * `thread/resume {threadId}` instead of `thread/start`, rejoining the
@@ -68,6 +70,8 @@ export interface CodexAdapterOptions {
    * process must run with the CODEX_HOME the rollout lives under (bee env).
    */
   resumeThreadId?: string;
+  /** Honeybee-owned deterministic native fork rollout. */
+  resumePath?: string;
   /**
    * v6 fork (`bee.fork`): when set (and no resumeThreadId), the handshake
    * sends `thread/fork {threadId}` — the app-server copies the source rollout
@@ -136,13 +140,14 @@ export function codexThreadRequest(opts: CodexAdapterOptions): { method: "thread
   const developerInstructions = opts.developerInstructions?.trim() ? opts.developerInstructions : undefined;
   const base = {
     ...(opts.model ? { model: opts.model } : {}),
+    ...(opts.modelProvider ? { modelProvider: opts.modelProvider } : {}),
     cwd: opts.cwd,
     approvalPolicy: "never",
     sandbox: "danger-full-access",
     ...(developerInstructions ? { developerInstructions } : {}),
   };
   // Codex keeps turn history in the rollout; readiness only needs thread metadata.
-  if (opts.resumeThreadId) return { method: "thread/resume", params: { threadId: opts.resumeThreadId, ...base, excludeTurns: true } };
+  if (opts.resumeThreadId) return { method: "thread/resume", params: { threadId: opts.resumeThreadId, ...(opts.resumePath ? { path: opts.resumePath } : {}), ...base, excludeTurns: true } };
   if (opts.forkThreadId) return { method: "thread/fork", params: { threadId: opts.forkThreadId, ...base } };
   return { method: "thread/start", params: base };
 }

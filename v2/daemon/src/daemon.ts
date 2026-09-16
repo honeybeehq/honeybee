@@ -1,3 +1,6 @@
+import { ThreadOperations } from "./threadOperations.ts";
+import { codexHistoryPath, pinThreadHistory, readThreadHistory } from "./threadHistory.ts";
+import { threadOperationView, type ThreadOperationRow } from "../../core/src/threadOperation.ts";
 /**
  * HiveDaemon — the real v2 daemon (spec 04). Hosts the WP1 store (sole
  * writer), the WP3 HsrDriver + adapters, and the DaemonCore loops over wall
@@ -516,6 +519,7 @@ const OWN_STATUS_VERBS: ReadonlySet<RpcVerb> = new Set<RpcVerb>([
 export class HiveDaemon {
   readonly cfg: ResolvedNodeConfig;
   private store: CoreStore | null = null;
+  private threadOperations: ThreadOperations | null = null;
   /** The substrate router DaemonCore drives; `.hsr` / `.cell` / `.tmux` are the substrate drivers. */
   private driver: SubstrateRouter | null = null;
   private core: DaemonCore | null = null;
@@ -607,6 +611,8 @@ export class HiveDaemon {
       backoffBaseMs: this.cfg.backoffBaseMs,
     });
     this.store = store;
+    this.threadOperations = new ThreadOperations(store, beeId => this.resolveSpawnSpec(beeId));
+    for (const operation of store.listThreadOperations()) if (operation.failure?.code === "successor_deleted") this.removeThreadArtifacts(operation.id);
     storage.end();
     this.activeStartupPhase = null;
     const services = this.performance.startSpan("daemon.start.services");
@@ -703,6 +709,7 @@ export class HiveDaemon {
       log: (op) => this.log(op),
       onI1Violation: (v) => this.recordI1(v),
       removeSessionLog: (path) => rmSync(path, { force: true }),
+      removeThreadArtifacts: operationId => this.removeThreadArtifacts(operationId),
       onFlagEvidence: (ev) => this.applyAccountPolicy(ev),
       performance: this.performance,
       sourceProcessAbsent: (beeId, generation) => this.sourceProcessAbsent(beeId, generation),
@@ -778,6 +785,7 @@ export class HiveDaemon {
       this.titleGenerator = null;
       // v16: no login worker outlives the daemon (boot marks their flows interrupted).
       await this.loginFlows?.shutdown();
+      await this.threadOperations?.shutdown();
       await this.rpc?.close();
       this.store?.close();
       this.telemetry?.close();
@@ -949,6 +957,7 @@ export class HiveDaemon {
     let tStep = t0;
     let tAccounts = t0;
     try {
+      this.threadOperations?.tick();
       this.performance.measureSync("daemon.tick.core", () => core.step());
       tStep = Date.now();
       this.ticks += 1;
@@ -1018,8 +1027,9 @@ export class HiveDaemon {
    */
   private mirrorAuditRows(rows: AuditRow[]): AuditRow[] {
     const accounts = this.accounts;
-    if (!accounts) return rows;
     return rows.map((row) => {
+      if (row.kind === "thread_operation.put") return { ...row, payload: { operation: row.payload.operation } };
+      if (!accounts) return row;
       if (row.kind !== "account.put") return row;
       const account = row.payload.account;
       if (!account || typeof account !== "object" || Array.isArray(account)) return row;
@@ -1069,7 +1079,12 @@ export class HiveDaemon {
         cellId: instructionMove.retainedCellId,
       })
       : null;
-    const { adapter, args } = composeSpawn(spec, adapterName, bee, grokMcpServers, placementInstruction);
+    const composed = composeSpawn(spec, adapterName, bee, grokMcpServers, placementInstruction);
+    const operation = store.threadOperationForSuccessor(beeId);
+    const adapter = operation && bee.providerSessionId === operation.successorProviderSessionId && adapterName === "codex"
+      ? codexAdapter({ cwd: bee.cwd, model: composed.model, modelProvider: operation.source.modelProvider, resumeThreadId: bee.providerSessionId ?? undefined, resumePath: operation.sessionPath })
+      : composed.adapter;
+    const args = composed.args;
     if (!adapter) throw new Error(`resolve: no adapter for agent '${bee.agent}'`);
     // v7 (spec 08): a bound bee runs in its account's home. The env is derived
     // from the account row. The tracked pre-claim readiness gate has already
@@ -1268,6 +1283,23 @@ export class HiveDaemon {
   }
 
   private dispatch(verb: RpcVerb, params: Record<string, unknown>, conn: RpcConn): unknown {
+    if (typeof params.beeId === "string" && ["stop", "revive", "archive", "bee.swapAccount", "bee.setArgs", "bee.reconfigure", "bee.move", "bee.handoff", "bee.fork", "bee.interrupt"].includes(verb)) {
+      const operation = this.mustStore().threadOperationForSuccessor(params.beeId);
+      if (operation && operation.phase !== "ready") throw new RpcError("thread_busy", "Successor execution is owned by its thread operation; recover it with thread.operation.retry");
+    }
+    if (verb === "bee.fork") for (const key of Object.keys(params)) if (!["beeId", "name", "id", "idempotencyKey"].includes(key)) throw new RpcError("thread_unsupported", `Fork is a plain copy and does not accept '${key}'`);
+    if (typeof params.idempotencyKey === "string" && verb !== "thread.fork" && verb !== "thread.handoff" && this.mustStore().threadOperationByKey(params.idempotencyKey)) throw new RpcError("idempotency_conflict", "Key belongs to a thread operation");
+    if (typeof params.idempotencyKey === "string") {
+      const prior = this.mustStore().lookupRpcResult(params.idempotencyKey);
+      if (prior && (verb === "thread.operation.retry" || prior.verb === "thread.operation.retry")
+        && (prior.verb !== verb || (prior.result as { operation?: { id?: string } }).operation?.id !== params.operationId)) {
+        throw new RpcError("idempotency_conflict", "Retry key is already bound to a different operation");
+      }
+    }
+    if (verb === "delete" && typeof params.beeId === "string") {
+      const operation = this.mustStore().threadOperationForSuccessor(params.beeId);
+      if (operation && ((operation.phase !== "ready" && operation.phase !== "failed") || (operation.worker && pidAlive(operation.worker.pid)))) throw new RpcError("thread_busy", "Thread operation still owns execution; wait for settlement before deletion");
+    }
     switch (verb) {
       case "spawn":
         return this.rpcSpawnWithAccount(params);
@@ -1434,6 +1466,25 @@ export class HiveDaemon {
         return this.withIdempotency(verb, params, () => this.rpcTag(params));
       case "bee.interrupt":
         return this.withIdempotency(verb, params, () => this.rpcInterrupt(params));
+      case "thread.capabilities":
+        return { operations: ["fork", "handoff"], executors: [{ harness: "codex", substrate: "hsr", ownership: "local", instructionCompaction: true }], transcript: "codex.rollout.jsonl" };
+      case "thread.fork":
+      case "thread.handoff":
+        return this.rpcThreadOperation(verb === "thread.fork" ? "fork" : "handoff", params);
+      case "thread.operation.get":
+        return { operation: threadOperationView(this.requireThreadOperation(params)) };
+      case "thread.operation.retry":
+        for (const key of Object.keys(params)) if (!["operationId", "idempotencyKey"].includes(key)) throw new RpcError("thread_unsupported", `Retry does not accept '${key}'`);
+        if (!this.idempotencyKeyOf(params)) throw new RpcError("invalid_request", "Retry requires its own idempotencyKey");
+        return this.withIdempotency(verb, params, () => ({ operation: threadOperationView(this.mustStore().retryThreadOperation(this.requireThreadOperation(params).id)) }));
+      case "thread.transcript": {
+        const row = this.requireThreadOperation(params);
+        if (!row.transcriptReady) throw new RpcError("thread_not_ready", "Inherited transcript is not ready; watch thread_operation.put");
+        const offset = params.offset ?? 0;
+        const limit = params.limitBytes ?? 262144;
+        if (typeof offset !== "number" || !Number.isSafeInteger(offset) || offset < 0 || offset > row.source.bytes || typeof limit !== "number" || !Number.isSafeInteger(limit) || limit < 1 || limit > 1048576) throw new RpcError("invalid_request", "Invalid transcript byte window");
+        return readThreadHistory(row, offset, limit).catch(error => { throw new RpcError("thread_history_unavailable", error instanceof Error ? error.message : String(error)); });
+      }
       case "bee.fork":
         return this.withIdempotency(verb, params, () => this.rpcFork(params));
       case "bee.children":
@@ -3174,8 +3225,63 @@ export class HiveDaemon {
    * `parentId` = `forkedFrom` = source and the one-shot fork seed (the
    * source's provider session id) so its first runtime forks the
    * conversation into a new session of its own. Same transaction: create,
-   * fork provenance, spawn command, optional first message.
+   * fork provenance and spawn command. No instruction is accepted.
    */
+  private removeThreadArtifacts(operationId: string): void {
+    // Only daemon-owned paths, reconstructed from the operation UUID. Never
+    // remove the source rollout or a caller-supplied directory.
+    if (!/^[0-9a-f-]{36}$/.test(operationId)) return;
+    rmSync(join(this.cfg.dataDir, "thread-operations", operationId), { recursive: true, force: true });
+  }
+
+  private requireThreadOperation(params: Record<string, unknown>): ThreadOperationRow {
+    const row = this.mustStore().getThreadOperation(this.param(params, "operationId"));
+    if (!row) throw new RpcError("thread_operation_not_found", "Unknown thread operation");
+    return row;
+  }
+
+  private rpcThreadOperation(kind: "fork" | "handoff", params: Record<string, unknown>) {
+    const allowed = new Set(["beeId", "sourceProviderSessionId", "sourceNode", "idempotencyKey", "name", ...(kind === "handoff" ? ["instruction"] : [])]);
+    for (const key of Object.keys(params)) if (!allowed.has(key)) throw new RpcError("thread_unsupported", `${kind} does not accept '${key}'`);
+    if (params.sourceNode !== undefined && params.sourceNode !== "local") throw new RpcError("thread_remote_unsupported", "Dispatch to the source's owning daemon; cross-node execution is unsupported");
+    const key = this.idempotencyKeyOf(params);
+    if (!key) throw new RpcError("invalid_request", "Thread operations require idempotencyKey");
+    const sourceBeeId = this.param(params, "beeId");
+    const sourceProviderSessionId = this.param(params, "sourceProviderSessionId");
+    const instruction = kind === "handoff" ? this.param(params, "instruction") : null;
+    if (instruction !== null && (!instruction.trim() || Buffer.byteLength(instruction) > 65536)) throw new RpcError("invalid_request", "Handoff instruction must contain 1..65536 UTF-8 bytes");
+    const name = params.name === undefined ? null : this.param(params, "name");
+    const requestHash = createHash("sha256").update(JSON.stringify({ kind, sourceBeeId, sourceProviderSessionId, instruction, name })).digest("hex");
+    const store = this.mustStore();
+    const previous = store.threadOperationByKey(key);
+    if (previous) {
+      if (previous.requestHash !== requestHash) throw new RpcError("idempotency_conflict", "Thread operation key is already bound to another request");
+      return { operation: threadOperationView(previous), deduped: true };
+    }
+    if (store.lookupRpcResult(key) || store.getCommandByIdempotencyKey(key)) throw new RpcError("idempotency_conflict", "Key is already bound to another operation");
+    const source = store.getBee(sourceBeeId);
+    if (!source) throw new RpcError("bee_not_found", "Source bee is not owned by this daemon");
+    if (source.providerSessionId !== sourceProviderSessionId) throw new RpcError("thread_history_unavailable", "Source provider identity changed; refresh its snapshot");
+    if (source.agent !== "codex" || source.substrate !== "hsr" || (this.cfg.agents[source.agent]?.adapter ?? source.agent) !== "codex") throw new RpcError("thread_unsupported", "Thread operations currently support only local Codex HSR bees");
+    if (source.activeHandoffId || source.activeMoveId || (store.threadOperationForSuccessor(source.id)?.phase ?? "ready") !== "ready") throw new RpcError("thread_busy", "Source is undergoing an execution transition");
+    const spec = this.resolveSpawnSpec(source.id);
+    const home = spec.env?.CODEX_HOME ?? join(homedir(), ".codex");
+    let boundary: ThreadOperationRow["source"];
+    try { boundary = pinThreadHistory(codexHistoryPath(home, sourceProviderSessionId), sourceProviderSessionId); }
+    catch (error) { throw new RpcError("thread_history_unavailable", error instanceof Error ? error.message : String(error)); }
+    const id = randomUUID();
+    const successorBeeId = randomUUID();
+    const successorProviderSessionId = randomUUID();
+    const directory = join(this.cfg.dataDir, "thread-operations", id);
+    const operation = store.admitThreadOperation({ id, kind, sourceBeeId, sourceProviderSessionId, successorBeeId, successorProviderSessionId,
+      idempotencyKey: key, requestHash, instruction, source: boundary, historyPath: join(directory, "history.jsonl"), sessionPath: join(directory, "successor.jsonl") }, {
+      id: successorBeeId, name: name ?? `${source.name}-${kind}-${id.slice(0, 8)}`, agent: source.agent, substrate: source.substrate,
+      cwd: source.cwd, title: source.title ?? undefined, tags: [...source.tags], env: { ...source.env }, args: source.args, account: source.account,
+      parentId: source.id, forkedFrom: source.id, sessionLogPath: this.canonicalSessionLogPath(successorBeeId),
+    });
+    return { operation: threadOperationView(operation), deduped: false };
+  }
+
   private rpcFork(params: Record<string, unknown>): ForkResult {
     const store = this.mustStore();
     const key = this.idempotencyKeyOf(params);
@@ -3194,8 +3300,10 @@ export class HiveDaemon {
     if (source.substrate === "cell") {
       throw new RpcError("invalid_request", `bee ${sourceId} runs in a cell (single-tenant checkout); spawn a new cell bee instead of forking`);
     }
+    if (!source.providerSessionId) throw new RpcError("thread_history_unavailable", "Fork requires an existing provider conversation");
+    const adapter = this.cfg.agents[source.agent]?.adapter ?? source.agent;
+    if (adapter !== "claude" && adapter !== "codex") throw new RpcError("thread_unsupported", `Fork is unsupported for ${adapter}`);
     const name = params.name === undefined ? `${source.name}-fork` : this.param(params, "name");
-    const prompt = params.prompt === undefined || params.prompt === null ? null : this.param(params, "prompt");
     const id = typeof params.id === "string" && params.id.length > 0 ? params.id : randomUUID();
     const forkSeed = source.providerSessionId;
     const driver = this.driver;
@@ -3219,9 +3327,8 @@ export class HiveDaemon {
     });
     store.recordFork(id, source.id, forkSeed);
     const cmd = store.enqueueCommand("spawn", id, {}, key == null ? {} : { idempotencyKey: key });
-    const sent = prompt == null ? null : store.send(id, prompt, { sender: "operator" });
-    this.log(`bee.fork source=${source.id} fork=${id} seed=${forkSeed ?? "-"} cmd=${cmd.id}${sent ? ` msg=${sent.message.id}` : ""}`);
-    return { beeId: id, commandId: cmd.id, forkedFrom: source.id, forkSeed, messageId: sent?.message.id ?? null, bee };
+    this.log(`bee.fork source=${source.id} fork=${id} seed=${forkSeed ?? "-"} cmd=${cmd.id}`);
+    return { beeId: id, commandId: cmd.id, forkedFrom: source.id, forkSeed, messageId: null, bee };
   }
 
   private rpcChildren(params: Record<string, unknown>): ChildrenResult {
@@ -3656,6 +3763,7 @@ export class HiveDaemon {
       beeMoves: store.listBeeMoves().map(toBeeMoveView),
       beeHandoffs: store.listBeeHandoffs().map(toBeeHandoffView),
       transcriptSegments: store.listTranscriptSegments(),
+      threadOperations: store.listThreadOperations().map(threadOperationView),
       actions: store.listActionViews(),
       actionQueues: store.listActionQueueViews(),
     };

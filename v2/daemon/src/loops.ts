@@ -193,6 +193,7 @@ export interface DaemonCoreOptions {
   onI1Violation?: (violation: I1ViolationEvent) => void;
   /** Q1 (spec 01): delete removes the session log file; core does no file I/O, the daemon does. */
   removeSessionLog?: (path: string) => void;
+  removeThreadArtifacts?: (operationId: string) => void;
   /**
    * v7 (spec 08): account policy hook — called AFTER each flag evidence is
    * applied to the store, so the daemon can enact the account-level rules
@@ -274,6 +275,7 @@ export class DaemonCore {
   protected readonly log: (op: string) => void;
   private readonly faults: FaultHooks | null;
   private readonly onI1Violation: ((violation: I1ViolationEvent) => void) | null;
+  private readonly removeThreadArtifacts: ((operationId: string) => void) | null;
   private readonly removeSessionLog: ((path: string) => void) | null;
   private readonly onFlagEvidence: ((ev: FlagEvidenceLike) => void) | null;
   private readonly performance: PerformanceRecorder;
@@ -303,6 +305,7 @@ export class DaemonCore {
     this.faults = opts.faults ?? null;
     this.onI1Violation = opts.onI1Violation ?? null;
     this.removeSessionLog = opts.removeSessionLog ?? null;
+    this.removeThreadArtifacts = opts.removeThreadArtifacts ?? null;
     this.onFlagEvidence = opts.onFlagEvidence ?? null;
     this.performance = opts.performance ?? NOOP_PERFORMANCE;
     this.sourceProcessAbsent = opts.sourceProcessAbsent ?? ((beeId, generation) => !this.driver.hasProcess(beeId, generation));
@@ -891,6 +894,7 @@ export class DaemonCore {
       }
       case "delete": {
         const rt = this.store.currentRuntime(cmd.beeId);
+        const threadOperation = this.store.threadOperationForSuccessor(cmd.beeId);
         const result = this.store.deleteBee(cmd.beeId); // settles this command too (pending → done)
         if (rt && LIVE.includes(rt.state)) {
           this.driver.stop(cmd.beeId, rt.generation, "stopped_by_system");
@@ -898,6 +902,7 @@ export class DaemonCore {
         if (result.sessionLogPath && this.removeSessionLog) {
           this.removeSessionLog(result.sessionLogPath);
         }
+        if (threadOperation) this.removeThreadArtifacts?.(threadOperation.id);
         this.log(`cmd.delete id=${cmd.id} bee=${cmd.beeId}`);
         return true;
       }
@@ -1430,6 +1435,8 @@ export class DaemonCore {
   private deliveryLoop(work: readonly DaemonWorkRow[]): void {
     for (const { runtime: rt, pending } of work) {
       if (rt.state === "booting") continue;
+      const threadOperation = this.store.threadOperationForSuccessor(rt.beeId);
+      if (threadOperation && threadOperation.phase !== "ready") continue;
       if (pending.length === 0) continue;
       // `running` on nothing but a SYNTHETIC boot is provisional (v9): the
       // driver's accept point is open and no real turn exists to disturb, so

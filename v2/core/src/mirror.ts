@@ -1,3 +1,4 @@
+import type { ThreadOperationView } from "./threadOperation.ts";
 /**
  * Mirror-shape contract (spec 06 §2.2): the EXACT row shapes apiaryd
  * materializes into interface.sqlite mirror tables. apiaryd's materializer
@@ -77,6 +78,7 @@ export type MirrorLoginFlowRow = LoginFlowRow;
  * unknown keys stays correct.
  */
 export interface MirrorSnapshot {
+  threadOperations: ThreadOperationView[];
   seq: number;
   bees: MirrorBeeRow[];
   templates: MirrorTemplateRow[];
@@ -511,3 +513,7 @@ export const MIRROR_ACTION_HOLD_KEYS = ["reason", "actionId", "actionStatus"] as
 export const MIRROR_ACTION_CONTROLS_KEYS = ["cancel", "forceCancel", "retry", "forceRetry", "reorder"] as const;
 export const MIRROR_ACTION_ATTEMPT_KEYS = ["attempt", "dispatchedAt", "generation", "messageId", "deliveredAt", "claimedBy", "operationKey", "outcome", "finishedAt"] as const;
 export const MIRROR_ACTION_QUEUE_KEYS = ["beeId", "paused", "pausedAt", "activeActionId", "counts", "createdAt", "updatedAt"] as const;
+
+/** Full authoritative replacement view; upsert by operation.id. */
+export const MIRROR_THREAD_OPERATION_AUDIT_KINDS = ["thread_operation.put"] as const;
+export const MIRROR_THREAD_OPERATION_KEYS = ["id", "kind", "sourceBeeId", "sourceProviderSessionId", "successorBeeId", "successorProviderSessionId", "commandId", "continuationMessageId", "phase", "transcriptReady", "compacted", "attempt", "createdAt", "updatedAt", "failure"] as const;

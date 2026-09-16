@@ -135,8 +135,10 @@
  *        accepted enqueue requests), and the `mail_history_enqueues.origin`
  *        CHECK widened with `action.dispatch` (table rebuild, rows carried
  *        across). Additive; migration = CREATE TABLE IF NOT EXISTS.
+ *  v25 — thread fork/handoff operation receipts, pinned source prefixes, and
+ *        durable copy/compaction/start readiness. Additive table and indexes.
  */
-export const SCHEMA_VERSION = 24;
+export const SCHEMA_VERSION = 25;
 
 /**
  * Current shape shared between SCHEMA_SQL and the v19 table rebuild so a
@@ -972,4 +974,16 @@ export const RUNTIMES_ADDITIVE_COLUMNS: ReadonlyArray<readonly [name: string, dd
 export const IDEMPOTENCY_INDEX_SQL = `
 CREATE UNIQUE INDEX IF NOT EXISTS commands_idempotency_key
   ON commands(idempotency_key) WHERE idempotency_key IS NOT NULL;
+`;
+
+/** v25: durable fork/compact/start operations. Rows outlive source deletion for deduplication. */
+export const THREAD_OPERATIONS_TABLE_SQL = `
+CREATE TABLE IF NOT EXISTS thread_operations (
+  id TEXT PRIMARY KEY,
+  idempotency_key TEXT NOT NULL UNIQUE,
+  successor_bee_id TEXT NOT NULL UNIQUE,
+  phase TEXT NOT NULL CHECK (phase IN ('copying','compacting','starting','ready','failed')),
+  row_json TEXT NOT NULL
+) STRICT;
+CREATE INDEX IF NOT EXISTS thread_operations_phase ON thread_operations(phase);
 `;

@@ -1,3 +1,4 @@
+import type { ThreadOperationView } from "../../core/src/threadOperation.ts";
 /**
  * The v2 RPC surface (spec 04 "RPC surface") — shared by the daemon's server
  * (rpc.ts) and the thin CLI client (v2/cli/src/client.ts).
@@ -77,6 +78,8 @@ export const DAEMON_VERSION = "2.0.0-wp4";
  * client ignores the extra key) and `deployInfo` repeats the list.
  */
 export const DAEMON_CAPABILITIES = [
+  "thread.operations.v1",
+  "thread.handoff.codex.hsr.v1",
   /** Spawn may retain a parent owned outside this node via `{parentId, parentExternal:true}`. */
   "spawn.external_parent.v1",
   /** Configuration-only onboarding preview/import; never imports harness authentication. */
@@ -139,6 +142,7 @@ export interface HelloFrame {
 
 /** Closed-list, typed errors — never fuzzy (spec 04). */
 export const RPC_ERROR_CODES = [
+  "thread_unsupported", "thread_remote_unsupported", "thread_history_unavailable", "thread_operation_not_found", "thread_not_ready", "thread_busy",
   "bee_not_found",
   "node_stopped",
   "protocol_mismatch",
@@ -256,6 +260,7 @@ export const RPC_ERROR_CODES = [
 export type RpcErrorCode = (typeof RPC_ERROR_CODES)[number];
 
 export const RPC_VERBS = [
+  "thread.fork", "thread.handoff", "thread.operation.get", "thread.operation.retry", "thread.transcript", "thread.capabilities",
   // the seven mutations — thin wrappers over store + queue
   "spawn",
   "send",
@@ -827,15 +832,14 @@ export interface InterruptResult extends DedupMarkers {
 }
 
 /**
- * `bee.fork {beeId, name?, prompt?, id?}` — a NEW bee with the source's
+ * `bee.fork {beeId, name?, id?}` — a NEW bee with the source's
  * agent / substrate / cwd / args / env / title / tags, `parentId` = source,
  * `forkedFrom` = source, and provider-session continuity: the fork's FIRST
  * runtime forks the source's conversation (`forkSeed` = the source's provider
  * session id → claude `--resume <seed> --fork-session`, codex `thread/fork`)
  * into a NEW session of its own, which the daemon records on the fork when
  * its runtime reports it (the seed is consumed then). A `spawn` command is
- * enqueued (`commandId`); `prompt` is enqueued as the fork's first mailbox
- * message (`messageId`). Cell-substrate bees cannot be forked
+ * enqueued (`commandId`); no instruction or compaction is accepted (`messageId` is null). Cell-substrate bees cannot be forked
  * (`invalid_request` — the cell checkout is single-tenant). Audit:
  * `bee.created` (+ `bee.forked`, informational).
  */
@@ -843,7 +847,7 @@ export interface ForkResult extends DedupMarkers {
   beeId: string;
   commandId: number;
   forkedFrom: string;
-  /** The source's provider session id the fork will fork from; null when the source had none (fork boots fresh). */
+  /** The source's provider session id the fork will fork from; null only on old persisted receipts. */
   forkSeed: string | null;
   messageId: number | null;
   bee: BeeRow;
@@ -1178,6 +1182,7 @@ export interface HealthResult {
 }
 
 export interface SnapshotResult {
+  threadOperations: ThreadOperationView[];
   seq: number;
   views: ViewResult[];
   /** Mirror-shaped registry rows (WP6a): store rows verbatim, snapshot-consistent with `seq`. */
@@ -1630,3 +1635,26 @@ export class RpcError extends Error {
     this.code = code;
   }
 }
+
+export interface ThreadOperationResult { operation: ThreadOperationView; deduped: boolean; }
+
+/** Dispatch to the source owner; sourceNode is relative to that daemon. */
+export interface ThreadForkParams {
+  beeId: string;
+  sourceProviderSessionId: string;
+  idempotencyKey: string;
+  sourceNode?: "local";
+  name?: string;
+}
+export interface ThreadHandoffParams extends ThreadForkParams { instruction: string; }
+export interface ThreadOperationGetResult { operation: ThreadOperationView; }
+export interface ThreadOperationRetryParams { operationId: string; idempotencyKey: string; }
+export interface ThreadTranscriptParams { operationId: string; offset?: number; limitBytes?: number; }
+export interface ThreadTranscriptResult {
+  format: "codex.rollout.jsonl";
+  encoding: "base64";
+  data: string;
+  nextOffset: number;
+  eof: boolean;
+}
+export type { ThreadOperationView } from "../../core/src/threadOperation.ts";
