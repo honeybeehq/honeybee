@@ -372,6 +372,10 @@ test("actions.7: external kinds wait for an executor; claim is idempotent per ex
     assert.equal(unsure.action.waitingReason, "uncertain");
     assert.equal(store.actionView(pr.id).controls.retry, false);
     assert.equal(store.actionView(pr.id).controls.forceRetry, true);
+    const recovered = store.claimAction({ executor: "apiary", actionId: pr.id })!;
+    assert.equal(recovered.token, claim.token);
+    assert.equal(recovered.action.waitingReason, "uncertain");
+    assert.throws(() => store.claimAction({ executor: "another", actionId: pr.id }), ActionClaimedError);
     assert.throws(() => store.retryAction(pr.id), ActionRefusedError);
     const reconciled = store.reportAction({ actionId: pr.id, attempt: 1, token: claim.token, reporter: { executor: "apiary" }, kind: "result", outcome: "succeeded", outputs: { prUrl: "https://x/1", prNumber: 1 }, receipt: { id: 1 } });
     assert.equal(reconciled.action.status, "succeeded");
@@ -424,4 +428,30 @@ test("actions.8: audit replay reproduces the action tables; the store reopens at
   } finally {
     h.cleanup();
   }
+});
+
+
+test("queued Land v2 holds Archive until the destination executor reports durable integration", () => {
+  const h = harness();
+  try {
+    const store = h.open();
+    const { bee } = makeBee(store);
+    const destination = { nodeId: "workstation", root: "/repo", branch: "main" };
+    const [land, archive] = enqueue(store, bee.id, [
+      { kind: "land", version: 2, inputs: { destination } }, { kind: "archive" },
+    ]).actions;
+    assert.equal(land!.executor, "external");
+    store.holdActionForExecutor(land!.id, "Waiting for Apiary");
+    const claim = store.claimAction({ executor: "apiary:workstation", actionId: land!.id })!;
+    assert.deepEqual(claim.resolvedInputs, { destination });
+    assert.equal(store.actionView(archive!.id).hold?.actionId, land!.id);
+    assert.equal(store.claimAction({ executor: "apiary:workstation", actionId: land!.id })!.token, claim.token);
+    store.reportAction({ actionId: land!.id, attempt: claim.action.attempt, token: claim.token,
+      reporter: { executor: "apiary:workstation" }, kind: "result", outcome: "succeeded",
+      outputs: { resultSha: "a".repeat(40), cellHead: "b".repeat(40), targetBranch: "main" }, receipt: { entryId: "integrated-entry" } });
+    assert.equal(store.actionView(archive!.id).hold, null);
+    const legacy = enqueue(store, bee.id, [{ kind: "land", inputs: { targetBranch: "main" } }]).actions[0]!;
+    assert.equal(legacy.definitionVersion, 1);
+    assert.equal(legacy.executor, "cell.capture");
+  } finally { h.cleanup(); }
 });

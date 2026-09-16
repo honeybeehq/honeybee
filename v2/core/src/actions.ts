@@ -117,6 +117,23 @@ export const BUILTIN_ACTION_DEFINITIONS: readonly ActionDefinition[] = [
     instruction: null,
   },
   {
+    kind: "land",
+    version: 2,
+    executor: "external",
+    title: "Land",
+    description: "Land committed Cell work through Apiary's destination landing queue.",
+    inputs: [
+      { name: "destination", required: true, description: "Pinned destination {nodeId, root, branch}; executed by that Apiary workstation." },
+      { name: "commit", required: false, description: "Expected source HEAD, optionally a predecessor commitSha reference." },
+    ],
+    outputs: [
+      { name: "resultSha", required: true, pattern: SHA_PATTERN, description: "Durably integrated result commit." },
+      { name: "targetBranch", required: true, pattern: BRANCH_PATTERN, description: "Destination branch." },
+      { name: "cellHead", required: true, pattern: SHA_PATTERN, description: "Pinned source commit." },
+    ],
+    instruction: null,
+  },
+  {
     kind: "archive",
     version: 1,
     executor: "lifecycle.archive",
@@ -166,6 +183,9 @@ export const BUILTIN_ACTION_DEFINITIONS: readonly ActionDefinition[] = [
 export function findActionDefinition(kind: string, version: number | null): ActionDefinition | null {
   const candidates = BUILTIN_ACTION_DEFINITIONS.filter((d) => d.kind === kind);
   if (candidates.length === 0) return null;
+  // Existing CLI callers omit version and supply targetBranch for Cell capture.
+  // Apiary explicitly selects v2 with a workstation destination.
+  if (version === null && kind === "land") return candidates.find((d) => d.version === 1)!;
   if (version === null) return candidates.reduce((a, b) => (b.version > a.version ? b : a));
   return candidates.find((d) => d.version === version) ?? null;
 }

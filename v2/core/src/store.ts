@@ -7371,13 +7371,13 @@ export class CoreStore {
         if (row.dispatch?.claimedBy && row.dispatch.claimedBy !== executor && !ACTION_TERMINAL_STATUSES.includes(row.status)) {
           throw new ActionClaimedError(`action ${row.id} attempt ${row.attempt} is claimed by ${row.dispatch.claimedBy}`);
         }
-        if (!(row.status === "waiting" && row.waitingReason === "executor") && !(row.status === "running" && row.dispatch?.claimedBy === executor)) {
+        if (!(row.status === "waiting" && row.waitingReason === "executor") && !((row.status === "running" || (row.status === "waiting" && row.waitingReason === "uncertain")) && row.dispatch?.claimedBy === executor)) {
           throw new ActionRefusedError(`action ${row.id} is ${row.status}${row.dispatch?.claimedBy ? ` (claimed by ${row.dispatch.claimedBy})` : ""}`);
         }
       } else {
         const candidates = this.listActions({ ...(input.beeId ? { beeId: input.beeId } : {}), statuses: ["waiting", "running"] })
           .filter((a) => a.executor === "external")
-          .filter((a) => (a.status === "waiting" && a.waitingReason === "executor" && a.dispatch?.claimedBy == null) || (a.status === "running" && a.dispatch?.claimedBy === executor))
+          .filter((a) => (a.status === "waiting" && a.waitingReason === "executor" && a.dispatch?.claimedBy == null) || ((a.status === "running" || (a.status === "waiting" && a.waitingReason === "uncertain")) && a.dispatch?.claimedBy === executor))
           .filter((a) => !input.kinds || input.kinds.length === 0 || input.kinds.includes(a.kind))
           .sort((a, b) => (a.dispatch?.dispatchedAt ?? 0) - (b.dispatch?.dispatchedAt ?? 0) || a.position - b.position);
         row = candidates[0] ?? null;
@@ -7386,7 +7386,7 @@ export class CoreStore {
       if (row.dispatch.claimedBy && row.dispatch.claimedBy !== executor) {
         throw new ActionClaimedError(`action ${row.id} attempt ${row.attempt} is claimed by ${row.dispatch.claimedBy}`);
       }
-      if (row.dispatch.claimedBy === executor && row.status === "running") {
+      if (row.dispatch.claimedBy === executor && (row.status === "running" || (row.status === "waiting" && row.waitingReason === "uncertain"))) {
         return { action: this.actionView(row.id), token: row.attemptToken, resolvedInputs: row.resolvedInputs ?? {}, deduped: true };
       }
       const id = row.id;

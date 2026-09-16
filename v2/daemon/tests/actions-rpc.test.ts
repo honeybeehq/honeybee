@@ -320,3 +320,28 @@ test("actions.rpc.controls: pause/resume, cancel, invalid reorder, a question th
   assert.equal(done.action.status, "succeeded");
   await assert.rejects(f.rpc("action.report", { actionId: prId, attempt: 0, token: claim.claim.token, executor: "apiary", kind: "result", outcome: "succeeded", outputs: {} }), rejectsCode("invalid_request"));
 });
+
+test("actions.rpc.external-land: destination Land holds Archive across an uncertain result and daemon restart", { timeout: 180_000 }, async t => {
+  const f = await fixture(t);
+  const { beeId } = await f.rpc<SpawnResult>("spawn", { name: "external-shipper", agent: "cellstub", cwd: "/ignored", substrate: "cell", cell: { originRepo: f.originRepo } });
+  const accepted = await f.rpc<ActionEnqueueResult>("action.enqueue", { beeId, idempotencyKey: "external-land", items: [
+    { kind: "land", version: 2, inputs: { destination: { nodeId: "workstation", root: f.originRepo, branch: "main" } } },
+    { kind: "archive" },
+  ] });
+  const [land, archive] = accepted.actions;
+  await f.waitStatus(land!.id, ["waiting"], "external offer");
+  const first = (await f.rpc<ActionClaimResult>("action.claim", { executor: "apiary-land:workstation", actionId: land!.id })).claim!;
+  await f.rpc("action.report", { actionId: land!.id, attempt: first.attempt, token: first.token, executor: "apiary-land:workstation", kind: "result", outcome: "uncertain", detail: "destination reconnecting" });
+  assert.equal((await f.action(archive!.id)).status, "queued");
+  await f.restart();
+  const recovered = (await f.rpc<ActionClaimResult>("action.claim", { executor: "apiary-land:workstation", actionId: land!.id })).claim!;
+  assert.equal(recovered.token, first.token);
+  assert.equal(recovered.attempt, first.attempt);
+  assert.equal(recovered.action.waitingReason, "uncertain");
+  await assert.rejects(f.rpc("action.claim", { executor: "another-workstation", actionId: land!.id }), rejectsCode("action_claimed"));
+  assert.equal((await f.action(archive!.id)).status, "queued");
+  const sha = g(f.originRepo, ["rev-parse", "HEAD"]);
+  await f.rpc("action.report", { actionId: land!.id, attempt: recovered.attempt, token: recovered.token, executor: "apiary-land:workstation", kind: "result", outcome: "succeeded", outputs: { resultSha: sha, cellHead: sha, targetBranch: "main" }, receipt: { status: "nothing_to_capture" } });
+  await f.waitStatus(archive!.id, ["succeeded"], "archive after external receipt");
+  assert.equal((await f.rpc<ViewResult>("view", { beeId })).bee?.lifecycle, "archived");
+});

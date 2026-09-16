@@ -411,3 +411,18 @@ unless `--bee` is given; the token comes from the delivered instruction.
 - Handoff context does not yet enumerate the pending action.
 - Custom definitions, saved sequences, hotkeys and track integration are
   future additive slices.
+
+### Apiary destination Land and external recovery
+
+`land@2` is an additive external definition. It requires a destination object
+`{nodeId, root, branch}` and optionally a commit output reference. Apiary pins the
+source revision after release, transfers it through its receiver and reports
+`resultSha`, `targetBranch` and `cellHead` only after integration. Existing
+`land@1` instances and unversioned CLI Land remain `cell.capture` for compatibility.
+Apiary selects version 2 explicitly. External definition discovery alone does
+not imply an available executor; without the destination app the action waits.
+
+An external claimant may reclaim its own uncertain attempt to recover the same
+token after restart. Reclaim does not clear uncertainty, rotate the token or
+release the next action. A foreign claimant remains refused. A same-attempt
+result reconciles publication or landing using the owner's persisted receipt.
