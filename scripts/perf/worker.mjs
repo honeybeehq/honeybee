@@ -50,7 +50,10 @@ function bytes(path) {
   }
   return total;
 }
-if (scenario.kind === 'core') {
+if (scenario.kind === 'cell-spawn') {
+  const { measureCellSpawn } = await import('./cell-spawn.mjs');
+  await measureCellSpawn({ root, samples, scenario, record, observations, setCleanup: fn => { cleanupAction = fn; } });
+} else if (scenario.kind === 'core') {
   const dir = mkdtempSync(join(tmpdir(), 'hb-perf-'));
   let store;
   try {
@@ -175,4 +178,4 @@ if (scenario.kind === 'core') {
     await cleanupOnce();
   }
 }
-console.log(JSON.stringify({ scenario: `${scenario.kind}-${scenario.bees}${scenario.generations ? `x${scenario.generations}` : ''}`, metrics, raw, observations }));
+console.log(JSON.stringify({ scenario: scenario.kind === 'cell-spawn' ? `cell-spawn-${scenario.cache}-${scenario.width}` : `${scenario.kind}-${scenario.bees}${scenario.generations ? `x${scenario.generations}` : ''}`, metrics, raw, observations }));

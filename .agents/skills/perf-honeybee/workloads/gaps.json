@@ -1,0 +1,301 @@
+{
+  "note": "Bounded spawn-path census only. Older core/daemon/CLI benchmarks remain in docs/performance/measure.md; they are not silently claimed as mapped baselines.",
+  "gaps": [
+    {
+      "key": "entry:v2/cli/src/help.ts:*",
+      "reason": "v2/cli/src/help.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "entry:v2/cli/src/main.ts:*",
+      "reason": "v2/cli/src/main.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "entry:v2/cli/src/render.ts:*",
+      "reason": "v2/cli/src/render.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "entry:v2/cli/src/style.ts:*",
+      "reason": "v2/cli/src/style.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "entry:v2/daemon/src/accountsService.ts:*",
+      "reason": "v2/daemon/src/accountsService.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "entry:v2/daemon/src/activation.ts:*",
+      "reason": "v2/daemon/src/activation.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "entry:v2/daemon/src/autoTitle.ts:*",
+      "reason": "v2/daemon/src/autoTitle.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "entry:v2/daemon/src/config.ts:*",
+      "reason": "v2/daemon/src/config.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "entry:v2/daemon/src/cursorAuth.ts:*",
+      "reason": "v2/daemon/src/cursorAuth.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "entry:v2/daemon/src/daemon.ts:*",
+      "reason": "v2/daemon/src/daemon.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "entry:v2/daemon/src/envelope.ts:*",
+      "reason": "v2/daemon/src/envelope.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "entry:v2/daemon/src/gateways.ts:*",
+      "reason": "v2/daemon/src/gateways.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "entry:v2/daemon/src/homeDefaults.ts:*",
+      "reason": "v2/daemon/src/homeDefaults.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "entry:v2/daemon/src/import-probes.ts:*",
+      "reason": "v2/daemon/src/import-probes.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "entry:v2/daemon/src/keychain.ts:*",
+      "reason": "v2/daemon/src/keychain.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "entry:v2/daemon/src/login/claudeOauth.ts:*",
+      "reason": "v2/daemon/src/login/claudeOauth.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "entry:v2/daemon/src/login/cliRunner.ts:*",
+      "reason": "v2/daemon/src/login/cliRunner.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "entry:v2/daemon/src/login/common.ts:*",
+      "reason": "v2/daemon/src/login/common.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "entry:v2/daemon/src/login/directKey.ts:*",
+      "reason": "v2/daemon/src/login/directKey.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "entry:v2/daemon/src/login/transports.ts:*",
+      "reason": "v2/daemon/src/login/transports.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "entry:v2/daemon/src/loginFlows.ts:*",
+      "reason": "v2/daemon/src/loginFlows.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "entry:v2/daemon/src/loginWorker.ts:*",
+      "reason": "v2/daemon/src/loginWorker.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "entry:v2/daemon/src/main.ts:*",
+      "reason": "v2/daemon/src/main.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "entry:v2/daemon/src/naming.ts:*",
+      "reason": "v2/daemon/src/naming.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "entry:v2/daemon/src/namingService.ts:*",
+      "reason": "v2/daemon/src/namingService.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "entry:v2/daemon/src/performance.ts:*",
+      "reason": "v2/daemon/src/performance.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "entry:v2/daemon/src/providerLimits.ts:*",
+      "reason": "v2/daemon/src/providerLimits.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "entry:v2/daemon/src/relocateSession.ts:*",
+      "reason": "v2/daemon/src/relocateSession.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "entry:v2/daemon/src/rpc.ts:*",
+      "reason": "v2/daemon/src/rpc.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "entry:v2/daemon/src/service.ts:*",
+      "reason": "v2/daemon/src/service.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "entry:v2/daemon/src/telemetry.ts:*",
+      "reason": "v2/daemon/src/telemetry.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "entry:v2/daemon/src/threadCompactor.ts:*",
+      "reason": "v2/daemon/src/threadCompactor.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "entry:v2/daemon/src/threadHistory.ts:*",
+      "reason": "v2/daemon/src/threadHistory.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "entry:v2/daemon/src/tmuxHarness.ts:*",
+      "reason": "v2/daemon/src/tmuxHarness.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "entry:v2/driver-cell/src/capture.ts:*",
+      "reason": "v2/driver-cell/src/capture.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "entry:v2/driver-cell/src/cow.ts:*",
+      "reason": "v2/driver-cell/src/cow.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "entry:v2/driver-cell/src/exec.ts:*",
+      "reason": "v2/driver-cell/src/exec.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "entry:v2/driver-cell/src/git.ts:*",
+      "reason": "v2/driver-cell/src/git.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "entry:v2/driver-cell/src/gitImage.ts:*",
+      "reason": "v2/driver-cell/src/gitImage.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "entry:v2/driver-cell/src/layout.ts:*",
+      "reason": "v2/driver-cell/src/layout.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "entry:v2/driver-cell/src/ledger.ts:*",
+      "reason": "v2/driver-cell/src/ledger.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "entry:v2/driver-cell/src/remove.ts:*",
+      "reason": "v2/driver-cell/src/remove.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "entry:v2/driver-cell/src/sandbox.ts:*",
+      "reason": "v2/driver-cell/src/sandbox.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "entry:v2/driver-hsr/src/psutil.ts:*",
+      "reason": "v2/driver-hsr/src/psutil.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "entry:v2/driver-hsr/src/runner-host.ts:*",
+      "reason": "v2/driver-hsr/src/runner-host.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "socket:v2/driver-hsr/src/runner-host.ts#*",
+      "reason": "v2/driver-hsr/src/runner-host.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "spawn:v2/cli/src/main.ts#*",
+      "reason": "v2/cli/src/main.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "spawn:v2/daemon/src/daemon.ts#*",
+      "reason": "v2/daemon/src/daemon.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "spawn:v2/daemon/src/import-probes.ts#*",
+      "reason": "v2/daemon/src/import-probes.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "spawn:v2/daemon/src/loginFlows.ts#*",
+      "reason": "v2/daemon/src/loginFlows.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "spawn:v2/daemon/src/loginWorker.ts#*",
+      "reason": "v2/daemon/src/loginWorker.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "spawn:v2/daemon/src/naming.ts#*",
+      "reason": "v2/daemon/src/naming.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "spawn:v2/daemon/src/namingService.ts#*",
+      "reason": "v2/daemon/src/namingService.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "spawn:v2/daemon/src/threadCompactor.ts#*",
+      "reason": "v2/daemon/src/threadCompactor.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "spawn:v2/driver-cell/src/cow.ts#*",
+      "reason": "v2/driver-cell/src/cow.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "spawn:v2/driver-cell/src/exec.ts#*",
+      "reason": "v2/driver-cell/src/exec.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "spawn:v2/driver-cell/src/git.ts#*",
+      "reason": "v2/driver-cell/src/git.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "spawn:v2/driver-cell/src/gitImage.ts#*",
+      "reason": "v2/driver-cell/src/gitImage.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "spawn:v2/driver-hsr/src/psutil.ts#*",
+      "reason": "v2/driver-hsr/src/psutil.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "spawn:v2/driver-hsr/src/runner-host.ts#*",
+      "reason": "v2/driver-hsr/src/runner-host.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "timer:v2/cli/src/client.ts#*",
+      "reason": "v2/cli/src/client.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "timer:v2/cli/src/main.ts#*",
+      "reason": "v2/cli/src/main.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "timer:v2/daemon/src/accountsService.ts#*",
+      "reason": "v2/daemon/src/accountsService.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "timer:v2/daemon/src/daemon.ts#*",
+      "reason": "v2/daemon/src/daemon.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "timer:v2/daemon/src/loginWorker.ts#*",
+      "reason": "v2/daemon/src/loginWorker.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "timer:v2/daemon/src/namingService.ts#*",
+      "reason": "v2/daemon/src/namingService.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "timer:v2/daemon/src/performance.ts#*",
+      "reason": "v2/daemon/src/performance.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "timer:v2/daemon/src/service.ts#*",
+      "reason": "v2/daemon/src/service.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "timer:v2/daemon/src/threadCompactor.ts#*",
+      "reason": "v2/daemon/src/threadCompactor.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "timer:v2/daemon/src/threadOperations.ts#*",
+      "reason": "v2/daemon/src/threadOperations.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "timer:v2/driver-cell/src/exec.ts#*",
+      "reason": "v2/driver-cell/src/exec.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "timer:v2/driver-cell/src/provisionWorker.ts#*",
+      "reason": "v2/driver-cell/src/provisionWorker.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "timer:v2/driver-hsr/src/driver.ts#*",
+      "reason": "v2/driver-hsr/src/driver.ts: outside the spawn readiness assertions; exports/timers include recovery, maintenance or CLI paths. Add a workload before claiming these costs are covered."
+    },
+    {
+      "key": "entry:v2/driver-cell/src/provision.ts:provisionRequestOf",
+      "reason": "Ledger reconstruction for replay is outside fresh-spawn timing."
+    }
+  ]
+}

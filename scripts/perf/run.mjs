@@ -6,11 +6,17 @@ import { cpus, hostname, loadavg, totalmem } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
+import { cellSpawnReceipt } from './cell-spawn-receipt.mjs';
 import { compareReports } from './report.mjs';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
 function option(name, fallback) { const at = args.indexOf(name); if (at < 0) { assert.ok(fallback !== undefined, `${name} is required`); return fallback; } assert.ok(args[at + 1] && !args[at + 1].startsWith('--'), `${name} requires a value`); return args[at + 1]; }
+if (args.includes('--receipt')) {
+  const receipt = cellSpawnReceipt(JSON.parse(readFileSync(option('--from'), 'utf8')));
+  writeFileSync(resolve(option('--out')), JSON.stringify(receipt, null, 2) + '\n');
+  process.exit(0);
+}
 if (args.includes('--compare')) {
   const b = JSON.parse(readFileSync(option('--before'), 'utf8'));
   const a = JSON.parse(readFileSync(option('--after'), 'utf8'));
@@ -22,7 +28,7 @@ if (args.includes('--compare')) {
   process.exit(0);
 }
 if (args.includes('--help')) {
-  console.log('node scripts/perf/run.mjs [--root checkout] [--out report.json] [--samples 15] [--idle-ms 3000] [--suite core|daemon|cli|all] [--profile-dir path] [--trace-dir path]\nCompare: --compare --before report.json --after report.json --out scorecard.csv');
+  console.log('node scripts/perf/run.mjs [--root checkout] [--out report.json] [--samples 15] [--idle-ms 3000] [--suite core|daemon|cli|cell-spawn|all] [--profile-dir path] [--trace-dir path] [--cache cold|warm --width 1|4 --sandbox on|off]\nCell receipt: --receipt --from report.json --out receipt.json\nCompare: --compare --before report.json --after report.json --out scorecard.csv');
   process.exit(0);
 }
 const root = resolve(option('--root', join(scriptDir, '../..')));
@@ -32,26 +38,30 @@ const idleMs = Number(option('--idle-ms', '3000'));
 const suite = option('--suite', 'all');
 assert.ok(Number.isSafeInteger(samples) && samples >= 3 && samples <= 1000, 'samples must be 3..1000');
 assert.ok(Number.isSafeInteger(idleMs) && idleMs >= 100 && idleMs <= 60000, 'idle-ms must be 100..60000');
-assert.ok(['core', 'daemon', 'cli', 'all'].includes(suite), 'unknown suite');
+assert.ok(['core', 'daemon', 'cli', 'cell-spawn', 'all'].includes(suite), 'unknown suite');
 const cases = ['daemon', 'cli'].includes(suite) ? [] : [
   { bees: 10, generations: 1 }, { bees: 1000, generations: 1 },
   { bees: 1000, generations: 20 }, { bees: 100, generations: 200 },
 ];
-const scenarios = [...cases.map(c => ({ kind: 'core', ...c })), ...(['core', 'cli'].includes(suite) ? [] : [{ kind: 'daemon', bees: 0 }, { kind: 'daemon', bees: 1000 }, { kind: 'daemon', bees: 100, generations: 200 }]), ...(['cli', 'all'].includes(suite) ? [{ kind: 'cli', bees: 0 }] : [])];
-const toolDigest = createHash('sha256').update(readFileSync(join(scriptDir, 'run.mjs'))).update(readFileSync(join(scriptDir, 'worker.mjs'))).update(readFileSync(join(scriptDir, 'fixtures.mjs'))).update(readFileSync(join(scriptDir, 'report.mjs'))).digest('hex');
-const workload = { suite, samples, idleMs, scenarios, toolDigest, warmup: 3, durability: 'WAL/NORMAL', runtime: 'source Node type stripping', instrumentation: Boolean(option('--profile-dir', '') || option('--trace-dir', '')), captureMode: option('--profile-dir', '') ? 'cpu-heap-trace' : option('--trace-dir', '') ? 'trace' : 'none' };
+const scenarios = suite === 'cell-spawn' ? [{ kind: 'cell-spawn', cache: option('--cache', 'warm'), width: Number(option('--width', '1')), sandbox: option('--sandbox', 'on') === 'on' }] : [...cases.map(c => ({ kind: 'core', ...c })), ...(['core', 'cli'].includes(suite) ? [] : [{ kind: 'daemon', bees: 0 }, { kind: 'daemon', bees: 1000 }, { kind: 'daemon', bees: 100, generations: 200 }]), ...(['cli', 'all'].includes(suite) ? [{ kind: 'cli', bees: 0 }] : [])];
+assert.ok(['cold', 'warm'].includes(option('--cache', 'warm')), 'cache must be cold or warm');
+assert.ok(['on', 'off'].includes(option('--sandbox', 'on')), 'sandbox must be on or off');
+assert.ok([1, 4].includes(Number(option('--width', '1'))), 'width must be 1 or 4');
+const toolDigest = createHash('sha256').update(readFileSync(join(scriptDir, 'run.mjs'))).update(readFileSync(join(scriptDir, 'worker.mjs'))).update(readFileSync(join(scriptDir, 'fixtures.mjs'))).update(readFileSync(join(scriptDir, 'report.mjs'))).update(readFileSync(join(scriptDir, 'cell-spawn.mjs'))).digest('hex');
+const workload = { suite, samples, idleMs, scenarios, toolDigest, warmup: suite === 'cell-spawn' ? (option('--cache', 'warm') === 'warm' ? 1 : 0) : 3, durability: 'WAL/NORMAL', runtime: 'source Node type stripping', instrumentation: Boolean(option('--profile-dir', '') || option('--trace-dir', '')), captureMode: option('--profile-dir', '') ? 'cpu-heap-trace' : option('--trace-dir', '') ? 'trace' : 'none' };
 function git(...argv) { const p = spawnSync('git', argv, { cwd: root, encoding: 'utf8' }); assert.equal(p.status, 0, p.stderr); return p.stdout.trim(); }
-const report = { schemaVersion: 1, timestamp: new Date().toISOString(), source: { root, revision: git('rev-parse', 'HEAD'), status: git('status', '--porcelain'), diff: git('diff', '--stat') }, environment: { node: process.version, platform: process.platform, arch: process.arch, hostname: hostname(), cpu: cpus()[0]?.model, logicalCpus: cpus().length, totalMemoryBytes: totalmem(), loadBefore: loadavg() }, workload, results: [] };
+const report = { schemaVersion: 1, timestamp: new Date().toISOString(), source: { root, revision: git('rev-parse', 'HEAD'), status: git('status', '--porcelain'), diff: git('diff', '--stat'), measuredSources: Object.fromEntries(['v2/daemon/src/daemon.ts', 'v2/daemon/src/config.ts', 'v2/daemon/src/loops.ts', 'v2/driver-cell/src/driver.ts', 'v2/driver-cell/src/provision.ts', 'v2/driver-hsr/src/driver.ts', 'v2/driver-hsr/src/runner-host.ts', 'v2/daemon/tests/helpers.ts', 'v2/driver-cell/tests/helpers.ts', 'v2/driver-hsr/test-agent/agent.mjs'].map(path => [path, createHash('sha256').update(readFileSync(join(root, path))).digest('hex')])) }, environment: { node: process.version, platform: process.platform, arch: process.arch, hostname: hostname(), cpu: cpus()[0]?.model, logicalCpus: cpus().length, totalMemoryBytes: totalmem(), loadBefore: loadavg() }, workload, results: [] };
 mkdirSync(dirname(out), { recursive: true });
 const profileDir = option('--profile-dir', '');
 const traceDir = option('--trace-dir', profileDir);
 if (traceDir) mkdirSync(resolve(traceDir), { recursive: true });
 if (profileDir) mkdirSync(resolve(profileDir), { recursive: true });
 for (const scenario of scenarios) {
-  const name = `${scenario.kind}-${scenario.bees}${scenario.generations ? `x${scenario.generations}` : ''}`;
+  const name = scenario.kind === 'cell-spawn' ? `cell-spawn-${scenario.cache}-${scenario.width}` : `${scenario.kind}-${scenario.bees}${scenario.generations ? `x${scenario.generations}` : ''}`;
   process.stderr.write(`Measuring ${name}\n`);
   const profiling = profileDir ? ['--cpu-prof', `--cpu-prof-dir=${resolve(profileDir)}`, `--cpu-prof-name=${name}.cpuprofile`, '--heap-prof', `--heap-prof-dir=${resolve(profileDir)}`, `--heap-prof-name=${name}.heapprofile`] : [];
-  const p = spawnSync(process.execPath, [...profiling, join(scriptDir, 'worker.mjs'), JSON.stringify({ root, samples, idleMs, scenario })], { cwd: root, encoding: 'utf8', timeout: 120000 + idleMs * 3 + samples * 2000, maxBuffer: 16 * 1024 * 1024, env: { ...process.env, HIVE_NO_KEYCHAIN: '1', HIVE_PERF_DIR: traceDir ? resolve(traceDir) : '', NODE_COMPILE_CACHE: join(root, '.cache/performance-node') } });
+  const p = spawnSync(process.execPath, [...profiling, join(scriptDir, 'worker.mjs'), JSON.stringify({ root, samples, idleMs, scenario })], { cwd: root, encoding: 'utf8', timeout: suite === 'cell-spawn' ? 120000 + (samples + 1) * 70000 : 120000 + idleMs * 3 + samples * 2000, maxBuffer: 16 * 1024 * 1024, env: { ...process.env, HIVE_NO_KEYCHAIN: '1', HIVE_PERF_DIR: traceDir ? resolve(traceDir) : '', NODE_COMPILE_CACHE: join(root, '.cache/performance-node') } });
+  if (p.status !== 0) { report.failure = { scenario, status: p.status, signal: p.signal, error: p.error?.message, stderr: p.stderr, stdout: p.stdout }; writeFileSync(out, JSON.stringify(report, null, 2) + '\n'); }
   if (p.status !== 0) throw new Error(`${name} failed (${p.status}; ${p.error?.message ?? p.signal ?? 'exit'}): ${p.stderr}\n${p.stdout}`);
   report.results.push(JSON.parse(p.stdout));
   writeFileSync(out, JSON.stringify(report, null, 2) + '\n');

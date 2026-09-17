@@ -119,3 +119,10 @@ An interrupted paired-core run can leave its temporary database directories.
 It spawns no daemon or harness processes. Completed and failed normal runs close
 both stores and remove their temporary directories. Capture reports include a
 tool digest; paired reports also hash the measured store and loop source files.
+
+## Satellite Cell startup
+
+Use the [Honeybee perf skill](../../.agents/skills/perf-honeybee/SKILL.md) and its
+[remote Cell workload](../../.agents/skills/perf-honeybee/workloads/remote-cell-spawn.md)
+for `scripts/perf/run.mjs --suite cell-spawn`. It uses isolated real satellite Cells
+and stub readiness; workstation transport and provider startup remain separate gaps.

@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "$comment": "Bounded spawn-path census, not a complete Honeybee map. Extend roots when adding other workloads. Regex is inventory, not reachability proof.",
+  "sourceRoots": [
+    "v2/driver-cell/src",
+    "v2/driver-hsr/src",
+    "v2/daemon/src",
+    "v2/cli/src"
+  ],
+  "extensions": "\\.ts$",
+  "exclude": "(\\.test\\.|/tests/|/fixtures/)",
+  "registries": [],
+  "patterns": [
+    {
+      "inventory": "entry-points",
+      "prefix": "entry:",
+      "regex": "export (?:async )?function (\\w+)\\(",
+      "mode": "capture",
+      "keyTemplate": "{path}:{1}"
+    },
+    {
+      "inventory": "resource-owners",
+      "prefix": "spawn:",
+      "regex": "\\b(?:new Worker|spawn|spawnSync|execFile|execFileSync)\\(",
+      "mode": "ordinal"
+    },
+    {
+      "inventory": "work-triggers",
+      "prefix": "timer:",
+      "regex": "\\b(?:setInterval|setTimeout)\\(",
+      "mode": "ordinal"
+    },
+    {
+      "inventory": "boundaries",
+      "prefix": "socket:",
+      "regex": "\\b(?:createServer|createConnection|net\\.connect)\\(",
+      "mode": "ordinal"
+    }
+  ]
+}

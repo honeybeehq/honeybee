@@ -1,0 +1,621 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "honeybee/perf-workload-record/v1",
+  "title": "Honeybee performance workload record",
+  "description": "One measurable workload: what runs, how it is driven, what is measured, what is ruled. Machine-readable inventory; the sibling <id>.md holds interpretation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "protocolVersion",
+    "id",
+    "title",
+    "lane",
+    "processes",
+    "effect",
+    "accounts",
+    "states",
+    "metrics",
+    "updatedAt"
+  ],
+  "properties": {
+    "protocolVersion": {
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+      "description": "Stable slug. Changing the measured population or fixture creates a new id or a new baseline series, never a silent overwrite."
+    },
+    "title": {
+      "type": "string"
+    },
+    "lane": {
+      "enum": [
+        "startup",
+        "interaction",
+        "streaming",
+        "steady-state",
+        "throughput",
+        "memory",
+        "lifecycle",
+        "recovery",
+        "dev-loop"
+      ],
+      "description": "startup: launch to usable. interaction: one input to its effect. streaming: continuous delivery to a visible surface. steady-state: idle or background work with no input. throughput: rate or backlog under load. memory: retention and peaks. lifecycle: acquire/hide/resume/release cycles. recovery: disconnect, restart, resync. dev-loop: developer wait, never shipped-app performance."
+    },
+    "processes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "enum": [
+          "main",
+          "renderer",
+          "apiaryd",
+          "hived",
+          "bee-runtime",
+          "gpu",
+          "browser-guest",
+          "pty",
+          "helper",
+          "node-remote"
+        ]
+      }
+    },
+    "owners": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Source paths that implement the measured path. The census records their blob hashes so drift can be detected."
+    },
+    "verificationFeatures": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "verify-apiary feature ids that drive the same user path."
+    },
+    "effect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "user",
+        "assertions"
+      ],
+      "properties": {
+        "user": {
+          "type": "string",
+          "description": "What the user observes when the workload completes."
+        },
+        "assertions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          },
+          "description": "Correctness checks that must hold on every sample; a sample that fails one is not a timing sample."
+        },
+        "exclusions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "accounts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "inventory",
+          "key"
+        ],
+        "properties": {
+          "inventory": {
+            "enum": [
+              "entry-points",
+              "resource-owners",
+              "work-triggers",
+              "boundaries"
+            ]
+          },
+          "key": {
+            "type": "string",
+            "description": "Census key this workload accounts for, e.g. command:view.open, view:hive.agent-list, ipc:hive:list, socket:apiaryd, timer:memoryLedger.ts:41."
+          },
+          "shared": {
+            "type": "string",
+            "description": "Present when another workload measures the same implementation; states why coverage is shared."
+          }
+        }
+      },
+      "description": "Every census entry must be accounted for by some workload, or listed in workloads/gaps.json with a reason."
+    },
+    "states": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "idle",
+        "first-use",
+        "repeated",
+        "scale",
+        "background",
+        "release",
+        "recovery"
+      ],
+      "patternProperties": {
+        "^(idle|first-use|repeated|scale|background|release|recovery)$": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "matters",
+            "why"
+          ],
+          "properties": {
+            "matters": {
+              "type": "boolean"
+            },
+            "why": {
+              "type": "string",
+              "description": "Why the state matters, or why it does not. Required either way so an omission is a decision, not a default."
+            }
+          }
+        }
+      },
+      "description": "Which lifecycle states this workload measures. Unmeasured-but-relevant states are gaps, not omissions."
+    },
+    "fixture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "preset",
+        "isolationPolicy"
+      ],
+      "properties": {
+        "preset": {
+          "type": "string",
+          "description": "control-apiary fixture preset or benchmark fixture name."
+        },
+        "contentKey": {
+          "type": "string",
+          "description": "Fixture content identity as the driver reports it; comparisons across keys are rejected."
+        },
+        "isolationPolicy": {
+          "type": "integer",
+          "description": "perf-env.cjs FIXTURE_ISOLATION version in force."
+        },
+        "scaleAxes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "axis",
+              "values"
+            ],
+            "properties": {
+              "axis": {
+                "type": "string"
+              },
+              "values": {
+                "type": "array",
+                "items": {
+                  "type": [
+                    "number",
+                    "string"
+                  ]
+                }
+              },
+              "unit": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "seed": {
+          "type": "string"
+        }
+      }
+    },
+    "recipe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "driver",
+        "command"
+      ],
+      "properties": {
+        "driver": {
+          "type": "string",
+          "description": "Script that owns launch, capture and cleanup, e.g. apps/desktop/scripts/control-apiary.mjs."
+        },
+        "command": {
+          "type": "string",
+          "description": "Exact invocation. Environment pins (Node) are the skill's, not the record's."
+        },
+        "scenario": {
+          "type": "string",
+          "description": "Scenario JSON path when the driver takes one."
+        },
+        "readiness": {
+          "type": "string",
+          "description": "Observable that starts the measured interval."
+        },
+        "completion": {
+          "type": "string",
+          "description": "Observable that ends it."
+        },
+        "warmup": {
+          "type": "string"
+        },
+        "reset": {
+          "type": "string",
+          "description": "How state is returned between samples."
+        },
+        "teardown": {
+          "type": "string"
+        },
+        "serial": {
+          "type": "boolean",
+          "description": "true when no other timing workload may run concurrently on the host."
+        },
+        "requires": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Tools, permissions, platform, display."
+        }
+      }
+    },
+    "metrics": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "unit",
+          "scope",
+          "collector",
+          "kind",
+          "status",
+          "states"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "unit": {
+            "enum": [
+              "ms",
+              "us",
+              "s",
+              "fps",
+              "bytes",
+              "count",
+              "MB",
+              "MiB",
+              "percent",
+              "rows",
+              "messages",
+              "per-second"
+            ]
+          },
+          "scope": {
+            "type": "string",
+            "description": "Process or transport the number belongs to, e.g. renderer, main+apiaryd, renderer->main, apiaryd<->hived, wire."
+          },
+          "collector": {
+            "type": "string",
+            "description": "What produces the number: user-timing mark, boot report, memory ledger, CDP trace, inspector profile, transport counter, OS tool."
+          },
+          "aggregation": {
+            "enum": [
+              "median",
+              "p95",
+              "p99",
+              "max",
+              "sum",
+              "mean",
+              "last",
+              "slope",
+              "raw"
+            ]
+          },
+          "kind": {
+            "enum": [
+              "actual",
+              "estimate",
+              "lower-bound",
+              "upper-bound"
+            ],
+            "description": "Sampled peaks are lower bounds. Input-to-observed-DOM is an upper bound on the user-visible effect. Payload sizes computed without serializing are estimates. Wire bytes from the transport are actual."
+          },
+          "status": {
+            "enum": [
+              "gap",
+              "recipe-only",
+              "measured",
+              "stale",
+              "gated"
+            ],
+            "description": "gap: named, no collector or no reproducible path. recipe-only: command exists, never run to a retained receipt. measured: receipt exists for current owners. stale: owners changed since the receipt. gated: a test or CI step asserts it. These are states, not a ladder: gated is not stronger evidence than measured, and stale is not worse than gap."
+          },
+          "budget": {
+            "$ref": "#/$defs/budget"
+          },
+          "invariant": {
+            "type": "string",
+            "description": "Scaling or work-count assertion when a fixed number is wrong, e.g. 'rows decoded == 0 for registry-only updates'."
+          },
+          "baseline": {
+            "$ref": "#/$defs/baseline"
+          },
+          "noise": {
+            "type": "string",
+            "description": "Known variability and what controls it."
+          },
+          "gap": {
+            "type": "string",
+            "description": "Why the metric cannot be collected yet, when status is gap."
+          },
+          "collectorProtocol": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "How the collector ran. Required for sampled or trace collectors once measured; free-form keys allowed, these are the recognised ones.",
+            "properties": {
+              "visibility": {
+                "enum": [
+                  "visible",
+                  "hidden"
+                ],
+                "description": "Document visibility during capture. Hidden windows cannot establish foreground presentation."
+              },
+              "throttling": {
+                "enum": [
+                  "default",
+                  "unthrottled"
+                ],
+                "description": "Background throttling policy requested; the boot mark records what applied."
+              },
+              "requestedIntervalMs": {
+                "type": "number"
+              },
+              "actualIntervalMs": {
+                "type": "number",
+                "description": "Observed mean interval between samples."
+              },
+              "maxGapMs": {
+                "type": "number",
+                "description": "Largest gap between two samples; peaks inside a gap are unobserved."
+              },
+              "probes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Probe set enabled, e.g. cdp-metrics, trace, cpu-profile, heap-sampling, process-census."
+              },
+              "captureOverhead": {
+                "type": "string",
+                "description": "Evidence of collector cost, e.g. captureDurationMs per sample or a no-probe control run."
+              },
+              "incompleteSamples": {
+                "type": "integer",
+                "description": "Samples with missing rows, e.g. a process the census could not read."
+              }
+            }
+          },
+          "states": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "enum": [
+                "idle",
+                "first-use",
+                "repeated",
+                "scale",
+                "background",
+                "release",
+                "recovery"
+              ]
+            },
+            "description": "Which of the workload states this metric is collected in. A relevant workload state no metric lists is an unmeasured state, visible in the index."
+          },
+          "betterWhen": {
+            "enum": [
+              "lower",
+              "higher"
+            ],
+            "description": "Which direction is an improvement. Required for regression detection; units never decide it (a count can be a cost or a hit rate)."
+          }
+        }
+      }
+    },
+    "linked": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "workload",
+          "why"
+        ],
+        "properties": {
+          "workload": {
+            "type": "string"
+          },
+          "why": {
+            "type": "string",
+            "description": "Which displaced cost the linked workload catches, e.g. startup precompute vs first-use."
+          }
+        }
+      }
+    },
+    "gaps": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Known measurement limits at workload level, stated plainly."
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date"
+    },
+    "updatedBy": {
+      "type": "string"
+    },
+    "readiness": {
+      "type": "string",
+      "description": "One sentence from the agent on what this record can and cannot show today. The index reports per-metric status counts; there is no scalar rollup because gap, stale and gated are not ordered."
+    }
+  },
+  "$defs": {
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "value",
+        "unit",
+        "status",
+        "source"
+      ],
+      "properties": {
+        "value": {
+          "type": "number"
+        },
+        "unit": {
+          "type": "string"
+        },
+        "comparator": {
+          "enum": [
+            "<=",
+            "<",
+            ">=",
+            ">"
+          ],
+          "default": "<="
+        },
+        "status": {
+          "enum": [
+            "ruled",
+            "advisory",
+            "proposed"
+          ],
+          "description": "ruled: operator ruling, only the operator changes it. advisory: a ruled or historical number reported for context, never failed on. proposed: an agent suggestion awaiting ruling. Independent of the metric status enum, which describes coverage."
+        },
+        "source": {
+          "type": "string",
+          "description": "Document and date of the ruling or proposal."
+        },
+        "ruledAt": {
+          "type": "string",
+          "format": "date"
+        },
+        "condition": {
+          "type": "string",
+          "description": "Hardware, fixture, and state the budget assumes."
+        }
+      }
+    },
+    "baseline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "seriesId",
+        "receipt",
+        "commit",
+        "samples",
+        "machine",
+        "runtime",
+        "buildMode"
+      ],
+      "properties": {
+        "seriesId": {
+          "type": "string",
+          "description": "Identity of fixture + collector protocol (probe set, scheduling, visibility, throttling) + machine + runtime + build mode. A change to any of them starts a new series; series are never compared."
+        },
+        "receipt": {
+          "type": "string",
+          "description": "Path to the compact JSON receipt under docs/performance/ or an archive coordinate."
+        },
+        "commit": {
+          "type": "string"
+        },
+        "machine": {
+          "type": "string"
+        },
+        "samples": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "median": {
+          "type": "number"
+        },
+        "p95": {
+          "type": "number",
+          "description": "Only when samples justify it; small startup sets do not."
+        },
+        "spread": {
+          "type": "string"
+        },
+        "hostLoad": {
+          "type": "string",
+          "description": "Load average or equivalent at capture; high load makes the receipt recipe proof, not comparative timing."
+        },
+        "capturedAt": {
+          "type": "string",
+          "format": "date"
+        },
+        "runtime": {
+          "type": "string",
+          "description": "Pinned runtime identity, e.g. node v24.18.0, electron 3x.y.z."
+        },
+        "buildMode": {
+          "enum": [
+            "dev",
+            "built",
+            "packaged"
+          ]
+        },
+        "probes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Probe set active during the receipt; part of the series identity."
+        },
+        "visibility": {
+          "enum": [
+            "visible",
+            "hidden"
+          ]
+        },
+        "aggregation": {
+          "enum": [
+            "median",
+            "p95",
+            "p99",
+            "max",
+            "sum",
+            "mean",
+            "last",
+            "raw"
+          ],
+          "description": "Aggregation of `aggregate`; must match the metric's aggregation for check to compare."
+        },
+        "aggregate": {
+          "type": "number",
+          "description": "The baseline value under `aggregation`. `median` and `p95` remain as descriptive fields."
+        }
+      },
+      "description": "The measured aggregate for the current owners. A baseline is a receipt, never a verdict; pass/fail against a budget is produced by `perf-map check` from a receipt and is not stored here."
+    }
+  }
+}

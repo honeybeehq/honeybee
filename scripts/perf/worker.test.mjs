@@ -11,8 +11,8 @@ async function until(fn, label) {
   const deadline = Date.now() + 45000;
   for (;;) { const value = fn(); if (value) return value; assert.ok(Date.now() < deadline, `timeout: ${label}`); await setTimeout(20); }
 }
-function startWorker() {
-  const child = spawn(process.execPath, [resolve(root, 'scripts/perf/worker.mjs'), JSON.stringify({ root, samples: 3, idleMs: 100, scenario: { kind: 'daemon', bees: 0 } })], { cwd: root, env: { ...process.env, HIVE_NO_KEYCHAIN: '1', HIVE_PERF_DIR: '' }, stdio: ['ignore', 'pipe', 'pipe'] });
+function startWorker(scenario = { kind: 'daemon', bees: 0 }) {
+  const child = spawn(process.execPath, [resolve(root, 'scripts/perf/worker.mjs'), JSON.stringify({ root, samples: 3, idleMs: 100, scenario })], { cwd: root, env: { ...process.env, HIVE_NO_KEYCHAIN: '1', HIVE_PERF_DIR: '' }, stdio: ['ignore', 'pipe', 'pipe'] });
   let stdout = '', stderr = '';
   child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8');
   child.stdout.on('data', text => stdout += text); child.stderr.on('data', text => stderr += text);
@@ -52,4 +52,18 @@ test('SIGTERM during an owned runtime cleans up detached hosts and the fixture',
   assert.ok(exit.code === 143 || exit.code === 1, worker.stderr());
   assert.ok(pids.every(pid => !live(pid)), 'detached owned processes exited');
   assert.equal(existsSync(dir), false, 'owned data removed after interruption');
+});
+
+
+test('satellite Cell benchmark verifies real checkouts and reaps concurrent runtimes', { timeout: 120000 }, async t => {
+  const worker = startWorker({ kind: 'cell-spawn', cache: 'cold', width: 4, sandbox: true });
+  t.after(async () => { if (worker.child.exitCode === null && worker.child.signalCode === null) worker.child.kill('SIGTERM'); await worker.exited; });
+  const dir = await until(worker.fixture, 'fixture reported');
+  const exit = await worker.exited;
+  assert.equal(exit.code, 0, worker.stderr());
+  const report = JSON.parse(worker.stdout());
+  assert.equal(report.observations.invariantHolds, true);
+  assert.equal(report.raw['cell.ready'].length, 12);
+  assert.equal(new Set(report.observations.samples.map(s => s.beeId)).size, 12);
+  assert.equal(existsSync(dir), false, 'fixture removed only after all hosts exited');
 });
