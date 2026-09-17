@@ -18,10 +18,16 @@
  *                 params:{cwd,approvalPolicy:"never",sandbox:"danger-full-access"[,model]}}
  *   server   : {"jsonrpc":"2.0","id":2,"result":{"thread":{"id":...}}} → booted
  *   server   : {"method":"turn/started",...}                        → turn_started
- *   server   : {"method":"turn/completed",...}                      → turn_ended
+ *   server   : {"method":"turn/completed",...}                      → turn_ended (only status=completed clears flags)
  *   server   : {"method":"error","params":{"error":{"message"}}}    → flag evidence
  *   server   : {"method":"account/rateLimits/updated",
  *               "params":{"rateLimits":{rateLimitReachedType,...}}} → resource_blocked
+ *
+ * Quota boundary (captured on Codex 0.154, CO.c614): rateLimitReachedType
+ * can be null even when error.codexErrorInfo is usageLimitExceeded. Consume
+ * the error notification and turn.error; never treat turn/completed alone
+ * as successful recovery. The daemon uses resource_blocked evidence for
+ * both the bee flag and account exhaustion/rotation policy.
  *
  * Known sharp edge (old code, codex-cli 0.144.x): the app-server acks
  * `initialize` before it can service `thread/start`; a premature thread
@@ -120,11 +126,16 @@ export function codexRateLimitSignals(rateLimits: unknown): AdapterSignal[] {
   }];
 }
 
-function errorSignals(message: string): AdapterSignal[] {
+function errorSignals(message: string, codexErrorInfo?: unknown): AdapterSignal[] {
+  // Prefer the native discriminant: provider wording is not a protocol.
+  // Keep a recognizable cause in detail for the daemon's exhaustion policy.
+  if (codexErrorInfo === "usageLimitExceeded") {
+    return [{ kind: "flag", flag: "resource_blocked", action: "set", detail: `codex usage limit exceeded: ${message}`.slice(0, 500) }];
+  }
   if (isAuthNeededMessage(message)) {
     return [{ kind: "flag", flag: "auth_needed", action: "set", detail: message.slice(0, 500) }];
   }
-  if (isResourceBlockedMessage(message)) {
+  if (isResourceBlockedMessage(message) || /usage limit/i.test(message)) {
     return [{ kind: "flag", flag: "resource_blocked", action: "set", detail: message.slice(0, 500) }];
   }
   return [];
@@ -243,11 +254,19 @@ export function codexAdapter(opts: CodexAdapterOptions): HarnessAdapter {
           ...(threadId ? { threadId } : {}),
         }];
       }
-      case "turn/completed":
-        return [...successfulTurnClears(), { kind: "turn_ended", ...(threadId ? { threadId } : {}) }];
+      case "turn/completed": {
+        const turn = asObject(params.turn);
+        const err = asObject(turn?.error);
+        // Completion is a lifecycle edge, not proof that the provider served
+        // the turn. Failed/interrupted/unknown outcomes preserve boundaries.
+        const evidence = err
+          ? errorSignals(String(err.message ?? "codex turn failed"), err.codexErrorInfo)
+          : turn?.status === "completed" ? successfulTurnClears() : [];
+        return [...evidence, { kind: "turn_ended", ...(threadId ? { threadId } : {}) }];
+      }
       case "error": {
         const err = asObject(params.error);
-        return errorSignals(String(err?.message ?? params.message ?? "codex error"));
+        return errorSignals(String(err?.message ?? params.message ?? "codex error"), err?.codexErrorInfo);
       }
       case "account/rateLimits/updated":
         return codexRateLimitSignals(params.rateLimits);

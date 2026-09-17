@@ -76,6 +76,14 @@ rl.on("line", (raw) => {
       const slow = /@slow:(\d+)/.exec(String(text));
       emit({ jsonrpc: "2.0", id: msg.id, result: { turn: { id: turnId } } });
       emit({ jsonrpc: "2.0", method: "turn/started", params: { threadId, turn: { id: turnId } } });
+      if (String(text).includes("@usageLimit")) {
+        const error = { message: "You've hit your usage limit.", codexErrorInfo: "usageLimitExceeded" };
+        emit({ method: "account/rateLimits/updated", params: { rateLimits: { limitId: "premium", primary: null, secondary: null, rateLimitReachedType: null } } });
+        emit({ method: "error", params: { threadId, turnId, error, willRetry: false } });
+        emit({ method: "turn/completed", params: { threadId, turn: { id: turnId, status: "failed", error } } });
+        currentTurnId = null;
+        return;
+      }
       turnTimer = setTimeout(() => {
         turnTimer = null;
         currentTurnId = null;
@@ -84,7 +92,7 @@ rl.on("line", (raw) => {
         // Lifecycle still derives from turn/completed; the status notification
         // is deliberately non-authoritative in the Codex adapter.
         emit({ jsonrpc: "2.0", method: "thread/status/changed", params: { threadId, status: { type: "idle" } } });
-        emit({ jsonrpc: "2.0", method: "turn/completed", params: { threadId, turn: { id: turnId } } });
+        emit({ jsonrpc: "2.0", method: "turn/completed", params: { threadId, turn: { id: turnId, status: "completed", error: null } } });
       }, slow ? Number(slow[1]) : 10);
       return;
     }
@@ -108,7 +116,7 @@ rl.on("line", (raw) => {
         turnTimer = null;
         currentTurnId = null;
         emit({ jsonrpc: "2.0", id: msg.id, result: {} });
-        emit({ jsonrpc: "2.0", method: "turn/completed", params: { threadId, turn: { id: wanted }, interrupted: true } });
+        emit({ jsonrpc: "2.0", method: "turn/completed", params: { threadId, turn: { id: wanted, status: "interrupted", error: null }, interrupted: true } });
       } else {
         emit({ jsonrpc: "2.0", id: msg.id, error: { code: -32600, message: `fake-codex: no active turn ${wanted}` } });
       }

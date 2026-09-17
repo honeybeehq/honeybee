@@ -754,3 +754,39 @@ test("rpc.accounts.v18: importExisting imports the MACHINE's vendor home (the fi
     rmSync(dirname(machineHome), { recursive: true, force: true });
   }
 });
+
+test("rpc.accounts: Codex usageLimitExceeded persists bee and account boundaries until successful recovery", async () => {
+  const { dir, cleanup } = makeDaemonDir({ agents: { codex: {
+    command: process.execPath,
+    args: [join(here, "..", "..", "driver-hsr", "test-agent", "fake-codex.mjs")],
+    adapter: "codex",
+  } } });
+  let daemon: DaemonHandle | null = null;
+  try {
+    seedVault(dir, "codex", "codex-quota", "auth.json");
+    daemon = await startDaemon(dir);
+    const client = await daemon.client();
+    await client.request("account.add", { harness: "codex", label: "quota", importExisting: true });
+    const bee = await client.request<SpawnResult>("spawn", { name: "quota", agent: "codex", cwd: dir, account: "codex-quota", tags: ["autoswap=false"] });
+    const message = await client.request<SendRpcResult>("send", { beeId: bee.beeId, body: "@usageLimit" });
+    await waitDelivered(client, bee.beeId, message.messageId, "quota request delivered");
+    await waitFor(async () => {
+      const v = await client.request<ViewResult>("view", { beeId: bee.beeId });
+      return v.view.runtimeState === "idle" && v.view.flags.includes("resource_blocked") ? v : null;
+    }, "failed Codex turn stays blocked");
+    const account = await client.request<AccountGetResult>("account.get", { id: "codex-quota" });
+    assert.ok(account.account.exhaustedAt, "quota failure reaches account exhaustion policy");
+    assert.equal(account.account.status, "ok", "quota exhaustion does not require login");
+    const next = await client.request<SendRpcResult>("send", { beeId: bee.beeId, body: "quota reset, continue" });
+    await waitDelivered(client, bee.beeId, next.messageId, "recovery request delivered");
+    await waitFor(async () => {
+      const v = await client.request<ViewResult>("view", { beeId: bee.beeId });
+      return v.view.runtimeState === "idle" && !v.view.flags.includes("resource_blocked");
+    }, "successful turn clears bee boundary");
+    await waitFor(async () => (await client.request<AccountGetResult>("account.get", { id: "codex-quota" })).account.exhaustedAt === null, "successful turn clears account exhaustion");
+    client.close();
+  } finally {
+    if (daemon) await daemon.stop();
+    cleanup();
+  }
+});

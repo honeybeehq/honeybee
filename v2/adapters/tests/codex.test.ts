@@ -62,7 +62,7 @@ test("codex: turn/started → turn_started; turn/completed → clears + turn_end
     [{ kind: "turn_started", turnId: "turn-1", threadId: "t" }], // v6: the turn id rides along (turn/interrupt needs it)
   );
   assert.deepEqual(
-    adapter.parseLine(JSON.stringify({ jsonrpc: "2.0", method: "turn/completed", params: { threadId: "t", turn: { id: "turn-1" } } })),
+    adapter.parseLine(JSON.stringify({ jsonrpc: "2.0", method: "turn/completed", params: { threadId: "t", turn: { id: "turn-1", status: "completed", error: null } } })),
     [
       { kind: "flag", flag: "auth_needed", action: "clear", detail: "successful authenticated turn" },
       { kind: "flag", flag: "resource_blocked", action: "clear", detail: "successful turn served" },
@@ -338,4 +338,59 @@ test("codex: developerInstructions ride on thread/start and thread/resume, not a
   assert.equal(keep.params.developerInstructions, composed);
   assert.match(String(keep.params.developerInstructions), /conventional commits/);
   assert.equal(codexThreadRequest({ cwd: "/tmp/to", developerInstructions: "  " }).params.developerInstructions, undefined);
+});
+
+// Sanitized protocol shapes from CO.c614, 2026-09-17 (Codex 0.154).
+test("codex: usage-limit failure stays blocked after turn completion", () => {
+  const error = { message: "You've hit your usage limit.", codexErrorInfo: "usageLimitExceeded" };
+  const flags = new Set<string>();
+  for (const event of [
+    { method: "account/rateLimits/updated", params: { rateLimits: { limitId: "premium", primary: null, secondary: null, rateLimitReachedType: null, credits: { hasCredits: false, balance: "0" } } } },
+    { method: "error", params: { error, willRetry: false } },
+    { method: "turn/completed", params: { threadId: "t", turn: { id: "failed", status: "failed", error } } },
+  ]) {
+    for (const signal of adapter.parseLine(JSON.stringify(event))) {
+      if (signal.kind === "flag") {
+        if (signal.action === "set") flags.add(signal.flag);
+        else flags.delete(signal.flag);
+      }
+    }
+  }
+  assert.deepEqual([...flags], ["resource_blocked"]);
+});
+
+test("codex: typed quota error survives unfamiliar message wording and completion-only errors", () => {
+  const error = { message: "Provider declined this request", codexErrorInfo: "usageLimitExceeded" };
+  for (const event of [
+    { method: "error", params: { error } },
+    { method: "turn/completed", params: { turn: { status: "failed", error } } },
+  ]) {
+    const signals = adapter.parseLine(JSON.stringify(event));
+    assert.ok(signals.some(s => s.kind === "flag" && s.flag === "resource_blocked" && s.action === "set"));
+    assert.ok(!signals.some(s => s.kind === "flag" && s.action === "clear"));
+  }
+});
+
+test("codex: only an explicitly successful completion clears boundary flags", () => {
+  for (const status of ["failed", "interrupted", "inProgress", undefined]) {
+    const signals = adapter.parseLine(JSON.stringify({ method: "turn/completed", params: { threadId: "t", turn: { status } } }));
+    assert.deepEqual(signals, [{ kind: "turn_ended", threadId: "t" }]);
+  }
+  const error = { message: "401 Unauthorized" };
+  const failed = adapter.parseLine(JSON.stringify({ method: "turn/completed", params: { turn: { status: "failed", error } } }));
+  assert.ok(failed.some(s => s.kind === "flag" && s.flag === "auth_needed" && s.action === "set"));
+  const success = adapter.parseLine(JSON.stringify({ method: "turn/completed", params: { turn: { status: "completed", error: null } } }));
+  assert.equal(success.filter(s => s.kind === "flag" && s.action === "clear").length, 2);
+});
+
+test("codex: legacy usage-limit text and failed auth retain their boundaries", () => {
+  for (const [message, flag] of [["You've hit your usage limit.", "resource_blocked"], ["401 Unauthorized", "auth_needed"]]) {
+    const error = { message };
+    const signals = [
+      { method: "error", params: { error } },
+      { method: "turn/completed", params: { turn: { status: "failed", error } } },
+    ].flatMap(event => adapter.parseLine(JSON.stringify(event)));
+    assert.equal(signals.filter(s => s.kind === "flag" && s.flag === flag && s.action === "set").length, 2);
+    assert.ok(!signals.some(s => s.kind === "flag" && s.action === "clear"));
+  }
 });
