@@ -16,6 +16,27 @@ function capture(): { io: CliIo; out: string[]; err: string[] } {
   return { io: { out: (l) => out.push(stripAnsi(l)), err: (l) => err.push(stripAnsi(l)) }, out, err };
 }
 
+test("cli.action rejects conflicting result flags before contacting a daemon", async () => {
+  const { dir, cleanup } = makeDaemonDir();
+  try {
+    for (const flags of [
+      ["--succeeded", "--failed"],
+      ["--succeeded", "--uncertain"],
+      ["--failed", "--uncertain"],
+      ["--succeeded", "--failed", "--uncertain"],
+    ]) {
+      const result = capture();
+      const code = await runV2Cli([
+        "action", "report", "action-id", "--attempt", "1", "--token", "test-token",
+        ...flags, "--data-dir", dir,
+      ], result.io);
+      assert.equal(code, 1);
+      assert.match(result.err.join("\n"), /exactly one of/);
+      assert.equal(result.out.length, 0);
+    }
+  } finally { cleanup(); }
+});
+
 test("cli.action: enqueue → list/get → report from inside the bee (HIVE_BEE_ID + token) → pause/resume/cancel/retry", { timeout: 120_000 }, async () => {
   const { dir, cleanup } = makeDaemonDir();
   let daemon: DaemonHandle | null = null;

@@ -1359,7 +1359,7 @@ async function cmdAction(ctx: CliContext, parsed: Parsed): Promise<number> {
       const ask = parsed.flags.get("--ask") as string | undefined;
       const progress = parsed.flags.get("--progress") as string | undefined;
       const outcome = parsed.flags.get("--succeeded") === true ? "succeeded" : parsed.flags.get("--failed") === true ? "failed" : parsed.flags.get("--uncertain") === true ? "uncertain" : null;
-      const kinds = [ask !== undefined, progress !== undefined, outcome !== null].filter(Boolean).length;
+      const kinds = [ask !== undefined, progress !== undefined, parsed.flags.get("--succeeded") === true, parsed.flags.get("--failed") === true, parsed.flags.get("--uncertain") === true].filter(Boolean).length;
       if (kinds !== 1) throw new Error(`action report: pass exactly one of --succeeded | --failed | --uncertain | --ask | --progress\n${usage}`);
       const detail = parsed.flags.get("--detail") as string | undefined;
       const code = parsed.flags.get("--code") as string | undefined;
