@@ -790,3 +790,30 @@ test("rpc.accounts: Codex usageLimitExceeded persists bee and account boundaries
     cleanup();
   }
 });
+
+test("rpc central credentials: opt-in/status/lease/disable, idempotent enable, native login and capture fenced", async () => {
+  const { dir, cleanup } = makeDaemonDir();
+  let daemon: DaemonHandle | null = null;
+  try {
+    const fixture = { claudeAiOauth: { accessToken: "CENTRAL_ACCESS_FIXTURE", refreshToken: "CENTRAL_REFRESH_FIXTURE", expiresAt: Date.now() + 8 * 3600000 } };
+    seedVault(dir, "claude", "claude-pilot", ".credentials.json", JSON.stringify(fixture));
+    daemon = await startDaemon(dir);
+    const client = await daemon.client();
+    await client.request("account.add", { harness: "claude", label: "pilot", importExisting: true });
+    assert.equal(await client.request("account.credentials.status", { id: "claude-pilot" }), null);
+    const state = await client.request<{ phase: string; generation: number }>("account.credentials.enable", { id: "claude-pilot", idempotencyKey: "central-enable" });
+    assert.equal(state.phase, "ready");
+    assert.equal(state.generation, 1);
+    const replay = await client.request<{ deduped: boolean }>("account.credentials.enable", { id: "claude-pilot", idempotencyKey: "central-enable" });
+    assert.equal(replay.deduped, true);
+    await rejects(() => client.request("account.credentials.refresh", { id: "claude-pilot" }), "invalid_request");
+    await rejects(() => client.request("account.login.start", { id: "claude-pilot" }), "account_unavailable");
+    await rejects(() => client.request("account.capture", { id: "claude-pilot" }), "invalid_request");
+    const lease = await client.request<{ files: Array<{ contentB64: string }> }>("account.lease", { account: "claude-pilot" });
+    assert.equal(JSON.parse(Buffer.from(lease.files[0]!.contentB64, "base64").toString()).claudeAiOauth.refreshToken, "");
+    const disabled = await client.request<{ phase: string }>("account.credentials.disable", { id: "claude-pilot", idempotencyKey: "central-disable" });
+    assert.equal(disabled.phase, "disabled");
+    assert.ok(readFileSync(join(dir, "vault", "claude", "claude-pilot", ".credentials.json"), "utf8").includes("CENTRAL_REFRESH_FIXTURE"));
+    client.close();
+  } finally { if (daemon) await daemon.stop(); cleanup(); }
+});

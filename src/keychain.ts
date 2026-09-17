@@ -119,9 +119,11 @@ export async function readClaudeKeychainState(homePath: string, deps: KeychainRe
 }
 
 export class ClaudeKeychainUnreadableError extends Error {
-  constructor(homePath: string, readonly reason: Extract<ClaudeKeychainReadResult, { status: "unreadable" }>["reason"]) {
+  readonly reason: Extract<ClaudeKeychainReadResult, { status: "unreadable" }>["reason"];
+  constructor(homePath: string, reason: Extract<ClaudeKeychainReadResult, { status: "unreadable" }>["reason"]) {
     super(`Could not read the authoritative macOS Keychain entry for ${homePath} (${reason})`);
     this.name = "ClaudeKeychainUnreadableError";
+    this.reason = reason;
   }
 }
 

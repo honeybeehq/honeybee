@@ -138,8 +138,10 @@
  *  v25 — thread fork/handoff operation receipts, pinned source prefixes, and
  *        durable copy/compaction/start readiness. Additive table and indexes.
  */
-/** v26 widens the generation-fenced command vocabulary with reconnect_tools. */
-export const SCHEMA_VERSION = 26;
+/** v26 widens commands with reconnect_tools; v27 adds the opt-in credential authority table.
+ * v27 refuses older binaries even when no account is enrolled. Roll back behavior with
+ * credentials.disable; binary downgrade requires a separately planned store restore. */
+export const SCHEMA_VERSION = 27;
 
 /**
  * Current shape shared between SCHEMA_SQL and the v19 table rebuild so a
@@ -428,6 +430,16 @@ CREATE TABLE IF NOT EXISTS accounts (
   updated_at    INTEGER NOT NULL
 ) STRICT;
 CREATE INDEX IF NOT EXISTS accounts_harness ON accounts(harness, added_at, id);
+
+-- v27: opt-in Claude credential authority. Secrets remain in the private vault.
+CREATE TABLE IF NOT EXISTS account_credential_authorities (
+  account TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
+  phase TEXT NOT NULL CHECK (phase IN ('enrolling','ready','refreshing','uncertain','disabling','disabling_uncertain','disabled')),
+  generation INTEGER NOT NULL,
+  expires_at INTEGER,
+  operation_key TEXT,
+  updated_at INTEGER NOT NULL
+) STRICT;
 
 -- v7: the latest limits snapshot per account (one row, replaced on fetch).
 -- Percentages are provider "used%" per window; *_resets_at epoch ms;

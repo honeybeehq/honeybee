@@ -18,6 +18,7 @@
  * so tests never touch a real keychain; the default reader is a no-op off
  * macOS or under HIVE_NO_KEYCHAIN.
  */
+import { readClaudeKeychainState as readNativeKeychainState } from "../../../src/keychain.ts";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { homedir, userInfo } from "node:os";
@@ -77,6 +78,14 @@ export const readClaudeKeychain: KeychainReader = async (homePath) => {
   } catch {
     return null;
   }
+};
+
+/** Unlike the legacy reader, ownership changes must distinguish absence from read failure. */
+export type KeychainState = { status: "present"; raw: string } | { status: "absent" | "unavailable" | "unreadable" };
+export type KeychainStateReader = (homePath: string) => Promise<KeychainState>;
+export const readClaudeKeychainState: KeychainStateReader = async homePath => {
+  const state = await readNativeKeychainState(homePath);
+  return state.status === "present" ? { ...state, raw: decodeSecurityPasswordOutput(state.raw) } : state;
 };
 
 // `security -i` reads one command per line from stdin. Its tokenizer splits
