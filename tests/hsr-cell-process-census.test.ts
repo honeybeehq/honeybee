@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { spawn, type SpawnSyncReturns } from "node:child_process";
 import { test } from "node:test";
 import { listProcessRows, readProcessBirthFingerprint, inspectProcessBirth } from "../src/hsr/processIdentity.js";
 
@@ -124,5 +124,19 @@ test("native helper exit 1 stays unverifiable rather than proving a PID absent",
     assert.equal(await reader.inspectProcessBirth(process.pid, { pgid: process.pid, startedAt: "Thu Sep 17 00:00:00 2026" }), "unverifiable");
   } finally {
     await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("native census omits Darwin kernel PID 0 in both ps-compatible modes", { skip: process.platform !== "darwin" }, async () => {
+  const { spawnSync } = await import("node:child_process");
+  const { macProcessCensusPath } = await import("../src/hsr/processCensus.js");
+  const helper = macProcessCensusPath();
+  assert.ok(helper, "build the native helper before testing");
+  for (const args of [[], ["--identity"]]) {
+    const result: SpawnSyncReturns<string> = spawnSync(helper, args, { encoding: "utf8", timeout: 5_000 });
+    assert.equal(result.status, 0, result.stderr);
+    const pids = result.stdout.trim().split("\n").map(row => Number(row.split(/\s+/)[0]));
+    assert.ok(pids.includes(process.pid), "the calling controller remains in the census");
+    assert.ok(pids.every(pid => Number.isSafeInteger(pid) && pid > 0), "PID 0 is excluded just as in Darwin ps");
   }
 });

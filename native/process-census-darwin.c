@@ -71,6 +71,9 @@ int main(int argc, char **argv) {
     if (!saw_self) { free(rows); return fail("census omitted its own process"); }
     for (size_t i = 0; i < count; i++) {
         struct kinfo_proc *row = &rows[i];
+        /* Darwin ps also omits the kernel task: PID 0 is not a user process
+         * and must never enter a controller's positive-PID ownership table. */
+        if (row->kp_proc.p_pid == 0) continue;
         time_t birth = row->kp_proc.p_starttime.tv_sec;
         struct tm date;
         char started[64];

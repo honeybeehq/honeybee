@@ -17,6 +17,8 @@ when opening the driver, so a subsequent deployment cannot swap its helper.
 Do not resolve the binary through the Cell's PATH or a Cell-controlled override.
 
 - Stdout has no header: `PID PPID PGID STATE LSTART`, one process per line.
+  PID 0 (the Darwin kernel task) is omitted, matching Darwin ps. All emitted
+  PIDs are positive; PPID and PGID may be zero. There is no JSON mode/schema.
 - Topology and birth come from one complete kernel census, including detached,
   reparented, and zombie processes. There are no command lines or environment
   variables in the output.
@@ -24,6 +26,9 @@ Do not resolve the binary through the Cell's PATH or a Cell-controlled override.
   zombies. It is **not** a thread scheduling sample or the full set of ps display
   modifiers (such as `+`, `s`, or `N`). Consumers must use it for zombie/stop
   handling, not CPU profiling or detailed thread state.
+- RSS is not exposed. Apiary control-profile sampling that still invokes
+  `ps -o pid=,rss=` remains a separate limitation; this identity-census change
+  does not provide complete profiling support.
 - `LSTART` is the local-time C-locale `ps lstart` representation, with the same
   second-level precision as existing durable HSR fingerprints. Keep timezone
   consistent between observers. No birth-token migration is needed.
