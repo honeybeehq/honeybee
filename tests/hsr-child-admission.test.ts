@@ -4,6 +4,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { macProcessCensusPath } from "../src/hsr/processCensus.js";
 import { stubAdapter } from "../src/hsr/adapters/stub.js";
 import { runHsrHost } from "../src/hsr/host.js";
 import { reapDeadHosts } from "../src/hsr/observe.js";
@@ -33,7 +34,9 @@ async function withTempStore(fn: () => Promise<void>): Promise<void> {
 
 function detachedRuntimeAvailable(): boolean {
   try {
-    execFileSync("/bin/ps", ["-o", "pid=,ppid=,pgid=,lstart=", "-p", String(process.pid)], { stdio: "ignore" });
+    const nativeCensus = macProcessCensusPath();
+    execFileSync(nativeCensus ?? "/bin/ps", nativeCensus ? ["--identity"] :
+      ["-o", "pid=,ppid=,pgid=,lstart=", "-p", String(process.pid)], { stdio: "ignore" });
     return true;
   } catch {
     return false;

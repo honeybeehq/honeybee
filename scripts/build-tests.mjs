@@ -4,6 +4,7 @@ import { join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 import { rewriteRelativeTypeScriptImports } from "./rewrite-test-imports.mjs";
+import { buildProcessCensus } from "./build-process-census.mjs";
 import { stageRunnerHostArtifact } from "./runner-host-artifact.mjs";
 
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
@@ -53,6 +54,8 @@ const stampInputs = [
   ...sourceFiles,
   ...testFiles,
   ...assetFiles,
+  join(root, "native", "process-census-darwin.c"),
+  join(root, "scripts", "build-process-census.mjs"),
   join(root, "package.json"),
   join(root, "scripts", "build-tests.mjs"),
   join(root, "scripts", "rewrite-test-imports.mjs"),
@@ -70,6 +73,9 @@ if (process.env.FORCE_TEST_BUILD !== "1") {
     // no stamp or unreadable — build
   }
 }
+
+buildProcessCensus(join(outDir, "src", "native"));
+await cp(join(root, "native"), join(outDir, "native"), { recursive: true });
 
 // Transpile the whole graph once instead of starting a tsx/esbuild service in
 // every Node test worker. Each file remains a separate ESM module, preserving

@@ -10,6 +10,7 @@
 
 import { execFile } from "node:child_process";
 import { performance } from "node:perf_hooks";
+import { macProcessCensusPath } from "./processCensus.js";
 
 const PROCESS_CENSUS_TIMEOUT_MS = 5_000;
 // The current Node process already has an immutable per-incarnation clock
@@ -66,11 +67,12 @@ export function parseProcessRows(output: string): ProcessRow[] {
   return rows;
 }
 
-function execPs(args: string[]): Promise<string> {
+function execProcessCensus(args: string[], selectedPid = false): Promise<string> {
   return new Promise((resolve, reject) => {
+    const nativeCensus = macProcessCensusPath();
     execFile(
-      "/bin/ps",
-      args,
+      nativeCensus ?? "/bin/ps",
+      nativeCensus ? ["--identity"] : args,
       {
         maxBuffer: 16 * 1024 * 1024,
         timeout: PROCESS_CENSUS_TIMEOUT_MS,
@@ -82,7 +84,10 @@ function execPs(args: string[]): Promise<string> {
         env: { ...process.env, LC_ALL: "C" },
       },
       (error, stdout) => {
-        if (error) reject(error);
+        // Only ps documents exit 1 as an absent selected PID. Native-helper
+        // failures (including exit 1) must never become death evidence.
+        if (error && !nativeCensus && selectedPid && error.code === 1) resolve("");
+        else if (error) reject(error);
         else resolve(stdout);
       },
     );
@@ -94,23 +99,14 @@ export async function listProcessRows(): Promise<ProcessRow[]> {
   // simply unavailable there. Destructive single-PID inspection below still
   // throws so its caller produces the fail-closed `unverifiable` verdict.
   if (process.platform === "win32") return [];
-  return parseProcessRows(await execPs(["-A", "-o", "pid=,ppid=,pgid=,lstart="]));
+  return parseProcessRows(await execProcessCensus(["-A", "-o", "pid=,ppid=,pgid=,lstart="]));
 }
 
 /** Read the current incarnation of one PID; null means the PID is absent. */
 export async function readProcessBirthFingerprint(pid: number): Promise<ProcessBirthFingerprint | null> {
   if (process.platform === "win32") throw new Error("process birth identity is unavailable on win32");
   if (!Number.isSafeInteger(pid) || pid <= 0) return null;
-  let output: string;
-  try {
-    output = await execPs(["-o", "pid=,ppid=,pgid=,lstart=", "-p", String(pid)]);
-  } catch (error) {
-    // BSD/macOS and procps both return exit status 1 when no selected PID
-    // exists. Other failures (timeout, missing ps, permissions) are not death
-    // evidence and must remain distinguishable to callers.
-    if ((error as { code?: unknown }).code === 1) return null;
-    throw error;
-  }
+  const output = await execProcessCensus(["-o", "pid=,ppid=,pgid=,lstart=", "-p", String(pid)], true);
   const row = parseProcessRows(output).find((candidate) => candidate.pid === pid);
   return row ? { pgid: row.pgid, startedAt: row.startedAt } : null;
 }
@@ -182,7 +178,7 @@ export function sameProcessBirthFingerprint(
 
 /**
  * Field-order-insensitive lstart comparison key. Fingerprints minted before
- * execPs pinned LC_ALL=C may carry a locale-ordered date ("Mon 10 Aug ..."
+ * the census reader pinned LC_ALL=C may carry a locale-ordered date ("Mon 10 Aug ..."
  * vs C's "Mon Aug 10 ..."): the fields are identical, only their order
  * differs, so comparing the sorted token multiset recognizes the same birth
  * instant without ever equating two different ones (a different second, day,
