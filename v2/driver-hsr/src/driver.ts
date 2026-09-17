@@ -826,6 +826,15 @@ export class HsrDriver implements RuntimeDriver {
         }
         if (p.agentPid == null && typeof status.agentPid === "number") {
           p.agentPid = status.agentPid;
+          // The host has progressed since the initial connection failed. Wake
+          // its pending retry once, instead of sleeping through the rest of
+          // the 200ms backoff. Delivery still requires a connected socket;
+          // reconnect failures retain the normal bounded retry cadence.
+          if (p.socketRetry) {
+            clearTimeout(p.socketRetry);
+            p.socketRetry = null;
+            this.connectSocket(p);
+          }
           if (p.adapter?.readyAtSpawn) {
             // The OS confirmed the AGENT spawn (v9: synthetic, never boot
             // evidence) — the same edge the direct child's `spawn` event was.

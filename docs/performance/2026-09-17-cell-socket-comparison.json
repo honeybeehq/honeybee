@@ -1,0 +1,966 @@
+{
+  "scope": "Source Node 24.18.0, satellite sandbox on, disposable 202-file origins and stub; shared low-load hosts, not provider or UI latency",
+  "order": "before/after then after/before; 20 batches per capture; width4 bees correlated",
+  "comparisons": [
+    {
+      "host": "trmd-metal-1",
+      "scenario": "warm",
+      "repeat": false,
+      "seriesId": "c9d10c8a121cde40e65d734813af5c2d43ccc15b2530acdf4c27be6d7eeb24a8",
+      "before": {
+        "sha256": "71e7b54a68f3c43a9689eb3894410bf65dc972ccd545315f85d0ece020a261c5",
+        "source": {
+          "v2/daemon/src/daemon.ts": "06cabb215b72009724214f1fae1f9891d4b8d2f6de0a9ffa33ddc0009e692c39",
+          "v2/daemon/src/config.ts": "31d14939e8dd7c44ea81bced94a786512ae9c29ad7a908b0cf0bddfa887bb986",
+          "v2/daemon/src/loops.ts": "378483d777b3f4d46453e72189f89ff40f547c4fe6abee0c43d2ea0a363c7700",
+          "v2/driver-cell/src/driver.ts": "7795f9ac4d574cd802128e05bf9c14fb6d938c84a3cc786fc524d50af8873b1a",
+          "v2/driver-cell/src/provision.ts": "8293821e57266a0b4f7a2e0e6d25c584cac6caf1ac0afad207311af57558be66",
+          "v2/driver-hsr/src/driver.ts": "4a4cc1191e01320db09901c9c6f2e7d2c19b318ce696f2f09b2fa9807dab11ae",
+          "v2/driver-hsr/src/runner-host.ts": "7f1716db45160657ef2109d8a18ae064cbab065f0321b22d29f9a193a3f3c152",
+          "v2/daemon/tests/helpers.ts": "9d63216758bec78d1f0e6f7fa949d67ee1f4b1d90eb5efdd4a8888cda75ea0f3",
+          "v2/driver-cell/tests/helpers.ts": "87011a31ac2423348860681e45acb3325bff44c666619ca848487f22aa2c1a03",
+          "v2/driver-hsr/test-agent/agent.mjs": "1c4764558ce069d248b107a30e3eee095cdf30f8ed0714ee186f31b0bc8ceb87"
+        },
+        "environment": {
+          "node": "v24.18.0",
+          "platform": "linux",
+          "arch": "x64",
+          "hostname": "trmd-metal-1",
+          "cpu": "AMD EPYC 9454P 48-Core Processor",
+          "logicalCpus": 96,
+          "totalMemoryBytes": 269935489024,
+          "loadBefore": [
+            1.97,
+            1.12,
+            1.3
+          ],
+          "loadAfter": [
+            2.19,
+            1.2,
+            1.32
+          ]
+        }
+      },
+      "after": {
+        "sha256": "4efdf94af31c61804bdd19daeeb6a56d2754ab4752dbc0d750911d28b23ea0d8",
+        "source": {
+          "v2/daemon/src/daemon.ts": "06cabb215b72009724214f1fae1f9891d4b8d2f6de0a9ffa33ddc0009e692c39",
+          "v2/daemon/src/config.ts": "31d14939e8dd7c44ea81bced94a786512ae9c29ad7a908b0cf0bddfa887bb986",
+          "v2/daemon/src/loops.ts": "378483d777b3f4d46453e72189f89ff40f547c4fe6abee0c43d2ea0a363c7700",
+          "v2/driver-cell/src/driver.ts": "7795f9ac4d574cd802128e05bf9c14fb6d938c84a3cc786fc524d50af8873b1a",
+          "v2/driver-cell/src/provision.ts": "8293821e57266a0b4f7a2e0e6d25c584cac6caf1ac0afad207311af57558be66",
+          "v2/driver-hsr/src/driver.ts": "2ef3e3bf95a5a300db34d0c79afc77ae63f1d9d73f74c2ea6305662d9f818998",
+          "v2/driver-hsr/src/runner-host.ts": "7f1716db45160657ef2109d8a18ae064cbab065f0321b22d29f9a193a3f3c152",
+          "v2/daemon/tests/helpers.ts": "9d63216758bec78d1f0e6f7fa949d67ee1f4b1d90eb5efdd4a8888cda75ea0f3",
+          "v2/driver-cell/tests/helpers.ts": "87011a31ac2423348860681e45acb3325bff44c666619ca848487f22aa2c1a03",
+          "v2/driver-hsr/test-agent/agent.mjs": "1c4764558ce069d248b107a30e3eee095cdf30f8ed0714ee186f31b0bc8ceb87"
+        },
+        "environment": {
+          "node": "v24.18.0",
+          "platform": "linux",
+          "arch": "x64",
+          "hostname": "trmd-metal-1",
+          "cpu": "AMD EPYC 9454P 48-Core Processor",
+          "logicalCpus": 96,
+          "totalMemoryBytes": 269935489024,
+          "loadBefore": [
+            2.44,
+            1.68,
+            1.49
+          ],
+          "loadAfter": [
+            2.57,
+            1.72,
+            1.5
+          ]
+        }
+      },
+      "metrics": [
+        {
+          "scenario": "cell-spawn-warm-1",
+          "metric": "cell.accept",
+          "unit": "ms",
+          "before": 19.300540000000183,
+          "after": 17.435051999999814,
+          "deltaPercent": -9.66547049979094,
+          "beforeP95": 22.898627999999917,
+          "afterP95": 19.809753,
+          "n": 20
+        },
+        {
+          "scenario": "cell-spawn-warm-1",
+          "metric": "cell.ready",
+          "unit": "ms",
+          "before": 202.27898300000015,
+          "after": 208.8354119999999,
+          "deltaPercent": 3.2412803855157657,
+          "beforeP95": 215.692493,
+          "afterP95": 220.71471100000053,
+          "n": 20
+        },
+        {
+          "scenario": "cell-spawn-warm-1",
+          "metric": "cell.usable",
+          "unit": "ms",
+          "before": 320.2259409999999,
+          "after": 238.64550599999995,
+          "deltaPercent": -25.475898281457464,
+          "beforeP95": 325.9287860000004,
+          "afterP95": 246.34827899999982,
+          "n": 20
+        },
+        {
+          "scenario": "cell-spawn-warm-1",
+          "metric": "cell.batchIncludingVerificationAndStop",
+          "unit": "ms",
+          "before": 367.1370859999997,
+          "after": 296.0865840000006,
+          "deltaPercent": -19.352581013839387,
+          "beforeP95": 381.25687600000015,
+          "afterP95": 320.67642799999976,
+          "n": 20
+        }
+      ]
+    },
+    {
+      "host": "trmd-metal-1",
+      "scenario": "warm",
+      "repeat": true,
+      "seriesId": "c9d10c8a121cde40e65d734813af5c2d43ccc15b2530acdf4c27be6d7eeb24a8",
+      "before": {
+        "sha256": "2aebee51c29194c76364549fbe960c5dc07be8cd25c733f16594f3f8a7d3f6ef",
+        "source": {
+          "v2/daemon/src/daemon.ts": "06cabb215b72009724214f1fae1f9891d4b8d2f6de0a9ffa33ddc0009e692c39",
+          "v2/daemon/src/config.ts": "31d14939e8dd7c44ea81bced94a786512ae9c29ad7a908b0cf0bddfa887bb986",
+          "v2/daemon/src/loops.ts": "378483d777b3f4d46453e72189f89ff40f547c4fe6abee0c43d2ea0a363c7700",
+          "v2/driver-cell/src/driver.ts": "7795f9ac4d574cd802128e05bf9c14fb6d938c84a3cc786fc524d50af8873b1a",
+          "v2/driver-cell/src/provision.ts": "8293821e57266a0b4f7a2e0e6d25c584cac6caf1ac0afad207311af57558be66",
+          "v2/driver-hsr/src/driver.ts": "4a4cc1191e01320db09901c9c6f2e7d2c19b318ce696f2f09b2fa9807dab11ae",
+          "v2/driver-hsr/src/runner-host.ts": "7f1716db45160657ef2109d8a18ae064cbab065f0321b22d29f9a193a3f3c152",
+          "v2/daemon/tests/helpers.ts": "9d63216758bec78d1f0e6f7fa949d67ee1f4b1d90eb5efdd4a8888cda75ea0f3",
+          "v2/driver-cell/tests/helpers.ts": "87011a31ac2423348860681e45acb3325bff44c666619ca848487f22aa2c1a03",
+          "v2/driver-hsr/test-agent/agent.mjs": "1c4764558ce069d248b107a30e3eee095cdf30f8ed0714ee186f31b0bc8ceb87"
+        },
+        "environment": {
+          "node": "v24.18.0",
+          "platform": "linux",
+          "arch": "x64",
+          "hostname": "trmd-metal-1",
+          "cpu": "AMD EPYC 9454P 48-Core Processor",
+          "logicalCpus": 96,
+          "totalMemoryBytes": 269935489024,
+          "loadBefore": [
+            3.46,
+            3.35,
+            2.2
+          ],
+          "loadAfter": [
+            3.24,
+            3.3,
+            2.2
+          ]
+        }
+      },
+      "after": {
+        "sha256": "230e76f82bdb0c3a15cb33559d087be6c55b29811fccdea9300ae206bd33ddb4",
+        "source": {
+          "v2/daemon/src/daemon.ts": "06cabb215b72009724214f1fae1f9891d4b8d2f6de0a9ffa33ddc0009e692c39",
+          "v2/daemon/src/config.ts": "31d14939e8dd7c44ea81bced94a786512ae9c29ad7a908b0cf0bddfa887bb986",
+          "v2/daemon/src/loops.ts": "378483d777b3f4d46453e72189f89ff40f547c4fe6abee0c43d2ea0a363c7700",
+          "v2/driver-cell/src/driver.ts": "7795f9ac4d574cd802128e05bf9c14fb6d938c84a3cc786fc524d50af8873b1a",
+          "v2/driver-cell/src/provision.ts": "8293821e57266a0b4f7a2e0e6d25c584cac6caf1ac0afad207311af57558be66",
+          "v2/driver-hsr/src/driver.ts": "2ef3e3bf95a5a300db34d0c79afc77ae63f1d9d73f74c2ea6305662d9f818998",
+          "v2/driver-hsr/src/runner-host.ts": "7f1716db45160657ef2109d8a18ae064cbab065f0321b22d29f9a193a3f3c152",
+          "v2/daemon/tests/helpers.ts": "9d63216758bec78d1f0e6f7fa949d67ee1f4b1d90eb5efdd4a8888cda75ea0f3",
+          "v2/driver-cell/tests/helpers.ts": "87011a31ac2423348860681e45acb3325bff44c666619ca848487f22aa2c1a03",
+          "v2/driver-hsr/test-agent/agent.mjs": "1c4764558ce069d248b107a30e3eee095cdf30f8ed0714ee186f31b0bc8ceb87"
+        },
+        "environment": {
+          "node": "v24.18.0",
+          "platform": "linux",
+          "arch": "x64",
+          "hostname": "trmd-metal-1",
+          "cpu": "AMD EPYC 9454P 48-Core Processor",
+          "logicalCpus": 96,
+          "totalMemoryBytes": 269935489024,
+          "loadBefore": [
+            3.96,
+            3.43,
+            2.21
+          ],
+          "loadAfter": [
+            3.81,
+            3.41,
+            2.21
+          ]
+        }
+      },
+      "metrics": [
+        {
+          "scenario": "cell-spawn-warm-1",
+          "metric": "cell.accept",
+          "unit": "ms",
+          "before": 16.79512100000011,
+          "after": 16.292588000000023,
+          "deltaPercent": -2.9921368235458434,
+          "beforeP95": 19.05695300000025,
+          "afterP95": 19.501670999999988,
+          "n": 20
+        },
+        {
+          "scenario": "cell-spawn-warm-1",
+          "metric": "cell.ready",
+          "unit": "ms",
+          "before": 205.49141999999983,
+          "after": 209.58941800000048,
+          "deltaPercent": 1.9942428739850193,
+          "beforeP95": 221.6712480000001,
+          "afterP95": 217.10429899999963,
+          "n": 20
+        },
+        {
+          "scenario": "cell-spawn-warm-1",
+          "metric": "cell.usable",
+          "unit": "ms",
+          "before": 317.2431489999999,
+          "after": 240.66567000000032,
+          "deltaPercent": -24.138418510024184,
+          "beforeP95": 326.1139940000003,
+          "afterP95": 244.60934500000008,
+          "n": 20
+        },
+        {
+          "scenario": "cell-spawn-warm-1",
+          "metric": "cell.batchIncludingVerificationAndStop",
+          "unit": "ms",
+          "before": 359.85016499999983,
+          "after": 297.65869400000065,
+          "deltaPercent": -17.282601773990912,
+          "beforeP95": 383.14078900000004,
+          "afterP95": 306.44692699999996,
+          "n": 20
+        }
+      ]
+    },
+    {
+      "host": "trmd-metal-1",
+      "scenario": "cold-burst",
+      "repeat": false,
+      "seriesId": "5c09e761b5229e9fcf50437e014274a354dbaab7fc2866b1e74b55e5315d97ac",
+      "before": {
+        "sha256": "a3ae13745acdcb8abdfa8bf6fa7685ffdf7b77f707865414c0129c217e005e9a",
+        "source": {
+          "v2/daemon/src/daemon.ts": "06cabb215b72009724214f1fae1f9891d4b8d2f6de0a9ffa33ddc0009e692c39",
+          "v2/daemon/src/config.ts": "31d14939e8dd7c44ea81bced94a786512ae9c29ad7a908b0cf0bddfa887bb986",
+          "v2/daemon/src/loops.ts": "378483d777b3f4d46453e72189f89ff40f547c4fe6abee0c43d2ea0a363c7700",
+          "v2/driver-cell/src/driver.ts": "7795f9ac4d574cd802128e05bf9c14fb6d938c84a3cc786fc524d50af8873b1a",
+          "v2/driver-cell/src/provision.ts": "8293821e57266a0b4f7a2e0e6d25c584cac6caf1ac0afad207311af57558be66",
+          "v2/driver-hsr/src/driver.ts": "4a4cc1191e01320db09901c9c6f2e7d2c19b318ce696f2f09b2fa9807dab11ae",
+          "v2/driver-hsr/src/runner-host.ts": "7f1716db45160657ef2109d8a18ae064cbab065f0321b22d29f9a193a3f3c152",
+          "v2/daemon/tests/helpers.ts": "9d63216758bec78d1f0e6f7fa949d67ee1f4b1d90eb5efdd4a8888cda75ea0f3",
+          "v2/driver-cell/tests/helpers.ts": "87011a31ac2423348860681e45acb3325bff44c666619ca848487f22aa2c1a03",
+          "v2/driver-hsr/test-agent/agent.mjs": "1c4764558ce069d248b107a30e3eee095cdf30f8ed0714ee186f31b0bc8ceb87"
+        },
+        "environment": {
+          "node": "v24.18.0",
+          "platform": "linux",
+          "arch": "x64",
+          "hostname": "trmd-metal-1",
+          "cpu": "AMD EPYC 9454P 48-Core Processor",
+          "logicalCpus": 96,
+          "totalMemoryBytes": 269935489024,
+          "loadBefore": [
+            2.44,
+            1.65,
+            1.47
+          ],
+          "loadAfter": [
+            2.44,
+            1.68,
+            1.49
+          ]
+        }
+      },
+      "after": {
+        "sha256": "02ece7cff0a578696962ad4cb0c2e51d3b6a359e04abf9eb7b2d090ee950a972",
+        "source": {
+          "v2/daemon/src/daemon.ts": "06cabb215b72009724214f1fae1f9891d4b8d2f6de0a9ffa33ddc0009e692c39",
+          "v2/daemon/src/config.ts": "31d14939e8dd7c44ea81bced94a786512ae9c29ad7a908b0cf0bddfa887bb986",
+          "v2/daemon/src/loops.ts": "378483d777b3f4d46453e72189f89ff40f547c4fe6abee0c43d2ea0a363c7700",
+          "v2/driver-cell/src/driver.ts": "7795f9ac4d574cd802128e05bf9c14fb6d938c84a3cc786fc524d50af8873b1a",
+          "v2/driver-cell/src/provision.ts": "8293821e57266a0b4f7a2e0e6d25c584cac6caf1ac0afad207311af57558be66",
+          "v2/driver-hsr/src/driver.ts": "2ef3e3bf95a5a300db34d0c79afc77ae63f1d9d73f74c2ea6305662d9f818998",
+          "v2/driver-hsr/src/runner-host.ts": "7f1716db45160657ef2109d8a18ae064cbab065f0321b22d29f9a193a3f3c152",
+          "v2/daemon/tests/helpers.ts": "9d63216758bec78d1f0e6f7fa949d67ee1f4b1d90eb5efdd4a8888cda75ea0f3",
+          "v2/driver-cell/tests/helpers.ts": "87011a31ac2423348860681e45acb3325bff44c666619ca848487f22aa2c1a03",
+          "v2/driver-hsr/test-agent/agent.mjs": "1c4764558ce069d248b107a30e3eee095cdf30f8ed0714ee186f31b0bc8ceb87"
+        },
+        "environment": {
+          "node": "v24.18.0",
+          "platform": "linux",
+          "arch": "x64",
+          "hostname": "trmd-metal-1",
+          "cpu": "AMD EPYC 9454P 48-Core Processor",
+          "logicalCpus": 96,
+          "totalMemoryBytes": 269935489024,
+          "loadBefore": [
+            2.57,
+            1.72,
+            1.5
+          ],
+          "loadAfter": [
+            4.01,
+            2.09,
+            1.63
+          ]
+        }
+      },
+      "metrics": [
+        {
+          "scenario": "cell-spawn-cold-4",
+          "metric": "cell.accept",
+          "unit": "ms",
+          "before": 67.67981599999985,
+          "after": 65.95899499999996,
+          "deltaPercent": -2.5425911323398,
+          "beforeP95": 99.78369999999995,
+          "afterP95": 78.55692099999987,
+          "n": 80
+        },
+        {
+          "scenario": "cell-spawn-cold-4",
+          "metric": "cell.ready",
+          "unit": "ms",
+          "before": 273.5129959999995,
+          "after": 265.1240710000002,
+          "deltaPercent": -3.0671028882296003,
+          "beforeP95": 300.2668349999999,
+          "afterP95": 301.371621,
+          "n": 80
+        },
+        {
+          "scenario": "cell-spawn-cold-4",
+          "metric": "cell.usable",
+          "unit": "ms",
+          "before": 401.7499349999998,
+          "after": 305.24003300000004,
+          "deltaPercent": -24.02238148464164,
+          "beforeP95": 442.20477600000004,
+          "afterP95": 344.8948929999997,
+          "n": 80
+        },
+        {
+          "scenario": "cell-spawn-cold-4",
+          "metric": "cell.batchIncludingVerificationAndStop",
+          "unit": "ms",
+          "before": 474.4286000000002,
+          "after": 385.2181169999999,
+          "deltaPercent": -18.80377426655987,
+          "beforeP95": 505.0952669999988,
+          "afterP95": 404.0492720000002,
+          "n": 20
+        }
+      ]
+    },
+    {
+      "host": "trmd-metal-1",
+      "scenario": "cold-burst",
+      "repeat": true,
+      "seriesId": "5c09e761b5229e9fcf50437e014274a354dbaab7fc2866b1e74b55e5315d97ac",
+      "before": {
+        "sha256": "5021f7cd8b3f5f30ea704e4de2a90c1d798a5f35f756b8bd0368934887de84c9",
+        "source": {
+          "v2/daemon/src/daemon.ts": "06cabb215b72009724214f1fae1f9891d4b8d2f6de0a9ffa33ddc0009e692c39",
+          "v2/daemon/src/config.ts": "31d14939e8dd7c44ea81bced94a786512ae9c29ad7a908b0cf0bddfa887bb986",
+          "v2/daemon/src/loops.ts": "378483d777b3f4d46453e72189f89ff40f547c4fe6abee0c43d2ea0a363c7700",
+          "v2/driver-cell/src/driver.ts": "7795f9ac4d574cd802128e05bf9c14fb6d938c84a3cc786fc524d50af8873b1a",
+          "v2/driver-cell/src/provision.ts": "8293821e57266a0b4f7a2e0e6d25c584cac6caf1ac0afad207311af57558be66",
+          "v2/driver-hsr/src/driver.ts": "4a4cc1191e01320db09901c9c6f2e7d2c19b318ce696f2f09b2fa9807dab11ae",
+          "v2/driver-hsr/src/runner-host.ts": "7f1716db45160657ef2109d8a18ae064cbab065f0321b22d29f9a193a3f3c152",
+          "v2/daemon/tests/helpers.ts": "9d63216758bec78d1f0e6f7fa949d67ee1f4b1d90eb5efdd4a8888cda75ea0f3",
+          "v2/driver-cell/tests/helpers.ts": "87011a31ac2423348860681e45acb3325bff44c666619ca848487f22aa2c1a03",
+          "v2/driver-hsr/test-agent/agent.mjs": "1c4764558ce069d248b107a30e3eee095cdf30f8ed0714ee186f31b0bc8ceb87"
+        },
+        "environment": {
+          "node": "v24.18.0",
+          "platform": "linux",
+          "arch": "x64",
+          "hostname": "trmd-metal-1",
+          "cpu": "AMD EPYC 9454P 48-Core Processor",
+          "logicalCpus": 96,
+          "totalMemoryBytes": 269935489024,
+          "loadBefore": [
+            3.24,
+            3.3,
+            2.2
+          ],
+          "loadAfter": [
+            3.03,
+            3.25,
+            2.2
+          ]
+        }
+      },
+      "after": {
+        "sha256": "d5ac95b27317049e8401573b499e8950061574c34a14168bb23394133113d6e4",
+        "source": {
+          "v2/daemon/src/daemon.ts": "06cabb215b72009724214f1fae1f9891d4b8d2f6de0a9ffa33ddc0009e692c39",
+          "v2/daemon/src/config.ts": "31d14939e8dd7c44ea81bced94a786512ae9c29ad7a908b0cf0bddfa887bb986",
+          "v2/daemon/src/loops.ts": "378483d777b3f4d46453e72189f89ff40f547c4fe6abee0c43d2ea0a363c7700",
+          "v2/driver-cell/src/driver.ts": "7795f9ac4d574cd802128e05bf9c14fb6d938c84a3cc786fc524d50af8873b1a",
+          "v2/driver-cell/src/provision.ts": "8293821e57266a0b4f7a2e0e6d25c584cac6caf1ac0afad207311af57558be66",
+          "v2/driver-hsr/src/driver.ts": "2ef3e3bf95a5a300db34d0c79afc77ae63f1d9d73f74c2ea6305662d9f818998",
+          "v2/driver-hsr/src/runner-host.ts": "7f1716db45160657ef2109d8a18ae064cbab065f0321b22d29f9a193a3f3c152",
+          "v2/daemon/tests/helpers.ts": "9d63216758bec78d1f0e6f7fa949d67ee1f4b1d90eb5efdd4a8888cda75ea0f3",
+          "v2/driver-cell/tests/helpers.ts": "87011a31ac2423348860681e45acb3325bff44c666619ca848487f22aa2c1a03",
+          "v2/driver-hsr/test-agent/agent.mjs": "1c4764558ce069d248b107a30e3eee095cdf30f8ed0714ee186f31b0bc8ceb87"
+        },
+        "environment": {
+          "node": "v24.18.0",
+          "platform": "linux",
+          "arch": "x64",
+          "hostname": "trmd-metal-1",
+          "cpu": "AMD EPYC 9454P 48-Core Processor",
+          "logicalCpus": 96,
+          "totalMemoryBytes": 269935489024,
+          "loadBefore": [
+            3.81,
+            3.41,
+            2.21
+          ],
+          "loadAfter": [
+            3.46,
+            3.35,
+            2.2
+          ]
+        }
+      },
+      "metrics": [
+        {
+          "scenario": "cell-spawn-cold-4",
+          "metric": "cell.accept",
+          "unit": "ms",
+          "before": 62.84745599999951,
+          "after": 60.772603999999774,
+          "deltaPercent": -3.3014096863359987,
+          "beforeP95": 78.526343,
+          "afterP95": 81.14082499999995,
+          "n": 80
+        },
+        {
+          "scenario": "cell-spawn-cold-4",
+          "metric": "cell.ready",
+          "unit": "ms",
+          "before": 257.40163100000063,
+          "after": 256.4833749999998,
+          "deltaPercent": -0.35674055227755685,
+          "beforeP95": 305.5255930000001,
+          "afterP95": 292.31040200000007,
+          "n": 80
+        },
+        {
+          "scenario": "cell-spawn-cold-4",
+          "metric": "cell.usable",
+          "unit": "ms",
+          "before": 386.777564,
+          "after": 298.0807869999999,
+          "deltaPercent": -22.932244591105633,
+          "beforeP95": 416.16104700000005,
+          "afterP95": 342.22590200000013,
+          "n": 80
+        },
+        {
+          "scenario": "cell-spawn-cold-4",
+          "metric": "cell.batchIncludingVerificationAndStop",
+          "unit": "ms",
+          "before": 443.4089359999998,
+          "after": 369.6461099999997,
+          "deltaPercent": -16.63539455596361,
+          "beforeP95": 491.14472600000045,
+          "afterP95": 403.77650200000016,
+          "n": 20
+        }
+      ]
+    },
+    {
+      "host": "netcup-1",
+      "scenario": "warm",
+      "repeat": false,
+      "seriesId": "f4183a692a04e219a810755d8dccde1e41193eb65c68f3e19e4600457e11fada",
+      "before": {
+        "sha256": "93aa5984cd4037a9223bda03674d75972b1de9ea3ce44f74886466fc2a01bee2",
+        "source": {
+          "v2/daemon/src/daemon.ts": "06cabb215b72009724214f1fae1f9891d4b8d2f6de0a9ffa33ddc0009e692c39",
+          "v2/daemon/src/config.ts": "31d14939e8dd7c44ea81bced94a786512ae9c29ad7a908b0cf0bddfa887bb986",
+          "v2/daemon/src/loops.ts": "378483d777b3f4d46453e72189f89ff40f547c4fe6abee0c43d2ea0a363c7700",
+          "v2/driver-cell/src/driver.ts": "7795f9ac4d574cd802128e05bf9c14fb6d938c84a3cc786fc524d50af8873b1a",
+          "v2/driver-cell/src/provision.ts": "8293821e57266a0b4f7a2e0e6d25c584cac6caf1ac0afad207311af57558be66",
+          "v2/driver-hsr/src/driver.ts": "4a4cc1191e01320db09901c9c6f2e7d2c19b318ce696f2f09b2fa9807dab11ae",
+          "v2/driver-hsr/src/runner-host.ts": "7f1716db45160657ef2109d8a18ae064cbab065f0321b22d29f9a193a3f3c152",
+          "v2/daemon/tests/helpers.ts": "9d63216758bec78d1f0e6f7fa949d67ee1f4b1d90eb5efdd4a8888cda75ea0f3",
+          "v2/driver-cell/tests/helpers.ts": "87011a31ac2423348860681e45acb3325bff44c666619ca848487f22aa2c1a03",
+          "v2/driver-hsr/test-agent/agent.mjs": "1c4764558ce069d248b107a30e3eee095cdf30f8ed0714ee186f31b0bc8ceb87"
+        },
+        "environment": {
+          "node": "v24.18.0",
+          "platform": "linux",
+          "arch": "x64",
+          "hostname": "netcup-1",
+          "cpu": "AMD EPYC 9645 96-Core Processor",
+          "logicalCpus": 16,
+          "totalMemoryBytes": 67429818368,
+          "loadBefore": [
+            0.04,
+            0.05,
+            0.01
+          ],
+          "loadAfter": [
+            0.26,
+            0.1,
+            0.03
+          ]
+        }
+      },
+      "after": {
+        "sha256": "589ee6a0da93954fdf6e90bcc77b992a4ffb38e3506cdc57e3dd1f495fc4d97d",
+        "source": {
+          "v2/daemon/src/daemon.ts": "06cabb215b72009724214f1fae1f9891d4b8d2f6de0a9ffa33ddc0009e692c39",
+          "v2/daemon/src/config.ts": "31d14939e8dd7c44ea81bced94a786512ae9c29ad7a908b0cf0bddfa887bb986",
+          "v2/daemon/src/loops.ts": "378483d777b3f4d46453e72189f89ff40f547c4fe6abee0c43d2ea0a363c7700",
+          "v2/driver-cell/src/driver.ts": "7795f9ac4d574cd802128e05bf9c14fb6d938c84a3cc786fc524d50af8873b1a",
+          "v2/driver-cell/src/provision.ts": "8293821e57266a0b4f7a2e0e6d25c584cac6caf1ac0afad207311af57558be66",
+          "v2/driver-hsr/src/driver.ts": "2ef3e3bf95a5a300db34d0c79afc77ae63f1d9d73f74c2ea6305662d9f818998",
+          "v2/driver-hsr/src/runner-host.ts": "7f1716db45160657ef2109d8a18ae064cbab065f0321b22d29f9a193a3f3c152",
+          "v2/daemon/tests/helpers.ts": "9d63216758bec78d1f0e6f7fa949d67ee1f4b1d90eb5efdd4a8888cda75ea0f3",
+          "v2/driver-cell/tests/helpers.ts": "87011a31ac2423348860681e45acb3325bff44c666619ca848487f22aa2c1a03",
+          "v2/driver-hsr/test-agent/agent.mjs": "1c4764558ce069d248b107a30e3eee095cdf30f8ed0714ee186f31b0bc8ceb87"
+        },
+        "environment": {
+          "node": "v24.18.0",
+          "platform": "linux",
+          "arch": "x64",
+          "hostname": "netcup-1",
+          "cpu": "AMD EPYC 9645 96-Core Processor",
+          "logicalCpus": 16,
+          "totalMemoryBytes": 67429818368,
+          "loadBefore": [
+            0.87,
+            0.26,
+            0.08
+          ],
+          "loadAfter": [
+            0.96,
+            0.29,
+            0.09
+          ]
+        }
+      },
+      "metrics": [
+        {
+          "scenario": "cell-spawn-warm-1",
+          "metric": "cell.accept",
+          "unit": "ms",
+          "before": 21.5085339999996,
+          "after": 21.371872000000167,
+          "deltaPercent": -0.6353850057815857,
+          "beforeP95": 25.439828999999918,
+          "afterP95": 28.330770999999913,
+          "n": 20
+        },
+        {
+          "scenario": "cell-spawn-warm-1",
+          "metric": "cell.ready",
+          "unit": "ms",
+          "before": 287.49946199999977,
+          "after": 255.5653030000003,
+          "deltaPercent": -11.107554350831961,
+          "beforeP95": 298.3735209999995,
+          "afterP95": 296.15416800000025,
+          "n": 20
+        },
+        {
+          "scenario": "cell-spawn-warm-1",
+          "metric": "cell.usable",
+          "unit": "ms",
+          "before": 356.9270980000001,
+          "after": 274.7220730000008,
+          "deltaPercent": -23.03132081050323,
+          "beforeP95": 367.616397,
+          "afterP95": 319.32689600000003,
+          "n": 20
+        },
+        {
+          "scenario": "cell-spawn-warm-1",
+          "metric": "cell.batchIncludingVerificationAndStop",
+          "unit": "ms",
+          "before": 406.41973899999994,
+          "after": 347.42349300000024,
+          "deltaPercent": -14.516087763148654,
+          "beforeP95": 432.928897,
+          "afterP95": 375.27754700000014,
+          "n": 20
+        }
+      ]
+    },
+    {
+      "host": "netcup-1",
+      "scenario": "warm",
+      "repeat": true,
+      "seriesId": "f4183a692a04e219a810755d8dccde1e41193eb65c68f3e19e4600457e11fada",
+      "before": {
+        "sha256": "d14a1e882a72ae341131258f34ac8d7e8d728dc36c4ab143fd2194b8697c63e3",
+        "source": {
+          "v2/daemon/src/daemon.ts": "06cabb215b72009724214f1fae1f9891d4b8d2f6de0a9ffa33ddc0009e692c39",
+          "v2/daemon/src/config.ts": "31d14939e8dd7c44ea81bced94a786512ae9c29ad7a908b0cf0bddfa887bb986",
+          "v2/daemon/src/loops.ts": "378483d777b3f4d46453e72189f89ff40f547c4fe6abee0c43d2ea0a363c7700",
+          "v2/driver-cell/src/driver.ts": "7795f9ac4d574cd802128e05bf9c14fb6d938c84a3cc786fc524d50af8873b1a",
+          "v2/driver-cell/src/provision.ts": "8293821e57266a0b4f7a2e0e6d25c584cac6caf1ac0afad207311af57558be66",
+          "v2/driver-hsr/src/driver.ts": "4a4cc1191e01320db09901c9c6f2e7d2c19b318ce696f2f09b2fa9807dab11ae",
+          "v2/driver-hsr/src/runner-host.ts": "7f1716db45160657ef2109d8a18ae064cbab065f0321b22d29f9a193a3f3c152",
+          "v2/daemon/tests/helpers.ts": "9d63216758bec78d1f0e6f7fa949d67ee1f4b1d90eb5efdd4a8888cda75ea0f3",
+          "v2/driver-cell/tests/helpers.ts": "87011a31ac2423348860681e45acb3325bff44c666619ca848487f22aa2c1a03",
+          "v2/driver-hsr/test-agent/agent.mjs": "1c4764558ce069d248b107a30e3eee095cdf30f8ed0714ee186f31b0bc8ceb87"
+        },
+        "environment": {
+          "node": "v24.18.0",
+          "platform": "linux",
+          "arch": "x64",
+          "hostname": "netcup-1",
+          "cpu": "AMD EPYC 9645 96-Core Processor",
+          "logicalCpus": 16,
+          "totalMemoryBytes": 67429818368,
+          "loadBefore": [
+            0.51,
+            0.35,
+            0.14
+          ],
+          "loadAfter": [
+            0.43,
+            0.34,
+            0.14
+          ]
+        }
+      },
+      "after": {
+        "sha256": "8d90cbdc8c4e8e85ae11e2b951ad51bf1c65d55ba3747cedaf9030047de29af8",
+        "source": {
+          "v2/daemon/src/daemon.ts": "06cabb215b72009724214f1fae1f9891d4b8d2f6de0a9ffa33ddc0009e692c39",
+          "v2/daemon/src/config.ts": "31d14939e8dd7c44ea81bced94a786512ae9c29ad7a908b0cf0bddfa887bb986",
+          "v2/daemon/src/loops.ts": "378483d777b3f4d46453e72189f89ff40f547c4fe6abee0c43d2ea0a363c7700",
+          "v2/driver-cell/src/driver.ts": "7795f9ac4d574cd802128e05bf9c14fb6d938c84a3cc786fc524d50af8873b1a",
+          "v2/driver-cell/src/provision.ts": "8293821e57266a0b4f7a2e0e6d25c584cac6caf1ac0afad207311af57558be66",
+          "v2/driver-hsr/src/driver.ts": "2ef3e3bf95a5a300db34d0c79afc77ae63f1d9d73f74c2ea6305662d9f818998",
+          "v2/driver-hsr/src/runner-host.ts": "7f1716db45160657ef2109d8a18ae064cbab065f0321b22d29f9a193a3f3c152",
+          "v2/daemon/tests/helpers.ts": "9d63216758bec78d1f0e6f7fa949d67ee1f4b1d90eb5efdd4a8888cda75ea0f3",
+          "v2/driver-cell/tests/helpers.ts": "87011a31ac2423348860681e45acb3325bff44c666619ca848487f22aa2c1a03",
+          "v2/driver-hsr/test-agent/agent.mjs": "1c4764558ce069d248b107a30e3eee095cdf30f8ed0714ee186f31b0bc8ceb87"
+        },
+        "environment": {
+          "node": "v24.18.0",
+          "platform": "linux",
+          "arch": "x64",
+          "hostname": "netcup-1",
+          "cpu": "AMD EPYC 9645 96-Core Processor",
+          "logicalCpus": 16,
+          "totalMemoryBytes": 67429818368,
+          "loadBefore": [
+            0.33,
+            0.31,
+            0.12
+          ],
+          "loadAfter": [
+            0.36,
+            0.32,
+            0.12
+          ]
+        }
+      },
+      "metrics": [
+        {
+          "scenario": "cell-spawn-warm-1",
+          "metric": "cell.accept",
+          "unit": "ms",
+          "before": 21.554951000000074,
+          "after": 19.22279400000002,
+          "deltaPercent": -10.819588501964327,
+          "beforeP95": 27.878626999999824,
+          "afterP95": 25.097177999999985,
+          "n": 20
+        },
+        {
+          "scenario": "cell-spawn-warm-1",
+          "metric": "cell.ready",
+          "unit": "ms",
+          "before": 241.6556400000004,
+          "after": 242.22269299999994,
+          "deltaPercent": 0.23465332735439492,
+          "beforeP95": 299.60397100000046,
+          "afterP95": 298.39298299999973,
+          "n": 20
+        },
+        {
+          "scenario": "cell-spawn-warm-1",
+          "metric": "cell.usable",
+          "unit": "ms",
+          "before": 349.9115349999993,
+          "after": 277.8143389999999,
+          "deltaPercent": -20.604406768127703,
+          "beforeP95": 371.6049599999999,
+          "afterP95": 317.6907449999999,
+          "n": 20
+        },
+        {
+          "scenario": "cell-spawn-warm-1",
+          "metric": "cell.batchIncludingVerificationAndStop",
+          "unit": "ms",
+          "before": 408.24019799999996,
+          "after": 331.6015040000002,
+          "deltaPercent": -18.77294161022325,
+          "beforeP95": 432.86155299999973,
+          "afterP95": 368.73619199999985,
+          "n": 20
+        }
+      ]
+    },
+    {
+      "host": "netcup-1",
+      "scenario": "cold-burst",
+      "repeat": false,
+      "seriesId": "0f64c05a1df678d55710199c534db4ff8cc9b761fca0e463438ca0a777f4b80b",
+      "before": {
+        "sha256": "223bd4ea2187cecc9611a5989ec264bd4784e96cec8cee92cc1a515004622f59",
+        "source": {
+          "v2/daemon/src/daemon.ts": "06cabb215b72009724214f1fae1f9891d4b8d2f6de0a9ffa33ddc0009e692c39",
+          "v2/daemon/src/config.ts": "31d14939e8dd7c44ea81bced94a786512ae9c29ad7a908b0cf0bddfa887bb986",
+          "v2/daemon/src/loops.ts": "378483d777b3f4d46453e72189f89ff40f547c4fe6abee0c43d2ea0a363c7700",
+          "v2/driver-cell/src/driver.ts": "7795f9ac4d574cd802128e05bf9c14fb6d938c84a3cc786fc524d50af8873b1a",
+          "v2/driver-cell/src/provision.ts": "8293821e57266a0b4f7a2e0e6d25c584cac6caf1ac0afad207311af57558be66",
+          "v2/driver-hsr/src/driver.ts": "4a4cc1191e01320db09901c9c6f2e7d2c19b318ce696f2f09b2fa9807dab11ae",
+          "v2/driver-hsr/src/runner-host.ts": "7f1716db45160657ef2109d8a18ae064cbab065f0321b22d29f9a193a3f3c152",
+          "v2/daemon/tests/helpers.ts": "9d63216758bec78d1f0e6f7fa949d67ee1f4b1d90eb5efdd4a8888cda75ea0f3",
+          "v2/driver-cell/tests/helpers.ts": "87011a31ac2423348860681e45acb3325bff44c666619ca848487f22aa2c1a03",
+          "v2/driver-hsr/test-agent/agent.mjs": "1c4764558ce069d248b107a30e3eee095cdf30f8ed0714ee186f31b0bc8ceb87"
+        },
+        "environment": {
+          "node": "v24.18.0",
+          "platform": "linux",
+          "arch": "x64",
+          "hostname": "netcup-1",
+          "cpu": "AMD EPYC 9645 96-Core Processor",
+          "logicalCpus": 16,
+          "totalMemoryBytes": 67429818368,
+          "loadBefore": [
+            0.07,
+            0.07,
+            0.02
+          ],
+          "loadAfter": [
+            0.94,
+            0.27,
+            0.08
+          ]
+        }
+      },
+      "after": {
+        "sha256": "a63d8edb3028f2fc6d874d6e3f670cda331cf979eafa6682a9e0b1dcfb2ec4a8",
+        "source": {
+          "v2/daemon/src/daemon.ts": "06cabb215b72009724214f1fae1f9891d4b8d2f6de0a9ffa33ddc0009e692c39",
+          "v2/daemon/src/config.ts": "31d14939e8dd7c44ea81bced94a786512ae9c29ad7a908b0cf0bddfa887bb986",
+          "v2/daemon/src/loops.ts": "378483d777b3f4d46453e72189f89ff40f547c4fe6abee0c43d2ea0a363c7700",
+          "v2/driver-cell/src/driver.ts": "7795f9ac4d574cd802128e05bf9c14fb6d938c84a3cc786fc524d50af8873b1a",
+          "v2/driver-cell/src/provision.ts": "8293821e57266a0b4f7a2e0e6d25c584cac6caf1ac0afad207311af57558be66",
+          "v2/driver-hsr/src/driver.ts": "2ef3e3bf95a5a300db34d0c79afc77ae63f1d9d73f74c2ea6305662d9f818998",
+          "v2/driver-hsr/src/runner-host.ts": "7f1716db45160657ef2109d8a18ae064cbab065f0321b22d29f9a193a3f3c152",
+          "v2/daemon/tests/helpers.ts": "9d63216758bec78d1f0e6f7fa949d67ee1f4b1d90eb5efdd4a8888cda75ea0f3",
+          "v2/driver-cell/tests/helpers.ts": "87011a31ac2423348860681e45acb3325bff44c666619ca848487f22aa2c1a03",
+          "v2/driver-hsr/test-agent/agent.mjs": "1c4764558ce069d248b107a30e3eee095cdf30f8ed0714ee186f31b0bc8ceb87"
+        },
+        "environment": {
+          "node": "v24.18.0",
+          "platform": "linux",
+          "arch": "x64",
+          "hostname": "netcup-1",
+          "cpu": "AMD EPYC 9645 96-Core Processor",
+          "logicalCpus": 16,
+          "totalMemoryBytes": 67429818368,
+          "loadBefore": [
+            0.96,
+            0.29,
+            0.09
+          ],
+          "loadAfter": [
+            1.26,
+            0.39,
+            0.13
+          ]
+        }
+      },
+      "metrics": [
+        {
+          "scenario": "cell-spawn-cold-4",
+          "metric": "cell.accept",
+          "unit": "ms",
+          "before": 83.23389399999996,
+          "after": 86.75092500000028,
+          "deltaPercent": 4.225479346190775,
+          "beforeP95": 102.88889200000085,
+          "afterP95": 113.08749799999987,
+          "n": 80
+        },
+        {
+          "scenario": "cell-spawn-cold-4",
+          "metric": "cell.ready",
+          "unit": "ms",
+          "before": 350.70284399999946,
+          "after": 365.8552899999995,
+          "deltaPercent": 4.320593989822363,
+          "beforeP95": 425.5450000000001,
+          "afterP95": 458.66960199999994,
+          "n": 80
+        },
+        {
+          "scenario": "cell-spawn-cold-4",
+          "metric": "cell.usable",
+          "unit": "ms",
+          "before": 456.9492059999993,
+          "after": 406.11266799999976,
+          "deltaPercent": -11.125205456643172,
+          "beforeP95": 503.034044,
+          "afterP95": 504.3235689999992,
+          "n": 80
+        },
+        {
+          "scenario": "cell-spawn-cold-4",
+          "metric": "cell.batchIncludingVerificationAndStop",
+          "unit": "ms",
+          "before": 534.6784349999998,
+          "after": 487.60553100000016,
+          "deltaPercent": -8.803965321698392,
+          "beforeP95": 575.8567529999991,
+          "afterP95": 595.3010879999999,
+          "n": 20
+        }
+      ]
+    },
+    {
+      "host": "netcup-1",
+      "scenario": "cold-burst",
+      "repeat": true,
+      "seriesId": "0f64c05a1df678d55710199c534db4ff8cc9b761fca0e463438ca0a777f4b80b",
+      "before": {
+        "sha256": "48f1f120ffd6df72a57fd60951742ef3e4d97370f12417249fc971877ec177c9",
+        "source": {
+          "v2/daemon/src/daemon.ts": "06cabb215b72009724214f1fae1f9891d4b8d2f6de0a9ffa33ddc0009e692c39",
+          "v2/daemon/src/config.ts": "31d14939e8dd7c44ea81bced94a786512ae9c29ad7a908b0cf0bddfa887bb986",
+          "v2/daemon/src/loops.ts": "378483d777b3f4d46453e72189f89ff40f547c4fe6abee0c43d2ea0a363c7700",
+          "v2/driver-cell/src/driver.ts": "7795f9ac4d574cd802128e05bf9c14fb6d938c84a3cc786fc524d50af8873b1a",
+          "v2/driver-cell/src/provision.ts": "8293821e57266a0b4f7a2e0e6d25c584cac6caf1ac0afad207311af57558be66",
+          "v2/driver-hsr/src/driver.ts": "4a4cc1191e01320db09901c9c6f2e7d2c19b318ce696f2f09b2fa9807dab11ae",
+          "v2/driver-hsr/src/runner-host.ts": "7f1716db45160657ef2109d8a18ae064cbab065f0321b22d29f9a193a3f3c152",
+          "v2/daemon/tests/helpers.ts": "9d63216758bec78d1f0e6f7fa949d67ee1f4b1d90eb5efdd4a8888cda75ea0f3",
+          "v2/driver-cell/tests/helpers.ts": "87011a31ac2423348860681e45acb3325bff44c666619ca848487f22aa2c1a03",
+          "v2/driver-hsr/test-agent/agent.mjs": "1c4764558ce069d248b107a30e3eee095cdf30f8ed0714ee186f31b0bc8ceb87"
+        },
+        "environment": {
+          "node": "v24.18.0",
+          "platform": "linux",
+          "arch": "x64",
+          "hostname": "netcup-1",
+          "cpu": "AMD EPYC 9645 96-Core Processor",
+          "logicalCpus": 16,
+          "totalMemoryBytes": 67429818368,
+          "loadBefore": [
+            0.43,
+            0.34,
+            0.14
+          ],
+          "loadAfter": [
+            0.74,
+            0.41,
+            0.16
+          ]
+        }
+      },
+      "after": {
+        "sha256": "dffdc85c19fd7753d1780ab1adc46245f4962c97b1f07b2305b7fa3834aa0046",
+        "source": {
+          "v2/daemon/src/daemon.ts": "06cabb215b72009724214f1fae1f9891d4b8d2f6de0a9ffa33ddc0009e692c39",
+          "v2/daemon/src/config.ts": "31d14939e8dd7c44ea81bced94a786512ae9c29ad7a908b0cf0bddfa887bb986",
+          "v2/daemon/src/loops.ts": "378483d777b3f4d46453e72189f89ff40f547c4fe6abee0c43d2ea0a363c7700",
+          "v2/driver-cell/src/driver.ts": "7795f9ac4d574cd802128e05bf9c14fb6d938c84a3cc786fc524d50af8873b1a",
+          "v2/driver-cell/src/provision.ts": "8293821e57266a0b4f7a2e0e6d25c584cac6caf1ac0afad207311af57558be66",
+          "v2/driver-hsr/src/driver.ts": "2ef3e3bf95a5a300db34d0c79afc77ae63f1d9d73f74c2ea6305662d9f818998",
+          "v2/driver-hsr/src/runner-host.ts": "7f1716db45160657ef2109d8a18ae064cbab065f0321b22d29f9a193a3f3c152",
+          "v2/daemon/tests/helpers.ts": "9d63216758bec78d1f0e6f7fa949d67ee1f4b1d90eb5efdd4a8888cda75ea0f3",
+          "v2/driver-cell/tests/helpers.ts": "87011a31ac2423348860681e45acb3325bff44c666619ca848487f22aa2c1a03",
+          "v2/driver-hsr/test-agent/agent.mjs": "1c4764558ce069d248b107a30e3eee095cdf30f8ed0714ee186f31b0bc8ceb87"
+        },
+        "environment": {
+          "node": "v24.18.0",
+          "platform": "linux",
+          "arch": "x64",
+          "hostname": "netcup-1",
+          "cpu": "AMD EPYC 9645 96-Core Processor",
+          "logicalCpus": 16,
+          "totalMemoryBytes": 67429818368,
+          "loadBefore": [
+            0.36,
+            0.32,
+            0.12
+          ],
+          "loadAfter": [
+            0.46,
+            0.34,
+            0.13
+          ]
+        }
+      },
+      "metrics": [
+        {
+          "scenario": "cell-spawn-cold-4",
+          "metric": "cell.accept",
+          "unit": "ms",
+          "before": 79.05980799999998,
+          "after": 86.56841600000007,
+          "deltaPercent": 9.497376973139238,
+          "beforeP95": 93.81594000000041,
+          "afterP95": 103.5316170000001,
+          "n": 80
+        },
+        {
+          "scenario": "cell-spawn-cold-4",
+          "metric": "cell.ready",
+          "unit": "ms",
+          "before": 344.1751289999993,
+          "after": 358.02851400000054,
+          "deltaPercent": 4.025097641497877,
+          "beforeP95": 390.404396,
+          "afterP95": 431.27688199999966,
+          "n": 80
+        },
+        {
+          "scenario": "cell-spawn-cold-4",
+          "metric": "cell.usable",
+          "unit": "ms",
+          "before": 442.0165710000001,
+          "after": 400.31953299999986,
+          "deltaPercent": -9.433365338694566,
+          "beforeP95": 487.56951000000004,
+          "afterP95": 472.49259200000006,
+          "n": 80
+        },
+        {
+          "scenario": "cell-spawn-cold-4",
+          "metric": "cell.batchIncludingVerificationAndStop",
+          "unit": "ms",
+          "before": 513.4333369999997,
+          "after": 483.4224899999999,
+          "deltaPercent": -5.84513019262709,
+          "beforeP95": 552.379277,
+          "afterP95": 550.9745150000008,
+          "n": 20
+        }
+      ]
+    }
+  ]
+}

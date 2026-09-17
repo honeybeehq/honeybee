@@ -7,6 +7,7 @@
  * against the real CoreStore's reconcileAtBoot (B7).
  */
 import { test } from "node:test";
+import { createServer } from "node:net";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { readFileSync, existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -511,7 +512,7 @@ test("readyAtSpawn with NOTHING to deliver: the synthetic booted is paired with 
   }
 });
 
-test("readyAtSpawn status poll (deterministic, no spawn): synthetic booted pairs with a synthetic turn_ended only while the driver's phase is idle", (t) => {
+test("readyAtSpawn status poll (deterministic, no spawn): synthetic booted pairs with a synthetic turn_ended only while the driver's phase is idle", async (t) => {
   // Drives the host status-poll edge directly: the runner-host status file is
   // the OS-confirmed-agent fact. Idle phase (nothing injected) → booted +
   // turn_ended, both synthetic, in that order, once. Running phase (a delivery
@@ -549,8 +550,8 @@ test("readyAtSpawn status poll (deterministic, no spawn): synthetic booted pairs
       realEvidence: false,
       hostStyle: true,
       agentPid: null,
-      socket: null,
-      socketRetry: null,
+      socket: null as import("node:net").Socket | null,
+      socketRetry: null as ReturnType<typeof setTimeout> | null,
       socketPath: join(dir, `${beeId}.sock`),
       statusPath,
       observationPath: join(dir, `${beeId}.absent.jsonl`), // no journal yet: tail is a no-op
@@ -565,7 +566,18 @@ test("readyAtSpawn status poll (deterministic, no spawn): synthetic booted pairs
   };
   try {
     const idle = proc("poll-idle", "idle");
+    const server = createServer((socket) => { socket.on("error", () => undefined); });
+    await new Promise<void>((resolve) => server.listen(idle.socketPath, resolve));
+    t.after(() => { idle.exited = true; idle.socket?.destroy(); server.close(); if (idle.socketRetry) clearTimeout(idle.socketRetry); });
+    // A host may become ready while the failed startup connection is sleeping.
+    // The status edge should wake that retry, without changing steady-state polling.
+    idle.socketRetry = setTimeout(() => assert.fail("stale startup retry fired"), 60_000);
+    idle.socketRetry.unref();
     pump(idle);
+    assert.equal(idle.socketRetry, null, "agent spawn observation wakes the pending socket retry");
+    const deadline = Date.now() + 2000;
+    while (!idle.socket && Date.now() < deadline) await sleep(5);
+    assert.ok(idle.socket, "the observed runner becomes reachable");
     const kinds = (events: DriverObservation[]) => events.map((e) => `${e.kind}${e.synthetic ? "*" : ""}`);
     assert.deepEqual(kinds(driver.observe()), ["booted*", "turn_ended*"], "idle phase: the boot-to-ready edge follows the synthetic booted");
     assert.equal(idle.phase, "idle", "the driver's own phase is untouched");

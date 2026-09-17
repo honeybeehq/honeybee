@@ -54,3 +54,19 @@ On Linux, the **source checkout must be outside `/tmp`**: bubblewrap mounts a
 private `/tmp`, so a stub executable in a `/tmp` source copy cannot be read by
 the sandboxed child. Cell fixtures themselves may use `/tmp` because their owned
 Cell directory is explicitly rebound. Use a checkout under the target home.
+
+## 2026-09-17 socket wake comparison
+
+[Compact comparison](../../../../docs/performance/2026-09-17-cell-socket-comparison.json)
+retains source hashes, report digests, load and both measurement orders. Each
+capture has 20 batches, sandbox on, Node 24.18.0. Warm first delivery improved
+24–25% on metal and 21–23% on netcup; four-wide first-use origins improved 23–24%
+and 9–11% respectively. These are owner-side stub observations on shared hosts,
+not production provider or Send-to-visible timings. Netcup burst readiness was
+about 4% slower, and its tail did not improve uniformly; do not claim every phase won.
+
+The change wakes one pending 200ms socket retry when status first reports the
+agent PID. It does not change the 50ms observation throttle or recurring reconnect
+cadence. The actual connection still gates delivery. Driver and adoption tests
+cover that boundary. Warm candidate receipts for each host are retained alongside
+the comparison; there is still no exclusive-host latency budget baseline.
