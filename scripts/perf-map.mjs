@@ -111,12 +111,10 @@ function snippetAt(text, index) {
 function sites(text, re) {
   const found = []
   re.lastIndex = 0
-  let m
-  while ((m = re.exec(text))) {
+  for (const m of text.matchAll(re)) {
     const snippet = snippetAt(text, m.index)
     if (/^(\/\/|\*|\/\*|#)/.test(snippet)) continue
     found.push({ index: m.index, line: lineOf(text, m.index), snippet, match: m })
-    if (m[0].length === 0) re.lastIndex++
   }
   return found
 }
@@ -388,6 +386,7 @@ const VERDICT_ORDER = ['fail', 'regression', 'inconclusive', 'not-comparable', '
 const worst = (verdicts) => VERDICT_ORDER.find((v) => verdicts.includes(v)) ?? 'pass'
 
 export function checkResult(record, result, receipt, tolerance = 0.1) {
+  if (!Number.isFinite(tolerance) || tolerance < 0) throw new RangeError('tolerance must be a finite non-negative number')
   const metric = (record.metrics ?? []).find((m) => m.id === result.metric)
   if (!metric) return { workload: record.id, metric: result.metric, verdict: 'fail', findings: ['metric not in record'] }
   const how = metric.aggregation ?? 'median'
@@ -493,7 +492,7 @@ function main() {
   if (cmd === 'check') {
     const file = process.argv[3]
     if (!file || file.startsWith('--')) { console.error('usage: perf-map.mjs check <receipt.json> [--tolerance 0.1]'); process.exitCode = 2; return }
-    const tolerance = arg('--tolerance') ? Number(arg('--tolerance')) : 0.1
+    const tolerance = process.argv.includes('--tolerance') ? Number(arg('--tolerance')) : 0.1
     const report = checkReceipt(JSON.parse(readFileSync(file, 'utf8')), loadRecords(), tolerance)
     process.stdout.write(JSON.stringify(report, null, 2) + '\n')
     process.exitCode = ['fail', 'regression'].includes(report.verdict) ? 1 : 0

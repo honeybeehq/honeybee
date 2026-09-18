@@ -1,7 +1,8 @@
+import { execFileSync } from 'node:child_process'
 // Test template for a generated perf map. Copy beside the copied perf-map.mjs and
 // adjust the import path and fixture to the repo's census config. Runs with `node --test`.
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -93,3 +94,27 @@ function sampleRecord() {
     updatedAt: '2026-01-01',
   }
 }
+
+test('invalid tolerance cannot turn a baseline regression into a pass', async () => {
+  const { checkResult } = await import('./perf-map.mjs')
+  const record = { id: 'bounded', metrics: [{ id: 'work', unit: 'count', aggregation: 'sum', kind: 'actual', betterWhen: 'lower', baseline: { seriesId: 'S', aggregation: 'sum', aggregate: 10 } }] }
+  const result = { metric: 'work', samples: [100] }
+  const receipt = { seriesId: 'S' }
+  assert.equal(checkResult(record, result, receipt).verdict, 'regression')
+  assert.equal(checkResult(record, result, receipt, 0).verdict, 'regression')
+  for (const tolerance of [NaN, Infinity, -Infinity, -1, 'not-a-number']) {
+    assert.throws(() => checkResult(record, result, receipt, tolerance), /tolerance must be a finite non-negative number/)
+  }
+})
+
+
+test('zero-width census patterns advance even through skipped comments', () => {
+  const root = fixtureRepo()
+  const config = JSON.parse(readFileSync(join(root, 'map/census.config.json'), 'utf8'))
+  config.patterns = [{ inventory: 'boundaries', prefix: 'line:', regex: '^', flags: 'm', mode: 'ordinal' }]
+  writeFileSync(join(root, 'map/census.config.json'), JSON.stringify(config))
+  const script = `import { census, loadConfig } from ${JSON.stringify(new URL('./perf-map.mjs', import.meta.url).href)};
+    console.log(JSON.stringify(census(${JSON.stringify(root)}, loadConfig(${JSON.stringify(join(root, 'map'))})).counts));`
+  const output = execFileSync(process.execPath, ['--input-type=module', '-e', script], { timeout: 2000, encoding: 'utf8' })
+  assert.ok(JSON.parse(output).boundaries > 0)
+})
