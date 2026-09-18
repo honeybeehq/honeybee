@@ -1,0 +1,120 @@
+{
+  "protocolVersion": 1,
+  "id": "action-noop-reconciliation",
+  "title": "Unchanged action lane reconciliation",
+  "lane": "steady-state",
+  "processes": [
+    "hived"
+  ],
+  "owners": [
+    "v2/core/src/store.ts@253aa0da9ba57e3bb996088476525ed03174c18f",
+    "v2/core/src/actions.ts@3305c3ad0e4f918d0e94d76f8e595af6b1eee1c2",
+    "v2/daemon/src/loops.ts@124370ee6481c1c16fffe5c7665ce5ed83ec85cc"
+  ],
+  "effect": {
+    "user": "Actions keep waiting for authoritative completion without repeatedly deriving every sibling view.",
+    "assertions": [
+      "Unchanged polls preserve fresh returned views, state and audit stream.",
+      "Completed, failed and missing archive commands still settle and update successor holds.",
+      "Changed executor detail is audited; claiming and attempt identity stay unchanged.",
+      "State survives reopen; audit replay matches non-corrupt fixtures."
+    ],
+    "exclusions": [
+      "Wall-clock latency",
+      "CPU and RSS",
+      "Whole-daemon step cost",
+      "Real provider execution"
+    ]
+  },
+  "accounts": [
+    {
+      "inventory": "entry-points",
+      "key": "action-poll:reconcileArchiveAction"
+    },
+    {
+      "inventory": "entry-points",
+      "key": "action-poll:holdActionForExecutor"
+    }
+  ],
+  "states": {
+    "idle": {
+      "matters": false,
+      "why": "No actions means neither method is called."
+    },
+    "first-use": {
+      "matters": false,
+      "why": "Initial dispatch is outside the unchanged-poll interval."
+    },
+    "repeated": {
+      "matters": true,
+      "why": "Ten unchanged polls for queued/running archive and executor waits."
+    },
+    "scale": {
+      "matters": true,
+      "why": "One and 32 actions per lane, three repetitions."
+    },
+    "background": {
+      "matters": false,
+      "why": "No renderer; same scheduler semantics."
+    },
+    "release": {
+      "matters": false,
+      "why": "Fixture stores close after each test; no runtime spawned."
+    },
+    "recovery": {
+      "matters": true,
+      "why": "Reopen and settle from current authoritative command state."
+    }
+  },
+  "fixture": {
+    "preset": "action-noop-counts-v1",
+    "isolationPolicy": 1,
+    "scaleAxes": [
+      {
+        "axis": "laneSize",
+        "values": [
+          1,
+          32
+        ],
+        "unit": "actions"
+      }
+    ],
+    "seed": "real temporary SQLite store via core test helpers"
+  },
+  "recipe": {
+    "driver": "v2/core/tests/actions-noop.test.ts",
+    "command": "HIVE_ACTION_NOOP_RECEIPT=.proof/action-noop-counts.json node --test v2/core/tests/actions-noop.test.ts",
+    "readiness": "Action dispatched or held; before state and returned view captured.",
+    "completion": "Ten polls, state/audit equality and work counter checked.",
+    "warmup": "None: deterministic calls, no timing.",
+    "teardown": "Close fixture store and remove owned temporary directory.",
+    "requires": [
+      "Node 24.18.0",
+      "mkdir -p .proof"
+    ]
+  },
+  "metrics": [
+    {
+      "id": "laneViewBuilds",
+      "unit": "count",
+      "scope": "CoreStore full-lane listActionViews calls in ten unchanged polls",
+      "collector": "instance wrapper in actions-noop.test.ts; returned actionView work is not included",
+      "aggregation": "sum",
+      "kind": "actual",
+      "status": "gated",
+      "states": [
+        "repeated",
+        "scale"
+      ],
+      "betterWhen": "lower",
+      "invariant": "Every unchanged-poll sample has zero full-lane audit view builds; state, audit and fresh return values match.",
+      "noise": "Deterministic counts. Three repetitions; no timing claim."
+    }
+  ],
+  "gaps": [
+    "One fresh actionView still loads its lane and queue summary.",
+    "Whole-daemon CPU, allocation, fsync and request latency are unmeasured."
+  ],
+  "updatedAt": "2026-09-17",
+  "readiness": "18 deterministic samples prove zero full-lane audit view builds on unchanged polls; transition/reopen controls are tests, total scheduler cost remains unmeasured."
+}

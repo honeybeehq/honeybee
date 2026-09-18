@@ -1,12 +1,14 @@
 ---
 name: perf-honeybee
-description: Measure satellite Cell startup on metal or netcup using isolated Honeybee fixtures, map receipts and conservative comparisons. Use before optimizing remote Cell provisioning or runner readiness.
+description: Measure satellite Cell startup and unchanged action-lane polling using isolated Honeybee fixtures and conservative workload receipts.
 ---
 
 # Perf Honeybee
 
-This map currently covers **satellite Cell startup**, not all Honeybee performance.
+This map covers **satellite Cell startup** and **unchanged action-lane polling**, not all Honeybee performance.
 Read [the map](workloads/README.md) and [the workload](workloads/remote-cell-spawn.md).
+For action polling, read [its workload](workloads/action-noop-reconciliation.md).
+It counts store work in real SQLite fixtures; no runtime is launched or timing claimed.
 Older subsystem recipes remain in [measure.md](../../../docs/performance/measure.md).
 
 ## The loop

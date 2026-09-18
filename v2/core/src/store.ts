@@ -7225,6 +7225,15 @@ export class CoreStore {
   /** lifecycle.archive: settle from the command's authoritative outcome (called by the scheduler each step). */
   reconcileArchiveAction(actionId: string): { action: ActionView; settled: boolean } {
     const target = this.mustGetAction(actionId);
+    // The synchronous single writer cannot change these facts during this read.
+    // Keep no-op scheduler polls out of the full-lane mutation audit.
+    if (target.status !== "running" || target.executor !== "lifecycle.archive" || !target.dispatch?.operationKey) {
+      return { action: this.actionView(actionId), settled: false };
+    }
+    const command = this.getCommandByIdempotencyKey(target.dispatch.operationKey);
+    if (command?.status === "queued" || command?.status === "running") {
+      return { action: this.actionView(actionId), settled: false };
+    }
     return this.withActionLaneAudit(target.beeId, "reconciled", () => {
       const row = this.mustGetAction(actionId);
       if (row.status !== "running" || row.executor !== "lifecycle.archive" || !row.dispatch?.operationKey) {
@@ -7262,6 +7271,9 @@ export class CoreStore {
    */
   holdActionForExecutor(actionId: string, detail: string): { action: ActionView } {
     const target = this.mustGetAction(actionId);
+    if (target.status === "waiting" && target.waitingReason === "executor" && target.waitingDetail === detail) {
+      return { action: this.actionView(actionId) };
+    }
     return this.withActionLaneAudit(target.beeId, "executor_unavailable", () => {
       const row = this.mustGetAction(actionId);
       if (row.status === "waiting" && row.waitingReason === "executor") {

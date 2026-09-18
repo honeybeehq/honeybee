@@ -1,11 +1,12 @@
 {
   "version": 1,
-  "$comment": "Bounded spawn-path census, not a complete Honeybee map. Extend roots when adding other workloads. Regex is inventory, not reachability proof.",
+  "$comment": "Bounded spawn census plus two action reconciliation methods. Core files are hashed for owner drift; other core entry points remain outside this bounded census.",
   "sourceRoots": [
     "v2/driver-cell/src",
     "v2/driver-hsr/src",
     "v2/daemon/src",
-    "v2/cli/src"
+    "v2/cli/src",
+    "v2/core/src"
   ],
   "extensions": "\\.ts$",
   "exclude": "(\\.test\\.|/tests/|/fixtures/)",
@@ -16,25 +17,38 @@
       "prefix": "entry:",
       "regex": "export (?:async )?function (\\w+)\\(",
       "mode": "capture",
-      "keyTemplate": "{path}:{1}"
+      "keyTemplate": "{path}:{1}",
+      "pathFilter": "^(?!v2/core/src/)"
     },
     {
       "inventory": "resource-owners",
       "prefix": "spawn:",
       "regex": "\\b(?:new Worker|spawn|spawnSync|execFile|execFileSync)\\(",
-      "mode": "ordinal"
+      "mode": "ordinal",
+      "pathFilter": "^(?!v2/core/src/)"
     },
     {
       "inventory": "work-triggers",
       "prefix": "timer:",
       "regex": "\\b(?:setInterval|setTimeout)\\(",
-      "mode": "ordinal"
+      "mode": "ordinal",
+      "pathFilter": "^(?!v2/core/src/)"
     },
     {
       "inventory": "boundaries",
       "prefix": "socket:",
       "regex": "\\b(?:createServer|createConnection|net\\.connect)\\(",
-      "mode": "ordinal"
+      "mode": "ordinal",
+      "pathFilter": "^(?!v2/core/src/)"
+    },
+    {
+      "inventory": "entry-points",
+      "prefix": "action-poll:",
+      "regex": "^  (reconcileArchiveAction|holdActionForExecutor)\\(",
+      "flags": "m",
+      "pathFilter": "^v2/core/src/store\\.ts$",
+      "mode": "capture",
+      "keyTemplate": "{1}"
     }
   ]
 }
