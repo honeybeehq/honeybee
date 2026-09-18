@@ -67,7 +67,11 @@ function xmlEscape(s: string): string {
     .replaceAll('"', "&quot;");
 }
 
-/** Pure renderer: the launchd user agent plist. */
+/**
+ * The daemon serves user messages and Apiary over a Unix socket, not XPC.
+ * Background (and the Standard default) throttle CPU/I/O under host load;
+ * Adaptive cannot see our socket activity. Keep this UI dependency Interactive.
+ */
 export function renderLaunchdPlist(spec: ServiceSpec): string {
   const args = spec.execArgs.map((a) => `    <string>${xmlEscape(a)}</string>`).join("\n");
   const envBlock =
@@ -100,7 +104,7 @@ ${args}
   <key>KeepAlive</key>
   <true/>
   <key>ProcessType</key>
-  <string>Background</string>
+  <string>Interactive</string>
   <key>StandardOutPath</key>
   <string>${xmlEscape(spec.logPath)}</string>
   <key>StandardErrorPath</key>

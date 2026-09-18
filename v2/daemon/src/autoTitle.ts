@@ -37,10 +37,12 @@ export type AutoTitleBookkeeping = {
   signature: string;
 };
 
+type AutoTitleCandidate = Pick<BeeRow, "id" | "title" | "lifecycle">;
+
 export type AutoTitleDeps = {
   enabled: () => boolean;
   naming: () => ResolvedNamingConfig;
-  listBees: () => BeeRow[];
+  listBees: () => AutoTitleCandidate[];
   listMessages: (beeId: string) => MessageRow[];
   getBee: (beeId: string) => BeeRow | null;
   setTitle: (beeId: string, title: string) => { applied: boolean };
@@ -80,7 +82,7 @@ export function userTaskMessages(messages: readonly MessageRow[]): string[] {
   return out;
 }
 
-export function contextSignature(bee: BeeRow, userMessages: readonly string[]): string {
+export function contextSignature(bee: AutoTitleCandidate, userMessages: readonly string[]): string {
   // Output is not naming context. Dropping its old signature field also
   // invalidates persisted deferrals that waited for the first turn to finish.
   return [bee.lifecycle, String(userMessages.length), userMessages[0] ?? ""].join(
@@ -93,7 +95,7 @@ export function contextSignature(bee: BeeRow, userMessages: readonly string[]): 
  * turn. A thin opener waits for the second user message.
  */
 export function autoTitleDecision(
-  bee: BeeRow,
+  bee: AutoTitleCandidate,
   userMessages: readonly string[],
   bookkeeping: AutoTitleBookkeeping | undefined,
   now: number,
@@ -321,7 +323,7 @@ export function createStoreAutoTitleDispatcher(
   return createAutoTitleDispatcherImpl({
     enabled: () => options.naming().auto,
     naming: options.naming,
-    listBees: () => store.listBees(),
+    listBees: () => store.listAutoTitleCandidates(),
     listMessages: (beeId) => store.listMessages(beeId),
     getBee: (beeId) => store.getBee(beeId),
     setTitle: (beeId, title) => store.setBeeTitle(beeId, title, "auto"),

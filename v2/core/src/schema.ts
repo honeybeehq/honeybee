@@ -240,6 +240,10 @@ CREATE TABLE IF NOT EXISTS bees (
 ) STRICT;
 -- Note: 'deleted' never appears as a stored lifecycle — Q1 says delete removes the
 -- record row immediately, so a missing row IS the deleted state.
+-- These columns exist since v1; additive indexes also repair existing stores.
+CREATE INDEX IF NOT EXISTS bees_by_lifecycle ON bees(lifecycle, id);
+CREATE INDEX IF NOT EXISTS bees_auto_title_candidates ON bees(lifecycle, id, title)
+  WHERE lifecycle = 'active' AND (title IS NULL OR title = '');
 
 CREATE TABLE IF NOT EXISTS runtimes (
   bee_id         TEXT NOT NULL REFERENCES bees(id) ON DELETE CASCADE,

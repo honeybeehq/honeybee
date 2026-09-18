@@ -1002,6 +1002,7 @@ export class HiveDaemon {
       this.tickErrors += 1;
       this.log(`tick.error ${err instanceof Error ? err.stack ?? err.message : String(err)}`);
     }
+    const tWatch = Date.now();
     this.performance.measureSync("daemon.tick.watch", () =>
       this.flushWatchers(),
     );
@@ -1011,7 +1012,7 @@ export class HiveDaemon {
     // every tick that would eat a visible slice of a client's timeout budget.
     if (tEnd - t0 >= 250) {
       this.log(
-        `tick.slow total=${tEnd - t0}ms step=${tStep - t0}ms accounts=${tAccounts - tStep}ms flush=${tEnd - tAccounts}ms`,
+        `tick.slow total=${tEnd - t0}ms step=${tStep - t0}ms accounts=${tAccounts - tStep}ms maintenance=${tWatch - tAccounts}ms flush=${tEnd - tWatch}ms`,
       );
     }
   }
@@ -3764,7 +3765,6 @@ export class HiveDaemon {
 
   private rpcHealth(): HealthResult {
     const store = this.mustStore();
-    const bees = store.listBees();
     return {
       protocol: PROTOCOL,
       pid: process.pid,
@@ -3776,11 +3776,7 @@ export class HiveDaemon {
       stopping: this.stopping,
       lastBoot: this.lastBoot,
       i1Violations: this.telemetry?.i1Count() ?? 0,
-      bees: {
-        total: bees.length,
-        active: bees.filter((b) => b.lifecycle === "active").length,
-        archived: bees.filter((b) => b.lifecycle === "archived").length,
-      },
+      bees: store.countBeesByLifecycle(),
     };
   }
 

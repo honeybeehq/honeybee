@@ -2030,6 +2030,29 @@ export class CoreStore {
     return rows.map(mapBee);
   }
 
+  /** Naming needs only eligible identities, never process env or archived history. */
+  listAutoTitleCandidates(): Pick<BeeRow, "id" | "title" | "lifecycle">[] {
+    return (this.stmt(
+      "SELECT id, title, lifecycle FROM bees WHERE lifecycle = 'active' AND (title IS NULL OR title = '') ORDER BY id",
+    ).all() as Row[]).map(row => ({
+      id: String(row.id),
+      title: row.title as string | null,
+      lifecycle: row.lifecycle as BeeRow["lifecycle"],
+    }));
+  }
+
+  /** Health probes count the narrow lifecycle index without decoding Bee payloads. */
+  countBeesByLifecycle(): { total: number; active: number; archived: number } {
+    const counts = { total: 0, active: 0, archived: 0 };
+    for (const row of this.stmt("SELECT lifecycle, COUNT(*) AS count FROM bees GROUP BY lifecycle").all()) {
+      const count = Number(row.count);
+      counts.total += count;
+      if (row.lifecycle === "active") counts.active = count;
+      else if (row.lifecycle === "archived") counts.archived = count;
+    }
+    return counts;
+  }
+
   /**
    * v6 — rename. Names follow createBee's rules (non-empty; NOT unique — the
    * id is the identity, names are labels; the CLI resolves ambiguous names by

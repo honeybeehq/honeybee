@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import {
   openCoreStore,
   type BeeRow,
@@ -81,11 +82,11 @@ function addBee(store: CoreStore, id: string, ordinal: number): BeeRow {
 
 function instrumentStore(store: CoreStore): StoreTrace {
   const trace: StoreTrace = { listBees: 0, listMessages: [], memberships: [], getBees: [] };
-  const listBees = store.listBees.bind(store);
+  const listBees = store.listAutoTitleCandidates.bind(store);
   const listMessages = store.listMessages.bind(store);
   const readMailboxMembership = store.readMailboxMembership.bind(store);
   const getBee = store.getBee.bind(store);
-  store.listBees = () => {
+  store.listAutoTitleCandidates = () => {
     trace.listBees += 1;
     return listBees();
   };
@@ -718,4 +719,43 @@ test("store dispatcher preserves one generation slot, watchdog fencing, and rost
   resolves[2]!("Second Title");
   await settle();
   assert.deepEqual(await dispatch(), [{ beeId: second.id, ok: true, title: "Second Title" }]);
+});
+
+
+test("quiet title scans never materialize archived or already-titled bees", async (t) => {
+  const rig = temporaryStore();
+  t.after(() => rig.cleanup());
+  rig.store.transact(() => {
+    for (let i = 0; i < 200; i++) {
+      const bee = addBee(rig.store, `history-${i}`, i + 1);
+      if (i % 2 === 0) rig.store.archiveBee(bee.id);
+      else rig.store.setBeeTitle(bee.id, "Already named", "user");
+    }
+  });
+  const candidate = addBee(rig.store, "untitled", 0x2001);
+  const dispatch = storeDispatcher(rig.store, rig.statePath, rig.clock, { value: true }, async () => {
+    assert.fail("an empty mailbox cannot generate a title");
+  });
+  const temporary = new DatabaseSync(":memory:");
+  const prototype = Object.getPrototypeOf(temporary.prepare("SELECT 1")) as ReturnType<DatabaseSync["prepare"]>;
+  temporary.close();
+  const original = prototype.all;
+  const reads: Array<{ sql: string; rows: number; columns: string[] }> = [];
+  t.mock.method(prototype, "all", function (this: ReturnType<DatabaseSync["prepare"]>, ...args: Parameters<typeof original>) {
+    const rows = original.apply(this, args);
+    reads.push({ sql: this.sourceSQL, rows: rows.length, columns: Object.keys(rows[0] ?? {}) });
+    return rows;
+  });
+  const seq = rig.store.lastAuditSeq();
+  await dispatch();
+  await dispatch();
+  const rosterReads = reads.filter(read => /FROM bees\b/i.test(read.sql));
+  assert.equal(rosterReads.length, 2);
+  assert.ok(rosterReads.every(read => read.rows === 1), "only the untitled active candidate is read");
+  assert.ok(rosterReads.every(read => !read.columns.includes("env")), "title scans do not decode process environment or history");
+  assert.equal(rig.store.lastAuditSeq(), seq, "quiet scans do not change authority");
+  rig.store.setBeeTitle(candidate.id, "Now named", "user");
+  reads.length = 0;
+  await dispatch();
+  assert.ok(reads.filter(read => /FROM bees\b/i.test(read.sql)).every(read => read.rows === 0));
 });

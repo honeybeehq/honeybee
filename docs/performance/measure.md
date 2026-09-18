@@ -126,3 +126,23 @@ Use the [Honeybee perf skill](../../.agents/skills/perf-honeybee/SKILL.md) and i
 [remote Cell workload](../../.agents/skills/perf-honeybee/workloads/remote-cell-spawn.md)
 for `scripts/perf/run.mjs --suite cell-spawn`. It uses isolated real satellite Cells
 and stub readiness; workstation transport and provider startup remain separate gaps.
+
+## Responsive workstation daemon
+
+The macOS service uses `ProcessType=Interactive`: Apiary's messages and state
+updates depend on this daemon, and its Unix socket does not carry the XPC
+transactions needed for `Adaptive`. `Background` can throttle its CPU and disk
+reads during other workstation activity. Preserve this setting when reinstalling
+the service; `hive deploy` regenerates the plist through the service renderer.
+
+Automatic naming reads only active bees without a title, from the covering
+`bees_auto_title_candidates` index. The one-second scan must not load full bee
+records or archived history. Health probes count the covering lifecycle index;
+they must not deserialize every bee's environment just to report three counts.
+The regression tests cover populated-store index installation, rollback, and
+quiet title scans with unrelated archived/titled bees.
+
+In `tick.slow`, `maintenance` measures login-flow expiry and synchronous title
+kickoff; `flush` measures watcher publication. Older builds included both in
+`flush`, so that field alone cannot attribute a stall to audit-history queries.
+Use a CPU profile to distinguish the paths before changing them.
