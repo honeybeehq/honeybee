@@ -7224,28 +7224,23 @@ export class CoreStore {
 
   /** lifecycle.archive: settle from the command's authoritative outcome (called by the scheduler each step). */
   reconcileArchiveAction(actionId: string): { action: ActionView; settled: boolean } {
-    const target = this.mustGetAction(actionId);
+    const row = this.mustGetAction(actionId);
     // The synchronous single writer cannot change these facts during this read.
     // Keep no-op scheduler polls out of the full-lane mutation audit.
-    if (target.status !== "running" || target.executor !== "lifecycle.archive" || !target.dispatch?.operationKey) {
+    if (row.status !== "running" || row.executor !== "lifecycle.archive" || !row.dispatch?.operationKey) {
       return { action: this.actionView(actionId), settled: false };
     }
-    const command = this.getCommandByIdempotencyKey(target.dispatch.operationKey);
-    if (command?.status === "queued" || command?.status === "running") {
+    const operationKey = row.dispatch.operationKey;
+    const cmd = this.getCommandByIdempotencyKey(operationKey);
+    if (cmd?.status === "queued" || cmd?.status === "running") {
       return { action: this.actionView(actionId), settled: false };
     }
-    return this.withActionLaneAudit(target.beeId, "reconciled", () => {
-      const row = this.mustGetAction(actionId);
-      if (row.status !== "running" || row.executor !== "lifecycle.archive" || !row.dispatch?.operationKey) {
-        return { action: this.actionView(actionId), settled: false };
-      }
-      const cmd = this.getCommandByIdempotencyKey(row.dispatch.operationKey);
+    return this.withActionLaneAudit(row.beeId, "reconciled", () => {
       if (!cmd) {
         const at = this.now();
-        this.failActionRow(row, "operation_missing", `archive command ${row.dispatch.operationKey} is not in the command queue`, true, at);
+        this.failActionRow(row, "operation_missing", `archive command ${operationKey} is not in the command queue`, true, at);
         return { action: this.actionView(actionId), settled: true };
       }
-      if (cmd.status === "queued" || cmd.status === "running") return { action: this.actionView(actionId), settled: false };
       const at = this.now();
       if (cmd.status === "failed") {
         this.failActionRow(row, `command_${cmd.failureCause ?? "failed"}`, `archive command ${cmd.id} failed`, true, at);
