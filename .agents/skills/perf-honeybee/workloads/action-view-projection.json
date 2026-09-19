@@ -1,0 +1,115 @@
+{
+  "protocolVersion": 1,
+  "id": "action-view-projection",
+  "title": "Batch action-view projection",
+  "lane": "throughput",
+  "processes": [
+    "hived"
+  ],
+  "owners": [
+    "v2/core/src/store.ts@70021361dc08edde2fd29f7d41c7376f24301122",
+    "v2/core/src/actions.ts@1b08885d576a5f92f90d272a9c571bc80b3a2b13",
+    "v2/core/src/schema.ts@0deb075fb7d5adb7cdbce19ff36113e39e5d74fb"
+  ],
+  "effect": {
+    "user": "Queued actions expose current predecessor holds without repeatedly scanning their lane.",
+    "assertions": [
+      "Exact single-row projection parity, including filtered reads and mixed statuses.",
+      "Hold priority, cancelled skipping, order and token omission remain unchanged.",
+      "Controls, audit replay and reopen stay consistent."
+    ],
+    "exclusions": [
+      "SQL and JSON parsing work",
+      "Wall-clock latency, CPU, RSS, fsync and whole-daemon cost"
+    ]
+  },
+  "accounts": [
+    {
+      "inventory": "entry-points",
+      "key": "action-view:listActionViews"
+    }
+  ],
+  "states": {
+    "idle": {
+      "matters": false,
+      "why": "No query, no projection."
+    },
+    "first-use": {
+      "matters": false,
+      "why": "Setup excluded; no cold-start claim."
+    },
+    "repeated": {
+      "matters": true,
+      "why": "Three repetitions of each query shape."
+    },
+    "scale": {
+      "matters": true,
+      "why": "1, 32 and 256 rows in one lane."
+    },
+    "background": {
+      "matters": false,
+      "why": "No renderer or runtime is launched."
+    },
+    "release": {
+      "matters": false,
+      "why": "Fixture stores close; memory is not measured."
+    },
+    "recovery": {
+      "matters": true,
+      "why": "Separate test reopens persisted rows and verifies current views."
+    }
+  },
+  "fixture": {
+    "preset": "action-view-reads-v1",
+    "isolationPolicy": 1,
+    "scaleAxes": [
+      {
+        "axis": "laneSize",
+        "values": [
+          1,
+          32,
+          256
+        ],
+        "unit": "actions"
+      }
+    ],
+    "seed": "temporary SQLite stores; queued/paused/mixed/filtered/terminal status shapes"
+  },
+  "recipe": {
+    "driver": "v2/core/tests/action-views.test.ts",
+    "command": "HIVE_ACTION_VIEWS_RECEIPT=.proof/action-view-counts.json node --test v2/core/tests/action-views.test.ts",
+    "readiness": "Fixture rows installed; expected views and state recorded before counters.",
+    "completion": "One listActionViews call per scenario/size/round, exact output and state comparison.",
+    "warmup": "None; deterministic operation counts, no timing.",
+    "teardown": "Close fixture stores and remove their temporary directories.",
+    "requires": [
+      "Node 24.18.0",
+      "mkdir -p .proof"
+    ]
+  },
+  "metrics": [
+    {
+      "id": "laneReadsPerRow",
+      "unit": "count",
+      "scope": "Full-lane numeric element reads per stored action during one listActionViews query",
+      "collector": "Proxy around per-instance listActionsOf results in action-views.test.ts; setup excluded",
+      "aggregation": "max",
+      "kind": "actual",
+      "status": "gated",
+      "states": [
+        "repeated",
+        "scale"
+      ],
+      "betterWhen": "lower",
+      "invariant": "All 45 retained samples have exact view parity and at most four lane element reads per stored row.",
+      "noise": "Deterministic counts; three repetitions per scenario/size. No latency interpretation."
+    }
+  ],
+  "gaps": [
+    "Single actionView and scheduling retain their current scans.",
+    "SQL queries, parsing, allocations and whole-daemon latency are outside this count.",
+    "256-row lanes are a synthetic scaling control, not observed production prevalence."
+  ],
+  "updatedAt": "2026-09-19",
+  "readiness": "45 count samples with exact view parity; 47 tests including filtered controls/reopen and exhaustive ordered status combinations. No CPU, latency or memory claim."
+}

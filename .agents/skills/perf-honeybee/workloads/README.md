@@ -7,6 +7,7 @@ Each workload is a `<id>.json` record (machine-readable, schema in `record.schem
 | Workload | Lane | Processes | gap | recipe-only | measured | stale | gated | Unmeasured states | Readiness |
 | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | --- | --- |
 | [Unchanged action lane reconciliation](./action-noop-reconciliation.md) | steady-state | hived | 0 | 0 | 0 | 0 | 1 | recovery | 18 deterministic samples prove zero full-lane audit view builds on unchanged polls; transition/reopen controls are tests, total scheduler cost remains unmeasured. |
+| [Batch action-view projection](./action-view-projection.md) | throughput | hived | 0 | 0 | 0 | 0 | 1 | recovery | 45 count samples with exact view parity; 47 tests including filtered controls/reopen and exhaustive ordered status combinations. No CPU, latency or memory claim. |
 | [Remote Cell spawn: satellite owner](./remote-cell-spawn.md) | startup | hived, bee-runtime, helper | 3 | 3 | 0 | 0 | 0 | first-use, repeated, scale, release, recovery | Executable owner-side satellite stub benchmark; real provider, per-phase attribution and workstation-to-visible latency remain explicit gaps. |
 
 ## Accounted gaps (74)

@@ -1,11 +1,11 @@
 ---
 name: perf-honeybee
-description: Measure satellite Cell startup and unchanged action-lane polling using isolated Honeybee fixtures and conservative workload receipts.
+description: Measure satellite Cell startup, unchanged action-lane polling and batch action views using isolated Honeybee fixtures and conservative workload receipts.
 ---
 
 # Perf Honeybee
 
-This map covers **satellite Cell startup** and **unchanged action-lane polling**, not all Honeybee performance.
+This map covers **satellite Cell startup** and **unchanged action-lane polling** and **batch action views**, not all Honeybee performance.
 Read [the map](workloads/README.md) and [the workload](workloads/remote-cell-spawn.md).
 For action polling, read [its workload](workloads/action-noop-reconciliation.md).
 It counts store work in real SQLite fixtures; no runtime is launched or timing claimed.
@@ -54,7 +54,9 @@ failed, instrumented or inconsistent captures. A passing invariant is not a spee
 ## Evidence and Cleanup
 
 Raw reports and failures go under `.proof/remote-cell-spawn/`, uncommitted. Retain
-compact baseline receipts in `docs/performance/` only after an idle-host baseline.
+compact timing receipts in `docs/performance/` only after an idle-host baseline.
+Deterministic action-view counts are retained under `workloads/baselines/`; they
+do not require an idle host and carry no timing claim.
 Normal completion and SIGTERM stop owned runtimes and verify runner exit before
 removing fixtures. SIGKILL cannot clean up; retain the reported fixture path and
 use exact run ownership for recovery. Never signal by process name.
@@ -62,8 +64,10 @@ use exact run ownership for recovery. Never signal by process name.
 ## The map and Helpers
 
 `node scripts/perf-map.mjs census`, `validate`, `index`, `drift`, and
-`check <receipt>` maintain the map. Census uses bounded regex in four source roots;
+`check <receipt>` maintain the map. Census uses bounded regex in five source roots;
 it is inventory, not call-graph coverage. Unmeasured families are in `gaps.json`.
 Run `node --test scripts/perf-map.node-test.mjs scripts/perf/cell-spawn-receipt.test.mjs scripts/perf/worker.test.mjs`.
 The existing `scripts/perf/cells.mjs` and `runner-host.mjs` provide narrower attribution;
 workstation Git-image timings must not be presented as satellite Cell timings.
+
+Batch action-view projection is mapped by [action-view-projection](workloads/action-view-projection.md): full-lane element counts only, separate from no-op reconciliation calls. Its core test emits a receipt with HIVE_ACTION_VIEWS_RECEIPT.

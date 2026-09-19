@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "$comment": "Bounded spawn census plus two action reconciliation methods. Core files are hashed for owner drift; other core entry points remain outside this bounded census.",
+  "$comment": "Bounded spawn census, two action reconciliation methods and batch action views; other core entry points remain outside the census.",
   "sourceRoots": [
     "v2/driver-cell/src",
     "v2/driver-hsr/src",
@@ -45,6 +45,15 @@
       "inventory": "entry-points",
       "prefix": "action-poll:",
       "regex": "^  (reconcileArchiveAction|holdActionForExecutor)\\(",
+      "flags": "m",
+      "pathFilter": "^v2/core/src/store\\.ts$",
+      "mode": "capture",
+      "keyTemplate": "{1}"
+    },
+    {
+      "inventory": "entry-points",
+      "prefix": "action-view:",
+      "regex": "^  (listActionViews)\\(",
       "flags": "m",
       "pathFilter": "^v2/core/src/store\\.ts$",
       "mode": "capture",

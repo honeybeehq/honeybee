@@ -352,10 +352,17 @@ export function actionPredecessor(row: ActionRow, lane: readonly ActionRow[]): A
 export function deriveActionHold(row: ActionRow, lane: readonly ActionRow[], queue: Pick<ActionQueueRow, "paused"> | null): ActionHold | null {
   if (row.status !== "queued") return null;
   const pred = actionPredecessor(row, lane);
+  // Only the fallback needs the active row; keep single-action reads lazy.
+  const active = !pred || pred.status === "succeeded"
+    ? (queue?.paused ? null : lane.find((o) => o.id !== row.id && actionIsActive(o)) ?? null)
+    : null;
+  return actionHold(pred, active, queue);
+}
+
+function actionHold(pred: ActionRow | null, active: ActionRow | null, queue: Pick<ActionQueueRow, "paused"> | null): ActionHold | null {
   if (pred && pred.status === "failed") return { reason: "predecessor_failed", actionId: pred.id, actionStatus: pred.status };
   if (pred && pred.status !== "succeeded") return { reason: "predecessor_active", actionId: pred.id, actionStatus: pred.status };
   if (queue?.paused) return { reason: "paused", actionId: null, actionStatus: null };
-  const active = lane.find((o) => o.id !== row.id && actionIsActive(o));
   if (active) return { reason: "lane_busy", actionId: active.id, actionStatus: active.status };
   return null;
 }
@@ -372,8 +379,34 @@ export function deriveActionControls(row: ActionRow): ActionControls {
 
 /** Locked RPC/mirror projection. Drops the token; derives hold + controls from the lane. */
 export function toActionView(row: ActionRow, lane: readonly ActionRow[], queue: Pick<ActionQueueRow, "paused"> | null): ActionView {
+  return actionViewWithHold(row, deriveActionHold(row, lane, queue));
+}
+
+/**
+ * Project a same-bee selection and its complete lane, both in increasing position
+ * order (as returned by the store). Cancelled rows never become predecessors.
+ * A status-filtered selection still derives holds from the complete lane.
+ */
+export function toActionViews(rows: readonly ActionRow[], lane: readonly ActionRow[], queue: Pick<ActionQueueRow, "paused"> | null): ActionView[] {
+  const active = !queue?.paused && rows.some((row) => row.status === "queued")
+    ? lane.find(actionIsActive) ?? null : null;
+  let cursor = 0;
+  let pred: ActionRow | null = null;
+  return rows.map((row) => {
+    if (row.status !== "queued") return actionViewWithHold(row, null);
+    while (cursor < lane.length) {
+      const previous = lane[cursor]!;
+      if (previous.position >= row.position) break;
+      if (previous.status !== "cancelled") pred = previous;
+      cursor++;
+    }
+    return actionViewWithHold(row, actionHold(pred, active, queue));
+  });
+}
+
+function actionViewWithHold(row: ActionRow, hold: ActionHold | null): ActionView {
   const { attemptToken: _token, enqueueKey: _key, ...rest } = row;
-  return { ...rest, hold: deriveActionHold(row, lane, queue), controls: deriveActionControls(row) };
+  return { ...rest, hold, controls: deriveActionControls(row) };
 }
 
 export function toActionQueueView(row: ActionQueueRow): ActionQueueView {

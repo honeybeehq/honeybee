@@ -173,6 +173,7 @@ import {
   resolveActionInputs,
   toActionQueueView,
   toActionView,
+  toActionViews,
   validateActionOutputs,
 } from "./actions.ts";
 import {
@@ -6675,18 +6676,16 @@ export class CoreStore {
 
   /** Views for the mirror: every action grouped by bee, holds/controls derived per lane. */
   listActionViews(filter: { beeId?: string; statuses?: readonly ActionStatus[] } = {}): ActionView[] {
-    const rows = this.listActions(filter);
-    const lanes = new Map<string, ActionRow[]>();
-    const queues = new Map<string, ActionQueueRow | null>();
+    const selections = new Map<string, ActionRow[]>();
+    for (const row of this.listActions(filter)) {
+      let selected = selections.get(row.beeId);
+      if (!selected) { selected = []; selections.set(row.beeId, selected); }
+      selected.push(row);
+    }
     const out: ActionView[] = [];
-    for (const row of rows) {
-      let lane = lanes.get(row.beeId);
-      if (!lane) {
-        lane = this.listActionsOf(row.beeId);
-        lanes.set(row.beeId, lane);
-        queues.set(row.beeId, this.getActionQueue(row.beeId));
-      }
-      out.push(toActionView(row, lane, queues.get(row.beeId) ?? null));
+    for (const [beeId, selected] of selections) {
+      const views = toActionViews(selected, this.listActionsOf(beeId), this.getActionQueue(beeId));
+      for (const view of views) out.push(view);
     }
     return out;
   }

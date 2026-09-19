@@ -1,0 +1,431 @@
+{
+  "workload": "action-view-projection",
+  "seriesId": "action-view-reads-v1",
+  "capturedAt": "2026-09-19T08:04:46.422Z",
+  "host": "Tormods-Mac-Studio.local",
+  "node": "v24.18.0",
+  "sources": {
+    "../src/store.ts": "fc54953f87aabc4785c338888ef089f7af284720eb0e5420714b941abb20fd9e",
+    "../src/actions.ts": "8e7c5c6b83be9650c95189efd8e95d4f8d44dfcd8efca82f91db72ae37eb33c7",
+    "../src/schema.ts": "d1faf83ad1ea15919328bb1ae72a558ef9d244adcfe1d410733d66db61d3ed0c",
+    "./action-views.test.ts": "25187363ddfb9f3e889144a1aa6da5bd9b7df7ec50f32f5d105f1006a9c1fcb8",
+    "./helpers.ts": "a12920c8a79fd01e5bfca3d47ae9ce015e7dff189afe583da7743050a6a58882"
+  },
+  "samples": [
+    {
+      "scenario": "queued",
+      "size": 1,
+      "round": 0,
+      "laneReads": 2,
+      "outputHash": "16f4c14b5667cc61b0bea20777c18864649e3916cfdbda0c14786e6d00273b6b",
+      "parity": true
+    },
+    {
+      "scenario": "queued",
+      "size": 1,
+      "round": 1,
+      "laneReads": 2,
+      "outputHash": "16f4c14b5667cc61b0bea20777c18864649e3916cfdbda0c14786e6d00273b6b",
+      "parity": true
+    },
+    {
+      "scenario": "queued",
+      "size": 1,
+      "round": 2,
+      "laneReads": 2,
+      "outputHash": "16f4c14b5667cc61b0bea20777c18864649e3916cfdbda0c14786e6d00273b6b",
+      "parity": true
+    },
+    {
+      "scenario": "queued",
+      "size": 32,
+      "round": 0,
+      "laneReads": 95,
+      "outputHash": "5c4b33268b31a733aa27cb80c6ad7ebfc3b7844fcb7e79bfb85ef933d6ca8591",
+      "parity": true
+    },
+    {
+      "scenario": "queued",
+      "size": 32,
+      "round": 1,
+      "laneReads": 95,
+      "outputHash": "5c4b33268b31a733aa27cb80c6ad7ebfc3b7844fcb7e79bfb85ef933d6ca8591",
+      "parity": true
+    },
+    {
+      "scenario": "queued",
+      "size": 32,
+      "round": 2,
+      "laneReads": 95,
+      "outputHash": "5c4b33268b31a733aa27cb80c6ad7ebfc3b7844fcb7e79bfb85ef933d6ca8591",
+      "parity": true
+    },
+    {
+      "scenario": "queued",
+      "size": 256,
+      "round": 0,
+      "laneReads": 767,
+      "outputHash": "d35af980cf29d1f90ccc2606a6ed06625398339a6e5b2b7614b7c22cf2344abd",
+      "parity": true
+    },
+    {
+      "scenario": "queued",
+      "size": 256,
+      "round": 1,
+      "laneReads": 767,
+      "outputHash": "d35af980cf29d1f90ccc2606a6ed06625398339a6e5b2b7614b7c22cf2344abd",
+      "parity": true
+    },
+    {
+      "scenario": "queued",
+      "size": 256,
+      "round": 2,
+      "laneReads": 767,
+      "outputHash": "d35af980cf29d1f90ccc2606a6ed06625398339a6e5b2b7614b7c22cf2344abd",
+      "parity": true
+    },
+    {
+      "scenario": "paused",
+      "size": 1,
+      "round": 0,
+      "laneReads": 1,
+      "outputHash": "fe4b6fb78b1f92cbf0828458ee7a8b5d68ae3f35f019f701d3adaf56f26b88d6",
+      "parity": true
+    },
+    {
+      "scenario": "paused",
+      "size": 1,
+      "round": 1,
+      "laneReads": 1,
+      "outputHash": "fe4b6fb78b1f92cbf0828458ee7a8b5d68ae3f35f019f701d3adaf56f26b88d6",
+      "parity": true
+    },
+    {
+      "scenario": "paused",
+      "size": 1,
+      "round": 2,
+      "laneReads": 1,
+      "outputHash": "fe4b6fb78b1f92cbf0828458ee7a8b5d68ae3f35f019f701d3adaf56f26b88d6",
+      "parity": true
+    },
+    {
+      "scenario": "paused",
+      "size": 32,
+      "round": 0,
+      "laneReads": 63,
+      "outputHash": "ad11baa171689c586d66a37cf8d9adafeb8ab2f0a9c8bd9cf44f957b9af24db6",
+      "parity": true
+    },
+    {
+      "scenario": "paused",
+      "size": 32,
+      "round": 1,
+      "laneReads": 63,
+      "outputHash": "ad11baa171689c586d66a37cf8d9adafeb8ab2f0a9c8bd9cf44f957b9af24db6",
+      "parity": true
+    },
+    {
+      "scenario": "paused",
+      "size": 32,
+      "round": 2,
+      "laneReads": 63,
+      "outputHash": "ad11baa171689c586d66a37cf8d9adafeb8ab2f0a9c8bd9cf44f957b9af24db6",
+      "parity": true
+    },
+    {
+      "scenario": "paused",
+      "size": 256,
+      "round": 0,
+      "laneReads": 511,
+      "outputHash": "79da44f1822535600034d75df33c5994b124a5805364209ad55fcba53baaaee6",
+      "parity": true
+    },
+    {
+      "scenario": "paused",
+      "size": 256,
+      "round": 1,
+      "laneReads": 511,
+      "outputHash": "79da44f1822535600034d75df33c5994b124a5805364209ad55fcba53baaaee6",
+      "parity": true
+    },
+    {
+      "scenario": "paused",
+      "size": 256,
+      "round": 2,
+      "laneReads": 511,
+      "outputHash": "79da44f1822535600034d75df33c5994b124a5805364209ad55fcba53baaaee6",
+      "parity": true
+    },
+    {
+      "scenario": "mixed",
+      "size": 1,
+      "round": 0,
+      "laneReads": 0,
+      "outputHash": "7c7da16d19e702200098f4a1311dd138a46f4f799defe4e6242225662d964976",
+      "parity": true
+    },
+    {
+      "scenario": "mixed",
+      "size": 1,
+      "round": 1,
+      "laneReads": 0,
+      "outputHash": "7c7da16d19e702200098f4a1311dd138a46f4f799defe4e6242225662d964976",
+      "parity": true
+    },
+    {
+      "scenario": "mixed",
+      "size": 1,
+      "round": 2,
+      "laneReads": 0,
+      "outputHash": "7c7da16d19e702200098f4a1311dd138a46f4f799defe4e6242225662d964976",
+      "parity": true
+    },
+    {
+      "scenario": "mixed",
+      "size": 32,
+      "round": 0,
+      "laneReads": 49,
+      "outputHash": "63ac3b077648fcbae6f49f84194871ffd0fbb4d1074c319672b7e5c85d1d8d36",
+      "parity": true
+    },
+    {
+      "scenario": "mixed",
+      "size": 32,
+      "round": 1,
+      "laneReads": 49,
+      "outputHash": "63ac3b077648fcbae6f49f84194871ffd0fbb4d1074c319672b7e5c85d1d8d36",
+      "parity": true
+    },
+    {
+      "scenario": "mixed",
+      "size": 32,
+      "round": 2,
+      "laneReads": 49,
+      "outputHash": "63ac3b077648fcbae6f49f84194871ffd0fbb4d1074c319672b7e5c85d1d8d36",
+      "parity": true
+    },
+    {
+      "scenario": "mixed",
+      "size": 256,
+      "round": 0,
+      "laneReads": 369,
+      "outputHash": "896ac49fb092eb5ff9ebdf4f452deef76b2cded05c9caa32daf521aced3aa735",
+      "parity": true
+    },
+    {
+      "scenario": "mixed",
+      "size": 256,
+      "round": 1,
+      "laneReads": 369,
+      "outputHash": "896ac49fb092eb5ff9ebdf4f452deef76b2cded05c9caa32daf521aced3aa735",
+      "parity": true
+    },
+    {
+      "scenario": "mixed",
+      "size": 256,
+      "round": 2,
+      "laneReads": 369,
+      "outputHash": "896ac49fb092eb5ff9ebdf4f452deef76b2cded05c9caa32daf521aced3aa735",
+      "parity": true
+    },
+    {
+      "scenario": "filtered",
+      "size": 1,
+      "round": 0,
+      "laneReads": 0,
+      "outputHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "parity": true
+    },
+    {
+      "scenario": "filtered",
+      "size": 1,
+      "round": 1,
+      "laneReads": 0,
+      "outputHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "parity": true
+    },
+    {
+      "scenario": "filtered",
+      "size": 1,
+      "round": 2,
+      "laneReads": 0,
+      "outputHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "parity": true
+    },
+    {
+      "scenario": "filtered",
+      "size": 32,
+      "round": 0,
+      "laneReads": 49,
+      "outputHash": "7929274736f4dbbe27fd85d9bce6984e45ac3718229f0af68e4b64167a4a4c4b",
+      "parity": true
+    },
+    {
+      "scenario": "filtered",
+      "size": 32,
+      "round": 1,
+      "laneReads": 49,
+      "outputHash": "7929274736f4dbbe27fd85d9bce6984e45ac3718229f0af68e4b64167a4a4c4b",
+      "parity": true
+    },
+    {
+      "scenario": "filtered",
+      "size": 32,
+      "round": 2,
+      "laneReads": 49,
+      "outputHash": "7929274736f4dbbe27fd85d9bce6984e45ac3718229f0af68e4b64167a4a4c4b",
+      "parity": true
+    },
+    {
+      "scenario": "filtered",
+      "size": 256,
+      "round": 0,
+      "laneReads": 369,
+      "outputHash": "612c36e6554501e8b83863967dcb2615f56814ba35203f3eea835557da692948",
+      "parity": true
+    },
+    {
+      "scenario": "filtered",
+      "size": 256,
+      "round": 1,
+      "laneReads": 369,
+      "outputHash": "612c36e6554501e8b83863967dcb2615f56814ba35203f3eea835557da692948",
+      "parity": true
+    },
+    {
+      "scenario": "filtered",
+      "size": 256,
+      "round": 2,
+      "laneReads": 369,
+      "outputHash": "612c36e6554501e8b83863967dcb2615f56814ba35203f3eea835557da692948",
+      "parity": true
+    },
+    {
+      "scenario": "terminal",
+      "size": 1,
+      "round": 0,
+      "laneReads": 0,
+      "outputHash": "7c7da16d19e702200098f4a1311dd138a46f4f799defe4e6242225662d964976",
+      "parity": true
+    },
+    {
+      "scenario": "terminal",
+      "size": 1,
+      "round": 1,
+      "laneReads": 0,
+      "outputHash": "7c7da16d19e702200098f4a1311dd138a46f4f799defe4e6242225662d964976",
+      "parity": true
+    },
+    {
+      "scenario": "terminal",
+      "size": 1,
+      "round": 2,
+      "laneReads": 0,
+      "outputHash": "7c7da16d19e702200098f4a1311dd138a46f4f799defe4e6242225662d964976",
+      "parity": true
+    },
+    {
+      "scenario": "terminal",
+      "size": 32,
+      "round": 0,
+      "laneReads": 0,
+      "outputHash": "5f3ca268d88b9533fe7389e8e291cca9eb5e7292067178c31945a48b77c678c2",
+      "parity": true
+    },
+    {
+      "scenario": "terminal",
+      "size": 32,
+      "round": 1,
+      "laneReads": 0,
+      "outputHash": "5f3ca268d88b9533fe7389e8e291cca9eb5e7292067178c31945a48b77c678c2",
+      "parity": true
+    },
+    {
+      "scenario": "terminal",
+      "size": 32,
+      "round": 2,
+      "laneReads": 0,
+      "outputHash": "5f3ca268d88b9533fe7389e8e291cca9eb5e7292067178c31945a48b77c678c2",
+      "parity": true
+    },
+    {
+      "scenario": "terminal",
+      "size": 256,
+      "round": 0,
+      "laneReads": 0,
+      "outputHash": "f409453877417a2f2802666feaa13eb29648ca5ced8eafd1ed3467bd2af48a7d",
+      "parity": true
+    },
+    {
+      "scenario": "terminal",
+      "size": 256,
+      "round": 1,
+      "laneReads": 0,
+      "outputHash": "f409453877417a2f2802666feaa13eb29648ca5ced8eafd1ed3467bd2af48a7d",
+      "parity": true
+    },
+    {
+      "scenario": "terminal",
+      "size": 256,
+      "round": 2,
+      "laneReads": 0,
+      "outputHash": "f409453877417a2f2802666feaa13eb29648ca5ced8eafd1ed3467bd2af48a7d",
+      "parity": true
+    }
+  ],
+  "complete": true,
+  "results": [
+    {
+      "metric": "laneReadsPerRow",
+      "samples": [
+        2,
+        2,
+        2,
+        2.96875,
+        2.96875,
+        2.96875,
+        2.99609375,
+        2.99609375,
+        2.99609375,
+        1,
+        1,
+        1,
+        1.96875,
+        1.96875,
+        1.96875,
+        1.99609375,
+        1.99609375,
+        1.99609375,
+        0,
+        0,
+        0,
+        1.53125,
+        1.53125,
+        1.53125,
+        1.44140625,
+        1.44140625,
+        1.44140625,
+        0,
+        0,
+        0,
+        1.53125,
+        1.53125,
+        1.53125,
+        1.44140625,
+        1.44140625,
+        1.44140625,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "invariantHolds": true
+    }
+  ],
+  "scope": "Numeric element reads of full lanes during CoreStore.listActionViews only; setup, SQL, parsing, selected-row iteration and allocations excluded. No timing or whole-daemon claim."
+}
