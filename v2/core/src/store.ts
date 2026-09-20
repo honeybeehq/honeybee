@@ -4618,6 +4618,17 @@ export class CoreStore {
   }
 
   /**
+   * v27 rollback bridge: rows that still require the central credential
+   * authority. A bridge build must refuse to start while any such row exists;
+   * otherwise its native refresher could consume a chain the authority owns.
+   */
+  credentialAuthorityRollbackBlockers(): Array<{ account: string; phase: string }> {
+    return this.stmt(
+      "SELECT account, phase FROM account_credential_authorities WHERE phase <> 'disabled' ORDER BY account",
+    ).all() as Array<{ account: string; phase: string }>;
+  }
+
+  /**
    * v7 — register an account (one row = one provider identity = one
    * run-home). Audited as `account.put {account, outcome:"created"}`; every
    * later field change is `account.put {account, outcome:"updated", changed}`

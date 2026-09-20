@@ -618,6 +618,14 @@ export class HiveDaemon {
       maxAttempts: this.cfg.maxAttempts,
       backoffBaseMs: this.cfg.backoffBaseMs,
     });
+    const credentialRollbackBlockers = store.credentialAuthorityRollbackBlockers();
+    if (credentialRollbackBlockers.length > 0) {
+      store.close();
+      const detail = credentialRollbackBlockers.map(({ account, phase }) => `${account}:${phase}`).join(", ");
+      throw new Error(
+        `credential authority rollback blocked (${detail}); deploy the central-credential build, disable every enrolled account, confirm phase disabled, then retry the bridge`,
+      );
+    }
     this.store = store;
     this.threadOperations = new ThreadOperations(store, beeId => this.resolveSpawnSpec(beeId));
     for (const operation of store.listThreadOperations()) if (operation.failure?.code === "successor_deleted") this.removeThreadArtifacts(operation.id);
