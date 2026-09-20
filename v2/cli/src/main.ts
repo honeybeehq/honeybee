@@ -743,6 +743,7 @@ const ACCOUNT_USAGE =
   "       hive account config preview <selector> | config import <selector> [--idempotency-key key]\n" +
   "       hive account remove|pause|unpause <selector> | penalty <selector> <0-100>\n" +
   "       hive account login <selector> [--method <id>] [--remote] [--no-wait] | login-status <selector> | login-cancel <selector>\n" +
+  "       hive account credentials <status|enable|refresh|disable> <selector>\n" +
   "       hive account capture <selector> | verify <selector> | limits [<selector>] | reset <selector> [--credit-id id] --idempotency-key key\n" +
   "       hive account import [--root ~/.hive] [--dry-run] | backfill [--dry-run]";
 
@@ -993,6 +994,18 @@ async function cmdAccount(ctx: CliContext, parsed: Parsed): Promise<number> {
       const got = await withClient(ctx, (c) => c.request<AccountLoginGetResult>("account.login.get", { id }));
       const r = await withClient(ctx, (c) => c.request<AccountLoginCancelResult>("account.login.cancel", { flowId: got.flow.id, idempotencyKey: key }));
       emit(ctx, [confirm(r.applied ? "ok" : "info", r.applied ? "cancelled" : "unchanged", `login for ${r.flow.account} (${r.flow.phase})`, r.deduped)], r, false);
+      return 0;
+    }
+    case "credentials": {
+      const action = parsed.positional[2];
+      const id = parsed.positional[3];
+      if (!id || !["status", "enable", "refresh", "disable"].includes(action ?? "")) {
+        throw new Error("Usage: hive account credentials <status|enable|refresh|disable> <account>");
+      }
+      const result = await withClient(ctx, c => c.request<import("../../core/src/index.ts").AccountCredentialAuthority | null>(
+        `account.credentials.${action}` as import("../../daemon/src/protocol.ts").RpcVerb,
+        { id, ...(action === "status" ? {} : { idempotencyKey: key ?? randomUUID() }) }, ACCOUNT_LIMITS_RPC_TIMEOUT_MS));
+      emit(ctx, [result ? `${result.account}: credentials ${result.phase}, generation ${result.generation}; expires ${result.expiresAt === null ? "unknown" : new Date(result.expiresAt).toISOString()}` : `${id}: native credential management`], result, false);
       return 0;
     }
     case "capture": {

@@ -17,6 +17,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, statSync } from "node
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
+import { ClaudeCredentialAuthority, CredentialAuthorityError, CredentialOwnershipConflict } from "./claudeCredentialAuthority.ts";
 import { liveGateways } from "./gateways.ts";
 import { withFileLock } from "../../../src/lock.ts";
 import { seedGatewayMcp, type GatewayMcpSeedResult } from "../../../src/accounts/gatewayMcpSeed.ts";
@@ -69,7 +70,7 @@ import {
   type ActivationResult,
 } from "./activation.ts";
 import type { ResolvedNodeConfig } from "./config.ts";
-import { readClaudeKeychain, writeClaudeKeychainEntry, type KeychainReader, type KeychainWriter } from "./keychain.ts";
+import { readClaudeKeychain, readClaudeKeychainState, writeClaudeKeychainEntry, type KeychainStateReader, type KeychainReader, type KeychainWriter } from "./keychain.ts";
 import { atomicWriteFileSync } from "./homeDefaults.ts";
 import {
   defaultProviderLimitsHttp,
@@ -133,6 +134,7 @@ export interface AccountsServiceOptions {
   now?: () => number;
   keychainReader?: KeychainReader;
   keychainWriter?: KeychainWriter;
+  keychainStateReader?: KeychainStateReader;
   /** Cursor's machine-global credential store, injected so tests never touch a real login. */
   cursorAuthReader?: CursorAuthReader;
   fetchers?: LimitsFetchers;
@@ -660,6 +662,7 @@ export function defaultCodexResetLimits(timeoutMs: number, command = "codex"): N
 // ---------------------------------------------------------------------------
 
 export class AccountsService {
+  readonly centralCredentials: ClaudeCredentialAuthority;
   private readonly store: CoreStore;
   private readonly cfg: ResolvedNodeConfig;
   private readonly log: (op: string) => void;
@@ -694,6 +697,7 @@ export class AccountsService {
   private readonly velocities = new Map<string, WindowVelocities>();
   /** v19: at most one lease mint per account; concurrent callers join it. */
   private readonly leaseMints = new Map<string, Promise<EphemeralCredential>>();
+  private readonly nativeKeychainSeeds = new Map<string, Set<Promise<unknown>>>();
   private readonly codexLeaseRefresh: (homePath: string) => Promise<void>;
   private readonly gatewayMcpSeeder: (homePath: string, harness: string) => Promise<GatewayMcpSeedResult>;
 
@@ -711,6 +715,51 @@ export class AccountsService {
       codexRateLimits: opts.fetchers?.codexRateLimits ?? defaultCodexRateLimits(this.cfg.accounts.limitsFetchTimeoutMs, this.cfg.agents.codex?.command ?? "codex"),
       codexResetLimits: opts.fetchers?.codexResetLimits ?? defaultCodexResetLimits(this.cfg.accounts.limitsFetchTimeoutMs, this.cfg.agents.codex?.command ?? "codex"),
     };
+    const centralKeychainReader: KeychainStateReader = opts.keychainStateReader ?? (opts.keychainReader
+      ? async home => { const raw = await opts.keychainReader!(home); return raw === null ? { status: "unavailable" } : { status: "present", raw }; }
+      : readClaudeKeychainState);
+    const checkCentralCopy = (account: AccountRow, document: Record<string, unknown>, raw: string): void => {
+      const owned = parseClaudeCredentials(JSON.stringify(document))!;
+      const enrolling = this.centralCredentials.status(account)?.phase === "enrolling";
+      const credential = parseClaudeCredentials(raw);
+      if (credential?.refreshToken && credential.refreshToken !== owned.refreshToken && !(enrolling && credential.expiresAt < owned.expiresAt)) {
+        throw new CredentialOwnershipConflict("An external Claude login or refresh changed this account; stop that process and recover the account before continuing.");
+      }
+    };
+    const inspectCentralFiles = (account: AccountRow, document: Record<string, unknown>): void => {
+      for (const path of [join(account.homePath, ".credentials.json"), join(this.vaultDirOf(account), ".credentials.json")]) {
+        if (existsSync(path)) checkCentralCopy(account, document, readFileSync(path, "utf8"));
+      }
+    };
+    const inspectCentralCopies = async (account: AccountRow, document: Record<string, unknown>) => {
+      const state = await centralKeychainReader(account.homePath);
+      if (state.status === "unreadable") throw new CredentialAuthorityError("Account Keychain is unreadable; unlock it before changing credential ownership.");
+      if (state.status === "present") checkCentralCopy(account, document, state.raw);
+      inspectCentralFiles(account, document);
+      return state;
+    };
+    this.centralCredentials = new ClaudeCredentialAuthority({
+      store: this.store, root: join(this.cfg.accounts.vaultDir, ".credential-authorities"), now: this.now,
+      beforeEnroll: account => {
+        if (this.refreshBusy(account) || this.leaseMints.has(account.id) || this.nativeKeychainSeeds.has(account.id)) throw new CredentialAuthorityError("A native credential refresh is in progress; retry enrollment shortly.");
+      },
+      nativeCredential: async account => (await this.freshestClaudeCredential(account))?.document ?? null,
+      beforeUse: inspectCentralFiles,
+      beforeRefresh: inspectCentralCopies,
+      refresh: token => this.fetchers.claudeRefresh(token),
+      publish: async (account, document, accessOnly) => {
+        const state = await inspectCentralCopies(account, document);
+        const raw = JSON.stringify(accessOnly ? blankRefreshTokens(document) : document);
+        mkdirSync(account.homePath, { recursive: true, mode: 0o700 });
+        mkdirSync(this.vaultDirOf(account), { recursive: true, mode: 0o700 });
+        atomicWriteFileSync(join(account.homePath, ".credentials.json"), raw, 0o600);
+        atomicWriteFileSync(join(this.vaultDirOf(account), ".credentials.json"), raw, 0o600);
+        const written = await this.keychainWriter(account.homePath, raw);
+        if (state.status !== "unavailable" && !written) {
+          throw new CredentialAuthorityError("Could not replace the account Keychain entry; runtime starts remain blocked until publication succeeds.");
+        }
+      },
+    });
     this.providerHttp = {
       ...defaultProviderLimitsHttp(this.cfg.accounts.limitsFetchTimeoutMs),
       ...opts.providerHttp,
@@ -735,7 +784,9 @@ export class AccountsService {
   /** The env the account binding derives: HOME_ENV[harness] = home_path (+ recipe extras). */
   homeEnvOf(account: AccountRow): Record<string, string> {
     const key = homeEnvFor(account.harness);
-    return { ...(key ? { [key]: account.homePath } : {}), ...recipeEnvFor(account.harness, account.homePath) };
+    return { ...(key ? { [key]: account.homePath } : {}), ...recipeEnvFor(account.harness, account.homePath),
+      ...(this.centralCredentials.enabled(account) ? { CLAUDE_CODE_OAUTH_TOKEN: "", CLAUDE_CODE_OAUTH_REFRESH_TOKEN: "",
+        CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR: "", ANTHROPIC_AUTH_TOKEN: "", ANTHROPIC_API_KEY: "" } : {}) };
   }
 
   /**
@@ -1124,6 +1175,7 @@ export class AccountsService {
   private async fetchByHarness(account: AccountRow): Promise<PutAccountLimitsInput> {
     switch (account.harness) {
       case "claude": {
+        if (this.centralCredentials.enabled(account)) await this.centralCredentials.ensure(account, CLAUDE_MIN_SHIP_TTL_MS);
         let credential = await this.freshestClaudeCredential(account);
         if (!credential) {
           return { readable: false, unreadableReason: "auth_expired", error: "no OAuth token found in home, keychain, or vault" };
@@ -1197,6 +1249,12 @@ export class AccountsService {
    * one home in v2).
    */
   private async freshestClaudeCredential(account: AccountRow): Promise<ClaudeCredential | null> {
+    if (this.centralCredentials.enabled(account)) {
+      const document = this.centralCredentials.document(account);
+      const credential = parseClaudeCredentials(JSON.stringify(document));
+      if (!credential) return null;
+      return { ...credential, document, oauth: document.claudeAiOauth as Record<string, unknown> };
+    }
     const candidates: ClaudeCredential[] = [];
     const push = (raw: string | null) => {
       const parsed = parseClaudeCredentials(raw);
@@ -1302,6 +1360,12 @@ export class AccountsService {
    * default 0 keeps the limits path's "expired means expired" behavior.
    */
   private async refreshClaudeCredential(account: AccountRow, minTtlMs = 0): Promise<ClaudeRefreshOutcome> {
+    if (this.centralCredentials.enabled(account)) {
+      await this.centralCredentials.ensure(account, minTtlMs);
+      const credential = await this.freshestClaudeCredential(account);
+      return credential ? { kind: "ok", credential } : { kind: "no_refresh_token" };
+    }
+    if (this.centralCredentials.busy(account)) return { kind: "temporary", detail: "credential ownership is changing" };
     const joined = this.claudeRefreshes.get(account.id);
     if (joined) return joined;
     const pending = (async (): Promise<ClaudeRefreshOutcome> => {
@@ -1455,7 +1519,7 @@ export class AccountsService {
   }
 
   private async mintLeaseFresh(account: AccountRow): Promise<EphemeralCredential> {
-    if (this.refreshBusy(account)) {
+    if (this.refreshBusy(account) && !this.centralCredentials.enabled(account)) {
       throw new LeaseRefusal("lease_unavailable", `account ${account.id}'s credential refresher is mid-rotation; retry shortly`);
     }
     const lease = await this.mintLeaseByHarness(account);
@@ -1499,6 +1563,16 @@ export class AccountsService {
    * CLAUDE_MIN_SHIP_TTL_MS is never shipped dying.
    */
   private async mintClaudeLease(account: AccountRow): Promise<EphemeralCredential> {
+    if (this.centralCredentials.enabled(account)) {
+      try {
+        await this.centralCredentials.ensure(account, CLAUDE_MIN_SHIP_TTL_MS);
+      } catch (error) {
+        if (error instanceof CredentialAuthorityError) {
+          throw new LeaseRefusal("lease_unavailable", `central Claude credential for ${account.id} is unavailable: ${error.message}`);
+        }
+        throw error;
+      }
+    }
     let credential = await this.freshestClaudeCredential(account);
     if (!credential) {
       throw new LeaseRefusal("lease_unavailable", `no claude OAuth credential for ${account.id}; log in: hive v2 account login ${account.id}`);
@@ -1849,9 +1923,15 @@ export class AccountsService {
     if (result.activated) {
       this.log(`account.activate account=${account.id} home=${account.homePath} copied=${result.copied.join(",")}`);
       if (account.harness === "claude") {
-        void seedClaudeKeychainFromVault(account.homePath, this.vaultDirOf(account), this.keychainWriter).then((seeded) => {
+        const pending = this.nativeKeychainSeeds.get(account.id) ?? new Set<Promise<unknown>>();
+        this.nativeKeychainSeeds.set(account.id, pending);
+        const seed = seedClaudeKeychainFromVault(account.homePath, this.vaultDirOf(account), this.keychainWriter).then((seeded) => {
           if (seeded) this.log(`account.activate.keychain account=${account.id} seeded=true`);
+        }).catch(() => { this.log(`account.activate.keychain account=${account.id} seeded=false`); }).finally(() => {
+          pending.delete(seed);
+          if (pending.size === 0) this.nativeKeychainSeeds.delete(account.id);
         });
+        pending.add(seed);
       }
     }
     return result;
@@ -1872,6 +1952,10 @@ export class AccountsService {
   }
 
   async activateForSpawn(account: AccountRow, bee: { cwd: string }): Promise<ActivationResult> {
+    if (this.centralCredentials.enabled(account)) {
+      await this.centralCredentials.ensure(account, CLAUDE_MIN_SHIP_TTL_MS);
+      await this.centralCredentials.checkRuntimeCopies(account);
+    }
     const result = this.activateHomeForSpawn(account, bee);
     const gatewaySeed = await this.gatewayMcpSeeder(account.homePath, account.harness);
     if (gatewaySeed.written.length > 0) {
@@ -1926,6 +2010,9 @@ export class AccountsService {
   ):
     | { ok: true; account: AccountRow; captured: string[]; at: number }
     | { ok: false; reason: "invalid_primary" | "primary_not_captured" } {
+    if (this.centralCredentials.enabled(account) || this.centralCredentials.busy(account)) {
+      throw new CredentialAuthorityError("Central credential ownership prevents native capture.");
+    }
     if (!this.validPrimaryCredential(account.harness, primaryFile, primaryRaw)) {
       return { ok: false, reason: "invalid_primary" };
     }
@@ -1948,6 +2035,7 @@ export class AccountsService {
    * harnesses use the account home.
    */
   async captureAccount(account: AccountRow): Promise<CaptureOutcome> {
+    if (this.centralCredentials.enabled(account)) throw new CredentialAuthorityError("Disable the central credential pilot before capturing native credentials.");
     const recipe = recipeFor(account.harness);
     if (!recipe) throw new Error(`harness ${account.harness} has no identity recipe; cannot capture credentials`);
     const primaryFile = primaryCredentialFile(recipe);

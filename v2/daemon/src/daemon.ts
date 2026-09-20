@@ -618,14 +618,6 @@ export class HiveDaemon {
       maxAttempts: this.cfg.maxAttempts,
       backoffBaseMs: this.cfg.backoffBaseMs,
     });
-    const credentialRollbackBlockers = store.credentialAuthorityRollbackBlockers();
-    if (credentialRollbackBlockers.length > 0) {
-      store.close();
-      const detail = credentialRollbackBlockers.map(({ account, phase }) => `${account}:${phase}`).join(", ");
-      throw new Error(
-        `credential authority rollback blocked (${detail}); deploy the central-credential build, disable every enrolled account, confirm phase disabled, then retry the bridge`,
-      );
-    }
     this.store = store;
     this.threadOperations = new ThreadOperations(store, beeId => this.resolveSpawnSpec(beeId));
     for (const operation of store.listThreadOperations()) if (operation.failure?.code === "successor_deleted") this.removeThreadArtifacts(operation.id);
@@ -1384,6 +1376,25 @@ export class HiveDaemon {
         return this.rpcAccountLoginRetry(params);
       case "account.login.cancel":
         return this.withIdempotency(verb, params, () => this.rpcAccountLoginCancel(params));
+      case "account.credentials.status":
+        return this.mustAccounts().centralCredentials.status(this.requireAccount(params));
+      case "account.credentials.enable":
+      case "account.credentials.refresh":
+      case "account.credentials.disable":
+        return this.withAsyncIdempotency(verb, params, async () => {
+          const account = this.requireAccount(params);
+          const authority = this.mustAccounts().centralCredentials;
+          try {
+            if (verb === "account.credentials.enable") return await authority.enable(account);
+            if (verb === "account.credentials.disable") return await authority.disable(account);
+            const key = this.idempotencyKeyOf(params);
+            if (!key) throw new RpcError("invalid_request", "Central refresh requires an idempotency key.");
+            return await authority.ensure(account, 0, key);
+          } catch (error) {
+            if (error instanceof RpcError) throw error;
+            throw new RpcError("account_unavailable", error instanceof Error ? error.message : "Credential operation failed");
+          }
+        });
       case "account.capture":
         return this.rpcAccountCapture(params);
       case "account.verify":
@@ -3936,9 +3947,19 @@ export class HiveDaemon {
 
   private async rpcAccountRemove(params: Record<string, unknown>): Promise<AccountRemoveResult> {
     const account = this.requireAccount(params);
+    try { this.mustAccounts().centralCredentials.assertDisabled(account); }
+    catch (error) { throw new RpcError("account_unavailable", error instanceof Error ? error.message : "Credential cleanup failed"); }
     // v16: a login worker never outlives its account (the store cascades the rows).
     await this.mustLoginFlows().abandonAccount(account.id);
-    return this.withIdempotency("account.remove", params, () => ({ account: this.mirrorAccount(this.mustStore().removeAccount(account.id)) }) satisfies AccountRemoveResult);
+    return this.withIdempotency("account.remove", params, () => {
+      const store = this.mustStore();
+      // A referenced-account refusal must not remove its credential backup.
+      try {
+        this.mustAccounts().centralCredentials.assertDisabled(account);
+        if (store.beesOnAccount(account.id).length === 0) this.mustAccounts().centralCredentials.forgetDisabled(account);
+      } catch (error) { throw new RpcError("account_unavailable", error instanceof Error ? error.message : "Credential cleanup failed"); }
+      return { account: this.mirrorAccount(store.removeAccount(account.id)) } satisfies AccountRemoveResult;
+    });
   }
 
   private rpcAccountAdd(params: Record<string, unknown>): Promise<AccountAddResult> {
@@ -4082,6 +4103,7 @@ export class HiveDaemon {
   /** `account.login.start {id, methodId?, remote?}` (alias: `account.login {id}`). */
   private rpcAccountLoginStart(params: Record<string, unknown>): Promise<AccountLoginStartResult> {
     const account = this.requireAccount(params);
+    if (this.mustAccounts().centralCredentials.enabled(account)) throw new RpcError("account_unavailable", "Disable the central credential pilot before starting a native login.");
     const methodId = params.methodId === undefined || params.methodId === null ? null : this.param(params, "methodId");
     if (params.remote !== undefined && typeof params.remote !== "boolean") throw new RpcError("invalid_request", "account.login.start: remote must be a boolean");
     const remote = params.remote === true;

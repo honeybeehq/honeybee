@@ -105,6 +105,7 @@ export const DAEMON_CAPABILITIES = [
    * typed `lease_unsupported` / `lease_unavailable` refusals.
    */
   "account.lease.v1",
+  "account.credentials.pilot.v1",
   /** Earned Codex rate-limit reset discovery and redemption. */
   "account.reset_limits.v1",
   /** Bounded, backward-pageable node-wide mailbox history reconstructed from typed audit events. */
@@ -357,6 +358,10 @@ export const RPC_VERBS = [
   "account.login.retry",
   "account.login.cancel",
   "account.capture",
+  "account.credentials.status",
+  "account.credentials.enable",
+  "account.credentials.refresh",
+  "account.credentials.disable",
   // v18 (additive): run the harness's real credential probe on demand.
   "account.verify",
   "account.limits",

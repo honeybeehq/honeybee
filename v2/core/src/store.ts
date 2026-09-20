@@ -43,6 +43,7 @@ import {
   type AccountLimitsRow,
   type AccountLimitsUnreadableReason,
   type AccountRow,
+  type AccountCredentialAuthority,
   type AccountStatus,
   type AuditRow,
   type BeeMoveFailure,
@@ -4595,6 +4596,26 @@ export class CoreStore {
   // -------------------------------------------------------------------------
   // v7 — accounts (spec 08): identity rows, limits snapshots, selection cursor
   // -------------------------------------------------------------------------
+
+  getAccountCredentialAuthority(account: string): AccountCredentialAuthority | null {
+    const row = this.stmt("SELECT * FROM account_credential_authorities WHERE account = ?").get(account) as Row | undefined;
+    return row ? { account, phase: row.phase as AccountCredentialAuthority["phase"], generation: Number(row.generation),
+      expiresAt: row.expires_at == null ? null : Number(row.expires_at), operationKey: row.operation_key as string | null,
+      updatedAt: Number(row.updated_at) } : null;
+  }
+
+  putAccountCredentialAuthority(input: Omit<AccountCredentialAuthority, "updatedAt">): AccountCredentialAuthority {
+    return this.tx(() => {
+      this.mustGetAccount(input.account);
+      const updatedAt = this.now();
+      this.stmt(`INSERT INTO account_credential_authorities(account,phase,generation,expires_at,operation_key,updated_at)
+        VALUES(?,?,?,?,?,?) ON CONFLICT(account) DO UPDATE SET phase=excluded.phase,generation=excluded.generation,
+        expires_at=excluded.expires_at,operation_key=excluded.operation_key,updated_at=excluded.updated_at`)
+        .run(input.account,input.phase,input.generation,input.expiresAt,input.operationKey,updatedAt);
+      this.touchAccount(input.account, `credential authority ${input.phase}`);
+      return { ...input, updatedAt };
+    });
+  }
 
   private mustGetAccount(id: string): AccountRow {
     const account = this.getAccount(id);
