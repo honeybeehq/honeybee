@@ -58,6 +58,15 @@
       "pathFilter": "^v2/core/src/store\\.ts$",
       "mode": "capture",
       "keyTemplate": "{1}"
+    },
+    {
+      "inventory": "entry-points",
+      "prefix": "runtime-read:",
+      "regex": "^  (hasBootingRuntime)\\(",
+      "flags": "m",
+      "pathFilter": "^v2/core/src/store\\.ts$",
+      "mode": "capture",
+      "keyTemplate": "{1}"
     }
   ]
 }

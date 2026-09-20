@@ -1,0 +1,141 @@
+{
+  "protocolVersion": 1,
+  "id": "boot-runtime-lookup",
+  "title": "Boot-state lookup over retained runtime history",
+  "lane": "steady-state",
+  "processes": [
+    "hived"
+  ],
+  "owners": [
+    "v2/core/src/store.ts@4dc2ff05be093b8a21309f094e5372b35309dd6b",
+    "v2/core/src/schema.ts@0deb075fb7d5adb7cdbce19ff36113e39e5d74fb"
+  ],
+  "effect": {
+    "user": "Daemon chooses the same boot observation cadence without scanning stopped runtime history.",
+    "assertions": [
+      "Any booting row returns true, including an older generation.",
+      "Current state, outer rollback and reopen remain visible."
+    ],
+    "exclusions": [
+      "Whole-daemon ticks, provider startup, CPU, latency, memory and physical I/O"
+    ]
+  },
+  "accounts": [
+    {
+      "inventory": "entry-points",
+      "key": "runtime-read:hasBootingRuntime"
+    }
+  ],
+  "states": {
+    "idle": {
+      "matters": true,
+      "why": "No booting rows is the primary history scan case."
+    },
+    "first-use": {
+      "matters": true,
+      "why": "Capture real method SQL and assert its Node query plan."
+    },
+    "repeated": {
+      "matters": true,
+      "why": "Three alternating control/current pairs per fixture."
+    },
+    "scale": {
+      "matters": true,
+      "why": "Stopped generations 0/1/120/2000/10000; live rows 0/1/12/120."
+    },
+    "background": {
+      "matters": false,
+      "why": "No daemon or runtime is launched."
+    },
+    "release": {
+      "matters": false,
+      "why": "Fixture stores close; retention is not measured."
+    },
+    "recovery": {
+      "matters": true,
+      "why": "Separate lifecycle test covers rollback and file reopen."
+    }
+  },
+  "fixture": {
+    "preset": "boot-runtime-history-v1",
+    "isolationPolicy": 1,
+    "scaleAxes": [
+      {
+        "axis": "stoppedGenerations",
+        "values": [
+          0,
+          1,
+          120,
+          2000,
+          10000
+        ],
+        "unit": "rows"
+      },
+      {
+        "axis": "liveRuntimes",
+        "values": [
+          0,
+          1,
+          12,
+          120
+        ],
+        "unit": "rows"
+      }
+    ],
+    "seed": "Real CoreStore schema; stopped history plus no/first/last boot among live rows."
+  },
+  "recipe": {
+    "driver": "v2/core/tests/boot-runtime.test.ts",
+    "command": "HIVE_BOOT_RUNTIME_RECEIPT=.proof/boot-runtime.json node --test v2/core/tests/boot-runtime.test.ts",
+    "requires": [
+      "Node 24.18.0",
+      "sqlite3 CLI with .stats on",
+      "mkdir -p .proof"
+    ],
+    "readiness": "Closed disposable real-schema database; exact SQL captured from current CoreStore method.",
+    "completion": "Control and current SQL results and statement counters, with Node plan and method parity.",
+    "warmup": "None; deterministic SQL work counters only.",
+    "teardown": "Close stores and delete owned fixtures."
+  },
+  "metrics": [
+    {
+      "id": "stoppedHistoryScanSteps",
+      "unit": "count",
+      "scope": "sqlite3 CLI fullscan-step growth when stopped generations are added at fixed live population",
+      "collector": "CLI .stats on; exact current CoreStore SQL; separately assert Node SQLite partial-index plan",
+      "aggregation": "max",
+      "kind": "actual",
+      "status": "gated",
+      "states": [
+        "idle",
+        "repeated",
+        "scale"
+      ],
+      "betterWhen": "lower",
+      "invariant": "Zero added fullscan steps from stopped history in every scenario/round.",
+      "noise": "Engine-specific counters; no timing or Node instruction-count claim."
+    },
+    {
+      "id": "liveVmOverhead",
+      "unit": "count",
+      "scope": "sqlite3 CLI current minus full-table control VM steps with no stopped history",
+      "collector": "Same .stats on pairs",
+      "aggregation": "max",
+      "kind": "actual",
+      "status": "gated",
+      "states": [
+        "repeated",
+        "scale"
+      ],
+      "betterWhen": "lower",
+      "invariant": "Additional VM instructions per query are at most 3*live+50 in all-live controls."
+    }
+  ],
+  "gaps": [
+    "CLI counter engine differs from Node SQLite; the Node plan and behavior are checked separately.",
+    "Live-row traversal remains linear; no state index is added.",
+    "Whole-daemon 25ms cadence and stuck-boot exposure are unmeasured."
+  ],
+  "updatedAt": "2026-09-20",
+  "readiness": "150 paired count samples have boolean parity and zero stopped-history scan growth; all-live VM overhead is 5\u2013125 instructions. Node plan/lifecycle controls pass separately. No timing claim."
+}

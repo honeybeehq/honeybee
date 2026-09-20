@@ -3572,7 +3572,8 @@ export class CoreStore {
    */
   /** True while any runtime is between its start command and its booted observation. */
   hasBootingRuntime(): boolean {
-    return this.stmt("SELECT 1 FROM runtimes WHERE state = 'booting' LIMIT 1").get() != null;
+    // Spell out the live predicate so SQLite can use runtimes_daemon_live.
+    return this.stmt("SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1").get() != null;
   }
 
   listDueRuntimeStartCommands(): CommandRow[] {

@@ -1,0 +1,3934 @@
+{
+  "workload": "boot-runtime-lookup",
+  "seriesId": "boot-runtime-history-v1:Tormods-Mac-Studio.local:v24.18.0:node-sqlite-3.53.1:cli-dfe04e61d2c5d62c",
+  "capturedAt": "2026-09-20T08:18:17.755Z",
+  "host": "Tormods-Mac-Studio.local",
+  "node": "v24.18.0",
+  "nodeSqlite": "3.53.1",
+  "cliVersion": "3.51.0 2025-06-12 13:14:41 f0ca7bba1c5e232e5d279fad6338121ab55af0c8c68c84cdfb18ba5114dcaapl (64-bit)",
+  "sources": {
+    "../src/store.ts": "766649303e817e808487cf9d3a726090b2eeabad68409b65df5bc7dab89adb8f",
+    "../src/schema.ts": "d1faf83ad1ea15919328bb1ae72a558ef9d244adcfe1d410733d66db61d3ed0c",
+    "./helpers.ts": "a12920c8a79fd01e5bfca3d47ae9ce015e7dff189afe583da7743050a6a58882",
+    "./boot-runtime.test.ts": "d468371bf55c15ff3b7a83ee94bd983dfebf333583d36e7ad7dba52becdc51c0"
+  },
+  "controlSql": "SELECT 1 FROM runtimes WHERE state = 'booting' LIMIT 1",
+  "complete": true,
+  "samples": [
+    {
+      "stopped": 0,
+      "live": 0,
+      "position": "none",
+      "round": 0,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": false,
+      "control": {
+        "fullscan": 0,
+        "vm": 8,
+        "result": false
+      },
+      "current": {
+        "fullscan": 0,
+        "vm": 13,
+        "result": false
+      }
+    },
+    {
+      "stopped": 0,
+      "live": 0,
+      "position": "none",
+      "round": 1,
+      "order": [
+        "current",
+        "control"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": false,
+      "current": {
+        "fullscan": 0,
+        "vm": 13,
+        "result": false
+      },
+      "control": {
+        "fullscan": 0,
+        "vm": 8,
+        "result": false
+      }
+    },
+    {
+      "stopped": 0,
+      "live": 0,
+      "position": "none",
+      "round": 2,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": false,
+      "control": {
+        "fullscan": 0,
+        "vm": 8,
+        "result": false
+      },
+      "current": {
+        "fullscan": 0,
+        "vm": 13,
+        "result": false
+      }
+    },
+    {
+      "stopped": 0,
+      "live": 1,
+      "position": "none",
+      "round": 0,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": false,
+      "control": {
+        "fullscan": 0,
+        "vm": 11,
+        "result": false
+      },
+      "current": {
+        "fullscan": 0,
+        "vm": 17,
+        "result": false
+      }
+    },
+    {
+      "stopped": 0,
+      "live": 1,
+      "position": "none",
+      "round": 1,
+      "order": [
+        "current",
+        "control"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": false,
+      "current": {
+        "fullscan": 0,
+        "vm": 17,
+        "result": false
+      },
+      "control": {
+        "fullscan": 0,
+        "vm": 11,
+        "result": false
+      }
+    },
+    {
+      "stopped": 0,
+      "live": 1,
+      "position": "none",
+      "round": 2,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": false,
+      "control": {
+        "fullscan": 0,
+        "vm": 11,
+        "result": false
+      },
+      "current": {
+        "fullscan": 0,
+        "vm": 17,
+        "result": false
+      }
+    },
+    {
+      "stopped": 0,
+      "live": 1,
+      "position": "first",
+      "round": 0,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "control": {
+        "fullscan": 0,
+        "vm": 13,
+        "result": true
+      },
+      "current": {
+        "fullscan": 0,
+        "vm": 19,
+        "result": true
+      }
+    },
+    {
+      "stopped": 0,
+      "live": 1,
+      "position": "first",
+      "round": 1,
+      "order": [
+        "current",
+        "control"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "current": {
+        "fullscan": 0,
+        "vm": 19,
+        "result": true
+      },
+      "control": {
+        "fullscan": 0,
+        "vm": 13,
+        "result": true
+      }
+    },
+    {
+      "stopped": 0,
+      "live": 1,
+      "position": "first",
+      "round": 2,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "control": {
+        "fullscan": 0,
+        "vm": 13,
+        "result": true
+      },
+      "current": {
+        "fullscan": 0,
+        "vm": 19,
+        "result": true
+      }
+    },
+    {
+      "stopped": 0,
+      "live": 1,
+      "position": "last",
+      "round": 0,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "control": {
+        "fullscan": 0,
+        "vm": 13,
+        "result": true
+      },
+      "current": {
+        "fullscan": 0,
+        "vm": 19,
+        "result": true
+      }
+    },
+    {
+      "stopped": 0,
+      "live": 1,
+      "position": "last",
+      "round": 1,
+      "order": [
+        "current",
+        "control"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "current": {
+        "fullscan": 0,
+        "vm": 19,
+        "result": true
+      },
+      "control": {
+        "fullscan": 0,
+        "vm": 13,
+        "result": true
+      }
+    },
+    {
+      "stopped": 0,
+      "live": 1,
+      "position": "last",
+      "round": 2,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "control": {
+        "fullscan": 0,
+        "vm": 13,
+        "result": true
+      },
+      "current": {
+        "fullscan": 0,
+        "vm": 19,
+        "result": true
+      }
+    },
+    {
+      "stopped": 0,
+      "live": 12,
+      "position": "none",
+      "round": 0,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": false,
+      "control": {
+        "fullscan": 11,
+        "vm": 44,
+        "result": false
+      },
+      "current": {
+        "fullscan": 11,
+        "vm": 61,
+        "result": false
+      }
+    },
+    {
+      "stopped": 0,
+      "live": 12,
+      "position": "none",
+      "round": 1,
+      "order": [
+        "current",
+        "control"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": false,
+      "current": {
+        "fullscan": 11,
+        "vm": 61,
+        "result": false
+      },
+      "control": {
+        "fullscan": 11,
+        "vm": 44,
+        "result": false
+      }
+    },
+    {
+      "stopped": 0,
+      "live": 12,
+      "position": "none",
+      "round": 2,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": false,
+      "control": {
+        "fullscan": 11,
+        "vm": 44,
+        "result": false
+      },
+      "current": {
+        "fullscan": 11,
+        "vm": 61,
+        "result": false
+      }
+    },
+    {
+      "stopped": 0,
+      "live": 12,
+      "position": "first",
+      "round": 0,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "control": {
+        "fullscan": 0,
+        "vm": 13,
+        "result": true
+      },
+      "current": {
+        "fullscan": 0,
+        "vm": 19,
+        "result": true
+      }
+    },
+    {
+      "stopped": 0,
+      "live": 12,
+      "position": "first",
+      "round": 1,
+      "order": [
+        "current",
+        "control"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "current": {
+        "fullscan": 0,
+        "vm": 19,
+        "result": true
+      },
+      "control": {
+        "fullscan": 0,
+        "vm": 13,
+        "result": true
+      }
+    },
+    {
+      "stopped": 0,
+      "live": 12,
+      "position": "first",
+      "round": 2,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "control": {
+        "fullscan": 0,
+        "vm": 13,
+        "result": true
+      },
+      "current": {
+        "fullscan": 0,
+        "vm": 19,
+        "result": true
+      }
+    },
+    {
+      "stopped": 0,
+      "live": 12,
+      "position": "last",
+      "round": 0,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "control": {
+        "fullscan": 11,
+        "vm": 46,
+        "result": true
+      },
+      "current": {
+        "fullscan": 11,
+        "vm": 63,
+        "result": true
+      }
+    },
+    {
+      "stopped": 0,
+      "live": 12,
+      "position": "last",
+      "round": 1,
+      "order": [
+        "current",
+        "control"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "current": {
+        "fullscan": 11,
+        "vm": 63,
+        "result": true
+      },
+      "control": {
+        "fullscan": 11,
+        "vm": 46,
+        "result": true
+      }
+    },
+    {
+      "stopped": 0,
+      "live": 12,
+      "position": "last",
+      "round": 2,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "control": {
+        "fullscan": 11,
+        "vm": 46,
+        "result": true
+      },
+      "current": {
+        "fullscan": 11,
+        "vm": 63,
+        "result": true
+      }
+    },
+    {
+      "stopped": 0,
+      "live": 120,
+      "position": "none",
+      "round": 0,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": false,
+      "control": {
+        "fullscan": 119,
+        "vm": 368,
+        "result": false
+      },
+      "current": {
+        "fullscan": 119,
+        "vm": 493,
+        "result": false
+      }
+    },
+    {
+      "stopped": 0,
+      "live": 120,
+      "position": "none",
+      "round": 1,
+      "order": [
+        "current",
+        "control"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": false,
+      "current": {
+        "fullscan": 119,
+        "vm": 493,
+        "result": false
+      },
+      "control": {
+        "fullscan": 119,
+        "vm": 368,
+        "result": false
+      }
+    },
+    {
+      "stopped": 0,
+      "live": 120,
+      "position": "none",
+      "round": 2,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": false,
+      "control": {
+        "fullscan": 119,
+        "vm": 368,
+        "result": false
+      },
+      "current": {
+        "fullscan": 119,
+        "vm": 493,
+        "result": false
+      }
+    },
+    {
+      "stopped": 0,
+      "live": 120,
+      "position": "first",
+      "round": 0,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "control": {
+        "fullscan": 0,
+        "vm": 13,
+        "result": true
+      },
+      "current": {
+        "fullscan": 0,
+        "vm": 19,
+        "result": true
+      }
+    },
+    {
+      "stopped": 0,
+      "live": 120,
+      "position": "first",
+      "round": 1,
+      "order": [
+        "current",
+        "control"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "current": {
+        "fullscan": 0,
+        "vm": 19,
+        "result": true
+      },
+      "control": {
+        "fullscan": 0,
+        "vm": 13,
+        "result": true
+      }
+    },
+    {
+      "stopped": 0,
+      "live": 120,
+      "position": "first",
+      "round": 2,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "control": {
+        "fullscan": 0,
+        "vm": 13,
+        "result": true
+      },
+      "current": {
+        "fullscan": 0,
+        "vm": 19,
+        "result": true
+      }
+    },
+    {
+      "stopped": 0,
+      "live": 120,
+      "position": "last",
+      "round": 0,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "control": {
+        "fullscan": 119,
+        "vm": 370,
+        "result": true
+      },
+      "current": {
+        "fullscan": 119,
+        "vm": 495,
+        "result": true
+      }
+    },
+    {
+      "stopped": 0,
+      "live": 120,
+      "position": "last",
+      "round": 1,
+      "order": [
+        "current",
+        "control"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "current": {
+        "fullscan": 119,
+        "vm": 495,
+        "result": true
+      },
+      "control": {
+        "fullscan": 119,
+        "vm": 370,
+        "result": true
+      }
+    },
+    {
+      "stopped": 0,
+      "live": 120,
+      "position": "last",
+      "round": 2,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "control": {
+        "fullscan": 119,
+        "vm": 370,
+        "result": true
+      },
+      "current": {
+        "fullscan": 119,
+        "vm": 495,
+        "result": true
+      }
+    },
+    {
+      "stopped": 1,
+      "live": 0,
+      "position": "none",
+      "round": 0,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": false,
+      "control": {
+        "fullscan": 0,
+        "vm": 11,
+        "result": false
+      },
+      "current": {
+        "fullscan": 0,
+        "vm": 13,
+        "result": false
+      }
+    },
+    {
+      "stopped": 1,
+      "live": 0,
+      "position": "none",
+      "round": 1,
+      "order": [
+        "current",
+        "control"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": false,
+      "current": {
+        "fullscan": 0,
+        "vm": 13,
+        "result": false
+      },
+      "control": {
+        "fullscan": 0,
+        "vm": 11,
+        "result": false
+      }
+    },
+    {
+      "stopped": 1,
+      "live": 0,
+      "position": "none",
+      "round": 2,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": false,
+      "control": {
+        "fullscan": 0,
+        "vm": 11,
+        "result": false
+      },
+      "current": {
+        "fullscan": 0,
+        "vm": 13,
+        "result": false
+      }
+    },
+    {
+      "stopped": 1,
+      "live": 1,
+      "position": "none",
+      "round": 0,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": false,
+      "control": {
+        "fullscan": 1,
+        "vm": 14,
+        "result": false
+      },
+      "current": {
+        "fullscan": 0,
+        "vm": 17,
+        "result": false
+      }
+    },
+    {
+      "stopped": 1,
+      "live": 1,
+      "position": "none",
+      "round": 1,
+      "order": [
+        "current",
+        "control"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": false,
+      "current": {
+        "fullscan": 0,
+        "vm": 17,
+        "result": false
+      },
+      "control": {
+        "fullscan": 1,
+        "vm": 14,
+        "result": false
+      }
+    },
+    {
+      "stopped": 1,
+      "live": 1,
+      "position": "none",
+      "round": 2,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": false,
+      "control": {
+        "fullscan": 1,
+        "vm": 14,
+        "result": false
+      },
+      "current": {
+        "fullscan": 0,
+        "vm": 17,
+        "result": false
+      }
+    },
+    {
+      "stopped": 1,
+      "live": 1,
+      "position": "first",
+      "round": 0,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "control": {
+        "fullscan": 1,
+        "vm": 16,
+        "result": true
+      },
+      "current": {
+        "fullscan": 0,
+        "vm": 19,
+        "result": true
+      }
+    },
+    {
+      "stopped": 1,
+      "live": 1,
+      "position": "first",
+      "round": 1,
+      "order": [
+        "current",
+        "control"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "current": {
+        "fullscan": 0,
+        "vm": 19,
+        "result": true
+      },
+      "control": {
+        "fullscan": 1,
+        "vm": 16,
+        "result": true
+      }
+    },
+    {
+      "stopped": 1,
+      "live": 1,
+      "position": "first",
+      "round": 2,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "control": {
+        "fullscan": 1,
+        "vm": 16,
+        "result": true
+      },
+      "current": {
+        "fullscan": 0,
+        "vm": 19,
+        "result": true
+      }
+    },
+    {
+      "stopped": 1,
+      "live": 1,
+      "position": "last",
+      "round": 0,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "control": {
+        "fullscan": 1,
+        "vm": 16,
+        "result": true
+      },
+      "current": {
+        "fullscan": 0,
+        "vm": 19,
+        "result": true
+      }
+    },
+    {
+      "stopped": 1,
+      "live": 1,
+      "position": "last",
+      "round": 1,
+      "order": [
+        "current",
+        "control"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "current": {
+        "fullscan": 0,
+        "vm": 19,
+        "result": true
+      },
+      "control": {
+        "fullscan": 1,
+        "vm": 16,
+        "result": true
+      }
+    },
+    {
+      "stopped": 1,
+      "live": 1,
+      "position": "last",
+      "round": 2,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "control": {
+        "fullscan": 1,
+        "vm": 16,
+        "result": true
+      },
+      "current": {
+        "fullscan": 0,
+        "vm": 19,
+        "result": true
+      }
+    },
+    {
+      "stopped": 1,
+      "live": 12,
+      "position": "none",
+      "round": 0,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": false,
+      "control": {
+        "fullscan": 12,
+        "vm": 47,
+        "result": false
+      },
+      "current": {
+        "fullscan": 11,
+        "vm": 61,
+        "result": false
+      }
+    },
+    {
+      "stopped": 1,
+      "live": 12,
+      "position": "none",
+      "round": 1,
+      "order": [
+        "current",
+        "control"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": false,
+      "current": {
+        "fullscan": 11,
+        "vm": 61,
+        "result": false
+      },
+      "control": {
+        "fullscan": 12,
+        "vm": 47,
+        "result": false
+      }
+    },
+    {
+      "stopped": 1,
+      "live": 12,
+      "position": "none",
+      "round": 2,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": false,
+      "control": {
+        "fullscan": 12,
+        "vm": 47,
+        "result": false
+      },
+      "current": {
+        "fullscan": 11,
+        "vm": 61,
+        "result": false
+      }
+    },
+    {
+      "stopped": 1,
+      "live": 12,
+      "position": "first",
+      "round": 0,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "control": {
+        "fullscan": 1,
+        "vm": 16,
+        "result": true
+      },
+      "current": {
+        "fullscan": 0,
+        "vm": 19,
+        "result": true
+      }
+    },
+    {
+      "stopped": 1,
+      "live": 12,
+      "position": "first",
+      "round": 1,
+      "order": [
+        "current",
+        "control"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "current": {
+        "fullscan": 0,
+        "vm": 19,
+        "result": true
+      },
+      "control": {
+        "fullscan": 1,
+        "vm": 16,
+        "result": true
+      }
+    },
+    {
+      "stopped": 1,
+      "live": 12,
+      "position": "first",
+      "round": 2,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "control": {
+        "fullscan": 1,
+        "vm": 16,
+        "result": true
+      },
+      "current": {
+        "fullscan": 0,
+        "vm": 19,
+        "result": true
+      }
+    },
+    {
+      "stopped": 1,
+      "live": 12,
+      "position": "last",
+      "round": 0,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "control": {
+        "fullscan": 12,
+        "vm": 49,
+        "result": true
+      },
+      "current": {
+        "fullscan": 11,
+        "vm": 63,
+        "result": true
+      }
+    },
+    {
+      "stopped": 1,
+      "live": 12,
+      "position": "last",
+      "round": 1,
+      "order": [
+        "current",
+        "control"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "current": {
+        "fullscan": 11,
+        "vm": 63,
+        "result": true
+      },
+      "control": {
+        "fullscan": 12,
+        "vm": 49,
+        "result": true
+      }
+    },
+    {
+      "stopped": 1,
+      "live": 12,
+      "position": "last",
+      "round": 2,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "control": {
+        "fullscan": 12,
+        "vm": 49,
+        "result": true
+      },
+      "current": {
+        "fullscan": 11,
+        "vm": 63,
+        "result": true
+      }
+    },
+    {
+      "stopped": 1,
+      "live": 120,
+      "position": "none",
+      "round": 0,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": false,
+      "control": {
+        "fullscan": 120,
+        "vm": 371,
+        "result": false
+      },
+      "current": {
+        "fullscan": 119,
+        "vm": 493,
+        "result": false
+      }
+    },
+    {
+      "stopped": 1,
+      "live": 120,
+      "position": "none",
+      "round": 1,
+      "order": [
+        "current",
+        "control"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": false,
+      "current": {
+        "fullscan": 119,
+        "vm": 493,
+        "result": false
+      },
+      "control": {
+        "fullscan": 120,
+        "vm": 371,
+        "result": false
+      }
+    },
+    {
+      "stopped": 1,
+      "live": 120,
+      "position": "none",
+      "round": 2,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": false,
+      "control": {
+        "fullscan": 120,
+        "vm": 371,
+        "result": false
+      },
+      "current": {
+        "fullscan": 119,
+        "vm": 493,
+        "result": false
+      }
+    },
+    {
+      "stopped": 1,
+      "live": 120,
+      "position": "first",
+      "round": 0,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "control": {
+        "fullscan": 1,
+        "vm": 16,
+        "result": true
+      },
+      "current": {
+        "fullscan": 0,
+        "vm": 19,
+        "result": true
+      }
+    },
+    {
+      "stopped": 1,
+      "live": 120,
+      "position": "first",
+      "round": 1,
+      "order": [
+        "current",
+        "control"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "current": {
+        "fullscan": 0,
+        "vm": 19,
+        "result": true
+      },
+      "control": {
+        "fullscan": 1,
+        "vm": 16,
+        "result": true
+      }
+    },
+    {
+      "stopped": 1,
+      "live": 120,
+      "position": "first",
+      "round": 2,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "control": {
+        "fullscan": 1,
+        "vm": 16,
+        "result": true
+      },
+      "current": {
+        "fullscan": 0,
+        "vm": 19,
+        "result": true
+      }
+    },
+    {
+      "stopped": 1,
+      "live": 120,
+      "position": "last",
+      "round": 0,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "control": {
+        "fullscan": 120,
+        "vm": 373,
+        "result": true
+      },
+      "current": {
+        "fullscan": 119,
+        "vm": 495,
+        "result": true
+      }
+    },
+    {
+      "stopped": 1,
+      "live": 120,
+      "position": "last",
+      "round": 1,
+      "order": [
+        "current",
+        "control"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "current": {
+        "fullscan": 119,
+        "vm": 495,
+        "result": true
+      },
+      "control": {
+        "fullscan": 120,
+        "vm": 373,
+        "result": true
+      }
+    },
+    {
+      "stopped": 1,
+      "live": 120,
+      "position": "last",
+      "round": 2,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "control": {
+        "fullscan": 120,
+        "vm": 373,
+        "result": true
+      },
+      "current": {
+        "fullscan": 119,
+        "vm": 495,
+        "result": true
+      }
+    },
+    {
+      "stopped": 120,
+      "live": 0,
+      "position": "none",
+      "round": 0,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": false,
+      "control": {
+        "fullscan": 119,
+        "vm": 368,
+        "result": false
+      },
+      "current": {
+        "fullscan": 0,
+        "vm": 13,
+        "result": false
+      }
+    },
+    {
+      "stopped": 120,
+      "live": 0,
+      "position": "none",
+      "round": 1,
+      "order": [
+        "current",
+        "control"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": false,
+      "current": {
+        "fullscan": 0,
+        "vm": 13,
+        "result": false
+      },
+      "control": {
+        "fullscan": 119,
+        "vm": 368,
+        "result": false
+      }
+    },
+    {
+      "stopped": 120,
+      "live": 0,
+      "position": "none",
+      "round": 2,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": false,
+      "control": {
+        "fullscan": 119,
+        "vm": 368,
+        "result": false
+      },
+      "current": {
+        "fullscan": 0,
+        "vm": 13,
+        "result": false
+      }
+    },
+    {
+      "stopped": 120,
+      "live": 1,
+      "position": "none",
+      "round": 0,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": false,
+      "control": {
+        "fullscan": 120,
+        "vm": 371,
+        "result": false
+      },
+      "current": {
+        "fullscan": 0,
+        "vm": 17,
+        "result": false
+      }
+    },
+    {
+      "stopped": 120,
+      "live": 1,
+      "position": "none",
+      "round": 1,
+      "order": [
+        "current",
+        "control"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": false,
+      "current": {
+        "fullscan": 0,
+        "vm": 17,
+        "result": false
+      },
+      "control": {
+        "fullscan": 120,
+        "vm": 371,
+        "result": false
+      }
+    },
+    {
+      "stopped": 120,
+      "live": 1,
+      "position": "none",
+      "round": 2,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": false,
+      "control": {
+        "fullscan": 120,
+        "vm": 371,
+        "result": false
+      },
+      "current": {
+        "fullscan": 0,
+        "vm": 17,
+        "result": false
+      }
+    },
+    {
+      "stopped": 120,
+      "live": 1,
+      "position": "first",
+      "round": 0,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "control": {
+        "fullscan": 1,
+        "vm": 16,
+        "result": true
+      },
+      "current": {
+        "fullscan": 0,
+        "vm": 19,
+        "result": true
+      }
+    },
+    {
+      "stopped": 120,
+      "live": 1,
+      "position": "first",
+      "round": 1,
+      "order": [
+        "current",
+        "control"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "current": {
+        "fullscan": 0,
+        "vm": 19,
+        "result": true
+      },
+      "control": {
+        "fullscan": 1,
+        "vm": 16,
+        "result": true
+      }
+    },
+    {
+      "stopped": 120,
+      "live": 1,
+      "position": "first",
+      "round": 2,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "control": {
+        "fullscan": 1,
+        "vm": 16,
+        "result": true
+      },
+      "current": {
+        "fullscan": 0,
+        "vm": 19,
+        "result": true
+      }
+    },
+    {
+      "stopped": 120,
+      "live": 1,
+      "position": "last",
+      "round": 0,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "control": {
+        "fullscan": 1,
+        "vm": 16,
+        "result": true
+      },
+      "current": {
+        "fullscan": 0,
+        "vm": 19,
+        "result": true
+      }
+    },
+    {
+      "stopped": 120,
+      "live": 1,
+      "position": "last",
+      "round": 1,
+      "order": [
+        "current",
+        "control"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "current": {
+        "fullscan": 0,
+        "vm": 19,
+        "result": true
+      },
+      "control": {
+        "fullscan": 1,
+        "vm": 16,
+        "result": true
+      }
+    },
+    {
+      "stopped": 120,
+      "live": 1,
+      "position": "last",
+      "round": 2,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "control": {
+        "fullscan": 1,
+        "vm": 16,
+        "result": true
+      },
+      "current": {
+        "fullscan": 0,
+        "vm": 19,
+        "result": true
+      }
+    },
+    {
+      "stopped": 120,
+      "live": 12,
+      "position": "none",
+      "round": 0,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": false,
+      "control": {
+        "fullscan": 131,
+        "vm": 404,
+        "result": false
+      },
+      "current": {
+        "fullscan": 11,
+        "vm": 61,
+        "result": false
+      }
+    },
+    {
+      "stopped": 120,
+      "live": 12,
+      "position": "none",
+      "round": 1,
+      "order": [
+        "current",
+        "control"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": false,
+      "current": {
+        "fullscan": 11,
+        "vm": 61,
+        "result": false
+      },
+      "control": {
+        "fullscan": 131,
+        "vm": 404,
+        "result": false
+      }
+    },
+    {
+      "stopped": 120,
+      "live": 12,
+      "position": "none",
+      "round": 2,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": false,
+      "control": {
+        "fullscan": 131,
+        "vm": 404,
+        "result": false
+      },
+      "current": {
+        "fullscan": 11,
+        "vm": 61,
+        "result": false
+      }
+    },
+    {
+      "stopped": 120,
+      "live": 12,
+      "position": "first",
+      "round": 0,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "control": {
+        "fullscan": 1,
+        "vm": 16,
+        "result": true
+      },
+      "current": {
+        "fullscan": 0,
+        "vm": 19,
+        "result": true
+      }
+    },
+    {
+      "stopped": 120,
+      "live": 12,
+      "position": "first",
+      "round": 1,
+      "order": [
+        "current",
+        "control"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "current": {
+        "fullscan": 0,
+        "vm": 19,
+        "result": true
+      },
+      "control": {
+        "fullscan": 1,
+        "vm": 16,
+        "result": true
+      }
+    },
+    {
+      "stopped": 120,
+      "live": 12,
+      "position": "first",
+      "round": 2,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "control": {
+        "fullscan": 1,
+        "vm": 16,
+        "result": true
+      },
+      "current": {
+        "fullscan": 0,
+        "vm": 19,
+        "result": true
+      }
+    },
+    {
+      "stopped": 120,
+      "live": 12,
+      "position": "last",
+      "round": 0,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "control": {
+        "fullscan": 12,
+        "vm": 49,
+        "result": true
+      },
+      "current": {
+        "fullscan": 11,
+        "vm": 63,
+        "result": true
+      }
+    },
+    {
+      "stopped": 120,
+      "live": 12,
+      "position": "last",
+      "round": 1,
+      "order": [
+        "current",
+        "control"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "current": {
+        "fullscan": 11,
+        "vm": 63,
+        "result": true
+      },
+      "control": {
+        "fullscan": 12,
+        "vm": 49,
+        "result": true
+      }
+    },
+    {
+      "stopped": 120,
+      "live": 12,
+      "position": "last",
+      "round": 2,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "control": {
+        "fullscan": 12,
+        "vm": 49,
+        "result": true
+      },
+      "current": {
+        "fullscan": 11,
+        "vm": 63,
+        "result": true
+      }
+    },
+    {
+      "stopped": 120,
+      "live": 120,
+      "position": "none",
+      "round": 0,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": false,
+      "control": {
+        "fullscan": 239,
+        "vm": 728,
+        "result": false
+      },
+      "current": {
+        "fullscan": 119,
+        "vm": 493,
+        "result": false
+      }
+    },
+    {
+      "stopped": 120,
+      "live": 120,
+      "position": "none",
+      "round": 1,
+      "order": [
+        "current",
+        "control"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": false,
+      "current": {
+        "fullscan": 119,
+        "vm": 493,
+        "result": false
+      },
+      "control": {
+        "fullscan": 239,
+        "vm": 728,
+        "result": false
+      }
+    },
+    {
+      "stopped": 120,
+      "live": 120,
+      "position": "none",
+      "round": 2,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": false,
+      "control": {
+        "fullscan": 239,
+        "vm": 728,
+        "result": false
+      },
+      "current": {
+        "fullscan": 119,
+        "vm": 493,
+        "result": false
+      }
+    },
+    {
+      "stopped": 120,
+      "live": 120,
+      "position": "first",
+      "round": 0,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "control": {
+        "fullscan": 1,
+        "vm": 16,
+        "result": true
+      },
+      "current": {
+        "fullscan": 0,
+        "vm": 19,
+        "result": true
+      }
+    },
+    {
+      "stopped": 120,
+      "live": 120,
+      "position": "first",
+      "round": 1,
+      "order": [
+        "current",
+        "control"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "current": {
+        "fullscan": 0,
+        "vm": 19,
+        "result": true
+      },
+      "control": {
+        "fullscan": 1,
+        "vm": 16,
+        "result": true
+      }
+    },
+    {
+      "stopped": 120,
+      "live": 120,
+      "position": "first",
+      "round": 2,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "control": {
+        "fullscan": 1,
+        "vm": 16,
+        "result": true
+      },
+      "current": {
+        "fullscan": 0,
+        "vm": 19,
+        "result": true
+      }
+    },
+    {
+      "stopped": 120,
+      "live": 120,
+      "position": "last",
+      "round": 0,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "control": {
+        "fullscan": 120,
+        "vm": 373,
+        "result": true
+      },
+      "current": {
+        "fullscan": 119,
+        "vm": 495,
+        "result": true
+      }
+    },
+    {
+      "stopped": 120,
+      "live": 120,
+      "position": "last",
+      "round": 1,
+      "order": [
+        "current",
+        "control"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "current": {
+        "fullscan": 119,
+        "vm": 495,
+        "result": true
+      },
+      "control": {
+        "fullscan": 120,
+        "vm": 373,
+        "result": true
+      }
+    },
+    {
+      "stopped": 120,
+      "live": 120,
+      "position": "last",
+      "round": 2,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "control": {
+        "fullscan": 120,
+        "vm": 373,
+        "result": true
+      },
+      "current": {
+        "fullscan": 119,
+        "vm": 495,
+        "result": true
+      }
+    },
+    {
+      "stopped": 2000,
+      "live": 0,
+      "position": "none",
+      "round": 0,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": false,
+      "control": {
+        "fullscan": 1999,
+        "vm": 6008,
+        "result": false
+      },
+      "current": {
+        "fullscan": 0,
+        "vm": 13,
+        "result": false
+      }
+    },
+    {
+      "stopped": 2000,
+      "live": 0,
+      "position": "none",
+      "round": 1,
+      "order": [
+        "current",
+        "control"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": false,
+      "current": {
+        "fullscan": 0,
+        "vm": 13,
+        "result": false
+      },
+      "control": {
+        "fullscan": 1999,
+        "vm": 6008,
+        "result": false
+      }
+    },
+    {
+      "stopped": 2000,
+      "live": 0,
+      "position": "none",
+      "round": 2,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": false,
+      "control": {
+        "fullscan": 1999,
+        "vm": 6008,
+        "result": false
+      },
+      "current": {
+        "fullscan": 0,
+        "vm": 13,
+        "result": false
+      }
+    },
+    {
+      "stopped": 2000,
+      "live": 1,
+      "position": "none",
+      "round": 0,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": false,
+      "control": {
+        "fullscan": 2000,
+        "vm": 6011,
+        "result": false
+      },
+      "current": {
+        "fullscan": 0,
+        "vm": 17,
+        "result": false
+      }
+    },
+    {
+      "stopped": 2000,
+      "live": 1,
+      "position": "none",
+      "round": 1,
+      "order": [
+        "current",
+        "control"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": false,
+      "current": {
+        "fullscan": 0,
+        "vm": 17,
+        "result": false
+      },
+      "control": {
+        "fullscan": 2000,
+        "vm": 6011,
+        "result": false
+      }
+    },
+    {
+      "stopped": 2000,
+      "live": 1,
+      "position": "none",
+      "round": 2,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": false,
+      "control": {
+        "fullscan": 2000,
+        "vm": 6011,
+        "result": false
+      },
+      "current": {
+        "fullscan": 0,
+        "vm": 17,
+        "result": false
+      }
+    },
+    {
+      "stopped": 2000,
+      "live": 1,
+      "position": "first",
+      "round": 0,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "control": {
+        "fullscan": 1,
+        "vm": 16,
+        "result": true
+      },
+      "current": {
+        "fullscan": 0,
+        "vm": 19,
+        "result": true
+      }
+    },
+    {
+      "stopped": 2000,
+      "live": 1,
+      "position": "first",
+      "round": 1,
+      "order": [
+        "current",
+        "control"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "current": {
+        "fullscan": 0,
+        "vm": 19,
+        "result": true
+      },
+      "control": {
+        "fullscan": 1,
+        "vm": 16,
+        "result": true
+      }
+    },
+    {
+      "stopped": 2000,
+      "live": 1,
+      "position": "first",
+      "round": 2,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "control": {
+        "fullscan": 1,
+        "vm": 16,
+        "result": true
+      },
+      "current": {
+        "fullscan": 0,
+        "vm": 19,
+        "result": true
+      }
+    },
+    {
+      "stopped": 2000,
+      "live": 1,
+      "position": "last",
+      "round": 0,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "control": {
+        "fullscan": 1,
+        "vm": 16,
+        "result": true
+      },
+      "current": {
+        "fullscan": 0,
+        "vm": 19,
+        "result": true
+      }
+    },
+    {
+      "stopped": 2000,
+      "live": 1,
+      "position": "last",
+      "round": 1,
+      "order": [
+        "current",
+        "control"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "current": {
+        "fullscan": 0,
+        "vm": 19,
+        "result": true
+      },
+      "control": {
+        "fullscan": 1,
+        "vm": 16,
+        "result": true
+      }
+    },
+    {
+      "stopped": 2000,
+      "live": 1,
+      "position": "last",
+      "round": 2,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "control": {
+        "fullscan": 1,
+        "vm": 16,
+        "result": true
+      },
+      "current": {
+        "fullscan": 0,
+        "vm": 19,
+        "result": true
+      }
+    },
+    {
+      "stopped": 2000,
+      "live": 12,
+      "position": "none",
+      "round": 0,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": false,
+      "control": {
+        "fullscan": 2011,
+        "vm": 6044,
+        "result": false
+      },
+      "current": {
+        "fullscan": 11,
+        "vm": 61,
+        "result": false
+      }
+    },
+    {
+      "stopped": 2000,
+      "live": 12,
+      "position": "none",
+      "round": 1,
+      "order": [
+        "current",
+        "control"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": false,
+      "current": {
+        "fullscan": 11,
+        "vm": 61,
+        "result": false
+      },
+      "control": {
+        "fullscan": 2011,
+        "vm": 6044,
+        "result": false
+      }
+    },
+    {
+      "stopped": 2000,
+      "live": 12,
+      "position": "none",
+      "round": 2,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": false,
+      "control": {
+        "fullscan": 2011,
+        "vm": 6044,
+        "result": false
+      },
+      "current": {
+        "fullscan": 11,
+        "vm": 61,
+        "result": false
+      }
+    },
+    {
+      "stopped": 2000,
+      "live": 12,
+      "position": "first",
+      "round": 0,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "control": {
+        "fullscan": 1,
+        "vm": 16,
+        "result": true
+      },
+      "current": {
+        "fullscan": 0,
+        "vm": 19,
+        "result": true
+      }
+    },
+    {
+      "stopped": 2000,
+      "live": 12,
+      "position": "first",
+      "round": 1,
+      "order": [
+        "current",
+        "control"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "current": {
+        "fullscan": 0,
+        "vm": 19,
+        "result": true
+      },
+      "control": {
+        "fullscan": 1,
+        "vm": 16,
+        "result": true
+      }
+    },
+    {
+      "stopped": 2000,
+      "live": 12,
+      "position": "first",
+      "round": 2,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "control": {
+        "fullscan": 1,
+        "vm": 16,
+        "result": true
+      },
+      "current": {
+        "fullscan": 0,
+        "vm": 19,
+        "result": true
+      }
+    },
+    {
+      "stopped": 2000,
+      "live": 12,
+      "position": "last",
+      "round": 0,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "control": {
+        "fullscan": 12,
+        "vm": 49,
+        "result": true
+      },
+      "current": {
+        "fullscan": 11,
+        "vm": 63,
+        "result": true
+      }
+    },
+    {
+      "stopped": 2000,
+      "live": 12,
+      "position": "last",
+      "round": 1,
+      "order": [
+        "current",
+        "control"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "current": {
+        "fullscan": 11,
+        "vm": 63,
+        "result": true
+      },
+      "control": {
+        "fullscan": 12,
+        "vm": 49,
+        "result": true
+      }
+    },
+    {
+      "stopped": 2000,
+      "live": 12,
+      "position": "last",
+      "round": 2,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "control": {
+        "fullscan": 12,
+        "vm": 49,
+        "result": true
+      },
+      "current": {
+        "fullscan": 11,
+        "vm": 63,
+        "result": true
+      }
+    },
+    {
+      "stopped": 2000,
+      "live": 120,
+      "position": "none",
+      "round": 0,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": false,
+      "control": {
+        "fullscan": 2119,
+        "vm": 6368,
+        "result": false
+      },
+      "current": {
+        "fullscan": 119,
+        "vm": 493,
+        "result": false
+      }
+    },
+    {
+      "stopped": 2000,
+      "live": 120,
+      "position": "none",
+      "round": 1,
+      "order": [
+        "current",
+        "control"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": false,
+      "current": {
+        "fullscan": 119,
+        "vm": 493,
+        "result": false
+      },
+      "control": {
+        "fullscan": 2119,
+        "vm": 6368,
+        "result": false
+      }
+    },
+    {
+      "stopped": 2000,
+      "live": 120,
+      "position": "none",
+      "round": 2,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": false,
+      "control": {
+        "fullscan": 2119,
+        "vm": 6368,
+        "result": false
+      },
+      "current": {
+        "fullscan": 119,
+        "vm": 493,
+        "result": false
+      }
+    },
+    {
+      "stopped": 2000,
+      "live": 120,
+      "position": "first",
+      "round": 0,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "control": {
+        "fullscan": 1,
+        "vm": 16,
+        "result": true
+      },
+      "current": {
+        "fullscan": 0,
+        "vm": 19,
+        "result": true
+      }
+    },
+    {
+      "stopped": 2000,
+      "live": 120,
+      "position": "first",
+      "round": 1,
+      "order": [
+        "current",
+        "control"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "current": {
+        "fullscan": 0,
+        "vm": 19,
+        "result": true
+      },
+      "control": {
+        "fullscan": 1,
+        "vm": 16,
+        "result": true
+      }
+    },
+    {
+      "stopped": 2000,
+      "live": 120,
+      "position": "first",
+      "round": 2,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "control": {
+        "fullscan": 1,
+        "vm": 16,
+        "result": true
+      },
+      "current": {
+        "fullscan": 0,
+        "vm": 19,
+        "result": true
+      }
+    },
+    {
+      "stopped": 2000,
+      "live": 120,
+      "position": "last",
+      "round": 0,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "control": {
+        "fullscan": 120,
+        "vm": 373,
+        "result": true
+      },
+      "current": {
+        "fullscan": 119,
+        "vm": 495,
+        "result": true
+      }
+    },
+    {
+      "stopped": 2000,
+      "live": 120,
+      "position": "last",
+      "round": 1,
+      "order": [
+        "current",
+        "control"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "current": {
+        "fullscan": 119,
+        "vm": 495,
+        "result": true
+      },
+      "control": {
+        "fullscan": 120,
+        "vm": 373,
+        "result": true
+      }
+    },
+    {
+      "stopped": 2000,
+      "live": 120,
+      "position": "last",
+      "round": 2,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "control": {
+        "fullscan": 120,
+        "vm": 373,
+        "result": true
+      },
+      "current": {
+        "fullscan": 119,
+        "vm": 495,
+        "result": true
+      }
+    },
+    {
+      "stopped": 10000,
+      "live": 0,
+      "position": "none",
+      "round": 0,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": false,
+      "control": {
+        "fullscan": 9999,
+        "vm": 30008,
+        "result": false
+      },
+      "current": {
+        "fullscan": 0,
+        "vm": 13,
+        "result": false
+      }
+    },
+    {
+      "stopped": 10000,
+      "live": 0,
+      "position": "none",
+      "round": 1,
+      "order": [
+        "current",
+        "control"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": false,
+      "current": {
+        "fullscan": 0,
+        "vm": 13,
+        "result": false
+      },
+      "control": {
+        "fullscan": 9999,
+        "vm": 30008,
+        "result": false
+      }
+    },
+    {
+      "stopped": 10000,
+      "live": 0,
+      "position": "none",
+      "round": 2,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": false,
+      "control": {
+        "fullscan": 9999,
+        "vm": 30008,
+        "result": false
+      },
+      "current": {
+        "fullscan": 0,
+        "vm": 13,
+        "result": false
+      }
+    },
+    {
+      "stopped": 10000,
+      "live": 1,
+      "position": "none",
+      "round": 0,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": false,
+      "control": {
+        "fullscan": 10000,
+        "vm": 30011,
+        "result": false
+      },
+      "current": {
+        "fullscan": 0,
+        "vm": 17,
+        "result": false
+      }
+    },
+    {
+      "stopped": 10000,
+      "live": 1,
+      "position": "none",
+      "round": 1,
+      "order": [
+        "current",
+        "control"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": false,
+      "current": {
+        "fullscan": 0,
+        "vm": 17,
+        "result": false
+      },
+      "control": {
+        "fullscan": 10000,
+        "vm": 30011,
+        "result": false
+      }
+    },
+    {
+      "stopped": 10000,
+      "live": 1,
+      "position": "none",
+      "round": 2,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": false,
+      "control": {
+        "fullscan": 10000,
+        "vm": 30011,
+        "result": false
+      },
+      "current": {
+        "fullscan": 0,
+        "vm": 17,
+        "result": false
+      }
+    },
+    {
+      "stopped": 10000,
+      "live": 1,
+      "position": "first",
+      "round": 0,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "control": {
+        "fullscan": 1,
+        "vm": 16,
+        "result": true
+      },
+      "current": {
+        "fullscan": 0,
+        "vm": 19,
+        "result": true
+      }
+    },
+    {
+      "stopped": 10000,
+      "live": 1,
+      "position": "first",
+      "round": 1,
+      "order": [
+        "current",
+        "control"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "current": {
+        "fullscan": 0,
+        "vm": 19,
+        "result": true
+      },
+      "control": {
+        "fullscan": 1,
+        "vm": 16,
+        "result": true
+      }
+    },
+    {
+      "stopped": 10000,
+      "live": 1,
+      "position": "first",
+      "round": 2,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "control": {
+        "fullscan": 1,
+        "vm": 16,
+        "result": true
+      },
+      "current": {
+        "fullscan": 0,
+        "vm": 19,
+        "result": true
+      }
+    },
+    {
+      "stopped": 10000,
+      "live": 1,
+      "position": "last",
+      "round": 0,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "control": {
+        "fullscan": 1,
+        "vm": 16,
+        "result": true
+      },
+      "current": {
+        "fullscan": 0,
+        "vm": 19,
+        "result": true
+      }
+    },
+    {
+      "stopped": 10000,
+      "live": 1,
+      "position": "last",
+      "round": 1,
+      "order": [
+        "current",
+        "control"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "current": {
+        "fullscan": 0,
+        "vm": 19,
+        "result": true
+      },
+      "control": {
+        "fullscan": 1,
+        "vm": 16,
+        "result": true
+      }
+    },
+    {
+      "stopped": 10000,
+      "live": 1,
+      "position": "last",
+      "round": 2,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "control": {
+        "fullscan": 1,
+        "vm": 16,
+        "result": true
+      },
+      "current": {
+        "fullscan": 0,
+        "vm": 19,
+        "result": true
+      }
+    },
+    {
+      "stopped": 10000,
+      "live": 12,
+      "position": "none",
+      "round": 0,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": false,
+      "control": {
+        "fullscan": 10011,
+        "vm": 30044,
+        "result": false
+      },
+      "current": {
+        "fullscan": 11,
+        "vm": 61,
+        "result": false
+      }
+    },
+    {
+      "stopped": 10000,
+      "live": 12,
+      "position": "none",
+      "round": 1,
+      "order": [
+        "current",
+        "control"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": false,
+      "current": {
+        "fullscan": 11,
+        "vm": 61,
+        "result": false
+      },
+      "control": {
+        "fullscan": 10011,
+        "vm": 30044,
+        "result": false
+      }
+    },
+    {
+      "stopped": 10000,
+      "live": 12,
+      "position": "none",
+      "round": 2,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": false,
+      "control": {
+        "fullscan": 10011,
+        "vm": 30044,
+        "result": false
+      },
+      "current": {
+        "fullscan": 11,
+        "vm": 61,
+        "result": false
+      }
+    },
+    {
+      "stopped": 10000,
+      "live": 12,
+      "position": "first",
+      "round": 0,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "control": {
+        "fullscan": 1,
+        "vm": 16,
+        "result": true
+      },
+      "current": {
+        "fullscan": 0,
+        "vm": 19,
+        "result": true
+      }
+    },
+    {
+      "stopped": 10000,
+      "live": 12,
+      "position": "first",
+      "round": 1,
+      "order": [
+        "current",
+        "control"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "current": {
+        "fullscan": 0,
+        "vm": 19,
+        "result": true
+      },
+      "control": {
+        "fullscan": 1,
+        "vm": 16,
+        "result": true
+      }
+    },
+    {
+      "stopped": 10000,
+      "live": 12,
+      "position": "first",
+      "round": 2,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "control": {
+        "fullscan": 1,
+        "vm": 16,
+        "result": true
+      },
+      "current": {
+        "fullscan": 0,
+        "vm": 19,
+        "result": true
+      }
+    },
+    {
+      "stopped": 10000,
+      "live": 12,
+      "position": "last",
+      "round": 0,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "control": {
+        "fullscan": 12,
+        "vm": 49,
+        "result": true
+      },
+      "current": {
+        "fullscan": 11,
+        "vm": 63,
+        "result": true
+      }
+    },
+    {
+      "stopped": 10000,
+      "live": 12,
+      "position": "last",
+      "round": 1,
+      "order": [
+        "current",
+        "control"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "current": {
+        "fullscan": 11,
+        "vm": 63,
+        "result": true
+      },
+      "control": {
+        "fullscan": 12,
+        "vm": 49,
+        "result": true
+      }
+    },
+    {
+      "stopped": 10000,
+      "live": 12,
+      "position": "last",
+      "round": 2,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "control": {
+        "fullscan": 12,
+        "vm": 49,
+        "result": true
+      },
+      "current": {
+        "fullscan": 11,
+        "vm": 63,
+        "result": true
+      }
+    },
+    {
+      "stopped": 10000,
+      "live": 120,
+      "position": "none",
+      "round": 0,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": false,
+      "control": {
+        "fullscan": 10119,
+        "vm": 30368,
+        "result": false
+      },
+      "current": {
+        "fullscan": 119,
+        "vm": 493,
+        "result": false
+      }
+    },
+    {
+      "stopped": 10000,
+      "live": 120,
+      "position": "none",
+      "round": 1,
+      "order": [
+        "current",
+        "control"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": false,
+      "current": {
+        "fullscan": 119,
+        "vm": 493,
+        "result": false
+      },
+      "control": {
+        "fullscan": 10119,
+        "vm": 30368,
+        "result": false
+      }
+    },
+    {
+      "stopped": 10000,
+      "live": 120,
+      "position": "none",
+      "round": 2,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": false,
+      "control": {
+        "fullscan": 10119,
+        "vm": 30368,
+        "result": false
+      },
+      "current": {
+        "fullscan": 119,
+        "vm": 493,
+        "result": false
+      }
+    },
+    {
+      "stopped": 10000,
+      "live": 120,
+      "position": "first",
+      "round": 0,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "control": {
+        "fullscan": 1,
+        "vm": 16,
+        "result": true
+      },
+      "current": {
+        "fullscan": 0,
+        "vm": 19,
+        "result": true
+      }
+    },
+    {
+      "stopped": 10000,
+      "live": 120,
+      "position": "first",
+      "round": 1,
+      "order": [
+        "current",
+        "control"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "current": {
+        "fullscan": 0,
+        "vm": 19,
+        "result": true
+      },
+      "control": {
+        "fullscan": 1,
+        "vm": 16,
+        "result": true
+      }
+    },
+    {
+      "stopped": 10000,
+      "live": 120,
+      "position": "first",
+      "round": 2,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "control": {
+        "fullscan": 1,
+        "vm": 16,
+        "result": true
+      },
+      "current": {
+        "fullscan": 0,
+        "vm": 19,
+        "result": true
+      }
+    },
+    {
+      "stopped": 10000,
+      "live": 120,
+      "position": "last",
+      "round": 0,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "control": {
+        "fullscan": 120,
+        "vm": 373,
+        "result": true
+      },
+      "current": {
+        "fullscan": 119,
+        "vm": 495,
+        "result": true
+      }
+    },
+    {
+      "stopped": 10000,
+      "live": 120,
+      "position": "last",
+      "round": 1,
+      "order": [
+        "current",
+        "control"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "current": {
+        "fullscan": 119,
+        "vm": 495,
+        "result": true
+      },
+      "control": {
+        "fullscan": 120,
+        "vm": 373,
+        "result": true
+      }
+    },
+    {
+      "stopped": 10000,
+      "live": 120,
+      "position": "last",
+      "round": 2,
+      "order": [
+        "control",
+        "current"
+      ],
+      "sql": "SELECT 1 FROM runtimes WHERE state != 'stopped' AND state = 'booting' LIMIT 1",
+      "plan": [
+        "SCAN runtimes USING INDEX runtimes_daemon_live"
+      ],
+      "expected": true,
+      "control": {
+        "fullscan": 120,
+        "vm": 373,
+        "result": true
+      },
+      "current": {
+        "fullscan": 119,
+        "vm": 495,
+        "result": true
+      }
+    }
+  ],
+  "results": [
+    {
+      "metric": "stoppedHistoryScanSteps",
+      "samples": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "invariantHolds": true
+    },
+    {
+      "metric": "liveVmOverhead",
+      "samples": [
+        5,
+        5,
+        5,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        17,
+        17,
+        17,
+        6,
+        6,
+        6,
+        17,
+        17,
+        17,
+        125,
+        125,
+        125,
+        6,
+        6,
+        6,
+        125,
+        125,
+        125
+      ],
+      "invariantHolds": true
+    }
+  ],
+  "scope": "CLI statement counters only, separate engine from Node; actual CoreStore SQL/boolean and Node plan checked. No timing, I/O or daemon cost claim."
+}

@@ -1,11 +1,11 @@
 ---
 name: perf-honeybee
-description: Measure satellite Cell startup, unchanged action-lane polling and batch action views using isolated Honeybee fixtures and conservative workload receipts.
+description: Measure satellite Cell startup, unchanged action-lane polling batch action views and boot-state reads using isolated Honeybee fixtures and conservative workload receipts.
 ---
 
 # Perf Honeybee
 
-This map covers **satellite Cell startup** and **unchanged action-lane polling** and **batch action views**, not all Honeybee performance.
+This map covers **satellite Cell startup** and **unchanged action-lane polling** **batch action views**, and **boot-state reads**, not all Honeybee performance.
 Read [the map](workloads/README.md) and [the workload](workloads/remote-cell-spawn.md).
 For action polling, read [its workload](workloads/action-noop-reconciliation.md).
 It counts store work in real SQLite fixtures; no runtime is launched or timing claimed.
@@ -71,3 +71,5 @@ The existing `scripts/perf/cells.mjs` and `runner-host.mjs` provide narrower att
 workstation Git-image timings must not be presented as satellite Cell timings.
 
 Batch action-view projection is mapped by [action-view-projection](workloads/action-view-projection.md): full-lane element counts only, separate from no-op reconciliation calls. Its core test emits a receipt with HIVE_ACTION_VIEWS_RECEIPT.
+
+Boot-state lookup is mapped by [boot-runtime-lookup](workloads/boot-runtime-lookup.md). The recipe records system SQLite statement counts, with a separate Node SQLite plan/behavior guard. The two engines are not interchangeable latency populations.

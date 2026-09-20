@@ -1,0 +1,192 @@
+{
+  "workload": "action-noop-reconciliation",
+  "seriesId": "action-noop-counts-v1",
+  "capturedAt": "2026-09-20T08:10:04.387Z",
+  "host": "Tormods-Mac-Studio.local",
+  "node": "v24.18.0",
+  "load": [
+    4.60107421875,
+    5.4150390625,
+    6.5146484375
+  ],
+  "sources": {
+    "../src/store.ts": "766649303e817e808487cf9d3a726090b2eeabad68409b65df5bc7dab89adb8f",
+    "../src/actions.ts": "8e7c5c6b83be9650c95189efd8e95d4f8d44dfcd8efca82f91db72ae37eb33c7",
+    "../../daemon/src/loops.ts": "378483d777b3f4d46453e72189f89ff40f547c4fe6abee0c43d2ea0a363c7700",
+    "./actions-noop.test.ts": "5127d3507a589b2452de2bf62b13d20e85e343b05a8ed4f5c3803b2ec22bb1d7",
+    "./helpers.ts": "a12920c8a79fd01e5bfca3d47ae9ce015e7dff189afe583da7743050a6a58882"
+  },
+  "samples": [
+    {
+      "scenario": "archive-queued",
+      "size": 1,
+      "round": 0,
+      "polls": 10,
+      "laneViewBuilds": 0,
+      "actionRowsViewed": 0
+    },
+    {
+      "scenario": "archive-queued",
+      "size": 1,
+      "round": 1,
+      "polls": 10,
+      "laneViewBuilds": 0,
+      "actionRowsViewed": 0
+    },
+    {
+      "scenario": "archive-queued",
+      "size": 1,
+      "round": 2,
+      "polls": 10,
+      "laneViewBuilds": 0,
+      "actionRowsViewed": 0
+    },
+    {
+      "scenario": "archive-queued",
+      "size": 32,
+      "round": 0,
+      "polls": 10,
+      "laneViewBuilds": 0,
+      "actionRowsViewed": 0
+    },
+    {
+      "scenario": "archive-queued",
+      "size": 32,
+      "round": 1,
+      "polls": 10,
+      "laneViewBuilds": 0,
+      "actionRowsViewed": 0
+    },
+    {
+      "scenario": "archive-queued",
+      "size": 32,
+      "round": 2,
+      "polls": 10,
+      "laneViewBuilds": 0,
+      "actionRowsViewed": 0
+    },
+    {
+      "scenario": "archive-running",
+      "size": 1,
+      "round": 0,
+      "polls": 10,
+      "laneViewBuilds": 0,
+      "actionRowsViewed": 0
+    },
+    {
+      "scenario": "archive-running",
+      "size": 1,
+      "round": 1,
+      "polls": 10,
+      "laneViewBuilds": 0,
+      "actionRowsViewed": 0
+    },
+    {
+      "scenario": "archive-running",
+      "size": 1,
+      "round": 2,
+      "polls": 10,
+      "laneViewBuilds": 0,
+      "actionRowsViewed": 0
+    },
+    {
+      "scenario": "archive-running",
+      "size": 32,
+      "round": 0,
+      "polls": 10,
+      "laneViewBuilds": 0,
+      "actionRowsViewed": 0
+    },
+    {
+      "scenario": "archive-running",
+      "size": 32,
+      "round": 1,
+      "polls": 10,
+      "laneViewBuilds": 0,
+      "actionRowsViewed": 0
+    },
+    {
+      "scenario": "archive-running",
+      "size": 32,
+      "round": 2,
+      "polls": 10,
+      "laneViewBuilds": 0,
+      "actionRowsViewed": 0
+    },
+    {
+      "scenario": "executor-unchanged",
+      "size": 1,
+      "round": 0,
+      "polls": 10,
+      "laneViewBuilds": 0,
+      "actionRowsViewed": 0
+    },
+    {
+      "scenario": "executor-unchanged",
+      "size": 1,
+      "round": 1,
+      "polls": 10,
+      "laneViewBuilds": 0,
+      "actionRowsViewed": 0
+    },
+    {
+      "scenario": "executor-unchanged",
+      "size": 1,
+      "round": 2,
+      "polls": 10,
+      "laneViewBuilds": 0,
+      "actionRowsViewed": 0
+    },
+    {
+      "scenario": "executor-unchanged",
+      "size": 32,
+      "round": 0,
+      "polls": 10,
+      "laneViewBuilds": 0,
+      "actionRowsViewed": 0
+    },
+    {
+      "scenario": "executor-unchanged",
+      "size": 32,
+      "round": 1,
+      "polls": 10,
+      "laneViewBuilds": 0,
+      "actionRowsViewed": 0
+    },
+    {
+      "scenario": "executor-unchanged",
+      "size": 32,
+      "round": 2,
+      "polls": 10,
+      "laneViewBuilds": 0,
+      "actionRowsViewed": 0
+    }
+  ],
+  "results": [
+    {
+      "metric": "laneViewBuilds",
+      "samples": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "invariantHolds": true
+    }
+  ],
+  "scope": "Store method work counts; one fresh ActionView still reads the lane. No timing or whole-daemon claim."
+}
