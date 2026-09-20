@@ -288,11 +288,62 @@ test("v7.migration: a v6 store opens as v7 — bees.account added, accounts/acco
     try {
       const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
       assert.equal(Number(version.value), SCHEMA_VERSION);
-      assert.equal(SCHEMA_VERSION, 26);
+      assert.equal(SCHEMA_VERSION, 27);
       const cols = (check.prepare("SELECT name FROM pragma_table_info('bees')").all() as Array<{ name: string }>).map((c) => c.name);
       assert.ok(cols.includes("account"));
       const tables = (check.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{ name: string }>).map((t) => t.name);
       for (const t of ["accounts", "account_limits", "selection_cursors"]) assert.ok(tables.includes(t), t);
+    } finally {
+      check.close();
+    }
+  } finally {
+    h.cleanup();
+  }
+});
+
+test("v27 bridge reopens a disabled pilot store without losing ordinary state or authority metadata", () => {
+  const h = harness();
+  try {
+    const feature = h.open();
+    const account = feature.createAccount({
+      id: "claude-pilot",
+      harness: "claude",
+      homePath: "/tmp/homes/claude-pilot",
+      label: "pilot",
+    });
+    const { bee } = feature.createBee({
+      name: "remembering-bee",
+      agent: "claude",
+      substrate: "hsr",
+      cwd: "/tmp/work",
+      account: account.id,
+    });
+    const message = feature.send(bee.id, "remember bridge state", { urgency: "idle" }).message;
+    feature.close();
+
+    // This is the exact secret-free row the feature leaves after a supported
+    // disable. The bridge intentionally has no pilot methods; it must still
+    // tolerate and preserve the feature-owned row while serving normal state.
+    const seeded = new DatabaseSync(h.path);
+    seeded.prepare(`INSERT INTO account_credential_authorities
+      (account, phase, generation, expires_at, operation_key, updated_at)
+      VALUES (?, 'disabled', 4, ?, ?, ?)`).run(account.id, 9_999_999, "rollout-4", 7_777);
+    seeded.close();
+
+    const bridge = h.open();
+    assert.equal(bridge.getAccount(account.id)?.label, "pilot");
+    assert.equal(bridge.getBee(bee.id)?.account, account.id);
+    assert.equal(bridge.undeliveredMessages(bee.id)[0]?.id, message.id);
+    assert.equal(bridge.undeliveredMessages(bee.id)[0]?.body, "remember bridge state");
+    bridge.close();
+
+    const check = new DatabaseSync(h.path, { readOnly: true });
+    try {
+      assert.deepEqual(
+        { ...(check.prepare("SELECT phase, generation, expires_at, operation_key, updated_at FROM account_credential_authorities WHERE account = ?").get(account.id) as Record<string, unknown>) },
+        { phase: "disabled", generation: 4, expires_at: 9_999_999, operation_key: "rollout-4", updated_at: 7_777 },
+      );
+      assert.equal((check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string }).value, "27");
     } finally {
       check.close();
     }
