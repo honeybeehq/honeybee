@@ -3570,6 +3570,11 @@ export class CoreStore {
    * command queue, not the bee roster: account preparation is demand-driven
    * by executable intent and inactive bees impose no per-tick work.
    */
+  /** True while any runtime is between its start command and its booted observation. */
+  hasBootingRuntime(): boolean {
+    return this.stmt("SELECT 1 FROM runtimes WHERE state = 'booting' LIMIT 1").get() != null;
+  }
+
   listDueRuntimeStartCommands(): CommandRow[] {
     return (this.stmt(
       `SELECT * FROM commands INDEXED BY commands_ready

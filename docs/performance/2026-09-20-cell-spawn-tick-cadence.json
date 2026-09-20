@@ -1,0 +1,319 @@
+{
+  "scope": "Source Node 24.18.0 on the Mac Studio (load 3.5-6.7), satellite sandbox on, disposable 202-file origin, stub harness, width 1, production tick cadence (--tick-ms 200); not provider or UI latency",
+  "order": "after/before then after/before, 8 batches per capture, one warm-up batch each",
+  "changes": [
+    "spawn RPC and account activation request an immediate tick",
+    "25 ms tick cadence while any runtime is booting",
+    "git checkout with checkout.workers=min(8,cpus) and thresholdForParallelism=100"
+  ],
+  "traceAtTick200": {
+    "before": {
+      "startMs": 192,
+      "idleMs": 398
+    },
+    "kickOnly": {
+      "startMs": 6,
+      "idleMs": 211
+    },
+    "kickAndBootCadence": {
+      "startMs": 6,
+      "idleMs": 110
+    },
+    "note": "one HSR stub spawn per variant from a scratch trace script reading hived.log; ms after the spawn RPC"
+  },
+  "netcupCheckout": {
+    "files": 3393,
+    "filesystem": "ext4",
+    "beforeUs": [
+      633059,
+      625901
+    ],
+    "workers8Us": [
+      221448,
+      210694
+    ],
+    "workers16Us": [
+      194019,
+      212575
+    ],
+    "note": "git 2.47.3 direct measurement on netcup-1 in a fresh --local clone; ledger step timestamps of 26 production Cells put the same checkout at median 738 ms"
+  },
+  "runs": {
+    "t200c-before1": {
+      "revision": "e8693f41b691f992d727a2e5ef9277e9293db5d1",
+      "measuredSources": {
+        "v2/daemon/src/daemon.ts": "feae626846209f4eaca27a124a55e86663a2b00fc9e039a30823cbaf9cde03f0",
+        "v2/daemon/src/config.ts": "31d14939e8dd7c44ea81bced94a786512ae9c29ad7a908b0cf0bddfa887bb986",
+        "v2/daemon/src/loops.ts": "378483d777b3f4d46453e72189f89ff40f547c4fe6abee0c43d2ea0a363c7700",
+        "v2/driver-cell/src/driver.ts": "7795f9ac4d574cd802128e05bf9c14fb6d938c84a3cc786fc524d50af8873b1a",
+        "v2/driver-cell/src/provision.ts": "8293821e57266a0b4f7a2e0e6d25c584cac6caf1ac0afad207311af57558be66",
+        "v2/driver-hsr/src/driver.ts": "2ef3e3bf95a5a300db34d0c79afc77ae63f1d9d73f74c2ea6305662d9f818998",
+        "v2/driver-hsr/src/runner-host.ts": "7f1716db45160657ef2109d8a18ae064cbab065f0321b22d29f9a193a3f3c152",
+        "v2/daemon/tests/helpers.ts": "9d63216758bec78d1f0e6f7fa949d67ee1f4b1d90eb5efdd4a8888cda75ea0f3",
+        "v2/driver-cell/tests/helpers.ts": "87011a31ac2423348860681e45acb3325bff44c666619ca848487f22aa2c1a03",
+        "v2/driver-hsr/test-agent/agent.mjs": "1c4764558ce069d248b107a30e3eee095cdf30f8ed0714ee186f31b0bc8ceb87"
+      },
+      "load": [
+        3.52685546875,
+        5.291015625,
+        6.63330078125
+      ],
+      "tickMs": 200,
+      "metrics": {
+        "cell.accept": {
+          "n": 8,
+          "min": 20.95983299999989,
+          "p50": 22.345957999999882,
+          "p95": 29.673416999999972,
+          "max": 29.673416999999972,
+          "mean": 23.84080737499994,
+          "unit": "ms"
+        },
+        "cell.ready": {
+          "n": 8,
+          "min": 312.998834,
+          "p50": 328.1416250000002,
+          "p95": 520.3607499999998,
+          "max": 520.3607499999998,
+          "mean": 395.83224487499996,
+          "unit": "ms"
+        },
+        "cell.usable": {
+          "n": 8,
+          "min": 516.9102499999999,
+          "p50": 535.9352080000008,
+          "p95": 723.9779999999996,
+          "max": 723.9779999999996,
+          "mean": 598.7754895,
+          "unit": "ms"
+        },
+        "cell.batchIncludingVerificationAndStop": {
+          "n": 8,
+          "min": 914.9487499999996,
+          "p50": 943.1005839999998,
+          "p95": 1132.502375,
+          "max": 1132.502375,
+          "mean": 1005.0635417499999,
+          "unit": "ms"
+        }
+      },
+      "readyMsSamples": [
+        507.7762080000002,
+        513.2349169999998,
+        331.89262499999995,
+        520.3607499999998,
+        312.998834,
+        324.35554200000024,
+        327.89745799999946,
+        328.1416250000002
+      ]
+    },
+    "t200c-after1": {
+      "revision": "e8693f41b691f992d727a2e5ef9277e9293db5d1",
+      "measuredSources": {
+        "v2/daemon/src/daemon.ts": "793005c408ad4a1c7040b303b775cd4171baac702e27bc062d290901c2157d12",
+        "v2/daemon/src/config.ts": "31d14939e8dd7c44ea81bced94a786512ae9c29ad7a908b0cf0bddfa887bb986",
+        "v2/daemon/src/loops.ts": "378483d777b3f4d46453e72189f89ff40f547c4fe6abee0c43d2ea0a363c7700",
+        "v2/driver-cell/src/driver.ts": "7795f9ac4d574cd802128e05bf9c14fb6d938c84a3cc786fc524d50af8873b1a",
+        "v2/driver-cell/src/provision.ts": "92f4769dfd52dfcd634acf6a617591cf5edb3038c0983fdd3b03f5c32ff55a9a",
+        "v2/driver-hsr/src/driver.ts": "2ef3e3bf95a5a300db34d0c79afc77ae63f1d9d73f74c2ea6305662d9f818998",
+        "v2/driver-hsr/src/runner-host.ts": "7f1716db45160657ef2109d8a18ae064cbab065f0321b22d29f9a193a3f3c152",
+        "v2/daemon/tests/helpers.ts": "9d63216758bec78d1f0e6f7fa949d67ee1f4b1d90eb5efdd4a8888cda75ea0f3",
+        "v2/driver-cell/tests/helpers.ts": "87011a31ac2423348860681e45acb3325bff44c666619ca848487f22aa2c1a03",
+        "v2/driver-hsr/test-agent/agent.mjs": "1c4764558ce069d248b107a30e3eee095cdf30f8ed0714ee186f31b0bc8ceb87"
+      },
+      "load": [
+        3.615234375,
+        5.369140625,
+        6.6767578125
+      ],
+      "tickMs": 200,
+      "metrics": {
+        "cell.accept": {
+          "n": 8,
+          "min": 23.888291999999637,
+          "p50": 25.993250000000444,
+          "p95": 33.72908300000017,
+          "max": 33.72908300000017,
+          "mean": 26.80092175000007,
+          "unit": "ms"
+        },
+        "cell.ready": {
+          "n": 8,
+          "min": 234.74462500000027,
+          "p50": 295.5490840000002,
+          "p95": 301.5747500000007,
+          "max": 301.5747500000007,
+          "mean": 282.18028650000014,
+          "unit": "ms"
+        },
+        "cell.usable": {
+          "n": 8,
+          "min": 443.378291,
+          "p50": 488.11654200000066,
+          "p95": 496.79779100000087,
+          "max": 496.79779100000087,
+          "mean": 480.31040087500025,
+          "unit": "ms"
+        },
+        "cell.batchIncludingVerificationAndStop": {
+          "n": 8,
+          "min": 840.026167,
+          "p50": 890.233084,
+          "p95": 913.8722499999994,
+          "max": 913.8722499999994,
+          "mean": 888.44395325,
+          "unit": "ms"
+        }
+      },
+      "readyMsSamples": [
+        296.167958,
+        234.74462500000027,
+        242.47125000000005,
+        290.3514580000001,
+        295.5490840000002,
+        298.6339170000001,
+        301.5747500000007,
+        297.94924999999967
+      ]
+    },
+    "t200c-before2": {
+      "revision": "e8693f41b691f992d727a2e5ef9277e9293db5d1",
+      "measuredSources": {
+        "v2/daemon/src/daemon.ts": "feae626846209f4eaca27a124a55e86663a2b00fc9e039a30823cbaf9cde03f0",
+        "v2/daemon/src/config.ts": "31d14939e8dd7c44ea81bced94a786512ae9c29ad7a908b0cf0bddfa887bb986",
+        "v2/daemon/src/loops.ts": "378483d777b3f4d46453e72189f89ff40f547c4fe6abee0c43d2ea0a363c7700",
+        "v2/driver-cell/src/driver.ts": "7795f9ac4d574cd802128e05bf9c14fb6d938c84a3cc786fc524d50af8873b1a",
+        "v2/driver-cell/src/provision.ts": "8293821e57266a0b4f7a2e0e6d25c584cac6caf1ac0afad207311af57558be66",
+        "v2/driver-hsr/src/driver.ts": "2ef3e3bf95a5a300db34d0c79afc77ae63f1d9d73f74c2ea6305662d9f818998",
+        "v2/driver-hsr/src/runner-host.ts": "7f1716db45160657ef2109d8a18ae064cbab065f0321b22d29f9a193a3f3c152",
+        "v2/daemon/tests/helpers.ts": "9d63216758bec78d1f0e6f7fa949d67ee1f4b1d90eb5efdd4a8888cda75ea0f3",
+        "v2/driver-cell/tests/helpers.ts": "87011a31ac2423348860681e45acb3325bff44c666619ca848487f22aa2c1a03",
+        "v2/driver-hsr/test-agent/agent.mjs": "1c4764558ce069d248b107a30e3eee095cdf30f8ed0714ee186f31b0bc8ceb87"
+      },
+      "load": [
+        3.60205078125,
+        5.2041015625,
+        6.57080078125
+      ],
+      "tickMs": 200,
+      "metrics": {
+        "cell.accept": {
+          "n": 8,
+          "min": 24.781208999999762,
+          "p50": 25.332249999999476,
+          "p95": 28.057667000000038,
+          "max": 28.057667000000038,
+          "mean": 25.947651124999908,
+          "unit": "ms"
+        },
+        "cell.ready": {
+          "n": 8,
+          "min": 332.1965,
+          "p50": 335.7664169999998,
+          "p95": 540.9970830000002,
+          "max": 540.9970830000002,
+          "mean": 433.28349987499996,
+          "unit": "ms"
+        },
+        "cell.usable": {
+          "n": 8,
+          "min": 540.8732079999991,
+          "p50": 548.135792,
+          "p95": 735.6818329999996,
+          "max": 735.6818329999996,
+          "mean": 637.2471511249998,
+          "unit": "ms"
+        },
+        "cell.batchIncludingVerificationAndStop": {
+          "n": 8,
+          "min": 944.1285420000004,
+          "p50": 954.0846670000001,
+          "p95": 1152.872625,
+          "max": 1152.872625,
+          "mean": 1041.5223231250002,
+          "unit": "ms"
+        }
+      },
+      "readyMsSamples": [
+        526.7394579999998,
+        335.04995800000006,
+        539.4902080000002,
+        335.7664169999998,
+        523.6126249999998,
+        332.4157500000001,
+        332.1965,
+        540.9970830000002
+      ]
+    },
+    "t200c-after2": {
+      "revision": "e8693f41b691f992d727a2e5ef9277e9293db5d1",
+      "measuredSources": {
+        "v2/daemon/src/daemon.ts": "793005c408ad4a1c7040b303b775cd4171baac702e27bc062d290901c2157d12",
+        "v2/daemon/src/config.ts": "31d14939e8dd7c44ea81bced94a786512ae9c29ad7a908b0cf0bddfa887bb986",
+        "v2/daemon/src/loops.ts": "378483d777b3f4d46453e72189f89ff40f547c4fe6abee0c43d2ea0a363c7700",
+        "v2/driver-cell/src/driver.ts": "7795f9ac4d574cd802128e05bf9c14fb6d938c84a3cc786fc524d50af8873b1a",
+        "v2/driver-cell/src/provision.ts": "92f4769dfd52dfcd634acf6a617591cf5edb3038c0983fdd3b03f5c32ff55a9a",
+        "v2/driver-hsr/src/driver.ts": "2ef3e3bf95a5a300db34d0c79afc77ae63f1d9d73f74c2ea6305662d9f818998",
+        "v2/driver-hsr/src/runner-host.ts": "7f1716db45160657ef2109d8a18ae064cbab065f0321b22d29f9a193a3f3c152",
+        "v2/daemon/tests/helpers.ts": "9d63216758bec78d1f0e6f7fa949d67ee1f4b1d90eb5efdd4a8888cda75ea0f3",
+        "v2/driver-cell/tests/helpers.ts": "87011a31ac2423348860681e45acb3325bff44c666619ca848487f22aa2c1a03",
+        "v2/driver-hsr/test-agent/agent.mjs": "1c4764558ce069d248b107a30e3eee095cdf30f8ed0714ee186f31b0bc8ceb87"
+      },
+      "load": [
+        3.8935546875,
+        5.3134765625,
+        6.62548828125
+      ],
+      "tickMs": 200,
+      "metrics": {
+        "cell.accept": {
+          "n": 8,
+          "min": 21.048541999999998,
+          "p50": 22.181041999999934,
+          "p95": 26.08037500000046,
+          "max": 26.08037500000046,
+          "mean": 22.852135375000074,
+          "unit": "ms"
+        },
+        "cell.ready": {
+          "n": 8,
+          "min": 231.38258399999995,
+          "p50": 234.50595799999974,
+          "p95": 300.06883300000027,
+          "max": 300.06883300000027,
+          "mean": 246.43018749999993,
+          "unit": "ms"
+        },
+        "cell.usable": {
+          "n": 8,
+          "min": 438.97900000000027,
+          "p50": 440.837,
+          "p95": 492.098833,
+          "max": 492.098833,
+          "mean": 447.9204893750001,
+          "unit": "ms"
+        },
+        "cell.batchIncludingVerificationAndStop": {
+          "n": 8,
+          "min": 842.1279999999999,
+          "p50": 847.4321669999999,
+          "p95": 903.6539580000008,
+          "max": 903.6539580000008,
+          "mean": 854.307218875,
+          "unit": "ms"
+        }
+      },
+      "readyMsSamples": [
+        231.38258399999995,
+        233.2703749999996,
+        246.68404199999986,
+        247.56674999999996,
+        234.50595799999974,
+        245.82387500000004,
+        300.06883300000027,
+        232.13908300000003
+      ]
+    }
+  }
+}

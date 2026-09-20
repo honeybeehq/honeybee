@@ -11,7 +11,7 @@ export async function measureCellSpawn({ root, samples, scenario, record, observ
   const local = p => import(pathToFileURL(join(root, p)).href);
   const { makeDaemonDir, startDaemon, waitFor } = await local('v2/daemon/tests/helpers.ts');
   const { makeOrigin, g, fingerprintOrigin } = await local('v2/driver-cell/tests/helpers.ts');
-  const fixture = makeDaemonDir({ nodeKind: 'satellite', cells: { sandbox: scenario.sandbox } });
+  const fixture = makeDaemonDir({ nodeKind: 'satellite', cells: { sandbox: scenario.sandbox }, ...(scenario.tickMs ? { tickMs: scenario.tickMs } : {}) });
   // Keep origins, Cells and authority under the SAME disposable fixture root.
   const origins = join(fixture.dir, 'origins'); mkdirSync(origins);
   const makeFixture = () => {

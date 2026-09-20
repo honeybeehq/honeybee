@@ -70,3 +70,23 @@ agent PID. It does not change the 50ms observation throttle or recurring reconne
 cadence. The actual connection still gates delivery. Driver and adoption tests
 cover that boundary. Warm candidate receipts for each host are retained alongside
 the comparison; there is still no exclusive-host latency budget baseline.
+
+## 2026-09-20 tick cadence and checkout comparison
+
+[Compact comparison](../../../../docs/performance/2026-09-20-cell-spawn-tick-cadence.json).
+Production satellites tick every 200 ms; the fixture default of 20 ms hid two
+cadence waits, so `run.mjs --suite cell-spawn` now accepts `--tick-ms` and this
+capture uses 200. On netcup-1 production logs the owner waited a median 291,000 us
+from `cell.reserve` to the start command (26 Cells), and the ledger's checkout
+step took a median 738,000 us for 3,393 files.
+
+Three changes: the spawn RPC and the account activation each request an immediate
+tick; while any runtime is booting the loop ticks every 25 ms (the runner-file
+pump stays at 50 ms); and `git checkout` runs with eight workers. A traced stub
+spawn at the 200 ms cadence reached idle at +110,000 us instead of +398,000 us.
+The Mac cell-spawn suite (load 3.5–6.7, two pairs) measured `cell.ready` p50
+328,000/336,000 → 296,000/235,000 us and p95 520,000/541,000 → 302,000/300,000 us;
+`cell.usable` p50 536,000/548,000 → 488,000/441,000 us. The 202-file fixture is
+below the parallel-checkout benefit; on netcup-1 the 3,393-file checkout measured
+633,000 → 210,000 us directly. Codex's own boot (about 930,000 us on netcup-1)
+remains the largest owner-side interval and is harness-owned.

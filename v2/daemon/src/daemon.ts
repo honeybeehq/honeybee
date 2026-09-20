@@ -421,6 +421,13 @@ export function beeIdentityEnv(
 
 const OP_LOG_TAIL = 40;
 const MIN_TICK_YIELD_MS = 1;
+/**
+ * Boot observations are polled from runner files at the tick, so a booted
+ * runtime waits on average half a cadence to become a fact. While a runtime is
+ * booting the loop ticks at this bound instead; boots last a second or two, so
+ * the extra ticks are few and the fact lands within the driver's 50 ms pump.
+ */
+const BOOTING_TICK_MS = 25;
 /** How often the tick runs the (synchronous, roster-wide) auto-title scan. */
 const AUTO_TITLE_SCAN_MS = 1000;
 
@@ -815,13 +822,24 @@ export class HiveDaemon {
     }
   }
 
+  /**
+   * Run the next tick as soon as the loop is free instead of at the cadence
+   * boundary. A tick is synchronous, so a caller can never observe one in
+   * progress: a null timer only means the daemon is not running.
+   */
+  private requestTick(): void {
+    if (this.stopping || !this.tickTimer) return;
+    clearTimeout(this.tickTimer);
+    this.scheduleTick(0);
+  }
+
   private scheduleTick(delayMs: number): void {
     this.tickTimer = setTimeout(() => {
       this.tickTimer = null;
       if (this.stopping) return;
       this.tick();
       if (!this.stopping) {
-        this.scheduleTick(nextTickDelayMs(this.cfg.tickMs));
+        this.scheduleTick(nextTickDelayMs(this.store?.hasBootingRuntime() ? Math.min(BOOTING_TICK_MS, this.cfg.tickMs) : this.cfg.tickMs));
       }
     }, delayMs);
   }
@@ -905,7 +923,10 @@ export class HiveDaemon {
       // prevents unrelated commands in the same core step from progressing.
       const task = Promise.resolve().then(() => accounts.activateForSpawn(account, bee)).then(
         () => {
-          if (this.accountActivations.get(beeId) === state) state.status = "ready";
+          if (this.accountActivations.get(beeId) !== state) return;
+          state.status = "ready";
+          // The blocked start command can claim immediately.
+          this.requestTick();
         },
         (error: unknown) => {
           if (this.accountActivations.get(beeId) !== state) return;
@@ -1314,7 +1335,8 @@ export class HiveDaemon {
     }
     switch (verb) {
       case "spawn":
-        return this.rpcSpawnWithAccount(params);
+        // The start command is due now; do not wait out the tick cadence.
+        return this.rpcSpawnWithAccount(params).then((result) => { this.requestTick(); return result; });
       case "bee.swapAccount":
         return this.withIdempotency(verb, params, () => this.rpcSwapAccount(params));
       case "config.get":

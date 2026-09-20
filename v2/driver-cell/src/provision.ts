@@ -27,6 +27,7 @@
  * unrecorded step.
  */
 import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
+import { availableParallelism } from "node:os";
 import { performance } from "node:perf_hooks";
 import { join } from "node:path";
 import { cowCopy, cowPlatform, probeCow, type CowPlatform } from "./cow.ts";
@@ -90,6 +91,17 @@ export interface ProvisionOptions {
 
 const DEFAULT_GIT_IMAGE_BUSY_WAIT_MS = 15_000;
 const GIT_IMAGE_BUSY_POLL_MS = 50;
+/**
+ * Materializing a few thousand files is write-bound, and git's checkout
+ * workers overlap those writes (measured 3393 files on ext4: 630 ms → 200 ms
+ * with 8 workers). Cells only exist to be checked out, so every provisioning
+ * pays this step; a bounded worker count keeps a burst of cells fair.
+ */
+const CHECKOUT_WORKERS = Math.max(1, Math.min(8, availableParallelism()));
+const PARALLEL_CHECKOUT_CONFIG = [
+  "-c", `checkout.workers=${CHECKOUT_WORKERS}`,
+  "-c", "checkout.thresholdForParallelism=100",
+];
 
 function sleepSync(ms: number): void {
   if (ms <= 0) return;
@@ -391,7 +403,7 @@ function runProvisionOperation(
   if (op.steps.checkout == null) {
     // --force: a CoW-copied index describes the origin's working tree, not
     // this empty space; force makes checkout write every tracked file.
-    git(paths.spaceDir, ["checkout", "--force", "--detach", req.sha]);
+    git(paths.spaceDir, [...PARALLEL_CHECKOUT_CONFIG, "checkout", "--force", "--detach", req.sha]);
     op.steps.checkout = { sha: req.sha, at: cfg.now() };
     save();
   }

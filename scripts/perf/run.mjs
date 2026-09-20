@@ -28,7 +28,7 @@ if (args.includes('--compare')) {
   process.exit(0);
 }
 if (args.includes('--help')) {
-  console.log('node scripts/perf/run.mjs [--root checkout] [--out report.json] [--samples 15] [--idle-ms 3000] [--suite core|daemon|cli|cell-spawn|all] [--profile-dir path] [--trace-dir path] [--cache cold|warm --width 1|4 --sandbox on|off]\nCell receipt: --receipt --from report.json --out receipt.json\nCompare: --compare --before report.json --after report.json --out scorecard.csv');
+  console.log('node scripts/perf/run.mjs [--root checkout] [--out report.json] [--samples 15] [--idle-ms 3000] [--suite core|daemon|cli|cell-spawn|all] [--profile-dir path] [--trace-dir path] [--cache cold|warm --width 1|4 --sandbox on|off --tick-ms 20]\nCell receipt: --receipt --from report.json --out receipt.json\nCompare: --compare --before report.json --after report.json --out scorecard.csv');
   process.exit(0);
 }
 const root = resolve(option('--root', join(scriptDir, '../..')));
@@ -43,10 +43,12 @@ const cases = ['daemon', 'cli'].includes(suite) ? [] : [
   { bees: 10, generations: 1 }, { bees: 1000, generations: 1 },
   { bees: 1000, generations: 20 }, { bees: 100, generations: 200 },
 ];
-const scenarios = suite === 'cell-spawn' ? [{ kind: 'cell-spawn', cache: option('--cache', 'warm'), width: Number(option('--width', '1')), sandbox: option('--sandbox', 'on') === 'on' }] : [...cases.map(c => ({ kind: 'core', ...c })), ...(['core', 'cli'].includes(suite) ? [] : [{ kind: 'daemon', bees: 0 }, { kind: 'daemon', bees: 1000 }, { kind: 'daemon', bees: 100, generations: 200 }]), ...(['cli', 'all'].includes(suite) ? [{ kind: 'cli', bees: 0 }] : [])];
+const scenarios = suite === 'cell-spawn' ? [{ kind: 'cell-spawn', cache: option('--cache', 'warm'), width: Number(option('--width', '1')), sandbox: option('--sandbox', 'on') === 'on', tickMs: Number(option('--tick-ms', '20')) }] : [...cases.map(c => ({ kind: 'core', ...c })), ...(['core', 'cli'].includes(suite) ? [] : [{ kind: 'daemon', bees: 0 }, { kind: 'daemon', bees: 1000 }, { kind: 'daemon', bees: 100, generations: 200 }]), ...(['cli', 'all'].includes(suite) ? [{ kind: 'cli', bees: 0 }] : [])];
 assert.ok(['cold', 'warm'].includes(option('--cache', 'warm')), 'cache must be cold or warm');
 assert.ok(['on', 'off'].includes(option('--sandbox', 'on')), 'sandbox must be on or off');
 assert.ok([1, 4].includes(Number(option('--width', '1'))), 'width must be 1 or 4');
+// The test fixture default (20 ms) hides cadence waits; production daemons tick every 200 ms.
+assert.ok(Number.isSafeInteger(Number(option('--tick-ms', '20'))) && Number(option('--tick-ms', '20')) >= 1 && Number(option('--tick-ms', '20')) <= 5000, 'tick-ms must be 1..5000');
 const toolDigest = createHash('sha256').update(readFileSync(join(scriptDir, 'run.mjs'))).update(readFileSync(join(scriptDir, 'worker.mjs'))).update(readFileSync(join(scriptDir, 'fixtures.mjs'))).update(readFileSync(join(scriptDir, 'report.mjs'))).update(readFileSync(join(scriptDir, 'cell-spawn.mjs'))).digest('hex');
 const workload = { suite, samples, idleMs, scenarios, toolDigest, warmup: suite === 'cell-spawn' ? (option('--cache', 'warm') === 'warm' ? 1 : 0) : 3, durability: 'WAL/NORMAL', runtime: 'source Node type stripping', instrumentation: Boolean(option('--profile-dir', '') || option('--trace-dir', '')), captureMode: option('--profile-dir', '') ? 'cpu-heap-trace' : option('--trace-dir', '') ? 'trace' : 'none' };
 function git(...argv) { const p = spawnSync('git', argv, { cwd: root, encoding: 'utf8' }); assert.equal(p.status, 0, p.stderr); return p.stdout.trim(); }
