@@ -47,9 +47,16 @@ The same tool ships as `honeybee/release/v1/extractor`; an installed package can
 supply it without a Honeybee checkout. Apiary deliberately does not add a mutable
 sibling dependency. Use the same tool revision and TypeScript version on both
 sides. Each repo owns `contracts/release/inventory.config.json`, which describes
-source roots and boundary patterns, not a hand-maintained operation inventory.
+source roots, production compiler projects, and boundary patterns, not a
+hand-maintained operation inventory. Extended TypeScript settings are resolved per
+project, including strict null and unchecked-index semantics. Effective compiler
+options and the TypeScript version enter both fingerprints. Files without a
+configured project, or included in projects with conflicting options, carry an
+explicit coverage gap; conflicting contexts use the first listed project.
 
 The extractor reads actual registries, dispatch cases/conditions, and typed calls.
+Equality, negated guard, and compound dispatch conditions retain operation and
+enclosing-handler evidence with explicit unknown control-flow coverage.
 It emits provider operations, consumer requirements, request/response shapes,
 capabilities, optional feature gates with fallbacks, readable source evidence,
 and normalized source fingerprints. `operation` is null when a dynamic name cannot

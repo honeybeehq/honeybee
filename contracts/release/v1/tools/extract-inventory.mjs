@@ -2,7 +2,7 @@
 import { createHash } from 'node:crypto'
 import { readdirSync, readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { resolve, relative, join } from 'node:path'
+import { resolve, relative, join, dirname } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 const canonical = value => JSON.stringify(value, (_, v) => v && typeof v === 'object' && !Array.isArray(v)
@@ -23,8 +23,7 @@ export function extractInventory({ root, config, typescript: ts }) {
   }
   for (const path of config.roots) scan(resolve(root, path))
   const files = [...paths].sort()
-  const program = ts.createProgram(files, { target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, skipLibCheck: true, jsx: ts.JsxEmit.ReactJSX })
-  const checker = program.getTypeChecker()
+  let checker
   const printer = ts.createPrinter({ removeComments: true, newLine: ts.NewLineKind.LineFeed })
   const print = node => printer.printNode(ts.EmitHint.Unspecified, node, node.getSourceFile())
   const rel = path => relative(root, path).split('\\').join('/')
@@ -32,6 +31,27 @@ export function extractInventory({ root, config, typescript: ts }) {
   const evidence = new Map()
   const reference = text => { const id = digest(text); evidence.set(id, text); return id }
   const gap = (path, reason, evidence) => gaps.push({ path, reason, evidence })
+  const compilerConfigurations = []
+  const projects = (config.projects ?? []).map(path => {
+    const fullPath = resolve(root, path)
+    const loaded = ts.readConfigFile(fullPath, ts.sys.readFile)
+    if (loaded.error) throw new Error(ts.flattenDiagnosticMessageText(loaded.error.messageText, '\n'))
+    const parsed = ts.parseJsonConfigFileContent(loaded.config, ts.sys, dirname(fullPath))
+    if (parsed.errors.length) throw new Error(parsed.errors.map(e => ts.flattenDiagnosticMessageText(e.messageText, '\n')).join('\n'))
+    return { path, options: parsed.options, files: new Set(parsed.fileNames) }
+  })
+  const groups = new Map()
+  for (const file of files) {
+    const matches = projects.filter(p => p.files.has(file))
+    const options = matches[0]?.options ?? { strict: true, target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, skipLibCheck: true, jsx: ts.JsxEmit.ReactJSX }
+    const normalized = JSON.parse(JSON.stringify(options).split(root).join('<root>'))
+    const key = canonical(normalized)
+    if (!matches.length) gap(rel(file), 'no configured compiler project; typed evidence remains unverified', '')
+    if (matches.some(p => canonical(p.options) !== canonical(options))) gap(rel(file), 'multiple compiler contexts; first configured project used, other contexts remain unverified', matches.map(p => p.path).join(', '))
+    compilerConfigurations.push({ path: rel(file), project: matches[0]?.path ?? null, options: normalized })
+    if (!groups.has(key)) groups.set(key, { options, files: [] })
+    groups.get(key).files.push(file)
+  }
   function shape(type, depth = 0, seen = new Set()) {
     const name = checker.typeToString(type, undefined, ts.TypeFormatFlags.NoTruncation).split(root).join('<root>')
     if (type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) return { type: name, coverage: 'unknown' }
@@ -76,7 +96,10 @@ export function extractInventory({ root, config, typescript: ts }) {
     visit(node)
     return result
   }
-  for (const file of files) {
+  for (const group of groups.values()) {
+  const program = ts.createProgram(group.files, group.options)
+  checker = program.getTypeChecker()
+  for (const file of group.files) {
     const source = program.getSourceFile(file), path = rel(file)
     sources.push({ path, fingerprint: digest(print(source)) })
     const boundaries = config.providers.filter(p => p.path === path || (p.pathPattern && new RegExp(p.pathPattern).test(path)))
@@ -106,14 +129,30 @@ export function extractInventory({ root, config, typescript: ts }) {
         }
       }
       for (const boundary of boundaries) {
-        if (boundary.switch && ts.isIfStatement(node) && ts.isBinaryExpression(node.expression)
-          && print(node.expression.left) === boundary.switch && node.expression.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken) {
-          const operations = literalValues(node.expression.right)
-          if (operations) for (const operation of operations) providers.push({ protocol: boundary.protocol, operation, path,
-            request: { coverage: 'unknown', reason: 'runtime validation; inspect branch and enclosing handler' },
-            response: responseEvidence(node.thenStatement), implementation: reference(print(enclosing(node))) })
-          else gap(path, 'dynamic provider condition', print(node.expression))
+        if (!boundary.switch || !ts.isIfStatement(node)) continue
+        let dispatchCondition = false
+        const comparisons = []
+        function inspect(condition) {
+          if (print(condition) === boundary.switch) dispatchCondition = true
+          if (ts.isBinaryExpression(condition)) {
+            const left = print(condition.left) === boundary.switch
+            const right = print(condition.right) === boundary.switch
+            const operator = condition.operatorToken.kind
+            if ((left || right) && [ts.SyntaxKind.EqualsEqualsEqualsToken, ts.SyntaxKind.ExclamationEqualsEqualsToken].includes(operator)) {
+              const operations = literalValues(left ? condition.right : condition.left)
+              if (operations) comparisons.push({ operations, negated: operator === ts.SyntaxKind.ExclamationEqualsEqualsToken })
+            }
+          }
+          ts.forEachChild(condition, inspect)
         }
+        inspect(node.expression)
+        if (!dispatchCondition) continue
+        const fn = enclosing(node)
+        for (const comparison of comparisons) for (const operation of comparison.operations) providers.push({ protocol: boundary.protocol, operation, path,
+          scope: fn.name ? print(fn.name) : 'anonymous',
+          request: { coverage: 'unknown', reason: 'runtime validation; inspect branch and enclosing handler' },
+          response: responseEvidence(comparison.negated ? fn : node.thenStatement), implementation: reference(print(fn)) })
+        gap(path, 'provider condition requires semantic evaluation, including guard fallthrough and compound dispatch', print(node.expression))
       }
       if (ts.isIfStatement(node)
         && (node.elseStatement || (ts.isBlock(node.thenStatement) && ts.isReturnStatement(node.thenStatement.statements.at(-1) ?? node)))
@@ -155,10 +194,11 @@ export function extractInventory({ root, config, typescript: ts }) {
     }
     visit(source)
   }
+  }
   for (const boundary of config.providers) if (boundary.path && !sources.some(s => s.path === boundary.path)) throw new Error(`Missing provider source: ${boundary.path}`)
   const coverage = { complete: gaps.length === 0, gaps: sorted(gaps), scope: config.roots, policy: 'Unknown coverage must remain unverified. Extracted types and source are evidence, never a compatibility verdict.' }
-  const body = { schemaVersion: 1, extractorVersion: 1, typescriptVersion: ts.version, component: config.component, config, capabilities: sorted(capabilities), optionalFeatures: sorted(optionalFeatures), evidence: Object.fromEntries([...evidence].sort()), providers: sorted(providers), consumers: sorted(consumers), declarations: sorted(declarations), sources: sorted(sources), coverage }
-  return { ...body, fingerprint: digest(body), providerFingerprint: digest({ operations: body.providers, declarations: body.declarations, sources: body.sources, capabilities: body.capabilities, config, coverage }), consumerFingerprint: digest({ operations: body.consumers, sources: body.sources, optionalFeatures: body.optionalFeatures, config, coverage }) }
+  const body = { schemaVersion: 1, extractorVersion: 1, typescriptVersion: ts.version, component: config.component, config, compilerConfigurations: sorted(compilerConfigurations), capabilities: sorted(capabilities), optionalFeatures: sorted(optionalFeatures), evidence: Object.fromEntries([...evidence].sort()), providers: sorted(providers), consumers: sorted(consumers), declarations: sorted(declarations), sources: sorted(sources), coverage }
+  return { ...body, fingerprint: digest(body), providerFingerprint: digest({ operations: body.providers, declarations: body.declarations, sources: body.sources, capabilities: body.capabilities, config, coverage, compilerConfigurations, typescriptVersion: ts.version }), consumerFingerprint: digest({ operations: body.consumers, sources: body.sources, optionalFeatures: body.optionalFeatures, config, coverage, compilerConfigurations, typescriptVersion: ts.version }) }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {

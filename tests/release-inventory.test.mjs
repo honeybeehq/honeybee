@@ -32,3 +32,39 @@ test('extraction is stable, tracks input/output/commands, and records dynamic co
     assert.equal(read().fingerprint, first.fingerprint)
   } finally { rmSync(root, { recursive: true, force: true }) }
 })
+
+test('project compiler semantics are evidence and affect both fingerprints', () => {
+  const root = mkdtempSync(join(tmpdir(), 'contract-options-'))
+  try {
+    writeFileSync(join(root, 'api.ts'), `class Client { request(verb: string, params: unknown) { const rows: string[] = []; return rows[0] } }; new Client().request('read', {})`)
+    writeFileSync(join(root, 'base.json'), JSON.stringify({ compilerOptions: { strict: true, noUncheckedIndexedAccess: true } }))
+    const config = { component: 'apiary', roots: ['.'], projects: ['tsconfig.json'], providers: [], consumers: [{ receiver: 'Client', method: 'request', operationArgs: [0], paramsArg: 1, protocol: 'test/1' }] }
+    const project = enabled => writeFileSync(join(root, 'tsconfig.json'), JSON.stringify({ extends: './base.json', compilerOptions: { noUncheckedIndexedAccess: enabled }, include: ['api.ts'] }))
+    const read = () => extractInventory({ root, config, typescript: ts })
+    project(true)
+    const first = read()
+    assert.deepEqual(first.consumers[0].response.union.map(x => x.type).sort(), ['string', 'undefined'])
+    project(false)
+    const second = read()
+    assert.equal(second.consumers[0].response.type, 'string')
+    assert.notEqual(second.providerFingerprint, first.providerFingerprint)
+    assert.notEqual(second.consumerFingerprint, first.consumerFingerprint)
+  } finally { rmSync(root, { recursive: true, force: true }) }
+})
+
+test('guard dispatch is extracted and unsupported conditions remain unknown', () => {
+  const root = mkdtempSync(join(tmpdir(), 'contract-guards-'))
+  try {
+    writeFileSync(join(root, 'api.ts'), `function edit(verb: string) { if (verb !== 'edit') return {error: true}; return {saved: true} }
+      function compound(verb: string, ok: boolean) { if (verb === 'remove' && ok) return {removed: true} }
+      function dynamic(verb: string) { if (['a', 'b'].includes(verb)) return {dynamic: true} }`)
+    const config = { component: 'apiary', roots: ['.'], providers: [{path: 'api.ts', switch: 'verb', protocol: 'test/1'}], consumers: [] }
+    const result = extractInventory({ root, config, typescript: ts })
+    const edit = result.providers.find(x => x.operation === 'edit')
+    assert.ok(edit)
+    assert.ok(edit.response.some(x => x.expression.includes('saved')))
+    assert.ok(result.providers.some(x => x.operation === 'remove'))
+    assert.equal(result.coverage.complete, false)
+    assert.ok(result.coverage.gaps.some(x => x.reason.includes('provider condition')))
+  } finally { rmSync(root, { recursive: true, force: true }) }
+})
