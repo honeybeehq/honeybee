@@ -206,7 +206,11 @@ export function parseReleaseManifest(value: unknown): ReleaseManifest {
   unique(manifest.recovery.map((plan) => plan.subjectDigest), "recovery subject");
   for (const plan of manifest.recovery) {
     parseRecoveryPlan(plan);
-    requireContract(canonicalDigest(plan.subject.to) === canonicalDigest(manifest.components), "recovery target differs from release components");
+    const target = canonicalDigest(plan.subject.to);
+    requireContract(target === canonicalDigest(manifest.components) || manifest.compatibility.entries.some((entry) =>
+      entry.state === "compatible" && manifest.supported.includes(entry.subjectDigest)
+      && canonicalDigest(entry.subject.combination) === target),
+    "recovery target must equal the pin or an explicitly supported compatible combination");
   }
   return manifest;
 }

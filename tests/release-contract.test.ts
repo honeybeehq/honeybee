@@ -1,9 +1,42 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { parseComponentIdentity, parseCompatibilityRecord, parseDependencyLock, parseReleaseManifest, parseRecoveryPlan, compatibilitySubjectDigest } from "../src/release/index.js";
+import { parseComponentIdentity, parseCompatibilityRecord, parseDependencyLock, parseReleaseManifest, parseRecoveryPlan, compatibilitySubjectDigest, recoverySubjectDigest } from "../src/release/index.js";
 
 const fixture = (name: string): unknown => JSON.parse(readFileSync(new URL(`../contracts/release/v1/fixtures/${name}.json`, import.meta.url), "utf8"));
+
+test("recovery may target an exact explicitly supported compatible combination", () => {
+  const manifest = parseReleaseManifest(fixture("release-manifest"));
+  const supported = structuredClone(manifest.compatibility.entries[0]!);
+  supported.subject.combination.honeybee.version = "0.2.0";
+  supported.subject.combination.honeybee.artifact.sha256 = `sha256:${"7".repeat(64)}`;
+  supported.subjectDigest = compatibilitySubjectDigest(supported.subject);
+  for (const result of supported.results) for (const check of Object.values(result.checks)) {
+    for (const evidence of check.evidence) evidence.subjectDigest = supported.subjectDigest;
+  }
+  manifest.compatibility.entries.push(supported);
+  manifest.supported.push(supported.subjectDigest);
+  const plan = parseRecoveryPlan(fixture("recovery-plan"));
+  plan.subject.to = structuredClone(supported.subject.combination);
+  const rebind = () => {
+    plan.subjectDigest = recoverySubjectDigest(plan.subject);
+    for (const evidence of plan.evidence) evidence.subjectDigest = plan.subjectDigest;
+    manifest.recovery = [plan];
+  };
+  rebind();
+  assert.equal(parseReleaseManifest(manifest).recovery.length, 1);
+  manifest.supported = [];
+  assert.throws(() => parseReleaseManifest(manifest), /recovery target/);
+  manifest.supported = [supported.subjectDigest];
+  for (const field of ["artifact", "platform", "unknown"] as const) {
+    plan.subject.to = structuredClone(supported.subject.combination);
+    if (field === "artifact") plan.subject.to.apiary.artifact.sha256 = `sha256:${"8".repeat(64)}`;
+    if (field === "platform") plan.subject.to.honeybee.target = "linux-x64";
+    if (field === "unknown") plan.subject.to.honeybee.version = "0.3.0";
+    rebind();
+    assert.throws(() => parseReleaseManifest(manifest), /recovery target/, field);
+  }
+});
 
 test("exact identity accepts an artifact and rejects legacy versions without hashes", () => {
   const identity = parseComponentIdentity(fixture("honeybee"));

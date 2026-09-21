@@ -145,8 +145,12 @@ explicit storage requirements, and whether interruption is required. Its digest
 covers that entire subject. Its result and storage result use the same three
 states. A compatible recovery result requires compatible storage and evidence;
 all decisive recovery or storage results need bound evidence, even if the other
-result remains unverified. The target must equal the manifest's
-components. An empty plan list means no recovery has been verified.
+result remains unverified. The target must equal the manifest's pinned components
+or an exact explicitly supported, compatible combination in its matrix. This
+includes every component's platform, archive URL and checksum; mixing artifacts
+from different approved combinations is not support. A later feed evaluation
+alone cannot authorize a recovery target absent from this manifest. An empty
+plan list means no recovery has been verified.
 
 A passing API matrix cannot authorize activation without a verified applicable
 recovery strategy, actual storage compatibility and checks for the current machine
