@@ -1,0 +1,40 @@
+{
+  "scope": "Cell-spawn boot-interval attribution per harness, one instrumented production spawn each, captured 2026-09-21 with scripts/perf/boot-trace.mjs (proc/net/runner-file/hived.log poll, 2ms proc / 5ms socket / 2ms file on Linux; ps+netstat loop ~30ms on macOS) plus scripts/perf/harness-boot.mjs standalone handshake profiles. Anchor is the daemon cmd.spawn log line; all offsets are microseconds after it. This is a segment-SHARE attribution, not an idle-host latency baseline: netcup-1 was idle (load 0.5-1.3), metal-1 and the Studio were loaded (load 4-9) and their totals are inflated. Clocks are never subtracted across hosts. Raw traces under .proof/boot-attribution/ (uncommitted).",
+  "anchorNote": "cmd.spawn -> booted(accept-ready). For codex/grok/kimi/opencode booted is the harness handshake result (thread/start or session/new). For claude (readyAtSpawn) booted is the synthetic accept-open at agent-pid confirmation; claude emits its own system/init only on the first turn, so its provider init/model cost is a turn cost, not a boot cost.",
+  "nodeKinds": {"netcup-1": "satellite ext4 (EPYC 9645), git 2.47.3, no git-images", "metal-1": "satellite ext4 raid (EPYC 9454P), also runs CI actions-runners", "Studio": "workstation Apple silicon, CoW git-images"},
+  "availability": {
+    "claude": "netcup-1, metal-1, Studio",
+    "codex": "netcup-1, metal-1, Studio",
+    "grok": "netcup-1, Studio (metal-1 has no grok account leased)",
+    "kimi": "Studio only (OAuth-only; refused leasing to satellites; no kimi account on netcup-1 or metal-1)",
+    "opencode": "not spawnable as a Honeybee Cell bee anywhere: no builtin opencode agent/adapter (config.ts BUILTIN_AGENTS has claude/codex/grok/kimi/agy); the Studio's config `agents.opencode` points at a deleted shim; netcup-1 has opencode accounts but its ~/.local/share/opencode is root-owned (EACCES). Measured standalone-ACP + binary floor only."
+  },
+  "harnessBinaryLoadFloorUs": {"note":"cold `<bin> --version`, Studio", "node":12557,"claude":11051,"codex":40209,"grok":45638,"kimi":436829,"opencode":255346,"agy":47864,
+    "sizes":{"claude.exe":"207MB","codex.js":"12KB (musl vendor binary loaded after)","grok-native":"133MB","kimi":"154-177MB","opencode.exe":"144-177MB"}},
+  "physicalFloorsUs": {"process_exec": 1000, "tailnet_rtt": 34000, "github_rtt": 100000, "provider_rtt": 100000, "note": "github_rtt is pre-spawn Apiary materialization, OUTSIDE the owner boot window; provider_rtt lands inside stage E (harness auth/model/session)."},
+  "segments": {
+    "A_provisioning": {"owner": "honeybee", "what": "git-image CoW (workstation) or `git clone --local` (satellite) + `git checkout` of the working tree (8 workers) + hygiene/warm", "floor": "disk-bound by tracked file count; honeybee repo = 3915 files"},
+    "B_runner_host_start": {"owner": "honeybee", "what": "detached runner-host node process up to status.g1 hostPid", "floorUs": 28000, "detail": "node exec ~12ms + dist/v2/runner-host.js load"},
+    "C_sandbox_wrap": {"owner": "honeybee(bwrap ~1-8ms) + harness(binary load)", "what": "bwrap/seatbelt exec then harness binary exec"},
+    "D_harness_initialize": {"owner": "harness", "what": "binary load + home/config read + MCP client init up to the initialize result"},
+    "E_session_thread_start": {"owner": "harness + provider", "what": "auth/credential check, model/limits fetch, thread/session start; includes >=1 provider RTT (~100ms)"},
+    "F_booted_detection": {"owner": "honeybee", "what": "harness signal -> obs.booted", "floorUs": 75000, "detail": "25ms booting-tick + 50ms runner-file pump; event-driven observation would cut this"}
+  },
+  "runs": {
+    "codex/netcup-1": {"load":[1.22,0.73,0.39],"cold_origin_cache":true,"provisioning_us":1056329,"runner_host_us":35355,"initialize_result_us":1410542,"booted_us":2073331,"note":"first spawn against a freshly GitHub-fetched origin (cold page cache): checkout ~985ms. Harness handshake initialize->booted ~663ms incl provider TLS."},
+    "codex/metal-1": {"load":[14.86,6.46,3.67],"provisioning_us":356710,"runner_host_us":29914,"initialize_result_us":578529,"booted_us":935896,"note":"warm origin; checkout ~296ms; handshake ~357ms."},
+    "codex/studio": {"load":[7.25,7.41,8.20],"provisioning_us":675264,"runner_host_us":136,"initialize_result_us":770595,"booted_us":963553,"note":"CoW git-image; loaded host."},
+    "claude/netcup-1": {"load":[0.52,0.32,0.34],"provisioning_us":376848,"runner_host_us":47622,"accept_ready_synthetic_us":474806,"first_turn_system_init_us":2822057,"session_recorded_us":2898119,"note":"warm origin, checkout ~310ms. Accept-ready at 475ms; claude's own init/model is deferred to the first turn."},
+    "claude/studio": {"load":[8.49,8.01,8.36],"provisioning_us":616126,"runner_host_us":81,"accept_ready_synthetic_us":703060,"note":"CoW git-image; loaded host."},
+    "grok/netcup-1": {"load":[1.27,0.49,0.39],"provisioning_us":462300,"runner_host_us":67624,"initialize_result_us":1053795,"booted_us":1332097,"note":"grok-native 133MB binary: bwrap->initialize-result ~529ms; then authenticate+session/new+model+mcp ~278ms."},
+    "grok/studio": {"load":[9.83,8.14,8.42],"provisioning_us":656678,"initialize_result_us":939861,"booted_us":3280916,"note":"loaded host; grok booted inflated under load."},
+    "kimi/studio": {"load":[9.15,8.08,8.40],"provisioning_us":579537,"runner_host_us":112971,"initialize_result_us":1046584,"booted_us":1400610,"note":"kimi handshake: initialize+session/new+set_config(model,mode) ~721ms."},
+    "opencode/studio-standalone": {"exec_confirmed_us":177620,"initialize_result_us":708725,"session_new_us":1874658,"note":"standalone ACP only (not a Honeybee bee). initialize ~531ms after exec; session/new ~1166ms more."}
+  },
+  "conclusion": {
+    "largest_common_honeybee_segment": "A_provisioning (git checkout of the working tree): warm ~296-462ms, cold-cache ~985ms on netcup ext4, ~616-675ms on the loaded Studio CoW path. Present for every harness. This is the warm-pool / pre-provisioned-cell target.",
+    "second": "F_booted_detection ~75ms (25ms tick + 50ms pump), universal and cheap to remove with event-driven observation.",
+    "third": "B_runner_host_start ~28-47ms, universal, pre-started-runner-host target.",
+    "harness_owned_not_honeybees": "D+E (binary load + initialize + session/thread start + auth/model + provider RTT): codex ~357-663ms, grok ~800ms, kimi ~721ms, claude ~0 at boot. Provider RTT (~100ms) is the floor and is the provider's own network latency. Lazier MCP does not help boot: codex/grok MCP startupStatus arrives AFTER booted."
+  }
+}

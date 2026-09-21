@@ -90,3 +90,37 @@ The Mac cell-spawn suite (load 3.5–6.7, two pairs) measured `cell.ready` p50
 below the parallel-checkout benefit; on netcup-1 the 3,393-file checkout measured
 633,000 → 210,000 us directly. Codex's own boot (about 930,000 us on netcup-1)
 remains the largest owner-side interval and is harness-owned.
+
+## 2026-09-21 boot-interval attribution (all harnesses)
+
+[Compact receipt](../../../../docs/performance/2026-09-21-boot-attribution.json). New tools
+`scripts/perf/boot-trace.mjs` (production spawn tracer: proc/net/runner-file/hived.log on
+one monotonic clock) and `scripts/perf/harness-boot.mjs` (standalone handshake profiler with
+harness debug logging). Anchor is the daemon `cmd.spawn` line; offsets in microseconds.
+
+One instrumented production spawn per harness where it can run: **codex** netcup-1/metal-1/Studio,
+**claude** netcup-1/Studio, **grok** netcup-1/Studio, **kimi** Studio only. **kimi** is OAuth-only
+and refused leasing to satellites (no kimi account on netcup-1 or metal-1). **opencode** is not
+spawnable as a Honeybee Cell bee anywhere — there is no builtin opencode agent/adapter, the
+Studio's `agents.opencode` config points at a deleted shim, and netcup-1's `~/.local/share/opencode`
+is root-owned (EACCES); it was measured standalone-ACP + binary floor only.
+
+Segments and owners: **A provisioning** (git-image CoW on the workstation or `git clone --local`
++ `git checkout` on satellites) — Honeybee, disk-bound by tracked file count (honeybee = 3915
+files); **B runner-host start** ~28-47ms — Honeybee; **C sandbox wrap** bwrap ~1-8ms (Honeybee) +
+harness binary load (harness); **D initialize** (binary load + home/config + MCP client init) —
+harness; **E session/thread start** (auth, model/limits, thread/session; >=1 provider RTT ~100ms)
+— harness + provider; **F booted detection** ~75ms (25ms booting-tick + 50ms runner pump) — Honeybee.
+
+Measured booted (cmd.spawn -> accept-ready), us: codex netcup-1 2,073,331 (cold origin cache,
+checkout ~985ms) / metal-1 935,896 (warm, checkout ~296ms) / Studio 963,553; claude netcup-1
+474,806 accept-ready (its init/model deferred to the first turn) / Studio 703,060; grok netcup-1
+1,332,097 / Studio 3,280,916 (loaded); kimi Studio 1,400,610. netcup-1 was idle (load ~0.5-1.3);
+metal-1 and the Studio were loaded (4-9) so their totals are inflated — these are segment SHARES,
+not an idle-host latency baseline.
+
+Largest common Honeybee segment is **A provisioning** (git checkout of the working tree), present
+for every harness: the warm-pool / pre-provisioned-cell target. Then **F booted detection** (~75ms,
+event-driven observation) and **B runner-host start** (~28-47ms, pre-started host). Segments D+E are
+harness/provider-owned; provider RTT (~100ms) is the floor. Lazier MCP does not help boot: codex and
+grok emit `mcpServer/startupStatus` AFTER booted.
