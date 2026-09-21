@@ -1,3 +1,4 @@
+import { parseDistributionProfile, productionProfile, distributionIdentity, type DistributionProfile } from "./distribution-profile.js";
 /** Retry-safe publication over a create-only asset store. The first tarball is the durable build receipt. */
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -20,6 +21,7 @@ export interface ReleaseAssetStore {
 }
 export type HoneybeeReleaseDescriptor = {
   schemaVersion: 1;
+  distribution?: string;
   identity: ComponentIdentity;
   requestedSourceRevision: string;
   productSourceSha256: string;
@@ -28,9 +30,10 @@ export type HoneybeeReleaseDescriptor = {
   manifest: ArtifactReference;
   checksums: ArtifactReference;
 };
-export type HoneybeeReleaseEvent = { schemaVersion: 1; eventKey: string; descriptor: ArtifactReference };
+export type HoneybeeReleaseEvent = { schemaVersion: 1; distribution?: string; eventKey: string; descriptor: ArtifactReference };
 export type PublishHoneybeeOptions = {
   reservation: ReleaseReservation;
+  profile?: DistributionProfile;
   target: string;
   providerFingerprint: string;
   store: ReleaseAssetStore;
@@ -77,6 +80,10 @@ async function putExact(store: ReleaseAssetStore, name: string, bytes: Uint8Arra
 
 export async function publishHoneybeeRelease(options: PublishHoneybeeOptions) {
   const { reservation, store } = options;
+  const profile = parseDistributionProfile(options.profile ?? productionProfile);
+  const binding = profile.id === "production" ? {} : { distribution: distributionIdentity(profile) };
+  if (reservation.distribution !== binding.distribution) throw new Error("Publication reservation distribution mismatch");
+  if (profile.id !== "production" && store.url("release.json") !== `https://github.com/${profile.repository}/releases/download/honeybee-v${reservation.version}-${options.target}/release.json`) throw new Error("Publication distribution namespace mismatch");
   const tarballName = runtimeArtifactTarballName(reservation.sourceRevision);
   let tarball = await store.read(tarballName);
   if (!tarball) {
@@ -99,7 +106,7 @@ export async function publishHoneybeeRelease(options: PublishHoneybeeOptions) {
   const reference = (name: string, bytes: Uint8Array): ArtifactReference => ({ url: store.url(name), sha256: releaseBytesDigest(bytes) });
   const identity = parseComponentIdentity({ component: "honeybee", version: reservation.version, sourceRevision: reservation.sourceRevision,
     target: options.target, artifact: reference(tarballName, tarball) });
-  const descriptor: HoneybeeReleaseDescriptor = { schemaVersion: 1, identity, requestedSourceRevision: reservation.requestedSourceRevision,
+  const descriptor: HoneybeeReleaseDescriptor = { schemaVersion: 1, ...binding, identity, requestedSourceRevision: reservation.requestedSourceRevision,
     productSourceSha256: reservation.productSourceSha256, assessmentSha256: reservation.assessmentSha256,
     inventory: reference("inventory.json", inventoryBytes), manifest: reference("manifest.json", manifestBytes), checksums: reference("SHA256SUMS", sums) };
   const descriptorBytes = new TextEncoder().encode(`${JSON.stringify(descriptor, null, 2)}\n`);
@@ -111,7 +118,7 @@ export async function publishHoneybeeRelease(options: PublishHoneybeeOptions) {
   }
   await store.seal();
   const descriptorReference = reference("release.json", descriptorBytes);
-  const event: HoneybeeReleaseEvent = { schemaVersion: 1, eventKey: descriptorReference.sha256, descriptor: descriptorReference };
+  const event: HoneybeeReleaseEvent = { schemaVersion: 1, ...binding, eventKey: descriptorReference.sha256, descriptor: descriptorReference };
   // release.json is a durable outbox. Reruns resend the same event; receivers deduplicate eventKey.
   let notification: "sent" | "pending" = "sent";
   try { await options.notify(event); } catch { notification = "pending"; }

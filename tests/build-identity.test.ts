@@ -43,3 +43,18 @@ test("tagged sources are releases only when clean; dirty and missing source evid
     assert.equal(collectBuildIdentity(root).dirty, null);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
+
+test("staging reservation tags preserve release provenance without changing runtime artifact identity", async () => {
+  const root = await mkdtemp(join(tmpdir(), "honeybee-stage-identity-"));
+  try {
+    await writeFile(join(root, "package.json"), JSON.stringify({ name: "honeybee", version: "0.2.0" }));
+    const provenance = { sourceRevision: "a".repeat(40), dirty: false, releaseTag: `distribution-${"b".repeat(64)}-honeybee-v0.2.0` };
+    await writeFile(join(root, ".build-provenance.json"), JSON.stringify(provenance));
+    assert.equal(collectBuildIdentity(root).release, true);
+    assert.equal(collectBuildIdentity(root).version, "0.2.0");
+    for (const change of [{ dirty: true }, { releaseTag: `distribution-${"b".repeat(64)}-honeybee-v0.3.0` }]) {
+      await writeFile(join(root, ".build-provenance.json"), JSON.stringify({ ...provenance, ...change }));
+      assert.equal(collectBuildIdentity(root).release, false);
+    }
+  } finally { await rm(root, { recursive: true, force: true }); }
+});

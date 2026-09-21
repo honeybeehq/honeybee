@@ -1,3 +1,4 @@
+import { parseDistributionProfile, productionProfile, distributionIdentity, type DistributionProfile } from "./distribution-profile.js";
 /** GitHub boundary: create-only draft assets, repository immutability, and evaluator notification. */
 import type { HoneybeeReleaseEvent, ReleaseAssetStore } from "./publish.js";
 
@@ -9,8 +10,9 @@ type Asset = { id: number; name: string; state: string; size: number };
  */
 export class GitHubReleaseStore implements ReleaseAssetStore {
   private release: Release | null = null;
-  private readonly repo = "honeybeehq/apiary-releases";
-  constructor(private readonly tag: string, private readonly token: string, private readonly request: typeof fetch = fetch) {
+  private readonly repo: string;
+  constructor(private readonly tag: string, private readonly token: string, private readonly request: typeof fetch = fetch, profile: DistributionProfile = productionProfile) {
+    this.repo = parseDistributionProfile(profile).repository;
     if (!/^honeybee-v\d+\.\d+\.\d+-(darwin-arm64|linux-x64)$/.test(tag)) throw new Error("Unsupported release tag/target");
     if (!token) throw new Error("Distribution token required");
   }
@@ -87,10 +89,13 @@ export class GitHubReleaseStore implements ReleaseAssetStore {
   }
 }
 
-export async function notifyHoneybeeRelease(event: HoneybeeReleaseEvent, token: string, request: typeof fetch = fetch): Promise<void> {
+export async function notifyHoneybeeRelease(event: HoneybeeReleaseEvent, token: string, request: typeof fetch = fetch, profile: DistributionProfile = productionProfile): Promise<void> {
+  profile = parseDistributionProfile(profile);
+  const prefix = `https://github.com/${profile.repository}/releases/download/`;
+  if (!event.descriptor.url.startsWith(prefix) || (profile.id === "production" ? event.distribution !== undefined : event.distribution !== distributionIdentity(profile))) throw new Error("Notification distribution mismatch");
   if (!token) throw new Error("Evaluator notification token unavailable");
   const response = await request("https://api.github.com/repos/honeybeehq/apiary/dispatches", {
     method: "POST", headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2026-03-10" },
-    body: JSON.stringify({ event_type: "honeybee-release-published-v1", client_payload: event }), signal: AbortSignal.timeout(30_000) });
+    body: JSON.stringify({ event_type: profile.id === "production" ? "honeybee-release-published-v1" : "honeybee-staging-release-published-v1", client_payload: event }), signal: AbortSignal.timeout(30_000) });
   if (!response.ok) throw new Error(`Evaluator notification failed (${response.status})`);
 }

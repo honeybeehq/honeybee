@@ -76,3 +76,19 @@ test("unverified or stale-source assessment cannot allocate a version", async t 
     assessment: assessment(revision, "f".repeat(40)) }), /source\/base mismatch/);
   assert.equal(git(root, "ls-remote", "--refs", "origin", "refs/tags/honeybee-v*"), "");
 });
+
+import { generateKeyPairSync } from "node:crypto";
+import { distributionIdentity, distributionPrefix } from "../src/release/distribution-profile.js";
+test("staging and production allocate independently for identical source and isolate source refs", async t => {
+  const { root, revision } = await fixture(t);
+  const profile = { schemaVersion: 1 as const, id: "fixture-stage", repository: "fixture/stage-releases", verificationKeys: { fixture: generateKeyPairSync("ed25519").publicKey.export({ type: "spki", format: "pem" }).toString() } };
+  const options = { repoRoot: root, sourceRevision: revision, assessment: assessment(revision, revision) };
+  const production = await prepareHoneybeeRelease(options);
+  const staging = await prepareHoneybeeRelease({ ...options, profile });
+  assert.equal(staging.version, production.version);
+  assert.notEqual(staging.sourceRevision, production.sourceRevision);
+  assert.equal(staging.distribution, distributionIdentity(profile));
+  assert.equal(staging.tag, `${distributionPrefix(profile)}honeybee-v${staging.version}`);
+  assert.deepEqual(await prepareHoneybeeRelease({ ...options, profile, assessment: null }), staging);
+  assert.deepEqual(await prepareHoneybeeRelease({ ...options, assessment: null }), production);
+});

@@ -103,3 +103,17 @@ test("starter recovery never deletes nonempty or published assets", async () => 
   await assert.rejects(store.read("runtime.tgz"), /Incomplete/);
   assert.equal(github.writes.filter(x => x.startsWith("DELETE")).length, 0);
 });
+
+import { generateKeyPairSync } from "node:crypto";
+import { distributionIdentity } from "../src/release/distribution-profile.js";
+test("staging notifications use an isolated event route and reject foreign profiles before HTTP", async () => {
+  const profile = { schemaVersion: 1 as const, id: "fixture-stage", repository: "fixture/stage", verificationKeys: { fixture: generateKeyPairSync("ed25519").publicKey.export({ type: "spki", format: "pem" }).toString() } };
+  const event = { schemaVersion: 1 as const, distribution: distributionIdentity(profile), eventKey: `sha256:${"a".repeat(64)}`, descriptor: { url: "https://github.com/fixture/stage/releases/download/honeybee-v0.1.0-darwin-arm64/release.json", sha256: `sha256:${"a".repeat(64)}` } };
+  const calls: unknown[] = [];
+  const request: typeof fetch = async (_url, init) => { calls.push(JSON.parse(String(init?.body))); return new Response(null, { status: 204 }); };
+  await assert.rejects(notifyHoneybeeRelease(event, "fixture", request), /distribution/);
+  await assert.rejects(notifyHoneybeeRelease(event, "fixture", request, { ...profile, id: "other-stage" }), /distribution/);
+  assert.equal(calls.length, 0);
+  await notifyHoneybeeRelease(event, "fixture", request, profile);
+  assert.deepEqual(calls, [{ event_type: "honeybee-staging-release-published-v1", client_payload: event }]);
+});

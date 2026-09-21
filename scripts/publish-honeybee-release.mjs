@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 // Production adapter only. Tests exercise allocation against bare Git and publication against an asset-store boundary.
+import { selectedDistribution } from "./release-distribution.mjs";
 import { execFileSync } from "node:child_process";
 import { appendFile, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -17,19 +18,20 @@ if (process.env.GITHUB_ACTIONS !== "true" || process.env.GITHUB_REPOSITORY !== "
   throw new Error("Dispatch release.yml in honeybeehq/honeybee to hold the distribution writer lock");
 }
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
+const profile = selectedDistribution(repoRoot);
 const sourceRevision = process.env.HONEYBEE_SOURCE_REVISION;
 const target = process.env.HONEYBEE_TARGET;
 if (!/^[a-f0-9]{40}$/.test(sourceRevision ?? "")) throw new Error("HONEYBEE_SOURCE_REVISION must be a full commit SHA");
 if (!["darwin-arm64", "linux-x64"].includes(target) || target !== `${process.platform}-${process.arch}`) throw new Error("Release must build natively for the requested supported target");
 const assessment = JSON.parse(process.env.HONEYBEE_API_ASSESSMENT ?? "null");
-const reservation = await prepareHoneybeeRelease({ repoRoot, sourceRevision, assessment });
+const reservation = await prepareHoneybeeRelease({ repoRoot, sourceRevision, assessment, profile });
 // Reused releases retain their original assessment; callers cannot replace it on a retry.
 const accepted = JSON.parse(execFileSync("git", ["-C", repoRoot, "show", `${reservation.sourceRevision}:.release/api-assessment.json`], { encoding: "utf8" }));
 const { sha256, ...body } = accepted;
 if (sha256 !== reservation.assessmentSha256 || sha256 !== canonicalDigest(body)) throw new Error("Reserved assessment digest mismatch");
-const store = new GitHubReleaseStore(`${reservation.tag}-${target}`, process.env.DISTRIBUTION_TOKEN ?? "");
+const store = new GitHubReleaseStore(`honeybee-v${reservation.version}-${target}`, process.env.DISTRIBUTION_TOKEN ?? "", undefined, profile);
 await store.open();
-const result = await publishHoneybeeRelease({ reservation, target, providerFingerprint: accepted.fingerprints.after, store,
+const result = await publishHoneybeeRelease({ reservation, profile, target, providerFingerprint: accepted.fingerprints.after, store,
   build: async () => {
     const workDir = await mkdtemp(join(tmpdir(), "honeybee-release-build-"));
     try {
@@ -41,7 +43,7 @@ const result = await publishHoneybeeRelease({ reservation, target, providerFinge
       return new Uint8Array(await readFile(packed.tarballPath));
     } finally { await rm(workDir, { recursive: true, force: true }); }
   },
-  notify: event => notifyHoneybeeRelease(event, process.env.EVALUATOR_NOTIFICATION_TOKEN ?? ""),
+  notify: event => notifyHoneybeeRelease(event, process.env.EVALUATOR_NOTIFICATION_TOKEN ?? "", undefined, profile),
 });
 const receipt = { ...result, reservation };
 if (process.env.HONEYBEE_RECEIPT_PATH) await writeFile(process.env.HONEYBEE_RECEIPT_PATH, `${JSON.stringify(receipt, null, 2)}\n`);

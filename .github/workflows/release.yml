@@ -2,6 +2,15 @@ name: Immutable Honeybee release
 on:
   workflow_dispatch:
     inputs:
+      distribution:
+        description: Reviewed distribution profile ID
+        required: false
+        type: string
+        default: production
+      distribution-sha256:
+        description: Exact reviewed staging profile fingerprint
+        required: false
+        type: string
       source-revision:
         description: Exact Honeybee source commit (40 hex)
         required: true
@@ -18,6 +27,15 @@ on:
         default: darwin-arm64
   workflow_call:
     inputs:
+      distribution:
+        description: Reviewed distribution profile ID
+        required: false
+        type: string
+        default: production
+      distribution-sha256:
+        description: Exact reviewed staging profile fingerprint
+        required: false
+        type: string
       source-revision:
         required: true
         type: string
@@ -50,11 +68,11 @@ permissions:
 # All publication runs originate here: Actions locks are repository-scoped.
 # External coordinators must workflow_dispatch this repository, not workflow_call it.
 concurrency:
-  group: honeybee-release-publication
+  group: ${{ inputs.distribution != '' && inputs.distribution != 'production' && format('honeybee-release-publication-{0}', inputs.distribution) || 'honeybee-release-publication' }}
   cancel-in-progress: false
 jobs:
   release:
-    environment: honeybee-release
+    environment: ${{ (inputs.distribution == '' || inputs.distribution == 'production') && 'honeybee-release' || format('honeybee-release-{0}', inputs.distribution) }}
     runs-on: ${{ inputs.target == 'darwin-arm64' && 'macos-14' || 'ubuntu-24.04' }}
     timeout-minutes: 90
     outputs:
@@ -96,6 +114,8 @@ jobs:
         id: publish
         run: npm run release:publish
         env:
+          RELEASE_DISTRIBUTION: ${{ inputs.distribution || 'production' }}
+          RELEASE_DISTRIBUTION_SHA256: ${{ inputs.distribution-sha256 }}
           HONEYBEE_SOURCE_REVISION: ${{ inputs.source-revision }}
           HONEYBEE_API_ASSESSMENT: ${{ inputs.api-assessment }}
           HONEYBEE_TARGET: ${{ inputs.target }}

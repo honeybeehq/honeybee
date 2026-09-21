@@ -1,3 +1,4 @@
+import { parseDistributionProfile, productionProfile, distributionPrefix, distributionIdentity, type DistributionProfile } from "./distribution-profile.js";
 /** Release allocation owns only Git objects/refs; never the caller's checkout or live runtime. */
 import { execFile } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -8,16 +9,15 @@ import { assertCanonicalData, canonicalDigest } from "../comb/canonical.js";
 import { parseComponentIdentity } from "./index.js";
 
 const exec = promisify(execFile);
-const LEDGER = "refs/heads/honeybee-release-ledger";
 const METADATA = ".release/release.json";
 const ASSESSMENT = ".release/api-assessment.json";
 const sha = (value: string) => /^[a-f0-9]{40}$/.test(value);
 const digest = (value: unknown) => { assertCanonicalData(value); return canonicalDigest(value); };
 export type ReleaseReservation = {
-  schemaVersion: 1; version: string; tag: string; sourceRevision: string;
+  schemaVersion: 1; distribution?: string; version: string; tag: string; sourceRevision: string;
   requestedSourceRevision: string; productSourceSha256: string; assessmentSha256: string;
 };
-export type PrepareReleaseOptions = { repoRoot: string; sourceRevision: string; assessment: unknown; remote?: string };
+export type PrepareReleaseOptions = { repoRoot: string; sourceRevision: string; assessment: unknown; remote?: string; profile?: DistributionProfile };
 function git(root: string, args: string[], env?: NodeJS.ProcessEnv) {
   return exec("git", ["-C", root, ...args], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, env: { ...process.env, ...env } }).then(r => r.stdout.trimEnd());
 }
@@ -78,15 +78,19 @@ export async function productSourceDigest(repoRoot: string, revision: string): P
 }
 
 export async function prepareHoneybeeRelease(options: PrepareReleaseOptions): Promise<ReleaseReservation> {
+  const profile = parseDistributionProfile(options.profile ?? productionProfile), prefix = distributionPrefix(profile);
+  const ledger = `refs/heads/${prefix}honeybee-release-ledger`;
   const { repoRoot, sourceRevision } = options, remote = options.remote ?? "origin";
   if (!sha(sourceRevision)) throw new Error("Exact source revision required");
   await git(repoRoot, ["cat-file", "-e", `${sourceRevision}^{commit}`]);
   const productSourceSha256 = await productSourceDigest(repoRoot, sourceRevision);
-  const sourceRef = `refs/tags/honeybee-source-${productSourceSha256.slice(7)}`;
+  const sourceRef = `refs/tags/${prefix}honeybee-source-${productSourceSha256.slice(7)}`;
   const remoteRef = async (ref: string) => (await git(repoRoot, ["ls-remote", "--refs", remote, ref])).split(/\s/)[0] || null;
   const readReservation = async (commit: string): Promise<ReleaseReservation> => {
     await git(repoRoot, ["fetch", "--no-tags", remote, commit]);
     const metadata = JSON.parse(await git(repoRoot, ["show", `${commit}:${METADATA}`]));
+    if (profile.id === "production" ? metadata.distribution !== undefined : metadata.distribution !== distributionIdentity(profile)) throw new Error("Release reservation distribution mismatch");
+    if (metadata.tag !== `${prefix}honeybee-v${metadata.version}`) throw new Error("Release reservation tag mismatch");
     return { ...metadata, sourceRevision: commit };
   };
   // A CAS failure re-reads the durable winner. Distinct changes need a fresh assessment against it.
@@ -99,7 +103,7 @@ export async function prepareHoneybeeRelease(options: PrepareReleaseOptions): Pr
       await git(repoRoot, ["fetch", remote, `refs/tags/${result.tag}:refs/tags/${result.tag}`]);
       return result;
     }
-    const previous = await remoteRef(LEDGER);
+    const previous = await remoteRef(ledger);
     const prior = previous ? await readReservation(previous) : null;
     const assessed = assessmentBump(options.assessment, sourceRevision, previous, prior?.version);
     if (!previous) {
@@ -108,8 +112,8 @@ export async function prepareHoneybeeRelease(options: PrepareReleaseOptions): Pr
       const baseline = JSON.parse(await git(repoRoot, ["show", `${assessed.before.sourceRevision}:package.json`]));
       if (baseline.version !== assessed.before.version) throw new Error("Bootstrap assessment version differs from checked baseline");
     }
-    const tag = `honeybee-v${assessed.version}`;
-    const metadata = { schemaVersion: 1 as const, version: assessed.version, tag, requestedSourceRevision: sourceRevision,
+    const tag = `${prefix}honeybee-v${assessed.version}`;
+    const metadata = { schemaVersion: 1 as const, ...(profile.id === "production" ? {} : { distribution: distributionIdentity(profile) }), version: assessed.version, tag, requestedSourceRevision: sourceRevision,
       productSourceSha256, assessmentSha256: assessed.assessmentSha256 };
     const dir = await mkdtemp(join(tmpdir(), "honeybee-release-index-"));
     try {
@@ -135,10 +139,10 @@ export async function prepareHoneybeeRelease(options: PrepareReleaseOptions): Pr
       const parents = ["-p", sourceRevision, ...(previous && previous !== sourceRevision ? ["-p", previous] : [])];
       const commit = await git(repoRoot, ["commit-tree", tree, ...parents, "-m", `Release Honeybee ${assessed.version}`], env);
       try {
-        await git(repoRoot, ["push", "--atomic", `--force-with-lease=${LEDGER}:${previous ?? ""}`, remote,
-          `${commit}:${LEDGER}`, `${commit}:refs/tags/${tag}`, `${commit}:${sourceRef}`]);
+        await git(repoRoot, ["push", "--atomic", `--force-with-lease=${ledger}:${previous ?? ""}`, remote,
+          `${commit}:${ledger}`, `${commit}:refs/tags/${tag}`, `${commit}:${sourceRef}`]);
       } catch (error) {
-        if (await remoteRef(LEDGER) === previous && !await remoteRef(sourceRef)) throw error;
+        if (await remoteRef(ledger) === previous && !await remoteRef(sourceRef)) throw error;
         continue;
       }
       await git(repoRoot, ["fetch", remote, `refs/tags/${tag}:refs/tags/${tag}`]);

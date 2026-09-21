@@ -94,3 +94,20 @@ test("release build boundary refuses the local skip-tests escape hatch", async (
   const { buildDeployArtifact } = await import("../src/commands/deploy.js");
   await assert.rejects(buildDeployArtifact({ repoRoot: "/unused", sha: reservation.sourceRevision, workDir: "/unused", log: () => {}, release: true, skipTests: true }), /cannot skip tests/);
 });
+
+import { generateKeyPairSync } from "node:crypto";
+import { distributionIdentity, distributionPrefix } from "../src/release/distribution-profile.js";
+test("staging publication binds reservation, descriptor and notification and cannot touch production assets", async t => {
+  const profile = { schemaVersion: 1 as const, id: "fixture-stage", repository: "fixture/stage", verificationKeys: { fixture: generateKeyPairSync("ed25519").publicKey.export({ type: "spki", format: "pem" }).toString() } };
+  const staged = { ...reservation, distribution: distributionIdentity(profile), tag: `${distributionPrefix(profile)}${reservation.tag}` };
+  const production = new Assets(), store = new Assets(), events: unknown[] = [], bytes = await bundle(t);
+  store.url = name => `https://github.com/fixture/stage/releases/download/honeybee-v0.1.0-darwin-arm64/${name}`;
+  const options = { reservation: staged, profile, target: "darwin-arm64", providerFingerprint: fingerprint, store, build: async () => bytes, notify: async (event: unknown) => { events.push(event); } };
+  await assert.rejects(publishHoneybeeRelease({ ...options, store: production }), /distribution/);
+  await assert.rejects(publishHoneybeeRelease({ ...options, reservation }), /distribution/);
+  assert.equal(production.files.size, 0); assert.equal(store.files.size, 0);
+  const published = await publishHoneybeeRelease(options);
+  assert.equal(published.descriptor.distribution, distributionIdentity(profile));
+  const repeated = await publishHoneybeeRelease({ ...options, build: async () => { throw Error("must reuse"); } });
+  assert.deepEqual(repeated, published); assert.deepEqual(events[0], events[1]);
+});
