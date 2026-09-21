@@ -216,6 +216,12 @@ export function extractInventory({ root, config, typescript: ts }) {
     if (handlers.length !== 1) return unknown('missing or ambiguous transport handler')
     const handler = handlers[0]
     nodes.push(handler, enclosing(handler))
+    // Selected source is independent evidence even when an earlier route edge
+    // cannot be proven. Keep it available to the semantic evaluator.
+    const dispatch = declaredFunction(program, declaration.dispatch)
+    const intermediates = (declaration.via ?? []).map(step => ({ step, fn: declaredFunction(program, step) }))
+    if (dispatch) nodes.push(dispatch)
+    nodes.push(...intermediates.map(({ fn }) => fn).filter(Boolean))
     if (declaration.allowlist) {
       const allow = declaration.allowlist
       const allowSource = program.getSourceFile(resolve(root, allow.path))
@@ -235,13 +241,9 @@ export function extractInventory({ root, config, typescript: ts }) {
     const forwards = descendants(handler, n => ts.isCallExpression(n) && print(n.expression) === declaration.forward)
     const routeBindings = ['domain', 'verb', 'args'].map(name => namedBinding(handler, name) ?? namedBinding(enclosing(handler), name))
     if (forwards.length !== 1 || !unchangedForwarding(handler, forwards[0], routeBindings)) return unknown('missing or unsupported transport forwarding')
-    const dispatch = declaredFunction(program, declaration.dispatch)
     if (!dispatch) return unknown('missing or ambiguous registration dispatcher')
-    nodes.push(dispatch)
-    for (const step of declaration.via ?? []) {
-      const fn = declaredFunction(program, step)
+    for (const { step, fn } of intermediates) {
       if (!fn) return unknown('missing or ambiguous intermediate route')
-      nodes.push(fn)
       const forwarded = descendants(fn.body, n => ts.isCallExpression(n) && print(n.expression) === step.forward)
       if (forwarded.length !== 1 || !unchangedForwarding(fn, forwarded[0], fn.parameters.slice(0, 3).map(p => p.name))) return unknown('unsupported intermediate argument forwarding')
     }

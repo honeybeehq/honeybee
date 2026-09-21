@@ -277,3 +277,17 @@ test('unsupported intermediate payloads preserve independent allowlist evidence'
   assert.match(transport.reason, /intermediate argument/)
   assert.equal(transport.allowlisted, true)
 })
+
+test('unsupported transport retains independently selected dispatcher and intermediate evidence', () => {
+  const inventory = domainFixture(
+    s => s.replace('return localRead(domain, verb, args)', 'return localRead(domain, verb, {})')
+      + 'class Service { read(domain: string, verb: string, args: object) {return localRead(domain, verb, args)} }',
+    c => ({...c, domainRoutes: c.domainRoutes.map(d => ({...d, transports: d.transports.map(t => ({...t, via: [{path: 'api.ts', receiver: 'Service', function: 'read', forward: 'localRead'}]}))}))}),
+  )
+  const provider = inventory.providers.find(p => p.operation === 'files.repos')
+  assert.equal(provider.coverage, 'unknown')
+  assert.equal(provider.routing.transports[0].coverage, 'unknown')
+  const evidence = inventory.evidence[provider.implementation]
+  assert.match(evidence, /registrations.find/)
+  assert.match(evidence, /read\(domain: string, verb: string, args: object\)/)
+})
