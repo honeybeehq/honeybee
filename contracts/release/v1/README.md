@@ -1,7 +1,7 @@
 # Release and compatibility contract v1
 
-Standalone workstation support requires a successor contract that distinguishes
-actual daemon caller and provider identities; see the accepted
+Standalone workstation support uses the [v2 successor contract](../v2/README.md)
+to distinguish actual daemon caller and provider identities; see the accepted
 [HON-15 decision](../../../docs/adr/003-standalone-workstation-compatibility.md).
 That decision does not change the v1 wire format or its same-component rejection.
 

@@ -22,7 +22,11 @@
       "types": "./dist/release/index.d.ts",
       "default": "./dist/release/index.js"
     },
-    "./release/v1/extractor": "./contracts/release/v1/tools/extract-inventory.mjs"
+    "./release/v1/extractor": "./contracts/release/v1/tools/extract-inventory.mjs",
+    "./release/v2": {
+      "types": "./dist/release/v2.d.ts",
+      "default": "./dist/release/v2.js"
+    }
   },
   "files": [
     "dist/",

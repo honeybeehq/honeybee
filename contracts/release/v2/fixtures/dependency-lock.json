@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 2,
+  "status": "locked",
+  "honeybee": {
+    "component": "honeybee",
+    "version": "0.1.0",
+    "sourceRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "target": "linux-x64",
+    "artifact": {
+      "url": "https://example.test/honeybee/0.1.0/linux-x64.tgz",
+      "sha256": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+    }
+  },
+  "requiredProtocols": [
+    {
+      "name": "hive-rpc",
+      "version": "2",
+      "capabilities": [
+        "bees.list"
+      ]
+    }
+  ]
+}

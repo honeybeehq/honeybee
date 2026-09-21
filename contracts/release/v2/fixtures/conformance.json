@@ -1,0 +1,84 @@
+{
+  "cases": [
+    {
+      "fixture": "standalone-compatible.json",
+      "parser": "record",
+      "valid": true
+    },
+    {
+      "fixture": "bundled-compatible.json",
+      "parser": "record",
+      "valid": true
+    },
+    {
+      "fixture": "incompatible.json",
+      "parser": "record",
+      "valid": true
+    },
+    {
+      "fixture": "unverified.json",
+      "parser": "record",
+      "valid": true
+    },
+    {
+      "fixture": "optional-incompatible.json",
+      "parser": "record",
+      "valid": true
+    },
+    {
+      "fixture": "invalid-forged-desktop.json",
+      "parser": "record",
+      "valid": false
+    },
+    {
+      "fixture": "invalid-same-role.json",
+      "parser": "record",
+      "valid": false
+    },
+    {
+      "fixture": "invalid-ambiguous-role.json",
+      "parser": "record",
+      "valid": false
+    },
+    {
+      "fixture": "invalid-changed-caller.json",
+      "parser": "record",
+      "valid": false
+    },
+    {
+      "fixture": "invalid-changed-provider.json",
+      "parser": "record",
+      "valid": false
+    },
+    {
+      "fixture": "invalid-cross-edge-evidence.json",
+      "parser": "record",
+      "valid": false
+    },
+    {
+      "fixture": "invalid-future-version.json",
+      "parser": "record",
+      "valid": false
+    },
+    {
+      "fixture": "standalone-manifest.json",
+      "parser": "manifest",
+      "valid": true
+    },
+    {
+      "fixture": "remote-recovery.json",
+      "parser": "recoveryPlan",
+      "valid": true
+    },
+    {
+      "fixture": "dependency-lock.json",
+      "parser": "dependencyLock",
+      "valid": true
+    },
+    {
+      "fixture": "legacy-lock.json",
+      "parser": "dependencyLock",
+      "valid": true
+    }
+  ]
+}
