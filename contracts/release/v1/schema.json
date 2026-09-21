@@ -1,0 +1,678 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://honeybee.dev/contracts/release/v1/schema.json",
+  "$defs": {
+    "hash": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "revision": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(\\.(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*))?(\\+[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?$"
+    },
+    "component": {
+      "enum": [
+        "apiary",
+        "apiaryd",
+        "honeybee"
+      ]
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "url",
+        "sha256"
+      ],
+      "properties": {
+        "url": {
+          "type": "string",
+          "pattern": "^https://[^\\s/?#]+/[^\\s#]+$"
+        },
+        "sha256": {
+          "$ref": "#/$defs/hash"
+        }
+      }
+    },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "component",
+        "version",
+        "sourceRevision",
+        "target",
+        "artifact"
+      ],
+      "properties": {
+        "component": {
+          "$ref": "#/$defs/component"
+        },
+        "version": {
+          "$ref": "#/$defs/version"
+        },
+        "sourceRevision": {
+          "$ref": "#/$defs/revision"
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "artifact": {
+          "$ref": "#/$defs/artifact"
+        }
+      }
+    },
+    "combination": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "apiary",
+        "apiaryd",
+        "honeybee"
+      ],
+      "properties": {
+        "apiary": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "component": {
+                  "const": "apiary"
+                }
+              },
+              "type": "object"
+            }
+          ]
+        },
+        "apiaryd": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "component": {
+                  "const": "apiaryd"
+                }
+              },
+              "type": "object"
+            }
+          ]
+        },
+        "honeybee": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "component": {
+                  "const": "honeybee"
+                }
+              },
+              "type": "object"
+            }
+          ]
+        }
+      }
+    },
+    "contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "component",
+        "fingerprint"
+      ],
+      "properties": {
+        "component": {
+          "$ref": "#/$defs/component"
+        },
+        "fingerprint": {
+          "$ref": "#/$defs/hash"
+        }
+      }
+    },
+    "protocol": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "version",
+        "capabilities"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "\\S"
+          },
+          "minItems": 0,
+          "uniqueItems": true
+        }
+      }
+    },
+    "operation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "required",
+        "provider",
+        "consumer",
+        "protocol"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "provider": {
+          "$ref": "#/$defs/contract"
+        },
+        "consumer": {
+          "$ref": "#/$defs/contract"
+        },
+        "protocol": {
+          "$ref": "#/$defs/protocol"
+        }
+      }
+    },
+    "evaluation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "evaluatorRevision",
+        "modelRevision",
+        "promptSha256",
+        "policySha256"
+      ],
+      "properties": {
+        "evaluatorRevision": {
+          "$ref": "#/$defs/revision"
+        },
+        "modelRevision": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "promptSha256": {
+          "$ref": "#/$defs/hash"
+        },
+        "policySha256": {
+          "$ref": "#/$defs/hash"
+        }
+      }
+    },
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "combination",
+        "operations",
+        "evaluation"
+      ],
+      "properties": {
+        "combination": {
+          "$ref": "#/$defs/combination"
+        },
+        "operations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/operation"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "evaluation": {
+          "$ref": "#/$defs/evaluation"
+        }
+      }
+    },
+    "state": {
+      "enum": [
+        "compatible",
+        "incompatible",
+        "unverified"
+      ]
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "subjectDigest",
+        "artifact"
+      ],
+      "properties": {
+        "subjectDigest": {
+          "$ref": "#/$defs/hash"
+        },
+        "artifact": {
+          "$ref": "#/$defs/artifact"
+        }
+      }
+    },
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "method",
+        "reason",
+        "evidence"
+      ],
+      "properties": {
+        "state": {
+          "$ref": "#/$defs/state"
+        },
+        "method": {
+          "enum": [
+            "mechanical",
+            "jev"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/operationEvidence"
+          },
+          "minItems": 0,
+          "uniqueItems": true
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operationId",
+        "checks"
+      ],
+      "properties": {
+        "operationId": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "checks": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "command",
+            "input",
+            "output"
+          ],
+          "properties": {
+            "command": {
+              "$ref": "#/$defs/check"
+            },
+            "input": {
+              "$ref": "#/$defs/check"
+            },
+            "output": {
+              "$ref": "#/$defs/check"
+            }
+          }
+        }
+      }
+    },
+    "record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "subject",
+        "subjectDigest",
+        "state",
+        "results"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": 1
+        },
+        "subject": {
+          "$ref": "#/$defs/subject"
+        },
+        "subjectDigest": {
+          "$ref": "#/$defs/hash"
+        },
+        "state": {
+          "$ref": "#/$defs/state"
+        },
+        "results": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/result"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      }
+    },
+    "lockedDependency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "status",
+        "honeybee",
+        "requiredProtocols"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": 1
+        },
+        "status": {
+          "const": "locked"
+        },
+        "honeybee": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "component": {
+                  "const": "honeybee"
+                }
+              }
+            }
+          ]
+        },
+        "requiredProtocols": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/protocol"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      }
+    },
+    "legacyDependency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "status",
+        "legacyPins",
+        "reason"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": 1
+        },
+        "status": {
+          "const": "unverified"
+        },
+        "legacyPins": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "source",
+              "revision"
+            ],
+            "properties": {
+              "source": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "revision": {
+                "$ref": "#/$defs/revision"
+              }
+            }
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        }
+      }
+    },
+    "dependencyLock": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/lockedDependency"
+        },
+        {
+          "$ref": "#/$defs/legacyDependency"
+        }
+      ]
+    },
+    "matrix": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "currentMajors",
+        "entries"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": 1
+        },
+        "currentMajors": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "apiary",
+            "apiaryd",
+            "honeybee"
+          ],
+          "properties": {
+            "apiary": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "apiaryd": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "honeybee": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          }
+        },
+        "entries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/record"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      }
+    },
+    "recoverySubject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "from",
+        "to",
+        "strategy",
+        "storageRequirements",
+        "requiresInterruption"
+      ],
+      "properties": {
+        "from": {
+          "$ref": "#/$defs/combination"
+        },
+        "to": {
+          "$ref": "#/$defs/combination"
+        },
+        "strategy": {
+          "enum": [
+            "rollback",
+            "coordinated_migration"
+          ]
+        },
+        "storageRequirements": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "\\S"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "requiresInterruption": {
+          "type": "boolean"
+        }
+      }
+    },
+    "recoveryPlan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "subject",
+        "subjectDigest",
+        "state",
+        "storage",
+        "evidence"
+      ],
+      "properties": {
+        "subject": {
+          "$ref": "#/$defs/recoverySubject"
+        },
+        "subjectDigest": {
+          "$ref": "#/$defs/hash"
+        },
+        "state": {
+          "$ref": "#/$defs/state"
+        },
+        "storage": {
+          "$ref": "#/$defs/state"
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/evidence"
+          },
+          "minItems": 0,
+          "uniqueItems": true
+        }
+      }
+    },
+    "manifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "releaseId",
+        "components",
+        "dependencyLock",
+        "compatibility",
+        "pinned",
+        "supported",
+        "recovery"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": 1
+        },
+        "releaseId": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "components": {
+          "$ref": "#/$defs/combination"
+        },
+        "dependencyLock": {
+          "$ref": "#/$defs/lockedDependency"
+        },
+        "compatibility": {
+          "$ref": "#/$defs/matrix"
+        },
+        "pinned": {
+          "$ref": "#/$defs/hash"
+        },
+        "supported": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/hash"
+          },
+          "minItems": 0,
+          "uniqueItems": true
+        },
+        "recovery": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/recoveryPlan"
+          },
+          "minItems": 0,
+          "uniqueItems": true
+        }
+      }
+    },
+    "operationEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "subjectDigest",
+        "artifact",
+        "operationId",
+        "check"
+      ],
+      "properties": {
+        "subjectDigest": {
+          "$ref": "#/$defs/hash"
+        },
+        "artifact": {
+          "$ref": "#/$defs/artifact"
+        },
+        "operationId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "check": {
+          "enum": [
+            "command",
+            "input",
+            "output"
+          ]
+        }
+      }
+    }
+  }
+}

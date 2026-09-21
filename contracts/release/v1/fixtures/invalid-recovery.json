@@ -1,0 +1,85 @@
+{
+  "subject": {
+    "from": {
+      "apiary": {
+        "component": "apiary",
+        "version": "0.1.0",
+        "sourceRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "target": "darwin-arm64",
+        "artifact": {
+          "url": "https://example.test/apiary/0.1.0/artifact.tgz",
+          "sha256": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+        }
+      },
+      "apiaryd": {
+        "component": "apiaryd",
+        "version": "0.1.0",
+        "sourceRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "target": "darwin-arm64",
+        "artifact": {
+          "url": "https://example.test/apiaryd/0.1.0/artifact.tgz",
+          "sha256": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+        }
+      },
+      "honeybee": {
+        "component": "honeybee",
+        "version": "0.0.1",
+        "sourceRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "target": "darwin-arm64",
+        "artifact": {
+          "url": "https://example.test/honeybee/0.1.0/artifact.tgz",
+          "sha256": "sha256:9999999999999999999999999999999999999999999999999999999999999999"
+        }
+      }
+    },
+    "to": {
+      "apiary": {
+        "component": "apiary",
+        "version": "0.1.0",
+        "sourceRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "target": "darwin-arm64",
+        "artifact": {
+          "url": "https://example.test/apiary/0.1.0/artifact.tgz",
+          "sha256": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+        }
+      },
+      "apiaryd": {
+        "component": "apiaryd",
+        "version": "0.1.0",
+        "sourceRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "target": "darwin-arm64",
+        "artifact": {
+          "url": "https://example.test/apiaryd/0.1.0/artifact.tgz",
+          "sha256": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+        }
+      },
+      "honeybee": {
+        "component": "honeybee",
+        "version": "0.1.0",
+        "sourceRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "target": "darwin-arm64",
+        "artifact": {
+          "url": "https://example.test/honeybee/0.1.0/artifact.tgz",
+          "sha256": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      }
+    },
+    "strategy": "rollback",
+    "storageRequirements": [
+      "Previous binaries can read the post-activation database and credential authority state, or a verified restore preserves accepted writes."
+    ],
+    "requiresInterruption": false
+  },
+  "subjectDigest": "sha256:99e7d2ab9ae8eeab03310cb675e4fc6861bc9ce8ff7d42e71e9e6f48a304d039",
+  "state": "compatible",
+  "storage": "unverified",
+  "evidence": [
+    {
+      "subjectDigest": "sha256:99e7d2ab9ae8eeab03310cb675e4fc6861bc9ce8ff7d42e71e9e6f48a304d039",
+      "artifact": {
+        "url": "https://example.test/evidence/recovery.json",
+        "sha256": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      }
+    }
+  ]
+}

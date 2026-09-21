@@ -1,0 +1,91 @@
+{
+  "schemaVersion": 1,
+  "subject": {
+    "combination": {
+      "apiary": {
+        "component": "apiary",
+        "version": "0.1.0",
+        "sourceRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "target": "darwin-arm64",
+        "artifact": {
+          "url": "https://example.test/apiary/0.1.0/artifact.tgz",
+          "sha256": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+        }
+      },
+      "apiaryd": {
+        "component": "apiaryd",
+        "version": "0.1.0",
+        "sourceRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "target": "darwin-arm64",
+        "artifact": {
+          "url": "https://example.test/apiaryd/0.1.0/artifact.tgz",
+          "sha256": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+        }
+      },
+      "honeybee": {
+        "component": "honeybee",
+        "version": "0.0.1",
+        "sourceRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "target": "darwin-arm64",
+        "artifact": {
+          "url": "https://example.test/honeybee/0.1.0/artifact.tgz",
+          "sha256": "sha256:9999999999999999999999999999999999999999999999999999999999999999"
+        }
+      }
+    },
+    "operations": [
+      {
+        "id": "hive.bees.list",
+        "required": true,
+        "provider": {
+          "component": "honeybee",
+          "fingerprint": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+        },
+        "consumer": {
+          "component": "apiaryd",
+          "fingerprint": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+        },
+        "protocol": {
+          "name": "hive-rpc",
+          "version": "2",
+          "capabilities": [
+            "bees.list"
+          ]
+        }
+      }
+    ],
+    "evaluation": {
+      "evaluatorRevision": "cccccccccccccccccccccccccccccccccccccccc",
+      "modelRevision": "fixture-model-revision-1",
+      "promptSha256": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+      "policySha256": "sha256:7777777777777777777777777777777777777777777777777777777777777777"
+    }
+  },
+  "subjectDigest": "sha256:c98a7b8586eda3e84fe97e42d2562836227fdc2db6faadeaeebbdbd91bc8109c",
+  "state": "unverified",
+  "results": [
+    {
+      "operationId": "hive.bees.list",
+      "checks": {
+        "command": {
+          "state": "unverified",
+          "method": "mechanical",
+          "reason": "Evaluator service unavailable; no authorization.",
+          "evidence": []
+        },
+        "input": {
+          "state": "unverified",
+          "method": "jev",
+          "reason": "Evaluator service unavailable; no authorization.",
+          "evidence": []
+        },
+        "output": {
+          "state": "unverified",
+          "method": "jev",
+          "reason": "Evaluator service unavailable; no authorization.",
+          "evidence": []
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,121 @@
+{
+  "schemaVersion": 1,
+  "subject": {
+    "combination": {
+      "apiary": {
+        "component": "apiary",
+        "version": "0.1.0",
+        "sourceRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "target": "darwin-arm64",
+        "artifact": {
+          "url": "https://example.test/apiary/0.1.0/artifact.tgz",
+          "sha256": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+        }
+      },
+      "apiaryd": {
+        "component": "apiaryd",
+        "version": "0.1.0",
+        "sourceRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "target": "darwin-arm64",
+        "artifact": {
+          "url": "https://example.test/apiaryd/0.1.0/artifact.tgz",
+          "sha256": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+        }
+      },
+      "honeybee": {
+        "component": "honeybee",
+        "version": "0.1.0",
+        "sourceRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "target": "darwin-arm64",
+        "artifact": {
+          "url": "https://example.test/honeybee/0.1.0/artifact.tgz",
+          "sha256": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      }
+    },
+    "operations": [
+      {
+        "id": "hive.bees.list",
+        "required": true,
+        "provider": {
+          "component": "honeybee",
+          "fingerprint": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+        },
+        "consumer": {
+          "component": "apiaryd",
+          "fingerprint": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+        },
+        "protocol": {
+          "name": "hive-rpc",
+          "version": "2",
+          "capabilities": [
+            "bees.list"
+          ]
+        }
+      }
+    ],
+    "evaluation": {
+      "evaluatorRevision": "cccccccccccccccccccccccccccccccccccccccc",
+      "modelRevision": "fixture-model-revision-1",
+      "promptSha256": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+      "policySha256": "sha256:7777777777777777777777777777777777777777777777777777777777777777"
+    }
+  },
+  "subjectDigest": "sha256:a84c2ec80ef99c47dfa4941cb4dba78a25081f6d22cb608a3dba5591b8422544",
+  "state": "compatible",
+  "results": [
+    {
+      "operationId": "hive.bees.list",
+      "checks": {
+        "command": {
+          "state": "compatible",
+          "method": "mechanical",
+          "reason": "Synthetic conformance evidence; not production verification.",
+          "evidence": [
+            {
+              "subjectDigest": "sha256:a84c2ec80ef99c47dfa4941cb4dba78a25081f6d22cb608a3dba5591b8422544",
+              "artifact": {
+                "url": "https://example.test/evidence/command.json",
+                "sha256": "sha256:8888888888888888888888888888888888888888888888888888888888888888"
+              },
+              "operationId": "hive.bees.list",
+              "check": "command"
+            }
+          ]
+        },
+        "input": {
+          "state": "compatible",
+          "method": "jev",
+          "reason": "Synthetic conformance evidence; not production verification.",
+          "evidence": [
+            {
+              "subjectDigest": "sha256:a84c2ec80ef99c47dfa4941cb4dba78a25081f6d22cb608a3dba5591b8422544",
+              "artifact": {
+                "url": "https://example.test/evidence/input.json",
+                "sha256": "sha256:8888888888888888888888888888888888888888888888888888888888888888"
+              },
+              "operationId": "hive.bees.list",
+              "check": "input"
+            }
+          ]
+        },
+        "output": {
+          "state": "compatible",
+          "method": "jev",
+          "reason": "Synthetic conformance evidence; not production verification.",
+          "evidence": [
+            {
+              "subjectDigest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "artifact": {
+                "url": "https://example.test/evidence/output.json",
+                "sha256": "sha256:8888888888888888888888888888888888888888888888888888888888888888"
+              },
+              "operationId": "hive.bees.list",
+              "check": "output"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
