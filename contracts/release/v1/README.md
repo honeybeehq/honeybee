@@ -9,7 +9,9 @@ Consumers use `honeybee/release/v1` or implement the same JSON Schema **and the
 semantic rules below**. `schema.json#/$defs/identity`, `dependencyLock`, `record`,
 `matrix`, `recoveryPlan`, and `manifest` are the entry points. The corresponding
 `parse*` functions accept decoded JSON, reject unknown fields/versions, validate
-cross-record relationships, and return independent typed values. The portable
+cross-record relationships, enforce URI syntax (including authorities/ports), and
+return independent typed values. Portable validators must enable `format: uri`
+assertions, rather than treating format as an annotation. The portable
 fixtures are conformance examples. All example.test assets and evidence are
 synthetic; none verifies a real release.
 
@@ -124,7 +126,8 @@ are compatible. A matrix entry records an evaluation, not a support promise.
 
 A manifest's `pinned` subject must be compatible and match its exact components.
 Its required Honeybee protocols/capabilities must be covered by required provider
-operations in that subject. `supported` names additional subject digests that are
+operations in that subject (capabilities may span several required operations
+of the same protocol/version). `supported` names additional subject digests that are
 explicit support promises; each must be present and compatible. A pinned failure
 or supported regression prevents a publishable manifest. Other historical
 incompatible/unverified entries are retained without blocking the release.
@@ -141,7 +144,8 @@ compatibility. Each plan binds a strategy (`rollback` or `coordinated_migration`
 explicit storage requirements, and whether interruption is required. Its digest
 covers that entire subject. Its result and storage result use the same three
 states. A compatible recovery result requires compatible storage and evidence;
-all decisive results need bound evidence. The target must equal the manifest's
+all decisive recovery or storage results need bound evidence, even if the other
+result remains unverified. The target must equal the manifest's
 components. An empty plan list means no recovery has been verified.
 
 A passing API matrix cannot authorize activation without a verified applicable

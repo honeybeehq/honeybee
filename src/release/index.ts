@@ -15,6 +15,8 @@ export type ComponentIdentity = {
 
 const schema = JSON.parse(readFileSync(new URL("../../contracts/release/v1/schema.json", import.meta.url), "utf8"));
 const ajv = new Ajv2020({ allErrors: true, strict: true });
+// HTTPS is constrained by the schema; parsing also rejects malformed authorities/ports.
+ajv.addFormat("uri", (value: string) => URL.canParse(value));
 ajv.addSchema(schema);
 
 function parse<T>(name: string, value: unknown): T {
@@ -175,7 +177,7 @@ export function parseRecoveryPlan(value: unknown): RecoveryPlan {
   const plan = parse<RecoveryPlan>("recoveryPlan", value);
   requireContract(plan.subjectDigest === recoverySubjectDigest(plan.subject), "recovery subject digest mismatch");
   requireContract(plan.state !== "compatible" || plan.storage === "compatible", "recovery requires compatible storage");
-  requireContract(plan.state === "unverified" || plan.evidence.length > 0, "decisive recovery requires evidence");
+  requireContract((plan.state === "unverified" && plan.storage === "unverified") || plan.evidence.length > 0, "decisive recovery/storage requires evidence");
   for (const evidence of plan.evidence) {
     requireContract(evidence.subjectDigest === plan.subjectDigest, "mismatched recovery evidence");
   }
@@ -191,9 +193,12 @@ export function parseReleaseManifest(value: unknown): ReleaseManifest {
   requireContract(pinned !== undefined && pinned.state === "compatible", "pinned combination must be compatible");
   requireContract(canonicalDigest(pinned.subject.combination) === canonicalDigest(manifest.components), "pinned artifacts differ from release components");
   for (const protocol of manifest.dependencyLock.requiredProtocols) {
-    requireContract(pinned.subject.operations.some((operation) => operation.required && operation.provider.component === "honeybee"
-      && operation.protocol.name === protocol.name && operation.protocol.version === protocol.version
-      && protocol.capabilities.every((capability) => operation.protocol.capabilities.includes(capability))), "locked protocol/capabilities missing from required evaluation");
+    const operations = pinned.subject.operations.filter((operation) => operation.required
+      && operation.provider.component === "honeybee" && operation.protocol.name === protocol.name
+      && operation.protocol.version === protocol.version);
+    const capabilities = new Set(operations.flatMap((operation) => operation.protocol.capabilities));
+    requireContract(operations.length > 0 && protocol.capabilities.every((capability) => capabilities.has(capability)),
+      "locked protocol/capabilities missing from required evaluation");
   }
   for (const supported of manifest.supported) {
     requireContract(manifest.compatibility.entries.some((entry) => entry.subjectDigest === supported && entry.state === "compatible"), "supported combination must be compatible");

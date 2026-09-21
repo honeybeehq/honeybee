@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { parseComponentIdentity, parseCompatibilityRecord, parseDependencyLock, parseReleaseManifest, parseRecoveryPlan } from "../src/release/index.js";
+import { parseComponentIdentity, parseCompatibilityRecord, parseDependencyLock, parseReleaseManifest, parseRecoveryPlan, compatibilitySubjectDigest } from "../src/release/index.js";
 
 const fixture = (name: string): unknown => JSON.parse(readFileSync(new URL(`../contracts/release/v1/fixtures/${name}.json`, import.meta.url), "utf8"));
 
@@ -62,6 +62,8 @@ test("published fixtures preserve compatible, incompatible, unverified and recov
   assert.equal(parseCompatibilityRecord(fixture("unverified")).state, "unverified");
   assert.equal(parseRecoveryPlan(fixture("recovery-plan")).state, "compatible");
   assert.throws(() => parseComponentIdentity(fixture("invalid-identity")));
+  assert.throws(() => parseComponentIdentity(fixture("invalid-artifact-url")));
+  assert.throws(() => parseRecoveryPlan(fixture("invalid-storage-evidence")), /evidence/);
   assert.throws(() => parseCompatibilityRecord(fixture("invalid-evidence")), /evidence/);
   assert.throws(() => parseRecoveryPlan(fixture("invalid-recovery")), /storage/);
 });
@@ -144,4 +146,42 @@ test("canonical subject digests ignore object key order and parsers return indep
   assert.equal(parsed.subjectDigest, record.subjectDigest);
   parsed.subject.operations[0]!.required = false;
   assert.equal(record.subject.operations[0]!.required, true);
+});
+
+test("artifact references reject malformed HTTPS authorities", () => {
+  const identity = parseComponentIdentity(fixture("honeybee"));
+  for (const url of ["https://:/artifact.tgz", "https://[invalid]/artifact.tgz", "https://example.test:999999/artifact.tgz"]) {
+    assert.throws(() => parseComponentIdentity({ ...identity, artifact: { ...identity.artifact, url } }), url);
+  }
+});
+
+test("a decisive storage claim requires evidence even while recovery remains unverified", () => {
+  const plan = parseRecoveryPlan(fixture("recovery-plan"));
+  plan.state = "unverified";
+  plan.evidence = [];
+  assert.throws(() => parseRecoveryPlan(plan), /evidence/);
+});
+
+test("a locked protocol can require capabilities provided by separate required operations", () => {
+  const manifest = parseReleaseManifest(fixture("release-manifest"));
+  const record = manifest.compatibility.entries[0]!;
+  const operation = structuredClone(record.subject.operations[0]!);
+  operation.id = "hive.bees.send";
+  operation.protocol.capabilities = ["bees.send"];
+  record.subject.operations.push(operation);
+  const result = structuredClone(record.results[0]!);
+  result.operationId = operation.id;
+  record.results.push(result);
+  record.subjectDigest = compatibilitySubjectDigest(record.subject);
+  for (const entry of record.results) {
+    for (const check of Object.values(entry.checks)) {
+      for (const evidence of check.evidence) {
+        evidence.subjectDigest = record.subjectDigest;
+        evidence.operationId = entry.operationId;
+      }
+    }
+  }
+  manifest.pinned = record.subjectDigest;
+  manifest.dependencyLock.requiredProtocols[0]!.capabilities.push("bees.send");
+  assert.equal(parseReleaseManifest(manifest).pinned, record.subjectDigest);
 });

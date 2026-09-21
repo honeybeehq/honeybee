@@ -31,7 +31,8 @@
       "properties": {
         "url": {
           "type": "string",
-          "pattern": "^https://[^\\s/?#]+/[^\\s#]+$"
+          "pattern": "^https://[^\\s/?#]+/[^\\s#]+$",
+          "format": "uri"
         },
         "sha256": {
           "$ref": "#/$defs/hash"
