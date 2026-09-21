@@ -124,3 +124,27 @@ for every harness: the warm-pool / pre-provisioned-cell target. Then **F booted 
 event-driven observation) and **B runner-host start** (~28-47ms, pre-started host). Segments D+E are
 harness/provider-owned; provider RTT (~100ms) is the floor. Lazier MCP does not help boot: codex and
 grok emit `mcpServer/startupStatus` AFTER booted.
+
+## 2026-09-21 warm Cell pool (provisioning off the spawn path)
+
+[Compact receipt](../../../../docs/performance/2026-09-21-cell-warmpool.json). Implements the
+largest floor-order candidate from the boot attribution: a per-repository warm pool of
+pre-provisioned Cells (`v2/driver-cell/src/warmPool.ts`, `poolWorker.ts`, wired in
+`CellDriver.start`). Each spawn first tries to CLAIM a member by an atomic directory rename
+(plus a checkout delta when the wanted sha differs) instead of a cold `git clone --local` +
+checkout; every spawn then tops the pool back up in a worker off the event loop. Defaulted
+OFF (`cells.warmPoolFree=0`); enable via config or `HIVE_CELL_WARMPOOL_FREE` (used for B/A/A/B).
+
+Microbench (`scripts/perf/cell-warmpool-bench.mjs --files 3900`): claim vs cold provision,
+Studio loaded 331,932 → 85,659 us (3.9x), netcup-1 idle ext4 94,759 → 41,865 us (2.3x). The
+claim's residual cost is one `git status` dirty guard; absolute cold numbers here use a hot
+cache and a synthetic tree, so they are below the cold-origin production checkout (~985 ms on
+netcup) where the pool wins most. End-to-end `run.mjs --suite cell-spawn --tick-ms 200` warm
+width1 on the Studio, B/A/A/B: cell.ready p50 300,828→148,858 us (-50%), cell.usable p50
+495,367→358,900 us (-28%), cell.accept unchanged; B1~B2 within 0.2%, A1~A2 identical.
+
+Safety: unit tests in `v2/driver-cell/tests/warmPool.test.ts` (claim/reap, replay-after-claim
+idempotency, delta to a reachable sha, unreachable-sha discard, dirty-member refusal, atomic
+concurrent-claim exclusivity, maxSize, reapPool, empty→cold fallback) and config parse/env in
+`v2/daemon/tests/config.test.ts`. The satellite daemon end-to-end still needs a deploy
+(not done here); the netcup-1 microbench exercises the real provisioning+pool code on ext4.

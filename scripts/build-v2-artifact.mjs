@@ -52,6 +52,18 @@ await build({
   preserveSymlinks: true,
   logLevel: "silent",
 });
+await build({
+  absWorkingDir: root,
+  entryPoints: [join(root, "v2", "driver-cell", "src", "poolWorker.ts")],
+  outfile: join(outDir, "pool-worker.js"),
+  bundle: true,
+  platform: "node",
+  format: "esm",
+  target: "node22",
+  minify: false,
+  preserveSymlinks: true,
+  logLevel: "silent",
+});
 const runnerHostBuild = await build({
   absWorkingDir: root,
   entryPoints: [join(root, "v2", "driver-hsr", "src", "runner-host-main.ts")],

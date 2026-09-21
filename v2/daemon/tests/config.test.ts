@@ -279,3 +279,39 @@ test("config.naming: invalid tool/effort fail loudly", () => {
     assert.throws(() => loadNodeConfig(dir), ConfigError);
   });
 });
+
+test("config.warmPool: default off; file values parse; env HIVE_CELL_WARMPOOL_FREE overrides", () => {
+  withDir((dir) => {
+    // Default: disabled.
+    const bare = loadNodeConfig(dir);
+    assert.equal(bare.cellWarmPoolFree, 0);
+    assert.equal(bare.cellWarmPoolMaxSize, 32);
+
+    writeFileSync(join(dir, "config.json"), JSON.stringify({ cells: { warmPoolFree: 3, warmPoolMaxSize: 10 } }));
+    const fromFile = loadNodeConfig(dir);
+    assert.equal(fromFile.cellWarmPoolFree, 3);
+    assert.equal(fromFile.cellWarmPoolMaxSize, 10);
+
+    // Env override wins (used for perf B/A/A/B toggling).
+    const prev = process.env.HIVE_CELL_WARMPOOL_FREE;
+    process.env.HIVE_CELL_WARMPOOL_FREE = "5";
+    try {
+      assert.equal(loadNodeConfig(dir).cellWarmPoolFree, 5);
+      // Also applies with no cells block at all.
+      rmSync(join(dir, "config.json"), { force: true });
+      assert.equal(loadNodeConfig(dir).cellWarmPoolFree, 5);
+    } finally {
+      if (prev === undefined) delete process.env.HIVE_CELL_WARMPOOL_FREE;
+      else process.env.HIVE_CELL_WARMPOOL_FREE = prev;
+    }
+  });
+});
+
+test("config.warmPool: invalid values fail loudly", () => {
+  withDir((dir) => {
+    writeFileSync(join(dir, "config.json"), JSON.stringify({ cells: { warmPoolFree: -1 } }));
+    assert.throws(() => loadNodeConfig(dir), ConfigError);
+    writeFileSync(join(dir, "config.json"), JSON.stringify({ cells: { warmPoolMaxSize: 0 } }));
+    assert.throws(() => loadNodeConfig(dir), ConfigError);
+  });
+});
