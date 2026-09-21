@@ -153,6 +153,14 @@ per-machine automatic-update opt-in, consent or revocation checks. Empty recover
 plans establish no recovery. The accepted HON-14 storage reservation, replay,
 bee-survival and Honeybee deployment boundaries remain unchanged.
 
+Honeybee deploy admission accepts v1 or v2 recovery plans. Since recovery plans
+have no top-level version field, the presence of the closed `from.caller` slot
+selects the v2 parser; otherwise the v1 parser applies. Parsing never converts a
+plan or falls back after a failure. Both paths require the same exact active
+reservation, compatible storage, automatic rollback strategy, and exact `from`
+or `to` Honeybee artifact identity. A caller identity cannot authorize deploying
+that caller through Honeybee's artifact installation boundary.
+
 Migration is explicit and coordinated:
 
 1. Install a reader that supports v2 and retains its authenticated version-specific

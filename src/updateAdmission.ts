@@ -5,15 +5,20 @@ import { join, resolve } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { parseRecoveryPlan, type RecoveryPlan, type ComponentIdentity } from "./release/index.js";
+import { parseRecoveryPlan as parseRoleBoundRecoveryPlan, type RecoveryPlan as RoleBoundRecoveryPlan } from "./release/v2.js";
 import { canonicalDigest } from "./comb/canonical.js";
 import { UPDATE_RECOVERY_CONTRACT, parseUpdateReservation, type UpdateReservation } from "./updateReservation.js";
 export { UPDATE_RECOVERY_CONTRACT } from "./updateReservation.js";
-export type UpdateAdmission = { reservation: UpdateReservation; recovery: RecoveryPlan };
+export type UpdateAdmission = { reservation: UpdateReservation; recovery: RecoveryPlan | RoleBoundRecoveryPlan };
 
 /** Called inside the SAME deploy lock used by the daemon's reserve/release RPC. */
 export async function assertUpdateAdmission(root: string, identity: ComponentIdentity, admission: UpdateAdmission): Promise<void> {
   const requested = parseUpdateReservation(admission.reservation);
-  const recovery = parseRecoveryPlan(admission.recovery);
+  // Recovery plans have no top-level version field. Their closed combination
+  // shapes discriminate readers; never convert a plan or retry a failed parser.
+  const recovery = Object.hasOwn(admission.recovery?.subject?.from ?? {}, "caller")
+    ? parseRoleBoundRecoveryPlan(admission.recovery)
+    : parseRecoveryPlan(admission.recovery);
   if (!requested.active || recovery.subjectDigest !== requested.recoverySubjectDigest
     || recovery.state !== "compatible" || recovery.storage !== "compatible"
     || recovery.subject.strategy !== "rollback" || recovery.subject.requiresInterruption

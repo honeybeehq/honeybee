@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { deployArtifact, deployVersion, currentDeployTarget } from "../src/deployRuntime.js";
 import { DatabaseSync } from "node:sqlite";
 import { recoverySubjectDigest, parseRecoveryPlan } from "../src/release/index.js";
+import * as v2 from "../src/release/v2.js";
 import { UPDATE_RECOVERY_CONTRACT, type UpdateAdmission } from "../src/updateAdmission.js";
 
 test("artifact deploy refuses unchecked bytes before switching or restarting", async () => {
@@ -60,6 +61,35 @@ async function reserve(dir: string, identity: ComponentIdentity): Promise<Update
   db.close();
   return { reservation, recovery };
 }
+
+test("v2 recovery admits artifact deployment and rollback while preserving the foreign caller", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "hon16-artifact-"));
+  try {
+    const previous = await release(dir, "b".repeat(40)), next = await release(dir);
+    const root = join(dir, "runtime");
+    const activations: string[] = [];
+    const hooks = { async restartDaemon() { activations.push((await currentDeployTarget(root))!); } };
+    await deployArtifact({ ...previous, root, admission: { fresh: true }, expectedCurrent: null, hooks });
+    const { reservation } = await reserve(dir, next.identity);
+    const recovery = v2.parseRecoveryPlan(JSON.parse(await readFile(new URL("../contracts/release/v2/fixtures/remote-recovery.json", import.meta.url), "utf8")));
+    recovery.subject.from.honeybee = { ...previous.identity, component: "honeybee" };
+    recovery.subject.to.honeybee = { ...next.identity, component: "honeybee" };
+    recovery.subject.storageRequirements = [UPDATE_RECOVERY_CONTRACT];
+    recovery.subjectDigest = v2.recoverySubjectDigest(recovery.subject);
+    for (const evidence of recovery.evidence) evidence.subjectDigest = recovery.subjectDigest;
+    reservation.recoverySubjectDigest = recovery.subjectDigest;
+    const db = new DatabaseSync(join(dir, "v2", "core.sqlite3"));
+    db.prepare("UPDATE meta SET value=? WHERE key='coordinated_update'").run(JSON.stringify(reservation));
+    db.close();
+    const admission = { reservation, recovery };
+    const caller = structuredClone(recovery.subject.from.caller);
+    await deployArtifact({ ...next, root, admission, expectedCurrent: previous.identity.sourceRevision, hooks });
+    await deployArtifact({ ...previous, root, admission, expectedCurrent: next.identity.sourceRevision, hooks });
+    assert.deepEqual(activations, [previous.identity.sourceRevision, next.identity.sourceRevision, previous.identity.sourceRevision]);
+    assert.deepEqual(recovery.subject.from.caller, caller);
+    assert.deepEqual(recovery.subject.to.caller, caller);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
 
 for (const scenario of ["install", "identity", "gate", "fence", "conflict", "restart"] as const) {
   test(`verified artifact deploy: ${scenario}`, async () => {

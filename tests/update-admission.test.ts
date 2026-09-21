@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { assertNoUpdateReservation, assertUpdateAdmission, UPDATE_RECOVERY_CONTRACT, type UpdateAdmission } from "../src/updateAdmission.js";
 import { parseRecoveryPlan, recoverySubjectDigest } from "../src/release/index.js";
+import * as v2 from "../src/release/v2.js";
 
 async function fixture() {
   const dir = await mkdtemp(join(tmpdir(), "hon8-admission-"));
@@ -26,6 +27,62 @@ async function fixture() {
   const statusFile = join(root, "current", "dist", "v2", "cli.js");
   return { dir, root, statusFile, status, identity: recovery.subject.to.honeybee,
     admission: { reservation, recovery } satisfies UpdateAdmission };
+}
+
+async function roleBoundFixture() {
+  const f = await fixture();
+  const recovery = v2.parseRecoveryPlan(JSON.parse(await readFile(new URL("../contracts/release/v2/fixtures/remote-recovery.json", import.meta.url), "utf8")));
+  recovery.subject.storageRequirements = [UPDATE_RECOVERY_CONTRACT];
+  recovery.subject.from.honeybee.version = "0.0.9";
+  recovery.subject.from.honeybee.artifact.sha256 = `sha256:${"f".repeat(64)}`;
+  recovery.subjectDigest = v2.recoverySubjectDigest(recovery.subject);
+  for (const evidence of recovery.evidence) evidence.subjectDigest = recovery.subjectDigest;
+  const reservation = { ...f.admission.reservation, recoverySubjectDigest: recovery.subjectDigest };
+  const db = new DatabaseSync(join(f.dir, "v2", "core.sqlite3"));
+  db.prepare("UPDATE meta SET value=? WHERE key='coordinated_update'").run(JSON.stringify(reservation));
+  db.close();
+  return { ...f, admission: { recovery, reservation }, identity: recovery.subject.to.honeybee };
+}
+
+test("deploy admits exact v2 Honeybee forward and rollback identities with a foreign caller", async () => {
+  const f = await roleBoundFixture();
+  try {
+    assert.equal(f.admission.recovery.subject.from.caller.target, "darwin-arm64");
+    assert.equal(f.identity.target, "linux-x64");
+    await assertUpdateAdmission(f.root, f.identity, f.admission);
+    await assertUpdateAdmission(f.root, f.admission.recovery.subject.from.honeybee, f.admission);
+  } finally { await rm(f.dir, { recursive: true, force: true }); }
+});
+
+for (const scenario of ["unrelated Honeybee", "caller artifact", "changed caller", "mixed versions", "unknown version", "missing evidence", "released reservation", "active authority", "locked storage", "unverified storage", "unknown requirement"] as const) {
+  test(`v2 admission preserves refusal for ${scenario}`, async () => {
+    const f = await roleBoundFixture();
+    const db = new DatabaseSync(join(f.dir, "v2", "core.sqlite3"));
+    try {
+      const { recovery, reservation } = f.admission;
+      if (scenario === "unrelated Honeybee") f.identity = { ...f.identity, artifact: { ...f.identity.artifact, sha256: `sha256:${"0".repeat(64)}` } };
+      if (scenario === "caller artifact") {
+        await assert.rejects(assertUpdateAdmission(f.root, recovery.subject.to.caller, f.admission), /no exact automatic recovery admission/);
+        return;
+      }
+      if (scenario === "changed caller") recovery.subject.from.caller.artifact.sha256 = `sha256:${"0".repeat(64)}`;
+      if (scenario === "mixed versions") Object.assign(recovery.subject.to, { apiary: recovery.subject.to.caller });
+      if (scenario === "unknown version") Object.assign(recovery, { schemaVersion: 3 });
+      if (scenario === "missing evidence") recovery.evidence = [];
+      if (scenario === "released reservation") db.prepare("UPDATE meta SET value=? WHERE key='coordinated_update'").run(JSON.stringify({ ...reservation, active: false }));
+      if (scenario === "active authority") db.exec("INSERT INTO account_credential_authorities VALUES('enabled')");
+      if (scenario === "locked storage") db.exec("PRAGMA locking_mode=EXCLUSIVE; BEGIN EXCLUSIVE; UPDATE meta SET value=value; COMMIT");
+      if (scenario === "unverified storage") recovery.storage = "unverified";
+      if (scenario === "unknown requirement") {
+        recovery.subject.storageRequirements.push("unknown-storage-contract");
+        recovery.subjectDigest = v2.recoverySubjectDigest(recovery.subject);
+        for (const evidence of recovery.evidence) evidence.subjectDigest = recovery.subjectDigest;
+        reservation.recoverySubjectDigest = recovery.subjectDigest;
+        db.prepare("UPDATE meta SET value=? WHERE key='coordinated_update'").run(JSON.stringify(reservation));
+      }
+      await assert.rejects(assertUpdateAdmission(f.root, f.identity, f.admission), /Invalid|admission|stale|incompatible|locked/);
+    } finally { db.close(); await rm(f.dir, { recursive: true, force: true }); }
+  });
 }
 
 test("a live owner for another store cannot authorize the local reservation", async () => {
