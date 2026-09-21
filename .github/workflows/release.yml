@@ -1,0 +1,94 @@
+name: Immutable Honeybee release
+on:
+  workflow_dispatch:
+    inputs:
+      source-revision:
+        description: Exact Honeybee source commit (40 hex)
+        required: true
+        type: string
+      api-assessment:
+        description: Canonical HON-2 API-change assessment JSON; null only for unchanged-source reuse
+        required: true
+        type: string
+      target:
+        description: Native runtime target
+        required: true
+        type: choice
+        options: [darwin-arm64, linux-x64]
+        default: darwin-arm64
+  workflow_call:
+    inputs:
+      source-revision:
+        required: true
+        type: string
+      api-assessment:
+        required: true
+        type: string
+      target:
+        required: true
+        type: string
+    secrets:
+      HONEYBEE_RELEASE_TOKEN:
+        required: true
+      DISTRIBUTION_TOKEN:
+        required: true
+      EVALUATOR_NOTIFICATION_TOKEN:
+        required: false
+    outputs:
+      descriptor-url:
+        value: ${{ jobs.release.outputs.descriptor-url }}
+      descriptor-sha256:
+        value: ${{ jobs.release.outputs.descriptor-sha256 }}
+      source-revision:
+        value: ${{ jobs.release.outputs.source-revision }}
+      version:
+        value: ${{ jobs.release.outputs.version }}
+      notification:
+        value: ${{ jobs.release.outputs.notification }}
+permissions:
+  contents: read
+# Git CAS also fences independent callers and retries; this prevents duplicate expensive builds.
+concurrency:
+  group: honeybee-release-publication
+  cancel-in-progress: false
+jobs:
+  release:
+    environment: honeybee-release
+    runs-on: ${{ inputs.target == 'darwin-arm64' && 'macos-14' || 'ubuntu-24.04' }}
+    timeout-minutes: 90
+    outputs:
+      descriptor-url: ${{ steps.publish.outputs.descriptor-url }}
+      descriptor-sha256: ${{ steps.publish.outputs.descriptor-sha256 }}
+      source-revision: ${{ steps.publish.outputs.source-revision }}
+      version: ${{ steps.publish.outputs.version }}
+      notification: ${{ steps.publish.outputs.notification }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: honeybeehq/honeybee
+          ref: ${{ inputs.source-revision }}
+          fetch-depth: 0
+          token: ${{ secrets.HONEYBEE_RELEASE_TOKEN }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.15.0
+          cache: npm
+      - name: Install native test prerequisites
+        shell: bash
+        run: |
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            brew install tmux
+          else
+            sudo apt-get update
+            sudo apt-get install -y tmux
+          fi
+      - run: npm ci
+      - name: Reserve, verify and publish exact runtime
+        id: publish
+        run: npm run release:publish
+        env:
+          HONEYBEE_SOURCE_REVISION: ${{ inputs.source-revision }}
+          HONEYBEE_API_ASSESSMENT: ${{ inputs.api-assessment }}
+          HONEYBEE_TARGET: ${{ inputs.target }}
+          DISTRIBUTION_TOKEN: ${{ secrets.DISTRIBUTION_TOKEN }}
+          EVALUATOR_NOTIFICATION_TOKEN: ${{ secrets.EVALUATOR_NOTIFICATION_TOKEN }}

@@ -1,0 +1,27 @@
+name: Checked Honeybee source
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: honeybee-ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: macos-14
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.15.0
+          cache: npm
+      - run: brew install tmux
+      - run: npm ci
+      - run: npm run check
+      - run: npm run v2:check
+      - run: npm run build
+      - run: npm test
+      - run: npm run v2:test && npm run v2:daemon && npm run v2:driver && npm run v2:driver2 && npm run v2:harness

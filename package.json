@@ -59,7 +59,8 @@
     "v2:smoke:tmux": "node --experimental-strip-types v2/driver-tmux/smoke.ts",
     "v2:smoke:cell": "node --experimental-strip-types v2/driver-cell/smoke.ts",
     "release:inventory": "node contracts/release/v1/tools/extract-inventory.mjs .",
-    "release:test": "node --test tests/release-inventory.test.mjs"
+    "release:test": "node --test tests/release-inventory.test.mjs",
+    "release:publish": "tsx scripts/publish-honeybee-release.mjs"
   },
   "engines": {
     "node": ">=20"

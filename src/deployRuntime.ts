@@ -60,6 +60,8 @@ export type BuildArtifactContext = {
    * and such an artifact is marked `gate: "tests-skipped"` in its manifest.
    */
   skipTests?: boolean;
+  /** Publication runs every release gate regardless of local deployment state. */
+  release?: boolean;
 };
 
 export type RestartDaemonContext = {

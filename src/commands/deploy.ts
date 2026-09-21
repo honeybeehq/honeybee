@@ -81,8 +81,9 @@ async function runStep(command: string, args: string[], cwd: string, log: (line:
  * into the repo.
  */
 export async function buildDeployArtifact(
-  { repoRoot, sha, workDir, log, skipTests }: BuildArtifactContext,
+  { repoRoot, sha, workDir, log, skipTests, release }: BuildArtifactContext,
 ): Promise<{ artifactDir: string }> {
+  if (release && skipTests) throw new Error("Release artifacts cannot skip tests");
   const checkout = join(workDir, "checkout");
   await mkdir(checkout, { recursive: true });
   const tarPath = join(workDir, "source.tar");
@@ -96,6 +97,11 @@ export async function buildDeployArtifact(
   await runStep("npm", ["run", "build"], checkout, log);
   if (skipTests === true) {
     log("deploy: WARNING test gate skipped (--skip-tests) — this artifact is not release-grade");
+  } else if (release) {
+    for (const script of ["v2:check", "v2:test", "v2:daemon", "v2:driver", "v2:driver2", "v2:harness"]) {
+      await runStep("npm", ["run", script], checkout, log);
+    }
+    await runStep("npm", ["test"], checkout, log);
   } else if (existsSync(join(storeRoot(), "FROZEN"))) {
     // Post-flip node (WP7): the old suite's CLI-shelling tests don't override
     // the store root, so on a frozen machine they route into v2 and hang
