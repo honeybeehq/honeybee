@@ -51,6 +51,7 @@ import {
   RPC_VERBS,
   RpcError,
   type HelloFrame,
+  BUILD_IDENTITY,
   type RpcErrorCode,
   type RpcVerb,
   type WatchFrame,
@@ -225,7 +226,7 @@ export class RpcServer {
     socket.setEncoding("utf8");
     // Versioned hello, server side (negotiated once). Capability tags are
     // additive: a pre-v16 client ignores the extra key.
-    conn.send({ protocol: PROTOCOL, capabilities: DAEMON_CAPABILITIES } satisfies HelloFrame);
+    conn.send({ protocol: PROTOCOL, capabilities: DAEMON_CAPABILITIES, identity: BUILD_IDENTITY } satisfies HelloFrame);
     socket.on("data", (chunk: string) => this.onData(conn, chunk));
     socket.on("error", () => socket.destroy());
     socket.on("close", () => this.conns.delete(conn));

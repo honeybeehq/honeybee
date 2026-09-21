@@ -1,3 +1,4 @@
+import { BUILD_IDENTITY } from "../../daemon/src/protocol.ts";
 /**
  * The thin v2 CLI (spec 04 "CLI"). Ships inside the existing `hive` binary as
  * `hive <verb>` (src/cli.ts routes here) and as a standalone bin for tests.
@@ -2577,7 +2578,8 @@ async function cmdCommands(ctx: CliContext, parsed: Parsed): Promise<number> {
 }
 
 async function cmdDeployInfo(ctx: CliContext): Promise<number> {
-  const result = await withClient(ctx, (c) => c.request("deployInfo"));
+  const daemon = await withClient(ctx, (c) => c.request<Record<string, unknown>>("deployInfo"));
+  const result = { ...daemon, cliIdentity: BUILD_IDENTITY, daemonIdentity: daemon.identity ?? null };
   emit(ctx, [JSON.stringify(result, null, 2)], result, false);
   return 0;
 }
@@ -4056,33 +4058,15 @@ async function cmdDaemon(ctx: CliContext, parsed: Parsed): Promise<number> {
 // entry
 // ---------------------------------------------------------------------------
 
-/**
- * The package version, resolved relative to this module: works from the
- * dist bundle (runtime/<sha>/dist/v2/cli.js → ../../package.json) and from
- * source (v2/cli/src/main.ts → repo root). "unknown" beats a crash — Apiary's
- * launch-time Doctor gates every local run on `hive --version` succeeding
- * (2026-08-19: the flip routed --version into v2, which refused it, and the
- * capability gate silently disabled spawning; never again).
- */
+/** Version of this CLI installation, independent of the daemon it connects to. */
 export function hiveVersion(): string {
-  for (const rel of ["../../package.json", "../../../package.json", "../../../../package.json"]) {
-    try {
-      const pkg = JSON.parse(readFileSync(new URL(rel, import.meta.url), "utf8")) as {
-        name?: string;
-        version?: string;
-      };
-      if (pkg.name === "honeybee" && typeof pkg.version === "string") return pkg.version;
-    } catch {
-      // keep walking up
-    }
-  }
-  return "unknown";
+  return BUILD_IDENTITY.version;
 }
 
 export async function runV2Cli(argv: string[], io: CliIo = defaultIo): Promise<number> {
   // Before flag parsing: --version must never be an "unknown flag" error.
   if (argv[0] === "--version" || argv[0] === "-v" || argv[0] === "version") {
-    io.out(`honeybee ${hiveVersion()}`);
+    io.out(argv.includes("--json") ? JSON.stringify(BUILD_IDENTITY) : `honeybee ${hiveVersion()}`);
     return 0;
   }
   let parsed: Parsed;

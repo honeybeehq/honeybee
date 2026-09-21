@@ -248,3 +248,14 @@ test("the artifact script reuses buildDeployArtifact and packRuntimeArtifact ins
   const pkg = JSON.parse(await readFile(join(process.cwd(), "package.json"), "utf8")) as { scripts: Record<string, string> };
   assert.equal(pkg.scripts["runtime:artifact"], "tsx scripts/build-runtime-artifact.mjs");
 });
+
+test("artifact identity comes from its packaged bytes and rejects a mismatched requested revision", async () => {
+  await withTempDir(async (dir) => {
+    const stage = await seedArtifact(dir);
+    const identity = { schemaVersion: 1, component: "honeybee", version: "0.0.1-dev.0123456789ab", packageVersion: "0.0.1", sourceRevision: SHA, dirty: false, release: false, target: "darwin-arm64" };
+    await writeFile(join(stage, "dist", "build-identity.json"), JSON.stringify(identity));
+    const manifest = await describeRuntimeArtifact({ artifactDir: stage, sha: SHA });
+    assert.deepEqual(manifest.identity, identity);
+    await assert.rejects(describeRuntimeArtifact({ artifactDir: stage, sha: "b".repeat(40) }), /identity.*revision/i);
+  });
+});

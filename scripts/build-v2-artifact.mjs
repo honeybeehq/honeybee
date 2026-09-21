@@ -5,10 +5,11 @@
  * immutable release must spawn that release's host without re-entering the
  * full CLI bundle.
  */
-import { mkdir, stat } from "node:fs/promises";
+import { mkdir, stat, writeFile } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
+import { collectBuildIdentity } from "../dist/release/buildIdentityProducer.js";
 
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const outDir = join(root, "dist", "v2");
@@ -19,6 +20,7 @@ const runnerHostInputs = [
 ];
 const runnerHostMaxBytes = 32 * 1024;
 await mkdir(outDir, { recursive: true });
+await writeFile(join(root, "dist", "build-identity.json"), `${JSON.stringify(collectBuildIdentity(root), null, 2)}\n`);
 await build({
   absWorkingDir: root,
   entryPoints: [join(root, "v2", "cli", "src", "main.ts")],

@@ -181,6 +181,7 @@ import {
 import { RpcServer, type RpcConn } from "./rpc.ts";
 import {
   DAEMON_VERSION,
+  BUILD_IDENTITY,
   PROTOCOL,
   RpcError,
   SPAWN_SUBSTRATES,
@@ -4376,6 +4377,7 @@ export class HiveDaemon {
       protocol: PROTOCOL,
       capabilities: DAEMON_CAPABILITIES,
       daemonVersion: DAEMON_VERSION,
+      identity: BUILD_IDENTITY,
       nodeVersion: process.version,
       pid: process.pid,
       startedAt: this.startedAt,

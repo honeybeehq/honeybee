@@ -5,7 +5,7 @@
 // never reach the code in this file's hook implementations.
 import { execFile, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { cp, lstat, mkdir, readFile, readlink } from "node:fs/promises";
+import { cp, lstat, mkdir, readFile, readlink, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { promisify } from "node:util";
 import {
@@ -23,6 +23,8 @@ import {
 import { storeRoot } from "../fsx.js";
 import { actionLine, bold, dim, formatRelativeTime, isPretty, note, tildify, yellow } from "../format.js";
 import { flag, numberFlag, truthy, type Parsed } from "../parse.js";
+
+import { collectBuildProvenance } from "../release/buildIdentityProducer.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -87,6 +89,8 @@ export async function buildDeployArtifact(
   await runStep("git", ["-C", repoRoot, "archive", "--format=tar", "-o", tarPath, sha], workDir, log);
   await runStep("tar", ["-xf", tarPath, "-C", checkout], workDir, log);
 
+  // git archive removes .git; capture facts for the exported revision, not the working tree.
+  await writeFile(join(checkout, ".build-provenance.json"), JSON.stringify(collectBuildProvenance(repoRoot, sha)));
   await runStep("npm", ["ci"], checkout, log);
   await runStep("npm", ["run", "check"], checkout, log);
   await runStep("npm", ["run", "build"], checkout, log);

@@ -210,3 +210,5 @@ export function parseReleaseManifest(value: unknown): ReleaseManifest {
   }
   return manifest;
 }
+
+export { parseBuildIdentity, readBuildIdentity, type BuildIdentity } from "./buildIdentity.js";

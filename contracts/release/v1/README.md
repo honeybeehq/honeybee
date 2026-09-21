@@ -197,3 +197,7 @@ both-side fingerprint fencing, evaluator/model/prompt/policy fencing, missing an
 mismatched evidence, pinned/support gates, current-major scope and recovery.
 Non-TypeScript consumers must run this corpus and equivalent cross-field tests;
 JSON Schema alone cannot express hash equality or reference resolution.
+
+Build provenance and mechanically extracted provider/consumer evidence are described
+in [BUILD-EVIDENCE.md](BUILD-EVIDENCE.md). They supplement the verified release
+contracts without weakening their artifact or compatibility requirements.

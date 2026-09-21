@@ -29,6 +29,8 @@ import { promisify } from "node:util";
 import { writeBuildStamp } from "./deploySettle.js";
 import { computeSchemaDigest, loadExecutionContract } from "./execution/contract.js";
 
+import { readBuildIdentity, parseBuildIdentity, type BuildIdentity } from "./release/buildIdentity.js";
+
 const execFileAsync = promisify(execFile);
 
 export const RUNTIME_ARTIFACT_MANIFEST_FILENAME = "manifest.json";
@@ -44,6 +46,8 @@ export type RuntimeArtifactManifest = {
   schemaVersion: typeof RUNTIME_ARTIFACT_MANIFEST_SCHEMA_VERSION;
   /** Full 40-hex commit the artifact was built from. */
   sha: string;
+  /** Absent on legacy artifacts; never inferred from an installer checkout. */
+  identity?: BuildIdentity;
   /** deploySettle tree digest of dist/ — equals deploys.json's artifactHash for this sha. */
   artifactHash: string;
   /** Daemon RPC protocol the bundled v2 CLI speaks (`hive deploy-info`.protocol). */
@@ -161,10 +165,16 @@ export async function describeRuntimeArtifact(
   const protocol = await readArtifactProtocol(artifactDir);
   const executionCorpusDigest = readArtifactExecutionDigest(artifactDir);
   const pkg = await readArtifactPackage(artifactDir);
+  const identityPath = join(artifactDir, "dist", "build-identity.json");
+  const identity = existsSync(identityPath) ? readBuildIdentity(identityPath) : undefined;
+  if (identity && (identity.component !== "honeybee" || identity.sourceRevision !== sha || identity.dirty !== false || identity.packageVersion !== pkg.version)) {
+    throw new Error("runtime-artifact: identity does not match clean source revision/package");
+  }
   return {
     schemaVersion: RUNTIME_ARTIFACT_MANIFEST_SCHEMA_VERSION,
     sha,
     artifactHash: stamp.hash,
+    ...(identity ? { identity } : {}),
     protocol,
     executionCorpusDigest,
     engines: { node: pkg.node },
@@ -224,5 +234,11 @@ export function parseRuntimeArtifactManifest(raw: string): RuntimeArtifactManife
   }
   if (typeof value.engines?.node !== "string") throw new Error("runtime-artifact: manifest engines.node missing");
   if (value.gate !== "full" && value.gate !== "tests-skipped") throw new Error("runtime-artifact: manifest gate invalid");
+  if (value.identity !== undefined) {
+    const identity = parseBuildIdentity(value.identity);
+    if (identity.component !== "honeybee" || identity.sourceRevision !== value.sha || identity.dirty !== false || identity.packageVersion !== value.package?.version) {
+      throw new Error("runtime-artifact: identity does not match clean source revision/package");
+    }
+  }
   return value as RuntimeArtifactManifest;
 }

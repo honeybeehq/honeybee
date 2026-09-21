@@ -1,0 +1,46 @@
+{
+  "component": "honeybee",
+  "roots": [
+    "src",
+    "v2"
+  ],
+  "providers": [
+    {
+      "path": "v2/daemon/src/protocol.ts",
+      "registry": "RPC_VERBS",
+      "protocol": "v2/1"
+    },
+    {
+      "path": "v2/daemon/src/daemon.ts",
+      "switch": "verb",
+      "protocol": "v2/1"
+    },
+    {
+      "path": "v2/cli/src/main.ts",
+      "switch": "command",
+      "protocol": "hive-cli"
+    },
+    {
+      "path": "v2/daemon/src/protocol.ts",
+      "registry": "DAEMON_CAPABILITIES",
+      "capabilities": true,
+      "protocol": "v2/1"
+    },
+    {
+      "path": "v2/cli/src/main.ts",
+      "switch": "sub",
+      "protocol": "hive-cli-subcommand"
+    }
+  ],
+  "consumers": [
+    {
+      "receiver": "RpcClient",
+      "method": "request",
+      "operationArgs": [
+        0
+      ],
+      "paramsArg": 1,
+      "protocol": "v2/1"
+    }
+  ]
+}

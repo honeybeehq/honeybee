@@ -1,3 +1,4 @@
+import { honeybeeBuildIdentity, type BuildIdentity } from "../../../src/release/buildIdentity.ts";
 export type { ReconnectToolsResult, ReconnectToolsReceipt, ReconnectToolsError } from "../../core/src/reconnectTools.ts";
 import type { ThreadOperationView } from "../../core/src/threadOperation.ts";
 /**
@@ -71,7 +72,8 @@ import type { AccountAdmissionClaim, AccountAllocationContext, AccountAllocation
 export type { AccountAdmissionClaim, AccountAllocationContext, AccountAllocationReceipt, AccountNodeActivity, EphemeralCredential, EphemeralCredentialFile } from "./accountsService.ts";
 
 export const PROTOCOL = "v2/1";
-export const DAEMON_VERSION = "2.0.0-wp4";
+export const BUILD_IDENTITY = Object.freeze(honeybeeBuildIdentity());
+export const DAEMON_VERSION = BUILD_IDENTITY.version;
 
 /**
  * Additive capability tags (2026-08-28). The protocol stays `v2/1`; a client
@@ -159,6 +161,7 @@ export type DaemonCapability = (typeof DAEMON_CAPABILITIES)[number];
 
 /** The server's first frame on a connection. */
 export interface HelloFrame {
+  identity?: BuildIdentity;
   protocol: string;
   capabilities: readonly DaemonCapability[];
 }
@@ -1225,6 +1228,7 @@ export interface AuditTailResult {
 }
 
 export interface DeployInfoResult {
+  identity?: BuildIdentity;
   protocol: string;
   /** v16 (additive): the capability tags this daemon offers (also in the hello). */
   capabilities: readonly DaemonCapability[];
