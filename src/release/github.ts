@@ -2,7 +2,11 @@
 import type { HoneybeeReleaseEvent, ReleaseAssetStore } from "./publish.js";
 
 type Release = { id: number; tag_name: string; draft: boolean; immutable: boolean };
-type Asset = { id: number; name: string; state: string };
+type Asset = { id: number; name: string; state: string; size: number };
+/** Requires one writer per distribution tag, enforced by release.yml concurrency.
+ * GitHub has no conditional asset delete; this ownership fence also permits safe
+ * recovery of empty starter placeholders left by interrupted uploads.
+ */
 export class GitHubReleaseStore implements ReleaseAssetStore {
   private release: Release | null = null;
   private readonly repo = "honeybeehq/apiary-releases";
@@ -13,7 +17,7 @@ export class GitHubReleaseStore implements ReleaseAssetStore {
   url(name: string) { return `https://github.com/${this.repo}/releases/download/${this.tag}/${encodeURIComponent(name)}`; }
   private async api(path: string, init: RequestInit = {}, allow404 = false) {
     const response = await this.request(`https://api.github.com/repos/${this.repo}${path}`, { ...init, headers: {
-      Accept: "application/vnd.github+json", Authorization: `Bearer ${this.token}`, "X-GitHub-Api-Version": "2026-03-10", ...init.headers }, signal: AbortSignal.timeout(120_000) });
+      Accept: "application/vnd.github+json", "Content-Type": "application/json", Authorization: `Bearer ${this.token}`, "X-GitHub-Api-Version": "2026-03-10", ...init.headers }, signal: AbortSignal.timeout(120_000) });
     if (allow404 && response.status === 404) return null;
     if (!response.ok) throw new Error(`GitHub release request failed (${response.status}): ${path}`);
     return response;
@@ -52,7 +56,15 @@ export class GitHubReleaseStore implements ReleaseAssetStore {
       const assets = await (await this.api(`/releases/${release.id}/assets?per_page=100&page=${page}`))!.json() as Asset[];
       const asset = assets.find(a => a.name === name);
       if (asset) {
-        if (asset.state !== "uploaded") throw new Error(`Incomplete GitHub asset: ${name}; retry after upload settles`);
+        if (asset.state !== "uploaded") {
+          const currentRelease = await (await this.api(`/releases/${release.id}`))!.json() as Release;
+          const currentAsset = await (await this.api(`/releases/assets/${asset.id}`))!.json() as Asset;
+          if (!currentRelease.draft || currentAsset.state !== "starter" || currentAsset.size !== 0) {
+            throw new Error(`Incomplete GitHub asset: ${name}; refusing to replace nonempty or published bytes`);
+          }
+          await this.api(`/releases/assets/${asset.id}`, { method: "DELETE" });
+          return null;
+        }
         return new Uint8Array(await (await this.api(`/releases/assets/${asset.id}`, { headers: { Accept: "application/octet-stream" } }))!.arrayBuffer());
       }
       if (assets.length < 100) return null;

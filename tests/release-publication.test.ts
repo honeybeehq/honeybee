@@ -89,3 +89,8 @@ test("existing metadata with different bytes is never overwritten or exposed as 
   assert.equal(store.published, false);
   assert.equal(new TextDecoder().decode(store.files.get("manifest.json")), "different bytes");
 });
+
+test("release build boundary refuses the local skip-tests escape hatch", async () => {
+  const { buildDeployArtifact } = await import("../src/commands/deploy.js");
+  await assert.rejects(buildDeployArtifact({ repoRoot: "/unused", sha: reservation.sourceRevision, workDir: "/unused", log: () => {}, release: true, skipTests: true }), /cannot skip tests/);
+});

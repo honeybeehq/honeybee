@@ -47,7 +47,8 @@ on:
         value: ${{ jobs.release.outputs.notification }}
 permissions:
   contents: read
-# Git CAS also fences independent callers and retries; this prevents duplicate expensive builds.
+# All publication runs originate here: Actions locks are repository-scoped.
+# External coordinators must workflow_dispatch this repository, not workflow_call it.
 concurrency:
   group: honeybee-release-publication
   cancel-in-progress: false
@@ -63,6 +64,14 @@ jobs:
       version: ${{ steps.publish.outputs.version }}
       notification: ${{ steps.publish.outputs.notification }}
     steps:
+      - name: Require the owning repository's writer lock
+        env:
+          CALLER_REPOSITORY: ${{ github.repository }}
+        run: |
+          if [ "$CALLER_REPOSITORY" != "honeybeehq/honeybee" ]; then
+            echo 'Dispatch release.yml in honeybeehq/honeybee; cross-repository workflow_call has a separate concurrency lock.' >&2
+            exit 1
+          fi
       - uses: actions/checkout@v4
         with:
           repository: honeybeehq/honeybee

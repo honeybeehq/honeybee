@@ -12,6 +12,10 @@ import { prepareHoneybeeRelease } from "../src/release/prepare.ts";
 import { publishHoneybeeRelease } from "../src/release/publish.ts";
 import { GitHubReleaseStore, notifyHoneybeeRelease } from "../src/release/github.ts";
 
+// Actions concurrency is repository-scoped, including for reusable workflow callers.
+if (process.env.GITHUB_ACTIONS !== "true" || process.env.GITHUB_REPOSITORY !== "honeybeehq/honeybee") {
+  throw new Error("Dispatch release.yml in honeybeehq/honeybee to hold the distribution writer lock");
+}
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 const sourceRevision = process.env.HONEYBEE_SOURCE_REVISION;
 const target = process.env.HONEYBEE_TARGET;
