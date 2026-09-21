@@ -1,8 +1,8 @@
 import { existsSync, lstatSync, readFileSync, readlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { readBuildIdentity, type BuildIdentity } from "./release/buildIdentity.js";
-import { UPDATE_RECOVERY_CONTRACT } from "./updateReservation.js";
+import { readBuildIdentity, type BuildIdentity } from "./release/buildIdentity.ts";
+import { UPDATE_RECOVERY_CONTRACT } from "./updateReservation.ts";
 
 /** Legacy-only verbs that remain reachable after the v2 freeze flip. */
 const V1_VERBS_KEPT_WHEN_FROZEN = new Set(["deploy", "__complete"]);
