@@ -88,3 +88,48 @@ recursion/depth limits). Neither an extracted operation nor a matching fingerpri
 proves compatibility. Downstream evaluation must account for these gaps and remain
 unverified when it lacks evidence. No evaluator, matrix publisher, or updater is
 implemented here.
+
+### Declared wrappers and domain routes
+
+Optional `wrappers` declarations select an exact source path, receiver type name,
+method and configured consumer target. The extractor checks the resolved method
+body: one returned target call must forward the operation and payload parameters
+unchanged. Literal caller arguments then produce ordinary consumer entries with
+`routing.argumentMap`, wrapper and forwarding source references. Dynamic callers,
+assignments, transformed arguments, multiple targets and unsupported bodies retain
+unknown coverage. Internal forwarding calls remain evidence of unbounded callers;
+resolving a literal outer call does not close that gap.
+
+Optional `domainRoutes` declarations select `registrationType`, `pathPattern`,
+`protocol`, and transport boundaries. Contextually typed object registrations supply
+the literal domain `name` and separate `read`/`command` handlers. Literal verb
+switches and simple equality/negated guards supply `domain.verb` providers. Computed
+names, spreads, duplicate registrations and unsupported handlers remain unknown.
+
+Each transport selects a `function` or `switch`/`operation`, its `method` and
+`forward` call, plus a `dispatch` function and registry `collection`. An optional
+`allowlist` selects a source `registry` of nested verb objects (`kind: "verbs"`)
+or literal domain arrays (`kind: "domains"`). Optional `via` function selectors
+retain intermediate forwarding and validation evidence. These are source boundary
+selectors, not declarations of supported operation names. The extractor verifies
+name lookup and verb/payload forwarding in the dispatcher, and records allowlist
+membership from the actual initializer. Missing, ambiguous or unsupported steps
+remain explicit gaps. Absence from a remote allowlist does not imply absence from
+a separately declared local transport.
+
+Provider `routing` records domain, verb, method, registration and transport evidence.
+The ordinary `implementation` reference includes the registration/handler and
+transport/dispatch sources, preserving validation, default failures and conditional
+routes for existing evaluators. Evidence references contain source paths and hashes
+of normalized source, not physical line numbers (line changes must not invalidate a
+contract). Existing schema version and fingerprint projections remain unchanged;
+additive routing fields are included in those projections.
+
+This is bounded static evidence. In particular, dependency injection between a
+transport and a dispatcher, runtime registration/lifecycle, guards, alternate lanes
+and helper semantics are not inferred from matching names. They remain unknown and
+require evaluation. `routing.transports[].coverage: "extracted"` describes a direct
+statically bound forwarding segment, never a compatibility or authorization verdict.
+`scope` distinguishes read and command methods even if their domain/verb strings
+coincide; consumers must not conflate those methods. Whole-inventory completeness
+is never overridden by successful extraction of a route.

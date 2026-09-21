@@ -68,3 +68,131 @@ test('guard dispatch is extracted and unsupported conditions remain unknown', ()
     assert.ok(result.coverage.gaps.some(x => x.reason.includes('provider condition')))
   } finally { rmSync(root, { recursive: true, force: true }) }
 })
+
+test('declared host wrappers propagate literal arguments with caller and forwarding evidence', () => {
+  const root = mkdtempSync(join(tmpdir(), 'contract-wrapper-'))
+  try {
+    writeFileSync(join(root, 'api.ts'), `class Client { read(domain: string, verb: string, args: object): unknown { return {} } }
+      class Host { client = new Client(); read(domain: string, verb: string, args: object) { const client = this.client; if (!client) throw new Error("unavailable"); return client.read(domain, verb, args) } }
+      const host = new Host(); host.read('files', 'repos', { limit: 2 }); host.read('hive', 'mail.history', { beeId: 'b' });
+      function dynamic(domain: string) { return host.read(domain, 'repos', {}) }`)
+    const config = { component: 'apiary', roots: ['.'], providers: [], consumers: [{ receiver: '^Client$', method: 'read', operationArgs: [0, 1], paramsArg: 2, protocol: 'apiaryd/1' }],
+      wrappers: [{ path: 'api.ts', receiver: 'Host', method: 'read', target: { receiver: '^Client$', method: 'read' } }] }
+    const inventory = extractInventory({ root, config, typescript: ts })
+    const route = inventory.consumers.find(c => c.operation === 'files.repos')
+    assert.ok(route)
+    assert.equal(route.method, 'read')
+    assert.equal(route.required, true)
+    assert.equal(route.request.expression, '{ limit: 2 }')
+    assert.deepEqual(route.routing.argumentMap, [0, 1, 2])
+    assert.match(inventory.evidence[route.routing.wrapper.implementation], /client.read/)
+    assert.ok(inventory.consumers.some(c => c.operation === 'hive.mail.history'))
+    assert.ok(inventory.consumers.some(c => c.operation === null && c.coverage === 'unknown'))
+    assert.equal(inventory.coverage.complete, false)
+  } finally { rmSync(root, { recursive: true, force: true }) }
+})
+
+function domainFixture(sourceChange = source => source, configChange = config => config) {
+  const root = mkdtempSync(join(tmpdir(), 'contract-domain-'))
+  const source = `interface DomainRegistration { name: string; read(verb: string, args: {id?: string}): unknown }
+    const registration: DomainRegistration = { name: 'files', read(verb, args) {
+      if (!args) throw new Error('invalid_request');
+      switch (verb) { case 'repos': return {ok: true, repos: []}; case 'stat': return {ok: true, path: args.id}; default: throw new Error('unknown_verb') }
+    }};
+    const registrations = [registration];
+    function localRead(domain: string, verb: string, args: {id?: string}) {
+      const registration = registrations.find(r => r.name === domain);
+      if (!registration) throw new Error('unknown_domain');
+      return registration.read(verb, args);
+    }
+    const READS = { files: { repos: 15000, stat: 15000 } };
+    function listener(type: string, domain: string, verb: string, args: {id?: string}) {
+      switch(type) { case 'read':
+        if (!Object.hasOwn(READS, domain)) throw new Error('invalid_request');
+        return localRead(domain, verb, args);
+      }
+    }`
+  writeFileSync(join(root, 'api.ts'), sourceChange(source))
+  writeFileSync(join(root, 'tsconfig.json'), JSON.stringify({compilerOptions: {strict: true, target: 'ESNext'}, include: ['api.ts']}))
+  const config = configChange({ component: 'apiary', roots: ['.'], projects: ['tsconfig.json'], providers: [], consumers: [],
+    domainRoutes: [{ pathPattern: '^api.ts$', registrationType: 'DomainRegistration', protocol: 'apiaryd/1',
+      transports: [{ path: 'api.ts', switch: 'type', operation: 'read', method: 'read', forward: 'localRead',
+        dispatch: { path: 'api.ts', function: 'localRead', collection: 'registrations' },
+        allowlist: { path: 'api.ts', registry: 'READS', kind: 'verbs' } }] }] })
+  try { return extractInventory({root, config, typescript: ts}) }
+  finally { rmSync(root, {recursive: true, force: true}) }
+}
+
+test('domain registration connects files.repos to scoped transport and preserves validation failures', () => {
+  const inventory = domainFixture()
+  const provider = inventory.providers.find(p => p.operation === 'files.repos')
+  assert.ok(provider)
+  assert.equal(provider.protocol, 'apiaryd/1')
+  assert.equal(provider.scope, 'read')
+  assert.equal(provider.routing.domain, 'files')
+  assert.equal(provider.routing.verb, 'repos')
+  assert.equal(provider.routing.transports[0].allowlisted, true)
+  assert.match(inventory.evidence[provider.implementation], /invalid_request/)
+  assert.match(inventory.evidence[provider.implementation], /unknown_verb/)
+  assert.match(inventory.evidence[provider.implementation], /unknown_domain/)
+  assert.ok(provider.response.some(r => r.expression?.includes('repos')))
+  assert.ok(inventory.providers.some(p => p.operation === 'files.stat'))
+  assert.equal(inventory.coverage.complete, false)
+  assert.deepEqual(domainFixture(), inventory)
+})
+
+test('missing, dynamic, and ambiguous domain routes remain unknown', () => {
+  for (const [change, reason] of [
+    [s => s.replace('return localRead(domain, verb, args)', 'return localRead(verb, domain, args)'), 'forwarding'],
+    [s => s.replace("r.name === domain", 'r.name === verb'), 'selection'],
+    [s => s.replace('repos: 15000, stat: 15000', 'stat: 15000'), 'absent'],
+    [s => s.replace('const READS = { files:', 'const READS = { [String(Date.now())]:'), 'dynamic'],
+    [s => s.replace("const READS =", "const another: DomainRegistration = {name: 'files', read(verb, args) {switch (verb) {case 'repos': return 0}}}; const READS ="), 'ambiguous'],
+  ]) {
+    const inventory = domainFixture(change)
+    const routes = inventory.providers.filter(p => p.operation === 'files.repos')
+    assert.ok(routes.length)
+    assert.ok(routes.every(p => p.coverage === 'unknown'), reason)
+    assert.ok(inventory.coverage.gaps.some(g => g.reason.includes(reason)), reason)
+  }
+  const dynamic = domainFixture(s => s.replace("name: 'files'", "name: String(Date.now())"))
+  assert.ok(!dynamic.providers.some(p => p.operation === 'files.repos'))
+  assert.ok(dynamic.coverage.gaps.some(g => g.reason.includes('dynamic')))
+  const missing = domainFixture(s => s, c => ({...c, domainRoutes: c.domainRoutes.map(d => ({...d, transports: d.transports.map(t => ({...t, path: 'missing.ts'}))}))}))
+  assert.ok(missing.coverage.gaps.some(g => g.reason.includes('missing transport')))
+})
+
+test('guard-based domain verbs retain scoped route and full handler evidence', () => {
+  const inventory = domainFixture(s => s.replace("switch (verb) { case 'repos': return {ok: true, repos: []}; case 'stat': return {ok: true, path: args.id}; default: throw new Error('unknown_verb') }", "if (verb === 'repos') return {ok: true, repos: []}; throw new Error('unknown_verb')"))
+  const provider = inventory.providers.find(p => p.operation === 'files.repos')
+  assert.ok(provider)
+  assert.equal(provider.scope, 'read')
+  assert.equal(provider.coverage, 'unknown')
+  assert.match(inventory.evidence[provider.implementation], /unknown_verb/)
+})
+
+test('route evidence fingerprints change with allowlists and failures, not formatting', () => {
+  const original = domainFixture()
+  for (const change of [s => s.replace('repos: 15000', 'repos: 20000'), s => s.replace('unknown_domain', 'unavailable')]) {
+    assert.notEqual(domainFixture(change).providerFingerprint, original.providerFingerprint)
+  }
+  assert.equal(domainFixture(s => '// comment\n' + s.replace('repos: 15000', 'repos:   15000')).fingerprint, original.fingerprint)
+})
+
+test('wrapper transformations and multiple forwarding targets never yield guessed literal routes', () => {
+  const root = mkdtempSync(join(tmpdir(), 'contract-wrapper-negative-'))
+  try {
+    const config = { component: 'apiary', roots: ['.'], providers: [], consumers: [{ receiver: '^Client$', method: 'read', operationArgs: [0, 1], paramsArg: 2, protocol: 'apiaryd/1' }],
+      wrappers: [{path: 'api.ts', receiver: 'Host', method: 'read', target: {receiver: '^Client$', method: 'read'}}] }
+    for (const body of [
+      "domain = 'hive'; return this.client.read(domain, verb, args)",
+      "return this.client.read(domain.toLowerCase(), verb, args)",
+      "if (domain) return this.client.read(domain, verb, args); return this.client.read('hive', verb, args)",
+    ]) {
+      writeFileSync(join(root, 'api.ts'), `class Client {read(domain: string, verb: string, args: object) {return {}}}; class Host {client = new Client(); read(domain: string, verb: string, args: object) {${body}}}; new Host().read('files', 'repos', {})`)
+      const inventory = extractInventory({root, config, typescript: ts})
+      assert.ok(!inventory.consumers.some(c => c.receiver === 'Host' && c.operation !== null))
+      assert.ok(inventory.coverage.gaps.some(g => g.reason.includes('wrapper')))
+    }
+  } finally { rmSync(root, {recursive: true, force: true}) }
+})

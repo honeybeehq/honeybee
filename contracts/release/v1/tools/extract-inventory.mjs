@@ -96,6 +96,174 @@ export function extractInventory({ root, config, typescript: ts }) {
     visit(node)
     return result
   }
+  // Declarations select a source boundary; the implementation proves the mapping.
+  const provenance = node => ({ path: rel(node.getSourceFile().fileName), implementation: reference(print(node)) })
+  function descendants(node, predicate) {
+    const result = []
+    const visit = n => { if (predicate(n)) result.push(n); ts.forEachChild(n, visit) }
+    visit(node)
+    return result
+  }
+  const receiverName = node => checker.typeToString(checker.getTypeAtLocation(node))
+  function wrapperCall(node) {
+    const method = node.expression.name.text
+    const receiver = receiverName(node.expression.expression)
+    const candidates = (config.wrappers ?? []).filter(w => w.method === method && w.receiver === receiver)
+    if (!candidates.length) return null
+    const declaration = checker.getResolvedSignature(node)?.declaration
+    const wrapper = candidates[0]
+    const targets = config.consumers.filter(c => c.method === wrapper.target.method && c.receiver === wrapper.target.receiver)
+    const invalid = reason => ({ boundary: targets[0], reason, routing: { coverage: 'unknown', ...(declaration ? { wrapper: provenance(declaration) } : {}) } })
+    if (candidates.length !== 1 || targets.length !== 1 || !declaration?.body || rel(declaration.getSourceFile().fileName) !== wrapper.path) return invalid('missing or ambiguous declared wrapper')
+    const returns = descendants(declaration.body, ts.isReturnStatement)
+    const calls = descendants(declaration.body, n => ts.isCallExpression(n) && ts.isPropertyAccessExpression(n.expression)
+      && n.expression.name.text === wrapper.target.method && new RegExp(wrapper.target.receiver).test(receiverName(n.expression.expression)))
+    if (calls.length !== 1 || returns.length !== 1) return invalid('unsupported or ambiguous wrapper forwarding')
+    const call = calls[0]
+    const returned = returns[0].expression
+    if (returned !== call && !(returned && ts.isAwaitExpression(returned) && returned.expression === call)) return invalid('wrapper does not return the declared forwarding call')
+    const parameters = declaration.parameters.map(p => checker.getSymbolAtLocation(p.name))
+    const indexes = [...targets[0].operationArgs, targets[0].paramsArg]
+    const argumentMap = indexes.map(i => {
+      const arg = call.arguments[i]
+      return arg && ts.isIdentifier(arg) ? parameters.indexOf(checker.getSymbolAtLocation(arg)) : -1
+    })
+    // No constant propagation through assignments, mutation, spreads or arbitrary expressions.
+    const writes = descendants(declaration.body, n => (ts.isBinaryExpression(n) && n.operatorToken.kind >= ts.SyntaxKind.FirstAssignment && n.operatorToken.kind <= ts.SyntaxKind.LastAssignment)
+      || ((ts.isPrefixUnaryExpression(n) || ts.isPostfixUnaryExpression(n)) && [ts.SyntaxKind.PlusPlusToken, ts.SyntaxKind.MinusMinusToken].includes(n.operator)))
+    if (argumentMap.includes(-1) || writes.length) return invalid('unsupported wrapper argument transformation')
+    return { boundary: { ...targets[0], operationArgs: argumentMap.slice(0, -1), paramsArg: argumentMap.at(-1) },
+      routing: { coverage: 'extracted', argumentMap, wrapper: provenance(declaration), forwarding: provenance(call) } }
+  }
+  const unwrap = node => {
+    while (node && (ts.isAsExpression(node) || ts.isSatisfiesExpression(node) || ts.isParenthesizedExpression(node))) node = node.expression
+    return node
+  }
+  const propertyName = node => node && (ts.isIdentifier(node) || ts.isStringLiteralLike(node)) ? node.text : null
+  function objectProperties(node) {
+    node = unwrap(node)
+    if (!node || !ts.isObjectLiteralExpression(node) || node.properties.some(p => !p.name || propertyName(p.name) === null)) return null
+    const names = node.properties.map(p => propertyName(p.name))
+    return new Set(names).size === names.length ? new Map(node.properties.map(p => [propertyName(p.name), p])) : null
+  }
+  function declaredFunction(program, selector) {
+    const source = program.getSourceFile(resolve(root, selector.path))
+    if (!source) return null
+    const matches = descendants(source, n => (ts.isFunctionLike(n) && n.body && n.name && propertyName(n.name) === selector.function
+      && (!selector.receiver || (n.parent.name && propertyName(n.parent.name) === selector.receiver)))
+      || (ts.isVariableDeclaration(n) && propertyName(n.name) === selector.function && n.initializer && ts.isFunctionLike(n.initializer)))
+    return matches.length === 1 ? (ts.isVariableDeclaration(matches[0]) ? matches[0].initializer : matches[0]) : null
+  }
+  function transportEvidence(program, declaration, domain, verb) {
+    const nodes = []
+    const unknown = reason => ({ method: declaration.method, coverage: 'unknown', reason, evidence: nodes.map(provenance) })
+    const source = program.getSourceFile(resolve(root, declaration.path))
+    if (!source) return unknown('missing transport source')
+    let handlers
+    if (declaration.function) handlers = [declaredFunction(program, declaration)].filter(Boolean)
+    else handlers = descendants(source, n => ts.isSwitchStatement(n) && print(n.expression) === declaration.switch)
+      .flatMap(n => n.caseBlock.clauses.filter(c => ts.isCaseClause(c) && literalValues(c.expression)?.includes(declaration.operation)))
+    if (handlers.length !== 1) return unknown('missing or ambiguous transport handler')
+    const handler = handlers[0]
+    nodes.push(handler, enclosing(handler))
+    const forwards = descendants(handler, n => ts.isCallExpression(n) && print(n.expression) === declaration.forward)
+    if (forwards.length !== 1 || print(forwards[0].arguments[0] ?? handler) !== 'domain' || print(forwards[0].arguments[1] ?? handler) !== 'verb') return unknown('missing or unsupported transport forwarding')
+    const dispatch = declaredFunction(program, declaration.dispatch)
+    if (!dispatch) return unknown('missing or ambiguous registration dispatcher')
+    nodes.push(dispatch)
+    for (const step of declaration.via ?? []) {
+      const fn = declaredFunction(program, step)
+      if (!fn) return unknown('missing or ambiguous intermediate route')
+      nodes.push(fn)
+      const forwarded = descendants(fn.body, n => ts.isCallExpression(n) && print(n.expression) === step.forward)
+      if (forwarded.length !== 1 || checker.getSymbolAtLocation(forwarded[0].arguments[0]) !== checker.getSymbolAtLocation(fn.parameters[0]?.name)
+        || checker.getSymbolAtLocation(forwarded[0].arguments[1]) !== checker.getSymbolAtLocation(fn.parameters[1]?.name)) return unknown('unsupported intermediate argument forwarding')
+    }
+    const lookup = descendants(dispatch.body, n => ts.isVariableDeclaration(n) && n.initializer && ts.isCallExpression(n.initializer)
+      && ts.isPropertyAccessExpression(n.initializer.expression) && n.initializer.expression.name.text === 'find'
+      && print(n.initializer.expression.expression) === declaration.dispatch.collection)
+    if (lookup.length !== 1) return unknown('missing or ambiguous registration lookup')
+    const predicate = lookup[0].initializer.arguments[0]
+    const condition = predicate && ts.isArrowFunction(predicate) ? predicate.body : null
+    const nameAccess = condition && ts.isBinaryExpression(condition) ? condition.left : null
+    if (!condition || !ts.isBinaryExpression(condition) || condition.operatorToken.kind !== ts.SyntaxKind.EqualsEqualsEqualsToken
+      || !ts.isPropertyAccessExpression(nameAccess) || nameAccess.name.text !== 'name'
+      || checker.getSymbolAtLocation(nameAccess.expression) !== checker.getSymbolAtLocation(predicate.parameters[0]?.name)
+      || checker.getSymbolAtLocation(condition.right) !== checker.getSymbolAtLocation(dispatch.parameters[0]?.name)) return unknown('unsupported registration name selection')
+    const calls = descendants(dispatch.body, n => ts.isCallExpression(n) && ts.isPropertyAccessExpression(n.expression)
+      && n.expression.name.text === declaration.method && checker.getSymbolAtLocation(n.expression.expression) === checker.getSymbolAtLocation(lookup[0].name))
+    if (calls.length !== 1 || checker.getSymbolAtLocation(calls[0].arguments[0]) !== checker.getSymbolAtLocation(dispatch.parameters[1]?.name)
+      || checker.getSymbolAtLocation(calls[0].arguments[1]) !== checker.getSymbolAtLocation(dispatch.parameters[2]?.name)) return unknown('unsupported registration verb or args forwarding')
+    let allowlisted = null
+    if (declaration.allowlist) {
+      const allow = declaration.allowlist
+      const allowSource = program.getSourceFile(resolve(root, allow.path))
+      const registries = allowSource ? descendants(allowSource, n => ts.isVariableDeclaration(n) && propertyName(n.name) === allow.registry) : []
+      if (registries.length !== 1) return unknown('missing or ambiguous transport allowlist')
+      nodes.push(registries[0])
+      if (allow.kind === 'verbs') {
+        const domains = objectProperties(registries[0].initializer)
+        const verbs = domains && domains.has(domain) ? objectProperties(domains.get(domain).initializer) : null
+        allowlisted = domains && (!domains.has(domain) || verbs) ? !!verbs?.has(verb) : null
+      } else if (allow.kind === 'domains') {
+        const list = unwrap(registries[0].initializer)
+        allowlisted = list && ts.isArrayLiteralExpression(list) && list.elements.every(ts.isStringLiteralLike) ? list.elements.some(e => e.text === domain) : null
+      }
+      if (allowlisted !== true) return { ...unknown(allowlisted === false ? 'route absent from transport allowlist' : 'dynamic or unsupported transport allowlist'), allowlisted }
+    }
+    // DI and alternative branches are retained for evaluation, never asserted as a proven call graph.
+    const directlyBound = checker.getResolvedSignature(forwards[0])?.declaration === dispatch
+    return { method: declaration.method, coverage: directlyBound ? 'extracted' : 'unknown', allowlisted,
+      ...(!directlyBound ? { reason: 'transport-to-dispatch binding requires semantic evaluation' } : {}), evidence: nodes.map(provenance) }
+  }
+  function domainProviders(program, source, path) {
+    for (const boundary of config.domainRoutes ?? []) {
+      if (!new RegExp(boundary.pathPattern).test(path)) continue
+      for (const registration of descendants(source, ts.isObjectLiteralExpression)) {
+        const type = checker.getContextualType(registration) ?? checker.getTypeAtLocation(registration)
+        if (type.aliasSymbol?.name !== boundary.registrationType && type.symbol?.name !== boundary.registrationType) continue
+        const properties = objectProperties(registration)
+        const names = properties?.get('name')?.initializer
+        const domain = names && ts.isStringLiteralLike(unwrap(names)) ? unwrap(names).text : null
+        if (!domain) { gap(path, 'dynamic or unsupported domain registration', print(registration)); continue }
+        for (const method of ['read', 'command']) {
+          const property = properties.get(method)
+          const handler = property && (ts.isMethodDeclaration(property) ? property : unwrap(property.initializer))
+          if (!handler) continue
+          if (!ts.isFunctionLike(handler) || !handler.body) { gap(path, 'unsupported domain handler', print(property)); continue }
+          const switches = descendants(handler.body, n => ts.isSwitchStatement(n)
+            && checker.getSymbolAtLocation(n.expression) === checker.getSymbolAtLocation(handler.parameters[0]?.name))
+          const cases = switches.flatMap(dispatch => dispatch.caseBlock.clauses.flatMap((clause, i, clauses) => {
+            if (!ts.isCaseClause(clause)) return []
+            let body = clause
+            for (let j = i + 1; !body.statements.length && j < clauses.length; j++) body = clauses[j]
+            return [{ expression: clause.expression, body, guarded: false }]
+          }))
+          for (const branch of descendants(handler.body, ts.isIfStatement)) {
+            const condition = branch.expression
+            if (!ts.isBinaryExpression(condition) || ![ts.SyntaxKind.EqualsEqualsEqualsToken, ts.SyntaxKind.ExclamationEqualsEqualsToken].includes(condition.operatorToken.kind)) continue
+            if (checker.getSymbolAtLocation(condition.left) !== checker.getSymbolAtLocation(handler.parameters[0]?.name)) continue
+            cases.push({ expression: condition.right, body: handler, guarded: true })
+          }
+          if (!cases.length) { gap(path, 'domain handler has no statically supported verb dispatch', print(handler)); continue }
+          for (const {expression, body, guarded} of cases) {
+            const verbs = literalValues(expression)
+            if (!verbs || verbs.length !== 1) { gap(path, 'dynamic domain verb', print(expression)); continue }
+            const verb = verbs[0]
+            const transports = boundary.transports.filter(t => t.method === method).map(t => transportEvidence(program, t, domain, verb))
+            const routing = { domain, verb, method, registration: provenance(registration), transports }
+            const implementation = reference([print(registration), ...transports.flatMap(t => t.evidence.map(e => evidence.get(e.implementation)))].join('\n'))
+            const incomplete = guarded || !transports.length || transports.every(t => t.coverage === 'unknown')
+            providers.push({ protocol: boundary.protocol, operation: `${domain}.${verb}`, path, scope: method, routing,
+              request: handler.parameters.map(p => ({ name: print(p.name), shape: shape(checker.getTypeAtLocation(p)) })),
+              response: responseEvidence(body), implementation, coverage: incomplete ? 'unknown' : 'extracted' })
+            gap(path, 'domain route validation, registration lifecycle and conditional dispatch require semantic evaluation', `${domain}.${verb} (${method})`)
+            for (const transport of transports) if (transport.coverage === 'unknown') gap(path, transport.reason, `${domain}.${verb} (${method})`)
+          }
+        }
+      }
+    }
+  }
   for (const group of groups.values()) {
   const program = ts.createProgram(group.files, group.options)
   checker = program.getTypeChecker()
@@ -168,10 +336,11 @@ export function extractInventory({ root, config, typescript: ts }) {
       if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
         const method = node.expression.name.text
         const receiver = checker.typeToString(checker.getTypeAtLocation(node.expression.expression))
-        const boundary = config.consumers.find(c => c.method === method && new RegExp(c.receiver).test(receiver))
+        const wrapper = wrapperCall(node)
+        const boundary = wrapper?.boundary ?? config.consumers.find(c => c.method === method && new RegExp(c.receiver).test(receiver))
         if (boundary) {
           const segments = boundary.operationArgs.map(i => literalValues(node.arguments[i]))
-          const dynamic = segments.some(s => s === null)
+          const dynamic = !!wrapper?.reason || segments.some(s => s === null) || (!!wrapper && segments.some(s => s.length !== 1))
           const operations = dynamic ? [null] : segments.reduce((a, b) => a.flatMap(x => b.map(y => x ? `${x}.${y}` : y)), [''])
           const fn = enclosing(node)
           const context = print(fn)
@@ -182,18 +351,33 @@ export function extractInventory({ root, config, typescript: ts }) {
           const request = node.arguments[boundary.paramsArg]
           for (const operation of operations) consumers.push({ protocol: boundary.protocol, operation, path, receiver, method,
             required: !capability, ...(capability ? { capability } : {}),
+            ...(wrapper ? { routing: wrapper.routing } : {}),
             request: request ? { expression: print(request), shape: shape(checker.getTypeAtLocation(request)) } : null,
             response: shape(checker.getTypeAtLocation(node)), handling: reference(context), call: print(node),
             coverage: dynamic ? 'unknown' : 'extracted' })
-          if (dynamic) gap(path, 'dynamic operation name; caller coverage remains unverified', print(node))
+          if (dynamic) gap(path, wrapper?.reason ?? 'dynamic operation name; caller coverage remains unverified', print(node))
         } else if (config.consumers.some(c => c.method === method)) {
           gap(path, 'unclassified boundary candidate; receiver is ' + receiver, print(node))
         }
       }
       ts.forEachChild(node, visit)
     }
+    domainProviders(program, source, path)
     visit(source)
   }
+  }
+  const registrations = new Map()
+  for (const provider of providers.filter(p => p.routing)) {
+    const key = `${provider.protocol}:${provider.routing.domain}`
+    if (!registrations.has(key)) registrations.set(key, new Set())
+    registrations.get(key).add(canonical(provider.routing.registration))
+  }
+  for (const provider of providers.filter(p => p.routing)) {
+    if (registrations.get(`${provider.protocol}:${provider.routing.domain}`).size > 1) {
+      provider.coverage = 'unknown'
+      provider.routing.reason = 'ambiguous domain registration'
+      gap(provider.path, 'ambiguous domain registration', provider.routing.domain)
+    }
   }
   for (const boundary of config.providers) if (boundary.path && !sources.some(s => s.path === boundary.path)) throw new Error(`Missing provider source: ${boundary.path}`)
   const coverage = { complete: gaps.length === 0, gaps: sorted(gaps), scope: config.roots, policy: 'Unknown coverage must remain unverified. Extracted types and source are evidence, never a compatibility verdict.' }
