@@ -1407,13 +1407,24 @@ export class AccountNotFoundError extends CoreError {
   }
 }
 
-/** v7 — `account.remove` while bees still reference the account. */
+/** v7/v28 — `account.remove` while bees or admission claims still reference the account. */
 export class AccountReferencedError extends CoreError {
   readonly beeIds: string[];
+  readonly claimIds: string[];
 
-  constructor(id: string, beeIds: string[]) {
-    super(`account ${id} is referenced by ${beeIds.length} bee(s): ${beeIds.join(", ")} — swap or delete them first`);
+  constructor(id: string, beeIds: string[], claimIds: string[] = []) {
+    const references = [
+      ...(beeIds.length > 0 ? [`${beeIds.length} bee(s): ${beeIds.join(", ")}`] : []),
+      ...(claimIds.length > 0 ? [`${claimIds.length} admission claim(s): ${claimIds.join(", ")}`] : []),
+    ].join("; ");
+    const remedy = claimIds.length === 0
+      ? "swap or delete them first"
+      : beeIds.length === 0
+      ? "release or expire the claims first"
+      : "swap/delete the bees and release/expire the claims first";
+    super(`account ${id} is referenced by ${references} — ${remedy}`);
     this.beeIds = beeIds;
+    this.claimIds = claimIds;
   }
 }
 

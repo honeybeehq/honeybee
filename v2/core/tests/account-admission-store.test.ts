@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { openCoreStore, replayAudit, SCHEMA_VERSION } from "../src/index.ts";
+import { AccountReferencedError, openCoreStore, replayAudit, SCHEMA_VERSION } from "../src/index.ts";
 
 test("admission store: reservations are durable, idempotent, and generation-reconciled", () => {
   const dir = mkdtempSync(join(tmpdir(), "hb-admission-store-"));
@@ -96,6 +96,49 @@ test("admission store: a v27 database gains the reservation ledger without losin
     assert.equal((check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string }).value, String(SCHEMA_VERSION));
     assert.ok(check.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='account_admission_reservations'").get());
     check.close();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("admission store: an account with a live shared claim cannot be removed", () => {
+  const dir = mkdtempSync(join(tmpdir(), "hb-admission-remove-"));
+  try {
+    let now = 1_000;
+    const store = openCoreStore(join(dir, "core.sqlite3"), { now: () => now, ephemeral: true });
+    const account = store.createAccount({ id: "codex-claimed", harness: "codex", homePath: join(dir, "home"), label: "claimed" });
+    const claim = store.reserveAccountAdmission({
+      id: "claim-remove", requestKey: "claim-remove-key", scope: "codex:provider-accounts", account: account.id,
+      operation: "spawn", units: 1, expiresAt: now + 60_000, reconcileAfterGeneration: 0, receipt: { version: 1 },
+    });
+    assert.throws(() => store.removeAccount(account.id), (error: unknown) =>
+      error instanceof AccountReferencedError && error.claimIds[0] === claim.id);
+    now += 60_001;
+    assert.equal(store.removeAccount(account.id).id, account.id, "an expired abandoned hold no longer owns the account");
+    store.close();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("admission store: deleting claimed work releases its hold in the same transaction", () => {
+  const dir = mkdtempSync(join(tmpdir(), "hb-admission-delete-"));
+  try {
+    const now = 1_000;
+    const store = openCoreStore(join(dir, "core.sqlite3"), { now: () => now, ephemeral: true });
+    const account = store.createAccount({ id: "codex-delete", harness: "codex", homePath: join(dir, "home"), label: "delete" });
+    const { bee } = store.createBee({ id: "claimed-bee", name: "claimed", agent: "codex", substrate: "hsr", cwd: dir, account: account.id });
+    const claim = store.reserveAccountAdmission({
+      id: "claim-delete", requestKey: "claim-delete-key", scope: "codex:provider-accounts", account: account.id,
+      operation: "swap", units: 1, expiresAt: now + 60_000, reconcileAfterGeneration: 1, receipt: { version: 1 },
+    });
+    store.bindAccountAdmission(claim.id, bee.id);
+    assert.equal(store.listUnreconciledAccountAdmissions(now).length, 1);
+    store.deleteBee(bee.id);
+    assert.equal(store.getAccountAdmission(claim.id)?.releasedAt, now);
+    assert.equal(store.listUnreconciledAccountAdmissions(now).length, 0);
+    assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
+    store.close();
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

@@ -217,10 +217,28 @@ export interface RemoteAccountActivityFact {
  */
 export interface AccountAllocationContext {
   version: 1;
+  authority: AccountAllocationAuthority;
   scope: string;
   revision: string;
   observedAt: number;
   complete: boolean;
+  accounts: RemoteAccountActivityFact[];
+}
+
+export interface AccountAllocationAuthority {
+  node: string;
+  epoch: string;
+}
+
+/** One node's authoritative allocation facts, sampled at one store revision. */
+export interface AccountNodeActivity {
+  version: 1;
+  node: string;
+  authority: AccountAllocationAuthority;
+  scope: string;
+  revision: string;
+  observedAt: number;
+  freshUntil: number;
   accounts: RemoteAccountActivityFact[];
 }
 
@@ -246,9 +264,12 @@ export interface AccountAdmissionClaim {
   account: string;
   operation: AccountAdmissionOperation;
   units: number;
+  /** Effective provider model used for model-scoped grants/windows. */
+  model: string | null;
   sourceAccount: string | null;
   createdAt: number;
   expiresAt: number;
+  authority: AccountAllocationAuthority;
   target: { node: string; workId: string; expectedGeneration: number };
   allocation: AccountAllocationReceipt;
 }
@@ -764,6 +785,8 @@ export class AccountsService {
   private readonly claudeRefreshes = new Map<string, Promise<ClaudeRefreshOutcome>>();
   /** Grok/Kimi refresh tokens also rotate; share the whole provider read. */
   private readonly secondaryProviderFetches = new Map<string, Promise<PutAccountLimitsInput>>();
+  /** Active-admission freshness probes join per account, including Claude. */
+  private readonly admissionRefreshes = new Map<string, Promise<void>>();
   /**
    * Auto picks not yet visible as runtimes (HIVE-80 reservation): each pick
    * debits its account for AUTO_PICK_DEBIT_TTL_MS so back-to-back spawns
@@ -951,6 +974,39 @@ export class AccountsService {
   }
 
   /**
+   * Read-only per-node activity for Apiary aggregation. These facts come from
+   * the same store reads used by admission, including queued starts,
+   * undelivered mail and bound claim identities; Apiary need not infer them.
+   */
+  nodeActivity(harness: string): AccountNodeActivity {
+    const node = this.cfg.accounts.allocationNodeId;
+    const authority = this.cfg.accounts.allocationOwner;
+    if (!node || !authority) throw new Error("account allocation identity is not configured");
+    const observedAt = this.now();
+    const accounts = this.store.listAccounts({ harness }).map((account) => {
+      const activity = this.localActivity(account.id, observedAt);
+      return {
+        account: account.id,
+        active: activity.active,
+        recent: activity.recent,
+        pending: activity.pending,
+        ongoingUnits: activity.ongoingUnits,
+        observedClaimIds: [...activity.observedClaimIds].sort(),
+      };
+    });
+    return {
+      version: 1,
+      node,
+      authority,
+      scope: this.allocationScope(harness),
+      revision: `${node}:${this.store.lastAuditSeq()}`,
+      observedAt,
+      freshUntil: observedAt + this.cfg.accounts.allocationActivityFreshMs,
+      accounts,
+    };
+  }
+
+  /**
    * Admission requires a provider observation fresh enough for the decision,
    * including the singleton case. Provider I/O happens before the store
    * transaction; selection then uses the resulting immutable rows.
@@ -965,11 +1021,24 @@ export class AccountsService {
       const row = this.store.getAccountLimits(id);
       return !row || !row.readable || now - row.fetchedAt > this.cfg.accounts.allocationQuotaFreshMs;
     });
-    if (stale.length > 0) await Promise.all(stale.map((id) => this.refreshLimits([id])));
+    if (stale.length > 0) await Promise.all(stale.map(async (id) => {
+      const joined = this.admissionRefreshes.get(id);
+      if (joined) return joined;
+      const pending = this.refreshLimits([id]).then(() => undefined);
+      this.admissionRefreshes.set(id, pending);
+      try {
+        await pending;
+      } finally {
+        if (this.admissionRefreshes.get(id) === pending) this.admissionRefreshes.delete(id);
+      }
+    }));
   }
 
   private contextIsFresh(context: AccountAllocationContext | null | undefined, scope: string, now: number): context is AccountAllocationContext {
     if (!context || context.version !== 1 || context.scope !== scope || !context.complete) return false;
+    const owner = this.cfg.accounts.allocationOwner;
+    if (!owner || !context.authority || typeof context.authority !== "object"
+      || context.authority.node !== owner.node || context.authority.epoch !== owner.epoch) return false;
     if (!Number.isFinite(context.observedAt) || context.observedAt > now + 60_000) return false;
     if (now - context.observedAt > this.cfg.accounts.allocationActivityFreshMs) return false;
     if (typeof context.revision !== "string" || context.revision.length === 0 || context.revision.length > 128) return false;
@@ -990,14 +1059,23 @@ export class AccountsService {
     });
   }
 
-  private localActivity(accountId: string, now: number): { active: number; recent: number; pending: number; ongoingUnits: number } {
+  private localActivity(accountId: string, now: number): {
+    active: number;
+    recent: number;
+    pending: number;
+    ongoingUnits: number;
+    observedClaimIds: ReadonlySet<string>;
+  } {
     let active = 0;
     let recent = 0;
     let pending = 0;
     let ongoingUnits = 0;
+    const observedClaimIds = new Set<string>();
     const grace = this.cfg.accounts.allocationRecentGraceMs;
-    const transfers = this.store.listAccountAdmissions()
-      .filter((reservation) => reservation.beeId !== null && reservation.sourceAccount !== null && reservation.sourceAccount !== reservation.account);
+    const boundReservations = this.store.listAccountAdmissions()
+      .filter((reservation) => reservation.beeId !== null && reservation.releasedAt === null && reservation.expiresAt > now);
+    const transfers = boundReservations
+      .filter((reservation) => reservation.sourceAccount !== null && reservation.sourceAccount !== reservation.account);
     for (const bee of this.store.listBees()) {
       const runtime = this.store.currentRuntime(bee.id);
       const transfer = transfers.find((reservation) => reservation.beeId === bee.id
@@ -1009,24 +1087,32 @@ export class AccountsService {
         || this.store.listCommands({ beeId: bee.id }).some((command) =>
           (command.status === "queued" || command.status === "running")
           && (command.verb === "spawn" || command.verb === "revive" || command.verb === "send_wake"));
+      let represented = false;
       if (isActive && runtime) {
         active += 1;
+        represented = true;
         // One accepted start is one fair-share unit immediately; sessions
         // then continue accruing instead of receiving capped elapsed credit.
         ongoingUnits += Math.max(1, (now - runtime.startedAt) / 3_600_000);
+      } else if (hasPending) {
+        pending += 1;
+        represented = true;
+        ongoingUnits += 1;
       } else {
         const latest = Math.max(runtime?.updatedAt ?? 0, bee.lastOutputAt ?? 0);
         if (latest > 0 && now - latest <= grace) {
           recent += 1;
+          represented = true;
           ongoingUnits += Math.max(0, (grace - (now - latest)) / Math.max(1, grace));
         }
       }
-      if (hasPending && !isActive) {
-        pending += 1;
-        ongoingUnits += 1;
+      if (represented) {
+        for (const reservation of boundReservations) {
+          if (reservation.beeId === bee.id && reservation.account === accountId) observedClaimIds.add(reservation.id);
+        }
       }
     }
-    return { active, recent, pending, ongoingUnits };
+    return { active, recent, pending, ongoingUnits, observedClaimIds };
   }
 
   private admissionCandidate(
@@ -1089,7 +1175,7 @@ export class AccountsService {
     }
     const plan = row?.plan?.toLowerCase() ?? "";
     const capacityUnits = this.cfg.accounts.allocationPlanCapacityUnits[plan] ?? 1;
-    const observedClaims = new Set(remote?.observedClaimIds ?? []);
+    const observedClaims = new Set([...local.observedClaimIds, ...(remote?.observedClaimIds ?? [])]);
     const reservations = this.store.listUnreconciledAccountAdmissions(now, {
       scope: this.allocationScope(account.harness),
       account: account.id,
@@ -1115,8 +1201,10 @@ export class AccountsService {
     const scope = this.allocationScope(harness);
     const context = options.context ?? null;
     const contextFresh = this.contextIsFresh(context, scope, now);
+    const excluded = new Set(options.excludeAccountIds ?? []);
+    if (options.operation === "swap" && options.sourceAccount) excluded.add(options.sourceAccount);
     const accounts = this.store.listAccounts({ harness }).filter((account) =>
-      !options.excludeAccountIds?.has(account.id) && (!options.onlyAccountIds || options.onlyAccountIds.has(account.id)));
+      !excluded.has(account.id) && (!options.onlyAccountIds || options.onlyAccountIds.has(account.id)));
     const candidates = accounts.map((account) => this.admissionCandidate(account, options, context, contextFresh, now));
     const decision = selectAccountAdmission(candidates, {
       ...DEFAULT_ACCOUNT_ADMISSION_POLICY,

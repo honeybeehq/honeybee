@@ -179,6 +179,8 @@ test("config.6 (spec 08): accounts settings default (vault/homes under ~/.hive, 
     assert.equal(defaults.accounts.loginTimeoutMs, 10 * 60 * 1000);
     assert.equal(defaults.accounts.exhaustionCoolOffMs, 5 * 60 * 60 * 1000);
     assert.equal(defaults.accounts.allocationMode, "shadow");
+    assert.equal(defaults.accounts.allocationNodeId, null);
+    assert.equal(defaults.accounts.allocationOwner, null);
     assert.equal(defaults.accounts.allocationQuotaFreshMs, 2 * 60 * 1000);
     assert.equal(defaults.accounts.allocationActivityFreshMs, 2 * 60 * 1000);
     assert.equal(defaults.accounts.allocationRecentGraceMs, 15 * 60 * 1000);
@@ -190,7 +192,8 @@ test("config.6 (spec 08): accounts settings default (vault/homes under ~/.hive, 
       join(dir, "config.json"),
       JSON.stringify({
         accounts: { vaultDir: "/v", homesDir: "/h", limitsStaleMs: 5, limitsRefreshMs: 0, tmuxSocket: "s",
-          allocationMode: "active", allocationPlanCapacityUnits: { Pro: 3 } },
+          allocationMode: "active", allocationNodeId: "metal1", allocationOwner: { node: "metal1", epoch: "owner-v1" },
+          allocationPlanCapacityUnits: { Pro: 3 } },
         agents: { claude: { command: "claude", login: { command: "claude", args: ["auth", "login"] } } },
       }),
     );
@@ -201,6 +204,8 @@ test("config.6 (spec 08): accounts settings default (vault/homes under ~/.hive, 
     assert.equal(cfg.accounts.limitsRefreshMs, 0);
     assert.equal(cfg.accounts.tmuxSocket, "s");
     assert.equal(cfg.accounts.allocationMode, "active");
+    assert.equal(cfg.accounts.allocationNodeId, "metal1");
+    assert.deepEqual(cfg.accounts.allocationOwner, { node: "metal1", epoch: "owner-v1" });
     assert.deepEqual(cfg.accounts.allocationPlanCapacityUnits, { pro: 3 });
     assert.deepEqual(cfg.agents.claude?.login, { command: "claude", args: ["auth", "login"] });
     for (const bad of [
@@ -209,6 +214,9 @@ test("config.6 (spec 08): accounts settings default (vault/homes under ~/.hive, 
       { accounts: { limitsStaleMs: "1h" } },
       { accounts: { tmuxSocket: "" } },
       { accounts: { allocationMode: "on" } },
+      { accounts: { allocationMode: "active" } },
+      { accounts: { allocationNodeId: "" } },
+      { accounts: { allocationOwner: { node: "metal1" } } },
       { accounts: { allocationQuotaFreshMs: 0 } },
       { accounts: { allocationPlanCapacityUnits: { pro: 0 } } },
       { agents: { claude: { command: "claude", login: "claude" } } },

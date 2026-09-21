@@ -62,6 +62,9 @@ function rig(config: NodeConfigFile = {}, opts: { start?: number } = {}): Rig {
       tmuxSocket: `hb-v2-acct-${process.pid}-${Math.random().toString(36).slice(2, 8)}`,
       limitsRefreshMs: 0,
       loginTimeoutMs: 15_000,
+      ...(config.accounts?.allocationMode === "active"
+        ? { allocationNodeId: "service-test", allocationOwner: { node: "service-test", epoch: "test-epoch" } }
+        : {}),
       ...(config.accounts ?? {}),
     },
   };
@@ -200,7 +203,7 @@ test("allocation.1: active owner admissions are durable, proportional, and fail 
       });
     }
     const scope = svc.allocationScope("claude");
-    const context = { version: 1 as const, scope, revision: "fleet-1", observedAt: r.now(), complete: true, accounts: [] };
+    const context = { version: 1 as const, authority: { node: "service-test", epoch: "test-epoch" }, scope, revision: "fleet-1", observedAt: r.now(), complete: true, accounts: [] };
     const counts = new Map<string, number>();
     for (let i = 0; i < 8; i += 1) {
       const result = svc.admitNewWork("claude", { operation: "spawn", requestKey: `node-race-${i}`, context });
@@ -215,6 +218,12 @@ test("allocation.1: active owner admissions are durable, proportional, and fail 
     const unknown = svc.admitNewWork("claude", { operation: "spawn", requestKey: "missing-remote", context: null });
     assert.equal(unknown.ok, false);
     if (!unknown.ok) assert.equal(unknown.receipt.reason, "activity_unknown");
+    const staleOwner = svc.admitNewWork("claude", {
+      operation: "spawn", requestKey: "wrong-owner-epoch",
+      context: { ...context, authority: { node: "service-test", epoch: "old-epoch" } },
+    });
+    assert.equal(staleOwner.ok, false);
+    if (!staleOwner.ok) assert.equal(staleOwner.receipt.reason, "activity_unknown");
   } finally {
     r.cleanup();
   }
@@ -230,7 +239,7 @@ test("allocation.2: all protected accounts return a typed wait; there is no sing
       fetchedAt: r.now(),
       weekly: { usedPercent: 89, resetsAt: r.now() + 6 * DAY, windowMinutes: 10_080 },
     });
-    const context = { version: 1 as const, scope: svc.allocationScope("claude"), revision: "fleet-2", observedAt: r.now(), complete: true, accounts: [] };
+    const context = { version: 1 as const, authority: { node: "service-test", epoch: "test-epoch" }, scope: svc.allocationScope("claude"), revision: "fleet-2", observedAt: r.now(), complete: true, accounts: [] };
     const result = svc.admitNewWork("claude", { operation: "swap", requestKey: "cross-90", context });
     assert.equal(result.ok, false);
     if (!result.ok) {
@@ -257,7 +266,7 @@ test("allocation.3: authoritative local activity charges long sessions and lets 
     limitsRow(r, long.id, 10, 10, r.now() + 6 * DAY);
     limitsRow(r, idle.id, 10, 10, r.now() + 6 * DAY);
     const svc = service(r);
-    const context = { version: 1 as const, scope: svc.allocationScope("claude"), revision: "fleet-activity", observedAt: r.now(), complete: true, accounts: [] };
+    const context = { version: 1 as const, authority: { node: "service-test", epoch: "test-epoch" }, scope: svc.allocationScope("claude"), revision: "fleet-activity", observedAt: r.now(), complete: true, accounts: [] };
     const result = svc.admitNewWork("claude", { operation: "spawn", requestKey: "activity-pick", context });
     assert.equal(result.ok, true);
     if (result.ok) assert.equal(result.account.id, idle.id);
@@ -274,7 +283,7 @@ test("allocation.4: only fresh provider evidence after exhaustion reopens headro
     r.store.recordAccountExhaustion(account.id, r.now() + 1);
     r.setNow(r.now() + 2);
     const svc = service(r);
-    const context = { version: 1 as const, scope: svc.allocationScope("claude"), revision: "fleet-reset", observedAt: r.now(), complete: true, accounts: [] };
+    const context = { version: 1 as const, authority: { node: "service-test", epoch: "test-epoch" }, scope: svc.allocationScope("claude"), revision: "fleet-reset", observedAt: r.now(), complete: true, accounts: [] };
     const oldEvidence = svc.admitNewWork("claude", { operation: "spawn", requestKey: "before-refresh", context });
     assert.equal(oldEvidence.ok, false, "a low snapshot from before exhaustion is not restoration evidence");
 
@@ -292,7 +301,7 @@ test("allocation.5: a remotely observed claim replaces its owner hold without a 
     const account = addAccount(r, "claude", "shared");
     limitsRow(r, account.id, 87, 20, r.now() + DAY);
     const svc = service(r);
-    const base = { version: 1 as const, scope: svc.allocationScope("claude"), observedAt: r.now(), complete: true };
+    const base = { version: 1 as const, authority: { node: "service-test", epoch: "test-epoch" }, scope: svc.allocationScope("claude"), observedAt: r.now(), complete: true };
     const first = svc.admitNewWork("claude", {
       operation: "spawn", requestKey: "owner-hold", context: { ...base, revision: "before-remote", accounts: [] },
     });
@@ -314,6 +323,35 @@ test("allocation.5: a remotely observed claim replaces its owner hold without a 
       ] },
     });
     assert.equal(reconciled.ok, true, "remote activity replaces the matching owner hold exactly once");
+  } finally {
+    r.cleanup();
+  }
+});
+
+test("allocation.6: node activity reports authoritative pending work, freshness, and observed claims", () => {
+  const r = rig({ accounts: { allocationMode: "active" } });
+  try {
+    const account = addAccount(r, "claude", "activity");
+    const { bee } = r.store.createBee({ id: "activity-bee", name: "activity", agent: "claude", substrate: "hsr", cwd: r.dir, account: account.id });
+    r.store.updateRuntimeState(bee.id, 1, "running", { pid: 1, pidStartedAt: r.now() });
+    r.store.updateRuntimeState(bee.id, 1, "stopped", { exitCause: "clean" });
+    const claim = r.store.reserveAccountAdmission({
+      id: "activity-claim", requestKey: "activity-claim-key", scope: "claude:provider-accounts", account: account.id,
+      operation: "spawn", units: 1, expiresAt: r.now() + 60_000, reconcileAfterGeneration: 1, receipt: { version: 1 },
+    });
+    r.store.bindAccountAdmission(claim.id, bee.id);
+    r.store.send(bee.id, "queued work", { sender: "operator" });
+    const activity = service(r).nodeActivity("claude");
+    assert.equal(activity.node, "service-test");
+    assert.deepEqual(activity.authority, { node: "service-test", epoch: "test-epoch" });
+    assert.equal(activity.scope, "claude:provider-accounts");
+    assert.equal(activity.observedAt, r.now());
+    assert.equal(activity.freshUntil, r.now() + r.cfg.accounts.allocationActivityFreshMs);
+    assert.match(activity.revision, /^service-test:\d+$/);
+    assert.deepEqual(activity.accounts, [{
+      account: account.id, active: 0, recent: 0, pending: 1, ongoingUnits: 1,
+      observedClaimIds: [claim.id],
+    }]);
   } finally {
     r.cleanup();
   }
@@ -868,6 +906,38 @@ test("limits.1a: Codex probes are per-home single-flight; transient failure keep
     assert.equal(invalidated?.weeklyPct, null);
     assert.equal(invalidated?.unreadableReason, "auth_failed");
     assert.equal(r.store.getAccount(account.id)?.status, "auth_needed");
+  } finally {
+    r.cleanup();
+  }
+});
+
+test("limits.1aa: concurrent active admissions join one fresh quota probe per account", async () => {
+  const r = rig({ accounts: { allocationMode: "active" } });
+  try {
+    let calls = 0;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    addAccount(r, "claude", "admission", {
+      vault: { ".credentials.json": JSON.stringify({ claudeAiOauth: {
+        accessToken: "admission-token", expiresAt: r.now() + DAY, subscriptionType: "max",
+      } }) },
+    });
+    const svc = service(r, {
+      fetchers: {
+        claudeUsage: async () => {
+          calls += 1;
+          await gate;
+          return { five_hour: { utilization: 5 }, seven_day: { utilization: 10 } };
+        },
+      },
+      keychainReader: async () => null,
+    });
+    const first = svc.ensureFreshAdmissionLimits("claude");
+    const second = svc.ensureFreshAdmissionLimits("claude");
+    await waitFor(() => (calls === 1 ? true : null), "single admission quota probe started");
+    release();
+    await Promise.all([first, second]);
+    assert.equal(calls, 1);
   } finally {
     r.cleanup();
   }

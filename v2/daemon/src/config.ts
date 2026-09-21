@@ -110,6 +110,10 @@ export interface AccountsConfig {
   exhaustionCoolOffMs?: number;
   /** Automatic-account admission rollout. `shadow` records decisions but preserves legacy placement. Default shadow. */
   allocationMode?: "shadow" | "active";
+  /** Stable Apiary node identity for this daemon's allocation RPCs. */
+  allocationNodeId?: string;
+  /** Fenced allocator identity every node trusts. Required in active mode. */
+  allocationOwner?: { node: string; epoch: string };
   /** Maximum age of provider quota used for a new automatic admission. Default 2 min. */
   allocationQuotaFreshMs?: number;
   /** Maximum age of the caller's all-other-nodes activity snapshot. Default 2 min. */
@@ -222,7 +226,11 @@ export interface ResolvedNodeConfig {
   sessionLogDir: string;
   agents: Record<string, AgentSpecConfig>;
   /** v7 (spec 08): resolved accounts settings (every field defaulted). */
-  accounts: Required<Omit<AccountsConfig, "tmuxSocket">> & { tmuxSocket: string | null };
+  accounts: Required<Omit<AccountsConfig, "tmuxSocket" | "allocationNodeId" | "allocationOwner">> & {
+    tmuxSocket: string | null;
+    allocationNodeId: string | null;
+    allocationOwner: { node: string; epoch: string } | null;
+  };
   naming: ResolvedNamingConfig;
 }
 
@@ -544,6 +552,28 @@ function accountsOf(raw: Record<string, unknown>): ResolvedNodeConfig["accounts"
   if (allocationMode !== "shadow" && allocationMode !== "active") {
     throw new ConfigError("config: accounts.allocationMode must be 'shadow' or 'active'");
   }
+  const allocationNodeId = a.allocationNodeId === undefined ? null : a.allocationNodeId;
+  if (allocationNodeId !== null && (typeof allocationNodeId !== "string" || allocationNodeId.length === 0 || allocationNodeId.length > 128)) {
+    throw new ConfigError("config: accounts.allocationNodeId must be a non-empty string of at most 128 characters");
+  }
+  const rawOwner = a.allocationOwner;
+  if (rawOwner !== undefined && (rawOwner === null || typeof rawOwner !== "object" || Array.isArray(rawOwner))) {
+    throw new ConfigError("config: accounts.allocationOwner must be {node,epoch}");
+  }
+  const ownerObject = rawOwner as Record<string, unknown> | undefined;
+  const allocationOwner = ownerObject === undefined ? null : {
+    node: ownerObject.node,
+    epoch: ownerObject.epoch,
+  };
+  if (allocationOwner !== null
+    && (typeof allocationOwner.node !== "string" || allocationOwner.node.length === 0 || allocationOwner.node.length > 128
+      || typeof allocationOwner.epoch !== "string" || allocationOwner.epoch.length === 0 || allocationOwner.epoch.length > 128
+      || Object.keys(ownerObject!).some((key) => key !== "node" && key !== "epoch"))) {
+    throw new ConfigError("config: accounts.allocationOwner must be bounded non-empty {node,epoch}");
+  }
+  if (allocationMode === "active" && (allocationNodeId === null || allocationOwner === null)) {
+    throw new ConfigError("config: active account allocation requires accounts.allocationNodeId and accounts.allocationOwner {node,epoch}");
+  }
   const rawCapacity = a.allocationPlanCapacityUnits;
   if (rawCapacity !== undefined && (rawCapacity === null || typeof rawCapacity !== "object" || Array.isArray(rawCapacity))) {
     throw new ConfigError("config: accounts.allocationPlanCapacityUnits must be an object of positive finite numbers");
@@ -571,6 +601,8 @@ function accountsOf(raw: Record<string, unknown>): ResolvedNodeConfig["accounts"
     loginTimeoutMs: num(a, "loginTimeoutMs", DEFAULTS.loginTimeoutMs),
     exhaustionCoolOffMs: num(a, "exhaustionCoolOffMs", DEFAULTS.exhaustionCoolOffMs),
     allocationMode,
+    allocationNodeId: allocationNodeId as string | null,
+    allocationOwner: allocationOwner as { node: string; epoch: string } | null,
     allocationQuotaFreshMs,
     allocationActivityFreshMs,
     allocationRecentGraceMs,

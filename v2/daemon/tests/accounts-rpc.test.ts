@@ -40,6 +40,7 @@ import type {
   AccountVerifyResult,
   AccountAdmissionAcquireResult,
   AccountAdmissionConfirmResult,
+  AccountActivityResult,
   SwapAccountResult,
 } from "../src/protocol.ts";
 import { openCoreStore, type MirrorAccountRow } from "../../core/src/index.ts";
@@ -422,14 +423,14 @@ test("rpc allocation owner: acquire is authoritative, claim swap is atomic, and 
     store.close();
   };
 
-  const successRig = makeDaemonDir({ accounts: { allocationMode: "active" } });
+  const successRig = makeDaemonDir({ accounts: { allocationMode: "active", allocationNodeId: "worker-1", allocationOwner: { node: "worker-1", epoch: "owner-v1" } } });
   let successDaemon: DaemonHandle | null = null;
   try {
     seed(successRig.dir, 5);
     successDaemon = await startDaemon(successRig.dir);
     const client = await successDaemon.client();
     const spawned = await client.request<SpawnResult>("spawn", { name: "owner-swap", agent: "stub", cwd: successRig.dir, account: "stub-source" });
-    const context = { version: 1, scope: "stub:provider-accounts", revision: "fleet-1", observedAt: Date.now(), complete: true, accounts: [] };
+    const context = { version: 1, authority: { node: "worker-1", epoch: "owner-v1" }, scope: "stub:provider-accounts", revision: "fleet-1", observedAt: Date.now(), complete: true, accounts: [] };
     await assert.rejects(
       client.request("bee.swapAccount", {
         beeId: spawned.beeId, account: "auto", allocationContext: context, idempotencyKey: "direct-auto-is-not-shared",
@@ -443,7 +444,6 @@ test("rpc allocation owner: acquire is authoritative, claim swap is atomic, and 
       operation: "swap",
       target: { node: "worker-1", workId: spawned.beeId, expectedGeneration: current.runtime?.generation ?? 0 },
       sourceAccount: "stub-source",
-      excludeAccountIds: ["stub-source"],
       allocationContext: context,
       idempotencyKey: "owner-acquire-swap-1",
     });
@@ -456,6 +456,12 @@ test("rpc allocation owner: acquire is authoritative, claim swap is atomic, and 
     assert.equal(swapped.to, "stub-target");
     assert.equal(swapped.allocation?.mode, "active");
     assert.equal(swapped.allocationClaimId, acquired.claim?.id);
+    await assert.rejects(
+      client.request("account.admission.release", {
+        claimId: acquired.claim?.id, reason: "lost apply reply", idempotencyKey: "cannot-release-applied-swap",
+      }),
+      (error: unknown) => error instanceof RpcError && error.code === "account_claim_refused",
+    );
     const confirmed = await client.request<AccountAdmissionConfirmResult>("account.admission.confirm", {
       claimId: acquired.claim?.id,
       target: { node: "worker-1", workId: spawned.beeId },
@@ -476,14 +482,14 @@ test("rpc allocation owner: acquire is authoritative, claim swap is atomic, and 
     successRig.cleanup();
   }
 
-  const waitRig = makeDaemonDir({ accounts: { allocationMode: "active" } });
+  const waitRig = makeDaemonDir({ accounts: { allocationMode: "active", allocationNodeId: "owner-wait", allocationOwner: { node: "owner-wait", epoch: "owner-v1" } } });
   let waitDaemon: DaemonHandle | null = null;
   try {
     seed(waitRig.dir, 95);
     waitDaemon = await startDaemon(waitRig.dir);
     const client = await waitDaemon.client();
     const spawned = await client.request<SpawnResult>("spawn", { name: "owner-wait", agent: "stub", cwd: waitRig.dir, account: "stub-source" });
-    const context = { version: 1, scope: "stub:provider-accounts", revision: "fleet-2", observedAt: Date.now(), complete: true, accounts: [] };
+    const context = { version: 1, authority: { node: "owner-wait", epoch: "owner-v1" }, scope: "stub:provider-accounts", revision: "fleet-2", observedAt: Date.now(), complete: true, accounts: [] };
     await assert.rejects(
       client.request("account.admission.acquire", {
         harness: "stub", operation: "swap", target: { node: "worker-2", workId: spawned.beeId, expectedGeneration: 0 },
@@ -513,8 +519,8 @@ test("rpc allocation owner: acquire is authoritative, claim swap is atomic, and 
 });
 
 test("rpc allocation owner serializes concurrent node admissions and a remote node consumes one claim once", async () => {
-  const ownerRig = makeDaemonDir({ accounts: { allocationMode: "active" } });
-  const workerRig = makeDaemonDir({ accounts: { allocationMode: "active" } });
+  const ownerRig = makeDaemonDir({ accounts: { allocationMode: "active", allocationNodeId: "owner-node", allocationOwner: { node: "owner-node", epoch: "owner-v1" } } });
+  const workerRig = makeDaemonDir({ accounts: { allocationMode: "active", allocationNodeId: "worker-real", allocationOwner: { node: "owner-node", epoch: "owner-v1" } } });
   let ownerDaemon: DaemonHandle | null = null;
   let workerDaemon: DaemonHandle | null = null;
   const seed = (dir: string) => {
@@ -543,9 +549,17 @@ test("rpc allocation owner serializes concurrent node admissions and a remote no
     });
     const view = await worker.request<ViewResult>("view", { beeId: spawned.beeId });
     const generation = view.runtime?.generation ?? 0;
-    const context = { version: 1, scope: "stub:provider-accounts", revision: "two-workers-same-owner", observedAt: Date.now(), complete: true, accounts: [
+    const context = { version: 1, authority: { node: "owner-node", epoch: "owner-v1" }, scope: "stub:provider-accounts", revision: "two-workers-same-owner", observedAt: Date.now(), complete: true, accounts: [
       { account: "stub-source", active: 1, recent: 0, pending: 0, ongoingUnits: 1 },
     ] };
+    await assert.rejects(
+      worker.request("account.admission.acquire", {
+        harness: "stub", operation: "swap", target: { node: "wrong-owner", workId: spawned.beeId, expectedGeneration: generation },
+        sourceAccount: "stub-source", allocationContext: context, idempotencyKey: "consumer-cannot-acquire",
+      }),
+      (error: unknown) => error instanceof RpcError && error.code === "account_wait"
+        && (error.details?.allocation as { reason?: string } | undefined)?.reason === "allocation_owner_required",
+    );
     const requests = ["node-a", "node-b"].map((node, index) => owner.request<AccountAdmissionAcquireResult>("account.admission.acquire", {
       harness: "stub", operation: "swap", target: { node, workId: `${spawned.beeId}-${index}`, expectedGeneration: generation },
       sourceAccount: "stub-source", excludeAccountIds: ["stub-source"], allocationContext: context,
@@ -602,7 +616,7 @@ test("rpc allocation owner serializes concurrent node admissions and a remote no
 });
 
 test("rpc allocation owner claim gates active automatic spawn while shadow acquisition remains observational", async () => {
-  const activeRig = makeDaemonDir({ accounts: { allocationMode: "active" } });
+  const activeRig = makeDaemonDir({ accounts: { allocationMode: "active", allocationNodeId: "active-node", allocationOwner: { node: "active-node", epoch: "owner-v1" } } });
   const shadowRig = makeDaemonDir();
   let activeDaemon: DaemonHandle | null = null;
   let shadowDaemon: DaemonHandle | null = null;
@@ -625,7 +639,7 @@ test("rpc allocation owner claim gates active automatic spawn while shadow acqui
     const active = await activeDaemon.client();
     const shadow = await shadowDaemon.client();
     const targetId = "claimed-spawn-id";
-    const activeContext = { version: 1, scope: "stub:provider-accounts", revision: "active-spawn", observedAt: Date.now(), complete: true, accounts: [] };
+    const activeContext = { version: 1, authority: { node: "active-node", epoch: "owner-v1" }, scope: "stub:provider-accounts", revision: "active-spawn", observedAt: Date.now(), complete: true, accounts: [] };
     await assert.rejects(
       active.request("spawn", { id: "unclaimed-spawn", name: "unclaimed", agent: "stub", cwd: activeRig.dir, account: "auto", allocationContext: activeContext }),
       (error: unknown) => error instanceof RpcError && error.code === "account_wait",
@@ -634,12 +648,48 @@ test("rpc allocation owner claim gates active automatic spawn while shadow acqui
       harness: "stub", operation: "spawn", target: { node: "active-node", workId: targetId, expectedGeneration: 0 },
       allocationContext: activeContext, idempotencyKey: "claimed-spawn-acquire",
     });
+    await assert.rejects(
+      active.request("spawn", {
+        id: targetId, name: "wrong-owner", agent: "stub", cwd: activeRig.dir, account: "auto",
+        allocationClaim: { ...acquired.claim!, authority: { node: "active-node", epoch: "old-owner" } },
+        idempotencyKey: "claimed-spawn-wrong-owner",
+      }),
+      (error: unknown) => error instanceof RpcError && error.code === "account_claim_refused",
+    );
+    await assert.rejects(
+      active.request("spawn", {
+        id: targetId, name: "wrong-target", agent: "stub", cwd: activeRig.dir, account: "auto",
+        allocationClaim: { ...acquired.claim!, target: { ...acquired.claim!.target, node: "other-node" } },
+        idempotencyKey: "claimed-spawn-wrong-target",
+      }),
+      (error: unknown) => error instanceof RpcError && error.code === "account_claim_refused",
+    );
+    await assert.rejects(
+      active.request("spawn", {
+        id: targetId, name: "keyless-claim", agent: "stub", cwd: activeRig.dir, account: "auto",
+        allocationClaim: acquired.claim,
+      }),
+      (error: unknown) => error instanceof RpcError && error.code === "invalid_request",
+    );
+    await assert.rejects(
+      active.request("spawn", {
+        id: targetId, name: "wrong-model", agent: "stub", cwd: activeRig.dir, account: "auto",
+        args: ["--model", "Fable"], allocationClaim: acquired.claim, idempotencyKey: "claimed-spawn-wrong-model",
+      }),
+      (error: unknown) => error instanceof RpcError && error.code === "account_claim_refused",
+    );
     const spawned = await active.request<SpawnResult>("spawn", {
       id: targetId, name: "claimed", agent: "stub", cwd: activeRig.dir, account: "auto",
       allocationClaim: acquired.claim, idempotencyKey: "claimed-spawn-apply",
     });
     assert.equal(spawned.account, "stub-only");
     assert.equal(spawned.allocationClaimId, acquired.claim?.id);
+    const activity = await active.request<AccountActivityResult>("account.activity", { harness: "stub" });
+    assert.equal(activity.node, "active-node");
+    assert.deepEqual(activity.authority, { node: "active-node", epoch: "owner-v1" });
+    assert.equal(activity.scope, "stub:provider-accounts");
+    assert.ok(activity.freshUntil > activity.observedAt);
+    assert.ok(activity.accounts[0]?.observedClaimIds?.includes(acquired.claim!.id));
 
     const shadowContext = { ...activeContext, revision: "shadow-spawn", observedAt: Date.now() };
     const observed = await shadow.request<AccountAdmissionAcquireResult>("account.admission.acquire", {

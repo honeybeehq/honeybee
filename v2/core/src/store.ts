@@ -2246,6 +2246,14 @@ export class CoreStore {
         this.stmt("UPDATE bees SET parent_id = NULL WHERE id = ?").run(childId);
         this.audit("bee.orphaned", childId, { beeId: childId, parentId: beeId, reason: "parent_deleted" });
       }
+      // A bound admission is represented by this bee's pending/runtime facts.
+      // Deletion removes those facts, so close the claim in the same
+      // transaction instead of letting it reappear as an unobserved hold.
+      for (const reservation of this.listAccountAdmissions()) {
+        if (reservation.beeId === beeId && reservation.releasedAt === null) {
+          this.releaseAccountAdmission(reservation.id);
+        }
+      }
       // ON DELETE CASCADE removes runtimes, flags, mailbox, questions, seals,
       // tasks, and task_supply.
       this.stmt("DELETE FROM bees WHERE id = ?").run(beeId);
@@ -4720,14 +4728,15 @@ export class CoreStore {
   }
 
   /**
-   * v7 — remove an account. REFUSES (typed AccountReferencedError) while any
-   * bee references it — swap or delete them first. The limits row cascades.
+   * v7/v28 — remove an account. REFUSES (typed AccountReferencedError) while
+   * any bee or live admission claim references it. The limits row cascades.
    */
   removeAccount(id: string): AccountRow {
     return this.tx(() => {
       const account = this.mustGetAccount(id);
       const referenced = this.beesOnAccount(id).map((b) => b.id);
-      if (referenced.length > 0) throw new AccountReferencedError(id, referenced);
+      const claims = this.listUnreconciledAccountAdmissions(this.now(), { account: id }).map((claim) => claim.id);
+      if (referenced.length > 0 || claims.length > 0) throw new AccountReferencedError(id, referenced, claims);
       // v16: login flows belong to the account; audit each removal explicitly
       // so mirrors fold them without re-deriving the cascade.
       for (const flow of this.listLoginFlows({ account: id })) {

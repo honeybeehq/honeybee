@@ -530,7 +530,8 @@ export function replayAudit(rows: AuditRow[]): StateDump {
     accounts: [...accounts.values()].sort((a, b) => a.addedAt - b.addedAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
     accountLimits: [...accountLimits.values()].sort((a, b) => (a.account < b.account ? -1 : a.account > b.account ? 1 : 0)),
     selectionCursors: [...selectionCursors.values()].sort((a, b) => (a.harness < b.harness ? -1 : a.harness > b.harness ? 1 : 0)),
-    accountAdmissions: [...accountAdmissions.values()].sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id)),
+    accountAdmissions: [...accountAdmissions.values()].sort((a, b) =>
+      a.createdAt - b.createdAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
     tasks: [...tasks.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
     taskSupply: [...taskSupply.values()].sort((a, b) => (a.beeId < b.beeId ? -1 : a.beeId > b.beeId ? 1 : 0)),
     loginFlows: [...loginFlows.values()].sort((a, b) => a.createdAt - b.createdAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),

@@ -66,9 +66,9 @@ import type {
   Urgency,
 } from "../../core/src/index.ts";
 import type { BootReport } from "./loops.ts";
-import type { AccountAdmissionClaim, AccountAllocationContext, AccountAllocationReceipt, EphemeralCredentialFile } from "./accountsService.ts";
+import type { AccountAdmissionClaim, AccountAllocationContext, AccountAllocationReceipt, AccountNodeActivity, EphemeralCredentialFile } from "./accountsService.ts";
 
-export type { AccountAdmissionClaim, AccountAllocationContext, AccountAllocationReceipt, EphemeralCredential, EphemeralCredentialFile } from "./accountsService.ts";
+export type { AccountAdmissionClaim, AccountAllocationContext, AccountAllocationReceipt, AccountNodeActivity, EphemeralCredential, EphemeralCredentialFile } from "./accountsService.ts";
 
 export const PROTOCOL = "v2/1";
 export const DAEMON_VERSION = "2.0.0-wp4";
@@ -111,6 +111,8 @@ export const DAEMON_CAPABILITIES = [
   "account.allocation.v1",
   /** Cross-node single-owner acquire/confirm/release claims. */
   "account.allocation.owner.v1",
+  /** Authoritative per-node activity for fleet aggregation. */
+  "account.allocation.activity.v1",
   /** Earned Codex rate-limit reset discovery and redemption. */
   "account.reset_limits.v1",
   /** Bounded, backward-pageable node-wide mailbox history reconstructed from typed audit events. */
@@ -385,6 +387,7 @@ export const RPC_VERBS = [
   "account.admission.acquire",
   "account.admission.confirm",
   "account.admission.release",
+  "account.activity",
   "bee.swapAccount",
   // Auto-titler node config (additive): `config.get` is a read; `config.patch`
   // writes `naming` in the node's config.json.
@@ -584,7 +587,7 @@ export interface AccountAddResult extends DedupMarkers {
   verification: "limits" | "credential_file" | "unsupported" | "none";
 }
 
-/** `account.remove {id}` — id is a selector; `account_referenced` while bees carry it. */
+/** `account.remove {id}` — id is a selector; `account_referenced` while bees or live admission claims carry it. */
 export interface AccountRemoveResult extends DedupMarkers {
   account: MirrorAccountRow;
 }
@@ -785,6 +788,9 @@ export interface AccountAdmissionAcquireResult extends DedupMarkers {
   claim: AccountAdmissionClaim | null;
   allocation: AccountAllocationReceipt;
 }
+
+/** `account.activity {harness}` — authoritative local facts; no secrets. */
+export type AccountActivityResult = AccountNodeActivity;
 
 export interface AccountAdmissionConfirmResult {
   claimId: string;
@@ -1546,6 +1552,8 @@ export interface BeeHandoffParams {
   stopAt?: BeeHandoffStopAt;
   /** Fresh, complete all-other-nodes facts required when active automatic allocation applies. */
   allocationContext?: AccountAllocationContext;
+  /** Active-mode automatic placement claim minted by the stable allocator owner. */
+  allocationClaim?: AccountAdmissionClaim;
 }
 
 export type BeeHandoffResult = BeeHandoffView & { deduped?: boolean; allocation?: AccountAllocationReceipt; allocationClaimId?: string };

@@ -95,6 +95,7 @@ import {
   ResetLimitsRefusal,
   type AccountsServiceOptions,
   type AccountAdmissionClaim,
+  type AccountAllocationAuthority,
   type AccountAllocationContext,
   type AccountAllocationReceipt,
   type CaptureOutcome,
@@ -188,6 +189,7 @@ import {
   type AccountAdmissionAcquireResult,
   type AccountAdmissionConfirmResult,
   type AccountAdmissionReleaseResult,
+  type AccountActivityResult,
   type AccountCaptureResult,
   type AccountLoginCancelResult,
   type AccountLoginGetResult,
@@ -1418,6 +1420,8 @@ export class HiveDaemon {
       // the lease material appears.
       case "account.lease":
         return this.rpcAccountLease(params);
+      case "account.activity":
+        return this.rpcAccountActivity(params);
       case "account.admission.acquire":
         return this.rpcAccountAdmissionAcquireWithRefresh(params);
       case "account.admission.confirm":
@@ -1797,6 +1801,15 @@ export class HiveDaemon {
       || typeof context.observedAt !== "number" || typeof context.complete !== "boolean" || !Array.isArray(context.accounts)) {
       throw new RpcError("invalid_request", "allocationContext must be a v1 scope/revision/observation with an accounts array");
     }
+    const authorityRaw = context.authority;
+    if (!authorityRaw || typeof authorityRaw !== "object" || Array.isArray(authorityRaw)) {
+      throw new RpcError("invalid_request", "allocationContext.authority must be {node,epoch}");
+    }
+    const authorityValue = authorityRaw as Record<string, unknown>;
+    if (typeof authorityValue.node !== "string" || authorityValue.node.length === 0 || authorityValue.node.length > 128
+      || typeof authorityValue.epoch !== "string" || authorityValue.epoch.length === 0 || authorityValue.epoch.length > 128) {
+      throw new RpcError("invalid_request", "allocationContext.authority must contain bounded node and epoch strings");
+    }
     if (context.accounts.length > 256) throw new RpcError("invalid_request", "allocationContext accounts are bounded to 256 entries");
     const accounts = context.accounts.map((raw) => {
       if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new RpcError("invalid_request", "allocationContext.accounts entries must be objects");
@@ -1813,7 +1826,8 @@ export class HiveDaemon {
         pending: fact.pending as number, ongoingUnits: fact.ongoingUnits as number,
         ...(fact.observedClaimIds !== undefined ? { observedClaimIds: [...fact.observedClaimIds as string[]] } : {}) };
     });
-    return { version: 1, scope: context.scope, revision: context.revision, observedAt: context.observedAt,
+    return { version: 1, authority: { node: authorityValue.node, epoch: authorityValue.epoch },
+      scope: context.scope, revision: context.revision, observedAt: context.observedAt,
       complete: context.complete, accounts };
   }
 
@@ -1826,10 +1840,18 @@ export class HiveDaemon {
     const node = this.param(target, "node");
     const workId = this.param(target, "workId");
     if (node.length > 128 || workId.length > 256) throw new RpcError("invalid_request", `${where}: target identity is too long`);
+    this.assertPortableWorkId(workId, `${where}: target.workId`);
     if (!Number.isSafeInteger(target.expectedGeneration) || (target.expectedGeneration as number) < 0) {
       throw new RpcError("invalid_request", `${where}: target.expectedGeneration must be a non-negative integer`);
     }
     return { node, workId, expectedGeneration: target.expectedGeneration as number };
+  }
+
+  /** Work ids become filenames on a target daemon and must be one component. */
+  private assertPortableWorkId(workId: string, where: string): void {
+    if (workId === "." || workId === ".." || workId.includes("/") || workId.includes("\\") || workId.includes("\0")) {
+      throw new RpcError("invalid_request", `${where} must be a path-safe identity`);
+    }
   }
 
   private admissionAccountIdsParam(params: Record<string, unknown>, key: string): ReadonlySet<string> | undefined {
@@ -1842,18 +1864,51 @@ export class HiveDaemon {
     return new Set(raw as string[]);
   }
 
+  private configuredAllocationIdentity(): { node: string; owner: AccountAllocationAuthority } {
+    const node = this.cfg.accounts.allocationNodeId;
+    const owner = this.cfg.accounts.allocationOwner;
+    if (!node || !owner) {
+      throw new RpcError("account_wait", "Account allocation identity is not configured");
+    }
+    return { node, owner };
+  }
+
+  private assertAllocationOwner(harness: string, operation: AccountAdmissionClaim["operation"]): AccountAllocationAuthority {
+    const { node, owner } = this.configuredAllocationIdentity();
+    if (node !== owner.node) this.ownerClaimRequired(harness, operation);
+    return owner;
+  }
+
+  private rpcAccountActivity(params: Record<string, unknown>): AccountActivityResult {
+    const harness = this.param(params, "harness");
+    this.configuredAllocationIdentity();
+    return this.mustAccounts().nodeActivity(harness);
+  }
+
   private async rpcAccountAdmissionAcquireWithRefresh(params: Record<string, unknown>): Promise<AccountAdmissionAcquireResult> {
     const key = this.idempotencyKeyOf(params);
     if (!key) throw new RpcError("invalid_request", "account.admission.acquire: idempotencyKey is required");
+    const harness = this.param(params, "harness");
+    const operationValue = this.param(params, "operation");
+    if (!["spawn", "swap", "fork", "handoff"].includes(operationValue)) {
+      throw new RpcError("invalid_request", "account.admission.acquire: unsupported operation");
+    }
+    const operation = operationValue as AccountAdmissionClaim["operation"];
+    if (this.mustAccounts().allocationMode() === "active") this.assertAllocationOwner(harness, operation);
     const store = this.mustStore();
     if (store.lookupRpcResult(key)) {
       return this.withIdempotency("account.admission.acquire", params, () => {
         throw new Error("unreachable admission replay");
       });
     }
-    const harness = this.param(params, "harness");
     const model = params.model === undefined || params.model === null ? undefined : this.param(params, "model");
-    const excludeAccountIds = this.admissionAccountIdsParam(params, "excludeAccountIds");
+    const requestedExclusions = this.admissionAccountIdsParam(params, "excludeAccountIds");
+    const sourceAccount = params.sourceAccount === undefined || params.sourceAccount === null
+      ? null
+      : this.param(params, "sourceAccount");
+    const excludeAccountIds = operation === "swap" && sourceAccount
+      ? new Set([...(requestedExclusions ?? []), sourceAccount])
+      : requestedExclusions;
     await this.mustAccounts().ensureFreshAdmissionLimits(harness, { model, excludeAccountIds });
     return this.withIdempotency("account.admission.acquire", params, () => this.rpcAccountAdmissionAcquire(params));
   }
@@ -1872,6 +1927,9 @@ export class HiveDaemon {
       ? null
       : this.param(params, "sourceAccount");
     const model = params.model === undefined || params.model === null ? undefined : this.param(params, "model");
+    const authority = this.mustAccounts().allocationMode() === "active"
+      ? this.assertAllocationOwner(harness, operation as AccountAdmissionClaim["operation"])
+      : this.cfg.accounts.allocationOwner;
     const reservationId = randomUUID();
     const admission = this.mustAccounts().admitNewWork(harness, {
       operation: operation as AccountAdmissionClaim["operation"],
@@ -1883,7 +1941,7 @@ export class HiveDaemon {
       excludeAccountIds: this.admissionAccountIdsParam(params, "excludeAccountIds"),
       onlyAccountIds: this.admissionAccountIdsParam(params, "onlyAccountIds"),
       reservationId,
-      reservationMetadata: { authority: { version: 1, target } },
+      reservationMetadata: { authority: { version: 1, owner: authority, target, model: model ?? null } },
     });
     if (!admission.ok) {
       throw new RpcError(admission.code, admission.message, { allocation: admission.receipt as unknown as Record<string, unknown> });
@@ -1899,9 +1957,11 @@ export class HiveDaemon {
       account: row.account,
       operation: row.operation,
       units: row.units,
+      model: model ?? null,
       sourceAccount: row.sourceAccount,
       createdAt: row.createdAt,
       expiresAt: row.expiresAt,
+      authority: authority!,
       target,
       allocation: admission.receipt,
     };
@@ -1914,6 +1974,16 @@ export class HiveDaemon {
     return row;
   }
 
+  private assertAdmissionOwnerRow(row: ReturnType<HiveDaemon["accountAdmissionRow"]>): void {
+    const account = this.mustStore().getAccount(row.account);
+    if (!account) throw new RpcError("account_claim_refused", `account admission claim ${row.id} has no account`);
+    const owner = this.assertAllocationOwner(account.harness, row.operation);
+    const authority = row.receipt.authority as { version?: unknown; owner?: Partial<AccountAllocationAuthority> } | undefined;
+    if (authority?.version !== 1 || authority.owner?.node !== owner.node || authority.owner?.epoch !== owner.epoch) {
+      throw new RpcError("account_claim_refused", `account admission claim ${row.id} belongs to another allocator owner`);
+    }
+  }
+
   private rpcAccountAdmissionConfirm(params: Record<string, unknown>): AccountAdmissionConfirmResult {
     const claimId = this.param(params, "claimId");
     const rawTarget = params.target;
@@ -1923,6 +1993,7 @@ export class HiveDaemon {
     const targetObject = rawTarget as Record<string, unknown>;
     const target = { node: this.param(targetObject, "node"), workId: this.param(targetObject, "workId") };
     const row = this.accountAdmissionRow(claimId);
+    this.assertAdmissionOwnerRow(row);
     const authority = row.receipt.authority as { version?: unknown; target?: Partial<AccountAdmissionClaim["target"]> } | undefined;
     if (authority?.version !== 1 || authority.target?.node !== target.node || authority.target?.workId !== target.workId) {
       throw new RpcError("account_claim_refused", `account admission claim ${claimId} does not belong to this target`);
@@ -1937,7 +2008,9 @@ export class HiveDaemon {
     const reason = this.param(params, "reason");
     if (Buffer.byteLength(reason) > 512) throw new RpcError("invalid_request", "account.admission.release: reason exceeds 512 bytes");
     const row = this.accountAdmissionRow(claimId);
+    this.assertAdmissionOwnerRow(row);
     if (row.confirmedAt !== null) throw new RpcError("account_claim_refused", `confirmed claim ${claimId} must reconcile through fleet observation`);
+    if (row.beeId !== null) throw new RpcError("account_claim_refused", `applied claim ${claimId} must reconcile through target activity`);
     const released = this.mustStore().releaseAccountAdmission(claimId)!;
     return { claimId, status: row.releasedAt === null ? "released" : "already_released", releasedAt: released.releasedAt! };
   }
@@ -1945,15 +2018,29 @@ export class HiveDaemon {
   private allocationClaimParam(params: Record<string, unknown>): AccountAdmissionClaim | null {
     const raw = params.allocationClaim;
     if (raw === undefined || raw === null) return null;
+    if (!this.idempotencyKeyOf(params)) {
+      throw new RpcError("invalid_request", "allocationClaim requires idempotencyKey so claim consumption and work admission are atomic");
+    }
     if (typeof raw !== "object" || Array.isArray(raw)) throw new RpcError("invalid_request", "allocationClaim must be an object");
     if (Buffer.byteLength(JSON.stringify(raw)) > 32_768) throw new RpcError("invalid_request", "allocationClaim exceeds 32 KiB");
     const claim = raw as Record<string, unknown>;
     const target = this.admissionTargetParam({ target: claim.target }, "allocationClaim");
+    const authorityRaw = claim.authority;
+    if (!authorityRaw || typeof authorityRaw !== "object" || Array.isArray(authorityRaw)) {
+      throw new RpcError("invalid_request", "allocationClaim.authority must be {node,epoch}");
+    }
+    const authorityValue = authorityRaw as Record<string, unknown>;
+    if (typeof authorityValue.node !== "string" || authorityValue.node.length === 0 || authorityValue.node.length > 128
+      || typeof authorityValue.epoch !== "string" || authorityValue.epoch.length === 0 || authorityValue.epoch.length > 128) {
+      throw new RpcError("invalid_request", "allocationClaim.authority must contain bounded node and epoch strings");
+    }
+    const authority = { node: authorityValue.node, epoch: authorityValue.epoch };
     if (claim.version !== 1 || typeof claim.id !== "string" || claim.id.length === 0 || claim.id.length > 128
       || typeof claim.scope !== "string" || claim.scope.length === 0 || claim.scope.length > 256
       || typeof claim.account !== "string" || claim.account.length === 0 || claim.account.length > 256
       || typeof claim.operation !== "string" || !["spawn", "swap", "fork", "handoff"].includes(claim.operation)
-      || claim.units !== 1 || (claim.sourceAccount !== null && typeof claim.sourceAccount !== "string")
+      || claim.units !== 1 || (claim.model !== null && (typeof claim.model !== "string" || claim.model.length === 0 || claim.model.length > 256))
+      || (claim.sourceAccount !== null && typeof claim.sourceAccount !== "string")
       || !Number.isSafeInteger(claim.createdAt) || !Number.isSafeInteger(claim.expiresAt)
       || (claim.expiresAt as number) <= (claim.createdAt as number)
       || !claim.allocation || typeof claim.allocation !== "object" || Array.isArray(claim.allocation)) {
@@ -1966,8 +2053,9 @@ export class HiveDaemon {
     }
     return { version: 1, id: claim.id, scope: claim.scope, account: claim.account,
       operation: claim.operation as AccountAdmissionClaim["operation"], units: 1,
+      model: claim.model as string | null,
       sourceAccount: claim.sourceAccount as string | null, createdAt: claim.createdAt as number,
-      expiresAt: claim.expiresAt as number, target, allocation: claim.allocation as AccountAllocationReceipt };
+      expiresAt: claim.expiresAt as number, authority, target, allocation: claim.allocation as AccountAllocationReceipt };
   }
 
   private accountFromClaim(
@@ -1977,10 +2065,15 @@ export class HiveDaemon {
     workId: string,
     generation: number,
     sourceAccount: string | null,
+    model?: string,
   ): AccountRow {
+    const configured = this.configuredAllocationIdentity();
     if (claim.operation !== operation || claim.scope !== this.mustAccounts().allocationScope(harness)
       || claim.target.workId !== workId || claim.target.expectedGeneration !== generation
-      || claim.sourceAccount !== sourceAccount || (operation === "swap" && claim.account === sourceAccount) || claim.expiresAt <= Date.now()) {
+      || claim.authority.node !== configured.owner.node || claim.authority.epoch !== configured.owner.epoch
+      || claim.target.node !== configured.node
+      || claim.sourceAccount !== sourceAccount || claim.model !== (model ?? null)
+      || (operation === "swap" && claim.account === sourceAccount) || claim.expiresAt <= Date.now()) {
       throw new RpcError("account_claim_refused", `allocation claim ${claim.id} is expired or does not match this ${operation}`);
     }
     const account = this.resolveAccountSelector(claim.account, harness);
@@ -2000,7 +2093,10 @@ export class HiveDaemon {
         units: claim.units,
         expiresAt: claim.expiresAt,
         reconcileAfterGeneration: claim.target.expectedGeneration,
-        receipt: { allocation: claim.allocation as unknown as Record<string, unknown>, authority: { version: 1, target: claim.target } },
+        receipt: {
+          allocation: claim.allocation as unknown as Record<string, unknown>,
+          authority: { version: 1, owner: claim.authority, target: claim.target, model: claim.model },
+        },
       }, beeId);
     } catch (error) {
       throw new RpcError("account_claim_refused", error instanceof Error ? error.message : `allocation claim ${claim.id} was refused`);
@@ -2104,7 +2200,9 @@ export class HiveDaemon {
     if (claim) {
       if (!this.accounts) throw new RpcError("account_unavailable", `Account selection is unavailable for ${agent}`);
       if (!targetWorkId) throw new RpcError("invalid_request", `${operation}: a stable target work id is required with allocationClaim`);
-      const account = this.accountFromClaim(claim, operation, agent, targetWorkId, reconcileAfterGeneration, sourceAccount);
+      const account = this.accountFromClaim(
+        claim, operation, agent, targetWorkId, reconcileAfterGeneration, sourceAccount, this.modelParamOf(params, agent),
+      );
       return { account, reason: "allocator owner claim", allocation: claim.allocation, claim };
     }
     if (!this.accounts || store.listAccounts({ harness: agent }).length === 0) return { account: null, reason: null };
@@ -2750,16 +2848,24 @@ export class HiveDaemon {
       ? (targetAgent === source.agent && source.account ? source.account : "auto")
       : this.accountParam(targetObj);
     const allocationClaim = this.allocationClaimParam(params);
-    const requestHash = hashBeeHandoffRequest({
+    const requestShape = {
       beeId,
       expected,
       target: { agent: targetAgent, args, account: accountRequest },
       instruction,
       stopAt,
       allocationClaimId: allocationClaim?.id ?? null,
-    });
+    };
+    const requestHash = hashBeeHandoffRequest(requestShape);
     if (existing) {
-      if (existing.requestHash !== requestHash) throw new RpcError("idempotency_conflict", "idempotency key already bound to a different bee.handoff request");
+      // v28 added the claim identity to the hash. An old pre-v28 automatic
+      // handoff had no such field; keep that exact keyed replay valid.
+      const legacyHash = allocationClaim
+        ? null
+        : hashBeeHandoffRequest({ beeId, expected, target: requestShape.target, instruction, stopAt });
+      if (existing.requestHash !== requestHash && existing.requestHash !== legacyHash) {
+        throw new RpcError("idempotency_conflict", "idempotency key already bound to a different bee.handoff request");
+      }
       const replayAdmission = store.getAccountAdmissionByRequestKey(`account-admission:handoff:${key}`);
       return { ...toBeeHandoffView(existing), deduped: true,
         ...(allocationClaim ? { allocation: allocationClaim.allocation, allocationClaimId: allocationClaim.id } : {}),
@@ -2784,7 +2890,10 @@ export class HiveDaemon {
       const automatic = targetObj.account === undefined || targetObj.account === "auto";
       if (claim && !automatic) throw new RpcError("invalid_request", "bee.handoff: allocationClaim requires an automatic target account");
       const claimedAccount = claim
-        ? this.accountFromClaim(claim, "handoff", targetAgent, beeId, expected.generation, source.account)
+        ? this.accountFromClaim(
+            claim, "handoff", targetAgent, beeId, expected.generation, source.account,
+            this.modelParamOf({ args: args ?? [] }, targetAgent),
+          )
         : null;
       if (automatic && this.accounts && !claim && this.accounts.allocationMode() === "active") {
         this.ownerClaimRequired(targetAgent, "handoff");
@@ -3692,6 +3801,7 @@ export class HiveDaemon {
     const requestedSuccessorBeeId = params.successorBeeId === undefined
       ? (claim?.target.workId ?? null)
       : this.param(params, "successorBeeId");
+    if (requestedSuccessorBeeId !== null) this.assertPortableWorkId(requestedSuccessorBeeId, "successorBeeId");
     const successorBeeId = requestedSuccessorBeeId ?? randomUUID();
     const requestHash = createHash("sha256").update(JSON.stringify({
       kind, sourceBeeId, sourceProviderSessionId, instruction, name,
@@ -3723,7 +3833,10 @@ export class HiveDaemon {
     let allocation: AccountAllocationReceipt | undefined;
     const operation = store.transact(() => {
       const claimedAccount = claim
-        ? this.accountFromClaim(claim, kind, source.agent, successorBeeId, 0, null)
+        ? this.accountFromClaim(
+            claim, kind, source.agent, successorBeeId, 0, null,
+            this.modelParamOf({ args: source.args ?? [] }, source.agent),
+          )
         : null;
       if (claimedAccount && claimedAccount.id !== source.account) {
         throw new RpcError("account_claim_refused", `${kind} claim ${claim!.id} does not preserve the source account`);
@@ -3802,7 +3915,10 @@ export class HiveDaemon {
     const driver = this.driver;
     const claim = this.allocationClaimParam(params);
     const claimedAccount = claim
-      ? this.accountFromClaim(claim, "fork", source.agent, id, 0, null)
+      ? this.accountFromClaim(
+          claim, "fork", source.agent, id, 0, null,
+          this.modelParamOf({ args: source.args ?? [] }, source.agent),
+        )
       : null;
     if (claimedAccount && claimedAccount.id !== source.account) {
       throw new RpcError("account_claim_refused", `fork claim ${claim!.id} does not preserve the source account`);
@@ -4734,7 +4850,10 @@ export class HiveDaemon {
     const runtime = store.currentRuntime(bee.id);
     const claim = this.allocationClaimParam(params);
     if (claim) {
-      const target = this.accountFromClaim(claim, "swap", bee.agent, bee.id, runtime?.generation ?? 0, bee.account);
+      const target = this.accountFromClaim(
+        claim, "swap", bee.agent, bee.id, runtime?.generation ?? 0, bee.account,
+        this.modelParamOf({ args: bee.args ?? [] }, bee.agent),
+      );
       return this.performSwap(bee, target, "operator", claim.allocation, undefined, claim);
     }
     if (this.mustAccounts().allocationMode() === "active") this.ownerClaimRequired(bee.agent, "swap");
