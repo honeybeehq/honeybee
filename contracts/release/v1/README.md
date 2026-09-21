@@ -1,5 +1,10 @@
 # Release and compatibility contract v1
 
+Standalone workstation support requires a successor contract that distinguishes
+actual daemon caller and provider identities; see the accepted
+[HON-15 decision](../../../docs/adr/003-standalone-workstation-compatibility.md).
+That decision does not change the v1 wire format or its same-component rejection.
+
 This is the shared wire contract for HON-3 and the agreed HON-1 design. It defines
 metadata; it does not implement builds, publication, authentication, evaluation,
 installation, or activation. The canonical corpus lives in Honeybee and ships in
