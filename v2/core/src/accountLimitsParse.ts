@@ -87,7 +87,7 @@ function codexWindowSlot(windowMinutes: number | undefined): CodexWindowSlot | n
 
 function liveWindow(window: CodexLiveWindow): Window {
   return {
-    usedPercent: typeof window.usedPercent === "number" ? window.usedPercent : 0,
+    usedPercent: window.usedPercent!,
     resetsAt: window.resetsAt ? window.resetsAt * 1000 : null,
     windowMinutes: typeof window.windowDurationMins === "number" ? window.windowDurationMins : null,
   };
@@ -108,7 +108,9 @@ export function parseCodexRateLimits(limits: CodexLiveRateLimits): PutAccountLim
   };
   const candidates: Array<{ usage: Window; duration: number | undefined; fallback: CodexWindowSlot }> = [];
   const add = (window: CodexLiveWindow | null | undefined, fallback: CodexWindowSlot) => {
-    if (!window) return;
+    // An omitted utilization is uncertainty, not evidence of zero use. Do
+    // not synthesize headroom from a partial provider response.
+    if (!window || typeof window.usedPercent !== "number" || !Number.isFinite(window.usedPercent)) return;
     candidates.push({ usage: liveWindow(window), duration: window.windowDurationMins, fallback });
   };
   add(limits.primary, "fiveHour");

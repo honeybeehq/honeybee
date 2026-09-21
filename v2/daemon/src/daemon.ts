@@ -94,6 +94,9 @@ import {
   AccountsService,
   ResetLimitsRefusal,
   type AccountsServiceOptions,
+  type AccountAdmissionClaim,
+  type AccountAllocationContext,
+  type AccountAllocationReceipt,
   type CaptureOutcome,
   type LimitsFetchers,
 } from "./accountsService.ts";
@@ -182,6 +185,9 @@ import {
   type AccountConfigPreviewResult,
   type AccountBackfillResult,
   type AccountLeaseResult,
+  type AccountAdmissionAcquireResult,
+  type AccountAdmissionConfirmResult,
+  type AccountAdmissionReleaseResult,
   type AccountCaptureResult,
   type AccountLoginCancelResult,
   type AccountLoginGetResult,
@@ -1318,7 +1324,7 @@ export class HiveDaemon {
       const operation = this.mustStore().threadOperationForSuccessor(params.beeId);
       if (operation && operation.phase !== "ready") throw new RpcError("thread_busy", "Successor execution is owned by its thread operation; recover it with thread.operation.retry");
     }
-    if (verb === "bee.fork") for (const key of Object.keys(params)) if (!["beeId", "name", "id", "idempotencyKey"].includes(key)) throw new RpcError("thread_unsupported", `Fork is a plain copy and does not accept '${key}'`);
+    if (verb === "bee.fork") for (const key of Object.keys(params)) if (!["beeId", "name", "id", "idempotencyKey", "allocationContext", "allocationClaim"].includes(key)) throw new RpcError("thread_unsupported", `Fork is a plain copy and does not accept '${key}'`);
     if (typeof params.idempotencyKey === "string" && verb !== "thread.fork" && verb !== "thread.handoff" && this.mustStore().threadOperationByKey(params.idempotencyKey)) throw new RpcError("idempotency_conflict", "Key belongs to a thread operation");
     if (typeof params.idempotencyKey === "string") {
       const reconnect = this.mustStore().getCommandByIdempotencyKey(params.idempotencyKey);
@@ -1338,7 +1344,7 @@ export class HiveDaemon {
         // The start command is due now; do not wait out the tick cadence.
         return this.rpcSpawnWithAccount(params).then((result) => { this.requestTick(); return result; });
       case "bee.swapAccount":
-        return this.withIdempotency(verb, params, () => this.rpcSwapAccount(params));
+        return this.rpcSwapAccountWithAdmission(params);
       case "config.get":
         return this.rpcConfigGet();
       case "config.patch":
@@ -1412,6 +1418,12 @@ export class HiveDaemon {
       // the lease material appears.
       case "account.lease":
         return this.rpcAccountLease(params);
+      case "account.admission.acquire":
+        return this.rpcAccountAdmissionAcquireWithRefresh(params);
+      case "account.admission.confirm":
+        return this.withIdempotency(verb, params, () => this.rpcAccountAdmissionConfirm(params));
+      case "account.admission.release":
+        return this.withIdempotency(verb, params, () => this.rpcAccountAdmissionRelease(params));
       case "send":
         return this.withIdempotency(verb, params, () => this.rpcSend(params));
       case "mail.cancel": {
@@ -1478,7 +1490,7 @@ export class HiveDaemon {
         // Observation drain must commit outside the admission transaction: a
         // refusal must not roll back facts already consumed from the driver.
         this.core?.observe();
-        return this.rpcBeeHandoff(params);
+        return this.rpcBeeHandoffWithAdmission(params);
       case "bee.handoff.get":
         return this.rpcBeeHandoffGet(params);
       case "action.enqueue":
@@ -1531,7 +1543,7 @@ export class HiveDaemon {
         return { operations: ["fork", "handoff"], executors: [{ harness: "codex", substrate: "hsr", ownership: "local", instructionCompaction: true }], transcript: "codex.rollout.jsonl" };
       case "thread.fork":
       case "thread.handoff":
-        return this.rpcThreadOperation(verb === "thread.fork" ? "fork" : "handoff", params);
+        return this.rpcThreadOperationWithAdmission(verb === "thread.fork" ? "fork" : "handoff", params);
       case "thread.operation.get":
         return { operation: threadOperationView(this.requireThreadOperation(params)) };
       case "thread.operation.retry":
@@ -1547,7 +1559,7 @@ export class HiveDaemon {
         return readThreadHistory(row, offset, limit).catch(error => { throw new RpcError("thread_history_unavailable", error instanceof Error ? error.message : String(error)); });
       }
       case "bee.fork":
-        return this.withIdempotency(verb, params, () => this.rpcFork(params));
+        return this.rpcForkWithAdmission(params);
       case "bee.children":
         return this.rpcChildren(params);
       case "question.ask":
@@ -1730,6 +1742,7 @@ export class HiveDaemon {
     return store.transact(() => {
       const hit = store.lookupRpcResult(key);
       if (hit) {
+        if (hit.verb !== verb) throw new RpcError("idempotency_conflict", `Key belongs to ${hit.verb}, not ${verb}`);
         this.log(`rpc.dedup verb=${verb} key=${key}`);
         const replay = { ...(hit.result as T), deduped: true as const };
         // Command-backed results carry the command's CURRENT status on
@@ -1765,13 +1778,252 @@ export class HiveDaemon {
     const normalizedParams = embedded.agent === rawAgent ? params : { ...params, agent: embedded.agent };
     const agent = embedded.agent;
     const request = embedded.account ?? this.accountParam(params);
-    if (request === "auto" && this.accounts && store.listAccounts({ harness: agent }).length > 1) {
-      // Sampling must never sit on the spawn RPC accept path. The selector
-      // consumes last-known snapshots while this shared background lane
-      // refreshes stale candidates for subsequent picks.
-      this.accounts.scheduleFreshLimits(agent, { model: this.modelParamOf(normalizedParams, agent) });
+    const claim = this.allocationClaimParam(normalizedParams);
+    if (claim && request !== "auto") throw new RpcError("invalid_request", "allocationClaim requires account:auto");
+    if (request === "auto" && this.accounts && !claim && this.accounts.allocationMode() === "shadow") {
+      await this.accounts.ensureFreshAdmissionLimits(agent, { model: this.modelParamOf(normalizedParams, agent) });
     }
     return this.withIdempotency("spawn", normalizedParams, () => this.rpcSpawn(normalizedParams, request));
+  }
+
+  private allocationContextParam(params: Record<string, unknown>): AccountAllocationContext | null {
+    const value = params.allocationContext;
+    if (value === undefined || value === null) return null;
+    if (typeof value !== "object" || Array.isArray(value)) {
+      throw new RpcError("invalid_request", "allocationContext must be an object");
+    }
+    const context = value as Record<string, unknown>;
+    if (context.version !== 1 || typeof context.scope !== "string" || typeof context.revision !== "string"
+      || typeof context.observedAt !== "number" || typeof context.complete !== "boolean" || !Array.isArray(context.accounts)) {
+      throw new RpcError("invalid_request", "allocationContext must be a v1 scope/revision/observation with an accounts array");
+    }
+    if (context.accounts.length > 256) throw new RpcError("invalid_request", "allocationContext accounts are bounded to 256 entries");
+    const accounts = context.accounts.map((raw) => {
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new RpcError("invalid_request", "allocationContext.accounts entries must be objects");
+      const fact = raw as Record<string, unknown>;
+      if (typeof fact.account !== "string" || ![fact.active, fact.recent, fact.pending, fact.ongoingUnits].every((v) => typeof v === "number")) {
+        throw new RpcError("invalid_request", "allocationContext account facts require account, active, recent, pending, and ongoingUnits");
+      }
+      if (fact.observedClaimIds !== undefined
+        && (!Array.isArray(fact.observedClaimIds) || fact.observedClaimIds.length > 256
+          || fact.observedClaimIds.some((id) => typeof id !== "string" || id.length === 0 || id.length > 128))) {
+        throw new RpcError("invalid_request", "allocationContext observedClaimIds must contain at most 256 bounded claim ids");
+      }
+      return { account: fact.account, active: fact.active as number, recent: fact.recent as number,
+        pending: fact.pending as number, ongoingUnits: fact.ongoingUnits as number,
+        ...(fact.observedClaimIds !== undefined ? { observedClaimIds: [...fact.observedClaimIds as string[]] } : {}) };
+    });
+    return { version: 1, scope: context.scope, revision: context.revision, observedAt: context.observedAt,
+      complete: context.complete, accounts };
+  }
+
+  private admissionTargetParam(params: Record<string, unknown>, where: string): AccountAdmissionClaim["target"] {
+    const raw = params.target;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+      throw new RpcError("invalid_request", `${where}: target {node,workId,expectedGeneration} is required`);
+    }
+    const target = raw as Record<string, unknown>;
+    const node = this.param(target, "node");
+    const workId = this.param(target, "workId");
+    if (node.length > 128 || workId.length > 256) throw new RpcError("invalid_request", `${where}: target identity is too long`);
+    if (!Number.isSafeInteger(target.expectedGeneration) || (target.expectedGeneration as number) < 0) {
+      throw new RpcError("invalid_request", `${where}: target.expectedGeneration must be a non-negative integer`);
+    }
+    return { node, workId, expectedGeneration: target.expectedGeneration as number };
+  }
+
+  private admissionAccountIdsParam(params: Record<string, unknown>, key: string): ReadonlySet<string> | undefined {
+    const raw = params[key];
+    if (raw === undefined || raw === null) return undefined;
+    if (!Array.isArray(raw) || raw.length > 64 || raw.some((id) => typeof id !== "string" || id.length === 0 || id.length > 256)) {
+      throw new RpcError("invalid_request", `account.admission.acquire: ${key} must contain at most 64 bounded account ids`);
+    }
+    if (new Set(raw).size !== raw.length) throw new RpcError("invalid_request", `account.admission.acquire: ${key} must not contain duplicates`);
+    return new Set(raw as string[]);
+  }
+
+  private async rpcAccountAdmissionAcquireWithRefresh(params: Record<string, unknown>): Promise<AccountAdmissionAcquireResult> {
+    const key = this.idempotencyKeyOf(params);
+    if (!key) throw new RpcError("invalid_request", "account.admission.acquire: idempotencyKey is required");
+    const store = this.mustStore();
+    if (store.lookupRpcResult(key)) {
+      return this.withIdempotency("account.admission.acquire", params, () => {
+        throw new Error("unreachable admission replay");
+      });
+    }
+    const harness = this.param(params, "harness");
+    const model = params.model === undefined || params.model === null ? undefined : this.param(params, "model");
+    const excludeAccountIds = this.admissionAccountIdsParam(params, "excludeAccountIds");
+    await this.mustAccounts().ensureFreshAdmissionLimits(harness, { model, excludeAccountIds });
+    return this.withIdempotency("account.admission.acquire", params, () => this.rpcAccountAdmissionAcquire(params));
+  }
+
+  private rpcAccountAdmissionAcquire(params: Record<string, unknown>): AccountAdmissionAcquireResult {
+    const key = this.idempotencyKeyOf(params)!;
+    const harness = this.param(params, "harness");
+    const operation = this.param(params, "operation");
+    if (!["spawn", "swap", "fork", "handoff"].includes(operation)) {
+      throw new RpcError("invalid_request", "account.admission.acquire: unsupported operation");
+    }
+    const target = this.admissionTargetParam(params, "account.admission.acquire");
+    const context = this.allocationContextParam(params);
+    if (!context) throw new RpcError("invalid_request", "account.admission.acquire: allocationContext is required");
+    const sourceAccount = params.sourceAccount === undefined || params.sourceAccount === null
+      ? null
+      : this.param(params, "sourceAccount");
+    const model = params.model === undefined || params.model === null ? undefined : this.param(params, "model");
+    const reservationId = randomUUID();
+    const admission = this.mustAccounts().admitNewWork(harness, {
+      operation: operation as AccountAdmissionClaim["operation"],
+      requestKey: key,
+      context,
+      model,
+      sourceAccount,
+      reconcileAfterGeneration: target.expectedGeneration,
+      excludeAccountIds: this.admissionAccountIdsParam(params, "excludeAccountIds"),
+      onlyAccountIds: this.admissionAccountIdsParam(params, "onlyAccountIds"),
+      reservationId,
+      reservationMetadata: { authority: { version: 1, target } },
+    });
+    if (!admission.ok) {
+      throw new RpcError(admission.code, admission.message, { allocation: admission.receipt as unknown as Record<string, unknown> });
+    }
+    if (!admission.reservation) {
+      return { authoritative: false, claim: null, allocation: admission.receipt };
+    }
+    const row = admission.reservation;
+    const claim: AccountAdmissionClaim = {
+      version: 1,
+      id: row.id,
+      scope: row.scope,
+      account: row.account,
+      operation: row.operation,
+      units: row.units,
+      sourceAccount: row.sourceAccount,
+      createdAt: row.createdAt,
+      expiresAt: row.expiresAt,
+      target,
+      allocation: admission.receipt,
+    };
+    return { authoritative: true, claim, allocation: admission.receipt };
+  }
+
+  private accountAdmissionRow(claimId: string) {
+    const row = this.mustStore().getAccountAdmission(claimId);
+    if (!row) throw new RpcError("account_claim_not_found", `account admission claim not found: ${claimId}`);
+    return row;
+  }
+
+  private rpcAccountAdmissionConfirm(params: Record<string, unknown>): AccountAdmissionConfirmResult {
+    const claimId = this.param(params, "claimId");
+    const rawTarget = params.target;
+    if (!rawTarget || typeof rawTarget !== "object" || Array.isArray(rawTarget)) {
+      throw new RpcError("invalid_request", "account.admission.confirm: target {node,workId} is required");
+    }
+    const targetObject = rawTarget as Record<string, unknown>;
+    const target = { node: this.param(targetObject, "node"), workId: this.param(targetObject, "workId") };
+    const row = this.accountAdmissionRow(claimId);
+    const authority = row.receipt.authority as { version?: unknown; target?: Partial<AccountAdmissionClaim["target"]> } | undefined;
+    if (authority?.version !== 1 || authority.target?.node !== target.node || authority.target?.workId !== target.workId) {
+      throw new RpcError("account_claim_refused", `account admission claim ${claimId} does not belong to this target`);
+    }
+    if (row.releasedAt !== null) throw new RpcError("account_claim_refused", `account admission claim ${claimId} was released`);
+    const confirmed = this.mustStore().confirmAccountAdmission(claimId)!;
+    return { claimId, status: "confirmed", confirmedAt: confirmed.confirmedAt! };
+  }
+
+  private rpcAccountAdmissionRelease(params: Record<string, unknown>): AccountAdmissionReleaseResult {
+    const claimId = this.param(params, "claimId");
+    const reason = this.param(params, "reason");
+    if (Buffer.byteLength(reason) > 512) throw new RpcError("invalid_request", "account.admission.release: reason exceeds 512 bytes");
+    const row = this.accountAdmissionRow(claimId);
+    if (row.confirmedAt !== null) throw new RpcError("account_claim_refused", `confirmed claim ${claimId} must reconcile through fleet observation`);
+    const released = this.mustStore().releaseAccountAdmission(claimId)!;
+    return { claimId, status: row.releasedAt === null ? "released" : "already_released", releasedAt: released.releasedAt! };
+  }
+
+  private allocationClaimParam(params: Record<string, unknown>): AccountAdmissionClaim | null {
+    const raw = params.allocationClaim;
+    if (raw === undefined || raw === null) return null;
+    if (typeof raw !== "object" || Array.isArray(raw)) throw new RpcError("invalid_request", "allocationClaim must be an object");
+    if (Buffer.byteLength(JSON.stringify(raw)) > 32_768) throw new RpcError("invalid_request", "allocationClaim exceeds 32 KiB");
+    const claim = raw as Record<string, unknown>;
+    const target = this.admissionTargetParam({ target: claim.target }, "allocationClaim");
+    if (claim.version !== 1 || typeof claim.id !== "string" || claim.id.length === 0 || claim.id.length > 128
+      || typeof claim.scope !== "string" || claim.scope.length === 0 || claim.scope.length > 256
+      || typeof claim.account !== "string" || claim.account.length === 0 || claim.account.length > 256
+      || typeof claim.operation !== "string" || !["spawn", "swap", "fork", "handoff"].includes(claim.operation)
+      || claim.units !== 1 || (claim.sourceAccount !== null && typeof claim.sourceAccount !== "string")
+      || !Number.isSafeInteger(claim.createdAt) || !Number.isSafeInteger(claim.expiresAt)
+      || (claim.expiresAt as number) <= (claim.createdAt as number)
+      || !claim.allocation || typeof claim.allocation !== "object" || Array.isArray(claim.allocation)) {
+      throw new RpcError("invalid_request", "allocationClaim is not a valid v1 owner claim");
+    }
+    const allocation = claim.allocation as Record<string, unknown>;
+    if (allocation.version !== 1 || allocation.mode !== "active" || allocation.outcome !== "selected"
+      || allocation.account !== claim.account || allocation.scope !== claim.scope || allocation.operation !== claim.operation) {
+      throw new RpcError("account_claim_refused", "allocationClaim decision receipt does not match the claim");
+    }
+    return { version: 1, id: claim.id, scope: claim.scope, account: claim.account,
+      operation: claim.operation as AccountAdmissionClaim["operation"], units: 1,
+      sourceAccount: claim.sourceAccount as string | null, createdAt: claim.createdAt as number,
+      expiresAt: claim.expiresAt as number, target, allocation: claim.allocation as AccountAllocationReceipt };
+  }
+
+  private accountFromClaim(
+    claim: AccountAdmissionClaim,
+    operation: AccountAdmissionClaim["operation"],
+    harness: string,
+    workId: string,
+    generation: number,
+    sourceAccount: string | null,
+  ): AccountRow {
+    if (claim.operation !== operation || claim.scope !== this.mustAccounts().allocationScope(harness)
+      || claim.target.workId !== workId || claim.target.expectedGeneration !== generation
+      || claim.sourceAccount !== sourceAccount || (operation === "swap" && claim.account === sourceAccount) || claim.expiresAt <= Date.now()) {
+      throw new RpcError("account_claim_refused", `allocation claim ${claim.id} is expired or does not match this ${operation}`);
+    }
+    const account = this.resolveAccountSelector(claim.account, harness);
+    if (account.harness !== harness) throw new RpcError("harness_mismatch", `account ${account.id} is a ${account.harness} account; expected ${harness}`);
+    if (account.status === "paused") throw new RpcError("account_paused", `account ${account.id} is paused`);
+    return account;
+  }
+
+  private consumeAccountClaim(claim: AccountAdmissionClaim, beeId: string): void {
+    try {
+      this.mustStore().consumeAccountAdmissionClaim({
+        id: claim.id,
+        scope: claim.scope,
+        account: claim.account,
+        sourceAccount: claim.sourceAccount,
+        operation: claim.operation,
+        units: claim.units,
+        expiresAt: claim.expiresAt,
+        reconcileAfterGeneration: claim.target.expectedGeneration,
+        receipt: { allocation: claim.allocation as unknown as Record<string, unknown>, authority: { version: 1, target: claim.target } },
+      }, beeId);
+    } catch (error) {
+      throw new RpcError("account_claim_refused", error instanceof Error ? error.message : `allocation claim ${claim.id} was refused`);
+    }
+  }
+
+  private ownerClaimRequired(harness: string, operation: AccountAdmissionClaim["operation"]): never {
+    const receipt: AccountAllocationReceipt = {
+      version: 1,
+      mode: "active",
+      scope: this.mustAccounts().allocationScope(harness),
+      revision: null,
+      observedAt: Date.now(),
+      operation,
+      outcome: "wait",
+      account: null,
+      reason: "allocation_owner_required",
+      retryAt: null,
+      candidates: [],
+    };
+    throw new RpcError("account_wait", "Automatic account allocation is waiting: allocation_owner_required", {
+      allocation: receipt as unknown as Record<string, unknown>,
+    });
   }
 
   /**
@@ -1824,7 +2076,16 @@ export class HiveDaemon {
    * unbound. An explicit selector with no usable candidates is typed
    * `account_unavailable`.
    */
-  private resolveSpawnAccount(request: string | null, agent: string, params: Record<string, unknown>): { account: AccountRow | null; reason: string | null } {
+  private resolveSpawnAccount(
+    request: string | null,
+    agent: string,
+    params: Record<string, unknown>,
+    admissionKey: string,
+    operation: "spawn" | "handoff" = "spawn",
+    reconcileAfterGeneration = 0,
+    sourceAccount: string | null = null,
+    targetWorkId?: string,
+  ): { account: AccountRow | null; reason: string | null; allocation?: AccountAllocationReceipt; reservationId?: string; claim?: AccountAdmissionClaim } {
     const store = this.mustStore();
     if (request === null) return { account: null, reason: null };
     if (request === "rr") {
@@ -1839,10 +2100,25 @@ export class HiveDaemon {
       if (account.status === "paused") throw new RpcError("account_paused", `account ${account.id} is paused; unpause it or pick another`);
       return { account, reason: "explicit" };
     }
+    const claim = this.allocationClaimParam(params);
+    if (claim) {
+      if (!this.accounts) throw new RpcError("account_unavailable", `Account selection is unavailable for ${agent}`);
+      if (!targetWorkId) throw new RpcError("invalid_request", `${operation}: a stable target work id is required with allocationClaim`);
+      const account = this.accountFromClaim(claim, operation, agent, targetWorkId, reconcileAfterGeneration, sourceAccount);
+      return { account, reason: "allocator owner claim", allocation: claim.allocation, claim };
+    }
     if (!this.accounts || store.listAccounts({ harness: agent }).length === 0) return { account: null, reason: null };
-    const pick = this.accounts.pick(agent, { model: this.modelParamOf(params, agent) });
-    if (!pick.ok) throw new RpcError("account_unavailable", pick.message);
-    return { account: pick.account, reason: pick.reason };
+    if (this.accounts.allocationMode() === "active") this.ownerClaimRequired(agent, operation);
+    const admission = this.accounts.admitNewWork(agent, {
+      operation,
+      requestKey: admissionKey,
+      model: this.modelParamOf(params, agent),
+      context: this.allocationContextParam(params),
+      sourceAccount,
+      reconcileAfterGeneration,
+    });
+    if (!admission.ok) throw new RpcError(admission.code, admission.message, { allocation: admission.receipt as unknown as Record<string, unknown> });
+    return { account: admission.account, reason: admission.reason, allocation: admission.receipt, reservationId: admission.reservation?.id };
   }
 
   private rpcSpawn(params: Record<string, unknown>, accountRequest: string | null): SpawnResult {
@@ -1889,7 +2165,9 @@ export class HiveDaemon {
     const driver = this.driver;
     // v7: the account is resolved BEFORE the row is written ('auto' is never
     // stored); the home env is derived from the account row.
-    const { account, reason: accountReason } = this.resolveSpawnAccount(accountRequest, agent, params);
+    const { account, reason: accountReason, allocation, reservationId, claim } = this.resolveSpawnAccount(
+      accountRequest, agent, params, key ?? `spawn:${id}`, "spawn", 0, null, id,
+    );
     const accountEnv = account && this.accounts ? this.accounts.homeEnvOf(account) : {};
     const requestedEnv = this.spawnEnvParam(params);
     // Cell substrate: the cell owns the cwd (the space checkout). The seed
@@ -1912,6 +2190,8 @@ export class HiveDaemon {
       env: { ...requestedEnv, ...accountEnv },
       ...(account ? { account: account.id } : {}),
     });
+    if (claim) this.consumeAccountClaim(claim, created.id);
+    else if (reservationId) store.bindAccountAdmission(reservationId, created.id);
     if (cell) {
       reserveCell(this.cfg.cellsRoot, cell.reserve);
       const identity = localRepoIdentity(cell.reserve.originRepo);
@@ -1947,6 +2227,8 @@ export class HiveDaemon {
       messageId: sent?.message.id ?? null,
       account: account?.id ?? null,
       ...(accountReason && accountReason !== "explicit" ? { accountReason } : {}),
+      ...(allocation ? { allocation } : {}),
+      ...(claim ? { allocationClaimId: claim.id } : {}),
     };
   }
 
@@ -2401,6 +2683,24 @@ export class HiveDaemon {
    * expected.generation, fence, enqueue the stop). Summarization and the
    * switch run later in the daemon loop, never here.
    */
+  private async rpcBeeHandoffWithAdmission(params: Record<string, unknown>): Promise<BeeHandoffResult> {
+    const key = this.idempotencyKeyOf(params);
+    if (key && this.mustStore().getBeeHandoffByKey(key)) return this.rpcBeeHandoff(params);
+    const bee = typeof params.beeId === "string" ? this.mustStore().getBee(params.beeId) : null;
+    const target = params.target && typeof params.target === "object" && !Array.isArray(params.target)
+      ? params.target as Record<string, unknown>
+      : null;
+    const targetAgent = typeof target?.agent === "string" ? target.agent : null;
+    const automatic = target?.account === undefined || target?.account === "auto";
+    if (bee && targetAgent && automatic && this.accounts && !this.allocationClaimParam(params)
+      && this.accounts.allocationMode() === "shadow") {
+      await this.accounts.ensureFreshAdmissionLimits(targetAgent, {
+        model: this.modelParamOf({ args: Array.isArray(target?.args) ? target.args : [] }, targetAgent),
+      });
+    }
+    return this.rpcBeeHandoff(params);
+  }
+
   private rpcBeeHandoff(params: Record<string, unknown>): BeeHandoffResult {
     const store = this.mustStore();
     const key = this.idempotencyKeyOf(params);
@@ -2449,16 +2749,21 @@ export class HiveDaemon {
     const accountRequest = targetObj.account === undefined
       ? (targetAgent === source.agent && source.account ? source.account : "auto")
       : this.accountParam(targetObj);
+    const allocationClaim = this.allocationClaimParam(params);
     const requestHash = hashBeeHandoffRequest({
       beeId,
       expected,
       target: { agent: targetAgent, args, account: accountRequest },
       instruction,
       stopAt,
+      allocationClaimId: allocationClaim?.id ?? null,
     });
     if (existing) {
       if (existing.requestHash !== requestHash) throw new RpcError("idempotency_conflict", "idempotency key already bound to a different bee.handoff request");
-      return { ...toBeeHandoffView(existing), deduped: true };
+      const replayAdmission = store.getAccountAdmissionByRequestKey(`account-admission:handoff:${key}`);
+      return { ...toBeeHandoffView(existing), deduped: true,
+        ...(allocationClaim ? { allocation: allocationClaim.allocation, allocationClaimId: allocationClaim.id } : {}),
+        ...(!allocationClaim && replayAdmission ? { allocation: replayAdmission.receipt as unknown as AccountAllocationReceipt } : {}) };
     }
     if (bee.lifecycle !== "active") {
       throw new RpcError("lifecycle_refused", `bee.handoff: bee ${beeId} is ${bee.lifecycle}; unarchive it first`);
@@ -2474,36 +2779,72 @@ export class HiveDaemon {
       // The tmux seat's TUI harness is baked into the pane; only the headless substrates re-resolve the harness per generation.
       throw new RpcError("invalid_request", `bee.handoff: bee ${beeId} runs the ${bee.agent} TUI on tmux; cross-family handoff is available on hsr/cell bees`);
     }
-    const { account, reason } = this.resolveSpawnAccount(accountRequest, targetAgent, { args: args ?? [] });
-    // The switch installs the target account's home env over the bee's own
-    // env minus the SOURCE harness home key (a Codex home must not leak into
-    // a Claude runtime and vice versa).
-    const env = { ...bee.env };
-    const sourceHomeKey = homeEnvFor(bee.agent);
-    if (sourceHomeKey) delete env[sourceHomeKey];
-    const targetHomeKey = homeEnvFor(targetAgent);
-    if (targetHomeKey) delete env[targetHomeKey];
-    const targetEnv = { ...env, ...(account && this.accounts ? this.accounts.homeEnvOf(account) : {}) };
-    // The target segment's log lives beside the bee's canonical Honeybee log
-    // (never beside a foreign/imported transcript path).
-    const nextOrdinal = (store.currentTranscriptSegment(beeId)?.ordinal ?? 0) + 1;
-    const targetSessionLogPath = bee.substrate === "tmux" && !this.cfg.sessionLogDir
-      ? null
-      : segmentSessionLogPath(this.canonicalSessionLogPath(beeId), nextOrdinal);
-    const handoff = store.admitBeeHandoff({
-      beeId,
-      idempotencyKey: key,
-      requestHash,
-      expected,
-      target: { agent: targetAgent, args, account: account?.id ?? null, env: targetEnv },
-      instruction,
-      stopAt,
-      targetSessionLogPath,
+    return store.transact(() => {
+      const claim = allocationClaim;
+      const automatic = targetObj.account === undefined || targetObj.account === "auto";
+      if (claim && !automatic) throw new RpcError("invalid_request", "bee.handoff: allocationClaim requires an automatic target account");
+      const claimedAccount = claim
+        ? this.accountFromClaim(claim, "handoff", targetAgent, beeId, expected.generation, source.account)
+        : null;
+      if (automatic && this.accounts && !claim && this.accounts.allocationMode() === "active") {
+        this.ownerClaimRequired(targetAgent, "handoff");
+      }
+      const inherited = !claim && targetObj.account === undefined && targetAgent === source.agent && source.account && this.accounts
+        ? this.accounts.admitNewWork(targetAgent, {
+            operation: "handoff",
+            requestKey: key,
+            model: this.modelParamOf({ args: args ?? [] }, targetAgent),
+            context: this.allocationContextParam(params),
+            onlyAccountIds: new Set([source.account]),
+            beeId,
+            sourceAccount: source.account,
+            reconcileAfterGeneration: expected.generation,
+          })
+        : null;
+      if (inherited && !inherited.ok) {
+        throw new RpcError(inherited.code, inherited.message, { allocation: inherited.receipt as unknown as Record<string, unknown> });
+      }
+      const resolved = claimedAccount
+        ? { account: claimedAccount, reason: "allocator owner claim", allocation: claim!.allocation, claim, reservationId: undefined }
+        : inherited?.ok
+        ? { account: inherited.account, reason: inherited.reason, allocation: inherited.receipt, reservationId: inherited.reservation?.id }
+        : this.resolveSpawnAccount(accountRequest, targetAgent,
+            { args: args ?? [], allocationContext: params.allocationContext, allocationClaim: params.allocationClaim },
+            key, "handoff", expected.generation, source.account, beeId);
+      const { account, reason, allocation, reservationId } = resolved;
+      // The switch installs the target account's home env over the bee's own
+      // env minus the SOURCE harness home key (a Codex home must not leak into
+      // a Claude runtime and vice versa).
+      const env = { ...bee.env };
+      const sourceHomeKey = homeEnvFor(bee.agent);
+      if (sourceHomeKey) delete env[sourceHomeKey];
+      const targetHomeKey = homeEnvFor(targetAgent);
+      if (targetHomeKey) delete env[targetHomeKey];
+      const targetEnv = { ...env, ...(account && this.accounts ? this.accounts.homeEnvOf(account) : {}) };
+      // The target segment's log lives beside the bee's canonical Honeybee log
+      // (never beside a foreign/imported transcript path).
+      const nextOrdinal = (store.currentTranscriptSegment(beeId)?.ordinal ?? 0) + 1;
+      const targetSessionLogPath = bee.substrate === "tmux" && !this.cfg.sessionLogDir
+        ? null
+        : segmentSessionLogPath(this.canonicalSessionLogPath(beeId), nextOrdinal);
+      const handoff = store.admitBeeHandoff({
+        beeId,
+        idempotencyKey: key,
+        requestHash,
+        expected,
+        target: { agent: targetAgent, args, account: account?.id ?? null, env: targetEnv },
+        instruction,
+        stopAt,
+        targetSessionLogPath,
+      });
+      if (claim) this.consumeAccountClaim(claim, beeId);
+      else if (reservationId) store.bindAccountAdmission(reservationId, beeId);
+      this.log(
+        `bee.handoff bee=${beeId} handoff=${handoff.id} ${bee.agent}→${targetAgent} gen=${handoff.sourceGeneration} stopAt=${stopAt} account=${account?.id ?? "-"}${reason ? ` reason=${JSON.stringify(reason)}` : ""}`,
+      );
+      return { ...toBeeHandoffView(handoff), ...(allocation ? { allocation } : {}),
+        ...(claim ? { allocationClaimId: claim.id } : {}) };
     });
-    this.log(
-      `bee.handoff bee=${beeId} handoff=${handoff.id} ${bee.agent}→${targetAgent} gen=${handoff.sourceGeneration} stopAt=${stopAt} account=${account?.id ?? "-"}${reason ? ` reason=${JSON.stringify(reason)}` : ""}`,
-    );
-    return toBeeHandoffView(handoff);
   }
 
   /** A session log path this daemon owns (under its sessionLogDir); anything else is foreign evidence. */
@@ -3324,8 +3665,20 @@ export class HiveDaemon {
     return row;
   }
 
+  private async rpcThreadOperationWithAdmission(kind: "fork" | "handoff", params: Record<string, unknown>) {
+    const key = this.idempotencyKeyOf(params);
+    if (key && this.mustStore().threadOperationByKey(key)) return this.rpcThreadOperation(kind, params);
+    const source = typeof params.beeId === "string" ? this.mustStore().getBee(params.beeId) : null;
+    if (source?.account && this.accounts && !this.allocationClaimParam(params) && this.accounts.allocationMode() === "shadow") {
+      await this.accounts.ensureFreshAdmissionLimits(source.agent, {
+        model: this.modelParamOf({ args: source.args ?? [] }, source.agent),
+      });
+    }
+    return this.rpcThreadOperation(kind, params);
+  }
+
   private rpcThreadOperation(kind: "fork" | "handoff", params: Record<string, unknown>) {
-    const allowed = new Set(["beeId", "sourceProviderSessionId", "sourceNode", "idempotencyKey", "name", ...(kind === "handoff" ? ["instruction"] : [])]);
+    const allowed = new Set(["beeId", "sourceProviderSessionId", "sourceNode", "idempotencyKey", "name", "allocationContext", "allocationClaim", "successorBeeId", ...(kind === "handoff" ? ["instruction"] : [])]);
     for (const key of Object.keys(params)) if (!allowed.has(key)) throw new RpcError("thread_unsupported", `${kind} does not accept '${key}'`);
     if (params.sourceNode !== undefined && params.sourceNode !== "local") throw new RpcError("thread_remote_unsupported", "Dispatch to the source's owning daemon; cross-node execution is unsupported");
     const key = this.idempotencyKeyOf(params);
@@ -3335,12 +3688,23 @@ export class HiveDaemon {
     const instruction = kind === "handoff" ? this.param(params, "instruction") : null;
     if (instruction !== null && (!instruction.trim() || Buffer.byteLength(instruction) > 65536)) throw new RpcError("invalid_request", "Handoff instruction must contain 1..65536 UTF-8 bytes");
     const name = params.name === undefined ? null : this.param(params, "name");
-    const requestHash = createHash("sha256").update(JSON.stringify({ kind, sourceBeeId, sourceProviderSessionId, instruction, name })).digest("hex");
+    const claim = this.allocationClaimParam(params);
+    const requestedSuccessorBeeId = params.successorBeeId === undefined
+      ? (claim?.target.workId ?? null)
+      : this.param(params, "successorBeeId");
+    const successorBeeId = requestedSuccessorBeeId ?? randomUUID();
+    const requestHash = createHash("sha256").update(JSON.stringify({
+      kind, sourceBeeId, sourceProviderSessionId, instruction, name,
+      successorBeeId: requestedSuccessorBeeId, allocationClaimId: claim?.id ?? null,
+    })).digest("hex");
     const store = this.mustStore();
     const previous = store.threadOperationByKey(key);
     if (previous) {
       if (previous.requestHash !== requestHash) throw new RpcError("idempotency_conflict", "Thread operation key is already bound to another request");
-      return { operation: threadOperationView(previous), deduped: true };
+      const replayAdmission = store.getAccountAdmissionByRequestKey(`account-admission:${kind}:${key}`);
+      return { operation: threadOperationView(previous), deduped: true,
+        ...(claim ? { allocation: claim.allocation, allocationClaimId: claim.id } : {}),
+        ...(!claim && replayAdmission ? { allocation: replayAdmission.receipt as unknown as AccountAllocationReceipt } : {}) };
     }
     if (store.lookupRpcResult(key) || store.getCommandByIdempotencyKey(key)) throw new RpcError("idempotency_conflict", "Key is already bound to another operation");
     const source = store.getBee(sourceBeeId);
@@ -3354,16 +3718,61 @@ export class HiveDaemon {
     try { boundary = pinThreadHistory(codexHistoryPath(home, sourceProviderSessionId), sourceProviderSessionId); }
     catch (error) { throw new RpcError("thread_history_unavailable", error instanceof Error ? error.message : String(error)); }
     const id = randomUUID();
-    const successorBeeId = randomUUID();
     const successorProviderSessionId = randomUUID();
     const directory = join(this.cfg.dataDir, "thread-operations", id);
-    const operation = store.admitThreadOperation({ id, kind, sourceBeeId, sourceProviderSessionId, successorBeeId, successorProviderSessionId,
-      idempotencyKey: key, requestHash, instruction, source: boundary, historyPath: join(directory, "history.jsonl"), sessionPath: join(directory, "successor.jsonl") }, {
-      id: successorBeeId, name: name ?? `${source.name}-${kind}-${id.slice(0, 8)}`, agent: source.agent, substrate: source.substrate,
-      cwd: source.cwd, title: source.title ?? undefined, tags: [...source.tags], env: { ...source.env }, args: source.args, account: source.account,
-      parentId: source.id, forkedFrom: source.id, sessionLogPath: this.canonicalSessionLogPath(successorBeeId),
+    let allocation: AccountAllocationReceipt | undefined;
+    const operation = store.transact(() => {
+      const claimedAccount = claim
+        ? this.accountFromClaim(claim, kind, source.agent, successorBeeId, 0, null)
+        : null;
+      if (claimedAccount && claimedAccount.id !== source.account) {
+        throw new RpcError("account_claim_refused", `${kind} claim ${claim!.id} does not preserve the source account`);
+      }
+      if (source.account && this.accounts && !claim && this.accounts.allocationMode() === "active") {
+        this.ownerClaimRequired(source.agent, kind);
+      }
+      const admission = source.account && this.accounts && !claim
+        ? this.accounts.admitNewWork(source.agent, {
+            operation: kind,
+            requestKey: key,
+            model: this.modelParamOf({ args: source.args ?? [] }, source.agent),
+            context: this.allocationContextParam(params),
+            onlyAccountIds: new Set([source.account]),
+            reconcileAfterGeneration: 0,
+          })
+        : null;
+      if (admission && !admission.ok) {
+        throw new RpcError(admission.code, admission.message, { allocation: admission.receipt as unknown as Record<string, unknown> });
+      }
+      if (admission?.ok) allocation = admission.receipt;
+      const admitted = store.admitThreadOperation({ id, kind, sourceBeeId, sourceProviderSessionId, successorBeeId, successorProviderSessionId,
+        idempotencyKey: key, requestHash, instruction, source: boundary, historyPath: join(directory, "history.jsonl"), sessionPath: join(directory, "successor.jsonl") }, {
+        id: successorBeeId, name: name ?? `${source.name}-${kind}-${id.slice(0, 8)}`, agent: source.agent, substrate: source.substrate,
+        cwd: source.cwd, title: source.title ?? undefined, tags: [...source.tags], env: { ...source.env }, args: source.args,
+        account: claimedAccount?.id ?? source.account,
+        parentId: source.id, forkedFrom: source.id, sessionLogPath: this.canonicalSessionLogPath(successorBeeId),
+      });
+      if (claim) this.consumeAccountClaim(claim, successorBeeId);
+      else if (admission?.ok && admission.reservation) store.bindAccountAdmission(admission.reservation.id, successorBeeId);
+      return admitted;
     });
-    return { operation: threadOperationView(operation), deduped: false };
+    return { operation: threadOperationView(operation), deduped: false,
+      ...(claim ? { allocation: claim.allocation, allocationClaimId: claim.id } : {}),
+      ...(allocation ? { allocation } : {}) };
+  }
+
+  private async rpcForkWithAdmission(params: Record<string, unknown>): Promise<ForkResult> {
+    const store = this.mustStore();
+    const key = this.idempotencyKeyOf(params);
+    if (key != null && store.lookupRpcResult(key)) {
+      return this.withIdempotency("bee.fork", params, () => this.rpcFork(params));
+    }
+    const source = store.getBee(this.requireBee(params));
+    if (source?.account && this.accounts && !this.allocationClaimParam(params)
+      && this.accounts.allocationMode() === "shadow") {
+      await this.accounts.ensureFreshAdmissionLimits(source.agent, { model: this.modelParamOf({ args: source.args ?? [] }, source.agent) });
+    }
+    return this.withIdempotency("bee.fork", params, () => this.rpcFork(params));
   }
 
   private rpcFork(params: Record<string, unknown>): ForkResult {
@@ -3391,6 +3800,29 @@ export class HiveDaemon {
     const id = typeof params.id === "string" && params.id.length > 0 ? params.id : randomUUID();
     const forkSeed = source.providerSessionId;
     const driver = this.driver;
+    const claim = this.allocationClaimParam(params);
+    const claimedAccount = claim
+      ? this.accountFromClaim(claim, "fork", source.agent, id, 0, null)
+      : null;
+    if (claimedAccount && claimedAccount.id !== source.account) {
+      throw new RpcError("account_claim_refused", `fork claim ${claim!.id} does not preserve the source account`);
+    }
+    if (source.account && this.accounts && !claim && this.accounts.allocationMode() === "active") {
+      this.ownerClaimRequired(source.agent, "fork");
+    }
+    const admission = source.account && this.accounts && !claim
+      ? this.accounts.admitNewWork(source.agent, {
+          operation: "fork",
+          requestKey: key ?? `fork:${id}`,
+          model: this.modelParamOf({ args: source.args ?? [] }, source.agent),
+          context: this.allocationContextParam(params),
+          onlyAccountIds: new Set([source.account]),
+          reconcileAfterGeneration: 0,
+        })
+      : null;
+    if (admission && !admission.ok) {
+      throw new RpcError(admission.code, admission.message, { allocation: admission.receipt as unknown as Record<string, unknown> });
+    }
     const { bee } = store.createBee({
       id,
       name,
@@ -3407,12 +3839,16 @@ export class HiveDaemon {
       forkedFrom: source.id,
       forkSeed,
       // v7: a fork runs on the source's account (same identity, same home).
-      account: source.account,
+      account: claimedAccount?.id ?? source.account,
     });
+    if (claim) this.consumeAccountClaim(claim, bee.id);
+    else if (admission?.ok && admission.reservation) store.bindAccountAdmission(admission.reservation.id, bee.id);
     store.recordFork(id, source.id, forkSeed);
     const cmd = store.enqueueCommand("spawn", id, {}, key == null ? {} : { idempotencyKey: key });
     this.log(`bee.fork source=${source.id} fork=${id} seed=${forkSeed ?? "-"} cmd=${cmd.id}`);
-    return { beeId: id, commandId: cmd.id, forkedFrom: source.id, forkSeed, messageId: null, bee };
+    return { beeId: id, commandId: cmd.id, forkedFrom: source.id, forkSeed, messageId: null, bee,
+      ...(claim ? { allocation: claim.allocation, allocationClaimId: claim.id } : {}),
+      ...(admission?.ok ? { allocation: admission.receipt } : {}) };
   }
 
   private rpcChildren(params: Record<string, unknown>): ChildrenResult {
@@ -3835,6 +4271,7 @@ export class HiveDaemon {
       seals: store.listSeals(),
       accounts: store.listAccounts().map((account) => this.mirrorAccount(account)),
       accountLimits: store.listAccountLimits(),
+      accountAdmissions: store.listAccountAdmissions(),
       tasks: store.listTasks(),
       taskSupply: store.listTaskSupply(),
       loginFlows: store.listLoginFlows(),
@@ -4076,6 +4513,7 @@ export class HiveDaemon {
     if (key != null) {
       const hit = store.lookupRpcResult(key);
       if (hit) {
+        if (hit.verb !== verb) throw new RpcError("idempotency_conflict", `Key belongs to ${hit.verb}, not ${verb}`);
         this.log(`rpc.dedup verb=${verb} key=${key}`);
         return { ...(hit.result as T), deduped: true as const };
       }
@@ -4264,15 +4702,64 @@ export class HiveDaemon {
    * boots in the new account's home and resumes. A stopped bee is only
    * rebound (its next wake runs on the new account).
    */
+  private async rpcSwapAccountWithAdmission(params: Record<string, unknown>): Promise<SwapAccountResult> {
+    const store = this.mustStore();
+    const key = this.idempotencyKeyOf(params);
+    if (key != null && store.lookupRpcResult(key)) {
+      return this.withIdempotency("bee.swapAccount", params, () => this.rpcSwapAccount(params));
+    }
+    const beeId = this.requireBee(params);
+    const bee = store.getBee(beeId) as BeeRow;
+    const selector = this.param(params, "account");
+    const claim = this.allocationClaimParam(params);
+    if (claim && selector !== "auto") throw new RpcError("invalid_request", "allocationClaim requires account:auto");
+    if (selector === "auto" && !claim && this.mustAccounts().allocationMode() === "shadow") {
+      await this.mustAccounts().ensureFreshAdmissionLimits(bee.agent, {
+        excludeAccountIds: bee.account ? new Set([bee.account]) : undefined,
+        model: this.modelParamOf({ args: bee.args ?? [] }, bee.agent),
+      });
+    }
+    return this.withIdempotency("bee.swapAccount", params, () => this.rpcSwapAccount(params));
+  }
+
   private rpcSwapAccount(params: Record<string, unknown>): SwapAccountResult {
     const store = this.mustStore();
     const beeId = this.requireBee(params);
     const bee = store.getBee(beeId) as BeeRow;
-    const target = this.resolveAccountSelector(this.param(params, "account"), bee.agent);
-    return this.performSwap(bee, target, "operator");
+    const selector = this.param(params, "account");
+    if (selector !== "auto") {
+      const target = this.resolveAccountSelector(selector, bee.agent);
+      return this.performSwap(bee, target, "operator");
+    }
+    const runtime = store.currentRuntime(bee.id);
+    const claim = this.allocationClaimParam(params);
+    if (claim) {
+      const target = this.accountFromClaim(claim, "swap", bee.agent, bee.id, runtime?.generation ?? 0, bee.account);
+      return this.performSwap(bee, target, "operator", claim.allocation, undefined, claim);
+    }
+    if (this.mustAccounts().allocationMode() === "active") this.ownerClaimRequired(bee.agent, "swap");
+    const admission = this.mustAccounts().admitNewWork(bee.agent, {
+      operation: "swap",
+      requestKey: this.idempotencyKeyOf(params) ?? `implicit:${bee.id}:${runtime?.generation ?? 0}:${bee.account ?? "unbound"}`,
+      excludeAccountIds: bee.account ? new Set([bee.account]) : undefined,
+      model: this.modelParamOf({ args: bee.args ?? [] }, bee.agent),
+      context: this.allocationContextParam(params),
+      beeId: bee.id,
+      sourceAccount: bee.account,
+      reconcileAfterGeneration: runtime?.generation ?? 0,
+    });
+    if (!admission.ok) throw new RpcError(admission.code, admission.message, { allocation: admission.receipt as unknown as Record<string, unknown> });
+    return this.performSwap(bee, admission.account, "operator", admission.receipt, admission.reservation?.id);
   }
 
-  private performSwap(bee: BeeRow, target: AccountRow, by: "operator" | "rotation"): SwapAccountResult {
+  private performSwap(
+    bee: BeeRow,
+    target: AccountRow,
+    by: "operator" | "rotation",
+    allocation?: AccountAllocationReceipt,
+    reservationId?: string,
+    claim?: AccountAdmissionClaim,
+  ): SwapAccountResult {
     const store = this.mustStore();
     const accounts = this.mustAccounts();
     if (target.harness !== bee.agent) {
@@ -4303,10 +4790,14 @@ export class HiveDaemon {
       if (live && rt) {
         commandId = store.enqueueCommand("stop", bee.id, { cause: "stopped_by_system", reason: `swap_account:${by}`, thenRevive: true }).id;
       }
+      if (claim) {
+        this.consumeAccountClaim(claim, bee.id);
+      } else if (reservationId) store.bindAccountAdmission(reservationId, bee.id);
     });
     const action: SwapAccountResult["action"] = live ? "stop_then_revive" : "rebind_only";
     this.log(`bee.swapAccount bee=${bee.id} from=${from ?? "-"} to=${target.id} by=${by} action=${action} rekeyed=${rekeyed} transcript=${transcript}${commandId != null ? ` stop=${commandId}` : ""}`);
-    return { beeId: bee.id, from, to: target.id, action, commandId, rekeyed, transcript };
+    return { beeId: bee.id, from, to: target.id, action, commandId, rekeyed, transcript,
+      ...(allocation ? { allocation } : {}), ...(claim ? { allocationClaimId: claim.id } : {}) };
   }
 
   /**
@@ -4365,7 +4856,7 @@ export class HiveDaemon {
     if (!accounts) return;
     const bee = store.getBee(ev.beeId);
     if (!bee || !bee.account) return;
-    const account = store.getAccount(bee.account);
+    const account = accounts.accountForGeneration(bee, ev.generation);
     if (!account) return;
     if (ev.flag === "auth_needed") {
       if (ev.action === "set") {
@@ -4413,6 +4904,13 @@ export class HiveDaemon {
     const generation = rt?.generation ?? ev.generation;
     if (this.rotatedGenerations.get(bee.id) === generation) return;
     this.rotatedGenerations.set(bee.id, generation);
+    if (accounts.allocationMode() === "active") {
+      // The resource-blocked flag remains the durable waiting signal. A
+      // fleet observation must arrive on an owner-routed explicit auto-swap;
+      // a local tick cannot infer that unknown remote activity is empty.
+      this.log(`account.rotate bee=${bee.id} account=${account.id} waiting=allocation_owner_required`);
+      return;
+    }
     const pick = accounts.pick(bee.agent, { excludeAccountIds: new Set([account.id]), excludeRecentlyExhausted: true, model: this.modelOfBee(bee) });
     if (!pick.ok) {
       this.log(`account.rotate bee=${bee.id} account=${account.id} skipped=no_candidate (${pick.message})`);

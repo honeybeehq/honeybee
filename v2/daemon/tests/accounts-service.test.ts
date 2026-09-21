@@ -181,6 +181,144 @@ test("select.2: the operator's case over ROWS — 30% weekly with 3h to reset be
   }
 });
 
+test("allocation.1: active owner admissions are durable, proportional, and fail closed without complete fleet activity", () => {
+  const r = rig({ accounts: {
+    allocationMode: "active",
+    allocationPlanCapacityUnits: { large: 3, small: 1 },
+  } });
+  try {
+    const svc = service(r);
+    const large = addAccount(r, "claude", "large");
+    const small = addAccount(r, "claude", "small");
+    for (const [account, plan] of [[large, "large"], [small, "small"]] as const) {
+      r.store.putAccountLimits(account.id, {
+        readable: true,
+        plan,
+        fetchedAt: r.now(),
+        fiveHour: { usedPercent: 5, resetsAt: r.now() + 4 * HOUR, windowMinutes: 300 },
+        weekly: { usedPercent: 5, resetsAt: r.now() + 6 * DAY, windowMinutes: 10_080 },
+      });
+    }
+    const scope = svc.allocationScope("claude");
+    const context = { version: 1 as const, scope, revision: "fleet-1", observedAt: r.now(), complete: true, accounts: [] };
+    const counts = new Map<string, number>();
+    for (let i = 0; i < 8; i += 1) {
+      const result = svc.admitNewWork("claude", { operation: "spawn", requestKey: `node-race-${i}`, context });
+      assert.equal(result.ok, true);
+      if (!result.ok) continue;
+      counts.set(result.account.id, (counts.get(result.account.id) ?? 0) + 1);
+      assert.ok(result.reservation);
+    }
+    assert.deepEqual(Object.fromEntries(counts), { "claude-large": 6, "claude-small": 2 });
+    assert.equal(r.store.listUnreconciledAccountAdmissions(r.now()).length, 8);
+
+    const unknown = svc.admitNewWork("claude", { operation: "spawn", requestKey: "missing-remote", context: null });
+    assert.equal(unknown.ok, false);
+    if (!unknown.ok) assert.equal(unknown.receipt.reason, "activity_unknown");
+  } finally {
+    r.cleanup();
+  }
+});
+
+test("allocation.2: all protected accounts return a typed wait; there is no singleton or least-bad fallback", () => {
+  const r = rig({ accounts: { allocationMode: "active" } });
+  try {
+    const svc = service(r);
+    const account = addAccount(r, "claude", "only");
+    r.store.putAccountLimits(account.id, {
+      readable: true,
+      fetchedAt: r.now(),
+      weekly: { usedPercent: 89, resetsAt: r.now() + 6 * DAY, windowMinutes: 10_080 },
+    });
+    const context = { version: 1 as const, scope: svc.allocationScope("claude"), revision: "fleet-2", observedAt: r.now(), complete: true, accounts: [] };
+    const result = svc.admitNewWork("claude", { operation: "swap", requestKey: "cross-90", context });
+    assert.equal(result.ok, false);
+    if (!result.ok) {
+      assert.equal(result.code, "account_wait");
+      assert.equal(result.receipt.reason, "completion_reserve");
+      assert.equal(result.receipt.account, null);
+    }
+  } finally {
+    r.cleanup();
+  }
+});
+
+test("allocation.3: authoritative local activity charges long sessions and lets idle history age out", () => {
+  const r = rig({ accounts: { allocationMode: "active", allocationRecentGraceMs: 15 * 60_000 } });
+  try {
+    const long = addAccount(r, "claude", "long");
+    const idle = addAccount(r, "claude", "idle");
+    const { bee: longBee } = r.store.createBee({ name: "long", agent: "claude", substrate: "hsr", cwd: "/tmp", account: long.id });
+    r.store.updateRuntimeState(longBee.id, 1, "running", { pid: 1, pidStartedAt: r.now() });
+    const { bee: idleBee } = r.store.createBee({ name: "idle", agent: "claude", substrate: "hsr", cwd: "/tmp", account: idle.id });
+    r.store.updateRuntimeState(idleBee.id, 1, "running", { pid: 2, pidStartedAt: r.now() });
+    r.store.updateRuntimeState(idleBee.id, 1, "stopped", { exitCause: "clean" });
+    r.setNow(r.now() + 12 * HOUR);
+    limitsRow(r, long.id, 10, 10, r.now() + 6 * DAY);
+    limitsRow(r, idle.id, 10, 10, r.now() + 6 * DAY);
+    const svc = service(r);
+    const context = { version: 1 as const, scope: svc.allocationScope("claude"), revision: "fleet-activity", observedAt: r.now(), complete: true, accounts: [] };
+    const result = svc.admitNewWork("claude", { operation: "spawn", requestKey: "activity-pick", context });
+    assert.equal(result.ok, true);
+    if (result.ok) assert.equal(result.account.id, idle.id);
+  } finally {
+    r.cleanup();
+  }
+});
+
+test("allocation.4: only fresh provider evidence after exhaustion reopens headroom", () => {
+  const r = rig({ accounts: { allocationMode: "active" } });
+  try {
+    const account = addAccount(r, "claude", "restored");
+    limitsRow(r, account.id, 2, 2, r.now() + 6 * DAY);
+    r.store.recordAccountExhaustion(account.id, r.now() + 1);
+    r.setNow(r.now() + 2);
+    const svc = service(r);
+    const context = { version: 1 as const, scope: svc.allocationScope("claude"), revision: "fleet-reset", observedAt: r.now(), complete: true, accounts: [] };
+    const oldEvidence = svc.admitNewWork("claude", { operation: "spawn", requestKey: "before-refresh", context });
+    assert.equal(oldEvidence.ok, false, "a low snapshot from before exhaustion is not restoration evidence");
+
+    limitsRow(r, account.id, 2, 2, r.now() + 6 * DAY);
+    const freshEvidence = svc.admitNewWork("claude", { operation: "spawn", requestKey: "after-refresh", context });
+    assert.equal(freshEvidence.ok, true, "fresh verified headroom after the exhaustion event reopens admission");
+  } finally {
+    r.cleanup();
+  }
+});
+
+test("allocation.5: a remotely observed claim replaces its owner hold without a gap or double count", () => {
+  const r = rig({ accounts: { allocationMode: "active" } });
+  try {
+    const account = addAccount(r, "claude", "shared");
+    limitsRow(r, account.id, 87, 20, r.now() + DAY);
+    const svc = service(r);
+    const base = { version: 1 as const, scope: svc.allocationScope("claude"), observedAt: r.now(), complete: true };
+    const first = svc.admitNewWork("claude", {
+      operation: "spawn", requestKey: "owner-hold", context: { ...base, revision: "before-remote", accounts: [] },
+    });
+    assert.equal(first.ok, true);
+    if (!first.ok || !first.reservation) return;
+
+    const doubleCounted = svc.admitNewWork("claude", {
+      operation: "spawn", requestKey: "double-counted",
+      context: { ...base, revision: "remote-without-claim-id", accounts: [
+        { account: account.id, active: 0, recent: 0, pending: 1, ongoingUnits: 1 },
+      ] },
+    });
+    assert.equal(doubleCounted.ok, false, "the still-held owner claim plus remote pending work is conservative");
+
+    const reconciled = svc.admitNewWork("claude", {
+      operation: "spawn", requestKey: "observed-on-worker",
+      context: { ...base, revision: "remote-observed-claim", accounts: [
+        { account: account.id, active: 0, recent: 0, pending: 1, ongoingUnits: 1, observedClaimIds: [first.reservation.id] },
+      ] },
+    });
+    assert.equal(reconciled.ok, true, "remote activity replaces the matching owner hold exactly once");
+  } finally {
+    r.cleanup();
+  }
+});
+
 test("select.3: auth_needed accounts are skipped while a healthy one exists (named in the reason) and are the last resort otherwise; paused never", () => {
   const r = rig();
   try {

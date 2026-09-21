@@ -178,12 +178,19 @@ test("config.6 (spec 08): accounts settings default (vault/homes under ~/.hive, 
     assert.equal(defaults.accounts.limitsFetchTimeoutMs, 15_000);
     assert.equal(defaults.accounts.loginTimeoutMs, 10 * 60 * 1000);
     assert.equal(defaults.accounts.exhaustionCoolOffMs, 5 * 60 * 60 * 1000);
+    assert.equal(defaults.accounts.allocationMode, "shadow");
+    assert.equal(defaults.accounts.allocationQuotaFreshMs, 2 * 60 * 1000);
+    assert.equal(defaults.accounts.allocationActivityFreshMs, 2 * 60 * 1000);
+    assert.equal(defaults.accounts.allocationRecentGraceMs, 15 * 60 * 1000);
+    assert.equal(defaults.accounts.allocationReservationTtlMs, 15 * 60 * 1000);
+    assert.deepEqual(defaults.accounts.allocationPlanCapacityUnits, {});
     assert.equal(defaults.accounts.tmuxSocket, null);
     assert.equal(defaults.agents.claude?.login, undefined);
     writeFileSync(
       join(dir, "config.json"),
       JSON.stringify({
-        accounts: { vaultDir: "/v", homesDir: "/h", limitsStaleMs: 5, limitsRefreshMs: 0, tmuxSocket: "s" },
+        accounts: { vaultDir: "/v", homesDir: "/h", limitsStaleMs: 5, limitsRefreshMs: 0, tmuxSocket: "s",
+          allocationMode: "active", allocationPlanCapacityUnits: { Pro: 3 } },
         agents: { claude: { command: "claude", login: { command: "claude", args: ["auth", "login"] } } },
       }),
     );
@@ -193,12 +200,17 @@ test("config.6 (spec 08): accounts settings default (vault/homes under ~/.hive, 
     assert.equal(cfg.accounts.limitsStaleMs, 5);
     assert.equal(cfg.accounts.limitsRefreshMs, 0);
     assert.equal(cfg.accounts.tmuxSocket, "s");
+    assert.equal(cfg.accounts.allocationMode, "active");
+    assert.deepEqual(cfg.accounts.allocationPlanCapacityUnits, { pro: 3 });
     assert.deepEqual(cfg.agents.claude?.login, { command: "claude", args: ["auth", "login"] });
     for (const bad of [
       { accounts: [] },
       { accounts: { vaultDir: "" } },
       { accounts: { limitsStaleMs: "1h" } },
       { accounts: { tmuxSocket: "" } },
+      { accounts: { allocationMode: "on" } },
+      { accounts: { allocationQuotaFreshMs: 0 } },
+      { accounts: { allocationPlanCapacityUnits: { pro: 0 } } },
       { agents: { claude: { command: "claude", login: "claude" } } },
       { agents: { claude: { command: "claude", login: { command: "claude", args: [1] } } } },
     ]) {

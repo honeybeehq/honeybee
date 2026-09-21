@@ -108,6 +108,18 @@ export interface AccountsConfig {
   loginWorkerBackend?: "auto" | "pipe";
   /** Rotation cool-off: an account with rate-limit exhaustion evidence younger than this is not rotated ONTO. Default 5h. */
   exhaustionCoolOffMs?: number;
+  /** Automatic-account admission rollout. `shadow` records decisions but preserves legacy placement. Default shadow. */
+  allocationMode?: "shadow" | "active";
+  /** Maximum age of provider quota used for a new automatic admission. Default 2 min. */
+  allocationQuotaFreshMs?: number;
+  /** Maximum age of the caller's all-other-nodes activity snapshot. Default 2 min. */
+  allocationActivityFreshMs?: number;
+  /** Stopped/idle work counts as recently active for this long. Default 15 min. */
+  allocationRecentGraceMs?: number;
+  /** Abandoned start holds expire after this bound. Default 15 min. */
+  allocationReservationTtlMs?: number;
+  /** Comparable plan-capacity multipliers keyed by lower-case provider plan name. */
+  allocationPlanCapacityUnits?: Record<string, number>;
 }
 
 /** Node kinds (core contract §1): decides the cell-sandbox default (A4). */
@@ -270,6 +282,11 @@ export const DEFAULTS = {
   limitsFetchTimeoutMs: 15_000,
   loginTimeoutMs: 10 * 60 * 1000,
   exhaustionCoolOffMs: 5 * 60 * 60 * 1000,
+  allocationMode: "shadow" as const,
+  allocationQuotaFreshMs: 2 * 60 * 1000,
+  allocationActivityFreshMs: 2 * 60 * 1000,
+  allocationRecentGraceMs: 15 * 60 * 1000,
+  allocationReservationTtlMs: 15 * 60 * 1000,
 } as const;
 
 /** Default per-node data directory; overridable via HIVE_V2_DATA_DIR (tests always set it). */
@@ -523,6 +540,28 @@ function accountsOf(raw: Record<string, unknown>): ResolvedNodeConfig["accounts"
   if (backend !== "auto" && backend !== "pipe") {
     throw new ConfigError("config: accounts.loginWorkerBackend must be 'auto' or 'pipe' when given");
   }
+  const allocationMode = a.allocationMode === undefined ? DEFAULTS.allocationMode : a.allocationMode;
+  if (allocationMode !== "shadow" && allocationMode !== "active") {
+    throw new ConfigError("config: accounts.allocationMode must be 'shadow' or 'active'");
+  }
+  const rawCapacity = a.allocationPlanCapacityUnits;
+  if (rawCapacity !== undefined && (rawCapacity === null || typeof rawCapacity !== "object" || Array.isArray(rawCapacity))) {
+    throw new ConfigError("config: accounts.allocationPlanCapacityUnits must be an object of positive finite numbers");
+  }
+  const allocationPlanCapacityUnits: Record<string, number> = {};
+  for (const [plan, units] of Object.entries((rawCapacity ?? {}) as Record<string, unknown>)) {
+    if (!plan.trim() || typeof units !== "number" || !Number.isFinite(units) || units <= 0) {
+      throw new ConfigError("config: accounts.allocationPlanCapacityUnits must be an object of positive finite numbers");
+    }
+    allocationPlanCapacityUnits[plan.toLowerCase()] = units;
+  }
+  const allocationQuotaFreshMs = num(a, "allocationQuotaFreshMs", DEFAULTS.allocationQuotaFreshMs);
+  const allocationActivityFreshMs = num(a, "allocationActivityFreshMs", DEFAULTS.allocationActivityFreshMs);
+  const allocationRecentGraceMs = num(a, "allocationRecentGraceMs", DEFAULTS.allocationRecentGraceMs);
+  const allocationReservationTtlMs = num(a, "allocationReservationTtlMs", DEFAULTS.allocationReservationTtlMs);
+  if (allocationQuotaFreshMs <= 0 || allocationActivityFreshMs <= 0 || allocationRecentGraceMs < 0 || allocationReservationTtlMs <= 0) {
+    throw new ConfigError("config: allocation freshness/TTL must be positive and recent grace must be non-negative");
+  }
   return {
     vaultDir: str(a, "vaultDir", join(homedir(), ".hive", "vault")),
     homesDir: str(a, "homesDir", join(homedir(), ".hive", "homes")),
@@ -531,6 +570,12 @@ function accountsOf(raw: Record<string, unknown>): ResolvedNodeConfig["accounts"
     limitsFetchTimeoutMs: num(a, "limitsFetchTimeoutMs", DEFAULTS.limitsFetchTimeoutMs),
     loginTimeoutMs: num(a, "loginTimeoutMs", DEFAULTS.loginTimeoutMs),
     exhaustionCoolOffMs: num(a, "exhaustionCoolOffMs", DEFAULTS.exhaustionCoolOffMs),
+    allocationMode,
+    allocationQuotaFreshMs,
+    allocationActivityFreshMs,
+    allocationRecentGraceMs,
+    allocationReservationTtlMs,
+    allocationPlanCapacityUnits,
     tmuxSocket: (socket as string | undefined) ?? null,
     loginWorkerBackend: backend,
   };

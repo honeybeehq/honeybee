@@ -42,6 +42,8 @@ import {
   type AccountLimitsDisplayWindow,
   type AccountLimitsRow,
   type AccountLimitsUnreadableReason,
+  type AccountAdmissionReservationRow,
+  type AccountAdmissionOperation,
   type AccountRow,
   type AccountCredentialAuthority,
   type AccountStatus,
@@ -156,7 +158,7 @@ import {
   TASK_SUPPLY_SENDER_NAME,
   TASK_TRANSITIONS,
 } from "./tasks.ts";
-import { ACTIONS_TABLE_SQL, ACCOUNT_LIMITS_TABLE_SQL, BEES_ADDITIVE_COLUMNS, BEES_ACTIVE_MOVE_INDEX_SQL, BEES_ACTIVE_HANDOFF_INDEX_SQL, BEE_HANDOFFS_TABLE_SQL, TRANSCRIPT_SEGMENTS_TABLE_SQL, MAILBOX_PENDING_METADATA_INDEX_SQL, BEE_MOVES_TABLE_SQL, CELLS_TABLE_SQL, CELL_OPS_TABLE_SQL, FLAGS_ADDITIVE_COLUMNS, FLAGS_EXPIRY_INDEX_SQL, HANDLE_INDEX_SQL, IDEMPOTENCY_INDEX_SQL, MAILBOX_ADDITIVE_COLUMNS, MAIL_HISTORY_INDEX_SQL, MAIL_HISTORY_PROJECTION_SQL, RUNTIMES_ADDITIVE_COLUMNS, SCHEMA_SQL, SCHEMA_VERSION } from "./schema.ts";
+import { ACTIONS_TABLE_SQL, ACCOUNT_ADMISSIONS_TABLE_SQL, ACCOUNT_LIMITS_TABLE_SQL, BEES_ADDITIVE_COLUMNS, BEES_ACTIVE_MOVE_INDEX_SQL, BEES_ACTIVE_HANDOFF_INDEX_SQL, BEE_HANDOFFS_TABLE_SQL, TRANSCRIPT_SEGMENTS_TABLE_SQL, MAILBOX_PENDING_METADATA_INDEX_SQL, BEE_MOVES_TABLE_SQL, CELLS_TABLE_SQL, CELL_OPS_TABLE_SQL, FLAGS_ADDITIVE_COLUMNS, FLAGS_EXPIRY_INDEX_SQL, HANDLE_INDEX_SQL, IDEMPOTENCY_INDEX_SQL, MAILBOX_ADDITIVE_COLUMNS, MAIL_HISTORY_INDEX_SQL, MAIL_HISTORY_PROJECTION_SQL, RUNTIMES_ADDITIVE_COLUMNS, SCHEMA_SQL, SCHEMA_VERSION } from "./schema.ts";
 import { beeMoveReviveKey, beeMoveStopKey, beeMoveTransitionLegal, toBeeMoveView } from "./cellMove.ts";
 import {
   ACTION_DISPATCH_SENDER,
@@ -806,6 +808,25 @@ function mapAccount(r: Row): AccountRow {
     exhaustedAt: r.exhausted_at == null ? null : Number(r.exhausted_at),
     addedAt: Number(r.added_at),
     updatedAt: Number(r.updated_at),
+  };
+}
+
+function mapAccountAdmission(r: Row): AccountAdmissionReservationRow {
+  return {
+    id: String(r.id),
+    requestKey: String(r.request_key),
+    scope: String(r.scope),
+    account: String(r.account),
+    sourceAccount: (r.source_account as string | null) ?? null,
+    operation: r.operation as AccountAdmissionOperation,
+    units: Number(r.units),
+    beeId: (r.bee_id as string | null) ?? null,
+    reconcileAfterGeneration: Number(r.reconcile_after_generation),
+    receipt: JSON.parse(String(r.receipt)) as Record<string, unknown>,
+    createdAt: Number(r.created_at),
+    expiresAt: Number(r.expires_at),
+    confirmedAt: r.confirmed_at == null ? null : Number(r.confirmed_at),
+    releasedAt: r.released_at == null ? null : Number(r.released_at),
   };
 }
 
@@ -1696,6 +1717,17 @@ export class CoreStore {
     // v24: the action queue tables are additive (CREATE IF NOT EXISTS).
     this.db.exec(ACTIONS_TABLE_SQL);
     this.db.exec(THREAD_OPERATIONS_TABLE_SQL);
+    this.db.exec(ACCOUNT_ADMISSIONS_TABLE_SQL);
+    // v28 was developed behind a shadow-mode rollout. Keep intermediate v28
+    // databases forward-openable while the shared-owner confirmation column
+    // is added before activation.
+    const admissionCols = new Set(
+      (this.stmt("SELECT name FROM pragma_table_info('account_admission_reservations')").all() as Row[])
+        .map((column) => String(column.name)),
+    );
+    if (!admissionCols.has("confirmed_at")) {
+      this.db.exec("ALTER TABLE account_admission_reservations ADD COLUMN confirmed_at INTEGER");
+    }
     // v22 → v23: every existing bee gets its segment 0 (its spawn harness,
     // its current session log) so Apiary can parse pre-handoff history with
     // the harness that wrote it. Idempotent: bees with a segment are skipped.
@@ -4853,6 +4885,157 @@ export class CoreStore {
     return row ? mapAccountLimits(row) : null;
   }
 
+  getAccountAdmission(id: string): AccountAdmissionReservationRow | null {
+    const row = this.stmt("SELECT * FROM account_admission_reservations WHERE id = ?").get(id) as Row | undefined;
+    return row ? mapAccountAdmission(row) : null;
+  }
+
+  getAccountAdmissionByRequestKey(requestKey: string): AccountAdmissionReservationRow | null {
+    const row = this.stmt("SELECT * FROM account_admission_reservations WHERE request_key = ?").get(requestKey) as Row | undefined;
+    return row ? mapAccountAdmission(row) : null;
+  }
+
+  /** One request key owns one durable hold; exact retries return the original. */
+  reserveAccountAdmission(input: {
+    id: string;
+    requestKey: string;
+    scope: string;
+    account: string;
+    sourceAccount?: string | null;
+    operation: AccountAdmissionOperation;
+    units: number;
+    expiresAt: number;
+    reconcileAfterGeneration: number;
+    receipt: Record<string, unknown>;
+  }): AccountAdmissionReservationRow {
+    return this.tx(() => {
+      const previous = this.getAccountAdmissionByRequestKey(input.requestKey);
+      if (previous) {
+        if (previous.scope !== input.scope || previous.account !== input.account
+          || previous.sourceAccount !== (input.sourceAccount ?? null) || previous.operation !== input.operation
+          || previous.units !== input.units || previous.reconcileAfterGeneration !== input.reconcileAfterGeneration) {
+          throw new IdempotencyConflictError(`account admission key ${input.requestKey} is already bound to another request`);
+        }
+        return previous;
+      }
+      this.mustGetAccount(input.account);
+      if (!(input.units > 0 && Number.isFinite(input.units))) throw new CoreError("reserveAccountAdmission: units must be positive and finite");
+      if (!Number.isInteger(input.reconcileAfterGeneration) || input.reconcileAfterGeneration < 0) throw new CoreError("reserveAccountAdmission: reconcile generation must be a non-negative integer");
+      const createdAt = this.now();
+      if (!(Number.isFinite(input.expiresAt) && input.expiresAt > createdAt)) throw new CoreError("reserveAccountAdmission: expiresAt must be after creation");
+      const receipt = JSON.stringify(input.receipt);
+      if (Buffer.byteLength(receipt) > 16_384) throw new CoreError("reserveAccountAdmission: receipt exceeds 16 KiB");
+      this.stmt(`INSERT INTO account_admission_reservations
+        (id,request_key,scope,account,source_account,operation,units,bee_id,reconcile_after_generation,receipt,created_at,expires_at,confirmed_at,released_at)
+        VALUES(?,?,?,?,?,?,?,NULL,?,?,?,?,NULL,NULL)`)
+        .run(input.id, input.requestKey, input.scope, input.account, input.sourceAccount ?? null, input.operation, input.units,
+          input.reconcileAfterGeneration, receipt, createdAt, input.expiresAt);
+      const row = this.getAccountAdmission(input.id)!;
+      this.audit("account_admission.reserved", null, { reservation: row });
+      return row;
+    });
+  }
+
+  bindAccountAdmission(id: string, beeId: string): AccountAdmissionReservationRow {
+    return this.tx(() => {
+      this.mustGetBee(beeId);
+      const row = this.getAccountAdmission(id);
+      if (!row) throw new CoreError(`account admission not found: ${id}`);
+      if (row.beeId !== null && row.beeId !== beeId) throw new CoreError(`account admission ${id} is already bound to ${row.beeId}`);
+      if (row.beeId === beeId) return row;
+      this.stmt("UPDATE account_admission_reservations SET bee_id = ? WHERE id = ?").run(beeId, id);
+      const bound = this.getAccountAdmission(id)!;
+      this.audit("account_admission.bound", beeId, { reservationId: id, beeId });
+      return bound;
+    });
+  }
+
+  /**
+   * Import an allocator-owner claim into the target store and bind it in the
+   * same transaction as the target mutation. The claim id is the global
+   * identity: retries under another RPC key cannot apply it to another bee.
+   */
+  consumeAccountAdmissionClaim(input: {
+    id: string;
+    scope: string;
+    account: string;
+    sourceAccount: string | null;
+    operation: AccountAdmissionOperation;
+    units: number;
+    expiresAt: number;
+    reconcileAfterGeneration: number;
+    receipt: Record<string, unknown>;
+  }, beeId: string): AccountAdmissionReservationRow {
+    return this.tx(() => {
+      let row = this.getAccountAdmission(input.id);
+      if (!row) {
+        row = this.reserveAccountAdmission({
+          ...input,
+          requestKey: `shared-account-claim:${input.id}`,
+        });
+      }
+      if (row.scope !== input.scope || row.account !== input.account || row.sourceAccount !== input.sourceAccount
+        || row.operation !== input.operation || row.units !== input.units
+        || row.reconcileAfterGeneration !== input.reconcileAfterGeneration || row.expiresAt !== input.expiresAt) {
+        throw new IdempotencyConflictError(`account admission claim ${input.id} conflicts with its stored meaning`);
+      }
+      if (row.releasedAt !== null) throw new CoreError(`account admission claim ${input.id} was released`);
+      if (row.expiresAt <= this.now()) throw new CoreError(`account admission claim ${input.id} expired`);
+      return this.bindAccountAdmission(row.id, beeId);
+    });
+  }
+
+  confirmAccountAdmission(id: string): AccountAdmissionReservationRow | null {
+    return this.tx(() => {
+      const row = this.getAccountAdmission(id);
+      if (!row || row.confirmedAt !== null) return row;
+      const confirmedAt = this.now();
+      this.stmt("UPDATE account_admission_reservations SET confirmed_at = ? WHERE id = ?").run(confirmedAt, id);
+      const confirmed = this.getAccountAdmission(id)!;
+      this.audit("account_admission.confirmed", row.beeId, { reservationId: id, confirmedAt });
+      return confirmed;
+    });
+  }
+
+  releaseAccountAdmission(id: string): AccountAdmissionReservationRow | null {
+    return this.tx(() => {
+      const row = this.getAccountAdmission(id);
+      if (!row || row.releasedAt !== null) return row;
+      const releasedAt = this.now();
+      this.stmt("UPDATE account_admission_reservations SET released_at = ? WHERE id = ?").run(releasedAt, id);
+      const released = this.getAccountAdmission(id)!;
+      this.audit("account_admission.released", row.beeId, { reservationId: id, releasedAt });
+      return released;
+    });
+  }
+
+  /**
+   * Holds count until expiry/release or until the target generation exists.
+   * This generation fence prevents counting both a start reservation and the
+   * actual booting/running work after reconciliation.
+   */
+  listUnreconciledAccountAdmissions(now = this.now(), filter: { scope?: string; account?: string } = {}): AccountAdmissionReservationRow[] {
+    const rows = this.stmt(`SELECT reservation.*
+      FROM account_admission_reservations AS reservation
+      WHERE reservation.released_at IS NULL
+        AND reservation.expires_at > ?
+        AND (? IS NULL OR reservation.scope = ?)
+        AND (? IS NULL OR reservation.account = ?)
+        AND (reservation.bee_id IS NULL OR NOT EXISTS (
+          SELECT 1 FROM runtimes AS runtime
+          WHERE runtime.bee_id = reservation.bee_id
+            AND runtime.generation > reservation.reconcile_after_generation
+        ))
+      ORDER BY reservation.created_at, reservation.id`)
+      .all(now, filter.scope ?? null, filter.scope ?? null, filter.account ?? null, filter.account ?? null) as Row[];
+    return rows.map(mapAccountAdmission);
+  }
+
+  listAccountAdmissions(): AccountAdmissionReservationRow[] {
+    return (this.stmt("SELECT * FROM account_admission_reservations ORDER BY created_at, id").all() as Row[])
+      .map(mapAccountAdmission);
+  }
+
   listAccountLimits(): AccountLimitsRow[] {
     return (this.stmt("SELECT * FROM account_limits ORDER BY account").all() as Row[]).map(mapAccountLimits);
   }
@@ -7686,6 +7869,7 @@ export class CoreStore {
       accounts: this.listAccounts(),
       accountLimits: this.listAccountLimits(),
       selectionCursors: this.listSelectionCursors(),
+      accountAdmissions: this.listAccountAdmissions(),
       tasks: (this.stmt("SELECT * FROM tasks ORDER BY id").all() as Row[]).map(mapTask),
       taskSupply: (this.stmt("SELECT * FROM task_supply ORDER BY bee_id").all() as Row[]).map(mapTaskSupply),
       loginFlows: this.listLoginFlows(),

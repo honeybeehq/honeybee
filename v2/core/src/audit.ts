@@ -7,6 +7,7 @@ import type { ThreadOperationRow } from "./threadOperation.ts";
  */
 import type {
   AccountLimitsRow,
+  AccountAdmissionReservationRow,
   AccountRow,
   ActionQueueView,
   ActionView,
@@ -46,6 +47,7 @@ export function replayAudit(rows: AuditRow[]): StateDump {
   const accounts = new Map<string, AccountRow>();
   const accountLimits = new Map<string, AccountLimitsRow>();
   const selectionCursors = new Map<string, SelectionCursorRow>();
+  const accountAdmissions = new Map<string, AccountAdmissionReservationRow>();
   const tasks = new Map<string, TaskRow>();
   const taskSupply = new Map<string, TaskSupplyRow>();
   const loginFlows = new Map<string, LoginFlowRow>();
@@ -174,6 +176,9 @@ export function replayAudit(rows: AuditRow[]): StateDump {
         const id = p.accountId as string;
         if (!accounts.delete(id)) throw new Error(`audit replay: unknown account ${id}`);
         accountLimits.delete(id);
+        for (const [key, reservation] of accountAdmissions) {
+          if (reservation.account === id) accountAdmissions.delete(key);
+        }
         if (p.cursorCleared === true) selectionCursors.delete(p.harness as string);
         break;
       }
@@ -185,6 +190,30 @@ export function replayAudit(rows: AuditRow[]): StateDump {
       case "selection_cursor.set": {
         const cursor = p.cursor as SelectionCursorRow;
         selectionCursors.set(cursor.harness, { ...cursor });
+        break;
+      }
+      case "account_admission.reserved": {
+        const raw = structuredClone(p.reservation as AccountAdmissionReservationRow);
+        const reservation = { ...raw, confirmedAt: raw.confirmedAt ?? null };
+        accountAdmissions.set(reservation.id, reservation);
+        break;
+      }
+      case "account_admission.bound": {
+        const reservation = accountAdmissions.get(p.reservationId as string);
+        if (!reservation) throw new Error(`audit replay: unknown account admission ${String(p.reservationId)}`);
+        reservation.beeId = p.beeId as string;
+        break;
+      }
+      case "account_admission.confirmed": {
+        const reservation = accountAdmissions.get(p.reservationId as string);
+        if (!reservation) throw new Error(`audit replay: unknown account admission ${String(p.reservationId)}`);
+        reservation.confirmedAt = p.confirmedAt as number;
+        break;
+      }
+      case "account_admission.released": {
+        const reservation = accountAdmissions.get(p.reservationId as string);
+        if (!reservation) throw new Error(`audit replay: unknown account admission ${String(p.reservationId)}`);
+        reservation.releasedAt = p.releasedAt as number;
         break;
       }
       case "bee.deleted": {
@@ -501,6 +530,7 @@ export function replayAudit(rows: AuditRow[]): StateDump {
     accounts: [...accounts.values()].sort((a, b) => a.addedAt - b.addedAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
     accountLimits: [...accountLimits.values()].sort((a, b) => (a.account < b.account ? -1 : a.account > b.account ? 1 : 0)),
     selectionCursors: [...selectionCursors.values()].sort((a, b) => (a.harness < b.harness ? -1 : a.harness > b.harness ? 1 : 0)),
+    accountAdmissions: [...accountAdmissions.values()].sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id)),
     tasks: [...tasks.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
     taskSupply: [...taskSupply.values()].sort((a, b) => (a.beeId < b.beeId ? -1 : a.beeId > b.beeId ? 1 : 0)),
     loginFlows: [...loginFlows.values()].sort((a, b) => a.createdAt - b.createdAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),

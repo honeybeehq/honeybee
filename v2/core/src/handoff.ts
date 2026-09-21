@@ -48,6 +48,7 @@ export interface HandoffRequestShape {
   target: { agent: string; args: string[] | null; account: string | null };
   instruction: string | null;
   stopAt: BeeHandoffStopAt;
+  allocationClaimId?: string | null;
 }
 
 export function hashBeeHandoffRequest(input: HandoffRequestShape): string {

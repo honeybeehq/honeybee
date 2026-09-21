@@ -47,6 +47,7 @@ export {
 } from "./store.ts";
 export * from "./executables.ts";
 export * from "./accountSelect.ts";
+export * from "./accountAllocation.ts";
 export * from "./accountMatch.ts";
 export * from "./accountRecipes.ts";
 export * from "./loginFlow.ts";

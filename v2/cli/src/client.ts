@@ -151,11 +151,12 @@ export class RpcClient {
     if (frame.ok === true) {
       pending.resolve(frame.result);
     } else {
-      const err = (frame.error ?? {}) as { code?: string; message?: string };
+      const err = (frame.error ?? {}) as { code?: string; message?: string; details?: Record<string, unknown> };
       pending.reject(
         new RpcError(
           (err.code as RpcError["code"]) ?? "invalid_request",
           err.message ?? "rpc error",
+          err.details,
         ),
       );
     }

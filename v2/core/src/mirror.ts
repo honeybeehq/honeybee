@@ -13,7 +13,7 @@ import type { ThreadOperationView } from "./threadOperation.ts";
  * Changing anything here is a protocol change (bump PROTOCOL in the daemon).
  * The shape snapshot test (tests/mirror.test.ts) fails on any drift.
  */
-import type { AccountLimitsRow, AccountRow, ActionQueueView, ActionView, AuditRow, BeeHandoffView, BeeMoveView, BeeRow, BeeView, CellRow, CredentialHealth, QuestionRow, RuntimeRow, SealRow, TaskRow, TaskSupplyRow, TemplateRow, TrackRow, TranscriptSegmentRow } from "./types.ts";
+import type { AccountAdmissionReservationRow, AccountLimitsRow, AccountRow, ActionQueueView, ActionView, AuditRow, BeeHandoffView, BeeMoveView, BeeRow, BeeView, CellRow, CredentialHealth, QuestionRow, RuntimeRow, SealRow, TaskRow, TaskSupplyRow, TemplateRow, TrackRow, TranscriptSegmentRow } from "./types.ts";
 import { LOGIN_FLOW_KEYS, type LoginFlowRow } from "./loginFlow.ts";
 
 /** One bee as apiaryd stores it: B8 view verbatim + record + current runtime. */
@@ -62,6 +62,9 @@ export type MirrorAccountRow = AccountRow & { credentialHealth: CredentialHealth
  */
 export type MirrorAccountLimitsRow = AccountLimitsRow;
 
+/** v28: bounded, secret-free automatic-account admission receipt and hold. */
+export type MirrorAccountAdmissionRow = AccountAdmissionReservationRow;
+
 /** v11: tasks mirror as their store rows, verbatim. */
 export type MirrorTaskRow = TaskRow;
 
@@ -88,6 +91,8 @@ export interface MirrorSnapshot {
   /** v7 (additive): accounts + their latest limits, store rows verbatim. */
   accounts: MirrorAccountRow[];
   accountLimits: MirrorAccountLimitsRow[];
+  /** v28 (additive): authoritative automatic-account admission holds. */
+  accountAdmissions: MirrorAccountAdmissionRow[];
   /** v11 (additive): agent task lists + per-bee auto-supply config. */
   tasks: MirrorTaskRow[];
   taskSupply: MirrorTaskSupplyRow[];

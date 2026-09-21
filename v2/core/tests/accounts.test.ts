@@ -288,7 +288,7 @@ test("v7.migration: a v6 store opens as v7 — bees.account added, accounts/acco
     try {
       const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
       assert.equal(Number(version.value), SCHEMA_VERSION);
-      assert.equal(SCHEMA_VERSION, 27);
+      assert.equal(SCHEMA_VERSION, 28);
       const cols = (check.prepare("SELECT name FROM pragma_table_info('bees')").all() as Array<{ name: string }>).map((c) => c.name);
       assert.ok(cols.includes("account"));
       const tables = (check.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{ name: string }>).map((t) => t.name);
@@ -343,7 +343,7 @@ test("v27 bridge reopens a disabled pilot store without losing ordinary state or
         { ...(check.prepare("SELECT phase, generation, expires_at, operation_key, updated_at FROM account_credential_authorities WHERE account = ?").get(account.id) as Record<string, unknown>) },
         { phase: "disabled", generation: 4, expires_at: 9_999_999, operation_key: "rollout-4", updated_at: 7_777 },
       );
-      assert.equal((check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string }).value, "27");
+      assert.equal((check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string }).value, "28");
     } finally {
       check.close();
     }
@@ -360,6 +360,7 @@ test("v7.dump: StateDump carries accounts + limits + cursors; a fresh store's re
     assert.deepEqual(dump.accounts, []);
     assert.deepEqual(dump.accountLimits, []);
     assert.deepEqual(dump.selectionCursors, []);
+    assert.deepEqual(dump.accountAdmissions, []);
     assert.deepEqual(replayAudit(store.auditRows()), dump);
     store.close();
   } finally {
@@ -500,6 +501,11 @@ test("v7.parse.codex: duration-classified windows win; a weekly-only primary sta
   assert.equal(mixed.weekly?.usedPercent, 7);
   assert.equal(mixed.fiveHour?.usedPercent, 9);
   assert.equal(parseCodexRateLimits({}).readable, false);
+  assert.deepEqual(
+    parseCodexRateLimits({ primary: { windowDurationMins: 300, resetsAt: 1_800_000_000 } }),
+    { readable: false, rateLimitResetCredits: null, error: "app-server returned no rate-limit windows" },
+    "missing utilization is uncertainty, never synthesized as zero use",
+  );
 });
 
 test("v7.parse.claude-credentials + auth-failure classifier", () => {

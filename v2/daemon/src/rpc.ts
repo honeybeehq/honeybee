@@ -92,8 +92,8 @@ function isRpcVerb(value: unknown): value is RpcVerb {
 }
 
 /** Map any thrown error onto the closed RPC error list. */
-export function toRpcError(err: unknown): { code: RpcErrorCode; message: string } {
-  if (err instanceof RpcError) return { code: err.code, message: err.message };
+export function toRpcError(err: unknown): { code: RpcErrorCode; message: string; details?: Record<string, unknown> } {
+  if (err instanceof RpcError) return { code: err.code, message: err.message, ...(err.details ? { details: err.details } : {}) };
   if (err instanceof LoginFlowRefusal) return { code: err.code, message: err.message };
   if (err instanceof LeaseRefusal) return { code: err.code, message: err.message };
   if (err instanceof BeeNotFoundError) return { code: "bee_not_found", message: err.message };

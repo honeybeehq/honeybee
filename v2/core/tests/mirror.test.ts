@@ -170,6 +170,7 @@ test("mirror.2: value-level snapshot — a deterministic store serializes to the
       seals: [seal],
       accounts: [{ ...account, credentialHealth: "absent" }],
       accountLimits: [limits],
+      accountAdmissions: [],
       tasks: [],
       taskSupply: [],
       loginFlows: [],
@@ -369,6 +370,7 @@ test("mirror.2: value-level snapshot — a deterministic store serializes to the
       "rateLimitResetCredits": null
     }
   ],
+  "accountAdmissions": [],
   "tasks": [],
   "taskSupply": [],
   "loginFlows": []

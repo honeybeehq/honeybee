@@ -13,6 +13,7 @@
  * are the real transports. Tests inject fakes.
  */
 import { execFile, spawn as spawnChild } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -23,6 +24,7 @@ import { withFileLock } from "../../../src/lock.ts";
 import { seedGatewayMcp, type GatewayMcpSeedResult } from "../../../src/accounts/gatewayMcpSeed.ts";
 import {
   AUTO_PICK_DEBIT_PERCENT,
+  DEFAULT_ACCOUNT_ADMISSION_POLICY,
   accountActiveBees,
   accountCommitments,
   accountIdFor,
@@ -39,13 +41,19 @@ import {
   recipeFor,
   resolveVendorHome,
   rotateNearTie,
+  selectAccountAdmission,
   selectLeastLoadedAccount,
   windowRolledOver,
   isFableModel,
   type AccountLimits,
+  type AccountAdmissionCandidate,
+  type AccountAdmissionDecision,
+  type AccountAdmissionOperation,
+  type AccountAdmissionReservationRow,
   type AccountLimitsRow,
   type AccountLimitsUnreadableReason,
   type AccountRow,
+  type BeeRow,
   type AccountStatus,
   type AutoAccountCandidate,
   type ClaudeUsageResponse,
@@ -188,6 +196,80 @@ export interface PickOptions {
   model?: string;
   /** Rotation: exclude accounts with exhaustion evidence younger than the cool-off. */
   excludeRecentlyExhausted?: boolean;
+}
+
+/** All activity outside the allocator-owner node for one provider account. */
+export interface RemoteAccountActivityFact {
+  account: string;
+  active: number;
+  recent: number;
+  pending: number;
+  ongoingUnits: number;
+  /** Owner claims already represented by this remote fact. */
+  observedClaimIds?: string[];
+}
+
+/**
+ * Caller-supplied authoritative fleet observation. In active mode, omission,
+ * staleness, a scope mismatch, or `complete:false` is uncertainty and closes
+ * automatic admission. An empty `accounts` array is meaningful only when the
+ * caller positively sets `complete:true`.
+ */
+export interface AccountAllocationContext {
+  version: 1;
+  scope: string;
+  revision: string;
+  observedAt: number;
+  complete: boolean;
+  accounts: RemoteAccountActivityFact[];
+}
+
+export interface AccountAllocationReceipt {
+  version: 1;
+  mode: "shadow" | "active";
+  scope: string;
+  revision: string | null;
+  observedAt: number;
+  operation: AccountAdmissionOperation;
+  outcome: "selected" | "wait";
+  account: string | null;
+  reason: string;
+  retryAt: number | null;
+  candidates: AccountAdmissionDecision["candidates"];
+}
+
+/** Portable, secret-free grant minted by the one allocator owner for a scope. */
+export interface AccountAdmissionClaim {
+  version: 1;
+  id: string;
+  scope: string;
+  account: string;
+  operation: AccountAdmissionOperation;
+  units: number;
+  sourceAccount: string | null;
+  createdAt: number;
+  expiresAt: number;
+  target: { node: string; workId: string; expectedGeneration: number };
+  allocation: AccountAllocationReceipt;
+}
+
+export type NewWorkAdmission =
+  | { ok: true; account: AccountRow; reason: string; receipt: AccountAllocationReceipt; reservation: AccountAdmissionReservationRow | null }
+  | { ok: false; code: "account_wait" | "account_unavailable"; message: string; receipt: AccountAllocationReceipt };
+
+export interface NewWorkAdmissionOptions extends PickOptions {
+  operation: AccountAdmissionOperation;
+  requestKey: string;
+  context?: AccountAllocationContext | null;
+  beeId?: string;
+  /** Account that owns the fenced pre-transfer runtime generations. */
+  sourceAccount?: string | null;
+  reconcileAfterGeneration?: number;
+  /** Restrict an inherited-account operation (fork/handoff) to its source account. */
+  onlyAccountIds?: ReadonlySet<string>;
+  /** Owner RPC pre-mints the portable claim id and persists target metadata. */
+  reservationId?: string;
+  reservationMetadata?: Record<string, unknown>;
 }
 
 export interface CaptureOutcome {
@@ -859,6 +941,259 @@ export class AccountsService {
   // -------------------------------------------------------------------------
   // selection — the calibrated model over the store
   // -------------------------------------------------------------------------
+
+  allocationScope(harness: string): string {
+    return `${harness}:provider-accounts`;
+  }
+
+  allocationMode(): "shadow" | "active" {
+    return this.cfg.accounts.allocationMode;
+  }
+
+  /**
+   * Admission requires a provider observation fresh enough for the decision,
+   * including the singleton case. Provider I/O happens before the store
+   * transaction; selection then uses the resulting immutable rows.
+   */
+  async ensureFreshAdmissionLimits(harness: string, opts: PickOptions = {}): Promise<void> {
+    if (this.cfg.accounts.allocationMode === "shadow") {
+      this.scheduleFreshLimits(harness, opts);
+      return;
+    }
+    const now = this.now();
+    const stale = this.candidateIdsFor(harness, opts).filter((id) => {
+      const row = this.store.getAccountLimits(id);
+      return !row || !row.readable || now - row.fetchedAt > this.cfg.accounts.allocationQuotaFreshMs;
+    });
+    if (stale.length > 0) await Promise.all(stale.map((id) => this.refreshLimits([id])));
+  }
+
+  private contextIsFresh(context: AccountAllocationContext | null | undefined, scope: string, now: number): context is AccountAllocationContext {
+    if (!context || context.version !== 1 || context.scope !== scope || !context.complete) return false;
+    if (!Number.isFinite(context.observedAt) || context.observedAt > now + 60_000) return false;
+    if (now - context.observedAt > this.cfg.accounts.allocationActivityFreshMs) return false;
+    if (typeof context.revision !== "string" || context.revision.length === 0 || context.revision.length > 128) return false;
+    if (!Array.isArray(context.accounts) || context.accounts.length > 256) return false;
+    const accountIds = new Set(context.accounts.map((fact) => fact.account));
+    if (accountIds.size !== context.accounts.length) return false;
+    const claims = new Set<string>();
+    return context.accounts.every((fact) => {
+      if (typeof fact.account !== "string" || fact.account.length === 0
+        || ![fact.active, fact.recent, fact.pending].every((value) => Number.isSafeInteger(value) && value >= 0)
+        || !Number.isFinite(fact.ongoingUnits) || fact.ongoingUnits < 0
+        || (fact.observedClaimIds !== undefined && (!Array.isArray(fact.observedClaimIds) || fact.observedClaimIds.length > 256))) return false;
+      for (const claimId of fact.observedClaimIds ?? []) {
+        if (typeof claimId !== "string" || claimId.length === 0 || claimId.length > 128 || claims.has(claimId)) return false;
+        claims.add(claimId);
+      }
+      return true;
+    });
+  }
+
+  private localActivity(accountId: string, now: number): { active: number; recent: number; pending: number; ongoingUnits: number } {
+    let active = 0;
+    let recent = 0;
+    let pending = 0;
+    let ongoingUnits = 0;
+    const grace = this.cfg.accounts.allocationRecentGraceMs;
+    const transfers = this.store.listAccountAdmissions()
+      .filter((reservation) => reservation.beeId !== null && reservation.sourceAccount !== null && reservation.sourceAccount !== reservation.account);
+    for (const bee of this.store.listBees()) {
+      const runtime = this.store.currentRuntime(bee.id);
+      const transfer = transfers.find((reservation) => reservation.beeId === bee.id
+        && (runtime?.generation ?? 0) <= reservation.reconcileAfterGeneration);
+      const runtimeAccount = transfer?.sourceAccount ?? bee.account;
+      if (runtimeAccount !== accountId) continue;
+      const isActive = runtime?.state === "booting" || runtime?.state === "running";
+      const hasPending = this.store.undeliveredMessages(bee.id).length > 0
+        || this.store.listCommands({ beeId: bee.id }).some((command) =>
+          (command.status === "queued" || command.status === "running")
+          && (command.verb === "spawn" || command.verb === "revive" || command.verb === "send_wake"));
+      if (isActive && runtime) {
+        active += 1;
+        // One accepted start is one fair-share unit immediately; sessions
+        // then continue accruing instead of receiving capped elapsed credit.
+        ongoingUnits += Math.max(1, (now - runtime.startedAt) / 3_600_000);
+      } else {
+        const latest = Math.max(runtime?.updatedAt ?? 0, bee.lastOutputAt ?? 0);
+        if (latest > 0 && now - latest <= grace) {
+          recent += 1;
+          ongoingUnits += Math.max(0, (grace - (now - latest)) / Math.max(1, grace));
+        }
+      }
+      if (hasPending && !isActive) {
+        pending += 1;
+        ongoingUnits += 1;
+      }
+    }
+    return { active, recent, pending, ongoingUnits };
+  }
+
+  private admissionCandidate(
+    account: AccountRow,
+    options: NewWorkAdmissionOptions,
+    context: AccountAllocationContext | null,
+    contextFresh: boolean,
+    now: number,
+  ): AccountAdmissionCandidate {
+    const local = this.localActivity(account.id, now);
+    const remote = contextFresh ? context?.accounts.find((fact) => fact.account === account.id) : undefined;
+    const activity = {
+      coverage: contextFresh ? "complete" as const : "unknown" as const,
+      active: local.active + (remote?.active ?? 0),
+      recent: local.recent + (remote?.recent ?? 0),
+      pending: local.pending + (remote?.pending ?? 0),
+      ongoingUnits: local.ongoingUnits + (remote?.ongoingUnits ?? 0),
+    };
+    const row = this.store.getAccountLimits(account.id);
+    const applicableObserved = row?.readable
+      ? [row.fiveHourPct, row.weeklyPct, ...(isFableModel(options.model) ? [row.fableWeeklyPct] : [])]
+          .filter((value): value is number => value !== null)
+      : [];
+    const verifiedRestoredHeadroom = account.exhaustedAt != null
+      && row?.readable === true
+      && row.fetchedAt > account.exhaustedAt
+      && applicableObserved.length > 0
+      && applicableObserved.every((value) => value < DEFAULT_ACCOUNT_ADMISSION_POLICY.completionReservePercent);
+    let eligibility: AccountAdmissionCandidate["eligibility"] = { state: "eligible" };
+    if (account.status === "paused") eligibility = { state: "ineligible", reason: "paused" };
+    else if (!this.credentialed(account) || account.status === "auth_needed") eligibility = { state: "ineligible", reason: "auth" };
+    else if (this.credentialHealthOf(account) !== "verified") eligibility = { state: "unknown", reason: "auth" };
+    else if (account.exhaustedAt != null && now - account.exhaustedAt < this.cfg.accounts.exhaustionCoolOffMs && !verifiedRestoredHeadroom) {
+      eligibility = { state: "ineligible", reason: "exhausted" };
+    } else if (isFableModel(options.model) && row?.fableWeeklyPct == null) {
+      eligibility = { state: "unknown", reason: "grants" };
+    }
+    const windows: NonNullable<AccountAdmissionCandidate["quota"]>["windows"] = [];
+    const addWindow = (
+      kind: "fiveHour" | "weekly" | "fableWeekly",
+      usedPercent: number | null,
+      resetsAt: number | null,
+      measuredVelocity: number | null | undefined,
+      admissionCostPercent: number,
+    ) => {
+      if (usedPercent == null || resetsAt == null) return;
+      windows.push({
+        kind,
+        usedPercent,
+        resetsAt,
+        velocityPerHour: Math.max(measuredVelocity ?? 0, activity.active * admissionCostPercent),
+        admissionCostPercent,
+      });
+    };
+    if (row?.readable) {
+      const velocities = this.velocities.get(account.id);
+      addWindow("fiveHour", row.fiveHourPct, row.fiveHourResetsAt, velocities?.fiveHour, 4);
+      addWindow("weekly", row.weeklyPct, row.weeklyResetsAt, velocities?.weekly, 1);
+      addWindow("fableWeekly", row.fableWeeklyPct, row.fableResetsAt, velocities?.fableWeekly, 1);
+    }
+    const plan = row?.plan?.toLowerCase() ?? "";
+    const capacityUnits = this.cfg.accounts.allocationPlanCapacityUnits[plan] ?? 1;
+    const observedClaims = new Set(remote?.observedClaimIds ?? []);
+    const reservations = this.store.listUnreconciledAccountAdmissions(now, {
+      scope: this.allocationScope(account.harness),
+      account: account.id,
+    }).filter((reservation) => !observedClaims.has(reservation.id))
+      .reduce((sum, reservation) => sum + reservation.units, 0);
+    return {
+      accountId: account.id,
+      capacityUnits,
+      eligibility,
+      quota: row?.readable ? { fetchedAt: row.fetchedAt, windows } : null,
+      activity,
+      reservations,
+    };
+  }
+
+  /**
+   * Select and reserve NEW automatic work. Call inside the mutation's store
+   * transaction: the quota/activity snapshot, weighted-fair decision, durable
+   * hold, and caller's bee mutation then commit or roll back together.
+   */
+  admitNewWork(harness: string, options: NewWorkAdmissionOptions): NewWorkAdmission {
+    const now = this.now();
+    const scope = this.allocationScope(harness);
+    const context = options.context ?? null;
+    const contextFresh = this.contextIsFresh(context, scope, now);
+    const accounts = this.store.listAccounts({ harness }).filter((account) =>
+      !options.excludeAccountIds?.has(account.id) && (!options.onlyAccountIds || options.onlyAccountIds.has(account.id)));
+    const candidates = accounts.map((account) => this.admissionCandidate(account, options, context, contextFresh, now));
+    const decision = selectAccountAdmission(candidates, {
+      ...DEFAULT_ACCOUNT_ADMISSION_POLICY,
+      now,
+      model: options.model,
+      quotaFreshMs: this.cfg.accounts.allocationQuotaFreshMs,
+    });
+
+    if (this.cfg.accounts.allocationMode === "shadow") {
+      const inherited = options.onlyAccountIds?.size === 1
+        ? this.store.getAccount([...options.onlyAccountIds][0]!)
+        : null;
+      const legacy: PickOutcome = inherited
+        ? { ok: true, account: inherited, reason: "automatic inheritance", limitsAgeMs: null, stale: false, candidates: 1 }
+        : this.pick(harness, options);
+      if (!legacy.ok) {
+        const receipt: AccountAllocationReceipt = {
+          version: 1, mode: "shadow", scope, revision: contextFresh ? context!.revision : null,
+          observedAt: now, operation: options.operation, outcome: "wait", account: null,
+          reason: `shadow:${decision.kind === "wait" ? decision.reason : "selected"}; legacy:${legacy.code}`,
+          retryAt: decision.kind === "wait" ? decision.retryAt : null, candidates: decision.candidates,
+        };
+        return { ok: false, code: "account_unavailable", message: legacy.message, receipt };
+      }
+      const receipt: AccountAllocationReceipt = {
+        version: 1, mode: "shadow", scope, revision: contextFresh ? context!.revision : null,
+        observedAt: now, operation: options.operation, outcome: "selected", account: legacy.account.id,
+        reason: `shadow:${decision.kind === "selected" ? `would_select:${decision.accountId}` : `would_wait:${decision.reason}`}; legacy:${legacy.reason}`,
+        retryAt: decision.kind === "wait" ? decision.retryAt : null, candidates: decision.candidates,
+      };
+      this.log(`account.admission.shadow operation=${options.operation} selected=${legacy.account.id} policy=${decision.kind}${decision.kind === "wait" ? `:${decision.reason}` : `:${decision.accountId}`}`);
+      return { ok: true, account: legacy.account, reason: legacy.reason, receipt, reservation: null };
+    }
+
+    if (decision.kind === "wait") {
+      const receipt: AccountAllocationReceipt = {
+        version: 1, mode: "active", scope, revision: contextFresh ? context!.revision : null,
+        observedAt: now, operation: options.operation, outcome: "wait", account: null,
+        reason: decision.reason, retryAt: decision.retryAt, candidates: decision.candidates,
+      };
+      this.log(`account.admission.wait operation=${options.operation} scope=${scope} reason=${decision.reason} retry_at=${decision.retryAt ?? "-"}`);
+      return { ok: false, code: "account_wait", message: `Automatic account allocation is waiting: ${decision.reason}`, receipt };
+    }
+    const account = this.store.getAccount(decision.accountId);
+    if (!account) throw new Error(`selected account disappeared: ${decision.accountId}`);
+    const receipt: AccountAllocationReceipt = {
+      version: 1, mode: "active", scope, revision: contextFresh ? context!.revision : null,
+      observedAt: now, operation: options.operation, outcome: "selected", account: account.id,
+      reason: decision.reason, retryAt: null, candidates: decision.candidates,
+    };
+    const reservation = this.store.reserveAccountAdmission({
+      id: options.reservationId ?? randomUUID(),
+      requestKey: `account-admission:${options.operation}:${options.requestKey}`,
+      scope,
+      account: account.id,
+      sourceAccount: options.sourceAccount ?? null,
+      operation: options.operation,
+      units: 1,
+      expiresAt: now + this.cfg.accounts.allocationReservationTtlMs,
+      reconcileAfterGeneration: options.reconcileAfterGeneration ?? 0,
+      receipt: options.reservationMetadata
+        ? { allocation: receipt as unknown as Record<string, unknown>, ...options.reservationMetadata }
+        : receipt as unknown as Record<string, unknown>,
+    });
+    this.log(`account.admission.selected operation=${options.operation} scope=${scope} account=${account.id} reservation=${reservation.id}`);
+    return { ok: true, account, reason: decision.reason, receipt, reservation };
+  }
+
+  /** Account that owned the specific generation, even after a swap rebind. */
+  accountForGeneration(bee: Pick<BeeRow, "id" | "account">, generation: number): AccountRow | null {
+    const transfer = this.store.listAccountAdmissions()
+      .filter((reservation) => reservation.beeId === bee.id
+        && reservation.sourceAccount !== null
+        && generation <= reservation.reconcileAfterGeneration)
+      .sort((a, b) => a.reconcileAfterGeneration - b.reconcileAfterGeneration || a.createdAt - b.createdAt)[0];
+    return this.store.getAccount(transfer?.sourceAccount ?? bee.account ?? "");
+  }
 
   /**
    * Resolve `auto` for a harness (spec 08 §Selection). Candidates: this

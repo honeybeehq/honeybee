@@ -140,8 +140,33 @@
  */
 /** v26 widens commands with reconnect_tools; v27 adds the opt-in credential authority table.
  * v27 refuses older binaries even when no account is enrolled. Roll back behavior with
- * credentials.disable; binary downgrade requires a separately planned store restore. */
-export const SCHEMA_VERSION = 27;
+ * credentials.disable; binary downgrade requires a separately planned store restore.
+ * v28 adds durable, generation-reconciled automatic-account start reservations
+ * and shared-owner claim confirmation. */
+export const SCHEMA_VERSION = 28;
+
+export const ACCOUNT_ADMISSIONS_TABLE_SQL = `
+CREATE TABLE IF NOT EXISTS account_admission_reservations (
+  id                         TEXT PRIMARY KEY,
+  request_key                TEXT NOT NULL UNIQUE,
+  scope                      TEXT NOT NULL,
+  account                    TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  source_account             TEXT,
+  operation                  TEXT NOT NULL CHECK (operation IN ('spawn','swap','fork','handoff')),
+  units                      REAL NOT NULL CHECK (units > 0),
+  bee_id                     TEXT,
+  reconcile_after_generation INTEGER NOT NULL CHECK (reconcile_after_generation >= 0),
+  receipt                    TEXT NOT NULL,
+  created_at                 INTEGER NOT NULL,
+  expires_at                 INTEGER NOT NULL,
+  confirmed_at               INTEGER,
+  released_at                INTEGER,
+  CHECK (expires_at > created_at)
+) STRICT;
+CREATE INDEX IF NOT EXISTS account_admission_active
+  ON account_admission_reservations(account, expires_at)
+  WHERE released_at IS NULL;
+`;
 
 /**
  * Current shape shared between SCHEMA_SQL and the v19 table rebuild so a

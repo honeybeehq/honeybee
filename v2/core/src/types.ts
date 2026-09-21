@@ -484,6 +484,29 @@ export interface SelectionCursorRow {
   updatedAt: number;
 }
 
+export const ACCOUNT_ADMISSION_OPERATIONS = ["spawn", "swap", "fork", "handoff"] as const;
+export type AccountAdmissionOperation = (typeof ACCOUNT_ADMISSION_OPERATIONS)[number];
+
+/** Durable start hold. It stops counting once a newer target generation exists. */
+export interface AccountAdmissionReservationRow {
+  id: string;
+  requestKey: string;
+  scope: string;
+  account: string;
+  /** Account owning generations at or below the reconciliation fence. */
+  sourceAccount: string | null;
+  operation: AccountAdmissionOperation;
+  units: number;
+  beeId: string | null;
+  reconcileAfterGeneration: number;
+  receipt: Record<string, unknown>;
+  createdAt: number;
+  expiresAt: number;
+  /** Target owner acknowledged that its mutation committed. */
+  confirmedAt: number | null;
+  releasedAt: number | null;
+}
+
 // ---------------------------------------------------------------------------
 // v14 — automatic-naming usage (operational telemetry, not replay state)
 // ---------------------------------------------------------------------------
@@ -763,6 +786,8 @@ export interface StateDump {
   accounts: AccountRow[];
   accountLimits: AccountLimitsRow[];
   selectionCursors: SelectionCursorRow[];
+  /** v28 — durable automatic-account admission holds and decision receipts. */
+  accountAdmissions: AccountAdmissionReservationRow[];
   /** v11 */
   tasks: TaskRow[];
   taskSupply: TaskSupplyRow[];

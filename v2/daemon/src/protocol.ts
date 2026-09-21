@@ -42,6 +42,7 @@ import type {
   MailPendingParams as CoreMailPendingParams,
   MailPendingResult as CoreMailPendingResult,
   MirrorAccountLimitsRow,
+  MirrorAccountAdmissionRow,
   MirrorAccountRow,
   MirrorLoginFlowRow,
   BeeView,
@@ -65,9 +66,9 @@ import type {
   Urgency,
 } from "../../core/src/index.ts";
 import type { BootReport } from "./loops.ts";
-import type { EphemeralCredentialFile } from "./accountsService.ts";
+import type { AccountAdmissionClaim, AccountAllocationContext, AccountAllocationReceipt, EphemeralCredentialFile } from "./accountsService.ts";
 
-export type { EphemeralCredential, EphemeralCredentialFile } from "./accountsService.ts";
+export type { AccountAdmissionClaim, AccountAllocationContext, AccountAllocationReceipt, EphemeralCredential, EphemeralCredentialFile } from "./accountsService.ts";
 
 export const PROTOCOL = "v2/1";
 export const DAEMON_VERSION = "2.0.0-wp4";
@@ -106,6 +107,10 @@ export const DAEMON_CAPABILITIES = [
    */
   "account.lease.v1",
   "account.credentials.pilot.v1",
+  /** Durable, weighted-fair automatic allocation with hard completion reserve and typed waits. */
+  "account.allocation.v1",
+  /** Cross-node single-owner acquire/confirm/release claims. */
+  "account.allocation.owner.v1",
   /** Earned Codex rate-limit reset discovery and redemption. */
   "account.reset_limits.v1",
   /** Bounded, backward-pageable node-wide mailbox history reconstructed from typed audit events. */
@@ -176,6 +181,12 @@ export const RPC_ERROR_CODES = [
   "account_referenced",
   /** `auto` found no usable account (none registered/credentialed, all paused, or none untried). */
   "account_unavailable",
+  /** New automatic work is queued until fresh quota/activity facts expose safe capacity. */
+  "account_wait",
+  /** A portable allocator-owner claim is absent or unknown. */
+  "account_claim_not_found",
+  /** A portable allocator-owner claim is expired, mismatched, or already consumed elsewhere. */
+  "account_claim_refused",
   /** The reset may have reached Codex; retry only with the same idempotency key. */
   "provider_outcome_uncertain",
   /** The installed provider client lacks the requested capability. */
@@ -371,6 +382,9 @@ export const RPC_VERBS = [
   // v19 (RN7a, additive): mint the refresh-blanked credential lease for one
   // account (the remote-nodes lease plane; capability account.lease.v1).
   "account.lease",
+  "account.admission.acquire",
+  "account.admission.confirm",
+  "account.admission.release",
   "bee.swapAccount",
   // Auto-titler node config (additive): `config.get` is a read; `config.patch`
   // writes `naming` in the node's config.json.
@@ -414,6 +428,8 @@ export interface RpcRequest {
 export interface RpcErrorShape {
   code: RpcErrorCode;
   message: string;
+  /** Bounded, secret-free structured refusal facts (currently account allocation waits). */
+  details?: Record<string, unknown>;
 }
 
 export type RpcResponse =
@@ -457,6 +473,8 @@ export interface SpawnResult extends DedupMarkers {
    */
   account?: string | null;
   accountReason?: string;
+  allocation?: AccountAllocationReceipt;
+  allocationClaimId?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -746,6 +764,43 @@ export interface AccountLeaseResult {
 }
 
 /**
+ * `account.admission.acquire` is sent only to the stable allocator owner for
+ * the claim scope. A wait is a typed `account_wait` error and creates no
+ * claim. Shadow mode returns `authoritative:false` and no claim.
+ */
+export interface AccountAdmissionAcquireParams {
+  harness: string;
+  operation: "spawn" | "swap" | "fork" | "handoff";
+  target: { node: string; workId: string; expectedGeneration: number };
+  sourceAccount?: string | null;
+  model?: string;
+  excludeAccountIds?: string[];
+  onlyAccountIds?: string[];
+  allocationContext: AccountAllocationContext;
+  idempotencyKey: string;
+}
+
+export interface AccountAdmissionAcquireResult extends DedupMarkers {
+  authoritative: boolean;
+  claim: AccountAdmissionClaim | null;
+  allocation: AccountAllocationReceipt;
+}
+
+export interface AccountAdmissionConfirmResult {
+  claimId: string;
+  status: "confirmed";
+  confirmedAt: number;
+  deduped?: boolean;
+}
+
+export interface AccountAdmissionReleaseResult {
+  claimId: string;
+  status: "released" | "already_released";
+  releasedAt: number;
+  deduped?: boolean;
+}
+
+/**
  * `bee.swapAccount {beeId, account}` — account is a selector; same-harness only (`harness_mismatch`),
  * `account_paused` refused, `account_not_found`. Rebinds the bee (account +
  * home env), then: a live runtime is stopped and revived with resume
@@ -767,6 +822,8 @@ export interface SwapAccountResult extends DedupMarkers {
   commandId: number | null;
   rekeyed: boolean;
   transcript: "copied" | "present" | "none";
+  allocation?: AccountAllocationReceipt;
+  allocationClaimId?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -860,6 +917,8 @@ export interface ForkResult extends DedupMarkers {
   forkSeed: string | null;
   messageId: number | null;
   bee: BeeRow;
+  allocation?: AccountAllocationReceipt;
+  allocationClaimId?: string;
 }
 
 /** `bee.children {beeId}` — local children of this bee (any lifecycle), as view results. */
@@ -1203,6 +1262,8 @@ export interface SnapshotResult {
   /** v7 (additive): accounts + latest limits, store rows verbatim. */
   accounts: MirrorAccountRow[];
   accountLimits: MirrorAccountLimitsRow[];
+  /** v28 (additive): durable automatic-account admission holds and receipts. */
+  accountAdmissions: MirrorAccountAdmissionRow[];
   /** v11 (additive): agent task lists + per-bee auto-supply, store rows verbatim. */
   tasks: MirrorTaskRow[];
   taskSupply: MirrorTaskSupplyRow[];
@@ -1483,9 +1544,11 @@ export interface BeeHandoffParams {
   /** Operator instruction carried into the context artifact and the seed. */
   instruction?: string;
   stopAt?: BeeHandoffStopAt;
+  /** Fresh, complete all-other-nodes facts required when active automatic allocation applies. */
+  allocationContext?: AccountAllocationContext;
 }
 
-export type BeeHandoffResult = BeeHandoffView & { deduped?: boolean };
+export type BeeHandoffResult = BeeHandoffView & { deduped?: boolean; allocation?: AccountAllocationReceipt; allocationClaimId?: string };
 
 /** `bee.handoff.get {handoffId}` → BeeHandoffView; unknown id → `handoff_not_found`. */
 export type BeeHandoffGetResult = BeeHandoffView;
@@ -1637,15 +1700,17 @@ export interface ActionClaimResult {
 
 export class RpcError extends Error {
   readonly code: RpcErrorCode;
+  readonly details?: Record<string, unknown>;
 
-  constructor(code: RpcErrorCode, message: string) {
+  constructor(code: RpcErrorCode, message: string, details?: Record<string, unknown>) {
     super(message);
     this.name = "RpcError";
     this.code = code;
+    this.details = details;
   }
 }
 
-export interface ThreadOperationResult { operation: ThreadOperationView; deduped: boolean; }
+export interface ThreadOperationResult { operation: ThreadOperationView; deduped: boolean; allocation?: AccountAllocationReceipt; allocationClaimId?: string; }
 
 /** Dispatch to the source owner; sourceNode is relative to that daemon. */
 export interface ThreadForkParams {
@@ -1654,6 +1719,9 @@ export interface ThreadForkParams {
   idempotencyKey: string;
   sourceNode?: "local";
   name?: string;
+  allocationContext?: AccountAllocationContext;
+  successorBeeId?: string;
+  allocationClaim?: AccountAdmissionClaim;
 }
 export interface ThreadHandoffParams extends ThreadForkParams { instruction: string; }
 export interface ThreadOperationGetResult { operation: ThreadOperationView; }
