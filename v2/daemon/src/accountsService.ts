@@ -861,6 +861,7 @@ export class AccountsService {
     this.centralCredentials = new ClaudeCredentialAuthority({
       store: this.store, root: join(this.cfg.accounts.vaultDir, ".credential-authorities"), now: this.now,
       beforeEnroll: account => {
+        this.store.assertNoUpdateReservation();
         if (this.refreshBusy(account) || this.leaseMints.has(account.id) || this.nativeKeychainSeeds.has(account.id)) throw new CredentialAuthorityError("A native credential refresh is in progress; retry enrollment shortly.");
       },
       nativeCredential: async account => (await this.freshestClaudeCredential(account))?.document ?? null,

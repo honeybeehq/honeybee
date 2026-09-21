@@ -1,4 +1,5 @@
 import { honeybeeBuildIdentity, type BuildIdentity } from "../../../src/release/buildIdentity.ts";
+export { UPDATE_RECOVERY_CONTRACT } from "../../../src/updateReservation.ts";
 export type { ReconnectToolsResult, ReconnectToolsReceipt, ReconnectToolsError } from "../../core/src/reconnectTools.ts";
 import type { ThreadOperationView } from "../../core/src/threadOperation.ts";
 /**
@@ -83,6 +84,7 @@ export const DAEMON_VERSION = BUILD_IDENTITY.version;
  */
 export const DAEMON_CAPABILITIES = [
   "bee.human_ref.v1",
+  "update.reservation.v1",
   "bee.reconnectTools.v1",
   "thread.operations.v1",
   "thread.handoff.codex.hsr.v1",
@@ -392,6 +394,9 @@ export const RPC_VERBS = [
   "account.credentials.enable",
   "account.credentials.refresh",
   "account.credentials.disable",
+  "update.status",
+  "update.reserve",
+  "update.release",
   // v18 (additive): run the harness's real credential probe on demand.
   "account.verify",
   "account.limits",

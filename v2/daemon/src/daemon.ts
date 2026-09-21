@@ -1,4 +1,8 @@
 import { reconnectToolsResult, type ReconnectToolsResult } from "../../core/src/reconnectTools.ts";
+import { withFileLock } from "../../../src/lock.ts";
+import { readBuildIdentity } from "../../../src/release/buildIdentity.ts";
+import { installedV2Identity } from "../../../src/cliRoute.ts";
+import { SCHEMA_VERSION } from "../../core/src/schema.ts";
 import { ThreadOperations } from "./threadOperations.ts";
 import { codexHistoryPath, pinThreadHistory, readThreadHistory } from "./threadHistory.ts";
 import { threadOperationView, type ThreadOperationRow } from "../../core/src/threadOperation.ts";
@@ -20,7 +24,7 @@ import { threadOperationView, type ThreadOperationRow } from "../../core/src/thr
  *  - behavior 6 (service mgmt)     → service.ts (wired by the CLI)
  *  - behavior 7 (config)           → config.ts
  */
-import { closeSync, copyFileSync, cpSync, existsSync, mkdirSync, openSync, readdirSync, readSync, rmSync, statSync } from "node:fs";
+import { closeSync, copyFileSync, cpSync, existsSync, mkdirSync, openSync, readdirSync, readlinkSync, readSync, rmSync, statSync } from "node:fs";
 import { execFile } from "node:child_process";
 import type { InterruptOutcome } from "../../harness/src/driver.ts";
 import { appendFileSync } from "node:fs";
@@ -182,6 +186,7 @@ import { RpcServer, type RpcConn } from "./rpc.ts";
 import {
   DAEMON_VERSION,
   BUILD_IDENTITY,
+  UPDATE_RECOVERY_CONTRACT,
   PROTOCOL,
   RpcError,
   SPAWN_SUBSTRATES,
@@ -1649,6 +1654,40 @@ export class HiveDaemon {
         return this.rpcAuditTail(params);
       case "deployInfo":
         return this.rpcDeployInfo();
+      case "update.status":
+        return { contract: UPDATE_RECOVERY_CONTRACT, schemaVersion: SCHEMA_VERSION,
+          runtimeRoot: join(dirname(this.cfg.dataDir), "runtime"), storePath: this.cfg.storePath,
+          identity: BUILD_IDENTITY, reservation: this.mustStore().updateReservation(),
+          blockers: this.mustStore().credentialAuthorityRollbackBlockers() };
+      case "update.reserve":
+        if (typeof params.expectedEpoch !== "number") throw new RpcError("invalid_request", "expectedEpoch must be a number");
+        if (resolve(this.cfg.storePath) !== resolve(this.cfg.dataDir, "core.sqlite3")) throw new RpcError("invalid_request", "Custom stores require coordinated migration");
+        return withFileLock(join(dirname(this.cfg.dataDir), "runtime", ".deploy.lock"), async () => this.mustStore().reserveUpdate({ id: this.param(params, "id"),
+          recoverySubjectDigest: this.param(params, "recoverySubjectDigest"), expectedEpoch: params.expectedEpoch as number }));
+      case "update.release":
+        if (resolve(this.cfg.storePath) !== resolve(this.cfg.dataDir, "core.sqlite3")) throw new RpcError("invalid_request", "Custom stores require coordinated migration");
+        return withFileLock(join(dirname(this.cfg.dataDir), "runtime", ".deploy.lock"), async () => {
+          const expected = params.expectedIdentity as Record<string, unknown> | undefined;
+          if (!expected || BUILD_IDENTITY.release !== true || BUILD_IDENTITY.dirty !== false
+            || ["component", "version", "sourceRevision", "target"].some(key => (BUILD_IDENTITY as unknown as Record<string, unknown>)[key] !== expected[key]))
+            throw new RpcError("invalid_request", "Running identity does not match completion receipt");
+          // A pre-switch daemon can survive a failed restart. Its own build
+          // identity is insufficient: completion must match installed current too.
+          const current = join(dirname(this.cfg.dataDir), "runtime", "current");
+          try {
+            const installed = readBuildIdentity(join(current, "dist", "build-identity.json"));
+            const receipt = installedV2Identity(join(dirname(this.cfg.dataDir), "runtime"));
+            const artifact = expected.artifact as Record<string, unknown> | undefined;
+            if (!receipt || !artifact || receipt.artifact.url !== artifact.url || receipt.artifact.sha256 !== artifact.sha256
+              || readlinkSync(current) !== expected.sourceRevision || JSON.stringify(installed) !== JSON.stringify(BUILD_IDENTITY))
+              throw new Error("current differs");
+          } catch {
+            throw new RpcError("invalid_request", "Installed current identity does not match completion receipt");
+          }
+          if (typeof params.epoch !== "number") throw new RpcError("invalid_request", "epoch must be a number");
+          return this.mustStore().releaseUpdate({ id: this.param(params, "id"),
+            recoverySubjectDigest: this.param(params, "recoverySubjectDigest"), epoch: params.epoch });
+        });
       case "node.harnesses":
         return this.rpcNodeHarnesses();
       case "health":

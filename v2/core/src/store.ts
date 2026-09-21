@@ -1,3 +1,4 @@
+import { parseUpdateReservation, type UpdateReservation } from "../../../src/updateReservation.ts";
 import type { ReconnectToolsReceipt, ReconnectToolsError } from "./reconnectTools.ts";
 import { threadOperationView, type ThreadOperationRow, type ThreadOperationPhase } from "./threadOperation.ts";
 import { THREAD_OPERATIONS_TABLE_SQL } from "./schema.ts";
@@ -4831,6 +4832,7 @@ export class CoreStore {
 
   putAccountCredentialAuthority(input: Omit<AccountCredentialAuthority, "updatedAt">): AccountCredentialAuthority {
     return this.tx(() => {
+      if (input.phase !== "disabled") this.assertNoUpdateReservation();
       this.mustGetAccount(input.account);
       const updatedAt = this.now();
       this.stmt(`INSERT INTO account_credential_authorities(account,phase,generation,expires_at,operation_key,updated_at)
@@ -4872,6 +4874,47 @@ export class CoreStore {
     return this.stmt(
       "SELECT account, phase FROM account_credential_authorities WHERE phase <> 'disabled' ORDER BY account",
     ).all() as Array<{ account: string; phase: string }>;
+  }
+
+  /** Infrastructure reservation, like RPC deduplication: never lifecycle truth.
+   * Epochs fence lost responses and delayed prior coordinators across restarts.
+   * No timeout: elapsed time cannot prove an activation failed to occur. */
+  updateReservation(): UpdateReservation {
+    const row = this.stmt("SELECT value FROM meta WHERE key = 'coordinated_update'").get() as { value: string } | undefined;
+    if (!row) return { epoch: 0, id: "", recoverySubjectDigest: "", active: false };
+    return parseUpdateReservation(JSON.parse(row.value));
+  }
+
+  assertNoUpdateReservation(): void {
+    if (this.updateReservation().active) throw new CoreError("Coordinated update is reserved; finish or recover the update before enrolling credentials");
+  }
+
+  reserveUpdate(input: { id: string; recoverySubjectDigest: string; expectedEpoch: number }) {
+    if (!/^[a-zA-Z0-9_-]{1,128}$/.test(input.id) || !/^sha256:[a-f0-9]{64}$/.test(input.recoverySubjectDigest)
+      || !Number.isSafeInteger(input.expectedEpoch) || input.expectedEpoch < 0) throw new CoreError("Invalid update reservation");
+    return this.tx(() => {
+      const previous = this.updateReservation();
+      if (previous.active && previous.id === input.id && previous.recoverySubjectDigest === input.recoverySubjectDigest
+        && previous.epoch === input.expectedEpoch + 1) return previous;
+      if (previous.epoch !== input.expectedEpoch) throw new CoreError("Update reservation epoch changed");
+      if (previous.active) throw new CoreError("Another coordinated update is reserved");
+      if (this.credentialAuthorityRollbackBlockers().length) throw new CoreError("Update recovery blocked by credential authority; explicit coordinated migration required");
+      if (!Number.isSafeInteger(previous.epoch + 1)) throw new CoreError("Update reservation epoch exhausted");
+      const reservation = { epoch: previous.epoch + 1, id: input.id, recoverySubjectDigest: input.recoverySubjectDigest, active: true };
+      this.stmt("INSERT INTO meta(key,value) VALUES('coordinated_update',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(JSON.stringify(reservation));
+      return reservation;
+    });
+  }
+
+  releaseUpdate(input: { id: string; recoverySubjectDigest: string; epoch: number }) {
+    return this.tx(() => {
+      const previous = this.updateReservation();
+      if (previous.id !== input.id || previous.recoverySubjectDigest !== input.recoverySubjectDigest || previous.epoch !== input.epoch)
+        throw new CoreError("Update reservation mismatch");
+      const released = { ...previous, active: false };
+      if (previous.active) this.stmt("UPDATE meta SET value=? WHERE key='coordinated_update'").run(JSON.stringify(released));
+      return released;
+    });
   }
 
   /**

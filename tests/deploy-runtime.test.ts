@@ -362,3 +362,20 @@ test("ancestry guard: non-descendant refused, descendant allowed, override honor
     assert.equal(await currentDeployTarget(root), c);
   });
 });
+
+import { DatabaseSync } from "node:sqlite";
+
+test("ordinary source deploy refuses an active owner reservation before building", async () => {
+  await withDeployWorld(async ({ root, repoRoot, commit, hooks, log }) => {
+    await commit("reserved");
+    await mkdir(join(root, "..", "v2"));
+    const db = new DatabaseSync(join(root, "..", "v2", "core.sqlite3"));
+    db.exec("CREATE TABLE meta(key TEXT PRIMARY KEY,value TEXT); CREATE TABLE account_credential_authorities(phase TEXT); INSERT INTO meta VALUES('schema_version','27')");
+    db.prepare("INSERT INTO meta VALUES('coordinated_update',?)").run(JSON.stringify({ epoch: 1, id: "reserved", recoverySubjectDigest: `sha256:${"a".repeat(64)}`, active: true }));
+    db.close();
+    await assert.rejects(deployVersion({ repoRoot, root, hooks }), /active coordinated/);
+    assert.equal(log.builds.length, 0);
+    assert.equal(log.restarts.length, 0);
+    assert.equal(await currentDeployTarget(root), null);
+  });
+});

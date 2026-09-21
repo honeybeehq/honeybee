@@ -13,6 +13,7 @@ import {
   DEFAULT_KEEP_VERSIONS,
   currentDeployTarget,
   deployVersion,
+  deployArtifact,
   readDeployHistory,
   rollbackDeploy,
   rollbackTargetEntry,
@@ -20,7 +21,7 @@ import {
   type BuildArtifactContext,
   type RestartDaemonContext,
 } from "../deployRuntime.js";
-import { storeRoot } from "../fsx.js";
+import { runtimeUsesV2 } from "../cliRoute.js";
 import { actionLine, bold, dim, formatRelativeTime, isPretty, note, tildify, yellow } from "../format.js";
 import { flag, numberFlag, truthy, type Parsed } from "../parse.js";
 
@@ -32,11 +33,12 @@ const USAGE = [
   "Usage: hive deploy [<sha>] [--keep <n>]   build+verify <sha> (default HEAD) in a temp checkout, install to ~/.hive/runtime/<sha>, retarget current, restart daemon",
   "       refuses a <sha> that does not contain the deployed commit (silent-revert guard); --allow-non-descendant overrides",
   "       hive deploy --rollback             retarget current to the previous deploy and restart the daemon",
+  "       hive deploy --artifact <archive> --identity <json> --admission <json> --expected-current <sha|none> [--bin-dir <directory>]   install exact verified release bytes",
   "       hive deploy --list [--json]        show the deploy history",
   "       hive deploy --init                 print the manual steps that make the global `hive` resolve through ~/.hive/runtime/current",
 ].join("\n");
 
-const KNOWN_FLAGS = new Set(["keep", "allow-non-descendant", "rollback", "list", "json", "init"]);
+const KNOWN_FLAGS = new Set(["keep", "allow-non-descendant", "rollback", "list", "json", "init", "artifact", "identity", "expected-current", "admission", "bin-dir"]);
 
 export async function cmdDeploy(parsed: Parsed): Promise<void> {
   // Help and unknown flags must never fall through to a real deploy: a bare
@@ -47,6 +49,21 @@ export async function cmdDeploy(parsed: Parsed): Promise<void> {
   }
   const unknown = [...parsed.flags.keys()].filter((key) => !KNOWN_FLAGS.has(key));
   if (unknown.length > 0) throw new Error(`deploy: unknown flag ${unknown.map((key) => `--${key}`).join(", ")}\n${USAGE}`);
+  const archive = flag(parsed, "artifact");
+  if (archive !== undefined) {
+    const identity = flag(parsed, "identity"), expected = flag(parsed, "expected-current"), admission = flag(parsed, "admission"), binDirectory = flag(parsed, "bin-dir");
+    if (typeof archive !== "string" || typeof identity !== "string" || typeof expected !== "string" || typeof admission !== "string"
+      || (binDirectory !== undefined && (typeof binDirectory !== "string" || binDirectory.length === 0))
+      || (expected !== "none" && !/^[a-f0-9]{40}$/.test(expected)) || parsed.args.length
+      || ["list", "init", "rollback"].some(name => parsed.flags.has(name))) throw new Error(USAGE);
+    const result = await deployArtifact({ archive, identity: JSON.parse(await readFile(identity, "utf8")),
+      admission: JSON.parse(await readFile(admission, "utf8")),
+      ...(typeof binDirectory === "string" ? { cliBinDirectory: binDirectory } : {}),
+      expectedCurrent: expected === "none" ? null : expected, hooks: { restartDaemon: restartDeployedDaemon } });
+    console.log(JSON.stringify(result));
+    return;
+  }
+  if (flag(parsed, "bin-dir") !== undefined) throw new Error(USAGE);
   const wantsList = truthy(flag(parsed, "list"));
   const wantsInit = truthy(flag(parsed, "init"));
   const wantsRollback = truthy(flag(parsed, "rollback"));
@@ -102,13 +119,13 @@ export async function buildDeployArtifact(
       await runStep("npm", ["run", script], checkout, log);
     }
     await runStep("npm", ["test"], checkout, log);
-  } else if (existsSync(join(storeRoot(), "FROZEN"))) {
+  } else if (runtimeUsesV2(runtimeRoot())) {
     // Post-flip node (WP7): the old suite's CLI-shelling tests don't override
     // the store root, so on a frozen machine they route into v2 and hang
     // (2026-08-19: deploy gate deadlocked against its own flip). The v2
     // battery is the gate for what actually ships; the old suite keeps
     // running in repo CI until WP8 removes the old tree.
-    log("deploy: frozen node — gating on the v2 battery instead of the legacy suite");
+    log("deploy: v2 node — gating on the v2 battery instead of the legacy suite");
     for (const script of ["v2:test", "v2:daemon", "v2:driver", "v2:harness"]) {
       await runStep("npm", ["run", script], checkout, log);
     }
@@ -137,23 +154,30 @@ export async function buildDeployArtifact(
  * The production restart, run THROUGH the `current` symlink so the LaunchAgent
  * plist binds the stable path — future deploys then only move the symlink.
  */
-export async function restartDeployedDaemon({ root, log }: RestartDaemonContext): Promise<void> {
+export async function restartDeployedDaemon({ root, log, runtime }: RestartDaemonContext): Promise<void> {
+  const v2 = runtime === "v2" || runtimeUsesV2(root);
   if (process.platform !== "darwin") {
+    if (v2) throw new Error("deploy: verified activation requires a supported service owner");
     log("deploy: daemon restart skipped (launchctl unavailable on this platform; restart the daemon manually)");
     return;
   }
   const cli = join(root, CURRENT_LINK_NAME, "dist", "cli.js");
-  if (existsSync(join(root, "..", "FROZEN"))) {
-    // WP7 B5: the old store is frozen — the flip is live. A routine deploy
-    // must manage the V2 service and never resurrect the old daemon (the
-    // freeze marker is the same switch that makes plain `hive` mean v2).
-    await runStep(process.execPath, [cli, "v2", "daemon", "install"], root, log);
+  if (v2) {
+    // Runtime mode survives source deploys; manage the same service selected
+    // by the dependency-light CLI routing config.
+    await runStep(process.execPath, [cli, "v2", "daemon", "install", "--data-dir", join(root, "..", "v2")], root, log);
     try {
-      await runStep(process.execPath, [cli, "v2", "daemon", "stop"], root, log);
-    } catch {
-      log("deploy: v2 daemon was not running (fresh start)");
+      await runStep(process.execPath, [cli, "v2", "daemon", "stop", "--data-dir", join(root, "..", "v2")], root, log);
+    } catch (error) {
+      // A failed stop can mean either absence or an uncertain unload. Only
+      // confirmed absence permits a fresh start; never hide a live old owner.
+      const { stdout } = await execFileAsync(process.execPath,
+        [cli, "v2", "daemon", "status", "--json", "--data-dir", join(root, "..", "v2")], { timeout: 10_000 });
+      const status = JSON.parse(stdout);
+      if (status.running !== false || status.service?.installed !== false) throw error;
+      log("deploy: v2 service is absent (fresh start)");
     }
-    await runStep(process.execPath, [cli, "v2", "daemon", "start"], root, log);
+    await runStep(process.execPath, [cli, "v2", "daemon", "start", "--data-dir", join(root, "..", "v2")], root, log);
     return;
   }
   await runStep(process.execPath, [cli, "daemon", "install", "--force"], root, log);

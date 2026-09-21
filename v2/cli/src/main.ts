@@ -3938,7 +3938,8 @@ export function serviceEnv(
   // user-managed dirs — every spawn would die instantly with a mute ENOENT
   // (2026-08-19 soak finding). Bake the installing shell's PATH into the
   // unit, exactly like the v1 daemon install does.
-  return { HIVE_V2_DATA_DIR: dataDir, ...(env.PATH ? { PATH: env.PATH } : {}) };
+  return { HIVE_V2_DATA_DIR: dataDir, ...(env.PATH ? { PATH: env.PATH } : {}),
+    ...(env.ELECTRON_RUN_AS_NODE === "1" ? { ELECTRON_RUN_AS_NODE: "1" } : {}) };
 }
 
 export function serviceExecArgs(dataDir: string, env: Record<string, string | undefined> = process.env): string[] {
@@ -3947,7 +3948,7 @@ export function serviceExecArgs(dataDir: string, env: Record<string, string | un
   // drift (2026-08-19: it pointed at a working checkout), and the `current`
   // symlink is the deploy contract — a service pinned to it follows every
   // deploy across restarts.
-  const runtimeEntry = join(homedir(), ".hive", "runtime", "current", "dist", "cli.js");
+  const runtimeEntry = resolve(dataDir, "..", "runtime", "current", "dist", "cli.js");
   const entry = existsSync(runtimeEntry) ? runtimeEntry : resolve(process.argv[1] ?? "");
   // Invoked through the hive binary → keep the `v2` argv prefix so a service
   // unit installed before freeze still hits this stack (`hive v2 daemon run`).
@@ -4179,6 +4180,14 @@ export async function runV2Cli(argv: string[], io: CliIo = defaultIo): Promise<n
         return await cmdCommands(ctx, parsed);
       case "deploy-info":
         return await cmdDeployInfo(ctx);
+      case "update-owner": {
+        const sub = parsed.args[0];
+        if (sub !== "status" && sub !== "reserve" && sub !== "release") throw new Error("update-owner: expected status, reserve, or release");
+        const params = sub === "status" ? {} : JSON.parse(readFileSync(parsed.args[1] ?? "", "utf8"));
+        const result = await withClient(ctx, c => c.request(`update.${sub}`, params));
+        ctx.io.out(JSON.stringify(result));
+        return 0;
+      }
       case "health":
         return await cmdHealth(ctx);
       case "harnesses":

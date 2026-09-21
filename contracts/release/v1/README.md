@@ -164,6 +164,49 @@ user choice. Honeybee activation remains exclusively `hive deploy`; this contrac
 adds no alternate deployment route. Remote automatic updates remain per-machine
 opt-in. Implementing these gates belongs to HON-8/HON-9.
 
+## Local deployment admission
+
+The local coordinated updater calls `hive deploy --artifact <archive> --identity
+<json> --admission <json> --expected-current <sha|none>`. Honeybee verifies the
+complete archive checksum, clean release build facts, protocol/execution digests,
+and full packaged tree before publishing through the existing atomic
+`runtime/current` owner. Safe extraction rejects escaping paths, unsupported
+entry types, dangling links, cycles, and links that escape through other links.
+The published immutable version includes an owner-written v2 deployment receipt.
+A separate `runtime/runtime-mode.json` configuration keeps the node on v2 even
+when a later source deploy has no signed release identity. It grants no
+compatibility approval and never substitutes for a legacy `FROZEN` migration.
+Optional `--bin-dir` exposes an owner-managed CLI through `runtime/current` only
+after successful activation, preserving existing user-managed commands and
+symlinks. Retrying an interrupted installation safely completes that exposure.
+
+The daemon exposes `update.reservation.v1` through `update.status`,
+`update.reserve`, and `update.release`; `hive update-owner` is their thin CLI.
+An exact id/recovery-subject/epoch token reserves the closed
+`honeybee-v27-disabled-authority-v1` contract. Its monotonic epoch and active or
+released state live in the core SQLite metadata under the serialized writer.
+There is no lease timeout: a crashed helper resumes the same token. Release
+requires the exact installed and live Honeybee identity. The shared deployment
+lock serializes reservation changes with runtime publication.
+
+Every non-disabled credential-authority phase blocks admission. An active token
+blocks enrollment before credential-file effects and prevents ordinary deploy,
+rollback, and pruning. Artifact replay requires the same complete verified tree
+and active token; a previously released token cannot be reused. An absent daemon
+permits a labeled read-only admission check only when the database is not locked
+by a live owner. It never permits an alternate SQLite writer. Fresh installation
+requires an empty node and supports replay of its exact owner-verified artifact.
+
+This fence establishes storage admission, not a compatibility result. The caller
+must still supply the exact authenticated compatible rollback plan with the
+singleton storage requirement above, verify both component combinations, and
+retain recovery archives until live health and receipt persistence succeed.
+Restart continues through Honeybee's service owner, preserving surviving runner
+hosts, process identities, bee generations, and accepted writes. Automatic
+recovery switches verified binaries; it never restores database or credential
+snapshots. Legacy binaries without this contract require a deliberate bridge
+migration and cannot claim automatic recovery from their version label alone.
+
 ## Versioning and bootstrap
 
 Each component versions independently: patch for fixes without API changes, minor
