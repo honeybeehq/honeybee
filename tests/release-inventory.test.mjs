@@ -186,6 +186,9 @@ test('wrapper transformations and multiple forwarding targets never yield guesse
       wrappers: [{path: 'api.ts', receiver: 'Host', method: 'read', target: {receiver: '^Client$', method: 'read'}}] }
     for (const body of [
       "domain = 'hive'; return this.client.read(domain, verb, args)",
+      "Object.assign(args, {limit: 100}); return this.client.read(domain, verb, args)",
+      "const neverCalled = () => { return this.client.read(domain, verb, args) }",
+
       "return this.client.read(domain.toLowerCase(), verb, args)",
       "if (domain) return this.client.read(domain, verb, args); return this.client.read('hive', verb, args)",
     ]) {
@@ -195,4 +198,47 @@ test('wrapper transformations and multiple forwarding targets never yield guesse
       assert.ok(inventory.coverage.gaps.some(g => g.reason.includes('wrapper')))
     }
   } finally { rmSync(root, {recursive: true, force: true}) }
+})
+
+
+test('transport and dispatcher transformations are unknown, including intermediate payloads', () => {
+  for (const change of [
+    s => s.replace('return localRead(domain, verb, args)', "domain = 'absent'; return localRead(domain, verb, args)"),
+    s => s.replace('return registration.read(verb, args)', "verb = 'absent'; return registration.read(verb, args)"),
+    s => s.replace('return localRead(domain, verb, args)', 'return localRead(domain, verb, {different: true})'),
+    s => s.replace('return localRead(domain, verb, args)', 'Object.assign(args, {different: true}); return localRead(domain, verb, args)'),
+  ]) {
+    const inventory = domainFixture(change)
+    const provider = inventory.providers.find(p => p.operation === 'files.repos')
+    assert.equal(provider.coverage, 'unknown')
+    assert.equal(provider.routing.transports[0].coverage, 'unknown')
+  }
+})
+
+test('every registration participates in ambiguity, including identical and unsupported handlers', () => {
+  for (const extra of [
+    "const duplicate: DomainRegistration = {name: 'files', read() {throw new Error('unavailable')}};",
+    null,
+  ]) {
+    const inventory = domainFixture(s => {
+      const copy = extra ?? s.slice(s.indexOf('const registration:'), s.indexOf('const registrations =')).replace('const registration:', 'const duplicate:')
+      return s + copy
+    })
+    const providers = inventory.providers.filter(p => p.operation === 'files.repos')
+    assert.ok(providers.length)
+    assert.ok(providers.every(p => p.coverage === 'unknown'))
+    assert.ok(inventory.coverage.gaps.some(g => g.reason.includes('ambiguous domain registration')))
+  }
+})
+
+
+test('unsupported intermediate payloads preserve independent allowlist evidence', () => {
+  const inventory = domainFixture(
+    s => s + 'class Service { read(domain: string, verb: string, args: object) {return localRead(domain, verb, {})} }',
+    c => ({...c, domainRoutes: c.domainRoutes.map(d => ({...d, transports: d.transports.map(t => ({...t, via: [{path: 'api.ts', receiver: 'Service', function: 'read', forward: 'localRead'}]}))}))}),
+  )
+  const transport = inventory.providers.find(p => p.operation === 'files.repos').routing.transports[0]
+  assert.equal(transport.coverage, 'unknown')
+  assert.match(transport.reason, /intermediate argument/)
+  assert.equal(transport.allowlisted, true)
 })
