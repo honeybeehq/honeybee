@@ -132,6 +132,8 @@ test('domain registration connects files.repos to scoped transport and preserves
   assert.equal(provider.routing.domain, 'files')
   assert.equal(provider.routing.verb, 'repos')
   assert.equal(provider.routing.transports[0].allowlisted, true)
+  assert.equal(provider.coverage, 'extracted')
+  assert.equal(provider.routing.transports[0].coverage, 'extracted')
   assert.match(inventory.evidence[provider.implementation], /invalid_request/)
   assert.match(inventory.evidence[provider.implementation], /unknown_verb/)
   assert.match(inventory.evidence[provider.implementation], /unknown_domain/)
@@ -228,6 +230,39 @@ test('every registration participates in ambiguity, including identical and unsu
     assert.ok(providers.length)
     assert.ok(providers.every(p => p.coverage === 'unknown'))
     assert.ok(inventory.coverage.gaps.some(g => g.reason.includes('ambiguous domain registration')))
+  }
+})
+
+test('payload deletions through direct and aliased bindings remain unknown', () => {
+  for (const mutation of ['delete args.id;', 'const alias = args; delete (alias as any).id;']) {
+    const inventory = domainFixture(s => s.replace('return localRead(domain, verb, args)', `${mutation} return localRead(domain, verb, args)`))
+    const provider = inventory.providers.find(p => p.operation === 'files.repos')
+    assert.equal(provider.coverage, 'unknown')
+    assert.equal(provider.routing.transports[0].coverage, 'unknown')
+  }
+})
+
+test('mutations before a selected transport case remain unknown', () => {
+  for (const mutation of ["domain = 'absent';", "args.id = 'replacement';"]) {
+    const inventory = domainFixture(s => s.replace('switch(type)', `${mutation} switch(type)`))
+    const provider = inventory.providers.find(p => p.operation === 'files.repos')
+    assert.equal(provider.coverage, 'unknown')
+    assert.equal(provider.routing.transports[0].coverage, 'unknown')
+  }
+})
+
+test('unsupported payload aliases and escapes remain unknown', () => {
+  for (const mutation of [
+    "let alias = args; alias.id = 'replacement';",
+    'let alias = args; delete alias.id;',
+    "const holder = {args}; holder.args.id = 'replacement';",
+    "const holder: any = {}; holder.args = args; holder.args.id = 'replacement';",
+    "const {id} = args;",
+  ]) {
+    const inventory = domainFixture(s => s.replace('return localRead(domain, verb, args)', `${mutation} return localRead(domain, verb, args)`))
+    const provider = inventory.providers.find(p => p.operation === 'files.repos')
+    assert.equal(provider.coverage, 'unknown', mutation)
+    assert.equal(provider.routing.transports[0].coverage, 'unknown', mutation)
   }
 })
 

@@ -170,7 +170,8 @@ export function extractInventory({ root, config, typescript: ts }) {
       if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken
         && objectProperties(node.right)?.size === 0) return origin(node.left, seen)
       if (!ts.isIdentifier(node)) return null
-      const symbol = checker.getSymbolAtLocation(node)
+      const symbol = ts.isShorthandPropertyAssignment(node.parent)
+        ? checker.getShorthandAssignmentValueSymbol(node.parent) : checker.getSymbolAtLocation(node)
       if (symbols.has(symbol)) return symbol
       if (!symbol || seen.has(symbol)) return null
       const declaration = symbol.valueDeclaration
@@ -179,12 +180,20 @@ export function extractInventory({ root, config, typescript: ts }) {
     }
     if (!expected.every((parameter, i) => origin(call.arguments[i]) === checker.getSymbolAtLocation(parameter))) return false
     const touches = node => descendants(node, n => ts.isIdentifier(n) && symbols.has(origin(n))).length > 0
-    const mutations = descendants(owner, n => {
-      if (ts.isBinaryExpression(n) && n.operatorToken.kind >= ts.SyntaxKind.FirstAssignment && n.operatorToken.kind <= ts.SyntaxKind.LastAssignment) return touches(n.left)
+    const carriesPayload = node => descendants(node, n => ts.isIdentifier(n) && origin(n) === payload).length > 0
+    // A selected switch case shares its bindings with the enclosing function.
+    // Include that entire scope so earlier mutations cannot bypass the proof.
+    const mutations = descendants(scope, n => {
+      // Only direct const aliases have a tracked origin. Any other escape is
+      // unsupported, even when its eventual mutation is not statically visible.
+      if (ts.isVariableDeclaration(n) && n.initializer && carriesPayload(n.initializer)) {
+        return !ts.isIdentifier(n.name) || !(n.parent.flags & ts.NodeFlags.Const) || origin(n.initializer) !== payload
+      }
+      if (ts.isBinaryExpression(n) && n.operatorToken.kind >= ts.SyntaxKind.FirstAssignment && n.operatorToken.kind <= ts.SyntaxKind.LastAssignment) return touches(n.left) || touches(n.right)
+      if (ts.isDeleteExpression(n)) return touches(n.expression)
       if ((ts.isPrefixUnaryExpression(n) || ts.isPostfixUnaryExpression(n)) && [ts.SyntaxKind.PlusPlusToken, ts.SyntaxKind.MinusMinusToken].includes(n.operator)) return touches(n.operand)
       if ((ts.isCallExpression(n) || ts.isNewExpression(n)) && n !== call && print(n.expression) !== 'Array.isArray') {
-        return (n.arguments ?? []).some(arg => descendants(arg, a => ts.isIdentifier(a) && origin(a) === payload).length > 0)
-          || descendants(n.expression, a => ts.isIdentifier(a) && origin(a) === payload).length > 0
+        return (n.arguments ?? []).some(carriesPayload) || carriesPayload(n.expression)
       }
       return false
     })
