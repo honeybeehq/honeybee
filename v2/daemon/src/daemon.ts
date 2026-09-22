@@ -694,6 +694,9 @@ export class HiveDaemon {
       resolveSandboxWritablePaths: (beeId: string) => this.resolveCellSandboxWritablePaths(beeId),
       hsr: hsrConfig,
       backgroundProvisioning: true,
+      ...(this.cfg.cellWarmPoolFree > 0
+        ? { warmPool: { targetFree: this.cfg.cellWarmPoolFree, maxSize: this.cfg.cellWarmPoolMaxSize } }
+        : {}),
     });
     mkdirSync(join(this.cfg.dataDir, "tmux-events"), { recursive: true });
     const tmux = new TmuxDriver({

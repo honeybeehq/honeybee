@@ -58,6 +58,18 @@ export {
 } from "./ledger.ts";
 export { cowCopy, cowPlatform, probeCow, probeCowWritable, type CowPlatform } from "./cow.ts";
 export {
+  claimFromPool,
+  buildPoolMember,
+  listPoolMembers,
+  poolMemberCount,
+  reapPool,
+  repoKeyFor,
+  WARM_POOL_BEE,
+  WARM_POOL_DIR,
+  type PoolMember,
+  type TopUpRequest,
+} from "./warmPool.ts";
+export {
   git,
   tryGit,
   gitEnv,

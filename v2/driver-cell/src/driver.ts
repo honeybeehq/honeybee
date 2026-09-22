@@ -39,6 +39,7 @@ import { captureWork, type CaptureMode, type CaptureReport } from "./capture.ts"
 import { cellPaths, looksLikeCellWrapper, type CellPaths } from "./layout.ts";
 import { isProvisioned, readLedger, type CellLedger } from "./ledger.ts";
 import { provisionCell, type ProvisionedCell, type ProvisionRequest } from "./provision.ts";
+import { claimFromPool, repoKeyFor, type TopUpRequest } from "./warmPool.ts";
 import { deleteCell, type DeleteResult } from "./remove.ts";
 import {
   defaultWritablePaths,
@@ -82,6 +83,16 @@ export interface CellDriverConfig {
   provisionWorkerUrl?: URL;
   /** Override the Honeybee-owned Git-image root (tests). */
   gitImagesRoot?: string;
+  /**
+   * Per-repository warm Cell pool (2026-09-21 spawn-floor work). When set with
+   * `targetFree > 0`, each spawn first tries to CLAIM a pre-provisioned member
+   * (rename + checkout delta) instead of a cold clone+checkout, then tops the
+   * pool back up in the background off the event loop. Absent/0 = disabled
+   * (identical behaviour to before). See warmPool.ts.
+   */
+  warmPool?: { targetFree: number; maxSize?: number };
+  /** Tests: substitute the pool top-up worker entrypoint. */
+  poolWorkerUrl?: URL;
 }
 
 interface PendingProvision {
@@ -114,6 +125,8 @@ export class CellDriver implements RuntimeDriver {
   private readonly maintenanceWorkers = new Set<Worker>();
   /** Image maintenance waits until the first turn boundary (or worker fallback). */
   private readonly maintenanceByRuntime = new Map<string, Worker>();
+  /** In-flight warm-pool top-up workers (one per repoKey, single-flight). */
+  private readonly poolWorkers = new Map<string, Worker>();
   private readonly pendingObservations: DriverObservation[] = [];
 
   constructor(cfg: CellDriverConfig) {
@@ -132,14 +145,29 @@ export class CellDriver implements RuntimeDriver {
     // Provisioning is idempotent and ledger-keyed: a replayed spawn command
     // (crash mid-provision, executor replay) resumes instead of redoing.
     const opId = `start-${beeId}-g${generation}`;
+    // Warm pool: try to CLAIM a pre-provisioned member (rename + checkout delta)
+    // before any cold provisioning. A claim leaves the bee ledger provisioned,
+    // so both the sync and background provision paths short-circuit (replayed).
+    // Any spawn — hit or miss — tops the pool back up off the event loop.
+    if (this.warmPoolEnabled()) {
+      const claimed = this.tryClaimFromPool(beeId);
+      if (claimed) {
+        this.cells.set(beeId, claimed);
+        this.inner.start(beeId, generation);
+        this.scheduleTopUp(beeId);
+        return;
+      }
+    }
     if (this.cfg.backgroundProvisioning !== true) {
       this.ensureCell(beeId, opId);
       this.inner.start(beeId, generation);
+      this.scheduleTopUp(beeId);
       return;
     }
     if (this.pending.has(beeId)) {
       throw new Error(`cell driver: bee ${beeId} already has provisioning in flight`);
     }
+    this.scheduleTopUp(beeId);
     const spec = this.cfg.resolveCell(beeId);
     const workerUrl = this.cfg.provisionWorkerUrl ?? (import.meta.url.endsWith(".ts")
       ? new URL("./provisionWorker.ts", import.meta.url)
@@ -482,6 +510,84 @@ export class CellDriver implements RuntimeDriver {
     for (const worker of this.maintenanceWorkers) void worker.terminate();
     this.maintenanceWorkers.clear();
     this.maintenanceByRuntime.clear();
+    for (const worker of this.poolWorkers.values()) void worker.terminate();
+    this.poolWorkers.clear();
+  }
+
+  // -------------------------------------------------------------------------
+  // Warm pool (2026-09-21 spawn-floor work) — see warmPool.ts
+  // -------------------------------------------------------------------------
+
+  private warmPoolEnabled(): boolean {
+    return (this.cfg.warmPool?.targetFree ?? 0) > 0;
+  }
+
+  /** Claim a pool member into the bee's reserved cell; null = cold provision. */
+  private tryClaimFromPool(beeId: string): ProvisionedCell | null {
+    let spec: CellSpec;
+    try {
+      spec = this.cfg.resolveCell(beeId);
+    } catch {
+      return null;
+    }
+    try {
+      return claimFromPool(this.cfg.cellsRoot, spec.provision);
+    } catch {
+      // A pool claim is best-effort: any failure falls back to cold provision.
+      return null;
+    }
+  }
+
+  /**
+   * Refill the pool for this bee's repo to `targetFree`, in a worker off the
+   * event loop. Single-flight per repoKey: while one top-up runs, another spawn
+   * for the same repo does not start a second (it refills on the next spawn).
+   */
+  private scheduleTopUp(beeId: string): void {
+    if (!this.warmPoolEnabled()) return;
+    let spec: CellSpec;
+    try {
+      spec = this.cfg.resolveCell(beeId);
+    } catch {
+      return;
+    }
+    const p = spec.provision;
+    const repoKey = repoKeyFor(p.originRepo, p.repoName);
+    if (this.poolWorkers.has(repoKey)) return;
+    const request: TopUpRequest = {
+      originRepo: p.originRepo,
+      repoName: p.repoName,
+      sha: p.sha,
+      ...(p.warmArtifacts && p.warmArtifacts.length > 0 ? { warmArtifacts: [...p.warmArtifacts] } : {}),
+    };
+    const workerUrl = this.cfg.poolWorkerUrl ?? (import.meta.url.endsWith(".ts")
+      ? new URL("./poolWorker.ts", import.meta.url)
+      : new URL("./pool-worker.js", import.meta.url));
+    let worker: Worker;
+    try {
+      worker = new Worker(workerUrl, {
+        execArgv: [],
+        workerData: {
+          cellsRoot: this.cfg.cellsRoot,
+          request,
+          target: this.cfg.warmPool?.targetFree ?? 0,
+          maxSize: this.cfg.warmPool?.maxSize ?? 32,
+          provisionOpts: {
+            disableCow: this.cfg.disableCow ?? false,
+            useGitImages: this.cfg.nodeKind === "workstation",
+            ...(this.cfg.gitImagesRoot ? { gitImagesRoot: this.cfg.gitImagesRoot } : {}),
+          },
+        },
+      });
+    } catch {
+      return; // never let a top-up failure affect the spawn
+    }
+    this.poolWorkers.set(repoKey, worker);
+    const clear = (): void => { if (this.poolWorkers.get(repoKey) === worker) this.poolWorkers.delete(repoKey); };
+    worker.once("message", clear);
+    worker.once("error", clear);
+    worker.once("exit", clear);
+    worker.unref();
   }
 
   private resolveCellSpawn(beeId: string): SpawnSpec {

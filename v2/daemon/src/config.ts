@@ -141,6 +141,13 @@ export interface CellsConfig {
   warm?: Record<string, string[]>;
   /** Test-only: allow agent `stub` on bee.move. Default false. */
   allowStubMove?: boolean;
+  /**
+   * Warm Cell pool: target free pre-provisioned members per repo (0 = off,
+   * default). Overridden by env HIVE_CELL_WARMPOOL_FREE. See warmPool.ts.
+   */
+  warmPoolFree?: number;
+  /** Warm pool hard cap on members per repo (default 32). */
+  warmPoolMaxSize?: number;
 }
 
 /** The raw (all-optional) shape of config.json. */
@@ -204,6 +211,10 @@ export interface ResolvedNodeConfig {
   cellWarm: Record<string, string[]>;
   /** Test-only stub continuation for bee.move. */
   cellMoveAllowStub: boolean;
+  /** Warm Cell pool: target free members per repo (0 = off). */
+  cellWarmPoolFree: number;
+  /** Warm Cell pool: hard cap on members per repo. */
+  cellWarmPoolMaxSize: number;
   idleWindowMs: number;
   bootHangTimeoutMs: number;
   bootAllowanceMs: number;
@@ -329,18 +340,35 @@ function nodeKindOf(raw: Record<string, unknown>): NodeKind {
   return v as NodeKind;
 }
 
-function cellsOf(raw: Record<string, unknown>): { root?: string; sandbox: boolean | null; warm: Record<string, string[]>; allowStubMove: boolean } {
+function cellsOf(raw: Record<string, unknown>): { root?: string; sandbox: boolean | null; warm: Record<string, string[]>; allowStubMove: boolean; warmPoolFree: number; warmPoolMaxSize: number } {
+  const envFree = Number(process.env.HIVE_CELL_WARMPOOL_FREE);
+  const envOverride = Number.isFinite(envFree) && envFree >= 0 ? Math.floor(envFree) : null;
   const v = raw.cells;
-  if (v === undefined) return { sandbox: null, warm: {}, allowStubMove: false };
+  if (v === undefined) return { sandbox: null, warm: {}, allowStubMove: false, warmPoolFree: envOverride ?? 0, warmPoolMaxSize: 32 };
   if (v === null || typeof v !== "object" || Array.isArray(v)) {
     throw new ConfigError("config: cells must be an object of {root?, sandbox?, warm?}");
   }
   const c = v as Record<string, unknown>;
-  const out: { root?: string; sandbox: boolean | null; warm: Record<string, string[]>; allowStubMove: boolean } = {
+  const out: { root?: string; sandbox: boolean | null; warm: Record<string, string[]>; allowStubMove: boolean; warmPoolFree: number; warmPoolMaxSize: number } = {
     sandbox: null,
     warm: {},
     allowStubMove: false,
+    warmPoolFree: 0,
+    warmPoolMaxSize: 32,
   };
+  if (c.warmPoolFree !== undefined) {
+    if (typeof c.warmPoolFree !== "number" || !Number.isInteger(c.warmPoolFree) || c.warmPoolFree < 0) {
+      throw new ConfigError("config: cells.warmPoolFree must be a non-negative integer");
+    }
+    out.warmPoolFree = c.warmPoolFree;
+  }
+  if (c.warmPoolMaxSize !== undefined) {
+    if (typeof c.warmPoolMaxSize !== "number" || !Number.isInteger(c.warmPoolMaxSize) || c.warmPoolMaxSize < 1) {
+      throw new ConfigError("config: cells.warmPoolMaxSize must be a positive integer");
+    }
+    out.warmPoolMaxSize = c.warmPoolMaxSize;
+  }
+  if (envOverride !== null) out.warmPoolFree = envOverride;
   if (c.root !== undefined) {
     if (typeof c.root !== "string" || c.root.length === 0) {
       throw new ConfigError("config: cells.root must be a non-empty string");
@@ -660,6 +688,8 @@ export function loadNodeConfig(dataDir: string, configPath?: string): ResolvedNo
     cellSandbox: cells.sandbox,
     cellWarm: cells.warm,
     cellMoveAllowStub: cells.allowStubMove,
+    cellWarmPoolFree: cells.warmPoolFree,
+    cellWarmPoolMaxSize: cells.warmPoolMaxSize,
     idleWindowMs: num(raw, "idleWindowMs", DEFAULTS.idleWindowMs),
     bootHangTimeoutMs,
     bootAllowanceMs,

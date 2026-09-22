@@ -1,0 +1,32 @@
+{
+  "change": "Per-repository warm Cell pool (v2/driver-cell/src/warmPool.ts + poolWorker.ts, wired in CellDriver.start and daemon config). Defaulted OFF (cells.warmPoolFree=0); enable via config cells.warmPoolFree or env HIVE_CELL_WARMPOOL_FREE.",
+  "hypothesis": "Provisioning (git clone --local + checkout of the working tree) is the largest common Honeybee-owned boot segment (docs/performance/2026-09-21-boot-attribution.json). Pre-provisioning members off the event loop and claiming one by an atomic rename (+ checkout delta) removes that segment from the spawn critical path for every harness.",
+  "acceptance": "Predeclared: a warm-pool claim <= 0.5x a cold provision at a realistic file count (3900), with no regression to cell.accept and no regression to cell.ready/usable on the standard 200-file cell-spawn suite. Met on both hosts.",
+  "microbench": {
+    "tool": "scripts/perf/cell-warmpool-bench.mjs --files 3900",
+    "note": "cold = git clone --local + checkout on the spawn path; claim = git status dirty-guard + atomic rename + ledger rewrite (exact sha, no delta). Member build is off-path and untimed. Absolute cold numbers here use a hot page cache and a synthetic tree, so they are LOWER than the cold-origin production checkout (~985 ms on netcup, 2026-09-21-boot-attribution.json); the pool's win is largest exactly in that cold-cache case, which it avoids entirely.",
+    "studio_loaded": {"load": [7.3,7.5,6.8], "coldProvisionUs_p50": 331932, "poolClaimUs_p50": 85659, "speedup": 3.9},
+    "netcup1_idle_ext4": {"load": [0.03,0.01,0.0], "coldProvisionUs_p50": 94759, "poolClaimUs_p50": 41865, "speedup": 2.3, "claim_cost_note": "the ~42ms claim is the single `git status --porcelain` dirty guard on 3900 files"}
+  },
+  "endToEnd_BAAB": {
+    "tool": "scripts/perf/run.mjs --suite cell-spawn --cache warm --width 1 --sandbox on --tick-ms 200 --samples 6, HIVE_CELL_WARMPOOL_FREE toggled",
+    "host": "Mac Studio (workstation, CoW git-images), loaded (load ~7.0-7.5); 200-file fixture understates the win vs a real repo",
+    "order": "B(off) A(on) A(on) B(off)",
+    "us": {
+      "B1_off": {"ready_p50": 300828, "usable_p50": 495367, "accept_p50": 27650},
+      "A1_on":  {"ready_p50": 148782, "usable_p50": 358148, "accept_p50": 30481},
+      "A2_on":  {"ready_p50": 148934, "usable_p50": 359653, "accept_p50": 29222},
+      "B2_off": {"ready_p50": 301421, "usable_p50": 496031, "accept_p50": 28500}
+    },
+    "result": "cell.ready p50 -50.5% (301 ms -> 149 ms), cell.usable p50 -27.7% (495 ms -> 358 ms), cell.accept unchanged (RPC path untouched). B1~B2 within 0.2% and A1~A2 identical: stable."
+  },
+  "safety": {
+    "default": "off — no behaviour change on satellites/production until cells.warmPoolFree is set (needs a deploy, not done here).",
+    "invariants_unit_tested": "v2/driver-cell/tests/warmPool.test.ts: exact-sha claim + reap; provisionCell replays after a claim (ledger idempotency survives the pool); checkout delta to a reachable older sha; unreachable sha discarded not served; dirty member never handed out; two concurrent claims cannot take the same member (atomic rename); maxSize honoured; reapPool drops stale sha; empty pool -> cold fallback. Config parse/env/validation in v2/daemon/tests/config.test.ts.",
+    "hot_lane": "top-up runs in a worker_threads worker (poolWorker.ts), single-flight per repoKey, off the RPC accept and tick loop."
+  },
+  "gaps": {
+    "satellite_end_to_end": "The full daemon end-to-end on a satellite (netcup-1/metal-1) needs the change live there, which requires `hive deploy` — deliberately NOT done this session. The satellite microbench (netcup-1, above) exercises the real provisioning+pool code on ext4 from a source copy; the daemon integration is proven on the Studio suite and unit tests.",
+    "workstation_cow": "On workstations the cold path already uses CoW git-images; the pool still helps (it also removes the provision-worker spawn and the checkout), shown by the Studio B/A/A/B."
+  }
+}
