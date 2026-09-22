@@ -6,9 +6,12 @@ workflows never deploy a daemon or activate an installed runtime; activation and
 rollback remain `hive deploy` operations.
 
 The user-facing [Apiary–Honeybee compatibility matrix](./compatibility.md)
-documents exact release combinations and recommended pins. Release notes should
-link to the matrix snapshot for that release. Its publication requirements are
-described in [Maintaining the matrix](./compatibility.md#maintaining-the-matrix).
+explains exact release combinations and recommended pins. Apiary publication
+links each release's generated report and matrix snapshot from its release notes.
+Current support follows that manifest's authenticated feed, as explained in
+[Finding current support](./compatibility.md#finding-current-support).
+See [Maintaining the matrix](./compatibility.md#maintaining-the-matrix) for report
+generation and publication.
 
 ## Invocation and trust boundary
 
