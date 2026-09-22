@@ -91,6 +91,8 @@ export function replayAudit(rows: AuditRow[]): StateDump {
         const bee = p.bee as BeeRow;
         bees.set(bee.id, {
           ...bee,
+          human_ref: bee.human_ref ?? null,
+          issuing_namespace: bee.issuing_namespace ?? null,
           parentExternal: bee.parentExternal ?? false,
           placementVersion: bee.placementVersion ?? 0,
           activeMoveId: bee.activeMoveId ?? null,
@@ -125,6 +127,12 @@ export function replayAudit(rows: AuditRow[]): StateDump {
       case "bee.args_set": {
         const args = p.args as string[] | null;
         mustBee(p.beeId as string).args = args === null ? null : [...args];
+        break;
+      }
+      case "bee.human_ref": {
+        const bee = mustBee(p.beeId as string);
+        bee.human_ref = p.human_ref as string;
+        bee.issuing_namespace = p.issuing_namespace as string;
         break;
       }
       case "bee.renamed": {

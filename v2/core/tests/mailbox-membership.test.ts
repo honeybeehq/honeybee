@@ -37,14 +37,14 @@ function sqliteTextField(row: unknown, field: string): string {
   return value;
 }
 
-function createExplicitBee(store: CoreStore, id: string, name: string) {
+function createExplicitBee(store: CoreStore, id: string, name: string, handle = "CL.cafe") {
   return store.createBee({
     id,
     name,
     agent: "claude",
     substrate: "tmux",
     cwd: "/tmp/w",
-    handle: "CL.cafe",
+    handle,
   });
 }
 
@@ -215,7 +215,7 @@ test("a caught post-insert audit failure still yields the committed membership",
   );
 });
 
-test("cascade deletion, explicit-id recreation, and reopen preserve committed membership", (t) => {
+test("cascade deletion, permanent identity reservation, and reopen preserve committed membership", (t) => {
   const h = harness();
   t.after(() => h.cleanup());
   let store = h.open();
@@ -232,17 +232,19 @@ test("cascade deletion, explicit-id recreation, and reopen preserve committed me
   assert.equal(store.getBee(id), null);
   assert.deepEqual(store.readMailboxMembership(id), expected(0, null), "missing Bee has empty membership");
 
-  createExplicitBee(store, id, "recreated");
-  assert.deepEqual(store.readMailboxMembership(id), expected(0, null));
-  const replacement = store.send(id, "new incarnation").message;
+  assert.throws(() => createExplicitBee(store, id, "recreated"), /was deleted/);
+  const replacementId = "membership-new-bee";
+  createExplicitBee(store, replacementId, "replacement", "CL.beef");
+  assert.deepEqual(store.readMailboxMembership(replacementId), expected(0, null));
+  const replacement = store.send(replacementId, "new incarnation").message;
   assert.ok(replacement.id > oldHighest.id, "committed AUTOINCREMENT ids are not reused after cascade delete");
   const beforeClose = expected(1, replacement.id);
-  assert.deepEqual(store.readMailboxMembership(id), beforeClose);
+  assert.deepEqual(store.readMailboxMembership(replacementId), beforeClose);
 
   store.close();
   store = h.open();
-  assert.deepEqual(store.readMailboxMembership(id), beforeClose, "membership is derived afresh on reopen");
-  assert.deepEqual(store.listMessages(id).map((message) => message.body), ["new incarnation"]);
+  assert.deepEqual(store.readMailboxMembership(replacementId), beforeClose, "membership is derived afresh on reopen");
+  assert.deepEqual(store.listMessages(replacementId).map((message) => message.body), ["new incarnation"]);
 });
 
 test("production aggregate uses both partial indexes and validates SQLite scalars", (t) => {

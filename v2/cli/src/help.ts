@@ -57,6 +57,8 @@ const GROUPS: Group[] = [
       ["health", "", "daemon liveness + i1 violations"],
       ["harnesses", "", "per-harness executable facts (path/source/version) as the daemon resolves them"],
       ["deploy-info", "", "protocol / versions / paths"],
+      ["human-ref", "status|enroll <receipt.json>", "installation identity and permanent reference enrollment"],
+      ["human-ref", "registry init|status|reserve <installation-id>", "explicit fleet namespace registry (one per fleet)"],
     ],
   },
   {

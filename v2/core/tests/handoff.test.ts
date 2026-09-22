@@ -1,3 +1,4 @@
+import { enrollReferences } from "./human-ref-fixture.ts";
 /**
  * v23 session handoff aggregate: admission (CAS, idempotency, fence), the
  * stopping → summarizing → starting → complete graph, the switch tx (segments,
@@ -159,6 +160,7 @@ test("handoff.stale: a second admission after generation moved is stale_generati
 test("handoff.switch: segments close/open, bee flips with no provider thread, seed mail first, fenced revive, complete", () => {
   const h = harness();
   const store = h.open();
+  enrollReferences(store);
   try {
     const { bee } = store.createBee({ name: "w", agent: "claude", substrate: "hsr", cwd: "/tmp/w", sessionLogPath: "/tmp/logs/w.jsonl", args: ["--model", "opus"], env: { CLAUDE_CONFIG_DIR: "/tmp/claude-home", KEEP: "1" } });
     store.updateRuntimeState(bee.id, 1, "running", { pid: 1, pidStartedAt: 1 });
@@ -203,6 +205,8 @@ test("handoff.switch: segments close/open, bee flips with no provider thread, se
     assert.equal(after.id, bee.id);
     assert.equal(after.name, "w");
     assert.equal(after.handle, bee.handle);
+    assert.equal(after.human_ref, bee.human_ref);
+    assert.equal(after.issuing_namespace, "k7");
     assert.equal(after.agent, "codex");
     assert.equal(after.args, null);
     assert.equal(after.providerSessionId, null);

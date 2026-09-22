@@ -136,6 +136,7 @@ export type MirrorDelta = AuditRow;
  * payload { beeId, args: string[] | null, previous }).
  * v6 (pre-flip verbs) adds, all additive:
  *   bee.renamed        → { beeId, name, previous }                     (bee row: name)
+ *   bee.human_ref → { beeId, human_ref, issuing_namespace } (one-time enrollment backfill)
  *   bee.titled         → { beeId, title, previous, source }            (bee row: title)
  *   bee.tagged         → { beeId, tags, previous, added, removed }     (bee row: tags)
  *   bee.orphaned       → { beeId, parentId, reason }                   (local bee row: parentId → null)
@@ -284,6 +285,8 @@ export const MIRROR_BEE_RECORD_KEYS = [
   "account",
   // v10: additive — the pretty display handle (CL.a3f2 | null pre-backfill).
   "handle",
+  "human_ref",
+  "issuing_namespace",
   // v21: Cell→checkout placement + registry pointers.
   "placementVersion",
   "activeMoveId",

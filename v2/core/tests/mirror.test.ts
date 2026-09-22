@@ -224,6 +224,8 @@ test("mirror.2: value-level snapshot — a deterministic store serializes to the
         "forkSeed": null,
         "account": null,
         "handle": "BEE_HANDLE",
+        "human_ref": null,
+        "issuing_namespace": null,
         "placementVersion": 0,
         "activeMoveId": null,
         "cellId": null,

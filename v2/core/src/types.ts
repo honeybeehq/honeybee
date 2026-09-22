@@ -147,12 +147,16 @@ export interface BeeRow {
   account: string | null;
   /**
    * v10 — short human display id (`CL.a3f2`: harness prefix + hex), minted
-   * by the owning node at spawn and UNIQUE per node. The human tier of the
-   * resolution ladder (id → handle → name → unique prefix); the UUID `id`
+   * by the issuing node at spawn. Legacy alias; imports may share it.
+   * Resolve ambiguous aliases using human_ref or the UUID `id`, which
    * stays the only identifier machines pass around. Null only on rows from
    * a pre-v10 store opened read-only (the migration backfills on open).
    */
   handle: string | null;
+  /** Immutable qualified reference; null until this installation is enrolled. */
+  human_ref: string | null;
+  /** Issuing installation namespace, never the current placement/owner. */
+  issuing_namespace: string | null;
   /**
    * v21 — increments on each committed Cell→checkout placement. CAS target
    * for `bee.move` `expected.placementVersion`.

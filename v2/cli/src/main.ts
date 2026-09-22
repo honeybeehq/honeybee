@@ -485,25 +485,33 @@ function makeContext(parsed: Parsed, io: CliIo): CliContext {
 // error — never a guess.
 // ---------------------------------------------------------------------------
 
-function beeLabel(b: { id: string; handle: string | null; name: string }): string {
-  return b.handle ? `${b.handle} (${b.name})` : `${b.id} (${b.name})`;
+function beeLabel(b: { id: string; handle: string | null; human_ref?: string | null; name: string }): string {
+  return `${b.human_ref ?? b.handle ?? b.id} (${b.name}; ${b.id})`;
 }
 
 export function resolveBeeIn(views: ViewResult[], needle: string): string {
   const byId = views.find((v) => v.bee?.id === needle);
-  if (byId?.bee) return byId.bee.id;
+  // Old imports sometimes used their pretty handle as the canonical id.
+  // Such a spelling remains an alias and cannot outrank a collision.
+  const prettyId = /^[a-z]{2}\.[0-9a-f]{3,}$/i.test(needle);
+  if (byId?.bee && !prettyId) return byId.bee.id;
   const lower = needle.toLowerCase();
-  const byHandle = views.find((v) => v.bee?.handle?.toLowerCase() === lower);
-  if (byHandle?.bee) return byHandle.bee.id;
+  for (const field of ["human_ref", "handle"] as const) {
+    const matches = views.filter((v) => v.bee?.[field]?.toLowerCase() === lower
+      || (field === "handle" && prettyId && v.bee?.id.toLowerCase() === lower));
+    if (matches.length === 1 && matches[0]?.bee) return matches[0].bee.id;
+    if (matches.length > 1) throw new Error(`'${needle}' is ambiguous (${matches.map((v) => beeLabel(v.bee!)).join(", ")}) — use the qualified reference or UUID`);
+  }
+  if (byId?.bee) return byId.bee.id;
   const byName = views.filter((v) => v.bee?.name === needle);
   if (byName.length === 1 && byName[0]?.bee) return byName[0].bee.id;
-  if (byName.length > 1) throw new Error(`bee name '${needle}' is ambiguous (${byName.length} matches) — use the handle or id`);
+  if (byName.length > 1) throw new Error(`bee name '${needle}' is ambiguous (${byName.map((v) => beeLabel(v.bee!)).join(", ")}) — use the qualified reference or UUID`);
   // Prefix tier: 3+ chars so a stray letter never resolves by accident.
   if (needle.length >= 3) {
     const prefixed = views.filter((v) => {
       const b = v.bee;
       if (!b) return false;
-      return b.id.startsWith(needle) || (b.handle != null && b.handle.toLowerCase().startsWith(lower)) || b.name.startsWith(needle);
+      return b.id.startsWith(needle) || (b.human_ref?.toLowerCase().startsWith(lower) ?? false) || (b.handle != null && b.handle.toLowerCase().startsWith(lower)) || b.name.startsWith(needle);
     });
     if (prefixed.length === 1 && prefixed[0]?.bee) return prefixed[0].bee.id;
     if (prefixed.length > 1) {
@@ -723,7 +731,7 @@ async function cmdSpawn(ctx: CliContext, parsed: Parsed): Promise<number> {
       confirm(
         "ok",
         result.deduped ? "already spawned" : "spawned",
-        `${result.handle ?? result.beeId} (${result.handle ? `${result.beeId}; ` : ""}${result.agent}/${result.substrate}; command ${result.commandId}${result.status ? ` ${result.status}` : ""}${accountNote})`,
+        `${result.humanRef ?? result.handle ?? result.beeId} (${result.handle ? `${result.beeId}; ` : ""}${result.agent}/${result.substrate}; command ${result.commandId}${result.status ? ` ${result.status}` : ""}${accountNote})`,
         result.deduped,
       ),
     ],
@@ -2574,6 +2582,33 @@ async function cmdDeployInfo(ctx: CliContext): Promise<number> {
   return 0;
 }
 
+async function cmdHumanRef(ctx: CliContext, parsed: Parsed): Promise<number> {
+  const [, action = "status", sub, installationId] = parsed.positional;
+  if (action === "status") {
+    const result = await withClient(ctx, (c) => c.request<import("../../daemon/src/protocol.ts").HumanRefStatusResult>("humanRef.status"));
+    emit(ctx, [result.issuer ? `human reference issuer: ${result.issuer.namespace} (${result.installationId}; authority ${result.issuer.authorityId})` : `human reference issuer: not enrolled (${result.installationId})`], result, false);
+    return 0;
+  }
+  if (action === "enroll" && sub) {
+    const receipt = JSON.parse(readFileSync(resolve(sub), "utf8")) as unknown;
+    const result = await withClient(ctx, (c) => c.request<import("../../daemon/src/protocol.ts").HumanRefEnrollResult>("humanRef.enroll", { receipt }));
+    emit(ctx, [`${result.applied ? "enrolled" : "already enrolled"}: ${result.issuer.namespace} (${result.issuer.installationId})`], result, false);
+    return 0;
+  }
+  if (action === "registry" && (sub === "init" || sub === "status")) {
+    const result = await withClient(ctx, (c) => c.request<import("../../daemon/src/protocol.ts").HumanRefRegistryStatusResult>(sub === "init" ? "humanRef.registry.init" : "humanRef.registry.status"));
+    emit(ctx, [result.registry ? `human reference registry: ${result.registry.authorityId} (${result.registry.allocations} permanent allocations)` : "human reference registry: not initialized"], result, false);
+    return 0;
+  }
+  if (action === "registry" && sub === "reserve" && installationId) {
+    const receipt = await withClient(ctx, (c) => c.request<import("../../daemon/src/protocol.ts").HumanRefReceipt>("humanRef.registry.reserve", { installationId }));
+    // Plain mode also emits the exact portable receipt, ready for file redirection.
+    emit(ctx, [JSON.stringify(receipt, null, 2)], receipt, false);
+    return 0;
+  }
+  throw new Error("usage: hive human-ref status | enroll <receipt.json> | registry init|status|reserve <installation-id>");
+}
+
 async function cmdHealth(ctx: CliContext): Promise<number> {
   const result = await withClient(ctx, (c) => c.request<HealthResult>("health"));
   emit(ctx, renderHealth(result), result, false);
@@ -2794,7 +2829,7 @@ async function runTemplateInvocation(ctx: CliContext, parsed: Parsed, mode: Temp
   }));
   const command = await waitForCommandSettled(ctx, spawned.beeId, spawned.commandId, numFlag(parsed, "--timeout", 60_000));
   if (command.status === "failed") {
-    ctx.io.err(`spawn failed: ${spawned.handle ?? spawned.beeId} (${command.failureCause ?? "unknown"})`);
+    ctx.io.err(`spawn failed: ${spawned.humanRef ?? spawned.handle ?? spawned.beeId} (${command.failureCause ?? "unknown"})`);
     return 1;
   }
   return attachToBee(ctx, plan.parsed, spawned.beeId, {
@@ -3077,7 +3112,7 @@ async function cmdX(ctx: CliContext, parsed: Parsed): Promise<number> {
       confirm(
         "ok",
         "spawned",
-        `${spawned.handle ?? spawned.beeId} (${spawned.handle ? `${spawned.beeId}; ` : ""}command ${spawned.commandId}); sent message ${spawned.messageId} (${prompt.length} chars) — inspect with: hive tail ${name} | wait ${name}`,
+        `${spawned.humanRef ?? spawned.handle ?? spawned.beeId} (${spawned.handle ? `${spawned.beeId}; ` : ""}command ${spawned.commandId}); sent message ${spawned.messageId} (${prompt.length} chars) — inspect with: hive tail ${name} | wait ${name}`,
       ),
     ],
     spawned,
@@ -3161,7 +3196,7 @@ async function cmdXa(ctx: CliContext, parsed: Parsed): Promise<number> {
   const cmd = await waitForCommandSettled(ctx, spawned.beeId, spawned.commandId, timeoutMs);
   if (cmd.status === "failed") {
     ctx.io.err(
-      `spawn failed: ${spawned.handle ?? spawned.beeId} (${cmd.failureCause ?? "unknown"}) — inspect with: hive view ${spawned.handle ?? spawned.beeId}`,
+      `spawn failed: ${spawned.humanRef ?? spawned.handle ?? spawned.beeId} (${cmd.failureCause ?? "unknown"}) — inspect with: hive view ${spawned.humanRef ?? spawned.handle ?? spawned.beeId}`,
     );
     return 1;
   }
@@ -4061,6 +4096,8 @@ export async function runV2Cli(argv: string[], io: CliIo = defaultIo): Promise<n
   try {
     const ctx = makeContext(parsed, io);
     switch (command) {
+      case "human-ref":
+        return await cmdHumanRef(ctx, parsed);
       case "spawn":
         return await cmdSpawn(ctx, parsed);
       case "send":

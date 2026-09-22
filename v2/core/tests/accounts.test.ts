@@ -288,7 +288,7 @@ test("v7.migration: a v6 store opens as v7 — bees.account added, accounts/acco
     try {
       const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
       assert.equal(Number(version.value), SCHEMA_VERSION);
-      assert.equal(SCHEMA_VERSION, 28);
+      assert.equal(SCHEMA_VERSION, 30);
       const cols = (check.prepare("SELECT name FROM pragma_table_info('bees')").all() as Array<{ name: string }>).map((c) => c.name);
       assert.ok(cols.includes("account"));
       const tables = (check.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{ name: string }>).map((t) => t.name);
@@ -343,7 +343,7 @@ test("v27 bridge reopens a disabled pilot store without losing ordinary state or
         { ...(check.prepare("SELECT phase, generation, expires_at, operation_key, updated_at FROM account_credential_authorities WHERE account = ?").get(account.id) as Record<string, unknown>) },
         { phase: "disabled", generation: 4, expires_at: 9_999_999, operation_key: "rollout-4", updated_at: 7_777 },
       );
-      assert.equal((check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string }).value, "28");
+      assert.equal((check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string }).value, "30");
     } finally {
       check.close();
     }

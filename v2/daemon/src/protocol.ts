@@ -80,6 +80,7 @@ export const DAEMON_VERSION = "2.0.0-wp4";
  * client ignores the extra key) and `deployInfo` repeats the list.
  */
 export const DAEMON_CAPABILITIES = [
+  "bee.human_ref.v1",
   "bee.reconnectTools.v1",
   "thread.operations.v1",
   "thread.handoff.codex.hsr.v1",
@@ -289,6 +290,7 @@ export const RPC_ERROR_CODES = [
 export type RpcErrorCode = (typeof RPC_ERROR_CODES)[number];
 
 export const RPC_VERBS = [
+  "humanRef.status", "humanRef.enroll", "humanRef.registry.status", "humanRef.registry.init", "humanRef.registry.reserve",
   "bee.reconnectTools", "bee.reconnectTools.get",
   "thread.fork", "thread.handoff", "thread.operation.get", "thread.operation.retry", "thread.transcript", "thread.capabilities",
   // the seven mutations — thin wrappers over store + queue
@@ -480,6 +482,8 @@ export interface SpawnResult extends DedupMarkers {
   agent?: string;
   /** v10 — the minted display handle (`CL.a3f2`); what humans use from here on. */
   handle?: string | null;
+  humanRef?: string | null;
+  issuingNamespace?: string | null;
   commandId: number;
   /** First mailbox message admitted atomically with the bee, when supplied. */
   messageId?: number | null;
@@ -1787,3 +1791,10 @@ export interface ThreadTranscriptResult {
   eof: boolean;
 }
 export type { ThreadOperationView } from "../../core/src/threadOperation.ts";
+
+/** Permanent human reference enrollment and the explicitly selected registry. */
+export type { HumanRefIssuer, HumanRefReceipt, HumanRefRegistry } from "../../core/src/humanRefs.ts";
+export interface HumanRefStatusResult { installationId: string; issuer: import("../../core/src/humanRefs.ts").HumanRefIssuer | null }
+export interface HumanRefEnrollResult { issuer: import("../../core/src/humanRefs.ts").HumanRefIssuer; applied: boolean }
+export interface HumanRefRegistryStatusResult { registry: import("../../core/src/humanRefs.ts").HumanRefRegistry | null }
+export interface HumanRefRegistryInitResult { registry: import("../../core/src/humanRefs.ts").HumanRefRegistry; applied: boolean }

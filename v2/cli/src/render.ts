@@ -86,7 +86,7 @@ function colorLifecycle(life: string): string {
 }
 
 function beeLead(v: ViewResult): string {
-  return v.bee?.handle ?? v.bee?.id ?? v.view.beeId;
+  return v.bee?.human_ref ?? v.bee?.handle ?? v.bee?.id ?? v.view.beeId;
 }
 
 function extraTokens(v: ViewResult): string {
@@ -549,7 +549,7 @@ export function renderHealth(result: HealthResult): string[] {
 
 export function renderWatchSnapshot(seq: number, views: ViewResult[], filterBee?: string): string[] {
   const shown = filterBee
-    ? views.filter((v) => v.bee?.id === filterBee || v.bee?.name === filterBee || v.bee?.handle === filterBee)
+    ? views.filter((v) => v.bee?.id === filterBee || v.bee?.name === filterBee || v.bee?.handle === filterBee || v.bee?.human_ref === filterBee)
     : views;
   return [`${cyan("snapshot")}  ${dim("seq=")}${seq}  ${dim("bees=")}${shown.length}`, ...shown.map((v) => viewLine(v, false))];
 }

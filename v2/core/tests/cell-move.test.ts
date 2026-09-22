@@ -1,3 +1,4 @@
+import { enrollReferences } from "./human-ref-fixture.ts";
 /**
  * v22 Cell→checkout move aggregate: admission, fences, CAS placement,
  * receipts after fail/complete, instruction persistence, retained-cell
@@ -142,6 +143,7 @@ test("cell-move.admit: CAS, idempotency, fence, operator stop supersedes and kee
 test("cell-move.placement: CAS source stopped, legal transitions, instructions survive dest fail", () => {
   const h = harness();
   const store = h.open();
+  enrollReferences(store);
   try {
     const { bee } = store.createBee({
       name: "c",
@@ -176,6 +178,8 @@ test("cell-move.placement: CAS source stopped, legal transitions, instructions s
     assert.equal(store.getBee(bee.id)?.substrate, "hsr");
     assert.equal(store.getBee(bee.id)?.cwd, "/tmp/checkout");
     assert.equal(store.getBee(bee.id)?.placementVersion, 1);
+    assert.equal(store.getBee(bee.id)?.human_ref, bee.human_ref);
+    assert.equal(store.getBee(bee.id)?.issuing_namespace, "k7");
     assert.equal(store.getCell(cell.id)?.state, "retained");
     const replayed = store.commitBeePlacement(move.id);
     assert.equal(replayed.phase, "starting");
@@ -332,7 +336,7 @@ test(`cell-move.schema v${previousVersion} store migrates to v22`, () => {
     try {
       const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
       assert.equal(Number(version.value), SCHEMA_VERSION);
-      assert.equal(SCHEMA_VERSION, 28);
+      assert.equal(SCHEMA_VERSION, 30);
       const cols = (check.prepare("SELECT name FROM pragma_table_info('bees')").all() as Array<{ name: string }>).map((c) => c.name);
       assert.ok(cols.includes("placement_version"));
       assert.ok(cols.includes("active_move_id"));

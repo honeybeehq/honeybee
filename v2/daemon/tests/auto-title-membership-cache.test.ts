@@ -577,6 +577,8 @@ test("general dependencies retain exact callback order during synchronous reentr
     forkSeed: null,
     account: null,
     handle: "CL.1202",
+    human_ref: null,
+    issuing_namespace: null,
     placementVersion: 0,
     activeMoveId: null,
     cellId: null,

@@ -142,8 +142,12 @@
  * v27 refuses older binaries even when no account is enrolled. Roll back behavior with
  * credentials.disable; binary downgrade requires a separately planned store restore.
  * v28 adds durable, generation-reconciled automatic-account start reservations
- * and shared-owner claim confirmation. */
-export const SCHEMA_VERSION = 28;
+ * and shared-owner claim confirmation.
+ * v29 was briefly used by reverted action-reminder build 7374447d; refuse those stores.
+ * v30 adds permanent fleet-enrolled human references and reservations. It must exceed
+ * that historical writer's maximum version so it cannot bypass the new reservations.
+ * Older writers cannot maintain reference reservations: rollback requires a store restore. */
+export const SCHEMA_VERSION = 30;
 
 export const ACCOUNT_ADMISSIONS_TABLE_SQL = `
 CREATE TABLE IF NOT EXISTS account_admission_reservations (
@@ -200,6 +204,37 @@ CREATE TABLE IF NOT EXISTS meta (
   value TEXT NOT NULL
 ) STRICT;
 
+-- No bee foreign key: reservations survive deletion. Only the enrolled issuer
+-- may allocate locally; the fleet registry owns collision-free namespace codes.
+CREATE TABLE IF NOT EXISTS human_ref_registry (
+  singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+  authority_id TEXT NOT NULL,
+  public_key TEXT NOT NULL,
+  private_key TEXT NOT NULL,
+  next_value TEXT NOT NULL
+) STRICT;
+CREATE TABLE IF NOT EXISTS human_ref_allocations (
+  installation_id TEXT PRIMARY KEY,
+  namespace TEXT NOT NULL UNIQUE,
+  receipt TEXT NOT NULL
+) STRICT;
+CREATE TABLE IF NOT EXISTS human_ref_issuer (
+  singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+  namespace TEXT NOT NULL,
+  installation_id TEXT NOT NULL,
+  authority_id TEXT NOT NULL,
+  receipt TEXT NOT NULL
+) STRICT;
+CREATE TABLE IF NOT EXISTS bee_reference_claims (
+  bee_id TEXT PRIMARY KEY,
+  handle TEXT COLLATE NOCASE,
+  human_ref TEXT UNIQUE COLLATE NOCASE,
+  issuing_namespace TEXT
+) STRICT;
+CREATE TABLE IF NOT EXISTS bee_handle_reservations (
+  handle TEXT PRIMARY KEY COLLATE NOCASE
+) STRICT;
+
 CREATE TABLE IF NOT EXISTS bees (
   id               TEXT PRIMARY KEY,
   name             TEXT NOT NULL,
@@ -253,9 +288,11 @@ CREATE TABLE IF NOT EXISTS bees (
   -- it. The mechanism stays bees.env[HOME_ENV[harness]] = accounts.home_path.
   account          TEXT,
   -- v10: short human display id (CL.a3f2 — harness prefix + hex), minted by
-  -- the owning node at spawn; unique per node (partial index below). The
+  -- the issuing node at spawn; retained as a legacy alias. The
   -- UUID above stays the canonical id everywhere machines talk.
   handle           TEXT,
+  human_ref        TEXT,
+  issuing_namespace TEXT,
   -- v22: Cell→checkout placement generation (CAS for bee.move).
   placement_version INTEGER NOT NULL DEFAULT 0,
   -- v22: in-flight bee_moves.id; NULL when idle (complete/failed receipts remain).
@@ -718,6 +755,8 @@ export const BEES_ADDITIVE_COLUMNS: ReadonlyArray<readonly [name: string, ddl: s
   ["fork_seed", "fork_seed TEXT"],
   ["account", "account TEXT"],
   ["handle", "handle TEXT"],
+  ["human_ref", "human_ref TEXT"],
+  ["issuing_namespace", "issuing_namespace TEXT"],
   ["placement_version", "placement_version INTEGER NOT NULL DEFAULT 0"],
   ["active_move_id", "active_move_id TEXT"],
   ["cell_id", "cell_id TEXT"],
@@ -792,11 +831,12 @@ CREATE TABLE IF NOT EXISTS cell_ops (
 `;
 
 /**
- * v10 — handle uniqueness per node. Partial (NULL allowed mid-migration);
+ * v30 — legacy handles are non-unique aliases when issued by different installations.
+ * Qualified references and permanent reservations carry uniqueness. Partial;
  * created after the column migration, like the idempotency index.
  */
 export const HANDLE_INDEX_SQL =
-  "CREATE UNIQUE INDEX IF NOT EXISTS bees_handle ON bees(handle) WHERE handle IS NOT NULL;";
+  "CREATE INDEX IF NOT EXISTS bees_handle ON bees(handle) WHERE handle IS NOT NULL;";
 
 /**
  * v22 — at most one in-flight move pointer per bee. Created after additive

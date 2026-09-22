@@ -1350,6 +1350,18 @@ export class HiveDaemon {
       if (operation && ((operation.phase !== "ready" && operation.phase !== "failed") || (operation.worker && pidAlive(operation.worker.pid)))) throw new RpcError("thread_busy", "Thread operation still owns execution; wait for settlement before deletion");
     }
     switch (verb) {
+      case "humanRef.status":
+        return { installationId: this.mustStore().humanRefInstallationId(), issuer: this.mustStore().humanRefIssuer() };
+      case "humanRef.enroll":
+        // Enrollment itself is permanently idempotent, independent of the
+        // bounded RPC receipt cache. Conflicting retries must always refuse.
+        return this.mustStore().enrollHumanRefs(params.receipt);
+      case "humanRef.registry.status":
+        return { registry: this.mustStore().humanRefRegistry() };
+      case "humanRef.registry.init":
+        return this.mustStore().initHumanRefRegistry();
+      case "humanRef.registry.reserve":
+        return this.mustStore().reserveHumanRefNamespace(this.param(params, "installationId"));
       case "spawn":
         // The start command is due now; do not wait out the tick cadence.
         return this.rpcSpawnWithAccount(params).then((result) => { this.requestTick(); return result; });
@@ -2248,6 +2260,8 @@ export class HiveDaemon {
         return {
           beeId: original.beeId,
           handle: store.getBee(original.beeId)?.handle ?? null,
+          humanRef: store.getBee(original.beeId)?.human_ref ?? null,
+          issuingNamespace: store.getBee(original.beeId)?.issuing_namespace ?? null,
           commandId: original.id,
           messageId,
           status: original.status,
@@ -2331,6 +2345,8 @@ export class HiveDaemon {
       beeId: id,
       agent,
       handle: created.handle,
+      humanRef: created.human_ref,
+      issuingNamespace: created.issuing_namespace,
       commandId: cmd.id,
       messageId: sent?.message.id ?? null,
       account: account?.id ?? null,

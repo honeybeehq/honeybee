@@ -72,6 +72,8 @@ function mapBee(r: Row): BeeRow {
     account: (r.account as string | null | undefined) ?? null,
     // v10 column; same tolerance.
     handle: (r.handle as string | null | undefined) ?? null,
+    human_ref: (r.human_ref as string | null | undefined) ?? null,
+    issuing_namespace: (r.issuing_namespace as string | null | undefined) ?? null,
     placementVersion: Number((r.placement_version as number | null | undefined) ?? 0),
     activeMoveId: (r.active_move_id as string | null | undefined) ?? null,
     cellId: (r.cell_id as string | null | undefined) ?? null,

@@ -40,24 +40,13 @@ test("handles.1: every created bee gets a minted, unique, well-formed handle", (
   }
 });
 
-test("handles.2: sustained collision grows the suffix instead of failing; a broken rng fails loudly", () => {
+test("handles.2: local allocation makes progress even with a constant random source", () => {
   const h = harness();
+  const store = h.open({ random: () => 0 });
   try {
-    // rng emitting only zeros: every 4-char mint is CL.0000, every 5-char
-    // CL.00000, 6-char CL.000000 — three bees fit, the fourth must throw.
-    const store = h.open({ random: () => 0 });
-    const a = store.createBee({ name: "a", agent: "claude", substrate: "hsr", cwd: "/tmp" }).bee;
-    const b = store.createBee({ name: "b", agent: "claude", substrate: "hsr", cwd: "/tmp" }).bee;
-    const c = store.createBee({ name: "c", agent: "claude", substrate: "hsr", cwd: "/tmp" }).bee;
-    assert.deepEqual([a.handle, b.handle, c.handle], ["CL.0000", "CL.00000", "CL.000000"]);
-    assert.throws(
-      () => store.createBee({ name: "d", agent: "claude", substrate: "hsr", cwd: "/tmp" }),
-      (err: unknown) => err instanceof CoreError && /mintHandle/.test((err as Error).message),
-    );
-    store.close();
-  } finally {
-    h.cleanup();
-  }
+    const handles = Array.from({ length: 4 }, (_, i) => store.createBee({ name: `b${i}`, agent: "claude", substrate: "hsr", cwd: "/tmp" }).bee.handle);
+    assert.deepEqual(handles, ["CL.0000", "CL.0001", "CL.0002", "CL.0003"]);
+  } finally { store.close(); h.cleanup(); }
 });
 
 test("handles.3: explicit handle is preserved; a taken handle is a loud CoreError", () => {
@@ -107,7 +96,7 @@ test("handles.4: v9-shaped store backfills on open — an old pretty id becomes 
     try {
       const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
       assert.equal(Number(version.value), SCHEMA_VERSION);
-      assert.equal(SCHEMA_VERSION, 28);
+      assert.equal(SCHEMA_VERSION, 30);
       const idx = check.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name='bees_handle'").get();
       assert.ok(idx, "unique handle index exists");
     } finally {

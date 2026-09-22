@@ -12,7 +12,8 @@ import { THREAD_OPERATIONS_TABLE_SQL } from "./schema.ts";
  * replaying the audit log reproduces the exact table state — see audit.ts).
  */
 import { DatabaseSync } from "node:sqlite";
-import { randomUUID } from "node:crypto";
+import { generateKeyPairSync, randomUUID } from "node:crypto";
+import { humanRefAuthorityId, signHumanRefReceipt, verifyHumanRefReceipt, type HumanRefIssuer, type HumanRefReceipt, type HumanRefRegistry } from "./humanRefs.ts";
 import { TextDecoder } from "node:util";
 import {
   BeeNotFoundError,
@@ -214,7 +215,7 @@ import {
 export interface CoreStoreOptions {
   /** Injectable clock (epoch ms) for deterministic tests. */
   now?: () => number;
-  /** Injectable randomness (0..1) for deterministic handle minting in tests. */
+  /** Injectable randomness (0..1) for deterministic internal IDs in tests. */
   random?: () => number;
   /**
    * B5 bounded retries: attempts allowed before a command settles `failed`.
@@ -273,9 +274,12 @@ export interface CreateBeeInput {
   /**
    * v10 — explicit display handle (importers preserving an old pretty id).
    * Absent = the store mints one (`CL.a3f2`: harness prefix + hex, unique
-   * per node). Must be unique; a taken handle is a loud CoreError.
+   * per installation). Previously used local aliases cannot be reissued.
    */
   handle?: string;
+  /** Trusted import/move only: preserve the original issuer and full reference. */
+  humanRef?: string;
+  issuingNamespace?: string;
   /**
    * Creation timestamp override (epoch ms) — importers preserve the original
    * record's creation time. Defaults to the store clock.
@@ -622,7 +626,7 @@ function mapMailboxMembership(row: unknown): CommittedMailboxMembership {
  * (`CL.a3f2`). The regex is what the migration backfill uses to let an
  * imported bee whose OLD id already looks like a handle keep it.
  */
-export const HANDLE_RE = /^[A-Z]{2}\.[0-9a-f]{3,8}$/;
+export const HANDLE_RE = /^[A-Z]{2}\.[0-9a-f]{3,}$/;
 
 /** Harness → handle prefix: first two letters, uppercased (claude→CL, codex→CO, grok→GR). */
 export function handlePrefix(agent: string): string {
@@ -655,6 +659,8 @@ function mapBee(r: Row): BeeRow {
     forkSeed: (r.fork_seed as string | null) ?? null,
     account: (r.account as string | null) ?? null,
     handle: (r.handle as string | null) ?? null,
+    human_ref: (r.human_ref as string | null) ?? null,
+    issuing_namespace: (r.issuing_namespace as string | null) ?? null,
     placementVersion: Number(r.placement_version ?? 0),
     activeMoveId: (r.active_move_id as string | null) ?? null,
     cellId: (r.cell_id as string | null) ?? null,
@@ -1552,6 +1558,31 @@ export class CoreStore {
     }
   }
 
+  /** Reserve all history before migration mints any missing handle. A deleted
+   * pre-v10 UUID may have no known spelling, but still needs a tombstone. */
+  private reserveLegacyBeeReferences(): void {
+    const reserveAlias = (value: string | null): void => {
+      if (value) this.stmt("INSERT OR IGNORE INTO bee_handle_reservations(handle) VALUES(?)").run(value);
+    };
+    // Living rows win the per-UUID claim; the independent alias set keeps every
+    // spelling even when pre-v30 code reused the same UUID after deletion.
+    this.db.exec(`INSERT OR IGNORE INTO bee_reference_claims(bee_id, handle, human_ref, issuing_namespace)
+      SELECT id, handle, human_ref, issuing_namespace FROM bees`);
+    for (const row of this.stmt("SELECT id, handle FROM bees").iterate() as Iterable<Row>) {
+      reserveAlias(row.handle as string | null);
+      if (HANDLE_RE.test(String(row.id))) reserveAlias(String(row.id));
+    }
+    const historical = this.stmt(`SELECT json_extract(payload, '$.bee.id') AS id,
+      json_extract(payload, '$.bee.handle') AS handle FROM audit WHERE kind = 'bee.created' ORDER BY seq DESC`);
+    for (const row of historical.iterate() as Iterable<Row>) {
+      const id = row.id as string | null;
+      const handle = row.handle as string | null;
+      if (id) this.stmt("INSERT OR IGNORE INTO bee_reference_claims(bee_id, handle) VALUES(?, ?)").run(id, handle);
+      reserveAlias(handle);
+      if (id && HANDLE_RE.test(id)) reserveAlias(id);
+    }
+  }
+
   /**
    * Schema-version discipline (spec 06 §6, mirrored by apiaryd): the store is
    * stamped with SCHEMA_VERSION; a NEWER stamp is a downgrade and is refused
@@ -1571,6 +1602,19 @@ export class CoreStore {
           "refusing to open a newer store (downgrade). Update the daemon or roll the store back.",
       );
     }
+    // Schema 29 belonged to the reverted action-reminder build. Its stored
+    // origin vocabulary is incompatible; do not silently reinterpret its rows.
+    if (stored === 29) {
+      throw new SchemaVersionError(
+        "schema_newer",
+        "core store is schema v29 from reverted build 7374447d; restore from backup before opening with this build.",
+      );
+    }
+    const needsHumanRefMigration = stored < 30;
+    if (needsHumanRefMigration && !this.stmt("SELECT 1 FROM meta WHERE key = 'human_ref_installation_id'").get()) {
+      this.stmt("INSERT INTO meta(key, value) VALUES('human_ref_installation_id', ?)").run(randomUUID());
+    }
+    this.humanRefInstallationId(); // Missing/corrupt completed-v30 identity never silently remints.
     if (stored < SCHEMA_VERSION) {
       // v1 → v2: additive idempotency_key column on commands. A FRESH database
       // already has the column from SCHEMA_SQL (also unstamped, so it takes
@@ -1676,6 +1720,7 @@ export class CoreStore {
         this.db.exec(`INSERT INTO account_limits(${carried}) SELECT ${carried} FROM account_limits_v18`);
         this.db.exec("DROP TABLE account_limits_v18");
       }
+      if (needsHumanRefMigration) this.reserveLegacyBeeReferences();
       // v9 → v10: mint display handles for existing bees. An imported bee
       // whose old id already IS a pretty handle (CL.7920-style) keeps it —
       // the operator's known references survive the cutover.
@@ -1687,13 +1732,17 @@ export class CoreStore {
           this.stmt("SELECT 1 FROM bees WHERE handle = ?").get(id) === undefined;
         const handle = keepOldId ? id : this.mintHandle(String(b.agent));
         this.stmt("UPDATE bees SET handle = ? WHERE id = ?").run(handle, id);
+        this.stmt("UPDATE bee_reference_claims SET handle = ? WHERE bee_id = ?").run(handle, id);
+        this.stmt("INSERT OR IGNORE INTO bee_handle_reservations(handle) VALUES(?)").run(handle);
       }
     }
     // These indexes need their columns, so they are created here
     // — after the migration — not in SCHEMA_SQL.
     this.db.exec(FLAGS_EXPIRY_INDEX_SQL);
     this.db.exec(IDEMPOTENCY_INDEX_SQL);
+    if (needsHumanRefMigration) this.db.exec("DROP INDEX IF EXISTS bees_handle");
     this.db.exec(HANDLE_INDEX_SQL);
+    this.db.exec("CREATE UNIQUE INDEX IF NOT EXISTS bees_human_ref ON bees(human_ref COLLATE NOCASE) WHERE human_ref IS NOT NULL");
     this.db.exec(BEES_ACTIVE_MOVE_INDEX_SQL);
     this.db.exec(BEES_ACTIVE_HANDOFF_INDEX_SQL);
     this.db.exec(MAILBOX_PENDING_METADATA_INDEX_SQL);
@@ -1944,13 +1993,6 @@ export class CoreStore {
   // -------------------------------------------------------------------------
 
   /**
-   * v10 — mint a unique display handle for the agent: prefix + 4 hex chars,
-   * growing to 5 then 6 on sustained collision. Single writer per node, so
-   * a read-check + retry is race-free. ~65k values at 4 chars per node; the
-   * growth path means exhaustion degrades to longer handles, never failure
-   * (a hard bound guards a broken rng).
-   */
-  /**
    * v23: ids drawn from the store's injected `random` (the sim seeds it so a
    * replayed run reproduces the same segment/handoff ids); production keeps
    * Math.random, which is what the crypto uuid would give us in spirit.
@@ -1966,23 +2008,103 @@ export class CoreStore {
     return out;
   }
 
+  /** Decimal/hex text avoids SQLite/JS integer overflow; the sequence never wraps. */
   private mintHandle(agent: string): string {
     const prefix = handlePrefix(agent);
-    const taken = this.stmt("SELECT 1 FROM bees WHERE handle = ?");
-    for (let attempt = 0; attempt < 64; attempt++) {
-      const len = attempt < 16 ? 4 : attempt < 40 ? 5 : 6;
-      let suffix = "";
-      for (let i = 0; i < len; i++) suffix += Math.floor(this.random() * 16).toString(16);
-      const handle = `${prefix}.${suffix}`;
-      if (!taken.get(handle)) return handle;
+    const key = `handle_sequence:${prefix}`;
+    const row = this.stmt("SELECT value FROM meta WHERE key = ?").get(key) as Row | undefined;
+    if (row && !/^(0|[1-9][0-9]*)$/.test(String(row.value))) throw new CoreError("mintHandle: corrupt allocation sequence");
+    let next = row ? BigInt(String(row.value)) : 0n;
+    for (;;) {
+      const handle = `${prefix}.${next.toString(16).padStart(4, "0")}`;
+      next += 1n;
+      if (this.stmt("SELECT 1 FROM bee_handle_reservations WHERE handle = ?").get(handle)
+        || this.stmt("SELECT 1 FROM bees WHERE handle = ? COLLATE NOCASE").get(handle)) continue;
+      this.stmt("INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(key, next.toString());
+      return handle;
     }
-    throw new CoreError(`mintHandle: could not find a free handle for ${agent} after 64 attempts`);
+  }
+
+  humanRefInstallationId(): string {
+    const row = this.stmt("SELECT value FROM meta WHERE key = 'human_ref_installation_id'").get() as Row | undefined;
+    if (!row || typeof row.value !== "string" || !/^[0-9a-f-]{36}$/.test(row.value)) throw new CoreError("human reference installation identity is missing or corrupt");
+    return row.value;
+  }
+
+  humanRefIssuer(): HumanRefIssuer | null {
+    const row = this.stmt("SELECT * FROM human_ref_issuer WHERE singleton = 1").get() as Row | undefined;
+    return row ? { namespace: String(row.namespace), installationId: String(row.installation_id), authorityId: String(row.authority_id) } : null;
+  }
+
+  humanRefRegistry(): HumanRefRegistry | null {
+    const row = this.stmt("SELECT authority_id, public_key FROM human_ref_registry WHERE singleton = 1").get() as Row | undefined;
+    if (!row) return null;
+    return { authorityId: String(row.authority_id), publicKey: String(row.public_key), allocations: Number((this.stmt("SELECT COUNT(*) AS n FROM human_ref_allocations").get() as Row).n) };
+  }
+
+  /** Explicit operator action on exactly one selected node per fleet. Never
+   * auto-initialize or elect a replacement while the authority is unavailable. */
+  initHumanRefRegistry(): { registry: HumanRefRegistry; applied: boolean } {
+    return this.tx(() => {
+      const existing = this.humanRefRegistry();
+      if (existing) return { registry: existing, applied: false };
+      if (this.humanRefIssuer() || this.stmt("SELECT 1 FROM bee_reference_claims WHERE human_ref IS NOT NULL LIMIT 1").get()) throw new CoreError("humanRef.registry.init: installation already has qualified references; use its existing authority, independent registries cannot be merged");
+      const pair = generateKeyPairSync("ed25519");
+      const publicKey = pair.publicKey.export({ type: "spki", format: "der" }).toString("base64");
+      const privateKey = pair.privateKey.export({ type: "pkcs8", format: "der" }).toString("base64");
+      this.stmt("INSERT INTO human_ref_registry VALUES(1, ?, ?, ?, '0')").run(humanRefAuthorityId(publicKey), publicKey, privateKey);
+      return { registry: this.humanRefRegistry()!, applied: true };
+    });
+  }
+
+  reserveHumanRefNamespace(installationId: string): HumanRefReceipt {
+    if (typeof installationId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(installationId)) throw new CoreError("humanRef.registry.reserve: installationId must be a canonical UUID");
+    return this.tx(() => {
+      const registry = this.stmt("SELECT * FROM human_ref_registry WHERE singleton = 1").get() as Row | undefined;
+      if (!registry) throw new CoreError("humanRef.registry.reserve: registry is not initialized; explicitly select one authority for the fleet");
+      const existing = this.stmt("SELECT receipt FROM human_ref_allocations WHERE installation_id = ?").get(installationId) as Row | undefined;
+      if (existing) return verifyHumanRefReceipt(JSON.parse(String(existing.receipt)));
+      if (!/^(0|[1-9][0-9]*)$/.test(String(registry.next_value))) throw new CoreError("humanRef.registry.reserve: corrupt allocation sequence");
+      const next = BigInt(String(registry.next_value));
+      const namespace = next.toString(36).padStart(2, "0");
+      const receipt = signHumanRefReceipt({ namespace, installationId, authorityId: String(registry.authority_id) }, String(registry.public_key), String(registry.private_key));
+      verifyHumanRefReceipt(receipt); // Refuse a damaged authority key pair.
+      // Reserve before returning the receipt, even if the destination is offline.
+      this.stmt("INSERT INTO human_ref_allocations VALUES(?, ?, ?)").run(installationId, namespace, JSON.stringify(receipt));
+      this.stmt("UPDATE human_ref_registry SET next_value = ? WHERE singleton = 1").run((next + 1n).toString());
+      return receipt;
+    });
+  }
+
+  /** Explicit first-use trust of the selected registry, then immutable pinning.
+   * Signature validation works offline; subsequent issuance uses only SQLite. */
+  enrollHumanRefs(value: unknown): { issuer: HumanRefIssuer; applied: boolean } {
+    const receipt = verifyHumanRefReceipt(value);
+    const input: HumanRefIssuer = { namespace: receipt.namespace, installationId: receipt.installationId, authorityId: receipt.authorityId };
+    if (input.installationId !== this.humanRefInstallationId()) throw new CoreError("humanRef.enroll: installationId does not match this installation");
+    const registry = this.humanRefRegistry();
+    if (registry && registry.authorityId !== input.authorityId) throw new CoreError("humanRef.enroll: independent registry authority conflict; federation is unsupported");
+    return this.tx(() => {
+      const existing = this.humanRefIssuer();
+      if (existing) {
+        if (existing.namespace !== input.namespace || existing.installationId !== input.installationId || existing.authorityId !== input.authorityId) throw new CoreError("humanRef.enroll: immutable enrollment conflict");
+        return { issuer: existing, applied: false };
+      }
+      this.stmt("INSERT INTO human_ref_issuer VALUES(1, ?, ?, ?, ?)").run(input.namespace, input.installationId, input.authorityId, JSON.stringify(receipt));
+      for (const row of this.stmt("SELECT id, handle FROM bees WHERE human_ref IS NULL ORDER BY id").all() as Row[]) {
+        const humanRef = `${String(row.handle)}.${input.namespace}`;
+        this.stmt("UPDATE bee_reference_claims SET human_ref = ?, issuing_namespace = ? WHERE bee_id = ?").run(humanRef, input.namespace, String(row.id));
+        this.stmt("UPDATE bees SET human_ref = ?, issuing_namespace = ? WHERE id = ?").run(humanRef, input.namespace, String(row.id));
+        this.audit("bee.human_ref", String(row.id), { beeId: String(row.id), human_ref: humanRef, issuing_namespace: input.namespace });
+      }
+      return { issuer: { ...input }, applied: true };
+    });
   }
 
   createBee(input: CreateBeeInput): { bee: BeeRow; runtime: RuntimeRow } {
     return this.tx(() => {
       const id = requireBeeId(input.id ?? randomUUID(), "createBee: bee id");
-      if (this.getBee(id)) throw new CoreError(`bee already exists: ${id}`);
+      if (this.getBee(id) || this.stmt("SELECT 1 FROM bee_reference_claims WHERE bee_id = ?").get(id)) throw new CoreError(`bee already exists or was deleted: ${id}`);
       if (input.parentExternal !== undefined && typeof input.parentExternal !== "boolean") {
         throw new CoreError("createBee: parentExternal must be a boolean when given");
       }
@@ -1991,13 +2113,21 @@ export class CoreStore {
       let handle: string;
       if (input.handle !== undefined) {
         requireNonEmpty(input.handle, "createBee: handle");
-        if (this.stmt("SELECT 1 FROM bees WHERE handle = ?").get(input.handle)) {
+        if (!input.humanRef && this.stmt("SELECT 1 FROM bee_handle_reservations WHERE handle = ?").get(input.handle)) {
           throw new CoreError(`createBee: handle already taken: ${input.handle}`);
         }
         handle = input.handle;
       } else {
         handle = this.mintHandle(input.agent);
       }
+      const issuer = this.humanRefIssuer();
+      if ((input.humanRef === undefined) !== (input.issuingNamespace === undefined)) throw new CoreError("createBee: humanRef and issuingNamespace must be supplied together");
+      const namespace = input.issuingNamespace ?? issuer?.namespace ?? null;
+      const humanRef = input.humanRef ?? (namespace ? `${handle}.${namespace}` : null);
+      if (input.humanRef !== undefined && (!/^[a-z0-9]+$/.test(input.issuingNamespace!) || input.humanRef !== `${handle}.${input.issuingNamespace}`)) throw new CoreError("createBee: imported reference must match handle and issuing namespace");
+      if (humanRef && this.stmt("SELECT 1 FROM bee_reference_claims WHERE human_ref = ?").get(humanRef)) throw new CoreError(`createBee: human reference already taken: ${humanRef}`);
+      this.stmt("INSERT INTO bee_reference_claims(bee_id, handle, human_ref, issuing_namespace) VALUES(?, ?, ?, ?)").run(id, handle, humanRef, namespace);
+      this.stmt("INSERT OR IGNORE INTO bee_handle_reservations(handle) VALUES(?)").run(handle);
       const at = this.now();
       const createdAt = input.createdAt ?? at;
       if (!Number.isFinite(createdAt)) throw new CoreError("createBee: createdAt must be a finite epoch-ms number");
@@ -2013,8 +2143,8 @@ export class CoreStore {
         .prepare(
           `INSERT INTO bees(id, name, agent, substrate, cwd, title, tags, session_log_path, lifecycle, created_at,
                             provider_session_id, env, imported_from, args, parent_id, parent_external, forked_from,
-                            fork_seed, account, handle)
-           VALUES(?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                            fork_seed, account, handle, human_ref, issuing_namespace)
+           VALUES(?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           id,
@@ -2036,6 +2166,8 @@ export class CoreStore {
           input.forkSeed ?? null,
           account,
           handle,
+          humanRef,
+          namespace,
         );
       const bee = this.mustGetBee(id);
       this.audit("bee.created", id, { bee });
