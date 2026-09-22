@@ -10,7 +10,6 @@
 
 import { execFile } from "node:child_process";
 import { performance } from "node:perf_hooks";
-import { macProcessCensusPath } from "./processCensus.js";
 
 const PROCESS_CENSUS_TIMEOUT_MS = 5_000;
 // The current Node process already has an immutable per-incarnation clock
@@ -69,10 +68,9 @@ export function parseProcessRows(output: string): ProcessRow[] {
 
 function execProcessCensus(args: string[], selectedPid = false): Promise<string> {
   return new Promise((resolve, reject) => {
-    const nativeCensus = macProcessCensusPath();
     execFile(
-      nativeCensus ?? "/bin/ps",
-      nativeCensus ? ["--identity"] : args,
+      "/bin/ps",
+      args,
       {
         maxBuffer: 16 * 1024 * 1024,
         timeout: PROCESS_CENSUS_TIMEOUT_MS,
@@ -84,9 +82,9 @@ function execProcessCensus(args: string[], selectedPid = false): Promise<string>
         env: { ...process.env, LC_ALL: "C" },
       },
       (error, stdout) => {
-        // Only ps documents exit 1 as an absent selected PID. Native-helper
-        // failures (including exit 1) must never become death evidence.
-        if (error && !nativeCensus && selectedPid && error.code === 1) resolve("");
+        // ps exit 1 means no selected PID matched. Spawn failures and
+        // failed full censuses remain errors, never death evidence.
+        if (error && selectedPid && error.code === 1) resolve("");
         else if (error) reject(error);
         else resolve(stdout);
       },
