@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
+import { createHash } from "node:crypto";
 import { appendFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type Server, type Socket } from "node:net";
 import { dirname } from "node:path";
@@ -20,12 +21,12 @@ import { dirname } from "node:path";
  *
  * The host is deliberately dumb — it holds pipes and moves bytes; every
  * decision stays in the daemon:
- *  - agent stdout  → session log file, verbatim non-empty lines (byte-
- *    identical to what the driver wrote in-process before — the transcript
- *    cache's file-lifetime identity depends on it), AND an output-only,
- *    generation-scoped observation journal. The driver observes the latter:
- *    restart replay can never cross generations or mistake a daemon→agent
- *    command from the bidirectional transcript for runner evidence.
+ *  - agent stdout  → session log file, with generated-image payloads that
+ *    already exist on disk replaced by bounded file references, AND a
+ *    verbatim output-only, generation-scoped observation journal. The driver
+ *    observes the latter: restart replay can never cross generations or
+ *    mistake a daemon→agent command from the bidirectional transcript for
+ *    runner evidence.
  *  - agent stderr  → the `<beeId>.stderr.log` sidecar.
  *  - unix socket   → write-only lane INTO agent stdin: `{op:"write", line}`
  *    per newline-framed JSON. deliver/interrupt/respond all ride it. A
@@ -97,6 +98,43 @@ export function readRunnerStatus(path: string): RunnerStatus | null {
   }
 }
 
+function replaceImageGenerationResults(value: unknown): void {
+  if (value === null || typeof value !== "object") return;
+  if (Array.isArray(value)) {
+    for (const item of value) replaceImageGenerationResults(item);
+    return;
+  }
+
+  const record = value as Record<string, unknown>;
+  if (
+    record.type === "imageGeneration" &&
+    typeof record.result === "string" &&
+    typeof record.savedPath === "string"
+  ) {
+    const result = record.result;
+    record.result = {
+      $ref: "file",
+      path: record.savedPath,
+      bytes: Buffer.byteLength(result, "utf8"),
+      sha256: createHash("sha256").update(result, "utf8").digest("hex"),
+    };
+  }
+  for (const child of Object.values(record)) replaceImageGenerationResults(child);
+}
+
+/** Keep inbound session-log records bounded when Codex already persisted the
+ * generated image. The observation journal remains the verbatim replay source. */
+function sessionLogLine(line: string): string {
+  if (!line.includes('"imageGeneration"') || !line.includes('"result":"')) return line;
+  try {
+    const parsed: unknown = JSON.parse(line);
+    replaceImageGenerationResults(parsed);
+    return JSON.stringify(parsed);
+  } catch {
+    return line;
+  }
+}
+
 export function runRunnerHost(configPath: string): void {
   const cfg = JSON.parse(readFileSync(configPath, "utf8")) as RunnerHostConfig;
   mkdirSync(dirname(cfg.sessionLogPath), { recursive: true });
@@ -162,8 +200,8 @@ export function runRunnerHost(configPath: string): void {
   });
   child.stdin?.on("error", () => undefined);
 
-  // stdout → session log, replicating the in-process driver's exact line
-  // rules (strip \r, skip blank lines, one trailing \n per line).
+  // stdout → observation journal verbatim and session log bounded, retaining
+  // the line rules (strip \r, skip blank lines, one trailing \n per line).
   let rest = "";
   child.stdout?.setEncoding("utf8");
   child.stdout?.on("data", (chunk: string) => {
@@ -184,7 +222,7 @@ export function runRunnerHost(configPath: string): void {
         writeStatus(cfg.statusPath, status);
       }
       try {
-        appendFileSync(cfg.sessionLogPath, `${line}\n`);
+        appendFileSync(cfg.sessionLogPath, `${sessionLogLine(line)}\n`);
       } catch {
         // Transcript diagnostics are independent from lifecycle evidence.
         // Never crash the host or suppress the observation journal over it.

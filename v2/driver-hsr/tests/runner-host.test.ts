@@ -9,6 +9,7 @@
  */
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { test } from "node:test";
 import { mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -21,6 +22,149 @@ import { AGENT_PATH, drainUntil as drainDriverUntil, ofKind, pidAlive, sleep } f
 const FAKE_CODEX_PATH = join(dirname(AGENT_PATH), "fake-codex.mjs");
 const RUNNER_HOST_SOURCE_PATH = join(dirname(AGENT_PATH), "..", "src", "runner-host-main.ts");
 const HOST_TEST_TIMEOUT_MS = 60_000;
+
+function imageReference(result: string, path: string): Record<string, unknown> {
+  return {
+    $ref: "file",
+    path,
+    bytes: Buffer.byteLength(result, "utf8"),
+    sha256: createHash("sha256").update(result, "utf8").digest("hex"),
+  };
+}
+
+function runHostWithStdoutLines(lines: string[]): {
+  sessionLog: string;
+  observationLog: string;
+  cleanup(): void;
+} {
+  const dir = mkdtempSync(join(tmpdir(), "hb-v2-runner-lines-"));
+  const configPath = join(dir, "runner.json");
+  const sessionLogPath = join(dir, "logs", "bee-lines.jsonl");
+  const observationLogPath = join(dir, "observations", "bee-lines.1.jsonl");
+  writeFileSync(
+    configPath,
+    JSON.stringify({
+      beeId: "bee-lines",
+      generation: 1,
+      command: process.execPath,
+      args: [
+        "-e",
+        'for (const line of JSON.parse(process.env.HSR_TEST_LINES)) process.stdout.write(`${line}\\n`);',
+      ],
+      cwd: dir,
+      env: { ...process.env, HSR_TEST_LINES: JSON.stringify(lines) },
+      sessionLogPath,
+      observationLogPath,
+      sidecarPath: join(dir, "stderr.log"),
+      socketPath: join(dir, "runner.sock"),
+      statusPath: join(dir, "status.json"),
+      bootLines: [],
+    }),
+  );
+  const result = spawnSync(
+    process.execPath,
+    ["--no-warnings", "--experimental-strip-types", RUNNER_HOST_SOURCE_PATH, configPath],
+    { encoding: "utf8", timeout: HOST_TEST_TIMEOUT_MS },
+  );
+  assert.equal(result.status, 0, `runner host failed:\nstdout: ${result.stdout}\nstderr: ${result.stderr}`);
+  return {
+    sessionLog: readFileSync(sessionLogPath, "utf8"),
+    observationLog: readFileSync(observationLogPath, "utf8"),
+    cleanup: () => rmSync(dir, { recursive: true, force: true }),
+  };
+}
+
+test("runner host logs an item/completed image generation as a file reference", (t) => {
+  const image = "aGVsbG8taW1hZ2U=";
+  const savedPath = "/tmp/generated-item.png";
+  const message = {
+    jsonrpc: "2.0",
+    method: "item/completed",
+    params: { item: { type: "imageGeneration", result: image, savedPath } },
+  };
+  const output = runHostWithStdoutLines([JSON.stringify(message)]);
+  t.after(output.cleanup);
+
+  assert.equal(
+    output.sessionLog,
+    `${JSON.stringify({
+      ...message,
+      params: { item: { ...message.params.item, result: imageReference(image, savedPath) } },
+    })}\n`,
+  );
+});
+
+test("runner host logs every thread/fork image generation as a file reference", (t) => {
+  const firstImage = "Zmlyc3Q=";
+  const secondImage = "c2Vjb25k";
+  const firstPath = "/tmp/fork-first.png";
+  const secondPath = "/tmp/fork-second.png";
+  const message = {
+    jsonrpc: "2.0",
+    id: 42,
+    result: {
+      thread: {
+        turns: [
+          { items: [{ type: "imageGeneration", result: firstImage, savedPath: firstPath }] },
+          { items: [{ type: "text", text: "between" }, { type: "imageGeneration", result: secondImage, savedPath: secondPath }] },
+        ],
+      },
+    },
+  };
+  const output = runHostWithStdoutLines([JSON.stringify(message)]);
+  t.after(output.cleanup);
+
+  assert.equal(
+    output.sessionLog,
+    `${JSON.stringify({
+      ...message,
+      result: {
+        thread: {
+          turns: [
+            { items: [{ type: "imageGeneration", result: imageReference(firstImage, firstPath), savedPath: firstPath }] },
+            {
+              items: [
+                { type: "text", text: "between" },
+                { type: "imageGeneration", result: imageReference(secondImage, secondPath), savedPath: secondPath },
+              ],
+            },
+          ],
+        },
+      },
+    })}\n`,
+  );
+});
+
+test("runner host keeps an inbound line without image substrings byte-identical", (t) => {
+  const line = '{ "method": "item/completed", "params": { "text": "héllo" } }';
+  const output = runHostWithStdoutLines([line]);
+  t.after(output.cleanup);
+
+  assert.equal(output.sessionLog, `${line}\n`);
+});
+
+test("runner host keeps a malformed image generation line byte-identical", (t) => {
+  const line = '{"type":"imageGeneration","result":"abc","savedPath":';
+  const output = runHostWithStdoutLines([line]);
+  t.after(output.cleanup);
+
+  assert.equal(output.sessionLog, `${line}\n`);
+});
+
+test("runner host keeps image generation bytes verbatim in the observation journal", (t) => {
+  const line = JSON.stringify({
+    jsonrpc: "2.0",
+    method: "item/completed",
+    params: {
+      item: { type: "imageGeneration", result: "am91cm5hbC1ieXRlcw==", savedPath: "/tmp/journal.png" },
+    },
+  });
+  const output = runHostWithStdoutLines([line]);
+  t.after(output.cleanup);
+
+  assert.equal(output.observationLog, `${line}\n`);
+  assert.notEqual(output.sessionLog, output.observationLog);
+});
 
 function processCommand(pid: number): string {
   const result = spawnSync("ps", ["-o", "command=", "-p", String(pid)], { encoding: "utf8" });
