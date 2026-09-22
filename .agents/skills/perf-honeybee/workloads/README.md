@@ -6,6 +6,7 @@ Each workload is a `<id>.json` record (machine-readable, schema in `record.schem
 
 | Workload | Lane | Processes | gap | recipe-only | measured | stale | gated | Unmeasured states | Readiness |
 | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | --- | --- |
+| [Account activity reads for active runtimes](./account-activity-reads.md) | steady-state | hived | 0 | 0 | 0 | 0 | 1 | recovery | 12 count samples preserve exact activity and durable state; 9 nonempty samples remove 1/180/3000 discarded reads. Inactive/transfer/reopen controls pass. No latency claim. |
 | [Unchanged action lane reconciliation](./action-noop-reconciliation.md) | steady-state | hived | 0 | 0 | 0 | 0 | 1 | recovery | 18 deterministic samples prove zero full-lane audit view builds on unchanged polls; transition/reopen controls are tests, total scheduler cost remains unmeasured. |
 | [Batch action-view projection](./action-view-projection.md) | throughput | hived | 0 | 0 | 0 | 0 | 1 | recovery | 45 count samples with exact view parity; 47 tests including filtered controls/reopen and exhaustive ordered status combinations. No CPU, latency or memory claim. |
 | [Boot-state lookup over retained runtime history](./boot-runtime-lookup.md) | steady-state | hived | 0 | 0 | 0 | 0 | 2 | first-use, recovery | 150 paired count samples have boolean parity and zero stopped-history scan growth; all-live VM overhead is 5–125 instructions. Node plan/lifecycle controls pass separately. No timing claim. |

@@ -1,0 +1,116 @@
+{
+  "protocolVersion": 1,
+  "id": "account-activity-reads",
+  "title": "Account activity reads for active runtimes",
+  "lane": "steady-state",
+  "processes": [
+    "hived"
+  ],
+  "owners": [
+    "v2/daemon/src/accountsService.ts@e03cdc6448460afe57935636eb8591cb820a4a94",
+    "v2/daemon/src/config.ts@c968b2f58247103b4d3ffa75ae51900a95239d81",
+    "v2/core/src/store.ts@a9b3bdafe63b5cd28f3ad745331799a912cc005e"
+  ],
+  "effect": {
+    "user": "Account activity reports skip pending work reads whose result cannot affect a booting/running classification.",
+    "assertions": [
+      "Active/recent/pending counts, ongoing units and observed claim IDs remain exact.",
+      "Inactive pending work, transfer generation ownership, fresh reads and reopen remain supported."
+    ],
+    "exclusions": [
+      "Whole daemon CPU",
+      "Latency",
+      "Provider activity",
+      "Fleet concurrency"
+    ]
+  },
+  "accounts": [
+    {
+      "inventory": "entry-points",
+      "key": "account-activity:nodeActivity"
+    }
+  ],
+  "states": {
+    "idle": {
+      "matters": false,
+      "why": "No process/provider launch; this workload isolates one synchronous activity calculation."
+    },
+    "first-use": {
+      "matters": false,
+      "why": "No process/provider launch; this workload isolates one synchronous activity calculation."
+    },
+    "repeated": {
+      "matters": true,
+      "why": "Three deterministic rounds."
+    },
+    "scale": {
+      "matters": true,
+      "why": "0/1/120/2000 bees."
+    },
+    "background": {
+      "matters": false,
+      "why": "No process/provider launch; this workload isolates one synchronous activity calculation."
+    },
+    "release": {
+      "matters": false,
+      "why": "No process/provider launch; this workload isolates one synchronous activity calculation."
+    },
+    "recovery": {
+      "matters": true,
+      "why": "Lifecycle freshness and reopen are separate behavioral controls."
+    }
+  },
+  "fixture": {
+    "preset": "account-activity-reads-v1",
+    "isolationPolicy": 1,
+    "scaleAxes": [
+      {
+        "axis": "bees",
+        "values": [
+          0,
+          1,
+          120,
+          2000
+        ],
+        "unit": "bees"
+      }
+    ],
+    "seed": "Two local fixture accounts; alternating mail/command pending work and booting/running states; three rounds."
+  },
+  "recipe": {
+    "driver": "v2/daemon/tests/accounts-activity.test.ts",
+    "command": "HIVE_ACCOUNT_ACTIVITY_RECEIPT=.proof/account-activity.json node --test v2/daemon/tests/accounts-activity.test.ts",
+    "readiness": "Isolated store seeded; wrappers installed after fixture construction.",
+    "completion": "Twelve retained samples with exact activity/state parity, zero active pending-work reads, and behavioral controls.",
+    "warmup": "None: deterministic counts.",
+    "teardown": "Always close store and remove owned fixture directory, including initial-open failure.",
+    "requires": [
+      "Node24.18.0",
+      "mkdir -p .proof"
+    ]
+  },
+  "metrics": [
+    {
+      "id": "activePendingReads",
+      "unit": "count",
+      "scope": "undeliveredMessages and listCommands calls for active runtime bees in one public nodeActivity read",
+      "collector": "instance call-through wrappers in accounts-activity.test.ts",
+      "aggregation": "max",
+      "kind": "actual",
+      "status": "gated",
+      "states": [
+        "repeated",
+        "scale"
+      ],
+      "betterWhen": "lower",
+      "invariant": "All twelve complete samples have exact facts and no durable changes; zero pending-work reads for booting/running bees.",
+      "noise": "Deterministic calls; no timing claim."
+    }
+  ],
+  "gaps": [
+    "Runtime lookup remains accounts times bees; reservations and roster still read per account.",
+    "CPU, RSS, whole-admission/fleet costs and live provider paths remain unmeasured."
+  ],
+  "updatedAt": "2026-09-22",
+  "readiness": "12 count samples preserve exact activity and durable state; 9 nonempty samples remove 1/180/3000 discarded reads. Inactive/transfer/reopen controls pass. No latency claim."
+}

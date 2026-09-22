@@ -1,0 +1,126 @@
+{
+  "workload": "account-activity-reads",
+  "seriesId": "account-activity-reads-v1",
+  "capturedAt": "2026-09-22T08:06:27.476Z",
+  "host": "Mac.home",
+  "node": "v24.18.0",
+  "load": [
+    66.0673828125,
+    54.21044921875,
+    49.79345703125
+  ],
+  "sources": {
+    "../src/accountsService.ts": "4a92ab80cc0a6426e07028acb11273d030649a0398637aca9663f37e22a73545",
+    "../src/config.ts": "3b4b1f42b7642d0147c4f55a30d303abcca9913831a129f75978d8e64538275b",
+    "../../core/src/store.ts": "286796912595bd3a2ccf722e147e9c435ab139a0699abcabe3f1c10c8eee4564",
+    "./accounts-activity.test.ts": "e17992926e37c9659387ea046343decd777e8ccd76cc1cc2dab70e0b97f70481"
+  },
+  "complete": true,
+  "samples": [
+    {
+      "size": 0,
+      "round": 0,
+      "activePendingReads": 0,
+      "parity": true,
+      "factsHash": "125643c25363614c571171a9264f003d03a10213b425eca340498eb2ab8d751f"
+    },
+    {
+      "size": 0,
+      "round": 1,
+      "activePendingReads": 0,
+      "parity": true,
+      "factsHash": "125643c25363614c571171a9264f003d03a10213b425eca340498eb2ab8d751f"
+    },
+    {
+      "size": 0,
+      "round": 2,
+      "activePendingReads": 0,
+      "parity": true,
+      "factsHash": "125643c25363614c571171a9264f003d03a10213b425eca340498eb2ab8d751f"
+    },
+    {
+      "size": 1,
+      "round": 0,
+      "activePendingReads": 0,
+      "parity": true,
+      "factsHash": "0e8214c8641d3b04954378f5913530f10aa1724fa0e023ac839fe65ad883a6fc"
+    },
+    {
+      "size": 1,
+      "round": 1,
+      "activePendingReads": 0,
+      "parity": true,
+      "factsHash": "0e8214c8641d3b04954378f5913530f10aa1724fa0e023ac839fe65ad883a6fc"
+    },
+    {
+      "size": 1,
+      "round": 2,
+      "activePendingReads": 0,
+      "parity": true,
+      "factsHash": "0e8214c8641d3b04954378f5913530f10aa1724fa0e023ac839fe65ad883a6fc"
+    },
+    {
+      "size": 120,
+      "round": 0,
+      "activePendingReads": 0,
+      "parity": true,
+      "factsHash": "c65574335ea8a2ebec4361bea47a30d70b9d2dcc78ae386e62c36b5df48a1111"
+    },
+    {
+      "size": 120,
+      "round": 1,
+      "activePendingReads": 0,
+      "parity": true,
+      "factsHash": "c65574335ea8a2ebec4361bea47a30d70b9d2dcc78ae386e62c36b5df48a1111"
+    },
+    {
+      "size": 120,
+      "round": 2,
+      "activePendingReads": 0,
+      "parity": true,
+      "factsHash": "c65574335ea8a2ebec4361bea47a30d70b9d2dcc78ae386e62c36b5df48a1111"
+    },
+    {
+      "size": 2000,
+      "round": 0,
+      "activePendingReads": 0,
+      "parity": true,
+      "factsHash": "0e9406d0f2e474f10282727dbb21ee36f4eadc307dc8a070681ea2584a9e1dd4"
+    },
+    {
+      "size": 2000,
+      "round": 1,
+      "activePendingReads": 0,
+      "parity": true,
+      "factsHash": "0e9406d0f2e474f10282727dbb21ee36f4eadc307dc8a070681ea2584a9e1dd4"
+    },
+    {
+      "size": 2000,
+      "round": 2,
+      "activePendingReads": 0,
+      "parity": true,
+      "factsHash": "0e9406d0f2e474f10282727dbb21ee36f4eadc307dc8a070681ea2584a9e1dd4"
+    }
+  ],
+  "results": [
+    {
+      "metric": "activePendingReads",
+      "samples": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "invariantHolds": true
+    }
+  ],
+  "limits": "Store call counts only; public nodeActivity, fixture SQLite, no provider/runtime. Behavioral tests are separate from sample completeness. No latency/CPU/RSS claim."
+}

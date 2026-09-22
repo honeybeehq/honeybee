@@ -1083,10 +1083,11 @@ export class AccountsService {
       const runtimeAccount = transfer?.sourceAccount ?? bee.account;
       if (runtimeAccount !== accountId) continue;
       const isActive = runtime?.state === "booting" || runtime?.state === "running";
-      const hasPending = this.store.undeliveredMessages(bee.id).length > 0
+      // Active runtimes are represented regardless of their pending work.
+      const hasPending = !isActive && (this.store.undeliveredMessages(bee.id).length > 0
         || this.store.listCommands({ beeId: bee.id }).some((command) =>
           (command.status === "queued" || command.status === "running")
-          && (command.verb === "spawn" || command.verb === "revive" || command.verb === "send_wake"));
+          && (command.verb === "spawn" || command.verb === "revive" || command.verb === "send_wake")));
       let represented = false;
       if (isActive && runtime) {
         active += 1;
