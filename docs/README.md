@@ -2,6 +2,9 @@
 
 `honeybee` is a small tmux-backed cockpit for interactive AI bees. Its CLI is `hive`.
 
+See the [Apiary–Honeybee compatibility matrix](./compatibility.md) for release
+compatibility, recommended pins, and the meaning of pending results.
+
 It creates bee sessions on demand, sends prompts into them, captures panes, and keeps a tiny local ledger. It is inspired by Shannon's practical tmux/transcript idea, but starts broader: Claude, Codex, OpenCode, Grok, Pi, Droid, or any configured command.
 
 ## v0 scope

@@ -5,6 +5,11 @@ Apiary owns the single compatibility evaluator and release coordinator. These
 workflows never deploy a daemon or activate an installed runtime; activation and
 rollback remain `hive deploy` operations.
 
+The user-facing [Apiary–Honeybee compatibility matrix](./compatibility.md)
+documents exact release combinations and recommended pins. Release notes should
+link to the matrix snapshot for that release. Its publication requirements are
+described in [Maintaining the matrix](./compatibility.md#maintaining-the-matrix).
+
 ## Invocation and trust boundary
 
 External coordinators use `workflow_dispatch` on `honeybeehq/honeybee`'s
