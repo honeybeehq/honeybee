@@ -1,0 +1,223 @@
+{
+  "workload": "action-reminder-reads",
+  "seriesId": "action-reminder-reads-v1",
+  "capturedAt": "2026-09-23T07:08:34.399Z",
+  "host": "Mac.home",
+  "node": "v24.18.0",
+  "load": [
+    13.74560546875,
+    18.65283203125,
+    19.16015625
+  ],
+  "sources": {
+    "../src/loops.ts": "6c5f0bdff2808ece98cb488f0dd7596bb2c2efbbd4f257e6b865c66384f8609b",
+    "../../core/src/actions.ts": "b7a5ef454eb5cb21643a0b21e8c821b52a93019e0e85747e893c7c4a47be3a4b",
+    "../../core/src/store.ts": "917e93afc09d831bd7b44d7e10cf9dc5023b2a51d57320d4cb837b36616bc801",
+    "./helpers.ts": "9d63216758bec78d1f0e6f7fa949d67ee1f4b1d90eb5efdd4a8888cda75ea0f3",
+    "./action-reminder-reads.test.ts": "f248e0d5ff9cb9c1daea71acbbe8b06b383d4162dc121f388dfa87ea256c99b2"
+  },
+  "complete": true,
+  "samples": [
+    {
+      "scenario": "fix",
+      "size": 0,
+      "round": 0,
+      "ineligibleQuestionReads": 0,
+      "parity": true
+    },
+    {
+      "scenario": "fix",
+      "size": 0,
+      "round": 1,
+      "ineligibleQuestionReads": 0,
+      "parity": true
+    },
+    {
+      "scenario": "fix",
+      "size": 0,
+      "round": 2,
+      "ineligibleQuestionReads": 0,
+      "parity": true
+    },
+    {
+      "scenario": "fix",
+      "size": 1,
+      "round": 0,
+      "ineligibleQuestionReads": 0,
+      "parity": true
+    },
+    {
+      "scenario": "fix",
+      "size": 1,
+      "round": 1,
+      "ineligibleQuestionReads": 0,
+      "parity": true
+    },
+    {
+      "scenario": "fix",
+      "size": 1,
+      "round": 2,
+      "ineligibleQuestionReads": 0,
+      "parity": true
+    },
+    {
+      "scenario": "fix",
+      "size": 12,
+      "round": 0,
+      "ineligibleQuestionReads": 0,
+      "parity": true
+    },
+    {
+      "scenario": "fix",
+      "size": 12,
+      "round": 1,
+      "ineligibleQuestionReads": 0,
+      "parity": true
+    },
+    {
+      "scenario": "fix",
+      "size": 12,
+      "round": 2,
+      "ineligibleQuestionReads": 0,
+      "parity": true
+    },
+    {
+      "scenario": "fix",
+      "size": 120,
+      "round": 0,
+      "ineligibleQuestionReads": 0,
+      "parity": true
+    },
+    {
+      "scenario": "fix",
+      "size": 120,
+      "round": 1,
+      "ineligibleQuestionReads": 0,
+      "parity": true
+    },
+    {
+      "scenario": "fix",
+      "size": 120,
+      "round": 2,
+      "ineligibleQuestionReads": 0,
+      "parity": true
+    },
+    {
+      "scenario": "already-reminded",
+      "size": 0,
+      "round": 0,
+      "ineligibleQuestionReads": 0,
+      "parity": true
+    },
+    {
+      "scenario": "already-reminded",
+      "size": 0,
+      "round": 1,
+      "ineligibleQuestionReads": 0,
+      "parity": true
+    },
+    {
+      "scenario": "already-reminded",
+      "size": 0,
+      "round": 2,
+      "ineligibleQuestionReads": 0,
+      "parity": true
+    },
+    {
+      "scenario": "already-reminded",
+      "size": 1,
+      "round": 0,
+      "ineligibleQuestionReads": 0,
+      "parity": true
+    },
+    {
+      "scenario": "already-reminded",
+      "size": 1,
+      "round": 1,
+      "ineligibleQuestionReads": 0,
+      "parity": true
+    },
+    {
+      "scenario": "already-reminded",
+      "size": 1,
+      "round": 2,
+      "ineligibleQuestionReads": 0,
+      "parity": true
+    },
+    {
+      "scenario": "already-reminded",
+      "size": 12,
+      "round": 0,
+      "ineligibleQuestionReads": 0,
+      "parity": true
+    },
+    {
+      "scenario": "already-reminded",
+      "size": 12,
+      "round": 1,
+      "ineligibleQuestionReads": 0,
+      "parity": true
+    },
+    {
+      "scenario": "already-reminded",
+      "size": 12,
+      "round": 2,
+      "ineligibleQuestionReads": 0,
+      "parity": true
+    },
+    {
+      "scenario": "already-reminded",
+      "size": 120,
+      "round": 0,
+      "ineligibleQuestionReads": 0,
+      "parity": true
+    },
+    {
+      "scenario": "already-reminded",
+      "size": 120,
+      "round": 1,
+      "ineligibleQuestionReads": 0,
+      "parity": true
+    },
+    {
+      "scenario": "already-reminded",
+      "size": 120,
+      "round": 2,
+      "ineligibleQuestionReads": 0,
+      "parity": true
+    }
+  ],
+  "results": [
+    {
+      "metric": "ineligibleQuestionReads",
+      "samples": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "invariantHolds": true
+    }
+  ],
+  "limits": "getQuestion call counts over ten DaemonCore steps with FakeDriver. No timing, CPU, RSS, physical I/O or provider claim. Eligible timing and other action controls are separate tests."
+}

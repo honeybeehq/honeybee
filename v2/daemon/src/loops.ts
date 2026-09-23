@@ -1298,6 +1298,8 @@ export class DaemonCore {
    * The reminder is never completion.
    */
   private nudgeSilentAgentAction(row: ActionRow): void {
+    // Question answers can postpone a reminder, never make an ineligible attempt eligible.
+    if (actionNudgeDueAt(row) === null) return;
     const answeredAt = row.questionId ? this.store.getQuestion(row.questionId)?.answeredAt ?? null : null;
     const dueAt = actionNudgeDueAt(row, answeredAt === null ? [] : [answeredAt]);
     if (dueAt === null || this.now() < dueAt) return;

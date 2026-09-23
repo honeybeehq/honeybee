@@ -1,0 +1,116 @@
+{
+  "protocolVersion": 1,
+  "id": "action-reminder-reads",
+  "title": "Question reads for ineligible action reminders",
+  "lane": "steady-state",
+  "processes": [
+    "hived"
+  ],
+  "owners": [
+    "v2/daemon/src/loops.ts@2ff61e0227c63aab518ccdf4bf765a48f2a889ba",
+    "v2/core/src/actions.ts@56b5b3f73c9577bcfa9624f376d9eecc5d127dfb",
+    "v2/core/src/store.ts@351dd89f9049ed3bbe766e9bcb96f8c37a03a443"
+  ],
+  "effect": {
+    "user": "Running actions keep the same reminder policy while skipping questions that cannot affect eligibility.",
+    "assertions": [
+      "Ten unchanged steps preserve actions, linked questions, delivered mail and audit.",
+      "Eligible answered commits still read the current answer time, wait thirty minutes and receive one reminder."
+    ],
+    "exclusions": [
+      "Whole-daemon CPU and latency",
+      "RSS and physical I/O",
+      "Real provider execution"
+    ]
+  },
+  "accounts": [
+    {
+      "inventory": "entry-points",
+      "key": "action-reminder:nudgeSilentAgentAction"
+    }
+  ],
+  "states": {
+    "idle": {
+      "matters": false,
+      "why": "Empty fleet is a zero-read control."
+    },
+    "first-use": {
+      "matters": false,
+      "why": "Fixture boot, dispatch and answer are outside sampled steps."
+    },
+    "repeated": {
+      "matters": true,
+      "why": "Ten unchanged DaemonCore steps; three repetitions."
+    },
+    "scale": {
+      "matters": true,
+      "why": "0, 1, 12 and 120 running action lanes."
+    },
+    "background": {
+      "matters": true,
+      "why": "Running Fix and already-reminded Commit attempts keep polling after an answer."
+    },
+    "release": {
+      "matters": false,
+      "why": "No real process is launched; fixture cleanup is tested by ordinary completion."
+    },
+    "recovery": {
+      "matters": true,
+      "why": "Existing actions.loop.nudge tests cover reminder persistence, restart and retry; the count fixture itself does not reopen."
+    }
+  },
+  "fixture": {
+    "preset": "action-reminder-reads-v1",
+    "isolationPolicy": 1,
+    "scaleAxes": [
+      {
+        "axis": "bees",
+        "values": [
+          0,
+          1,
+          12,
+          120
+        ],
+        "unit": "bees"
+      }
+    ],
+    "seed": "Real temporary SQLite store, FakeDriver and virtual clock; answered fix and answered already-reminded commit actions."
+  },
+  "recipe": {
+    "driver": "v2/daemon/tests/action-reminder-reads.test.ts",
+    "command": "HIVE_REMINDER_READS_RECEIPT=.proof/action-reminder-reads.json node --test v2/daemon/tests/action-reminder-reads.test.ts",
+    "readiness": "Boot, dispatch, question, answer and any first reminder finish before wrappers are installed.",
+    "completion": "24 complete count samples, zero ineligible question reads, unchanged state and eligible reminder boundary control.",
+    "warmup": "None: deterministic call counts.",
+    "teardown": "Close the store and remove the owned fixture in finally, including initial-open failure.",
+    "requires": [
+      "Node 24.18.0",
+      "mkdir -p .proof"
+    ]
+  },
+  "metrics": [
+    {
+      "id": "ineligibleQuestionReads",
+      "unit": "count",
+      "scope": "CoreStore.getQuestion calls during ten DaemonCore steps with running answered Fix or already-reminded Commit actions",
+      "collector": "Instance call-through wrapper; fixture setup and parity reads excluded",
+      "aggregation": "max",
+      "kind": "actual",
+      "status": "gated",
+      "states": [
+        "repeated",
+        "scale",
+        "background"
+      ],
+      "betterWhen": "lower",
+      "invariant": "All 24 samples preserve action/question/mail/audit state and make zero ineligible question reads.",
+      "noise": "Deterministic counts; no timing claim."
+    }
+  ],
+  "gaps": [
+    "Eligible attempts evaluate the pure policy helper twice and still read questions each tick; aggregate CPU tradeoff is unmeasured.",
+    "Other scheduler queries, provider execution, memory and user-visible latency remain unmeasured."
+  ],
+  "updatedAt": "2026-09-23",
+  "readiness": "24 samples per arm in three paired runs: ten steps at 1/12/120 bees reduce 10/120/1200 discarded question reads to zero; empty remains zero. State checks and eligible reminder boundary control pass."
+}

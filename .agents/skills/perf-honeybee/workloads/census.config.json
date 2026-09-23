@@ -14,6 +14,15 @@
   "patterns": [
     {
       "inventory": "entry-points",
+      "prefix": "action-reminder:",
+      "regex": "^  private (nudgeSilentAgentAction)\\(",
+      "flags": "m",
+      "pathFilter": "^v2/daemon/src/loops\\.ts$",
+      "mode": "capture",
+      "keyTemplate": "{1}"
+    },
+    {
+      "inventory": "entry-points",
       "prefix": "entry:",
       "regex": "export (?:async )?function (\\w+)\\(",
       "mode": "capture",

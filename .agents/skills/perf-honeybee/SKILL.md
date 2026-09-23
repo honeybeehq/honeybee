@@ -75,3 +75,5 @@ Batch action-view projection is mapped by [action-view-projection](workloads/act
 Boot-state lookup is mapped by [boot-runtime-lookup](workloads/boot-runtime-lookup.md). The recipe records system SQLite statement counts, with a separate Node SQLite plan/behavior guard. The two engines are not interchangeable latency populations.
 
 Account activity is mapped by [account-activity-reads](workloads/account-activity-reads.md): discarded pending-work store calls for booting/running bees, measured through nodeActivity. It preserves inactive and transfer classification; whole admission/fleet costs remain unmeasured.
+
+Action reminders are mapped by [action-reminder-reads](workloads/action-reminder-reads.md): discarded question reads for ineligible reminders through DaemonCore steps. The count gate preserves eligible reminder timing; total scheduler cost is unmeasured.
