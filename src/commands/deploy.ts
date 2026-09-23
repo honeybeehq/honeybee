@@ -34,7 +34,17 @@ const USAGE = [
   "       hive deploy --init                 print the manual steps that make the global `hive` resolve through ~/.hive/runtime/current",
 ].join("\n");
 
+const KNOWN_FLAGS = new Set(["keep", "allow-non-descendant", "rollback", "list", "json", "init"]);
+
 export async function cmdDeploy(parsed: Parsed): Promise<void> {
+  // Help and unknown flags must never fall through to a real deploy: a bare
+  // `hive deploy --help` once built and restarted the live daemon.
+  if (parsed.flags.has("help") || parsed.flags.has("h")) {
+    console.log(USAGE);
+    return;
+  }
+  const unknown = [...parsed.flags.keys()].filter((key) => !KNOWN_FLAGS.has(key));
+  if (unknown.length > 0) throw new Error(`deploy: unknown flag ${unknown.map((key) => `--${key}`).join(", ")}\n${USAGE}`);
   const wantsList = truthy(flag(parsed, "list"));
   const wantsInit = truthy(flag(parsed, "init"));
   const wantsRollback = truthy(flag(parsed, "rollback"));

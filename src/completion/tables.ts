@@ -98,7 +98,7 @@ export const FLAGS_BY_COMMAND: Record<string, string[]> = {
   ws: ["--root", "--new-client", "--print", "--colony", "--archived", "--cmd", "--name", "--resume"],
   usage: ["--samples", "--json", "--ttl"],
   limits: ["--samples", "--json", "--ttl"],
-  deploy: ["--rollback", "--list", "--init", "--keep", "--json"],
+  deploy: ["--rollback", "--list", "--init", "--keep", "--json", "--allow-non-descendant", "--help"],
   sessions: ["--home", "--json"],
   sync: ["--json"],
   node: ["--kind", "--endpoint", "--capabilities", "--description", "--ssh-command", "--ssh-args"],

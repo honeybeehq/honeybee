@@ -87,6 +87,24 @@ test("hive deploy --list --json emits root, current, and entries", async () => {
   });
 });
 
+test("hive deploy --help and -h print usage without deploying", async () => {
+  await withStore(async (dir) => {
+    for (const helpFlag of ["--help", "-h"]) {
+      const { stdout } = await hive(dir, "deploy", helpFlag);
+      assert.match(stdout, /Usage: hive deploy/);
+      assert.doesNotMatch(stdout, /deploy: building|working tree/);
+    }
+  });
+});
+
+test("hive deploy refuses unknown flags before doing anything", async () => {
+  await withStore(async (dir) => {
+    const stderr = await hiveExpectFail(dir, "deploy", "--dry-run");
+    assert.match(stderr, /unknown flag --dry-run/);
+    assert.match(stderr, /Usage: hive deploy/);
+  });
+});
+
 test("hive deploy refuses conflicting modes and stray positionals", async () => {
   await withStore(async (dir) => {
     assert.match(await hiveExpectFail(dir, "deploy", "--list", "--rollback"), /Usage: hive deploy/);
