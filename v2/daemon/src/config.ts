@@ -50,7 +50,7 @@ export interface NamingConfig {
   backend?: NamingBackend;
   /** @deprecated Compatibility selector for configs written before `backend`. */
   tool?: NamingTool;
-  /** Model passed to the generator. Default "gpt-5.6-luna". */
+  /** Model passed to the generator. Default "gpt-6-luna". */
   model?: string;
   /** Reasoning effort for Codex/OpenAI. Default "none". Ignored by Claude. */
   effort?: NamingEffort;
@@ -76,7 +76,7 @@ export const NAMING_DEFAULTS = {
   auto: true,
   backend: "codex-app-server" as NamingBackend,
   tool: "codex" as NamingTool,
-  model: "gpt-5.6-luna",
+  model: "gpt-6-luna",
   effort: "none" as NamingEffort,
 };
 
@@ -196,7 +196,7 @@ export interface NodeConfigFile {
   agents?: Record<string, AgentSpecConfig>;
   /** v7 (spec 08). */
   accounts?: AccountsConfig;
-  /** Auto-titler. Default on, warm Codex app-server with GPT-5.6 Luna at no reasoning. */
+  /** Auto-titler. Default on, warm Codex app-server with GPT-6 Luna at no reasoning. */
   naming?: NamingConfig;
 }
 

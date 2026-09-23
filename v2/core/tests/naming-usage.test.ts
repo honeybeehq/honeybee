@@ -13,7 +13,7 @@ test("v14 naming usage keeps immutable priced and unpriced attempts with an all-
       beeId: bee.id,
       backend: "openai-api",
       provider: "openai",
-      model: "gpt-5.6-luna",
+      model: "gpt-6-luna",
       status: "succeeded",
       latencyMs: 980,
       inputTokens: 120,
@@ -22,11 +22,12 @@ test("v14 naming usage keeps immutable priced and unpriced attempts with an all-
       outputTokens: 6,
       reasoningTokens: 0,
       totalTokens: 126,
-      inputRateNanoUsd: 200,
-      cachedInputRateNanoUsd: 20,
-      cacheWriteRateNanoUsd: 250,
-      outputRateNanoUsd: 1_200,
-      estimatedCostNanoUsd: 28_100,
+      inputRateNanoUsd: 100,
+      cachedInputRateNanoUsd: 10,
+      cacheWriteRateNanoUsd: 125,
+      outputRateNanoUsd: 500,
+      // 90 * 100 + 20 * 10 + 10 * 125 + 6 * 500 at gpt-6-luna standard rates.
+      estimatedCostNanoUsd: 13_450,
       responseId: "resp_1",
       requestId: "req_1",
       recordedAt: 1_000,
@@ -35,13 +36,15 @@ test("v14 naming usage keeps immutable priced and unpriced attempts with an all-
       beeId: bee.id,
       backend: "openai-api",
       provider: "openai",
-      model: "gpt-5.6-luna",
+      model: "gpt-6-luna",
       status: "failed",
       latencyMs: 300,
       inputTokens: 10,
       outputTokens: 2,
       totalTokens: 12,
-      estimatedCostNanoUsd: 4_400,
+      inputRateNanoUsd: 100,
+      outputRateNanoUsd: 500,
+      estimatedCostNanoUsd: 2_000,
       error: "no usable title",
       recordedAt: 2_000,
     });
@@ -49,7 +52,7 @@ test("v14 naming usage keeps immutable priced and unpriced attempts with an all-
       beeId: bee.id,
       backend: "codex-app-server",
       provider: "openai",
-      model: "gpt-5.6-luna",
+      model: "gpt-6-luna",
       status: "succeeded",
       latencyMs: 750,
       recordedAt: 3_000,
@@ -78,7 +81,7 @@ test("v14 naming usage keeps immutable priced and unpriced attempts with an all-
         failed: 1,
         pricedRequests: 2,
         unpricedRequests: 1,
-        estimatedCostNanoUsd: 32_500,
+        estimatedCostNanoUsd: 15_450,
         inputTokens: 130,
         outputTokens: 8,
         averageLatencyMs: 2030 / 3,
@@ -86,10 +89,13 @@ test("v14 naming usage keeps immutable priced and unpriced attempts with an all-
         lastRecordedAt: 3_000,
       },
     );
-    assert.deepEqual(summary.byModel.map((row) => [row.backend, row.requests, row.estimatedCostNanoUsd]), [
-      ["openai-api", 2, 32_500],
-      ["codex-app-server", 1, 0],
-    ]);
+    assert.deepEqual(
+      summary.byModel.map((row) => [row.backend, row.model, row.requests, row.pricedRequests, row.estimatedCostNanoUsd]),
+      [
+        ["openai-api", "gpt-6-luna", 2, 2, 15_450],
+        ["codex-app-server", "gpt-6-luna", 1, 0, 0],
+      ],
+    );
 
     store.deleteBee(bee.id);
     assert.equal(store.listNamingUsage().length, 3, "bee deletion retains historical spend");
@@ -123,6 +129,45 @@ test("v14 migration creates naming_usage without inventing historical spend", ()
     } finally {
       check.close();
     }
+  } finally {
+    h.cleanup();
+  }
+});
+
+test("naming usage keeps unknown-model attempts unpriced with null rates", () => {
+  const h = harness();
+  try {
+    const store = h.open();
+    const { bee } = makeBee(store, "unpriced");
+    const row = store.recordNamingUsage({
+      beeId: bee.id,
+      backend: "openai-api",
+      provider: "openai",
+      model: "gpt-7-nova",
+      status: "succeeded",
+      latencyMs: 400,
+      inputTokens: 50,
+      outputTokens: 4,
+      totalTokens: 54,
+      inputRateNanoUsd: null,
+      cachedInputRateNanoUsd: null,
+      cacheWriteRateNanoUsd: null,
+      outputRateNanoUsd: null,
+      estimatedCostNanoUsd: null,
+      recordedAt: 9_000,
+    });
+    assert.equal(row.inputRateNanoUsd, null);
+    assert.equal(row.outputRateNanoUsd, null);
+    assert.equal(row.estimatedCostNanoUsd, null);
+    const summary = store.namingUsageSummary();
+    assert.equal(summary.pricedRequests, 0);
+    assert.equal(summary.unpricedRequests, 1);
+    assert.equal(summary.estimatedCostNanoUsd, 0);
+    assert.deepEqual(
+      summary.byModel.map((r) => [r.model, r.pricedRequests, r.unpricedRequests, r.estimatedCostNanoUsd]),
+      [["gpt-7-nova", 0, 1, 0]],
+    );
+    store.close();
   } finally {
     h.cleanup();
   }

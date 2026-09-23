@@ -60,9 +60,19 @@ export interface OpenAiNamingRates {
   outputNanoUsd: number;
 }
 
-/** Published standard-tier prices, converted to integer nano-USD per token. */
+/**
+ * Published standard-tier prices, converted to integer nano-USD per token
+ * ($1 per 1M tokens = 1_000 nano-USD per token). Cache write = 1.25 x input.
+ *
+ * gpt-6-sol / gpt-6-luna: developers.openai.com/api/docs/pricing as of
+ * 2026-09-23, standard tier, short context (both launched 2026-09-22):
+ *   gpt-6-sol   $2.00 input / $0.20 cached / $2.50 cache write / $10.00 output per 1M
+ *   gpt-6-luna  $0.10 input / $0.01 cached / $0.125 cache write / $0.50 output per 1M
+ */
 const OPENAI_NAMING_RATES: Readonly<Record<string, OpenAiNamingRates>> = {
   "gpt-6-astra": { inputNanoUsd: 10_000, cachedInputNanoUsd: 1_000, cacheWriteNanoUsd: 12_500, outputNanoUsd: 50_000 },
+  "gpt-6-sol": { inputNanoUsd: 2_000, cachedInputNanoUsd: 200, cacheWriteNanoUsd: 2_500, outputNanoUsd: 10_000 },
+  "gpt-6-luna": { inputNanoUsd: 100, cachedInputNanoUsd: 10, cacheWriteNanoUsd: 125, outputNanoUsd: 500 },
   "gpt-5.6-sol": { inputNanoUsd: 4_000, cachedInputNanoUsd: 400, cacheWriteNanoUsd: 5_000, outputNanoUsd: 20_000 },
   "gpt-5.6-terra": { inputNanoUsd: 2_000, cachedInputNanoUsd: 200, cacheWriteNanoUsd: 2_500, outputNanoUsd: 12_000 },
   "gpt-5.6-luna": { inputNanoUsd: 200, cachedInputNanoUsd: 20, cacheWriteNanoUsd: 250, outputNanoUsd: 1_200 },

@@ -228,9 +228,11 @@ test("config.6 (spec 08): accounts settings default (vault/homes under ~/.hive, 
   });
 });
 
-test("config.naming: absent file defaults to a warm Codex GPT-5.6 Luna app-server", () => {
+test("config.naming: absent file defaults to a warm Codex GPT-6 Luna app-server at effort none", () => {
   withDir((dir) => {
     const cfg = loadNodeConfig(dir);
+    assert.equal(NAMING_DEFAULTS.model, "gpt-6-luna");
+    assert.equal(NAMING_DEFAULTS.effort, "none");
     assert.deepEqual(cfg.naming, {
       auto: true,
       backend: NAMING_DEFAULTS.backend,
