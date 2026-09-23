@@ -1221,7 +1221,8 @@ hive action claim --executor <name> [--kind k] [--bee b] [--action id]
   pass `--output commitSha=<sha>` when there is no readable HEAD. Needs
   capability `bee.actions.complete.v1`.
 - A delivered `commit` attempt that stays silent (no report, no progress) for
-  30 minutes gets one reminder mail (`origin: action.nudge`, urgency `idle`)
+  30 minutes gets one reminder mail (`[Hive action] Reminder …`, urgency `idle`;
+  never for an archived bee)
   that restates the report command. The reminder never completes anything.
 - `pause` stops new releases only; the active attempt continues. `reorder`
   takes exactly the queued ids and refuses an order that would point an output

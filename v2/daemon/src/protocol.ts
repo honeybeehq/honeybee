@@ -142,10 +142,10 @@ export const DAEMON_CAPABILITIES = [
    */
   "bee.actions.v1",
   /**
-   * v29 (2026-09-23): `action.complete` (the operator settles an open agent
-   * action as succeeded; `controls.complete`) and the one reminder mail for
-   * an unreported agent attempt (`origin: action.nudge`,
-   * `dispatch.nudgedAt`). See docs/design/action-queue-contract.md.
+   * 2026-09-23 (no schema change): `action.complete` (the operator settles an
+   * open agent action as succeeded; `controls.complete`) and the one
+   * reminder mail for an unreported agent attempt (`dispatch.nudgedAt`;
+   * mail origin `action.dispatch`, body marker `[Hive action] Reminder`). See docs/design/action-queue-contract.md.
    */
   "bee.actions.complete.v1",
 ] as const;
@@ -421,7 +421,7 @@ export const RPC_VERBS = [
   "action.cancel",
   "action.reorder",
   "action.retry",
-  // v29: operator completion of an open agent action (capability bee.actions.complete.v1).
+  // bee.actions.complete.v1: operator completion of an open agent action (capability bee.actions.complete.v1).
   "action.complete",
   "action.queue.get",
   "action.queue.pause",

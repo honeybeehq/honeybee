@@ -350,7 +350,8 @@ function requiredOutputFlags(outputs: ReadonlyArray<{ name: string; required: bo
 
 /**
  * The one reminder an agent gets for an attempt it has not reported
- * (`origin: action.nudge`). It restates the report command with the same
+ * (`origin: action.dispatch`, told apart from the instruction by its
+ * `Reminder` marker and its message id). It restates the report command with the same
  * token. A reminder never completes anything; only the report does.
  */
 export function renderActionNudge(action: ActionRow, token: string, attempt: number): string {
@@ -369,7 +370,7 @@ export function renderActionNudge(action: ActionRow, token: string, attempt: num
 }
 
 /**
- * v29 — how long an agent attempt may stay silent (since delivery or its last
+ * bee.actions.complete.v1 — how long an agent attempt may stay silent (since delivery or its last
  * progress report) before it gets its one reminder, by action kind. Kinds
  * absent here are never reminded. Kept out of the definition shape on
  * purpose: it is scheduler policy, not part of the wire contract.

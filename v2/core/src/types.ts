@@ -251,7 +251,7 @@ export const MAIL_CANCELLATION_REASONS = ["requested", "bee_deleted"] as const;
 export type MailCancellationReason = (typeof MAIL_CANCELLATION_REASONS)[number];
 
 /** Typed admission path for mailbox traffic; consumers must not sniff bodies. */
-export const MAIL_ORIGINS = ["mail.send", "spawn.prompt", "legacy.unknown", "handoff.seed", "action.dispatch", "action.nudge"] as const;
+export const MAIL_ORIGINS = ["mail.send", "spawn.prompt", "legacy.unknown", "handoff.seed", "action.dispatch"] as const;
 export type MailOrigin = (typeof MAIL_ORIGINS)[number];
 
 /**
@@ -1164,7 +1164,8 @@ export interface ActionDispatch {
   expectedHead: string | null;
   /**
    * agent: when the one reminder for this attempt was mailed (origin
-   * `action.nudge`); null until then. A reminder is never completion.
+   * `action.dispatch`, marker `[Hive action] Reminder`); null until then.
+   * A reminder is never completion.
    */
   nudgedAt: number | null;
 }

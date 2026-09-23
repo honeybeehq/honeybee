@@ -1,7 +1,8 @@
 # Per-bee action queue — Honeybee wire contract
 
 Locked for Apiary. Schema **v24**; operator completion and the reminder mail
-are an additive v29 slice (see "Operator completion and reminders").
+are an additive slice with no schema change (see "Operator completion and
+reminders").
 Protocol stays `v2/1`; everything is additive.
 
 An **action** is one unit of work for one bee. A **queue** is the bee's ad hoc
@@ -28,7 +29,7 @@ supervisor.
 ```
 
 ```
-"bee.actions.complete.v1"   // v29: action.complete, controls.complete, dispatch.nudgedAt, origin action.nudge
+"bee.actions.complete.v1"   // action.complete, controls.complete, dispatch.nudgedAt, the reminder mail
 ```
 
 An older daemon lacks the tag; every `action.*` verb answers `invalid_request`
@@ -48,7 +49,7 @@ An older daemon lacks the tag; every `action.*` verb answers `invalid_request`
 | waitingReason | `input` (agent asked a question) · `executor` (no executor available / no claimant) · `uncertain` (effect may or may not have happened) |
 | hold.reason (derived, queued only) | `paused` · `predecessor_active` · `predecessor_failed` · `lane_busy` |
 | attempt outcome (history) | `succeeded` · `failed` · `cancelled` · `uncertain` · `superseded` |
-| mail origin | `action.dispatch` · `action.nudge` (v29) (additive to `mail.enqueued`) |
+| mail origin | `action.dispatch` (additive to `mail.enqueued`; carries both the instruction and the reminder) |
 
 Status graph: `queued → running | waiting | succeeded | failed | cancelled`;
 `running → waiting | succeeded | failed | cancelled`; `waiting → running |
@@ -139,7 +140,7 @@ the request.
 |---|---|---|
 | `action.cancel` | `{actionId, force?}` | Cancels pending work. Allowed outright when `controls.cancel` (queued; running agent attempt whose instruction is still undelivered — the mail is withdrawn; unclaimed external offer). `controls.forceCancel` needs `force:true`: delivered/claimed/in-flight attempts stop being tracked, **effects already under way are not undone**, and a late report for that attempt is refused. A running `lifecycle.archive` is never cancelled (`action_refused`). Terminal actions: quiet `applied:false`. |
 | `action.retry` | `{actionId, force?}` | A **new** attempt (attempt+1, new token, old attempt closed in `attempts` history) for a `failed` action. `waiting/uncertain` requires `force:true` — the caller asserts the effect did not happen or may safely repeat; without force, reconcile the same attempt through `action.report` instead. Others: `action_refused`. |
-| `action.complete` (v29) | `{actionId, outputs?: Record<string,string>, detail?}` | The operator settles the **current** attempt of an open agent action as `succeeded`, exactly as if the agent had reported: `result.outputs`, `result.receipt = {completedBy: "operator"}`, `result.detail = detail ?? null`. Allowed when `controls.complete` (executor `agent`; `running`, or `waiting` with `waitingReason: input`); otherwise `action_refused`. Terminal actions: quiet `applied:false`. Outputs are validated like a report (plus the `instruction` kind's requested outputs): missing/invalid → `invalid_request`, nothing changes. `commit`: an omitted `outputs.commitSha` is filled from the bee's checkout HEAD (`git rev-parse HEAD` in the Cell space for Cell bees, else the bee's cwd) and `branch` from the current branch when HEAD is on one; an unreadable HEAD → `invalid_request` (pass `commitSha`). An undelivered instruction is withdrawn from the mailbox; an open question of the attempt is answered (ordinary mail telling the agent no report is needed). The token is kept: a late agent report for the attempt with outcome `succeeded` is `deduped`, any other outcome is `action_refused`. Result: `{action, applied, deduped?}`. Audit: `action.put` with reason `operator_complete`. |
+| `action.complete` | `{actionId, outputs?: Record<string,string>, detail?}` | The operator settles the **current** attempt of an open agent action as `succeeded`, exactly as if the agent had reported: `result.outputs`, `result.receipt = {completedBy: "operator"}`, `result.detail = detail ?? null`. Allowed when `controls.complete` (executor `agent`; `running`, or `waiting` with `waitingReason: input`); otherwise `action_refused`. Terminal actions: quiet `applied:false`. Outputs are validated like a report (plus the `instruction` kind's requested outputs): missing/invalid → `invalid_request`, nothing changes. `commit`: an omitted `outputs.commitSha` is filled from the bee's checkout HEAD (`git rev-parse HEAD` in the Cell space for Cell bees, else the bee's cwd) and `branch` from the current branch when HEAD is on one; an unreadable HEAD → `invalid_request` (pass `commitSha`). An undelivered instruction is withdrawn from the mailbox; an open question of the attempt is answered (ordinary mail telling the agent no report is needed). The token is kept: a late agent report for the attempt with outcome `succeeded` is `deduped`, any other outcome is `action_refused`. Result: `{action, applied, deduped?}`. Audit: `action.put` with reason `operator_complete`. |
 | `action.reorder` | `{beeId, order: string[]}` | `order` must list exactly the bee's **queued** ids, once each; every `$ref` into another queued action must still point backwards. Otherwise `action_reorder_invalid` and nothing changes. Running/waiting/terminal rows keep their positions. |
 | `action.queue.pause` / `resume` | `{beeId}` | Pause stops **releases** only: the active attempt continues, deliveries continue, reports are accepted. Queued actions show `hold.reason = paused`. |
 
@@ -206,13 +207,13 @@ type ActionView = {
   attempt,                                      // 0 before the first dispatch
   dispatch: { attempt, dispatchedAt, generation, messageId, deliveredAt, deliveredGeneration,
               operationKey, claimedBy, claimedAt, expectedHead,
-              nudgedAt /* v29: when the one reminder for this attempt was mailed; null until then */ } | null,
+              nudgedAt /* bee.actions.complete.v1: when the one reminder for this attempt was mailed; null until then */ } | null,
   progress: { note, at, attempt } | null,
   questionId,
   result: { outputs, receipt, detail, reconciled, attempt, at } | null,
   failure: { code, detail, retryable, attempt, at } | null,
   attempts: ActionAttemptRecord[],              // earlier attempts
-  controls: { cancel, forceCancel, retry, forceRetry, reorder, complete /* v29 */ },   // derived server-side
+  controls: { cancel, forceCancel, retry, forceRetry, reorder, complete /* bee.actions.complete.v1 */ },   // derived server-side
   createdAt, updatedAt, finishedAt
 }
 type ActionQueueView = { beeId, paused, pausedAt, activeActionId, counts: Record<status, number>, createdAt, updatedAt }
@@ -235,7 +236,7 @@ ActionQueueView[]`. Deltas (audit kinds on the watch stream):
 | `action_queue.put` | `{ queue: ActionQueueView, reason }` | upsert |
 | `action.report_rejected` | `{ actionId, beeId, attempt, currentAttempt, kind, reporter, reason }` | informational |
 | `mail.enqueued` | `origin: "action.dispatch"`, sender `hive:action` | the instruction mail (existing kind) |
-| `mail.enqueued` | `origin: "action.nudge"` (v29), sender `hive:action` | the one reminder mail for a silent attempt |
+| `mail.enqueued` | `origin: "action.dispatch"`, sender `hive:action`, body starting `[Hive action] Reminder` | the one reminder mail for a silent attempt (a different message id from `dispatch.messageId`) |
 
 `bee.deleted` cascades `actions` + `action_queues` for that bee. Rebuild rule
 is unchanged: snapshot at seq N, apply contiguous deltas, refetch on any gap.
@@ -415,10 +416,11 @@ unless `--bee` is given; the token comes from the delivered instruction.
   merge conflict + retry, snapshot/audit shapes, external claim.
 - `v2/cli/tests/actions-cli.test.ts` (1): the `hive action` surface incl.
   `report` bound by `HIVE_BEE_ID`.
-- v29 additions (2026-09-23): core `actions.9`–`actions.12` (complete,
+- 2026-09-23 additions: core `actions.9`–`actions.13` (complete,
   late-report dedupe/refusal, question closure, undelivered withdrawal, the
-  reminder mail + exactly-once record, the v28 → v29 migration); loop
-  `actions.loop.nudge` / `nudge-scope` (virtual clock: not before 30 min,
+  reminder mail + exactly-once record, a cancelled reminder never fails the
+  attempt, legacy dispatch JSON, no reminder for an archived bee); loop
+  `actions.loop.nudge` / `nudge-scope` / `nudge-archived` (virtual clock: not before 30 min,
   reset by progress / an answered question, idle-only delivery, once across
   restart, again for a retry, never for other kinds / after cancel or
   complete / while waiting); RPC `actions.rpc.complete` (real Cell: HEAD
@@ -427,7 +429,7 @@ unless `--bee` is given; the token comes from the delivered instruction.
 - Fixture-proven vs real: the loop tier scripts the Cell owner; the RPC tier
   uses real git. No live bees or `~/.hive` are touched by any test.
 
-## Operator completion and reminders (v29, `bee.actions.complete.v1`)
+## Operator completion and reminders (`bee.actions.complete.v1`)
 
 Written after an incident (2026-09-23): a bee was told by the operator to
 ignore the instructions, got a `commit@1`, never reported, and held the
@@ -443,7 +445,9 @@ queued Land behind it for three days.
   attempt's question)` — is at least the kind's threshold old. Thresholds
   are scheduler policy by kind, not part of the definition shape: today only
   `commit` (30 minutes). The mail: sender `hive:action`, `origin:
-  action.nudge`, urgency `idle` (never interrupts a turn; the normal wake
+  action.dispatch` with the body marker `[Hive action] Reminder` (its own
+  message id, never `dispatch.messageId`: delivering or cancelling it is not
+  evidence about the instruction and never fails the attempt), urgency `idle` (never interrupts a turn; the normal wake
   rules apply to a stopped runtime), body starting `[Hive action] Reminder —
   Commit — action <id>, attempt <n>`, restating the `--succeeded --output
   commitSha=<commitSha>` and `--failed --detail` commands with the attempt
@@ -452,10 +456,11 @@ queued Land behind it for three days.
   `action.put` carries reason `nudged`. Cancel, complete, a result report or
   `waiting` stop reminders; a retry is a new attempt and may be reminded
   again.
-- Schema v29 widens the `mail_history_enqueues.origin` CHECK with
-  `action.nudge` (table rebuild, rows carried across). `nudgedAt` lives in
-  the existing `dispatch_json`; rows written earlier read as `nudgedAt: null`.
-  A v29 store refuses an older binary (downgrade rule).
+- An archived bee is never reminded (`send` would unarchive it); the
+  reminder resumes if the operator unarchives it while the attempt is open.
+- No schema change: the reminder reuses the `action.dispatch` origin and
+  `nudgedAt` lives in the existing `dispatch_json` (rows written earlier read
+  as `nudgedAt: null`). Rollback to an older binary stays possible.
 - Mirror key changes: `MIRROR_ACTION_DISPATCH_KEYS` gains `nudgedAt`;
   `MIRROR_ACTION_CONTROLS_KEYS` gains `complete`.
 

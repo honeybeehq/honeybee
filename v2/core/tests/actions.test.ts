@@ -407,7 +407,7 @@ test("actions.8: audit replay reproduces the action tables; the store reopens at
   const h = harness();
   try {
     let store = h.open();
-    assert.equal(SCHEMA_VERSION, 29);
+    assert.equal(SCHEMA_VERSION, 28);
     const bee = liveBee(store);
     const { actions } = shipSequence(store, bee.id);
     const { messageId } = store.dispatchAgentAction(actions[0]!.id);
@@ -561,7 +561,7 @@ test("actions.10: complete answers the attempt's open question, withdraws an und
   }
 });
 
-test("actions.11: the reminder mail — origin action.nudge, urgency idle, the exact report command; recorded once per attempt as dispatch.nudgedAt", () => {
+test("actions.11: the reminder mail — origin action.dispatch + Reminder marker, urgency idle, the exact report command; recorded once per attempt as dispatch.nudgedAt", () => {
   const h = harness();
   try {
     const store = h.open();
@@ -595,7 +595,7 @@ test("actions.11: the reminder mail — origin action.nudge, urgency idle, the e
     assert.ok(mail.body.includes(`hive action report ${commit.id} --attempt 1 --token ${t.token} --succeeded --output commitSha=<commitSha>`), mail.body);
     assert.ok(mail.body.includes(`hive action report ${commit.id} --attempt 1 --token ${t.token} --failed --detail`), mail.body);
     const tail = store.auditTail(seqBefore, 1000, bee.id);
-    assert.equal(tail.find((r) => r.kind === "mail.enqueued")?.payload.origin, "action.nudge");
+    assert.equal(tail.find((r) => r.kind === "mail.enqueued")?.payload.origin, "action.dispatch", "no new origin: no schema change");
     const put = tail.find((r) => r.kind === "action.put" && r.payload.reason === "nudged");
     assert.ok(put, "action.put nudged");
     const view = put.payload.action as { status: string; dispatch: Record<string, unknown> };
@@ -605,7 +605,16 @@ test("actions.11: the reminder mail — origin action.nudge, urgency idle, the e
     // Exactly once per attempt; not due any more.
     assert.equal(store.nudgeAgentAction(commit.id, 1), null);
     assert.equal(actionNudgeDueAt(mustAction(store, commit.id)), null);
-    // Mail history keeps the typed origin (the widened CHECK accepts it).
+    // The reminder shares the dispatch origin but not the dispatch message id:
+    // cancelling it never fails the attempt, and it is never delivery evidence.
+    const instructionDeliveredAt = mustAction(store, commit.id).dispatch!.deliveredAt;
+    assert.equal(store.cancelMessage(bee.id, nudged.messageId).canceled, true);
+    const afterCancel = mustAction(store, commit.id);
+    assert.equal(afterCancel.status, "running", "a cancelled reminder does not fail the attempt");
+    assert.equal(afterCancel.failure, null);
+    assert.equal(afterCancel.dispatch?.messageId, messageId, "dispatch still names the instruction");
+    assert.equal(afterCancel.dispatch?.deliveredAt, instructionDeliveredAt);
+    assert.equal(typeof afterCancel.dispatch?.nudgedAt, "number", "cancelled reminder is not re-sent");
     assert.deepEqual(replayAudit(store.auditTail(0, 100_000)), store.dumpState());
     // Other kinds have no threshold.
     const fix = enqueue(store, bee.id, [{ kind: "fix" }]).actions[0]!;
@@ -615,7 +624,7 @@ test("actions.11: the reminder mail — origin action.nudge, urgency idle, the e
   }
 });
 
-test("actions.12: a v28 store migrates to v29 — the mail-history origin CHECK gains action.nudge; pre-v29 dispatch JSON reads nudgedAt null", () => {
+test("actions.12: dispatch JSON written before the reminder slice reads nudgedAt null and can still be reminded", () => {
   const h = harness();
   const seed = h.open();
   const bee = liveBee(seed);
@@ -624,33 +633,37 @@ test("actions.12: a v28 store migrates to v29 — the mail-history origin CHECK 
   seed.markDelivered(messageId!, 1);
   seed.close();
   const db = new DatabaseSync(h.path);
-  db.exec("UPDATE meta SET value = '28' WHERE key = 'schema_version'");
-  const ddl = String((db.prepare("SELECT sql FROM sqlite_master WHERE name = 'mail_history_enqueues'").get() as { sql: string }).sql);
-  db.exec("ALTER TABLE mail_history_enqueues RENAME TO mail_history_enqueues_old");
-  db.exec(ddl.replace(",'action.nudge'", ""));
-  db.exec("INSERT INTO mail_history_enqueues SELECT * FROM mail_history_enqueues_old; DROP TABLE mail_history_enqueues_old");
-  // A v24..v28 row: dispatch JSON without the nudgedAt key.
   const row = db.prepare("SELECT dispatch_json FROM actions WHERE id = ?").get(commit.id) as { dispatch_json: string };
   const legacy = JSON.parse(row.dispatch_json) as Record<string, unknown>;
   delete legacy.nudgedAt;
   db.prepare("UPDATE actions SET dispatch_json = ? WHERE id = ?").run(JSON.stringify(legacy), commit.id);
   db.close();
-  h.open().close(); // migrate
-  let store: CoreStore | null = null;
+  const store = h.open();
   try {
-    const check = new DatabaseSync(h.path, { readOnly: true });
-    assert.equal(Number((check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string }).value), SCHEMA_VERSION);
-    assert.ok(String((check.prepare("SELECT sql FROM sqlite_master WHERE name = 'mail_history_enqueues'").get() as { sql: string }).sql).includes("'action.nudge'"));
-    const carried = (check.prepare("SELECT count(*) AS n FROM mail_history_enqueues").get() as { n: number }).n;
-    check.close();
-    assert.ok(carried >= 1, "rows carried across");
-    store = h.open();
     const view = store.actionView(commit.id);
     assert.equal(view.dispatch?.nudgedAt, null);
     assert.deepEqual(Object.keys(view.dispatch!).sort(), [...MIRROR_ACTION_DISPATCH_KEYS].sort());
-    assert.ok(store.nudgeAgentAction(commit.id, 1), "the migrated store accepts the new origin");
+    assert.ok(store.nudgeAgentAction(commit.id, 1));
   } finally {
-    store?.close();
+    store.close();
+    h.cleanup();
+  }
+});
+
+test("actions.13: an archived bee is never reminded (send would unarchive it)", () => {
+  const h = harness();
+  try {
+    const store = h.open();
+    const bee = liveBee(store);
+    const commit = enqueue(store, bee.id, [{ kind: "commit" }]).actions[0]!;
+    deliver(store, commit.id);
+    store.archiveBee(bee.id);
+    assert.equal(store.nudgeAgentAction(commit.id, 1), null);
+    assert.equal(store.getBee(bee.id)?.lifecycle, "archived", "still archived");
+    assert.equal(mustAction(store, commit.id).dispatch?.nudgedAt, null, "not recorded as reminded");
+    store.unarchiveBee(bee.id);
+    assert.ok(store.nudgeAgentAction(commit.id, 1), "reminded once the operator brings it back");
+  } finally {
     h.cleanup();
   }
 });

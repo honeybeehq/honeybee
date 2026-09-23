@@ -522,7 +522,7 @@ const MIN = 60_000;
 
 function nudgeMails(rig: Rig, beeId: string): number[] {
   return rig.store.auditTail(0, 100_000, beeId)
-    .filter((r) => r.kind === "mail.enqueued" && r.payload.origin === "action.nudge")
+    .filter((r) => r.kind === "mail.enqueued" && r.payload.origin === "action.dispatch" && String((r.payload.message as { body: string }).body).startsWith("[Hive action] Reminder"))
     .map((r) => (r.payload.message as { id: number }).id);
 }
 
@@ -643,6 +643,24 @@ test("actions.loop.nudge-scope: no reminder for other kinds, after complete or c
     rig.clock.now = answeredAt + 30 * MIN;
     steps(rig, 1);
     assert.equal(nudgeMails(rig, "n2").length, 1);
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("actions.loop.nudge-archived: the scheduler never reminds (and so never unarchives) an archived bee", () => {
+  const rig = makeRig();
+  try {
+    spawnCellBee(rig, "n3");
+    const c = enqueueOne(rig, "n3", "commit", "arch-1");
+    steps(rig, 1);
+    const deliveredAt = action(rig, c.id).dispatch!.deliveredAt!;
+    rig.store.archiveBee("n3");
+    rig.clock.now = deliveredAt + 2 * 60 * MIN;
+    steps(rig, 3);
+    assert.equal(nudgeMails(rig, "n3").length, 0);
+    assert.equal(rig.store.getBee("n3")?.lifecycle, "archived");
+    assert.equal(action(rig, c.id).status, "running");
   } finally {
     rig.cleanup();
   }

@@ -1750,14 +1750,14 @@ export class CoreStore {
         });
       }
     }
-    // v22 → v23 → v24 → v29: the mail-history origin CHECK gains
-    // 'handoff.seed' (v23), 'action.dispatch' (v24) and 'action.nudge' (v29).
-    // SQLite cannot widen a CHECK in place, so rebuild the projection table
-    // and carry the rows across (same discipline as the v19 limits rebuild).
+    // v22 → v23 → v24: the mail-history origin CHECK gains 'handoff.seed'
+    // (v23) and 'action.dispatch' (v24). SQLite cannot widen a CHECK in
+    // place, so rebuild the projection table and carry the rows across (same
+    // discipline as the v19 limits rebuild).
     const historyDdl = this.stmt(
       "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'mail_history_enqueues'",
     ).get() as Row | undefined;
-    if (historyDdl !== undefined && !String(historyDdl.sql).includes("action.nudge")) {
+    if (historyDdl !== undefined && !String(historyDdl.sql).includes("action.dispatch")) {
       const carried = [
         "seq", "message_id", "bee_id", "origin", "sender", "sender_truncated", "body",
         "body_truncated", "priority", "urgency", "enqueued_at",
@@ -6809,7 +6809,6 @@ export class CoreStore {
       waitingReason: (r.waiting_reason as ActionWaitingReason | null) ?? null,
       waitingDetail: (r.waiting_detail as string | null) ?? null,
       attempt: Number(r.attempt),
-      // Rows written before v29 lack `nudgedAt`; the view always carries every dispatch key.
       dispatch: r.dispatch_json == null ? null : withNudgedAt(JSON.parse(String(r.dispatch_json)) as Omit<ActionDispatch, "nudgedAt"> & { nudgedAt?: number | null }),
       progress: r.progress_json == null ? null : (JSON.parse(String(r.progress_json)) as ActionProgress),
       questionId: (r.question_id as string | null) ?? null,
@@ -7868,7 +7867,7 @@ export class CoreStore {
   }
 
   /**
-   * v29 `action.complete` — the operator settles the CURRENT attempt of an
+   * `action.complete` (bee.actions.complete.v1) — the operator settles the CURRENT attempt of an
    * open agent action as `succeeded`, exactly as if the agent had reported
    * it (`result.receipt = {completedBy: "operator"}`). Allowed when
    * `controls.complete` (agent executor, running or waiting on input);
@@ -7923,8 +7922,11 @@ export class CoreStore {
   }
 
   /**
-   * v29 — the one reminder for a delivered, unreported agent attempt: the
-   * mail (`origin: action.nudge`, urgency `idle`: never interrupts a turn)
+   * bee.actions.complete.v1 — the one reminder for a delivered, unreported
+   * agent attempt: the mail (`origin: action.dispatch` with the `Reminder`
+   * marker; its own message id, so delivery/cancel hooks keyed on
+   * `dispatch.messageId` never mistake it for the instruction; urgency
+   * `idle`: never interrupts a turn)
    * and `dispatch.nudgedAt` commit in ONE transaction, so it happens at most
    * once per attempt across restarts. The scheduler decides when it is due;
    * this re-checks eligibility and returns null when it no longer applies.
@@ -7932,13 +7934,15 @@ export class CoreStore {
   nudgeAgentAction(actionId: string, attempt: number): { action: ActionView; messageId: number } | null {
     const eligible = (row: ActionRow | null): row is ActionRow & { dispatch: ActionDispatch; attemptToken: string } =>
       row !== null && row.executor === "agent" && row.status === "running" && row.attempt === attempt && row.attemptToken !== null
-      && row.dispatch !== null && row.dispatch.attempt === attempt && row.dispatch.deliveredAt != null && row.dispatch.nudgedAt == null;
+      && row.dispatch !== null && row.dispatch.attempt === attempt && row.dispatch.deliveredAt != null && row.dispatch.nudgedAt == null
+      // send() auto-unarchives: an automatic reminder must never bring back a bee the operator archived.
+      && this.getBee(row.beeId)?.lifecycle === "active";
     const target = this.getAction(actionId);
     if (!eligible(target)) return null;
     return this.withActionLaneAudit(target.beeId, "nudged", () => {
       const row = this.getAction(actionId);
       if (!eligible(row)) return null;
-      const sent = this.send(row.beeId, renderActionNudge(row, row.attemptToken, attempt), { sender: ACTION_DISPATCH_SENDER, origin: "action.nudge", urgency: "idle" });
+      const sent = this.send(row.beeId, renderActionNudge(row, row.attemptToken, attempt), { sender: ACTION_DISPATCH_SENDER, origin: "action.dispatch", urgency: "idle" });
       this.updateActionRow(actionId, { dispatch: { ...row.dispatch, nudgedAt: this.now() } });
       return { action: this.actionView(actionId), messageId: sent.message.id };
     });
@@ -8010,7 +8014,7 @@ export function openCoreStore(path: string, opts: CoreStoreOptions = {}): CoreSt
   return new CoreStore(path, opts);
 }
 
-/** Dispatch JSON written before v29 has no `nudgedAt`; views always carry the key. */
+/** Dispatch JSON written before the reminder slice has no `nudgedAt`; views always carry the key. */
 function withNudgedAt(dispatch: Omit<ActionDispatch, "nudgedAt"> & { nudgedAt?: number | null }): ActionDispatch {
   return { ...dispatch, nudgedAt: dispatch.nudgedAt ?? null };
 }

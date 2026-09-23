@@ -1291,7 +1291,7 @@ export class DaemonCore {
   }
 
   /**
-   * v29 — one reminder per attempt for a delivered agent action whose kind has
+   * bee.actions.complete.v1 — one reminder per attempt for a delivered agent action whose kind has
    * a silence threshold (ACTION_NUDGE_AFTER_MS) and that has shown no sign of
    * life (delivery, progress, an answered question) for that long. The store
    * records `dispatch.nudgedAt` with the mail, so a restart never repeats it.
