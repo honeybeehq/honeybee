@@ -395,7 +395,7 @@ export const ACCOUNT_LIMITS_UNREADABLE_REASONS = [
 ] as const;
 export type AccountLimitsUnreadableReason = (typeof ACCOUNT_LIMITS_UNREADABLE_REASONS)[number];
 
-/** Secret-free pilot state; only the node owning the account may rotate its chain. */
+/** Secret-free central-credential state per account; only the node owning the account may rotate its chain. */
 export interface AccountCredentialAuthority {
   account: string;
   phase: "enrolling" | "ready" | "refreshing" | "uncertain" | "disabling" | "disabling_uncertain" | "disabled";

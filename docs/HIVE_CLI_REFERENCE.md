@@ -2027,8 +2027,8 @@ echo, and the command exits 0 once the credential is validated and captured.
 them on the flow), `--remote` asks for methods that do not need a browser on
 this node (device codes, API keys), `--no-wait` just starts the flow.
 
-For the opt-in, one-account Claude central refresh commands and acceptance test,
-see [Claude central credential pilot](claude-central-credentials-pilot.md).
+For the opt-in, per-account Claude central refresh commands and acceptance test,
+see [Claude central credentials](claude-central-credentials-pilot.md).
 
 The broader command list that follows documents the legacy CLI surface.
 

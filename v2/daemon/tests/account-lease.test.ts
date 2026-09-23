@@ -40,6 +40,7 @@ const HOUR = 60 * 60 * 1000;
 // must NEVER appear in a lease, a log line, daemon output, or an audit row.
 const CLAUDE_REFRESH = "FIXTURE-CLAUDE-REFRESH-TOKEN-a1b2c3";
 const CLAUDE_NESTED_REFRESH = "FIXTURE-CLAUDE-NESTED-REFRESH-x9y8";
+const CLAUDE_ENROLLED_REFRESH = "FIXTURE-CLAUDE-ENROLLED-REFRESH-e1n2";
 const CODEX_REFRESH = "FIXTURE-CODEX-REFRESH-TOKEN-d4e5f6";
 const CODEX_ROTATED_REFRESH = "FIXTURE-CODEX-ROTATED-REFRESH-g7h8";
 const GROK_REFRESH = "FIXTURE-GROK-REFRESH-TOKEN-i9j0";
@@ -51,6 +52,7 @@ const CODEX_OPENAI_KEY = "FIXTURE-OPENAI-DEVELOPER-KEY-s9t0";
 const ALL_FIXTURE_REFRESHES = [
   CLAUDE_REFRESH,
   CLAUDE_NESTED_REFRESH,
+  CLAUDE_ENROLLED_REFRESH,
   CODEX_REFRESH,
   CODEX_ROTATED_REFRESH,
   CODEX_STRAY_REFRESH,
@@ -127,7 +129,9 @@ function addAccount(r: Rig, harness: string, label: string, opts: { status?: "ok
 }
 
 function service(r: Rig, extra: Partial<ConstructorParameters<typeof AccountsService>[0]> = {}): AccountsService {
-  return new AccountsService({ store: r.store, cfg: r.cfg, log: (op) => r.log.push(op), now: r.now, keychainReader: async () => null, keychainWriter: async () => false, ...extra });
+  // Enrollment validates the chain with one real rotation; the default stub keeps every test off the network.
+  const fetchers = { claudeRefresh: async () => ({ accessToken: "enrolled-access", refreshToken: CLAUDE_ENROLLED_REFRESH, expiresAt: r.now() + 8 * HOUR }), ...(extra.fetchers ?? {}) };
+  return new AccountsService({ store: r.store, cfg: r.cfg, log: (op) => r.log.push(op), now: r.now, keychainReader: async () => null, keychainWriter: async () => false, ...extra, fetchers });
 }
 
 /** An unsigned but structurally valid JWT whose `exp` claim decodes locally. */
@@ -666,80 +670,227 @@ test("rpc.lease.1: account.lease verb — result shape, typed errors, capability
   }
 });
 
-// Central-credential pilot: exercise the real service/lease seam, never live credentials.
+// Central credentials: exercise the real service/lease seam, never live credentials.
+// Enrollment adopts the native chain, validates it with one real rotation
+// (generation 1 -> 2) and only then publishes access-only copies.
+function nativeDocument(r: Rig, extra: Record<string, unknown> = {}): string {
+  return JSON.stringify({ claudeAiOauth: { accessToken: "before", refreshToken: CLAUDE_REFRESH, expiresAt: r.now() + HOUR, ...extra } });
+}
+function nativeCopies(r: Rig, svc: AccountsService, account: { homePath: string; harness: string; id: string }): string[] {
+  return [join(account.homePath, ".credentials.json"), join(svc.vaultDirOf(account), ".credentials.json")]
+    .filter(path => existsSync(path)).map(path => readFileSync(path, "utf8"));
+}
+
 test("central.claude: idle local runtime does not block rotation; leases and runtime copies never carry refresh tokens", async () => {
   const r = rig();
   try {
-    const account = addAccount(r, "claude", "central", { home: { ".credentials.json": JSON.stringify({
-      claudeAiOauth: { accessToken: "before", refreshToken: CLAUDE_REFRESH, expiresAt: r.now() + HOUR },
-    }) } });
+    const account = addAccount(r, "claude", "central", { home: { ".credentials.json": nativeDocument(r) } });
     let keychain: string | null = null;
-    let refreshes = 0;
+    const tokens: string[] = [];
     const svc = service(r, { keychainReader: async () => keychain, keychainWriter: async (_home, raw) => { keychain = raw; return true; },
       fetchers: { claudeRefresh: async token => {
-        assert.equal(token, CLAUDE_REFRESH); refreshes++;
-        return { accessToken: "after", refreshToken: CLAUDE_NESTED_REFRESH, expiresAt: r.now() + 8 * HOUR };
+        tokens.push(token);
+        return tokens.length === 1
+          ? { accessToken: "enrolled", refreshToken: CLAUDE_ENROLLED_REFRESH, expiresAt: r.now() + HOUR }
+          : { accessToken: "after", refreshToken: CLAUDE_NESTED_REFRESH, expiresAt: r.now() + 8 * HOUR };
       } } });
-    await svc.centralCredentials.enable(account);
+    assert.equal((await svc.centralCredentials.enable(account)).generation, 2, "adoption is generation 1; the validating rotation is generation 2");
+    assert.deepEqual(tokens, [CLAUDE_REFRESH]);
+    assert.equal(JSON.parse(keychain!).claudeAiOauth.refreshToken, "");
     const { bee } = r.store.createBee({ name: "local-owner", agent: "claude", substrate: "hsr", cwd: "/tmp", account: account.id });
     r.store.updateRuntimeState(bee.id, 1, "running", { pid: 99, pidStartedAt: 1 });
     r.store.updateRuntimeState(bee.id, 1, "idle");
     r.setNow(r.now() + HOUR - 60_000);
     const lease = await svc.mintLease(account);
-    assert.equal(refreshes, 1);
+    assert.deepEqual(tokens, [CLAUDE_REFRESH, CLAUDE_ENROLLED_REFRESH], "each rotation consumes the chain the authority owns");
     assert.equal((decodeFile(lease).claudeAiOauth as Record<string, unknown>).accessToken, "after");
     assertNoFixtureSecrets(r, lease);
-    for (const path of [join(account.homePath, ".credentials.json"), join(svc.vaultDirOf(account), ".credentials.json")]) {
-      const raw = readFileSync(path, "utf8");
-      assert.ok(!raw.includes(CLAUDE_REFRESH) && !raw.includes(CLAUDE_NESTED_REFRESH));
+    for (const raw of nativeCopies(r, svc, account)) {
+      assert.ok(!raw.includes(CLAUDE_REFRESH) && !raw.includes(CLAUDE_ENROLLED_REFRESH) && !raw.includes(CLAUDE_NESTED_REFRESH));
     }
     assert.equal(JSON.parse(keychain!).claudeAiOauth.refreshToken, "");
     assert.equal(r.store.currentRuntime(bee.id)!.state, "idle");
     assert.equal(svc.homeEnvOf(account).CLAUDE_CODE_OAUTH_TOKEN, "");
-    assert.equal(svc.centralCredentials.status(account)!.generation, 2);
+    assert.equal(svc.centralCredentials.status(account)!.generation, 3);
   } finally { r.cleanup(); }
 });
 
 test("central.claude: enrollment refuses idle runtimes, and existing accounts retain their behavior", async () => {
   const r = rig();
   try {
-    const account = addAccount(r, "claude", "busy", { home: { ".credentials.json": JSON.stringify({
-      claudeAiOauth: { accessToken: "before", refreshToken: CLAUDE_REFRESH, expiresAt: r.now() + HOUR },
-    }) } });
-    const svc = service(r);
+    const account = addAccount(r, "claude", "busy", { home: { ".credentials.json": nativeDocument(r) } });
+    let refreshes = 0;
+    const svc = service(r, { fetchers: { claudeRefresh: async () => { refreshes++; return null; } } });
     const { bee } = r.store.createBee({ name: "existing", agent: "claude", substrate: "hsr", cwd: "/tmp", account: account.id });
     r.store.updateRuntimeState(bee.id, 1, "running", { pid: 99, pidStartedAt: 1 });
     r.store.updateRuntimeState(bee.id, 1, "idle");
     await assert.rejects(svc.centralCredentials.enable(account), /Stop this account/);
     assert.equal(svc.centralCredentials.enabled(account), false);
+    assert.equal(refreshes, 0);
     assert.ok(readFileSync(join(account.homePath, ".credentials.json"), "utf8").includes(CLAUDE_REFRESH));
     r.setNow(r.now() + HOUR);
     await refuses(() => svc.mintLease(account), "lease_unavailable", /running Claude owns refresh/);
   } finally { r.cleanup(); }
 });
 
+test("central.claude: an expired candidate is refused before any state change; native copies stay intact (#12)", async () => {
+  const r = rig();
+  try {
+    const native = nativeDocument(r, { expiresAt: r.now() - 1 });
+    const account = addAccount(r, "claude", "expired", { home: { ".credentials.json": native }, vault: { ".credentials.json": native } });
+    let refreshes = 0; let keychainWrites = 0;
+    const svc = service(r, { keychainReader: async () => native, keychainWriter: async () => { keychainWrites++; return true; },
+      fetchers: { claudeRefresh: async () => { refreshes++; return { accessToken: "x", refreshToken: CLAUDE_NESTED_REFRESH, expiresAt: r.now() + HOUR }; } } });
+    await assert.rejects(svc.centralCredentials.enable(account), error => {
+      assert.match((error as Error).message, /expired at 2026-09-03T11:59:59\.999Z; log in natively \(hive account login claude-expired\)/);
+      assert.ok(!(error as Error).message.includes(CLAUDE_REFRESH));
+      return true;
+    });
+    assert.equal(refreshes, 0, "no provider call: the possibly dead chain is never consumed by enrollment");
+    assert.equal(keychainWrites, 0);
+    assert.equal(svc.centralCredentials.status(account), null, "no authority row");
+    assert.equal(existsSync(join(r.vault, ".credential-authorities", `${account.id}.json`)), false, "no authority document");
+    assert.deepEqual(nativeCopies(r, svc, account), [native, native]);
+    assert.equal(r.store.getAccount(account.id)!.status, "ok");
+    // The native path still owns the account: a lease refreshes natively as before.
+    const lease = await svc.mintLease(account);
+    assert.equal(refreshes, 1);
+    assert.equal((decodeFile(lease).claudeAiOauth as Record<string, unknown>).refreshToken, "");
+    assert.ok(readFileSync(join(account.homePath, ".credentials.json"), "utf8").includes(CLAUDE_NESTED_REFRESH), "native refresh keeps the full chain");
+  } finally { r.cleanup(); }
+});
+
+test("central.claude: a provider rejection during enrollment aborts with native copies intact and no access-only publication (#12)", async () => {
+  const r = rig();
+  try {
+    const native = nativeDocument(r);
+    const account = addAccount(r, "claude", "rejected", { home: { ".credentials.json": native }, vault: { ".credentials.json": native } });
+    let keychainWrites = 0;
+    const svc = service(r, { keychainReader: async () => native, keychainWriter: async () => { keychainWrites++; return true; },
+      fetchers: { claudeRefresh: async () => null } });
+    await assert.rejects(svc.centralCredentials.enable(account), /provider refused this account's refresh credential; native copies are unchanged/);
+    assert.equal(keychainWrites, 0);
+    assert.deepEqual(nativeCopies(r, svc, account), [native, native], "refresh tokens were never stripped");
+    assert.equal(svc.centralCredentials.status(account)!.phase, "disabled");
+    assert.equal(svc.centralCredentials.enabled(account), false);
+    assert.equal(r.store.getAccount(account.id)!.status, "auth_needed");
+    assert.ok(!r.log.join("\n").includes(CLAUDE_REFRESH));
+    // Nothing is fenced: capture and a later enable both run against the native copies.
+    await assert.rejects(svc.centralCredentials.enable(account), /provider refused/);
+    assert.deepEqual(nativeCopies(r, svc, account), [native, native]);
+  } finally { r.cleanup(); }
+});
+
+test("central.claude: a lost provider response during enrollment stays fenced until disable strips the possibly consumed token (#12)", async () => {
+  const r = rig();
+  try {
+    const native = nativeDocument(r);
+    const account = addAccount(r, "claude", "lost", { home: { ".credentials.json": native }, vault: { ".credentials.json": native } });
+    let refreshes = 0; let keychain: string = native;
+    const svc = service(r, { keychainReader: async () => keychain, keychainWriter: async (_home, raw) => { keychain = raw; return true; },
+      fetchers: { claudeRefresh: async () => { refreshes++; throw new Error("connection lost"); } } });
+    await assert.rejects(svc.centralCredentials.enable(account), /enrollment refresh outcome is uncertain/);
+    assert.equal(refreshes, 1);
+    assert.equal(svc.centralCredentials.status(account)!.phase, "uncertain");
+    assert.deepEqual(nativeCopies(r, svc, account), [native, native], "nothing was published while the outcome is unknown");
+    // Fenced: no path retries the possibly consumed token through the intact-looking native copies.
+    await refuses(() => svc.mintLease(account), "lease_unavailable", /uncertain/);
+    await assert.rejects(svc.centralCredentials.enable(account), /incomplete refresh/);
+    await assert.rejects(svc.centralCredentials.ensure(account, 0, "operator-retry"), /uncertain/);
+    await assert.rejects(svc.captureAccount(account), /Disable central credentials/);
+    assert.equal(refreshes, 1, "the possibly consumed refresh token is never retried");
+    const restarted = service(r, { keychainReader: async () => keychain, keychainWriter: async (_home, raw) => { keychain = raw; return true; },
+      fetchers: { claudeRefresh: async () => { refreshes++; throw new Error("still lost"); } } });
+    await assert.rejects(restarted.centralCredentials.enable(account), /incomplete refresh/);
+    assert.equal((await restarted.centralCredentials.disable(account)).phase, "disabled");
+    assert.equal(r.store.getAccount(account.id)!.status, "auth_needed");
+    for (const raw of [...nativeCopies(r, svc, account), keychain]) {
+      assert.equal(JSON.parse(raw).claudeAiOauth.refreshToken, "", "disable publishes access-only copies so native refresh cannot retry the token");
+    }
+    assert.equal(refreshes, 1);
+  } finally { r.cleanup(); }
+});
+
+test("central.claude: an enrollment interrupted mid-rotation is treated as uncertain on resume, never re-rotated (#12)", async () => {
+  const r = rig();
+  try {
+    const native = nativeDocument(r);
+    const account = addAccount(r, "claude", "interrupted", { home: { ".credentials.json": native } });
+    let die!: (error: Error) => void;
+    const gate = new Promise<never>((_resolve, reject) => { die = reject; });
+    let refreshes = 0;
+    const first = service(r, { fetchers: { claudeRefresh: async () => { refreshes++; return gate; } } });
+    const inFlight = first.centralCredentials.enable(account);
+    await waitFor(() => refreshes === 1, "validating rotation started");
+    assert.equal(first.centralCredentials.status(account)!.phase, "enrolling");
+    assert.notEqual(first.centralCredentials.status(account)!.operationKey, null, "the in-flight rotation is fenced durably");
+    // A successor daemon finds the fence but no saved result.
+    const successor = service(r, { fetchers: { claudeRefresh: async () => { refreshes++; return { accessToken: "x", refreshToken: CLAUDE_NESTED_REFRESH, expiresAt: r.now() + HOUR }; } } });
+    await assert.rejects(successor.centralCredentials.enable(account), /enrollment refresh outcome is unknown/);
+    assert.equal(successor.centralCredentials.status(account)!.phase, "uncertain");
+    assert.equal(refreshes, 1);
+    assert.deepEqual(nativeCopies(r, successor, account), [native]);
+    die(new Error("daemon died")); // The first daemon never observes a result.
+    await assert.rejects(inFlight, /uncertain/);
+  } finally { r.cleanup(); }
+});
+
+test("central.claude: multiple accounts enroll and rotate independently", async () => {
+  const r = rig();
+  try {
+    const accounts = ["first", "second", "third"].map(label => addAccount(r, "claude", label, { home: { ".credentials.json": JSON.stringify({
+      claudeAiOauth: { accessToken: `before-${label}`, refreshToken: `${CLAUDE_REFRESH}-${label}`, expiresAt: r.now() + HOUR },
+    }) } }));
+    const rotations = new Map<string, number>();
+    const svc = service(r, { fetchers: { claudeRefresh: async token => {
+      const label = token.split("-").at(-1)!;
+      const n = (rotations.get(label) ?? 0) + 1; rotations.set(label, n);
+      return { accessToken: `after-${label}-${n}`, refreshToken: `${CLAUDE_NESTED_REFRESH}-${label}`, expiresAt: r.now() + HOUR };
+    } } });
+    const results = await Promise.all(accounts.map(account => svc.centralCredentials.enable(account)));
+    assert.deepEqual(results.map(state => [state.account, state.phase, state.generation]), accounts.map(account => [account.id, "ready", 2]));
+    for (const account of accounts) {
+      assert.ok(existsSync(join(r.vault, ".credential-authorities", `${account.id}.json`)), `${account.id} has its own authority document`);
+      for (const raw of nativeCopies(r, svc, account)) assert.equal(JSON.parse(raw).claudeAiOauth.refreshToken, "");
+    }
+    // One account's forced rotation and one account's disable leave the others untouched.
+    assert.equal((await svc.centralCredentials.ensure(accounts[0]!, 0, "force-first")).generation, 3);
+    assert.equal((await svc.centralCredentials.disable(accounts[1]!)).phase, "disabled");
+    assert.equal(svc.centralCredentials.status(accounts[0]!)!.generation, 3);
+    assert.equal(svc.centralCredentials.status(accounts[2]!)!.generation, 2);
+    assert.equal(svc.centralCredentials.status(accounts[2]!)!.phase, "ready");
+    assert.deepEqual([...rotations.entries()].sort(), [["first", 2], ["second", 1], ["third", 1]]);
+    // Leases are per account: each ships its own access token, and the disabled one is native again.
+    assert.equal((decodeFile(await svc.mintLease(accounts[0]!)).claudeAiOauth as Record<string, unknown>).accessToken, "after-first-2");
+    assert.equal((decodeFile(await svc.mintLease(accounts[2]!)).claudeAiOauth as Record<string, unknown>).accessToken, "after-third-1");
+    assert.ok(readFileSync(join(accounts[1]!.homePath, ".credentials.json"), "utf8").includes(`${CLAUDE_NESTED_REFRESH}-second`), "disable restores the full chain natively");
+    // Re-enrolling the disabled account does not disturb the others.
+    assert.equal((await svc.centralCredentials.enable(accounts[1]!)).generation, 4);
+    assert.equal(svc.centralCredentials.status(accounts[0]!)!.generation, 3);
+    for (const lease of await Promise.all(accounts.map(account => svc.mintLease(account)))) assertNoFixtureSecrets(r, lease);
+  } finally { r.cleanup(); }
+});
+
 test("central.claude: force refresh is coalesced with lease requests and keyed retries survive service restart", async () => {
   const r = rig();
   try {
-    const account = addAccount(r, "claude", "once", { home: { ".credentials.json": JSON.stringify({
-      claudeAiOauth: { accessToken: "before", refreshToken: CLAUDE_REFRESH, expiresAt: r.now() + HOUR },
-    }) } });
+    const account = addAccount(r, "claude", "once", { home: { ".credentials.json": nativeDocument(r) } });
     let refreshes = 0;
     let release!: () => void;
     const gate = new Promise<void>(resolve => { release = resolve; });
-    const fetchers = { claudeRefresh: async () => { refreshes++; await gate;
+    const fetchers = { claudeRefresh: async () => { refreshes++; if (refreshes > 1) await gate;
       return { accessToken: "after", refreshToken: CLAUDE_NESTED_REFRESH, expiresAt: r.now() + 8 * HOUR }; } };
     const svc = service(r, { fetchers });
     await svc.centralCredentials.enable(account);
     const one = svc.centralCredentials.ensure(account, 0, "operator-refresh-1");
     const two = svc.centralCredentials.ensure(account, 0, "operator-refresh-1");
     const lease = svc.mintLease(account);
-    await waitFor(() => refreshes === 1, "central refresh"); release();
-    assert.equal((await one).generation, 2); assert.equal((await two).generation, 2);
+    await waitFor(() => refreshes === 2, "central refresh"); release();
+    assert.equal((await one).generation, 3); assert.equal((await two).generation, 3);
     assert.equal((decodeFile(await lease).claudeAiOauth as Record<string, unknown>).accessToken, "after");
     const restarted = service(r, { fetchers });
-    assert.equal((await restarted.centralCredentials.ensure(account, 0, "operator-refresh-1")).generation, 2);
-    assert.equal(refreshes, 1);
+    assert.equal((await restarted.centralCredentials.ensure(account, 0, "operator-refresh-1")).generation, 3);
+    assert.equal(refreshes, 2);
     await assert.rejects(restarted.captureAccount(account), /Disable/);
     await restarted.centralCredentials.disable(account);
     assert.ok(readFileSync(join(account.homePath, ".credentials.json"), "utf8").includes(CLAUDE_NESTED_REFRESH));
@@ -749,9 +900,7 @@ test("central.claude: force refresh is coalesced with lease requests and keyed r
 test("central.claude: force refresh re-evaluates after an unrelated ensure rejects", async () => {
   const r = rig();
   try {
-    const account = addAccount(r, "claude", "force-after-rejection", { home: { ".credentials.json": JSON.stringify({
-      claudeAiOauth: { accessToken: "before", refreshToken: CLAUDE_REFRESH, expiresAt: r.now() + HOUR },
-    }) } });
+    const account = addAccount(r, "claude", "force-after-rejection", { home: { ".credentials.json": nativeDocument(r) } });
     let refreshes = 0;
     const svc = service(r, { fetchers: { claudeRefresh: async () => {
       refreshes += 1;
@@ -768,17 +917,15 @@ test("central.claude: force refresh re-evaluates after an unrelated ensure rejec
     const forced = svc.centralCredentials.ensure(account, 0, "force-after-rejection");
     await assert.rejects(rejectedEnsure, /external Claude/);
     await repair;
-    assert.equal((await forced).generation, 2);
-    assert.equal(refreshes, 1, "the force runs once after the rejected ensure settles");
+    assert.equal((await forced).generation, 3);
+    assert.equal(refreshes, 2, "the force runs once after the rejected ensure settles");
   } finally { r.cleanup(); }
 });
 
 test("central.claude: saved rotation survives publication failure; uncertain provider response is never retried automatically", async () => {
   const r = rig();
   try {
-    const account = addAccount(r, "claude", "recover", { home: { ".credentials.json": JSON.stringify({
-      claudeAiOauth: { accessToken: "before", refreshToken: CLAUDE_REFRESH, expiresAt: r.now() + HOUR },
-    }) } });
+    const account = addAccount(r, "claude", "recover", { home: { ".credentials.json": nativeDocument(r) } });
     let failPublish = false; let calls = 0;
     const svc = service(r, { keychainReader: async () => "{}", keychainWriter: async () => !failPublish,
       fetchers: { claudeRefresh: async () => { calls++; return { accessToken: "after", refreshToken: CLAUDE_NESTED_REFRESH, expiresAt: r.now() + 8 * HOUR }; } } });
@@ -787,11 +934,11 @@ test("central.claude: saved rotation survives publication failure; uncertain pro
     assert.equal(svc.centralCredentials.status(account)!.phase, "refreshing");
     failPublish = false;
     assert.equal((await svc.centralCredentials.ensure(account, 0, "publish-failure")).phase, "ready");
-    assert.equal(calls, 1);
+    assert.equal(calls, 2);
     const uncertain = service(r, { fetchers: { claudeRefresh: async () => { calls++; throw new Error("connection lost"); } } });
     await assert.rejects(uncertain.centralCredentials.ensure(account, 0, "timeout"), /uncertain/);
     await assert.rejects(uncertain.centralCredentials.ensure(account, 0, "timeout"), /uncertain/);
-    assert.equal(calls, 2);
+    assert.equal(calls, 3);
     assert.equal(uncertain.centralCredentials.status(account)!.phase, "uncertain");
     await uncertain.centralCredentials.disable(account);
     assert.equal(JSON.parse(readFileSync(join(account.homePath, ".credentials.json"), "utf8")).claudeAiOauth.refreshToken, "");
@@ -801,12 +948,13 @@ test("central.claude: saved rotation survives publication failure; uncertain pro
 test("central.claude: uncertain disable remains fenced across failed publication and restart", async () => {
   const r = rig();
   try {
-    const account = addAccount(r, "claude", "disable-crash", { home: { ".credentials.json": JSON.stringify({
-      claudeAiOauth: { accessToken: "before", refreshToken: CLAUDE_REFRESH, expiresAt: r.now() + HOUR },
-    }) } });
-    let fail = false;
+    const account = addAccount(r, "claude", "disable-crash", { home: { ".credentials.json": nativeDocument(r) } });
+    let fail = false; let calls = 0;
     const svc = service(r, { keychainReader: async () => "{}", keychainWriter: async () => !fail,
-      fetchers: { claudeRefresh: async () => { throw new Error("lost response"); } } });
+      fetchers: { claudeRefresh: async () => {
+        if (++calls > 1) throw new Error("lost response");
+        return { accessToken: "enrolled", refreshToken: CLAUDE_ENROLLED_REFRESH, expiresAt: r.now() + HOUR };
+      } } });
     await svc.centralCredentials.enable(account);
     await assert.rejects(svc.centralCredentials.ensure(account, 0, "uncertain"), /uncertain/);
     fail = true;
@@ -820,42 +968,28 @@ test("central.claude: uncertain disable remains fenced across failed publication
   } finally { r.cleanup(); }
 });
 
-test("central.claude: simultaneous enrollment cannot enroll two pilot accounts", async () => {
+test("central.claude: unreadable Keychain blocks enrollment before the validating rotation and preserves the native copy", async () => {
   const r = rig();
   try {
-    const accounts = ["first", "second"].map(label => addAccount(r, "claude", label, { home: { ".credentials.json": JSON.stringify({
-      claudeAiOauth: { accessToken: "before", refreshToken: CLAUDE_REFRESH, expiresAt: r.now() + HOUR },
-    }) } }));
-    const svc = service(r);
-    const results = await Promise.allSettled(accounts.map(account => svc.centralCredentials.enable(account)));
-    // Safety is the contract: the synchronous cross-account fence may reject
-    // both contenders, and that all-fail outcome is deliberately acceptable.
-    assert.ok(results.filter(result => result.status === "fulfilled").length <= 1);
-    assert.ok(results.some(result => result.status === "rejected"));
-    assert.ok(accounts.filter(account => svc.centralCredentials.enabled(account)).length <= 1);
-  } finally { r.cleanup(); }
-});
-
-test("central.claude: unreadable Keychain blocks enrollment and preserves the native copy", async () => {
-  const r = rig();
-  try {
-    const account = addAccount(r, "claude", "locked", { home: { ".credentials.json": JSON.stringify({
-      claudeAiOauth: { accessToken: "before", refreshToken: CLAUDE_REFRESH, expiresAt: r.now() + HOUR },
-    }) } });
-    const svc = service(r, { keychainStateReader: async () => ({ status: "unreadable" }) });
+    const account = addAccount(r, "claude", "locked", { home: { ".credentials.json": nativeDocument(r) } });
+    let refreshes = 0;
+    const svc = service(r, { keychainStateReader: async () => ({ status: "unreadable" }),
+      fetchers: { claudeRefresh: async () => { refreshes++; return null; } } });
     await assert.rejects(svc.centralCredentials.enable(account), /Keychain is unreadable/);
+    assert.equal(refreshes, 0, "the chain is not consumed while publication is known to be impossible");
     assert.equal(svc.centralCredentials.status(account)!.phase, "enrolling");
+    assert.equal(svc.centralCredentials.status(account)!.operationKey, null);
     assert.ok(readFileSync(join(account.homePath, ".credentials.json"), "utf8").includes(CLAUDE_REFRESH));
     await assert.rejects(svc.centralCredentials.ensure(account, 0), /enrolling/);
+    await assert.rejects(svc.centralCredentials.enable(account), /Keychain is unreadable/);
+    assert.equal(refreshes, 0);
   } finally { r.cleanup(); }
 });
 
 test("central.claude: lost authority has a supported disable and login recovery path", async () => {
   const r = rig();
   try {
-    const account = addAccount(r, "claude", "lost", { home: { ".credentials.json": JSON.stringify({
-      claudeAiOauth: { accessToken: "before", refreshToken: CLAUDE_REFRESH, expiresAt: r.now() + HOUR },
-    }) } });
+    const account = addAccount(r, "claude", "lost-authority", { home: { ".credentials.json": nativeDocument(r) } });
     const svc = service(r);
     await svc.centralCredentials.enable(account);
     writeFileSync(join(r.vault, ".credential-authorities", `${account.id}.json`), "corrupt");
@@ -869,17 +1003,18 @@ test("central.claude: lost authority has a supported disable and login recovery 
 test("central.claude: a foreign native rotation is preserved and blocks provider refresh", async () => {
   const r = rig();
   try {
-    const account = addAccount(r, "claude", "foreign", { home: { ".credentials.json": JSON.stringify({
-      claudeAiOauth: { accessToken: "before", refreshToken: CLAUDE_REFRESH, expiresAt: r.now() + HOUR },
-    }) } });
+    const account = addAccount(r, "claude", "foreign", { home: { ".credentials.json": nativeDocument(r) } });
     let refreshes = 0;
-    const svc = service(r, { fetchers: { claudeRefresh: async () => { refreshes++; return null; } } });
+    const svc = service(r, { fetchers: { claudeRefresh: async () => {
+      if (++refreshes === 1) return { accessToken: "enrolled", refreshToken: CLAUDE_ENROLLED_REFRESH, expiresAt: r.now() + HOUR };
+      return null;
+    } } });
     await svc.centralCredentials.enable(account);
     const foreign = JSON.stringify({ claudeAiOauth: { accessToken: "foreign", refreshToken: "foreign-chain", expiresAt: r.now() + 8 * HOUR } });
     writeFileSync(join(account.homePath, ".credentials.json"), foreign);
     await assert.rejects(svc.centralCredentials.ensure(account, 0), /external Claude/);
     await assert.rejects(svc.centralCredentials.ensure(account, 0, "force"), /external Claude/);
-    assert.equal(refreshes, 0);
+    assert.equal(refreshes, 1);
     assert.equal(readFileSync(join(account.homePath, ".credentials.json"), "utf8"), foreign);
     await svc.centralCredentials.disable(account);
     assert.equal(svc.centralCredentials.enabled(account), false);
@@ -888,12 +1023,29 @@ test("central.claude: a foreign native rotation is preserved and blocks provider
   } finally { r.cleanup(); }
 });
 
+test("central.claude: a foreign login that lands during enrollment is detected before the validating rotation", async () => {
+  const r = rig();
+  try {
+    // A stale, older chain in the vault is not foreign: enrollment adopts the freshest copy.
+    const account = addAccount(r, "claude", "foreign-enroll", { home: { ".credentials.json": nativeDocument(r) },
+      vault: { ".credentials.json": JSON.stringify({ claudeAiOauth: { accessToken: "old", refreshToken: "older-chain", expiresAt: r.now() + HOUR / 2 } }) } });
+    let refreshes = 0;
+    const svc = service(r, { keychainStateReader: async () => ({ status: "present", raw: JSON.stringify({ claudeAiOauth: {
+      accessToken: "newer", refreshToken: "foreign-chain", expiresAt: r.now() + 8 * HOUR } }) }),
+      fetchers: { claudeRefresh: async () => { refreshes++; return null; } } });
+    await assert.rejects(svc.centralCredentials.enable(account), /external Claude/);
+    assert.equal(refreshes, 0, "nothing is rotated while ownership is contested");
+    assert.equal(svc.centralCredentials.status(account)!.phase, "enrolling");
+    assert.ok(readFileSync(join(account.homePath, ".credentials.json"), "utf8").includes(CLAUDE_REFRESH));
+    const settled = service(r, { keychainStateReader: async () => ({ status: "absent" }), keychainWriter: async () => true });
+    assert.equal((await settled.centralCredentials.enable(account)).phase, "ready", "the older vault chain never counts as foreign");
+  } finally { r.cleanup(); }
+});
+
 test("central.claude: a pending native Keychain seed prevents enrollment", async () => {
   const r = rig();
   try {
-    const account = addAccount(r, "claude", "seeding", { vault: { ".credentials.json": JSON.stringify({
-      claudeAiOauth: { accessToken: "before", refreshToken: CLAUDE_REFRESH, expiresAt: r.now() + HOUR },
-    }) } });
+    const account = addAccount(r, "claude", "seeding", { vault: { ".credentials.json": nativeDocument(r) } });
     const gate = deferred<boolean>();
     const svc = service(r, { keychainWriter: async () => gate.promise, gatewayMcpSeeder: async () => ({ status: "skipped", written: [], reason: "fixture" }) });
     await svc.activateForSpawn(account, { cwd: r.dir });
@@ -903,14 +1055,29 @@ test("central.claude: a pending native Keychain seed prevents enrollment", async
   } finally { r.cleanup(); }
 });
 
-test("central.claude: an absent but writable Keychain must acknowledge publication", async () => {
+test("central.claude: a validated rotation is saved before publication; a retry publishes without rotating again (#12)", async () => {
   const r = rig();
   try {
-    const account = addAccount(r, "claude", "absent-write", { home: { ".credentials.json": JSON.stringify({
-      claudeAiOauth: { accessToken: "before", refreshToken: CLAUDE_REFRESH, expiresAt: r.now() + HOUR },
-    }) } });
-    const svc = service(r, { keychainStateReader: async () => ({ status: "absent" }), keychainWriter: async () => false });
+    const account = addAccount(r, "claude", "absent-write", { home: { ".credentials.json": nativeDocument(r) } });
+    let refreshes = 0; let writable = false;
+    const svc = service(r, { keychainStateReader: async () => ({ status: "absent" }), keychainWriter: async () => writable,
+      fetchers: { claudeRefresh: async () => { refreshes++; return { accessToken: "enrolled", refreshToken: CLAUDE_ENROLLED_REFRESH, expiresAt: r.now() + 8 * HOUR }; } } });
     await assert.rejects(svc.centralCredentials.enable(account), /Could not replace/);
-    assert.equal(svc.centralCredentials.status(account)!.phase, "enrolling");
+    const state = svc.centralCredentials.status(account)!;
+    assert.equal(state.phase, "enrolling");
+    assert.equal(state.generation, 1);
+    assert.notEqual(state.operationKey, null);
+    const saved = JSON.parse(readFileSync(join(r.vault, ".credential-authorities", `${account.id}.json`), "utf8"));
+    assert.equal(saved.generation, 2, "the provider result is durable before any copy is published");
+    assert.equal(saved.operationKey, state.operationKey);
+    assert.ok(!JSON.stringify(saved.adopted).includes(CLAUDE_REFRESH), "the adopted-chain record carries no secret");
+    await assert.rejects(svc.centralCredentials.enable(account), /Could not replace/);
+    writable = true;
+    const ready = await service(r, { keychainStateReader: async () => ({ status: "absent" }), keychainWriter: async () => true,
+      fetchers: { claudeRefresh: async () => { refreshes++; return null; } } }).centralCredentials.enable(account);
+    assert.equal(ready.phase, "ready");
+    assert.equal(ready.generation, 2);
+    assert.equal(refreshes, 1, "resume publishes the saved result instead of consuming the new token");
+    assert.equal(JSON.parse(readFileSync(join(account.homePath, ".credentials.json"), "utf8")).claudeAiOauth.accessToken, "enrolled");
   } finally { r.cleanup(); }
 });

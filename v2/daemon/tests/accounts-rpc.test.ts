@@ -22,6 +22,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -791,26 +793,72 @@ test("rpc.accounts: Codex usageLimitExceeded persists bee and account boundaries
   }
 });
 
-test("rpc central credentials: opt-in/status/lease/disable, idempotent enable, native login and capture fenced", async () => {
+/** A local stand-in for the Claude OAuth token endpoint: enrollment's validating rotation never leaves the test. */
+async function oauthStub(): Promise<{ url: string; bodies: string[]; close: () => Promise<void>; refuse: (refreshToken: string) => void }> {
+  const bodies: string[] = [];
+  const refused = new Set<string>();
+  const server = createServer((request, response) => {
+    let body = "";
+    request.on("data", (chunk: Buffer) => { body += chunk.toString(); });
+    request.on("end", () => {
+      bodies.push(body);
+      const { refresh_token } = JSON.parse(body) as { refresh_token: string };
+      if (refused.has(refresh_token)) { response.writeHead(400, { "Content-Type": "application/json" }); response.end(JSON.stringify({ error: "invalid_grant" })); return; }
+      response.writeHead(200, { "Content-Type": "application/json" });
+      response.end(JSON.stringify({ access_token: `ROTATED_ACCESS_${bodies.length}`, refresh_token: `ROTATED_REFRESH_${bodies.length}`, expires_in: 8 * 3600 }));
+    });
+  });
+  await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address() as AddressInfo;
+  return { url: `http://127.0.0.1:${port}/v1/oauth/token`, bodies, refuse: token => { refused.add(token); },
+    close: () => new Promise<void>(resolve => server.close(() => resolve())) };
+}
+
+test("rpc central credentials: per-account opt-in/status/lease/disable, idempotent enable, native login and capture fenced, expired and refused candidates rejected", async () => {
   const { dir, cleanup } = makeDaemonDir();
   let daemon: DaemonHandle | null = null;
+  const oauth = await oauthStub();
   try {
     const fixture = { claudeAiOauth: { accessToken: "CENTRAL_ACCESS_FIXTURE", refreshToken: "CENTRAL_REFRESH_FIXTURE", expiresAt: Date.now() + 8 * 3600000 } };
     seedVault(dir, "claude", "claude-pilot", ".credentials.json", JSON.stringify(fixture));
-    daemon = await startDaemon(dir);
+    seedVault(dir, "claude", "claude-second", ".credentials.json", JSON.stringify({ claudeAiOauth: { ...fixture.claudeAiOauth, refreshToken: "SECOND_REFRESH_FIXTURE" } }));
+    seedVault(dir, "claude", "claude-expired", ".credentials.json", JSON.stringify({ claudeAiOauth: { ...fixture.claudeAiOauth, refreshToken: "EXPIRED_REFRESH_FIXTURE", expiresAt: Date.now() - 1 } }));
+    seedVault(dir, "claude", "claude-refused", ".credentials.json", JSON.stringify({ claudeAiOauth: { ...fixture.claudeAiOauth, refreshToken: "REFUSED_REFRESH_FIXTURE" } }));
+    oauth.refuse("REFUSED_REFRESH_FIXTURE");
+    daemon = await startDaemon(dir, { env: { HIVE_CLAUDE_OAUTH_TOKEN_URL: oauth.url } });
     const client = await daemon.client();
-    await client.request("account.add", { harness: "claude", label: "pilot", importExisting: true });
+    for (const label of ["pilot", "second", "expired", "refused"]) await client.request("account.add", { harness: "claude", label, importExisting: true });
     assert.equal(await client.request("account.credentials.status", { id: "claude-pilot" }), null);
     const state = await client.request<{ phase: string; generation: number }>("account.credentials.enable", { id: "claude-pilot", idempotencyKey: "central-enable" });
     assert.equal(state.phase, "ready");
-    assert.equal(state.generation, 1);
+    assert.equal(state.generation, 2, "adoption plus one validating rotation");
+    assert.equal(oauth.bodies.length, 1);
+    assert.ok(oauth.bodies[0]!.includes("CENTRAL_REFRESH_FIXTURE"), "the validating rotation consumed the adopted native chain");
     const replay = await client.request<{ deduped: boolean }>("account.credentials.enable", { id: "claude-pilot", idempotencyKey: "central-enable" });
     assert.equal(replay.deduped, true);
+    // Several accounts are managed independently; enrolling a second never touches the first.
+    const second = await client.request<{ phase: string; generation: number }>("account.credentials.enable", { id: "claude-second", idempotencyKey: "central-enable-second" });
+    assert.equal(second.phase, "ready");
+    assert.equal(second.generation, 2);
+    assert.deepEqual(await client.request("account.credentials.status", { id: "claude-pilot" }), { ...state });
+    // #12: an expired candidate is refused with nothing changed; a refused chain aborts with native copies intact.
+    await rejects(() => client.request("account.credentials.enable", { id: "claude-expired", idempotencyKey: "central-enable-expired" }), "account_unavailable");
+    assert.equal(await client.request("account.credentials.status", { id: "claude-expired" }), null);
+    assert.ok(readFileSync(join(dir, "vault", "claude", "claude-expired", ".credentials.json"), "utf8").includes("EXPIRED_REFRESH_FIXTURE"));
+    assert.equal(oauth.bodies.length, 2);
+    await rejects(() => client.request("account.credentials.enable", { id: "claude-refused", idempotencyKey: "central-enable-refused" }), "account_unavailable");
+    assert.equal((await client.request<{ phase: string }>("account.credentials.status", { id: "claude-refused" }))!.phase, "disabled");
+    assert.ok(readFileSync(join(dir, "vault", "claude", "claude-refused", ".credentials.json"), "utf8").includes("REFUSED_REFRESH_FIXTURE"));
+    assert.ok(!existsSync(join(dir, "homes", "claude-refused", ".credentials.json")), "no access-only copy was published for the refused candidate");
     await rejects(() => client.request("account.credentials.refresh", { id: "claude-pilot" }), "invalid_request");
     await rejects(() => client.request("account.login.start", { id: "claude-pilot" }), "account_unavailable");
     await rejects(() => client.request("account.capture", { id: "claude-pilot" }), "invalid_request");
     const lease = await client.request<{ files: Array<{ contentB64: string }> }>("account.lease", { account: "claude-pilot" });
-    assert.equal(JSON.parse(Buffer.from(lease.files[0]!.contentB64, "base64").toString()).claudeAiOauth.refreshToken, "");
+    const shipped = JSON.parse(Buffer.from(lease.files[0]!.contentB64, "base64").toString()).claudeAiOauth;
+    assert.equal(shipped.refreshToken, "");
+    assert.equal(shipped.accessToken, "ROTATED_ACCESS_1");
+    const secondLease = await client.request<{ files: Array<{ contentB64: string }> }>("account.lease", { account: "claude-second" });
+    assert.equal(JSON.parse(Buffer.from(secondLease.files[0]!.contentB64, "base64").toString()).claudeAiOauth.accessToken, "ROTATED_ACCESS_2");
     const authorityPath = join(dir, "vault", ".credential-authorities", "claude-pilot.json");
     const authority = readFileSync(authorityPath, "utf8");
     writeFileSync(authorityPath, "corrupt");
@@ -818,7 +866,11 @@ test("rpc central credentials: opt-in/status/lease/disable, idempotent enable, n
     writeFileSync(authorityPath, authority);
     const disabled = await client.request<{ phase: string }>("account.credentials.disable", { id: "claude-pilot", idempotencyKey: "central-disable" });
     assert.equal(disabled.phase, "disabled");
-    assert.ok(readFileSync(join(dir, "vault", "claude", "claude-pilot", ".credentials.json"), "utf8").includes("CENTRAL_REFRESH_FIXTURE"));
+    assert.ok(readFileSync(join(dir, "vault", "claude", "claude-pilot", ".credentials.json"), "utf8").includes("ROTATED_REFRESH_1"));
+    assert.equal((await client.request<{ phase: string }>("account.credentials.status", { id: "claude-second" }))!.phase, "ready", "disabling one account leaves the other enrolled");
+    for (const secret of ["CENTRAL_REFRESH_FIXTURE", "SECOND_REFRESH_FIXTURE", "EXPIRED_REFRESH_FIXTURE", "REFUSED_REFRESH_FIXTURE", "ROTATED_REFRESH_"]) {
+      assert.ok(!daemon.output().includes(secret), `daemon output must not carry ${secret}`);
+    }
     client.close();
-  } finally { if (daemon) await daemon.stop(); cleanup(); }
+  } finally { if (daemon) await daemon.stop(); await oauth.close(); cleanup(); }
 });

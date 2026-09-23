@@ -1,5 +1,5 @@
-/** Opt-in, one-account pilot. The private document is the only refresh-chain owner. */
-import { randomUUID } from "node:crypto";
+/** Opt-in per account. The private document is the only refresh-chain owner for each enrolled account. */
+import { createHash, randomUUID } from "node:crypto";
 import { closeSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, writeFileSync, unlinkSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { parseClaudeCredentials, type AccountCredentialAuthority, type AccountRow, type CoreStore } from "../../core/src/index.ts";
@@ -8,6 +8,15 @@ export interface AuthorityDocument {
   generation: number;
   operationKey: string | null;
   document: Record<string, unknown>;
+  /** The native chain enrollment adopted, secret-free, so its untouched copies are not mistaken for a foreign login. */
+  adopted?: AdoptedChain;
+}
+export interface AdoptedChain {
+  refreshTokenDigest: string;
+  expiresAt: number;
+}
+export function refreshTokenDigest(refreshToken: string): string {
+  return createHash("sha256").update(refreshToken).digest("hex");
 }
 export interface CentralCredentialOptions {
   store: CoreStore;
@@ -91,32 +100,74 @@ export class ClaudeCredentialAuthority {
     this.pending.set(account.id, { kind, promise });
     return promise;
   }
+  /** The chain enrollment adopted; only meaningful while `enrolling`. */
+  adopted(account: AccountRow): AdoptedChain | null {
+    try { return this.read(account).adopted ?? null; } catch { return null; }
+  }
   enable(account: AccountRow): Promise<AccountCredentialAuthority> {
     return this.lane(account, "enable", async () => {
-      if (account.harness !== "claude") throw new CredentialAuthorityError("The central credential pilot supports Claude only.");
+      if (account.harness !== "claude") throw new CredentialAuthorityError("Central credential management supports Claude only.");
       this.assertQuiescent(account);
       this.options.beforeEnroll(account);
-      for (const other of this.options.store.listAccounts()) {
-        if (other.id !== account.id && (this.enabled(other) || this.pending.get(other.id)?.kind === "enable")) throw new CredentialAuthorityError("The pilot supports one centrally managed account at a time.");
-      }
       const before = this.status(account);
       if (before?.phase === "ready") { this.read(account); return before; }
       if (before && !["disabled", "enrolling"].includes(before.phase)) throw new CredentialAuthorityError("Resolve the incomplete refresh before enrolling again.");
       let value: AuthorityDocument;
       if (before?.phase === "enrolling") {
         value = this.read(account);
+        if (before.operationKey !== null) {
+          // The validating rotation was in flight when enrollment was interrupted.
+          if (value.operationKey === before.operationKey && value.generation > before.generation) {
+            await this.options.publish(account, value.document, true);
+            return this.put(account, "ready", value);
+          }
+          this.put(account, "uncertain", { ...value, operationKey: before.operationKey });
+          throw new CredentialAuthorityError("The enrollment refresh outcome is unknown; the native refresh token may be consumed. Disable central credentials for this account, then log in again.");
+        }
       } else {
         const document = await this.options.nativeCredential(account);
-        if (!document || !parseClaudeCredentials(JSON.stringify(document))?.refreshToken) {
+        const candidate = document ? parseClaudeCredentials(JSON.stringify(document)) : null;
+        if (!document || !candidate?.refreshToken) {
           throw new CredentialAuthorityError("This account has no refresh credential; complete a login before enrolling it.");
+        }
+        if (candidate.expiresAt <= this.options.now()) {
+          // Nothing is saved or published: native copies stay exactly as they are.
+          throw new CredentialAuthorityError(`This account's credential expired at ${new Date(candidate.expiresAt).toISOString()}; log in natively (hive account login ${account.id}) before enrolling it.`);
         }
         this.assertQuiescent(account); // A spawn/login may have arrived during Keychain I/O.
         this.options.beforeEnroll(account);
-        value = { generation: (before?.generation ?? 0) + 1, operationKey: null, document };
+        value = { generation: (before?.generation ?? 0) + 1, operationKey: null, document,
+          adopted: { refreshTokenDigest: refreshTokenDigest(candidate.refreshToken), expiresAt: candidate.expiresAt } };
         // Save first while no runtime can start in this synchronous section.
         save(this.path(account), value);
         this.put(account, "enrolling", value);
       }
+      // Validate the chain with one real rotation before any native copy loses its refresh token.
+      const credential = parseClaudeCredentials(JSON.stringify(value.document))!;
+      if (!credential.refreshToken) throw new CredentialAuthorityError("The authority has no refresh credential; disable central credentials and log in again.");
+      await this.options.beforeRefresh(account, value.document);
+      const operationKey = randomUUID();
+      this.put(account, "enrolling", { ...value, operationKey });
+      let refreshed;
+      try { refreshed = await this.options.refresh(credential.refreshToken); }
+      catch {
+        this.put(account, "uncertain", { ...value, operationKey });
+        throw new CredentialAuthorityError("The enrollment refresh outcome is uncertain; the native refresh token may be consumed. Disable central credentials for this account, then log in again.");
+      }
+      if (refreshed === null) {
+        // A definitive provider refusal consumed nothing: abort with native copies intact.
+        this.put(account, "disabled", value);
+        this.options.store.setAccountStatus(account.id, "auth_needed", "Central enrollment refused: the provider rejected the refresh credential; log in again");
+        throw new CredentialAuthorityError(`The provider refused this account's refresh credential; native copies are unchanged. Log in natively (hive account login ${account.id}) before enrolling it.`);
+      }
+      if (!refreshed.accessToken || !refreshed.refreshToken || !Number.isFinite(refreshed.expiresAt) || refreshed.expiresAt <= this.options.now()) {
+        this.put(account, "uncertain", { ...value, operationKey });
+        throw new CredentialAuthorityError("The provider returned an unusable refresh result; disable central credentials for this account, then log in again.");
+      }
+      const oauth = value.document.claudeAiOauth as Record<string, unknown>;
+      value = { ...value, generation: value.generation + 1, operationKey,
+        document: { ...value.document, claudeAiOauth: { ...oauth, ...refreshed } } };
+      save(this.path(account), value);
       await this.options.publish(account, value.document, true);
       return this.put(account, "ready", value);
     });
@@ -125,7 +176,7 @@ export class ClaudeCredentialAuthority {
     return this.lane(account, "disable", async () => {
       this.assertQuiescent(account);
       const state = this.status(account);
-      if (!state) throw new CredentialAuthorityError("This account is not enrolled in the pilot.");
+      if (!state) throw new CredentialAuthorityError("This account is not centrally managed.");
       if (state.phase === "disabled") return state;
       const uncertain = state.phase === "refreshing" || state.phase === "uncertain" || state.phase === "disabling_uncertain";
       let value: AuthorityDocument;
@@ -140,7 +191,7 @@ export class ClaudeCredentialAuthority {
       catch (error) {
         if (!(error instanceof CredentialOwnershipConflict)) throw error;
         // A new external login belongs to the operator. Never overwrite it to restore an older chain.
-        this.options.store.setAccountStatus(account.id, "auth_needed", "External login changed; capture or log in again after disabling the pilot");
+        this.options.store.setAccountStatus(account.id, "auth_needed", "External login changed; capture or log in again after disabling central credentials");
         return this.put(account, "disabled", value);
       }
       if (uncertain) this.options.store.setAccountStatus(account.id, "auth_needed", "Central refresh outcome unknown; log in again");
@@ -148,7 +199,7 @@ export class ClaudeCredentialAuthority {
     });
   }
   assertDisabled(account: AccountRow): void {
-    if (this.enabled(account) || this.busy(account)) throw new CredentialAuthorityError("Disable the central credential pilot before removing this account.");
+    if (this.enabled(account) || this.busy(account)) throw new CredentialAuthorityError("Disable central credentials before removing this account.");
   }
   forgetDisabled(account: AccountRow): void {
     this.assertDisabled(account);
@@ -167,7 +218,7 @@ export class ClaudeCredentialAuthority {
         await this.options.publish(account, value.document, true);
         return this.put(account, "ready", value);
       }
-      if (state.phase !== "ready") throw new CredentialAuthorityError(`Central credentials are ${state.phase}; stop this account's local sessions, disable the pilot and log in again; retry enable only for an interrupted enrollment.`);
+      if (state.phase !== "ready") throw new CredentialAuthorityError(`Central credentials are ${state.phase}; stop this account's local sessions, disable central credentials and log in again; retry enable only for an interrupted enrollment.`);
       const credential = parseClaudeCredentials(JSON.stringify(value.document))!;
       if ((forceKey && value.operationKey === forceKey) || (!forceKey && credential.expiresAt - this.options.now() > minTtlMs)) {
         this.options.beforeUse(account, value.document);
@@ -181,7 +232,7 @@ export class ClaudeCredentialAuthority {
       try { refreshed = await this.options.refresh(credential.refreshToken); }
       catch {
         this.put(account, "uncertain", { ...value, operationKey });
-        throw new CredentialAuthorityError("Refresh outcome is uncertain; the pilot will not retry a possibly consumed refresh token automatically.");
+        throw new CredentialAuthorityError("Refresh outcome is uncertain; a possibly consumed refresh token is never retried automatically.");
       }
       if (!refreshed || !refreshed.accessToken || !refreshed.refreshToken || !Number.isFinite(refreshed.expiresAt) || refreshed.expiresAt <= this.options.now()) {
         this.put(account, "uncertain", { ...value, operationKey });

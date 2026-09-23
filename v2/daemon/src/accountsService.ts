@@ -17,7 +17,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, statSync } from "node
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
-import { ClaudeCredentialAuthority, CredentialAuthorityError, CredentialOwnershipConflict } from "./claudeCredentialAuthority.ts";
+import { ClaudeCredentialAuthority, CredentialAuthorityError, CredentialOwnershipConflict, refreshTokenDigest } from "./claudeCredentialAuthority.ts";
 import { liveGateways } from "./gateways.ts";
 import { withFileLock } from "../../../src/lock.ts";
 import { seedGatewayMcp, type GatewayMcpSeedResult } from "../../../src/accounts/gatewayMcpSeed.ts";
@@ -375,11 +375,14 @@ function defaultClaudeRefresh(timeoutMs: number): NonNullable<LimitsFetchers["cl
   // Contract with refreshClaudeCredential: return a token = success; return
   // `null` = the refresh token was REJECTED (recovery cannot proceed → login);
   // THROW = a temporary/uncertain failure (retry, never a login). The refresh
-  // token is never included in a thrown message.
+  // token is never included in a thrown message. HIVE_CLAUDE_OAUTH_TOKEN_URL
+  // lets daemon-level tests point the rotation at a local stub, like
+  // HIVE_NO_KEYCHAIN keeps them off the real Keychain.
+  const tokenUrl = process.env.HIVE_CLAUDE_OAUTH_TOKEN_URL || CLAUDE_OAUTH_TOKEN_URL;
   return async (refreshToken) => {
     let response: Response;
     try {
-      response = await fetch(CLAUDE_OAUTH_TOKEN_URL, {
+      response = await fetch(tokenUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ grant_type: "refresh_token", refresh_token: refreshToken, client_id: CLAUDE_OAUTH_CLIENT_ID }),
@@ -720,11 +723,12 @@ export class AccountsService {
       : readClaudeKeychainState);
     const checkCentralCopy = (account: AccountRow, document: Record<string, unknown>, raw: string): void => {
       const owned = parseClaudeCredentials(JSON.stringify(document))!;
-      const enrolling = this.centralCredentials.status(account)?.phase === "enrolling";
       const credential = parseClaudeCredentials(raw);
-      if (credential?.refreshToken && credential.refreshToken !== owned.refreshToken && !(enrolling && credential.expiresAt < owned.expiresAt)) {
-        throw new CredentialOwnershipConflict("An external Claude login or refresh changed this account; stop that process and recover the account before continuing.");
-      }
+      if (!credential?.refreshToken || credential.refreshToken === owned.refreshToken) return;
+      // While enrolling, native copies still hold the adopted chain (or older ones) until publication replaces them.
+      const adopted = this.centralCredentials.status(account)?.phase === "enrolling" ? this.centralCredentials.adopted(account) : null;
+      if (adopted && (refreshTokenDigest(credential.refreshToken) === adopted.refreshTokenDigest || credential.expiresAt < adopted.expiresAt)) return;
+      throw new CredentialOwnershipConflict("An external Claude login or refresh changed this account; stop that process and recover the account before continuing.");
     };
     const inspectCentralFiles = (account: AccountRow, document: Record<string, unknown>): void => {
       for (const path of [join(account.homePath, ".credentials.json"), join(this.vaultDirOf(account), ".credentials.json")]) {
@@ -2035,7 +2039,7 @@ export class AccountsService {
    * harnesses use the account home.
    */
   async captureAccount(account: AccountRow): Promise<CaptureOutcome> {
-    if (this.centralCredentials.enabled(account)) throw new CredentialAuthorityError("Disable the central credential pilot before capturing native credentials.");
+    if (this.centralCredentials.enabled(account)) throw new CredentialAuthorityError("Disable central credentials before capturing native credentials.");
     const recipe = recipeFor(account.harness);
     if (!recipe) throw new Error(`harness ${account.harness} has no identity recipe; cannot capture credentials`);
     const primaryFile = primaryCredentialFile(recipe);
