@@ -136,6 +136,7 @@ import {
   TranscriptUnavailableError,
 } from "./relocateSession.ts";
 import { SubstrateRouter } from "./substrates.ts";
+import { REMOTE_SENDER_RE } from "./envelope.ts";
 import { TmuxDriver, claudeProjectKey, renderTranscriptLines } from "../../driver-tmux/src/index.ts";
 import { tmuxSpawnSpec } from "./tmuxHarness.ts";
 import {
@@ -4247,7 +4248,8 @@ export class HiveDaemon {
         throw new RpcError("invalid_request", "send: sender must be a non-empty string when given");
       }
       sender = params.sender;
-      if (sender !== "operator" && !sender.startsWith("human:") && store.getBee(sender) == null) {
+      if (sender !== "operator" && !sender.startsWith("human:") && !REMOTE_SENDER_RE.test(sender)
+        && store.getBee(sender) == null) {
         throw new RpcError("invalid_request", `send: sender bee not found: ${sender}`);
       }
       if (sender.startsWith("human:") && sender.slice("human:".length).trim().length === 0) {

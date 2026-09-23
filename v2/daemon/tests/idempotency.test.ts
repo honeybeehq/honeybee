@@ -149,6 +149,18 @@ test("idem-rpc.2: send replay returns the original message — mailbox has exact
       }),
       (error: unknown) => error instanceof RpcError && error.code === "invalid_request",
     );
+    const relayed = await client.request<SendRpcResult>("send", {
+      beeId: spawned.beeId,
+      body: "report from another machine",
+      sender: "remote:trmd-studio/CL.527d",
+    });
+    const { messages: afterRelay } = await client.request<MailboxResult>("mailbox", { beeId: spawned.beeId });
+    assert.equal(afterRelay.find((m) => m.id === relayed.messageId)?.sender, "remote:trmd-studio/CL.527d");
+    await assert.rejects(
+      client.request("send", { beeId: spawned.beeId, body: "x", sender: "remote:no-agent" }),
+      (error: unknown) => error instanceof RpcError && error.code === "invalid_request",
+    );
+
     const retryAfterRefusal = await client.request<SendRpcResult>("send", {
       beeId: spawned.beeId,
       body: "valid retry",

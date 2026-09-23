@@ -6,7 +6,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { BUZ_INJECTION_MARKER, deliveryText, isPeerSender, urgencyToTier } from "../src/envelope.ts";
+import { BUZ_INJECTION_MARKER, REMOTE_SENDER_RE, deliveryText, isPeerSender, urgencyToTier } from "../src/envelope.ts";
 
 const baseMsg = { id: 7, body: "shard 3 is yours", urgency: "next" as const, enqueuedAt: 1_787_000_000_000 };
 
@@ -46,4 +46,14 @@ test("envelope.3: tier mapping matches the Q2 amendment", () => {
   assert.equal(urgencyToTier("now"), "interrupt");
   assert.equal(urgencyToTier("next"), "next-tool");
   assert.equal(urgencyToTier("idle"), "queue");
+});
+
+test("envelope.remote: a relayed agent on another authority is a peer; malformed claims are not", () => {
+  const none = (): boolean => false;
+  assert.equal(isPeerSender("remote:trmd-studio/CL.527d", none), true);
+  const text = deliveryText({ ...baseMsg, sender: "remote:trmd-studio/CL.527d" }, true);
+  assert.equal(JSON.parse(text.split("\n")[1] as string).from, "remote:trmd-studio/CL.527d");
+  for (const bad of ["remote:", "remote:studio", "remote:studio/", "remote:/CL.1", "remote:a b/CL.1", "remote:a/b/c", "remote:a/CL.1\n"]) {
+    assert.equal(REMOTE_SENDER_RE.test(bad), false, bad);
+  }
 });
