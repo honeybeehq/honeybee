@@ -11,6 +11,7 @@ import { buildDeployArtifact } from "../src/commands/deploy.ts";
 import { packRuntimeArtifact } from "../src/runtimeArtifact.ts";
 import { prepareHoneybeeRelease } from "../src/release/prepare.ts";
 import { publishHoneybeeRelease } from "../src/release/publish.ts";
+import { validateRuntimeBuildTarget } from "../src/release/runtimeTarget.ts";
 import { GitHubReleaseStore, notifyHoneybeeRelease } from "../src/release/github.ts";
 
 // Actions concurrency is repository-scoped, including for reusable workflow callers.
@@ -22,7 +23,7 @@ const profile = selectedDistribution(repoRoot);
 const sourceRevision = process.env.HONEYBEE_SOURCE_REVISION;
 const target = process.env.HONEYBEE_TARGET;
 if (!/^[a-f0-9]{40}$/.test(sourceRevision ?? "")) throw new Error("HONEYBEE_SOURCE_REVISION must be a full commit SHA");
-if (!["darwin-arm64", "linux-x64"].includes(target) || target !== `${process.platform}-${process.arch}`) throw new Error("Release must build natively for the requested supported target");
+validateRuntimeBuildTarget(target);
 const assessment = JSON.parse(process.env.HONEYBEE_API_ASSESSMENT ?? "null");
 const reservation = await prepareHoneybeeRelease({ repoRoot, sourceRevision, assessment, profile });
 // Reused releases retain their original assessment; callers cannot replace it on a retry.
@@ -35,7 +36,7 @@ const result = await publishHoneybeeRelease({ reservation, profile, target, prov
   build: async () => {
     const workDir = await mkdtemp(join(tmpdir(), "honeybee-release-build-"));
     try {
-      const { artifactDir } = await buildDeployArtifact({ repoRoot, sha: reservation.sourceRevision, workDir, release: true, log: console.log });
+      const { artifactDir } = await buildDeployArtifact({ repoRoot, sha: reservation.sourceRevision, workDir, release: true, target, log: console.log });
       const checkout = join(workDir, "checkout");
       const inventory = execFileSync(process.execPath, [join(checkout, "contracts/release/v1/tools/extract-inventory.mjs"), checkout], { encoding: "utf8", maxBuffer: 128 * 1024 * 1024 });
       await writeFile(join(artifactDir, "release-inventory.json"), inventory);

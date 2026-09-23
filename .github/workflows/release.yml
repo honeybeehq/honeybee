@@ -20,7 +20,7 @@ on:
         required: true
         type: string
       target:
-        description: Native runtime target
+        description: Runtime archive target (packaged on Linux)
         required: true
         type: choice
         options: [darwin-arm64, linux-x64]
@@ -73,7 +73,7 @@ concurrency:
 jobs:
   release:
     environment: ${{ (inputs.distribution == '' || inputs.distribution == 'production') && 'honeybee-release' || format('honeybee-release-{0}', inputs.distribution) }}
-    runs-on: ${{ inputs.target == 'darwin-arm64' && 'macos-14' || 'ubuntu-24.04' }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 90
     outputs:
       descriptor-url: ${{ steps.publish.outputs.descriptor-url }}
@@ -103,12 +103,8 @@ jobs:
       - name: Install native test prerequisites
         shell: bash
         run: |
-          if [[ "$RUNNER_OS" == "macOS" ]]; then
-            brew install tmux
-          else
-            sudo apt-get update
-            sudo apt-get install -y tmux
-          fi
+          sudo apt-get update
+          sudo apt-get install -y tmux
       - run: npm ci
       - name: Reserve, verify and publish exact runtime
         id: publish

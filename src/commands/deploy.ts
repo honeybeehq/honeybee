@@ -26,6 +26,7 @@ import { actionLine, bold, dim, formatRelativeTime, isPretty, note, tildify, yel
 import { flag, numberFlag, truthy, type Parsed } from "../parse.js";
 
 import { collectBuildProvenance } from "../release/buildIdentityProducer.js";
+import { prepareRuntimeTarget, validateRuntimeBuildTarget } from "../release/runtimeTarget.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -98,9 +99,10 @@ async function runStep(command: string, args: string[], cwd: string, log: (line:
  * into the repo.
  */
 export async function buildDeployArtifact(
-  { repoRoot, sha, workDir, log, skipTests, release }: BuildArtifactContext,
+  { repoRoot, sha, workDir, log, skipTests, release, target }: BuildArtifactContext,
 ): Promise<{ artifactDir: string }> {
   if (release && skipTests) throw new Error("Release artifacts cannot skip tests");
+  if (target !== undefined) validateRuntimeBuildTarget(target);
   const checkout = join(workDir, "checkout");
   await mkdir(checkout, { recursive: true });
   const tarPath = join(workDir, "source.tar");
@@ -147,6 +149,7 @@ export async function buildDeployArtifact(
   await runStep("tar", ["-xzf", join(packDest, filename), "-C", stage, "--strip-components", "1"], workDir, log);
   await cp(join(checkout, "package-lock.json"), join(stage, "package-lock.json"));
   await runStep("npm", ["ci", "--omit=dev"], stage, log);
+  if (target !== undefined) await prepareRuntimeTarget(stage, target);
   return { artifactDir: stage };
 }
 

@@ -27,8 +27,16 @@ adapter execution are explicitly rejected. Inputs are:
   before/after identities, verified candidate probes, inventory fingerprints,
   evaluator/model/prompt/policy revisions, classification, bump and digest.
   `null` is permitted only when the product-source reservation already exists.
-- `target`: `darwin-arm64` (macos-14 runner) or `linux-x64` (ubuntu-24.04 runner).
-  Builds are native, including production native dependencies.
+- `target`: `darwin-arm64` or `linux-x64`; both archives are packaged on `ubuntu-24.04`.
+
+The macOS archive uses the locked `node-pty` package's shipped ARM64 prebuilds.
+Packaging verifies their Mach-O architecture and file type, restores the helper's
+execute permission, removes the build host's PTY output, and records the requested
+target in the archive identity before hashing. Honeybee no longer compiles a native
+macOS process-census helper. Build and test gates run on Linux; macOS-only runtime
+checks (such as Seatbelt) still require a Mac and are not proven by the Linux gate.
+Linux runtime dependencies are built natively; macOS runtime dependencies use the
+verified prebuilds described above.
 
 The protected `honeybee-release` environment and its authorized coordinator or
 human caller are the assessment trust boundary. **An assessment's self-digest is

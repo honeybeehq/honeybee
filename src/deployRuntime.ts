@@ -69,6 +69,8 @@ export type BuildArtifactContext = {
   skipTests?: boolean;
   /** Publication runs every release gate regardless of local deployment state. */
   release?: boolean;
+  /** Explicit release target; omitted for native local deploy builds. */
+  target?: string;
 };
 
 export type RestartDaemonContext = {
