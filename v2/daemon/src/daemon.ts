@@ -3813,7 +3813,14 @@ export class HiveDaemon {
     const store = this.mustStore();
     const previous = store.threadOperationByKey(key);
     if (previous) {
-      if (previous.requestHash !== requestHash) throw new RpcError("idempotency_conflict", "Thread operation key is already bound to another request");
+      // Pre-v28 receipts did not include successor/claim fields. Accept that
+      // exact old intent only when no new placement identity was supplied.
+      const legacyHash = !claim && requestedSuccessorBeeId === null
+        ? createHash("sha256").update(JSON.stringify({ kind, sourceBeeId, sourceProviderSessionId, instruction, name })).digest("hex")
+        : null;
+      if (previous.requestHash !== requestHash && previous.requestHash !== legacyHash) {
+        throw new RpcError("idempotency_conflict", "Thread operation key is already bound to another request");
+      }
       const replayAdmission = store.getAccountAdmissionByRequestKey(`account-admission:${kind}:${key}`);
       return { operation: threadOperationView(previous), deduped: true,
         ...(claim ? { allocation: claim.allocation, allocationClaimId: claim.id } : {}),
