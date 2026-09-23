@@ -303,9 +303,8 @@ test("actions.5: mail.cancel of an undelivered dispatch fails the attempt (typed
     assert.equal(row.status, "failed");
     assert.equal(row.failure?.code, "dispatch_cancelled");
     assert.equal(row.failure?.retryable, true);
-    // A failed action is terminal for cancel (retry is the control); land's ref points at a non-succeeded action → typed failure at its dispatch.
-    assert.equal(store.cancelAction(commit.id).applied, false);
-    assert.equal(store.actionView(commit.id).controls.retry, true);
+    // A failed action can be retried, cancelled or (agent) completed; land's ref points at a non-succeeded action → typed failure at its dispatch.
+    assert.deepEqual(store.actionView(commit.id).controls, { cancel: true, forceCancel: false, retry: true, forceRetry: false, reorder: false, complete: true });
     const begun = store.beginCellCaptureAttempt(land.id, { expectedHead: "abc" });
     assert.equal(begun.resolved, null);
     assert.equal(begun.action.status, "failed");
@@ -663,6 +662,119 @@ test("actions.13: an archived bee is never reminded (send would unarchive it)", 
     assert.equal(mustAction(store, commit.id).dispatch?.nudgedAt, null, "not recorded as reminded");
     store.unarchiveBee(bee.id);
     assert.ok(store.nudgeAgentAction(commit.id, 1), "reminded once the operator brings it back");
+  } finally {
+    h.cleanup();
+  }
+});
+
+/** Dispatch + deliver the head agent action and report it failed; returns the delivered token. */
+function failAgent(store: CoreStore, beeId: string, actionId: string, code = "typecheck_failed", detail = "Commit blocked by failed desktop typecheck") {
+  const t = deliver(store, actionId);
+  store.reportAction({ actionId, attempt: t.attempt, token: t.token, reporter: { beeId }, kind: "result", outcome: "failed", failure: { code, detail } });
+  return t;
+}
+
+test("actions.14: action.complete on a failed agent action overrides the failure — receipt records it, history stays failed, a $ref Land releases, late reports are refused", () => {
+  const h = harness();
+  try {
+    const store = h.open();
+    const bee = liveBee(store);
+    const { actions } = shipSequence(store, bee.id);
+    const [commit, land, archive] = actions as [ActionRow, ActionRow, ActionRow];
+    const t = failAgent(store, bee.id, commit.id);
+    const failedAt = mustAction(store, commit.id).failure!.at;
+    assert.deepEqual(store.actionView(land.id).hold, { reason: "predecessor_failed", actionId: commit.id, actionStatus: "failed" });
+    assert.deepEqual(store.actionView(commit.id).controls, { cancel: true, forceCancel: false, retry: true, forceRetry: false, reorder: false, complete: true });
+    // The queue's pause state is the operator's and survives the override.
+    store.pauseActionQueue(bee.id);
+    // Outputs are validated like a report; a refused complete changes nothing.
+    assert.throws(() => store.completeAction(commit.id, {}), /output 'commitSha' is required/);
+    assert.equal(mustAction(store, commit.id).status, "failed");
+    const seqBefore = store.lastAuditSeq();
+    const done = store.completeAction(commit.id, { outputs: { commitSha: SHA, branch: "feat/x" }, detail: "operator: commit anyway" });
+    assert.equal(done.applied, true);
+    assert.equal(done.action.status, "succeeded");
+    assert.deepEqual(done.action.result?.outputs, { commitSha: SHA, branch: "feat/x" });
+    assert.deepEqual(done.action.result?.receipt, {
+      completedBy: "operator",
+      overrodeFailure: { code: "typecheck_failed", detail: "Commit blocked by failed desktop typecheck", attempt: 1, at: failedAt },
+    });
+    assert.equal(done.action.result?.detail, "operator: commit anyway");
+    assert.equal(done.action.failure, null, "the failure lives in the receipt, not on a succeeded view");
+    assert.deepEqual(done.action.attempts.map((a) => [a.attempt, a.outcome]), [[1, "failed"]], "the attempt's own history stays failed");
+    assert.equal(mustAction(store, commit.id).attemptToken, null, "the failed attempt's token is retired");
+    const puts = store.auditTail(seqBefore, 1000, bee.id).filter((r) => r.kind === "action.put");
+    assert.ok(puts.some((r) => r.payload.reason === "operator_complete" && (r.payload.action as { id: string }).id === commit.id && r.payload.previous === "failed"));
+    assert.ok(puts.some((r) => (r.payload.action as ActionRow).id === land.id), "the sibling whose hold changed is re-emitted");
+    assert.equal(store.getActionQueue(bee.id)!.paused, true);
+    assert.deepEqual(store.actionView(land.id).hold, { reason: "paused", actionId: null, actionStatus: null });
+    store.resumeActionQueue(bee.id);
+    assert.equal(store.actionView(land.id).hold, null, "Land is released by the normal rule");
+    const begun = store.beginCellCaptureAttempt(land.id, { expectedHead: SHA });
+    assert.deepEqual(begun.resolved, { targetBranch: "main", commit: SHA }, "the $ref resolves to the operator's commitSha");
+    // Late reports for the failed attempt are refused, whatever they say.
+    for (const outcome of ["succeeded", "failed"] as const) {
+      assert.throws(() => store.reportAction({ actionId: commit.id, attempt: t.attempt, token: t.token, reporter: { beeId: bee.id }, kind: "result", outcome, outputs: { commitSha: "abcdef1" } }), ActionUnauthorizedError);
+    }
+    assert.throws(() => store.reportAction({ actionId: commit.id, attempt: t.attempt, token: t.token, reporter: { beeId: bee.id }, kind: "progress", note: "late" }), ActionUnauthorizedError);
+    assert.equal(mustAction(store, commit.id).result?.outputs.commitSha, SHA);
+    // Succeeded now: complete, cancel and retry are closed again.
+    assert.equal(store.completeAction(commit.id, { outputs: { commitSha: SHA } }).applied, false);
+    assert.equal(store.cancelAction(commit.id).applied, false);
+    assert.throws(() => store.retryAction(commit.id), ActionRefusedError);
+    // A failed structured action is never completable (quiet, as for every terminal non-agent action) but can be cancelled.
+    store.settleAction(land.id, begun.action.attempt, { kind: "failed", code: "conflict", detail: "a.txt", retryable: true });
+    assert.deepEqual(store.actionView(land.id).controls, { cancel: true, forceCancel: false, retry: true, forceRetry: false, reorder: false, complete: false });
+    assert.equal(store.completeAction(land.id, { outputs: {} }).applied, false);
+    assert.equal(mustAction(store, land.id).status, "failed");
+    assert.deepEqual(store.actionView(archive.id).hold, { reason: "predecessor_failed", actionId: land.id, actionStatus: "failed" });
+    assert.deepEqual(replayAudit(store.auditTail(0, 100_000)), store.dumpState());
+  } finally {
+    h.cleanup();
+  }
+});
+
+test("actions.15: action.cancel on a failed action removes it — the next step releases; a $ref successor fails input_unresolved; late reports are refused", () => {
+  const h = harness();
+  try {
+    const store = h.open();
+    const bee = liveBee(store);
+    // fix → archive: no reference, so cancelling the failed fix releases the archive.
+    const [fix, archive] = enqueue(store, bee.id, [{ kind: "fix", inputs: { instruction: "lint" } }, { kind: "archive" }]).actions as [ActionRow, ActionRow];
+    const t = failAgent(store, bee.id, fix.id, "reported_failure", "cannot fix");
+    assert.deepEqual(store.actionView(archive.id).hold, { reason: "predecessor_failed", actionId: fix.id, actionStatus: "failed" });
+    const seqBefore = store.lastAuditSeq();
+    const cancelled = store.cancelAction(fix.id);
+    assert.equal(cancelled.applied, true);
+    assert.equal(cancelled.action.status, "cancelled");
+    assert.equal(cancelled.action.failure?.detail, "cannot fix", "the failure stays visible on the cancelled view");
+    assert.deepEqual(cancelled.action.attempts.map((a) => [a.attempt, a.outcome]), [[1, "failed"]]);
+    assert.deepEqual(cancelled.action.controls, { cancel: false, forceCancel: false, retry: false, forceRetry: false, reorder: false, complete: false });
+    const puts = store.auditTail(seqBefore, 1000, bee.id).filter((r) => r.kind === "action.put");
+    assert.ok(puts.some((r) => r.payload.reason === "cancelled" && r.payload.previous === "failed"));
+    assert.equal(store.actionView(archive.id).hold, null, "the next step is released");
+    assert.equal(store.cancelAction(fix.id).applied, false, "cancelled: quiet no-op");
+    assert.equal(store.completeAction(fix.id).applied, false, "cancelled: quiet no-op");
+    assert.throws(() => store.retryAction(fix.id), ActionRefusedError);
+    assert.throws(() => store.reportAction({ actionId: fix.id, attempt: t.attempt, token: t.token, reporter: { beeId: bee.id }, kind: "result", outcome: "succeeded" }), ActionUnauthorizedError);
+    assert.throws(() => store.reportAction({ actionId: fix.id, attempt: t.attempt, token: t.token, reporter: { beeId: bee.id }, kind: "result", outcome: "failed" }), ActionUnauthorizedError);
+    store.cancelAction(archive.id);
+    // commit → land($ref commit): the removed step's output is never a silent null.
+    const { actions } = shipSequence(store, bee.id, "ship-cancel");
+    const [commit, land] = actions as [ActionRow, ActionRow];
+    failAgent(store, bee.id, commit.id);
+    assert.equal(store.cancelAction(commit.id).applied, true);
+    assert.equal(store.actionView(land.id).hold, null);
+    const begun = store.beginCellCaptureAttempt(land.id, { expectedHead: SHA });
+    assert.equal(begun.resolved, null);
+    assert.equal(begun.action.status, "failed");
+    assert.equal(begun.action.failure?.code, "input_unresolved");
+    assert.equal(begun.action.failure?.retryable, true);
+    // A failed structured action cancels outright too (no force: nothing is in flight).
+    assert.equal(store.actionView(land.id).controls.cancel, true);
+    assert.equal(store.cancelAction(land.id).applied, true);
+    assert.equal(mustAction(store, land.id).failure?.code, "input_unresolved");
+    assert.deepEqual(replayAudit(store.auditTail(0, 100_000)), store.dumpState());
   } finally {
     h.cleanup();
   }

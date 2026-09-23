@@ -3084,7 +3084,7 @@ export class HiveDaemon {
   }
 
   /**
-   * `action.complete` (bee.actions.complete.v1): the operator settles an open agent action. For
+   * `action.complete` (bee.actions.complete.v1): the operator settles an open or failed agent action. For
    * `commit`, an omitted `commitSha` is read from the bee's checkout HEAD
    * (the Cell space for Cell bees, else the bee's cwd), with `branch` when
    * HEAD is on one; an unreadable HEAD is `invalid_request`.

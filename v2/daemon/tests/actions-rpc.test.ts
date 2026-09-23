@@ -418,3 +418,86 @@ test("actions.rpc.complete: the operator completes an unreported commit — HEAD
   const explicit = await f.rpc<ActionCompleteResult>("action.complete", { actionId: c3, outputs: { commitSha: "abcdef1234" } });
   assert.equal(explicit.action.result?.outputs.commitSha, "abcdef1234");
 });
+
+test("actions.rpc.failed-exits: a failed Commit is completed (HEAD filled, failure kept in the receipt, Land proceeds) or cancelled (a $ref Land fails input_unresolved); keys replay; late reports are refused", { timeout: 180_000 }, async (t) => {
+  const f = await fixture(t);
+  const spawned = await f.rpc<SpawnResult>("spawn", { name: "overridden", agent: "cellstub", cwd: "/ignored", substrate: "cell", cell: { originRepo: f.originRepo } });
+  const beeId = spawned.beeId;
+  const idle = await waitFor(async () => {
+    const v = await f.rpc<ViewResult>("view", { beeId });
+    return v.view.runtimeState === "idle" ? v : null;
+  }, "cell bee idle", 60_000);
+  const spaceDir = idle.bee!.cwd;
+  const failCommit = async (commit: string) => {
+    await f.waitStatus(commit, ["running"], "commit dispatched");
+    await waitFor(async () => (await f.action(commit)).dispatch?.deliveredAt != null, "instruction delivered", 30_000);
+    const tok = tokenOf(await f.dispatchBody(beeId, commit));
+    await f.rpc<ActionReportResult>("action.report", { actionId: commit, ...tok, beeId, kind: "result", outcome: "failed", failure: { code: "typecheck_failed", detail: "Commit blocked by failed desktop typecheck" } });
+    return tok;
+  };
+
+  // Exit 1 (the incident): the agent reported --failed, then committed anyway on the operator's word.
+  const first = await f.rpc<ActionEnqueueResult>("action.enqueue", {
+    beeId,
+    idempotencyKey: "override-seq",
+    items: [
+      { kind: "commit", inputs: { message: "blocked work" } },
+      { kind: "land", inputs: { targetBranch: "throwaway/overridden", commit: { $ref: { item: 0, output: "commitSha" } } } },
+    ],
+  });
+  const [commit, land] = first.actions.map((a) => a.id) as [string, string];
+  const tok = await failCommit(commit);
+  const failed = await f.action(commit);
+  assert.equal(failed.status, "failed");
+  assert.deepEqual(failed.controls, { cancel: true, forceCancel: false, retry: true, forceRetry: false, reorder: false, complete: true });
+  assert.deepEqual((await f.action(land)).hold, { reason: "predecessor_failed", actionId: commit, actionStatus: "failed" });
+  const cellSha = commitInCell(spaceDir, "blocked.txt", "committed anyway\n", "blocked work");
+  const done = await f.rpc<ActionCompleteResult>("action.complete", { actionId: commit, detail: "commit anyway", idempotencyKey: "override-1" });
+  assert.equal(done.applied, true);
+  assert.equal(done.action.status, "succeeded");
+  assert.equal(done.action.result?.outputs.commitSha, cellSha, "commitSha read from the Cell HEAD");
+  assert.deepEqual(done.action.result?.receipt, {
+    completedBy: "operator",
+    overrodeFailure: { code: "typecheck_failed", detail: "Commit blocked by failed desktop typecheck", attempt: 1, at: failed.failure!.at },
+  });
+  assert.equal(done.action.failure, null);
+  assert.deepEqual(done.action.attempts.map((a) => a.outcome), ["failed"]);
+  const replay = await f.rpc<ActionCompleteResult>("action.complete", { actionId: commit, detail: "commit anyway", idempotencyKey: "override-1" });
+  assert.equal(replay.deduped, true);
+  assert.equal(replay.action.status, "succeeded");
+  assert.equal((await f.rpc<ActionCompleteResult>("action.complete", { actionId: commit })).applied, false, "succeeded: quiet no-op");
+  assert.equal((await f.rpc<ActionCancelResult>("action.cancel", { actionId: commit })).applied, false, "succeeded: quiet no-op");
+  const landed = await f.waitStatus(land, ["succeeded"], "landed after the override");
+  assert.equal(landed.result?.outputs.cellHead, cellSha);
+  assert.equal(g(f.originRepo, ["rev-parse", "refs/heads/throwaway/overridden"]), cellSha);
+  for (const outcome of ["succeeded", "failed"]) {
+    await assert.rejects(f.rpc("action.report", { actionId: commit, ...tok, beeId, kind: "result", outcome, outputs: { commitSha: cellSha } }), rejectsCode("action_unauthorized"));
+  }
+  const tail = await f.rpc<{ rows: AuditRow[] }>("audit.tail", { beeId, limit: 1000 });
+  assert.ok(tail.rows.some((r) => r.kind === "action.put" && r.payload.reason === "operator_complete" && r.payload.previous === "failed"));
+
+  // Exit 2: remove the failed step. The Land that referenced its commitSha fails typed, never with a null.
+  const second = await f.rpc<ActionEnqueueResult>("action.enqueue", {
+    beeId,
+    idempotencyKey: "cancel-seq",
+    items: [
+      { kind: "commit" },
+      { kind: "land", inputs: { targetBranch: "throwaway/cancelled", commit: { $ref: { item: 0, output: "commitSha" } } } },
+    ],
+  });
+  const [commit2, land2] = second.actions.map((a) => a.id) as [string, string];
+  const tok2 = await failCommit(commit2);
+  const cancelled = await f.rpc<ActionCancelResult>("action.cancel", { actionId: commit2, idempotencyKey: "cancel-1" });
+  assert.equal(cancelled.applied, true);
+  assert.equal(cancelled.action.status, "cancelled");
+  assert.equal(cancelled.action.failure?.code, "typecheck_failed");
+  const cancelReplay = await f.rpc<ActionCancelResult>("action.cancel", { actionId: commit2, idempotencyKey: "cancel-1" });
+  assert.equal(cancelReplay.deduped, true);
+  assert.equal((await f.rpc<ActionCancelResult>("action.cancel", { actionId: commit2 })).applied, false, "cancelled: quiet no-op");
+  await assert.rejects(f.rpc("action.report", { actionId: commit2, ...tok2, beeId, kind: "result", outcome: "succeeded", outputs: { commitSha: cellSha } }), rejectsCode("action_unauthorized"));
+  const unresolved = await f.waitStatus(land2, ["failed"], "land fails on the removed reference");
+  assert.equal(unresolved.failure?.code, "input_unresolved");
+  assert.equal(unresolved.failure?.retryable, true);
+  assert.equal(unresolved.controls.complete, false, "a structured action is never completable");
+  assert.equal(unresolved.controls.cancel, true);
+});

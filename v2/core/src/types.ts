@@ -1080,14 +1080,20 @@ export type ActionExecutor = (typeof ACTION_EXECUTORS)[number];
 export const ACTION_STATUSES = ["queued", "running", "waiting", "succeeded", "failed", "cancelled"] as const;
 export type ActionStatus = (typeof ACTION_STATUSES)[number];
 
-/** Closed graph. Terminal statuses have no outbound edge except `failed → queued` (retry). */
+/**
+ * Closed graph. `succeeded` and `cancelled` are final. `failed` has three
+ * operator exits and nothing else leaves it: `queued` (`action.retry`, a new
+ * attempt), `succeeded` (only `action.complete` on an agent action, the
+ * operator overriding the reported failure) and `cancelled` (`action.cancel`,
+ * removing it from the lane).
+ */
 export const ACTION_TRANSITIONS: Readonly<Record<ActionStatus, readonly ActionStatus[]>> = {
   // queued → succeeded: a structured operation whose effect already holds settles at dispatch (e.g. archive of an archived bee).
   queued: ["running", "waiting", "succeeded", "failed", "cancelled"],
   running: ["waiting", "succeeded", "failed", "cancelled"],
   waiting: ["running", "succeeded", "failed", "cancelled", "queued"],
   succeeded: [],
-  failed: ["queued"],
+  failed: ["queued", "succeeded", "cancelled"],
   cancelled: [],
 };
 
@@ -1216,6 +1222,7 @@ export interface ActionHold {
 
 /** Which controls apply right now (derived, so Apiary never guesses). */
 export interface ActionControls {
+  /** Cancel without force: queued, failed, an undelivered agent instruction, an unclaimed external offer. */
   cancel: boolean;
   /** Cancel is only allowed with `force` (effects may already be under way). */
   forceCancel: boolean;
@@ -1223,7 +1230,7 @@ export interface ActionControls {
   /** Retry is only allowed with `force` (the last attempt's outcome is uncertain). */
   forceRetry: boolean;
   reorder: boolean;
-  /** `action.complete`: the operator may settle the open agent attempt as succeeded (running, or waiting on input). */
+  /** `action.complete`: the operator may settle the agent attempt as succeeded (running, waiting on input, or failed). */
   complete: boolean;
 }
 

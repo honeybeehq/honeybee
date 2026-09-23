@@ -433,11 +433,14 @@ function actionHold(pred: ActionRow | null, active: ActionRow | null, queue: Pic
 export function deriveActionControls(row: ActionRow): ActionControls {
   const undeliveredAgent = row.executor === "agent" && row.status === "running" && row.dispatch?.deliveredAt == null;
   const unclaimedExternal = row.executor === "external" && row.status === "waiting" && row.waitingReason === "executor" && row.dispatch?.claimedBy == null;
-  const cancel = row.status === "queued" || undeliveredAgent || unclaimedExternal;
+  // A failed action has nothing in flight: cancelling it removes it from the lane outright.
+  const cancel = row.status === "queued" || row.status === "failed" || undeliveredAgent || unclaimedExternal;
   const forceCancel = !cancel && actionIsActive(row) && row.executor !== "lifecycle.archive";
   const retry = row.status === "failed";
   const forceRetry = row.status === "waiting" && row.waitingReason === "uncertain";
-  const complete = row.executor === "agent" && (row.status === "running" || (row.status === "waiting" && row.waitingReason === "input"));
+  // A failed agent action may be completed too: the operator overrides the reported failure.
+  const complete = row.executor === "agent"
+    && (row.status === "running" || row.status === "failed" || (row.status === "waiting" && row.waitingReason === "input"));
   return { cancel, forceCancel, retry, forceRetry, reorder: row.status === "queued", complete };
 }
 

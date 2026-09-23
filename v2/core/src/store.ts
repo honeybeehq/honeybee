@@ -7164,14 +7164,16 @@ export class CoreStore {
    * claimed / in-flight attempts need `force` — effects may already be under
    * way and are NOT undone; a late report for the attempt is refused. A
    * running lifecycle archive is never cancelled (its command settles
-   * shortly). Terminal actions are a quiet no-op.
+   * shortly). A failed action (any executor) cancels outright: nothing is in
+   * flight, it leaves the lane and keeps its `failure`. Succeeded/cancelled
+   * actions are a quiet no-op.
    */
   cancelAction(actionId: string, opts: { force?: boolean; reason?: string } = {}): { action: ActionView; applied: boolean } {
     const target = this.mustGetAction(actionId);
     return this.withActionLaneAudit(target.beeId, "cancelled", () => {
       const row = this.mustGetAction(actionId);
-      if (ACTION_TERMINAL_STATUSES.includes(row.status)) return { action: this.actionView(actionId), applied: false };
       const controls = deriveActionControls(row);
+      if (ACTION_TERMINAL_STATUSES.includes(row.status) && !controls.cancel) return { action: this.actionView(actionId), applied: false };
       if (!controls.cancel) {
         if (!controls.forceCancel) throw new ActionRefusedError(`action ${actionId} is ${row.status} (${row.executor}) and cannot be cancelled now`);
         if (!opts.force) throw new ActionRefusedError(`action ${actionId} is ${row.status} with effects under way; pass force to cancel tracking`);
@@ -7870,12 +7872,16 @@ export class CoreStore {
    * `action.complete` (bee.actions.complete.v1) — the operator settles the CURRENT attempt of an
    * open agent action as `succeeded`, exactly as if the agent had reported
    * it (`result.receipt = {completedBy: "operator"}`). Allowed when
-   * `controls.complete` (agent executor, running or waiting on input);
-   * terminal actions are a quiet `applied:false`. Outputs are validated like a
-   * report. An undelivered instruction is withdrawn from the mailbox and an
-   * open question of the attempt is answered (the agent learns that no report
-   * is needed). The token is kept, so a late agent report for the attempt
-   * dedupes (same outcome) or is refused (different outcome).
+   * `controls.complete` (agent executor; running, waiting on input, or
+   * failed); other terminal actions are a quiet `applied:false`. Outputs are
+   * validated like a report. An undelivered instruction is withdrawn from the
+   * mailbox and an open question of the attempt is answered (the agent learns
+   * that no report is needed). For an open attempt the token is kept, so a
+   * late agent report dedupes (same outcome) or is refused (different
+   * outcome). Completing a FAILED action overrides the reported failure: the
+   * failure moves into `result.receipt.overrodeFailure`, the attempt history
+   * keeps its `failed` outcome, and the token is retired so any later report
+   * for that attempt is refused.
    */
   completeAction(actionId: string, input: { outputs?: Record<string, unknown> | null; detail?: string | null } = {}): { action: ActionView; applied: boolean } {
     const target = this.mustGetAction(actionId);
@@ -7883,10 +7889,11 @@ export class CoreStore {
     if (outputs === null || typeof outputs !== "object" || Array.isArray(outputs)) throw new CoreError("completeAction: outputs must be an object");
     return this.withActionLaneAudit(target.beeId, "operator_complete", () => {
       const row = this.mustGetAction(actionId);
-      if (ACTION_TERMINAL_STATUSES.includes(row.status)) return { action: this.actionView(actionId), applied: false };
-      if (!deriveActionControls(row).complete) {
+      const completable = deriveActionControls(row).complete;
+      if (ACTION_TERMINAL_STATUSES.includes(row.status) && !completable) return { action: this.actionView(actionId), applied: false };
+      if (!completable) {
         throw new ActionRefusedError(
-          `action ${actionId} is ${row.status}${row.waitingReason ? `/${row.waitingReason}` : ""} (${row.executor}); only an open agent action (running, or waiting on input) can be completed`,
+          `action ${actionId} is ${row.status}${row.waitingReason ? `/${row.waitingReason}` : ""} (${row.executor}); only an agent action that is running, waiting on input or failed can be completed`,
         );
       }
       const check = validateActionOutputs(row.definition, outputs, requestedOutputNames(row.resolvedInputs ?? row.inputs));
@@ -7901,12 +7908,18 @@ export class CoreStore {
           this.auditMailCanceled(message, "requested", at);
         }
       }
+      const overridden = row.status === "failed" ? row.failure : null;
+      const receipt: Record<string, unknown> = overridden
+        ? { completedBy: "operator", overrodeFailure: { code: overridden.code, detail: overridden.detail, attempt: overridden.attempt, at: overridden.at } }
+        : { completedBy: "operator" };
       this.updateActionRow(actionId, {
         status: "succeeded",
         waitingReason: null,
         waitingDetail: null,
-        result: { outputs, receipt: { completedBy: "operator" }, detail: input.detail ?? null, reconciled: false, attempt: row.attempt, at },
+        ...(row.status === "failed" ? { attemptToken: null } : {}),
+        result: { outputs, receipt, detail: input.detail ?? null, reconciled: false, attempt: row.attempt, at },
         failure: null,
+        // A failed attempt is already in history as `failed`; closing it again is a no-op.
         attempts: this.closeActionAttempt(row, "succeeded", at),
         finishedAt: at,
       });
