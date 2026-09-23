@@ -63,6 +63,51 @@ test("keychain reads distinguish explicit absence from unreadable and preserve p
   assert.deepEqual(await read(async () => ({ stdout: `${healthy}\n` })), { status: "present", raw: healthy });
 });
 
+test("keychain reads prefer the current user's item over a same-service item under another account", async () => {
+  const home = "/tmp/keychain-read-account";
+  const service = claudeKeychainService(home);
+  const notFound = () => Object.assign(new Error("not found"), {
+    code: 44,
+    stderr: "security: SecKeychainSearchCopyNext: The specified item could not be found in the keychain.",
+  });
+  const live = '{"claudeAiOauth":{"accessToken":"live","expiresAt":2}}';
+  const blank = '{"claudeAiOauth":{"accessToken":"","expiresAt":0}}';
+  // A service-only lookup returns the stray blank item first, as macOS did.
+  const items = new Map([["unknown", blank], ["me", live]]);
+  const calls: string[][] = [];
+  const execSecurity = async (args: string[]) => {
+    calls.push(args);
+    const account = args.includes("-a") ? args[args.indexOf("-a") + 1] : undefined;
+    const raw = account === undefined ? items.values().next().value : items.get(account);
+    if (raw === undefined) throw notFound();
+    return { stdout: `${raw}\n` };
+  };
+
+  assert.deepEqual(await readClaudeKeychainState(home, { available: () => true, account: "me", execSecurity }), { status: "present", raw: live });
+  assert.deepEqual(calls, [["find-generic-password", "-w", "-a", "me", "-s", service]]);
+
+  // No item for the current user: fall back to the service-only lookup.
+  calls.length = 0;
+  assert.deepEqual(await readClaudeKeychainState(home, { available: () => true, account: "other", execSecurity }), { status: "present", raw: blank });
+  assert.deepEqual(calls, [
+    ["find-generic-password", "-w", "-a", "other", "-s", service],
+    ["find-generic-password", "-w", "-s", service],
+  ]);
+
+  // An unreadable user item fails closed; it is never masked by the fallback.
+  calls.length = 0;
+  const locked = await readClaudeKeychainState(home, {
+    available: () => true,
+    account: "me",
+    execSecurity: async (args) => {
+      calls.push(args);
+      throw Object.assign(new Error("User interaction is not allowed"), { code: 36 });
+    },
+  });
+  assert.equal(locked.status, "unreadable");
+  assert.equal(calls.length, 1);
+});
+
 test("buildAddGenericPasswordCommand stores compact Claude JSON as a plain password", () => {
   const secret = JSON.stringify({ a: 'b\\c "d"' }, null, 2);
   const compact = JSON.stringify(JSON.parse(secret));

@@ -66,18 +66,10 @@ export function decodeSecurityPasswordOutput(raw: string): string {
   }
 }
 
-/** The default reader: `security find-generic-password -w -s <service>`; null on absence or any failure. */
+/** The default reader: the home's Keychain item for the current user (see readClaudeKeychainState); null on absence or any failure. */
 export const readClaudeKeychain: KeychainReader = async (homePath) => {
-  if (!keychainAvailable()) return null;
-  try {
-    const { stdout } = await execFileAsync("security", ["find-generic-password", "-w", "-s", claudeKeychainService(homePath)], {
-      timeout: SECURITY_EXEC_TIMEOUT_MS,
-    });
-    const raw = String(stdout).trim();
-    return raw.length === 0 ? null : decodeSecurityPasswordOutput(raw);
-  } catch {
-    return null;
-  }
+  const state = await readClaudeKeychainState(homePath);
+  return state.status === "present" && state.raw.length > 0 ? state.raw : null;
 };
 
 /** Unlike the legacy reader, ownership changes must distinguish absence from read failure. */

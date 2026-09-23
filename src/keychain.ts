@@ -20,6 +20,8 @@ export type ClaudeKeychainReadResult =
 
 type KeychainReadDeps = {
   available?: () => boolean;
+  /** Keychain item account; defaults to the OS user, the account Claude Code and our writer use. */
+  account?: string;
   execSecurity?: (args: string[], options: { timeout: number }) => Promise<{ stdout: string }>;
 };
 
@@ -109,7 +111,21 @@ export async function readClaudeKeychainState(homePath: string, deps: KeychainRe
   try {
     // macOS may show a one-time "security wants to access ..." consent dialog
     // for items created by Claude Code itself; Always Allow makes it stick.
-    const { stdout } = await execSecurity(["find-generic-password", "-w", "-s", claudeKeychainService(homePath)], { timeout: SECURITY_EXEC_TIMEOUT_MS });
+    // Read the current user's item first. Two items can share one service
+    // under different accounts (a stray blank "unknown" item next to the live
+    // user item — 2026-09-22 kontrol incident); a service-only lookup returns
+    // whichever macOS finds first, hides the rotated chain, and the daemon then
+    // replays a dead refresh token into auth_needed. The service-only lookup
+    // stays as a fallback for legacy items stored under another account.
+    const service = claudeKeychainService(homePath);
+    const account = deps.account ?? userInfo().username;
+    try {
+      const { stdout } = await execSecurity(["find-generic-password", "-w", "-a", account, "-s", service], { timeout: SECURITY_EXEC_TIMEOUT_MS });
+      return { status: "present", raw: stdout.trim() };
+    } catch (error) {
+      if (!explicitItemNotFound(error)) throw error;
+    }
+    const { stdout } = await execSecurity(["find-generic-password", "-w", "-s", service], { timeout: SECURITY_EXEC_TIMEOUT_MS });
     return { status: "present", raw: stdout.trim() };
   } catch (error) {
     if (explicitItemNotFound(error)) return { status: "absent" };
