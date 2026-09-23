@@ -8,6 +8,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { DatabaseSync } from "node:sqlite";
 import {
   ACTION_DISPATCH_MARKER,
   ACTION_DISPATCH_SENDER,
@@ -19,8 +20,12 @@ import {
   ActionUnauthorizedError,
   BeeNotFoundError,
   IdempotencyConflictError,
+  MIRROR_ACTION_CONTROLS_KEYS,
+  MIRROR_ACTION_DISPATCH_KEYS,
   MIRROR_ACTION_KEYS,
   MIRROR_ACTION_QUEUE_KEYS,
+  ACTION_NUDGE_AFTER_MS,
+  actionNudgeDueAt,
   SCHEMA_VERSION,
   hashActionEnqueueRequest,
   replayAudit,
@@ -402,7 +407,7 @@ test("actions.8: audit replay reproduces the action tables; the store reopens at
   const h = harness();
   try {
     let store = h.open();
-    assert.equal(SCHEMA_VERSION, 28);
+    assert.equal(SCHEMA_VERSION, 29);
     const bee = liveBee(store);
     const { actions } = shipSequence(store, bee.id);
     const { messageId } = store.dispatchAgentAction(actions[0]!.id);
@@ -454,4 +459,198 @@ test("queued Land v2 holds Archive until the destination executor reports durabl
     assert.equal(legacy.definitionVersion, 1);
     assert.equal(legacy.executor, "cell.capture");
   } finally { h.cleanup(); }
+});
+
+const SHA = "0123456789abcdef0123456789abcdef01234567";
+
+/** Dispatch the head agent action and deliver its instruction; returns the delivered token. */
+function deliver(store: CoreStore, actionId: string): { attempt: number; token: string; messageId: number } {
+  const { messageId } = store.dispatchAgentAction(actionId);
+  store.markDelivered(messageId!, 1);
+  return { ...tokenOf(store.getMessage(messageId!)!.body), messageId: messageId! };
+}
+
+test("actions.9: action.complete settles the open agent attempt as the operator; late reports dedupe or are refused; refusals are typed", () => {
+  const h = harness();
+  try {
+    const store = h.open();
+    const bee = liveBee(store);
+    const { actions } = shipSequence(store, bee.id);
+    const [commit, land] = actions as [ActionRow, ActionRow];
+    // Queued: not completable (the operator cancels or waits for dispatch instead).
+    assert.equal(store.actionView(commit.id).controls.complete, false);
+    assert.throws(() => store.completeAction(commit.id, { outputs: { commitSha: SHA } }), ActionRefusedError);
+    const t = deliver(store, commit.id);
+    const running = store.actionView(commit.id);
+    assert.equal(running.controls.complete, true);
+    assert.deepEqual(Object.keys(running.controls).sort(), [...MIRROR_ACTION_CONTROLS_KEYS].sort());
+    // Outputs are validated like a report and leave the action running.
+    assert.throws(() => store.completeAction(commit.id, {}), /output 'commitSha' is required/);
+    assert.throws(() => store.completeAction(commit.id, { outputs: { commitSha: "nope" } }), /does not match/);
+    assert.equal(mustAction(store, commit.id).status, "running");
+    const seqBefore = store.lastAuditSeq();
+    const done = store.completeAction(commit.id, { outputs: { commitSha: SHA, branch: "feat/x" }, detail: "agent was told to ignore it" });
+    assert.equal(done.applied, true);
+    assert.equal(done.action.status, "succeeded");
+    assert.deepEqual(done.action.result?.outputs, { commitSha: SHA, branch: "feat/x" });
+    assert.deepEqual(done.action.result?.receipt, { completedBy: "operator" });
+    assert.equal(done.action.result?.detail, "agent was told to ignore it");
+    assert.equal(done.action.result?.attempt, 1);
+    assert.equal(done.action.result?.reconciled, false);
+    assert.equal(done.action.attempts[0]?.outcome, "succeeded");
+    assert.equal(done.action.controls.complete, false);
+    // Downstream releases normally; the audit names the operator completion.
+    assert.equal(store.actionView(land.id).hold, null);
+    const puts = store.auditTail(seqBefore, 1000, bee.id).filter((r) => r.kind === "action.put");
+    assert.ok(puts.some((r) => r.payload.reason === "operator_complete" && (r.payload.action as { id: string }).id === commit.id && r.payload.previous === "running"));
+    // Terminal: quiet no-op.
+    assert.equal(store.completeAction(commit.id, { outputs: { commitSha: SHA } }).applied, false);
+    // The agent's late report for the same attempt: same outcome dedupes, different outcome is refused.
+    const late = store.reportAction({ actionId: commit.id, attempt: t.attempt, token: t.token, reporter: { beeId: bee.id }, kind: "result", outcome: "succeeded", outputs: { commitSha: "abcdef1" } });
+    assert.equal(late.deduped, true);
+    assert.equal(late.applied, false);
+    assert.equal(mustAction(store, commit.id).result?.outputs.commitSha, SHA, "the operator's outputs stand");
+    assert.throws(() => store.reportAction({ actionId: commit.id, attempt: t.attempt, token: t.token, reporter: { beeId: bee.id }, kind: "result", outcome: "failed", detail: "could not" }), ActionRefusedError);
+    assert.equal(store.reportAction({ actionId: commit.id, attempt: t.attempt, token: t.token, reporter: { beeId: bee.id }, kind: "progress", note: "late" }).applied, false);
+    // Non-agent executors and uncertain agent attempts are refused.
+    assert.throws(() => store.completeAction(land.id, { outputs: {} }), ActionRefusedError);
+    const c2 = enqueue(store, bee.id, [{ kind: "fix" }]).actions[0]!;
+    store.reorderActions(bee.id, [c2.id, ...store.listActionsOf(bee.id).filter((a) => a.status === "queued" && a.id !== c2.id).map((a) => a.id)]);
+    const t2 = deliver(store, c2.id);
+    store.reportAction({ actionId: c2.id, attempt: t2.attempt, token: t2.token, reporter: { beeId: bee.id }, kind: "result", outcome: "uncertain", detail: "?" });
+    assert.equal(store.actionView(c2.id).controls.complete, false);
+    assert.throws(() => store.completeAction(c2.id), ActionRefusedError);
+    assert.deepEqual(replayAudit(store.auditTail(0, 100_000)), store.dumpState());
+  } finally {
+    h.cleanup();
+  }
+});
+
+test("actions.10: complete answers the attempt's open question, withdraws an undelivered instruction, and checks requested outputs", () => {
+  const h = harness();
+  try {
+    const store = h.open();
+    const bee = liveBee(store);
+    // waiting/input: the open question is answered (ordinary mail), never left dangling.
+    const commit = enqueue(store, bee.id, [{ kind: "commit" }]).actions[0]!;
+    const t = deliver(store, commit.id);
+    const asked = store.reportAction({ actionId: commit.id, attempt: t.attempt, token: t.token, reporter: { beeId: bee.id }, kind: "question", question: { text: "squash?" } });
+    assert.equal(store.actionView(commit.id).controls.complete, true);
+    const done = store.completeAction(commit.id, { outputs: { commitSha: "abcdef1" } });
+    assert.equal(done.action.status, "succeeded");
+    const q = store.getQuestion(asked.question!.id)!;
+    assert.equal(q.status, "answered");
+    assert.ok(q.answer?.includes("completed by the operator"), q.answer ?? "");
+    const answerMail = store.getMessage(q.deliveryMessageId!)!;
+    assert.ok(answerMail.body.startsWith(`[answer to question ${q.id}]`));
+    const puts = store.auditTail(0, 100_000, bee.id).filter((r) => r.kind === "action.put" && (r.payload.action as { id: string }).id === commit.id);
+    assert.equal(puts.at(-1)?.payload.reason, "operator_complete");
+    assert.equal(puts.at(-1)?.payload.previous, "waiting");
+    // Undelivered: the instruction is withdrawn from the mailbox.
+    const greet = enqueue(store, bee.id, [{ kind: "instruction", inputs: { instruction: "say hi", outputs: ["greeting"] } }]).actions[0]!;
+    const { messageId } = store.dispatchAgentAction(greet.id);
+    assert.throws(() => store.completeAction(greet.id, { outputs: {} }), /output 'greeting' is required/);
+    assert.notEqual(store.getMessage(messageId!), null, "a refused complete changes nothing");
+    const g = store.completeAction(greet.id, { outputs: { greeting: "hi" } });
+    assert.equal(g.action.status, "succeeded");
+    assert.equal(store.getMessage(messageId!), null, "undelivered instruction withdrawn");
+    assert.ok(store.auditTail(0, 100_000, bee.id).some((r) => r.kind === "mail.canceled" && r.payload.messageId === messageId));
+    assert.deepEqual(replayAudit(store.auditTail(0, 100_000)), store.dumpState());
+  } finally {
+    h.cleanup();
+  }
+});
+
+test("actions.11: the reminder mail — origin action.nudge, urgency idle, the exact report command; recorded once per attempt as dispatch.nudgedAt", () => {
+  const h = harness();
+  try {
+    const store = h.open();
+    const bee = liveBee(store);
+    const { actions } = shipSequence(store, bee.id);
+    const commit = actions[0]!;
+    const { messageId } = store.dispatchAgentAction(commit.id);
+    // Not delivered yet: no reminder, not due.
+    assert.equal(actionNudgeDueAt(mustAction(store, commit.id)), null);
+    assert.equal(store.nudgeAgentAction(commit.id, 1), null);
+    store.markDelivered(messageId!, 1);
+    const t = tokenOf(store.getMessage(messageId!)!.body);
+    const delivered = mustAction(store, commit.id);
+    assert.equal(delivered.dispatch?.nudgedAt, null);
+    assert.equal(actionNudgeDueAt(delivered), delivered.dispatch!.deliveredAt! + ACTION_NUDGE_AFTER_MS.commit!);
+    assert.equal(ACTION_NUDGE_AFTER_MS.commit, 30 * 60_000);
+    // Progress restarts the silence clock.
+    store.reportAction({ actionId: commit.id, attempt: t.attempt, token: t.token, reporter: { beeId: bee.id }, kind: "progress", note: "staging" });
+    const progressed = mustAction(store, commit.id);
+    assert.equal(actionNudgeDueAt(progressed), progressed.progress!.at + 30 * 60_000);
+    assert.equal(actionNudgeDueAt(progressed, [progressed.progress!.at + 5]), progressed.progress!.at + 5 + 30 * 60_000);
+    assert.equal(store.nudgeAgentAction(commit.id, 2), null, "wrong attempt");
+    const seqBefore = store.lastAuditSeq();
+    const nudged = store.nudgeAgentAction(commit.id, 1)!;
+    assert.ok(nudged);
+    const mail = store.getMessage(nudged.messageId)!;
+    assert.equal(mail.sender, ACTION_DISPATCH_SENDER);
+    assert.equal(mail.urgency, "idle");
+    assert.ok(mail.body.startsWith(`[Hive action] Reminder — Commit — action ${commit.id}, attempt 1`), mail.body);
+    assert.ok(mail.body.includes("still open and is holding the queue"), mail.body);
+    assert.ok(mail.body.includes(`hive action report ${commit.id} --attempt 1 --token ${t.token} --succeeded --output commitSha=<commitSha>`), mail.body);
+    assert.ok(mail.body.includes(`hive action report ${commit.id} --attempt 1 --token ${t.token} --failed --detail`), mail.body);
+    const tail = store.auditTail(seqBefore, 1000, bee.id);
+    assert.equal(tail.find((r) => r.kind === "mail.enqueued")?.payload.origin, "action.nudge");
+    const put = tail.find((r) => r.kind === "action.put" && r.payload.reason === "nudged");
+    assert.ok(put, "action.put nudged");
+    const view = put.payload.action as { status: string; dispatch: Record<string, unknown> };
+    assert.equal(view.status, "running", "a reminder is never completion");
+    assert.equal(typeof view.dispatch.nudgedAt, "number");
+    assert.deepEqual(Object.keys(view.dispatch).sort(), [...MIRROR_ACTION_DISPATCH_KEYS].sort());
+    // Exactly once per attempt; not due any more.
+    assert.equal(store.nudgeAgentAction(commit.id, 1), null);
+    assert.equal(actionNudgeDueAt(mustAction(store, commit.id)), null);
+    // Mail history keeps the typed origin (the widened CHECK accepts it).
+    assert.deepEqual(replayAudit(store.auditTail(0, 100_000)), store.dumpState());
+    // Other kinds have no threshold.
+    const fix = enqueue(store, bee.id, [{ kind: "fix" }]).actions[0]!;
+    assert.equal(actionNudgeDueAt({ ...mustAction(store, fix.id), status: "running", attempt: 1, dispatch: { ...delivered.dispatch!, nudgedAt: null } }), null);
+  } finally {
+    h.cleanup();
+  }
+});
+
+test("actions.12: a v28 store migrates to v29 — the mail-history origin CHECK gains action.nudge; pre-v29 dispatch JSON reads nudgedAt null", () => {
+  const h = harness();
+  const seed = h.open();
+  const bee = liveBee(seed);
+  const commit = enqueue(seed, bee.id, [{ kind: "commit" }]).actions[0]!;
+  const { messageId } = seed.dispatchAgentAction(commit.id);
+  seed.markDelivered(messageId!, 1);
+  seed.close();
+  const db = new DatabaseSync(h.path);
+  db.exec("UPDATE meta SET value = '28' WHERE key = 'schema_version'");
+  const ddl = String((db.prepare("SELECT sql FROM sqlite_master WHERE name = 'mail_history_enqueues'").get() as { sql: string }).sql);
+  db.exec("ALTER TABLE mail_history_enqueues RENAME TO mail_history_enqueues_old");
+  db.exec(ddl.replace(",'action.nudge'", ""));
+  db.exec("INSERT INTO mail_history_enqueues SELECT * FROM mail_history_enqueues_old; DROP TABLE mail_history_enqueues_old");
+  // A v24..v28 row: dispatch JSON without the nudgedAt key.
+  const row = db.prepare("SELECT dispatch_json FROM actions WHERE id = ?").get(commit.id) as { dispatch_json: string };
+  const legacy = JSON.parse(row.dispatch_json) as Record<string, unknown>;
+  delete legacy.nudgedAt;
+  db.prepare("UPDATE actions SET dispatch_json = ? WHERE id = ?").run(JSON.stringify(legacy), commit.id);
+  db.close();
+  h.open().close(); // migrate
+  let store: CoreStore | null = null;
+  try {
+    const check = new DatabaseSync(h.path, { readOnly: true });
+    assert.equal(Number((check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string }).value), SCHEMA_VERSION);
+    assert.ok(String((check.prepare("SELECT sql FROM sqlite_master WHERE name = 'mail_history_enqueues'").get() as { sql: string }).sql).includes("'action.nudge'"));
+    const carried = (check.prepare("SELECT count(*) AS n FROM mail_history_enqueues").get() as { n: number }).n;
+    check.close();
+    assert.ok(carried >= 1, "rows carried across");
+    store = h.open();
+    const view = store.actionView(commit.id);
+    assert.equal(view.dispatch?.nudgedAt, null);
+    assert.deepEqual(Object.keys(view.dispatch!).sort(), [...MIRROR_ACTION_DISPATCH_KEYS].sort());
+    assert.ok(store.nudgeAgentAction(commit.id, 1), "the migrated store accepts the new origin");
+  } finally {
+    store?.close();
+    h.cleanup();
+  }
 });

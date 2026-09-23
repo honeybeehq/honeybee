@@ -511,11 +511,12 @@ export const MIRROR_ACTION_DISPATCH_KEYS = [
   "claimedBy",
   "claimedAt",
   "expectedHead",
+  "nudgedAt",
 ] as const;
 export const MIRROR_ACTION_RESULT_KEYS = ["outputs", "receipt", "detail", "reconciled", "attempt", "at"] as const;
 export const MIRROR_ACTION_FAILURE_KEYS = ["code", "detail", "retryable", "attempt", "at"] as const;
 export const MIRROR_ACTION_HOLD_KEYS = ["reason", "actionId", "actionStatus"] as const;
-export const MIRROR_ACTION_CONTROLS_KEYS = ["cancel", "forceCancel", "retry", "forceRetry", "reorder"] as const;
+export const MIRROR_ACTION_CONTROLS_KEYS = ["cancel", "forceCancel", "retry", "forceRetry", "reorder", "complete"] as const;
 export const MIRROR_ACTION_ATTEMPT_KEYS = ["attempt", "dispatchedAt", "generation", "messageId", "deliveredAt", "claimedBy", "operationKey", "outcome", "finishedAt"] as const;
 export const MIRROR_ACTION_QUEUE_KEYS = ["beeId", "paused", "pausedAt", "activeActionId", "counts", "createdAt", "updatedAt"] as const;
 

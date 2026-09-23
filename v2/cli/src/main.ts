@@ -60,6 +60,7 @@ import {
   type ActionReorderResult,
   type ActionReportResult,
   type ActionRetryResult,
+  type ActionCompleteResult,
   type ActionView,
   type HealthResult,
   type NodeHarnessesResult,
@@ -1280,6 +1281,7 @@ async function cmdAction(ctx: CliContext, parsed: Parsed): Promise<number> {
     "       hive action enqueue <bee> <kind> [--input k=v|k:=json]... [--title t] [--idempotency-key k]",
     "       hive action enqueue <bee> --items-json '[{\"kind\":\"commit\"},{\"kind\":\"land\",\"inputs\":{\"targetBranch\":\"main\",\"commit\":{\"$ref\":{\"item\":0,\"output\":\"commitSha\"}}}}]'",
     "       hive action cancel <actionId> [--force] | action retry <actionId> [--force]",
+    "       hive action complete <actionId> [--output k=v]... [--detail d]   (operator: settle an open agent action as succeeded; commit fills commitSha from the checkout HEAD)",
     "       hive action pause <bee> | action resume <bee> | action reorder <bee> <actionId>...",
     "       hive action report <actionId> --attempt n --token t (--succeeded [--output k=v]... | --failed [--code c] [--detail d] | --uncertain [--detail d] | --ask \"question\" [--option o]... | --progress \"note\") [--bee b]",
     "       hive action claim --executor <name> [--kind k] [--bee b] [--action id]",
@@ -1339,6 +1341,20 @@ async function cmdAction(ctx: CliContext, parsed: Parsed): Promise<number> {
         const force = parsed.flags.get("--force") === true;
         const r = await c.request<ActionCancelResult | ActionRetryResult>(sub === "cancel" ? "action.cancel" : "action.retry", { actionId, force, ...(key ? { idempotencyKey: key } : {}) });
         emit(ctx, [confirm("ok", sub === "cancel" ? "cancelled" : "retried", `${actionId} is ${r.action.status} (attempt ${r.action.attempt})`, r.deduped), actionLine(r.action)], r, false);
+        return 0;
+      });
+    }
+    case "complete": {
+      const actionId = parsed.positional[2];
+      if (!actionId) throw new Error(usage);
+      const outputs = kvPairs(parsed.lists.get("--output"), "--output");
+      for (const [name, value] of Object.entries(outputs)) {
+        if (typeof value !== "string") throw new Error(`action complete: --output ${name} must be a plain k=v string\n${usage}`);
+      }
+      const detail = parsed.flags.get("--detail") as string | undefined;
+      return withClient(ctx, async (c) => {
+        const r = await c.request<ActionCompleteResult>("action.complete", { actionId, outputs, ...(detail !== undefined ? { detail } : {}), ...(key ? { idempotencyKey: key } : {}) });
+        emit(ctx, [confirm("ok", r.applied ? "completed" : "already closed", `${actionId} is ${r.action.status} (attempt ${r.action.attempt})`, r.deduped), actionLine(r.action)], r, false);
         return 0;
       });
     }

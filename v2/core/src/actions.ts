@@ -315,12 +315,12 @@ export function renderActionInstruction(action: ActionRow, resolved: Record<stri
     lines.push("", "Inputs:");
     for (const [k, v] of contextual) lines.push(`- ${k}: ${typeof v === "string" ? v : JSON.stringify(v)}`);
   }
-  const outputs = [...def.outputs.map((o) => ({ name: o.name, required: o.required, description: o.description })), ...requestedOutputNames(resolved).map((name) => ({ name, required: true, description: "" }))];
-  const base = `hive action report ${action.id} --attempt ${attempt} --token ${token}`;
+  const outputs = actionOutputList(def, resolved);
+  const base = actionReportCommand(action.id, attempt, token);
   lines.push(
     "",
     "When you are done, report the outcome with the hive CLI. Finishing your turn does NOT complete this action; only the report does:",
-    `  ${base} --succeeded${outputs.filter((o) => o.required).map((o) => ` --output ${o.name}=<${o.name}>`).join("")}`,
+    `  ${base} --succeeded${requiredOutputFlags(outputs)}`,
     `  ${base} --failed --detail "<why>"`,
     `  ${base} --ask "<question for the operator>"    (holds the queue until answered; the answer arrives as mail)`,
     `  ${base} --progress "<short status>"`,
@@ -331,6 +331,68 @@ export function renderActionInstruction(action: ActionRow, resolved: Record<stri
   }
   lines.push("", "Queued actions after this one wait for your report; do not start them yourself.");
   return lines.join("\n");
+}
+
+function actionReportCommand(actionId: string, attempt: number, token: string): string {
+  return `hive action report ${actionId} --attempt ${attempt} --token ${token}`;
+}
+
+function actionOutputList(def: ActionDefinition, resolved: Record<string, unknown>): Array<{ name: string; required: boolean; description: string }> {
+  return [
+    ...def.outputs.map((o) => ({ name: o.name, required: o.required, description: o.description })),
+    ...requestedOutputNames(resolved).map((name) => ({ name, required: true, description: "" })),
+  ];
+}
+
+function requiredOutputFlags(outputs: ReadonlyArray<{ name: string; required: boolean }>): string {
+  return outputs.filter((o) => o.required).map((o) => ` --output ${o.name}=<${o.name}>`).join("");
+}
+
+/**
+ * The one reminder an agent gets for an attempt it has not reported
+ * (`origin: action.nudge`). It restates the report command with the same
+ * token. A reminder never completes anything; only the report does.
+ */
+export function renderActionNudge(action: ActionRow, token: string, attempt: number): string {
+  const base = actionReportCommand(action.id, attempt, token);
+  const outputs = actionOutputList(action.definition, action.resolvedInputs ?? action.inputs);
+  return [
+    `${ACTION_DISPATCH_MARKER} Reminder — ${action.definition.title} — action ${action.id}, attempt ${attempt}`,
+    "",
+    "This action is still open and is holding the queue: the actions queued after it cannot start until you report it.",
+    "",
+    "If you already did the work, report it now:",
+    `  ${base} --succeeded${requiredOutputFlags(outputs)}`,
+    "Otherwise finish the work and then report it the same way. If you cannot do it, report the failure:",
+    `  ${base} --failed --detail "<why>"`,
+  ].join("\n");
+}
+
+/**
+ * v29 — how long an agent attempt may stay silent (since delivery or its last
+ * progress report) before it gets its one reminder, by action kind. Kinds
+ * absent here are never reminded. Kept out of the definition shape on
+ * purpose: it is scheduler policy, not part of the wire contract.
+ */
+export const ACTION_NUDGE_AFTER_MS: Readonly<Record<string, number>> = {
+  commit: 30 * 60_000,
+};
+
+/**
+ * The instant the running agent attempt is due its reminder, or null when it
+ * never is: not an agent kind with a threshold, not running, not delivered
+ * yet, or already reminded. `signsOfLife` are extra instants that restart the
+ * silence clock (e.g. when the operator answered the attempt's question).
+ */
+export function actionNudgeDueAt(row: ActionRow, signsOfLife: readonly number[] = []): number | null {
+  const after = ACTION_NUDGE_AFTER_MS[row.kind];
+  if (after === undefined || row.executor !== "agent" || row.status !== "running") return null;
+  const dispatch = row.dispatch;
+  if (!dispatch || dispatch.attempt !== row.attempt || dispatch.deliveredAt == null || dispatch.nudgedAt != null) return null;
+  let last = dispatch.deliveredAt;
+  if (row.progress && row.progress.attempt === row.attempt) last = Math.max(last, row.progress.at);
+  for (const at of signsOfLife) last = Math.max(last, at);
+  return last + after;
 }
 
 /** Does the row still own the bee's execution lane? */
@@ -374,7 +436,8 @@ export function deriveActionControls(row: ActionRow): ActionControls {
   const forceCancel = !cancel && actionIsActive(row) && row.executor !== "lifecycle.archive";
   const retry = row.status === "failed";
   const forceRetry = row.status === "waiting" && row.waitingReason === "uncertain";
-  return { cancel, forceCancel, retry, forceRetry, reorder: row.status === "queued" };
+  const complete = row.executor === "agent" && (row.status === "running" || (row.status === "waiting" && row.waitingReason === "input"));
+  return { cancel, forceCancel, retry, forceRetry, reorder: row.status === "queued", complete };
 }
 
 /** Locked RPC/mirror projection. Drops the token; derives hold + controls from the lane. */

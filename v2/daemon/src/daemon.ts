@@ -63,6 +63,7 @@ import {
   emptyActionCounts,
   hashActionEnqueueRequest,
   toActionQueueView,
+  deriveActionControls,
   toActionView,
   type ActionQueueView,
   type ActionStatus,
@@ -121,6 +122,7 @@ import {
   reserveCell,
   revParse,
   isAncestor,
+  currentBranch,
   sandboxWritableDirectory,
   runCellExec,
   sanitizeComponent,
@@ -223,6 +225,7 @@ import {
   type ActionReportOutcome,
   type ActionReportResult,
   type ActionRetryResult,
+  type ActionCompleteResult,
   type CellCaptureMode,
   type CellCaptureResult,
   type CellExecResult,
@@ -1514,6 +1517,8 @@ export class HiveDaemon {
         return this.withIdempotency(verb, params, () => this.rpcActionReorder(params));
       case "action.retry":
         return this.withIdempotency(verb, params, () => this.rpcActionRetry(params));
+      case "action.complete":
+        return this.withIdempotency(verb, params, () => this.rpcActionComplete(params));
       case "action.queue.get":
         return { queue: this.actionQueueView(this.mustStore(), this.requireBee(params)) } satisfies ActionQueueGetResult;
       case "action.queue.pause":
@@ -3075,6 +3080,50 @@ export class HiveDaemon {
     const res = store.retryAction(actionId, { force });
     this.log(`action.retry action=${actionId} force=${force} attempt=${res.action.attempt} status=${res.action.status}`);
     return res;
+  }
+
+  /**
+   * v29 `action.complete`: the operator settles an open agent action. For
+   * `commit`, an omitted `commitSha` is read from the bee's checkout HEAD
+   * (the Cell space for Cell bees, else the bee's cwd), with `branch` when
+   * HEAD is on one; an unreadable HEAD is `invalid_request`.
+   */
+  private rpcActionComplete(params: Record<string, unknown>): ActionCompleteResult {
+    const store = this.mustStore();
+    const actionId = this.param(params, "actionId");
+    const row = store.getAction(actionId);
+    if (!row) throw new RpcError("action_not_found", `action not found: ${actionId}`);
+    const raw = this.objectParam(params, "outputs", "action.complete") ?? {};
+    const outputs: Record<string, string> = {};
+    for (const [name, value] of Object.entries(raw)) {
+      if (typeof value !== "string") throw new RpcError("invalid_request", `action.complete: outputs.${name} must be a string`);
+      outputs[name] = value;
+    }
+    const detail = this.optionalString(params, "detail", "action.complete");
+    // Refusals first: a closed or non-agent action never needs (or reads) a HEAD.
+    if (row.kind === "commit" && deriveActionControls(row).complete && outputs.commitSha === undefined) {
+      const dir = this.checkoutDirOf(store, row.beeId);
+      const head = dir ? revParse(dir, "HEAD") : null;
+      if (!head) {
+        throw new RpcError("invalid_request", `action.complete: could not read the HEAD of bee ${row.beeId}'s checkout${dir ? ` (${dir})` : ""}; pass outputs.commitSha`);
+      }
+      outputs.commitSha = head;
+      if (outputs.branch === undefined) {
+        const branch = currentBranch(dir as string);
+        if (branch) outputs.branch = branch;
+      }
+    }
+    const res = store.completeAction(actionId, { outputs, detail });
+    this.log(`action.complete action=${actionId} kind=${row.kind} attempt=${res.action.attempt} applied=${res.applied} status=${res.action.status}`);
+    return res;
+  }
+
+  /** The directory holding the bee's working checkout: its Cell space when it is on a Cell, else its cwd. */
+  private checkoutDirOf(store: CoreStore, beeId: string): string | null {
+    const bee = store.getBee(beeId);
+    if (!bee) return null;
+    const dir = bee.substrate === "cell" ? (this.driver?.cell.cellOf(beeId)?.paths.spaceDir ?? bee.cwd) : bee.cwd;
+    return dir && existsSync(dir) ? dir : null;
   }
 
   private rpcActionReorder(params: Record<string, unknown>): ActionReorderResult {

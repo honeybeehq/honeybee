@@ -48,6 +48,7 @@ import {
   CoreError,
   RUNTIME_TRANSITIONS,
   actionIsActive,
+  actionNudgeDueAt,
   actionPredecessor,
   buildExtractiveHandoffContext,
   handoffFencesSource,
@@ -1275,6 +1276,8 @@ export class DaemonCore {
           // begin and settle). Never guess: hold it as uncertain.
           this.store.settleAction(active.id, active.attempt, { kind: "uncertain", detail: "capture attempt has no receipt; reconciling with the Cell owner" });
         }
+      } else if (active.executor === "agent" && active.status === "running") {
+        this.nudgeSilentAgentAction(active);
       }
       return;
     }
@@ -1285,6 +1288,21 @@ export class DaemonCore {
     const predecessor = actionPredecessor(head, lane);
     if (predecessor && predecessor.status !== "succeeded") return;
     this.dispatchAction(head);
+  }
+
+  /**
+   * v29 — one reminder per attempt for a delivered agent action whose kind has
+   * a silence threshold (ACTION_NUDGE_AFTER_MS) and that has shown no sign of
+   * life (delivery, progress, an answered question) for that long. The store
+   * records `dispatch.nudgedAt` with the mail, so a restart never repeats it.
+   * The reminder is never completion.
+   */
+  private nudgeSilentAgentAction(row: ActionRow): void {
+    const answeredAt = row.questionId ? this.store.getQuestion(row.questionId)?.answeredAt ?? null : null;
+    const dueAt = actionNudgeDueAt(row, answeredAt === null ? [] : [answeredAt]);
+    if (dueAt === null || this.now() < dueAt) return;
+    const res = this.store.nudgeAgentAction(row.id, row.attempt);
+    if (res) this.log(`action.nudge bee=${row.beeId} action=${row.id} attempt=${row.attempt} msg=${res.messageId}`);
   }
 
   private dispatchAction(head: ActionRow): void {

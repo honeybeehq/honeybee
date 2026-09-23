@@ -517,3 +517,133 @@ test("actions.loop.external: an external kind waits for its executor (no fake pr
     rig.cleanup();
   }
 });
+
+const MIN = 60_000;
+
+function nudgeMails(rig: Rig, beeId: string): number[] {
+  return rig.store.auditTail(0, 100_000, beeId)
+    .filter((r) => r.kind === "mail.enqueued" && r.payload.origin === "action.nudge")
+    .map((r) => (r.payload.message as { id: number }).id);
+}
+
+function enqueueOne(rig: Rig, beeId: string, kind: string, key: string, inputs: Record<string, unknown> = {}) {
+  const items = [{ kind, version: null, inputs, clientRef: null, title: null }];
+  return rig.store.enqueueActions({ beeId, idempotencyKey: key, requestHash: hashActionEnqueueRequest({ beeId, items }), items }).actions[0]!;
+}
+
+test("actions.loop.nudge: one idle reminder per silent commit attempt after 30 min — not before, reset by progress, never mid-turn, never again after restart, again for a retry", () => {
+  const rig = makeRig();
+  try {
+    spawnCellBee(rig, "n1");
+    const { actions } = ship(rig, "n1");
+    const [commit, land] = actions.map((a) => a.id) as [string, string];
+    steps(rig, 1);
+    const delivered = action(rig, commit);
+    assert.equal(delivered.status, "running");
+    assert.ok(delivered.dispatch?.deliveredAt != null, "instruction delivered");
+    const { attempt, token } = tokenOf(lastDeliveredBody(rig));
+    // 29 minutes of silence: not yet.
+    rig.clock.now = delivered.dispatch!.deliveredAt! + 29 * MIN;
+    steps(rig, 3);
+    assert.equal(nudgeMails(rig, "n1").length, 0);
+    // Progress is a sign of life: the 30 minutes restart from it.
+    rig.store.reportAction({ actionId: commit, attempt, token, reporter: { beeId: "n1" }, kind: "progress", note: "still staging" });
+    const progressAt = action(rig, commit).progress!.at;
+    rig.clock.now = progressAt + 29 * MIN;
+    steps(rig, 3);
+    assert.equal(nudgeMails(rig, "n1").length, 0, "progress reset the clock");
+    // The bee is mid-turn when the reminder falls due: it is queued (idle urgency), never an interrupt.
+    startTurn(rig, "n1");
+    rig.clock.now = progressAt + 30 * MIN;
+    steps(rig, 1);
+    const [nudgeId] = nudgeMails(rig, "n1");
+    assert.ok(nudgeId !== undefined, "reminder mailed");
+    assert.ok(rig.ops.some((op) => op.startsWith(`action.nudge bee=n1 action=${commit} attempt=1`)), rig.ops.join("\n"));
+    const nudged = action(rig, commit);
+    assert.equal(nudged.status, "running", "a reminder is never completion");
+    assert.equal(typeof nudged.dispatch?.nudgedAt, "number");
+    const mail = rig.store.getMessage(nudgeId!)!;
+    assert.equal(mail.urgency, "idle");
+    assert.equal(mail.deliveredAt, null, "not delivered mid-turn");
+    assert.equal(rig.driver.interrupts.length, 0);
+    assert.ok(mail.body.startsWith(`[Hive action] Reminder — Commit — action ${commit}, attempt 1`), mail.body);
+    assert.ok(mail.body.includes(`hive action report ${commit} --attempt 1 --token ${token} --succeeded --output commitSha=<commitSha>`));
+    assert.ok(rig.store.auditTail(0, 100_000, "n1").some((r) => r.kind === "action.put" && r.payload.reason === "nudged"));
+    endTurn(rig, "n1");
+    steps(rig, 2);
+    assert.notEqual(rig.store.getMessage(nudgeId!)?.deliveredAt ?? null, null, "delivered once the runtime is idle");
+    // Hours more of silence, then a daemon restart: still exactly one reminder for the attempt.
+    rig.clock.now += 3 * 60 * MIN;
+    steps(rig, 3);
+    rig.restart();
+    rig.clock.now += 3 * 60 * MIN;
+    steps(rig, 3);
+    assert.equal(nudgeMails(rig, "n1").length, 1, "exactly once per attempt across restarts");
+    // A failed report then retry: attempt 2 is a new attempt and may be reminded again.
+    rig.store.reportAction({ actionId: commit, attempt, token, reporter: { beeId: "n1" }, kind: "result", outcome: "failed", detail: "hooks failed" });
+    rig.store.retryAction(commit);
+    // The restarted fake driver revives the runtime first; the instruction waits for it.
+    for (let i = 0; i < 20 && action(rig, commit).dispatch?.deliveredAt == null; i += 1) steps(rig, 1);
+    const second = action(rig, commit);
+    assert.equal(second.attempt, 2);
+    assert.equal(second.dispatch?.nudgedAt, null);
+    assert.ok(second.dispatch?.deliveredAt != null, "attempt 2 delivered");
+    rig.clock.now = second.dispatch!.deliveredAt! + 30 * MIN;
+    steps(rig, 1);
+    assert.equal(nudgeMails(rig, "n1").length, 2);
+    assert.ok(rig.store.getMessage(nudgeMails(rig, "n1")[1]!)!.body.includes(`attempt 2`));
+    // The operator completes it (the agent never reports): downstream releases normally.
+    const done = rig.store.completeAction(commit, { outputs: { commitSha: rig.cell.head! } });
+    assert.equal(done.action.status, "succeeded");
+    steps(rig, 1);
+    assert.equal(action(rig, land).status, "succeeded", JSON.stringify(action(rig, land).failure));
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("actions.loop.nudge-scope: no reminder for other kinds, after complete or cancel, or while waiting on a question; an answered question restarts the clock", () => {
+  const rig = makeRig();
+  try {
+    spawnCellBee(rig, "n2");
+    // A fix instruction: no threshold for the kind.
+    const fix = enqueueOne(rig, "n2", "fix", "fix-1", { instruction: "lint" });
+    steps(rig, 1);
+    assert.ok(action(rig, fix.id).dispatch?.deliveredAt != null);
+    rig.clock.now += 5 * 60 * MIN;
+    steps(rig, 2);
+    assert.equal(nudgeMails(rig, "n2").length, 0, "fix is never reminded");
+    rig.store.cancelAction(fix.id, { force: true });
+    // Completed by the operator right away: nothing to remind.
+    const c1 = enqueueOne(rig, "n2", "commit", "c-1");
+    steps(rig, 1);
+    rig.store.completeAction(c1.id, { outputs: { commitSha: "abcdef1" } });
+    rig.clock.now += 5 * 60 * MIN;
+    steps(rig, 2);
+    // Force-cancelled after delivery: nothing to remind.
+    const c2 = enqueueOne(rig, "n2", "commit", "c-2");
+    steps(rig, 1);
+    rig.store.cancelAction(c2.id, { force: true });
+    rig.clock.now += 5 * 60 * MIN;
+    steps(rig, 2);
+    assert.equal(nudgeMails(rig, "n2").length, 0);
+    // Waiting on a question: no reminder while the operator owes the answer; the answer restarts the clock.
+    const c3 = enqueueOne(rig, "n2", "commit", "c-3");
+    steps(rig, 1);
+    const t3 = tokenOf(lastDeliveredBody(rig));
+    const asked = rig.store.reportAction({ actionId: c3.id, attempt: t3.attempt, token: t3.token, reporter: { beeId: "n2" }, kind: "question", question: { text: "amend?" } });
+    rig.clock.now += 5 * 60 * MIN;
+    steps(rig, 2);
+    assert.equal(nudgeMails(rig, "n2").length, 0, "waiting/input is not silence");
+    rig.store.answerQuestion(asked.question!.id, "no");
+    const answeredAt = rig.store.getQuestion(asked.question!.id)!.answeredAt!;
+    steps(rig, 2);
+    assert.equal(action(rig, c3.id).status, "running");
+    assert.equal(nudgeMails(rig, "n2").length, 0, "not reminded right after the answer");
+    rig.clock.now = answeredAt + 30 * MIN;
+    steps(rig, 1);
+    assert.equal(nudgeMails(rig, "n2").length, 1);
+  } finally {
+    rig.cleanup();
+  }
+});

@@ -142,8 +142,12 @@
  * v27 refuses older binaries even when no account is enrolled. Roll back behavior with
  * credentials.disable; binary downgrade requires a separately planned store restore.
  * v28 adds durable, generation-reconciled automatic-account start reservations
- * and shared-owner claim confirmation. */
-export const SCHEMA_VERSION = 28;
+ * and shared-owner claim confirmation.
+ * v29 widens the `mail_history_enqueues.origin` CHECK with `action.nudge` (the
+ * one reminder mail for an unreported agent attempt; table rebuild, rows
+ * carried across). The reminder's `dispatch.nudgedAt` lives in the existing
+ * `actions.dispatch_json`, so the actions table is unchanged. */
+export const SCHEMA_VERSION = 29;
 
 export const ACCOUNT_ADMISSIONS_TABLE_SQL = `
 CREATE TABLE IF NOT EXISTS account_admission_reservations (
@@ -998,7 +1002,7 @@ CREATE TABLE IF NOT EXISTS mail_history_enqueues (
   seq              INTEGER PRIMARY KEY,
   message_id       INTEGER NOT NULL UNIQUE,
   bee_id            TEXT NOT NULL,
-  origin            TEXT NOT NULL CHECK (origin IN ('mail.send','spawn.prompt','legacy.unknown','handoff.seed','action.dispatch')),
+  origin            TEXT NOT NULL CHECK (origin IN ('mail.send','spawn.prompt','legacy.unknown','handoff.seed','action.dispatch','action.nudge')),
   sender            BLOB NOT NULL,
   sender_truncated  INTEGER NOT NULL CHECK (sender_truncated IN (0, 1)),
   body              BLOB NOT NULL,

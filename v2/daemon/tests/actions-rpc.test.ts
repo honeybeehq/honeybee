@@ -18,6 +18,7 @@ import type { ActionView, AuditRow } from "../../core/src/index.ts";
 import type {
   ActionCancelResult,
   ActionClaimResult,
+  ActionCompleteResult,
   ActionDefinitionsResult,
   ActionEnqueueResult,
   ActionGetResult,
@@ -344,4 +345,76 @@ test("actions.rpc.external-land: destination Land holds Archive across an uncert
   await f.rpc("action.report", { actionId: land!.id, attempt: recovered.attempt, token: recovered.token, executor: "apiary-land:workstation", kind: "result", outcome: "succeeded", outputs: { resultSha: sha, cellHead: sha, targetBranch: "main" }, receipt: { status: "nothing_to_capture" } });
   await f.waitStatus(archive!.id, ["succeeded"], "archive after external receipt");
   assert.equal((await f.rpc<ViewResult>("view", { beeId })).bee?.lifecycle, "archived");
+});
+
+test("actions.rpc.complete: the operator completes an unreported commit — HEAD filled from the Cell space (or the checkout), Land proceeds, late report dedupes; refusals are typed", { timeout: 180_000 }, async (t) => {
+  const f = await fixture(t);
+  const info = await f.rpc<DeployInfoResult>("deployInfo");
+  assert.ok(info.capabilities.includes("bee.actions.complete.v1"), "capability advertised");
+
+  const spawned = await f.rpc<SpawnResult>("spawn", { name: "silent", agent: "cellstub", cwd: "/ignored", substrate: "cell", cell: { originRepo: f.originRepo } });
+  const beeId = spawned.beeId;
+  const idle = await waitFor(async () => {
+    const v = await f.rpc<ViewResult>("view", { beeId });
+    return v.view.runtimeState === "idle" ? v : null;
+  }, "cell bee idle", 60_000);
+  const spaceDir = idle.bee!.cwd;
+  const accepted = await f.rpc<ActionEnqueueResult>("action.enqueue", {
+    beeId,
+    idempotencyKey: "complete-seq",
+    items: [
+      { kind: "commit", inputs: { message: "silent work" } },
+      { kind: "land", inputs: { targetBranch: "throwaway/completed", commit: { $ref: { item: 0, output: "commitSha" } } } },
+    ],
+  });
+  const [commit, land] = accepted.actions.map((a) => a.id) as [string, string];
+  await f.waitStatus(commit, ["running"], "commit dispatched");
+  await waitFor(async () => (await f.action(commit)).dispatch?.deliveredAt != null, "instruction delivered", 30_000);
+  const { attempt, token } = tokenOf(await f.dispatchBody(beeId, commit));
+  // The agent commits but never reports (the incident). Land is not completable (structured executor).
+  const cellSha = commitInCell(spaceDir, "silent.txt", "done but unreported\n", "silent work");
+  await assert.rejects(f.rpc("action.complete", { actionId: land }), rejectsCode("action_refused"));
+  await assert.rejects(f.rpc("action.complete", { actionId: "nope" }), rejectsCode("action_not_found"));
+  await assert.rejects(f.rpc("action.complete", { actionId: commit, outputs: { commitSha: 42 } }), rejectsCode("invalid_request"));
+  const done = await f.rpc<ActionCompleteResult>("action.complete", { actionId: commit, detail: "told to ignore the instruction", idempotencyKey: "complete-1" });
+  assert.equal(done.applied, true);
+  assert.equal(done.action.status, "succeeded");
+  assert.equal(done.action.result?.outputs.commitSha, cellSha, "commitSha read from the Cell HEAD");
+  assert.equal("branch" in (done.action.result?.outputs ?? {}), false, "detached Cell HEAD: no branch");
+  assert.deepEqual(done.action.result?.receipt, { completedBy: "operator" });
+  assert.equal(done.action.result?.detail, "told to ignore the instruction");
+  const replay = await f.rpc<ActionCompleteResult>("action.complete", { actionId: commit, idempotencyKey: "complete-1" });
+  assert.equal(replay.deduped, true);
+  assert.equal((await f.rpc<ActionCompleteResult>("action.complete", { actionId: commit })).applied, false, "terminal: quiet no-op");
+  // Downstream proceeds normally from the operator's result.
+  const landed = await f.waitStatus(land, ["succeeded"], "landed after operator completion");
+  assert.equal(landed.result?.outputs.cellHead, cellSha);
+  assert.equal(g(f.originRepo, ["rev-parse", "refs/heads/throwaway/completed"]), cellSha);
+  // The agent's late report: same outcome dedupes, a different one is refused.
+  const late = await f.rpc<ActionReportResult>("action.report", { actionId: commit, attempt, token, beeId, kind: "result", outcome: "succeeded", outputs: { commitSha: cellSha } });
+  assert.equal(late.deduped, true);
+  await assert.rejects(f.rpc("action.report", { actionId: commit, attempt, token, beeId, kind: "result", outcome: "failed", detail: "x" }), rejectsCode("action_refused"));
+  const tail = await f.rpc<{ rows: AuditRow[] }>("audit.tail", { beeId, limit: 1000 });
+  assert.ok(tail.rows.some((r) => r.kind === "action.put" && r.payload.reason === "operator_complete"));
+
+  // A regular checkout: HEAD + branch from the bee's cwd.
+  const plain = await f.rpc<SpawnResult>("spawn", { name: "plain", agent: "stub", cwd: f.originRepo });
+  await waitFor(async () => (await f.rpc<ViewResult>("view", { beeId: plain.beeId })).view.runtimeState === "idle" || null, "plain bee idle", 60_000);
+  const c2 = (await f.rpc<ActionEnqueueResult>("action.enqueue", { beeId: plain.beeId, idempotencyKey: "plain-commit", items: [{ kind: "commit" }] })).actions[0]!.id;
+  await f.waitStatus(c2, ["running"], "plain commit dispatched");
+  const plainDone = await f.rpc<ActionCompleteResult>("action.complete", { actionId: c2 });
+  assert.equal(plainDone.action.result?.outputs.commitSha, g(f.originRepo, ["rev-parse", "HEAD"]));
+  assert.equal(plainDone.action.result?.outputs.branch, "main");
+
+  // No readable HEAD: the caller must pass commitSha.
+  const nogit = join(f.root, "not-a-repo");
+  mkdirSync(nogit);
+  const bare = await f.rpc<SpawnResult>("spawn", { name: "nogit", agent: "stub", cwd: nogit });
+  await waitFor(async () => (await f.rpc<ViewResult>("view", { beeId: bare.beeId })).view.runtimeState === "idle" || null, "nogit bee idle", 60_000);
+  const c3 = (await f.rpc<ActionEnqueueResult>("action.enqueue", { beeId: bare.beeId, idempotencyKey: "nogit-commit", items: [{ kind: "commit" }] })).actions[0]!.id;
+  await f.waitStatus(c3, ["running"], "nogit commit dispatched");
+  await assert.rejects(f.rpc("action.complete", { actionId: c3 }), (e: unknown) => rejectsCode("invalid_request")(e) && /pass outputs\.commitSha/.test((e as Error).message));
+  assert.equal((await f.action(c3)).status, "running", "a refused complete changes nothing");
+  const explicit = await f.rpc<ActionCompleteResult>("action.complete", { actionId: c3, outputs: { commitSha: "abcdef1234" } });
+  assert.equal(explicit.action.result?.outputs.commitSha, "abcdef1234");
 });

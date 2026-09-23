@@ -172,6 +172,7 @@ import {
   isActionItemRef,
   isActionOutputRef,
   renderActionInstruction,
+  renderActionNudge,
   requestedOutputNames,
   resolveActionInputs,
   toActionQueueView,
@@ -1749,14 +1750,14 @@ export class CoreStore {
         });
       }
     }
-    // v22 → v23 → v24: the mail-history origin CHECK gains 'handoff.seed'
-    // (v23) and 'action.dispatch' (v24). SQLite cannot widen a CHECK in
-    // place, so rebuild the projection table and carry the rows across (same
-    // discipline as the v19 limits rebuild).
+    // v22 → v23 → v24 → v29: the mail-history origin CHECK gains
+    // 'handoff.seed' (v23), 'action.dispatch' (v24) and 'action.nudge' (v29).
+    // SQLite cannot widen a CHECK in place, so rebuild the projection table
+    // and carry the rows across (same discipline as the v19 limits rebuild).
     const historyDdl = this.stmt(
       "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'mail_history_enqueues'",
     ).get() as Row | undefined;
-    if (historyDdl !== undefined && !String(historyDdl.sql).includes("action.dispatch")) {
+    if (historyDdl !== undefined && !String(historyDdl.sql).includes("action.nudge")) {
       const carried = [
         "seq", "message_id", "bee_id", "origin", "sender", "sender_truncated", "body",
         "body_truncated", "priority", "urgency", "enqueued_at",
@@ -6808,7 +6809,8 @@ export class CoreStore {
       waitingReason: (r.waiting_reason as ActionWaitingReason | null) ?? null,
       waitingDetail: (r.waiting_detail as string | null) ?? null,
       attempt: Number(r.attempt),
-      dispatch: r.dispatch_json == null ? null : (JSON.parse(String(r.dispatch_json)) as ActionDispatch),
+      // Rows written before v29 lack `nudgedAt`; the view always carries every dispatch key.
+      dispatch: r.dispatch_json == null ? null : withNudgedAt(JSON.parse(String(r.dispatch_json)) as Omit<ActionDispatch, "nudgedAt"> & { nudgedAt?: number | null }),
       progress: r.progress_json == null ? null : (JSON.parse(String(r.progress_json)) as ActionProgress),
       questionId: (r.question_id as string | null) ?? null,
       result: r.result_json == null ? null : (JSON.parse(String(r.result_json)) as ActionResult),
@@ -7340,6 +7342,7 @@ export class CoreStore {
           claimedBy: null,
           claimedAt: null,
           expectedHead: null,
+          nudgedAt: null,
         },
         dispatchMessageId: sent.message.id,
         operationKey: null,
@@ -7415,6 +7418,7 @@ export class CoreStore {
         claimedBy: null,
         claimedAt: null,
         expectedHead: null,
+        nudgedAt: null,
       };
       if (bee.lifecycle === "archived") {
         this.updateActionRow(actionId, {
@@ -7528,6 +7532,7 @@ export class CoreStore {
             claimedBy: null,
             claimedAt: null,
             expectedHead: null,
+            nudgedAt: null,
           },
           dispatchMessageId: null,
           operationKey: actionOperationKey(actionId, attempt),
@@ -7580,6 +7585,7 @@ export class CoreStore {
           claimedBy: null,
           claimedAt: null,
           expectedHead: input.expectedHead,
+          nudgedAt: null,
         },
         dispatchMessageId: null,
         operationKey: key,
@@ -7861,6 +7867,83 @@ export class CoreStore {
     });
   }
 
+  /**
+   * v29 `action.complete` — the operator settles the CURRENT attempt of an
+   * open agent action as `succeeded`, exactly as if the agent had reported
+   * it (`result.receipt = {completedBy: "operator"}`). Allowed when
+   * `controls.complete` (agent executor, running or waiting on input);
+   * terminal actions are a quiet `applied:false`. Outputs are validated like a
+   * report. An undelivered instruction is withdrawn from the mailbox and an
+   * open question of the attempt is answered (the agent learns that no report
+   * is needed). The token is kept, so a late agent report for the attempt
+   * dedupes (same outcome) or is refused (different outcome).
+   */
+  completeAction(actionId: string, input: { outputs?: Record<string, unknown> | null; detail?: string | null } = {}): { action: ActionView; applied: boolean } {
+    const target = this.mustGetAction(actionId);
+    const outputs = input.outputs ?? {};
+    if (outputs === null || typeof outputs !== "object" || Array.isArray(outputs)) throw new CoreError("completeAction: outputs must be an object");
+    return this.withActionLaneAudit(target.beeId, "operator_complete", () => {
+      const row = this.mustGetAction(actionId);
+      if (ACTION_TERMINAL_STATUSES.includes(row.status)) return { action: this.actionView(actionId), applied: false };
+      if (!deriveActionControls(row).complete) {
+        throw new ActionRefusedError(
+          `action ${actionId} is ${row.status}${row.waitingReason ? `/${row.waitingReason}` : ""} (${row.executor}); only an open agent action (running, or waiting on input) can be completed`,
+        );
+      }
+      const check = validateActionOutputs(row.definition, outputs, requestedOutputNames(row.resolvedInputs ?? row.inputs));
+      if (!check.ok) {
+        throw new CoreError(`completeAction: output '${check.output}' ${check.reason === "missing" ? "is required" : check.reason === "not_string" ? "must be a string" : "does not match the required pattern"}`);
+      }
+      const at = this.now();
+      if (row.dispatch?.messageId != null && row.dispatch.deliveredAt == null) {
+        const message = this.getMessage(row.dispatch.messageId);
+        if (message && message.deliveredAt == null) {
+          this.stmt("DELETE FROM mailbox WHERE id = ?").run(message.id);
+          this.auditMailCanceled(message, "requested", at);
+        }
+      }
+      this.updateActionRow(actionId, {
+        status: "succeeded",
+        waitingReason: null,
+        waitingDetail: null,
+        result: { outputs, receipt: { completedBy: "operator" }, detail: input.detail ?? null, reconciled: false, attempt: row.attempt, at },
+        failure: null,
+        attempts: this.closeActionAttempt(row, "succeeded", at),
+        finishedAt: at,
+      });
+      // After the settle, so the answer's resume hook finds no waiting row.
+      if (row.questionId) {
+        const question = this.getQuestion(row.questionId);
+        if (question && question.status === "open") {
+          this.answerQuestion(question.id, `Action ${row.id} (${row.definition.title}) was completed by the operator; you do not need to report it.`);
+        }
+      }
+      return { action: this.actionView(actionId), applied: true };
+    });
+  }
+
+  /**
+   * v29 — the one reminder for a delivered, unreported agent attempt: the
+   * mail (`origin: action.nudge`, urgency `idle`: never interrupts a turn)
+   * and `dispatch.nudgedAt` commit in ONE transaction, so it happens at most
+   * once per attempt across restarts. The scheduler decides when it is due;
+   * this re-checks eligibility and returns null when it no longer applies.
+   */
+  nudgeAgentAction(actionId: string, attempt: number): { action: ActionView; messageId: number } | null {
+    const eligible = (row: ActionRow | null): row is ActionRow & { dispatch: ActionDispatch; attemptToken: string } =>
+      row !== null && row.executor === "agent" && row.status === "running" && row.attempt === attempt && row.attemptToken !== null
+      && row.dispatch !== null && row.dispatch.attempt === attempt && row.dispatch.deliveredAt != null && row.dispatch.nudgedAt == null;
+    const target = this.getAction(actionId);
+    if (!eligible(target)) return null;
+    return this.withActionLaneAudit(target.beeId, "nudged", () => {
+      const row = this.getAction(actionId);
+      if (!eligible(row)) return null;
+      const sent = this.send(row.beeId, renderActionNudge(row, row.attemptToken, attempt), { sender: ACTION_DISPATCH_SENDER, origin: "action.nudge", urgency: "idle" });
+      this.updateActionRow(actionId, { dispatch: { ...row.dispatch, nudgedAt: this.now() } });
+      return { action: this.actionView(actionId), messageId: sent.message.id };
+    });
+  }
+
   /** Deterministic snapshot of all replayable state (meta and audit excluded). */
   dumpState(): StateDump {
     return {
@@ -7925,4 +8008,9 @@ function trackBindings(f: TrackFields): Array<string | number | null> {
 /** Open (or create) the node's core store. The returned object is the single writer (B9). */
 export function openCoreStore(path: string, opts: CoreStoreOptions = {}): CoreStore {
   return new CoreStore(path, opts);
+}
+
+/** Dispatch JSON written before v29 has no `nudgedAt`; views always carry the key. */
+function withNudgedAt(dispatch: Omit<ActionDispatch, "nudgedAt"> & { nudgedAt?: number | null }): ActionDispatch {
+  return { ...dispatch, nudgedAt: dispatch.nudgedAt ?? null };
 }

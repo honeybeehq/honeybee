@@ -141,6 +141,13 @@ export const DAEMON_CAPABILITIES = [
    * docs/design/action-queue-contract.md.
    */
   "bee.actions.v1",
+  /**
+   * v29 (2026-09-23): `action.complete` (the operator settles an open agent
+   * action as succeeded; `controls.complete`) and the one reminder mail for
+   * an unreported agent attempt (`origin: action.nudge`,
+   * `dispatch.nudgedAt`). See docs/design/action-queue-contract.md.
+   */
+  "bee.actions.complete.v1",
 ] as const;
 export type DaemonCapability = (typeof DAEMON_CAPABILITIES)[number];
 
@@ -414,6 +421,8 @@ export const RPC_VERBS = [
   "action.cancel",
   "action.reorder",
   "action.retry",
+  // v29: operator completion of an open agent action (capability bee.actions.complete.v1).
+  "action.complete",
   "action.queue.get",
   "action.queue.pause",
   "action.queue.resume",
@@ -1629,6 +1638,31 @@ export interface ActionReorderResult extends DedupMarkers {
 /** `action.retry {actionId, force?, idempotencyKey?}` — a NEW attempt (see controls.retry / controls.forceRetry). */
 export interface ActionRetryResult extends DedupMarkers {
   action: ActionView;
+}
+
+/**
+ * `action.complete {actionId, outputs?, detail?, idempotencyKey?}` — the
+ * operator settles the CURRENT attempt of an open agent action as
+ * `succeeded`, as if the agent had reported it (`result.receipt =
+ * {completedBy: "operator"}`). Allowed when `controls.complete` (agent
+ * executor; `running`, or `waiting` on input — the open question is
+ * answered); otherwise `action_refused`; terminal → quiet `applied: false`.
+ * Outputs are validated like a report (`invalid_request` when a required one
+ * is missing). For `commit`, an omitted `commitSha` (and `branch`) is filled
+ * from the bee's checkout HEAD (the Cell space for Cell bees); an unreadable
+ * HEAD is `invalid_request`. A late agent report for the attempt dedupes
+ * (same outcome) or is refused (different outcome).
+ */
+export interface ActionCompleteParams {
+  actionId: string;
+  outputs?: Record<string, string> | null;
+  detail?: string | null;
+  idempotencyKey?: string;
+}
+
+export interface ActionCompleteResult extends DedupMarkers {
+  action: ActionView;
+  applied: boolean;
 }
 
 /** `action.queue.get {beeId}` — the summary (a bee that never queued has a default, unpaused summary). */

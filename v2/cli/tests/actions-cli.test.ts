@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { makeDaemonDir, startDaemon, waitFor, type DaemonHandle } from "../../daemon/tests/helpers.ts";
 import { runV2Cli, type CliIo } from "../src/main.ts";
 import { stripAnsi } from "../src/style.ts";
-import type { ActionEnqueueResult, ActionGetResult, ActionListResult, ActionReportResult, MailboxResult, ViewResult } from "../../daemon/src/protocol.ts";
+import type { ActionCompleteResult, ActionEnqueueResult, ActionGetResult, ActionListResult, ActionReportResult, MailboxResult, ViewResult } from "../../daemon/src/protocol.ts";
 
 function capture(): { io: CliIo; out: string[]; err: string[] } {
   const out: string[] = [];
@@ -115,6 +115,28 @@ test("cli.action: enqueue → list/get → report from inside the bee (HIVE_BEE_
     assert.ok(rt.err[0]?.includes("action_refused"), rt.err[0]);
     const resume = capture();
     assert.equal(await runV2Cli(["action", "resume", "worker", "--data-dir", dir], resume.io), 0);
+    // Operator completion: the usage lists it; /tmp has no readable HEAD, so a commit needs --output commitSha.
+    assert.ok(usage.err[0]?.includes("hive action complete <actionId> [--output k=v]... [--detail d]"), usage.err[0]);
+    const e3 = capture();
+    assert.equal(await runV2Cli(["action", "enqueue", "worker", "commit", "--data-dir", dir, "--json"], e3.io), 0);
+    const silent = (JSON.parse(e3.out[0] ?? "{}") as ActionEnqueueResult).actions[0]!;
+    await waitFor(async () => {
+      const g = capture();
+      await runV2Cli(["action", "get", silent.id, "--data-dir", dir, "--json"], g.io);
+      return (JSON.parse(g.out[0] ?? "{}") as ActionGetResult).action.status === "running";
+    }, "silent commit running", 60_000);
+    const noHead = capture();
+    assert.equal(await runV2Cli(["action", "complete", silent.id, "--data-dir", dir], noHead.io), 1);
+    assert.ok(noHead.err[0]?.includes("invalid_request") && noHead.err[0]?.includes("pass outputs.commitSha"), noHead.err[0]);
+    const comp = capture();
+    assert.equal(await runV2Cli(["action", "complete", silent.id, "--output", "commitSha=abcdef1234567", "--detail", "agent ignored it", "--idempotency-key", "cli-complete-1", "--data-dir", dir, "--json"], comp.io), 0);
+    const completed = JSON.parse(comp.out[0] ?? "{}") as ActionCompleteResult;
+    assert.equal(completed.action.status, "succeeded");
+    assert.deepEqual(completed.action.result?.receipt, { completedBy: "operator" });
+    assert.equal(completed.action.result?.detail, "agent ignored it");
+    const again = capture();
+    assert.equal(await runV2Cli(["action", "complete", silent.id, "--output", "commitSha=abcdef1234567", "--data-dir", dir], again.io), 0);
+    assert.ok(again.out[0]?.includes("already closed"), again.out[0]);
     const defs = capture();
     assert.equal(await runV2Cli(["action", "definitions", "--data-dir", dir], defs.io), 0);
     assert.ok(defs.out.some((line) => line.startsWith("land@1")), defs.out.join("\n"));
