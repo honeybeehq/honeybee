@@ -63,7 +63,7 @@ export async function cmdDeploy(parsed: Parsed): Promise<void> {
     console.log(JSON.stringify(result));
     return;
   }
-  if (flag(parsed, "bin-dir") !== undefined) throw new Error(USAGE);
+  if (["identity", "admission", "expected-current", "bin-dir"].some(name => parsed.flags.has(name))) throw new Error(USAGE);
   const wantsList = truthy(flag(parsed, "list"));
   const wantsInit = truthy(flag(parsed, "init"));
   const wantsRollback = truthy(flag(parsed, "rollback"));
