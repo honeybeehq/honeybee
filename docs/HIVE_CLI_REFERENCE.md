@@ -1199,6 +1199,7 @@ hive action enqueue <bee> <kind> [--input k=v|k:=json]... [--title t] [--idempot
 hive action enqueue <bee> --items-json '[{"kind":"commit"},{"kind":"land","inputs":{"targetBranch":"main","commit":{"$ref":{"item":0,"output":"commitSha"}}}},{"kind":"archive"}]'
 hive action list [--bee b] [--status s] | action get <id> | action definitions
 hive action cancel <id> [--force] | action retry <id> [--force]
+hive action complete <id> [--output k=v]... [--detail d] [--idempotency-key k]
 hive action pause <bee> | action resume <bee> | action reorder <bee> <id>...
 hive action report <id> --attempt n --token t (--succeeded [--output k=v]... | --failed [--code c] [--detail d] | --uncertain [--detail d] | --ask "q" [--option o]... | --progress "note") [--bee b]
 hive action claim --executor <name> [--kind k] [--bee b] [--action id]
@@ -1212,6 +1213,16 @@ hive action claim --executor <name> [--kind k] [--bee b] [--action id]
   the mailbox); `--force` stops tracking an in-flight attempt without undoing
   its effects. `retry` starts a **new** attempt of a failed action; `--force`
   is required when the last attempt's outcome is uncertain.
+- `complete` is the operator's way out when an agent never reports: it
+  settles the open agent attempt (running, or waiting on its question) as
+  `succeeded` with `receipt: {completedBy: "operator"}`, so the queue moves
+  on. For `commit`, an omitted `commitSha` is read from the bee's checkout
+  HEAD (the Cell space for Cell bees), plus `branch` when HEAD is on one;
+  pass `--output commitSha=<sha>` when there is no readable HEAD. Needs
+  capability `bee.actions.complete.v1`.
+- A delivered `commit` attempt that stays silent (no report, no progress) for
+  30 minutes gets one reminder mail (`origin: action.nudge`, urgency `idle`)
+  that restates the report command. The reminder never completes anything.
 - `pause` stops new releases only; the active attempt continues. `reorder`
   takes exactly the queued ids and refuses an order that would point an output
   reference forward.
