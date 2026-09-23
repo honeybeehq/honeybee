@@ -160,7 +160,7 @@ export class LoginFlowService {
    */
   async start(account: AccountRow, opts: { methodId?: string | null; remote?: boolean } = {}): Promise<{ flow: LoginFlowRow; rejoined: boolean }> {
     if (this.accounts.centralCredentials.enabled(account) || this.accounts.centralCredentials.busy(account)) {
-      throw new LoginFlowRefusal("login_flow_refused", "Disable the central credential pilot before starting a native login.");
+      throw new LoginFlowRefusal("login_flow_refused", "Disable central credentials before starting a native login.");
     }
     const active = this.store.activeLoginFlow(account.id);
     if (active) {
@@ -254,7 +254,7 @@ export class LoginFlowService {
     const account = this.store.getAccount(flow.account);
     if (!account) throw new LoginFlowRefusal("login_flow_not_found", `login flow ${flowId} belongs to a removed account`);
     if (this.accounts.centralCredentials.enabled(account) || this.accounts.centralCredentials.busy(account)) {
-      throw new LoginFlowRefusal("login_flow_refused", "Disable the central credential pilot before retrying a native login.");
+      throw new LoginFlowRefusal("login_flow_refused", "Disable central credentials before retrying a native login.");
     }
     if (!isTerminal(flow.phase) && this.runners.has(flowId)) {
       // A live flow "retried" = restart its method (fresh URL / worker).

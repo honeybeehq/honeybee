@@ -4667,7 +4667,7 @@ export class HiveDaemon {
   /** `account.login.start {id, methodId?, remote?}` (alias: `account.login {id}`). */
   private rpcAccountLoginStart(params: Record<string, unknown>): Promise<AccountLoginStartResult> {
     const account = this.requireAccount(params);
-    if (this.mustAccounts().centralCredentials.enabled(account)) throw new RpcError("account_unavailable", "Disable the central credential pilot before starting a native login.");
+    if (this.mustAccounts().centralCredentials.enabled(account)) throw new RpcError("account_unavailable", "Disable central credentials before starting a native login.");
     const methodId = params.methodId === undefined || params.methodId === null ? null : this.param(params, "methodId");
     if (params.remote !== undefined && typeof params.remote !== "boolean") throw new RpcError("invalid_request", "account.login.start: remote must be a boolean");
     const remote = params.remote === true;
