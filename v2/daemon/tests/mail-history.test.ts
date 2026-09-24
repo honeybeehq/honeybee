@@ -4,10 +4,15 @@ import { openCoreStore } from "../../core/src/index.ts";
 import {
   RpcError,
   type DeployInfoResult,
+  type MailboxResult,
   type MailHistoryResult,
   type MailPendingResult,
+  type SendRpcResult,
+  type SnapshotResult,
+  type SpawnResult,
+  type WatchFrame,
 } from "../src/protocol.ts";
-import { makeDaemonDir, startDaemon, type DaemonHandle } from "./helpers.ts";
+import { makeDaemonDir, startDaemon, waitFor, type DaemonHandle } from "./helpers.ts";
 
 test("rpc.mail.history exposes capped, snapshot-stable backward pages and canceled mail", async () => {
   const rig = makeDaemonDir();
@@ -55,6 +60,63 @@ test("rpc.mail.history exposes capped, snapshot-stable backward pages and cancel
       client.request("mail.history", { beforeSeq: -1 }),
       (error: unknown) => error instanceof RpcError && error.code === "invalid_request",
     );
+    client.close();
+  } finally {
+    if (daemon) await daemon.stop();
+    rig.cleanup();
+  }
+});
+
+test("rpc.bee.lastPromptAt: deployInfo, snapshot, and watch deltas carry delivered operator prompt recency", async () => {
+  const rig = makeDaemonDir();
+  let daemon: DaemonHandle | null = null;
+  try {
+    daemon = await startDaemon(rig.dir);
+    const client = await daemon.client();
+    const watcher = await daemon.client();
+    const frames: WatchFrame[] = [];
+    watcher.onEvent = (frame: WatchFrame) => frames.push(frame);
+    await watcher.request<SnapshotResult>("watch");
+
+    const info = await client.request<DeployInfoResult>("deployInfo");
+    assert.ok(info.capabilities.includes("bee.lastPromptAt.v1"));
+    const spawned = await client.request<SpawnResult>("spawn", { name: "last-prompt", agent: "stub", cwd: "/tmp" });
+    await waitFor(
+      async () => (await client.request<SnapshotResult>("snapshot")).views.find((row) => row.view.beeId === spawned.beeId)?.view.runtimeState === "idle",
+      "spawned bee idle",
+      20_000,
+    );
+
+    const sent = await client.request<SendRpcResult>("send", { beeId: spawned.beeId, body: "operator turn" });
+    const deliveredAt = await waitFor(async () => {
+      const box = await client.request<MailboxResult>("mailbox", { beeId: spawned.beeId });
+      return box.messages.find((message) => message.id === sent.messageId)?.deliveredAt ?? null;
+    }, "operator mail delivered", 20_000);
+
+    const snapshot = await client.request<SnapshotResult>("snapshot");
+    const row = snapshot.views.find((view) => view.view.beeId === spawned.beeId);
+    assert.equal(row?.view.lastPromptAt, deliveredAt);
+    assert.equal(row?.bee?.lastPromptAt, deliveredAt);
+    const prompted = await waitFor(() => {
+      for (const frame of frames) {
+        if (frame.type !== "delta") continue;
+        const event = frame.events.find((candidate) =>
+          candidate.kind === "bee.prompted" &&
+          candidate.payload.messageId === sent.messageId
+        );
+        if (event) return event;
+      }
+      return null;
+    }, "bee.prompted watch delta", 20_000);
+    assert.deepEqual(prompted.payload, {
+      beeId: spawned.beeId,
+      lastPromptAt: deliveredAt,
+      previous: null,
+      messageId: sent.messageId,
+      origin: "mail.send",
+      sender: "operator",
+    });
+    watcher.close();
     client.close();
   } finally {
     if (daemon) await daemon.stop();

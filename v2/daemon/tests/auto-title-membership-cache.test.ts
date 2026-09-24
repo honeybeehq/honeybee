@@ -566,6 +566,7 @@ test("general dependencies retain exact callback order during synchronous reentr
     createdAt: 1,
     archivedAt: null,
     lastOutputAt: null,
+    lastPromptAt: null,
     providerSessionId: null,
     env: {},
     importedFrom: null,

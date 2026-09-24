@@ -142,8 +142,9 @@
  * v27 refuses older binaries even when no account is enrolled. Roll back behavior with
  * credentials.disable; binary downgrade requires a separately planned store restore.
  * v28 adds durable, generation-reconciled automatic-account start reservations
- * and shared-owner claim confirmation. */
-export const SCHEMA_VERSION = 28;
+ * and shared-owner claim confirmation.
+ * v29 adds bees.last_prompt_at, backfilled from delivered operator-origin mail. */
+export const SCHEMA_VERSION = 29;
 
 export const ACCOUNT_ADMISSIONS_TABLE_SQL = `
 CREATE TABLE IF NOT EXISTS account_admission_reservations (
@@ -213,6 +214,7 @@ CREATE TABLE IF NOT EXISTS bees (
   created_at       INTEGER NOT NULL,
   archived_at      INTEGER,
   last_output_at   INTEGER,
+  last_prompt_at   INTEGER,
   -- v3: harness-native session/thread id of the bee's conversation (claude
   -- session_id, codex thread id). Recorded from the runtime's booted signal;
   -- revive hands it back to the harness (claude --resume / codex thread/resume)
@@ -704,7 +706,7 @@ CREATE TABLE IF NOT EXISTS cell_ops (
  * Additive columns on `bees` since v2 — name → ADD COLUMN clause (migration =
  * add iff missing). v3: provider_session_id, env, imported_from; v4:
  * spawn_failures; v5: args; v6: parent_id, forked_from, fork_seed; v7:
- * account; v21: parent_external.
+ * account; v21: parent_external; v29: last_prompt_at.
  */
 export const BEES_ADDITIVE_COLUMNS: ReadonlyArray<readonly [name: string, ddl: string]> = [
   ["provider_session_id", "provider_session_id TEXT"],
@@ -722,6 +724,7 @@ export const BEES_ADDITIVE_COLUMNS: ReadonlyArray<readonly [name: string, ddl: s
   ["active_move_id", "active_move_id TEXT"],
   ["cell_id", "cell_id TEXT"],
   ["active_handoff_id", "active_handoff_id TEXT"],
+  ["last_prompt_at", "last_prompt_at INTEGER"],
 ];
 
 export const CELLS_TABLE_SQL = `
