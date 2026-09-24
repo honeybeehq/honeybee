@@ -1070,7 +1070,7 @@ test("rpc.accounts: Codex usageLimitExceeded persists bee and account boundaries
   } } });
   let daemon: DaemonHandle | null = null;
   try {
-    seedVault(dir, "codex", "codex-quota", "auth.json");
+    seedVault(dir, "codex", "codex-quota", "auth.json", '{"auth_mode":"chatgpt","OPENAI_API_KEY":null,"tokens":{"id_token":"i","access_token":"a","refresh_token":"r","account_id":"acc"}}');
     daemon = await startDaemon(dir);
     const client = await daemon.client();
     await client.request("account.add", { harness: "codex", label: "quota", importExisting: true });
