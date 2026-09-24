@@ -310,7 +310,7 @@ gui/501/dev.honeybee.hive = {
   assert.deepEqual(parsed, { loaded: true, state: "running", pid: 53271 });
 });
 
-test("readDaemonStatus reports launchd's pre-lock boot window as starting", async () => {
+test("readDaemonStatus reports launchd's pre-lock boot window only on macOS", async () => {
   await withTempHome(async () => {
     const dispose = setLaunchctlRunner(async (args) => {
       if (args[0] === "print") {
@@ -331,8 +331,9 @@ test("readDaemonStatus reports launchd's pre-lock boot window as starting", asyn
       });
       const status = await readDaemonStatus();
       assert.equal(status.running, false);
-      assert.equal(status.starting, true);
-      assert.equal(status.supervisorPid, 54321);
+      // Linux must not infer a supervisor from a plist or call launchctl.
+      assert.equal(status.starting, process.platform === "darwin");
+      assert.equal(status.supervisorPid, process.platform === "darwin" ? 54321 : null);
     } finally {
       dispose();
     }

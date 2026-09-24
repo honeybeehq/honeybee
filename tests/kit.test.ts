@@ -12,6 +12,7 @@ import {
 import { resolveKitProfileFlag, spawnBee, type SpawnRuntimeDependencies } from "../src/commands/spawn.js";
 import { parse } from "../src/parse.js";
 import { loadSession } from "../src/store.js";
+import { fixtureExecutablePath } from "./executable-fixtures.js";
 
 async function makeStubKit(dir: string, body: string): Promise<string> {
   const bin = join(dir, "kit");
@@ -122,7 +123,9 @@ test("execution spawn converges Kit before HSR boot and stamps the exact profile
   const previousStore = process.env.HIVE_STORE_ROOT;
   const calls = join(dir, "calls.txt");
   const hostPid = 58431;
+  const previousPath = process.env.PATH;
   try {
+    process.env.PATH = await fixtureExecutablePath(dir, ["codex"]);
     await mkdir(home, { recursive: true });
     await makeStubKit(
       dir,
@@ -183,6 +186,8 @@ echo '[]'`,
     assert.match((await readFile(calls, "utf8")).trim(), /--profile web-qa --json$/);
   } finally {
     delete process.env.HIVE_KIT_BIN;
+    if (previousPath === undefined) delete process.env.PATH;
+    else process.env.PATH = previousPath;
     if (previousStore === undefined) delete process.env.HIVE_STORE_ROOT;
     else process.env.HIVE_STORE_ROOT = previousStore;
     resetKitProbeForTests();

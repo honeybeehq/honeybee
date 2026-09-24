@@ -37,7 +37,7 @@ async function run(command: string, args: string[], options: {
   return { code, stdout, stderr };
 }
 
-test("probeCellSandbox advertises both supported OS backends and fails closed on missing dependencies", async () => {
+test("probeCellSandbox advertises Linux with usable dependencies and fails closed without them", async () => {
   const root = await mkdtemp(join(tmpdir(), "hive-cell-probe-"));
   const bin = join(root, "bin");
   await mkdir(bin);
@@ -50,11 +50,16 @@ test("probeCellSandbox advertises both supported OS backends and fails closed on
     await rm(join(bin, "bwrap"));
     const missing = probeCellSandbox("linux", { PATH: bin });
     assert.match(missing.status === "absent" ? missing.installHint : "", /bubblewrap/);
-    assert.equal(probeCellSandbox("darwin", { PATH: bin }).status, "ready");
     assert.equal(probeCellSandbox("freebsd", { PATH: bin }).status, "absent");
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test("probeCellSandbox advertises macOS only with a working native Seatbelt", {
+  skip: process.platform !== "darwin" ? "requires macOS /usr/bin/sandbox-exec" : false,
+}, () => {
+  assert.deepEqual(probeCellSandbox("darwin"), { status: "ready", backend: "macos-seatbelt" });
 });
 
 test("Cell policy permits only the Cell, provider state, and per-run scratch outside device files", async () => {

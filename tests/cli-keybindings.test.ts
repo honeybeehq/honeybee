@@ -15,6 +15,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { promisify } from "node:util";
 import { newSession, setTmuxSocket, tmux } from "../src/substrates/local-tmux.js";
+import { fixtureExecutablePath } from "./executable-fixtures.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -31,11 +32,13 @@ type HiveResult = { stdout: string; stderr: string; code: number };
 
 // execFile rejects on non-zero exit; we want to assert on stdout/stderr/code
 // for the dim-stderr / exit-code contracts, so capture rather than throw.
-function hive(store: string, args: string[], extraEnv: Record<string, string> = {}, socket?: string): Promise<HiveResult> {
+async function hive(store: string, args: string[], extraEnv: Record<string, string> = {}, socket?: string): Promise<HiveResult> {
   return execFileAsync(process.execPath, ["tests/cli-entry.mjs", ...args], {
     cwd: process.cwd(),
     env: {
       ...process.env,
+      // These checks inspect PATH and bindings; they never invoke a popup.
+      PATH: await fixtureExecutablePath(store, ["hive"]),
       HIVE_STORE_ROOT: store,
       ...(socket ? { HIVE_TMUX_SOCKET: socket } : {}),
       HIVE_NO_KEYCHAIN: "1",

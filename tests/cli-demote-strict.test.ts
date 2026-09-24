@@ -9,6 +9,7 @@ import { captureProcessBirthFingerprint } from "../src/hsr/processIdentity.js";
 import { hasSession, setTmuxSocket, tmux } from "../src/substrates/local-tmux.js";
 import { terminateProcessGroup } from "../src/substrates/local-tmux.js";
 import type { ProcessBirthFingerprint } from "../src/hsr/processIdentity.js";
+import { fixtureExecutablePath } from "./executable-fixtures.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -63,6 +64,7 @@ test("demote aborts before HSR spawn when pane kill cannot confirm the old proce
         cwd: process.cwd(),
         env: {
           ...process.env,
+          PATH: await fixtureExecutablePath(store, ["codex"]),
           HIVE_STORE_ROOT: store,
           HIVE_TMUX_SOCKET: socket,
           HIVE_NO_KEYCHAIN: "1",

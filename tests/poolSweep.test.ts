@@ -508,14 +508,18 @@ test("sweeper: a member left dirty is flagged once (nudge to the departed bee's 
 test("sweeper: minFree pre-extends in the background and reports completion next sweep", async () => {
   await withTempStore(async () => {
     // 1 member, occ 1, free 1, minFree 3 → shortfall 2; maxSize 2 → loud warning.
-    const h = buildSweeper(() => resolvedPool({ minFree: 3 }));
+    const jobs: Array<() => Promise<void>> = [];
+    const h = buildSweeper(() => resolvedPool({ minFree: 3 }), {
+      startBackground: (job) => jobs.push(job),
+    });
     const first = await h.sweep([], new Map());
     assert.equal(first[0]!.extendStarted, 2);
     assert.equal(first[0]!.warned, undefined, "limits are revalidated by the background job, not the scheduling snapshot");
     // Let the background extend settle, then the next sweep reports it. The
     // roster still shows free 1 < minFree, but the in-flight/settled bookkeeping
     // prevents a duplicate extend within the same settle cycle.
-    await new Promise((resolve) => setTimeout(resolve, 5));
+    assert.equal(jobs.length, 1);
+    await jobs.shift()!();
     assert.deepEqual(h.extendCalls, [{ pool: "core", count: 2 }]);
     h.advance(1500);
     const second = await h.sweep([], new Map());

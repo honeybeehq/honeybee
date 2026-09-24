@@ -19,6 +19,7 @@ import { ensureHsrRunDir, writeHsrMeta } from "../src/hsr/runDir.js";
 import type { HsrRunPayload } from "../src/hsr/runnerHost.js";
 import { loadSession, saveSession, type SessionRecord } from "../src/store.js";
 import type { Parsed } from "../src/parse.js";
+import { fixtureExecutablePath } from "./executable-fixtures.js";
 
 const HOST_PID = 47251;
 
@@ -117,8 +118,14 @@ test("spawnBee threads --sandbox-write into the HSR payload and stamps the recor
   });
 });
 
-test("protocol spawn argv ignores an ambient account-model overlay", async () => {
+test("protocol spawn argv ignores an ambient account-model overlay", async (context) => {
   await withTempStore(async (dir) => {
+    const previousPath = process.env.PATH;
+    context.after(() => {
+      if (previousPath === undefined) delete process.env.PATH;
+      else process.env.PATH = previousPath;
+    });
+    process.env.PATH = await fixtureExecutablePath(dir, ["claude"]);
     const checkout = join(dir, "checkout");
     await mkdir(checkout, { recursive: true });
     const captured: HsrRunPayload[] = [];

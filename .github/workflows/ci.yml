@@ -10,8 +10,9 @@ concurrency:
   cancel-in-progress: true
 jobs:
   verify:
-    # Routine source verification uses Linux; Darwin artifacts are built in release.yml.
-    runs-on: ubuntu-22.04
+    # Source tests need tmux >= 3.3 (allow-passthrough); Ubuntu 24.04 ships 3.4.
+    # Release archive packaging remains controlled by release.yml.
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
@@ -23,6 +24,9 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y tmux bubblewrap ripgrep socat
+      - name: Require native Linux sandbox coverage
+        # Fail before tests if this runner would skip the native containment probe.
+        run: bwrap --new-session --die-with-parent --ro-bind / / --dev /dev --unshare-user --cap-drop ALL --unshare-pid --proc /proc -- /bin/true
       - run: npm ci
       - run: npm run check
       - run: npm run v2:check
