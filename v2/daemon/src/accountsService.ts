@@ -831,7 +831,9 @@ export class AccountsService {
       const credential = parseClaudeCredentials(raw);
       if (!credential?.refreshToken || credential.refreshToken === owned.refreshToken) return;
       // While enrolling, native copies still hold the adopted chain (or older ones) until publication replaces them.
-      const adopted = this.centralCredentials.status(account)?.phase === "enrolling" ? this.centralCredentials.adopted(account) : null;
+      const phase = this.centralCredentials.status(account)?.phase;
+      const adopted = phase === "enrolling" ? this.centralCredentials.adopted(account)
+        : phase === "disabling" || phase === "disabling_uncertain" ? this.centralCredentials.rollbackAdopted(account) : null;
       if (adopted && (refreshTokenDigest(credential.refreshToken) === adopted.refreshTokenDigest || credential.expiresAt < adopted.expiresAt)) return;
       throw new CredentialOwnershipConflict("An external Claude login or refresh changed this account; stop that process and recover the account before continuing.");
     };

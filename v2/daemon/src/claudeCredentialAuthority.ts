@@ -10,6 +10,8 @@ export interface AuthorityDocument {
   document: Record<string, unknown>;
   /** The native chain enrollment adopted, secret-free, so its untouched copies are not mistaken for a foreign login. */
   adopted?: AdoptedChain;
+  /** Enrollment provenance retained while disabling, including after a restart. */
+  rollbackAdopted?: AdoptedChain;
 }
 export interface AdoptedChain {
   refreshTokenDigest: string;
@@ -104,6 +106,26 @@ export class ClaudeCredentialAuthority {
   adopted(account: AccountRow): AdoptedChain | null {
     try { return this.read(account).adopted ?? null; } catch { return null; }
   }
+  rollbackAdopted(account: AccountRow): AdoptedChain | null {
+    try { return this.read(account).rollbackAdopted ?? null; } catch { return null; }
+  }
+  private preserveEnrollmentRollback(account: AccountRow, value: AuthorityDocument): AuthorityDocument {
+    if (value.adopted && !value.rollbackAdopted) {
+      value = { ...value, rollbackAdopted: value.adopted };
+      save(this.path(account), value);
+    }
+    return value;
+  }
+  private enrollmentReady(account: AccountRow, value: AuthorityDocument): AccountCredentialAuthority {
+    // Clear before ready: a crash leaves enrolling, which can recover provenance.
+    // A later native login must never inherit enrollment's rollback allowance.
+    if (value.rollbackAdopted) {
+      value = { ...value };
+      delete value.rollbackAdopted;
+      save(this.path(account), value);
+    }
+    return this.put(account, "ready", value);
+  }
   enable(account: AccountRow): Promise<AccountCredentialAuthority> {
     return this.lane(account, "enable", async () => {
       if (account.harness !== "claude") throw new CredentialAuthorityError("Central credential management supports Claude only.");
@@ -119,8 +141,9 @@ export class ClaudeCredentialAuthority {
           // The validating rotation was in flight when enrollment was interrupted.
           if (value.operationKey === before.operationKey && value.generation > before.generation) {
             await this.options.publish(account, value.document, true);
-            return this.put(account, "ready", value);
+            return this.enrollmentReady(account, value);
           }
+          value = this.preserveEnrollmentRollback(account, value);
           this.put(account, "uncertain", { ...value, operationKey: before.operationKey });
           throw new CredentialAuthorityError("The enrollment refresh outcome is unknown; the native refresh token may be consumed. Disable central credentials for this account, then log in again.");
         }
@@ -151,6 +174,7 @@ export class ClaudeCredentialAuthority {
       let refreshed;
       try { refreshed = await this.options.refresh(credential.refreshToken); }
       catch {
+        value = this.preserveEnrollmentRollback(account, value);
         this.put(account, "uncertain", { ...value, operationKey });
         throw new CredentialAuthorityError("The enrollment refresh outcome is uncertain; the native refresh token may be consumed. Disable central credentials for this account, then log in again.");
       }
@@ -161,6 +185,7 @@ export class ClaudeCredentialAuthority {
         throw new CredentialAuthorityError(`The provider refused this account's refresh credential; native copies are unchanged. Log in natively (hive account login ${account.id}) before enrolling it.`);
       }
       if (!refreshed.accessToken || !refreshed.refreshToken || !Number.isFinite(refreshed.expiresAt) || refreshed.expiresAt <= this.options.now()) {
+        value = this.preserveEnrollmentRollback(account, value);
         this.put(account, "uncertain", { ...value, operationKey });
         throw new CredentialAuthorityError("The provider returned an unusable refresh result; disable central credentials for this account, then log in again.");
       }
@@ -169,7 +194,7 @@ export class ClaudeCredentialAuthority {
         document: { ...value.document, claudeAiOauth: { ...oauth, ...refreshed } } };
       save(this.path(account), value);
       await this.options.publish(account, value.document, true);
-      return this.put(account, "ready", value);
+      return this.enrollmentReady(account, value);
     });
   }
   disable(account: AccountRow): Promise<AccountCredentialAuthority> {
@@ -178,7 +203,6 @@ export class ClaudeCredentialAuthority {
       const state = this.status(account);
       if (!state) throw new CredentialAuthorityError("This account is not centrally managed.");
       if (state.phase === "disabled") return state;
-      const uncertain = state.phase === "refreshing" || state.phase === "uncertain" || state.phase === "disabling_uncertain";
       let value: AuthorityDocument;
       try { value = this.read(account); }
       catch {
@@ -186,6 +210,14 @@ export class ClaudeCredentialAuthority {
         this.options.store.setAccountStatus(account.id, "auth_needed", "Central credential lost; log in again");
         return this.options.store.putAccountCredentialAuthority({ ...state, phase: "disabled" });
       }
+      // Enrollment also crosses the provider boundary. A process death can
+      // leave its in-flight fence without ever reaching the uncertainty handler.
+      // Only a matching durable rotated result proves that this chain is usable.
+      const enrollmentUnknown = state.phase === "enrolling" && state.operationKey !== null
+        && !(value.operationKey === state.operationKey && value.generation > state.generation);
+      const uncertain = state.phase === "refreshing" || state.phase === "uncertain"
+        || state.phase === "disabling_uncertain" || enrollmentUnknown;
+      if (state.phase === "enrolling") value = this.preserveEnrollmentRollback(account, value);
       this.put(account, uncertain ? "disabling_uncertain" : "disabling", value); // Preserve rollback intent across restart.
       try { await this.options.publish(account, value.document, uncertain); }
       catch (error) {
