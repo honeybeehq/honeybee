@@ -7,9 +7,9 @@
     "hived"
   ],
   "owners": [
-    "v2/daemon/src/accountsService.ts@e03cdc6448460afe57935636eb8591cb820a4a94",
-    "v2/daemon/src/config.ts@c968b2f58247103b4d3ffa75ae51900a95239d81",
-    "v2/core/src/store.ts@a9b3bdafe63b5cd28f3ad745331799a912cc005e"
+    "v2/daemon/src/accountsService.ts@0c3ca38f139ebeb06c0a75937aa482b107d44dd6",
+    "v2/daemon/src/config.ts@5b89a38f634f1bd2a4b86042ea4eca2d23d40abb",
+    "v2/core/src/store.ts@32322511f82f7d26b79ceacc55d8990082eac37f"
   ],
   "effect": {
     "user": "Account activity reports skip pending work reads whose result cannot affect a booting/running classification.",
@@ -108,9 +108,9 @@
     }
   ],
   "gaps": [
-    "Runtime lookup remains accounts times bees; reservations and roster still read per account.",
+    "Admission still computes one candidate activity at a time; public report batching is measured separately.",
     "CPU, RSS, whole-admission/fleet costs and live provider paths remain unmeasured."
   ],
-  "updatedAt": "2026-09-22",
-  "readiness": "12 count samples preserve exact activity and durable state; 9 nonempty samples remove 1/180/3000 discarded reads. Inactive/transfer/reopen controls pass. No latency claim."
+  "updatedAt": "2026-09-24",
+  "readiness": "12 refreshed linked-control count samples preserve exact activity and durable state; active pending-work reads remain zero. Inactive/transfer/reopen controls pass; no latency claim."
 }

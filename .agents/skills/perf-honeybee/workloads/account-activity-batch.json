@@ -1,0 +1,146 @@
+{
+  "protocolVersion": 1,
+  "id": "account-activity-batch",
+  "title": "Batch account activity runtime reads",
+  "lane": "steady-state",
+  "processes": [
+    "hived"
+  ],
+  "owners": [
+    "v2/daemon/src/accountsService.ts@0c3ca38f139ebeb06c0a75937aa482b107d44dd6",
+    "v2/daemon/src/config.ts@5b89a38f634f1bd2a4b86042ea4eca2d23d40abb",
+    "v2/core/src/store.ts@32322511f82f7d26b79ceacc55d8990082eac37f"
+  ],
+  "effect": {
+    "user": "Report fresh activity for all accounts with one runtime lookup per bee.",
+    "assertions": [
+      "Exact active/recent/pending units and sorted claim identities.",
+      "No durable writes; consecutive reads and admission singleton behavior stay fresh."
+    ],
+    "exclusions": [
+      "Whole admission cost",
+      "CPU",
+      "Latency",
+      "RSS",
+      "Provider or real runtime work"
+    ]
+  },
+  "accounts": [
+    {
+      "inventory": "entry-points",
+      "key": "account-activity:nodeActivity"
+    }
+  ],
+  "states": {
+    "idle": {
+      "matters": false,
+      "why": "No process/provider launch; this workload isolates one synchronous activity calculation."
+    },
+    "first-use": {
+      "matters": false,
+      "why": "No process/provider launch; this workload isolates one synchronous activity calculation."
+    },
+    "repeated": {
+      "matters": true,
+      "why": "Two rounds at each scale"
+    },
+    "scale": {
+      "matters": true,
+      "why": "0/1/4/8 accounts and 0/12/120/1200 bees"
+    },
+    "background": {
+      "matters": false,
+      "why": "No process/provider launch; this workload isolates one synchronous activity calculation."
+    },
+    "release": {
+      "matters": false,
+      "why": "No process/provider launch; this workload isolates one synchronous activity calculation."
+    },
+    "recovery": {
+      "matters": true,
+      "why": "Lifecycle freshness and reopen are separate behavioral controls."
+    }
+  },
+  "fixture": {
+    "preset": "account-activity-batch-v1",
+    "isolationPolicy": 1,
+    "scaleAxes": [
+      {
+        "axis": "accounts",
+        "values": [
+          0,
+          1,
+          4,
+          8
+        ],
+        "unit": "accounts"
+      },
+      {
+        "axis": "bees",
+        "values": [
+          0,
+          12,
+          120,
+          1200
+        ],
+        "unit": "bees"
+      }
+    ],
+    "seed": "Real SQLite; mixed active/pending/recent/old bees; two rounds per scale."
+  },
+  "recipe": {
+    "driver": "v2/daemon/tests/accounts-activity-batch.test.ts",
+    "command": "HIVE_ACTIVITY_BATCH_RECEIPT=\"${HIVE_PERF_OUT:?set absolute receipt path}\" node --test v2/daemon/tests/accounts-activity-batch.test.ts",
+    "readiness": "Isolated SQLite seed complete; wrappers installed only around nodeActivity.",
+    "completion": "32 complete parity samples; zero excess runtime reads; behavior controls pass.",
+    "warmup": "None: deterministic method-call counts.",
+    "teardown": "Close owned store and remove fixture in finally, including initial open failure.",
+    "requires": [
+      "Node 24.18.0",
+      "Writable parent directory for HIVE_PERF_OUT"
+    ]
+  },
+  "metrics": [
+    {
+      "id": "excessRuntimeReads",
+      "unit": "count",
+      "scope": "currentRuntime calls beyond one per bee per public nodeActivity report (zero with no accounts)",
+      "collector": "Call-through instance wrappers in accounts-activity-batch.test.ts",
+      "aggregation": "max",
+      "kind": "actual",
+      "status": "gated",
+      "states": [
+        "repeated",
+        "scale"
+      ],
+      "betterWhen": "lower",
+      "invariant": "All 32 cases preserve exact activity and durable state; runtime reads at most one per bee; roster and admission list at most once.",
+      "noise": "Deterministic counts; no timing.",
+      "baseline": {
+        "seriesId": "account-activity-batch-v1:Tormods-Mac-Studio.local:v24.18.0:darwin:arm64",
+        "receipt": ".agents/skills/perf-honeybee/workloads/baselines/account-activity-batch.json",
+        "commit": "ab02e4512f2e869a1ab82a7f0dcb78b5c7abb6bd + receipt source hashes",
+        "samples": 32,
+        "machine": "Tormods-Mac-Studio.local",
+        "runtime": "v24.18.0",
+        "buildMode": "dev",
+        "aggregation": "max",
+        "aggregate": 0,
+        "capturedAt": "2026-09-24"
+      }
+    }
+  ],
+  "gaps": [
+    "Admission still computes each candidate separately.",
+    "Reservation matching remains proportional to retained active claims.",
+    "Per-call Map allocation and CPU/RSS/latency are unmeasured."
+  ],
+  "updatedAt": "2026-09-24",
+  "readiness": "Three paired executions (32 cases per arm) preserve all 96 result digests; 8 accounts/1200 bees reduce runtime lookups 9600\u21921200. Zero/single-account controls pass. Counts only.",
+  "linked": [
+    {
+      "workload": "account-activity-reads",
+      "why": "Same classification helper must still avoid active pending-work reads and preserve inactive/transfer behavior."
+    }
+  ]
+}

@@ -230,6 +230,14 @@ export interface AccountAllocationAuthority {
   epoch: string;
 }
 
+type LocalAccountActivity = {
+  active: number;
+  recent: number;
+  pending: number;
+  ongoingUnits: number;
+  observedClaimIds: Set<string>;
+};
+
 /** One node's authoritative allocation facts, sampled at one store revision. */
 export interface AccountNodeActivity {
   version: 1;
@@ -989,8 +997,10 @@ export class AccountsService {
     const authority = this.cfg.accounts.allocationOwner;
     if (!node || !authority) throw new Error("account allocation identity is not configured");
     const observedAt = this.now();
-    const accounts = this.store.listAccounts({ harness }).map((account) => {
-      const activity = this.localActivity(account.id, observedAt);
+    const registered = this.store.listAccounts({ harness });
+    const activityByAccount = this.localActivities(registered.map((account) => account.id), observedAt);
+    const accounts = registered.map((account) => {
+      const activity = activityByAccount.get(account.id)!;
       return {
         account: account.id,
         active: activity.active,
@@ -1065,18 +1075,15 @@ export class AccountsService {
     });
   }
 
-  private localActivity(accountId: string, now: number): {
-    active: number;
-    recent: number;
-    pending: number;
-    ongoingUnits: number;
-    observedClaimIds: ReadonlySet<string>;
-  } {
-    let active = 0;
-    let recent = 0;
-    let pending = 0;
-    let ongoingUnits = 0;
-    const observedClaimIds = new Set<string>();
+  private localActivity(accountId: string, now: number): LocalAccountActivity {
+    return this.localActivities([accountId], now).get(accountId)!;
+  }
+
+  private localActivities(accountIds: readonly string[], now: number): Map<string, LocalAccountActivity> {
+    const activities = new Map(accountIds.map((id) => [id, {
+      active: 0, recent: 0, pending: 0, ongoingUnits: 0, observedClaimIds: new Set<string>(),
+    }]));
+    if (activities.size === 0) return activities;
     const grace = this.cfg.accounts.allocationRecentGraceMs;
     const boundReservations = this.store.listAccountAdmissions()
       .filter((reservation) => reservation.beeId !== null && reservation.releasedAt === null && reservation.expiresAt > now);
@@ -1087,7 +1094,8 @@ export class AccountsService {
       const transfer = transfers.find((reservation) => reservation.beeId === bee.id
         && (runtime?.generation ?? 0) <= reservation.reconcileAfterGeneration);
       const runtimeAccount = transfer?.sourceAccount ?? bee.account;
-      if (runtimeAccount !== accountId) continue;
+      const activity = runtimeAccount == null ? undefined : activities.get(runtimeAccount);
+      if (!activity) continue;
       const isActive = runtime?.state === "booting" || runtime?.state === "running";
       // Active runtimes are represented regardless of their pending work.
       const hasPending = !isActive && (this.store.undeliveredMessages(bee.id).length > 0
@@ -1096,30 +1104,30 @@ export class AccountsService {
           && (command.verb === "spawn" || command.verb === "revive" || command.verb === "send_wake")));
       let represented = false;
       if (isActive && runtime) {
-        active += 1;
+        activity.active += 1;
         represented = true;
         // One accepted start is one fair-share unit immediately; sessions
         // then continue accruing instead of receiving capped elapsed credit.
-        ongoingUnits += Math.max(1, (now - runtime.startedAt) / 3_600_000);
+        activity.ongoingUnits += Math.max(1, (now - runtime.startedAt) / 3_600_000);
       } else if (hasPending) {
-        pending += 1;
+        activity.pending += 1;
         represented = true;
-        ongoingUnits += 1;
+        activity.ongoingUnits += 1;
       } else {
         const latest = Math.max(runtime?.updatedAt ?? 0, bee.lastOutputAt ?? 0);
         if (latest > 0 && now - latest <= grace) {
-          recent += 1;
+          activity.recent += 1;
           represented = true;
-          ongoingUnits += Math.max(0, (grace - (now - latest)) / Math.max(1, grace));
+          activity.ongoingUnits += Math.max(0, (grace - (now - latest)) / Math.max(1, grace));
         }
       }
       if (represented) {
         for (const reservation of boundReservations) {
-          if (reservation.beeId === bee.id && reservation.account === accountId) observedClaimIds.add(reservation.id);
+          if (reservation.beeId === bee.id && reservation.account === runtimeAccount) activity.observedClaimIds.add(reservation.id);
         }
       }
     }
-    return { active, recent, pending, ongoingUnits, observedClaimIds };
+    return activities;
   }
 
   private admissionCandidate(

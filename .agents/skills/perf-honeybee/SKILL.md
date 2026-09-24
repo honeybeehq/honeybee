@@ -77,3 +77,5 @@ Boot-state lookup is mapped by [boot-runtime-lookup](workloads/boot-runtime-look
 Account activity is mapped by [account-activity-reads](workloads/account-activity-reads.md): discarded pending-work store calls for booting/running bees, measured through nodeActivity. It preserves inactive and transfer classification; whole admission/fleet costs remain unmeasured.
 
 Action reminders are mapped by [action-reminder-reads](workloads/action-reminder-reads.md): discarded question reads for ineligible reminders through DaemonCore steps. The count gate preserves eligible reminder timing; total scheduler cost is unmeasured.
+
+[Batch account activity](workloads/account-activity-batch.md) measures runtime and roster reads across accounts in one fresh nodeActivity report. It preserves the linked pending-work control and makes no whole-admission or latency claim.
