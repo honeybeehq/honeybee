@@ -2,7 +2,8 @@ import { parentPort, workerData } from "node:worker_threads";
 import { gitImagesRootForCells, refreshGitImage } from "./gitImage.ts";
 import { cellPaths } from "./layout.ts";
 import { readLedger } from "./ledger.ts";
-import { provisionCell, type ProvisionRequest } from "./provision.ts";
+import { provisionCell, type ProvisionedCell, type ProvisionRequest } from "./provision.ts";
+import { claimFromPool } from "./warmPool.ts";
 
 interface ProvisionWorkerData {
   cellsRoot: string;
@@ -11,6 +12,7 @@ interface ProvisionWorkerData {
   disableCow: boolean;
   useGitImages: boolean;
   gitImagesRoot?: string;
+  claimFromPool?: boolean;
 }
 
 interface ProvisionWorkerResult {
@@ -44,6 +46,14 @@ async function waitForMaintenanceStart(): Promise<void> {
   });
 }
 
+function tryClaim(cellsRoot: string, request: ProvisionRequest): ProvisionedCell | null {
+  try {
+    return claimFromPool(cellsRoot, request);
+  } catch {
+    return null;
+  }
+}
+
 const data = workerData as ProvisionWorkerData;
 let provisionedFreshImage = false;
 
@@ -54,7 +64,8 @@ try {
   // `replayed` stays false when an incomplete operation resumes. Remember the
   // pre-call state so only a genuinely first provisioning can skip its retry.
   const hadProvisionAttempt = ledger != null && Object.keys(ledger.operations).length > 0;
-  const cell = provisionCell(data.cellsRoot, request, data.opId, {
+  const claimed = data.claimFromPool === true && !hadProvisionAttempt ? tryClaim(data.cellsRoot, request) : null;
+  const cell = claimed ?? provisionCell(data.cellsRoot, request, data.opId, {
     disableCow: data.disableCow,
     useGitImages: data.useGitImages,
     gitImagesRoot: data.gitImagesRoot,

@@ -302,12 +302,18 @@ test("config.naming: invalid tool/effort fail loudly", () => {
   });
 });
 
-test("config.warmPool: default off; file values parse; env HIVE_CELL_WARMPOOL_FREE overrides", () => {
+test("config.warmPool: off on workstations, one member on satellites; file values parse; env HIVE_CELL_WARMPOOL_FREE overrides", () => {
   withDir((dir) => {
-    // Default: disabled.
     const bare = loadNodeConfig(dir);
     assert.equal(bare.cellWarmPoolFree, 0);
     assert.equal(bare.cellWarmPoolMaxSize, 32);
+
+    writeFileSync(join(dir, "config.json"), JSON.stringify({ nodeKind: "satellite" }));
+    assert.equal(loadNodeConfig(dir).cellWarmPoolFree, 1);
+    writeFileSync(join(dir, "config.json"), JSON.stringify({ nodeKind: "satellite", cells: { sandbox: true } }));
+    assert.equal(loadNodeConfig(dir).cellWarmPoolFree, 1);
+    writeFileSync(join(dir, "config.json"), JSON.stringify({ nodeKind: "satellite", cells: { warmPoolFree: 0 } }));
+    assert.equal(loadNodeConfig(dir).cellWarmPoolFree, 0);
 
     writeFileSync(join(dir, "config.json"), JSON.stringify({ cells: { warmPoolFree: 3, warmPoolMaxSize: 10 } }));
     const fromFile = loadNodeConfig(dir);

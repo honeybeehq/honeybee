@@ -23,8 +23,8 @@
  *
  * Safety invariants (unit-tested in warmPool.test.ts):
  *  - A member is served only when it is provisioned, CLEAN (`git status` empty)
- *    and can reach the wanted sha (exact, or the commit is present for a delta).
- *    A dirty or unreachable member is discarded, never handed out.
+ *    and can reach the wanted sha (exact, present, or fetched from the origin
+ *    for a delta). A dirty member is discarded, never handed out.
  *  - The claim is an atomic `rename` of the member's space dir into the bee's
  *    reserved wrapper: two concurrent spawns cannot claim the same member (the
  *    loser gets ENOENT and tries the next).
@@ -34,7 +34,7 @@
  */
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync, statSync } from "node:fs";
 import { availableParallelism } from "node:os";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { isAbsolute, join, resolve } from "node:path";
 import { cellPaths, parseSpaceName, sanitizeComponent, type CellPaths } from "./layout.ts";
 import {
@@ -45,13 +45,16 @@ import {
   type CellLedger,
   type LedgerOperation,
 } from "./ledger.ts";
-import { git, gitCommonDirRealpath, hasCommit, porcelainStatus, tryGit } from "./git.ts";
+import { git, gitCommonDirRealpath, hasCommit, tryGit } from "./git.ts";
 import { provisionCell, type ProvisionedCell, type ProvisionOptions, type ProvisionRequest } from "./provision.ts";
 
 /** Reserved wrapper prefix; pool members live under `<cells-root>/_warmpool/<repoKey>/`. */
 export const WARM_POOL_DIR = "_warmpool";
 /** The placeholder bee id a parked member's ledger carries until it is claimed. */
 export const WARM_POOL_BEE = "__warmpool__";
+const DISCARD_PREFIX = ".discard-";
+const BUILD_PREFIX = ".build-";
+export const RACY_INDEX_WINDOW_MS = 1_100;
 
 const CHECKOUT_WORKERS = Math.max(1, Math.min(8, availableParallelism()));
 const PARALLEL_CHECKOUT_CONFIG = [
@@ -89,6 +92,7 @@ export function listPoolMembers(cellsRoot: string, repoKey: string): PoolMember[
   }
   const members: PoolMember[] = [];
   for (const memberId of entries) {
+    if (memberId.startsWith(".")) continue;
     const wrapperDir = join(root, memberId);
     let ledger: CellLedger | null;
     try {
@@ -129,6 +133,7 @@ export function claimFromPool(
 ): ProvisionedCell | null {
   const now = opts.now ?? Date.now;
   const repoKey = repoKeyFor(req.originRepo, req.repoName);
+  const claimStartedAt = now();
   const beePaths = cellPaths(cellsRoot, req.wrapper, req.repoName, req.cellId);
   // The bee's own space dir must be empty: reserveCell created only box/.
   if (existsSync(beePaths.spaceDir)) return null;
@@ -143,14 +148,11 @@ export function claimFromPool(
   for (const member of ordered) {
     const exact = member.sha === req.sha;
     // Guard BEFORE claiming: clean tree, and the wanted sha is reachable.
-    if (porcelainStatus(member.paths.spaceDir) !== "") {
+    if (!isClean(member.paths.spaceDir)) {
       discardMember(member.wrapperDir);
       continue;
     }
-    if (!exact && !hasCommit(member.paths.spaceDir, req.sha)) {
-      discardMember(member.wrapperDir);
-      continue;
-    }
+    if (!exact && !reachCommit(member.paths.spaceDir, req.originRepo, req.sha)) continue;
     // Atomic claim: the first rename wins; a raced loser sees ENOENT.
     mkdirSync(beePaths.wrapperDir, { recursive: true });
     try {
@@ -187,7 +189,7 @@ export function claimFromPool(
     beeLedger.sha = req.sha;
     beeLedger.copy_mode = member.ledger.copy_mode;
     beeLedger.operations[opId] = {
-      startedAt: now(),
+      startedAt: claimStartedAt,
       completedAt: now(),
       steps: {
         ...memberOp.steps,
@@ -210,9 +212,51 @@ export function claimFromPool(
   return null;
 }
 
-/** Remove a member's leftover wrapper (box/ and any empty space parent). */
+function hiddenEntries(root: string): string[] {
+  try {
+    return readdirSync(root).filter((entry) => entry.startsWith("."));
+  } catch {
+    return [];
+  }
+}
+
+function isClean(spaceDir: string): boolean {
+  try {
+    const res = tryGit(spaceDir, ["status", "--porcelain"]);
+    return res.status === 0 && res.stdout.trim() === "";
+  } catch {
+    return false;
+  }
+}
+
+function reachCommit(spaceDir: string, originRepo: string, sha: string): boolean {
+  try {
+    if (hasCommit(spaceDir, sha)) return true;
+    tryGit(spaceDir, ["fetch", "--quiet", "--no-tags", "--no-write-fetch-head", originRepo, sha]);
+    return hasCommit(spaceDir, sha);
+  } catch {
+    return false;
+  }
+}
+
 function discardMember(wrapperDir: string): void {
-  rmSync(wrapperDir, { recursive: true, force: true });
+  const doomed = join(wrapperDir, "..", `${DISCARD_PREFIX}${randomBytes(6).toString("hex")}`);
+  try {
+    renameSync(wrapperDir, doomed);
+  } catch {
+    return;
+  }
+  rmSync(doomed, { recursive: true, force: true });
+}
+
+function sleepSync(ms: number): void {
+  if (ms <= 0) return;
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT)), 0, 0, ms);
+}
+
+function settleIndex(spaceDir: string, racyWindowMs: number): void {
+  sleepSync(racyWindowMs);
+  tryGit(spaceDir, ["update-index", "-q", "--refresh"]);
 }
 
 export interface TopUpRequest {
@@ -232,7 +276,7 @@ export function buildPoolMember(
   cellsRoot: string,
   req: TopUpRequest,
   provisionOpts: ProvisionOptions = {},
-  opts: { maxSize?: number; now?: () => number } = {},
+  opts: { maxSize?: number; now?: () => number; racyIndexWindowMs?: number } = {},
 ): string | null {
   const repoKey = repoKeyFor(req.originRepo, req.repoName);
   const maxSize = opts.maxSize ?? 32;
@@ -240,22 +284,25 @@ export function buildPoolMember(
   if (!hasCommit(req.originRepo, req.sha)) return null;
   const root = poolRootFor(cellsRoot, repoKey);
   mkdirSync(root, { recursive: true });
-  const memberDir = mkdtempSync(join(root, "m-"));
-  const memberId = memberDir.slice(root.length + 1);
-  const cellId = createHash("sha256").update(memberDir).digest("hex").slice(0, 12);
+  const buildDir = mkdtempSync(join(root, BUILD_PREFIX));
+  const buildId = buildDir.slice(root.length + 1);
+  const memberId = `m-${buildId.slice(BUILD_PREFIX.length)}`;
+  const cellId = createHash("sha256").update(buildDir).digest("hex").slice(0, 12);
   const request: ProvisionRequest = {
     beeId: WARM_POOL_BEE,
     originRepo: req.originRepo,
     sha: req.sha,
-    wrapper: memberId,
+    wrapper: buildId,
     repoName: req.repoName,
     cellId,
     ...(req.warmArtifacts && req.warmArtifacts.length > 0 ? { warmArtifacts: [...req.warmArtifacts] } : {}),
   };
   try {
-    provisionCell(root, request, `warmpool-build-${memberId}`, provisionOpts);
+    const cell = provisionCell(root, request, `warmpool-build-${memberId}`, provisionOpts);
+    settleIndex(cell.paths.spaceDir, opts.racyIndexWindowMs ?? RACY_INDEX_WINDOW_MS);
+    renameSync(buildDir, join(root, memberId));
   } catch (error) {
-    discardMember(memberDir);
+    rmSync(buildDir, { recursive: true, force: true });
     throw error;
   }
   return memberId;
@@ -263,13 +310,11 @@ export function buildPoolMember(
 
 /** Discard members whose sha is not the current one and any dirty member. */
 export function reapPool(cellsRoot: string, repoKey: string, keepSha: string): number {
+  const root = poolRootFor(cellsRoot, repoKey);
+  for (const leftover of hiddenEntries(root)) rmSync(join(root, leftover), { recursive: true, force: true });
   let removed = 0;
   for (const member of listPoolMembers(cellsRoot, repoKey)) {
-    const dirty = (() => {
-      const res = tryGit(member.paths.spaceDir, ["status", "--porcelain"]);
-      return res.status !== 0 || res.stdout.trim() !== "";
-    })();
-    if (member.sha !== keepSha || dirty) {
+    if (member.sha !== keepSha || !isClean(member.paths.spaceDir)) {
       discardMember(member.wrapperDir);
       removed++;
     }

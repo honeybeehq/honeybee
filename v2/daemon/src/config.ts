@@ -142,8 +142,10 @@ export interface CellsConfig {
   /** Test-only: allow agent `stub` on bee.move. Default false. */
   allowStubMove?: boolean;
   /**
-   * Warm Cell pool: target free pre-provisioned members per repo (0 = off,
-   * default). Overridden by env HIVE_CELL_WARMPOOL_FREE. See warmPool.ts.
+   * Warm Cell pool: target free pre-provisioned members per repo (0 = off).
+   * Defaults to 1 on satellites, where every Cell is a `git clone --local`
+   * plus a full checkout, and 0 elsewhere. Overridden by env
+   * HIVE_CELL_WARMPOOL_FREE. See warmPool.ts.
    */
   warmPoolFree?: number;
   /** Warm pool hard cap on members per repo (default 32). */
@@ -340,11 +342,12 @@ function nodeKindOf(raw: Record<string, unknown>): NodeKind {
   return v as NodeKind;
 }
 
-function cellsOf(raw: Record<string, unknown>): { root?: string; sandbox: boolean | null; warm: Record<string, string[]>; allowStubMove: boolean; warmPoolFree: number; warmPoolMaxSize: number } {
+function cellsOf(raw: Record<string, unknown>, nodeKind: NodeKind): { root?: string; sandbox: boolean | null; warm: Record<string, string[]>; allowStubMove: boolean; warmPoolFree: number; warmPoolMaxSize: number } {
   const envFree = Number(process.env.HIVE_CELL_WARMPOOL_FREE);
   const envOverride = Number.isFinite(envFree) && envFree >= 0 ? Math.floor(envFree) : null;
+  const defaultWarmPoolFree = nodeKind === "satellite" ? 1 : 0;
   const v = raw.cells;
-  if (v === undefined) return { sandbox: null, warm: {}, allowStubMove: false, warmPoolFree: envOverride ?? 0, warmPoolMaxSize: 32 };
+  if (v === undefined) return { sandbox: null, warm: {}, allowStubMove: false, warmPoolFree: envOverride ?? defaultWarmPoolFree, warmPoolMaxSize: 32 };
   if (v === null || typeof v !== "object" || Array.isArray(v)) {
     throw new ConfigError("config: cells must be an object of {root?, sandbox?, warm?}");
   }
@@ -353,7 +356,7 @@ function cellsOf(raw: Record<string, unknown>): { root?: string; sandbox: boolea
     sandbox: null,
     warm: {},
     allowStubMove: false,
-    warmPoolFree: 0,
+    warmPoolFree: defaultWarmPoolFree,
     warmPoolMaxSize: 32,
   };
   if (c.warmPoolFree !== undefined) {
@@ -679,11 +682,12 @@ export function loadNodeConfig(dataDir: string, configPath?: string): ResolvedNo
   const i1FloorMs = bootHangTimeoutMs + bootAllowanceMs + turnAllowanceMs;
   const i1DeadlineMs = Math.max(num(raw, "i1DeadlineMs", i1FloorMs), i1FloorMs);
 
-  const cells = cellsOf(raw);
+  const nodeKind = nodeKindOf(raw);
+  const cells = cellsOf(raw, nodeKind);
   return {
     dataDir,
     configPath: path,
-    nodeKind: nodeKindOf(raw),
+    nodeKind,
     cellsRoot: cells.root ?? join(dataDir, "cells"),
     cellSandbox: cells.sandbox,
     cellWarm: cells.warm,

@@ -149,17 +149,10 @@ export class CellDriver implements RuntimeDriver {
     // before any cold provisioning. A claim leaves the bee ledger provisioned,
     // so both the sync and background provision paths short-circuit (replayed).
     // Any spawn — hit or miss — tops the pool back up off the event loop.
-    if (this.warmPoolEnabled()) {
-      const claimed = this.tryClaimFromPool(beeId);
-      if (claimed) {
-        this.cells.set(beeId, claimed);
-        this.inner.start(beeId, generation);
-        this.scheduleTopUp(beeId);
-        return;
-      }
-    }
     if (this.cfg.backgroundProvisioning !== true) {
-      this.ensureCell(beeId, opId);
+      const claimed = this.warmPoolEnabled() ? this.tryClaimFromPool(beeId) : null;
+      if (claimed) this.cells.set(beeId, claimed);
+      else this.ensureCell(beeId, opId);
       this.inner.start(beeId, generation);
       this.scheduleTopUp(beeId);
       return;
@@ -167,7 +160,6 @@ export class CellDriver implements RuntimeDriver {
     if (this.pending.has(beeId)) {
       throw new Error(`cell driver: bee ${beeId} already has provisioning in flight`);
     }
-    this.scheduleTopUp(beeId);
     const spec = this.cfg.resolveCell(beeId);
     const workerUrl = this.cfg.provisionWorkerUrl ?? (import.meta.url.endsWith(".ts")
       ? new URL("./provisionWorker.ts", import.meta.url)
@@ -181,11 +173,13 @@ export class CellDriver implements RuntimeDriver {
         disableCow: this.cfg.disableCow ?? false,
         useGitImages: this.cfg.nodeKind === "workstation",
         gitImagesRoot: this.cfg.gitImagesRoot,
+        claimFromPool: this.warmPoolEnabled(),
       },
     });
     const pending: PendingProvision = { beeId, generation, worker, settled: false };
     this.pending.set(beeId, pending);
     worker.once("message", (message: ProvisionWorkerResult) => {
+      this.scheduleTopUp(beeId);
       if (message.ok) {
         // provisionWorker reports Cell-ready before doing image maintenance.
         // Keep it cancellable on driver disposal but do not keep the daemon
