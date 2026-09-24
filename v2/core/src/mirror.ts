@@ -161,6 +161,10 @@ export type MirrorDelta = AuditRow;
  * pre-v8 deltas simply lack the key and mean `next`. The daemon's `mailbox`
  * read returns the same shape. No new kinds; a materializer that ignores
  * unknown keys stays correct.
+ * v29 adds `bee.prompted` → { beeId, lastPromptAt, previous, messageId, origin, sender }
+ * (bee row + view: lastPromptAt). Operator prompt origins are
+ * `mail.send`, `spawn.prompt`, and `legacy.unknown`, after excluding peer and
+ * Honeybee system senders. `handoff.seed` and `action.dispatch` never count.
  * v11 (agent task lists) adds, all additive:
  *   task.put         → { task: TaskRow, outcome: "created"|"updated" }  (tasks table: upsert)
  *   task_supply.put  → { supply: TaskSupplyRow }                       (task_supply table: upsert)
@@ -248,6 +252,7 @@ export const MIRROR_BEE_VIEW_KEYS = [
   "working",
   "waitingForYou",
   "lastOutputAt",
+  "lastPromptAt",
   "reachable",
   "blocked",
   "flags",
@@ -265,6 +270,7 @@ export const MIRROR_BEE_RECORD_KEYS = [
   "createdAt",
   "archivedAt",
   "lastOutputAt",
+  "lastPromptAt",
   // v3 (WP7): additive — a v2/1 materializer that ignores unknown keys stays correct.
   "providerSessionId",
   "env",

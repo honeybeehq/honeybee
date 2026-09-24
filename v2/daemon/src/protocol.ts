@@ -119,6 +119,8 @@ export const DAEMON_CAPABILITIES = [
   "mail.history.v1",
   /** Bounded undelivered-only mailbox previews for frequent live indicators. */
   "mail.pending.v1",
+  /** BeeView.lastPromptAt: delivered operator/human prompt recency in snapshots and watch deltas. */
+  "bee.lastPromptAt.v1",
   /** Atomic working-state admission and deferred idle restart for model/effort changes. */
   "bee.reconfigure.v1",
   /**

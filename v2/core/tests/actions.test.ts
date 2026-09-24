@@ -406,7 +406,7 @@ test("actions.8: audit replay reproduces the action tables; the store reopens at
   const h = harness();
   try {
     let store = h.open();
-    assert.equal(SCHEMA_VERSION, 28);
+    assert.equal(SCHEMA_VERSION, 29);
     const bee = liveBee(store);
     const { actions } = shipSequence(store, bee.id);
     const { messageId } = store.dispatchAgentAction(actions[0]!.id);

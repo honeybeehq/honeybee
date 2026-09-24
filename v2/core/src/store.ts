@@ -33,6 +33,7 @@ import {
   MAIL_HISTORY_SENDER_PREVIEW_BYTES,
   MAIL_CANCELLATION_REASONS,
   MAIL_ORIGINS,
+  OPERATOR_PROMPT_MAIL_ORIGINS,
   MAX_BEE_ID_BYTES,
   UnknownFailureCauseError,
   UnknownFlagError,
@@ -623,6 +624,8 @@ function mapMailboxMembership(row: unknown): CommittedMailboxMembership {
  * imported bee whose OLD id already looks like a handle keep it.
  */
 export const HANDLE_RE = /^[A-Z]{2}\.[0-9a-f]{3,8}$/;
+const REMOTE_SENDER_RE = /^remote:[^\s/\x00-\x1f]{1,128}\/[^\s/\x00-\x1f]{1,128}$/;
+const BEE_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 /** Harness → handle prefix: first two letters, uppercased (claude→CL, codex→CO, grok→GR). */
 export function handlePrefix(agent: string): string {
@@ -644,6 +647,7 @@ function mapBee(r: Row): BeeRow {
     createdAt: Number(r.created_at),
     archivedAt: r.archived_at == null ? null : Number(r.archived_at),
     lastOutputAt: r.last_output_at == null ? null : Number(r.last_output_at),
+    lastPromptAt: r.last_prompt_at == null ? null : Number(r.last_prompt_at),
     providerSessionId: (r.provider_session_id as string | null) ?? null,
     env: JSON.parse((r.env as string | null) ?? "{}") as Record<string, string>,
     importedFrom: (r.imported_from as string | null) ?? null,
@@ -1776,6 +1780,7 @@ export class CoreStore {
       this.stmt("DELETE FROM meta WHERE key = 'mail_history_projection_seq'").run();
     }
     this.backfillMailHistoryEnqueues();
+    if (stored < 29) this.backfillBeeLastPromptAt();
     this.db
       .prepare(
         "INSERT INTO meta(key, value) VALUES('schema_version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
@@ -1914,6 +1919,64 @@ export class CoreStore {
       `INSERT INTO meta(key, value) VALUES('mail_history_projection_seq', ?)
        ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
     ).run(String(targetSeq));
+  }
+
+  private backfillBeeLastPromptAt(): void {
+    const rows = this.stmt(
+      `SELECT
+         m.id AS message_id,
+         m.bee_id,
+         m.sender,
+         m.delivered_at,
+         h.origin
+       FROM mailbox m
+       LEFT JOIN mail_history_enqueues h ON h.message_id = m.id
+       WHERE m.delivered_at IS NOT NULL
+       ORDER BY m.delivered_at, m.id`,
+    ).all() as Row[];
+    const latestByBee = new Map<string, number>();
+    for (const row of rows) {
+      const origin = row.origin == null
+        ? "legacy.unknown"
+        : auditMailOrigin(row.origin, `mail history origin for message ${String(row.message_id)}`);
+      const message: Pick<MessageRow, "beeId" | "sender"> = {
+        beeId: auditString(row.bee_id, `mail history bee for message ${String(row.message_id)}`),
+        sender: auditString(row.sender, `mail history sender for message ${String(row.message_id)}`),
+      };
+      if (!this.isOperatorPromptMail(message, origin)) continue;
+      latestByBee.set(message.beeId, auditNumber(row.delivered_at, `mail delivered_at for message ${String(row.message_id)}`));
+    }
+    const update = this.stmt("UPDATE bees SET last_prompt_at = ? WHERE id = ?");
+    for (const [beeId, lastPromptAt] of latestByBee) update.run(lastPromptAt, beeId);
+  }
+
+  private mailOriginForMessage(messageId: number): MailOrigin {
+    const row = this.stmt("SELECT origin FROM mail_history_enqueues WHERE message_id = ?").get(messageId) as Row | undefined;
+    return row ? auditMailOrigin(row.origin, `mail history origin for message ${messageId}`) : "legacy.unknown";
+  }
+
+  private isOperatorPromptMail(message: Pick<MessageRow, "beeId" | "sender">, origin: MailOrigin): boolean {
+    if (!(OPERATOR_PROMPT_MAIL_ORIGINS as readonly string[]).includes(origin)) return false;
+    if (message.sender === TASK_SUPPLY_SENDER_NAME || message.sender === "honeybee" || message.sender.startsWith("hive:")) {
+      return false;
+    }
+    if (REMOTE_SENDER_RE.test(message.sender) || HANDLE_RE.test(message.sender) || BEE_UUID_RE.test(message.sender)) {
+      return false;
+    }
+    return this.getBee(message.sender) === null;
+  }
+
+  private applyPromptDelivered(message: MessageRow, origin: MailOrigin, at: number): void {
+    const previous = this.mustGetBee(message.beeId).lastPromptAt;
+    this.stmt("UPDATE bees SET last_prompt_at = ? WHERE id = ?").run(at, message.beeId);
+    this.audit("bee.prompted", message.beeId, {
+      beeId: message.beeId,
+      lastPromptAt: at,
+      previous,
+      messageId: message.id,
+      origin,
+      sender: message.sender,
+    });
   }
 
   private mustGetBee(beeId: string): BeeRow {
@@ -3411,6 +3474,8 @@ export class CoreStore {
         .prepare("UPDATE mailbox SET delivered_at = ?, delivered_generation = ? WHERE id = ?")
         .run(at, generation, messageId);
       this.audit("mail.delivered", message.beeId, { messageId, deliveredAt: at, deliveredGeneration: generation });
+      const origin = this.mailOriginForMessage(messageId);
+      if (this.isOperatorPromptMail(message, origin)) this.applyPromptDelivered(message, origin, at);
       // v24: an action instruction reached its runtime — delivery evidence only, never completion.
       this.applyActionDelivered(messageId, generation, at);
       return { applied: true };

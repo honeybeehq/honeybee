@@ -196,6 +196,7 @@ test("mirror.2: value-level snapshot — a deterministic store serializes to the
         "working": true,
         "waitingForYou": false,
         "lastOutputAt": null,
+        "lastPromptAt": null,
         "reachable": true,
         "blocked": false,
         "flags": []
@@ -213,6 +214,7 @@ test("mirror.2: value-level snapshot — a deterministic store serializes to the
         "createdAt": 1002000,
         "archivedAt": null,
         "lastOutputAt": null,
+        "lastPromptAt": null,
         "providerSessionId": null,
         "env": {},
         "importedFrom": null,

@@ -83,6 +83,11 @@ export interface BeeRow {
   /** Last time the bee's runtime produced output (canonical fact, recorded by daemon). */
   lastOutputAt: number | null;
   /**
+   * Last delivered operator/human prompt. Counted origins are
+   * OPERATOR_PROMPT_MAIL_ORIGINS after excluding peer and Honeybee system senders.
+   */
+  lastPromptAt: number | null;
+  /**
    * v3 — harness-native session/thread id of the bee's conversation (claude
    * `session_id`, codex thread id), recorded from the runtime's booted signal.
    * Revive hands it back to the harness so generation N+1 continues the same
@@ -253,6 +258,7 @@ export type MailCancellationReason = (typeof MAIL_CANCELLATION_REASONS)[number];
 /** Typed admission path for mailbox traffic; consumers must not sniff bodies. */
 export const MAIL_ORIGINS = ["mail.send", "spawn.prompt", "legacy.unknown", "handoff.seed", "action.dispatch"] as const;
 export type MailOrigin = (typeof MAIL_ORIGINS)[number];
+export const OPERATOR_PROMPT_MAIL_ORIGINS = ["mail.send", "spawn.prompt", "legacy.unknown"] as const satisfies readonly MailOrigin[];
 
 /**
  * The durable outcome of one accepted send. A discriminated union prevents a
@@ -680,6 +686,8 @@ export interface BeeView {
   waitingForYou: boolean;
   /** Raw output-recency fact; clients compare against their own read cursor. */
   lastOutputAt: number | null;
+  /** Raw operator-prompt recency fact; mirrors compare against lastOutputAt. */
+  lastPromptAt: number | null;
   reachable: boolean;
   blocked: boolean;
   flags: Flag[];

@@ -26,6 +26,7 @@ function bee(overrides: Partial<BeeRow> = {}): BeeRow {
     createdAt: 1,
     archivedAt: null,
     lastOutputAt: 2,
+    lastPromptAt: null,
     providerSessionId: null,
     env: {},
     importedFrom: null,

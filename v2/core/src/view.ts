@@ -9,7 +9,7 @@ import type { BeeRow, BeeView, Flag, RuntimeRow } from "./types.ts";
 
 export function deriveBeeView(
   beeId: string,
-  bee: Pick<BeeRow, "lifecycle" | "lastOutputAt"> | null,
+  bee: Pick<BeeRow, "lifecycle" | "lastOutputAt" | "lastPromptAt"> | null,
   runtime: RuntimeRow | null,
   flags: Flag[],
   opts: { readCursor?: number } = {},
@@ -26,6 +26,7 @@ export function deriveBeeView(
       working: false,
       waitingForYou: false,
       lastOutputAt: null,
+      lastPromptAt: null,
       reachable: false,
       blocked: false,
       flags: [],
@@ -46,6 +47,7 @@ export function deriveBeeView(
     working,
     waitingForYou,
     lastOutputAt: bee.lastOutputAt,
+    lastPromptAt: bee.lastPromptAt,
     reachable: true, // lifecycle ≠ deleted (deleted rows do not exist). Nothing else.
     blocked: flags.length > 0,
     flags,

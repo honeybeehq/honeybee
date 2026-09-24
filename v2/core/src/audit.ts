@@ -91,6 +91,7 @@ export function replayAudit(rows: AuditRow[]): StateDump {
         const bee = p.bee as BeeRow;
         bees.set(bee.id, {
           ...bee,
+          lastPromptAt: bee.lastPromptAt ?? null,
           parentExternal: bee.parentExternal ?? false,
           placementVersion: bee.placementVersion ?? 0,
           activeMoveId: bee.activeMoveId ?? null,
@@ -327,6 +328,10 @@ export function replayAudit(rows: AuditRow[]): StateDump {
       }
       case "output.recorded": {
         mustBee(p.beeId as string).lastOutputAt = p.at as number;
+        break;
+      }
+      case "bee.prompted": {
+        mustBee(p.beeId as string).lastPromptAt = p.lastPromptAt as number;
         break;
       }
       case "template.put": {
