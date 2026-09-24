@@ -50,7 +50,7 @@ cell.exec
 cell.retained.remove
 ```
 
-`cell.capture` / `cell.remove` stay. Capture resolves through the **cells registry** (not `bee.substrate === "cell"` / `dirname(cwd)`). Legacy `cell.remove` (beeId) still deletes an **active** Cell bee. Retained allocations use `cell.retained.remove` and never delete the continued bee.
+`cell.capture` / `cell.remove` stay. Disk retention of active and retained Cells (the `evicted` state, `cell.gc`, `cell.evict`) is v31: see `cell-retention-contract.md`. Capture resolves through the **cells registry** (not `bee.substrate === "cell"` / `dirname(cwd)`). Legacy `cell.remove` (beeId) still deletes an **active** Cell bee. Retained allocations use `cell.retained.remove` and never delete the continued bee.
 
 Caller `idempotencyKey` is **required** on `bee.move`, `cell.exec`, `cell.retained.remove`.
 

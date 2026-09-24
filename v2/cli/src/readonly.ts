@@ -414,6 +414,8 @@ export class ReadOnlyStore {
       createdAt: Number(r.created_at),
       retainedAt: r.retained_at == null ? null : Number(r.retained_at),
       removedAt: r.removed_at == null ? null : Number(r.removed_at),
+      evictedAt: r.evicted_at == null ? null : Number(r.evicted_at),
+      evictedHead: (r.evicted_head as string | null | undefined) ?? null,
     };
   }
 

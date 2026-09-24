@@ -146,8 +146,10 @@
  * v29 was briefly used by reverted action-reminder build 7374447d; refuse those stores.
  * v30 adds permanent fleet-enrolled human references and reservations. It must exceed
  * that historical writer's maximum version so it cannot bypass the new reservations.
- * Older writers cannot maintain reference reservations: rollback requires a store restore. */
-export const SCHEMA_VERSION = 30;
+ * Older writers cannot maintain reference reservations: rollback requires a store restore.
+ * v31 — Cell retention: the `cells.state` CHECK gains `evicted` and the row gains
+ * `evicted_at` + `evicted_head` (table rebuild, rows carried across by name). */
+export const SCHEMA_VERSION = 31;
 
 export const ACCOUNT_ADMISSIONS_TABLE_SQL = `
 CREATE TABLE IF NOT EXISTS account_admission_reservations (
@@ -673,7 +675,7 @@ CREATE TABLE IF NOT EXISTS tracks (
 CREATE TABLE IF NOT EXISTS cells (
   id              TEXT PRIMARY KEY,
   source_bee_id   TEXT NOT NULL,
-  state           TEXT NOT NULL CHECK (state IN ('active','retained','removing','removed')),
+  state           TEXT NOT NULL CHECK (state IN ('active','retained','evicted','removing','removed')),
   git_common_dir  TEXT NOT NULL,
   object_format   TEXT NOT NULL CHECK (object_format IN ('sha1','sha256')),
   origin_repo     TEXT NOT NULL,
@@ -684,7 +686,9 @@ CREATE TABLE IF NOT EXISTS cells (
   sandbox         INTEGER,
   created_at      INTEGER NOT NULL,
   retained_at     INTEGER,
-  removed_at      INTEGER
+  removed_at      INTEGER,
+  evicted_at      INTEGER,
+  evicted_head    TEXT
 ) STRICT;
 
 CREATE TABLE IF NOT EXISTS bee_moves (
@@ -763,11 +767,17 @@ export const BEES_ADDITIVE_COLUMNS: ReadonlyArray<readonly [name: string, ddl: s
   ["active_handoff_id", "active_handoff_id TEXT"],
 ];
 
+/** Columns carried across the v31 rebuild of `cells` (by name: an ALTER-migrated store may differ in order). */
+export const CELLS_V22_COLUMNS = [
+  "id", "source_bee_id", "state", "git_common_dir", "object_format", "origin_repo", "sha",
+  "wrapper", "space_name", "space_dir", "sandbox", "created_at", "retained_at", "removed_at",
+] as const;
+
 export const CELLS_TABLE_SQL = `
 CREATE TABLE IF NOT EXISTS cells (
   id              TEXT PRIMARY KEY,
   source_bee_id   TEXT NOT NULL,
-  state           TEXT NOT NULL CHECK (state IN ('active','retained','removing','removed')),
+  state           TEXT NOT NULL CHECK (state IN ('active','retained','evicted','removing','removed')),
   git_common_dir  TEXT NOT NULL,
   object_format   TEXT NOT NULL CHECK (object_format IN ('sha1','sha256')),
   origin_repo     TEXT NOT NULL,
@@ -778,7 +788,9 @@ CREATE TABLE IF NOT EXISTS cells (
   sandbox         INTEGER,
   created_at      INTEGER NOT NULL,
   retained_at     INTEGER,
-  removed_at      INTEGER
+  removed_at      INTEGER,
+  evicted_at      INTEGER,
+  evicted_head    TEXT
 ) STRICT;
 `;
 

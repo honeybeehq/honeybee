@@ -343,3 +343,42 @@ test("config.warmPool: invalid values fail loudly", () => {
     assert.throws(() => loadNodeConfig(dir), ConfigError);
   });
 });
+
+test("config.9: cells.retention (v31) — defaults on, day/hour units, null disables an axis, invalid shapes refused", () => {
+  withDir((dir) => {
+    const day = 86_400_000;
+    const defaults = loadNodeConfig(dir).cellRetention;
+    assert.equal(defaults.enabled, true);
+    assert.equal(defaults.archivedAfterMs, 7 * day);
+    assert.equal(defaults.stoppedAfterMs, 30 * day);
+    assert.equal(defaults.retainedAfterMs, 14 * day);
+    assert.equal(defaults.maxBytes, null);
+    assert.equal(defaults.intervalMs, 24 * 3_600_000);
+    assert.equal(defaults.maxPerPass, 100);
+
+    writeFileSync(join(dir, "config.json"), JSON.stringify({
+      cells: { retention: { enabled: false, archivedAfterDays: 0, stoppedAfterDays: null, retainedAfterDays: 1.5, maxBytes: 5e11, intervalHours: 6, maxPerPass: 3 } },
+    }));
+    const custom = loadNodeConfig(dir).cellRetention;
+    assert.equal(custom.enabled, false);
+    assert.equal(custom.archivedAfterMs, 0);
+    assert.equal(custom.stoppedAfterMs, null);
+    assert.equal(custom.retainedAfterMs, 1.5 * day);
+    assert.equal(custom.maxBytes, 5e11);
+    assert.equal(custom.intervalMs, 6 * 3_600_000);
+    assert.equal(custom.maxPerPass, 3);
+
+    for (const bad of [
+      { retention: [] },
+      { retention: { enabled: "yes" } },
+      { retention: { archivedAfterDays: -1 } },
+      { retention: { archivedAfterDays: null } },
+      { retention: { intervalHours: 0 } },
+      { retention: { maxPerPass: 0 } },
+      { retention: { maxBytes: "1TB" } },
+    ]) {
+      writeFileSync(join(dir, "config.json"), JSON.stringify({ cells: bad }));
+      assert.throws(() => loadNodeConfig(dir), ConfigError, JSON.stringify(bad));
+    }
+  });
+});

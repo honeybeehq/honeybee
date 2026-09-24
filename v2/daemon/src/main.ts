@@ -34,7 +34,9 @@ export function resolveDaemonConfig(args: DaemonRunArgs): ResolvedNodeConfig {
 /** Run the daemon in the foreground until a termination signal. */
 export async function runDaemon(argv: string[]): Promise<number> {
   const cfg = resolveDaemonConfig(parseDaemonRunArgs(argv));
-  const daemon = new HiveDaemon(cfg);
+  // Test daemons shorten the delay before the first automatic Cell retention pass.
+  const retentionDelay = Number(process.env.HIVE_TEST_RETENTION_INITIAL_DELAY_MS);
+  const daemon = new HiveDaemon(cfg, Number.isFinite(retentionDelay) && retentionDelay >= 0 ? { retentionInitialDelayMs: retentionDelay } : {});
   // Test daemons deliberately own disposable stub runtimes. Production omits
   // this test-only flag so deploy/restart continues to preserve live bees.
   const reapTestRuntimes = process.env.HIVE_TEST_REAP_RUNTIMES_ON_SHUTDOWN === "1";

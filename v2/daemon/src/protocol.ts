@@ -33,6 +33,9 @@ import type {
   BeeRow,
   CellOpStatus,
   CellRow,
+  CellState,
+  Lifecycle,
+  RuntimeState,
   LocalRepoIdentity,
   CredentialHealth,
   ExecutableResolutionSource,
@@ -135,6 +138,13 @@ export const DAEMON_CAPABILITIES = [
   "cell.move.local.v1",
   /** Sandboxed retained-Cell exec keyed by Cell ID. */
   "cell.retained.exec.v1",
+  /**
+   * v31 (2026-09-24): Cell disk retention — the `evicted` Cell state,
+   * `cell.gc` (plan / apply) and `cell.evict` (one bee's Cell), the daily
+   * pass, and the `cell.evicted` audit kind. An evicted bee keeps its row,
+   * transcript and cwd; its next runtime re-provisions the Cell in place.
+   */
+  "cell.retention.v1",
   /**
    * v23 (2026-09-13): durable session handoff — `bee.handoff` /
    * `bee.handoff.get`, the `handoff` mirror-row key, the `beeHandoffs` +
@@ -352,6 +362,9 @@ export const RPC_VERBS = [
   "bee.move.get",
   "cell.exec",
   "cell.retained.remove",
+  // v31: Cell disk retention (plan/apply a pass; evict one bee's Cell).
+  "cell.gc",
+  "cell.evict",
   // v23: durable session handoff (same-family reset / cross-family change).
   "bee.handoff",
   "bee.handoff.get",
@@ -1520,6 +1533,117 @@ export interface CellRetainedRemoveResult {
   status: "deleted" | "refused" | "absent";
   forced: boolean;
   report: CellDirtyReport | null;
+  deduped?: boolean;
+}
+
+/**
+ * v31 — Cell retention. `cell.gc` plans a pass over every registry Cell on
+ * this node; `dryRun` (default true) only reports. `apply` evicts the planned
+ * Cells now (bounded by `maxPerPass`), re-checking each precondition at the
+ * moment of eviction. Verdicts and hold reasons are closed vocabularies.
+ */
+export interface CellGcParams {
+  dryRun?: boolean;
+  /** Skip the du walk (faster plan; `bytes` come back null). */
+  measure?: boolean;
+}
+
+export const CELL_GC_VERDICTS = ["evict", "remove_retained", "hold", "keep"] as const;
+export type CellGcVerdict = (typeof CELL_GC_VERDICTS)[number];
+
+export const CELL_GC_REASONS = [
+  "archived_age",
+  "stopped_age",
+  "retained_age",
+  "byte_budget",
+  "too_young",
+  "policy_disabled",
+  "runtime_live",
+  "op_in_flight",
+  "move_in_flight",
+  "handoff_in_flight",
+  "dirty_uncommitted",
+  "dirty_unlanded",
+  "dirty_origin_unknown",
+  "not_provisioned",
+  "absent",
+  "already_evicted",
+  "already_removed",
+  "unregistered",
+  "inspect_failed",
+  "bee_deleted",
+  "pass_limit",
+] as const;
+export type CellGcReason = (typeof CELL_GC_REASONS)[number];
+
+export interface CellGcItem {
+  cellId: string | null;
+  beeId: string;
+  beeName: string;
+  beeLifecycle: Lifecycle;
+  runtimeState: RuntimeState | null;
+  cellState: CellState | null;
+  wrapperDir: string;
+  originRepo: string | null;
+  head: string | null;
+  /** Allocated bytes (du -sk semantics); null when not measured or absent. */
+  bytes: number | null;
+  /** Reference instant the age was computed from (archivedAt / last stop / retainedAt). */
+  idleSince: number | null;
+  verdict: CellGcVerdict;
+  reason: CellGcReason;
+  report: CellDirtyReport | null;
+}
+
+export interface CellGcOutcome {
+  cellId: string | null;
+  beeId: string;
+  wrapperDir: string;
+  status: "evicted" | "removed" | "refused" | "absent" | "failed";
+  reason: string | null;
+  bytes: number | null;
+}
+
+export interface CellGcResult {
+  dryRun: boolean;
+  plannedAt: number;
+  policy: {
+    enabled: boolean;
+    archivedAfterMs: number;
+    stoppedAfterMs: number | null;
+    retainedAfterMs: number | null;
+    maxBytes: number | null;
+    maxPerPass: number;
+  };
+  items: CellGcItem[];
+  totals: {
+    cells: number;
+    presentBytes: number | null;
+    plannedCells: number;
+    plannedBytes: number | null;
+    heldCells: number;
+    heldBytes: number | null;
+    dirtyCells: number;
+  };
+  /** Present only after apply. */
+  outcomes: CellGcOutcome[] | null;
+  /** Wall-clock of the inspection worker, for operator expectations. */
+  inspectMs: number;
+}
+
+/** `cell.evict` — evict ONE bee's Cell now (the dirty guard applies unless `force`). */
+export interface CellEvictParams {
+  beeId: string;
+  force?: boolean;
+  idempotencyKey: string;
+}
+
+export interface CellEvictResult {
+  cell: CellRow | null;
+  status: "evicted" | "refused" | "absent";
+  forced: boolean;
+  report: CellDirtyReport | null;
+  bytes: number | null;
   deduped?: boolean;
 }
 

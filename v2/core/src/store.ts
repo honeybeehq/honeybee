@@ -160,7 +160,7 @@ import {
   TASK_SUPPLY_SENDER_NAME,
   TASK_TRANSITIONS,
 } from "./tasks.ts";
-import { ACTIONS_TABLE_SQL, ACCOUNT_ADMISSIONS_TABLE_SQL, ACCOUNT_LIMITS_TABLE_SQL, BEES_ADDITIVE_COLUMNS, BEES_ACTIVE_MOVE_INDEX_SQL, BEES_ACTIVE_HANDOFF_INDEX_SQL, BEE_HANDOFFS_TABLE_SQL, TRANSCRIPT_SEGMENTS_TABLE_SQL, MAILBOX_PENDING_METADATA_INDEX_SQL, BEE_MOVES_TABLE_SQL, CELLS_TABLE_SQL, CELL_OPS_TABLE_SQL, FLAGS_ADDITIVE_COLUMNS, FLAGS_EXPIRY_INDEX_SQL, HANDLE_INDEX_SQL, IDEMPOTENCY_INDEX_SQL, MAILBOX_ADDITIVE_COLUMNS, MAIL_HISTORY_INDEX_SQL, MAIL_HISTORY_PROJECTION_SQL, RUNTIMES_ADDITIVE_COLUMNS, SCHEMA_SQL, SCHEMA_VERSION } from "./schema.ts";
+import { ACTIONS_TABLE_SQL, ACCOUNT_ADMISSIONS_TABLE_SQL, ACCOUNT_LIMITS_TABLE_SQL, BEES_ADDITIVE_COLUMNS, BEES_ACTIVE_MOVE_INDEX_SQL, BEES_ACTIVE_HANDOFF_INDEX_SQL, BEE_HANDOFFS_TABLE_SQL, TRANSCRIPT_SEGMENTS_TABLE_SQL, MAILBOX_PENDING_METADATA_INDEX_SQL, BEE_MOVES_TABLE_SQL, CELLS_TABLE_SQL, CELLS_V22_COLUMNS, CELL_OPS_TABLE_SQL, FLAGS_ADDITIVE_COLUMNS, FLAGS_EXPIRY_INDEX_SQL, HANDLE_INDEX_SQL, IDEMPOTENCY_INDEX_SQL, MAILBOX_ADDITIVE_COLUMNS, MAIL_HISTORY_INDEX_SQL, MAIL_HISTORY_PROJECTION_SQL, RUNTIMES_ADDITIVE_COLUMNS, SCHEMA_SQL, SCHEMA_VERSION } from "./schema.ts";
 import { beeMoveReviveKey, beeMoveStopKey, beeMoveTransitionLegal, toBeeMoveView } from "./cellMove.ts";
 import {
   ACTION_DISPATCH_SENDER,
@@ -741,6 +741,8 @@ function mapCell(r: Row): CellRow {
     createdAt: Number(r.created_at),
     retainedAt: r.retained_at == null ? null : Number(r.retained_at),
     removedAt: r.removed_at == null ? null : Number(r.removed_at),
+    evictedAt: r.evicted_at == null ? null : Number(r.evicted_at),
+    evictedHead: (r.evicted_head as string | null | undefined) ?? null,
   };
 }
 
@@ -1761,6 +1763,17 @@ export class CoreStore {
     this.db.exec("DROP INDEX IF EXISTS mailbox_undelivered;");
     this.db.exec(MAIL_HISTORY_INDEX_SQL);
     this.db.exec(CELLS_TABLE_SQL);
+    // v30 → v31: the cells state CHECK gains 'evicted' and two nullable
+    // columns. SQLite cannot widen a CHECK in place, so rebuild and carry
+    // the v22 columns across by name; the new columns start NULL.
+    const cellsDdl = this.stmt("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'cells'").get() as Row | undefined;
+    if (cellsDdl !== undefined && !String(cellsDdl.sql).includes("'evicted'")) {
+      const carried = CELLS_V22_COLUMNS.join(", ");
+      this.db.exec("ALTER TABLE cells RENAME TO cells_v30");
+      this.db.exec(CELLS_TABLE_SQL);
+      this.db.exec(`INSERT INTO cells(${carried}) SELECT ${carried} FROM cells_v30`);
+      this.db.exec("DROP TABLE cells_v30");
+    }
     this.db.exec(BEE_MOVES_TABLE_SQL);
     this.db.exec(CELL_OPS_TABLE_SQL);
     this.db.exec(BEE_HANDOFFS_TABLE_SQL);
@@ -6014,6 +6027,41 @@ export class CoreStore {
       const next = this.mustGetCell(cellId);
       this.audit("cell.put", cell.sourceBeeId, { cell: next, previous: cell });
       return next;
+    });
+  }
+
+  /**
+   * v31 — retention reclaimed the Cell directory. The allocation survives
+   * (row, id, `bees.cell_id`, cwd): `active → evicted`. `head` is the Cell
+   * HEAD the reaper verified reachable from the origin, so a later runtime
+   * start re-provisions exactly where the agent left off. Idempotent when
+   * already evicted; any other state is an illegal transition.
+   */
+  evictCell(cellId: string, input: { head: string | null; bytes: number | null; reason: string }): CellRow {
+    return this.tx(() => {
+      const cell = this.mustGetCell(cellId);
+      if (cell.state === "evicted") return cell;
+      if (cell.state !== "active") {
+        throw new IllegalTransitionError(`cell ${cellId} is ${cell.state}; only an active Cell can be evicted`);
+      }
+      const at = this.now();
+      this.stmt("UPDATE cells SET state = 'evicted', evicted_at = ?, evicted_head = ? WHERE id = ?").run(at, input.head, cellId);
+      const next = this.mustGetCell(cellId);
+      this.audit("cell.put", cell.sourceBeeId, { cell: next, previous: cell });
+      this.audit("cell.evicted", cell.sourceBeeId, { cellId, evictedAt: at, head: input.head, bytes: input.bytes, reason: input.reason });
+      return next;
+    });
+  }
+
+  /** v31 — the driver materialized an evicted Cell again: `evicted → active`. No-op otherwise. */
+  reactivateCell(cellId: string): { cell: CellRow; applied: boolean } {
+    return this.tx(() => {
+      const cell = this.mustGetCell(cellId);
+      if (cell.state !== "evicted") return { cell, applied: false };
+      this.stmt("UPDATE cells SET state = 'active', evicted_at = NULL, evicted_head = NULL WHERE id = ?").run(cellId);
+      const next = this.mustGetCell(cellId);
+      this.audit("cell.put", cell.sourceBeeId, { cell: next, previous: cell });
+      return { cell: next, applied: true };
     });
   }
 

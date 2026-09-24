@@ -66,6 +66,18 @@ await build({
   preserveSymlinks: true,
   logLevel: "silent",
 });
+await build({
+  absWorkingDir: root,
+  entryPoints: [join(root, "v2", "driver-cell", "src", "retentionWorker.ts")],
+  outfile: join(outDir, "retention-worker.js"),
+  bundle: true,
+  platform: "node",
+  format: "esm",
+  target: "node22",
+  minify: false,
+  preserveSymlinks: true,
+  logLevel: "silent",
+});
 const runnerHostBuild = await build({
   absWorkingDir: root,
   entryPoints: [join(root, "v2", "driver-hsr", "src", "runner-host-main.ts")],
@@ -106,5 +118,5 @@ if (runnerHostBytes > runnerHostMaxBytes) {
 }
 
 process.stdout.write(
-  `v2 artifacts staged at dist/v2/cli.js, dist/v2/provision-worker.js, and dist/v2/runner-host.js (${runnerHostBytes} bytes)\n`,
+  `v2 artifacts staged at dist/v2/cli.js, dist/v2/provision-worker.js, dist/v2/pool-worker.js, dist/v2/retention-worker.js, and dist/v2/runner-host.js (${runnerHostBytes} bytes)\n`,
 );

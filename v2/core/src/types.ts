@@ -822,7 +822,15 @@ export interface LocalRepoIdentity {
   objectFormat: LocalRepoObjectFormat;
 }
 
-export const CELL_STATES = ["active", "retained", "removing", "removed"] as const;
+/**
+ * Cell allocation states (v22, widened v31):
+ *  - `active`: the bee's cwd; provisioned on disk (or about to be).
+ *  - `retained`: the bee moved to a regular checkout; the Cell is kept for recovery.
+ *  - `evicted`: disk reclaimed by retention while the bee keeps the allocation
+ *    (row, id, cwd); the next runtime start re-provisions in place at `evictedHead`.
+ *  - `removing` / `removed`: gone; `bees.cell_id` is cleared on `removed`.
+ */
+export const CELL_STATES = ["active", "retained", "evicted", "removing", "removed"] as const;
 export type CellState = (typeof CELL_STATES)[number];
 
 export interface CellRow {
@@ -839,6 +847,10 @@ export interface CellRow {
   createdAt: number;
   retainedAt: number | null;
   removedAt: number | null;
+  /** v31 — when retention reclaimed the Cell directory; null unless `evicted`. */
+  evictedAt: number | null;
+  /** v31 — the Cell HEAD at eviction (always reachable from the origin): revive re-provisions here. */
+  evictedHead: string | null;
 }
 
 export const BEE_MOVE_PHASES = ["stopping", "placing", "starting", "complete", "failed"] as const;

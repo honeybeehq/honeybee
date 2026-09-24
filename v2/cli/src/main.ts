@@ -16,7 +16,7 @@ import { execFile, spawnSync } from "node:child_process";
 import { homedir } from "node:os";
 import { createInterface } from "node:readline";
 import { closeSync, existsSync, openSync, readSync, statSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { defaultDataDir, loadNodeConfig, type ResolvedNodeConfig } from "../../daemon/src/config.ts";
 import { runDaemon } from "../../daemon/src/main.ts";
 import { runRunnerHost } from "../../driver-hsr/src/runner-host.ts";
@@ -74,6 +74,9 @@ import {
   type CellExecResult,
   type CellRemoveResult,
   type CellRetainedRemoveResult,
+  type CellEvictResult,
+  type CellGcItem,
+  type CellGcResult,
   type QuestionAnswerResult,
   type QuestionAskResult,
   type QuestionListResult,
@@ -304,6 +307,8 @@ const BOOL_FLAGS = new Set([
   "--verbose",
   "--dry-run",
   "--force",
+  // v31 (cell gc): skip the per-Cell du walk.
+  "--no-measure",
   "--wait",
   // v23 (handoff): stop the source immediately instead of at its idle boundary.
   "--now",
@@ -2147,8 +2152,38 @@ async function cmdMutation(
 async function cmdCell(ctx: CliContext, parsed: Parsed): Promise<number> {
   const sub = parsed.positional[1];
   const needle = parsed.positional[2];
-  const usage = "usage: hive cell move <bee> --cwd <dir> | cell move-get <moveId> | cell capture <bee> --onto <branch> [--rebase] [--idempotency-key k] | cell remove <bee> [--force] [--idempotency-key k] | cell exec <cellId> -- <argv…> | cell retained-remove <cellId> [--force]";
+  const usage = "usage: hive cell move <bee> --cwd <dir> | cell move-get <moveId> | cell capture <bee> --onto <branch> [--rebase] [--idempotency-key k] | cell remove <bee> [--force] [--idempotency-key k] | cell exec <cellId> -- <argv…> | cell retained-remove <cellId> [--force] | cell gc [--apply] [--no-measure] | cell evict <bee> [--force]";
   switch (sub) {
+    case "gc": {
+      const apply = parsed.flags.get("--apply") === true;
+      const measure = parsed.flags.get("--no-measure") !== true;
+      return withClient(ctx, async (c) => {
+        // A full pass walks every Cell (git status + du); give it an hour, not the default RPC budget.
+        const r = await c.request<CellGcResult>("cell.gc", { dryRun: !apply, measure }, 60 * 60_000);
+        emit(ctx, renderCellGc(r), r, false);
+        return 0;
+      });
+    }
+    case "evict": {
+      if (!needle) throw new Error(usage);
+      return withClient(ctx, async (c) => {
+        const list = await c.request<ListResult>("list");
+        const beeId = resolveBeeIn(list.views, needle);
+        const r = await c.request<CellEvictResult>("cell.evict", {
+          beeId,
+          force: parsed.flags.get("--force") === true,
+          idempotencyKey: (parsed.flags.get("--idempotency-key") as string | undefined) ?? randomUUID(),
+        });
+        const lines: string[] = [];
+        if (r.status === "refused") {
+          lines.push(confirm("err", "refused:", `cell is dirty (${dirtyCauses(r.report).join(", ")}) — pass --force to evict anyway (work is lost)`, r.deduped));
+        } else {
+          lines.push(confirm("ok", `cell ${r.status}${r.forced ? " (forced)" : ""}`, `${beeId} keeps its bee, transcript and cwd; the next runtime re-provisions${r.cell?.evictedHead ? ` at ${r.cell.evictedHead.slice(0, 12)}` : ""}`, r.deduped));
+        }
+        emit(ctx, lines, { beeId, ...r }, false);
+        return ctx.json || r.status !== "refused" ? 0 : 2;
+      });
+    }
     case "move":
     case "move-get":
       return cmdBee(ctx, parsed);
@@ -2282,6 +2317,71 @@ async function cmdCell(ctx: CliContext, parsed: Parsed): Promise<number> {
     default:
       throw new Error(usage);
   }
+}
+
+function dirtyCauses(report: CellGcItem["report"]): string[] {
+  return [
+    report?.uncommitted ? "uncommitted changes" : null,
+    report?.unpushed ? "uncaptured commits" : null,
+    report?.originUnknown ? "origin unreachable" : null,
+  ].filter((x): x is string => x != null);
+}
+
+function gib(bytes: number | null): string {
+  if (bytes == null) return "?";
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KiB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MiB`;
+  return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GiB`;
+}
+
+function ageDays(sinceMs: number | null, nowMs: number): string {
+  if (sinceMs == null) return "-";
+  return `${Math.max(0, Math.floor((nowMs - sinceMs) / 86_400_000))}d`;
+}
+
+/** `hive cell gc` — the plan (and outcomes after --apply), planned Cells first, then holds grouped by reason. */
+function renderCellGc(r: CellGcResult): string[] {
+  const lines: string[] = [];
+  const mode = r.dryRun ? "dry run — nothing was changed" : "applied";
+  const t = r.totals;
+  lines.push(`cell gc (${mode}): ${t.cells} Cells, ${gib(t.presentBytes)} on disk (du semantics; APFS clones share blocks with their origin, so freed space is lower)`);
+  const days = (ms: number | null) => (ms == null ? "never" : `${ms / 86_400_000}d`);
+  lines.push(
+    `policy: ${r.policy.enabled ? "on" : "OFF"} · archived ≥ ${days(r.policy.archivedAfterMs)} · stopped ≥ ${days(r.policy.stoppedAfterMs)} · retained ≥ ${days(r.policy.retainedAfterMs)}` +
+      ` · budget ${r.policy.maxBytes == null ? "none" : gib(r.policy.maxBytes)} · max ${r.policy.maxPerPass}/pass · inspect ${Math.round(r.inspectMs / 1000)}s`,
+  );
+  const planned = r.items.filter((i) => i.verdict === "evict" || i.verdict === "remove_retained").sort((a, b) => (b.bytes ?? 0) - (a.bytes ?? 0));
+  lines.push(`planned: ${planned.length} Cells, ${gib(t.plannedBytes)} · held: ${t.heldCells} Cells, ${gib(t.heldBytes)} (${t.dirtyCells} dirty)`);
+  for (const i of planned) {
+    lines.push(`  ${i.verdict === "evict" ? "evict " : "remove"} ${gib(i.bytes).padStart(10)}  ${i.reason.padEnd(13)} ${ageDays(i.idleSince, r.plannedAt).padStart(5)}  ${i.beeLifecycle.padEnd(8)} ${i.beeName || i.beeId}  ${basename(i.wrapperDir)}`);
+  }
+  const held = r.items.filter((i) => i.verdict === "hold");
+  const byReason = new Map<string, CellGcItem[]>();
+  for (const i of held) byReason.set(i.reason, [...(byReason.get(i.reason) ?? []), i]);
+  for (const [reason, items] of [...byReason.entries()].sort((a, b) => b[1].length - a[1].length)) {
+    const bytes = items.some((i) => i.bytes != null) ? items.reduce((s, i) => s + (i.bytes ?? 0), 0) : null;
+    lines.push(`held ${reason}: ${items.length} Cells, ${gib(bytes)}`);
+    if (reason.startsWith("dirty_") || reason === "unregistered" || reason === "inspect_failed") {
+      for (const i of items.sort((a, b) => (b.bytes ?? 0) - (a.bytes ?? 0)).slice(0, 25)) {
+        lines.push(`  ${gib(i.bytes).padStart(10)}  ${i.beeLifecycle.padEnd(8)} ${i.beeName || i.beeId}  ${basename(i.wrapperDir)}`);
+      }
+      if (items.length > 25) lines.push(`  … ${items.length - 25} more (use --json)`);
+    }
+  }
+  const kept = r.items.filter((i) => i.verdict === "keep");
+  if (kept.length > 0) {
+    const counts = new Map<string, number>();
+    for (const i of kept) counts.set(i.reason, (counts.get(i.reason) ?? 0) + 1);
+    lines.push(`kept: ${[...counts.entries()].map(([k, v]) => `${k}=${v}`).join(" ")}`);
+  }
+  if (r.outcomes) {
+    const done = r.outcomes.filter((o) => o.status === "evicted" || o.status === "removed");
+    lines.push(`outcome: ${done.length} reclaimed (${gib(done.reduce((s, o) => s + (o.bytes ?? 0), 0))}), ${r.outcomes.filter((o) => o.status === "refused").length} refused, ${r.outcomes.filter((o) => o.status === "failed").length} failed`);
+    for (const o of r.outcomes.filter((x) => x.status === "refused" || x.status === "failed")) {
+      lines.push(`  ${o.status} ${o.reason ?? ""} ${basename(o.wrapperDir)}`);
+    }
+  }
+  return lines;
 }
 
 /**

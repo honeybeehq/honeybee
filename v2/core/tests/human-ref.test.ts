@@ -134,7 +134,7 @@ test("human-ref: v28 migration reserves history and preserves account admissions
     const seq = store.lastAuditSeq();
     store.close();
     const check = new DatabaseSync(h.path, { readOnly: true });
-    assert.equal((check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string }).value, "30");
+    assert.equal((check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string }).value, "31");
     assert.equal((check.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name IN ('human_ref_registry', 'human_ref_allocations', 'human_ref_issuer', 'bee_reference_claims', 'bee_handle_reservations')").get() as { n: number }).n, 5);
     assert.equal((check.prepare("SELECT [unique] AS is_unique FROM pragma_index_list('bees') WHERE name = 'bees_handle'").get() as { is_unique: number }).is_unique, 0);
     check.close();

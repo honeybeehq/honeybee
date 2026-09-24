@@ -150,6 +150,51 @@ export interface CellsConfig {
   warmPoolFree?: number;
   /** Warm pool hard cap on members per repo (default 32). */
   warmPoolMaxSize?: number;
+  /** v31 — automatic Cell disk retention. Absent = defaults (enabled). */
+  retention?: CellRetentionConfig;
+}
+
+/**
+ * Cell retention policy (v31). A Cell is reclaimed ("evicted": directory
+ * removed, registry row + bee + transcript kept, revive re-provisions) only
+ * when it is CLEAN — no uncommitted changes, no commits the origin has not
+ * seen, origin reachable — and no runtime or Cell operation is using it.
+ * Dirty Cells are never reclaimed automatically; `hive cell gc` lists them.
+ */
+export interface CellRetentionConfig {
+  /** Master switch (default true). Off = no automatic pass; `hive cell gc` still works. */
+  enabled?: boolean;
+  /** Evict a clean Cell whose bee has been archived for at least this long (default 7). 0 = immediately. */
+  archivedAfterDays?: number;
+  /**
+   * Evict a clean Cell whose active bee has been stopped (no runtime, no
+   * output) for at least this long (default 30). null = never touch Cells of
+   * active bees by age.
+   */
+  stoppedAfterDays?: number | null;
+  /** Remove a clean `retained` Cell (its bee moved away) after this long (default 14). null = never. */
+  retainedAfterDays?: number | null;
+  /**
+   * Total allocated bytes across Cells (du semantics) the pass tries to stay
+   * under. When exceeded, additional clean Cells of archived, then stopped
+   * bees are evicted oldest-idle first regardless of the age floors. null =
+   * no budget (default).
+   */
+  maxBytes?: number | null;
+  /** Hours between automatic passes (default 24). */
+  intervalHours?: number;
+  /** Upper bound on evictions per pass (default 100). */
+  maxPerPass?: number;
+}
+
+export interface ResolvedCellRetention {
+  enabled: boolean;
+  archivedAfterMs: number;
+  stoppedAfterMs: number | null;
+  retainedAfterMs: number | null;
+  maxBytes: number | null;
+  intervalMs: number;
+  maxPerPass: number;
 }
 
 /** The raw (all-optional) shape of config.json. */
@@ -217,6 +262,8 @@ export interface ResolvedNodeConfig {
   cellWarmPoolFree: number;
   /** Warm Cell pool: hard cap on members per repo. */
   cellWarmPoolMaxSize: number;
+  /** v31 — Cell disk retention policy. */
+  cellRetention: ResolvedCellRetention;
   idleWindowMs: number;
   bootHangTimeoutMs: number;
   bootAllowanceMs: number;
@@ -342,22 +389,83 @@ function nodeKindOf(raw: Record<string, unknown>): NodeKind {
   return v as NodeKind;
 }
 
-function cellsOf(raw: Record<string, unknown>, nodeKind: NodeKind): { root?: string; sandbox: boolean | null; warm: Record<string, string[]>; allowStubMove: boolean; warmPoolFree: number; warmPoolMaxSize: number } {
+const DAY_MS = 24 * 60 * 60 * 1000;
+const HOUR_MS = 60 * 60 * 1000;
+
+export const DEFAULT_CELL_RETENTION: ResolvedCellRetention = {
+  enabled: true,
+  archivedAfterMs: 7 * DAY_MS,
+  stoppedAfterMs: 30 * DAY_MS,
+  retainedAfterMs: 14 * DAY_MS,
+  maxBytes: null,
+  intervalMs: 24 * HOUR_MS,
+  maxPerPass: 100,
+};
+
+function nonNegativeNumber(c: Record<string, unknown>, key: string): number | undefined {
+  const v = c[key];
+  if (v === undefined) return undefined;
+  if (typeof v !== "number" || !Number.isFinite(v) || v < 0) {
+    throw new ConfigError(`config: cells.retention.${key} must be a non-negative number`);
+  }
+  return v;
+}
+
+function nullableNonNegativeNumber(c: Record<string, unknown>, key: string): number | null | undefined {
+  if (c[key] === null) return null;
+  return nonNegativeNumber(c, key);
+}
+
+export function cellRetentionOf(raw: unknown): ResolvedCellRetention {
+  if (raw === undefined) return { ...DEFAULT_CELL_RETENTION };
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new ConfigError("config: cells.retention must be an object");
+  }
+  const c = raw as Record<string, unknown>;
+  const out: ResolvedCellRetention = { ...DEFAULT_CELL_RETENTION };
+  if (c.enabled !== undefined) {
+    if (typeof c.enabled !== "boolean") throw new ConfigError("config: cells.retention.enabled must be a boolean");
+    out.enabled = c.enabled;
+  }
+  const archived = nonNegativeNumber(c, "archivedAfterDays");
+  if (archived !== undefined) out.archivedAfterMs = archived * DAY_MS;
+  const stopped = nullableNonNegativeNumber(c, "stoppedAfterDays");
+  if (stopped !== undefined) out.stoppedAfterMs = stopped === null ? null : stopped * DAY_MS;
+  const retained = nullableNonNegativeNumber(c, "retainedAfterDays");
+  if (retained !== undefined) out.retainedAfterMs = retained === null ? null : retained * DAY_MS;
+  const maxBytes = nullableNonNegativeNumber(c, "maxBytes");
+  if (maxBytes !== undefined) out.maxBytes = maxBytes;
+  const interval = nonNegativeNumber(c, "intervalHours");
+  if (interval !== undefined) {
+    if (interval <= 0) throw new ConfigError("config: cells.retention.intervalHours must be positive");
+    out.intervalMs = interval * HOUR_MS;
+  }
+  if (c.maxPerPass !== undefined) {
+    if (typeof c.maxPerPass !== "number" || !Number.isInteger(c.maxPerPass) || c.maxPerPass < 1) {
+      throw new ConfigError("config: cells.retention.maxPerPass must be a positive integer");
+    }
+    out.maxPerPass = c.maxPerPass;
+  }
+  return out;
+}
+
+function cellsOf(raw: Record<string, unknown>, nodeKind: NodeKind): { root?: string; sandbox: boolean | null; warm: Record<string, string[]>; allowStubMove: boolean; warmPoolFree: number; warmPoolMaxSize: number; retention: ResolvedCellRetention } {
   const envFree = Number(process.env.HIVE_CELL_WARMPOOL_FREE);
   const envOverride = Number.isFinite(envFree) && envFree >= 0 ? Math.floor(envFree) : null;
   const defaultWarmPoolFree = nodeKind === "satellite" ? 1 : 0;
   const v = raw.cells;
-  if (v === undefined) return { sandbox: null, warm: {}, allowStubMove: false, warmPoolFree: envOverride ?? defaultWarmPoolFree, warmPoolMaxSize: 32 };
+  if (v === undefined) return { sandbox: null, warm: {}, allowStubMove: false, warmPoolFree: envOverride ?? defaultWarmPoolFree, warmPoolMaxSize: 32, retention: cellRetentionOf(undefined) };
   if (v === null || typeof v !== "object" || Array.isArray(v)) {
-    throw new ConfigError("config: cells must be an object of {root?, sandbox?, warm?}");
+    throw new ConfigError("config: cells must be an object of {root?, sandbox?, warm?, retention?}");
   }
   const c = v as Record<string, unknown>;
-  const out: { root?: string; sandbox: boolean | null; warm: Record<string, string[]>; allowStubMove: boolean; warmPoolFree: number; warmPoolMaxSize: number } = {
+  const out: { root?: string; sandbox: boolean | null; warm: Record<string, string[]>; allowStubMove: boolean; warmPoolFree: number; warmPoolMaxSize: number; retention: ResolvedCellRetention } = {
     sandbox: null,
     warm: {},
     allowStubMove: false,
     warmPoolFree: defaultWarmPoolFree,
     warmPoolMaxSize: 32,
+    retention: cellRetentionOf(c.retention),
   };
   if (c.warmPoolFree !== undefined) {
     if (typeof c.warmPoolFree !== "number" || !Number.isInteger(c.warmPoolFree) || c.warmPoolFree < 0) {
@@ -694,6 +802,7 @@ export function loadNodeConfig(dataDir: string, configPath?: string): ResolvedNo
     cellMoveAllowStub: cells.allowStubMove,
     cellWarmPoolFree: cells.warmPoolFree,
     cellWarmPoolMaxSize: cells.warmPoolMaxSize,
+    cellRetention: cells.retention,
     idleWindowMs: num(raw, "idleWindowMs", DEFAULTS.idleWindowMs),
     bootHangTimeoutMs,
     bootAllowanceMs,

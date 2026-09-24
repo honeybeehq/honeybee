@@ -2,6 +2,12 @@
  * Consumer drift fixture copied from Apiary packages/core/src/cellMove.ts
  * at efbd4e47 (2026-09-06). Constants and types below are verbatim.
  * Refresh from the consumer when its contract changes, not to silence a test.
+ *
+ * v31 (2026-09-24, Honeybee cell retention): Honeybee widened the contract —
+ * `CELL_STATES` gains `evicted`, `CellRow` gains `evictedAt` + `evictedHead`.
+ * The fixture carries the producer's new shape so the drift guard stays exact;
+ * Apiary's packages/core/src/cellMove.ts must be refreshed to match (see
+ * docs/design/cell-retention-contract.md, "Apiary changes").
  */
 
 export const HIVE_CAPABILITY_CELL_MOVE_LOCAL = 'cell.move.local.v1'
@@ -14,7 +20,7 @@ export type CellMoveContinuationAgent = (typeof CELL_MOVE_CONTINUATION_AGENTS)[n
 export const BEE_MOVE_PHASES = ['stopping', 'placing', 'starting', 'complete', 'failed'] as const
 export type BeeMovePhase = (typeof BEE_MOVE_PHASES)[number]
 
-export const CELL_STATES = ['active', 'retained', 'removing', 'removed'] as const
+export const CELL_STATES = ['active', 'retained', 'evicted', 'removing', 'removed'] as const
 export type CellState = (typeof CELL_STATES)[number]
 
 export const CELL_OP_STATUSES = ['queued', 'running', 'done', 'failed', 'outcome_unknown'] as const
@@ -94,6 +100,8 @@ export type CellRow = {
   createdAt: number
   retainedAt: number | null
   removedAt: number | null
+  evictedAt: number | null
+  evictedHead: string | null
 }
 
 export type CellExecParams = {

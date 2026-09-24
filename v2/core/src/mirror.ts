@@ -210,6 +210,8 @@ export const MIRROR_TASK_AUDIT_KINDS = ["task.put"] as const;
 export const MIRROR_TASK_SUPPLY_AUDIT_KINDS = ["task_supply.put"] as const;
 export const MIRROR_LOGIN_FLOW_AUDIT_KINDS = ["login_flow.put", "login_flow.removed"] as const;
 export const MIRROR_CELL_AUDIT_KINDS = ["cell.put", "cell.removed"] as const;
+/** v31 — informational history row beside the `cell.put` state change; never a mirror trigger. */
+export const CELL_EVICTED_AUDIT_KIND = "cell.evicted" as const;
 export const MIRROR_BEE_MOVE_AUDIT_KINDS = [
   "bee.move_admitted",
   "bee.move_phase",
@@ -418,6 +420,9 @@ export const MIRROR_CELL_KEYS = [
   "createdAt",
   "retainedAt",
   "removedAt",
+  // v31: additive — retention eviction facts (null unless state is `evicted`).
+  "evictedAt",
+  "evictedHead",
 ] as const;
 export const MIRROR_BEE_MOVE_KEYS = [
   "id",

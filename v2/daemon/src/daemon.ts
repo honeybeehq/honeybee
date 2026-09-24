@@ -112,14 +112,18 @@ import { LoginFlowService, type LoginTransports } from "./loginFlows.ts";
 import type { PtySpawner } from "./loginWorker.ts";
 import type { KeychainReader, KeychainWriter } from "./keychain.ts";
 import type { CellCaptureExecutor, FlagEvidenceLike } from "./loops.ts";
+import { CellRetentionService } from "./cellRetention.ts";
 import { realPreflightProbes } from "./import-probes.ts";
 import { HsrDriver, pidAlive, verifyProcessIdentity, type SpawnSpec } from "../../driver-hsr/src/index.ts";
 import {
   CellDeleteRefused,
   CellDriver,
+  CellHeadMovedError,
   CellRuntimeLiveError,
   cellPaths,
   deleteCell,
+  evictCellWrapper,
+  hasCommit,
   localRepoIdentity,
   parseSpaceName,
   readLedger,
@@ -235,7 +239,9 @@ import {
   type ActionCompleteResult,
   type CellCaptureMode,
   type CellCaptureResult,
+  type CellEvictResult,
   type CellExecResult,
+  type CellGcResult,
   type CellRemoveResult,
   type CellRetainedRemoveResult,
   type ChildrenResult,
@@ -480,6 +486,10 @@ export interface HiveDaemonDeps {
    * Absent = the deterministic extractive artifact is the seed.
    */
   summarizeHandoff?: (input: { handoff: BeeHandoffRow; bee: BeeRow; base: HandoffContext }) => Promise<HandoffContext>;
+  /** v31 tests: substitute the retention inspection worker entrypoint. */
+  retentionWorkerUrl?: URL;
+  /** v31 tests: delay before the first automatic retention pass (default 5 min). */
+  retentionInitialDelayMs?: number;
 }
 
 type AccountActivationState = {
@@ -536,6 +546,7 @@ function isAccountConfigImportResult(value: unknown): value is AccountConfigImpo
 const OWN_STATUS_VERBS: ReadonlySet<RpcVerb> = new Set<RpcVerb>([
   "cell.capture",
   "cell.remove",
+  "cell.evict",
   "bee.move",
   "cell.exec",
   "cell.retained.remove",
@@ -566,6 +577,8 @@ export class HiveDaemon {
   private readonly opLog: string[] = [];
   private accounts: AccountsService | null = null;
   private loginFlows: LoginFlowService | null = null;
+  /** v31 — Cell disk retention pass + `cell.gc` / `cell.evict`. */
+  private retention: CellRetentionService | null = null;
   /** Tracked filesystem readiness; no lock wait runs inside the core/store writer. */
   private readonly accountActivations = new Map<string, AccountActivationState>();
   private accountActivationCandidates = new Map<string, { commandId: number; attempts: number }>();
@@ -703,6 +716,7 @@ export class HiveDaemon {
       resolveHarness: (beeId: string) => this.resolveSpawnSpec(beeId),
       resolveCell: (beeId: string) => this.resolveCellSpec(beeId),
       resolveSandboxWritablePaths: (beeId: string) => this.resolveCellSandboxWritablePaths(beeId),
+      onCellMaterialized: (beeId: string) => this.onCellMaterialized(beeId),
       hsr: hsrConfig,
       backgroundProvisioning: true,
       ...(this.cfg.cellWarmPoolFree > 0
@@ -726,6 +740,24 @@ export class HiveDaemon {
       substrateOf: (beeId: string) => store.getBee(beeId)?.substrate ?? null,
     });
     this.driver = driver;
+    this.retention = new CellRetentionService({
+      cellsRoot: this.cfg.cellsRoot,
+      policy: this.cfg.cellRetention,
+      store: () => this.mustStore(),
+      now: () => Date.now(),
+      log: (op) => this.log(op),
+      cellInUse: (beeId, runtime, cellState) =>
+        cellState === "retained"
+          ? cell.hasProcess(beeId, runtime?.generation ?? 0)
+          : (runtime != null && runtime.state !== "stopped") || (this.driver?.hasProcess(beeId, runtime?.generation ?? 0) ?? false),
+      opInFlight: (cellId) => {
+        this.releaseAbsentCellOps(cellId);
+        return this.cellHasInFlightOp(cellId);
+      },
+      forgetCell: (beeId) => cell.forgetCell(beeId),
+      ...(this.deps.retentionWorkerUrl ? { workerUrl: this.deps.retentionWorkerUrl } : {}),
+      ...(this.deps.retentionInitialDelayMs !== undefined ? { initialDelayMs: this.deps.retentionInitialDelayMs } : {}),
+    });
     this.core = new DaemonCore({
       store,
       driver,
@@ -769,6 +801,8 @@ export class HiveDaemon {
     this.adoptSurvivors(store, driver);
     this.lastBoot = this.core.boot();
     this.reconcileCellOpsAtBoot();
+    // v31: wrappers parked by an earlier pass are already evicted; finish deleting them.
+    void this.retention.sweep();
     // v16: login workers do not survive a daemon restart (a PTY cannot be
     // re-adopted): settle their flows as interrupted, then remove the
     // retired tmux login seats this node's own daemons created.
@@ -1022,6 +1056,8 @@ export class HiveDaemon {
       this.performance.measureSync("daemon.tick.login", () =>
         this.loginFlows?.tick(),
       );
+      // v31: at most one automatic retention pass per interval; the pass itself runs off-tick.
+      this.retention?.tick();
       // This span covers synchronous auto-title kickoff only; title generation
       // stays detached. Once a second keeps the roster scan off most ticks.
       const autoTitle = this.autoTitle;
@@ -1191,11 +1227,16 @@ export class HiveDaemon {
     if (!cell || cell.state === "removed") throw new Error(`resolveCell: cell ${bee.cellId} is missing from the registry`);
     const parsed = parseSpaceName(cell.spaceName);
     if (!parsed) throw new Error(`resolveCell: cell ${cell.id} has a malformed space name '${cell.spaceName}'`);
+    // v31: an evicted Cell re-provisions where the agent left off (its HEAD
+    // was verified reachable from the origin at eviction), not at the spawn sha.
+    const sha = cell.state === "evicted" && cell.evictedHead && hasCommit(cell.originRepo, cell.evictedHead)
+      ? cell.evictedHead
+      : cell.sha;
     return {
       provision: {
         beeId,
         originRepo: cell.originRepo,
-        sha: cell.sha,
+        sha,
         wrapper: cell.wrapper,
         repoName: parsed.repoName,
         cellId: parsed.cellId,
@@ -1557,6 +1598,10 @@ export class HiveDaemon {
         return this.rpcCellExec(params);
       case "cell.retained.remove":
         return this.rpcCellRetainedRemove(params);
+      case "cell.gc":
+        return this.rpcCellGc(params);
+      case "cell.evict":
+        return this.withIdempotency(verb, params, () => this.rpcCellEvict(params));
       case "bee.rename":
         return this.withIdempotency(verb, params, () => this.rpcRename(params));
       case "bee.tag":
@@ -2508,12 +2553,12 @@ export class HiveDaemon {
     return { beeId, cell: driver.cell, cellId: row && row.state !== "removed" ? row.id : null };
   }
 
-  /** Legacy `cell.remove` only: an active Cell allocation. Retained cells use `cell.retained.remove`. */
+  /** Legacy `cell.remove` only: an active (or evicted) Cell allocation. Retained cells use `cell.retained.remove`. */
   private requireActiveCellBee(params: Record<string, unknown>): { beeId: string; cell: CellDriver; cellId: string } {
     const beeId = this.requireBee(params);
     const bee = this.mustStore().getBee(beeId);
     const row = bee?.cellId ? this.mustStore().getCell(bee.cellId) : null;
-    if (!bee || bee.substrate !== "cell" || !row || row.state !== "active") {
+    if (!bee || bee.substrate !== "cell" || !row || (row.state !== "active" && row.state !== "evicted")) {
       throw new RpcError(
         "invalid_request",
         `cell.remove is for an active Cell bee; retained allocations use cell.retained.remove`,
@@ -2607,6 +2652,89 @@ export class HiveDaemon {
     result.commandId = cmd.id;
     this.log(`cell.remove bee=${beeId} status=${result.status} forced=${result.forced} delete=${cmd.id}`);
     return result;
+  }
+
+  /** v31 — the driver put a checkout back under an evicted allocation: `evicted → active`. */
+  private onCellMaterialized(beeId: string): void {
+    const store = this.store;
+    if (!store) return;
+    const bee = store.getBee(beeId);
+    if (!bee?.cellId) return;
+    try {
+      const res = store.reactivateCell(bee.cellId);
+      if (res.applied) this.log(`cell.reprovisioned bee=${beeId} cell=${bee.cellId} sha=${res.cell.sha}`);
+    } catch (err) {
+      this.log(`cell.reprovision_record_failed bee=${beeId} ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  /**
+   * `cell.gc` — plan a retention pass (default dry run) or apply it now. The
+   * inspection runs in a worker; apply re-checks every precondition per Cell.
+   */
+  private async rpcCellGc(params: Record<string, unknown>): Promise<CellGcResult> {
+    if (params.dryRun !== undefined && typeof params.dryRun !== "boolean") {
+      throw new RpcError("invalid_request", "cell.gc: dryRun must be a boolean when given");
+    }
+    if (params.measure !== undefined && typeof params.measure !== "boolean") {
+      throw new RpcError("invalid_request", "cell.gc: measure must be a boolean when given");
+    }
+    const retention = this.retention;
+    if (!retention) throw new RpcError("node_stopped", "daemon is shutting down");
+    return retention.run({ dryRun: params.dryRun !== false, measure: params.measure !== false });
+  }
+
+  /**
+   * `cell.evict` — reclaim ONE bee's Cell directory now, keeping the bee. The
+   * A2 dirty guard applies unless `force`; a live runtime or in-flight Cell
+   * operation is a typed refusal. Refused-dirty is a RESULT, never an error.
+   */
+  private rpcCellEvict(params: Record<string, unknown>): CellEvictResult {
+    const beeId = this.requireBee(params);
+    const store = this.mustStore();
+    if (params.force !== undefined && typeof params.force !== "boolean") {
+      throw new RpcError("invalid_request", "cell.evict: force must be a boolean when given");
+    }
+    const force = params.force === true;
+    const bee = store.getBee(beeId);
+    const row = bee?.cellId ? store.getCell(bee.cellId) : null;
+    if (!bee || bee.substrate !== "cell" || !row || row.state === "removed" || row.state === "removing") {
+      throw new RpcError("invalid_request", `cell.evict: bee ${beeId} has no Cell allocation`);
+    }
+    if (row.state === "evicted") return { cell: row, status: "absent", forced: false, report: null, bytes: null };
+    if (row.state !== "active") {
+      throw new RpcError("invalid_request", `cell.evict: cell ${row.id} is ${row.state}; retained allocations use cell.retained.remove`);
+    }
+    this.releaseAbsentCellOps(row.id);
+    if (this.cellHasInFlightOp(row.id)) throw new RpcError("runtime_refused", `cell ${row.id} has an in-flight Cell operation`);
+    if (bee.activeMoveId) throw new RpcError("move_in_progress", `bee ${beeId} has a move in flight`);
+    if (bee.activeHandoffId) throw new RpcError("handoff_in_progress", `bee ${beeId} has a handoff in flight`);
+    const rt = store.currentRuntime(beeId);
+    if ((rt && rt.state !== "stopped") || (rt && this.driver?.hasProcess(beeId, rt.generation))) {
+      throw new RpcError("runtime_refused", `bee ${beeId} has a live runtime (${rt.state}); stop it before evicting its cell`);
+    }
+    const driver = this.driver;
+    if (!driver) throw new RpcError("node_stopped", "daemon is shutting down");
+    const wrapperDir = dirname(resolve(row.spaceDir));
+    try {
+      const parked = evictCellWrapper(this.cfg.cellsRoot, wrapperDir, { force });
+      driver.cell.forgetCell(beeId);
+      if (parked == null) {
+        const evicted = store.evictCell(row.id, { head: null, bytes: null, reason: "operator" });
+        return { cell: evicted, status: "absent", forced: false, report: null, bytes: null };
+      }
+      const evicted = store.evictCell(row.id, { head: parked.head, bytes: null, reason: "operator" });
+      this.log(`cell.evict bee=${beeId} cell=${row.id} forced=${parked.forced} head=${parked.head ?? "-"} parked=${parked.parkedDir}`);
+      void this.retention?.sweep();
+      return { cell: evicted, status: "evicted", forced: parked.forced, report: parked.report, bytes: null };
+    } catch (err) {
+      if (err instanceof CellDeleteRefused) {
+        this.log(`cell.evict bee=${beeId} refused dirty=${JSON.stringify(err.report)}`);
+        return { cell: row, status: "refused", forced: false, report: err.report, bytes: null };
+      }
+      if (err instanceof CellHeadMovedError) throw new RpcError("runtime_refused", err.message);
+      throw err;
+    }
   }
 
   private backfillCellRegistry(store: CoreStore): void {

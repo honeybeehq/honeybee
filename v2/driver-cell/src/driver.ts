@@ -93,6 +93,12 @@ export interface CellDriverConfig {
   warmPool?: { targetFree: number; maxSize?: number };
   /** Tests: substitute the pool top-up worker entrypoint. */
   poolWorkerUrl?: URL;
+  /**
+   * v31 — the Cell's checkout now exists on disk for a runtime start (cold
+   * provision, background provision, or a warm-pool claim). The daemon uses
+   * it to move an `evicted` registry row back to `active`. Idempotent.
+   */
+  onCellMaterialized?(beeId: string): void;
 }
 
 interface PendingProvision {
@@ -153,6 +159,7 @@ export class CellDriver implements RuntimeDriver {
       const claimed = this.warmPoolEnabled() ? this.tryClaimFromPool(beeId) : null;
       if (claimed) this.cells.set(beeId, claimed);
       else this.ensureCell(beeId, opId);
+      this.cfg.onCellMaterialized?.(beeId);
       this.inner.start(beeId, generation);
       this.scheduleTopUp(beeId);
       return;
@@ -413,6 +420,11 @@ export class CellDriver implements RuntimeDriver {
    * half-provisioned one goes through the shape-checked dirty guard like
    * any other. Throws CellRuntimeLiveError while a runtime is live.
    */
+  /** v31 — retention parked the bee's Cell: drop the cached allocation so `cellOf` re-reads disk. */
+  forgetCell(beeId: string): void {
+    this.cells.delete(beeId);
+  }
+
   removeCell(beeId: string, opts: { force?: boolean } = {}): DeleteResult {
     if (this.pending.has(beeId) || this.snapshotLive().some((p) => p.beeId === beeId)) {
       throw new CellRuntimeLiveError(beeId);
@@ -470,6 +482,7 @@ export class CellDriver implements RuntimeDriver {
       // The worker completed the ledger-keyed operation. This replay only
       // hydrates the parent driver's cache before the HSR process starts.
       this.ensureCell(pending.beeId, `start-${pending.beeId}-g${pending.generation}`);
+      this.cfg.onCellMaterialized?.(pending.beeId);
       this.inner.start(pending.beeId, pending.generation);
     } catch (error) {
       this.pendingObservations.push({

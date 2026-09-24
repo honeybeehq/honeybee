@@ -24,6 +24,20 @@ export {
   type DirtyReport,
 } from "./remove.ts";
 export {
+  CellHeadMovedError,
+  EVICTING_DIR,
+  evictCellWrapper,
+  inspectCellWrapper,
+  listEvicting,
+  measureDirectoryBytes,
+  retentionWorkerUrl,
+  sweepEvicting,
+  sweepEvictingSync,
+  type CellWrapperInspection,
+  type EvictResult,
+} from "./retention.ts";
+export type { RetentionWorkerRequest, RetentionWorkerResult } from "./retentionWorker.ts";
+export {
   bwrapArgs,
   defaultWritablePaths,
   mergeSandboxWritablePaths,
