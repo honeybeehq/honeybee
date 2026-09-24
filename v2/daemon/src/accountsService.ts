@@ -479,7 +479,8 @@ async function claudeOauthGet(accessToken: string, url: string, timeoutMs: numbe
 }
 
 function defaultClaudeUsage(timeoutMs: number): NonNullable<LimitsFetchers["claudeUsage"]> {
-  return (accessToken) => claudeOauthGet(accessToken, "https://api.anthropic.com/api/oauth/usage", timeoutMs) as Promise<ClaudeUsageResponse>;
+  const usageUrl = process.env.HIVE_CLAUDE_USAGE_URL || "https://api.anthropic.com/api/oauth/usage";
+  return (accessToken) => claudeOauthGet(accessToken, usageUrl, timeoutMs) as Promise<ClaudeUsageResponse>;
 }
 
 function defaultClaudeRefresh(timeoutMs: number): NonNullable<LimitsFetchers["claudeRefresh"]> {

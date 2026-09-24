@@ -1127,12 +1127,13 @@ test("rpc central credentials: per-account opt-in/status/lease/disable, idempote
     const fixture = { claudeAiOauth: { accessToken: "CENTRAL_ACCESS_FIXTURE", refreshToken: "CENTRAL_REFRESH_FIXTURE", expiresAt: Date.now() + 8 * 3600000 } };
     seedVault(dir, "claude", "claude-pilot", ".credentials.json", JSON.stringify(fixture));
     seedVault(dir, "claude", "claude-second", ".credentials.json", JSON.stringify({ claudeAiOauth: { ...fixture.claudeAiOauth, refreshToken: "SECOND_REFRESH_FIXTURE" } }));
-    seedVault(dir, "claude", "claude-expired", ".credentials.json", JSON.stringify({ claudeAiOauth: { ...fixture.claudeAiOauth, refreshToken: "EXPIRED_REFRESH_FIXTURE", expiresAt: Date.now() - 1 } }));
     seedVault(dir, "claude", "claude-refused", ".credentials.json", JSON.stringify({ claudeAiOauth: { ...fixture.claudeAiOauth, refreshToken: "REFUSED_REFRESH_FIXTURE" } }));
     oauth.refuse("REFUSED_REFRESH_FIXTURE");
     daemon = await startDaemon(dir, { env: { HIVE_CLAUDE_OAUTH_TOKEN_URL: oauth.url } });
     const client = await daemon.client();
-    for (const label of ["pilot", "second", "expired", "refused"]) await client.request("account.add", { harness: "claude", label, importExisting: true });
+    for (const label of ["pilot", "second", "refused"]) await client.request("account.add", { harness: "claude", label, importExisting: true });
+    await client.request("account.add", { harness: "claude", label: "expired" });
+    seedVault(dir, "claude", "claude-expired", ".credentials.json", JSON.stringify({ claudeAiOauth: { ...fixture.claudeAiOauth, refreshToken: "EXPIRED_REFRESH_FIXTURE", expiresAt: Date.now() - 1 } }));
     assert.equal(await client.request("account.credentials.status", { id: "claude-pilot" }), null);
     const state = await client.request<{ phase: string; generation: number }>("account.credentials.enable", { id: "claude-pilot", idempotencyKey: "central-enable" });
     assert.equal(state.phase, "ready");
