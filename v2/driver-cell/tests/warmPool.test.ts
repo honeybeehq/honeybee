@@ -53,6 +53,7 @@ test("claim serves an exact-sha member and reaps it", () => {
     const member = buildPoolMember(cellsRoot, { originRepo: origin.repo, repoName: "origin", sha: origin.sha }, OPTS, BUILD);
     assert.ok(member);
     assert.equal(poolMemberCount(cellsRoot, repoKeyFor(origin.repo, "origin")), 1);
+    assert.deepEqual(readdirSync(join(cellsRoot, "_warmpool", repoKeyFor(origin.repo, "origin"))), [member]);
 
     const req = reserve(cellsRoot, origin, "bee-exact");
     const claimed = claimFromPool(cellsRoot, req);

@@ -32,7 +32,7 @@
  *    short-circuits (`replayed`) — provisioning replay and ledger idempotency
  *    survive a warm pool unchanged.
  */
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync } from "node:fs";
 import { availableParallelism } from "node:os";
 import { createHash, randomBytes } from "node:crypto";
 import { isAbsolute, join, resolve } from "node:path";
@@ -52,8 +52,9 @@ import { provisionCell, type ProvisionedCell, type ProvisionOptions, type Provis
 export const WARM_POOL_DIR = "_warmpool";
 /** The placeholder bee id a parked member's ledger carries until it is claimed. */
 export const WARM_POOL_BEE = "__warmpool__";
+const MEMBER_PREFIX = "m-";
+const BUILD_PREFIX = "build-";
 const DISCARD_PREFIX = ".discard-";
-const BUILD_PREFIX = ".build-";
 export const RACY_INDEX_WINDOW_MS = 1_100;
 
 const CHECKOUT_WORKERS = Math.max(1, Math.min(8, availableParallelism()));
@@ -92,7 +93,7 @@ export function listPoolMembers(cellsRoot: string, repoKey: string): PoolMember[
   }
   const members: PoolMember[] = [];
   for (const memberId of entries) {
-    if (memberId.startsWith(".")) continue;
+    if (!memberId.startsWith(MEMBER_PREFIX)) continue;
     const wrapperDir = join(root, memberId);
     let ledger: CellLedger | null;
     try {
@@ -212,9 +213,9 @@ export function claimFromPool(
   return null;
 }
 
-function hiddenEntries(root: string): string[] {
+function poolEntries(root: string): string[] {
   try {
-    return readdirSync(root).filter((entry) => entry.startsWith("."));
+    return readdirSync(root);
   } catch {
     return [];
   }
@@ -284,9 +285,11 @@ export function buildPoolMember(
   if (!hasCommit(req.originRepo, req.sha)) return null;
   const root = poolRootFor(cellsRoot, repoKey);
   mkdirSync(root, { recursive: true });
-  const buildDir = mkdtempSync(join(root, BUILD_PREFIX));
-  const buildId = buildDir.slice(root.length + 1);
-  const memberId = `m-${buildId.slice(BUILD_PREFIX.length)}`;
+  const suffix = randomBytes(6).toString("hex");
+  const buildId = `${BUILD_PREFIX}${suffix}`;
+  const memberId = `${MEMBER_PREFIX}${suffix}`;
+  const buildDir = join(root, buildId);
+  mkdirSync(buildDir);
   const cellId = createHash("sha256").update(buildDir).digest("hex").slice(0, 12);
   const request: ProvisionRequest = {
     beeId: WARM_POOL_BEE,
@@ -311,9 +314,13 @@ export function buildPoolMember(
 /** Discard members whose sha is not the current one and any dirty member. */
 export function reapPool(cellsRoot: string, repoKey: string, keepSha: string): number {
   const root = poolRootFor(cellsRoot, repoKey);
-  for (const leftover of hiddenEntries(root)) rmSync(join(root, leftover), { recursive: true, force: true });
+  const members = listPoolMembers(cellsRoot, repoKey);
+  const memberIds = new Set(members.map((member) => member.memberId));
+  for (const leftover of poolEntries(root).filter((entry) => !memberIds.has(entry))) {
+    rmSync(join(root, leftover), { recursive: true, force: true });
+  }
   let removed = 0;
-  for (const member of listPoolMembers(cellsRoot, repoKey)) {
+  for (const member of members) {
     if (member.sha !== keepSha || !isClean(member.paths.spaceDir)) {
       discardMember(member.wrapperDir);
       removed++;
