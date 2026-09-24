@@ -384,28 +384,34 @@ test("full-roster pruning preserves an unvisited suffix and removes only scanned
   );
 
   const pruned = bees[9]!;
-  rig.store.deleteBee(pruned.id);
+  rig.store.archiveBee(pruned.id);
   await dispatch();
   const afterAbsentScan = trace.listMessages.length;
-  addBee(rig.store, pruned.id, 0x1109);
+  rig.store.unarchiveBee(pruned.id);
   await dispatch();
-  assert.equal(trace.listMessages.length, afterAbsentScan + 1, "recreation refills after an actual absent-roster prune");
+  assert.deepEqual(trace.listMessages.slice(afterAbsentScan), [pruned.id], "returning to the roster refills a pruned baseline");
 
   const retainedWhileDisabled = bees[8]!;
-  rig.store.deleteBee(retainedWhileDisabled.id);
-  const rosterReadsBeforeDisabled = trace.listBees;
+  rig.store.archiveBee(retainedWhileDisabled.id);
+  const traceBeforeDisabled = structuredClone(trace);
+  const stateBeforeDisabled = stateBytes(rig.statePath);
   enabled.value = false;
   await dispatch();
-  assert.equal(trace.listBees, rosterReadsBeforeDisabled, "disabled calls do not scan or prune");
-  addBee(rig.store, retainedWhileDisabled.id, 0x1108);
+  assert.deepEqual(trace, traceBeforeDisabled, "disabled calls do not scan");
+  assert.equal(stateBytes(rig.statePath), stateBeforeDisabled, "disabled calls retain bookkeeping");
+  rig.store.unarchiveBee(retainedWhileDisabled.id);
   enabled.value = true;
   const listsBeforeReenabled = trace.listMessages.length;
   await dispatch();
-  assert.equal(
-    trace.listMessages.length,
-    listsBeforeReenabled,
-    "a same-membership recreation may reuse an entry retained while scanning was disabled",
-  );
+  assert.equal(trace.listMessages.length, listsBeforeReenabled, "an unchanged member reuses its baseline when no enabled scan removed it");
+
+  rig.store.deleteBee(pruned.id);
+  rig.store.deleteBee(retainedWhileDisabled.id);
+  await dispatch();
+  const fresh = addBee(rig.store, "cache-fresh", 0x110a);
+  const listsBeforeFresh = trace.listMessages.length;
+  await dispatch();
+  assert.deepEqual(trace.listMessages.slice(listsBeforeFresh), [fresh.id], "a fresh identity is probed after deletion");
 });
 
 test("supplied stale rosters bypass store reuse and keep getBee-or-candidate fallback", async (t) => {
