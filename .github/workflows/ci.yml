@@ -23,7 +23,12 @@ jobs:
       - name: Install Linux test prerequisites
         run: |
           sudo apt-get update
-          sudo apt-get install -y tmux bubblewrap ripgrep socat
+          sudo apt-get install -y tmux bubblewrap ripgrep socat apparmor-profiles
+      - name: Allow bubblewrap namespace setup under AppArmor
+        # Ubuntu restricts unprivileged user namespaces. Its packaged profile
+        # permits bwrap setup while denying capabilities to sandboxed children.
+        # Keep the host restriction enabled and the preflight below unprivileged.
+        run: sudo apparmor_parser -r /usr/share/apparmor/extra-profiles/bwrap-userns-restrict
       - name: Require native Linux sandbox coverage
         # Fail before tests if this runner would skip the native containment probe.
         run: bwrap --new-session --die-with-parent --ro-bind / / --dev /dev --unshare-user --cap-drop ALL --unshare-pid --proc /proc -- /bin/true
