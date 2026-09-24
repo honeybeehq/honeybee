@@ -113,6 +113,8 @@ export interface HsrDriverConfig {
    * checkouts and the dedicated sibling runner-host.js artifact from builds.
    */
   hostCommand?: (configPath: string) => { command: string; args: string[] };
+  /** A runner write lane connected; mail refused `not_ready` can go now. */
+  onWriteLaneReady?: () => void;
 }
 
 type HostLaunch =
@@ -560,6 +562,7 @@ export class HsrDriver implements RuntimeDriver {
       for (const line of p.pendingWrites.splice(0)) {
         attempt.write(`${JSON.stringify({ op: "write", line })}\n`);
       }
+      this.cfg.onWriteLaneReady?.();
     });
     attempt.on("error", () => undefined);
     attempt.on("close", () => {

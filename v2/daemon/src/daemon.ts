@@ -685,6 +685,7 @@ export class HiveDaemon {
       sessionLogPathFor,
       stopKillGraceMs: this.cfg.stopKillGraceMs,
       adoptToleranceMs: this.cfg.adoptToleranceMs,
+      onWriteLaneReady: () => this.requestTick(),
     };
     const hsr = new HsrDriver({ ...hsrConfig, resolve: (beeId: string) => this.resolveSpawnSpec(beeId) });
     // Cell substrate (spec 05): a CellDriver composed over its own inner
