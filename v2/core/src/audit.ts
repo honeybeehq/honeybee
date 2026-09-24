@@ -298,6 +298,8 @@ export function replayAudit(rows: AuditRow[]): StateDump {
         const command = mustCommand(p.commandId as number);
         command.status = "done";
         command.finishedAt = p.finishedAt as number;
+        // A mooted model change drops its restart intent with the settle.
+        if (row.kind === "command.moot" && p.args !== undefined) command.args = p.args as Record<string, unknown>;
         break;
       }
       case "command.requeued": {

@@ -242,7 +242,7 @@ test("model change waits when idle becomes working before command execution", ()
     rig.driver.events.push({ beeId: "bee-1", generation: 1, kind: "turn_started", synthetic: true });
     rig.core.step();
     assert.equal(rig.driver.hasProcess("bee-1", 1), true, "must not stop the admitted turn");
-    assert.equal(rig.store.getBee("bee-1")?.args, null, "must not change args during the turn");
+    assert.deepEqual(rig.store.getBee("bee-1")?.args, ["--model", "new", "--effort", "high"], "args are recorded at admission");
     assert.equal(rig.store.getCommand(result.commandId)?.status, "queued");
     assert.equal(rig.store.currentRuntime("bee-1")?.generation, before?.generation);
     rig.driver.events.push({ beeId: "bee-1", generation: 1, kind: "turn_ended" });
@@ -258,24 +258,81 @@ test("model change waits when idle becomes working before command execution", ()
   }
 });
 
-test("model admission folds a delivered turn before refusing without mutation", () => {
+test("model change admitted during a turn waits for the turn to end, and a newer change replaces it", () => {
   const rig = makeRig();
   try {
     spawnIdleBee(rig);
     rig.driver.events.push({ beeId: "bee-1", generation: 1, kind: "turn_started", synthetic: true });
     assert.equal(rig.store.view("bee-1").working, false, "mirror still sees idle");
     rig.core.observe();
-    const before = rig.store.dumpState();
-    assert.throws(() => rig.store.reconfigureBee("bee-1", ["--model", "new"]), /is working/);
-    assert.deepEqual(rig.store.dumpState(), before);
-    assert.equal(rig.driver.hasProcess("bee-1", 1), true);
+    const first = rig.store.reconfigureBee("bee-1", ["--model", "new", "--effort", "low"]);
+    const second = rig.store.reconfigureBee("bee-1", ["--model", "new", "--effort", "high"]);
+    assert.equal(first.outcome, "queued");
+    assert.equal(second.outcome, "queued");
+    if (first.outcome !== "queued" || second.outcome !== "queued") throw new Error("expected queued changes");
+    rig.core.step();
+    rig.core.step();
+    assert.equal(rig.driver.hasProcess("bee-1", 1), true, "the active turn keeps its runtime");
     assert.equal(rig.driver.starts.length, 1);
+    assert.equal(rig.store.getCommand(first.commandId)?.status, "done", "the replaced change settled");
+    assert.equal(rig.store.getCommand(second.commandId)?.status, "queued");
+    rig.driver.events.push({ beeId: "bee-1", generation: 1, kind: "turn_ended" });
+    rig.core.step();
+    rig.core.step();
+    rig.core.step();
+    assert.equal(rig.store.currentRuntime("bee-1")?.generation, 2);
+    assert.equal(rig.store.currentRuntime("bee-1")?.state, "idle");
+    assert.equal(rig.driver.starts.length, 2, "one restart for both changes");
+    assert.deepEqual(rig.store.getBee("bee-1")?.args, ["--model", "new", "--effort", "high"]);
+    assert.equal(rig.store.getCommand(second.commandId)?.status, "done");
   } finally {
     rig.cleanup();
   }
 });
 
-test("deferred model change does not block other commands and stale generations do not change args", () => {
+for (const exitCause of ["stopped_by_user", "crashed"] as const) {
+  test(`a runtime ended by ${exitCause} while a model change waits is not restarted, even after boot`, () => {
+    const rig = makeRig();
+    let reopened: CoreStore | null = null;
+    try {
+      spawnIdleBee(rig);
+      rig.driver.events.push({ beeId: "bee-1", generation: 1, kind: "turn_started" });
+      rig.core.step();
+      const change = rig.store.reconfigureBee("bee-1", ["--effort", "high"]);
+      if (change.outcome !== "queued") throw new Error("expected queued change");
+      if (exitCause === "stopped_by_user") {
+        rig.store.enqueueCommand("stop", "bee-1", { cause: "stopped_by_user" });
+      } else {
+        rig.driver.events.push({ beeId: "bee-1", generation: 1, kind: "exited", exitCause: "crashed" });
+      }
+      rig.core.step();
+      rig.core.step();
+      rig.core.step();
+      assert.equal(rig.store.currentRuntime("bee-1")?.state, "stopped");
+      assert.equal(rig.store.currentRuntime("bee-1")?.generation, 1);
+      assert.equal(rig.store.getCommand(change.commandId)?.status, "done");
+      assert.deepEqual(rig.store.getBee("bee-1")?.args, ["--effort", "high"], "the next runtime uses the change");
+      assert.equal(rig.driver.starts.length, 1, "no restart");
+      rig.store.close();
+      reopened = openCoreStore(join(rig.dir, "core.sqlite3"), { now: () => rig.clock.now, ephemeral: true });
+      const recovered = new DaemonCore({
+        store: reopened, driver: rig.driver, now: () => rig.clock.now,
+        policy: { bootHangTimeoutSteps: 50, commandsPerStep: 8 },
+        log: (op) => rig.ops.push(op),
+      });
+      recovered.boot();
+      recovered.step();
+      recovered.step();
+      assert.equal(reopened.currentRuntime("bee-1")?.generation, 1, "boot does not restart it either");
+      assert.equal(rig.driver.starts.length, 1);
+    } finally {
+      reopened?.close();
+      rig.cleanup();
+    }
+  });
+}
+
+test("deferred model change does not block other commands and a stale generation does not restart again", () => {
   const rig = makeRig();
   try {
     spawnIdleBee(rig);
@@ -294,7 +351,8 @@ test("deferred model change does not block other commands and stale generations 
     rig.store.reviveBee("bee-1");
     rig.core.step();
     assert.equal(rig.store.getCommand(result.commandId)?.status, "done");
-    assert.equal(rig.store.getBee("bee-1")?.args, null);
+    assert.deepEqual(rig.store.getBee("bee-1")?.args, ["--model", "new"], "the revived runtime already has the change");
+    assert.equal(rig.store.currentRuntime("bee-1")?.generation, 2);
     assert.ok(rig.store.auditRows().some((r) => r.kind === "command.moot" && r.payload.commandId === result.commandId));
   } finally {
     rig.cleanup();
@@ -397,7 +455,7 @@ test("model change defers across real HSR input admission before the turn observ
     await waitFor(() => {
       core.step();
       assert.equal(store.getCommand(result.commandId)?.status, "queued", "model change stays deferred");
-      assert.equal(store.getBee("b")?.args, null, "pending model args stay unapplied");
+      assert.deepEqual(store.getBee("b")?.args, ["--model", "new", "--effort", "high"], "args are recorded at admission");
       assert.equal(driver.hasProcess("b", 1), true, "admission wait preserves generation 1");
       return store.undeliveredMessages("b").length === 0;
     }, "real HSR input admitted", PROCESS_WAIT_TIMEOUT_MS);
@@ -406,7 +464,6 @@ test("model change defers across real HSR input admission before the turn observ
     core.step();
     assert.equal(store.view("b").working, true);
     assert.equal(store.getCommand(result.commandId)?.status, "queued");
-    assert.equal(store.getBee("b")?.args, null);
     assert.equal(driver.hasProcess("b", 1), true);
     assert.deepEqual(starts, [null]);
     // Finish the fixture turn, then let the deferred command apply.

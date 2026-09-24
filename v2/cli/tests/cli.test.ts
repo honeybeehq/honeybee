@@ -22,7 +22,7 @@ function capture(): { io: CliIo; out: string[]; err: string[] } {
   return { io: { out: (l) => out.push(stripAnsi(l)), err: (l) => err.push(stripAnsi(l)) }, out, err };
 }
 
-test("set-model --apply uses atomic admission and reports working refusal", async () => {
+test("set-model --apply uses atomic admission and waits out an active turn", async () => {
   const { dir, cleanup } = makeDaemonDir();
   let daemon: DaemonHandle | null = null;
   try {
@@ -39,11 +39,13 @@ test("set-model --apply uses atomic admission and reports working refusal", asyn
     }, "new model idle");
     await client.request("send", { beeId, body: "@hang" });
     await waitFor(async () => (await client.request<{ view: { working: boolean } }>("view", { beeId })).view.working, "working");
-    const refused = capture();
-    assert.equal(await runV2Cli(["set-model", beeId, "other", "--apply", "--data-dir", dir], refused.io), 1);
-    assert.match(refused.err.join("\n"), /runtime_refused.*working/);
-    const { bee } = await client.request<{ bee: { args: string[] } }>("view", { beeId });
-    assert.deepEqual(bee.args, ["--model", "new"]);
+    const during = capture();
+    assert.equal(await runV2Cli(["set-model", beeId, "other", "--apply", "--data-dir", dir, "--json"], during.io), 0);
+    assert.equal(JSON.parse(during.out[0] ?? "{}").outcome, "queued");
+    const { bee, view } = await client.request<{ bee: { args: string[] }; view: { generation: number; working: boolean } }>("view", { beeId });
+    assert.deepEqual(bee.args, ["--model", "other"], "args are recorded at admission");
+    assert.equal(view.generation, 2, "the active turn keeps its runtime");
+    assert.equal(view.working, true);
     client.close();
   } finally {
     await daemon?.stop().catch(() => {});

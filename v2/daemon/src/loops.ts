@@ -949,7 +949,10 @@ export class DaemonCore {
         // is idle/stopped. Claim, args update and driver.stop share one
         // synchronous executor turn with no mailbox admission between them.
         if (cmd.args.replacementArgs !== undefined) {
-          this.store.updateBeeArgs(cmd.beeId, cmd.args.replacementArgs as string[] | null);
+          // Changes admitted before args were recorded at admission apply them here.
+          if (cmd.args.argsApplied !== true) {
+            this.store.updateBeeArgs(cmd.beeId, cmd.args.replacementArgs as string[] | null);
+          }
           if (rt.state === "stopped") {
             // Recovery can observe the exit before replaying this command.
             this.reviveAfterStopIfRequested(cmd.beeId, gen);

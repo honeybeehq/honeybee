@@ -2726,9 +2726,12 @@ export class CoreStore {
   }
 
   /**
-   * Admit an args change against canonical working state. Live idle runtimes
-   * receive a generation-fenced stop with replacement args; claim waits for
-   * idle if a turn wins the race. Args stay untouched until execution.
+   * Admit a model/effort change. The args are recorded at admission, so the
+   * selection is durable for every later runtime. A live runtime also gets a
+   * generation-fenced stop with restart intent; claim waits until it is idle,
+   * so an active turn is never interrupted. A newer change replaces a queued
+   * one, and returning to the args the live runtime started with cancels the
+   * restart. Only a restart that is already executing refuses.
    */
   reconfigureBee(beeId: string, args: string[] | null):
     | { outcome: "queued"; commandId: number }
@@ -2737,31 +2740,65 @@ export class CoreStore {
     return this.tx(() => {
       const bee = this.mustGetBee(beeId);
       const rt = this.currentRuntime(beeId);
-      if (rt?.state === "booting" || rt?.state === "running") {
-        throw new IllegalTransitionError(`bee ${beeId} is working; retry the model change when idle`);
-      }
       // Stay on the pending-status index instead of materializing this bee's
       // settled command history. json_type returns SQL NULL for a missing path
       // but the string "null" for a present JSON null, matching !== undefined.
-      const pendingModelChange = this.stmt(
-        `SELECT 1 FROM commands INDEXED BY commands_ready
+      const pendingRow = this.stmt(
+        `SELECT * FROM commands INDEXED BY commands_ready
          WHERE status IN ('queued','running') AND bee_id = ? AND verb = 'stop'
          AND target_generation = ?
          AND json_type(args, '$.replacementArgs') IS NOT NULL
          LIMIT 1`,
-      ).get(beeId, rt?.generation ?? 0);
-      if (pendingModelChange !== undefined) {
-        throw new IllegalTransitionError(`bee ${beeId} already has a pending model change`);
+      ).get(beeId, rt?.generation ?? 0) as Row | undefined;
+      const pending = pendingRow ? mapCommand(pendingRow) : null;
+      if (pending?.status === "running") {
+        throw new IllegalTransitionError(`bee ${beeId} already has a pending model change restarting; retry when it finishes`);
       }
-      if (sameArgs(bee.args, next)) return { outcome: "unchanged", bee };
-      if (!rt || rt.state === "stopped") {
-        this.applyArgs(beeId, next);
-        return { outcome: "recorded", bee: this.mustGetBee(beeId) };
+      // Changes admitted before args were recorded at admission leave the
+      // running args on the bee row until execution.
+      const runningArgs = pending?.args.argsApplied === true
+        ? (pending.args.previousArgs as string[] | null)
+        : bee.args;
+      const live = rt !== null && rt.state !== "stopped";
+      if (!live || sameArgs(runningArgs, next)) {
+        if (pending) this.mootModelChange(pending, "superseded_by_model_change");
+        const changed = this.applyArgs(beeId, next);
+        return { outcome: changed ? "recorded" : "unchanged", bee: this.mustGetBee(beeId) };
       }
+      if (pending?.args.argsApplied === true && sameArgs(bee.args, next)) {
+        return { outcome: "queued", commandId: pending.id };
+      }
+      this.applyArgs(beeId, next);
+      if (pending) this.mootModelChange(pending, "superseded_by_model_change");
       const command = this.enqueueCommand("stop", beeId, {
-        cause: "stopped_by_system", replacementArgs: next, thenRevive: true,
+        cause: "stopped_by_system",
+        replacementArgs: next,
+        previousArgs: runningArgs,
+        argsApplied: true,
+        thenRevive: true,
       });
       return { outcome: "queued", commandId: command.id };
+    });
+  }
+
+  /**
+   * Settle a pending model change without restart intent. Dropping
+   * `thenRevive` keeps a later exit or boot from reviving the runtime for a
+   * change that no longer needs it; the audit row carries the new args.
+   */
+  private mootModelChange(command: CommandRow, reason: string): void {
+    const at = this.now();
+    const { thenRevive: _dropped, ...args } = command.args;
+    this.stmt("UPDATE commands SET status = 'done', finished_at = ?, args = ? WHERE id = ?")
+      .run(at, JSON.stringify(args), command.id);
+    this.audit("command.moot", command.beeId, {
+      commandId: command.id,
+      verb: command.verb,
+      targetGeneration: command.targetGeneration,
+      currentGeneration: this.currentRuntime(command.beeId)?.generation ?? 0,
+      finishedAt: at,
+      reason,
+      args,
     });
   }
 
@@ -3802,6 +3839,21 @@ export class CoreStore {
               finishedAt: at,
               reason: "already_stopped",
             });
+            continue;
+          }
+          // A model change that waited for idle outlived its runtime: an
+          // operator stop, crash, or clean exit ended it first. Keep the args
+          // for the next runtime, but never restart a runtime someone else
+          // ended. System stops and machine restarts still restart: they are
+          // this change's own stop replayed after a daemon interruption.
+          if (
+            command.verb === "stop" && current?.state === "stopped" && command.args.replacementArgs !== undefined &&
+            current.exitCause !== "stopped_by_system" && current.exitCause !== "machine_restart"
+          ) {
+            if (command.args.argsApplied !== true) {
+              this.applyArgs(command.beeId, normalizeBeeArgs(command.args.replacementArgs, "claimNextCommand"));
+            }
+            this.mootModelChange(command, "runtime_ended_before_restart");
             continue;
           }
         }

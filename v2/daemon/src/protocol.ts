@@ -121,6 +121,11 @@ export const DAEMON_CAPABILITIES = [
   "mail.pending.v1",
   /** Atomic working-state admission and deferred idle restart for model/effort changes. */
   "bee.reconfigure.v1",
+  /**
+   * `bee.reconfigure` admits working bees: args are recorded at admission and
+   * the restart waits for idle. A newer change replaces a queued one.
+   */
+  "bee.reconfigure.v2",
   /** Same-node Cell→regular checkout move. Remote is typed-refused. */
   "cell.move.local.v1",
   /** Sandboxed retained-Cell exec keyed by Cell ID. */
@@ -1101,11 +1106,15 @@ export interface SetArgsResult extends DedupMarkers {
 
 /**
  * `bee.reconfigure { beeId, args: string[] | null, idempotencyKey? }`.
- * Refuses working bees with `runtime_refused` before changing args/runtime.
- * A queued change waits if a turn starts before execution, then replaces
- * args and stops/revives the targeted generation. Callers must not issue
- * their own stop/revive. Stopped bees only record args; identical args are
- * quiet. `queued` acknowledges durable intent, not restart completion.
+ * Records the args at admission. A live runtime (working or idle) also gets
+ * a restart that waits for idle, so an active turn is never interrupted;
+ * `queued` acknowledges that durable intent, not restart completion. A newer
+ * change replaces a queued one; returning to the args the live runtime
+ * started with cancels the restart (`recorded`). Stopped bees only record
+ * args; identical args are quiet (`unchanged`). An operator stop, crash, or
+ * clean exit before the restart keeps the args and skips the restart.
+ * `runtime_refused` only while a restart is already executing. Callers must
+ * not issue their own stop/revive.
  */
 export type ReconfigureResult = ReturnType<import("../../core/src/index.ts").CoreStore["reconfigureBee"]> & DedupMarkers;
 

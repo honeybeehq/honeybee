@@ -40,40 +40,47 @@ import {
   makeFrozenFixture,
 } from "./frozen-fixture.ts";
 
-test("reconfigure admission refuses working and duplicate pending changes; stopped changes and no-ops replay", () => {
+test("reconfigure records args at admission, waits for idle, and replaces a queued change; stopped changes and no-ops replay", () => {
   const h = harness();
   const store = h.open();
   try {
     const { bee } = makeBee(store);
-    for (const state of ["booting", "running"] as const) {
-      if (state === "running") store.updateRuntimeState(bee.id, 1, "running");
-      const before = store.dumpState();
-      const seq = store.lastAuditSeq();
-      assert.throws(() => store.reconfigureBee(bee.id, []), /working/);
-      assert.deepEqual(store.dumpState(), before);
-      assert.equal(store.lastAuditSeq(), seq, "refusal is quiet");
-    }
-    store.updateRuntimeState(bee.id, 1, "idle");
-    const seq = store.lastAuditSeq();
-    assert.equal(store.reconfigureBee(bee.id, null).outcome, "unchanged");
-    assert.equal(store.lastAuditSeq(), seq);
-    store.updateBeeArgs(bee.id, ["--model", "old"]);
-    const result = store.reconfigureBee(bee.id, null);
-    assert.equal(result.outcome, "queued");
-    assert.deepEqual(store.getBee(bee.id)?.args, ["--model", "old"]);
-    const queued = store.dumpState();
-    assert.throws(() => store.reconfigureBee(bee.id, ["--model", "other"]), /pending model change/);
-    assert.deepEqual(store.dumpState(), queued);
-    // Null replacement args must also wait without retry/audit churn.
+    // Booting counts as working: the change is admitted and waits.
+    const low = store.reconfigureBee(bee.id, ["--effort", "low"]);
+    assert.equal(low.outcome, "queued");
+    if (low.outcome !== "queued") throw new Error("expected queued change");
+    assert.deepEqual(store.getBee(bee.id)?.args, ["--effort", "low"], "args are recorded at admission");
+    assert.deepEqual(store.getCommand(low.commandId)?.args.previousArgs, null, "the args the runtime started with");
     store.updateRuntimeState(bee.id, 1, "running");
     const deferredSeq = store.lastAuditSeq();
+    assert.equal(store.claimNextCommand(), null, "the restart waits for idle");
     assert.equal(store.claimNextCommand(), null);
-    assert.equal(store.claimNextCommand(), null);
-    assert.equal(store.lastAuditSeq(), deferredSeq);
+    assert.equal(store.lastAuditSeq(), deferredSeq, "deferral is quiet");
+
+    // A newer choice replaces the queued change without a second restart.
+    const high = store.reconfigureBee(bee.id, ["--effort", "high"]);
+    assert.equal(high.outcome, "queued");
+    if (high.outcome !== "queued") throw new Error("expected queued change");
+    assert.notEqual(high.commandId, low.commandId);
+    assert.equal(store.getCommand(low.commandId)?.status, "done");
+    assert.equal(store.getCommand(low.commandId)?.args.thenRevive, undefined, "a replaced change drops its restart intent");
+    assert.deepEqual(store.getCommand(high.commandId)?.args.previousArgs, null, "previous args carry across replacements");
+    assert.deepEqual(store.reconfigureBee(bee.id, ["--effort", "high"]), { outcome: "queued", commandId: high.commandId });
+
+    // Returning to the running args cancels the restart.
+    const back = store.reconfigureBee(bee.id, null);
+    assert.equal(back.outcome, "recorded");
+    assert.equal(store.getBee(bee.id)?.args, null);
+    assert.equal(store.getCommand(high.commandId)?.status, "done");
+    assert.equal(store.getCommand(high.commandId)?.args.thenRevive, undefined);
+    store.updateRuntimeState(bee.id, 1, "idle");
+    assert.equal(store.claimNextCommand(), null, "no restart remains");
+    const seq = store.lastAuditSeq();
+    assert.equal(store.reconfigureBee(bee.id, null).outcome, "unchanged");
+    assert.equal(store.lastAuditSeq(), seq, "an identical change is quiet");
+
+    // Stopped bees only record args.
     store.updateRuntimeState(bee.id, 1, "stopped", { exitCause: "stopped_by_user" });
-    const cmd = store.claimNextCommand();
-    assert.ok(cmd);
-    store.completeCommand(cmd.id);
     assert.equal(store.reconfigureBee(bee.id, []).outcome, "recorded");
     assert.deepEqual(store.getBee(bee.id)?.args, []);
     assert.equal(store.reconfigureBee(bee.id, null).outcome, "recorded");
@@ -81,6 +88,30 @@ test("reconfigure admission refuses working and duplicate pending changes; stopp
   } finally {
     store.close();
     h.cleanup();
+  }
+});
+
+test("a model change that outlives its runtime keeps its args without a restart", () => {
+  for (const exitCause of ["stopped_by_user", "crashed", "clean"] as const) {
+    const h = harness();
+    const store = h.open();
+    try {
+      const { bee } = makeBee(store);
+      store.updateRuntimeState(bee.id, 1, "running");
+      const change = store.reconfigureBee(bee.id, ["--effort", "high"]);
+      if (change.outcome !== "queued") throw new Error("expected queued change");
+      store.updateRuntimeState(bee.id, 1, "stopped", { exitCause });
+      assert.equal(store.claimNextCommand(), null, `${exitCause}: nothing to execute`);
+      const settled = store.getCommand(change.commandId);
+      assert.equal(settled?.status, "done");
+      assert.equal(settled?.args.thenRevive, undefined, `${exitCause}: no restart intent survives`);
+      assert.equal(store.hasStopThenReviveRequest(bee.id, 1), false);
+      assert.deepEqual(store.getBee(bee.id)?.args, ["--effort", "high"]);
+      assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
+    } finally {
+      store.close();
+      h.cleanup();
+    }
   }
 });
 
@@ -118,12 +149,15 @@ test("reconfigure pending probe preserves replacement presence, status, and gene
     );
 
     store.updateBeeArgs(bee.id, ["--model", "old"]);
-    const queued = store.reconfigureBee(bee.id, null);
+    const cleared = store.reconfigureBee(bee.id, null);
+    assert.equal(cleared.outcome, "queued");
+    if (cleared.outcome !== "queued") throw new Error("expected queued model change");
+    const queued = store.reconfigureBee(bee.id, ["--model", "other"]);
     assert.equal(queued.outcome, "queued");
     if (queued.outcome !== "queued") throw new Error("expected queued model change");
-    assert.throws(
-      () => store.reconfigureBee(bee.id, ["--model", "other"]),
-      /pending model change/,
+    assert.equal(
+      store.getCommand(cleared.commandId)?.status,
+      "done",
       "JSON null counts as a present replacementArgs value",
     );
 
@@ -140,7 +174,7 @@ test("reconfigure pending probe preserves replacement presence, status, and gene
     store.completeCommand(ordinaryStop.id);
     assert.equal(store.claimNextCommand()?.id, queued.commandId);
     assert.throws(
-      () => store.reconfigureBee(bee.id, ["--model", "other"]),
+      () => store.reconfigureBee(bee.id, ["--model", "third"]),
       /pending model change/,
       "a running replacement remains pending",
     );

@@ -17,7 +17,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { composeSpawn } from "../src/daemon.ts";
 import { ConfigError, loadNodeConfig, BUILTIN_AGENTS } from "../src/config.ts";
-import type { CommandsResult, ReconfigureResult, SetArgsResult, SpawnResult, ViewResult } from "../src/protocol.ts";
+import type { CommandsResult, DeployInfoResult, ReconfigureResult, SetArgsResult, SpawnResult, ViewResult } from "../src/protocol.ts";
 import { makeDaemonDir, startDaemon, waitFor, type DaemonHandle } from "./helpers.ts";
 import { codexThreadRequest } from "../../adapters/src/index.ts";
 
@@ -28,7 +28,7 @@ const bee = (o: Partial<{ cwd: string; args: string[] | null; providerSessionId:
   ...o,
 });
 
-test("bee.reconfigure RPC refuses an active turn unchanged and restarts an idle stub once", async () => {
+test("bee.reconfigure RPC admits an active turn, records args, and restarts the stub once it is idle", async () => {
   // Match the daemon fixture's startup bound on loaded release hosts.
   const startupTimeoutMs = 60_000;
   const { dir, cleanup } = makeDaemonDir();
@@ -36,6 +36,8 @@ test("bee.reconfigure RPC refuses an active turn unchanged and restarts an idle 
   try {
     daemon = await startDaemon(dir);
     const client = await daemon.client();
+    const info = await client.request<DeployInfoResult>("deployInfo");
+    assert.ok(info.capabilities.includes("bee.reconfigure.v2"), "clients can tell working admission apart");
     const { beeId } = await client.request<SpawnResult>("spawn", {
       name: "reconfigure", agent: "stub", cwd: "/tmp", args: ["--model", "old"],
     });
@@ -45,20 +47,16 @@ test("bee.reconfigure RPC refuses an active turn unchanged and restarts an idle 
     await client.request("send", { beeId, body: "@hang" });
     await waitFor(async () => (await client.request<ViewResult>("view", { beeId })).view.working, "admitted turn");
     const before = await client.request<ViewResult>("view", { beeId });
-    const commandsBefore = await client.request<CommandsResult>("commands", { beeId });
     const change = { beeId, args: ["--model", "new", "--effort", "high"], idempotencyKey: "model-change" };
-    await assert.rejects(() => client.request("bee.reconfigure", change),
-      (e: Error & { code?: string }) => e.code === "runtime_refused" && /working/.test(e.message));
-    const refused = await client.request<ViewResult>("view", { beeId });
-    assert.deepEqual(refused.bee?.args, before.bee?.args);
-    assert.deepEqual(refused.runtime, before.runtime);
-    assert.deepEqual(await client.request<CommandsResult>("commands", { beeId }), commandsBefore);
+    const changed = await client.request<ReconfigureResult>("bee.reconfigure", change);
+    assert.equal(changed.outcome, "queued");
+    const during = await client.request<ViewResult>("view", { beeId });
+    assert.deepEqual(during.bee?.args, change.args, "args are recorded at admission");
+    assert.equal(during.view.generation, before.view.generation, "the active turn keeps its runtime");
+    assert.equal(during.runtime?.pid, before.runtime?.pid);
 
     // End the fixture's hung turn explicitly; model changes never interrupt it.
     await client.request("bee.interrupt", { beeId });
-    await waitFor(async () => (await client.request<ViewResult>("view", { beeId })).view.runtimeState === "idle", "fixture turn ended");
-    const changed = await client.request<ReconfigureResult>("bee.reconfigure", change);
-    assert.equal(changed.outcome, "queued");
     await waitFor(async () => {
       const { view } = await client.request<ViewResult>("view", { beeId });
       return view.generation === 2 && view.runtimeState === "idle";
