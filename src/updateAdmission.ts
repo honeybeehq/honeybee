@@ -66,7 +66,7 @@ async function readUpdateOwner(root: string): Promise<Owner> {
   }
   if (response !== undefined) {
     const live = JSON.parse(response);
-    if (live.contract !== UPDATE_RECOVERY_CONTRACT || live.schemaVersion !== 27
+    if (live.contract !== UPDATE_RECOVERY_CONTRACT || ![27, 28, 30].includes(live.schemaVersion)
       || typeof live.runtimeRoot !== "string" || resolve(live.runtimeRoot) !== resolve(root)
       || typeof live.storePath !== "string" || resolve(live.storePath) !== join(dataDir, "core.sqlite3")
       || !Array.isArray(live.blockers)) throw new Error("deploy: incompatible live owner");
@@ -74,7 +74,7 @@ async function readUpdateOwner(root: string): Promise<Owner> {
     // valid absence for ordinary deployment, never a usable admission token.
     const initial = live.reservation?.epoch === 0 && live.reservation.id === ""
       && live.reservation.recoverySubjectDigest === "" && live.reservation.active === false;
-    return { reservation: live.reservation === null || initial ? null : parseUpdateReservation(live.reservation), blockers: live.blockers.length > 0 };
+    return { reservation: live.reservation === null || initial ? null : parseUpdateReservation(live.reservation), blockers: live.schemaVersion !== 27 || live.blockers.length > 0 };
   }
   return readOfflineOwner(root);
 }
@@ -89,9 +89,9 @@ function readOfflineOwner(root: string): Owner {
     // v26 predates reservations; allow its ordinary offline deployment, never
     // automatic recovery admission. Unknown schemas defer to migration.
     if (schema?.value === "26" && !row) return { reservation: null, blockers: true };
-    if (schema?.value !== "27") throw new Error("deploy: incompatible storage; coordinated migration required");
+    if (!["27", "28", "30"].includes(String(schema?.value))) throw new Error("deploy: incompatible storage; coordinated migration required");
     return { reservation: row ? parseUpdateReservation(JSON.parse(String(row.value))) : null,
-      blockers: !!db.prepare("SELECT 1 FROM account_credential_authorities WHERE phase <> 'disabled' LIMIT 1").get() };
+      blockers: schema?.value !== "27" || !!db.prepare("SELECT 1 FROM account_credential_authorities WHERE phase <> 'disabled' LIMIT 1").get() };
   } finally { db.close(); }
 }
 
