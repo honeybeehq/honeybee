@@ -130,11 +130,11 @@ for (const scenario of ["install", "identity", "gate", "fence", "conflict", "res
   });
 }
 
-import { pruneRuntimeVersions, rollbackDeploy } from "../src/deployRuntime.js";
+import { rollbackDeploy } from "../src/deployRuntime.js";
 import { withFileLock } from "../src/lock.js";
 import { installedV2Runtime, installedV2Identity, runtimeUsesV2, RUNTIME_MODE_CONFIG, v2IsDefault } from "../src/cliRoute.js";
 
-test("reservation blocks ordinary rollback and pruning and retains all recovery artifacts", async () => {
+test("reserved artifact publication retains all recovery artifacts", async () => {
   const dir = await mkdtemp(join(tmpdir(), "hon8-reserved-"));
   try {
     const fixture = await release(dir), root = join(dir, "runtime"), admission = await reserve(dir, fixture.identity);
@@ -143,8 +143,6 @@ test("reservation blocks ordinary rollback and pruning and retains all recovery 
     await deployArtifact({ ...fixture, root, admission, expectedCurrent: null, hooks: { async restartDaemon() {} } });
     assert.ok(await readFile(join(root, fixture.identity.sourceRevision, "dist", "cli.js")));
     assert.ok((await import("node:fs")).existsSync(join(root, old)), "pending recovery files survive publication");
-    await assert.rejects(rollbackDeploy({ root, hooks: { async restartDaemon() { assert.fail("restart"); } } }), /active coordinated/);
-    await assert.rejects(pruneRuntimeVersions(root), /active coordinated/);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 

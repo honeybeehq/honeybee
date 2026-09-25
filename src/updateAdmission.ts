@@ -30,11 +30,6 @@ export async function assertUpdateAdmission(root: string, identity: ComponentIde
   if (blockers || canonicalDigest(reservation) !== canonicalDigest(requested)) throw new Error("deploy: stale reservation or incompatible storage");
 }
 
-/** Ordinary deploy/rollback must not circumvent a pending coordinated update. */
-export async function assertNoUpdateReservation(root: string): Promise<void> {
-  if ((await readUpdateOwner(root)).reservation?.active) throw new Error("deploy: active coordinated update reservation");
-}
-
 function standardStore(root: string): string {
   const dataDir = resolve(root, "..", "v2"), config = join(dataDir, "config.json");
   if (existsSync(config)) {

@@ -29,7 +29,7 @@ import { exposeDeployedCli } from "./deployCli.js";
 import { unpackDeployArtifact, artifactTreeDigest } from "./deployArtifact.js";
 import type { ComponentIdentity } from "./release/index.js";
 import { canonicalDigest } from "./comb/canonical.js";
-import { assertUpdateAdmission, assertNoUpdateReservation, UPDATE_RECOVERY_CONTRACT, type UpdateAdmission } from "./updateAdmission.js";
+import { assertUpdateAdmission, UPDATE_RECOVERY_CONTRACT, type UpdateAdmission } from "./updateAdmission.js";
 import { writeBuildStamp } from "./deploySettle.js";
 import { atomicWriteFile, storeRoot } from "./fsx.js";
 
@@ -334,7 +334,6 @@ export async function deployVersion(options: DeployOptions): Promise<DeployOutco
 
 async function deployVersionLocked(options: DeployOptions): Promise<DeployOutcome> {
   const root = options.root ?? runtimeRoot();
-  await assertNoUpdateReservation(root);
   const keep = Math.max(1, Math.floor(options.keep ?? DEFAULT_KEEP_VERSIONS));
   const log = options.log ?? (() => undefined);
   const now = options.now ?? (() => new Date());
@@ -490,7 +489,6 @@ export async function deployArtifact(options: DeployArtifactOptions): Promise<De
         if (options.admission.fresh !== true || Object.keys(options.admission).length !== 1 || options.expectedCurrent !== null
           || (!replay && ["v2", "store.json", "bees", "sessions", "legacy-agentpit", "FROZEN"].some(name => existsSync(join(root, "..", name)))))
           throw new Error("deploy: fresh installation requires an empty node; coordinated migration required");
-        if (replay) await assertNoUpdateReservation(root);
       } else await assertUpdateAdmission(root, prepared.identity, options.admission);
       const outcome = await publishDeploy({ root, sha: prepared.identity.sourceRevision, ...prepared,
         keep: DEFAULT_KEEP_VERSIONS, by: deployedBy(), now: () => new Date(), log: () => undefined,
@@ -516,7 +514,6 @@ export async function rollbackDeploy(options: RollbackOptions): Promise<Rollback
 
 async function rollbackDeployLocked(options: RollbackOptions): Promise<RollbackOutcome> {
   const root = options.root ?? runtimeRoot();
-  await assertNoUpdateReservation(root);
   const log = options.log ?? (() => undefined);
   const now = options.now ?? (() => new Date());
   const by = options.by ?? deployedBy();
@@ -552,10 +549,7 @@ export async function pruneRuntimeVersions(
   root: string,
   options: { keep?: number } = {},
 ): Promise<string[]> {
-  return withFileLock(join(root, ".deploy.lock"), async () => {
-    await assertNoUpdateReservation(root);
-    return pruneRuntimeVersionsLocked(root, options);
-  });
+  return withFileLock(join(root, ".deploy.lock"), () => pruneRuntimeVersionsLocked(root, options));
 }
 
 async function pruneRuntimeVersionsLocked(root: string, options: { keep?: number }): Promise<string[]> {

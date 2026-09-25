@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { assertNoUpdateReservation, assertUpdateAdmission, readOfflineUpdateReservation, UPDATE_RECOVERY_CONTRACT, type UpdateAdmission } from "../src/updateAdmission.js";
+import { assertUpdateAdmission, readOfflineUpdateReservation, UPDATE_RECOVERY_CONTRACT, type UpdateAdmission } from "../src/updateAdmission.js";
 import { parseRecoveryPlan, recoverySubjectDigest } from "../src/release/index.js";
 import * as v2 from "../src/release/v2.js";
 
@@ -139,50 +139,27 @@ test("offline admission refuses while a daemon owns SQLite exclusively", async (
 });
 
 
-test("ordinary deploy accepts the live owner's initial unreserved status but cannot use it for recovery", async () => {
+test("the live owner's initial unreserved status cannot be used for recovery", async () => {
   const f = await fixture();
   try {
     const reservation = { epoch: 0, id: "", recoverySubjectDigest: "", active: false };
     await writeFile(f.statusFile, `console.log(${JSON.stringify(JSON.stringify({ ...f.status, reservation }))});`);
-    await assert.doesNotReject(assertNoUpdateReservation(f.root));
     await assert.rejects(assertUpdateAdmission(f.root, f.identity, f.admission), /stale/);
   } finally { await rm(f.dir, { recursive: true, force: true }); }
 });
 
 for (const schemaVersion of [28, 30]) {
   for (const live of [false, true]) {
-    test(`schema ${schemaVersion} ${live ? "live" : "offline"} owner admits ordinary deployment without widening recovery`, async () => {
+    test(`schema ${schemaVersion} ${live ? "live" : "offline"} owner does not widen recovery`, async () => {
       const f = await fixture();
       try {
         const db = new DatabaseSync(join(f.dir, "v2", "core.sqlite3"));
         db.prepare("UPDATE meta SET value=? WHERE key='schema_version'").run(String(schemaVersion));
-        db.prepare("UPDATE meta SET value=? WHERE key='coordinated_update'").run(JSON.stringify({ ...f.admission.reservation, active: false }));
         db.close();
-        if (live) await writeFile(f.statusFile, `console.log(${JSON.stringify(JSON.stringify({ ...f.status, schemaVersion, reservation: { ...f.admission.reservation, active: false } }))});`);
-        await assert.doesNotReject(assertNoUpdateReservation(f.root));
-        const reserved = new DatabaseSync(join(f.dir, "v2", "core.sqlite3"));
-        reserved.prepare("UPDATE meta SET value=? WHERE key='coordinated_update'").run(JSON.stringify(f.admission.reservation));
-        reserved.close();
         if (live) await writeFile(f.statusFile, `console.log(${JSON.stringify(JSON.stringify({ ...f.status, schemaVersion }))});`);
-        await assert.rejects(assertNoUpdateReservation(f.root), /active coordinated update reservation/);
         await assert.rejects(assertUpdateAdmission(f.root, f.identity, f.admission), /incompatible storage/);
         assert.throws(() => readOfflineUpdateReservation(f.root), /incompatible storage/);
       } finally { await rm(f.dir, { recursive: true, force: true }); }
     });
   }
-}
-
-for (const schemaVersion of [29, 31]) {
-  test(`ordinary deployment refuses unknown schema ${schemaVersion}`, async () => {
-    const f = await fixture();
-    try {
-      const db = new DatabaseSync(join(f.dir, "v2", "core.sqlite3"));
-      db.prepare("UPDATE meta SET value=? WHERE key='schema_version'").run(String(schemaVersion));
-      db.exec("DELETE FROM meta WHERE key='coordinated_update'");
-      db.close();
-      await assert.rejects(assertNoUpdateReservation(f.root), /incompatible storage/);
-      await writeFile(f.statusFile, `console.log(${JSON.stringify(JSON.stringify({ ...f.status, schemaVersion, reservation: null }))});`);
-      await assert.rejects(assertNoUpdateReservation(f.root), /incompatible live owner/);
-    } finally { await rm(f.dir, { recursive: true, force: true }); }
-  });
 }
