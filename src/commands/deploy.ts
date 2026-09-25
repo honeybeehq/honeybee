@@ -160,7 +160,6 @@ export async function buildDeployArtifact(
 export async function restartDeployedDaemon({ root, log, runtime }: RestartDaemonContext): Promise<void> {
   const v2 = runtime === "v2" || runtimeUsesV2(root);
   if (process.platform !== "darwin") {
-    if (v2) throw new Error("deploy: verified activation requires a supported service owner");
     log("deploy: daemon restart skipped (launchctl unavailable on this platform; restart the daemon manually)");
     return;
   }
