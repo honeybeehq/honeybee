@@ -7,9 +7,9 @@
     "hived"
   ],
   "owners": [
-    "v2/daemon/src/accountsService.ts@0c3ca38f139ebeb06c0a75937aa482b107d44dd6",
-    "v2/daemon/src/config.ts@5b89a38f634f1bd2a4b86042ea4eca2d23d40abb",
-    "v2/core/src/store.ts@32322511f82f7d26b79ceacc55d8990082eac37f"
+    "v2/daemon/src/accountsService.ts@abb6c84bf50099d098bfeec2a2a94774eef55cad",
+    "v2/daemon/src/config.ts@9c21da1c1c0a382b5ed605d5a4f2a7e9985827e1",
+    "v2/core/src/store.ts@1d3b7cde2383f6e5c32cefee1a22bda4cb194641"
   ],
   "effect": {
     "user": "Account activity reports skip pending work reads whose result cannot affect a booting/running classification.",
@@ -111,6 +111,6 @@
     "Admission still computes one candidate activity at a time; public report batching is measured separately.",
     "CPU, RSS, whole-admission/fleet costs and live provider paths remain unmeasured."
   ],
-  "updatedAt": "2026-09-24",
-  "readiness": "12 refreshed linked-control count samples preserve exact activity and durable state; active pending-work reads remain zero. Inactive/transfer/reopen controls pass; no latency claim."
+  "updatedAt": "2026-09-25",
+  "readiness": "12 current-source linked-control samples preserve exact activity and durable state; active pending-work reads remain zero. Inactive/transfer/reopen controls pass. Counts only."
 }

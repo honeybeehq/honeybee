@@ -1,18 +1,18 @@
 {
   "workload": "account-activity-batch",
   "seriesId": "account-activity-batch-v1:Tormods-Mac-Studio.local:v24.18.0:darwin:arm64",
-  "capturedAt": "2026-09-24T08:06:18.387Z",
+  "capturedAt": "2026-09-25T08:07:37.287Z",
   "host": "Tormods-Mac-Studio.local",
   "node": "v24.18.0",
   "load": [
-    17.7099609375,
-    45.357421875,
-    76.5439453125
+    546.87255859375,
+    238.2607421875,
+    105.3955078125
   ],
   "sources": {
-    "../src/accountsService.ts": "1f7183b2fb775803d9646ddd1963758b8407d4133fc6bb220fe31d9915f97d95",
-    "../src/config.ts": "a2bd19529e31a79a39acd3346893b2c7a20ecbd2871ee5265a1cb78423fe0a6f",
-    "../../core/src/store.ts": "9664141d9cf85b0dbeec5841345f6c7488cbc9c503e851899d5044d779582637",
+    "../src/accountsService.ts": "fab24b23a8160c810af8f91ce88daccd5dfdd107609fbc885d073cef04a90c7e",
+    "../src/config.ts": "6db947512afe1f2afed6093e67ddb41eb1e07051bae392d024b1c397a9521d1c",
+    "../../core/src/store.ts": "04b4aeb8a16b2046b6bb13a7ec91aba42b4c256edf6dec0b24a2263f2f238e51",
     "./accounts-activity-batch.test.ts": "d42dbc9e2006c8bbbf80801970a6e84a988d7df86c69bb88053561e3670f1184"
   },
   "complete": true,
@@ -2920,5 +2920,6 @@
         }
       }
     ]
-  }
+  },
+  "comparisonScope": "Historical 2026-09-24 paired improvement at the embedded source hashes; current root receipt rechecks count/parity gates on 2026-09-25 source. No fresh before/after gain claimed for this linked control."
 }

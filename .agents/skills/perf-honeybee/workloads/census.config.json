@@ -85,6 +85,15 @@
       "pathFilter": "^v2/daemon/src/accountsService\\.ts$",
       "mode": "capture",
       "keyTemplate": "{1}"
+    },
+    {
+      "inventory": "entry-points",
+      "prefix": "account-generation:",
+      "regex": "^  (accountForGeneration)\\(",
+      "flags": "m",
+      "pathFilter": "^v2/daemon/src/accountsService\\.ts$",
+      "mode": "capture",
+      "keyTemplate": "{1}"
     }
   ]
 }

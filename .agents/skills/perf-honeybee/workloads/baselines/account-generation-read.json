@@ -1,0 +1,4291 @@
+{
+  "workload": "account-generation-read",
+  "seriesId": "account-generation-read-v1:Tormods-Mac-Studio.local:v24.18.0:darwin:arm64",
+  "capturedAt": "2026-09-25T08:09:46.227Z",
+  "host": "Tormods-Mac-Studio.local",
+  "node": "v24.18.0",
+  "v8": "13.6.233.17-node.50",
+  "load": [
+    518.75,
+    330.62744140625,
+    160.685546875
+  ],
+  "sources": {
+    "../src/accountsService.ts": "fab24b23a8160c810af8f91ce88daccd5dfdd107609fbc885d073cef04a90c7e",
+    "../src/config.ts": "6db947512afe1f2afed6093e67ddb41eb1e07051bae392d024b1c397a9521d1c",
+    "../../core/src/store.ts": "04b4aeb8a16b2046b6bb13a7ec91aba42b4c256edf6dec0b24a2263f2f238e51",
+    "../../core/src/schema.ts": "b2e114dc69946189cc69e9624651702dc90d763ee948bac899d6221af98d6743",
+    "./accounts-generation-read.test.ts": "61409cc54a136cd18d3df935f42ca038821ab4a510fcc53aade53635a00cc8c9"
+  },
+  "complete": true,
+  "samples": [
+    {
+      "history": 0,
+      "payloadBytes": 0,
+      "query": "generation1",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+    },
+    {
+      "history": 0,
+      "payloadBytes": 0,
+      "query": "generation2",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+    },
+    {
+      "history": 0,
+      "payloadBytes": 0,
+      "query": "generation3",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+    },
+    {
+      "history": 0,
+      "payloadBytes": 0,
+      "query": "generation5",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+    },
+    {
+      "history": 0,
+      "payloadBytes": 0,
+      "query": "generation8",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+    },
+    {
+      "history": 0,
+      "payloadBytes": 0,
+      "query": "generation9",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+    },
+    {
+      "history": 0,
+      "payloadBytes": 0,
+      "query": "unknownBee",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+    },
+    {
+      "history": 0,
+      "payloadBytes": 0,
+      "query": "noCurrentAccount",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+    },
+    {
+      "history": 0,
+      "payloadBytes": 4096,
+      "query": "generation1",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+    },
+    {
+      "history": 0,
+      "payloadBytes": 4096,
+      "query": "generation2",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+    },
+    {
+      "history": 0,
+      "payloadBytes": 4096,
+      "query": "generation3",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+    },
+    {
+      "history": 0,
+      "payloadBytes": 4096,
+      "query": "generation5",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+    },
+    {
+      "history": 0,
+      "payloadBytes": 4096,
+      "query": "generation8",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+    },
+    {
+      "history": 0,
+      "payloadBytes": 4096,
+      "query": "generation9",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+    },
+    {
+      "history": 0,
+      "payloadBytes": 4096,
+      "query": "unknownBee",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+    },
+    {
+      "history": 0,
+      "payloadBytes": 4096,
+      "query": "noCurrentAccount",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+    },
+    {
+      "history": 12,
+      "payloadBytes": 0,
+      "query": "generation1",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+    },
+    {
+      "history": 12,
+      "payloadBytes": 0,
+      "query": "generation2",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+    },
+    {
+      "history": 12,
+      "payloadBytes": 0,
+      "query": "generation3",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+    },
+    {
+      "history": 12,
+      "payloadBytes": 0,
+      "query": "generation5",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+    },
+    {
+      "history": 12,
+      "payloadBytes": 0,
+      "query": "generation8",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+    },
+    {
+      "history": 12,
+      "payloadBytes": 0,
+      "query": "generation9",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+    },
+    {
+      "history": 12,
+      "payloadBytes": 0,
+      "query": "unknownBee",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+    },
+    {
+      "history": 12,
+      "payloadBytes": 0,
+      "query": "noCurrentAccount",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+    },
+    {
+      "history": 12,
+      "payloadBytes": 4096,
+      "query": "generation1",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+    },
+    {
+      "history": 12,
+      "payloadBytes": 4096,
+      "query": "generation2",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+    },
+    {
+      "history": 12,
+      "payloadBytes": 4096,
+      "query": "generation3",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+    },
+    {
+      "history": 12,
+      "payloadBytes": 4096,
+      "query": "generation5",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+    },
+    {
+      "history": 12,
+      "payloadBytes": 4096,
+      "query": "generation8",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+    },
+    {
+      "history": 12,
+      "payloadBytes": 4096,
+      "query": "generation9",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+    },
+    {
+      "history": 12,
+      "payloadBytes": 4096,
+      "query": "unknownBee",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+    },
+    {
+      "history": 12,
+      "payloadBytes": 4096,
+      "query": "noCurrentAccount",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+    },
+    {
+      "history": 120,
+      "payloadBytes": 0,
+      "query": "generation1",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+    },
+    {
+      "history": 120,
+      "payloadBytes": 0,
+      "query": "generation2",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+    },
+    {
+      "history": 120,
+      "payloadBytes": 0,
+      "query": "generation3",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+    },
+    {
+      "history": 120,
+      "payloadBytes": 0,
+      "query": "generation5",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+    },
+    {
+      "history": 120,
+      "payloadBytes": 0,
+      "query": "generation8",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+    },
+    {
+      "history": 120,
+      "payloadBytes": 0,
+      "query": "generation9",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+    },
+    {
+      "history": 120,
+      "payloadBytes": 0,
+      "query": "unknownBee",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+    },
+    {
+      "history": 120,
+      "payloadBytes": 0,
+      "query": "noCurrentAccount",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+    },
+    {
+      "history": 120,
+      "payloadBytes": 4096,
+      "query": "generation1",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+    },
+    {
+      "history": 120,
+      "payloadBytes": 4096,
+      "query": "generation2",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+    },
+    {
+      "history": 120,
+      "payloadBytes": 4096,
+      "query": "generation3",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+    },
+    {
+      "history": 120,
+      "payloadBytes": 4096,
+      "query": "generation5",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+    },
+    {
+      "history": 120,
+      "payloadBytes": 4096,
+      "query": "generation8",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+    },
+    {
+      "history": 120,
+      "payloadBytes": 4096,
+      "query": "generation9",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+    },
+    {
+      "history": 120,
+      "payloadBytes": 4096,
+      "query": "unknownBee",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+    },
+    {
+      "history": 120,
+      "payloadBytes": 4096,
+      "query": "noCurrentAccount",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+    },
+    {
+      "history": 1200,
+      "payloadBytes": 0,
+      "query": "generation1",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+    },
+    {
+      "history": 1200,
+      "payloadBytes": 0,
+      "query": "generation2",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+    },
+    {
+      "history": 1200,
+      "payloadBytes": 0,
+      "query": "generation3",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+    },
+    {
+      "history": 1200,
+      "payloadBytes": 0,
+      "query": "generation5",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+    },
+    {
+      "history": 1200,
+      "payloadBytes": 0,
+      "query": "generation8",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+    },
+    {
+      "history": 1200,
+      "payloadBytes": 0,
+      "query": "generation9",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+    },
+    {
+      "history": 1200,
+      "payloadBytes": 0,
+      "query": "unknownBee",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+    },
+    {
+      "history": 1200,
+      "payloadBytes": 0,
+      "query": "noCurrentAccount",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+    },
+    {
+      "history": 1200,
+      "payloadBytes": 4096,
+      "query": "generation1",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+    },
+    {
+      "history": 1200,
+      "payloadBytes": 4096,
+      "query": "generation2",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+    },
+    {
+      "history": 1200,
+      "payloadBytes": 4096,
+      "query": "generation3",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+    },
+    {
+      "history": 1200,
+      "payloadBytes": 4096,
+      "query": "generation5",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+    },
+    {
+      "history": 1200,
+      "payloadBytes": 4096,
+      "query": "generation8",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+    },
+    {
+      "history": 1200,
+      "payloadBytes": 4096,
+      "query": "generation9",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+    },
+    {
+      "history": 1200,
+      "payloadBytes": 4096,
+      "query": "unknownBee",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+    },
+    {
+      "history": 1200,
+      "payloadBytes": 4096,
+      "query": "noCurrentAccount",
+      "admissionReceiptParses": 0,
+      "parity": true,
+      "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+    }
+  ],
+  "results": [
+    {
+      "metric": "admissionReceiptParses",
+      "samples": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "invariantHolds": true
+    }
+  ],
+  "limits": "Exact seeded receipt JSON.parse calls only. No SQL-scan, CPU, latency, RSS, live daemon or provider claim. Fresh-read/rollback/reopen controls are separate from sample completeness.",
+  "comparison": {
+    "base": "55fa1e4748208bbca05ae328512a237739c4f774",
+    "pairs": [
+      {
+        "pair": 1,
+        "order": [
+          "baseline",
+          "candidate"
+        ],
+        "parity": true,
+        "baseline": {
+          "workload": "account-generation-read",
+          "seriesId": "account-generation-read-v1:Tormods-Mac-Studio.local:v24.18.0:darwin:arm64",
+          "capturedAt": "2026-09-25T08:09:40.612Z",
+          "host": "Tormods-Mac-Studio.local",
+          "node": "v24.18.0",
+          "v8": "13.6.233.17-node.50",
+          "load": [
+            524.38671875,
+            328.544921875,
+            158.95703125
+          ],
+          "sources": {
+            "../src/accountsService.ts": "13143a1e94429f5ddbeaf6ec6e0ad75cbe9ce7919d38de19ec3ae65e091fe5b1",
+            "../src/config.ts": "6db947512afe1f2afed6093e67ddb41eb1e07051bae392d024b1c397a9521d1c",
+            "../../core/src/store.ts": "437af46254cd7efaf56fbaa74e4da794b8448d3b427d7b1ff405b73bc985a2c5",
+            "../../core/src/schema.ts": "b2e114dc69946189cc69e9624651702dc90d763ee948bac899d6221af98d6743",
+            "./accounts-generation-read.test.ts": "61409cc54a136cd18d3df935f42ca038821ab4a510fcc53aade53635a00cc8c9"
+          },
+          "complete": true,
+          "samples": [
+            {
+              "history": 0,
+              "payloadBytes": 0,
+              "query": "generation1",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 0,
+              "query": "generation2",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 0,
+              "query": "generation3",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 0,
+              "query": "generation5",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 0,
+              "query": "generation8",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 0,
+              "query": "generation9",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 0,
+              "query": "unknownBee",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 0,
+              "query": "noCurrentAccount",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 4096,
+              "query": "generation1",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 4096,
+              "query": "generation2",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 4096,
+              "query": "generation3",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 4096,
+              "query": "generation5",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 4096,
+              "query": "generation8",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 4096,
+              "query": "generation9",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 4096,
+              "query": "unknownBee",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 4096,
+              "query": "noCurrentAccount",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 0,
+              "query": "generation1",
+              "admissionReceiptParses": 12,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 0,
+              "query": "generation2",
+              "admissionReceiptParses": 12,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 0,
+              "query": "generation3",
+              "admissionReceiptParses": 12,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 0,
+              "query": "generation5",
+              "admissionReceiptParses": 12,
+              "parity": true,
+              "outputSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 0,
+              "query": "generation8",
+              "admissionReceiptParses": 12,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 0,
+              "query": "generation9",
+              "admissionReceiptParses": 12,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 0,
+              "query": "unknownBee",
+              "admissionReceiptParses": 12,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 0,
+              "query": "noCurrentAccount",
+              "admissionReceiptParses": 12,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 4096,
+              "query": "generation1",
+              "admissionReceiptParses": 12,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 4096,
+              "query": "generation2",
+              "admissionReceiptParses": 12,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 4096,
+              "query": "generation3",
+              "admissionReceiptParses": 12,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 4096,
+              "query": "generation5",
+              "admissionReceiptParses": 12,
+              "parity": true,
+              "outputSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 4096,
+              "query": "generation8",
+              "admissionReceiptParses": 12,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 4096,
+              "query": "generation9",
+              "admissionReceiptParses": 12,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 4096,
+              "query": "unknownBee",
+              "admissionReceiptParses": 12,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 4096,
+              "query": "noCurrentAccount",
+              "admissionReceiptParses": 12,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 0,
+              "query": "generation1",
+              "admissionReceiptParses": 120,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 0,
+              "query": "generation2",
+              "admissionReceiptParses": 120,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 0,
+              "query": "generation3",
+              "admissionReceiptParses": 120,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 0,
+              "query": "generation5",
+              "admissionReceiptParses": 120,
+              "parity": true,
+              "outputSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 0,
+              "query": "generation8",
+              "admissionReceiptParses": 120,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 0,
+              "query": "generation9",
+              "admissionReceiptParses": 120,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 0,
+              "query": "unknownBee",
+              "admissionReceiptParses": 120,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 0,
+              "query": "noCurrentAccount",
+              "admissionReceiptParses": 120,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 4096,
+              "query": "generation1",
+              "admissionReceiptParses": 120,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 4096,
+              "query": "generation2",
+              "admissionReceiptParses": 120,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 4096,
+              "query": "generation3",
+              "admissionReceiptParses": 120,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 4096,
+              "query": "generation5",
+              "admissionReceiptParses": 120,
+              "parity": true,
+              "outputSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 4096,
+              "query": "generation8",
+              "admissionReceiptParses": 120,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 4096,
+              "query": "generation9",
+              "admissionReceiptParses": 120,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 4096,
+              "query": "unknownBee",
+              "admissionReceiptParses": 120,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 4096,
+              "query": "noCurrentAccount",
+              "admissionReceiptParses": 120,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 0,
+              "query": "generation1",
+              "admissionReceiptParses": 1200,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 0,
+              "query": "generation2",
+              "admissionReceiptParses": 1200,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 0,
+              "query": "generation3",
+              "admissionReceiptParses": 1200,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 0,
+              "query": "generation5",
+              "admissionReceiptParses": 1200,
+              "parity": true,
+              "outputSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 0,
+              "query": "generation8",
+              "admissionReceiptParses": 1200,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 0,
+              "query": "generation9",
+              "admissionReceiptParses": 1200,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 0,
+              "query": "unknownBee",
+              "admissionReceiptParses": 1200,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 0,
+              "query": "noCurrentAccount",
+              "admissionReceiptParses": 1200,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 4096,
+              "query": "generation1",
+              "admissionReceiptParses": 1200,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 4096,
+              "query": "generation2",
+              "admissionReceiptParses": 1200,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 4096,
+              "query": "generation3",
+              "admissionReceiptParses": 1200,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 4096,
+              "query": "generation5",
+              "admissionReceiptParses": 1200,
+              "parity": true,
+              "outputSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 4096,
+              "query": "generation8",
+              "admissionReceiptParses": 1200,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 4096,
+              "query": "generation9",
+              "admissionReceiptParses": 1200,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 4096,
+              "query": "unknownBee",
+              "admissionReceiptParses": 1200,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 4096,
+              "query": "noCurrentAccount",
+              "admissionReceiptParses": 1200,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            }
+          ],
+          "results": [
+            {
+              "metric": "admissionReceiptParses",
+              "samples": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                12,
+                12,
+                12,
+                12,
+                12,
+                12,
+                12,
+                12,
+                12,
+                12,
+                12,
+                12,
+                12,
+                12,
+                12,
+                12,
+                120,
+                120,
+                120,
+                120,
+                120,
+                120,
+                120,
+                120,
+                120,
+                120,
+                120,
+                120,
+                120,
+                120,
+                120,
+                120,
+                1200,
+                1200,
+                1200,
+                1200,
+                1200,
+                1200,
+                1200,
+                1200,
+                1200,
+                1200,
+                1200,
+                1200,
+                1200,
+                1200,
+                1200,
+                1200
+              ],
+              "invariantHolds": false
+            }
+          ],
+          "limits": "Exact seeded receipt JSON.parse calls only. No SQL-scan, CPU, latency, RSS, live daemon or provider claim. Fresh-read/rollback/reopen controls are separate from sample completeness."
+        },
+        "candidate": {
+          "workload": "account-generation-read",
+          "seriesId": "account-generation-read-v1:Tormods-Mac-Studio.local:v24.18.0:darwin:arm64",
+          "capturedAt": "2026-09-25T08:09:41.645Z",
+          "host": "Tormods-Mac-Studio.local",
+          "node": "v24.18.0",
+          "v8": "13.6.233.17-node.50",
+          "load": [
+            524.38671875,
+            328.544921875,
+            158.95703125
+          ],
+          "sources": {
+            "../src/accountsService.ts": "fab24b23a8160c810af8f91ce88daccd5dfdd107609fbc885d073cef04a90c7e",
+            "../src/config.ts": "6db947512afe1f2afed6093e67ddb41eb1e07051bae392d024b1c397a9521d1c",
+            "../../core/src/store.ts": "04b4aeb8a16b2046b6bb13a7ec91aba42b4c256edf6dec0b24a2263f2f238e51",
+            "../../core/src/schema.ts": "b2e114dc69946189cc69e9624651702dc90d763ee948bac899d6221af98d6743",
+            "./accounts-generation-read.test.ts": "61409cc54a136cd18d3df935f42ca038821ab4a510fcc53aade53635a00cc8c9"
+          },
+          "complete": true,
+          "samples": [
+            {
+              "history": 0,
+              "payloadBytes": 0,
+              "query": "generation1",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 0,
+              "query": "generation2",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 0,
+              "query": "generation3",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 0,
+              "query": "generation5",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 0,
+              "query": "generation8",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 0,
+              "query": "generation9",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 0,
+              "query": "unknownBee",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 0,
+              "query": "noCurrentAccount",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 4096,
+              "query": "generation1",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 4096,
+              "query": "generation2",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 4096,
+              "query": "generation3",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 4096,
+              "query": "generation5",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 4096,
+              "query": "generation8",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 4096,
+              "query": "generation9",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 4096,
+              "query": "unknownBee",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 4096,
+              "query": "noCurrentAccount",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 0,
+              "query": "generation1",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 0,
+              "query": "generation2",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 0,
+              "query": "generation3",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 0,
+              "query": "generation5",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 0,
+              "query": "generation8",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 0,
+              "query": "generation9",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 0,
+              "query": "unknownBee",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 0,
+              "query": "noCurrentAccount",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 4096,
+              "query": "generation1",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 4096,
+              "query": "generation2",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 4096,
+              "query": "generation3",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 4096,
+              "query": "generation5",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 4096,
+              "query": "generation8",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 4096,
+              "query": "generation9",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 4096,
+              "query": "unknownBee",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 4096,
+              "query": "noCurrentAccount",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 0,
+              "query": "generation1",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 0,
+              "query": "generation2",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 0,
+              "query": "generation3",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 0,
+              "query": "generation5",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 0,
+              "query": "generation8",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 0,
+              "query": "generation9",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 0,
+              "query": "unknownBee",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 0,
+              "query": "noCurrentAccount",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 4096,
+              "query": "generation1",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 4096,
+              "query": "generation2",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 4096,
+              "query": "generation3",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 4096,
+              "query": "generation5",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 4096,
+              "query": "generation8",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 4096,
+              "query": "generation9",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 4096,
+              "query": "unknownBee",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 4096,
+              "query": "noCurrentAccount",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 0,
+              "query": "generation1",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 0,
+              "query": "generation2",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 0,
+              "query": "generation3",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 0,
+              "query": "generation5",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 0,
+              "query": "generation8",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 0,
+              "query": "generation9",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 0,
+              "query": "unknownBee",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 0,
+              "query": "noCurrentAccount",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 4096,
+              "query": "generation1",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 4096,
+              "query": "generation2",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 4096,
+              "query": "generation3",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 4096,
+              "query": "generation5",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 4096,
+              "query": "generation8",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 4096,
+              "query": "generation9",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 4096,
+              "query": "unknownBee",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 4096,
+              "query": "noCurrentAccount",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            }
+          ],
+          "results": [
+            {
+              "metric": "admissionReceiptParses",
+              "samples": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "invariantHolds": true
+            }
+          ],
+          "limits": "Exact seeded receipt JSON.parse calls only. No SQL-scan, CPU, latency, RSS, live daemon or provider claim. Fresh-read/rollback/reopen controls are separate from sample completeness."
+        }
+      },
+      {
+        "pair": 2,
+        "order": [
+          "candidate",
+          "baseline"
+        ],
+        "parity": true,
+        "baseline": {
+          "workload": "account-generation-read",
+          "seriesId": "account-generation-read-v1:Tormods-Mac-Studio.local:v24.18.0:darwin:arm64",
+          "capturedAt": "2026-09-25T08:09:43.968Z",
+          "host": "Tormods-Mac-Studio.local",
+          "node": "v24.18.0",
+          "v8": "13.6.233.17-node.50",
+          "load": [
+            518.75,
+            330.62744140625,
+            160.685546875
+          ],
+          "sources": {
+            "../src/accountsService.ts": "13143a1e94429f5ddbeaf6ec6e0ad75cbe9ce7919d38de19ec3ae65e091fe5b1",
+            "../src/config.ts": "6db947512afe1f2afed6093e67ddb41eb1e07051bae392d024b1c397a9521d1c",
+            "../../core/src/store.ts": "437af46254cd7efaf56fbaa74e4da794b8448d3b427d7b1ff405b73bc985a2c5",
+            "../../core/src/schema.ts": "b2e114dc69946189cc69e9624651702dc90d763ee948bac899d6221af98d6743",
+            "./accounts-generation-read.test.ts": "61409cc54a136cd18d3df935f42ca038821ab4a510fcc53aade53635a00cc8c9"
+          },
+          "complete": true,
+          "samples": [
+            {
+              "history": 0,
+              "payloadBytes": 0,
+              "query": "generation1",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 0,
+              "query": "generation2",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 0,
+              "query": "generation3",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 0,
+              "query": "generation5",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 0,
+              "query": "generation8",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 0,
+              "query": "generation9",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 0,
+              "query": "unknownBee",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 0,
+              "query": "noCurrentAccount",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 4096,
+              "query": "generation1",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 4096,
+              "query": "generation2",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 4096,
+              "query": "generation3",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 4096,
+              "query": "generation5",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 4096,
+              "query": "generation8",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 4096,
+              "query": "generation9",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 4096,
+              "query": "unknownBee",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 4096,
+              "query": "noCurrentAccount",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 0,
+              "query": "generation1",
+              "admissionReceiptParses": 12,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 0,
+              "query": "generation2",
+              "admissionReceiptParses": 12,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 0,
+              "query": "generation3",
+              "admissionReceiptParses": 12,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 0,
+              "query": "generation5",
+              "admissionReceiptParses": 12,
+              "parity": true,
+              "outputSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 0,
+              "query": "generation8",
+              "admissionReceiptParses": 12,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 0,
+              "query": "generation9",
+              "admissionReceiptParses": 12,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 0,
+              "query": "unknownBee",
+              "admissionReceiptParses": 12,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 0,
+              "query": "noCurrentAccount",
+              "admissionReceiptParses": 12,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 4096,
+              "query": "generation1",
+              "admissionReceiptParses": 12,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 4096,
+              "query": "generation2",
+              "admissionReceiptParses": 12,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 4096,
+              "query": "generation3",
+              "admissionReceiptParses": 12,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 4096,
+              "query": "generation5",
+              "admissionReceiptParses": 12,
+              "parity": true,
+              "outputSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 4096,
+              "query": "generation8",
+              "admissionReceiptParses": 12,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 4096,
+              "query": "generation9",
+              "admissionReceiptParses": 12,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 4096,
+              "query": "unknownBee",
+              "admissionReceiptParses": 12,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 4096,
+              "query": "noCurrentAccount",
+              "admissionReceiptParses": 12,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 0,
+              "query": "generation1",
+              "admissionReceiptParses": 120,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 0,
+              "query": "generation2",
+              "admissionReceiptParses": 120,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 0,
+              "query": "generation3",
+              "admissionReceiptParses": 120,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 0,
+              "query": "generation5",
+              "admissionReceiptParses": 120,
+              "parity": true,
+              "outputSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 0,
+              "query": "generation8",
+              "admissionReceiptParses": 120,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 0,
+              "query": "generation9",
+              "admissionReceiptParses": 120,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 0,
+              "query": "unknownBee",
+              "admissionReceiptParses": 120,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 0,
+              "query": "noCurrentAccount",
+              "admissionReceiptParses": 120,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 4096,
+              "query": "generation1",
+              "admissionReceiptParses": 120,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 4096,
+              "query": "generation2",
+              "admissionReceiptParses": 120,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 4096,
+              "query": "generation3",
+              "admissionReceiptParses": 120,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 4096,
+              "query": "generation5",
+              "admissionReceiptParses": 120,
+              "parity": true,
+              "outputSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 4096,
+              "query": "generation8",
+              "admissionReceiptParses": 120,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 4096,
+              "query": "generation9",
+              "admissionReceiptParses": 120,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 4096,
+              "query": "unknownBee",
+              "admissionReceiptParses": 120,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 4096,
+              "query": "noCurrentAccount",
+              "admissionReceiptParses": 120,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 0,
+              "query": "generation1",
+              "admissionReceiptParses": 1200,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 0,
+              "query": "generation2",
+              "admissionReceiptParses": 1200,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 0,
+              "query": "generation3",
+              "admissionReceiptParses": 1200,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 0,
+              "query": "generation5",
+              "admissionReceiptParses": 1200,
+              "parity": true,
+              "outputSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 0,
+              "query": "generation8",
+              "admissionReceiptParses": 1200,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 0,
+              "query": "generation9",
+              "admissionReceiptParses": 1200,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 0,
+              "query": "unknownBee",
+              "admissionReceiptParses": 1200,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 0,
+              "query": "noCurrentAccount",
+              "admissionReceiptParses": 1200,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 4096,
+              "query": "generation1",
+              "admissionReceiptParses": 1200,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 4096,
+              "query": "generation2",
+              "admissionReceiptParses": 1200,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 4096,
+              "query": "generation3",
+              "admissionReceiptParses": 1200,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 4096,
+              "query": "generation5",
+              "admissionReceiptParses": 1200,
+              "parity": true,
+              "outputSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 4096,
+              "query": "generation8",
+              "admissionReceiptParses": 1200,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 4096,
+              "query": "generation9",
+              "admissionReceiptParses": 1200,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 4096,
+              "query": "unknownBee",
+              "admissionReceiptParses": 1200,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 4096,
+              "query": "noCurrentAccount",
+              "admissionReceiptParses": 1200,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            }
+          ],
+          "results": [
+            {
+              "metric": "admissionReceiptParses",
+              "samples": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                12,
+                12,
+                12,
+                12,
+                12,
+                12,
+                12,
+                12,
+                12,
+                12,
+                12,
+                12,
+                12,
+                12,
+                12,
+                12,
+                120,
+                120,
+                120,
+                120,
+                120,
+                120,
+                120,
+                120,
+                120,
+                120,
+                120,
+                120,
+                120,
+                120,
+                120,
+                120,
+                1200,
+                1200,
+                1200,
+                1200,
+                1200,
+                1200,
+                1200,
+                1200,
+                1200,
+                1200,
+                1200,
+                1200,
+                1200,
+                1200,
+                1200,
+                1200
+              ],
+              "invariantHolds": false
+            }
+          ],
+          "limits": "Exact seeded receipt JSON.parse calls only. No SQL-scan, CPU, latency, RSS, live daemon or provider claim. Fresh-read/rollback/reopen controls are separate from sample completeness."
+        },
+        "candidate": {
+          "workload": "account-generation-read",
+          "seriesId": "account-generation-read-v1:Tormods-Mac-Studio.local:v24.18.0:darwin:arm64",
+          "capturedAt": "2026-09-25T08:09:42.690Z",
+          "host": "Tormods-Mac-Studio.local",
+          "node": "v24.18.0",
+          "v8": "13.6.233.17-node.50",
+          "load": [
+            524.38671875,
+            328.544921875,
+            158.95703125
+          ],
+          "sources": {
+            "../src/accountsService.ts": "fab24b23a8160c810af8f91ce88daccd5dfdd107609fbc885d073cef04a90c7e",
+            "../src/config.ts": "6db947512afe1f2afed6093e67ddb41eb1e07051bae392d024b1c397a9521d1c",
+            "../../core/src/store.ts": "04b4aeb8a16b2046b6bb13a7ec91aba42b4c256edf6dec0b24a2263f2f238e51",
+            "../../core/src/schema.ts": "b2e114dc69946189cc69e9624651702dc90d763ee948bac899d6221af98d6743",
+            "./accounts-generation-read.test.ts": "61409cc54a136cd18d3df935f42ca038821ab4a510fcc53aade53635a00cc8c9"
+          },
+          "complete": true,
+          "samples": [
+            {
+              "history": 0,
+              "payloadBytes": 0,
+              "query": "generation1",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 0,
+              "query": "generation2",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 0,
+              "query": "generation3",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 0,
+              "query": "generation5",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 0,
+              "query": "generation8",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 0,
+              "query": "generation9",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 0,
+              "query": "unknownBee",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 0,
+              "query": "noCurrentAccount",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 4096,
+              "query": "generation1",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 4096,
+              "query": "generation2",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 4096,
+              "query": "generation3",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 4096,
+              "query": "generation5",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 4096,
+              "query": "generation8",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 4096,
+              "query": "generation9",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 4096,
+              "query": "unknownBee",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 4096,
+              "query": "noCurrentAccount",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 0,
+              "query": "generation1",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 0,
+              "query": "generation2",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 0,
+              "query": "generation3",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 0,
+              "query": "generation5",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 0,
+              "query": "generation8",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 0,
+              "query": "generation9",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 0,
+              "query": "unknownBee",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 0,
+              "query": "noCurrentAccount",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 4096,
+              "query": "generation1",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 4096,
+              "query": "generation2",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 4096,
+              "query": "generation3",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 4096,
+              "query": "generation5",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 4096,
+              "query": "generation8",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 4096,
+              "query": "generation9",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 4096,
+              "query": "unknownBee",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 4096,
+              "query": "noCurrentAccount",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 0,
+              "query": "generation1",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 0,
+              "query": "generation2",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 0,
+              "query": "generation3",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 0,
+              "query": "generation5",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 0,
+              "query": "generation8",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 0,
+              "query": "generation9",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 0,
+              "query": "unknownBee",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 0,
+              "query": "noCurrentAccount",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 4096,
+              "query": "generation1",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 4096,
+              "query": "generation2",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 4096,
+              "query": "generation3",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 4096,
+              "query": "generation5",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 4096,
+              "query": "generation8",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 4096,
+              "query": "generation9",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 4096,
+              "query": "unknownBee",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 4096,
+              "query": "noCurrentAccount",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 0,
+              "query": "generation1",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 0,
+              "query": "generation2",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 0,
+              "query": "generation3",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 0,
+              "query": "generation5",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 0,
+              "query": "generation8",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 0,
+              "query": "generation9",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 0,
+              "query": "unknownBee",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 0,
+              "query": "noCurrentAccount",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 4096,
+              "query": "generation1",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 4096,
+              "query": "generation2",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 4096,
+              "query": "generation3",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 4096,
+              "query": "generation5",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 4096,
+              "query": "generation8",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 4096,
+              "query": "generation9",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 4096,
+              "query": "unknownBee",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 4096,
+              "query": "noCurrentAccount",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            }
+          ],
+          "results": [
+            {
+              "metric": "admissionReceiptParses",
+              "samples": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "invariantHolds": true
+            }
+          ],
+          "limits": "Exact seeded receipt JSON.parse calls only. No SQL-scan, CPU, latency, RSS, live daemon or provider claim. Fresh-read/rollback/reopen controls are separate from sample completeness."
+        }
+      },
+      {
+        "pair": 3,
+        "order": [
+          "baseline",
+          "candidate"
+        ],
+        "parity": true,
+        "baseline": {
+          "workload": "account-generation-read",
+          "seriesId": "account-generation-read-v1:Tormods-Mac-Studio.local:v24.18.0:darwin:arm64",
+          "capturedAt": "2026-09-25T08:09:45.186Z",
+          "host": "Tormods-Mac-Studio.local",
+          "node": "v24.18.0",
+          "v8": "13.6.233.17-node.50",
+          "load": [
+            518.75,
+            330.62744140625,
+            160.685546875
+          ],
+          "sources": {
+            "../src/accountsService.ts": "13143a1e94429f5ddbeaf6ec6e0ad75cbe9ce7919d38de19ec3ae65e091fe5b1",
+            "../src/config.ts": "6db947512afe1f2afed6093e67ddb41eb1e07051bae392d024b1c397a9521d1c",
+            "../../core/src/store.ts": "437af46254cd7efaf56fbaa74e4da794b8448d3b427d7b1ff405b73bc985a2c5",
+            "../../core/src/schema.ts": "b2e114dc69946189cc69e9624651702dc90d763ee948bac899d6221af98d6743",
+            "./accounts-generation-read.test.ts": "61409cc54a136cd18d3df935f42ca038821ab4a510fcc53aade53635a00cc8c9"
+          },
+          "complete": true,
+          "samples": [
+            {
+              "history": 0,
+              "payloadBytes": 0,
+              "query": "generation1",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 0,
+              "query": "generation2",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 0,
+              "query": "generation3",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 0,
+              "query": "generation5",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 0,
+              "query": "generation8",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 0,
+              "query": "generation9",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 0,
+              "query": "unknownBee",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 0,
+              "query": "noCurrentAccount",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 4096,
+              "query": "generation1",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 4096,
+              "query": "generation2",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 4096,
+              "query": "generation3",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 4096,
+              "query": "generation5",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 4096,
+              "query": "generation8",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 4096,
+              "query": "generation9",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 4096,
+              "query": "unknownBee",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 4096,
+              "query": "noCurrentAccount",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 0,
+              "query": "generation1",
+              "admissionReceiptParses": 12,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 0,
+              "query": "generation2",
+              "admissionReceiptParses": 12,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 0,
+              "query": "generation3",
+              "admissionReceiptParses": 12,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 0,
+              "query": "generation5",
+              "admissionReceiptParses": 12,
+              "parity": true,
+              "outputSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 0,
+              "query": "generation8",
+              "admissionReceiptParses": 12,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 0,
+              "query": "generation9",
+              "admissionReceiptParses": 12,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 0,
+              "query": "unknownBee",
+              "admissionReceiptParses": 12,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 0,
+              "query": "noCurrentAccount",
+              "admissionReceiptParses": 12,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 4096,
+              "query": "generation1",
+              "admissionReceiptParses": 12,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 4096,
+              "query": "generation2",
+              "admissionReceiptParses": 12,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 4096,
+              "query": "generation3",
+              "admissionReceiptParses": 12,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 4096,
+              "query": "generation5",
+              "admissionReceiptParses": 12,
+              "parity": true,
+              "outputSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 4096,
+              "query": "generation8",
+              "admissionReceiptParses": 12,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 4096,
+              "query": "generation9",
+              "admissionReceiptParses": 12,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 4096,
+              "query": "unknownBee",
+              "admissionReceiptParses": 12,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 4096,
+              "query": "noCurrentAccount",
+              "admissionReceiptParses": 12,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 0,
+              "query": "generation1",
+              "admissionReceiptParses": 120,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 0,
+              "query": "generation2",
+              "admissionReceiptParses": 120,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 0,
+              "query": "generation3",
+              "admissionReceiptParses": 120,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 0,
+              "query": "generation5",
+              "admissionReceiptParses": 120,
+              "parity": true,
+              "outputSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 0,
+              "query": "generation8",
+              "admissionReceiptParses": 120,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 0,
+              "query": "generation9",
+              "admissionReceiptParses": 120,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 0,
+              "query": "unknownBee",
+              "admissionReceiptParses": 120,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 0,
+              "query": "noCurrentAccount",
+              "admissionReceiptParses": 120,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 4096,
+              "query": "generation1",
+              "admissionReceiptParses": 120,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 4096,
+              "query": "generation2",
+              "admissionReceiptParses": 120,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 4096,
+              "query": "generation3",
+              "admissionReceiptParses": 120,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 4096,
+              "query": "generation5",
+              "admissionReceiptParses": 120,
+              "parity": true,
+              "outputSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 4096,
+              "query": "generation8",
+              "admissionReceiptParses": 120,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 4096,
+              "query": "generation9",
+              "admissionReceiptParses": 120,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 4096,
+              "query": "unknownBee",
+              "admissionReceiptParses": 120,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 4096,
+              "query": "noCurrentAccount",
+              "admissionReceiptParses": 120,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 0,
+              "query": "generation1",
+              "admissionReceiptParses": 1200,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 0,
+              "query": "generation2",
+              "admissionReceiptParses": 1200,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 0,
+              "query": "generation3",
+              "admissionReceiptParses": 1200,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 0,
+              "query": "generation5",
+              "admissionReceiptParses": 1200,
+              "parity": true,
+              "outputSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 0,
+              "query": "generation8",
+              "admissionReceiptParses": 1200,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 0,
+              "query": "generation9",
+              "admissionReceiptParses": 1200,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 0,
+              "query": "unknownBee",
+              "admissionReceiptParses": 1200,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 0,
+              "query": "noCurrentAccount",
+              "admissionReceiptParses": 1200,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 4096,
+              "query": "generation1",
+              "admissionReceiptParses": 1200,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 4096,
+              "query": "generation2",
+              "admissionReceiptParses": 1200,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 4096,
+              "query": "generation3",
+              "admissionReceiptParses": 1200,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 4096,
+              "query": "generation5",
+              "admissionReceiptParses": 1200,
+              "parity": true,
+              "outputSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 4096,
+              "query": "generation8",
+              "admissionReceiptParses": 1200,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 4096,
+              "query": "generation9",
+              "admissionReceiptParses": 1200,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 4096,
+              "query": "unknownBee",
+              "admissionReceiptParses": 1200,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 4096,
+              "query": "noCurrentAccount",
+              "admissionReceiptParses": 1200,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            }
+          ],
+          "results": [
+            {
+              "metric": "admissionReceiptParses",
+              "samples": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                12,
+                12,
+                12,
+                12,
+                12,
+                12,
+                12,
+                12,
+                12,
+                12,
+                12,
+                12,
+                12,
+                12,
+                12,
+                12,
+                120,
+                120,
+                120,
+                120,
+                120,
+                120,
+                120,
+                120,
+                120,
+                120,
+                120,
+                120,
+                120,
+                120,
+                120,
+                120,
+                1200,
+                1200,
+                1200,
+                1200,
+                1200,
+                1200,
+                1200,
+                1200,
+                1200,
+                1200,
+                1200,
+                1200,
+                1200,
+                1200,
+                1200,
+                1200
+              ],
+              "invariantHolds": false
+            }
+          ],
+          "limits": "Exact seeded receipt JSON.parse calls only. No SQL-scan, CPU, latency, RSS, live daemon or provider claim. Fresh-read/rollback/reopen controls are separate from sample completeness."
+        },
+        "candidate": {
+          "workload": "account-generation-read",
+          "seriesId": "account-generation-read-v1:Tormods-Mac-Studio.local:v24.18.0:darwin:arm64",
+          "capturedAt": "2026-09-25T08:09:46.227Z",
+          "host": "Tormods-Mac-Studio.local",
+          "node": "v24.18.0",
+          "v8": "13.6.233.17-node.50",
+          "load": [
+            518.75,
+            330.62744140625,
+            160.685546875
+          ],
+          "sources": {
+            "../src/accountsService.ts": "fab24b23a8160c810af8f91ce88daccd5dfdd107609fbc885d073cef04a90c7e",
+            "../src/config.ts": "6db947512afe1f2afed6093e67ddb41eb1e07051bae392d024b1c397a9521d1c",
+            "../../core/src/store.ts": "04b4aeb8a16b2046b6bb13a7ec91aba42b4c256edf6dec0b24a2263f2f238e51",
+            "../../core/src/schema.ts": "b2e114dc69946189cc69e9624651702dc90d763ee948bac899d6221af98d6743",
+            "./accounts-generation-read.test.ts": "61409cc54a136cd18d3df935f42ca038821ab4a510fcc53aade53635a00cc8c9"
+          },
+          "complete": true,
+          "samples": [
+            {
+              "history": 0,
+              "payloadBytes": 0,
+              "query": "generation1",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 0,
+              "query": "generation2",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 0,
+              "query": "generation3",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 0,
+              "query": "generation5",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 0,
+              "query": "generation8",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 0,
+              "query": "generation9",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 0,
+              "query": "unknownBee",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 0,
+              "query": "noCurrentAccount",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 4096,
+              "query": "generation1",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 4096,
+              "query": "generation2",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 4096,
+              "query": "generation3",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 4096,
+              "query": "generation5",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 4096,
+              "query": "generation8",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 4096,
+              "query": "generation9",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 4096,
+              "query": "unknownBee",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 0,
+              "payloadBytes": 4096,
+              "query": "noCurrentAccount",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 0,
+              "query": "generation1",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 0,
+              "query": "generation2",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 0,
+              "query": "generation3",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 0,
+              "query": "generation5",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 0,
+              "query": "generation8",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 0,
+              "query": "generation9",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 0,
+              "query": "unknownBee",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 0,
+              "query": "noCurrentAccount",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 4096,
+              "query": "generation1",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 4096,
+              "query": "generation2",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 4096,
+              "query": "generation3",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 4096,
+              "query": "generation5",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 4096,
+              "query": "generation8",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 4096,
+              "query": "generation9",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 4096,
+              "query": "unknownBee",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 12,
+              "payloadBytes": 4096,
+              "query": "noCurrentAccount",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 0,
+              "query": "generation1",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 0,
+              "query": "generation2",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 0,
+              "query": "generation3",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 0,
+              "query": "generation5",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 0,
+              "query": "generation8",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 0,
+              "query": "generation9",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 0,
+              "query": "unknownBee",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 0,
+              "query": "noCurrentAccount",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 4096,
+              "query": "generation1",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 4096,
+              "query": "generation2",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 4096,
+              "query": "generation3",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 4096,
+              "query": "generation5",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 4096,
+              "query": "generation8",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 4096,
+              "query": "generation9",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 4096,
+              "query": "unknownBee",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 120,
+              "payloadBytes": 4096,
+              "query": "noCurrentAccount",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 0,
+              "query": "generation1",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 0,
+              "query": "generation2",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 0,
+              "query": "generation3",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 0,
+              "query": "generation5",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 0,
+              "query": "generation8",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 0,
+              "query": "generation9",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 0,
+              "query": "unknownBee",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 0,
+              "query": "noCurrentAccount",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 4096,
+              "query": "generation1",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 4096,
+              "query": "generation2",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 4096,
+              "query": "generation3",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 4096,
+              "query": "generation5",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 4096,
+              "query": "generation8",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 4096,
+              "query": "generation9",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "c6cf6bf70dd6f70aaec7cc83faf6ede077593cd1612a5d71315cd89b6f493bf2"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 4096,
+              "query": "unknownBee",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "65762936817db69bd89bea073ab2f2fc4f791631e2cd23158568da76bf3fddea"
+            },
+            {
+              "history": 1200,
+              "payloadBytes": 4096,
+              "query": "noCurrentAccount",
+              "admissionReceiptParses": 0,
+              "parity": true,
+              "outputSha256": "1ac140e86a12fca0ebaefdfb01e4086fedbfc9bbe2cc93e33fce8b8cb4d1c826"
+            }
+          ],
+          "results": [
+            {
+              "metric": "admissionReceiptParses",
+              "samples": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "invariantHolds": true
+            }
+          ],
+          "limits": "Exact seeded receipt JSON.parse calls only. No SQL-scan, CPU, latency, RSS, live daemon or provider claim. Fresh-read/rollback/reopen controls are separate from sample completeness."
+        }
+      }
+    ],
+    "complete": true,
+    "samplesPerArm": 64,
+    "pairedComparisons": 192,
+    "baselineMax": 1200,
+    "candidateMax": 0,
+    "limits": "Receipt decode counts only; no SQL scan, CPU, latency or RSS claim."
+  }
+}

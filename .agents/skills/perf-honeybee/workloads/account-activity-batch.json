@@ -7,9 +7,9 @@
     "hived"
   ],
   "owners": [
-    "v2/daemon/src/accountsService.ts@0c3ca38f139ebeb06c0a75937aa482b107d44dd6",
-    "v2/daemon/src/config.ts@5b89a38f634f1bd2a4b86042ea4eca2d23d40abb",
-    "v2/core/src/store.ts@32322511f82f7d26b79ceacc55d8990082eac37f"
+    "v2/daemon/src/accountsService.ts@abb6c84bf50099d098bfeec2a2a94774eef55cad",
+    "v2/daemon/src/config.ts@9c21da1c1c0a382b5ed605d5a4f2a7e9985827e1",
+    "v2/core/src/store.ts@1d3b7cde2383f6e5c32cefee1a22bda4cb194641"
   ],
   "effect": {
     "user": "Report fresh activity for all accounts with one runtime lookup per bee.",
@@ -119,14 +119,14 @@
       "baseline": {
         "seriesId": "account-activity-batch-v1:Tormods-Mac-Studio.local:v24.18.0:darwin:arm64",
         "receipt": ".agents/skills/perf-honeybee/workloads/baselines/account-activity-batch.json",
-        "commit": "ab02e4512f2e869a1ab82a7f0dcb78b5c7abb6bd + receipt source hashes",
+        "commit": "55fa1e4748208bbca05ae328512a237739c4f774 + receipt source hashes",
         "samples": 32,
         "machine": "Tormods-Mac-Studio.local",
         "runtime": "v24.18.0",
         "buildMode": "dev",
         "aggregation": "max",
         "aggregate": 0,
-        "capturedAt": "2026-09-24"
+        "capturedAt": "2026-09-25T08:07:37.287Z"
       }
     }
   ],
@@ -135,8 +135,8 @@
     "Reservation matching remains proportional to retained active claims.",
     "Per-call Map allocation and CPU/RSS/latency are unmeasured."
   ],
-  "updatedAt": "2026-09-24",
-  "readiness": "Three paired executions (32 cases per arm) preserve all 96 result digests; 8 accounts/1200 bees reduce runtime lookups 9600\u21921200. Zero/single-account controls pass. Counts only.",
+  "updatedAt": "2026-09-25",
+  "readiness": "32 current-source linked-control samples preserve exact activity and durable state with zero excess runtime reads. The retained comparison records the historical 2026-09-24 three-pair 9600-to-1200 reduction at its own source hashes; that gain was not remeasured here. Counts only.",
   "linked": [
     {
       "workload": "account-activity-reads",

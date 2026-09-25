@@ -5286,6 +5286,13 @@ export class CoreStore {
       .map(mapAccountAdmission);
   }
 
+  getSourceAccountForGeneration(beeId: string, generation: number): string | null {
+    const row = this.stmt(`SELECT source_account FROM account_admission_reservations
+      WHERE bee_id = ? AND source_account IS NOT NULL AND reconcile_after_generation >= ?
+      ORDER BY reconcile_after_generation, created_at, id LIMIT 1`).get(beeId, generation) as Row | undefined;
+    return row ? String(row.source_account) : null;
+  }
+
   listAccountLimits(): AccountLimitsRow[] {
     return (this.stmt("SELECT * FROM account_limits ORDER BY account").all() as Row[]).map(mapAccountLimits);
   }

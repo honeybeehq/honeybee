@@ -7,3 +7,5 @@ The same localActivity helper serves admission, but the measured scope is one no
 Retained receipt: baselines/account-activity-reads.json. Three rounds each: empty0→0, 1bee1→0, 120bees180→0, 2000bees3000→0. Every public result hash matches the baseline. The empty/control cases do not establish overall admission cost; admission still computes each candidate separately. The public report now batches runtime and roster reads, measured in account-activity-batch. The Node test exit status is authoritative for behavioral controls; receipt completeness describes count cases only.
 
 The September24 linked-control receipt refresh preserves all12 facts/state cases with zero active pending-work reads on the batch implementation. The earlier before/after pending-read counts above describe the September22 change, not an additional gain claimed here.
+
+The 2026-09-25 receipt refreshes all 12 linked-control samples against the current generation-attribution query; it claims no new before/after gain.

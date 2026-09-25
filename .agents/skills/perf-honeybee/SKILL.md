@@ -79,3 +79,5 @@ Account activity is mapped by [account-activity-reads](workloads/account-activit
 Action reminders are mapped by [action-reminder-reads](workloads/action-reminder-reads.md): discarded question reads for ineligible reminders through DaemonCore steps. The count gate preserves eligible reminder timing; total scheduler cost is unmeasured.
 
 [Batch account activity](workloads/account-activity-batch.md) measures runtime and roster reads across accounts in one fresh nodeActivity report. It preserves the linked pending-work control and makes no whole-admission or latency claim.
+
+[Historical generation attribution](workloads/account-generation-read.md) counts admission receipt decoding during accountForGeneration. It preserves fresh historical account selection without an index, cache or schema change; SQL scan cost remains unmeasured.

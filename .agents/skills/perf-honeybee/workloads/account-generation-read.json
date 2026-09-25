@@ -1,0 +1,147 @@
+{
+  "protocolVersion": 1,
+  "id": "account-generation-read",
+  "title": "Historical generation account attribution",
+  "lane": "steady-state",
+  "processes": [
+    "hived"
+  ],
+  "owners": [
+    "v2/core/src/store.ts@1d3b7cde2383f6e5c32cefee1a22bda4cb194641",
+    "v2/daemon/src/accountsService.ts@abb6c84bf50099d098bfeec2a2a94774eef55cad"
+  ],
+  "effect": {
+    "user": "Attribute delayed account flag evidence to its historical runtime account.",
+    "assertions": [
+      "Exact account row or null; source generation, creation time and id ordering preserved.",
+      "Released and expired transfers still attribute old generations; each call reads current durable facts.",
+      "No durable writes."
+    ],
+    "exclusions": [
+      "SQL scan counts",
+      "CPU",
+      "Latency",
+      "RSS",
+      "Live credential recovery/provider behavior"
+    ]
+  },
+  "accounts": [
+    {
+      "inventory": "entry-points",
+      "key": "account-generation:accountForGeneration"
+    }
+  ],
+  "states": {
+    "idle": {
+      "matters": false,
+      "why": "Retained history and receipt size vary; no runtime/provider is launched."
+    },
+    "first-use": {
+      "matters": false,
+      "why": "Retained history and receipt size vary; no runtime/provider is launched."
+    },
+    "repeated": {
+      "matters": true,
+      "why": "Retained history and receipt size vary; no runtime/provider is launched."
+    },
+    "scale": {
+      "matters": true,
+      "why": "Retained history and receipt size vary; no runtime/provider is launched."
+    },
+    "background": {
+      "matters": false,
+      "why": "Retained history and receipt size vary; no runtime/provider is launched."
+    },
+    "release": {
+      "matters": false,
+      "why": "Retained history and receipt size vary; no runtime/provider is launched."
+    },
+    "recovery": {
+      "matters": true,
+      "why": "Fresh synchronous lookup; rollback/reopen controls cover persistence."
+    }
+  },
+  "fixture": {
+    "preset": "account-generation-read-v1",
+    "isolationPolicy": 1,
+    "scaleAxes": [
+      {
+        "axis": "history",
+        "values": [
+          0,
+          12,
+          120,
+          1200
+        ],
+        "unit": "reservations"
+      },
+      {
+        "axis": "payloadBytes",
+        "values": [
+          0,
+          4096
+        ],
+        "unit": "bytes"
+      }
+    ],
+    "seed": "Real SQLite and AccountsService; historical generation ties, expired/released transfers and fallback controls."
+  },
+  "recipe": {
+    "driver": "v2/daemon/tests/accounts-generation-read.test.ts",
+    "command": "HIVE_GENERATION_READ_RECEIPT=\"${HIVE_PERF_OUT:?set absolute receipt path}\" node --test v2/daemon/tests/accounts-generation-read.test.ts",
+    "readiness": "Owned SQLite history seeded; counter installed only for accountForGeneration.",
+    "completion": "64 complete parity samples and fresh-read/rollback/reopen controls pass.",
+    "warmup": "None: deterministic receipt JSON.parse counts.",
+    "teardown": "Close owned stores and remove fixture in finally, including initial open failure.",
+    "requires": [
+      "Node 24.18.0",
+      "Writable parent of HIVE_PERF_OUT"
+    ]
+  },
+  "metrics": [
+    {
+      "id": "admissionReceiptParses",
+      "unit": "count",
+      "scope": "Retained admission receipt bodies decoded during one public accountForGeneration lookup.",
+      "collector": "Call-through JSON.parse wrapper recognizes exact seeded receipt strings; setup and output/state hashing excluded.",
+      "aggregation": "max",
+      "kind": "actual",
+      "status": "gated",
+      "states": [
+        "repeated",
+        "scale"
+      ],
+      "betterWhen": "lower",
+      "invariant": "All64 samples preserve exact response and durable state; zero receipt decoding.",
+      "noise": "Deterministic counts, no timing.",
+      "baseline": {
+        "seriesId": "account-generation-read-v1:Tormods-Mac-Studio.local:v24.18.0:darwin:arm64",
+        "receipt": ".agents/skills/perf-honeybee/workloads/baselines/account-generation-read.json",
+        "commit": "55fa1e4748208bbca05ae328512a237739c4f774 + receipt source hashes",
+        "samples": 64,
+        "machine": "Tormods-Mac-Studio.local",
+        "runtime": "v24.18.0",
+        "buildMode": "dev",
+        "aggregation": "max",
+        "aggregate": 0,
+        "capturedAt": "2026-09-25T08:09:46.227Z"
+      }
+    }
+  ],
+  "gaps": [
+    "SQLite still examines retained history; no index or migration introduced.",
+    "Whole account policy and credential/provider recovery unmeasured."
+  ],
+  "updatedAt": "2026-09-25",
+  "readiness": "Three alternating paired executions, 64 cases per arm, preserve all 192 full account digests and durable state. Receipt parses per lookup at 0/12/120/1200 retained reservations fall from 0/12/120/1200 to zero. Fresh/rollback/reopen controls pass. Counts only.",
+  "linked": [
+    {
+      "workload": "account-activity-batch",
+      "why": "Shared service changes must preserve the existing activity projection count gate."
+    },
+    {
+      "workload": "account-activity-reads",
+      "why": "Shared service retains active pending-work read guard."
+    }
+  ]
+}

@@ -1292,12 +1292,8 @@ export class AccountsService {
 
   /** Account that owned the specific generation, even after a swap rebind. */
   accountForGeneration(bee: Pick<BeeRow, "id" | "account">, generation: number): AccountRow | null {
-    const transfer = this.store.listAccountAdmissions()
-      .filter((reservation) => reservation.beeId === bee.id
-        && reservation.sourceAccount !== null
-        && generation <= reservation.reconcileAfterGeneration)
-      .sort((a, b) => a.reconcileAfterGeneration - b.reconcileAfterGeneration || a.createdAt - b.createdAt)[0];
-    return this.store.getAccount(transfer?.sourceAccount ?? bee.account ?? "");
+    const sourceAccount = this.store.getSourceAccountForGeneration(bee.id, generation);
+    return this.store.getAccount(sourceAccount ?? bee.account ?? "");
   }
 
   /**
