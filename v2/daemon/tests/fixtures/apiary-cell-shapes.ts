@@ -9,6 +9,11 @@
  * exactly these. If either side moves, this file is where the drift shows;
  * update it from the apiary source, never by hand-editing to make the test
  * pass.
+ *
+ * v31 (2026-09-25, Cell retention): Honeybee widened `CellDirtyReport` with
+ * `stashed` and `unlandedBranches` (producer change). The fixture carries the
+ * new shape so the guard stays exact; Apiary's hiveProtocol.ts must follow
+ * (docs/design/cell-retention-contract.md, "Apiary changes").
  */
 
 export type HiveCellCaptureMode = 'merge' | 'rebase'
@@ -56,8 +61,12 @@ export interface HiveCellDirtyReport {
   dirty: boolean
   /** Uncommitted working-tree changes in the space. */
   uncommitted: boolean
-  /** Cell HEAD commits the origin repo does not contain. */
+  /** Cell HEAD, or any local branch tip, holds commits the origin repo does not contain. */
   unpushed: boolean
+  /** v31 — `git stash list` is not empty. */
+  stashed: boolean
+  /** v31 — local branches whose tip the origin does not contain. */
+  unlandedBranches: string[]
   /** The origin could not be consulted (missing/moved) — treated as dirty. */
   originUnknown: boolean
 }
@@ -96,7 +105,7 @@ export const CAPTURE_RESULT_KEYS = [
 
 export const REMOVE_RESULT_KEYS = ['status', 'forced', 'report', 'commandId'] as const
 
-export const DIRTY_REPORT_KEYS = ['dirty', 'uncommitted', 'unpushed', 'originUnknown'] as const
+export const DIRTY_REPORT_KEYS = ['dirty', 'uncommitted', 'unpushed', 'stashed', 'unlandedBranches', 'originUnknown'] as const
 
 /** The Apiary error codes the two verbs may answer with (must be in honeybee's closed list). */
 export const CELL_VERB_ERROR_CODES = ['bee_not_found', 'invalid_request', 'runtime_refused'] as const

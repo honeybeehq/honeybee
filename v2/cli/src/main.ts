@@ -2178,7 +2178,7 @@ async function cmdCell(ctx: CliContext, parsed: Parsed): Promise<number> {
         if (r.status === "refused") {
           lines.push(confirm("err", "refused:", `cell is dirty (${dirtyCauses(r.report).join(", ")}) — pass --force to evict anyway (work is lost)`, r.deduped));
         } else {
-          lines.push(confirm("ok", `cell ${r.status}${r.forced ? " (forced)" : ""}`, `${beeId} keeps its bee, transcript and cwd; the next runtime re-provisions${r.cell?.evictedHead ? ` at ${r.cell.evictedHead.slice(0, 12)}` : ""}`, r.deduped));
+          lines.push(confirm("ok", `cell ${r.status}${r.forced ? " (forced)" : ""}`, `${beeId} keeps its bee, transcript and cwd; the next runtime re-provisions${r.cell?.evictedHead ? ` at ${r.cell.evictedHead.slice(0, 12)}` : ""}${r.envFiles.length > 0 ? `; ${r.envFiles.length} env file(s) preserved for restore` : ""}`, r.deduped));
         }
         emit(ctx, lines, { beeId, ...r }, false);
         return ctx.json || r.status !== "refused" ? 0 : 2;
@@ -2247,13 +2247,8 @@ async function cmdCell(ctx: CliContext, parsed: Parsed): Promise<number> {
         });
         const lines: string[] = [];
         if (r.status === "refused") {
-          const causes = [
-            r.report?.uncommitted ? "uncommitted changes" : null,
-            r.report?.unpushed ? "uncaptured commits" : null,
-            r.report?.originUnknown ? "origin unreachable" : null,
-          ].filter((x) => x != null);
           lines.push(
-            confirm("err", "refused:", `cell is dirty (${causes.join(", ")}) — pass --force to delete anyway (work is lost)`, r.deduped),
+            confirm("err", "refused:", `cell is dirty (${dirtyCauses(r.report).join(", ")}) — pass --force to delete anyway (work is lost)`, r.deduped),
           );
         } else {
           lines.push(
@@ -2322,7 +2317,9 @@ async function cmdCell(ctx: CliContext, parsed: Parsed): Promise<number> {
 function dirtyCauses(report: CellGcItem["report"]): string[] {
   return [
     report?.uncommitted ? "uncommitted changes" : null,
-    report?.unpushed ? "uncaptured commits" : null,
+    report?.unpushed && !(report.unlandedBranches?.length) ? "uncaptured commits" : null,
+    report?.stashed ? "stashed changes" : null,
+    report?.unlandedBranches?.length ? `unlanded branches (${report.unlandedBranches.join(", ")})` : null,
     report?.originUnknown ? "origin unreachable" : null,
   ].filter((x): x is string => x != null);
 }
@@ -2351,9 +2348,10 @@ function renderCellGc(r: CellGcResult): string[] {
       ` · budget ${r.policy.maxBytes == null ? "none" : gib(r.policy.maxBytes)} · max ${r.policy.maxPerPass}/pass · inspect ${Math.round(r.inspectMs / 1000)}s`,
   );
   const planned = r.items.filter((i) => i.verdict === "evict" || i.verdict === "remove_retained").sort((a, b) => (b.bytes ?? 0) - (a.bytes ?? 0));
-  lines.push(`planned: ${planned.length} Cells, ${gib(t.plannedBytes)} · held: ${t.heldCells} Cells, ${gib(t.heldBytes)} (${t.dirtyCells} dirty)`);
+  const envCells = planned.filter((i) => i.envFiles.length > 0).length;
+  lines.push(`planned: ${planned.length} Cells, ${gib(t.plannedBytes)} · held: ${t.heldCells} Cells, ${gib(t.heldBytes)} (${t.dirtyCells} dirty)${envCells > 0 ? ` · ${envCells} planned Cells carry ignored env files (preserved under cell-env/, restored on revive)` : ""}`);
   for (const i of planned) {
-    lines.push(`  ${i.verdict === "evict" ? "evict " : "remove"} ${gib(i.bytes).padStart(10)}  ${i.reason.padEnd(13)} ${ageDays(i.idleSince, r.plannedAt).padStart(5)}  ${i.beeLifecycle.padEnd(8)} ${i.beeName || i.beeId}  ${basename(i.wrapperDir)}`);
+    lines.push(`  ${i.verdict === "evict" ? "evict " : "remove"} ${gib(i.bytes).padStart(10)}  ${i.reason.padEnd(13)} ${ageDays(i.idleSince, r.plannedAt).padStart(5)}  ${i.beeLifecycle.padEnd(8)} ${i.beeName || i.beeId}  ${basename(i.wrapperDir)}${i.envFiles.length > 0 ? `  env×${i.envFiles.length}` : ""}`);
   }
   const held = r.items.filter((i) => i.verdict === "hold");
   const byReason = new Map<string, CellGcItem[]>();

@@ -17,22 +17,31 @@ export interface DirtyReport {
   dirty: boolean;
   /** Uncommitted working-tree changes in the space. */
   uncommitted: boolean;
-  /** Cell HEAD commits the origin repo does not contain. */
+  /** Cell HEAD, or any local branch tip, holds commits the origin repo does not contain. */
   unpushed: boolean;
+  /** v31 — `git stash list` is not empty: stashed work exists only in this Cell. */
+  stashed: boolean;
+  /** v31 — local branches whose tip the origin does not contain (the agent committed, then switched away). */
+  unlandedBranches: string[];
   /** The origin could not be consulted (missing/moved) — treated as dirty. */
   originUnknown: boolean;
+}
+
+export function dirtyCauses(report: DirtyReport): string[] {
+  return [
+    report.uncommitted ? "uncommitted changes" : null,
+    report.unpushed ? "uncaptured commits" : null,
+    report.stashed ? "stashed changes" : null,
+    report.unlandedBranches.length > 0 ? `unlanded branches (${report.unlandedBranches.join(", ")})` : null,
+    report.originUnknown ? "origin unreachable" : null,
+  ].filter((c): c is string => c != null);
 }
 
 export class CellDeleteRefused extends Error {
   readonly report: DirtyReport;
 
   constructor(wrapperDir: string, report: DirtyReport) {
-    const causes = [
-      report.uncommitted ? "uncommitted changes" : null,
-      report.unpushed ? "uncaptured commits" : null,
-      report.originUnknown ? "origin unreachable" : null,
-    ].filter((c) => c != null);
-    super(`cell ${wrapperDir} is dirty (${causes.join(", ")}); pass force to delete anyway`);
+    super(`cell ${wrapperDir} is dirty (${dirtyCauses(report).join(", ")}); pass force to delete anyway`);
     this.name = "CellDeleteRefused";
     this.report = report;
   }
@@ -62,27 +71,41 @@ function spaceDirOf(wrapperDir: string): string {
 
 export function dirtyReport(wrapperDir: string): DirtyReport {
   const spaceDir = spaceDirOf(wrapperDir);
-  const clean: DirtyReport = { dirty: false, uncommitted: false, unpushed: false, originUnknown: false };
+  const clean: DirtyReport = { dirty: false, uncommitted: false, unpushed: false, stashed: false, unlandedBranches: [], originUnknown: false };
   if (!existsSync(join(spaceDir, ".git"))) return clean; // half-provisioned: nothing to lose
 
   const status = tryGit(spaceDir, ["status", "--porcelain"]);
   const uncommitted = status.status === 0 && status.stdout.trim().length > 0;
+  const stashes = tryGit(spaceDir, ["stash", "list"]);
+  const stashed = stashes.status === 0 && stashes.stdout.trim().length > 0;
 
   let unpushed = false;
   let originUnknown = false;
+  const unlandedBranches: string[] = [];
   const head = revParse(spaceDir, "HEAD");
-  if (head != null) {
-    const ledger = readLedger(join(wrapperDir, "box", "cell.json"));
-    const origin = ledger?.origin;
-    if (ledger == null || origin == null || !existsSync(origin)) {
-      originUnknown = true;
-    } else if (head !== ledger.sha && !hasCommit(origin, head)) {
+  const ledger = readLedger(join(wrapperDir, "box", "cell.json"));
+  const origin = ledger?.origin;
+  if (ledger == null || origin == null || !existsSync(origin)) {
+    if (head != null) originUnknown = true;
+  } else {
+    if (head != null && head !== ledger.sha && !hasCommit(origin, head)) {
       // The cell advanced past its provisioned sha and the origin has never
       // seen the result: deleting would destroy the only copy.
       unpushed = true;
     }
+    // A branch the agent committed to and then switched away from is not
+    // HEAD, yet deleting the Cell would destroy it just the same.
+    const refs = tryGit(spaceDir, ["for-each-ref", "--format=%(refname:short)%00%(objectname)", "refs/heads"]);
+    if (refs.status === 0) {
+      for (const line of refs.stdout.split("\n")) {
+        const [name, sha] = line.split("\0");
+        if (!name || !sha || sha === ledger.sha || hasCommit(origin, sha)) continue;
+        unlandedBranches.push(name);
+      }
+    }
   }
-  return { dirty: uncommitted || unpushed || originUnknown, uncommitted, unpushed, originUnknown };
+  if (unlandedBranches.length > 0) unpushed = true;
+  return { dirty: uncommitted || unpushed || stashed || originUnknown, uncommitted, unpushed, stashed, unlandedBranches, originUnknown };
 }
 
 export interface DeleteResult {

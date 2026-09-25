@@ -5,7 +5,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { Worker } from "node:worker_threads";
 import { cellPaths } from "../src/layout.ts";
@@ -14,10 +14,14 @@ import { CellDeleteRefused, CellShapeError } from "../src/remove.ts";
 import {
   CellHeadMovedError,
   EVICTING_DIR,
+  cellEnvRootForCells,
   evictCellWrapper,
   inspectCellWrapper,
   listEvicting,
+  listIgnoredEnvFiles,
+  listPreservedEnvFiles,
   measureDirectoryBytes,
+  restoreEnvFiles,
   retentionWorkerUrl,
   sweepEvicting,
   sweepEvictingSync,
@@ -144,6 +148,81 @@ test("retention.worker: inspects a batch off-thread and reports per-wrapper erro
     const byKey = new Map(result.inspections.map((i) => [i.key, i]));
     assert.equal(byKey.get("a")?.inspection?.head, rig.origin.sha);
     assert.equal(byKey.get("gone")?.inspection?.present, false);
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("retention.dirty: a stash and a branch the agent switched away from are data, not clean", () => {
+  const rig = makeRig();
+  try {
+    const a = provisioned(rig, "a");
+    writeFileSync(join(a.paths.spaceDir, "README.md"), "# stashed change\n");
+    g(a.paths.spaceDir, ["stash", "push", "-q", "-m", "wip"]);
+    const ia = inspectCellWrapper(a.paths.wrapperDir, { measure: false });
+    assert.equal(ia.report?.uncommitted, false);
+    assert.equal(ia.report?.stashed, true);
+    assert.equal(ia.report?.dirty, true);
+    assert.throws(() => evictCellWrapper(rig.cellsRoot, a.paths.wrapperDir), (err: unknown) => err instanceof CellDeleteRefused && /stashed changes/.test(err.message));
+
+    const b = provisioned(rig, "b");
+    g(b.paths.spaceDir, ["checkout", "-q", "-b", "feature/x"]);
+    const tip = commitInCell(b.paths.spaceDir, "feature.txt", "x\n", "on a branch");
+    g(b.paths.spaceDir, ["checkout", "-q", "--detach", rig.origin.sha]);
+    const ib = inspectCellWrapper(b.paths.wrapperDir, { measure: false });
+    assert.equal(ib.head, rig.origin.sha, "HEAD itself is landed");
+    assert.equal(ib.report?.unpushed, true);
+    assert.deepEqual(ib.report?.unlandedBranches, ["feature/x"]);
+    assert.throws(() => evictCellWrapper(rig.cellsRoot, b.paths.wrapperDir), (err: unknown) => err instanceof CellDeleteRefused && /unlanded branches \(feature\/x\)/.test(err.message));
+    assert.equal(existsSync(b.paths.spaceDir), true);
+    // Once the origin holds the branch tip, the Cell is clean again.
+    g(rig.origin.repo, ["fetch", "-q", b.paths.spaceDir, `${tip}:refs/heads/landed-x`]);
+    assert.deepEqual(inspectCellWrapper(b.paths.wrapperDir, { measure: false }).report?.unlandedBranches, []);
+    assert.equal(inspectCellWrapper(b.paths.wrapperDir, { measure: false }).report?.dirty, false);
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("retention.env: ignored .env files are preserved (0600) on eviction and restored into a re-provisioned space", () => {
+  const rig = makeRig();
+  try {
+    writeFileSync(join(rig.origin.repo, ".gitignore"), ".env\n.env.*\nnode_modules/\n*.env.txt\n");
+    g(rig.origin.repo, ["add", ".gitignore"]);
+    g(rig.origin.repo, ["commit", "-q", "-m", "ignore env"]);
+    rig.origin.sha = g(rig.origin.repo, ["rev-parse", "HEAD"]);
+    const a = provisioned(rig, "a");
+    const space = a.paths.spaceDir;
+    mkdirSync(join(space, "apps", "web"), { recursive: true });
+    mkdirSync(join(space, "node_modules", "pkg"), { recursive: true });
+    writeFileSync(join(space, ".env"), "TOP=1\n");
+    writeFileSync(join(space, "apps", "web", ".env.local"), "WEB=2\n");
+    writeFileSync(join(space, "node_modules", "pkg", ".env"), "IGNORED_DIR=3\n");
+    writeFileSync(join(space, "apps", "web", "notes.env.txt"), "not an env file\n");
+    assert.deepEqual(listIgnoredEnvFiles(space), [".env", "apps/web/.env.local"]);
+    const i = inspectCellWrapper(a.paths.wrapperDir, { measure: false });
+    assert.equal(i.report?.dirty, false, "ignored files do not make a Cell dirty");
+    assert.deepEqual(i.envFiles, [".env", "apps/web/.env.local"]);
+
+    const res = evictCellWrapper(rig.cellsRoot, a.paths.wrapperDir, { expectedHead: rig.origin.sha });
+    assert.deepEqual(res?.envFiles, [".env", "apps/web/.env.local"]);
+    const stash = join(cellEnvRootForCells(rig.cellsRoot), a.paths.spaceName);
+    assert.equal(readFileSync(join(stash, "apps", "web", ".env.local"), "utf8"), "WEB=2\n");
+    assert.equal(statSync(join(stash, ".env")).mode & 0o777, 0o600);
+    assert.deepEqual(listPreservedEnvFiles(rig.cellsRoot, a.paths.spaceName), [".env", "apps/web/.env.local"]);
+    sweepEvictingSync(rig.cellsRoot);
+
+    // Re-provision the same wrapper (as a revive would) and restore.
+    const again = provisionCell(rig.cellsRoot, a.req, "op-a2", OPTS);
+    assert.equal(again.replayed, false);
+    writeFileSync(join(space, ".env"), "ALREADY=here\n");
+    const restored = restoreEnvFiles(rig.cellsRoot, space);
+    assert.deepEqual(restored, ["apps/web/.env.local"], "an existing file is never overwritten");
+    assert.equal(readFileSync(join(space, ".env"), "utf8"), "ALREADY=here\n");
+    assert.equal(readFileSync(join(space, "apps", "web", ".env.local"), "utf8"), "WEB=2\n");
+    assert.equal(statSync(join(space, "apps", "web", ".env.local")).mode & 0o777, 0o600);
+    assert.equal(existsSync(stash), false, "the stash is dropped after restore");
+    assert.deepEqual(restoreEnvFiles(rig.cellsRoot, space), [], "restore is idempotent");
   } finally {
     rig.cleanup();
   }

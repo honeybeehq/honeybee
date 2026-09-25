@@ -1456,8 +1456,12 @@ export interface CellDirtyReport {
   dirty: boolean;
   /** Uncommitted working-tree changes in the space. */
   uncommitted: boolean;
-  /** Cell HEAD commits the origin repo does not contain. */
+  /** Cell HEAD, or any local branch tip, holds commits the origin repo does not contain. */
   unpushed: boolean;
+  /** v31 — `git stash list` is not empty. */
+  stashed: boolean;
+  /** v31 — local branches whose tip the origin does not contain. */
+  unlandedBranches: string[];
   /** The origin could not be consulted (missing/moved) — treated as dirty. */
   originUnknown: boolean;
 }
@@ -1564,6 +1568,7 @@ export const CELL_GC_REASONS = [
   "handoff_in_flight",
   "dirty_uncommitted",
   "dirty_unlanded",
+  "dirty_stash",
   "dirty_origin_unknown",
   "not_provisioned",
   "absent",
@@ -1593,6 +1598,8 @@ export interface CellGcItem {
   verdict: CellGcVerdict;
   reason: CellGcReason;
   report: CellDirtyReport | null;
+  /** Git-ignored `.env` / `.env.*` files eviction preserves under `<data-dir>/cell-env/` and revive restores. */
+  envFiles: string[];
 }
 
 export interface CellGcOutcome {
@@ -1602,6 +1609,7 @@ export interface CellGcOutcome {
   status: "evicted" | "removed" | "refused" | "absent" | "failed";
   reason: string | null;
   bytes: number | null;
+  envFiles: string[];
 }
 
 export interface CellGcResult {
@@ -1644,6 +1652,7 @@ export interface CellEvictResult {
   forced: boolean;
   report: CellDirtyReport | null;
   bytes: number | null;
+  envFiles: string[];
   deduped?: boolean;
 }
 

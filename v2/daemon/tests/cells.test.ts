@@ -400,7 +400,7 @@ test("cells.2: cell.remove — runtime_refused while live; refused-dirty leaves 
     assert.equal(refused.commandId, null);
     assert.ok(refused.report);
     assertKeys(refused.report, DIRTY_REPORT_KEYS, "dirty report");
-    assert.deepEqual(refused.report, { dirty: true, uncommitted: true, unpushed: false, originUnknown: false });
+    assert.deepEqual(refused.report, { dirty: true, uncommitted: true, unpushed: false, stashed: false, unlandedBranches: [], originUnknown: false });
     assert.ok(existsSync(spaceDir), "refused: cell still there");
     assert.equal((await client.request<ViewResult>("view", { beeId })).bee?.id, beeId, "refused: bee still there");
     // Replay of the refused key: same answer, deduped.
@@ -449,7 +449,7 @@ test("cells.2: cell.remove — runtime_refused while live; refused-dirty leaves 
     await stopAndWait(client, third.beeId);
     const uncaptured = await client.request<CellRemoveResult>("cell.remove", { beeId: third.beeId, idempotencyKey: "rm-4" });
     assert.equal(uncaptured.status, "refused");
-    assert.deepEqual(uncaptured.report, { dirty: true, uncommitted: false, unpushed: true, originUnknown: false });
+    assert.deepEqual(uncaptured.report, { dirty: true, uncommitted: false, unpushed: true, stashed: false, unlandedBranches: [], originUnknown: false });
     const cap = await client.request<CellCaptureResult>("cell.capture", {
       beeId: third.beeId,
       targetBranch: "throwaway/clean",
@@ -460,7 +460,7 @@ test("cells.2: cell.remove — runtime_refused while live; refused-dirty leaves 
     const clean = await client.request<CellRemoveResult>("cell.remove", { beeId: third.beeId, idempotencyKey: "rm-5" });
     assert.equal(clean.status, "deleted");
     assert.equal(clean.forced, false);
-    assert.deepEqual(clean.report, { dirty: false, uncommitted: false, unpushed: false, originUnknown: false });
+    assert.deepEqual(clean.report, { dirty: false, uncommitted: false, unpushed: false, stashed: false, unlandedBranches: [], originUnknown: false });
 
     // Unknown bee.
     await assert.rejects(() => client.request("cell.remove", { beeId: "nope" }), rpcCode("bee_not_found"));

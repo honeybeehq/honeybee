@@ -26,7 +26,9 @@ evicted ──(bee delete / legacy cell.remove)──▶ removed
 
 ## Clean
 
-A Cell is **clean** when the A2 dirty report is empty: no uncommitted working-tree change (`git status --porcelain`), HEAD is contained in the origin (no unlanded commits), and the origin repository still exists. Ignored files (`node_modules`, `.tmp`, build output) do not make a Cell dirty; they are exactly what retention reclaims. Only clean Cells are ever reclaimed automatically. Dirty Cells are listed as `hold` with the cause; the operator decides with `hive cell evict <bee> --force` or `hive cell remove <bee> --force`.
+A Cell is **clean** when the A2 dirty report is empty: no uncommitted working-tree change (`git status --porcelain`), no stash (`git stash list`), HEAD *and every local branch tip* contained in the origin (no unlanded commits — a branch the agent committed to and then switched away from counts, and the report names it in `unlandedBranches`), and the origin repository still exists. Ignored files (`node_modules`, `.tmp`, build output) do not make a Cell dirty; they are exactly what retention reclaims. Only clean Cells are ever reclaimed automatically. Dirty Cells are listed as `hold` with the cause (`dirty_uncommitted`, `dirty_unlanded`, `dirty_stash`, `dirty_origin_unknown`); the operator decides with `hive cell evict <bee> --force` or `hive cell remove <bee> --force`.
+
+**Ignored env files are preserved.** Git-ignored `.env` and `.env.*` files at any depth (outside fully-ignored directories such as `node_modules`) are often per-Cell and unique. Before the park, eviction copies them, mode `0600`, to `<data-dir>/cell-env/<spaceName>/<space-relative path>` (beside `cells/`; `~/.hive/v2/cell-env/…` in production), lists them in the `cell.evicted` audit payload, the `cell.retention.evicted … env_files=N env_stash=…` log line and the `cell.gc` / `cell.evict` results (`envFiles`). When the Cell is re-provisioned on revive, the daemon restores them into the same relative paths (never overwriting a file that already exists), logs `cell.env.restored`, and drops the copy. A Cell that is never revived keeps its copy under `cell-env/` until the operator removes it.
 
 ## Policy (`config.json` → `cells.retention`)
 
@@ -76,6 +78,7 @@ Cells are provisioned by APFS clone (`cp -c`) from the origin and warm artifacts
 
 - Delete `apps/desktop/src/main/cellRetention.ts` + `cellReaperRuntime.ts` (the pre-cutover reaper of `<workspace>/cells`; it has scanned 0 directories since 2026-08-19 and must never be retargeted at `~/.hive/v2/cells`: Honeybee owns those and Apiary reaping them would race provisioning, capture and exec).
 - Refresh `packages/core/src/cellMove.ts`: `CELL_STATES` gains `'evicted'`; `CellRow` gains `evictedAt: number | null` and `evictedHead: string | null` (Honeybee's fixture `v2/daemon/tests/fixtures/apiary-cell-move-shapes.ts` already carries the new shape).
+- Refresh `services/apiaryd/src/domains/hive/hiveProtocol.ts`: `CellDirtyReport` gains `stashed: boolean` and `unlandedBranches: string[]` (fixture `apiary-cell-shapes.ts` carries it). Render the new causes in the dirty-refusal UI.
 - Optional surface: show `evicted` on the Cell card ("disk reclaimed; a message re-provisions") and offer `hive cell gc --dry-run` output in a settings pane. Any "free disk" affordance in Apiary calls `cell.gc`/`cell.evict`; it never touches the directory.
 
 ## Not Honeybee's

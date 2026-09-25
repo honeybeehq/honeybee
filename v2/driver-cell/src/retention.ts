@@ -22,10 +22,10 @@
  * APFS a pnpm `node_modules` copied by CoW shares blocks with its origin, so
  * du overstates what a deletion actually frees; callers label it as such.
  */
-import { existsSync, lstatSync, mkdirSync, readdirSync, renameSync, rmSync, statSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, renameSync, rmSync, statSync } from "node:fs";
 import { rm } from "node:fs/promises";
-import { basename, join, resolve } from "node:path";
-import { revParse } from "./git.ts";
+import { basename, dirname, join, relative, resolve } from "node:path";
+import { revParse, tryGit } from "./git.ts";
 import { CELL_SPACE_DIRECTORY, looksLikeCellWrapper } from "./layout.ts";
 import { CellDeleteRefused, CellShapeError, dirtyReport, type DirtyReport } from "./remove.ts";
 
@@ -41,6 +41,8 @@ export function retentionWorkerUrl(): URL {
 
 export interface CellWrapperInspection {
   wrapperDir: string;
+  /** Git-ignored `.env` / `.env.*` files (space-relative) that eviction would preserve. */
+  envFiles: string[];
   /** The wrapper directory exists and has the Cell shape. */
   present: boolean;
   /** Cell-shaped but no `.git` in the space (reservation only, never provisioned). */
@@ -85,6 +87,89 @@ export function measureDirectoryBytes(dir: string): number {
   return total;
 }
 
+/**
+ * Git-ignored `.env` and `.env.*` files at any depth (outside fully-ignored
+ * directories such as node_modules, which git collapses). They are often
+ * per-Cell and unique, so eviction preserves them and revive restores them.
+ */
+export function listIgnoredEnvFiles(spaceDir: string): string[] {
+  if (!existsSync(join(spaceDir, ".git"))) return [];
+  const res = tryGit(spaceDir, ["ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z"]);
+  if (res.status !== 0) return [];
+  return res.stdout
+    .split("\0")
+    .filter((p) => p.length > 0 && !p.endsWith("/"))
+    .filter((p) => {
+      const name = basename(p);
+      return name === ".env" || name.startsWith(".env.");
+    })
+    .sort();
+}
+
+/** Durable home for preserved env files: `<data-dir>/cell-env/<spaceName>/<relative path>`, beside cells/. */
+export function cellEnvRootForCells(cellsRoot: string): string {
+  return join(dirname(resolve(cellsRoot)), "cell-env");
+}
+
+function envStashDir(cellsRoot: string, spaceName: string): string {
+  if (!CELL_SPACE_DIRECTORY.test(spaceName)) throw new CellShapeError(spaceName, "not a -space- name");
+  return join(cellEnvRootForCells(cellsRoot), spaceName);
+}
+
+/** Copy the Cell's ignored env files out (mode 0600). Returns the space-relative paths preserved. */
+export function preserveEnvFiles(cellsRoot: string, spaceDir: string): string[] {
+  const files = listIgnoredEnvFiles(spaceDir);
+  if (files.length === 0) return [];
+  const stash = envStashDir(cellsRoot, basename(resolve(spaceDir)));
+  for (const rel of files) {
+    const target = join(stash, rel);
+    if (relative(stash, target).startsWith("..")) throw new CellShapeError(rel, "env path escapes the Cell");
+    mkdirSync(dirname(target), { recursive: true });
+    copyFileSync(join(spaceDir, rel), target);
+    chmodSync(target, 0o600);
+  }
+  return files;
+}
+
+/** Preserved env files for a space name, space-relative; empty when none were preserved. */
+export function listPreservedEnvFiles(cellsRoot: string, spaceName: string): string[] {
+  const stash = envStashDir(cellsRoot, spaceName);
+  if (!existsSync(stash)) return [];
+  const out: string[] = [];
+  const walk = (dir: string) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) walk(path);
+      else if (entry.isFile()) out.push(relative(stash, path));
+    }
+  };
+  walk(stash);
+  return out.sort();
+}
+
+/**
+ * Put preserved env files back into a re-provisioned space (mode 0600),
+ * never overwriting a file that already exists there, then drop the stash.
+ * Returns the paths restored.
+ */
+export function restoreEnvFiles(cellsRoot: string, spaceDir: string): string[] {
+  const spaceName = basename(resolve(spaceDir));
+  const files = listPreservedEnvFiles(cellsRoot, spaceName);
+  if (files.length === 0) return [];
+  const stash = envStashDir(cellsRoot, spaceName);
+  const restored: string[] = [];
+  for (const rel of files) {
+    const target = join(spaceDir, rel);
+    if (existsSync(target)) continue;
+    mkdirSync(dirname(target), { recursive: true });
+    copyFileSync(join(stash, rel), target);
+    chmodSync(target, 0o600);
+    restored.push(rel);
+  }
+  rmSync(stash, { recursive: true, force: true });
+  return restored;
+}
+
 function spaceDirIn(wrapperDir: string): string | null {
   let entries: string[];
   try {
@@ -101,13 +186,14 @@ export function inspectCellWrapper(wrapperDir: string, opts: { measure?: boolean
   const target = resolve(wrapperDir);
   const spaceDir = spaceDirIn(target);
   if (spaceDir == null) {
-    return { wrapperDir: target, present: false, provisioned: false, head: null, report: null, bytes: null, elapsedMs: Date.now() - started };
+    return { wrapperDir: target, envFiles: [], present: false, provisioned: false, head: null, report: null, bytes: null, elapsedMs: Date.now() - started };
   }
   const provisioned = existsSync(join(spaceDir, ".git"));
   const head = provisioned ? revParse(spaceDir, "HEAD") : null;
   const report = dirtyReport(target);
+  const envFiles = provisioned ? listIgnoredEnvFiles(spaceDir) : [];
   const bytes = opts.measure === false ? null : measureDirectoryBytes(target);
-  return { wrapperDir: target, present: true, provisioned, head, report, bytes, elapsedMs: Date.now() - started };
+  return { wrapperDir: target, envFiles, present: true, provisioned, head, report, bytes, elapsedMs: Date.now() - started };
 }
 
 export interface EvictResult {
@@ -116,6 +202,8 @@ export interface EvictResult {
   head: string | null;
   report: DirtyReport | null;
   forced: boolean;
+  /** Ignored env files copied to `cell-env/<spaceName>/` before the park; revive restores them. */
+  envFiles: string[];
 }
 
 export class CellHeadMovedError extends Error {
@@ -151,11 +239,12 @@ export function evictCellWrapper(
   if (opts.expectedHead !== undefined && head !== opts.expectedHead) {
     throw new CellHeadMovedError(target, opts.expectedHead, head);
   }
+  const envFiles = preserveEnvFiles(root, spaceDir);
   const parkRoot = join(root, EVICTING_DIR);
   mkdirSync(parkRoot, { recursive: true });
   const parkedDir = join(parkRoot, `${basename(target)}.${(opts.now ?? Date.now)()}.${process.pid}`);
   renameSync(target, parkedDir);
-  return { parkedDir, head, report, forced: report.dirty };
+  return { parkedDir, head, report, forced: report.dirty, envFiles };
 }
 
 /** Parked wrappers awaiting deletion. */

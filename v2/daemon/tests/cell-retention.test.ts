@@ -9,7 +9,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -262,5 +262,66 @@ test("cell-retention.4: a clean retained Cell (its bee moved away) is removed by
     await daemon?.stop();
     rig.cleanup();
     rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("cell-retention.5: ignored env files survive eviction and come back on revive; stashes and side branches hold the Cell", { timeout: 180_000 }, async () => {
+  const rig = makeRig({ enabled: false, archivedAfterDays: 0 });
+  let daemon: DaemonHandle | null = null;
+  try {
+    writeFileSync(join(rig.origin.repo, ".gitignore"), ".env\n.env.*\n");
+    g(rig.origin.repo, ["add", ".gitignore"]);
+    g(rig.origin.repo, ["commit", "-q", "-m", "ignore env"]);
+    const originSha = g(rig.origin.repo, ["rev-parse", "HEAD"]);
+    daemon = await startDaemon(rig.dir);
+    const client = await daemon.client();
+    const env = await spawnIdle(client, "envbee", rig.origin.repo);
+    const stashy = await spawnIdle(client, "stashy", rig.origin.repo);
+    const branchy = await spawnIdle(client, "branchy", rig.origin.repo);
+    const space = env.view.bee!.cwd;
+    mkdirSync(join(space, "packages", "db"), { recursive: true });
+    writeFileSync(join(space, ".env.local"), "LOCAL=1\n");
+    writeFileSync(join(space, "packages", "db", ".env"), "DATABASE_URL=secret\n");
+    writeFileSync(join(stashy.view.bee!.cwd, "README.md"), "# changed\n");
+    g(stashy.view.bee!.cwd, ["stash", "push", "-q"]);
+    g(branchy.view.bee!.cwd, ["checkout", "-q", "-b", "side"]);
+    writeFileSync(join(branchy.view.bee!.cwd, "side.txt"), "side\n");
+    g(branchy.view.bee!.cwd, ["add", "-A"]);
+    g(branchy.view.bee!.cwd, ["-c", "user.name=t", "-c", "user.email=t@hive.invalid", "commit", "-q", "-m", "side work"]);
+    g(branchy.view.bee!.cwd, ["checkout", "-q", "--detach", originSha]);
+    for (const b of [env, stashy, branchy]) { await stopped(client, b.beeId); await archived(client, b.beeId); }
+
+    const plan = await gc(client, { measure: false });
+    assert.equal(itemFor(plan, env.beeId).verdict, "evict");
+    assert.deepEqual(itemFor(plan, env.beeId).envFiles, [".env.local", "packages/db/.env"]);
+    assert.equal(itemFor(plan, stashy.beeId).reason, "dirty_stash");
+    assert.equal(itemFor(plan, branchy.beeId).reason, "dirty_unlanded");
+    assert.deepEqual(itemFor(plan, branchy.beeId).report?.unlandedBranches, ["side"]);
+
+    const applied = await gc(client, { dryRun: false, measure: false });
+    const outcome = applied.outcomes!.find((o) => o.beeId === env.beeId)!;
+    assert.equal(outcome.status, "evicted");
+    assert.deepEqual(outcome.envFiles, [".env.local", "packages/db/.env"]);
+    assert.equal(existsSync(space), false);
+    const envRoot = join(dirname(rig.cellsRoot), "cell-env", env.view.cell!.spaceName);
+    assert.equal(readFileSync(join(envRoot, "packages", "db", ".env"), "utf8"), "DATABASE_URL=secret\n");
+    assert.equal(statSync(join(envRoot, ".env.local")).mode & 0o777, 0o600);
+    assert.equal(existsSync(stashy.view.bee!.cwd), true);
+    assert.equal(existsSync(branchy.view.bee!.cwd), true);
+
+    const sent = await client.request<SendRpcResult>("send", { beeId: env.beeId, body: "back to work" });
+    await waitFor(async () => {
+      const { messages } = await client.request<MailboxResult>("mailbox", { beeId: env.beeId });
+      return messages.find((m) => m.id === sent.messageId)?.deliveredAt != null;
+    }, "delivered after re-provision", 60_000);
+    assert.equal(readFileSync(join(space, ".env.local"), "utf8"), "LOCAL=1\n");
+    assert.equal(readFileSync(join(space, "packages", "db", ".env"), "utf8"), "DATABASE_URL=secret\n");
+    assert.equal(statSync(join(space, "packages", "db", ".env")).mode & 0o777, 0o600);
+    assert.equal(existsSync(envRoot), false, "restored files leave the stash");
+    assert.match(readFileSync(join(rig.dir, "hived.log"), "utf8"), /cell\.env\.restored bee=.* files=2/);
+    assert.equal((await client.request<ViewResult>("view", { beeId: env.beeId })).cell?.state, "active");
+  } finally {
+    await daemon?.stop();
+    rig.cleanup();
   }
 });

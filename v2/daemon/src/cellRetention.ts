@@ -28,6 +28,7 @@ import type { BeeRow, CellRow, CoreStore, RuntimeRow } from "../../core/src/inde
 import {
   CellDeleteRefused,
   CellHeadMovedError,
+  cellEnvRootForCells,
   evictCellWrapper,
   retentionWorkerUrl,
   sweepEvicting,
@@ -84,6 +85,7 @@ function verdictOf(reason: CellGcReason): CellGcVerdict {
     case "pass_limit":
     case "dirty_uncommitted":
     case "dirty_unlanded":
+    case "dirty_stash":
     case "dirty_origin_unknown":
     case "not_provisioned":
     case "absent":
@@ -274,6 +276,7 @@ export class CellRetentionService {
         bytes: inspection?.bytes ?? null,
         idleSince: null,
         report: inspection?.report ?? null,
+        envFiles: inspection?.envFiles ?? [],
       };
       const reason = this.reasonFor(c, inspection, found?.error ?? null, now, base);
       items.push({ ...base, verdict: verdictOf(reason), reason });
@@ -311,6 +314,7 @@ export class CellRetentionService {
     const report = inspection.report;
     if (report?.uncommitted) return "dirty_uncommitted";
     if (report?.unpushed) return "dirty_unlanded";
+    if (report?.stashed) return "dirty_stash";
     if (report?.originUnknown) return "dirty_origin_unknown";
     if (c.bee == null || c.bee.lifecycle === "deleted") return "bee_deleted";
     if (c.cell.state === "retained") {
@@ -360,8 +364,8 @@ export class CellRetentionService {
   /** One eviction, preconditions re-checked synchronously at the moment of the rename. */
   private applyOne(item: CellGcItem): CellGcOutcome {
     const store = this.deps.store();
-    const outcome = (status: CellGcOutcome["status"], reason: string | null): CellGcOutcome => ({
-      cellId: item.cellId, beeId: item.beeId, wrapperDir: item.wrapperDir, status, reason, bytes: item.bytes,
+    const outcome = (status: CellGcOutcome["status"], reason: string | null, envFiles: string[] = []): CellGcOutcome => ({
+      cellId: item.cellId, beeId: item.beeId, wrapperDir: item.wrapperDir, status, reason, bytes: item.bytes, envFiles,
     });
     const cell = item.cellId ? store.getCell(item.cellId) : null;
     if (!cell || cell.state !== item.cellState) return outcome("refused", "cell_state_changed");
@@ -378,14 +382,15 @@ export class CellRetentionService {
         if (item.verdict === "remove_retained") store.markCellRemoved(cell.id);
         return outcome("absent", null);
       }
+      const env = parked.envFiles.length > 0 ? ` env_files=${parked.envFiles.length} env_stash=${cellEnvRootForCells(this.deps.cellsRoot)}` : "";
       if (item.verdict === "remove_retained") {
         store.markCellRemoved(cell.id);
-        this.deps.log(`cell.retention.removed cell=${cell.id} bee=${item.beeId} reason=${item.reason} head=${parked.head ?? "-"} bytes=${item.bytes ?? "?"} parked=${parked.parkedDir}`);
-        return outcome("removed", item.reason);
+        this.deps.log(`cell.retention.removed cell=${cell.id} bee=${item.beeId} reason=${item.reason} head=${parked.head ?? "-"} bytes=${item.bytes ?? "?"} parked=${parked.parkedDir}${env}`);
+        return outcome("removed", item.reason, parked.envFiles);
       }
-      store.evictCell(cell.id, { head: parked.head, bytes: item.bytes, reason: item.reason });
-      this.deps.log(`cell.retention.evicted cell=${cell.id} bee=${item.beeId} reason=${item.reason} head=${parked.head ?? "-"} bytes=${item.bytes ?? "?"} parked=${parked.parkedDir}`);
-      return outcome("evicted", item.reason);
+      store.evictCell(cell.id, { head: parked.head, bytes: item.bytes, reason: item.reason, envFiles: parked.envFiles });
+      this.deps.log(`cell.retention.evicted cell=${cell.id} bee=${item.beeId} reason=${item.reason} head=${parked.head ?? "-"} bytes=${item.bytes ?? "?"} parked=${parked.parkedDir}${env}`);
+      return outcome("evicted", item.reason, parked.envFiles);
     } catch (err) {
       if (err instanceof CellDeleteRefused) return outcome("refused", "dirty");
       if (err instanceof CellHeadMovedError) return outcome("refused", "head_moved");

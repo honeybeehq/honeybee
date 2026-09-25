@@ -122,8 +122,10 @@ import {
   CellRuntimeLiveError,
   cellPaths,
   deleteCell,
+  dirtyCauses,
   evictCellWrapper,
   hasCommit,
+  restoreEnvFiles,
   localRepoIdentity,
   parseSpaceName,
   readLedger,
@@ -2641,7 +2643,7 @@ export class HiveDaemon {
         : { status: "absent", forced: false, report: null, commandId: null };
     } catch (err) {
       if (err instanceof CellDeleteRefused) {
-        this.log(`cell.remove bee=${beeId} refused dirty=${JSON.stringify(err.report)}`);
+        this.log(`cell.remove bee=${beeId} refused dirty=${JSON.stringify(err.report)} causes=${JSON.stringify(dirtyCauses(err.report))}`);
         return { status: "refused", forced: false, report: err.report, commandId: null };
       }
       if (err instanceof CellRuntimeLiveError) throw new RpcError("runtime_refused", err.message);
@@ -2665,6 +2667,13 @@ export class HiveDaemon {
       if (res.applied) this.log(`cell.reprovisioned bee=${beeId} cell=${bee.cellId} sha=${res.cell.sha}`);
     } catch (err) {
       this.log(`cell.reprovision_record_failed bee=${beeId} ${err instanceof Error ? err.message : String(err)}`);
+    }
+    try {
+      const row = store.getCell(bee.cellId);
+      const restored = row ? restoreEnvFiles(this.cfg.cellsRoot, row.spaceDir) : [];
+      if (restored.length > 0) this.log(`cell.env.restored bee=${beeId} cell=${bee.cellId} files=${restored.length} ${JSON.stringify(restored)}`);
+    } catch (err) {
+      this.log(`cell.env.restore_failed bee=${beeId} ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
@@ -2701,7 +2710,7 @@ export class HiveDaemon {
     if (!bee || bee.substrate !== "cell" || !row || row.state === "removed" || row.state === "removing") {
       throw new RpcError("invalid_request", `cell.evict: bee ${beeId} has no Cell allocation`);
     }
-    if (row.state === "evicted") return { cell: row, status: "absent", forced: false, report: null, bytes: null };
+    if (row.state === "evicted") return { cell: row, status: "absent", forced: false, report: null, bytes: null, envFiles: [] };
     if (row.state !== "active") {
       throw new RpcError("invalid_request", `cell.evict: cell ${row.id} is ${row.state}; retained allocations use cell.retained.remove`);
     }
@@ -2721,16 +2730,16 @@ export class HiveDaemon {
       driver.cell.forgetCell(beeId);
       if (parked == null) {
         const evicted = store.evictCell(row.id, { head: null, bytes: null, reason: "operator" });
-        return { cell: evicted, status: "absent", forced: false, report: null, bytes: null };
+        return { cell: evicted, status: "absent", forced: false, report: null, bytes: null, envFiles: [] };
       }
-      const evicted = store.evictCell(row.id, { head: parked.head, bytes: null, reason: "operator" });
-      this.log(`cell.evict bee=${beeId} cell=${row.id} forced=${parked.forced} head=${parked.head ?? "-"} parked=${parked.parkedDir}`);
+      const evicted = store.evictCell(row.id, { head: parked.head, bytes: null, reason: "operator", envFiles: parked.envFiles });
+      this.log(`cell.evict bee=${beeId} cell=${row.id} forced=${parked.forced} head=${parked.head ?? "-"} parked=${parked.parkedDir} env_files=${parked.envFiles.length}`);
       void this.retention?.sweep();
-      return { cell: evicted, status: "evicted", forced: parked.forced, report: parked.report, bytes: null };
+      return { cell: evicted, status: "evicted", forced: parked.forced, report: parked.report, bytes: null, envFiles: parked.envFiles };
     } catch (err) {
       if (err instanceof CellDeleteRefused) {
         this.log(`cell.evict bee=${beeId} refused dirty=${JSON.stringify(err.report)}`);
-        return { cell: row, status: "refused", forced: false, report: err.report, bytes: null };
+        return { cell: row, status: "refused", forced: false, report: err.report, bytes: null, envFiles: [] };
       }
       if (err instanceof CellHeadMovedError) throw new RpcError("runtime_refused", err.message);
       throw err;
