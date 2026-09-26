@@ -5,7 +5,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { Worker } from "node:worker_threads";
 import { cellPaths } from "../src/layout.ts";
@@ -21,6 +21,7 @@ import {
   listIgnoredEnvFiles,
   listPreservedEnvFiles,
   measureDirectoryBytes,
+  preserveEnvFiles,
   restoreEnvFiles,
   retentionWorkerUrl,
   sweepEvicting,
@@ -221,9 +222,70 @@ test("retention.env: ignored .env files are preserved (0600) on eviction and res
     assert.equal(readFileSync(join(space, ".env"), "utf8"), "ALREADY=here\n");
     assert.equal(readFileSync(join(space, "apps", "web", ".env.local"), "utf8"), "WEB=2\n");
     assert.equal(statSync(join(space, "apps", "web", ".env.local")).mode & 0o777, 0o600);
-    assert.equal(existsSync(stash), false, "the stash is dropped after restore");
+    assert.equal(readFileSync(join(stash, ".env"), "utf8"), "TOP=1\n", "conflicting original remains recoverable");
+    assert.deepEqual(listPreservedEnvFiles(rig.cellsRoot, a.paths.spaceName), [".env"]);
+    assert.throws(() => preserveEnvFiles(rig.cellsRoot, space), /preserved|conflict/, "later eviction cannot overwrite the original");
     assert.deepEqual(restoreEnvFiles(rig.cellsRoot, space), [], "restore is idempotent");
   } finally {
     rig.cleanup();
   }
+});
+
+
+test("retention refuses an unreadable Git index before parking a Cell", () => {
+  const rig = makeRig();
+  try {
+    const { paths } = provisioned(rig, "broken");
+    writeFileSync(join(paths.spaceDir, ".git", "index"), "broken index");
+    assert.throws(() => evictCellWrapper(rig.cellsRoot, paths.wrapperDir));
+    assert.equal(existsSync(paths.wrapperDir), true);
+  } finally { rig.cleanup(); }
+});
+
+test("retention refuses wrappers nested below the direct Cell root", () => {
+  const rig = makeRig();
+  try {
+    const { paths } = provisioned(rig, "nested");
+    const parent = join(rig.cellsRoot, "nested-parent");
+    mkdirSync(parent);
+    const moved = join(parent, "wrapper");
+    renameSync(paths.wrapperDir, moved);
+    assert.throws(() => evictCellWrapper(rig.cellsRoot, moved), CellShapeError);
+    assert.equal(existsSync(moved), true);
+  } finally { rig.cleanup(); }
+});
+
+test("retention env restore refuses symlinked parent directories", () => {
+  const rig = makeRig();
+  try {
+    const { paths } = provisioned(rig, "link");
+    const stash = join(cellEnvRootForCells(rig.cellsRoot), paths.spaceName, "nested");
+    mkdirSync(stash, { recursive: true });
+    writeFileSync(join(stash, ".env"), "PRIVATE=retained\n");
+    const outside = join(rig.root, "outside-env");
+    mkdirSync(outside);
+    symlinkSync(outside, join(paths.spaceDir, "nested"));
+    assert.throws(() => restoreEnvFiles(rig.cellsRoot, paths.spaceDir));
+    assert.equal(existsSync(join(outside, ".env")), false);
+    assert.equal(readFileSync(join(stash, ".env"), "utf8"), "PRIVATE=retained\n");
+  } finally { rig.cleanup(); }
+});
+
+
+test("retention env paths retain leading whitespace and repeated preservation is idempotent", () => {
+  const rig = makeRig();
+  try {
+    mkdirSync(join(rig.origin.repo, " leading"));
+    writeFileSync(join(rig.origin.repo, " leading", "tracked.txt"), "tracked\n");
+    writeFileSync(join(rig.origin.repo, ".gitignore"), ".env\n");
+    g(rig.origin.repo, ["add", "."]);
+    g(rig.origin.repo, ["commit", "-q", "-m", "env path"]);
+    rig.origin.sha = g(rig.origin.repo, ["rev-parse", "HEAD"]);
+    const { paths } = provisioned(rig, "spaces");
+    writeFileSync(join(paths.spaceDir, " leading", ".env"), "VALUE=kept\n");
+    assert.deepEqual(listIgnoredEnvFiles(paths.spaceDir), [" leading/.env"]);
+    assert.deepEqual(preserveEnvFiles(rig.cellsRoot, paths.spaceDir), [" leading/.env"]);
+    assert.deepEqual(preserveEnvFiles(rig.cellsRoot, paths.spaceDir), [" leading/.env"]);
+    assert.equal(readFileSync(join(cellEnvRootForCells(rig.cellsRoot), paths.spaceName, " leading", ".env"), "utf8"), "VALUE=kept\n");
+  } finally { rig.cleanup(); }
 });

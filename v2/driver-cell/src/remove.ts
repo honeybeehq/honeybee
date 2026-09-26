@@ -9,7 +9,7 @@
  */
 import { existsSync, readdirSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { hasCommit, revParse, tryGit } from "./git.ts";
+import { git, hasCommit, revParse } from "./git.ts";
 import { CELL_SPACE_DIRECTORY, looksLikeCellWrapper } from "./layout.ts";
 import { readLedger } from "./ledger.ts";
 
@@ -74,10 +74,8 @@ export function dirtyReport(wrapperDir: string): DirtyReport {
   const clean: DirtyReport = { dirty: false, uncommitted: false, unpushed: false, stashed: false, unlandedBranches: [], originUnknown: false };
   if (!existsSync(join(spaceDir, ".git"))) return clean; // half-provisioned: nothing to lose
 
-  const status = tryGit(spaceDir, ["status", "--porcelain"]);
-  const uncommitted = status.status === 0 && status.stdout.trim().length > 0;
-  const stashes = tryGit(spaceDir, ["stash", "list"]);
-  const stashed = stashes.status === 0 && stashes.stdout.trim().length > 0;
+  const uncommitted = git(spaceDir, ["status", "--porcelain"]).length > 0;
+  const stashed = git(spaceDir, ["stash", "list"]).length > 0;
 
   let unpushed = false;
   let originUnknown = false;
@@ -95,13 +93,11 @@ export function dirtyReport(wrapperDir: string): DirtyReport {
     }
     // A branch the agent committed to and then switched away from is not
     // HEAD, yet deleting the Cell would destroy it just the same.
-    const refs = tryGit(spaceDir, ["for-each-ref", "--format=%(refname:short)%00%(objectname)", "refs/heads"]);
-    if (refs.status === 0) {
-      for (const line of refs.stdout.split("\n")) {
-        const [name, sha] = line.split("\0");
-        if (!name || !sha || sha === ledger.sha || hasCommit(origin, sha)) continue;
-        unlandedBranches.push(name);
-      }
+    const refs = git(spaceDir, ["for-each-ref", "--format=%(refname:short)%00%(objectname)", "refs/heads"]);
+    for (const line of refs.split("\n")) {
+      const [name, sha] = line.split("\0");
+      if (!name || !sha || sha === ledger.sha || hasCommit(origin, sha)) continue;
+      unlandedBranches.push(name);
     }
   }
   if (unlandedBranches.length > 0) unpushed = true;

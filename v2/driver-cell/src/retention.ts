@@ -22,10 +22,10 @@
  * APFS a pnpm `node_modules` copied by CoW shares blocks with its origin, so
  * du overstates what a deletion actually frees; callers label it as such.
  */
-import { chmodSync, copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, renameSync, rmSync, statSync } from "node:fs";
+import { chmodSync, constants, copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, rmdirSync, rmSync, statSync, unlinkSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { basename, dirname, join, relative, resolve } from "node:path";
-import { revParse, tryGit } from "./git.ts";
+import { GitError, revParse, tryGit } from "./git.ts";
 import { CELL_SPACE_DIRECTORY, looksLikeCellWrapper } from "./layout.ts";
 import { CellDeleteRefused, CellShapeError, dirtyReport, type DirtyReport } from "./remove.ts";
 
@@ -94,9 +94,11 @@ export function measureDirectoryBytes(dir: string): number {
  */
 export function listIgnoredEnvFiles(spaceDir: string): string[] {
   if (!existsSync(join(spaceDir, ".git"))) return [];
-  const res = tryGit(spaceDir, ["ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z"]);
-  if (res.status !== 0) return [];
-  return res.stdout
+  const args = ["ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z"];
+  const result = tryGit(spaceDir, args);
+  if (result.status !== 0) throw new GitError(args, result.status, result.stderr);
+  const files = result.stdout;
+  return files
     .split("\0")
     .filter((p) => p.length > 0 && !p.endsWith("/"))
     .filter((p) => {
@@ -116,6 +118,32 @@ function envStashDir(cellsRoot: string, spaceName: string): string {
   return join(cellEnvRootForCells(cellsRoot), spaceName);
 }
 
+function ensureEnvParent(root: string, target: string): void {
+  const rel = relative(root, target);
+  if (rel === "" || rel === ".." || rel.startsWith("../")) throw new CellShapeError(target, "env path escapes its root");
+  const dirs = [root];
+  for (const part of relative(root, dirname(target)).split("/").filter(Boolean)) dirs.push(join(dirs[dirs.length - 1]!, part));
+  for (const dir of dirs) {
+    try { mkdirSync(dir); }
+    catch (err) { if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err; }
+    if (!lstatSync(dir).isDirectory()) throw new CellShapeError(dir, "env parent is not a directory");
+  }
+}
+
+function removeRestoredEnv(stash: string, source: string): void {
+  unlinkSync(source);
+  let dir = dirname(source);
+  while (dir === stash || dir.startsWith(`${stash}/`)) {
+    try { rmdirSync(dir); }
+    catch (err) {
+      if (["ENOTEMPTY", "EEXIST"].includes((err as NodeJS.ErrnoException).code ?? "")) return;
+      throw err;
+    }
+    if (dir === stash) return;
+    dir = dirname(dir);
+  }
+}
+
 /** Copy the Cell's ignored env files out (mode 0600). Returns the space-relative paths preserved. */
 export function preserveEnvFiles(cellsRoot: string, spaceDir: string): string[] {
   const files = listIgnoredEnvFiles(spaceDir);
@@ -123,9 +151,17 @@ export function preserveEnvFiles(cellsRoot: string, spaceDir: string): string[] 
   const stash = envStashDir(cellsRoot, basename(resolve(spaceDir)));
   for (const rel of files) {
     const target = join(stash, rel);
-    if (relative(stash, target).startsWith("..")) throw new CellShapeError(rel, "env path escapes the Cell");
-    mkdirSync(dirname(target), { recursive: true });
-    copyFileSync(join(spaceDir, rel), target);
+    const source = join(spaceDir, rel);
+    mkdirSync(cellEnvRootForCells(cellsRoot), { recursive: true });
+    ensureEnvParent(stash, target);
+    if (!lstatSync(source).isFile()) throw new CellShapeError(source, "env source is not a regular file");
+    try { copyFileSync(source, target, constants.COPYFILE_EXCL); }
+    catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+      if (!lstatSync(target).isFile() || !readFileSync(source).equals(readFileSync(target))) {
+        throw new CellShapeError(target, "conflicting preserved env file; both copies retained");
+      }
+    }
     chmodSync(target, 0o600);
   }
   return files;
@@ -135,6 +171,7 @@ export function preserveEnvFiles(cellsRoot: string, spaceDir: string): string[] 
 export function listPreservedEnvFiles(cellsRoot: string, spaceName: string): string[] {
   const stash = envStashDir(cellsRoot, spaceName);
   if (!existsSync(stash)) return [];
+  if (!lstatSync(stash).isDirectory()) throw new CellShapeError(stash, "env stash is not a directory");
   const out: string[] = [];
   const walk = (dir: string) => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -149,7 +186,7 @@ export function listPreservedEnvFiles(cellsRoot: string, spaceName: string): str
 
 /**
  * Put preserved env files back into a re-provisioned space (mode 0600),
- * never overwriting a file that already exists there, then drop the stash.
+ * never overwriting a file that already exists there, retaining conflicting originals.
  * Returns the paths restored.
  */
 export function restoreEnvFiles(cellsRoot: string, spaceDir: string): string[] {
@@ -160,13 +197,16 @@ export function restoreEnvFiles(cellsRoot: string, spaceDir: string): string[] {
   const restored: string[] = [];
   for (const rel of files) {
     const target = join(spaceDir, rel);
-    if (existsSync(target)) continue;
-    mkdirSync(dirname(target), { recursive: true });
-    copyFileSync(join(stash, rel), target);
+    ensureEnvParent(spaceDir, target);
+    try { copyFileSync(join(stash, rel), target, constants.COPYFILE_EXCL); }
+    catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "EEXIST") continue;
+      throw err;
+    }
     chmodSync(target, 0o600);
+    removeRestoredEnv(stash, join(stash, rel));
     restored.push(rel);
   }
-  rmSync(stash, { recursive: true, force: true });
   return restored;
 }
 
@@ -227,7 +267,7 @@ export function evictCellWrapper(
   const target = resolve(wrapperDir);
   if (!existsSync(target)) return null;
   const root = resolve(cellsRoot);
-  if (!target.startsWith(`${root}/`) || basename(target) === EVICTING_DIR) {
+  if (dirname(target) !== root || basename(target) === EVICTING_DIR) {
     throw new CellShapeError(target, "not a wrapper directly under the cells root");
   }
   const spaceDir = spaceDirIn(target);
