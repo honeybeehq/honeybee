@@ -7,7 +7,7 @@
     "hived"
   ],
   "owners": [
-    "v2/daemon/src/accountsService.ts@abb6c84bf50099d098bfeec2a2a94774eef55cad",
+    "v2/daemon/src/accountsService.ts@8915d5ddb2af8cbd5670e8271dcbb88c62fabf83",
     "v2/daemon/src/config.ts@9c21da1c1c0a382b5ed605d5a4f2a7e9985827e1",
     "v2/core/src/store.ts@1d3b7cde2383f6e5c32cefee1a22bda4cb194641"
   ],
@@ -104,13 +104,30 @@
       ],
       "betterWhen": "lower",
       "invariant": "All twelve complete samples have exact facts and no durable changes; zero pending-work reads for booting/running bees.",
-      "noise": "Deterministic calls; no timing claim."
+      "noise": "Deterministic calls; no timing claim.",
+      "baseline": {
+        "seriesId": "account-activity-reads-v1",
+        "receipt": ".agents/skills/perf-honeybee/workloads/baselines/account-activity-reads.json",
+        "commit": "afaf713cedc13997d777c446b86d0699f5ad3d24 + receipt source hashes",
+        "samples": 12,
+        "machine": "Mac.home",
+        "runtime": "v24.18.0",
+        "buildMode": "dev",
+        "aggregation": "max",
+        "aggregate": 0,
+        "capturedAt": "2026-09-26T08:08:43.231Z"
+      }
     }
   ],
   "gaps": [
-    "Admission still computes one candidate activity at a time; public report batching is measured separately.",
     "CPU, RSS, whole-admission/fleet costs and live provider paths remain unmeasured."
   ],
-  "updatedAt": "2026-09-25",
-  "readiness": "12 current-source linked-control samples preserve exact activity and durable state; active pending-work reads remain zero. Inactive/transfer/reopen controls pass. Counts only."
+  "updatedAt": "2026-09-26",
+  "readiness": "12 current-source linked-control samples preserve exact activity and durable state; active pending-work reads remain zero. Inactive/transfer/reopen controls pass. Counts only.",
+  "linked": [
+    {
+      "workload": "account-admission-batch",
+      "why": "The shared activity helper also serves the separately measured per-call admission projection."
+    }
+  ]
 }

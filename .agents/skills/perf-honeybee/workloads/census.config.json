@@ -94,6 +94,15 @@
       "pathFilter": "^v2/daemon/src/accountsService\\.ts$",
       "mode": "capture",
       "keyTemplate": "{1}"
+    },
+    {
+      "inventory": "entry-points",
+      "prefix": "account-admission:",
+      "regex": "^  (admitNewWork)\\(",
+      "flags": "m",
+      "pathFilter": "^v2/daemon/src/accountsService\\.ts$",
+      "mode": "capture",
+      "keyTemplate": "{1}"
     }
   ]
 }

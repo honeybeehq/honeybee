@@ -1,0 +1,157 @@
+{
+  "protocolVersion": 1,
+  "id": "account-admission-batch",
+  "title": "Batch local activity for account admission",
+  "lane": "interaction",
+  "processes": [
+    "hived"
+  ],
+  "owners": [
+    "v2/daemon/src/accountsService.ts@8915d5ddb2af8cbd5670e8271dcbb88c62fabf83",
+    "v2/daemon/src/config.ts@9c21da1c1c0a382b5ed605d5a4f2a7e9985827e1",
+    "v2/core/src/store.ts@1d3b7cde2383f6e5c32cefee1a22bda4cb194641",
+    "v2/core/src/accountAllocation.ts@1a1285be673daac464632b824a5435622d7597c9",
+    "v2/core/src/accountSelect.ts@6674ff7b2230c6ba2245a249bbadbb8e45842e75",
+    "v2/core/src/accountRecipes.ts@5f07d6a26e2e3cf9f9bfd7cef6d6993521f0f410",
+    "v2/core/src/accountLimitsParse.ts@5ef24834dc69024ce5ff1a0ca16a7a5901df5fd1"
+  ],
+  "effect": {
+    "user": "Choose and reserve automatic work from fresh account activity with one shared fleet pass.",
+    "assertions": [
+      "Exact normalized decision and durable admission/audit parity across paired arms.",
+      "Shadow selection, filtering, transfer, expiry, rollback and reopen remain supported."
+    ],
+    "exclusions": [
+      "SQL scan volume",
+      "CPU",
+      "Latency",
+      "RSS",
+      "Real provider/runtime work"
+    ]
+  },
+  "accounts": [
+    {
+      "inventory": "entry-points",
+      "key": "account-admission:admitNewWork"
+    }
+  ],
+  "states": {
+    "idle": {
+      "matters": false,
+      "why": "No process/provider launch; this workload isolates one synchronous activity calculation."
+    },
+    "first-use": {
+      "matters": false,
+      "why": "No process/provider launch; this workload isolates one synchronous activity calculation."
+    },
+    "repeated": {
+      "matters": true,
+      "why": "Three alternating baseline/candidate pairs and successive-call controls."
+    },
+    "scale": {
+      "matters": true,
+      "why": "0/1/4/8 accounts and 0/12/120/1200 bees"
+    },
+    "background": {
+      "matters": false,
+      "why": "No process/provider launch; this workload isolates one synchronous activity calculation."
+    },
+    "release": {
+      "matters": false,
+      "why": "No process/provider launch; this workload isolates one synchronous activity calculation."
+    },
+    "recovery": {
+      "matters": true,
+      "why": "Lifecycle freshness and reopen are separate behavioral controls."
+    }
+  },
+  "fixture": {
+    "preset": "account-admission-batch-v1",
+    "isolationPolicy": 1,
+    "scaleAxes": [
+      {
+        "axis": "accounts",
+        "values": [
+          0,
+          1,
+          4,
+          8
+        ],
+        "unit": "accounts"
+      },
+      {
+        "axis": "bees",
+        "values": [
+          0,
+          12,
+          120,
+          1200
+        ],
+        "unit": "bees"
+      }
+    ],
+    "seed": "40 real-SQLite cases: active/shadow \u00d7 0/1/4/8 accounts \u00d7 0/12/120/1200 bees, plus eight filter/freshness cases."
+  },
+  "recipe": {
+    "driver": "v2/daemon/tests/accounts-admission-batch.test.ts",
+    "command": "HIVE_ADMISSION_BATCH_RECEIPT=\"${HIVE_PERF_OUT:?set absolute receipt path}\" node --test v2/daemon/tests/accounts-admission-batch.test.ts",
+    "readiness": "Isolated SQLite seed complete; counters installed only around public admitNewWork.",
+    "completion": "40 complete samples and behavioral controls; roster scans equal nonempty activity pool plus unchanged shadow picker.",
+    "warmup": "None: deterministic method-call counts.",
+    "teardown": "Close owned store and remove fixture in finally, including initial open failure.",
+    "requires": [
+      "Node 24.18.0",
+      "Writable parent directory for HIVE_PERF_OUT"
+    ]
+  },
+  "metrics": [
+    {
+      "id": "excessRosterReads",
+      "unit": "count",
+      "scope": "listBees calls beyond one nonempty activity pass plus the unchanged shadow picker",
+      "collector": "Call-through instance wrappers in accounts-admission-batch.test.ts",
+      "aggregation": "max",
+      "kind": "actual",
+      "status": "gated",
+      "states": [
+        "repeated",
+        "scale"
+      ],
+      "betterWhen": "lower",
+      "invariant": "40 complete samples, zero excess roster reads and successful behavioral controls.",
+      "noise": "Deterministic method-call counts; no timing.",
+      "baseline": {
+        "seriesId": "account-admission-batch-v1:Mac.home:v24.18.0:darwin:arm64",
+        "receipt": ".agents/skills/perf-honeybee/workloads/baselines/account-admission-batch.json",
+        "commit": "afaf713cedc13997d777c446b86d0699f5ad3d24 + receipt source hashes",
+        "samples": 40,
+        "machine": "Mac.home",
+        "runtime": "v24.18.0",
+        "buildMode": "dev",
+        "aggregation": "max",
+        "aggregate": 0,
+        "capturedAt": "2026-09-26T08:07:58.707Z"
+      }
+    }
+  ],
+  "gaps": [
+    "No SQL scan, CPU, latency, RSS or real provider/runtime measurement.",
+    "Claim matching and quota reads remain per candidate."
+  ],
+  "updatedAt": "2026-09-26",
+  "readiness": "Three alternating paired executions retain all six 40-case arms and 120 exact normalized decision/effect comparisons. Eight-account active admission reduces roster reads 8 to 1 and runtime lookups 9600 to 1200 at 1200 bees; shadow keeps its extra picker pass (9 to 2 roster reads). Zero excess roster reads; freshness/transfer/rollback/reopen controls pass. Counts only.",
+  "linked": [
+    {
+      "workload": "account-activity-reads",
+      "why": "Shared AccountsService activity/ownership code remains correct on current source."
+    },
+    {
+      "workload": "account-activity-batch",
+      "why": "Shared AccountsService activity/ownership code remains correct on current source."
+    },
+    {
+      "workload": "account-generation-read",
+      "why": "Shared AccountsService activity/ownership code remains correct on current source."
+    }
+  ]
+}

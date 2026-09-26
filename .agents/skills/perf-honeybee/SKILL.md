@@ -81,3 +81,5 @@ Action reminders are mapped by [action-reminder-reads](workloads/action-reminder
 [Batch account activity](workloads/account-activity-batch.md) measures runtime and roster reads across accounts in one fresh nodeActivity report. It preserves the linked pending-work control and makes no whole-admission or latency claim.
 
 [Historical generation attribution](workloads/account-generation-read.md) counts admission receipt decoding during accountForGeneration. It preserves fresh historical account selection without an index, cache or schema change; SQL scan cost remains unmeasured.
+
+[Batch account admission](workloads/account-admission-batch.md) counts fleet reads through public admitNewWork in active and shadow modes. One per-call activity projection preserves decisions, durable holds and the separate legacy shadow picker; SQL scan cost, CPU and latency are unmeasured.

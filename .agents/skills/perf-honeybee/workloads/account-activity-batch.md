@@ -6,4 +6,4 @@ Use the exact JSON recipe with Node 24.18.0 and an absolute HIVE_PERF_OUT. Keep 
 
 Three alternating paired executions retain all six arms in baselines/account-activity-batch.json, including expected baseline count failures. All 96 paired results match. At 8 accounts/1200 bees, runtime calls fall 9600→1200 and roster/reservation scans 8→1; one account stays 1200→1200 and zero accounts stays 0. Baseline errors in the initial fixture setup are outside the retained pairs. The final collector derives series identity from fixture protocol, hostname, Node version, OS and architecture; another population is not silently comparable.
 
-The 2026-09-25 root receipt refreshes the current-source control (32 cases). Its embedded comparison retains the 2026-09-24 paired gain at the original source hashes; it is historical evidence, not a newly measured improvement.
+The 2026-09-26 root receipt refreshes the current-source control (32 cases). Its embedded comparison retains the 2026-09-24 paired gain at the original source hashes; it is historical evidence, not a newly measured improvement.

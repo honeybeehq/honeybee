@@ -1,17 +1,17 @@
 {
   "workload": "account-generation-read",
-  "seriesId": "account-generation-read-v1:Tormods-Mac-Studio.local:v24.18.0:darwin:arm64",
-  "capturedAt": "2026-09-25T08:09:46.227Z",
-  "host": "Tormods-Mac-Studio.local",
+  "seriesId": "account-generation-read-v1:Mac.home:v24.18.0:darwin:arm64",
+  "capturedAt": "2026-09-26T08:08:46.753Z",
+  "host": "Mac.home",
   "node": "v24.18.0",
   "v8": "13.6.233.17-node.50",
   "load": [
-    518.75,
-    330.62744140625,
-    160.685546875
+    6.8291015625,
+    5.94384765625,
+    5.61767578125
   ],
   "sources": {
-    "../src/accountsService.ts": "fab24b23a8160c810af8f91ce88daccd5dfdd107609fbc885d073cef04a90c7e",
+    "../src/accountsService.ts": "5877206c96378eadffc2ffe59463c19abaa858e05160b9d03f0ec1a06e246ce9",
     "../src/config.ts": "6db947512afe1f2afed6093e67ddb41eb1e07051bae392d024b1c397a9521d1c",
     "../../core/src/store.ts": "04b4aeb8a16b2046b6bb13a7ec91aba42b4c256edf6dec0b24a2263f2f238e51",
     "../../core/src/schema.ts": "b2e114dc69946189cc69e9624651702dc90d763ee948bac899d6221af98d6743",
@@ -4287,5 +4287,6 @@
     "baselineMax": 1200,
     "candidateMax": 0,
     "limits": "Receipt decode counts only; no SQL scan, CPU, latency or RSS claim."
-  }
+  },
+  "comparisonScope": "Historical comparison retained unchanged at its original source hashes/date. Top-level receipt is the current-source linked control from 2026-09-26; no historical improvement remeasurement."
 }

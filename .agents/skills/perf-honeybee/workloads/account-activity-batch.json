@@ -7,7 +7,7 @@
     "hived"
   ],
   "owners": [
-    "v2/daemon/src/accountsService.ts@abb6c84bf50099d098bfeec2a2a94774eef55cad",
+    "v2/daemon/src/accountsService.ts@8915d5ddb2af8cbd5670e8271dcbb88c62fabf83",
     "v2/daemon/src/config.ts@9c21da1c1c0a382b5ed605d5a4f2a7e9985827e1",
     "v2/core/src/store.ts@1d3b7cde2383f6e5c32cefee1a22bda4cb194641"
   ],
@@ -117,26 +117,25 @@
       "invariant": "All 32 cases preserve exact activity and durable state; runtime reads at most one per bee; roster and admission list at most once.",
       "noise": "Deterministic counts; no timing.",
       "baseline": {
-        "seriesId": "account-activity-batch-v1:Tormods-Mac-Studio.local:v24.18.0:darwin:arm64",
+        "seriesId": "account-activity-batch-v1:Mac.home:v24.18.0:darwin:arm64",
         "receipt": ".agents/skills/perf-honeybee/workloads/baselines/account-activity-batch.json",
-        "commit": "55fa1e4748208bbca05ae328512a237739c4f774 + receipt source hashes",
+        "commit": "afaf713cedc13997d777c446b86d0699f5ad3d24 + receipt source hashes",
         "samples": 32,
-        "machine": "Tormods-Mac-Studio.local",
+        "machine": "Mac.home",
         "runtime": "v24.18.0",
         "buildMode": "dev",
         "aggregation": "max",
         "aggregate": 0,
-        "capturedAt": "2026-09-25T08:07:37.287Z"
+        "capturedAt": "2026-09-26T08:08:45.855Z"
       }
     }
   ],
   "gaps": [
-    "Admission still computes each candidate separately.",
     "Reservation matching remains proportional to retained active claims.",
     "Per-call Map allocation and CPU/RSS/latency are unmeasured."
   ],
-  "updatedAt": "2026-09-25",
-  "readiness": "32 current-source linked-control samples preserve exact activity and durable state with zero excess runtime reads. The retained comparison records the historical 2026-09-24 three-pair 9600-to-1200 reduction at its own source hashes; that gain was not remeasured here. Counts only.",
+  "updatedAt": "2026-09-26",
+  "readiness": "32 current-source linked-control samples preserve exact activity and durable state with zero excess runtime reads. Historical 2026-09-24 three-pair 9600-to-1200 reduction remains embedded at its original source hashes, not remeasured. Counts only.",
   "linked": [
     {
       "workload": "account-activity-reads",

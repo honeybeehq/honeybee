@@ -1077,10 +1077,6 @@ export class AccountsService {
     });
   }
 
-  private localActivity(accountId: string, now: number): LocalAccountActivity {
-    return this.localActivities([accountId], now).get(accountId)!;
-  }
-
   private localActivities(accountIds: readonly string[], now: number): Map<string, LocalAccountActivity> {
     const activities = new Map(accountIds.map((id) => [id, {
       active: 0, recent: 0, pending: 0, ongoingUnits: 0, observedClaimIds: new Set<string>(),
@@ -1138,8 +1134,8 @@ export class AccountsService {
     context: AccountAllocationContext | null,
     contextFresh: boolean,
     now: number,
+    local: LocalAccountActivity,
   ): AccountAdmissionCandidate {
-    const local = this.localActivity(account.id, now);
     const remote = contextFresh ? context?.accounts.find((fact) => fact.account === account.id) : undefined;
     const activity = {
       coverage: contextFresh ? "complete" as const : "unknown" as const,
@@ -1222,7 +1218,8 @@ export class AccountsService {
     if (options.operation === "swap" && options.sourceAccount) excluded.add(options.sourceAccount);
     const accounts = this.store.listAccounts({ harness }).filter((account) =>
       !excluded.has(account.id) && (!options.onlyAccountIds || options.onlyAccountIds.has(account.id)));
-    const candidates = accounts.map((account) => this.admissionCandidate(account, options, context, contextFresh, now));
+    const activityByAccount = this.localActivities(accounts.map((account) => account.id), now);
+    const candidates = accounts.map((account) => this.admissionCandidate(account, options, context, contextFresh, now, activityByAccount.get(account.id)!));
     const decision = selectAccountAdmission(candidates, {
       ...DEFAULT_ACCOUNT_ADMISSION_POLICY,
       now,
