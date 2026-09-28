@@ -83,3 +83,5 @@ Action reminders are mapped by [action-reminder-reads](workloads/action-reminder
 [Historical generation attribution](workloads/account-generation-read.md) counts admission receipt decoding during accountForGeneration. It preserves fresh historical account selection without an index, cache or schema change; SQL scan cost remains unmeasured.
 
 [Batch account admission](workloads/account-admission-batch.md) counts fleet reads through public admitNewWork in active and shadow modes. One per-call activity projection preserves decisions, durable holds and the separate legacy shadow picker; SQL scan cost, CPU and latency are unmeasured.
+
+[Reservation membership](workloads/account-activity-reservation-visits.md) counts reservation bee-ID reads during account activity. Ordered per-call groups preserve transfer precedence and fresh state; allocation and SQL scan costs remain unmeasured.

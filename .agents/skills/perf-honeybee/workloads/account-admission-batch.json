@@ -7,7 +7,7 @@
     "hived"
   ],
   "owners": [
-    "v2/daemon/src/accountsService.ts@8915d5ddb2af8cbd5670e8271dcbb88c62fabf83",
+    "v2/daemon/src/accountsService.ts@5d0b863cb4bb99830ce6adc2f532cfe1dc240abf",
     "v2/daemon/src/config.ts@9c21da1c1c0a382b5ed605d5a4f2a7e9985827e1",
     "v2/core/src/store.ts@1d3b7cde2383f6e5c32cefee1a22bda4cb194641",
     "v2/core/src/accountAllocation.ts@1a1285be673daac464632b824a5435622d7597c9",
@@ -123,14 +123,14 @@
       "baseline": {
         "seriesId": "account-admission-batch-v1:Mac.home:v24.18.0:darwin:arm64",
         "receipt": ".agents/skills/perf-honeybee/workloads/baselines/account-admission-batch.json",
-        "commit": "afaf713cedc13997d777c446b86d0699f5ad3d24 + receipt source hashes",
+        "commit": "25d649a82151e6c9e7f5857bdea8c1646ad1f619 + receipt source hashes",
         "samples": 40,
         "machine": "Mac.home",
         "runtime": "v24.18.0",
         "buildMode": "dev",
         "aggregation": "max",
         "aggregate": 0,
-        "capturedAt": "2026-09-26T08:07:58.707Z"
+        "capturedAt": "2026-09-28T08:08:24.265Z"
       }
     }
   ],
@@ -138,8 +138,8 @@
     "No SQL scan, CPU, latency, RSS or real provider/runtime measurement.",
     "Claim matching and quota reads remain per candidate."
   ],
-  "updatedAt": "2026-09-26",
-  "readiness": "Three alternating paired executions retain all six 40-case arms and 120 exact normalized decision/effect comparisons. Eight-account active admission reduces roster reads 8 to 1 and runtime lookups 9600 to 1200 at 1200 bees; shadow keeps its extra picker pass (9 to 2 roster reads). Zero excess roster reads; freshness/transfer/rollback/reopen controls pass. Counts only.",
+  "updatedAt": "2026-09-28",
+  "readiness": "40 current-source linked-control samples pass with zero excessRosterReads. Existing historical comparison, where retained, stays at its original source hashes; no historical gain remeasurement. Counts only.",
   "linked": [
     {
       "workload": "account-activity-reads",

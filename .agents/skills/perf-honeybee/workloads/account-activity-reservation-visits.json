@@ -1,0 +1,143 @@
+{
+  "protocolVersion": 1,
+  "id": "account-activity-reservation-visits",
+  "title": "Account activity reservation membership",
+  "lane": "steady-state",
+  "processes": [
+    "hived"
+  ],
+  "owners": [
+    "v2/daemon/src/accountsService.ts@5d0b863cb4bb99830ce6adc2f532cfe1dc240abf",
+    "v2/daemon/src/config.ts@9c21da1c1c0a382b5ed605d5a4f2a7e9985827e1",
+    "v2/core/src/store.ts@1d3b7cde2383f6e5c32cefee1a22bda4cb194641"
+  ],
+  "effect": {
+    "user": "Keep activity/claim attribution fresh without repeatedly testing unrelated reservation bee IDs.",
+    "assertions": [
+      "Exact activity, generation transfer precedence, ordered first transfer, sorted observed claim IDs.",
+      "No durable writes; expiry/release/rollback/reopen remain fresh."
+    ],
+    "exclusions": [
+      "SQL scan work",
+      "Receipt decoding",
+      "CPU",
+      "Latency",
+      "RSS",
+      "Provider work"
+    ]
+  },
+  "accounts": [
+    {
+      "inventory": "entry-points",
+      "key": "account-activity:nodeActivity"
+    }
+  ],
+  "states": {
+    "idle": {
+      "matters": false,
+      "why": "No process/provider launch; this workload isolates one synchronous activity calculation."
+    },
+    "first-use": {
+      "matters": false,
+      "why": "No process/provider launch; this workload isolates one synchronous activity calculation."
+    },
+    "repeated": {
+      "matters": true,
+      "why": "Two rounds at each scale"
+    },
+    "scale": {
+      "matters": true,
+      "why": "Two relevant accounts, one unrelated harness account; 0/12/120/1200 bees and four reservation distributions."
+    },
+    "background": {
+      "matters": false,
+      "why": "No process/provider launch; this workload isolates one synchronous activity calculation."
+    },
+    "release": {
+      "matters": false,
+      "why": "No process/provider launch; this workload isolates one synchronous activity calculation."
+    },
+    "recovery": {
+      "matters": true,
+      "why": "Lifecycle freshness and reopen are separate behavioral controls."
+    }
+  },
+  "fixture": {
+    "preset": "reservation-visits-v1",
+    "isolationPolicy": 1,
+    "scaleAxes": [
+      {
+        "axis": "bees",
+        "values": [
+          0,
+          12,
+          120,
+          1200
+        ],
+        "unit": "bees"
+      }
+    ],
+    "seed": "32 real SQLite cases: ordinary, transfer, skewed claims and expired/released/unbound history; two repetitions."
+  },
+  "recipe": {
+    "driver": "v2/daemon/tests/accounts-reservation-visits.test.ts",
+    "command": "HIVE_RESERVATION_VISITS_RECEIPT=\"${HIVE_PERF_OUT:?set absolute receipt path}\" node --test v2/daemon/tests/accounts-reservation-visits.test.ts",
+    "readiness": "Seed completed before installing field-read wrappers.",
+    "completion": "32 complete equal expected activity cases and one lifecycle control.",
+    "warmup": "None: deterministic property-read counts.",
+    "teardown": "Close owned store and remove isolated fixture in finally, including initial open failure.",
+    "requires": [
+      "Node24.18.0",
+      "Writable parent directory for HIVE_PERF_OUT"
+    ]
+  },
+  "metrics": [
+    {
+      "id": "excessBeeIdReads",
+      "unit": "count",
+      "scope": "beeId field getter reads beyond one per returned reservation during one public nodeActivity report.",
+      "collector": "Call-through getter instrumentation on real CoreStore returned rows, installed only during nodeActivity.",
+      "aggregation": "max",
+      "kind": "actual",
+      "status": "gated",
+      "states": [
+        "repeated",
+        "scale"
+      ],
+      "betterWhen": "lower",
+      "invariant": "All 32 cases plus lifecycle control complete, exact activity/durable parity, zero excess reads.",
+      "noise": "Deterministic counts; shared-host load does not establish latency.",
+      "baseline": {
+        "seriesId": "reservation-visits-v1:Mac.home:v24.18.0:darwin:arm64",
+        "receipt": ".agents/skills/perf-honeybee/workloads/baselines/account-activity-reservation-visits.json",
+        "commit": "25d649a82151e6c9e7f5857bdea8c1646ad1f619 + receipt source hashes",
+        "samples": 32,
+        "machine": "Mac.home",
+        "runtime": "v24.18.0",
+        "buildMode": "dev",
+        "aggregation": "max",
+        "aggregate": 0,
+        "capturedAt": "2026-09-28T08:09:13.475Z"
+      }
+    }
+  ],
+  "gaps": [
+    "Temporary per-call grouping allocation, SQL scans, receipt decoding, CPU and latency remain unmeasured."
+  ],
+  "updatedAt": "2026-09-28",
+  "readiness": "Three alternating pairs retain all six 32-case arms and 96 exact output-hash matches. At 1200 bees with transfers, beeId reads fall from 5043600 to 3600; excess reads from 5040000 to 0. Ordered transfer and fresh expiry/release/rollback/generation/reopen controls pass. Counts only.",
+  "linked": [
+    {
+      "workload": "account-activity-batch",
+      "why": "Same helper must preserve this existing count and freshness control."
+    },
+    {
+      "workload": "account-activity-reads",
+      "why": "Same helper must preserve this existing count and freshness control."
+    },
+    {
+      "workload": "account-admission-batch",
+      "why": "Same helper must preserve this existing count and freshness control."
+    }
+  ]
+}

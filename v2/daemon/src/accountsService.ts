@@ -1083,13 +1083,18 @@ export class AccountsService {
     }]));
     if (activities.size === 0) return activities;
     const grace = this.cfg.accounts.allocationRecentGraceMs;
-    const boundReservations = this.store.listAccountAdmissions()
-      .filter((reservation) => reservation.beeId !== null && reservation.releasedAt === null && reservation.expiresAt > now);
-    const transfers = boundReservations
-      .filter((reservation) => reservation.sourceAccount !== null && reservation.sourceAccount !== reservation.account);
+    const reservationsByBee = new Map<string, AccountAdmissionReservationRow[]>();
+    for (const reservation of this.store.listAccountAdmissions()) {
+      const beeId = reservation.beeId;
+      if (beeId === null || reservation.releasedAt !== null || !(reservation.expiresAt > now)) continue;
+      const reservations = reservationsByBee.get(beeId);
+      if (reservations) reservations.push(reservation);
+      else reservationsByBee.set(beeId, [reservation]);
+    }
     for (const bee of this.store.listBees()) {
       const runtime = this.store.currentRuntime(bee.id);
-      const transfer = transfers.find((reservation) => reservation.beeId === bee.id
+      const reservations = reservationsByBee.get(bee.id) ?? [];
+      const transfer = reservations.find((reservation) => reservation.sourceAccount !== null && reservation.sourceAccount !== reservation.account
         && (runtime?.generation ?? 0) <= reservation.reconcileAfterGeneration);
       const runtimeAccount = transfer?.sourceAccount ?? bee.account;
       const activity = runtimeAccount == null ? undefined : activities.get(runtimeAccount);
@@ -1120,8 +1125,8 @@ export class AccountsService {
         }
       }
       if (represented) {
-        for (const reservation of boundReservations) {
-          if (reservation.beeId === bee.id && reservation.account === runtimeAccount) activity.observedClaimIds.add(reservation.id);
+        for (const reservation of reservations) {
+          if (reservation.account === runtimeAccount) activity.observedClaimIds.add(reservation.id);
         }
       }
     }

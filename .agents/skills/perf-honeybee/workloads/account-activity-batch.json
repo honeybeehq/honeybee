@@ -7,7 +7,7 @@
     "hived"
   ],
   "owners": [
-    "v2/daemon/src/accountsService.ts@8915d5ddb2af8cbd5670e8271dcbb88c62fabf83",
+    "v2/daemon/src/accountsService.ts@5d0b863cb4bb99830ce6adc2f532cfe1dc240abf",
     "v2/daemon/src/config.ts@9c21da1c1c0a382b5ed605d5a4f2a7e9985827e1",
     "v2/core/src/store.ts@1d3b7cde2383f6e5c32cefee1a22bda4cb194641"
   ],
@@ -119,23 +119,23 @@
       "baseline": {
         "seriesId": "account-activity-batch-v1:Mac.home:v24.18.0:darwin:arm64",
         "receipt": ".agents/skills/perf-honeybee/workloads/baselines/account-activity-batch.json",
-        "commit": "afaf713cedc13997d777c446b86d0699f5ad3d24 + receipt source hashes",
+        "commit": "25d649a82151e6c9e7f5857bdea8c1646ad1f619 + receipt source hashes",
         "samples": 32,
         "machine": "Mac.home",
         "runtime": "v24.18.0",
         "buildMode": "dev",
         "aggregation": "max",
         "aggregate": 0,
-        "capturedAt": "2026-09-26T08:08:45.855Z"
+        "capturedAt": "2026-09-28T08:08:19.866Z"
       }
     }
   ],
   "gaps": [
-    "Reservation matching remains proportional to retained active claims.",
+    "Reservation matching is covered separately by account-activity-reservation-visits; SQL scans and receipt decoding remain unmeasured.",
     "Per-call Map allocation and CPU/RSS/latency are unmeasured."
   ],
-  "updatedAt": "2026-09-26",
-  "readiness": "32 current-source linked-control samples preserve exact activity and durable state with zero excess runtime reads. Historical 2026-09-24 three-pair 9600-to-1200 reduction remains embedded at its original source hashes, not remeasured. Counts only.",
+  "updatedAt": "2026-09-28",
+  "readiness": "32 current-source linked-control samples pass with zero excessRuntimeReads. Existing historical comparison, where retained, stays at its original source hashes; no historical gain remeasurement. Counts only.",
   "linked": [
     {
       "workload": "account-activity-reads",

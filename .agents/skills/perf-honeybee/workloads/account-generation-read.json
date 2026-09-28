@@ -8,7 +8,7 @@
   ],
   "owners": [
     "v2/core/src/store.ts@1d3b7cde2383f6e5c32cefee1a22bda4cb194641",
-    "v2/daemon/src/accountsService.ts@8915d5ddb2af8cbd5670e8271dcbb88c62fabf83"
+    "v2/daemon/src/accountsService.ts@5d0b863cb4bb99830ce6adc2f532cfe1dc240abf"
   ],
   "effect": {
     "user": "Attribute delayed account flag evidence to its historical runtime account.",
@@ -117,14 +117,14 @@
       "baseline": {
         "seriesId": "account-generation-read-v1:Mac.home:v24.18.0:darwin:arm64",
         "receipt": ".agents/skills/perf-honeybee/workloads/baselines/account-generation-read.json",
-        "commit": "afaf713cedc13997d777c446b86d0699f5ad3d24 + receipt source hashes",
+        "commit": "25d649a82151e6c9e7f5857bdea8c1646ad1f619 + receipt source hashes",
         "samples": 64,
         "machine": "Mac.home",
         "runtime": "v24.18.0",
         "buildMode": "dev",
         "aggregation": "max",
         "aggregate": 0,
-        "capturedAt": "2026-09-26T08:08:46.753Z"
+        "capturedAt": "2026-09-28T08:08:25.151Z"
       }
     }
   ],
@@ -132,8 +132,8 @@
     "SQLite still examines retained history; no index or migration introduced.",
     "Whole account policy and credential/provider recovery unmeasured."
   ],
-  "updatedAt": "2026-09-26",
-  "readiness": "64 current-source linked-control cases preserve account identity and durable state with zero receipt decodes. Historical 2026-09-25 three-pair 192-case comparison remains embedded at its original source hashes; no historical gain remeasurement. Counts only.",
+  "updatedAt": "2026-09-28",
+  "readiness": "64 current-source linked-control samples pass with zero admissionReceiptParses. Existing historical comparison, where retained, stays at its original source hashes; no historical gain remeasurement. Counts only.",
   "linked": [
     {
       "workload": "account-activity-batch",
