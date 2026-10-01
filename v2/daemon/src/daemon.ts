@@ -126,6 +126,7 @@ import {
   evictCellWrapper,
   hasCommit,
   restoreEnvFiles,
+  restoreKeptPaths,
   localRepoIdentity,
   parseSpaceName,
   readLedger,
@@ -805,6 +806,7 @@ export class HiveDaemon {
     this.reconcileCellOpsAtBoot();
     // v31: wrappers parked by an earlier pass are already evicted; finish deleting them.
     void this.retention.sweep();
+    this.retention.reconcileKept();
     // v16: login workers do not survive a daemon restart (a PTY cannot be
     // re-adopted): settle their flows as interrupted, then remove the
     // retired tmux login seats this node's own daemons created.
@@ -2675,6 +2677,15 @@ export class HiveDaemon {
     } catch (err) {
       this.log(`cell.env.restore_failed bee=${beeId} ${err instanceof Error ? err.message : String(err)}`);
     }
+    try {
+      const row = store.getCell(bee.cellId);
+      const { restored, conflicts } = row ? restoreKeptPaths(this.cfg.cellsRoot, row.spaceDir) : { restored: [], conflicts: [] };
+      if (restored.length > 0 || conflicts.length > 0) {
+        this.log(`cell.keep.restored bee=${beeId} cell=${bee.cellId} paths=${restored.length} conflicts=${conflicts.length}${conflicts.length > 0 ? ` ${JSON.stringify(conflicts)}` : ""}`);
+      }
+    } catch (err) {
+      this.log(`cell.keep.restore_failed bee=${beeId} ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   /**
@@ -2710,7 +2721,7 @@ export class HiveDaemon {
     if (!bee || bee.substrate !== "cell" || !row || row.state === "removed" || row.state === "removing") {
       throw new RpcError("invalid_request", `cell.evict: bee ${beeId} has no Cell allocation`);
     }
-    if (row.state === "evicted") return { cell: row, status: "absent", forced: false, report: null, bytes: null, envFiles: [] };
+    if (row.state === "evicted") return { cell: row, status: "absent", forced: false, report: null, bytes: null, envFiles: [], keptPaths: [] };
     if (row.state !== "active") {
       throw new RpcError("invalid_request", `cell.evict: cell ${row.id} is ${row.state}; retained allocations use cell.retained.remove`);
     }
@@ -2726,20 +2737,20 @@ export class HiveDaemon {
     if (!driver) throw new RpcError("node_stopped", "daemon is shutting down");
     const wrapperDir = dirname(resolve(row.spaceDir));
     try {
-      const parked = evictCellWrapper(this.cfg.cellsRoot, wrapperDir, { force });
+      const parked = evictCellWrapper(this.cfg.cellsRoot, wrapperDir, { force, trimPatterns: this.cfg.cellRetention.trimPatterns });
       driver.cell.forgetCell(beeId);
       if (parked == null) {
         const evicted = store.evictCell(row.id, { head: null, bytes: null, reason: "operator" });
-        return { cell: evicted, status: "absent", forced: false, report: null, bytes: null, envFiles: [] };
+        return { cell: evicted, status: "absent", forced: false, report: null, bytes: null, envFiles: [], keptPaths: [] };
       }
-      const evicted = store.evictCell(row.id, { head: parked.head, bytes: null, reason: "operator", envFiles: parked.envFiles });
-      this.log(`cell.evict bee=${beeId} cell=${row.id} forced=${parked.forced} head=${parked.head ?? "-"} parked=${parked.parkedDir} env_files=${parked.envFiles.length}`);
+      const evicted = store.evictCell(row.id, { head: parked.head, bytes: null, reason: "operator", envFiles: parked.envFiles, keptPaths: parked.keptPaths });
+      this.log(`cell.evict bee=${beeId} cell=${row.id} forced=${parked.forced} head=${parked.head ?? "-"} parked=${parked.parkedDir} env_files=${parked.envFiles.length} kept=${parked.keptPaths.length}`);
       void this.retention?.sweep();
-      return { cell: evicted, status: "evicted", forced: parked.forced, report: parked.report, bytes: null, envFiles: parked.envFiles };
+      return { cell: evicted, status: "evicted", forced: parked.forced, report: parked.report, bytes: null, envFiles: parked.envFiles, keptPaths: parked.keptPaths };
     } catch (err) {
       if (err instanceof CellDeleteRefused) {
         this.log(`cell.evict bee=${beeId} refused dirty=${JSON.stringify(err.report)}`);
-        return { cell: row, status: "refused", forced: false, report: err.report, bytes: null, envFiles: [] };
+        return { cell: row, status: "refused", forced: false, report: err.report, bytes: null, envFiles: [], keptPaths: [] };
       }
       if (err instanceof CellHeadMovedError) throw new RpcError("runtime_refused", err.message);
       throw err;

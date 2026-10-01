@@ -17,12 +17,21 @@
  *  - `sweepEvicting`: asynchronous deletion of parked wrappers, at boot and
  *    after every pass. Anything under `_evicting/` is by construction already
  *    evicted; deleting it is idempotent.
+ *  - `trimCellWrapper`: reclaim rebuildable build output (`.next`, `target`,
+ *    `DerivedData`, …) from a Cell that stays in place, by the same atomic
+ *    park into `_evicting/`.
+ *
+ * Git-ignored content falls into four classes (`classifyIgnored`): env files
+ * (copied to `cell-env/`), build output (trimmed or deleted), installable
+ * dependencies (`node_modules`, deleted), and everything else, which eviction
+ * moves to `cell-keep/<spaceName>/` and revive moves back. Nothing that is not
+ * known to be rebuildable is ever deleted by retention.
  *
  * Bytes are `du -sk` semantics (allocated blocks, symlinks not followed). On
  * APFS a pnpm `node_modules` copied by CoW shares blocks with its origin, so
  * du overstates what a deletion actually frees; callers label it as such.
  */
-import { chmodSync, constants, copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, rmdirSync, rmSync, statSync, unlinkSync } from "node:fs";
+import { chmodSync, constants, copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmdirSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { GitError, revParse, tryGit } from "./git.ts";
@@ -51,8 +60,15 @@ export interface CellWrapperInspection {
   report: DirtyReport | null;
   /** Allocated bytes (du -sk semantics); null when absent. */
   bytes: number | null;
+  trim: PathBytes[];
+  keep: PathBytes[];
   /** Fastest wall-clock cost of this inspection, for pass telemetry. */
   elapsedMs: number;
+}
+
+export interface PathBytes {
+  path: string;
+  bytes: number | null;
 }
 
 /** `du -sk`-equivalent: allocated blocks of every entry beneath `dir`, symlinks not followed. */
@@ -87,25 +103,74 @@ export function measureDirectoryBytes(dir: string): number {
   return total;
 }
 
+export const DEFAULT_TRIM_PATTERNS: readonly string[] = [
+  ".next",
+  ".nuxt",
+  ".svelte-kit",
+  ".turbo",
+  ".parcel-cache",
+  ".gradle",
+  ".test-dist",
+  "DerivedData",
+  "target",
+  "build",
+  "dist",
+  "out",
+  "*.tsbuildinfo",
+];
+
+const INSTALL_DIRECTORY_NAMES = new Set(["node_modules", ".venv", "venv", "Pods"]);
+const DISPOSABLE_FILE_NAMES = new Set([".DS_Store"]);
+
+export interface IgnoredEntries {
+  env: string[];
+  trim: string[];
+  keep: string[];
+}
+
+export function matchesTrimPattern(name: string, isDirectory: boolean, patterns: readonly string[]): boolean {
+  return patterns.some((pattern) => (pattern.startsWith("*.") ? !isDirectory && name.endsWith(pattern.slice(1)) : isDirectory && name === pattern));
+}
+
+export function classifyIgnored(spaceDir: string, trimPatterns: readonly string[] = DEFAULT_TRIM_PATTERNS): IgnoredEntries {
+  const out: IgnoredEntries = { env: [], trim: [], keep: [] };
+  if (!existsSync(join(spaceDir, ".git"))) return out;
+  const args = ["--no-optional-locks", "status", "--porcelain=v1", "-z", "--ignored=matching", "--untracked-files=normal"];
+  const result = tryGit(spaceDir, args);
+  if (result.status !== 0) throw new GitError(args, result.status, result.stderr);
+  const records = result.stdout.split("\0");
+  for (let i = 0; i < records.length; i++) {
+    const record = records[i]!;
+    if ("RC".includes(record[0] ?? " ") || "RC".includes(record[1] ?? " ")) i += 1;
+    if (!record.startsWith("!! ")) continue;
+    const entry = record.slice(3);
+    const isDirectory = entry.endsWith("/");
+    const path = isDirectory ? entry.slice(0, -1) : entry;
+    const name = basename(path);
+    if (path.split("/").some((part) => INSTALL_DIRECTORY_NAMES.has(part))) continue;
+    if (!isDirectory && DISPOSABLE_FILE_NAMES.has(name)) continue;
+    if (!isDirectory && (name === ".env" || name.startsWith(".env."))) out.env.push(path);
+    else if (matchesTrimPattern(name, isDirectory, trimPatterns)) out.trim.push(path);
+    else out.keep.push(path);
+  }
+  out.env.sort();
+  out.trim.sort();
+  out.keep.sort();
+  return out;
+}
+
 /**
  * Git-ignored `.env` and `.env.*` files at any depth (outside fully-ignored
  * directories such as node_modules, which git collapses). They are often
  * per-Cell and unique, so eviction preserves them and revive restores them.
  */
 export function listIgnoredEnvFiles(spaceDir: string): string[] {
-  if (!existsSync(join(spaceDir, ".git"))) return [];
-  const args = ["ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z"];
-  const result = tryGit(spaceDir, args);
-  if (result.status !== 0) throw new GitError(args, result.status, result.stderr);
-  const files = result.stdout;
-  return files
-    .split("\0")
-    .filter((p) => p.length > 0 && !p.endsWith("/"))
-    .filter((p) => {
-      const name = basename(p);
-      return name === ".env" || name.startsWith(".env.");
-    })
-    .sort();
+  return classifyIgnored(spaceDir).env;
+}
+
+export function measurePathBytes(path: string): number {
+  const st = lstatSync(path);
+  return st.isDirectory() ? measureDirectoryBytes(path) : st.blocks * 512;
 }
 
 /** Durable home for preserved env files: `<data-dir>/cell-env/<spaceName>/<relative path>`, beside cells/. */
@@ -145,8 +210,7 @@ function removeRestoredEnv(stash: string, source: string): void {
 }
 
 /** Copy the Cell's ignored env files out (mode 0600). Returns the space-relative paths preserved. */
-export function preserveEnvFiles(cellsRoot: string, spaceDir: string): string[] {
-  const files = listIgnoredEnvFiles(spaceDir);
+export function preserveEnvFiles(cellsRoot: string, spaceDir: string, files: string[] = listIgnoredEnvFiles(spaceDir)): string[] {
   if (files.length === 0) return [];
   const stash = envStashDir(cellsRoot, basename(resolve(spaceDir)));
   for (const rel of files) {
@@ -210,6 +274,253 @@ export function restoreEnvFiles(cellsRoot: string, spaceDir: string): string[] {
   return restored;
 }
 
+export function cellKeepRootForCells(cellsRoot: string): string {
+  const root = resolve(cellsRoot);
+  return join(dirname(existsSync(root) ? realpathSync(root) : root), "cell-keep");
+}
+
+function keepStashDir(cellsRoot: string, spaceName: string): string {
+  if (!CELL_SPACE_DIRECTORY.test(spaceName)) throw new CellShapeError(spaceName, "not a -space- name");
+  return join(cellKeepRootForCells(cellsRoot), spaceName);
+}
+
+function keepManifestPath(cellsRoot: string, spaceName: string): string {
+  return `${keepStashDir(cellsRoot, spaceName)}.json`;
+}
+
+interface KeepManifest {
+  version: 1;
+  paths: string[];
+}
+
+function readKeepManifest(path: string): KeepManifest | null {
+  if (!existsSync(path)) return null;
+  const parsed = JSON.parse(readFileSync(path, "utf8")) as Partial<KeepManifest>;
+  if (parsed.version !== 1 || !Array.isArray(parsed.paths) || !parsed.paths.every((p) => typeof p === "string")) {
+    throw new CellShapeError(path, "unreadable keep manifest");
+  }
+  return { version: 1, paths: parsed.paths };
+}
+
+function writeKeepManifest(path: string, paths: string[]): void {
+  const temporary = `${path}.tmp`;
+  writeFileSync(temporary, JSON.stringify({ version: 1, paths } satisfies KeepManifest));
+  renameSync(temporary, path);
+}
+
+function pathExists(path: string): boolean {
+  try {
+    lstatSync(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function assertInsideRealDir(root: string, rel: string): string {
+  const path = join(root, rel);
+  const relToRoot = relative(root, path);
+  if (relToRoot === "" || relToRoot === ".." || relToRoot.startsWith("../")) throw new CellShapeError(path, "path escapes its root");
+  if (realpathSync(dirname(path)) !== join(realpathSync(root), dirname(relToRoot))) {
+    throw new CellShapeError(path, "path has a symlinked parent");
+  }
+  return path;
+}
+
+function removeEmptyTree(dir: string): void {
+  if (!existsSync(dir) || !lstatSync(dir).isDirectory()) return;
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.isDirectory()) removeEmptyTree(join(dir, entry.name));
+    else if (entry.isFile() && DISPOSABLE_FILE_NAMES.has(entry.name)) unlinkSync(join(dir, entry.name));
+  }
+  try { rmdirSync(dir); }
+  catch (err) { if ((err as NodeJS.ErrnoException).code !== "ENOTEMPTY") throw err; }
+}
+
+export function hasPendingKeep(cellsRoot: string, spaceName: string): boolean {
+  return existsSync(keepManifestPath(cellsRoot, spaceName)) || existsSync(keepStashDir(cellsRoot, spaceName));
+}
+
+export function listPendingKeeps(cellsRoot: string): string[] {
+  const root = cellKeepRootForCells(cellsRoot);
+  if (!existsSync(root)) return [];
+  return readdirSync(root)
+    .filter((entry) => entry.endsWith(".json"))
+    .map((entry) => entry.slice(0, -".json".length))
+    .filter((spaceName) => CELL_SPACE_DIRECTORY.test(spaceName))
+    .sort();
+}
+
+export function listKeptPaths(cellsRoot: string, spaceName: string): string[] {
+  return readKeepManifest(keepManifestPath(cellsRoot, spaceName))?.paths.filter((rel) => pathExists(join(keepStashDir(cellsRoot, spaceName), rel))) ?? [];
+}
+
+export function preserveKeptPaths(cellsRoot: string, spaceDir: string, paths: string[]): string[] {
+  if (paths.length === 0) return [];
+  const spaceName = basename(resolve(spaceDir));
+  const stash = keepStashDir(cellsRoot, spaceName);
+  const manifest = keepManifestPath(cellsRoot, spaceName);
+  if (hasPendingKeep(cellsRoot, spaceName)) {
+    throw new CellShapeError(stash, "kept files from an earlier eviction were never restored; restore or remove them before evicting again");
+  }
+  mkdirSync(cellKeepRootForCells(cellsRoot), { recursive: true });
+  writeKeepManifest(manifest, paths);
+  mkdirSync(stash);
+  const moved: string[] = [];
+  try {
+    for (const rel of paths) {
+      if (!pathExists(join(spaceDir, rel))) throw new CellShapeError(join(spaceDir, rel), "ignored path listed by git is not on disk");
+      const source = assertInsideRealDir(spaceDir, rel);
+      const target = join(stash, rel);
+      ensureEnvParent(stash, target);
+      renameSync(source, target);
+      moved.push(rel);
+    }
+  } catch (err) {
+    for (const rel of moved.reverse()) renameSync(join(stash, rel), join(spaceDir, rel));
+    removeEmptyTree(stash);
+    unlinkSync(manifest);
+    throw err;
+  }
+  writeKeepManifest(manifest, moved);
+  return moved;
+}
+
+export function restoreKeptPaths(cellsRoot: string, spaceDir: string): { restored: string[]; conflicts: string[] } {
+  const spaceName = basename(resolve(spaceDir));
+  const manifestPath = keepManifestPath(cellsRoot, spaceName);
+  const manifest = readKeepManifest(manifestPath);
+  if (manifest == null) return { restored: [], conflicts: [] };
+  const stash = keepStashDir(cellsRoot, spaceName);
+  const restored: string[] = [];
+  const conflicts: string[] = [];
+  for (const rel of manifest.paths) {
+    const source = join(stash, rel);
+    if (!pathExists(source)) continue;
+    const target = join(spaceDir, rel);
+    try {
+      ensureEnvParent(spaceDir, target);
+      if (pathExists(target)) {
+        conflicts.push(rel);
+        continue;
+      }
+      renameSync(source, target);
+      restored.push(rel);
+    } catch {
+      conflicts.push(rel);
+    }
+  }
+  if (conflicts.length === 0) {
+    removeEmptyTree(stash);
+    if (existsSync(stash)) throw new CellShapeError(stash, "keep stash holds files outside its manifest");
+    unlinkSync(manifestPath);
+  } else {
+    writeKeepManifest(manifestPath, conflicts);
+  }
+  return { restored, conflicts };
+}
+
+export interface TrimResult {
+  parkedDir: string | null;
+  trimmed: string[];
+  skipped: TrimSkip[];
+}
+
+export interface TrimSkip {
+  path: string;
+  why: string;
+}
+
+function trimPathRefusal(spaceDir: string, rel: string): string | null {
+  if (!pathExists(join(spaceDir, rel))) return "absent";
+  let path: string;
+  try {
+    path = assertInsideRealDir(spaceDir, rel);
+  } catch {
+    return "unsafe_path";
+  }
+  const st = lstatSync(path);
+  if (st.isSymbolicLink()) return "symlink";
+  if (st.isDirectory() && pathExists(join(path, ".git"))) return "nested_repository";
+  return null;
+}
+
+function newestModification(path: string): number {
+  const st = lstatSync(path);
+  let newest = st.mtimeMs;
+  if (st.isDirectory()) {
+    for (const entry of readdirSync(path)) {
+      try {
+        newest = Math.max(newest, lstatSync(join(path, entry)).mtimeMs);
+      } catch {
+        continue;
+      }
+    }
+  }
+  return newest;
+}
+
+function trimTarget(cellsRoot: string, wrapperDir: string): { root: string; target: string; spaceDir: string } {
+  const target = resolve(wrapperDir);
+  const root = resolve(cellsRoot);
+  if (dirname(target) !== root || basename(target) === EVICTING_DIR) {
+    throw new CellShapeError(target, "not a wrapper directly under the cells root");
+  }
+  const spaceDir = spaceDirIn(target);
+  if (spaceDir == null) throw new CellShapeError(target, "no -space- checkout inside");
+  return { root, target, spaceDir };
+}
+
+export function verifyTrimPaths(
+  wrapperDir: string,
+  planned: string[],
+  opts: { trimPatterns?: readonly string[]; modifiedSinceMs?: number } = {},
+): { confirmed: string[]; skipped: TrimSkip[] } {
+  const spaceDir = spaceDirIn(resolve(wrapperDir));
+  if (spaceDir == null) return { confirmed: [], skipped: planned.map((path) => ({ path, why: "absent" })) };
+  const current = new Set(classifyIgnored(spaceDir, opts.trimPatterns ?? DEFAULT_TRIM_PATTERNS).trim);
+  const confirmed: string[] = [];
+  const skipped: TrimSkip[] = [];
+  for (const rel of planned) {
+    const why = !current.has(rel) ? "not_ignored_build_output" : trimPathRefusal(spaceDir, rel);
+    if (why != null) skipped.push({ path: rel, why });
+    else if (opts.modifiedSinceMs != null && newestModification(join(spaceDir, rel)) >= opts.modifiedSinceMs) skipped.push({ path: rel, why: "recently_modified" });
+    else confirmed.push(rel);
+  }
+  return { confirmed, skipped };
+}
+
+export function parkTrimPaths(cellsRoot: string, wrapperDir: string, confirmed: string[], opts: { now?: () => number } = {}): TrimResult {
+  const { root, target, spaceDir } = trimTarget(cellsRoot, wrapperDir);
+  const result: TrimResult = { parkedDir: null, trimmed: [], skipped: [] };
+  for (const rel of confirmed) {
+    const why = trimPathRefusal(spaceDir, rel);
+    if (why != null) {
+      result.skipped.push({ path: rel, why });
+      continue;
+    }
+    if (result.parkedDir == null) {
+      result.parkedDir = join(root, EVICTING_DIR, `${basename(target)}.trim.${(opts.now ?? Date.now)()}.${process.pid}`);
+      mkdirSync(result.parkedDir, { recursive: true });
+    }
+    renameSync(join(spaceDir, rel), join(result.parkedDir, String(result.trimmed.length)));
+    result.trimmed.push(rel);
+  }
+  return result;
+}
+
+export function trimCellWrapper(
+  cellsRoot: string,
+  wrapperDir: string,
+  planned: string[],
+  opts: { trimPatterns?: readonly string[]; modifiedSinceMs?: number; now?: () => number } = {},
+): TrimResult {
+  trimTarget(cellsRoot, wrapperDir);
+  const verified = verifyTrimPaths(wrapperDir, planned, opts);
+  const parked = parkTrimPaths(cellsRoot, wrapperDir, verified.confirmed, opts);
+  return { ...parked, skipped: [...verified.skipped, ...parked.skipped] };
+}
+
 function spaceDirIn(wrapperDir: string): string | null {
   let entries: string[];
   try {
@@ -221,19 +532,21 @@ function spaceDirIn(wrapperDir: string): string | null {
   return join(wrapperDir, entries.find((e) => CELL_SPACE_DIRECTORY.test(e)) as string);
 }
 
-export function inspectCellWrapper(wrapperDir: string, opts: { measure?: boolean } = {}): CellWrapperInspection {
+export function inspectCellWrapper(wrapperDir: string, opts: { measure?: boolean; trimPatterns?: readonly string[] } = {}): CellWrapperInspection {
   const started = Date.now();
   const target = resolve(wrapperDir);
   const spaceDir = spaceDirIn(target);
   if (spaceDir == null) {
-    return { wrapperDir: target, envFiles: [], present: false, provisioned: false, head: null, report: null, bytes: null, elapsedMs: Date.now() - started };
+    return { wrapperDir: target, envFiles: [], present: false, provisioned: false, head: null, report: null, bytes: null, trim: [], keep: [], elapsedMs: Date.now() - started };
   }
   const provisioned = existsSync(join(spaceDir, ".git"));
   const head = provisioned ? revParse(spaceDir, "HEAD") : null;
   const report = dirtyReport(target);
-  const envFiles = provisioned ? listIgnoredEnvFiles(spaceDir) : [];
-  const bytes = opts.measure === false ? null : measureDirectoryBytes(target);
-  return { wrapperDir: target, envFiles, present: true, provisioned, head, report, bytes, elapsedMs: Date.now() - started };
+  const ignored = classifyIgnored(spaceDir, opts.trimPatterns ?? DEFAULT_TRIM_PATTERNS);
+  const measure = opts.measure !== false;
+  const sized = (paths: string[]): PathBytes[] => paths.map((path) => ({ path, bytes: measure ? measurePathBytes(join(spaceDir, path)) : null }));
+  const bytes = measure ? measureDirectoryBytes(target) : null;
+  return { wrapperDir: target, envFiles: ignored.env, present: true, provisioned, head, report, bytes, trim: sized(ignored.trim), keep: sized(ignored.keep), elapsedMs: Date.now() - started };
 }
 
 export interface EvictResult {
@@ -244,6 +557,7 @@ export interface EvictResult {
   forced: boolean;
   /** Ignored env files copied to `cell-env/<spaceName>/` before the park; revive restores them. */
   envFiles: string[];
+  keptPaths: string[];
 }
 
 export class CellHeadMovedError extends Error {
@@ -262,7 +576,7 @@ export class CellHeadMovedError extends Error {
 export function evictCellWrapper(
   cellsRoot: string,
   wrapperDir: string,
-  opts: { force?: boolean; expectedHead?: string | null; now?: () => number } = {},
+  opts: { force?: boolean; expectedHead?: string | null; now?: () => number; trimPatterns?: readonly string[] } = {},
 ): EvictResult | null {
   const target = resolve(wrapperDir);
   if (!existsSync(target)) return null;
@@ -279,12 +593,18 @@ export function evictCellWrapper(
   if (opts.expectedHead !== undefined && head !== opts.expectedHead) {
     throw new CellHeadMovedError(target, opts.expectedHead, head);
   }
-  const envFiles = preserveEnvFiles(root, spaceDir);
-  const parkRoot = join(root, EVICTING_DIR);
-  mkdirSync(parkRoot, { recursive: true });
-  const parkedDir = join(parkRoot, `${basename(target)}.${(opts.now ?? Date.now)()}.${process.pid}`);
-  renameSync(target, parkedDir);
-  return { parkedDir, head, report, forced: report.dirty, envFiles };
+  const ignored = classifyIgnored(spaceDir, opts.trimPatterns ?? DEFAULT_TRIM_PATTERNS);
+  const envFiles = preserveEnvFiles(root, spaceDir, ignored.env);
+  const keptPaths = preserveKeptPaths(root, spaceDir, ignored.keep);
+  const parkedDir = join(root, EVICTING_DIR, `${basename(target)}.${(opts.now ?? Date.now)()}.${process.pid}`);
+  try {
+    mkdirSync(dirname(parkedDir), { recursive: true });
+    renameSync(target, parkedDir);
+  } catch (err) {
+    restoreKeptPaths(root, spaceDir);
+    throw err;
+  }
+  return { parkedDir, head, report, forced: report.dirty, envFiles, keptPaths };
 }
 
 /** Parked wrappers awaiting deletion. */

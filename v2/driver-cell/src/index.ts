@@ -26,23 +26,36 @@ export {
 } from "./remove.ts";
 export {
   CellHeadMovedError,
+  DEFAULT_TRIM_PATTERNS,
   EVICTING_DIR,
   cellEnvRootForCells,
+  cellKeepRootForCells,
+  classifyIgnored,
   evictCellWrapper,
   inspectCellWrapper,
   listEvicting,
   listIgnoredEnvFiles,
+  listKeptPaths,
+  listPendingKeeps,
   listPreservedEnvFiles,
   measureDirectoryBytes,
+  parkTrimPaths,
   preserveEnvFiles,
+  preserveKeptPaths,
   restoreEnvFiles,
+  restoreKeptPaths,
   retentionWorkerUrl,
   sweepEvicting,
   sweepEvictingSync,
+  trimCellWrapper,
+  verifyTrimPaths,
   type CellWrapperInspection,
   type EvictResult,
+  type PathBytes,
+  type TrimResult,
+  type TrimSkip,
 } from "./retention.ts";
-export type { RetentionWorkerRequest, RetentionWorkerResult } from "./retentionWorker.ts";
+export type { RetentionWorkerRequest, RetentionWorkerResult, TrimVerifyWorkerRequest, TrimVerifyWorkerResult } from "./retentionWorker.ts";
 export {
   bwrapArgs,
   defaultWritablePaths,

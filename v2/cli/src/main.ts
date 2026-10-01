@@ -2345,13 +2345,23 @@ function renderCellGc(r: CellGcResult): string[] {
   const days = (ms: number | null) => (ms == null ? "never" : `${ms / 86_400_000}d`);
   lines.push(
     `policy: ${r.policy.enabled ? "on" : "OFF"} · archived ≥ ${days(r.policy.archivedAfterMs)} · stopped ≥ ${days(r.policy.stoppedAfterMs)} · retained ≥ ${days(r.policy.retainedAfterMs)}` +
-      ` · budget ${r.policy.maxBytes == null ? "none" : gib(r.policy.maxBytes)} · max ${r.policy.maxPerPass}/pass · inspect ${Math.round(r.inspectMs / 1000)}s`,
+      ` · budget ${r.policy.maxBytes == null ? "none" : gib(r.policy.maxBytes)} · max ${r.policy.maxPerPass}/pass` +
+      ` · trim ≥ ${r.policy.trimAfterMs == null ? "never" : `${r.policy.trimAfterMs / 3_600_000}h`} · inspect ${Math.round(r.inspectMs / 1000)}s`,
   );
   const planned = r.items.filter((i) => i.verdict === "evict" || i.verdict === "remove_retained").sort((a, b) => (b.bytes ?? 0) - (a.bytes ?? 0));
   const envCells = planned.filter((i) => i.envFiles.length > 0).length;
   lines.push(`planned: ${planned.length} Cells, ${gib(t.plannedBytes)} · held: ${t.heldCells} Cells, ${gib(t.heldBytes)} (${t.dirtyCells} dirty)${envCells > 0 ? ` · ${envCells} planned Cells carry ignored env files (preserved under cell-env/, restored on revive)` : ""}`);
   for (const i of planned) {
-    lines.push(`  ${i.verdict === "evict" ? "evict " : "remove"} ${gib(i.bytes).padStart(10)}  ${i.reason.padEnd(13)} ${ageDays(i.idleSince, r.plannedAt).padStart(5)}  ${i.beeLifecycle.padEnd(8)} ${i.beeName || i.beeId}  ${basename(i.wrapperDir)}${i.envFiles.length > 0 ? `  env×${i.envFiles.length}` : ""}`);
+    lines.push(`  ${i.verdict === "evict" ? "evict " : "remove"} ${gib(i.bytes).padStart(10)}  ${i.reason.padEnd(13)} ${ageDays(i.idleSince, r.plannedAt).padStart(5)}  ${i.beeLifecycle.padEnd(8)} ${i.beeName || i.beeId}  ${basename(i.wrapperDir)}${i.envFiles.length > 0 ? `  env×${i.envFiles.length}` : ""}${i.keep.entries.length > 0 ? `  keep×${i.keep.entries.length} ${gib(i.keep.bytes)}` : ""}`);
+  }
+  const trims = r.items.filter((i) => i.trim.planned).sort((a, b) => (b.trim.bytes ?? 0) - (a.trim.bytes ?? 0));
+  if (trims.length > 0) {
+    lines.push(`trim: ${trims.length} Cells, ${gib(t.trimBytes)} of build output (the Cells stay; ignored files outside the trim patterns are never touched)`);
+    for (const i of trims.slice(0, 25)) {
+      const paths = i.trim.entries.map((e) => e.path);
+      lines.push(`  ${gib(i.trim.bytes).padStart(10)}  ${ageDays(i.idleSince, r.plannedAt).padStart(5)}  ${i.beeLifecycle.padEnd(8)} ${i.beeName || i.beeId}  ${paths.slice(0, 3).join(", ")}${paths.length > 3 ? ` (+${paths.length - 3})` : ""}`);
+    }
+    if (trims.length > 25) lines.push(`  … ${trims.length - 25} more (use --json)`);
   }
   const held = r.items.filter((i) => i.verdict === "hold");
   const byReason = new Map<string, CellGcItem[]>();
@@ -2376,6 +2386,15 @@ function renderCellGc(r: CellGcResult): string[] {
     const done = r.outcomes.filter((o) => o.status === "evicted" || o.status === "removed");
     lines.push(`outcome: ${done.length} reclaimed (${gib(done.reduce((s, o) => s + (o.bytes ?? 0), 0))}), ${r.outcomes.filter((o) => o.status === "refused").length} refused, ${r.outcomes.filter((o) => o.status === "failed").length} failed`);
     for (const o of r.outcomes.filter((x) => x.status === "refused" || x.status === "failed")) {
+      lines.push(`  ${o.status} ${o.reason ?? ""} ${basename(o.wrapperDir)}`);
+    }
+    const kept = r.outcomes.filter((o) => o.keptPaths.length > 0).length;
+    if (kept > 0) lines.push(`  ${kept} evicted Cells moved ignored files to cell-keep/ (restored on revive)`);
+  }
+  if (r.trimOutcomes) {
+    const trimmed = r.trimOutcomes.filter((o) => o.status === "trimmed");
+    lines.push(`trim outcome: ${trimmed.length} trimmed (${gib(trimmed.reduce((s, o) => s + (o.bytes ?? 0), 0))}), ${r.trimOutcomes.filter((o) => o.status === "refused").length} refused, ${r.trimOutcomes.filter((o) => o.status === "failed").length} failed`);
+    for (const o of r.trimOutcomes.filter((x) => x.status !== "trimmed")) {
       lines.push(`  ${o.status} ${o.reason ?? ""} ${basename(o.wrapperDir)}`);
     }
   }

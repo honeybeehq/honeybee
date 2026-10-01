@@ -355,9 +355,11 @@ test("config.9: cells.retention (v31) — defaults on, day/hour units, null disa
     assert.equal(defaults.maxBytes, null);
     assert.equal(defaults.intervalMs, 24 * 3_600_000);
     assert.equal(defaults.maxPerPass, 100);
+    assert.equal(defaults.trimAfterMs, 24 * 3_600_000);
+    assert.ok(defaults.trimPatterns.includes(".next") && defaults.trimPatterns.includes("*.tsbuildinfo"));
 
     writeFileSync(join(dir, "config.json"), JSON.stringify({
-      cells: { retention: { enabled: false, archivedAfterDays: 0, stoppedAfterDays: null, retainedAfterDays: 1.5, maxBytes: 5e11, intervalHours: 6, maxPerPass: 3 } },
+      cells: { retention: { enabled: false, archivedAfterDays: 0, stoppedAfterDays: null, retainedAfterDays: 1.5, maxBytes: 5e11, intervalHours: 6, maxPerPass: 3, trimAfterHours: 2, trimPatterns: [".next", "*.log"] } },
     }));
     const custom = loadNodeConfig(dir).cellRetention;
     assert.equal(custom.enabled, false);
@@ -367,6 +369,10 @@ test("config.9: cells.retention (v31) — defaults on, day/hour units, null disa
     assert.equal(custom.maxBytes, 5e11);
     assert.equal(custom.intervalMs, 6 * 3_600_000);
     assert.equal(custom.maxPerPass, 3);
+    assert.equal(custom.trimAfterMs, 2 * 3_600_000);
+    assert.deepEqual(custom.trimPatterns, [".next", "*.log"]);
+    writeFileSync(join(dir, "config.json"), JSON.stringify({ cells: { retention: { trimAfterHours: null } } }));
+    assert.equal(loadNodeConfig(dir).cellRetention.trimAfterMs, null);
 
     for (const bad of [
       { retention: [] },
@@ -376,6 +382,13 @@ test("config.9: cells.retention (v31) — defaults on, day/hour units, null disa
       { retention: { intervalHours: 0 } },
       { retention: { maxPerPass: 0 } },
       { retention: { maxBytes: "1TB" } },
+      { retention: { trimAfterHours: -1 } },
+      { retention: { trimPatterns: ".next" } },
+      { retention: { trimPatterns: ["apps/.next"] } },
+      { retention: { trimPatterns: [""] } },
+      { retention: { trimPatterns: [".."] } },
+      { retention: { trimPatterns: ["*"] } },
+      { retention: { trimPatterns: ["build*"] } },
     ]) {
       writeFileSync(join(dir, "config.json"), JSON.stringify({ cells: bad }));
       assert.throws(() => loadNodeConfig(dir), ConfigError, JSON.stringify(bad));

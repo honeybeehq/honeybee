@@ -145,6 +145,7 @@ export const DAEMON_CAPABILITIES = [
    * transcript and cwd; its next runtime re-provisions the Cell in place.
    */
   "cell.retention.v1",
+  "cell.retention.trim.v1",
   /**
    * v23 (2026-09-13): durable session handoff — `bee.handoff` /
    * `bee.handoff.get`, the `handoff` mirror-row key, the `beeHandoffs` +
@@ -1600,6 +1601,13 @@ export interface CellGcItem {
   report: CellDirtyReport | null;
   /** Git-ignored `.env` / `.env.*` files eviction preserves under `<data-dir>/cell-env/` and revive restores. */
   envFiles: string[];
+  trim: { entries: CellGcPathBytes[]; bytes: number | null; planned: boolean };
+  keep: { entries: CellGcPathBytes[]; bytes: number | null };
+}
+
+export interface CellGcPathBytes {
+  path: string;
+  bytes: number | null;
 }
 
 export interface CellGcOutcome {
@@ -1610,6 +1618,18 @@ export interface CellGcOutcome {
   reason: string | null;
   bytes: number | null;
   envFiles: string[];
+  keptPaths: string[];
+}
+
+export interface CellGcTrimOutcome {
+  cellId: string | null;
+  beeId: string;
+  wrapperDir: string;
+  status: "trimmed" | "refused" | "failed";
+  reason: string | null;
+  paths: string[];
+  skipped: Array<{ path: string; why: string }>;
+  bytes: number | null;
 }
 
 export interface CellGcResult {
@@ -1622,6 +1642,8 @@ export interface CellGcResult {
     retainedAfterMs: number | null;
     maxBytes: number | null;
     maxPerPass: number;
+    trimAfterMs: number | null;
+    trimPatterns: string[];
   };
   items: CellGcItem[];
   totals: {
@@ -1632,9 +1654,12 @@ export interface CellGcResult {
     heldCells: number;
     heldBytes: number | null;
     dirtyCells: number;
+    trimCells: number;
+    trimBytes: number | null;
   };
   /** Present only after apply. */
   outcomes: CellGcOutcome[] | null;
+  trimOutcomes: CellGcTrimOutcome[] | null;
   /** Wall-clock of the inspection worker, for operator expectations. */
   inspectMs: number;
 }
@@ -1653,6 +1678,7 @@ export interface CellEvictResult {
   report: CellDirtyReport | null;
   bytes: number | null;
   envFiles: string[];
+  keptPaths: string[];
   deduped?: boolean;
 }
 

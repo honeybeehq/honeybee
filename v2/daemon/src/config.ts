@@ -9,6 +9,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { DEFAULT_TRIM_PATTERNS } from "../../driver-cell/src/retention.ts";
 
 /** How to spawn one agent CLI (keyed by the bee's `agent` field). */
 export interface AgentSpecConfig {
@@ -185,6 +186,10 @@ export interface CellRetentionConfig {
   intervalHours?: number;
   /** Upper bound on evictions per pass (default 100). */
   maxPerPass?: number;
+  /** Remove rebuildable build output from Cells idle at least this long (default 24). null = never. */
+  trimAfterHours?: number | null;
+  /** Ignored directory names (or `*.ext` file suffixes) treated as rebuildable build output. */
+  trimPatterns?: string[];
 }
 
 export interface ResolvedCellRetention {
@@ -195,6 +200,8 @@ export interface ResolvedCellRetention {
   maxBytes: number | null;
   intervalMs: number;
   maxPerPass: number;
+  trimAfterMs: number | null;
+  trimPatterns: string[];
 }
 
 /** The raw (all-optional) shape of config.json. */
@@ -400,6 +407,8 @@ export const DEFAULT_CELL_RETENTION: ResolvedCellRetention = {
   maxBytes: null,
   intervalMs: 24 * HOUR_MS,
   maxPerPass: 100,
+  trimAfterMs: 24 * HOUR_MS,
+  trimPatterns: [...DEFAULT_TRIM_PATTERNS],
 };
 
 function nonNegativeNumber(c: Record<string, unknown>, key: string): number | undefined {
@@ -417,12 +426,12 @@ function nullableNonNegativeNumber(c: Record<string, unknown>, key: string): num
 }
 
 export function cellRetentionOf(raw: unknown): ResolvedCellRetention {
-  if (raw === undefined) return { ...DEFAULT_CELL_RETENTION };
+  if (raw === undefined) return { ...DEFAULT_CELL_RETENTION, trimPatterns: [...DEFAULT_CELL_RETENTION.trimPatterns] };
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
     throw new ConfigError("config: cells.retention must be an object");
   }
   const c = raw as Record<string, unknown>;
-  const out: ResolvedCellRetention = { ...DEFAULT_CELL_RETENTION };
+  const out: ResolvedCellRetention = { ...DEFAULT_CELL_RETENTION, trimPatterns: [...DEFAULT_CELL_RETENTION.trimPatterns] };
   if (c.enabled !== undefined) {
     if (typeof c.enabled !== "boolean") throw new ConfigError("config: cells.retention.enabled must be a boolean");
     out.enabled = c.enabled;
@@ -445,6 +454,15 @@ export function cellRetentionOf(raw: unknown): ResolvedCellRetention {
       throw new ConfigError("config: cells.retention.maxPerPass must be a positive integer");
     }
     out.maxPerPass = c.maxPerPass;
+  }
+  const trimAfter = nullableNonNegativeNumber(c, "trimAfterHours");
+  if (trimAfter !== undefined) out.trimAfterMs = trimAfter === null ? null : trimAfter * HOUR_MS;
+  if (c.trimPatterns !== undefined) {
+    const valid = (p: unknown) => typeof p === "string" && p.length > 0 && !p.includes("/") && p !== "." && p !== ".." && (!p.includes("*") || /^\*\.[^*]+$/.test(p));
+    if (!Array.isArray(c.trimPatterns) || !c.trimPatterns.every(valid)) {
+      throw new ConfigError("config: cells.retention.trimPatterns must be an array of directory names or `*.ext` file suffixes");
+    }
+    out.trimPatterns = [...(c.trimPatterns as string[])];
   }
   return out;
 }

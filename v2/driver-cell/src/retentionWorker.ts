@@ -5,24 +5,49 @@
  * RPC lane, and applies the resulting plan on the main thread.
  */
 import { parentPort, workerData } from "node:worker_threads";
-import { inspectCellWrapper, type CellWrapperInspection } from "./retention.ts";
+import { inspectCellWrapper, verifyTrimPaths, type CellWrapperInspection, type TrimSkip } from "./retention.ts";
 
 export interface RetentionWorkerRequest {
+  kind?: "inspect";
   wrappers: Array<{ key: string; wrapperDir: string }>;
   measure: boolean;
+  trimPatterns: string[];
 }
 
 export interface RetentionWorkerResult {
   inspections: Array<{ key: string; inspection: CellWrapperInspection | null; error: string | null }>;
 }
 
-const request = workerData as RetentionWorkerRequest;
-const inspections: RetentionWorkerResult["inspections"] = [];
-for (const { key, wrapperDir } of request.wrappers) {
-  try {
-    inspections.push({ key, inspection: inspectCellWrapper(wrapperDir, { measure: request.measure }), error: null });
-  } catch (err) {
-    inspections.push({ key, inspection: null, error: err instanceof Error ? err.message : String(err) });
-  }
+export interface TrimVerifyWorkerRequest {
+  kind: "verifyTrim";
+  cells: Array<{ key: string; wrapperDir: string; paths: string[]; modifiedSinceMs: number }>;
+  trimPatterns: string[];
 }
-parentPort?.postMessage({ inspections } satisfies RetentionWorkerResult);
+
+export interface TrimVerifyWorkerResult {
+  verified: Array<{ key: string; confirmed: string[]; skipped: TrimSkip[]; error: string | null }>;
+}
+
+const request = workerData as RetentionWorkerRequest | TrimVerifyWorkerRequest;
+const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
+if (request.kind === "verifyTrim") {
+  const verified: TrimVerifyWorkerResult["verified"] = [];
+  for (const { key, wrapperDir, paths, modifiedSinceMs } of request.cells) {
+    try {
+      verified.push({ key, ...verifyTrimPaths(wrapperDir, paths, { trimPatterns: request.trimPatterns, modifiedSinceMs }), error: null });
+    } catch (err) {
+      verified.push({ key, confirmed: [], skipped: [], error: errorText(err) });
+    }
+  }
+  parentPort?.postMessage({ verified } satisfies TrimVerifyWorkerResult);
+} else {
+  const inspections: RetentionWorkerResult["inspections"] = [];
+  for (const { key, wrapperDir } of request.wrappers) {
+    try {
+      inspections.push({ key, inspection: inspectCellWrapper(wrapperDir, { measure: request.measure, trimPatterns: request.trimPatterns }), error: null });
+    } catch (err) {
+      inspections.push({ key, inspection: null, error: errorText(err) });
+    }
+  }
+  parentPort?.postMessage({ inspections } satisfies RetentionWorkerResult);
+}

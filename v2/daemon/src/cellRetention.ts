@@ -14,30 +14,41 @@
  *  4. optionally applies: each eviction re-checks its preconditions at the
  *     moment it happens, parks the wrapper by an atomic rename
  *     (driver-cell/retention.ts), records `evicted` (+ HEAD) in the registry,
- *     and the parked directories are deleted asynchronously.
+ *     and the parked directories are deleted asynchronously;
+ *  5. trims Cells that stay: rebuildable build output of a Cell idle past
+ *     `trimAfterMs` is parked the same way, dirty or not, never while in use.
  *
  * An evicted bee keeps its row, mailbox, transcript, cwd and Cell id. Its next
  * runtime start re-provisions the same path at the recorded HEAD and the row
  * returns to `active` (CellDriver.onCellMaterialized). Only CLEAN Cells are
  * ever evicted automatically: no uncommitted changes, no commits the origin
- * lacks, origin reachable. Dirty Cells are listed as held, never touched.
+ * lacks, origin reachable. Dirty Cells are listed as held, never evicted.
+ * Ignored files that are not rebuildable move to `cell-keep/` on eviction and
+ * back on revive.
  */
 import { Worker } from "node:worker_threads";
-import { dirname, resolve } from "node:path";
+import { basename, dirname, resolve } from "node:path";
 import type { BeeRow, CellRow, CoreStore, RuntimeRow } from "../../core/src/index.ts";
 import {
   CellDeleteRefused,
   CellHeadMovedError,
   cellEnvRootForCells,
+  cellKeepRootForCells,
   evictCellWrapper,
+  listPendingKeeps,
+  parkTrimPaths,
+  restoreKeptPaths,
   retentionWorkerUrl,
   sweepEvicting,
   type CellWrapperInspection,
   type RetentionWorkerRequest,
   type RetentionWorkerResult,
+  type TrimSkip,
+  type TrimVerifyWorkerRequest,
+  type TrimVerifyWorkerResult,
 } from "../../driver-cell/src/index.ts";
 import type { ResolvedCellRetention } from "./config.ts";
-import type { CellGcItem, CellGcOutcome, CellGcReason, CellGcResult, CellGcVerdict } from "./protocol.ts";
+import type { CellGcItem, CellGcOutcome, CellGcPathBytes, CellGcReason, CellGcResult, CellGcTrimOutcome, CellGcVerdict } from "./protocol.ts";
 
 export interface CellRetentionDeps {
   cellsRoot: string;
@@ -71,6 +82,23 @@ interface Candidate {
 }
 
 const DEFAULT_INITIAL_DELAY_MS = 5 * 60_000;
+
+const TRIM_BLOCKING_REASONS: ReadonlySet<CellGcReason> = new Set([
+  "runtime_live",
+  "op_in_flight",
+  "move_in_flight",
+  "handoff_in_flight",
+  "already_evicted",
+  "already_removed",
+  "unregistered",
+  "inspect_failed",
+  "absent",
+  "not_provisioned",
+]);
+
+function sumBytes(entries: CellGcPathBytes[]): number | null {
+  return entries.some((e) => e.bytes == null) ? null : entries.reduce((sum, e) => sum + (e.bytes ?? 0), 0);
+}
 
 function verdictOf(reason: CellGcReason): CellGcVerdict {
   switch (reason) {
@@ -177,23 +205,31 @@ export class CellRetentionService {
         retainedAfterMs: this.deps.policy.retainedAfterMs,
         maxBytes: this.deps.policy.maxBytes,
         maxPerPass: this.deps.policy.maxPerPass,
+        trimAfterMs: this.deps.policy.trimAfterMs,
+        trimPatterns: [...this.deps.policy.trimPatterns],
       },
       items,
       totals: totalsOf(items),
       outcomes: null,
+      trimOutcomes: null,
       inspectMs,
     };
     this.deps.log(
       `cell.retention.plan dry_run=${opts.dryRun} cells=${result.totals.cells} planned=${result.totals.plannedCells}` +
         ` planned_bytes=${result.totals.plannedBytes ?? "?"} held=${result.totals.heldCells} dirty=${result.totals.dirtyCells}` +
-        ` present_bytes=${result.totals.presentBytes ?? "?"} inspect_ms=${inspectMs} gather_ms=${plannedAt - startedAt - inspectMs}`,
+        ` present_bytes=${result.totals.presentBytes ?? "?"} trim_cells=${result.totals.trimCells} trim_bytes=${result.totals.trimBytes ?? "?"}` +
+        ` inspect_ms=${inspectMs} gather_ms=${plannedAt - startedAt - inspectMs}`,
     );
     if (opts.dryRun) return result;
     result.outcomes = await this.apply(items);
+    result.trimOutcomes = await this.applyTrims(items);
     const evicted = result.outcomes.filter((o) => o.status === "evicted" || o.status === "removed");
+    const trimmed = result.trimOutcomes.filter((o) => o.status === "trimmed");
     this.deps.log(
       `cell.retention.apply evicted=${evicted.length} refused=${result.outcomes.filter((o) => o.status === "refused").length}` +
-        ` failed=${result.outcomes.filter((o) => o.status === "failed").length} bytes=${evicted.reduce((sum, o) => sum + (o.bytes ?? 0), 0)}`,
+        ` failed=${result.outcomes.filter((o) => o.status === "failed").length} bytes=${evicted.reduce((sum, o) => sum + (o.bytes ?? 0), 0)}` +
+        ` trimmed=${trimmed.length} trim_bytes=${trimmed.reduce((sum, o) => sum + (o.bytes ?? 0), 0)}` +
+        ` trim_refused=${result.trimOutcomes.filter((o) => o.status === "refused").length} trim_failed=${result.trimOutcomes.filter((o) => o.status === "failed").length}`,
     );
     void this.sweep();
     return result;
@@ -227,18 +263,22 @@ export class CellRetentionService {
     return out;
   }
 
-  private inspect(candidates: Candidate[], measure: boolean): Promise<Map<string, { inspection: CellWrapperInspection | null; error: string | null }>> {
+  private async inspect(candidates: Candidate[], measure: boolean): Promise<Map<string, { inspection: CellWrapperInspection | null; error: string | null }>> {
     const wrappers = candidates
       .filter((c) => c.cell?.state !== "evicted")
       .map((c) => ({ key: c.key, wrapperDir: c.wrapperDir }));
-    if (wrappers.length === 0) return Promise.resolve(new Map());
-    const request: RetentionWorkerRequest = { wrappers, measure };
+    if (wrappers.length === 0) return new Map();
+    const message = await this.runWorker<RetentionWorkerResult>({ wrappers, measure, trimPatterns: [...this.deps.policy.trimPatterns] } satisfies RetentionWorkerRequest);
+    return new Map(message.inspections.map((i) => [i.key, { inspection: i.inspection, error: i.error }] as const));
+  }
+
+  private runWorker<T>(request: RetentionWorkerRequest | TrimVerifyWorkerRequest): Promise<T> {
     return new Promise((resolvePromise, reject) => {
       const worker = new Worker(this.deps.workerUrl ?? retentionWorkerUrl(), { execArgv: [], workerData: request });
       let settled = false;
-      worker.once("message", (message: RetentionWorkerResult) => {
+      worker.once("message", (message: T) => {
         settled = true;
-        resolvePromise(new Map(message.inspections.map((i) => [i.key, { inspection: i.inspection, error: i.error }] as const)));
+        resolvePromise(message);
       });
       worker.once("error", (err) => {
         if (settled) return;
@@ -274,9 +314,11 @@ export class CellRetentionService {
         originRepo: c.cell?.originRepo ?? null,
         head: inspection?.head ?? null,
         bytes: inspection?.bytes ?? null,
-        idleSince: null,
+        idleSince: this.idleSinceOf(c),
         report: inspection?.report ?? null,
         envFiles: inspection?.envFiles ?? [],
+        trim: { entries: inspection?.trim ?? [], bytes: sumBytes(inspection?.trim ?? []), planned: false },
+        keep: { entries: inspection?.keep ?? [], bytes: sumBytes(inspection?.keep ?? []) },
       };
       const reason = this.reasonFor(c, inspection, found?.error ?? null, now, base);
       items.push({ ...base, verdict: verdictOf(reason), reason });
@@ -291,7 +333,22 @@ export class CellRetentionService {
         item.reason = "pass_limit";
       }
     }
+    for (const item of items) item.trim.planned = this.trimDue(item, now);
     return items;
+  }
+
+  private trimDue(item: CellGcItem, now: number): boolean {
+    const after = this.deps.policy.trimAfterMs;
+    if (after == null || item.trim.entries.length === 0 || item.idleSince == null) return false;
+    if (item.verdict === "evict" || item.verdict === "remove_retained" || TRIM_BLOCKING_REASONS.has(item.reason)) return false;
+    return now - item.idleSince >= after;
+  }
+
+  private idleSinceOf(c: Candidate): number | null {
+    if (c.cell == null || c.bee == null) return null;
+    if (c.cell.state === "retained") return c.cell.retainedAt ?? c.cell.createdAt;
+    if (c.bee.lifecycle === "archived") return c.bee.archivedAt ?? c.bee.createdAt;
+    return Math.max(c.runtime?.updatedAt ?? 0, c.bee.lastOutputAt ?? 0, c.bee.createdAt);
   }
 
   private reasonFor(
@@ -317,18 +374,16 @@ export class CellRetentionService {
     if (report?.stashed) return "dirty_stash";
     if (report?.originUnknown) return "dirty_origin_unknown";
     if (c.bee == null || c.bee.lifecycle === "deleted") return "bee_deleted";
+    const idleFor = now - (base.idleSince ?? now);
     if (c.cell.state === "retained") {
-      base.idleSince = c.cell.retainedAt ?? c.cell.createdAt;
       if (policy.retainedAfterMs == null) return "policy_disabled";
-      return now - base.idleSince >= policy.retainedAfterMs ? "retained_age" : "too_young";
+      return idleFor >= policy.retainedAfterMs ? "retained_age" : "too_young";
     }
     if (c.bee.lifecycle === "archived") {
-      base.idleSince = c.bee.archivedAt ?? c.bee.createdAt;
-      return now - base.idleSince >= policy.archivedAfterMs ? "archived_age" : "too_young";
+      return idleFor >= policy.archivedAfterMs ? "archived_age" : "too_young";
     }
-    base.idleSince = Math.max(c.runtime?.updatedAt ?? 0, c.bee.lastOutputAt ?? 0, c.bee.createdAt);
     if (policy.stoppedAfterMs == null) return "policy_disabled";
-    return now - base.idleSince >= policy.stoppedAfterMs ? "stopped_age" : "too_young";
+    return idleFor >= policy.stoppedAfterMs ? "stopped_age" : "too_young";
   }
 
   /** Over budget: promote clean-but-young Cells, archived before stopped, oldest idle first. */
@@ -364,8 +419,8 @@ export class CellRetentionService {
   /** One eviction, preconditions re-checked synchronously at the moment of the rename. */
   private applyOne(item: CellGcItem): CellGcOutcome {
     const store = this.deps.store();
-    const outcome = (status: CellGcOutcome["status"], reason: string | null, envFiles: string[] = []): CellGcOutcome => ({
-      cellId: item.cellId, beeId: item.beeId, wrapperDir: item.wrapperDir, status, reason, bytes: item.bytes, envFiles,
+    const outcome = (status: CellGcOutcome["status"], reason: string | null, envFiles: string[] = [], keptPaths: string[] = []): CellGcOutcome => ({
+      cellId: item.cellId, beeId: item.beeId, wrapperDir: item.wrapperDir, status, reason, bytes: item.bytes, envFiles, keptPaths,
     });
     const cell = item.cellId ? store.getCell(item.cellId) : null;
     if (!cell || cell.state !== item.cellState) return outcome("refused", "cell_state_changed");
@@ -376,27 +431,105 @@ export class CellRetentionService {
     if (bee?.activeMoveId) return outcome("refused", "move_in_flight");
     if (bee?.activeHandoffId) return outcome("refused", "handoff_in_flight");
     try {
-      const parked = evictCellWrapper(this.deps.cellsRoot, item.wrapperDir, { expectedHead: item.head, now: this.deps.now });
+      const parked = evictCellWrapper(this.deps.cellsRoot, item.wrapperDir, { expectedHead: item.head, now: this.deps.now, trimPatterns: this.deps.policy.trimPatterns });
       this.deps.forgetCell(item.beeId);
       if (parked == null) {
         if (item.verdict === "remove_retained") store.markCellRemoved(cell.id);
         return outcome("absent", null);
       }
       const env = parked.envFiles.length > 0 ? ` env_files=${parked.envFiles.length} env_stash=${cellEnvRootForCells(this.deps.cellsRoot)}` : "";
+      const kept = parked.keptPaths.length > 0 ? ` kept=${parked.keptPaths.length} keep_stash=${cellKeepRootForCells(this.deps.cellsRoot)}` : "";
       if (item.verdict === "remove_retained") {
         store.markCellRemoved(cell.id);
-        this.deps.log(`cell.retention.removed cell=${cell.id} bee=${item.beeId} reason=${item.reason} head=${parked.head ?? "-"} bytes=${item.bytes ?? "?"} parked=${parked.parkedDir}${env}`);
-        return outcome("removed", item.reason, parked.envFiles);
+        this.deps.log(`cell.retention.removed cell=${cell.id} bee=${item.beeId} reason=${item.reason} head=${parked.head ?? "-"} bytes=${item.bytes ?? "?"} parked=${parked.parkedDir}${env}${kept}`);
+        return outcome("removed", item.reason, parked.envFiles, parked.keptPaths);
       }
-      store.evictCell(cell.id, { head: parked.head, bytes: item.bytes, reason: item.reason, envFiles: parked.envFiles });
-      this.deps.log(`cell.retention.evicted cell=${cell.id} bee=${item.beeId} reason=${item.reason} head=${parked.head ?? "-"} bytes=${item.bytes ?? "?"} parked=${parked.parkedDir}${env}`);
-      return outcome("evicted", item.reason, parked.envFiles);
+      store.evictCell(cell.id, { head: parked.head, bytes: item.bytes, reason: item.reason, envFiles: parked.envFiles, keptPaths: parked.keptPaths });
+      this.deps.log(`cell.retention.evicted cell=${cell.id} bee=${item.beeId} reason=${item.reason} head=${parked.head ?? "-"} bytes=${item.bytes ?? "?"} parked=${parked.parkedDir}${env}${kept}`);
+      return outcome("evicted", item.reason, parked.envFiles, parked.keptPaths);
     } catch (err) {
       if (err instanceof CellDeleteRefused) return outcome("refused", "dirty");
       if (err instanceof CellHeadMovedError) return outcome("refused", "head_moved");
       const detail = err instanceof Error ? err.message : String(err);
       this.deps.log(`cell.retention.failed cell=${cell.id} bee=${item.beeId} err=${JSON.stringify(detail)}`);
       return outcome("failed", detail);
+    }
+  }
+
+  private async applyTrims(items: CellGcItem[]): Promise<CellGcTrimOutcome[]> {
+    const planned = items.filter((i) => i.trim.planned);
+    if (planned.length === 0) return [];
+    const after = this.deps.policy.trimAfterMs ?? 0;
+    const verified = await this.runWorker<TrimVerifyWorkerResult>({
+      kind: "verifyTrim",
+      cells: planned.map((i, index) => ({ key: String(index), wrapperDir: i.wrapperDir, paths: i.trim.entries.map((e) => e.path), modifiedSinceMs: this.deps.now() - after })),
+      trimPatterns: [...this.deps.policy.trimPatterns],
+    } satisfies TrimVerifyWorkerRequest);
+    const byKey = new Map(verified.verified.map((v) => [v.key, v] as const));
+    const outcomes: CellGcTrimOutcome[] = [];
+    for (const [index, item] of planned.entries()) {
+      outcomes.push(this.trimOne(item, byKey.get(String(index)) ?? null));
+      await new Promise<void>((r) => setImmediate(r));
+    }
+    return outcomes;
+  }
+
+  private trimOne(item: CellGcItem, verified: TrimVerifyWorkerResult["verified"][number] | null): CellGcTrimOutcome {
+    const store = this.deps.store();
+    const outcome = (status: CellGcTrimOutcome["status"], reason: string | null, paths: string[] = [], skipped: TrimSkip[] = verified?.skipped ?? []): CellGcTrimOutcome => {
+      const trimmed = new Set(paths);
+      const entries = item.trim.entries.filter((e) => trimmed.has(e.path));
+      return { cellId: item.cellId, beeId: item.beeId, wrapperDir: item.wrapperDir, status, reason, paths, skipped, bytes: sumBytes(entries) };
+    };
+    if (verified == null) return outcome("failed", "verification_missing");
+    if (verified.error != null) {
+      this.deps.log(`cell.retention.trim_failed cell=${item.cellId} bee=${item.beeId} err=${JSON.stringify(verified.error)}`);
+      return outcome("failed", verified.error);
+    }
+    const cell = item.cellId ? store.getCell(item.cellId) : null;
+    if (!cell || cell.state !== item.cellState) return outcome("refused", "cell_state_changed");
+    const bee = store.getBee(item.beeId);
+    if (bee && bee.lifecycle !== item.beeLifecycle) return outcome("refused", "lifecycle_changed");
+    const runtime = store.currentRuntime(item.beeId);
+    if (this.deps.cellInUse(item.beeId, runtime, cell.state)) return outcome("refused", "runtime_live");
+    if (this.deps.opInFlight(cell.id)) return outcome("refused", "op_in_flight");
+    if (bee?.activeMoveId) return outcome("refused", "move_in_flight");
+    if (bee?.activeHandoffId) return outcome("refused", "handoff_in_flight");
+    const idleSince = this.idleSinceOf({ key: item.cellId ?? "", cell, bee, beeId: item.beeId, runtime, wrapperDir: item.wrapperDir });
+    if (idleSince == null || this.deps.now() - idleSince < (this.deps.policy.trimAfterMs ?? Number.POSITIVE_INFINITY)) return outcome("refused", "not_idle");
+    if (verified.confirmed.length === 0) return outcome("refused", "nothing_to_trim");
+    try {
+      const res = parkTrimPaths(this.deps.cellsRoot, item.wrapperDir, verified.confirmed, { now: this.deps.now });
+      const skipped = [...verified.skipped, ...res.skipped];
+      const result = outcome(res.trimmed.length > 0 ? "trimmed" : "refused", res.trimmed.length > 0 ? null : "nothing_to_trim", res.trimmed, skipped);
+      this.deps.log(
+        `cell.retention.trimmed cell=${cell.id} bee=${item.beeId} paths=${res.trimmed.length} skipped=${skipped.length} bytes=${result.bytes ?? "?"}` +
+          ` parked=${res.parkedDir ?? "-"}${skipped.length > 0 ? ` first_skip=${JSON.stringify(skipped[0])}` : ""}`,
+      );
+      return result;
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      this.deps.log(`cell.retention.trim_failed cell=${cell.id} bee=${item.beeId} err=${JSON.stringify(detail)}`);
+      return outcome("failed", detail);
+    }
+  }
+
+  reconcileKept(): void {
+    const pending = listPendingKeeps(this.deps.cellsRoot);
+    if (pending.length === 0) return;
+    const store = this.deps.store();
+    const active = new Map(store.listCells().filter((c) => c.state === "active").map((c) => [basename(resolve(c.spaceDir)), c] as const));
+    for (const spaceName of pending) {
+      const cell = active.get(spaceName);
+      if (!cell) continue;
+      try {
+        const { restored, conflicts } = restoreKeptPaths(this.deps.cellsRoot, cell.spaceDir);
+        if (restored.length > 0 || conflicts.length > 0) {
+          this.deps.log(`cell.keep.reconciled cell=${cell.id} bee=${cell.sourceBeeId} restored=${restored.length} conflicts=${conflicts.length}`);
+        }
+      } catch (err) {
+        this.deps.log(`cell.keep.reconcile_failed cell=${cell.id} ${err instanceof Error ? err.message : String(err)}`);
+      }
     }
   }
 }
@@ -414,5 +547,7 @@ export function totalsOf(items: CellGcItem[]): CellGcResult["totals"] {
     heldCells: held.length,
     heldBytes: sum(held),
     dirtyCells: items.filter((i) => i.reason.startsWith("dirty_")).length,
+    trimCells: items.filter((i) => i.trim.planned).length,
+    trimBytes: measured ? items.filter((i) => i.trim.planned).reduce((acc, i) => acc + (i.trim.bytes ?? 0), 0) : null,
   };
 }

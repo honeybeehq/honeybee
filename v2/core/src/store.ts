@@ -6044,7 +6044,7 @@ export class CoreStore {
    * start re-provisions exactly where the agent left off. Idempotent when
    * already evicted; any other state is an illegal transition.
    */
-  evictCell(cellId: string, input: { head: string | null; bytes: number | null; reason: string; envFiles?: string[] }): CellRow {
+  evictCell(cellId: string, input: { head: string | null; bytes: number | null; reason: string; envFiles?: string[]; keptPaths?: string[] }): CellRow {
     return this.tx(() => {
       const cell = this.mustGetCell(cellId);
       if (cell.state === "evicted") return cell;
@@ -6055,7 +6055,7 @@ export class CoreStore {
       this.stmt("UPDATE cells SET state = 'evicted', evicted_at = ?, evicted_head = ? WHERE id = ?").run(at, input.head, cellId);
       const next = this.mustGetCell(cellId);
       this.audit("cell.put", cell.sourceBeeId, { cell: next, previous: cell });
-      this.audit("cell.evicted", cell.sourceBeeId, { cellId, evictedAt: at, head: input.head, bytes: input.bytes, reason: input.reason, envFiles: input.envFiles ?? [] });
+      this.audit("cell.evicted", cell.sourceBeeId, { cellId, evictedAt: at, head: input.head, bytes: input.bytes, reason: input.reason, envFiles: input.envFiles ?? [], keptPaths: input.keptPaths ?? [] });
       return next;
     });
   }
