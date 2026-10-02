@@ -31,7 +31,7 @@
  * APFS a pnpm `node_modules` copied by CoW shares blocks with its origin, so
  * du overstates what a deletion actually frees; callers label it as such.
  */
-import { chmodSync, constants, copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmdirSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, constants, copyFileSync, existsSync, lstatSync, mkdirSync, opendirSync, readdirSync, readFileSync, realpathSync, renameSync, rmdirSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { GitError, revParse, tryGit } from "./git.ts";
@@ -147,7 +147,7 @@ export function classifyIgnored(spaceDir: string, trimPatterns: readonly string[
     const isDirectory = entry.endsWith("/");
     const path = isDirectory ? entry.slice(0, -1) : entry;
     const name = basename(path);
-    if (path.split("/").some((part) => INSTALL_DIRECTORY_NAMES.has(part))) continue;
+    if ((isDirectory ? path : dirname(path)).split("/").some((part) => INSTALL_DIRECTORY_NAMES.has(part))) continue;
     if (!isDirectory && DISPOSABLE_FILE_NAMES.has(name)) continue;
     if (!isDirectory && (name === ".env" || name.startsWith(".env."))) out.env.push(path);
     else if (matchesTrimPattern(name, isDirectory, trimPatterns)) out.trim.push(path);
@@ -441,7 +441,23 @@ function trimPathRefusal(spaceDir: string, rel: string): string | null {
   }
   const st = lstatSync(path);
   if (st.isSymbolicLink()) return "symlink";
-  if (st.isDirectory() && pathExists(join(path, ".git"))) return "nested_repository";
+  if (st.isDirectory()) {
+    const directories = [path];
+    let inspected = 0;
+    while (directories.length > 0) {
+      const directory = directories.pop()!;
+      try {
+        const dir = opendirSync(directory);
+        try {
+          for (let entry = dir.readSync(); entry !== null; entry = dir.readSync()) {
+            if (++inspected > 1024) return "inspection_limit";
+            if (entry.name === ".git") return "nested_repository";
+            if (entry.isDirectory()) directories.push(join(directory, entry.name));
+          }
+        } finally { dir.closeSync(); }
+      } catch { return "unreadable_directory"; }
+    }
+  }
   return null;
 }
 

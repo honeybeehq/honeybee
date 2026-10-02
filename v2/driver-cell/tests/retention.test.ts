@@ -527,3 +527,44 @@ test("retention.restoreKept: a path whose parent is now unsafe becomes a conflic
     rig.cleanup();
   }
 });
+
+
+test("retention.trim: refuses repositories below a build directory", () => {
+  const rig = makeRig();
+  try {
+    ignoringOrigin(rig);
+    const { paths } = provisioned(rig, "deeprepo");
+    put(paths.spaceDir, "build/checkout/work.txt", "uncommitted work\n");
+    g(join(paths.spaceDir, "build/checkout"), ["init", "-q"]);
+    const result = trimCellWrapper(rig.cellsRoot, paths.wrapperDir, ["build"]);
+    assert.deepEqual(result.trimmed, []);
+    assert.deepEqual(result.skipped, [{ path: "build", why: "nested_repository" }]);
+    assert.equal(readFileSync(join(paths.spaceDir, "build/checkout/work.txt"), "utf8"), "uncommitted work\n");
+  } finally { rig.cleanup(); }
+});
+
+test("retention.classify: install directory names do not discard ignored regular files", () => {
+  const rig = makeRig();
+  try {
+    ignoringOrigin(rig);
+    const { paths } = provisioned(rig, "installfile");
+    writeFileSync(join(paths.spaceDir, ".git/info/exclude"), "Pods\nvenv\n");
+    put(paths.spaceDir, "Pods", "notes\n");
+    put(paths.spaceDir, "venv", "config\n");
+    assert.deepEqual(classifyIgnored(paths.spaceDir).keep, ["Pods", "venv"]);
+  } finally { rig.cleanup(); }
+});
+
+
+test("retention.trim: retains trees beyond the bounded repository inspection", () => {
+  const rig = makeRig();
+  try {
+    ignoringOrigin(rig);
+    const { paths } = provisioned(rig, "largebuild");
+    for (let i = 0; i < 1100; i++) put(paths.spaceDir, `build/output-${i}`, "generated\n");
+    const result = trimCellWrapper(rig.cellsRoot, paths.wrapperDir, ["build"]);
+    assert.deepEqual(result.trimmed, []);
+    assert.deepEqual(result.skipped, [{ path: "build", why: "inspection_limit" }]);
+    assert.equal(existsSync(join(paths.spaceDir, "build/output-1099")), true);
+  } finally { rig.cleanup(); }
+});
