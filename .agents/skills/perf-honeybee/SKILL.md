@@ -85,3 +85,5 @@ Action reminders are mapped by [action-reminder-reads](workloads/action-reminder
 [Batch account admission](workloads/account-admission-batch.md) counts fleet reads through public admitNewWork in active and shadow modes. One per-call activity projection preserves decisions, durable holds and the separate legacy shadow picker; SQL scan cost, CPU and latency are unmeasured.
 
 [Reservation membership](workloads/account-activity-reservation-visits.md) counts reservation bee-ID reads during account activity. Ordered per-call groups preserve transfer precedence and fresh state; allocation and SQL scan costs remain unmeasured.
+
+Latest handoff projection in fleet lists is mapped by [fleet-handoff-projection](workloads/fleet-handoff-projection.md). Its isolated CoreStore collector counts returned handoff rows and preserves fresh latest-record ordering; it does not measure CPU or latency.

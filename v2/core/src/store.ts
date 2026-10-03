@@ -4518,7 +4518,16 @@ export class CoreStore {
       latestMoveByBee.set(move.beeId, move);
     }
     const latestHandoffByBee = new Map<string, BeeHandoffRow>();
-    for (const row of this.stmt("SELECT * FROM bee_handoffs ORDER BY created_at, rowid").all() as Row[]) {
+    for (const row of this.stmt(
+      `SELECT handoff.*
+       FROM bees AS bee
+       JOIN bee_handoffs AS handoff ON handoff.rowid = (
+         SELECT latest.rowid FROM bee_handoffs AS latest
+         WHERE latest.bee_id = bee.id
+         ORDER BY latest.created_at DESC, latest.rowid DESC LIMIT 1
+       )
+       WHERE ? IS NULL OR bee.lifecycle = ?`,
+    ).all(lifecycle, lifecycle) as Row[]) {
       const handoff = mapBeeHandoff(row);
       latestHandoffByBee.set(handoff.beeId, handoff);
     }

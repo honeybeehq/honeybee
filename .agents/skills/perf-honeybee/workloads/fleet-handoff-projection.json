@@ -1,0 +1,138 @@
+{
+  "protocolVersion": 1,
+  "id": "fleet-handoff-projection",
+  "title": "Latest handoff projection in fleet lists",
+  "lane": "throughput",
+  "processes": [
+    "hived"
+  ],
+  "owners": [
+    "v2/core/src/store.ts@bbbba69e5863f0b0c3d8c2db8b6ce0b4f56d4617",
+    "v2/core/src/schema.ts@ddec7de9c75ef1664f9caeb9b242c7595d4367e0",
+    "v2/core/src/handoff.ts@248d6bbfc44fcfd8bdddac50b58e813fb2a4941f"
+  ],
+  "effect": {
+    "user": "Fleet lists keep the latest handoff while avoiding hydration of superseded history.",
+    "assertions": [
+      "Complete outputs match latestHandoffOf, including tied timestamps and lifecycle filters.",
+      "Fresh mutation, rollback, reopen and audit replay remain correct."
+    ],
+    "exclusions": [
+      "Latency, CPU, RSS and whole-daemon cost; move history is unchanged."
+    ]
+  },
+  "accounts": [
+    {
+      "inventory": "entry-points",
+      "key": "fleet-view:listBeeViewRows"
+    }
+  ],
+  "states": {
+    "idle": {
+      "matters": false,
+      "why": "No query, no projection."
+    },
+    "first-use": {
+      "matters": false,
+      "why": "Setup excluded; no cold-start claim."
+    },
+    "repeated": {
+      "matters": true,
+      "why": "Three repetitions of each query shape."
+    },
+    "scale": {
+      "matters": true,
+      "why": "1, 8 and 64 bees, each with 0, 1, 8 or 64 retained handoffs."
+    },
+    "background": {
+      "matters": false,
+      "why": "No renderer or runtime is launched."
+    },
+    "release": {
+      "matters": false,
+      "why": "Fixture stores close; memory is not measured."
+    },
+    "recovery": {
+      "matters": true,
+      "why": "Separate test reopens persisted rows and verifies current views."
+    }
+  },
+  "fixture": {
+    "preset": "fleet-handoff-v1",
+    "isolationPolicy": 1,
+    "scaleAxes": [
+      {
+        "axis": "bees",
+        "values": [
+          1,
+          8,
+          64
+        ]
+      },
+      {
+        "axis": "history",
+        "values": [
+          0,
+          1,
+          8,
+          64
+        ]
+      }
+    ],
+    "seed": "CoreStore admissions and failures with deterministic IDs and tied clocks"
+  },
+  "recipe": {
+    "driver": "scripts/perf/fleet-handoff.mjs",
+    "command": "node scripts/perf/fleet-handoff.mjs --out .proof/fleet-handoff.json",
+    "readiness": "Isolated SQLite fixture seeded through CoreStore.",
+    "completion": "Fresh list call and full output comparison.",
+    "warmup": "None; deterministic counts.",
+    "teardown": "Close stores and trash temporary fixture directories.",
+    "requires": [
+      "Node 24.18.0",
+      "trash"
+    ]
+  },
+  "metrics": [
+    {
+      "id": "excessHandoffRows",
+      "unit": "count",
+      "scope": "Rows returned by handoff SELECT beyond the selected latest rows in one fleet-list call",
+      "collector": "Per-instance stmt all wrapper around the real CoreStore query",
+      "aggregation": "max",
+      "kind": "actual",
+      "status": "gated",
+      "states": [
+        "repeated",
+        "scale"
+      ],
+      "betterWhen": "lower",
+      "invariant": "Complete outputs equal the point-read reference; no excess handoff rows.",
+      "noise": "Deterministic counts. No timing claim.",
+      "budget": {
+        "value": 0,
+        "unit": "count",
+        "status": "proposed",
+        "source": "Agent gate predeclared 2026-10-03 in Speedy daily plan; deterministic excess-row bound"
+      },
+      "baseline": {
+        "seriesId": "fleet-handoff-v1",
+        "receipt": ".agents/skills/perf-honeybee/workloads/baselines/fleet-handoff-projection.json",
+        "commit": "64ea03acc9c103bfe1af16e2893e9476c04e0e55",
+        "samples": 48,
+        "machine": "Mac.home",
+        "runtime": "v24.18.0",
+        "buildMode": "dev",
+        "aggregation": "max",
+        "aggregate": 0
+      }
+    }
+  ],
+  "gaps": [
+    "Synthetic history distribution; current production frequency unmeasured.",
+    "SQL VM work, latency, CPU, heap and RSS are not measured.",
+    "Old malformed handoff JSON outside the selected latest rows will no longer be decoded by this read; full-history APIs are unchanged."
+  ],
+  "updatedAt": "2026-10-03",
+  "readiness": "144 full output comparisons across three repetitions of 48 deterministic cases; zero excess handoff rows; no CPU or latency claim."
+}
