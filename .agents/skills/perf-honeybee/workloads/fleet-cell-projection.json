@@ -1,0 +1,142 @@
+{
+  "protocolVersion": 1,
+  "id": "fleet-cell-projection",
+  "title": "Referenced Cell projection in fleet lists",
+  "lane": "throughput",
+  "processes": [
+    "hived"
+  ],
+  "owners": [
+    "v2/core/src/store.ts@24d36609268521ddb416b4df398de724445b2c2c",
+    "v2/core/src/schema.ts@ddec7de9c75ef1664f9caeb9b242c7595d4367e0"
+  ],
+  "effect": {
+    "user": "Fleet lists show the current referenced Cell without hydrating unrelated retained Cells.",
+    "assertions": [
+      "Full ordered outputs equal the point-read reference for every lifecycle filter.",
+      "Fresh replacement, eviction, retention, removal, rollback, deletion, reopen and replay stay correct."
+    ],
+    "exclusions": [
+      "No latency, CPU, RSS, allocation-byte or UI claim; full snapshot Cells remain unchanged."
+    ]
+  },
+  "accounts": [
+    {
+      "inventory": "entry-points",
+      "key": "fleet-view:listBeeViewRows",
+      "shared": "The handoff workload measures a different projection within the same fleet-list read."
+    }
+  ],
+  "states": {
+    "idle": {
+      "matters": false,
+      "why": "No list call means no Cell projection."
+    },
+    "first-use": {
+      "matters": false,
+      "why": "Database open and fixture setup are excluded."
+    },
+    "repeated": {
+      "matters": true,
+      "why": "Each selected list reads fresh Cell state."
+    },
+    "scale": {
+      "matters": true,
+      "why": "1/8/64 bees with 0/1/8/64 Cells each, only the latest referenced."
+    },
+    "background": {
+      "matters": false,
+      "why": "No runtime or renderer launched by the collector."
+    },
+    "release": {
+      "matters": false,
+      "why": "Fixture stores close; no memory measurement."
+    },
+    "recovery": {
+      "matters": true,
+      "why": "Behavior tests reopen and replay persisted state."
+    }
+  },
+  "fixture": {
+    "preset": "fleet-cell-v1",
+    "isolationPolicy": 1,
+    "scaleAxes": [
+      {
+        "axis": "bees",
+        "values": [
+          1,
+          8,
+          64
+        ]
+      },
+      {
+        "axis": "history",
+        "values": [
+          0,
+          1,
+          8,
+          64
+        ]
+      }
+    ],
+    "seed": "Public CoreStore Cell admissions, deterministic identifiers, mixed active/archived bees and active/evicted Cells."
+  },
+  "recipe": {
+    "driver": "scripts/perf/fleet-cell.mjs",
+    "command": "mkdir -p .proof && node scripts/perf/fleet-cell.mjs --out .proof/fleet-cell.json",
+    "warmup": "None; deterministic counts.",
+    "teardown": "Close stores and invoke the existing CoreStore harness cleanup for its temporary directory.",
+    "requires": [
+      "Node 24.18.0"
+    ]
+  },
+  "metrics": [
+    {
+      "id": "excessCellRows",
+      "unit": "count",
+      "scope": "Cell rows returned beyond the unique referenced Cells in one selected fleet list",
+      "collector": "Per-instance stmt all wrapper on real CoreStore Cell SELECT",
+      "aggregation": "max",
+      "kind": "actual",
+      "status": "gated",
+      "states": [
+        "repeated",
+        "scale"
+      ],
+      "betterWhen": "lower",
+      "invariant": "Full outputs match point reads and excessCellRows is zero.",
+      "budget": {
+        "value": 0,
+        "unit": "count",
+        "status": "proposed",
+        "source": "Speedy daily plan 2026-10-06, before baseline and source edit"
+      },
+      "noise": "Deterministic operation counts, no timing claim.",
+      "baseline": {
+        "seriesId": "fleet-cell-v1",
+        "receipt": ".agents/skills/perf-honeybee/workloads/baselines/fleet-cell-projection.json",
+        "commit": "eaaa45d6fc429acf5e218bbf0f7ec8099345a677",
+        "samples": 48,
+        "machine": "Mac.home",
+        "runtime": "v24.18.0",
+        "buildMode": "dev",
+        "aggregation": "max",
+        "aggregate": 0,
+        "capturedAt": "2026-10-06T08:09:28.269Z"
+      }
+    }
+  ],
+  "gaps": [
+    "Production Cell history prevalence is unmeasured.",
+    "SQL VM work, latency, CPU and retained memory remain unmeasured.",
+    "Full snapshot still independently lists all Cells for its complete registry."
+  ],
+  "updatedAt": "2026-10-06",
+  "readiness": "144 full output comparisons across three repetitions of 48 cases; zero excess Cell rows. Count-only evidence; no latency or CPU claim.",
+  "linked": [
+    {
+      "workload": "fleet-handoff-projection",
+      "why": "Same list call; handoff outputs and counts replayed after the Cell query change."
+    }
+  ]
+}

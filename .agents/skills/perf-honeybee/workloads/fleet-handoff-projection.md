@@ -1,6 +1,6 @@
 # Latest handoff projection in fleet lists
 
-`CoreStore.listBeeViewRows` now seeks each selected bee’s latest handoff through the existing `bee_handoffs_bee` index. Timestamp then insertion-order ties are unchanged. No cache or schema change is added; moves, cells, runtime and flag projection are unchanged.
+`CoreStore.listBeeViewRows` now seeks each selected bee’s latest handoff through the existing `bee_handoffs_bee` index. Timestamp then insertion-order ties are unchanged. No cache or schema change is added; moves, runtime and flag projection are unchanged by the handoff optimization. Cell projection is now covered separately by [fleet-cell-projection](fleet-cell-projection.md).
 
 Run `node scripts/perf/fleet-handoff.mjs --out .proof/fleet-handoff.json`, then `node scripts/perf-map.mjs check .proof/fleet-handoff.json`. Run `node --test scripts/perf/fleet-handoff.node-test.mjs v2/core/tests/list-views.test.ts v2/core/tests/handoff.test.ts` for lifecycle and plan controls. Node 24.18.0 and `trash` are required. Stores are isolated and never use the live daemon.
 
@@ -11,3 +11,5 @@ The existing index resolves timestamp/rowid order without a temporary sort. Inde
 The full-history APIs are unchanged. Malformed JSON in an obsolete or unselected handoff is no longer decoded by the fleet list; malformed selected handoffs still fail during mapping. No corruption recovery claim is made.
 
 The map baseline is the candidate capture, so its check proves consistency with that capture. Improvement is supported by the retained paired arms and full outputs under Speedy run `2026-10-03/333b7c8de947184c6d67734e`, not by comparing that baseline with itself.
+
+The baseline receipt and store owner were refreshed on 2026-10-06 after the Cell projection change. All 48 fresh full outputs match the point-read reference and all excess handoff counts remain zero. This refresh does not remeasure the historical baseline arm.

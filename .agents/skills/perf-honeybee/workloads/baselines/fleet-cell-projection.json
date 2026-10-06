@@ -1,0 +1,660 @@
+{
+  "workload": "fleet-cell-projection",
+  "seriesId": "fleet-cell-v1",
+  "capturedAt": "2026-10-06T08:09:28.269Z",
+  "machine": "Mac.home",
+  "runtime": "v24.18.0",
+  "sourceHashes": {
+    "v2/core/src/store.ts": "4789f9bd11bca47ac1be0010a27c16a7ed82f078377780efede319749e737c2d",
+    "v2/core/src/schema.ts": "b2e114dc69946189cc69e9624651702dc90d763ee948bac899d6221af98d6743",
+    "scripts/perf/fleet-cell.mjs": "0d963f95d469cf97d2d8f4c1beb7152518917e847f631f4aba83e3f21aabe028",
+    "v2/core/tests/helpers.ts": "a12920c8a79fd01e5bfca3d47ae9ce015e7dff189afe583da7743050a6a58882"
+  },
+  "complete": true,
+  "results": [
+    {
+      "metric": "excessCellRows",
+      "samples": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "invariantHolds": true
+    }
+  ],
+  "rawEvidence": {
+    "run": "/Users/trmd/.hive/crew/speedy/runs/2026-10-06/c55ae577b9036a2377304506",
+    "pairsSha256": "a6a4496a05c28098ef4d8cc93062c71833ca80a71bcf38b24078a5cdcebc0090",
+    "pairs": [
+      {
+        "pair": 1,
+        "order": [
+          "before",
+          "after"
+        ],
+        "arms": {
+          "before": {
+            "file": "final-pair1-before.json",
+            "sha256": "d8306096bc928f3c4f9b85007798cce91e3708884f80b111d7d0b68c6c52c886"
+          },
+          "after": {
+            "file": "final-pair1-after.json",
+            "sha256": "abf6db13403c406e2b38041fb47a444c53f22fb71a3478c83bcffe17edc1fb0a"
+          }
+        }
+      },
+      {
+        "pair": 2,
+        "order": [
+          "after",
+          "before"
+        ],
+        "arms": {
+          "after": {
+            "file": "final-pair2-after.json",
+            "sha256": "fc6a6bfe4dc598a23add9af16d32609cdd087b9584ce33de11d0e1c985e7208a"
+          },
+          "before": {
+            "file": "final-pair2-before.json",
+            "sha256": "064bf904e7be0b7753155baf671eea56bffd2fcfb386752fda23eb12cb1f3e3b"
+          }
+        }
+      },
+      {
+        "pair": 3,
+        "order": [
+          "before",
+          "after"
+        ],
+        "arms": {
+          "before": {
+            "file": "final-pair3-before.json",
+            "sha256": "b1eda251009293076e77b042e31f713108ec1ffa8c3e154301dc10b9d38f4e29"
+          },
+          "after": {
+            "file": "final-pair3-after.json",
+            "sha256": "4302dfaadeeb6d899c12e61a10f91a317577dbd133f5646e3cf30a0f75f82028"
+          }
+        }
+      }
+    ],
+    "comparisons": 144,
+    "distinctCases": 48,
+    "interpretation": "Three serial alternating pairs repeat the same 48 cases. Full outputs and statement counts are equal in all 144 pairs; raw outputs are retained outside Git."
+  },
+  "samples": [
+    {
+      "bees": 1,
+      "history": 0,
+      "lifecycle": null,
+      "selectedCells": 0,
+      "statements": 6,
+      "outputSha256": "1b750798a5684d2b1c69d7fd4ec84d0c98cc76eddd61482304aafff9aaf65467",
+      "beforeCellRows": 0,
+      "afterCellRows": 0,
+      "excessCellRows": 0
+    },
+    {
+      "bees": 1,
+      "history": 0,
+      "lifecycle": "active",
+      "selectedCells": 0,
+      "statements": 6,
+      "outputSha256": "1b750798a5684d2b1c69d7fd4ec84d0c98cc76eddd61482304aafff9aaf65467",
+      "beforeCellRows": 0,
+      "afterCellRows": 0,
+      "excessCellRows": 0
+    },
+    {
+      "bees": 1,
+      "history": 0,
+      "lifecycle": "archived",
+      "selectedCells": 0,
+      "statements": 1,
+      "outputSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "beforeCellRows": 0,
+      "afterCellRows": 0,
+      "excessCellRows": 0
+    },
+    {
+      "bees": 1,
+      "history": 0,
+      "lifecycle": "unknown",
+      "selectedCells": 0,
+      "statements": 1,
+      "outputSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "beforeCellRows": 0,
+      "afterCellRows": 0,
+      "excessCellRows": 0
+    },
+    {
+      "bees": 1,
+      "history": 1,
+      "lifecycle": null,
+      "selectedCells": 1,
+      "statements": 6,
+      "outputSha256": "58d58393294bdeb69ecae6481b6cf9a018013999346faabb66073000f199141b",
+      "beforeCellRows": 1,
+      "afterCellRows": 1,
+      "excessCellRows": 0
+    },
+    {
+      "bees": 1,
+      "history": 1,
+      "lifecycle": "active",
+      "selectedCells": 1,
+      "statements": 6,
+      "outputSha256": "58d58393294bdeb69ecae6481b6cf9a018013999346faabb66073000f199141b",
+      "beforeCellRows": 1,
+      "afterCellRows": 1,
+      "excessCellRows": 0
+    },
+    {
+      "bees": 1,
+      "history": 1,
+      "lifecycle": "archived",
+      "selectedCells": 0,
+      "statements": 1,
+      "outputSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "beforeCellRows": 0,
+      "afterCellRows": 0,
+      "excessCellRows": 0
+    },
+    {
+      "bees": 1,
+      "history": 1,
+      "lifecycle": "unknown",
+      "selectedCells": 0,
+      "statements": 1,
+      "outputSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "beforeCellRows": 0,
+      "afterCellRows": 0,
+      "excessCellRows": 0
+    },
+    {
+      "bees": 1,
+      "history": 8,
+      "lifecycle": null,
+      "selectedCells": 1,
+      "statements": 6,
+      "outputSha256": "19d0e965751d57e800db789e73631b42fb89873e738014f4b2cfdfc54181deaf",
+      "beforeCellRows": 8,
+      "afterCellRows": 1,
+      "excessCellRows": 0
+    },
+    {
+      "bees": 1,
+      "history": 8,
+      "lifecycle": "active",
+      "selectedCells": 1,
+      "statements": 6,
+      "outputSha256": "19d0e965751d57e800db789e73631b42fb89873e738014f4b2cfdfc54181deaf",
+      "beforeCellRows": 8,
+      "afterCellRows": 1,
+      "excessCellRows": 0
+    },
+    {
+      "bees": 1,
+      "history": 8,
+      "lifecycle": "archived",
+      "selectedCells": 0,
+      "statements": 1,
+      "outputSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "beforeCellRows": 0,
+      "afterCellRows": 0,
+      "excessCellRows": 0
+    },
+    {
+      "bees": 1,
+      "history": 8,
+      "lifecycle": "unknown",
+      "selectedCells": 0,
+      "statements": 1,
+      "outputSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "beforeCellRows": 0,
+      "afterCellRows": 0,
+      "excessCellRows": 0
+    },
+    {
+      "bees": 1,
+      "history": 64,
+      "lifecycle": null,
+      "selectedCells": 1,
+      "statements": 6,
+      "outputSha256": "09ae763f4ea700e7826defbabbd17c73f0d29ed639db77f307698bb126c1a186",
+      "beforeCellRows": 64,
+      "afterCellRows": 1,
+      "excessCellRows": 0
+    },
+    {
+      "bees": 1,
+      "history": 64,
+      "lifecycle": "active",
+      "selectedCells": 1,
+      "statements": 6,
+      "outputSha256": "09ae763f4ea700e7826defbabbd17c73f0d29ed639db77f307698bb126c1a186",
+      "beforeCellRows": 64,
+      "afterCellRows": 1,
+      "excessCellRows": 0
+    },
+    {
+      "bees": 1,
+      "history": 64,
+      "lifecycle": "archived",
+      "selectedCells": 0,
+      "statements": 1,
+      "outputSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "beforeCellRows": 0,
+      "afterCellRows": 0,
+      "excessCellRows": 0
+    },
+    {
+      "bees": 1,
+      "history": 64,
+      "lifecycle": "unknown",
+      "selectedCells": 0,
+      "statements": 1,
+      "outputSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "beforeCellRows": 0,
+      "afterCellRows": 0,
+      "excessCellRows": 0
+    },
+    {
+      "bees": 8,
+      "history": 0,
+      "lifecycle": null,
+      "selectedCells": 0,
+      "statements": 6,
+      "outputSha256": "d8ac30781bb32e947613aee4e9e5426820600743e0e4b1fc9018498d68cdf71c",
+      "beforeCellRows": 0,
+      "afterCellRows": 0,
+      "excessCellRows": 0
+    },
+    {
+      "bees": 8,
+      "history": 0,
+      "lifecycle": "active",
+      "selectedCells": 0,
+      "statements": 6,
+      "outputSha256": "dd79cfd1a71dd8152d9d278bf1622579aaa2c01c51b426bca1396b4051bc7111",
+      "beforeCellRows": 0,
+      "afterCellRows": 0,
+      "excessCellRows": 0
+    },
+    {
+      "bees": 8,
+      "history": 0,
+      "lifecycle": "archived",
+      "selectedCells": 0,
+      "statements": 6,
+      "outputSha256": "8cdd9cdf07f791d9a4dcf7c40967da90e36b0eff30247a33f5da5b0beda4c895",
+      "beforeCellRows": 0,
+      "afterCellRows": 0,
+      "excessCellRows": 0
+    },
+    {
+      "bees": 8,
+      "history": 0,
+      "lifecycle": "unknown",
+      "selectedCells": 0,
+      "statements": 1,
+      "outputSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "beforeCellRows": 0,
+      "afterCellRows": 0,
+      "excessCellRows": 0
+    },
+    {
+      "bees": 8,
+      "history": 1,
+      "lifecycle": null,
+      "selectedCells": 8,
+      "statements": 6,
+      "outputSha256": "c8b70bf876e18a90e0c6a435f8ef09119066da61df38b6f3c2474b9a4da441a9",
+      "beforeCellRows": 8,
+      "afterCellRows": 8,
+      "excessCellRows": 0
+    },
+    {
+      "bees": 8,
+      "history": 1,
+      "lifecycle": "active",
+      "selectedCells": 4,
+      "statements": 6,
+      "outputSha256": "ad8d89bbfe85a26ed209b6cb66de05e0602701e634a0b7a3c38e89478c2aee15",
+      "beforeCellRows": 8,
+      "afterCellRows": 4,
+      "excessCellRows": 0
+    },
+    {
+      "bees": 8,
+      "history": 1,
+      "lifecycle": "archived",
+      "selectedCells": 4,
+      "statements": 6,
+      "outputSha256": "f24505a97c90cd8e5aa9abcd2900e9b35a0fd0042a2e30bb3f3f246a66c68288",
+      "beforeCellRows": 8,
+      "afterCellRows": 4,
+      "excessCellRows": 0
+    },
+    {
+      "bees": 8,
+      "history": 1,
+      "lifecycle": "unknown",
+      "selectedCells": 0,
+      "statements": 1,
+      "outputSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "beforeCellRows": 0,
+      "afterCellRows": 0,
+      "excessCellRows": 0
+    },
+    {
+      "bees": 8,
+      "history": 8,
+      "lifecycle": null,
+      "selectedCells": 8,
+      "statements": 6,
+      "outputSha256": "3bbda98bb4fffd6b353460c9aba2a0fc590b717af0b32f36786efaa2317650ab",
+      "beforeCellRows": 64,
+      "afterCellRows": 8,
+      "excessCellRows": 0
+    },
+    {
+      "bees": 8,
+      "history": 8,
+      "lifecycle": "active",
+      "selectedCells": 4,
+      "statements": 6,
+      "outputSha256": "9218e442744dba2a369e9c29ed3f142eaef1d1cc78bb63e4ae3599306e86657c",
+      "beforeCellRows": 64,
+      "afterCellRows": 4,
+      "excessCellRows": 0
+    },
+    {
+      "bees": 8,
+      "history": 8,
+      "lifecycle": "archived",
+      "selectedCells": 4,
+      "statements": 6,
+      "outputSha256": "b50a11c8ab189d986e1ec3891c57c6e5765625228b3b3f78159bcd2ef5c37f85",
+      "beforeCellRows": 64,
+      "afterCellRows": 4,
+      "excessCellRows": 0
+    },
+    {
+      "bees": 8,
+      "history": 8,
+      "lifecycle": "unknown",
+      "selectedCells": 0,
+      "statements": 1,
+      "outputSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "beforeCellRows": 0,
+      "afterCellRows": 0,
+      "excessCellRows": 0
+    },
+    {
+      "bees": 8,
+      "history": 64,
+      "lifecycle": null,
+      "selectedCells": 8,
+      "statements": 6,
+      "outputSha256": "cc1ca1dc8577db2f40ee38f35e1bb7f68d26d193b9e7412bc2a21b9630e168a5",
+      "beforeCellRows": 512,
+      "afterCellRows": 8,
+      "excessCellRows": 0
+    },
+    {
+      "bees": 8,
+      "history": 64,
+      "lifecycle": "active",
+      "selectedCells": 4,
+      "statements": 6,
+      "outputSha256": "ba48f98dde26196b0f4b89e4c767dc8db14d81809065f2c9de7634b9bce9785b",
+      "beforeCellRows": 512,
+      "afterCellRows": 4,
+      "excessCellRows": 0
+    },
+    {
+      "bees": 8,
+      "history": 64,
+      "lifecycle": "archived",
+      "selectedCells": 4,
+      "statements": 6,
+      "outputSha256": "3e213f0c6df748926cbb3d68ce609f7e48d49b132bc2d5efac20cf885c3d8944",
+      "beforeCellRows": 512,
+      "afterCellRows": 4,
+      "excessCellRows": 0
+    },
+    {
+      "bees": 8,
+      "history": 64,
+      "lifecycle": "unknown",
+      "selectedCells": 0,
+      "statements": 1,
+      "outputSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "beforeCellRows": 0,
+      "afterCellRows": 0,
+      "excessCellRows": 0
+    },
+    {
+      "bees": 64,
+      "history": 0,
+      "lifecycle": null,
+      "selectedCells": 0,
+      "statements": 6,
+      "outputSha256": "0d783519d335fc8d20666b16d7a0d04748bc7ad8879ef5eef259691e90466513",
+      "beforeCellRows": 0,
+      "afterCellRows": 0,
+      "excessCellRows": 0
+    },
+    {
+      "bees": 64,
+      "history": 0,
+      "lifecycle": "active",
+      "selectedCells": 0,
+      "statements": 6,
+      "outputSha256": "66a1e9f8d4602b4ad1d1be5378f4c6216b6f338352d81ff9a4fac4d7e6561115",
+      "beforeCellRows": 0,
+      "afterCellRows": 0,
+      "excessCellRows": 0
+    },
+    {
+      "bees": 64,
+      "history": 0,
+      "lifecycle": "archived",
+      "selectedCells": 0,
+      "statements": 6,
+      "outputSha256": "91af3c49f78b94facd0065fe0cae9847182d905f15df9c1b56dbc75ecde269a9",
+      "beforeCellRows": 0,
+      "afterCellRows": 0,
+      "excessCellRows": 0
+    },
+    {
+      "bees": 64,
+      "history": 0,
+      "lifecycle": "unknown",
+      "selectedCells": 0,
+      "statements": 1,
+      "outputSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "beforeCellRows": 0,
+      "afterCellRows": 0,
+      "excessCellRows": 0
+    },
+    {
+      "bees": 64,
+      "history": 1,
+      "lifecycle": null,
+      "selectedCells": 64,
+      "statements": 6,
+      "outputSha256": "3b7e72fa43071584ee30e6e3a75e530ed6e33ffcf2043f5f37a93725e52fac40",
+      "beforeCellRows": 64,
+      "afterCellRows": 64,
+      "excessCellRows": 0
+    },
+    {
+      "bees": 64,
+      "history": 1,
+      "lifecycle": "active",
+      "selectedCells": 32,
+      "statements": 6,
+      "outputSha256": "3b5805130a6b7fb92fca46cc1832303309ab81829bffbf8c95982085d8db1735",
+      "beforeCellRows": 64,
+      "afterCellRows": 32,
+      "excessCellRows": 0
+    },
+    {
+      "bees": 64,
+      "history": 1,
+      "lifecycle": "archived",
+      "selectedCells": 32,
+      "statements": 6,
+      "outputSha256": "e696dbfedc37f2cd8f08718f61e9589b3da32afe1722bb10da1c7c70610f2fac",
+      "beforeCellRows": 64,
+      "afterCellRows": 32,
+      "excessCellRows": 0
+    },
+    {
+      "bees": 64,
+      "history": 1,
+      "lifecycle": "unknown",
+      "selectedCells": 0,
+      "statements": 1,
+      "outputSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "beforeCellRows": 0,
+      "afterCellRows": 0,
+      "excessCellRows": 0
+    },
+    {
+      "bees": 64,
+      "history": 8,
+      "lifecycle": null,
+      "selectedCells": 64,
+      "statements": 6,
+      "outputSha256": "acdb92e8654b3399a03d707d8a21906b43e116502afe009ff861b590826efb5f",
+      "beforeCellRows": 512,
+      "afterCellRows": 64,
+      "excessCellRows": 0
+    },
+    {
+      "bees": 64,
+      "history": 8,
+      "lifecycle": "active",
+      "selectedCells": 32,
+      "statements": 6,
+      "outputSha256": "2fc08031291d8b30c158be40822f4b89bebfee776ecfcd4856728a7b9308f16b",
+      "beforeCellRows": 512,
+      "afterCellRows": 32,
+      "excessCellRows": 0
+    },
+    {
+      "bees": 64,
+      "history": 8,
+      "lifecycle": "archived",
+      "selectedCells": 32,
+      "statements": 6,
+      "outputSha256": "8babd2cdbd2382076562320fb730b02fc3b97f03a0876ef9b121fba5921e41c0",
+      "beforeCellRows": 512,
+      "afterCellRows": 32,
+      "excessCellRows": 0
+    },
+    {
+      "bees": 64,
+      "history": 8,
+      "lifecycle": "unknown",
+      "selectedCells": 0,
+      "statements": 1,
+      "outputSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "beforeCellRows": 0,
+      "afterCellRows": 0,
+      "excessCellRows": 0
+    },
+    {
+      "bees": 64,
+      "history": 64,
+      "lifecycle": null,
+      "selectedCells": 64,
+      "statements": 6,
+      "outputSha256": "ce42a4115168f5f37204e85f440e2ac1cdb040f8c67c05851fbdbc5b680c0eed",
+      "beforeCellRows": 4096,
+      "afterCellRows": 64,
+      "excessCellRows": 0
+    },
+    {
+      "bees": 64,
+      "history": 64,
+      "lifecycle": "active",
+      "selectedCells": 32,
+      "statements": 6,
+      "outputSha256": "477b0ae72642fb58d4c0d62e3feeb80cdd6a59f9397a76f98809498565094bb2",
+      "beforeCellRows": 4096,
+      "afterCellRows": 32,
+      "excessCellRows": 0
+    },
+    {
+      "bees": 64,
+      "history": 64,
+      "lifecycle": "archived",
+      "selectedCells": 32,
+      "statements": 6,
+      "outputSha256": "947ed9acef2d0bc6d76da7001f891440729b99ee53d5cd6aa6681dd6627729f3",
+      "beforeCellRows": 4096,
+      "afterCellRows": 32,
+      "excessCellRows": 0
+    },
+    {
+      "bees": 64,
+      "history": 64,
+      "lifecycle": "unknown",
+      "selectedCells": 0,
+      "statements": 1,
+      "outputSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "beforeCellRows": 0,
+      "afterCellRows": 0,
+      "excessCellRows": 0
+    }
+  ]
+}

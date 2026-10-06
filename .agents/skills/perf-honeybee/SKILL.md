@@ -87,3 +87,5 @@ Action reminders are mapped by [action-reminder-reads](workloads/action-reminder
 [Reservation membership](workloads/account-activity-reservation-visits.md) counts reservation bee-ID reads during account activity. Ordered per-call groups preserve transfer precedence and fresh state; allocation and SQL scan costs remain unmeasured.
 
 Latest handoff projection in fleet lists is mapped by [fleet-handoff-projection](workloads/fleet-handoff-projection.md). Its isolated CoreStore collector counts returned handoff rows and preserves fresh latest-record ordering; it does not measure CPU or latency.
+
+Referenced Cell projection is mapped by [fleet-cell-projection](workloads/fleet-cell-projection.md): selected Cell row counts in fleet lists, with full registry reads and CPU/latency explicitly outside the claim.

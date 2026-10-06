@@ -4511,7 +4511,12 @@ export class CoreStore {
       flagsByBee.set(row.beeId, [...(flagsByBee.get(row.beeId) ?? []), row.flag]);
     }
 
-    const cellsById = new Map(this.listCells().map((cell) => [cell.id, cell] as const));
+    const cells = (this.stmt(
+      `SELECT * FROM cells WHERE id IN (
+         SELECT cell_id FROM bees WHERE cell_id != '' AND (? IS NULL OR lifecycle = ?)
+       )`,
+    ).all(lifecycle, lifecycle) as Row[]).map(mapCell);
+    const cellsById = new Map(cells.map((cell) => [cell.id, cell] as const));
     const latestMoveByBee = new Map<string, BeeMoveRow>();
     for (const row of this.stmt("SELECT * FROM bee_moves ORDER BY created_at, rowid").all() as Row[]) {
       const move = mapBeeMove(row);
