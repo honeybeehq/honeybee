@@ -4517,10 +4517,10 @@ export class CoreStore {
        )`,
     ).all(lifecycle, lifecycle) as Row[]).map(mapCell);
     const cellsById = new Map(cells.map((cell) => [cell.id, cell] as const));
-    const latestMoveByBee = new Map<string, BeeMoveRow>();
+    const latestMoveByBee = new Map<string, Row>();
     for (const row of this.stmt("SELECT * FROM bee_moves ORDER BY created_at, rowid").all() as Row[]) {
-      const move = mapBeeMove(row);
-      latestMoveByBee.set(move.beeId, move);
+      const beeId = row.bee_id as string;
+      if (selected.has(beeId)) latestMoveByBee.set(beeId, row);
     }
     const latestHandoffByBee = new Map<string, BeeHandoffRow>();
     for (const row of this.stmt(
@@ -4544,7 +4544,7 @@ export class CoreStore {
         bee,
         runtime,
         view: deriveBeeView(bee.id, bee, runtime, flagsByBee.get(bee.id) ?? []),
-        move: move ? toBeeMoveView(move) : null,
+        move: move ? toBeeMoveView(mapBeeMove(move)) : null,
         cell: bee.cellId ? (cellsById.get(bee.cellId) ?? null) : null,
         handoff: handoff ? toBeeHandoffView(handoff) : null,
       };

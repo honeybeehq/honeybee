@@ -13,3 +13,5 @@ The full-history APIs are unchanged. Malformed JSON in an obsolete or unselected
 The map baseline is the candidate capture, so its check proves consistency with that capture. Improvement is supported by the retained paired arms and full outputs under Speedy run `2026-10-03/333b7c8de947184c6d67734e`, not by comparing that baseline with itself.
 
 The baseline receipt and store owner were refreshed on 2026-10-06 after the Cell projection change. All 48 fresh full outputs match the point-read reference and all excess handoff counts remain zero. This refresh does not remeasure the historical baseline arm.
+
+The source owner and compact receipt were refreshed on 2026-10-07 after move mapping changed. All 48 current-source outputs match point reads and excess counts remain zero. This refresh does not remeasure the historical before arm.

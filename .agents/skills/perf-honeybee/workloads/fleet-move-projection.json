@@ -1,0 +1,147 @@
+{
+  "protocolVersion": 1,
+  "id": "fleet-move-projection",
+  "title": "Latest move mapping in fleet lists",
+  "lane": "throughput",
+  "processes": [
+    "hived"
+  ],
+  "owners": [
+    "v2/core/src/store.ts@114aa0419653b3a3efa9295e22100aff787a1f3f",
+    "v2/core/src/cellMove.ts@b6e5c9babc33bbcbbbc8e27da3c19a88d9de6b58"
+  ],
+  "effect": {
+    "user": "Fleet lists convert only the selected bees latest move rows.",
+    "assertions": [
+      "Full ordered outputs, latest timestamp/rowid selection and mutation freshness remain unchanged.",
+      "SQL statement counts and returned move rows remain unchanged."
+    ],
+    "exclusions": [
+      "SQL scanning, latency, CPU, allocation bytes, RSS, full snapshot move registry."
+    ]
+  },
+  "accounts": [
+    {
+      "inventory": "entry-points",
+      "key": "fleet-view:listBeeViewRows",
+      "shared": "The handoff workload measures a different projection within the same fleet-list read."
+    }
+  ],
+  "states": {
+    "idle": {
+      "matters": false,
+      "why": "No list call means no move mapping."
+    },
+    "first-use": {
+      "matters": false,
+      "why": "Database open and fixture setup are excluded."
+    },
+    "repeated": {
+      "matters": true,
+      "why": "Each selected list maps fresh latest move state."
+    },
+    "scale": {
+      "matters": true,
+      "why": "1, 8 and 64 bees with 0, 1, 8 or 64 failed move receipts each."
+    },
+    "background": {
+      "matters": false,
+      "why": "No runtime or renderer launched by the collector."
+    },
+    "release": {
+      "matters": false,
+      "why": "Fixture stores close; no memory measurement."
+    },
+    "recovery": {
+      "matters": true,
+      "why": "Behavior tests reopen and replay persisted state."
+    }
+  },
+  "fixture": {
+    "preset": "fleet-move-v1",
+    "isolationPolicy": 1,
+    "scaleAxes": [
+      {
+        "axis": "bees",
+        "values": [
+          1,
+          8,
+          64
+        ]
+      },
+      {
+        "axis": "history",
+        "values": [
+          0,
+          1,
+          8,
+          64
+        ]
+      }
+    ],
+    "seed": "Deterministic failed CoreStore move admissions with ties"
+  },
+  "recipe": {
+    "driver": "scripts/perf/fleet-move.mjs",
+    "command": "mkdir -p .proof && node scripts/perf/fleet-move.mjs --out .proof/fleet-move.json",
+    "readiness": "Isolated CoreStore fixture seeded through supported methods",
+    "completion": "Fresh list call with full point-read reference parity",
+    "warmup": "None; deterministic mapping counts",
+    "teardown": "Close stores and invoke existing test harness cleanup",
+    "requires": [
+      "Node 24.18.0"
+    ]
+  },
+  "metrics": [
+    {
+      "id": "excessMoveMappings",
+      "unit": "count",
+      "scope": "Move mappings beyond selected latest moves per fleet list",
+      "collector": "Per-instance SQL-result Proxy counts placement_version access at mapBeeMove entry",
+      "aggregation": "max",
+      "kind": "actual",
+      "status": "gated",
+      "states": [
+        "repeated",
+        "scale"
+      ],
+      "betterWhen": "lower",
+      "invariant": "Full ordered outputs equal point reads, no excess mappings, unchanged SQL counts/rows.",
+      "noise": "Deterministic operation counts; no timing claim.",
+      "budget": {
+        "value": 0,
+        "unit": "count",
+        "status": "proposed",
+        "source": "Agent acceptance predeclared 2026-10-07T08:02:08.217850+00:00"
+      },
+      "baseline": {
+        "seriesId": "fleet-move-v1",
+        "receipt": ".agents/skills/perf-honeybee/workloads/baselines/fleet-move-projection.json",
+        "commit": "f1be8e31b3ff297752b34845008713438602ff7c+d61b-working-tree",
+        "samples": 48,
+        "machine": "Mac.home",
+        "runtime": "v24.18.0",
+        "buildMode": "dev",
+        "aggregation": "max",
+        "aggregate": 0,
+        "capturedAt": "2026-10-07T08:05:00.167Z"
+      }
+    }
+  ],
+  "gaps": [
+    "SQL scans all move history; no latency, CPU, allocation or RSS result.",
+    "Superseded/unselected malformed move failure JSON stops being decoded by this list; selected latest and full-history reads still fail."
+  ],
+  "updatedAt": "2026-10-07",
+  "readiness": "144 full-output comparisons across three alternating pairs of 48 cases; zero excess move mappings, unchanged SQL counts and rows. Count-only result.",
+  "linked": [
+    {
+      "workload": "fleet-handoff-projection",
+      "why": "Same list call; outputs and counts replayed after the move mapping change."
+    },
+    {
+      "workload": "fleet-cell-projection",
+      "why": "Same list call; outputs and counts replayed after the move mapping change."
+    }
+  ]
+}

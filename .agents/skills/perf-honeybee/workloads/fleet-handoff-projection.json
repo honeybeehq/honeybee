@@ -7,7 +7,7 @@
     "hived"
   ],
   "owners": [
-    "v2/core/src/store.ts@24d36609268521ddb416b4df398de724445b2c2c",
+    "v2/core/src/store.ts@114aa0419653b3a3efa9295e22100aff787a1f3f",
     "v2/core/src/schema.ts@ddec7de9c75ef1664f9caeb9b242c7595d4367e0",
     "v2/core/src/handoff.ts@248d6bbfc44fcfd8bdddac50b58e813fb2a4941f"
   ],
@@ -118,14 +118,14 @@
       "baseline": {
         "seriesId": "fleet-handoff-v1",
         "receipt": ".agents/skills/perf-honeybee/workloads/baselines/fleet-handoff-projection.json",
-        "commit": "eaaa45d6fc429acf5e218bbf0f7ec8099345a677",
+        "commit": "f1be8e31b3ff297752b34845008713438602ff7c+d61b-working-tree",
         "samples": 48,
         "machine": "Mac.home",
         "runtime": "v24.18.0",
         "buildMode": "dev",
         "aggregation": "max",
         "aggregate": 0,
-        "capturedAt": "2026-10-06T08:06:02.624Z"
+        "capturedAt": "2026-10-07T08:05:20.972Z"
       }
     }
   ],
@@ -134,6 +134,6 @@
     "SQL VM work, latency, CPU, heap and RSS are not measured.",
     "Old malformed handoff JSON outside the selected latest rows will no longer be decoded by this read; full-history APIs are unchanged."
   ],
-  "updatedAt": "2026-10-06",
+  "updatedAt": "2026-10-07",
   "readiness": "144 full output comparisons across three repetitions of 48 deterministic cases; zero excess handoff rows; no CPU or latency claim."
 }

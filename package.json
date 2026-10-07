@@ -44,7 +44,7 @@
     "postbuild": "chmod +x dist/cli.js dist/cli-x.js",
     "check": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit",
     "v2:check": "tsc -p v2/core/tsconfig.json && tsc -p v2/harness/tsconfig.json && tsc -p v2/adapters/tsconfig.json && tsc -p v2/driver-hsr/tsconfig.json && tsc -p v2/daemon/tsconfig.json && tsc -p v2/cli/tsconfig.json && tsc -p v2/driver-cell/tsconfig.json && tsc -p v2/driver-tmux/tsconfig.json",
-    "v2:test": "NODE_COMPILE_CACHE=.cache/node-compile node --test --test-isolation=none \"v2/core/tests/*.test.ts\" && node --test scripts/perf/fleet-cell.node-test.mjs",
+    "v2:test": "NODE_COMPILE_CACHE=.cache/node-compile node --test --test-isolation=none \"v2/core/tests/*.test.ts\" && node --test scripts/perf/fleet-cell.node-test.mjs scripts/perf/fleet-move.node-test.mjs",
     "v2:harness": "NODE_COMPILE_CACHE=.cache/node-compile node --test --test-isolation=none \"v2/harness/tests/*.test.ts\"",
     "v2:harness:long": "HARNESS_PROFILE=long NODE_COMPILE_CACHE=.cache/node-compile node --test --test-isolation=none \"v2/harness/tests/*.test.ts\"",
     "v2:driver": "NODE_COMPILE_CACHE=.cache/node-compile node --test \"v2/adapters/tests/*.test.ts\" \"v2/driver-hsr/tests/*.test.ts\"",

@@ -1,0 +1,11 @@
+# Latest move mapping in fleet lists
+
+`CoreStore.listBeeViewRows` keeps raw latest move rows for the selected bees, then maps those rows when assembling the output. The SQL remains the same full-history ordered read. There is no new cache, index or schema change. Timestamp and rowid tie-breaking are unchanged.
+
+Run `mkdir -p .proof && node scripts/perf/fleet-move.mjs --out .proof/fleet-move.json`, then `node scripts/perf-map.mjs check .proof/fleet-move.json`. Run `node --test scripts/perf/fleet-move.node-test.mjs v2/core/tests/list-views.test.ts v2/core/tests/cell-move.test.ts`. The new test is included in `npm run v2:test`. Node 24.18.0 is required; the existing CoreStore test harness owns disposable fixtures and cleanup, without any live daemon.
+
+Three alternating pairs cover 48 distinct synthetic cases each: 1, 8 and 64 bees, 0, 1, 8 and 64 move receipts per bee, and unfiltered, active, archived and unmatched lifecycle filters. All 144 full ordered output comparisons match. For 64 bees with 64 receipts each, move conversions fall from 4096 to 64 (98.4375% fewer); active and archived lists map 32 each. Empty history and unmatched filters remain zero. SQL statement counts and returned move rows are identical in every pair.
+
+The collector wraps SQL result rows and counts the `placement_version` access at the beginning of `mapBeeMove`. Seeded fixture-only UUIDs make cross-process outputs comparable; the mock is restored after setup. Tests separately exercise ties, an older insertion, fresh admission and phase changes, rollback, lifecycle changes, deletion, reopen and audit replay. Superseded and unselected malformed failure JSON is no longer decoded by the fleet list. Selected latest corruption still throws, and full-history methods are unchanged.
+
+The SQL still scans and returns every move; the daemon snapshot still reads the full move registry separately. No SQL VM, latency, CPU, allocation-byte, RSS or UI improvement is established. The fixture history distribution is synthetic. Checked-in evidence is a compact receipt; all six full arms and the initial random-UUID comparison failure remain in Speedy run `2026-10-07/d61bcfae585ba4fd61f7774c`. The map check compares against the candidate baseline; paired arms establish the reduction.

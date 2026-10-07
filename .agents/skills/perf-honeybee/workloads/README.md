@@ -17,6 +17,7 @@ Each workload is a `<id>.json` record (machine-readable, schema in `record.schem
 | [Boot-state lookup over retained runtime history](./boot-runtime-lookup.md) | steady-state | hived | 0 | 0 | 0 | 0 | 2 | first-use, recovery | 150 paired count samples have boolean parity and zero stopped-history scan growth; all-live VM overhead is 5–125 instructions. Node plan/lifecycle controls pass separately. No timing claim. |
 | [Referenced Cell projection in fleet lists](./fleet-cell-projection.md) | throughput | hived | 0 | 0 | 0 | 0 | 1 | recovery | 144 full output comparisons across three repetitions of 48 cases; zero excess Cell rows. Count-only evidence; no latency or CPU claim. |
 | [Latest handoff projection in fleet lists](./fleet-handoff-projection.md) | throughput | hived | 0 | 0 | 0 | 0 | 1 | recovery | 144 full output comparisons across three repetitions of 48 deterministic cases; zero excess handoff rows; no CPU or latency claim. |
+| [Latest move mapping in fleet lists](./fleet-move-projection.md) | throughput | hived | 0 | 0 | 0 | 0 | 1 | recovery | 144 full-output comparisons across three alternating pairs of 48 cases; zero excess move mappings, unchanged SQL counts and rows. Count-only result. |
 | [Remote Cell spawn: satellite owner](./remote-cell-spawn.md) | startup | hived, bee-runtime, helper | 3 | 3 | 0 | 0 | 0 | first-use, repeated, scale, release, recovery | Executable owner-side satellite stub benchmark; real provider, per-phase attribution and workstation-to-visible latency remain explicit gaps. |
 
 ## Accounted gaps (74)

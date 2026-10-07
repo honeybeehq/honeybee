@@ -11,3 +11,5 @@ The collector counts rows returned by the Cell query, not SQL VM instructions. O
 The subquery still scans the bee roster and builds a temporary membership set. Its CPU cost, sparse-history tradeoffs, allocation bytes, RSS, latency and production history frequency are unmeasured. The full snapshot still reads the complete Cell registry separately. This result establishes no UI or whole-daemon speedup.
 
 The compact receipt contains one 48-case table plus hashes for all six retained raw arms under Speedy run `2026-10-06/c55ae577b9036a2377304506`. The candidate baseline check measures consistency with that capture; the paired raw outputs establish the reduction. The acceptance bound was predeclared before baseline and production edits.
+
+The source owner and compact receipt were refreshed on 2026-10-07 after move mapping changed. All 48 current-source outputs match point reads and excess counts remain zero. This refresh does not remeasure the historical before arm.
