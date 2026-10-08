@@ -149,6 +149,28 @@ function listCell(rig: ReturnType<typeof makeRig>) {
   );
 }
 
+test("landed.landed-then-restored: a cherry-picked commit counts after main restores one of its files", () => {
+  const rig = makeRig();
+  try {
+    const cell = provisioned(rig);
+    const a = commitInCell(cell.paths.spaceDir, "src/app.ts", "export const version = 2;\nexport const extra = 1;\n", "cell edits app and readme");
+    writeFileSync(join(cell.paths.spaceDir, "README.md"), "# fixture\nmore\n");
+    g(cell.paths.spaceDir, ["commit", "-qam", "readme"]);
+    g(cell.paths.spaceDir, ["reset", "--soft", "HEAD~2"]);
+    g(cell.paths.spaceDir, ["commit", "-qm", "cell edits app and readme"]);
+    const head = g(cell.paths.spaceDir, ["rev-parse", "HEAD"]);
+    assert.notEqual(head, a);
+    commitOn(rig.origin.repo, "other.ts", "main moved\n", "unrelated main work");
+    landInOrigin(rig.origin.repo, cell.paths.spaceDir, "HEAD", () => cherryPick(rig.origin.repo, [head]));
+    commitOn(rig.origin.repo, "README.md", "# fixture\n", "restore readme");
+    assert.ok(originLacks(rig.origin.repo, head));
+
+    assert.equal(dirtyReport(cell.paths.wrapperDir).dirty, false);
+  } finally {
+    rig.cleanup();
+  }
+});
+
 test("landed.conflict-resolved: a rebase conflict resolved to the Cell's version counts (empty replay)", () => {
   const rig = makeRig();
   try {

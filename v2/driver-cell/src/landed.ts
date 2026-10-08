@@ -17,9 +17,10 @@
  *  4. replaying the commit onto the target is clean and changes nothing
  *     (a cherry-pick that would be empty: trivially resolved rebases).
  *
- * Before the expensive checks, a blob-level prefilter proves commits
- * unlanded: a change from blob X at a path where the target still holds X
- * (or still lacks a path the change added) is not on the target.
+ * Merge probes (2 and 4) are skipped when a blob-level prefilter already
+ * shows they would change the target: the range or commit changes a path
+ * away from blob X while the target still holds X (or still lacks a path
+ * the change added).
  *
  * Every check fails closed: a git error, a conflict, an old git without
  * `merge-tree --write-tree`, or a budget overrun leaves the commit unlanded.
@@ -57,7 +58,7 @@ const DEFAULT_TARGET_REFS = [
 
 const MAX_RANGE_COMMITS = 500;
 const MAX_REPLAY_PROBES = 4;
-const PROBE_BUDGET_MS = 5_000;
+const PROBE_BUDGET_MS = 15_000;
 const MAX_PREFILTER_PATHS = 2000;
 const SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 const ZERO_SHA = /^0+$/;
@@ -150,18 +151,16 @@ function probeTips(spaceDir: string, originRepo: string, tips: string[], base: s
   const cellObjects = objectsDir(spaceDir);
   const originObjects = objectsDir(originRepo);
   if (cellObjects == null || originObjects == null) throw new Error("object directories unresolvable");
-  const targets = landingTargets(originRepo, receipts);
-  const landedHeads = receipts
-    .filter((r) => SHA.test(r.cellHead) && SHA.test(r.resultSha) && targets.some((t) => isAncestor(originRepo, r.resultSha, t)))
-    .map((r) => r.cellHead);
+  const allTargets = landingTargets(originRepo, receipts);
 
   const scratch = mkdtempSync(join(tmpdir(), "hive-landed-"));
   try {
     const env = { GIT_OBJECT_DIRECTORY: scratch, GIT_ALTERNATE_OBJECT_DIRECTORIES: alternatesValue([cellObjects, originObjects]) };
     const deadline = Date.now() + PROBE_BUDGET_MS;
     const run = (args: string[], opts: { input?: string; literalPaths?: boolean } = {}) => {
-      if (Date.now() > deadline) throw new Error("landed probe budget exhausted");
-      return tryGit(spaceDir, args, { env: opts.literalPaths ? { ...env, GIT_LITERAL_PATHSPECS: "1" } : env, input: opts.input });
+      const timeoutMs = deadline - Date.now();
+      if (timeoutMs <= 0) throw new Error("landed probe budget exhausted");
+      return tryGit(spaceDir, args, { env: opts.literalPaths ? { ...env, GIT_LITERAL_PATHSPECS: "1" } : env, input: opts.input, timeoutMs });
     };
     const must = (args: string[], opts: { input?: string; literalPaths?: boolean } = {}) => {
       const res = run(args, opts);
@@ -181,6 +180,10 @@ function probeTips(spaceDir: string, originRepo: string, tips: string[], base: s
       const res = run(["merge-tree", "--write-tree", ...args]);
       return res.status === 0 && lines(res.stdout)[0] === treeOf(target);
     };
+    const targets = allTargets.length > 1 ? lines(must(["merge-base", "--independent", ...allTargets])) : allTargets;
+    const landedHeads = receipts
+      .filter((r) => SHA.test(r.cellHead) && SHA.test(r.resultSha) && targets.some((t) => isAncestor(originRepo, r.resultSha, t)))
+      .map((r) => r.cellHead);
     const blobCache = new Map<string, Map<string, string>>();
     const blobsAt = (target: string, paths: string[]): Map<string, string> => {
       let known = blobCache.get(target);
@@ -240,19 +243,16 @@ function probeTips(spaceDir: string, originRepo: string, tips: string[], base: s
         out.set(tip, range);
         continue;
       }
-      const changes = commitChanges(range);
-      const candidates = new Set(range.filter((c) => targets.some((t) => !provablyUnlanded(t, changes.get(c)))));
       const landed = new Set<string>();
-      if (candidates.size > 0) {
-        for (const target of targets) {
-          for (const line of lines(must(["rev-list", "--cherry-mark", "--right-only", "--no-merges", `${target}...${tip}`]))) {
-            const sha = line.slice(1);
-            if (line.startsWith("=") && candidates.has(sha)) landed.add(sha);
-          }
+      for (const target of targets) {
+        for (const line of lines(must(["rev-list", "--cherry-mark", "--right-only", "--no-merges", `${target}...${tip}`]))) {
+          if (line.startsWith("=")) landed.add(line.slice(1));
         }
-        for (const commit of candidates) {
-          if (!landed.has(commit) && replaysEmpty(commit)) landed.add(commit);
-        }
+      }
+      const pending = range.filter((c) => !landed.has(c));
+      const changes = pending.length > 0 ? commitChanges(pending) : new Map<string, PathChange[]>();
+      for (const commit of pending) {
+        if (targets.some((t) => !provablyUnlanded(t, changes.get(commit))) && replaysEmpty(commit)) landed.add(commit);
       }
       out.set(tip, range.filter((c) => !landed.has(c)));
     }
