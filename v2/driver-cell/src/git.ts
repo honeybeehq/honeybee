@@ -52,8 +52,8 @@ export interface GitResult {
 }
 
 /** Run git, returning the result without throwing. */
-export function tryGit(cwd: string, args: string[], opts: { env?: Record<string, string> } = {}): GitResult {
-  const res = spawnSync("git", args, { cwd, encoding: "utf8", env: gitEnv(opts.env), maxBuffer: 64 * 1024 * 1024 });
+export function tryGit(cwd: string, args: string[], opts: { env?: Record<string, string>; input?: string } = {}): GitResult {
+  const res = spawnSync("git", args, { cwd, encoding: "utf8", env: gitEnv(opts.env), input: opts.input, maxBuffer: 64 * 1024 * 1024 });
   if (res.error) throw res.error; // git binary missing — a machine boundary, not a git failure
   return { status: res.status, stdout: res.stdout ?? "", stderr: res.stderr ?? "" };
 }

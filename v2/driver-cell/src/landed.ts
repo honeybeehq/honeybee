@@ -17,6 +17,10 @@
  *  4. replaying the commit onto the target is clean and changes nothing
  *     (a cherry-pick that would be empty: trivially resolved rebases).
  *
+ * Before the expensive checks, a blob-level prefilter proves commits
+ * unlanded: a change from blob X at a path where the target still holds X
+ * (or still lacks a path the change added) is not on the target.
+ *
  * Every check fails closed: a git error, a conflict, an old git without
  * `merge-tree --write-tree`, or a budget overrun leaves the commit unlanded.
  *
@@ -52,8 +56,41 @@ const DEFAULT_TARGET_REFS = [
 ] as const;
 
 const MAX_RANGE_COMMITS = 500;
-const MAX_REPLAY_PROBES = 64;
+const MAX_REPLAY_PROBES = 4;
+const PROBE_BUDGET_MS = 5_000;
+const MAX_PREFILTER_PATHS = 2000;
 const SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
+const ZERO_SHA = /^0+$/;
+const ABSENT = "absent";
+
+interface PathChange {
+  path: string;
+  /** `<mode> <blob>` before the change, or ABSENT for an added path. */
+  before: string;
+}
+
+function parseRawChanges(raw: string): { commit: string | null; changes: PathChange[] }[] {
+  const tokens = raw.split("\0");
+  const out: { commit: string | null; changes: PathChange[] }[] = [];
+  let current: { commit: string | null; changes: PathChange[] } | null = null;
+  for (let i = 0; i < tokens.length; i += 1) {
+    const token = tokens[i] as string;
+    if (token.startsWith(":")) {
+      const [oldMode, , oldSha] = token.slice(1).split(" ");
+      const path = tokens[i + 1] ?? "";
+      i += 1;
+      if (current == null) {
+        current = { commit: null, changes: [] };
+        out.push(current);
+      }
+      current.changes.push({ path, before: oldSha == null || ZERO_SHA.test(oldSha) ? ABSENT : `${oldMode} ${oldSha}` });
+    } else if (SHA.test(token.trim())) {
+      current = { commit: token.trim(), changes: [] };
+      out.push(current);
+    }
+  }
+  return out;
+}
 
 /** Commit shas of the origin's landing targets, deduplicated. */
 export function landingTargets(originRepo: string, receipts: readonly LandingReceipt[]): string[] {
@@ -121,9 +158,13 @@ function probeTips(spaceDir: string, originRepo: string, tips: string[], base: s
   const scratch = mkdtempSync(join(tmpdir(), "hive-landed-"));
   try {
     const env = { GIT_OBJECT_DIRECTORY: scratch, GIT_ALTERNATE_OBJECT_DIRECTORIES: alternatesValue([cellObjects, originObjects]) };
-    const run = (args: string[]) => tryGit(spaceDir, args, { env });
-    const must = (args: string[]) => {
-      const res = run(args);
+    const deadline = Date.now() + PROBE_BUDGET_MS;
+    const run = (args: string[], opts: { input?: string; literalPaths?: boolean } = {}) => {
+      if (Date.now() > deadline) throw new Error("landed probe budget exhausted");
+      return tryGit(spaceDir, args, { env: opts.literalPaths ? { ...env, GIT_LITERAL_PATHSPECS: "1" } : env, input: opts.input });
+    };
+    const must = (args: string[], opts: { input?: string; literalPaths?: boolean } = {}) => {
+      const res = run(args, opts);
       if (res.status !== 0) throw new Error(`git ${args.join(" ")} failed: ${res.stderr.trim()}`);
       return res.stdout;
     };
@@ -139,6 +180,39 @@ function probeTips(spaceDir: string, originRepo: string, tips: string[], base: s
     const mergesToTarget = (target: string, args: string[]) => {
       const res = run(["merge-tree", "--write-tree", ...args]);
       return res.status === 0 && lines(res.stdout)[0] === treeOf(target);
+    };
+    const blobCache = new Map<string, Map<string, string>>();
+    const blobsAt = (target: string, paths: string[]): Map<string, string> => {
+      let known = blobCache.get(target);
+      if (known === undefined) {
+        known = new Map();
+        blobCache.set(target, known);
+      }
+      const missing = [...new Set(paths)].filter((p) => !known.has(p));
+      if (missing.length > 0) {
+        for (const p of missing) known.set(p, ABSENT);
+        for (const entry of must(["ls-tree", "-r", "-z", "--full-tree", target, "--", ...missing], { literalPaths: true }).split("\0")) {
+          const tab = entry.indexOf("\t");
+          if (tab < 0) continue;
+          const [mode, , sha] = entry.slice(0, tab).split(" ");
+          known.set(entry.slice(tab + 1), `${mode} ${sha}`);
+        }
+      }
+      return known;
+    };
+    const provablyUnlanded = (target: string, changes: PathChange[] | undefined): boolean => {
+      if (changes === undefined || changes.length === 0 || changes.length > MAX_PREFILTER_PATHS) return false;
+      const blobs = blobsAt(target, changes.map((c) => c.path));
+      return changes.some((c) => (blobs.get(c.path) ?? ABSENT) === c.before);
+    };
+    const rangeChanges = (target: string, tip: string): PathChange[] | undefined => {
+      const mergeBase = run(["merge-base", target, tip]);
+      if (mergeBase.status !== 0) return undefined;
+      return parseRawChanges(must(["diff-tree", "-r", "-z", "--no-renames", lines(mergeBase.stdout)[0] ?? "", tip]))[0]?.changes;
+    };
+    const commitChanges = (commits: string[]): Map<string, PathChange[]> => {
+      const parsed = parseRawChanges(must(["diff-tree", "-r", "-z", "--no-renames", "--root", "--stdin"], { input: `${commits.join("\n")}\n` }));
+      return new Map(parsed.filter((p) => p.commit != null).map((p) => [p.commit as string, p.changes]));
     };
     const replayVerdicts = new Map<string, boolean>();
     let replayBudget = MAX_REPLAY_PROBES;
@@ -158,7 +232,7 @@ function probeTips(spaceDir: string, originRepo: string, tips: string[], base: s
       must(["cat-file", "-e", `${tip}^{commit}`]);
       const exclude = [...(base ? [base] : []), ...targets, ...landedHeads];
       const range = lines(must(["rev-list", "--ignore-missing", `--max-count=${MAX_RANGE_COMMITS + 1}`, tip, "--not", ...exclude]));
-      if (range.length === 0 || targets.some((t) => mergesToTarget(t, [t, tip]))) {
+      if (range.length === 0 || targets.some((t) => !provablyUnlanded(t, rangeChanges(t, tip)) && mergesToTarget(t, [t, tip]))) {
         out.set(tip, []);
         continue;
       }
@@ -166,16 +240,21 @@ function probeTips(spaceDir: string, originRepo: string, tips: string[], base: s
         out.set(tip, range);
         continue;
       }
-      const remaining = new Set(range);
-      for (const target of targets) {
-        for (const line of lines(must(["rev-list", "--cherry-mark", "--right-only", "--no-merges", `${target}...${tip}`]))) {
-          if (line.startsWith("=")) remaining.delete(line.slice(1));
+      const changes = commitChanges(range);
+      const candidates = new Set(range.filter((c) => targets.some((t) => !provablyUnlanded(t, changes.get(c)))));
+      const landed = new Set<string>();
+      if (candidates.size > 0) {
+        for (const target of targets) {
+          for (const line of lines(must(["rev-list", "--cherry-mark", "--right-only", "--no-merges", `${target}...${tip}`]))) {
+            const sha = line.slice(1);
+            if (line.startsWith("=") && candidates.has(sha)) landed.add(sha);
+          }
+        }
+        for (const commit of candidates) {
+          if (!landed.has(commit) && replaysEmpty(commit)) landed.add(commit);
         }
       }
-      for (const commit of range) {
-        if (remaining.has(commit) && replaysEmpty(commit)) remaining.delete(commit);
-      }
-      out.set(tip, range.filter((c) => remaining.has(c)));
+      out.set(tip, range.filter((c) => !landed.has(c)));
     }
     return out;
   } finally {
