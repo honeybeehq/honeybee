@@ -25,11 +25,12 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openCoreStore, type CoreStore } from "../../core/src/index.ts";
-import { AccountsService, CODEX_MIN_SHIP_TTL_MS, LeaseRefusal, type EphemeralCredential } from "../src/accountsService.ts";
+import { AccountsService, CLAUDE_KEYCHAIN_REPAIR_RETRY_MS, CLAUDE_REFRESH_DEFERRAL_DEADLINE_MS, CODEX_MIN_SHIP_TTL_MS, LeaseRefusal, type EphemeralCredential } from "../src/accountsService.ts";
+import { CLAUDE_REFRESH_LOCK_STALE_MS, claudeRefreshLockPaths } from "../src/claudeRefreshLock.ts";
 import { loadNodeConfig, type NodeConfigFile, type ResolvedNodeConfig } from "../src/config.ts";
 import { RpcError, type AccountAddResult, type AccountLeaseResult, type AuditTailResult, type DeployInfoResult } from "../src/protocol.ts";
 import { makeDaemonDir, startDaemon, waitFor, type DaemonHandle } from "./helpers.ts";
@@ -284,7 +285,7 @@ test("lease.claude.4: the 15-minute ship floor — a dying-but-not-expired token
   }
 });
 
-test("lease.claude.3: typed refusals — no credential; expired chain owned by a live runtime; failed refresh", async () => {
+test("lease.claude.3: typed refusals — no credential; near-expiry chain a live runtime still owns; failed refresh", async () => {
   const r = rig();
   try {
     const bare = addAccount(r, "claude", "bare");
@@ -292,20 +293,265 @@ test("lease.claude.3: typed refusals — no credential; expired chain owned by a
     await refuses(() => svc.mintLease(bare), "lease_unavailable", /no claude OAuth credential/);
 
     const live = addAccount(r, "claude", "live", {
-      home: { ".credentials.json": JSON.stringify({ claudeAiOauth: { accessToken: "old", refreshToken: CLAUDE_REFRESH, expiresAt: r.now() - 1 } }) },
+      home: { ".credentials.json": JSON.stringify({ claudeAiOauth: { accessToken: "old", refreshToken: CLAUDE_REFRESH, expiresAt: r.now() + CLAUDE_REFRESH_DEFERRAL_DEADLINE_MS + 60_000 } }) },
     });
     const { bee } = r.store.createBee({ name: "owner", agent: "claude", substrate: "hsr", cwd: "/tmp", account: live.id });
     r.store.updateRuntimeState(bee.id, 1, "running", { pid: 99, pidStartedAt: 1 });
     let raced = 0;
     const liveSvc = service(r, { fetchers: { claudeRefresh: async () => { raced += 1; return null; } } });
     await refuses(() => liveSvc.mintLease(live), "lease_unavailable", /running Claude owns refresh/);
-    assert.equal(raced, 0, "a live runtime's rotating refresh token is never raced");
+    assert.equal(raced, 0, "a live runtime keeps its refresh until the deferral deadline");
 
     const failing = addAccount(r, "claude", "failing", {
       home: { ".credentials.json": JSON.stringify({ claudeAiOauth: { accessToken: "old", refreshToken: CLAUDE_REFRESH, expiresAt: r.now() - 1 } }) },
     });
     const failSvc = service(r, { fetchers: { claudeRefresh: async () => null } });
     await refuses(() => failSvc.mintLease(failing), "lease_unavailable", /refresh failed/);
+  } finally {
+    r.cleanup();
+  }
+});
+
+const MINUTE = 60_000;
+
+function idleClaudeAccount(r: Rig, label: string, ttlMs: number) {
+  const account = addAccount(r, "claude", label, {
+    home: { ".credentials.json": JSON.stringify({ claudeAiOauth: { accessToken: "old-access", refreshToken: CLAUDE_REFRESH, expiresAt: r.now() + ttlMs, subscriptionType: "max" } }) },
+  });
+  const { bee } = r.store.createBee({ name: `${label}-idle`, agent: "claude", substrate: "hsr", cwd: "/tmp", account: account.id });
+  r.store.updateRuntimeState(bee.id, 1, "running", { pid: 99, pidStartedAt: 1 });
+  r.store.updateRuntimeState(bee.id, 1, "idle");
+  return { account, bee };
+}
+
+test("lease.claude.5: an idle running Claude loses the refresh at the deferral deadline — retried mints from T-15m ship a later expiry with over 5 minutes to spare", async () => {
+  const r = rig();
+  try {
+    const oldExpiry = r.now() + 15 * MINUTE;
+    const { account, bee } = idleClaudeAccount(r, "idle", 15 * MINUTE);
+    const freshExpiry = oldExpiry + 8 * HOUR;
+    const locks = claudeRefreshLockPaths(account.homePath);
+    let refreshes = 0;
+    let locksHeldDuringRefresh = false;
+    let keychain: string | null = JSON.stringify({
+      claudeAiOauth: { accessToken: "old-access", refreshToken: CLAUDE_REFRESH, expiresAt: oldExpiry, subscriptionType: "max" },
+      mcpOAuth: { server: "kept" },
+    });
+    const svc = service(r, {
+      keychainReader: async () => keychain,
+      keychainWriter: async (_home, raw) => { keychain = raw; return true; },
+      fetchers: {
+        claudeRefresh: async (token) => {
+          refreshes += 1;
+          assert.equal(token, CLAUDE_REFRESH);
+          locksHeldDuringRefresh = existsSync(locks.current) && existsSync(locks.legacy) && existsSync(locks.storageWrite);
+          return { accessToken: "fresh-access", refreshToken: CLAUDE_NESTED_REFRESH, expiresAt: freshExpiry };
+        },
+      },
+    });
+
+    let shippedAt: number | null = null;
+    let lease: EphemeralCredential | null = null;
+    for (let elapsed = 30_000; elapsed < 15 * MINUTE && lease === null; elapsed += 150_000) {
+      r.setNow(oldExpiry - 15 * MINUTE + elapsed);
+      try {
+        lease = await svc.mintLease(account);
+        shippedAt = r.now();
+      } catch (err) {
+        assert.ok(err instanceof LeaseRefusal);
+        assert.match(err.message, /running Claude owns refresh/);
+        assert.ok(oldExpiry - r.now() > CLAUDE_REFRESH_DEFERRAL_DEADLINE_MS, "refusals stop at the deferral deadline");
+        assert.equal(refreshes, 0);
+      }
+    }
+
+    assert.ok(lease && shippedAt !== null);
+    assert.equal(refreshes, 1);
+    assert.ok(oldExpiry - shippedAt >= 5 * MINUTE, `shipped ${(oldExpiry - shippedAt) / MINUTE} minutes before the old expiry`);
+    assert.equal(lease.expiresAt, Math.floor(freshExpiry / 1000));
+    const shipped = decodeFile(lease).claudeAiOauth as Record<string, unknown>;
+    assert.equal(shipped.accessToken, "fresh-access");
+    assert.equal(shipped.refreshToken, "");
+    assertNoFixtureSecrets(r, lease);
+
+    assert.ok(locksHeldDuringRefresh, "the rotation ran under Claude Code's refresh locks and its storage write lock");
+    assert.ok(!existsSync(locks.current) && !existsSync(locks.legacy) && !existsSync(locks.storageWrite), "every lock is released");
+    for (const raw of [readFileSync(join(account.homePath, ".credentials.json"), "utf8"), readFileSync(join(svc.vaultDirOf(account), ".credentials.json"), "utf8"), keychain!]) {
+      const oauth = JSON.parse(raw).claudeAiOauth;
+      assert.equal(oauth.accessToken, "fresh-access");
+      assert.equal(oauth.refreshToken, CLAUDE_NESTED_REFRESH, "running Claude processes read the rotated chain, not a consumed token");
+      assert.equal(oauth.subscriptionType, "max");
+    }
+    assert.deepEqual(JSON.parse(keychain!).mcpOAuth, { server: "kept" }, "the Keychain item keeps what running Claude stored beside the OAuth chain");
+    assert.equal(r.store.currentRuntime(bee.id)!.state, "idle");
+
+    const again = await svc.mintLease(account);
+    assert.equal(again.expiresAt, Math.floor(freshExpiry / 1000));
+    assert.equal(refreshes, 1, "a fresh chain is not rotated again");
+  } finally {
+    r.cleanup();
+  }
+});
+
+test("lease.claude.6: past the deadline the daemon still yields to a Claude that is refreshing or has refreshed", async () => {
+  const r = rig();
+  try {
+    let refreshes = 0;
+    const fetchers = { claudeRefresh: async () => { refreshes += 1; return { accessToken: "fresh-access", refreshToken: CLAUDE_NESTED_REFRESH, expiresAt: r.now() + 8 * HOUR }; } };
+
+    const contended = idleClaudeAccount(r, "contended", 8 * MINUTE).account;
+    const contendedLocks = claudeRefreshLockPaths(contended.homePath);
+    const svc = service(r, { fetchers });
+    mkdirSync(contendedLocks.current);
+    await refuses(() => svc.mintLease(contended), "lease_unavailable", /holds a Claude Code credential lock/);
+    assert.equal(refreshes, 0, "a refresh token is never posted while a Claude process holds the lock");
+    assert.ok(existsSync(contendedLocks.current), "a live holder's lock is left alone");
+
+    rmSync(contendedLocks.current, { recursive: true });
+    mkdirSync(contendedLocks.legacy);
+    await refuses(() => svc.mintLease(contended), "lease_unavailable", /holds a Claude Code credential lock/);
+    assert.equal(refreshes, 0);
+    assert.ok(!existsSync(contendedLocks.current), "the current lock is released when an older Claude holds the legacy one");
+
+    rmSync(contendedLocks.legacy, { recursive: true });
+    mkdirSync(contendedLocks.storageWrite);
+    await refuses(() => svc.mintLease(contended), "lease_unavailable", /holds a Claude Code credential lock/);
+    assert.equal(refreshes, 0, "a Claude rewriting its Keychain item is never raced");
+    assert.ok(!existsSync(contendedLocks.current) && !existsSync(contendedLocks.legacy), "the refresh locks are released when the storage write lock is held");
+    rmSync(contendedLocks.storageWrite, { recursive: true });
+    mkdirSync(contendedLocks.legacy);
+
+    const abandoned = new Date(Date.now() - CLAUDE_REFRESH_LOCK_STALE_MS - 5_000);
+    utimesSync(contendedLocks.legacy, abandoned, abandoned);
+    mkdirSync(contendedLocks.current);
+    utimesSync(contendedLocks.current, abandoned, abandoned);
+    const lease = await svc.mintLease(contended);
+    assert.equal(refreshes, 1, "a lock abandoned by a dead holder does not strand the account");
+    assert.equal((decodeFile(lease).claudeAiOauth as Record<string, unknown>).accessToken, "fresh-access");
+    assert.ok(!existsSync(contendedLocks.current) && !existsSync(contendedLocks.legacy));
+
+    const sibling = idleClaudeAccount(r, "sibling", 8 * MINUTE).account;
+    const siblingExpiry = r.now() + 8 * HOUR;
+    const siblingSvc = service(r, {
+      fetchers,
+      keychainReader: async () => JSON.stringify({ claudeAiOauth: { accessToken: "claude-refreshed", refreshToken: CLAUDE_NESTED_REFRESH, expiresAt: siblingExpiry } }),
+    });
+    const adopted = await siblingSvc.mintLease(sibling);
+    assert.equal(refreshes, 1, "a chain a running Claude already rotated is shipped, not rotated again");
+    assert.equal((decodeFile(adopted).claudeAiOauth as Record<string, unknown>).accessToken, "claude-refreshed");
+    assertNoFixtureSecrets(r, adopted);
+  } finally {
+    r.cleanup();
+  }
+});
+
+test("lease.claude.7: the daemon does not rotate under a running Claude when it cannot publish to the Keychain that Claude reads", async () => {
+  const r = rig();
+  try {
+    const { account } = idleClaudeAccount(r, "locked-keychain", 8 * MINUTE);
+    let refreshes = 0;
+    let keychainState: "unreadable" | "present" = "unreadable";
+    const keychainRaw = JSON.stringify({ claudeAiOauth: { accessToken: "keychain-access", refreshToken: CLAUDE_NESTED_REFRESH, expiresAt: r.now() + 9 * MINUTE } });
+    const posted: string[] = [];
+    const svc = service(r, {
+      keychainStateReader: async () => keychainState === "present" ? { status: "present", raw: keychainRaw } : { status: "unreadable" },
+      keychainWriter: async () => true,
+      fetchers: { claudeRefresh: async (token) => { refreshes += 1; posted.push(token); return null; } },
+    });
+    await refuses(() => svc.mintLease(account), "lease_unavailable", /Keychain is unreadable/);
+    assert.equal(refreshes, 0);
+    keychainState = "present";
+    await refuses(() => svc.mintLease(account), "lease_unavailable", /refresh failed/);
+    assert.deepEqual(posted, [CLAUDE_NESTED_REFRESH], "the Keychain's newer chain is posted, never the home file's consumed token, even when the legacy reader sees nothing");
+    posted.length = 0;
+    const locks = claudeRefreshLockPaths(account.homePath);
+    assert.ok(!existsSync(locks.current) && !existsSync(locks.legacy));
+    assert.ok(statSync(join(account.homePath, ".credentials.json")).isFile());
+    assert.ok(readFileSync(join(account.homePath, ".credentials.json"), "utf8").includes(CLAUDE_REFRESH), "the chain is untouched");
+  } finally {
+    r.cleanup();
+  }
+});
+
+test("lease.claude.8: a rotated chain the Keychain refused is re-published until running Claudes can read it", async () => {
+  const r = rig();
+  try {
+    const { account } = idleClaudeAccount(r, "degraded", 8 * MINUTE);
+    const freshExpiry = r.now() + 8 * HOUR;
+    let keychain = JSON.stringify({ claudeAiOauth: { accessToken: "old-access", refreshToken: CLAUDE_REFRESH, expiresAt: r.now() + 8 * MINUTE }, mcpOAuth: { server: "kept" } });
+    let keychainAccepts = false;
+    let writes = 0;
+    const svc = service(r, {
+      keychainStateReader: async () => ({ status: "present", raw: keychain }),
+      keychainWriter: async (_home, raw) => {
+        writes += 1;
+        if (keychainAccepts) keychain = raw;
+        return keychainAccepts;
+      },
+      fetchers: { claudeRefresh: async () => ({ accessToken: "fresh-access", refreshToken: CLAUDE_NESTED_REFRESH, expiresAt: freshExpiry }) },
+    });
+    const lease = await svc.mintLease(account);
+    assert.equal(lease.expiresAt, Math.floor(freshExpiry / 1000));
+    assert.equal(writes, 3);
+    assert.ok(r.log.includes(`account.refresh.keychain_degraded account=${account.id} running_claude=true`));
+    assert.equal(JSON.parse(keychain).claudeAiOauth.refreshToken, CLAUDE_REFRESH, "the Keychain still holds the consumed chain");
+
+    assert.equal(svc.claudeKeychainRepairTick(), null, "nothing is re-published before the retry interval");
+    r.setNow(r.now() + CLAUDE_KEYCHAIN_REPAIR_RETRY_MS);
+    await svc.claudeKeychainRepairTick();
+    assert.equal(writes, 4, "a refused re-publish is retried later");
+
+    keychain = JSON.stringify({ claudeAiOauth: { accessToken: "", refreshToken: "", expiresAt: 0 }, mcpOAuth: { server: "kept" } });
+    keychainAccepts = true;
+    const home = join(account.homePath, ".credentials.json");
+    const before = new Date(Date.now() - 60_000);
+    utimesSync(home, before, before);
+    r.setNow(r.now() + CLAUDE_KEYCHAIN_REPAIR_RETRY_MS);
+    await svc.claudeKeychainRepairTick();
+    const published = JSON.parse(keychain);
+    assert.equal(published.claudeAiOauth.accessToken, "fresh-access", "a Keychain a Claude already cleared after posting the consumed token is healed");
+    assert.equal(published.claudeAiOauth.refreshToken, CLAUDE_NESTED_REFRESH);
+    assert.deepEqual(published.mcpOAuth, { server: "kept" });
+    assert.ok(statSync(home).mtimeMs > before.getTime(), "the home file is rewritten so running Claudes re-read the Keychain");
+    assert.ok(r.log.includes(`account.refresh.keychain_repaired account=${account.id}`));
+    const locks = claudeRefreshLockPaths(account.homePath);
+    assert.ok(!existsSync(locks.current) && !existsSync(locks.legacy) && !existsSync(locks.storageWrite));
+
+    r.setNow(r.now() + CLAUDE_KEYCHAIN_REPAIR_RETRY_MS);
+    assert.equal(svc.claudeKeychainRepairTick(), null, "a repaired account is not re-published again");
+    assert.equal(writes, 5);
+
+    const sibling = idleClaudeAccount(r, "sibling-refreshed", 8 * MINUTE).account;
+    keychainAccepts = false;
+    keychain = JSON.stringify({ claudeAiOauth: { accessToken: "old-access", refreshToken: CLAUDE_REFRESH, expiresAt: r.now() + 8 * MINUTE } });
+    await svc.mintLease(sibling);
+    assert.equal(writes, 8);
+    keychain = JSON.stringify({ claudeAiOauth: { accessToken: "claude-refreshed", refreshToken: "FIXTURE-CLAUDE-SIBLING-REFRESH", expiresAt: freshExpiry + HOUR } });
+    keychainAccepts = true;
+    r.setNow(r.now() + CLAUDE_KEYCHAIN_REPAIR_RETRY_MS);
+    await svc.claudeKeychainRepairTick();
+    assert.equal(writes, 8, "a chain a running Claude rotated after the daemon is never overwritten");
+    assert.equal(JSON.parse(keychain).claudeAiOauth.accessToken, "claude-refreshed");
+    r.setNow(r.now() + CLAUDE_KEYCHAIN_REPAIR_RETRY_MS);
+    assert.equal(svc.claudeKeychainRepairTick(), null);
+  } finally {
+    r.cleanup();
+  }
+});
+
+test("lease.claude.9: with no Claude running the daemon still rotates only from a readable Keychain", async () => {
+  const r = rig();
+  try {
+    const account = addAccount(r, "claude", "unreadable", {
+      home: { ".credentials.json": JSON.stringify({ claudeAiOauth: { accessToken: "old", refreshToken: CLAUDE_REFRESH, expiresAt: r.now() - 1 } }) },
+    });
+    let refreshes = 0;
+    const svc = service(r, {
+      keychainStateReader: async () => ({ status: "unreadable" }),
+      fetchers: { claudeRefresh: async () => { refreshes += 1; return null; } },
+    });
+    await refuses(() => svc.mintLease(account), "lease_unavailable", /Keychain is unreadable/);
+    assert.equal(refreshes, 0, "the home file's possibly consumed refresh token is never posted");
   } finally {
     r.cleanup();
   }
@@ -728,7 +974,7 @@ test("central.claude: enrollment refuses idle runtimes, and existing accounts re
     assert.equal(svc.centralCredentials.enabled(account), false);
     assert.equal(refreshes, 0);
     assert.ok(readFileSync(join(account.homePath, ".credentials.json"), "utf8").includes(CLAUDE_REFRESH));
-    r.setNow(r.now() + HOUR);
+    r.setNow(r.now() + HOUR - CLAUDE_REFRESH_DEFERRAL_DEADLINE_MS - 60_000);
     await refuses(() => svc.mintLease(account), "lease_unavailable", /running Claude owns refresh/);
   } finally { r.cleanup(); }
 });

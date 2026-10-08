@@ -1053,9 +1053,10 @@ export class HiveDaemon {
       this.ticks += 1;
       this.lastTickAt = tStep;
       // v7: bounded in-daemon limits refresh; v16: login-flow expiry + credential landing.
-      this.performance.measureSync("daemon.tick.accounts", () =>
-        this.accounts?.periodicRefreshTick(),
-      );
+      this.performance.measureSync("daemon.tick.accounts", () => {
+        this.accounts?.periodicRefreshTick();
+        void this.accounts?.claudeKeychainRepairTick();
+      });
       tAccounts = Date.now();
       this.performance.measureSync("daemon.tick.login", () =>
         this.loginFlows?.tick(),
