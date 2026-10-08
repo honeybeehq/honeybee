@@ -284,6 +284,8 @@ export const CLAUDE_REFRESH_DEFERRAL_DEADLINE_MS = 10 * 60_000;
 
 const CLAUDE_KEYCHAIN_PUBLISH_ATTEMPTS = 3;
 
+export const CLAUDE_KEYCHAIN_REPAIR_RETRY_MS = 15_000;
+
 // OAuth refresh-token field names blanked before a credential file is shipped:
 // codex/grok/kimi use `refresh_token`, opencode's oauth entries use `refresh`,
 // claude's .credentials.json uses `refreshToken`. Refresh tokens are
@@ -702,6 +704,8 @@ export class AccountsService {
   private readonly codexFetches = new Map<string, Promise<PutAccountLimitsInput>>();
   /** Refresh tokens rotate on use: at most one refresh may run per account. */
   private readonly claudeRefreshes = new Map<string, ClaudeRefreshFlight>();
+  private readonly claudeKeychainRepairs = new Map<string, number>();
+  private claudeKeychainRepairFlight: Promise<void> | null = null;
   /** Grok/Kimi refresh tokens also rotate; share the whole provider read. */
   private readonly secondaryProviderFetches = new Map<string, Promise<PutAccountLimitsInput>>();
   /**
@@ -1430,21 +1434,21 @@ export class AccountsService {
     }
     if (!locked.acquired) {
       this.log(`account.refresh.lock_contended account=${account.id}`);
-      return { kind: "temporary", detail: "another Claude process holds the OAuth refresh lock" };
+      return { kind: "temporary", detail: "another Claude process holds a Claude Code credential lock" };
     }
     return locked.value;
   }
 
   private async rotateClaudeChain(account: AccountRow, minTtlMs: number, runningClaude: boolean): Promise<ClaudeRefreshOutcome> {
-    // Running Claude processes read the Keychain item first and refresh into
-    // it alone, leaving a consumed refresh token in the home file: under them
-    // the chain is rotated only from a Keychain read that is known good.
-    const keychain = runningClaude ? await this.keychainStateReader(account.homePath) : null;
-    if (keychain?.status === "unreadable") return { kind: "temporary", detail: "the account Keychain is unreadable" };
+    // Claude processes read the Keychain item first and refresh into it
+    // alone, leaving a consumed refresh token in the home file and vault: the
+    // chain is rotated only from a Keychain read that is known good.
+    const keychain = await this.keychainStateReader(account.homePath);
+    if (keychain.status === "unreadable") return { kind: "temporary", detail: "the account Keychain is unreadable" };
     // Check for newer credentials first: re-read inside the lock — another
     // limits caller or a running Claude may have advanced the chain after
     // the first read.
-    const credential = await this.freshestClaudeCredential(account, keychain ?? undefined);
+    const credential = await this.freshestClaudeCredential(account, keychain);
     if (credential && credential.expiresAt - this.now() > minTtlMs) return { kind: "ok", credential };
     if (!credential?.refreshToken) return { kind: "no_refresh_token" };
     // Injected-boundary contract: a returned token = success; `null` = the
@@ -1477,12 +1481,16 @@ export class AccountsService {
     mkdirSync(this.vaultDirOf(account), { recursive: true, mode: 0o700 });
     atomicWriteFileSync(join(this.vaultDirOf(account), ".credentials.json"), raw);
     let keychainWritten = false;
-    const keychainAttempts = keychain?.status === "present" ? CLAUDE_KEYCHAIN_PUBLISH_ATTEMPTS : 1;
+    const keychainAttempts = keychain.status === "present" ? CLAUDE_KEYCHAIN_PUBLISH_ATTEMPTS : 1;
     for (let attempt = 0; attempt < keychainAttempts && !keychainWritten; attempt += 1) {
       keychainWritten = await this.keychainWriter(account.homePath, keychainRaw).catch(() => false);
     }
     atomicWriteFileSync(join(account.homePath, ".credentials.json"), raw);
-    if (!keychainWritten) this.log(`account.refresh.keychain_degraded account=${account.id} running_claude=${runningClaude}`);
+    if (keychainWritten) this.claudeKeychainRepairs.delete(account.id);
+    else {
+      this.claudeKeychainRepairs.set(account.id, this.now() + CLAUDE_KEYCHAIN_REPAIR_RETRY_MS);
+      this.log(`account.refresh.keychain_degraded account=${account.id} running_claude=${runningClaude}`);
+    }
     this.log(`account.refresh account=${account.id} persisted=home,vault keychain=${keychainWritten} running_claude=${runningClaude}`);
     return {
       kind: "ok",
@@ -1495,6 +1503,50 @@ export class AccountsService {
         oauth,
       },
     };
+  }
+
+  claudeKeychainRepairTick(): Promise<void> | null {
+    if (this.claudeKeychainRepairFlight) return this.claudeKeychainRepairFlight;
+    const now = this.now();
+    const due = [...this.claudeKeychainRepairs].filter(([, at]) => at <= now);
+    if (due.length === 0) return null;
+    this.claudeKeychainRepairFlight = (async () => {
+      for (const [accountId, dueAt] of due) {
+        const account = this.store.getAccount(accountId);
+        const outcome = account ? await this.republishClaudeKeychain(account).catch(() => "retry" as const) : "current";
+        if (this.claudeKeychainRepairs.get(accountId) !== dueAt) continue;
+        if (outcome === "retry") this.claudeKeychainRepairs.set(accountId, this.now() + CLAUDE_KEYCHAIN_REPAIR_RETRY_MS);
+        else this.claudeKeychainRepairs.delete(accountId);
+      }
+    })()
+      .catch((err) => this.log(`account.refresh.keychain_repair_error ${err instanceof Error ? err.message : String(err)}`))
+      .finally(() => {
+        this.claudeKeychainRepairFlight = null;
+      });
+    return this.claudeKeychainRepairFlight;
+  }
+
+  private async republishClaudeKeychain(account: AccountRow): Promise<"repaired" | "current" | "retry"> {
+    if (this.centralCredentials.enabled(account) || this.centralCredentials.busy(account)) return "current";
+    const homeFile = join(account.homePath, ".credentials.json");
+    const locked = await withClaudeRefreshLock(account.homePath, async () => {
+      const raw = readIfFile(homeFile);
+      if (raw === null || raw !== readIfFile(join(this.vaultDirOf(account), ".credentials.json"))) return "current" as const;
+      const rotated = parseClaudeCredentials(raw);
+      const keychain = await this.keychainStateReader(account.homePath);
+      if (keychain.status === "unreadable") return "retry" as const;
+      if (!rotated || keychain.status !== "present") return "current" as const;
+      const published = parseClaudeCredentials(keychain.raw);
+      if (published && published.expiresAt >= rotated.expiresAt) return "current" as const;
+      const document = JSON.parse(raw) as Record<string, unknown>;
+      const keychainRaw = JSON.stringify({ ...document, ...keychainDocument(keychain), claudeAiOauth: document.claudeAiOauth });
+      if (!(await this.keychainWriter(account.homePath, keychainRaw).catch(() => false))) return "retry" as const;
+      atomicWriteFileSync(homeFile, raw);
+      return "repaired" as const;
+    });
+    const outcome = locked.acquired ? locked.value : "retry";
+    if (outcome === "repaired") this.log(`account.refresh.keychain_repaired account=${account.id}`);
+    return outcome;
   }
 
   /**
