@@ -90,6 +90,7 @@ function mapAccountRow(r: Row): AccountRow {
     label: r.label as string,
     status: r.status as AccountRow["status"],
     penalty: Number(r.penalty),
+    weeklyCeiling: r.weekly_ceiling == null ? null : Number(r.weekly_ceiling),
     lastLoginAt: r.last_login_at == null ? null : Number(r.last_login_at),
     exhaustedAt: r.exhausted_at == null ? null : Number(r.exhausted_at),
     addedAt: Number(r.added_at),

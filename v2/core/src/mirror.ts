@@ -354,6 +354,7 @@ export const MIRROR_ACCOUNT_KEYS = [
   "label",
   "status",
   "penalty",
+  "weeklyCeiling",
   "lastLoginAt",
   "exhaustedAt",
   "addedAt",

@@ -189,6 +189,17 @@ export type PickOutcome =
   | { ok: true; account: AccountRow; reason: string; limitsAgeMs: number | null; stale: boolean; candidates: number }
   | { ok: false; code: "no_accounts" | "all_paused" | "no_credentials" | "no_untried"; message: string };
 
+export interface WeeklyCeilingBreach {
+  window: "weekly" | "fableWeekly";
+  usedPercent: number;
+  ceiling: number;
+}
+
+export function describeWeeklyCeilingBreach(accountId: string, breach: WeeklyCeilingBreach): string {
+  const window = breach.window === "weekly" ? "weekly" : "Fable weekly";
+  return `account ${accountId} is at ${Math.round(breach.usedPercent)}% ${window} usage, past its ${breach.ceiling}% ceiling`;
+}
+
 export interface PickOptions {
   /** Accounts already tried / the current one (rotation). */
   excludeAccountIds?: ReadonlySet<string>;
@@ -949,6 +960,24 @@ export class AccountsService {
     return "unverified";
   }
 
+  weeklyCeilingBreaches(account: AccountRow): WeeklyCeilingBreach[] {
+    const ceiling = account.weeklyCeiling;
+    if (ceiling == null) return [];
+    const row = this.store.getAccountLimits(account.id);
+    if (!row?.readable) return [];
+    const now = this.now();
+    const windows: Array<[WeeklyCeilingBreach["window"], number | null, number | null]> = [
+      ["weekly", row.weeklyPct, row.weeklyResetsAt],
+      ["fableWeekly", row.fableWeeklyPct, row.fableResetsAt],
+    ];
+    return windows.flatMap(([window, usedPercent, resetsAt]) =>
+      usedPercent != null && usedPercent >= ceiling && (resetsAt == null || resetsAt > now) ? [{ window, usedPercent, ceiling }] : []);
+  }
+
+  weeklyCeilingBreach(account: AccountRow, model?: string): WeeklyCeilingBreach | null {
+    return this.weeklyCeilingBreaches(account).find((breach) => breach.window === "weekly" || isFableModel(model)) ?? null;
+  }
+
   /** The mirror shape of an account row: the store row plus the derived health (never stored). */
   mirrorRow(account: AccountRow): MirrorAccountRow {
     return { ...account, credentialHealth: this.credentialHealthOf(account) };
@@ -1161,6 +1190,7 @@ export class AccountsService {
       && applicableObserved.every((value) => value < DEFAULT_ACCOUNT_ADMISSION_POLICY.completionReservePercent);
     let eligibility: AccountAdmissionCandidate["eligibility"] = { state: "eligible" };
     if (account.status === "paused") eligibility = { state: "ineligible", reason: "paused" };
+    else if (this.weeklyCeilingBreach(account, options.model)) eligibility = { state: "ineligible", reason: "ceiling" };
     else if (!this.credentialed(account) || account.status === "auth_needed") eligibility = { state: "ineligible", reason: "auth" };
     else if (this.credentialHealthOf(account) !== "verified") eligibility = { state: "unknown", reason: "auth" };
     else if (account.exhaustedAt != null && now - account.exhaustedAt < this.cfg.accounts.exhaustionCoolOffMs && !verifiedRestoredHeadroom) {
@@ -1314,9 +1344,16 @@ export class AccountsService {
     if (registered.length === 0) {
       return { ok: false, code: "no_accounts", message: `No ${harness} accounts registered; add one with: hive v2 account add ${harness} <label>` };
     }
-    const pool = registered.filter((a) => a.status !== "paused");
+    const unpaused = registered.filter((a) => a.status !== "paused");
+    const pool = unpaused.filter((a) => !this.weeklyCeilingBreach(a, opts.model));
     if (pool.length === 0) {
-      return { ok: false, code: "all_paused", message: `Every ${harness} account is paused; unpause one with: hive v2 account unpause <account>` };
+      return {
+        ok: false,
+        code: "all_paused",
+        message: unpaused.length === 0
+          ? `Every ${harness} account is paused; unpause one with: hive v2 account unpause <account>`
+          : `Every ${harness} account is paused or past its weekly ceiling; raise one with: hive account ceiling <account> <percent|off>`,
+      };
     }
     let credentialed = 0;
     const candidates: AccountRow[] = [];
@@ -1411,9 +1448,16 @@ export class AccountsService {
     if (registered.length === 0) {
       return { ok: false, code: "no_accounts", message: `No ${harness} accounts registered; add one with: hive account add ${harness} <label>` };
     }
-    const pool = registered.filter((account) => account.status !== "paused");
+    const unpaused = registered.filter((account) => account.status !== "paused");
+    const pool = unpaused.filter((account) => !this.weeklyCeilingBreach(account));
     if (pool.length === 0) {
-      return { ok: false, code: "all_paused", message: `Every ${harness} account is paused; unpause one with: hive account unpause <account>` };
+      return {
+        ok: false,
+        code: "all_paused",
+        message: unpaused.length === 0
+          ? `Every ${harness} account is paused; unpause one with: hive account unpause <account>`
+          : `Every ${harness} account is paused or past its weekly ceiling; raise one with: hive account ceiling <account> <percent|off>`,
+      };
     }
     const candidates = pool.filter((account) => this.credentialed(account));
     if (candidates.length === 0) {
@@ -1446,7 +1490,7 @@ export class AccountsService {
   private candidateIdsFor(harness: string, opts: PickOptions): string[] {
     return this.store
       .listAccounts({ harness })
-      .filter((a) => a.status !== "paused" && this.credentialed(a) && !opts.excludeAccountIds?.has(a.id))
+      .filter((a) => a.status !== "paused" && !this.weeklyCeilingBreach(a, opts.model) && this.credentialed(a) && !opts.excludeAccountIds?.has(a.id))
       .map((a) => a.id);
   }
 

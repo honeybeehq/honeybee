@@ -873,6 +873,92 @@ test("rpc.accounts.3: automatic rotation on exhaustion (fake-claude @ratelimit) 
   }
 });
 
+test("rpc.accounts.ceiling: past its weekly ceiling an account refuses explicit work, idle bees move off with a note, and stopped bees move off when they wake", async () => {
+  const argvLog = join(makeDaemonDir().dir, "argv.jsonl");
+  const { dir, cleanup } = makeDaemonDir({
+    agents: {
+      claude: {
+        command: process.execPath,
+        args: [FAKE_CLAUDE, "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose"],
+        adapter: "claude",
+        env: { FAKE_CLAUDE_ARGV_LOG: argvLog },
+      },
+    },
+  });
+  let daemon: DaemonHandle | null = null;
+  try {
+    const now = Date.now();
+    const store = openCoreStore(join(dir, "core.sqlite3"), { ephemeral: true });
+    for (const [label, weekly] of [["personal", 50], ["fleet", 10]] as const) {
+      const id = `claude-${label}`;
+      seedVault(dir, "claude", id, ".credentials.json", `{"claudeAiOauth":{"accessToken":"${label}","expiresAt":1}}`);
+      store.createAccount({ id, harness: "claude", homePath: join(dir, "homes", id), label, lastLoginAt: now });
+      store.putAccountLimits(id, {
+        readable: true,
+        fetchedAt: now,
+        fiveHour: { usedPercent: 5, resetsAt: now + 4 * 60 * 60_000, windowMinutes: 300 },
+        weekly: { usedPercent: weekly, resetsAt: now + 2 * 24 * 60 * 60_000, windowMinutes: 10_080 },
+      });
+    }
+    store.close();
+    daemon = await startDaemon(dir);
+    const client = await daemon.client();
+    const homeFleet = join(dir, "homes", "claude-fleet");
+
+    const idle = await client.request<SpawnResult>("spawn", { name: "idle-one", agent: "claude", cwd: dir, account: "claude-personal" });
+    const parked = await client.request<SpawnResult>("spawn", { name: "parked", agent: "claude", cwd: dir, account: "claude-personal" });
+    for (const bee of [idle, parked]) {
+      const warm = await client.request<SendRpcResult>("send", { beeId: bee.beeId, body: "warm up" });
+      await waitDelivered(client, bee.beeId, warm.messageId, "warm up delivered");
+      await waitState(client, bee.beeId, "idle", "idle after warm up");
+    }
+    await client.request("stop", { beeId: parked.beeId });
+    await waitState(client, parked.beeId, "stopped", "parked stopped");
+
+    await rejects(() => client.request("account.setWeeklyCeiling", { id: "claude-personal", ceiling: 0 }), "invalid_request");
+    const set = await client.request<AccountUpdateResult>("account.setWeeklyCeiling", { id: "claude-personal", ceiling: 40 });
+    assert.equal(set.applied, true);
+    assert.equal(set.account.weeklyCeiling, 40);
+    assert.equal((await client.request<AccountGetResult>("account.get", { id: "claude-personal" })).account.weeklyCeiling, 40);
+
+    await rejects(() => client.request("spawn", { name: "refused", agent: "claude", cwd: dir, account: "claude-personal" }), "account_unavailable");
+
+    const moved = await waitFor(async () => {
+      const v = await client.request<ViewResult>("view", { beeId: idle.beeId });
+      return v.bee?.account === "claude-fleet" && v.view.generation === 2 ? v : null;
+    }, "idle bee moved to claude-fleet on generation 2", 15_000);
+    assert.equal(moved.bee?.env.CLAUDE_CONFIG_DIR, homeFleet);
+    const note = await waitFor(async () => {
+      const { messages } = await client.request<MailboxResult>("mailbox", { beeId: idle.beeId });
+      const found = messages.find((m) => m.sender === "hive");
+      return found?.deliveredAt != null ? found : null;
+    }, "ceiling note delivered", 15_000);
+    assert.equal(note.deliveredGeneration, 2);
+    assert.match(note.body, /claude-personal is at 50% weekly usage, past its 40% ceiling/);
+
+    const stillParked = await client.request<ViewResult>("view", { beeId: parked.beeId });
+    assert.equal(stillParked.bee?.account, "claude-personal", "a stopped bee is not touched until it wakes");
+    const wake = await client.request<SendRpcResult>("send", { beeId: parked.beeId, body: "back to work" });
+    assert.equal(await waitDelivered(client, parked.beeId, wake.messageId, "wake delivered"), 2);
+    const woke = await client.request<ViewResult>("view", { beeId: parked.beeId });
+    assert.equal(woke.bee?.account, "claude-fleet");
+    await rejects(() => client.request("bee.swapAccount", { beeId: parked.beeId, account: "claude-personal" }), "account_unavailable");
+    const parkedMail = await client.request<MailboxResult>("mailbox", { beeId: parked.beeId });
+    assert.equal(parkedMail.messages.some((m) => m.sender === "hive"), false, "a bee moved before it starts needs no note");
+    const boots = jsonl<{ env: { CLAUDE_CONFIG_DIR: string | null }; forked: boolean }>(argvLog);
+    assert.equal(boots.filter((boot) => boot.env.CLAUDE_CONFIG_DIR === homeFleet && boot.forked).length, 2);
+
+    const cleared = await client.request<AccountUpdateResult>("account.setWeeklyCeiling", { id: "claude-personal", ceiling: null });
+    assert.equal(cleared.account.weeklyCeiling, null);
+    const allowed = await client.request<SpawnResult>("spawn", { name: "allowed", agent: "claude", cwd: dir, account: "claude-personal" });
+    assert.ok(allowed.beeId);
+    client.close();
+  } finally {
+    if (daemon) await daemon.stop();
+    cleanup();
+  }
+});
+
 test("rpc.accounts.f2: add refuses pre-existing credentials by default; importExisting adopts as unverified; health is validation evidence, never file-existence; a fresh add is auth_needed, never ok", async () => {
   // v18: the daemon's Codex probe must never reach a real `codex`; point it
   // at nothing so the scheduled verification fails typed (provider_error).

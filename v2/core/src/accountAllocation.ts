@@ -23,7 +23,7 @@ export interface AccountAdmissionQuota {
 
 export type AccountAdmissionEligibility =
   | { state: "eligible" }
-  | { state: "ineligible"; reason: "provider" | "model" | "auth" | "grants" | "paused" | "exhausted" }
+  | { state: "ineligible"; reason: "provider" | "model" | "auth" | "grants" | "paused" | "ceiling" | "exhausted" }
   | { state: "unknown"; reason: "model" | "auth" | "grants" };
 
 export interface AccountAdmissionActivity {

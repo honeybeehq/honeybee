@@ -344,6 +344,7 @@ test("mirror.2: value-level snapshot — a deterministic store serializes to the
       "label": "work",
       "status": "ok",
       "penalty": 5,
+      "weeklyCeiling": null,
       "lastLoginAt": null,
       "exhaustedAt": null,
       "addedAt": 1018000,

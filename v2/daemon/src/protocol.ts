@@ -394,6 +394,7 @@ export const RPC_VERBS = [
   "account.pause",
   "account.unpause",
   "account.setPenalty",
+  "account.setWeeklyCeiling",
   "account.login",
   // v16 (2026-08-28, additive): typed, tmux-independent login flows. `account.login`
   // stays as the alias of `account.login.start` for the CLI edge.

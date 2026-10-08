@@ -124,6 +124,11 @@ test("v7.edits: status/penalty/login/exhaustion/fields — audited as account.pu
     assert.equal(store.setAccountPenalty("codex-a", 25).applied, true);
     assert.throws(() => store.setAccountPenalty("codex-a", -1), CoreError);
     assert.throws(() => store.setAccountPenalty("codex-a", 100.5), CoreError);
+    assert.equal(store.getAccount("codex-a")?.weeklyCeiling, null);
+    assert.equal(store.setAccountWeeklyCeiling("codex-a", 60).account.weeklyCeiling, 60);
+    assert.equal(store.setAccountWeeklyCeiling("codex-a", 60).applied, false, "identical = silent");
+    for (const bad of [0, 101, 42.5, Number.NaN]) assert.throws(() => store.setAccountWeeklyCeiling("codex-a", bad), CoreError);
+    assert.equal(store.setAccountWeeklyCeiling("codex-a", null).account.weeklyCeiling, null);
     // A completed login clears auth_needed and stamps last_login_at.
     const login = store.recordAccountLogin("codex-a", 777);
     assert.equal(login.account.status, "ok");
@@ -288,7 +293,7 @@ test("v7.migration: a v6 store opens as v7 — bees.account added, accounts/acco
     try {
       const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
       assert.equal(Number(version.value), SCHEMA_VERSION);
-      assert.equal(SCHEMA_VERSION, 31);
+      assert.equal(SCHEMA_VERSION, 32);
       const cols = (check.prepare("SELECT name FROM pragma_table_info('bees')").all() as Array<{ name: string }>).map((c) => c.name);
       assert.ok(cols.includes("account"));
       const tables = (check.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{ name: string }>).map((t) => t.name);
@@ -343,7 +348,7 @@ test("v27 bridge reopens a disabled pilot store without losing ordinary state or
         { ...(check.prepare("SELECT phase, generation, expires_at, operation_key, updated_at FROM account_credential_authorities WHERE account = ?").get(account.id) as Record<string, unknown>) },
         { phase: "disabled", generation: 4, expires_at: 9_999_999, operation_key: "rollout-4", updated_at: 7_777 },
       );
-      assert.equal((check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string }).value, "31");
+      assert.equal((check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string }).value, "32");
     } finally {
       check.close();
     }
@@ -368,7 +373,7 @@ test("v7.dump: StateDump carries accounts + limits + cursors; a fresh store's re
   }
 });
 
-test("v12+v13 migration: account_limits gains typed failures and display windows without inventing old data", () => {
+test("v12+v13+v32 migration: account_limits gains typed failures and display windows, accounts gain a weekly ceiling, without inventing old data", () => {
   const h = harness();
   try {
     const db = new DatabaseSync(h.path);
@@ -394,6 +399,8 @@ test("v12+v13 migration: account_limits gains typed failures and display windows
     const store = h.open();
     assert.equal(store.getAccountLimits("claude-old")?.unreadableReason, null);
     assert.equal(store.getAccountLimits("claude-old")?.rateLimitResetCredits, null);
+    assert.equal(store.getAccount("claude-old")?.weeklyCeiling, null);
+    assert.equal(store.setAccountWeeklyCeiling("claude-old", 70).account.weeklyCeiling, 70);
     const refreshed = store.putAccountLimits("claude-old", {
       readable: false,
       unreadableReason: "auth_expired",
@@ -414,6 +421,8 @@ test("v12+v13 migration: account_limits gains typed failures and display windows
       assert.ok(columns.includes("unreadable_reason"));
       assert.ok(columns.includes("display_windows"));
       assert.ok(columns.includes("rate_limit_reset_credits"));
+      const accountColumns = (check.prepare("SELECT name FROM pragma_table_info('accounts')").all() as Array<{ name: string }>).map((row) => row.name);
+      assert.ok(accountColumns.includes("weekly_ceiling"));
       assert.equal((check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string }).value, String(SCHEMA_VERSION));
     } finally {
       check.close();

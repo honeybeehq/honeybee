@@ -814,6 +814,7 @@ function mapAccount(r: Row): AccountRow {
     label: r.label as string,
     status: r.status as AccountStatus,
     penalty: Number(r.penalty),
+    weeklyCeiling: r.weekly_ceiling == null ? null : Number(r.weekly_ceiling),
     lastLoginAt: r.last_login_at == null ? null : Number(r.last_login_at),
     exhaustedAt: r.exhausted_at == null ? null : Number(r.exhausted_at),
     addedAt: Number(r.added_at),
@@ -1102,6 +1103,14 @@ function normalizeBeeArgs(args: unknown, where: string): string[] | null {
 function normalizePenalty(value: unknown, where: string): number {
   if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 100) {
     throw new CoreError(`${where}: penalty must be a number from 0 to 100`);
+  }
+  return value;
+}
+
+function normalizeWeeklyCeiling(value: unknown, where: string): number | null {
+  if (value === null) return null;
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1 || value > 100) {
+    throw new CoreError(`${where}: weekly ceiling must be an integer from 1 to 100, or null to clear`);
   }
   return value;
 }
@@ -1683,6 +1692,14 @@ export class CoreStore {
           const resetsAt = resetsAtFromDetail(String(f.detail));
           if (resetsAt != null) this.stmt("UPDATE flags SET resets_at = ? WHERE id = ?").run(resetsAt, Number(f.id));
         }
+      }
+      const accountCols = new Set(
+        (this.stmt("SELECT name FROM pragma_table_info('accounts')").all() as Row[]).map((c) => String(c.name)),
+      );
+      if (!accountCols.has("weekly_ceiling")) {
+        this.db.exec(
+          "ALTER TABLE accounts ADD COLUMN weekly_ceiling INTEGER CHECK (weekly_ceiling IS NULL OR (weekly_ceiling BETWEEN 1 AND 100))",
+        );
       }
       // v11 → v12: typed account-limit failure class. Existing unreadable
       // rows stay null until the next bounded limits sweep refreshes them.
@@ -5016,7 +5033,7 @@ export class CoreStore {
     });
   }
 
-  private applyAccountUpdate(id: string, patch: Partial<Pick<AccountRow, "status" | "penalty" | "lastLoginAt" | "exhaustedAt" | "homePath" | "label">>, reason: string | null): { account: AccountRow; applied: boolean } {
+  private applyAccountUpdate(id: string, patch: Partial<Pick<AccountRow, "status" | "penalty" | "weeklyCeiling" | "lastLoginAt" | "exhaustedAt" | "homePath" | "label">>, reason: string | null): { account: AccountRow; applied: boolean } {
     const before = this.mustGetAccount(id);
     const next: AccountRow = { ...before, ...patch };
     const changed = (Object.keys(patch) as Array<keyof typeof patch>).filter((k) => before[k] !== next[k]);
@@ -5024,9 +5041,9 @@ export class CoreStore {
     const at = this.now();
     this.db
       .prepare(
-        "UPDATE accounts SET status = ?, penalty = ?, last_login_at = ?, exhausted_at = ?, home_path = ?, label = ?, updated_at = ? WHERE id = ?",
+        "UPDATE accounts SET status = ?, penalty = ?, weekly_ceiling = ?, last_login_at = ?, exhausted_at = ?, home_path = ?, label = ?, updated_at = ? WHERE id = ?",
       )
-      .run(next.status, next.penalty, next.lastLoginAt, next.exhaustedAt, next.homePath, next.label, at, id);
+      .run(next.status, next.penalty, next.weeklyCeiling, next.lastLoginAt, next.exhaustedAt, next.homePath, next.label, at, id);
     const account = this.mustGetAccount(id);
     this.audit("account.put", null, { account, outcome: "updated", changed, previous: Object.fromEntries(changed.map((k) => [k, before[k]])), reason });
     return { account, applied: true };
@@ -5045,6 +5062,11 @@ export class CoreStore {
   setAccountPenalty(id: string, penalty: number): { account: AccountRow; applied: boolean } {
     const value = normalizePenalty(penalty, "setAccountPenalty");
     return this.tx(() => this.applyAccountUpdate(id, { penalty: value }, "operator"));
+  }
+
+  setAccountWeeklyCeiling(id: string, ceiling: number | null): { account: AccountRow; applied: boolean } {
+    const value = normalizeWeeklyCeiling(ceiling, "setAccountWeeklyCeiling");
+    return this.tx(() => this.applyAccountUpdate(id, { weeklyCeiling: value }, "operator"));
   }
 
   /** v7 — a completed login: status ok + last_login_at (contrary evidence for auth_needed). */

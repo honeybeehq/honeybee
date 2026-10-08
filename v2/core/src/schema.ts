@@ -148,8 +148,9 @@
  * that historical writer's maximum version so it cannot bypass the new reservations.
  * Older writers cannot maintain reference reservations: rollback requires a store restore.
  * v31 — Cell retention: the `cells.state` CHECK gains `evicted` and the row gains
- * `evicted_at` + `evicted_head` (table rebuild, rows carried across by name). */
-export const SCHEMA_VERSION = 31;
+ * `evicted_at` + `evicted_head` (table rebuild, rows carried across by name).
+ * v32 — `accounts.weekly_ceiling`: nullable operator ceiling (1..100) on weekly used%. */
+export const SCHEMA_VERSION = 32;
 
 export const ACCOUNT_ADMISSIONS_TABLE_SQL = `
 CREATE TABLE IF NOT EXISTS account_admission_reservations (
@@ -492,6 +493,7 @@ CREATE TABLE IF NOT EXISTS accounts (
   label         TEXT NOT NULL,
   status        TEXT NOT NULL CHECK (status IN ('ok','auth_needed','paused')),
   penalty       INTEGER NOT NULL DEFAULT 0,
+  weekly_ceiling INTEGER CHECK (weekly_ceiling IS NULL OR (weekly_ceiling BETWEEN 1 AND 100)),
   last_login_at INTEGER,
   exhausted_at  INTEGER,
   added_at      INTEGER NOT NULL,

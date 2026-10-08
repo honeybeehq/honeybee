@@ -756,7 +756,7 @@ async function cmdSpawn(ctx: CliContext, parsed: Parsed): Promise<number> {
 const ACCOUNT_USAGE =
   "usage: hive account list [--harness h] | get <selector> | add <harness> <label> [--id id] [--home dir] [--penalty n] [--import-existing]\n" +
   "       hive account config preview <selector> | config import <selector> [--idempotency-key key]\n" +
-  "       hive account remove|pause|unpause <selector> | penalty <selector> <0-100>\n" +
+  "       hive account remove|pause|unpause <selector> | penalty <selector> <0-100> | ceiling <selector> <1-100|off>\n" +
   "       hive account login <selector> [--method <id>] [--remote] [--no-wait] | login-status <selector> | login-cancel <selector>\n" +
   "       hive account credentials <status|enable|refresh|disable> <selector>\n" +
   "       hive account capture <selector> | verify <selector> | limits [<selector>] | reset <selector> [--credit-id id] --idempotency-key key\n" +
@@ -965,6 +965,15 @@ async function cmdAccount(ctx: CliContext, parsed: Parsed): Promise<number> {
       const penalty = Number(raw);
       const r = await withClient(ctx, (c) => c.request<AccountUpdateResult>("account.setPenalty", { id, penalty, idempotencyKey: key }));
       emit(ctx, [confirm(r.applied ? "ok" : "info", r.applied ? "set" : "unchanged", `penalty for ${r.account.id}: ${r.account.penalty}`, r.deduped)], r, false);
+      return 0;
+    }
+    case "ceiling": {
+      const [, , id, raw] = parsed.positional;
+      if (!id || raw === undefined) throw new Error(ACCOUNT_USAGE);
+      const ceiling = raw === "off" ? null : Number(raw.replace(/%$/, ""));
+      const r = await withClient(ctx, (c) => c.request<AccountUpdateResult>("account.setWeeklyCeiling", { id, ceiling, idempotencyKey: key }));
+      const shown = r.account.weeklyCeiling === null ? "off" : `${r.account.weeklyCeiling}%`;
+      emit(ctx, [confirm(r.applied ? "ok" : "info", r.applied ? "set" : "unchanged", `weekly ceiling for ${r.account.id}: ${shown}`, r.deduped)], r, false);
       return 0;
     }
     case "login": {

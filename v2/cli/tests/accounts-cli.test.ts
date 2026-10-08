@@ -71,6 +71,18 @@ test("cli.accounts.1: account verbs over RPC + spawn --account + bee swap-accoun
     const pen = capture();
     assert.equal(await runV2Cli(["account", "penalty", "stub-one", "0", ...base], pen.io), 0);
     assert.match(pen.out[0] ?? "", /set penalty for stub-one: 0/);
+    const ceiling = capture();
+    assert.equal(await runV2Cli(["account", "ceiling", "stub-one", "60%", ...base], ceiling.io), 0);
+    assert.match(ceiling.out[0] ?? "", /set weekly ceiling for stub-one: 60%/);
+    const listed = capture();
+    assert.equal(await runV2Cli(["account", "list", ...base], listed.io), 0);
+    assert.ok(listed.out.some((l) => l.includes("stub-one") && l.includes("ceiling=60%")), listed.out.join("\n"));
+    const off = capture();
+    assert.equal(await runV2Cli(["account", "ceiling", "stub-one", "off", ...base], off.io), 0);
+    assert.match(off.out[0] ?? "", /set weekly ceiling for stub-one: off/);
+    const badCeiling = capture();
+    assert.equal(await runV2Cli(["account", "ceiling", "stub-one", "0", ...base], badCeiling.io), 1);
+    assert.match(badCeiling.err[0] ?? "", /invalid_request/);
     // spawn --account explicit paused → typed error; auto picks the lone candidate; none → unbound
     const bad = capture();
     assert.equal(await runV2Cli(["spawn", "w", "--agent", "stub", "--cwd", dir, "--account", "stub-two", ...base], bad.io), 1);

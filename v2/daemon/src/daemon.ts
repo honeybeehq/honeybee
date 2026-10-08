@@ -105,6 +105,7 @@ import {
   type AccountAllocationReceipt,
   type CaptureOutcome,
   type LimitsFetchers,
+  describeWeeklyCeilingBreach,
 } from "./accountsService.ts";
 import { AccountConfigImportRefusal, AccountConfigImportService } from "./accountConfigImport.ts";
 import { dirHasCredentials } from "./activation.ts";
@@ -457,6 +458,16 @@ const MIN_TICK_YIELD_MS = 1;
 const BOOTING_TICK_MS = 25;
 /** How often the tick runs the (synchronous, roster-wide) auto-title scan. */
 const AUTO_TITLE_SCAN_MS = 1000;
+const WEEKLY_CEILING_SWEEP_MS = 15_000;
+const WEEKLY_CEILING_RETRY_MS = 10 * 60_000;
+
+export function weeklyCeilingMoveNote(from: string, to: string, why: string): string {
+  return [
+    `Hive moved you from account ${from} to ${to}: ${why}.`,
+    "Your process restarted, so background shells, monitors and subagents from before the move have stopped.",
+    "Restart any you still need and carry on. If nothing was pending, reply \"ok\" and stop.",
+  ].join(" ");
+}
 
 /**
  * Delay from tick completion, not tick start. A repeating interval can remain
@@ -592,6 +603,9 @@ export class HiveDaemon {
   private readonly deps: HiveDaemonDeps;
   /** v7 rotation bound: one attempt per (bee, generation) exhaustion event. */
   private readonly rotatedGenerations = new Map<string, number>();
+  private lastWeeklyCeilingSweepAt = 0;
+  private readonly weeklyCeilingMoves = new Map<string, { account: string; at: number }>();
+  private readonly weeklyCeilingNotes = new Map<string, { afterGeneration: number; body: string }>();
   /** In-flight async idempotent verbs by key: a concurrent duplicate joins the first execution instead of re-running it. */
   private readonly asyncInFlight = new Map<string, Promise<object>>();
   private naming: ResolvedNamingConfig;
@@ -958,13 +972,18 @@ export class HiveDaemon {
     }
 
     for (const [beeId, command] of candidates) {
-      const bee = store.getBee(beeId);
+      let bee = store.getBee(beeId);
       if (!bee?.account) {
         this.accountActivations.delete(beeId);
         continue;
       }
-      const account = store.getAccount(bee.account);
+      let account = store.getAccount(bee.account);
       if (!account) continue;
+      if (this.moveOffWeeklyCeiling(bee, account)) {
+        bee = store.getBee(beeId);
+        account = bee?.account ? store.getAccount(bee.account) : null;
+        if (!bee || !account) continue;
+      }
       const key = this.accountActivationKey(bee, account, command);
       const current = this.accountActivations.get(beeId);
       if (current?.key === key) continue;
@@ -1053,9 +1072,10 @@ export class HiveDaemon {
       this.ticks += 1;
       this.lastTickAt = tStep;
       // v7: bounded in-daemon limits refresh; v16: login-flow expiry + credential landing.
-      this.performance.measureSync("daemon.tick.accounts", () =>
-        this.accounts?.periodicRefreshTick(),
-      );
+      this.performance.measureSync("daemon.tick.accounts", () => {
+        this.accounts?.periodicRefreshTick();
+        this.enforceWeeklyCeilings();
+      });
       tAccounts = Date.now();
       this.performance.measureSync("daemon.tick.login", () =>
         this.loginFlows?.tick(),
@@ -1442,6 +1462,8 @@ export class HiveDaemon {
         return this.withIdempotency(verb, params, () => this.rpcAccountStatus(params, "ok"));
       case "account.setPenalty":
         return this.withIdempotency(verb, params, () => this.rpcAccountSetPenalty(params));
+      case "account.setWeeklyCeiling":
+        return this.withIdempotency(verb, params, () => this.rpcAccountSetWeeklyCeiling(params));
       case "account.login":
       case "account.login.start":
         return this.rpcAccountLoginStart(params);
@@ -2305,6 +2327,10 @@ export class HiveDaemon {
       const account = this.resolveAccountSelector(request, agent);
       if (account.harness !== agent) throw new RpcError("harness_mismatch", `account ${account.id} is a ${account.harness} account; the bee runs ${agent}`);
       if (account.status === "paused") throw new RpcError("account_paused", `account ${account.id} is paused; unpause it or pick another`);
+      const breach = this.accounts?.weeklyCeilingBreach(account, this.modelParamOf(params, agent)) ?? null;
+      if (breach) {
+        throw new RpcError("account_unavailable", `${describeWeeklyCeilingBreach(account.id, breach)}; raise it with: hive account ceiling ${account.id} <percent|off>`);
+      }
       return { account, reason: "explicit" };
     }
     const claim = this.allocationClaimParam(params);
@@ -4879,6 +4905,18 @@ export class HiveDaemon {
     return { account: this.mirrorAccount(res.account), applied: res.applied };
   }
 
+  private rpcAccountSetWeeklyCeiling(params: Record<string, unknown>): AccountUpdateResult {
+    const account = this.requireAccount(params);
+    const ceiling = params.ceiling;
+    if (ceiling !== null && (typeof ceiling !== "number" || !Number.isInteger(ceiling) || ceiling < 1 || ceiling > 100)) {
+      throw new RpcError("invalid_request", "account.setWeeklyCeiling: ceiling must be an integer from 1 to 100, or null to clear");
+    }
+    const res = this.mustStore().setAccountWeeklyCeiling(account.id, ceiling);
+    this.log(`account.setWeeklyCeiling id=${account.id} ceiling=${ceiling ?? "off"} applied=${res.applied}`);
+    if (res.applied) this.lastWeeklyCeilingSweepAt = 0;
+    return { account: this.mirrorAccount(res.account), applied: res.applied };
+  }
+
   private mustLoginFlows(): LoginFlowService {
     if (!this.loginFlows || this.stopping) throw new RpcError("node_stopped", "daemon is shutting down");
     return this.loginFlows;
@@ -5141,7 +5179,7 @@ export class HiveDaemon {
   private performSwap(
     bee: BeeRow,
     target: AccountRow,
-    by: "operator" | "rotation",
+    by: "operator" | "rotation" | "ceiling",
     allocation?: AccountAllocationReceipt,
     reservationId?: string,
     claim?: AccountAdmissionClaim,
@@ -5154,6 +5192,8 @@ export class HiveDaemon {
     if (target.status === "paused") throw new RpcError("account_paused", `account ${target.id} is paused`);
     const from = bee.account;
     if (from === target.id) return { beeId: bee.id, from, to: target.id, action: "noop", commandId: null, rekeyed: false, transcript: "none" };
+    const breach = accounts.weeklyCeilingBreach(target, this.modelOfBee(bee));
+    if (breach) throw new RpcError("account_unavailable", describeWeeklyCeilingBreach(target.id, breach));
     // Before any state moves: the destination home must hold the conversation
     // the next generation resumes, or the swap is refused (typed) up front.
     const transcript = bee.agent === "claude" ? this.carryClaudeTranscript(bee, from, target) : "none";
@@ -5307,6 +5347,71 @@ export class HiveDaemon {
       this.log(`account.rotate bee=${bee.id} from=${account.id} to=${pick.account.id} action=${res.action} reason=${JSON.stringify(pick.reason)}`);
     } catch (err) {
       this.log(`account.rotate bee=${bee.id} from=${account.id} to=${pick.account.id} failed=${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  private enforceWeeklyCeilings(): void {
+    const store = this.store;
+    if (!store || !this.accounts) return;
+    this.sendWeeklyCeilingNotes();
+    const now = Date.now();
+    if (now - this.lastWeeklyCeilingSweepAt < WEEKLY_CEILING_SWEEP_MS) return;
+    this.lastWeeklyCeilingSweepAt = now;
+    for (const account of store.listAccounts()) {
+      if (this.accounts.weeklyCeilingBreaches(account).length === 0) continue;
+      for (const bee of store.beesOnAccount(account.id)) {
+        if (bee.lifecycle !== "active" || bee.activeMoveId != null || bee.activeHandoffId != null) continue;
+        if (store.currentRuntime(bee.id)?.state !== "idle") continue;
+        this.moveOffWeeklyCeiling(bee, account);
+      }
+    }
+  }
+
+  private moveOffWeeklyCeiling(bee: BeeRow, account: AccountRow): boolean {
+    const accounts = this.accounts;
+    if (!accounts || account.weeklyCeiling == null) return false;
+    const model = this.modelOfBee(bee);
+    const breach = accounts.weeklyCeilingBreach(account, model);
+    if (!breach) return false;
+    const now = Date.now();
+    const previous = this.weeklyCeilingMoves.get(bee.id);
+    if (previous?.account === account.id && now - previous.at < WEEKLY_CEILING_RETRY_MS) return false;
+    this.weeklyCeilingMoves.set(bee.id, { account: account.id, at: now });
+    const why = describeWeeklyCeilingBreach(account.id, breach);
+    if (autoswapDisabled(bee)) {
+      this.log(`account.ceiling bee=${bee.id} account=${account.id} skipped=autoswap_disabled — ${why}`);
+      return false;
+    }
+    const pick = accounts.pick(bee.agent, { excludeAccountIds: new Set([account.id]), model });
+    if (!pick.ok) {
+      this.log(`account.ceiling bee=${bee.id} account=${account.id} skipped=no_candidate (${pick.message}) — ${why}`);
+      return false;
+    }
+    const generation = this.mustStore().currentRuntime(bee.id)?.generation ?? 0;
+    try {
+      const res = this.performSwap(bee, pick.account, "ceiling");
+      this.log(`account.ceiling bee=${bee.id} from=${account.id} to=${pick.account.id} action=${res.action} — ${why}`);
+      if (res.action === "stop_then_revive") {
+        this.weeklyCeilingNotes.set(bee.id, { afterGeneration: generation, body: weeklyCeilingMoveNote(account.id, pick.account.id, why) });
+      }
+      return true;
+    } catch (err) {
+      this.log(`account.ceiling bee=${bee.id} from=${account.id} to=${pick.account.id} failed=${err instanceof Error ? err.message : String(err)}`);
+      return false;
+    }
+  }
+
+  private sendWeeklyCeilingNotes(): void {
+    const store = this.mustStore();
+    for (const [beeId, note] of this.weeklyCeilingNotes) {
+      const runtime = store.currentRuntime(beeId);
+      if (!store.getBee(beeId)) {
+        this.weeklyCeilingNotes.delete(beeId);
+        continue;
+      }
+      if (!runtime || runtime.generation <= note.afterGeneration || runtime.state === "stopped") continue;
+      this.weeklyCeilingNotes.delete(beeId);
+      store.send(beeId, note.body, { sender: "hive" });
     }
   }
 

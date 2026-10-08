@@ -139,7 +139,7 @@ test("cell-retention.schema: a v30 store's cells table is rebuilt with the evict
     const check = new DatabaseSync(h.path, { readOnly: true });
     try {
       assert.equal(Number((check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string }).value), SCHEMA_VERSION);
-      assert.equal(SCHEMA_VERSION, 31);
+      assert.equal(SCHEMA_VERSION, 32);
       assert.equal(check.prepare("SELECT name FROM sqlite_master WHERE name = 'cells_v30'").get(), undefined, "scratch table dropped");
       const cols = (check.prepare("SELECT name FROM pragma_table_info('cells')").all() as Array<{ name: string }>).map((c) => c.name);
       assert.ok(cols.includes("evicted_at") && cols.includes("evicted_head"));

@@ -284,7 +284,7 @@ export function accountLine(
       ? `  weekly=${colorPct(limits.weeklyPct)} 5h=${colorPct(limits.fiveHourPct)}${limits.fableWeeklyPct !== null ? ` fable=${colorPct(limits.fableWeeklyPct)}` : ""}${limits.plan ? ` plan=${limits.plan}` : ""}`
       : `  limits=unreadable(${limits.error ?? "?"})`
     : "";
-  const penalty = a.penalty > 0 ? `  penalty=${a.penalty}` : "";
+  const penalty = `${a.penalty > 0 ? `  penalty=${a.penalty}` : ""}${a.weeklyCeiling !== null ? `  ceiling=${a.weeklyCeiling}%` : ""}`;
   const login = a.lastLoginAt ? `  lastLogin=${new Date(a.lastLoginAt).toISOString()}` : "";
   return `${stalePrefix(stale)}${bold(a.id)}  ${blue(a.harness)}  ${colorAccountStatus(a.status)}  ${dim("creds=")}${colorCredentialHealth(a.credentialHealth)}  ${dim(tildify(a.homePath))}${penalty}${usage}${login}`;
 }

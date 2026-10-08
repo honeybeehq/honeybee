@@ -582,11 +582,67 @@ test("select.8: exhaustion evidence down-tiers an account for the cool-off, then
   }
 });
 
+test("select.9: an account at or past its weekly ceiling leaves auto, rr and admission until its window resets", () => {
+  const r = rig({ accounts: { allocationMode: "active" } });
+  try {
+    const svc = service(r);
+    const personal = addAccount(r, "claude", "personal", { addedAt: 1 });
+    const fleet = addAccount(r, "claude", "fleet", { addedAt: 2 });
+    limitsRow(r, personal.id, 40, 0, r.now() + 2 * DAY, { fable: 70 });
+    limitsRow(r, fleet.id, 70, 0, r.now() + 2 * DAY, { fable: 20 });
+    const uncapped = svc.pick("claude");
+    assert.ok(uncapped.ok);
+    assert.equal(uncapped.account.id, personal.id);
+
+    r.store.setAccountWeeklyCeiling(personal.id, 40);
+    assert.deepEqual(svc.weeklyCeilingBreach(r.store.getAccount(personal.id)!), { window: "weekly", usedPercent: 40, ceiling: 40 });
+    const auto = svc.pick("claude");
+    assert.ok(auto.ok);
+    assert.equal(auto.account.id, fleet.id);
+    for (let i = 0; i < 2; i += 1) {
+      const rr = svc.pickRoundRobin("claude");
+      assert.ok(rr.ok);
+      assert.equal(rr.account.id, fleet.id);
+    }
+    const scope = svc.allocationScope("claude");
+    const context = { version: 1 as const, authority: { node: "service-test", epoch: "test-epoch" }, scope, revision: "fleet-1", observedAt: r.now(), complete: true, accounts: [] };
+    const admitted = svc.admitNewWork("claude", { operation: "spawn", requestKey: "ceiling-admission", context });
+    assert.ok(admitted.ok);
+    assert.equal(admitted.account.id, fleet.id);
+    assert.deepEqual(
+      admitted.receipt.candidates.find((candidate) => candidate.accountId === personal.id),
+      { accountId: personal.id, status: "ineligible", reason: "ceiling" },
+    );
+
+    r.store.setAccountWeeklyCeiling(personal.id, 60);
+    assert.equal(svc.weeklyCeilingBreach(r.store.getAccount(personal.id)!), null);
+    assert.equal(svc.weeklyCeilingBreach(r.store.getAccount(personal.id)!, "claude-fable-5-1")?.window, "fableWeekly");
+    const fable = svc.pick("claude", { model: "claude-fable-5-1" });
+    assert.ok(fable.ok);
+    assert.equal(fable.account.id, fleet.id);
+
+    r.store.setAccountWeeklyCeiling(personal.id, 30);
+    r.store.setAccountWeeklyCeiling(fleet.id, 50);
+    const none = svc.pick("claude");
+    assert.equal(none.ok, false);
+    if (!none.ok) {
+      assert.equal(none.code, "all_paused");
+      assert.match(none.message, /past its weekly ceiling/);
+    }
+
+    r.setNow(r.now() + 3 * DAY);
+    assert.equal(svc.weeklyCeilingBreach(r.store.getAccount(personal.id)!), null, "a reset window no longer binds");
+    assert.ok(svc.pick("claude").ok);
+  } finally {
+    r.cleanup();
+  }
+});
+
 // ---------------------------------------------------------------------------
 // limits fetch → table; freshness policy
 // ---------------------------------------------------------------------------
 
-test("limits.0: the real Codex app-server transport returns typed success and authentication failures", async () => {
+test("limits.0:the real Codex app-server transport returns typed success and authentication failures", async () => {
   const r = rig();
   try {
     // This smoke includes a real process spawn. Keep its test budget above

@@ -420,6 +420,7 @@ export interface AccountRow {
   status: AccountStatus;
   /** Operator hint added to the selector's effective weekly load (0 = none). */
   penalty: number;
+  weeklyCeiling: number | null;
   lastLoginAt: number | null;
   /** Last rate-limit exhaustion evidence (rotation cool-off); null = never. */
   exhaustedAt: number | null;
