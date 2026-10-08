@@ -1075,6 +1075,7 @@ export class HiveDaemon {
       this.performance.measureSync("daemon.tick.accounts", () => {
         this.accounts?.periodicRefreshTick();
         this.enforceWeeklyCeilings();
+        void this.accounts?.claudeKeychainRepairTick();
       });
       tAccounts = Date.now();
       this.performance.measureSync("daemon.tick.login", () =>
