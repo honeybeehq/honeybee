@@ -36,6 +36,7 @@ import { rm } from "node:fs/promises";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { GitError, revParse, tryGit } from "./git.ts";
 import { CELL_SPACE_DIRECTORY, looksLikeCellWrapper } from "./layout.ts";
+import type { LandingReceipt } from "./landed.ts";
 import { CellDeleteRefused, CellShapeError, dirtyReport, type DirtyReport } from "./remove.ts";
 
 /** Reserved wrapper under the cells root where evicted wrappers wait for deletion. */
@@ -548,7 +549,10 @@ function spaceDirIn(wrapperDir: string): string | null {
   return join(wrapperDir, entries.find((e) => CELL_SPACE_DIRECTORY.test(e)) as string);
 }
 
-export function inspectCellWrapper(wrapperDir: string, opts: { measure?: boolean; trimPatterns?: readonly string[] } = {}): CellWrapperInspection {
+export function inspectCellWrapper(
+  wrapperDir: string,
+  opts: { measure?: boolean; trimPatterns?: readonly string[]; receipts?: readonly LandingReceipt[] } = {},
+): CellWrapperInspection {
   const started = Date.now();
   const target = resolve(wrapperDir);
   const spaceDir = spaceDirIn(target);
@@ -557,7 +561,7 @@ export function inspectCellWrapper(wrapperDir: string, opts: { measure?: boolean
   }
   const provisioned = existsSync(join(spaceDir, ".git"));
   const head = provisioned ? revParse(spaceDir, "HEAD") : null;
-  const report = dirtyReport(target);
+  const report = dirtyReport(target, { receipts: opts.receipts });
   const ignored = classifyIgnored(spaceDir, opts.trimPatterns ?? DEFAULT_TRIM_PATTERNS);
   const measure = opts.measure !== false;
   const sized = (paths: string[]): PathBytes[] => paths.map((path) => ({ path, bytes: measure ? measurePathBytes(join(spaceDir, path)) : null }));
@@ -592,7 +596,7 @@ export class CellHeadMovedError extends Error {
 export function evictCellWrapper(
   cellsRoot: string,
   wrapperDir: string,
-  opts: { force?: boolean; expectedHead?: string | null; now?: () => number; trimPatterns?: readonly string[] } = {},
+  opts: { force?: boolean; expectedHead?: string | null; now?: () => number; trimPatterns?: readonly string[]; receipts?: readonly LandingReceipt[] } = {},
 ): EvictResult | null {
   const target = resolve(wrapperDir);
   if (!existsSync(target)) return null;
@@ -602,7 +606,7 @@ export function evictCellWrapper(
   }
   const spaceDir = spaceDirIn(target);
   if (spaceDir == null) throw new CellShapeError(target, "no -space- checkout inside");
-  const report = dirtyReport(target);
+  const report = dirtyReport(target, { receipts: opts.receipts });
   const force = opts.force ?? false;
   if (report.dirty && !force) throw new CellDeleteRefused(target, report);
   const head = existsSync(join(spaceDir, ".git")) ? revParse(spaceDir, "HEAD") : null;

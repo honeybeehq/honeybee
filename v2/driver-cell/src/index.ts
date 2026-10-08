@@ -23,7 +23,9 @@ export {
   dirtyReport,
   type DeleteResult,
   type DirtyReport,
+  type DirtyReportOptions,
 } from "./remove.ts";
+export { landingTargets, unlandedCommitsByTip, type LandingReceipt, type UnlandedCommit } from "./landed.ts";
 export {
   CellHeadMovedError,
   DEFAULT_TRIM_PATTERNS,

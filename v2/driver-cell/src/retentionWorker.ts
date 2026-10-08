@@ -5,11 +5,12 @@
  * RPC lane, and applies the resulting plan on the main thread.
  */
 import { parentPort, workerData } from "node:worker_threads";
+import type { LandingReceipt } from "./landed.ts";
 import { inspectCellWrapper, verifyTrimPaths, type CellWrapperInspection, type TrimSkip } from "./retention.ts";
 
 export interface RetentionWorkerRequest {
   kind?: "inspect";
-  wrappers: Array<{ key: string; wrapperDir: string }>;
+  wrappers: Array<{ key: string; wrapperDir: string; receipts?: LandingReceipt[] }>;
   measure: boolean;
   trimPatterns: string[];
 }
@@ -42,9 +43,9 @@ if (request.kind === "verifyTrim") {
   parentPort?.postMessage({ verified } satisfies TrimVerifyWorkerResult);
 } else {
   const inspections: RetentionWorkerResult["inspections"] = [];
-  for (const { key, wrapperDir } of request.wrappers) {
+  for (const { key, wrapperDir, receipts } of request.wrappers) {
     try {
-      inspections.push({ key, inspection: inspectCellWrapper(wrapperDir, { measure: request.measure, trimPatterns: request.trimPatterns }), error: null });
+      inspections.push({ key, inspection: inspectCellWrapper(wrapperDir, { measure: request.measure, trimPatterns: request.trimPatterns, receipts }), error: null });
     } catch (err) {
       inspections.push({ key, inspection: null, error: errorText(err) });
     }

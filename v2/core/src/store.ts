@@ -7172,6 +7172,20 @@ export class CoreStore {
     return (this.stmt(sql).all(...params) as Row[]).map((r) => this.mapActionRow(r));
   }
 
+  /** Succeeded `land` actions of a bee as landing receipts (Cell head → result commit on the target branch). */
+  listLandingReceipts(beeId: string): Array<{ cellHead: string; resultSha: string; targetBranch: string | null }> {
+    const rows = this.stmt("SELECT result_json FROM actions WHERE bee_id = ? AND status = 'succeeded' AND kind = 'land'").all(beeId) as Row[];
+    const sha = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
+    const receipts: Array<{ cellHead: string; resultSha: string; targetBranch: string | null }> = [];
+    for (const row of rows) {
+      if (row.result_json == null) continue;
+      const { cellHead, resultSha, targetBranch } = (JSON.parse(String(row.result_json)) as ActionResult).outputs ?? {};
+      if (typeof cellHead !== "string" || typeof resultSha !== "string" || !sha.test(cellHead) || !sha.test(resultSha)) continue;
+      receipts.push({ cellHead, resultSha, targetBranch: typeof targetBranch === "string" && targetBranch.length > 0 ? targetBranch : null });
+    }
+    return receipts;
+  }
+
   /** Bees with at least one queued/running/waiting action (the scheduler's roster). */
   listOpenActionBeeIds(): string[] {
     return (this.stmt("SELECT DISTINCT bee_id FROM actions WHERE status IN ('queued','running','waiting') ORDER BY bee_id").all() as Row[]).map(

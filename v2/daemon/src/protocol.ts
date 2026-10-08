@@ -1458,12 +1458,16 @@ export interface CellDirtyReport {
   dirty: boolean;
   /** Uncommitted working-tree changes in the space. */
   uncommitted: boolean;
-  /** Cell HEAD, or any local branch tip, holds commits the origin repo does not contain. */
+  /** Cell HEAD, or any local branch tip, holds commits that are neither in the origin nor landed there under other SHAs. */
   unpushed: boolean;
   /** v31 — `git stash list` is not empty. */
   stashed: boolean;
   /** v31 — local branches whose tip the origin does not contain. */
   unlandedBranches: string[];
+  /** The commits behind `unpushed`, newest first, at most 20. */
+  unlandedCommits: Array<{ sha: string; subject: string }>;
+  /** How many unlanded commits there are in total. */
+  unlandedCommitCount: number;
   /** The origin could not be consulted (missing/moved) — treated as dirty. */
   originUnknown: boolean;
 }

@@ -2326,11 +2326,19 @@ async function cmdCell(ctx: CliContext, parsed: Parsed): Promise<number> {
 function dirtyCauses(report: CellGcItem["report"]): string[] {
   return [
     report?.uncommitted ? "uncommitted changes" : null,
-    report?.unpushed && !(report.unlandedBranches?.length) ? "uncaptured commits" : null,
+    report?.unpushed ? unlandedCommitsCause(report) : null,
     report?.stashed ? "stashed changes" : null,
     report?.unlandedBranches?.length ? `unlanded branches (${report.unlandedBranches.join(", ")})` : null,
     report?.originUnknown ? "origin unreachable" : null,
   ].filter((x): x is string => x != null);
+}
+
+function unlandedCommitsCause(report: NonNullable<CellGcItem["report"]>): string {
+  const count = report.unlandedCommitCount ?? 0;
+  if (count === 0) return "uncaptured commits";
+  const listed = (report.unlandedCommits ?? []).map((c) => `${c.sha.slice(0, 12)} ${c.subject}`.trim()).join("; ");
+  const more = count - (report.unlandedCommits?.length ?? 0);
+  return `${count} unlanded commit${count === 1 ? "" : "s"}: ${listed}${more > 0 ? `; +${more} more` : ""}`;
 }
 
 function gib(bytes: number | null): string {

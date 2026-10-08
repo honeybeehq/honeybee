@@ -40,7 +40,7 @@ import { cellPaths, looksLikeCellWrapper, type CellPaths } from "./layout.ts";
 import { isProvisioned, readLedger, type CellLedger } from "./ledger.ts";
 import { provisionCell, type ProvisionedCell, type ProvisionRequest } from "./provision.ts";
 import { claimFromPool, repoKeyFor, type TopUpRequest } from "./warmPool.ts";
-import { deleteCell, type DeleteResult } from "./remove.ts";
+import { deleteCell, type DeleteResult, type DirtyReportOptions } from "./remove.ts";
 import {
   defaultWritablePaths,
   mergeSandboxWritablePaths,
@@ -425,7 +425,7 @@ export class CellDriver implements RuntimeDriver {
     this.cells.delete(beeId);
   }
 
-  removeCell(beeId: string, opts: { force?: boolean } = {}): DeleteResult {
+  removeCell(beeId: string, opts: DirtyReportOptions & { force?: boolean } = {}): DeleteResult {
     if (this.pending.has(beeId) || this.snapshotLive().some((p) => p.beeId === beeId)) {
       throw new CellRuntimeLiveError(beeId);
     }

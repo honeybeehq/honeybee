@@ -2666,7 +2666,7 @@ export class HiveDaemon {
     }
     let result: CellRemoveResult;
     try {
-      const res = cell.removeCell(beeId, { force });
+      const res = cell.removeCell(beeId, { force, receipts: store.listLandingReceipts(beeId) });
       result = res.deleted
         ? { status: "deleted", forced: res.forced, report: res.report, commandId: null }
         : { status: "absent", forced: false, report: null, commandId: null };
@@ -2764,7 +2764,11 @@ export class HiveDaemon {
     if (!driver) throw new RpcError("node_stopped", "daemon is shutting down");
     const wrapperDir = dirname(resolve(row.spaceDir));
     try {
-      const parked = evictCellWrapper(this.cfg.cellsRoot, wrapperDir, { force, trimPatterns: this.cfg.cellRetention.trimPatterns });
+      const parked = evictCellWrapper(this.cfg.cellsRoot, wrapperDir, {
+        force,
+        trimPatterns: this.cfg.cellRetention.trimPatterns,
+        receipts: store.listLandingReceipts(beeId),
+      });
       driver.cell.forgetCell(beeId);
       if (parked == null) {
         const evicted = store.evictCell(row.id, { head: null, bytes: null, reason: "operator" });
@@ -3844,7 +3848,7 @@ export class HiveDaemon {
         });
         return this.parseRetainedRemoveResult(saved, marked, false);
       }
-      const res = deleteCell(paths.wrapperDir, { force });
+      const res = deleteCell(paths.wrapperDir, { force, receipts: store.listLandingReceipts(cell.sourceBeeId) });
       const marked = store.markCellRemoved(cellId);
       const status = res.deleted ? "deleted" : "absent";
       const saved = store.updateCellOp(op.id, {

@@ -14,6 +14,10 @@
  * `stashed` and `unlandedBranches` (producer change). The fixture carries the
  * new shape so the guard stays exact; Apiary's hiveProtocol.ts must follow
  * (docs/design/cell-retention-contract.md, "Apiary changes").
+ *
+ * 2026-10-08 (landed-work detection): Honeybee widened `CellDirtyReport` with
+ * `unlandedCommits` and `unlandedCommitCount` (producer change), naming the
+ * commits that block removal. Apiary's hiveProtocol.ts must follow.
  */
 
 export type HiveCellCaptureMode = 'merge' | 'rebase'
@@ -67,6 +71,10 @@ export interface HiveCellDirtyReport {
   stashed: boolean
   /** v31 — local branches whose tip the origin does not contain. */
   unlandedBranches: string[]
+  /** The commits behind `unpushed`, newest first, at most 20. */
+  unlandedCommits: Array<{ sha: string; subject: string }>
+  /** How many unlanded commits there are in total. */
+  unlandedCommitCount: number
   /** The origin could not be consulted (missing/moved) — treated as dirty. */
   originUnknown: boolean
 }
@@ -105,7 +113,7 @@ export const CAPTURE_RESULT_KEYS = [
 
 export const REMOVE_RESULT_KEYS = ['status', 'forced', 'report', 'commandId'] as const
 
-export const DIRTY_REPORT_KEYS = ['dirty', 'uncommitted', 'unpushed', 'stashed', 'unlandedBranches', 'originUnknown'] as const
+export const DIRTY_REPORT_KEYS = ['dirty', 'uncommitted', 'unpushed', 'stashed', 'unlandedBranches', 'unlandedCommits', 'unlandedCommitCount', 'originUnknown'] as const
 
 /** The Apiary error codes the two verbs may answer with (must be in honeybee's closed list). */
 export const CELL_VERB_ERROR_CODES = ['bee_not_found', 'invalid_request', 'runtime_refused'] as const

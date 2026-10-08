@@ -779,3 +779,24 @@ test("actions.15: action.cancel on a failed action removes it — the next step 
     h.cleanup();
   }
 });
+
+test("actions.landing-receipts: only succeeded land actions with well-formed shas become landing receipts", () => {
+  const h = harness();
+  try {
+    const store = h.open();
+    const { bee } = makeBee(store);
+    const result = "fedcba9876543210fedcba9876543210fedcba98";
+    const [landed, conflicted] = enqueue(store, bee.id, [
+      { kind: "land", inputs: { targetBranch: "main" } },
+      { kind: "land", inputs: { targetBranch: "main" } },
+    ]).actions;
+    const first = store.beginCellCaptureAttempt(landed!.id, { expectedHead: SHA });
+    store.settleAction(landed!.id, first.action.attempt, { kind: "succeeded", outputs: { resultSha: result, targetBranch: "main", cellHead: SHA }, receipt: null });
+    const second = store.beginCellCaptureAttempt(conflicted!.id, { expectedHead: SHA });
+    store.settleAction(conflicted!.id, second.action.attempt, { kind: "failed", code: "conflict", detail: "a.txt", retryable: true });
+    assert.deepEqual(store.listLandingReceipts(bee.id), [{ cellHead: SHA, resultSha: result, targetBranch: "main" }]);
+    assert.deepEqual(store.listLandingReceipts("no-such-bee"), []);
+  } finally {
+    h.cleanup();
+  }
+});

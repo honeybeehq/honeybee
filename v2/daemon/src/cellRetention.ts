@@ -41,6 +41,7 @@ import {
   retentionWorkerUrl,
   sweepEvicting,
   type CellWrapperInspection,
+  type LandingReceipt,
   type RetentionWorkerRequest,
   type RetentionWorkerResult,
   type TrimSkip,
@@ -79,6 +80,7 @@ interface Candidate {
   beeId: string;
   runtime: RuntimeRow | null;
   wrapperDir: string;
+  receipts: LandingReceipt[];
 }
 
 const DEFAULT_INITIAL_DELAY_MS = 5 * 60_000;
@@ -252,13 +254,14 @@ export class CellRetentionService {
         beeId: cell.sourceBeeId,
         runtime: bee ? store.currentRuntime(bee.id) : null,
         wrapperDir: dirname(resolve(cell.spaceDir)),
+        receipts: store.listLandingReceipts(cell.sourceBeeId),
       });
     }
     for (const bee of store.listBees()) {
       if (bee.substrate !== "cell" || bee.lifecycle === "deleted" || bee.cellId || registeredBees.has(bee.id)) continue;
       const wrapperDir = dirname(resolve(bee.cwd));
       if (dirname(wrapperDir) !== root) continue;
-      out.push({ key: `bee:${bee.id}`, cell: null, bee, beeId: bee.id, runtime: store.currentRuntime(bee.id), wrapperDir });
+      out.push({ key: `bee:${bee.id}`, cell: null, bee, beeId: bee.id, runtime: store.currentRuntime(bee.id), wrapperDir, receipts: store.listLandingReceipts(bee.id) });
     }
     return out;
   }
@@ -266,7 +269,7 @@ export class CellRetentionService {
   private async inspect(candidates: Candidate[], measure: boolean): Promise<Map<string, { inspection: CellWrapperInspection | null; error: string | null }>> {
     const wrappers = candidates
       .filter((c) => c.cell?.state !== "evicted")
-      .map((c) => ({ key: c.key, wrapperDir: c.wrapperDir }));
+      .map((c) => ({ key: c.key, wrapperDir: c.wrapperDir, receipts: c.receipts }));
     if (wrappers.length === 0) return new Map();
     const message = await this.runWorker<RetentionWorkerResult>({ wrappers, measure, trimPatterns: [...this.deps.policy.trimPatterns] } satisfies RetentionWorkerRequest);
     return new Map(message.inspections.map((i) => [i.key, { inspection: i.inspection, error: i.error }] as const));
@@ -344,7 +347,7 @@ export class CellRetentionService {
     return now - item.idleSince >= after;
   }
 
-  private idleSinceOf(c: Candidate): number | null {
+  private idleSinceOf(c: Pick<Candidate, "cell" | "bee" | "runtime">): number | null {
     if (c.cell == null || c.bee == null) return null;
     if (c.cell.state === "retained") return c.cell.retainedAt ?? c.cell.createdAt;
     if (c.bee.lifecycle === "archived") return c.bee.archivedAt ?? c.bee.createdAt;
@@ -431,7 +434,12 @@ export class CellRetentionService {
     if (bee?.activeMoveId) return outcome("refused", "move_in_flight");
     if (bee?.activeHandoffId) return outcome("refused", "handoff_in_flight");
     try {
-      const parked = evictCellWrapper(this.deps.cellsRoot, item.wrapperDir, { expectedHead: item.head, now: this.deps.now, trimPatterns: this.deps.policy.trimPatterns });
+      const parked = evictCellWrapper(this.deps.cellsRoot, item.wrapperDir, {
+        expectedHead: item.head,
+        now: this.deps.now,
+        trimPatterns: this.deps.policy.trimPatterns,
+        receipts: store.listLandingReceipts(item.beeId),
+      });
       this.deps.forgetCell(item.beeId);
       if (parked == null) {
         if (item.verdict === "remove_retained") store.markCellRemoved(cell.id);
@@ -495,7 +503,7 @@ export class CellRetentionService {
     if (this.deps.opInFlight(cell.id)) return outcome("refused", "op_in_flight");
     if (bee?.activeMoveId) return outcome("refused", "move_in_flight");
     if (bee?.activeHandoffId) return outcome("refused", "handoff_in_flight");
-    const idleSince = this.idleSinceOf({ key: item.cellId ?? "", cell, bee, beeId: item.beeId, runtime, wrapperDir: item.wrapperDir });
+    const idleSince = this.idleSinceOf({ cell, bee, runtime });
     if (idleSince == null || this.deps.now() - idleSince < (this.deps.policy.trimAfterMs ?? Number.POSITIVE_INFINITY)) return outcome("refused", "not_idle");
     if (verified.confirmed.length === 0) return outcome("refused", "nothing_to_trim");
     try {
