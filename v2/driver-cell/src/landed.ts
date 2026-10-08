@@ -12,8 +12,10 @@
  *     head of a landing receipt whose result commit the target contains;
  *  2. the merge of the tip into the target is clean and yields the target's
  *     own tree (the tip's whole range is already there: squash, rebase);
- *  3. a commit with the same `git patch-id --stable` is on the target
- *     (`rev-list --cherry-mark`: cherry-picks that main later built on);
+ *  3. a target commit since the provisioned base has the same stable
+ *     patch-id over zero-context diffs (`log -p -U0 | patch-id --stable`):
+ *     the same lines added and removed in the same files, wherever the
+ *     surrounding code moved (cherry-picks and rebases main later edited);
  *  4. replaying the commit onto the target is clean and changes nothing
  *     (a cherry-pick that would be empty: trivially resolved rebases).
  *
@@ -60,6 +62,7 @@ const MAX_RANGE_COMMITS = 500;
 const MAX_REPLAY_PROBES = 4;
 const PROBE_BUDGET_MS = 15_000;
 const MAX_PREFILTER_PATHS = 2000;
+const MAX_TARGET_COMMITS = 5000;
 const SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 const ZERO_SHA = /^0+$/;
 const ABSENT = "absent";
@@ -217,6 +220,26 @@ function probeTips(spaceDir: string, originRepo: string, tips: string[], base: s
       const parsed = parseRawChanges(must(["diff-tree", "-r", "-z", "--no-renames", "--root", "--stdin"], { input: `${commits.join("\n")}\n` }));
       return new Map(parsed.filter((p) => p.commit != null).map((p) => [p.commit as string, p.changes]));
     };
+    const patchIdsOf = (logArgs: string[]): Array<[string, string]> => {
+      const patches = must(["log", "-p", "-U0", "--no-merges", "--no-color", "--no-ext-diff", "--no-textconv", "--format=commit %H", ...logArgs], { literalPaths: true });
+      if (patches.trim().length === 0) return [];
+      return lines(must(["patch-id", "--stable"], { input: patches })).map((l) => l.split(" ") as [string, string]);
+    };
+    const patchMatches = (commits: string[], changes: Map<string, PathChange[]>): Set<string> => {
+      const ids = new Map<string, string[]>();
+      for (const [id, commit] of patchIdsOf(["--no-walk=unsorted", ...commits])) ids.set(id, [...(ids.get(id) ?? []), commit]);
+      const landed = new Set<string>();
+      if (ids.size === 0) return landed;
+      const paths = [...new Set(commits.flatMap((c) => (changes.get(c) ?? []).map((ch) => ch.path)))];
+      const pathspec = paths.length > 0 && paths.length <= MAX_PREFILTER_PATHS ? ["--", ...paths] : [];
+      for (const target of targets) {
+        const since = base ? ["--not", base] : [];
+        for (const [id] of patchIdsOf([`--max-count=${MAX_TARGET_COMMITS}`, target, ...since, ...pathspec])) {
+          for (const commit of ids.get(id) ?? []) landed.add(commit);
+        }
+      }
+      return landed;
+    };
     const replayVerdicts = new Map<string, boolean>();
     let replayBudget = MAX_REPLAY_PROBES;
     const replaysEmpty = (commit: string): boolean => {
@@ -243,14 +266,9 @@ function probeTips(spaceDir: string, originRepo: string, tips: string[], base: s
         out.set(tip, range);
         continue;
       }
-      const landed = new Set<string>();
-      for (const target of targets) {
-        for (const line of lines(must(["rev-list", "--cherry-mark", "--right-only", "--no-merges", `${target}...${tip}`]))) {
-          if (line.startsWith("=")) landed.add(line.slice(1));
-        }
-      }
+      const changes = commitChanges(range);
+      const landed = patchMatches(range, changes);
       const pending = range.filter((c) => !landed.has(c));
-      const changes = pending.length > 0 ? commitChanges(pending) : new Map<string, PathChange[]>();
       for (const commit of pending) {
         if (targets.some((t) => !provablyUnlanded(t, changes.get(commit))) && replaysEmpty(commit)) landed.add(commit);
       }

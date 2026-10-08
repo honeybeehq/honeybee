@@ -137,8 +137,8 @@ test("landed.landed-then-evolved: a cherry-picked commit main later edited still
   }
 });
 
-function listCell(rig: ReturnType<typeof makeRig>) {
-  writeFileSync(join(rig.origin.repo, "list.txt"), "one\ntwo\nthree\n");
+function listCell(rig: ReturnType<typeof makeRig>, content = "one\ntwo\nthree\n") {
+  writeFileSync(join(rig.origin.repo, "list.txt"), content);
   g(rig.origin.repo, ["add", "-A"]);
   g(rig.origin.repo, ["commit", "-m", "list"]);
   return provisionCell(
@@ -186,15 +186,35 @@ test("landed.conflict-resolved: a rebase conflict resolved to the Cell's version
   }
 });
 
-test("landed.combined-resolution: a conflict resolved by combining both sides stays refused (fail closed)", () => {
+test("landed.combined-resolution: a conflict resolved by keeping both sides counts (zero-context patch-id)", () => {
   const rig = makeRig();
   try {
     const cell = listCell(rig);
     const head = commitInCell(cell.paths.spaceDir, "list.txt", "one\ntwo\nthree\ncell\n", "cell appends");
     commitOn(rig.origin.repo, "list.txt", "one\ntwo\nthree\nmain\n", "main appends");
+    assert.deepEqual(dirtyReport(cell.paths.wrapperDir).unlandedCommits.map((c) => c.sha), [head]);
     commitOn(rig.origin.repo, "list.txt", "one\ntwo\nthree\nmain\ncell\n", "land cell appends (both kept)");
 
-    assert.deepEqual(dirtyReport(cell.paths.wrapperDir).unlandedCommits.map((c) => c.sha), [head]);
+    assert.equal(dirtyReport(cell.paths.wrapperDir).dirty, false);
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("landed.below-merge-base: a Cell that merged main after its commit landed there with other context counts", () => {
+  const rig = makeRig();
+  try {
+    const numbered = (edits: Record<number, string>) => Array.from({ length: 12 }, (_, i) => edits[i + 1] ?? `line ${i + 1}`).join("\n") + "\n";
+    const cell = listCell(rig, numbered({}));
+    const head = commitInCell(cell.paths.spaceDir, "list.txt", numbered({ 5: "FIVE" }), "cell edits five");
+    commitOn(rig.origin.repo, "list.txt", numbered({ 8: "EIGHT" }), "main edits eight");
+    commitOn(rig.origin.repo, "list.txt", numbered({ 5: "FIVE", 8: "EIGHT" }), "landed: cell edits five");
+    commitOn(rig.origin.repo, "list.txt", numbered({ 5: "FIVE", 8: "EIGHT", 12: "TWELVE" }), "main moves on");
+    g(cell.paths.spaceDir, ["fetch", "-q", rig.origin.repo, "main"]);
+    g(cell.paths.spaceDir, ["merge", "-q", "--no-edit", "FETCH_HEAD"]);
+    assert.ok(originLacks(rig.origin.repo, head));
+
+    assert.equal(dirtyReport(cell.paths.wrapperDir).dirty, false);
   } finally {
     rig.cleanup();
   }
