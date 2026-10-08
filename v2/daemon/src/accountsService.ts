@@ -70,8 +70,9 @@ import {
   type ActivationResult,
 } from "./activation.ts";
 import type { ResolvedNodeConfig } from "./config.ts";
-import { readClaudeKeychain, readClaudeKeychainState, writeClaudeKeychainEntry, type KeychainStateReader, type KeychainReader, type KeychainWriter } from "./keychain.ts";
+import { readClaudeKeychain, readClaudeKeychainState, writeClaudeKeychainEntry, type KeychainState, type KeychainStateReader, type KeychainReader, type KeychainWriter } from "./keychain.ts";
 import { atomicWriteFileSync } from "./homeDefaults.ts";
+import { withClaudeRefreshLock } from "./claudeRefreshLock.ts";
 import {
   defaultProviderLimitsHttp,
   fetchSecondaryProviderLimits,
@@ -166,6 +167,8 @@ type ClaudeCredential = {
  * recover automatically (request login), while a temporary transport error is
  * uncertain (keep last-known-good, retry, never a login prompt). HIVE-2.
  */
+type ClaudeRefreshFlight = { takesOverFromRunningClaude: boolean; promise: Promise<ClaudeRefreshOutcome> };
+
 type ClaudeRefreshOutcome =
   | { kind: "ok"; credential: ClaudeCredential }
   | { kind: "live_runtime" }
@@ -273,6 +276,14 @@ export const CODEX_MIN_SHIP_TTL_MS = 15 * 60_000;
 // re-shipped dying.
 export const CLAUDE_MIN_SHIP_TTL_MS = 15 * 60_000;
 
+// How long a lease mint keeps deferring to a healthy running Claude: Claude
+// Code only refreshes on an API call inside its own 5-minute expiry buffer,
+// so an idle one never does. Below this TTL the daemon refreshes itself,
+// under Claude Code's refresh lock.
+export const CLAUDE_REFRESH_DEFERRAL_DEADLINE_MS = 10 * 60_000;
+
+const CLAUDE_KEYCHAIN_PUBLISH_ATTEMPTS = 3;
+
 // OAuth refresh-token field names blanked before a credential file is shipped:
 // codex/grok/kimi use `refresh_token`, opencode's oauth entries use `refresh`,
 // claude's .credentials.json uses `refreshToken`. Refresh tokens are
@@ -287,6 +298,16 @@ const REFRESH_TOKEN_KEYS: ReadonlySet<string> = new Set(["refresh_token", "refre
  * Blanks only string values under the exact key names; access tokens, api
  * keys, and expiries are preserved untouched. Opaque — callers never log it.
  */
+function keychainDocument(state: KeychainState | null): Record<string, unknown> {
+  if (state?.status !== "present") return {};
+  try {
+    const parsed: unknown = JSON.parse(state.raw);
+    return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
 function blankRefreshTokens(value: unknown): unknown {
   if (Array.isArray(value)) return value.map((item) => blankRefreshTokens(item));
   if (value && typeof value === "object") {
@@ -669,6 +690,7 @@ export class AccountsService {
   private readonly now: () => number;
   private readonly keychainReader: KeychainReader;
   private readonly keychainWriter: KeychainWriter;
+  private readonly keychainStateReader: KeychainStateReader;
   private readonly cursorAuthReader: CursorAuthReader;
   private readonly fetchers: Required<LimitsFetchers>;
   private readonly providerHttp: ProviderLimitsHttp;
@@ -679,7 +701,7 @@ export class AccountsService {
   /** All callers for one Codex home join one bounded app-server probe. */
   private readonly codexFetches = new Map<string, Promise<PutAccountLimitsInput>>();
   /** Refresh tokens rotate on use: at most one refresh may run per account. */
-  private readonly claudeRefreshes = new Map<string, Promise<ClaudeRefreshOutcome>>();
+  private readonly claudeRefreshes = new Map<string, ClaudeRefreshFlight>();
   /** Grok/Kimi refresh tokens also rotate; share the whole provider read. */
   private readonly secondaryProviderFetches = new Map<string, Promise<PutAccountLimitsInput>>();
   /**
@@ -718,6 +740,7 @@ export class AccountsService {
     const centralKeychainReader: KeychainStateReader = opts.keychainStateReader ?? (opts.keychainReader
       ? async home => { const raw = await opts.keychainReader!(home); return raw === null ? { status: "unavailable" } : { status: "present", raw }; }
       : readClaudeKeychainState);
+    this.keychainStateReader = centralKeychainReader;
     const checkCentralCopy = (account: AccountRow, document: Record<string, unknown>, raw: string): void => {
       const owned = parseClaudeCredentials(JSON.stringify(document))!;
       const enrolling = this.centralCredentials.status(account)?.phase === "enrolling";
@@ -1248,7 +1271,7 @@ export class AccountsService {
    * — no cross-home candidate pool, no identity arbitration (one account =
    * one home in v2).
    */
-  private async freshestClaudeCredential(account: AccountRow): Promise<ClaudeCredential | null> {
+  private async freshestClaudeCredential(account: AccountRow, strictKeychain?: KeychainState): Promise<ClaudeCredential | null> {
     if (this.centralCredentials.enabled(account)) {
       const document = this.centralCredentials.document(account);
       const credential = parseClaudeCredentials(JSON.stringify(document));
@@ -1269,7 +1292,9 @@ export class AccountsService {
       }
     };
     push(readIfFile(join(account.homePath, ".credentials.json")));
-    push(await this.keychainReader(account.homePath).catch(() => null));
+    push(strictKeychain
+      ? strictKeychain.status === "present" ? strictKeychain.raw : null
+      : await this.keychainReader(account.homePath).catch(() => null));
     push(readIfFile(join(this.vaultDirOf(account), ".credentials.json")));
     candidates.sort((a, b) => b.expiresAt - a.expiresAt);
     return candidates[0] ?? null;
@@ -1354,80 +1379,122 @@ export class AccountsService {
 
   /**
    * Rotate one expired Claude chain exactly once and persist the new chain to
-   * the account's only home, Keychain item, and vault backup. A live runtime
-   * owns its own refresh and is never raced by the daemon. `minTtlMs` is the
-   * freshness floor the caller needs (the lease mint's ship floor); the
+   * the account's vault backup, Keychain item, and only home. `minTtlMs` is
+   * the freshness floor the caller needs (the lease mint's ship floor); the
    * default 0 keeps the limits path's "expired means expired" behavior.
+   *
+   * A healthy running Claude owns its own refresh. Without
+   * `deferralDeadlineMs` the daemon defers to it for good (the limits path).
+   * With it (the lease mint) the daemon defers only while the token has more
+   * than that TTL left, then refreshes itself. Either way the rotation runs
+   * under Claude Code's refresh lock, so a running Claude sees a sibling's
+   * refresh, never a consumed refresh token.
    */
-  private async refreshClaudeCredential(account: AccountRow, minTtlMs = 0): Promise<ClaudeRefreshOutcome> {
+  private async refreshClaudeCredential(account: AccountRow, minTtlMs = 0, deferralDeadlineMs?: number): Promise<ClaudeRefreshOutcome> {
     if (this.centralCredentials.enabled(account)) {
       await this.centralCredentials.ensure(account, minTtlMs);
       const credential = await this.freshestClaudeCredential(account);
       return credential ? { kind: "ok", credential } : { kind: "no_refresh_token" };
     }
     if (this.centralCredentials.busy(account)) return { kind: "temporary", detail: "credential ownership is changing" };
-    const joined = this.claudeRefreshes.get(account.id);
-    if (joined) return joined;
-    const pending = (async (): Promise<ClaudeRefreshOutcome> => {
-      // Defer only to a HEALTHY live runtime (one not itself blocked on
-      // auth_needed): a session that has failed authentication cannot rotate
-      // the chain, so the daemon must not defer to it (HIVE-2).
-      if (this.hasHealthyLiveRuntime(account.id)) return { kind: "live_runtime" };
-      // Check for newer credentials first: re-read inside the single-flight
-      // boundary — another limits caller or a healthy session may have
-      // advanced the chain after the first read.
-      const credential = await this.freshestClaudeCredential(account);
-      if (credential && credential.expiresAt - this.now() > minTtlMs) return { kind: "ok", credential };
-      if (!credential?.refreshToken) return { kind: "no_refresh_token" };
-      // Injected-boundary contract: a returned token = success; `null` = the
-      // refresh token was REJECTED (recovery cannot proceed → login); a THROW
-      // = a temporary/uncertain transport failure (retry, never a login).
-      let refreshed: RefreshedClaudeToken | null;
-      try {
-        refreshed = await this.fetchers.claudeRefresh(credential.refreshToken);
-      } catch (err) {
-        const detail = (err instanceof Error ? err.message : String(err)).slice(0, 200);
-        this.log(`account.refresh.temporary account=${account.id} detail=${JSON.stringify(detail)}`);
-        return { kind: "temporary", detail };
-      }
-      if (!refreshed) {
-        this.log(`account.refresh.rejected account=${account.id}`);
-        return { kind: "rejected" };
-      }
-      const oauth: Record<string, unknown> = {
-        ...credential.oauth,
+    const takesOverFromRunningClaude = deferralDeadlineMs !== undefined;
+    for (let flight = this.claudeRefreshes.get(account.id); flight; flight = this.claudeRefreshes.get(account.id)) {
+      if (flight.takesOverFromRunningClaude || !takesOverFromRunningClaude) return flight.promise;
+      await flight.promise.catch(() => undefined);
+    }
+    const promise = this.refreshClaudeCredentialOnce(account, minTtlMs, deferralDeadlineMs).finally(() => {
+      if (this.claudeRefreshes.get(account.id)?.promise === promise) this.claudeRefreshes.delete(account.id);
+    });
+    this.claudeRefreshes.set(account.id, { takesOverFromRunningClaude, promise });
+    return promise;
+  }
+
+  private async refreshClaudeCredentialOnce(account: AccountRow, minTtlMs: number, deferralDeadlineMs: number | undefined): Promise<ClaudeRefreshOutcome> {
+    // Defer only to a HEALTHY live runtime (one not itself blocked on
+    // auth_needed): a session that has failed authentication cannot rotate
+    // the chain, so the daemon must not defer to it (HIVE-2).
+    const runningClaude = this.hasHealthyLiveRuntime(account.id);
+    if (runningClaude) {
+      if (deferralDeadlineMs === undefined) return { kind: "live_runtime" };
+      const visible = await this.freshestClaudeCredential(account);
+      if (visible && visible.expiresAt - this.now() > minTtlMs) return { kind: "ok", credential: visible };
+      if (!visible || visible.expiresAt - this.now() > deferralDeadlineMs) return { kind: "live_runtime" };
+    }
+    let locked;
+    try {
+      locked = await withClaudeRefreshLock(account.homePath, () => this.rotateClaudeChain(account, minTtlMs, runningClaude));
+    } catch (err) {
+      const detail = (err instanceof Error ? err.message : String(err)).slice(0, 200);
+      this.log(`account.refresh.temporary account=${account.id} detail=${JSON.stringify(detail)}`);
+      return { kind: "temporary", detail };
+    }
+    if (!locked.acquired) {
+      this.log(`account.refresh.lock_contended account=${account.id}`);
+      return { kind: "temporary", detail: "another Claude process holds the OAuth refresh lock" };
+    }
+    return locked.value;
+  }
+
+  private async rotateClaudeChain(account: AccountRow, minTtlMs: number, runningClaude: boolean): Promise<ClaudeRefreshOutcome> {
+    // Running Claude processes read the Keychain item first and refresh into
+    // it alone, leaving a consumed refresh token in the home file: under them
+    // the chain is rotated only from a Keychain read that is known good.
+    const keychain = runningClaude ? await this.keychainStateReader(account.homePath) : null;
+    if (keychain?.status === "unreadable") return { kind: "temporary", detail: "the account Keychain is unreadable" };
+    // Check for newer credentials first: re-read inside the lock — another
+    // limits caller or a running Claude may have advanced the chain after
+    // the first read.
+    const credential = await this.freshestClaudeCredential(account, keychain ?? undefined);
+    if (credential && credential.expiresAt - this.now() > minTtlMs) return { kind: "ok", credential };
+    if (!credential?.refreshToken) return { kind: "no_refresh_token" };
+    // Injected-boundary contract: a returned token = success; `null` = the
+    // refresh token was REJECTED (recovery cannot proceed → login); a THROW
+    // = a temporary/uncertain transport failure (retry, never a login).
+    let refreshed: RefreshedClaudeToken | null;
+    try {
+      refreshed = await this.fetchers.claudeRefresh(credential.refreshToken);
+    } catch (err) {
+      const detail = (err instanceof Error ? err.message : String(err)).slice(0, 200);
+      this.log(`account.refresh.temporary account=${account.id} detail=${JSON.stringify(detail)}`);
+      return { kind: "temporary", detail };
+    }
+    if (!refreshed) {
+      this.log(`account.refresh.rejected account=${account.id}`);
+      return { kind: "rejected" };
+    }
+    const oauth: Record<string, unknown> = {
+      ...credential.oauth,
+      accessToken: refreshed.accessToken,
+      refreshToken: refreshed.refreshToken,
+      expiresAt: refreshed.expiresAt,
+      ...(refreshed.scopes ? { scopes: refreshed.scopes } : {}),
+    };
+    const document = { ...credential.document, claudeAiOauth: oauth };
+    const raw = JSON.stringify(document);
+    const keychainRaw = JSON.stringify({ ...document, ...keychainDocument(keychain), claudeAiOauth: oauth });
+    // The home file's mtime is what tells a running Claude to drop its cached
+    // credential, so it is written last, after the stores it will re-read.
+    mkdirSync(this.vaultDirOf(account), { recursive: true, mode: 0o700 });
+    atomicWriteFileSync(join(this.vaultDirOf(account), ".credentials.json"), raw);
+    let keychainWritten = false;
+    const keychainAttempts = keychain?.status === "present" ? CLAUDE_KEYCHAIN_PUBLISH_ATTEMPTS : 1;
+    for (let attempt = 0; attempt < keychainAttempts && !keychainWritten; attempt += 1) {
+      keychainWritten = await this.keychainWriter(account.homePath, keychainRaw).catch(() => false);
+    }
+    atomicWriteFileSync(join(account.homePath, ".credentials.json"), raw);
+    if (!keychainWritten) this.log(`account.refresh.keychain_degraded account=${account.id} running_claude=${runningClaude}`);
+    this.log(`account.refresh account=${account.id} persisted=home,vault keychain=${keychainWritten} running_claude=${runningClaude}`);
+    return {
+      kind: "ok",
+      credential: {
         accessToken: refreshed.accessToken,
         refreshToken: refreshed.refreshToken,
         expiresAt: refreshed.expiresAt,
-        ...(refreshed.scopes ? { scopes: refreshed.scopes } : {}),
-      };
-      const document = { ...credential.document, claudeAiOauth: oauth };
-      const raw = JSON.stringify(document);
-      mkdirSync(account.homePath, { recursive: true, mode: 0o700 });
-      mkdirSync(this.vaultDirOf(account), { recursive: true, mode: 0o700 });
-      atomicWriteFileSync(join(account.homePath, ".credentials.json"), raw);
-      atomicWriteFileSync(join(this.vaultDirOf(account), ".credentials.json"), raw);
-      const keychainWritten = await this.keychainWriter(account.homePath, raw).catch(() => false);
-      if (!keychainWritten) this.log(`account.refresh.keychain_degraded account=${account.id}`);
-      this.log(`account.refresh account=${account.id} persisted=home,vault keychain=${keychainWritten}`);
-      return {
-        kind: "ok",
-        credential: {
-          accessToken: refreshed.accessToken,
-          refreshToken: refreshed.refreshToken,
-          expiresAt: refreshed.expiresAt,
-          ...(credential.subscriptionType ? { subscriptionType: credential.subscriptionType } : {}),
-          document,
-          oauth,
-        },
-      };
-    })();
-    this.claudeRefreshes.set(account.id, pending);
-    try {
-      return await pending;
-    } finally {
-      if (this.claudeRefreshes.get(account.id) === pending) this.claudeRefreshes.delete(account.id);
-    }
+        ...(credential.subscriptionType ? { subscriptionType: credential.subscriptionType } : {}),
+        document,
+        oauth,
+      },
+    };
   }
 
   /**
@@ -1558,9 +1625,11 @@ export class AccountsService {
    * and the CURRENT access token preserved. Experiment 2 (RN7A_EXPERIMENTS.md)
    * confirmed the harness runs cleanly to real token expiry with a blanked
    * refresh token and fails typed at a server 401 — the daemon's own OAuth
-   * refresh (refreshClaudeCredential, single-flight, live-runtime-guarded)
-   * freshens a chain at/near expiry BEFORE the lease is cut; a token under
-   * CLAUDE_MIN_SHIP_TTL_MS is never shipped dying.
+   * refresh (refreshClaudeCredential, single-flight, under Claude Code's
+   * refresh lock) freshens a chain at/near expiry BEFORE the lease is cut; a
+   * token under CLAUDE_MIN_SHIP_TTL_MS is never shipped dying. A healthy
+   * running Claude keeps the refresh until CLAUDE_REFRESH_DEFERRAL_DEADLINE_MS
+   * before expiry; an idle one never refreshes, so the daemon then does.
    */
   private async mintClaudeLease(account: AccountRow): Promise<EphemeralCredential> {
     if (this.centralCredentials.enabled(account)) {
@@ -1578,7 +1647,7 @@ export class AccountsService {
       throw new LeaseRefusal("lease_unavailable", `no claude OAuth credential for ${account.id}; log in: hive v2 account login ${account.id}`);
     }
     if (credential.expiresAt - this.now() <= CLAUDE_MIN_SHIP_TTL_MS) {
-      const refreshed = await this.refreshClaudeCredential(account, CLAUDE_MIN_SHIP_TTL_MS);
+      const refreshed = await this.refreshClaudeCredential(account, CLAUDE_MIN_SHIP_TTL_MS, CLAUDE_REFRESH_DEFERRAL_DEADLINE_MS);
       if (refreshed.kind === "ok") credential = refreshed.credential;
       else if (refreshed.kind === "live_runtime") {
         throw new LeaseRefusal("lease_unavailable", `claude OAuth token for ${account.id} is at/near expiry and a healthy running Claude owns refresh; retry shortly`);
