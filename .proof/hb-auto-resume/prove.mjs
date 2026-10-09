@@ -74,7 +74,7 @@ let daemon = null;
 async function startDaemon() {
   const log = openSync(daemonOutput, "a");
   daemon = spawn(process.execPath, [CLI, "v2", "daemon", "run", "--data-dir", data], { env, stdio: ["ignore", log, log] });
-  await until(() => { try { hive("list"); return true; } catch { return false; } }, "daemon answers");
+  await until(() => { try { hive("deploy-info"); return true; } catch { return false; } }, "daemon answers");
   say(`daemon up (pid ${daemon.pid}) on ${join(data, "hived.sock")}`);
 }
 async function killDaemon() {
