@@ -1452,11 +1452,12 @@ test("central.claude: a retry that succeeds but cannot publish still ends the do
   const r = rig();
   try {
     const account = addAccount(r, "claude", "settle", { home: { ".credentials.json": nativeDocument(r) } });
-    let lost = false; let failPublish = false; let refreshes = 0;
+    let lost = false; let limited = false; let failPublish = false; let refreshes = 0;
     const validated: string[] = [];
     const svc = service(r, { keychainReader: async () => "{}", keychainWriter: async () => !failPublish,
       onCredentialValidated: (id, by) => validated.push(`${id}:${by}:${r.store.getAccount(id)!.status}`),
       fetchers: { claudeRefresh: async () => { refreshes++; if (lost) throw new Error("connection lost");
+        if (limited) return { kind: "retryable", httpStatus: 429, error: "rate_limit_error", description: null, retryAfterMs: 60_000 };
         return granted({ accessToken: `access-${refreshes}`, refreshToken: CLAUDE_ENROLLED_REFRESH, expiresAt: r.now() + HOUR }); } } });
     await svc.centralCredentials.enable(account);
     r.setNow(r.now() + HOUR);
@@ -1464,7 +1465,12 @@ test("central.claude: a retry that succeeds but cannot publish still ends the do
     await assert.rejects(svc.centralCredentials.ensure(account, 0), /outcome for claude-settle is unknown/);
     assert.equal(r.store.getAccount(account.id)!.status, "auth_needed");
     r.setNow(r.now() + 30_000);
-    lost = false; failPublish = true;
+    lost = false; limited = true;
+    await assert.rejects(svc.centralCredentials.ensure(account, 0), /outcome for claude-settle is unknown/);
+    assert.equal(svc.centralCredentials.status(account)!.phase, "uncertain", "a rate limit on the retry does not settle what happened to the first request");
+    assert.equal(svc.centralCredentials.status(account)!.failure?.outcome, "retryable");
+    r.setNow(r.now() + 60_000);
+    limited = false; failPublish = true;
     await assert.rejects(svc.centralCredentials.ensure(account, 0), /Keychain/);
     assert.equal(svc.centralCredentials.status(account)!.phase, "refreshing", "the rotated chain is saved; only publication is owed");
     assert.equal(r.store.getAccount(account.id)!.status, "auth_needed");
@@ -1472,7 +1478,7 @@ test("central.claude: a retry that succeeds but cannot publish still ends the do
     const settled = await svc.centralCredentials.ensure(account, 0);
     assert.equal(settled.phase, "ready");
     assert.equal(settled.failure, null);
-    assert.equal(refreshes, 3, "settling a saved result does not rotate again");
+    assert.equal(refreshes, 4, "settling a saved result does not rotate again");
     assert.equal(r.store.getAccount(account.id)!.status, "ok", "no limits probe is needed to end the doubt");
     assert.deepEqual(validated, ["claude-settle:refresh:ok", "claude-settle:refresh:ok"],
       "enrollment and the settled recovery each announce a working credential, after the status is ok again");

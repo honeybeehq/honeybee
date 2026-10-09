@@ -104,15 +104,16 @@ export class ClaudeCredentialAuthority {
     return next;
   }
   /**
-   * The one way into `ready`. `resolveDoubt`: this rotation answers an unknown
-   * outcome, so the account's status is restored before anyone is told the
-   * credential works again.
+   * The one way into `ready` after a rotation the provider answered with a
+   * token. That token is the evidence the credential works, whatever the
+   * earlier attempts ended in, so the account's status is restored before
+   * anyone is told the credential works again.
    */
-  private ready(account: AccountRow, value: AuthorityDocument, resolveDoubt: boolean): AccountCredentialAuthority {
+  private ready(account: AccountRow, value: AuthorityDocument): AccountCredentialAuthority {
     const refreshTokenExpiresAt = parseClaudeCredentials(JSON.stringify(value.document))?.refreshTokenExpiresAt;
     if (refreshTokenExpiresAt !== undefined) this.options.store.setAccountRefreshTokenExpiry(account.id, refreshTokenExpiresAt, "central credential refreshed");
     const ready = this.put(account, "ready", value);
-    if (resolveDoubt) this.doubtResolved(account);
+    this.credentialWorks(account);
     this.options.onRefreshed?.(account);
     return ready;
   }
@@ -170,8 +171,8 @@ export class ClaudeCredentialAuthority {
     this.markAuthNeeded(account, message);
     return new CredentialAuthorityError(message, "login_required");
   }
-  /** A token the provider issued is the evidence that ends the doubt `outcomeUnknown` raised. */
-  private doubtResolved(account: AccountRow): void {
+  /** A paused account stays paused; `auth_needed` ends, whoever raised it. */
+  private credentialWorks(account: AccountRow): void {
     if (this.options.store.getAccount(account.id)?.status === "auth_needed"
       && this.options.store.setAccountStatus(account.id, "ok", "central refresh succeeded").applied) {
       this.options.log(`account.auth_ok account=${account.id} by=central_refresh`);
@@ -241,7 +242,7 @@ export class ClaudeCredentialAuthority {
     }
     return value;
   }
-  private enrollmentReady(account: AccountRow, value: AuthorityDocument, resolveDoubt = false): AccountCredentialAuthority {
+  private enrollmentReady(account: AccountRow, value: AuthorityDocument): AccountCredentialAuthority {
     // Clear before ready: a crash leaves enrolling, which can recover provenance.
     // A later native login must never inherit enrollment's rollback allowance.
     if (value.rollbackAdopted) {
@@ -249,7 +250,7 @@ export class ClaudeCredentialAuthority {
       delete value.rollbackAdopted;
       save(this.path(account), value);
     }
-    return this.ready(account, value, resolveDoubt);
+    return this.ready(account, value);
   }
   enable(account: AccountRow): Promise<AccountCredentialAuthority> {
     return this.lane(account, "enable", async () => {
@@ -376,8 +377,7 @@ export class ClaudeCredentialAuthority {
         // A saved result can settle a crash after provider success, including publication failure.
         if (value.operationKey === state.operationKey && value.generation > state.generation) {
           await this.options.publish(account, value.document, true);
-          // The fence of a retry carries the unknown outcome it was retrying.
-          return this.enrollmentReady(account, value, state.phase === "uncertain" || state.failure?.outcome === "unknown_outcome");
+          return this.enrollmentReady(account, value);
         }
         if (state.phase === "refreshing") {
           // No operation is in flight (the lane is ours), so a process death interrupted this refresh.
@@ -423,7 +423,7 @@ export class ClaudeCredentialAuthority {
         document: { ...value.document, claudeAiOauth: { ...oauth, ...attempt.token } } };
       save(this.path(account), value);
       await this.options.publish(account, value.document, true);
-      return this.enrollmentReady(account, value, tokenStateUnknown);
+      return this.enrollmentReady(account, value);
     });
   }
 }

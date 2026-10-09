@@ -19,7 +19,7 @@ export type ClaudeRefreshResult =
   | { kind: "success"; token: RefreshedClaudeToken }
   /** The provider definitively refused the refresh token: only a new login recovers. */
   | { kind: "rejected"; httpStatus: number; error: string | null; description: string | null }
-  /** The provider said it did not process the request (connect failure before send, 429, 503, 529, a non-auth 4xx): the token is unconsumed. */
+  /** The request was not processed (connect failure before send, 429, a non-auth 4xx, the provider's own `overloaded_error`): the token is unconsumed. */
   | { kind: "retryable"; httpStatus: number | null; error: string | null; description: string | null; retryAfterMs?: number }
   /** The request was sent and no answer proves what happened to it (no response, a gateway or server error, an unusable 2xx): the token may be consumed. */
   | { kind: "unknown_outcome"; description: string };
@@ -41,11 +41,12 @@ const NOT_SENT_ERROR_CODES: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * 5xx answers in which the provider itself says it took no action. Any other
- * 5xx (500, a gateway's 502/504) can follow a rotation the provider already
- * committed, so it proves nothing about the token.
+ * The one 5xx answer that proves no rotation happened: the provider's own
+ * structured error saying it shed the request. A status code alone does not,
+ * because a gateway can answer 500/502/503/504 after the provider committed
+ * the rotation.
  */
-const NOT_PROCESSED_SERVER_STATUSES: ReadonlySet<number> = new Set([503, 529]);
+const PROVIDER_SHED_REQUEST_ERROR = "overloaded_error";
 
 const DESCRIPTION_MAX_CHARS = 200;
 const RETRY_AFTER_MAX_MS = 60 * 60_000;
@@ -122,7 +123,7 @@ export function defaultClaudeRefreshTransport(timeoutMs: number, now: () => numb
       if (response.status === 400 || response.status === 401 || response.status === 403) {
         return { kind: "rejected", httpStatus: response.status, ...detail };
       }
-      if (response.status >= 500 && !NOT_PROCESSED_SERVER_STATUSES.has(response.status)) {
+      if (response.status >= 500 && detail.error !== PROVIDER_SHED_REQUEST_ERROR) {
         return { kind: "unknown_outcome", description: `${describeRefreshFailure({ httpStatus: response.status, ...detail })} after the request was sent` };
       }
       const retryAfterMs = retryAfterMsOf(response, now());
