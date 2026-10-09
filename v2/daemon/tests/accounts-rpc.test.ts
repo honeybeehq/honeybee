@@ -91,6 +91,15 @@ function seedVault(dir: string, harness: string, id: string, file: string, conte
   writeFileSync(join(d, file), content);
 }
 
+/** The satellite failure shape: the account's on-disk Claude token (home + vault) is past expiry with its refresh token blanked. */
+function expireClaudeCredential(dir: string, id: string): void {
+  const expired = `{"claudeAiOauth":{"accessToken":"${id}","refreshToken":"","expiresAt":1}}`;
+  seedVault(dir, "claude", id, ".credentials.json", expired);
+  const home = join(dir, "homes", id);
+  mkdirSync(home, { recursive: true });
+  writeFileSync(join(home, ".credentials.json"), expired);
+}
+
 test("rpc.accounts.1: CRUD verbs, typed errors, idempotent add, spawn binding (explicit / paused / mismatch / auto / unbound), snapshot + watch carry accounts", async () => {
   const { dir, cleanup } = makeDaemonDir();
   let daemon: DaemonHandle | null = null;
@@ -309,8 +318,8 @@ test("rpc.accounts.2: bee.swapAccount (fake-claude) — same-harness stop → re
   let daemon: DaemonHandle | null = null;
   try {
     // two claude accounts with vault credentials (activation copies them into the empty homes)
-    seedVault(dir, "claude", "claude-a", ".credentials.json", '{"claudeAiOauth":{"accessToken":"a","expiresAt":1}}');
-    seedVault(dir, "claude", "claude-b", ".credentials.json", '{"claudeAiOauth":{"accessToken":"b","expiresAt":1}}');
+    seedVault(dir, "claude", "claude-a", ".credentials.json", '{"claudeAiOauth":{"accessToken":"a","expiresAt":4102444800000}}');
+    seedVault(dir, "claude", "claude-b", ".credentials.json", '{"claudeAiOauth":{"accessToken":"b","expiresAt":4102444800000}}');
     daemon = await startDaemon(dir);
     const client = await daemon.client();
     // Pre-seeded vaults = existing credentials: adoption is explicit (F2).
@@ -327,7 +336,7 @@ test("rpc.accounts.2: bee.swapAccount (fake-claude) — same-harness stop → re
     const sid1 = (await client.request<ViewResult>("view", { beeId: spawned.beeId })).bee?.providerSessionId;
     assert.ok(sid1, "session id recorded");
     // activation happened into home A (empty → vault copy + defaults); the runtime saw CLAUDE_CONFIG_DIR = home A
-    assert.equal(readFileSync(join(homeA, ".credentials.json"), "utf8"), '{"claudeAiOauth":{"accessToken":"a","expiresAt":1}}');
+    assert.equal(readFileSync(join(homeA, ".credentials.json"), "utf8"), '{"claudeAiOauth":{"accessToken":"a","expiresAt":4102444800000}}');
     assert.ok(existsSync(join(homeA, "settings.json")));
     const boots1 = jsonl<{ env: { CLAUDE_CONFIG_DIR: string | null }; resumed: string | null; forked: boolean; sessionId: string }>(argvLog);
     assert.equal(boots1.length, 1);
@@ -374,7 +383,7 @@ test("rpc.accounts.2: bee.swapAccount (fake-claude) — same-harness stop → re
     assert.equal(boots2[1]?.env.CLAUDE_CONFIG_DIR, homeB);
     assert.equal(boots2[1]?.resumed, sid1, "resumes the source conversation");
     assert.equal(boots2[1]?.forked, true, "…under a new session (--fork-session)");
-    assert.equal(readFileSync(join(homeB, ".credentials.json"), "utf8"), '{"claudeAiOauth":{"accessToken":"b","expiresAt":1}}', "home B activated from ITS vault entry");
+    assert.equal(readFileSync(join(homeB, ".credentials.json"), "utf8"), '{"claudeAiOauth":{"accessToken":"b","expiresAt":4102444800000}}', "home B activated from ITS vault entry");
     // swapping to the same account is a no-op
     const noop = await client.request<SwapAccountResult>("bee.swapAccount", { beeId: spawned.beeId, account: "claude-b" });
     assert.equal(noop.action, "noop");
@@ -723,8 +732,8 @@ test("rpc.accounts.2b: bee.swapAccount clears stale auth_needed before the repla
   });
   let daemon: DaemonHandle | null = null;
   try {
-    seedVault(dir, "claude", "claude-a", ".credentials.json", '{"claudeAiOauth":{"accessToken":"a","expiresAt":1}}');
-    seedVault(dir, "claude", "claude-b", ".credentials.json", '{"claudeAiOauth":{"accessToken":"b","expiresAt":1}}');
+    seedVault(dir, "claude", "claude-a", ".credentials.json", '{"claudeAiOauth":{"accessToken":"a","expiresAt":4102444800000}}');
+    seedVault(dir, "claude", "claude-b", ".credentials.json", '{"claudeAiOauth":{"accessToken":"b","expiresAt":4102444800000}}');
     daemon = await startDaemon(dir);
     const client = await daemon.client();
     await client.request("account.add", { harness: "claude", label: "a", importExisting: true });
@@ -740,6 +749,8 @@ test("rpc.accounts.2b: bee.swapAccount clears stale auth_needed before the repla
     const first = await client.request<SendRpcResult>("send", { beeId: spawned.beeId, body: "establish transcript" });
     await waitDelivered(client, spawned.beeId, first.messageId, "first delivered");
     await waitState(client, spawned.beeId, "idle", "idle after first turn");
+    // The leased token dies mid-session: the next auth failure is real, not a delayed 401.
+    expireClaudeCredential(dir, "claude-a");
 
     const limited = await client.request<SendRpcResult>("send", { beeId: spawned.beeId, body: "@ratelimit preserve this flag" });
     await waitDelivered(client, spawned.beeId, limited.messageId, "rate-limit turn delivered");
@@ -798,8 +809,8 @@ test("rpc.accounts.3: automatic rotation on exhaustion (fake-claude @ratelimit) 
   });
   let daemon: DaemonHandle | null = null;
   try {
-    seedVault(dir, "claude", "claude-a", ".credentials.json", '{"claudeAiOauth":{"accessToken":"a","expiresAt":1}}');
-    seedVault(dir, "claude", "claude-b", ".credentials.json", '{"claudeAiOauth":{"accessToken":"b","expiresAt":1}}');
+    seedVault(dir, "claude", "claude-a", ".credentials.json", '{"claudeAiOauth":{"accessToken":"a","expiresAt":4102444800000}}');
+    seedVault(dir, "claude", "claude-b", ".credentials.json", '{"claudeAiOauth":{"accessToken":"b","expiresAt":4102444800000}}');
     daemon = await startDaemon(dir);
     const client = await daemon.client();
     await client.request("account.add", { harness: "claude", label: "a", importExisting: true });
@@ -858,6 +869,10 @@ test("rpc.accounts.3: automatic rotation on exhaustion (fake-claude @ratelimit) 
 
     // 4) auth_needed evidence → account status + bee flag; a successful turn clears both
     const au = await client.request<SpawnResult>("spawn", { name: "au", agent: "claude", cwd: dir, account: "claude-b" });
+    const a0 = await client.request<SendRpcResult>("send", { beeId: au.beeId, body: "warm up" });
+    await waitDelivered(client, au.beeId, a0.messageId, "warm-up delivered");
+    // The token dies mid-session (a start on an expired token would be held, not started).
+    expireClaudeCredential(dir, "claude-b");
     const a1 = await client.request<SendRpcResult>("send", { beeId: au.beeId, body: "@authfail" });
     await waitDelivered(client, au.beeId, a1.messageId, "authfail delivered");
     await waitFor(async () => (await client.request<AccountGetResult>("account.get", { id: "claude-b" })).account.status === "auth_needed" ? true : null, "account auth_needed");
@@ -891,7 +906,7 @@ test("rpc.accounts.ceiling: past its weekly ceiling an account refuses explicit 
     const store = openCoreStore(join(dir, "core.sqlite3"), { ephemeral: true });
     for (const [label, weekly] of [["personal", 50], ["fleet", 10]] as const) {
       const id = `claude-${label}`;
-      seedVault(dir, "claude", id, ".credentials.json", `{"claudeAiOauth":{"accessToken":"${label}","expiresAt":1}}`);
+      seedVault(dir, "claude", id, ".credentials.json", `{"claudeAiOauth":{"accessToken":"${label}","expiresAt":4102444800000}}`);
       store.createAccount({ id, harness: "claude", homePath: join(dir, "homes", id), label, lastLoginAt: now });
       store.putAccountLimits(id, {
         readable: true,

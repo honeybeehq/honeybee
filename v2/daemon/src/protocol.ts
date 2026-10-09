@@ -902,8 +902,12 @@ export interface AccountAdmissionReleaseResult {
 }
 
 /**
- * `bee.swapAccount {beeId, account}` — account is a selector; same-harness only (`harness_mismatch`),
- * `account_paused` refused, `account_not_found`. Rebinds the bee (account +
+ * `bee.swapAccount {beeId, account, onlyAccountIds?}` — account is a selector; same-harness only (`harness_mismatch`),
+ * `account_not_found`. The destination is validated in full BEFORE the running
+ * source is touched: `account_paused` / `account_auth_needed` /
+ * `account_credential_missing` / `account_credential_expired` refuse with the
+ * bee untouched. `onlyAccountIds` (with `account: "auto"`) restricts the pick
+ * to that allowlist. Rebinds the bee (account +
  * home env), then: a live runtime is stopped and revived with resume
  * (`stop_then_revive`, the stop command id); a stopped bee is just rebound
  * (`rebind_only`; the next wake resumes on the new account). Claude
@@ -1179,6 +1183,14 @@ export interface SpawnCellParams {
  * apply). `applied:false` = the value was already exactly that.
  * `spawn` also accepts `args?: string[]` (the bee's initial per-bee args) and
  * `revive` accepts `args?: string[] | null` (replace them as the revive runs).
+ *
+ * `spawn` account admission: an explicit `account` must be ready on this node
+ * (`account_paused` / `account_auth_needed` / `account_credential_missing` /
+ * `account_credential_expired` are typed refusals, as for allocator claims);
+ * `auto` / `rr` never fall back to an unusable account (`account_auth_needed`
+ * when every credentialed account needs login, else `account_unavailable`).
+ * `onlyAccountIds?: string[]` restricts `auto` / `rr` (and validates an
+ * explicit id) to an allowlist, so a workstation can bind a node-local pick.
  */
 export interface SetArgsResult extends DedupMarkers {
   bee: BeeRow;

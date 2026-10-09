@@ -104,6 +104,7 @@ import {
   ResetLimitsRefusal,
   type AccountsServiceOptions,
   type AccountAdmissionClaim,
+  type AccountReadiness,
   type AccountAllocationAuthority,
   type AccountAllocationContext,
   type AccountAllocationReceipt,
@@ -604,6 +605,8 @@ export class HiveDaemon {
   /** Tracked filesystem readiness; no lock wait runs inside the core/store writer. */
   private readonly accountActivations = new Map<string, AccountActivationState>();
   private accountActivationCandidates = new Map<string, { commandId: number; attempts: number }>();
+  /** Due start commands held because their account cannot authenticate here; value = the refusal code last logged. */
+  private readonly runtimeStartHolds = new Map<string, string>();
   private gatewayActivationRevision = "";
   private activationRevisionEpoch = -1;
   private tickEpoch = 0;
@@ -977,6 +980,9 @@ export class HiveDaemon {
       }
     }
     this.accountActivationCandidates = candidates;
+    for (const beeId of this.runtimeStartHolds.keys()) {
+      if (!candidates.has(beeId)) this.runtimeStartHolds.delete(beeId);
+    }
     if (candidates.size === 0) {
       for (const [beeId, state] of this.accountActivations) {
         if (state.status !== "pending") this.accountActivations.delete(beeId);
@@ -1001,6 +1007,7 @@ export class HiveDaemon {
         account = bee?.account ? store.getAccount(bee.account) : null;
         if (!bee || !account) continue;
       }
+      if (this.holdRuntimeStart(bee, account, command.commandId)) continue;
       const key = this.accountActivationKey(bee, account, command);
       const current = this.accountActivations.get(beeId);
       if (current?.key === key) continue;
@@ -1046,6 +1053,35 @@ export class HiveDaemon {
     return this.blockedRuntimeStartBeeIds();
   }
 
+  /**
+   * The shared runtime-start boundary: a due spawn / revive / send_wake whose
+   * account cannot authenticate on this node is HELD (the command stays
+   * queued, the mail stays accepted) rather than started into a "Not logged
+   * in" crash loop. A pause is not an auth fact and does not hold a restart.
+   * Logged once per (bee, code) transition.
+   */
+  private holdRuntimeStart(bee: BeeRow, account: AccountRow, commandId: number): boolean {
+    const readiness = this.runtimeStartReadiness(account);
+    const previous = this.runtimeStartHolds.get(bee.id);
+    if (readiness.ready) {
+      if (previous !== undefined) {
+        this.runtimeStartHolds.delete(bee.id);
+        this.log(`runtime.start.released bee=${bee.id} account=${account.id} command=${commandId}`);
+      }
+      return false;
+    }
+    if (previous !== readiness.code) {
+      this.runtimeStartHolds.set(bee.id, readiness.code);
+      this.log(`runtime.start.held bee=${bee.id} account=${account.id} command=${commandId} code=${readiness.code} — ${readiness.message}`);
+    }
+    return true;
+  }
+
+  private runtimeStartReadiness(account: AccountRow): AccountReadiness {
+    const readiness = this.mustAccounts().readiness(account);
+    return !readiness.ready && readiness.code === "account_paused" ? { ready: true } : readiness;
+  }
+
   private blockedRuntimeStartBeeIds(): ReadonlySet<string> {
     const blocked = new Set<string>();
     const store = this.store;
@@ -1055,6 +1091,7 @@ export class HiveDaemon {
       if (!bee?.account) continue;
       const account = store.getAccount(bee.account);
       if (!account) continue;
+      if (this.runtimeStartHolds.has(beeId)) { blocked.add(beeId); continue; }
       const state = this.accountActivations.get(beeId);
       const current = state?.key === this.accountActivationKey(bee, account, command);
       if (!current || state.status === "pending") blocked.add(beeId);
@@ -1069,6 +1106,8 @@ export class HiveDaemon {
     if (!bee?.account) return;
     const account = store.getAccount(bee.account);
     if (!account) return;
+    const readiness = this.runtimeStartReadiness(account);
+    if (!readiness.ready) throw new Error(`account not ready: ${readiness.code}: ${readiness.message}`);
     const state = this.accountActivations.get(beeId);
     const key = this.accountActivationKey(bee, account, { commandId: command.id, attempts: command.attempts });
     if (state?.key === key && state.status === "ready") return;
@@ -1456,9 +1495,9 @@ export class HiveDaemon {
         return this.mustStore().reserveHumanRefNamespace(this.param(params, "installationId"));
       case "spawn":
         // The start command is due now; do not wait out the tick cadence.
-        return this.rpcSpawnWithAccount(params).then((result) => { this.requestTick(); return result; });
+        return this.releasingRefusedClaim(() => this.rpcSpawnWithAccount(params)).then((result) => { this.requestTick(); return result; });
       case "bee.swapAccount":
-        return this.rpcSwapAccountWithAdmission(params);
+        return this.releasingRefusedClaim(() => this.rpcSwapAccountWithAdmission(params));
       case "config.get":
         return this.rpcConfigGet();
       case "config.patch":
@@ -1612,7 +1651,7 @@ export class HiveDaemon {
         // Observation drain must commit outside the admission transaction: a
         // refusal must not roll back facts already consumed from the driver.
         this.core?.observe();
-        return this.rpcBeeHandoffWithAdmission(params);
+        return this.releasingRefusedClaim(() => this.rpcBeeHandoffWithAdmission(params));
       case "bee.handoff.get":
         return this.rpcBeeHandoffGet(params);
       case "action.enqueue":
@@ -1687,7 +1726,7 @@ export class HiveDaemon {
         return readThreadHistory(row, offset, limit).catch(error => { throw new RpcError("thread_history_unavailable", error instanceof Error ? error.message : String(error)); });
       }
       case "bee.fork":
-        return this.rpcForkWithAdmission(params);
+        return this.releasingRefusedClaim(() => this.rpcForkWithAdmission(params));
       case "bee.children":
         return this.rpcChildren(params);
       case "question.ask":
@@ -2016,9 +2055,9 @@ export class HiveDaemon {
     const raw = params[key];
     if (raw === undefined || raw === null) return undefined;
     if (!Array.isArray(raw) || raw.length > 64 || raw.some((id) => typeof id !== "string" || id.length === 0 || id.length > 256)) {
-      throw new RpcError("invalid_request", `account.admission.acquire: ${key} must contain at most 64 bounded account ids`);
+      throw new RpcError("invalid_request", `${key} must contain at most 64 bounded account ids`);
     }
-    if (new Set(raw).size !== raw.length) throw new RpcError("invalid_request", `account.admission.acquire: ${key} must not contain duplicates`);
+    if (new Set(raw).size !== raw.length) throw new RpcError("invalid_request", `${key} must not contain duplicates`);
     return new Set(raw as string[]);
   }
 
@@ -2236,8 +2275,33 @@ export class HiveDaemon {
     }
     const account = this.resolveAccountSelector(claim.account, harness);
     if (account.harness !== harness) throw new RpcError("harness_mismatch", `account ${account.id} is a ${account.harness} account; expected ${harness}`);
-    if (account.status === "paused") throw new RpcError("account_paused", `account ${account.id} is paused`);
+    const readiness = this.mustAccounts().readiness(account);
+    if (!readiness.ready) {
+      // The claim must not be replayed onto an account that cannot run it. The
+      // refusal rolls the admission transaction back, so the entry point
+      // releases the hold afterwards (`releasingRefusedClaim`).
+      this.log(`account.claim.refused claim=${claim.id} account=${account.id} operation=${operation} code=${readiness.code}`);
+      throw new RpcError(readiness.code, readiness.message, { claimId: claim.id, released: true, account: account.id });
+    }
     return account;
+  }
+
+  /**
+   * A claim refused for account readiness is released once the refusing
+   * transaction has rolled back, so the allocator's hold does not outlive a
+   * placement that can never run and the caller acquires afresh elsewhere.
+   */
+  private async releasingRefusedClaim<T>(fn: () => Promise<T>): Promise<T> {
+    try {
+      return await fn();
+    } catch (error) {
+      const claimId = error instanceof RpcError && error.details?.released === true ? error.details.claimId : undefined;
+      if (typeof claimId === "string") {
+        const released = this.mustStore().releaseAccountAdmission(claimId);
+        this.log(`account.claim.released claim=${claimId} code=${(error as RpcError).code} local=${released !== null}`);
+      }
+      throw error;
+    }
   }
 
   private consumeAccountClaim(claim: AccountAdmissionClaim, beeId: string): void {
@@ -2342,16 +2406,21 @@ export class HiveDaemon {
   ): { account: AccountRow | null; reason: string | null; allocation?: AccountAllocationReceipt; reservationId?: string; claim?: AccountAdmissionClaim } {
     const store = this.mustStore();
     if (request === null) return { account: null, reason: null };
+    const onlyAccountIds = this.admissionAccountIdsParam(params, "onlyAccountIds");
     if (request === "rr") {
       if (!this.accounts) throw new RpcError("account_unavailable", `Account selection is unavailable for ${agent}`);
-      const pick = this.accounts.pickRoundRobin(agent);
-      if (!pick.ok) throw new RpcError("account_unavailable", pick.message);
+      const pick = this.accounts.pickRoundRobin(agent, { onlyAccountIds });
+      if (!pick.ok) throw new RpcError(pick.code === "auth_needed" ? "account_auth_needed" : "account_unavailable", pick.message, { pick: pick.code });
       return { account: pick.account, reason: pick.reason };
     }
     if (request !== "auto") {
       const account = this.resolveAccountSelector(request, agent);
       if (account.harness !== agent) throw new RpcError("harness_mismatch", `account ${account.id} is a ${account.harness} account; the bee runs ${agent}`);
-      if (account.status === "paused") throw new RpcError("account_paused", `account ${account.id} is paused; unpause it or pick another`);
+      if (onlyAccountIds && !onlyAccountIds.has(account.id)) {
+        throw new RpcError("account_unavailable", `account ${account.id} is outside the allowed account ids for this ${operation}`, { account: account.id });
+      }
+      const readiness = this.accounts?.readiness(account) ?? { ready: true as const };
+      if (!readiness.ready) throw new RpcError(readiness.code, readiness.message, { account: account.id });
       const breach = this.accounts?.weeklyCeilingBreach(account, this.modelParamOf(params, agent)) ?? null;
       if (breach) {
         throw new RpcError("account_unavailable", `${describeWeeklyCeilingBreach(account.id, breach)}; raise it with: hive account ceiling ${account.id} <percent|off>`);
@@ -2376,6 +2445,7 @@ export class HiveDaemon {
       context: this.allocationContextParam(params),
       sourceAccount,
       reconcileAfterGeneration,
+      onlyAccountIds,
     });
     if (!admission.ok) throw new RpcError(admission.code, admission.message, { allocation: admission.receipt as unknown as Record<string, unknown> });
     return { account: admission.account, reason: admission.reason, allocation: admission.receipt, reservationId: admission.reservation?.id };
@@ -5250,6 +5320,7 @@ export class HiveDaemon {
     if (selector === "auto" && !claim && this.mustAccounts().allocationMode() === "shadow") {
       await this.mustAccounts().ensureFreshAdmissionLimits(bee.agent, {
         excludeAccountIds: bee.account ? new Set([bee.account]) : undefined,
+        onlyAccountIds: this.admissionAccountIdsParam(params, "onlyAccountIds"),
         model: this.modelParamOf({ args: bee.args ?? [] }, bee.agent),
       });
     }
@@ -5279,6 +5350,7 @@ export class HiveDaemon {
       operation: "swap",
       requestKey: this.idempotencyKeyOf(params) ?? `implicit:${bee.id}:${runtime?.generation ?? 0}:${bee.account ?? "unbound"}`,
       excludeAccountIds: bee.account ? new Set([bee.account]) : undefined,
+      onlyAccountIds: this.admissionAccountIdsParam(params, "onlyAccountIds"),
       model: this.modelParamOf({ args: bee.args ?? [] }, bee.agent),
       context: this.allocationContextParam(params),
       beeId: bee.id,
@@ -5302,9 +5374,11 @@ export class HiveDaemon {
     if (target.harness !== bee.agent) {
       throw new RpcError("harness_mismatch", `account ${target.id} is a ${target.harness} account; bee ${bee.name} runs ${bee.agent}`);
     }
-    if (target.status === "paused") throw new RpcError("account_paused", `account ${target.id} is paused`);
     const from = bee.account;
     if (from === target.id) return { beeId: bee.id, from, to: target.id, action: "noop", commandId: null, rekeyed: false, transcript: "none" };
+    // The destination is validated in full before the running source is touched.
+    const readiness = accounts.readiness(target);
+    if (!readiness.ready) throw new RpcError(readiness.code, readiness.message, { account: target.id });
     const breach = accounts.weeklyCeilingBreach(target, this.modelOfBee(bee));
     if (breach) throw new RpcError("account_unavailable", describeWeeklyCeilingBreach(target.id, breach));
     // Before any state moves: the destination home must hold the conversation

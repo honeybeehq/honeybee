@@ -34,6 +34,8 @@ import {
   limitsFromRow,
   measureWindowVelocity,
   parseClaudeCredentials,
+  pauseLabel,
+  pauseOf,
   parseClaudeUsage,
   parseCodexRateLimits,
   pendingPickDebit,
@@ -193,7 +195,22 @@ type ClaudeRefreshOutcome =
 
 export type PickOutcome =
   | { ok: true; account: AccountRow; reason: string; limitsAgeMs: number | null; stale: boolean; candidates: number }
-  | { ok: false; code: "no_accounts" | "all_paused" | "no_credentials" | "no_untried"; message: string };
+  | { ok: false; code: "no_accounts" | "all_paused" | "no_credentials" | "auth_needed" | "no_untried"; message: string };
+
+/**
+ * Whether a credential can authenticate a NEW runtime on this node: `absent`
+ * (no primary credential file), `expired` (a Claude token past expiry with
+ * no refresh path: a leased copy whose refresh token was blanked, or a central
+ * chain the daemon cannot rotate), `present` (valid now or refreshable).
+ */
+export type CredentialState = "present" | "absent" | "expired";
+
+/** Typed refusal codes shared by explicit spawn, allocator claims, swap, lease and the runtime-start hold. */
+export type AccountRefusalCode = "account_paused" | "account_auth_needed" | "account_credential_missing" | "account_credential_expired";
+
+export type AccountReadiness =
+  | { ready: true }
+  | { ready: false; code: AccountRefusalCode; message: string };
 
 export interface WeeklyCeilingBreach {
   window: "weekly" | "fableWeekly";
@@ -209,6 +226,8 @@ export function describeWeeklyCeilingBreach(accountId: string, breach: WeeklyCei
 export interface PickOptions {
   /** Accounts already tried / the current one (rotation). */
   excludeAccountIds?: ReadonlySet<string>;
+  /** Allowlist: only these account ids may win (the workstation binding a node-local pick). */
+  onlyAccountIds?: ReadonlySet<string>;
   /** Effective model for the new bee (Fable-scoped allowance). */
   model?: string;
   /** Rotation: exclude accounts with exhaustion evidence younger than the cool-off. */
@@ -301,7 +320,7 @@ export interface AccountAdmissionClaim {
 
 export type NewWorkAdmission =
   | { ok: true; account: AccountRow; reason: string; receipt: AccountAllocationReceipt; reservation: AccountAdmissionReservationRow | null }
-  | { ok: false; code: "account_wait" | "account_unavailable"; message: string; receipt: AccountAllocationReceipt };
+  | { ok: false; code: "account_wait" | "account_unavailable" | AccountRefusalCode; message: string; receipt: AccountAllocationReceipt };
 
 export interface NewWorkAdmissionOptions extends PickOptions {
   operation: AccountAdmissionOperation;
@@ -311,8 +330,6 @@ export interface NewWorkAdmissionOptions extends PickOptions {
   /** Account that owns the fenced pre-transfer runtime generations. */
   sourceAccount?: string | null;
   reconcileAfterGeneration?: number;
-  /** Restrict an inherited-account operation (fork/handoff) to its source account. */
-  onlyAccountIds?: ReadonlySet<string>;
   /** Owner RPC pre-mints the portable claim id and persists target metadata. */
   reservationId?: string;
   reservationMetadata?: Record<string, unknown>;
@@ -949,9 +966,11 @@ export class AccountsService {
   /** The env the account binding derives: HOME_ENV[harness] = home_path (+ recipe extras). */
   homeEnvOf(account: AccountRow): Record<string, string> {
     const key = homeEnvFor(account.harness);
-    return { ...(key ? { [key]: account.homePath } : {}), ...recipeEnvFor(account.harness, account.homePath),
-      ...(this.centralCredentials.enabled(account) ? { CLAUDE_CODE_OAUTH_TOKEN: "", CLAUDE_CODE_OAUTH_REFRESH_TOKEN: "",
-        CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR: "", ANTHROPIC_AUTH_TOKEN: "", ANTHROPIC_API_KEY: "" } : {}) };
+    return {
+      ...(account.harness === "claude" ? CLAUDE_COMPETING_AUTH_ENV_SCRUB : {}),
+      ...(key ? { [key]: account.homePath } : {}),
+      ...recipeEnvFor(account.harness, account.homePath),
+    };
   }
 
   /**
@@ -975,6 +994,67 @@ export class AccountsService {
     const recipe = recipeFor(account.harness);
     if (!recipe) return true;
     return dirHasCredentials(this.vaultDirOf(account), recipe) || dirHasCredentials(account.homePath, recipe);
+  }
+
+  /** A credential file existing is not a usable credential: Claude tokens past expiry with no refresh path are `expired`. */
+  credentialState(account: AccountRow): CredentialState {
+    if (!this.credentialed(account)) return "absent";
+    if (account.harness !== "claude") return "present";
+    return this.claudeCredentialRefreshable(account) ? "present" : "expired";
+  }
+
+  /**
+   * Node-local admission readiness for placing or (re)starting a runtime on
+   * the account. Synchronous and file-backed (no provider call): status,
+   * then the primary credential's presence and (Claude) expiry/refresh path.
+   */
+  readiness(account: AccountRow): AccountReadiness {
+    if (account.status === "paused") {
+      const pause = pauseOf(account);
+      return { ready: false, code: "account_paused", message: `account ${account.id} is paused by ${pause ? pauseLabel(pause) : "operator"}` };
+    }
+    if (account.status === "auth_needed") {
+      return { ready: false, code: "account_auth_needed", message: `account ${account.id} needs login; log in with: hive account login ${account.id}` };
+    }
+    const credential = this.credentialState(account);
+    if (credential === "absent") {
+      return { ready: false, code: "account_credential_missing", message: `account ${account.id} has no credential; log in with: hive account login ${account.id}` };
+    }
+    if (credential === "expired") {
+      return { ready: false, code: "account_credential_expired", message: `account ${account.id} has an expired credential with no refresh path on this node; re-lease or log in with: hive account login ${account.id}` };
+    }
+    return { ready: true };
+  }
+
+  /** Usable for automatic selection: not paused, not auth_needed, credential present and not expired. */
+  private usableForSelection(account: AccountRow): boolean {
+    return account.status === "ok" && this.credentialState(account) === "present";
+  }
+
+  private claudeCredentialRefreshable(account: AccountRow): boolean {
+    const now = this.now();
+    if (this.centralCredentials.enabled(account)) {
+      let document: Record<string, unknown>;
+      try {
+        document = this.centralCredentials.document(account);
+      } catch {
+        return false;
+      }
+      const parsed = parseClaudeCredentials(JSON.stringify(document));
+      if (!parsed) return false;
+      if (parsed.expiresAt > now) return true;
+      return this.centralCredentials.status(account)?.phase === "ready" && hasRefreshToken(parsed);
+    }
+    // Only a PARSEABLE token can be judged expired: a primary file that holds
+    // no OAuth document keeps the file-presence meaning of `credentialed`.
+    let parsedAny = false;
+    for (const path of [join(account.homePath, ".credentials.json"), join(this.vaultDirOf(account), ".credentials.json")]) {
+      const parsed = parseClaudeCredentials(readIfFile(path));
+      if (!parsed) continue;
+      parsedAny = true;
+      if (parsed.expiresAt > now || hasRefreshToken(parsed)) return true;
+    }
+    return !parsedAny;
   }
 
   /**
@@ -1254,7 +1334,7 @@ export class AccountsService {
     let eligibility: AccountAdmissionCandidate["eligibility"] = { state: "eligible" };
     if (account.status === "paused") eligibility = { state: "ineligible", reason: "paused" };
     else if (this.weeklyCeilingBreach(account, options.model)) eligibility = { state: "ineligible", reason: "ceiling" };
-    else if (!this.credentialed(account) || account.status === "auth_needed") eligibility = { state: "ineligible", reason: "auth" };
+    else if (!this.usableForSelection(account)) eligibility = { state: "ineligible", reason: "auth" };
     else if (this.credentialHealthOf(account) !== "verified") eligibility = { state: "unknown", reason: "auth" };
     else if (account.exhaustedAt != null && now - account.exhaustedAt < this.cfg.accounts.exhaustionCoolOffMs && !verifiedRestoredHeadroom) {
       eligibility = { state: "ineligible", reason: "exhausted" };
@@ -1326,11 +1406,14 @@ export class AccountsService {
     });
 
     if (this.cfg.accounts.allocationMode === "shadow") {
-      const inherited = options.onlyAccountIds?.size === 1
+      const inherited = options.onlyAccountIds?.size === 1 && (options.operation === "fork" || options.operation === "handoff")
         ? this.store.getAccount([...options.onlyAccountIds][0]!)
         : null;
+      const inheritedReadiness = inherited ? this.readiness(inherited) : null;
       const legacy: PickOutcome = inherited
-        ? { ok: true, account: inherited, reason: "automatic inheritance", limitsAgeMs: null, stale: false, candidates: 1 }
+        ? inheritedReadiness!.ready
+          ? { ok: true, account: inherited, reason: "automatic inheritance", limitsAgeMs: null, stale: false, candidates: 1 }
+          : { ok: false, code: inheritedReadiness!.code === "account_paused" ? "all_paused" : inheritedReadiness!.code === "account_auth_needed" ? "auth_needed" : "no_credentials", message: inheritedReadiness!.message }
         : this.pick(harness, options);
       if (!legacy.ok) {
         const receipt: AccountAllocationReceipt = {
@@ -1339,7 +1422,10 @@ export class AccountsService {
           reason: `shadow:${decision.kind === "wait" ? decision.reason : "selected"}; legacy:${legacy.code}`,
           retryAt: decision.kind === "wait" ? decision.retryAt : null, candidates: decision.candidates,
         };
-        return { ok: false, code: "account_unavailable", message: legacy.message, receipt };
+        const code = inheritedReadiness && !inheritedReadiness.ready
+          ? inheritedReadiness.code
+          : legacy.code === "auth_needed" ? "account_auth_needed" : "account_unavailable";
+        return { ok: false, code, message: legacy.message, receipt };
       }
       const receipt: AccountAllocationReceipt = {
         version: 1, mode: "shadow", scope, revision: contextFresh ? context!.revision : null,
@@ -1403,9 +1489,11 @@ export class AccountsService {
    */
   pick(harness: string, opts: PickOptions = {}): PickOutcome {
     const now = this.now();
-    const registered = this.store.listAccounts({ harness });
+    const registered = this.store.listAccounts({ harness }).filter((a) => !opts.onlyAccountIds || opts.onlyAccountIds.has(a.id));
     if (registered.length === 0) {
-      return { ok: false, code: "no_accounts", message: `No ${harness} accounts registered; add one with: hive v2 account add ${harness} <label>` };
+      return opts.onlyAccountIds
+        ? { ok: false, code: "no_accounts", message: `No ${harness} account matches the allowed ids on this node` }
+        : { ok: false, code: "no_accounts", message: `No ${harness} accounts registered; add one with: hive v2 account add ${harness} <label>` };
     }
     const unpaused = registered.filter((a) => a.status !== "paused");
     const pool = unpaused.filter((a) => !this.weeklyCeilingBreach(a, opts.model));
@@ -1418,11 +1506,20 @@ export class AccountsService {
           : `Every ${harness} account is paused or past its weekly ceiling; raise one with: hive account ceiling <account> <percent|off>`,
       };
     }
-    let credentialed = 0;
+    // A credential FILE existing is not health: an account whose last real
+    // authentication attempt failed, or whose token is expired with no
+    // refresh path, must never win the pick — every bee placed on it strands
+    // at /login. There is no last resort: with no usable account the pick
+    // refuses with a typed code and the caller places the work elsewhere.
+    const unusable: Array<{ account: AccountRow; why: string }> = [];
+    let usable = 0;
     const candidates: AccountRow[] = [];
     for (const account of pool) {
-      if (!this.credentialed(account)) continue;
-      credentialed += 1;
+      const credential = this.credentialState(account);
+      if (credential === "absent") continue;
+      if (account.status === "auth_needed") { unusable.push({ account, why: "recent auth failure" }); continue; }
+      if (credential === "expired") { unusable.push({ account, why: "expired credential" }); continue; }
+      usable += 1;
       if (opts.excludeAccountIds?.has(account.id)) continue;
       if (
         opts.excludeRecentlyExhausted &&
@@ -1432,29 +1529,27 @@ export class AccountsService {
       candidates.push(account);
     }
     if (candidates.length === 0) {
-      if (credentialed > 0 && ((opts.excludeAccountIds?.size ?? 0) > 0 || opts.excludeRecentlyExhausted)) {
+      if (usable > 0 && ((opts.excludeAccountIds?.size ?? 0) > 0 || opts.excludeRecentlyExhausted)) {
         return { ok: false, code: "no_untried", message: `No untried ${harness} account remains` };
+      }
+      if (unusable.length > 0) {
+        return {
+          ok: false,
+          code: "auth_needed",
+          message: `No ${harness} account can authenticate on this node (${unusable.map(({ account, why }) => `${account.id}: ${why}`).join(", ")}); log in with: hive account login <account>`,
+        };
       }
       return { ok: false, code: "no_credentials", message: `No ${harness} account has credentials; log in with: hive v2 account login <account>` };
     }
-    // A credential FILE existing is not health: an account whose last real
-    // authentication attempt failed must not keep winning the pick — every
-    // bee placed on it strands at /login. Skip such accounts while any
-    // healthy one exists (the historical soft preference incl. its
-    // single-account last resort).
-    const healthy = candidates.filter((a) => a.status !== "auth_needed");
-    const skipped = healthy.length > 0 ? candidates.filter((a) => a.status === "auth_needed") : [];
-    const eligible = healthy.length > 0 ? healthy : candidates;
-    const healthReason = skipped.length > 0
-      ? `; skipped ${skipped.map((a) => `${a.id} for recent auth failure`).join(", ")}`
-      : healthy.length === 0
-        ? "; every credentialed account has a recent auth failure; using last resort"
-        : "";
+    const eligible = candidates;
+    const healthReason = unusable.length > 0
+      ? `; skipped ${unusable.map(({ account, why }) => `${account.id} for ${why}`).join(", ")}`
+      : "";
     // A single candidate wins regardless of usage — skip the limits read and
     // the pick bookkeeping (there is no herd to steer with one account).
     if (eligible.length === 1) {
       const only = eligible[0] as AccountRow;
-      const reason = `only ${skipped.length > 0 ? "healthy " : ""}${harness} account with credentials${healthReason}`;
+      const reason = `only ${unusable.length > 0 ? "healthy " : ""}${harness} account with credentials${healthReason}`;
       this.log(`account auto → ${only.id} — ${reason}`);
       return { ok: true, account: only, reason, limitsAgeMs: null, stale: false, candidates: 1 };
     }
@@ -1506,8 +1601,8 @@ export class AccountsService {
    * skipping paused/auth-failed accounts while a healthy candidate exists.
    * Its durable cursor is namespaced away from auto's near-tie cursor.
    */
-  pickRoundRobin(harness: string): PickOutcome {
-    const registered = this.store.listAccounts({ harness });
+  pickRoundRobin(harness: string, opts: Pick<PickOptions, "onlyAccountIds"> = {}): PickOutcome {
+    const registered = this.store.listAccounts({ harness }).filter((a) => !opts.onlyAccountIds || opts.onlyAccountIds.has(a.id));
     if (registered.length === 0) {
       return { ok: false, code: "no_accounts", message: `No ${harness} accounts registered; add one with: hive account add ${harness} <label>` };
     }
@@ -1522,13 +1617,19 @@ export class AccountsService {
           : `Every ${harness} account is paused or past its weekly ceiling; raise one with: hive account ceiling <account> <percent|off>`,
       };
     }
-    const candidates = pool.filter((account) => this.credentialed(account));
+    const candidates = pool.filter((account) => this.credentialState(account) !== "absent");
     if (candidates.length === 0) {
       return { ok: false, code: "no_credentials", message: `No ${harness} account has credentials; log in with: hive account login <account>` };
     }
-    const healthy = candidates.filter((account) => account.status !== "auth_needed");
-    const skipped = healthy.length > 0 ? candidates.filter((account) => account.status === "auth_needed") : [];
-    const eligible = healthy.length > 0 ? healthy : candidates;
+    const eligible = candidates.filter((account) => this.usableForSelection(account));
+    const skipped = candidates.filter((account) => !this.usableForSelection(account));
+    if (eligible.length === 0) {
+      return {
+        ok: false,
+        code: "auth_needed",
+        message: `No ${harness} account can authenticate on this node (${skipped.map((account) => account.id).join(", ")}); log in with: hive account login <account>`,
+      };
+    }
     const cursorKey = `rr:${harness}`;
     const previous = this.store.getSelectionCursor(cursorKey)?.lastAccountId ?? null;
     const previousIndex = previous == null ? -1 : eligible.findIndex((account) => account.id === previous);
@@ -1540,10 +1641,7 @@ export class AccountsService {
         : eligible.length === 1
           ? `only ${harness} account with credentials`
           : "round-robin: first pick",
-      ...(skipped.length > 0 ? [`skipped ${skipped.length} account(s) for recent auth failure`] : []),
-      ...(healthy.length === 0 && candidates.some((account) => account.status === "auth_needed")
-        ? ["every credentialed account has a recent auth failure; using last resort"]
-        : []),
+      ...(skipped.length > 0 ? [`skipped ${skipped.map((account) => account.id).join(", ")} for recent auth failure or expired credential`] : []),
     ].join("; ");
     this.log(`account rr → ${winner.id} — ${reason}`);
     return { ok: true, account: winner, reason, limitsAgeMs: null, stale: false, candidates: eligible.length };
@@ -1553,7 +1651,8 @@ export class AccountsService {
   private candidateIdsFor(harness: string, opts: PickOptions): string[] {
     return this.store
       .listAccounts({ harness })
-      .filter((a) => a.status !== "paused" && !this.weeklyCeilingBreach(a, opts.model) && this.credentialed(a) && !opts.excludeAccountIds?.has(a.id))
+      .filter((a) => this.usableForSelection(a) && !this.weeklyCeilingBreach(a, opts.model) && !opts.excludeAccountIds?.has(a.id)
+        && (!opts.onlyAccountIds || opts.onlyAccountIds.has(a.id)))
       .map((a) => a.id);
   }
 
@@ -2856,6 +2955,25 @@ export interface BackfillReport {
 /** The recipe files (credential + config) that exist in a dir, relative. */
 function recipeFilesPresent(dir: string, recipe: NonNullable<ReturnType<typeof recipeFor>>): string[] {
   return [...recipe.credentialFiles, ...(recipe.configFiles ?? [])].filter((rel) => readIfFile(join(dir, rel)) !== null);
+}
+
+/**
+ * Inherited auth env that would compete with the account's own login. Every
+ * Claude account scrubs it (central or not): a satellite daemon started with
+ * an operator's CLAUDE_CODE_OAUTH_TOKEN must not leak it into bees bound to
+ * another identity. Recipe extras layer over the blanks when an account
+ * intentionally supplies them.
+ */
+export const CLAUDE_COMPETING_AUTH_ENV_SCRUB: Readonly<Record<string, string>> = Object.freeze({
+  CLAUDE_CODE_OAUTH_TOKEN: "",
+  CLAUDE_CODE_OAUTH_REFRESH_TOKEN: "",
+  CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR: "",
+  ANTHROPIC_AUTH_TOKEN: "",
+  ANTHROPIC_API_KEY: "",
+});
+
+function hasRefreshToken(credential: { refreshToken?: string }): boolean {
+  return typeof credential.refreshToken === "string" && credential.refreshToken.length > 0;
 }
 
 function readIfFile(path: string): string | null {

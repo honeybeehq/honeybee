@@ -357,7 +357,7 @@ test("allocation.6: node activity reports authoritative pending work, freshness,
   }
 });
 
-test("select.3: auth_needed accounts are skipped while a healthy one exists (named in the reason) and are the last resort otherwise; paused never", () => {
+test("select.3: auth_needed accounts are skipped while a healthy one exists (named in the reason) and refused (typed) otherwise; paused never", () => {
   const r = rig();
   try {
     const svc = service(r);
@@ -374,17 +374,23 @@ test("select.3: auth_needed accounts are skipped while a healthy one exists (nam
     const recovered = svc.pick("codex");
     assert.ok(recovered.ok);
     assert.equal(recovered.account.id, bad.id);
-    // every candidate auth_needed → last resort, said so
+    // every candidate auth_needed → no last resort: a typed refusal naming the accounts
     r.store.setAccountStatus(bad.id, "auth_needed");
     r.store.setAccountStatus(good.id, "auth_needed");
-    const resort = svc.pick("codex");
-    assert.ok(resort.ok);
-    assert.match(resort.reason, /every credentialed account has a recent auth failure; using last resort/);
-    // paused is out of the pool entirely
+    const refused = svc.pick("codex");
+    assert.ok(!refused.ok);
+    assert.equal(refused.code, "auth_needed");
+    assert.match(refused.message, new RegExp(`${bad.id}: recent auth failure`));
+    assert.match(refused.message, new RegExp(`${good.id}: recent auth failure`));
+    // paused is out of the pool entirely; the remaining auth_needed account still never wins
     r.store.setAccountStatus(good.id, "paused");
     const p = svc.pick("codex");
-    assert.ok(p.ok);
-    assert.equal(p.account.id, bad.id);
+    assert.ok(!p.ok);
+    assert.equal(p.code, "auth_needed");
+    r.store.setAccountStatus(bad.id, "ok");
+    const only = svc.pick("codex");
+    assert.ok(only.ok);
+    assert.equal(only.account.id, bad.id);
   } finally {
     r.cleanup();
   }
@@ -469,7 +475,7 @@ test("select.6: rr cycles in registration order, skips auth failures, and does n
     const picks = [svc.pickRoundRobin("claude"), svc.pickRoundRobin("claude"), svc.pickRoundRobin("claude")];
     assert.ok(picks.every((pick) => pick.ok));
     assert.deepEqual(picks.map((pick) => pick.ok ? pick.account.id : null), [a.id, c.id, a.id]);
-    assert.match(picks[0]!.reason, /skipped 1 account\(s\) for recent auth failure/);
+    assert.match(picks[0]!.reason, /skipped claude-bad for recent auth failure or expired credential/);
     assert.equal(r.store.getSelectionCursor("rr:claude")?.lastAccountId, a.id);
     assert.equal(r.store.getSelectionCursor("claude")?.lastAccountId, a.id, "rr has a separate cursor from auto near-ties");
     assert.ok(r.log.some((line) => line.startsWith("account rr → claude-a")));

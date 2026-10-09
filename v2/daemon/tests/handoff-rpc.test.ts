@@ -117,11 +117,18 @@ function handoffRequest(v: ViewResult, target: Record<string, unknown>, extra: R
 
 const rejectsCode = (code: string) => (error: unknown) => error instanceof Error && "code" in error && (error as { code: string }).code === code;
 
+/** Register a CREDENTIALED account: admission refuses an account that cannot authenticate, so the vault is seeded before the add. */
+async function addCredentialedAccount(f: Fixture, harness: "codex" | "claude", label: string, idempotencyKey: string): Promise<AccountAddResult> {
+  const vault = join(f.daemon.dir, "vault", harness, `${harness}-${label}`);
+  mkdirSync(vault, { recursive: true });
+  if (harness === "codex") writeFileSync(join(vault, "auth.json"), JSON.stringify({ tokens: { access_token: "fixture", refresh_token: "fixture" } }));
+  else writeFileSync(join(vault, ".credentials.json"), JSON.stringify({ claudeAiOauth: { accessToken: "fixture", refreshToken: "fixture", expiresAt: 4102444800000 } }));
+  return f.rpc<AccountAddResult>("account.add", { harness, label, importExisting: true, idempotencyKey });
+}
+
 test("handoff.rpc.replay-defaults: omitted target defaults stay bound to the original source after later switches", { timeout: 180_000 }, async (t) => {
   const f = await fixture(t);
-  const account = await f.rpc<AccountAddResult>("account.add", { harness: "codex", label: "replay", idempotencyKey: "replay-account" });
-  mkdirSync(account.account.homePath, { recursive: true });
-  writeFileSync(join(account.account.homePath, "auth.json"), JSON.stringify({ tokens: { access_token: "fixture", refresh_token: "fixture" } }));
+  const account = await addCredentialedAccount(f, "codex", "replay", "replay-account");
   const before = await f.spawnIdle("replay", "claude", { args: ["--model", "opus"] });
   const request = handoffRequest(before, { agent: "codex" }, { idempotencyKey: "replay-defaults" });
   const first = await f.rpc<BeeHandoffResult>("bee.handoff", request);
@@ -184,7 +191,7 @@ test("handoff.rpc: capability, validation, idempotency, typed refusals, and unav
 
 test("handoff.rpc.cross-family: claude → codex on an idle hsr bee keeps identity, mailbox order, and publishes parseable segments", { timeout: 120_000 }, async (t) => {
   const f = await fixture(t);
-  const codexAccount = await f.rpc<AccountAddResult>("account.add", { harness: "codex", label: "main", idempotencyKey: "codex-acct" });
+  const codexAccount = await addCredentialedAccount(f, "codex", "main", "codex-acct");
   const v = await f.spawnIdle("xf", "claude", { args: ["--model", "opus"], tags: ["apiary:workspace=w1"], env: { CLAUDE_CONFIG_DIR: join(f.root, "claude-home") } });
   assert.equal(v.bee?.providerSessionId, "claude-session");
   const hello = await f.rpc<SendRpcResult>("send", { beeId: v.bee!.id, body: "hello source" });
@@ -259,7 +266,7 @@ test("handoff.rpc.cross-family: claude → codex on an idle hsr bee keeps identi
 
 test("handoff.rpc.same-family: a context reset keeps args unless replaced, opens a fresh thread, and stays on the account", { timeout: 120_000 }, async (t) => {
   const f = await fixture(t);
-  const account = await f.rpc<AccountAddResult>("account.add", { harness: "claude", label: "main", idempotencyKey: "acct" });
+  const account = await addCredentialedAccount(f, "claude", "main", "acct");
   const v = await f.spawnIdle("same", "claude", { args: ["--model", "opus"], account: account.account.id });
   assert.equal(v.bee?.account, account.account.id);
   const admitted = await f.rpc<BeeHandoffResult>("bee.handoff", handoffRequest(v, { agent: "claude" }));

@@ -205,7 +205,7 @@ interface Parsed {
 }
 
 /** Repeatable value flags collected into `lists` (v6 verbs). */
-const LIST_FLAGS = new Set(["--add", "--remove", "--option", "--ref", "--env", "--input", "--output"]);
+const LIST_FLAGS = new Set(["--add", "--remove", "--option", "--ref", "--env", "--input", "--output", "--only-account"]);
 
 const VALUE_FLAGS = new Set([
   "--command-id",
@@ -611,7 +611,7 @@ const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms
 // ---------------------------------------------------------------------------
 
 const SPAWN_USAGE =
-  "usage: hive spawn <name> [agent[-account|-auto|-rr]] [--agent <agent[-account|-auto|-rr]>] [--account selector|auto|rr|none] [--cwd dir] [--title t] [--tag t]... [--arg a]... [--parent bee|--no-parent] [--idempotency-key k]\n" +
+  "usage: hive spawn <name> [agent[-account|-auto|-rr]] [--agent <agent[-account|-auto|-rr]>] [--account selector|auto|rr|none] [--only-account id]... [--cwd dir] [--title t] [--tag t]... [--arg a]... [--parent bee|--no-parent] [--idempotency-key k]\n" +
   "       hive spawn <name> [agent] --substrate cell --origin <repo> [--sha s] [--warm dir,dir|--warm] [--sandbox|--no-sandbox]\n" +
   "       (agent may be positional — v1 ergonomics — or --agent; default claude)";
 
@@ -694,6 +694,7 @@ async function spawnBee(
     // matching the old CLI's account-binding precedence.
     const accountFlag = parsed.flags.get("--account") as string | undefined;
     const account = accountFlag === undefined ? selected.account : accountFlag === "none" ? null : accountFlag;
+    const onlyAccountIds = parsed.lists.get("--only-account") ?? [];
     const env = envFrom(parsed.lists.get("--env") ?? []);
     return c.request<SpawnResult>("spawn", {
       name,
@@ -709,6 +710,7 @@ async function spawnBee(
       ...(Object.keys(env).length > 0 ? { env } : {}),
       ...(parentId ? { parentId } : {}),
       ...(account !== undefined ? { account } : {}),
+      ...(onlyAccountIds.length > 0 ? { onlyAccountIds } : {}),
       ...(initialPrompt !== undefined ? { prompt: initialPrompt } : {}),
       idempotencyKey: parsed.flags.get("--idempotency-key") as string | undefined,
     });

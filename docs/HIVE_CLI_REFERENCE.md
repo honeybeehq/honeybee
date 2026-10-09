@@ -372,6 +372,15 @@ one account until its 5h window hit 93%):
   class for the cool-off. Near-ties (within 3 points) rotate.
 - Accounts whose limits cannot be read are a last resort (oldest registration
   wins).
+- **Admission.** An account that cannot authenticate on this node never wins:
+  `auth_needed` status, no primary credential, or a Claude token past expiry
+  with its refresh token blanked (a stale satellite lease) are skipped, and
+  with no usable account the spawn is refused with a typed `account_auth_needed`
+  instead of placing a bee that will crash at `/login`. Explicit `--account`,
+  allocator claims, `bee swap-account` and every runtime start (revive, send to
+  a stopped bee, reconfigure) apply the same check: a start whose account has
+  gone unusable is held (mail stays queued) until a login or lease restores it.
+  `--only-account <id>` (repeatable) binds `auto`/`rr` to an allowlist.
 
 The pick is printed to stderr, e.g.
 `account auto → claude-thto (weekly 66%, 5h 12% +9/h) — least effective weekly load (18% behind pace — surplus expires at reset); +8 in-flight`.
