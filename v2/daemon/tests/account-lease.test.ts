@@ -1341,6 +1341,8 @@ test("central.claude: a refused refresh token ends in login_required — auth_ne
     assert.equal(svc.mirrorRow(row).credentialHealth, "unverified", "a dead credential is not verified");
     assert.equal(svc.honestStatus(row, "ok"), "auth_needed", "unpause cannot flip a dead login back to ok");
     assert.equal(svc.authNeededReason(row), row.statusReason);
+    assert.deepEqual(svc.readiness(row), { ready: false, code: "account_auth_needed", message: row.statusReason }, "admission refuses with the authority's reason");
+    assert.equal(svc.credentialState(row), "expired", "a refused refresh token is no refresh path, even while the last access token lives");
     assert.equal(refreshes, 2);
 
     await refuses(() => svc.mintLease(row), "credential_login_required", /Claude login required for claude-dying/);
@@ -1426,7 +1428,7 @@ test("central.claude: a refresh interrupted by a daemon death resolves on the ne
   } finally { r.cleanup(); }
 });
 
-test("central.claude: an uncertain row from before schema v34 has no retry metadata and is still retried by the tick alone", async () => {
+test("central.claude: an uncertain row from before schema v35 has no retry metadata and is still retried by the tick alone", async () => {
   const r = rig();
   try {
     const account = addAccount(r, "claude", "legacy", { home: { ".credentials.json": nativeDocument(r) } });
