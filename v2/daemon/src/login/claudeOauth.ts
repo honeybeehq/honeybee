@@ -87,6 +87,7 @@ export class ClaudeOauthRunner implements LoginRunner {
         accessToken: grant.accessToken,
         refreshToken: grant.refreshToken,
         expiresAt: grant.expiresAt,
+        ...(grant.refreshTokenExpiresAt !== undefined ? { refreshTokenExpiresAt: grant.refreshTokenExpiresAt } : {}),
         scopes: grant.scopes,
         ...(subscriptionType ? { subscriptionType } : {}),
       },

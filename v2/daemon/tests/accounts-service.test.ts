@@ -27,6 +27,9 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, st
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { openCoreStore, type CoreStore } from "../../core/src/index.ts";
+import type { ClaudeRefreshResult, RefreshedClaudeToken } from "../src/claudeRefreshTransport.ts";
+const granted = (token: RefreshedClaudeToken): ClaudeRefreshResult => ({ kind: "success", token });
+const refused: ClaudeRefreshResult = { kind: "rejected", httpStatus: 400, error: "invalid_grant", description: "Refresh token not found or invalid" };
 import { AccountsService, ResetLimitsRefusal, defaultCodexRateLimits, defaultCodexResetLimits } from "../src/accountsService.ts";
 import { activateHomeIfEmpty } from "../src/activation.ts";
 import { loadNodeConfig, type NodeConfigFile, type ResolvedNodeConfig } from "../src/config.ts";
@@ -1022,7 +1025,7 @@ test("limits.1b: expired Claude chains refresh once, persist home + keychain + v
           refreshCalls += 1;
           assert.equal(token, "old-refresh");
           await refreshGate;
-          return { accessToken: "new-access", refreshToken: "new-refresh", expiresAt: r.now() + HOUR, scopes: ["user:profile"] };
+          return granted({ accessToken: "new-access", refreshToken: "new-refresh", expiresAt: r.now() + HOUR, scopes: ["user:profile"] });
         },
         claudeUsage: async (token) => {
           usageCalls.push(token);
@@ -1066,7 +1069,7 @@ test("limits.1b: expired Claude chains refresh once, persist home + keychain + v
     r.store.updateRuntimeState(bee.id, 1, "running", { pid: 99, pidStartedAt: 1 });
     let racedRefreshes = 0;
     const liveSvc = service(r, {
-      fetchers: { claudeRefresh: async () => { racedRefreshes += 1; return null; } },
+      fetchers: { claudeRefresh: async () => { racedRefreshes += 1; return refused; } },
       keychainReader: async () => null,
     });
     const liveRow = (await liveSvc.refreshLimits([live.id]))[0]!;
@@ -1086,7 +1089,7 @@ test("limits.1b: expired Claude chains refresh once, persist home + keychain + v
       vault: { ".credentials.json": JSON.stringify({ claudeAiOauth: { accessToken: "bad-access", refreshToken: "bad-refresh", expiresAt: r.now() - 1 } }) },
     });
     const rejectedSvc = service(r, {
-      fetchers: { claudeRefresh: async () => null },
+      fetchers: { claudeRefresh: async () => refused },
       keychainReader: async () => null,
     });
     const failed = (await rejectedSvc.refreshLimits([rejected.id]))[0]!;
@@ -1122,7 +1125,7 @@ test("hive2.1: two sessions sharing one account that both failed auth do NOT str
         claudeRefresh: async (token) => {
           refreshCalls += 1;
           assert.equal(token, "stale-refresh");
-          return { accessToken: "recovered-access", refreshToken: "rotated-refresh", expiresAt: r.now() + HOUR };
+          return granted({ accessToken: "recovered-access", refreshToken: "rotated-refresh", expiresAt: r.now() + HOUR });
         },
         claudeUsage: async () => ({ five_hour: { utilization: 3 }, seven_day: { utilization: 8 } }),
       },
@@ -1153,7 +1156,7 @@ test("hive2.2: a single HEALTHY session still owns refresh even when an unhealth
   try {
     let refreshCalls = 0;
     const svc = service(r, {
-      fetchers: { claudeRefresh: async () => { refreshCalls += 1; return null; } },
+      fetchers: { claudeRefresh: async () => { refreshCalls += 1; return refused; } },
       keychainReader: async () => null,
     });
     const account = seedExpiredClaude(r, "mixed", "stale-refresh");
@@ -1176,7 +1179,7 @@ test("hive2.3: rejected refresh requests login; temporary/timeout refresh keeps 
   const r = rig();
   try {
     // Rejected: the injected refresher returns null (invalid_grant shape).
-    const rejectedSvc = service(r, { fetchers: { claudeRefresh: async () => null }, keychainReader: async () => null });
+    const rejectedSvc = service(r, { fetchers: { claudeRefresh: async () => refused }, keychainReader: async () => null });
     const rejected = seedExpiredClaude(r, "rejected", "dead-refresh");
     const [rejRow] = await rejectedSvc.refreshLimits([rejected.id]);
     assert.equal(rejRow?.unreadableReason, "auth_failed");
@@ -1209,7 +1212,7 @@ test("hive2.4: daemon-restart recovery re-attempts every auth_needed Claude acco
     let codexProbes = 0;
     const svc = service(r, {
       fetchers: {
-        claudeRefresh: async () => { claudeRefreshes += 1; return { accessToken: "fresh", refreshToken: "rot", expiresAt: r.now() + HOUR }; },
+        claudeRefresh: async () => { claudeRefreshes += 1; return granted({ accessToken: "fresh", refreshToken: "rot", expiresAt: r.now() + HOUR }); },
         claudeUsage: async () => ({ five_hour: { utilization: 1 }, seven_day: { utilization: 2 } }),
         codexRateLimits: async () => { codexProbes += 1; return { ok: false, unreadableReason: "auth_failed", error: "nope" }; },
       },
@@ -1236,7 +1239,7 @@ test("hive2.5: reauthentication landing DURING recovery is used without a networ
     let refreshCalls = 0;
     const svc = service(r, {
       fetchers: {
-        claudeRefresh: async () => { refreshCalls += 1; return null; },
+        claudeRefresh: async () => { refreshCalls += 1; return refused; },
         claudeUsage: async (token) => { assert.equal(token, "relogged-access"); return { five_hour: { utilization: 4 }, seven_day: { utilization: 9 } }; },
       },
       keychainReader: async () => null,

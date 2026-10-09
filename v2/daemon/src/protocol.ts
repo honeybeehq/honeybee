@@ -116,6 +116,14 @@ export const DAEMON_CAPABILITIES = [
    */
   "account.lease.v1",
   "account.credentials.pilot.v1",
+  /**
+   * v33: a dying login is visible. Account rows carry `statusReason` and
+   * `refreshTokenExpiresAt`; `account.credentials.status` carries
+   * `refreshTokenExpiresAt` and the last refresh `failure`; the terminal
+   * phase `login_required` sets the account `auth_needed` and `account.lease`
+   * refuses it with `credential_login_required`.
+   */
+  "account.credentials.login_required.v1",
   /** Durable, weighted-fair automatic allocation with hard completion reserve and typed waits. */
   "account.allocation.v1",
   /** Cross-node single-owner acquire/confirm/release claims. */
@@ -287,6 +295,12 @@ export const RPC_ERROR_CODES = [
    * rotation failed or left under 15 minutes of TTL. Retryable.
    */
   "lease_unavailable",
+  /**
+   * v33 (`account.lease`): the provider refused the account's refresh token
+   * (central credential phase `login_required`). Not retryable: only a new
+   * login on the node that owns the account recovers it.
+   */
+  "credential_login_required",
   /** v21: Cell→checkout move is local-only; remote is refused before fence/stop. */
   "remote_move_unsupported",
   /** v21: expected.placementVersion / cellId does not match the bee. */

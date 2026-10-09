@@ -93,6 +93,8 @@ export interface AccountsConfig {
   limitsRefreshMs?: number;
   /** Per-fetch bound for a provider limits read. Default 15s. */
   limitsFetchTimeoutMs?: number;
+  /** First retry delay after a central Claude refresh that did not succeed; doubles per attempt up to 15 min. Default 30s. */
+  centralRefreshRetryBaseMs?: number;
   /**
    * tmux socket name (`tmux -L <name>`) the RETIRED login seats ran on; kept
    * only so boot can clean up legacy `hive-login-*` sessions the daemon
@@ -355,6 +357,7 @@ export const DEFAULTS = {
   limitsStaleMs: 60 * 60 * 1000,
   limitsRefreshMs: 15 * 60 * 1000,
   limitsFetchTimeoutMs: 15_000,
+  centralRefreshRetryBaseMs: 30_000,
   loginTimeoutMs: 10 * 60 * 1000,
   exhaustionCoolOffMs: 5 * 60 * 60 * 1000,
   allocationMode: "shadow" as const,
@@ -755,6 +758,7 @@ function accountsOf(raw: Record<string, unknown>): ResolvedNodeConfig["accounts"
     limitsStaleMs: num(a, "limitsStaleMs", DEFAULTS.limitsStaleMs),
     limitsRefreshMs: num(a, "limitsRefreshMs", DEFAULTS.limitsRefreshMs),
     limitsFetchTimeoutMs: num(a, "limitsFetchTimeoutMs", DEFAULTS.limitsFetchTimeoutMs),
+    centralRefreshRetryBaseMs: num(a, "centralRefreshRetryBaseMs", DEFAULTS.centralRefreshRetryBaseMs),
     loginTimeoutMs: num(a, "loginTimeoutMs", DEFAULTS.loginTimeoutMs),
     exhaustionCoolOffMs: num(a, "exhaustionCoolOffMs", DEFAULTS.exhaustionCoolOffMs),
     allocationMode,

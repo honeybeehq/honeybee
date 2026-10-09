@@ -1135,6 +1135,7 @@ export class HiveDaemon {
       // v7: bounded in-daemon limits refresh; v16: login-flow expiry + credential landing.
       this.performance.measureSync("daemon.tick.accounts", () => {
         this.accounts?.periodicRefreshTick();
+        this.accounts?.centralRefreshRetryTick();
         this.enforceWeeklyCeilings();
         void this.accounts?.claudeKeychainRepairTick();
       });
@@ -5063,7 +5064,9 @@ export class HiveDaemon {
     const { pause, force } = this.pauseParams(params, "account.unpause");
     // v18: unpausing a logged-out account lands on auth_needed, not ok.
     const honest = accounts.honestStatus(account, "ok") === "auth_needed" ? "auth_needed" : "ok";
-    const res = this.mustStore().unpauseAccount(account.id, pause, honest, { force });
+    // An account the credential authority does not vouch for keeps that reason on the row.
+    const inDoubt = honest === "auth_needed" ? accounts.authNeededReason(account) : null;
+    const res = this.mustStore().unpauseAccount(account.id, pause, honest, { force, ...(inDoubt ? { reason: inDoubt } : {}) });
     if (!res.applied && res.heldBy) {
       throw new RpcError("account_pause_owned", `account ${account.id} is paused by ${pauseLabel(res.heldBy)}, not ${pauseLabel(pause)}; pass force to lift it anyway`, { heldBy: res.heldBy as unknown as Record<string, unknown> });
     }
@@ -5529,6 +5532,9 @@ export class HiveDaemon {
     const account = accounts.accountForGeneration(bee, ev.generation);
     if (!account) return;
     if (ev.flag === "auth_needed") {
+      // One bee's turn cannot overrule the credential authority: a session can
+      // still authenticate on an old access token after the login itself died.
+      if (accounts.centralCredentialInDoubt(account)) return;
       if (ev.action === "set") {
         // Delayed-error preservation (HIVE-2): a still-valid on-disk Claude
         // credential means a newer session (or the daemon) already recovered

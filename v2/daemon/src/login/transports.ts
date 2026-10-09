@@ -9,6 +9,8 @@ export interface ClaudeTokenGrant {
   accessToken: string;
   refreshToken: string;
   expiresAt: number;
+  /** When the login itself ends (the refresh token's hard lifetime); absent when the provider did not say. */
+  refreshTokenExpiresAt?: number;
   scopes: string[];
 }
 
@@ -44,6 +46,20 @@ export const CLAUDE_OAUTH_SCOPES = [
   "user:file_upload",
 ];
 
+/** HIVE_CLAUDE_OAUTH_TOKEN_URL points login and refresh at a local stub for isolated daemon runs. */
+export function claudeOauthTokenUrl(): string {
+  return process.env.HIVE_CLAUDE_OAUTH_TOKEN_URL || CLAUDE_OAUTH_TOKEN_URL;
+}
+
+function claudeUsageUrl(): string {
+  return process.env.HIVE_CLAUDE_USAGE_URL || "https://api.anthropic.com/api/oauth/usage";
+}
+
+/** Epoch ms from a token response's relative lifetime; undefined when the provider did not send one. */
+export function expiryFromSeconds(seconds: unknown, now: number): number | undefined {
+  return typeof seconds === "number" && Number.isFinite(seconds) && seconds > 0 ? Math.round(now + seconds * 1000) : undefined;
+}
+
 async function checkedJson(response: Response): Promise<unknown> {
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   return response.json();
@@ -58,24 +74,27 @@ function keyCheckFromStatus(status: number): KeyCheck {
 export function defaultLoginTransports(timeoutMs: number): LoginTransports {
   return {
     claudeTokenExchange: async ({ code, state, codeVerifier, redirectUri, clientId }) => {
-      const response = await fetch(CLAUDE_OAUTH_TOKEN_URL, {
+      const response = await fetch(claudeOauthTokenUrl(), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ grant_type: "authorization_code", code, state, client_id: clientId, redirect_uri: redirectUri, code_verifier: codeVerifier }),
         signal: AbortSignal.timeout(timeoutMs),
       });
       if (response.status === 400 || response.status === 401 || response.status === 403) return null;
-      const body = (await checkedJson(response)) as { access_token?: unknown; refresh_token?: unknown; expires_in?: unknown; scope?: unknown };
+      const body = (await checkedJson(response)) as { access_token?: unknown; refresh_token?: unknown; expires_in?: unknown; refresh_token_expires_in?: unknown; scope?: unknown };
       if (typeof body.access_token !== "string" || typeof body.refresh_token !== "string") return null;
+      const now = Date.now();
+      const refreshTokenExpiresAt = expiryFromSeconds(body.refresh_token_expires_in, now);
       return {
         accessToken: body.access_token,
         refreshToken: body.refresh_token,
-        expiresAt: Date.now() + (typeof body.expires_in === "number" ? body.expires_in : 3600) * 1000,
+        expiresAt: now + (typeof body.expires_in === "number" ? body.expires_in : 3600) * 1000,
+        ...(refreshTokenExpiresAt !== undefined ? { refreshTokenExpiresAt } : {}),
         scopes: typeof body.scope === "string" ? body.scope.split(" ").filter(Boolean) : CLAUDE_OAUTH_SCOPES,
       };
     },
     claudeTokenCheck: async (accessToken) => {
-      const response = await fetch("https://api.anthropic.com/api/oauth/usage", {
+      const response = await fetch(claudeUsageUrl(), {
         headers: { Authorization: `Bearer ${accessToken}`, "anthropic-beta": "oauth-2025-04-20" },
         signal: AbortSignal.timeout(timeoutMs),
       });

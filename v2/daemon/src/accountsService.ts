@@ -19,6 +19,7 @@ import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { ClaudeCredentialAuthority, CredentialAuthorityError, CredentialOwnershipConflict, refreshTokenDigest } from "./claudeCredentialAuthority.ts";
+import { defaultClaudeRefreshTransport, describeRefreshFailure, sanitizeProviderText, type ClaudeRefreshResult, type ClaudeRefreshTransport, type RefreshedClaudeToken } from "./claudeRefreshTransport.ts";
 import { liveGateways } from "./gateways.ts";
 import { withFileLock } from "../../../src/lock.ts";
 import { seedGatewayMcp, type GatewayMcpSeedResult } from "../../../src/accounts/gatewayMcpSeed.ts";
@@ -95,7 +96,6 @@ import {
   readCursorLiveAuth,
   type CursorAuthReader,
 } from "./cursorAuth.ts";
-import { CLAUDE_OAUTH_CLIENT_ID, CLAUDE_OAUTH_TOKEN_URL } from "./login/transports.ts";
 
 // ---------------------------------------------------------------------------
 // injected transports
@@ -104,8 +104,8 @@ import { CLAUDE_OAUTH_CLIENT_ID, CLAUDE_OAUTH_TOKEN_URL } from "./login/transpor
 export interface LimitsFetchers {
   /** GET api.anthropic.com/api/oauth/usage with a bearer token (default: real fetch). */
   claudeUsage?: (accessToken: string) => Promise<ClaudeUsageResponse>;
-  /** Rotate an expired Claude OAuth refresh token (default: real OAuth endpoint). */
-  claudeRefresh?: (refreshToken: string) => Promise<RefreshedClaudeToken | null>;
+  /** Rotate a Claude OAuth refresh token (default: real OAuth endpoint). A throw is an unknown outcome. */
+  claudeRefresh?: ClaudeRefreshTransport;
   /** `codex app-server` account/rateLimits/read against a home (default: real child process). */
   codexRateLimits?: (homePath: string) => Promise<CodexRateLimitsFetchResult>;
   /** Consume one earned reset, then return a fresh limits snapshot. */
@@ -132,12 +132,7 @@ export class ResetLimitsRefusal extends Error {
   }
 }
 
-export interface RefreshedClaudeToken {
-  accessToken: string;
-  refreshToken: string;
-  expiresAt: number;
-  scopes?: string[];
-}
+export type { ClaudeRefreshResult, ClaudeRefreshTransport, RefreshedClaudeToken };
 
 export interface AccountsServiceOptions {
   store: CoreStore;
@@ -402,11 +397,13 @@ export interface EphemeralCredential {
  *    account changes.
  *  - `lease_unavailable`: leasable in principle but not RIGHT NOW (no/stale
  *    credential, refresher mid-rotation, refresh failed). Retryable.
+ *  - `credential_login_required`: the provider refused the account's refresh
+ *    token. Retrying cannot help; only a new login on the owning node does.
  */
 export class LeaseRefusal extends Error {
-  readonly code: "lease_unsupported" | "lease_unavailable";
+  readonly code: "lease_unsupported" | "lease_unavailable" | "credential_login_required";
 
-  constructor(code: "lease_unsupported" | "lease_unavailable", message: string) {
+  constructor(code: "lease_unsupported" | "lease_unavailable" | "credential_login_required", message: string) {
     super(message);
     this.name = "LeaseRefusal";
     this.code = code;
@@ -539,53 +536,6 @@ async function claudeOauthGet(accessToken: string, url: string, timeoutMs: numbe
 function defaultClaudeUsage(timeoutMs: number): NonNullable<LimitsFetchers["claudeUsage"]> {
   const usageUrl = process.env.HIVE_CLAUDE_USAGE_URL || "https://api.anthropic.com/api/oauth/usage";
   return (accessToken) => claudeOauthGet(accessToken, usageUrl, timeoutMs) as Promise<ClaudeUsageResponse>;
-}
-
-function defaultClaudeRefresh(timeoutMs: number): NonNullable<LimitsFetchers["claudeRefresh"]> {
-  // Contract with refreshClaudeCredential: return a token = success; return
-  // `null` = the refresh token was REJECTED (recovery cannot proceed → login);
-  // THROW = a temporary/uncertain failure (retry, never a login). The refresh
-  // token is never included in a thrown message. HIVE_CLAUDE_OAUTH_TOKEN_URL
-  // lets daemon-level tests point the rotation at a local stub, like
-  // HIVE_NO_KEYCHAIN keeps them off the real Keychain.
-  const tokenUrl = process.env.HIVE_CLAUDE_OAUTH_TOKEN_URL || CLAUDE_OAUTH_TOKEN_URL;
-  return async (refreshToken) => {
-    let response: Response;
-    try {
-      response = await fetch(tokenUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ grant_type: "refresh_token", refresh_token: refreshToken, client_id: CLAUDE_OAUTH_CLIENT_ID }),
-        signal: AbortSignal.timeout(timeoutMs),
-      });
-    } catch (err) {
-      // Network error / timeout / abort: outcome UNCERTAIN, the token may
-      // still be valid — temporary.
-      throw new Error(`claude OAuth refresh transport error: ${err instanceof Error ? err.message : String(err)}`);
-    }
-    if (!response.ok) {
-      // 400/401/403 = the refresh token itself was refused (invalid_grant /
-      // invalid_request / unauthorized) → rejected. 408/429/5xx = provider
-      // backpressure or outage → temporary.
-      if (response.status === 400 || response.status === 401 || response.status === 403) return null;
-      throw new Error(`claude OAuth refresh HTTP ${response.status}`);
-    }
-    let fresh: { access_token?: unknown; refresh_token?: unknown; expires_in?: unknown; scope?: unknown };
-    try {
-      fresh = (await response.json()) as typeof fresh;
-    } catch (err) {
-      throw new Error(`claude OAuth refresh: unparseable token response (${err instanceof Error ? err.message : String(err)})`);
-    }
-    // A 2xx with no access token is an uncertain provider response, not proof
-    // the refresh token is dead — temporary, not rejected.
-    if (typeof fresh.access_token !== "string") throw new Error("claude OAuth refresh: 2xx response missing access_token");
-    return {
-      accessToken: fresh.access_token,
-      refreshToken: typeof fresh.refresh_token === "string" ? fresh.refresh_token : refreshToken,
-      expiresAt: Date.now() + (typeof fresh.expires_in === "number" ? fresh.expires_in : 3600) * 1000,
-      ...(typeof fresh.scope === "string" ? { scopes: fresh.scope.split(" ") } : {}),
-    };
-  };
 }
 
 const execFileP = promisify(execFile);
@@ -855,6 +805,8 @@ export class AccountsService {
   /** Refresh tokens rotate on use: at most one refresh may run per account. */
   private readonly claudeRefreshes = new Map<string, ClaudeRefreshFlight>();
   private readonly claudeKeychainRepairs = new Map<string, number>();
+  /** Earliest next tick-driven probe per account with a central refresh retry due. */
+  private readonly centralRetryProbes = new Map<string, number>();
   private claudeKeychainRepairFlight: Promise<void> | null = null;
   /** Grok/Kimi refresh tokens also rotate; share the whole provider read. */
   private readonly secondaryProviderFetches = new Map<string, Promise<PutAccountLimitsInput>>();
@@ -891,7 +843,7 @@ export class AccountsService {
     this.cursorAuthReader = opts.cursorAuthReader ?? readCursorLiveAuth;
     this.fetchers = {
       claudeUsage: opts.fetchers?.claudeUsage ?? defaultClaudeUsage(this.cfg.accounts.limitsFetchTimeoutMs),
-      claudeRefresh: opts.fetchers?.claudeRefresh ?? defaultClaudeRefresh(this.cfg.accounts.limitsFetchTimeoutMs),
+      claudeRefresh: opts.fetchers?.claudeRefresh ?? defaultClaudeRefreshTransport(this.cfg.accounts.limitsFetchTimeoutMs),
       codexRateLimits: opts.fetchers?.codexRateLimits ?? defaultCodexRateLimits(this.cfg.accounts.limitsFetchTimeoutMs, this.cfg.agents.codex?.command ?? "codex"),
       codexResetLimits: opts.fetchers?.codexResetLimits ?? defaultCodexResetLimits(this.cfg.accounts.limitsFetchTimeoutMs, this.cfg.agents.codex?.command ?? "codex"),
     };
@@ -904,9 +856,10 @@ export class AccountsService {
       const credential = parseClaudeCredentials(raw);
       if (!credential?.refreshToken || credential.refreshToken === owned.refreshToken) return;
       // While enrolling, native copies still hold the adopted chain (or older ones) until publication replaces them.
+      // An enrollment whose first rotation had an unknown outcome keeps that allowance through its retries.
       const phase = this.centralCredentials.status(account)?.phase;
       const adopted = phase === "enrolling" ? this.centralCredentials.adopted(account)
-        : phase === "disabling" || phase === "disabling_uncertain" ? this.centralCredentials.rollbackAdopted(account) : null;
+        : phase === "disabling" || phase === "disabling_uncertain" || phase === "refreshing" || phase === "uncertain" ? this.centralCredentials.rollbackAdopted(account) : null;
       if (adopted && (refreshTokenDigest(credential.refreshToken) === adopted.refreshTokenDigest || credential.expiresAt < adopted.expiresAt)) return;
       throw new CredentialOwnershipConflict("An external Claude login or refresh changed this account; stop that process and recover the account before continuing.");
     };
@@ -924,6 +877,7 @@ export class AccountsService {
     };
     this.centralCredentials = new ClaudeCredentialAuthority({
       store: this.store, root: join(this.cfg.accounts.vaultDir, ".credential-authorities"), now: this.now,
+      log: this.log, retryBaseMs: this.cfg.accounts.centralRefreshRetryBaseMs,
       beforeEnroll: account => {
         this.store.assertNoUpdateReservation();
         if (this.refreshBusy(account) || this.leaseMints.has(account.id) || this.nativeKeychainSeeds.has(account.id)) throw new CredentialAuthorityError("A native credential refresh is in progress; retry enrollment shortly.");
@@ -1028,6 +982,8 @@ export class AccountsService {
     }
     const parsed = parseClaudeCredentials(JSON.stringify(document));
     if (!parsed) return "invalid";
+    // A refused or possibly consumed refresh token has no refresh path, however long the last access token still lives.
+    if (this.centralCredentialInDoubt(account)) return "expired";
     if (parsed.expiresAt > this.now()) return "present";
     return this.centralCredentials.status(account)?.phase === "ready" && hasRefreshToken(parsed) ? "present" : "expired";
   }
@@ -1048,7 +1004,7 @@ export class AccountsService {
    */
   credentialReadiness(account: AccountRow): AccountReadiness {
     if (account.status === "auth_needed") {
-      return { ready: false, code: "account_auth_needed", message: `account ${account.id} needs login; log in with: hive account login ${account.id}` };
+      return { ready: false, code: "account_auth_needed", message: this.authNeededReason(account) ?? `account ${account.id} needs login; log in with: hive account login ${account.id}` };
     }
     switch (this.credentialState(account)) {
       case "absent":
@@ -1117,6 +1073,7 @@ export class AccountsService {
    */
   credentialHealthOf(account: AccountRow): CredentialHealth {
     if (!this.credentialed(account)) return "absent";
+    if (this.centralCredentialInDoubt(account)) return "unverified";
     if (account.lastLoginAt != null) return "verified";
     if (this.store.getAccountLimits(account.id)?.readable === true) return "verified";
     return "unverified";
@@ -1154,7 +1111,24 @@ export class AccountsService {
    */
   honestStatus(account: Pick<AccountRow, "harness" | "id" | "homePath">, requested: AccountStatus): AccountStatus {
     if (requested !== "ok") return requested;
+    if (this.centralCredentialInDoubt(account)) return "auth_needed";
     return this.credentialed(account) ? "ok" : "auth_needed";
+  }
+
+  /**
+   * The credential authority refused to vouch for this account's credential:
+   * the provider rejected its refresh token (`login_required`) or the last
+   * refresh has an unknown outcome (`uncertain`). The authority then owns the
+   * account's `auth_needed` status and its reason.
+   */
+  centralCredentialInDoubt(account: Pick<AccountRow, "id">): boolean {
+    const phase = this.store.getAccountCredentialAuthority(account.id)?.phase;
+    return phase === "login_required" || phase === "uncertain";
+  }
+
+  /** Why `honestStatus` answered auth_needed, for the account's status reason. */
+  authNeededReason(account: AccountRow): string | null {
+    return this.centralCredentials.inDoubtReason(account);
   }
 
   /** Whether `verifyCredentials` can probe provider authentication or a required credential file. */
@@ -1709,8 +1683,11 @@ export class AccountsService {
       const fetched = await this.fetchOne(account);
       if (!this.store.getAccount(id)) continue; // removed mid-fetch
       const previous = this.store.getAccountLimits(id);
+      // The authority's typed phase, not the probe's error text, says whether the credential is in doubt.
+      const centralInDoubt = this.centralCredentialInDoubt(account);
       const keepLastGood = previous?.readable === true
         && !fetched.readable
+        && !centralInDoubt
         && (fetched.unreadableReason === "provider_error" || fetched.unreadableReason === "timeout"
           || fetched.unreadableReason === "refresh_deferred");
       const credentialProbePassed = account.harness === "agy"
@@ -1734,8 +1711,11 @@ export class AccountsService {
       // operator or lease may have paused it meanwhile; the store keeps a pause
       // through auth-health updates either way).
       const current = this.store.getAccount(id) ?? account;
-      if (!fetched.readable && fetched.error && fetched.unreadableReason === "auth_failed") {
-        if (this.store.setAccountStatus(id, current.status === "paused" ? "paused" : "auth_needed", `limits probe: ${fetched.error.slice(0, 200)}`).applied) {
+      if (centralInDoubt && current.status === "auth_needed") {
+        // The authority already recorded why; a probe must not replace that reason with its own wording.
+      } else if (!fetched.readable && fetched.error && fetched.unreadableReason === "auth_failed") {
+        const reason = centralInDoubt ? fetched.error : `limits probe: ${fetched.error.slice(0, 200)}`;
+        if (this.store.setAccountStatus(id, current.status === "paused" ? "paused" : "auth_needed", reason).applied) {
           this.log(`account.auth_needed account=${id} by=limits_probe`);
         }
       } else if ((fetched.readable || credentialProbePassed) && current.status === "auth_needed") {
@@ -1843,7 +1823,16 @@ export class AccountsService {
   private async fetchByHarness(account: AccountRow): Promise<PutAccountLimitsInput> {
     switch (account.harness) {
       case "claude": {
-        if (this.centralCredentials.enabled(account)) await this.centralCredentials.ensure(account, CLAUDE_MIN_SHIP_TTL_MS);
+        if (this.centralCredentials.enabled(account)) {
+          try { await this.centralCredentials.ensure(account, CLAUDE_MIN_SHIP_TTL_MS); }
+          catch (error) {
+            if (!(error instanceof CredentialAuthorityError)) throw error;
+            // The authority's typed phase decides: only `ready` may keep last-good limits.
+            const settled = error.reason !== "operation_in_progress";
+            const usable = this.centralCredentials.status(account)?.phase === "ready";
+            return { readable: false, unreadableReason: settled && !usable ? "auth_failed" : "provider_error", error: error.message };
+          }
+        }
         let credential = await this.freshestClaudeCredential(account);
         if (!credential) {
           return { readable: false, unreadableReason: "auth_expired", error: "no OAuth token found in home, keychain, or vault" };
@@ -2092,26 +2081,28 @@ export class AccountsService {
     const credential = await this.freshestClaudeCredential(account, keychain);
     if (credential && credential.expiresAt - this.now() > minTtlMs) return { kind: "ok", credential };
     if (!credential?.refreshToken) return { kind: "no_refresh_token" };
-    // Injected-boundary contract: a returned token = success; `null` = the
-    // refresh token was REJECTED (recovery cannot proceed → login); a THROW
-    // = a temporary/uncertain transport failure (retry, never a login).
-    let refreshed: RefreshedClaudeToken | null;
+    let result: ClaudeRefreshResult;
     try {
-      refreshed = await this.fetchers.claudeRefresh(credential.refreshToken);
+      result = await this.fetchers.claudeRefresh(credential.refreshToken);
     } catch (err) {
-      const detail = (err instanceof Error ? err.message : String(err)).slice(0, 200);
+      result = { kind: "unknown_outcome", description: sanitizeProviderText(err instanceof Error ? err.message : String(err), [credential.refreshToken]) ?? "transport failed" };
+    }
+    if (result.kind === "rejected") {
+      this.log(`account.refresh.rejected account=${account.id} reason=${JSON.stringify(describeRefreshFailure(result))}`);
+      return { kind: "rejected" };
+    }
+    if (result.kind !== "success") {
+      const detail = `${result.kind}: ${describeRefreshFailure(result)}`;
       this.log(`account.refresh.temporary account=${account.id} detail=${JSON.stringify(detail)}`);
       return { kind: "temporary", detail };
     }
-    if (!refreshed) {
-      this.log(`account.refresh.rejected account=${account.id}`);
-      return { kind: "rejected" };
-    }
+    const refreshed = result.token;
     const oauth: Record<string, unknown> = {
       ...credential.oauth,
       accessToken: refreshed.accessToken,
       refreshToken: refreshed.refreshToken,
       expiresAt: refreshed.expiresAt,
+      ...(refreshed.refreshTokenExpiresAt !== undefined ? { refreshTokenExpiresAt: refreshed.refreshTokenExpiresAt } : {}),
       ...(refreshed.scopes ? { scopes: refreshed.scopes } : {}),
     };
     const document = { ...credential.document, claudeAiOauth: oauth };
@@ -2132,6 +2123,7 @@ export class AccountsService {
       this.claudeKeychainRepairs.set(account.id, this.now() + CLAUDE_KEYCHAIN_REPAIR_RETRY_MS);
       this.log(`account.refresh.keychain_degraded account=${account.id} running_claude=${runningClaude}`);
     }
+    if (refreshed.refreshTokenExpiresAt !== undefined) this.store.setAccountRefreshTokenExpiry(account.id, refreshed.refreshTokenExpiresAt, "native credential refreshed");
     this.log(`account.refresh account=${account.id} persisted=home,vault keychain=${keychainWritten} running_claude=${runningClaude}`);
     this.onCredentialValidated(account.id, "refresh");
     return {
@@ -2331,6 +2323,7 @@ export class AccountsService {
         await this.centralCredentials.ensure(account, CLAUDE_MIN_SHIP_TTL_MS);
       } catch (error) {
         if (error instanceof CredentialAuthorityError) {
+          if (error.reason === "login_required") throw new LeaseRefusal("credential_login_required", error.message);
           throw new LeaseRefusal("lease_unavailable", `central Claude credential for ${account.id} is unavailable: ${error.message}`);
         }
         throw error;
@@ -2677,6 +2670,23 @@ export class AccountsService {
     this.enqueueLimitsRefresh(ids);
   }
 
+  /**
+   * Tick hook: drive due central refresh retries and refreshes interrupted by
+   * a process death through the limits probe, so the phase, the account status
+   * and the limits row settle together instead of waiting for the next caller.
+   */
+  centralRefreshRetryTick(): void {
+    const now = this.now();
+    const due = this.store.listAccounts()
+      .filter((account) => account.harness === "claude" && this.centralCredentials.retryDue(account)
+        && !this.queuedRefreshIds.has(account.id) && !this.activeRefreshIds.has(account.id)
+        // A retry that cannot even start (a locked Keychain, a failing publication) must not probe on every tick.
+        && (this.centralRetryProbes.get(account.id) ?? 0) <= now)
+      .map((account) => account.id);
+    for (const id of due) this.centralRetryProbes.set(id, now + this.cfg.accounts.centralRefreshRetryBaseMs);
+    if (due.length > 0) this.enqueueLimitsRefresh(due);
+  }
+
   // -------------------------------------------------------------------------
   // activation hook (spawn resolve)
   // -------------------------------------------------------------------------
@@ -2787,7 +2797,9 @@ export class AccountsService {
     const captured = captureHomeToVault(account.harness, account.homePath, this.vaultDirOf(account), overrides);
     if (!captured.includes(primaryFile)) return { ok: false, reason: "primary_not_captured" };
     const at = this.now();
-    const updated = this.store.recordAccountLogin(account.id, at).account;
+    this.store.recordAccountLogin(account.id, at);
+    const refreshTokenExpiresAt = account.harness === "claude" ? parseClaudeCredentials(primaryRaw)?.refreshTokenExpiresAt ?? null : null;
+    const updated = this.store.setAccountRefreshTokenExpiry(account.id, refreshTokenExpiresAt, "credential captured").account;
     return { ok: true, account: updated, captured, at };
   }
 

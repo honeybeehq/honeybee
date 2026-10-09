@@ -53,14 +53,17 @@ one real OAuth rotation **before** any native copy loses its refresh token:
    - A definitive provider refusal (`invalid_grant` and similar) aborts:
      phase returns to `disabled`, the account is marked `auth_needed`, and
      native copies are byte-for-byte unchanged. Log in natively and retry.
+   - A request the provider did not process (connection refused before send,
+     429, 5xx) also aborts to `disabled` with native copies unchanged. Retry
+     enable.
    - A lost or malformed response leaves phase `uncertain`. The native copies
-     still look intact, but the token may have been consumed, so every path
-     that could retry it (native refresh, lease, capture, login, enable) is
-     refused until you disable. Disable publishes access-only copies and marks
-     `auth_needed`; then log in again.
+     still look intact, but the token may have been consumed, so native
+     refresh, capture, login and enable stay refused. Honeybee retries the
+     rotation itself after a backoff (see Refresh outcomes): the account ends
+     `ready`, or `login_required` if the token was consumed.
    - An enrollment interrupted mid-rotation (daemon restart) resumes on the
      next enable: a saved result is published without rotating again; no saved
-     result is treated as `uncertain`.
+     result is treated as `uncertain` and retried at once.
 
 Enrollment therefore costs one provider round trip and rotates the chain once;
 generation 2 is the first `ready` generation of a fresh enrollment.
@@ -108,26 +111,63 @@ only when its lease next becomes due, potentially most of one lease TTL later.
 Central ownership removes the blocked refresh-chain ownership; it does not make routine
 mid-TTL delivery instantaneous.
 
+## Refresh outcomes
+
+Every refresh attempt ends in one typed outcome. `hive account credentials
+status <account>` shows the last one that did not succeed, and the daemon log
+has one `account.credentials.refresh` line per attempt and one
+`account.credentials.phase` line per phase change (account, generation,
+outcome, reason; never token content).
+
+| Provider answer | Outcome | Phase | Account | Next |
+|---|---|---|---|---|
+| 2xx with a token | success | `ready`, generation +1 | unchanged | none |
+| 400 / 401 / 403 | `rejected` | `login_required` | `auth_needed` with the reason | log in again |
+| connection refused before send, 429, 5xx | `retryable` | stays `ready` | unchanged; last-good limits kept | retry after backoff or `Retry-After` |
+| timeout or lost connection after send, unusable 2xx | `unknown_outcome` | `uncertain` | `auth_needed` until it settles | retry after backoff |
+
+Backoff starts at `accounts.centralRefreshRetryBaseMs` (default 30 s), doubles
+per consecutive attempt and is capped at 15 minutes. Retrying an unknown
+outcome presents the same refresh token again: an unconsumed token rotates
+normally, a consumed one is answered `invalid_grant` and the account moves to
+`login_required`. Either way the phase is true and the account is not stuck.
+
+A `login_required` account refuses `account.lease` with the typed code
+`credential_login_required` and never presents the refused token again. The
+limits probe reads the authority phase: any phase other than `ready` replaces
+the limits row with `auth_failed` instead of keeping last-good numbers, and the
+derived `credentialHealth` is `unverified` while the phase is `login_required`
+or `uncertain`.
+
+The token endpoint's `refresh_token_expires_in` is recorded on login and on
+every refresh as `refreshTokenExpiresAt` (credential document, authority row
+and account row). `hive account list` and `credentials status` print it as
+`login expires MM-DD HH:MM` (UTC).
+
 ## Recovery
 
 The private full credential is stored at
 `<accounts.vaultDir>/.credential-authorities/<URL-encoded-account-id>.json`, mode 0600 in a
 0700 directory. SQLite stores only ownership phase, generation, operation key,
-and expiry. The new private document is fsynced before runtime copies are
+the two expiries and the secret-free last refresh failure. The new private document is fsynced before runtime copies are
 published. Runtime files and macOS Keychain receive access-only documents.
 
 - **`enrolling`:** fix the reported Keychain/file problem, then retry enable.
   Starts and leases are blocked until publication completes. If the status row
   carries an operation key, the validating rotation had started: a retry either
   publishes the saved result or moves the account to `uncertain`.
-- **`refreshing`:** retry the original refresh key. If the provider result was
-  saved, Honeybee finishes publication without rotating twice. If no result
-  was saved, it refuses to reuse the possibly consumed token and remains
-  `refreshing`. Stop local bees, disable, then log in again, as for `uncertain`.
-- **`uncertain`:** stop this account's local bees, disable, then log in again.
-  There is deliberately no automatic retry for an ambiguous provider response,
-  whether it happened during enrollment or a later refresh. Disable publishes an access-only copy and marks the
-  account `auth_needed`; it never restores a possibly consumed refresh token.
+- **`refreshing`:** a refresh is in flight, or the daemon died during one. The
+  next daemon tick settles it: a saved provider result is published without
+  rotating twice; otherwise the phase becomes `uncertain` and the retry runs
+  at once.
+- **`uncertain`:** the last refresh has an unknown outcome and a retry is
+  scheduled. Nothing to do: it ends in `ready` or `login_required`. Disabling
+  meanwhile publishes an access-only copy and marks the account `auth_needed`;
+  it never restores a possibly consumed refresh token.
+- **`login_required`:** terminal. The provider refused the refresh token, most
+  often because the login reached its hard lifetime (about four weeks). Stop
+  this account's local bees, then `hive account credentials disable <account>`,
+  `hive account login <account>`, `hive account credentials enable <account>`.
 - **`disabling` / `disabling_uncertain`:** fix publication and retry disable.
   Restart preserves whether the restore was allowed to include a refresh token.
 - **Missing/corrupt private document:** disable still works and marks
