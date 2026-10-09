@@ -198,7 +198,10 @@ export class ClaudeCredentialAuthority {
     const state = this.status(account);
     if (!state) return false;
     if (state.phase === "refreshing") return true;
-    return (state.phase === "ready" || state.phase === "uncertain") && state.failure?.retryAt != null && state.failure.retryAt <= this.options.now();
+    const retryAt = state.failure?.retryAt ?? null;
+    // An `uncertain` row written before schema v33 has no retry metadata: it is due.
+    if (state.phase === "uncertain") return retryAt === null || retryAt <= this.options.now();
+    return state.phase === "ready" && retryAt !== null && retryAt <= this.options.now();
   }
   private assertQuiescent(account: AccountRow): void {
     if (this.options.store.beesOnAccount(account.id).some(bee => {
@@ -373,7 +376,8 @@ export class ClaudeCredentialAuthority {
         // A saved result can settle a crash after provider success, including publication failure.
         if (value.operationKey === state.operationKey && value.generation > state.generation) {
           await this.options.publish(account, value.document, true);
-          return this.enrollmentReady(account, value, state.phase === "uncertain");
+          // The fence of a retry carries the unknown outcome it was retrying.
+          return this.enrollmentReady(account, value, state.phase === "uncertain" || state.failure?.outcome === "unknown_outcome");
         }
         if (state.phase === "refreshing") {
           // No operation is in flight (the lane is ours), so a process death interrupted this refresh.

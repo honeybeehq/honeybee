@@ -1426,6 +1426,55 @@ test("central.claude: a refresh interrupted by a daemon death resolves on the ne
   } finally { r.cleanup(); }
 });
 
+test("central.claude: an uncertain row from before schema v33 has no retry metadata and is still retried by the tick alone", async () => {
+  const r = rig();
+  try {
+    const account = addAccount(r, "claude", "legacy", { home: { ".credentials.json": nativeDocument(r) } });
+    let refreshes = 0; let consumed = false;
+    const fetchers = { claudeRefresh: async () => { refreshes++;
+      return consumed ? refused : granted({ accessToken: `access-${refreshes}`, refreshToken: CLAUDE_ENROLLED_REFRESH, expiresAt: r.now() + 8 * HOUR }); } };
+    const ready = await service(r, { fetchers }).centralCredentials.enable(account);
+    // What the v32 build left behind: stuck uncertain, account still ok, no failure record.
+    r.store.putAccountCredentialAuthority({ ...ready, phase: "uncertain", operationKey: "v32-refresh", failure: null });
+    assert.equal(r.store.getAccount(account.id)!.status, "ok");
+    consumed = true;
+    const successor = service(r, { fetchers });
+    assert.equal(successor.centralCredentials.retryDue(account), true);
+    successor.centralRefreshRetryTick();
+    await waitFor(() => successor.centralCredentials.status(account)!.phase === "login_required", "the legacy row reached a terminal answer");
+    assert.equal(refreshes, 2);
+    assert.equal(r.store.getAccount(account.id)!.status, "auth_needed");
+    assert.match(r.store.getAccount(account.id)!.statusReason!, /Claude login required for claude-legacy/);
+  } finally { r.cleanup(); }
+});
+
+test("central.claude: a retry that succeeds but cannot publish still ends the doubt once the saved result settles", async () => {
+  const r = rig();
+  try {
+    const account = addAccount(r, "claude", "settle", { home: { ".credentials.json": nativeDocument(r) } });
+    let lost = false; let failPublish = false; let refreshes = 0;
+    const svc = service(r, { keychainReader: async () => "{}", keychainWriter: async () => !failPublish,
+      fetchers: { claudeRefresh: async () => { refreshes++; if (lost) throw new Error("connection lost");
+        return granted({ accessToken: `access-${refreshes}`, refreshToken: CLAUDE_ENROLLED_REFRESH, expiresAt: r.now() + HOUR }); } } });
+    await svc.centralCredentials.enable(account);
+    r.setNow(r.now() + HOUR);
+    lost = true;
+    await assert.rejects(svc.centralCredentials.ensure(account, 0), /outcome for claude-settle is unknown/);
+    assert.equal(r.store.getAccount(account.id)!.status, "auth_needed");
+    r.setNow(r.now() + 30_000);
+    lost = false; failPublish = true;
+    await assert.rejects(svc.centralCredentials.ensure(account, 0), /Keychain/);
+    assert.equal(svc.centralCredentials.status(account)!.phase, "refreshing", "the rotated chain is saved; only publication is owed");
+    assert.equal(r.store.getAccount(account.id)!.status, "auth_needed");
+    failPublish = false;
+    const settled = await svc.centralCredentials.ensure(account, 0);
+    assert.equal(settled.phase, "ready");
+    assert.equal(settled.failure, null);
+    assert.equal(refreshes, 3, "settling a saved result does not rotate again");
+    assert.equal(r.store.getAccount(account.id)!.status, "ok", "no limits probe is needed to end the doubt");
+  } finally { r.cleanup(); }
+});
+
 test("central.claude: unreadable Keychain blocks enrollment before the validating rotation and preserves the native copy", async () => {
   const r = rig();
   try {

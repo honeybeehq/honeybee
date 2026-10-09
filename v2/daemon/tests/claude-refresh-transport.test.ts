@@ -72,7 +72,7 @@ test("refresh transport: 400/401/403 are definitive rejections that keep the pro
   });
 });
 
-test("refresh transport: 429, 5xx and a refused connection leave the token unconsumed", async () => {
+test("refresh transport: 429, 503 and a refused connection leave the token unconsumed", async () => {
   await withTokenEndpoint((_request, response) => json(response, 429, { error: { type: "rate_limit_error", message: "slow down" } }, { "Retry-After": "120" }), async () => {
     assert.deepEqual(await defaultClaudeRefreshTransport(2_000)(REFRESH), { kind: "retryable", httpStatus: 429, error: "rate_limit_error", description: "slow down", retryAfterMs: 120_000 });
   });
@@ -97,6 +97,15 @@ test("refresh transport: no answer after the request was sent is an unknown outc
   await withTokenEndpoint((request) => request.socket.destroy(), async () => {
     const result = await defaultClaudeRefreshTransport(2_000)(REFRESH);
     assert.equal(result.kind, "unknown_outcome");
+  });
+  // A gateway can answer 502/504 after the provider committed the rotation; a bare 500 says nothing either.
+  for (const status of [500, 502, 504]) {
+    await withTokenEndpoint((_request, response) => json(response, status, { type: "error", error: { type: "api_error", message: "upstream failed" } }), async () => {
+      assert.deepEqual(await defaultClaudeRefreshTransport(2_000)(REFRESH), { kind: "unknown_outcome", description: `HTTP ${status} api_error: upstream failed after the request was sent` });
+    });
+  }
+  await withTokenEndpoint((_request, response) => json(response, 529, { type: "error", error: { type: "overloaded_error", message: "Overloaded" } }), async () => {
+    assert.deepEqual(await defaultClaudeRefreshTransport(2_000)(REFRESH), { kind: "retryable", httpStatus: 529, error: "overloaded_error", description: "Overloaded" });
   });
   await withTokenEndpoint((_request, response) => { response.writeHead(200); response.end("not json"); }, async () => {
     assert.deepEqual(await defaultClaudeRefreshTransport(2_000)(REFRESH), { kind: "unknown_outcome", description: "HTTP 200 with an unparseable token response" });

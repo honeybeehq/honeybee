@@ -19,9 +19,9 @@ export type ClaudeRefreshResult =
   | { kind: "success"; token: RefreshedClaudeToken }
   /** The provider definitively refused the refresh token: only a new login recovers. */
   | { kind: "rejected"; httpStatus: number; error: string | null; description: string | null }
-  /** The request was not processed (connect failure before send, 429, 5xx): the token is unconsumed. */
+  /** The provider said it did not process the request (connect failure before send, 429, 503, 529, a non-auth 4xx): the token is unconsumed. */
   | { kind: "retryable"; httpStatus: number | null; error: string | null; description: string | null; retryAfterMs?: number }
-  /** The request was sent and no usable answer came back: the token may be consumed. */
+  /** The request was sent and no answer proves what happened to it (no response, a gateway or server error, an unusable 2xx): the token may be consumed. */
   | { kind: "unknown_outcome"; description: string };
 
 export type ClaudeRefreshFailure = Exclude<ClaudeRefreshResult, { kind: "success" }>;
@@ -39,6 +39,13 @@ const OAUTH_ERROR_CODES: ReadonlySet<string> = new Set([
 const NOT_SENT_ERROR_CODES: ReadonlySet<string> = new Set([
   "ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN", "ENETUNREACH", "EHOSTUNREACH", "EHOSTDOWN", "ENETDOWN", "UND_ERR_CONNECT_TIMEOUT",
 ]);
+
+/**
+ * 5xx answers in which the provider itself says it took no action. Any other
+ * 5xx (500, a gateway's 502/504) can follow a rotation the provider already
+ * committed, so it proves nothing about the token.
+ */
+const NOT_PROCESSED_SERVER_STATUSES: ReadonlySet<number> = new Set([503, 529]);
 
 const DESCRIPTION_MAX_CHARS = 200;
 const RETRY_AFTER_MAX_MS = 60 * 60_000;
@@ -114,6 +121,9 @@ export function defaultClaudeRefreshTransport(timeoutMs: number, now: () => numb
       const detail = oauthErrorOf(body, secrets);
       if (response.status === 400 || response.status === 401 || response.status === 403) {
         return { kind: "rejected", httpStatus: response.status, ...detail };
+      }
+      if (response.status >= 500 && !NOT_PROCESSED_SERVER_STATUSES.has(response.status)) {
+        return { kind: "unknown_outcome", description: `${describeRefreshFailure({ httpStatus: response.status, ...detail })} after the request was sent` };
       }
       const retryAfterMs = retryAfterMsOf(response, now());
       return { kind: "retryable", httpStatus: response.status, ...detail, ...(retryAfterMs !== undefined ? { retryAfterMs } : {}) };

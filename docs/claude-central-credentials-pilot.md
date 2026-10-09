@@ -54,7 +54,7 @@ one real OAuth rotation **before** any native copy loses its refresh token:
      phase returns to `disabled`, the account is marked `auth_needed`, and
      native copies are byte-for-byte unchanged. Log in natively and retry.
    - A request the provider did not process (connection refused before send,
-     429, 5xx) also aborts to `disabled` with native copies unchanged. Retry
+     429, 503) also aborts to `disabled` with native copies unchanged. Retry
      enable.
    - A lost or malformed response leaves phase `uncertain`. The native copies
      still look intact, but the token may have been consumed, so native
@@ -123,8 +123,12 @@ outcome, reason; never token content).
 |---|---|---|---|---|
 | 2xx with a token | success | `ready`, generation +1 | unchanged | none |
 | 400 / 401 / 403 | `rejected` | `login_required` | `auth_needed` with the reason | log in again |
-| connection refused before send, 429, 5xx | `retryable` | stays `ready` | unchanged; last-good limits kept | retry after backoff or `Retry-After` |
-| timeout or lost connection after send, unusable 2xx | `unknown_outcome` | `uncertain` | `auth_needed` until it settles | retry after backoff |
+| connection refused before send, 429, 503, 529, a non-auth 4xx | `retryable` | stays `ready` | unchanged; last-good limits kept | retry after backoff or `Retry-After` |
+| timeout or lost connection after send, 500, 502, 504, unusable 2xx | `unknown_outcome` | `uncertain` | `auth_needed` until it settles | retry after backoff |
+
+Only answers in which the provider itself says it took no action count as
+`retryable`. A gateway's 502/504 can follow a rotation the provider already
+committed, so it keeps the doubt.
 
 Backoff starts at `accounts.centralRefreshRetryBaseMs` (default 30 s), doubles
 per consecutive attempt and is capped at 15 minutes. Retrying an unknown
