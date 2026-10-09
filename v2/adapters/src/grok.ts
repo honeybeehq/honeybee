@@ -12,7 +12,9 @@
  *                authenticate {methodId: cached_token | xai.api_key}
  *   server   : authenticate result → respond:
  *                session/new {cwd, mcpServers}  (or session/load {sessionId})
- *   server   : session/new|load result {sessionId} → booted (idle)
+ *   server   : session/new|load result {sessionId, models:{currentModelId}}
+ *                                                  → booted (idle) + model
+ *   server   : session update model_changed {model_id} → model (in-harness switch)
  *   we write : session/prompt {sessionId, prompt:[{type:"text",text}]}
  *   server   : session/prompt result → turn_ended
  *   server   : session/update agent_* chunks → turn_started (self-woken turns:
@@ -36,7 +38,7 @@ import {
   type HarnessAdapter,
   type InterruptContext,
 } from "./types.ts";
-import { asObject } from "./types.ts";
+import { asObject, providerModelId } from "./types.ts";
 
 const INITIALIZE_ID = 1;
 const AUTHENTICATE_ID = 2;
@@ -201,7 +203,8 @@ export function grokAdapter(opts: GrokAdapterOptions): HarnessAdapter {
         return errorSignals(String(err?.message ?? `grok ${setupMethod} failed`));
       }
       const sessionId = sessionIdOf(msg.result) ?? opts.resumeSessionId;
-      if (sessionId) return bootedToIdle(sessionId);
+      const model = providerModelId(asObject(asObject(msg.result)?.models)?.currentModelId);
+      if (sessionId) return [...bootedToIdle(sessionId), ...(model ? [{ kind: "model", model } as const] : [])];
       return errorSignals(`grok ${setupMethod} returned no sessionId`);
     }
 
@@ -250,6 +253,11 @@ export function grokAdapter(opts: GrokAdapterOptions): HarnessAdapter {
       const kind = updateKind(msg.params);
       if (kind === "turn_completed") {
         return [...successfulTurnClears(), { kind: "turn_ended" }];
+      }
+      if (kind === "model_changed" || kind === "current_model_update") {
+        const update = asObject(asObject(msg.params)?.update) ?? asObject(msg.params);
+        const model = providerModelId(update?.model_id ?? update?.modelId ?? update?.currentModelId);
+        return model ? [{ kind: "model", model }] : [];
       }
       if (
         kind === "agent_message_chunk"

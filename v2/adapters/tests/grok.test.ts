@@ -255,3 +255,16 @@ test("grok: encodeInterrupt is a session/cancel notification", () => {
     params: { sessionId: "sess-abc" },
   });
 });
+
+test("grok: model evidence — session setup currentModelId, model_changed switch, replays ignored", () => {
+  const models = (msg: unknown) => adapter.parseLine(JSON.stringify(msg)).filter((s) => s.kind === "model");
+  assert.deepEqual(models({ jsonrpc: "2.0", id: 3, result: { sessionId: "s1", models: { currentModelId: "grok-4.7", availableModels: [] } } }),
+    [{ kind: "model", model: "grok-4.7" }]);
+  assert.deepEqual(models({ jsonrpc: "2.0", id: 3, result: { sessionId: "s1" } }), [], "absent model is never guessed");
+  const changed = (model: string, replay = false) => ({
+    jsonrpc: "2.0", method: "_x.ai/session_notification",
+    params: { sessionId: "s1", update: { sessionUpdate: "model_changed", model_id: model, reasoning_effort: "high" }, ...(replay ? { _meta: { isReplay: true } } : {}) },
+  });
+  assert.deepEqual(models(changed("grok-4.7-build-fast")), [{ kind: "model", model: "grok-4.7-build-fast" }]);
+  assert.deepEqual(models(changed("grok-4.6", true)), []);
+});

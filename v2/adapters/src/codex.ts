@@ -17,6 +17,8 @@
  *                {"jsonrpc":"2.0","id":2,"method":"thread/start",
  *                 params:{cwd,approvalPolicy:"never",sandbox:"danger-full-access"[,model]}}
  *   server   : {"jsonrpc":"2.0","id":2,"result":{"thread":{"id":...}}} → booted
+ *              (the response also carries the resolved `model`)       → model
+ *   server   : {"method":"model/rerouted","params":{toModel}}        → model (provider switched it)
  *   server   : {"method":"turn/started",...}                        → turn_started
  *   server   : {"method":"turn/completed",...}                      → turn_ended (only status=completed clears flags)
  *   server   : {"method":"error","params":{"error":{"message"}}}    → flag evidence
@@ -53,7 +55,7 @@ import {
   type HarnessAdapter,
   type InterruptContext,
 } from "./types.ts";
-import { asObject, epochMsFromSeconds } from "./types.ts";
+import { asObject, epochMsFromSeconds, providerModelId } from "./types.ts";
 
 const INITIALIZE_ID = 1;
 const THREAD_START_ID = 2;
@@ -194,15 +196,18 @@ export function codexAdapter(opts: CodexAdapterOptions): HarnessAdapter {
       }];
     }
     if (msg.id === THREAD_START_ID) {
-      const threadId = asObject(asObject(msg.result)?.thread)?.id;
+      const result = asObject(msg.result);
+      const threadId = asObject(result?.thread)?.id;
+      const model = providerModelId(result?.model ?? asObject(result?.thread)?.model);
+      const modelSignals: AdapterSignal[] = model ? [{ kind: "model", model }] : [];
       if (typeof threadId === "string" && threadId.length > 0) {
         // codex boots to ready-for-input: booted lands on idle (types.ts).
-        return bootedToIdle(threadId);
+        return [...bootedToIdle(threadId), ...modelSignals];
       }
       if ("result" in msg && opts.resumeThreadId) {
         // thread/resume acknowledged without echoing the thread: the old
         // adapter fell back to the requested id (threadIdFromResponse ?? sessionId).
-        return bootedToIdle(opts.resumeThreadId);
+        return [...bootedToIdle(opts.resumeThreadId), ...modelSignals];
       }
       const err = asObject(msg.error);
       if (err) return errorSignals(String(err.message ?? `codex ${threadRequest.method} failed`));
@@ -270,6 +275,10 @@ export function codexAdapter(opts: CodexAdapterOptions): HarnessAdapter {
       }
       case "account/rateLimits/updated":
         return codexRateLimitSignals(params.rateLimits);
+      case "model/rerouted": {
+        const model = providerModelId(params.toModel);
+        return model ? [{ kind: "model", model, ...(threadId ? { threadId } : {}) }] : [];
+      }
       default:
         // item/agentMessage/delta, item/reasoning/*, thread/tokenUsage/updated,
         // … — mid-turn activity/usage, no state edge in the four-state model.

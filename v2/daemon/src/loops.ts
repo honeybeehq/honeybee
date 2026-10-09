@@ -146,6 +146,13 @@ export interface SessionEvidenceLike {
   sessionId: string;
 }
 
+/** Reported provider model id, structurally matching HsrDriver's ModelEvidence. */
+export interface ModelEvidenceLike {
+  beeId: string;
+  generation: number;
+  model: string;
+}
+
 /** Applied cursor candidate from a generation-scoped runner observation journal. */
 export interface ObservationCursorEvidenceLike {
   beeId: string;
@@ -170,6 +177,8 @@ interface ExtendedDriver {
   isDegraded?(beeId: string, generation: number): boolean;
   /** Drain harness session ids learned from booted signals (HsrDriver.observeSessions). */
   observeSessions?(): SessionEvidenceLike[];
+  /** Drain provider model ids reported by runtimes (HsrDriver.observeModels). */
+  observeModels?(): ModelEvidenceLike[];
   /** Drain runner-journal cursors only after all earlier normalized effects commit. */
   observeRecoveryCursors?(): ObservationCursorEvidenceLike[];
 }
@@ -430,6 +439,7 @@ export class DaemonCore {
       this.drainObservations();
       this.applyEvidence();
       this.applySessionIds();
+      this.applyResolvedModels();
       this.applyObservationCursors();
     });
   }
@@ -748,6 +758,19 @@ export class DaemonCore {
       // another provider's conversation).
       const { applied } = this.store.recordProviderSessionId(ev.beeId, ev.sessionId, ev.generation);
       if (applied) this.log(`session.recorded bee=${ev.beeId} gen=${ev.generation} id=${ev.sessionId}`);
+    }
+  }
+
+  /**
+   * v33: the provider model id a runtime reports is a fact about the bee's
+   * CURRENT runtime. The store fences stale generations and dedupes repeats.
+   */
+  private applyResolvedModels(): void {
+    if (typeof this.ext.observeModels !== "function") return;
+    for (const ev of this.ext.observeModels()) {
+      if (!this.store.getBee(ev.beeId)) continue;
+      const { applied } = this.store.recordResolvedModel(ev.beeId, ev.generation, ev.model);
+      if (applied) this.log(`model.recorded bee=${ev.beeId} gen=${ev.generation} model=${ev.model}`);
     }
   }
 

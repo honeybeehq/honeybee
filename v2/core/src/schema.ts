@@ -149,8 +149,10 @@
  * Older writers cannot maintain reference reservations: rollback requires a store restore.
  * v31 — Cell retention: the `cells.state` CHECK gains `evicted` and the row gains
  * `evicted_at` + `evicted_head` (table rebuild, rows carried across by name).
- * v32 — `accounts.weekly_ceiling`: nullable operator ceiling (1..100) on weekly used%. */
-export const SCHEMA_VERSION = 32;
+ * v32 — `accounts.weekly_ceiling`: nullable operator ceiling (1..100) on weekly used%.
+ * v33 — `bees.resolved_model`: the provider model id the bee's current runtime reports
+ * (harness evidence, not the requested alias). Additive nullable column. */
+export const SCHEMA_VERSION = 33;
 
 export const ACCOUNT_ADMISSIONS_TABLE_SQL = `
 CREATE TABLE IF NOT EXISTS account_admission_reservations (
@@ -303,7 +305,11 @@ CREATE TABLE IF NOT EXISTS bees (
   -- v22: cells.id for the active or retained Cell.
   cell_id          TEXT,
   -- v23: in-flight bee_handoffs.id; NULL when idle (terminal receipts remain).
-  active_handoff_id TEXT
+  active_handoff_id TEXT,
+  -- v33: provider model id the current runtime reported (claude init/assistant
+  -- model, codex thread model, grok currentModelId). NULL until reported;
+  -- cleared when a new generation starts. Harness evidence, never a guess.
+  resolved_model   TEXT
 ) STRICT;
 -- Note: 'deleted' never appears as a stored lifecycle — Q1 says delete removes the
 -- record row immediately, so a missing row IS the deleted state.
@@ -767,6 +773,7 @@ export const BEES_ADDITIVE_COLUMNS: ReadonlyArray<readonly [name: string, ddl: s
   ["active_move_id", "active_move_id TEXT"],
   ["cell_id", "cell_id TEXT"],
   ["active_handoff_id", "active_handoff_id TEXT"],
+  ["resolved_model", "resolved_model TEXT"],
 ];
 
 /** Columns carried across the v31 rebuild of `cells` (by name: an ALTER-migrated store may differ in order). */

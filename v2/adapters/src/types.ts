@@ -52,6 +52,13 @@ export type AdapterSignal =
   | { kind: "delivery_confirmed"; messageId: number }
   /** The RPC request was rejected and may be retried at a later accept point. */
   | { kind: "delivery_refused"; messageId: number }
+  /**
+   * The provider model id the runtime reports running (claude init/assistant
+   * `model`, codex thread response `model`, grok `currentModelId`). Emitted
+   * whenever the stream states it — the driver deduplicates. `threadId`
+   * scopes multiplexed harnesses like turn signals do.
+   */
+  | { kind: "model"; model: string; threadId?: string }
   /** Condition-flag evidence. The adapter reports; the daemon decides. */
   | {
       kind: "flag";
@@ -242,6 +249,18 @@ export function isoFromEpochSeconds(value: unknown): string | undefined {
   const seconds = toNumber(value);
   if (seconds === undefined || seconds <= 0) return undefined;
   return new Date(seconds * 1000).toISOString();
+}
+
+/**
+ * A provider model id from harness output, or undefined when absent. Strips
+ * claude's context-window suffix (`claude-opus-5-5[1m]` → `claude-opus-5-5`)
+ * and rejects placeholders such as claude's `<synthetic>` error messages.
+ */
+export function providerModelId(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const model = value.trim().replace(/\[[^\]]*\]$/, "");
+  if (model.length === 0 || model.startsWith("<")) return undefined;
+  return model;
 }
 
 /** The clears every successful (authenticated, provider-served) turn implies. */

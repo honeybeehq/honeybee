@@ -98,7 +98,12 @@ export function replayAudit(rows: AuditRow[]): StateDump {
           activeMoveId: bee.activeMoveId ?? null,
           cellId: bee.cellId ?? null,
           activeHandoffId: bee.activeHandoffId ?? null,
+          resolvedModel: bee.resolvedModel ?? null,
         });
+        break;
+      }
+      case "bee.resolved_model": {
+        mustBee(p.beeId as string).resolvedModel = (p.resolvedModel as string | null) ?? null;
         break;
       }
       case "bee.archived": {

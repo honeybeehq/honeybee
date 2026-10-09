@@ -23,13 +23,33 @@ function fixtureLines(): string[] {
   return raw.split("\n").filter((l) => l.trim().length > 0);
 }
 
-test("claude: system/init → booted(sessionId) + spawn_failed clear + turn_ended (boots to idle)", () => {
+test("claude: system/init → booted(sessionId) + spawn_failed clear + turn_ended (boots to idle) + resolved model", () => {
   const [init] = fixtureLines();
   assert.deepEqual(parseClaudeLine(init!), [
     { kind: "booted", sessionId: "816376d3-816d-4e7d-b02e-1332f1d441a5" },
     { kind: "flag", flag: "spawn_failed", action: "clear", detail: "runtime booted" },
     { kind: "turn_ended" },
+    { kind: "model", model: "claude-haiku-4-5-20251001" },
   ]);
+});
+
+test("claude: model evidence — init strips the context suffix, assistant tracks switches, subagent/<synthetic> ignored", () => {
+  const init = (model?: string) => JSON.stringify({ type: "system", subtype: "init", session_id: "s", ...(model === undefined ? {} : { model }) });
+  const models = (line: string) => parseClaudeLine(line).filter((s) => s.kind === "model");
+  // Spawned without --model: the CLI reports the account default.
+  assert.deepEqual(models(init("claude-opus-5-5[1m]")), [{ kind: "model", model: "claude-opus-5-5" }]);
+  // Spawned with `--model fable`: init already carries the resolved id.
+  assert.deepEqual(models(init("claude-fable-5-1")), [{ kind: "model", model: "claude-fable-5-1" }]);
+  assert.deepEqual(models(init()), [], "absent model is never guessed");
+  const assistant = (model: string, parent: string | null = null) =>
+    JSON.stringify({ type: "assistant", parent_tool_use_id: parent, message: { model, content: [] } });
+  // A mid-session /model switch shows up on the next served message.
+  assert.deepEqual(parseClaudeLine(assistant("claude-sonnet-5-5")), [
+    { kind: "turn_started" },
+    { kind: "model", model: "claude-sonnet-5-5" },
+  ]);
+  assert.deepEqual(parseClaudeLine(assistant("claude-haiku-5-5", "toolu_1")), [{ kind: "turn_started" }]);
+  assert.deepEqual(parseClaudeLine(assistant("<synthetic>")), [{ kind: "turn_started" }]);
 });
 
 test("claude: progress pings carry no state edge; assistant output OPENS a turn (self-woken turns — driver dedupes mid-turn)", () => {
@@ -38,8 +58,9 @@ test("claude: progress pings carry no state edge; assistant output OPENS a turn 
   // A self-woken turn (background-task notification inside the harness) has
   // no delivery and no user message: assistant output is its only opening
   // edge. The driver's phase check makes this a no-op while already running.
-  assert.deepEqual(parseClaudeLine(textLine!), [{ kind: "turn_started" }]);
-  assert.deepEqual(parseClaudeLine(toolLine!), [{ kind: "turn_started" }]);
+  const served = { kind: "model", model: "claude-haiku-4-5-20251001" };
+  assert.deepEqual(parseClaudeLine(textLine!), [{ kind: "turn_started" }, served]);
+  assert.deepEqual(parseClaudeLine(toolLine!), [{ kind: "turn_started" }, served]);
 });
 
 test("claude: successful result → contrary-evidence clears + turn_ended", () => {

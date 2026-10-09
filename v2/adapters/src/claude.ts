@@ -10,9 +10,14 @@
  * smoke (v2/driver-hsr/SMOKE.md).
  *
  * Envelope:
- *   {type:"system",subtype:"init",session_id,...}   — FIRST line; readiness + session id.
+ *   {type:"system",subtype:"init",session_id,model,...}
+ *                                                   — FIRST line; readiness + session id +
+ *                                                     resolved model (alias already expanded).
  *   {type:"system",subtype:"thinking_tokens",...}   — progress ping, no state signal.
- *   {type:"assistant",message:{content:[...]}}      — mid-turn output, no state signal.
+ *   {type:"assistant",message:{model,content:[...]}} — mid-turn output; `model` is the
+ *                                                     API model that served it (top-level
+ *                                                     only: subagent lines carry a
+ *                                                     parent_tool_use_id).
  *   {type:"result",subtype,is_error,result,...}     — TURN END (also emitted for errors).
  *   {type:"rate_limit_event",rate_limit_info:{status,resetsAt,...}}
  *                                                   — status "allowed*" is benign/clearing;
@@ -37,7 +42,7 @@ import {
   type HarnessAdapter,
   type InterruptContext,
 } from "./types.ts";
-import { asObject, epochMsFromSeconds } from "./types.ts";
+import { asObject, epochMsFromSeconds, providerModelId } from "./types.ts";
 
 /**
  * Map a `rate_limit_event`'s `rate_limit_info` to flag evidence. Verified
@@ -91,13 +96,14 @@ export function parseClaudeLine(line: string): AdapterSignal[] {
     case "system": {
       if (msg.subtype !== "init") return []; // thinking_tokens etc: progress pings
       const sessionId = typeof msg.session_id === "string" ? msg.session_id : undefined;
-      return bootedToIdle(sessionId);
+      const model = providerModelId(msg.model);
+      return [...bootedToIdle(sessionId), ...(model ? [{ kind: "model", model } as const] : [])];
     }
     case "rate_limit_event":
       return rateLimitSignals(msg.rate_limit_info);
     case "result":
       return resultSignals(msg);
-    case "assistant":
+    case "assistant": {
       // Usually mid-turn output — the driver dedupes by phase, so this is a
       // no-op while running. But a SELF-WOKEN turn (harness-internal wake:
       // background-task notifications, scheduled continuations) has no
@@ -105,7 +111,11 @@ export function parseClaudeLine(line: string): AdapterSignal[] {
       // is its ONLY opening edge. Without this, self-woken bees showed
       // idle/"needs your reply" while actively working (2026-08-19, observed
       // on the cutover executor itself).
-      return [{ kind: "turn_started" }];
+      // The served model also tracks in-harness switches (/model, set_model).
+      // Subagent lines (parent_tool_use_id) may run another model: not the bee's.
+      const model = msg.parent_tool_use_id ? undefined : providerModelId(asObject(msg.message)?.model);
+      return model ? [{ kind: "turn_started" }, { kind: "model", model }] : [{ kind: "turn_started" }];
+    }
     case "user":
     case "control_request": // interactive prompts are out of WP3 scope
     case "control_response":

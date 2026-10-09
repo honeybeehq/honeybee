@@ -199,6 +199,11 @@ export type MirrorDelta = AuditRow;
  *                                                                        (informational: a stale/unauthorized/duplicate-
  *                                                                         conflicting report was refused; no row change)
  * bee.deleted cascades actions + action_queues for that beeId.
+ * v33 adds, additive:
+ *   bee.resolved_model     → { beeId, generation, resolvedModel: string | null, previous }
+ *                                                                        (bee row: resolvedModel — the provider model id
+ *                                                                         the runtime reported; null when a new generation
+ *                                                                         starts and has not reported yet)
  */
 export const MIRROR_TEMPLATE_AUDIT_KINDS = ["template.put", "template.deleted"] as const;
 export const MIRROR_TRACK_AUDIT_KINDS = ["track.put", "track.deleted"] as const;
@@ -295,6 +300,8 @@ export const MIRROR_BEE_RECORD_KEYS = [
   "cellId",
   // v23: in-flight handoff pointer.
   "activeHandoffId",
+  // v33: provider model id the current runtime reports (string | null).
+  "resolvedModel",
 ] as const;
 export const MIRROR_RUNTIME_KEYS = [
   "beeId",

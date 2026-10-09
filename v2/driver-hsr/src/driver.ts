@@ -145,6 +145,17 @@ export interface SessionEvidence {
 }
 
 /**
+ * Provider model id a runtime reported running (adapter `model` signal). The
+ * driver emits one only when the value changes for that process; the daemon
+ * records it on the bee for the current generation.
+ */
+export interface ModelEvidence {
+  beeId: string;
+  generation: number;
+  model: string;
+}
+
+/**
  * Highest fully parsed runner-journal byte for one generation. The daemon
  * commits this only after every normalized effect emitted before it has
  * settled in the core store.
@@ -169,6 +180,8 @@ interface ManagedProcess {
   /** Driver-side accept-point phase; the store's state is derived downstream. */
   phase: "booting" | "running" | "idle";
   sessionId: string | null;
+  /** Last provider model id this process reported (dedupes `model` signals). */
+  model: string | null;
   /** v6: the harness-native id of the turn in flight (codex turn/started), for turn/interrupt. */
   turnId: string | null;
   /** RPC deliveries written but not yet accepted by the harness. */
@@ -337,6 +350,7 @@ export class HsrDriver implements RuntimeDriver {
   private events: DriverObservation[] = [];
   private evidence: FlagEvidence[] = [];
   private sessions: SessionEvidence[] = [];
+  private models: ModelEvidence[] = [];
   /** Delivery ground truth for the invariant checker: messageId → generation. */
   private readonly consumed = new Map<number, number>();
 
@@ -475,6 +489,7 @@ export class HsrDriver implements RuntimeDriver {
       degraded: false,
       phase: "booting",
       sessionId: null,
+      model: null,
       turnId: null,
       pendingDeliveries: new Set(),
       confirmedDeliveries: new Set(),
@@ -1080,6 +1095,7 @@ export class HsrDriver implements RuntimeDriver {
             // generation journal so a daemon deploy cannot strand either a
             // mid-turn steer or an acknowledgement in the crash gap.
             sessionId: recovered.sessionId,
+            model: null,
             turnId: lastKnownState === "running" ? recovered.turnId : null,
             pendingDeliveries: new Set(),
             confirmedDeliveries: recovered.confirmedDeliveries,
@@ -1128,6 +1144,7 @@ export class HsrDriver implements RuntimeDriver {
       // replaces it when work arrives; silence alone never authorizes a stop.
       phase: "running",
       sessionId: null,
+      model: null,
       turnId: null,
       pendingDeliveries: new Set(),
       confirmedDeliveries: new Set(),
@@ -1207,6 +1224,14 @@ export class HsrDriver implements RuntimeDriver {
     this.pumpAll();
     const out = this.sessions;
     this.sessions = [];
+    return out;
+  }
+
+  /** Drain provider model ids reported by runtimes since the last call. */
+  observeModels(): ModelEvidence[] {
+    this.pumpAll();
+    const out = this.models;
+    this.models = [];
     return out;
   }
 
@@ -1374,7 +1399,7 @@ export class HsrDriver implements RuntimeDriver {
 
   private onSignal(p: ManagedProcess, signal: ReturnType<HarnessAdapter["parseLine"]>[number]): void {
     if (
-      (signal.kind === "turn_started" || signal.kind === "turn_ended")
+      (signal.kind === "turn_started" || signal.kind === "turn_ended" || signal.kind === "model")
       && signal.threadId
       && p.sessionId
       && signal.threadId !== p.sessionId
@@ -1430,6 +1455,12 @@ export class HsrDriver implements RuntimeDriver {
           pid: p.pid,
           pidStartedAt: p.pidStartedAt,
         });
+        return;
+      }
+      case "model": {
+        if (p.model === signal.model) return;
+        p.model = signal.model;
+        this.models.push({ beeId: p.beeId, generation: p.generation, model: signal.model });
         return;
       }
       case "turn_started": {

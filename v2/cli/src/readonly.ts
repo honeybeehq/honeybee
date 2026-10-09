@@ -79,6 +79,8 @@ function mapBee(r: Row): BeeRow {
     cellId: (r.cell_id as string | null | undefined) ?? null,
     // v23 column; same tolerance.
     activeHandoffId: (r.active_handoff_id as string | null | undefined) ?? null,
+    // v33 column; same tolerance.
+    resolvedModel: (r.resolved_model as string | null | undefined) ?? null,
   };
 }
 

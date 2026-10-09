@@ -394,3 +394,16 @@ test("codex: legacy usage-limit text and failed auth retain their boundaries", (
     assert.ok(!signals.some(s => s.kind === "flag" && s.action === "clear"));
   }
 });
+
+test("codex: model evidence — thread/start|resume response model, model/rerouted switch scoped to the root thread", () => {
+  const models = (a: ReturnType<typeof codexAdapter>, msg: unknown) => a.parseLine(JSON.stringify(msg)).filter((s) => s.kind === "model");
+  const fresh = codexAdapter({ cwd: "/tmp/w" });
+  // Spawned without --model: the response names what codex picked.
+  assert.deepEqual(models(fresh, { id: 2, result: { thread: { id: "t1", model: "gpt-6-astra" }, model: "gpt-6-astra" } }),
+    [{ kind: "model", model: "gpt-6-astra" }]);
+  assert.deepEqual(models(fresh, { id: 2, result: { thread: { id: "t1" } } }), [], "absent model is never guessed");
+  const resumed = codexAdapter({ cwd: "/tmp/w", resumeThreadId: "t1" });
+  assert.deepEqual(models(resumed, { id: 2, result: { model: "gpt-6.1-sol" } }), [{ kind: "model", model: "gpt-6.1-sol" }]);
+  assert.deepEqual(models(fresh, { method: "model/rerouted", params: { threadId: "t1", fromModel: "gpt-6-astra", toModel: "gpt-6-astra-mini" } }),
+    [{ kind: "model", model: "gpt-6-astra-mini", threadId: "t1" }]);
+});

@@ -666,6 +666,7 @@ function mapBee(r: Row): BeeRow {
     activeMoveId: (r.active_move_id as string | null) ?? null,
     cellId: (r.cell_id as string | null) ?? null,
     activeHandoffId: (r.active_handoff_id as string | null) ?? null,
+    resolvedModel: (r.resolved_model as string | null) ?? null,
   };
 }
 
@@ -2469,6 +2470,13 @@ export class CoreStore {
     const runtime = this.currentRuntime(beeId);
     if (!runtime || runtime.generation !== generation) throw new CoreError("runtime insert lost");
     this.audit("runtime.created", beeId, { runtime });
+    // v33: the new runtime's model is unknown until it reports one (args,
+    // account, or harness may have changed); never carry the old one over.
+    const previous = (this.stmt("SELECT resolved_model FROM bees WHERE id = ?").get(beeId) as Row | undefined)?.resolved_model;
+    if (typeof previous === "string") {
+      this.stmt("UPDATE bees SET resolved_model = NULL WHERE id = ?").run(beeId);
+      this.audit("bee.resolved_model", beeId, { beeId, generation, resolvedModel: null, previous });
+    }
     return runtime;
   }
 
@@ -3016,6 +3024,27 @@ export class CoreStore {
       });
       const open = this.currentTranscriptSegment(beeId);
       if (open && open.providerSessionId !== providerSessionId) this.applySegmentProviderSession(open.id, providerSessionId);
+      return { applied: true };
+    });
+  }
+
+  /**
+   * v33 — record the provider model id a runtime reports running. Only the
+   * current generation may write it (a stale generation describes a process
+   * the bee has moved past); an identical value is a quiet no-op, so the
+   * per-assistant-line reports and journal replays never spam the audit log.
+   */
+  recordResolvedModel(beeId: string, generation: number, model: string): { applied: boolean } {
+    if (typeof model !== "string" || model.length === 0) {
+      throw new CoreError("recordResolvedModel: model must be a non-empty string");
+    }
+    return this.tx(() => {
+      const bee = this.mustGetBee(beeId);
+      const rt = this.currentRuntime(beeId);
+      if (!rt || rt.generation !== generation) return { applied: false };
+      if (bee.resolvedModel === model) return { applied: false };
+      this.stmt("UPDATE bees SET resolved_model = ? WHERE id = ?").run(model, beeId);
+      this.audit("bee.resolved_model", beeId, { beeId, generation, resolvedModel: model, previous: bee.resolvedModel });
       return { applied: true };
     });
   }

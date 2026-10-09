@@ -168,6 +168,14 @@ export interface BeeRow {
   cellId: string | null;
   /** v23 — in-flight handoff id; null when idle (complete/failed receipts remain). */
   activeHandoffId: string | null;
+  /**
+   * v33 — the provider model id the bee's current runtime reports running
+   * (e.g. `claude-opus-5-5`, never the CLI alias `opus`). Taken from the
+   * harness's own stream (claude init/assistant, codex thread response,
+   * grok session model), updated on in-harness switches, and reset to null
+   * when a new generation starts until that runtime reports. Null = unknown.
+   */
+  resolvedModel: string | null;
 }
 
 /**
