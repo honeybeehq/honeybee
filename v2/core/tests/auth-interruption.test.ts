@@ -189,7 +189,7 @@ test("auth interruption: a v32 store gains the table and the auth.resume mail or
     raw.close();
 
     store = h.open();
-    assert.equal(SCHEMA_VERSION, 33);
+    assert.equal(SCHEMA_VERSION, 34);
     const row = interrupt(store, bee.id);
     store.restoreAuthInterruption(row.id, { revision: "rev-2", by: "credentials_restored" });
     store.resumeAuthInterruption(row.id, AUTH_CONTINUE_BODY);
@@ -197,7 +197,7 @@ test("auth interruption: a v32 store gains the table and the auth.resume mail or
     assert.equal(store.mailHistory().messages.length, 2);
     store.close();
     const check = new DatabaseSync(h.path);
-    assert.equal((check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string }).value, "33");
+    assert.equal((check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string }).value, "34");
     check.close();
   } finally {
     h.cleanup();
