@@ -121,6 +121,15 @@ test("v7.edits: status/penalty/login/exhaustion/fields — audited as account.pu
     store.createAccount({ id: "codex-a", harness: "codex", homePath: "/tmp/a", label: "a" });
     assert.equal(store.setAccountStatus("codex-a", "auth_needed", "adapter: not logged in").applied, true);
     assert.equal(store.setAccountStatus("codex-a", "auth_needed").applied, false, "identical = silent");
+    assert.equal(store.setAccountStatus("codex-a", "auth_needed", "adapter: not logged in").applied, false, "the same evidence = silent");
+    assert.equal(store.getAccount("codex-a")?.statusReason, "adapter: not logged in");
+    const restated = store.setAccountStatus("codex-a", "auth_needed", "provider refused the refresh token");
+    assert.equal(restated.applied, true, "new evidence for auth_needed replaces the reason the operator acts on");
+    assert.equal(restated.account.statusReason, "provider refused the refresh token");
+    assert.equal(store.getAccount("codex-a")?.refreshTokenExpiresAt, null);
+    assert.equal(store.setAccountRefreshTokenExpiry("codex-a", 4_000_000, "login").account.refreshTokenExpiresAt, 4_000_000);
+    assert.equal(store.setAccountRefreshTokenExpiry("codex-a", 4_000_000, "login").applied, false, "identical = silent");
+    assert.throws(() => store.setAccountRefreshTokenExpiry("codex-a", 1.5, "login"), CoreError);
     assert.equal(store.setAccountPenalty("codex-a", 25).applied, true);
     assert.throws(() => store.setAccountPenalty("codex-a", -1), CoreError);
     assert.throws(() => store.setAccountPenalty("codex-a", 100.5), CoreError);
@@ -133,6 +142,8 @@ test("v7.edits: status/penalty/login/exhaustion/fields — audited as account.pu
     const login = store.recordAccountLogin("codex-a", 777);
     assert.equal(login.account.status, "ok");
     assert.equal(login.account.lastLoginAt, 777);
+    assert.equal(login.account.statusReason, "login completed");
+    assert.equal(store.setAccountStatus("codex-a", "ok", "limits probe authenticated").applied, false, "ok restated stays silent");
     // …but never un-pauses a parked account.
     store.setAccountStatus("codex-a", "paused", "operator");
     assert.equal(store.recordAccountLogin("codex-a", 888).account.status, "paused");
@@ -145,8 +156,8 @@ test("v7.edits: status/penalty/login/exhaustion/fields — audited as account.pu
     const puts = store.auditRows().filter((r) => r.kind === "account.put");
     assert.equal(puts[0]?.payload.outcome, "created");
     assert.equal(puts[1]?.payload.outcome, "updated");
-    assert.deepEqual(puts[1]?.payload.changed, ["status"]);
-    assert.deepEqual(puts[1]?.payload.previous, { status: "ok" });
+    assert.deepEqual(puts[1]?.payload.changed, ["status", "statusReason"]);
+    assert.deepEqual(puts[1]?.payload.previous, { status: "ok", statusReason: null });
     assert.equal(puts[1]?.payload.reason, "adapter: not logged in");
     assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
     store.close();
@@ -356,7 +367,7 @@ test("v7.migration: a v6 store opens as v7 — bees.account added, accounts/acco
     try {
       const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
       assert.equal(Number(version.value), SCHEMA_VERSION);
-      assert.equal(SCHEMA_VERSION, 34);
+      assert.equal(SCHEMA_VERSION, 35);
       const cols = (check.prepare("SELECT name FROM pragma_table_info('bees')").all() as Array<{ name: string }>).map((c) => c.name);
       assert.ok(cols.includes("account"));
       const tables = (check.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{ name: string }>).map((t) => t.name);
@@ -411,7 +422,7 @@ test("v27 bridge reopens a disabled pilot store without losing ordinary state or
         { ...(check.prepare("SELECT phase, generation, expires_at, operation_key, updated_at FROM account_credential_authorities WHERE account = ?").get(account.id) as Record<string, unknown>) },
         { phase: "disabled", generation: 4, expires_at: 9_999_999, operation_key: "rollout-4", updated_at: 7_777 },
       );
-      assert.equal((check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string }).value, "34");
+      assert.equal((check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string }).value, "35");
     } finally {
       check.close();
     }
@@ -495,6 +506,50 @@ test("v12+v13+v32 migration: account_limits gains typed failures and display win
       assert.ok(accountColumns.includes("weekly_ceiling"));
       for (const column of ["paused_by", "paused_owner", "paused_at"]) assert.ok(accountColumns.includes(column), column);
       assert.equal((check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string }).value, String(SCHEMA_VERSION));
+    } finally {
+      check.close();
+    }
+  } finally {
+    h.cleanup();
+  }
+});
+
+test("v35 migration: a v34 store keeps its authority rows, gains login_required, the failure record and the login expiry", () => {
+  const h = harness();
+  try {
+    const seeded = h.open();
+    seeded.createAccount({ id: "claude-central", harness: "claude", homePath: "/tmp/claude-central", label: "central" });
+    seeded.close();
+    const db = new DatabaseSync(h.path);
+    db.exec(`
+      DROP TABLE account_credential_authorities;
+      CREATE TABLE account_credential_authorities (
+        account TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
+        phase TEXT NOT NULL CHECK (phase IN ('enrolling','ready','refreshing','uncertain','disabling','disabling_uncertain','disabled')),
+        generation INTEGER NOT NULL, expires_at INTEGER, operation_key TEXT, updated_at INTEGER NOT NULL
+      ) STRICT;
+      INSERT INTO account_credential_authorities VALUES('claude-central','uncertain',7,9999,'op-7',1234);
+      ALTER TABLE accounts DROP COLUMN status_reason;
+      ALTER TABLE accounts DROP COLUMN refresh_token_expires_at;
+      UPDATE meta SET value = '34' WHERE key = 'schema_version';
+    `);
+    db.close();
+    const store = h.open();
+    assert.deepEqual(store.getAccountCredentialAuthority("claude-central"), {
+      account: "claude-central", phase: "uncertain", generation: 7, expiresAt: 9999, operationKey: "op-7",
+      refreshTokenExpiresAt: null, failure: null, updatedAt: 1234,
+    });
+    assert.equal(store.getAccount("claude-central")?.statusReason, null);
+    assert.equal(store.getAccount("claude-central")?.refreshTokenExpiresAt, null);
+    const failure = { outcome: "rejected" as const, httpStatus: 400, error: "invalid_grant", description: "Refresh token not found or invalid", at: 5, attempts: 1, retryAt: null };
+    const terminal = store.putAccountCredentialAuthority({ account: "claude-central", phase: "login_required", generation: 7, expiresAt: 9999, operationKey: "op-8", refreshTokenExpiresAt: 77_000, failure });
+    assert.deepEqual(store.getAccountCredentialAuthority("claude-central"), terminal);
+    assert.deepEqual(terminal.failure, failure);
+    store.close();
+    const check = new DatabaseSync(h.path, { readOnly: true });
+    try {
+      assert.equal((check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string }).value, String(SCHEMA_VERSION));
+      assert.equal(check.prepare("SELECT name FROM sqlite_master WHERE name = 'account_credential_authorities_v34'").get(), undefined);
     } finally {
       check.close();
     }

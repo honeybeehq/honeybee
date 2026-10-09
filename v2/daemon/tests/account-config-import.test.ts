@@ -17,6 +17,8 @@ function account(harness: string, homePath: string): AccountRow {
     homePath,
     label: "work",
     status: "ok",
+    statusReason: null,
+    refreshTokenExpiresAt: null,
     penalty: 0,
     weeklyCeiling: null,
     lastLoginAt: null,

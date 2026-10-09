@@ -343,6 +343,8 @@ test("mirror.2: value-level snapshot — a deterministic store serializes to the
       "homePath": "/tmp/homes/codex-work",
       "label": "work",
       "status": "ok",
+      "statusReason": null,
+      "refreshTokenExpiresAt": null,
       "penalty": 5,
       "weeklyCeiling": null,
       "lastLoginAt": null,

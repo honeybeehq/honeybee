@@ -155,8 +155,11 @@
  * (table rebuild, rows carried across).
  * v34 — `accounts.paused_by` / `paused_owner` / `paused_at`: who holds a pause
  *        (operator | quota | lease + external owner id). Additive; migration =
- *        ALTER TABLE ADD COLUMN ×3 (existing paused rows backfill as operator). */
-export const SCHEMA_VERSION = 34;
+ *        ALTER TABLE ADD COLUMN ×3 (existing paused rows backfill as operator).
+ * v35 — a dying login is visible: `accounts.status_reason` + `accounts.refresh_token_expires_at`;
+ * the credential authority gains the terminal `login_required` phase, `refresh_token_expires_at`
+ * and the secret-free last refresh `failure` (table rebuild, rows carried across by name). */
+export const SCHEMA_VERSION = 35;
 
 export const AUTH_INTERRUPTIONS_TABLE_SQL = `
 CREATE TABLE IF NOT EXISTS auth_interruptions (
@@ -183,6 +186,20 @@ CREATE UNIQUE INDEX IF NOT EXISTS auth_interruptions_live
   ON auth_interruptions(bee_id) WHERE state IN ('open','restored','resumed');
 CREATE INDEX IF NOT EXISTS auth_interruptions_by_bee ON auth_interruptions(bee_id, id);
 `;
+
+export const ACCOUNT_CREDENTIAL_AUTHORITIES_TABLE_SQL = `
+CREATE TABLE IF NOT EXISTS account_credential_authorities (
+  account TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
+  phase TEXT NOT NULL CHECK (phase IN ('enrolling','ready','refreshing','uncertain','login_required','disabling','disabling_uncertain','disabled')),
+  generation INTEGER NOT NULL,
+  expires_at INTEGER,
+  operation_key TEXT,
+  updated_at INTEGER NOT NULL,
+  refresh_token_expires_at INTEGER,
+  failure TEXT
+) STRICT;
+`;
+export const ACCOUNT_CREDENTIAL_AUTHORITIES_V27_COLUMNS = ["account", "phase", "generation", "expires_at", "operation_key", "updated_at"] as const;
 
 export const ACCOUNT_ADMISSIONS_TABLE_SQL = `
 CREATE TABLE IF NOT EXISTS account_admission_reservations (
@@ -515,7 +532,9 @@ CREATE INDEX IF NOT EXISTS seals_bee ON seals(bee_id, created_at);
 -- v7 (spec 08): accounts — a provider login identity (the WHO). One account
 -- = one run-home (home_path, the WHERE); every bee on the account shares it.
 -- status: ok | auth_needed (adapter/login evidence) | paused (operator: out
--- of the auto pool; explicit spawn refused). penalty: operator hint added to
+-- of the auto pool; explicit spawn refused). status_reason: why the status
+-- last changed. refresh_token_expires_at: when the provider login itself
+-- ends (v35; null = the provider never said). penalty: operator hint added to
 -- the selector's effective weekly load. exhausted_at: last rate-limit
 -- exhaustion evidence (rotation cool-off).
 CREATE TABLE IF NOT EXISTS accounts (
@@ -524,6 +543,8 @@ CREATE TABLE IF NOT EXISTS accounts (
   home_path     TEXT NOT NULL,
   label         TEXT NOT NULL,
   status        TEXT NOT NULL CHECK (status IN ('ok','auth_needed','paused')),
+  status_reason TEXT,
+  refresh_token_expires_at INTEGER,
   penalty       INTEGER NOT NULL DEFAULT 0,
   weekly_ceiling INTEGER CHECK (weekly_ceiling IS NULL OR (weekly_ceiling BETWEEN 1 AND 100)),
   last_login_at INTEGER,
@@ -537,14 +558,7 @@ CREATE TABLE IF NOT EXISTS accounts (
 CREATE INDEX IF NOT EXISTS accounts_harness ON accounts(harness, added_at, id);
 
 -- v27: opt-in Claude credential authority. Secrets remain in the private vault.
-CREATE TABLE IF NOT EXISTS account_credential_authorities (
-  account TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
-  phase TEXT NOT NULL CHECK (phase IN ('enrolling','ready','refreshing','uncertain','disabling','disabling_uncertain','disabled')),
-  generation INTEGER NOT NULL,
-  expires_at INTEGER,
-  operation_key TEXT,
-  updated_at INTEGER NOT NULL
-) STRICT;
+${ACCOUNT_CREDENTIAL_AUTHORITIES_TABLE_SQL}
 
 -- v7: the latest limits snapshot per account (one row, replaced on fetch).
 -- Percentages are provider "used%" per window; *_resets_at epoch ms;

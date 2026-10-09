@@ -353,6 +353,9 @@ export const MIRROR_ACCOUNT_KEYS = [
   "homePath",
   "label",
   "status",
+  // v35: additive — why the status last changed, and when the provider login itself ends.
+  "statusReason",
+  "refreshTokenExpiresAt",
   "penalty",
   "weeklyCeiling",
   "lastLoginAt",

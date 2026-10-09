@@ -89,6 +89,8 @@ function mapAccountRow(r: Row): AccountRow {
     homePath: r.home_path as string,
     label: r.label as string,
     status: r.status as AccountRow["status"],
+    statusReason: (r.status_reason as string | null | undefined) ?? null,
+    refreshTokenExpiresAt: r.refresh_token_expires_at == null ? null : Number(r.refresh_token_expires_at),
     penalty: Number(r.penalty),
     weeklyCeiling: r.weekly_ceiling == null ? null : Number(r.weekly_ceiling),
     lastLoginAt: r.last_login_at == null ? null : Number(r.last_login_at),

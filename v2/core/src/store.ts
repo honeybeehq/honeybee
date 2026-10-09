@@ -58,6 +58,7 @@ import {
   type AccountCredentialAuthority,
   type AccountPause,
   type AccountPauseOwner,
+  type CredentialRefreshFailure,
   type AccountStatus,
   type AuditRow,
   type BeeMoveFailure,
@@ -171,7 +172,7 @@ import {
   TASK_SUPPLY_SENDER_NAME,
   TASK_TRANSITIONS,
 } from "./tasks.ts";
-import { ACTIONS_TABLE_SQL, AUTH_INTERRUPTIONS_TABLE_SQL, ACCOUNT_ADMISSIONS_TABLE_SQL, ACCOUNT_LIMITS_TABLE_SQL, BEES_ADDITIVE_COLUMNS, BEES_ACTIVE_MOVE_INDEX_SQL, BEES_ACTIVE_HANDOFF_INDEX_SQL, BEE_HANDOFFS_TABLE_SQL, TRANSCRIPT_SEGMENTS_TABLE_SQL, MAILBOX_PENDING_METADATA_INDEX_SQL, BEE_MOVES_TABLE_SQL, CELLS_TABLE_SQL, CELLS_V22_COLUMNS, CELL_OPS_TABLE_SQL, FLAGS_ADDITIVE_COLUMNS, FLAGS_EXPIRY_INDEX_SQL, HANDLE_INDEX_SQL, IDEMPOTENCY_INDEX_SQL, MAILBOX_ADDITIVE_COLUMNS, MAIL_HISTORY_INDEX_SQL, MAIL_HISTORY_PROJECTION_SQL, RUNTIMES_ADDITIVE_COLUMNS, SCHEMA_SQL, SCHEMA_VERSION } from "./schema.ts";
+import { ACTIONS_TABLE_SQL, AUTH_INTERRUPTIONS_TABLE_SQL, ACCOUNT_ADMISSIONS_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_V27_COLUMNS, ACCOUNT_LIMITS_TABLE_SQL, BEES_ADDITIVE_COLUMNS, BEES_ACTIVE_MOVE_INDEX_SQL, BEES_ACTIVE_HANDOFF_INDEX_SQL, BEE_HANDOFFS_TABLE_SQL, TRANSCRIPT_SEGMENTS_TABLE_SQL, MAILBOX_PENDING_METADATA_INDEX_SQL, BEE_MOVES_TABLE_SQL, CELLS_TABLE_SQL, CELLS_V22_COLUMNS, CELL_OPS_TABLE_SQL, FLAGS_ADDITIVE_COLUMNS, FLAGS_EXPIRY_INDEX_SQL, HANDLE_INDEX_SQL, IDEMPOTENCY_INDEX_SQL, MAILBOX_ADDITIVE_COLUMNS, MAIL_HISTORY_INDEX_SQL, MAIL_HISTORY_PROJECTION_SQL, RUNTIMES_ADDITIVE_COLUMNS, SCHEMA_SQL, SCHEMA_VERSION } from "./schema.ts";
 import { beeMoveReviveKey, beeMoveStopKey, beeMoveTransitionLegal, toBeeMoveView } from "./cellMove.ts";
 import {
   ACTION_DISPATCH_SENDER,
@@ -824,6 +825,8 @@ function mapAccount(r: Row): AccountRow {
     homePath: r.home_path as string,
     label: r.label as string,
     status: r.status as AccountStatus,
+    statusReason: (r.status_reason as string | null) ?? null,
+    refreshTokenExpiresAt: r.refresh_token_expires_at == null ? null : Number(r.refresh_token_expires_at),
     penalty: Number(r.penalty),
     weeklyCeiling: r.weekly_ceiling == null ? null : Number(r.weekly_ceiling),
     lastLoginAt: r.last_login_at == null ? null : Number(r.last_login_at),
@@ -1790,6 +1793,20 @@ export class CoreStore {
         this.db.exec("ALTER TABLE accounts ADD COLUMN paused_owner TEXT");
         this.db.exec("ALTER TABLE accounts ADD COLUMN paused_at INTEGER");
         this.db.exec("UPDATE accounts SET paused_by = 'operator', paused_at = updated_at WHERE status = 'paused'");
+      }
+      // v34 → v35: why the status last changed and when the login itself ends.
+      if (!accountCols.has("status_reason")) this.db.exec("ALTER TABLE accounts ADD COLUMN status_reason TEXT");
+      if (!accountCols.has("refresh_token_expires_at")) this.db.exec("ALTER TABLE accounts ADD COLUMN refresh_token_expires_at INTEGER");
+      // v34 → v35: the authority phase CHECK gains 'login_required' and the
+      // row gains two nullable columns. SQLite cannot widen a CHECK in place,
+      // so rebuild and carry the v27 columns across by name.
+      const authorityDdl = this.stmt("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'account_credential_authorities'").get() as Row | undefined;
+      if (authorityDdl !== undefined && !String(authorityDdl.sql).includes("'login_required'")) {
+        const carried = ACCOUNT_CREDENTIAL_AUTHORITIES_V27_COLUMNS.join(", ");
+        this.db.exec("ALTER TABLE account_credential_authorities RENAME TO account_credential_authorities_v34");
+        this.db.exec(ACCOUNT_CREDENTIAL_AUTHORITIES_TABLE_SQL);
+        this.db.exec(`INSERT INTO account_credential_authorities(${carried}) SELECT ${carried} FROM account_credential_authorities_v34`);
+        this.db.exec("DROP TABLE account_credential_authorities_v34");
       }
       // v11 → v12: typed account-limit failure class. Existing unreadable
       // rows stay null until the next bounded limits sweep refreshes them.
@@ -4962,20 +4979,26 @@ export class CoreStore {
     const row = this.stmt("SELECT * FROM account_credential_authorities WHERE account = ?").get(account) as Row | undefined;
     return row ? { account, phase: row.phase as AccountCredentialAuthority["phase"], generation: Number(row.generation),
       expiresAt: row.expires_at == null ? null : Number(row.expires_at), operationKey: row.operation_key as string | null,
+      refreshTokenExpiresAt: row.refresh_token_expires_at == null ? null : Number(row.refresh_token_expires_at),
+      failure: row.failure == null ? null : JSON.parse(String(row.failure)) as CredentialRefreshFailure,
       updatedAt: Number(row.updated_at) } : null;
   }
 
-  putAccountCredentialAuthority(input: Omit<AccountCredentialAuthority, "updatedAt">): AccountCredentialAuthority {
+  putAccountCredentialAuthority(input: Omit<AccountCredentialAuthority, "updatedAt" | "refreshTokenExpiresAt" | "failure"> & Partial<Pick<AccountCredentialAuthority, "refreshTokenExpiresAt" | "failure">>): AccountCredentialAuthority {
     return this.tx(() => {
+      const refreshTokenExpiresAt = input.refreshTokenExpiresAt ?? null;
+      const failure = input.failure ?? null;
       if (input.phase !== "disabled") this.assertNoUpdateReservation();
       this.mustGetAccount(input.account);
       const updatedAt = this.now();
-      this.stmt(`INSERT INTO account_credential_authorities(account,phase,generation,expires_at,operation_key,updated_at)
-        VALUES(?,?,?,?,?,?) ON CONFLICT(account) DO UPDATE SET phase=excluded.phase,generation=excluded.generation,
-        expires_at=excluded.expires_at,operation_key=excluded.operation_key,updated_at=excluded.updated_at`)
-        .run(input.account,input.phase,input.generation,input.expiresAt,input.operationKey,updatedAt);
+      this.stmt(`INSERT INTO account_credential_authorities(account,phase,generation,expires_at,operation_key,updated_at,refresh_token_expires_at,failure)
+        VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(account) DO UPDATE SET phase=excluded.phase,generation=excluded.generation,
+        expires_at=excluded.expires_at,operation_key=excluded.operation_key,updated_at=excluded.updated_at,
+        refresh_token_expires_at=excluded.refresh_token_expires_at,failure=excluded.failure`)
+        .run(input.account,input.phase,input.generation,input.expiresAt,input.operationKey,updatedAt,
+          refreshTokenExpiresAt,failure === null ? null : JSON.stringify(failure));
       this.touchAccount(input.account, `credential authority ${input.phase}`);
-      return { ...input, updatedAt };
+      return { ...input, refreshTokenExpiresAt, failure, updatedAt };
     });
   }
 
@@ -5124,17 +5147,20 @@ export class CoreStore {
     });
   }
 
-  private applyAccountUpdate(id: string, patch: Partial<Pick<AccountRow, "status" | "penalty" | "weeklyCeiling" | "lastLoginAt" | "exhaustedAt" | "homePath" | "label" | "pausedBy" | "pausedOwner" | "pausedAt">>, reason: string | null): { account: AccountRow; applied: boolean } {
+  private applyAccountUpdate(id: string, patch: Partial<Pick<AccountRow, "status" | "statusReason" | "refreshTokenExpiresAt" | "penalty" | "weeklyCeiling" | "lastLoginAt" | "exhaustedAt" | "homePath" | "label" | "pausedBy" | "pausedOwner" | "pausedAt">>, reason: string | null): { account: AccountRow; applied: boolean } {
     const before = this.mustGetAccount(id);
     const at = this.now();
-    const next: AccountRow = { ...before, ...patch, ...pauseFieldsFor(before, patch, at) };
+    // The reason given for a status change stays on the row; an explicit statusReason wins.
+    const statusReason = "statusReason" in patch ? patch.statusReason ?? null
+      : patch.status !== undefined && patch.status !== before.status ? reason : before.statusReason;
+    const next: AccountRow = { ...before, ...patch, statusReason, ...pauseFieldsFor(before, patch, at) };
     const changed = (Object.keys(next) as Array<keyof AccountRow>).filter((k) => k !== "updatedAt" && before[k] !== next[k]);
     if (changed.length === 0) return { account: before, applied: false };
     this.db
       .prepare(
-        "UPDATE accounts SET status = ?, penalty = ?, weekly_ceiling = ?, last_login_at = ?, exhausted_at = ?, home_path = ?, label = ?, paused_by = ?, paused_owner = ?, paused_at = ?, updated_at = ? WHERE id = ?",
+        "UPDATE accounts SET status = ?, status_reason = ?, refresh_token_expires_at = ?, penalty = ?, weekly_ceiling = ?, last_login_at = ?, exhausted_at = ?, home_path = ?, label = ?, paused_by = ?, paused_owner = ?, paused_at = ?, updated_at = ? WHERE id = ?",
       )
-      .run(next.status, next.penalty, next.weeklyCeiling, next.lastLoginAt, next.exhaustedAt, next.homePath, next.label, next.pausedBy, next.pausedOwner, next.pausedAt, at, id);
+      .run(next.status, next.statusReason, next.refreshTokenExpiresAt, next.penalty, next.weeklyCeiling, next.lastLoginAt, next.exhaustedAt, next.homePath, next.label, next.pausedBy, next.pausedOwner, next.pausedAt, at, id);
     const account = this.mustGetAccount(id);
     this.audit("account.put", null, { account, outcome: "updated", changed, previous: Object.fromEntries(changed.map((k) => [k, before[k]])), reason });
     return { account, applied: true };
@@ -5142,8 +5168,11 @@ export class CoreStore {
 
   /**
    * v7 — set the account status (ok | auth_needed | paused). `reason` is the
-   * evidence (audit only). Identical = silent no-op; so is ok/auth_needed on
-   * a paused account (the pause outranks auth health until its holder lifts it).
+   * evidence; v35 keeps it on the row as `statusReason` whenever the status
+   * changes. Restating `auth_needed` with new evidence replaces the reason,
+   * because that reason is what the operator acts on. Identical = silent
+   * no-op; so is ok/auth_needed on a paused account (the pause outranks auth
+   * health until its holder lifts it).
    */
   setAccountStatus(id: string, status: AccountStatus, reason?: string): { account: AccountRow; applied: boolean } {
     if (!(ACCOUNT_STATUSES as readonly string[]).includes(status)) throw new CoreError(`setAccountStatus: status must be one of ${ACCOUNT_STATUSES.join("|")}`);
@@ -5153,8 +5182,15 @@ export class CoreStore {
       // auth_needed) never lifts it, however stale the caller's snapshot was;
       // only `unpauseAccount` by the holder (or forced) does.
       if (before.status === "paused" && status !== "paused") return { account: before, applied: false };
-      return this.applyAccountUpdate(id, { status }, reason ?? null);
+      const restated = before.status === status && status === "auth_needed" && reason !== undefined;
+      return this.applyAccountUpdate(id, { status, ...(restated ? { statusReason: reason } : {}) }, reason ?? null);
     });
+  }
+
+  /** v35 — when the provider login itself ends, as the last token response said. Identical = silent no-op. */
+  setAccountRefreshTokenExpiry(id: string, refreshTokenExpiresAt: number | null, reason: string): { account: AccountRow; applied: boolean } {
+    if (refreshTokenExpiresAt !== null && !Number.isSafeInteger(refreshTokenExpiresAt)) throw new CoreError("setAccountRefreshTokenExpiry: refreshTokenExpiresAt must be epoch ms or null");
+    return this.tx(() => this.applyAccountUpdate(id, { refreshTokenExpiresAt }, reason));
   }
 
   /**

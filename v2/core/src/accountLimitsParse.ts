@@ -138,7 +138,7 @@ export function parseCodexRateLimits(limits: CodexLiveRateLimits): PutAccountLim
  * fetch needs (access token, expiry, plan). Null when the shape is not a
  * claudeAiOauth credential.
  */
-export function parseClaudeCredentials(raw: string | null): { accessToken: string; expiresAt: number; subscriptionType?: string; refreshToken?: string } | null {
+export function parseClaudeCredentials(raw: string | null): { accessToken: string; expiresAt: number; subscriptionType?: string; refreshToken?: string; refreshTokenExpiresAt?: number } | null {
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as { claudeAiOauth?: Record<string, unknown> };
@@ -149,6 +149,7 @@ export function parseClaudeCredentials(raw: string | null): { accessToken: strin
       expiresAt: oauth.expiresAt,
       ...(typeof oauth.subscriptionType === "string" ? { subscriptionType: oauth.subscriptionType } : {}),
       ...(typeof oauth.refreshToken === "string" ? { refreshToken: oauth.refreshToken } : {}),
+      ...(typeof oauth.refreshTokenExpiresAt === "number" && Number.isSafeInteger(oauth.refreshTokenExpiresAt) ? { refreshTokenExpiresAt: oauth.refreshTokenExpiresAt } : {}),
     };
   } catch {
     return null;

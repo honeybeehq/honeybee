@@ -416,11 +416,44 @@ export type AccountLimitsUnreadableReason = (typeof ACCOUNT_LIMITS_UNREADABLE_RE
 /** Secret-free central-credential state per account; only the node owning the account may rotate its chain. */
 export interface AccountCredentialAuthority {
   account: string;
-  phase: "enrolling" | "ready" | "refreshing" | "uncertain" | "disabling" | "disabling_uncertain" | "disabled";
+  /**
+   * `login_required` is terminal: the provider definitively refused the
+   * refresh token, so only a new login recovers the account. `uncertain` is
+   * transient: a refresh outcome is unknown and a retry is scheduled.
+   */
+  phase: (typeof ACCOUNT_CREDENTIAL_PHASES)[number];
   generation: number;
   expiresAt: number | null;
   operationKey: string | null;
+  /** When the refresh token itself stops working (the login's hard lifetime); null = the provider never said. */
+  refreshTokenExpiresAt: number | null;
+  /** The last refresh attempt that did not succeed; null after a success. */
+  failure: CredentialRefreshFailure | null;
   updatedAt: number;
+}
+
+export const ACCOUNT_CREDENTIAL_PHASES = ["enrolling", "ready", "refreshing", "uncertain", "login_required", "disabling", "disabling_uncertain", "disabled"] as const;
+
+/**
+ * How a refresh attempt ended without a token. `rejected`: the provider
+ * definitively refused the refresh token. `retryable`: the request was not
+ * processed, so the token is unconsumed. `unknown_outcome`: the request may
+ * have been processed and the token may be consumed.
+ */
+export const CREDENTIAL_REFRESH_FAILURE_OUTCOMES = ["rejected", "retryable", "unknown_outcome"] as const;
+export type CredentialRefreshFailureOutcome = (typeof CREDENTIAL_REFRESH_FAILURE_OUTCOMES)[number];
+
+/** Secret-free: status, an allowlisted OAuth error code and a sanitized description. Never token content. */
+export interface CredentialRefreshFailure {
+  outcome: CredentialRefreshFailureOutcome;
+  httpStatus: number | null;
+  error: string | null;
+  description: string | null;
+  at: number;
+  /** Consecutive attempts that did not succeed. */
+  attempts: number;
+  /** Earliest next attempt; null when no retry will run (`rejected`). */
+  retryAt: number | null;
 }
 
 /** A provider login identity: the WHO. One account = one run-home. */
@@ -432,6 +465,10 @@ export interface AccountRow {
   homePath: string;
   label: string;
   status: AccountStatus;
+  /** Why the status last changed (the evidence `setAccountStatus` was given); null = never recorded. */
+  statusReason: string | null;
+  /** When the provider login itself ends (the refresh token's hard lifetime); null = unknown. */
+  refreshTokenExpiresAt: number | null;
   /** Operator hint added to the selector's effective weekly load (0 = none). */
   penalty: number;
   weeklyCeiling: number | null;
