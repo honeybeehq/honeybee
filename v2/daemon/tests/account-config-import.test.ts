@@ -23,6 +23,9 @@ function account(harness: string, homePath: string): AccountRow {
     weeklyCeiling: null,
     lastLoginAt: null,
     exhaustedAt: null,
+    pausedBy: null,
+    pausedOwner: null,
+    pausedAt: null,
     addedAt: 1,
     updatedAt: 1,
   };

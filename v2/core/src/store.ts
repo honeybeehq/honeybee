@@ -5218,7 +5218,6 @@ export class CoreStore {
   unpauseAccount(id: string, pause: AccountPause, next: Exclude<AccountStatus, "paused">, options: { force?: boolean; reason?: string } = {}): { account: AccountRow; applied: boolean; heldBy: AccountPause | null } {
     const by = requirePauseOwner(pause.by, "unpauseAccount");
     const owner = normalizePauseOwnerId(by, pause.owner, "unpauseAccount");
-    if (next === "paused") throw new CoreError("unpauseAccount: next status must not be paused");
     return this.tx(() => {
       const before = this.mustGetAccount(id);
       const held = pauseOf(before);
