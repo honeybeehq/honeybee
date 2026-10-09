@@ -1,37 +1,3 @@
-/**
- * Landed-work detection for the A2 dirty guard.
- *
- * A Cell commit the origin never received is still safe to lose when its
- * change already sits on a landing target in the origin: landing queues
- * rebase, cherry-pick and squash, so the same work arrives under new SHAs.
- * A commit counts as landed when ANY of these holds against a landing target
- * (the origin's main/master, its remote-tracking main/master, and the target
- * branch of every landing receipt):
- *
- *  1. it is reachable from the target, the provisioned base, or the source
- *     head of a landing receipt whose result commit the target contains;
- *  2. the merge of the tip into the target is clean and yields the target's
- *     own tree (the tip's whole range is already there: squash, rebase);
- *  3. a target commit since the provisioned base has the same stable
- *     patch-id over zero-context diffs (`log -p -U0 | patch-id --stable`):
- *     the same lines added and removed in the same files, wherever the
- *     surrounding code moved (cherry-picks and rebases main later edited);
- *  4. replaying the commit onto the target is clean and changes nothing
- *     (a cherry-pick that would be empty: trivially resolved rebases).
- *
- * Merge probes (2 and 4) are skipped when a blob-level prefilter already
- * shows they would change the target: the range or commit changes a path
- * away from blob X while the target still holds X (or still lacks a path
- * the change added).
- *
- * Every check fails closed: a git error, a conflict, an old git without
- * `merge-tree --write-tree`, or a budget overrun leaves the commit unlanded.
- *
- * The cell and the origin are separate object stores. The probes run in the
- * cell with both stores as read-only alternates and a throwaway primary
- * object directory, so the trees `merge-tree` writes never land in either
- * repository.
- */
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
@@ -60,6 +26,7 @@ const DEFAULT_TARGET_REFS = [
 
 const MAX_RANGE_COMMITS = 500;
 const MAX_REPLAY_PROBES = 4;
+const MAX_HISTORICAL_PROBES = 32;
 const PROBE_BUDGET_MS = 15_000;
 const MAX_PREFILTER_PATHS = 2000;
 const MAX_TARGET_COMMITS = 5000;
@@ -225,6 +192,54 @@ function probeTips(spaceDir: string, originRepo: string, tips: string[], base: s
       if (patches.trim().length === 0) return [];
       return lines(must(["patch-id", "--stable"], { input: patches })).map((l) => l.split(" ") as [string, string]);
     };
+    const parents = new Map<string, string | null>();
+    const parentOf = (commit: string): string | null => {
+      if (!parents.has(commit)) {
+        const row = must(["rev-list", "--parents", "-n", "1", commit]).trim().split(" ");
+        parents.set(commit, row.length === 2 ? row[1]! : null);
+      }
+      return parents.get(commit)!;
+    };
+    const contents = new Map<string, string | null>();
+    const textOf = (blob: string): string | null => {
+      if (!contents.has(blob)) {
+        const text = must(["cat-file", "blob", blob]);
+        const exact = must(["hash-object", "--stdin"], { input: text }).trim() === blob;
+        contents.set(blob, exact && !text.includes("\0") ? text : null);
+      }
+      return contents.get(blob)!;
+    };
+    const sameAppend = (commit: string, target: string, changes: PathChange[]): boolean => {
+      const parent = parentOf(commit);
+      const targetParent = parentOf(target);
+      if (!parent || !targetParent || changes.length === 0 || changes.length > MAX_PREFILTER_PATHS) return false;
+      const targetChanges = commitChanges([target]).get(target) ?? [];
+      if (targetChanges.length !== changes.length || targetChanges.some((c) => !changes.some((own) => own.path === c.path))) return false;
+      const paths = changes.map((c) => c.path);
+      const snapshots = [parent, commit, targetParent, target].map((sha) => blobsAt(sha, paths));
+      return paths.every((path) => {
+        const entries = snapshots.map((snapshot) => (snapshot.get(path) ?? ABSENT).split(" "));
+        const mode = entries[0]![0];
+        if ((mode !== "100644" && mode !== "100755") || entries.some((entry) => entry[0] !== mode || !entry[1])) return false;
+        const [before, after, targetBefore, targetAfter] = entries.map((entry) => textOf(entry[1]!));
+        if (before == null || after == null || targetBefore == null || targetAfter == null || !after.startsWith(before) || after.length === before.length) return false;
+        return (before.length === 0 || before.endsWith("\n")) && (targetBefore.length === 0 || targetBefore.endsWith("\n")) &&
+          targetBefore.startsWith(before) && targetAfter === targetBefore + after.slice(before.length);
+      });
+    };
+    const historicalVerdicts = new Map<string, boolean>();
+    let historicalBudget = MAX_HISTORICAL_PROBES;
+    const historicallyLanded = (commit: string, target: string, changes: PathChange[]): boolean => {
+      const key = `${commit}:${target}`;
+      const known = historicalVerdicts.get(key);
+      if (known !== undefined) return known;
+      if (historicalBudget <= 0) return false;
+      historicalBudget -= 1;
+      const parent = parentOf(commit);
+      const landed = parent !== null && (mergesToTarget(target, [`--merge-base=${parent}`, target, commit]) || sameAppend(commit, target, changes));
+      historicalVerdicts.set(key, landed);
+      return landed;
+    };
     const patchMatches = (commits: string[], changes: Map<string, PathChange[]>): Set<string> => {
       const ids = new Map<string, string[]>();
       for (const [id, commit] of patchIdsOf(["--no-walk=unsorted", ...commits])) ids.set(id, [...(ids.get(id) ?? []), commit]);
@@ -234,8 +249,10 @@ function probeTips(spaceDir: string, originRepo: string, tips: string[], base: s
       const pathspec = paths.length > 0 && paths.length <= MAX_PREFILTER_PATHS ? ["--", ...paths] : [];
       for (const target of targets) {
         const since = base ? ["--not", base] : [];
-        for (const [id] of patchIdsOf([`--max-count=${MAX_TARGET_COMMITS}`, target, ...since, ...pathspec])) {
-          for (const commit of ids.get(id) ?? []) landed.add(commit);
+        for (const [id, candidate] of patchIdsOf([`--max-count=${MAX_TARGET_COMMITS}`, target, ...since, ...pathspec])) {
+          for (const commit of ids.get(id) ?? []) {
+            if (!landed.has(commit) && historicallyLanded(commit, candidate, changes.get(commit) ?? [])) landed.add(commit);
+          }
         }
       }
       return landed;
@@ -247,7 +264,7 @@ function probeTips(spaceDir: string, originRepo: string, tips: string[], base: s
       if (known !== undefined) return known;
       if (replayBudget <= 0) return false;
       replayBudget -= 1;
-      const parent = lines(must(["rev-list", "--parents", "-n", "1", commit]))[0]?.split(" ")[1];
+      const parent = parentOf(commit);
       const empty = parent != null && targets.some((t) => mergesToTarget(t, [`--merge-base=${parent}`, t, commit]));
       replayVerdicts.set(commit, empty);
       return empty;

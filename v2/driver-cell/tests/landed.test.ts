@@ -251,6 +251,8 @@ test("landed.not-landed: a conflicting change on main keeps the Cell commit unla
     const report = dirtyReport(cell.paths.wrapperDir);
     assert.equal(report.unpushed, true);
     assert.deepEqual(report.unlandedCommits.map((c) => c.sha), [head]);
+    assert.throws(() => deleteCell(cell.paths.wrapperDir), CellDeleteRefused);
+    assert.equal(existsSync(cell.paths.wrapperDir), true);
   } finally {
     rig.cleanup();
   }
@@ -299,6 +301,41 @@ test("landed.no-writes: probing writes nothing into the Cell's object store", ()
     const before = readdirSync(objects).sort();
     dirtyReport(cell.paths.wrapperDir);
     assert.deepEqual(readdirSync(objects).sort(), before);
+  } finally {
+    rig.cleanup();
+  }
+});
+
+
+test("landed.same-edit-different-block: an edit to another block does not land Cell work", () => {
+  const rig = makeRig();
+  try {
+    const before = "function first() {\n  return 0;\n}\n\nfunction second() {\n  return 0;\n}\n";
+    const cell = listCell(rig, before);
+    const head = commitInCell(cell.paths.spaceDir, "list.txt", before.replace("return 0", "return 1"), "change first");
+    const last = before.lastIndexOf("return 0");
+    commitOn(rig.origin.repo, "list.txt", before.slice(0, last) + before.slice(last).replace("return 0", "return 1"), "change second");
+    const report = dirtyReport(cell.paths.wrapperDir);
+    assert.equal(report.dirty, true);
+    assert.deepEqual(report.unlandedCommits.map((c) => c.sha), [head]);
+    assert.throws(() => deleteCell(cell.paths.wrapperDir), CellDeleteRefused);
+    assert.equal(existsSync(cell.paths.wrapperDir), true);
+  } finally {
+    rig.cleanup();
+  }
+});
+test("landed.unterminated-repeat: another line's suffix does not land Cell work", () => {
+  const rig = makeRig();
+  try {
+    const cell = listCell(rig, "flag=0");
+    const head = commitInCell(cell.paths.spaceDir, "list.txt", "flag=01", "change first line");
+    commitOn(rig.origin.repo, "list.txt", "flag=0\nflag=0", "add another line");
+    commitOn(rig.origin.repo, "list.txt", "flag=0\nflag=01", "change second line");
+    const report = dirtyReport(cell.paths.wrapperDir);
+    assert.equal(report.dirty, true);
+    assert.deepEqual(report.unlandedCommits.map((c) => c.sha), [head]);
+    assert.throws(() => deleteCell(cell.paths.wrapperDir), CellDeleteRefused);
+    assert.equal(existsSync(cell.paths.wrapperDir), true);
   } finally {
     rig.cleanup();
   }
