@@ -278,9 +278,12 @@ test("flag evidence: auth/rate-limit setters and their contrary-evidence clearer
     assert.ok(bootEvidence.every((f) => f.beeId === "bee-j" && f.generation === 1));
 
     await deliverUntilAccepted(rig.driver, "bee-j", 1, 41, "@authfail");
-    await drainEvidenceUntil(rig.driver, (ev) =>
+    const authEvidence = await drainEvidenceUntil(rig.driver, (ev) =>
       ev.some((f) => f.flag === "auth_needed" && f.action === "set"),
     );
+    // The cut-off turn names its mail; an adapter that reports no provider
+    // progress can never prove the turn did nothing.
+    assert.deepEqual(authEvidence.find((f) => f.flag === "auth_needed")?.turn, { messageIds: [41], progress: "unknown" });
 
     await deliverUntilAccepted(rig.driver, "bee-j", 1, 42, "@ratelimit");
     await drainEvidenceUntil(rig.driver, (ev) =>
@@ -539,6 +542,7 @@ test("readyAtSpawn status poll (deterministic, no spawn): synthetic booted pairs
       phase,
       sessionId: null,
       turnId: null,
+      turn: { messageIds: [], progressed: false, observedFromStart: true },
       pendingDeliveries: new Set<number>(),
       confirmedDeliveries: new Set<number>(),
       stopCause: null,

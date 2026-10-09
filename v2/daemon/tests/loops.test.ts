@@ -2333,6 +2333,7 @@ interface AsyncDeliveryProcessProbe {
   phase: "idle" | "running";
   sessionId: string;
   turnId: string | null;
+  turn: { messageIds: number[]; progressed: boolean; observedFromStart: boolean };
   pendingDeliveries: Set<number>;
   confirmedDeliveries: Set<number>;
   stopCause: null;
@@ -2413,6 +2414,7 @@ function makeAsyncDeliveryRig(): AsyncDeliveryRig {
     phase: "idle",
     sessionId: "root-thread",
     turnId: null,
+    turn: { messageIds: [], progressed: false, observedFromStart: true },
     pendingDeliveries: new Set(),
     confirmedDeliveries: new Set(),
     stopCause: null,

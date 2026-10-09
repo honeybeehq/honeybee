@@ -84,6 +84,15 @@ function resultSignals(msg: Record<string, unknown>): AdapterSignal[] {
   return signals;
 }
 
+/**
+ * Claude Code reports a failed API call as an assistant line it wrote itself
+ * (`message.model: "<synthetic>"`, e.g. "Not logged in · Please run /login").
+ * Only a line the provider produced is progress on the turn.
+ */
+function isProviderServed(msg: Record<string, unknown>): boolean {
+  return asObject(msg.message)?.model !== "<synthetic>" && msg.error === undefined;
+}
+
 export function parseClaudeLine(line: string): AdapterSignal[] {
   const msg = parseJsonLine(line);
   if (!msg || typeof msg.type !== "string") return [];
@@ -105,7 +114,7 @@ export function parseClaudeLine(line: string): AdapterSignal[] {
       // is its ONLY opening edge. Without this, self-woken bees showed
       // idle/"needs your reply" while actively working (2026-08-19, observed
       // on the cutover executor itself).
-      return [{ kind: "turn_started" }];
+      return isProviderServed(msg) ? [{ kind: "turn_started" }, { kind: "turn_progress" }] : [{ kind: "turn_started" }];
     case "user":
     case "control_request": // interactive prompts are out of WP3 scope
     case "control_response":
@@ -172,6 +181,7 @@ export const claudeAdapter: HarnessAdapter = {
   // queues them at its own safe boundary (verified by the old system's
   // nativeSteering path).
   acceptsMidTurn: true,
+  reportsTurnProgress: true,
   readyAtSpawn: true,
   bootLines(): string[] {
     return [];

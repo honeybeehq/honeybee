@@ -19,6 +19,14 @@
  * turn hit the provider wall like the real CLI does: a `rate_limit_event`
  * with status "rejected" and an errored result (spec 08 rotation trigger).
  * `@authfail` makes the turn fail with "Not logged in · /login".
+ * `@steps:<n>` makes the turn take n provider calls, each one an assistant
+ * line (`step i/n`) after the `@slow` delay.
+ *
+ * env FAKE_CLAUDE_REQUIRE_CREDENTIAL=1  every provider call first reads
+ *   `$CLAUDE_CONFIG_DIR/.credentials.json` like the real CLI: without an
+ *   unexpired `claudeAiOauth.accessToken` the turn ends the way a logged-out
+ *   Claude Code ends it — a `<synthetic>` assistant line and the errored
+ *   result "Not logged in · Please run /login".
  *
  * Transcript files (only when CLAUDE_CONFIG_DIR is set, like the real CLI's
  * config dir): the first turn writes `projects/<cwd-key>/<sessionId>.jsonl`
@@ -31,7 +39,7 @@
  * env FAKE_CLAUDE_ARGV_LOG   append {argv, cwd, env:{CLAUDE_CONFIG_DIR, HIVE_BEE, HIVE_BEE_ID, HIVE_V2_DATA_DIR, HIVE_PARENT}, sessionId, resumed, forked} per boot
  * env FAKE_CLAUDE_FAIL_RESUME=1  exit 1 on --resume ("No conversation found") — the failure shape
  */
-import { appendFileSync, existsSync, mkdirSync, readdirSync, realpathSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { createInterface } from "node:readline";
@@ -89,6 +97,21 @@ function emit(obj) {
   process.stdout.write(`${JSON.stringify(obj)}\n`);
 }
 
+const NOT_LOGGED_IN = "Not logged in · Please run /login";
+function loggedIn() {
+  if (process.env.FAKE_CLAUDE_REQUIRE_CREDENTIAL !== "1") return true;
+  try {
+    const oauth = JSON.parse(readFileSync(join(configDir, ".credentials.json"), "utf8")).claudeAiOauth;
+    return typeof oauth.accessToken === "string" && oauth.accessToken.length > 0 && oauth.expiresAt > Date.now();
+  } catch {
+    return false;
+  }
+}
+function emitNotLoggedIn() {
+  emit({ type: "assistant", message: { role: "assistant", model: "<synthetic>", content: [{ type: "text", text: NOT_LOGGED_IN }] }, error: "authentication_failed", session_id: sessionId });
+  emit({ type: "result", subtype: "success", is_error: true, api_error_status: null, num_turns: 1, result: NOT_LOGGED_IN, session_id: sessionId });
+}
+
 let initSent = false;
 let turnTimer = null;
 const rl = createInterface({ input: process.stdin });
@@ -130,8 +153,24 @@ rl.on("line", (raw) => {
   }
   recordTranscript({ type: "user", text });
   const slow = /@slow:(\d+)/.exec(text);
+  const stepDelay = slow ? Number(slow[1]) : 10;
+  const steps = Number(/@steps:(\d+)/.exec(text)?.[1] ?? 0);
+  if (steps > 0) {
+    const runStep = (step) => {
+      turnTimer = setTimeout(() => {
+        turnTimer = null;
+        if (!loggedIn()) return emitNotLoggedIn();
+        emit({ type: "assistant", message: { role: "assistant", model: "fake", content: [{ type: "text", text: `step ${step}/${steps}` }] }, session_id: sessionId });
+        if (step < steps) return runStep(step + 1);
+        emit({ type: "result", subtype: "success", is_error: false, result: `echo:${text}`, session_id: sessionId });
+      }, stepDelay);
+    };
+    runStep(1);
+    return;
+  }
   turnTimer = setTimeout(() => {
     turnTimer = null;
+    if (!loggedIn()) return emitNotLoggedIn();
     if (text.includes("@ratelimit")) {
       emit({ type: "rate_limit_event", rate_limit_info: { status: "rejected", resetsAt: Math.floor(Date.now() / 1000) + 3600, rateLimitType: "five_hour" }, session_id: sessionId });
       emit({ type: "result", subtype: "error_during_execution", is_error: true, result: "You've hit your usage limit (rate limit reached)", session_id: sessionId });
@@ -143,6 +182,6 @@ rl.on("line", (raw) => {
     }
     emit({ type: "assistant", message: { role: "assistant", content: [{ type: "text", text: `echo:${text}` }] }, session_id: sessionId });
     emit({ type: "result", subtype: "success", is_error: false, result: `echo:${text}`, session_id: sessionId });
-  }, slow ? Number(slow[1]) : 10);
+  }, stepDelay);
 });
 rl.on("close", () => process.exit(0));

@@ -45,6 +45,12 @@ export type AdapterSignal =
   | { kind: "turn_started"; turnId?: string; threadId?: string }
   | { kind: "turn_ended"; threadId?: string }
   /**
+   * The provider served real work inside the current turn (model output, a
+   * tool call). Only adapters with `reportsTurnProgress` emit it; its absence
+   * before an auth failure proves the delivered message was never worked.
+   */
+  | { kind: "turn_progress" }
+  /**
    * Application-level acknowledgement for a delivered mailbox message.
    * RPC harnesses emit this only after the provider accepted the request;
    * the driver keeps the durable mailbox row pending until then.
@@ -109,6 +115,12 @@ export interface HarnessAdapter {
    * after confirmation.
    */
   readonly confirmsDelivery?: boolean;
+  /**
+   * Whether the adapter emits `turn_progress` for every provider-served step.
+   * Without it a turn cut off by an auth failure has unknown progress and is
+   * continued, never redelivered.
+   */
+  readonly reportsTurnProgress?: boolean;
   /**
    * Whether the runtime is deliverable the moment it is spawned. claude's
    * stream-json mode emits NOTHING (not even init) until the first user

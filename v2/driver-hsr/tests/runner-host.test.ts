@@ -257,6 +257,7 @@ test("host delivery refuses before encoding and distinguishes write throws from 
     phase: "idle" | "running";
     sessionId: string | null;
     turnId: string | null;
+    turn: { messageIds: number[]; progressed: boolean; observedFromStart: boolean };
     pendingDeliveries: Set<number>;
     confirmedDeliveries: Set<number>;
     stopCause: null;
@@ -278,6 +279,7 @@ test("host delivery refuses before encoding and distinguishes write throws from 
     phase: "idle",
     sessionId: null,
     turnId: null,
+    turn: { messageIds: [], progressed: false, observedFromStart: true },
     pendingDeliveries: new Set<number>(),
     confirmedDeliveries: new Set<number>(),
     stopCause: null,

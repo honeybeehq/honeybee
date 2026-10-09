@@ -131,6 +131,24 @@ export interface FlagEvidence {
   detail: string;
   /** Provider-declared instant (epoch ms) the condition lifts, when stated. */
   resetsAt?: number;
+  /** The turn a `set` cut off: the mail delivered into it and whether the provider served any of it. */
+  turn?: TurnEvidence;
+}
+
+export interface TurnEvidence {
+  messageIds: number[];
+  progress: "none" | "some" | "unknown";
+}
+
+interface TurnTrack {
+  messageIds: number[];
+  progressed: boolean;
+  /** False while the turn began before this daemon adopted the process. */
+  observedFromStart: boolean;
+}
+
+function freshTurn(): TurnTrack {
+  return { messageIds: [], progressed: false, observedFromStart: true };
 }
 
 /**
@@ -171,6 +189,8 @@ interface ManagedProcess {
   sessionId: string | null;
   /** v6: the harness-native id of the turn in flight (codex turn/started), for turn/interrupt. */
   turnId: string | null;
+  /** Mail and provider progress of the turn in flight, for auth-interruption evidence. */
+  turn: TurnTrack;
   /** RPC deliveries written but not yet accepted by the harness. */
   pendingDeliveries: Set<number>;
   /** Durable protocol acknowledgements waiting for the daemon to mark mailbox truth. */
@@ -476,6 +496,7 @@ export class HsrDriver implements RuntimeDriver {
       phase: "booting",
       sessionId: null,
       turnId: null,
+      turn: freshTurn(),
       pendingDeliveries: new Set(),
       confirmedDeliveries: new Set(),
       reconnectReplies: new Map(),
@@ -636,6 +657,7 @@ export class HsrDriver implements RuntimeDriver {
     // socket.write(false) means accepted with backpressure, not rejected; the
     // write remains one delivery and must never trigger a duplicate retry.
     if (!this.writeLine(p, encoded)) return { accepted: false, reason: "not_ready" };
+    p.turn.messageIds.push(messageId);
     if (p.adapter.confirmsDelivery) p.pendingDeliveries.add(messageId);
     else this.consumed.set(messageId, generation);
     if (p.phase === "idle") {
@@ -1081,6 +1103,7 @@ export class HsrDriver implements RuntimeDriver {
             // mid-turn steer or an acknowledgement in the crash gap.
             sessionId: recovered.sessionId,
             turnId: lastKnownState === "running" ? recovered.turnId : null,
+            turn: { ...freshTurn(), observedFromStart: lastKnownState !== "running" },
             pendingDeliveries: new Set(),
             confirmedDeliveries: recovered.confirmedDeliveries,
             reconnectReplies: recovered.reconnectReplies,
@@ -1129,6 +1152,7 @@ export class HsrDriver implements RuntimeDriver {
       phase: "running",
       sessionId: null,
       turnId: null,
+      turn: freshTurn(),
       pendingDeliveries: new Set(),
       confirmedDeliveries: new Set(),
       reconnectReplies: new Map(),
@@ -1441,8 +1465,13 @@ export class HsrDriver implements RuntimeDriver {
         this.events.push({ beeId: p.beeId, generation: p.generation, kind: "turn_started" });
         return;
       }
+      case "turn_progress": {
+        p.turn.progressed = true;
+        return;
+      }
       case "turn_ended": {
         p.turnId = null;
+        p.turn = freshTurn();
         if (p.phase !== "running") return;
         p.phase = "idle";
         this.events.push({ beeId: p.beeId, generation: p.generation, kind: "turn_ended" });
@@ -1456,6 +1485,7 @@ export class HsrDriver implements RuntimeDriver {
       case "delivery_refused": {
         p.pendingDeliveries.delete(signal.messageId);
         p.confirmedDeliveries.delete(signal.messageId);
+        p.turn.messageIds = p.turn.messageIds.filter((id) => id !== signal.messageId);
         return;
       }
       case "flag": {
@@ -1466,6 +1496,7 @@ export class HsrDriver implements RuntimeDriver {
           action: signal.action,
           detail: signal.detail,
           ...(signal.resetsAt !== undefined ? { resetsAt: signal.resetsAt } : {}),
+          ...(signal.action === "set" ? { turn: this.turnEvidence(p) } : {}),
         });
         return;
       }
@@ -1474,6 +1505,14 @@ export class HsrDriver implements RuntimeDriver {
         return;
       }
     }
+  }
+
+  private turnEvidence(p: ManagedProcess): TurnEvidence {
+    const proven = p.turn.observedFromStart && p.adapter?.reportsTurnProgress === true;
+    return {
+      messageIds: [...p.turn.messageIds],
+      progress: p.turn.progressed ? "some" : proven ? "none" : "unknown",
+    };
   }
 
   private onExit(p: ManagedProcess, code: number | null, _signal: NodeJS.Signals | null): void {

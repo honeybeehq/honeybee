@@ -38,8 +38,18 @@ test("claude: progress pings carry no state edge; assistant output OPENS a turn 
   // A self-woken turn (background-task notification inside the harness) has
   // no delivery and no user message: assistant output is its only opening
   // edge. The driver's phase check makes this a no-op while already running.
-  assert.deepEqual(parseClaudeLine(textLine!), [{ kind: "turn_started" }]);
-  assert.deepEqual(parseClaudeLine(toolLine!), [{ kind: "turn_started" }]);
+  assert.deepEqual(parseClaudeLine(textLine!), [{ kind: "turn_started" }, { kind: "turn_progress" }]);
+  assert.deepEqual(parseClaudeLine(toolLine!), [{ kind: "turn_started" }, { kind: "turn_progress" }]);
+});
+
+test("claude: the assistant line Claude Code writes for a failed API call is not provider progress", () => {
+  const notLoggedIn = JSON.stringify({
+    type: "assistant",
+    message: { role: "assistant", model: "<synthetic>", content: [{ type: "text", text: "Not logged in · Please run /login" }] },
+    error: "authentication_failed",
+  });
+  assert.deepEqual(parseClaudeLine(notLoggedIn), [{ kind: "turn_started" }]);
+  assert.equal(claudeAdapter.reportsTurnProgress, true);
 });
 
 test("claude: successful result → contrary-evidence clears + turn_ended", () => {
