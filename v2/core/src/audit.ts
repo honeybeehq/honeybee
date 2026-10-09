@@ -231,6 +231,11 @@ export function replayAudit(rows: AuditRow[]): StateDump {
         authInterruptions.set(interruption.id, interruption);
         break;
       }
+      case "auth_interruption.pruned": {
+        const settledBefore = p.settledBefore as number;
+        for (const [k, i] of authInterruptions) if (i.settledAt !== null && i.settledAt < settledBefore) authInterruptions.delete(k);
+        break;
+      }
       case "bee.deleted": {
         const beeId = p.beeId as string;
         bees.delete(beeId);

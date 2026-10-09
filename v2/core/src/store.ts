@@ -5385,10 +5385,21 @@ export class CoreStore {
   }
 
   listAuthInterruptions(filter: { beeId?: string; account?: string } = {}): AuthInterruptionRow[] {
-    return (this.stmt("SELECT * FROM auth_interruptions ORDER BY id").all() as Row[])
-      .map(mapAuthInterruption)
-      .filter((row) => (filter.beeId === undefined || row.beeId === filter.beeId)
-        && (filter.account === undefined || row.account === filter.account));
+    return (this.stmt(
+      `SELECT * FROM auth_interruptions
+       WHERE (?1 IS NULL OR bee_id = ?1) AND (?2 IS NULL OR account = ?2) ORDER BY id`,
+    ).all(filter.beeId ?? null, filter.account ?? null) as Row[]).map(mapAuthInterruption);
+  }
+
+  /** Drop settled rows older than the cutoff; live rows are never pruned. */
+  pruneAuthInterruptions(settledBefore: number): number {
+    return this.tx(() => {
+      const removed = Number(this.stmt(
+        "DELETE FROM auth_interruptions WHERE settled_at IS NOT NULL AND settled_at < ?",
+      ).run(settledBefore).changes);
+      if (removed > 0) this.audit("auth_interruption.pruned", null, { settledBefore });
+      return removed;
+    });
   }
 
   private putAuthInterruption(row: AuthInterruptionRow): AuthInterruptionRow {
@@ -5498,7 +5509,9 @@ export class CoreStore {
       const redeliver = row.turnProgress === "none" && originals.length > 0
         && originals.every((message) => message !== null && message.beeId === row.beeId);
       const sent = redeliver
-        ? originals.map((message) => this.send(row.beeId, message!.body, { sender: message!.sender, origin: "auth.resume" }))
+        ? originals.map((message) => this.send(row.beeId, message!.body, {
+          sender: message!.sender, urgency: message!.urgency, priority: message!.priority, origin: "auth.resume",
+        }))
         : [this.send(row.beeId, continueBody, { sender: AUTH_RESUME_SENDER, origin: "auth.resume" })];
       return {
         interruption: this.putAuthInterruption({

@@ -79,6 +79,7 @@ import {
   serializePackage,
   type AccountRow,
   type AuthRestoreSource,
+  AUTH_INTERRUPTION_RETENTION_MS,
   type AuditRow,
   type BeeHandoffRow,
   type BeeHandoffStopAt,
@@ -842,6 +843,7 @@ export class HiveDaemon {
     // Claude account left auth_needed, rather than stranding it until the next
     // periodic limits sweep.
     this.accounts?.scheduleRecoveryForAuthNeededClaude();
+    store.pruneAuthInterruptions(Date.now() - AUTH_INTERRUPTION_RETENTION_MS);
     this.publishedSeq = store.lastAuditSeq();
     reconcile.end();
     this.activeStartupPhase = null;
@@ -5051,8 +5053,17 @@ export class HiveDaemon {
    * clears the bees' `auth_needed` flags and resumes the turns it cut off.
    */
   private credentialValidated(accountId: string, by: AuthRestoreSource): CredentialValidatedReceipt | null {
-    const account = this.mustStore().getAccount(accountId);
+    const store = this.mustStore();
+    const account = store.getAccount(accountId);
     if (!account || !this.authResume) return null;
+    // Recovering a centrally managed account is disable → login → enable. The
+    // login leaves the native refresh chain in the home; waking the account's
+    // bees on it would block the enable and let them rotate the chain. The
+    // enable's validating rotation is what restores such an account.
+    if ((by === "login" || by === "capture") && store.getAccountCredentialAuthority(account.id)?.phase === "disabled") {
+      this.log(`auth.resume.deferred account=${account.id} by=${by} until=central_enable`);
+      return null;
+    }
     return this.authResume.credentialValidated(account, by);
   }
 

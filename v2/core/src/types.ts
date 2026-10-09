@@ -546,6 +546,9 @@ export type AuthSettleReason = (typeof AUTH_SETTLE_REASONS)[number];
 
 export const AUTH_RESUME_SENDER = "hive:auth-resume";
 
+/** Settled rows are a receipt, not state; they are dropped after this long. */
+export const AUTH_INTERRUPTION_RETENTION_MS = 90 * 24 * 3_600_000;
+
 /** Revision of an account whose credential cannot be read; equal to itself, so it never looks like a change. */
 export const AUTH_CREDENTIAL_UNREADABLE = "unreadable";
 

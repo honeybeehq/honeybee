@@ -126,7 +126,9 @@ export class ClaudeCredentialAuthority {
       delete value.rollbackAdopted;
       save(this.path(account), value);
     }
-    return this.put(account, "ready", value);
+    const ready = this.put(account, "ready", value);
+    this.options.onRefreshed?.(account);
+    return ready;
   }
   enable(account: AccountRow): Promise<AccountCredentialAuthority> {
     return this.lane(account, "enable", async () => {

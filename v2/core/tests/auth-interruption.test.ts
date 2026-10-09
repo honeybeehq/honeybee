@@ -33,7 +33,7 @@ test("auth interruption: a turn that never ran gets its original mail again, exa
     assert.equal(resumed.interruption?.continuationKind, "redeliver");
     assert.equal(resumed.interruption?.restoredRevision, "rev-2");
     const pending = store.undeliveredMessages(bee.id);
-    assert.deepEqual(pending.map((m) => [m.body, m.sender, m.urgency]), [["do the thing", "human:tormod", "next"], ["and this", "operator", "next"]]);
+    assert.deepEqual(pending.map((m) => [m.body, m.sender, m.urgency]), [["do the thing", "human:tormod", "now"], ["and this", "operator", "next"]]);
     assert.deepEqual(resumed.interruption?.continuationMessageIds, pending.map((m) => m.id));
     assert.deepEqual(store.pendingMail(bee.id).messages.map((m) => m.origin), ["auth.resume", "auth.resume"]);
 
@@ -149,6 +149,13 @@ test("auth interruption: deleting the bee removes its rows; reopening keeps the 
     interrupt(store, kept.id, { messageIds: [1], turnProgress: "some" });
     interrupt(store, gone.id);
     store.deleteBee(gone.id);
+    assert.deepEqual(store.listAuthInterruptions().map((row) => row.beeId), [kept.id]);
+    const settled = makeBee(store, "settled").bee;
+    const old = interrupt(store, settled.id);
+    store.settleAuthInterruption(old.id, "cancelled", "archived");
+    assert.deepEqual(store.listAuthInterruptions({ beeId: settled.id, account: "claude-a" }).map((row) => row.id), [old.id]);
+    assert.deepEqual(store.listAuthInterruptions({ account: "claude-z" }), []);
+    assert.equal(store.pruneAuthInterruptions(h.now() + 10_000), 1, "only the settled row is pruned");
     assert.deepEqual(store.listAuthInterruptions().map((row) => row.beeId), [kept.id]);
     assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
     store.close();

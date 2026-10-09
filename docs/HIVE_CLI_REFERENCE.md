@@ -2033,6 +2033,12 @@ does not resume that bee a second time. `restored` is for a credential
 written into the account home outside the daemon (a leased credential on a
 satellite): it checks the credential is present and unexpired, then does the
 same. `interruptions` lists the interrupted turns and what became of them.
+A readable limits probe clears `auth_needed` on every bee of the account,
+including bees with no interrupted turn; a bee that still cannot authenticate
+sets it again on its next turn. After `hive account credentials disable`, a
+login or capture does not resume the account's bees: `credentials enable`
+(or the next readable limits probe) does, so the bees are not woken on the
+native refresh chain while it is being handed back.
 
 `add` creates a LOGGED-OUT account (`status auth_needed`, `creds=absent`);
 `ok` is never claimed without a credential. `--import-existing` imports the

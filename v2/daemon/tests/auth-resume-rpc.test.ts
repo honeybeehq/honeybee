@@ -32,8 +32,9 @@ const here = dirname(fileURLToPath(import.meta.url));
 const FAKE_CLAUDE = join(here, "..", "..", "driver-hsr", "test-agent", "fake-claude.mjs");
 const DEAD_ENDPOINT = "http://127.0.0.1:9/v1/oauth/token";
 
-function rig() {
+function rig(config: { idleWindowMs?: number } = {}) {
   return makeDaemonDir({
+    ...config,
     agents: {
       claude: {
         command: process.execPath,
@@ -343,5 +344,53 @@ test("auth-resume.5: swapping an interrupted bee onto a healthy account continue
   } finally {
     if (daemon) await daemon.stop();
     cleanup();
+  }
+});
+
+test("auth-resume.6: recovering a centrally managed account — the login does not wake its bees on the native chain; enabling central credentials resumes them", async () => {
+  const bodies: string[] = [];
+  const provider = createServer((request, response) => {
+    let body = "";
+    request.on("data", (chunk: Buffer) => { body += chunk.toString(); });
+    request.on("end", () => {
+      bodies.push(body);
+      response.setHeader("Content-Type", "application/json");
+      response.end(JSON.stringify({ access_token: `FIXTURE_CENTRAL_ACCESS_${bodies.length}`, refresh_token: `FIXTURE_CENTRAL_REFRESH_${bodies.length}`, expires_in: 8 * 3600 }));
+    });
+  });
+  await new Promise<void>((resolve) => provider.listen(0, "127.0.0.1", resolve));
+  const { dir, cleanup } = rig({ idleWindowMs: 400 });
+  let daemon: DaemonHandle | null = null;
+  try {
+    daemon = await startDaemon(dir, { env: { HIVE_CLAUDE_OAUTH_TOKEN_URL: `http://127.0.0.1:${(provider.address() as AddressInfo).port}/v1/oauth/token` } });
+    const client = await daemon.client();
+    const account = "claude-central";
+    writeCredential(dir, account, { ...valid("FIXTURE_ACCESS_central_1"), refreshToken: "FIXTURE_REFRESH_central_1" });
+    await client.request("account.add", { harness: "claude", label: "central", importExisting: true });
+    await client.request("account.credentials.enable", { id: account, idempotencyKey: "enable-1" });
+    await client.request("account.credentials.disable", { id: account, idempotencyKey: "disable-1" });
+
+    const bee = await spawnWarm(client, dir, "managed", account);
+    writeCredential(dir, account, expired("FIXTURE_ACCESS_central_dead"));
+    const sent = await client.request<SendRpcResult>("send", { beeId: bee, body: "finish after recovery" });
+    await interruptionWhere(client, bee, (row) => row.state === "open" && row.messageIds.includes(sent.messageId), "cut off");
+    await viewWhere(client, bee, (v) => v.view.runtimeState === "stopped", "parked by the idle window");
+
+    writeCredential(dir, account, { ...valid("FIXTURE_ACCESS_central_2"), refreshToken: "FIXTURE_REFRESH_central_2" });
+    await client.request("account.capture", { id: account });
+    await sleep(400);
+    const waiting = await client.request<ViewResult>("view", { beeId: bee });
+    assert.deepEqual([waiting.view.runtimeState, waiting.view.flags], ["stopped", ["auth_needed"]], "the login alone wakes nothing");
+    assert.deepEqual(continuations(await mailbox(client, bee), sent.messageId), []);
+
+    await client.request("account.credentials.enable", { id: account, idempotencyKey: "enable-2" });
+    const done = await interruptionWhere(client, bee, (row) => row.state === "completed", "resumed by the enabling rotation");
+    assert.deepEqual([done.restoredBy, done.continuationKind], ["refresh", "redeliver"]);
+    assert.deepEqual(continuations(await mailbox(client, bee), sent.messageId).map((m) => [m.body, m.deliveredGeneration]), [["finish after recovery", 2]]);
+    client.close();
+  } finally {
+    if (daemon) await daemon.stop();
+    cleanup();
+    await new Promise<void>((resolve) => provider.close(() => resolve()));
   }
 });
