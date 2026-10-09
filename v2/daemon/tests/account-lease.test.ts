@@ -1426,7 +1426,7 @@ test("central.claude: a refresh interrupted by a daemon death resolves on the ne
   } finally { r.cleanup(); }
 });
 
-test("central.claude: an uncertain row from before schema v33 has no retry metadata and is still retried by the tick alone", async () => {
+test("central.claude: an uncertain row from before schema v34 has no retry metadata and is still retried by the tick alone", async () => {
   const r = rig();
   try {
     const account = addAccount(r, "claude", "legacy", { home: { ".credentials.json": nativeDocument(r) } });
@@ -1453,7 +1453,9 @@ test("central.claude: a retry that succeeds but cannot publish still ends the do
   try {
     const account = addAccount(r, "claude", "settle", { home: { ".credentials.json": nativeDocument(r) } });
     let lost = false; let failPublish = false; let refreshes = 0;
+    const validated: string[] = [];
     const svc = service(r, { keychainReader: async () => "{}", keychainWriter: async () => !failPublish,
+      onCredentialValidated: (id, by) => validated.push(`${id}:${by}:${r.store.getAccount(id)!.status}`),
       fetchers: { claudeRefresh: async () => { refreshes++; if (lost) throw new Error("connection lost");
         return granted({ accessToken: `access-${refreshes}`, refreshToken: CLAUDE_ENROLLED_REFRESH, expiresAt: r.now() + HOUR }); } } });
     await svc.centralCredentials.enable(account);
@@ -1472,6 +1474,8 @@ test("central.claude: a retry that succeeds but cannot publish still ends the do
     assert.equal(settled.failure, null);
     assert.equal(refreshes, 3, "settling a saved result does not rotate again");
     assert.equal(r.store.getAccount(account.id)!.status, "ok", "no limits probe is needed to end the doubt");
+    assert.deepEqual(validated, ["claude-settle:refresh:ok", "claude-settle:refresh:ok"],
+      "enrollment and the settled recovery each announce a working credential, after the status is ok again");
   } finally { r.cleanup(); }
 });
 

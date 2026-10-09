@@ -199,7 +199,7 @@ export class ClaudeCredentialAuthority {
     if (!state) return false;
     if (state.phase === "refreshing") return true;
     const retryAt = state.failure?.retryAt ?? null;
-    // An `uncertain` row written before schema v33 has no retry metadata: it is due.
+    // An `uncertain` row written before schema v34 has no retry metadata: it is due.
     if (state.phase === "uncertain") return retryAt === null || retryAt <= this.options.now();
     return state.phase === "ready" && retryAt !== null && retryAt <= this.options.now();
   }

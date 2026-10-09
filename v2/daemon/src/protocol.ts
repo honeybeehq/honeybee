@@ -117,7 +117,7 @@ export const DAEMON_CAPABILITIES = [
   "account.lease.v1",
   "account.credentials.pilot.v1",
   /**
-   * v33: a dying login is visible. Account rows carry `statusReason` and
+   * v34: a dying login is visible. Account rows carry `statusReason` and
    * `refreshTokenExpiresAt`; `account.credentials.status` carries
    * `refreshTokenExpiresAt` and the last refresh `failure`; the terminal
    * phase `login_required` sets the account `auth_needed` and `account.lease`
@@ -296,7 +296,7 @@ export const RPC_ERROR_CODES = [
    */
   "lease_unavailable",
   /**
-   * v33 (`account.lease`): the provider refused the account's refresh token
+   * v34 (`account.lease`): the provider refused the account's refresh token
    * (central credential phase `login_required`). Not retryable: only a new
    * login on the node that owns the account recovers it.
    */
