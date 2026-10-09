@@ -117,15 +117,18 @@ export class ClaudeOauthRunner implements LoginRunner {
     const account = host.account;
     const identity = grant.identity ?? await host.transports.claudeIdentity(grant.accessToken).catch(() => null);
     if (!host.stillActive()) return host.flow() as LoginFlowRow;
+    const current = () => host.isCurrent(this) && host.stillActive();
     try {
-      const state = await host.accounts.centralCredentials.relogin(account, document, identity, { allowDifferentAccount: host.replaceAccount() });
+      const state = await host.accounts.centralCredentials.relogin(account, document, identity, { allowDifferentAccount: host.replaceAccount(), stillWanted: current });
       host.log(`account.login.captured flow=${host.flowId} account=${account.id} by=claude_oauth central=in_place generation=${state.generation}`);
     } catch (error) {
       if (!(error instanceof CredentialAuthorityError)) throw error;
+      if (!current()) return host.flow() as LoginFlowRow;
       const code = error.reason === "different_account" || error.reason === "identity_unverified" ? error.reason : "credential_unavailable";
       return host.fail(err(code, error.message), true);
     }
-    return host.succeed();
+    // A flow cancelled or replaced after the save keeps its own outcome; the login itself stands.
+    return current() ? host.succeed() : host.flow() as LoginFlowRow;
   }
 
   tick(_now: number): void {}

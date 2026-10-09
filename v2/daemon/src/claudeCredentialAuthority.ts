@@ -129,7 +129,10 @@ export class ClaudeCredentialAuthority {
    */
   private ready(account: AccountRow, value: AuthorityDocument): AccountCredentialAuthority {
     const refreshTokenExpiresAt = parseClaudeCredentials(JSON.stringify(value.document))?.refreshTokenExpiresAt;
-    if (refreshTokenExpiresAt !== undefined) this.options.store.setAccountRefreshTokenExpiry(account.id, refreshTokenExpiresAt, "central credential refreshed");
+    // A new login's expiry is its own: when the provider did not say, the previous login's is no longer true.
+    if (refreshTokenExpiresAt !== undefined || value.login) {
+      this.options.store.setAccountRefreshTokenExpiry(account.id, refreshTokenExpiresAt ?? null, value.login ? "central credential logged in" : "central credential refreshed");
+    }
     if (value.login) this.options.store.recordAccountLogin(account.id, value.login.at);
     const ready = this.put(account, "ready", value);
     this.credentialWorks(account);
@@ -511,8 +514,11 @@ export class ClaudeCredentialAuthority {
    * authority already holds unless `allowDifferentAccount`. The previous
    * generation is kept beside the authority until the new chain's first
    * successful refresh. A crash after the save is settled by the next ensure.
+   * `stillWanted` is checked after the last await, right before the first
+   * write: a sign-in cancelled or replaced while this waited changes nothing.
+   * Once the new chain is saved the login stands, whatever happens to its flow.
    */
-  relogin(account: AccountRow, document: Record<string, unknown>, identity: ClaudeIdentity | null, opts: { allowDifferentAccount: boolean }): Promise<AccountCredentialAuthority> {
+  relogin(account: AccountRow, document: Record<string, unknown>, identity: ClaudeIdentity | null, opts: { allowDifferentAccount: boolean; stillWanted: () => boolean }): Promise<AccountCredentialAuthority> {
     return this.lane(account, "relogin", async () => {
       const state = this.status(account);
       if (!state || state.phase === "disabled") throw new CredentialAuthorityError(`Central credentials are not enabled for ${account.id}.`);
@@ -523,6 +529,7 @@ export class ClaudeCredentialAuthority {
       if (!grant?.refreshToken || grant.expiresAt <= this.options.now()) throw new CredentialAuthorityError("The login did not produce a usable refresh credential.");
       let current: AuthorityDocument | null;
       try { current = this.read(account); } catch { current = null; }
+      if (identity && identity.organizationUuid === null) identity = await this.options.identify(grant.accessToken).catch(() => null) ?? identity;
       const verdict = await this.sameAccount(account, current, identity);
       if (verdict !== "same" && !opts.allowDifferentAccount) {
         throw verdict === "different"
@@ -530,6 +537,7 @@ export class ClaudeCredentialAuthority {
           : new CredentialAuthorityError(`Honeybee cannot tell whether this login belongs to the Anthropic account ${account.id} holds; nothing was changed. If it does: hive account login ${account.id} --replace-account`, "identity_unverified");
       }
       if (current) await this.options.beforeRefresh(account, current.document);
+      if (!opts.stillWanted()) throw new CredentialAuthorityError("The sign-in was cancelled or replaced before it could be saved; nothing was changed.", "operation_in_progress");
       const operationKey = randomUUID();
       if (current) {
         save(this.previousPath(account), current);
@@ -548,22 +556,28 @@ export class ClaudeCredentialAuthority {
       return this.enrollmentReady(account, value);
     });
   }
-  /** Compares account and organization; a side that cannot be named is `unknown`, never assumed equal. */
+  /** Compares account and organization; a side or an organization that cannot be named is `unknown`, never assumed equal. */
   private async sameAccount(account: AccountRow, current: AuthorityDocument | null, grant: ClaudeIdentity | null): Promise<"same" | "different" | "unknown"> {
     if (!grant) return "unknown";
     const held = await this.heldIdentity(account, current);
     if (!held) return "unknown";
     if (held.accountUuid !== grant.accountUuid) return "different";
-    if (held.organizationUuid !== null && grant.organizationUuid !== null && held.organizationUuid !== grant.organizationUuid) return "different";
-    return "same";
+    if (held.organizationUuid === null || grant.organizationUuid === null) return "unknown";
+    return held.organizationUuid === grant.organizationUuid ? "same" : "different";
   }
+  /** The first source that names both account and organization; else the first that names the account. */
   private async heldIdentity(account: AccountRow, current: AuthorityDocument | null): Promise<ClaudeIdentity | null> {
-    if (current?.identity) return current.identity;
+    const named: ClaudeIdentity[] = [];
+    if (current?.identity) named.push(current.identity);
     const credential = current ? parseClaudeCredentials(JSON.stringify(current.document)) : null;
-    if (credential && credential.expiresAt > this.options.now()) {
+    if (!named.some((identity) => identity.organizationUuid !== null) && credential && credential.expiresAt > this.options.now()) {
       const asked = await this.options.identify(credential.accessToken).catch(() => null);
-      if (asked) return asked;
+      if (asked) named.push(asked);
     }
-    return this.options.homeIdentity(account);
+    if (!named.some((identity) => identity.organizationUuid !== null)) {
+      const home = this.options.homeIdentity(account);
+      if (home) named.push(home);
+    }
+    return named.find((identity) => identity.organizationUuid !== null) ?? named[0] ?? null;
   }
 }

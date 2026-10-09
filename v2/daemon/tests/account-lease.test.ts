@@ -1676,7 +1676,7 @@ test("central.claude relogin: login_required logs in place — generation +1, re
     const before = svc.centralCredentials.status(account)!;
     assert.equal(before.phase, "login_required");
     assert.equal(r.store.getAccount(account.id)!.status, "auth_needed");
-    const state = await svc.centralCredentials.relogin(account, loginGrant(r), ACCOUNT_A, { allowDifferentAccount: false });
+    const state = await svc.centralCredentials.relogin(account, loginGrant(r), ACCOUNT_A, { allowDifferentAccount: false, stillWanted: () => true });
     assert.equal(state.phase, "ready");
     assert.equal(state.generation, before.generation + 1);
     assert.equal(state.failure, null);
@@ -1709,16 +1709,16 @@ test("central.claude relogin: another Anthropic account or an unknown one is ref
     const { account, svc } = await loginRequiredAccount(r, "other");
     const before = svc.centralCredentials.status(account)!;
     const homeBefore = readFileSync(join(account.homePath, ".credentials.json"), "utf8");
-    await assert.rejects(svc.centralCredentials.relogin(account, loginGrant(r), ACCOUNT_B, { allowDifferentAccount: false }),
+    await assert.rejects(svc.centralCredentials.relogin(account, loginGrant(r), ACCOUNT_B, { allowDifferentAccount: false, stillWanted: () => true }),
       (error: unknown) => error instanceof CredentialAuthorityError && error.reason === "different_account");
-    await assert.rejects(svc.centralCredentials.relogin(account, loginGrant(r), null, { allowDifferentAccount: false }),
+    await assert.rejects(svc.centralCredentials.relogin(account, loginGrant(r), null, { allowDifferentAccount: false, stillWanted: () => true }),
       (error: unknown) => error instanceof CredentialAuthorityError && error.reason === "identity_unverified");
-    await assert.rejects(svc.centralCredentials.relogin(account, loginGrant(r), { accountUuid: "acct-a", organizationUuid: "org-other" }, { allowDifferentAccount: false }),
+    await assert.rejects(svc.centralCredentials.relogin(account, loginGrant(r), { accountUuid: "acct-a", organizationUuid: "org-other" }, { allowDifferentAccount: false, stillWanted: () => true }),
       (error: unknown) => error instanceof CredentialAuthorityError && error.reason === "different_account", "another organization is another account");
     assert.deepEqual(svc.centralCredentials.status(account), before);
     assert.equal(readFileSync(join(account.homePath, ".credentials.json"), "utf8"), homeBefore);
     assert.ok(!existsSync(previousFile(r, account.id)));
-    const replaced = await svc.centralCredentials.relogin(account, loginGrant(r), ACCOUNT_B, { allowDifferentAccount: true });
+    const replaced = await svc.centralCredentials.relogin(account, loginGrant(r), ACCOUNT_B, { allowDifferentAccount: true, stillWanted: () => true });
     assert.equal(replaced.phase, "ready");
     assert.ok(r.log.some((line) => line.includes("identity=different_allowed")));
   } finally { r.cleanup(); }
@@ -1728,10 +1728,91 @@ test("central.claude relogin: an authority with no recorded identity uses the ho
   const r = rig();
   try {
     const { account, svc } = await loginRequiredAccount(r, "legacy", { fetchers: { claudeIdentity: async () => null } });
-    await assert.rejects(svc.centralCredentials.relogin(account, loginGrant(r), ACCOUNT_A, { allowDifferentAccount: false }), /cannot tell/);
+    await assert.rejects(svc.centralCredentials.relogin(account, loginGrant(r), ACCOUNT_A, { allowDifferentAccount: false, stillWanted: () => true }), /cannot tell/);
     writeFileSync(join(account.homePath, ".claude.json"), JSON.stringify({ oauthAccount: { accountUuid: "acct-a", organizationUuid: "org-a", emailAddress: "a@example.test" } }));
-    await assert.rejects(svc.centralCredentials.relogin(account, loginGrant(r), ACCOUNT_B, { allowDifferentAccount: false }), /different Anthropic account/);
-    assert.equal((await svc.centralCredentials.relogin(account, loginGrant(r), ACCOUNT_A, { allowDifferentAccount: false })).phase, "ready");
+    await assert.rejects(svc.centralCredentials.relogin(account, loginGrant(r), ACCOUNT_B, { allowDifferentAccount: false, stillWanted: () => true }), /different Anthropic account/);
+    assert.equal((await svc.centralCredentials.relogin(account, loginGrant(r), ACCOUNT_A, { allowDifferentAccount: false, stillWanted: () => true })).phase, "ready");
+  } finally { r.cleanup(); }
+});
+
+test("central.claude relogin: a sign-in cancelled while it waited behind a refresh changes nothing", async () => {
+  const r = rig();
+  try {
+    const gate = deferred<void>();
+    let holdRefresh = false;
+    const { account, svc } = await loginRequiredAccount(r, "cancelled");
+    const before = svc.centralCredentials.status(account)!;
+    const homeBefore = readFileSync(join(account.homePath, ".credentials.json"), "utf8");
+    // An in-flight ensure holds the lane; the relogin queues behind it.
+    r.store.putAccountCredentialAuthority({ ...before, phase: "uncertain", failure: { ...before.failure!, outcome: "unknown_outcome", retryAt: null } });
+    const slow = service(r, { fetchers: { claudeIdentity: async () => ACCOUNT_A, claudeRefresh: async () => { if (holdRefresh) await gate.promise; return refused; } } });
+    holdRefresh = true;
+    const refreshing = slow.centralCredentials.ensure(account, 0).catch(() => undefined);
+    let wanted = true;
+    const login = slow.centralCredentials.relogin(account, loginGrant(r), ACCOUNT_A, { allowDifferentAccount: false, stillWanted: () => wanted });
+    wanted = false;
+    gate.resolve();
+    await refreshing;
+    await assert.rejects(login, /cancelled or replaced/);
+    assert.equal(slow.centralCredentials.status(account)!.phase, "login_required");
+    assert.equal(slow.centralCredentials.status(account)!.generation, before.generation);
+    assert.equal(readFileSync(join(account.homePath, ".credentials.json"), "utf8"), homeBefore);
+    assert.ok(!existsSync(previousFile(r, account.id)));
+    assert.ok(!slow.centralCredentials.document(account).login, "the authority still holds the old chain");
+  } finally { r.cleanup(); }
+});
+
+test("central.claude relogin: an organization that cannot be named is unverified, not a wildcard", async () => {
+  const r = rig();
+  try {
+    const { account, svc } = await loginRequiredAccount(r, "org");
+    await assert.rejects(svc.centralCredentials.relogin(account, loginGrant(r), { accountUuid: "acct-a", organizationUuid: null }, { allowDifferentAccount: false, stillWanted: () => true }),
+      (error: unknown) => error instanceof CredentialAuthorityError && error.reason === "identity_unverified");
+    const legacy = await loginRequiredAccount(r, "org-legacy", { fetchers: { claudeIdentity: async () => null } });
+    writeFileSync(join(legacy.account.homePath, ".claude.json"), JSON.stringify({ oauthAccount: { accountUuid: "acct-a" } }));
+    await assert.rejects(legacy.svc.centralCredentials.relogin(legacy.account, loginGrant(r), { accountUuid: "acct-a", organizationUuid: "org-b" }, { allowDifferentAccount: false, stillWanted: () => true }),
+      (error: unknown) => error instanceof CredentialAuthorityError && error.reason === "identity_unverified");
+    const asked = await loginRequiredAccount(r, "org-asked", { fetchers: { claudeIdentity: async (token: string) => (token === "login-access" ? ACCOUNT_A : token === "enrolled-access" ? ACCOUNT_A : null) } });
+    assert.equal((await asked.svc.centralCredentials.relogin(asked.account, loginGrant(r), { accountUuid: "acct-a", organizationUuid: null }, { allowDifferentAccount: false, stillWanted: () => true })).phase, "ready",
+      "a grant without an organization is completed from the provider's profile");
+  } finally { r.cleanup(); }
+});
+
+test("central.claude relogin: a login whose expiry the provider did not give clears the previous login's expiry", async () => {
+  const r = rig();
+  try {
+    const { account, svc } = await loginRequiredAccount(r, "expiry");
+    r.store.setAccountRefreshTokenExpiry(account.id, r.now() + 24 * HOUR, "old login");
+    const grant = loginGrant(r);
+    delete (grant.claudeAiOauth as Record<string, unknown>).refreshTokenExpiresAt;
+    const state = await svc.centralCredentials.relogin(account, grant, ACCOUNT_A, { allowDifferentAccount: false, stillWanted: () => true });
+    assert.equal(state.refreshTokenExpiresAt, null);
+    assert.equal(r.store.getAccount(account.id)!.refreshTokenExpiresAt, null);
+    assert.equal(svc.mirrorRow(r.store.getAccount(account.id)!).loginDueAt, null);
+  } finally { r.cleanup(); }
+});
+
+test("central.claude early refresh: a failure before the provider is retried with backoff, not on every tick", async () => {
+  const r = rig({ accounts: { centralRefreshAheadMs: 3 * HOUR, centralRefreshMinIntervalMs: 0 } });
+  try {
+    const account = addAccount(r, "claude", "early-locked", { home: { ".credentials.json": nativeDocument(r) } });
+    let keychainReads = 0; let locked = false;
+    const svc = service(r, { keychainStateReader: async () => { keychainReads++; return locked ? { status: "unreadable" } : { status: "unavailable" }; },
+      fetchers: { claudeRefresh: async () => granted({ accessToken: "a", refreshToken: CLAUDE_ENROLLED_REFRESH, expiresAt: r.now() + 2 * HOUR }) } });
+    await svc.centralCredentials.enable(account);
+    locked = true;
+    const reads = keychainReads;
+    for (let tick = 0; tick < 5; tick++) {
+      svc.centralEarlyRefreshTick();
+      await new Promise((done) => setImmediate(done));
+    }
+    assert.equal(keychainReads - reads, 1, "one attempt, then backoff");
+    assert.ok(r.log.some((line) => line.startsWith(`account.credentials.early_refresh_failed account=${account.id} next_in_ms=30000`)));
+    r.setNow(r.now() + 30_000);
+    locked = false;
+    svc.centralEarlyRefreshTick();
+    await new Promise((done) => setTimeout(done, 20));
+    assert.equal(svc.centralCredentials.status(account)!.generation, 3, "after the backoff the early refresh runs");
   } finally { r.cleanup(); }
 });
 
@@ -1742,7 +1823,7 @@ test("central.claude relogin: a login saved before publication failed settles on
     const { account, svc, presented } = await loginRequiredAccount(r, "crash", { keychainReader: async () => "{}", keychainWriter: async () => !failPublish });
     const before = svc.centralCredentials.status(account)!;
     failPublish = true;
-    await assert.rejects(svc.centralCredentials.relogin(account, loginGrant(r), ACCOUNT_A, { allowDifferentAccount: false }), /Keychain/);
+    await assert.rejects(svc.centralCredentials.relogin(account, loginGrant(r), ACCOUNT_A, { allowDifferentAccount: false, stillWanted: () => true }), /Keychain/);
     const stuck = svc.centralCredentials.status(account)!;
     assert.equal(stuck.phase, "login_required", "the row only moves once the copies are published");
     assert.equal(stuck.generation, before.generation);

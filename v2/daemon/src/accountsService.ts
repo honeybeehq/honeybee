@@ -847,6 +847,8 @@ export class AccountsService {
   private readonly claudeKeychainRepairs = new Map<string, number>();
   /** Earliest next tick-driven probe per account with a central refresh retry due. */
   private readonly centralRetryProbes = new Map<string, number>();
+  /** After an early refresh that failed before or after the provider (Keychain, publication, foreign copy): earliest next try and consecutive failures. */
+  private readonly earlyRefreshBackoff = new Map<string, { at: number; failures: number }>();
   private claudeKeychainRepairFlight: Promise<void> | null = null;
   /** Grok/Kimi refresh tokens also rotate; share the whole provider read. */
   private readonly secondaryProviderFetches = new Map<string, Promise<PutAccountLimitsInput>>();
@@ -2738,12 +2740,20 @@ export class AccountsService {
   centralEarlyRefreshTick(): void {
     const aheadMs = this.cfg.accounts.centralRefreshAheadMs;
     if (aheadMs <= 0) return;
+    const now = this.now();
     for (const account of this.store.listAccounts()) {
       if (account.harness !== "claude" || account.status === "paused") continue;
+      const backoff = this.earlyRefreshBackoff.get(account.id);
+      if (backoff && backoff.at > now) continue;
       if (!this.centralCredentials.earlyRefreshDue(account, aheadMs)) continue;
       this.log(`account.credentials.early_refresh account=${account.id} ahead_ms=${aheadMs}`);
-      void this.centralCredentials.ensure(account, CLAUDE_MIN_SHIP_TTL_MS, undefined, aheadMs).catch((error) => {
-        this.log(`account.credentials.early_refresh_failed account=${account.id} err=${JSON.stringify(errorDetail(error).slice(0, 300))}`);
+      void this.centralCredentials.ensure(account, CLAUDE_MIN_SHIP_TTL_MS, undefined, aheadMs).then(() => {
+        this.earlyRefreshBackoff.delete(account.id);
+      }, (error) => {
+        const failures = (this.earlyRefreshBackoff.get(account.id)?.failures ?? 0) + 1;
+        const delayMs = Math.min(this.cfg.accounts.centralRefreshRetryBaseMs * 2 ** Math.min(failures - 1, 20), 15 * 60_000);
+        this.earlyRefreshBackoff.set(account.id, { at: this.now() + delayMs, failures });
+        this.log(`account.credentials.early_refresh_failed account=${account.id} next_in_ms=${delayMs} err=${JSON.stringify(errorDetail(error).slice(0, 300))}`);
       });
     }
   }
