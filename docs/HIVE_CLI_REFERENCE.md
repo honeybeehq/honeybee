@@ -373,8 +373,10 @@ one account until its 5h window hit 93%):
 - Accounts whose limits cannot be read are a last resort (oldest registration
   wins).
 - **Admission.** An account that cannot authenticate on this node never wins:
-  `auth_needed` status, no primary credential, or a Claude token past expiry
-  with its refresh token blanked (a stale satellite lease) are skipped, and
+  `auth_needed` status, no primary credential, an empty or malformed credential
+  document, or a Claude token past expiry with its refresh token blanked (a
+  stale satellite lease) are skipped (judged on the copy a runtime reads: the
+  home when populated, else the vault copy activation installs), and
   with no usable account the spawn is refused with a typed `account_auth_needed`
   instead of placing a bee that will crash at `/login`. Explicit `--account`,
   allocator claims, `bee swap-account` and every runtime start (revive, send to

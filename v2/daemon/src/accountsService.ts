@@ -198,15 +198,19 @@ export type PickOutcome =
   | { ok: false; code: "no_accounts" | "all_paused" | "no_credentials" | "auth_needed" | "no_untried"; message: string };
 
 /**
- * Whether a credential can authenticate a NEW runtime on this node: `absent`
- * (no primary credential file), `expired` (a Claude token past expiry with
- * no refresh path: a leased copy whose refresh token was blanked, or a central
- * chain the daemon cannot rotate), `present` (valid now or refreshable).
+ * Whether the credential a NEW runtime would read can authenticate on this
+ * node, judged on the source activation hands the harness (the home when it
+ * holds the primary credential file, else the vault copy activation installs):
+ * `absent` (no primary credential file), `invalid` (a Claude primary file
+ * that is not an OAuth document: empty, truncated, foreign), `expired` (a
+ * Claude token past expiry with no refresh path: a leased copy whose refresh
+ * token was blanked, or a central chain the daemon cannot rotate), `present`
+ * (valid now or refreshable).
  */
-export type CredentialState = "present" | "absent" | "expired";
+export type CredentialState = "present" | "absent" | "invalid" | "expired";
 
-/** Typed refusal codes shared by explicit spawn, allocator claims, swap, lease and the runtime-start hold. */
-export type AccountRefusalCode = "account_paused" | "account_auth_needed" | "account_credential_missing" | "account_credential_expired";
+/** Typed refusal codes shared by explicit spawn, allocator claims, swap and the runtime-start hold. */
+export type AccountRefusalCode = "account_paused" | "account_auth_needed" | "account_credential_missing" | "account_credential_invalid" | "account_credential_expired";
 
 export type AccountReadiness =
   | { ready: true }
@@ -996,65 +1000,80 @@ export class AccountsService {
     return dirHasCredentials(this.vaultDirOf(account), recipe) || dirHasCredentials(account.homePath, recipe);
   }
 
-  /** A credential file existing is not a usable credential: Claude tokens past expiry with no refresh path are `expired`. */
+  /**
+   * The credential a new runtime would read. Activation copies the vault into
+   * the home only while the home holds no primary credential file, so a
+   * populated home is judged on its own: a valid vault copy cannot rescue an
+   * expired home the harness will actually use.
+   */
   credentialState(account: AccountRow): CredentialState {
-    if (!this.credentialed(account)) return "absent";
+    const recipe = recipeFor(account.harness);
+    if (!recipe) return "present";
+    if (account.harness === "claude" && this.centralCredentials.enabled(account)) return this.centralClaudeCredentialState(account);
+    const primary = primaryCredentialFile(recipe);
+    const source = dirHasCredentials(account.homePath, recipe)
+      ? account.homePath
+      : dirHasCredentials(this.vaultDirOf(account), recipe) ? this.vaultDirOf(account) : null;
+    if (source === null) return "absent";
     if (account.harness !== "claude") return "present";
-    return this.claudeCredentialRefreshable(account) ? "present" : "expired";
+    return this.claudeDocumentState(readIfFile(join(source, primary)));
+  }
+
+  private centralClaudeCredentialState(account: AccountRow): CredentialState {
+    let document: Record<string, unknown>;
+    try {
+      document = this.centralCredentials.document(account);
+    } catch {
+      return "invalid";
+    }
+    const parsed = parseClaudeCredentials(JSON.stringify(document));
+    if (!parsed) return "invalid";
+    if (parsed.expiresAt > this.now()) return "present";
+    return this.centralCredentials.status(account)?.phase === "ready" && hasRefreshToken(parsed) ? "present" : "expired";
+  }
+
+  private claudeDocumentState(raw: string | null): CredentialState {
+    if (raw === null) return "absent";
+    const parsed = parseClaudeCredentials(raw);
+    if (!parsed) return "invalid";
+    return parsed.expiresAt > this.now() || hasRefreshToken(parsed) ? "present" : "expired";
   }
 
   /**
-   * Node-local admission readiness for placing or (re)starting a runtime on
-   * the account. Synchronous and file-backed (no provider call): status,
-   * then the primary credential's presence and (Claude) expiry/refresh path.
+   * Whether the account's credential can authenticate a NEW runtime on this
+   * node: the auth_needed verdict, then the credential a runtime would read
+   * (presence, Claude document validity, expiry / refresh path). Synchronous
+   * and file-backed; no provider call. A pause is not an auth fact and is
+   * judged separately by `readiness`.
    */
+  credentialReadiness(account: AccountRow): AccountReadiness {
+    if (account.status === "auth_needed") {
+      return { ready: false, code: "account_auth_needed", message: `account ${account.id} needs login; log in with: hive account login ${account.id}` };
+    }
+    switch (this.credentialState(account)) {
+      case "absent":
+        return { ready: false, code: "account_credential_missing", message: `account ${account.id} has no credential; log in with: hive account login ${account.id}` };
+      case "invalid":
+        return { ready: false, code: "account_credential_invalid", message: `account ${account.id} has a credential file that is not a usable ${account.harness} credential; re-lease or log in with: hive account login ${account.id}` };
+      case "expired":
+        return { ready: false, code: "account_credential_expired", message: `account ${account.id} has an expired credential with no refresh path on this node; re-lease or log in with: hive account login ${account.id}` };
+      case "present":
+        return { ready: true };
+    }
+  }
+
+  /** Node-local admission readiness for PLACING work on the account: the pause policy, then `credentialReadiness`. */
   readiness(account: AccountRow): AccountReadiness {
     if (account.status === "paused") {
       const pause = pauseOf(account);
       return { ready: false, code: "account_paused", message: `account ${account.id} is paused by ${pause ? pauseLabel(pause) : "operator"}` };
     }
-    if (account.status === "auth_needed") {
-      return { ready: false, code: "account_auth_needed", message: `account ${account.id} needs login; log in with: hive account login ${account.id}` };
-    }
-    const credential = this.credentialState(account);
-    if (credential === "absent") {
-      return { ready: false, code: "account_credential_missing", message: `account ${account.id} has no credential; log in with: hive account login ${account.id}` };
-    }
-    if (credential === "expired") {
-      return { ready: false, code: "account_credential_expired", message: `account ${account.id} has an expired credential with no refresh path on this node; re-lease or log in with: hive account login ${account.id}` };
-    }
-    return { ready: true };
+    return this.credentialReadiness(account);
   }
 
   /** Usable for automatic selection: not paused, not auth_needed, credential present and not expired. */
   private usableForSelection(account: AccountRow): boolean {
     return account.status === "ok" && this.credentialState(account) === "present";
-  }
-
-  private claudeCredentialRefreshable(account: AccountRow): boolean {
-    const now = this.now();
-    if (this.centralCredentials.enabled(account)) {
-      let document: Record<string, unknown>;
-      try {
-        document = this.centralCredentials.document(account);
-      } catch {
-        return false;
-      }
-      const parsed = parseClaudeCredentials(JSON.stringify(document));
-      if (!parsed) return false;
-      if (parsed.expiresAt > now) return true;
-      return this.centralCredentials.status(account)?.phase === "ready" && hasRefreshToken(parsed);
-    }
-    // Only a PARSEABLE token can be judged expired: a primary file that holds
-    // no OAuth document keeps the file-presence meaning of `credentialed`.
-    let parsedAny = false;
-    for (const path of [join(account.homePath, ".credentials.json"), join(this.vaultDirOf(account), ".credentials.json")]) {
-      const parsed = parseClaudeCredentials(readIfFile(path));
-      if (!parsed) continue;
-      parsedAny = true;
-      if (parsed.expiresAt > now || hasRefreshToken(parsed)) return true;
-    }
-    return !parsedAny;
   }
 
   /**
@@ -1413,7 +1432,7 @@ export class AccountsService {
       const legacy: PickOutcome = inherited
         ? inheritedReadiness!.ready
           ? { ok: true, account: inherited, reason: "automatic inheritance", limitsAgeMs: null, stale: false, candidates: 1 }
-          : { ok: false, code: inheritedReadiness!.code === "account_paused" ? "all_paused" : inheritedReadiness!.code === "account_auth_needed" ? "auth_needed" : "no_credentials", message: inheritedReadiness!.message }
+          : { ok: false, code: inheritedReadiness!.code === "account_paused" ? "all_paused" : inheritedReadiness!.code === "account_credential_missing" ? "no_credentials" : "auth_needed", message: inheritedReadiness!.message }
         : this.pick(harness, options);
       if (!legacy.ok) {
         const receipt: AccountAllocationReceipt = {
@@ -1518,7 +1537,7 @@ export class AccountsService {
       const credential = this.credentialState(account);
       if (credential === "absent") continue;
       if (account.status === "auth_needed") { unusable.push({ account, why: "recent auth failure" }); continue; }
-      if (credential === "expired") { unusable.push({ account, why: "expired credential" }); continue; }
+      if (credential !== "present") { unusable.push({ account, why: `${credential} credential` }); continue; }
       usable += 1;
       if (opts.excludeAccountIds?.has(account.id)) continue;
       if (
@@ -1641,7 +1660,7 @@ export class AccountsService {
         : eligible.length === 1
           ? `only ${harness} account with credentials`
           : "round-robin: first pick",
-      ...(skipped.length > 0 ? [`skipped ${skipped.map((account) => account.id).join(", ")} for recent auth failure or expired credential`] : []),
+      ...(skipped.length > 0 ? [`skipped ${skipped.map((account) => account.id).join(", ")} for recent auth failure or an unusable credential`] : []),
     ].join("; ");
     this.log(`account rr → ${winner.id} — ${reason}`);
     return { ok: true, account: winner, reason, limitsAgeMs: null, stale: false, candidates: eligible.length };
@@ -1711,11 +1730,15 @@ export class AccountsService {
       // auth failure sets auth_needed; a readable answer or agy's successful
       // token-file probe is contrary evidence. The agy limits row stays
       // unsupported and its credential health stays unverified.
+      // The probe awaited the provider: judge the account as it is NOW (an
+      // operator or lease may have paused it meanwhile; the store keeps a pause
+      // through auth-health updates either way).
+      const current = this.store.getAccount(id) ?? account;
       if (!fetched.readable && fetched.error && fetched.unreadableReason === "auth_failed") {
-        if (this.store.setAccountStatus(id, account.status === "paused" ? "paused" : "auth_needed", `limits probe: ${fetched.error.slice(0, 200)}`).applied) {
+        if (this.store.setAccountStatus(id, current.status === "paused" ? "paused" : "auth_needed", `limits probe: ${fetched.error.slice(0, 200)}`).applied) {
           this.log(`account.auth_needed account=${id} by=limits_probe`);
         }
-      } else if ((fetched.readable || credentialProbePassed) && account.status === "auth_needed") {
+      } else if ((fetched.readable || credentialProbePassed) && current.status === "auth_needed") {
         const probe = credentialProbePassed ? "credential_probe" : "limits_probe";
         this.store.setAccountStatus(id, "ok", `${probe} authenticated`);
         this.log(`account.auth_ok account=${id} by=${probe}`);

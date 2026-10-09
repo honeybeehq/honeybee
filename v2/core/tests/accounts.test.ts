@@ -202,7 +202,11 @@ test("v33.pause: pause ownership — the holder is recorded, a foreign pause/unp
       { pausedBy: "operator", pausedOwner: null },
     );
     assert.equal(store.recordAccountLogin("claude-a", 5).account.status, "paused");
-    assert.equal(store.setAccountStatus("claude-a", "ok").account.pausedBy, null);
+    // Auth-health evidence never lifts a pause, however stale the caller's snapshot.
+    assert.equal(store.setAccountStatus("claude-a", "ok").applied, false);
+    assert.equal(store.setAccountStatus("claude-a", "auth_needed").applied, false);
+    assert.equal(store.getAccount("claude-a")?.pausedBy, "operator");
+    assert.equal(store.unpauseAccount("claude-a", { by: "operator", owner: null }, "ok").account.pausedBy, null);
     // Owner ids are validated: operator carries none, lease/quota require one.
     assert.throws(() => store.pauseAccount("claude-a", { by: "operator", owner: "nope" }), CoreError);
     assert.throws(() => store.pauseAccount("claude-a", { by: "lease", owner: "" }), CoreError);
@@ -352,7 +356,7 @@ test("v7.migration: a v6 store opens as v7 — bees.account added, accounts/acco
     try {
       const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
       assert.equal(Number(version.value), SCHEMA_VERSION);
-      assert.equal(SCHEMA_VERSION, 33);
+      assert.equal(SCHEMA_VERSION, 34);
       const cols = (check.prepare("SELECT name FROM pragma_table_info('bees')").all() as Array<{ name: string }>).map((c) => c.name);
       assert.ok(cols.includes("account"));
       const tables = (check.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{ name: string }>).map((t) => t.name);
@@ -407,7 +411,7 @@ test("v27 bridge reopens a disabled pilot store without losing ordinary state or
         { ...(check.prepare("SELECT phase, generation, expires_at, operation_key, updated_at FROM account_credential_authorities WHERE account = ?").get(account.id) as Record<string, unknown>) },
         { phase: "disabled", generation: 4, expires_at: 9_999_999, operation_key: "rollout-4", updated_at: 7_777 },
       );
-      assert.equal((check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string }).value, "33");
+      assert.equal((check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string }).value, "34");
     } finally {
       check.close();
     }

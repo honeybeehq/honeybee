@@ -10,8 +10,12 @@
  *    credential releases the hold and delivers the mail
  *  - bee.swapAccount onto an unusable destination refuses before touching the
  *    running source (same account, same generation, still live)
- *  - spawn `onlyAccountIds` binds the pick to the allowlist and refuses an
- *    explicit id outside it
+ *  - spawn `onlyAccountIds` binds the pick to the allowlist, refuses an
+ *    explicit id or swap outside it, and never spawns unbound on an empty node
+ *  - the judged credential is the one a runtime reads (populated home over
+ *    vault); empty/truncated documents are `account_credential_invalid`
+ *  - a claim refused for readiness is fenced locally and reports whether the
+ *    owner must release it
  *  - an inherited CLAUDE_CODE_OAUTH_TOKEN / ANTHROPIC_API_KEY never reaches a
  *    NON-central Claude account's process env
  *  - pause ownership: lease vs operator pauses, foreign unpause refused
@@ -178,14 +182,55 @@ test("admission.claim: an allocator claim onto an account that can no longer aut
       () => client.request("spawn", { id: workId, name: "claimed", agent: "claude", cwd: dir, allocationClaim: acquired.claim, idempotencyKey: "apply-spawn-1" }),
       "account_credential_expired",
     );
-    assert.deepEqual(refusal.details, { claimId: acquired.claim!.id, released: true, account: "claude-a" });
+    assert.deepEqual(refusal.details, { claimId: acquired.claim!.id, account: "claude-a", fenced: true, released: true, ownerReleaseRequired: false });
     assert.equal((await client.request<{ views: ViewResult[] }>("list")).views.length, 0, "no bee was minted");
     const release = await client.request<AccountAdmissionReleaseResult>("account.admission.release", { claimId: acquired.claim!.id, reason: "caller retry", idempotencyKey: "release-1" });
-    assert.equal(release.status, "already_released", "the refusal released the hold; the caller acquires a fresh claim elsewhere");
-    // Replaying the released claim is refused as a claim problem, not re-run.
+    assert.equal(release.status, "already_released", "this node minted the hold and released it; the caller acquires a fresh claim elsewhere");
+    // Replaying the claim while the account is still unusable: the same typed refusal.
     await rejects(
       () => client.request("spawn", { id: workId, name: "claimed", agent: "claude", cwd: dir, allocationClaim: acquired.claim, idempotencyKey: "apply-spawn-2" }),
       "account_credential_expired",
+    );
+    // Replaying it after the credential recovers: the fence holds — a refused claim is never applied here.
+    writeClaudeCredential(dir, "claude-a", VALID("a2"));
+    await rejects(
+      () => client.request("spawn", { id: workId, name: "claimed", agent: "claude", cwd: dir, allocationClaim: acquired.claim, idempotencyKey: "apply-spawn-3" }),
+      "account_claim_refused",
+    );
+    assert.equal((await client.request<{ views: ViewResult[] }>("list")).views.length, 0, "still no bee");
+    client.close();
+  } finally {
+    if (daemon) await daemon.stop();
+    cleanup();
+  }
+});
+
+test("admission.claim.remote: a claim minted by another owner node is fenced here and the refusal says the owner must release it", async () => {
+  const owner = { node: "owner-mac", epoch: "owner-v1" };
+  const { dir, cleanup } = claudeDaemonDir({}, { allocationMode: "active", allocationNodeId: "satellite-1", allocationOwner: owner });
+  let daemon: DaemonHandle | null = null;
+  try {
+    seedVault(dir, "claude", "claude-a", ".credentials.json", EXPIRED_LEASED("a"));
+    daemon = await startDaemon(dir);
+    const client = await daemon.client();
+    await client.request("account.add", { harness: "claude", label: "a", importExisting: true });
+    const workId = "22222222-2222-4222-8222-222222222222";
+    const now = Date.now();
+    const claim = {
+      version: 1, id: "claim-from-owner-1", scope: "claude:provider-accounts", account: "claude-a", operation: "spawn", units: 1, model: null,
+      sourceAccount: null, createdAt: now, expiresAt: now + 60_000, authority: owner,
+      target: { node: "satellite-1", workId, expectedGeneration: 0 },
+      allocation: { version: 1, mode: "active", scope: "claude:provider-accounts", revision: "fleet-1", observedAt: now, operation: "spawn", outcome: "selected", account: "claude-a", reason: "owner", retryAt: null, candidates: [] },
+    };
+    const refusal = await rejects(
+      () => client.request("spawn", { id: workId, name: "claimed", agent: "claude", cwd: dir, allocationClaim: claim, idempotencyKey: "apply-remote-1" }),
+      "account_credential_expired",
+    );
+    assert.deepEqual(refusal.details, { claimId: "claim-from-owner-1", account: "claude-a", fenced: true, released: false, ownerReleaseRequired: true });
+    writeClaudeCredential(dir, "claude-a", VALID("a2"));
+    await rejects(
+      () => client.request("spawn", { id: workId, name: "claimed", agent: "claude", cwd: dir, allocationClaim: claim, idempotencyKey: "apply-remote-2" }),
+      "account_claim_refused",
     );
     client.close();
   } finally {
@@ -224,9 +269,57 @@ test("admission.hold: send to a stopped bee whose account lost its credential is
     assert.equal(wake?.status, "queued", "the wake command is held, not failed");
     assert.equal(wake?.attempts, 0, "the hold consumed no retry budget");
 
+    // A lease pause (the workstation shredding and parking the account) does not bypass the credential check.
+    await client.request("account.pause", { id: "claude-a", owner: "lease", ownerId: "apiary:ws-1" });
+    await new Promise((r) => setTimeout(r, 300));
+    assert.equal((await client.request<ViewResult>("view", { beeId: bee.beeId })).view.runtimeState, "stopped", "still no runtime while paused without a credential");
+    assert.equal((await client.request<CommandsResult>("commands", { beeId: bee.beeId })).commands.find((c) => c.id === queued.commandId)?.status, "queued");
+
+    // Healthy material returns while the pause stays: the restart is not new placement and resumes.
     writeClaudeCredential(dir, "claude-a", VALID("a2"));
     assert.equal(await waitDelivered(client, bee.beeId, queued.messageId, "delivered once the credential is back"), 2);
     assert.match(readFileSync(join(dir, "hived.log"), "utf8"), /runtime\.start\.released bee=\S+ account=claude-a/);
+    assert.equal((await client.request<AccountGetResult>("account.get", { id: "claude-a" })).account.pausedBy, "lease", "the pause survived the restart");
+    client.close();
+  } finally {
+    if (daemon) await daemon.stop();
+    cleanup();
+  }
+});
+
+test("admission.material: the credential a runtime would read is judged — a populated home outranks the vault, and an empty or truncated document is invalid", async () => {
+  const { dir, cleanup } = claudeDaemonDir();
+  let daemon: DaemonHandle | null = null;
+  try {
+    seedVault(dir, "claude", "claude-a", ".credentials.json", VALID("a"));
+    seedVault(dir, "claude", "claude-b", ".credentials.json", VALID("b"));
+    seedVault(dir, "claude", "claude-c", ".credentials.json", VALID("c"));
+    seedVault(dir, "claude", "claude-d", ".credentials.json", VALID("d"));
+    // HOME pinned to the temp dir: an invalid vault entry must never make the import reach the developer's real vendor home.
+    daemon = await startDaemon(dir, { env: { HOME: dir, CLAUDE_CONFIG_DIR: join(dir, "no-such-vendor-home") } });
+    const client = await daemon.client();
+    for (const label of ["a", "b", "c", "d"]) await client.request("account.add", { harness: "claude", label, importExisting: true });
+    // A partial write leaves an empty or truncated document behind (home + vault).
+    writeClaudeCredential(dir, "claude-c", "");
+    writeClaudeCredential(dir, "claude-d", '{"claudeAiOauth":{"accessToken":"d","refr');
+    // A valid vault copy cannot rescue an expired, refresh-less HOME: activation leaves a populated home alone.
+    mkdirSync(join(dir, "homes", "claude-a"), { recursive: true });
+    writeFileSync(join(dir, "homes", "claude-a", ".credentials.json"), EXPIRED_LEASED("a-home"));
+    await rejects(() => client.request("spawn", { name: "a", agent: "claude", cwd: dir, account: "claude-a" }), "account_credential_expired");
+    // An older expired vault document with a refresh token does not rescue it either.
+    seedVault(dir, "claude", "claude-a", ".credentials.json", '{"claudeAiOauth":{"accessToken":"old","refreshToken":"old-refresh","expiresAt":1}}');
+    await rejects(() => client.request("spawn", { name: "a2", agent: "claude", cwd: dir, account: "claude-a" }), "account_credential_expired");
+    // The converse: a usable home with an expired vault copy is admitted on the home.
+    mkdirSync(join(dir, "homes", "claude-b"), { recursive: true });
+    writeFileSync(join(dir, "homes", "claude-b", ".credentials.json"), VALID("b-home"));
+    seedVault(dir, "claude", "claude-b", ".credentials.json", EXPIRED_LEASED("b-vault"));
+    assert.equal((await client.request<SpawnResult>("spawn", { name: "b", agent: "claude", cwd: dir, account: "claude-b" })).account, "claude-b");
+    // Empty and truncated documents are invalid, not "present".
+    const empty = await rejects(() => client.request("spawn", { name: "c", agent: "claude", cwd: dir, account: "claude-c" }), "account_credential_invalid");
+    assert.match(empty.message, /not a usable claude credential/);
+    await rejects(() => client.request("spawn", { name: "d", agent: "claude", cwd: dir, account: "claude-d" }), "account_credential_invalid");
+    const auto = await rejects(() => client.request("spawn", { name: "auto", agent: "claude", cwd: dir, onlyAccountIds: ["claude-c", "claude-d"] }), "account_auth_needed");
+    assert.match(auto.message, /claude-c: invalid credential, claude-d: invalid credential/);
     client.close();
   } finally {
     if (daemon) await daemon.stop();
@@ -284,6 +377,14 @@ test("admission.allowlist: spawn onlyAccountIds binds auto/rr to the allowlist a
     const none = await rejects(() => client.request("spawn", { name: "nowhere", agent: "stub", cwd: dir, onlyAccountIds: ["stub-elsewhere"] }), "account_unavailable");
     assert.match(none.message, /No stub account matches the allowed ids on this node/);
     await rejects(() => client.request("spawn", { name: "dup", agent: "stub", cwd: dir, onlyAccountIds: ["stub-b", "stub-b"] }), "invalid_request");
+    // An explicit swap outside the allowlist is refused with the source untouched.
+    const bound2 = await client.request<SpawnResult>("spawn", { name: "swap-src", agent: "stub", cwd: dir, account: "stub-b" });
+    await rejects(() => client.request("bee.swapAccount", { beeId: bound2.beeId, account: "stub-a", onlyAccountIds: ["stub-b"] }), "account_unavailable");
+    assert.equal((await client.request<ViewResult>("view", { beeId: bound2.beeId })).bee?.account, "stub-b");
+    // A harness with NO accounts on this node never spawns unbound when the caller bound the pick.
+    const none2 = await rejects(() => client.request("spawn", { name: "unbound", agent: "claude", cwd: dir, onlyAccountIds: ["claude-x"] }), "account_unavailable");
+    assert.match(none2.message, /No claude account matches the allowed ids on this node/);
+    assert.equal((await client.request<{ views: ViewResult[] }>("list")).views.filter((v) => v.bee?.name === "unbound").length, 0);
     client.close();
   } finally {
     if (daemon) await daemon.stop();
@@ -303,6 +404,9 @@ test("admission.env: inherited CLAUDE_CODE_OAUTH_TOKEN / ANTHROPIC_API_KEY never
     const bee = await client.request<SpawnResult>("spawn", { name: "scrubbed", agent: "claude", cwd: dir, account: "claude-a" });
     const first = await client.request<SendRpcResult>("send", { beeId: bee.beeId, body: "hello" });
     await waitDelivered(client, bee.beeId, first.messageId, "first delivered");
+    // The delivery mark is the write to stdin; the harness logs its boot env on its own clock.
+    await waitState(client, bee.beeId, "idle", "turn served");
+    await waitFor(() => existsSync(argvLog) ? true : null, "fake-claude boot logged");
     const boots = readFileSync(argvLog, "utf8").split("\n").filter((l) => l.trim().length > 0)
       .map((l) => JSON.parse(l) as { env: { CLAUDE_CODE_OAUTH_TOKEN: string | null; ANTHROPIC_API_KEY: string | null; CLAUDE_CONFIG_DIR: string | null } });
     assert.equal(boots.length, 1);

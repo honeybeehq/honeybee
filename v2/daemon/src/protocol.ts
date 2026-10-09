@@ -219,6 +219,8 @@ export const RPC_ERROR_CODES = [
   "account_auth_needed",
   /** The account has no primary credential on this node. */
   "account_credential_missing",
+  /** The account's primary credential file is not a usable credential document (empty, truncated, foreign). */
+  "account_credential_invalid",
   /** The account's credential is past expiry with no refresh path on this node (a leased copy, or a central chain the daemon cannot rotate). */
   "account_credential_expired",
   /** `account.unpause` by a caller that does not hold the pause (`details.heldBy` names the holder); pass `force` to take it over. */
@@ -1186,11 +1188,17 @@ export interface SpawnCellParams {
  *
  * `spawn` account admission: an explicit `account` must be ready on this node
  * (`account_paused` / `account_auth_needed` / `account_credential_missing` /
- * `account_credential_expired` are typed refusals, as for allocator claims);
- * `auto` / `rr` never fall back to an unusable account (`account_auth_needed`
- * when every credentialed account needs login, else `account_unavailable`).
- * `onlyAccountIds?: string[]` restricts `auto` / `rr` (and validates an
- * explicit id) to an allowlist, so a workstation can bind a node-local pick.
+ * `account_credential_invalid` / `account_credential_expired` are typed
+ * refusals, as for allocator claims); `auto` / `rr` never fall back to an
+ * unusable account (`account_auth_needed` when every credentialed account
+ * needs login, else `account_unavailable`). `onlyAccountIds?: string[]`
+ * restricts `auto` / `rr` (and validates an explicit id or claim) to an
+ * allowlist, so a workstation can bind a node-local pick; with an allowlist
+ * a node with no matching account refuses instead of spawning unbound.
+ * A claim refused this way carries `details.claimId`, `fenced: true` (the
+ * claim can never be applied on this node again), `released` (this node
+ * minted the reservation and released it) and `ownerReleaseRequired` (the
+ * owner node still holds it; release it there via `account.admission.release`).
  */
 export interface SetArgsResult extends DedupMarkers {
   bee: BeeRow;

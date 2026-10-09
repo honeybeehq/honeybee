@@ -5142,11 +5142,19 @@ export class CoreStore {
 
   /**
    * v7 — set the account status (ok | auth_needed | paused). `reason` is the
-   * evidence (audit only). Identical = silent no-op.
+   * evidence (audit only). Identical = silent no-op; so is ok/auth_needed on
+   * a paused account (the pause outranks auth health until its holder lifts it).
    */
   setAccountStatus(id: string, status: AccountStatus, reason?: string): { account: AccountRow; applied: boolean } {
     if (!(ACCOUNT_STATUSES as readonly string[]).includes(status)) throw new CoreError(`setAccountStatus: status must be one of ${ACCOUNT_STATUSES.join("|")}`);
-    return this.tx(() => this.applyAccountUpdate(id, { status }, reason ?? null));
+    return this.tx(() => {
+      const before = this.mustGetAccount(id);
+      // v34: a pause is held by its owner. Auth-health evidence (ok /
+      // auth_needed) never lifts it, however stale the caller's snapshot was;
+      // only `unpauseAccount` by the holder (or forced) does.
+      if (before.status === "paused" && status !== "paused") return { account: before, applied: false };
+      return this.applyAccountUpdate(id, { status }, reason ?? null);
+    });
   }
 
   /**

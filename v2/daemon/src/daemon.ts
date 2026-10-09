@@ -607,6 +607,8 @@ export class HiveDaemon {
   private accountActivationCandidates = new Map<string, { commandId: number; attempts: number }>();
   /** Due start commands held because their account cannot authenticate here; value = the refusal code last logged. */
   private readonly runtimeStartHolds = new Map<string, string>();
+  /** Allocator claims refused for account readiness inside a transaction, awaiting their post-rollback fence + release. */
+  private readonly refusedClaims = new Map<string, AccountAdmissionClaim>();
   private gatewayActivationRevision = "";
   private activationRevisionEpoch = -1;
   private tickEpoch = 0;
@@ -1077,9 +1079,9 @@ export class HiveDaemon {
     return true;
   }
 
+  /** A pause is placement policy, not an auth fact: a restart on a paused account is judged on its credential alone. */
   private runtimeStartReadiness(account: AccountRow): AccountReadiness {
-    const readiness = this.mustAccounts().readiness(account);
-    return !readiness.ready && readiness.code === "account_paused" ? { ready: true } : readiness;
+    return this.mustAccounts().credentialReadiness(account);
   }
 
   private blockedRuntimeStartBeeIds(): ReadonlySet<string> {
@@ -2279,29 +2281,69 @@ export class HiveDaemon {
     if (!readiness.ready) {
       // The claim must not be replayed onto an account that cannot run it. The
       // refusal rolls the admission transaction back, so the entry point
-      // releases the hold afterwards (`releasingRefusedClaim`).
+      // fences and releases it afterwards (`releasingRefusedClaim`).
+      this.refusedClaims.set(claim.id, claim);
       this.log(`account.claim.refused claim=${claim.id} account=${account.id} operation=${operation} code=${readiness.code}`);
-      throw new RpcError(readiness.code, readiness.message, { claimId: claim.id, released: true, account: account.id });
+      throw new RpcError(readiness.code, readiness.message, { claimId: claim.id, account: account.id });
     }
     return account;
   }
 
   /**
-   * A claim refused for account readiness is released once the refusing
-   * transaction has rolled back, so the allocator's hold does not outlive a
-   * placement that can never run and the caller acquires afresh elsewhere.
+   * A claim refused for account readiness must never be applied later, and
+   * the allocator's hold must not outlive a placement that cannot run. After
+   * the refusing transaction has rolled back: the claim is fenced locally (a
+   * released local row refuses any replay, even once the credential is back)
+   * and the local reservation, when this node minted it, is released. A claim
+   * minted by another owner node cannot be released from here: the refusal
+   * says so (`ownerReleaseRequired`) so the coordinator releases it at the owner.
    */
   private async releasingRefusedClaim<T>(fn: () => Promise<T>): Promise<T> {
     try {
       return await fn();
     } catch (error) {
-      const claimId = error instanceof RpcError && error.details?.released === true ? error.details.claimId : undefined;
-      if (typeof claimId === "string") {
-        const released = this.mustStore().releaseAccountAdmission(claimId);
-        this.log(`account.claim.released claim=${claimId} code=${(error as RpcError).code} local=${released !== null}`);
+      const claimId = error instanceof RpcError && typeof error.details?.claimId === "string" ? error.details.claimId : undefined;
+      const claim = claimId === undefined ? undefined : this.refusedClaims.get(claimId);
+      if (claim) {
+        this.refusedClaims.delete(claim.id);
+        const fence = this.fenceRefusedClaim(claim);
+        this.log(`account.claim.released claim=${claim.id} code=${(error as RpcError).code} local=${fence.releasedLocally} owner_release_required=${!fence.releasedLocally}`);
+        throw new RpcError((error as RpcError).code, (error as RpcError).message, {
+          ...(error as RpcError).details,
+          fenced: true,
+          released: fence.releasedLocally,
+          ownerReleaseRequired: !fence.releasedLocally,
+        });
       }
       throw error;
     }
+  }
+
+  private fenceRefusedClaim(claim: AccountAdmissionClaim): { releasedLocally: boolean } {
+    const store = this.mustStore();
+    return store.transact(() => {
+      const local = store.getAccountAdmission(claim.id);
+      const mintedHere = local !== null && local.releasedAt === null;
+      if (!local) {
+        store.reserveAccountAdmission({
+          id: claim.id,
+          requestKey: `shared-account-claim:${claim.id}`,
+          scope: claim.scope,
+          account: claim.account,
+          sourceAccount: claim.sourceAccount,
+          operation: claim.operation,
+          units: claim.units,
+          expiresAt: claim.expiresAt,
+          reconcileAfterGeneration: claim.target.expectedGeneration,
+          receipt: {
+            allocation: claim.allocation as unknown as Record<string, unknown>,
+            authority: { version: 1, owner: claim.authority, target: claim.target, model: claim.model },
+          },
+        });
+      }
+      store.releaseAccountAdmission(claim.id);
+      return { releasedLocally: mintedHere };
+    });
   }
 
   private consumeAccountClaim(claim: AccountAdmissionClaim, beeId: string): void {
@@ -2431,12 +2473,19 @@ export class HiveDaemon {
     if (claim) {
       if (!this.accounts) throw new RpcError("account_unavailable", `Account selection is unavailable for ${agent}`);
       if (!targetWorkId) throw new RpcError("invalid_request", `${operation}: a stable target work id is required with allocationClaim`);
+      if (onlyAccountIds && !onlyAccountIds.has(claim.account)) {
+        throw new RpcError("invalid_request", `${operation}: allocationClaim ${claim.id} names ${claim.account}, outside onlyAccountIds`);
+      }
       const account = this.accountFromClaim(
         claim, operation, agent, targetWorkId, reconcileAfterGeneration, sourceAccount, this.modelParamOf(params, agent),
       );
       return { account, reason: "allocator owner claim", allocation: claim.allocation, claim };
     }
-    if (!this.accounts || store.listAccounts({ harness: agent }).length === 0) return { account: null, reason: null };
+    if (!this.accounts || store.listAccounts({ harness: agent }).length === 0) {
+      // A caller that bound the pick to an allowlist never gets an unbound bee running on daemon-default credentials.
+      if (onlyAccountIds) throw new RpcError("account_unavailable", `No ${agent} account matches the allowed ids on this node`, { onlyAccountIds: [...onlyAccountIds] });
+      return { account: null, reason: null };
+    }
     if (this.accounts.allocationMode() === "active") this.ownerClaimRequired(agent, operation);
     const admission = this.accounts.admitNewWork(agent, {
       operation,
@@ -5332,13 +5381,20 @@ export class HiveDaemon {
     const beeId = this.requireBee(params);
     const bee = store.getBee(beeId) as BeeRow;
     const selector = this.param(params, "account");
+    const onlyAccountIds = this.admissionAccountIdsParam(params, "onlyAccountIds");
     if (selector !== "auto") {
       const target = this.resolveAccountSelector(selector, bee.agent);
+      if (onlyAccountIds && !onlyAccountIds.has(target.id)) {
+        throw new RpcError("account_unavailable", `account ${target.id} is outside the allowed account ids for this swap`, { account: target.id });
+      }
       return this.performSwap(bee, target, "operator");
     }
     const runtime = store.currentRuntime(bee.id);
     const claim = this.allocationClaimParam(params);
     if (claim) {
+      if (onlyAccountIds && !onlyAccountIds.has(claim.account)) {
+        throw new RpcError("invalid_request", `bee.swapAccount: allocationClaim ${claim.id} names ${claim.account}, outside onlyAccountIds`);
+      }
       const target = this.accountFromClaim(
         claim, "swap", bee.agent, bee.id, runtime?.generation ?? 0, bee.account,
         this.modelParamOf({ args: bee.args ?? [] }, bee.agent),
@@ -5350,7 +5406,7 @@ export class HiveDaemon {
       operation: "swap",
       requestKey: this.idempotencyKeyOf(params) ?? `implicit:${bee.id}:${runtime?.generation ?? 0}:${bee.account ?? "unbound"}`,
       excludeAccountIds: bee.account ? new Set([bee.account]) : undefined,
-      onlyAccountIds: this.admissionAccountIdsParam(params, "onlyAccountIds"),
+      onlyAccountIds,
       model: this.modelParamOf({ args: bee.args ?? [] }, bee.agent),
       context: this.allocationContextParam(params),
       beeId: bee.id,

@@ -102,10 +102,13 @@ function seedVault(r: Rig, harness: string, id: string, files: Record<string, st
   return dir;
 }
 
+/** A real-shaped Claude OAuth document (far-future expiry, refresh chain present): admission judges the document, not the file's existence. */
+const CLAUDE_VAULT_DOC = JSON.stringify({ claudeAiOauth: { accessToken: "vault-token", refreshToken: "vault-refresh", expiresAt: 4102444800000 } });
+
 function addAccount(r: Rig, harness: string, label: string, opts: { penalty?: number; status?: "ok" | "paused" | "auth_needed"; addedAt?: number; vault?: Record<string, string> } = {}) {
   const id = `${harness}-${label}`;
   const account = r.store.createAccount({ id, harness, homePath: join(r.homes, id), label, penalty: opts.penalty ?? 0, status: opts.status ?? "ok", addedAt: opts.addedAt });
-  seedVault(r, harness, id, opts.vault ?? (harness === "claude" ? { ".credentials.json": "{}" } : { "auth.json": "{}" }));
+  seedVault(r, harness, id, opts.vault ?? (harness === "claude" ? { ".credentials.json": CLAUDE_VAULT_DOC } : { "auth.json": "{}" }));
   return account;
 }
 
@@ -142,12 +145,12 @@ test("select.1: candidate rules — none registered / all paused / none credenti
     assert.equal((svc.pick("claude") as { code: string }).code, "no_accounts");
     const a = addAccount(r, "claude", "a", { status: "paused" });
     assert.equal((svc.pick("claude") as { code: string }).code, "all_paused");
-    r.store.setAccountStatus(a.id, "ok");
+    r.store.unpauseAccount(a.id, { by: "operator", owner: null }, "ok");
     // credentialed = vault OR home has the primary credential
     rmSync(join(r.vault, "claude", a.id), { recursive: true, force: true });
     assert.equal((svc.pick("claude") as { code: string }).code, "no_credentials");
     mkdirSync(a.homePath, { recursive: true });
-    writeFileSync(join(a.homePath, ".credentials.json"), "{}");
+    writeFileSync(join(a.homePath, ".credentials.json"), CLAUDE_VAULT_DOC);
     const lone = svc.pick("claude");
     assert.ok(lone.ok);
     assert.equal(lone.account.id, a.id);
@@ -475,7 +478,7 @@ test("select.6: rr cycles in registration order, skips auth failures, and does n
     const picks = [svc.pickRoundRobin("claude"), svc.pickRoundRobin("claude"), svc.pickRoundRobin("claude")];
     assert.ok(picks.every((pick) => pick.ok));
     assert.deepEqual(picks.map((pick) => pick.ok ? pick.account.id : null), [a.id, c.id, a.id]);
-    assert.match(picks[0]!.reason, /skipped claude-bad for recent auth failure or expired credential/);
+    assert.match(picks[0]!.reason, /skipped claude-bad for recent auth failure or an unusable credential/);
     assert.equal(r.store.getSelectionCursor("rr:claude")?.lastAccountId, a.id);
     assert.equal(r.store.getSelectionCursor("claude")?.lastAccountId, a.id, "rr has a separate cursor from auto near-ties");
     assert.ok(r.log.some((line) => line.startsWith("account rr → claude-a")));
