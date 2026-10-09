@@ -65,6 +65,7 @@ import {
   type CoreStore,
   type CredentialHealth,
   type MirrorAccountRow,
+  loginDueAtOf,
   type PendingPick,
   type PutAccountLimitsInput,
   type RateLimitResetCredits,
@@ -1099,7 +1100,7 @@ export class AccountsService {
 
   /** The mirror shape of an account row: the store row plus the derived health (never stored). */
   mirrorRow(account: AccountRow): MirrorAccountRow {
-    return { ...account, credentialHealth: this.credentialHealthOf(account) };
+    return { ...account, credentialHealth: this.credentialHealthOf(account), loginDueAt: loginDueAtOf(account) };
   }
 
   /**

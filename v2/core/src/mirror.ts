@@ -53,7 +53,21 @@ export type MirrorSealRow = SealRow;
  * it, so a materializer never infers health from a file or from `status`.
  * A materializer that ignored the key before stays correct.
  */
-export type MirrorAccountRow = AccountRow & { credentialHealth: CredentialHealth };
+/**
+ * 2026-10 (additive): `loginDueAt`, DERIVED from `refreshTokenExpiresAt` (3
+ * days before the provider login ends; null when unknown). At or after it the
+ * account needs a new login soon: compare against the clock, since no delta is
+ * emitted when the moment passes.
+ */
+export type MirrorAccountRow = AccountRow & { credentialHealth: CredentialHealth; loginDueAt: number | null };
+
+/** Three days before a Claude provider login ends, a new login is due. */
+export const CLAUDE_LOGIN_DUE_MS = 3 * 24 * 60 * 60_000;
+
+/** When a new login is due; null when the provider never said when the login ends. */
+export function loginDueAtOf(account: Pick<AccountRow, "harness" | "refreshTokenExpiresAt">): number | null {
+  return account.harness === "claude" && account.refreshTokenExpiresAt !== null ? account.refreshTokenExpiresAt - CLAUDE_LOGIN_DUE_MS : null;
+}
 
 /**
  * v7: the latest limits snapshot per account, verbatim (`hive_account_limits`).

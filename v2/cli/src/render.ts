@@ -5,7 +5,7 @@
  * surface: aligned columns, status color, and the tokens tests/scripts grep
  * (`stale:`, `id=`, `stopped(crashed)`, `deduped:`). Full argv lives on `view`, not `ls`.
  */
-import type { AccountCredentialAuthority, AuditRow } from "../../core/src/index.ts";
+import { CLAUDE_LOGIN_DUE_MS, type AccountCredentialAuthority, type AuditRow } from "../../core/src/index.ts";
 import type { TranscriptTurn } from "../../driver-tmux/src/transcripts.ts";
 import type {
   AccountGetResult,
@@ -272,7 +272,7 @@ export function colorCredentialHealth(health: AccountListResult["accounts"][numb
 }
 
 /** A stale read-only row lacks the daemon-derived `credentialHealth`. */
-export type AccountLineRow = Omit<AccountListResult["accounts"][number], "credentialHealth"> & { credentialHealth?: AccountListResult["accounts"][number]["credentialHealth"] };
+export type AccountLineRow = Omit<AccountListResult["accounts"][number], "credentialHealth" | "loginDueAt"> & { credentialHealth?: AccountListResult["accounts"][number]["credentialHealth"] };
 
 export function accountLine(
   a: AccountLineRow,
@@ -295,8 +295,10 @@ export function accountLine(
 /** "login expires 10-18 19:38" (UTC): when the provider login itself ends and a new login is needed. */
 export function loginExpiryLabel(refreshTokenExpiresAt: number, now: number = Date.now()): string {
   const at = new Date(refreshTokenExpiresAt).toISOString();
-  return `login ${refreshTokenExpiresAt <= now ? "expired" : "expires"} ${at.slice(5, 10)} ${at.slice(11, 16)}`;
+  const label = `login ${refreshTokenExpiresAt <= now ? "expired" : "expires"} ${at.slice(5, 10)} ${at.slice(11, 16)}`;
+  return refreshTokenExpiresAt > now && refreshTokenExpiresAt - now <= CLAUDE_LOGIN_DUE_MS ? yellow(`login due: ${label}`) : label;
 }
+
 
 export function renderCredentialAuthority(id: string, state: AccountCredentialAuthority | null): string[] {
   if (!state) return [`${id}: native credential management`];
