@@ -149,8 +149,37 @@
  * Older writers cannot maintain reference reservations: rollback requires a store restore.
  * v31 — Cell retention: the `cells.state` CHECK gains `evicted` and the row gains
  * `evicted_at` + `evicted_head` (table rebuild, rows carried across by name).
- * v32 — `accounts.weekly_ceiling`: nullable operator ceiling (1..100) on weekly used%. */
-export const SCHEMA_VERSION = 32;
+ * v32 — `accounts.weekly_ceiling`: nullable operator ceiling (1..100) on weekly used%.
+ * v33 — `auth_interruptions`: one row per turn cut off by an authentication failure, with
+ * the continuation it earned; the `mail_history_enqueues.origin` CHECK gains `auth.resume`
+ * (table rebuild, rows carried across). */
+export const SCHEMA_VERSION = 33;
+
+export const AUTH_INTERRUPTIONS_TABLE_SQL = `
+CREATE TABLE IF NOT EXISTS auth_interruptions (
+  id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+  bee_id                   TEXT NOT NULL REFERENCES bees(id) ON DELETE CASCADE,
+  account                  TEXT NOT NULL,
+  generation               INTEGER NOT NULL CHECK (generation >= 1),
+  message_ids              TEXT NOT NULL DEFAULT '[]',
+  turn_progress            TEXT NOT NULL CHECK (turn_progress IN ('none','some','unknown')),
+  credential_revision      TEXT NOT NULL,
+  detail                   TEXT NOT NULL,
+  interrupted_at           INTEGER NOT NULL,
+  state                    TEXT NOT NULL CHECK (state IN ('open','restored','resumed','completed','cancelled','superseded')),
+  blocked_revision         TEXT,
+  restored_revision        TEXT,
+  restored_by              TEXT CHECK (restored_by IN ('login','capture','refresh','limits_probe','credentials_restored','account_swap')),
+  restored_at              INTEGER,
+  continuation_kind        TEXT CHECK (continuation_kind IN ('redeliver','continue')),
+  continuation_message_ids TEXT NOT NULL DEFAULT '[]',
+  settled_at               INTEGER,
+  settle_reason            TEXT CHECK (settle_reason IN ('stopped_by_user','archived','turn_succeeded','auth_failed_again'))
+) STRICT;
+CREATE UNIQUE INDEX IF NOT EXISTS auth_interruptions_live
+  ON auth_interruptions(bee_id) WHERE state IN ('open','restored','resumed');
+CREATE INDEX IF NOT EXISTS auth_interruptions_by_bee ON auth_interruptions(bee_id, id);
+`;
 
 export const ACCOUNT_ADMISSIONS_TABLE_SQL = `
 CREATE TABLE IF NOT EXISTS account_admission_reservations (
@@ -1052,7 +1081,7 @@ CREATE TABLE IF NOT EXISTS mail_history_enqueues (
   seq              INTEGER PRIMARY KEY,
   message_id       INTEGER NOT NULL UNIQUE,
   bee_id            TEXT NOT NULL,
-  origin            TEXT NOT NULL CHECK (origin IN ('mail.send','spawn.prompt','legacy.unknown','handoff.seed','action.dispatch')),
+  origin            TEXT NOT NULL CHECK (origin IN ('mail.send','spawn.prompt','legacy.unknown','handoff.seed','action.dispatch','auth.resume')),
   sender            BLOB NOT NULL,
   sender_truncated  INTEGER NOT NULL CHECK (sender_truncated IN (0, 1)),
   body              BLOB NOT NULL,

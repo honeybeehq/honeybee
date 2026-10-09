@@ -255,7 +255,7 @@ export const MAIL_CANCELLATION_REASONS = ["requested", "bee_deleted"] as const;
 export type MailCancellationReason = (typeof MAIL_CANCELLATION_REASONS)[number];
 
 /** Typed admission path for mailbox traffic; consumers must not sniff bodies. */
-export const MAIL_ORIGINS = ["mail.send", "spawn.prompt", "legacy.unknown", "handoff.seed", "action.dispatch"] as const;
+export const MAIL_ORIGINS = ["mail.send", "spawn.prompt", "legacy.unknown", "handoff.seed", "action.dispatch", "auth.resume"] as const;
 export type MailOrigin = (typeof MAIL_ORIGINS)[number];
 
 /**
@@ -510,6 +510,72 @@ export interface AccountAdmissionReservationRow {
   /** Target owner acknowledged that its mutation committed. */
   confirmedAt: number | null;
   releasedAt: number | null;
+}
+
+// ---------------------------------------------------------------------------
+// v33 — turns cut off by an authentication failure, and their continuation
+// ---------------------------------------------------------------------------
+
+/**
+ * `open`: waiting for the account's credential. `restored`: a validated
+ * credential arrived; the continuation is owed. `resumed`: the continuation
+ * mail is enqueued. `completed`: a later turn succeeded after the
+ * continuation. `cancelled`: the operator stopped or archived the bee.
+ * `superseded`: something else moved the bee on (a later successful turn, or
+ * the continuation itself failed authentication and a new row replaced it).
+ */
+export const AUTH_INTERRUPTION_STATES = ["open", "restored", "resumed", "completed", "cancelled", "superseded"] as const;
+export type AuthInterruptionState = (typeof AUTH_INTERRUPTION_STATES)[number];
+
+/** States that still owe or await something; at most one such row per bee. */
+export const AUTH_INTERRUPTION_LIVE_STATES: readonly AuthInterruptionState[] = ["open", "restored", "resumed"];
+
+/** Whether the provider served any of the interrupted turn. `unknown` is never treated as `none`. */
+export const AUTH_TURN_PROGRESS = ["none", "some", "unknown"] as const;
+export type AuthTurnProgress = (typeof AUTH_TURN_PROGRESS)[number];
+
+export const AUTH_RESTORE_SOURCES = ["login", "capture", "refresh", "limits_probe", "credentials_restored", "account_swap"] as const;
+export type AuthRestoreSource = (typeof AUTH_RESTORE_SOURCES)[number];
+
+/** `redeliver`: the original mail again, because none of its turn ran. `continue`: one short continue message. */
+export const AUTH_CONTINUATION_KINDS = ["redeliver", "continue"] as const;
+export type AuthContinuationKind = (typeof AUTH_CONTINUATION_KINDS)[number];
+
+export const AUTH_SETTLE_REASONS = ["stopped_by_user", "archived", "turn_succeeded", "auth_failed_again"] as const;
+export type AuthSettleReason = (typeof AUTH_SETTLE_REASONS)[number];
+
+export const AUTH_RESUME_SENDER = "hive:auth-resume";
+
+/** Revision of an account whose credential cannot be read; equal to itself, so it never looks like a change. */
+export const AUTH_CREDENTIAL_UNREADABLE = "unreadable";
+
+export const AUTH_CONTINUE_BODY = "[Hive] An authentication failure cut off your last turn. The account's credential works again. "
+  + "Continue the work from where it stopped, and answer any message that got no reply. Do not repeat steps that already finished.";
+
+export interface AuthInterruptionRow {
+  id: number;
+  beeId: string;
+  /** The node-local account whose credential must work again. Follows the bee across a swap. */
+  account: string;
+  /** The runtime generation whose turn was cut off. */
+  generation: number;
+  /** Mailbox ids delivered into the interrupted turn(s), oldest first. */
+  messageIds: number[];
+  turnProgress: AuthTurnProgress;
+  /** Revision of the account's credential when the failure was recorded. */
+  credentialRevision: string;
+  detail: string;
+  interruptedAt: number;
+  state: AuthInterruptionState;
+  /** A continuation at this revision already failed authentication; only a different revision resumes again. */
+  blockedRevision: string | null;
+  restoredRevision: string | null;
+  restoredBy: AuthRestoreSource | null;
+  restoredAt: number | null;
+  continuationKind: AuthContinuationKind | null;
+  continuationMessageIds: number[];
+  settledAt: number | null;
+  settleReason: AuthSettleReason | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -793,6 +859,8 @@ export interface StateDump {
   selectionCursors: SelectionCursorRow[];
   /** v28 — durable automatic-account admission holds and decision receipts. */
   accountAdmissions: AccountAdmissionReservationRow[];
+  /** v33 — turns cut off by an auth failure and their continuation receipts. */
+  authInterruptions: AuthInterruptionRow[];
   /** v11 */
   tasks: TaskRow[];
   taskSupply: TaskSupplyRow[];

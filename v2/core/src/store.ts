@@ -46,6 +46,14 @@ import {
   type AccountLimitsUnreadableReason,
   type AccountAdmissionReservationRow,
   type AccountAdmissionOperation,
+  AUTH_INTERRUPTION_LIVE_STATES,
+  AUTH_RESUME_SENDER,
+  type AuthContinuationKind,
+  type AuthInterruptionRow,
+  type AuthInterruptionState,
+  type AuthRestoreSource,
+  type AuthSettleReason,
+  type AuthTurnProgress,
   type AccountRow,
   type AccountCredentialAuthority,
   type AccountStatus,
@@ -160,7 +168,7 @@ import {
   TASK_SUPPLY_SENDER_NAME,
   TASK_TRANSITIONS,
 } from "./tasks.ts";
-import { ACTIONS_TABLE_SQL, ACCOUNT_ADMISSIONS_TABLE_SQL, ACCOUNT_LIMITS_TABLE_SQL, BEES_ADDITIVE_COLUMNS, BEES_ACTIVE_MOVE_INDEX_SQL, BEES_ACTIVE_HANDOFF_INDEX_SQL, BEE_HANDOFFS_TABLE_SQL, TRANSCRIPT_SEGMENTS_TABLE_SQL, MAILBOX_PENDING_METADATA_INDEX_SQL, BEE_MOVES_TABLE_SQL, CELLS_TABLE_SQL, CELLS_V22_COLUMNS, CELL_OPS_TABLE_SQL, FLAGS_ADDITIVE_COLUMNS, FLAGS_EXPIRY_INDEX_SQL, HANDLE_INDEX_SQL, IDEMPOTENCY_INDEX_SQL, MAILBOX_ADDITIVE_COLUMNS, MAIL_HISTORY_INDEX_SQL, MAIL_HISTORY_PROJECTION_SQL, RUNTIMES_ADDITIVE_COLUMNS, SCHEMA_SQL, SCHEMA_VERSION } from "./schema.ts";
+import { ACTIONS_TABLE_SQL, AUTH_INTERRUPTIONS_TABLE_SQL, ACCOUNT_ADMISSIONS_TABLE_SQL, ACCOUNT_LIMITS_TABLE_SQL, BEES_ADDITIVE_COLUMNS, BEES_ACTIVE_MOVE_INDEX_SQL, BEES_ACTIVE_HANDOFF_INDEX_SQL, BEE_HANDOFFS_TABLE_SQL, TRANSCRIPT_SEGMENTS_TABLE_SQL, MAILBOX_PENDING_METADATA_INDEX_SQL, BEE_MOVES_TABLE_SQL, CELLS_TABLE_SQL, CELLS_V22_COLUMNS, CELL_OPS_TABLE_SQL, FLAGS_ADDITIVE_COLUMNS, FLAGS_EXPIRY_INDEX_SQL, HANDLE_INDEX_SQL, IDEMPOTENCY_INDEX_SQL, MAILBOX_ADDITIVE_COLUMNS, MAIL_HISTORY_INDEX_SQL, MAIL_HISTORY_PROJECTION_SQL, RUNTIMES_ADDITIVE_COLUMNS, SCHEMA_SQL, SCHEMA_VERSION } from "./schema.ts";
 import { beeMoveReviveKey, beeMoveStopKey, beeMoveTransitionLegal, toBeeMoveView } from "./cellMove.ts";
 import {
   ACTION_DISPATCH_SENDER,
@@ -839,6 +847,36 @@ function mapAccountAdmission(r: Row): AccountAdmissionReservationRow {
     confirmedAt: r.confirmed_at == null ? null : Number(r.confirmed_at),
     releasedAt: r.released_at == null ? null : Number(r.released_at),
   };
+}
+
+function mapAuthInterruption(r: Row): AuthInterruptionRow {
+  return {
+    id: Number(r.id),
+    beeId: String(r.bee_id),
+    account: String(r.account),
+    generation: Number(r.generation),
+    messageIds: JSON.parse(String(r.message_ids)) as number[],
+    turnProgress: r.turn_progress as AuthTurnProgress,
+    credentialRevision: String(r.credential_revision),
+    detail: String(r.detail),
+    interruptedAt: Number(r.interrupted_at),
+    state: r.state as AuthInterruptionState,
+    blockedRevision: (r.blocked_revision as string | null) ?? null,
+    restoredRevision: (r.restored_revision as string | null) ?? null,
+    restoredBy: (r.restored_by as AuthRestoreSource | null) ?? null,
+    restoredAt: r.restored_at == null ? null : Number(r.restored_at),
+    continuationKind: (r.continuation_kind as AuthContinuationKind | null) ?? null,
+    continuationMessageIds: JSON.parse(String(r.continuation_message_ids)) as number[],
+    settledAt: r.settled_at == null ? null : Number(r.settled_at),
+    settleReason: (r.settle_reason as AuthSettleReason | null) ?? null,
+  };
+}
+
+const AUTH_TURN_PROGRESS_RANK: Record<AuthTurnProgress, number> = { none: 0, unknown: 1, some: 2 };
+
+/** Redelivery needs proof for every merged turn, so the least certain claim wins. */
+function leastCertainProgress(a: AuthTurnProgress, b: AuthTurnProgress): AuthTurnProgress {
+  return AUTH_TURN_PROGRESS_RANK[a] >= AUTH_TURN_PROGRESS_RANK[b] ? a : b;
 }
 
 function numOrNull(v: unknown): number | null {
@@ -1799,6 +1837,7 @@ export class CoreStore {
     this.db.exec(ACTIONS_TABLE_SQL);
     this.db.exec(THREAD_OPERATIONS_TABLE_SQL);
     this.db.exec(ACCOUNT_ADMISSIONS_TABLE_SQL);
+    this.db.exec(AUTH_INTERRUPTIONS_TABLE_SQL);
     // v28 was developed behind a shadow-mode rollout. Keep intermediate v28
     // databases forward-openable while the shared-owner confirmation column
     // is added before activation.
@@ -1831,13 +1870,13 @@ export class CoreStore {
       }
     }
     // v22 → v23 → v24: the mail-history origin CHECK gains 'handoff.seed'
-    // (v23) and 'action.dispatch' (v24). SQLite cannot widen a CHECK in
+    // (v23), 'action.dispatch' (v24) and 'auth.resume' (v33). SQLite cannot widen a CHECK in
     // place, so rebuild the projection table and carry the rows across (same
     // discipline as the v19 limits rebuild).
     const historyDdl = this.stmt(
       "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'mail_history_enqueues'",
     ).get() as Row | undefined;
-    if (historyDdl !== undefined && !String(historyDdl.sql).includes("action.dispatch")) {
+    if (historyDdl !== undefined && !String(historyDdl.sql).includes("auth.resume")) {
       const carried = [
         "seq", "message_id", "bee_id", "origin", "sender", "sender_truncated", "body",
         "body_truncated", "priority", "urgency", "enqueued_at",
@@ -5322,6 +5361,169 @@ export class CoreStore {
       .map(mapAccountAdmission);
   }
 
+  // -------------------------------------------------------------------------
+  // v33 — turns cut off by an authentication failure
+  // -------------------------------------------------------------------------
+
+  getAuthInterruption(id: number): AuthInterruptionRow | null {
+    const row = this.stmt("SELECT * FROM auth_interruptions WHERE id = ?").get(id) as Row | undefined;
+    return row ? mapAuthInterruption(row) : null;
+  }
+
+  /** The bee's one row that still owes or awaits something, if any. */
+  liveAuthInterruption(beeId: string): AuthInterruptionRow | null {
+    const row = this.stmt(
+      "SELECT * FROM auth_interruptions WHERE bee_id = ? AND state IN ('open','restored','resumed')",
+    ).get(beeId) as Row | undefined;
+    return row ? mapAuthInterruption(row) : null;
+  }
+
+  listLiveAuthInterruptions(): AuthInterruptionRow[] {
+    return (this.stmt(
+      "SELECT * FROM auth_interruptions WHERE state IN ('open','restored','resumed') ORDER BY id",
+    ).all() as Row[]).map(mapAuthInterruption);
+  }
+
+  listAuthInterruptions(filter: { beeId?: string; account?: string } = {}): AuthInterruptionRow[] {
+    return (this.stmt("SELECT * FROM auth_interruptions ORDER BY id").all() as Row[])
+      .map(mapAuthInterruption)
+      .filter((row) => (filter.beeId === undefined || row.beeId === filter.beeId)
+        && (filter.account === undefined || row.account === filter.account));
+  }
+
+  private putAuthInterruption(row: AuthInterruptionRow): AuthInterruptionRow {
+    this.stmt(`UPDATE auth_interruptions SET account = ?, generation = ?, message_ids = ?, turn_progress = ?,
+        credential_revision = ?, detail = ?, state = ?, blocked_revision = ?, restored_revision = ?, restored_by = ?,
+        restored_at = ?, continuation_kind = ?, continuation_message_ids = ?, settled_at = ?, settle_reason = ?
+      WHERE id = ?`).run(
+      row.account, row.generation, JSON.stringify(row.messageIds), row.turnProgress, row.credentialRevision, row.detail,
+      row.state, row.blockedRevision, row.restoredRevision, row.restoredBy, row.restoredAt, row.continuationKind,
+      JSON.stringify(row.continuationMessageIds), row.settledAt, row.settleReason, row.id,
+    );
+    this.audit("auth_interruption.put", row.beeId, { interruption: row });
+    return row;
+  }
+
+  /**
+   * Record that an authentication failure cut off a turn of this bee. A bee
+   * holds one live row: later failures fold into it. A failure after the
+   * continuation was sent means the credential that earned it does not work
+   * for this bee, so the replacement row is blocked at that revision.
+   */
+  recordAuthInterruption(input: {
+    beeId: string;
+    account: string;
+    generation: number;
+    messageIds: readonly number[];
+    turnProgress: AuthTurnProgress;
+    credentialRevision: string;
+    detail: string;
+  }): AuthInterruptionRow {
+    return this.tx(() => {
+      this.mustGetBee(input.beeId);
+      const live = this.liveAuthInterruption(input.beeId);
+      const detail = input.detail.slice(0, 500);
+      const carriesTurnFacts = input.messageIds.length > 0 || input.turnProgress !== "unknown";
+      if (live && live.state !== "resumed") {
+        return this.putAuthInterruption({
+          ...live,
+          account: input.account,
+          generation: input.generation,
+          messageIds: [...new Set([...live.messageIds, ...input.messageIds])].sort((a, b) => a - b),
+          turnProgress: carriesTurnFacts ? leastCertainProgress(live.turnProgress, input.turnProgress) : live.turnProgress,
+          credentialRevision: input.credentialRevision,
+          detail,
+        });
+      }
+      const at = this.now();
+      let messageIds = [...input.messageIds];
+      let turnProgress = input.turnProgress;
+      let blockedRevision: string | null = null;
+      if (live) {
+        const continuation = new Set(live.continuationMessageIds);
+        messageIds = [...new Set([...live.messageIds, ...input.messageIds.filter((id) => !continuation.has(id))])];
+        turnProgress = carriesTurnFacts ? leastCertainProgress(live.turnProgress, input.turnProgress) : live.turnProgress;
+        blockedRevision = live.restoredRevision;
+        this.putAuthInterruption({ ...live, state: "superseded", settledAt: at, settleReason: "auth_failed_again" });
+      }
+      messageIds.sort((a, b) => a - b);
+      const inserted = this.stmt(`INSERT INTO auth_interruptions
+        (bee_id, account, generation, message_ids, turn_progress, credential_revision, detail, interrupted_at, state, blocked_revision)
+        VALUES(?, ?, ?, ?, ?, ?, ?, ?, 'open', ?)`).run(
+        input.beeId, input.account, input.generation, JSON.stringify(messageIds), turnProgress, input.credentialRevision,
+        detail, at, blockedRevision,
+      );
+      const row = this.getAuthInterruption(Number(inserted.lastInsertRowid))!;
+      this.audit("auth_interruption.put", row.beeId, { interruption: row });
+      return row;
+    });
+  }
+
+  /** `open → restored`: a validated credential arrived; the continuation is now owed. */
+  restoreAuthInterruption(id: number, restored: { revision: string; by: AuthRestoreSource }): { interruption: AuthInterruptionRow | null; applied: boolean } {
+    return this.tx(() => {
+      const row = this.getAuthInterruption(id);
+      if (!row || row.state !== "open") return { interruption: row, applied: false };
+      return {
+        interruption: this.putAuthInterruption({
+          ...row, state: "restored", restoredRevision: restored.revision, restoredBy: restored.by, restoredAt: this.now(),
+        }),
+        applied: true,
+      };
+    });
+  }
+
+  /** The interrupted work now depends on another account's credential. */
+  rebindAuthInterruption(beeId: string, account: string): AuthInterruptionRow | null {
+    return this.tx(() => {
+      const row = this.liveAuthInterruption(beeId);
+      if (!row || row.state === "resumed" || row.account === account) return row;
+      return this.putAuthInterruption({
+        ...row, account, state: "open", blockedRevision: null, restoredRevision: null, restoredBy: null, restoredAt: null,
+      });
+    });
+  }
+
+  /**
+   * `restored → resumed`: enqueue the one continuation and record it in the
+   * same transaction, so a crash can neither lose nor repeat it. The original
+   * mail is sent again only when none of its turn ran and every message is
+   * still on record; otherwise the bee gets one continue message.
+   */
+  resumeAuthInterruption(id: number, continueBody: string): { interruption: AuthInterruptionRow | null; applied: boolean } {
+    return this.tx(() => {
+      const row = this.getAuthInterruption(id);
+      if (!row || row.state !== "restored") return { interruption: row, applied: false };
+      const originals = row.messageIds.map((messageId) => this.getMessage(messageId));
+      const redeliver = row.turnProgress === "none" && originals.length > 0
+        && originals.every((message) => message !== null && message.beeId === row.beeId);
+      const sent = redeliver
+        ? originals.map((message) => this.send(row.beeId, message!.body, { sender: message!.sender, origin: "auth.resume" }))
+        : [this.send(row.beeId, continueBody, { sender: AUTH_RESUME_SENDER, origin: "auth.resume" })];
+      return {
+        interruption: this.putAuthInterruption({
+          ...row,
+          state: "resumed",
+          continuationKind: redeliver ? "redeliver" : "continue",
+          continuationMessageIds: sent.map((result) => result.message.id),
+        }),
+        applied: true,
+      };
+    });
+  }
+
+  /** Close a live row without (further) continuation. */
+  settleAuthInterruption(id: number, state: "completed" | "cancelled" | "superseded", reason: AuthSettleReason): { interruption: AuthInterruptionRow | null; applied: boolean } {
+    return this.tx(() => {
+      const row = this.getAuthInterruption(id);
+      if (!row || !AUTH_INTERRUPTION_LIVE_STATES.includes(row.state)) return { interruption: row, applied: false };
+      return {
+        interruption: this.putAuthInterruption({ ...row, state, settledAt: this.now(), settleReason: reason }),
+        applied: true,
+      };
+    });
+  }
+
   getSourceAccountForGeneration(beeId: string, generation: number): string | null {
     const row = this.stmt(`SELECT source_account FROM account_admission_reservations
       WHERE bee_id = ? AND source_account IS NOT NULL AND reconcile_after_generation >= ?
@@ -8311,6 +8513,7 @@ export class CoreStore {
       accountLimits: this.listAccountLimits(),
       selectionCursors: this.listSelectionCursors(),
       accountAdmissions: this.listAccountAdmissions(),
+      authInterruptions: this.listAuthInterruptions(),
       tasks: (this.stmt("SELECT * FROM tasks ORDER BY id").all() as Row[]).map(mapTask),
       taskSupply: (this.stmt("SELECT * FROM task_supply ORDER BY bee_id").all() as Row[]).map(mapTaskSupply),
       loginFlows: this.listLoginFlows(),
