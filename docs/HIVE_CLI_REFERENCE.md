@@ -2103,6 +2103,14 @@ skips the question, and a non-interactive caller gets a hard error instead.
 `account resume` puts it back in rotation. Paused accounts show `paused` in
 `account list`, and the autoswap daemon never rotates a bee onto one.
 
+A pause has an owner. `hive account pause <account> [--by operator|quota|lease]
+[--owner <id>]` records who holds it (`operator` by default; `lease`/`quota`
+require `--owner`, e.g. the Apiary lease id), `account list` shows it as
+`paused(lease:<id>)`, and the account row carries `pausedBy` / `pausedOwner` /
+`pausedAt`. `hive account unpause` lifts only the caller's own pause: a
+different holder is refused with `account_pause_owned` naming the holder, and
+`--force` takes a pause over or lifts it regardless.
+
 `account login` (legacy form) created or reused an account and opened a scratch
 tmux login seat. The v2 daemon no longer runs tmux seats: the login is a
 daemon-owned flow (`account.login.start` / `.submit` / `.retry` / `.cancel`)

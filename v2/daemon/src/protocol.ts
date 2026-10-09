@@ -213,8 +213,16 @@ export const RPC_ERROR_CODES = [
   "account_not_found",
   /** v11: agent task lists. */
   "task_not_found",
-  /** The account is paused (explicit spawn / swap onto it refused). */
+  /** The account is paused (explicit spawn / swap / lease onto it refused). */
   "account_paused",
+  /** The account's last authentication failed (`status: auth_needed`); no new runtime is placed on it until a login or a readable probe clears it. */
+  "account_auth_needed",
+  /** The account has no primary credential on this node. */
+  "account_credential_missing",
+  /** The account's credential is past expiry with no refresh path on this node (a leased copy, or a central chain the daemon cannot rotate). */
+  "account_credential_expired",
+  /** `account.unpause` by a caller that does not hold the pause (`details.heldBy` names the holder); pass `force` to take it over. */
+  "account_pause_owned",
   /** The account's harness differs from the bee's agent (spawn / swap). */
   "harness_mismatch",
   /** `account.remove` while bees still reference the account. */
@@ -645,7 +653,16 @@ export interface AccountRemoveResult extends DedupMarkers {
   account: MirrorAccountRow;
 }
 
-/** Account edits accept selectors in `id`; `applied:false` = already in the requested state. */
+/**
+ * Account edits accept selectors in `id`; `applied:false` = already in the requested state.
+ *
+ * `account.pause {id, owner?, ownerId?, force?}` / `account.unpause {id, owner?, ownerId?, force?}`
+ * — v33 pause ownership. `owner` is `operator` (default) | `quota` | `lease`;
+ * `ownerId` names the external holder (required unless operator). The row
+ * records `pausedBy` / `pausedOwner` / `pausedAt`. A pause already held by a
+ * different owner, or an unpause by a non-holder, refuses `account_pause_owned`
+ * (`details.heldBy`) unless `force: true`.
+ */
 export interface AccountUpdateResult extends DedupMarkers {
   account: MirrorAccountRow;
   applied: boolean;

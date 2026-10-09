@@ -67,7 +67,7 @@ test("cli.accounts.1: account verbs over RPC + spawn --account + bee swap-accoun
     // pause / unpause / penalty
     const pause = capture();
     assert.equal(await runV2Cli(["account", "pause", "stub-two", ...base], pause.io), 0);
-    assert.match(pause.out[0] ?? "", /paused\s+stub-two \(status paused\)/);
+    assert.match(pause.out[0] ?? "", /paused\s+stub-two \(status paused by operator\)/);
     const pen = capture();
     assert.equal(await runV2Cli(["account", "penalty", "stub-one", "0", ...base], pen.io), 0);
     assert.match(pen.out[0] ?? "", /set penalty for stub-one: 0/);

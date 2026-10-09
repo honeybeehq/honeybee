@@ -77,6 +77,7 @@ import {
   resolveSpawnCommand,
   TASK_TRANSITION_ACTIONS,
   serializePackage,
+  type AccountPause,
   type AccountRow,
   type AuthRestoreSource,
   AUTH_INTERRUPTION_RETENTION_MS,
@@ -93,6 +94,7 @@ import {
   type CommandRow,
   type CoreStore,
   type MirrorAccountRow,
+  pauseLabel,
   type RowSource,
   type Scope,
   type Urgency,
@@ -1476,9 +1478,9 @@ export class HiveDaemon {
       case "account.remove":
         return this.rpcAccountRemove(params);
       case "account.pause":
-        return this.withIdempotency(verb, params, () => this.rpcAccountStatus(params, "paused"));
+        return this.withIdempotency(verb, params, () => this.rpcAccountPause(params));
       case "account.unpause":
-        return this.withIdempotency(verb, params, () => this.rpcAccountStatus(params, "ok"));
+        return this.withIdempotency(verb, params, () => this.rpcAccountUnpause(params));
       case "account.setPenalty":
         return this.withIdempotency(verb, params, () => this.rpcAccountSetPenalty(params));
       case "account.setWeeklyCeiling":
@@ -4911,13 +4913,42 @@ export class HiveDaemon {
     });
   }
 
-  private rpcAccountStatus(params: Record<string, unknown>, status: "paused" | "ok"): AccountUpdateResult {
+  /** `owner` ("operator" | "quota" | "lease") + `ownerId` (required unless operator) name the pause holder; `force` overrides a foreign holder. */
+  private pauseParams(params: Record<string, unknown>, verb: string): { pause: AccountPause; force: boolean } {
+    const by = params.owner === undefined || params.owner === null ? "operator" : this.param(params, "owner");
+    if (by !== "operator" && by !== "quota" && by !== "lease") {
+      throw new RpcError("invalid_request", `${verb}: owner must be operator, quota, or lease`);
+    }
+    const owner = params.ownerId === undefined || params.ownerId === null ? null : this.param(params, "ownerId");
+    if (by === "operator" && owner !== null) throw new RpcError("invalid_request", `${verb}: an operator pause takes no ownerId`);
+    if (by !== "operator" && owner === null) throw new RpcError("invalid_request", `${verb}: a ${by} pause requires ownerId`);
+    if (params.force !== undefined && typeof params.force !== "boolean") throw new RpcError("invalid_request", `${verb}: force must be a boolean`);
+    return { pause: { by, owner }, force: params.force === true };
+  }
+
+  private rpcAccountPause(params: Record<string, unknown>): AccountUpdateResult {
     const account = this.requireAccount(params);
     const accounts = this.mustAccounts();
+    const { pause, force } = this.pauseParams(params, "account.pause");
+    const res = this.mustStore().pauseAccount(account.id, pause, { force });
+    if (!res.applied && res.heldBy) {
+      throw new RpcError("account_pause_owned", `account ${account.id} is already paused by ${pauseLabel(res.heldBy)}; pass force to take the pause over`, { heldBy: res.heldBy as unknown as Record<string, unknown> });
+    }
+    this.log(`account.pause id=${account.id} by=${pauseLabel(pause)} force=${force} applied=${res.applied}`);
+    return { account: accounts.mirrorRow(res.account), applied: res.applied };
+  }
+
+  private rpcAccountUnpause(params: Record<string, unknown>): AccountUpdateResult {
+    const account = this.requireAccount(params);
+    const accounts = this.mustAccounts();
+    const { pause, force } = this.pauseParams(params, "account.unpause");
     // v18: unpausing a logged-out account lands on auth_needed, not ok.
-    const honest = accounts.honestStatus(account, status);
-    const res = this.mustStore().setAccountStatus(account.id, honest, status === "paused" ? "operator pause" : "operator unpause");
-    this.log(`account.${status === "paused" ? "pause" : "unpause"} id=${account.id} status=${honest} applied=${res.applied}`);
+    const honest = accounts.honestStatus(account, "ok") === "auth_needed" ? "auth_needed" : "ok";
+    const res = this.mustStore().unpauseAccount(account.id, pause, honest, { force });
+    if (!res.applied && res.heldBy) {
+      throw new RpcError("account_pause_owned", `account ${account.id} is paused by ${pauseLabel(res.heldBy)}, not ${pauseLabel(pause)}; pass force to lift it anyway`, { heldBy: res.heldBy as unknown as Record<string, unknown> });
+    }
+    this.log(`account.unpause id=${account.id} by=${pauseLabel(pause)} force=${force} status=${res.account.status} applied=${res.applied}`);
     return { account: accounts.mirrorRow(res.account), applied: res.applied };
   }
 

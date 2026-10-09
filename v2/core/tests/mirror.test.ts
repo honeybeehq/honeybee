@@ -347,6 +347,9 @@ test("mirror.2: value-level snapshot — a deterministic store serializes to the
       "weeklyCeiling": null,
       "lastLoginAt": null,
       "exhaustedAt": null,
+      "pausedBy": null,
+      "pausedOwner": null,
+      "pausedAt": null,
       "addedAt": 1018000,
       "updatedAt": 1018000,
       "credentialHealth": "absent"

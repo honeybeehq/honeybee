@@ -357,6 +357,10 @@ export const MIRROR_ACCOUNT_KEYS = [
   "weeklyCeiling",
   "lastLoginAt",
   "exhaustedAt",
+  // v33: additive — pause ownership (who holds a pause; null unless status is paused).
+  "pausedBy",
+  "pausedOwner",
+  "pausedAt",
   "addedAt",
   "updatedAt",
   // v18: additive — derived credential-validation evidence (absent | unverified | verified).

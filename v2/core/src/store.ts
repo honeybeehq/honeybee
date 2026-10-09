@@ -56,6 +56,8 @@ import {
   type AuthTurnProgress,
   type AccountRow,
   type AccountCredentialAuthority,
+  type AccountPause,
+  type AccountPauseOwner,
   type AccountStatus,
   type AuditRow,
   type BeeMoveFailure,
@@ -130,6 +132,7 @@ import {
   type TrackRow,
   type Urgency,
   type Verb,
+  ACCOUNT_PAUSE_OWNERS,
   ACCOUNT_STATUSES,
   AccountNotFoundError,
   AccountReferencedError,
@@ -825,9 +828,51 @@ function mapAccount(r: Row): AccountRow {
     weeklyCeiling: r.weekly_ceiling == null ? null : Number(r.weekly_ceiling),
     lastLoginAt: r.last_login_at == null ? null : Number(r.last_login_at),
     exhaustedAt: r.exhausted_at == null ? null : Number(r.exhausted_at),
+    pausedBy: r.paused_by == null ? null : (r.paused_by as AccountPauseOwner),
+    pausedOwner: r.paused_owner == null ? null : String(r.paused_owner),
+    pausedAt: r.paused_at == null ? null : Number(r.paused_at),
     addedAt: Number(r.added_at),
     updatedAt: Number(r.updated_at),
   };
+}
+
+/** The pause invariant: pause fields exist exactly while status is paused; a bare `paused` status is an operator pause. */
+function pauseFieldsFor(before: AccountRow, patch: Partial<Pick<AccountRow, "status" | "pausedBy" | "pausedOwner" | "pausedAt">>, at: number): Pick<AccountRow, "pausedBy" | "pausedOwner" | "pausedAt"> {
+  const status = patch.status ?? before.status;
+  if (status !== "paused") return { pausedBy: null, pausedOwner: null, pausedAt: null };
+  const by = patch.pausedBy ?? before.pausedBy ?? "operator";
+  const owner = patch.pausedBy !== undefined ? patch.pausedOwner ?? null : before.pausedOwner;
+  const unchanged = before.status === "paused" && before.pausedBy === by && before.pausedOwner === owner;
+  return { pausedBy: by, pausedOwner: owner, pausedAt: unchanged ? before.pausedAt : patch.pausedAt ?? at };
+}
+
+export function pauseOf(account: Pick<AccountRow, "status" | "pausedBy" | "pausedOwner">): AccountPause | null {
+  if (account.status !== "paused") return null;
+  return { by: account.pausedBy ?? "operator", owner: account.pausedOwner };
+}
+
+export function samePause(a: AccountPause, b: AccountPause): boolean {
+  return a.by === b.by && (a.owner ?? null) === (b.owner ?? null);
+}
+
+export function pauseLabel(pause: AccountPause): string {
+  return pause.owner ? `${pause.by}:${pause.owner}` : pause.by;
+}
+
+function requirePauseOwner(by: string, where: string): AccountPauseOwner {
+  if (!(ACCOUNT_PAUSE_OWNERS as readonly string[]).includes(by)) throw new CoreError(`${where}: owner must be one of ${ACCOUNT_PAUSE_OWNERS.join("|")}`);
+  return by as AccountPauseOwner;
+}
+
+function normalizePauseOwnerId(by: AccountPauseOwner, owner: string | null | undefined, where: string): string | null {
+  const trimmed = typeof owner === "string" ? owner.trim() : "";
+  if (by === "operator") {
+    if (trimmed.length > 0) throw new CoreError(`${where}: an operator pause carries no external owner id`);
+    return null;
+  }
+  if (trimmed.length === 0) throw new CoreError(`${where}: a ${by} pause requires an owner id`);
+  if (trimmed.length > 256) throw new CoreError(`${where}: owner id exceeds 256 characters`);
+  return trimmed;
 }
 
 function mapAccountAdmission(r: Row): AccountAdmissionReservationRow {
@@ -1738,6 +1783,13 @@ export class CoreStore {
         this.db.exec(
           "ALTER TABLE accounts ADD COLUMN weekly_ceiling INTEGER CHECK (weekly_ceiling IS NULL OR (weekly_ceiling BETWEEN 1 AND 100))",
         );
+      }
+      // v32 → v33: pause ownership. Rows paused before the column existed were operator pauses.
+      if (!accountCols.has("paused_by")) {
+        this.db.exec("ALTER TABLE accounts ADD COLUMN paused_by TEXT CHECK (paused_by IS NULL OR paused_by IN ('operator','quota','lease'))");
+        this.db.exec("ALTER TABLE accounts ADD COLUMN paused_owner TEXT");
+        this.db.exec("ALTER TABLE accounts ADD COLUMN paused_at INTEGER");
+        this.db.exec("UPDATE accounts SET paused_by = 'operator', paused_at = updated_at WHERE status = 'paused'");
       }
       // v11 → v12: typed account-limit failure class. Existing unreadable
       // rows stay null until the next bounded limits sweep refreshes them.
@@ -5022,10 +5074,10 @@ export class CoreStore {
       if (!Number.isFinite(addedAt)) throw new CoreError("createAccount: addedAt must be a finite epoch-ms number");
       this.db
         .prepare(
-          `INSERT INTO accounts(id, harness, home_path, label, status, penalty, last_login_at, exhausted_at, added_at, updated_at)
-           VALUES(?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)`,
+          `INSERT INTO accounts(id, harness, home_path, label, status, penalty, last_login_at, exhausted_at, paused_by, paused_owner, paused_at, added_at, updated_at)
+           VALUES(?, ?, ?, ?, ?, ?, ?, NULL, ?, NULL, ?, ?, ?)`,
         )
-        .run(id, harness, homePath, label, status, penalty, input.lastLoginAt ?? null, addedAt, at);
+        .run(id, harness, homePath, label, status, penalty, input.lastLoginAt ?? null, status === "paused" ? "operator" : null, status === "paused" ? at : null, addedAt, at);
       const account = this.mustGetAccount(id);
       this.audit("account.put", null, { account, outcome: "created" });
       return account;
@@ -5072,17 +5124,17 @@ export class CoreStore {
     });
   }
 
-  private applyAccountUpdate(id: string, patch: Partial<Pick<AccountRow, "status" | "penalty" | "weeklyCeiling" | "lastLoginAt" | "exhaustedAt" | "homePath" | "label">>, reason: string | null): { account: AccountRow; applied: boolean } {
+  private applyAccountUpdate(id: string, patch: Partial<Pick<AccountRow, "status" | "penalty" | "weeklyCeiling" | "lastLoginAt" | "exhaustedAt" | "homePath" | "label" | "pausedBy" | "pausedOwner" | "pausedAt">>, reason: string | null): { account: AccountRow; applied: boolean } {
     const before = this.mustGetAccount(id);
-    const next: AccountRow = { ...before, ...patch };
-    const changed = (Object.keys(patch) as Array<keyof typeof patch>).filter((k) => before[k] !== next[k]);
-    if (changed.length === 0) return { account: before, applied: false };
     const at = this.now();
+    const next: AccountRow = { ...before, ...patch, ...pauseFieldsFor(before, patch, at) };
+    const changed = (Object.keys(next) as Array<keyof AccountRow>).filter((k) => k !== "updatedAt" && before[k] !== next[k]);
+    if (changed.length === 0) return { account: before, applied: false };
     this.db
       .prepare(
-        "UPDATE accounts SET status = ?, penalty = ?, weekly_ceiling = ?, last_login_at = ?, exhausted_at = ?, home_path = ?, label = ?, updated_at = ? WHERE id = ?",
+        "UPDATE accounts SET status = ?, penalty = ?, weekly_ceiling = ?, last_login_at = ?, exhausted_at = ?, home_path = ?, label = ?, paused_by = ?, paused_owner = ?, paused_at = ?, updated_at = ? WHERE id = ?",
       )
-      .run(next.status, next.penalty, next.weeklyCeiling, next.lastLoginAt, next.exhaustedAt, next.homePath, next.label, at, id);
+      .run(next.status, next.penalty, next.weeklyCeiling, next.lastLoginAt, next.exhaustedAt, next.homePath, next.label, next.pausedBy, next.pausedOwner, next.pausedAt, at, id);
     const account = this.mustGetAccount(id);
     this.audit("account.put", null, { account, outcome: "updated", changed, previous: Object.fromEntries(changed.map((k) => [k, before[k]])), reason });
     return { account, applied: true };
@@ -5095,6 +5147,42 @@ export class CoreStore {
   setAccountStatus(id: string, status: AccountStatus, reason?: string): { account: AccountRow; applied: boolean } {
     if (!(ACCOUNT_STATUSES as readonly string[]).includes(status)) throw new CoreError(`setAccountStatus: status must be one of ${ACCOUNT_STATUSES.join("|")}`);
     return this.tx(() => this.applyAccountUpdate(id, { status }, reason ?? null));
+  }
+
+  /**
+   * v33 — pause the account on behalf of `pause.by` (+ external owner id).
+   * An account already paused by a DIFFERENT owner keeps that owner and
+   * returns `applied:false` with the holder unless `force` takes it over.
+   */
+  pauseAccount(id: string, pause: AccountPause, options: { force?: boolean; reason?: string } = {}): { account: AccountRow; applied: boolean; heldBy: AccountPause | null } {
+    const by = requirePauseOwner(pause.by, "pauseAccount");
+    const owner = normalizePauseOwnerId(by, pause.owner, "pauseAccount");
+    return this.tx(() => {
+      const before = this.mustGetAccount(id);
+      const held = pauseOf(before);
+      if (held && !options.force && !samePause(held, { by, owner })) return { account: before, applied: false, heldBy: held };
+      const res = this.applyAccountUpdate(id, { status: "paused", pausedBy: by, pausedOwner: owner }, options.reason ?? `${pauseLabel({ by, owner })} pause`);
+      return { ...res, heldBy: null };
+    });
+  }
+
+  /**
+   * v33 — lift the account's pause. `next` is the honest post-pause status the
+   * caller derived (ok | auth_needed). Only the holder (or `force`) lifts it: a
+   * foreign holder is returned in `heldBy` with `applied:false`.
+   */
+  unpauseAccount(id: string, pause: AccountPause, next: Exclude<AccountStatus, "paused">, options: { force?: boolean; reason?: string } = {}): { account: AccountRow; applied: boolean; heldBy: AccountPause | null } {
+    const by = requirePauseOwner(pause.by, "unpauseAccount");
+    const owner = normalizePauseOwnerId(by, pause.owner, "unpauseAccount");
+    if (next === "paused") throw new CoreError("unpauseAccount: next status must not be paused");
+    return this.tx(() => {
+      const before = this.mustGetAccount(id);
+      const held = pauseOf(before);
+      if (!held) return { account: before, applied: false, heldBy: null };
+      if (!options.force && !samePause(held, { by, owner })) return { account: before, applied: false, heldBy: held };
+      const res = this.applyAccountUpdate(id, { status: next }, options.reason ?? `${pauseLabel({ by, owner })} unpause${options.force && !samePause(held, { by, owner }) ? ` (forced over ${pauseLabel(held)})` : ""}`);
+      return { ...res, heldBy: null };
+    });
   }
 
   /** v7 — the operator's placement penalty (0..100 effective-load points; 0 clears). */

@@ -152,8 +152,11 @@
  * v32 — `accounts.weekly_ceiling`: nullable operator ceiling (1..100) on weekly used%.
  * v33 — `auth_interruptions`: one row per turn cut off by an authentication failure, with
  * the continuation it earned; the `mail_history_enqueues.origin` CHECK gains `auth.resume`
- * (table rebuild, rows carried across). */
-export const SCHEMA_VERSION = 33;
+ * (table rebuild, rows carried across).
+ * v34 — `accounts.paused_by` / `paused_owner` / `paused_at`: who holds a pause
+ *        (operator | quota | lease + external owner id). Additive; migration =
+ *        ALTER TABLE ADD COLUMN ×3 (existing paused rows backfill as operator). */
+export const SCHEMA_VERSION = 34;
 
 export const AUTH_INTERRUPTIONS_TABLE_SQL = `
 CREATE TABLE IF NOT EXISTS auth_interruptions (
@@ -525,6 +528,9 @@ CREATE TABLE IF NOT EXISTS accounts (
   weekly_ceiling INTEGER CHECK (weekly_ceiling IS NULL OR (weekly_ceiling BETWEEN 1 AND 100)),
   last_login_at INTEGER,
   exhausted_at  INTEGER,
+  paused_by     TEXT CHECK (paused_by IS NULL OR paused_by IN ('operator','quota','lease')),
+  paused_owner  TEXT,
+  paused_at     INTEGER,
   added_at      INTEGER NOT NULL,
   updated_at    INTEGER NOT NULL
 ) STRICT;

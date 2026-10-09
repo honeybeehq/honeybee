@@ -286,7 +286,8 @@ export function accountLine(
     : "";
   const penalty = `${a.penalty > 0 ? `  penalty=${a.penalty}` : ""}${a.weeklyCeiling !== null ? `  ceiling=${a.weeklyCeiling}%` : ""}`;
   const login = a.lastLoginAt ? `  lastLogin=${new Date(a.lastLoginAt).toISOString()}` : "";
-  return `${stalePrefix(stale)}${bold(a.id)}  ${blue(a.harness)}  ${colorAccountStatus(a.status)}  ${dim("creds=")}${colorCredentialHealth(a.credentialHealth)}  ${dim(tildify(a.homePath))}${penalty}${usage}${login}`;
+  const pausedBy = a.status === "paused" && a.pausedBy ? dim(`(${a.pausedOwner ? `${a.pausedBy}:${a.pausedOwner}` : a.pausedBy})`) : "";
+  return `${stalePrefix(stale)}${bold(a.id)}  ${blue(a.harness)}  ${colorAccountStatus(a.status)}${pausedBy}  ${dim("creds=")}${colorCredentialHealth(a.credentialHealth)}  ${dim(tildify(a.homePath))}${penalty}${usage}${login}`;
 }
 
 export function renderAccountList(

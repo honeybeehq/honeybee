@@ -758,7 +758,8 @@ async function cmdSpawn(ctx: CliContext, parsed: Parsed): Promise<number> {
 const ACCOUNT_USAGE =
   "usage: hive account list [--harness h] | get <selector> | add <harness> <label> [--id id] [--home dir] [--penalty n] [--import-existing]\n" +
   "       hive account config preview <selector> | config import <selector> [--idempotency-key key]\n" +
-  "       hive account remove|pause|unpause <selector> | penalty <selector> <0-100> | ceiling <selector> <1-100|off>\n" +
+  "       hive account remove <selector> | penalty <selector> <0-100> | ceiling <selector> <1-100|off>\n" +
+  "       hive account pause|unpause <selector> [--by operator|quota|lease] [--owner <id>] [--force]\n" +
   "       hive account login <selector> [--method <id>] [--remote] [--no-wait] | login-status <selector> | login-cancel <selector>\n" +
   "       hive account credentials <status|enable|refresh|disable> <selector>\n" +
   "       hive account capture <selector> | verify <selector> | limits [<selector>] | reset <selector> [--credit-id id] --idempotency-key key\n" +
@@ -958,8 +959,18 @@ async function cmdAccount(ctx: CliContext, parsed: Parsed): Promise<number> {
     case "unpause": {
       const id = parsed.positional[2];
       if (!id) throw new Error(ACCOUNT_USAGE);
-      const r = await withClient(ctx, (c) => c.request<AccountUpdateResult>(`account.${sub}`, { id, idempotencyKey: key }));
-      emit(ctx, [confirm(r.applied ? "ok" : "info", r.applied ? `${sub}d` : "unchanged", `${r.account.id} (status ${r.account.status})`, r.deduped)], r, false);
+      const owner = parsed.flags.get("--by") as string | undefined;
+      const ownerId = parsed.flags.get("--owner") as string | undefined;
+      const force = parsed.flags.get("--force") === true;
+      const r = await withClient(ctx, (c) => c.request<AccountUpdateResult>(`account.${sub}`, {
+        id,
+        ...(owner !== undefined ? { owner } : {}),
+        ...(ownerId !== undefined ? { ownerId } : {}),
+        ...(force ? { force } : {}),
+        idempotencyKey: key,
+      }));
+      const holder = r.account.pausedBy ? ` by ${r.account.pausedOwner ? `${r.account.pausedBy}:${r.account.pausedOwner}` : r.account.pausedBy}` : "";
+      emit(ctx, [confirm(r.applied ? "ok" : "info", r.applied ? `${sub}d` : "unchanged", `${r.account.id} (status ${r.account.status}${holder})`, r.deduped)], r, false);
       return 0;
     }
     case "penalty": {

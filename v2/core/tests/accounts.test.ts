@@ -155,6 +155,65 @@ test("v7.edits: status/penalty/login/exhaustion/fields — audited as account.pu
   }
 });
 
+test("v33.pause: pause ownership — the holder is recorded, a foreign pause/unpause is refused unless forced, a bare paused status is an operator pause, and leaving paused clears the holder", () => {
+  const h = harness();
+  try {
+    const store = h.open();
+    store.createAccount({ id: "claude-a", harness: "claude", homePath: "/tmp/a", label: "a" });
+    const byLease = store.pauseAccount("claude-a", { by: "lease", owner: "apiary:ws-1" });
+    assert.equal(byLease.applied, true);
+    assert.equal(byLease.heldBy, null);
+    assert.deepEqual(
+      (({ status, pausedBy, pausedOwner }) => ({ status, pausedBy, pausedOwner }))(byLease.account),
+      { status: "paused", pausedBy: "lease", pausedOwner: "apiary:ws-1" },
+    );
+    assert.ok(byLease.account.pausedAt != null);
+    // The same holder pausing again is a quiet no-op.
+    const again = store.pauseAccount("claude-a", { by: "lease", owner: "apiary:ws-1" });
+    assert.equal(again.applied, false);
+    assert.equal(again.heldBy, null);
+    // A different holder cannot take the pause silently…
+    const operator = store.pauseAccount("claude-a", { by: "operator", owner: null });
+    assert.equal(operator.applied, false);
+    assert.deepEqual(operator.heldBy, { by: "lease", owner: "apiary:ws-1" });
+    // …nor lift it.
+    const foreignLift = store.unpauseAccount("claude-a", { by: "operator", owner: null }, "ok");
+    assert.equal(foreignLift.applied, false);
+    assert.deepEqual(foreignLift.heldBy, { by: "lease", owner: "apiary:ws-1" });
+    assert.equal(store.getAccount("claude-a")?.status, "paused");
+    // The holder lifts its own pause; the holder fields clear with the status.
+    const lifted = store.unpauseAccount("claude-a", { by: "lease", owner: "apiary:ws-1" }, "auth_needed");
+    assert.equal(lifted.applied, true);
+    assert.deepEqual(
+      (({ status, pausedBy, pausedOwner, pausedAt }) => ({ status, pausedBy, pausedOwner, pausedAt }))(lifted.account),
+      { status: "auth_needed", pausedBy: null, pausedOwner: null, pausedAt: null },
+    );
+    assert.equal(store.unpauseAccount("claude-a", { by: "lease", owner: "apiary:ws-1" }, "ok").applied, false, "not paused = quiet");
+    // force takes over / lifts a foreign pause.
+    store.pauseAccount("claude-a", { by: "quota", owner: "weekly" });
+    const taken = store.pauseAccount("claude-a", { by: "operator", owner: null }, { force: true });
+    assert.equal(taken.applied, true);
+    assert.equal(taken.account.pausedBy, "operator");
+    assert.equal(store.unpauseAccount("claude-a", { by: "lease", owner: "x" }, "ok", { force: true }).account.status, "ok");
+    // A bare `paused` status (legacy callers) is an operator pause; login never lifts it.
+    store.setAccountStatus("claude-a", "paused", "legacy");
+    assert.deepEqual(
+      (({ pausedBy, pausedOwner }) => ({ pausedBy, pausedOwner }))(store.getAccount("claude-a")!),
+      { pausedBy: "operator", pausedOwner: null },
+    );
+    assert.equal(store.recordAccountLogin("claude-a", 5).account.status, "paused");
+    assert.equal(store.setAccountStatus("claude-a", "ok").account.pausedBy, null);
+    // Owner ids are validated: operator carries none, lease/quota require one.
+    assert.throws(() => store.pauseAccount("claude-a", { by: "operator", owner: "nope" }), CoreError);
+    assert.throws(() => store.pauseAccount("claude-a", { by: "lease", owner: "" }), CoreError);
+    assert.throws(() => store.pauseAccount("claude-a", { by: "nobody" as "lease", owner: "x" }), CoreError);
+    assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
+    store.close();
+  } finally {
+    h.cleanup();
+  }
+});
+
 test("v7.binding: setBeeAccount requires an existing account, never stores account selectors; setBeeEnv + rekeyBeeSession audit + replay", () => {
   const h = harness();
   try {
@@ -386,6 +445,7 @@ test("v12+v13+v32 migration: account_limits gains typed failures and display win
         last_login_at INTEGER, exhausted_at INTEGER, added_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
       ) STRICT;
       INSERT INTO accounts VALUES('claude-old','claude','/tmp/claude-old','old','ok',0,NULL,NULL,1,1);
+      INSERT INTO accounts VALUES('claude-parked','claude','/tmp/claude-parked','parked','paused',0,NULL,NULL,1,5);
       CREATE TABLE account_limits (
         account TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
         fetched_at INTEGER NOT NULL, readable INTEGER NOT NULL CHECK (readable IN (0,1)), error TEXT, plan TEXT,
@@ -400,6 +460,12 @@ test("v12+v13+v32 migration: account_limits gains typed failures and display win
     assert.equal(store.getAccountLimits("claude-old")?.unreadableReason, null);
     assert.equal(store.getAccountLimits("claude-old")?.rateLimitResetCredits, null);
     assert.equal(store.getAccount("claude-old")?.weeklyCeiling, null);
+    assert.equal(store.getAccount("claude-old")?.pausedBy, null);
+    // v33: a row paused before pause ownership existed is an operator pause stamped at its last update.
+    assert.deepEqual(
+      (({ pausedBy, pausedOwner, pausedAt }) => ({ pausedBy, pausedOwner, pausedAt }))(store.getAccount("claude-parked")!),
+      { pausedBy: "operator", pausedOwner: null, pausedAt: 5 },
+    );
     assert.equal(store.setAccountWeeklyCeiling("claude-old", 70).account.weeklyCeiling, 70);
     const refreshed = store.putAccountLimits("claude-old", {
       readable: false,
@@ -423,6 +489,7 @@ test("v12+v13+v32 migration: account_limits gains typed failures and display win
       assert.ok(columns.includes("rate_limit_reset_credits"));
       const accountColumns = (check.prepare("SELECT name FROM pragma_table_info('accounts')").all() as Array<{ name: string }>).map((row) => row.name);
       assert.ok(accountColumns.includes("weekly_ceiling"));
+      for (const column of ["paused_by", "paused_owner", "paused_at"]) assert.ok(accountColumns.includes(column), column);
       assert.equal((check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string }).value, String(SCHEMA_VERSION));
     } finally {
       check.close();

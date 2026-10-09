@@ -7,6 +7,9 @@ export * from "./types.ts";
 export {
   CoreStore,
   openCoreStore,
+  pauseOf,
+  pauseLabel,
+  samePause,
   HANDLE_RE,
   handlePrefix,
   requireBeeId,

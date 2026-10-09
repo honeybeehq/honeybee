@@ -371,6 +371,20 @@ export const ACCOUNT_STATUSES = ["ok", "auth_needed", "paused"] as const;
 export type AccountStatus = (typeof ACCOUNT_STATUSES)[number];
 
 /**
+ * Who holds a pause. `operator` is a human/CLI pause, `quota` a usage pause,
+ * `lease` an external lease owner (Apiary) identified by `pausedOwner`. An
+ * unpause only lifts the caller's own pause unless forced.
+ */
+export const ACCOUNT_PAUSE_OWNERS = ["operator", "quota", "lease"] as const;
+export type AccountPauseOwner = (typeof ACCOUNT_PAUSE_OWNERS)[number];
+
+export interface AccountPause {
+  by: AccountPauseOwner;
+  /** External owner id (lease id, node, or caller) when `by` is not `operator`; null otherwise. */
+  owner: string | null;
+}
+
+/**
  * Credential-validation evidence for an account (cohort-0 F2): a credential
  * FILE existing is not health. Closed vocabulary, derived — never stored:
  *  - `absent`: no primary credential in the account's vault or home.
@@ -424,6 +438,11 @@ export interface AccountRow {
   lastLoginAt: number | null;
   /** Last rate-limit exhaustion evidence (rotation cool-off); null = never. */
   exhaustedAt: number | null;
+  /** Who paused the account; null unless `status` is `paused`. */
+  pausedBy: AccountPauseOwner | null;
+  /** External owner id of the pause (lease id / node); null for operator pauses. */
+  pausedOwner: string | null;
+  pausedAt: number | null;
   addedAt: number;
   updatedAt: number;
 }

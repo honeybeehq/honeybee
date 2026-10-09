@@ -93,6 +93,9 @@ function mapAccountRow(r: Row): AccountRow {
     weeklyCeiling: r.weekly_ceiling == null ? null : Number(r.weekly_ceiling),
     lastLoginAt: r.last_login_at == null ? null : Number(r.last_login_at),
     exhaustedAt: r.exhausted_at == null ? null : Number(r.exhausted_at),
+    pausedBy: r.paused_by == null ? null : (r.paused_by as AccountRow["pausedBy"]),
+    pausedOwner: r.paused_owner == null ? null : String(r.paused_owner),
+    pausedAt: r.paused_at == null ? null : Number(r.paused_at),
     addedAt: Number(r.added_at),
     updatedAt: Number(r.updated_at),
   };
