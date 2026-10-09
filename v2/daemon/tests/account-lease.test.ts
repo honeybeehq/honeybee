@@ -1772,6 +1772,12 @@ test("central.claude relogin: an organization that cannot be named is unverified
     writeFileSync(join(legacy.account.homePath, ".claude.json"), JSON.stringify({ oauthAccount: { accountUuid: "acct-a" } }));
     await assert.rejects(legacy.svc.centralCredentials.relogin(legacy.account, loginGrant(r), { accountUuid: "acct-a", organizationUuid: "org-b" }, { allowDifferentAccount: false, stillWanted: () => true }),
       (error: unknown) => error instanceof CredentialAuthorityError && error.reason === "identity_unverified");
+    const recorded = await loginRequiredAccount(r, "org-recorded", { fetchers: { claudeIdentity: async (token: string) => (token === "enrolled-access" ? { accountUuid: "acct-a", organizationUuid: null } : null) } });
+    writeFileSync(join(recorded.account.homePath, ".claude.json"), JSON.stringify({ oauthAccount: { accountUuid: "acct-b", organizationUuid: "org-b" } }));
+    const recordedBefore = recorded.svc.centralCredentials.status(recorded.account)!;
+    await assert.rejects(recorded.svc.centralCredentials.relogin(recorded.account, loginGrant(r), ACCOUNT_B, { allowDifferentAccount: false, stillWanted: () => true }),
+      (error: unknown) => error instanceof CredentialAuthorityError && error.reason === "different_account", "stale home metadata never overrides the recorded account");
+    assert.deepEqual(recorded.svc.centralCredentials.status(recorded.account), recordedBefore);
     const asked = await loginRequiredAccount(r, "org-asked", { fetchers: { claudeIdentity: async (token: string) => (token === "login-access" ? ACCOUNT_A : token === "enrolled-access" ? ACCOUNT_A : null) } });
     assert.equal((await asked.svc.centralCredentials.relogin(asked.account, loginGrant(r), { accountUuid: "acct-a", organizationUuid: null }, { allowDifferentAccount: false, stillWanted: () => true })).phase, "ready",
       "a grant without an organization is completed from the provider's profile");

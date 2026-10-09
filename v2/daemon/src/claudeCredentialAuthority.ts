@@ -565,19 +565,27 @@ export class ClaudeCredentialAuthority {
     if (held.organizationUuid === null || grant.organizationUuid === null) return "unknown";
     return held.organizationUuid === grant.organizationUuid ? "same" : "different";
   }
-  /** The first source that names both account and organization; else the first that names the account. */
+  /**
+   * The highest-priority source names the account: the authority's record,
+   * then the provider's profile for the current access token, then Claude
+   * Code's record in the home. A lower source may only add the organization of
+   * that same account, never replace the account.
+   */
   private async heldIdentity(account: AccountRow, current: AuthorityDocument | null): Promise<ClaudeIdentity | null> {
-    const named: ClaudeIdentity[] = [];
-    if (current?.identity) named.push(current.identity);
+    let held: ClaudeIdentity | null = current?.identity ?? null;
     const credential = current ? parseClaudeCredentials(JSON.stringify(current.document)) : null;
-    if (!named.some((identity) => identity.organizationUuid !== null) && credential && credential.expiresAt > this.options.now()) {
-      const asked = await this.options.identify(credential.accessToken).catch(() => null);
-      if (asked) named.push(asked);
+    const sources: Array<() => Promise<ClaudeIdentity | null> | ClaudeIdentity | null> = [
+      () => (credential && credential.expiresAt > this.options.now() ? this.options.identify(credential.accessToken).catch(() => null) : null),
+      () => this.options.homeIdentity(account),
+    ];
+    for (const source of sources) {
+      if (held?.organizationUuid) return held;
+      const found = await source();
+      if (!found) continue;
+      if (!held) held = found;
+      else if (found.accountUuid === held.accountUuid && found.organizationUuid !== null) held = { ...held, organizationUuid: found.organizationUuid };
     }
-    if (!named.some((identity) => identity.organizationUuid !== null)) {
-      const home = this.options.homeIdentity(account);
-      if (home) named.push(home);
-    }
-    return named.find((identity) => identity.organizationUuid !== null) ?? named[0] ?? null;
+    return held;
   }
+
 }
