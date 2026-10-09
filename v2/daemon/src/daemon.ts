@@ -5534,7 +5534,9 @@ export class HiveDaemon {
     if (ev.flag === "auth_needed") {
       // One bee's turn cannot overrule the credential authority: a session can
       // still authenticate on an old access token after the login itself died.
-      if (accounts.centralCredentialInDoubt(account)) return;
+      // The authority keeps the account's status; the cut-off turn is still
+      // recorded so the authority's recovery resumes it.
+      const authorityInDoubt = accounts.centralCredentialInDoubt(account);
       if (ev.action === "set") {
         // Delayed-error preservation (HIVE-2): a still-valid on-disk Claude
         // credential means a newer session (or the daemon) already recovered
@@ -5545,7 +5547,9 @@ export class HiveDaemon {
         const preserve = account.harness === "claude"
           && account.status !== "auth_needed"
           && accounts.claudeCredentialFresh(account);
-        if (preserve) {
+        if (authorityInDoubt) {
+          this.log(`account.auth_needed_owned account=${account.id} bee=${bee.id} gen=${ev.generation} by=central_authority`);
+        } else if (preserve) {
           this.log(`account.auth_needed_deferred account=${account.id} bee=${bee.id} gen=${ev.generation} reason=fresh_credential`);
         } else if (account.status !== "paused" && store.setAccountStatus(account.id, "auth_needed", `bee ${bee.id}: ${ev.detail.slice(0, 200)}`).applied) {
           this.log(`account.auth_needed account=${account.id} bee=${bee.id} gen=${ev.generation}`);
@@ -5555,10 +5559,10 @@ export class HiveDaemon {
         // session that has itself failed auth), and request login only when
         // that refresh is rejected or absent.
         this.authResume?.interrupted(ev);
-        if (account.harness === "claude") accounts.scheduleClaudeRecovery(account.id);
+        if (account.harness === "claude" && !authorityInDoubt) accounts.scheduleClaudeRecovery(account.id);
       } else {
         this.authResume?.turnSucceeded(bee.id);
-        if (account.status === "auth_needed") {
+        if (account.status === "auth_needed" && !authorityInDoubt) {
           store.setAccountStatus(account.id, "ok", `bee ${bee.id}: ${ev.detail.slice(0, 200)}`);
           this.log(`account.auth_ok account=${account.id} bee=${bee.id} gen=${ev.generation}`);
         }
