@@ -5,6 +5,12 @@
  * providers with one bounded timeout.
  */
 
+/** Who a Claude OAuth grant belongs to; secret-free. */
+export interface ClaudeIdentity {
+  accountUuid: string;
+  organizationUuid: string | null;
+}
+
 export interface ClaudeTokenGrant {
   accessToken: string;
   refreshToken: string;
@@ -12,6 +18,8 @@ export interface ClaudeTokenGrant {
   /** When the login itself ends (the refresh token's hard lifetime); absent when the provider did not say. */
   refreshTokenExpiresAt?: number;
   scopes: string[];
+  /** The provider's account and organization for this grant, when the token response names them. */
+  identity?: ClaudeIdentity;
 }
 
 export type KeyCheck = "valid" | "invalid" | "unverified";
@@ -23,6 +31,8 @@ export interface LoginTransports {
   claudeTokenCheck: (accessToken: string) => Promise<boolean>;
   /** Best-effort subscription type for the credential document (Claude Code reads it); null when unknown. */
   claudeSubscriptionType: (accessToken: string) => Promise<string | null>;
+  /** The account and organization an access token belongs to (the profile endpoint); null when unknown. */
+  claudeIdentity: (accessToken: string) => Promise<ClaudeIdentity | null>;
   /** OpenAI API key check (`GET /v1/models`). */
   openaiKeyCheck: (apiKey: string, baseUrl?: string) => Promise<KeyCheck>;
   /** Anthropic API key check (`GET /v1/models`). */
@@ -49,6 +59,40 @@ export const CLAUDE_OAUTH_SCOPES = [
 /** HIVE_CLAUDE_OAUTH_TOKEN_URL points login and refresh at a local stub for isolated daemon runs. */
 export function claudeOauthTokenUrl(): string {
   return process.env.HIVE_CLAUDE_OAUTH_TOKEN_URL || CLAUDE_OAUTH_TOKEN_URL;
+}
+
+function claudeProfileUrl(): string {
+  return process.env.HIVE_CLAUDE_PROFILE_URL || "https://api.anthropic.com/api/oauth/profile";
+}
+
+function uuidOf(value: unknown): string | null {
+  const uuid = value !== null && typeof value === "object" ? (value as { uuid?: unknown }).uuid : undefined;
+  return typeof uuid === "string" && uuid.length > 0 ? uuid : null;
+}
+
+/** The identity a token or profile response names: `{account: {uuid}, organization: {uuid}}`. */
+export function claudeIdentityOf(body: unknown): ClaudeIdentity | null {
+  if (body === null || typeof body !== "object") return null;
+  const record = body as { account?: unknown; organization?: unknown };
+  const accountUuid = uuidOf(record.account);
+  return accountUuid ? { accountUuid, organizationUuid: uuidOf(record.organization) } : null;
+}
+
+async function fetchClaudeProfile(accessToken: string, timeoutMs: number): Promise<unknown> {
+  try {
+    const response = await fetch(claudeProfileUrl(), {
+      headers: { Authorization: `Bearer ${accessToken}`, "anthropic-beta": "oauth-2025-04-20" },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    return response.ok ? await response.json() : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The account an access token belongs to, from the profile endpoint; null when the provider did not say. */
+export async function fetchClaudeIdentity(accessToken: string, timeoutMs: number): Promise<ClaudeIdentity | null> {
+  return claudeIdentityOf(await fetchClaudeProfile(accessToken, timeoutMs));
 }
 
 function claudeUsageUrl(): string {
@@ -81,16 +125,18 @@ export function defaultLoginTransports(timeoutMs: number): LoginTransports {
         signal: AbortSignal.timeout(timeoutMs),
       });
       if (response.status === 400 || response.status === 401 || response.status === 403) return null;
-      const body = (await checkedJson(response)) as { access_token?: unknown; refresh_token?: unknown; expires_in?: unknown; refresh_token_expires_in?: unknown; scope?: unknown };
+      const body = (await checkedJson(response)) as { access_token?: unknown; refresh_token?: unknown; expires_in?: unknown; refresh_token_expires_in?: unknown; scope?: unknown; account?: unknown; organization?: unknown };
       if (typeof body.access_token !== "string" || typeof body.refresh_token !== "string") return null;
       const now = Date.now();
       const refreshTokenExpiresAt = expiryFromSeconds(body.refresh_token_expires_in, now);
+      const identity = claudeIdentityOf(body);
       return {
         accessToken: body.access_token,
         refreshToken: body.refresh_token,
         expiresAt: now + (typeof body.expires_in === "number" ? body.expires_in : 3600) * 1000,
         ...(refreshTokenExpiresAt !== undefined ? { refreshTokenExpiresAt } : {}),
         scopes: typeof body.scope === "string" ? body.scope.split(" ").filter(Boolean) : CLAUDE_OAUTH_SCOPES,
+        ...(identity ? { identity } : {}),
       };
     },
     claudeTokenCheck: async (accessToken) => {
@@ -103,22 +149,14 @@ export function defaultLoginTransports(timeoutMs: number): LoginTransports {
       return true;
     },
     claudeSubscriptionType: async (accessToken) => {
-      try {
-        const response = await fetch("https://api.anthropic.com/api/oauth/profile", {
-          headers: { Authorization: `Bearer ${accessToken}`, "anthropic-beta": "oauth-2025-04-20" },
-          signal: AbortSignal.timeout(timeoutMs),
-        });
-        if (!response.ok) return null;
-        const body = (await response.json()) as { organization?: { organization_type?: unknown }; account?: { has_claude_max?: unknown; has_claude_pro?: unknown } };
-        const type = body.organization?.organization_type;
-        if (typeof type === "string" && type.startsWith("claude_")) return type.slice("claude_".length);
-        if (body.account?.has_claude_max === true) return "max";
-        if (body.account?.has_claude_pro === true) return "pro";
-        return null;
-      } catch {
-        return null;
-      }
+      const body = (await fetchClaudeProfile(accessToken, timeoutMs)) as { organization?: { organization_type?: unknown }; account?: { has_claude_max?: unknown; has_claude_pro?: unknown } } | null;
+      const type = body?.organization?.organization_type;
+      if (typeof type === "string" && type.startsWith("claude_")) return type.slice("claude_".length);
+      if (body?.account?.has_claude_max === true) return "max";
+      if (body?.account?.has_claude_pro === true) return "pro";
+      return null;
     },
+    claudeIdentity: (accessToken) => fetchClaudeIdentity(accessToken, timeoutMs),
     openaiKeyCheck: async (apiKey, baseUrl) => {
       const response = await fetch(`${(baseUrl ?? "https://api.openai.com/v1").replace(/\/+$/, "")}/models`, {
         headers: { Authorization: `Bearer ${apiKey}` },

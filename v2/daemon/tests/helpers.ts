@@ -311,6 +311,7 @@ export async function startDaemon(dir: string, opts: { env?: Record<string, stri
       HIVE_V2_DATA_DIR: dir,
       HIVE_NO_KEYCHAIN: "1",
       HIVE_CLAUDE_USAGE_URL: "http://127.0.0.1:9/api/oauth/usage",
+      HIVE_CLAUDE_PROFILE_URL: "http://127.0.0.1:9/api/oauth/profile",
       // Successful test shutdown owns and reaps its disposable runtimes.
       // Production never sets this; restart-survival semantics stay intact.
       HIVE_TEST_REAP_RUNTIMES_ON_SHUTDOWN: "1",

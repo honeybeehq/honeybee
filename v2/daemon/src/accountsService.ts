@@ -86,6 +86,7 @@ import type { ResolvedNodeConfig } from "./config.ts";
 import { readClaudeKeychain, readClaudeKeychainState, writeClaudeKeychainEntry, type KeychainState, type KeychainStateReader, type KeychainReader, type KeychainWriter } from "./keychain.ts";
 import { atomicWriteFileSync } from "./homeDefaults.ts";
 import { withClaudeRefreshLock } from "./claudeRefreshLock.ts";
+import { fetchClaudeIdentity, type ClaudeIdentity } from "./login/transports.ts";
 import {
   defaultProviderLimitsHttp,
   fetchSecondaryProviderLimits,
@@ -111,6 +112,8 @@ export interface LimitsFetchers {
   codexRateLimits?: (homePath: string) => Promise<CodexRateLimitsFetchResult>;
   /** Consume one earned reset, then return a fresh limits snapshot. */
   codexResetLimits?: (homePath: string, idempotencyKey: string, creditId?: string) => Promise<CodexResetLimitsFetchResult>;
+  /** The Anthropic account a Claude access token belongs to (default: the real profile endpoint). */
+  claudeIdentity?: (accessToken: string) => Promise<ClaudeIdentity | null>;
 }
 
 export type CodexRateLimitsFetchResult =
@@ -134,6 +137,16 @@ export class ResetLimitsRefusal extends Error {
 }
 
 export type { ClaudeRefreshResult, ClaudeRefreshTransport, RefreshedClaudeToken };
+
+export interface LeaseOptions {
+  /**
+   * The remaining access-token lifetime the caller wants. A centrally managed
+   * Claude account refreshes first when less remains, unless its token was
+   * issued within `accounts.centralRefreshMinIntervalMs`; the 15-minute ship
+   * floor still applies.
+   */
+  minTtlMs?: number;
+}
 
 export interface AccountsServiceOptions {
   store: CoreStore;
@@ -444,6 +457,32 @@ const REFRESH_TOKEN_KEYS: ReadonlySet<string> = new Set(["refresh_token", "refre
  * Blanks only string values under the exact key names; access tokens, api
  * keys, and expiries are preserved untouched. Opaque — callers never log it.
  */
+/** How long central publication waits for a Claude process to release the account's credential locks. */
+const CENTRAL_PUBLISH_LOCK_WAIT_MS = 30_000;
+
+async function withClaudeRefreshLockWithin<T>(configDir: string, waitMs: number, run: () => Promise<T>): ReturnType<typeof withClaudeRefreshLock<T>> {
+  const deadline = Date.now() + waitMs;
+  for (;;) {
+    const locked = await withClaudeRefreshLock(configDir, run);
+    if (locked.acquired || Date.now() >= deadline) return locked;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+}
+
+/** The account Claude Code recorded in the home's `.claude.json` for its last login. */
+function claudeHomeIdentity(dir: string): ClaudeIdentity | null {
+  const raw = readIfFile(join(dir, ".claude.json"));
+  if (raw === null) return null;
+  try {
+    const account = (JSON.parse(raw) as { oauthAccount?: { accountUuid?: unknown; organizationUuid?: unknown } }).oauthAccount;
+    if (typeof account?.accountUuid !== "string" || account.accountUuid.length === 0) return null;
+    return { accountUuid: account.accountUuid, organizationUuid: typeof account.organizationUuid === "string" && account.organizationUuid.length > 0 ? account.organizationUuid : null };
+  } catch {
+    return null;
+  }
+}
+
+
 function keychainDocument(state: KeychainState | null): Record<string, unknown> {
   if (state?.status !== "present") return {};
   try {
@@ -847,6 +886,7 @@ export class AccountsService {
       claudeRefresh: opts.fetchers?.claudeRefresh ?? defaultClaudeRefreshTransport(this.cfg.accounts.limitsFetchTimeoutMs),
       codexRateLimits: opts.fetchers?.codexRateLimits ?? defaultCodexRateLimits(this.cfg.accounts.limitsFetchTimeoutMs, this.cfg.agents.codex?.command ?? "codex"),
       codexResetLimits: opts.fetchers?.codexResetLimits ?? defaultCodexResetLimits(this.cfg.accounts.limitsFetchTimeoutMs, this.cfg.agents.codex?.command ?? "codex"),
+      claudeIdentity: opts.fetchers?.claudeIdentity ?? ((accessToken) => fetchClaudeIdentity(accessToken, this.cfg.accounts.limitsFetchTimeoutMs)),
     };
     const centralKeychainReader: KeychainStateReader = opts.keychainStateReader ?? (opts.keychainReader
       ? async home => { const raw = await opts.keychainReader!(home); return raw === null ? { status: "unavailable" } : { status: "present", raw }; }
@@ -860,7 +900,7 @@ export class AccountsService {
       // An enrollment whose first rotation had an unknown outcome keeps that allowance through its retries.
       const phase = this.centralCredentials.status(account)?.phase;
       const adopted = phase === "enrolling" ? this.centralCredentials.adopted(account)
-        : phase === "disabling" || phase === "disabling_uncertain" || phase === "refreshing" || phase === "uncertain" ? this.centralCredentials.rollbackAdopted(account) : null;
+        : phase === "disabling" || phase === "disabling_uncertain" || phase === "refreshing" || phase === "uncertain" || phase === "login_required" ? this.centralCredentials.rollbackAdopted(account) : null;
       if (adopted && (refreshTokenDigest(credential.refreshToken) === adopted.refreshTokenDigest || credential.expiresAt < adopted.expiresAt)) return;
       throw new CredentialOwnershipConflict("An external Claude login or refresh changed this account; stop that process and recover the account before continuing.");
     };
@@ -878,7 +918,7 @@ export class AccountsService {
     };
     this.centralCredentials = new ClaudeCredentialAuthority({
       store: this.store, root: join(this.cfg.accounts.vaultDir, ".credential-authorities"), now: this.now,
-      log: this.log, retryBaseMs: this.cfg.accounts.centralRefreshRetryBaseMs,
+      log: this.log, retryBaseMs: this.cfg.accounts.centralRefreshRetryBaseMs, earlyRefreshMinIntervalMs: this.cfg.accounts.centralRefreshMinIntervalMs,
       beforeEnroll: account => {
         this.store.assertNoUpdateReservation();
         if (this.refreshBusy(account) || this.leaseMints.has(account.id) || this.nativeKeychainSeeds.has(account.id)) throw new CredentialAuthorityError("A native credential refresh is in progress; retry enrollment shortly.");
@@ -888,16 +928,29 @@ export class AccountsService {
       beforeRefresh: inspectCentralCopies,
       refresh: token => this.fetchers.claudeRefresh(token),
       onRefreshed: account => this.onCredentialValidated(account.id, "refresh"),
+      identify: accessToken => this.fetchers.claudeIdentity(accessToken),
+      homeIdentity: account => claudeHomeIdentity(account.homePath) ?? claudeHomeIdentity(this.vaultDirOf(account)),
+      // Native rotation's protocol: under Claude Code's credential locks, the vault and the Keychain item
+      // (merged into, never replaced) before the home file whose mtime tells a running Claude to re-read.
       publish: async (account, document, accessOnly) => {
-        const state = await inspectCentralCopies(account, document);
-        const raw = JSON.stringify(accessOnly ? blankRefreshTokens(document) : document);
-        mkdirSync(account.homePath, { recursive: true, mode: 0o700 });
-        mkdirSync(this.vaultDirOf(account), { recursive: true, mode: 0o700 });
-        atomicWriteFileSync(join(account.homePath, ".credentials.json"), raw, 0o600);
-        atomicWriteFileSync(join(this.vaultDirOf(account), ".credentials.json"), raw, 0o600);
-        const written = await this.keychainWriter(account.homePath, raw);
-        if (state.status !== "unavailable" && !written) {
-          throw new CredentialAuthorityError("Could not replace the account Keychain entry; runtime starts remain blocked until publication succeeds.");
+        const locked = await withClaudeRefreshLockWithin(account.homePath, CENTRAL_PUBLISH_LOCK_WAIT_MS, async () => {
+          const state = await inspectCentralCopies(account, document);
+          const published = (accessOnly ? blankRefreshTokens(document) : document) as Record<string, unknown>;
+          const raw = JSON.stringify(published);
+          mkdirSync(account.homePath, { recursive: true, mode: 0o700 });
+          mkdirSync(this.vaultDirOf(account), { recursive: true, mode: 0o700 });
+          atomicWriteFileSync(join(this.vaultDirOf(account), ".credentials.json"), raw, 0o600);
+          const keychainRaw = JSON.stringify({ ...published, ...keychainDocument(state), claudeAiOauth: published.claudeAiOauth });
+          let written = false;
+          const attempts = state.status === "present" ? CLAUDE_KEYCHAIN_PUBLISH_ATTEMPTS : 1;
+          for (let attempt = 0; attempt < attempts && !written; attempt += 1) written = await this.keychainWriter(account.homePath, keychainRaw).catch(() => false);
+          if (state.status !== "unavailable" && !written) {
+            throw new CredentialAuthorityError("Could not replace the account Keychain entry; runtime starts remain blocked until publication succeeds.");
+          }
+          atomicWriteFileSync(join(account.homePath, ".credentials.json"), raw, 0o600);
+        });
+        if (!locked.acquired) {
+          throw new CredentialAuthorityError("A Claude process held the account's credential lock throughout publication; it is retried.", "operation_in_progress");
         }
       },
     });
@@ -2260,10 +2313,10 @@ export class AccountsService {
    * mid-rotation. SENSITIVE: the return value is the ONLY place secret bytes
    * appear — callers must never log, audit, or persist it.
    */
-  async mintLease(account: AccountRow): Promise<EphemeralCredential> {
+  async mintLease(account: AccountRow, opts: LeaseOptions = {}): Promise<EphemeralCredential> {
     const joined = this.leaseMints.get(account.id);
     if (joined) return joined;
-    const pending = this.mintLeaseFresh(account);
+    const pending = this.mintLeaseFresh(account, opts);
     this.leaseMints.set(account.id, pending);
     try {
       return await pending;
@@ -2272,11 +2325,11 @@ export class AccountsService {
     }
   }
 
-  private async mintLeaseFresh(account: AccountRow): Promise<EphemeralCredential> {
+  private async mintLeaseFresh(account: AccountRow, opts: LeaseOptions): Promise<EphemeralCredential> {
     if (this.refreshBusy(account) && !this.centralCredentials.enabled(account)) {
       throw new LeaseRefusal("lease_unavailable", `account ${account.id}'s credential refresher is mid-rotation; retry shortly`);
     }
-    const lease = await this.mintLeaseByHarness(account);
+    const lease = await this.mintLeaseByHarness(account, opts);
     // Secret-free by construction: counts, note, and expiry only.
     this.log(
       `account.lease account=${account.id} harness=${account.harness} files=${lease.files.length}` +
@@ -2285,10 +2338,10 @@ export class AccountsService {
     return lease;
   }
 
-  private mintLeaseByHarness(account: AccountRow): Promise<EphemeralCredential> {
+  private mintLeaseByHarness(account: AccountRow, opts: LeaseOptions): Promise<EphemeralCredential> {
     switch (account.harness) {
       case "claude":
-        return this.mintClaudeLease(account);
+        return this.mintClaudeLease(account, opts);
       case "codex":
         return this.mintCodexLease(account);
       case "grok":
@@ -2318,10 +2371,11 @@ export class AccountsService {
    * running Claude keeps the refresh until CLAUDE_REFRESH_DEFERRAL_DEADLINE_MS
    * before expiry; an idle one never refreshes, so the daemon then does.
    */
-  private async mintClaudeLease(account: AccountRow): Promise<EphemeralCredential> {
+  private async mintClaudeLease(account: AccountRow, opts: LeaseOptions): Promise<EphemeralCredential> {
     if (this.centralCredentials.enabled(account)) {
+      const preferredTtlMs = opts.minTtlMs !== undefined && opts.minTtlMs > CLAUDE_MIN_SHIP_TTL_MS ? opts.minTtlMs : undefined;
       try {
-        await this.centralCredentials.ensure(account, CLAUDE_MIN_SHIP_TTL_MS);
+        await this.centralCredentials.ensure(account, CLAUDE_MIN_SHIP_TTL_MS, undefined, preferredTtlMs);
       } catch (error) {
         if (error instanceof CredentialAuthorityError) {
           if (error.reason === "login_required") throw new LeaseRefusal("credential_login_required", error.message);
@@ -2676,6 +2730,24 @@ export class AccountsService {
    * a process death through the limits probe, so the phase, the account status
    * and the limits row settle together instead of waiting for the next caller.
    */
+  /**
+   * Tick hook: refresh central Claude credentials hours before the access
+   * token ends, so every copy and lease carries real margin instead of
+   * waiting for a caller at the 15-minute floor.
+   */
+  centralEarlyRefreshTick(): void {
+    const aheadMs = this.cfg.accounts.centralRefreshAheadMs;
+    if (aheadMs <= 0) return;
+    for (const account of this.store.listAccounts()) {
+      if (account.harness !== "claude" || account.status === "paused") continue;
+      if (!this.centralCredentials.earlyRefreshDue(account, aheadMs)) continue;
+      this.log(`account.credentials.early_refresh account=${account.id} ahead_ms=${aheadMs}`);
+      void this.centralCredentials.ensure(account, CLAUDE_MIN_SHIP_TTL_MS, undefined, aheadMs).catch((error) => {
+        this.log(`account.credentials.early_refresh_failed account=${account.id} err=${JSON.stringify(errorDetail(error).slice(0, 300))}`);
+      });
+    }
+  }
+
   centralRefreshRetryTick(): void {
     const now = this.now();
     const due = this.store.listAccounts()

@@ -4,6 +4,7 @@ import { closeSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, wr
 import { dirname, join } from "node:path";
 import { parseClaudeCredentials, type AccountCredentialAuthority, type AccountRow, type CoreStore, type CredentialRefreshFailure } from "../../core/src/index.ts";
 import { describeRefreshFailure, sanitizeProviderText, type ClaudeRefreshFailure, type ClaudeRefreshResult, type ClaudeRefreshTransport } from "./claudeRefreshTransport.ts";
+import type { ClaudeIdentity } from "./login/transports.ts";
 
 export interface AuthorityDocument {
   generation: number;
@@ -13,6 +14,12 @@ export interface AuthorityDocument {
   adopted?: AdoptedChain;
   /** Enrollment provenance retained while disabling, including after a restart. */
   rollbackAdopted?: AdoptedChain;
+  /** The Anthropic account and organization this chain belongs to; secret-free. */
+  identity?: ClaudeIdentity;
+  /** When the provider last issued this chain's access token, by refresh or login. */
+  issuedAt?: number;
+  /** Set by an in-place login; the previous generation's file is kept until this chain's first successful refresh. */
+  login?: { at: number; previousGeneration: number | null };
 }
 export interface AdoptedChain {
   refreshTokenDigest: string;
@@ -30,19 +37,26 @@ export interface CentralCredentialOptions {
   beforeUse: (account: AccountRow, document: Record<string, unknown>) => void;
   beforeRefresh: (account: AccountRow, document: Record<string, unknown>) => Promise<unknown>;
   refresh: ClaudeRefreshTransport;
-  /** A rotation was saved and published: runtimes can read the new credential. */
+  /** A rotation or an in-place login was saved and published: runtimes can read the new credential. */
   onRefreshed?: (account: AccountRow) => void;
+  /** The account an access token belongs to, asked of the provider; null when it does not say. */
+  identify: (accessToken: string) => Promise<ClaudeIdentity | null>;
+  /** The account Claude Code recorded for the home's last login; null when it recorded none. */
+  homeIdentity: (account: AccountRow) => ClaudeIdentity | null;
   now: () => number;
   log: (op: string) => void;
   /** First retry delay after a refresh that did not succeed; doubles per consecutive attempt up to REFRESH_RETRY_MAX_MS. */
   retryBaseMs: number;
+  /** An early refresh never runs within this long of the token's issue, however much margin a caller prefers. */
+  earlyRefreshMinIntervalMs: number;
 }
 export const REFRESH_RETRY_MAX_MS = 15 * 60_000;
+const RELOGIN_PHASES: ReadonlySet<AccountCredentialAuthority["phase"]> = new Set(["ready", "refreshing", "uncertain", "login_required"]);
 /**
  * `login_required`: only a new login recovers the account. `operation_in_progress`:
  * another credential operation holds the account's lane; retry shortly.
  */
-export type CredentialUnavailableReason = "login_required" | "operation_in_progress" | "unavailable";
+export type CredentialUnavailableReason = "login_required" | "operation_in_progress" | "unavailable" | "different_account" | "identity_unverified";
 export class CredentialAuthorityError extends Error {
   readonly code = "account_unavailable";
   readonly reason: CredentialUnavailableReason;
@@ -79,6 +93,10 @@ export class ClaudeCredentialAuthority {
   }
   busy(account: AccountRow): boolean { return this.pending.has(account.id); }
   private path(account: AccountRow): string { return join(this.options.root, `${encodeURIComponent(account.id)}.json`); }
+  private previousPath(account: AccountRow): string { return join(this.options.root, `${encodeURIComponent(account.id)}.previous.json`); }
+  private forgetPrevious(account: AccountRow): void {
+    try { unlinkSync(this.previousPath(account)); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+  }
   private read(account: AccountRow): AuthorityDocument {
     let value: AuthorityDocument;
     try { value = JSON.parse(readFileSync(this.path(account), "utf8")) as AuthorityDocument; }
@@ -112,10 +130,22 @@ export class ClaudeCredentialAuthority {
   private ready(account: AccountRow, value: AuthorityDocument): AccountCredentialAuthority {
     const refreshTokenExpiresAt = parseClaudeCredentials(JSON.stringify(value.document))?.refreshTokenExpiresAt;
     if (refreshTokenExpiresAt !== undefined) this.options.store.setAccountRefreshTokenExpiry(account.id, refreshTokenExpiresAt, "central credential refreshed");
+    if (value.login) this.options.store.recordAccountLogin(account.id, value.login.at);
     const ready = this.put(account, "ready", value);
     this.credentialWorks(account);
     this.options.onRefreshed?.(account);
     return ready;
+  }
+  /** A rotated chain is already durable; learning whose it is only adds a label, so a provider that does not answer changes nothing. */
+  private async withIdentity(account: AccountRow, value: AuthorityDocument): Promise<AuthorityDocument> {
+    if (value.identity) return value;
+    const accessToken = parseClaudeCredentials(JSON.stringify(value.document))?.accessToken;
+    const identity = accessToken ? await this.options.identify(accessToken).catch(() => null) : null;
+    if (!identity) return value;
+    const labelled = { ...value, identity };
+    save(this.path(account), labelled);
+    this.options.log(`account.credentials.identity account=${account.id} generation=${value.generation} recorded=true`);
+    return labelled;
   }
   private retryDelayMs(attempts: number): number {
     return Math.min(this.options.retryBaseMs * 2 ** Math.min(attempts - 1, 20), REFRESH_RETRY_MAX_MS);
@@ -156,7 +186,7 @@ export class ClaudeCredentialAuthority {
   /** What the operator must do; also the account's status reason and the lease refusal text. */
   loginRequiredMessage(account: AccountRow, failure: CredentialRefreshFailure | null): string {
     const why = failure ? `the provider refused the refresh token (${describeRefreshFailure(failure)})` : "the refresh token is no longer usable";
-    return `Claude login required for ${account.id}: ${why}. Recover with: hive account credentials disable ${account.id}; hive account login ${account.id}; hive account credentials enable ${account.id}`;
+    return `Claude login required for ${account.id}: ${why}. Recover with: hive account login ${account.id}`;
   }
   /** A paused account stays paused: the operator parked it, and unpausing re-derives the honest status. */
   private markAuthNeeded(account: AccountRow, reason: string): void {
@@ -198,11 +228,33 @@ export class ClaudeCredentialAuthority {
     if (this.busy(account)) return false;
     const state = this.status(account);
     if (!state) return false;
+    // Other phases reach a saved login through their own retries or the next caller.
+    if (state.phase === "login_required") return this.savedResultPending(account, state);
     if (state.phase === "refreshing") return true;
     const retryAt = state.failure?.retryAt ?? null;
     // An `uncertain` row written before schema v35 has no retry metadata: it is due.
     if (state.phase === "uncertain") return retryAt === null || retryAt <= this.options.now();
     return state.phase === "ready" && retryAt !== null && retryAt <= this.options.now();
+  }
+  /** A provider or login result was saved under the row's operation key, but the row was never moved to it. */
+  private savedResult(state: AccountCredentialAuthority, value: AuthorityDocument): boolean {
+    return state.operationKey !== null && value.operationKey === state.operationKey && value.generation > state.generation;
+  }
+  private savedResultPending(account: AccountRow, state: AccountCredentialAuthority): boolean {
+    if (!RELOGIN_PHASES.has(state.phase) || state.operationKey === null) return false;
+    try { return this.savedResult(state, this.read(account)); } catch { return false; }
+  }
+  /** Whether the access token has no more than `aheadMs` left and may be refreshed early now. */
+  earlyRefreshDue(account: AccountRow, aheadMs: number): boolean {
+    if (aheadMs <= 0 || this.busy(account)) return false;
+    const state = this.status(account);
+    if (state?.phase !== "ready" || state.expiresAt === null) return false;
+    if (state.failure?.retryAt != null && state.failure.retryAt > this.options.now()) return false;
+    if (state.expiresAt - this.options.now() > aheadMs) return false;
+    try { return !this.recentlyIssued(this.read(account)); } catch { return false; }
+  }
+  private recentlyIssued(value: AuthorityDocument): boolean {
+    return value.issuedAt !== undefined && this.options.now() - value.issuedAt < this.options.earlyRefreshMinIntervalMs;
   }
   private assertQuiescent(account: AccountRow): void {
     if (this.options.store.beesOnAccount(account.id).some(bee => {
@@ -217,8 +269,9 @@ export class ClaudeCredentialAuthority {
   private lane(account: AccountRow, kind: string, run: () => Promise<AccountCredentialAuthority>): Promise<AccountCredentialAuthority> {
     const existing = this.pending.get(account.id);
     if (existing) {
-      if (existing.kind === kind || (kind === "ensure" && existing.kind.startsWith("force:"))) return existing.promise;
-      if (kind.startsWith("force:") && (existing.kind === "ensure" || existing.kind.startsWith("force:"))) {
+      if (kind !== "relogin" && (existing.kind === kind || (kind === "ensure" && existing.kind.startsWith("force:")))) return existing.promise;
+      const waitsForRefresh = kind === "relogin" || kind.startsWith("force:");
+      if ((waitsForRefresh && (existing.kind === "ensure" || existing.kind.startsWith("force:"))) || (kind === "ensure" && existing.kind === "relogin")) {
         const retry = () => this.lane(account, kind, run);
         return existing.promise.then(retry, retry);
       }
@@ -317,11 +370,11 @@ export class ClaudeCredentialAuthority {
         throw new CredentialAuthorityError(`The enrollment refresh outcome is unknown (${detail}); it is retried automatically and ends in ready or login_required.`);
       }
       const oauth = value.document.claudeAiOauth as Record<string, unknown>;
-      value = { ...value, generation: value.generation + 1, operationKey,
+      value = { ...value, generation: value.generation + 1, operationKey, issuedAt: this.options.now(),
         document: { ...value.document, claudeAiOauth: { ...oauth, ...attempt.token } } };
       save(this.path(account), value);
       await this.options.publish(account, value.document, true);
-      return this.enrollmentReady(account, value);
+      return this.enrollmentReady(account, await this.withIdentity(account, value));
     });
   }
   disable(account: AccountRow): Promise<AccountCredentialAuthority> {
@@ -363,42 +416,57 @@ export class ClaudeCredentialAuthority {
   forgetDisabled(account: AccountRow): void {
     this.assertDisabled(account);
     try { unlinkSync(this.path(account)); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+    this.forgetPrevious(account);
   }
   async checkRuntimeCopies(account: AccountRow): Promise<void> {
     await this.options.beforeRefresh(account, this.read(account).document);
   }
-  ensure(account: AccountRow, minTtlMs: number, forceKey?: string): Promise<AccountCredentialAuthority> {
+  /**
+   * Make the credential usable for at least `minTtlMs`, refreshing when it is
+   * not. `preferredTtlMs` asks for more margin: below it the chain is refreshed
+   * early, unless it was issued within `earlyRefreshMinIntervalMs`, and an
+   * early refresh the provider did not process leaves the usable token in place.
+   */
+  ensure(account: AccountRow, minTtlMs: number, forceKey?: string, preferredTtlMs?: number): Promise<AccountCredentialAuthority> {
     return this.lane(account, forceKey ? `force:${forceKey}` : "ensure", async () => {
       let state = this.status(account);
       if (!state || state.phase === "disabled") throw new CredentialAuthorityError("Enable central credentials for this account first.");
-      if (state.phase === "login_required") throw new CredentialAuthorityError(this.loginRequiredMessage(account, state.failure), "login_required");
+      if (state.phase === "login_required") {
+        if (!this.savedResultPending(account, state)) throw new CredentialAuthorityError(this.loginRequiredMessage(account, state.failure), "login_required");
+      }
       let value = this.read(account);
-      if (state.phase === "refreshing" || state.phase === "uncertain") {
-        // A saved result can settle a crash after provider success, including publication failure.
-        if (value.operationKey === state.operationKey && value.generation > state.generation) {
-          await this.options.publish(account, value.document, true);
-          return this.enrollmentReady(account, value);
-        }
-        if (state.phase === "refreshing") {
-          // No operation is in flight (the lane is ours), so a process death interrupted this refresh.
-          this.outcomeUnknown(account, { ...value, operationKey: state.operationKey }, this.interrupted("the daemon stopped during the refresh", state.failure));
-          state = this.status(account)!;
-        }
-      } else if (state.phase !== "ready") {
+      if (RELOGIN_PHASES.has(state.phase) && this.savedResult(state, value)) {
+        // A saved result settles a crash after provider success or an in-place login, including publication failure.
+        await this.options.publish(account, value.document, true);
+        return this.enrollmentReady(account, await this.withIdentity(account, value));
+      }
+      if (state.phase === "refreshing") {
+        // No operation is in flight (the lane is ours), so a process death interrupted this refresh.
+        this.outcomeUnknown(account, { ...value, operationKey: state.operationKey }, this.interrupted("the daemon stopped during the refresh", state.failure));
+        state = this.status(account)!;
+      } else if (state.phase !== "ready" && state.phase !== "uncertain") {
         throw new CredentialAuthorityError(`Central credentials are ${state.phase}; finish it with: hive account credentials ${state.phase === "enrolling" ? "enable" : "disable"} ${account.id}`);
       }
       const tokenStateUnknown = state.phase === "uncertain";
       const credential = parseClaudeCredentials(JSON.stringify(value.document))!;
-      if (!tokenStateUnknown && ((forceKey && value.operationKey === forceKey) || (!forceKey && credential.expiresAt - this.options.now() > minTtlMs))) {
+      const now = this.options.now();
+      const remaining = credential.expiresAt - now;
+      const elective = !tokenStateUnknown && !forceKey && remaining > minTtlMs;
+      const enough = elective && (preferredTtlMs === undefined || remaining > preferredTtlMs || this.recentlyIssued(value));
+      if ((!tokenStateUnknown && forceKey && value.operationKey === forceKey) || enough) {
         this.options.beforeUse(account, value.document);
         return state;
       }
       if (!credential.refreshToken) {
         throw this.requireLogin(account, value, { outcome: "rejected", httpStatus: null, error: null, description: "the authority holds no refresh token",
-          at: this.options.now(), attempts: (state.failure?.attempts ?? 0) + 1, retryAt: null });
+          at: now, attempts: (state.failure?.attempts ?? 0) + 1, retryAt: null });
       }
       const retryAt = state.failure?.retryAt ?? null;
-      if (!forceKey && retryAt !== null && retryAt > this.options.now()) {
+      if (!forceKey && retryAt !== null && retryAt > now) {
+        if (elective) {
+          this.options.beforeUse(account, value.document);
+          return state;
+        }
         throw new CredentialAuthorityError(`Central refresh for ${account.id} did not succeed (${state.failure!.outcome}: ${describeRefreshFailure(state.failure!)}); next attempt at ${new Date(retryAt).toISOString()}`);
       }
       await this.options.beforeRefresh(account, value.document);
@@ -410,7 +478,11 @@ export class ClaudeCredentialAuthority {
         if (result.kind === "rejected") throw this.requireLogin(account, { ...value, operationKey }, failure);
         const detail = `${describeRefreshFailure(failure)}; next attempt at ${new Date(failure.retryAt!).toISOString()}`;
         if (result.kind === "retryable" && !tokenStateUnknown) {
-          this.put(account, "ready", value, failure);
+          const kept = this.put(account, "ready", value, failure);
+          if (elective) {
+            this.options.beforeUse(account, value.document);
+            return kept;
+          }
           throw new CredentialAuthorityError(`The provider did not process the refresh for ${account.id} (${detail}); the refresh token is unused.`);
         }
         this.outcomeUnknown(account, { ...value, operationKey }, failure);
@@ -419,11 +491,79 @@ export class ClaudeCredentialAuthority {
       const oauth = value.document.claudeAiOauth as Record<string, unknown>;
       // An enrollment whose first rotation had an unknown outcome completes here: its native copies still hold the adopted chain.
       const enrollment = value.rollbackAdopted ? { adopted: value.adopted, rollbackAdopted: value.rollbackAdopted } : {};
-      value = { ...enrollment, generation: value.generation + 1, operationKey,
+      const firstRefreshAfterLogin = value.login !== undefined;
+      value = { ...enrollment, ...(value.identity ? { identity: value.identity } : {}), issuedAt: this.options.now(),
+        generation: value.generation + 1, operationKey,
         document: { ...value.document, claudeAiOauth: { ...oauth, ...attempt.token } } };
       save(this.path(account), value);
+      if (firstRefreshAfterLogin) {
+        this.forgetPrevious(account);
+        this.options.log(`account.credentials.previous_dropped account=${account.id} generation=${value.generation}`);
+      }
+      await this.options.publish(account, value.document, true);
+      return this.enrollmentReady(account, await this.withIdentity(account, value));
+    });
+  }
+  /**
+   * Replace the chain with a new login's grant in place. Runtime copies hold
+   * access tokens only, so no running session owns a chain this could strand,
+   * and nothing is stopped. The grant must belong to the Anthropic account the
+   * authority already holds unless `allowDifferentAccount`. The previous
+   * generation is kept beside the authority until the new chain's first
+   * successful refresh. A crash after the save is settled by the next ensure.
+   */
+  relogin(account: AccountRow, document: Record<string, unknown>, identity: ClaudeIdentity | null, opts: { allowDifferentAccount: boolean }): Promise<AccountCredentialAuthority> {
+    return this.lane(account, "relogin", async () => {
+      const state = this.status(account);
+      if (!state || state.phase === "disabled") throw new CredentialAuthorityError(`Central credentials are not enabled for ${account.id}.`);
+      if (!RELOGIN_PHASES.has(state.phase)) {
+        throw new CredentialAuthorityError(`Central credentials are ${state.phase}; finish it with: hive account credentials ${state.phase === "enrolling" ? "enable" : "disable"} ${account.id}`, "operation_in_progress");
+      }
+      const grant = parseClaudeCredentials(JSON.stringify(document));
+      if (!grant?.refreshToken || grant.expiresAt <= this.options.now()) throw new CredentialAuthorityError("The login did not produce a usable refresh credential.");
+      let current: AuthorityDocument | null;
+      try { current = this.read(account); } catch { current = null; }
+      const verdict = await this.sameAccount(account, current, identity);
+      if (verdict !== "same" && !opts.allowDifferentAccount) {
+        throw verdict === "different"
+          ? new CredentialAuthorityError(`This login belongs to a different Anthropic account than ${account.id}; nothing was changed. To replace the account's login with it anyway: hive account login ${account.id} --replace-account`, "different_account")
+          : new CredentialAuthorityError(`Honeybee cannot tell whether this login belongs to the Anthropic account ${account.id} holds; nothing was changed. If it does: hive account login ${account.id} --replace-account`, "identity_unverified");
+      }
+      if (current) await this.options.beforeRefresh(account, current.document);
+      const operationKey = randomUUID();
+      if (current) {
+        save(this.previousPath(account), current);
+        this.put(account, state.phase, { ...current, operationKey }, state.failure);
+      } else {
+        this.options.store.putAccountCredentialAuthority({ ...state, operationKey });
+      }
+      const at = this.options.now();
+      const enrollment = current?.rollbackAdopted ? { adopted: current.adopted, rollbackAdopted: current.rollbackAdopted } : {};
+      const value: AuthorityDocument = { ...enrollment, generation: Math.max(state.generation, current?.generation ?? 0) + 1, operationKey, document,
+        ...(identity ? { identity } : {}), issuedAt: at, login: { at, previousGeneration: current?.generation ?? null } };
+      save(this.path(account), value);
+      this.options.log(`account.credentials.relogin account=${account.id} from_phase=${state.phase} generation=${value.generation} previous=${current?.generation ?? "-"}`
+        + ` identity=${verdict === "same" ? "same" : `${verdict}_allowed`}`);
       await this.options.publish(account, value.document, true);
       return this.enrollmentReady(account, value);
     });
+  }
+  /** Compares account and organization; a side that cannot be named is `unknown`, never assumed equal. */
+  private async sameAccount(account: AccountRow, current: AuthorityDocument | null, grant: ClaudeIdentity | null): Promise<"same" | "different" | "unknown"> {
+    if (!grant) return "unknown";
+    const held = await this.heldIdentity(account, current);
+    if (!held) return "unknown";
+    if (held.accountUuid !== grant.accountUuid) return "different";
+    if (held.organizationUuid !== null && grant.organizationUuid !== null && held.organizationUuid !== grant.organizationUuid) return "different";
+    return "same";
+  }
+  private async heldIdentity(account: AccountRow, current: AuthorityDocument | null): Promise<ClaudeIdentity | null> {
+    if (current?.identity) return current.identity;
+    const credential = current ? parseClaudeCredentials(JSON.stringify(current.document)) : null;
+    if (credential && credential.expiresAt > this.options.now()) {
+      const asked = await this.options.identify(credential.accessToken).catch(() => null);
+      if (asked) return asked;
+    }
+    return this.options.homeIdentity(account);
   }
 }

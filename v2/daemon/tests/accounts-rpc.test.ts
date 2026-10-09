@@ -1220,7 +1220,7 @@ async function oauthStub(): Promise<{ url: string; bodies: string[]; close: () =
     close: () => new Promise<void>(resolve => server.close(() => resolve())) };
 }
 
-test("rpc central credentials: per-account opt-in/status/lease/disable, idempotent enable, native login and capture fenced, expired and refused candidates rejected", async () => {
+test("rpc central credentials: per-account opt-in/status/lease/disable, idempotent enable, in-place login, native capture fenced, expired and refused candidates rejected", async () => {
   const { dir, cleanup } = makeDaemonDir();
   let daemon: DaemonHandle | null = null;
   const oauth = await oauthStub();
@@ -1258,7 +1258,9 @@ test("rpc central credentials: per-account opt-in/status/lease/disable, idempote
     assert.ok(readFileSync(join(dir, "vault", "claude", "claude-refused", ".credentials.json"), "utf8").includes("REFUSED_REFRESH_FIXTURE"));
     assert.ok(!existsSync(join(dir, "homes", "claude-refused", ".credentials.json")), "no access-only copy was published for the refused candidate");
     await rejects(() => client.request("account.credentials.refresh", { id: "claude-pilot" }), "invalid_request");
-    await rejects(() => client.request("account.login.start", { id: "claude-pilot" }), "account_unavailable");
+    const inPlace = await client.request<{ flow: { id: string; phase: string; methodId: string } }>("account.login.start", { id: "claude-pilot" });
+    assert.deepEqual([inPlace.flow.phase, inPlace.flow.methodId], ["waiting_input", "claude-oauth"], "a centrally managed account logs in in place");
+    await client.request("account.login.cancel", { flowId: inPlace.flow.id });
     await rejects(() => client.request("account.capture", { id: "claude-pilot" }), "invalid_request");
     const lease = await client.request<{ files: Array<{ contentB64: string }> }>("account.lease", { account: "claude-pilot" });
     const shipped = JSON.parse(Buffer.from(lease.files[0]!.contentB64, "base64").toString()).claudeAiOauth;

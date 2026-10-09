@@ -60,6 +60,8 @@ export interface LoginRunnerHost {
   readonly workerSettleMs: number | undefined;
   /** The flow row as it is now (null once removed). */
   flow(): LoginFlowRow | null;
+  /** The operator allowed this login to replace a centrally managed account's chain with another Anthropic account's. */
+  replaceAccount(): boolean;
   /** The flow exists and is not terminal. */
   stillActive(): boolean;
   /** `runner` is still the flow's registered runner — a superseded runner (cancel → retry, method switch) must drop its late events. */

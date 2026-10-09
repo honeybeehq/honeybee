@@ -95,6 +95,10 @@ export interface AccountsConfig {
   limitsFetchTimeoutMs?: number;
   /** First retry delay after a central Claude refresh that did not succeed; doubles per attempt up to 15 min. Default 30s. */
   centralRefreshRetryBaseMs?: number;
+  /** Refresh a central Claude credential once no more than this much access-token lifetime remains; 0 = only at the 15-minute floor. Default 3 h. */
+  centralRefreshAheadMs?: number;
+  /** An early central refresh (the timer above, or a lease's minTtlMs) never runs within this long of the token's issue. Default 5 min. */
+  centralRefreshMinIntervalMs?: number;
   /**
    * tmux socket name (`tmux -L <name>`) the RETIRED login seats ran on; kept
    * only so boot can clean up legacy `hive-login-*` sessions the daemon
@@ -358,6 +362,8 @@ export const DEFAULTS = {
   limitsRefreshMs: 15 * 60 * 1000,
   limitsFetchTimeoutMs: 15_000,
   centralRefreshRetryBaseMs: 30_000,
+  centralRefreshAheadMs: 3 * 60 * 60 * 1000,
+  centralRefreshMinIntervalMs: 5 * 60 * 1000,
   loginTimeoutMs: 10 * 60 * 1000,
   exhaustionCoolOffMs: 5 * 60 * 60 * 1000,
   allocationMode: "shadow" as const,
@@ -759,6 +765,8 @@ function accountsOf(raw: Record<string, unknown>): ResolvedNodeConfig["accounts"
     limitsRefreshMs: num(a, "limitsRefreshMs", DEFAULTS.limitsRefreshMs),
     limitsFetchTimeoutMs: num(a, "limitsFetchTimeoutMs", DEFAULTS.limitsFetchTimeoutMs),
     centralRefreshRetryBaseMs: num(a, "centralRefreshRetryBaseMs", DEFAULTS.centralRefreshRetryBaseMs),
+    centralRefreshAheadMs: num(a, "centralRefreshAheadMs", DEFAULTS.centralRefreshAheadMs),
+    centralRefreshMinIntervalMs: num(a, "centralRefreshMinIntervalMs", DEFAULTS.centralRefreshMinIntervalMs),
     loginTimeoutMs: num(a, "loginTimeoutMs", DEFAULTS.loginTimeoutMs),
     exhaustionCoolOffMs: num(a, "exhaustionCoolOffMs", DEFAULTS.exhaustionCoolOffMs),
     allocationMode,

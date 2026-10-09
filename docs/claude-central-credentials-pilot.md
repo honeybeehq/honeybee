@@ -169,10 +169,10 @@ published. Runtime files and macOS Keychain receive access-only documents.
   scheduled. Nothing to do: it ends in `ready` or `login_required`. Disabling
   meanwhile publishes an access-only copy and marks the account `auth_needed`;
   it never restores a possibly consumed refresh token.
-- **`login_required`:** terminal. The provider refused the refresh token, most
-  often because the login reached its hard lifetime (about four weeks). Stop
-  this account's local bees, then `hive account credentials disable <account>`,
-  `hive account login <account>`, `hive account credentials enable <account>`.
+- **`login_required`:** terminal until a new login. The provider refused the
+  refresh token, most often because the login reached its hard lifetime (about
+  four weeks). Run `hive account login <account>` (see In-place login); nothing
+  needs to be stopped or disabled.
 - **`disabling` / `disabling_uncertain`:** fix publication and retry disable.
   Restart preserves whether the restore was allowed to include a refresh token.
 - **Missing/corrupt private document:** disable still works and marks
@@ -182,7 +182,7 @@ published. Runtime files and macOS Keychain receive access-only documents.
   Disable preserves its credential rather than restoring an older chain, and
   marks `auth_needed`. Capture/verify that login or log in again.
 
-Native login and capture are refused while enabled. Removing an enabled account
+Native capture is refused while enabled; login runs in place (below). Removing an enabled account
 is refused; after disable, account removal also removes its private authority
 file. The authority document also records a SHA-256 digest and expiry of the
 adopted native chain (no secret) so untouched native copies are not mistaken
@@ -190,6 +190,60 @@ for a foreign login while enrollment is in progress. Ordinary disable retains th
 as authority; re-enrollment starts from the current native credential. The
 retained file remains sensitive and belongs in the account's secret backup and
 retention policy.
+
+## In-place login
+
+`hive account login <account>` (RPC `account.login.start` / `submit` /
+`retry`) works while central credentials are enabled, in phase `ready`,
+`refreshing`, `uncertain` or `login_required`. Only `enrolling` and
+`disabling*` refuse it. Only the direct Claude OAuth method is offered, because
+any other method would land a refresh token in the home. When the pasted code
+is exchanged, the authority, in its own lane and without stopping anything:
+
+1. checks that the grant belongs to the same Anthropic account and
+   organization as the chain it holds. It uses the identity recorded on the
+   authority document, else asks the provider with the current access token,
+   else reads the `oauthAccount` Claude Code recorded in the home's
+   `.claude.json`. A different account fails the flow with `different_account`.
+   If either identity is unknown, the flow fails with `identity_unverified`.
+   Nothing changes in either case.
+   `--replace-account` (`replaceAccount: true`) allows the replacement;
+2. checks Keychain readability and foreign copies as before a refresh;
+3. saves the previous document as `<account>.previous.json`, fences the row
+   with an operation key, saves the new chain as generation N+1 and publishes
+   access-only copies;
+4. moves the phase to `ready`, records the login, clears `auth_needed` and
+   fires the auto-resume hook. Bees cut off by the dead login resume once.
+
+The previous generation's file is removed after the new chain's first
+successful refresh. If the daemon dies after the save, the row still shows the
+old phase with the new operation key. The next tick (for `login_required`) or
+the next caller publishes the saved login without another provider call. A bee
+whose turn fails authentication while the authority is `login_required` or
+`uncertain` is recorded as interrupted. The account's status still comes from
+the authority.
+
+Publication, here and after every refresh, uses the native rotation's protocol.
+It holds Claude Code's credential locks (including `.storage-write.lock`) and
+waits up to 30 s for them. It writes the vault, then the Keychain item (merged
+into, so MCP tokens survive), and the home file last.
+
+## Early refresh and lease margin
+
+The daemon refreshes a `ready` central credential once no more than
+`accounts.centralRefreshAheadMs` (default 3 h) of the access token remains,
+not only at the 15-minute ship floor. `account.lease {minTtlMs}` (0–24 h) asks
+for that much remaining lifetime and refreshes centrally first when less is
+left. Neither refreshes a token issued within
+`accounts.centralRefreshMinIntervalMs` (default 5 min). An early refresh that
+the provider did not process leaves the usable token in place and backs off.
+
+## Login due
+
+Mirrored accounts carry `loginDueAt`, derived as `refreshTokenExpiresAt` minus
+3 days. No delta is emitted when that moment passes, so compare it with the
+clock. `hive account list` prints `login due: login expires MM-DD HH:MM` inside
+that window.
 
 ## Deployment boundary
 

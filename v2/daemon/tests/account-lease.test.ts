@@ -32,7 +32,8 @@ import { openCoreStore, parseClaudeCredentials, type CoreStore } from "../../cor
 import type { ClaudeRefreshResult, RefreshedClaudeToken } from "../src/claudeRefreshTransport.ts";
 const granted = (token: RefreshedClaudeToken): ClaudeRefreshResult => ({ kind: "success", token });
 const refused: ClaudeRefreshResult = { kind: "rejected", httpStatus: 400, error: "invalid_grant", description: "Refresh token not found or invalid" };
-import { AccountsService, CLAUDE_KEYCHAIN_REPAIR_RETRY_MS, CLAUDE_REFRESH_DEFERRAL_DEADLINE_MS, CODEX_MIN_SHIP_TTL_MS, LeaseRefusal, type EphemeralCredential } from "../src/accountsService.ts";
+import { AccountsService, CLAUDE_KEYCHAIN_REPAIR_RETRY_MS, CLAUDE_MIN_SHIP_TTL_MS, CLAUDE_REFRESH_DEFERRAL_DEADLINE_MS, CODEX_MIN_SHIP_TTL_MS, LeaseRefusal, type EphemeralCredential } from "../src/accountsService.ts";
+import { CredentialAuthorityError } from "../src/claudeCredentialAuthority.ts";
 import { CLAUDE_REFRESH_LOCK_STALE_MS, claudeRefreshLockPaths } from "../src/claudeRefreshLock.ts";
 import { loadNodeConfig, type NodeConfigFile, type ResolvedNodeConfig } from "../src/config.ts";
 import { RpcError, type AccountAddResult, type AccountLeaseResult, type AuditTailResult, type DeployInfoResult } from "../src/protocol.ts";
@@ -134,7 +135,8 @@ function addAccount(r: Rig, harness: string, label: string, opts: { status?: "ok
 
 function service(r: Rig, extra: Partial<ConstructorParameters<typeof AccountsService>[0]> = {}): AccountsService {
   // Enrollment validates the chain with one real rotation; the default stub keeps every test off the network.
-  const fetchers = { claudeRefresh: async () => (granted({ accessToken: "enrolled-access", refreshToken: CLAUDE_ENROLLED_REFRESH, expiresAt: r.now() + 8 * HOUR })), ...(extra.fetchers ?? {}) };
+  const fetchers = { claudeRefresh: async () => (granted({ accessToken: "enrolled-access", refreshToken: CLAUDE_ENROLLED_REFRESH, expiresAt: r.now() + 8 * HOUR })),
+    claudeIdentity: async () => null, ...(extra.fetchers ?? {}) };
   return new AccountsService({ store: r.store, cfg: r.cfg, log: (op) => r.log.push(op), now: r.now, keychainReader: async () => null, keychainWriter: async () => false, ...extra, fetchers });
 }
 
@@ -1063,7 +1065,7 @@ test("central.claude: a lost provider response during enrollment is retried afte
     assert.equal(terminal.failure?.attempts, 2);
     assert.equal(terminal.failure?.retryAt, null);
     assert.equal(r.store.getAccount(account.id)!.status, "auth_needed");
-    assert.match(r.store.getAccount(account.id)!.statusReason!, /hive account credentials disable claude-lost; hive account login claude-lost; hive account credentials enable claude-lost/);
+    assert.match(r.store.getAccount(account.id)!.statusReason!, /Recover with: hive account login claude-lost$/);
     await refuses(() => svc.mintLease(account), "credential_login_required");
     await assert.rejects(svc.centralCredentials.ensure(account, 0, "operator-retry"), /Claude login required/);
     assert.equal(svc.centralCredentials.retryDue(account), false);
@@ -1337,7 +1339,7 @@ test("central.claude: a refused refresh token ends in login_required — auth_ne
     const row = r.store.getAccount(account.id)!;
     assert.equal(row.status, "auth_needed");
     assert.equal(row.statusReason, "Claude login required for claude-dying: the provider refused the refresh token (HTTP 400 invalid_grant: Refresh token not found or invalid). "
-      + "Recover with: hive account credentials disable claude-dying; hive account login claude-dying; hive account credentials enable claude-dying");
+      + "Recover with: hive account login claude-dying");
     assert.equal(svc.mirrorRow(row).credentialHealth, "unverified", "a dead credential is not verified");
     assert.equal(svc.honestStatus(row, "ok"), "auth_needed", "unpause cannot flip a dead login back to ok");
     assert.equal(svc.authNeededReason(row), row.statusReason);
@@ -1629,5 +1631,193 @@ test("central.claude: disable restores a validated enrollment result over its ol
       assert.equal(JSON.parse(raw).claudeAiOauth.refreshToken, CLAUDE_ENROLLED_REFRESH);
     }
     assert.equal(refreshes, 1);
+  } finally { r.cleanup(); }
+});
+
+// In-place login: a centrally managed account takes a new login's grant without disable/enable or stopping anything.
+const ACCOUNT_A = { accountUuid: "acct-a", organizationUuid: "org-a" };
+const ACCOUNT_B = { accountUuid: "acct-b", organizationUuid: "org-b" };
+const RELOGIN_REFRESH = "FIXTURE-CLAUDE-RELOGIN-REFRESH-r3l0";
+const AFTER_RELOGIN_REFRESH = "FIXTURE-CLAUDE-AFTER-RELOGIN-REFRESH-a7r1";
+function loginGrant(r: Rig, accessToken = "login-access", expiresIn = 8 * HOUR): Record<string, unknown> {
+  return { claudeAiOauth: { accessToken, refreshToken: RELOGIN_REFRESH, expiresAt: r.now() + expiresIn, refreshTokenExpiresAt: r.now() + 28 * 24 * HOUR, scopes: ["user:inference"] } };
+}
+function previousFile(r: Rig, accountId: string): string {
+  return join(r.vault, ".credential-authorities", `${encodeURIComponent(accountId)}.previous.json`);
+}
+async function loginRequiredAccount(r: Rig, label: string, extra: Partial<ConstructorParameters<typeof AccountsService>[0]> = {}) {
+  const account = addAccount(r, "claude", label, { home: { ".credentials.json": nativeDocument(r) } });
+  let refuse = false;
+  const presented: string[] = [];
+  const svc = service(r, { ...extra, fetchers: {
+    claudeIdentity: async (token: string) => (token === "enrolled-access" ? ACCOUNT_A : null),
+    claudeRefresh: async (token: string) => { presented.push(token);
+      if (refuse) return refused;
+      return token === RELOGIN_REFRESH
+        ? granted({ accessToken: "after-relogin", refreshToken: AFTER_RELOGIN_REFRESH, expiresAt: r.now() + 8 * HOUR })
+        : granted({ accessToken: "enrolled-access", refreshToken: CLAUDE_ENROLLED_REFRESH, expiresAt: r.now() + HOUR }); },
+    ...(extra.fetchers ?? {}) } });
+  await svc.centralCredentials.enable(account);
+  r.setNow(r.now() + HOUR);
+  refuse = true;
+  await assert.rejects(svc.centralCredentials.ensure(account, CLAUDE_MIN_SHIP_TTL_MS), /Claude login required/);
+  refuse = false;
+  return { account, svc, presented };
+}
+
+test("central.claude relogin: login_required logs in place — generation +1, ready, ok, login recorded, copies access-only, running runtime untouched", async () => {
+  const r = rig();
+  try {
+    let keychain: string | null = JSON.stringify({ mcpOAuth: { server: { accessToken: "mcp" } } });
+    const { account, svc, presented } = await loginRequiredAccount(r, "relogin", {
+      keychainReader: async () => keychain, keychainWriter: async (_home, raw) => { keychain = raw; return true; } });
+    const { bee } = r.store.createBee({ name: "still-running", agent: "claude", substrate: "hsr", cwd: "/tmp", account: account.id });
+    r.store.updateRuntimeState(bee.id, 1, "running", { pid: 99, pidStartedAt: 1 });
+    const before = svc.centralCredentials.status(account)!;
+    assert.equal(before.phase, "login_required");
+    assert.equal(r.store.getAccount(account.id)!.status, "auth_needed");
+    const state = await svc.centralCredentials.relogin(account, loginGrant(r), ACCOUNT_A, { allowDifferentAccount: false });
+    assert.equal(state.phase, "ready");
+    assert.equal(state.generation, before.generation + 1);
+    assert.equal(state.failure, null);
+    const row = r.store.getAccount(account.id)!;
+    assert.equal(row.status, "ok");
+    assert.equal(row.lastLoginAt, r.now());
+    assert.equal(row.refreshTokenExpiresAt, r.now() + 28 * 24 * HOUR);
+    assert.equal(r.store.currentRuntime(bee.id)!.state, "running", "nothing is stopped");
+    for (const raw of [...nativeCopies(r, svc, account), keychain!]) {
+      assert.ok(!raw.includes(RELOGIN_REFRESH), "no copy holds the new refresh token");
+      assert.equal(JSON.parse(raw).claudeAiOauth.accessToken, "login-access");
+    }
+    assert.deepEqual(JSON.parse(keychain!).mcpOAuth, { server: { accessToken: "mcp" } }, "publication merges into the Keychain item");
+    assert.equal(svc.centralCredentials.document(account).claudeAiOauth && (svc.centralCredentials.document(account).claudeAiOauth as Record<string, unknown>).refreshToken, RELOGIN_REFRESH);
+    assert.ok(existsSync(previousFile(r, account.id)), "the previous generation is kept");
+    assert.ok(r.log.some((line) => line.startsWith(`account.credentials.relogin account=${account.id} from_phase=login_required`)));
+
+    r.setNow(r.now() + 8 * HOUR - 10 * 60_000);
+    const lease = await svc.mintLease(row);
+    assert.equal((decodeFile(lease).claudeAiOauth as Record<string, unknown>).accessToken, "after-relogin");
+    assert.equal(presented.at(-1), RELOGIN_REFRESH, "the new chain is the one refreshed");
+    assert.ok(!existsSync(previousFile(r, account.id)), "the previous generation is dropped after the new chain's first refresh");
+    for (const secret of [RELOGIN_REFRESH, AFTER_RELOGIN_REFRESH]) assert.ok(!r.log.join("\n").includes(secret));
+  } finally { r.cleanup(); }
+});
+
+test("central.claude relogin: another Anthropic account or an unknown one is refused with nothing changed; replaceAccount allows it", async () => {
+  const r = rig();
+  try {
+    const { account, svc } = await loginRequiredAccount(r, "other");
+    const before = svc.centralCredentials.status(account)!;
+    const homeBefore = readFileSync(join(account.homePath, ".credentials.json"), "utf8");
+    await assert.rejects(svc.centralCredentials.relogin(account, loginGrant(r), ACCOUNT_B, { allowDifferentAccount: false }),
+      (error: unknown) => error instanceof CredentialAuthorityError && error.reason === "different_account");
+    await assert.rejects(svc.centralCredentials.relogin(account, loginGrant(r), null, { allowDifferentAccount: false }),
+      (error: unknown) => error instanceof CredentialAuthorityError && error.reason === "identity_unverified");
+    await assert.rejects(svc.centralCredentials.relogin(account, loginGrant(r), { accountUuid: "acct-a", organizationUuid: "org-other" }, { allowDifferentAccount: false }),
+      (error: unknown) => error instanceof CredentialAuthorityError && error.reason === "different_account", "another organization is another account");
+    assert.deepEqual(svc.centralCredentials.status(account), before);
+    assert.equal(readFileSync(join(account.homePath, ".credentials.json"), "utf8"), homeBefore);
+    assert.ok(!existsSync(previousFile(r, account.id)));
+    const replaced = await svc.centralCredentials.relogin(account, loginGrant(r), ACCOUNT_B, { allowDifferentAccount: true });
+    assert.equal(replaced.phase, "ready");
+    assert.ok(r.log.some((line) => line.includes("identity=different_allowed")));
+  } finally { r.cleanup(); }
+});
+
+test("central.claude relogin: an authority with no recorded identity uses the home's Claude Code account record", async () => {
+  const r = rig();
+  try {
+    const { account, svc } = await loginRequiredAccount(r, "legacy", { fetchers: { claudeIdentity: async () => null } });
+    await assert.rejects(svc.centralCredentials.relogin(account, loginGrant(r), ACCOUNT_A, { allowDifferentAccount: false }), /cannot tell/);
+    writeFileSync(join(account.homePath, ".claude.json"), JSON.stringify({ oauthAccount: { accountUuid: "acct-a", organizationUuid: "org-a", emailAddress: "a@example.test" } }));
+    await assert.rejects(svc.centralCredentials.relogin(account, loginGrant(r), ACCOUNT_B, { allowDifferentAccount: false }), /different Anthropic account/);
+    assert.equal((await svc.centralCredentials.relogin(account, loginGrant(r), ACCOUNT_A, { allowDifferentAccount: false })).phase, "ready");
+  } finally { r.cleanup(); }
+});
+
+test("central.claude relogin: a login saved before publication failed settles on the next tick-driven ensure without a new provider call", async () => {
+  const r = rig();
+  try {
+    let failPublish = false;
+    const { account, svc, presented } = await loginRequiredAccount(r, "crash", { keychainReader: async () => "{}", keychainWriter: async () => !failPublish });
+    const before = svc.centralCredentials.status(account)!;
+    failPublish = true;
+    await assert.rejects(svc.centralCredentials.relogin(account, loginGrant(r), ACCOUNT_A, { allowDifferentAccount: false }), /Keychain/);
+    const stuck = svc.centralCredentials.status(account)!;
+    assert.equal(stuck.phase, "login_required", "the row only moves once the copies are published");
+    assert.equal(stuck.generation, before.generation);
+    assert.equal(svc.centralCredentials.retryDue(account), true, "the saved login is due for settlement");
+    failPublish = false;
+    const calls = presented.length;
+    const restarted = service(r, { keychainReader: async () => "{}", keychainWriter: async () => true });
+    const settled = await restarted.centralCredentials.ensure(account, CLAUDE_MIN_SHIP_TTL_MS);
+    assert.equal(settled.phase, "ready");
+    assert.equal(settled.generation, before.generation + 1);
+    assert.equal(presented.length, calls, "settling publishes the saved login without refreshing");
+    assert.equal(r.store.getAccount(account.id)!.status, "ok");
+    assert.equal(JSON.parse(readFileSync(join(account.homePath, ".credentials.json"), "utf8")).claudeAiOauth.accessToken, "login-access");
+  } finally { r.cleanup(); }
+});
+
+test("central.claude lease minTtlMs: below the requested margin the chain is refreshed first; a just-issued token or an unprocessed refresh still ships", async () => {
+  const r = rig();
+  try {
+    const account = addAccount(r, "claude", "margin", { home: { ".credentials.json": nativeDocument(r) } });
+    let serial = 0; let shed = false;
+    const svc = service(r, { fetchers: { claudeRefresh: async () => {
+      if (shed) return { kind: "retryable", httpStatus: 429, error: null, description: "rate limited" } as ClaudeRefreshResult;
+      serial++; return granted({ accessToken: `access-${serial}`, refreshToken: `${CLAUDE_ENROLLED_REFRESH}-${serial}`, expiresAt: r.now() + 8 * HOUR }); } } });
+    await svc.centralCredentials.enable(account);
+    const lease = (minTtlMs?: number) => svc.mintLease(r.store.getAccount(account.id)!, { minTtlMs });
+    r.setNow(r.now() + 6 * HOUR);
+    const plain = await lease();
+    assert.equal(serial, 1, "without minTtlMs two hours left is enough");
+    const margin = await lease(3 * HOUR);
+    assert.equal(serial, 2, "minTtlMs above the remaining lifetime refreshes centrally");
+    assert.ok(margin.expiresAt! > plain.expiresAt!, "the lease carries a later expiry");
+    await lease(9 * HOUR);
+    assert.equal(serial, 2, "a token issued within the minimum interval is not refreshed again");
+    r.setNow(r.now() + 6 * HOUR);
+    shed = true;
+    const kept = await lease(3 * HOUR);
+    assert.equal(kept.expiresAt, margin.expiresAt, "a refresh the provider did not process leaves the usable token shipping");
+    assert.equal(svc.centralCredentials.status(account)!.phase, "ready");
+  } finally { r.cleanup(); }
+});
+
+test("central.claude early refresh: due once no more than the ahead window remains, never within the minimum interval of an issue, quiet after a failure", async () => {
+  const r = rig();
+  try {
+    const account = addAccount(r, "claude", "early", { home: { ".credentials.json": nativeDocument(r) } });
+    let shed = false;
+    const svc = service(r, { fetchers: { claudeRefresh: async () => shed
+      ? { kind: "retryable", httpStatus: 429, error: null, description: "rate limited" } as ClaudeRefreshResult
+      : granted({ accessToken: "a", refreshToken: CLAUDE_ENROLLED_REFRESH, expiresAt: r.now() + 2 * HOUR }) } });
+    await svc.centralCredentials.enable(account);
+    assert.equal(svc.centralCredentials.earlyRefreshDue(account, HOUR), false, "two hours left is outside a one-hour window");
+    assert.equal(svc.centralCredentials.earlyRefreshDue(account, 3 * HOUR), false, "a token issued under five minutes ago waits");
+    assert.equal(svc.centralCredentials.earlyRefreshDue(account, 0), false, "0 turns early refresh off");
+    r.setNow(r.now() + 5 * 60_000);
+    assert.equal(svc.centralCredentials.earlyRefreshDue(account, 3 * HOUR), true);
+    shed = true;
+    await svc.centralCredentials.ensure(account, CLAUDE_MIN_SHIP_TTL_MS, undefined, 3 * HOUR);
+    assert.equal(svc.centralCredentials.status(account)!.phase, "ready");
+    assert.equal(svc.centralCredentials.earlyRefreshDue(account, 3 * HOUR), false, "an unprocessed refresh waits for its retry");
+    r.setNow(svc.centralCredentials.status(account)!.failure!.retryAt!);
+    shed = false;
+    assert.equal(svc.centralCredentials.earlyRefreshDue(account, 3 * HOUR), true);
+    await svc.centralCredentials.ensure(account, CLAUDE_MIN_SHIP_TTL_MS, undefined, 3 * HOUR);
+    assert.equal(svc.centralCredentials.status(account)!.failure, null);
+  } finally { r.cleanup(); }
+});
+
+test("account mirror: loginDueAt is three days before the provider login ends", async () => {
+  const r = rig();
+  try {
+    const account = addAccount(r, "claude", "due");
+    assert.equal(service(r).mirrorRow(account).loginDueAt, null);
+    const ends = r.now() + 2 * 24 * HOUR;
+    const row = r.store.setAccountRefreshTokenExpiry(account.id, ends, "test").account;
+    assert.equal(service(r).mirrorRow(row).loginDueAt, ends - 3 * 24 * HOUR);
   } finally { r.cleanup(); }
 });

@@ -115,6 +115,12 @@ export const LOGIN_FLOW_ERROR_CODES = [
   "account_paused",
   "daemon_restarted",
   "cancelled_by_user",
+  /** A centrally managed account's new login belongs to another Anthropic account; nothing changed. */
+  "different_account",
+  /** Which Anthropic account a central login belongs to could not be established; nothing changed. */
+  "identity_unverified",
+  /** The central credential could not take the new login (busy, Keychain, publication); retry. */
+  "credential_unavailable",
 ] as const;
 export type LoginFlowErrorCode = (typeof LOGIN_FLOW_ERROR_CODES)[number];
 

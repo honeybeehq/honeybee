@@ -344,6 +344,9 @@ const BOOL_FLAGS = new Set([
   "--no-preamble",
   // F2: account add — adopting pre-existing harness credentials is explicit.
   "--import-existing",
+  "--remote",
+  "--no-wait",
+  "--replace-account",
 ]);
 
 const KNOWN_FLAGS = new Set([...VALUE_FLAGS, ...BOOL_FLAGS, ...OPTIONAL_VALUE_FLAGS]);
@@ -763,7 +766,7 @@ const ACCOUNT_USAGE =
   "       hive account config preview <selector> | config import <selector> [--idempotency-key key]\n" +
   "       hive account remove <selector> | penalty <selector> <0-100> | ceiling <selector> <1-100|off>\n" +
   "       hive account pause|unpause <selector> [--by operator|quota|lease] [--owner <id>] [--force]\n" +
-  "       hive account login <selector> [--method <id>] [--remote] [--no-wait] | login-status <selector> | login-cancel <selector>\n" +
+  "       hive account login <selector> [--method <id>] [--remote] [--no-wait] [--replace-account] | login-status <selector> | login-cancel <selector>\n" +
   "       hive account credentials <status|enable|refresh|disable> <selector>\n" +
   "       hive account capture <selector> | verify <selector> | limits [<selector>] | reset <selector> [--credit-id id] --idempotency-key key\n" +
   "       hive account restored <selector> | interruptions [<selector>]\n" +
@@ -998,12 +1001,14 @@ async function cmdAccount(ctx: CliContext, parsed: Parsed): Promise<number> {
       if (!id) throw new Error(ACCOUNT_USAGE);
       const methodId = parsed.flags.get("--method") as string | undefined;
       const remote = parsed.flags.get("--remote") === true;
+      const replaceAccount = parsed.flags.get("--replace-account") === true;
       const r = await withClient(ctx, (c) =>
         c.request<AccountLoginStartResult>("account.login.start", {
           id,
           idempotencyKey: key,
           ...(methodId ? { methodId } : {}),
           ...(remote ? { remote: true } : {}),
+          ...(replaceAccount ? { replaceAccount: true } : {}),
         }),
       );
       emit(
@@ -4348,7 +4353,7 @@ export async function runV2Cli(argv: string[], io: CliIo = defaultIo): Promise<n
         return await cmdAttach(ctx, parsed);
       case "login": {
         const id = parsed.positional[1];
-        if (!id) throw new Error("usage: hive login <account> [--method <id>] [--remote] [--no-wait]");
+        if (!id) throw new Error("usage: hive login <account> [--method <id>] [--remote] [--no-wait] [--replace-account]");
         return await cmdAccount(ctx, { ...parsed, positional: ["account", "login", id] });
       }
       case "swap-account": {

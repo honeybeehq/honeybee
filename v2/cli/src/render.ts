@@ -311,7 +311,7 @@ export function renderCredentialAuthority(id: string, state: AccountCredentialAu
       + `${failure.retryAt !== null ? `; next attempt ${new Date(failure.retryAt).toISOString()}` : ""}`);
   }
   if (state.phase === "login_required") {
-    lines.push(`  next: hive account credentials disable ${state.account}; hive account login ${state.account}; hive account credentials enable ${state.account}`);
+    lines.push(`  next: hive account login ${state.account}`);
   }
   return lines;
 }

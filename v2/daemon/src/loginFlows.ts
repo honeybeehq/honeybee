@@ -102,6 +102,8 @@ export class LoginFlowService {
   private readonly runners = new Map<string, LoginRunner>();
   /** Flows whose runner is being replaced (selectMethod / live retry): submits are refused meanwhile. */
   private readonly switching = new Set<string>();
+  /** Flows whose login may replace a centrally managed account's chain with a different Anthropic account's. */
+  private readonly replacingAccount = new Set<string>();
   private spawner: PtySpawner | null | undefined;
   private spawnerLoading: Promise<PtySpawner | null> | null = null;
   private readonly loadSpawner: () => Promise<PtySpawner | null>;
@@ -158,16 +160,15 @@ export class LoginFlowService {
    * remote-capable method still gets a flow row — failed with a typed
    * refusal — so clients render one honest answer instead of an RPC error.
    */
-  async start(account: AccountRow, opts: { methodId?: string | null; remote?: boolean } = {}): Promise<{ flow: LoginFlowRow; rejoined: boolean }> {
-    if (this.accounts.centralCredentials.enabled(account) || this.accounts.centralCredentials.busy(account)) {
-      throw new LoginFlowRefusal("login_flow_refused", "Disable central credentials before starting a native login.");
-    }
+  async start(account: AccountRow, opts: { methodId?: string | null; remote?: boolean; replaceAccount?: boolean } = {}): Promise<{ flow: LoginFlowRow; rejoined: boolean }> {
+    this.assertLoginPossible(account);
     const active = this.store.activeLoginFlow(account.id);
     if (active) {
       if (!this.runners.has(active.id)) {
         // No runner (the daemon restarted under it): settle it as interrupted and start fresh.
         this.patch(active.id, { phase: "interrupted", detail: null, inputFields: [], error: err("daemon_restarted", "Honeybee restarted while this sign-in was running."), retryable: true }, "no runner");
       } else {
+        if (opts.replaceAccount === true) this.replacingAccount.add(active.id);
         return { flow: active, rejoined: true };
       }
     }
@@ -183,7 +184,9 @@ export class LoginFlowService {
       remote,
       expiresAt: this.now() + this.cfg.accounts.loginTimeoutMs,
     });
-    this.log(`account.login.start account=${account.id} flow=${flow.id} harness=${account.harness} remote=${remote}`);
+    if (opts.replaceAccount === true) this.replacingAccount.add(flow.id);
+    this.log(`account.login.start account=${account.id} flow=${flow.id} harness=${account.harness} remote=${remote}`
+      + `${this.accounts.centralCredentials.enabled(account) ? " central=in_place" : ""}${opts.replaceAccount === true ? " replace_account=true" : ""}`);
     const methodId = defaultLoginMethodId(account.harness, { remote, requested: opts.methodId ?? null });
     if (!methodId) {
       const refusal = !recipeFor(account.harness)
@@ -248,14 +251,13 @@ export class LoginFlowService {
   }
 
   /** Retry a terminal (non-succeeded) flow as a new revision with the same method. */
-  async retry(flowId: string): Promise<LoginFlowRow> {
+  async retry(flowId: string, opts: { replaceAccount?: boolean } = {}): Promise<LoginFlowRow> {
     const flow = this.mustFlow(flowId);
     if (flow.phase === "succeeded") throw new LoginFlowRefusal("login_flow_refused", `login flow ${flowId} already succeeded`);
     const account = this.store.getAccount(flow.account);
     if (!account) throw new LoginFlowRefusal("login_flow_not_found", `login flow ${flowId} belongs to a removed account`);
-    if (this.accounts.centralCredentials.enabled(account) || this.accounts.centralCredentials.busy(account)) {
-      throw new LoginFlowRefusal("login_flow_refused", "Disable central credentials before retrying a native login.");
-    }
+    this.assertLoginPossible(account);
+    if (opts.replaceAccount === true) this.replacingAccount.add(flowId);
     if (!isTerminal(flow.phase) && this.runners.has(flowId)) {
       // A live flow "retried" = restart its method (fresh URL / worker).
       this.switching.add(flowId);
@@ -399,6 +401,22 @@ export class LoginFlowService {
     for (const flow of this.store.listLoginFlows({ account: accountId })) await this.stopRunner(flow.id);
   }
 
+  /**
+   * A centrally managed Claude account logs in in place (the authority takes
+   * the new grant); only a credential operation that is changing ownership
+   * right now (enrolling, disabling) refuses.
+   */
+  private assertLoginPossible(account: AccountRow): void {
+    const central = this.accounts.centralCredentials;
+    const phase = central.status(account)?.phase;
+    if (phase === "enrolling" || phase === "disabling" || phase === "disabling_uncertain") {
+      throw new LoginFlowRefusal("login_flow_refused", `Central credentials are ${phase}; finish it with: hive account credentials ${phase === "enrolling" ? "enable" : "disable"} ${account.id}`);
+    }
+    if ((phase === undefined || phase === "disabled") && central.busy(account)) {
+      throw new LoginFlowRefusal("login_flow_refused", "Central credential ownership is changing; retry when it finishes.");
+    }
+  }
+
   // -------------------------------------------------------------------------
   // runners
   // -------------------------------------------------------------------------
@@ -411,6 +429,10 @@ export class LoginFlowService {
     if (!account) throw new LoginFlowRefusal("login_flow_not_found", `login flow ${flowId} belongs to a removed account`);
     const method = loginMethodFor(flow.harness, methodId);
     if (!method) return this.fail(flowId, err("unsupported_method", `${flow.harness} does not offer '${methodId}'.`), false);
+    if (this.accounts.centralCredentials.enabled(account) && !(method.run.mode === "direct" && method.run.runner === "claude_oauth")) {
+      // Any other method lands a refresh token in the home, a second holder beside the authority.
+      return this.fail(flowId, err("unsupported_method", `${account.id} is centrally managed; only '${defaultLoginMethodId(flow.harness)}' can log it in place.`), false);
+    }
     this.patch(flowId, { methodId }, "method");
     const runner = this.createRunner(this.hostFor(flowId, account, method));
     if (!runner) return this.fail(flowId, err("unsupported_method", `unknown direct runner`), false);
@@ -452,6 +474,7 @@ export class LoginFlowService {
       workerKillGraceMs: this.workerKillGraceMs,
       workerSettleMs: this.workerSettleMs,
       flow: () => this.store.getLoginFlow(flowId),
+      replaceAccount: () => this.replacingAccount.has(flowId),
       stillActive: () => this.stillActive(flowId),
       isCurrent: (runner) => this.runners.get(flowId) === runner,
       release: (runner) => {
@@ -510,6 +533,7 @@ export class LoginFlowService {
     const flow = this.store.getLoginFlow(flowId);
     if (!flow || isTerminal(flow.phase)) return flow as LoginFlowRow;
     const updated = this.patch(flowId, { phase: "succeeded", detail, authorizationUrl: null, userCode: null, inputFields: [], error: null, retryable: false }, "succeeded");
+    this.replacingAccount.delete(flowId);
     // The worker (if any) is done: terminate its whole process group so
     // nothing outlives the flow (an orphan would also pin the daemon's exit).
     void this.stopRunner(flowId);

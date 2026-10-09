@@ -456,6 +456,8 @@ export function beeIdentityEnv(
 }
 
 const OP_LOG_TAIL = 40;
+/** `account.lease` margin requests above a day are a caller bug: no Claude access token lives that long. */
+const MAX_LEASE_MIN_TTL_MS = 24 * 60 * 60_000;
 const MIN_TICK_YIELD_MS = 1;
 /**
  * Boot observations are polled from runner files at the tick, so a booted
@@ -1136,6 +1138,7 @@ export class HiveDaemon {
       this.performance.measureSync("daemon.tick.accounts", () => {
         this.accounts?.periodicRefreshTick();
         this.accounts?.centralRefreshRetryTick();
+        this.accounts?.centralEarlyRefreshTick();
         this.enforceWeeklyCeilings();
         void this.accounts?.claudeKeychainRepairTick();
       });
@@ -5142,12 +5145,12 @@ export class HiveDaemon {
   /** `account.login.start {id, methodId?, remote?}` (alias: `account.login {id}`). */
   private rpcAccountLoginStart(params: Record<string, unknown>): Promise<AccountLoginStartResult> {
     const account = this.requireAccount(params);
-    if (this.mustAccounts().centralCredentials.enabled(account)) throw new RpcError("account_unavailable", "Disable central credentials before starting a native login.");
     const methodId = params.methodId === undefined || params.methodId === null ? null : this.param(params, "methodId");
     if (params.remote !== undefined && typeof params.remote !== "boolean") throw new RpcError("invalid_request", "account.login.start: remote must be a boolean");
     const remote = params.remote === true;
+    const replaceAccount = this.replaceAccountParam(params, "account.login.start");
     return this.withAsyncIdempotency("account.login.start", params, async () => {
-      const started = await this.mustLoginFlows().start(account, { methodId, remote });
+      const started = await this.mustLoginFlows().start(account, { methodId, remote, replaceAccount });
       return { accountId: account.id, flow: started.flow, rejoined: started.rejoined } satisfies AccountLoginStartResult;
     });
   }
@@ -5192,7 +5195,14 @@ export class HiveDaemon {
 
   private rpcAccountLoginRetry(params: Record<string, unknown>): Promise<AccountLoginRetryResult> {
     const flowId = this.flowIdParam(params);
-    return this.withAsyncIdempotency("account.login.retry", params, async () => ({ flow: await this.mustLoginFlows().retry(flowId) }));
+    const replaceAccount = this.replaceAccountParam(params, "account.login.retry");
+    return this.withAsyncIdempotency("account.login.retry", params, async () => ({ flow: await this.mustLoginFlows().retry(flowId, { replaceAccount }) }));
+  }
+
+  /** `replaceAccount: true` lets a centrally managed account's in-place login switch to another Anthropic account. */
+  private replaceAccountParam(params: Record<string, unknown>, verb: string): boolean {
+    if (params.replaceAccount !== undefined && typeof params.replaceAccount !== "boolean") throw new RpcError("invalid_request", `${verb}: replaceAccount must be a boolean`);
+    return params.replaceAccount === true;
   }
 
   private rpcAccountLoginCancel(params: Record<string, unknown>): AccountLoginCancelResult {
@@ -5209,10 +5219,9 @@ export class HiveDaemon {
     const store = this.mustStore();
     const account = store.getAccount(accountId);
     if (!account || !this.authResume) return null;
-    // Recovering a centrally managed account is disable → login → enable. The
-    // login leaves the native refresh chain in the home; waking the account's
-    // bees on it would block the enable and let them rotate the chain. The
-    // enable's validating rotation is what restores such an account.
+    // A login or capture while central credentials are disabled leaves the
+    // native refresh chain in the home, so a following enable must find the
+    // account quiescent: its validating rotation restores the account then.
     if ((by === "login" || by === "capture") && store.getAccountCredentialAuthority(account.id)?.phase === "disabled") {
       this.log(`auth.resume.deferred account=${account.id} by=${by} until=central_enable`);
       return null;
@@ -5346,7 +5355,14 @@ export class HiveDaemon {
     if (account.status === "paused") {
       throw new RpcError("account_paused", `account ${account.id} is paused; unpause it before leasing`);
     }
-    const lease = await this.mustAccounts().mintLease(account);
+    let minTtlMs: number | undefined;
+    if (params.minTtlMs !== undefined && params.minTtlMs !== null) {
+      if (typeof params.minTtlMs !== "number" || !Number.isSafeInteger(params.minTtlMs) || params.minTtlMs < 0 || params.minTtlMs > MAX_LEASE_MIN_TTL_MS) {
+        throw new RpcError("invalid_request", `account.lease: minTtlMs must be an integer from 0 to ${MAX_LEASE_MIN_TTL_MS}`);
+      }
+      minTtlMs = params.minTtlMs;
+    }
+    const lease = await this.mustAccounts().mintLease(account, { minTtlMs });
     return { account: account.id, harness: account.harness, ...lease };
   }
 

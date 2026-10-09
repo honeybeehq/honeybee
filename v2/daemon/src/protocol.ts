@@ -186,6 +186,26 @@ export const DAEMON_CAPABILITIES = [
    * `account.credentialsRestored` and `account.interruptions`.
    */
   "account.auth_resume.v1",
+  /**
+   * 2026-10 (no schema change): a centrally managed Claude account logs in
+   * in place — `account.login.start/submit/retry` run while central
+   * credentials are enabled, in any phase but enrolling/disabling, without
+   * stopping sessions. The authority takes the new grant only for the same
+   * Anthropic account unless `replaceAccount: true`; refusals are the flow
+   * error codes `different_account` / `identity_unverified` /
+   * `credential_unavailable`.
+   */
+  "account.central_relogin.v1",
+  /**
+   * 2026-10: `account.lease {minTtlMs}` — a centrally managed Claude account
+   * refreshes first when its access token has less than that left (unless
+   * issued within `accounts.centralRefreshMinIntervalMs`, default 5 min), and
+   * the daemon refreshes such accounts hours before expiry on its own
+   * (`accounts.centralRefreshAheadMs`, default 3 h).
+   */
+  "account.lease.min_ttl.v1",
+  /** 2026-10: mirrored accounts carry derived `loginDueAt` (3 days before `refreshTokenExpiresAt`). */
+  "account.login_due.v1",
 ] as const;
 export type DaemonCapability = (typeof DAEMON_CAPABILITIES)[number];
 
@@ -856,12 +876,14 @@ export interface AccountBackfillResult extends DedupMarkers {
 }
 
 /**
- * v19: `account.lease {account, harness?}` — mint the refresh-blanked
+ * v19: `account.lease {account, harness?, minTtlMs?}` — mint the refresh-blanked
  * ephemeral credential for ONE account (the remote-nodes lease plane's mint;
  * credential-leases.md, a port of v1 remoteCreds.ts's mint side). `account`
  * is a selector; `harness`, when given, must equal the account's harness
  * (`harness_mismatch`). Paused accounts refuse (`account_paused`); shape and
- * timing refusals are `lease_unsupported` / `lease_unavailable`.
+ * timing refusals are `lease_unsupported` / `lease_unavailable`. `minTtlMs`
+ * (0..24 h) asks a centrally managed Claude account for that much remaining
+ * access-token lifetime, refreshing first when less is left.
  *
  * SENSITIVE: `files`/`env` carry secret bytes and this result is the ONLY
  * place they appear — the verb takes no idempotency key, records nothing,

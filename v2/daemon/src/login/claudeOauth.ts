@@ -12,10 +12,11 @@ import { createHash, randomBytes } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { parseClaudeCredentials, safeAuthorizationUrl, type LoginFieldDescriptor, type LoginFlowRow } from "../../../core/src/index.ts";
+import { CredentialAuthorityError } from "../claudeCredentialAuthority.ts";
 import { seedClaudeHomeAcceptance, seedClaudeHomeDefaults, atomicWriteFileSync } from "../homeDefaults.ts";
 import { STATIC_DETAIL, err } from "./common.ts";
 import type { LoginRunner, LoginRunnerHost } from "./runner.ts";
-import { CLAUDE_OAUTH_AUTHORIZE_URL, CLAUDE_OAUTH_CLIENT_ID, CLAUDE_OAUTH_REDIRECT_URI, CLAUDE_OAUTH_SCOPES } from "./transports.ts";
+import { CLAUDE_OAUTH_AUTHORIZE_URL, CLAUDE_OAUTH_CLIENT_ID, CLAUDE_OAUTH_REDIRECT_URI, CLAUDE_OAUTH_SCOPES, type ClaudeTokenGrant } from "./transports.ts";
 
 function pkceVerifier(): string {
   return randomBytes(32).toString("base64url");
@@ -94,6 +95,9 @@ export class ClaudeOauthRunner implements LoginRunner {
     };
     const raw = JSON.stringify(document);
     if (!parseClaudeCredentials(raw)) return host.reask(err("invalid_credential", "The provider returned an unusable credential."));
+    // Decided here, after the last await before any write: while Honeybee owns the chain, no refresh token may land in the home or Keychain.
+    const central = host.accounts.centralCredentials;
+    if (central.enabled(account) || central.busy(account)) return this.loginInPlace(document, grant);
     // Home is authoritative: land the credential there (0600), seed the
     // home defaults a fresh Claude home needs, then capture into the vault.
     mkdirSync(account.homePath, { recursive: true, mode: 0o700 });
@@ -104,6 +108,23 @@ export class ClaudeOauthRunner implements LoginRunner {
     const captured = host.accounts.persistCredentialCapture(account, ".credentials.json", raw, { ".credentials.json": raw });
     if (!captured.ok) return host.fail(err("capture_failed", "The credential could not be saved into the account's vault."), true);
     host.log(`account.login.captured flow=${host.flowId} account=${account.id} by=claude_oauth keychain=${keychainWritten} files=${captured.captured.join(",")}`);
+    return host.succeed();
+  }
+
+  /** The authority takes the grant; runtime copies stay access-only and nothing is stopped. */
+  private async loginInPlace(document: Record<string, unknown>, grant: ClaudeTokenGrant): Promise<LoginFlowRow> {
+    const host = this.host;
+    const account = host.account;
+    const identity = grant.identity ?? await host.transports.claudeIdentity(grant.accessToken).catch(() => null);
+    if (!host.stillActive()) return host.flow() as LoginFlowRow;
+    try {
+      const state = await host.accounts.centralCredentials.relogin(account, document, identity, { allowDifferentAccount: host.replaceAccount() });
+      host.log(`account.login.captured flow=${host.flowId} account=${account.id} by=claude_oauth central=in_place generation=${state.generation}`);
+    } catch (error) {
+      if (!(error instanceof CredentialAuthorityError)) throw error;
+      const code = error.reason === "different_account" || error.reason === "identity_unverified" ? error.reason : "credential_unavailable";
+      return host.fail(err(code, error.message), true);
+    }
     return host.succeed();
   }
 
