@@ -163,6 +163,7 @@ import {
   renderLoginFlow,
   renderAccountGet,
   renderAccountVerify,
+  renderCredentialAuthority,
   renderAccountLimits,
   renderAccountList,
   renderBeeList,
@@ -1045,7 +1046,7 @@ async function cmdAccount(ctx: CliContext, parsed: Parsed): Promise<number> {
       const result = await withClient(ctx, c => c.request<import("../../core/src/index.ts").AccountCredentialAuthority | null>(
         `account.credentials.${action}` as import("../../daemon/src/protocol.ts").RpcVerb,
         { id, ...(action === "status" ? {} : { idempotencyKey: key ?? randomUUID() }) }, ACCOUNT_LIMITS_RPC_TIMEOUT_MS));
-      emit(ctx, [result ? `${result.account}: credentials ${result.phase}, generation ${result.generation}; expires ${result.expiresAt === null ? "unknown" : new Date(result.expiresAt).toISOString()}` : `${id}: native credential management`], result, false);
+      emit(ctx, renderCredentialAuthority(id, result), result, false);
       return 0;
     }
     case "capture": {

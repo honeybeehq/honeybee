@@ -5,7 +5,7 @@
  * surface: aligned columns, status color, and the tokens tests/scripts grep
  * (`stale:`, `id=`, `stopped(crashed)`, `deduped:`). Full argv lives on `view`, not `ls`.
  */
-import type { AuditRow } from "../../core/src/index.ts";
+import type { AccountCredentialAuthority, AuditRow } from "../../core/src/index.ts";
 import type { TranscriptTurn } from "../../driver-tmux/src/transcripts.ts";
 import type {
   AccountGetResult,
@@ -282,12 +282,36 @@ export function accountLine(
   const usage = limits
     ? limits.readable
       ? `  weekly=${colorPct(limits.weeklyPct)} 5h=${colorPct(limits.fiveHourPct)}${limits.fableWeeklyPct !== null ? ` fable=${colorPct(limits.fableWeeklyPct)}` : ""}${limits.plan ? ` plan=${limits.plan}` : ""}`
-      : `  limits=unreadable(${limits.error ?? "?"})`
+      : `  limits=unreadable(${limits.error !== null && limits.error === a.statusReason ? limits.unreadableReason ?? "?" : limits.error ?? "?"})`
     : "";
   const penalty = `${a.penalty > 0 ? `  penalty=${a.penalty}` : ""}${a.weeklyCeiling !== null ? `  ceiling=${a.weeklyCeiling}%` : ""}`;
   const login = a.lastLoginAt ? `  lastLogin=${new Date(a.lastLoginAt).toISOString()}` : "";
   const pausedBy = a.status === "paused" && a.pausedBy ? dim(`(${a.pausedOwner ? `${a.pausedBy}:${a.pausedOwner}` : a.pausedBy})`) : "";
-  return `${stalePrefix(stale)}${bold(a.id)}  ${blue(a.harness)}  ${colorAccountStatus(a.status)}${pausedBy}  ${dim("creds=")}${colorCredentialHealth(a.credentialHealth)}  ${dim(tildify(a.homePath))}${penalty}${usage}${login}`;
+  const loginExpiry = a.refreshTokenExpiresAt != null ? `  ${loginExpiryLabel(a.refreshTokenExpiresAt)}` : "";
+  const why = a.status === "auth_needed" && a.statusReason ? `\n  ${dim("reason:")} ${a.statusReason}` : "";
+  return `${stalePrefix(stale)}${bold(a.id)}  ${blue(a.harness)}  ${colorAccountStatus(a.status)}${pausedBy}  ${dim("creds=")}${colorCredentialHealth(a.credentialHealth)}  ${dim(tildify(a.homePath))}${penalty}${usage}${login}${loginExpiry}${why}`;
+}
+
+/** "login expires 10-18 19:38" (UTC): when the provider login itself ends and a new login is needed. */
+export function loginExpiryLabel(refreshTokenExpiresAt: number, now: number = Date.now()): string {
+  const at = new Date(refreshTokenExpiresAt).toISOString();
+  return `login ${refreshTokenExpiresAt <= now ? "expired" : "expires"} ${at.slice(5, 10)} ${at.slice(11, 16)}`;
+}
+
+export function renderCredentialAuthority(id: string, state: AccountCredentialAuthority | null): string[] {
+  if (!state) return [`${id}: native credential management`];
+  const lines = [`${state.account}: credentials ${state.phase}, generation ${state.generation}; expires ${state.expiresAt === null ? "unknown" : new Date(state.expiresAt).toISOString()}`
+    + `; ${state.refreshTokenExpiresAt === null ? "login expiry unknown" : loginExpiryLabel(state.refreshTokenExpiresAt)}`];
+  const failure = state.failure;
+  if (failure) {
+    const detail = [failure.httpStatus !== null ? `HTTP ${failure.httpStatus}` : null, failure.error, failure.description ? JSON.stringify(failure.description) : null].filter(Boolean).join(" ");
+    lines.push(`  last refresh: ${failure.outcome}${detail ? ` (${detail})` : ""} at ${new Date(failure.at).toISOString()}, attempt ${failure.attempts}`
+      + `${failure.retryAt !== null ? `; next attempt ${new Date(failure.retryAt).toISOString()}` : ""}`);
+  }
+  if (state.phase === "login_required") {
+    lines.push(`  next: hive account credentials disable ${state.account}; hive account login ${state.account}; hive account credentials enable ${state.account}`);
+  }
+  return lines;
 }
 
 export function renderAccountList(
