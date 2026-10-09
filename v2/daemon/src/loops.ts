@@ -137,6 +137,8 @@ export interface FlagEvidenceLike {
   detail: string;
   /** Provider-declared instant (epoch ms) the condition lifts, when stated. */
   resetsAt?: number;
+  /** The turn a `set` cut off: the mail delivered into it and whether the provider served any of it. */
+  turn?: { messageIds: number[]; progress: "none" | "some" | "unknown" };
 }
 
 /** Harness session identity, structurally matching HsrDriver's SessionEvidence. */

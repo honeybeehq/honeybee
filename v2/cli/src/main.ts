@@ -33,6 +33,8 @@ import {
   type AccountConfigPreviewResult,
   type AccountBackfillResult,
   type AccountCaptureResult,
+  type AccountCredentialsRestoredResult,
+  type AccountInterruptionsResult,
   type AccountGetResult,
   type AccountImportRegistryResult,
   type AccountLimitsResult,
@@ -760,6 +762,7 @@ const ACCOUNT_USAGE =
   "       hive account login <selector> [--method <id>] [--remote] [--no-wait] | login-status <selector> | login-cancel <selector>\n" +
   "       hive account credentials <status|enable|refresh|disable> <selector>\n" +
   "       hive account capture <selector> | verify <selector> | limits [<selector>] | reset <selector> [--credit-id id] --idempotency-key key\n" +
+  "       hive account restored <selector> | interruptions [<selector>]\n" +
   "       hive account import [--root ~/.hive] [--dry-run] | backfill [--dry-run]";
 
 const ACCOUNT_LIMITS_RPC_TIMEOUT_MS = 120_000;
@@ -1046,6 +1049,43 @@ async function cmdAccount(ctx: CliContext, parsed: Parsed): Promise<number> {
             r.deduped,
           ),
         ],
+        r,
+        false,
+      );
+      return 0;
+    }
+    case "restored": {
+      const id = parsed.positional[2];
+      if (!id) throw new Error(ACCOUNT_USAGE);
+      const r = await withClient(ctx, (c) => c.request<AccountCredentialsRestoredResult>("account.credentialsRestored", { id, idempotencyKey: key }));
+      emit(
+        ctx,
+        [
+          confirm(
+            "ok",
+            "restored",
+            `${r.account.id}: ${r.clearedBeeIds.length} flag(s) cleared, ${r.resumingBeeIds.length} interrupted turn(s) continuing`
+              + (r.blockedBeeIds.length > 0 ? `, ${r.blockedBeeIds.length} still failing on this same credential` : ""),
+            r.deduped,
+          ),
+        ],
+        r,
+        false,
+      );
+      return 0;
+    }
+    case "interruptions": {
+      const id = parsed.positional[2];
+      const r = await withClient(ctx, (c) => c.request<AccountInterruptionsResult>("account.interruptions", id ? { id } : {}));
+      emit(
+        ctx,
+        r.interruptions.length === 0
+          ? ["no auth-interrupted turns"]
+          : r.interruptions.map((row) =>
+            `${row.id}  ${row.state.padEnd(10)} bee=${row.beeId} account=${row.account} gen=${row.generation} progress=${row.turnProgress}`
+              + (row.continuationKind ? ` ${row.continuationKind}=${row.continuationMessageIds.join(",")}` : "")
+              + (row.restoredBy ? ` by=${row.restoredBy}` : "")
+              + (row.settleReason ? ` (${row.settleReason})` : "")),
         r,
         false,
       );

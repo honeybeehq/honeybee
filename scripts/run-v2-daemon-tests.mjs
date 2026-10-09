@@ -26,6 +26,7 @@ const UNIT_FILES = new Set([
   "v2/daemon/tests/relocate-session.test.ts",
   "v2/daemon/tests/service.test.ts",
   "v2/daemon/tests/telemetry.test.ts",
+  "v2/daemon/tests/auth-resume.test.ts",
 ]);
 
 function listTests(dir, prefix) {

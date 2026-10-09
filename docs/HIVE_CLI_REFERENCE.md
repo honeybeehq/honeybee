@@ -2017,7 +2017,22 @@ hive account login-status <selector>
 hive account login-cancel <selector>
 hive account capture <selector>
 hive account verify <selector>
+hive account restored <selector>
+hive account interruptions [<selector>]
 ```
+
+A turn that an authentication failure cut off ("Not logged in · Please run
+/login") continues on its own once the account's credential works again on
+the node: a completed login, a capture, the daemon's own token refresh or a
+readable limits probe clears `auth_needed` on the account's bees and sends
+each interrupted bee exactly one continuation. The original message is
+delivered again when none of its turn ran; otherwise the bee gets one short
+continue message from `hive:auth-resume`. A bee you stopped or archived is
+left alone, and a credential on which a bee's continuation already failed
+does not resume that bee a second time. `restored` is for a credential
+written into the account home outside the daemon (a leased credential on a
+satellite): it checks the credential is present and unexpired, then does the
+same. `interruptions` lists the interrupted turns and what became of them.
 
 `add` creates a LOGGED-OUT account (`status auth_needed`, `creds=absent`);
 `ok` is never claimed without a credential. `--import-existing` imports the

@@ -29,6 +29,8 @@ export interface CentralCredentialOptions {
   beforeUse: (account: AccountRow, document: Record<string, unknown>) => void;
   beforeRefresh: (account: AccountRow, document: Record<string, unknown>) => Promise<unknown>;
   refresh: (refreshToken: string) => Promise<{ accessToken: string; refreshToken: string; expiresAt: number; scopes?: string[] } | null>;
+  /** A rotation was saved and published: runtimes can read the new credential. */
+  onRefreshed?: (account: AccountRow) => void;
   now: () => number;
 }
 export class CredentialAuthorityError extends Error {
@@ -275,7 +277,9 @@ export class ClaudeCredentialAuthority {
         document: { ...value.document, claudeAiOauth: { ...oauth, ...refreshed } } };
       save(this.path(account), value);
       await this.options.publish(account, value.document, true);
-      return this.put(account, "ready", value);
+      const ready = this.put(account, "ready", value);
+      this.options.onRefreshed?.(account);
+      return ready;
     });
   }
 }

@@ -22,6 +22,7 @@ import type { ThreadOperationView } from "../../core/src/threadOperation.ts";
  */
 import type {
   AccountStatus,
+  AuthInterruptionRow,
   ActionDefinition,
   ActionQueueView,
   ActionStatus,
@@ -169,6 +170,14 @@ export const DAEMON_CAPABILITIES = [
    * mail origin `action.dispatch`, body marker `[Hive action] Reminder`). See docs/design/action-queue-contract.md.
    */
   "bee.actions.complete.v1",
+  /**
+   * v33: a turn cut off by an authentication failure continues on its own
+   * once the account's credential is validated on this node — the
+   * `authInterruptions` audit kind `auth_interruption.put`, mail origin
+   * `auth.resume` (sender `hive:auth-resume` for the continue message),
+   * `account.credentialsRestored` and `account.interruptions`.
+   */
+  "account.auth_resume.v1",
 ] as const;
 export type DaemonCapability = (typeof DAEMON_CAPABILITIES)[number];
 
@@ -405,6 +414,9 @@ export const RPC_VERBS = [
   "account.login.retry",
   "account.login.cancel",
   "account.capture",
+  // v33 (capability account.auth_resume.v1): a credential installed outside the daemon works again.
+  "account.credentialsRestored",
+  "account.interruptions",
   "account.credentials.status",
   "account.credentials.enable",
   "account.credentials.refresh",
@@ -716,6 +728,31 @@ export interface AccountCaptureResult extends DedupMarkers {
   captured: string[];
   source: "external" | "home";
   at: number;
+}
+
+/**
+ * `account.credentialsRestored {id, idempotencyKey?}` — the caller installed a
+ * working credential in the account home outside the daemon (a leased
+ * credential written on a satellite). Refused `account_unavailable` when the
+ * account home holds no credential, or an expired Claude one. Otherwise the
+ * account leaves `auth_needed`, every bee the failure evidence points at loses
+ * its `auth_needed` flag, and each turn the failure cut off gets exactly one
+ * continuation. Safe to repeat: the same credential never resumes a bee twice.
+ */
+export interface AccountCredentialsRestoredResult extends DedupMarkers {
+  account: MirrorAccountRow;
+  /** Names the credential this call validated; equal revisions mean the same credential bytes. */
+  revision: string;
+  clearedBeeIds: string[];
+  /** Bees whose interrupted turn has a continuation owed or already enqueued. */
+  resumingBeeIds: string[];
+  /** Bees left flagged: their continuation already failed authentication on this same credential. */
+  blockedBeeIds: string[];
+}
+
+/** `account.interruptions {id?, beeId?}` — read-only: auth-interrupted turns and their continuation receipts. */
+export interface AccountInterruptionsResult {
+  interruptions: AuthInterruptionRow[];
 }
 
 /**

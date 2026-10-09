@@ -13,7 +13,7 @@
  * are the real transports. Tests inject fakes.
  */
 import { execFile, spawn as spawnChild } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -28,6 +28,7 @@ import {
   accountActiveBees,
   accountCommitments,
   accountIdFor,
+  AUTH_CREDENTIAL_UNREADABLE,
   homeEnvFor,
   isAuthFailureLimitsError,
   limitsFromRow,
@@ -158,6 +159,8 @@ export interface AccountsServiceOptions {
   codexLeaseRefresh?: (homePath: string) => Promise<void>;
   /** Common native MCP reconciler; injected so activation tests stay hermetic. */
   gatewayMcpSeeder?: (homePath: string, harness: string) => Promise<GatewayMcpSeedResult>;
+  /** The provider just accepted this account's credential: a rotation it issued, or a probe it answered. */
+  onCredentialValidated?: (accountId: string, by: "refresh" | "limits_probe") => void;
 }
 
 type ClaudeCredential = {
@@ -854,11 +857,13 @@ export class AccountsService {
   private readonly nativeKeychainSeeds = new Map<string, Set<Promise<unknown>>>();
   private readonly codexLeaseRefresh: (homePath: string) => Promise<void>;
   private readonly gatewayMcpSeeder: (homePath: string, harness: string) => Promise<GatewayMcpSeedResult>;
+  private readonly onCredentialValidated: (accountId: string, by: "refresh" | "limits_probe") => void;
 
   constructor(opts: AccountsServiceOptions) {
     this.store = opts.store;
     this.cfg = opts.cfg;
     this.log = opts.log;
+    this.onCredentialValidated = opts.onCredentialValidated ?? (() => undefined);
     this.now = opts.now ?? Date.now;
     this.keychainReader = opts.keychainReader ?? readClaudeKeychain;
     this.keychainWriter = opts.keychainWriter ?? writeClaudeKeychainEntry;
@@ -906,6 +911,7 @@ export class AccountsService {
       beforeUse: inspectCentralFiles,
       beforeRefresh: inspectCentralCopies,
       refresh: token => this.fetchers.claudeRefresh(token),
+      onRefreshed: account => this.onCredentialValidated(account.id, "refresh"),
       publish: async (account, document, accessOnly) => {
         const state = await inspectCentralCopies(account, document);
         const raw = JSON.stringify(accessOnly ? blankRefreshTokens(document) : document);
@@ -969,6 +975,36 @@ export class AccountsService {
     const recipe = recipeFor(account.harness);
     if (!recipe) return true;
     return dirHasCredentials(this.vaultDirOf(account), recipe) || dirHasCredentials(account.homePath, recipe);
+  }
+
+  /**
+   * A name for the account's current primary credential file (home, else
+   * vault): it changes exactly when those bytes do, and reveals none of them.
+   */
+  credentialRevision(account: Pick<AccountRow, "harness" | "id" | "homePath">): string {
+    const primary = recipeFor(account.harness)?.credentialFiles[0];
+    if (!primary) return AUTH_CREDENTIAL_UNREADABLE;
+    for (const dir of [account.homePath, this.vaultDirOf(account)]) {
+      const raw = readIfFile(join(dir, primary));
+      if (raw !== null) return createHash("sha256").update(raw).digest("hex").slice(0, 16);
+    }
+    return AUTH_CREDENTIAL_UNREADABLE;
+  }
+
+  /**
+   * Whether the account HOME — the only copy a runtime reads — holds a
+   * primary credential a runtime could use right now. The vault is a backup:
+   * a good vault copy does not make a stale home work.
+   */
+  homeCredentialState(account: Pick<AccountRow, "harness" | "homePath">): "usable" | "absent" | "expired" {
+    const primary = recipeFor(account.harness)?.credentialFiles[0];
+    if (!primary) return "usable";
+    const raw = readIfFile(join(account.homePath, primary));
+    if (raw === null) return "absent";
+    if (account.harness !== "claude") return "usable";
+    const parsed = parseClaudeCredentials(raw);
+    if (!parsed) return "absent";
+    return parsed.expiresAt > this.now() ? "usable" : "expired";
   }
 
   /**
@@ -1585,6 +1621,7 @@ export class AccountsService {
         this.store.setAccountStatus(id, "ok", `${probe} authenticated`);
         this.log(`account.auth_ok account=${id} by=${probe}`);
       }
+      if (fetched.readable || credentialProbePassed) this.onCredentialValidated(id, "limits_probe");
       // v18: the probe is validation evidence the MIRROR must see. A status
       // flip above already re-published the row; otherwise (an `ok`
       // unverified import that just proved itself) re-publish it explicitly
@@ -1974,6 +2011,7 @@ export class AccountsService {
       this.log(`account.refresh.keychain_degraded account=${account.id} running_claude=${runningClaude}`);
     }
     this.log(`account.refresh account=${account.id} persisted=home,vault keychain=${keychainWritten} running_claude=${runningClaude}`);
+    this.onCredentialValidated(account.id, "refresh");
     return {
       kind: "ok",
       credential: {

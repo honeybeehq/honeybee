@@ -78,6 +78,7 @@ import {
   TASK_TRANSITION_ACTIONS,
   serializePackage,
   type AccountRow,
+  type AuthRestoreSource,
   type AuditRow,
   type BeeHandoffRow,
   type BeeHandoffStopAt,
@@ -172,6 +173,7 @@ import {
 } from "../../adapters/src/index.ts";
 import { liveGateways, type LiveGateway } from "./gateways.ts";
 import { DaemonCore, type BootReport, type I1ViolationEvent } from "./loops.ts";
+import { AuthResume, type CredentialValidatedReceipt } from "./authResume.ts";
 import {
   ConfigError,
   loadNodeConfig,
@@ -208,6 +210,8 @@ import {
   type AccountAdmissionReleaseResult,
   type AccountActivityResult,
   type AccountCaptureResult,
+  type AccountCredentialsRestoredResult,
+  type AccountInterruptionsResult,
   type AccountLoginCancelResult,
   type AccountLoginGetResult,
   type AccountLoginRetryResult,
@@ -591,6 +595,7 @@ export class HiveDaemon {
   private readonly opLog: string[] = [];
   private accounts: AccountsService | null = null;
   private loginFlows: LoginFlowService | null = null;
+  private authResume: AuthResume | null = null;
   /** v31 — Cell disk retention pass + `cell.gc` / `cell.evict`. */
   private retention: CellRetentionService | null = null;
   /** Tracked filesystem readiness; no lock wait runs inside the core/store writer. */
@@ -695,6 +700,14 @@ export class HiveDaemon {
       keychainWriter: this.deps.keychainWriter,
       fetchers: this.deps.fetchers,
       ...(this.deps.gatewayMcpSeeder ? { gatewayMcpSeeder: this.deps.gatewayMcpSeeder } : {}),
+      onCredentialValidated: (accountId, by) => this.credentialValidatedQuietly(accountId, by),
+    });
+    const accounts = this.accounts;
+    this.authResume = new AuthResume({
+      store,
+      log: (op) => this.log(op),
+      accountForGeneration: (bee, generation) => accounts.accountForGeneration(bee, generation),
+      credentialRevision: (account) => accounts.credentialRevision(account),
     });
     this.loginFlows = new LoginFlowService({
       store,
@@ -704,7 +717,7 @@ export class HiveDaemon {
       ...(this.deps.loginTransports ? { transports: this.deps.loginTransports } : {}),
       ...(this.deps.loginSpawner !== undefined ? { spawner: this.deps.loginSpawner } : {}),
       ...(this.deps.loginTmuxExec ? { tmuxExec: this.deps.loginTmuxExec } : {}),
-      onCompleted: (accountId) => this.clearAccountAuthNeeded(accountId, `login completed for account ${accountId}`, "login"),
+      onCompleted: (accountId) => this.credentialValidatedQuietly(accountId, "login"),
     });
     services.end();
     this.activeStartupPhase = null;
@@ -1067,7 +1080,10 @@ export class HiveDaemon {
     let tAccounts = t0;
     try {
       this.threadOperations?.tick();
-      this.performance.measureSync("daemon.tick.core", () => core.step());
+      this.performance.measureSync("daemon.tick.core", () => {
+        core.step();
+        this.authResume?.reconcile();
+      });
       tStep = Date.now();
       this.ticks += 1;
       this.lastTickAt = tStep;
@@ -1499,6 +1515,10 @@ export class HiveDaemon {
         });
       case "account.capture":
         return this.rpcAccountCapture(params);
+      case "account.credentialsRestored":
+        return this.rpcAccountCredentialsRestored(params);
+      case "account.interruptions":
+        return this.rpcAccountInterruptions(params);
       case "account.verify":
         return this.rpcAccountVerify(params);
       case "account.limits":
@@ -5026,13 +5046,59 @@ export class HiveDaemon {
     return { flow: res.flow, applied: res.applied };
   }
 
-  private clearAccountAuthNeeded(accountId: string, reason: string, by: "capture" | "login"): void {
-    const store = this.mustStore();
-    for (const bee of store.beesOnAccount(accountId)) {
-      if (store.clearFlag(bee.id, "auth_needed", reason).applied) {
-        this.log(`flag.clear bee=${bee.id} flag=auth_needed by=${by}`);
-      }
+  /**
+   * The one entry for "this account's credential works again on this node":
+   * clears the bees' `auth_needed` flags and resumes the turns it cut off.
+   */
+  private credentialValidated(accountId: string, by: AuthRestoreSource): CredentialValidatedReceipt | null {
+    const account = this.mustStore().getAccount(accountId);
+    if (!account || !this.authResume) return null;
+    return this.authResume.credentialValidated(account, by);
+  }
+
+  /** For callers whose own work (a login, a capture, a limits sweep) already succeeded and must stay so. */
+  private credentialValidatedQuietly(accountId: string, by: AuthRestoreSource): void {
+    try {
+      this.credentialValidated(accountId, by);
+    } catch (err) {
+      this.log(`auth.resume.error account=${accountId} by=${by} err=${err instanceof Error ? err.message : String(err)}`);
     }
+  }
+
+  /**
+   * `account.credentialsRestored {id}` — the caller installed a working
+   * credential in the account home outside the daemon (Apiary writing a
+   * leased credential on a satellite). The daemon checks the copy runtimes
+   * read, then treats it like any other validated credential.
+   */
+  private rpcAccountCredentialsRestored(params: Record<string, unknown>): AccountCredentialsRestoredResult {
+    const account = this.requireAccount(params);
+    return this.withIdempotency("account.credentialsRestored", params, () => {
+      const accounts = this.mustAccounts();
+      const store = this.mustStore();
+      const credential = accounts.homeCredentialState(account);
+      if (credential !== "usable") {
+        throw new RpcError("account_unavailable", `account ${account.id} has ${credential === "absent" ? "no" : "an expired"} credential in its home`);
+      }
+      if (account.status === "auth_needed" && store.setAccountStatus(account.id, "ok", "credentials restored").applied) {
+        this.log(`account.auth_ok account=${account.id} by=credentials_restored`);
+      }
+      const receipt = this.credentialValidated(account.id, "credentials_restored")!;
+      return {
+        account: this.mirrorAccount(store.getAccount(account.id)!),
+        revision: receipt.revision,
+        clearedBeeIds: receipt.clearedBeeIds,
+        resumingBeeIds: receipt.resumingBeeIds,
+        blockedBeeIds: receipt.blockedBeeIds,
+      } satisfies AccountCredentialsRestoredResult;
+    });
+  }
+
+  /** `account.interruptions {id?, beeId?}` — the auth-interrupted turns and what became of them. */
+  private rpcAccountInterruptions(params: Record<string, unknown>): AccountInterruptionsResult {
+    const account = params.id === undefined || params.id === null ? undefined : this.requireAccount(params).id;
+    const beeId = typeof params.beeId === "string" ? params.beeId : undefined;
+    return { interruptions: this.mustStore().listAuthInterruptions({ ...(account ? { account } : {}), ...(beeId ? { beeId } : {}) }) };
   }
 
   private async rpcAccountCapture(params: Record<string, unknown>): Promise<AccountCaptureResult> {
@@ -5049,7 +5115,7 @@ export class HiveDaemon {
     } catch (err) {
       throw new RpcError("invalid_request", err instanceof Error ? err.message : String(err));
     }
-    this.clearAccountAuthNeeded(account.id, `credentials captured for account ${account.id}`, "capture");
+    this.credentialValidatedQuietly(account.id, "capture");
     const result: AccountCaptureResult = { ...captured, account: this.mirrorAccount(captured.account) };
     if (key != null) store.recordRpcResult(key, "account.capture", null, result);
     return result;
@@ -5215,6 +5281,7 @@ export class HiveDaemon {
       if (target.status === "ok" && store.activeFlags(bee.id).some((f) => f.flag === "auth_needed")) {
         store.clearFlag(bee.id, "auth_needed", `account swapped to ${target.id}`);
       }
+      this.authResume?.beeSwapped(bee.id, target);
       // Claude cross-account moves mint a fresh session id (the old
       // copyThread rule): the resume runs as `--resume <seed> --fork-session`.
       if (bee.agent === "claude" && from !== target.id) rekeyed = store.rekeyBeeSession(bee.id).applied;
@@ -5309,10 +5376,14 @@ export class HiveDaemon {
         // refresh through the daemon's own refresher (no longer deferred to a
         // session that has itself failed auth), and request login only when
         // that refresh is rejected or absent.
+        this.authResume?.interrupted(ev);
         if (account.harness === "claude") accounts.scheduleClaudeRecovery(account.id);
-      } else if (account.status === "auth_needed") {
-        store.setAccountStatus(account.id, "ok", `bee ${bee.id}: ${ev.detail.slice(0, 200)}`);
-        this.log(`account.auth_ok account=${account.id} bee=${bee.id} gen=${ev.generation}`);
+      } else {
+        this.authResume?.turnSucceeded(bee.id);
+        if (account.status === "auth_needed") {
+          store.setAccountStatus(account.id, "ok", `bee ${bee.id}: ${ev.detail.slice(0, 200)}`);
+          this.log(`account.auth_ok account=${account.id} bee=${bee.id} gen=${ev.generation}`);
+        }
       }
       return;
     }
