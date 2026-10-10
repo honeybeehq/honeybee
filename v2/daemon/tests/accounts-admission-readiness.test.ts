@@ -27,7 +27,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { RpcError, type CommandsResult, type MailboxResult, type SendRpcResult, type SpawnResult, type ViewResult } from "../src/protocol.ts";
+import { DAEMON_CAPABILITIES, RpcError, type CommandsResult, type MailboxResult, type SendRpcResult, type SpawnResult, type ViewResult } from "../src/protocol.ts";
 import type { AccountAddResult, AccountAdmissionAcquireResult, AccountAdmissionReleaseResult, AccountGetResult, AccountUpdateResult } from "../src/protocol.ts";
 import type { RpcClient } from "../../cli/src/client.ts";
 import { makeDaemonDir, startDaemon, waitFor, type DaemonHandle } from "./helpers.ts";
@@ -430,6 +430,7 @@ test("admission.pause: pause ownership over RPC — lease vs operator, foreign u
     daemon = await startDaemon(dir);
     const client = await daemon.client();
     await client.request("account.add", { harness: "stub", label: "a" });
+    assert.ok(DAEMON_CAPABILITIES.includes("account.pause.owner.v1"));
     const lease = { owner: "lease", ownerId: "apiary:ws-1" };
     const byLease = await client.request<AccountUpdateResult>("account.pause", { id: "stub-a", ...lease });
     assert.equal(byLease.applied, true);
@@ -457,6 +458,10 @@ test("admission.pause: pause ownership over RPC — lease vs operator, foreign u
     await rejects(() => client.request("spawn", { name: "p", agent: "stub", cwd: dir, account: "stub-a" }), "account_paused");
     const forced = await client.request<AccountUpdateResult>("account.unpause", { id: "stub-a", ...lease, force: true });
     assert.equal(forced.account.status, "ok");
+    await client.request("account.pause", { id: "stub-a", ...lease });
+    await client.request("account.pause", { id: "stub-a", force: true });
+    await rejects(() => client.request("account.unpause", { id: "stub-a", ...lease }), "account_pause_owned");
+    assert.equal((await client.request<AccountGetResult>("account.get", { id: "stub-a" })).account.pausedBy, "operator");
     // Parameter validation: operator takes no ownerId; lease/quota require one.
     await rejects(() => client.request("account.pause", { id: "stub-a", ownerId: "x" }), "invalid_request");
     await rejects(() => client.request("account.pause", { id: "stub-a", owner: "quota" }), "invalid_request");
