@@ -66,7 +66,7 @@ const GROUPS: Group[] = [
     rows: [
       ["stop", "<bee>", "end the runtime; the bee stays active"],
       ["revive", "<bee>", "generation N+1; optional replacement args after --"],
-      ["archive", "<bee>", "file the bee; send auto-unarchives"],
+      ["archive", "<bee>... | -", "file bees (ids/names, or one per stdin line); --tree adds descendants; --dry-run; --force archives working bees"],
       ["unarchive", "<bee>", "return an archived bee to active"],
       ["delete", "<bee>", "remove the bee and owned durable data"],
       ["reconnect-tools", "<bee> [--command-id id]", "reconnect native tools in the same session; read durable status"],

@@ -312,6 +312,7 @@ const BOOL_FLAGS = new Set([
   "--force",
   // v31 (cell gc): skip the per-Cell du walk.
   "--no-measure",
+  "--tree",
   "--wait",
   // v23 (handoff): stop the source immediately instead of at its idle boundary.
   "--now",
@@ -2208,6 +2209,170 @@ async function cmdMutation(
     const result = await c.request<{ commandId: number }>(verb, { beeId, ...(reviveArgs !== undefined ? { args: reviveArgs } : {}) });
     emit(ctx, [confirm("ok", verb, `${beeId} enqueued (command ${result.commandId})`)], { beeId, ...result }, false);
     return 0;
+  });
+}
+
+const ARCHIVE_USAGE = "usage: hive archive <bee>... | - [--tree] [--dry-run] [--force] [--idempotency-key k]";
+const ARCHIVE_CONCURRENCY = 8;
+
+type ArchiveOutcome =
+  | { status: "archived"; commandId: number | null; deduped: boolean }
+  | { status: "unchanged" }
+  | { status: "skipped"; reason: "working" }
+  | { status: "failed"; error: string };
+
+type ArchiveReport = { ref: string; beeId: string | null; name: string | null; handle: string | null } & ArchiveOutcome;
+
+async function readStdinRefs(): Promise<string[]> {
+  const chunks: string[] = [];
+  process.stdin.setEncoding("utf8");
+  for await (const chunk of process.stdin) chunks.push(chunk as string);
+  return chunks
+    .join("")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+}
+
+function uniqueInOrder(values: string[]): string[] {
+  return [...new Set(values)];
+}
+
+function describeBeeNotFound(err: unknown): string {
+  if (err instanceof RpcError && err.code === "bee_not_found") return "bee not found";
+  return err instanceof Error ? err.message : String(err);
+}
+
+function descendantsOf(views: ViewResult[], rootId: string): string[] {
+  const childrenByParent = new Map<string, string[]>();
+  for (const v of views) {
+    const b = v.bee;
+    if (!b || b.parentId == null || b.parentExternal) continue;
+    childrenByParent.set(b.parentId, [...(childrenByParent.get(b.parentId) ?? []), b.id]);
+  }
+  const seen = new Set<string>([rootId]);
+  const order: string[] = [];
+  const queue = [rootId];
+  while (queue.length > 0) {
+    const current = queue.shift() as string;
+    for (const child of childrenByParent.get(current) ?? []) {
+      if (seen.has(child)) continue;
+      seen.add(child);
+      order.push(child);
+      queue.push(child);
+    }
+  }
+  return order;
+}
+
+async function mapBounded<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const index = next++;
+      results[index] = await fn(items[index] as T);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
+function renderArchiveReport(r: ArchiveReport, dryRun: boolean): string {
+  const who = r.beeId ? `${r.beeId} (${r.name ?? "?"})` : r.ref;
+  switch (r.status) {
+    case "archived":
+      if (dryRun) return confirm("ok", "would archive", who);
+      return confirm("ok", "archived", `${who}${r.commandId == null ? "" : ` (command ${r.commandId})`}`, r.deduped);
+    case "unchanged":
+      return confirm("info", "unchanged", `${who} already archived`);
+    case "skipped":
+      return confirm("warn", `skipped: ${r.reason}`, who);
+    case "failed":
+      return confirm("err", `failed: ${r.error}`, who);
+  }
+}
+
+/**
+ * `hive archive <bee>... | - [--tree] [--dry-run] [--force]` — the bulk shape.
+ * One `list`, client-side resolution and descendant walk, then the existing
+ * `archive` RPC per bee with bounded concurrency. The exact single-bee shape
+ * (`hive archive <bee>`) keeps its original path and output.
+ */
+async function cmdArchive(ctx: CliContext, parsed: Parsed): Promise<number> {
+  const given = parsed.positional.slice(1);
+  const tree = parsed.flags.get("--tree") === true;
+  const dryRun = parsed.flags.get("--dry-run") === true;
+  const force = parsed.flags.get("--force") === true;
+  const fromStdin = given.includes("-");
+  if (given.length === 0) throw new Error(ARCHIVE_USAGE);
+  if (given.length === 1 && !fromStdin && !tree && !dryRun) return cmdMutation(ctx, parsed, "archive");
+
+  const stdinRefs = fromStdin ? await readStdinRefs() : [];
+  const refs = uniqueInOrder(given.flatMap((ref) => (ref === "-" ? stdinRefs : [ref])));
+  if (refs.length === 0) throw new Error(`${ARCHIVE_USAGE}\nno bee refs given`);
+  const key = parsed.flags.get("--idempotency-key") as string | undefined;
+
+  return withClient(ctx, async (c) => {
+    const list = await c.request<ListResult>("list");
+    const viewById = new Map(list.views.filter((v) => v.bee).map((v) => [v.bee!.id, v]));
+
+    const targets = new Map<string, { ref: string; view: ViewResult }>();
+    const unresolved: ArchiveReport[] = [];
+    for (const ref of refs) {
+      let beeId: string;
+      try {
+        beeId = resolveBeeIn(list.views, ref);
+      } catch (err) {
+        unresolved.push({ ref, beeId: null, name: null, handle: null, status: "failed", error: describeBeeNotFound(err) });
+        continue;
+      }
+      const ids = tree ? [beeId, ...descendantsOf(list.views, beeId)] : [beeId];
+      for (const id of ids) {
+        if (targets.has(id)) continue;
+        const view = viewById.get(id);
+        if (view) targets.set(id, { ref: id === beeId ? ref : id, view });
+      }
+    }
+
+    const reports = await mapBounded([...targets.values()], ARCHIVE_CONCURRENCY, async ({ ref, view }): Promise<ArchiveReport> => {
+      const bee = view.bee!;
+      const identity = { ref, beeId: bee.id, name: bee.name, handle: bee.handle };
+      if (bee.lifecycle === "archived") return { ...identity, status: "unchanged" };
+      if (view.view.working && !force) return { ...identity, status: "skipped", reason: "working" };
+      if (dryRun) return { ...identity, status: "archived", commandId: null, deduped: false };
+      try {
+        const r = await c.request<{ commandId: number; deduped?: boolean }>("archive", {
+          beeId: bee.id,
+          ...(key ? { idempotencyKey: `${key}:${bee.id}` } : {}),
+        });
+        return { ...identity, status: "archived", commandId: r.commandId, deduped: r.deduped === true };
+      } catch (err) {
+        return { ...identity, status: "failed", error: err instanceof Error ? err.message : String(err) };
+      }
+    });
+
+    const all = [...reports, ...unresolved];
+    const summary = {
+      total: all.length,
+      archived: all.filter((r) => r.status === "archived").length,
+      unchanged: all.filter((r) => r.status === "unchanged").length,
+      skipped: all.filter((r) => r.status === "skipped").length,
+      failed: all.filter((r) => r.status === "failed").length,
+    };
+    const summaryLine = [
+      `${summary.archived} ${dryRun ? "would archive" : "archived"}`,
+      `${summary.unchanged} unchanged`,
+      `${summary.skipped} skipped`,
+      `${summary.failed} failed`,
+    ].join(", ");
+    emit(
+      ctx,
+      [...all.map((r) => renderArchiveReport(r, dryRun)), `${dryRun ? `${yellow("dry-run:")} ` : ""}${summary.total} ${summary.total === 1 ? "bee" : "bees"}: ${summaryLine}`],
+      { dryRun, tree, force, bees: all, summary },
+      false,
+    );
+    return summary.failed > 0 ? 1 : 0;
   });
 }
 
@@ -4282,9 +4447,10 @@ export async function runV2Cli(argv: string[], io: CliIo = defaultIo): Promise<n
         return await cmdSend(ctx, parsed);
       case "buz":
         return await cmdBuz(ctx, parsed);
+      case "archive":
+        return await cmdArchive(ctx, parsed);
       case "stop":
       case "revive":
-      case "archive":
       case "unarchive":
       case "delete":
         return await cmdMutation(ctx, parsed, command);
