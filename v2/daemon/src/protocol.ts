@@ -136,6 +136,8 @@ export const DAEMON_CAPABILITIES = [
   "mail.history.v1",
   /** Bounded undelivered-only mailbox previews for frequent live indicators. */
   "mail.pending.v1",
+  /** Built-in `inbox` agent (alias `stub`): mailbox-only bees, `mailbox {sinceId?, unread?}`, `mail.ack`. */
+  "mailbox.only.v1",
   /** Atomic working-state admission and deferred idle restart for model/effort changes. */
   "bee.reconfigure.v1",
   /**
@@ -368,6 +370,7 @@ export const RPC_VERBS = [
   "send",
   "mail.cancel",
   "mail.expedite",
+  "mail.ack",
   "stop",
   "revive",
   "archive",
@@ -564,7 +567,8 @@ export interface SpawnResult extends DedupMarkers {
   handle?: string | null;
   humanRef?: string | null;
   issuingNamespace?: string | null;
-  commandId: number;
+  /** Null for a mailbox-only (`inbox`) bee: it has no runtime to start. */
+  commandId: number | null;
   /** First mailbox message admitted atomically with the bee, when supplied. */
   messageId?: number | null;
   /**

@@ -23,6 +23,8 @@ import {
   EXIT_CAUSES,
   FLAGS,
   IllegalTransitionError,
+  INBOX_AGENT,
+  isInboxAgent,
   RUNTIME_TRANSITIONS,
   RUNTIME_VERBS,
   SecondWriterError,
@@ -539,8 +541,9 @@ export interface WakeResult {
    * suppressed — `spawn_failed` is set: visibly blocked, no wake until an
    *              operator revive or contrary evidence clears it
    * fenced     — an in-flight Cell→checkout move holds delivery/start
+   * mailbox_only — the bee has no runtime by design; mail waits for a poller
    */
-  outcome: "enqueued" | "pending" | "live" | "no_mail" | "suppressed" | "fenced";
+  outcome: "enqueued" | "pending" | "live" | "no_mail" | "suppressed" | "fenced" | "mailbox_only";
 }
 
 export interface DeleteResult {
@@ -606,6 +609,7 @@ export interface PutTrackInput extends NormalizeOptions {
 }
 
 const LIVE_STATES: readonly RuntimeState[] = ["booting", "running", "idle"];
+const MAILBOX_ONLY_REFUSED_VERBS: readonly Verb[] = ["spawn", "send_wake", "revive", "reconnect_tools"];
 
 type Row = Record<string, unknown>;
 
@@ -2321,6 +2325,10 @@ export class CoreStore {
         handoffId: null,
         createdAt: at,
       });
+      if (isInboxAgent(input.agent)) {
+        if (input.proc) throw new CoreError("createBee: a mailbox-only bee has no process");
+        return { bee, runtime: this.insertRuntime(id, 1, at, undefined, "stopped") };
+      }
       const runtime = this.insertRuntime(id, 1, at, input.proc);
       return { bee, runtime };
     });
@@ -2339,7 +2347,7 @@ export class CoreStore {
   /** Naming needs only eligible identities, never process env or archived history. */
   listAutoTitleCandidates(): Pick<BeeRow, "id" | "title" | "lifecycle">[] {
     return (this.stmt(
-      "SELECT id, title, lifecycle FROM bees WHERE lifecycle = 'active' AND (title IS NULL OR title = '') ORDER BY id",
+      `SELECT id, title, lifecycle FROM bees WHERE lifecycle = 'active' AND (title IS NULL OR title = '') AND agent != '${INBOX_AGENT}' ORDER BY id`,
     ).all() as Row[]).map(row => ({
       id: String(row.id),
       title: row.title as string | null,
@@ -2567,13 +2575,14 @@ export class CoreStore {
     generation: number,
     at: number,
     proc?: { pid: number; pidStartedAt: number },
+    initial: "booting" | "stopped" = "booting",
   ): RuntimeRow {
     this.db
       .prepare(
         `INSERT INTO runtimes(bee_id, generation, state, exit_cause, pid, pid_started_at, started_at, updated_at)
-         VALUES(?, ?, 'booting', NULL, ?, ?, ?, ?)`,
+         VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .run(beeId, generation, proc?.pid ?? null, proc?.pidStartedAt ?? null, at, at);
+      .run(beeId, generation, initial, initial === "stopped" ? "clean" : null, proc?.pid ?? null, proc?.pidStartedAt ?? null, at, at);
     const runtime = this.currentRuntime(beeId);
     if (!runtime || runtime.generation !== generation) throw new CoreError("runtime insert lost");
     this.audit("runtime.created", beeId, { runtime });
@@ -2791,6 +2800,7 @@ export class CoreStore {
    */
   private applyWakeIfNeeded(beeId: string): WakeResult {
     const bee = this.mustGetBee(beeId);
+    if (isInboxAgent(bee.agent)) return { command: null, outcome: "mailbox_only" };
     const current = this.currentRuntime(beeId);
     const targetGeneration = current?.generation ?? 0;
     const thread = this.threadOperationForSuccessor(beeId);
@@ -2968,6 +2978,7 @@ export class CoreStore {
   reviveBee(beeId: string, opts: { proc?: { pid: number; pidStartedAt: number }; args?: string[] | null } = {}): RuntimeRow {
     return this.tx(() => {
       const bee = this.mustGetBee(beeId);
+      this.refuseMailboxOnlyRuntime(bee, "revive");
       if (bee.lifecycle === "archived") this.applyUnarchive(beeId); // Q3 spirit: revival implies active
       const current = this.currentRuntime(beeId);
       if (current && current.state !== "stopped") {
@@ -3688,6 +3699,43 @@ export class CoreStore {
     });
   }
 
+  private refuseMailboxOnlyRuntime(bee: BeeRow, verb: string): void {
+    if (isInboxAgent(bee.agent)) {
+      throw new CommandProtocolError(`bee ${bee.id} is mailbox-only (agent '${INBOX_AGENT}'): it has no runtime to ${verb}`);
+    }
+  }
+
+  /**
+   * Mailbox-only read cursor: mark every unread message with id <= throughId
+   * as read. Ack is the poller's delivery — it lands as `mail.delivered`
+   * (with `ack: true`) on the bee's current generation, so the mailbox row
+   * stays the single truth for unread and `mail.*` events show the ack.
+   * Only mailbox-only bees accept acks; a live bee's mail is delivered by
+   * its runtime. Re-acking is a quiet no-op.
+   */
+  ackMail(beeId: string, throughId: number): { acked: number[] } {
+    if (!Number.isSafeInteger(throughId) || throughId < 0) throw new CoreError("ackMail: throughId must be a non-negative integer");
+    return this.tx(() => {
+      const bee = this.mustGetBee(beeId);
+      if (!isInboxAgent(bee.agent)) {
+        throw new CommandProtocolError(`bee ${beeId} is not mailbox-only; its runtime consumes its mail`);
+      }
+      const generation = this.currentRuntime(beeId)?.generation ?? 1;
+      const rows = this.stmt(
+        "SELECT id FROM mailbox WHERE bee_id = ? AND delivered_at IS NULL AND id <= ? ORDER BY id",
+      ).all(beeId, throughId) as Row[];
+      const at = this.now();
+      const acked: number[] = [];
+      for (const row of rows) {
+        const messageId = Number(row.id);
+        this.stmt("UPDATE mailbox SET delivered_at = ?, delivered_generation = ? WHERE id = ?").run(at, generation, messageId);
+        this.audit("mail.delivered", beeId, { messageId, deliveredAt: at, deliveredGeneration: generation, ack: true });
+        acked.push(messageId);
+      }
+      return { acked };
+    });
+  }
+
   // -------------------------------------------------------------------------
   // Output recency (a core fact; read cursors live at the client layer)
   // -------------------------------------------------------------------------
@@ -3811,6 +3859,7 @@ export class CoreStore {
     /** Earliest claim time (deferred wake after boot failures); never earlier than now. */
     notBefore?: number,
   ): CommandRow {
+    if (MAILBOX_ONLY_REFUSED_VERBS.includes(verb)) this.refuseMailboxOnlyRuntime(this.mustGetBee(beeId), verb);
     const at = this.now();
     const nextAttemptAt = notBefore === undefined ? at : Math.max(at, notBefore);
     const res = this.db
@@ -4543,7 +4592,11 @@ export class CoreStore {
         group.pending.push(message);
       }
     }
-    return { rows: groups, byBee: groupByBee };
+    const agentOf = this.stmt("SELECT agent FROM bees WHERE id = ?");
+    const mailboxOnly = groups.filter((group) => isInboxAgent(String((agentOf.get(group.beeId) as Row | undefined)?.agent ?? "")));
+    if (mailboxOnly.length === 0) return { rows: groups, byBee: groupByBee };
+    for (const group of mailboxOnly) groupByBee.delete(group.beeId);
+    return { rows: groups.filter((group) => groupByBee.has(group.beeId)), byBee: groupByBee };
   }
 
   /** Whether runtime or mailbox facts require a daemon step snapshot. */
@@ -4551,7 +4604,10 @@ export class CoreStore {
     if (this.stmt("SELECT 1 FROM runtimes WHERE state != 'stopped' LIMIT 1").get() !== undefined) {
       return true;
     }
-    return this.hasUndeliveredMessages();
+    return this.stmt(
+      `SELECT 1 FROM mailbox JOIN bees ON bees.id = mailbox.bee_id
+       WHERE mailbox.delivered_at IS NULL AND bees.agent != '${INBOX_AGENT}' LIMIT 1`,
+    ).get() !== undefined;
   }
 
   /**

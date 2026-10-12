@@ -30,6 +30,25 @@ export const FLAGS = [
 ] as const;
 export type Flag = (typeof FLAGS)[number];
 
+/**
+ * Mailbox-only bees: a built-in agent with an identity and a mailbox but no
+ * model process, account, or wake. Mail stays durable and unread until a
+ * poller acks it (`mail.ack`). See docs/design/mailbox-only-bees.md.
+ */
+export const INBOX_AGENT = "inbox";
+
+export function isInboxAgent(agent: string): boolean {
+  return agent === INBOX_AGENT;
+}
+
+/** Poller view of a mailbox: messages after `sinceId`, optionally only unread (undelivered) ones. */
+export function filterMailbox<T extends { id: number; deliveredAt: number | null }>(
+  messages: readonly T[],
+  opts: { sinceId?: number; unread?: boolean },
+): T[] {
+  return messages.filter((m) => (opts.sinceId === undefined || m.id > opts.sinceId) && (!opts.unread || m.deliveredAt == null));
+}
+
 /** B5 — command verbs. */
 export const VERBS = [
   "spawn",

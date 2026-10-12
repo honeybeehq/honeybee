@@ -124,6 +124,9 @@ import { ReadOnlyStore } from "./readonly.ts";
 import {
   beeTaskList,
   freezeRoot,
+  filterMailbox,
+  INBOX_AGENT,
+  isInboxAgent,
   isTaskStatus,
   isTaskTransitionAction,
   matchAccount,
@@ -278,6 +281,8 @@ const VALUE_FLAGS = new Set([
   // buz compatibility (contract B4a)
   "--tier",
   "--sender-human",
+  // mailbox-only polling
+  "--since",
   // v11 task lists
   "--context-json",
   "--quest",
@@ -305,6 +310,7 @@ const OPTIONAL_VALUE_FLAGS = new Set(["--warm"]);
  */
 const BOOL_FLAGS = new Set([
   "--json",
+  "--unread",
   "--all",
   "--archived",
   "--verbose",
@@ -2814,22 +2820,61 @@ async function cmdList(ctx: CliContext, parsed: Parsed): Promise<number> {
   return 0;
 }
 
+const MAILBOX_USAGE = "usage: hive mailbox <bee> [--since <message-id>] [--unread]";
+
 async function cmdMailbox(ctx: CliContext, parsed: Parsed): Promise<number> {
   const needle = parsed.positional[1];
-  if (!needle) throw new Error("usage: hive mailbox <bee>");
+  if (!needle) throw new Error(MAILBOX_USAGE);
+  const sinceRaw = parsed.flags.get("--since") as string | undefined;
+  const sinceId = sinceRaw === undefined ? undefined : Number(sinceRaw);
+  if (sinceId !== undefined && (!Number.isSafeInteger(sinceId) || sinceId < 0)) {
+    throw new Error(`${MAILBOX_USAGE}\n(--since takes a message id, got '${sinceRaw}')`);
+  }
+  const unread = parsed.flags.get("--unread") === true;
+  const filters = { ...(sinceId ? { sinceId } : {}), ...(unread ? { unread } : {}) };
   const { result, stale } = await readPath(
     ctx,
     async (c) => {
       const list = await c.request<ListResult>("list");
       const beeId = resolveBeeIn(list.views, needle);
-      return c.request<MailboxResult>("mailbox", { beeId });
+      return c.request<MailboxResult>("mailbox", { beeId, ...filters });
     },
     (store) => {
       const beeId = resolveBeeIn(store.list(null), needle);
-      return { messages: store.mailbox(beeId) };
+      return { messages: filterMailbox(store.mailbox(beeId), filters) };
     },
   );
   emit(ctx, renderMailbox(result.messages, stale), result, stale);
+  return 0;
+}
+
+const ACK_USAGE = "usage: hive ack <bee> <message-id> | hive ack <bee> --all";
+
+/**
+ * `hive ack <bee> <id>|--all` — mark a mailbox-only bee's mail read through
+ * the given id. Read state is the mailbox row's delivery mark, so
+ * `mailbox --unread` and `events --kind 'mail.*'` reflect the ack.
+ */
+async function cmdAck(ctx: CliContext, parsed: Parsed): Promise<number> {
+  const needle = parsed.positional[1];
+  const idRaw = parsed.positional[2];
+  const all = parsed.flags.get("--all") === true;
+  if (!needle || (idRaw === undefined) === !all) throw new Error(ACK_USAGE);
+  const throughId = idRaw === undefined ? undefined : Number(idRaw);
+  if (throughId !== undefined && (!Number.isSafeInteger(throughId) || throughId <= 0)) {
+    throw new Error(`${ACK_USAGE}\n(message id must be a positive integer, got '${idRaw}')`);
+  }
+  const result = await withClient(ctx, async (c) => {
+    const list = await c.request<ListResult>("list");
+    const beeId = resolveBeeIn(list.views, needle);
+    return c.request<{ acked: number[] }>("mail.ack", { beeId, ...(all ? { all: true } : { throughId }) });
+  });
+  emit(
+    ctx,
+    [confirm("ok", "acked", result.acked.length === 0 ? "nothing unread" : `${result.acked.length} message(s) through ${result.acked[result.acked.length - 1]}`, result.acked.length === 0)],
+    result,
+    false,
+  );
   return 0;
 }
 
@@ -3187,7 +3232,7 @@ async function runTemplateInvocation(ctx: CliContext, parsed: Parsed, mode: Temp
     body: plan.prompt,
     sender: "operator",
   }));
-  const command = await waitForCommandSettled(ctx, spawned.beeId, spawned.commandId, numFlag(parsed, "--timeout", 60_000));
+  const command = await waitForCommandSettled(ctx, spawned.beeId, runtimeCommandOf(spawned), numFlag(parsed, "--timeout", 60_000));
   if (command.status === "failed") {
     ctx.io.err(`spawn failed: ${spawned.humanRef ?? spawned.handle ?? spawned.beeId} (${command.failureCause ?? "unknown"})`);
     return 1;
@@ -3553,7 +3598,7 @@ async function cmdXa(ctx: CliContext, parsed: Parsed): Promise<number> {
     flags,
   });
   const timeoutMs = numFlag(parsed, "--timeout", 60_000);
-  const cmd = await waitForCommandSettled(ctx, spawned.beeId, spawned.commandId, timeoutMs);
+  const cmd = await waitForCommandSettled(ctx, spawned.beeId, runtimeCommandOf(spawned), timeoutMs);
   if (cmd.status === "failed") {
     ctx.io.err(
       `spawn failed: ${spawned.humanRef ?? spawned.handle ?? spawned.beeId} (${cmd.failureCause ?? "unknown"}) — inspect with: hive view ${spawned.humanRef ?? spawned.handle ?? spawned.beeId}`,
@@ -3563,6 +3608,13 @@ async function cmdXa(ctx: CliContext, parsed: Parsed): Promise<number> {
   return attachToBee(ctx, parsed, spawned.beeId, {
     print: parsed.flags.get("--print") === true || ctx.json || process.stdout.isTTY !== true,
   });
+}
+
+function runtimeCommandOf(spawned: SpawnResult): number {
+  if (spawned.commandId == null) {
+    throw new Error(`${spawned.handle ?? spawned.beeId} is mailbox-only (agent '${INBOX_AGENT}'): it has no runtime to attach to or run`);
+  }
+  return spawned.commandId;
 }
 
 /**
@@ -3583,6 +3635,7 @@ async function waitForBeeIdle(
   let streak = 0;
   for (;;) {
     const view = await c.request<ViewResult>("view", { beeId });
+    if (view.bee && isInboxAgent(view.bee.agent)) return { outcome: "idle", view };
     const state = view.view.runtimeState;
     const quiet = state === "idle" || state === "stopped";
     let base = quiet;
@@ -3641,6 +3694,7 @@ async function cmdRun(ctx: CliContext, parsed: Parsed): Promise<number> {
   const timeoutMs = numFlag(parsed, "--timeout", 600_000);
   const keep = parsed.flags.get("--keep") === true;
   const spawned = await spawnBee(ctx, { ...parsed, positional: ["spawn", name] }, prompt);
+  runtimeCommandOf(spawned);
   if (spawned.messageId == null) throw new Error("spawn returned no first-message receipt");
   return withClient(ctx, async (c) => {
     // Delivery mark first (the mailbox row is the truth), then turn completion.
@@ -4535,6 +4589,8 @@ export async function runV2Cli(argv: string[], io: CliIo = defaultIo): Promise<n
         return await cmdList(ctx, parsed);
       case "mailbox":
         return await cmdMailbox(ctx, parsed);
+      case "ack":
+        return await cmdAck(ctx, parsed);
       case "commands":
         return await cmdCommands(ctx, parsed);
       case "deploy-info":

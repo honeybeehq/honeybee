@@ -49,6 +49,9 @@ import {
   isTaskTransitionAction,
   MAIL_HISTORY_MAX_LIMIT,
   MESSAGE_URGENCIES,
+  INBOX_AGENT,
+  isInboxAgent,
+  filterMailbox,
   ContinuationUnsupportedError,
   MOVE_CONTINUATION_AGENTS,
   BEE_HANDOFF_STOP_AT,
@@ -86,6 +89,7 @@ import {
   type BeeHandoffStopAt,
   type BeeMoveRow,
   type BeeRow,
+  type MessageRow,
   type HandoffContext,
   type HandoffContextTurn,
   type TranscriptSegmentRow,
@@ -514,7 +518,16 @@ export interface HiveDaemonDeps {
   retentionWorkerUrl?: URL;
   /** v31 tests: delay before the first automatic retention pass (default 5 min). */
   retentionInitialDelayMs?: number;
+  /**
+   * Outbox forwarder hook for mailbox-only bees: called after a `send` to an
+   * `inbox` bee commits. A future webhook or email push plugs in here; it runs
+   * off the RPC transaction and its failures never affect the accepted mail.
+   * See docs/design/mailbox-only-bees.md.
+   */
+  forwardMailboxOnlyMail?: MailboxOnlyForwarder;
 }
+
+export type MailboxOnlyForwarder = (input: { bee: BeeRow; message: MessageRow }) => void | Promise<void>;
 
 type AccountActivationState = {
   key: string;
@@ -1784,7 +1797,9 @@ export class HiveDaemon {
       case "list":
         return this.rpcList(params);
       case "mailbox":
-        return { messages: this.mustStore().listMessages(this.requireBee(params)) };
+        return this.rpcMailbox(params);
+      case "mail.ack":
+        return this.rpcMailAck(params);
       case "mail.history":
         return this.rpcMailHistory(params);
       case "mail.pending":
@@ -1981,6 +1996,9 @@ export class HiveDaemon {
     // A replayed key answers from the record without paying a limits fetch.
     if (key != null && store.lookupRpcResult(key)) return this.withIdempotency("spawn", params, () => this.rpcSpawn(params, null));
     const rawAgent = this.param(params, "agent");
+    if (this.isMailboxOnlyAgentToken(rawAgent)) {
+      return this.withIdempotency("spawn", params, () => this.rpcSpawnMailboxOnly(params));
+    }
     const embedded = this.embeddedSpawnAccount(rawAgent, params.account !== undefined);
     const normalizedParams = embedded.agent === rawAgent ? params : { ...params, agent: embedded.agent };
     const agent = embedded.agent;
@@ -2388,6 +2406,48 @@ export class HiveDaemon {
     throw new RpcError("account_wait", "Automatic account allocation is waiting: allocation_owner_required", {
       allocation: receipt as unknown as Record<string, unknown>,
     });
+  }
+
+  /** `inbox` is built in; `stub` aliases it unless a configured agent owns that name. */
+  private isMailboxOnlyAgentToken(agent: string): boolean {
+    return isInboxAgent(agent) || (agent === "stub" && !this.cfg.agents.stub);
+  }
+
+  /**
+   * Mailbox-only spawn: identity + mailbox, no runtime process, no account,
+   * no Cell, no spawn command. The core stores its single generation as
+   * already stopped(clean), so nothing boots, wakes, reconciles, or retries it.
+   */
+  private rpcSpawnMailboxOnly(params: Record<string, unknown>): SpawnResult {
+    const store = this.mustStore();
+    const name = this.param(params, "name");
+    if (params.substrate !== undefined && params.substrate !== null && params.substrate !== "hsr") {
+      throw new RpcError("invalid_request", `spawn: agent '${INBOX_AGENT}' is mailbox-only and takes no substrate (got '${String(params.substrate)}')`);
+    }
+    if (params.account !== undefined && params.account !== null && params.account !== "auto") {
+      throw new RpcError("invalid_request", `spawn: agent '${INBOX_AGENT}' is mailbox-only and binds no account`);
+    }
+    if (Array.isArray(params.args) && params.args.length > 0) {
+      throw new RpcError("invalid_request", `spawn: agent '${INBOX_AGENT}' is mailbox-only and takes no args`);
+    }
+    const tags = Array.isArray(params.tags) && params.tags.every((t) => typeof t === "string") ? (params.tags as string[]) : [];
+    const parent = this.parentParam(params);
+    const id = typeof params.id === "string" && params.id.length > 0 ? params.id : randomUUID();
+    const { bee } = store.createBee({
+      id,
+      name,
+      agent: INBOX_AGENT,
+      substrate: "hsr",
+      cwd: typeof params.cwd === "string" ? params.cwd : "",
+      title: typeof params.title === "string" ? params.title : undefined,
+      tags,
+      parentId: parent.parentId,
+      parentExternal: parent.parentExternal,
+    });
+    const prompt = typeof params.prompt === "string" && params.prompt.length > 0 ? params.prompt : null;
+    const sent = prompt == null ? null : store.send(id, prompt, { sender: "operator", origin: "spawn.prompt" });
+    this.log(`spawn.mailbox_only bee=${id}`);
+    return { beeId: id, agent: INBOX_AGENT, handle: bee.handle, commandId: null, messageId: sent?.message.id ?? null, account: null };
   }
 
   /**
@@ -4648,7 +4708,35 @@ export class HiveDaemon {
       urgency = params.urgency as Urgency;
     }
     const res = store.send(beeId, body, { sender, urgency });
+    this.forwardIfMailboxOnly(beeId, res.message);
     return { messageId: res.message.id, commandId: res.wakeCommand?.id ?? null, unarchived: res.unarchived };
+  }
+
+  private forwardIfMailboxOnly(beeId: string, message: MessageRow): void {
+    const forward = this.deps.forwardMailboxOnlyMail;
+    if (!forward) return;
+    const bee = this.mustStore().getBee(beeId);
+    if (!bee || !isInboxAgent(bee.agent)) return;
+    queueMicrotask(() => {
+      Promise.resolve()
+        .then(() => forward({ bee, message }))
+        .catch((err: unknown) => this.log(`mailbox_only.forward_failed bee=${beeId} message=${message.id} error=${activationFailureName(err)}`));
+    });
+  }
+
+  private rpcMailbox(params: Record<string, unknown>): { messages: MessageRow[] } {
+    const beeId = this.requireBee(params);
+    const sinceId = params.sinceId === undefined || params.sinceId === null ? undefined : this.numberParam(params, "sinceId");
+    if (params.unread !== undefined && typeof params.unread !== "boolean") {
+      throw new RpcError("invalid_request", "mailbox: unread must be a boolean");
+    }
+    return { messages: filterMailbox(this.mustStore().listMessages(beeId), { sinceId, unread: params.unread === true }) };
+  }
+
+  private rpcMailAck(params: Record<string, unknown>): { acked: number[] } {
+    const beeId = this.requireBee(params);
+    const throughId = params.all === true ? Number.MAX_SAFE_INTEGER : this.numberParam(params, "throughId");
+    return this.mustStore().ackMail(beeId, throughId);
   }
 
   private rpcEnqueue(

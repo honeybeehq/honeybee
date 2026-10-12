@@ -100,6 +100,7 @@ export function identityLayer(identity: PreambleIdentity): string {
   }
   lines.push(
     `Message another bee: \`hive buz send <bee> --sender ${identity.name} -p "<message>"\`. Read yours: \`hive buz inbox ${identity.name}\`.`,
+    `Message an external participant through their inbox bee (e.g. grokbot): \`hive send grokbot "<message>"\`.`,
   );
   return lines.join("\n");
 }

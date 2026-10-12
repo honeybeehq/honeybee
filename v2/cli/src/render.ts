@@ -5,7 +5,7 @@
  * surface: aligned columns, status color, and the tokens tests/scripts grep
  * (`stale:`, `id=`, `stopped(crashed)`, `deduped:`). Full argv lives on `view`, not `ls`.
  */
-import { CLAUDE_LOGIN_DUE_MS, type AccountCredentialAuthority, type AuditRow } from "../../core/src/index.ts";
+import { CLAUDE_LOGIN_DUE_MS, INBOX_AGENT, isInboxAgent, type AccountCredentialAuthority, type AuditRow } from "../../core/src/index.ts";
 import type { TranscriptTurn } from "../../driver-tmux/src/transcripts.ts";
 import type {
   AccountGetResult,
@@ -49,6 +49,7 @@ import {
 // ---------------------------------------------------------------------------
 
 export function runtimeLabel(v: ViewResult): string {
+  if (v.bee && isInboxAgent(v.bee.agent)) return INBOX_AGENT;
   return v.view.runtimeState === "stopped"
     ? `stopped(${v.view.exitCause})`
     : (v.view.runtimeState ?? "no-runtime");
@@ -99,6 +100,7 @@ function extraTokens(v: ViewResult): string {
 
 /** Compact runtime for `ls`: the full `stopped(cause)` string stays on `view`. */
 export function listRuntimeLabel(v: ViewResult): string {
+  if (v.bee && isInboxAgent(v.bee.agent)) return INBOX_AGENT;
   if (v.view.runtimeState === "stopped") {
     if (v.view.exitCause === "crashed") return "crashed";
     if (v.view.exitCause === "machine_restart") return "restart";

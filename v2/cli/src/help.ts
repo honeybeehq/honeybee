@@ -8,6 +8,7 @@ const GROUPS: Group[] = [
     title: "Spawn & run",
     rows: [
       ["spawn", "<name> [agent]", "start a bee (supports claude-gmail, codex-auto, claude-rr; exact --account wins)"],
+      ["spawn", "<name> inbox", "mailbox-only bee (alias: stub): an address with no model, account, or wake"],
       ["x", "<name> <prompt…>", "spawn + first send, fire-and-forget (--agent/--account/--cwd…)"],
       ["xa", "<agent> [--name n]", "spawn + attach (e.g. claude-gmail fuzzy, codex-auto least-loaded, claude-rr round-robin)"],
       ["run", "<name> -p <prompt>", "spawn, send, wait, print the reply, archive (--keep skips)"],
@@ -43,7 +44,8 @@ const GROUPS: Group[] = [
     rows: [
       ["list", "[--all|--archived]", "all bees with state (aliases: ls, ps)"],
       ["view", "<bee>", "one bee, in full"],
-      ["mailbox", "<bee>", "queued + delivered mail"],
+      ["mailbox", "<bee> [--since id] [--unread]", "queued + delivered mail; --since/--unread for pollers"],
+      ["ack", "<bee> <id>|--all", "mark a mailbox-only bee's mail read through <id>"],
       ["commands", "<bee>", "command queue for a bee"],
       ["children", "<bee>", "bees this one spawned or forked"],
       ["transcript", "<bee> [-n n] [-f]", "session log as readable turns (alias: tx); -f/--follow streams"],
