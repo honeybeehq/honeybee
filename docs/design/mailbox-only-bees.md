@@ -52,6 +52,10 @@ re-acking is a quiet no-op.
 
 Capability: `mailbox.only.v1`.
 
+Bees are not told about inbox bees in the preamble. Contact is ad hoc: the
+external participant puts reply instructions in its own messages (for
+example: reply with `hive send grokbot "..."`).
+
 ## Outbox forwarder hook
 
 `HiveDaemonDeps.forwardMailboxOnlyMail({ bee, message })` runs after a `send`
