@@ -8,6 +8,9 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { NodeHarnessesResult } from "../src/protocol.ts";
 import { makeDaemonDir, startDaemon, type DaemonHandle } from "./helpers.ts";
 
@@ -67,5 +70,59 @@ test("rpc.node.harnesses: present/path/source/version are resolver truth; a miss
   } finally {
     if (daemon) await daemon.stop();
     cleanup();
+  }
+});
+
+test("rpc.node.harnesses: the version probe runs under the spec env and re-probes when a declared stamp changes", async () => {
+  // A launcher that, like Muse's, stays put while the version file beside it
+  // changes, and that reports whether the spec's no-update switch reached it.
+  const install = mkdtempSync(join(tmpdir(), "hb-v2-stamp-"));
+  const real = join(install, "real");
+  mkdirSync(real);
+  const launcher = join(real, "fake-cli");
+  writeFileSync(
+    launcher,
+    '#!/bin/sh\nprintf \'fake %s no-update=%s\\n\' "$(cat "$(dirname "$(readlink -f "$0")")/.fake-version")" "${FAKE_NO_AUTO_UPDATE:-unset}"\n',
+  );
+  chmodSync(launcher, 0o755);
+  writeFileSync(join(real, ".fake-version"), "1.0.0");
+  // Reached through a symlink, as on satellites: stamps live beside the real file.
+  const linked = join(install, "fake-cli");
+  symlinkSync(launcher, linked);
+  const { dir, cleanup } = makeDaemonDir({
+    agents: {
+      stamped: { command: linked, adapter: "stub", env: { FAKE_NO_AUTO_UPDATE: "1" }, versionStamps: [".fake-version"] },
+      // Same launcher, no stamps: cached on (path, mtime) exactly as before.
+      plain: { command: launcher, adapter: "stub" },
+    },
+  });
+  let daemon: DaemonHandle | null = null;
+  const versions = async (): Promise<Map<string, string | null>> => {
+    const client = await daemon!.client();
+    try {
+      const { harnesses } = await client.request<NodeHarnessesResult>("node.harnesses");
+      return new Map(harnesses.map((h) => [h.harness, h.version]));
+    } finally {
+      client.close();
+    }
+  };
+  try {
+    daemon = await startDaemon(dir);
+    let v = await versions();
+    assert.equal(v.get("stamped"), "fake 1.0.0 no-update=1", "the spec env reaches the probe");
+    assert.equal(v.get("plain"), "fake 1.0.0 no-update=unset");
+
+    // The update rewrites the stamp and leaves the launcher untouched.
+    const stamp = join(real, ".fake-version");
+    writeFileSync(stamp, "1.1.0");
+    const later = new Date(Date.now() + 60_000);
+    utimesSync(stamp, later, later);
+    v = await versions();
+    assert.equal(v.get("stamped"), "fake 1.1.0 no-update=1", "a changed stamp re-probes without a restart");
+    assert.equal(v.get("plain"), "fake 1.0.0 no-update=unset", "a spec without stamps keeps its (path, mtime) cache");
+  } finally {
+    if (daemon) await daemon.stop();
+    cleanup();
+    rmSync(install, { recursive: true, force: true });
   }
 });

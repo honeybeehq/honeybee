@@ -27,6 +27,13 @@ export interface AgentSpecConfig {
   adapter?: string;
   env?: Record<string, string>;
   /**
+   * Files, relative to the directory of the resolved executable (symlinks
+   * followed), that change when the harness updates while the executable
+   * itself stays put (e.g. Muse's launcher beside `.muse-version`).
+   * `node.harnesses` keys its version cache on them too.
+   */
+  versionStamps?: string[];
+  /**
    * v7 (spec 08): the harness's own login invocation for `account.login`'s
    * seat (default = the recipe's: bare `claude`, `codex login`, …). Tests
    * point it at a fake login that writes the recipe file.
@@ -322,6 +329,8 @@ export const BUILTIN_AGENTS: Record<string, AgentSpecConfig> = {
     args: ["serve", "-c", "context.foreign_personal_rules=false", "-c", "context.foreign_personal_skills=false"],
     adapter: "muse",
     env: { MUSE_NO_AUTO_UPDATE: "1" },
+    // The launcher stays put across updates; the installer rewrites this.
+    versionStamps: [".muse-version"],
   },
   agy: {
     command: "agy",
@@ -581,6 +590,12 @@ function agentsOf(raw: Record<string, unknown>): Record<string, AgentSpecConfig>
         if (typeof val !== "string") throw new ConfigError(`config: agents.${name}.env values must be strings`);
       }
       entry.env = s.env as Record<string, string>;
+    }
+    if (s.versionStamps !== undefined) {
+      if (!Array.isArray(s.versionStamps) || s.versionStamps.some((a) => typeof a !== "string" || a.length === 0)) {
+        throw new ConfigError(`config: agents.${name}.versionStamps must be an array of non-empty strings`);
+      }
+      entry.versionStamps = s.versionStamps as string[];
     }
     if (s.login !== undefined) {
       const l = s.login as Record<string, unknown> | null;

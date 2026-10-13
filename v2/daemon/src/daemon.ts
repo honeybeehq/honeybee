@@ -24,7 +24,7 @@ import { threadOperationView, type ThreadOperationRow } from "../../core/src/thr
  *  - behavior 6 (service mgmt)     → service.ts (wired by the CLI)
  *  - behavior 7 (config)           → config.ts
  */
-import { closeSync, copyFileSync, cpSync, existsSync, mkdirSync, openSync, readdirSync, readlinkSync, readSync, rmSync, statSync } from "node:fs";
+import { closeSync, copyFileSync, cpSync, existsSync, mkdirSync, openSync, readdirSync, readlinkSync, readSync, realpathSync, rmSync, statSync } from "node:fs";
 import { execFile } from "node:child_process";
 import type { InterruptOutcome } from "../../harness/src/driver.ts";
 import { appendFileSync } from "node:fs";
@@ -4880,9 +4880,11 @@ export class HiveDaemon {
    * the SAME core resolver the spawn path uses, against the same env
    * baseline (process.env + the agent spec's env), so what this verb reports
    * as runnable is exactly what a spawn would exec. The version probe is a
-   * bounded `--version` of the resolved binary, cached by (path, mtime) —
-   * a failure or timeout is a null version, never an error. `unavailable`
-   * is the recipe's reason this platform cannot run the harness at all.
+   * bounded `--version` of the resolved binary under that same env (so a
+   * spec's no-auto-update switch holds), cached by (path, mtime, the spec's
+   * version stamps) — a failure or timeout is a null version, never an
+   * error. `unavailable` is the recipe's reason this platform cannot run the
+   * harness at all.
    */
   private async rpcNodeHarnesses(): Promise<NodeHarnessesResult> {
     const harnesses: HarnessFact[] = [];
@@ -4897,27 +4899,34 @@ export class HiveDaemon {
         path: resolved?.path ?? null,
         source: resolved?.source ?? null,
         // An unavailable harness is never executed, not even for its version.
-        version: resolved && !unavailable ? await this.probeHarnessVersion(resolved.path) : null,
+        version: resolved && !unavailable ? await this.probeHarnessVersion(resolved.path, env, spec.versionStamps ?? []) : null,
         unavailable,
       });
     }
     return { harnesses };
   }
 
-  /** `--version` first lines, cached per (path, mtime) so repeat calls are free. */
+  /** `--version` first lines, cached per (path, mtime, stamps) so repeat calls are free. */
   private readonly harnessVersionCache = new Map<string, string | null>();
 
-  private probeHarnessVersion(path: string): Promise<string | null> {
+  private probeHarnessVersion(path: string, env: Record<string, string>, stamps: string[]): Promise<string | null> {
     let key: string;
     try {
       key = `${path}\0${statSync(path).mtimeMs}`;
+      if (stamps.length > 0) {
+        const dir = dirname(realpathSync(path));
+        for (const stamp of stamps) {
+          const st = statSync(join(dir, stamp), { throwIfNoEntry: false });
+          key += `\0${stamp}\0${st ? `${st.mtimeMs}:${st.size}` : "-"}`;
+        }
+      }
     } catch {
       return Promise.resolve(null);
     }
     const hit = this.harnessVersionCache.get(key);
     if (hit !== undefined) return Promise.resolve(hit);
     return new Promise((resolvePromise) => {
-      execFile(path, ["--version"], { timeout: 2000, maxBuffer: 64 * 1024 }, (error, stdout) => {
+      execFile(path, ["--version"], { env, timeout: 2000, maxBuffer: 64 * 1024 }, (error, stdout) => {
         const line = error
           ? null
           : String(stdout).split("\n").map((l) => l.trim()).find((l) => l.length > 0) ?? null;
