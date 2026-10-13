@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { openCoreStore } from "../../core/src/index.ts";
 import { makeDaemonDir, startDaemon, waitFor, type DaemonHandle } from "../../daemon/tests/helpers.ts";
 import { runV2Cli, type CliIo } from "../src/main.ts";
+import type { RpcVerb } from "../../daemon/src/protocol.ts";
 import { stripAnsi } from "../src/style.ts";
 
 const FAKE_TOKEN = "fake-apiary-token-h18-0123456789";
@@ -62,6 +63,55 @@ test("env.redact: view, list, events and bee-row results never print APIARY_AGEN
     assert.match(await cli(["list", "--all", "--data-dir", dir, "--json", "--reveal-env"]), new RegExp(FAKE_TOKEN));
     assert.match(await cli(["events", "--bee", beeId, "--tail", "1000", "--data-dir", dir, "--json", "--reveal-env"]), new RegExp(FAKE_TOKEN));
     client.close();
+  } finally {
+    await daemon?.stop().catch(() => {});
+    cleanup();
+  }
+});
+
+test("env.redact: keyed bee mutations record and replay redacted env; revealEnv reveals only the live response", async () => {
+  const { dir, cleanup } = makeDaemonDir();
+  let daemon: DaemonHandle | null = null;
+  try {
+    daemon = await startDaemon(dir);
+    const client = await daemon.client();
+    const { beeId } = await client.request<{ beeId: string }>("spawn", {
+      name: "replay",
+      agent: "stub",
+      cwd: "/tmp",
+      env: { APIARY_AGENT_TOKEN: FAKE_TOKEN, PLAIN_SETTING: "visible" },
+    });
+    await waitFor(async () => (await client.request<{ view: { runtimeState: string } }>("view", { beeId })).view.runtimeState === "idle", "stub idle");
+    type BeeResult = { bee: { env: Record<string, string> }; deduped?: boolean };
+    const calls: Array<[RpcVerb, Record<string, unknown>]> = [
+      ["bee.rename", { beeId, name: "replay-2", idempotencyKey: "h18-rename" }],
+      ["bee.tag", { beeId, add: ["h18"], idempotencyKey: "h18-tag" }],
+      ["bee.setArgs", { beeId, args: ["--x"], idempotencyKey: "h18-args" }],
+      ["bee.rename", { beeId, name: "replay-3", idempotencyKey: "h18-rename-revealed", revealEnv: true }],
+      ["bee.rename", { beeId, name: "replay-4" }],
+    ];
+    for (const [verb, params] of calls) {
+      const live = await client.request<BeeResult>(verb, params);
+      assert.equal(live.bee.env.APIARY_AGENT_TOKEN, params.revealEnv === true ? FAKE_TOKEN : "<redacted>", `${verb} live`);
+      assert.equal(live.bee.env.PLAIN_SETTING, "visible", `${verb} keeps plain values`);
+      if (params.idempotencyKey === undefined) continue;
+      const replay = await client.request<BeeResult>(verb, params);
+      assert.equal(replay.deduped, true, `${verb} replays`);
+      assert.equal(replay.bee.env.APIARY_AGENT_TOKEN, "<redacted>", `${verb} replay`);
+    }
+    client.close();
+    await daemon.stop();
+    daemon = null;
+    const store = openCoreStore(join(dir, "core.sqlite3"));
+    try {
+      for (const key of ["h18-rename", "h18-tag", "h18-args", "h18-rename-revealed"]) {
+        const stored = store.lookupRpcResult(key);
+        assert.ok(stored, `${key} recorded`);
+        assert.doesNotMatch(JSON.stringify(stored.result), new RegExp(FAKE_TOKEN), `${key} stored row`);
+      }
+    } finally {
+      store.close();
+    }
   } finally {
     await daemon?.stop().catch(() => {});
     cleanup();

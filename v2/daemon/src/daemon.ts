@@ -2052,7 +2052,7 @@ export class HiveDaemon {
     fn: () => T,
   ): T | (T & { deduped: true; status?: CommandRow["status"] }) {
     const key = this.idempotencyKeyOf(params);
-    if (key == null) return fn();
+    if (key == null) return this.revealedOrRedacted(params, fn());
     const store = this.mustStore();
     return store.transact(() => {
       const hit = store.lookupRpcResult(key);
@@ -2071,9 +2071,18 @@ export class HiveDaemon {
       }
       const result = fn();
       const commandId = (result as { commandId?: unknown }).commandId;
-      store.recordRpcResult(key, verb, typeof commandId === "number" ? commandId : null, result);
-      return result;
+      store.recordRpcResult(key, verb, typeof commandId === "number" ? commandId : null, this.beeEnvRedacted(result));
+      return this.revealedOrRedacted(params, result);
     });
+  }
+
+  private beeEnvRedacted<T>(result: T): T {
+    const bee = (result as { bee?: { env?: unknown } | null } | null)?.bee;
+    return typeof bee?.env === "object" && bee.env !== null ? redactEnvRecords(result) : result;
+  }
+
+  private revealedOrRedacted<T>(params: Record<string, unknown>, result: T): T {
+    return params.revealEnv === true ? result : this.beeEnvRedacted(result);
   }
 
   /**
@@ -5382,15 +5391,15 @@ export class HiveDaemon {
       const inFlight = this.asyncInFlight.get(key);
       if (inFlight) {
         this.log(`rpc.dedup verb=${verb} key=${key} joined=in_flight`);
-        return { ...((await inFlight) as T), deduped: true as const };
+        return { ...this.beeEnvRedacted((await inFlight) as T), deduped: true as const };
       }
     }
     const pending = fn();
     if (key != null) this.asyncInFlight.set(key, pending);
     try {
       const result = await pending;
-      if (key != null) store.recordRpcResult(key, verb, null, result);
-      return result;
+      if (key != null) store.recordRpcResult(key, verb, null, this.beeEnvRedacted(result));
+      return this.revealedOrRedacted(params, result);
     } finally {
       if (key != null && this.asyncInFlight.get(key) === pending) this.asyncInFlight.delete(key);
     }
