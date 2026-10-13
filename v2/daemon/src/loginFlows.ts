@@ -413,6 +413,8 @@ export class LoginFlowService {
    */
   private assertLoginPossible(account: AccountRow): void {
     this.accounts.assertLocalAccount(account);
+    const unisolated = this.accounts.isolationRefusal(account.harness);
+    if (unisolated) throw new LoginFlowRefusal("login_method_unsupported", unisolated);
     const central = this.accounts.authorityFor(account);
     if (account.harness === "codex" && (central?.enabled(account) || central?.busy(account))) {
       throw new LoginFlowRefusal("login_flow_refused", "Disable central Codex credentials before logging in natively; the authority alone owns the refresh chain.");

@@ -21,6 +21,13 @@ export interface IdentityRecipe {
   /** Explicit extra env for activated spawns. "{home}" expands to the home path. */
   extraEnv?: Record<string, string>;
   /**
+   * Platforms (`process.platform`) where the harness keeps its login outside
+   * any home, so an account home cannot isolate it. The value is the refusal
+   * shown: there the harness is never run under an account home, logged in,
+   * captured or leased.
+   */
+  unisolatedOn?: Readonly<Record<string, string>>;
+  /**
    * Where the MACHINE's own CLI keeps these files (the "vendor home"): the
    * default dir under $HOME when the harness's home env var
    * (HARNESS_HOME_ENV) is unset, plus recipe-relative files that live
@@ -702,6 +709,11 @@ export const ACCOUNT_RECIPES: Readonly<Record<string, IdentityRecipe>> = {
     credentialFiles: ["muse/auth.json"],
     configFiles: ["muse/settings.json"],
     extraEnv: { XDG_DATA_HOME: "{home}/xdg-data" },
+    // macOS Muse ignores XDG_CONFIG_HOME for the login itself: one Keychain
+    // item per OS user, and any file token it reads is moved into that item.
+    unisolatedOn: {
+      darwin: "Muse keeps one login per macOS user in the Keychain, so Muse accounts can't be isolated on this Mac; run Muse on a Linux node",
+    },
     vendorHome: { dir: ".config" },
     login: { command: "muse", args: ["login"] },
     loginFlow: {
@@ -815,6 +827,11 @@ export function defaultLoginMethodId(harness: string, opts: { remote?: boolean; 
 /** The env var that selects a harness's home (CLAUDE_CONFIG_DIR, CODEX_HOME, …); undefined for unknown harnesses. */
 export function homeEnvFor(harness: string): string | undefined {
   return HARNESS_HOME_ENV[harness];
+}
+
+/** Why `harness` accounts cannot be isolated on `platform` (the recipe's `unisolatedOn` reason), else null. */
+export function accountIsolationRefusal(harness: string, platform: string): string | null {
+  return recipeFor(harness)?.unisolatedOn?.[platform] ?? null;
 }
 
 export function recipeFor(harness: string): IdentityRecipe | undefined {

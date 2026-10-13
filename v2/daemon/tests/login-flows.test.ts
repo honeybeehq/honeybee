@@ -124,6 +124,7 @@ function rig(config: NodeConfigFile = {}): Rig {
 }
 
 interface Fakes {
+  platform?: string;
   transports?: Partial<LoginTransports>;
   keychainWriter?: (homePath: string, credentials: string) => Promise<boolean>;
   keychainReader?: (homePath: string) => Promise<string | null>;
@@ -144,6 +145,7 @@ function services(r: Rig, fakes: Fakes = {}): { accounts: AccountsService; flows
     cfg: r.cfg,
     log: (op) => r.log.push(op),
     now: r.now,
+    platform: fakes.platform ?? "linux",
     keychainReader: fakes.keychainReader ?? (async () => null),
     keychainWriter: fakes.keychainWriter ?? (async () => false),
     cursorAuthReader: async () => null,
@@ -560,6 +562,22 @@ test("flows.muse-device: `muse login` output → url + user code → waiting_dev
     assert.equal(readFileSync(join(r.vault, "muse", acct.id, "muse", "auth.json"), "utf8"), readFileSync(auth, "utf8"));
     assert.equal(r.store.getAccount(acct.id)?.status, "ok");
     assert.deepEqual(completed, [acct.id]);
+  } finally {
+    r.cleanup();
+  }
+});
+
+test("flows.muse.darwin: every Muse login method is refused before a flow row or worker exists", async () => {
+  const r = rig({ agents: fakeMuseAgent() });
+  try {
+    const { flows } = services(r, { platform: "darwin" });
+    const acct = account(r, "muse", "mac");
+    for (const methodId of [undefined, "muse-device", "muse-api-key"]) {
+      await assert.rejects(flows.start(acct, { methodId }), (err: unknown) =>
+        err instanceof LoginFlowRefusal && err.code === "login_method_unsupported" && /one login per macOS user in the Keychain/.test(err.message));
+    }
+    assert.equal(r.store.latestLoginFlow(acct.id), null);
+    assert.equal(existsSync(join(acct.homePath, "muse", "auth.json")), false);
   } finally {
     r.cleanup();
   }

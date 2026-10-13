@@ -300,7 +300,8 @@ export function makeDaemonDir(overrides: DaemonConfigOverrides = {}): { dir: str
   };
 }
 
-export async function startDaemon(dir: string, opts: { env?: Record<string, string> } = {}): Promise<DaemonHandle> {
+/** `platform` makes the daemon process report that OS (default linux, so a suite run on a Mac never trips platform guards). */
+export async function startDaemon(dir: string, opts: { env?: Record<string, string>; platform?: string } = {}): Promise<DaemonHandle> {
   const socketPath = join(dir, "hived.sock");
   const storePath = join(dir, "core.sqlite3");
   const proc = spawn(process.execPath, [DAEMON_BIN, "--data-dir", dir], {
@@ -315,6 +316,8 @@ export async function startDaemon(dir: string, opts: { env?: Record<string, stri
       // Successful test shutdown owns and reaps its disposable runtimes.
       // Production never sets this; restart-survival semantics stay intact.
       HIVE_TEST_REAP_RUNTIMES_ON_SHUTDOWN: "1",
+      HIVE_TEST_PLATFORM: opts.platform ?? "linux",
+      NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ""} --import=${join(here, "fixtures", "force-platform.mjs")}`.trim(),
       // v18: tests that exercise the vendor-home import point HOME / the
       // harness home env var at a temp dir so the developer's real
       // ~/.codex, ~/.claude, … are never read.

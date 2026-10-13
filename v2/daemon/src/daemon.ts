@@ -2540,6 +2540,8 @@ export class HiveDaemon {
   ): { account: AccountRow | null; reason: string | null; allocation?: AccountAllocationReceipt; reservationId?: string; claim?: AccountAdmissionClaim } {
     const store = this.mustStore();
     if (request === null) return { account: null, reason: null };
+    const unisolated = this.accounts?.isolationRefusal(agent);
+    if (unisolated) throw new RpcError("account_unavailable", unisolated);
     const onlyAccountIds = this.admissionAccountIdsParam(params, "onlyAccountIds");
     if (request === "rr") {
       if (!this.accounts) throw new RpcError("account_unavailable", `Account selection is unavailable for ${agent}`);
@@ -4879,20 +4881,24 @@ export class HiveDaemon {
    * baseline (process.env + the agent spec's env), so what this verb reports
    * as runnable is exactly what a spawn would exec. The version probe is a
    * bounded `--version` of the resolved binary, cached by (path, mtime) —
-   * a failure or timeout is a null version, never an error.
+   * a failure or timeout is a null version, never an error. `unavailable`
+   * is the recipe's reason this platform cannot run the harness at all.
    */
   private async rpcNodeHarnesses(): Promise<NodeHarnessesResult> {
     const harnesses: HarnessFact[] = [];
     for (const [harness, spec] of Object.entries(this.cfg.agents)) {
       const env = { ...(process.env as Record<string, string>), ...(spec.env ?? {}) };
       const resolved = resolveExecutable(spec.command, { env });
+      const unavailable = this.accounts?.isolationRefusal(harness) ?? this.accounts?.isolationRefusal(spec.adapter ?? harness) ?? null;
       harnesses.push({
         harness,
         command: spec.command,
         present: resolved !== null,
         path: resolved?.path ?? null,
         source: resolved?.source ?? null,
-        version: resolved ? await this.probeHarnessVersion(resolved.path) : null,
+        // An unavailable harness is never executed, not even for its version.
+        version: resolved && !unavailable ? await this.probeHarnessVersion(resolved.path) : null,
+        unavailable,
       });
     }
     return { harnesses };
@@ -5095,6 +5101,8 @@ export class HiveDaemon {
     const importExisting = params.importExisting === undefined ? false : params.importExisting;
     if (typeof importExisting !== "boolean") throw new RpcError("invalid_request", "account.add: importExisting must be a boolean");
     return this.withAsyncIdempotency("account.add", params, async () => {
+      const unisolated = accounts.isolationRefusal(harness);
+      if (unisolated) throw new RpcError("account_unavailable", `account.add: ${unisolated}`);
       if (store.getAccount(id)) throw new RpcError("invalid_request", `account already exists: ${id}`);
       // F2: a fresh account starts LOGGED OUT. Pre-existing credentials at the
       // home (a machine's live harness home handed in as homePath) or in a
@@ -5372,6 +5380,8 @@ export class HiveDaemon {
     return this.withIdempotency("account.credentialsRestored", params, () => {
       const accounts = this.mustAccounts();
       const store = this.mustStore();
+      const unisolated = accounts.isolationRefusal(account.harness);
+      if (unisolated) throw new RpcError("account_unavailable", unisolated);
       const credential = accounts.homeCredentialState(account);
       if (credential !== "usable") {
         throw new RpcError("account_unavailable", `account ${account.id} has ${credential === "absent" ? "no" : "an expired"} credential in its home`);
@@ -5474,6 +5484,8 @@ export class HiveDaemon {
     if (params.adopt !== undefined && typeof params.adopt !== "boolean") throw invalid();
     if (typeof params.epoch !== "number" || !Number.isSafeInteger(params.epoch) || params.epoch < 0) throw invalid();
     if (params.expiresAt !== null && (typeof params.expiresAt !== "number" || !Number.isSafeInteger(params.expiresAt) || params.expiresAt * 1000 <= Date.now())) throw invalid();
+    const unisolated = this.mustAccounts().isolationRefusal(params.harness);
+    if (unisolated) throw new RpcError("lease_unsupported", unisolated);
     const codec = this.mustAccounts().leaseMaterialCodecs.get(params.harness);
     if (!codec) throw new RpcError("lease_unsupported", "This harness does not support peer leases.");
     if (!Array.isArray(params.files) || params.files.length === 0 || params.files.length > codec.files.length) throw invalid();

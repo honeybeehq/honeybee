@@ -30,7 +30,7 @@ import { openCoreStore, type CoreStore } from "../../core/src/index.ts";
 import type { ClaudeRefreshResult, RefreshedClaudeToken } from "../src/claudeRefreshTransport.ts";
 const granted = (token: RefreshedClaudeToken): ClaudeRefreshResult => ({ kind: "success", token });
 const refused: ClaudeRefreshResult = { kind: "rejected", httpStatus: 400, error: "invalid_grant", description: "Refresh token not found or invalid" };
-import { AccountsService, ResetLimitsRefusal, defaultCodexRateLimits, defaultCodexResetLimits } from "../src/accountsService.ts";
+import { AccountsService, LeaseRefusal, ResetLimitsRefusal, defaultCodexRateLimits, defaultCodexResetLimits } from "../src/accountsService.ts";
 import { activateHomeIfEmpty } from "../src/activation.ts";
 import { loadNodeConfig, type NodeConfigFile, type ResolvedNodeConfig } from "../src/config.ts";
 import { recipeFingerprint } from "../src/activation.ts";
@@ -131,6 +131,7 @@ function service(r: Rig, extra: Partial<ConstructorParameters<typeof AccountsSer
     cfg: r.cfg,
     log: (op) => r.log.push(op),
     now: r.now,
+    platform: "linux",
     gatewayMcpSeeder: async () => ({ status: "seeded", written: [] }),
     ...extra,
   });
@@ -1023,6 +1024,68 @@ test("limits.muse.observed: usage a Muse runtime observed becomes the readable l
     const [lost] = await svc.refreshLimits([account.id]);
     assert.equal(lost?.unreadableReason, "auth_failed");
     assert.equal(r.store.getAccountLimits(account.id)?.readable, false);
+  } finally {
+    r.cleanup();
+  }
+});
+
+test("muse.darwin: one Keychain login per macOS user — a Muse account is never ready, selected, captured or leased there, and nothing is written", async () => {
+  const r = rig();
+  try {
+    const file = "muse/auth.json";
+    const doc = JSON.stringify({ schema_version: 1, providers: { meta: { api_key: "k-123" } } });
+    const account = addAccount(r, "muse", "mac", { vault: { [file]: doc } });
+    mkdirSync(join(account.homePath, "muse"), { recursive: true });
+    writeFileSync(join(account.homePath, file), doc);
+    const reason = /one login per macOS user in the Keychain.*run Muse on a Linux node/;
+
+    const linux = service(r);
+    assert.equal(linux.isolationRefusal("muse"), null);
+    assert.deepEqual(linux.readiness(account), { ready: true });
+    assert.equal(linux.pick("muse").ok, true);
+
+    const mac = service(r, { platform: "darwin" });
+    assert.match(mac.isolationRefusal("muse") ?? "", reason);
+    assert.equal(mac.isolationRefusal("claude"), null, "only a recipe that says so is unisolated");
+    for (const readiness of [mac.readiness(account), mac.credentialReadiness(account)]) {
+      assert.equal(readiness.ready ? null : readiness.code, "account_unavailable");
+      assert.match(readiness.ready ? "" : readiness.message, reason);
+    }
+    for (const pick of [mac.pick("muse"), mac.pickRoundRobin("muse")]) {
+      assert.equal(pick.ok ? null : pick.code, "no_accounts", "auto and rr never select it");
+      assert.match(pick.ok ? "" : pick.message, reason);
+    }
+    const admission = mac.admitNewWork("muse", { operation: "spawn", requestKey: "k" });
+    assert.equal(admission.ok ? null : admission.code, "account_unavailable");
+    await assert.rejects(mac.mintLease(account), (err: unknown) => err instanceof LeaseRefusal && err.code === "lease_unsupported" && reason.test(err.message));
+    rmSync(join(r.vault, "muse", account.id), { recursive: true });
+    await assert.rejects(mac.captureAccount(account), reason);
+    assert.equal(existsSync(join(r.vault, "muse", account.id)), false, "a refused capture copies nothing");
+  } finally {
+    r.cleanup();
+  }
+});
+
+test("muse.keychain: an auth.json that only points at the OS keychain is a present login that is never captured, imported or leased", async () => {
+  const r = rig();
+  try {
+    const svc = service(r);
+    const file = "muse/auth.json";
+    const pointer = JSON.stringify({ schema_version: 2, providers: { meta: { mechanism: "oauth", obtained_via: "device_code", storage: "keychain", expires_at: 4102444800000 } } });
+    const account = r.store.createAccount({ id: "muse-local", harness: "muse", homePath: join(r.homes, "muse-local"), label: "local", penalty: 0, status: "ok" });
+    writeAt(join(account.homePath, file), pointer);
+    assert.equal(svc.credentialState(account), "present");
+    assert.equal(svc.homeCredentialState(account), "usable");
+    assert.equal(svc.validPrimaryCredential("muse", file, pointer), false);
+
+    await assert.rejects(svc.captureAccount(account), /no valid muse credential/);
+    const machine = fakeMachine(r);
+    writeAt(join(machine.home, ".config", file), pointer);
+    const imported = await svc.importExistingCredentials(account, { env: machine.env, home: machine.home });
+    assert.equal(imported.ok, false);
+    assert.deepEqual(imported.checked.map((c) => c.state), ["invalid", "missing", "invalid"]);
+    assert.equal(existsSync(join(r.vault, "muse", account.id)), false, "the pointer never reaches the vault");
+    await assert.rejects(svc.mintLease(account), (err: unknown) => err instanceof LeaseRefusal && err.code === "lease_unsupported" && /storage:"keychain"/.test(err.message));
   } finally {
     r.cleanup();
   }

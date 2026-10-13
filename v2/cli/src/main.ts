@@ -3050,7 +3050,9 @@ async function cmdHealth(ctx: CliContext): Promise<number> {
 async function cmdHarnesses(ctx: CliContext): Promise<number> {
   const result = await withClient(ctx, (c) => c.request<NodeHarnessesResult>("node.harnesses"));
   const lines = result.harnesses.map((h) =>
-    h.present
+    h.unavailable
+      ? `${h.harness}: unavailable — ${h.unavailable}`
+      : h.present
       ? `${h.harness}: ${h.path} (${h.source}${h.version ? `; ${h.version}` : ""})`
       : `${h.harness}: not found — command '${h.command}' resolves nowhere on this node (PATH + standard install dirs)`,
   );

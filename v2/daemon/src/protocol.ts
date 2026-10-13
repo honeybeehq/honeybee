@@ -1437,6 +1437,13 @@ export interface HarnessFact {
   path: string | null;
   source: ExecutableResolutionSource | null;
   version: string | null;
+  /**
+   * Why this node cannot run the harness even when its CLI is installed
+   * (Muse on macOS: one Keychain login per OS user, so accounts cannot be
+   * isolated); null when nothing rules it out. An unavailable harness is
+   * never executed, so its `version` is null.
+   */
+  unavailable: string | null;
 }
 
 export interface HealthResult {

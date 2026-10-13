@@ -28,6 +28,7 @@ import {
   AUTO_PICK_DEBIT_PERCENT,
   DEFAULT_ACCOUNT_ADMISSION_POLICY,
   accountActiveBees,
+  accountIsolationRefusal,
   accountCommitments,
   accountIdFor,
   AUTH_CREDENTIAL_UNREADABLE,
@@ -159,6 +160,8 @@ export interface AccountsServiceOptions {
   cfg: ResolvedNodeConfig;
   log: (op: string) => void;
   now?: () => number;
+  /** `process.platform`, injected so tests can stand on another OS. */
+  platform?: string;
   keychainReader?: KeychainReader;
   keychainWriter?: KeychainWriter;
   keychainStateReader?: KeychainStateReader;
@@ -226,7 +229,7 @@ export type PickOutcome =
 export type CredentialState = "present" | "absent" | "invalid" | "expired";
 
 /** Typed refusal codes shared by explicit spawn, allocator claims, swap and the runtime-start hold. */
-export type AccountRefusalCode = "account_lease_ended" | "account_paused" | "account_auth_needed" | "account_credential_missing" | "account_credential_invalid" | "account_credential_expired";
+export type AccountRefusalCode = "account_lease_ended" | "account_paused" | "account_auth_needed" | "account_credential_missing" | "account_credential_invalid" | "account_credential_expired" | "account_unavailable";
 
 export type AccountReadiness =
   | { ready: true }
@@ -845,6 +848,7 @@ export class AccountsService {
   private readonly cfg: ResolvedNodeConfig;
   private readonly log: (op: string) => void;
   private readonly now: () => number;
+  private readonly platform: string;
   private readonly keychainReader: KeychainReader;
   private readonly keychainWriter: KeychainWriter;
   readonly leaseMaterialCodecs: ReadonlyMap<string, LeaseMaterialCodec>;
@@ -897,6 +901,7 @@ export class AccountsService {
     this.log = opts.log;
     this.onCredentialValidated = opts.onCredentialValidated ?? (() => undefined);
     this.now = opts.now ?? Date.now;
+    this.platform = opts.platform ?? process.platform;
     this.keychainReader = opts.keychainReader ?? readClaudeKeychain;
     this.keychainWriter = opts.keychainWriter ?? writeClaudeKeychainEntry;
     this.cursorAuthReader = opts.cursorAuthReader ?? readCursorLiveAuth;
@@ -1262,6 +1267,11 @@ export class AccountsService {
     return dirHasCredentials(this.vaultDirOf(account), recipe) || dirHasCredentials(account.homePath, recipe);
   }
 
+  /** Why this node cannot hold `harness` accounts at all (the recipe's `unisolatedOn` reason for this platform), else null. */
+  isolationRefusal(harness: string): string | null {
+    return accountIsolationRefusal(harness, this.platform);
+  }
+
   /**
    * The credential a new runtime would read. Activation copies the vault into
    * the home only while the home holds no primary credential file, so a
@@ -1288,7 +1298,7 @@ export class AccountsService {
     if (raw === null) return "absent";
     const parsed = parseMuseCredentials(raw);
     if (!parsed) return "invalid";
-    if (parsed.mechanism === "api_key" || parsed.expiresAt === null || parsed.expiresAt > this.now() || parsed.refreshable) return "present";
+    if (parsed.mechanism !== "oauth" || parsed.expiresAt === null || parsed.expiresAt > this.now() || parsed.refreshable) return "present";
     return "expired";
   }
 
@@ -1322,6 +1332,8 @@ export class AccountsService {
    * judged separately by `readiness`.
    */
   credentialReadiness(account: AccountRow): AccountReadiness {
+    const unisolated = this.isolationRefusal(account.harness);
+    if (unisolated) return { ready: false, code: "account_unavailable", message: unisolated };
     if (account.source === "leased" && account.leasedFrom?.endedAt != null) return { ready: false, code: "account_lease_ended", message: `Lease ${account.leasedFrom.shareId} from ${account.leasedFrom.authorityNodeId} has ended; request renewal from its authority.` };
     if (account.status === "auth_needed") {
       return { ready: false, code: "account_auth_needed", message: this.authNeededReason(account) ?? `account ${account.id} needs login; log in with: hive account login ${account.id}` };
@@ -1349,7 +1361,7 @@ export class AccountsService {
 
   /** Usable for automatic selection: not paused, not auth_needed, credential present and not expired. */
   private usableForSelection(account: AccountRow): boolean {
-    return account.status === "ok" && this.credentialState(account) === "present";
+    return account.status === "ok" && !this.isolationRefusal(account.harness) && this.credentialState(account) === "present";
   }
 
   /**
@@ -1806,6 +1818,8 @@ export class AccountsService {
    * may schedule stale sampling, but selection always reads the current row.
    */
   pick(harness: string, opts: PickOptions = {}): PickOutcome {
+    const unisolated = this.isolationRefusal(harness);
+    if (unisolated) return { ok: false, code: "no_accounts", message: unisolated };
     const now = this.now();
     const registered = this.store.listAccounts({ harness }).filter((a) => !opts.onlyAccountIds || opts.onlyAccountIds.has(a.id));
     if (registered.length === 0) {
@@ -1920,6 +1934,8 @@ export class AccountsService {
    * Its durable cursor is namespaced away from auto's near-tie cursor.
    */
   pickRoundRobin(harness: string, opts: Pick<PickOptions, "onlyAccountIds"> = {}): PickOutcome {
+    const unisolated = this.isolationRefusal(harness);
+    if (unisolated) return { ok: false, code: "no_accounts", message: unisolated };
     const registered = this.store.listAccounts({ harness }).filter((a) => !opts.onlyAccountIds || opts.onlyAccountIds.has(a.id));
     if (registered.length === 0) {
       return { ok: false, code: "no_accounts", message: `No ${harness} accounts registered; add one with: hive account add ${harness} <label>` };
@@ -2646,6 +2662,8 @@ export class AccountsService {
     if (this.refreshBusy(account) && !this.authorityFor(account)?.enabled(account)) {
       throw new LeaseRefusal("lease_unavailable", `account ${account.id}'s credential refresher is mid-rotation; retry shortly`);
     }
+    const unisolated = this.isolationRefusal(account.harness);
+    if (unisolated) throw new LeaseRefusal("lease_unsupported", unisolated);
     const lease = await this.mintLeaseByHarness(account, opts);
     // Secret-free by construction: counts, note, and expiry only.
     this.log(
@@ -3206,6 +3224,8 @@ export class AccountsService {
     if (raw === null || raw.trim().length === 0) return false;
     if (harness === "claude") return parseClaudeCredentials(raw) !== null;
     if (harness === "cursor") return parseCursorAuth(raw) !== null;
+    // A keychain pointer is a login, but not one that can be captured or copied.
+    if (harness === "muse" && parseMuseCredentials(raw)?.mechanism === "keychain") return false;
     if (!primaryFile.endsWith(".json")) return true;
     try {
       const parsed = JSON.parse(raw) as unknown;
@@ -3259,6 +3279,8 @@ export class AccountsService {
   async captureAccount(account: AccountRow): Promise<CaptureOutcome> {
     this.assertLocalAccount(account);
     if (this.authorityFor(account)?.enabled(account)) throw new CredentialAuthorityError("Disable central credentials before capturing native credentials.");
+    const unisolated = this.isolationRefusal(account.harness);
+    if (unisolated) throw new Error(unisolated);
     const recipe = recipeFor(account.harness);
     if (!recipe) throw new Error(`harness ${account.harness} has no identity recipe; cannot capture credentials`);
     const primaryFile = primaryCredentialFile(recipe);

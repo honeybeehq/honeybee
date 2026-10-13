@@ -17,8 +17,10 @@ import {
   AccountReferencedError,
   CoreError,
   SCHEMA_VERSION,
+  ACCOUNT_RECIPES,
   accountConfigImportRecipeFor,
   accountIdFor,
+  accountIsolationRefusal,
   homeEnvFor,
   isAuthFailureLimitsError,
   parseClaudeCredentials,
@@ -124,12 +126,22 @@ test("v7.recipes: the muse recipe isolates through the XDG pair and matches the 
   );
 });
 
+test("v7.recipes: Muse accounts are unisolated on darwin only; no other recipe is", () => {
+  assert.match(accountIsolationRefusal("muse", "darwin") ?? "", /^Muse keeps one login per macOS user in the Keychain, so Muse accounts can't be isolated on this Mac; run Muse on a Linux node$/);
+  assert.equal(accountIsolationRefusal("muse", "linux"), null);
+  for (const harness of Object.keys(ACCOUNT_RECIPES)) {
+    if (harness !== "muse") assert.equal(accountIsolationRefusal(harness, "darwin"), null, harness);
+  }
+  assert.equal(accountIsolationRefusal("unknown", "darwin"), null);
+});
+
 test("v7.recipes: parseMuseCredentials reads the meta entry's shape without returning tokens", () => {
   const doc = (meta: unknown) => JSON.stringify({ schema_version: 1, providers: { meta } });
   assert.deepEqual(parseMuseCredentials(doc({ api_key: "k-123" })), { mechanism: "api_key" });
   assert.deepEqual(parseMuseCredentials(doc({ mechanism: "oauth", access_token: "a", expires_at: 1_800_000_000, obtained_via: "device_code" })), { mechanism: "oauth", expiresAt: 1_800_000_000_000, refreshable: false });
   assert.deepEqual(parseMuseCredentials(doc({ mechanism: "oauth", access_token: "a", refresh_token: "r", expires_at: 1_800_000_000_123 })), { mechanism: "oauth", expiresAt: 1_800_000_000_123, refreshable: true });
   assert.deepEqual(parseMuseCredentials(doc({ mechanism: "oauth", access_token: "a" })), { mechanism: "oauth", expiresAt: null, refreshable: false });
+  assert.deepEqual(parseMuseCredentials(doc({ mechanism: "oauth", obtained_via: "device_code", storage: "keychain", expires_at: 4102444800000 })), { mechanism: "keychain" });
   assert.equal(parseMuseCredentials(doc({ mechanism: "oauth", access_token: "" })), null);
   assert.equal(parseMuseCredentials(JSON.stringify({ schema_version: 1, providers: {} })), null);
   assert.equal(parseMuseCredentials("not json"), null);
