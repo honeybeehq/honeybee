@@ -960,7 +960,10 @@ test("rpc.accounts.ceiling: past its weekly ceiling an account refuses explicit 
     await rejects(() => client.request("bee.swapAccount", { beeId: parked.beeId, account: "claude-personal" }), "account_unavailable");
     const parkedMail = await client.request<MailboxResult>("mailbox", { beeId: parked.beeId });
     assert.equal(parkedMail.messages.some((m) => m.sender === "hive"), false, "a bee moved before it starts needs no note");
-    const boots = jsonl<{ env: { CLAUDE_CONFIG_DIR: string | null }; forked: boolean }>(argvLog);
+    const boots = await waitFor(() => {
+      const entries = jsonl<{ env: { CLAUDE_CONFIG_DIR: string | null }; forked: boolean }>(argvLog);
+      return entries.filter((boot) => boot.env.CLAUDE_CONFIG_DIR === homeFleet).length >= 2 ? entries : null;
+    }, "both replacement Claude processes started on claude-fleet", 12_000);
     assert.equal(boots.filter((boot) => boot.env.CLAUDE_CONFIG_DIR === homeFleet && boot.forked).length, 2);
 
     const cleared = await client.request<AccountUpdateResult>("account.setWeeklyCeiling", { id: "claude-personal", ceiling: null });
