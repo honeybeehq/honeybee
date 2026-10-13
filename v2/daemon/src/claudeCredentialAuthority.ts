@@ -3,7 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { closeSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, writeFileSync, unlinkSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { parseClaudeCredentials, type AccountCredentialAuthority, type AccountRow, type CoreStore, type CredentialRefreshFailure } from "../../core/src/index.ts";
-import { describeRefreshFailure, sanitizeProviderText, type ClaudeRefreshFailure, type ClaudeRefreshResult, type ClaudeRefreshTransport } from "./claudeRefreshTransport.ts";
+import { describeRefreshFailure, sanitizeProviderText, type CredentialRefreshTransportFailure, type CredentialRefreshResult, type CredentialRefreshTransport } from "./claudeRefreshTransport.ts";
 import type { ClaudeIdentity } from "./login/transports.ts";
 
 export interface AuthorityDocument {
@@ -36,7 +36,8 @@ export interface CentralCredentialOptions {
   publish: (account: AccountRow, document: Record<string, unknown>, accessOnly: boolean) => Promise<void>;
   beforeUse: (account: AccountRow, document: Record<string, unknown>) => void;
   beforeRefresh: (account: AccountRow, document: Record<string, unknown>) => Promise<unknown>;
-  refresh: ClaudeRefreshTransport;
+  refresh: CredentialRefreshTransport;
+  codec?: CredentialCodec;
   /** A rotation or an in-place login was saved and published: runtimes can read the new credential. */
   onRefreshed?: (account: AccountRow) => void;
   /** The account an access token belongs to, asked of the provider; null when it does not say. */
@@ -50,6 +51,16 @@ export interface CentralCredentialOptions {
   /** An early refresh never runs within this long of the token's issue, however much margin a caller prefers. */
   earlyRefreshMinIntervalMs: number;
 }
+export interface CredentialCodec {
+  harness: string;
+  label: string;
+  parse: (raw: string) => { accessToken: string; refreshToken?: string; expiresAt: number; refreshTokenExpiresAt?: number } | null;
+  merge: (document: Record<string, unknown>, token: Extract<CredentialRefreshResult, { kind: "success" }>["token"], at: number) => Record<string, unknown>;
+}
+const CLAUDE_CODEC: CredentialCodec = {
+  harness: "claude", label: "Claude", parse: parseClaudeCredentials,
+  merge: (document, token) => ({ ...document, claudeAiOauth: { ...(document.claudeAiOauth as Record<string, unknown>), ...token } }),
+};
 export const REFRESH_RETRY_MAX_MS = 15 * 60_000;
 const RELOGIN_PHASES: ReadonlySet<AccountCredentialAuthority["phase"]> = new Set(["ready", "refreshing", "uncertain", "login_required"]);
 /**
@@ -66,7 +77,7 @@ export class CredentialAuthorityError extends Error {
   }
 }
 export class CredentialOwnershipConflict extends CredentialAuthorityError {}
-type RefreshAttempt = { kind: "success"; token: Extract<ClaudeRefreshResult, { kind: "success" }>["token"] } | { kind: "failed"; result: ClaudeRefreshFailure; failure: CredentialRefreshFailure };
+type RefreshAttempt = { kind: "success"; token: Extract<CredentialRefreshResult, { kind: "success" }>["token"] } | { kind: "failed"; result: CredentialRefreshTransportFailure; failure: CredentialRefreshFailure };
 
 /** Persist the rotated chain before acknowledging it or publishing any access-only copy. */
 function save(path: string, value: AuthorityDocument): void {
@@ -79,10 +90,13 @@ function save(path: string, value: AuthorityDocument): void {
   try { fsyncSync(directory); } finally { closeSync(directory); }
 }
 
-export class ClaudeCredentialAuthority {
+export class CredentialAuthority {
   private readonly pending = new Map<string, { kind: string; promise: Promise<AccountCredentialAuthority> }>();
   private readonly options: CentralCredentialOptions;
   constructor(options: CentralCredentialOptions) { this.options = options; }
+  private get codec(): CredentialCodec { return this.options.codec ?? CLAUDE_CODEC; }
+
+  parseDocument(document: Record<string, unknown>): ReturnType<CredentialCodec["parse"]> { return this.codec.parse(JSON.stringify(document)); }
 
   status(account: AccountRow): AccountCredentialAuthority | null {
     return this.options.store.getAccountCredentialAuthority(account.id);
@@ -101,7 +115,7 @@ export class ClaudeCredentialAuthority {
     let value: AuthorityDocument;
     try { value = JSON.parse(readFileSync(this.path(account), "utf8")) as AuthorityDocument; }
     catch { throw new CredentialAuthorityError("Central credential is unavailable; do not import a runtime copy over it."); }
-    if (!Number.isSafeInteger(value.generation) || !parseClaudeCredentials(JSON.stringify(value.document))) {
+    if (!Number.isSafeInteger(value.generation) || !this.codec.parse(JSON.stringify(value.document))) {
       throw new CredentialAuthorityError("Central credential is invalid; account recovery is required.");
     }
     return value;
@@ -111,7 +125,7 @@ export class ClaudeCredentialAuthority {
   }
   private put(account: AccountRow, phase: AccountCredentialAuthority["phase"], value: AuthorityDocument, failure: CredentialRefreshFailure | null = null): AccountCredentialAuthority {
     const before = this.status(account);
-    const credential = parseClaudeCredentials(JSON.stringify(value.document));
+    const credential = this.codec.parse(JSON.stringify(value.document));
     const next = this.options.store.putAccountCredentialAuthority({ account: account.id, phase,
       generation: value.generation, operationKey: value.operationKey,
       expiresAt: credential?.expiresAt ?? null, refreshTokenExpiresAt: credential?.refreshTokenExpiresAt ?? null, failure });
@@ -128,7 +142,7 @@ export class ClaudeCredentialAuthority {
    * anyone is told the credential works again.
    */
   private ready(account: AccountRow, value: AuthorityDocument): AccountCredentialAuthority {
-    const refreshTokenExpiresAt = parseClaudeCredentials(JSON.stringify(value.document))?.refreshTokenExpiresAt;
+    const refreshTokenExpiresAt = this.codec.parse(JSON.stringify(value.document))?.refreshTokenExpiresAt;
     // A new login's expiry is its own: when the provider did not say, the previous login's is no longer true.
     if (refreshTokenExpiresAt !== undefined || value.login) {
       this.options.store.setAccountRefreshTokenExpiry(account.id, refreshTokenExpiresAt ?? null, value.login ? "central credential logged in" : "central credential refreshed");
@@ -142,7 +156,7 @@ export class ClaudeCredentialAuthority {
   /** A rotated chain is already durable; learning whose it is only adds a label, so a provider that does not answer changes nothing. */
   private async withIdentity(account: AccountRow, value: AuthorityDocument): Promise<AuthorityDocument> {
     if (value.identity) return value;
-    const accessToken = parseClaudeCredentials(JSON.stringify(value.document))?.accessToken;
+    const accessToken = this.codec.parse(JSON.stringify(value.document))?.accessToken;
     const identity = accessToken ? await this.options.identify(accessToken).catch(() => null) : null;
     if (!identity) return value;
     const labelled = { ...value, identity };
@@ -153,7 +167,7 @@ export class ClaudeCredentialAuthority {
   private retryDelayMs(attempts: number): number {
     return Math.min(this.options.retryBaseMs * 2 ** Math.min(attempts - 1, 20), REFRESH_RETRY_MAX_MS);
   }
-  private failureOf(result: ClaudeRefreshFailure, previous: CredentialRefreshFailure | null): CredentialRefreshFailure {
+  private failureOf(result: CredentialRefreshTransportFailure, previous: CredentialRefreshFailure | null): CredentialRefreshFailure {
     const at = this.options.now();
     const attempts = (previous?.attempts ?? 0) + 1;
     const retryAt = result.kind === "rejected" ? null
@@ -167,7 +181,7 @@ export class ClaudeCredentialAuthority {
   }
   /** One provider round trip. Every attempt is logged with its outcome; a throw from the transport proves nothing about the token. */
   private async attempt(account: AccountRow, refreshToken: string, generation: number, previous: CredentialRefreshFailure | null, during: "enroll" | "refresh"): Promise<RefreshAttempt> {
-    let result: ClaudeRefreshResult;
+    let result: CredentialRefreshResult;
     try { result = await this.options.refresh(refreshToken); }
     catch (error) {
       result = { kind: "unknown_outcome", description: sanitizeProviderText(error instanceof Error ? error.message : String(error), [refreshToken]) ?? "transport failed" };
@@ -189,7 +203,7 @@ export class ClaudeCredentialAuthority {
   /** What the operator must do; also the account's status reason and the lease refusal text. */
   loginRequiredMessage(account: AccountRow, failure: CredentialRefreshFailure | null): string {
     const why = failure ? `the provider refused the refresh token (${describeRefreshFailure(failure)})` : "the refresh token is no longer usable";
-    return `Claude login required for ${account.id}: ${why}. Recover with: hive account login ${account.id}`;
+    return `${this.codec.label} login required for ${account.id}: ${why}. Recover with: hive account login ${account.id}`;
   }
   /** A paused account stays paused: the operator parked it, and unpausing re-derives the honest status. */
   private markAuthNeeded(account: AccountRow, reason: string): void {
@@ -263,7 +277,7 @@ export class ClaudeCredentialAuthority {
     if (this.options.store.beesOnAccount(account.id).some(bee => {
       const runtime = this.options.store.currentRuntime(bee.id);
       return runtime !== null && runtime.state !== "stopped";
-    })) throw new CredentialAuthorityError("Stop this account's local Claude sessions before changing credential ownership; idle sessions still hold credentials.");
+    })) throw new CredentialAuthorityError(`Stop this account's local ${this.codec.label} sessions before changing credential ownership; idle sessions still hold credentials.`);
     const flow = this.options.store.activeLoginFlow(account.id);
     if (flow) {
       throw new CredentialAuthorityError("Finish or cancel the account's login before changing credential ownership.");
@@ -310,7 +324,7 @@ export class ClaudeCredentialAuthority {
   }
   enable(account: AccountRow): Promise<AccountCredentialAuthority> {
     return this.lane(account, "enable", async () => {
-      if (account.harness !== "claude") throw new CredentialAuthorityError("Central credential management supports Claude only.");
+      if (account.harness !== this.codec.harness) throw new CredentialAuthorityError(`Central credential management supports ${this.codec.label} only.`);
       this.assertQuiescent(account);
       this.options.beforeEnroll(account);
       const before = this.status(account);
@@ -332,7 +346,7 @@ export class ClaudeCredentialAuthority {
         }
       } else {
         const document = await this.options.nativeCredential(account);
-        const candidate = document ? parseClaudeCredentials(JSON.stringify(document)) : null;
+        const candidate = document ? this.codec.parse(JSON.stringify(document)) : null;
         if (!document || !candidate?.refreshToken) {
           throw new CredentialAuthorityError("This account has no refresh credential; complete a login before enrolling it.");
         }
@@ -349,7 +363,7 @@ export class ClaudeCredentialAuthority {
         this.put(account, "enrolling", value);
       }
       // Validate the chain with one real rotation before any native copy loses its refresh token.
-      const credential = parseClaudeCredentials(JSON.stringify(value.document))!;
+      const credential = this.codec.parse(JSON.stringify(value.document))!;
       if (!credential.refreshToken) throw new CredentialAuthorityError("The authority has no refresh credential; disable central credentials and log in again.");
       await this.options.beforeRefresh(account, value.document);
       const operationKey = randomUUID();
@@ -372,9 +386,8 @@ export class ClaudeCredentialAuthority {
         this.outcomeUnknown(account, { ...value, operationKey }, attempt.failure);
         throw new CredentialAuthorityError(`The enrollment refresh outcome is unknown (${detail}); it is retried automatically and ends in ready or login_required.`);
       }
-      const oauth = value.document.claudeAiOauth as Record<string, unknown>;
       value = { ...value, generation: value.generation + 1, operationKey, issuedAt: this.options.now(),
-        document: { ...value.document, claudeAiOauth: { ...oauth, ...attempt.token } } };
+        document: this.codec.merge(value.document, attempt.token, this.options.now()) };
       save(this.path(account), value);
       await this.options.publish(account, value.document, true);
       return this.enrollmentReady(account, await this.withIdentity(account, value));
@@ -451,7 +464,7 @@ export class ClaudeCredentialAuthority {
         throw new CredentialAuthorityError(`Central credentials are ${state.phase}; finish it with: hive account credentials ${state.phase === "enrolling" ? "enable" : "disable"} ${account.id}`);
       }
       const tokenStateUnknown = state.phase === "uncertain";
-      const credential = parseClaudeCredentials(JSON.stringify(value.document))!;
+      const credential = this.codec.parse(JSON.stringify(value.document))!;
       const now = this.options.now();
       const remaining = credential.expiresAt - now;
       const elective = !tokenStateUnknown && !forceKey && remaining > minTtlMs;
@@ -491,13 +504,12 @@ export class ClaudeCredentialAuthority {
         this.outcomeUnknown(account, { ...value, operationKey }, failure);
         throw new CredentialAuthorityError(`Central refresh outcome for ${account.id} is unknown (${detail}); it ends in ready or login_required.`);
       }
-      const oauth = value.document.claudeAiOauth as Record<string, unknown>;
       // An enrollment whose first rotation had an unknown outcome completes here: its native copies still hold the adopted chain.
       const enrollment = value.rollbackAdopted ? { adopted: value.adopted, rollbackAdopted: value.rollbackAdopted } : {};
       const firstRefreshAfterLogin = value.login !== undefined;
       value = { ...enrollment, ...(value.identity ? { identity: value.identity } : {}), issuedAt: this.options.now(),
         generation: value.generation + 1, operationKey,
-        document: { ...value.document, claudeAiOauth: { ...oauth, ...attempt.token } } };
+        document: this.codec.merge(value.document, attempt.token, this.options.now()) };
       save(this.path(account), value);
       if (firstRefreshAfterLogin) {
         this.forgetPrevious(account);
@@ -525,7 +537,7 @@ export class ClaudeCredentialAuthority {
       if (!RELOGIN_PHASES.has(state.phase)) {
         throw new CredentialAuthorityError(`Central credentials are ${state.phase}; finish it with: hive account credentials ${state.phase === "enrolling" ? "enable" : "disable"} ${account.id}`, "operation_in_progress");
       }
-      const grant = parseClaudeCredentials(JSON.stringify(document));
+      const grant = this.codec.parse(JSON.stringify(document));
       if (!grant?.refreshToken || grant.expiresAt <= this.options.now()) throw new CredentialAuthorityError("The login did not produce a usable refresh credential.");
       let current: AuthorityDocument | null;
       try { current = this.read(account); } catch { current = null; }
@@ -573,7 +585,7 @@ export class ClaudeCredentialAuthority {
    */
   private async heldIdentity(account: AccountRow, current: AuthorityDocument | null): Promise<ClaudeIdentity | null> {
     let held: ClaudeIdentity | null = current?.identity ?? null;
-    const credential = current ? parseClaudeCredentials(JSON.stringify(current.document)) : null;
+    const credential = current ? this.codec.parse(JSON.stringify(current.document)) : null;
     const sources: Array<() => Promise<ClaudeIdentity | null> | ClaudeIdentity | null> = [
       () => (credential && credential.expiresAt > this.options.now() ? this.options.identify(credential.accessToken).catch(() => null) : null),
       () => this.options.homeIdentity(account),
@@ -589,3 +601,5 @@ export class ClaudeCredentialAuthority {
   }
 
 }
+
+export class ClaudeCredentialAuthority extends CredentialAuthority {}

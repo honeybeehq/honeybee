@@ -1557,13 +1557,14 @@ export class HiveDaemon {
       case "account.login.cancel":
         return this.withIdempotency(verb, params, () => this.rpcAccountLoginCancel(params));
       case "account.credentials.status":
-        return this.mustAccounts().centralCredentials.status(this.requireAccount(params));
+        return this.mustAccounts().authorityFor(this.requireAccount(params))?.status(this.requireAccount(params)) ?? null;
       case "account.credentials.enable":
       case "account.credentials.refresh":
       case "account.credentials.disable":
         return this.withAsyncIdempotency(verb, params, async () => {
           const account = this.requireAccount(params);
-          const authority = this.mustAccounts().centralCredentials;
+          const authority = this.mustAccounts().authorityFor(account);
+          if (!authority) throw new RpcError("account_unavailable", `Central credential management is not supported for ${account.harness}.`);
           try {
             if (verb === "account.credentials.enable") return await authority.enable(account);
             if (verb === "account.credentials.disable") return await authority.disable(account);
@@ -5033,7 +5034,7 @@ export class HiveDaemon {
 
   private async rpcAccountRemove(params: Record<string, unknown>): Promise<AccountRemoveResult> {
     const account = this.requireAccount(params);
-    try { this.mustAccounts().centralCredentials.assertDisabled(account); }
+    try { this.mustAccounts().authorityFor(account)?.assertDisabled(account); }
     catch (error) { throw new RpcError("account_unavailable", error instanceof Error ? error.message : "Credential cleanup failed"); }
     // v16: a login worker never outlives its account (the store cascades the rows).
     await this.mustLoginFlows().abandonAccount(account.id);
@@ -5041,8 +5042,8 @@ export class HiveDaemon {
       const store = this.mustStore();
       // A referenced-account refusal must not remove its credential backup.
       try {
-        this.mustAccounts().centralCredentials.assertDisabled(account);
-        if (store.beesOnAccount(account.id).length === 0) this.mustAccounts().centralCredentials.forgetDisabled(account);
+        this.mustAccounts().authorityFor(account)?.assertDisabled(account);
+        if (store.beesOnAccount(account.id).length === 0) this.mustAccounts().authorityFor(account)?.forgetDisabled(account);
       } catch (error) { throw new RpcError("account_unavailable", error instanceof Error ? error.message : "Credential cleanup failed"); }
       return { account: this.mirrorAccount(store.removeAccount(account.id)) } satisfies AccountRemoveResult;
     });

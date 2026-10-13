@@ -6,17 +6,18 @@
  */
 import { CLAUDE_OAUTH_CLIENT_ID, claudeOauthTokenUrl, expiryFromSeconds } from "./login/transports.ts";
 
-export interface RefreshedClaudeToken {
+export interface RefreshedCredentialToken {
   accessToken: string;
   refreshToken: string;
   expiresAt: number;
   /** When the refresh token itself stops working; absent when the provider did not say. */
   refreshTokenExpiresAt?: number;
   scopes?: string[];
+  idToken?: string;
 }
 
-export type ClaudeRefreshResult =
-  | { kind: "success"; token: RefreshedClaudeToken }
+export type CredentialRefreshResult =
+  | { kind: "success"; token: RefreshedCredentialToken }
   /** The provider definitively refused the refresh token: only a new login recovers. */
   | { kind: "rejected"; httpStatus: number; error: string | null; description: string | null }
   /** The request was not processed (connect failure before send, 429, a non-auth 4xx, the provider's own `overloaded_error`): the token is unconsumed. */
@@ -24,9 +25,13 @@ export type ClaudeRefreshResult =
   /** The request was sent and no answer proves what happened to it (no response, a gateway or server error, an unusable 2xx): the token may be consumed. */
   | { kind: "unknown_outcome"; description: string };
 
-export type ClaudeRefreshFailure = Exclude<ClaudeRefreshResult, { kind: "success" }>;
+export type CredentialRefreshTransportFailure = Exclude<CredentialRefreshResult, { kind: "success" }>;
 
-export type ClaudeRefreshTransport = (refreshToken: string) => Promise<ClaudeRefreshResult>;
+export type CredentialRefreshTransport = (refreshToken: string) => Promise<CredentialRefreshResult>;
+export type RefreshedClaudeToken = RefreshedCredentialToken;
+export type ClaudeRefreshResult = CredentialRefreshResult;
+export type ClaudeRefreshFailure = CredentialRefreshTransportFailure;
+export type ClaudeRefreshTransport = CredentialRefreshTransport;
 
 /** RFC 6749 §5.2 token-endpoint errors plus Anthropic's API error types; anything else is not echoed. */
 const OAUTH_ERROR_CODES: ReadonlySet<string> = new Set([
@@ -97,13 +102,25 @@ function errorCodeOf(error: unknown): string | null {
 }
 
 export function defaultClaudeRefreshTransport(timeoutMs: number, now: () => number = Date.now): ClaudeRefreshTransport {
+  return oauthRefreshTransport({ timeoutMs, now, endpoint: claudeOauthTokenUrl, clientId: CLAUDE_OAUTH_CLIENT_ID });
+}
+
+export function oauthRefreshTransport(options: {
+  timeoutMs: number;
+  now: () => number;
+  endpoint: () => string;
+  clientId: string;
+  providerDescriptions?: boolean;
+  decode?: (body: Record<string, unknown>, previousRefreshToken: string, at: number) => RefreshedClaudeToken | null;
+}): ClaudeRefreshTransport {
+  const { timeoutMs, now } = options;
   return async (refreshToken) => {
     let response: Response;
     try {
-      response = await fetch(claudeOauthTokenUrl(), {
+      response = await fetch(options.endpoint(), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ grant_type: "refresh_token", refresh_token: refreshToken, client_id: CLAUDE_OAUTH_CLIENT_ID }),
+        body: JSON.stringify({ grant_type: "refresh_token", refresh_token: refreshToken, client_id: options.clientId }),
         signal: AbortSignal.timeout(timeoutMs),
       });
     } catch (error) {
@@ -120,6 +137,7 @@ export function defaultClaudeRefreshTransport(timeoutMs: number, now: () => numb
     if (!response.ok) {
       const body = await response.json().catch(() => null);
       const detail = oauthErrorOf(body, secrets);
+      if (options.providerDescriptions === false) detail.description = null;
       if (response.status === 400 || response.status === 401 || response.status === 403) {
         return { kind: "rejected", httpStatus: response.status, ...detail };
       }
@@ -139,6 +157,10 @@ export function defaultClaudeRefreshTransport(timeoutMs: number, now: () => numb
       return { kind: "unknown_outcome", description: `HTTP ${response.status} without an access token` };
     }
     const at = now();
+    if (options.decode) {
+      const token = options.decode(fresh as Record<string, unknown>, refreshToken, at);
+      return token ? { kind: "success", token } : { kind: "unknown_outcome", description: "the provider answered with an unusable token" };
+    }
     const refreshTokenExpiresAt = expiryFromSeconds(fresh.refresh_token_expires_in, at);
     return { kind: "success", token: {
       accessToken: fresh.access_token,

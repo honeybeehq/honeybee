@@ -186,7 +186,7 @@ export class LoginFlowService {
     });
     if (opts.replaceAccount === true) this.replacingAccount.add(flow.id);
     this.log(`account.login.start account=${account.id} flow=${flow.id} harness=${account.harness} remote=${remote}`
-      + `${this.accounts.centralCredentials.enabled(account) ? " central=in_place" : ""}${opts.replaceAccount === true ? " replace_account=true" : ""}`);
+      + `${this.accounts.authorityFor(account)?.enabled(account) ? " central=in_place" : ""}${opts.replaceAccount === true ? " replace_account=true" : ""}`);
     const methodId = defaultLoginMethodId(account.harness, { remote, requested: opts.methodId ?? null });
     if (!methodId) {
       const refusal = !recipeFor(account.harness)
@@ -407,12 +407,15 @@ export class LoginFlowService {
    * right now (enrolling, disabling) refuses.
    */
   private assertLoginPossible(account: AccountRow): void {
-    const central = this.accounts.centralCredentials;
-    const phase = central.status(account)?.phase;
+    const central = this.accounts.authorityFor(account);
+    if (account.harness === "codex" && (central?.enabled(account) || central?.busy(account))) {
+      throw new LoginFlowRefusal("login_flow_refused", "Disable central Codex credentials before logging in natively; the authority alone owns the refresh chain.");
+    }
+    const phase = central?.status(account)?.phase;
     if (phase === "enrolling" || phase === "disabling" || phase === "disabling_uncertain") {
       throw new LoginFlowRefusal("login_flow_refused", `Central credentials are ${phase}; finish it with: hive account credentials ${phase === "enrolling" ? "enable" : "disable"} ${account.id}`);
     }
-    if ((phase === undefined || phase === "disabled") && central.busy(account)) {
+    if ((phase === undefined || phase === "disabled") && central?.busy(account)) {
       throw new LoginFlowRefusal("login_flow_refused", "Central credential ownership is changing; retry when it finishes.");
     }
   }
@@ -429,7 +432,7 @@ export class LoginFlowService {
     if (!account) throw new LoginFlowRefusal("login_flow_not_found", `login flow ${flowId} belongs to a removed account`);
     const method = loginMethodFor(flow.harness, methodId);
     if (!method) return this.fail(flowId, err("unsupported_method", `${flow.harness} does not offer '${methodId}'.`), false);
-    if (this.accounts.centralCredentials.enabled(account) && !(method.run.mode === "direct" && method.run.runner === "claude_oauth")) {
+    if (this.accounts.authorityFor(account)?.enabled(account) && !(method.run.mode === "direct" && method.run.runner === "claude_oauth")) {
       // Any other method lands a refresh token in the home, a second holder beside the authority.
       return this.fail(flowId, err("unsupported_method", `${account.id} is centrally managed; only '${defaultLoginMethodId(flow.harness)}' can log it in place.`), false);
     }

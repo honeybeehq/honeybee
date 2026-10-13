@@ -18,8 +18,9 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, statSync } from "node
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
-import { ClaudeCredentialAuthority, CredentialAuthorityError, CredentialOwnershipConflict, refreshTokenDigest } from "./claudeCredentialAuthority.ts";
+import { CredentialAuthority, ClaudeCredentialAuthority, CredentialAuthorityError, CredentialOwnershipConflict, refreshTokenDigest } from "./claudeCredentialAuthority.ts";
 import { defaultClaudeRefreshTransport, describeRefreshFailure, sanitizeProviderText, type ClaudeRefreshResult, type ClaudeRefreshTransport, type RefreshedClaudeToken } from "./claudeRefreshTransport.ts";
+import { CodexCredentialAuthority, CODEX_CREDENTIAL_CODEC, defaultCodexRefreshTransport } from "./codexCredentialAuthority.ts";
 import { liveGateways } from "./gateways.ts";
 import { withFileLock } from "../../../src/lock.ts";
 import { seedGatewayMcp, type GatewayMcpSeedResult } from "../../../src/accounts/gatewayMcpSeed.ts";
@@ -826,6 +827,12 @@ export function defaultCodexResetLimits(timeoutMs: number, command = "codex"): N
 
 export class AccountsService {
   readonly centralCredentials: ClaudeCredentialAuthority;
+  readonly codexCredentials: CodexCredentialAuthority;
+  private readonly credentialAuthorities = new Map<string, CredentialAuthority>();
+
+  authorityFor(account: Pick<AccountRow, "harness">): CredentialAuthority | null {
+    return this.credentialAuthorities.get(account.harness) ?? null;
+  }
   private readonly store: CoreStore;
   private readonly cfg: ResolvedNodeConfig;
   private readonly log: (op: string) => void;
@@ -956,6 +963,45 @@ export class AccountsService {
         }
       },
     });
+    const inspectCodexCopies = (account: AccountRow, document: Record<string, unknown>): void => {
+      const owned = CODEX_CREDENTIAL_CODEC.parse(JSON.stringify(document))!;
+      const phase = this.codexCredentials.status(account)?.phase;
+      const adopted = phase === "enrolling" ? this.codexCredentials.adopted(account)
+        : this.codexCredentials.rollbackAdopted(account);
+      for (const path of [join(account.homePath, "auth.json"), join(this.vaultDirOf(account), "auth.json")]) {
+        const raw = readIfFile(path);
+        const credential = raw === null ? null : CODEX_CREDENTIAL_CODEC.parse(raw);
+        if (!credential?.refreshToken || credential.refreshToken === owned.refreshToken) continue;
+        if (adopted && (refreshTokenDigest(credential.refreshToken) === adopted.refreshTokenDigest || credential.expiresAt < adopted.expiresAt)) continue;
+        throw new CredentialOwnershipConflict("An external Codex login or refresh changed this account; stop that process and recover the account before continuing.");
+      }
+    };
+    this.codexCredentials = new CodexCredentialAuthority({
+      store: this.store, root: join(this.cfg.accounts.vaultDir, ".credential-authorities"), now: this.now,
+      log: this.log, retryBaseMs: this.cfg.accounts.centralRefreshRetryBaseMs, earlyRefreshMinIntervalMs: this.cfg.accounts.centralRefreshMinIntervalMs,
+      beforeEnroll: account => {
+        this.store.assertNoUpdateReservation();
+        if (this.refreshBusy(account) || this.leaseMints.has(account.id)) throw new CredentialAuthorityError("A native credential refresh is in progress; retry enrollment shortly.");
+      },
+      nativeCredential: async account => this.freshestCodexAuth(account)?.parsed ?? null,
+      beforeUse: inspectCodexCopies,
+      beforeRefresh: async (account, document) => inspectCodexCopies(account, document),
+      refresh: defaultCodexRefreshTransport(this.cfg.accounts.limitsFetchTimeoutMs, this.now),
+      onRefreshed: account => this.onCredentialValidated(account.id, "refresh"),
+      identify: async () => null,
+      homeIdentity: () => null,
+      publish: async (account, document, accessOnly) => {
+        inspectCodexCopies(account, document);
+        const published = (accessOnly ? blankRefreshTokens(document) : document) as Record<string, unknown>;
+        const raw = JSON.stringify({ ...published, OPENAI_API_KEY: null });
+        mkdirSync(account.homePath, { recursive: true, mode: 0o700 });
+        mkdirSync(this.vaultDirOf(account), { recursive: true, mode: 0o700 });
+        atomicWriteFileSync(join(this.vaultDirOf(account), "auth.json"), raw, 0o600);
+        atomicWriteFileSync(join(account.homePath, "auth.json"), raw, 0o600);
+      },
+    });
+    this.credentialAuthorities.set("claude", this.centralCredentials);
+    this.credentialAuthorities.set("codex", this.codexCredentials);
     this.providerHttp = {
       ...defaultProviderLimitsHttp(this.cfg.accounts.limitsFetchTimeoutMs),
       ...opts.providerHttp,
@@ -1019,7 +1065,7 @@ export class AccountsService {
   credentialState(account: AccountRow): CredentialState {
     const recipe = recipeFor(account.harness);
     if (!recipe) return "present";
-    if (account.harness === "claude" && this.centralCredentials.enabled(account)) return this.centralClaudeCredentialState(account);
+    if (this.authorityFor(account)?.enabled(account)) return this.centralCredentialState(account);
     const primary = primaryCredentialFile(recipe);
     const source = dirHasCredentials(account.homePath, recipe)
       ? account.homePath
@@ -1029,19 +1075,19 @@ export class AccountsService {
     return this.claudeDocumentState(readIfFile(join(source, primary)));
   }
 
-  private centralClaudeCredentialState(account: AccountRow): CredentialState {
+  private centralCredentialState(account: AccountRow): CredentialState {
     let document: Record<string, unknown>;
     try {
-      document = this.centralCredentials.document(account);
+      document = this.authorityFor(account)!.document(account);
     } catch {
       return "invalid";
     }
-    const parsed = parseClaudeCredentials(JSON.stringify(document));
+    const parsed = this.authorityFor(account)!.parseDocument(document);
     if (!parsed) return "invalid";
     // A refused or possibly consumed refresh token has no refresh path, however long the last access token still lives.
     if (this.centralCredentialInDoubt(account)) return "expired";
     if (parsed.expiresAt > this.now()) return "present";
-    return this.centralCredentials.status(account)?.phase === "ready" && hasRefreshToken(parsed) ? "present" : "expired";
+    return this.authorityFor(account)!.status(account)?.phase === "ready" && Boolean(parsed.refreshToken) ? "present" : "expired";
   }
 
   private claudeDocumentState(raw: string | null): CredentialState {
@@ -1184,7 +1230,7 @@ export class AccountsService {
 
   /** Why `honestStatus` answered auth_needed, for the account's status reason. */
   authNeededReason(account: AccountRow): string | null {
-    return this.centralCredentials.inDoubtReason(account);
+    return this.authorityFor(account)?.inDoubtReason(account) ?? null;
   }
 
   /** Whether `verifyCredentials` can probe provider authentication or a required credential file. */
@@ -1879,13 +1925,13 @@ export class AccountsService {
   private async fetchByHarness(account: AccountRow): Promise<PutAccountLimitsInput> {
     switch (account.harness) {
       case "claude": {
-        if (this.centralCredentials.enabled(account)) {
-          try { await this.centralCredentials.ensure(account, CLAUDE_MIN_SHIP_TTL_MS); }
+        if (this.authorityFor(account)?.enabled(account)) {
+          try { await this.authorityFor(account)!.ensure(account, CLAUDE_MIN_SHIP_TTL_MS); }
           catch (error) {
             if (!(error instanceof CredentialAuthorityError)) throw error;
             // The authority's typed phase decides: only `ready` may keep last-good limits.
             const settled = error.reason !== "operation_in_progress";
-            const usable = this.centralCredentials.status(account)?.phase === "ready";
+            const usable = this.authorityFor(account)!.status(account)?.phase === "ready";
             return { readable: false, unreadableReason: settled && !usable ? "auth_failed" : "provider_error", error: error.message };
           }
         }
@@ -1912,6 +1958,15 @@ export class AccountsService {
         return parseClaudeUsage(usage, credential.subscriptionType ?? null);
       }
       case "codex": {
+        if (this.codexCredentials.enabled(account)) {
+          try { await this.codexCredentials.ensure(account, CODEX_MIN_SHIP_TTL_MS); }
+          catch (error) {
+            if (!(error instanceof CredentialAuthorityError)) throw error;
+            const settled = error.reason !== "operation_in_progress";
+            const usable = this.codexCredentials.status(account)?.phase === "ready";
+            return { readable: false, unreadableReason: settled && !usable ? "auth_failed" : "provider_error", error: error.message };
+          }
+        }
         // `codex app-server` reads CODEX_HOME only: an imported credential
         // still sits in the vault until the first spawn activates the home.
         // Activate the EMPTY home now (the identical rule the spawn path
@@ -1962,8 +2017,8 @@ export class AccountsService {
    * one home in v2).
    */
   private async freshestClaudeCredential(account: AccountRow, strictKeychain?: KeychainState): Promise<ClaudeCredential | null> {
-    if (this.centralCredentials.enabled(account)) {
-      const document = this.centralCredentials.document(account);
+    if (this.authorityFor(account)?.enabled(account)) {
+      const document = this.authorityFor(account)!.document(account);
       const credential = parseClaudeCredentials(JSON.stringify(document));
       if (!credential) return null;
       return { ...credential, document, oauth: document.claudeAiOauth as Record<string, unknown> };
@@ -2081,12 +2136,12 @@ export class AccountsService {
    * refresh, never a consumed refresh token.
    */
   private async refreshClaudeCredential(account: AccountRow, minTtlMs = 0, deferralDeadlineMs?: number): Promise<ClaudeRefreshOutcome> {
-    if (this.centralCredentials.enabled(account)) {
-      await this.centralCredentials.ensure(account, minTtlMs);
+    if (this.authorityFor(account)?.enabled(account)) {
+      await this.authorityFor(account)!.ensure(account, minTtlMs);
       const credential = await this.freshestClaudeCredential(account);
       return credential ? { kind: "ok", credential } : { kind: "no_refresh_token" };
     }
-    if (this.centralCredentials.busy(account)) return { kind: "temporary", detail: "credential ownership is changing" };
+    if (this.authorityFor(account)?.busy(account)) return { kind: "temporary", detail: "credential ownership is changing" };
     const takesOverFromRunningClaude = deferralDeadlineMs !== undefined;
     for (let flight = this.claudeRefreshes.get(account.id); flight; flight = this.claudeRefreshes.get(account.id)) {
       if (flight.takesOverFromRunningClaude || !takesOverFromRunningClaude) return flight.promise;
@@ -2217,7 +2272,7 @@ export class AccountsService {
   }
 
   private async republishClaudeKeychain(account: AccountRow): Promise<"repaired" | "current" | "retry"> {
-    if (this.centralCredentials.enabled(account) || this.centralCredentials.busy(account)) return "current";
+    if (this.authorityFor(account)?.enabled(account) || this.authorityFor(account)?.busy(account)) return "current";
     const homeFile = join(account.homePath, ".credentials.json");
     const locked = await withClaudeRefreshLock(account.homePath, async () => {
       const raw = readIfFile(homeFile);
@@ -2328,7 +2383,7 @@ export class AccountsService {
   }
 
   private async mintLeaseFresh(account: AccountRow, opts: LeaseOptions): Promise<EphemeralCredential> {
-    if (this.refreshBusy(account) && !this.centralCredentials.enabled(account)) {
+    if (this.refreshBusy(account) && !this.authorityFor(account)?.enabled(account)) {
       throw new LeaseRefusal("lease_unavailable", `account ${account.id}'s credential refresher is mid-rotation; retry shortly`);
     }
     const lease = await this.mintLeaseByHarness(account, opts);
@@ -2345,7 +2400,7 @@ export class AccountsService {
       case "claude":
         return this.mintClaudeLease(account, opts);
       case "codex":
-        return this.mintCodexLease(account);
+        return this.mintCodexLease(account, opts);
       case "grok":
         return Promise.resolve(this.mintGrokLease(account));
       case "kimi":
@@ -2374,10 +2429,10 @@ export class AccountsService {
    * before expiry; an idle one never refreshes, so the daemon then does.
    */
   private async mintClaudeLease(account: AccountRow, opts: LeaseOptions): Promise<EphemeralCredential> {
-    if (this.centralCredentials.enabled(account)) {
+    if (this.authorityFor(account)?.enabled(account)) {
       const preferredTtlMs = opts.minTtlMs !== undefined && opts.minTtlMs > CLAUDE_MIN_SHIP_TTL_MS ? opts.minTtlMs : undefined;
       try {
-        await this.centralCredentials.ensure(account, CLAUDE_MIN_SHIP_TTL_MS, undefined, preferredTtlMs);
+        await this.authorityFor(account)!.ensure(account, CLAUDE_MIN_SHIP_TTL_MS, undefined, preferredTtlMs);
       } catch (error) {
         if (error instanceof CredentialAuthorityError) {
           if (error.reason === "login_required") throw new LeaseRefusal("credential_login_required", error.message);
@@ -2427,12 +2482,22 @@ export class AccountsService {
    * re-implemented OAuth endpoint), then the home is captured back to the
    * vault. Never ships a token with under CODEX_MIN_SHIP_TTL_MS remaining.
    */
-  private async mintCodexLease(account: AccountRow): Promise<EphemeralCredential> {
+  private async mintCodexLease(account: AccountRow, opts: LeaseOptions): Promise<EphemeralCredential> {
+    if (this.codexCredentials.enabled(account)) {
+      try {
+        const preferredTtlMs = opts.minTtlMs !== undefined && opts.minTtlMs > CODEX_MIN_SHIP_TTL_MS ? opts.minTtlMs : undefined;
+        await this.codexCredentials.ensure(account, CODEX_MIN_SHIP_TTL_MS, undefined, preferredTtlMs);
+      } catch (error) {
+        if (error instanceof CredentialAuthorityError) throw new LeaseRefusal(error.reason === "login_required" ? "credential_login_required" : "lease_unavailable", error.message);
+        throw error;
+      }
+    }
     let current = this.freshestCodexAuth(account);
     if (!current) {
       throw new LeaseRefusal("lease_unavailable", `no codex auth.json with a decodable access token for ${account.id}; log in: hive v2 account login ${account.id}`);
     }
     if (current.expSeconds * 1000 - this.now() <= CODEX_MIN_SHIP_TTL_MS) {
+      if (this.codexCredentials.enabled(account)) throw new LeaseRefusal("lease_unavailable", "Central Codex refresh did not produce enough access-token lifetime; native rotation is fenced.");
       if (this.hasLiveRuntime(account.id)) {
         throw new LeaseRefusal("lease_unavailable", `codex access token for ${account.id} is near expiry and a live runtime owns the home; retry after its rotation lands`);
       }
@@ -2742,12 +2807,12 @@ export class AccountsService {
     if (aheadMs <= 0) return;
     const now = this.now();
     for (const account of this.store.listAccounts()) {
-      if (account.harness !== "claude" || account.status === "paused") continue;
+      if (!this.credentialAuthorities.has(account.harness) || account.status === "paused") continue;
       const backoff = this.earlyRefreshBackoff.get(account.id);
       if (backoff && backoff.at > now) continue;
-      if (!this.centralCredentials.earlyRefreshDue(account, aheadMs)) continue;
+      if (!this.authorityFor(account)!.earlyRefreshDue(account, aheadMs)) continue;
       this.log(`account.credentials.early_refresh account=${account.id} ahead_ms=${aheadMs}`);
-      void this.centralCredentials.ensure(account, CLAUDE_MIN_SHIP_TTL_MS, undefined, aheadMs).then(() => {
+      void this.authorityFor(account)!.ensure(account, CLAUDE_MIN_SHIP_TTL_MS, undefined, aheadMs).then(() => {
         this.earlyRefreshBackoff.delete(account.id);
       }, (error) => {
         const failures = (this.earlyRefreshBackoff.get(account.id)?.failures ?? 0) + 1;
@@ -2761,7 +2826,7 @@ export class AccountsService {
   centralRefreshRetryTick(): void {
     const now = this.now();
     const due = this.store.listAccounts()
-      .filter((account) => account.harness === "claude" && this.centralCredentials.retryDue(account)
+      .filter((account) => this.credentialAuthorities.has(account.harness) && this.authorityFor(account)!.retryDue(account)
         && !this.queuedRefreshIds.has(account.id) && !this.activeRefreshIds.has(account.id)
         // A retry that cannot even start (a locked Keychain, a failing publication) must not probe on every tick.
         && (this.centralRetryProbes.get(account.id) ?? 0) <= now)
@@ -2808,9 +2873,9 @@ export class AccountsService {
   }
 
   async activateForSpawn(account: AccountRow, bee: { cwd: string }): Promise<ActivationResult> {
-    if (this.centralCredentials.enabled(account)) {
-      await this.centralCredentials.ensure(account, CLAUDE_MIN_SHIP_TTL_MS);
-      await this.centralCredentials.checkRuntimeCopies(account);
+    if (this.authorityFor(account)?.enabled(account)) {
+      await this.authorityFor(account)!.ensure(account, CLAUDE_MIN_SHIP_TTL_MS);
+      await this.authorityFor(account)!.checkRuntimeCopies(account);
     }
     const result = this.activateHomeForSpawn(account, bee);
     const gatewaySeed = await this.gatewayMcpSeeder(account.homePath, account.harness);
@@ -2866,7 +2931,7 @@ export class AccountsService {
   ):
     | { ok: true; account: AccountRow; captured: string[]; at: number }
     | { ok: false; reason: "invalid_primary" | "primary_not_captured" } {
-    if (this.centralCredentials.enabled(account) || this.centralCredentials.busy(account)) {
+    if (this.authorityFor(account)?.enabled(account) || this.authorityFor(account)?.busy(account)) {
       throw new CredentialAuthorityError("Central credential ownership prevents native capture.");
     }
     if (!this.validPrimaryCredential(account.harness, primaryFile, primaryRaw)) {
@@ -2893,7 +2958,7 @@ export class AccountsService {
    * harnesses use the account home.
    */
   async captureAccount(account: AccountRow): Promise<CaptureOutcome> {
-    if (this.centralCredentials.enabled(account)) throw new CredentialAuthorityError("Disable central credentials before capturing native credentials.");
+    if (this.authorityFor(account)?.enabled(account)) throw new CredentialAuthorityError("Disable central credentials before capturing native credentials.");
     const recipe = recipeFor(account.harness);
     if (!recipe) throw new Error(`harness ${account.harness} has no identity recipe; cannot capture credentials`);
     const primaryFile = primaryCredentialFile(recipe);

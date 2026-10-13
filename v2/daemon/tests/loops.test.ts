@@ -2729,8 +2729,8 @@ test("envelope.d5: an operator interrupt delivers nothing and a later peer `now`
     rig.core.step();
     assert.equal(rig.driver.interrupts.length, 1);
     assert.equal(rig.driver.deliveredBodies.length, 1);
-    assert.ok(!(rig.driver.deliveredBodies[0] as string).includes(DELIVERY_INTERRUPT_NOTICE));
-    assert.ok((rig.driver.deliveredBodies[0] as string).endsWith('"}\n\nworker report'));
+    assert.ok(!String(rig.driver.deliveredBodies[0]).includes(DELIVERY_INTERRUPT_NOTICE));
+    assert.ok(String(rig.driver.deliveredBodies[0]).endsWith('"}\n\nworker report'));
   } finally {
     rig.cleanup();
   }
