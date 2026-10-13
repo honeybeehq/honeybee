@@ -6,7 +6,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { BUZ_INJECTION_MARKER, REMOTE_SENDER_RE, deliveryText, isPeerSender, urgencyToTier } from "../src/envelope.ts";
+import { BUZ_INJECTION_MARKER, DELIVERY_INTERRUPT_NOTICE, REMOTE_SENDER_RE, deliveryText, isPeerSender, urgencyToTier } from "../src/envelope.ts";
 
 const baseMsg = { id: 7, body: "shard 3 is yours", urgency: "next" as const, enqueuedAt: 1_787_000_000_000 };
 
@@ -56,4 +56,15 @@ test("envelope.remote: a relayed agent on another authority is a peer; malformed
   for (const bad of ["remote:", "remote:studio", "remote:studio/", "remote:/CL.1", "remote:a b/CL.1", "remote:a/b/c", "remote:a/CL.1\n"]) {
     assert.equal(REMOTE_SENDER_RE.test(bad), false, bad);
   }
+});
+
+test("envelope.5: the interrupt notice sits between the blank line and the body, for peer mail only", () => {
+  const msg = { ...baseMsg, urgency: "now" as const, sender: "CL.6d44f" };
+  const plain = deliveryText(msg, true);
+  const noticed = deliveryText(msg, true, true);
+  assert.equal(deliveryText(msg, true, false), plain);
+  assert.equal(noticed, plain.replace(/shard 3 is yours$/, `${DELIVERY_INTERRUPT_NOTICE}\n\nshard 3 is yours`));
+  assert.equal(noticed.split("\n")[1], plain.split("\n")[1]);
+  assert.equal(deliveryText({ ...msg, sender: "operator" }, false, true), baseMsg.body);
+  assert.ok(!DELIVERY_INTERRUPT_NOTICE.includes("\n"));
 });

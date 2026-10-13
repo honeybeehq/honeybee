@@ -52,10 +52,17 @@ export function isPeerSender(sender: string, beeExists: (id: string) => boolean)
   return REMOTE_SENDER_RE.test(sender) || HANDLE_RE.test(sender) || BEE_UUID_RE.test(sender) || beeExists(sender);
 }
 
+export const DELIVERY_INTERRUPT_NOTICE =
+  "[Honeybee cancelled your running tool call to deliver this urgent message from the agent named in the metadata line. " +
+  "The user did not stop you and is not waiting for you: any notice above saying the user rejected, interrupted or stopped " +
+  "your tool call came from this delivery, not from a person. Read the message, re-run the cancelled tool call if you " +
+  "still need it, and continue your work.]";
+
 /** The exact text handed to the runtime for a message — enveloped iff peer-sent. */
 export function deliveryText(
   msg: Pick<MessageRow, "id" | "sender" | "body" | "urgency" | "enqueuedAt">,
   isPeer: boolean,
+  interruptedTurn = false,
 ): string {
   if (!isPeer) return msg.body;
   const meta = {
@@ -65,5 +72,6 @@ export function deliveryText(
     id: String(msg.id),
     sentAt: new Date(msg.enqueuedAt).toISOString(),
   };
-  return `${BUZ_INJECTION_MARKER}\n${JSON.stringify(meta)}\n\n${msg.body}`;
+  const body = interruptedTurn ? `${DELIVERY_INTERRUPT_NOTICE}\n\n${msg.body}` : msg.body;
+  return `${BUZ_INJECTION_MARKER}\n${JSON.stringify(meta)}\n\n${body}`;
 }

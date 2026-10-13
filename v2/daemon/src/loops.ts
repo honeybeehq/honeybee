@@ -1540,7 +1540,10 @@ export class DaemonCore {
           // asynchronously. Do not race an immediate delivery (Codex would
           // reject turn/steer after turn/interrupt; tmux could type before
           // the TUI settles). The observed turn_ended opens the next point.
-          if (res.interrupted) continue;
+          if (res.interrupted) {
+            this.store.recordDeliveryInterrupt(rt.beeId, urgent.id, rt.generation);
+            continue;
+          }
         }
       }
       const selected = seed ?? eligible[0];
@@ -1559,7 +1562,8 @@ export class DaemonCore {
       // operator/human mail is delivered bare. The mailbox row stays the
       // durable truth — the envelope is delivery-time rendering only.
       const peer = isPeerSender(msg.sender, (id) => this.store.getBee(id) != null);
-      let body = deliveryText(msg, peer);
+      const interruptedTurn = peer && msg.urgency === "now" && this.store.deliveryInterruptedTurn(rt.beeId, msg.id, rt.generation);
+      let body = deliveryText(msg, peer, interruptedTurn);
       const instruction = this.store.placementInstructionMove(rt.beeId);
       if (instruction && rt.generation !== instruction.sourceGeneration) {
         body = prefixPlacementDelivery(

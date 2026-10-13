@@ -513,6 +513,7 @@ export function replayAudit(rows: AuditRow[]): StateDump {
       case "runtime.stale_update":
       case "flag.clear_noop":
       case "mail.deliver_noop":
+      case "mail.interrupt_requested":
       case "command.complete_noop":
       case "command.dedup":
       case "wake.suppressed":

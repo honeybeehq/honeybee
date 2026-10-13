@@ -20,7 +20,7 @@ import { SubstrateRouter } from "../src/substrates.ts";
 import { HsrDriver } from "../../driver-hsr/src/index.ts";
 import { codexAdapter, stubAdapter, type AdapterSignal } from "../../adapters/src/index.ts";
 import { AGENT_PATH, FakeDriver, sleep, waitFor } from "./helpers.ts";
-import { BUZ_INJECTION_MARKER } from "../src/envelope.ts";
+import { BUZ_INJECTION_MARKER, DELIVERY_INTERRUPT_NOTICE } from "../src/envelope.ts";
 
 // Real child startup is load-dependent; assertions below still bound retries
 // and verify admission. Match the runner-host tests' process wait ceiling.
@@ -2644,6 +2644,123 @@ test("envelope.d1: bee-sent mail is delivered ENVELOPED; operator mail is delive
     assert.ok(enveloped.startsWith(BUZ_INJECTION_MARKER), "peer mail carries the marker");
     assert.ok(enveloped.includes('"from":"CL.9999"'), "meta names the sender");
     assert.ok(enveloped.endsWith("\n\nfrom a peer"), "body verbatim after the blank line");
+  } finally {
+    rig.cleanup();
+  }
+});
+
+function interruptWithPeerNow(rig: Rig, sender: string): number {
+  startTurn(rig);
+  const sent = rig.store.send("bee-1", "worker report", { sender, urgency: "now" }).message;
+  rig.core.step();
+  assert.deepEqual(rig.driver.interrupts, [{ beeId: "bee-1", generation: 1 }]);
+  assert.deepEqual(rig.driver.deliveredIds, []);
+  return sent.id;
+}
+
+test("envelope.d2: a peer `now` that interrupted the turn is delivered with the interrupt notice", () => {
+  const rig = makeRig();
+  try {
+    spawnIdleBee(rig);
+    const id = interruptWithPeerNow(rig, "CL.9999");
+    rig.core.step();
+    assert.deepEqual(rig.driver.deliveredIds, [id]);
+    const lines = (rig.driver.deliveredBodies[0] as string).split("\n");
+    assert.equal(lines[0], BUZ_INJECTION_MARKER);
+    assert.equal((JSON.parse(lines[1] as string) as { from: string; tier: string }).tier, "interrupt");
+    assert.deepEqual(lines.slice(2), ["", DELIVERY_INTERRUPT_NOTICE, "", "worker report"]);
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("envelope.d3: the interrupt notice survives a daemon restart between interrupt and delivery", () => {
+  const rig = makeRig();
+  try {
+    spawnIdleBee(rig);
+    rig.driver.acceptDeliveries = false;
+    const id = interruptWithPeerNow(rig, "remote:metal-3/CL.9999");
+    rig.core.step();
+    assert.equal(rig.store.currentRuntime("bee-1")?.state, "idle");
+    const restarted = new DaemonCore({
+      store: rig.store,
+      driver: rig.driver,
+      policy: { bootHangTimeoutSteps: 50, commandsPerStep: 8 },
+      now: () => rig.clock.now,
+      log: () => {},
+    });
+    restarted.boot();
+    rig.driver.acceptDeliveries = true;
+    restarted.step();
+    assert.deepEqual(rig.driver.deliveredIds, [id]);
+    assert.equal(rig.driver.interrupts.length, 1);
+    assert.ok((rig.driver.deliveredBodies[0] as string).endsWith(`\n\n${DELIVERY_INTERRUPT_NOTICE}\n\nworker report`));
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("envelope.d4: operator `now` mail that interrupted the turn is delivered bare", () => {
+  const rig = makeRig();
+  try {
+    spawnIdleBee(rig);
+    startTurn(rig);
+    rig.store.send("bee-1", "stop and read this", { urgency: "now" });
+    rig.core.step();
+    assert.equal(rig.driver.interrupts.length, 1);
+    rig.core.step();
+    assert.deepEqual(rig.driver.deliveredBodies, ["stop and read this"]);
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("envelope.d5: an operator interrupt delivers nothing and a later peer `now` to the idle bee carries no notice", () => {
+  const rig = makeRig();
+  try {
+    spawnIdleBee(rig);
+    startTurn(rig);
+    rig.store.recordInterrupt("bee-1", 1, rig.driver.interrupt("bee-1", 1));
+    rig.core.step();
+    rig.core.step();
+    assert.equal(rig.store.currentRuntime("bee-1")?.state, "idle");
+    assert.deepEqual(rig.driver.deliveredBodies, []);
+    rig.store.send("bee-1", "worker report", { sender: "CL.9999", urgency: "now" });
+    rig.core.step();
+    assert.equal(rig.driver.interrupts.length, 1);
+    assert.equal(rig.driver.deliveredBodies.length, 1);
+    assert.ok(!(rig.driver.deliveredBodies[0] as string).includes(DELIVERY_INTERRUPT_NOTICE));
+    assert.ok((rig.driver.deliveredBodies[0] as string).endsWith('"}\n\nworker report'));
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("envelope.d6: an operator interrupt after the delivery interrupt withdraws the notice", () => {
+  const rig = makeRig();
+  try {
+    spawnIdleBee(rig);
+    rig.driver.acceptDeliveries = false;
+    const id = interruptWithPeerNow(rig, "CL.9999");
+    rig.store.recordInterrupt("bee-1", 1, { interrupted: true });
+    rig.driver.acceptDeliveries = true;
+    rig.core.step();
+    assert.deepEqual(rig.driver.deliveredIds, [id]);
+    assert.ok(!(rig.driver.deliveredBodies[0] as string).includes(DELIVERY_INTERRUPT_NOTICE));
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("envelope.d7: a notice recorded for an earlier generation is not shown to a later one", () => {
+  const rig = makeRig();
+  try {
+    spawnIdleBee(rig);
+    const id = rig.store.send("bee-1", "worker report", { sender: "CL.9999", urgency: "now" }).message.id;
+    rig.store.recordDeliveryInterrupt("bee-1", id, 1);
+    assert.equal(rig.store.deliveryInterruptedTurn("bee-1", id, 1), true);
+    assert.equal(rig.store.deliveryInterruptedTurn("bee-1", id, 2), false);
+    assert.equal(rig.store.deliveryInterruptedTurn("bee-1", id + 1, 1), false);
   } finally {
     rig.cleanup();
   }

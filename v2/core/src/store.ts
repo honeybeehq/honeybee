@@ -3157,6 +3157,26 @@ export class CoreStore {
     });
   }
 
+  recordDeliveryInterrupt(beeId: string, messageId: number, generation: number): void {
+    this.tx(() => {
+      this.mustGetBee(beeId);
+      this.audit("mail.interrupt_requested", beeId, { messageId, generation });
+    });
+  }
+
+  deliveryInterruptedTurn(beeId: string, messageId: number, generation: number): boolean {
+    const row = this.stmt(
+      `SELECT kind, payload FROM audit
+       WHERE bee_id = ?
+         AND (kind = 'mail.interrupt_requested'
+              OR (kind = 'bee.interrupted' AND json_extract(payload, '$.interrupted') = 1))
+       ORDER BY seq DESC LIMIT 1`,
+    ).get(beeId) as Row | undefined;
+    if (!row || row.kind !== "mail.interrupt_requested") return false;
+    const payload = JSON.parse(String(row.payload)) as { messageId?: unknown; generation?: unknown };
+    return payload.messageId === messageId && payload.generation === generation;
+  }
+
   /** v6 — informational fork provenance row (the bee row already carries forkedFrom/forkSeed). Replay: no-op. */
   recordFork(beeId: string, forkedFrom: string, forkSeed: string | null): void {
     this.tx(() => {
