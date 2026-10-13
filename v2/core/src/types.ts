@@ -1784,3 +1784,24 @@ export interface CredentialHandoffRecord {
   generation: number | null;
   expiresAt: number | null;
 }
+
+export interface CredentialHandoffActiveLane {
+  kind: string;
+  handoffId: string;
+}
+export interface CredentialHandoffLocalFact {
+  handoffId: string;
+  role: CredentialHandoffRecord["role"];
+  state: CredentialHandoffRecord["state"];
+  account: string;
+  peerNodeId: string;
+  confirmed: boolean;
+  scrubbed: boolean;
+  cleanupPending: boolean;
+  activeLane: CredentialHandoffActiveLane | null;
+}
+export interface CredentialHandoffLocalSnapshot {
+  handoffs: CredentialHandoffLocalFact[];
+  identityReplacing: boolean;
+  reconciled: boolean;
+}

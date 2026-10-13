@@ -906,7 +906,7 @@ export class HiveDaemon {
       performance: this.performance,
     });
     await this.rpc.listen();
-    void this.accounts?.credentialHandoff.reconcile(true).catch(() => this.log("account.credentials.handoff_reconcile_failed"));
+    void this.accounts?.credentialHandoff.reconcileStartup().catch(() => this.log("account.credentials.handoff_reconcile_failed"));
     rpc.end();
     this.activeStartupPhase = null;
     this.scheduleTick(this.cfg.tickMs);

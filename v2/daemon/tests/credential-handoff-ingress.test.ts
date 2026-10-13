@@ -38,6 +38,8 @@ test("handoff ingress: remote TCP cannot claim local Unix authority and missing 
       } else {
         socket.write(JSON.stringify({ id: 1, verb: "account.credentials.handoffIdentitySet", params: { identity: { nodeId: "dummy-self", deviceKey: "dummy-public-device" }, ingress: "local_unix" } }) + "\n");
         const refused = await next(); assert.equal((refused.error as Record<string, unknown>).code, "credential_handoff_conflict");
+        socket.write(JSON.stringify({ id: 3, verb: "account.credentials.handoffStatus", params: {} }) + "\n");
+        assert.equal(((await next()).error as Record<string, unknown>).code, "credential_handoff_conflict");
         socket.write(JSON.stringify({ id: 2, verb: "account.list", params: {} }) + "\n");
         assert.equal(((await next()).result as Record<string, unknown>).ingress, "remote");
       }
@@ -45,6 +47,7 @@ test("handoff ingress: remote TCP cannot claim local Unix authority and missing 
     }
     const unknown: RpcConn = { send: () => {}, subscribeWatch: () => {}, alignWatch: () => {} };
     assert.throws(() => assertLocalHandoffRpc("account.credentials.exportPrepare", { targetKey: "dummy-public-key" }, unknown), error => error instanceof RpcError && error.code === "credential_handoff_conflict");
+    assert.throws(() => assertLocalHandoffRpc("account.credentials.handoffStatus", {}, unknown), error => error instanceof RpcError && error.code === "credential_handoff_conflict");
     console.log("handoff ingress: physical TCP and relayed hello refuse facts; local_unix hello/parameter cannot upgrade; unknown provenance refuses");
   } finally {
     for (const socket of sockets) socket.destroy();

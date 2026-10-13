@@ -803,6 +803,7 @@ const ACCOUNT_USAGE =
   "       hive account credentials <status|enable|refresh|disable|backup-status|restore-native> <selector>\n" +
   "       hive account credentials release-peer <account> --confirm --file authenticated-roster.json [--handoff-id id] [--native-recovery] [--use-retained-chain [--retained-generation N]] [--discard-retained-chain]\n" +
   "       hive account credentials take-over <account> --confirm [--epoch higher-epoch] [--takeover-id id]\n" +
+  "       hive account credentials handoff-status [--file payload.json]\n" +
   "       hive account credentials <export|adopt-prepare|export-prepare|export-commit|adopt|adopt-abort|export-abort|export-confirm|export-settle|stand-down|handoff-status|handoff-key-rotate|handoff-identity-set|stand-down-receipt|take-over-apply|take-over-complete|take-over-cancel> --file protected-payload.json [--out protected-material.json] [--replace] [--retained-generation N] [--discard-retained-chain --confirm]\n" +
   "       hive account lease install --file payload.json | lease remove <id>\n" +
   "       hive account capture <selector> | verify <selector> | limits [<selector>] | reset <selector> [--credit-id id] --idempotency-key key\n" +
@@ -1130,6 +1131,14 @@ async function cmdAccount(ctx: CliContext, parsed: Parsed): Promise<number> {
             ...(suppliedEpoch === undefined ? {} : { epoch: Number(suppliedEpoch) }) }, ACCOUNT_LIMITS_RPC_TIMEOUT_MS);
         });
         emit(ctx, ["Take-over fenced and scrubbed locally. Relay its signed receipt through Apiary, then complete peer cleanup before native login.", JSON.stringify(result)], result, false);
+        return 0;
+      }
+      if (action === "handoff-status" && !parsed.flags.has("--file")) {
+        const result = await withClient(ctx, client => {
+          if (!client.capabilities.includes("account.credentials.handoff_status.v2")) throw new RpcError("capability_missing", "Update Honeybee: account.credentials.handoff_status.v2 is required.");
+          return client.request("account.credentials.handoffStatus", {});
+        });
+        emit(ctx, [JSON.stringify(result)], result, false);
         return 0;
       }
       const handoffVerbs: Record<string, string> = { export: "export", "adopt-prepare": "adoptPrepare", "export-prepare": "exportPrepare", "export-commit": "exportCommit", adopt: "adopt", "adopt-abort": "adoptAbort", "export-abort": "exportAbort", "export-confirm": "exportConfirm", "export-settle": "exportSettle", "stand-down": "standDown", "handoff-status": "handoffStatus", "handoff-key-rotate": "handoffKeyRotate", "handoff-identity-set": "handoffIdentitySet", "stand-down-receipt": "standDownReceipt", "take-over-apply": "operatorTakeoverApply", "take-over-complete": "operatorTakeoverComplete", "take-over-cancel": "operatorTakeoverCancel" };

@@ -265,6 +265,7 @@ for (const harness of ["claude", "codex", "grok"]) test(`credential handoff ${ha
     const adopted = await rpc<Result>(cb, "adopt", { account: target, handoffId, commitReceipt: committed.receipt });
     assert.equal(adopted.generation, value.material.generation + 1);
     assert.equal(refreshes.length, count + 1);
+    assert.equal((await rpc<{ confirmed: boolean }>(cb, "handoffStatus", { handoffId, role: "destination", summary: true })).confirmed, true);
     const replayAdopt = await rpc<Result>(cb, "adopt", { account: target, handoffId, commitReceipt: committed.receipt });
     assert.deepEqual(replayAdopt, adopted);
     assert.equal(refreshes.length, count + 1);
@@ -294,6 +295,9 @@ for (const harness of ["claude", "codex", "grok"]) test(`credential handoff ${ha
     }
     await rpc(ca, "exportConfirm", { handoffId, adoptedReceipt: adopted.receipt });
     await rpc(ca, "exportConfirm", { handoffId, adoptedReceipt: adopted.receipt });
+    assert.equal((await rpc<{ confirmed: boolean }>(ca, "handoffStatus", { handoffId, summary: true })).confirmed, true);
+    await da.kill(); ca.close(); da = await startDaemon(a.dir, { env: env(a.dir) }); ca = await da.client();
+    assert.equal((await rpc<{ confirmed: boolean }>(ca, "handoffStatus", { handoffId, summary: true })).confirmed, true);
     for (const path of paths(a.dir).filter(path => path.startsWith(join(a.dir, "homes")) || path.startsWith(join(a.dir, "vault")))) assert.ok(!readFileSync(path).includes(Buffer.from(oldRefresh)), "source refresh bytes scrubbed");
     assert.ok(!existsSync(join(a.dir, "vault", ".credential-authorities", `${id}.json`)));
     await waitFor(async () => (await rpc<Result>(ca!, "handoffStatus", { handoffId })).state === "confirmed", "source confirmation settled");
@@ -843,6 +847,7 @@ for (const harness of ["claude", "codex", "grok"]) test(`credential handoff ${ha
     assert.equal(refreshes.length, preparedCalls);
     await waitFor(async () => (await rpc<Result>(ca!, "handoffStatus", { handoffId: preparedHandoff })).state === "aborted", "prepared release durable abort settled");
     await waitFor(() => existsSync(join(a.dir, "early-rotation-waiting")), "prepared release early normal rotation scheduled on next tick");
+    assert.deepEqual((await rpc<{ activeLane: unknown }>(ca, "handoffStatus", { handoffId: preparedHandoff, summary: true })).activeLane, { kind: "early-refresh", handoffId: preparedHandoff });
     await refused(() => rpc(ca!, "exportCommit", { handoffId: preparedHandoff, claimId: preparedShadow.receipt.binding.claimId }), "credential_handoff_unavailable");
     await rpc(cb, "adoptAbort", { handoffId: preparedHandoff, abortReceipt: preparedReleased.abortReceipt });
     const higherLease = await cb.request<{ account: MirrorAccountRow }>("account.lease.install", { id: preparedAccount, harness, label: "release-prepared-example.com", shareId: "12345678-release-prepared", authorityNodeId: from.nodeId, epoch: preparedReleased.requiredEpoch, expiresAt: Math.floor(Date.now() / 1000) + 3600, adopt: true, files: [{ homeRelPath: primary, contentB64: readFileSync(join(a.dir, "homes", preparedAccount, primary)).toString("base64"), mode: 0o600 }] });

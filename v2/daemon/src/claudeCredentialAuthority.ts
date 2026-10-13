@@ -1,3 +1,4 @@
+import type { CredentialHandoffActiveLane } from "../../core/src/index.ts";
 /** Opt-in per account. The private document is the only refresh-chain owner for each enrolled account. */
 import { createHash, randomUUID } from "node:crypto";
 import { closeSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, writeFileSync, unlinkSync, readdirSync } from "node:fs";
@@ -104,7 +105,7 @@ function save(path: string, value: AuthorityDocument): void {
 }
 
 export class CredentialAuthority {
-  private readonly pending = new Map<string, { kind: string; promise: Promise<unknown> }>();
+  private readonly pending = new Map<string, { kind: string; promise: Promise<unknown>; handoff?: CredentialHandoffActiveLane }>();
   private readonly options: CentralCredentialOptions;
   constructor(options: CentralCredentialOptions) { this.options = options; }
   private get codec(): CredentialCodec { return this.options.codec ?? CLAUDE_CODEC; }
@@ -119,6 +120,10 @@ export class CredentialAuthority {
     return state !== null && state.phase !== "disabled";
   }
   busy(account: AccountRow): boolean { return this.pending.has(account.id); }
+  activeHandoffLane(account: Pick<AccountRow, "id">): CredentialHandoffActiveLane | null {
+    const handoff = this.pending.get(account.id)?.handoff;
+    return handoff ? { ...handoff } : null;
+  }
   private path(account: AccountRow): string { return join(this.options.root, `${encodeURIComponent(account.id)}.json`); }
   private previousPath(account: AccountRow): string { return join(this.options.root, `${encodeURIComponent(account.id)}.previous.json`); }
   private forgetPrevious(account: AccountRow): void {
@@ -309,19 +314,19 @@ export class CredentialAuthority {
       throw new CredentialAuthorityError("Finish or cancel the account's login before changing credential ownership.");
     }
   }
-  private lane<T>(account: AccountRow, kind: string, run: () => Promise<T>): Promise<T> {
+  private lane<T>(account: AccountRow, kind: string, run: () => Promise<T>, handoff?: CredentialHandoffActiveLane): Promise<T> {
     const existing = this.pending.get(account.id);
     if (existing) {
       if (kind !== "relogin" && (existing.kind === kind || (kind === "ensure" && existing.kind.startsWith("force:")))) return existing.promise as Promise<T>;
       const waitsForRefresh = kind === "relogin" || kind.startsWith("force:");
       if ((waitsForRefresh && (existing.kind === "ensure" || existing.kind.startsWith("force:"))) || (kind === "ensure" && existing.kind === "relogin")) {
-        const retry = () => this.lane(account, kind, run);
+        const retry = () => this.lane(account, kind, run, handoff);
         return existing.promise.then(retry, retry);
       }
       return Promise.reject(new CredentialAuthorityError("Another credential operation is in progress; retry when it finishes.", "operation_in_progress"));
     }
     const promise = Promise.resolve().then(run).finally(() => { this.pending.delete(account.id); });
-    this.pending.set(account.id, { kind, promise });
+    this.pending.set(account.id, { kind, promise, handoff });
     return promise;
   }
   /** The chain enrollment adopted; only meaningful while `enrolling`. */
@@ -348,8 +353,8 @@ export class CredentialAuthority {
     }
     return this.ready(account, value);
   }
-  handoffLane<T>(account: AccountRow, kind: string, run: () => Promise<T>): Promise<T> {
-    return this.lane(account, `handoff:${kind}`, run);
+  handoffLane<T>(account: AccountRow, kind: string, run: () => Promise<T>, handoff?: CredentialHandoffActiveLane): Promise<T> {
+    return this.lane(account, `handoff:${kind}`, run, handoff);
   }
 
   async inspectHandoffExport(account: AccountRow): Promise<{ state: AccountCredentialAuthority; value: AuthorityDocument }> {
@@ -624,7 +629,7 @@ export class CredentialAuthority {
    * early, unless it was issued within `earlyRefreshMinIntervalMs`, and an
    * early refresh the provider did not process leaves the usable token in place.
    */
-  ensure(account: AccountRow, minTtlMs: number, forceKey?: string, preferredTtlMs?: number): Promise<AccountCredentialAuthority> {
+  ensure(account: AccountRow, minTtlMs: number, forceKey?: string, preferredTtlMs?: number, handoff?: CredentialHandoffActiveLane): Promise<AccountCredentialAuthority> {
     return this.lane(account, forceKey ? `force:${forceKey}` : "ensure", async () => {
       let state = this.status(account);
       if (!state || state.phase === "disabled") throw new CredentialAuthorityError("Enable central credentials for this account first.");
@@ -702,7 +707,7 @@ export class CredentialAuthority {
       }
       await this.options.publish(account, value.document, true);
       return this.enrollmentReady(account, await this.withIdentity(account, value));
-    });
+    }, handoff);
   }
   /**
    * Replace the chain with a new login's grant in place. Runtime copies hold

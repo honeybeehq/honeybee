@@ -75,7 +75,7 @@ const LOCAL_HANDOFF_VERBS = new Set<RpcVerb>([
   "account.credentials.standDownReceipt", "account.credentials.handoffIdentitySet", "account.credentials.handoffKeyRotate",
   "account.credentials.operatorTakeover", "account.credentials.operatorTakeoverApply",
   "account.credentials.operatorTakeoverComplete", "account.credentials.operatorTakeoverCancel",
-  "account.credentials.releasePeer", "account.credentials.exportSettle",
+  "account.credentials.releasePeer", "account.credentials.exportSettle", "account.credentials.handoffStatus",
 ]);
 
 export function assertLocalHandoffRpc(verb: RpcVerb, params: Record<string, unknown>, conn: RpcConn): void {

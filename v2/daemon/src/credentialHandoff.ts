@@ -1,7 +1,7 @@
 import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, randomUUID, sign, verify } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, openSync, fsyncSync, closeSync } from "node:fs";
 import { join } from "node:path";
-import type { AccountRow, CoreStore, CredentialHandoffBinding, CredentialHandoffIdentity, CredentialHandoffReceipt, CredentialHandoffRecord } from "../../core/src/index.ts";
+import type { AccountRow, CoreStore, CredentialHandoffBinding, CredentialHandoffIdentity, CredentialHandoffReceipt, CredentialHandoffRecord, CredentialHandoffLocalFact, CredentialHandoffLocalSnapshot } from "../../core/src/index.ts";
 import type { AccountsService } from "./accountsService.ts";
 import { CredentialAuthorityError, type AuthorityDocument } from "./claudeCredentialAuthority.ts";
 import { atomicWriteFileSync } from "./homeDefaults.ts";
@@ -71,6 +71,7 @@ export class CredentialHandoffService {
   private reconciling = false;
   private activeLanes = 0;
   private identityReplacing = false;
+  private startupReconciled = false;
   private lastSweepAt = 0;
   constructor(store: CoreStore, accounts: AccountsService, root: string, now: () => number, log: (message: string) => void) {
     this.store = store; this.accounts = accounts; this.root = root; this.now = now; this.log = log;
@@ -163,7 +164,7 @@ export class CredentialHandoffService {
     if (this.identityReplacing && !id.startsWith("identity-")) throw new RpcError("credential_handoff_fenced", "Workstation identity replacement holds credential handoff.");
     this.accounts.assertLeaseWriteIdle(account.id);
     this.activeLanes++;
-    try { return await this.accounts.authorityFor(account)!.handoffLane(account, id, run); }
+    try { return await this.accounts.authorityFor(account)!.handoffLane(account, id, run, { kind: id.slice(0, id.indexOf(":")), handoffId: id.slice(id.indexOf(":") + 1) }); }
     catch (error) {
       if (error instanceof RpcError) throw error;
       if (error instanceof CredentialAuthorityError) throw new RpcError("credential_handoff_unavailable", "Credential handoff cannot proceed; inspect credential status and finish the current ownership operation.");
@@ -406,12 +407,12 @@ export class CredentialHandoffService {
       const current = this.row(handoffId, "source");
       check(adopted, "adopted", current.binding.targetKey!);
       if (!same(current.binding, adopted.binding)) throw new RpcError("credential_handoff_conflict", "Adoption receipt does not match the committed destination.");
-      if (current.state === "confirmed") return this.result(current);
+      if (current.state === "confirmed") return this.result(current.peerReceipt ? current : this.put(current, "confirmed", { peerReceipt: adopted }));
       if (current.releasePeer) throw new RpcError("credential_handoff_fenced", "Release-peer holds this handoff; reconcile its retained result before confirmation.");
       if (current.state !== "committed") throw new RpcError("credential_handoff_decided", "Only a committed export can be confirmed.");
       await this.accounts.scrubHandoff(account);
       this.store.demoteCredentialAuthority(account.id, current.binding.epoch);
-      return this.result(this.put(current, "confirmed"));
+      return this.result(this.put(current, "confirmed", { peerReceipt: adopted }));
     });
   }
 
@@ -799,22 +800,26 @@ export class CredentialHandoffService {
     }
   }
 
-  async reconcile(force = false): Promise<void> {
-    if (!force && this.now() - this.lastSweepAt < 1000) return;
+  async reconcileStartup(): Promise<void> {
+    if (await this.reconcile(true)) this.startupReconciled = true;
+  }
+
+  async reconcile(force = false): Promise<boolean> {
+    if (!force && this.now() - this.lastSweepAt < 1000) return false;
     this.lastSweepAt = this.now();
     const pending = this.store.pendingCredentialHandoffs();
     for (const row of pending.filter(row => row.role === "source" && row.state === "exported" && this.now() >= row.binding.prepareBy)) {
       try { await this.exportAbort({ handoffId: row.handoffId }); }
       catch { this.log(`account.credentials.handoff_reconcile_pending account=${row.account} handoff=${row.handoffId}`); }
     }
-    if (this.reconciling) return;
+    if (this.reconciling) return false;
     this.reconciling = true;
     try {
       for (const row of pending.filter(row => row.role === "source" && row.releasePeer?.earlyRotationPending)) {
         try {
           const account = this.account(row.account), authority = this.accounts.authorityFor(account)!, state = authority.status(account);
           if (account.source === "leased" || authority.busy(account) || state?.phase !== "ready" || state.failure?.retryAt != null && state.failure.retryAt > this.now()) continue;
-          const rotated = state.generation > (row.generation ?? row.binding.generation) ? state : await authority.ensure(account, 0, `release-peer-early:${row.handoffId}`);
+          const rotated = state.generation > (row.generation ?? row.binding.generation) ? state : await authority.ensure(account, 0, `release-peer-early:${row.handoffId}`, undefined, { kind: "early-refresh", handoffId: row.handoffId });
           if (rotated.generation > (row.generation ?? row.binding.generation)) this.put(this.row(row.handoffId, "source"), "aborted", { generation: rotated.generation, expiresAt: rotated.expiresAt, releasePeer: { ...row.releasePeer!, earlyRotationPending: false } });
         } catch { this.log(`account.credentials.release_peer_early_rotation_pending account=${row.account} handoff=${row.handoffId}`); }
       }
@@ -825,6 +830,7 @@ export class CredentialHandoffService {
         } catch { this.log(`account.credentials.handoff_reconcile_pending account=${row.account} handoff=${row.handoffId}`); }
       }
     } finally { this.reconciling = false; }
+    return true;
   }
 
   rotateKey(params: Record<string, unknown>) {
@@ -851,8 +857,27 @@ export class CredentialHandoffService {
     return result;
   }
 
+  private localFact(row: CredentialHandoffRecord): CredentialHandoffLocalFact {
+    const authority = this.accounts.authorityFor({ harness: row.binding.harness });
+    if (!authority) throw new RpcError("credential_handoff_unsupported", "Handoff authority is unavailable on this daemon.");
+    const lane = authority.activeHandoffLane({ id: row.account });
+    return { handoffId: row.handoffId, role: row.role, state: row.state, account: row.account,
+      peerNodeId: row.role === "source" ? row.binding.to.nodeId : row.binding.from.nodeId,
+      confirmed: (row.role === "source" ? row.peerReceipt : row.receipt)?.kind === "adopted",
+      scrubbed: row.scrubbed === true, cleanupPending: this.result(row).cleanupPending,
+      activeLane: lane?.handoffId === row.handoffId ? lane : null };
+  }
+
   status(params: Record<string, unknown>) {
+    const live = { identityReplacing: this.identityReplacing, reconciled: this.startupReconciled };
+    if (params.handoffId === undefined) {
+      if (params.role !== undefined) throw new RpcError("invalid_request", "A handoff role requires a handoff id.");
+      return { handoffs: this.store.listCredentialHandoffs().map(row => this.localFact(row)), ...live } satisfies CredentialHandoffLocalSnapshot;
+    }
+    if (params.role !== undefined && params.role !== "source" && params.role !== "destination") throw new RpcError("invalid_request", "Unknown handoff role.");
     const row = this.row(name(params.handoffId), params.role === "destination" ? "destination" : "source");
+    const fact = this.localFact(row);
+    if (params.summary === true) return { ...fact, ...live };
     const result = this.result(row);
     let retainedChainRecoveryAvailable = false;
     let retainedGeneration: number | null = row.releasePeer?.retainedGeneration ?? row.adoptionRecovery?.retainedGeneration ?? null;
@@ -876,7 +901,7 @@ export class CredentialHandoffService {
       }
     }
     const initialCapped = !row.releasePeer && retainedUnusableCount >= 3 && row.state === "adopting";
-    return { ...result, requiredEpoch: row.adoptionRecovery?.sourceSettlement?.binding.recoveryEpoch ?? null, retainedReceipt, retainedUnusableCount,
+    return { ...result, ...fact, ...live, requiredEpoch: row.adoptionRecovery?.sourceSettlement?.binding.recoveryEpoch ?? null, retainedReceipt, retainedUnusableCount,
       failureReason: row.releasePeer?.failureReason ?? (retainedUnusableCount >= 3 ? "retained_unusable_limit" : null),
       generation: !row.releasePeer && retainedGeneration !== null ? retainedGeneration : result.generation, binding: row.binding,
       cappedRetainedDiscardAvailable: row.releasePeer?.failureReason === "retained_unusable_limit" && row.releasePeer.discardRetainedChain !== true && row.state === "committed" || initialCapped,
