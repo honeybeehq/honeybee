@@ -1038,7 +1038,7 @@ export class AccountsService {
         const raw = readIfFile(path);
         const credential = raw === null ? null : GROK_CREDENTIAL_CODEC.parse(raw);
         if (raw !== null && (!credential || grokCredentialEntry(JSON.parse(raw))?.scope !== grokCredentialEntry(document)?.scope)) {
-          throw new CredentialOwnershipConflict("An external Grok credential changed this account scope; recover before continuing.");
+          throw new CredentialOwnershipConflict("A Grok credential copy is corrupt, has multiple entries, or has a conflicting OIDC scope; recover that copy before changing credential ownership.");
         }
         if (raw !== null) {
           const copy = grokCredentialEntry(JSON.parse(raw))!;
@@ -1056,6 +1056,7 @@ export class AccountsService {
       store: this.store, root: join(this.cfg.accounts.vaultDir, ".credential-authorities"), now: this.now,
       log: this.log, retryBaseMs: this.cfg.accounts.centralRefreshRetryBaseMs, earlyRefreshMinIntervalMs: this.cfg.accounts.centralRefreshMinIntervalMs,
       beforeEnroll: account => {
+        this.assertLocalAccount(account);
         this.store.assertNoUpdateReservation();
         if (this.refreshBusy(account) || this.leaseMints.has(account.id)) throw new CredentialAuthorityError("A native credential refresh is in progress; retry enrollment shortly.");
       },
@@ -2459,7 +2460,9 @@ export class AccountsService {
       try { await this.authorityFor(account)!.ensure(account, CLAUDE_MIN_SHIP_TTL_MS); }
       catch (error) {
         if (!(error instanceof CredentialAuthorityError)) throw error;
-        return { readable: false, unreadableReason: this.authorityFor(account)!.status(account)?.phase === "ready" ? "provider_error" : "auth_failed", error: error.message };
+        const settled = error.reason !== "operation_in_progress";
+        const usable = this.authorityFor(account)!.status(account)?.phase === "ready";
+        return { readable: false, unreadableReason: settled && !usable ? "auth_failed" : "provider_error", error: error.message };
       }
     }
     const joined = this.secondaryProviderFetches.get(account.id);

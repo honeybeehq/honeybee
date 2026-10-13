@@ -2071,8 +2071,13 @@ echo, and the command exits 0 once the credential is validated and captured.
 them on the flow), `--remote` asks for methods that do not need a browser on
 this node (device codes, API keys), `--no-wait` just starts the flow.
 
-For the opt-in, per-account Claude central refresh commands and acceptance test,
-see [Claude central credentials](claude-central-credentials-pilot.md).
+The opt-in `hive account credentials status|enable|refresh|disable <account>`
+commands support Claude, Codex and first-party Grok OIDC accounts. Grok requires
+one `https://auth.x.ai::<client-id>` entry; API keys and mixed scopes are refused.
+Stop local bees before enabling or disabling. Codex and Grok recovery requires
+disable, native login, then enable; Claude supports in-place central login.
+See [central credentials](claude-central-credentials-pilot.md) for ownership,
+recovery and acceptance checks.
 
 The broader command list that follows documents the legacy CLI surface.
 
@@ -2131,8 +2136,10 @@ created for a known account.
 Credential rotation notes:
 
 - Claude credentials may live in macOS Keychain.
-- Claude refreshes can rotate OAuth chains; Codex, OpenCode, Grok, Kimi, and
-  Cursor can rewrite their file-backed credentials in-place.
+- Claude, Codex and first-party Grok OIDC refreshes can rotate OAuth chains.
+  Opt-in central ownership keeps their refresh chains in the private authority
+  and publishes access-only copies; native accounts retain their harness refresh
+  behavior. OpenCode, Kimi and Cursor can rewrite file-backed credentials in-place.
 - Activation rescues and syncs rotated/refreshed credentials before stamping a
   home.
 - `hive account sync` pulls rotated/refreshed credentials from attributed homes

@@ -56,7 +56,7 @@ export function defaultGrokRefreshTransport(timeoutMs: number, now: () => number
       endpoint: () => endpoint ?? process.env.HIVE_GROK_OAUTH_TOKEN_URL ?? GROK_OAUTH_TOKEN_URL,
       decode: (body, previousRefreshToken, at) => {
         if (body.refresh_token !== undefined && body.refresh_token !== null && (typeof body.refresh_token !== "string" || !body.refresh_token)) return null;
-        const candidateExpiry = typeof body.expires_in === "number" && Number.isFinite(body.expires_in) ? at + body.expires_in * 1000 : 0;
+        const candidateExpiry = typeof body.expires_in === "number" && Number.isFinite(body.expires_in) ? at + body.expires_in * 1000 : at + 3600 * 1000;
         const expiresAt = Number.isFinite(new Date(candidateExpiry).getTime()) ? candidateExpiry : 0;
         const accessToken = typeof body.access_token === "string" ? body.access_token : "";
         return { accessToken, refreshToken: body.refresh_token as string | undefined ?? previousRefreshToken,

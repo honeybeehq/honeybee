@@ -5,7 +5,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
-import { mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, readdirSync, statSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import type { AddressInfo } from "node:net";
 import { makeDaemonDir, startDaemon, waitFor, sleep, type DaemonHandle } from "./helpers.ts";
@@ -31,6 +31,7 @@ test("central Grok: isolated daemon rotates once, publishes access-only, refresh
   let generation = 0;
   let refused = false;
   let unusableResponse = false;
+  let omitExpiry = true;
   let daemon: DaemonHandle | null = null;
   let client: RpcClient | null = null;
   const original = randomUUID();
@@ -59,7 +60,8 @@ test("central Grok: isolated daemon rotates once, publishes access-only, refresh
       unusableResponse = false;
       res.end(JSON.stringify({ refresh_token: refresh, expires_in: "invalid" }));
     } else {
-      res.end(JSON.stringify({ access_token: access, refresh_token: refresh, expires_in: 3600 }));
+      res.end(JSON.stringify({ access_token: access, refresh_token: refresh, ...(omitExpiry ? {} : { expires_in: 3600 }) }));
+      omitExpiry = false;
     }
   });
   await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
@@ -110,7 +112,7 @@ test("central Grok: isolated daemon rotates once, publishes access-only, refresh
     const cliStatus = await cli("status");
     assert.equal(cliStatus.generation, 2);
     console.log(`CLI status: phase=${cliStatus.phase} generation=${cliStatus.generation} expiry=${new Date(cliStatus.expiresAt!).toISOString()}`);
-    assert.ok(enabled.expiresAt! > Date.now());
+    assert.ok(enabled.expiresAt! > Date.now() + 3_500_000);
     const authorityPath = join(dir, "vault", ".credential-authorities", `${id}.json`);
     const authority = () => JSON.parse(readFileSync(authorityPath, "utf8"));
     const home = () => JSON.parse(readFileSync(join(dir, "homes", id, "auth.json"), "utf8"));
@@ -130,6 +132,13 @@ test("central Grok: isolated daemon rotates once, publishes access-only, refresh
     await assert.rejects(() => rpc("account.credentials.refresh", { id, idempotencyKey: "foreign" }), (error: unknown) => error instanceof RpcError && error.message.includes("external Grok"));
     assert.equal(requests.length, beforeConflict);
     assert.ok(readFileSync(join(dir, "homes", id, "auth.json"), "utf8") === JSON.stringify(foreign));
+    writeFileSync(join(dir, "homes", id, "auth.json"), ownedHome);
+    for (const invalid of ["{", JSON.stringify({ ...JSON.parse(ownedHome), unrelated: {} }), JSON.stringify({ "https://auth.x.ai::other-client": JSON.parse(ownedHome)[scope] })]) {
+      writeFileSync(join(dir, "homes", id, "auth.json"), invalid);
+      await assert.rejects(() => rpc("account.credentials.refresh", { id, idempotencyKey: randomUUID() }), (error: unknown) => error instanceof RpcError && error.message.includes("corrupt, has multiple entries, or has a conflicting OIDC scope"));
+      assert.equal(requests.length, beforeConflict);
+      assert.ok(readFileSync(join(dir, "homes", id, "auth.json"), "utf8") === invalid);
+    }
     writeFileSync(join(dir, "homes", id, "auth.json"), ownedHome);
     const foreignAccess = JSON.parse(ownedHome);
     foreignAccess[scope].key = token(7200);
@@ -213,5 +222,92 @@ test("central Grok: isolated daemon rotates once, publishes access-only, refresh
     await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
     cleanup();
     console.log("cleanup: owned daemon stopped; stub listener closed");
+  }
+});
+
+test("central Grok review: live ownership fences, saved publication survives restart, healthy disable restores chain", async () => {
+  const stub = fileURLToPath(new URL("../../../tests/fixtures/grok-acp-stub.mjs", import.meta.url));
+  const { dir, cleanup } = makeDaemonDir({ accounts: { centralRefreshAheadMs: 0 }, agents: { grok: { command: process.execPath, args: [stub], adapter: "grok" } } });
+  const id = "grok-review-example.com";
+  let expected = randomUUID();
+  const secrets: string[] = [expected];
+  let refreshes = 0;
+  let daemon: DaemonHandle | null = null;
+  let client: RpcClient | null = null;
+  const server = createServer(async (req, res) => {
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) chunks.push(Buffer.from(chunk));
+    const body = new URLSearchParams(Buffer.concat(chunks).toString());
+    const valid = body.get("refresh_token") === expected;
+    assert.ok(valid, "stub received current chain");
+    refreshes++;
+    expected = randomUUID();
+    const access = token(3600);
+    secrets.push(expected, access);
+    await sleep(150);
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ access_token: access, refresh_token: expected }));
+  });
+  await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const vault = join(dir, "vault", "grok", id);
+    const home = join(dir, "homes", id);
+    mkdirSync(vault, { recursive: true });
+    const access = token(3600);
+    secrets.push(access);
+    writeFileSync(join(vault, "auth.json"), JSON.stringify({ [scope]: { auth_mode: "oidc", oidc_issuer: "https://auth.x.ai", oidc_client_id: GROK_OAUTH_CLIENT_ID, key: access, refresh_token: expected, expires_at: new Date(Date.now() + 3600_000).toISOString() } }));
+    const preload = join(dir, "no-provider.mjs");
+    writeFileSync(preload, `const original=globalThis.fetch;globalThis.fetch=(url,options)=>{if(String(url).startsWith('http://127.0.0.1:'))return original(url,options);if(String(url)==='https://cli-chat-proxy.grok.com/v1/billing?format=credits')return Promise.resolve(new Response(JSON.stringify({config:{creditUsagePercent:0}}),{status:200}));throw new Error('External provider access forbidden');};`);
+    const env = { NODE_OPTIONS: `--import=${preload}`, HOME: dir, GROK_HOME: join(dir, "unused"), HIVE_GATEWAYS_DISABLE: "1", HIVE_GROK_OAUTH_TOKEN_URL: `http://127.0.0.1:${(server.address() as AddressInfo).port}` };
+    daemon = await startDaemon(dir, { env });
+    client = await daemon.client();
+    await client.request("account.add", { harness: "grok", label: "review-example.com", importExisting: true });
+    const spawn = async (name: string) => {
+      const result = await client!.request<{ beeId: string }>("spawn", { name, agent: "grok", cwd: dir, account: id, tags: ["autoswap=false"] });
+      await waitFor(async () => ["running", "idle"].includes((await client!.request<{ view: { runtimeState: string } }>("view", { beeId: result.beeId })).view.runtimeState) ? true : null, "fake Grok running");
+      return result.beeId;
+    };
+    const stop = async (beeId: string) => {
+      await client!.request("stop", { beeId });
+      await waitFor(async () => (await client!.request<{ view: { runtimeState: string } }>("view", { beeId })).view.runtimeState === "stopped" ? true : null, "fake Grok stopped");
+    };
+    const nativeBee = await spawn("native");
+    await assert.rejects(() => client!.request("account.credentials.enable", { id, idempotencyKey: "live-enable" }), (error: unknown) => error instanceof RpcError && error.message.includes("Stop this account's local Grok"));
+    assert.equal(refreshes, 0);
+    await stop(nativeBee);
+    await client.request("account.credentials.enable", { id, idempotencyKey: "enable" });
+    const managedBee = await spawn("managed");
+    await assert.rejects(() => client!.request("account.credentials.disable", { id, idempotencyKey: "live-disable" }), (error: unknown) => error instanceof RpcError && error.message.includes("Stop this account's local Grok"));
+    await stop(managedBee);
+    console.log("Grok ownership: live enable/disable refused; no native rotation before stopped");
+    const homePath = join(home, "auth.json");
+    const homeRaw = readFileSync(homePath, "utf8");
+    rmSync(homePath);
+    mkdirSync(homePath);
+    await assert.rejects(() => client!.request("account.credentials.refresh", { id, idempotencyKey: "blocked-publish" }), (error: unknown) => error instanceof RpcError);
+    assert.equal(refreshes, 2);
+    const authorityPath = join(dir, "vault", ".credential-authorities", `${id}.json`);
+    assert.ok(JSON.parse(readFileSync(authorityPath, "utf8")).document[scope].refresh_token === expected);
+    client.close(); client = null;
+    await daemon.stop();
+    assert.ok(secrets.every(secret => !daemon!.output().includes(secret)), "first daemon logs contain no fixture bytes");
+    rmSync(homePath, { recursive: true });
+    writeFileSync(homePath, homeRaw);
+    daemon = await startDaemon(dir, { env });
+    client = await daemon.client();
+    await waitFor(async () => (await client!.request<AccountCredentialAuthority>("account.credentials.status", { id })).phase === "ready" ? true : null, "saved publication recovered");
+    assert.equal(refreshes, 2);
+    assert.ok(JSON.parse(readFileSync(homePath, "utf8"))[scope].refresh_token === undefined);
+    await client.request("account.credentials.disable", { id, idempotencyKey: "healthy-disable" });
+    for (const path of [homePath, join(vault, "auth.json")]) assert.ok(JSON.parse(readFileSync(path, "utf8"))[scope].refresh_token === expected, "healthy disable restores latest chain");
+    console.log("Grok restart: saved rotated result published without another HTTP call; healthy disable restores latest native chain");
+    client.close(); client = null;
+    await daemon.stop();
+    assert.ok(secrets.every(secret => !daemon!.output().includes(secret)), "successor logs contain no fixture bytes");
+  } finally {
+    client?.close();
+    if (daemon && daemon.proc.exitCode === null && daemon.proc.signalCode === null) await daemon.stop();
+    await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+    cleanup();
   }
 });

@@ -416,9 +416,6 @@ export class LoginFlowService {
     const unisolated = this.accounts.isolationRefusal(account.harness);
     if (unisolated) throw new LoginFlowRefusal("login_method_unsupported", unisolated);
     const central = this.accounts.authorityFor(account);
-    if (account.harness === "codex" && (central?.enabled(account) || central?.busy(account))) {
-      throw new LoginFlowRefusal("login_flow_refused", "Disable central Codex credentials before logging in natively; the authority alone owns the refresh chain.");
-    }
     if (central?.requiresNativeLogin() && (central.enabled(account) || central.busy(account))) {
       throw new LoginFlowRefusal("login_flow_refused", `Stop local bees on this account, then disable central credentials before native login: hive account credentials disable ${account.id}; hive account login ${account.id}; hive account credentials enable ${account.id}`);
     }

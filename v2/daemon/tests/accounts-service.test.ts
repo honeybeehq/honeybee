@@ -30,6 +30,7 @@ import { openCoreStore, type CoreStore } from "../../core/src/index.ts";
 import type { ClaudeRefreshResult, RefreshedClaudeToken } from "../src/claudeRefreshTransport.ts";
 const granted = (token: RefreshedClaudeToken): ClaudeRefreshResult => ({ kind: "success", token });
 const refused: ClaudeRefreshResult = { kind: "rejected", httpStatus: 400, error: "invalid_grant", description: "Refresh token not found or invalid" };
+import { CredentialAuthorityError } from "../src/claudeCredentialAuthority.ts";
 import { AccountsService, LeaseRefusal, ResetLimitsRefusal, defaultCodexRateLimits, defaultCodexResetLimits } from "../src/accountsService.ts";
 import { activateHomeIfEmpty } from "../src/activation.ts";
 import { loadNodeConfig, type NodeConfigFile, type ResolvedNodeConfig } from "../src/config.ts";
@@ -2190,4 +2191,21 @@ test("import.v18.3: the old-registry importer creates a credential-less record a
   } finally {
     r.cleanup();
   }
+});
+
+
+test("Grok central busy limits probes preserve account auth during ownership changes", async () => {
+  const r = rig();
+  try {
+    const account = addAccount(r, "grok", "busy-proof");
+    const svc = service(r);
+    svc.grokCredentials.ensure = async () => { throw new CredentialAuthorityError("credential ownership is changing", "operation_in_progress"); };
+    for (const phase of ["enrolling", "disabling", "refreshing"] as const) {
+      r.store.putAccountCredentialAuthority({ account: account.id, phase, generation: 1, expiresAt: r.now() + HOUR, operationKey: "busy-proof" });
+      const [row] = await svc.refreshLimits([account.id]);
+      assert.equal(row?.unreadableReason, "provider_error");
+      assert.equal(r.store.getAccount(account.id)?.status, "ok");
+    }
+    console.log("Grok busy probes: enrolling/disabling/refreshing operation_in_progress=provider_error; account auth remains ok");
+  } finally { r.cleanup(); }
 });

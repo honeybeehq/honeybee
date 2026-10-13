@@ -326,3 +326,23 @@ transport constructor's endpoint argument for isolated stub checks. Run
 account. The first live enrollment is the acceptance check: use a throwaway
 account only with Needle's explicit approval, after Queen's review. Stub checks
 do not establish the live provider contract or long-lived session rollover.
+
+## Grok authority
+
+The same opt-in commands support first-party Grok OIDC credentials with exactly
+one `https://auth.x.ai::<client-id>` entry. API-key credentials, corrupt documents,
+mixed entries and conflicting scopes are refused. The daemon sends form-encoded
+refresh requests with the entry's client id and principal fields. An omitted
+`expires_in` uses the native Grok default of 3600 seconds.
+
+The private rotated chain is saved before access-only publication to the account
+home and vault. Foreign refresh chains, scopes and principal identities are
+checked before use. A healthy disable restores the current native refresh chain;
+an uncertain or rejected chain is never restored. Enable and disable require
+stopping the account's local bees. Grok has no in-place central login: stop bees,
+disable, complete native login, then enable again.
+
+`HIVE_GROK_OAUTH_TOKEN_URL` injects a local stub for isolated tests. Run
+`node --test v2/daemon/tests/grok-central-credentials.test.ts` with dummy accounts.
+These checks do not prove the live provider contract. Queen review and Needle's
+explicit approval are required before any real-account refresh-chain mutation.

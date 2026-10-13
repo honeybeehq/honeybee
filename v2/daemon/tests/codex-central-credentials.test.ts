@@ -174,7 +174,7 @@ test("central Codex: isolated daemon rotates once, publishes access-only, refres
     assert.equal(failed.phase, "login_required");
     assert.equal(failed.failure?.error, "invalid_grant");
     assert.equal(failed.failure?.retryAt, null);
-    await assert.rejects(() => rpc("account.login.start", { id }), (error: unknown) => error instanceof RpcError && error.message.includes("Disable central Codex"));
+    await assert.rejects(() => rpc("account.login.start", { id }), (error: unknown) => error instanceof RpcError && error.message.includes("credentials disable"));
     await assert.rejects(() => rpc("account.credentials.refresh", { id, idempotencyKey: "terminal" }), (error: unknown) => error instanceof RpcError && error.message.includes("credentials disable"));
     await sleep(2200);
     assert.equal(requests.length, 6);
