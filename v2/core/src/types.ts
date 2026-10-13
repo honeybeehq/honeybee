@@ -1749,12 +1749,16 @@ export interface CredentialHandoffRecord {
     roster: { orgId: string; genesis: string; heads: string[]; version: string; authorNodeId: string; authorCounter: number; members: string[] };
     requiredEpoch: number;
     mode: "prepared_abort" | "committed_refresh" | "destination_void" | "destination_holder" | "destination_recovery" | "destination_retained_refresh";
-    outcome: "pending" | "restored" | "login_required" | "uncertain";
+    outcome: "pending" | "restored" | "login_required" | "uncertain" | "retained_unusable";
     cleanupPending: boolean;
     retryable?: boolean;
     nativeRecovery?: boolean;
     earlyRotationPending?: boolean;
     transportGeneration?: number;
+    retainedGeneration?: number;
+    retainedUnusableCount?: number;
+    failureReason?: "retained_unusable_limit";
+    discardRetainedChain?: boolean;
   };
   scrubbed?: boolean;
   generation: number | null;

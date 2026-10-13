@@ -396,7 +396,7 @@ export class CredentialHandoffService {
 
   async releasePeer(params: Record<string, unknown>) {
     const account = this.account(params.account);
-    if (params.confirm !== true || params.nativeRecovery !== undefined && typeof params.nativeRecovery !== "boolean" || params.useRetainedChain !== undefined && typeof params.useRetainedChain !== "boolean" || params.nativeRecovery === true && params.useRetainedChain === true) throw new RpcError("invalid_request", "Release-peer requires explicit operator confirmation and a boolean native recovery option.");
+    if (params.confirm !== true || params.nativeRecovery !== undefined && typeof params.nativeRecovery !== "boolean" || params.useRetainedChain !== undefined && typeof params.useRetainedChain !== "boolean" || params.nativeRecovery === true && params.useRetainedChain === true || params.retainedGeneration !== undefined && params.useRetainedChain !== true || params.discardRetainedChain !== undefined && typeof params.discardRetainedChain !== "boolean" || params.discardRetainedChain === true && (params.nativeRecovery === true || params.useRetainedChain === true)) throw new RpcError("invalid_request", "Release-peer requires explicit operator confirmation and a boolean native recovery option.");
     const supplied = object(params.roster);
     const strings = (value: unknown, limit: number) => {
       if (!Array.isArray(value) || value.length > limit) throw new RpcError("invalid_request", "Release-peer requires a bounded validated roster.");
@@ -421,17 +421,18 @@ export class CredentialHandoffService {
       this.assertSelf(row.role === "source" ? row.binding.from : row.binding.to);
       if (row.account !== account.id || roster.members.includes((row.role === "source" ? row.binding.to : row.binding.from).nodeId)) throw new RpcError("credential_handoff_conflict", "The committed handoff peer is still an organization member or names another account.");
       if (row.releasePeer && !same(row.releasePeer.roster, roster)) throw new RpcError("credential_handoff_conflict", "Release-peer retry must retain the original authenticated roster fact.");
-      if (row.role === "destination") return this.releaseDestination(account, row, roster, params.nativeRecovery === true, params.useRetainedChain === true);
-      if (params.useRetainedChain === true) throw new RpcError("invalid_request", "Retained-chain recovery is destination-only.");
+      if (row.role === "source" && row.releasePeer && ((row.releasePeer.retainedUnusableCount ?? 0) > 0)) return this.releaseDestination(account, row, roster, params.nativeRecovery === true, params.useRetainedChain === true, params.retainedGeneration === undefined ? undefined : integer(params.retainedGeneration), params.discardRetainedChain === true);
+      if (row.role === "destination") return this.releaseDestination(account, row, roster, params.nativeRecovery === true, params.useRetainedChain === true, params.retainedGeneration === undefined ? undefined : integer(params.retainedGeneration), params.discardRetainedChain === true);
+      if (params.useRetainedChain === true || params.discardRetainedChain === true) throw new RpcError("invalid_request", "Retained-chain recovery is destination-only.");
       const firstAttempt = !row.releasePeer;
       if (firstAttempt && (!["prepared", "committed"].includes(row.state) || !["prepared", "commit"].includes(row.receipt?.kind ?? "") || account.source === "leased")) throw new RpcError("credential_handoff_decided", "Release-peer requires this computer's prepared or committed source handoff.");
       const reply = (current: CredentialHandoffRecord, providerCalled: boolean) => {
         const release = current.releasePeer!;
-        const message = release.outcome === "restored" ? `Authority restored for ${account.id}. Apiary must publish the account authority record at epoch ${release.requiredEpoch} before installing or renewing leases.${release.mode === "prepared_abort" ? ` The removed computer may still hold copied refresh material for account ${account.id}; this abort does not sign it out at the provider. The source's next refresh invalidates that copied refresh token.` : ""}`
+        const message = release.outcome === "retained_unusable" ? `The rotated chain for ${account.id} is retained at generation ${release.retainedGeneration}, but access is unusable. Explicit recovery: hive account credentials release-peer ${account.id} --confirm --file authenticated-roster.json --handoff-id ${handoffId} --use-retained-chain --retained-generation ${release.retainedGeneration}. Replaying the previous request makes no provider call.` : release.outcome === "restored" ? `Authority restored for ${account.id}. Apiary must publish the account authority record at epoch ${release.requiredEpoch} before installing or renewing leases.${release.mode === "prepared_abort" ? ` The removed computer may still hold copied refresh material for account ${account.id}; this abort does not sign it out at the provider. The source's next refresh invalidates that copied refresh token.` : ""}`
           : release.outcome === "login_required" ? `Native login required for ${account.id} on this computer. The removed computer ${release.nativeRecovery ? "may still hold" : "still holds"} a working login for account ${account.id} until it is signed out at the provider.`
           : release.retryable ? `The provider did not consume the refresh token for ${account.id}; retry this explicitly confirmed release-peer request with its original roster fact.`
           : `Release-peer outcome is unknown for ${account.id}; retained credential material remains private. Do not retry the provider blindly. Use explicit release-peer --native-recovery for native login only if no saved replacement exists.`;
-        return { account: account.id, handoffId, disposition: release.outcome === "restored" ? release.mode === "prepared_abort" ? "prepared_aborted" : "source_rotated" : release.outcome === "login_required" ? "native_login_required" : "uncertain", abortReceipt: release.outcome === "restored" ? current.receipt : null, outcome: release.outcome, requiredEpoch: release.requiredEpoch, generation: current.generation, expiresAt: current.expiresAt, providerCalled, message, cleanupPending: release.cleanupPending, retryable: release.retryable === true, rotationScheduled: release.earlyRotationPending === true };
+        return { account: account.id, handoffId, disposition: release.outcome === "retained_unusable" ? "retained_unusable" : release.outcome === "restored" ? release.mode === "prepared_abort" ? "prepared_aborted" : "source_rotated" : release.outcome === "login_required" ? "native_login_required" : "uncertain", abortReceipt: release.outcome === "restored" ? current.receipt : null, outcome: release.outcome, requiredEpoch: release.requiredEpoch, generation: current.generation, expiresAt: current.expiresAt, providerCalled, message, cleanupPending: release.cleanupPending, retryable: release.retryable === true, rotationScheduled: release.earlyRotationPending === true, retainedGeneration: release.retainedGeneration ?? null, retainedUnusableCount: release.retainedUnusableCount ?? 0, failureReason: release.failureReason ?? null, cappedRetainedDiscardAvailable: release.failureReason === "retained_unusable_limit" && !release.discardRetainedChain };
       };
       if (params.nativeRecovery === true && row.releasePeer?.outcome !== "uncertain" && !row.releasePeer?.nativeRecovery) throw new RpcError("credential_handoff_decided", "Native recovery is only available after an uncertain release-peer outcome.");
       if (row.releasePeer && ["restored", "login_required"].includes(row.releasePeer.outcome) && !row.releasePeer.cleanupPending) return reply(row, false);
@@ -476,6 +477,12 @@ export class CredentialHandoffService {
         return reply(row, providerCalled);
       } catch {
         if (authority.status(account)?.phase === "login_required" && authority.status(account)?.failure?.outcome === "rejected") return reject();
+        let unusableGeneration: number | null = null;
+        try { unusableGeneration = authority.releasedPeerUnusableGeneration(account, handoffId, row.binding.generation); } catch {}
+        if (unusableGeneration !== null) {
+          row = this.put(row, "committed", { releasePeer: { ...row.releasePeer!, outcome: "retained_unusable", transportGeneration: row.binding.generation, retainedGeneration: unusableGeneration, retainedUnusableCount: 1, retryable: false } });
+          return reply(row, providerCalled);
+        }
         let retryable = false;
         try { retryable = authority.releasedPeerRetryable(account, handoffId); } catch {}
         row = this.put(row, "committed", { releasePeer: { ...row.releasePeer!, outcome: "uncertain", retryable } });
@@ -484,24 +491,42 @@ export class CredentialHandoffService {
     });
   }
 
-  private async releaseDestination(account: AccountRow, original: CredentialHandoffRecord, roster: NonNullable<CredentialHandoffRecord["releasePeer"]>["roster"], nativeRecovery: boolean, useRetainedChain: boolean) {
+  private async releaseDestination(account: AccountRow, original: CredentialHandoffRecord, roster: NonNullable<CredentialHandoffRecord["releasePeer"]>["roster"], nativeRecovery: boolean, useRetainedChain: boolean, retainedGeneration: number | undefined, discardRetainedChain: boolean) {
     let row = original;
-    const firstAttempt = !row.releasePeer;
+    let firstAttempt = !row.releasePeer;
     let providerCalled = false;
     const authority = this.accounts.authorityFor(account)!;
     const reply = () => {
       const release = row.releasePeer!;
-      const holder = release.mode === "destination_holder" || release.mode === "destination_retained_refresh" && release.outcome === "restored";
+      const holder = release.mode === "destination_holder" || ["destination_retained_refresh", "committed_refresh"].includes(release.mode) && release.outcome === "restored";
       return { account: account.id, handoffId: row.handoffId, outcome: release.outcome === "pending" ? "uncertain" : release.outcome,
-        disposition: release.outcome === "uncertain" || release.outcome === "pending" ? "uncertain" : holder ? "destination_holder_retained" : release.mode === "destination_void" ? "destination_shadow_voided" : "destination_native_login_required",
+        disposition: release.outcome === "retained_unusable" ? "retained_unusable" : release.outcome === "uncertain" || release.outcome === "pending" ? "uncertain" : holder ? row.role === "source" ? "source_rotated" : "destination_holder_retained" : release.mode === "destination_void" ? "destination_shadow_voided" : "destination_native_login_required",
         requiredEpoch: release.requiredEpoch, generation: row.generation, expiresAt: row.expiresAt, providerCalled,
-        cleanupPending: release.cleanupPending, abortReceipt: null, retryable: release.retryable === true, rotationScheduled: false,
-        message: release.outcome === "uncertain" || release.outcome === "pending" ? `Retained-chain recovery is uncertain for ${account.id}; no blind provider retry. Preserve the chain and use its explicit recovery result.` : holder ? `This computer already holds account ${account.id}; Apiary must publish its authority record at epoch ${release.requiredEpoch}. No credential material was scrubbed.`
+        cleanupPending: release.cleanupPending, abortReceipt: row.role === "source" && release.outcome === "restored" ? row.receipt : null, retryable: release.retryable === true, rotationScheduled: false, retainedGeneration: release.retainedGeneration ?? null, retainedUnusableCount: release.retainedUnusableCount ?? 0, failureReason: release.failureReason ?? null, cappedRetainedDiscardAvailable: release.failureReason === "retained_unusable_limit" && release.discardRetainedChain !== true,
+        message: release.discardRetainedChain ? `${release.cleanupPending ? "Discard cleanup pending" : "Discarded retained chain"} for account ${account.id}, generation ${release.retainedGeneration}. The provider session behind the discarded chain stays valid until signed out at the provider. Finish cleanup, then native login, identity check and credentials enable on this same account; Apiary must publish epoch ${release.requiredEpoch}.`
+          : release.failureReason === "retained_unusable_limit" ? `Three retained-chain recoveries returned unusable access for ${account.id}; native login is required. The newest chain remains private. Explicit recovery: hive account credentials release-peer ${account.id} --confirm --file authenticated-roster.json --handoff-id ${row.handoffId} --discard-retained-chain. Then native login, identity check and enable on this same row. No further retained-chain rotation is allowed.`
+          : release.outcome === "retained_unusable" ? `The rotated chain for ${account.id} is retained at generation ${release.retainedGeneration}, but access is unusable. Explicit recovery: hive account credentials release-peer ${account.id} --confirm --file authenticated-roster.json --handoff-id ${row.handoffId} --use-retained-chain --retained-generation ${release.retainedGeneration}. Replaying the previous request makes no provider call.`
+          : release.outcome === "uncertain" || release.outcome === "pending" ? `Retained-chain recovery is uncertain for ${account.id}; no blind provider retry. Preserve the chain and use its explicit recovery result.` : holder ? `This computer already holds account ${account.id}; Apiary must publish its authority record at epoch ${release.requiredEpoch}. No credential material was scrubbed.`
           : `Removed source ${row.binding.from.nodeId} released for account ${account.id}. The claim is terminal. ${release.mode === "destination_recovery" ? `The removed computer may still hold a working login for account ${account.id} until signed out at the provider. ` : ""}Use the normal native login, identity check and credentials enable path; Apiary must publish epoch ${release.requiredEpoch}.` };
     };
-    if (row.releasePeer && ["restored", "login_required"].includes(row.releasePeer.outcome) && !row.releasePeer.cleanupPending) return reply();
+    if (nativeRecovery && (row.releasePeer?.outcome === "retained_unusable" || row.releasePeer?.failureReason === "retained_unusable_limit")) throw new RpcError("credential_handoff_decided", "The known retained chain cannot be discarded; follow its explicit retained or native-holder recovery instructions.");
+    if (discardRetainedChain && (row.releasePeer?.failureReason !== "retained_unusable_limit" || (row.releasePeer.retainedUnusableCount ?? 0) < 3)) throw new RpcError("credential_handoff_decided", "Explicit retained discard is available only after three consecutive unusable retained outcomes.");
+    if (row.releasePeer?.failureReason === "retained_unusable_limit" && retainedGeneration !== undefined && retainedGeneration > row.releasePeer.transportGeneration!) throw new RpcError("credential_handoff_decided", "The retained recovery limit requires explicit capped discard, then native login and enable on this same account.");
+    if (row.releasePeer && retainedGeneration !== undefined && retainedGeneration < row.releasePeer.transportGeneration!) return reply();
+    if (row.releasePeer && retainedGeneration !== undefined && row.releasePeer.outcome !== "retained_unusable" && retainedGeneration !== row.releasePeer.transportGeneration) throw new RpcError("credential_handoff_conflict", "Retained recovery generation differs from the durable attempt.");
+    if (row.releasePeer && ["restored", "login_required"].includes(row.releasePeer.outcome) && !row.releasePeer.cleanupPending && !(discardRetainedChain && !row.releasePeer.discardRetainedChain)) return reply();
     this.noRunningBees(account);
     if (row.releasePeer && (row.state !== "committed" || this.store.credentialAuthorityEpoch(account.id) >= row.releasePeer.requiredEpoch)) throw new RpcError("credential_handoff_decided", "A newer authority or recovery superseded this destination release.");
+    if (discardRetainedChain && row.releasePeer?.discardRetainedChain !== true) {
+      if (authority.releasedPeerHasReplacement(account, row.releasePeer!.retainedGeneration!)) throw new RpcError("credential_handoff_decided", "A newer saved chain superseded the capped retained generation; preserve it.");
+      row = this.put(row, "committed", { releasePeer: { ...row.releasePeer!, mode: "destination_recovery", discardRetainedChain: true, outcome: "login_required", cleanupPending: true } });
+    }
+    if (row.releasePeer?.outcome === "retained_unusable") {
+      if (!useRetainedChain || retainedGeneration === undefined || retainedGeneration === row.releasePeer.transportGeneration) return reply();
+      if (retainedGeneration !== row.releasePeer.retainedGeneration || authority.releasedPeerUnusableGeneration(account, row.handoffId, row.releasePeer.transportGeneration!) !== retainedGeneration) throw new RpcError("credential_handoff_conflict", "Fresh retained recovery must name the current saved unusable generation.");
+      row = this.put(row, "committed", { releasePeer: { ...row.releasePeer, transportGeneration: retainedGeneration, retainedGeneration: undefined, outcome: "pending", retryable: false } });
+      firstAttempt = true;
+    }
     if (!row.releasePeer) {
       const current = authority.status(account);
       if (this.store.listCredentialHandoffs().some(other => other.account === account.id && other.handoffId !== row.handoffId && !["aborted", "confirmed", "failed", "adopted", "stood_down"].includes(other.state))) throw new RpcError("credential_handoff_fenced", "Another ownership operation holds this account.");
@@ -509,6 +534,7 @@ export class CredentialHandoffService {
       const holder = row.state === "adopted";
       const uncertain = row.state === "adopting";
       const retained = useRetainedChain && uncertain && current?.phase === "login_required" && current.failure?.error === "invalid_token_response" && authority.releasedPeerHasReplacement(account, row.binding.generation);
+      if (retained && retainedGeneration !== undefined && retainedGeneration !== current!.generation) throw new RpcError("credential_handoff_conflict", "Retained recovery must name the current saved generation.");
       if (useRetainedChain && !retained) throw new RpcError("credential_handoff_decided", "Use-retained-chain requires a known rotated destination chain with malformed expiry.");
       if (!holder && !["prepared", "preparing", "failed", "adopting"].includes(row.state)) throw new RpcError("credential_handoff_decided", "Destination claim is already terminal.");
       if (uncertain && !nativeRecovery && !retained) throw new RpcError("credential_handoff_uncertain", "Destination outcome is unknown; use explicit release-peer --native-recovery only when no saved replacement exists.");
@@ -520,7 +546,7 @@ export class CredentialHandoffService {
       row = this.put(row, "committed", { releasePeer: { roster, requiredEpoch, mode: retained ? "destination_retained_refresh" : holder ? "destination_holder" : uncertain ? "destination_recovery" : "destination_void", outcome: "pending", cleanupPending: !holder && !retained, nativeRecovery, ...(retained ? { transportGeneration: current!.generation } : {}) } });
     }
     let release = row.releasePeer!;
-    if (release.mode === "destination_retained_refresh" && release.outcome !== "login_required") {
+    if (["destination_retained_refresh", "committed_refresh"].includes(release.mode) && release.outcome !== "login_required") {
       if (!useRetainedChain && !nativeRecovery) throw new RpcError("invalid_request", "Repeat retained-chain release with the explicit recovery option.");
       if (nativeRecovery) {
         if (release.outcome !== "uncertain" || authority.releasedPeerRetryable(account, row.handoffId) || authority.releasedPeerHasReplacement(account, release.transportGeneration!)) throw new RpcError("credential_handoff_decided", "Native recovery cannot discard a known replacement or a proven unconsumed retained chain.");
@@ -532,6 +558,15 @@ export class CredentialHandoffService {
         } catch {
           if (authority.status(account)?.phase === "login_required" && authority.status(account)?.failure?.outcome === "rejected") row = this.put(row, "committed", { releasePeer: { ...release, outcome: "login_required", cleanupPending: true } });
           else {
+            let unusableGeneration: number | null = null;
+            try { unusableGeneration = authority.releasedPeerUnusableGeneration(account, row.handoffId, release.transportGeneration!); } catch {}
+            if (unusableGeneration !== null) {
+              const retainedUnusableCount = (release.retainedUnusableCount ?? 0) + 1;
+              const capped = retainedUnusableCount >= 3;
+              row = this.put(row, "committed", { releasePeer: { ...release, outcome: capped ? "login_required" : "retained_unusable", retainedGeneration: unusableGeneration, retainedUnusableCount, retryable: false, cleanupPending: false, ...(capped ? { failureReason: "retained_unusable_limit" as const } : {}) } });
+              if (capped && account.status !== "paused") this.store.setAccountStatus(account.id, "auth_needed", "Three retained-chain recoveries returned unusable access; native login required, retained chain preserved");
+              return reply();
+            }
             let retryable = false;
             try { retryable = authority.releasedPeerRetryable(account, row.handoffId); } catch {}
             row = this.put(row, "committed", { releasePeer: { ...release, outcome: "uncertain", retryable } });
@@ -541,13 +576,14 @@ export class CredentialHandoffService {
       }
       release = row.releasePeer!;
     }
-    if (release.mode !== "destination_holder" && !(release.mode === "destination_retained_refresh" && release.outcome === "restored")) {
+    if (release.mode !== "destination_holder" && !(["destination_retained_refresh", "committed_refresh"].includes(release.mode) && release.outcome === "restored")) {
       try {
         if (release.mode === "destination_recovery" || release.mode === "destination_retained_refresh") { this.accounts.assertNoNewNativeTakeover(account); await this.accounts.scrubHandoff(account); }
         else authority.forgetHandoffAdoption(account);
       } catch { return reply(); }
     }
-    row = { ...row, state: "stood_down", scrubbed: true, releasePeer: { ...release, outcome: release.mode === "destination_holder" || release.mode === "destination_retained_refresh" && release.outcome === "restored" ? "restored" : "login_required", cleanupPending: false } };
+    const restored = release.mode === "destination_holder" || ["destination_retained_refresh", "committed_refresh"].includes(release.mode) && release.outcome === "restored";
+    row = { ...row, state: row.role === "source" && restored ? "aborted" : "stood_down", ...(row.role === "source" && restored ? { receipt: this.signed("aborted", exported(row.binding)) } : {}), scrubbed: !restored, releasePeer: { ...release, outcome: restored ? "restored" : "login_required", cleanupPending: false } };
     this.store.completeCredentialPeerRelease(row);
     return reply();
   }
@@ -736,13 +772,14 @@ export class CredentialHandoffService {
     const row = this.row(name(params.handoffId), params.role === "destination" ? "destination" : "source");
     const result = this.result(row);
     let retainedChainRecoveryAvailable = false;
+    if (row.role === "source" && row.state === "committed" && (row.releasePeer?.retainedUnusableCount ?? 0) > 0 && row.releasePeer?.failureReason !== "retained_unusable_limit") retainedChainRecoveryAvailable = true;
     if (row.role === "destination") {
       const account = this.account(row.account), authority = this.accounts.authorityFor(account)!, state = authority.status(account);
-      if (row.releasePeer?.mode === "destination_retained_refresh" && row.state === "committed") retainedChainRecoveryAvailable = true;
+      if (row.releasePeer?.mode === "destination_retained_refresh" && row.state === "committed" && row.releasePeer.failureReason !== "retained_unusable_limit") retainedChainRecoveryAvailable = true;
       else if (!row.releasePeer && row.state === "adopting" && state?.phase === "login_required" && state.failure?.error === "invalid_token_response") {
         try { retainedChainRecoveryAvailable = authority.releasedPeerHasReplacement(account, row.binding.generation); } catch {}
       }
     }
-    return { ...result, binding: row.binding, retainedChainRecoveryAvailable, receipt: row.receipt?.kind === "export" ? null : result.receipt };
+    return { ...result, binding: row.binding, cappedRetainedDiscardAvailable: row.releasePeer?.failureReason === "retained_unusable_limit" && row.releasePeer.discardRetainedChain !== true && row.state === "committed", scrubbed: row.scrubbed === true, retainedChainRecoveryAvailable, receipt: row.receipt?.kind === "export" ? null : result.receipt };
   }
 }

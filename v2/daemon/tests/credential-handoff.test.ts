@@ -570,7 +570,7 @@ for (const harness of ["claude", "codex", "grok"]) test(`credential handoff ${ha
     console.log(`${harness} 8 standDown scrubs without provider call`);
     const orgId = randomUUID(), genesis = createHash("sha256").update("fixture-genesis").digest("hex"), heads = [createHash("sha256").update("fixture-membership-head").digest("hex")];
     const roster = { orgId, genesis, heads, version: createHash("sha256").update(JSON.stringify([orgId, genesis, heads])).digest("hex"), authorNodeId: from.nodeId, authorCounter: 1, members: [from.nodeId] };
-    type Released = { outcome: string; disposition: string; abortReceipt: CredentialHandoffReceipt | null; requiredEpoch: number; generation: number; message: string; cleanupPending: boolean; providerCalled: boolean; retryable: boolean; rotationScheduled: boolean };
+    type Released = { outcome: string; disposition: string; abortReceipt: CredentialHandoffReceipt | null; requiredEpoch: number; generation: number; message: string; cleanupPending: boolean; providerCalled: boolean; retryable: boolean; rotationScheduled: boolean; retainedGeneration?: number; retainedUnusableCount?: number; failureReason?: string; cappedRetainedDiscardAvailable?: boolean };
     const releaseFixture = async (label: string, leased = false) => {
       const account = await enroll(`release-${label}`), handoffId = randomUUID(), material = await exported(account, handoffId);
       await cb!.request("account.add", { id: account, harness, label: `release-${label}-example.com` });
@@ -612,10 +612,11 @@ for (const harness of ["claude", "codex", "grok"]) test(`credential handoff ${ha
       const providerCount = refreshes.length;
       const authorityPath = join(b.dir, "vault", ".credential-authorities", fixture.account + ".json");
       const saved = state === "adopted" ? readFileSync(authorityPath) : null;
+      if (state === "uncertain") unlinkSync(authorityPath);
       const result: Released = await rpc<Released>(cb, "releasePeer", { ...releaseParams, ...(state === "uncertain" ? { nativeRecovery: true } : {}) });
       assert.equal(result.providerCalled, false); assert.equal(result.cleanupPending, false); assert.equal(result.requiredEpoch, 2);
       assert.equal(result.disposition, state === "adopted" ? "destination_holder_retained" : state === "uncertain" ? "destination_native_login_required" : "destination_shadow_voided");
-      if (saved) { assert.equal(readFileSync(authorityPath).equals(saved), true); assert.equal((await rpc<AccountCredentialAuthority>(cb, "status", { id: fixture.account })).phase, "ready"); }
+      if (saved) { assert.equal((await rpc<{ scrubbed: boolean }>(cb, "handoffStatus", { handoffId: fixture.handoffId, role: "destination" })).scrubbed, false); assert.equal(readFileSync(authorityPath).equals(saved), true); assert.equal((await rpc<AccountCredentialAuthority>(cb, "status", { id: fixture.account })).phase, "ready"); }
       else assert.equal(existsSync(authorityPath), false);
       if (state === "prepared" || state === "failed") {
         const afterRow: MirrorAccountRow = (await cb.request<{ accounts: MirrorAccountRow[] }>("account.list", {})).accounts.find(account => account.id === fixture.account)!;
@@ -630,7 +631,7 @@ for (const harness of ["claude", "codex", "grok"]) test(`credential handoff ${ha
       console.log(`${harness} release-peer destination ${state}: zero provider; terminal claim survives restart and refuses late commit/prepare; holder preserved or shadow voided; epoch+1`);
     }
 
-    if (harness === "grok") for (const recoveryCase of ["success", "rejected", "release-before", "response", "release-save"]) {
+    if (harness === "grok") for (const recoveryCase of ["success", "rejected", "release-before", "response", "release-save", "unusable-again", "unusable-limit"]) {
       const rejected = recoveryCase === "rejected";
       const retainedFixture = await releaseFixture(`destination-retained-${recoveryCase}`);
       terminalExpiry = true;
@@ -643,6 +644,52 @@ for (const harness of ["claude", "codex", "grok"]) test(`credential handoff ${ha
       await refused(() => rpc(cb!, "releasePeer", { ...params, nativeRecovery: true }), "credential_handoff_decided");
       if (rejected) valid.delete(retainedToken);
       const count = refreshes.length;
+      if (recoveryCase.startsWith("unusable-")) {
+        terminalExpiry = true;
+        let bad: Released = await rpc<Released>(cb, "releasePeer", { ...params, useRetainedChain: true });
+        assert.equal(bad.outcome, "retained_unusable"); assert.equal(bad.disposition, "retained_unusable"); assert.equal(bad.retainedUnusableCount, 1);
+        assert.ok(bad.message.includes(`--retained-generation ${bad.retainedGeneration}`));
+        assert.equal(refreshes.length, count + 1);
+        await refused(() => rpc(cb!, "releasePeer", { ...params, discardRetainedChain: true }), "credential_handoff_decided");
+        await rpc(cb, "releasePeer", { ...params, useRetainedChain: true }); assert.equal(refreshes.length, count + 1);
+        await refused(() => rpc(cb!, "releasePeer", { ...params, nativeRecovery: true }), "credential_handoff_decided");
+        if (recoveryCase === "unusable-again") {
+          const freshParams = { ...params, useRetainedChain: true, retainedGeneration: bad.retainedGeneration };
+          const fixed: Released = await rpc<Released>(cb, "releasePeer", freshParams);
+          assert.equal(fixed.outcome, "restored"); assert.equal(refreshes.length, count + 2);
+          await rpc(cb, "releasePeer", freshParams);
+          await rpc(cb, "releasePeer", { ...freshParams, retainedGeneration: retainedDocument.generation });
+          assert.equal(refreshes.length, count + 2);
+          assert.equal(JSON.parse(readFileSync(retainedPath, "utf8")).terminalAccessFailure, undefined);
+          assert.equal((await rpc<{ scrubbed: boolean }>(cb, "handoffStatus", { handoffId: retainedFixture.handoffId, role: "destination" })).scrubbed, false);
+          console.log("grok retained_unusable: saved chain/generation returned, previous request no provider; fresh bound generation rotates once and publishes; older generation replay no provider, holder reports no scrub");
+        } else {
+          for (let attempt = 2; attempt <= 3; attempt++) {
+            terminalExpiry = true;
+            bad = await rpc<Released>(cb, "releasePeer", { ...params, useRetainedChain: true, retainedGeneration: bad.retainedGeneration });
+            assert.equal(bad.retainedUnusableCount, attempt);
+          }
+          assert.equal(bad.outcome, "login_required"); assert.equal(bad.failureReason, "retained_unusable_limit");
+          assert.equal(existsSync(retainedPath), true); assert.ok(bad.message.includes("--discard-retained-chain"));
+          const cappedCalls = refreshes.length;
+          await rpc(cb, "releasePeer", { ...params, useRetainedChain: true });
+          await refused(() => rpc(cb!, "releasePeer", { ...params, useRetainedChain: true, retainedGeneration: bad.retainedGeneration }), "credential_handoff_decided");
+          assert.equal(refreshes.length, cappedCalls);
+          assert.equal((await rpc<{ retainedChainRecoveryAvailable: boolean }>(cb, "handoffStatus", { handoffId: retainedFixture.handoffId, role: "destination" })).retainedChainRecoveryAvailable, false);
+          assert.equal(bad.cappedRetainedDiscardAvailable, true);
+          const discardFile = join(b.dir, "discard-roster.json"); writeFileSync(discardFile, JSON.stringify(destinationRoster));
+          const { stdout } = await promisify(execFile)(process.execPath, [fileURLToPath(new URL("../../cli/src/bin.ts", import.meta.url)), "account", "credentials", "release-peer", retainedFixture.account, "--confirm", "--discard-retained-chain", "--file", discardFile, "--handoff-id", retainedFixture.handoffId, "--data-dir", b.dir, "--json"], { env: { PATH: process.env.PATH, HOME: b.dir, HIVE_NO_KEYCHAIN: "1" } });
+          metadata.push(stdout); const discarded: Released = JSON.parse(stdout);
+          assert.equal(discarded.outcome, "login_required"); assert.equal(discarded.cleanupPending, false); assert.equal(discarded.providerCalled, false);
+          assert.ok(discarded.message.includes("provider session behind the discarded chain stays valid"));
+          assert.equal(existsSync(retainedPath), false); assert.equal(refreshes.length, cappedCalls);
+          const nativeRow: MirrorAccountRow = (await cb.request<{ accounts: MirrorAccountRow[] }>("account.list", {})).accounts.find(account => account.id === retainedFixture.account)!;
+          assert.equal(nativeRow.source, "local"); assert.equal(nativeRow.status, "auth_needed");
+          await rpc(cb, "releasePeer", { ...params, discardRetainedChain: true }); assert.equal(refreshes.length, cappedCalls);
+          console.log("grok retained_unusable cap: three explicit bound failures -> login_required/reason; capped discard refused below limit, real CLI explicitly discards with provider-session warning, same row local/native-login-required, zero provider");
+        }
+        continue;
+      }
       if (!["success", "rejected"].includes(recoveryCase)) {
         writeFileSync(join(b.dir, "crash-gate.json"), JSON.stringify({ phase: recoveryCase, account: retainedFixture.account, generation: retainedDocument.generation }));
         const pending = rpc(cb, "releasePeer", { ...params, useRetainedChain: true }).catch(() => null);
@@ -689,6 +736,38 @@ for (const harness of ["claude", "codex", "grok"]) test(`credential handoff ${ha
     assert.equal(refreshes.length, preparedCalls + 1); assert.equal(valid.has(tokenOf(preparedMaterial)), false);
     assert.equal((await rpc<Released>(ca, "releasePeer", preparedReleaseParams)).disposition, "prepared_aborted");
     console.log(`${harness} release-peer prepared: no commit/provider in abort, chain byte-identical until scheduled next-tick normal rotation; epoch+1; signed abort clears returning shadow and same row accepts higher lease`);
+    if (harness === "grok") for (const capped of [false, true]) {
+      const sourceBad = await releaseFixture(`source-unusable-${capped}`), sourceCalls = refreshes.length;
+      terminalExpiry = true;
+      let bad: Released = await rpc<Released>(ca, "releasePeer", sourceBad.params);
+      assert.equal(bad.outcome, "retained_unusable"); assert.equal(bad.retainedUnusableCount, 1);
+      assert.equal(refreshes.length, sourceCalls + 1);
+      await rpc(ca, "releasePeer", sourceBad.params); assert.equal(refreshes.length, sourceCalls + 1);
+      await refused(() => rpc(ca!, "releasePeer", { ...sourceBad.params, nativeRecovery: true }), "credential_handoff_decided");
+      if (!capped) {
+        const sourceRoster = join(a.dir, "source-retained-roster.json"); writeFileSync(sourceRoster, JSON.stringify(roster));
+        const { stdout } = await promisify(execFile)(process.execPath, [fileURLToPath(new URL("../../cli/src/bin.ts", import.meta.url)), "account", "credentials", "release-peer", sourceBad.account, "--confirm", "--use-retained-chain", "--retained-generation", String(bad.retainedGeneration), "--file", sourceRoster, "--handoff-id", sourceBad.handoffId, "--data-dir", a.dir, "--json"], { env: { PATH: process.env.PATH, HOME: a.dir, HIVE_NO_KEYCHAIN: "1" } });
+        metadata.push(stdout); const fixed: Released = JSON.parse(stdout);
+        assert.equal(fixed.outcome, "restored"); assert.equal(fixed.disposition, "source_rotated"); assert.equal(refreshes.length, sourceCalls + 2);
+        await rpc(cb, "adoptAbort", { handoffId: sourceBad.handoffId, abortReceipt: fixed.abortReceipt });
+        await rpc(ca, "releasePeer", sourceBad.params); assert.equal(refreshes.length, sourceCalls + 2);
+        console.log("grok source retained_unusable: committed refresh retains chain and names recovery; real CLI fresh generation rotates once, signed abort cleans returning shadow, replay no provider");
+      } else {
+        for (let attempt = 2; attempt <= 3; attempt++) {
+          terminalExpiry = true;
+          bad = await rpc<Released>(ca, "releasePeer", { ...sourceBad.params, useRetainedChain: true, retainedGeneration: bad.retainedGeneration });
+          assert.equal(bad.retainedUnusableCount, attempt);
+        }
+        assert.equal(bad.outcome, "login_required"); assert.equal(bad.failureReason, "retained_unusable_limit");
+        const beforeDiscard = refreshes.length;
+        const discarded: Released = await rpc<Released>(ca, "releasePeer", { ...sourceBad.params, discardRetainedChain: true });
+        assert.equal(discarded.outcome, "login_required"); assert.equal(discarded.cleanupPending, false); assert.equal(discarded.providerCalled, false);
+        assert.ok(discarded.message.includes("provider session behind the discarded chain stays valid"));
+        assert.equal((await rpc<AccountCredentialAuthority>(ca, "status", { id: sourceBad.account })).phase, "native");
+        assert.equal(refreshes.length, beforeDiscard);
+        console.log("grok source retained_unusable cap: three defined failures, no fourth rotation; explicit capped discard leaves same row native-login-required with provider-session warning");
+      }
+    }
     const released = await releaseFixture("healthy");
     const beforeRelease = refreshes.length;
     await refused(() => rpc(ca!, "releasePeer", { ...released.params, confirm: false }), "invalid_request");
@@ -764,12 +843,18 @@ for (const harness of ["claude", "codex", "grok"]) test(`credential handoff ${ha
       assert.equal(refreshes.length, before + (phase === "release-before" ? 0 : 1));
       await rpc(ca, "releasePeer", crash.params); assert.equal(refreshes.length, before + (phase === "release-before" ? 0 : 1));
       if (phase !== "release-save") {
+        if (phase === "release-before") {
+          const missingPath = join(a.dir, "vault", ".credential-authorities", crash.account + ".json");
+          writeFileSync(join(a.dir, "vault", ".credential-authorities", crash.account + ".previous.json"), readFileSync(missingPath), { mode: 0o600 });
+          unlinkSync(missingPath);
+        }
         let recovery: Released;
         if (phase === "response") {
           const { stdout } = await promisify(execFile)(process.execPath, [fileURLToPath(new URL("../../cli/src/bin.ts", import.meta.url)), "account", "credentials", "release-peer", crash.account, "--confirm", "--native-recovery", "--file", rosterPath, "--handoff-id", crash.handoffId, "--data-dir", a.dir, "--json"], { env: { PATH: process.env.PATH, HOME: a.dir, HIVE_NO_KEYCHAIN: "1" } });
           metadata.push(stdout); recovery = JSON.parse(stdout) as Released;
         } else recovery = await rpc<Released>(ca, "releasePeer", { ...crash.params, nativeRecovery: true });
-        assert.equal(recovery.outcome, "login_required"); assert.equal(recovery.providerCalled, false);
+        assert.equal(recovery.outcome, "login_required"); assert.equal(recovery.providerCalled, false); assert.equal(recovery.cleanupPending, false);
+        assert.equal(existsSync(join(a.dir, "vault", ".credential-authorities", crash.account + ".previous.json")), false);
         assert.ok(recovery.message.includes(crash.account) && recovery.message.includes("may still hold a working login"));
         assert.equal((await rpc<AccountCredentialAuthority>(ca, "status", { id: crash.account })).phase, "native");
         await rpc(ca, "releasePeer", { ...crash.params, nativeRecovery: true });

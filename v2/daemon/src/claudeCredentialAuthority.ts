@@ -124,10 +124,15 @@ export class CredentialAuthority {
   private forgetPrevious(account: AccountRow): void {
     try { unlinkSync(this.previousPath(account)); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
   }
-  private read(account: AccountRow): AuthorityDocument {
+  private read(account: AccountRow): AuthorityDocument;
+  private read(account: AccountRow, allowMissing: true): AuthorityDocument | null;
+  private read(account: AccountRow, allowMissing = false): AuthorityDocument | null {
     let value: AuthorityDocument;
     try { value = JSON.parse(readFileSync(this.path(account), "utf8")) as AuthorityDocument; }
-    catch { throw new CredentialAuthorityError("Central credential is unavailable; do not import a runtime copy over it."); }
+    catch (error) {
+      if (allowMissing && (error as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw new CredentialAuthorityError("Central credential is unavailable; do not import a runtime copy over it.");
+    }
     if (!Number.isSafeInteger(value.generation) || !this.codec.parse(JSON.stringify(value.document))) {
       throw new CredentialAuthorityError("Central credential is invalid; account recovery is required.");
     }
@@ -403,12 +408,17 @@ export class CredentialAuthority {
   }
 
   releasedPeerRetryable(account: AccountRow, handoffId: string): boolean {
-    const value = this.read(account);
-    return value.releasePeerAttempt?.handoffId === handoffId && value.releasePeerAttempt.retryable === true;
+    const value = this.read(account, true);
+    return value?.releasePeerAttempt?.handoffId === handoffId && value.releasePeerAttempt.retryable === true;
   }
 
   releasedPeerHasReplacement(account: AccountRow, generation: number): boolean {
-    return this.read(account).generation > generation;
+    return (this.read(account, true)?.generation ?? generation) > generation;
+  }
+
+  releasedPeerUnusableGeneration(account: AccountRow, handoffId: string, generation: number): number | null {
+    const value = this.read(account, true);
+    return value?.releasePeerAttempt?.handoffId === handoffId && value.releasePeerAttempt.generation === generation && value.generation > generation && value.accessUsable === false ? value.generation : null;
   }
 
   async rotateReleasedPeer(account: AccountRow, handoffId: string, generation: number, firstAttempt: boolean, onAttempt: () => void): Promise<AccountCredentialAuthority> {
@@ -445,10 +455,7 @@ export class CredentialAuthority {
       this.outcomeUnknown(account, value, attempt.failure);
       throw new CredentialAuthorityError("Peer release outcome is unknown.");
     }
-    if (value.accessUsable === false) {
-      this.outcomeUnknown(account, value, this.interrupted("Peer release returned an unusable access token; replacement material retained", state.failure));
-      throw new CredentialAuthorityError("Peer release replacement material is retained privately.");
-    }
+    if (value.accessUsable === false) return this.retainUnusableAccess(account, value);
     await this.options.publish(account, value.document, true);
     return this.ready(account, value);
   }
