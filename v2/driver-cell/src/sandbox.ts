@@ -60,6 +60,7 @@ export function defaultWritablePaths(home: string = homedir()): string[] {
     join(home, ".cache"),
     join(home, ".npm"),
     join(home, ".bun"),
+    join(home, ".local", "share", "muse"),
     join(home, ".local", "share", "pnpm"),
     join(home, "Library", "Caches"),
   ];

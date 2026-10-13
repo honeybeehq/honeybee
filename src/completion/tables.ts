@@ -64,7 +64,7 @@ function buzAcceptValues(): string[] {
 }
 
 export const BEES = [
-  "agy", "claude", "codex", "opencode", "grok", "pi", "droid", "cursor",
+  "agy", "claude", "codex", "opencode", "grok", "muse", "pi", "droid", "cursor",
   "codex1", "codex2", "codex3", "cc1", "cc2", "cc3",
 ];
 

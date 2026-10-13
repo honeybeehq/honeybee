@@ -7,7 +7,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { agyArgGrammar, claudeArgGrammar, codexArgGrammar, grokArgGrammar, grokSpawnPlan, composeArgv, parseArgUnits, codexSpawnPlan } from "../src/index.ts";
+import { agyArgGrammar, claudeArgGrammar, codexArgGrammar, grokArgGrammar, grokSpawnPlan, composeArgv, parseArgUnits, codexSpawnPlan, museArgGrammar, museSpawnPlan } from "../src/index.ts";
 
 const CLAUDE_BASE = ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose"];
 
@@ -131,4 +131,37 @@ test("args.compose.8: agy preserves repeatable --add-dir values across layers", 
     "--add-dir=/workspace/project",
     "--model", "gemini-3.8-flash-low",
   ]);
+});
+
+test("args.compose.9: muse folds --reasoning-effort onto --effort and de-duplicates -c per key", () => {
+  assert.deepEqual(composeArgv(museArgGrammar, [
+    ["serve", "-c", "context.foreign_personal_rules=false", "--effort", "high"],
+    ["--model", "muse-spark-1.2", "--config", "context.foreign_personal_rules=true", "--yolo"],
+    ["--reasoning-effort=max", "--model", "muse-spark-1.3", "--yolo"],
+  ]), [
+    "serve",
+    "--config", "context.foreign_personal_rules=true",
+    "--yolo",
+    "--reasoning-effort=max",
+    "--model", "muse-spark-1.3",
+  ]);
+});
+
+test("args.compose.10: museSpawnPlan lifts model, effort and approval posture into the protocol", () => {
+  assert.deepEqual(museSpawnPlan(["serve", "--provider", "echo", "--model", "muse-spark-1.3", "--effort", "ultra", "-c", "k=1"]), {
+    argv: ["serve", "--provider", "echo", "-c", "k=1"],
+    model: "muse-spark-1.3",
+    effort: "ultra",
+    approvalMode: "allowAll",
+  });
+  assert.deepEqual(museSpawnPlan(["serve", "--yolo", "--trust-workspace", "--approval-mode", "on-request"]), {
+    argv: ["serve", "--trust-workspace", "--disable-sandbox"],
+    approvalMode: "allowAll",
+  });
+  assert.equal(museSpawnPlan(["serve", "--approval-mode=untrusted"]).approvalMode, "promptUnmatched");
+  assert.equal(museSpawnPlan(["serve", "--approval-mode", "on-request"]).approvalMode, "onRequest");
+  assert.equal(museSpawnPlan(["serve", "--approval-mode", "on-request", "--disable-approval"]).approvalMode, "allowAll");
+  assert.deepEqual(museSpawnPlan(["serve", "--approval-mode", "never"]).argv, ["serve"]);
+  assert.throws(() => museSpawnPlan(["serve", "--effort", "turbo"]), /none\|minimal\|low\|medium\|high\|xhigh\|max\|ultra/);
+  assert.throws(() => museSpawnPlan(["serve", "--approval-mode", "always"]), /never\|on-request\|untrusted/);
 });

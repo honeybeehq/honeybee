@@ -23,7 +23,7 @@ export interface AgentSpecConfig {
    * valued flag overrides an earlier one, boolean flags are idempotent).
    */
   defaultArgs?: string[];
-  /** Adapter name: agy | claude | codex | grok | kimi | stub. Defaults to the agent key itself. */
+  /** Adapter name: agy | claude | codex | grok | kimi | muse | stub. Defaults to the agent key itself. */
   adapter?: string;
   env?: Record<string, string>;
   /**
@@ -317,6 +317,12 @@ export class ConfigError extends Error {
 /** Built-in agent table; a config `agents` entry with the same key overrides it wholesale. */
 export const BUILTIN_AGENTS: Record<string, AgentSpecConfig> = {
   kimi: { command: "kimi", args: ["acp"], adapter: "kimi" },
+  muse: {
+    command: "muse",
+    args: ["serve", "-c", "context.foreign_personal_rules=false", "-c", "context.foreign_personal_skills=false"],
+    adapter: "muse",
+    env: { MUSE_NO_AUTO_UPDATE: "1" },
+  },
   agy: {
     command: "agy",
     args: [

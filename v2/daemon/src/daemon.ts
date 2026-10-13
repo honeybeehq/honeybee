@@ -170,6 +170,9 @@ import {
   grokAdapter,
   kimiAdapter,
   kimiSpawnPlan,
+  museAdapter,
+  museArgGrammar,
+  museSpawnPlan,
   grokArgGrammar,
   grokSpawnPlan,
   codexSpawnPlan,
@@ -316,7 +319,7 @@ import {
   type ViewResult,
 } from "./protocol.ts";
 
-const ADAPTER_NAMES = ["agy", "claude", "codex", "grok", "kimi", "stub"] as const;
+const ADAPTER_NAMES = ["agy", "claude", "codex", "grok", "kimi", "muse", "stub"] as const;
 
 /**
  * Adapter for a bee. `providerSessionId` (bee row, spec 07 §F) selects the
@@ -361,6 +364,8 @@ function adapterFor(
       return stubAdapter;
     case "kimi":
       return kimiAdapter({ cwd, mcpServers: grokMcpServers, ...(providerSessionId ? { resumeSessionId: providerSessionId } : {}) });
+    case "muse":
+      return museAdapter({ cwd, mcpServers: grokMcpServers, ...(providerSessionId ? { resumeSessionId: providerSessionId } : {}) });
     default:
       return null;
   }
@@ -378,6 +383,8 @@ function grammarFor(adapterName: string): ArgGrammar {
       return codexArgGrammar;
     case "grok":
       return grokArgGrammar;
+    case "muse":
+      return museArgGrammar;
     default:
       return NO_GRAMMAR;
   }
@@ -419,6 +426,14 @@ export function composeSpawn(
     const plan = kimiSpawnPlan(composed);
     return {
       adapter: kimiAdapter({ cwd: bee.cwd, model: plan.model, mode: plan.mode, mcpServers: grokMcpServers,
+        ...(bee.providerSessionId ? { resumeSessionId: bee.providerSessionId } : {}) }),
+      args: plan.argv, model: plan.model,
+    };
+  }
+  if (adapterName === "muse") {
+    const plan = museSpawnPlan(composed);
+    return {
+      adapter: museAdapter({ cwd: bee.cwd, model: plan.model, effort: plan.effort, approvalMode: plan.approvalMode, mcpServers: grokMcpServers,
         ...(bee.providerSessionId ? { resumeSessionId: bee.providerSessionId } : {}) }),
       args: plan.argv, model: plan.model,
     };
@@ -1255,7 +1270,7 @@ export class HiveDaemon {
     const spec = this.cfg.agents[bee.agent];
     if (!spec) throw new Error(`resolve: no agent spec for '${bee.agent}'`);
     const adapterName = spec.adapter ?? bee.agent;
-    const grokMcpServers: GrokMcpServerStdio[] = adapterName === "grok" || adapterName === "kimi"
+    const grokMcpServers: GrokMcpServerStdio[] = adapterName === "grok" || adapterName === "kimi" || adapterName === "muse"
       ? liveGateways().map((gateway) => ({
         name: gateway.name,
         command: gateway.shim.command,

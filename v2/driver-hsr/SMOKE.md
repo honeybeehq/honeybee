@@ -11,6 +11,7 @@ npm run v2:smoke -- claude   # real claude from PATH   [--model <m>]
 npm run v2:smoke -- codex    # real codex from PATH    [--model <m>]
 npm run v2:smoke -- grok     # real grok agent stdio   [--model <m>]
 npm run v2:smoke -- agy      # real agy print mode     [--model <m>]
+npm run v2:smoke -- muse     # real muse serve (MSP)   [--model <m>] [--provider echo]
 ```
 
 The runner automates steps 1–5 below and prints a ✓/✗ checklist plus the session-log
@@ -234,3 +235,28 @@ session instead of silently replacing its conversation. Default/plan mode
 cancels tool permission requests; yolo/auto selects a provider-offered
 allow-once option. Interactive choice questions are not yet exposed by the
 v2 adapter contract.
+
+## Muse Code (v2 MSP)
+
+Muse runs as `muse serve`, the Muse Session Protocol (newline-delimited
+JSON-RPC 2.0). The adapter handshakes `initialize` (client name `honeybee`,
+`sessionMcp` requested, `userInputDialogs:false`) → `initialized` →
+`session/start` (or `session/resume` for a recorded session id) and boots idle
+on the result's `session.sessionId`. Mail is `turn/start` with a UUIDv7
+`commandId` derived from the mailbox message id; `ifBusy:"steer"` folds
+mid-turn mail into the running turn. The `turn/start` acknowledgement confirms
+delivery. `turn/started`/`turn/completed` close the turn; `turn/interrupt` is
+the in-band interrupt. `--model`, `--effort` and the approval posture are lifted
+off argv (`museSpawnPlan`): `--yolo` becomes wire `allowAll` plus
+`--disable-sandbox --trust-workspace`. The built-in sets
+`MUSE_NO_AUTO_UPDATE=1` and turns off foreign personal rules and skills with
+`-c context.foreign_personal_*=false` (`serve` has no
+`--no-foreign-personal-context`).
+
+`--provider echo` needs no account: it proves boot, both turns, stop and resume
+offline. For the auth check, run on the default provider with an empty
+`XDG_CONFIG_HOME`: the turn ends `turn/completed {terminal:"failed",
+error:{kind:"authRequired"}}`, which must set `auth_needed`. Quota exhaustion
+arrives as `error.quota {limitKind, resetsAtMs}` and sets `resource_blocked`
+with that reset instant.
+

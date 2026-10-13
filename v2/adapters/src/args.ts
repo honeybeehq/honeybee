@@ -27,6 +27,8 @@
  * Pure functions; the daemon's resolveSpawnSpec is the one caller.
  */
 
+import { MUSE_EFFORTS, type MuseApprovalMode, type MuseEffort } from "./muse.ts";
+
 export interface ArgGrammar {
   /** Flags that take exactly one value (`--model X`, `--model=X`). */
   valueFlags: ReadonlySet<string>;
@@ -282,4 +284,57 @@ export function codexSpawnPlan(argv: readonly string[]): { argv: string[]; model
     out.push(...u.tokens);
   }
   return { argv: out, model, absorbed };
+}
+
+// ---------------------------------------------------------------------------
+// muse
+// ---------------------------------------------------------------------------
+
+/** `muse` flags the composer knows; `-c key=value` is keyed (per key). */
+export const museArgGrammar: ArgGrammar = {
+  valueFlags: new Set(["--model", "--effort", "--provider", "--approval-mode", "--sandbox-network", "--contributor-mode"]),
+  booleanFlags: new Set(["--yolo", "--disable-approval", "--disable-sandbox", "--trust-workspace", "--disable-write", "--disable-shell", "--no-session-log"]),
+  keyedFlags: new Set(["--config"]),
+  aliases: { "--reasoning-effort": "--effort", "-c": "--config" },
+};
+
+const MUSE_CLI_APPROVAL_MODES: Readonly<Record<string, MuseApprovalMode>> = {
+  never: "allowAll",
+  "on-request": "onRequest",
+  untrusted: "promptUnmatched",
+};
+
+/**
+ * `muse serve` takes approval mode, model and effort on the wire, not argv:
+ *   `--model X`                   → session/start `modelId` (session/setModel on resume)
+ *   `--effort|--reasoning-effort` → turn/start `reasoningEffort`
+ *   `--approval-mode never|on-request|untrusted` → allowAll|onRequest|promptUnmatched
+ *   `--disable-approval`          → allowAll (sandbox kept)
+ *   `--yolo`                      → allowAll + `--disable-sandbox --trust-workspace`
+ * Everything else (`serve`, `--provider`, `-c`, sandbox flags) stays on argv.
+ */
+export function museSpawnPlan(argv: readonly string[]): { argv: string[]; model?: string; effort?: MuseEffort; approvalMode: MuseApprovalMode } {
+  const out: string[] = [];
+  let model: string | undefined;
+  let effort: MuseEffort | undefined;
+  let approvalMode: MuseApprovalMode = "allowAll";
+  let yolo = false;
+  for (const u of parseArgUnits(museArgGrammar, argv)) {
+    if (u.flag === "--model" && u.value !== null) model = u.value;
+    else if (u.flag === "--effort" && u.value !== null) {
+      if (!(MUSE_EFFORTS as readonly string[]).includes(u.value)) throw new Error(`Muse --effort must be one of ${MUSE_EFFORTS.join("|")}`);
+      effort = u.value as MuseEffort;
+    } else if (u.flag === "--approval-mode" && u.value !== null) {
+      const mode = MUSE_CLI_APPROVAL_MODES[u.value];
+      if (!mode) throw new Error(`Muse --approval-mode must be one of ${Object.keys(MUSE_CLI_APPROVAL_MODES).join("|")}`);
+      approvalMode = mode;
+    } else if (u.flag === "--disable-approval") approvalMode = "allowAll";
+    else if (u.flag === "--yolo") yolo = true;
+    else out.push(...u.tokens);
+  }
+  if (yolo) {
+    approvalMode = "allowAll";
+    out.push(...["--disable-sandbox", "--trust-workspace"].filter((flag) => !out.includes(flag)));
+  }
+  return { argv: out, ...(model ? { model } : {}), ...(effort ? { effort } : {}), approvalMode };
 }

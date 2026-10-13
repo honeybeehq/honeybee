@@ -52,6 +52,12 @@ test("config.1: absent file resolves to pure defaults (the file may be absent)",
       adapter: "agy",
       env: { AGY_CLI_DISABLE_AUTO_UPDATE: "1" },
     });
+    assert.deepEqual(cfg.agents.muse, {
+      command: "muse",
+      args: ["serve", "-c", "context.foreign_personal_rules=false", "-c", "context.foreign_personal_skills=false"],
+      adapter: "muse",
+      env: { MUSE_NO_AUTO_UPDATE: "1" },
+    });
   });
 });
 

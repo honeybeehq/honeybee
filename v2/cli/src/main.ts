@@ -152,6 +152,7 @@ import { localRepoIdentity, revParse } from "../../driver-cell/src/git.ts";
 import {
   agyArgGrammar,
   claudeArgGrammar,
+  museArgGrammar,
   codexArgGrammar,
   composeArgv,
   parseArgUnits,
@@ -3117,6 +3118,7 @@ function templateHarnessArgs(template: TemplateRow, agent: string, parsed: Parse
     if (agent === "codex") args.push("--dangerously-bypass-approvals-and-sandbox");
     else if (agent === "claude" || agent === "agy") args.push("--dangerously-skip-permissions");
     else if (agent === "grok") args.push("--permission-mode", "bypassPermissions");
+    else if (agent === "muse") args.push("--yolo");
   }
 
   const explicitPreamble = parsed.flags.get("--preamble") as string | undefined;
@@ -4054,6 +4056,7 @@ function grammarForAgent(agent: string): ArgGrammar | null {
   if (agent === "agy") return agyArgGrammar;
   if (agent === "claude") return claudeArgGrammar;
   if (agent === "codex") return codexArgGrammar;
+  if (agent === "muse") return museArgGrammar;
   return null;
 }
 

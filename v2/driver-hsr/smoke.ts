@@ -6,6 +6,7 @@
  *   npm run v2:smoke -- codex  [--model m]   # real codex app-server from PATH
  *   npm run v2:smoke -- grok   [--model m]   # real grok agent stdio from PATH
  *   npm run v2:smoke -- agy    [--model m]   # real agy print mode from PATH
+ *   npm run v2:smoke -- muse   [--model m] [--provider echo]  # real muse serve from PATH
  *
  * Spawns ONE real bee (plus one short-lived boot-delivery bee), runs two short
  * turns, stops it, and prints a ✓/✗ checklist. Delivery uses daemon semantics:
@@ -18,16 +19,18 @@ import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { HsrDriver, type SpawnSpec } from "./src/index.ts";
-import { agyAdapter, claudeAdapter, codexAdapter, grokAdapter, grokSpawnPlan, stubAdapter } from "../adapters/src/index.ts";
+import { agyAdapter, claudeAdapter, codexAdapter, grokAdapter, grokSpawnPlan, museAdapter, museSpawnPlan, stubAdapter } from "../adapters/src/index.ts";
 import type { DeliverOutcome, DriverObservation } from "../harness/src/driver.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const harness = process.argv[2];
 const modelFlag = process.argv.indexOf("--model");
 const model = modelFlag > 0 ? process.argv[modelFlag + 1] : undefined;
+const providerFlag = process.argv.indexOf("--provider");
+const provider = providerFlag > 0 ? process.argv[providerFlag + 1] : undefined;
 
-if (!harness || !["stub", "agy", "claude", "codex", "grok"].includes(harness)) {
-  console.error("usage: npm run v2:smoke -- <stub|agy|claude|codex|grok> [--model <m>]");
+if (!harness || !["stub", "agy", "claude", "codex", "grok", "muse"].includes(harness)) {
+  console.error("usage: npm run v2:smoke -- <stub|agy|claude|codex|grok|muse> [--model <m>] [--provider <p>]");
   process.exit(2);
 }
 
@@ -87,6 +90,20 @@ function specFor(): SpawnSpec {
         args: planned.argv,
         cwd,
         env: { ...(process.env as Record<string, string>), GROK_HOME: home },
+      };
+    }
+    case "muse": {
+      const planned = museSpawnPlan([
+        "serve", "-c", "context.foreign_personal_rules=false", "-c", "context.foreign_personal_skills=false",
+        ...(provider ? ["--provider", provider] : []),
+        ...(model ? ["--model", model] : []),
+      ]);
+      return {
+        adapter: museAdapter({ cwd, ...(planned.model ? { model: planned.model } : {}), approvalMode: planned.approvalMode }),
+        command: "muse",
+        args: planned.argv,
+        cwd,
+        env: { ...(process.env as Record<string, string>), MUSE_NO_AUTO_UPDATE: "1" },
       };
     }
     default:
