@@ -6,6 +6,7 @@ import { test } from "node:test";
 import { GatewayMcpSeedLockError, seedGatewayMcp } from "../../../src/accounts/gatewayMcpSeed.ts";
 import { FileLockReleaseError, withFileLock } from "../../../src/lock.ts";
 import { activationFailureName } from "../src/daemon.ts";
+import { RpcError } from "../src/protocol.ts";
 
 test("gateway lock timeout identifies the blocked stage safely, then the real seeder recovers", async () => {
   const home = await mkdtemp(join(tmpdir(), "hb-activation-private-home-"));
@@ -44,4 +45,7 @@ test("activation diagnostics never format arbitrary error text, names, or codes"
   assert.equal(activationFailureName(Object.assign(new Error("private"), { code: "EACCES" })), "Error(EACCES)");
   const releaseError = new GatewayMcpSeedLockError(new FileLockReleaseError({ cause: error }));
   assert.equal(activationFailureName(releaseError), "stage=gateway_mcp_lock operation=release code=FILE_LOCK_RELEASE_FAILED");
+  const foreign = "account codex-machine's home /srv/codex is outside Honeybee's account homes (/var/homes); Honeybee never writes into a home it does not own.";
+  assert.equal(activationFailureName(new RpcError("login_method_unsupported", foreign)), foreign);
+  assert.equal(activationFailureName(new RpcError("account_unavailable", "fixture-secret message")), "Error");
 });

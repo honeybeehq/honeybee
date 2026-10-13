@@ -570,6 +570,7 @@ const SYSTEM_ERROR_CODES = new Set([...getSystemErrorMap().values()].map(([name]
 
 export function activationFailureName(error: unknown): string {
   if (error instanceof GatewayMcpSeedLockError) return error.diagnostic;
+  if (error instanceof RpcError && error.code === "login_method_unsupported") return error.message;
   if (!(error instanceof Error)) return "unknown_error";
   const code = (error as NodeJS.ErrnoException).code;
   // Both name and code are writable strings on arbitrary errors. Only emit
@@ -2618,6 +2619,7 @@ export class HiveDaemon {
       }
       const readiness = this.accounts?.readiness(account) ?? { ready: true as const };
       if (!readiness.ready) throw new RpcError(readiness.code, readiness.message, { account: account.id });
+      this.accounts?.assertOwnedHome(account, "writes into");
       const breach = this.accounts?.weeklyCeilingBreach(account, this.modelParamOf(params, agent)) ?? null;
       if (breach) {
         throw new RpcError("account_unavailable", `${describeWeeklyCeilingBreach(account.id, breach)}; raise it with: hive account ceiling ${account.id} <percent|off>`);

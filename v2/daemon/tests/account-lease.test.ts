@@ -28,7 +28,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir, homedir } from "node:os";
 import { join } from "node:path";
 import { openCoreStore, parseClaudeCredentials, type CoreStore } from "../../core/src/index.ts";
@@ -1103,6 +1103,41 @@ test("central.claude: idle local runtime does not block rotation; leases and run
     assert.equal(r.store.currentRuntime(bee.id)!.state, "idle");
     assert.equal(svc.homeEnvOf(account).CLAUDE_CODE_OAUTH_TOKEN, "");
     assert.equal(svc.centralCredentials.status(account)!.generation, 3);
+  } finally { r.cleanup(); }
+});
+
+test("central.foreign-home: a central authority never enrolls or publishes into a home outside homesDir", async () => {
+  const r = rig();
+  try {
+    let refreshes = 0;
+    let keychainWrites = 0;
+    const svc = service(r, { keychainWriter: async () => { keychainWrites += 1; return true; }, fetchers: { claudeRefresh: async () => {
+      refreshes += 1;
+      return granted({ accessToken: "enrolled", refreshToken: CLAUDE_ENROLLED_REFRESH, expiresAt: r.now() + 8 * HOUR });
+    } } });
+    const refusal = (err: unknown) => (err as { code?: string }).code === "login_method_unsupported"
+      && /is outside Honeybee's account homes \(.*homes\); Honeybee never publishes credentials into a home it does not own\.$/.test((err as Error).message);
+    const foreignHome = join(r.dir, "machine-claude-home");
+    mkdirSync(foreignHome, { recursive: true });
+    writeFileSync(join(foreignHome, ".credentials.json"), nativeDocument(r));
+    const fresh = r.store.createAccount({ id: "claude-machine", harness: "claude", homePath: foreignHome, label: "machine" });
+    await assert.rejects(svc.centralCredentials.enable(fresh), refusal);
+    assert.equal(refreshes, 0, "nothing is rotated for a foreign home");
+    assert.equal(svc.centralCredentials.enabled(fresh), false);
+
+    const account = addAccount(r, "claude", "moved", { home: { ".credentials.json": nativeDocument(r) } });
+    assert.equal((await svc.centralCredentials.enable(account)).phase, "ready");
+    const writesBefore = keychainWrites;
+    const movedHome = join(r.dir, "moved-claude-home");
+    mkdirSync(movedHome, { recursive: true });
+    writeFileSync(join(movedHome, ".credentials.json"), "operator-copy");
+    const moved = r.store.updateAccountFields(account.id, { homePath: movedHome }).account;
+    await assert.rejects(svc.centralCredentials.scrubHandoff(moved), refusal);
+    await assert.rejects(svc.activateForSpawn(moved, { cwd: "/tmp/work" }), (err: unknown) => (err as { code?: string }).code === "login_method_unsupported");
+    assert.deepEqual(readdirSync(movedHome), [".credentials.json"]);
+    assert.equal(readFileSync(join(movedHome, ".credentials.json"), "utf8"), "operator-copy");
+    assert.equal(readFileSync(join(foreignHome, ".credentials.json"), "utf8"), nativeDocument(r));
+    assert.equal(keychainWrites, writesBefore, "no keychain publication for the moved home");
   } finally { r.cleanup(); }
 });
 

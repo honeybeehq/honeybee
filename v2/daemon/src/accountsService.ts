@@ -976,6 +976,7 @@ export class AccountsService {
       log: this.log, retryBaseMs: this.cfg.accounts.centralRefreshRetryBaseMs, earlyRefreshMinIntervalMs: this.cfg.accounts.centralRefreshMinIntervalMs,
       beforeEnroll: account => {
         this.assertLocalAccount(account);
+        this.assertOwnedHome(account, "publishes credentials into");
         this.store.assertNoUpdateReservation();
         if (this.refreshBusy(account) || this.leaseMints.has(account.id) || this.nativeKeychainSeeds.has(account.id)) throw new CredentialAuthorityError("A native credential refresh is in progress; retry enrollment shortly.");
       },
@@ -989,6 +990,7 @@ export class AccountsService {
       // Native rotation's protocol: under Claude Code's credential locks, the vault and the Keychain item
       // (merged into, never replaced) before the home file whose mtime tells a running Claude to re-read.
       publish: async (account, document, accessOnly) => {
+        this.assertOwnedHome(account, "publishes credentials into");
         const locked = await withClaudeRefreshLockWithin(account.homePath, CENTRAL_PUBLISH_LOCK_WAIT_MS, async () => {
           const state = await inspectCentralCopies(account, document);
           const published = (accessOnly ? blankRefreshTokens(document) : document) as Record<string, unknown>;
@@ -1016,6 +1018,7 @@ export class AccountsService {
       log: this.log, retryBaseMs: this.cfg.accounts.centralRefreshRetryBaseMs, earlyRefreshMinIntervalMs: this.cfg.accounts.centralRefreshMinIntervalMs,
       beforeEnroll: account => {
         this.assertLocalAccount(account);
+        this.assertOwnedHome(account, "publishes credentials into");
         this.store.assertNoUpdateReservation();
         if (this.refreshBusy(account) || this.leaseMints.has(account.id)) throw new CredentialAuthorityError("A native credential refresh is in progress; retry enrollment shortly.");
       },
@@ -1027,6 +1030,7 @@ export class AccountsService {
       identify: async () => null,
       homeIdentity: () => null,
       publish: async (account, document, accessOnly) => {
+        this.assertOwnedHome(account, "publishes credentials into");
         inspectCodexCopies(account, document);
         const published = (accessOnly ? blankRefreshTokens(document) : document) as Record<string, unknown>;
         const raw = JSON.stringify({ ...published, OPENAI_API_KEY: null });
@@ -1068,6 +1072,7 @@ export class AccountsService {
       log: this.log, retryBaseMs: this.cfg.accounts.centralRefreshRetryBaseMs, earlyRefreshMinIntervalMs: this.cfg.accounts.centralRefreshMinIntervalMs,
       beforeEnroll: account => {
         this.assertLocalAccount(account);
+        this.assertOwnedHome(account, "publishes credentials into");
         this.store.assertNoUpdateReservation();
         if (this.refreshBusy(account) || this.leaseMints.has(account.id)) throw new CredentialAuthorityError("A native credential refresh is in progress; retry enrollment shortly.");
       },
@@ -1079,6 +1084,7 @@ export class AccountsService {
       identify: async () => null,
       homeIdentity: () => null,
       publish: async (account, document, accessOnly) => {
+        this.assertOwnedHome(account, "publishes credentials into");
         inspectGrokCopies(account, document);
         const published = accessOnly ? grokAccessOnly(document) : document;
         const raw = JSON.stringify(published);
@@ -1585,6 +1591,15 @@ export class AccountsService {
     return `account ${account.id}'s home ${account.homePath} is outside Honeybee's account homes (${this.cfg.accounts.homesDir}); Honeybee never ${what} a home it does not own.`;
   }
 
+  ownedHomeRefusal(account: AccountRow, what: string): string | null {
+    return this.isNative(account) ? null : this.foreignHomeRefusal(account, what);
+  }
+
+  assertOwnedHome(account: AccountRow, what: string): void {
+    const foreign = this.ownedHomeRefusal(account, what);
+    if (foreign) throw new RpcError("login_method_unsupported", foreign);
+  }
+
   private nativeSignInMessage(account: AccountRow, what: string): string {
     const signIn = this.nativeRecipe(account.harness)?.signIn;
     return `account ${account.id} ${what}.${signIn ? ` ${signIn}` : ""}`;
@@ -1694,7 +1709,7 @@ export class AccountsService {
 
   /** Usable for automatic selection: not paused, not auth_needed, credential present and not expired. */
   private usableForSelection(account: AccountRow): boolean {
-    return account.status === "ok" && (!this.isolationRefusal(account.harness) || this.isNative(account)) && !this.nativeHomeRefusal(account) && this.credentialState(account) === "present";
+    return account.status === "ok" && (!this.isolationRefusal(account.harness) || this.isNative(account)) && !this.nativeHomeRefusal(account) && !this.ownedHomeRefusal(account, "writes into") && this.credentialState(account) === "present";
   }
 
   /**
@@ -2184,6 +2199,7 @@ export class AccountsService {
     for (const account of pool) {
       const credential = this.credentialState(account);
       if (credential === "absent") continue;
+      if (this.ownedHomeRefusal(account, "writes into")) { unusable.push({ account, why: "home outside Honeybee's account homes" }); continue; }
       if (account.status === "auth_needed") { unusable.push({ account, why: "recent auth failure" }); continue; }
       if (credential !== "present") { unusable.push({ account, why: `${credential} credential` }); continue; }
       usable += 1;
@@ -3582,6 +3598,7 @@ export class AccountsService {
       if (moved) throw new Error(moved);
       return { activated: false, copied: [], reason: "home_populated" };
     }
+    this.assertOwnedHome(account, "writes into");
     const unisolated = this.isolationRefusal(account.harness);
     if (unisolated) throw new Error(unisolated);
     if (this.authorityFor(account)?.enabled(account)) {

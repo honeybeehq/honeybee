@@ -1294,6 +1294,54 @@ test("accounts.foreign-home: capture, config import, backup restore and adoption
   }
 });
 
+test("accounts.foreign-home.activation: the vault is never copied into an empty home outside homesDir; auto selection skips it and homes inside it still activate", async () => {
+  const r = rig();
+  try {
+    let seeds = 0;
+    const svc = service(r, { gatewayMcpSeeder: async () => { seeds += 1; return { status: "seeded", written: [] }; } });
+    const foreignHome = join(r.dir, "machine-codex-home");
+    const foreign = r.store.createAccount({ id: "codex-machine", harness: "codex", homePath: foreignHome, label: "machine" });
+    seedVault(r, "codex", foreign.id, { "auth.json": JSON.stringify({ tokens: { access_token: "vault", refresh_token: "r", id_token: "i", account_id: "a" } }) });
+    await assert.rejects(svc.activateForSpawn(foreign, { cwd: "/tmp/work" }), (err: unknown) =>
+      (err as { code?: string }).code === "login_method_unsupported"
+      && /^account codex-machine's home .*machine-codex-home is outside Honeybee's account homes \(.*homes\); Honeybee never writes into a home it does not own\.$/.test((err as Error).message));
+    assert.equal(existsSync(foreignHome), false, "the foreign home is never created");
+    assert.equal(seeds, 0);
+    const pick = svc.pick("codex");
+    assert.equal(pick.ok, false, "the foreign account is not picked automatically");
+    assert.match((pick as { message: string }).message, /codex-machine: home outside Honeybee's account homes/);
+    const owned = addAccount(r, "codex", "owned", { vault: { "auth.json": JSON.stringify({ tokens: { access_token: "vault", refresh_token: "r", id_token: "i", account_id: "a" } }) } });
+    assert.equal((await svc.activateForSpawn(owned, { cwd: "/tmp/work" })).activated, true);
+    assert.ok(existsSync(join(owned.homePath, "auth.json")));
+    assert.equal(seeds, 1);
+  } finally {
+    r.cleanup();
+  }
+});
+
+test("accounts.foreign-home.gateways: gateway MCP config is never seeded into a populated home outside homesDir; a populated home inside it still converges", async () => {
+  const r = rig();
+  try {
+    const seeded: string[] = [];
+    const svc = service(r, { gatewayMcpSeeder: async (homePath) => { seeded.push(homePath); return { status: "seeded", written: ["config.toml"] }; } });
+    const foreignHome = join(r.dir, "machine-codex-home");
+    writeAt(join(foreignHome, "auth.json"), JSON.stringify({ tokens: { access_token: "home", refresh_token: "r", id_token: "i", account_id: "a" } }));
+    writeAt(join(foreignHome, "config.toml"), 'model = "operator-model"\n');
+    const foreign = r.store.createAccount({ id: "codex-machine", harness: "codex", homePath: foreignHome, label: "machine" });
+    const before = readdirSync(foreignHome).map((name) => [name, readFileSync(join(foreignHome, name), "utf8")]);
+    await assert.rejects(svc.activateForSpawn(foreign, { cwd: "/tmp/work" }), (err: unknown) =>
+      (err as { code?: string }).code === "login_method_unsupported" && /Honeybee never writes into a home it does not own/.test((err as Error).message));
+    assert.deepEqual(seeded, [], "the gateway seeder never runs for the foreign home");
+    assert.deepEqual(readdirSync(foreignHome).map((name) => [name, readFileSync(join(foreignHome, name), "utf8")]), before);
+    const owned = addAccount(r, "codex", "owned");
+    writeAt(join(owned.homePath, "auth.json"), JSON.stringify({ tokens: { access_token: "home", refresh_token: "r", id_token: "i", account_id: "a" } }));
+    assert.equal((await svc.activateForSpawn(owned, { cwd: "/tmp/work" })).reason, "home_populated");
+    assert.deepEqual(seeded, [owned.homePath]);
+  } finally {
+    r.cleanup();
+  }
+});
+
 test("muse.native.env: a native bee's own env cannot redirect where Muse finds its login or config; other accounts keep theirs", () => {
   const r = rig();
   try {

@@ -51,7 +51,7 @@ function fixture(mode: Mode, accounts: number, run: (store: CoreStore, svc: Acco
     } }));
     store = openCoreStore(join(dir, "core.sqlite3"), { now: () => now, ephemeral: true });
     for (let i = 0; i < accounts; i += 1) {
-      store.createAccount({ id: `a${i}`, harness: "fixture", homePath: join(dir, `a${i}`), label: `a${i}` });
+      store.createAccount({ id: `a${i}`, harness: "fixture", homePath: join(dir, "homes", `a${i}`), label: `a${i}` });
       store.putAccountLimits(`a${i}`, { readable: true, fetchedAt: now,
         fiveHour: { usedPercent: 5, resetsAt: now + 4 * HOUR, windowMinutes: 300 },
         weekly: { usedPercent: 5, resetsAt: now + 144 * HOUR, windowMinutes: 10_080 } });
