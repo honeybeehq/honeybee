@@ -3,7 +3,7 @@
  * a real daemon, tmux seat, or cell stay serial. Cross-file parallelism of the
  * process-spawning group flaked the deploy gate (2026-08-19).
  */
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -49,6 +49,32 @@ const requestedFiles = forwarded.filter((arg) => /\.test\.ts$/.test(arg));
 const nodeArgs = forwarded.filter((arg) => !requestedFiles.includes(arg));
 const unitConcurrency = process.env.HIVE_TEST_CONCURRENCY?.trim() || "8";
 const reporter = process.env.HIVE_TEST_REPORTER?.trim();
+const fileTimeoutMs = Number(process.env.HIVE_TEST_FILE_TIMEOUT_MS ?? 600_000);
+if (!Number.isSafeInteger(fileTimeoutMs) || fileTimeoutMs <= 0) throw new Error("HIVE_TEST_FILE_TIMEOUT_MS must be a positive integer");
+
+function captureDescendants(pid) {
+  const rows = execFileSync("ps", ["-axo", "pid=,ppid=,lstart="], { encoding: "utf8" }).trim().split("\n").map(line => {
+    const fields = line.trim().split(/\s+/);
+    return { pid: Number(fields[0]), parent: Number(fields[1]), birth: fields.slice(2).join(" ") };
+  });
+  const owned = new Set([pid]);
+  for (;;) {
+    const before = owned.size;
+    for (const row of rows) if (owned.has(row.parent)) owned.add(row.pid);
+    if (owned.size === before) break;
+  }
+  return rows.filter(row => owned.has(row.pid));
+}
+
+function killCapturedDescendants(rows) {
+  for (const row of rows.reverse()) {
+    try {
+      if (execFileSync("ps", ["-p", String(row.pid), "-o", "lstart="], { encoding: "utf8" }).trim().replace(/\s+/g, " ") === row.birth) process.kill(row.pid, "SIGKILL");
+    } catch (error) {
+      if (error?.code !== "ESRCH" && !error?.status) throw error;
+    }
+  }
+}
 
 async function runGroup(files, concurrency, extraArgs = []) {
   if (files.length === 0) return 0;
@@ -70,24 +96,35 @@ async function runGroup(files, concurrency, extraArgs = []) {
     },
   );
 
+  let timedOut = false;
   let requestedSignal;
   let termination;
   const forwardSignal = (signal) => {
     requestedSignal ??= signal;
-    termination ??= terminateTestProcessTree(child, signal);
+    if (!termination) {
+      const descendants = process.platform === "win32" ? [] : captureDescendants(child.pid);
+      termination = terminateTestProcessTree(child, signal).finally(() => killCapturedDescendants(descendants));
+    }
   };
   const forwardInterrupt = () => forwardSignal("SIGINT");
   const forwardTermination = () => forwardSignal("SIGTERM");
   process.once("SIGINT", forwardInterrupt);
   process.once("SIGTERM", forwardTermination);
+  const deadline = setTimeout(() => {
+    timedOut = true;
+    console.error(`v2 daemon test file deadline (${fileTimeoutMs}ms): ${files.join(", ")}`);
+    forwardSignal("SIGTERM");
+  }, fileTimeoutMs);
   const result = await new Promise((resolveExit) => {
     child.once("error", (error) => resolveExit({ error }));
     child.once("exit", (code, signal) => resolveExit({ code, signal }));
   });
+  clearTimeout(deadline);
   process.removeListener("SIGINT", forwardInterrupt);
   process.removeListener("SIGTERM", forwardTermination);
   if (termination) await termination;
   if (result.error) throw result.error;
+  if (timedOut) return 124;
   if (requestedSignal) return signalExitCode(requestedSignal);
   if (result.signal) {
     await terminateTestProcessTree(child, result.signal);
@@ -96,16 +133,24 @@ async function runGroup(files, concurrency, extraArgs = []) {
   return result.code ?? 1;
 }
 
+async function runSerial(files) {
+  for (const file of files) {
+    const result = await runGroup([file], "1");
+    if (result) return result;
+  }
+  return 0;
+}
+
 if (requestedFiles.length > 0) {
   const unknown = requestedFiles.filter((path) => !daemonTests.includes(path) && !cliTests.includes(path));
   if (unknown.length > 0) throw new Error(`unknown v2 daemon/cli test file: ${unknown.join(", ")}`);
   const unit = requestedFiles.filter((path) => UNIT_FILES.has(path));
   const serial = requestedFiles.filter((path) => !UNIT_FILES.has(path));
   const unitResult = await runGroup(unit, unitConcurrency, ["--test-isolation=none"]);
-  const intResult = await runGroup(serial, "1");
+  const intResult = await runSerial(serial);
   process.exitCode = unitResult || intResult;
 } else {
   const unitResult = await runGroup(unitFiles, unitConcurrency, ["--test-isolation=none"]);
-  const intResult = await runGroup(intFiles, "1");
+  const intResult = await runSerial(intFiles);
   process.exitCode = unitResult || intResult;
 }

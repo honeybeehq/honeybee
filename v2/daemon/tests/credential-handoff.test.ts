@@ -12,7 +12,7 @@ import { DatabaseSync } from "node:sqlite";
 import type { AccountCredentialAuthority, CredentialHandoffReceipt, MirrorAccountRow } from "../../core/src/index.ts";
 import { RpcClient } from "../../cli/src/client.ts";
 import { RpcError, type RpcVerb, type ViewResult } from "../src/protocol.ts";
-import { makeDaemonDir, startDaemon, waitFor as waitForState, type DaemonHandle } from "./helpers.ts";
+import { forceStopTestDaemon, makeDaemonDir, startDaemon, waitFor as waitForState, type DaemonHandle } from "./helpers.ts";
 
 type Exported = { receipt: CredentialHandoffReceipt; material: { generation: number; document: Record<string, unknown> } };
 type Result = { handoffId: string; state: string; receipt: CredentialHandoffReceipt; generation: number; expiresAt: number };
@@ -28,7 +28,7 @@ function waitFor<T>(fn: () => Promise<T | null | undefined | false> | T | null |
   return waitForState(fn, what, 30_000);
 }
 
-for (const harness of ["claude", "codex", "grok"]) test(`credential handoff ${harness}: two isolated daemons, durable prepare/commit, rotation, scrub, abort, TTL, replay and failures`, async () => {
+for (const harness of ["claude", "codex", "grok"]) test(`credential handoff ${harness}: two isolated daemons, durable prepare/commit, rotation, scrub, abort, TTL, replay and failures`, { timeout: 180_000 }, async t => {
   const a = makeDaemonDir({ accounts: { centralRefreshAheadMs: 0, centralRefreshRetryBaseMs: 60_000 } });
   const b = makeDaemonDir({ accounts: { centralRefreshAheadMs: 0, centralRefreshRetryBaseMs: 60_000 } });
   const valid = new Set<string>(), secrets: string[] = [], refreshes: string[] = [], metadata: unknown[] = [];
@@ -60,6 +60,17 @@ for (const harness of ["claude", "codex", "grok"]) test(`credential handoff ${ha
   await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
   const endpoint = `http://127.0.0.1:${(server.address() as AddressInfo).port}/token`;
   let da: DaemonHandle | null = null, db: DaemonHandle | null = null, ca: RpcClient | null = null, cb: RpcClient | null = null;
+  let cleanupPromise: Promise<void> | undefined;
+  const cleanup = () => cleanupPromise ??= (async () => {
+    ca?.close(); cb?.close();
+    const stopped = await Promise.allSettled([da && forceStopTestDaemon(da), db && forceStopTestDaemon(db)]);
+    server.closeAllConnections();
+    await new Promise<void>(resolve => server.close(() => resolve()));
+    a.cleanup(); b.cleanup();
+    for (const result of stopped) if (result.status === "rejected") throw result.reason;
+  })();
+  t.after(cleanup);
+  t.signal.addEventListener("abort", () => { void cleanup().catch(() => {}); }, { once: true });
   const env = (dir: string) => {
     const preload = join(dir, "no-provider.mjs");
     writeFileSync(preload, `import fs from 'node:fs';import{syncBuiltinESMExports}from'node:module';import{join}from'node:path';import{DatabaseSync}from'node:sqlite';const dbprepare=DatabaseSync.prototype.prepare;DatabaseSync.prototype.prepare=function(sql){const stmt=dbprepare.call(this,sql);if(sql.includes("VALUES('credential_handoff_identity'")){const run=stmt.run.bind(stmt);stmt.run=(...args)=>{const root=${JSON.stringify(dir)};const gate=join(root,'crash-gate.json');const rule=fs.existsSync(gate)?JSON.parse(fs.readFileSync(gate,'utf8')):null;if(rule&&rule.phase==='identity'){fs.writeFileSync(join(root,'crash-stopped'),'');process.kill(process.pid,'SIGSTOP');}return run(...args);};}return stmt;};const dbexec=DatabaseSync.prototype.exec;DatabaseSync.prototype.exec=function(sql){const result=dbexec.call(this,sql);const root=${JSON.stringify(dir)};const gate=join(root,'crash-gate.json');const rule=fs.existsSync(gate)?JSON.parse(fs.readFileSync(gate,'utf8')):null;if(rule&&rule.phase==='standdown'&&sql==='PRAGMA wal_checkpoint(FULL)'){fs.writeFileSync(join(root,'crash-stopped'),'');process.kill(process.pid,'SIGSTOP');}return result;};const f=globalThis.fetch;globalThis.fetch=async(url,o)=>{if(String(url).startsWith('http://127.0.0.1:')){{const earlyRoot=${JSON.stringify(dir)},earlyGate=join(earlyRoot,'crash-gate.json');if(fs.existsSync(earlyGate)&&JSON.parse(fs.readFileSync(earlyGate,'utf8')).phase==='early-release'){fs.writeFileSync(join(earlyRoot,'early-rotation-waiting'),'');while(fs.existsSync(earlyGate))await new Promise(r=>setTimeout(r,10));}}const response=await f(url,o);const root=${JSON.stringify(dir)};const gate=join(root,'crash-gate.json');const rule=fs.existsSync(gate)?JSON.parse(fs.readFileSync(gate,'utf8')):null;if(rule&&rule.phase==='response'){fs.writeFileSync(join(root,'crash-stopped'),'');process.kill(process.pid,'SIGSTOP');}return response;}throw new Error('External provider forbidden in isolated handoff');};const rename=fs.renameSync;fs.renameSync=(a,b)=>{const root=${JSON.stringify(dir)};const gate=join(root,'crash-gate.json');const rule=fs.existsSync(gate)?JSON.parse(fs.readFileSync(gate,'utf8')):null;if(rule&&rule.phase==='preparing'&&String(b).endsWith('/'+rule.account+'.json')){const value=JSON.parse(fs.readFileSync(a,'utf8'));if(value.generation===rule.generation){fs.writeFileSync(join(root,'crash-stopped'),'');process.kill(process.pid,'SIGSTOP');}}rename(a,b);if(rule&&rule.phase==='release-before'&&String(b).endsWith('/'+rule.account+'.json')){const value=JSON.parse(fs.readFileSync(b,'utf8'));if(value.releasePeerAttempt&&value.generation===rule.generation){fs.writeFileSync(join(root,'crash-stopped'),'');process.kill(process.pid,'SIGSTOP');}}if(rule&&rule.phase==='keyrotate'&&String(b).endsWith('/handoff-signing-key.pem')){fs.writeFileSync(join(root,'crash-stopped'),'');process.kill(process.pid,'SIGSTOP');}if(rule&&rule.phase!=='preparing'&&String(b).endsWith('/'+rule.account+'.json')){const value=JSON.parse(fs.readFileSync(b,'utf8'));if(value.generation>rule.generation){fs.writeFileSync(join(root,'crash-stopped'),'');process.kill(process.pid,'SIGSTOP');}}};syncBuiltinESMExports();`);
@@ -908,10 +919,6 @@ for (const harness of ["claude", "codex", "grok"]) test(`credential handoff ${ha
     assert.ok(secrets.every(secret => blobs.every(blob => !blob.includes(Buffer.from(secret)))), "logs SQLite ledgers and metadata results contain zero credential bytes");
     console.log(`${harness} 9 secret scan logs/SQLite/ledgers/RPC metadata=0; owned daemon PIDs ${da.proc.pid},${db.proc.pid} stopped; stub closed in cleanup`);
   } finally {
-    ca?.close(); cb?.close();
-    if (da && da.proc.exitCode === null && da.proc.signalCode === null) await da.stop();
-    if (db && db.proc.exitCode === null && db.proc.signalCode === null) await db.stop();
-    await new Promise<void>(resolve => server.close(() => resolve()));
-    a.cleanup(); b.cleanup();
+    await cleanup();
   }
 });

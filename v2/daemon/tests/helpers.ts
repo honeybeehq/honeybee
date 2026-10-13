@@ -4,7 +4,7 @@
  * repo, never the live daemon or its socket, never a real service manager.
  * The only agent ever spawned is the stub (v2/driver-hsr/test-agent).
  */
-import { spawn, type ChildProcess } from "node:child_process";
+import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -408,4 +408,27 @@ function pidAlive(pid: number): boolean {
   } catch (error) {
     return (error as NodeJS.ErrnoException).code === "EPERM";
   }
+}
+
+export async function forceStopTestDaemon(handle: DaemonHandle): Promise<void> {
+  const rows = execFileSync("ps", ["-axo", "pid=,ppid=,lstart=,args="], { encoding: "utf8" }).trim().split("\n").map(line => {
+    const fields = line.trim().split(/\s+/);
+    return { pid: Number(fields[0]), parent: Number(fields[1]), birth: fields.slice(2, 7).join(" "), command: fields.slice(7).join(" ") };
+  });
+  const roots = new Set(liveRunnerHostPids(handle.dir).filter(pid => rows.some(row => row.pid === pid && row.command.includes(handle.dir))));
+  if (handle.proc.exitCode === null && handle.proc.signalCode === null && handle.proc.pid) roots.add(handle.proc.pid);
+  for (;;) {
+    const before = roots.size;
+    for (const row of rows) if (roots.has(row.parent)) roots.add(row.pid);
+    if (roots.size === before) break;
+  }
+  for (const row of rows.filter(row => roots.has(row.pid)).reverse()) {
+    try {
+      if (execFileSync("ps", ["-p", String(row.pid), "-o", "lstart="], { encoding: "utf8" }).trim().replace(/\s+/g, " ") !== row.birth) continue;
+      process.kill(row.pid, "SIGKILL");
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ESRCH" && !(error as { status?: number }).status) throw error;
+    }
+  }
+  if (handle.proc.exitCode === null && handle.proc.signalCode === null) await waitFor(() => handle.proc.exitCode !== null || handle.proc.signalCode !== null, "owned test daemon force-stopped", 10_000);
 }
