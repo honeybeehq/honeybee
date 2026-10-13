@@ -301,7 +301,7 @@ export function makeDaemonDir(overrides: DaemonConfigOverrides = {}): { dir: str
 }
 
 /** `platform` makes the daemon process report that OS (default linux, so a suite run on a Mac never trips platform guards). */
-export async function startDaemon(dir: string, opts: { env?: Record<string, string>; platform?: string } = {}): Promise<DaemonHandle> {
+export async function startDaemon(dir: string, opts: { env?: Record<string, string>; platform?: string; stopTimeoutMs?: number } = {}): Promise<DaemonHandle> {
   const socketPath = join(dir, "hived.sock");
   const storePath = join(dir, "core.sqlite3");
   const proc = spawn(process.execPath, [DAEMON_BIN, "--data-dir", dir], {
@@ -344,7 +344,7 @@ export async function startDaemon(dir: string, opts: { env?: Record<string, stri
     },
     stop: async () => {
       proc.kill("SIGTERM");
-      await waitFor(() => proc.exitCode != null || proc.signalCode != null, "daemon stopped", 6000);
+      await waitFor(() => proc.exitCode != null || proc.signalCode != null, "daemon stopped", opts.stopTimeoutMs ?? 6000);
       await waitFor(
         () => liveRunnerHostPids(dir).length === 0,
         `test daemon runner hosts reaped (${liveRunnerHostPids(dir).join(", ")})`,

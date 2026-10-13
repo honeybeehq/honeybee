@@ -792,7 +792,7 @@ const ACCOUNT_USAGE =
   "       hive account credentials <status|enable|refresh|disable|backup-status|restore-native> <selector>\n" +
   "       hive account credentials release-peer <account> --confirm --file authenticated-roster.json [--handoff-id id] [--native-recovery] [--use-retained-chain [--retained-generation N]] [--discard-retained-chain]\n" +
   "       hive account credentials take-over <account> --confirm [--epoch higher-epoch] [--takeover-id id]\n" +
-  "       hive account credentials <export|adopt-prepare|export-prepare|export-commit|adopt|adopt-abort|export-abort|export-confirm|stand-down|handoff-status|handoff-key-rotate|handoff-identity-set|stand-down-receipt|take-over-apply|take-over-complete|take-over-cancel> --file protected-payload.json [--out protected-material.json] [--replace]\n" +
+  "       hive account credentials <export|adopt-prepare|export-prepare|export-commit|adopt|adopt-abort|export-abort|export-confirm|export-settle|stand-down|handoff-status|handoff-key-rotate|handoff-identity-set|stand-down-receipt|take-over-apply|take-over-complete|take-over-cancel> --file protected-payload.json [--out protected-material.json] [--replace] [--retained-generation N] [--discard-retained-chain --confirm]\n" +
   "       hive account lease install --file payload.json | lease remove <id>\n" +
   "       hive account capture <selector> | verify <selector> | limits [<selector>] | reset <selector> [--credit-id id] --idempotency-key key\n" +
   "       hive account restored <selector> | interruptions [<selector>]\n" +
@@ -1121,7 +1121,7 @@ async function cmdAccount(ctx: CliContext, parsed: Parsed): Promise<number> {
         emit(ctx, ["Take-over fenced and scrubbed locally. Relay its signed receipt through Apiary, then complete peer cleanup before native login.", JSON.stringify(result)], result, false);
         return 0;
       }
-      const handoffVerbs: Record<string, string> = { export: "export", "adopt-prepare": "adoptPrepare", "export-prepare": "exportPrepare", "export-commit": "exportCommit", adopt: "adopt", "adopt-abort": "adoptAbort", "export-abort": "exportAbort", "export-confirm": "exportConfirm", "stand-down": "standDown", "handoff-status": "handoffStatus", "handoff-key-rotate": "handoffKeyRotate", "handoff-identity-set": "handoffIdentitySet", "stand-down-receipt": "standDownReceipt", "take-over-apply": "operatorTakeoverApply", "take-over-complete": "operatorTakeoverComplete", "take-over-cancel": "operatorTakeoverCancel" };
+      const handoffVerbs: Record<string, string> = { export: "export", "adopt-prepare": "adoptPrepare", "export-prepare": "exportPrepare", "export-commit": "exportCommit", adopt: "adopt", "adopt-abort": "adoptAbort", "export-abort": "exportAbort", "export-confirm": "exportConfirm", "export-settle": "exportSettle", "stand-down": "standDown", "handoff-status": "handoffStatus", "handoff-key-rotate": "handoffKeyRotate", "handoff-identity-set": "handoffIdentitySet", "stand-down-receipt": "standDownReceipt", "take-over-apply": "operatorTakeoverApply", "take-over-complete": "operatorTakeoverComplete", "take-over-cancel": "operatorTakeoverCancel" };
       if (action && handoffVerbs[action]) {
         const file = parsed.flags.get("--file");
         if (typeof file !== "string") throw new Error(`Usage: hive account credentials ${action} --file protected-payload.json`);
@@ -1133,12 +1133,26 @@ async function cmdAccount(ctx: CliContext, parsed: Parsed): Promise<number> {
           if (params.replace === true && parsed.flags.get("--replace") !== true) throw new Error("Usage: identity replacement requires explicit --replace on the command line.");
           params.replace = parsed.flags.get("--replace") === true;
         }
+        if (action === "adopt") {
+          if (parsed.flags.has("--retained-generation")) params.retainedGeneration = Number(parsed.flags.get("--retained-generation"));
+          if (params.discardRetainedChain === true && parsed.flags.get("--discard-retained-chain") !== true) throw new Error("Adoption discard requires explicit --discard-retained-chain --confirm.");
+          params.discardRetainedChain = parsed.flags.get("--discard-retained-chain") === true;
+          if (params.discardRetainedChain) {
+            if (parsed.flags.get("--confirm") !== true) throw new Error("Adoption discard requires --confirm.");
+            params.confirm = true;
+          }
+        }
+        if (action === "export-settle") {
+          if (parsed.flags.get("--confirm") !== true) throw new Error("Source settlement requires --confirm.");
+          params.confirm = true;
+        }
         const output = action === "export" ? parsed.flags.get("--out") as string : null;
         const outputFd = output === null ? null : openSync(output, "wx", 0o600);
         let completed = false;
         try {
           const result = await withClient(ctx, client => {
             if (!client.capabilities.includes("account.credentials.handoff.v1")) throw new RpcError("capability_missing", "Update Honeybee: account.credentials.handoff.v1 is required.");
+            if ((action === "export-settle" || action === "adopt" && (params.retainedGeneration !== undefined || params.discardRetainedChain === true)) && !client.capabilities.includes("account.credentials.retained_recovery.v1")) throw new RpcError("capability_missing", "Update Honeybee: account.credentials.retained_recovery.v1 is required.");
             return client.request(`account.credentials.${handoffVerbs[action]}` as import("../../daemon/src/protocol.ts").RpcVerb, params, ACCOUNT_LIMITS_RPC_TIMEOUT_MS);
           });
           if (outputFd !== null) {

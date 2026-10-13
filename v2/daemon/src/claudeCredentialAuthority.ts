@@ -368,12 +368,14 @@ export class CredentialAuthority {
     save(this.path(account), value);
   }
 
-  async rotateHandoffAdoption(account: AccountRow, claimId: string, generation: number): Promise<AccountCredentialAuthority> {
+  async rotateHandoffAdoption(account: AccountRow, claimId: string, generation: number, retainedGeneration?: number): Promise<AccountCredentialAuthority> {
     if (this.options.store.credentialRecoveryPending(account.id)) throw new CredentialAuthorityError("Signed operator recovery holds the account; complete or cancel that recovery before adoption.");
     let value = this.read(account);
     const state = this.status(account);
     if (!state || state.phase === "disabled" || state.phase === "handing_off") throw new CredentialAuthorityError("Handoff adoption is not prepared.");
-    if (state.phase === "login_required") throw new CredentialAuthorityError("Handoff rotation was rejected; the source remains fenced and needs explicit operator takeover.", "login_required");
+    const knownUnusable = this.handoffUnusableGeneration(account, claimId, generation);
+    if (knownUnusable !== null && retainedGeneration === undefined) return this.retainUnusableAccess(account, value, true);
+    if (state.phase === "login_required" && !(retainedGeneration === value.generation && this.handoffUnusableGeneration(account, claimId, generation) === retainedGeneration)) throw new CredentialAuthorityError("Handoff rotation was rejected; the source remains fenced and needs explicit operator takeover.", "login_required");
     if (value.generation > generation && value.accessUsable !== false) {
       await this.options.publish(account, value.document, true);
       return this.ready(account, value);
@@ -393,7 +395,7 @@ export class CredentialAuthority {
         document: this.codec.merge(value.document, token, this.options.now()),
         accessUsable: token.accessUsable !== false && token.refreshToken !== credential.refreshToken,
         handoffAttemptStarted: token.refreshToken === credential.refreshToken,
-        ...(token.terminalAccessFailure ? { terminalAccessFailure: token.terminalAccessFailure } : {}) };
+        terminalAccessFailure: token.terminalAccessFailure };
       save(this.path(account), value);
     });
     if (attempt.kind === "failed") {
@@ -402,9 +404,14 @@ export class CredentialAuthority {
       this.outcomeUnknown(account, value, attempt.failure);
       throw new CredentialAuthorityError("Handoff rotation outcome is uncertain; both sides remain fenced.");
     }
-    if (value.accessUsable === false) return this.retainUnusableAccess(account, value);
+    if (value.accessUsable === false) return this.retainUnusableAccess(account, value, true);
     await this.options.publish(account, value.document, true);
     return this.ready(account, value);
+  }
+
+  handoffUnusableGeneration(account: AccountRow, claimId: string, generation: number): number | null {
+    const value = this.read(account, true);
+    return value?.operationKey === claimId && value.handoffAttemptStarted === false && value.generation > generation && value.accessUsable === false ? value.generation : null;
   }
 
   releasedPeerRetryable(account: AccountRow, handoffId: string): boolean {
@@ -455,7 +462,7 @@ export class CredentialAuthority {
       this.outcomeUnknown(account, value, attempt.failure);
       throw new CredentialAuthorityError("Peer release outcome is unknown.");
     }
-    if (value.accessUsable === false) return this.retainUnusableAccess(account, value);
+    if (value.accessUsable === false) return this.retainUnusableAccess(account, value, true);
     await this.options.publish(account, value.document, true);
     return this.ready(account, value);
   }
@@ -555,10 +562,10 @@ export class CredentialAuthority {
       return this.enrollmentReady(account, await this.withIdentity(account, value));
     });
   }
-  private async retainUnusableAccess(account: AccountRow, value: AuthorityDocument): Promise<never> {
+  private async retainUnusableAccess(account: AccountRow, value: AuthorityDocument, stopRotation = false): Promise<never> {
     const failure = this.failureOf({ kind: "unknown_outcome", description: "the rotated refresh chain was saved, but its access token is unusable" }, null);
-    if (value.terminalAccessFailure) {
-      const error = this.requireLogin(account, value, { ...failure, error: "invalid_token_response", description: "malformed expires_in; no further rotation attempted", retryAt: null });
+    if (stopRotation || value.terminalAccessFailure) {
+      const error = this.requireLogin(account, value, { ...failure, error: "invalid_token_response", description: "replacement chain saved with unusable access; explicit generation-bound recovery required", retryAt: null });
       await this.options.publish(account, value.document, true);
       throw error;
     }

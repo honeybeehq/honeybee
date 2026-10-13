@@ -1600,6 +1600,8 @@ export class HiveDaemon {
         return this.mustAccounts().credentialHandoff.adopt(params);
       case "account.credentials.exportAbort":
         return this.mustAccounts().credentialHandoff.exportAbort(params);
+      case "account.credentials.exportSettle":
+        return this.mustAccounts().credentialHandoff.exportSettle(params);
       case "account.credentials.exportConfirm":
         return this.mustAccounts().credentialHandoff.exportConfirm(params);
       case "account.credentials.standDown":

@@ -123,6 +123,7 @@ export const DAEMON_CAPABILITIES = [
   "account.credentials.status.v2",
   "account.credentials.handoff.v1",
   "account.credentials.release_peer.v1",
+  "account.credentials.retained_recovery.v1",
   /**
    * v35: a dying login is visible. Account rows carry `statusReason` and
    * `refreshTokenExpiresAt`; `account.credentials.status` carries
@@ -509,6 +510,7 @@ export const RPC_VERBS = [
   "account.credentials.adoptAbort",
   "account.credentials.exportAbort",
   "account.credentials.exportConfirm",
+  "account.credentials.exportSettle",
   "account.credentials.standDown",
   "account.credentials.handoffStatus",
   "account.credentials.handoffKeyRotate",

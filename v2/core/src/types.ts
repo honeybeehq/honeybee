@@ -1731,9 +1731,12 @@ export interface CredentialHandoffBinding {
   claimId: string | null;
   targetAccount: string | null;
   targetKey: string | null;
+  retainedGeneration?: number;
+  retainedUnusableCount?: number;
+  recoveryEpoch?: number;
 }
 export interface CredentialHandoffReceipt {
-  kind: "export" | "prepared" | "commit" | "adopted" | "aborted" | "stand_down" | "operator_takeover" | "operator_taken_down" | "operator_refused";
+  kind: "export" | "prepared" | "commit" | "adopted" | "aborted" | "stand_down" | "operator_takeover" | "operator_taken_down" | "operator_refused" | "retained_discard_request" | "retained_discard_settlement";
   binding: CredentialHandoffBinding;
   signature: string;
 }
@@ -1745,10 +1748,19 @@ export interface CredentialHandoffRecord {
   binding: CredentialHandoffBinding;
   receipt: CredentialHandoffReceipt | null;
   peerReceipt?: CredentialHandoffReceipt;
+  adoptionRecovery?: {
+    retainedGeneration: number;
+    retainedUnusableCount: number;
+    transportGeneration?: number;
+    discardReceipt?: CredentialHandoffReceipt;
+    sourceSettlement?: CredentialHandoffReceipt;
+    discardPending?: boolean;
+    discarded?: boolean;
+  };
   releasePeer?: {
     roster: { orgId: string; genesis: string; heads: string[]; version: string; authorNodeId: string; authorCounter: number; members: string[] };
     requiredEpoch: number;
-    mode: "prepared_abort" | "committed_refresh" | "destination_void" | "destination_holder" | "destination_recovery" | "destination_retained_refresh";
+    mode: "prepared_abort" | "committed_refresh" | "destination_void" | "destination_holder" | "destination_recovery" | "source_recovery" | "destination_retained_refresh";
     outcome: "pending" | "restored" | "login_required" | "uncertain" | "retained_unusable";
     cleanupPending: boolean;
     retryable?: boolean;

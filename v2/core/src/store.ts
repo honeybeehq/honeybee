@@ -5121,8 +5121,18 @@ export class CoreStore {
       this.stmt("INSERT INTO credential_handoff_events(handoff_id,role,state,at) VALUES(?,?,?,?)").run(record.handoffId, record.role, record.state, this.now());
       if (!previous && record.receipt?.kind === "operator_takeover") this.audit("account.credentials.operator_takeover", null, { account: record.account, handoffId: record.handoffId, role: record.role, epoch: record.binding.epoch, reason: "explicit_operator_recovery" });
       if (record.releasePeer && record.releasePeer.outcome !== "pending" && (previous?.releasePeer?.outcome !== record.releasePeer.outcome || record.releasePeer.discardRetainedChain === true && previous?.releasePeer?.discardRetainedChain !== true)) this.audit("account.credentials.release_peer", null, { account: record.account, handoffId: record.handoffId, outcome: record.releasePeer.outcome, requiredEpoch: record.releasePeer.requiredEpoch, rosterVersion: record.releasePeer.roster.version, authorNodeId: record.releasePeer.roster.authorNodeId, authorCounter: record.releasePeer.roster.authorCounter, earlyRotationScheduled: record.releasePeer.earlyRotationPending === true, nativeRecovery: record.releasePeer.nativeRecovery === true, removedPeerNodeId: record.role === "source" ? record.binding.to.nodeId : record.binding.from.nodeId, role: record.role, retainedGeneration: record.releasePeer.retainedGeneration ?? null, retainedUnusableCount: record.releasePeer.retainedUnusableCount ?? 0, reason: record.releasePeer.discardRetainedChain === true ? "explicit_capped_retained_discard" : record.releasePeer.failureReason === "retained_unusable_limit" ? "retained_unusable_limit" : record.releasePeer.mode === "destination_retained_refresh" && record.releasePeer.outcome === "login_required" ? "retained_chain_rejected" : "explicit_removed_peer_recovery" });
+      if (record.adoptionRecovery?.retainedGeneration !== previous?.adoptionRecovery?.retainedGeneration && record.adoptionRecovery) this.audit("account.credentials.adopt_retained_unusable", null, { account: record.account, handoffId: record.handoffId, retainedGeneration: record.adoptionRecovery.retainedGeneration, retainedUnusableCount: record.adoptionRecovery.retainedUnusableCount });
+      if (record.adoptionRecovery?.discarded && !previous?.adoptionRecovery?.discarded || record.receipt?.kind === "retained_discard_settlement" && previous?.receipt?.kind !== "retained_discard_settlement") this.audit("account.credentials.adopt_retained_discard", null, { account: record.account, handoffId: record.handoffId, role: record.role, retainedGeneration: record.adoptionRecovery?.retainedGeneration ?? record.receipt?.binding.retainedGeneration, reason: "explicit_signed_capped_retained_discard" });
       if (authority) this.putAccountCredentialAuthority(authority);
       return record;
+    });
+  }
+
+  completeCredentialAdoptionDiscard(record: CredentialHandoffRecord, epoch: number): void {
+    this.credentialHandoffTx(() => {
+      this.applyAccountUpdate(record.account, { source: "local", leasedFrom: null, status: this.mustGetAccount(record.account).status === "paused" ? "paused" : "auth_needed", statusReason: "Explicit capped retained discard; native login required" }, "explicit signed retained recovery");
+      this.stmt("INSERT INTO credential_authority_epochs(account,epoch,demoted) VALUES(?,?,1) ON CONFLICT(account) DO UPDATE SET epoch=excluded.epoch,demoted=1").run(record.account, epoch);
+      this.putCredentialHandoff(record);
     });
   }
 

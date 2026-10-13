@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID, createHash } from "node:crypto";
 import { createServer } from "node:http";
-import { mkdirSync, readFileSync, readdirSync, writeFileSync, existsSync, unlinkSync, statSync, rmdirSync } from "node:fs";
+import { mkdirSync, readFileSync, readdirSync, writeFileSync, existsSync, unlinkSync, statSync, rmdirSync, renameSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AddressInfo } from "node:net";
@@ -12,7 +12,7 @@ import { DatabaseSync } from "node:sqlite";
 import type { AccountCredentialAuthority, CredentialHandoffReceipt, MirrorAccountRow } from "../../core/src/index.ts";
 import { RpcClient } from "../../cli/src/client.ts";
 import { RpcError, type RpcVerb, type ViewResult } from "../src/protocol.ts";
-import { forceStopTestDaemon, makeDaemonDir, startDaemon, waitFor as waitForState, type DaemonHandle } from "./helpers.ts";
+import { forceStopTestDaemon, makeDaemonDir, startDaemon as startFixtureDaemon, waitFor as waitForState, type DaemonHandle } from "./helpers.ts";
 
 type Exported = { receipt: CredentialHandoffReceipt; material: { generation: number; document: Record<string, unknown> } };
 type Result = { handoffId: string; state: string; receipt: CredentialHandoffReceipt; generation: number; expiresAt: number };
@@ -23,6 +23,16 @@ function paths(root: string): string[] {
   return readdirSync(root, { withFileTypes: true }).flatMap(entry => entry.isDirectory() ? paths(join(root, entry.name)) : entry.isFile() ? [join(root, entry.name)] : []);
 }
 function jwt(): string { return `e30.${Buffer.from(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 3600, fixture: randomUUID() })).toString("base64url")}.${randomUUID()}`; }
+
+function writeCrashGate(path: string, rule: Record<string, unknown>) {
+  const temp = `${path}.${randomUUID()}`;
+  writeFileSync(temp, JSON.stringify(rule));
+  renameSync(temp, path);
+}
+
+function startDaemon(dir: string, opts: Parameters<typeof startFixtureDaemon>[1]) {
+  return startFixtureDaemon(dir, { ...opts, stopTimeoutMs: 30_000 });
+}
 
 function waitFor<T>(fn: () => Promise<T | null | undefined | false> | T | null | undefined | false, what: string): Promise<T> {
   return waitForState(fn, what, 30_000);
@@ -73,7 +83,7 @@ for (const harness of ["claude", "codex", "grok"]) test(`credential handoff ${ha
   t.signal.addEventListener("abort", () => { void cleanup().catch(() => {}); }, { once: true });
   const env = (dir: string) => {
     const preload = join(dir, "no-provider.mjs");
-    writeFileSync(preload, `import fs from 'node:fs';import{syncBuiltinESMExports}from'node:module';import{join}from'node:path';import{DatabaseSync}from'node:sqlite';const dbprepare=DatabaseSync.prototype.prepare;DatabaseSync.prototype.prepare=function(sql){const stmt=dbprepare.call(this,sql);if(sql.includes("VALUES('credential_handoff_identity'")){const run=stmt.run.bind(stmt);stmt.run=(...args)=>{const root=${JSON.stringify(dir)};const gate=join(root,'crash-gate.json');const rule=fs.existsSync(gate)?JSON.parse(fs.readFileSync(gate,'utf8')):null;if(rule&&rule.phase==='identity'){fs.writeFileSync(join(root,'crash-stopped'),'');process.kill(process.pid,'SIGSTOP');}return run(...args);};}return stmt;};const dbexec=DatabaseSync.prototype.exec;DatabaseSync.prototype.exec=function(sql){const result=dbexec.call(this,sql);const root=${JSON.stringify(dir)};const gate=join(root,'crash-gate.json');const rule=fs.existsSync(gate)?JSON.parse(fs.readFileSync(gate,'utf8')):null;if(rule&&rule.phase==='standdown'&&sql==='PRAGMA wal_checkpoint(FULL)'){fs.writeFileSync(join(root,'crash-stopped'),'');process.kill(process.pid,'SIGSTOP');}return result;};const f=globalThis.fetch;globalThis.fetch=async(url,o)=>{if(String(url).startsWith('http://127.0.0.1:')){{const earlyRoot=${JSON.stringify(dir)},earlyGate=join(earlyRoot,'crash-gate.json');if(fs.existsSync(earlyGate)&&JSON.parse(fs.readFileSync(earlyGate,'utf8')).phase==='early-release'){fs.writeFileSync(join(earlyRoot,'early-rotation-waiting'),'');while(fs.existsSync(earlyGate))await new Promise(r=>setTimeout(r,10));}}const response=await f(url,o);const root=${JSON.stringify(dir)};const gate=join(root,'crash-gate.json');const rule=fs.existsSync(gate)?JSON.parse(fs.readFileSync(gate,'utf8')):null;if(rule&&rule.phase==='response'){fs.writeFileSync(join(root,'crash-stopped'),'');process.kill(process.pid,'SIGSTOP');}return response;}throw new Error('External provider forbidden in isolated handoff');};const rename=fs.renameSync;fs.renameSync=(a,b)=>{const root=${JSON.stringify(dir)};const gate=join(root,'crash-gate.json');const rule=fs.existsSync(gate)?JSON.parse(fs.readFileSync(gate,'utf8')):null;if(rule&&rule.phase==='preparing'&&String(b).endsWith('/'+rule.account+'.json')){const value=JSON.parse(fs.readFileSync(a,'utf8'));if(value.generation===rule.generation){fs.writeFileSync(join(root,'crash-stopped'),'');process.kill(process.pid,'SIGSTOP');}}rename(a,b);if(rule&&rule.phase==='release-before'&&String(b).endsWith('/'+rule.account+'.json')){const value=JSON.parse(fs.readFileSync(b,'utf8'));if(value.releasePeerAttempt&&value.generation===rule.generation){fs.writeFileSync(join(root,'crash-stopped'),'');process.kill(process.pid,'SIGSTOP');}}if(rule&&rule.phase==='keyrotate'&&String(b).endsWith('/handoff-signing-key.pem')){fs.writeFileSync(join(root,'crash-stopped'),'');process.kill(process.pid,'SIGSTOP');}if(rule&&rule.phase!=='preparing'&&String(b).endsWith('/'+rule.account+'.json')){const value=JSON.parse(fs.readFileSync(b,'utf8'));if(value.generation>rule.generation){fs.writeFileSync(join(root,'crash-stopped'),'');process.kill(process.pid,'SIGSTOP');}}};syncBuiltinESMExports();`);
+    writeFileSync(preload, `import fs from 'node:fs';import{syncBuiltinESMExports}from'node:module';import{join}from'node:path';import{DatabaseSync}from'node:sqlite';const readGate=(path)=>{try{return JSON.parse(fs.readFileSync(path,'utf8'));}catch(error){if(error.code==='ENOENT')return null;throw error;}};const dbprepare=DatabaseSync.prototype.prepare;DatabaseSync.prototype.prepare=function(sql){const stmt=dbprepare.call(this,sql);if(sql.includes("VALUES('credential_handoff_identity'")){const run=stmt.run.bind(stmt);stmt.run=(...args)=>{const root=${JSON.stringify(dir)};const gate=join(root,'crash-gate.json');const rule=readGate(gate);if(rule&&rule.phase==='identity'){fs.writeFileSync(join(root,'crash-stopped'),'');process.kill(process.pid,'SIGSTOP');}return run(...args);};}return stmt;};const dbexec=DatabaseSync.prototype.exec;DatabaseSync.prototype.exec=function(sql){const result=dbexec.call(this,sql);const root=${JSON.stringify(dir)};const gate=join(root,'crash-gate.json');const rule=readGate(gate);if(rule&&rule.phase==='standdown'&&sql==='PRAGMA wal_checkpoint(FULL)'){fs.writeFileSync(join(root,'crash-stopped'),'');process.kill(process.pid,'SIGSTOP');}return result;};const f=globalThis.fetch;globalThis.fetch=async(url,o)=>{if(String(url).startsWith('http://127.0.0.1:')){{const earlyRoot=${JSON.stringify(dir)},earlyGate=join(earlyRoot,'crash-gate.json');if(readGate(earlyGate)?.phase==='early-release'){fs.writeFileSync(join(earlyRoot,'early-rotation-waiting'),'');while(fs.existsSync(earlyGate))await new Promise(r=>setTimeout(r,10));}}const response=await f(url,o);const root=${JSON.stringify(dir)};const gate=join(root,'crash-gate.json');const rule=readGate(gate);if(rule&&rule.phase==='response'){fs.writeFileSync(join(root,'crash-stopped'),'');process.kill(process.pid,'SIGSTOP');}return response;}throw new Error('External provider forbidden in isolated handoff');};const rename=fs.renameSync;fs.renameSync=(a,b)=>{const root=${JSON.stringify(dir)};const gate=join(root,'crash-gate.json');const rule=readGate(gate);if(rule&&rule.phase==='preparing'&&String(b).endsWith('/'+rule.account+'.json')){const value=JSON.parse(fs.readFileSync(a,'utf8'));if(value.generation===rule.generation){fs.writeFileSync(join(root,'crash-stopped'),'');process.kill(process.pid,'SIGSTOP');}}rename(a,b);if(rule&&rule.phase==='release-before'&&String(b).endsWith('/'+rule.account+'.json')){const value=JSON.parse(fs.readFileSync(b,'utf8'));if(value.releasePeerAttempt&&value.generation===rule.generation){fs.writeFileSync(join(root,'crash-stopped'),'');process.kill(process.pid,'SIGSTOP');}}if(rule&&rule.phase==='keyrotate'&&String(b).endsWith('/handoff-signing-key.pem')){fs.writeFileSync(join(root,'crash-stopped'),'');process.kill(process.pid,'SIGSTOP');}if(rule&&rule.phase!=='preparing'&&String(b).endsWith('/'+rule.account+'.json')){const value=JSON.parse(fs.readFileSync(b,'utf8'));if(value.generation>rule.generation){fs.writeFileSync(join(root,'crash-stopped'),'');process.kill(process.pid,'SIGSTOP');}}};syncBuiltinESMExports();`);
     return { NODE_OPTIONS: `--import=${preload}`, HOME: join(dir, "empty-user-home"), CLAUDE_CONFIG_DIR: join(dir, "unused-claude"), CODEX_HOME: join(dir, "unused-codex"), GROK_HOME: join(dir, "unused-grok"), XDG_CONFIG_HOME: join(dir, "unused-xdg-config"), XDG_DATA_HOME: join(dir, "unused-xdg-data"), HIVE_GATEWAYS_DISABLE: "1", HIVE_CLAUDE_OAUTH_TOKEN_URL: endpoint, HIVE_CODEX_OAUTH_TOKEN_URL: endpoint, HIVE_GROK_OAUTH_TOKEN_URL: endpoint };
   };
   const rpc = async <T>(client: RpcClient, action: string, params: Record<string, unknown>): Promise<T> => {
@@ -168,7 +178,7 @@ for (const harness of ["claude", "codex", "grok"]) test(`credential handoff ${ha
     assert.equal((await rpc<Result>(cb, "handoffStatus", { handoffId: replacementHandoff, role: "destination" })).state, "prepared");
     const { stderr: usageStderr } = await promisify(execFile)(process.execPath, [fileURLToPath(new URL("../../cli/src/bin.ts", import.meta.url)), "account"], { env: { PATH: process.env.PATH, HOME: b.dir, HIVE_NO_KEYCHAIN: "1" } }).catch((error: Error & { stderr: string }) => ({ stderr: error.stderr }));
     assert.match(usageStderr, /\[--replace\]/);
-    writeFileSync(join(b.dir, "crash-gate.json"), JSON.stringify({ phase: "identity" }));
+    writeCrashGate(join(b.dir, "crash-gate.json"), { phase: "identity" });
     const interruptedReplacement = promisify(execFile)(process.execPath, [fileURLToPath(new URL("../../cli/src/bin.ts", import.meta.url)), "account", "credentials", "handoff-identity-set", "--file", identityPayload, "--replace", "--data-dir", b.dir, "--json"], { env: { PATH: process.env.PATH, HOME: b.dir, HIVE_NO_KEYCHAIN: "1" } }).catch(() => null);
     await waitFor(() => existsSync(join(b.dir, "crash-stopped")) ? true : null, "B stopped after shadow void before new identity pin");
     await db.kill(); cb.close(); await interruptedReplacement;
@@ -318,7 +328,7 @@ for (const harness of ["claude", "codex", "grok"]) test(`credential handoff ${ha
     const savedId = await enroll("saved"), savedHandoff = randomUUID(), savedExport = await exported(savedId, savedHandoff);
     await cb.request("account.add", { id: savedId, harness, label: "saved-example.com" });
     const savedPrepared = await prepare(savedId, savedHandoff, savedExport), savedCommit = await commit(savedHandoff, savedPrepared);
-    writeFileSync(join(b.dir, "crash-gate.json"), JSON.stringify({ account: savedId, generation: savedExport.material.generation }));
+    writeCrashGate(join(b.dir, "crash-gate.json"), { account: savedId, generation: savedExport.material.generation });
     const beforeSaved = refreshes.length;
     const pendingAdoption = rpc(cb, "adopt", { account: savedId, handoffId: savedHandoff, commitReceipt: savedCommit.receipt }).catch(() => null);
     await waitFor(() => existsSync(join(b.dir, "crash-stopped")) ? true : null, "B stopped after saving rotated result before publication");
@@ -333,11 +343,11 @@ for (const harness of ["claude", "codex", "grok"]) test(`credential handoff ${ha
     const preparingId = await enroll("preparing"), preparingHandoff = randomUUID(), preparingExport = await exported(preparingId, preparingHandoff);
     await cb.request("account.add", { id: preparingId, harness, label: "preparing-example.com" });
     unlinkSync(join(b.dir, "crash-stopped"));
-    writeFileSync(join(b.dir, "crash-gate.json"), JSON.stringify({ account: preparingId, generation: preparingExport.material.generation, phase: "preparing" }));
+    writeCrashGate(join(b.dir, "crash-gate.json"), { account: preparingId, generation: preparingExport.material.generation, phase: "preparing" });
     let prepareFailure: unknown;
     const pendingPrepare = prepare(preparingId, preparingHandoff, preparingExport).catch(error => { prepareFailure = error; return null; });
     await waitFor(() => {
-      if (prepareFailure) throw new Error(`Preparation refused before crash boundary: ${prepareFailure instanceof RpcError ? prepareFailure.code : "transport"}`);
+      if (prepareFailure) throw new Error(`Preparation refused before crash boundary: ${prepareFailure instanceof RpcError ? `${prepareFailure.code}: ${prepareFailure.message}` : "transport"}`);
       return existsSync(join(b.dir, "crash-stopped"));
     }, "B stopped before prepared material rename");
     await db.kill(); cb.close(); await pendingPrepare; unlinkSync(join(b.dir, "crash-gate.json"));
@@ -390,7 +400,7 @@ for (const harness of ["claude", "codex", "grok"]) test(`credential handoff ${ha
     assert.equal(nextRotationExport.receipt.binding.sourceKey, rotation.publicKey);
     await rpc(ca, "exportAbort", { handoffId: nextRotationHandoff });
     const crashKeyHandoff = randomUUID(), crashKeyExport = await exported(rotateId, crashKeyHandoff), crashKeyParams = { idempotencyKey: randomUUID() };
-    writeFileSync(join(a.dir, "crash-gate.json"), JSON.stringify({ phase: "keyrotate", account: rotateId }));
+    writeCrashGate(join(a.dir, "crash-gate.json"), { phase: "keyrotate", account: rotateId });
     const crashRotation = rpc(ca, "handoffKeyRotate", crashKeyParams).catch(() => null);
     await waitFor(() => existsSync(join(a.dir, "crash-stopped")) ? true : null, "A stopped after signing key replacement");
     await da.kill(); ca.close(); await crashRotation;
@@ -462,15 +472,27 @@ for (const harness of ["claude", "codex", "grok"]) test(`credential handoff ${ha
     await cb.request("account.add", { id: retainedId, harness, label: "retained-example.com" });
     const retainedPrepared = await prepare(retainedId, retainedHandoff, retainedExport), retainedCommit = await commit(retainedHandoff, retainedPrepared);
     unusableResponse = true;
-    await refused(() => rpc(cb!, "adopt", { account: retainedId, handoffId: retainedHandoff, commitReceipt: retainedCommit.receipt }), "credential_handoff_uncertain");
+    await refused(() => rpc(cb!, "adopt", { account: retainedId, handoffId: retainedHandoff, commitReceipt: retainedCommit.receipt }), "credential_handoff_unusable_access");
     const retainedDocument = JSON.parse(readFileSync(join(b.dir, "vault", ".credential-authorities", `${retainedId}.json`), "utf8")).document;
     const retainedRefresh = tokenOf({ ...retainedExport, material: { ...retainedExport.material, document: retainedDocument } });
     assert.ok(retainedRefresh !== tokenOf(retainedExport) && valid.has(retainedRefresh), "known new refresh chain retained despite missing access");
-    const retainedAdopt = await rpc<Result>(cb, "adopt", { account: retainedId, handoffId: retainedHandoff, commitReceipt: retainedCommit.receipt });
-    assert.ok(refreshes.at(-1) === retainedRefresh, "retry spends the new chain");
+    const retainedCalls = refreshes.length;
+    const initialRetained: { outcome: string; retainedGeneration: number; retainedChainRecoveryAvailable: boolean } = await rpc(cb, "handoffStatus", { handoffId: retainedHandoff, role: "destination" });
+    assert.equal(initialRetained.outcome, "retained_unusable"); assert.equal(initialRetained.retainedGeneration, retainedExport.material.generation + 1); assert.equal(initialRetained.retainedChainRecoveryAvailable, true);
+    await refused(() => rpc(cb!, "adopt", { account: retainedId, handoffId: retainedHandoff, commitReceipt: retainedCommit.receipt }), "credential_handoff_unusable_access");
+    assert.equal(refreshes.length, retainedCalls);
     assert.equal(refreshes.filter(value => value === tokenOf(retainedExport)).length, 1);
-    await rpc(ca, "exportConfirm", { handoffId: retainedHandoff, adoptedReceipt: retainedAdopt.receipt });
-    console.log(`${harness} known rotated chain with missing access: saved privately, uncertain; retry uses NEW chain; old exported chain spent once`);
+    console.log(`${harness} known rotated chain with missing access: retained_unusable, public saved generation/eligibility; adopt replay no provider`);
+    await refused(() => rpc(cb!, "adopt", { account: retainedId, handoffId: retainedHandoff, commitReceipt: retainedCommit.receipt, retainedGeneration: initialRetained.retainedGeneration - 1 }), "credential_handoff_conflict");
+    const livePayload = join(b.dir, "live-retained-adopt.json"); writeFileSync(livePayload, JSON.stringify({ account: retainedId, handoffId: retainedHandoff, commitReceipt: retainedCommit.receipt }));
+    const { stdout: liveOutput } = await promisify(execFile)(process.execPath, [fileURLToPath(new URL("../../cli/src/bin.ts", import.meta.url)), "account", "credentials", "adopt", "--file", livePayload, "--retained-generation", String(initialRetained.retainedGeneration), "--data-dir", b.dir, "--json"], { env: { PATH: process.env.PATH, HOME: b.dir, HIVE_NO_KEYCHAIN: "1" } });
+    metadata.push(liveOutput); const liveRecovered: Result = JSON.parse(liveOutput);
+    assert.equal(liveRecovered.generation, initialRetained.retainedGeneration + 1); assert.equal(refreshes.length, retainedCalls + 1);
+    await rpc(cb, "adopt", { account: retainedId, handoffId: retainedHandoff, commitReceipt: retainedCommit.receipt, retainedGeneration: initialRetained.retainedGeneration });
+    assert.equal(refreshes.length, retainedCalls + 1);
+    await rpc(ca, "exportConfirm", { handoffId: retainedHandoff, adoptedReceipt: liveRecovered.receipt });
+    console.log(`${harness} live member initial retained recovery: explicit current generation rotates saved chain once, signed normal completion, old request replay no provider`);
+
     if (harness === "grok") {
       const terminalId = await enroll("terminal"), terminalHandoff = randomUUID(), terminalExport = await exported(terminalId, terminalHandoff);
       await cb.request("account.add", { id: terminalId, harness, label: "terminal-example.com" });
@@ -502,7 +524,7 @@ for (const harness of ["claude", "codex", "grok"]) test(`credential handoff ${ha
     const responsePrepared = await prepare(responseId, responseHandoff, responseExport), responseCommit = await commit(responseHandoff, responsePrepared);
     const responseCalls = refreshes.length;
     if (existsSync(join(b.dir, "crash-stopped"))) unlinkSync(join(b.dir, "crash-stopped"));
-    writeFileSync(join(b.dir, "crash-gate.json"), JSON.stringify({ phase: "response", account: responseId }));
+    writeCrashGate(join(b.dir, "crash-gate.json"), { phase: "response", account: responseId });
     const responseAdopt = rpc(cb, "adopt", { account: responseId, handoffId: responseHandoff, commitReceipt: responseCommit.receipt }).catch(() => null);
     await waitFor(() => existsSync(join(b.dir, "crash-stopped")) ? true : null, "B stopped after provider response before durable save");
     await db.kill(); cb.close(); await responseAdopt;
@@ -560,7 +582,7 @@ for (const harness of ["claude", "codex", "grok"]) test(`credential handoff ${ha
     await refused(() => rpc(ca!, "refresh", { id: retryStandId, idempotencyKey: randomUUID() }), "credential_handoff_fenced");
     await da.kill(); ca.close(); da = await startDaemon(a.dir, { env: env(a.dir) }); ca = await da.client();
     writeFileSync(retryStandPath, retryStandRaw);
-    writeFileSync(join(a.dir, "crash-gate.json"), JSON.stringify({ phase: "standdown", account: retryStandId }));
+    writeCrashGate(join(a.dir, "crash-gate.json"), { phase: "standdown", account: retryStandId });
     const stoppedStandDown = rpc(ca, "standDown", retryStandParams).catch(() => null);
     await waitFor(() => existsSync(join(a.dir, "crash-stopped")) ? true : null, "A stopped after demotion before terminal handoff row");
     await da.kill(); ca.close(); await stoppedStandDown;
@@ -593,7 +615,7 @@ for (const harness of ["claude", "codex", "grok"]) test(`credential handoff ${ha
     const destinationRoster = { ...roster, authorNodeId: to.nodeId, members: [to.nodeId] };
     const interruptedDestination = await enroll("release-destination-preparing"), interruptedClaim = randomUUID(), interruptedMaterial = await exported(interruptedDestination, interruptedClaim);
     await cb.request("account.add", { id: interruptedDestination, harness, label: "release-destination-preparing-example.com" });
-    writeFileSync(join(b.dir, "crash-gate.json"), JSON.stringify({ phase: "preparing", account: interruptedDestination, generation: interruptedMaterial.material.generation }));
+    writeCrashGate(join(b.dir, "crash-gate.json"), { phase: "preparing", account: interruptedDestination, generation: interruptedMaterial.material.generation });
     const interruptedPrepare = prepare(interruptedDestination, interruptedClaim, interruptedMaterial).catch(() => null);
     await waitFor(() => existsSync(join(b.dir, "crash-stopped")), "destination prepare stopped before private authority rename");
     await db.kill(); cb.close(); await interruptedPrepare;
@@ -642,28 +664,90 @@ for (const harness of ["claude", "codex", "grok"]) test(`credential handoff ${ha
       console.log(`${harness} release-peer destination ${state}: zero provider; terminal claim survives restart and refuses late commit/prepare; holder preserved or shadow voided; epoch+1`);
     }
 
-    if (harness === "grok") for (const recoveryCase of ["success", "rejected", "release-before", "response", "release-save", "unusable-again", "unusable-limit"]) {
+    {
+      const cappedFixture = await releaseFixture("live-cap");
+      const adoptParams = { account: cappedFixture.account, handoffId: cappedFixture.handoffId, commitReceipt: cappedFixture.committed.receipt };
+      let cappedStatus: { retainedGeneration: number; retainedUnusableCount: number; retainedReceipt: CredentialHandoffReceipt; cappedRetainedDiscardAvailable: boolean };
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        unusableResponse = true;
+        if (attempt === 3) {
+          const currentGeneration = cappedStatus!.retainedGeneration;
+          writeCrashGate(join(b.dir, "crash-gate.json"), { phase: "live-retained-save", account: cappedFixture.account, generation: currentGeneration });
+          const pending = rpc(cb, "adopt", { ...adoptParams, retainedGeneration: currentGeneration }).catch(() => null);
+          await waitFor(() => existsSync(join(b.dir, "crash-stopped")), "live cap response saved before count recorded");
+          await db.kill(); cb.close(); await pending; unlinkSync(join(b.dir, "crash-gate.json")); unlinkSync(join(b.dir, "crash-stopped"));
+          db = await startDaemon(b.dir, { env: env(b.dir) }); cb = await db.client();
+          cappedStatus = await rpc(cb, "handoffStatus", { handoffId: cappedFixture.handoffId, role: "destination" });
+          assert.equal(cappedStatus.retainedUnusableCount, 3);
+          await refused(() => rpc(cb!, "adopt", { ...adoptParams, retainedGeneration: currentGeneration }), "credential_handoff_decided");
+        } else await refused(() => rpc(cb!, "adopt", { ...adoptParams, ...(attempt > 1 ? { retainedGeneration: cappedStatus!.retainedGeneration } : {}) }), "credential_handoff_unusable_access");
+        cappedStatus = await rpc(cb, "handoffStatus", { handoffId: cappedFixture.handoffId, role: "destination" });
+        assert.equal(cappedStatus.retainedUnusableCount, attempt);
+      }
+      assert.equal(cappedStatus!.cappedRetainedDiscardAvailable, true);
+      const cappedCalls = refreshes.length;
+      await refused(() => rpc(cb!, "adopt", { ...adoptParams, retainedGeneration: cappedStatus!.retainedGeneration }), "credential_handoff_decided");
+      await refused(() => rpc(cb!, "adopt", { ...adoptParams, confirm: true, discardRetainedChain: true, sourceSettlement: cappedStatus!.retainedReceipt }), "credential_handoff_conflict");
+      await refused(() => rpc(ca!, "exportSettle", { handoffId: cappedFixture.handoffId, retainedReceipt: cappedStatus!.retainedReceipt }), "invalid_request");
+      for (const lane of ["node_relay", "remote"] as const) {
+        const remote = await RpcClient.connect(da.socketPath, 3000, lane);
+        try { await refused(() => remote.request("account.credentials.exportSettle", { handoffId: cappedFixture.handoffId, confirm: true, retainedReceipt: cappedStatus!.retainedReceipt }), "credential_handoff_conflict"); }
+        finally { remote.close(); }
+      }
+      const settlementPayload = join(a.dir, "live-source-settlement.json"); writeFileSync(settlementPayload, JSON.stringify({ handoffId: cappedFixture.handoffId, retainedReceipt: cappedStatus!.retainedReceipt }));
+      const { stdout: settlementOutput } = await promisify(execFile)(process.execPath, [fileURLToPath(new URL("../../cli/src/bin.ts", import.meta.url)), "account", "credentials", "export-settle", "--confirm", "--file", settlementPayload, "--data-dir", a.dir, "--json"], { env: { PATH: process.env.PATH, HOME: a.dir, HIVE_NO_KEYCHAIN: "1" } });
+      metadata.push(settlementOutput); const sourceSettlement: Result & { requiredEpoch: number } = JSON.parse(settlementOutput);
+      assert.equal(sourceSettlement.receipt.kind, "retained_discard_settlement"); assert.equal(sourceSettlement.requiredEpoch, 2);
+      await da.kill(); ca.close(); da = await startDaemon(a.dir, { env: env(a.dir) }); ca = await da.client();
+      const sourceReplay: Result = await rpc(ca, "exportSettle", { handoffId: cappedFixture.handoffId, confirm: true, retainedReceipt: cappedStatus!.retainedReceipt });
+      assert.equal(sourceReplay.receipt.signature, sourceSettlement.receipt.signature);
+      const discardParams = { ...adoptParams, confirm: true, discardRetainedChain: true, sourceSettlement: sourceSettlement.receipt };
+      const previousPrimary = readFileSync(join(b.dir, "homes", cappedFixture.account, primary));
+      writeFileSync(join(b.dir, "homes", cappedFixture.account, primary), "{not json");
+      const pendingDiscard: { cleanupPending: boolean } = await rpc(cb, "adopt", discardParams);
+      assert.equal(pendingDiscard.cleanupPending, true);
+      assert.equal((await rpc<{ cleanupPending: boolean }>(cb, "handoffStatus", { handoffId: cappedFixture.handoffId, role: "destination" })).cleanupPending, true);
+      await db.kill(); cb.close(); db = await startDaemon(b.dir, { env: env(b.dir) }); cb = await db.client();
+      writeFileSync(join(b.dir, "homes", cappedFixture.account, primary), previousPrimary);
+      const discardPayload = join(b.dir, "live-capped-discard.json"); writeFileSync(discardPayload, JSON.stringify(discardParams));
+      const { stdout: discardOutput } = await promisify(execFile)(process.execPath, [fileURLToPath(new URL("../../cli/src/bin.ts", import.meta.url)), "account", "credentials", "adopt", "--confirm", "--discard-retained-chain", "--file", discardPayload, "--data-dir", b.dir, "--json"], { env: { PATH: process.env.PATH, HOME: b.dir, HIVE_NO_KEYCHAIN: "1" } });
+      metadata.push(discardOutput); const discarded: { outcome: string; cleanupPending: boolean; requiredEpoch: number; message: string } = JSON.parse(discardOutput);
+      assert.equal(discarded.outcome, "login_required"); assert.equal(discarded.cleanupPending, false); assert.equal(discarded.requiredEpoch, 2);
+      assert.ok(discarded.message.includes("provider session behind the discarded chain stays valid until signed out"));
+      await db.kill(); cb.close(); db = await startDaemon(b.dir, { env: env(b.dir) }); cb = await db.client();
+      await rpc(cb, "adopt", discardParams); assert.equal(refreshes.length, cappedCalls);
+      assert.equal((await rpc<AccountCredentialAuthority>(cb, "status", { id: cappedFixture.account })).phase, "native");
+      const nativeRow = (await cb.request<{ accounts: MirrorAccountRow[] }>("account.list", {})).accounts.find(account => account.id === cappedFixture.account)!;
+      assert.equal(nativeRow.source, "local"); assert.equal(nativeRow.status, "auth_needed");
+      console.log(`${harness} live-member cap: exactly three unusable rotations, no fourth; source signed settlement/restart replay, response-save SIGKILL cap kept, cleanup failure/restart/repair replay, explicit discard on same row native-login-required, epoch+1, zero extra provider`);
+    }
+
+    for (const recoveryCase of (harness === "grok" ? ["success", "rejected", "release-before", "response", "release-save", "unusable-again", "unusable-limit"] : ["success", "rejected", "unusable-again", "unusable-limit"])) {
       const rejected = recoveryCase === "rejected";
       const retainedFixture = await releaseFixture(`destination-retained-${recoveryCase}`);
-      terminalExpiry = true;
+      if (harness === "grok") terminalExpiry = true; else unusableResponse = true;
       await refused(() => rpc(cb!, "adopt", { account: retainedFixture.account, handoffId: retainedFixture.handoffId, commitReceipt: retainedFixture.committed.receipt }), "credential_handoff_unusable_access");
-      assert.equal((await rpc<{ retainedChainRecoveryAvailable: boolean }>(cb, "handoffStatus", { handoffId: retainedFixture.handoffId, role: "destination" })).retainedChainRecoveryAvailable, true);
+      const initialStatus: { outcome: string; retainedGeneration: number; retainedChainRecoveryAvailable: boolean } = await rpc(cb, "handoffStatus", { handoffId: retainedFixture.handoffId, role: "destination" });
+      assert.equal(initialStatus.retainedChainRecoveryAvailable, true); assert.equal(initialStatus.outcome, "retained_unusable");
+      assert.equal(initialStatus.retainedGeneration, retainedFixture.material.material.generation + 1);
       const retainedPath = join(b.dir, "vault", ".credential-authorities", retainedFixture.account + ".json");
       const retainedDocument = JSON.parse(readFileSync(retainedPath, "utf8"));
       const retainedToken = tokenOf({ ...retainedFixture.material, material: { ...retainedFixture.material.material, document: retainedDocument.document } });
-      const params = { account: retainedFixture.account, handoffId: retainedFixture.handoffId, confirm: true, roster: destinationRoster };
-      await refused(() => rpc(cb!, "releasePeer", { ...params, nativeRecovery: true }), "credential_handoff_decided");
+      const params = { account: retainedFixture.account, handoffId: retainedFixture.handoffId, confirm: true, roster: destinationRoster, retainedGeneration: initialStatus.retainedGeneration };
+      await refused(() => rpc(cb!, "releasePeer", { ...params, useRetainedChain: true, retainedGeneration: undefined }), "credential_handoff_conflict");
+      await refused(() => rpc(cb!, "releasePeer", { ...params, useRetainedChain: true, retainedGeneration: initialStatus.retainedGeneration - 1 }), "credential_handoff_conflict");
+      await refused(() => rpc(cb!, "releasePeer", { ...params, nativeRecovery: true, retainedGeneration: undefined }), "credential_handoff_decided");
       if (rejected) valid.delete(retainedToken);
       const count = refreshes.length;
       if (recoveryCase.startsWith("unusable-")) {
-        terminalExpiry = true;
-        let bad: Released = await rpc<Released>(cb, "releasePeer", { ...params, useRetainedChain: true });
-        assert.equal(bad.outcome, "retained_unusable"); assert.equal(bad.disposition, "retained_unusable"); assert.equal(bad.retainedUnusableCount, 1);
+        if (harness === "grok") terminalExpiry = true; else unusableResponse = true;
+        let bad: Released = await rpc<Released>(cb, "releasePeer", { ...params, useRetainedChain: true, retainedGeneration: initialStatus.retainedGeneration });
+        assert.equal(bad.outcome, "retained_unusable"); assert.equal(bad.disposition, "retained_unusable"); assert.equal(bad.retainedUnusableCount, 2);
         assert.ok(bad.message.includes(`--retained-generation ${bad.retainedGeneration}`));
         assert.equal(refreshes.length, count + 1);
-        await refused(() => rpc(cb!, "releasePeer", { ...params, discardRetainedChain: true }), "credential_handoff_decided");
+        await refused(() => rpc(cb!, "releasePeer", { ...params, discardRetainedChain: true, retainedGeneration: undefined }), "credential_handoff_decided");
         await rpc(cb, "releasePeer", { ...params, useRetainedChain: true }); assert.equal(refreshes.length, count + 1);
-        await refused(() => rpc(cb!, "releasePeer", { ...params, nativeRecovery: true }), "credential_handoff_decided");
+        await refused(() => rpc(cb!, "releasePeer", { ...params, nativeRecovery: true, retainedGeneration: undefined }), "credential_handoff_decided");
         if (recoveryCase === "unusable-again") {
           const freshParams = { ...params, useRetainedChain: true, retainedGeneration: bad.retainedGeneration };
           const fixed: Released = await rpc<Released>(cb, "releasePeer", freshParams);
@@ -675,8 +759,8 @@ for (const harness of ["claude", "codex", "grok"]) test(`credential handoff ${ha
           assert.equal((await rpc<{ scrubbed: boolean }>(cb, "handoffStatus", { handoffId: retainedFixture.handoffId, role: "destination" })).scrubbed, false);
           console.log("grok retained_unusable: saved chain/generation returned, previous request no provider; fresh bound generation rotates once and publishes; older generation replay no provider, holder reports no scrub");
         } else {
-          for (let attempt = 2; attempt <= 3; attempt++) {
-            terminalExpiry = true;
+          for (let attempt = 3; attempt <= 3; attempt++) {
+            if (harness === "grok") terminalExpiry = true; else unusableResponse = true;
             bad = await rpc<Released>(cb, "releasePeer", { ...params, useRetainedChain: true, retainedGeneration: bad.retainedGeneration });
             assert.equal(bad.retainedUnusableCount, attempt);
           }
@@ -696,13 +780,13 @@ for (const harness of ["claude", "codex", "grok"]) test(`credential handoff ${ha
           assert.equal(existsSync(retainedPath), false); assert.equal(refreshes.length, cappedCalls);
           const nativeRow: MirrorAccountRow = (await cb.request<{ accounts: MirrorAccountRow[] }>("account.list", {})).accounts.find(account => account.id === retainedFixture.account)!;
           assert.equal(nativeRow.source, "local"); assert.equal(nativeRow.status, "auth_needed");
-          await rpc(cb, "releasePeer", { ...params, discardRetainedChain: true }); assert.equal(refreshes.length, cappedCalls);
+          await rpc(cb, "releasePeer", { ...params, discardRetainedChain: true, retainedGeneration: undefined }); assert.equal(refreshes.length, cappedCalls);
           console.log("grok retained_unusable cap: three explicit bound failures -> login_required/reason; capped discard refused below limit, real CLI explicitly discards with provider-session warning, same row local/native-login-required, zero provider");
         }
         continue;
       }
       if (!["success", "rejected"].includes(recoveryCase)) {
-        writeFileSync(join(b.dir, "crash-gate.json"), JSON.stringify({ phase: recoveryCase, account: retainedFixture.account, generation: retainedDocument.generation }));
+        writeCrashGate(join(b.dir, "crash-gate.json"), { phase: recoveryCase, account: retainedFixture.account, generation: retainedDocument.generation });
         const pending = rpc(cb, "releasePeer", { ...params, useRetainedChain: true }).catch(() => null);
         await waitFor(() => existsSync(join(b.dir, "crash-stopped")), `retained-chain stopped at ${recoveryCase}`);
         await db.kill(); cb.close(); await pending;
@@ -711,7 +795,7 @@ for (const harness of ["claude", "codex", "grok"]) test(`credential handoff ${ha
         const replay: Released = await rpc<Released>(cb, "releasePeer", { ...params, useRetainedChain: true });
         assert.equal(replay.outcome, recoveryCase === "release-save" ? "restored" : "uncertain");
         assert.equal(replay.providerCalled, false); assert.equal(refreshes.length, count + (recoveryCase === "release-before" ? 0 : 1));
-        if (recoveryCase !== "release-save") await rpc(cb, "releasePeer", { ...params, nativeRecovery: true });
+        if (recoveryCase !== "release-save") await rpc(cb, "releasePeer", { ...params, nativeRecovery: true, retainedGeneration: undefined });
         console.log(`grok release-peer retained-chain ${recoveryCase} SIGKILL: durable attempt, saved replacement publication or unknown stop, zero blind retry`);
         continue;
       }
@@ -730,7 +814,7 @@ for (const harness of ["claude", "codex", "grok"]) test(`credential handoff ${ha
     await rpc(ca, "exportPrepare", { handoffId: preparedHandoff, preparedReceipt: preparedShadow.receipt, targetKey: preparedShadow.receipt.binding.targetKey, authenticatedPeer: to });
     const untouched = readFileSync(join(a.dir, "vault", ".credential-authorities", preparedAccount + ".json")), preparedCalls = refreshes.length;
     const preparedReleaseParams = { account: preparedAccount, handoffId: preparedHandoff, confirm: true, roster };
-    writeFileSync(join(a.dir, "crash-gate.json"), JSON.stringify({ phase: "early-release", account: preparedAccount }));
+    writeCrashGate(join(a.dir, "crash-gate.json"), { phase: "early-release", account: preparedAccount });
     const preparedReleased = await rpc<Released>(ca, "releasePeer", preparedReleaseParams);
     assert.equal(preparedReleased.disposition, "prepared_aborted"); assert.equal(preparedReleased.requiredEpoch, 2); assert.equal(preparedReleased.providerCalled, false); assert.equal(preparedReleased.rotationScheduled, true); assert.ok(preparedReleased.message.includes(preparedAccount) && preparedReleased.message.includes("may still hold copied refresh material"));
     assert.ok(readFileSync(join(a.dir, "vault", ".credential-authorities", preparedAccount + ".json")).equals(untouched), "prepared abort preserves private material");
@@ -760,6 +844,7 @@ for (const harness of ["claude", "codex", "grok"]) test(`credential handoff ${ha
         const { stdout } = await promisify(execFile)(process.execPath, [fileURLToPath(new URL("../../cli/src/bin.ts", import.meta.url)), "account", "credentials", "release-peer", sourceBad.account, "--confirm", "--use-retained-chain", "--retained-generation", String(bad.retainedGeneration), "--file", sourceRoster, "--handoff-id", sourceBad.handoffId, "--data-dir", a.dir, "--json"], { env: { PATH: process.env.PATH, HOME: a.dir, HIVE_NO_KEYCHAIN: "1" } });
         metadata.push(stdout); const fixed: Released = JSON.parse(stdout);
         assert.equal(fixed.outcome, "restored"); assert.equal(fixed.disposition, "source_rotated"); assert.equal(refreshes.length, sourceCalls + 2);
+        assert.ok(fixed.message.startsWith("Authority restored"));
         await rpc(cb, "adoptAbort", { handoffId: sourceBad.handoffId, abortReceipt: fixed.abortReceipt });
         await rpc(ca, "releasePeer", sourceBad.params); assert.equal(refreshes.length, sourceCalls + 2);
         console.log("grok source retained_unusable: committed refresh retains chain and names recovery; real CLI fresh generation rotates once, signed abort cleans returning shadow, replay no provider");
@@ -773,6 +858,8 @@ for (const harness of ["claude", "codex", "grok"]) test(`credential handoff ${ha
         const beforeDiscard = refreshes.length;
         const discarded: Released = await rpc<Released>(ca, "releasePeer", { ...sourceBad.params, discardRetainedChain: true });
         assert.equal(discarded.outcome, "login_required"); assert.equal(discarded.cleanupPending, false); assert.equal(discarded.providerCalled, false);
+        const sourceTerminal: { state: string; releasePeer: { mode: string } } = await rpc(ca, "handoffStatus", { handoffId: sourceBad.handoffId, role: "source" });
+        assert.equal(sourceTerminal.state, "failed"); assert.equal(sourceTerminal.releasePeer.mode, "source_recovery");
         assert.ok(discarded.message.includes("provider session behind the discarded chain stays valid"));
         assert.equal((await rpc<AccountCredentialAuthority>(ca, "status", { id: sourceBad.account })).phase, "native");
         assert.equal(refreshes.length, beforeDiscard);
@@ -826,7 +913,7 @@ for (const harness of ["claude", "codex", "grok"]) test(`credential handoff ${ha
     console.log(`${harness} release-peer rejected: destination already rotated, source scrubbed/native-login-required, named-account warning retains removed peer login, replay no provider`);
     for (const phase of ["release-before", "response", "release-save"]) {
       const crash = await releaseFixture(phase), before = refreshes.length;
-      writeFileSync(join(a.dir, "crash-gate.json"), JSON.stringify({ phase, account: crash.account, generation: crash.material.material.generation }));
+      writeCrashGate(join(a.dir, "crash-gate.json"), { phase, account: crash.account, generation: crash.material.material.generation });
       let releaseError: unknown, releaseOutcome: Released | undefined;
       const operation = waitFor(async () => {
         try { return await rpc<Released>(ca!, "releasePeer", crash.params); }
