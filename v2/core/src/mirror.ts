@@ -59,7 +59,12 @@ export type MirrorSealRow = SealRow;
  * account needs a new login soon: compare against the clock, since no delta is
  * emitted when the moment passes.
  */
-export type MirrorAccountRow = AccountRow & { credentialHealth: CredentialHealth; loginDueAt: number | null };
+/**
+ * 2026-10 (additive): `nativeLogin`, DERIVED — for a node's native account
+ * (the machine's own login, recipe `nativeOn`) the plain text that says what
+ * it is, shown as is; null for every other account.
+ */
+export type MirrorAccountRow = AccountRow & { credentialHealth: CredentialHealth; loginDueAt: number | null; nativeLogin: string | null };
 
 /** Three days before a Claude provider login ends, a new login is due. */
 export const CLAUDE_LOGIN_DUE_MS = 3 * 24 * 60 * 60_000;

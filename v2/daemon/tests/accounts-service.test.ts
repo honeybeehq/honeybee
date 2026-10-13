@@ -23,7 +23,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { openCoreStore, type CoreStore } from "../../core/src/index.ts";
@@ -1120,6 +1120,100 @@ test("muse.keychain: an auth.json that only points at the OS keychain is a prese
     assert.deepEqual(imported.checked.map((c) => c.state), ["invalid", "missing", "invalid"]);
     assert.equal(existsSync(join(r.vault, "muse", account.id)), false, "the pointer never reaches the vault");
     await assert.rejects(svc.mintLease(account), (err: unknown) => err instanceof LeaseRefusal && err.code === "lease_unsupported" && /storage:"keychain"/.test(err.message));
+  } finally {
+    r.cleanup();
+  }
+});
+
+const THIS_MAC = "This Mac: uses your own Muse sign-in (`muse login`) on this computer. Every Muse session on this Mac shares it. Honeybee never copies or changes it.";
+
+function treeOf(dir: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  const walk = (at: string): void => {
+    if (!existsSync(at)) return;
+    for (const entry of readdirSync(at, { withFileTypes: true })) {
+      const path = join(at, entry.name);
+      if (entry.isDirectory()) walk(path);
+      else out[path.slice(dir.length + 1)] = readFileSync(path, "utf8");
+    }
+  };
+  walk(dir);
+  return out;
+}
+
+test("muse.native: This Mac — on darwin the machine's own Muse login is the one runnable Muse account; it runs with no home env and is never activated, copied, leased or written", async () => {
+  const r = rig();
+  try {
+    const machine = fakeMachine(r);
+    const nativeHome = join(machine.home, ".config");
+    const file = "muse/auth.json";
+    const mac = service(r, { platform: "darwin", env: machine.env, home: machine.home });
+    const linux = service(r, { env: machine.env, home: machine.home });
+    assert.equal(mac.nativeHomeOf("muse"), nativeHome);
+    assert.equal(service(r, { platform: "darwin", env: { XDG_CONFIG_HOME: join(r.dir, "xdg") }, home: machine.home }).nativeHomeOf("muse"), join(r.dir, "xdg"));
+    assert.equal(linux.nativeHomeOf("muse"), null, "Linux isolates Muse accounts; it has no native one");
+    assert.equal(mac.nativeHomeOf("claude"), null, "only a recipe that says so offers a native account");
+
+    // A Studio-held account (vault only) beside This Mac.
+    const held = addAccount(r, "muse", "held", { vault: { [file]: JSON.stringify({ schema_version: 1, providers: { meta: { api_key: "k" } } }) } });
+    const native = r.store.createAccount({ id: "muse-this-mac", harness: "muse", homePath: nativeHome, label: "This Mac", penalty: 0, status: "ok" });
+    assert.deepEqual([mac.isNative(native), mac.isNative(held), linux.isNative(native)], [true, false, false]);
+    assert.equal(mac.nativeAccount("muse")?.id, native.id);
+
+    // Not signed in on this Mac: the account says to run `muse login`.
+    assert.equal(mac.credentialState(native), "absent");
+    const missing = mac.readiness(native);
+    assert.equal(missing.ready ? null : missing.code, "account_credential_missing");
+    assert.match(missing.ready ? "" : missing.message, /Run `muse login` in Terminal on this Mac/);
+    assert.equal(mac.pick("muse").ok, false);
+
+    // The user's own `muse login`: a Keychain pointer is a present, unverified login.
+    writeAt(join(nativeHome, file), JSON.stringify({ schema_version: 2, providers: { meta: { mechanism: "oauth", obtained_via: "device_code", storage: "keychain", expires_at: 1 } } }));
+    assert.equal(mac.credentialState(native), "present");
+    assert.equal(mac.homeCredentialState(native), "usable");
+    assert.equal(mac.credentialHealthOf(native), "unverified");
+    assert.deepEqual(mac.readiness(native), { ready: true });
+    const heldReady = mac.readiness(held);
+    assert.equal(heldReady.ready ? null : heldReady.code, "account_unavailable", "a held account still never runs on the Mac");
+    for (const pick of [mac.pick("muse"), mac.pickRoundRobin("muse")]) {
+      assert.equal(pick.ok ? pick.account.id : pick.message, native.id, "auto and rr pick only This Mac");
+    }
+    const admitted = mac.admitNewWork("muse", { operation: "spawn", requestKey: "k" });
+    assert.equal(admitted.ok ? admitted.account.id : admitted.message, native.id);
+    const onlyHeld = mac.pick("muse", { onlyAccountIds: new Set([held.id]) });
+    assert.match(onlyHeld.ok ? "" : onlyHeld.message, /Add This Mac with: hive account add muse --native/);
+
+    // A file login past expiry: the user's own Muse refreshes it, unlike a held one.
+    writeAt(join(nativeHome, file), JSON.stringify({ schema_version: 1, providers: { meta: { mechanism: "oauth", access_token: "DUMMY-A", refresh_token: "DUMMY-R", expires_at: 1, obtained_via: "device_code" } } }));
+    assert.equal(mac.credentialState(native), "present");
+
+    // It runs as the user's own muse would: no home env, nothing activated, seeded or written.
+    const before = treeOf(machine.home);
+    assert.deepEqual(mac.homeEnvOf(native), {});
+    assert.deepEqual(mac.credentialEnvOf(native), {});
+    assert.deepEqual(await mac.activateForSpawn(native, { cwd: r.dir }), { activated: false, copied: [], reason: "home_populated" });
+
+    // Never leased, captured or restored.
+    const refusal = /This Mac is this computer's own muse sign-in; Honeybee never signs it in, copies, leases or changes it/;
+    await assert.rejects(mac.mintLease(native), (err: unknown) => err instanceof LeaseRefusal && err.code === "lease_unsupported" && refusal.test(err.message));
+    await assert.rejects(mac.captureAccount(native), refusal);
+    await assert.rejects(mac.restoreNativeBackup(native.id), refusal);
+    assert.deepEqual(treeOf(machine.home), before, "the machine's own Muse files are untouched");
+    assert.equal(existsSync(join(r.vault, "muse", native.id)), false, "nothing reaches the vault");
+
+    assert.equal(mac.mirrorRow(native).nativeLogin, THIS_MAC);
+    assert.equal(mac.mirrorRow(held).nativeLogin, null);
+    assert.equal(linux.mirrorRow(native).nativeLogin, null);
+
+    // A live session's usage lands on This Mac's limits row and verifies it.
+    const row = mac.observeLimits(native, { observedAt: r.now(), usage: { observedAtMs: r.now(), tier: "fixture-tier-from-provider", window: { usedPercent: 21, resetsAtMs: r.now() + HOUR, windowDurationMins: 300 }, weekly: { usedPercent: 4, resetsAtMs: r.now() + DAY } } });
+    assert.deepEqual([row?.readable, row?.fiveHourPct, row?.weeklyPct], [true, 21, 4]);
+    assert.equal(mac.credentialHealthOf(native), "verified");
+
+    // A run that reported authRequired: the account asks for `muse login` again.
+    const rejected = mac.readiness(r.store.setAccountStatus(native.id, "auth_needed", "bee b: authRequired").account);
+    assert.equal(rejected.ready ? null : rejected.code, "account_auth_needed");
+    assert.match(rejected.ready ? "" : rejected.message, /needs its sign-in\. Run `muse login` in Terminal on this Mac/);
   } finally {
     r.cleanup();
   }

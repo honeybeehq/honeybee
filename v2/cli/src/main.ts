@@ -355,6 +355,8 @@ const BOOL_FLAGS = new Set([
   "--no-preamble",
   // F2: account add — adopting pre-existing harness credentials is explicit.
   "--import-existing",
+  // account add — the machine's own login (This Mac for Muse on macOS).
+  "--native",
   "--remote",
   "--no-wait",
   "--replace-account",
@@ -773,7 +775,7 @@ async function cmdSpawn(ctx: CliContext, parsed: Parsed): Promise<number> {
 
 
 const ACCOUNT_USAGE =
-  "usage: hive account list [--harness h] | get <selector> | add <harness> <label> [--id id] [--home dir] [--penalty n] [--import-existing]\n" +
+  "usage: hive account list [--harness h] | get <selector> | add <harness> <label> [--id id] [--home dir] [--penalty n] [--import-existing] | add <harness> --native [label]\n" +
   "       hive account config preview <selector> | config import <selector> [--idempotency-key key]\n" +
   "       hive account remove <selector> | penalty <selector> <0-100> | ceiling <selector> <1-100|off>\n" +
   "       hive account pause|unpause <selector> [--by operator|quota|lease] [--owner <id>] [--force]\n" +
@@ -926,12 +928,14 @@ async function cmdAccount(ctx: CliContext, parsed: Parsed): Promise<number> {
     }
     case "add": {
       const [, , harness, label] = parsed.positional;
-      if (!harness || !label) throw new Error(ACCOUNT_USAGE);
+      const native = parsed.flags.get("--native") === true;
+      if (!harness || (!label && !native)) throw new Error(ACCOUNT_USAGE);
       const penaltyFlag = parsed.flags.get("--penalty") as string | undefined;
       const r = await withClient(ctx, (c) =>
         c.request<AccountAddResult>("account.add", {
           harness,
-          label,
+          ...(label ? { label } : {}),
+          ...(native ? { native: true } : {}),
           ...(parsed.flags.has("--id") ? { id: parsed.flags.get("--id") as string } : {}),
           ...(parsed.flags.has("--home") ? { homePath: resolve(parsed.flags.get("--home") as string) } : {}),
           ...(penaltyFlag !== undefined ? { penalty: Number(penaltyFlag) } : {}),
@@ -939,7 +943,9 @@ async function cmdAccount(ctx: CliContext, parsed: Parsed): Promise<number> {
           idempotencyKey: key,
         }),
       );
-      const health = r.imported
+      const health = r.account.nativeLogin
+        ? ` — ${r.account.nativeLogin}${r.account.status === "auth_needed" ? " Not signed in yet." : ""}`
+        : r.imported
         ? ` — imported ${r.imported.files.join(", ")} from ${r.imported.source === "external" ? r.imported.from : tildify(r.imported.from)}` +
           (r.verification === "limits"
             ? "; verifying with the provider (hive account verify " + r.account.id + " to check)"

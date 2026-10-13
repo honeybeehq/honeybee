@@ -19,6 +19,7 @@ import {
   CoreError,
   SCHEMA_VERSION,
   ACCOUNT_RECIPES,
+  nativeAccountRecipe,
   accountConfigImportRecipeFor,
   accountIdFor,
   accountIsolationRefusal,
@@ -154,13 +155,21 @@ test("v7.recipes: where a harness is unisolated only harness-free logins are off
   }
 });
 
-test("v7.recipes: Muse accounts are unisolated on darwin only; no other recipe is", () => {
-  assert.match(accountIsolationRefusal("muse", "darwin") ?? "", /^Muse keeps one login per macOS user in the Keychain, so Muse accounts can't be isolated on this Mac; run Muse on a Linux node$/);
+test("v7.recipes: Muse accounts are unisolated on darwin only, where This Mac (the machine's own login) is the native account; no other recipe is", () => {
+  assert.match(accountIsolationRefusal("muse", "darwin") ?? "", /^Muse keeps one login per macOS user in the Keychain, so Muse accounts can't be isolated on this Mac; use This Mac \(your own `muse login`\) or run Muse on a Linux node$/);
   assert.equal(accountIsolationRefusal("muse", "linux"), null);
+  assert.deepEqual(nativeAccountRecipe("muse", "darwin"), {
+    label: "This Mac",
+    description: "This Mac: uses your own Muse sign-in (`muse login`) on this computer. Every Muse session on this Mac shares it. Honeybee never copies or changes it.",
+    signIn: "Run `muse login` in Terminal on this Mac, then mark This Mac's account restored.",
+  });
+  assert.equal(nativeAccountRecipe("muse", "linux"), null);
   for (const harness of Object.keys(ACCOUNT_RECIPES)) {
     if (harness !== "muse") assert.equal(accountIsolationRefusal(harness, "darwin"), null, harness);
+    if (harness !== "muse") assert.equal(nativeAccountRecipe(harness, "darwin"), null, harness);
   }
   assert.equal(accountIsolationRefusal("unknown", "darwin"), null);
+  assert.equal(nativeAccountRecipe("unknown", "darwin"), null);
 });
 
 test("v7.recipes: parseMuseCredentials reads the meta entry's shape without returning tokens", () => {

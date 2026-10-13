@@ -168,7 +168,7 @@ test("mirror.2: value-level snapshot — a deterministic store serializes to the
       tracks: [track],
       questions: [store.getQuestion(question.id)!],
       seals: [seal],
-      accounts: [{ ...account, credentialHealth: "absent", loginDueAt: null }],
+      accounts: [{ ...account, credentialHealth: "absent", loginDueAt: null, nativeLogin: null }],
       accountLimits: [limits],
       accountAdmissions: [],
       tasks: [],
@@ -357,7 +357,8 @@ test("mirror.2: value-level snapshot — a deterministic store serializes to the
       "addedAt": 1018000,
       "updatedAt": 1018000,
       "credentialHealth": "absent",
-      "loginDueAt": null
+      "loginDueAt": null,
+      "nativeLogin": null
     }
   ],
   "accountLimits": [

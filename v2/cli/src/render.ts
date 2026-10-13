@@ -274,7 +274,7 @@ export function colorCredentialHealth(health: AccountListResult["accounts"][numb
 }
 
 /** A stale read-only row lacks the daemon-derived `credentialHealth`. */
-export type AccountLineRow = Omit<AccountListResult["accounts"][number], "credentialHealth" | "loginDueAt"> & { credentialHealth?: AccountListResult["accounts"][number]["credentialHealth"] };
+export type AccountLineRow = Omit<AccountListResult["accounts"][number], "credentialHealth" | "loginDueAt" | "nativeLogin"> & { credentialHealth?: AccountListResult["accounts"][number]["credentialHealth"]; nativeLogin?: string | null };
 
 export function accountLine(
   a: AccountLineRow,
@@ -292,7 +292,8 @@ export function accountLine(
   const loginExpiry = a.refreshTokenExpiresAt != null ? `  ${loginExpiryLabel(a.refreshTokenExpiresAt)}` : "";
   const lease = a.source === "leased" && a.leasedFrom ? `  leased authority=${a.leasedFrom.authorityNodeId} expires=${a.leasedFrom.expiresAt === null ? "none" : new Date(a.leasedFrom.expiresAt * 1000).toISOString()}` : "";
   const why = a.status === "auth_needed" && a.statusReason ? `\n  ${dim("reason:")} ${a.statusReason}` : "";
-  return `${stalePrefix(stale)}${bold(a.id)}  ${blue(a.harness)}  ${colorAccountStatus(a.status)}${pausedBy}  ${dim("creds=")}${colorCredentialHealth(a.credentialHealth)}  ${dim(tildify(a.homePath))}${penalty}${usage}${login}${loginExpiry}${lease}${why}`;
+  const native = a.nativeLogin ? `\n  ${dim("native:")} ${a.nativeLogin}` : "";
+  return `${stalePrefix(stale)}${bold(a.id)}  ${blue(a.harness)}  ${colorAccountStatus(a.status)}${pausedBy}  ${dim("creds=")}${colorCredentialHealth(a.credentialHealth)}  ${dim(tildify(a.homePath))}${penalty}${usage}${login}${loginExpiry}${lease}${why}${native}`;
 }
 
 /** "login expires 10-18 19:38" (UTC): when the provider login itself ends and a new login is needed. */

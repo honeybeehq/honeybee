@@ -215,6 +215,13 @@ export const DAEMON_CAPABILITIES = [
   "account.lease.min_ttl.v1",
   /** 2026-10: mirrored accounts carry derived `loginDueAt` (3 days before `refreshTokenExpiresAt`). */
   "account.login_due.v1",
+  /**
+   * 2026-10: `account.add {native:true}` adds the node's one native account,
+   * the machine's own login where the recipe offers one (Muse on macOS:
+   * This Mac). Mirrored accounts carry derived `nativeLogin` (plain text, null
+   * unless native); a spawn on it carries the same text as `accountReason`.
+   */
+  "account.native.v1",
 ] as const;
 export type DaemonCapability = (typeof DAEMON_CAPABILITIES)[number];
 

@@ -30,6 +30,13 @@ export interface IdentityRecipe {
    */
   unisolatedOn?: Readonly<Record<string, string>>;
   /**
+   * Platforms where the harness can still run under the machine's OWN login:
+   * one native account per node whose home is the machine's vendor home. The
+   * user signs in outside Honeybee; Honeybee runs the harness with no home
+   * env and never logs it in, copies, leases or writes that login.
+   */
+  nativeOn?: Readonly<Record<string, NativeAccountRecipe>>;
+  /**
    * Where the MACHINE's own CLI keeps these files (the "vendor home"): the
    * default dir under $HOME when the harness's home env var
    * (HARNESS_HOME_ENV) is unset, plus recipe-relative files that live
@@ -52,6 +59,15 @@ export interface IdentityRecipe {
   loginFlow: LoginRecipe;
   /** Configuration-only onboarding entries. Credentials are never entries here. */
   configImport?: AccountConfigImportRecipe;
+}
+
+export interface NativeAccountRecipe {
+  /** The native account's label. */
+  label: string;
+  /** What the account is, shown as is wherever it appears. */
+  description: string;
+  /** How the user signs in, shown as is when the login is missing or rejected. */
+  signIn: string;
 }
 
 export interface AccountConfigImportRecipe {
@@ -719,7 +735,14 @@ export const ACCOUNT_RECIPES: Readonly<Record<string, IdentityRecipe>> = {
     // macOS Muse ignores XDG_CONFIG_HOME for the login itself: one Keychain
     // item per OS user, and any file token it reads is moved into that item.
     unisolatedOn: {
-      darwin: "Muse keeps one login per macOS user in the Keychain, so Muse accounts can't be isolated on this Mac; run Muse on a Linux node",
+      darwin: "Muse keeps one login per macOS user in the Keychain, so Muse accounts can't be isolated on this Mac; use This Mac (your own `muse login`) or run Muse on a Linux node",
+    },
+    nativeOn: {
+      darwin: {
+        label: "This Mac",
+        description: "This Mac: uses your own Muse sign-in (`muse login`) on this computer. Every Muse session on this Mac shares it. Honeybee never copies or changes it.",
+        signIn: "Run `muse login` in Terminal on this Mac, then mark This Mac's account restored.",
+      },
     },
     vendorHome: { dir: ".config" },
     login: { command: "muse", args: ["login"] },
@@ -857,6 +880,11 @@ export function homeEnvFor(harness: string): string | undefined {
 /** Why `harness` accounts cannot be isolated on `platform` (the recipe's `unisolatedOn` reason), else null. */
 export function accountIsolationRefusal(harness: string, platform: string): string | null {
   return recipeFor(harness)?.unisolatedOn?.[platform] ?? null;
+}
+
+/** The machine's-own-login account `harness` offers on `platform` (the recipe's `nativeOn`), else null. */
+export function nativeAccountRecipe(harness: string, platform: string): NativeAccountRecipe | null {
+  return recipeFor(harness)?.nativeOn?.[platform] ?? null;
 }
 
 export function recipeFor(harness: string): IdentityRecipe | undefined {

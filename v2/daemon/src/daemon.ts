@@ -24,7 +24,7 @@ import { threadOperationView, type ThreadOperationRow } from "../../core/src/thr
  *  - behavior 6 (service mgmt)     → service.ts (wired by the CLI)
  *  - behavior 7 (config)           → config.ts
  */
-import { closeSync, copyFileSync, cpSync, existsSync, mkdirSync, openSync, readdirSync, readlinkSync, readSync, realpathSync, rmSync, statSync } from "node:fs";
+import { closeSync, copyFileSync, cpSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readlinkSync, readSync, realpathSync, rmSync, statSync } from "node:fs";
 import { execFile } from "node:child_process";
 import type { InterruptOutcome } from "../../harness/src/driver.ts";
 import { appendFileSync } from "node:fs";
@@ -1378,6 +1378,8 @@ export class HiveDaemon {
     if (!account) {
       throw new Error(`resolveCellSandboxWritablePaths: bee ${beeId} is bound to unknown account ${bee.account}`);
     }
+    // The machine's own home is not a Honeybee account home: a native bee gets what an unbound bee gets.
+    if (this.mustAccounts().isNative(account)) return [];
     return [sandboxWritableDirectory(account.homePath, {
       forbiddenDirectories: [this.cfg.accounts.homesDir],
     })];
@@ -2565,7 +2567,9 @@ export class HiveDaemon {
    * calibrated selector (unbound when the harness has no accounts at all);
    * 'rr' → the next credentialed account in registration order; null →
    * unbound. An explicit selector with no usable candidates is typed
-   * `account_unavailable`.
+   * `account_unavailable`. Where the harness's accounts are unisolated only
+   * its native account (the machine's own login) runs: explicit and claimed
+   * accounts must pass readiness, and auto/rr pick only the native account.
    */
   private resolveSpawnAccount(
     request: string | null,
@@ -2579,8 +2583,8 @@ export class HiveDaemon {
   ): { account: AccountRow | null; reason: string | null; allocation?: AccountAllocationReceipt; reservationId?: string; claim?: AccountAdmissionClaim } {
     const store = this.mustStore();
     if (request === null) return { account: null, reason: null };
-    const unisolated = this.accounts?.isolationRefusal(agent);
-    if (unisolated) throw new RpcError("account_unavailable", unisolated);
+    const unisolated = this.accounts?.isolationRefusal(agent) ?? null;
+    if (unisolated && !this.accounts!.nativeRecipe(agent)) throw new RpcError("account_unavailable", unisolated);
     const onlyAccountIds = this.admissionAccountIdsParam(params, "onlyAccountIds");
     if (request === "rr") {
       if (!this.accounts) throw new RpcError("account_unavailable", `Account selection is unavailable for ${agent}`);
@@ -2614,7 +2618,7 @@ export class HiveDaemon {
       );
       return { account, reason: "allocator owner claim", allocation: claim.allocation, claim };
     }
-    if (!this.accounts || store.listAccounts({ harness: agent }).length === 0) {
+    if (!this.accounts || (!unisolated && store.listAccounts({ harness: agent }).length === 0)) {
       // A caller that bound the pick to an allowlist never gets an unbound bee running on daemon-default credentials.
       if (onlyAccountIds) throw new RpcError("account_unavailable", `No ${agent} account matches the allowed ids on this node`, { onlyAccountIds: [...onlyAccountIds] });
       return { account: null, reason: null };
@@ -2679,9 +2683,11 @@ export class HiveDaemon {
     const driver = this.driver;
     // v7: the account is resolved BEFORE the row is written ('auto' is never
     // stored); the home env is derived from the account row.
-    const { account, reason: accountReason, allocation, reservationId, claim } = this.resolveSpawnAccount(
+    const { account, reason: pickReason, allocation, reservationId, claim } = this.resolveSpawnAccount(
       accountRequest, agent, params, key ?? `spawn:${id}`, "spawn", 0, null, id,
     );
+    // The native account says what it is, as is, whichever selector chose it.
+    const accountReason = (account && this.accounts?.nativeDescription(account)) || pickReason;
     const accountEnv = account && this.accounts ? this.accounts.homeEnvOf(account) : {};
     const requestedEnv = this.spawnEnvParam(params);
     // Cell substrate: the cell owns the cwd (the space checkout). The seed
@@ -4923,23 +4929,27 @@ export class HiveDaemon {
    * spec's no-auto-update switch holds), cached by (path, mtime, the spec's
    * version stamps) — a failure or timeout is a null version, never an
    * error. `unavailable` is the recipe's reason this platform cannot run the
-   * harness at all.
+   * harness at all. A harness whose accounts are unisolated here is never
+   * executed, not even for its version: that is read from its first version
+   * stamp instead, and it stays available when it runs under the native
+   * account (the machine's own login).
    */
   private async rpcNodeHarnesses(): Promise<NodeHarnessesResult> {
     const harnesses: HarnessFact[] = [];
     for (const [harness, spec] of Object.entries(this.cfg.agents)) {
       const env = { ...(process.env as Record<string, string>), ...(spec.env ?? {}) };
       const resolved = resolveExecutable(spec.command, { env });
-      const unavailable = this.accounts?.isolationRefusal(harness) ?? this.accounts?.isolationRefusal(spec.adapter ?? harness) ?? null;
+      const kinds = [harness, spec.adapter ?? harness];
+      const unisolated = kinds.map((kind) => this.accounts?.isolationRefusal(kind) ?? null).find((reason) => reason !== null) ?? null;
+      const native = kinds.some((kind) => this.accounts?.nativeRecipe(kind));
       harnesses.push({
         harness,
         command: spec.command,
         present: resolved !== null,
         path: resolved?.path ?? null,
         source: resolved?.source ?? null,
-        // An unavailable harness is never executed, not even for its version.
-        version: resolved && !unavailable ? await this.probeHarnessVersion(resolved.path, env, spec.versionStamps ?? []) : null,
-        unavailable,
+        version: !resolved ? null : unisolated ? readVersionStamp(resolved.path, spec.versionStamps ?? []) : await this.probeHarnessVersion(resolved.path, env, spec.versionStamps ?? []),
+        unavailable: native ? null : unisolated,
       });
     }
     return { harnesses };
@@ -5077,6 +5087,8 @@ export class HiveDaemon {
 
   private rpcAccountConfigPreview(params: Record<string, unknown>): AccountConfigPreviewResult {
     const account = this.requireAccount(params);
+    const native = this.mustAccounts().nativeRefusal(account);
+    if (native) throw new RpcError("config_import_refused", native);
     try {
       return this.accountConfigImport.preview(account);
     } catch (error) {
@@ -5098,6 +5110,8 @@ export class HiveDaemon {
         return hit.result;
       }
       const account = this.requireAccount(params);
+      const native = this.mustAccounts().nativeRefusal(account);
+      if (native) throw new RpcError("config_import_refused", native);
       let result: AccountConfigImportResult;
       try {
         result = this.accountConfigImport.import(account);
@@ -5141,9 +5155,14 @@ export class HiveDaemon {
     const store = this.mustStore();
     const accounts = this.mustAccounts();
     const harness = this.param(params, "harness");
+    if (params.native !== undefined && typeof params.native !== "boolean") throw new RpcError("invalid_request", "account.add: native must be a boolean");
+    if (params.native === true) return this.withAsyncIdempotency("account.add", params, async () => this.addNativeAccount(harness, params));
     const label = this.param(params, "label");
     const id = typeof params.id === "string" && params.id.length > 0 ? params.id : accountIdFor(harness, label);
     const homePath = typeof params.homePath === "string" && params.homePath.length > 0 ? resolve(params.homePath) : accounts.defaultHomeOf(id);
+    if (accounts.isNative({ harness, source: "local", homePath })) {
+      throw new RpcError("invalid_request", `account.add: ${homePath} is this computer's own ${harness} sign-in; add it with native: true`);
+    }
     const penalty = params.penalty === undefined ? 0 : params.penalty;
     if (typeof penalty !== "number") throw new RpcError("invalid_request", "account.add: penalty must be a number");
     const importExisting = params.importExisting === undefined ? false : params.importExisting;
@@ -5201,6 +5220,34 @@ export class HiveDaemon {
       );
       return { account: accounts.mirrorRow(account), credentialHealth, imported, verification } satisfies AccountAddResult;
     });
+  }
+
+  /**
+   * `account.add {native:true}`: the node's one native account, the
+   * machine's own login (recipe `nativeOn`). Its home is the machine's vendor
+   * home. Nothing is signed in, imported, copied or written: the user signs
+   * in outside Honeybee, and the account says so.
+   */
+  private addNativeAccount(harness: string, params: Record<string, unknown>): AccountAddResult {
+    const store = this.mustStore();
+    const accounts = this.mustAccounts();
+    const native = accounts.nativeRecipe(harness);
+    if (!native) throw new RpcError("account_unavailable", `account.add: ${harness} has no native account on this computer`);
+    if (params.homePath !== undefined || params.importExisting !== undefined) {
+      throw new RpcError("invalid_request", `account.add: a native account takes no homePath or importExisting; it is this computer's own ${harness} sign-in`);
+    }
+    const existing = accounts.nativeAccount(harness);
+    if (existing) throw new RpcError("invalid_request", `account.add: this computer already has its native ${harness} account: ${existing.id}`);
+    const penalty = params.penalty === undefined ? 0 : params.penalty;
+    if (typeof penalty !== "number") throw new RpcError("invalid_request", "account.add: penalty must be a number");
+    const label = typeof params.label === "string" && params.label.trim().length > 0 ? params.label : native.label;
+    const id = typeof params.id === "string" && params.id.length > 0 ? params.id : accountIdFor(harness, label);
+    if (store.getAccount(id)) throw new RpcError("invalid_request", `account already exists: ${id}`);
+    const homePath = accounts.nativeHomeOf(harness)!;
+    const account = store.createAccount({ id, harness, label, homePath, penalty, status: accounts.honestStatus({ harness, id, homePath }, "ok") });
+    const credentialHealth = accounts.credentialHealthOf(account);
+    this.log(`account.add id=${id} harness=${harness} native=true home=${homePath} status=${account.status} credentialHealth=${credentialHealth}`);
+    return { account: accounts.mirrorRow(account), credentialHealth, imported: null, verification: "none" };
   }
 
   /** v18: `account.verify {id}` — the harness's real probe, awaited; the mirror row follows through the audit stream. */
@@ -5427,7 +5474,7 @@ export class HiveDaemon {
       const accounts = this.mustAccounts();
       const store = this.mustStore();
       const unisolated = accounts.isolationRefusal(account.harness);
-      if (unisolated) throw new RpcError("account_unavailable", unisolated);
+      if (unisolated && !accounts.isNative(account)) throw new RpcError("account_unavailable", unisolated);
       const credential = accounts.homeCredentialState(account);
       if (credential !== "usable") {
         throw new RpcError("account_unavailable", `account ${account.id} has ${credential === "absent" ? "no" : "an expired"} credential in its home`);
@@ -6034,6 +6081,17 @@ export class HiveDaemon {
  * then any project dir (the key derivation drifted across CLI versions —
  * realpath vs raw path — and a conversation is only ever one file).
  */
+/** The first line of a harness's first version stamp beside its resolved executable (Muse's `.muse-version`); null when unreadable. */
+export function readVersionStamp(path: string, stamps: string[]): string | null {
+  if (stamps.length === 0) return null;
+  try {
+    const line = readFileSync(join(dirname(realpathSync(path)), stamps[0]!), "utf8").split("\n").map((l) => l.trim()).find((l) => l.length > 0);
+    return line ? line.slice(0, 120) : null;
+  } catch {
+    return null;
+  }
+}
+
 function findClaudeTranscript(home: string, projectKey: string, seed: string): { file: string; dir: string | null } | null {
   const projects = join(home, "projects");
   const candidates = [join(projects, projectKey)];

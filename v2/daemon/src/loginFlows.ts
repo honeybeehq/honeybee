@@ -420,6 +420,8 @@ export class LoginFlowService {
    */
   private assertLoginPossible(account: AccountRow, methodId: string | null): void {
     this.accounts.assertLocalAccount(account);
+    const native = this.accounts.nativeRefusal(account);
+    if (native) throw new LoginFlowRefusal("login_method_unsupported", native);
     const unisolated = this.accounts.isolationRefusal(account.harness);
     if (unisolated && !this.offered(account.harness, methodId)) throw new LoginFlowRefusal("login_method_unsupported", unisolated);
     const central = this.accounts.authorityFor(account);

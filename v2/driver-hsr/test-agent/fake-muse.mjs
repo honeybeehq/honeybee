@@ -12,16 +12,26 @@
  *                         notification (e.g. usage/changed) verbatim; a
  *                         recorded turn/completed becomes that turn's
  *                         terminal with this session's ids.
+ * env FAKE_MUSE_NATIVE=1  the machine's own login (This Mac): no account XDG
+ *                         pair is required; only MUSE_NO_AUTO_UPDATE=1.
+ * env FAKE_MUSE_ENV_OUT   path: write argv and the env Muse reads its login
+ *                         and data dirs from, as JSON, at start.
  */
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 
+const native = process.env.FAKE_MUSE_NATIVE === "1";
 const config = process.env.XDG_CONFIG_HOME;
-if (!config || process.env.XDG_DATA_HOME !== join(config, "xdg-data") || process.env.MUSE_NO_AUTO_UPDATE !== "1") {
+if (process.env.MUSE_NO_AUTO_UPDATE !== "1" || (!native && (!config || process.env.XDG_DATA_HOME !== join(config, "xdg-data")))) {
   process.stderr.write("fake-muse: the account's XDG_CONFIG_HOME / XDG_DATA_HOME pair and MUSE_NO_AUTO_UPDATE=1 are required\n");
   process.exit(3);
 }
+if (process.env.FAKE_MUSE_ENV_OUT) {
+  const keys = ["HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "MUSE_NO_AUTO_UPDATE", "TBH_CREDENTIAL_BACKEND"];
+  writeFileSync(process.env.FAKE_MUSE_ENV_OUT, JSON.stringify({ argv: process.argv.slice(2), env: Object.fromEntries(keys.filter((k) => k in process.env).map((k) => [k, process.env[k]])) }));
+}
+const dataHome = native ? process.env.XDG_DATA_HOME ?? join(process.env.HOME ?? "", ".local", "share") : process.env.XDG_DATA_HOME;
 if (process.argv[2] !== "serve") {
   process.stderr.write("fake-muse: only `serve` is implemented\n");
   process.exit(2);
@@ -54,7 +64,7 @@ createInterface({ input: process.stdin }).on("line", (line) => {
   try { msg = JSON.parse(line); } catch { return; }
   switch (msg.method) {
     case "initialize":
-      write({ id: msg.id, result: { serverInfo: { name: "muse", version: "1.4.7" }, grantedCapabilities: ["sessionMcp"], museHome: join(process.env.XDG_DATA_HOME, "muse") } });
+      write({ id: msg.id, result: { serverInfo: { name: "muse", version: "1.4.7" }, grantedCapabilities: ["sessionMcp"], museHome: join(dataHome, "muse") } });
       return;
     case "session/start":
     case "session/resume":

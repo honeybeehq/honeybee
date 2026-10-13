@@ -201,6 +201,31 @@ test("cli accounts: `account login --method` picks a recipe method — the muse 
   }
 });
 
+test("cli accounts: `account add muse --native` adds This Mac on a Mac and says what it is; Linux has no native Muse account", async () => {
+  const { dir, cleanup } = makeDaemonDir();
+  const home = join(dir, "home");
+  mkdirSync(home, { recursive: true });
+  let daemon: DaemonHandle | null = null;
+  try {
+    const base = ["--data-dir", dir];
+    daemon = await startDaemon(dir, { platform: "linux", env: { HOME: home } });
+    const linux = capture();
+    assert.notEqual(await runV2Cli(["account", "add", "muse", "--native", ...base], linux.io), 0);
+    assert.match(linux.err.join("\n"), /muse has no native account on this computer/);
+    await daemon.stop();
+    daemon = await startDaemon(dir, { platform: "darwin", env: { HOME: home } });
+    const added = capture();
+    assert.equal(await runV2Cli(["account", "add", "muse", "--native", ...base], added.io), 0, added.err.join("\n"));
+    assert.match(added.out.join("\n"), /account muse-this-mac \(muse; home .*\) — This Mac: uses your own Muse sign-in \(`muse login`\) on this computer\. .* Not signed in yet\./);
+    const list = capture();
+    assert.equal(await runV2Cli(["account", "list", ...base], list.io), 0);
+    assert.match(list.out.join("\n"), /native: This Mac: uses your own Muse sign-in/);
+  } finally {
+    await daemon?.stop().catch(() => {});
+    cleanup();
+  }
+});
+
 test("cli.accounts.2: `account list` falls back to the read-only store when the daemon is down — labeled stale", async () => {
   const dir = mkdtempSync(join(tmpdir(), "hb-v2-cli-acct-"));
   try {
