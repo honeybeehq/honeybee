@@ -15,10 +15,10 @@
  * directly. reminderChild items are Muse's internal reminder agents and are not
  * projected. workflow, hookRun, sideChat and future kinds become `unknown`.
  *
- * Echo-provider runs verified messages, turns, cancellation, reminderChild and
- * session/tokenUsage. Tool names and argument keys, patchSummary, reasoning,
- * compaction, webSearch and non-zero usage come from the MSP schema and binary
- * strings only; re-check them against a real meta-provider session.
+ * A real meta-provider session (muse-spark-1.3) verified turns, messages,
+ * reasoning summaries, the `bash` toolCall with its JSON result envelope,
+ * reminderChild and cached usage. Edit tools, patchSummary, compaction,
+ * webSearch and subagents still come from the MSP schema only.
  */
 import {
   projectorCheckpoint, checkpointRecord, checkpointEntries, checkpointNumber,
@@ -168,6 +168,14 @@ function shellCommand(input: unknown): string | undefined {
   return nonEmptyString(command);
 }
 
+function shellResult(visibleOutput: unknown): { stdout?: string; exitCode?: number } {
+  if (typeof visibleOutput !== "string") return {};
+  const envelope = asObject(parseArgs(visibleOutput));
+  if (!envelope || typeof envelope.output !== "string") return { stdout: visibleOutput };
+  const exitCode = finiteNumber(envelope.exit_code);
+  return { stdout: envelope.output, ...(exitCode !== undefined ? { exitCode } : {}) };
+}
+
 function subagentInput(item: JsonObject): JsonObject {
   const input: JsonObject = {};
   for (const key of ["role", "objective", "agentPath", "subagentId", "childSessionId"]) {
@@ -250,7 +258,7 @@ export function createMuseProjector(restored?: MuseCheckpointState): TranscriptP
             callId,
             status: "completed",
             ...(command ? { command } : {}),
-            ...(typeof item.visibleOutput === "string" ? { stdout: item.visibleOutput } : {}),
+            ...shellResult(item.visibleOutput),
             ...(failed && failure ? { stderr: failure } : {}),
           }];
         }

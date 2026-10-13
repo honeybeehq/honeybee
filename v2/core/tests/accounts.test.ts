@@ -191,19 +191,26 @@ test("v7.recipes: parseMuseCredentials reads the meta entry's shape without retu
 const MUSE_USAGE_LINES = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "..", "adapters", "tests", "fixtures", "muse-usage-changed.jsonl"), "utf8")
   .trim().split("\n").map((line) => JSON.parse(line) as { params: Record<string, any> });
 
-test("v7.limits: parseMuseUsage maps the observed window and weekly block, passes the tier through and dates the row by observedAtMs", () => {
+test("v7.limits: parseMuseUsage maps the observed window and weekly block, leaves the opaque tier id out of the plan and dates the row by observedAtMs", () => {
   assert.deepEqual(parseMuseUsage(MUSE_USAGE_LINES[0]!.params), {
     readable: true,
     fetchedAt: 1791870000000,
-    plan: "fixture-tier-from-provider",
     fiveHour: { usedPercent: 37, resetsAt: 1791880000000, windowMinutes: 300 },
     weekly: { usedPercent: 12, resetsAt: 1792300000000, windowMinutes: null },
   });
   // Over-quota percentages are verbatim provider data.
   assert.equal(parseMuseUsage(MUSE_USAGE_LINES[1]!.params)?.fiveHour?.usedPercent, 104);
-  // Whatever tier string Muse reports is the plan; none means no plan.
-  assert.equal(parseMuseUsage({ ...MUSE_USAGE_LINES[0]!.params, tier: "some-future-tier" })?.plan, "some-future-tier");
-  assert.equal("plan" in parseMuseUsage({ ...MUSE_USAGE_LINES[0]!.params, tier: "" })!, false);
+  assert.deepEqual(parseMuseUsage({
+    observedAtMs: 1791914092800,
+    tier: "27681631238169137",
+    window: { usedPercent: 0, windowDurationMins: 300, resetsAtMs: 1791932002000 },
+    weekly: { usedPercent: 12, resetsAtMs: 1792368000000 },
+  }), {
+    readable: true,
+    fetchedAt: 1791914092800,
+    fiveHour: { usedPercent: 0, resetsAt: 1791932002000, windowMinutes: 300 },
+    weekly: { usedPercent: 12, resetsAt: 1792368000000, windowMinutes: null },
+  });
   // A window length is the provider's, never assumed.
   assert.equal(parseMuseUsage({ ...MUSE_USAGE_LINES[0]!.params, window: { usedPercent: 5, resetsAtMs: 1 } })?.fiveHour?.windowMinutes, null);
   assert.deepEqual(parseMuseUsage({ observedAtMs: 1, tier: "t", weekly: { usedPercent: 3, resetsAtMs: 9 } })?.weekly, { usedPercent: 3, resetsAt: 9, windowMinutes: null });
@@ -215,7 +222,7 @@ test("v7.limits: parseMuseUsage maps the observed window and weekly block, passe
 
 test("v7.limits: museQuotaLimits marks the observed window whose reset the quota names as used up, and guesses nothing else", () => {
   const observed = {
-    account: "muse-a", fetchedAt: 1791870000000, readable: true, unreadableReason: null, error: null, plan: "fixture-tier-from-provider",
+    account: "muse-a", fetchedAt: 1791870000000, readable: true, unreadableReason: null, error: null, plan: "27681631238169137",
     fiveHourPct: 37, fiveHourResetsAt: 1791880000000, fiveHourMinutes: 300,
     weeklyPct: 12, weeklyResetsAt: 1792300000000, weeklyMinutes: null,
     fableWeeklyPct: null, fableResetsAt: null, fableMinutes: null, displayWindows: [], rateLimitResetCredits: null,
@@ -224,7 +231,6 @@ test("v7.limits: museQuotaLimits marks the observed window whose reset the quota
   assert.deepEqual(museQuotaLimits(observed, quota, 1791875000120), {
     readable: true,
     fetchedAt: 1791875000120,
-    plan: "fixture-tier-from-provider",
     fiveHour: { usedPercent: 100, resetsAt: 1791880000000, windowMinutes: 300 },
     weekly: { usedPercent: 12, resetsAt: 1792300000000, windowMinutes: null },
   });

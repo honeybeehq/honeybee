@@ -24,6 +24,10 @@ function schemaLines(): string[] {
   return readFileSync(new URL("./fixtures/muse-schema-tools.jsonl", import.meta.url), "utf8").split("\n").filter(Boolean);
 }
 
+function metaLines(): string[] {
+  return readFileSync(new URL("./fixtures/muse-meta-v1a.jsonl", import.meta.url), "utf8").split("\n").filter(Boolean);
+}
+
 function projectAll(lines: readonly string[], projector: TranscriptProjector = createTranscriptProjector("muse")): TranscriptProjectedEvent[] {
   return [...lines.flatMap((line) => projector.pushLine(line)), ...projector.flush()];
 }
@@ -68,6 +72,62 @@ test("real echo session projects turns, messages, usage and cancellation, and sk
     finishReason: "completed",
   });
   assert.ok(events.every((event) => event.threadId === "01a133e2-3612-71c1-823b-6a3d8af3d3fd"));
+});
+
+test("real meta session projects the bash result envelope as a shell event and counts cached usage per turn", () => {
+  const events = projectAll(metaLines());
+  const thread = "01a13665-33ef-7e22-80df-f8357cacf4ad";
+  assert.ok(events.every((event) => event.threadId === thread));
+  assert.deepEqual(events.map((event) => event.kind), [
+    "turn_start", "message", "thinking", "shell", "shell", "message", "token_usage", "turn_end",
+    "turn_start", "message", "message", "token_usage", "turn_end",
+  ]);
+  const shells = events.filter((event) => event.kind === "shell");
+  assert.deepEqual(shells, [
+    { kind: "shell", ts: "2026-10-13T17:53:29.131Z", threadId: thread, callId: "call_01a13665e035705f8c9bc206c642a5f2", status: "started", command: "ls -la" },
+    {
+      kind: "shell", ts: "2026-10-13T17:53:29.221Z", threadId: thread, callId: "call_01a13665e035705f8c9bc206c642a5f2", status: "completed",
+      command: "ls -la",
+      stdout: "total 8\ndrwxr-xr-x@    3 trmd  wheel      96 Oct 13 19:52 .\ndrwxrwxrwt  8633 root  wheel  276256 Oct 13 19:52 ..\n-rw-r--r--@    1 trmd  wheel      15 Oct 13 19:52 README.txt\n",
+      exitCode: 0,
+    },
+  ]);
+  assert.deepEqual(events.find((event) => event.kind === "thinking"), {
+    kind: "thinking", ts: "2026-10-13T17:53:28.622Z", threadId: thread, redacted: false,
+    text: "Evaluating tool use to list files in the current directory while following the one-sentence format constraint.\n\nAssessing a low-risk file-listing request against prompt-injection and tool-use policy.",
+  });
+  const usage = events.filter((event) => event.kind === "token_usage");
+  assert.deepEqual(usage.map((event) => event.kind === "token_usage" && [event.providerTurnId, event.model, event.usage]), [
+    ["00000000-0000-7000-8000-000000009580", "muse-spark-1.3", { input: 35750, output: 942, cacheRead: 36209, cacheWrite: 0, reasoning: 793, total: 72901 }],
+    ["00000000-0000-7000-8000-00000000958d", "muse-spark-1.3", { input: 470, output: 56, cacheRead: 36209, cacheWrite: 0, reasoning: 43, total: 36735 }],
+  ]);
+  assert.deepEqual(events.filter((event) => event.kind === "turn_end").map((event) => event.kind === "turn_end" && [event.ts, event.durationMs, event.finishReason]), [
+    ["2026-10-13T17:54:08.368Z", 81230, "completed"],
+    ["2026-10-13T17:54:52.735Z", 13867, "completed"],
+  ]);
+  assert.deepEqual(events.filter((event) => event.kind === "message").map((event) => event.kind === "message" && event.role), ["user", "assistant", "user", "assistant"]);
+});
+
+test("context usage, foreground completion, partial tool output, status and plan usage notifications from the real session project nothing", () => {
+  const p = createTranscriptProjector("muse");
+  const skipped = metaLines().filter((line) => [
+    "session/contextUsage", "turn/foregroundCompleted", "item/updated", "item/delta",
+    "session/statusChanged", "session/approvalModeChanged", "session/started", "usage/changed",
+  ].includes(JSON.parse(line).method));
+  assert.equal(skipped.length, 14);
+  assert.deepEqual(skipped.flatMap((line) => p.pushLine(line)), []);
+});
+
+test("bash results without the JSON envelope keep the raw text as stdout", () => {
+  const p = createTranscriptProjector("muse");
+  const bash = (visibleOutput: string) => note("item/completed", {
+    item: { itemId: "b1", kind: "toolCall", tool: "bash", callId: "call_b", args: "{\"command\":\"false\"}", status: "completed", visibleOutput, revision: 2 },
+  });
+  const completed = (line: string) => p.pushLine(line).filter((event) => event.kind === "shell" && event.status === "completed");
+  assert.deepEqual(completed(bash("plain text")).map((event) => event.kind === "shell" && [event.stdout, event.exitCode]), [["plain text", undefined]]);
+  assert.deepEqual(completed(bash("{\"note\":1}")).map((event) => event.kind === "shell" && [event.stdout, event.exitCode]), [["{\"note\":1}", undefined]]);
+  assert.deepEqual(completed(bash(JSON.stringify({ command: "false", exit_code: 1, terminal_status: "completed", output: "" })))
+    .map((event) => event.kind === "shell" && [event.stdout, event.exitCode]), [["", 1]]);
 });
 
 test("schema-derived tool session maps shell, tools, edits, subagents, reasoning, compaction and usage", () => {
