@@ -185,7 +185,7 @@ export class CredentialAuthority {
   /** One provider round trip. Every attempt is logged with its outcome; a throw from the transport proves nothing about the token. */
   private async attempt(account: AccountRow, refreshToken: string, generation: number, previous: CredentialRefreshFailure | null, during: "enroll" | "refresh"): Promise<RefreshAttempt> {
     let result: CredentialRefreshResult;
-    try { result = await this.options.refresh(refreshToken); }
+    try { result = await this.options.refresh(refreshToken, this.document(account)); }
     catch (error) {
       result = { kind: "unknown_outcome", description: sanitizeProviderText(error instanceof Error ? error.message : String(error), [refreshToken]) ?? "transport failed" };
     }
@@ -205,6 +205,7 @@ export class CredentialAuthority {
     return { kind: "failed", result, failure };
   }
   /** What the operator must do; also the account's status reason and the lease refusal text. */
+  requiresNativeLogin(): boolean { return this.codec.nativeLoginRecovery === true; }
   loginRequiredMessage(account: AccountRow, failure: CredentialRefreshFailure | null): string {
     const why = failure ? `the provider refused the refresh token (${describeRefreshFailure(failure)})` : "the refresh token is no longer usable";
     const recovery = this.codec.nativeLoginRecovery

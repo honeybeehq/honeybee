@@ -21,6 +21,7 @@ import { promisify } from "node:util";
 import { CredentialAuthority, ClaudeCredentialAuthority, CredentialAuthorityError, CredentialOwnershipConflict, refreshTokenDigest } from "./claudeCredentialAuthority.ts";
 import { defaultClaudeRefreshTransport, describeRefreshFailure, sanitizeProviderText, type ClaudeRefreshResult, type ClaudeRefreshTransport, type RefreshedClaudeToken } from "./claudeRefreshTransport.ts";
 import { CodexCredentialAuthority, CODEX_CREDENTIAL_CODEC, defaultCodexRefreshTransport } from "./codexCredentialAuthority.ts";
+import { GrokCredentialAuthority, GROK_CREDENTIAL_CODEC, grokAccessOnly, grokCredentialEntry, defaultGrokRefreshTransport } from "./grokCredentialAuthority.ts";
 import { liveGateways } from "./gateways.ts";
 import { withFileLock } from "../../../src/lock.ts";
 import { seedGatewayMcp, type GatewayMcpSeedResult } from "../../../src/accounts/gatewayMcpSeed.ts";
@@ -839,6 +840,7 @@ export function defaultCodexResetLimits(timeoutMs: number, command = "codex"): N
 export class AccountsService {
   readonly centralCredentials: ClaudeCredentialAuthority;
   readonly codexCredentials: CodexCredentialAuthority;
+  readonly grokCredentials: GrokCredentialAuthority;
   private readonly credentialAuthorities = new Map<string, CredentialAuthority>();
 
   authorityFor(account: Pick<AccountRow, "harness">): CredentialAuthority | null {
@@ -1026,8 +1028,56 @@ export class AccountsService {
         for (const path of [account.homePath, this.vaultDirOf(account), join(account.homePath, ".codex")]) chmodSync(path, 0o700);
       },
     });
+    const inspectGrokCopies = (account: AccountRow, document: Record<string, unknown>): void => {
+      const owned = GROK_CREDENTIAL_CODEC.parse(JSON.stringify(document))!;
+      const phase = this.grokCredentials.status(account)?.phase;
+      const adopted = phase === "enrolling" ? this.grokCredentials.adopted(account)
+        : this.grokCredentials.rollbackAdopted(account);
+      for (const path of [join(account.homePath, "auth.json"), join(this.vaultDirOf(account), "auth.json")]) {
+        const raw = readIfFile(path);
+        const credential = raw === null ? null : GROK_CREDENTIAL_CODEC.parse(raw);
+        if (raw !== null && (!credential || grokCredentialEntry(JSON.parse(raw))?.scope !== grokCredentialEntry(document)?.scope)) {
+          throw new CredentialOwnershipConflict("An external Grok credential changed this account scope; recover before continuing.");
+        }
+        if (raw !== null) {
+          const copy = grokCredentialEntry(JSON.parse(raw))!;
+          const owner = grokCredentialEntry(document)!;
+          if (["user_id", "principal_type", "principal_id", "team_id"].some(field => copy.entry[field] !== owner.entry[field])) {
+            throw new CredentialOwnershipConflict("An external Grok login changed this account or principal; recover before continuing.");
+          }
+        }
+        if (!credential?.refreshToken || credential.refreshToken === owned.refreshToken) continue;
+        if (adopted && (refreshTokenDigest(credential.refreshToken) === adopted.refreshTokenDigest || credential.expiresAt < adopted.expiresAt)) continue;
+        throw new CredentialOwnershipConflict("An external Grok login or refresh changed this account; stop that process and recover the account before continuing.");
+      }
+    };
+    this.grokCredentials = new GrokCredentialAuthority({
+      store: this.store, root: join(this.cfg.accounts.vaultDir, ".credential-authorities"), now: this.now,
+      log: this.log, retryBaseMs: this.cfg.accounts.centralRefreshRetryBaseMs, earlyRefreshMinIntervalMs: this.cfg.accounts.centralRefreshMinIntervalMs,
+      beforeEnroll: account => {
+        this.store.assertNoUpdateReservation();
+        if (this.refreshBusy(account) || this.leaseMints.has(account.id)) throw new CredentialAuthorityError("A native credential refresh is in progress; retry enrollment shortly.");
+      },
+      nativeCredential: async account => this.freshestGrokAuth(account),
+      beforeUse: inspectGrokCopies,
+      beforeRefresh: async (account, document) => inspectGrokCopies(account, document),
+      refresh: defaultGrokRefreshTransport(this.cfg.accounts.limitsFetchTimeoutMs, this.now),
+      onRefreshed: account => this.onCredentialValidated(account.id, "refresh"),
+      identify: async () => null,
+      homeIdentity: () => null,
+      publish: async (account, document, accessOnly) => {
+        inspectGrokCopies(account, document);
+        const published = accessOnly ? grokAccessOnly(document) : document;
+        const raw = JSON.stringify(published);
+        mkdirSync(account.homePath, { recursive: true, mode: 0o700 });
+        mkdirSync(this.vaultDirOf(account), { recursive: true, mode: 0o700 });
+        atomicWriteFileSync(join(this.vaultDirOf(account), "auth.json"), raw, 0o600);
+        atomicWriteFileSync(join(account.homePath, "auth.json"), raw, 0o600);
+      },
+    });
     this.credentialAuthorities.set("claude", this.centralCredentials);
     this.credentialAuthorities.set("codex", this.codexCredentials);
+    this.credentialAuthorities.set("grok", this.grokCredentials);
     this.providerHttp = {
       ...defaultProviderLimitsHttp(this.cfg.accounts.limitsFetchTimeoutMs),
       ...opts.providerHttp,
@@ -2271,13 +2321,20 @@ export class AccountsService {
   }
 
   private async fetchSecondaryProvider(account: AccountRow): Promise<PutAccountLimitsInput> {
+    if (this.authorityFor(account)?.enabled(account)) {
+      try { await this.authorityFor(account)!.ensure(account, CLAUDE_MIN_SHIP_TTL_MS); }
+      catch (error) {
+        if (!(error instanceof CredentialAuthorityError)) throw error;
+        return { readable: false, unreadableReason: this.authorityFor(account)!.status(account)?.phase === "ready" ? "provider_error" : "auth_failed", error: error.message };
+      }
+    }
     const joined = this.secondaryProviderFetches.get(account.id);
     if (joined) return joined;
     const pending = fetchSecondaryProviderLimits({
       account,
       vaultDir: this.vaultDirOf(account),
       now: this.now(),
-      allowCredentialRefresh: account.source !== "leased" && !this.hasLiveRuntime(account.id),
+      allowCredentialRefresh: account.source !== "leased" && !this.authorityFor(account)?.enabled(account) && !this.hasLiveRuntime(account.id),
       http: this.providerHttp,
     });
     this.secondaryProviderFetches.set(account.id, pending);
@@ -2685,7 +2742,7 @@ export class AccountsService {
       case "codex":
         return this.mintCodexLease(account, opts);
       case "grok":
-        return Promise.resolve(this.mintGrokLease(account));
+        return this.mintGrokLease(account, opts);
       case "kimi":
         return Promise.resolve(this.mintKimiLease(account));
       case "opencode":
@@ -2864,8 +2921,15 @@ export class AccountsService {
    * scrub XAI_API_KEY / GROK_CODE_XAI_API_KEY for subscription bees so the
    * delivered cached OAuth token — not developer API billing — is used.
    */
-  private mintGrokLease(account: AccountRow): EphemeralCredential {
-    const parsed = this.leasePrimaryJson(account, "auth.json");
+  private async mintGrokLease(account: AccountRow, opts: LeaseOptions): Promise<EphemeralCredential> {
+    if (this.grokCredentials.enabled(account)) {
+      try { await this.grokCredentials.ensure(account, CLAUDE_MIN_SHIP_TTL_MS, undefined, opts.minTtlMs); }
+      catch (error) {
+        if (!(error instanceof CredentialAuthorityError)) throw error;
+        throw new LeaseRefusal(error.reason === "login_required" ? "credential_login_required" : "lease_unavailable", error.message);
+      }
+    }
+    const parsed = this.grokCredentials.enabled(account) ? grokAccessOnly(this.grokCredentials.document(account)) : this.leasePrimaryJson(account, "auth.json");
     // Non-secret expiry: the soonest-dying entry bounds the whole lease —
     // that is when RN7b must have re-delivered. Live files carry ISO strings;
     // accept epoch numbers (ms or seconds) defensively.
@@ -2933,6 +2997,21 @@ export class AccountsService {
       files: [{ homeRelPath: rel, contentB64: Buffer.from(body, "utf8").toString("base64"), mode: 0o600 }],
       kindNote: `opencode: shipped single-provider (${provider}) auth.json (refresh blanked; ${dropped} other provider entr${dropped === 1 ? "y" : "ies"} dropped)`,
     };
+  }
+
+  private freshestGrokAuth(account: AccountRow): Record<string, unknown> | null {
+    const candidates: Array<{ document: Record<string, unknown>; expiresAt: number }> = [];
+    for (const path of [join(account.homePath, "auth.json"), join(this.vaultDirOf(account), "auth.json")]) {
+      const raw = readIfFile(path);
+      if (raw === null) continue;
+      try {
+        const document = JSON.parse(raw) as Record<string, unknown>;
+        const value = grokCredentialEntry(document);
+        if (value) candidates.push({ document, expiresAt: value.expiresAt });
+      } catch {}
+    }
+    candidates.sort((a, b) => b.expiresAt - a.expiresAt);
+    return candidates[0]?.document ?? null;
   }
 
   /**

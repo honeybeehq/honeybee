@@ -28,7 +28,7 @@ export type CredentialRefreshResult =
 
 export type CredentialRefreshTransportFailure = Exclude<CredentialRefreshResult, { kind: "success" }>;
 
-export type CredentialRefreshTransport = (refreshToken: string) => Promise<CredentialRefreshResult>;
+export type CredentialRefreshTransport = (refreshToken: string, document?: Record<string, unknown>) => Promise<CredentialRefreshResult>;
 export type RefreshedClaudeToken = RefreshedCredentialToken;
 export type ClaudeRefreshResult = CredentialRefreshResult;
 export type ClaudeRefreshFailure = CredentialRefreshTransportFailure;
@@ -112,6 +112,8 @@ export function oauthRefreshTransport(options: {
   endpoint: () => string;
   clientId: string;
   providerDescriptions?: boolean;
+  form?: boolean;
+  parameters?: Record<string, string>;
   decode?: (body: Record<string, unknown>, previousRefreshToken: string, at: number) => RefreshedClaudeToken | null;
 }): ClaudeRefreshTransport {
   const { timeoutMs, now } = options;
@@ -120,8 +122,10 @@ export function oauthRefreshTransport(options: {
     try {
       response = await fetch(options.endpoint(), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ grant_type: "refresh_token", refresh_token: refreshToken, client_id: options.clientId }),
+        headers: { "Content-Type": options.form ? "application/x-www-form-urlencoded" : "application/json" },
+        body: options.form
+          ? new URLSearchParams({ ...options.parameters, grant_type: "refresh_token", refresh_token: refreshToken, client_id: options.clientId }).toString()
+          : JSON.stringify({ grant_type: "refresh_token", refresh_token: refreshToken, client_id: options.clientId }),
         signal: AbortSignal.timeout(timeoutMs),
       });
     } catch (error) {
