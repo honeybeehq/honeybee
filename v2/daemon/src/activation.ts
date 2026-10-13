@@ -7,10 +7,10 @@
  * generation fences: one account has exactly one home, so there is never a
  * second copy to reconcile.
  */
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { recipeFor, type IdentityRecipe } from "../../core/src/index.ts";
-import { seedClaudeHomeAcceptance, seedClaudeHomeDefaults, seedCodexHomeDefaults } from "./homeDefaults.ts";
+import { atomicWriteFileSync, seedClaudeHomeAcceptance, seedClaudeHomeDefaults, seedCodexHomeDefaults } from "./homeDefaults.ts";
 import type { KeychainWriter } from "./keychain.ts";
 
 /** `<vaultDir>/<harness>/<accountId>` — the old layout, so the operator's vault reads as-is. */
@@ -159,7 +159,7 @@ export function captureHomeToVault(
     if (override !== undefined) {
       const dst = join(vaultDir, rel);
       mkdirSync(dirname(dst), { recursive: true, mode: 0o700 });
-      writeFileSync(dst, override, { mode: 0o600 });
+      atomicWriteFileSync(dst, override, 0o600);
       written.push(rel);
       continue;
     }

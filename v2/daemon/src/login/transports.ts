@@ -1,7 +1,6 @@
 /**
  * Provider transports the direct runners talk to (Claude OAuth token
- * exchange / validation, Meta's device authorization for Muse, OpenAI +
- * Anthropic key checks). Injected so the
+ * exchange / validation, OpenAI + Anthropic key checks). Injected so the
  * service tests never touch the network; the defaults are the real
  * providers with one bounded timeout.
  */
@@ -25,20 +24,18 @@ export interface ClaudeTokenGrant {
 
 export type KeyCheck = "valid" | "invalid" | "unverified";
 
-/** Meta's answer to a device authorization request; `verificationUriComplete` already carries the code. */
 export type MuseDeviceAuthorization =
   | { ok: true; deviceCode: string; userCode: string; verificationUri: string; verificationUriComplete: string | null; expiresInSeconds: number; intervalSeconds: number }
   | { ok: false; status: number };
 
-/** One poll of Meta's device token endpoint (RFC 8628 §3.5). */
 export type MuseDevicePoll =
-  | { kind: "granted"; accessToken: string; refreshToken: string | null; expiresInSeconds: number }
+  | { kind: "granted"; accessToken: string; refreshToken: string | null; expiresInSeconds: number | null }
   | { kind: "pending" }
   | { kind: "slow_down" }
   | { kind: "denied" }
   | { kind: "expired" }
-  /** A 2xx without a usable access token and lifetime. */
   | { kind: "unusable" }
+  | { kind: "unavailable"; status: number }
   | { kind: "refused"; status: number };
 
 export interface LoginTransports {
@@ -50,9 +47,7 @@ export interface LoginTransports {
   claudeSubscriptionType: (accessToken: string) => Promise<string | null>;
   /** The account and organization an access token belongs to (the profile endpoint); null when unknown. */
   claudeIdentity: (accessToken: string) => Promise<ClaudeIdentity | null>;
-  /** Start Meta's device-code sign-in for the Muse CLI's public client. Throws on transport failure. */
   museDeviceAuthorize: () => Promise<MuseDeviceAuthorization>;
-  /** Poll for the device code's grant. Throws on transport failure. */
   museDeviceToken: (deviceCode: string) => Promise<MuseDevicePoll>;
   /** OpenAI API key check (`GET /v1/models`). */
   openaiKeyCheck: (apiKey: string, baseUrl?: string) => Promise<KeyCheck>;
@@ -77,30 +72,19 @@ export const CLAUDE_OAUTH_SCOPES = [
   "user:file_upload",
 ];
 
-// The Muse CLI's own public client and device endpoints (its launcher,
-// https://api.meta.ai/muse-launcher.sh, and the 1.4.7 binary). The CLI sends
-// no scope parameter: the client id alone selects the grant.
 export const MUSE_OAUTH_BASE_URL = "https://auth.meta.com";
 export const MUSE_OAUTH_CLIENT_ID = "1031625952748946";
 export const MUSE_OAUTH_DEVICE_AUTHORIZATION_PATH = "/oidc/device/authorization/";
 export const MUSE_OAUTH_DEVICE_TOKEN_PATH = "/oidc/device/token/";
 export const MUSE_OAUTH_DEVICE_GRANT = "urn:ietf:params:oauth:grant-type:device_code";
-// The launcher's bounds: poll every 5 s unless told otherwise, and a code
-// lives 15 minutes unless told otherwise, clamped to 1–30 minutes.
 const MUSE_DEFAULT_INTERVAL_SECONDS = 5;
 const MUSE_DEFAULT_LIFETIME_SECONDS = 900;
-
-/** HIVE_MUSE_OAUTH_URL points the Muse device login at a local stub for isolated daemon runs. */
-export function museOauthBaseUrl(): string {
-  return process.env.HIVE_MUSE_OAUTH_URL || MUSE_OAUTH_BASE_URL;
-}
 
 async function museAuthPost(baseUrl: string, path: string, form: Record<string, string>, timeoutMs: number): Promise<{ status: number; body: Record<string, unknown> }> {
   const response = await fetch(`${baseUrl.replace(/\/+$/, "")}${path}`, {
     method: "POST",
     headers: { Accept: "application/json", "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams(form).toString(),
-    // Like the launcher: a redirect from the sign-in service is not followed.
     redirect: "manual",
     signal: AbortSignal.timeout(timeoutMs),
   });
@@ -113,22 +97,25 @@ async function museAuthPost(baseUrl: string, path: string, form: Record<string, 
   return { status: response.status, body: body !== null && typeof body === "object" && !Array.isArray(body) ? (body as Record<string, unknown>) : {} };
 }
 
-function positiveInteger(value: unknown): number | null {
-  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : null;
+function positiveSeconds(value: unknown): number | null {
+  const number = typeof value === "string" && /^\s*\d+(\.\d+)?\s*$/.test(value) ? Number(value) : value;
+  if (typeof number !== "number" || !Number.isFinite(number)) return null;
+  const seconds = Math.floor(number);
+  return seconds > 0 ? seconds : null;
 }
 
 function nonEmpty(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 
-export async function museDeviceAuthorize(timeoutMs: number, baseUrl = museOauthBaseUrl()): Promise<MuseDeviceAuthorization> {
+export async function museDeviceAuthorize(timeoutMs: number, baseUrl = MUSE_OAUTH_BASE_URL): Promise<MuseDeviceAuthorization> {
   const { status, body } = await museAuthPost(baseUrl, MUSE_OAUTH_DEVICE_AUTHORIZATION_PATH, { client_id: MUSE_OAUTH_CLIENT_ID }, timeoutMs);
   if (status < 200 || status >= 300) return { ok: false, status };
   const deviceCode = nonEmpty(body.device_code);
   const userCode = nonEmpty(body.user_code);
   const verificationUri = nonEmpty(body.verification_uri);
   if (!deviceCode || !userCode || !verificationUri) return { ok: false, status };
-  const lifetime = positiveInteger(body.expires_in) ?? MUSE_DEFAULT_LIFETIME_SECONDS;
+  const lifetime = positiveSeconds(body.expires_in) ?? MUSE_DEFAULT_LIFETIME_SECONDS;
   return {
     ok: true,
     deviceCode,
@@ -136,19 +123,15 @@ export async function museDeviceAuthorize(timeoutMs: number, baseUrl = museOauth
     verificationUri,
     verificationUriComplete: nonEmpty(body.verification_uri_complete),
     expiresInSeconds: Math.min(1800, Math.max(60, lifetime)),
-    intervalSeconds: positiveInteger(body.interval) ?? MUSE_DEFAULT_INTERVAL_SECONDS,
+    intervalSeconds: positiveSeconds(body.interval) ?? MUSE_DEFAULT_INTERVAL_SECONDS,
   };
 }
 
-export async function museDeviceToken(deviceCode: string, timeoutMs: number, baseUrl = museOauthBaseUrl()): Promise<MuseDevicePoll> {
+export async function museDeviceToken(deviceCode: string, timeoutMs: number, baseUrl = MUSE_OAUTH_BASE_URL): Promise<MuseDevicePoll> {
   const { status, body } = await museAuthPost(baseUrl, MUSE_OAUTH_DEVICE_TOKEN_PATH, { grant_type: MUSE_OAUTH_DEVICE_GRANT, device_code: deviceCode, client_id: MUSE_OAUTH_CLIENT_ID }, timeoutMs);
-  if (status >= 200 && status < 300) {
-    const accessToken = nonEmpty(body.access_token);
-    const expiresInSeconds = positiveInteger(body.expires_in);
-    if (!accessToken || expiresInSeconds === null) return { kind: "unusable" };
-    return { kind: "granted", accessToken, refreshToken: nonEmpty(body.refresh_token), expiresInSeconds };
-  }
-  switch (body.error) {
+  const accessToken = status >= 200 && status < 300 ? nonEmpty(body.access_token) : null;
+  if (accessToken) return { kind: "granted", accessToken, refreshToken: nonEmpty(body.refresh_token), expiresInSeconds: positiveSeconds(body.expires_in) };
+  switch (typeof body.error === "string" ? body.error.trim().toLowerCase() : null) {
     case "authorization_pending":
       return { kind: "pending" };
     case "slow_down":
@@ -158,6 +141,8 @@ export async function museDeviceToken(deviceCode: string, timeoutMs: number, bas
     case "expired_token":
       return { kind: "expired" };
     default:
+      if (status >= 200 && status < 300) return { kind: "unusable" };
+      if (status === 408 || status === 429 || status >= 500) return { kind: "unavailable", status };
       return { kind: "refused", status };
   }
 }

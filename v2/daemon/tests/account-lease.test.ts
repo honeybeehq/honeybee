@@ -902,7 +902,6 @@ test("lease.muse.5: a Mac holds Muse logins it never runs and leases them like L
     const linux = service(r);
     const mac = service(r, { platform: "darwin" });
     for (const [label, doc] of Object.entries(logins)) {
-      // muse_oauth on a Mac keeps the login in the vault only.
       const account = addAccount(r, "muse", label, { vault: { "muse/auth.json": doc } });
       const fromMac = await mac.mintLease(account);
       const fromLinux = await linux.mintLease(account);
@@ -912,7 +911,6 @@ test("lease.muse.5: a Mac holds Muse logins it never runs and leases them like L
     }
     const missing = addAccount(r, "muse", "missing");
     await refuses(() => mac.mintLease(missing), "lease_unavailable", /no muse\/auth.json found/);
-    // Past expires_at the Mac has no way to refresh it: no lease.
     r.setNow(r.now() + 2 * HOUR);
     await refuses(() => mac.mintLease(r.store.getAccount("muse-oauth")!), "lease_unavailable", /expired/);
     assert.ok(!r.log.join("\n").includes(MUSE_REFRESH));

@@ -135,15 +135,8 @@ export type LoginMethodRun =
   | { mode: "direct"; runner: "claude_oauth" | "codex_api_key" | "opencode_api_key" | "muse_api_key" | "muse_oauth" }
   | { mode: "cli"; cli: LoginCliSpec };
 
-/** A recipe login method: the safe descriptor plus how it runs. */
 export type LoginRecipeMethod = LoginMethodDescriptor & {
   run: LoginMethodRun;
-  /**
-   * Honeybee completes this login without ever starting the harness, so it is
-   * the one kind of login offered where the recipe's `unisolatedOn` refuses
-   * the harness. There the credential is kept in the account vault only,
-   * never in the account home.
-   */
   harnessFree?: true;
 };
 
@@ -815,11 +808,6 @@ export const ACCOUNT_RECIPES: Readonly<Record<string, IdentityRecipe>> = {
   },
 };
 
-/**
- * The recipe methods a node on `platform` offers. Where the recipe's
- * `unisolatedOn` refuses the harness, only `harnessFree` methods remain;
- * without a platform every method is listed.
- */
 export function offeredLoginMethods(harness: string, platform?: string): LoginRecipeMethod[] {
   const methods = ACCOUNT_RECIPES[harness]?.loginFlow.methods ?? [];
   if (platform === undefined || accountIsolationRefusal(harness, platform) === null) return methods;

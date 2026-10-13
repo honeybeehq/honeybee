@@ -1061,14 +1061,12 @@ test("muse.darwin: one Keychain login per macOS user — a Muse account is held,
     }
     const admission = mac.admitNewWork("muse", { operation: "spawn", requestKey: "k" });
     assert.equal(admission.ok ? null : admission.code, "account_unavailable");
-    // Holding the record is fine: the Mac leases it to nodes that run Muse.
     const lease = await mac.mintLease(account);
     assert.deepEqual(lease.files.map((f) => f.homeRelPath), ["muse/auth.json"]);
     rmSync(join(r.vault, "muse", account.id), { recursive: true });
     const captured = await mac.captureAccount(account);
     assert.deepEqual(captured.captured, ["muse/auth.json"]);
     assert.equal(readFileSync(join(r.vault, "muse", account.id, file), "utf8"), doc);
-    // Nothing ever copies the vault into a home on the Mac.
     rmSync(join(account.homePath, "muse"), { recursive: true });
     await assert.rejects(mac.activateForSpawn(account, { cwd: r.dir }), reason);
     assert.equal(existsSync(join(account.homePath, file)), false);

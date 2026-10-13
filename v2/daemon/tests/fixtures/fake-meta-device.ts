@@ -1,9 +1,3 @@
-/**
- * A loopback stand-in for Meta's OIDC device endpoints
- * (`/oidc/device/authorization/`, `/oidc/device/token/`). Each request's
- * form is recorded; the token endpoint answers from a script whose last
- * entry repeats. Tokens it hands out are DUMMY values.
- */
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 
@@ -15,7 +9,6 @@ export interface FakeMetaResponse {
 export interface FakeMetaDevice {
   url: string;
   requests: Array<{ path: string; form: Record<string, string>; contentType: string | undefined }>;
-  /** Replace the token endpoint's script (the last entry repeats). */
   script: (responses: FakeMetaResponse[]) => void;
   close: () => Promise<void>;
 }
@@ -24,6 +17,7 @@ export const PENDING: FakeMetaResponse = { status: 400, body: { error: "authoriz
 export const SLOW_DOWN: FakeMetaResponse = { status: 400, body: { error: "slow_down" } };
 export const DENIED: FakeMetaResponse = { status: 400, body: { error: "access_denied" } };
 export const EXPIRED: FakeMetaResponse = { status: 400, body: { error: "expired_token" } };
+export const DROP: FakeMetaResponse = { status: 0, body: {} };
 
 export function granted(overrides: Record<string, unknown> = {}): FakeMetaResponse {
   return { status: 200, body: { access_token: "DUMMY-ACCESS-0001", refresh_token: "DUMMY-REFRESH-0001", token_type: "Bearer", expires_in: 3600, ...overrides } };
@@ -58,6 +52,10 @@ export async function startFakeMetaDevice(opts: { authorization?: FakeMetaRespon
       let reply: FakeMetaResponse = { status: 404, body: { error: "not_found" } };
       if (req.method === "POST" && path === "/oidc/device/authorization/") reply = authorization;
       if (req.method === "POST" && path === "/oidc/device/token/") reply = tokens.length > 1 ? tokens.shift()! : tokens[0]!;
+      if (reply.status === 0) {
+        req.socket.destroy();
+        return;
+      }
       res.writeHead(reply.status, { "Content-Type": "application/json" });
       res.end(JSON.stringify(reply.body));
     });

@@ -43,7 +43,6 @@ test("muse on darwin: never executed, spawned, or written into a home; a Muse ac
     ...JSON.parse(readFileSync(join(dir, "config.json"), "utf8")),
     agents: { muse: { command: fakeMuse, adapter: "muse" } },
   }));
-  // The darwin daemon's HOME is a temp dir: importing "the machine's own login" reads nothing real.
   const home = join(dir, "home");
   mkdirSync(join(home, ".config"), { recursive: true });
   const meta = await startFakeMetaDevice({ authorization: deviceAuthorization({ interval: 1 }), token: [granted()] });
@@ -62,7 +61,7 @@ test("muse on darwin: never executed, spawned, or written into a home; a Muse ac
     rmSync(ran);
 
     // darwin, same data dir: the account row predates the guard.
-    daemon = await startDaemon(dir, { platform: "darwin", env: { HOME: home, XDG_CONFIG_HOME: join(home, ".config"), HIVE_MUSE_OAUTH_URL: meta.url } });
+    daemon = await startDaemon(dir, { platform: "darwin", env: { HOME: home, XDG_CONFIG_HOME: join(home, ".config"), HIVE_TEST_META_URL: meta.url } });
     client = await daemon.client();
     const { harnesses } = await client.request<NodeHarnessesResult>("node.harnesses");
     muse = harnesses.find((h) => h.harness === "muse");
@@ -72,18 +71,15 @@ test("muse on darwin: never executed, spawned, or written into a home; a Muse ac
     );
     assert.ok(harnesses.filter((h) => h.harness !== "muse").every((h) => h.unavailable === null));
 
-    // Holding a record: account.add works; there is nothing on this Mac to import.
     const mac = await client.request<AccountAddResult>("account.add", { harness: "muse", label: "mac" });
     assert.deepEqual({ id: mac.account.id, status: mac.account.status, credentialHealth: mac.credentialHealth }, { id: "muse-mac", status: "auth_needed", credentialHealth: "absent" });
     await refused(client, "account.add", { harness: "muse", label: "mine", importExisting: true }, "no_credentials_to_import", /no muse credentials to import/);
 
-    // Running muse stays refused.
     await refused(client, "spawn", { name: "auto", agent: "muse", cwd: dir }, "account_unavailable");
     await refused(client, "spawn", { name: "explicit", agent: "muse", cwd: dir, account: "muse-sub" }, "account_unavailable");
     await refused(client, "spawn", { name: "rr", agent: "muse", cwd: dir, account: "rr" }, "account_unavailable");
     assert.deepEqual((await client.request<ListResult>("list", {})).views, []);
 
-    // Logins that run muse stay refused; Honeybee's own sign-in is the default.
     await refused(client, "account.login.start", { id: "muse-sub", methodId: "muse-device" }, "login_method_unsupported");
     await refused(client, "account.login.start", { id: "muse-sub", methodId: "muse-api-key" }, "login_method_unsupported");
     const started = await client.request<AccountLoginStartResult>("account.login.start", { id: "muse-mac", remote: true });
@@ -99,13 +95,11 @@ test("muse on darwin: never executed, spawned, or written into a home; a Muse ac
     assert.equal(existsSync(join(dir, "homes", "muse-mac", "muse", "auth.json")), false, "no Muse credential in a home on darwin");
     assert.equal(existsSync(join(dir, "vault", "muse", "muse-mac", "muse", "auth.json")), true);
 
-    // The held login is leased to Linux nodes, refresh token blanked.
     const lease = await client.request<AccountLeaseResult>("account.lease", { account: "muse-mac" });
     const shipped = JSON.parse(Buffer.from(lease.files[0]!.contentB64, "base64").toString("utf8"));
     assert.deepEqual({ mechanism: shipped.providers.meta.mechanism, refresh: shipped.providers.meta.refresh_token }, { mechanism: "oauth", refresh: "" });
     await refused(client, "spawn", { name: "held", agent: "muse", cwd: dir, account: "muse-mac" }, "account_unavailable");
 
-    // Leasing an account with no login says so; writing into a home stays refused.
     await refused(client, "account.lease", { account: "muse-sub" }, "lease_unavailable", /no muse\/auth.json found for muse-sub/);
     const file = { homeRelPath: "muse/auth.json", mode: 0o600, contentB64: Buffer.from('{"schema_version":1,"providers":{"meta":{"api_key":"k"}}}').toString("base64") };
     await refused(client, "account.lease.install", { id: "muse-peer", shareId: "share-0001", authorityNodeId: "linux-1", harness: "muse", label: "peer", epoch: 1, expiresAt: null, files: [file] }, "lease_unsupported");

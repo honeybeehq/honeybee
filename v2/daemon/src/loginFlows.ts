@@ -420,7 +420,6 @@ export class LoginFlowService {
    */
   private assertLoginPossible(account: AccountRow, methodId: string | null): void {
     this.accounts.assertLocalAccount(account);
-    // Where the harness cannot be isolated, only a login that never starts it is offered.
     const unisolated = this.accounts.isolationRefusal(account.harness);
     if (unisolated && !this.offered(account.harness, methodId)) throw new LoginFlowRefusal("login_method_unsupported", unisolated);
     const central = this.accounts.authorityFor(account);
@@ -436,7 +435,6 @@ export class LoginFlowService {
     }
   }
 
-  /** Whether this node offers `methodId` (any offered method when null) for `harness`. */
   private offered(harness: string, methodId: string | null): boolean {
     const methods = offeredLoginMethods(harness, this.accounts.platform);
     return methodId === null ? methods.length > 0 : methods.some((m) => m.id === methodId);

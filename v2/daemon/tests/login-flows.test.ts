@@ -28,7 +28,7 @@ import { ACCOUNT_RECIPES, defaultLoginMethodId, loginMethodsFor, openCoreStore, 
 import { AccountsService } from "../src/accountsService.ts";
 import { loadNodeConfig, type NodeConfigFile, type ResolvedNodeConfig } from "../src/config.ts";
 import { LoginFlowService, LoginFlowRefusal, MUSE_OAUTH_CLIENT_ID, WORKER_ENV_ALLOWLIST, claudeAuthorizeUrl, legacyLoginSeatName, museDeviceAuthorize, museDeviceToken, plausibleApiKey, splitClaudeCode, workerBaseEnv, type LoginTransports } from "../src/loginFlows.ts";
-import { DENIED, EXPIRED, PENDING, SLOW_DOWN, deviceAuthorization, granted, startFakeMetaDevice, type FakeMetaDevice } from "./fixtures/fake-meta-device.ts";
+import { DENIED, DROP, EXPIRED, PENDING, SLOW_DOWN, deviceAuthorization, granted, startFakeMetaDevice, type FakeMetaDevice } from "./fixtures/fake-meta-device.ts";
 import { pipeSpawner } from "../src/loginWorker.ts";
 import { waitFor } from "./helpers.ts";
 
@@ -568,7 +568,6 @@ test("flows.muse-device: `muse login` output → url + user code → waiting_dev
   }
 });
 
-/** The real Meta device transports, pointed at a loopback fake. */
 function museTransports(meta: FakeMetaDevice): Partial<LoginTransports> {
   return {
     museDeviceAuthorize: () => museDeviceAuthorize(2000, meta.url),
@@ -580,16 +579,13 @@ function tokenPolls(meta: FakeMetaDevice): number {
   return meta.requests.filter((q) => q.path === "/oidc/device/token/").length;
 }
 
-/** Tick once and wait until exactly one more token poll was answered and handled. */
 async function tickPoll(flows: LoginFlowService, meta: FakeMetaDevice, settled: () => boolean = () => true): Promise<void> {
   const before = tokenPolls(meta);
   flows.tick();
   await waitFor(() => tokenPolls(meta) === before + 1 && settled(), "one token poll");
-  // Let the poll's continuation run before the next tick.
   await new Promise((resolve) => setTimeout(resolve, 20));
 }
 
-/** A `muse` that records every execution and fails, so any run is visible. */
 function sentinelMuse(r: Rig): { agents: NodeConfigFile["agents"]; ran: string } {
   const ran = join(r.dir, "muse-ran");
   const bin = join(r.dir, "muse");
@@ -617,17 +613,16 @@ test("flows.muse-oauth: Honeybee runs Meta's device flow itself — URL + code, 
     assert.equal(flow.expiresAt, t0 + 900_000, "the flow ends when the device code does");
     assert.deepEqual(meta.requests[0], { path: "/oidc/device/authorization/", form: { client_id: MUSE_OAUTH_CLIENT_ID }, contentType: "application/x-www-form-urlencoded" });
 
-    // interval 5 s: nothing before it.
     flows.tick();
     r.advance(4_999);
     flows.tick();
     await new Promise((resolve) => setTimeout(resolve, 30));
     assert.equal(tokenPolls(meta), 0);
     r.advance(1);
-    await tickPoll(flows, meta); // authorization_pending
+    await tickPoll(flows, meta);
     assert.deepEqual(meta.requests[1]?.form, { grant_type: "urn:ietf:params:oauth:grant-type:device_code", device_code: "DUMMY-DEVICE-CODE", client_id: MUSE_OAUTH_CLIENT_ID });
     r.advance(5_000);
-    await tickPoll(flows, meta); // slow_down: the interval becomes 10 s
+    await tickPoll(flows, meta);
     r.advance(5_000);
     flows.tick();
     await new Promise((resolve) => setTimeout(resolve, 30));
@@ -647,7 +642,7 @@ test("flows.muse-oauth: Honeybee runs Meta's device flow itself — URL + code, 
     assert.deepEqual(completed, [acct.id]);
     assert.equal(existsSync(sentinel.ran), false, "muse never ran");
     assert.doesNotMatch(leakSurfaces(r), /DUMMY-(ACCESS|REFRESH|DEVICE)/, "no token or device code in audit, dump, flow rows, or logs");
-    assert.ok(r.log.some((line) => line.includes(`by=muse_oauth refresh=true store=home+vault`)));
+    assert.ok(r.log.some((line) => line.includes(`by=muse_oauth refresh=true expires_in_s=3600 store=home+vault`)));
   } finally {
     r.cleanup();
     await meta.close();
@@ -655,7 +650,7 @@ test("flows.muse-oauth: Honeybee runs Meta's device flow itself — URL + code, 
 });
 
 test("flows.muse-oauth.darwin: the only and default Muse login on a Mac; the login stays in the vault, never in a home; muse is never run", async () => {
-  const meta = await startFakeMetaDevice({ token: [granted({ refresh_token: undefined })] });
+  const meta = await startFakeMetaDevice({ token: [granted({ refresh_token: undefined, token_type: "bearer" })] });
   const r = rig();
   try {
     const sentinel = sentinelMuse(r);
@@ -699,12 +694,129 @@ test("flows.muse-oauth.darwin: the only and default Muse login on a Mac; the log
   }
 });
 
-test("flows.muse-oauth: denial, expiry, an unavailable sign-in and an unreachable token endpoint fail typed and retryable with nothing written; cancel stops polling; retry asks for a fresh code", async () => {
-  const outcomes: Array<{ label: string; token: Parameters<typeof startFakeMetaDevice>[0]; code: string; message: RegExp }> = [
-    { label: "denied", token: { token: [DENIED] }, code: "provider_error", message: /declined/ },
-    { label: "expired", token: { token: [EXPIRED] }, code: "timeout", message: /expired before it was approved/ },
-    { label: "unusable", token: { token: [granted({ expires_in: undefined })] }, code: "invalid_credential", message: /no usable token/ },
-    { label: "refused", token: { token: [{ status: 500, body: {} }] }, code: "provider_error", message: /HTTP 500/ },
+test("flows.muse-oauth: a grant without expires_in or refresh_token, with any token_type and extra fields, is a usable login with no expires_at; transient errors back off and keep polling", async () => {
+  const meta = await startFakeMetaDevice({
+    token: [
+      { status: 503, body: {} },
+      DROP,
+      { status: 429, body: { error: "rate_limited" } },
+      PENDING,
+      granted({ expires_in: undefined, refresh_token: undefined, token_type: "BEARER", id_token: "DUMMY-ID-0001", scope: "", extra: { nested: true } }),
+    ],
+  });
+  const r = rig({ accounts: { loginTimeoutMs: 30 * 60_000 } });
+  try {
+    const sentinel = sentinelMuse(r);
+    const { flows, accounts, completed } = services(r, { transports: museTransports(meta) });
+    const acct = account(r, "muse", "lenient");
+    const { flow } = await flows.start(acct, { methodId: "muse-oauth" });
+    const waiting = () => r.store.getLoginFlow(flow.id)?.phase === "waiting_device";
+    const quiet = async (ms: number, polls: number) => {
+      r.advance(ms);
+      flows.tick();
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      assert.equal(tokenPolls(meta), polls);
+    };
+    r.advance(5_000);
+    await tickPoll(flows, meta, waiting);
+    await quiet(9_999, 1);
+    r.advance(1);
+    await tickPoll(flows, meta, waiting);
+    await quiet(19_999, 2);
+    r.advance(1);
+    await tickPoll(flows, meta, waiting);
+    await quiet(39_999, 3);
+    r.advance(1);
+    await tickPoll(flows, meta, waiting);
+    await quiet(4_999, 4);
+    r.advance(1);
+    await tickPoll(flows, meta, () => r.store.getLoginFlow(flow.id)?.phase === "succeeded");
+
+    const auth = join(acct.homePath, "muse", "auth.json");
+    assert.equal(mode(auth), 0o600);
+    assert.deepEqual(JSON.parse(readFileSync(auth, "utf8")), {
+      schema_version: 1,
+      providers: { meta: { mechanism: "oauth", access_token: "DUMMY-ACCESS-0001", obtained_via: "device_code" } },
+    });
+    const row = r.store.getAccount(acct.id)!;
+    assert.equal(row.status, "ok");
+    assert.deepEqual(completed, [acct.id]);
+    assert.equal(accounts.credentialState(row), "present");
+    r.advance(30 * 24 * 3_600_000);
+    assert.equal(accounts.credentialState(row), "present", "an unknown expiry is not invented");
+    const lease = await accounts.mintLease(row);
+    assert.equal(lease.expiresAt, undefined);
+    assert.equal(existsSync(sentinel.ran), false, "muse never ran");
+    assert.ok(r.log.some((line) => line.includes("by=muse_oauth refresh=false expires_in_s=none store=home+vault")));
+    assert.equal(r.log.filter((line) => line.includes("account.login.muse_device_retry")).length, 3);
+    assert.doesNotMatch(leakSurfaces(r), /DUMMY-(ACCESS|DEVICE|ID)/);
+  } finally {
+    r.cleanup();
+    await meta.close();
+  }
+});
+
+test("flows.muse-oauth.dark: Meta unreachable for the whole code lifetime keeps the flow waiting with growing backoff until the code expires", async () => {
+  const meta = await startFakeMetaDevice({ authorization: deviceAuthorization({ expires_in: 120 }) });
+  const r = rig({ accounts: { loginTimeoutMs: 30 * 60_000 } });
+  try {
+    const { flows } = services(r, { transports: museTransports(meta) });
+    const acct = account(r, "muse", "dark");
+    const { flow } = await flows.start(acct, { methodId: "muse-oauth" });
+    await meta.close();
+    for (let i = 0; i < 30; i++) {
+      r.advance(5_000);
+      flows.tick();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      if (r.store.getLoginFlow(flow.id)?.phase !== "waiting_device") break;
+    }
+    const attempts = r.log.filter((line) => line.includes("account.login.muse_device_retry")).length;
+    assert.equal(attempts, 4, "polls at 5, 15, 35 and 75 s: the backoff doubles");
+    const done = r.store.getLoginFlow(flow.id)!;
+    assert.equal(done.phase, "expired");
+    assert.equal(done.retryable, true);
+    assert.equal(existsSync(join(acct.homePath, "muse", "auth.json")), false);
+  } finally {
+    r.cleanup();
+  }
+});
+
+test("museDeviceToken: lenient about expires_in, token_type, extra fields and error casing; 5xx/408/429 are transient, other errors hard", async () => {
+  const cases: Array<[Parameters<typeof startFakeMetaDevice>[0], unknown]> = [
+    [{ token: [granted({ expires_in: "3600" })] }, { kind: "granted", accessToken: "DUMMY-ACCESS-0001", refreshToken: "DUMMY-REFRESH-0001", expiresInSeconds: 3600 }],
+    [{ token: [granted({ expires_in: 3599.7, token_type: undefined })] }, { kind: "granted", accessToken: "DUMMY-ACCESS-0001", refreshToken: "DUMMY-REFRESH-0001", expiresInSeconds: 3599 }],
+    [{ token: [granted({ expires_in: "soon", refresh_token: "" })] }, { kind: "granted", accessToken: "DUMMY-ACCESS-0001", refreshToken: null, expiresInSeconds: null }],
+    [{ token: [granted({ expires_in: 0 })] }, { kind: "granted", accessToken: "DUMMY-ACCESS-0001", refreshToken: "DUMMY-REFRESH-0001", expiresInSeconds: null }],
+    [{ token: [{ status: 200, body: { error: "authorization_pending" } }] }, { kind: "pending" }],
+    [{ token: [{ status: 400, body: { error: "SLOW_DOWN" } }] }, { kind: "slow_down" }],
+    [{ token: [{ status: 200, body: { token_type: "Bearer" } }] }, { kind: "unusable" }],
+    [{ token: [{ status: 502, body: {} }] }, { kind: "unavailable", status: 502 }],
+    [{ token: [{ status: 408, body: {} }] }, { kind: "unavailable", status: 408 }],
+    [{ token: [{ status: 400, body: { error: "invalid_client" } }] }, { kind: "refused", status: 400 }],
+    [{ token: [{ status: 401, body: {} }] }, { kind: "refused", status: 401 }],
+  ];
+  for (const [script, expected] of cases) {
+    const meta = await startFakeMetaDevice(script);
+    try {
+      assert.deepEqual(await museDeviceToken("DUMMY-DEVICE-CODE", 2000, meta.url), expected, JSON.stringify(script));
+    } finally {
+      await meta.close();
+    }
+  }
+  const dropped = await startFakeMetaDevice({ token: [DROP] });
+  try {
+    await assert.rejects(museDeviceToken("DUMMY-DEVICE-CODE", 2000, dropped.url));
+  } finally {
+    await dropped.close();
+  }
+});
+
+test("flows.muse-oauth: denial and expiry fail at once, repeated hard errors fail after three polls, an unavailable sign-in fails typed; all retryable with nothing written; cancel stops polling; retry asks for a fresh code", async () => {
+  const outcomes: Array<{ label: string; token: Parameters<typeof startFakeMetaDevice>[0]; polls: number; code: string; message: RegExp }> = [
+    { label: "denied", token: { token: [DENIED] }, polls: 1, code: "provider_error", message: /declined/ },
+    { label: "expired", token: { token: [EXPIRED] }, polls: 1, code: "timeout", message: /expired before it was approved/ },
+    { label: "unusable", token: { token: [{ status: 200, body: { token_type: "Bearer" } }] }, polls: 3, code: "invalid_credential", message: /no usable token/ },
+    { label: "refused", token: { token: [{ status: 400, body: { error: "invalid_client" } }] }, polls: 3, code: "provider_error", message: /HTTP 400/ },
   ];
   for (const outcome of outcomes) {
     const meta = await startFakeMetaDevice(outcome.token);
@@ -713,8 +825,14 @@ test("flows.muse-oauth: denial, expiry, an unavailable sign-in and an unreachabl
       const { flows } = services(r, { transports: museTransports(meta) });
       const acct = account(r, "muse", outcome.label);
       const { flow } = await flows.start(acct, { methodId: "muse-oauth" });
+      for (let i = 1; i < outcome.polls; i++) {
+        r.advance(5_000);
+        await tickPoll(flows, meta);
+        assert.equal(r.store.getLoginFlow(flow.id)?.phase, "waiting_device", `${outcome.label} after ${i}`);
+      }
       r.advance(5_000);
       await tickPoll(flows, meta, () => r.store.getLoginFlow(flow.id)?.phase === "failed");
+      assert.equal(tokenPolls(meta), outcome.polls);
       const failed = r.store.getLoginFlow(flow.id)!;
       assert.equal(failed.error?.code, outcome.code, outcome.label);
       assert.match(failed.error?.message ?? "", outcome.message, outcome.label);
@@ -728,7 +846,6 @@ test("flows.muse-oauth: denial, expiry, an unavailable sign-in and an unreachabl
     }
   }
 
-  // Sign-in unavailable: no flow reaches waiting_device.
   const gone = await startFakeMetaDevice({ authorization: { status: 404, body: {} } });
   const r = rig();
   try {
@@ -743,23 +860,6 @@ test("flows.muse-oauth: denial, expiry, an unavailable sign-in and an unreachabl
     await gone.close();
   }
 
-  // The token endpoint vanishes mid-flow: a typed network error.
-  const vanishing = await startFakeMetaDevice();
-  const v = rig();
-  try {
-    const { flows } = services(v, { transports: museTransports(vanishing) });
-    const { flow } = await flows.start(account(v, "muse", "offline"), { methodId: "muse-oauth" });
-    await vanishing.close();
-    v.advance(5_000);
-    flows.tick();
-    const failed = await waitFor(() => (v.store.getLoginFlow(flow.id)?.phase === "failed" ? v.store.getLoginFlow(flow.id) : null), "network failure");
-    assert.equal(failed?.error?.code, "network_error");
-    assert.equal(failed?.retryable, true);
-  } finally {
-    v.cleanup();
-  }
-
-  // The code's lifetime ends the flow, whatever the login timeout.
   const slow = await startFakeMetaDevice({ authorization: deviceAuthorization({ expires_in: 60 }) });
   const e = rig({ accounts: { loginTimeoutMs: 30 * 60_000 } });
   try {
@@ -777,7 +877,6 @@ test("flows.muse-oauth: denial, expiry, an unavailable sign-in and an unreachabl
     await slow.close();
   }
 
-  // Cancel: polling stops and nothing lands, even if Meta approves later; retry starts a fresh code.
   const later = await startFakeMetaDevice({ token: [PENDING] });
   const c = rig();
   try {

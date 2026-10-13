@@ -313,13 +313,12 @@ export async function startDaemon(dir: string, opts: { env?: Record<string, stri
       HIVE_NO_KEYCHAIN: "1",
       HIVE_CLAUDE_USAGE_URL: "http://127.0.0.1:9/api/oauth/usage",
       HIVE_CLAUDE_PROFILE_URL: "http://127.0.0.1:9/api/oauth/profile",
-      // No daemon under test signs in to Meta; a test that needs it passes a loopback fake.
-      HIVE_MUSE_OAUTH_URL: "http://127.0.0.1:9",
+      HIVE_TEST_META_URL: "http://127.0.0.1:9",
       // Successful test shutdown owns and reaps its disposable runtimes.
       // Production never sets this; restart-survival semantics stay intact.
       HIVE_TEST_REAP_RUNTIMES_ON_SHUTDOWN: "1",
       HIVE_TEST_PLATFORM: opts.platform ?? "linux",
-      NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ""} --import=${join(here, "fixtures", "force-platform.mjs")}`.trim(),
+      NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ""} --import=${join(here, "fixtures", "force-platform.mjs")} --import=${join(here, "fixtures", "meta-loopback.mjs")}`.trim(),
       // v18: tests that exercise the vendor-home import point HOME / the
       // harness home env var at a temp dir so the developer's real
       // ~/.codex, ~/.claude, … are never read.

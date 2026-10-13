@@ -1,21 +1,3 @@
-/**
- * Muse OAuth runner — the device-code sign-in the Muse CLI itself performs
- * (`muse login`), run inside the daemon against Meta's OIDC device endpoints
- * with the CLI's public client: no muse process is started. The operator
- * opens the verification page anywhere and approves; the daemon polls the
- * token endpoint (honouring `interval` and `slow_down`), then stores the
- * grant as the CLI's own `muse/auth.json` (0600).
- *
- * Where the node can run Muse under an account home, the file lands in the
- * home (Muse reads and refreshes it there) and is captured into the vault.
- * Where the recipe's `unisolatedOn` refuses Muse (macOS: one Keychain login
- * per OS user, and Muse moves any file token it reads into it), the file is
- * kept in the account vault only, and the node leases it to nodes that run
- * Muse.
- *
- * The device code and tokens live in this object and the written file only;
- * they are never logged or put on the flow row.
- */
 import { join } from "node:path";
 import { parseMuseCredentials, recipeFor, safeAuthorizationUrl, type IdentityRecipe, type LoginFieldDescriptor, type LoginFlowRow } from "../../../core/src/index.ts";
 import { primaryCredentialFile } from "../activation.ts";
@@ -23,16 +5,16 @@ import { STATIC_DETAIL, err, safeMessage, writePrivateRaw } from "./common.ts";
 import type { LoginRunner, LoginRunnerHost } from "./runner.ts";
 import type { MuseDevicePoll } from "./transports.ts";
 
-/** RFC 8628 §3.5: each `slow_down` adds five seconds to the polling interval. */
 const SLOW_DOWN_STEP_MS = 5_000;
+const MAX_TRANSIENT_BACKOFF_MS = 60_000;
+const MAX_HARD_ERRORS = 3;
 
-/** The Muse CLI's auth.json for an OAuth device-code grant (Linux file format, `expires_at` in epoch seconds). */
 export function museOauthDocument(grant: Extract<MuseDevicePoll, { kind: "granted" }>, nowMs: number): string {
   const meta = {
     mechanism: "oauth",
     access_token: grant.accessToken,
     ...(grant.refreshToken !== null ? { refresh_token: grant.refreshToken } : {}),
-    expires_at: Math.floor(nowMs / 1000) + grant.expiresInSeconds,
+    ...(grant.expiresInSeconds !== null ? { expires_at: Math.floor(nowMs / 1000) + grant.expiresInSeconds } : {}),
     obtained_via: "device_code",
   };
   return `${JSON.stringify({ schema_version: 1, providers: { meta } }, null, 2)}\n`;
@@ -46,6 +28,8 @@ export class MuseOauthRunner implements LoginRunner {
   private deadline = 0;
   private nextPollAt = 0;
   private polling = false;
+  private transientErrors = 0;
+  private hardErrors = 0;
   private stopped = false;
 
   constructor(host: LoginRunnerHost) {
@@ -77,7 +61,6 @@ export class MuseOauthRunner implements LoginRunner {
         detail: device.verificationUriComplete ? STATIC_DETAIL.deviceConfirm : STATIC_DETAIL.device,
         authorizationUrl: url,
         userCode: device.userCode,
-        // The flow ends when the code does (the service's tick expires it).
         ...(flow && flow.expiresAt > this.deadline ? { expiresAt: this.deadline } : {}),
       },
       "device code issued",
@@ -85,7 +68,6 @@ export class MuseOauthRunner implements LoginRunner {
   }
 
   async submit(_values: Record<string, string>, _fields: readonly LoginFieldDescriptor[]): Promise<LoginFlowRow> {
-    // The method requests no input; the service refuses submits without requested fields.
     return this.host.flow() as LoginFlowRow;
   }
 
@@ -94,7 +76,7 @@ export class MuseOauthRunner implements LoginRunner {
     this.polling = true;
     void this.poll(this.deviceCode)
       .catch((error) => {
-        if (this.current()) this.host.fail(err("network_error", `Meta's sign-in could not be reached: ${safeMessage(error)}`), true);
+        if (this.current()) this.host.fail(err("capture_failed", `The sign-in could not be saved: ${safeMessage(error)}`), true);
       })
       .finally(() => {
         this.polling = false;
@@ -110,7 +92,6 @@ export class MuseOauthRunner implements LoginRunner {
     return null;
   }
 
-  /** Still the flow's live runner: not stopped, not superseded, flow not terminal. */
   private current(): boolean {
     return !this.stopped && this.host.isCurrent(this) && this.host.stillActive();
   }
@@ -121,8 +102,20 @@ export class MuseOauthRunner implements LoginRunner {
       host.fail(err("timeout", "The sign-in code expired before it was approved. Retry to get a fresh code."), true);
       return;
     }
-    const result = await host.transports.museDeviceToken(deviceCode);
+    let result: MuseDevicePoll;
+    try {
+      result = await host.transports.museDeviceToken(deviceCode);
+    } catch (error) {
+      if (this.current()) this.transient(`unreachable: ${safeMessage(error)}`);
+      return;
+    }
     if (!this.current()) return;
+    if (result.kind === "unavailable") {
+      this.transient(`HTTP ${result.status}`);
+      return;
+    }
+    this.transientErrors = 0;
+    if (result.kind !== "unusable" && result.kind !== "refused") this.hardErrors = 0;
     switch (result.kind) {
       case "pending":
         this.nextPollAt = host.now() + this.intervalMs;
@@ -138,16 +131,30 @@ export class MuseOauthRunner implements LoginRunner {
         host.fail(err("timeout", "The sign-in code expired before it was approved. Retry to get a fresh code."), true);
         return;
       case "unusable":
-        host.fail(err("invalid_credential", "Meta approved the sign-in but returned no usable token."), true);
+        if (this.hardError()) host.fail(err("invalid_credential", "Meta approved the sign-in but returned no usable token."), true);
         return;
       case "refused":
-        host.fail(err("provider_error", `Meta's sign-in failed (HTTP ${result.status}).`), true);
+        if (this.hardError()) host.fail(err("provider_error", `Meta's sign-in failed (HTTP ${result.status}).`), true);
         return;
       case "granted":
         this.deviceCode = null;
         this.store(result);
         return;
     }
+  }
+
+  private transient(reason: string): void {
+    this.transientErrors += 1;
+    const backoff = Math.min(this.intervalMs * 2 ** this.transientErrors, MAX_TRANSIENT_BACKOFF_MS);
+    this.nextPollAt = this.host.now() + Math.max(backoff, this.intervalMs);
+    this.host.log(`account.login.muse_device_retry flow=${this.host.flowId} account=${this.host.account.id} transient=${this.transientErrors} reason=${JSON.stringify(reason)} next_s=${Math.round((this.nextPollAt - this.host.now()) / 1000)}`);
+  }
+
+  private hardError(): boolean {
+    this.hardErrors += 1;
+    if (this.hardErrors >= MAX_HARD_ERRORS) return true;
+    this.nextPollAt = this.host.now() + this.intervalMs;
+    return false;
   }
 
   private store(grant: Extract<MuseDevicePoll, { kind: "granted" }>): void {
@@ -166,7 +173,7 @@ export class MuseOauthRunner implements LoginRunner {
       host.fail(err("capture_failed", "The credential could not be saved into the account's vault."), true);
       return;
     }
-    host.log(`account.login.captured flow=${host.flowId} account=${account.id} by=muse_oauth refresh=${grant.refreshToken !== null} store=${vaultOnly ? "vault" : "home+vault"} files=${captured.captured.join(",")}`);
+    host.log(`account.login.captured flow=${host.flowId} account=${account.id} by=muse_oauth refresh=${grant.refreshToken !== null} expires_in_s=${grant.expiresInSeconds ?? "none"} store=${vaultOnly ? "vault" : "home+vault"} files=${captured.captured.join(",")}`);
     host.succeed(vaultOnly ? "Signed in. Honeybee keeps this login in its account store and lends it to Linux computers that run Muse." : undefined);
   }
 }

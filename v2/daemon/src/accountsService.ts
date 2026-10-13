@@ -850,7 +850,6 @@ export class AccountsService {
   private readonly cfg: ResolvedNodeConfig;
   private readonly log: (op: string) => void;
   private readonly now: () => number;
-  /** `process.platform` of this node (injected in tests). */
   readonly platform: string;
   private readonly keychainReader: KeychainReader;
   private readonly keychainWriter: KeychainWriter;
@@ -3419,7 +3418,6 @@ export class AccountsService {
   }
 
   async activateForSpawn(account: AccountRow, bee: { cwd: string }): Promise<ActivationResult> {
-    // The runtime-start hold refuses these first; never copy a vault credential into a home here.
     const unisolated = this.isolationRefusal(account.harness);
     if (unisolated) throw new Error(unisolated);
     if (this.authorityFor(account)?.enabled(account)) {
