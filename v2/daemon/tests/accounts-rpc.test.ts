@@ -1238,7 +1238,7 @@ test("rpc central credentials: per-account opt-in/status/lease/disable, idempote
     for (const label of ["pilot", "second", "refused"]) await client.request("account.add", { harness: "claude", label, importExisting: true });
     await client.request("account.add", { harness: "claude", label: "expired" });
     seedVault(dir, "claude", "claude-expired", ".credentials.json", JSON.stringify({ claudeAiOauth: { ...fixture.claudeAiOauth, refreshToken: "EXPIRED_REFRESH_FIXTURE", expiresAt: Date.now() - 1 } }));
-    assert.equal(await client.request("account.credentials.status", { id: "claude-pilot" }), null);
+    assert.deepEqual(await client.request("account.credentials.status", { id: "claude-pilot" }), { supported: true, phase: "native", generation: null, expiresAt: null });
     const state = await client.request<{ phase: string; generation: number }>("account.credentials.enable", { id: "claude-pilot", idempotencyKey: "central-enable" });
     assert.equal(state.phase, "ready");
     assert.equal(state.generation, 2, "adoption plus one validating rotation");
@@ -1250,14 +1250,14 @@ test("rpc central credentials: per-account opt-in/status/lease/disable, idempote
     const second = await client.request<{ phase: string; generation: number }>("account.credentials.enable", { id: "claude-second", idempotencyKey: "central-enable-second" });
     assert.equal(second.phase, "ready");
     assert.equal(second.generation, 2);
-    assert.deepEqual(await client.request("account.credentials.status", { id: "claude-pilot" }), { ...state });
+    assert.deepEqual(await client.request("account.credentials.status", { id: "claude-pilot" }), { ...state, supported: true });
     // #12: an expired candidate is refused with nothing changed; a refused chain aborts with native copies intact.
     await rejects(() => client.request("account.credentials.enable", { id: "claude-expired", idempotencyKey: "central-enable-expired" }), "account_unavailable");
-    assert.equal(await client.request("account.credentials.status", { id: "claude-expired" }), null);
+    assert.deepEqual(await client.request("account.credentials.status", { id: "claude-expired" }), { supported: true, phase: "native", generation: null, expiresAt: null });
     assert.ok(readFileSync(join(dir, "vault", "claude", "claude-expired", ".credentials.json"), "utf8").includes("EXPIRED_REFRESH_FIXTURE"));
     assert.equal(oauth.bodies.length, 2);
     await rejects(() => client.request("account.credentials.enable", { id: "claude-refused", idempotencyKey: "central-enable-refused" }), "account_unavailable");
-    assert.equal((await client.request<{ phase: string }>("account.credentials.status", { id: "claude-refused" }))!.phase, "disabled");
+    assert.equal((await client.request<{ phase: string }>("account.credentials.status", { id: "claude-refused" }))!.phase, "native");
     assert.ok(readFileSync(join(dir, "vault", "claude", "claude-refused", ".credentials.json"), "utf8").includes("REFUSED_REFRESH_FIXTURE"));
     assert.ok(!existsSync(join(dir, "homes", "claude-refused", ".credentials.json")), "no access-only copy was published for the refused candidate");
     await rejects(() => client.request("account.credentials.refresh", { id: "claude-pilot" }), "invalid_request");

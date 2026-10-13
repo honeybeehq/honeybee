@@ -5,7 +5,7 @@
  * surface: aligned columns, status color, and the tokens tests/scripts grep
  * (`stale:`, `id=`, `stopped(crashed)`, `deduped:`). Full argv lives on `view`, not `ls`.
  */
-import { CLAUDE_LOGIN_DUE_MS, INBOX_AGENT, isInboxAgent, type AccountCredentialAuthority, type AuditRow } from "../../core/src/index.ts";
+import { CLAUDE_LOGIN_DUE_MS, INBOX_AGENT, isInboxAgent, type AccountCredentialAuthority, type AccountCredentialAuthorityStatus, type AuditRow } from "../../core/src/index.ts";
 import type { TranscriptTurn } from "../../driver-tmux/src/transcripts.ts";
 import type {
   AccountGetResult,
@@ -303,8 +303,9 @@ export function loginExpiryLabel(refreshTokenExpiresAt: number, now: number = Da
 }
 
 
-export function renderCredentialAuthority(id: string, state: AccountCredentialAuthority | null): string[] {
-  if (!state) return [`${id}: native credential management`];
+export function renderCredentialAuthority(id: string, state: AccountCredentialAuthority | AccountCredentialAuthorityStatus): string[] {
+  if ("supported" in state && !state.supported) return [`${id}: central credential management unsupported`];
+  if (state.phase === "native") return [`${id}: native credential management`];
   const lines = [`${state.account}: credentials ${state.phase}, generation ${state.generation}; expires ${state.expiresAt === null ? "unknown" : new Date(state.expiresAt).toISOString()}`
     + `; ${state.refreshTokenExpiresAt === null ? "login expiry unknown" : loginExpiryLabel(state.refreshTokenExpiresAt)}`];
   const failure = state.failure;

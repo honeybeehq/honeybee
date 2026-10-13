@@ -79,9 +79,9 @@ test("central Codex: isolated daemon rotates once, publishes access-only, refres
     daemon = await startDaemon(dir, { env: { HIVE_CODEX_OAUTH_TOKEN_URL: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, HOME: dir, CODEX_HOME: join(dir, "unused") } });
     client = await daemon.client();
     const rpcResults: unknown[] = [];
-    const cli = async (action: string, key?: string): Promise<AccountCredentialAuthority> => {
+    const cli = async (action: string, key?: string, account = id): Promise<AccountCredentialAuthority> => {
       const { stdout } = await promisify(execFile)(process.execPath, [fileURLToPath(new URL("../../cli/src/bin.ts", import.meta.url)),
-        "account", "credentials", action, id, "--data-dir", dir, "--json", ...(key ? ["--idempotency-key", key] : [])],
+        "account", "credentials", action, account, "--data-dir", dir, "--json", ...(key ? ["--idempotency-key", key] : [])],
         { env: { PATH: process.env.PATH, HOME: dir, HIVE_NO_KEYCHAIN: "1" } });
       const parsed = JSON.parse(stdout);
       const result = (action === "status" ? parsed.authority : parsed) as AccountCredentialAuthority;
@@ -95,6 +95,13 @@ test("central Codex: isolated daemon rotates once, publishes access-only, refres
     };
     await rpc("account.add", { harness: "codex", label: "test-example.com", importExisting: true });
     await rpc("account.add", { harness: "codex", label: "native-example.com", importExisting: true });
+    assert.ok(client.capabilities.includes("account.credentials.status.v2"));
+    await rpc("account.add", { harness: "kimi", label: "status-unsupported-example.com" });
+    assert.deepEqual(await rpc("account.credentials.status", { id: "kimi-status-unsupported-example.com" }), { supported: false });
+    assert.deepEqual(await rpc("account.credentials.status", { id }), { supported: true, phase: "native", generation: null, expiresAt: null });
+    assert.deepEqual(await cli("status", undefined, "kimi-status-unsupported-example.com"), { supported: false });
+    assert.deepEqual(await cli("status"), { supported: true, phase: "native", generation: null, expiresAt: null });
+    console.log('status.v2 capability=true unsupported={"supported":false} non_enrolled={"supported":true,"phase":"native","generation":null,"expiresAt":null}');
     const enabled = await waitFor(async () => {
       try { return await rpc<AccountCredentialAuthority>("account.credentials.enable", { id, idempotencyKey: randomUUID() }); }
       catch (error) {
@@ -106,6 +113,10 @@ test("central Codex: isolated daemon rotates once, publishes access-only, refres
     assert.equal(enabled.generation, 2);
     const cliStatus = await cli("status");
     assert.equal(cliStatus.generation, 2);
+    const enrolledStatus = await rpc<AccountCredentialAuthority & { supported: boolean }>("account.credentials.status", { id });
+    assert.equal(enrolledStatus.supported, true);
+    assert.equal(enrolledStatus.phase, "ready");
+    console.log(`status.v2 enrolled: supported=true phase=${enrolledStatus.phase} generation=${enrolledStatus.generation} expiresAt=${enrolledStatus.expiresAt}`);
     console.log(`CLI status: phase=${cliStatus.phase} generation=${cliStatus.generation} expiry=${new Date(cliStatus.expiresAt!).toISOString()}`);
     assert.ok(enabled.expiresAt! > Date.now());
     const authorityPath = join(dir, "vault", ".credential-authorities", `${id}.json`);
@@ -172,8 +183,8 @@ test("central Codex: isolated daemon rotates once, publishes access-only, refres
     const lease = await rpc<{ files: Array<{ contentB64: string }> }>("account.lease", { account: native });
     assert.equal(JSON.parse(Buffer.from(lease.files[0]!.contentB64, "base64").toString()).tokens.refresh_token, "");
     assert.ok(existsSync(join(dir, "homes", native, "native-calls")));
-    assert.equal(await rpc("account.credentials.status", { id: native }), null);
-    console.log("5 non-enabled account: native codex exec invoked; central status=null");
+    assert.deepEqual(await rpc("account.credentials.status", { id: native }), { supported: true, phase: "native", generation: null, expiresAt: null });
+    console.log("5 non-enabled account: native codex exec invoked; central status=native supported=true");
     await cli("disable", "disable");
     assert.equal(home().tokens.refresh_token, "");
     assert.equal(JSON.parse(readFileSync(mirrorPath, "utf8")).tokens.refresh_token, "");

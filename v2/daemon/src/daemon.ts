@@ -1580,8 +1580,14 @@ export class HiveDaemon {
       case "account.credentials.restoreNative": {
         return this.mustAccounts().restoreNativeBackup(this.requireAccount(params).id).then(result => ({ ...result, account: this.mirrorAccount(result.account) }));
       }
-      case "account.credentials.status":
-        return this.mustAccounts().authorityFor(this.requireAccount(params))?.status(this.requireAccount(params)) ?? null;
+      case "account.credentials.status": {
+        const account = this.requireAccount(params);
+        const authority = this.mustAccounts().authorityFor(account);
+        if (!authority) return { supported: false };
+        const state = authority.status(account);
+        return state && state.phase !== "disabled" ? { ...state, supported: true }
+          : { supported: true, phase: "native", generation: null, expiresAt: null };
+      }
       case "account.credentials.enable":
       case "account.credentials.refresh":
       case "account.credentials.disable":

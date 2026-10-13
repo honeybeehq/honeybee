@@ -451,6 +451,11 @@ export interface AccountCredentialAuthority {
   updatedAt: number;
 }
 
+export type AccountCredentialAuthorityStatus =
+  | { supported: false }
+  | { supported: true; phase: "native"; generation: null; expiresAt: null }
+  | (AccountCredentialAuthority & { supported: true });
+
 export const ACCOUNT_CREDENTIAL_PHASES = ["enrolling", "ready", "refreshing", "uncertain", "login_required", "disabling", "disabling_uncertain", "disabled"] as const;
 
 /**

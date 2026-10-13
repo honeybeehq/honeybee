@@ -192,8 +192,8 @@ test("central Grok: isolated daemon rotates once, publishes access-only, refresh
     const lease = await rpc<{ files: Array<{ contentB64: string }> }>("account.lease", { account: native });
     assert.ok(JSON.parse(Buffer.from(lease.files[0]!.contentB64, "base64").toString())[scope].refresh_token === "");
     assert.ok(readFileSync(join(dir, "vault", "grok", native, "auth.json"), "utf8") === nativeRaw);
-    assert.equal(await rpc("account.credentials.status", { id: native }), null);
-    console.log("5 non-enabled account: native Grok auth unchanged; central status=null");
+    assert.deepEqual(await rpc("account.credentials.status", { id: native }), { supported: true, phase: "native", generation: null, expiresAt: null });
+    console.log("5 non-enabled account: native Grok auth unchanged; central status=native supported=true");
     await cli("disable", "disable");
     assert.ok(home()[scope].refresh_token === undefined);
     console.log("disable after refusal: disabled; unusable refresh token not restored");

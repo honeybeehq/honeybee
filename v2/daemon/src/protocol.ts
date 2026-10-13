@@ -118,6 +118,7 @@ export const DAEMON_CAPABILITIES = [
   "account.lease.install.v1",
   "account.credentials.native_backup.v1",
   "account.credentials.pilot.v1",
+  "account.credentials.status.v2",
   /**
    * v35: a dying login is visible. Account rows carry `statusReason` and
    * `refreshTokenExpiresAt`; `account.credentials.status` carries

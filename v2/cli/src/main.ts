@@ -1089,9 +1089,12 @@ async function cmdAccount(ctx: CliContext, parsed: Parsed): Promise<number> {
         emit(ctx, [action === "restore-native" ? `${id}: native backup restored; validate or log in before placing work` : `${id}: native backup ${result.exists ? `exists from ${new Date(result.backedUpAt as number).toISOString()}` : "absent"}`], result, false);
         return 0;
       }
-      const result = await withClient(ctx, c => c.request<import("../../core/src/index.ts").AccountCredentialAuthority | null>(
+      const result = await withClient(ctx, c => {
+        if (action === "status" && !c.capabilities.includes("account.credentials.status.v2")) throw new RpcError("capability_missing", "Update Honeybee: account.credentials.status.v2 is required.");
+        return c.request<import("../../core/src/index.ts").AccountCredentialAuthority | import("../../core/src/index.ts").AccountCredentialAuthorityStatus>(
         `account.credentials.${action}` as import("../../daemon/src/protocol.ts").RpcVerb,
-        { id, ...(action === "status" ? {} : { idempotencyKey: key ?? randomUUID() }) }, ACCOUNT_LIMITS_RPC_TIMEOUT_MS));
+        { id, ...(action === "status" ? {} : { idempotencyKey: key ?? randomUUID() }) }, ACCOUNT_LIMITS_RPC_TIMEOUT_MS);
+      });
       if (action === "status") {
         const backup = await withClient(ctx, c => {
           if (!c.capabilities.includes("account.credentials.native_backup.v1")) throw new RpcError("capability_missing", "Update Honeybee: account.credentials.native_backup.v1 is required.");
