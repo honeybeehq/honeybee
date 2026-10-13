@@ -128,7 +128,12 @@ for (const harness of ["claude", "codex", "grok"]) test(`credential handoff ${ha
     const newFrom = { ...from, deviceKey: "dummy-device-A-repaired" }, newTo = { ...to, deviceKey: "dummy-device-B-repaired" };
     await refused(() => rpc(cb!, "handoffIdentitySet", { identity: newTo }), "credential_handoff_conflict");
     const identityPayload = join(b.dir, "identity-replace-input.json");
-    writeFileSync(identityPayload, JSON.stringify({ identity: newTo }));
+    writeFileSync(identityPayload, JSON.stringify({ identity: newTo, replace: true }));
+    await assert.rejects(promisify(execFile)(process.execPath, [fileURLToPath(new URL("../../cli/src/bin.ts", import.meta.url)), "account", "credentials", "handoff-identity-set", "--file", identityPayload, "--data-dir", b.dir], { env: { PATH: process.env.PATH, HOME: b.dir, HIVE_NO_KEYCHAIN: "1" } }), (error: unknown) => error instanceof Error && /requires explicit --replace/.test((error as Error & { stderr?: string }).stderr ?? ""));
+    await rpc(cb, "handoffIdentitySet", { identity: to });
+    assert.equal((await rpc<Result>(cb, "handoffStatus", { handoffId: replacementHandoff, role: "destination" })).state, "prepared");
+    const { stderr: usageStderr } = await promisify(execFile)(process.execPath, [fileURLToPath(new URL("../../cli/src/bin.ts", import.meta.url)), "account"], { env: { PATH: process.env.PATH, HOME: b.dir, HIVE_NO_KEYCHAIN: "1" } }).catch((error: Error & { stderr: string }) => ({ stderr: error.stderr }));
+    assert.match(usageStderr, /\[--replace\]/);
     writeFileSync(join(b.dir, "crash-gate.json"), JSON.stringify({ phase: "identity" }));
     const interruptedReplacement = promisify(execFile)(process.execPath, [fileURLToPath(new URL("../../cli/src/bin.ts", import.meta.url)), "account", "credentials", "handoff-identity-set", "--file", identityPayload, "--replace", "--data-dir", b.dir, "--json"], { env: { PATH: process.env.PATH, HOME: b.dir, HIVE_NO_KEYCHAIN: "1" } }).catch(() => null);
     await waitFor(() => existsSync(join(b.dir, "crash-stopped")) ? true : null, "B stopped after shadow void before new identity pin");

@@ -786,7 +786,7 @@ const ACCOUNT_USAGE =
   "       hive account login <selector> [--method <id>] [--remote] [--no-wait] [--replace-account] | login-status <selector> | login-cancel <selector>\n" +
   "       hive account credentials <status|enable|refresh|disable|backup-status|restore-native> <selector>\n" +
   "       hive account credentials take-over <account> --confirm [--epoch higher-epoch] [--takeover-id id]\n" +
-  "       hive account credentials <export|adopt-prepare|export-prepare|export-commit|adopt|adopt-abort|export-abort|export-confirm|stand-down|handoff-status|handoff-key-rotate|handoff-identity-set|stand-down-receipt|take-over-apply|take-over-complete|take-over-cancel> --file protected-payload.json [--out protected-material.json]\n" +
+  "       hive account credentials <export|adopt-prepare|export-prepare|export-commit|adopt|adopt-abort|export-abort|export-confirm|stand-down|handoff-status|handoff-key-rotate|handoff-identity-set|stand-down-receipt|take-over-apply|take-over-complete|take-over-cancel> --file protected-payload.json [--out protected-material.json] [--replace]\n" +
   "       hive account lease install --file payload.json | lease remove <id>\n" +
   "       hive account capture <selector> | verify <selector> | limits [<selector>] | reset <selector> [--credit-id id] --idempotency-key key\n" +
   "       hive account restored <selector> | interruptions [<selector>]\n" +
@@ -1111,7 +1111,10 @@ async function cmdAccount(ctx: CliContext, parsed: Parsed): Promise<number> {
         let params: Record<string, unknown>;
         try { params = JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>; }
         catch { throw new Error("Could not read protected handoff payload JSON."); }
-        if (action === "handoff-identity-set" && parsed.flags.get("--replace") === true) params.replace = true;
+        if (action === "handoff-identity-set") {
+          if (params.replace === true && parsed.flags.get("--replace") !== true) throw new Error("Usage: identity replacement requires explicit --replace on the command line.");
+          params.replace = parsed.flags.get("--replace") === true;
+        }
         const output = action === "export" ? parsed.flags.get("--out") as string : null;
         const outputFd = output === null ? null : openSync(output, "wx", 0o600);
         let completed = false;

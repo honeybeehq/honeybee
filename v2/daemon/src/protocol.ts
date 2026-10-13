@@ -225,7 +225,7 @@ export const DAEMON_CAPABILITIES = [
 ] as const;
 export type DaemonCapability = (typeof DAEMON_CAPABILITIES)[number];
 
-/** The server's first frame on a connection. */
+/** Initial hello exchanged by client and server; clientLane only downgrades client ingress. */
 export interface HelloFrame {
   clientLane?: "node_relay" | "remote";
   identity?: BuildIdentity;
