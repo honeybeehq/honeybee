@@ -146,7 +146,7 @@ function service(r: Rig, extra: Partial<ConstructorParameters<typeof AccountsSer
   // Enrollment validates the chain with one real rotation; the default stub keeps every test off the network.
   const fetchers = { claudeRefresh: async () => (granted({ accessToken: "enrolled-access", refreshToken: CLAUDE_ENROLLED_REFRESH, expiresAt: r.now() + 8 * HOUR })),
     claudeIdentity: async () => null, ...(extra.fetchers ?? {}) };
-  return new AccountsService({ store: r.store, cfg: r.cfg, log: (op) => r.log.push(op), now: r.now, keychainReader: async () => null, keychainWriter: async () => false, ...extra, fetchers });
+  return new AccountsService({ store: r.store, cfg: r.cfg, log: (op) => r.log.push(op), now: r.now, platform: "linux", keychainReader: async () => null, keychainWriter: async () => false, ...extra, fetchers });
 }
 
 /** An unsigned but structurally valid JWT whose `exp` claim decodes locally. */
@@ -887,6 +887,31 @@ test("lease.muse.4: a delivered lease imports on the recipient with account.add 
     assert.equal(imported.ok, true);
     assert.equal(imported.ok && imported.source, "home");
     assert.ok(!readFileSync(join(r.vault, "muse", "muse-recipient", "muse", "auth.json"), "utf8").includes(MUSE_REFRESH));
+  } finally {
+    r.cleanup();
+  }
+});
+
+test("lease.muse.5: on darwin every Muse mint is lease_unsupported with the Keychain reason, whatever the login, and nothing is minted or logged", async () => {
+  const r = rig();
+  try {
+    const reason = /one login per macOS user in the Keychain.*run Muse on a Linux node/;
+    const logins = {
+      oauth: museAuth({ mechanism: "oauth", obtained_via: "device_code", access_token: "a", refresh_token: MUSE_REFRESH, expires_at: Math.floor((r.now() + HOUR) / 1000) }),
+      key: museAuth({ api_key: "muse-fixture-api-key" }),
+    };
+    const linux = service(r);
+    const mac = service(r, { platform: "darwin" });
+    for (const [label, doc] of Object.entries(logins)) {
+      const account = addAccount(r, "muse", label, { home: { "muse/auth.json": doc } });
+      await refuses(() => mac.mintLease(account), "lease_unsupported", reason);
+      assert.ok(!r.log.some((line) => line.startsWith("account.lease ")), `darwin minted nothing for ${label}`);
+      assert.equal((await linux.mintLease(account)).files[0]!.homeRelPath, "muse/auth.json", `linux still mints ${label}`);
+      r.log.length = 0;
+    }
+    const missing = addAccount(r, "muse", "missing");
+    await refuses(() => mac.mintLease(missing), "lease_unsupported", reason);
+    assert.equal(mac.isolationRefusal("claude"), null);
   } finally {
     r.cleanup();
   }
