@@ -2194,3 +2194,60 @@ test("native backups exclude access-only leases, enforce permissions and retain 
     assert.equal(existsSync(second.backupPath), true);
   } finally { r.cleanup(); }
 });
+
+test("explicit lease adoption replaces a stopped working native login with a genuine restorable backup, but never a running bee or central authority", async () => {
+  const r = rig();
+  try {
+    const accounts = service(r);
+    const native = JSON.stringify({ claudeAiOauth: { accessToken: "FAKE-WORKING-ACCESS", refreshToken: "FAKE-WORKING-REFRESH", expiresAt: r.now() + HOUR } });
+    const leased = JSON.stringify({ claudeAiOauth: { accessToken: "FAKE-PEER-ACCESS", refreshToken: "", expiresAt: r.now() + HOUR } });
+    const row = addAccount(r, "claude", "explicit", { home: { ".credentials.json": native }, vault: { ".credentials.json": native } });
+    const input = { id: row.id, harness: "claude", label: row.label, shareId: "share-explicit-0001", authorityNodeId: "authority-test", epoch: 1, expiresAt: Math.floor((r.now() + HOUR) / 1000), adopt: "explicit" as const, files: [{ homeRelPath: ".credentials.json", contentB64: Buffer.from(leased).toString("base64"), mode: 0o600 }] };
+    await assert.rejects(accounts.installLease({ ...input, adopt: true }), (error: unknown) => error instanceof RpcError && error.code === "account_adopt_refused");
+    const { bee } = r.store.createBee({ name: "explicit-bee", agent: "claude", substrate: "hsr", cwd: r.dir, account: row.id });
+    await assert.rejects(accounts.installLease(input), (error: unknown) => error instanceof RpcError && error.code === "account_adopt_running");
+    assert.equal(readFileSync(join(row.homePath, ".credentials.json"), "utf8"), native);
+    assert.equal(accounts.nativeBackupStatus(row).exists, false);
+    r.store.updateRuntimeState(bee.id, 1, "stopped", { exitCause: "stopped_by_user" });
+    r.store.putAccountCredentialAuthority({ account: row.id, phase: "ready", generation: 1, expiresAt: r.now() + HOUR, operationKey: null });
+    await assert.rejects(accounts.installLease(input), (error: unknown) => error instanceof RpcError && error.code === "account_adopt_central");
+    assert.equal(readFileSync(join(row.homePath, ".credentials.json"), "utf8"), native);
+    assert.equal(accounts.nativeBackupStatus(row).exists, false);
+    r.store.putAccountCredentialAuthority({ account: row.id, phase: "disabled", generation: 1, expiresAt: null, operationKey: null });
+    const installed = await accounts.installLease(input);
+    assert.equal(installed.account.source, "leased");
+    assert.equal(installed.adopted, true);
+    assert.equal(installed.replacedWorkingLogin, true);
+    assert.equal(installed.backupAt, r.now());
+    assert.ok(installed.backupPath);
+    for (const root of ["home", "vault"]) assert.equal(readFileSync(join(installed.backupPath, root, ".credentials.json"), "utf8"), native);
+    assert.equal(r.store.getBee(bee.id)?.account, row.id);
+    await accounts.removeLease(row.id);
+    const restored = await accounts.restoreNativeBackup(row.id);
+    assert.equal(restored.account.source, "local");
+    for (const root of [row.homePath, accounts.vaultDirOf(row)]) assert.equal(readFileSync(join(root, ".credentials.json"), "utf8"), native);
+    assert.ok(!JSON.stringify(r.store.auditTail(0, 10000)).includes("FAKE-WORKING-REFRESH"));
+    const accessOnly = addAccount(r, "claude", "explicit-access-only", { home: { ".credentials.json": leased } });
+    await assert.rejects(accounts.installLease({ ...input, id: accessOnly.id, label: accessOnly.label }), (error: unknown) => error instanceof RpcError && error.code === "account_adopt_refused");
+    assert.equal(readFileSync(join(accessOnly.homePath, ".credentials.json"), "utf8"), leased);
+  } finally { r.cleanup(); }
+});
+
+test("explicit adoption checks stopped bees again after awaiting the per-home Keychain read", async () => {
+  const r = rig();
+  try {
+    const native = JSON.stringify({ claudeAiOauth: { accessToken: "FAKE-WORKING-ACCESS", refreshToken: "FAKE-WORKING-REFRESH", expiresAt: r.now() + HOUR } });
+    const leased = JSON.stringify({ claudeAiOauth: { accessToken: "FAKE-PEER-ACCESS", refreshToken: "", expiresAt: r.now() + HOUR } });
+    const row = addAccount(r, "claude", "explicit-race", { home: { ".credentials.json": native } });
+    const reading = deferred<void>();
+    const finish = deferred<void>();
+    const accounts = service(r, { keychainStateReader: async () => { reading.resolve(); await finish.promise; return { status: "unavailable" }; } });
+    const pending = accounts.installLease({ id: row.id, harness: "claude", label: row.label, shareId: "share-explicit-0001", authorityNodeId: "authority-test", epoch: 1, expiresAt: Math.floor((r.now() + HOUR) / 1000), adopt: "explicit", files: [{ homeRelPath: ".credentials.json", contentB64: Buffer.from(leased).toString("base64"), mode: 0o600 }] });
+    await reading.promise;
+    r.store.createBee({ name: "racing-bee", agent: "claude", substrate: "hsr", cwd: r.dir, account: row.id });
+    finish.resolve();
+    await assert.rejects(pending, (error: unknown) => error instanceof RpcError && error.code === "account_adopt_running");
+    assert.equal(readFileSync(join(row.homePath, ".credentials.json"), "utf8"), native);
+    assert.equal(accounts.nativeBackupStatus(row).exists, false);
+  } finally { r.cleanup(); }
+});

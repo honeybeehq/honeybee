@@ -117,6 +117,7 @@ export const DAEMON_CAPABILITIES = [
   "account.lease.v1",
   "account.lease.install.v1",
   "account.lease.revoke.v1",
+  "account.lease.adopt_explicit.v1",
   "account.credentials.native_backup.v1",
   "account.credentials.pilot.v1",
   "account.credentials.status.v2",
@@ -232,6 +233,8 @@ export const RPC_ERROR_CODES = [
   "native_backup_invalid",
   "native_backup_restore_refused",
   "account_adopt_refused",
+  "account_adopt_running",
+  "account_adopt_central",
   "capability_missing",
   "reconnect_unsupported", "reconnect_not_ready", "reconnect_not_found",
   "thread_unsupported", "thread_remote_unsupported", "thread_history_unavailable", "thread_operation_not_found", "thread_not_ready", "thread_busy",
@@ -918,13 +921,15 @@ export interface AccountLeaseInstallParams {
   epoch: number;
   files: EphemeralCredentialFile[];
   expiresAt: number | null;
-  adopt?: boolean;
+  adopt?: boolean | "explicit";
 }
 
 export interface AccountLeaseInstallResult {
   account: MirrorAccountRow;
   adopted: boolean;
   backupPath: string | null;
+  backupAt: number | null;
+  replacedWorkingLogin: boolean;
   keychainPublished: boolean;
   restored: AccountCredentialsRestoredResult;
 }
