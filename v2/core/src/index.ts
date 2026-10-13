@@ -35,6 +35,7 @@ export {
   type PutTrackInput,
   type EnqueuedCommand,
   type RpcIdempotencyRecord,
+  type RpcIdempotencyRedactionReceipt,
   type TagResult,
   type AskQuestionInput,
   type AnswerResult,

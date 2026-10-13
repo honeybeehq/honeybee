@@ -315,6 +315,7 @@ export const MIRROR_BEE_RECORD_KEYS = [
   // v23: in-flight handoff pointer.
   "activeHandoffId",
 ] as const;
+export const MIRROR_RAW_BEE_ENV_KEYS = ["CLAUDE_CONFIG_DIR", "CODEX_HOME", "GROK_HOME"] as const;
 export const MIRROR_RUNTIME_KEYS = [
   "beeId",
   "generation",

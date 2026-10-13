@@ -100,6 +100,9 @@ import {
   type CoreStore,
   type MirrorAccountRow,
   pauseLabel,
+  mirrorBeeAuditRow,
+  mirrorBeeRow,
+  redactBeeResultEnv,
   redactEnvRecords,
   type RowSource,
   type Scope,
@@ -715,6 +718,10 @@ export class HiveDaemon {
       backoffBaseMs: this.cfg.backoffBaseMs,
     });
     this.store = store;
+    const redaction = store.rpcIdempotencyRedactionReceipt;
+    if (redaction) {
+      this.log(`store.migration.rpc_idempotency_env seen=${redaction.seen} redacted=${redaction.redacted} skipped_unparseable=${redaction.skippedUnparseable} skipped_unrecognised=${redaction.skippedUnrecognised} complete=${redaction.complete} ms=${redaction.wallMs}`);
+    }
     this.threadOperations = new ThreadOperations(store, beeId => this.resolveSpawnSpec(beeId));
     for (const operation of store.listThreadOperations()) if (operation.failure?.code === "successor_deleted") this.removeThreadArtifacts(operation.id);
     storage.end();
@@ -1237,12 +1244,13 @@ export class HiveDaemon {
    * v18: the watch stream IS the mirror's delta channel, so an `account.put`
    * payload carries the same derived `credentialHealth` the snapshot row
    * does — computed here, at emit, from the current vault/home/limits facts
-   * (never stored, never derived by the materializer). Every other row
-   * passes through verbatim.
+   * (never stored, never derived by the materializer). Bee rows carry
+   * the mirror's redacted env; every other row passes through verbatim.
    */
   private mirrorAuditRows(rows: AuditRow[]): AuditRow[] {
     const accounts = this.accounts;
-    return rows.map((row) => {
+    return rows.map((source) => {
+      const row = mirrorBeeAuditRow(source);
       if (row.kind === "thread_operation.put") return { ...row, payload: { operation: row.payload.operation } };
       if (!accounts) return row;
       if (row.kind !== "account.put") return row;
@@ -2077,8 +2085,7 @@ export class HiveDaemon {
   }
 
   private beeEnvRedacted<T>(result: T): T {
-    const bee = (result as { bee?: { env?: unknown } | null } | null)?.bee;
-    return typeof bee?.env === "object" && bee.env !== null ? redactEnvRecords(result) : result;
+    return redactBeeResultEnv(result);
   }
 
   private revealedOrRedacted<T>(params: Record<string, unknown>, result: T): T {
@@ -5047,7 +5054,7 @@ export class HiveDaemon {
     this.publishedSeq = seq;
     return {
       seq,
-      views: store.listBeeViewRows(),
+      views: store.listBeeViewRows().map((row) => ({ ...row, bee: mirrorBeeRow(row.bee) })),
       templates: store.listTemplates(),
       tracks: store.listTracks(),
       questions: store.listQuestions(),

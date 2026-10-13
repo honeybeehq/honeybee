@@ -220,6 +220,7 @@ import {
   type LoginMethodDescriptor,
 } from "./loginFlow.ts";
 import { deriveBeeView } from "./view.ts";
+import { carriesBeeEnvRecord, redactBeeResultEnv } from "./envRedaction.ts";
 import {
   fieldsEqual,
   normalizeTemplate,
@@ -587,6 +588,15 @@ export type PutOutcome = "created" | "updated" | "unchanged";
  */
 export interface EnqueuedCommand extends CommandRow {
   deduped: boolean;
+}
+
+export interface RpcIdempotencyRedactionReceipt {
+  seen: number;
+  redacted: number;
+  skippedUnparseable: number;
+  skippedUnrecognised: number;
+  complete: boolean;
+  wallMs: number;
 }
 
 /** A recorded RPC mutation result (the rpc_idempotency table). */
@@ -1570,6 +1580,7 @@ export class CoreStore {
   private readonly stmts = new Map<string, ReturnType<DatabaseSync["prepare"]>>();
   private txDepth = 0;
   private closed = false;
+  private rpcIdempotencyRedaction: RpcIdempotencyRedactionReceipt | null = null;
   /** Commands requeued running→queued by open() (B5 boot replay); reported by reconcileAtBoot. */
   private bootRequeuedCommandIds: number[] = [];
 
@@ -1989,11 +2000,52 @@ export class CoreStore {
     this.db.exec(ACCOUNTS_NATIVE_INDEX_SQL);
     this.db.exec("UPDATE accounts SET leased_from = json_remove(json_set(leased_from, '$.revokedAt', json_extract(leased_from, '$.endedAt')), '$.endedAt') WHERE leased_from IS NOT NULL AND json_type(leased_from, '$.endedAt') IS NOT NULL");
     this.backfillMailHistoryEnqueues();
+    if (stored < 40) this.redactRpcIdempotencyEnv();
     this.db
       .prepare(
         "INSERT INTO meta(key, value) VALUES('schema_version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
       )
       .run(String(SCHEMA_VERSION));
+  }
+
+  private redactRpcIdempotencyEnv(): void {
+    const started = performance.now();
+    const receipt: RpcIdempotencyRedactionReceipt = { seen: 0, redacted: 0, skippedUnparseable: 0, skippedUnrecognised: 0, complete: false, wallMs: 0 };
+    try {
+      receipt.seen = Number((this.db.prepare("SELECT COUNT(*) AS n FROM rpc_idempotency").get() as Row).n);
+      const updates: Array<[string, string]> = [];
+      for (const row of this.db.prepare("SELECT key, result FROM rpc_idempotency").iterate() as Iterable<Row>) {
+        const stored = String(row.result);
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(stored);
+        } catch {
+          receipt.skippedUnparseable += 1;
+          continue;
+        }
+        if (!stored.includes('"env"')) continue;
+        try {
+          if (!carriesBeeEnvRecord(parsed)) {
+            receipt.skippedUnrecognised += 1;
+            continue;
+          }
+          const redacted = JSON.stringify(redactBeeResultEnv(parsed));
+          if (redacted !== stored) updates.push([redacted, String(row.key)]);
+        } catch {
+          receipt.skippedUnrecognised += 1;
+        }
+      }
+      const update = this.db.prepare("UPDATE rpc_idempotency SET result = ? WHERE key = ?");
+      for (const [redacted, key] of updates) {
+        update.run(redacted, key);
+        receipt.redacted += 1;
+      }
+      receipt.complete = true;
+    } catch {
+      receipt.complete = false;
+    }
+    receipt.wallMs = Math.round(performance.now() - started);
+    this.rpcIdempotencyRedaction = receipt;
   }
 
   private audit(kind: string, beeId: string | null, payload: Record<string, unknown>, at = this.now()): number {
@@ -4379,6 +4431,10 @@ export class CoreStore {
    */
   get inTransaction(): boolean {
     return this.txDepth > 0;
+  }
+
+  get rpcIdempotencyRedactionReceipt(): RpcIdempotencyRedactionReceipt | null {
+    return this.rpcIdempotencyRedaction === null ? null : { ...this.rpcIdempotencyRedaction };
   }
 
   /** The recorded result for a caller-supplied RPC idempotency key, if any. */
