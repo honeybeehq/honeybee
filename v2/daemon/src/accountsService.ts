@@ -850,7 +850,8 @@ export class AccountsService {
   private readonly cfg: ResolvedNodeConfig;
   private readonly log: (op: string) => void;
   private readonly now: () => number;
-  private readonly platform: string;
+  /** `process.platform` of this node (injected in tests). */
+  readonly platform: string;
   private readonly keychainReader: KeychainReader;
   private readonly keychainWriter: KeychainWriter;
   readonly leaseMaterialCodecs: ReadonlyMap<string, LeaseMaterialCodec>;
@@ -1485,13 +1486,18 @@ export class AccountsService {
     return this.claudeDocumentState(readIfFile(join(source, primary)));
   }
 
-  /** A Muse API key never expires here; an OAuth login is usable until expires_at, or after it while Muse holds a refresh token. */
+  /**
+   * A Muse API key never expires here; an OAuth login is usable until
+   * expires_at, or after it while Muse holds a refresh token and can run
+   * here to use it. Where Muse cannot run (`unisolatedOn`) nothing on this
+   * node refreshes the login, so it is expired once expires_at passes.
+   */
   private museDocumentState(raw: string | null): CredentialState {
     if (raw === null) return "absent";
     const parsed = parseMuseCredentials(raw);
     if (!parsed) return "invalid";
-    if (parsed.mechanism !== "oauth" || parsed.expiresAt === null || parsed.expiresAt > this.now() || parsed.refreshable) return "present";
-    return "expired";
+    if (parsed.mechanism !== "oauth" || parsed.expiresAt === null || parsed.expiresAt > this.now()) return "present";
+    return parsed.refreshable && !this.isolationRefusal("muse") ? "present" : "expired";
   }
 
   private centralCredentialState(account: AccountRow): CredentialState {
@@ -2866,8 +2872,6 @@ export class AccountsService {
     if (this.refreshBusy(account) && !this.authorityFor(account)?.enabled(account)) {
       throw new LeaseRefusal("lease_unavailable", `account ${account.id}'s credential refresher is mid-rotation; retry shortly`);
     }
-    const unisolated = this.isolationRefusal(account.harness);
-    if (unisolated) throw new LeaseRefusal("lease_unsupported", unisolated);
     const lease = await this.mintLeaseByHarness(account, opts);
     // Secret-free by construction: counts, note, and expiry only.
     this.log(
@@ -3415,6 +3419,9 @@ export class AccountsService {
   }
 
   async activateForSpawn(account: AccountRow, bee: { cwd: string }): Promise<ActivationResult> {
+    // The runtime-start hold refuses these first; never copy a vault credential into a home here.
+    const unisolated = this.isolationRefusal(account.harness);
+    if (unisolated) throw new Error(unisolated);
     if (this.authorityFor(account)?.enabled(account)) {
       await this.authorityFor(account)!.ensure(account, account.harness === "codex" ? CODEX_MIN_SHIP_TTL_MS : CLAUDE_MIN_SHIP_TTL_MS);
       await this.authorityFor(account)!.checkRuntimeCopies(account);
@@ -3505,8 +3512,6 @@ export class AccountsService {
   async captureAccount(account: AccountRow): Promise<CaptureOutcome> {
     this.assertLocalAccount(account);
     if (this.authorityFor(account)?.enabled(account)) throw new CredentialAuthorityError("Disable central credentials before capturing native credentials.");
-    const unisolated = this.isolationRefusal(account.harness);
-    if (unisolated) throw new Error(unisolated);
     const recipe = recipeFor(account.harness);
     if (!recipe) throw new Error(`harness ${account.harness} has no identity recipe; cannot capture credentials`);
     const primaryFile = primaryCredentialFile(recipe);

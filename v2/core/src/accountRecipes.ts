@@ -23,8 +23,10 @@ export interface IdentityRecipe {
   /**
    * Platforms (`process.platform`) where the harness keeps its login outside
    * any home, so an account home cannot isolate it. The value is the refusal
-   * shown: there the harness is never run under an account home, logged in,
-   * captured or leased.
+   * shown: there the harness is never run under an account home, and no
+   * credential is written into a home. The node may still hold the account:
+   * a `harnessFree` login keeps the credential in the vault, from where it
+   * is leased to nodes that can run the harness.
    */
   unisolatedOn?: Readonly<Record<string, string>>;
   /**
@@ -130,8 +132,20 @@ export interface VendorHomeResolution {
  *    typed progress. Provider-specific parsing lives HERE, not in clients.
  */
 export type LoginMethodRun =
-  | { mode: "direct"; runner: "claude_oauth" | "codex_api_key" | "opencode_api_key" | "muse_api_key" }
+  | { mode: "direct"; runner: "claude_oauth" | "codex_api_key" | "opencode_api_key" | "muse_api_key" | "muse_oauth" }
   | { mode: "cli"; cli: LoginCliSpec };
+
+/** A recipe login method: the safe descriptor plus how it runs. */
+export type LoginRecipeMethod = LoginMethodDescriptor & {
+  run: LoginMethodRun;
+  /**
+   * Honeybee completes this login without ever starting the harness, so it is
+   * the one kind of login offered where the recipe's `unisolatedOn` refuses
+   * the harness. There the credential is kept in the account vault only,
+   * never in the account home.
+   */
+  harnessFree?: true;
+};
 
 export interface LoginCliCue {
   /** Regex source (flags `i`) matched against the cleaned output tail. */
@@ -166,7 +180,7 @@ export interface LoginCliSpec {
 }
 
 export interface LoginRecipe {
-  methods: Array<LoginMethodDescriptor & { run: LoginMethodRun }>;
+  methods: LoginRecipeMethod[];
   /** Method chosen when the client does not pick one (local pairing). */
   defaultMethodId: string;
   /** Method chosen for a remote node (must be remoteCapable); absent = the default when it is remoteCapable, else refuse. */
@@ -174,7 +188,7 @@ export interface LoginRecipe {
 }
 
 /** The safe descriptor part of a recipe method (what rides on the flow row). */
-export function loginMethodDescriptor(method: LoginMethodDescriptor & { run: LoginMethodRun }): LoginMethodDescriptor {
+export function loginMethodDescriptor(method: LoginRecipeMethod): LoginMethodDescriptor {
   return { id: method.id, kind: method.kind, label: method.label, description: method.description, remoteCapable: method.remoteCapable, fields: method.fields.map((f) => ({ ...f })) };
 }
 
@@ -737,6 +751,16 @@ export const ACCOUNT_RECIPES: Readonly<Record<string, IdentityRecipe>> = {
           },
         },
         {
+          id: "muse-oauth",
+          kind: "device_code",
+          label: "Sign in with Meta (Honeybee keeps the login)",
+          description: "Honeybee signs in to Meta for this account and keeps the login in its own account store on this computer. It does not use or change your own muse login or the macOS Keychain. Open the sign-in page anywhere and confirm the code shown here.",
+          remoteCapable: true,
+          fields: [],
+          run: { mode: "direct", runner: "muse_oauth" },
+          harnessFree: true,
+        },
+        {
           id: "muse-api-key",
           kind: "api_key",
           label: "Use a Meta API key",
@@ -791,37 +815,50 @@ export const ACCOUNT_RECIPES: Readonly<Record<string, IdentityRecipe>> = {
   },
 };
 
-/** The safe descriptors of a harness's login methods (what a flow row carries); [] for unknown harnesses. */
-export function loginMethodsFor(harness: string): LoginMethodDescriptor[] {
-  return (ACCOUNT_RECIPES[harness]?.loginFlow.methods ?? []).map(loginMethodDescriptor);
+/**
+ * The recipe methods a node on `platform` offers. Where the recipe's
+ * `unisolatedOn` refuses the harness, only `harnessFree` methods remain;
+ * without a platform every method is listed.
+ */
+export function offeredLoginMethods(harness: string, platform?: string): LoginRecipeMethod[] {
+  const methods = ACCOUNT_RECIPES[harness]?.loginFlow.methods ?? [];
+  if (platform === undefined || accountIsolationRefusal(harness, platform) === null) return methods;
+  return methods.filter((m) => m.harnessFree === true);
+}
+
+/** The safe descriptors of the login methods a node offers (what a flow row carries); [] for unknown harnesses. */
+export function loginMethodsFor(harness: string, platform?: string): LoginMethodDescriptor[] {
+  return offeredLoginMethods(harness, platform).map(loginMethodDescriptor);
 }
 
 /** The recipe method (with its `run`) by id, or undefined. */
-export function loginMethodFor(harness: string, methodId: string): (LoginMethodDescriptor & { run: LoginMethodRun }) | undefined {
+export function loginMethodFor(harness: string, methodId: string): LoginRecipeMethod | undefined {
   return ACCOUNT_RECIPES[harness]?.loginFlow.methods.find((m) => m.id === methodId);
 }
 
 /**
  * The method a flow starts with: an explicit choice (validated), else the
  * recipe default — the remote default when the node is remote from the
- * browser. Returns null (typed refusal upstream) when the remote node has no
- * remote-capable method at all.
+ * browser. Only methods offered on `platform` qualify; when the default is
+ * not offered there, the first offered method is. Returns null (typed
+ * refusal upstream) when nothing qualifies.
  */
-export function defaultLoginMethodId(harness: string, opts: { remote?: boolean; requested?: string | null } = {}): string | null {
+export function defaultLoginMethodId(harness: string, opts: { remote?: boolean; requested?: string | null; platform?: string } = {}): string | null {
   const recipe = ACCOUNT_RECIPES[harness]?.loginFlow;
   if (!recipe) return null;
+  const methods = offeredLoginMethods(harness, opts.platform);
   if (opts.requested) {
-    const method = recipe.methods.find((m) => m.id === opts.requested);
+    const method = methods.find((m) => m.id === opts.requested);
     if (!method) return null;
     if (opts.remote && !method.remoteCapable) return null;
     return method.id;
   }
   if (opts.remote) {
     const preferred = recipe.remoteDefaultMethodId ?? recipe.defaultMethodId;
-    const chosen = recipe.methods.find((m) => m.id === preferred && m.remoteCapable) ?? recipe.methods.find((m) => m.remoteCapable);
+    const chosen = methods.find((m) => m.id === preferred && m.remoteCapable) ?? methods.find((m) => m.remoteCapable);
     return chosen?.id ?? null;
   }
-  return recipe.defaultMethodId;
+  return (methods.find((m) => m.id === recipe.defaultMethodId) ?? methods[0])?.id ?? null;
 }
 
 /** The env var that selects a harness's home (CLAUDE_CONFIG_DIR, CODEX_HOME, …); undefined for unknown harnesses. */

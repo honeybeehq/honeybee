@@ -1033,7 +1033,7 @@ test("limits.muse.observed: usage a Muse runtime observed becomes the readable l
   }
 });
 
-test("muse.darwin: one Keychain login per macOS user — a Muse account is never ready, selected, captured or leased there, and nothing is written", async () => {
+test("muse.darwin: one Keychain login per macOS user — a Muse account is held, captured and leased there but never ready, selected or activated into a home", async () => {
   const r = rig();
   try {
     const file = "muse/auth.json";
@@ -1061,10 +1061,42 @@ test("muse.darwin: one Keychain login per macOS user — a Muse account is never
     }
     const admission = mac.admitNewWork("muse", { operation: "spawn", requestKey: "k" });
     assert.equal(admission.ok ? null : admission.code, "account_unavailable");
-    await assert.rejects(mac.mintLease(account), (err: unknown) => err instanceof LeaseRefusal && err.code === "lease_unsupported" && reason.test(err.message));
+    // Holding the record is fine: the Mac leases it to nodes that run Muse.
+    const lease = await mac.mintLease(account);
+    assert.deepEqual(lease.files.map((f) => f.homeRelPath), ["muse/auth.json"]);
     rmSync(join(r.vault, "muse", account.id), { recursive: true });
-    await assert.rejects(mac.captureAccount(account), reason);
-    assert.equal(existsSync(join(r.vault, "muse", account.id)), false, "a refused capture copies nothing");
+    const captured = await mac.captureAccount(account);
+    assert.deepEqual(captured.captured, ["muse/auth.json"]);
+    assert.equal(readFileSync(join(r.vault, "muse", account.id, file), "utf8"), doc);
+    // Nothing ever copies the vault into a home on the Mac.
+    rmSync(join(account.homePath, "muse"), { recursive: true });
+    await assert.rejects(mac.activateForSpawn(account, { cwd: r.dir }), reason);
+    assert.equal(existsSync(join(account.homePath, file)), false);
+  } finally {
+    r.cleanup();
+  }
+});
+
+test("muse.expiry: an OAuth login whose access token passed expires_at is expired where nothing can refresh it (darwin), and the limits probe then marks it auth_needed", async () => {
+  const r = rig();
+  try {
+    const file = "muse/auth.json";
+    const expiresAt = Math.floor(r.now() / 1000) + 3600;
+    const doc = JSON.stringify({ schema_version: 1, providers: { meta: { mechanism: "oauth", access_token: "DUMMY-A", refresh_token: "DUMMY-R", expires_at: expiresAt, obtained_via: "device_code" } } });
+    const account = addAccount(r, "muse", "held", { vault: { [file]: doc } });
+    const linux = service(r);
+    const mac = service(r, { platform: "darwin" });
+    assert.equal(linux.credentialState(account), "present");
+    assert.equal(mac.credentialState(account), "present");
+
+    r.setNow(r.now() + 3600_000);
+    assert.equal(linux.credentialState(account), "present", "on Linux Muse refreshes it on its next run");
+    assert.equal(mac.credentialState(account), "expired", "on the Mac nothing refreshes it");
+    await assert.rejects(mac.mintLease(account), (err: unknown) => err instanceof LeaseRefusal && err.code === "lease_unavailable");
+    const [limits] = await mac.refreshLimits([account.id]);
+    assert.equal(limits?.unreadableReason, "auth_failed");
+    assert.equal(r.store.getAccount(account.id)?.status, "auth_needed");
+    assert.match(r.store.getAccount(account.id)?.statusReason ?? "", /muse credential is expired/);
   } finally {
     r.cleanup();
   }

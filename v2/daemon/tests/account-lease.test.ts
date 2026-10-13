@@ -892,10 +892,9 @@ test("lease.muse.4: a delivered lease imports on the recipient with account.add 
   }
 });
 
-test("lease.muse.5: on darwin every Muse mint is lease_unsupported with the Keychain reason, whatever the login, and nothing is minted or logged", async () => {
+test("lease.muse.5: a Mac holds Muse logins it never runs and leases them like Linux does — vault or home, refresh token blanked; nothing is refreshed there", async () => {
   const r = rig();
   try {
-    const reason = /one login per macOS user in the Keychain.*run Muse on a Linux node/;
     const logins = {
       oauth: museAuth({ mechanism: "oauth", obtained_via: "device_code", access_token: "a", refresh_token: MUSE_REFRESH, expires_at: Math.floor((r.now() + HOUR) / 1000) }),
       key: museAuth({ api_key: "muse-fixture-api-key" }),
@@ -903,15 +902,20 @@ test("lease.muse.5: on darwin every Muse mint is lease_unsupported with the Keyc
     const linux = service(r);
     const mac = service(r, { platform: "darwin" });
     for (const [label, doc] of Object.entries(logins)) {
-      const account = addAccount(r, "muse", label, { home: { "muse/auth.json": doc } });
-      await refuses(() => mac.mintLease(account), "lease_unsupported", reason);
-      assert.ok(!r.log.some((line) => line.startsWith("account.lease ")), `darwin minted nothing for ${label}`);
-      assert.equal((await linux.mintLease(account)).files[0]!.homeRelPath, "muse/auth.json", `linux still mints ${label}`);
-      r.log.length = 0;
+      // muse_oauth on a Mac keeps the login in the vault only.
+      const account = addAccount(r, "muse", label, { vault: { "muse/auth.json": doc } });
+      const fromMac = await mac.mintLease(account);
+      const fromLinux = await linux.mintLease(account);
+      assert.deepEqual(fromMac, fromLinux, `${label}: the same lease on either platform`);
+      assert.equal(fromMac.files[0]!.homeRelPath, "muse/auth.json");
+      assert.ok(!Buffer.from(fromMac.files[0]!.contentB64, "base64").toString("utf8").includes(MUSE_REFRESH), `${label}: refresh token blanked`);
     }
     const missing = addAccount(r, "muse", "missing");
-    await refuses(() => mac.mintLease(missing), "lease_unsupported", reason);
-    assert.equal(mac.isolationRefusal("claude"), null);
+    await refuses(() => mac.mintLease(missing), "lease_unavailable", /no muse\/auth.json found/);
+    // Past expires_at the Mac has no way to refresh it: no lease.
+    r.setNow(r.now() + 2 * HOUR);
+    await refuses(() => mac.mintLease(r.store.getAccount("muse-oauth")!), "lease_unavailable", /expired/);
+    assert.ok(!r.log.join("\n").includes(MUSE_REFRESH));
   } finally {
     r.cleanup();
   }

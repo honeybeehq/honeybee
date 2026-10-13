@@ -5127,8 +5127,6 @@ export class HiveDaemon {
     const importExisting = params.importExisting === undefined ? false : params.importExisting;
     if (typeof importExisting !== "boolean") throw new RpcError("invalid_request", "account.add: importExisting must be a boolean");
     return this.withAsyncIdempotency("account.add", params, async () => {
-      const unisolated = accounts.isolationRefusal(harness);
-      if (unisolated) throw new RpcError("account_unavailable", `account.add: ${unisolated}`);
       if (store.getAccount(id)) throw new RpcError("invalid_request", `account already exists: ${id}`);
       // F2: a fresh account starts LOGGED OUT. Pre-existing credentials at the
       // home (a machine's live harness home handed in as homePath) or in a

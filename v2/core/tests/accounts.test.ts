@@ -21,6 +21,9 @@ import {
   accountConfigImportRecipeFor,
   accountIdFor,
   accountIsolationRefusal,
+  defaultLoginMethodId,
+  loginMethodsFor,
+  offeredLoginMethods,
   homeEnvFor,
   isAuthFailureLimitsError,
   parseClaudeCredentials,
@@ -94,7 +97,12 @@ test("v7.recipes: the muse recipe isolates through the XDG pair and matches the 
   assert.deepEqual(recipe.extraEnv, { XDG_DATA_HOME: "{home}/xdg-data" });
   assert.deepEqual(recipe.login, { command: "muse", args: ["login"] });
   assert.equal(recipe.loginFlow.defaultMethodId, "muse-device");
-  const [device, apiKey] = recipe.loginFlow.methods;
+  const [device, oauth, apiKey] = recipe.loginFlow.methods;
+  assert.deepEqual(
+    { id: oauth?.id, kind: oauth?.kind, remoteCapable: oauth?.remoteCapable, fields: oauth?.fields, run: oauth?.run, harnessFree: oauth?.harnessFree },
+    { id: "muse-oauth", kind: "device_code", remoteCapable: true, fields: [], run: { mode: "direct", runner: "muse_oauth" }, harnessFree: true },
+  );
+  assert.ok(recipe.loginFlow.methods.every((m) => m.id === "muse-oauth" || m.harnessFree === undefined), "only muse-oauth never starts muse");
   assert.deepEqual(
     { id: device?.id, kind: device?.kind, remoteCapable: device?.remoteCapable, fields: device?.fields },
     { id: "muse-device", kind: "device_code", remoteCapable: true, fields: [] },
@@ -124,6 +132,25 @@ test("v7.recipes: the muse recipe isolates through the XDG pair and matches the 
     { id: apiKey?.id, kind: apiKey?.kind, run: apiKey?.run, fields: apiKey?.fields.map((f) => [f.id, f.secret, f.inputType]) },
     { id: "muse-api-key", kind: "api_key", run: { mode: "direct", runner: "muse_api_key" }, fields: [["apiKey", true, "password"]] },
   );
+});
+
+test("v7.recipes: where a harness is unisolated only harness-free logins are offered, and the first of them is the default", () => {
+  assert.deepEqual(offeredLoginMethods("muse", "darwin").map((m) => m.id), ["muse-oauth"]);
+  assert.deepEqual(loginMethodsFor("muse", "darwin").map((m) => m.id), ["muse-oauth"]);
+  assert.deepEqual(loginMethodsFor("muse", "linux").map((m) => m.id), ["muse-device", "muse-oauth", "muse-api-key"]);
+  assert.deepEqual(loginMethodsFor("muse").map((m) => m.id), ["muse-device", "muse-oauth", "muse-api-key"], "no platform lists every method");
+  assert.equal(defaultLoginMethodId("muse", { platform: "darwin" }), "muse-oauth");
+  assert.equal(defaultLoginMethodId("muse", { platform: "darwin", remote: true }), "muse-oauth");
+  assert.equal(defaultLoginMethodId("muse", { platform: "darwin", requested: "muse-device" }), null);
+  assert.equal(defaultLoginMethodId("muse", { platform: "darwin", requested: "muse-api-key" }), null);
+  assert.equal(defaultLoginMethodId("muse", { platform: "linux" }), "muse-device");
+  assert.equal(defaultLoginMethodId("muse", { platform: "linux", remote: true }), "muse-device");
+  assert.equal(defaultLoginMethodId("muse", { platform: "linux", requested: "muse-oauth" }), "muse-oauth");
+  for (const harness of Object.keys(ACCOUNT_RECIPES)) {
+    if (harness === "muse") continue;
+    assert.deepEqual(loginMethodsFor(harness, "darwin"), loginMethodsFor(harness), `${harness} offers the same methods on darwin`);
+    assert.equal(defaultLoginMethodId(harness, { platform: "darwin" }), ACCOUNT_RECIPES[harness]!.loginFlow.defaultMethodId, harness);
+  }
 });
 
 test("v7.recipes: Muse accounts are unisolated on darwin only; no other recipe is", () => {

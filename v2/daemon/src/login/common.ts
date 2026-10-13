@@ -12,6 +12,7 @@ export const STATIC_DETAIL = {
   starting: "Starting the sign-in…",
   browser: "Finish signing in in your browser.",
   device: "Enter the code on the sign-in page.",
+  deviceConfirm: "Open the sign-in page and check that it shows the same code.",
   code: "Paste the code from the sign-in page.",
   input: "Enter the requested details.",
   validating: "Checking the credential…",

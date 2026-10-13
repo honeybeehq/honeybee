@@ -6,8 +6,9 @@
  * — every transition goes through the host, which keeps the service the
  * only writer and lets it drop a superseded runner's late events.
  *
- * Four implementations (one per `LoginMethodRun` shape):
+ * Five implementations (one per `LoginMethodRun` shape):
  *  - `ClaudeOauthRunner`  direct PKCE + pasted code       (login/claudeOauth.ts)
+ *  - `MuseOauthRunner`    direct Meta device code, no muse (login/museOauth.ts)
  *  - `DirectKeyRunner`    Codex / OpenCode API keys       (login/directKey.ts)
  *  - `MuseApiKeyRunner`   Muse API key via `muse auth set` (login/museApiKey.ts)
  *  - `CliRunner`          the vendor CLI in a native worker (login/cliRunner.ts)
@@ -19,15 +20,14 @@ import type {
   LoginFlowError,
   LoginFlowPatch,
   LoginFlowRow,
-  LoginMethodDescriptor,
-  LoginMethodRun,
+  LoginRecipeMethod,
 } from "../../../core/src/index.ts";
 import type { AccountsService } from "../accountsService.ts";
 import type { ResolvedNodeConfig } from "../config.ts";
 import type { LoginWorkerStatus, PtySpawner } from "../loginWorker.ts";
 import type { LoginTransports } from "./transports.ts";
 
-export type LoginRunnerKind = "claude_oauth" | "direct_key" | "cli";
+export type LoginRunnerKind = "claude_oauth" | "muse_oauth" | "direct_key" | "cli";
 
 export interface LoginRunner {
   readonly kind: LoginRunnerKind;
@@ -50,7 +50,7 @@ export interface LoginRunner {
 export interface LoginRunnerHost {
   readonly flowId: string;
   readonly account: AccountRow;
-  readonly method: LoginMethodDescriptor & { run: LoginMethodRun };
+  readonly method: LoginRecipeMethod;
   readonly store: CoreStore;
   readonly accounts: AccountsService;
   readonly cfg: ResolvedNodeConfig;

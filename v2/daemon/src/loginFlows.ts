@@ -6,6 +6,7 @@
  *  - the provider recipe's advertised methods, each executed by a runner
  *    behind one contract (login/runner.ts):
  *      claude_oauth → direct PKCE + pasted code        (login/claudeOauth.ts)
+ *      muse_oauth   → direct Meta device code, no muse  (login/museOauth.ts)
  *      direct_key   → Codex / OpenCode API keys        (login/directKey.ts)
  *      cli          → the harness's own login CLI in a Honeybee-owned
  *                     native worker whose parsed progress drives phases
@@ -27,6 +28,7 @@ import {
   defaultLoginMethodId,
   loginMethodFor,
   loginMethodsFor,
+  offeredLoginMethods,
   recipeFor,
   type AccountRow,
   type CoreStore,
@@ -34,8 +36,7 @@ import {
   type LoginFlowError,
   type LoginFlowPatch,
   type LoginFlowRow,
-  type LoginMethodDescriptor,
-  type LoginMethodRun,
+  type LoginRecipeMethod,
 } from "../../core/src/index.ts";
 import type { AccountsService } from "./accountsService.ts";
 import type { ResolvedNodeConfig } from "./config.ts";
@@ -44,6 +45,7 @@ import { CliRunner } from "./login/cliRunner.ts";
 import { STATIC_DETAIL, err, isTerminal, safeMessage } from "./login/common.ts";
 import { DirectKeyRunner } from "./login/directKey.ts";
 import { MuseApiKeyRunner } from "./login/museApiKey.ts";
+import { MuseOauthRunner } from "./login/museOauth.ts";
 import type { LoginRunner, LoginRunnerHost } from "./login/runner.ts";
 import { defaultLoginTransports, type LoginTransports } from "./login/transports.ts";
 import { loadNodePtySpawner, type LoginWorkerStatus, type PtySpawner } from "./loginWorker.ts";
@@ -58,9 +60,13 @@ export {
   CLAUDE_OAUTH_REDIRECT_URI,
   CLAUDE_OAUTH_SCOPES,
   CLAUDE_OAUTH_TOKEN_URL,
+  MUSE_OAUTH_CLIENT_ID,
   defaultLoginTransports,
+  museDeviceAuthorize,
+  museDeviceToken,
 } from "./login/transports.ts";
-export type { ClaudeTokenGrant, KeyCheck, LoginTransports } from "./login/transports.ts";
+export { museOauthDocument } from "./login/museOauth.ts";
+export type { ClaudeTokenGrant, KeyCheck, LoginTransports, MuseDeviceAuthorization, MuseDevicePoll } from "./login/transports.ts";
 export type { LoginRunner, LoginRunnerHost, LoginRunnerKind } from "./login/runner.ts";
 export type { LoginFieldDescriptor };
 
@@ -89,7 +95,7 @@ export interface LoginFlowServiceOptions {
   workerSettleMs?: number;
 }
 
-type RecipeMethod = LoginMethodDescriptor & { run: LoginMethodRun };
+type RecipeMethod = LoginRecipeMethod;
 
 export class LoginFlowService {
   private readonly store: CoreStore;
@@ -162,7 +168,7 @@ export class LoginFlowService {
    * refusal — so clients render one honest answer instead of an RPC error.
    */
   async start(account: AccountRow, opts: { methodId?: string | null; remote?: boolean; replaceAccount?: boolean } = {}): Promise<{ flow: LoginFlowRow; rejoined: boolean }> {
-    this.assertLoginPossible(account);
+    this.assertLoginPossible(account, opts.methodId ?? null);
     const active = this.store.activeLoginFlow(account.id);
     if (active) {
       if (!this.runners.has(active.id)) {
@@ -174,7 +180,8 @@ export class LoginFlowService {
       }
     }
     const remote = opts.remote === true;
-    const methods = loginMethodsFor(account.harness);
+    const platform = this.accounts.platform;
+    const methods = loginMethodsFor(account.harness, platform);
     const flow = this.store.createLoginFlow({
       id: randomUUID(),
       account: account.id,
@@ -188,7 +195,7 @@ export class LoginFlowService {
     if (opts.replaceAccount === true) this.replacingAccount.add(flow.id);
     this.log(`account.login.start account=${account.id} flow=${flow.id} harness=${account.harness} remote=${remote}`
       + `${this.accounts.authorityFor(account)?.enabled(account) ? " central=in_place" : ""}${opts.replaceAccount === true ? " replace_account=true" : ""}`);
-    const methodId = defaultLoginMethodId(account.harness, { remote, requested: opts.methodId ?? null });
+    const methodId = defaultLoginMethodId(account.harness, { remote, requested: opts.methodId ?? null, platform });
     if (!methodId) {
       const refusal = !recipeFor(account.harness)
         ? err("unsupported_method", `${account.harness} has no login recipe; add one to Honeybee's account recipes.`)
@@ -261,7 +268,7 @@ export class LoginFlowService {
     if (flow.phase === "succeeded") throw new LoginFlowRefusal("login_flow_refused", `login flow ${flowId} already succeeded`);
     const account = this.store.getAccount(flow.account);
     if (!account) throw new LoginFlowRefusal("login_flow_not_found", `login flow ${flowId} belongs to a removed account`);
-    this.assertLoginPossible(account);
+    this.assertLoginPossible(account, flow.methodId);
     if (opts.replaceAccount === true) this.replacingAccount.add(flowId);
     if (!isTerminal(flow.phase) && this.runners.has(flowId)) {
       // A live flow "retried" = restart its method (fresh URL / worker).
@@ -274,7 +281,7 @@ export class LoginFlowService {
       }
     }
     const remote = flow.remote;
-    const methodId = flow.methodId ?? defaultLoginMethodId(flow.harness, { remote });
+    const methodId = flow.methodId ?? defaultLoginMethodId(flow.harness, { remote, platform: this.accounts.platform });
     if (!methodId) {
       return this.fail(
         flowId,
@@ -411,10 +418,11 @@ export class LoginFlowService {
    * the new grant); only a credential operation that is changing ownership
    * right now (enrolling, disabling) refuses.
    */
-  private assertLoginPossible(account: AccountRow): void {
+  private assertLoginPossible(account: AccountRow, methodId: string | null): void {
     this.accounts.assertLocalAccount(account);
+    // Where the harness cannot be isolated, only a login that never starts it is offered.
     const unisolated = this.accounts.isolationRefusal(account.harness);
-    if (unisolated) throw new LoginFlowRefusal("login_method_unsupported", unisolated);
+    if (unisolated && !this.offered(account.harness, methodId)) throw new LoginFlowRefusal("login_method_unsupported", unisolated);
     const central = this.accounts.authorityFor(account);
     if (central?.requiresNativeLogin() && (central.enabled(account) || central.busy(account))) {
       throw new LoginFlowRefusal("login_flow_refused", `Stop local bees on this account, then disable central credentials before native login: hive account credentials disable ${account.id}; hive account login ${account.id}; hive account credentials enable ${account.id}`);
@@ -426,6 +434,12 @@ export class LoginFlowService {
     if ((phase === undefined || phase === "disabled") && central?.busy(account)) {
       throw new LoginFlowRefusal("login_flow_refused", "Central credential ownership is changing; retry when it finishes.");
     }
+  }
+
+  /** Whether this node offers `methodId` (any offered method when null) for `harness`. */
+  private offered(harness: string, methodId: string | null): boolean {
+    const methods = offeredLoginMethods(harness, this.accounts.platform);
+    return methodId === null ? methods.length > 0 : methods.some((m) => m.id === methodId);
   }
 
   // -------------------------------------------------------------------------
@@ -440,9 +454,12 @@ export class LoginFlowService {
     if (!account) throw new LoginFlowRefusal("login_flow_not_found", `login flow ${flowId} belongs to a removed account`);
     const method = loginMethodFor(flow.harness, methodId);
     if (!method) return this.fail(flowId, err("unsupported_method", `${flow.harness} does not offer '${methodId}'.`), false);
+    if (!this.offered(flow.harness, methodId)) {
+      return this.fail(flowId, err("unsupported_method", this.accounts.isolationRefusal(flow.harness) ?? `${flow.harness} does not offer '${methodId}' on this computer.`), false);
+    }
     if (this.accounts.authorityFor(account)?.enabled(account) && !(method.run.mode === "direct" && method.run.runner === "claude_oauth")) {
       // Any other method lands a refresh token in the home, a second holder beside the authority.
-      return this.fail(flowId, err("unsupported_method", `${account.id} is centrally managed; only '${defaultLoginMethodId(flow.harness)}' can log it in place.`), false);
+      return this.fail(flowId, err("unsupported_method", `${account.id} is centrally managed; only '${defaultLoginMethodId(flow.harness, { platform: this.accounts.platform })}' can log it in place.`), false);
     }
     this.patch(flowId, { methodId }, "method");
     const runner = this.createRunner(this.hostFor(flowId, account, method));
@@ -467,6 +484,8 @@ export class LoginFlowService {
         return new DirectKeyRunner(host, run.runner);
       case "muse_api_key":
         return new MuseApiKeyRunner(host);
+      case "muse_oauth":
+        return new MuseOauthRunner(host);
       default:
         return null;
     }
