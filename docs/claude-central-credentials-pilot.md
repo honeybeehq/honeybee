@@ -300,3 +300,29 @@ several accounts enrolled at once, and preserving an external login. Daemon
 tests point the rotation at a local stub through `HIVE_CLAUDE_OAUTH_TOKEN_URL`;
 production never sets it. Full account/login and core suites remain part of
 the pre-deploy gate.
+
+## Codex authority
+
+The same credentials commands now support opt-in Codex accounts. Native accounts
+keep their existing `codex exec` refresh path. Central accounts use the daemon's
+JSON OAuth transport with Codex's public client id and JWT access expiry. The
+private authority is saved before access-only publication to the vault,
+`CODEX_HOME/auth.json` and the legacy `HOME/.codex/auth.json` mirror. Both home
+paths participate in foreign-refresh-chain checks. The legacy mirror remains
+access-only even after disable; a healthy disable restores the native refresh
+chain to the canonical home and vault. Files are mode 0600, private directories
+0700, and publication fsyncs the file before rename and the containing directory
+afterward, for Claude and Codex.
+
+Codex has no in-place central login yet. For `login_required`, stop its local
+bees, run `hive account credentials disable <account>`, complete
+`hive account login <account>`, then run credentials enable again. An unusable
+access token received with a rotated refresh token is retained privately and
+retried with that new chain; it is never discarded or treated as usable.
+
+The refresh endpoint can be injected with `HIVE_CODEX_OAUTH_TOKEN_URL` or the
+transport constructor's endpoint argument for isolated stub checks. Run
+`node --test v2/daemon/tests/codex-central-credentials.test.ts` with no real
+account. The first live enrollment is the acceptance check: use a throwaway
+account only with Needle's explicit approval, after Queen's review. Stub checks
+do not establish the live provider contract or long-lived session rollover.

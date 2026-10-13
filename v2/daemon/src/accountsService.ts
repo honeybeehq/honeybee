@@ -14,7 +14,7 @@
  */
 import { execFile, spawn as spawnChild } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, lstatSync, renameSync, rmSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, lstatSync, renameSync, rmSync, statSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -988,9 +988,10 @@ export class AccountsService {
       const phase = this.codexCredentials.status(account)?.phase;
       const adopted = phase === "enrolling" ? this.codexCredentials.adopted(account)
         : this.codexCredentials.rollbackAdopted(account);
-      for (const path of [join(account.homePath, "auth.json"), join(this.vaultDirOf(account), "auth.json")]) {
+      for (const path of [join(account.homePath, "auth.json"), join(account.homePath, ".codex", "auth.json"), join(this.vaultDirOf(account), "auth.json")]) {
         const raw = readIfFile(path);
         const credential = raw === null ? null : CODEX_CREDENTIAL_CODEC.parse(raw);
+        if (raw !== null && !credential) throw new CredentialOwnershipConflict("A Codex credential copy is invalid; recover that copy before changing credential ownership.");
         if (!credential?.refreshToken || credential.refreshToken === owned.refreshToken) continue;
         if (adopted && (refreshTokenDigest(credential.refreshToken) === adopted.refreshTokenDigest || credential.expiresAt < adopted.expiresAt)) continue;
         throw new CredentialOwnershipConflict("An external Codex login or refresh changed this account; stop that process and recover the account before continuing.");
@@ -1004,7 +1005,7 @@ export class AccountsService {
         this.store.assertNoUpdateReservation();
         if (this.refreshBusy(account) || this.leaseMints.has(account.id)) throw new CredentialAuthorityError("A native credential refresh is in progress; retry enrollment shortly.");
       },
-      nativeCredential: async account => this.freshestCodexAuth(account)?.parsed ?? null,
+      nativeCredential: async account => this.freshestCodexAuth(account, true)?.parsed ?? null,
       beforeUse: inspectCodexCopies,
       beforeRefresh: async (account, document) => inspectCodexCopies(account, document),
       refresh: defaultCodexRefreshTransport(this.cfg.accounts.limitsFetchTimeoutMs, this.now),
@@ -1019,6 +1020,10 @@ export class AccountsService {
         mkdirSync(this.vaultDirOf(account), { recursive: true, mode: 0o700 });
         atomicWriteFileSync(join(this.vaultDirOf(account), "auth.json"), raw, 0o600);
         atomicWriteFileSync(join(account.homePath, "auth.json"), raw, 0o600);
+        mkdirSync(join(account.homePath, ".codex"), { recursive: true, mode: 0o700 });
+        const mirrorRaw = JSON.stringify({ ...(blankRefreshTokens(document) as Record<string, unknown>), OPENAI_API_KEY: null });
+        atomicWriteFileSync(join(account.homePath, ".codex", "auth.json"), mirrorRaw, 0o600);
+        for (const path of [account.homePath, this.vaultDirOf(account), join(account.homePath, ".codex")]) chmodSync(path, 0o700);
       },
     });
     this.credentialAuthorities.set("claude", this.centralCredentials);
@@ -2828,9 +2833,9 @@ export class AccountsService {
    * codex rotates in place there) and the vault snapshot, by access-token
    * `exp`. Null when neither holds a decodable access token.
    */
-  private freshestCodexAuth(account: AccountRow): { parsed: Record<string, unknown>; expSeconds: number } | null {
+  private freshestCodexAuth(account: AccountRow, includeMirror = false): { parsed: Record<string, unknown>; expSeconds: number } | null {
     let best: { parsed: Record<string, unknown>; expSeconds: number } | null = null;
-    for (const path of [join(account.homePath, "auth.json"), join(this.vaultDirOf(account), "auth.json")]) {
+    for (const path of [join(account.homePath, "auth.json"), ...(includeMirror ? [join(account.homePath, ".codex", "auth.json")] : []), join(this.vaultDirOf(account), "auth.json")]) {
       const raw = readIfFile(path);
       if (raw === null) continue;
       let parsed: Record<string, unknown>;
@@ -3128,7 +3133,7 @@ export class AccountsService {
       if (backoff && backoff.at > now) continue;
       if (!this.authorityFor(account)!.earlyRefreshDue(account, aheadMs)) continue;
       this.log(`account.credentials.early_refresh account=${account.id} ahead_ms=${aheadMs}`);
-      void this.authorityFor(account)!.ensure(account, CLAUDE_MIN_SHIP_TTL_MS, undefined, aheadMs).then(() => {
+      void this.authorityFor(account)!.ensure(account, account.harness === "codex" ? CODEX_MIN_SHIP_TTL_MS : CLAUDE_MIN_SHIP_TTL_MS, undefined, aheadMs).then(() => {
         this.earlyRefreshBackoff.delete(account.id);
       }, (error) => {
         const failures = (this.earlyRefreshBackoff.get(account.id)?.failures ?? 0) + 1;
@@ -3190,7 +3195,7 @@ export class AccountsService {
 
   async activateForSpawn(account: AccountRow, bee: { cwd: string }): Promise<ActivationResult> {
     if (this.authorityFor(account)?.enabled(account)) {
-      await this.authorityFor(account)!.ensure(account, CLAUDE_MIN_SHIP_TTL_MS);
+      await this.authorityFor(account)!.ensure(account, account.harness === "codex" ? CODEX_MIN_SHIP_TTL_MS : CLAUDE_MIN_SHIP_TTL_MS);
       await this.authorityFor(account)!.checkRuntimeCopies(account);
     }
     const result = this.activateHomeForSpawn(account, bee);

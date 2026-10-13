@@ -9,6 +9,7 @@ import type { ClaudeIdentity } from "./login/transports.ts";
 export interface AuthorityDocument {
   generation: number;
   operationKey: string | null;
+  accessUsable?: boolean;
   document: Record<string, unknown>;
   /** The native chain enrollment adopted, secret-free, so its untouched copies are not mistaken for a foreign login. */
   adopted?: AdoptedChain;
@@ -54,6 +55,8 @@ export interface CentralCredentialOptions {
 export interface CredentialCodec {
   harness: string;
   label: string;
+  retainRotatedOnUnusableAccess?: boolean;
+  nativeLoginRecovery?: boolean;
   parse: (raw: string) => { accessToken: string; refreshToken?: string; expiresAt: number; refreshTokenExpiresAt?: number } | null;
   merge: (document: Record<string, unknown>, token: Extract<CredentialRefreshResult, { kind: "success" }>["token"], at: number) => Record<string, unknown>;
 }
@@ -188,7 +191,8 @@ export class CredentialAuthority {
     }
     if (result.kind === "success") {
       const token = result.token;
-      if (token.accessToken && token.refreshToken && Number.isFinite(token.expiresAt) && token.expiresAt > this.options.now()) {
+      const retained = this.codec.retainRotatedOnUnusableAccess && token.accessUsable === false;
+      if ((token.accessToken || retained) && token.refreshToken && Number.isFinite(token.expiresAt) && (token.expiresAt > this.options.now() || retained)) {
         this.options.log(`account.credentials.refresh account=${account.id} during=${during} generation=${generation} outcome=success`
           + ` expires=${new Date(token.expiresAt).toISOString()} login_expires=${token.refreshTokenExpiresAt !== undefined ? new Date(token.refreshTokenExpiresAt).toISOString() : "-"}`);
         return { kind: "success", token };
@@ -203,7 +207,10 @@ export class CredentialAuthority {
   /** What the operator must do; also the account's status reason and the lease refusal text. */
   loginRequiredMessage(account: AccountRow, failure: CredentialRefreshFailure | null): string {
     const why = failure ? `the provider refused the refresh token (${describeRefreshFailure(failure)})` : "the refresh token is no longer usable";
-    return `${this.codec.label} login required for ${account.id}: ${why}. Recover with: hive account login ${account.id}`;
+    const recovery = this.codec.nativeLoginRecovery
+      ? `stop this account's local bees, then hive account credentials disable ${account.id}; hive account login ${account.id}; hive account credentials enable ${account.id}`
+      : `hive account login ${account.id}`;
+    return `${this.codec.label} login required for ${account.id}: ${why}. Recover with: ${recovery}`;
   }
   /** A paused account stays paused: the operator parked it, and unpausing re-derives the honest status. */
   private markAuthNeeded(account: AccountRow, reason: string): void {
@@ -337,6 +344,7 @@ export class CredentialAuthority {
         if (before.operationKey !== null) {
           // The validating rotation was in flight when enrollment was interrupted.
           if (value.operationKey === before.operationKey && value.generation > before.generation) {
+            if (value.accessUsable === false) return this.retainUnusableAccess(account, value);
             await this.options.publish(account, value.document, true);
             return this.enrollmentReady(account, value);
           }
@@ -386,12 +394,21 @@ export class CredentialAuthority {
         this.outcomeUnknown(account, { ...value, operationKey }, attempt.failure);
         throw new CredentialAuthorityError(`The enrollment refresh outcome is unknown (${detail}); it is retried automatically and ends in ready or login_required.`);
       }
+      if (attempt.token.accessUsable === false) value = this.preserveEnrollmentRollback(account, value);
       value = { ...value, generation: value.generation + 1, operationKey, issuedAt: this.options.now(),
-        document: this.codec.merge(value.document, attempt.token, this.options.now()) };
+        document: this.codec.merge(value.document, attempt.token, this.options.now()),
+        ...(this.codec.retainRotatedOnUnusableAccess ? { accessUsable: attempt.token.accessUsable !== false } : {}) };
       save(this.path(account), value);
+      if (attempt.token.accessUsable === false) return this.retainUnusableAccess(account, value);
       await this.options.publish(account, value.document, true);
       return this.enrollmentReady(account, await this.withIdentity(account, value));
     });
+  }
+  private async retainUnusableAccess(account: AccountRow, value: AuthorityDocument): Promise<never> {
+    const failure = this.failureOf({ kind: "unknown_outcome", description: "the rotated refresh chain was saved, but its access token is unusable" }, null);
+    this.outcomeUnknown(account, value, failure);
+    await this.options.publish(account, value.document, true);
+    throw new CredentialAuthorityError("The rotated refresh chain was saved; retrying for a usable access token.");
   }
   disable(account: AccountRow): Promise<AccountCredentialAuthority> {
     return this.lane(account, "disable", async () => {
@@ -452,6 +469,7 @@ export class CredentialAuthority {
       }
       let value = this.read(account);
       if (RELOGIN_PHASES.has(state.phase) && this.savedResult(state, value)) {
+        if (value.accessUsable === false) return this.retainUnusableAccess(account, value);
         // A saved result settles a crash after provider success or an in-place login, including publication failure.
         await this.options.publish(account, value.document, true);
         return this.enrollmentReady(account, await this.withIdentity(account, value));
@@ -509,8 +527,10 @@ export class CredentialAuthority {
       const firstRefreshAfterLogin = value.login !== undefined;
       value = { ...enrollment, ...(value.identity ? { identity: value.identity } : {}), issuedAt: this.options.now(),
         generation: value.generation + 1, operationKey,
-        document: this.codec.merge(value.document, attempt.token, this.options.now()) };
+        document: this.codec.merge(value.document, attempt.token, this.options.now()),
+        ...(this.codec.retainRotatedOnUnusableAccess ? { accessUsable: attempt.token.accessUsable !== false } : {}) };
       save(this.path(account), value);
+      if (attempt.token.accessUsable === false) return this.retainUnusableAccess(account, value);
       if (firstRefreshAfterLogin) {
         this.forgetPrevious(account);
         this.options.log(`account.credentials.previous_dropped account=${account.id} generation=${value.generation}`);

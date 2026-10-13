@@ -9,12 +9,13 @@ export function codexAccessExpiry(accessToken: string): number | null {
     const parts = accessToken.split(".");
     if (parts.length !== 3) return null;
     const payload = JSON.parse(Buffer.from(parts[1]!, "base64url").toString("utf8")) as Record<string, unknown>;
-    return typeof payload.exp === "number" && Number.isFinite(payload.exp) && payload.exp > 0 ? payload.exp * 1000 : null;
+    const expiresAt = typeof payload.exp === "number" ? payload.exp * 1000 : NaN;
+    return Number.isFinite(expiresAt) && expiresAt > 0 && Number.isFinite(new Date(expiresAt).getTime()) ? expiresAt : null;
   } catch { return null; }
 }
 
 export const CODEX_CREDENTIAL_CODEC: CredentialCodec = {
-  harness: "codex", label: "Codex",
+  harness: "codex", label: "Codex", retainRotatedOnUnusableAccess: true, nativeLoginRecovery: true,
   parse: raw => {
     try {
       const document = JSON.parse(raw) as Record<string, unknown>;
@@ -27,7 +28,7 @@ export const CODEX_CREDENTIAL_CODEC: CredentialCodec = {
   },
   merge: (document, token, at) => ({
     ...document, OPENAI_API_KEY: null,
-    tokens: { ...(document.tokens as Record<string, unknown>), access_token: token.accessToken, refresh_token: token.refreshToken,
+    tokens: { ...(document.tokens as Record<string, unknown>), access_token: codexAccessExpiry(token.accessToken) === null ? (document.tokens as Record<string, unknown>).access_token : token.accessToken, refresh_token: token.refreshToken,
       ...(token.idToken !== undefined ? { id_token: token.idToken } : {}) },
     last_refresh: new Date(at).toISOString(),
   }),
@@ -38,11 +39,9 @@ export function defaultCodexRefreshTransport(timeoutMs: number, now: () => numbe
     endpoint: () => endpoint ?? process.env.HIVE_CODEX_OAUTH_TOKEN_URL ?? CODEX_OAUTH_TOKEN_URL,
     decode: (body, previousRefreshToken, at) => {
       const expiresAt = typeof body.access_token === "string" ? codexAccessExpiry(body.access_token) : null;
-      if (expiresAt === null || expiresAt <= at) return null;
-      if (body.refresh_token !== undefined && (typeof body.refresh_token !== "string" || !body.refresh_token)) return null;
-      if (body.id_token !== undefined && (typeof body.id_token !== "string" || !body.id_token)) return null;
-      return { accessToken: body.access_token as string, refreshToken: body.refresh_token as string | undefined ?? previousRefreshToken,
-        expiresAt, ...(typeof body.id_token === "string" ? { idToken: body.id_token } : {}) };
+      if (body.refresh_token != null && (typeof body.refresh_token !== "string" || !body.refresh_token)) return null;
+      return { accessToken: typeof body.access_token === "string" ? body.access_token : "", refreshToken: body.refresh_token as string | undefined ?? previousRefreshToken,
+        expiresAt: expiresAt ?? 0, accessUsable: expiresAt !== null && expiresAt > at, ...(typeof body.id_token === "string" && body.id_token ? { idToken: body.id_token } : {}) };
     },
   });
 }

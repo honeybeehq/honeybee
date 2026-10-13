@@ -5,7 +5,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { AddressInfo } from "node:net";
 import { makeDaemonDir, startDaemon, waitFor, sleep, type DaemonHandle } from "./helpers.ts";
@@ -19,7 +19,7 @@ function token(seconds: number): string {
 }
 
 function files(root: string): string[] {
-  return readdirSync(root, { withFileTypes: true }).flatMap(entry => entry.isDirectory() ? files(join(root, entry.name)) : [join(root, entry.name)]);
+  return readdirSync(root, { withFileTypes: true }).flatMap(entry => entry.isDirectory() ? files(join(root, entry.name)) : entry.isFile() ? [join(root, entry.name)] : []);
 }
 
 test("central Codex: isolated daemon rotates once, publishes access-only, refreshes early and stops at invalid_grant; native path stays native", async () => {
@@ -64,6 +64,9 @@ test("central Codex: isolated daemon rotates once, publishes access-only, refres
       writeFileSync(join(path, "auth.json"), JSON.stringify({ OPENAI_API_KEY: null, tokens: { access_token: access, refresh_token: refresh, id_token: "fixture-id-token", account_id: "fixture-account" } }));
     };
     seed(id, 3600, original);
+    const mirrorPath = join(dir, "homes", id, ".codex", "auth.json");
+    mkdirSync(join(dir, "homes", id, ".codex"), { recursive: true, mode: 0o700 });
+    writeFileSync(mirrorPath, readFileSync(join(dir, "vault", "codex", id, "auth.json")), { mode: 0o600 });
     const native = "codex-native-example.com";
     seed(native, 5, randomUUID());
     const binary = join(dir, "fake-codex");
@@ -109,8 +112,30 @@ test("central Codex: isolated daemon rotates once, publishes access-only, refres
     const home = () => JSON.parse(readFileSync(join(dir, "homes", id, "auth.json"), "utf8"));
     assert.ok(authority().document.tokens.refresh_token === expected);
     assert.equal(home().tokens.refresh_token, "");
+    assert.equal(JSON.parse(readFileSync(mirrorPath, "utf8")).tokens.refresh_token, "");
     assert.equal(home().tokens.account_id, "fixture-account");
+    for (const path of [authorityPath, join(dir, "vault", "codex", id, "auth.json"), join(dir, "homes", id, "auth.json"), mirrorPath]) assert.equal(statSync(path).mode & 0o777, 0o600);
+    for (const path of [join(dir, "vault", ".credential-authorities"), join(dir, "homes", id), join(dir, "vault", "codex", id), join(dir, "homes", id, ".codex")]) assert.equal(statSync(path).mode & 0o777, 0o700);
+    const refreshOnlyInAuthority = () => {
+      const centralRefresh = [original, ...requests, expected];
+      assert.ok(files(dir).filter(path => path !== authorityPath).every(path => centralRefresh.every(secret => !readFileSync(path).includes(Buffer.from(secret)))), "central refresh tokens exist only in authority file, including homes and vault scans");
+    };
+    refreshOnlyInAuthority();
+    console.log("mirror scrub and modes: home/.codex/auth.json access-only; 0600 files/0700 private directories; refresh-byte scan homes+vault=0 outside authority");
     console.log(`1 enable: ready generation=${enabled.generation} expiry=${new Date(enabled.expiresAt!).toISOString()} authority_refresh_present=true home_refresh_present=false daemon_pid=${daemon.proc.pid}`);
+    const savedMirror = readFileSync(mirrorPath);
+    const foreign = { ...home(), tokens: { ...home().tokens, refresh_token: randomUUID() } };
+    writeFileSync(mirrorPath, JSON.stringify(foreign));
+    const beforeForeign = requests.length;
+    await assert.rejects(() => rpc("account.credentials.refresh", { id, idempotencyKey: "foreign" }), (error: unknown) => error instanceof RpcError && error.message.includes("external Codex"));
+    assert.equal(requests.length, beforeForeign);
+    writeFileSync(mirrorPath, savedMirror);
+    console.log("foreign mirror refresh chain blocked before provider call");
+    writeFileSync(mirrorPath, "");
+    await assert.rejects(() => rpc("account.credentials.refresh", { id, idempotencyKey: "empty-mirror" }), (error: unknown) => error instanceof RpcError && error.message.includes("credential copy is invalid"));
+    assert.equal(requests.length, beforeForeign);
+    writeFileSync(mirrorPath, savedMirror);
+    console.log("empty runtime mirror refused before provider call");
     const previous = expected;
     await Promise.all([cli("refresh", "refresh"), cli("refresh", "refresh")]);
     const refreshed = await rpc<AccountCredentialAuthority>("account.credentials.status", { id });
@@ -130,12 +155,15 @@ test("central Codex: isolated daemon rotates once, publishes access-only, refres
     assert.ok(early.expiresAt! > Date.now());
     assert.equal(requests.length, 5);
     console.log(`3 automatic early refresh: generation=${early.generation} before_expiry=true`);
+    refreshOnlyInAuthority();
     refused = true;
     await assert.rejects(() => rpc("account.credentials.refresh", { id, idempotencyKey: "rejected" }), (error: unknown) => error instanceof RpcError && error.code === "account_unavailable");
     const failed = await rpc<AccountCredentialAuthority>("account.credentials.status", { id });
     assert.equal(failed.phase, "login_required");
     assert.equal(failed.failure?.error, "invalid_grant");
     assert.equal(failed.failure?.retryAt, null);
+    await assert.rejects(() => rpc("account.login.start", { id }), (error: unknown) => error instanceof RpcError && error.message.includes("Disable central Codex"));
+    await assert.rejects(() => rpc("account.credentials.refresh", { id, idempotencyKey: "terminal" }), (error: unknown) => error instanceof RpcError && error.message.includes("credentials disable"));
     await sleep(2200);
     assert.equal(requests.length, 6);
     await assert.rejects(() => rpc("account.lease", { account: id }), (error: unknown) => error instanceof RpcError && error.code === "credential_login_required");
@@ -147,7 +175,9 @@ test("central Codex: isolated daemon rotates once, publishes access-only, refres
     console.log("5 non-enabled account: native codex exec invoked; central status=null");
     await cli("disable", "disable");
     assert.equal(home().tokens.refresh_token, "");
-    console.log("disable after refusal: disabled; unusable refresh token not restored");
+    assert.equal(JSON.parse(readFileSync(mirrorPath, "utf8")).tokens.refresh_token, "");
+    refreshOnlyInAuthority();
+    console.log("disable after refusal: disabled; mirror scrubbed; recovery instructions name disable before native login");
     client.close(); client = null;
     await daemon.stop();
     const logs = daemon.output();
@@ -164,5 +194,106 @@ test("central Codex: isolated daemon rotates once, publishes access-only, refres
     await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
     cleanup();
     console.log("cleanup: owned daemon stopped; stub listener closed");
+  }
+});
+
+test("central Codex review: running-bee ownership fence, bad access preserves rotation, disable/login/enable recovers", async () => {
+  const { dir, cleanup } = makeDaemonDir({ accounts: { centralRefreshAheadMs: 0, centralRefreshRetryBaseMs: 10_000 } });
+  const id = "codex-review-example.com";
+  let expected = randomUUID();
+  const refreshes: string[] = [];
+  let badAccess: "expired" | "missing" | null = null;
+  let nullRefresh = false;
+  let refuse = false;
+  const server = createServer(async (req, res) => {
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) chunks.push(Buffer.from(chunk));
+    const body = JSON.parse(Buffer.concat(chunks).toString());
+    refreshes.push(body.refresh_token);
+    if (refuse || body.refresh_token !== expected) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "invalid_grant" }));
+      return;
+    }
+    if (!nullRefresh) expected = randomUUID();
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ ...(badAccess === "missing" ? {} : { access_token: token(badAccess === "expired" ? -60 : 3600) }), refresh_token: nullRefresh ? null : expected }));
+  });
+  await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+  let daemon: DaemonHandle | null = null;
+  let client: RpcClient | null = null;
+  try {
+    const vault = join(dir, "vault", "codex", id);
+    const home = join(dir, "homes", id);
+    mkdirSync(vault, { recursive: true, mode: 0o700 });
+    writeFileSync(join(vault, "auth.json"), JSON.stringify({ OPENAI_API_KEY: null, tokens: { access_token: token(3600), refresh_token: expected, id_token: "fixture", account_id: "fixture-account" } }), { mode: 0o600 });
+    const binary = join(dir, "fake-codex-review");
+    const fakeServer = new URL("../../driver-hsr/test-agent/fake-codex.mjs", import.meta.url).href;
+    writeFileSync(binary, `#!${process.execPath}\nif(process.argv.includes('app-server')){import(${JSON.stringify(fakeServer)});}else if(process.argv.includes('login')){setTimeout(()=>{const fs=require('node:fs'),p=require('node:path'),c=require('node:crypto');const h=process.env.CODEX_HOME;fs.mkdirSync(h,{recursive:true});const a=Buffer.from('{}').toString('base64url')+'.'+Buffer.from(JSON.stringify({exp:Math.floor(Date.now()/1000)+3600})).toString('base64url')+'.fixture';fs.writeFileSync(p.join(h,'auth.json'),JSON.stringify({OPENAI_API_KEY:null,tokens:{access_token:a,refresh_token:c.randomUUID(),id_token:'fixture',account_id:'fixture-account'}}));console.log('Login successful');},200);}else process.exit(1);\n`);
+    chmodSync(binary, 0o700);
+    const cfgPath = join(dir, "config.json");
+    const cfg = JSON.parse(readFileSync(cfgPath, "utf8"));
+    cfg.agents.codex = { command: process.execPath, args: [binary, "app-server"], adapter: "codex", login: { command: binary, args: ["login"] } };
+    writeFileSync(cfgPath, JSON.stringify(cfg));
+    daemon = await startDaemon(dir, { env: { HIVE_CODEX_OAUTH_TOKEN_URL: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, HOME: dir, CODEX_HOME: join(dir, "unused"), HIVE_GATEWAYS_DISABLE: "1" } });
+    client = await daemon.client();
+    await client.request("account.add", { harness: "codex", label: "review-example.com", importExisting: true });
+    const bee = await client.request<{ beeId: string }>("spawn", { name: "review", agent: "codex", cwd: dir, account: id, tags: ["autoswap=false"] });
+    await waitFor(async () => {
+      const result = await client!.request<{ view: { runtimeState: string } }>("view", { beeId: bee.beeId });
+      return ["running", "idle"].includes(result.view.runtimeState) ? true : null;
+    }, "running Codex bee");
+    await assert.rejects(() => client!.request("account.credentials.enable", { id, idempotencyKey: "live-enable" }), (error: unknown) => error instanceof RpcError && error.message.includes("Stop this account's local Codex"));
+    assert.equal(refreshes.length, 0);
+    await client.request("stop", { beeId: bee.beeId });
+    await waitFor(async () => (await client!.request<{ view: { runtimeState: string } }>("view", { beeId: bee.beeId })).view.runtimeState === "stopped" ? true : null, "Codex bee stopped");
+    await client.request("account.credentials.enable", { id, idempotencyKey: "enable" });
+    const active = await client.request<{ beeId: string }>("spawn", { name: "managed", agent: "codex", cwd: dir, account: id, tags: ["autoswap=false"] });
+    await waitFor(async () => ["running", "idle"].includes((await client!.request<{ view: { runtimeState: string } }>("view", { beeId: active.beeId })).view.runtimeState) ? true : null, "managed Codex bee running");
+    await assert.rejects(() => client!.request("account.credentials.disable", { id, idempotencyKey: "live-disable" }), (error: unknown) => error instanceof RpcError && error.message.includes("Stop this account's local Codex"));
+    await client.request("stop", { beeId: active.beeId });
+    await waitFor(async () => (await client!.request<{ view: { runtimeState: string } }>("view", { beeId: active.beeId })).view.runtimeState === "stopped" ? true : null, "managed bee stopped");
+    console.log("running Codex bees: enable and disable refused, no ownership change; stopped bees permit enrollment");
+    const authorityPath = join(dir, "vault", ".credential-authorities", `${id}.json`);
+    for (const mode of ["expired", "missing"] as const) {
+      badAccess = mode;
+      await assert.rejects(() => client!.request("account.credentials.refresh", { id, idempotencyKey: `bad-${mode}` }), (error: unknown) => error instanceof RpcError && error.message.includes("rotated refresh chain was saved"));
+      assert.ok(JSON.parse(readFileSync(authorityPath, "utf8")).document.tokens.refresh_token === expected);
+      assert.equal((await client.request<AccountCredentialAuthority>("account.credentials.status", { id })).phase, "uncertain");
+      badAccess = null;
+      await client.request("account.credentials.refresh", { id, idempotencyKey: `settle-${mode}` });
+      assert.equal((await client.request<AccountCredentialAuthority>("account.credentials.status", { id })).phase, "ready");
+      console.log(`${mode} 2xx access: rotated refresh token saved; next refresh used new chain and restored ready`);
+    }
+    nullRefresh = true;
+    await client.request("account.credentials.refresh", { id, idempotencyKey: "null-refresh" });
+    assert.ok(JSON.parse(readFileSync(authorityPath, "utf8")).document.tokens.refresh_token === expected);
+    nullRefresh = false;
+    await client.request("account.credentials.disable", { id, idempotencyKey: "healthy-disable" });
+    assert.ok(JSON.parse(readFileSync(join(home, "auth.json"), "utf8")).tokens.refresh_token === expected);
+    assert.equal(JSON.parse(readFileSync(join(home, ".codex", "auth.json"), "utf8")).tokens.refresh_token, "");
+    await client.request("account.credentials.enable", { id, idempotencyKey: "reenable" });
+    console.log("null refresh response preserves chain; healthy disable restores canonical native chain and leaves legacy mirror access-only");
+    refuse = true;
+    await assert.rejects(() => client!.request("account.credentials.refresh", { id, idempotencyKey: "reject" }), (error: unknown) => error instanceof RpcError && error.message.includes("credentials disable"));
+    await client.request("account.credentials.disable", { id, idempotencyKey: "disable" });
+    for (const path of [join(home, "auth.json"), join(home, ".codex", "auth.json"), join(vault, "auth.json")]) assert.equal(JSON.parse(readFileSync(path, "utf8")).tokens.refresh_token, "");
+    const login = await client.request<{ flow: { id: string } }>("account.login.start", { id, methodId: "codex-device", remote: true });
+    await waitFor(async () => {
+      const result = await client!.request<{ flow: { phase: string } }>("account.login.get", { flowId: login.flow.id });
+      return result.flow.phase === "succeeded" ? true : null;
+    }, "native Codex login succeeded", 12000);
+    expected = JSON.parse(readFileSync(join(home, "auth.json"), "utf8")).tokens.refresh_token;
+    refuse = false;
+    await client.request("account.credentials.enable", { id, idempotencyKey: "recover" });
+    assert.equal((await client.request<AccountCredentialAuthority>("account.credentials.status", { id })).phase, "ready");
+    for (const path of files(dir).filter(path => path !== authorityPath)) assert.ok(refreshes.every(secret => !readFileSync(path).includes(Buffer.from(secret))) && !readFileSync(path).includes(Buffer.from(expected)), "all refreshed chains confined to authority");
+    console.log("recovery end to end: login_required → disable (all mirrors scrubbed) → fake native login succeeded → enable ready; homes/vault refresh scan zero outside authority");
+  } finally {
+    client?.close();
+    if (daemon) await daemon.stop();
+    await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+    cleanup();
+    console.log("review cleanup: owned daemon PID stopped, stub closed");
   }
 });

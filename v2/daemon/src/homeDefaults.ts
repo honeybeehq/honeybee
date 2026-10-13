@@ -7,8 +7,8 @@
  * Merged, never blindly replaced, so operator/vault keys survive; a malformed
  * file is left untouched rather than clobbered.
  */
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { closeSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 
 // Default spawn model for hive-managed claude homes (alias for the latest Opus =
 // Opus 4.8, 1M-context). Seeded into settings.json only when no model is set.
@@ -39,8 +39,11 @@ function readOr(path: string, fallback: string): string {
 /** Write via a sibling temp file + rename (atomic on POSIX). */
 export function atomicWriteFileSync(path: string, content: string, mode = 0o600): void {
   const tmp = `${path}.tmp.${process.pid}.${Date.now()}`;
-  writeFileSync(tmp, content, { mode });
+  const fd = openSync(tmp, "wx", mode);
+  try { writeFileSync(fd, content); fsyncSync(fd); } finally { closeSync(fd); }
   renameSync(tmp, path);
+  const directory = openSync(dirname(path), "r");
+  try { fsyncSync(directory); } finally { closeSync(directory); }
 }
 
 /**

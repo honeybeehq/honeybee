@@ -14,6 +14,7 @@ export interface RefreshedCredentialToken {
   refreshTokenExpiresAt?: number;
   scopes?: string[];
   idToken?: string;
+  accessUsable?: boolean;
 }
 
 export type CredentialRefreshResult =
@@ -153,13 +154,13 @@ export function oauthRefreshTransport(options: {
     } catch {
       return { kind: "unknown_outcome", description: `HTTP ${response.status} with an unparseable token response` };
     }
-    if (typeof fresh?.access_token !== "string" || !fresh.access_token) {
-      return { kind: "unknown_outcome", description: `HTTP ${response.status} without an access token` };
-    }
     const at = now();
     if (options.decode) {
       const token = options.decode(fresh as Record<string, unknown>, refreshToken, at);
       return token ? { kind: "success", token } : { kind: "unknown_outcome", description: "the provider answered with an unusable token" };
+    }
+    if (typeof fresh?.access_token !== "string" || !fresh.access_token) {
+      return { kind: "unknown_outcome", description: `HTTP ${response.status} without an access token` };
     }
     const refreshTokenExpiresAt = expiryFromSeconds(fresh.refresh_token_expires_in, at);
     return { kind: "success", token: {
