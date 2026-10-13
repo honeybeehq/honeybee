@@ -5,6 +5,8 @@
  * reports its resolved path + a cheap `--version`, and a missing CLI is an
  * honest absent row (null path/source/version) — not an error.
  * SAFETY: temp dirs only; the only real executable probed is process.execPath.
+ * Muse is pinned to a name nothing resolves: on a Mac its real CLI holds the
+ * user's Keychain login, and these daemons stand on linux, past H8's guard.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -14,9 +16,12 @@ import { join } from "node:path";
 import type { NodeHarnessesResult } from "../src/protocol.ts";
 import { makeDaemonDir, startDaemon, type DaemonHandle } from "./helpers.ts";
 
+const UNRESOLVABLE_MUSE = { muse: { command: "hb-test-no-such-muse-f8", adapter: "muse" } };
+
 test("rpc.node.harnesses: present/path/source/version are resolver truth; a missing CLI reports absent", async () => {
   const { dir, cleanup } = makeDaemonDir({
     agents: {
+      ...UNRESOLVABLE_MUSE,
       // A bare name no PATH or fallback dir can plausibly hold.
       ghost: { command: "hb-test-no-such-cli-f8", adapter: "stub" },
       // A bare name that must resolve wherever these tests can run at all.
@@ -58,6 +63,8 @@ test("rpc.node.harnesses: present/path/source/version are resolver truth; a miss
     assert.ok(bare.path?.endsWith("/node"), `resolved path, got ${bare.path}`);
     assert.ok(bare.source === "PATH" || bare.source === "fallback");
 
+    assert.equal(byName.get("muse")?.present, false, "the real muse is never resolved, so never probed");
+
     // Absent is absent: no path, no source, no version, no error.
     const ghost = byName.get("ghost");
     assert.ok(ghost);
@@ -91,6 +98,7 @@ test("rpc.node.harnesses: the version probe runs under the spec env and re-probe
   symlinkSync(launcher, linked);
   const { dir, cleanup } = makeDaemonDir({
     agents: {
+      ...UNRESOLVABLE_MUSE,
       stamped: { command: linked, adapter: "stub", env: { FAKE_NO_AUTO_UPDATE: "1" }, versionStamps: [".fake-version"] },
       // Same launcher, no stamps: cached on (path, mtime) exactly as before.
       plain: { command: launcher, adapter: "stub" },

@@ -133,6 +133,9 @@ function service(r: Rig, extra: Partial<ConstructorParameters<typeof AccountsSer
     log: (op) => r.log.push(op),
     now: r.now,
     platform: "linux",
+    keychainReader: async () => null,
+    keychainWriter: async () => false,
+    keychainRemover: async () => false,
     gatewayMcpSeeder: async () => ({ status: "seeded", written: [] }),
     ...extra,
   });
