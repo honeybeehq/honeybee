@@ -1398,15 +1398,17 @@ export class HiveDaemon {
     const spec = this.cfg.agents[bee.agent];
     if (!spec) throw new Error(`resolveTmux: no agent spec for '${bee.agent}'`);
     let accountEnv: Record<string, string> = {};
+    let beeEnv = bee.env;
     if (bee.account && this.accounts) {
       const account = store.getAccount(bee.account);
       if (!account) throw new Error(`resolveTmux: bee ${beeId} is bound to unknown account ${bee.account}`);
       accountEnv = { ...this.accounts.homeEnvOf(account), ...this.accounts.credentialEnvOf(account) };
+      beeEnv = this.accounts.nativeBeeEnv(account, bee.env);
     }
     const env = {
       ...(process.env as Record<string, string>),
       ...(spec.env ?? {}),
-      ...bee.env,
+      ...beeEnv,
       ...accountEnv,
       ...beeIdentityEnv(bee, this.cfg.dataDir),
     };

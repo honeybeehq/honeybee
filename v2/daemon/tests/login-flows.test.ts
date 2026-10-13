@@ -1242,3 +1242,53 @@ test("flows.split-code: Claude's pasted code#state splits, a bare code uses the 
   assert.equal(splitClaudeCode("#x", "flow"), null);
   assert.equal(splitClaudeCode("", "flow"), null);
 });
+
+test("flows.foreign-home: no login starts, retries or captures into an account whose home is outside homesDir; nothing is written to that home or the vault", async () => {
+  const r = rig();
+  try {
+    const { accounts, flows } = services(r);
+    const refusal = (id: string) => (e: unknown) =>
+      e instanceof LoginFlowRefusal &&
+      e.code === "login_method_unsupported" &&
+      e.message.includes(`account ${id}'s home `) &&
+      e.message.includes(`is outside Honeybee's account homes (${r.homes}); Honeybee never writes a sign-in into a home it does not own.`) &&
+      e.message.endsWith(`Sign in to that home yourself, then run: hive account restored ${id}`);
+    const methods: Array<[string, string]> = [["claude", "claude-oauth"], ["codex", "codex-api-key"], ["codex", "codex-device"], ["opencode", "opencode-api-key"], ["muse", "muse-oauth"], ["muse", "muse-api-key"], ["muse", "muse-device"]];
+    for (const [harness, methodId] of methods) {
+      const id = `${harness}-${methodId}-machine`;
+      const home = join(r.dir, "machine", id);
+      const foreign = r.store.createAccount({ id, harness, homePath: home, label: id, status: "auth_needed" });
+      await assert.rejects(flows.start(foreign, { methodId }), refusal(id), `${methodId} start`);
+      await assert.rejects(flows.start(foreign), refusal(id), `${harness} default start`);
+      await assert.rejects(flows.start(foreign, { remote: true }), refusal(id), `${harness} remote start`);
+      assert.equal(existsSync(home), false, `${id}: the foreign home is never created`);
+    }
+    assert.deepEqual(r.store.listLoginFlows(), []);
+
+    const sibling = r.store.createAccount({ id: "codex-sibling", harness: "codex", homePath: `${r.homes}-sibling`, label: "sibling", status: "auth_needed" });
+    await assert.rejects(flows.start(sibling, { methodId: "codex-api-key" }), refusal(sibling.id));
+    const root = r.store.createAccount({ id: "codex-root", harness: "codex", homePath: r.homes, label: "root", status: "auth_needed" });
+    await assert.rejects(flows.start(root, { methodId: "codex-api-key" }), refusal(root.id));
+
+    const machine = join(r.dir, "machine", "codex-live");
+    const raw = JSON.stringify({ OPENAI_API_KEY: SENTINEL_KEY });
+    const live = r.store.createAccount({ id: "codex-live", harness: "codex", homePath: machine, label: "live", status: "auth_needed" });
+    assert.throws(
+      () => accounts.persistCredentialCapture(live, "auth.json", raw, { "auth.json": raw }),
+      /account codex-live's home .* is outside Honeybee's account homes \(.*\); Honeybee never captures credentials from a home it does not own/,
+    );
+    assert.equal(existsSync(machine), false);
+    assert.equal(existsSync(join(r.vault, "codex", "codex-live")), false, "nothing reaches the vault");
+    assert.equal(r.store.getAccount("codex-live")!.lastLoginAt, null);
+    assert.equal(r.store.getAccount("codex-live")!.status, "auth_needed");
+
+    const owned = account(r, "codex", "owned");
+    const stored = accounts.persistCredentialCapture(owned, "auth.json", raw, { "auth.json": raw });
+    assert.equal(stored.ok, true, "an account home inside homesDir is unaffected");
+    const { flow } = await flows.start(account(r, "codex", "keyed"), { methodId: "codex-api-key" });
+    assert.equal(flow.phase, "waiting_input");
+    await flows.cancel(flow.id);
+  } finally {
+    r.cleanup();
+  }
+});

@@ -17,7 +17,7 @@
  * env FAKE_MUSE_ENV_OUT   path: write argv and the env Muse reads its login
  *                         and data dirs from, as JSON, at start.
  */
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 
@@ -29,7 +29,8 @@ if (process.env.MUSE_NO_AUTO_UPDATE !== "1" || (!native && (!config || process.e
 }
 if (process.env.FAKE_MUSE_ENV_OUT) {
   const keys = ["HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME", "MUSE_NO_AUTO_UPDATE", "TBH_CREDENTIAL_BACKEND", "META_API_KEY", "MUSE_AUTH_PATH", "MUSE_LOGIN", "MUSE_CHANNEL", "FAKE_MUSE_KEPT"];
-  writeFileSync(process.env.FAKE_MUSE_ENV_OUT, JSON.stringify({ argv: process.argv.slice(2), env: Object.fromEntries(keys.filter((k) => k in process.env).map((k) => [k, process.env[k]])) }));
+  writeFileSync(`${process.env.FAKE_MUSE_ENV_OUT}.${process.pid}.tmp`, JSON.stringify({ argv: process.argv.slice(2), env: Object.fromEntries(keys.filter((k) => k in process.env).map((k) => [k, process.env[k]])) }));
+  renameSync(`${process.env.FAKE_MUSE_ENV_OUT}.${process.pid}.tmp`, process.env.FAKE_MUSE_ENV_OUT);
 }
 const dataHome = native ? process.env.XDG_DATA_HOME ?? join(process.env.HOME ?? "", ".local", "share") : process.env.XDG_DATA_HOME;
 if (process.argv[2] !== "serve") {

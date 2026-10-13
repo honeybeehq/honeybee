@@ -13,6 +13,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -269,6 +270,63 @@ test("muse on darwin: This Mac is the machine's own `muse login` — added once 
     assert.equal(existsSync(sentinelLog), false, "neither muse nor security was ever executed");
   } finally {
     if (daemon) await daemon.stop().catch(() => {});
+    cleanup();
+  }
+});
+
+test("muse on darwin: a This Mac bee on the tmux substrate gets the same env as on hsr — the user's HOME, no XDG pair, and nothing from the bee's own env that could redirect its login", async (t) => {
+  if (spawnSync("tmux", ["-V"], { stdio: "ignore" }).status !== 0) {
+    t.skip("tmux is not installed");
+    return;
+  }
+  const { dir, cleanup } = makeDaemonDir();
+  const bin = join(dir, "sentinel-bin");
+  const sentinelLog = join(dir, "sentinel.log");
+  mkdirSync(bin, { recursive: true });
+  for (const name of ["muse", "security"]) {
+    writeFileSync(join(bin, name), `#!/bin/sh\necho "${name} $*" >> "${sentinelLog}"\nexit 1\n`);
+    chmodSync(join(bin, name), 0o755);
+  }
+  const envOut = join(dir, "tui-env.json");
+  const tui = join(dir, "fake-muse-tui.mjs");
+  writeFileSync(tui, `#!${process.execPath}\nimport { renameSync, writeFileSync } from "node:fs";\nwriteFileSync(${JSON.stringify(`${envOut}.tmp`)}, JSON.stringify({ argv: process.argv.slice(2), env: process.env }));\nrenameSync(${JSON.stringify(`${envOut}.tmp`)}, ${JSON.stringify(envOut)});\nsetInterval(() => {}, 1000);\n`);
+  chmodSync(tui, 0o755);
+  writeFileSync(join(dir, "config.json"), JSON.stringify({
+    ...JSON.parse(readFileSync(join(dir, "config.json"), "utf8")),
+    agents: { muse: { command: tui, args: ["serve"], adapter: "muse", env: { MUSE_NO_AUTO_UPDATE: "1" } } },
+  }));
+  const home = join(dir, "home");
+  const config = join(home, ".config");
+  mkdirSync(join(config, "muse"), { recursive: true });
+  writeFileSync(join(config, "muse", "auth.json"), JSON.stringify({ schema_version: 2, providers: { meta: { mechanism: "oauth", obtained_via: "device_code", storage: "keychain", expires_at: 4102444800000 } } }));
+  let daemon: DaemonHandle | null = null;
+  try {
+    daemon = await startDaemon(dir, { platform: "darwin", env: { HOME: home, PATH: `${bin}:${process.env.PATH ?? ""}` } });
+    const client = await daemon.client();
+    const added = await client.request<AccountAddResult>("account.add", { harness: "muse", native: true });
+    assert.deepEqual({ id: added.account.id, home: added.account.homePath, status: added.account.status }, { id: "muse-this-mac", home: config, status: "ok" });
+    const before = treeOf(home);
+
+    const redirect = { HOME: join(dir, "elsewhere"), XDG_CONFIG_HOME: join(dir, "elsewhere", "config"), XDG_DATA_HOME: join(dir, "elsewhere", "data"), XDG_STATE_HOME: join(dir, "elsewhere", "state"), XDG_CACHE_HOME: join(dir, "elsewhere", "cache"), MUSE_PROJECTS_HOME: join(dir, "elsewhere", "projects"), MUSE_AUTH_PATH: join(dir, "elsewhere", "auth.json"), MUSE_LOGIN: "1", MUSE_NO_AUTO_UPDATE: "0", MUSE_SYNC_UPDATE: "1", MUSE_UPDATE_INTERVAL_SECONDS: "1", MUSE_CHANNEL: "muse-canary", TBH_CREDENTIAL_BACKEND: "file", META_API_KEY: "redirected-key" };
+    const spawned = await client.request<SpawnResult>("spawn", { name: "native-tui", agent: "muse", substrate: "tmux", cwd: dir, env: { ...redirect, FAKE_MUSE_KEPT: "kept" } });
+    assert.deepEqual({ account: spawned.account, reason: spawned.accountReason }, { account: "muse-this-mac", reason: THIS_MAC });
+    const ran = await waitFor(() => existsSync(envOut) ? JSON.parse(readFileSync(envOut, "utf8")) as { argv: string[]; env: Record<string, string> } : null, "native muse TUI starts in tmux", 15_000);
+    assert.deepEqual(ran.argv, [], "the TUI seat takes no headless args");
+    const expected: Record<string, string | undefined> = Object.fromEntries(Object.keys(redirect).map((key) => [key, process.env[key]]));
+    expected.HOME = home;
+    expected.MUSE_NO_AUTO_UPDATE = "1";
+    assert.deepEqual(Object.fromEntries(Object.keys(redirect).map((key) => [key, ran.env[key]])), expected, "the bee's own env cannot redirect This Mac's login on tmux");
+    assert.equal(ran.env.FAKE_MUSE_KEPT, "kept");
+    assert.equal(ran.env.HIVE_BEE_ID, spawned.beeId);
+
+    await client.request("stop", { beeId: spawned.beeId });
+    assert.deepEqual(treeOf(home), before, "the machine's own Muse files are untouched");
+    assert.equal(existsSync(join(dir, "vault", "muse", "muse-this-mac")), false, "nothing reaches the vault");
+    assert.equal(existsSync(sentinelLog), false, "neither muse nor security was ever executed");
+    client.close();
+  } finally {
+    if (daemon) await daemon.stop().catch(() => {});
+    spawnSync("tmux", ["-S", join(dir, "tmux.sock"), "kill-server"], { stdio: "ignore" });
     cleanup();
   }
 });

@@ -3645,8 +3645,8 @@ export class AccountsService {
     | { ok: true; account: AccountRow; captured: string[]; at: number }
     | { ok: false; reason: "invalid_primary" | "primary_not_captured" } {
     this.assertLocalAccount(account);
-    const native = this.nativeRefusal(account);
-    if (native) throw new Error(native);
+    const foreign = this.foreignHomeRefusal(account, "captures credentials from");
+    if (foreign) throw new Error(foreign);
     if (this.authorityFor(account)?.enabled(account) || this.authorityFor(account)?.busy(account)) {
       throw new CredentialAuthorityError("Central credential ownership prevents native capture.");
     }

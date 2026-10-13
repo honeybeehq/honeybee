@@ -422,6 +422,8 @@ export class LoginFlowService {
     this.accounts.assertLocalAccount(account);
     const native = this.accounts.nativeRefusal(account);
     if (native) throw new LoginFlowRefusal("login_method_unsupported", native);
+    const foreign = this.accounts.foreignHomeRefusal(account, "writes a sign-in into");
+    if (foreign) throw new LoginFlowRefusal("login_method_unsupported", `${foreign} Sign in to that home yourself, then run: hive account restored ${account.id}`);
     const unisolated = this.accounts.isolationRefusal(account.harness);
     if (unisolated && !this.offered(account.harness, methodId)) throw new LoginFlowRefusal("login_method_unsupported", unisolated);
     const central = this.accounts.authorityFor(account);
