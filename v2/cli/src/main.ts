@@ -15,7 +15,7 @@ import { randomUUID } from "node:crypto";
 import { execFile, spawnSync } from "node:child_process";
 import { homedir } from "node:os";
 import { createInterface } from "node:readline";
-import { closeSync, existsSync, openSync, readSync, statSync } from "node:fs";
+import { closeSync, existsSync, openSync, readSync, statSync, fsyncSync, unlinkSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { defaultDataDir, loadNodeConfig, type ResolvedNodeConfig } from "../../daemon/src/config.ts";
 import { runDaemon } from "../../daemon/src/main.ts";
@@ -231,6 +231,8 @@ const VALUE_FLAGS = new Set([
   "--scope",
   "--source",
   "--file",
+  "--epoch",
+  "--takeover-id",
   "--out",
   "--dir",
   "--id",
@@ -319,6 +321,7 @@ const BOOL_FLAGS = new Set([
   "--archived",
   "--verbose",
   "--dry-run",
+  "--confirm",
   "--force",
   // v31 (cell gc): skip the per-Cell du walk.
   "--no-measure",
@@ -781,7 +784,8 @@ const ACCOUNT_USAGE =
   "       hive account pause|unpause <selector> [--by operator|quota|lease] [--owner <id>] [--force]\n" +
   "       hive account login <selector> [--method <id>] [--remote] [--no-wait] [--replace-account] | login-status <selector> | login-cancel <selector>\n" +
   "       hive account credentials <status|enable|refresh|disable|backup-status|restore-native> <selector>\n" +
-  "       hive account credentials <export|adopt-prepare|export-prepare|export-commit|adopt|adopt-abort|export-abort|export-confirm|stand-down|handoff-status> --file protected-payload.json [--out protected-material.json]\n" +
+  "       hive account credentials take-over <account> --confirm [--epoch higher-epoch] [--takeover-id id]\n" +
+  "       hive account credentials <export|adopt-prepare|export-prepare|export-commit|adopt|adopt-abort|export-abort|export-confirm|stand-down|handoff-status|handoff-key-rotate|handoff-identity-set|stand-down-receipt|take-over-apply|take-over-complete|take-over-cancel> --file protected-payload.json [--out protected-material.json]\n" +
   "       hive account lease install --file payload.json | lease remove <id>\n" +
   "       hive account capture <selector> | verify <selector> | limits [<selector>] | reset <selector> [--credit-id id] --idempotency-key key\n" +
   "       hive account restored <selector> | interruptions [<selector>]\n" +
@@ -1086,7 +1090,19 @@ async function cmdAccount(ctx: CliContext, parsed: Parsed): Promise<number> {
     }
     case "credentials": {
       const action = parsed.positional[2];
-      const handoffVerbs: Record<string, string> = { export: "export", "adopt-prepare": "adoptPrepare", "export-prepare": "exportPrepare", "export-commit": "exportCommit", adopt: "adopt", "adopt-abort": "adoptAbort", "export-abort": "exportAbort", "export-confirm": "exportConfirm", "stand-down": "standDown", "handoff-status": "handoffStatus" };
+      if (action === "take-over") {
+        const account = parsed.positional[3];
+        if (!account || parsed.flags.get("--confirm") !== true) throw new Error("Usage: hive account credentials take-over <account> --confirm [--epoch higher-epoch] [--takeover-id id]");
+        const suppliedEpoch = parsed.flags.get("--epoch");
+        const result = await withClient(ctx, client => {
+          if (!client.capabilities.includes("account.credentials.handoff.v1")) throw new RpcError("capability_missing", "Update Honeybee: account.credentials.handoff.v1 is required.");
+          return client.request("account.credentials.operatorTakeover", { account, confirm: true, takeoverId: parsed.flags.get("--takeover-id") ?? randomUUID(),
+            ...(suppliedEpoch === undefined ? {} : { epoch: Number(suppliedEpoch) }) }, ACCOUNT_LIMITS_RPC_TIMEOUT_MS);
+        });
+        emit(ctx, ["Take-over fenced and scrubbed locally. Relay its signed receipt through Apiary, then complete peer cleanup before native login.", JSON.stringify(result)], result, false);
+        return 0;
+      }
+      const handoffVerbs: Record<string, string> = { export: "export", "adopt-prepare": "adoptPrepare", "export-prepare": "exportPrepare", "export-commit": "exportCommit", adopt: "adopt", "adopt-abort": "adoptAbort", "export-abort": "exportAbort", "export-confirm": "exportConfirm", "stand-down": "standDown", "handoff-status": "handoffStatus", "handoff-key-rotate": "handoffKeyRotate", "handoff-identity-set": "handoffIdentitySet", "stand-down-receipt": "standDownReceipt", "take-over-apply": "operatorTakeoverApply", "take-over-complete": "operatorTakeoverComplete", "take-over-cancel": "operatorTakeoverCancel" };
       if (action && handoffVerbs[action]) {
         const file = parsed.flags.get("--file");
         if (typeof file !== "string") throw new Error(`Usage: hive account credentials ${action} --file protected-payload.json`);
@@ -1094,16 +1110,24 @@ async function cmdAccount(ctx: CliContext, parsed: Parsed): Promise<number> {
         let params: Record<string, unknown>;
         try { params = JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>; }
         catch { throw new Error("Could not read protected handoff payload JSON."); }
-        const result = await withClient(ctx, client => {
-          if (!client.capabilities.includes("account.credentials.handoff.v1")) throw new RpcError("capability_missing", "Update Honeybee: account.credentials.handoff.v1 is required.");
-          return client.request(`account.credentials.${handoffVerbs[action]}` as import("../../daemon/src/protocol.ts").RpcVerb, params, ACCOUNT_LIMITS_RPC_TIMEOUT_MS);
-        });
-        if (action === "export") {
-          const output = parsed.flags.get("--out");
-          if (typeof output !== "string") throw new Error("Export requires --out protected-material.json; credential material is never printed.");
-          writeFileSync(output, JSON.stringify(result), { mode: 0o600, flag: "wx" });
-          emit(ctx, ["Handoff material saved to the protected output file."], { saved: true }, false);
-        } else emit(ctx, [JSON.stringify(result)], result, false);
+        const output = action === "export" ? parsed.flags.get("--out") as string : null;
+        const outputFd = output === null ? null : openSync(output, "wx", 0o600);
+        let completed = false;
+        try {
+          const result = await withClient(ctx, client => {
+            if (!client.capabilities.includes("account.credentials.handoff.v1")) throw new RpcError("capability_missing", "Update Honeybee: account.credentials.handoff.v1 is required.");
+            return client.request(`account.credentials.${handoffVerbs[action]}` as import("../../daemon/src/protocol.ts").RpcVerb, params, ACCOUNT_LIMITS_RPC_TIMEOUT_MS);
+          });
+          if (outputFd !== null) {
+            try { writeFileSync(outputFd, JSON.stringify(result)); fsyncSync(outputFd); }
+            catch { throw new Error("Could not save exported material; keep the source fenced and use credentials export-abort for this handoff before retrying."); }
+            emit(ctx, ["Handoff material saved to the protected output file."], { saved: true }, false);
+          } else emit(ctx, [JSON.stringify(result)], result, false);
+          completed = true;
+        } finally {
+          if (outputFd !== null) closeSync(outputFd);
+          if (!completed && output !== null) unlinkSync(output);
+        }
         return 0;
       }
       const id = parsed.positional[3];

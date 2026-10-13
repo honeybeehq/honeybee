@@ -10,6 +10,7 @@ export interface AuthorityDocument {
   generation: number;
   operationKey: string | null;
   accessUsable?: boolean;
+  handoffAttemptStarted?: boolean;
   terminalAccessFailure?: "invalid_expiry";
   document: Record<string, unknown>;
   /** The native chain enrollment adopted, secret-free, so its untouched copies are not mistaken for a foreign login. */
@@ -191,7 +192,7 @@ export class CredentialAuthority {
     return { ...this.failureOf({ kind: "unknown_outcome", description }, previous), retryAt: this.options.now() };
   }
   /** One provider round trip. Every attempt is logged with its outcome; a throw from the transport proves nothing about the token. */
-  private async attempt(account: AccountRow, refreshToken: string, generation: number, previous: CredentialRefreshFailure | null, during: "enroll" | "refresh"): Promise<RefreshAttempt> {
+  private async attempt(account: AccountRow, refreshToken: string, generation: number, previous: CredentialRefreshFailure | null, during: "enroll" | "refresh", persist?: (token: Extract<CredentialRefreshResult, { kind: "success" }>["token"]) => void): Promise<RefreshAttempt> {
     let result: CredentialRefreshResult;
     try { result = await this.options.refresh(refreshToken, this.document(account)); }
     catch (error) {
@@ -201,6 +202,7 @@ export class CredentialAuthority {
       const token = result.token;
       const retained = this.codec.retainRotatedOnUnusableAccess && token.accessUsable === false;
       if ((token.accessToken || retained) && token.refreshToken && Number.isFinite(token.expiresAt) && (token.expiresAt > this.options.now() || retained)) {
+        persist?.(token);
         this.options.log(`account.credentials.refresh account=${account.id} during=${during} generation=${generation} outcome=success`
           + ` expires=${new Date(token.expiresAt).toISOString()} login_expires=${token.refreshTokenExpiresAt !== undefined ? new Date(token.refreshTokenExpiresAt).toISOString() : "-"}`);
         return { kind: "success", token };
@@ -280,7 +282,7 @@ export class CredentialAuthority {
   }
   /** Whether the access token has no more than `aheadMs` left and may be refreshed early now. */
   earlyRefreshDue(account: AccountRow, aheadMs: number): boolean {
-    if (aheadMs <= 0 || this.busy(account)) return false;
+    if (aheadMs <= 0 || this.busy(account) || this.options.store.activeCredentialHandoff(account.id)) return false;
     const state = this.status(account);
     if (state?.phase !== "ready" || state.expiresAt === null) return false;
     if (state.failure?.retryAt != null && state.failure.retryAt > this.options.now()) return false;
@@ -291,6 +293,7 @@ export class CredentialAuthority {
     return value.issuedAt !== undefined && this.options.now() - value.issuedAt < this.options.earlyRefreshMinIntervalMs;
   }
   private assertQuiescent(account: AccountRow): void {
+    if (this.options.store.activeCredentialHandoff(account.id)) throw new CredentialAuthorityError("Credential handoff or stand-down cleanup holds this account; retry its signed operation before changing ownership.");
     if (this.options.store.beesOnAccount(account.id).some(bee => {
       const runtime = this.options.store.currentRuntime(bee.id);
       return runtime !== null && runtime.state !== "stopped";
@@ -360,6 +363,7 @@ export class CredentialAuthority {
   }
 
   async rotateHandoffAdoption(account: AccountRow, claimId: string, generation: number): Promise<AccountCredentialAuthority> {
+    if (this.options.store.credentialRecoveryPending(account.id)) throw new CredentialAuthorityError("Signed operator recovery holds the account; complete or cancel that recovery before adoption.");
     let value = this.read(account);
     const state = this.status(account);
     if (!state || state.phase === "disabled" || state.phase === "handing_off") throw new CredentialAuthorityError("Handoff adoption is not prepared.");
@@ -368,23 +372,30 @@ export class CredentialAuthority {
       await this.options.publish(account, value.document, true);
       return this.ready(account, value);
     }
+    if (value.handoffAttemptStarted) {
+      this.outcomeUnknown(account, value, this.interrupted("the daemon stopped before the handoff response was durably saved; explicit operator takeover is required", state.failure));
+      throw new CredentialAuthorityError("Handoff provider outcome is unknown; retained material must not be retried automatically.");
+    }
     const credential = this.parseDocument(value.document);
     if (!credential?.refreshToken) throw new CredentialAuthorityError("Handoff refresh material is unavailable.");
     await this.options.beforeRefresh(account, value.document);
-    value = { ...value, operationKey: claimId };
+    value = { ...value, operationKey: claimId, handoffAttemptStarted: true };
     save(this.path(account), value);
     this.put(account, "adopting", value, state.failure);
-    const attempt = await this.attempt(account, credential.refreshToken, value.generation, state.failure, "refresh");
+    const attempt = await this.attempt(account, credential.refreshToken, value.generation, state.failure, "refresh", token => {
+      value = { ...value, generation: value.generation + 1, issuedAt: this.options.now(),
+        document: this.codec.merge(value.document, token, this.options.now()),
+        accessUsable: token.accessUsable !== false && token.refreshToken !== credential.refreshToken,
+        handoffAttemptStarted: token.refreshToken === credential.refreshToken,
+        ...(token.terminalAccessFailure ? { terminalAccessFailure: token.terminalAccessFailure } : {}) };
+      save(this.path(account), value);
+    });
     if (attempt.kind === "failed") {
       if (attempt.result.kind === "rejected") throw this.requireLogin(account, value, attempt.failure);
+      if (attempt.result.kind === "retryable") { value = { ...value, handoffAttemptStarted: false }; save(this.path(account), value); }
       this.outcomeUnknown(account, value, attempt.failure);
       throw new CredentialAuthorityError("Handoff rotation outcome is uncertain; both sides remain fenced.");
     }
-    value = { ...value, generation: value.generation + 1, issuedAt: this.options.now(),
-      document: this.codec.merge(value.document, attempt.token, this.options.now()),
-      accessUsable: attempt.token.accessUsable !== false && attempt.token.refreshToken !== credential.refreshToken,
-      ...(attempt.token.terminalAccessFailure ? { terminalAccessFailure: attempt.token.terminalAccessFailure } : {}) };
-    save(this.path(account), value);
     if (value.accessUsable === false) return this.retainUnusableAccess(account, value);
     await this.options.publish(account, value.document, true);
     return this.ready(account, value);
@@ -551,7 +562,7 @@ export class CredentialAuthority {
     return this.lane(account, forceKey ? `force:${forceKey}` : "ensure", async () => {
       let state = this.status(account);
       if (!state || state.phase === "disabled") throw new CredentialAuthorityError("Enable central credentials for this account first.");
-      if (state.phase === "handing_off" || state.phase === "adopting") throw new CredentialAuthorityError("Credential handoff holds this account; complete it, or abort an unprepared export. A committed takeover needs stand-down at a higher epoch followed by native login and credentials enable on the chosen authority.");
+      if (this.options.store.activeCredentialHandoff(account.id) || state.phase === "handing_off" || state.phase === "adopting") throw new CredentialAuthorityError("Credential handoff holds this account; complete it, or abort an unprepared export. A committed takeover needs stand-down at a higher epoch followed by native login and credentials enable on the chosen authority.");
       if (state.phase === "login_required") {
         if (!this.savedResultPending(account, state)) throw new CredentialAuthorityError(this.loginRequiredMessage(account, state.failure), "login_required");
       }

@@ -12,6 +12,7 @@ import { THREAD_OPERATIONS_TABLE_SQL } from "./schema.ts";
  * Every write is transactional and appends audit rows in the same transaction (test 13:
  * replaying the audit log reproduces the exact table state — see audit.ts).
  */
+import type { CredentialHandoffIdentity } from "./types.ts";
 import { DatabaseSync } from "node:sqlite";
 import { generateKeyPairSync, randomUUID } from "node:crypto";
 import { humanRefAuthorityId, signHumanRefReceipt, verifyHumanRefReceipt, type HumanRefIssuer, type HumanRefReceipt, type HumanRefRegistry } from "./humanRefs.ts";
@@ -5066,6 +5067,23 @@ export class CoreStore {
   // v7 — accounts (spec 08): identity rows, limits snapshots, selection cursor
   // -------------------------------------------------------------------------
 
+  private credentialHandoffTx<T>(run: () => T): T {
+    const outermost = this.txDepth === 0;
+    const synchronous = outermost ? (this.db.prepare("PRAGMA synchronous").get() as Row).synchronous : null;
+    if (outermost) this.db.exec("PRAGMA synchronous = FULL");
+    try { return this.tx(run); }
+    finally { if (outermost) this.db.exec(`PRAGMA synchronous = ${Number(synchronous)}`); }
+  }
+
+  credentialHandoffIdentity(): CredentialHandoffIdentity | null {
+    const row = this.stmt("SELECT value FROM meta WHERE key = 'credential_handoff_identity'").get() as Row | undefined;
+    return row ? JSON.parse(String(row.value)) as CredentialHandoffIdentity : null;
+  }
+
+  setCredentialHandoffIdentity(identity: CredentialHandoffIdentity): void {
+    this.credentialHandoffTx(() => this.stmt("INSERT INTO meta(key,value) VALUES('credential_handoff_identity',?)").run(JSON.stringify(identity)));
+  }
+
   getCredentialHandoff(handoffId: string, role: CredentialHandoffRecord["role"]): CredentialHandoffRecord | null {
     const row = this.stmt("SELECT record FROM credential_handoffs WHERE handoff_id = ? AND role = ?").get(handoffId, role) as Row | undefined;
     return row ? JSON.parse(String(row.record)) as CredentialHandoffRecord : null;
@@ -5079,23 +5097,34 @@ export class CoreStore {
     return (this.stmt("SELECT record FROM credential_handoffs WHERE state IN ('exported','failed','aborted') AND (role = 'source' AND state = 'exported' OR role = 'destination' AND COALESCE(json_extract(record,'$.scrubbed'),0) = 0)").all() as Row[]).map(row => JSON.parse(String(row.record)) as CredentialHandoffRecord);
   }
 
+  credentialRecoveryPending(account: string): boolean {
+    return Boolean(this.stmt("SELECT 1 FROM credential_handoffs WHERE account = ? AND state = 'committed' AND json_extract(record,'$.receipt.kind') IN ('stand_down','operator_takeover') LIMIT 1").get(account));
+  }
+
   activeCredentialHandoff(account: string): CredentialHandoffRecord | null {
     const rows = this.stmt("SELECT record FROM credential_handoffs WHERE account = ?").all(account) as Row[];
     return rows.map(row => JSON.parse(String(row.record)) as CredentialHandoffRecord).find(row => !["aborted", "confirmed", "failed", "adopted", "stood_down"].includes(row.state) || row.role === "destination" && ["aborted", "failed"].includes(row.state) && !row.scrubbed) ?? null;
   }
 
   putCredentialHandoff(record: CredentialHandoffRecord, authority?: AccountCredentialAuthority): CredentialHandoffRecord {
-    const result = this.tx(() => {
+    if (JSON.stringify(this.getCredentialHandoff(record.handoffId, record.role)) === JSON.stringify(record)) return record;
+    return this.credentialHandoffTx(() => {
       const previous = this.getCredentialHandoff(record.handoffId, record.role);
       if (JSON.stringify(previous) === JSON.stringify(record)) return record;
       this.stmt("INSERT INTO credential_handoffs(handoff_id,role,account,state,record) VALUES(?,?,?,?,?) ON CONFLICT(handoff_id,role) DO UPDATE SET state=excluded.state,record=excluded.record")
         .run(record.handoffId, record.role, record.account, record.state, JSON.stringify(record));
       this.stmt("INSERT INTO credential_handoff_events(handoff_id,role,state,at) VALUES(?,?,?,?)").run(record.handoffId, record.role, record.state, this.now());
+      if (!previous && record.receipt?.kind === "operator_takeover") this.audit("account.credentials.operator_takeover", null, { account: record.account, handoffId: record.handoffId, role: record.role, epoch: record.binding.epoch, reason: "explicit_operator_recovery" });
       if (authority) this.putAccountCredentialAuthority(authority);
       return record;
     });
-    if (this.txDepth === 0) this.db.exec("PRAGMA wal_checkpoint(FULL)");
-    return result;
+  }
+
+  completeCredentialTakeover(record: CredentialHandoffRecord): void {
+    this.credentialHandoffTx(() => {
+      this.applyAccountUpdate(record.account, { source: "local", leasedFrom: null, status: "auth_needed", statusReason: "Explicit operator takeover completed; native login required" }, "explicit operator recovery");
+      this.putCredentialHandoff(record);
+    });
   }
 
   credentialAuthorityEpoch(account: string): number {

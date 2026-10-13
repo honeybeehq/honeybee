@@ -1732,7 +1732,7 @@ export interface CredentialHandoffBinding {
   targetKey: string | null;
 }
 export interface CredentialHandoffReceipt {
-  kind: "export" | "prepared" | "commit" | "adopted" | "aborted";
+  kind: "export" | "prepared" | "commit" | "adopted" | "aborted" | "stand_down" | "operator_takeover" | "operator_taken_down" | "operator_refused";
   binding: CredentialHandoffBinding;
   signature: string;
 }
@@ -1743,6 +1743,7 @@ export interface CredentialHandoffRecord {
   state: "exported" | "preparing" | "prepared" | "committed" | "adopting" | "adopted" | "failed" | "aborted" | "confirmed" | "stood_down";
   binding: CredentialHandoffBinding;
   receipt: CredentialHandoffReceipt | null;
+  peerReceipt?: CredentialHandoffReceipt;
   scrubbed?: boolean;
   generation: number | null;
   expiresAt: number | null;

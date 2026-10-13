@@ -35,7 +35,7 @@ function unsigned(value: CredentialHandoffReceipt): Buffer {
 }
 function receipt(value: unknown): CredentialHandoffReceipt {
   const input = object(value);
-  if (!["export", "prepared", "commit", "adopted", "aborted"].includes(String(input.kind))) throw new RpcError("invalid_request", "Unknown handoff receipt kind.");
+  if (!["export", "prepared", "commit", "adopted", "aborted", "stand_down", "operator_takeover", "operator_taken_down", "operator_refused"].includes(String(input.kind))) throw new RpcError("invalid_request", "Unknown handoff receipt kind.");
   return { kind: input.kind as CredentialHandoffReceipt["kind"], binding: binding(input.binding), signature: name(input.signature) };
 }
 function check(receipt: CredentialHandoffReceipt, kind: CredentialHandoffReceipt["kind"], key: string): void {
@@ -62,9 +62,25 @@ export class CredentialHandoffService {
   private readonly now: () => number;
   private readonly log: (message: string) => void;
   private reconciling = false;
+  private activeLanes = 0;
   private lastSweepAt = 0;
   constructor(store: CoreStore, accounts: AccountsService, root: string, now: () => number, log: (message: string) => void) {
     this.store = store; this.accounts = accounts; this.root = root; this.now = now; this.log = log;
+  }
+
+  setIdentity(params: Record<string, unknown>) {
+    const current = this.store.credentialHandoffIdentity(), supplied = identity(params.identity);
+    if (current && !same(current, supplied)) throw new RpcError("credential_handoff_conflict", "Workstation identity is already pinned; do not reuse another workstation's private vault.");
+    if (!current) this.store.setCredentialHandoffIdentity(supplied);
+    return { identity: supplied, publicKey: this.publicKey() };
+  }
+  private self(): CredentialHandoffIdentity {
+    const current = this.store.credentialHandoffIdentity();
+    if (!current) throw new RpcError("credential_handoff_unavailable", "Apiary must install this workstation's authenticated identity before handoff.");
+    return current;
+  }
+  private assertSelf(expected: CredentialHandoffIdentity): void {
+    if (!same(this.self(), expected)) throw new RpcError("credential_handoff_conflict", "Receipt is addressed to another workstation.");
   }
 
   private key() {
@@ -106,17 +122,19 @@ export class CredentialHandoffService {
   }
   private async lane<T>(account: AccountRow, id: string, run: () => Promise<T>): Promise<T> {
     this.accounts.assertLeaseWriteIdle(account.id);
+    this.activeLanes++;
     try { return await this.accounts.authorityFor(account)!.handoffLane(account, id, run); }
     catch (error) {
       if (error instanceof RpcError) throw error;
       if (error instanceof CredentialAuthorityError) throw new RpcError("credential_handoff_unavailable", "Credential handoff cannot proceed; inspect credential status and finish the current ownership operation.");
       throw new RpcError("credential_handoff_unavailable", "Credential handoff storage or publication failed; retry after resolving storage access.");
-    }
+    } finally { this.activeLanes--; }
   }
 
   async export(params: Record<string, unknown>) {
     const account = this.account(params.account);
     const handoffId = name(params.handoffId), from = identity(params.from), to = identity(params.to), epoch = integer(params.epoch);
+    this.assertSelf(from);
     if (account.source === "leased" || from.nodeId === to.nodeId || epoch <= this.store.credentialAuthorityEpoch(account.id)) throw new RpcError("credential_handoff_conflict", "Handoff requires a local authority, a different peer and a higher destination epoch.");
     return this.lane(account, `export:${handoffId}`, async () => {
       const authority = this.accounts.authorityFor(account)!;
@@ -144,6 +162,8 @@ export class CredentialHandoffService {
   async adoptPrepare(params: Record<string, unknown>) {
     const account = this.account(params.account), signed = receipt(params.exportReceipt);
     const from = identity(params.from), to = identity(params.to), handoffId = name(params.handoffId), epoch = integer(params.epoch);
+    this.assertSelf(to);
+    if (!same(from, identity(params.authenticatedPeer))) throw new RpcError("credential_handoff_conflict", "Export source differs from the authenticated lane peer.");
     const bound = signed.binding;
     const sourceKey = name(params.sourceKey);
     check(signed, "export", sourceKey);
@@ -158,7 +178,6 @@ export class CredentialHandoffService {
         if (!["preparing", "prepared", "adopting", "adopted"].includes(row.state)) throw new RpcError("credential_handoff_decided", "Prepared adoption is terminal and cannot be replayed.");
         if (row.state !== "preparing" && row.state !== "prepared") return this.result(row);
       } else {
-        if (this.now() >= bound.prepareBy) throw new RpcError("credential_handoff_expired", "Export preparation TTL expired; request a new export.");
         this.accounts.assertHandoffAdoptable(account);
         if (epoch <= this.store.credentialAuthorityEpoch(account.id)) throw new RpcError("credential_handoff_stale_epoch", "Adoption requires a higher destination authority epoch.");
         if (account.source === "leased" && (account.leasedFrom?.authorityNodeId !== from.nodeId || epoch <= account.leasedFrom.epoch)) throw new RpcError("credential_handoff_conflict", "Prepared adoption must come from the lease authority at a higher epoch.");
@@ -183,7 +202,9 @@ export class CredentialHandoffService {
     return this.lane(account, `source-prepare:${handoffId}`, async () => {
       const current = this.row(handoffId, "source");
       if (!prepared.binding.targetKey || !prepared.binding.claimId || !prepared.binding.targetAccount) throw new RpcError("invalid_request", "Preparation must name its claim and destination authority.");
-      check(prepared, "prepared", prepared.binding.targetKey);
+      const targetKey = name(params.targetKey), authenticatedPeer = identity(params.authenticatedPeer);
+      if (!same(authenticatedPeer, current.binding.to) || prepared.binding.targetKey !== targetKey) throw new RpcError("credential_handoff_conflict", "Preparation differs from the authenticated destination key.");
+      check(prepared, "prepared", targetKey);
       if (!same(exported(prepared.binding), exported(current.binding))) throw new RpcError("credential_handoff_conflict", "Prepared peer or material does not match this export.");
       if (current.state !== "exported") {
         if (["prepared", "committed", "confirmed"].includes(current.state) && same(current.binding, prepared.binding)) return this.result(current);
@@ -208,7 +229,9 @@ export class CredentialHandoffService {
   async adopt(params: Record<string, unknown>) {
     const account = this.account(params.account), handoffId = name(params.handoffId), commit = receipt(params.commitReceipt);
     return this.lane(account, `adopt:${handoffId}`, async () => {
+      if (this.store.credentialRecoveryPending(account.id)) throw new RpcError("credential_handoff_fenced", "Signed recovery holds this account; complete or cancel it before adoption.");
       let row = this.row(handoffId, "destination");
+      this.assertSelf(row.binding.to);
       check(commit, "commit", row.binding.sourceKey);
       if (row.account !== account.id || !same(commit.binding, row.binding)) throw new RpcError("credential_handoff_conflict", "Commit receipt differs from the durable preparation.");
       if (row.state === "adopted") return this.result(row);
@@ -281,25 +304,173 @@ export class CredentialHandoffService {
     });
   }
 
+  standDownReceipt(params: Record<string, unknown>) {
+    const account = this.account(params.account), to = identity(params.to), epoch = integer(params.epoch);
+    if (epoch < this.store.credentialAuthorityEpoch(account.id)) throw new RpcError("credential_handoff_stale_epoch", "Stand-down authorization cannot precede the issuing authority epoch.");
+    const state = this.accounts.authorityFor(account)!.status(account);
+    if (state?.phase !== "ready" || this.store.activeCredentialHandoff(account.id)) throw new RpcError("credential_handoff_unavailable", "A healthy central authority must authorize stand-down.");
+    const id = randomUUID();
+    const bound: CredentialHandoffBinding = { handoffId: id, sourceAccount: name(params.targetAccount), harness: account.harness,
+      generation: integer(params.targetGeneration), epoch, from: this.self(), to, sourceKey: this.publicKey(), materialDigest: "stand-down",
+      since: this.now(), prepareBy: 0, claimId: id, targetAccount: account.id, targetKey: null };
+    return { receipt: this.signed("stand_down", bound) };
+  }
+
   async standDown(params: Record<string, unknown>) {
-    const account = this.account(params.account), epoch = integer(params.epoch);
-    return this.lane(account, `stand-down:${epoch}`, async () => {
-      if (epoch === this.store.credentialAuthorityEpoch(account.id) && this.store.credentialAuthorityIsDemoted(account.id) && !this.accounts.authorityFor(account)!.enabled(account)) return { account: account.id, epoch, disposition: "stood_down", providerCalled: false };
-      if (epoch <= this.store.credentialAuthorityEpoch(account.id)) throw new RpcError("credential_handoff_stale_epoch", "Stand-down requires a higher authority epoch.");
-      const active = this.store.activeCredentialHandoff(account.id);
+    const account = this.account(params.account), epoch = integer(params.epoch), authorization = receipt(params.standDownReceipt);
+    const authorityKey = name(params.authorityKey), authenticatedPeer = identity(params.authenticatedPeer);
+    check(authorization, "stand_down", authorityKey);
+    const bound = authorization.binding;
+    this.assertSelf(bound.to);
+    if (bound.sourceAccount !== account.id || bound.harness !== account.harness || bound.epoch !== epoch || bound.sourceKey !== authorityKey || !same(bound.from, authenticatedPeer) || bound.from.nodeId === bound.to.nodeId || bound.materialDigest !== "stand-down") throw new RpcError("credential_handoff_conflict", "Stand-down authorization differs from the authenticated authority and target.");
+    return this.lane(account, `stand-down:${bound.handoffId}`, async () => {
+      const existing = this.store.getCredentialHandoff(bound.handoffId, "source");
+      if (existing && (!same(existing.binding, bound) || existing.receipt?.signature !== authorization.signature)) throw new RpcError("credential_handoff_conflict", "Stand-down receipt is already bound to another operation.");
+      if (existing?.state === "stood_down") return { account: account.id, epoch, disposition: "stood_down", providerCalled: false };
+      const floor = this.store.credentialAuthorityEpoch(account.id);
+      if (epoch < floor || epoch === floor && !(existing && this.store.credentialAuthorityIsDemoted(account.id))) throw new RpcError("credential_handoff_stale_epoch", "Stand-down requires a higher authority epoch.");
       const state = this.accounts.authorityFor(account)!.status(account);
-      if (state && state.phase !== "disabled") this.store.putAccountCredentialAuthority({ ...state, phase: "handing_off" });
+      if (!existing && state && state.phase !== "disabled" && state.generation !== bound.generation) throw new RpcError("credential_handoff_conflict", "Stand-down authorization names another refresh generation.");
+      const operation = existing ?? this.store.putCredentialHandoff({ handoffId: bound.handoffId, role: "source", account: account.id, state: "committed", binding: bound, receipt: authorization, generation: null, expiresAt: null });
       await this.accounts.scrubHandoff(account);
       this.store.demoteCredentialAuthority(account.id, epoch);
-      if (active) this.put(active, "stood_down");
+      this.finishTakeoverRows(account, operation.handoffId);
+      this.put(operation, "stood_down");
       return { account: account.id, epoch, disposition: "stood_down", providerCalled: false };
+    });
+  }
+
+  private noRunningBees(account: AccountRow): void {
+    if (this.store.beesOnAccount(account.id).some(bee => {
+      const runtime = this.store.currentRuntime(bee.id);
+      return runtime !== null && runtime.state !== "stopped";
+    })) throw new RpcError("credential_handoff_fenced", "Stop every running bee on the take-over account before explicit recovery.");
+    if (this.store.activeLoginFlow(account.id)) throw new RpcError("credential_handoff_fenced", "Finish or cancel the account login before explicit recovery.");
+  }
+  private finishTakeoverRows(account: AccountRow, except: string): void {
+    for (const row of this.store.listCredentialHandoffs().filter(row => row.account === account.id && row.handoffId !== except && !["stood_down", "confirmed"].includes(row.state))) {
+      if (["aborted", "failed"].includes(row.state)) { if (!row.scrubbed) this.put(row, row.state, { scrubbed: true }); }
+      else this.put(row, "stood_down");
+    }
+  }
+  private takeoverEpoch(account: AccountRow, bound: CredentialHandoffBinding, existing: CredentialHandoffRecord | null): void {
+    const floor = this.store.credentialAuthorityEpoch(account.id);
+    if (bound.epoch < floor || bound.epoch === floor && !(existing && this.store.credentialAuthorityIsDemoted(account.id))) throw new RpcError("credential_handoff_stale_epoch", "Explicit takeover requires an epoch above both workstation authority floors.");
+  }
+
+  async operatorTakeover(params: Record<string, unknown>) {
+    if (params.confirm !== true) throw new RpcError("invalid_request", "Explicit take-over requires --confirm; it destroys the abandoned refresh copies without revoking them.");
+    const account = this.account(params.account), handoffId = name(params.takeoverId);
+    return this.lane(account, `operator-takeover:${handoffId}`, async () => {
+      this.noRunningBees(account);
+      let operation = this.store.getCredentialHandoff(handoffId, "source");
+      if (operation) {
+        if (operation.account !== account.id || operation.receipt?.kind !== "operator_takeover") throw new RpcError("credential_handoff_conflict", "Take-over id belongs to another operation.");
+        this.assertSelf(operation.binding.from);
+        if (params.epoch !== undefined && integer(params.epoch) !== operation.binding.epoch) throw new RpcError("credential_handoff_conflict", "Take-over retry changed epoch.");
+        if (["stood_down", "aborted"].includes(operation.state)) return this.result(operation);
+      } else {
+        const history = this.store.listCredentialHandoffs().filter(row => row.account === account.id);
+        const held = this.store.activeCredentialHandoff(account.id) ?? history.filter(row => row.role === "destination" && row.state === "failed").sort((a, b) => b.binding.since - a.binding.since)[0];
+        if (!held || !["committed", "adopting", "prepared", "failed"].includes(held.state) || held.receipt?.kind === "stand_down" || held.receipt?.kind === "operator_takeover") throw new RpcError("credential_handoff_unavailable", "Explicit take-over requires an abandoned handoff on this account.");
+        const state = this.accounts.authorityFor(account)!.status(account);
+        if (held.role === "destination" && (!state || state.phase === "disabled")) this.accounts.assertNoNewNativeTakeover(account);
+        if (state?.phase === "ready" || this.store.credentialAuthorityEpoch(account.id) > held.binding.epoch || history.some(row => row.handoffId !== held.handoffId && row.binding.since > held.binding.since && !row.receipt?.kind.startsWith("operator_")) || account.leasedFrom && (account.leasedFrom.epoch > held.binding.epoch || account.leasedFrom.authorityNodeId !== held.binding.from.nodeId)) throw new RpcError("credential_handoff_decided", "This abandoned handoff has been superseded; preserve the current authority.");
+        const self = this.self(), source = same(held.binding.from, self), peer = source ? held.binding.to : held.binding.from;
+        const peerAccount = source ? held.binding.targetAccount : held.binding.sourceAccount;
+        if (!peerAccount) throw new RpcError("credential_handoff_unavailable", "The abandoned handoff has no durable peer preparation.");
+        const floor = Math.max(this.store.credentialAuthorityEpoch(account.id), held.binding.epoch);
+        const epoch = params.epoch === undefined ? floor + 1 : integer(params.epoch);
+        if (epoch <= floor) throw new RpcError("credential_handoff_stale_epoch", "Take-over epoch must exceed the abandoned handoff and local authority.");
+        const bound: CredentialHandoffBinding = { ...held.binding, handoffId, from: self, to: peer, sourceAccount: peerAccount, targetAccount: account.id,
+          epoch, sourceKey: this.publicKey(), targetKey: null, claimId: handoffId, materialDigest: held.handoffId, since: this.now(), prepareBy: 0 };
+        operation = this.store.putCredentialHandoff({ handoffId, role: "source", account: account.id, state: "committed", binding: bound,
+          receipt: this.signed("operator_takeover", bound), generation: null, expiresAt: null });
+      }
+      this.takeoverEpoch(account, operation.binding, operation);
+      await this.accounts.scrubHandoff(account);
+      return this.result(operation);
+    });
+  }
+
+  async operatorTakeoverApply(params: Record<string, unknown>) {
+    const signed = receipt(params.takeoverReceipt), key = name(params.issuerKey), peer = identity(params.authenticatedPeer), bound = signed.binding;
+    check(signed, "operator_takeover", key); this.assertSelf(bound.to);
+    if (bound.sourceKey !== key || !same(bound.from, peer)) throw new RpcError("credential_handoff_conflict", "Operator takeover differs from the authenticated issuer.");
+    const account = this.account(bound.sourceAccount);
+    if (bound.harness !== account.harness) throw new RpcError("credential_handoff_conflict", "Operator takeover names another harness.");
+    return this.lane(account, `apply-takeover:${bound.handoffId}`, async () => {
+      let operation = this.store.getCredentialHandoff(bound.handoffId, "destination");
+      if (operation && !same({ ...operation.binding, targetKey: null }, bound)) throw new RpcError("credential_handoff_conflict", "Take-over id is already bound.");
+      if (operation?.state === "aborted") throw new RpcError("credential_handoff_decided", "Peer refused this operator takeover; cancel it on the issuer and reconcile the original handoff.", { receipt: operation.receipt });
+      if (operation?.state === "stood_down" && operation.receipt?.kind === "operator_taken_down") return this.result(operation);
+      const original = this.store.getCredentialHandoff(bound.materialDigest, "source") ?? this.store.getCredentialHandoff(bound.materialDigest, "destination");
+      if (!original || original.account !== account.id || !same(same(original.binding.from, this.self()) ? original.binding.to : original.binding.from, peer) || ((same(original.binding.from, this.self()) ? original.binding.targetAccount : original.binding.sourceAccount) !== null && bound.targetAccount !== (same(original.binding.from, this.self()) ? original.binding.targetAccount : original.binding.sourceAccount)) || bound.epoch <= original.binding.epoch) throw new RpcError("credential_handoff_conflict", "Operator takeover does not name this abandoned handoff.");
+      const floor = this.store.credentialAuthorityEpoch(account.id);
+      const superseded = this.store.listCredentialHandoffs().some(row => row.account === account.id && row.handoffId !== original.handoffId && row.handoffId !== bound.handoffId && !row.receipt?.kind.startsWith("operator_") && row.binding.since > original.binding.since);
+      const authorityState = this.accounts.authorityFor(account)!.status(account);
+      let nativeChanged = false;
+      if (!operation && (!authorityState || authorityState.phase === "disabled")) {
+        try { this.accounts.assertNoNewNativeTakeover(account); }
+        catch (error) { if (error instanceof RpcError && error.code === "credential_handoff_decided") nativeChanged = true; else throw error; }
+      }
+      const stranded = original.role === "source" ? ["prepared", "committed"].includes(original.state) : ["preparing", "prepared", "adopting", "failed"].includes(original.state);
+      if (!operation && (!stranded || floor > original.binding.epoch || superseded || authorityState?.phase === "ready" || nativeChanged)) {
+        const refused = { ...bound, targetKey: this.publicKey() };
+        const rejection = this.store.putCredentialHandoff({ handoffId: bound.handoffId, role: "destination", account: account.id, state: "aborted", binding: refused,
+          receipt: this.signed("operator_refused", refused), generation: null, expiresAt: null, scrubbed: true });
+        throw new RpcError("credential_handoff_decided", "Peer handoff is terminal or superseded; no refresh copy was scrubbed. Cancel the unapplied recovery and reconcile the original receipt.", { receipt: rejection.receipt, originalReceipt: original.receipt?.kind === "export" ? null : original.receipt });
+      }
+      this.noRunningBees(account);
+      this.takeoverEpoch(account, bound, operation);
+      operation ??= this.store.putCredentialHandoff({ handoffId: bound.handoffId, role: "destination", account: account.id, state: "committed", binding: bound, receipt: signed, generation: null, expiresAt: null });
+      await this.accounts.scrubHandoff(account);
+      this.store.demoteCredentialAuthority(account.id, bound.epoch);
+      this.store.setAccountStatus(account.id, "auth_needed", "Explicit operator takeover scrubbed this peer; install a new-authority lease");
+      this.finishTakeoverRows(account, operation.handoffId);
+      const acknowledged = { ...bound, targetKey: this.publicKey() };
+      return this.result(this.put(operation, "stood_down", { binding: acknowledged, receipt: this.signed("operator_taken_down", acknowledged) }));
+    });
+  }
+
+  async operatorTakeoverComplete(params: Record<string, unknown>) {
+    const handoffId = name(params.takeoverId), acknowledged = receipt(params.peerReceipt), peerKey = name(params.peerKey), peer = identity(params.authenticatedPeer);
+    const operation = this.row(handoffId, "source"), account = this.account(operation.account);
+    check(acknowledged, "operator_taken_down", peerKey); this.assertSelf(operation.binding.from);
+    if (!same(peer, operation.binding.to) || !same(acknowledged.binding, { ...operation.binding, targetKey: peerKey })) throw new RpcError("credential_handoff_conflict", "Peer cleanup acknowledgment differs from the pinned operator takeover.");
+    return this.lane(account, `complete-takeover:${handoffId}`, async () => {
+      this.noRunningBees(account);
+      let current = this.row(handoffId, "source");
+      if (current.peerReceipt && !same(current.peerReceipt, acknowledged)) throw new RpcError("credential_handoff_conflict", "Take-over peer acknowledgment differs from the durable pin.");
+      if (current.state === "stood_down") return this.result(current);
+      if (!current.peerReceipt) current = this.put(current, "committed", { peerReceipt: acknowledged });
+      this.takeoverEpoch(account, current.binding, current);
+      await this.accounts.scrubHandoff(account);
+      this.store.demoteCredentialAuthority(account.id, current.binding.epoch);
+      this.finishTakeoverRows(account, handoffId);
+      const completed = { ...current, state: "stood_down" as const };
+      this.store.completeCredentialTakeover(completed);
+      return this.result(completed);
+    });
+  }
+
+  async operatorTakeoverCancel(params: Record<string, unknown>) {
+    const handoffId = name(params.takeoverId), refusal = receipt(params.peerReceipt), peerKey = name(params.peerKey), peer = identity(params.authenticatedPeer);
+    const operation = this.row(handoffId, "source"), account = this.account(operation.account);
+    check(refusal, "operator_refused", peerKey); this.assertSelf(operation.binding.from);
+    if (!same(peer, operation.binding.to) || !same(refusal.binding, { ...operation.binding, targetKey: peerKey })) throw new RpcError("credential_handoff_conflict", "Peer refusal differs from this operator takeover.");
+    return this.lane(account, `cancel-takeover:${handoffId}`, async () => {
+      const current = this.row(handoffId, "source");
+      if (current.state === "aborted") return this.result(current);
+      if (current.state !== "committed" || current.peerReceipt) throw new RpcError("credential_handoff_decided", "An acknowledged or completed peer scrub cannot be cancelled.");
+      return this.result(this.put(current, "aborted", { peerReceipt: refusal, scrubbed: true }));
     });
   }
 
   private recovery(account: AccountRow): string {
     const target = account.source === "leased" ? "<local-account>" : account.id;
     const local = account.source === "leased" ? ` Use or add a local account on that computer (hive account add ${account.harness} <local-label>); ${account.id} remains a leased account.` : "";
-    return `Provider rejected adoption; the source remains committed and fenced. For an explicit operator takeover, stand down the old authority at a higher epoch (hive account credentials stand-down --file protected-payload.json), then hive account login ${target}; hive account credentials enable ${target} on the chosen new authority.${local} Resolve pending destination storage cleanup first.`;
+    return `Provider rejected adoption; the source remains committed and fenced. For explicit recovery on the chosen holder, stop all its account bees and run hive account credentials take-over ${account.id} --confirm; Apiary must relay the signed peer scrub and complete it before native login. For an explicit operator takeover, stand down the old authority at a higher epoch (hive account credentials stand-down --file protected-payload.json), then hive account login ${target}; hive account credentials enable ${target} on the chosen new authority.${local} Resolve pending destination storage cleanup first.`;
   }
 
   private async cleanupDestination(row: CredentialHandoffRecord): Promise<boolean> {
@@ -335,7 +506,33 @@ export class CredentialHandoffService {
     } finally { this.reconciling = false; }
   }
 
+  rotateKey(params: Record<string, unknown>) {
+    const idempotencyKey = name(params.idempotencyKey);
+    const previous = this.store.lookupRpcResult(idempotencyKey);
+    if (previous) {
+      if (previous.verb !== "account.credentials.handoffKeyRotate") throw new RpcError("idempotency_conflict", "Key belongs to another RPC.");
+      return { ...previous.result as Record<string, unknown>, deduped: true };
+    }
+    const rows = this.store.listCredentialHandoffs();
+    if (this.activeLanes || rows.some(row => ["preparing", "prepared", "adopting", "committed"].includes(row.state))) throw new RpcError("credential_handoff_fenced", "Finish prepared or committed handoffs before rotating the workstation handoff key.");
+    this.key();
+    const exports = rows.filter(row => row.role === "source" && row.state === "exported");
+    const pending = exports.map(row => {
+      const account = this.account(row.account), authority = this.accounts.authorityFor(account)!.status(account);
+      if (!authority || authority.phase !== "handing_off" || row.binding.sourceKey !== this.publicKey()) throw new RpcError("credential_handoff_unavailable", "Resolve the exported authority fence before rotating the workstation handoff key.");
+      return { row, authority, receipt: this.signed("aborted", exported(row.binding)) };
+    });
+    for (const { row, authority, receipt } of pending) this.store.putCredentialHandoff({ ...row, state: "aborted", receipt }, { ...authority, phase: "ready" });
+    const pair = generateKeyPairSync("ed25519");
+    atomicWriteFileSync(join(this.root, "handoff-signing-key.pem"), pair.privateKey.export({ type: "pkcs8", format: "pem" }).toString());
+    const result = { publicKey: this.publicKey(), abortedHandoffIds: exports.map(row => row.handoffId), disposition: "rotated", providerCalled: false };
+    this.store.recordRpcResult(idempotencyKey, "account.credentials.handoffKeyRotate", null, result);
+    return result;
+  }
+
   status(params: Record<string, unknown>) {
-    return this.result(this.row(name(params.handoffId), params.role === "destination" ? "destination" : "source"));
+    const row = this.row(name(params.handoffId), params.role === "destination" ? "destination" : "source");
+    const result = this.result(row);
+    return { ...result, receipt: row.receipt?.kind === "export" ? null : result.receipt };
   }
 }

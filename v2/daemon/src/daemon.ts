@@ -1596,6 +1596,20 @@ export class HiveDaemon {
         return this.mustAccounts().credentialHandoff.exportConfirm(params);
       case "account.credentials.standDown":
         return this.mustAccounts().credentialHandoff.standDown(params);
+      case "account.credentials.handoffIdentitySet":
+        return this.mustAccounts().credentialHandoff.setIdentity(params);
+      case "account.credentials.standDownReceipt":
+        return this.mustAccounts().credentialHandoff.standDownReceipt(params);
+      case "account.credentials.operatorTakeover":
+        return this.mustAccounts().credentialHandoff.operatorTakeover(params);
+      case "account.credentials.operatorTakeoverApply":
+        return this.mustAccounts().credentialHandoff.operatorTakeoverApply(params);
+      case "account.credentials.operatorTakeoverComplete":
+        return this.mustAccounts().credentialHandoff.operatorTakeoverComplete(params);
+      case "account.credentials.operatorTakeoverCancel":
+        return this.mustAccounts().credentialHandoff.operatorTakeoverCancel(params);
+      case "account.credentials.handoffKeyRotate":
+        return this.mustAccounts().credentialHandoff.rotateKey(params);
       case "account.credentials.handoffStatus":
         return this.mustAccounts().credentialHandoff.status(params);
       case "account.credentials.nativeBackup":

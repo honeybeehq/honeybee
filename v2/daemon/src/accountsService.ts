@@ -1166,12 +1166,22 @@ export class AccountsService {
     if (account.source !== "leased" && ((account.status === "paused" && account.pausedBy === "operator") || this.credentialHealthOf(account) !== "absent")) throw new RpcError("account_adopt_refused", "Handoff cannot overwrite native credentials; use an empty or leased destination account.");
   }
 
+  assertNoNewNativeTakeover(account: AccountRow): void {
+    const codec = this.leaseMaterialCodecs.get(account.harness);
+    if (!codec) throw new RpcError("credential_handoff_unsupported", "No takeover codec is registered.");
+    for (const root of [account.homePath, this.vaultDirOf(account)]) {
+      const raw = readIfFile(this.leaseFilePath(root, codec.primaryFile));
+      if (raw !== null && this.nativeMaterialKind(account.harness, raw) === "native") throw new RpcError("credential_handoff_decided", "A new native login superseded the abandoned destination; preserve its credentials.");
+    }
+  }
+
   async scrubHandoff(account: AccountRow): Promise<void> {
     const authority = this.authorityFor(account)!;
     const authorityRoot = join(this.cfg.accounts.vaultDir, ".credential-authorities");
     const authorityName = encodeURIComponent(account.id);
     const codec = this.leaseMaterialCodecs.get(account.harness);
     if (!codec) throw new RpcError("credential_handoff_unsupported", "No credential scrub codec is registered for this harness.");
+    codec.keychain?.assertHome(account.homePath);
     const credentialPaths = [codec.primaryFile, ...Object.entries(codec.mirrors).filter(([canonical]) => canonical === codec.primaryFile).map(([, mirror]) => mirror)];
     for (const rel of credentialPaths) for (const root of [account.homePath, this.vaultDirOf(account)]) {
       const raw = readIfFile(this.leaseFilePath(root, rel));
@@ -1629,6 +1639,7 @@ export class AccountsService {
    */
   credentialReadiness(account: AccountRow): AccountReadiness {
     const native = this.isNative(account);
+    if (this.store.credentialRecoveryPending(account.id)) return { ready: false, code: "account_auth_needed", message: "Signed ownership recovery holds this account; complete peer cleanup before starting another bee." };
     const unisolated = this.isolationRefusal(account.harness);
     if (unisolated && !native) return { ready: false, code: "account_unavailable", message: unisolated };
     if (this.leaseWrites.has(account.id)) return { ready: false, code: "account_auth_needed", message: "Account credential material is changing; retry after the operation completes." };

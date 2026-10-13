@@ -350,3 +350,58 @@ disable, complete native login, then enable again.
 `node --test v2/daemon/tests/grok-central-credentials.test.ts` with dummy accounts.
 These checks do not prove the live provider contract. Queen review and Needle's
 explicit approval are required before any real-account refresh-chain mutation.
+
+## Workstation handoff and explicit recovery
+
+These RPCs require Queen review before deployment. Apiary supplies authenticated
+workstation identities and peer public keys over its org lane; Hive does not
+contact another Hive directly. The refresh chain is transported only by export
+and adoptPrepare. Prepare persists a target-bound claim; the source commits
+before the destination rotates. A committed source never aborts or refreshes.
+Confirm scrubs the source after the signed adoption receipt is verified.
+
+The local handoff key is a private per-workstation Ed25519 key, independent of
+Apiary's org device key. The explicit handoff-key-rotate RPC/CLI aborts unclaimed
+exports using the old key before replacing it. Prepared/committed handoffs
+refuse rotation. Apiary must pin the new public key through authenticated peer
+transport before using it in a new handoff.
+
+Stand-down requires a signed higher-epoch receipt from the healthy current
+holder, with its public key and peer identity supplied independently by Apiary.
+An epoch alone cannot scrub credentials. A storage/Keychain failure retains a
+durable cleanup fence; repair it and retry the same receipt, including after
+restart. Default/global Keychain items and symlinks to them are excluded.
+
+A crash after provider consumption but before saving its returned refresh chain
+can lose that response. The destination keeps an uncertainty marker and makes
+no automatic provider retry; the source remains committed-fenced. Saved
+replacement chains replay publication without rotating again. This is not an
+exactly-once guarantee across the network-response/durable-save window.
+
+For this stuck case, the operator chooses the new holder and runs
+`hive account credentials take-over <account> --confirm`. Stop all running
+bees on the account first. The command signs a receipt bound to this workstation,
+the abandoned handoff and an epoch above the known source/destination floors,
+fences the local row and scrubs its abandoned copies. Apiary must relay
+operatorTakeoverApply to the authenticated peer, which also refuses any running
+bee and scrubs without logout, revoke or provider refresh. Apiary returns the
+peer's signed cleanup acknowledgment to operatorTakeoverComplete. Only after
+both sides have scrubbed does the issuing row become local/auth_needed for
+native login and credentials enable. Each side records explicit operator
+recovery once in its audit ledger; the same receipt retries cleanup safely.
+
+The CLI does not relay across machines: Apiary's orchestration is a later task.
+Protected payload RPCs expose take-over-apply and take-over-complete; retries
+retain the printed handoffId with --takeover-id. If the peer reports a higher
+epoch, choose a higher --epoch and a fresh takeover id after inspecting both
+states. This recovery is never automatic. Every real-account native login,
+enable or refresh-chain mutation still requires Needle approval and backups.
+
+A peer whose original handoff is adopted, aborted, confirmed, stood down or
+superseded refuses take-over without scrubbing, and returns a signed refusal
+plus the original terminal receipt when available. Relay that refusal to
+take-over-cancel on the issuer. Cancellation releases only the unapplied
+recovery fence; it does not restore refresh material or release an original
+committed handoff. Reconcile its original receipt (confirm an adopted peer or
+consume its abort) rather than destroying a healthy holder. A failed-row
+recovery also refuses a newer local authority, native login or handoff.
