@@ -338,6 +338,8 @@ test("mirror.2: value-level snapshot — a deterministic store serializes to the
   ],
   "accounts": [
     {
+      "source": "local",
+      "leasedFrom": null,
       "id": "codex-work",
       "harness": "codex",
       "homePath": "/tmp/homes/codex-work",

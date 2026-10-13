@@ -155,3 +155,15 @@ export const writeClaudeKeychainEntry: KeychainWriter = async (homePath, credent
 export function credentialDigest(content: string): string {
   return createHash("sha256").update(content).digest("hex");
 }
+
+export type KeychainRemover = (homePath: string) => Promise<boolean>;
+
+export const removeClaudeKeychainEntry: KeychainRemover = async homePath => {
+  if (!keychainAvailable()) return false;
+  try {
+    await execFileAsync("security", ["delete-generic-password", "-a", userInfo().username, "-s", claudeKeychainService(homePath)], { timeout: SECURITY_EXEC_TIMEOUT_MS });
+    return true;
+  } catch {
+    return (await readClaudeKeychainState(homePath)).status === "absent";
+  }
+};

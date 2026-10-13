@@ -1908,3 +1908,103 @@ test("account mirror: loginDueAt is three days before the provider login ends", 
     assert.equal(service(r).mirrorRow(row).loginDueAt, ends - 3 * 24 * HOUR);
   } finally { r.cleanup(); }
 });
+
+test("peer lease adoption preserves native material and refuses working or operator-paused accounts", async () => {
+  const r = rig();
+  try {
+    const accounts = service(r);
+    const raw = JSON.stringify({ claudeAiOauth: { accessToken: "FAKE-PEER-ACCESS", refreshToken: "", expiresAt: r.now() + HOUR } });
+    const input = { id: "claude-peer", harness: "claude", label: "peer", shareId: "share-00000001", authorityNodeId: "authority-test", epoch: 1, expiresAt: (r.now() + HOUR) / 1000, files: [{ homeRelPath: ".credentials.json", contentB64: Buffer.from(raw).toString("base64"), mode: 0o600 }] };
+    const working = addAccount(r, "claude", "peer", { home: { ".credentials.json": raw } });
+    await assert.rejects(accounts.installLease({ ...input, adopt: true }), (error: unknown) => error instanceof RpcError && error.code === "account_adopt_refused");
+    assert.equal(readFileSync(join(working.homePath, ".credentials.json"), "utf8"), raw);
+    r.store.setAccountStatus(working.id, "auth_needed", "dummy broken login");
+    r.store.pauseAccount(working.id, { by: "operator", owner: null });
+    await assert.rejects(accounts.installLease({ ...input, adopt: true }), (error: unknown) => error instanceof RpcError && error.code === "account_adopt_refused");
+    r.store.unpauseAccount(working.id, { by: "operator", owner: null }, "auth_needed");
+    const installed = await accounts.installLease({ ...input, adopt: true });
+    assert.equal(installed.adopted, true);
+    assert.ok(installed.backupPath);
+    assert.equal(readFileSync(join(installed.backupPath, "home", ".credentials.json"), "utf8"), raw);
+    assert.equal(installed.account.source, "leased");
+    assert.deepEqual(installed.account.leasedFrom, { authorityNodeId: input.authorityNodeId, shareId: input.shareId, epoch: 1, expiresAt: input.expiresAt, endedAt: null, adoptedAt: r.now() });
+    await assert.rejects(accounts.captureAccount(installed.account), (error: unknown) => error instanceof RpcError && error.code === "account_leased");
+    await assert.rejects(accounts.mintLease(installed.account), (error: unknown) => error instanceof RpcError && error.code === "account_leased");
+    await assert.rejects(accounts.centralCredentials.enable(installed.account), (error: unknown) => error instanceof RpcError && error.code === "account_leased");
+    await assert.rejects(accounts.installLease({ ...input, adopt: true, epoch: 0 }), (error: unknown) => error instanceof RpcError && error.code === "account_lease_conflict");
+    const seq = r.store.lastAuditSeq();
+    await accounts.installLease({ ...input, adopt: true });
+    assert.equal(r.store.lastAuditSeq(), seq);
+    r.setNow(r.now() + 2 * HOUR);
+    assert.equal(accounts.credentialState(installed.account), "expired");
+    const removed = await accounts.removeLease(installed.account.id);
+    assert.equal(removed.disposition, "native_restored_absent");
+    assert.equal(removed.removed, false);
+    assert.equal(removed.nativeBackupKept, true);
+    assert.equal(r.store.getAccount(working.id)?.source, "local");
+    assert.equal(existsSync(join(working.homePath, ".credentials.json")), false);
+    assert.equal(existsSync(installed.backupPath), true);
+    await assert.rejects(accounts.removeLease(working.id), (error: unknown) => error instanceof RpcError && error.code === "account_lease_conflict");
+    assert.ok(!JSON.stringify(r.store.auditTail(0, 10000)).includes("FAKE-PEER-ACCESS"));
+    assert.ok(!r.log.join("\n").includes("FAKE-PEER-ACCESS"));
+  } finally { r.cleanup(); }
+});
+
+test("peer lease publication uses Claude locks and keeps starts blocked until Keychain publication succeeds", async () => {
+  const r = rig();
+  try {
+    let fail = true;
+    let writes = 0;
+    let removed = 0;
+    const accounts = service(r, {
+      keychainStateReader: async () => ({ status: "absent" }),
+      keychainWriter: async home => {
+        assert.ok(existsSync(claudeRefreshLockPaths(home).current));
+        assert.ok(existsSync(claudeRefreshLockPaths(home).storageWrite));
+        writes += 1;
+        return !fail;
+      },
+      keychainRemover: async home => { assert.ok(existsSync(claudeRefreshLockPaths(home).storageWrite)); removed += 1; return true; },
+    });
+    const raw = JSON.stringify({ claudeAiOauth: { accessToken: "FAKE-PEER-ACCESS", refreshToken: "", expiresAt: r.now() + HOUR } });
+    const input = { id: "claude-peer", harness: "claude", label: "peer", shareId: "share-00000001", authorityNodeId: "authority-test", epoch: 1, expiresAt: (r.now() + HOUR) / 1000, files: [{ homeRelPath: ".credentials.json", contentB64: Buffer.from(raw).toString("base64"), mode: 0o600 }] };
+    await assert.rejects(accounts.installLease(input), (error: unknown) => error instanceof RpcError && error.code === "lease_unavailable");
+    const blocked = r.store.getAccount("claude-peer@share-00")!;
+    assert.equal(blocked.source, "leased");
+    assert.equal(blocked.status, "auth_needed");
+    fail = false;
+    const installed = await accounts.installLease(input);
+    assert.equal(installed.keychainPublished, true);
+    assert.equal(writes, 2);
+    assert.equal((await accounts.removeLease(installed.account.id)).keychainRemoved, true);
+    assert.equal(removed, 1);
+  } finally { r.cleanup(); }
+});
+
+test("ended leases preserve bee bindings, accept a newer authority epoch and clean up only when unreferenced", async () => {
+  const r = rig();
+  try {
+    const accounts = service(r);
+    const raw = JSON.stringify({ claudeAiOauth: { accessToken: "FAKE-PEER-ACCESS", refreshToken: "", expiresAt: r.now() + HOUR } });
+    const input = { id: "claude-peer", harness: "claude", label: "peer", shareId: "share-00000001", authorityNodeId: "authority-test", epoch: 1, expiresAt: (r.now() + HOUR) / 1000, files: [{ homeRelPath: ".credentials.json", contentB64: Buffer.from(raw).toString("base64"), mode: 0o600 }] };
+    const installed = await accounts.installLease(input);
+    const { bee } = r.store.createBee({ name: "leased-bee", agent: "claude", substrate: "hsr", cwd: r.dir, account: installed.account.id });
+    const receipt = await accounts.removeLease(installed.account.id);
+    assert.equal(receipt.disposition, "ended");
+    const ended = r.store.getAccount(installed.account.id)!;
+    assert.equal(ended.leasedFrom?.endedAt, r.now());
+    assert.equal(accounts.credentialHealthOf(ended), "absent");
+    assert.equal(accounts.credentialReadiness(ended).ready, false);
+    assert.equal(r.store.getBee(bee.id)?.account, installed.account.id);
+    accounts.leaseCleanupTick();
+    assert.ok(r.store.getAccount(installed.account.id));
+    await assert.rejects(accounts.installLease({ ...input, authorityNodeId: "foreign-authority" }), (error: unknown) => error instanceof RpcError && error.code === "account_lease_conflict");
+    const renewed = await accounts.installLease({ ...input, authorityNodeId: "new-authority", epoch: 2 });
+    assert.equal(renewed.account.leasedFrom?.authorityNodeId, "new-authority");
+    assert.equal(renewed.account.leasedFrom?.endedAt, null);
+    await accounts.removeLease(installed.account.id);
+    r.store.setBeeAccount(bee.id, null);
+    accounts.leaseCleanupTick();
+    assert.equal(r.store.getAccount(installed.account.id), null);
+  } finally { r.cleanup(); }
+});

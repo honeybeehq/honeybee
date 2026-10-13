@@ -30,6 +30,7 @@ export class RpcClient {
   private buffer = "";
   private nextId = 1;
   private closed = false;
+  capabilities: readonly string[] = [];
   /** Watch push frames (deltas/gaps) land here. */
   onEvent: ((frame: WatchFrame) => void) | null = null;
   onClose: (() => void) | null = null;
@@ -80,6 +81,7 @@ export class RpcClient {
             );
             return;
           }
+          client.capabilities = Array.isArray(hello.capabilities) ? hello.capabilities.filter((value): value is string => typeof value === "string") : [];
           socket.write(`${JSON.stringify({ protocol: PROTOCOL })}\n`);
           socket.on("data", (c: string) => client.onData(c));
           socket.on("close", () => client.onSocketClose());

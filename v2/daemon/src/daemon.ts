@@ -216,6 +216,8 @@ import {
   type AccountConfigPreviewResult,
   type AccountBackfillResult,
   type AccountLeaseResult,
+  type AccountLeaseInstallParams,
+  type AccountLeaseInstallResult,
   type AccountAdmissionAcquireResult,
   type AccountAdmissionConfirmResult,
   type AccountAdmissionReleaseResult,
@@ -1165,6 +1167,7 @@ export class HiveDaemon {
       // v7: bounded in-daemon limits refresh; v16: login-flow expiry + credential landing.
       this.performance.measureSync("daemon.tick.accounts", () => {
         this.accounts?.periodicRefreshTick();
+        this.accounts?.leaseCleanupTick();
         this.accounts?.centralRefreshRetryTick();
         this.accounts?.centralEarlyRefreshTick();
         this.enforceWeeklyCeilings();
@@ -1578,6 +1581,7 @@ export class HiveDaemon {
       case "account.credentials.disable":
         return this.withAsyncIdempotency(verb, params, async () => {
           const account = this.requireAccount(params);
+          this.mustAccounts().assertLocalAccount(account);
           const authority = this.mustAccounts().authorityFor(account);
           if (!authority) throw new RpcError("account_unavailable", `Central credential management is not supported for ${account.harness}.`);
           try {
@@ -1612,6 +1616,13 @@ export class HiveDaemon {
       // the lease material appears.
       case "account.lease":
         return this.rpcAccountLease(params);
+      case "account.lease.install":
+        return this.rpcAccountLeaseInstall(params);
+      case "account.lease.remove": {
+        const id = this.param(params, "id");
+        if (!/^[a-zA-Z0-9][a-zA-Z0-9._@-]{0,209}$/.test(id)) throw new RpcError("invalid_request", "Lease remove requires a safe account id.");
+        return this.mustAccounts().removeLease(id);
+      }
       case "account.activity":
         return this.rpcAccountActivity(params);
       case "account.admission.acquire":
@@ -4701,6 +4712,11 @@ export class HiveDaemon {
     const store = this.mustStore();
     const beeId = this.param(params, "beeId");
     const body = this.param(params, "body");
+    if (/^\s*\/login(?:\s|$)/i.test(body)) {
+      const accountId = store.getBee(beeId)?.account;
+      const account = accountId ? store.getAccount(accountId) : null;
+      if (account) this.mustAccounts().assertLocalAccount(account);
+    }
     let sender = "operator";
     if (params.sender !== undefined && params.sender !== null) {
       if (typeof params.sender !== "string" || params.sender.length === 0) {
@@ -5049,6 +5065,8 @@ export class HiveDaemon {
 
   private async rpcAccountRemove(params: Record<string, unknown>): Promise<AccountRemoveResult> {
     const account = this.requireAccount(params);
+    this.mustAccounts().assertLeaseWriteIdle(account.id);
+    if (account.source === "leased" && account.leasedFrom?.endedAt == null) this.mustAccounts().assertLocalAccount(account);
     try { this.mustAccounts().authorityFor(account)?.assertDisabled(account); }
     catch (error) { throw new RpcError("account_unavailable", error instanceof Error ? error.message : "Credential cleanup failed"); }
     // v16: a login worker never outlives its account (the store cascades the rows).
@@ -5380,6 +5398,7 @@ export class HiveDaemon {
 
   private async rpcAccountCapture(params: Record<string, unknown>): Promise<AccountCaptureResult> {
     const account = this.requireAccount(params);
+    this.mustAccounts().assertLocalAccount(account);
     const key = this.idempotencyKeyOf(params);
     const store = this.mustStore();
     if (key != null) {
@@ -5407,6 +5426,7 @@ export class HiveDaemon {
 
   private async rpcAccountResetLimits(params: Record<string, unknown>): Promise<AccountResetLimitsResult> {
     const account = this.requireAccount(params);
+    this.mustAccounts().assertLocalAccount(account);
     const key = this.idempotencyKeyOf(params);
     if (!key) throw new RpcError("invalid_request", "account.resetLimits requires a non-empty idempotencyKey");
     const creditId = params.creditId;
@@ -5446,6 +5466,37 @@ export class HiveDaemon {
    * they appear — no idempotency record, no audit row, no log line with
    * material; AccountsService.mintLease logs a secret-free summary only.
    */
+  private async rpcAccountLeaseInstall(params: Record<string, unknown>): Promise<AccountLeaseInstallResult> {
+    const invalid = () => new RpcError("invalid_request", "Lease install requires safe ids, a supported harness, epoch, access expiry, and access-only credential files.");
+    const safeId = (value: unknown): value is string => typeof value === "string" && /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,199}$/.test(value);
+    if (!safeId(params.id) || !safeId(params.shareId) || params.shareId.length < 8 || !safeId(params.authorityNodeId) || !safeId(params.harness) || !safeId(params.label)) throw invalid();
+    if (params.adopt !== undefined && typeof params.adopt !== "boolean") throw invalid();
+    if (typeof params.epoch !== "number" || !Number.isSafeInteger(params.epoch) || params.epoch < 0) throw invalid();
+    if (params.expiresAt !== null && (typeof params.expiresAt !== "number" || !Number.isSafeInteger(params.expiresAt) || params.expiresAt * 1000 <= Date.now())) throw invalid();
+    const codec = this.mustAccounts().leaseMaterialCodecs.get(params.harness);
+    if (!codec) throw new RpcError("lease_unsupported", "This harness does not support peer leases.");
+    if (!Array.isArray(params.files) || params.files.length === 0 || params.files.length > codec.files.length) throw invalid();
+    const seen = new Set<string>();
+    const hasRefresh = (value: unknown): boolean => {
+      if (value === null || typeof value !== "object") return false;
+      return Object.entries(value).some(([key, child]) => ["refreshToken", "refresh_token", "refresh"].includes(key) && child !== "" && child !== null || hasRefresh(child));
+    };
+    for (const value of params.files) {
+      if (!value || typeof value !== "object") throw invalid();
+      const file = value as Record<string, unknown>;
+      if (typeof file.homeRelPath !== "string" || !codec.files.includes(file.homeRelPath) || seen.has(file.homeRelPath) || file.mode !== 0o600 || typeof file.contentB64 !== "string" || file.contentB64.length > 1_000_000 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(file.contentB64)) throw invalid();
+      seen.add(file.homeRelPath);
+      let document: unknown;
+      try { document = JSON.parse(Buffer.from(file.contentB64, "base64").toString("utf8")); } catch { throw invalid(); }
+      if (!document || typeof document !== "object" || Array.isArray(document) || hasRefresh(document)) throw invalid();
+      if (file.homeRelPath === codec.primaryFile && !this.mustAccounts().validPrimaryCredential(params.harness, file.homeRelPath, JSON.stringify(document))) throw invalid();
+    }
+    if (!seen.has(codec.primaryFile)) throw invalid();
+    let restored: AccountCredentialsRestoredResult | undefined;
+    const installed = await this.mustAccounts().installLease(params as unknown as AccountLeaseInstallParams, account => { restored = this.rpcAccountCredentialsRestored({ id: account.id }); });
+    return { ...installed, account: restored!.account, restored: restored! };
+  }
+
   private async rpcAccountLease(params: Record<string, unknown>): Promise<AccountLeaseResult> {
     const account = this.requireAccount(params, "account");
     if (params.harness !== undefined && params.harness !== null) {

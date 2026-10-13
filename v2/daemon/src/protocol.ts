@@ -115,6 +115,7 @@ export const DAEMON_CAPABILITIES = [
    * typed `lease_unsupported` / `lease_unavailable` refusals.
    */
   "account.lease.v1",
+  "account.lease.install.v1",
   "account.credentials.pilot.v1",
   /**
    * v35: a dying login is visible. Account rows carry `statusReason` and
@@ -221,6 +222,11 @@ export interface HelloFrame {
 
 /** Closed-list, typed errors — never fuzzy (spec 04). */
 export const RPC_ERROR_CODES = [
+  "account_leased",
+  "account_lease_conflict",
+  "account_lease_ended",
+  "account_adopt_refused",
+  "capability_missing",
   "reconnect_unsupported", "reconnect_not_ready", "reconnect_not_found",
   "thread_unsupported", "thread_remote_unsupported", "thread_history_unavailable", "thread_operation_not_found", "thread_not_ready", "thread_busy",
   "bee_not_found",
@@ -481,6 +487,8 @@ export const RPC_VERBS = [
   // v19 (RN7a, additive): mint the refresh-blanked credential lease for one
   // account (the remote-nodes lease plane; capability account.lease.v1).
   "account.lease",
+  "account.lease.install",
+  "account.lease.remove",
   "account.admission.acquire",
   "account.admission.confirm",
   "account.admission.release",
@@ -878,6 +886,34 @@ export interface AccountBackfillResult extends DedupMarkers {
   dryRun: boolean;
   bound: Array<{ beeId: string; account: string; home: string }>;
   unmatched: Array<{ beeId: string; home: string }>;
+}
+
+export interface AccountLeaseInstallParams {
+  id: string;
+  harness: string;
+  label: string;
+  shareId: string;
+  authorityNodeId: string;
+  epoch: number;
+  files: EphemeralCredentialFile[];
+  expiresAt: number | null;
+  adopt?: boolean;
+}
+
+export interface AccountLeaseInstallResult {
+  account: MirrorAccountRow;
+  adopted: boolean;
+  backupPath: string | null;
+  keychainPublished: boolean;
+  restored: AccountCredentialsRestoredResult;
+}
+
+export interface AccountLeaseRemoveResult {
+  disposition: "absent" | "removed" | "ended" | "native_restored_absent";
+  id: string;
+  removed: boolean;
+  keychainRemoved: boolean;
+  nativeBackupKept: boolean;
 }
 
 /**

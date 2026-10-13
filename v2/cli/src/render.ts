@@ -290,8 +290,9 @@ export function accountLine(
   const login = a.lastLoginAt ? `  lastLogin=${new Date(a.lastLoginAt).toISOString()}` : "";
   const pausedBy = a.status === "paused" && a.pausedBy ? dim(`(${a.pausedOwner ? `${a.pausedBy}:${a.pausedOwner}` : a.pausedBy})`) : "";
   const loginExpiry = a.refreshTokenExpiresAt != null ? `  ${loginExpiryLabel(a.refreshTokenExpiresAt)}` : "";
+  const lease = a.source === "leased" && a.leasedFrom ? `  leased authority=${a.leasedFrom.authorityNodeId} expires=${a.leasedFrom.expiresAt === null ? "none" : new Date(a.leasedFrom.expiresAt * 1000).toISOString()}` : "";
   const why = a.status === "auth_needed" && a.statusReason ? `\n  ${dim("reason:")} ${a.statusReason}` : "";
-  return `${stalePrefix(stale)}${bold(a.id)}  ${blue(a.harness)}  ${colorAccountStatus(a.status)}${pausedBy}  ${dim("creds=")}${colorCredentialHealth(a.credentialHealth)}  ${dim(tildify(a.homePath))}${penalty}${usage}${login}${loginExpiry}${why}`;
+  return `${stalePrefix(stale)}${bold(a.id)}  ${blue(a.harness)}  ${colorAccountStatus(a.status)}${pausedBy}  ${dim("creds=")}${colorCredentialHealth(a.credentialHealth)}  ${dim(tildify(a.homePath))}${penalty}${usage}${login}${loginExpiry}${lease}${why}`;
 }
 
 /** "login expires 10-18 19:38" (UTC): when the provider login itself ends and a new login is needed. */

@@ -203,6 +203,8 @@ export class LoginFlowService {
   /** Switch method on an active flow: stop the current runner, bump the revision, start the new method. */
   async selectMethod(flowId: string, methodId: string): Promise<LoginFlowRow> {
     const flow = this.mustActive(flowId);
+    const account = this.store.getAccount(flow.account);
+    if (account) this.accounts.assertLocalAccount(account);
     if (!flow.methods.some((m) => m.id === methodId)) throw new LoginFlowRefusal("login_method_unsupported", `login flow ${flowId} does not offer method '${methodId.slice(0, 64)}'`);
     if (flow.methodId === methodId && !flow.error) return flow;
     this.switching.add(flowId);
@@ -223,6 +225,8 @@ export class LoginFlowService {
    */
   async submit(flowId: string, values: Record<string, string>): Promise<LoginFlowRow> {
     const flow = this.mustActive(flowId);
+    const account = this.store.getAccount(flow.account);
+    if (account) this.accounts.assertLocalAccount(account);
     if (flow.phase !== "waiting_input" || flow.inputFields.length === 0) {
       throw new LoginFlowRefusal("login_flow_refused", `login flow ${flowId} is not waiting for input (phase ${flow.phase})`);
     }
@@ -408,6 +412,7 @@ export class LoginFlowService {
    * right now (enrolling, disabling) refuses.
    */
   private assertLoginPossible(account: AccountRow): void {
+    this.accounts.assertLocalAccount(account);
     const central = this.accounts.authorityFor(account);
     if (account.harness === "codex" && (central?.enabled(account) || central?.busy(account))) {
       throw new LoginFlowRefusal("login_flow_refused", "Disable central Codex credentials before logging in natively; the authority alone owns the refresh chain.");

@@ -476,7 +476,18 @@ export interface CredentialRefreshFailure {
 }
 
 /** A provider login identity: the WHO. One account = one run-home. */
+export interface AccountLeaseOrigin {
+  endedAt: number | null;
+  adoptedAt: number | null;
+  shareId: string;
+  authorityNodeId: string;
+  epoch: number;
+  expiresAt: number | null;
+}
+
 export interface AccountRow {
+  source: "local" | "leased";
+  leasedFrom: AccountLeaseOrigin | null;
   /** `<harness>-<label>` (safe-named, lower-cased). */
   id: string;
   harness: string;

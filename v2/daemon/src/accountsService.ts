@@ -14,7 +14,7 @@
  */
 import { execFile, spawn as spawnChild } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, lstatSync, renameSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -85,9 +85,11 @@ import {
   type ActivationResult,
 } from "./activation.ts";
 import type { ResolvedNodeConfig } from "./config.ts";
-import { readClaudeKeychain, readClaudeKeychainState, writeClaudeKeychainEntry, type KeychainState, type KeychainStateReader, type KeychainReader, type KeychainWriter } from "./keychain.ts";
+import { readClaudeKeychain, readClaudeKeychainState, writeClaudeKeychainEntry, removeClaudeKeychainEntry, type KeychainRemover, type KeychainState, type KeychainStateReader, type KeychainReader, type KeychainWriter } from "./keychain.ts";
 import { atomicWriteFileSync } from "./homeDefaults.ts";
 import { withClaudeRefreshLock } from "./claudeRefreshLock.ts";
+import { createLeaseMaterialCodecs, type LeaseMaterialCodec } from "./leaseMaterial.ts";
+import { RpcError, type AccountLeaseInstallParams, type AccountLeaseRemoveResult } from "./protocol.ts";
 import { fetchClaudeIdentity, type ClaudeIdentity } from "./login/transports.ts";
 import {
   defaultProviderLimitsHttp,
@@ -158,6 +160,7 @@ export interface AccountsServiceOptions {
   keychainReader?: KeychainReader;
   keychainWriter?: KeychainWriter;
   keychainStateReader?: KeychainStateReader;
+  keychainRemover?: KeychainRemover;
   /** Cursor's machine-global credential store, injected so tests never touch a real login. */
   cursorAuthReader?: CursorAuthReader;
   fetchers?: LimitsFetchers;
@@ -221,7 +224,7 @@ export type PickOutcome =
 export type CredentialState = "present" | "absent" | "invalid" | "expired";
 
 /** Typed refusal codes shared by explicit spawn, allocator claims, swap and the runtime-start hold. */
-export type AccountRefusalCode = "account_paused" | "account_auth_needed" | "account_credential_missing" | "account_credential_invalid" | "account_credential_expired";
+export type AccountRefusalCode = "account_lease_ended" | "account_paused" | "account_auth_needed" | "account_credential_missing" | "account_credential_invalid" | "account_credential_expired";
 
 export type AccountReadiness =
   | { ready: true }
@@ -842,6 +845,8 @@ export class AccountsService {
   private readonly now: () => number;
   private readonly keychainReader: KeychainReader;
   private readonly keychainWriter: KeychainWriter;
+  readonly leaseMaterialCodecs: ReadonlyMap<string, LeaseMaterialCodec>;
+  private readonly leaseWrites = new Map<string, Promise<unknown>>();
   private readonly keychainStateReader: KeychainStateReader;
   private readonly cursorAuthReader: CursorAuthReader;
   private readonly fetchers: Required<LimitsFetchers>;
@@ -928,10 +933,26 @@ export class AccountsService {
       inspectCentralFiles(account, document);
       return state;
     };
+    this.leaseMaterialCodecs = createLeaseMaterialCodecs({
+      read: centralKeychainReader,
+      publish: (account, raw, state) => this.publishClaudeMaterial(account, JSON.parse(raw) as Record<string, unknown>, state),
+      remove: opts.keychainRemover ?? removeClaudeKeychainEntry,
+      matchesMaterial: (stored, installed) => {
+        const actual = parseClaudeCredentials(stored);
+        const expected = parseClaudeCredentials(installed);
+        return actual !== null && expected !== null && !hasRefreshToken(actual) && actual.accessToken === expected.accessToken;
+      },
+      withLock: async (home, run) => {
+        const locked = await withClaudeRefreshLockWithin(home, CENTRAL_PUBLISH_LOCK_WAIT_MS, run);
+        if (!locked.acquired) throw new RpcError("lease_unavailable", "A harness process holds the account credential lock; retry the lease operation.");
+        return locked.value;
+      },
+    });
     this.centralCredentials = new ClaudeCredentialAuthority({
       store: this.store, root: join(this.cfg.accounts.vaultDir, ".credential-authorities"), now: this.now,
       log: this.log, retryBaseMs: this.cfg.accounts.centralRefreshRetryBaseMs, earlyRefreshMinIntervalMs: this.cfg.accounts.centralRefreshMinIntervalMs,
       beforeEnroll: account => {
+        this.assertLocalAccount(account);
         this.store.assertNoUpdateReservation();
         if (this.refreshBusy(account) || this.leaseMints.has(account.id) || this.nativeKeychainSeeds.has(account.id)) throw new CredentialAuthorityError("A native credential refresh is in progress; retry enrollment shortly.");
       },
@@ -948,18 +969,7 @@ export class AccountsService {
         const locked = await withClaudeRefreshLockWithin(account.homePath, CENTRAL_PUBLISH_LOCK_WAIT_MS, async () => {
           const state = await inspectCentralCopies(account, document);
           const published = (accessOnly ? blankRefreshTokens(document) : document) as Record<string, unknown>;
-          const raw = JSON.stringify(published);
-          mkdirSync(account.homePath, { recursive: true, mode: 0o700 });
-          mkdirSync(this.vaultDirOf(account), { recursive: true, mode: 0o700 });
-          atomicWriteFileSync(join(this.vaultDirOf(account), ".credentials.json"), raw, 0o600);
-          const keychainRaw = JSON.stringify({ ...published, ...keychainDocument(state), claudeAiOauth: published.claudeAiOauth });
-          let written = false;
-          const attempts = state.status === "present" ? CLAUDE_KEYCHAIN_PUBLISH_ATTEMPTS : 1;
-          for (let attempt = 0; attempt < attempts && !written; attempt += 1) written = await this.keychainWriter(account.homePath, keychainRaw).catch(() => false);
-          if (state.status !== "unavailable" && !written) {
-            throw new CredentialAuthorityError("Could not replace the account Keychain entry; runtime starts remain blocked until publication succeeds.");
-          }
-          atomicWriteFileSync(join(account.homePath, ".credentials.json"), raw, 0o600);
+          await this.publishClaudeMaterial(account, published, state);
         });
         if (!locked.acquired) {
           throw new CredentialAuthorityError("A Claude process held the account's credential lock throughout publication; it is retried.", "operation_in_progress");
@@ -983,6 +993,7 @@ export class AccountsService {
       store: this.store, root: join(this.cfg.accounts.vaultDir, ".credential-authorities"), now: this.now,
       log: this.log, retryBaseMs: this.cfg.accounts.centralRefreshRetryBaseMs, earlyRefreshMinIntervalMs: this.cfg.accounts.centralRefreshMinIntervalMs,
       beforeEnroll: account => {
+        this.assertLocalAccount(account);
         this.store.assertNoUpdateReservation();
         if (this.refreshBusy(account) || this.leaseMints.has(account.id)) throw new CredentialAuthorityError("A native credential refresh is in progress; retry enrollment shortly.");
       },
@@ -1017,6 +1028,196 @@ export class AccountsService {
   // -------------------------------------------------------------------------
   // paths + predicates
   // -------------------------------------------------------------------------
+
+  assertLeaseWriteIdle(id: string): void {
+    if (this.leaseWrites.has(id)) throw new RpcError("lease_unavailable", "Account credential ownership is changing; retry after the lease operation.");
+  }
+
+  assertLocalAccount(account: AccountRow): void {
+    const current = this.store.getAccount(account.id) ?? account;
+    if (current.source !== "leased" && this.leaseWrites.has(current.id)) throw new RpcError("lease_unavailable", "Account credential ownership is changing; retry after lease installation.");
+    if (current.source === "leased") throw new RpcError("account_leased", `Account ${current.id} is leased from ${current.leasedFrom?.authorityNodeId}; request renewal from its authority.`);
+  }
+
+  private async publishClaudeMaterial(account: AccountRow, published: Record<string, unknown>, state: KeychainState): Promise<boolean> {
+    const raw = JSON.stringify(published);
+    mkdirSync(account.homePath, { recursive: true, mode: 0o700 });
+    mkdirSync(this.vaultDirOf(account), { recursive: true, mode: 0o700 });
+    atomicWriteFileSync(join(this.vaultDirOf(account), ".credentials.json"), raw, 0o600);
+    const keychainRaw = JSON.stringify({ ...published, ...keychainDocument(state), claudeAiOauth: published.claudeAiOauth });
+    let written = false;
+    const attempts = state.status === "present" ? CLAUDE_KEYCHAIN_PUBLISH_ATTEMPTS : 1;
+    for (let attempt = 0; attempt < attempts && !written; attempt += 1) written = await this.keychainWriter(account.homePath, keychainRaw).catch(() => false);
+    if (state.status !== "unavailable" && !written) throw new CredentialAuthorityError("Could not replace the account Keychain entry; runtime starts remain blocked until publication succeeds.");
+    atomicWriteFileSync(join(account.homePath, ".credentials.json"), raw, 0o600);
+    return written;
+  }
+
+  private async withLeaseWrite<T>(id: string, run: () => Promise<T>): Promise<T> {
+    const previous = this.leaseWrites.get(id);
+    const pending = (async () => {
+      await previous?.catch(() => {});
+      try { return await run(); }
+      catch (error) {
+        if (error instanceof RpcError) throw error;
+        throw new RpcError("lease_unavailable", "Lease material could not be installed or removed; retry after resolving account storage access.");
+      }
+    })();
+    this.leaseWrites.set(id, pending);
+    try { return await pending; }
+    finally { if (this.leaseWrites.get(id) === pending) this.leaseWrites.delete(id); }
+  }
+
+  private credentialPaths(account: AccountRow): string[] {
+    const codec = this.leaseMaterialCodecs.get(account.harness)!;
+    return [...new Set([...codec.files, ...Object.values(codec.mirrors)])];
+  }
+
+  private leaseFilePath(root: string, rel: string): string {
+    let current = root;
+    try { if (lstatSync(root).isSymbolicLink()) throw new RpcError("invalid_request", "Lease storage must not contain symbolic links."); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+    for (const part of rel.split("/")) {
+      current = join(current, part);
+      try { if (lstatSync(current).isSymbolicLink()) throw new RpcError("invalid_request", "Lease storage must not contain symbolic links."); }
+      catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+    }
+    return current;
+  }
+
+  private assertAdoptable(account: AccountRow): void {
+    if ((account.status === "paused" && account.pausedBy === "operator") || (account.status !== "auth_needed" && this.credentialHealthOf(account) !== "absent") || this.authorityFor(account)?.enabled(account) || this.authorityFor(account)?.busy(account) || this.refreshBusy(account) || this.nativeKeychainSeeds.has(account.id) || this.store.activeLoginFlow(account.id)) throw new RpcError("account_adopt_refused", "The native account is working, operator-paused, or changing credentials; it cannot be adopted.");
+  }
+
+  installLease(input: AccountLeaseInstallParams, onInstalled: (account: AccountRow) => void = () => {}): Promise<{ account: AccountRow; adopted: boolean; backupPath: string | null; keychainPublished: boolean }> {
+    const id = input.adopt ? input.id : `${input.id}@${input.shareId.slice(0, 8)}`;
+    return this.withLeaseWrite(id, async () => {
+      let account = this.store.getAccount(id);
+      if (input.adopt && !account) throw new RpcError("account_adopt_refused", "Adoption requires an existing same-id native account.");
+      const adopted = account?.source === "local";
+      const origin = { shareId: input.shareId, authorityNodeId: input.authorityNodeId, epoch: input.epoch, expiresAt: input.expiresAt, adoptedAt: adopted ? this.now() : account?.leasedFrom?.adoptedAt ?? null, endedAt: null };
+      if (account && account.harness !== input.harness) throw new RpcError("harness_mismatch", "Lease harness differs from the existing account.");
+      if (account?.source === "leased" && (account.leasedFrom?.shareId !== input.shareId || account.leasedFrom.epoch > input.epoch || account.leasedFrom.epoch === input.epoch && (account.leasedFrom.authorityNodeId !== input.authorityNodeId || account.leasedFrom.expiresAt !== null && (input.expiresAt === null || input.expiresAt < account.leasedFrom.expiresAt)))) throw new RpcError("account_lease_conflict", "Lease origin conflicts with the installed lease.");
+      if (adopted) {
+        if (!input.adopt) throw new RpcError("account_adopt_refused", "An isolated lease cannot overwrite a native account.");
+        this.assertAdoptable(account!);
+      }
+      if (!account && this.credentialed({ id, harness: input.harness, homePath: this.defaultHomeOf(id) })) throw new RpcError("account_lease_conflict", "The isolated lease home already contains unregistered credentials; preserve them and resolve ownership before installing.");
+      if (!account) account = this.store.createAccount({ id, harness: input.harness, label: input.label, homePath: this.defaultHomeOf(id), status: "auth_needed" });
+      const target = account;
+      const initialLease = target.source === "local" && !adopted;
+      const codec = this.leaseMaterialCodecs.get(target.harness)!;
+      let backupPath: string | null = null;
+      const write = async () => {
+        const state = codec.keychain ? await codec.keychain.read(target.homePath) : { status: "unavailable" } as const;
+        if (initialLease && state.status === "present") throw new RpcError("account_lease_conflict", "The isolated lease home already has an unregistered Keychain item; preserve it and resolve ownership before installing.");
+        if (adopted) this.assertAdoptable(this.store.getAccount(id)!);
+        if (state.status === "unreadable") throw new RpcError("lease_unavailable", "Account Keychain is unreadable; unlock it before installing a lease.");
+        if (adopted && target.status !== "auth_needed" && state.status === "present" && this.validPrimaryCredential(target.harness, codec.primaryFile, state.raw)) throw new RpcError("account_adopt_refused", "The native account has a Keychain credential; it cannot be adopted.");
+        const unchanged = target.source === "leased" && JSON.stringify(target.leasedFrom) === JSON.stringify(origin)
+          && input.files.every(file => {
+            const raw = JSON.stringify(JSON.parse(Buffer.from(file.contentB64, "base64").toString("utf8")));
+            return readIfFile(this.leaseFilePath(target.homePath, file.homeRelPath)) === raw
+              && readIfFile(this.leaseFilePath(this.vaultDirOf(target), file.homeRelPath)) === raw;
+          })
+          && (!codec.keychain || state.status === "unavailable" || state.status === "present" && codec.keychain.matchesMaterial(state.raw, readIfFile(this.leaseFilePath(this.vaultDirOf(target), codec.primaryFile))!));
+        if (unchanged) {
+          onInstalled(this.store.getAccount(id)!);
+          return { account: this.store.getAccount(id)!, adopted: false, backupPath: null, keychainPublished: state.status === "present" };
+        }
+        for (const rel of this.credentialPaths(target)) {
+          this.leaseFilePath(target.homePath, rel);
+          this.leaseFilePath(this.vaultDirOf(target), rel);
+        }
+        if (adopted) {
+          backupPath = join(this.cfg.accounts.vaultDir, ".native-backup", id, `${this.now()}-${randomUUID()}`);
+          mkdirSync(backupPath, { recursive: true, mode: 0o700 });
+          if (state.status === "present") atomicWriteFileSync(join(backupPath, "keychain.json"), state.raw, 0o600);
+          for (const [name, root] of [["home", target.homePath], ["vault", this.vaultDirOf(target)]] as const) {
+            for (const rel of this.credentialPaths(target)) {
+              const path = this.leaseFilePath(root, rel);
+              if (!existsSync(path)) continue;
+              const backup = join(backupPath, name, rel);
+              mkdirSync(dirname(backup), { recursive: true, mode: 0o700 });
+              renameSync(path, backup);
+            }
+          }
+        }
+        this.store.setAccountLease(id, origin);
+        this.store.setAccountStatus(id, "auth_needed", "Lease installation in progress");
+        let keychainPublished = false;
+        for (const file of input.files) {
+          const raw = JSON.stringify(JSON.parse(Buffer.from(file.contentB64, "base64").toString("utf8")));
+          if (codec.keychain && file.homeRelPath === codec.primaryFile) {
+            keychainPublished = await codec.keychain.publish(target, raw, state);
+          } else {
+            for (const root of [this.vaultDirOf(target), target.homePath]) {
+              const path = this.leaseFilePath(root, file.homeRelPath);
+              mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+              atomicWriteFileSync(path, raw, 0o600);
+            }
+          }
+        }
+        for (const [canonical, mirror] of Object.entries(codec.mirrors)) {
+          const raw = readFileSync(this.leaseFilePath(target.homePath, canonical), "utf8");
+          const path = this.leaseFilePath(target.homePath, mirror);
+          mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+          atomicWriteFileSync(path, raw, 0o600);
+        }
+        onInstalled(this.store.getAccount(id)!);
+        return { account: this.store.getAccount(id)!, adopted, backupPath, keychainPublished };
+      };
+      return codec.keychain ? codec.keychain.withLock(target.homePath, write) : write();
+    });
+  }
+
+  removeLease(id: string): Promise<AccountLeaseRemoveResult> {
+    return this.withLeaseWrite(id, async () => {
+      const account = this.store.getAccount(id);
+      if (!account) return { id, disposition: "absent", removed: false, keychainRemoved: false, nativeBackupKept: existsSync(join(this.cfg.accounts.vaultDir, ".native-backup", id)) };
+      if (account.source !== "leased") throw new RpcError("account_lease_conflict", "Only leased accounts may be removed through lease.remove.");
+      const codec = this.leaseMaterialCodecs.get(account.harness)!;
+      const remove = async () => {
+        let keychainRemoved = false;
+        if (codec.keychain) {
+          const state = await codec.keychain.read(account.homePath);
+          if (state.status === "unreadable") throw new RpcError("lease_unavailable", "Account Keychain is unreadable; unlock it before removing a lease.");
+          if (state.status === "present") {
+            const installed = readIfFile(this.leaseFilePath(this.vaultDirOf(account), codec.primaryFile));
+            if (installed === null || !codec.keychain.matchesMaterial(state.raw, installed)) throw new RpcError("account_lease_conflict", "The account Keychain item no longer contains this lease; preserve the foreign credential and resolve its ownership.");
+          }
+          if (state.status !== "unavailable") {
+            keychainRemoved = await codec.keychain.remove(account.homePath);
+            if (!keychainRemoved) throw new RpcError("lease_unavailable", "Could not remove the leased Keychain entry.");
+          }
+        }
+        for (const rel of this.credentialPaths(account)) {
+          for (const root of [account.homePath, this.vaultDirOf(account)]) rmSync(this.leaseFilePath(root, rel), { force: true });
+        }
+        this.store.setAccountStatus(id, "auth_needed", `Lease ended; request renewal from ${account.leasedFrom!.authorityNodeId}.`);
+        let disposition: AccountLeaseRemoveResult["disposition"];
+        if (account.leasedFrom!.adoptedAt !== null) {
+          this.store.returnAdoptedAccountToLocal(id);
+          disposition = "native_restored_absent";
+        } else if (this.store.beesOnAccount(id).length === 0 && this.store.listUnreconciledAccountAdmissions(this.now(), { account: id }).length === 0) {
+          this.store.removeAccount(id);
+          disposition = "removed";
+        } else {
+          this.store.setAccountLease(id, { ...account.leasedFrom!, endedAt: this.now() });
+          disposition = "ended";
+        }
+        return { id, disposition, removed: disposition === "removed", keychainRemoved, nativeBackupKept: existsSync(join(this.cfg.accounts.vaultDir, ".native-backup", id)) };
+      };
+      return codec.keychain ? codec.keychain.withLock(account.homePath, remove) : remove();
+    });
+  }
+
+  leaseCleanupTick(): void {
+    for (const account of this.store.listAccounts()) {
+      if (account.source !== "leased" || account.leasedFrom?.endedAt == null || this.leaseWrites.has(account.id)) continue;
+      if (this.store.beesOnAccount(account.id).length === 0 && this.store.listUnreconciledAccountAdmissions(this.now(), { account: account.id }).length === 0) this.store.removeAccount(account.id);
+    }
+  }
 
   vaultDirOf(account: Pick<AccountRow, "harness" | "id">): string {
     return vaultDirFor(this.cfg.accounts.vaultDir, account.harness, account.id);
@@ -1067,6 +1268,7 @@ export class AccountsService {
    */
   credentialState(account: AccountRow): CredentialState {
     const recipe = recipeFor(account.harness);
+    if (account.source === "leased" && account.leasedFrom?.expiresAt != null && account.leasedFrom.expiresAt * 1000 <= this.now()) return "expired";
     if (!recipe) return "present";
     if (this.authorityFor(account)?.enabled(account)) return this.centralCredentialState(account);
     const primary = primaryCredentialFile(recipe);
@@ -1118,6 +1320,7 @@ export class AccountsService {
    * judged separately by `readiness`.
    */
   credentialReadiness(account: AccountRow): AccountReadiness {
+    if (account.source === "leased" && account.leasedFrom?.endedAt != null) return { ready: false, code: "account_lease_ended", message: `Lease ${account.leasedFrom.shareId} from ${account.leasedFrom.authorityNodeId} has ended; request renewal from its authority.` };
     if (account.status === "auth_needed") {
       return { ready: false, code: "account_auth_needed", message: this.authNeededReason(account) ?? `account ${account.id} needs login; log in with: hive account login ${account.id}` };
     }
@@ -1166,7 +1369,8 @@ export class AccountsService {
    * primary credential a runtime could use right now. The vault is a backup:
    * a good vault copy does not make a stale home work.
    */
-  homeCredentialState(account: Pick<AccountRow, "harness" | "homePath">): "usable" | "absent" | "expired" {
+  homeCredentialState(account: AccountRow): "usable" | "absent" | "expired" {
+    if (account.source === "leased" && (account.leasedFrom?.endedAt != null || account.leasedFrom?.expiresAt != null && account.leasedFrom.expiresAt * 1000 <= this.now())) return "expired";
     const primary = recipeFor(account.harness)?.credentialFiles[0];
     if (!primary) return "usable";
     const raw = readIfFile(join(account.homePath, primary));
@@ -1865,6 +2069,7 @@ export class AccountsService {
   }
 
   async resetLimits(account: AccountRow, idempotencyKey: string, creditId?: string): Promise<{ outcome: CodexResetOutcome; limits: AccountLimitsRow }> {
+    this.assertLocalAccount(account);
     if (account.harness !== "codex") throw new ResetLimitsRefusal("harness_mismatch", "account.resetLimits is only supported for Codex accounts");
     const activated = activateHomeIfEmpty(account.harness, account.homePath, this.vaultDirOf(account), { yolo: true });
     if (activated.activated) this.log(`account.activate account=${account.id} home=${account.homePath} copied=${activated.copied.join(",")} by=limits_reset`);
@@ -1957,6 +2162,7 @@ export class AccountsService {
           return { readable: false, unreadableReason: "auth_expired", error: "no OAuth token found in home, keychain, or vault" };
         }
         if (credential.expiresAt <= this.now()) {
+          if (account.source === "leased") return { readable: false, unreadableReason: "auth_expired", error: "Leased access expired; request renewal from its authority." };
           const refreshed = await this.refreshClaudeCredential(account);
           if (refreshed.kind === "ok") credential = refreshed.credential;
           else if (refreshed.kind === "live_runtime") {
@@ -2023,7 +2229,7 @@ export class AccountsService {
       account,
       vaultDir: this.vaultDirOf(account),
       now: this.now(),
-      allowCredentialRefresh: !this.hasLiveRuntime(account.id),
+      allowCredentialRefresh: account.source !== "leased" && !this.hasLiveRuntime(account.id),
       http: this.providerHttp,
     });
     this.secondaryProviderFetches.set(account.id, pending);
@@ -2161,6 +2367,7 @@ export class AccountsService {
    * refresh, never a consumed refresh token.
    */
   private async refreshClaudeCredential(account: AccountRow, minTtlMs = 0, deferralDeadlineMs?: number): Promise<ClaudeRefreshOutcome> {
+    this.assertLocalAccount(account);
     if (this.authorityFor(account)?.enabled(account)) {
       await this.authorityFor(account)!.ensure(account, minTtlMs);
       const credential = await this.freshestClaudeCredential(account);
@@ -2396,6 +2603,7 @@ export class AccountsService {
    * appear — callers must never log, audit, or persist it.
    */
   async mintLease(account: AccountRow, opts: LeaseOptions = {}): Promise<EphemeralCredential> {
+    this.assertLocalAccount(account);
     const joined = this.leaseMints.get(account.id);
     if (joined) return joined;
     const pending = this.mintLeaseFresh(account, opts);
@@ -2832,7 +3040,7 @@ export class AccountsService {
     if (aheadMs <= 0) return;
     const now = this.now();
     for (const account of this.store.listAccounts()) {
-      if (!this.credentialAuthorities.has(account.harness) || account.status === "paused") continue;
+      if (account.source === "leased" || !this.credentialAuthorities.has(account.harness) || account.status === "paused") continue;
       const backoff = this.earlyRefreshBackoff.get(account.id);
       if (backoff && backoff.at > now) continue;
       if (!this.authorityFor(account)!.earlyRefreshDue(account, aheadMs)) continue;
@@ -2956,6 +3164,7 @@ export class AccountsService {
   ):
     | { ok: true; account: AccountRow; captured: string[]; at: number }
     | { ok: false; reason: "invalid_primary" | "primary_not_captured" } {
+    this.assertLocalAccount(account);
     if (this.authorityFor(account)?.enabled(account) || this.authorityFor(account)?.busy(account)) {
       throw new CredentialAuthorityError("Central credential ownership prevents native capture.");
     }
@@ -2983,6 +3192,7 @@ export class AccountsService {
    * harnesses use the account home.
    */
   async captureAccount(account: AccountRow): Promise<CaptureOutcome> {
+    this.assertLocalAccount(account);
     if (this.authorityFor(account)?.enabled(account)) throw new CredentialAuthorityError("Disable central credentials before capturing native credentials.");
     const recipe = recipeFor(account.harness);
     if (!recipe) throw new Error(`harness ${account.harness} has no identity recipe; cannot capture credentials`);

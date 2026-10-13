@@ -33,6 +33,8 @@ import {
   type AccountConfigPreviewResult,
   type AccountBackfillResult,
   type AccountCaptureResult,
+  type AccountLeaseInstallResult,
+  type AccountLeaseRemoveResult,
   type AccountCredentialsRestoredResult,
   type AccountInterruptionsResult,
   type AccountGetResult,
@@ -777,6 +779,7 @@ const ACCOUNT_USAGE =
   "       hive account pause|unpause <selector> [--by operator|quota|lease] [--owner <id>] [--force]\n" +
   "       hive account login <selector> [--method <id>] [--remote] [--no-wait] [--replace-account] | login-status <selector> | login-cancel <selector>\n" +
   "       hive account credentials <status|enable|refresh|disable> <selector>\n" +
+  "       hive account lease install --file payload.json | lease remove <id>\n" +
   "       hive account capture <selector> | verify <selector> | limits [<selector>] | reset <selector> [--credit-id id] --idempotency-key key\n" +
   "       hive account restored <selector> | interruptions [<selector>]\n" +
   "       hive account import [--root ~/.hive] [--dry-run] | backfill [--dry-run]";
@@ -878,6 +881,27 @@ async function cmdAccount(ctx: CliContext, parsed: Parsed): Promise<number> {
   const sub = parsed.positional[1];
   const key = parsed.flags.get("--idempotency-key") as string | undefined;
   switch (sub) {
+    case "lease": {
+      const action = parsed.positional[2];
+      if (action !== "install" && action !== "remove") throw new Error("usage: hive account lease install --file payload.json | remove <id>");
+      let params: Record<string, unknown>;
+      if (action === "install") {
+        const file = parsed.flags.get("--file");
+        if (typeof file !== "string") throw new Error("usage: hive account lease install --file payload.json");
+        try { params = JSON.parse(readFileSync(resolve(file), "utf8")) as Record<string, unknown>; }
+        catch { throw new Error("Could not read lease payload JSON."); }
+      } else {
+        const id = parsed.positional[3];
+        if (!id) throw new Error("usage: hive account lease remove <id>");
+        params = { id };
+      }
+      const result = await withClient(ctx, client => {
+        if (!client.capabilities.includes("account.lease.install.v1")) throw new RpcError("capability_missing", "Update Honeybee: account.lease.install.v1 is required.");
+        return client.request<AccountLeaseInstallResult | AccountLeaseRemoveResult>(`account.lease.${action}`, params, 60_000);
+      });
+      emit(ctx, ["account" in result ? `leased ${result.account.id}` : `lease ${result.disposition}: ${result.id}`], result, false);
+      return 0;
+    }
     case "list":
     case "ls": {
       const harness = parsed.flags.get("--harness") as string | undefined;

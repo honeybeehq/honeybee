@@ -362,6 +362,8 @@ export const MIRROR_QUESTION_KEYS = [
 ] as const;
 export const MIRROR_SEAL_KEYS = ["id", "beeId", "generation", "title", "body", "refs", "createdAt"] as const;
 export const MIRROR_ACCOUNT_KEYS = [
+  "source",
+  "leasedFrom",
   "id",
   "harness",
   "homePath",

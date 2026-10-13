@@ -12,6 +12,8 @@ const fixtures = join(here, "fixtures", "config-import");
 
 function account(harness: string, homePath: string): AccountRow {
   return {
+    source: "local",
+    leasedFrom: null,
     id: `${harness}-work`,
     harness,
     homePath,

@@ -84,6 +84,8 @@ function mapBee(r: Row): BeeRow {
 
 function mapAccountRow(r: Row): AccountRow {
   return {
+    source: r.source as AccountRow["source"],
+    leasedFrom: r.leased_from == null ? null : JSON.parse(String(r.leased_from)) as AccountRow["leasedFrom"],
     id: r.id as string,
     harness: r.harness as string,
     homePath: r.home_path as string,

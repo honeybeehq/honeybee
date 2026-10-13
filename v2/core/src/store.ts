@@ -824,6 +824,8 @@ function mapCellOp(r: Row): CellOpRow {
 
 function mapAccount(r: Row): AccountRow {
   return {
+    source: r.source as AccountRow["source"],
+    leasedFrom: r.leased_from == null ? null : JSON.parse(String(r.leased_from)) as AccountRow["leasedFrom"],
     id: r.id as string,
     harness: r.harness as string,
     homePath: r.home_path as string,
@@ -1967,6 +1969,9 @@ export class CoreStore {
     if (!hadMailHistoryProjection) {
       this.stmt("DELETE FROM meta WHERE key = 'mail_history_projection_seq'").run();
     }
+    const leaseCols = new Set((this.stmt("SELECT name FROM pragma_table_info('accounts')").all() as Row[]).map(row => String(row.name)));
+    if (!leaseCols.has("source")) this.db.exec("ALTER TABLE accounts ADD COLUMN source TEXT NOT NULL DEFAULT 'local' CHECK (source IN ('local','leased'))");
+    if (!leaseCols.has("leased_from")) this.db.exec("ALTER TABLE accounts ADD COLUMN leased_from TEXT");
     this.backfillMailHistoryEnqueues();
     this.db
       .prepare(
@@ -5223,7 +5228,7 @@ export class CoreStore {
     });
   }
 
-  private applyAccountUpdate(id: string, patch: Partial<Pick<AccountRow, "status" | "statusReason" | "refreshTokenExpiresAt" | "penalty" | "weeklyCeiling" | "lastLoginAt" | "exhaustedAt" | "homePath" | "label" | "pausedBy" | "pausedOwner" | "pausedAt">>, reason: string | null): { account: AccountRow; applied: boolean } {
+  private applyAccountUpdate(id: string, patch: Partial<Pick<AccountRow, "status" | "statusReason" | "refreshTokenExpiresAt" | "penalty" | "weeklyCeiling" | "lastLoginAt" | "exhaustedAt" | "homePath" | "label" | "pausedBy" | "pausedOwner" | "pausedAt" | "source" | "leasedFrom">>, reason: string | null): { account: AccountRow; applied: boolean } {
     const before = this.mustGetAccount(id);
     const at = this.now();
     // The reason given for a status change stays on the row; an explicit statusReason wins.
@@ -5234,12 +5239,24 @@ export class CoreStore {
     if (changed.length === 0) return { account: before, applied: false };
     this.db
       .prepare(
-        "UPDATE accounts SET status = ?, status_reason = ?, refresh_token_expires_at = ?, penalty = ?, weekly_ceiling = ?, last_login_at = ?, exhausted_at = ?, home_path = ?, label = ?, paused_by = ?, paused_owner = ?, paused_at = ?, updated_at = ? WHERE id = ?",
+        "UPDATE accounts SET status = ?, status_reason = ?, refresh_token_expires_at = ?, penalty = ?, weekly_ceiling = ?, last_login_at = ?, exhausted_at = ?, home_path = ?, label = ?, paused_by = ?, paused_owner = ?, paused_at = ?, source = ?, leased_from = ?, updated_at = ? WHERE id = ?",
       )
-      .run(next.status, next.statusReason, next.refreshTokenExpiresAt, next.penalty, next.weeklyCeiling, next.lastLoginAt, next.exhaustedAt, next.homePath, next.label, next.pausedBy, next.pausedOwner, next.pausedAt, at, id);
+      .run(next.status, next.statusReason, next.refreshTokenExpiresAt, next.penalty, next.weeklyCeiling, next.lastLoginAt, next.exhaustedAt, next.homePath, next.label, next.pausedBy, next.pausedOwner, next.pausedAt, next.source, next.leasedFrom === null ? null : JSON.stringify(next.leasedFrom), at, id);
     const account = this.mustGetAccount(id);
     this.audit("account.put", null, { account, outcome: "updated", changed, previous: Object.fromEntries(changed.map((k) => [k, before[k]])), reason });
     return { account, applied: true };
+  }
+
+  returnAdoptedAccountToLocal(id: string): AccountRow {
+    return this.tx(() => this.applyAccountUpdate(id, { source: "local", leasedFrom: null, lastLoginAt: null, refreshTokenExpiresAt: null, statusReason: "Native backup retained; credentials absent. Log in locally or adopt a new lease." }, "native backup retained; credentials absent").account);
+  }
+
+  setAccountLease(id: string, leasedFrom: NonNullable<AccountRow["leasedFrom"]>): AccountRow {
+    return this.tx(() => {
+      const before = this.mustGetAccount(id);
+      if (before.source === "leased" && JSON.stringify(before.leasedFrom) === JSON.stringify(leasedFrom)) return before;
+      return this.applyAccountUpdate(id, { source: "leased", leasedFrom }, "lease installed").account;
+    });
   }
 
   /**

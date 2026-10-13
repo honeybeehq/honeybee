@@ -422,7 +422,7 @@ test("v7.migration: a v6 store opens as v7 — bees.account added, accounts/acco
     try {
       const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
       assert.equal(Number(version.value), SCHEMA_VERSION);
-      assert.equal(SCHEMA_VERSION, 35);
+      assert.equal(SCHEMA_VERSION, 36);
       const cols = (check.prepare("SELECT name FROM pragma_table_info('bees')").all() as Array<{ name: string }>).map((c) => c.name);
       assert.ok(cols.includes("account"));
       const tables = (check.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{ name: string }>).map((t) => t.name);
@@ -477,7 +477,7 @@ test("v27 bridge reopens a disabled pilot store without losing ordinary state or
         { ...(check.prepare("SELECT phase, generation, expires_at, operation_key, updated_at FROM account_credential_authorities WHERE account = ?").get(account.id) as Record<string, unknown>) },
         { phase: "disabled", generation: 4, expires_at: 9_999_999, operation_key: "rollout-4", updated_at: 7_777 },
       );
-      assert.equal((check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string }).value, "35");
+      assert.equal((check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string }).value, "36");
     } finally {
       check.close();
     }
@@ -802,4 +802,20 @@ test("v18.touchAccount: re-publishes the row (account.put) with an honest `chang
   } finally {
     h.cleanup();
   }
+});
+
+test("v36 migrates native accounts as local without credential material", () => {
+  const h = harness();
+  try {
+    const store = h.open();
+    store.createAccount({ id: "claude-native", harness: "claude", homePath: "/tmp/native-home", label: "native" });
+    store.close();
+    const old = new DatabaseSync(h.path);
+    old.exec("ALTER TABLE accounts DROP COLUMN source; ALTER TABLE accounts DROP COLUMN leased_from; UPDATE meta SET value = '35' WHERE key = 'schema_version'");
+    old.close();
+    const migrated = h.open();
+    assert.equal(migrated.getAccount("claude-native")?.source, "local");
+    assert.equal(migrated.getAccount("claude-native")?.leasedFrom, null);
+    migrated.close();
+  } finally { h.cleanup(); }
 });

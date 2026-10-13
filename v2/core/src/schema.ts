@@ -159,7 +159,7 @@
  * v35 — a dying login is visible: `accounts.status_reason` + `accounts.refresh_token_expires_at`;
  * the credential authority gains the terminal `login_required` phase, `refresh_token_expires_at`
  * and the secret-free last refresh `failure` (table rebuild, rows carried across by name). */
-export const SCHEMA_VERSION = 35;
+export const SCHEMA_VERSION = 36;
 
 export const AUTH_INTERRUPTIONS_TABLE_SQL = `
 CREATE TABLE IF NOT EXISTS auth_interruptions (
@@ -539,6 +539,8 @@ CREATE INDEX IF NOT EXISTS seals_bee ON seals(bee_id, created_at);
 -- exhaustion evidence (rotation cool-off).
 CREATE TABLE IF NOT EXISTS accounts (
   id            TEXT PRIMARY KEY,
+  source        TEXT NOT NULL DEFAULT 'local' CHECK (source IN ('local','leased')),
+  leased_from   TEXT,
   harness       TEXT NOT NULL,
   home_path     TEXT NOT NULL,
   label         TEXT NOT NULL,
