@@ -150,7 +150,10 @@ test("central Codex: isolated daemon rotates once, publishes access-only, refres
     console.log("empty runtime mirror refused before provider call");
     const previous = expected;
     await Promise.all([cli("refresh", "refresh"), cli("refresh", "refresh")]);
-    const refreshed = await rpc<AccountCredentialAuthority>("account.credentials.status", { id });
+    const refreshed = await waitFor(async () => {
+      const state = await rpc<AccountCredentialAuthority>("account.credentials.status", { id });
+      return state.phase === "ready" ? state : null;
+    }, "codex refresh settled ready", 30000);
     assert.equal(refreshed.generation, 3);
     assert.equal(requests.length, 2);
     assert.ok(home().tokens.id_token === "fixture-rotated-id");
@@ -170,7 +173,10 @@ test("central Codex: isolated daemon rotates once, publishes access-only, refres
     refreshOnlyInAuthority();
     refused = true;
     await assert.rejects(() => rpc("account.credentials.refresh", { id, idempotencyKey: "rejected" }), (error: unknown) => error instanceof RpcError && error.code === "account_unavailable");
-    const failed = await rpc<AccountCredentialAuthority>("account.credentials.status", { id });
+    const failed = await waitFor(async () => {
+      const state = await rpc<AccountCredentialAuthority>("account.credentials.status", { id });
+      return state.phase === "login_required" ? state : null;
+    }, "codex refresh settled login_required", 30000);
     assert.equal(failed.phase, "login_required");
     assert.equal(failed.failure?.error, "invalid_grant");
     assert.equal(failed.failure?.retryAt, null);
@@ -272,15 +278,15 @@ test("central Codex review: running-bee ownership fence, bad access preserves ro
       badAccess = mode;
       await assert.rejects(() => client!.request("account.credentials.refresh", { id, idempotencyKey: `bad-${mode}` }), (error: unknown) => error instanceof RpcError && error.message.includes("rotated refresh chain was saved"));
       assert.ok(JSON.parse(readFileSync(authorityPath, "utf8")).document.tokens.refresh_token === expected);
+      await waitFor(async () => (await client!.request<AccountCredentialAuthority>("account.credentials.status", { id })).phase === "uncertain" ? true : null, "codex refresh settled uncertain", 30000);
       assert.ok(JSON.parse(readFileSync(authorityPath, "utf8")).document.tokens.access_token === previousAccess, "previous access retained privately");
       for (const path of [join(home, "auth.json"), join(home, ".codex", "auth.json"), join(vault, "auth.json")]) {
         assert.ok(JSON.parse(readFileSync(path, "utf8")).tokens.access_token === previousAccess, "previous access retained for runtime");
         assert.equal(JSON.parse(readFileSync(path, "utf8")).tokens.refresh_token, "");
       }
-      assert.equal((await client.request<AccountCredentialAuthority>("account.credentials.status", { id })).phase, "uncertain");
       badAccess = null;
       await client.request("account.credentials.refresh", { id, idempotencyKey: `settle-${mode}` });
-      assert.equal((await client.request<AccountCredentialAuthority>("account.credentials.status", { id })).phase, "ready");
+      await waitFor(async () => (await client!.request<AccountCredentialAuthority>("account.credentials.status", { id })).phase === "ready" ? true : null, "codex refresh settled ready", 30000);
       console.log(`${mode} 2xx access: rotated refresh token saved; next refresh used new chain and restored ready`);
     }
     nullRefresh = true;
@@ -294,6 +300,7 @@ test("central Codex review: running-bee ownership fence, bad access preserves ro
     console.log("null refresh response preserves chain; healthy disable restores canonical native chain and leaves legacy mirror access-only");
     refuse = true;
     await assert.rejects(() => client!.request("account.credentials.refresh", { id, idempotencyKey: "reject" }), (error: unknown) => error instanceof RpcError && error.message.includes("credentials disable"));
+    await waitFor(async () => (await client!.request<AccountCredentialAuthority>("account.credentials.status", { id })).phase === "login_required" ? true : null, "Codex invalid_grant settled login_required", 30000);
     await client.request("account.credentials.disable", { id, idempotencyKey: "disable" });
     for (const path of [join(home, "auth.json"), join(home, ".codex", "auth.json"), join(vault, "auth.json")]) assert.equal(JSON.parse(readFileSync(path, "utf8")).tokens.refresh_token, "");
     const login = await client.request<{ flow: { id: string } }>("account.login.start", { id, methodId: "codex-device", remote: true });
@@ -304,7 +311,7 @@ test("central Codex review: running-bee ownership fence, bad access preserves ro
     expected = JSON.parse(readFileSync(join(home, "auth.json"), "utf8")).tokens.refresh_token;
     refuse = false;
     await client.request("account.credentials.enable", { id, idempotencyKey: "recover" });
-    assert.equal((await client.request<AccountCredentialAuthority>("account.credentials.status", { id })).phase, "ready");
+    await waitFor(async () => (await client!.request<AccountCredentialAuthority>("account.credentials.status", { id })).phase === "ready" ? true : null, "codex refresh settled ready", 30000);
     for (const path of files(dir).filter(path => path !== authorityPath)) assert.ok(refreshes.every(secret => !readFileSync(path).includes(Buffer.from(secret))) && !readFileSync(path).includes(Buffer.from(expected)), "all refreshed chains confined to authority");
     console.log("recovery end to end: login_required → disable (all mirrors scrubbed) → fake native login succeeded → enable ready; homes/vault refresh scan zero outside authority");
   } finally {

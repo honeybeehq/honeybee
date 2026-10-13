@@ -24,7 +24,7 @@ function files(root: string): string[] {
 }
 
 test("central Grok: isolated daemon rotates once, publishes access-only, refreshes early and stops at invalid_grant; native path stays native", async () => {
-  const { dir, cleanup } = makeDaemonDir({ accounts: { centralRefreshAheadMs: 3_600_000, centralRefreshMinIntervalMs: 1800, centralRefreshRetryBaseMs: 100 } });
+  const { dir, cleanup } = makeDaemonDir({ accounts: { centralRefreshAheadMs: 3_600_000, centralRefreshMinIntervalMs: 1800, centralRefreshRetryBaseMs: 60_000 } });
   const id = "grok-test-example.com";
   const secrets: string[] = [];
   const requests: string[] = [];
@@ -77,8 +77,10 @@ test("central Grok: isolated daemon rotates once, publishes access-only, refresh
     const native = "grok-native-example.com";
     seed(native, 3600, randomUUID());
     const nativeRaw = readFileSync(join(dir, "vault", "grok", native, "auth.json"), "utf8");
+    const clockOffset = join(dir, "clock-offset");
+    writeFileSync(clockOffset, "0");
     const preload = join(dir, "no-provider.mjs");
-    writeFileSync(preload, `const originalFetch = globalThis.fetch; globalThis.fetch = (url, options) => { const target = String(url); if (target.startsWith("http://127.0.0.1:")) return originalFetch(url, options); if (target === "https://cli-chat-proxy.grok.com/v1/billing?format=credits") return Promise.resolve(new Response(JSON.stringify({config:{creditUsagePercent:0}}), {status:200})); throw new Error("External provider access forbidden in isolated proof"); };`);
+    writeFileSync(preload, `import { readFileSync } from "node:fs"; const nativeNow = Date.now; Date.now = () => nativeNow() + Number(readFileSync(${JSON.stringify(clockOffset)}, "utf8")); const originalFetch = globalThis.fetch; globalThis.fetch = (url, options) => { const target = String(url); if (target.startsWith("http://127.0.0.1:")) return originalFetch(url, options); if (target === "https://cli-chat-proxy.grok.com/v1/billing?format=credits") return Promise.resolve(new Response(JSON.stringify({config:{creditUsagePercent:0}}), {status:200})); throw new Error("External provider access forbidden in isolated proof"); };`);
     daemon = await startDaemon(dir, { env: { NODE_OPTIONS: `--import=${preload}`, HIVE_GROK_OAUTH_TOKEN_URL: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, HOME: dir, GROK_HOME: join(dir, "unused") } });
     client = await daemon.client();
     const rpcResults: unknown[] = [];
@@ -155,7 +157,10 @@ test("central Grok: isolated daemon rotates once, publishes access-only, refresh
     console.log("ownership: foreign refresh chain and access-only principal refused without HTTP call or overwrite; central lease access-only");
     const previous = expected;
     await Promise.all([cli("refresh", "refresh"), cli("refresh", "refresh")]);
-    const refreshed = await rpc<AccountCredentialAuthority>("account.credentials.status", { id });
+    const refreshed = await waitFor(async () => {
+      const state = await rpc<AccountCredentialAuthority>("account.credentials.status", { id });
+      return state.phase === "ready" ? state : null;
+    }, "grok refresh settled ready", 30000);
     assert.equal(refreshed.generation, 3);
     assert.equal(requests.length, 2);
     assert.ok(requests[1] === previous && expected !== previous);
@@ -174,22 +179,29 @@ test("central Grok: isolated daemon rotates once, publishes access-only, refresh
     const previousAccess = home()[scope].key;
     unusableResponse = true;
     await assert.rejects(() => rpc("account.credentials.refresh", { id, idempotencyKey: "unusable-access" }), (error: unknown) => error instanceof RpcError && error.code === "account_unavailable");
-    const pending = await rpc<AccountCredentialAuthority>("account.credentials.status", { id });
+    const pending = await waitFor(async () => {
+      const state = await rpc<AccountCredentialAuthority>("account.credentials.status", { id });
+      return state.phase === "uncertain" ? state : null;
+    }, "grok refresh settled uncertain", 30000);
     assert.equal(pending.phase, "uncertain");
     assert.equal(pending.generation, 7);
     assert.ok(authority().document[scope].refresh_token === expected);
     assert.ok(home()[scope].key === previousAccess && home()[scope].refresh_token === undefined);
+    writeFileSync(clockOffset, "60000");
     const recovered = await waitFor(async () => {
       const state = await rpc<AccountCredentialAuthority>("account.credentials.status", { id });
       return state.phase === "ready" && state.generation === 8 ? state : null;
-    }, "retry with rotated chain after unusable access");
+    }, "retry with rotated chain after unusable access", 30000);
     assert.ok(recovered.expiresAt! > Date.now());
     assert.equal(requests.length, 7);
     assert.equal(new Set(requests).size, requests.length);
     console.log("rotated unusable access: new refresh chain retained, phase uncertain, prior access-only copy preserved; retry uses new token and reaches ready generation=8");
     refused = true;
     await assert.rejects(() => rpc("account.credentials.refresh", { id, idempotencyKey: "rejected" }), (error: unknown) => error instanceof RpcError && error.code === "account_unavailable");
-    const failed = await rpc<AccountCredentialAuthority>("account.credentials.status", { id });
+    const failed = await waitFor(async () => {
+      const state = await rpc<AccountCredentialAuthority>("account.credentials.status", { id });
+      return state.phase === "login_required" ? state : null;
+    }, "grok refresh settled login_required", 30000);
     assert.equal(failed.phase, "login_required");
     await assert.rejects(() => rpc("account.login.start", { id }), (error: unknown) => error instanceof RpcError && error.code === "login_flow_refused" && error.message.includes("credentials disable"));
     assert.equal(failed.failure?.error, "invalid_grant");
@@ -296,7 +308,7 @@ test("central Grok review: live ownership fences, saved publication survives res
     writeFileSync(homePath, homeRaw);
     daemon = await startDaemon(dir, { env });
     client = await daemon.client();
-    await waitFor(async () => (await client!.request<AccountCredentialAuthority>("account.credentials.status", { id })).phase === "ready" ? true : null, "saved publication recovered");
+    await waitFor(async () => (await client!.request<AccountCredentialAuthority>("account.credentials.status", { id })).phase === "ready" ? true : null, "saved publication recovered", 30000);
     assert.equal(refreshes, 2);
     assert.ok(JSON.parse(readFileSync(homePath, "utf8"))[scope].refresh_token === undefined);
     await client.request("account.credentials.disable", { id, idempotencyKey: "healthy-disable" });
@@ -306,7 +318,10 @@ test("central Grok review: live ownership fences, saved publication survives res
     malformedExpiry = true;
     const beforeMalformed = refreshes;
     await assert.rejects(() => client!.request("account.credentials.refresh", { id, idempotencyKey: "malformed-expiry" }), (error: unknown) => error instanceof RpcError && error.message.includes("malformed expiry"));
-    const terminal = await client.request<AccountCredentialAuthority>("account.credentials.status", { id });
+    const terminal = await waitFor(async () => {
+      const state = await client!.request<AccountCredentialAuthority>("account.credentials.status", { id });
+      return state.phase === "login_required" ? state : null;
+    }, "malformed expiry settled login_required", 30000);
     assert.equal(terminal.phase, "login_required");
     assert.equal(terminal.failure?.error, "invalid_token_response");
     assert.equal(terminal.failure?.retryAt, null);
@@ -319,7 +334,11 @@ test("central Grok review: live ownership fences, saved publication survives res
     await sleep(1200);
     await assert.rejects(() => client!.request("account.credentials.refresh", { id, idempotencyKey: "no-second-rotation" }), (error: unknown) => error instanceof RpcError && error.message.includes("malformed expiry"));
     assert.equal(refreshes, beforeMalformed + 1);
-    assert.equal((await client.request<AccountCredentialAuthority>("account.credentials.status", { id })).failure?.retryAt, null);
+    const restartedTerminal = await waitFor(async () => {
+      const state = await client!.request<AccountCredentialAuthority>("account.credentials.status", { id });
+      return state.phase === "login_required" ? state : null;
+    }, "restarted malformed expiry settled login_required", 30000);
+    assert.equal(restartedTerminal.failure?.retryAt, null);
     console.log("Grok malformed expiry: login_required invalid_token_response retryAt=null; new private chain retained; one HTTP call total even across restart/forced refresh");
 
     client.close(); client = null;
