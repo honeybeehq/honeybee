@@ -116,6 +116,7 @@ export const DAEMON_CAPABILITIES = [
    */
   "account.lease.v1",
   "account.lease.install.v1",
+  "account.credentials.native_backup.v1",
   "account.credentials.pilot.v1",
   /**
    * v35: a dying login is visible. Account rows carry `statusReason` and
@@ -225,6 +226,9 @@ export const RPC_ERROR_CODES = [
   "account_leased",
   "account_lease_conflict",
   "account_lease_ended",
+  "native_backup_absent",
+  "native_backup_invalid",
+  "native_backup_restore_refused",
   "account_adopt_refused",
   "capability_missing",
   "reconnect_unsupported", "reconnect_not_ready", "reconnect_not_found",
@@ -472,6 +476,8 @@ export const RPC_VERBS = [
   "account.credentialsRestored",
   "account.interruptions",
   "account.credentials.status",
+  "account.credentials.nativeBackup",
+  "account.credentials.restoreNative",
   "account.credentials.enable",
   "account.credentials.refresh",
   "account.credentials.disable",
@@ -886,6 +892,19 @@ export interface AccountBackfillResult extends DedupMarkers {
   dryRun: boolean;
   bound: Array<{ beeId: string; account: string; home: string }>;
   unmatched: Array<{ beeId: string; home: string }>;
+}
+
+export interface AccountNativeBackupStatus {
+  exists: boolean;
+  backedUpAt: number | null;
+}
+
+export interface AccountNativeBackupRestoreResult {
+  account: MirrorAccountRow;
+  backupAt: number;
+  restoredAt: number;
+  files: string[];
+  keychainRestored: boolean;
 }
 
 export interface AccountLeaseInstallParams {

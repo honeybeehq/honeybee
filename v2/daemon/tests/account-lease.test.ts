@@ -29,7 +29,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { tmpdir, homedir } from "node:os";
 import { join } from "node:path";
 import { openCoreStore, parseClaudeCredentials, type CoreStore } from "../../core/src/index.ts";
 import type { ClaudeRefreshResult, RefreshedClaudeToken } from "../src/claudeRefreshTransport.ts";
@@ -2028,9 +2028,10 @@ test("peer lease adoption preserves native material and refuses working or opera
     const accounts = service(r);
     const raw = JSON.stringify({ claudeAiOauth: { accessToken: "FAKE-PEER-ACCESS", refreshToken: "", expiresAt: r.now() + HOUR } });
     const input = { id: "claude-peer", harness: "claude", label: "peer", shareId: "share-00000001", authorityNodeId: "authority-test", epoch: 1, expiresAt: (r.now() + HOUR) / 1000, files: [{ homeRelPath: ".credentials.json", contentB64: Buffer.from(raw).toString("base64"), mode: 0o600 }] };
-    const working = addAccount(r, "claude", "peer", { home: { ".credentials.json": raw } });
+    const nativeRaw = JSON.stringify({ claudeAiOauth: { accessToken: "FAKE-NATIVE-ACCESS", refreshToken: "FAKE-NATIVE-REFRESH", expiresAt: r.now() + HOUR } });
+    const working = addAccount(r, "claude", "peer", { home: { ".credentials.json": nativeRaw } });
     await assert.rejects(accounts.installLease({ ...input, adopt: true }), (error: unknown) => error instanceof RpcError && error.code === "account_adopt_refused");
-    assert.equal(readFileSync(join(working.homePath, ".credentials.json"), "utf8"), raw);
+    assert.equal(readFileSync(join(working.homePath, ".credentials.json"), "utf8"), nativeRaw);
     r.store.setAccountStatus(working.id, "auth_needed", "dummy broken login");
     r.store.pauseAccount(working.id, { by: "operator", owner: null });
     await assert.rejects(accounts.installLease({ ...input, adopt: true }), (error: unknown) => error instanceof RpcError && error.code === "account_adopt_refused");
@@ -2038,7 +2039,7 @@ test("peer lease adoption preserves native material and refuses working or opera
     const installed = await accounts.installLease({ ...input, adopt: true });
     assert.equal(installed.adopted, true);
     assert.ok(installed.backupPath);
-    assert.equal(readFileSync(join(installed.backupPath, "home", ".credentials.json"), "utf8"), raw);
+    assert.equal(readFileSync(join(installed.backupPath, "home", ".credentials.json"), "utf8"), nativeRaw);
     assert.equal(installed.account.source, "leased");
     assert.deepEqual(installed.account.leasedFrom, { authorityNodeId: input.authorityNodeId, shareId: input.shareId, epoch: 1, expiresAt: input.expiresAt, endedAt: null, adoptedAt: r.now() });
     await assert.rejects(accounts.captureAccount(installed.account), (error: unknown) => error instanceof RpcError && error.code === "account_leased");
@@ -2119,5 +2120,42 @@ test("ended leases preserve bee bindings, accept a newer authority epoch and cle
     r.store.setBeeAccount(bee.id, null);
     accounts.leaseCleanupTick();
     assert.equal(r.store.getAccount(installed.account.id), null);
+  } finally { r.cleanup(); }
+});
+
+test("native backups exclude access-only leases, enforce permissions and retain only the latest genuine chain", async () => {
+  const r = rig();
+  try {
+    const accounts = service(r);
+    assert.throws(() => accounts.leaseMaterialCodecs.get("claude")!.keychain!.assertHome(join(homedir(), ".claude")), (error: unknown) => error instanceof RpcError && error.code === "account_lease_conflict");
+    const accessOnly = JSON.stringify({ claudeAiOauth: { accessToken: "FAKE-ACCESS", refreshToken: "", expiresAt: r.now() + HOUR } });
+    const native = JSON.stringify({ claudeAiOauth: { accessToken: "FAKE-NATIVE-ACCESS", refreshToken: "FAKE-NATIVE-REFRESH", expiresAt: r.now() + HOUR } });
+    const row = addAccount(r, "claude", "backup", { status: "auth_needed", home: { ".credentials.json": accessOnly } });
+    const input = { id: row.id, harness: "claude", label: "backup", shareId: "share-00000001", authorityNodeId: "authority-test", epoch: 1, expiresAt: Math.floor((r.now() + HOUR) / 1000), adopt: true, files: [{ homeRelPath: ".credentials.json", contentB64: Buffer.from(accessOnly).toString("base64"), mode: 0o600 }] };
+    assert.equal((await accounts.installLease(input)).backupPath, null);
+    assert.deepEqual(accounts.nativeBackupStatus(r.store.getAccount(row.id)!), { exists: false, backedUpAt: null });
+    await accounts.removeLease(row.id);
+    writeFileSync(join(row.homePath, ".credentials.json"), native, { mode: 0o644 });
+    const first = await accounts.installLease(input);
+    assert.ok(first.backupPath);
+    assert.equal(statSync(first.backupPath).mode & 0o777, 0o700);
+    assert.equal(statSync(join(first.backupPath, "home", ".credentials.json")).mode & 0o777, 0o600);
+    await accounts.removeLease(row.id);
+    const bee = r.store.createBee({ name: "backup-bee", agent: "claude", substrate: "hsr", cwd: r.dir, account: row.id }).bee;
+    await assert.rejects(accounts.restoreNativeBackup(row.id), (error: unknown) => error instanceof RpcError && error.code === "native_backup_restore_refused");
+    r.store.updateRuntimeState(bee.id, 1, "stopped", { exitCause: "stopped_by_user" });
+    const restored = await accounts.restoreNativeBackup(row.id);
+    assert.equal(restored.account.source, "local");
+    assert.equal(restored.account.status, "auth_needed");
+    assert.equal(readFileSync(join(row.homePath, ".credentials.json"), "utf8"), native);
+    await assert.rejects(accounts.restoreNativeBackup(row.id), (error: unknown) => error instanceof RpcError && error.code === "native_backup_restore_refused");
+    r.setNow(r.now() + 1);
+    const second = await accounts.installLease(input);
+    assert.ok(second.backupPath);
+    assert.equal(existsSync(first.backupPath), false);
+    assert.equal(accounts.nativeBackupStatus(r.store.getAccount(row.id)!).backedUpAt, r.now());
+    await accounts.removeLease(row.id);
+    assert.equal(accounts.credentialHealthOf(r.store.getAccount(row.id)!), "absent");
+    assert.equal(existsSync(second.backupPath), true);
   } finally { r.cleanup(); }
 });

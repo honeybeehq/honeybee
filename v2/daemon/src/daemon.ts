@@ -1575,6 +1575,11 @@ export class HiveDaemon {
         return this.rpcAccountLoginRetry(params);
       case "account.login.cancel":
         return this.withIdempotency(verb, params, () => this.rpcAccountLoginCancel(params));
+      case "account.credentials.nativeBackup":
+        return this.mustAccounts().nativeBackupStatus(this.requireAccount(params));
+      case "account.credentials.restoreNative": {
+        return this.mustAccounts().restoreNativeBackup(this.requireAccount(params).id).then(result => ({ ...result, account: this.mirrorAccount(result.account) }));
+      }
       case "account.credentials.status":
         return this.mustAccounts().authorityFor(this.requireAccount(params))?.status(this.requireAccount(params)) ?? null;
       case "account.credentials.enable":

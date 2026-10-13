@@ -778,7 +778,7 @@ const ACCOUNT_USAGE =
   "       hive account remove <selector> | penalty <selector> <0-100> | ceiling <selector> <1-100|off>\n" +
   "       hive account pause|unpause <selector> [--by operator|quota|lease] [--owner <id>] [--force]\n" +
   "       hive account login <selector> [--method <id>] [--remote] [--no-wait] [--replace-account] | login-status <selector> | login-cancel <selector>\n" +
-  "       hive account credentials <status|enable|refresh|disable> <selector>\n" +
+  "       hive account credentials <status|enable|refresh|disable|backup-status|restore-native> <selector>\n" +
   "       hive account lease install --file payload.json | lease remove <id>\n" +
   "       hive account capture <selector> | verify <selector> | limits [<selector>] | reset <selector> [--credit-id id] --idempotency-key key\n" +
   "       hive account restored <selector> | interruptions [<selector>]\n" +
@@ -1078,13 +1078,27 @@ async function cmdAccount(ctx: CliContext, parsed: Parsed): Promise<number> {
     case "credentials": {
       const action = parsed.positional[2];
       const id = parsed.positional[3];
-      if (!id || !["status", "enable", "refresh", "disable"].includes(action ?? "")) {
-        throw new Error("Usage: hive account credentials <status|enable|refresh|disable> <account>");
+      if (!id || !["status", "enable", "refresh", "disable", "restore-native", "backup-status"].includes(action ?? "")) {
+        throw new Error("Usage: hive account credentials <status|enable|refresh|disable|backup-status|restore-native> <account>");
+      }
+      if (action === "restore-native" || action === "backup-status") {
+        const result = await withClient(ctx, c => {
+          if (!c.capabilities.includes("account.credentials.native_backup.v1")) throw new RpcError("capability_missing", "Update Honeybee: account.credentials.native_backup.v1 is required.");
+          return c.request<Record<string, unknown>>(action === "restore-native" ? "account.credentials.restoreNative" : "account.credentials.nativeBackup", { id }, ACCOUNT_LIMITS_RPC_TIMEOUT_MS);
+        });
+        emit(ctx, [action === "restore-native" ? `${id}: native backup restored; validate or log in before placing work` : `${id}: native backup ${result.exists ? `exists from ${new Date(result.backedUpAt as number).toISOString()}` : "absent"}`], result, false);
+        return 0;
       }
       const result = await withClient(ctx, c => c.request<import("../../core/src/index.ts").AccountCredentialAuthority | null>(
         `account.credentials.${action}` as import("../../daemon/src/protocol.ts").RpcVerb,
         { id, ...(action === "status" ? {} : { idempotencyKey: key ?? randomUUID() }) }, ACCOUNT_LIMITS_RPC_TIMEOUT_MS));
-      emit(ctx, renderCredentialAuthority(id, result), result, false);
+      if (action === "status") {
+        const backup = await withClient(ctx, c => {
+          if (!c.capabilities.includes("account.credentials.native_backup.v1")) throw new RpcError("capability_missing", "Update Honeybee: account.credentials.native_backup.v1 is required.");
+          return c.request<{ exists: boolean; backedUpAt: number | null }>("account.credentials.nativeBackup", { id });
+        });
+        emit(ctx, [...renderCredentialAuthority(id, result), `  native backup: ${backup.exists ? `exists from ${new Date(backup.backedUpAt!).toISOString()}` : "absent"}`], { authority: result, nativeBackup: backup }, false);
+      } else emit(ctx, renderCredentialAuthority(id, result), result, false);
       return 0;
     }
     case "capture": {

@@ -14,7 +14,7 @@
  */
 import { execFile, spawn as spawnChild } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, lstatSync, renameSync, rmSync, statSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, lstatSync, renameSync, rmSync, statSync, realpathSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -89,7 +89,7 @@ import {
   type ActivationResult,
 } from "./activation.ts";
 import type { ResolvedNodeConfig } from "./config.ts";
-import { readClaudeKeychain, readClaudeKeychainState, writeClaudeKeychainEntry, removeClaudeKeychainEntry, type KeychainRemover, type KeychainState, type KeychainStateReader, type KeychainReader, type KeychainWriter } from "./keychain.ts";
+import { readClaudeKeychain, readClaudeKeychainState, writeClaudeKeychainEntry, claudeKeychainService, removeClaudeKeychainEntry, type KeychainRemover, type KeychainState, type KeychainStateReader, type KeychainReader, type KeychainWriter } from "./keychain.ts";
 import { atomicWriteFileSync } from "./homeDefaults.ts";
 import { withClaudeRefreshLock } from "./claudeRefreshLock.ts";
 import { createLeaseMaterialCodecs, type LeaseMaterialCodec } from "./leaseMaterial.ts";
@@ -943,6 +943,7 @@ export class AccountsService {
       return state;
     };
     this.leaseMaterialCodecs = createLeaseMaterialCodecs({
+      assertHome: home => { if (claudeKeychainService(home) === "Claude Code-credentials" || existsSync(home) && claudeKeychainService(realpathSync(home)) === "Claude Code-credentials") throw new RpcError("account_lease_conflict", "Native backup and lease operations require a per-home Keychain item; the default/global item is excluded."); },
       read: centralKeychainReader,
       publish: (account, raw, state) => this.publishClaudeMaterial(account, JSON.parse(raw) as Record<string, unknown>, state),
       remove: opts.keychainRemover ?? removeClaudeKeychainEntry,
@@ -1147,6 +1148,145 @@ export class AccountsService {
     return current;
   }
 
+  private nativeMaterialKind(harness: string, raw: string): "native" | "access_only" | "unknown" {
+    let document: unknown;
+    try { document = JSON.parse(raw); } catch { return "unknown"; }
+    if (harness === "claude") {
+      const parsed = parseClaudeCredentials(raw);
+      return parsed ? hasRefreshToken(parsed) ? "native" : "access_only" : "unknown";
+    }
+    let refresh = false;
+    let access = false;
+    const walk = (value: unknown) => {
+      if (value === null || typeof value !== "object") return;
+      for (const [key, child] of Object.entries(value)) {
+        if (["refreshToken", "refresh_token", "refresh"].includes(key) && typeof child === "string" && child.length > 0) refresh = true;
+        if (["accessToken", "access_token", "access"].includes(key) && typeof child === "string" && child.length > 0) access = true;
+        walk(child);
+      }
+    };
+    walk(document);
+    return refresh ? "native" : access ? "access_only" : "unknown";
+  }
+
+  private latestNativeBackup(account: AccountRow): { path: string; at: number } | null {
+    const root = join(this.cfg.accounts.vaultDir, ".native-backup", account.id);
+    if (!existsSync(root)) return null;
+    this.leaseFilePath(root, "metadata.json");
+    const codec = this.leaseMaterialCodecs.get(account.harness);
+    if (!codec) return null;
+    const entries = readdirSync(root, { withFileTypes: true }).filter(entry => entry.isDirectory()).map(entry => {
+      const at = Number(entry.name.split("-")[0]);
+      if (!Number.isSafeInteger(at) || at < 0) throw new RpcError("native_backup_invalid", "Native backup directory has an invalid timestamp.");
+      const path = join(root, entry.name);
+      const kinds = [join("home", codec.primaryFile), join("vault", codec.primaryFile), "keychain.json"].map(rel => {
+        const raw = readIfFile(this.leaseFilePath(path, rel));
+        return raw === null ? null : this.nativeMaterialKind(account.harness, raw);
+      });
+      if (kinds.includes("unknown")) throw new RpcError("native_backup_invalid", "Native backup provenance cannot be established; preserve it for operator review.");
+      const genuine = kinds.includes("native");
+      return { path, at, genuine };
+    }).filter(entry => entry.genuine).sort((a, b) => b.at - a.at || b.path.localeCompare(a.path));
+    return entries[0] ?? null;
+  }
+
+  nativeBackupStatus(account: AccountRow): { exists: boolean; backedUpAt: number | null } {
+    const backup = this.latestNativeBackup(account);
+    return { exists: backup !== null, backedUpAt: backup?.at ?? null };
+  }
+
+  private pruneNativeBackups(account: AccountRow, keep: string | null): void {
+    const root = join(this.cfg.accounts.vaultDir, ".native-backup", account.id);
+    if (!existsSync(root)) return;
+    for (const entry of readdirSync(root, { withFileTypes: true })) {
+      if (entry.isDirectory() && join(root, entry.name) !== keep) rmSync(join(root, entry.name), { recursive: true });
+    }
+  }
+
+  private backupNativeMaterial(account: AccountRow, state: KeychainState): string | null {
+    const codec = this.leaseMaterialCodecs.get(account.harness)!;
+    const sources: { name: string; root: string }[] = [];
+    for (const [name, root] of [["home", account.homePath], ["vault", this.vaultDirOf(account)]] as const) {
+      const raw = readIfFile(this.leaseFilePath(root, codec.primaryFile));
+      if (raw === null) continue;
+      const kind = this.nativeMaterialKind(account.harness, raw);
+      if (kind === "unknown") throw new RpcError("account_adopt_refused", "Native credential provenance cannot be established; preserve it and resolve ownership before adopting.");
+      if (kind === "native") sources.push({ name, root });
+    }
+    const keychainNative = state.status === "present" && this.nativeMaterialKind(account.harness, state.raw) === "native";
+    if (state.status === "present" && this.nativeMaterialKind(account.harness, state.raw) === "unknown") throw new RpcError("account_adopt_refused", "Keychain credential provenance cannot be established; preserve it before adopting.");
+    if (sources.length === 0 && !keychainNative) {
+      this.pruneNativeBackups(account, this.latestNativeBackup(account)?.path ?? null);
+      return null;
+    }
+    const root = join(this.cfg.accounts.vaultDir, ".native-backup", account.id);
+    const path = join(root, `${this.now()}-${randomUUID()}`);
+    mkdirSync(path, { recursive: true, mode: 0o700 });
+    chmodSync(dirname(root), 0o700);
+    chmodSync(root, 0o700);
+    chmodSync(path, 0o700);
+    if (keychainNative && state.status === "present") atomicWriteFileSync(join(path, "keychain.json"), state.raw, 0o600);
+    for (const source of sources) {
+      for (const rel of this.credentialPaths(account)) {
+        const from = this.leaseFilePath(source.root, rel);
+        if (!existsSync(from)) continue;
+        const raw = readIfFile(from);
+        if (raw !== null && this.nativeMaterialKind(account.harness, raw) === "access_only") continue;
+        const to = join(path, source.name, rel);
+        mkdirSync(dirname(to), { recursive: true, mode: 0o700 });
+        renameSync(from, to);
+        chmodSync(to, 0o600);
+      }
+    }
+    this.pruneNativeBackups(account, path);
+    return path;
+  }
+
+  restoreNativeBackup(id: string): Promise<{ account: AccountRow; backupAt: number; restoredAt: number; files: string[]; keychainRestored: boolean }> {
+    return this.withLeaseWrite(id, async () => {
+      const account = this.store.getAccount(id);
+      if (!account) throw new RpcError("account_not_found", "Account not found.");
+      const codec = this.leaseMaterialCodecs.get(account.harness);
+      const backup = this.latestNativeBackup(account);
+      if (account.source !== "local") throw new RpcError("account_leased", "Remove the lease before restoring a native backup.");
+      if (!codec || !backup) throw new RpcError("native_backup_absent", "No genuine native backup exists for this account.");
+      const assertAllowed = () => {
+        const current = this.store.getAccount(id)!;
+        if (current.source !== "local") throw new RpcError("account_leased", "Remove the lease before restoring a native backup.");
+        if (this.store.beesOnAccount(id).some(bee => { const runtime = this.store.currentRuntime(bee.id); return runtime !== null && runtime.state !== "stopped"; }) || this.store.listUnreconciledAccountAdmissions(this.now(), { account: id }).length > 0 || this.authorityFor(current)?.enabled(current) || this.authorityFor(current)?.busy(current) || this.refreshBusy(current) || this.nativeKeychainSeeds.has(id) || this.store.activeLoginFlow(id)) throw new RpcError("native_backup_restore_refused", "Stop every bee and finish account credential operations before restoring a native backup.");
+        if (this.credentialed(current)) throw new RpcError("native_backup_restore_refused", "The account already has credentials; a native backup will not overwrite them.");
+      };
+      assertAllowed();
+      const restore = async () => {
+        codec.keychain?.assertHome(account.homePath);
+        const state = codec.keychain ? await codec.keychain.read(account.homePath) : { status: "unavailable" } as const;
+        assertAllowed();
+        if (state.status !== "absent" && state.status !== "unavailable") throw new RpcError("native_backup_restore_refused", "The per-home Keychain is present or unreadable; preserve it before restoring.");
+        let keychainRestored = false;
+        const files: string[] = [];
+        for (const [name, root] of [["vault", this.vaultDirOf(account)], ["home", account.homePath]] as const) {
+          for (const rel of this.credentialPaths(account)) {
+            const raw = readIfFile(this.leaseFilePath(backup.path, join(name, rel)));
+            if (raw === null || this.nativeMaterialKind(account.harness, raw) === "access_only") continue;
+            const target = this.leaseFilePath(root, rel);
+            mkdirSync(dirname(target), { recursive: true, mode: 0o700 });
+            atomicWriteFileSync(target, raw, 0o600);
+            files.push(`${name}/${rel}`);
+          }
+        }
+        if (codec.keychain) {
+          const raw = ["keychain.json", join("home", codec.primaryFile), join("vault", codec.primaryFile)].map(rel => readIfFile(this.leaseFilePath(backup.path, rel))).find(value => value !== null && this.nativeMaterialKind(account.harness, value) === "native") ?? null;
+          if (raw === null || this.nativeMaterialKind(account.harness, raw) !== "native") throw new RpcError("native_backup_invalid", "The backup has no genuine native Keychain credential.");
+          keychainRestored = await codec.keychain.publish(account, raw, state);
+        }
+        this.store.setAccountStatus(id, "auth_needed", "Native backup explicitly restored; validate or log in before placing work.");
+        return { account: this.store.getAccount(id)!, backupAt: backup.at, restoredAt: this.now(), files, keychainRestored };
+      };
+      codec.keychain?.assertHome(account.homePath);
+      return codec.keychain ? codec.keychain.withLock(account.homePath, restore) : restore();
+    });
+  }
+
   private assertAdoptable(account: AccountRow): void {
     if ((account.status === "paused" && account.pausedBy === "operator") || (account.status !== "auth_needed" && this.credentialHealthOf(account) !== "absent") || this.authorityFor(account)?.enabled(account) || this.authorityFor(account)?.busy(account) || this.refreshBusy(account) || this.nativeKeychainSeeds.has(account.id) || this.store.activeLoginFlow(account.id)) throw new RpcError("account_adopt_refused", "The native account is working, operator-paused, or changing credentials; it cannot be adopted.");
   }
@@ -1171,6 +1311,7 @@ export class AccountsService {
       const codec = this.leaseMaterialCodecs.get(target.harness)!;
       let backupPath: string | null = null;
       const write = async () => {
+        codec.keychain?.assertHome(target.homePath);
         const state = codec.keychain ? await codec.keychain.read(target.homePath) : { status: "unavailable" } as const;
         if (initialLease && state.status === "present") throw new RpcError("account_lease_conflict", "The isolated lease home already has an unregistered Keychain item; preserve it and resolve ownership before installing.");
         if (adopted) this.assertAdoptable(this.store.getAccount(id)!);
@@ -1192,18 +1333,7 @@ export class AccountsService {
           this.leaseFilePath(this.vaultDirOf(target), rel);
         }
         if (adopted) {
-          backupPath = join(this.cfg.accounts.vaultDir, ".native-backup", id, `${this.now()}-${randomUUID()}`);
-          mkdirSync(backupPath, { recursive: true, mode: 0o700 });
-          if (state.status === "present") atomicWriteFileSync(join(backupPath, "keychain.json"), state.raw, 0o600);
-          for (const [name, root] of [["home", target.homePath], ["vault", this.vaultDirOf(target)]] as const) {
-            for (const rel of this.credentialPaths(target)) {
-              const path = this.leaseFilePath(root, rel);
-              if (!existsSync(path)) continue;
-              const backup = join(backupPath, name, rel);
-              mkdirSync(dirname(backup), { recursive: true, mode: 0o700 });
-              renameSync(path, backup);
-            }
-          }
+          backupPath = this.backupNativeMaterial(target, state);
         }
         this.store.setAccountLease(id, origin);
         this.store.setAccountStatus(id, "auth_needed", "Lease installation in progress");
@@ -1229,6 +1359,7 @@ export class AccountsService {
         onInstalled(this.store.getAccount(id)!);
         return { account: this.store.getAccount(id)!, adopted, backupPath, keychainPublished };
       };
+      codec.keychain?.assertHome(target.homePath);
       return codec.keychain ? codec.keychain.withLock(target.homePath, write) : write();
     });
   }
@@ -1242,6 +1373,7 @@ export class AccountsService {
       const remove = async () => {
         let keychainRemoved = false;
         if (codec.keychain) {
+          codec.keychain.assertHome(account.homePath);
           const state = await codec.keychain.read(account.homePath);
           if (state.status === "unreadable") throw new RpcError("lease_unavailable", "Account Keychain is unreadable; unlock it before removing a lease.");
           if (state.status === "present") {
@@ -1270,6 +1402,7 @@ export class AccountsService {
         }
         return { id, disposition, removed: disposition === "removed", keychainRemoved, nativeBackupKept: existsSync(join(this.cfg.accounts.vaultDir, ".native-backup", id)) };
       };
+      codec.keychain?.assertHome(account.homePath);
       return codec.keychain ? codec.keychain.withLock(account.homePath, remove) : remove();
     });
   }
@@ -1389,6 +1522,7 @@ export class AccountsService {
   credentialReadiness(account: AccountRow): AccountReadiness {
     const unisolated = this.isolationRefusal(account.harness);
     if (unisolated) return { ready: false, code: "account_unavailable", message: unisolated };
+    if (this.leaseWrites.has(account.id)) return { ready: false, code: "account_auth_needed", message: "Account credential material is changing; retry after the operation completes." };
     if (account.source === "leased" && account.leasedFrom?.endedAt != null) return { ready: false, code: "account_lease_ended", message: `Lease ${account.leasedFrom.shareId} from ${account.leasedFrom.authorityNodeId} has ended; request renewal from its authority.` };
     if (account.status === "auth_needed") {
       return { ready: false, code: "account_auth_needed", message: this.authNeededReason(account) ?? `account ${account.id} needs login; log in with: hive account login ${account.id}` };

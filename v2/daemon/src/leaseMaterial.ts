@@ -2,6 +2,7 @@ import { recipeFor, type AccountRow } from "../../core/src/index.ts";
 import type { KeychainState, KeychainStateReader, KeychainRemover } from "./keychain.ts";
 
 export interface LeaseKeychainCodec {
+  assertHome: (homePath: string) => void;
   read: KeychainStateReader;
   publish: (account: AccountRow, raw: string, state: KeychainState) => Promise<boolean>;
   remove: KeychainRemover;

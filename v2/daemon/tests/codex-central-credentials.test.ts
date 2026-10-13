@@ -83,7 +83,8 @@ test("central Codex: isolated daemon rotates once, publishes access-only, refres
       const { stdout } = await promisify(execFile)(process.execPath, [fileURLToPath(new URL("../../cli/src/bin.ts", import.meta.url)),
         "account", "credentials", action, id, "--data-dir", dir, "--json", ...(key ? ["--idempotency-key", key] : [])],
         { env: { PATH: process.env.PATH, HOME: dir, HIVE_NO_KEYCHAIN: "1" } });
-      const result = JSON.parse(stdout) as AccountCredentialAuthority;
+      const parsed = JSON.parse(stdout);
+      const result = (action === "status" ? parsed.authority : parsed) as AccountCredentialAuthority;
       rpcResults.push(result);
       return result;
     };
