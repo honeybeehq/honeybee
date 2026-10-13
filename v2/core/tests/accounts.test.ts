@@ -22,6 +22,7 @@ import {
   nativeAccountRecipe,
   accountConfigImportRecipeFor,
   accountIdFor,
+  isAccountId,
   accountIsolationRefusal,
   defaultLoginMethodId,
   loginMethodsFor,
@@ -1004,5 +1005,22 @@ test("v38 store gains the persisted native marker; one native account per harnes
     assert.equal(reopened.getAccount("muse-this-mac")!.native, true);
     assert.equal(reopened.getAccount("muse-this-mac")!.homePath, "/tmp/native-test-home");
     reopened.close();
+  } finally { h.cleanup(); }
+});
+
+
+test("core account id validation admits retained @ identities and rejects unsafe or overlong ids", () => {
+  const h = harness();
+  try {
+    const store = h.open();
+    for (const id of ["claude-test@share123", "native:claude", `a${"x".repeat(209)}`]) {
+      assert.equal(isAccountId(id), true);
+      assert.equal(store.createAccount({ id, harness: "claude", label: "id-test", homePath: "/tmp/id-test" }).id, id);
+    }
+    for (const id of ["", "auto", "rr", "../escape", "a/b", "a\\b", "a b", "a".repeat(211)]) {
+      assert.equal(isAccountId(id), false);
+      assert.throws(() => store.createAccount({ id, harness: "claude", label: "id-test", homePath: "/tmp/id-test" }));
+    }
+    store.close();
   } finally { h.cleanup(); }
 });

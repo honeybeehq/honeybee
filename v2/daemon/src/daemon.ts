@@ -36,6 +36,7 @@ import { getSystemErrorMap } from "node:util";
 import { GatewayMcpSeedLockError } from "../../../src/accounts/gatewayMcpSeed.ts";
 import {
   accountIdFor,
+  isAccountId,
   matchAccount,
   homeEnvFor,
   exportTemplate,
@@ -1670,8 +1671,7 @@ export class HiveDaemon {
       case "account.lease.install":
         return this.rpcAccountLeaseInstall(params);
       case "account.lease.remove": {
-        const id = this.param(params, "id");
-        if (!/^[a-zA-Z0-9][a-zA-Z0-9._@-]{0,209}$/.test(id)) throw new RpcError("invalid_request", "Lease remove requires a safe account id.");
+        const id = this.accountIdParam(params);
         return this.mustAccounts().removeLease(id);
       }
       case "account.activity":
@@ -5055,8 +5055,13 @@ export class HiveDaemon {
     return this.accounts;
   }
 
+  private accountIdParam(params: Record<string, unknown>, key = "id"): string {
+    if (!isAccountId(params[key])) throw new RpcError("invalid_request", "Account id must be a bounded safe account identity.");
+    return params[key];
+  }
+
   private requireAccount(params: Record<string, unknown>, key = "id"): AccountRow {
-    return this.resolveAccountSelector(this.param(params, key));
+    return this.resolveAccountSelector(this.accountIdParam(params, key));
   }
 
   /** One daemon-owned resolver for every operator-facing account selector. */
@@ -5174,6 +5179,7 @@ export class HiveDaemon {
     if (params.native === true) return this.withAsyncIdempotency("account.add", params, async () => this.addNativeAccount(harness, params));
     const label = this.param(params, "label");
     const id = typeof params.id === "string" && params.id.length > 0 ? params.id : accountIdFor(harness, label);
+    if (!isAccountId(id)) throw new RpcError("invalid_request", "Account id must be a bounded safe account identity.");
     const homePath = typeof params.homePath === "string" && params.homePath.length > 0 ? resolve(params.homePath) : accounts.defaultHomeOf(id);
     if (homePath === accounts.nativeHomeOf(harness)) {
       throw new RpcError("invalid_request", `account.add: ${homePath} is this computer's own ${harness} sign-in; add it with native: true`);
@@ -5590,7 +5596,7 @@ export class HiveDaemon {
   private async rpcAccountLeaseInstall(params: Record<string, unknown>): Promise<AccountLeaseInstallResult> {
     const invalid = () => new RpcError("invalid_request", "Lease install requires safe ids, a supported harness, epoch, access expiry, and access-only credential files.");
     const safeId = (value: unknown): value is string => typeof value === "string" && /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,199}$/.test(value);
-    if (!safeId(params.id) || !safeId(params.shareId) || params.shareId.length < 8 || !safeId(params.authorityNodeId) || !safeId(params.harness) || !safeId(params.label)) throw invalid();
+    if (!isAccountId(params.id) || !safeId(params.shareId) || params.shareId.length < 8 || !safeId(params.authorityNodeId) || !safeId(params.harness) || !safeId(params.label)) throw invalid();
     if (params.adopt !== undefined && typeof params.adopt !== "boolean" && params.adopt !== "explicit") throw invalid();
     if (typeof params.epoch !== "number" || !Number.isSafeInteger(params.epoch) || params.epoch < 0) throw invalid();
     if (params.expiresAt !== null && (typeof params.expiresAt !== "number" || !Number.isSafeInteger(params.expiresAt) || params.expiresAt * 1000 <= Date.now())) throw invalid();

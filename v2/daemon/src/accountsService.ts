@@ -35,6 +35,7 @@ import {
   accountCommitments,
   nativeAccountRecipe,
   accountIdFor,
+  isAccountId,
   AUTH_CREDENTIAL_UNREADABLE,
   homeEnvFor,
   isAuthFailureLimitsError,
@@ -1366,6 +1367,7 @@ export class AccountsService {
   installLease(input: AccountLeaseInstallParams, onInstalled: (account: AccountRow) => void = () => {}): Promise<{ account: AccountRow; adopted: boolean; backupPath: string | null; backupAt: number | null; replacedWorkingLogin: boolean; keychainPublished: boolean }> {
     const explicit = input.adopt === "explicit";
     const id = input.adopt ? input.id : `${input.id}@${input.shareId.slice(0, 8)}`;
+    if (!isAccountId(id)) throw new RpcError("invalid_request", "Account id must be a bounded safe account identity.");
     return this.withLeaseWrite(id, async () => {
       let account = this.store.getAccount(id);
       if (account && (this.store.activeCredentialHandoff(id) || ["handing_off", "adopting"].includes(this.authorityFor(account)?.status(account)?.phase ?? ""))) throw new RpcError("credential_handoff_fenced", "Credential ownership is changing; lease installation cannot overwrite an authority.");

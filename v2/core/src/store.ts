@@ -1,3 +1,4 @@
+import { isAccountId } from "./accountRecipes.ts";
 import { parseUpdateReservation, type UpdateReservation } from "../../../src/updateReservation.ts";
 import type { ReconnectToolsReceipt, ReconnectToolsError } from "./reconnectTools.ts";
 import { threadOperationView, type ThreadOperationRow, type ThreadOperationPhase } from "./threadOperation.ts";
@@ -5273,6 +5274,7 @@ export class CoreStore {
     const homePath = requireNonEmpty(input.homePath, "createAccount: homePath");
     const label = requireNonEmpty(input.label, "createAccount: label");
     if (id === "auto" || id === "rr") throw new CoreError(`createAccount: '${id}' is reserved (an account selection intent)`);
+    if (!isAccountId(id)) throw new CoreError("createAccount: id must be a bounded safe account identity");
     const status = input.status ?? "ok";
     if (!(ACCOUNT_STATUSES as readonly string[]).includes(status)) throw new CoreError(`createAccount: status must be one of ${ACCOUNT_STATUSES.join("|")}`);
     const penalty = normalizePenalty(input.penalty ?? 0, "createAccount");
