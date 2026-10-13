@@ -11,7 +11,7 @@ import { promisify } from "node:util";
 import type { AccountCredentialAuthority, CredentialHandoffReceipt, MirrorAccountRow } from "../../core/src/index.ts";
 import { RpcClient } from "../../cli/src/client.ts";
 import { RpcError, type RpcVerb, type ViewResult } from "../src/protocol.ts";
-import { makeDaemonDir, startDaemon, waitFor, sleep, type DaemonHandle } from "./helpers.ts";
+import { makeDaemonDir, startDaemon, waitFor as waitForState, type DaemonHandle } from "./helpers.ts";
 
 type Exported = { receipt: CredentialHandoffReceipt; material: { generation: number; document: Record<string, unknown> } };
 type Result = { handoffId: string; state: string; receipt: CredentialHandoffReceipt; generation: number; expiresAt: number };
@@ -22,6 +22,10 @@ function paths(root: string): string[] {
   return readdirSync(root, { withFileTypes: true }).flatMap(entry => entry.isDirectory() ? paths(join(root, entry.name)) : entry.isFile() ? [join(root, entry.name)] : []);
 }
 function jwt(): string { return `e30.${Buffer.from(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 3600, fixture: randomUUID() })).toString("base64url")}.${randomUUID()}`; }
+
+function waitFor<T>(fn: () => Promise<T | null | undefined | false> | T | null | undefined | false, what: string): Promise<T> {
+  return waitForState(fn, what, 30_000);
+}
 
 for (const harness of ["claude", "codex", "grok"]) test(`credential handoff ${harness}: two isolated daemons, durable prepare/commit, rotation, scrub, abort, TTL, replay and failures`, async () => {
   const a = makeDaemonDir({ accounts: { centralRefreshAheadMs: 0, centralRefreshRetryBaseMs: 60_000 } });
@@ -88,7 +92,24 @@ for (const harness of ["claude", "codex", "grok"]) test(`credential handoff ${ha
     return id;
   };
   const exported = (id: string, handoffId: string, ttlMs?: number) => rpc<Exported>(ca!, "export", { account: id, handoffId, from, to, epoch: 1, ...(ttlMs ? { ttlMs } : {}) });
-  const prepare = (id: string, handoffId: string, value: Exported) => rpc<Result>(cb!, "adoptPrepare", { account: id, handoffId, from, to, authenticatedPeer: from, epoch: 1, sourceKey: value.receipt.binding.sourceKey, exportReceipt: value.receipt, material: value.material });
+  const prepare = async (id: string, handoffId: string, value: Exported) => {
+    const refusal: { last: RpcError | null } = { last: null };
+    try {
+      return await waitFor(async () => {
+        try { return await rpc<Result>(cb!, "adoptPrepare", { account: id, handoffId, from, to, authenticatedPeer: from, epoch: 1, sourceKey: value.receipt.binding.sourceKey, exportReceipt: value.receipt, material: value.material }); }
+        catch (error) {
+          if (error instanceof RpcError && error.code === "credential_handoff_unavailable" && ["The destination has an active credential operation.", "Credential handoff cannot proceed; inspect credential status and finish the current ownership operation."].includes(error.message)) {
+            refusal.last = error;
+            return null;
+          }
+          throw error;
+        }
+      }, "destination credential operation settled for preparation");
+    } catch (error) {
+      if (refusal.last && error instanceof Error && error.message.startsWith("waitFor timeout:")) throw new Error(`${error.message}; last refusal: ${refusal.last.code}: ${refusal.last.message}`, { cause: error });
+      throw error;
+    }
+  };
   const commit = async (handoffId: string, prepared: Result) => {
     await rpc(ca!, "exportPrepare", { handoffId, preparedReceipt: prepared.receipt, targetKey: prepared.receipt.binding.targetKey, authenticatedPeer: to });
     return rpc<Result>(ca!, "exportCommit", { handoffId, claimId: prepared.receipt.binding.claimId });
@@ -178,8 +199,7 @@ for (const harness of ["claude", "codex", "grok"]) test(`credential handoff ${ha
     await refused(() => ca!.request("account.lease", { account: id }), "credential_handoff_fenced");
     const count = refreshes.length;
     await da.kill(); ca.close(); da = await startDaemon(a.dir, { env: env(a.dir) }); ca = await da.client();
-    await sleep(80);
-    assert.equal((await rpc<AccountCredentialAuthority>(ca, "status", { id })).phase, "handing_off");
+    await waitFor(async () => (await rpc<AccountCredentialAuthority>(ca!, "status", { id })).phase === "handing_off", "restarted source export fence restored");
     assert.equal(refreshes.length, count);
     console.log(`${harness} 1/4 export fence survives A SIGKILL/restart; refresh/mint/enable/disable refused; timers skip`);
     const lease = await ca.request<{ files: unknown[] }>("account.lease", { account: id }).catch(() => null);
@@ -252,7 +272,7 @@ for (const harness of ["claude", "codex", "grok"]) test(`credential handoff ${ha
     await rpc(ca, "exportConfirm", { handoffId, adoptedReceipt: adopted.receipt });
     for (const path of paths(a.dir).filter(path => path.startsWith(join(a.dir, "homes")) || path.startsWith(join(a.dir, "vault")))) assert.ok(!readFileSync(path).includes(Buffer.from(oldRefresh)), "source refresh bytes scrubbed");
     assert.ok(!existsSync(join(a.dir, "vault", ".credential-authorities", `${id}.json`)));
-    await sleep(100);
+    await waitFor(async () => (await rpc<Result>(ca!, "handoffStatus", { handoffId })).state === "confirmed", "source confirmation settled");
     assert.equal(refreshes.length, afterRejectedProbe);
     await refused(() => ca!.request("account.lease", { account: id }), "credential_handoff_decided");
     await ca.request("account.limits", { id, refresh: true });
@@ -301,8 +321,12 @@ for (const harness of ["claude", "codex", "grok"]) test(`credential handoff ${ha
     await cb.request("account.add", { id: preparingId, harness, label: "preparing-example.com" });
     unlinkSync(join(b.dir, "crash-stopped"));
     writeFileSync(join(b.dir, "crash-gate.json"), JSON.stringify({ account: preparingId, generation: preparingExport.material.generation, phase: "preparing" }));
-    const pendingPrepare = prepare(preparingId, preparingHandoff, preparingExport).catch(() => null);
-    await waitFor(() => existsSync(join(b.dir, "crash-stopped")) ? true : null, "B stopped before prepared material rename");
+    let prepareFailure: unknown;
+    const pendingPrepare = prepare(preparingId, preparingHandoff, preparingExport).catch(error => { prepareFailure = error; return null; });
+    await waitFor(() => {
+      if (prepareFailure) throw new Error(`Preparation refused before crash boundary: ${prepareFailure instanceof RpcError ? prepareFailure.code : "transport"}`);
+      return existsSync(join(b.dir, "crash-stopped"));
+    }, "B stopped before prepared material rename");
     await db.kill(); cb.close(); await pendingPrepare; unlinkSync(join(b.dir, "crash-gate.json"));
     db = await startDaemon(b.dir, { env: env(b.dir) }); cb = await db.client();
     const preparingStatus = await rpc<Result>(cb, "handoffStatus", { handoffId: preparingHandoff, role: "destination" });
@@ -369,7 +393,6 @@ for (const harness of ["claude", "codex", "grok"]) test(`credential handoff ${ha
     await rpc(ca, "refresh", { id: rotateId, idempotencyKey: randomUUID() });
     console.log(`${harness} key rotation: unclaimed export durably aborted; old pinned key verifies abort; prepared claims refuse; peer node mismatch refused; 0700/0600; duplicate/restart replay no-op; key-replacement SIGKILL keeps exports aborted; no provider call`);
     const ttlId = await enroll("ttl"), ttlHandoff = randomUUID(), ttlExport = await exported(ttlId, ttlHandoff, 1000);
-    await sleep(1050);
     await waitFor(async () => (await rpc<AccountCredentialAuthority>(ca!, "status", { id: ttlId })).phase === "ready" ? true : null, "expired unprepared export auto-aborted");
     await da.kill(); ca.close(); da = await startDaemon(a.dir, { env: env(a.dir) }); ca = await da.client();
     assert.equal((await rpc<AccountCredentialAuthority>(ca, "status", { id: ttlId })).phase, "ready");
@@ -444,7 +467,7 @@ for (const harness of ["claude", "codex", "grok"]) test(`credential handoff ${ha
       const retained = JSON.parse(readFileSync(join(b.dir, "vault", ".credential-authorities", `${terminalId}.json`), "utf8"));
       assert.ok(valid.has(tokenOf({ ...terminalExport, material: { ...terminalExport.material, document: retained.document } })), "terminal malformed expiry retains the new chain");
       const terminalCount = refreshes.length;
-      await sleep(100);
+      await waitFor(async () => (await rpc<AccountCredentialAuthority>(cb!, "status", { id: terminalId })).phase === "login_required", "terminal unusable-access authority settled");
       await refused(() => rpc(cb!, "adopt", { account: terminalId, handoffId: terminalHandoff, commitReceipt: terminalCommit.receipt }), "credential_handoff_unusable_access");
       assert.equal(refreshes.length, terminalCount);
       console.log("grok terminal malformed expiry: replacement chain kept privately, login_required_retained, zero further rotations on retry");
@@ -543,7 +566,10 @@ for (const harness of ["claude", "codex", "grok"]) test(`credential handoff ${ha
     assert.equal(refreshes.length, beforeStandDown);
     for (const path of paths(a.dir).filter(path => path.startsWith(join(a.dir, "homes")) || path.startsWith(join(a.dir, "vault")))) assert.ok(!readFileSync(path).includes(Buffer.from(tokenOf(unknownExport))));
     console.log(`${harness} 8 standDown scrubs without provider call`);
-    if (beeId) await cb.request("stop", { beeId });
+    if (beeId) {
+      await cb.request("stop", { beeId });
+      await waitFor(async () => (await cb!.request<ViewResult>("view", { beeId })).view.runtimeState === "stopped", "leased dummy bee stopped before teardown");
+    }
     ca.close(); cb.close(); await da.stop(); await db.stop();
     const blobs = [...paths(a.dir), ...paths(b.dir)].filter(path => !path.includes("/vault/") && !path.includes("/homes/")).map(path => readFileSync(path));
     blobs.push(Buffer.from(da.output()), Buffer.from(db.output()), Buffer.from(JSON.stringify(metadata)));
