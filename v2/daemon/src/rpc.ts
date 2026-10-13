@@ -58,12 +58,27 @@ import {
 } from "./protocol.ts";
 
 export interface RpcConn {
+  readonly ingress?: "local_unix" | "node_relay" | "remote";
   /** Push a raw frame (used for watch deltas/gaps). */
   send(obj: unknown): void;
   /** Enter watch mode from this seq; subsequent flushes stream deltas. */
   subscribeWatch(cursor: number): void;
   /** Re-align the watch cursor (after serving a snapshot to a watching client). */
   alignWatch(cursor: number): void;
+}
+
+const LOCAL_HANDOFF_VERBS = new Set<RpcVerb>([
+  "account.credentials.export", "account.credentials.adoptPrepare", "account.credentials.exportPrepare",
+  "account.credentials.exportCommit", "account.credentials.adopt", "account.credentials.exportAbort",
+  "account.credentials.adoptAbort", "account.credentials.exportConfirm", "account.credentials.standDown",
+  "account.credentials.standDownReceipt", "account.credentials.handoffIdentitySet", "account.credentials.handoffKeyRotate",
+  "account.credentials.operatorTakeover", "account.credentials.operatorTakeoverApply",
+  "account.credentials.operatorTakeoverComplete", "account.credentials.operatorTakeoverCancel",
+]);
+
+export function assertLocalHandoffRpc(verb: RpcVerb, params: Record<string, unknown>, conn: RpcConn): void {
+  if ((LOCAL_HANDOFF_VERBS.has(verb) || params.authenticatedPeer !== undefined || params.targetKey !== undefined)
+    && conn.ingress !== "local_unix") throw new RpcError("credential_handoff_conflict", "Handoff authority facts require a direct local Unix-socket call; remote and node-relayed RPCs are refused.");
 }
 
 export type RpcDispatch = (
@@ -83,6 +98,7 @@ interface Connection extends RpcConn {
   socket: Socket;
   buffer: string;
   helloDone: boolean;
+  relayLane: "node_relay" | "remote" | null;
   watchCursor: number | null;
 }
 
@@ -204,10 +220,13 @@ export class RpcServer {
   }
 
   private onConnection(socket: Socket): void {
+    const localUnix = socket.remoteAddress === undefined;
     const conn: Connection = {
       socket,
       buffer: "",
       helloDone: false,
+      relayLane: null,
+      get ingress() { return localUnix ? conn.relayLane ?? "local_unix" : "remote"; },
       watchCursor: null,
       send: (obj: unknown) => {
         if (socket.destroyed) return;
@@ -267,6 +286,12 @@ export class RpcServer {
         conn.socket.end();
         return;
       }
+      if (frame.clientLane !== undefined && frame.clientLane !== "node_relay" && frame.clientLane !== "remote") {
+        conn.send({ id: -1, ok: false, error: { code: "invalid_request", message: "clientLane can only mark node_relay or remote provenance." } });
+        conn.socket.end();
+        return;
+      }
+      conn.relayLane = frame.clientLane === "node_relay" || frame.clientLane === "remote" ? frame.clientLane : null;
       conn.helloDone = true;
       return;
     }

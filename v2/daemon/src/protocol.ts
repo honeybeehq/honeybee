@@ -227,6 +227,7 @@ export type DaemonCapability = (typeof DAEMON_CAPABILITIES)[number];
 
 /** The server's first frame on a connection. */
 export interface HelloFrame {
+  clientLane?: "node_relay" | "remote";
   identity?: BuildIdentity;
   protocol: string;
   capabilities: readonly DaemonCapability[];

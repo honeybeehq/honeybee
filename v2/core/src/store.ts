@@ -5085,7 +5085,7 @@ export class CoreStore {
   }
 
   setCredentialHandoffIdentity(identity: CredentialHandoffIdentity): void {
-    this.credentialHandoffTx(() => this.stmt("INSERT INTO meta(key,value) VALUES('credential_handoff_identity',?)").run(JSON.stringify(identity)));
+    this.credentialHandoffTx(() => this.stmt("INSERT INTO meta(key,value) VALUES('credential_handoff_identity',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(JSON.stringify(identity)));
   }
 
   getCredentialHandoff(handoffId: string, role: CredentialHandoffRecord["role"]): CredentialHandoffRecord | null {

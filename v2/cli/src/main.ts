@@ -322,6 +322,7 @@ const BOOL_FLAGS = new Set([
   "--verbose",
   "--dry-run",
   "--confirm",
+  "--replace",
   "--force",
   // v31 (cell gc): skip the per-Cell du walk.
   "--no-measure",
@@ -1110,6 +1111,7 @@ async function cmdAccount(ctx: CliContext, parsed: Parsed): Promise<number> {
         let params: Record<string, unknown>;
         try { params = JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>; }
         catch { throw new Error("Could not read protected handoff payload JSON."); }
+        if (action === "handoff-identity-set" && parsed.flags.get("--replace") === true) params.replace = true;
         const output = action === "export" ? parsed.flags.get("--out") as string : null;
         const outputFd = output === null ? null : openSync(output, "wx", 0o600);
         let completed = false;

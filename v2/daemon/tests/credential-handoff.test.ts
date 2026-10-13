@@ -9,7 +9,7 @@ import type { AddressInfo } from "node:net";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { AccountCredentialAuthority, CredentialHandoffReceipt, MirrorAccountRow } from "../../core/src/index.ts";
-import type { RpcClient } from "../../cli/src/client.ts";
+import { RpcClient } from "../../cli/src/client.ts";
 import { RpcError, type RpcVerb, type ViewResult } from "../src/protocol.ts";
 import { makeDaemonDir, startDaemon, waitFor, sleep, type DaemonHandle } from "./helpers.ts";
 
@@ -56,7 +56,7 @@ for (const harness of ["claude", "codex", "grok"]) test(`credential handoff ${ha
   let da: DaemonHandle | null = null, db: DaemonHandle | null = null, ca: RpcClient | null = null, cb: RpcClient | null = null;
   const env = (dir: string) => {
     const preload = join(dir, "no-provider.mjs");
-    writeFileSync(preload, `import fs from 'node:fs';import{syncBuiltinESMExports}from'node:module';import{join}from'node:path';import{DatabaseSync}from'node:sqlite';const dbexec=DatabaseSync.prototype.exec;DatabaseSync.prototype.exec=function(sql){const result=dbexec.call(this,sql);const root=${JSON.stringify(dir)};const gate=join(root,'crash-gate.json');const rule=fs.existsSync(gate)?JSON.parse(fs.readFileSync(gate,'utf8')):null;if(rule&&rule.phase==='standdown'&&sql==='PRAGMA wal_checkpoint(FULL)'){fs.writeFileSync(join(root,'crash-stopped'),'');process.kill(process.pid,'SIGSTOP');}return result;};const f=globalThis.fetch;globalThis.fetch=async(url,o)=>{if(String(url).startsWith('http://127.0.0.1:')){const response=await f(url,o);const root=${JSON.stringify(dir)};const gate=join(root,'crash-gate.json');const rule=fs.existsSync(gate)?JSON.parse(fs.readFileSync(gate,'utf8')):null;if(rule&&rule.phase==='response'){fs.writeFileSync(join(root,'crash-stopped'),'');process.kill(process.pid,'SIGSTOP');}return response;}throw new Error('External provider forbidden in isolated handoff');};const rename=fs.renameSync;fs.renameSync=(a,b)=>{const root=${JSON.stringify(dir)};const gate=join(root,'crash-gate.json');const rule=fs.existsSync(gate)?JSON.parse(fs.readFileSync(gate,'utf8')):null;if(rule&&rule.phase==='preparing'&&String(b).endsWith('/'+rule.account+'.json')){const value=JSON.parse(fs.readFileSync(a,'utf8'));if(value.generation===rule.generation){fs.writeFileSync(join(root,'crash-stopped'),'');process.kill(process.pid,'SIGSTOP');}}rename(a,b);if(rule&&rule.phase==='keyrotate'&&String(b).endsWith('/handoff-signing-key.pem')){fs.writeFileSync(join(root,'crash-stopped'),'');process.kill(process.pid,'SIGSTOP');}if(rule&&rule.phase!=='preparing'&&String(b).endsWith('/'+rule.account+'.json')){const value=JSON.parse(fs.readFileSync(b,'utf8'));if(value.generation>rule.generation){fs.writeFileSync(join(root,'crash-stopped'),'');process.kill(process.pid,'SIGSTOP');}}};syncBuiltinESMExports();`);
+    writeFileSync(preload, `import fs from 'node:fs';import{syncBuiltinESMExports}from'node:module';import{join}from'node:path';import{DatabaseSync}from'node:sqlite';const dbprepare=DatabaseSync.prototype.prepare;DatabaseSync.prototype.prepare=function(sql){const stmt=dbprepare.call(this,sql);if(sql.includes("VALUES('credential_handoff_identity'")){const run=stmt.run.bind(stmt);stmt.run=(...args)=>{const root=${JSON.stringify(dir)};const gate=join(root,'crash-gate.json');const rule=fs.existsSync(gate)?JSON.parse(fs.readFileSync(gate,'utf8')):null;if(rule&&rule.phase==='identity'){fs.writeFileSync(join(root,'crash-stopped'),'');process.kill(process.pid,'SIGSTOP');}return run(...args);};}return stmt;};const dbexec=DatabaseSync.prototype.exec;DatabaseSync.prototype.exec=function(sql){const result=dbexec.call(this,sql);const root=${JSON.stringify(dir)};const gate=join(root,'crash-gate.json');const rule=fs.existsSync(gate)?JSON.parse(fs.readFileSync(gate,'utf8')):null;if(rule&&rule.phase==='standdown'&&sql==='PRAGMA wal_checkpoint(FULL)'){fs.writeFileSync(join(root,'crash-stopped'),'');process.kill(process.pid,'SIGSTOP');}return result;};const f=globalThis.fetch;globalThis.fetch=async(url,o)=>{if(String(url).startsWith('http://127.0.0.1:')){const response=await f(url,o);const root=${JSON.stringify(dir)};const gate=join(root,'crash-gate.json');const rule=fs.existsSync(gate)?JSON.parse(fs.readFileSync(gate,'utf8')):null;if(rule&&rule.phase==='response'){fs.writeFileSync(join(root,'crash-stopped'),'');process.kill(process.pid,'SIGSTOP');}return response;}throw new Error('External provider forbidden in isolated handoff');};const rename=fs.renameSync;fs.renameSync=(a,b)=>{const root=${JSON.stringify(dir)};const gate=join(root,'crash-gate.json');const rule=fs.existsSync(gate)?JSON.parse(fs.readFileSync(gate,'utf8')):null;if(rule&&rule.phase==='preparing'&&String(b).endsWith('/'+rule.account+'.json')){const value=JSON.parse(fs.readFileSync(a,'utf8'));if(value.generation===rule.generation){fs.writeFileSync(join(root,'crash-stopped'),'');process.kill(process.pid,'SIGSTOP');}}rename(a,b);if(rule&&rule.phase==='keyrotate'&&String(b).endsWith('/handoff-signing-key.pem')){fs.writeFileSync(join(root,'crash-stopped'),'');process.kill(process.pid,'SIGSTOP');}if(rule&&rule.phase!=='preparing'&&String(b).endsWith('/'+rule.account+'.json')){const value=JSON.parse(fs.readFileSync(b,'utf8'));if(value.generation>rule.generation){fs.writeFileSync(join(root,'crash-stopped'),'');process.kill(process.pid,'SIGSTOP');}}};syncBuiltinESMExports();`);
     return { NODE_OPTIONS: `--import=${preload}`, HOME: join(dir, "empty-user-home"), CLAUDE_CONFIG_DIR: join(dir, "unused-claude"), CODEX_HOME: join(dir, "unused-codex"), GROK_HOME: join(dir, "unused-grok"), XDG_CONFIG_HOME: join(dir, "unused-xdg-config"), XDG_DATA_HOME: join(dir, "unused-xdg-data"), HIVE_GATEWAYS_DISABLE: "1", HIVE_CLAUDE_OAUTH_TOKEN_URL: endpoint, HIVE_CODEX_OAUTH_TOKEN_URL: endpoint, HIVE_GROK_OAUTH_TOKEN_URL: endpoint };
   };
   const rpc = async <T>(client: RpcClient, action: string, params: Record<string, unknown>): Promise<T> => {
@@ -104,6 +104,15 @@ for (const harness of ["claude", "codex", "grok"]) test(`credential handoff ${ha
     await rpc(ca, "handoffIdentitySet", { identity: from });
     await rpc(cb, "handoffIdentitySet", { identity: to });
     await refused(() => rpc(cb!, "handoffIdentitySet", { identity: from }), "credential_handoff_conflict");
+    for (const lane of ["node_relay", "remote"] as const) {
+      const relayed = await RpcClient.connect(da.socketPath, 3000, lane);
+      try {
+        await refused(() => relayed.request("account.credentials.handoffIdentitySet", { identity: to, replace: true, ingress: "local_unix" }), "credential_handoff_conflict");
+        await refused(() => relayed.request("account.credentials.exportPrepare", { targetKey: "untrusted-public-key", authenticatedPeer: to }), "credential_handoff_conflict");
+        await refused(() => relayed.request("account.credentials.handoffStatus", { handoffId: "missing", authenticatedPeer: to }), "credential_handoff_conflict");
+        await relayed.request("account.list", {});
+      } finally { relayed.close(); }
+    }
     assert.ok(ca.capabilities.includes("account.credentials.handoff.v1"));
     const reserveId = await enroll("reserve"), reserveInput = join(a.dir, "reserve-input.json"), reserveOutput = join(a.dir, "vault", "occupied-output.json");
     writeFileSync(reserveInput, JSON.stringify({ account: reserveId, handoffId: randomUUID(), from, to, epoch: 1 }));
@@ -111,6 +120,39 @@ for (const harness of ["claude", "codex", "grok"]) test(`credential handoff ${ha
     await assert.rejects(promisify(execFile)(process.execPath, [fileURLToPath(new URL("../../cli/src/bin.ts", import.meta.url)), "account", "credentials", "export", "--file", reserveInput, "--out", reserveOutput, "--data-dir", a.dir], { env: { PATH: process.env.PATH, HOME: a.dir, HIVE_NO_KEYCHAIN: "1" } }), (error: unknown) => error instanceof Error);
     assert.equal((await rpc<AccountCredentialAuthority>(ca, "status", { id: reserveId })).phase, "ready");
     unlinkSync(reserveOutput);
+    const replacementHandoff = randomUUID(), replacementExport = await exported(reserveId, replacementHandoff);
+    await cb.request("account.add", { id: reserveId, harness, label: "reserve-example.com" });
+    const replacementPrepared = await prepare(reserveId, replacementHandoff, replacementExport);
+    const newFrom = { ...from, deviceKey: "dummy-device-A-repaired" }, newTo = { ...to, deviceKey: "dummy-device-B-repaired" };
+    await refused(() => rpc(cb!, "handoffIdentitySet", { identity: newTo }), "credential_handoff_conflict");
+    const identityPayload = join(b.dir, "identity-replace-input.json");
+    writeFileSync(identityPayload, JSON.stringify({ identity: newTo }));
+    writeFileSync(join(b.dir, "crash-gate.json"), JSON.stringify({ phase: "identity" }));
+    const interruptedReplacement = promisify(execFile)(process.execPath, [fileURLToPath(new URL("../../cli/src/bin.ts", import.meta.url)), "account", "credentials", "handoff-identity-set", "--file", identityPayload, "--replace", "--data-dir", b.dir, "--json"], { env: { PATH: process.env.PATH, HOME: b.dir, HIVE_NO_KEYCHAIN: "1" } }).catch(() => null);
+    await waitFor(() => existsSync(join(b.dir, "crash-stopped")) ? true : null, "B stopped after shadow void before new identity pin");
+    await db.kill(); cb.close(); await interruptedReplacement;
+    unlinkSync(join(b.dir, "crash-gate.json")); unlinkSync(join(b.dir, "crash-stopped"));
+    db = await startDaemon(b.dir, { env: env(b.dir) }); cb = await db.client();
+    await rpc(cb, "handoffIdentitySet", { identity: to });
+    assert.equal((await rpc<Result>(cb, "handoffStatus", { handoffId: replacementHandoff, role: "destination" })).state, "aborted");
+    const { stdout: replacementStdout } = await promisify(execFile)(process.execPath, [fileURLToPath(new URL("../../cli/src/bin.ts", import.meta.url)), "account", "credentials", "handoff-identity-set", "--file", identityPayload, "--replace", "--data-dir", b.dir, "--json"], { env: { PATH: process.env.PATH, HOME: b.dir, HIVE_NO_KEYCHAIN: "1" } });
+    metadata.push(replacementStdout);
+    assert.equal((await rpc<Result>(cb, "handoffStatus", { handoffId: replacementHandoff, role: "destination" })).state, "aborted");
+    assert.ok(!existsSync(join(b.dir, "vault", ".credential-authorities", reserveId + ".json")));
+    const sourceReplace = await rpc<{ abortedExports: string[]; voidedAdoptions: string[] }>(ca, "handoffIdentitySet", { identity: newFrom, replace: true });
+    assert.deepEqual(sourceReplace.abortedExports, [replacementHandoff]);
+    assert.equal((await rpc<Result>(ca, "handoffStatus", { handoffId: replacementHandoff })).receipt.kind, "aborted");
+    assert.equal((await rpc<AccountCredentialAuthority>(ca, "status", { id: reserveId })).phase, "ready");
+    await da.kill(); ca.close(); da = await startDaemon(a.dir, { env: env(a.dir) }); ca = await da.client();
+    await db.kill(); cb.close(); db = await startDaemon(b.dir, { env: env(b.dir) }); cb = await db.client();
+    await refused(() => rpc(ca!, "handoffIdentitySet", { identity: from }), "credential_handoff_conflict");
+    await refused(() => rpc(cb!, "handoffIdentitySet", { identity: to }), "credential_handoff_conflict");
+    await rpc(ca, "handoffIdentitySet", { identity: from, replace: true });
+    await rpc(cb, "handoffIdentitySet", { identity: to, replace: true });
+    await refused(() => rpc(ca!, "exportPrepare", { handoffId: replacementHandoff, preparedReceipt: replacementPrepared.receipt, targetKey: replacementPrepared.receipt.binding.targetKey, authenticatedPeer: to }), "credential_handoff_decided");
+    await refused(() => prepare(reserveId, replacementHandoff, replacementExport), "credential_handoff_decided");
+    await rpc(ca, "refresh", { id: reserveId, idempotencyKey: randomUUID() });
+    console.log(`${harness} local Unix facts only: node_relay/remote hellos refuse identity/peer/key facts and parameter spoofing; explicit --replace voids unclaimed export/prepared shadow, persists restart; post-shadow/pre-pin SIGKILL retry completes; source refresh works`);
     const id = await enroll("test"), handoffId = randomUUID();
     const value = await exported(id, handoffId), oldRefresh = tokenOf(value);
     const cliInput = join(a.dir, "handoff-input.json"), cliOutput = join(a.dir, "vault", "handoff-output.json");
@@ -162,6 +204,7 @@ for (const harness of ["claude", "codex", "grok"]) test(`credential handoff ${ha
     await refused(() => rpc(ca!, "exportPrepare", { handoffId, preparedReceipt: prepared.receipt, targetKey: value.receipt.binding.sourceKey, authenticatedPeer: to }), "credential_handoff_conflict");
     await rpc(ca, "exportPrepare", { handoffId, preparedReceipt: prepared.receipt, targetKey: prepared.receipt.binding.targetKey, authenticatedPeer: to });
     await refused(() => rpc(ca!, "exportAbort", { handoffId }), "credential_handoff_decided");
+    await refused(() => rpc(ca!, "handoffIdentitySet", { identity: { ...from, deviceKey: "claimed-change" }, replace: true }), "credential_handoff_fenced");
     await refused(() => rpc(ca!, "handoffKeyRotate", { idempotencyKey: randomUUID() }), "credential_handoff_fenced");
     const committed = await commit(handoffId, prepared);
     assert.deepEqual(await rpc<Result>(ca, "exportCommit", { handoffId, claimId: prepared.receipt.binding.claimId }), committed);

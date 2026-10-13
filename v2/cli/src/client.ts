@@ -39,7 +39,7 @@ export class RpcClient {
     this.socket = socket;
   }
 
-  static connect(socketPath: string, timeoutMs = 3000): Promise<RpcClient> {
+  static connect(socketPath: string, timeoutMs = 3000, clientLane?: "node_relay" | "remote"): Promise<RpcClient> {
     return new Promise((resolve, reject) => {
       const socket = createConnection(socketPath);
       const timer = setTimeout(() => {
@@ -82,7 +82,7 @@ export class RpcClient {
             return;
           }
           client.capabilities = Array.isArray(hello.capabilities) ? hello.capabilities.filter((value): value is string => typeof value === "string") : [];
-          socket.write(`${JSON.stringify({ protocol: PROTOCOL })}\n`);
+          socket.write(`${JSON.stringify({ protocol: PROTOCOL, ...(clientLane ? { clientLane } : {}) })}\n`);
           socket.on("data", (c: string) => client.onData(c));
           socket.on("close", () => client.onSocketClose());
           socket.on("error", () => socket.destroy());

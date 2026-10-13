@@ -203,7 +203,7 @@ import {
   type PerformanceProfiler,
   type PerformanceSpan,
 } from "./performance.ts";
-import { RpcServer, type RpcConn } from "./rpc.ts";
+import { RpcServer, assertLocalHandoffRpc, type RpcConn } from "./rpc.ts";
 import {
   DAEMON_VERSION,
   BUILD_IDENTITY,
@@ -1503,6 +1503,7 @@ export class HiveDaemon {
   }
 
   private dispatch(verb: RpcVerb, params: Record<string, unknown>, conn: RpcConn): unknown {
+    assertLocalHandoffRpc(verb, params, conn);
     if (typeof params.beeId === "string" && ["stop", "revive", "archive", "bee.swapAccount", "bee.setArgs", "bee.reconfigure", "bee.move", "bee.handoff", "bee.fork", "bee.interrupt"].includes(verb)) {
       const operation = this.mustStore().threadOperationForSuccessor(params.beeId);
       if (operation && operation.phase !== "ready") throw new RpcError("thread_busy", "Successor execution is owned by its thread operation; recover it with thread.operation.retry");

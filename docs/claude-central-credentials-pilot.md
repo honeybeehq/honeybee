@@ -405,3 +405,36 @@ recovery fence; it does not restore refresh material or release an original
 committed handoff. Reconcile its original receipt (confirm an adopted peer or
 consume its abort) rather than destroying a healthy holder. A failed-row
 recovery also refuses a newer local authority, native login or handoff.
+
+## Local authority facts and workstation re-pairing
+
+The trusted caller boundary is a direct local Unix-socket connection. Every
+handoff mutation and export, and any authenticatedPeer/targetKey fact, refuses
+remote, node-relayed or unknown connection provenance. The RPC server derives
+ingress from its accepted socket. The client hello may mark clientLane as
+node_relay or remote, which only downgrades a connection; neither a hello nor
+request parameters can promote a network socket to local authority. Generic
+Apiary node-RPC proxies must use a tagged relay connection and preserve that
+provenance. Authenticated org handoff orchestration validates the roster/mTLS
+peer and deliberately calls its own Hive over a separate local Unix connection.
+Hive cannot detect a privileged local proxy that strips relay provenance; that
+proxy behavior is outside the trusted apiaryd contract.
+
+handoffIdentitySet is set-once by default. For explicit org rebuild/re-pairing,
+the operator may use handoff-identity-set --file identity.json --replace. It
+durably aborts unclaimed source exports with old-key receipts, voids and removes
+preparing/prepared destination shadow material, then persists the replacement
+identity. The dedicated workstation Hive signing key remains separate from the
+org device key and does not rotate as a side effect. Same-identity replay is a
+quiet no-op. Failed cleanup keeps the old pin; retry completes remaining voids
+before replacing it. A crash after voiding a shadow but before pinning the new
+identity cannot revive that shadow.
+
+Source prepared/committed claims and provider-started destinations refuse
+replacement until explicitly completed or recovered. A prepared destination
+cannot know whether its source already acknowledged it: Apiary must settle that
+source before re-pairing the destination. If it does not, the source remains
+fenced; a fresh higher-epoch healthy holder must authorize stand-down recovery.
+Replacing an identity never silently aborts a remotely committed source or
+restores a deleted refresh chain. Do not relay the operator --replace command
+from a remote RPC lane.

@@ -63,18 +63,49 @@ export class CredentialHandoffService {
   private readonly log: (message: string) => void;
   private reconciling = false;
   private activeLanes = 0;
+  private identityReplacing = false;
   private lastSweepAt = 0;
   constructor(store: CoreStore, accounts: AccountsService, root: string, now: () => number, log: (message: string) => void) {
     this.store = store; this.accounts = accounts; this.root = root; this.now = now; this.log = log;
   }
 
-  setIdentity(params: Record<string, unknown>) {
+  async setIdentity(params: Record<string, unknown>) {
+    if (this.identityReplacing) throw new RpcError("credential_handoff_fenced", "Workstation identity replacement is in progress.");
     const current = this.store.credentialHandoffIdentity(), supplied = identity(params.identity);
-    if (current && !same(current, supplied)) throw new RpcError("credential_handoff_conflict", "Workstation identity is already pinned; do not reuse another workstation's private vault.");
-    if (!current) this.store.setCredentialHandoffIdentity(supplied);
-    return { identity: supplied, publicKey: this.publicKey() };
+    if (current && same(current, supplied)) return { identity: supplied, publicKey: this.publicKey(), abortedExports: [], voidedAdoptions: [] };
+    if (current && params.replace !== true) throw new RpcError("credential_handoff_conflict", "Workstation identity is already pinned; use handoff-identity-set --replace explicitly to void unclaimed work before re-pairing.");
+    const rows = this.store.listCredentialHandoffs();
+    if (this.activeLanes || rows.some(row => row.role === "source" && ["prepared", "committed"].includes(row.state) || row.role === "destination" && row.state === "adopting")) throw new RpcError("credential_handoff_fenced", "Finish or explicitly recover committed handoffs and provider-started adoption before replacing workstation identity.");
+    const abortedExports: string[] = [], voidedAdoptions: string[] = [];
+    this.identityReplacing = true;
+    try {
+    if (params.replace === true) {
+      for (const row of rows.filter(row => row.role === "source" && row.state === "exported")) {
+        const account = this.account(row.account);
+        await this.lane(account, `identity-abort:${row.handoffId}`, async () => {
+          const current = this.row(row.handoffId, "source"), authority = this.accounts.authorityFor(account)!.status(account)!;
+          this.store.putCredentialHandoff({ ...current, state: "aborted", receipt: this.signed("aborted", exported(current.binding)) }, { ...authority, phase: "ready" });
+        });
+        abortedExports.push(row.handoffId);
+      }
+      for (const row of rows.filter(row => row.role === "destination" && (["preparing", "prepared"].includes(row.state) || row.state === "aborted" && !row.scrubbed))) {
+        const account = this.account(row.account);
+        await this.lane(account, `identity-void:${row.handoffId}`, async () => {
+          const terminal = this.put(this.row(row.handoffId, "destination"), "aborted", { receipt: null });
+          this.accounts.authorityFor(account)!.forgetHandoffAdoption(account);
+          this.put(terminal, "aborted", { scrubbed: true });
+        });
+        voidedAdoptions.push(row.handoffId);
+      }
+    } else if (rows.some(row => !["aborted", "confirmed", "failed", "adopted", "stood_down"].includes(row.state))) {
+      throw new RpcError("credential_handoff_fenced", "Existing handoff work requires explicit --replace when enrolling workstation identity.");
+    }
+    this.store.setCredentialHandoffIdentity(supplied);
+    return { identity: supplied, publicKey: this.publicKey(), abortedExports, voidedAdoptions };
+    } finally { this.identityReplacing = false; }
   }
   private self(): CredentialHandoffIdentity {
+    if (this.identityReplacing) throw new RpcError("credential_handoff_fenced", "Workstation identity replacement is in progress.");
     const current = this.store.credentialHandoffIdentity();
     if (!current) throw new RpcError("credential_handoff_unavailable", "Apiary must install this workstation's authenticated identity before handoff.");
     return current;
@@ -121,6 +152,7 @@ export class CredentialHandoffService {
       cleanupPending: row.role === "destination" && ["failed", "aborted"].includes(row.state) && !row.scrubbed };
   }
   private async lane<T>(account: AccountRow, id: string, run: () => Promise<T>): Promise<T> {
+    if (this.identityReplacing && !id.startsWith("identity-")) throw new RpcError("credential_handoff_fenced", "Workstation identity replacement holds credential handoff.");
     this.accounts.assertLeaseWriteIdle(account.id);
     this.activeLanes++;
     try { return await this.accounts.authorityFor(account)!.handoffLane(account, id, run); }
@@ -514,7 +546,7 @@ export class CredentialHandoffService {
       return { ...previous.result as Record<string, unknown>, deduped: true };
     }
     const rows = this.store.listCredentialHandoffs();
-    if (this.activeLanes || rows.some(row => ["preparing", "prepared", "adopting", "committed"].includes(row.state))) throw new RpcError("credential_handoff_fenced", "Finish prepared or committed handoffs before rotating the workstation handoff key.");
+    if (this.identityReplacing || this.activeLanes || rows.some(row => ["preparing", "prepared", "adopting", "committed"].includes(row.state))) throw new RpcError("credential_handoff_fenced", "Finish prepared or committed handoffs before rotating the workstation handoff key.");
     this.key();
     const exports = rows.filter(row => row.role === "source" && row.state === "exported");
     const pending = exports.map(row => {
