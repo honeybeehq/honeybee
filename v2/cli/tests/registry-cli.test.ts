@@ -195,7 +195,7 @@ test("regcli.2: template/track reads fall back to the read-only store labeled st
   }
 });
 
-test("regcli.4: template put from a fields file without env is refused over a template that has env; a written-out env is accepted", async () => {
+test("regcli.4: template put from a fields file with an empty env is refused over a template that has env; a file without env keeps it; a written-out env is accepted", async () => {
   const { dir, cleanup } = makeDaemonDir();
   const scratch = mkdtempSync(join(tmpdir(), "hb-v2-regcli-env-"));
   let daemon: DaemonHandle | null = null;
@@ -214,20 +214,27 @@ test("regcli.4: template put from a fields file without env is refused over a te
 
     assert.equal(await runV2Cli(["template", "put", "--file", withEnv, ...base], capture().io), 0);
 
-    for (const file of [withoutEnv, emptyEnv]) {
-      const refused = capture();
-      assert.equal(await runV2Cli(["template", "put", "--file", file, ...base], refused.io), 1);
-      const text = refused.err.join("\n");
-      assert.match(text, /error \(template_env_wipe_refused\): template \S+: /);
-      assert.ok(text.endsWith(": refusing to replace this template's env with an empty one; to clear all env, delete the template and create it again"), text);
-      assert.ok(!text.includes("dummy-value-123") && !text.includes("DUMMY_SECRET"), text);
-    }
+    const refused = capture();
+    assert.equal(await runV2Cli(["template", "put", "--file", emptyEnv, ...base], refused.io), 1);
+    const text = refused.err.join("\n");
+    assert.match(text, /error \(template_env_wipe_refused\): template \S+: /);
+    assert.ok(text.endsWith(": refusing to replace this template's env with an empty one; to clear all env, delete the template and create it again"), text);
+    assert.ok(!text.includes("dummy-value-123") && !text.includes("DUMMY_SECRET"), text);
 
     const before = capture();
     assert.equal(await runV2Cli(["template", "inspect", "commit", ...base], before.io), 0);
     const row = JSON.parse(before.out[0] ?? "{}") as { env: Record<string, string>; prompt: string };
     assert.deepEqual(row.env, { DUMMY_SECRET: "dummy-value-123", OTHER: "x" });
     assert.equal(row.prompt, "Commit the tree.");
+
+    const omitted = capture();
+    assert.equal(await runV2Cli(["template", "put", "--file", withoutEnv, ...base], omitted.io), 0);
+    assert.ok(omitted.out[0]?.includes("updated"), omitted.out[0]);
+    const kept = capture();
+    assert.equal(await runV2Cli(["template", "inspect", "commit", ...base], kept.io), 0);
+    const keptRow = JSON.parse(kept.out[0] ?? "{}") as { env: Record<string, string>; prompt: string };
+    assert.deepEqual(keptRow.env, { DUMMY_SECRET: "dummy-value-123", OTHER: "x" });
+    assert.equal(keptRow.prompt, "Commit it all.");
 
     const accepted = capture();
     assert.equal(await runV2Cli(["template", "put", "--file", oneKey, ...base], accepted.io), 0);

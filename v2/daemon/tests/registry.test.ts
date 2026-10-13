@@ -199,7 +199,7 @@ test("reg.3: packages.importLocalConfig over RPC — explicit dir, idempotent, r
   }
 });
 
-test("reg.4: template.put and template.import refuse an empty env over a template that has env with a typed code", async () => {
+test("reg.4: template.put and template.import refuse an empty env over a template that has env with a typed code; a put that omits env keeps it", async () => {
   const { dir, cleanup } = makeDaemonDir();
   let daemon: DaemonHandle | null = null;
   try {
@@ -217,12 +217,17 @@ test("reg.4: template.put and template.import refuse an empty env over a templat
       !err.message.includes("dummy-value-123") &&
       !err.message.includes("DUMMY_SECRET");
     await assert.rejects(c.request("template.put", { id, fields: { ...row, prompt: "edited from workstation A", env: {} } }), refused);
-    await assert.rejects(c.request("template.put", { fields: { ...templateFields, prompt: "no env field" } }), refused);
     const exported = await c.request<TemplateExportResult>("template.export", { id });
     await assert.rejects(c.request("template.import", { package: { ...exported.package, env: {} } }), refused);
 
     const got = await c.request<TemplateGetResult>("template.get", { id });
     assert.deepEqual(got.template, put.template);
+
+    const { env: _env, ...rowWithoutEnv } = row;
+    const omitted = await c.request<TemplatePutResult>("template.put", { id, fields: { ...rowWithoutEnv, prompt: "no env field" } });
+    assert.equal(omitted.outcome, "updated");
+    assert.deepEqual(omitted.template.env, env);
+    assert.equal(omitted.template.prompt, "no env field");
 
     const kept = await c.request<TemplatePutResult>("template.put", { id, fields: { ...row, prompt: "edited", env: { OTHER: "x" } } });
     assert.equal(kept.outcome, "updated");

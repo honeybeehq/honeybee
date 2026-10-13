@@ -562,10 +562,6 @@ test("pkg.10: a whole-row put with an empty env over a template that has env is 
     assert.deepEqual(store.getTemplate("tpl-env"), created);
     assert.equal(store.auditRows().length, auditBefore);
 
-    assert.throws(() => store.putTemplate({ fields: { ...baseTemplate, prompt: "no env field at all" } }), TemplateEnvWipeError);
-    assert.deepEqual(store.getTemplate("tpl-env"), created);
-    assert.equal(store.auditRows().length, auditBefore);
-
     const oneRemoved = store.putTemplate({ id: "tpl-env", fields: { ...fields, env: { DUMMY_SECRET: "dummy-value-123" } } });
     assert.equal(oneRemoved.outcome, "updated");
     assert.deepEqual(oneRemoved.template.env, { DUMMY_SECRET: "dummy-value-123" });
@@ -583,6 +579,41 @@ test("pkg.10: a whole-row put with an empty env over a template that has env is 
     const recreated = store.putTemplate({ id: "tpl-env", fields });
     assert.equal(recreated.outcome, "created");
     assert.deepEqual(recreated.template.env, {});
+    assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
+    store.close();
+  } finally {
+    h.cleanup();
+  }
+});
+
+test("pkg.12: a put that omits env keeps the stored env; an explicit empty env is still refused", () => {
+  const h = harness();
+  try {
+    const store = h.open();
+    const env = { DUMMY_SECRET: "dummy-value-123", OTHER: "x" };
+    const created = store.putTemplate({ id: "tpl-env", fields: { ...baseTemplate, prompt: "original prompt", env } }).template;
+    const { kind: _kind, formatVersion: _formatVersion, id: _id, env: _env, ...withoutEnv } = exportTemplate(created);
+
+    const byId = store.putTemplate({ id: "tpl-env", fields: { ...withoutEnv, prompt: "edited from workstation A" } });
+    assert.equal(byId.outcome, "updated");
+    assert.deepEqual(byId.template.env, env);
+    assert.equal(byId.template.prompt, "edited from workstation A");
+
+    const byName = store.putTemplate({ fields: { ...baseTemplate, prompt: "renamed by name match" } });
+    assert.equal(byName.template.id, "tpl-env");
+    assert.deepEqual(byName.template.env, env);
+
+    const auditBefore = store.auditRows().length;
+    assert.equal(store.putTemplate({ id: "tpl-env", fields: { ...baseTemplate, prompt: "renamed by name match" } }).outcome, "unchanged");
+    assert.equal(store.auditRows().length, auditBefore);
+
+    assert.throws(() => store.putTemplate({ id: "tpl-env", fields: { ...withoutEnv, env: {} } }), TemplateEnvWipeError);
+    assert.throws(() => store.putTemplate({ id: "tpl-env", fields: { ...withoutEnv, env: null } }), TemplateEnvWipeError);
+    assert.deepEqual(store.getTemplate("tpl-env")?.env, env);
+
+    const fresh = store.putTemplate({ id: "tpl-new", fields: { ...baseTemplate, name: "fresh" } });
+    assert.equal(fresh.outcome, "created");
+    assert.deepEqual(fresh.template.env, {});
     assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
     store.close();
   } finally {

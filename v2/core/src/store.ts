@@ -4874,6 +4874,7 @@ export class CoreStore {
         () => this.getTemplateByName(fields.scope, fields.name),
         "template",
       );
+      if (target && (input.fields as Record<string, unknown>).env === undefined) fields.env = target.env;
       if (target && Object.keys(target.env).length > 0 && Object.keys(fields.env).length === 0) {
         throw new TemplateEnvWipeError(target.id);
       }
