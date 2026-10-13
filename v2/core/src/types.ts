@@ -1745,6 +1745,17 @@ export interface CredentialHandoffRecord {
   binding: CredentialHandoffBinding;
   receipt: CredentialHandoffReceipt | null;
   peerReceipt?: CredentialHandoffReceipt;
+  releasePeer?: {
+    roster: { orgId: string; genesis: string; heads: string[]; version: string; authorNodeId: string; authorCounter: number; members: string[] };
+    requiredEpoch: number;
+    mode: "prepared_abort" | "committed_refresh" | "destination_void" | "destination_holder" | "destination_recovery" | "destination_retained_refresh";
+    outcome: "pending" | "restored" | "login_required" | "uncertain";
+    cleanupPending: boolean;
+    retryable?: boolean;
+    nativeRecovery?: boolean;
+    earlyRotationPending?: boolean;
+    transportGeneration?: number;
+  };
   scrubbed?: boolean;
   generation: number | null;
   expiresAt: number | null;

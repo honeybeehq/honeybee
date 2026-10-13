@@ -233,6 +233,7 @@ const VALUE_FLAGS = new Set([
   "--file",
   "--epoch",
   "--takeover-id",
+  "--handoff-id",
   "--out",
   "--dir",
   "--id",
@@ -322,6 +323,8 @@ const BOOL_FLAGS = new Set([
   "--verbose",
   "--dry-run",
   "--confirm",
+  "--native-recovery",
+  "--use-retained-chain",
   "--replace",
   "--force",
   // v31 (cell gc): skip the per-Cell du walk.
@@ -785,6 +788,7 @@ const ACCOUNT_USAGE =
   "       hive account pause|unpause <selector> [--by operator|quota|lease] [--owner <id>] [--force]\n" +
   "       hive account login <selector> [--method <id>] [--remote] [--no-wait] [--replace-account] | login-status <selector> | login-cancel <selector>\n" +
   "       hive account credentials <status|enable|refresh|disable|backup-status|restore-native> <selector>\n" +
+  "       hive account credentials release-peer <account> --confirm --file authenticated-roster.json [--handoff-id id] [--native-recovery] [--use-retained-chain]\n" +
   "       hive account credentials take-over <account> --confirm [--epoch higher-epoch] [--takeover-id id]\n" +
   "       hive account credentials <export|adopt-prepare|export-prepare|export-commit|adopt|adopt-abort|export-abort|export-confirm|stand-down|handoff-status|handoff-key-rotate|handoff-identity-set|stand-down-receipt|take-over-apply|take-over-complete|take-over-cancel> --file protected-payload.json [--out protected-material.json] [--replace]\n" +
   "       hive account lease install --file payload.json | lease remove <id>\n" +
@@ -1091,6 +1095,18 @@ async function cmdAccount(ctx: CliContext, parsed: Parsed): Promise<number> {
     }
     case "credentials": {
       const action = parsed.positional[2];
+      if (action === "release-peer") {
+        const account = parsed.positional[3], file = parsed.flags.get("--file");
+        if (!account || parsed.flags.get("--confirm") !== true || typeof file !== "string") throw new Error("Usage: hive account credentials release-peer <account> --confirm --file authenticated-roster.json [--handoff-id id] [--native-recovery] [--use-retained-chain]");
+        let roster: unknown;
+        try { roster = JSON.parse(readFileSync(file, "utf8")); } catch { throw new Error("Could not read authenticated roster JSON supplied by local apiaryd."); }
+        const result = await withClient(ctx, client => {
+          if (!client.capabilities.includes("account.credentials.release_peer.v1")) throw new RpcError("capability_missing", "Update Honeybee: account.credentials.release_peer.v1 is required.");
+          return client.request("account.credentials.releasePeer", { account, confirm: true, roster, nativeRecovery: parsed.flags.get("--native-recovery") === true, useRetainedChain: parsed.flags.get("--use-retained-chain") === true, ...(parsed.flags.has("--handoff-id") ? { handoffId: parsed.flags.get("--handoff-id") } : {}) }, ACCOUNT_LIMITS_RPC_TIMEOUT_MS);
+        });
+        emit(ctx, [JSON.stringify(result)], result, false);
+        return 0;
+      }
       if (action === "take-over") {
         const account = parsed.positional[3];
         if (!account || parsed.flags.get("--confirm") !== true) throw new Error("Usage: hive account credentials take-over <account> --confirm [--epoch higher-epoch] [--takeover-id id]");

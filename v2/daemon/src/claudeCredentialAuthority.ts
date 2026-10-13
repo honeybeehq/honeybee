@@ -11,6 +11,7 @@ export interface AuthorityDocument {
   operationKey: string | null;
   accessUsable?: boolean;
   handoffAttemptStarted?: boolean;
+  releasePeerAttempt?: { handoffId: string; generation: number; retryable?: boolean };
   terminalAccessFailure?: "invalid_expiry";
   document: Record<string, unknown>;
   /** The native chain enrollment adopted, secret-free, so its untouched copies are not mistaken for a foreign login. */
@@ -397,6 +398,57 @@ export class CredentialAuthority {
       throw new CredentialAuthorityError("Handoff rotation outcome is uncertain; both sides remain fenced.");
     }
     if (value.accessUsable === false) return this.retainUnusableAccess(account, value);
+    await this.options.publish(account, value.document, true);
+    return this.ready(account, value);
+  }
+
+  releasedPeerRetryable(account: AccountRow, handoffId: string): boolean {
+    const value = this.read(account);
+    return value.releasePeerAttempt?.handoffId === handoffId && value.releasePeerAttempt.retryable === true;
+  }
+
+  releasedPeerHasReplacement(account: AccountRow, generation: number): boolean {
+    return this.read(account).generation > generation;
+  }
+
+  async rotateReleasedPeer(account: AccountRow, handoffId: string, generation: number, firstAttempt: boolean, onAttempt: () => void): Promise<AccountCredentialAuthority> {
+    let value = this.read(account);
+    const state = this.status(account);
+    if (!state) throw new CredentialAuthorityError("Release authority is unavailable.");
+    if (value.releasePeerAttempt && (value.releasePeerAttempt.handoffId !== handoffId || value.releasePeerAttempt.generation !== generation)) {
+      if (!firstAttempt || value.generation <= value.releasePeerAttempt.generation) throw new CredentialAuthorityError("Another peer release owns this chain.");
+      value = { ...value, releasePeerAttempt: undefined };
+    }
+    if (state.phase === "login_required" && state.failure?.outcome === "rejected") throw new CredentialAuthorityError("Peer release token was rejected.", "login_required");
+    if (value.releasePeerAttempt && value.generation > generation && value.accessUsable !== false) {
+      await this.options.publish(account, value.document, true);
+      return this.ready(account, value);
+    }
+    if ((!firstAttempt || value.releasePeerAttempt) && !value.releasePeerAttempt?.retryable) {
+      this.outcomeUnknown(account, value, this.interrupted("Peer release was interrupted; do not retry the provider automatically", state.failure));
+      throw new CredentialAuthorityError("Peer release outcome is unknown.");
+    }
+    await this.options.beforeRefresh(account, value.document);
+    const credential = this.parseDocument(value.document);
+    if (!credential?.refreshToken || value.generation !== generation) throw new CredentialAuthorityError("Committed source refresh material is unavailable.");
+    value = { ...value, operationKey: handoffId, releasePeerAttempt: { handoffId, generation } };
+    save(this.path(account), value);
+    onAttempt();
+    const attempt = await this.attempt(account, credential.refreshToken, generation, state.failure, "refresh", token => {
+      value = { ...value, generation: generation + 1, issuedAt: this.options.now(), document: this.codec.merge(value.document, token, this.options.now()),
+        accessUsable: token.accessUsable !== false && token.refreshToken !== credential.refreshToken, terminalAccessFailure: token.terminalAccessFailure };
+      save(this.path(account), value);
+    });
+    if (attempt.kind === "failed") {
+      if (attempt.result.kind === "rejected") throw this.requireLogin(account, value, attempt.failure);
+      if (attempt.result.kind === "retryable") { value = { ...value, releasePeerAttempt: { handoffId, generation, retryable: true } }; save(this.path(account), value); }
+      this.outcomeUnknown(account, value, attempt.failure);
+      throw new CredentialAuthorityError("Peer release outcome is unknown.");
+    }
+    if (value.accessUsable === false) {
+      this.outcomeUnknown(account, value, this.interrupted("Peer release returned an unusable access token; replacement material retained", state.failure));
+      throw new CredentialAuthorityError("Peer release replacement material is retained privately.");
+    }
     await this.options.publish(account, value.document, true);
     return this.ready(account, value);
   }

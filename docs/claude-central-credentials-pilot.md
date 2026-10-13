@@ -438,3 +438,75 @@ fenced; a fresh higher-epoch healthy holder must authorize stand-down recovery.
 Replacing an identity never silently aborts a remotely committed source or
 restores a deleted refresh chain. Do not relay the operator --replace command
 from a remote RPC lane.
+
+## Releasing a removed handoff peer
+
+An operator may use `hive account credentials release-peer <account> --confirm
+--file authenticated-roster.json [--handoff-id id]`. Local apiaryd supplies the
+roster fact from its validated signed membership DAG for this handoff's org;
+UI or remote payloads must never supply it. The capability is
+`account.credentials.release_peer.v1`; the RPC is
+`account.credentials.releasePeer`. Only direct local Unix ingress is accepted.
+The fact carries orgId, genesis, sorted heads, their version hash, local
+authorNodeId/authorCounter and the folded member nodeIds. It must include this
+workstation, exclude the bound handoff peer and name this workstation as author.
+Hive persists the complete asserted fact; it does not fold or authenticate the
+org DAG itself. This remains the trusted local apiaryd boundary. Stop account
+bees on every computer visible to Apiary; Hive refuses local running bees or an
+active login. The command is never automatic.
+
+A prepared source aborts without committing or calling the provider. Its chain
+is unchanged; removed-peer copies may still contain valid refresh material until
+the source next refreshes. The response warns that an abort does not sign that
+computer out at the provider. Authority becomes ready, and Apiary must publish the account
+record at requiredEpoch (the prior handoff/local epoch maximum plus one). A
+committed source first persists its release attempt, then makes one refresh.
+Success saves the replacement chain before access-only publication, voids the
+handoff and restores the source at requiredEpoch. Do not renew leases until
+Apiary has written that authority record. An invalid_grant scrubs this source
+and leaves its local row requiring native login; the response names the account
+and warns that the removed computer still has a working login until it is
+signed out at the provider. Honeybee never logs out or revokes that computer.
+
+A crash before the call or between response and save is durably uncertain and
+must not cause a blind provider retry. After a saved successful response, retry
+only publishes the saved chain. An unusable replacement stays private and
+uncertain. Cleanup failure remains fenced with cleanupPending until the same
+request succeeds after storage repair. Keep the original roster fact and
+handoff id for retries; changing it after the attempt refuses. Each outcome has
+one secret-free audit row.
+
+Restored responses include abortReceipt, signed over the original export
+binding. On authenticated re-enrollment, a still-prepared destination consumes
+it through adoptAbort before the higher-epoch lease installs into its same row.
+A destination that started adoption needs the existing signed stand-down
+protocol instead. A bare higher epoch never authorizes deleting an authority.
+The operator must not commit a prepared source merely to release its peer.
+
+The prepared abort also persists rotationScheduled and an early-rotation marker
+in its release audit. The next handoff reconcile tick schedules a normal central
+refresh immediately, bypassing the ordinary early-refresh age threshold without
+unpausing the account. It respects credential-operation ownership and provider
+backoff; a provider failure remains visible through existing credential status.
+This background rotation is separate from the zero-provider-call abort itself.
+
+A committed release that durably records a proven-unconsumed transport refusal
+returns retryable=true. An explicit same-request retry may then send the token
+again; exactly one processed rotation is permitted. An unknown response or a
+crash after the next attempt marker is written clears that permission. Retryable
+is a transport classification, never inferred merely from an arbitrary HTTP 5xx.
+
+For an unknown outcome only, an operator may add --native-recovery with the same
+confirmation and original roster fact. This makes no provider call, scrubs the
+uncertain local copies and leaves the account requiring native login. It warns
+that the removed computer may still hold a working login until signed out at
+the provider. Known saved replacement material refuses this exit: use normal
+release-peer to finish publication. A proven-unconsumed token also refuses
+native recovery: use the known-safe explicit retry instead. No recovery is
+automatic, and each native recovery outcome has one secret-free ledger row.
+
+Removed-source destination recovery uses the same explicit local release-peer request and authenticated roster fact. A preparing/prepared or failed shadow is terminalized before its private received material is forgotten; its existing account row and pre-handoff local/leased provenance remain intact. No provider is called. A completed adopted destination keeps its healthy authority without rewriting credential files and reports requiredEpoch for the org record. An adopting/unknown destination requires --native-recovery, has no provider call, and becomes local/native-login-required after scrub; a known saved replacement refuses this option and must complete normal adoption/publication first. Pending cleanup stays fenced and retries with the original fact. All branches persist the claim terminal state so resurrected source commit/prepare frames cannot reactivate it. The outcome audit names the removed source. Apiary must perform normal native login, identity check and credentials enable after shadow cleanup, then publish epoch+1; an adopted holder needs only that record publication.
+
+A removed-source destination retaining a known rotated chain with malformed expiry may explicitly use release-peer --use-retained-chain (mutually exclusive with --native-recovery). handoffStatus.retainedChainRecoveryAvailable identifies this action without provider-text inference. Persist transportGeneration and the removed roster before entering the durable attempt; success saves first, publishes and retains the holder at requiredEpoch, invalid_grant proves the chain dead before scrub, and unknown stops without blind retry. Saved success retries publication only. The action is never automatic and cannot discard a known chain without rejection proof.
+
+Crash limitation: a durable attempted marker cannot distinguish a crash immediately before sending from one during a processed request. Both stop as uncertain. Explicit native recovery after that uncertainty can therefore abandon an old retained token that the provider would still accept; the operator is warned that the removed peer may retain a working login. A newer saved response generation is never discarded by this option.

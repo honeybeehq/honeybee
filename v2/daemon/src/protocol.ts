@@ -122,6 +122,7 @@ export const DAEMON_CAPABILITIES = [
   "account.credentials.pilot.v1",
   "account.credentials.status.v2",
   "account.credentials.handoff.v1",
+  "account.credentials.release_peer.v1",
   /**
    * v35: a dying login is visible. Account rows carry `statusReason` and
    * `refreshTokenExpiresAt`; `account.credentials.status` carries
@@ -517,6 +518,7 @@ export const RPC_VERBS = [
   "account.credentials.operatorTakeoverApply",
   "account.credentials.operatorTakeoverComplete",
   "account.credentials.operatorTakeoverCancel",
+  "account.credentials.releasePeer",
   "account.credentials.status",
   "account.credentials.nativeBackup",
   "account.credentials.restoreNative",

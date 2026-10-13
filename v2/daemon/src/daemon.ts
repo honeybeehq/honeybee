@@ -1586,6 +1586,8 @@ export class HiveDaemon {
         return this.withIdempotency(verb, params, () => this.rpcAccountLoginCancel(params));
       case "account.credentials.export":
         return this.mustAccounts().credentialHandoff.export(params);
+      case "account.credentials.releasePeer":
+        return this.mustAccounts().credentialHandoff.releasePeer(params);
       case "account.credentials.adoptPrepare":
         return this.mustAccounts().credentialHandoff.adoptPrepare(params);
       case "account.credentials.exportPrepare":

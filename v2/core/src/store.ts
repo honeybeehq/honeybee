@@ -5099,11 +5099,11 @@ export class CoreStore {
   }
 
   pendingCredentialHandoffs(): CredentialHandoffRecord[] {
-    return (this.stmt("SELECT record FROM credential_handoffs WHERE state IN ('exported','failed','aborted') AND (role = 'source' AND state = 'exported' OR role = 'destination' AND COALESCE(json_extract(record,'$.scrubbed'),0) = 0)").all() as Row[]).map(row => JSON.parse(String(row.record)) as CredentialHandoffRecord);
+    return (this.stmt("SELECT record FROM credential_handoffs WHERE state IN ('exported','failed','aborted') AND (role = 'source' AND (state = 'exported' OR state = 'aborted' AND json_extract(record,'$.releasePeer.earlyRotationPending') = 1) OR role = 'destination' AND COALESCE(json_extract(record,'$.scrubbed'),0) = 0)").all() as Row[]).map(row => JSON.parse(String(row.record)) as CredentialHandoffRecord);
   }
 
   credentialRecoveryPending(account: string): boolean {
-    return Boolean(this.stmt("SELECT 1 FROM credential_handoffs WHERE account = ? AND state = 'committed' AND json_extract(record,'$.receipt.kind') IN ('stand_down','operator_takeover') LIMIT 1").get(account));
+    return Boolean(this.stmt("SELECT 1 FROM credential_handoffs WHERE account = ? AND state = 'committed' AND (json_extract(record,'$.receipt.kind') IN ('stand_down','operator_takeover') OR json_extract(record,'$.releasePeer') IS NOT NULL) LIMIT 1").get(account));
   }
 
   activeCredentialHandoff(account: string): CredentialHandoffRecord | null {
@@ -5120,8 +5120,18 @@ export class CoreStore {
         .run(record.handoffId, record.role, record.account, record.state, JSON.stringify(record));
       this.stmt("INSERT INTO credential_handoff_events(handoff_id,role,state,at) VALUES(?,?,?,?)").run(record.handoffId, record.role, record.state, this.now());
       if (!previous && record.receipt?.kind === "operator_takeover") this.audit("account.credentials.operator_takeover", null, { account: record.account, handoffId: record.handoffId, role: record.role, epoch: record.binding.epoch, reason: "explicit_operator_recovery" });
+      if (record.releasePeer && record.releasePeer.outcome !== "pending" && previous?.releasePeer?.outcome !== record.releasePeer.outcome) this.audit("account.credentials.release_peer", null, { account: record.account, handoffId: record.handoffId, outcome: record.releasePeer.outcome, requiredEpoch: record.releasePeer.requiredEpoch, rosterVersion: record.releasePeer.roster.version, authorNodeId: record.releasePeer.roster.authorNodeId, authorCounter: record.releasePeer.roster.authorCounter, earlyRotationScheduled: record.releasePeer.earlyRotationPending === true, nativeRecovery: record.releasePeer.nativeRecovery === true, removedPeerNodeId: record.role === "source" ? record.binding.to.nodeId : record.binding.from.nodeId, role: record.role, reason: record.releasePeer.mode === "destination_retained_refresh" && record.releasePeer.outcome === "login_required" ? "retained_chain_rejected" : "explicit_removed_peer_recovery" });
       if (authority) this.putAccountCredentialAuthority(authority);
       return record;
+    });
+  }
+
+  completeCredentialPeerRelease(record: CredentialHandoffRecord, authority?: AccountCredentialAuthority): void {
+    const release = record.releasePeer!;
+    this.credentialHandoffTx(() => {
+      if (release.mode !== "destination_void") this.applyAccountUpdate(record.account, { source: "local", leasedFrom: null, status: this.mustGetAccount(record.account).status === "paused" ? "paused" : release.outcome === "restored" ? "ok" : "auth_needed", statusReason: release.outcome === "restored" ? "Removed peer released; central authority restored" : "Removed peer retains a working login; native login required here" }, "explicit removed peer recovery");
+      this.stmt("INSERT INTO credential_authority_epochs(account,epoch,demoted) VALUES(?,?,?) ON CONFLICT(account) DO UPDATE SET epoch=excluded.epoch,demoted=excluded.demoted").run(record.account, release.requiredEpoch, release.outcome === "restored" ? 0 : 1);
+      this.putCredentialHandoff(record, authority);
     });
   }
 

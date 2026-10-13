@@ -149,7 +149,8 @@ export class CredentialHandoffService {
   }
   private result(row: CredentialHandoffRecord) {
     return { handoffId: row.handoffId, state: row.state, generation: row.generation, expiresAt: row.expiresAt, receipt: row.receipt,
-      cleanupPending: row.role === "destination" && ["failed", "aborted"].includes(row.state) && !row.scrubbed };
+      ...(row.releasePeer ? { releasePeer: row.releasePeer } : {}),
+      cleanupPending: row.releasePeer?.cleanupPending ?? (row.role === "destination" && ["failed", "aborted"].includes(row.state) && !row.scrubbed) };
   }
   private async lane<T>(account: AccountRow, id: string, run: () => Promise<T>): Promise<T> {
     if (this.identityReplacing && !id.startsWith("identity-")) throw new RpcError("credential_handoff_fenced", "Workstation identity replacement holds credential handoff.");
@@ -266,6 +267,7 @@ export class CredentialHandoffService {
       this.assertSelf(row.binding.to);
       check(commit, "commit", row.binding.sourceKey);
       if (row.account !== account.id || !same(commit.binding, row.binding)) throw new RpcError("credential_handoff_conflict", "Commit receipt differs from the durable preparation.");
+      if (row.releasePeer) throw new RpcError("credential_handoff_decided", "Removed-peer release made this claim terminal; publish the new authority epoch instead.");
       if (row.state === "adopted") return this.result(row);
       if (row.state === "failed") {
         const cleaned = row.scrubbed || await this.cleanupDestination(row);
@@ -329,6 +331,7 @@ export class CredentialHandoffService {
       check(adopted, "adopted", current.binding.targetKey!);
       if (!same(current.binding, adopted.binding)) throw new RpcError("credential_handoff_conflict", "Adoption receipt does not match the committed destination.");
       if (current.state === "confirmed") return this.result(current);
+      if (current.releasePeer) throw new RpcError("credential_handoff_fenced", "Release-peer holds this handoff; reconcile its retained result before confirmation.");
       if (current.state !== "committed") throw new RpcError("credential_handoff_decided", "Only a committed export can be confirmed.");
       await this.accounts.scrubHandoff(account);
       this.store.demoteCredentialAuthority(account.id, current.binding.epoch);
@@ -389,6 +392,164 @@ export class CredentialHandoffService {
   private takeoverEpoch(account: AccountRow, bound: CredentialHandoffBinding, existing: CredentialHandoffRecord | null): void {
     const floor = this.store.credentialAuthorityEpoch(account.id);
     if (bound.epoch < floor || bound.epoch === floor && !(existing && this.store.credentialAuthorityIsDemoted(account.id))) throw new RpcError("credential_handoff_stale_epoch", "Explicit takeover requires an epoch above both workstation authority floors.");
+  }
+
+  async releasePeer(params: Record<string, unknown>) {
+    const account = this.account(params.account);
+    if (params.confirm !== true || params.nativeRecovery !== undefined && typeof params.nativeRecovery !== "boolean" || params.useRetainedChain !== undefined && typeof params.useRetainedChain !== "boolean" || params.nativeRecovery === true && params.useRetainedChain === true) throw new RpcError("invalid_request", "Release-peer requires explicit operator confirmation and a boolean native recovery option.");
+    const supplied = object(params.roster);
+    const strings = (value: unknown, limit: number) => {
+      if (!Array.isArray(value) || value.length > limit) throw new RpcError("invalid_request", "Release-peer requires a bounded validated roster.");
+      const values = value.map(name);
+      if (new Set(values).size !== values.length) throw new RpcError("invalid_request", "Release-peer roster entries must be unique.");
+      return values.sort();
+    };
+    const roster = { orgId: name(supplied.orgId), genesis: name(supplied.genesis), heads: strings(supplied.heads, 1024), version: name(supplied.version),
+      authorNodeId: name(supplied.authorNodeId), authorCounter: integer(supplied.authorCounter), members: strings(supplied.members, 4096) };
+    if (!/^[a-f0-9]{64}$/.test(roster.genesis) || !roster.heads.length || roster.heads.some(head => !/^[a-f0-9]{64}$/.test(head)) || roster.version !== createHash("sha256").update(JSON.stringify([roster.orgId, roster.genesis, roster.heads])).digest("hex")) throw new RpcError("invalid_request", "Release-peer roster version must identify its validated membership heads.");
+    const self = this.self();
+    if (roster.authorNodeId !== self.nodeId || !roster.members.includes(self.nodeId)) throw new RpcError("credential_handoff_conflict", "Release-peer requires this workstation's authenticated current roster fact.");
+    const candidates = this.store.listCredentialHandoffs().filter(row => row.account === account.id && (["prepared", "committed", "adopting", "adopted", "failed"].includes(row.state) || row.releasePeer));
+    const active = candidates.filter(row => !row.releasePeer && ["prepared", "committed", "adopting", "adopted", "failed"].includes(row.state));
+    const selected = active.length === 1 ? active[0] : candidates.length === 1 ? candidates[0] : null;
+    if (params.handoffId === undefined && !selected) throw new RpcError("invalid_request", "Select the original handoff id when release-peer history is ambiguous.");
+    const handoffId = params.handoffId === undefined ? selected!.handoffId : name(params.handoffId);
+    return this.lane(account, `release-peer:${handoffId}`, async () => {
+      const found = this.store.getCredentialHandoff(handoffId, "source") ?? this.store.getCredentialHandoff(handoffId, "destination");
+      if (!found) throw new RpcError("credential_handoff_decided", "The original handoff is unavailable.");
+      let row: CredentialHandoffRecord = found;
+      this.assertSelf(row.role === "source" ? row.binding.from : row.binding.to);
+      if (row.account !== account.id || roster.members.includes((row.role === "source" ? row.binding.to : row.binding.from).nodeId)) throw new RpcError("credential_handoff_conflict", "The committed handoff peer is still an organization member or names another account.");
+      if (row.releasePeer && !same(row.releasePeer.roster, roster)) throw new RpcError("credential_handoff_conflict", "Release-peer retry must retain the original authenticated roster fact.");
+      if (row.role === "destination") return this.releaseDestination(account, row, roster, params.nativeRecovery === true, params.useRetainedChain === true);
+      if (params.useRetainedChain === true) throw new RpcError("invalid_request", "Retained-chain recovery is destination-only.");
+      const firstAttempt = !row.releasePeer;
+      if (firstAttempt && (!["prepared", "committed"].includes(row.state) || !["prepared", "commit"].includes(row.receipt?.kind ?? "") || account.source === "leased")) throw new RpcError("credential_handoff_decided", "Release-peer requires this computer's prepared or committed source handoff.");
+      const reply = (current: CredentialHandoffRecord, providerCalled: boolean) => {
+        const release = current.releasePeer!;
+        const message = release.outcome === "restored" ? `Authority restored for ${account.id}. Apiary must publish the account authority record at epoch ${release.requiredEpoch} before installing or renewing leases.${release.mode === "prepared_abort" ? ` The removed computer may still hold copied refresh material for account ${account.id}; this abort does not sign it out at the provider. The source's next refresh invalidates that copied refresh token.` : ""}`
+          : release.outcome === "login_required" ? `Native login required for ${account.id} on this computer. The removed computer ${release.nativeRecovery ? "may still hold" : "still holds"} a working login for account ${account.id} until it is signed out at the provider.`
+          : release.retryable ? `The provider did not consume the refresh token for ${account.id}; retry this explicitly confirmed release-peer request with its original roster fact.`
+          : `Release-peer outcome is unknown for ${account.id}; retained credential material remains private. Do not retry the provider blindly. Use explicit release-peer --native-recovery for native login only if no saved replacement exists.`;
+        return { account: account.id, handoffId, disposition: release.outcome === "restored" ? release.mode === "prepared_abort" ? "prepared_aborted" : "source_rotated" : release.outcome === "login_required" ? "native_login_required" : "uncertain", abortReceipt: release.outcome === "restored" ? current.receipt : null, outcome: release.outcome, requiredEpoch: release.requiredEpoch, generation: current.generation, expiresAt: current.expiresAt, providerCalled, message, cleanupPending: release.cleanupPending, retryable: release.retryable === true, rotationScheduled: release.earlyRotationPending === true };
+      };
+      if (params.nativeRecovery === true && row.releasePeer?.outcome !== "uncertain" && !row.releasePeer?.nativeRecovery) throw new RpcError("credential_handoff_decided", "Native recovery is only available after an uncertain release-peer outcome.");
+      if (row.releasePeer && ["restored", "login_required"].includes(row.releasePeer.outcome) && !row.releasePeer.cleanupPending) return reply(row, false);
+      this.noRunningBees(account);
+      if (!firstAttempt && (row.state !== "committed" || this.store.credentialAuthorityEpoch(account.id) >= row.releasePeer!.requiredEpoch)) throw new RpcError("credential_handoff_decided", "A newer authority or recovery superseded this release-peer attempt.");
+      if (firstAttempt) {
+        if (this.store.listCredentialHandoffs().some(other => other.account === account.id && other.handoffId !== handoffId && !["aborted", "confirmed", "failed", "adopted", "stood_down"].includes(other.state))) throw new RpcError("credential_handoff_fenced", "Finish another credential recovery before releasing this peer.");
+        const requiredEpoch = Math.max(row.binding.epoch, this.store.credentialAuthorityEpoch(account.id)) + 1;
+        if (!Number.isSafeInteger(requiredEpoch)) throw new RpcError("invalid_request", "Release-peer cannot advance the authority epoch further.");
+        if (row.state === "prepared") {
+          const authority = this.accounts.authorityFor(account)!.status(account);
+          if (!authority || authority.phase !== "handing_off") throw new RpcError("credential_handoff_unavailable", "Prepared release requires the original fenced source authority.");
+          row = { ...row, state: "aborted", receipt: this.signed("aborted", exported(row.binding)), generation: authority.generation, expiresAt: authority.expiresAt,
+            releasePeer: { roster, requiredEpoch, mode: "prepared_abort", outcome: "restored", cleanupPending: false, earlyRotationPending: true } };
+          this.store.completeCredentialPeerRelease(row, { ...authority, phase: "ready", operationKey: null });
+          return reply(row, false);
+        }
+        row = this.put(row, "committed", { releasePeer: { roster, requiredEpoch, mode: "committed_refresh", outcome: "pending", cleanupPending: false } });
+      }
+      let providerCalled = false;
+      const reject = async () => {
+        row = this.put(row, "committed", { releasePeer: { ...row.releasePeer!, outcome: "login_required", cleanupPending: true } });
+        try { this.accounts.assertNoNewNativeTakeover(account); await this.accounts.scrubHandoff(account); }
+        catch { return reply(row, providerCalled); }
+        row = { ...row, state: "failed", scrubbed: true, releasePeer: { ...row.releasePeer!, cleanupPending: false } };
+        this.store.completeCredentialPeerRelease(row);
+        return reply(row, providerCalled);
+      };
+      if (row.releasePeer!.outcome === "login_required") return reject();
+      const authority = this.accounts.authorityFor(account)!;
+      if (params.nativeRecovery === true) {
+        if (authority.releasedPeerRetryable(account, handoffId)) throw new RpcError("credential_handoff_decided", "The provider proved this token was unconsumed; retry normal release-peer instead of native recovery.");
+        if (authority.releasedPeerHasReplacement(account, row.binding.generation)) throw new RpcError("credential_handoff_decided", "A saved replacement chain exists; retry normal release-peer to publish it. Native recovery must not discard that chain.");
+        row = this.put(row, "committed", { releasePeer: { ...row.releasePeer!, nativeRecovery: true, retryable: false, outcome: "login_required", cleanupPending: true } });
+        return reject();
+      }
+      try {
+        const state = await authority.rotateReleasedPeer(account, handoffId, row.binding.generation, firstAttempt, () => { providerCalled = true; });
+        row = { ...row, state: "aborted", receipt: this.signed("aborted", exported(row.binding)), generation: state.generation, expiresAt: state.expiresAt,
+          releasePeer: { ...row.releasePeer!, outcome: "restored", cleanupPending: false } };
+        this.store.completeCredentialPeerRelease(row);
+        return reply(row, providerCalled);
+      } catch {
+        if (authority.status(account)?.phase === "login_required" && authority.status(account)?.failure?.outcome === "rejected") return reject();
+        let retryable = false;
+        try { retryable = authority.releasedPeerRetryable(account, handoffId); } catch {}
+        row = this.put(row, "committed", { releasePeer: { ...row.releasePeer!, outcome: "uncertain", retryable } });
+        return reply(row, providerCalled);
+      }
+    });
+  }
+
+  private async releaseDestination(account: AccountRow, original: CredentialHandoffRecord, roster: NonNullable<CredentialHandoffRecord["releasePeer"]>["roster"], nativeRecovery: boolean, useRetainedChain: boolean) {
+    let row = original;
+    const firstAttempt = !row.releasePeer;
+    let providerCalled = false;
+    const authority = this.accounts.authorityFor(account)!;
+    const reply = () => {
+      const release = row.releasePeer!;
+      const holder = release.mode === "destination_holder" || release.mode === "destination_retained_refresh" && release.outcome === "restored";
+      return { account: account.id, handoffId: row.handoffId, outcome: release.outcome === "pending" ? "uncertain" : release.outcome,
+        disposition: release.outcome === "uncertain" || release.outcome === "pending" ? "uncertain" : holder ? "destination_holder_retained" : release.mode === "destination_void" ? "destination_shadow_voided" : "destination_native_login_required",
+        requiredEpoch: release.requiredEpoch, generation: row.generation, expiresAt: row.expiresAt, providerCalled,
+        cleanupPending: release.cleanupPending, abortReceipt: null, retryable: release.retryable === true, rotationScheduled: false,
+        message: release.outcome === "uncertain" || release.outcome === "pending" ? `Retained-chain recovery is uncertain for ${account.id}; no blind provider retry. Preserve the chain and use its explicit recovery result.` : holder ? `This computer already holds account ${account.id}; Apiary must publish its authority record at epoch ${release.requiredEpoch}. No credential material was scrubbed.`
+          : `Removed source ${row.binding.from.nodeId} released for account ${account.id}. The claim is terminal. ${release.mode === "destination_recovery" ? `The removed computer may still hold a working login for account ${account.id} until signed out at the provider. ` : ""}Use the normal native login, identity check and credentials enable path; Apiary must publish epoch ${release.requiredEpoch}.` };
+    };
+    if (row.releasePeer && ["restored", "login_required"].includes(row.releasePeer.outcome) && !row.releasePeer.cleanupPending) return reply();
+    this.noRunningBees(account);
+    if (row.releasePeer && (row.state !== "committed" || this.store.credentialAuthorityEpoch(account.id) >= row.releasePeer.requiredEpoch)) throw new RpcError("credential_handoff_decided", "A newer authority or recovery superseded this destination release.");
+    if (!row.releasePeer) {
+      const current = authority.status(account);
+      if (this.store.listCredentialHandoffs().some(other => other.account === account.id && other.handoffId !== row.handoffId && !["aborted", "confirmed", "failed", "adopted", "stood_down"].includes(other.state))) throw new RpcError("credential_handoff_fenced", "Another ownership operation holds this account.");
+      if (this.store.credentialAuthorityEpoch(account.id) > row.binding.epoch) throw new RpcError("credential_handoff_decided", "A newer authority superseded this destination claim.");
+      const holder = row.state === "adopted";
+      const uncertain = row.state === "adopting";
+      const retained = useRetainedChain && uncertain && current?.phase === "login_required" && current.failure?.error === "invalid_token_response" && authority.releasedPeerHasReplacement(account, row.binding.generation);
+      if (useRetainedChain && !retained) throw new RpcError("credential_handoff_decided", "Use-retained-chain requires a known rotated destination chain with malformed expiry.");
+      if (!holder && !["prepared", "preparing", "failed", "adopting"].includes(row.state)) throw new RpcError("credential_handoff_decided", "Destination claim is already terminal.");
+      if (uncertain && !nativeRecovery && !retained) throw new RpcError("credential_handoff_uncertain", "Destination outcome is unknown; use explicit release-peer --native-recovery only when no saved replacement exists.");
+      if (nativeRecovery && !uncertain) throw new RpcError("credential_handoff_decided", "Native recovery requires an uncertain destination outcome.");
+      if (!holder && !retained && row.state !== "preparing" && current && current.phase !== "disabled" && authority.releasedPeerHasReplacement(account, row.binding.generation)) throw new RpcError("credential_handoff_decided", "A saved replacement chain exists; finish normal adoption before releasing the removed source. Native recovery cannot discard it.");
+      if (holder && current?.phase !== "ready") throw new RpcError("credential_handoff_unavailable", "Finish publishing the adopted authority before releasing its source.");
+      const requiredEpoch = Math.max(row.binding.epoch, this.store.credentialAuthorityEpoch(account.id)) + 1;
+      if (!Number.isSafeInteger(requiredEpoch)) throw new RpcError("invalid_request", "Release-peer cannot advance the authority epoch further.");
+      row = this.put(row, "committed", { releasePeer: { roster, requiredEpoch, mode: retained ? "destination_retained_refresh" : holder ? "destination_holder" : uncertain ? "destination_recovery" : "destination_void", outcome: "pending", cleanupPending: !holder && !retained, nativeRecovery, ...(retained ? { transportGeneration: current!.generation } : {}) } });
+    }
+    let release = row.releasePeer!;
+    if (release.mode === "destination_retained_refresh" && release.outcome !== "login_required") {
+      if (!useRetainedChain && !nativeRecovery) throw new RpcError("invalid_request", "Repeat retained-chain release with the explicit recovery option.");
+      if (nativeRecovery) {
+        if (release.outcome !== "uncertain" || authority.releasedPeerRetryable(account, row.handoffId) || authority.releasedPeerHasReplacement(account, release.transportGeneration!)) throw new RpcError("credential_handoff_decided", "Native recovery cannot discard a known replacement or a proven unconsumed retained chain.");
+        row = this.put(row, "committed", { releasePeer: { ...release, mode: "destination_recovery", nativeRecovery: true, outcome: "login_required", cleanupPending: true } });
+      } else {
+        try {
+          const ready = await authority.rotateReleasedPeer(account, row.handoffId, release.transportGeneration!, firstAttempt, () => { providerCalled = true; });
+          row = { ...row, generation: ready.generation, expiresAt: ready.expiresAt, releasePeer: { ...release, outcome: "restored", cleanupPending: false } };
+        } catch {
+          if (authority.status(account)?.phase === "login_required" && authority.status(account)?.failure?.outcome === "rejected") row = this.put(row, "committed", { releasePeer: { ...release, outcome: "login_required", cleanupPending: true } });
+          else {
+            let retryable = false;
+            try { retryable = authority.releasedPeerRetryable(account, row.handoffId); } catch {}
+            row = this.put(row, "committed", { releasePeer: { ...release, outcome: "uncertain", retryable } });
+            return reply();
+          }
+        }
+      }
+      release = row.releasePeer!;
+    }
+    if (release.mode !== "destination_holder" && !(release.mode === "destination_retained_refresh" && release.outcome === "restored")) {
+      try {
+        if (release.mode === "destination_recovery" || release.mode === "destination_retained_refresh") { this.accounts.assertNoNewNativeTakeover(account); await this.accounts.scrubHandoff(account); }
+        else authority.forgetHandoffAdoption(account);
+      } catch { return reply(); }
+    }
+    row = { ...row, state: "stood_down", scrubbed: true, releasePeer: { ...release, outcome: release.mode === "destination_holder" || release.mode === "destination_retained_refresh" && release.outcome === "restored" ? "restored" : "login_required", cleanupPending: false } };
+    this.store.completeCredentialPeerRelease(row);
+    return reply();
   }
 
   async operatorTakeover(params: Record<string, unknown>) {
@@ -530,6 +691,14 @@ export class CredentialHandoffService {
     if (this.reconciling) return;
     this.reconciling = true;
     try {
+      for (const row of pending.filter(row => row.role === "source" && row.releasePeer?.earlyRotationPending)) {
+        try {
+          const account = this.account(row.account), authority = this.accounts.authorityFor(account)!, state = authority.status(account);
+          if (account.source === "leased" || authority.busy(account) || state?.phase !== "ready" || state.failure?.retryAt != null && state.failure.retryAt > this.now()) continue;
+          const rotated = state.generation > (row.generation ?? row.binding.generation) ? state : await authority.ensure(account, 0, `release-peer-early:${row.handoffId}`);
+          if (rotated.generation > (row.generation ?? row.binding.generation)) this.put(this.row(row.handoffId, "source"), "aborted", { generation: rotated.generation, expiresAt: rotated.expiresAt, releasePeer: { ...row.releasePeer!, earlyRotationPending: false } });
+        } catch { this.log(`account.credentials.release_peer_early_rotation_pending account=${row.account} handoff=${row.handoffId}`); }
+      }
       for (const row of pending.filter(row => row.role === "destination")) {
         try {
           const account = this.account(row.account);
@@ -566,6 +735,14 @@ export class CredentialHandoffService {
   status(params: Record<string, unknown>) {
     const row = this.row(name(params.handoffId), params.role === "destination" ? "destination" : "source");
     const result = this.result(row);
-    return { ...result, receipt: row.receipt?.kind === "export" ? null : result.receipt };
+    let retainedChainRecoveryAvailable = false;
+    if (row.role === "destination") {
+      const account = this.account(row.account), authority = this.accounts.authorityFor(account)!, state = authority.status(account);
+      if (row.releasePeer?.mode === "destination_retained_refresh" && row.state === "committed") retainedChainRecoveryAvailable = true;
+      else if (!row.releasePeer && row.state === "adopting" && state?.phase === "login_required" && state.failure?.error === "invalid_token_response") {
+        try { retainedChainRecoveryAvailable = authority.releasedPeerHasReplacement(account, row.binding.generation); } catch {}
+      }
+    }
+    return { ...result, binding: row.binding, retainedChainRecoveryAvailable, receipt: row.receipt?.kind === "export" ? null : result.receipt };
   }
 }
