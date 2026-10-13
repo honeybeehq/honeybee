@@ -49,6 +49,7 @@ import { createClaudeProjector } from "./claude-projection.ts";
 import { isCodexCheckpointState, createCodexProjector } from "./codex-projection.ts";
 import { isGrokCheckpointState, createGrokProjector, isGrokCompactionSummary } from "./grok-projection.ts";
 import { createKimiProjector } from "./kimi-projection.ts";
+import { isMuseCheckpointState, createMuseProjector } from "./muse-projection.ts";
 import type { TranscriptProjectedEvent, TranscriptProjector } from "./transcript-projection.ts";
 
 export type TranscriptEvent =
@@ -494,11 +495,37 @@ export const agyTranscriptRenderer: TranscriptRenderer = {
   },
 };
 
+/**
+ * muse — MSP notifications logged by HSR. `item/completed` is authoritative;
+ * deltas need cross-line state and belong to the stateful Muse projector.
+ */
+export const museTranscriptRenderer: TranscriptRenderer = {
+  harness: "muse",
+  renderLine(line: string): TranscriptTurn[] {
+    const row = jsonLine(line);
+    if (!row || row.id !== undefined) return [];
+    if (row.method !== "item/started" && row.method !== "item/completed") return [];
+    const item = (row.params as { item?: Record<string, unknown> } | undefined)?.item;
+    if (!item) return [];
+    if (row.method === "item/started") {
+      return item.kind === "toolCall"
+        ? [{ role: "tool", text: `[tool_use: ${typeof item.tool === "string" ? item.tool : "?"}]` }]
+        : [];
+    }
+    const text = typeof item.text === "string" && item.text.trim().length > 0 ? item.text : null;
+    if (item.kind === "userMessage" && text) return [{ role: "user", text }];
+    if (item.kind === "agentMessage" && text) return [{ role: "assistant", text }];
+    if (item.kind === "toolCall") return [{ role: "tool", text: "[tool_result]" }];
+    return [];
+  },
+};
+
 export const TRANSCRIPT_RENDERERS: Record<string, TranscriptRenderer> = {
   agy: agyTranscriptRenderer,
   claude: claudeTranscriptRenderer,
   codex: codexTranscriptRenderer,
   grok: grokTranscriptRenderer,
+  muse: museTranscriptRenderer,
   stub: stubTranscriptRenderer,
 };
 
@@ -537,6 +564,8 @@ export function createTranscriptProjector(harness: string): TranscriptProjector 
       return createGrokProjector();
     case "kimi":
       return createKimiProjector();
+    case "muse":
+      return createMuseProjector();
     case "stub":
       return projectorFromRenderer(stubTranscriptRenderer);
     case "claude":
@@ -576,6 +605,9 @@ export function restoreTranscriptProjector(harness: string, checkpoint: unknown)
         break;
       case "agy":
         if (isAgyCheckpointState(state)) return { ok: true, projector: createAgyProjector(state) };
+        break;
+      case "muse":
+        if (isMuseCheckpointState(state)) return { ok: true, projector: createMuseProjector(state) };
         break;
       default:
         if (checkpointRecord(state, {})) return { ok: true, projector: createTranscriptProjector(harness) };
