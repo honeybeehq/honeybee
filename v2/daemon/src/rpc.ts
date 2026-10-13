@@ -35,6 +35,7 @@ import {
   QuestionNotFoundError,
   SealNotFoundError,
   TaskNotFoundError,
+  TemplateEnvWipeError,
   TemplateNotFoundError,
   TrackNotFoundError,
 } from "../../core/src/index.ts";
@@ -138,6 +139,7 @@ export function toRpcError(err: unknown): { code: RpcErrorCode; message: string;
   if (err instanceof ActionClaimedError) return { code: "action_claimed", message: err.message };
   if (err instanceof ContinuationUnsupportedError) return { code: "continuation_unsupported", message: err.message };
   if (err instanceof NameConflictError) return { code: "name_conflict", message: err.message };
+  if (err instanceof TemplateEnvWipeError) return { code: "template_env_wipe_refused", message: err.message };
   if (err instanceof PackageError) return { code: "invalid_package", message: err.message };
   if (err instanceof IllegalTransitionError) {
     const code: RpcErrorCode = err.message.includes("lifecycle") ? "lifecycle_refused" : "runtime_refused";

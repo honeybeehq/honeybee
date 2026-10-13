@@ -272,6 +272,7 @@ export const RPC_ERROR_CODES = [
   "template_not_found",
   "track_not_found",
   "name_conflict",
+  "template_env_wipe_refused",
   /** A package document failed header/field validation. */
   "invalid_package",
   /** v6 (additive): question / seal lookups. */

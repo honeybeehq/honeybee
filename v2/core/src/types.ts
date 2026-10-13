@@ -1572,6 +1572,14 @@ export class TrackNotFoundError extends CoreError {
 /** A put/import would leave two rows with the same (scope, name) — names are unique per scope. */
 export class NameConflictError extends CoreError {}
 
+export class TemplateEnvWipeError extends CoreError {
+  constructor(id: string) {
+    super(
+      `template ${id}: refusing to replace this template's env with an empty one; to clear all env, delete the template and create it again`,
+    );
+  }
+}
+
 export class QuestionNotFoundError extends CoreError {
   constructor(id: string) {
     super(`question not found: ${id}`);

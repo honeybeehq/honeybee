@@ -10,6 +10,7 @@ import { join } from "node:path";
 import {
   NameConflictError,
   PackageError,
+  TemplateEnvWipeError,
   TemplateNotFoundError,
   TrackNotFoundError,
   exportTemplate,
@@ -512,7 +513,7 @@ test("pkg.9: fuzz — random put/import/delete on templates+tracks keeps names u
             store = h.open(); // "crash" + reopen
           }
         } catch (err) {
-          assert.ok(err instanceof NameConflictError || err instanceof TemplateNotFoundError || err instanceof PackageError, `seed ${seed} op ${op}: ${String(err)}`);
+          assert.ok(err instanceof NameConflictError || err instanceof TemplateNotFoundError || err instanceof PackageError || err instanceof TemplateEnvWipeError, `seed ${seed} op ${op}: ${String(err)}`);
         }
         const dump = store.dumpState();
         const seen = new Set<string>();
@@ -535,5 +536,92 @@ test("pkg.9: fuzz — random put/import/delete on templates+tracks keeps names u
     } finally {
       h.cleanup();
     }
+  }
+});
+
+test("pkg.10: a whole-row put with an empty env over a template that has env is refused and leaves the row untouched", () => {
+  const h = harness();
+  try {
+    const store = h.open();
+    const env = { DUMMY_SECRET: "dummy-value-123", OTHER: "x" };
+    const created = store.putTemplate({ id: "tpl-env", fields: { ...baseTemplate, prompt: "original prompt", env } }).template;
+    const auditBefore = store.auditRows().length;
+
+    const wholeRow = { ...exportTemplate(created), prompt: "edited from workstation A", env: {} };
+    const { kind: _kind, formatVersion: _formatVersion, id: _id, ...fields } = wholeRow;
+    let refusal: unknown = null;
+    try {
+      store.putTemplate({ id: "tpl-env", fields });
+    } catch (err) {
+      refusal = err;
+    }
+    assert.ok(refusal instanceof TemplateEnvWipeError, String(refusal));
+    assert.equal(refusal.message, "template tpl-env: refusing to replace this template's env with an empty one; to clear all env, delete the template and create it again");
+    assert.ok(!refusal.message.includes("dummy-value-123"));
+    assert.ok(!refusal.message.includes("DUMMY_SECRET"));
+    assert.deepEqual(store.getTemplate("tpl-env"), created);
+    assert.equal(store.auditRows().length, auditBefore);
+
+    assert.throws(() => store.putTemplate({ fields: { ...baseTemplate, prompt: "no env field at all" } }), TemplateEnvWipeError);
+    assert.deepEqual(store.getTemplate("tpl-env"), created);
+    assert.equal(store.auditRows().length, auditBefore);
+
+    const oneRemoved = store.putTemplate({ id: "tpl-env", fields: { ...fields, env: { DUMMY_SECRET: "dummy-value-123" } } });
+    assert.equal(oneRemoved.outcome, "updated");
+    assert.deepEqual(oneRemoved.template.env, { DUMMY_SECRET: "dummy-value-123" });
+    assert.equal(oneRemoved.template.prompt, "edited from workstation A");
+    const changed = store.putTemplate({ id: "tpl-env", fields: { ...fields, env: { DUMMY_SECRET: "rotated" } } });
+    assert.deepEqual(changed.template.env, { DUMMY_SECRET: "rotated" });
+    assert.throws(() => store.putTemplate({ id: "tpl-env", fields }), TemplateEnvWipeError);
+    assert.deepEqual(store.getTemplate("tpl-env")?.env, { DUMMY_SECRET: "rotated" });
+
+    const bare = store.putTemplate({ id: "tpl-bare", fields: { ...baseTemplate, name: "bare" } });
+    assert.equal(bare.outcome, "created");
+    assert.equal(store.putTemplate({ id: "tpl-bare", fields: { ...baseTemplate, name: "bare", prompt: "p2", env: {} } }).outcome, "updated");
+
+    store.deleteTemplate("tpl-env");
+    const recreated = store.putTemplate({ id: "tpl-env", fields });
+    assert.equal(recreated.outcome, "created");
+    assert.deepEqual(recreated.template.env, {});
+    assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
+    store.close();
+  } finally {
+    h.cleanup();
+  }
+});
+
+test("pkg.11: re-importing a package or local config without env over a template that has env is refused", () => {
+  const h = harness();
+  const dir = mkdtempSync(join(tmpdir(), "hb-v2-envwipe-"));
+  try {
+    const store = h.open();
+    const created = store.putTemplate({ id: "tpl-env", fields: { ...baseTemplate, env: { DUMMY_SECRET: "dummy-value-123" } } }).template;
+    const doc = exportTemplate(created);
+
+    const same = importTemplate(store, serializePackage(doc), { source: "package:/pkg.json" });
+    assert.equal(same.outcome, "updated");
+    assert.deepEqual(same.row.env, { DUMMY_SECRET: "dummy-value-123" });
+    assert.equal(importTemplate(store, serializePackage(doc), { source: "package:/pkg.json" }).outcome, "unchanged");
+
+    assert.throws(() => importTemplate(store, { ...doc, env: {} }, { source: "package:/pkg.json" }), TemplateEnvWipeError);
+    const { env: _env, ...withoutEnv } = doc;
+    assert.throws(() => importTemplate(store, withoutEnv, { source: "package:/pkg.json" }), TemplateEnvWipeError);
+    assert.deepEqual(store.getTemplate("tpl-env")?.env, { DUMMY_SECRET: "dummy-value-123" });
+
+    mkdirSync(join(dir, "templates"), { recursive: true });
+    writeFileSync(join(dir, "templates", "commit.json"), JSON.stringify({ name: "commit", bee: "codex", prompt: "from disk" }));
+    writeFileSync(join(dir, "templates", "other.json"), JSON.stringify({ name: "other", bee: "claude", prompt: "hi" }));
+    const report = importLocalConfig(store, dir);
+    assert.deepEqual(report.templates.map((t) => [t.name, t.outcome]), [["other", "created"]]);
+    assert.equal(report.skipped.length, 1);
+    assert.equal(report.skipped[0]?.reason, "template tpl-env: refusing to replace this template's env with an empty one; to clear all env, delete the template and create it again");
+    assert.ok(!(report.skipped[0]?.reason ?? "").includes("dummy-value-123"));
+    assert.deepEqual(store.getTemplate("tpl-env")?.env, { DUMMY_SECRET: "dummy-value-123" });
+    assert.notEqual(store.getTemplate("tpl-env")?.prompt, "from disk");
+    assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
+    store.close();
+  } finally {
+    h.cleanup();
+    rmSync(dir, { recursive: true, force: true });
   }
 });

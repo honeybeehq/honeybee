@@ -198,3 +198,38 @@ test("reg.3: packages.importLocalConfig over RPC — explicit dir, idempotent, r
     cleanup();
   }
 });
+
+test("reg.4: template.put and template.import refuse an empty env over a template that has env with a typed code", async () => {
+  const { dir, cleanup } = makeDaemonDir();
+  let daemon: DaemonHandle | null = null;
+  try {
+    daemon = await startDaemon(dir);
+    const c = await daemon.client();
+    const env = { DUMMY_SECRET: "dummy-value-123", OTHER: "x" };
+    const put = await c.request<TemplatePutResult>("template.put", { fields: { ...templateFields, env } });
+    const id = put.template.id;
+    const { id: _id, createdAt: _createdAt, updatedAt: _updatedAt, ...row } = put.template;
+
+    const refused = (err: unknown): boolean =>
+      err instanceof RpcError &&
+      err.code === "template_env_wipe_refused" &&
+      err.message === `template ${id}: refusing to replace this template's env with an empty one; to clear all env, delete the template and create it again` &&
+      !err.message.includes("dummy-value-123") &&
+      !err.message.includes("DUMMY_SECRET");
+    await assert.rejects(c.request("template.put", { id, fields: { ...row, prompt: "edited from workstation A", env: {} } }), refused);
+    await assert.rejects(c.request("template.put", { fields: { ...templateFields, prompt: "no env field" } }), refused);
+    const exported = await c.request<TemplateExportResult>("template.export", { id });
+    await assert.rejects(c.request("template.import", { package: { ...exported.package, env: {} } }), refused);
+
+    const got = await c.request<TemplateGetResult>("template.get", { id });
+    assert.deepEqual(got.template, put.template);
+
+    const kept = await c.request<TemplatePutResult>("template.put", { id, fields: { ...row, prompt: "edited", env: { OTHER: "x" } } });
+    assert.equal(kept.outcome, "updated");
+    assert.deepEqual(kept.template.env, { OTHER: "x" });
+    c.close();
+  } finally {
+    await daemon?.stop().catch(() => {});
+    cleanup();
+  }
+});

@@ -152,6 +152,7 @@ import {
   SchemaVersionError,
   SealNotFoundError,
   TaskNotFoundError,
+  TemplateEnvWipeError,
   TemplateNotFoundError,
   TrackNotFoundError,
   type TaskRow,
@@ -4873,6 +4874,9 @@ export class CoreStore {
         () => this.getTemplateByName(fields.scope, fields.name),
         "template",
       );
+      if (target && Object.keys(target.env).length > 0 && Object.keys(fields.env).length === 0) {
+        throw new TemplateEnvWipeError(target.id);
+      }
       const at = this.now();
       if (target) {
         if (fieldsEqual(templateFieldsOf(target), fields)) return { template: target, outcome: "unchanged" };
