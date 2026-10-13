@@ -928,6 +928,50 @@ test("limits.agy: an imported HOME-scoped token clears auth_needed while provide
   }
 });
 
+test("limits.muse: the XDG-pair home and auth.json expiry decide credential state; provider limits stay unsupported and expiry drives auth_needed", async () => {
+  const r = rig();
+  try {
+    const svc = service(r);
+    const file = "muse/auth.json";
+    const doc = (meta: unknown) => JSON.stringify({ schema_version: 1, providers: { meta } });
+    const nowSeconds = Math.floor(r.now() / 1000);
+    const account = addAccount(r, "muse", "sub", { status: "auth_needed", vault: { [file]: doc({ mechanism: "oauth", access_token: "a", expires_at: nowSeconds + 3600, obtained_via: "device_code" }) } });
+    assert.deepEqual(svc.homeEnvOf(account), { XDG_CONFIG_HOME: account.homePath, XDG_DATA_HOME: join(account.homePath, "xdg-data") });
+    assert.equal(svc.credentialProbeOf("muse"), "credential_file");
+    assert.equal(svc.credentialState(account), "present");
+
+    const [unsupported] = await svc.refreshLimits([account.id]);
+    assert.equal(unsupported?.unreadableReason, "unsupported");
+    assert.equal(unsupported?.error, "muse has no limits source");
+    assert.equal(r.store.getAccount(account.id)?.status, "ok", "a present credential is contrary evidence to auth_needed");
+    assert.equal(svc.credentialHealthOf(r.store.getAccount(account.id)!), "unverified");
+
+    seedVault(r, "muse", account.id, { [file]: doc({ mechanism: "oauth", access_token: "a", refresh_token: "r", expires_at: nowSeconds - 60, obtained_via: "device_code" }) });
+    assert.equal(svc.credentialState(account), "present", "Muse refreshes an expired access token itself");
+
+    seedVault(r, "muse", account.id, { [file]: doc({ mechanism: "oauth", access_token: "a", expires_at: (nowSeconds - 60) * 1000, obtained_via: "device_code" }) });
+    assert.equal(svc.credentialState(account), "expired");
+    const readiness = svc.credentialReadiness(r.store.getAccount(account.id)!);
+    assert.equal(readiness.ready ? null : readiness.code, "account_credential_expired");
+    const expired = await svc.verifyCredentials(r.store.getAccount(account.id)!);
+    assert.equal(expired.probe, "credential_file");
+    assert.equal(expired.outcome, "auth_needed");
+    assert.equal(expired.limits, null);
+    assert.equal(r.store.getAccountLimits(account.id)?.unreadableReason, "auth_failed");
+    assert.equal(r.store.getAccount(account.id)?.status, "auth_needed");
+
+    mkdirSync(join(account.homePath, "muse"), { recursive: true });
+    writeFileSync(join(account.homePath, file), doc({ api_key: "k-123" }));
+    assert.equal(svc.credentialState(account), "present", "the home a runtime reads wins over the vault");
+    assert.equal(svc.homeCredentialState(account), "usable");
+    writeFileSync(join(account.homePath, file), JSON.stringify({ schema_version: 1, providers: {} }));
+    assert.equal(svc.credentialState(account), "invalid");
+    assert.equal(svc.homeCredentialState(account), "absent");
+  } finally {
+    r.cleanup();
+  }
+});
+
 test("limits.1a: Codex probes are per-home single-flight; transient failure keeps the last good row while auth failure invalidates it", async () => {
   const r = rig();
   try {

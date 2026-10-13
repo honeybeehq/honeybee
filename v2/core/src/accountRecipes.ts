@@ -116,13 +116,14 @@ export interface VendorHomeResolution {
 /**
  * How a method executes:
  *  - `direct`: Honeybee talks to the provider itself (typed OAuth/API-key
- *    integration in the daemon; `runner` names it). No CLI, no terminal.
+ *    integration in the daemon; `runner` names it). No terminal; at most a
+ *    non-interactive vendor command fed over stdin (`muse auth set`).
  *  - `cli`: the harness's own login CLI runs inside a Honeybee-owned native
  *    PTY worker (never tmux); `cues` drive the parser that turns output into
  *    typed progress. Provider-specific parsing lives HERE, not in clients.
  */
 export type LoginMethodRun =
-  | { mode: "direct"; runner: "claude_oauth" | "codex_api_key" | "opencode_api_key" }
+  | { mode: "direct"; runner: "claude_oauth" | "codex_api_key" | "opencode_api_key" | "muse_api_key" }
   | { mode: "cli"; cli: LoginCliSpec };
 
 export interface LoginCliCue {
@@ -266,6 +267,12 @@ const AGY_CODE_PROMPT: LoginCliCue = {
   field: LOGIN_FIELD_CODE,
 };
 const AGY_FAILURE = ["\\bauthentication (?:failed or )?timed out\\b"];
+// Captured from `muse login` 1.4.7 without a TTY: the sign-in URL already
+// carries the code, then "confirm this code matches:" (or "and enter this
+// code:") and the code on its own line, then it polls.
+const MUSE_AUTH_URL = `(?:Open this page to sign in:\\s*)?${GENERIC_URL}`;
+const MUSE_USER_CODE = "\\bcode(?: matches)?:\\s*([A-Z0-9]{4,8}-[A-Z0-9]{4,8})\\b";
+const MUSE_FAILURE = ["\\bThe login request (?:expired before it was approved|was denied)\\b"];
 
 const MCP_TOML_KEYS = [
   "type",
@@ -684,6 +691,47 @@ export const ACCOUNT_RECIPES: Readonly<Record<string, IdentityRecipe>> = {
               landing: "home_mtime",
             },
           },
+        },
+      ],
+    },
+  },
+  muse: {
+    // XDG_CONFIG_HOME (HARNESS_HOME_ENV) is the account home, so Muse keeps
+    // auth.json, settings and trust under <home>/muse; its sessions and
+    // caches go to a private XDG data dir inside the same home.
+    credentialFiles: ["muse/auth.json"],
+    configFiles: ["muse/settings.json"],
+    extraEnv: { XDG_DATA_HOME: "{home}/xdg-data" },
+    vendorHome: { dir: ".config" },
+    login: { command: "muse", args: ["login"] },
+    loginFlow: {
+      defaultMethodId: "muse-device",
+      methods: [
+        {
+          id: "muse-device",
+          kind: "device_code",
+          label: "Sign in with Meta",
+          description: "Open the sign-in page anywhere and confirm the code shown here.",
+          remoteCapable: true,
+          fields: [],
+          run: {
+            mode: "cli",
+            cli: {
+              tty: false,
+              env: { BROWSER: "true", MUSE_NO_AUTO_UPDATE: "1" },
+              cues: { url: MUSE_AUTH_URL, userCode: MUSE_USER_CODE, prompts: [], failure: [...MUSE_FAILURE, ...GENERIC_FAILURE] },
+              landing: "home_mtime",
+            },
+          },
+        },
+        {
+          id: "muse-api-key",
+          kind: "api_key",
+          label: "Use a Meta API key",
+          description: "Paste a Meta API key. It is billed pay-as-you-go, not through a Muse subscription.",
+          remoteCapable: true,
+          fields: [{ ...LOGIN_FIELD_API_KEY, placeholder: "Paste the key here", help: "Stored only in this account's Muse auth file." }],
+          run: { mode: "direct", runner: "muse_api_key" },
         },
       ],
     },

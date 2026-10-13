@@ -47,6 +47,9 @@ export const HARNESS_HOME_ENV: Readonly<Record<string, string>> = {
   grok: "GROK_HOME",
   kimi: "KIMI_CODE_HOME",
   cursor: "CURSOR_CONFIG_DIR",
+  // Muse has no home variable of its own: its config root (auth.json,
+  // settings, trust) is $XDG_CONFIG_HOME/muse, set only in the muse child env.
+  muse: "XDG_CONFIG_HOME",
 };
 
 /** Old-world harnesses with a v2 harness-native resume path (spec 07 §F). */

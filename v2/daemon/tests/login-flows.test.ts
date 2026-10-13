@@ -33,6 +33,7 @@ import { waitFor } from "./helpers.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const FAKE_CLI = join(here, "..", "..", "driver-hsr", "test-agent", "fake-login-cli.mjs");
+const FAKE_MUSE = join(here, "..", "..", "driver-hsr", "test-agent", "fake-muse-login.mjs");
 // Process startup can exceed five seconds during concurrent builds. This is
 // a fixture readiness ceiling, not a login latency assertion.
 const CLI_READY_TIMEOUT_MS = 60_000;
@@ -175,6 +176,10 @@ function fakeCliAgent(harness: string, homeEnv: string, file: string, env: Recor
 
 function fakeAgyAgent(env: Record<string, string>) {
   return { agy: { command: process.execPath, args: [], adapter: "agy", login: { command: process.execPath, args: ["-e", FAKE_AGY_LOGIN] }, env } };
+}
+
+function fakeMuseAgent(env: Record<string, string> = {}) {
+  return { muse: { command: process.execPath, args: [], adapter: "muse", login: { command: process.execPath, args: [FAKE_MUSE] }, env } };
 }
 
 /** Every persisted/diagnostic surface a secret could leak into. */
@@ -527,6 +532,115 @@ test("flows.agy-cli: the captured OAuth cues request a code and token landing un
     assert.doesNotMatch(leakSurfaces(r), /SENTINEL/);
   } finally {
     r.cleanup();
+  }
+});
+
+test("flows.muse-device: `muse login` output → url + user code → waiting_device under the isolated XDG pair; the auth.json landing completes the flow", async () => {
+  const r = rig({ agents: fakeMuseAgent({ FAKE_MUSE_APPROVE_MS: "400" }) });
+  try {
+    const { flows, completed } = services(r);
+    const acct = account(r, "muse", "sub");
+    const { flow } = await flows.start(acct, { remote: true });
+    assert.equal(flow.methodId, "muse-device");
+    assert.deepEqual(flow.methods.map((m) => m.id), ["muse-device", "muse-api-key"]);
+    const device = await waitFor(() => {
+      const f = r.store.getLoginFlow(flow.id) as LoginFlowRow;
+      return f.phase === "waiting_device" && f.userCode ? f : null;
+    }, "muse waiting_device", 5000, 20);
+    assert.equal(device.authorizationUrl, "https://auth.meta.com/oauth/device/?code=FAKE-CODE");
+    assert.equal(device.userCode, "FAKE-CODE");
+    const done = await waitFor(() => {
+      flows.tick();
+      const f = r.store.getLoginFlow(flow.id) as LoginFlowRow;
+      return f.phase === "succeeded" ? f : null;
+    }, "muse credential landing", 8000, 25);
+    assert.equal(done.userCode, null);
+    const auth = join(acct.homePath, "muse", "auth.json");
+    assert.equal(mode(auth), 0o600);
+    assert.equal(readFileSync(join(r.vault, "muse", acct.id, "muse", "auth.json"), "utf8"), readFileSync(auth, "utf8"));
+    assert.equal(r.store.getAccount(acct.id)?.status, "ok");
+    assert.deepEqual(completed, [acct.id]);
+  } finally {
+    r.cleanup();
+  }
+});
+
+test("flows.muse-device: a denied login fails typed and retryable; cancelling a waiting login stops the worker without a credential", async () => {
+  const r = rig({ agents: fakeMuseAgent({ FAKE_MUSE_DENY_MS: "150" }) });
+  try {
+    const { flows } = services(r);
+    const acct = account(r, "muse", "denied");
+    const { flow } = await flows.start(acct);
+    const failed = await waitFor(() => {
+      const f = r.store.getLoginFlow(flow.id) as LoginFlowRow;
+      return f.phase === "failed" ? f : null;
+    }, "muse denial", 5000, 20);
+    assert.equal(failed.error?.code, "cli_failed");
+    assert.equal(failed.retryable, true);
+    assert.equal(r.store.getAccount(acct.id)?.status, "auth_needed");
+  } finally {
+    r.cleanup();
+  }
+  const waiting = rig({ agents: fakeMuseAgent() });
+  try {
+    const { flows } = services(waiting);
+    const acct = account(waiting, "muse", "cancelled");
+    const { flow } = await flows.start(acct);
+    await waitFor(() => ((waiting.store.getLoginFlow(flow.id) as LoginFlowRow).userCode ? true : null), "muse user code", 5000, 20);
+    const pid = flows.workerStatus(flow.id)?.pid as number;
+    assert.equal(flows.cancel(flow.id).flow.phase, "cancelled");
+    await waitFor(() => {
+      try {
+        process.kill(pid, 0);
+        return null;
+      } catch {
+        return true;
+      }
+    }, "muse login worker killed", 3000);
+    assert.equal(existsSync(join(acct.homePath, "muse", "auth.json")), false);
+    assert.equal(waiting.store.getAccount(acct.id)?.status, "auth_needed");
+  } finally {
+    waiting.cleanup();
+  }
+});
+
+test("flows.muse-api-key: the key reaches `muse auth set` only on stdin, lands in the account's auth.json + vault, and never leaks; a failing `auth set` fails typed", async () => {
+  const r = rig({ agents: fakeMuseAgent() });
+  try {
+    const { flows, completed } = services(r);
+    const acct = account(r, "muse", "keyed");
+    const { flow } = await flows.start(acct, { methodId: "muse-api-key" });
+    assert.equal(flow.phase, "waiting_input");
+    assert.deepEqual(flow.inputFields.map((f) => [f.id, f.secret, f.inputType]), [["apiKey", true, "password"]]);
+    const bad = await flows.submit(flow.id, { apiKey: "short" });
+    assert.equal(bad.error?.code, "invalid_input");
+    assert.equal(existsSync(join(acct.homePath, "muse", "auth.json")), false);
+    const ok = await flows.submit(flow.id, { apiKey: SENTINEL_KEY });
+    assert.equal(ok.phase, "succeeded");
+    assert.match(ok.detail ?? "", /first use/);
+    const authPath = join(acct.homePath, "muse", "auth.json");
+    assert.deepEqual(JSON.parse(readFileSync(authPath, "utf8")), { schema_version: 1, providers: { meta: { api_key: SENTINEL_KEY } } });
+    assert.equal(mode(authPath), 0o600);
+    assert.equal(readFileSync(join(r.vault, "muse", acct.id, "muse", "auth.json"), "utf8"), readFileSync(authPath, "utf8"));
+    assert.equal(r.store.getAccount(acct.id)?.status, "ok");
+    assert.deepEqual(completed, [acct.id]);
+    assert.doesNotMatch(leakSurfaces(r), /SENTINEL/);
+  } finally {
+    r.cleanup();
+  }
+  const failing = rig({ agents: fakeMuseAgent({ FAKE_MUSE_AUTH_SET_FAIL: "1" }) });
+  try {
+    const { flows } = services(failing);
+    const acct = account(failing, "muse", "refused");
+    const { flow } = await flows.start(acct, { methodId: "muse-api-key" });
+    const failed = await flows.submit(flow.id, { apiKey: SENTINEL_KEY });
+    assert.equal(failed.phase, "failed");
+    assert.equal(failed.error?.code, "cli_failed");
+    assert.equal(existsSync(join(acct.homePath, "muse", "auth.json")), false);
+    assert.equal(failing.store.getAccount(acct.id)?.status, "auth_needed");
+    assert.doesNotMatch(leakSurfaces(failing), /SENTINEL/);
+  } finally {
+    failing.cleanup();
   }
 });
 

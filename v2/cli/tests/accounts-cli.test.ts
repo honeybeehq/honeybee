@@ -181,6 +181,26 @@ test("cli accounts: configuration preview/import are thin RPC commands", async (
   }
 });
 
+test("cli accounts: `account login --method` picks a recipe method — the muse API-key form, cancelled without input", async () => {
+  const { dir, cleanup } = makeDaemonDir();
+  let daemon: DaemonHandle | null = null;
+  try {
+    daemon = await startDaemon(dir);
+    const base = ["--data-dir", dir];
+    assert.equal(await runV2Cli(["account", "add", "muse", "keyed", ...base], capture().io), 0);
+    const started = capture();
+    assert.equal(await runV2Cli(["account", "login", "muse-keyed", "--method", "muse-api-key", "--no-wait", ...base, "--json"], started.io), 0, started.err.join("\n"));
+    const { flow } = JSON.parse(started.out[0] ?? "{}") as { flow: { methodId: string; phase: string; inputFields: Array<{ id: string; secret: boolean }> } };
+    assert.equal(flow.methodId, "muse-api-key");
+    assert.equal(flow.phase, "waiting_input");
+    assert.deepEqual(flow.inputFields.map((f) => [f.id, f.secret]), [["apiKey", true]]);
+    assert.equal(await runV2Cli(["account", "login-cancel", "muse-keyed", ...base], capture().io), 0);
+  } finally {
+    await daemon?.stop().catch(() => {});
+    cleanup();
+  }
+});
+
 test("cli.accounts.2: `account list` falls back to the read-only store when the daemon is down — labeled stale", async () => {
   const dir = mkdtempSync(join(tmpdir(), "hb-v2-cli-acct-"));
   try {

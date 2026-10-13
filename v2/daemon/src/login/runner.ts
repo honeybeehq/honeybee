@@ -6,9 +6,10 @@
  * — every transition goes through the host, which keeps the service the
  * only writer and lets it drop a superseded runner's late events.
  *
- * Three implementations (one per `LoginMethodRun` shape):
+ * Four implementations (one per `LoginMethodRun` shape):
  *  - `ClaudeOauthRunner`  direct PKCE + pasted code       (login/claudeOauth.ts)
  *  - `DirectKeyRunner`    Codex / OpenCode API keys       (login/directKey.ts)
+ *  - `MuseApiKeyRunner`   Muse API key via `muse auth set` (login/museApiKey.ts)
  *  - `CliRunner`          the vendor CLI in a native worker (login/cliRunner.ts)
  */
 import type {

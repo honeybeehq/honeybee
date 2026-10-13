@@ -16,9 +16,11 @@ import {
   SCHEMA_VERSION,
   accountConfigImportRecipeFor,
   accountIdFor,
+  homeEnvFor,
   isAuthFailureLimitsError,
   parseClaudeCredentials,
   parseClaudeUsage,
+  parseMuseCredentials,
   parseCodexRateLimits,
   openCoreStore,
   recipeFor,
@@ -74,6 +76,59 @@ test("v7.recipes: the agy recipe conforms to the HOME-based Antigravity OAuth la
   assert.equal(url?.[1], "https://accounts.google.com/o/oauth2/auth?client_id=test");
   assert.ok(method.run.cli.cues.prompts.some((cue) => new RegExp(cue.match, "i").test(authOutput.split("\n").at(-1) ?? "")));
   assert.ok(method.run.cli.cues.failure?.some((cue) => new RegExp(cue, "i").test('{"error":"authentication failed or timed out"}')));
+});
+
+test("v7.recipes: the muse recipe isolates through the XDG pair and matches the captured `muse login` device output", () => {
+  const recipe = recipeFor("muse");
+  assert.ok(recipe);
+  assert.equal(homeEnvFor("muse"), "XDG_CONFIG_HOME");
+  assert.deepEqual(recipe.credentialFiles, ["muse/auth.json"]);
+  assert.deepEqual(recipe.configFiles, ["muse/settings.json"]);
+  assert.deepEqual(recipe.extraEnv, { XDG_DATA_HOME: "{home}/xdg-data" });
+  assert.deepEqual(recipe.login, { command: "muse", args: ["login"] });
+  assert.equal(recipe.loginFlow.defaultMethodId, "muse-device");
+  const [device, apiKey] = recipe.loginFlow.methods;
+  assert.deepEqual(
+    { id: device?.id, kind: device?.kind, remoteCapable: device?.remoteCapable, fields: device?.fields },
+    { id: "muse-device", kind: "device_code", remoteCapable: true, fields: [] },
+  );
+  assert.ok(device && device.run.mode === "cli");
+  if (device.run.mode !== "cli") return;
+  assert.equal(device.run.cli.tty, false);
+  assert.equal(device.run.cli.landing, "home_mtime");
+  assert.equal(device.run.cli.env?.MUSE_NO_AUTO_UPDATE, "1");
+  const output = [
+    "Open this page to sign in:",
+    "  https://auth.meta.com/oauth/device/?code=DQZS-MPLT",
+    "confirm this code matches:",
+    "  DQZS-MPLT",
+    "",
+    "Waiting for approval…",
+  ].join("\n");
+  assert.equal(new RegExp(device.run.cli.cues.url ?? "", "i").exec(output)?.[1], "https://auth.meta.com/oauth/device/?code=DQZS-MPLT");
+  const userCode = new RegExp(device.run.cli.cues.userCode ?? "", "i");
+  assert.equal(userCode.exec(output.replace(/https?:\/\/\S+/g, " "))?.[1], "DQZS-MPLT");
+  assert.equal(userCode.exec("and enter this code:\n  ABCD-EFGH")?.[1], "ABCD-EFGH");
+  for (const line of ["The login request expired before it was approved.", "The login request was denied."]) {
+    assert.ok(device.run.cli.cues.failure?.some((cue) => new RegExp(cue, "i").test(line)), line);
+  }
+  assert.ok(!device.run.cli.cues.failure?.some((cue) => new RegExp(cue, "i").test(output)));
+  assert.deepEqual(
+    { id: apiKey?.id, kind: apiKey?.kind, run: apiKey?.run, fields: apiKey?.fields.map((f) => [f.id, f.secret, f.inputType]) },
+    { id: "muse-api-key", kind: "api_key", run: { mode: "direct", runner: "muse_api_key" }, fields: [["apiKey", true, "password"]] },
+  );
+});
+
+test("v7.recipes: parseMuseCredentials reads the meta entry's shape without returning tokens", () => {
+  const doc = (meta: unknown) => JSON.stringify({ schema_version: 1, providers: { meta } });
+  assert.deepEqual(parseMuseCredentials(doc({ api_key: "k-123" })), { mechanism: "api_key" });
+  assert.deepEqual(parseMuseCredentials(doc({ mechanism: "oauth", access_token: "a", expires_at: 1_800_000_000, obtained_via: "device_code" })), { mechanism: "oauth", expiresAt: 1_800_000_000_000, refreshable: false });
+  assert.deepEqual(parseMuseCredentials(doc({ mechanism: "oauth", access_token: "a", refresh_token: "r", expires_at: 1_800_000_000_123 })), { mechanism: "oauth", expiresAt: 1_800_000_000_123, refreshable: true });
+  assert.deepEqual(parseMuseCredentials(doc({ mechanism: "oauth", access_token: "a" })), { mechanism: "oauth", expiresAt: null, refreshable: false });
+  assert.equal(parseMuseCredentials(doc({ mechanism: "oauth", access_token: "" })), null);
+  assert.equal(parseMuseCredentials(JSON.stringify({ schema_version: 1, providers: {} })), null);
+  assert.equal(parseMuseCredentials("not json"), null);
+  assert.equal(parseMuseCredentials(null), null);
 });
 
 test("v7.crud: create/get/list (registration order), remove; remove refused while a bee references it; replay", () => {
@@ -573,6 +628,7 @@ test("v7.ids: accountIdFor follows the old registry rule (safeName, lower-case) 
     HOME: "/h",
     SSH_CONNECTION: "127.0.0.1 1 127.0.0.1 1",
   });
+  assert.deepEqual(recipeEnvFor("muse", "/h"), { XDG_DATA_HOME: "/h/xdg-data" });
   assert.deepEqual(recipeEnvFor("claude", "/h"), {});
 });
 
@@ -703,8 +759,17 @@ test("v18.vendorHome: the machine's real harness home — the home env var when 
     { rel: ".gemini/antigravity-cli/antigravity-oauth-token", path: "/Users/op/.gemini/antigravity-cli/antigravity-oauth-token", role: "credential" },
     { rel: ".gemini/antigravity/antigravity_state.pbtxt", path: "/Users/op/.gemini/antigravity/antigravity_state.pbtxt", role: "config" },
   ]);
+  // muse: the config root is $XDG_CONFIG_HOME/muse, else ~/.config/muse.
+  const muse = resolveVendorHome("muse", {}, home);
+  assert.equal(muse?.homeEnv, "XDG_CONFIG_HOME");
+  assert.equal(muse?.fromEnv, false);
+  assert.deepEqual(muse?.files, [
+    { rel: "muse/auth.json", path: "/Users/op/.config/muse/auth.json", role: "credential" },
+    { rel: "muse/settings.json", path: "/Users/op/.config/muse/settings.json", role: "config" },
+  ]);
+  assert.equal(resolveVendorHome("muse", { XDG_CONFIG_HOME: "/cfg" }, home)?.files[0]?.path, "/cfg/muse/auth.json");
   // every recipe declares a vendor home (the import path covers all of them)
-  for (const harness of ["claude", "codex", "opencode", "grok", "kimi", "agy", "cursor"]) {
+  for (const harness of ["claude", "codex", "opencode", "grok", "kimi", "agy", "muse", "cursor"]) {
     assert.ok(resolveVendorHome(harness, {}, home)?.files[0]?.role === "credential", harness);
   }
   assert.equal(resolveVendorHome("stub", {}, home), null);

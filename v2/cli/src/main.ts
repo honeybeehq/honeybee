@@ -233,6 +233,7 @@ const VALUE_FLAGS = new Set([
   "--dir",
   "--id",
   "--idempotency-key",
+  "--method",
   "--credit-id",
   "--root",
   "--arg",

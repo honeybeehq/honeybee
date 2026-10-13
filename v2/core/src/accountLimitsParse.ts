@@ -157,6 +157,31 @@ export function parseClaudeCredentials(raw: string | null): { accessToken: strin
 }
 
 /**
+ * The Muse `auth.json` meta provider entry → its non-secret shape: a stored
+ * API key, or an OAuth login with its expiry (epoch ms; Muse writes a u64
+ * whose unit is unconfirmed, so seconds are normalized like Grok's) and
+ * whether a refresh token exists. Null when no usable meta credential is
+ * stored. Token values are never returned.
+ */
+export function parseMuseCredentials(raw: string | null): { mechanism: "api_key" } | { mechanism: "oauth"; expiresAt: number | null; refreshable: boolean } | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as { providers?: Record<string, unknown> };
+    const meta = parsed.providers?.meta as Record<string, unknown> | undefined;
+    if (!meta || typeof meta !== "object" || Array.isArray(meta)) return null;
+    if (typeof meta.api_key === "string" && meta.api_key.length > 0) return { mechanism: "api_key" };
+    if (meta.mechanism !== "oauth" || typeof meta.access_token !== "string" || meta.access_token.length === 0) return null;
+    const rawExpiry = meta.expires_at;
+    const expiresAt = typeof rawExpiry === "number" && Number.isFinite(rawExpiry) && rawExpiry > 0
+      ? (rawExpiry > 1e11 ? rawExpiry : rawExpiry * 1000)
+      : null;
+    return { mechanism: "oauth", expiresAt, refreshable: typeof meta.refresh_token === "string" && meta.refresh_token.length > 0 };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * A REAL provider auth failure, as opposed to a missing credential or a
  * transport error (old src/limits/dispatch.ts isAuthFailureLimitsError):
  * these mean "this credential does not authenticate" — the account goes

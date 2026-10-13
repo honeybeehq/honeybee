@@ -36,6 +36,7 @@ import {
   limitsFromRow,
   measureWindowVelocity,
   parseClaudeCredentials,
+  parseMuseCredentials,
   pauseLabel,
   pauseOf,
   parseClaudeUsage,
@@ -374,7 +375,9 @@ export interface VerifyOutcome {
 }
 
 /** Harnesses with either an authenticated limits read or an explicit credential-file probe. */
-const PROBE_CAPABLE_HARNESSES: ReadonlySet<string> = new Set(["claude", "codex", "grok", "kimi", "cursor", "opencode", "agy"]);
+const PROBE_CAPABLE_HARNESSES: ReadonlySet<string> = new Set(["claude", "codex", "grok", "kimi", "cursor", "opencode", "agy", "muse"]);
+/** Harnesses whose probe reads only the required credential file (no provider limits source). */
+const CREDENTIAL_FILE_PROBE_HARNESSES: ReadonlySet<string> = new Set(["agy", "muse"]);
 
 // ---------------------------------------------------------------------------
 // v19: account.lease — the credential-lease mint (RN7a; a port of v1
@@ -1071,8 +1074,18 @@ export class AccountsService {
       ? account.homePath
       : dirHasCredentials(this.vaultDirOf(account), recipe) ? this.vaultDirOf(account) : null;
     if (source === null) return "absent";
+    if (account.harness === "muse") return this.museDocumentState(readIfFile(join(source, primary)));
     if (account.harness !== "claude") return "present";
     return this.claudeDocumentState(readIfFile(join(source, primary)));
+  }
+
+  /** A Muse API key never expires here; an OAuth login is usable until expires_at, or after it while Muse holds a refresh token. */
+  private museDocumentState(raw: string | null): CredentialState {
+    if (raw === null) return "absent";
+    const parsed = parseMuseCredentials(raw);
+    if (!parsed) return "invalid";
+    if (parsed.mechanism === "api_key" || parsed.expiresAt === null || parsed.expiresAt > this.now() || parsed.refreshable) return "present";
+    return "expired";
   }
 
   private centralCredentialState(account: AccountRow): CredentialState {
@@ -1158,6 +1171,10 @@ export class AccountsService {
     if (!primary) return "usable";
     const raw = readIfFile(join(account.homePath, primary));
     if (raw === null) return "absent";
+    if (account.harness === "muse") {
+      const state = this.museDocumentState(raw);
+      return state === "present" ? "usable" : state === "expired" ? "expired" : "absent";
+    }
     if (account.harness !== "claude") return "usable";
     const parsed = parseClaudeCredentials(raw);
     if (!parsed) return "absent";
@@ -1241,7 +1258,7 @@ export class AccountsService {
   /** The evidence a harness's credential verification lane can collect. */
   credentialProbeOf(harness: string): VerifyOutcome["probe"] {
     if (!PROBE_CAPABLE_HARNESSES.has(harness)) return "none";
-    return harness === "agy" ? "credential_file" : "limits";
+    return CREDENTIAL_FILE_PROBE_HARNESSES.has(harness) ? "credential_file" : "limits";
   }
 
   // -------------------------------------------------------------------------
@@ -1792,7 +1809,7 @@ export class AccountsService {
         && !centralInDoubt
         && (fetched.unreadableReason === "provider_error" || fetched.unreadableReason === "timeout"
           || fetched.unreadableReason === "refresh_deferred");
-      const credentialProbePassed = account.harness === "agy"
+      const credentialProbePassed = CREDENTIAL_FILE_PROBE_HARNESSES.has(account.harness)
         && !fetched.readable
         && fetched.unreadableReason === "unsupported";
       // A transient sampling failure is not evidence that the provider's last
@@ -1986,6 +2003,14 @@ export class AccountsService {
         return this.credentialed(account)
           ? { readable: false, unreadableReason: "unsupported", error: "agy has no limits source" }
           : { readable: false, unreadableReason: "auth_failed", error: "agy OAuth token file is missing from the account home and vault" };
+      case "muse": {
+        // Muse has no usage probe: MSP usage/read reports only what one
+        // process observed on its own model calls.
+        const state = this.credentialState(account);
+        return state === "present"
+          ? { readable: false, unreadableReason: "unsupported", error: "muse has no limits source" }
+          : { readable: false, unreadableReason: "auth_failed", error: `muse credential is ${state} in the account home and vault` };
+      }
       default:
         return { readable: false, unreadableReason: "unsupported", error: `${account.harness} has no limits source` };
     }

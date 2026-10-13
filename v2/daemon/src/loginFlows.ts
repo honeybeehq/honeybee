@@ -43,6 +43,7 @@ import { ClaudeOauthRunner } from "./login/claudeOauth.ts";
 import { CliRunner } from "./login/cliRunner.ts";
 import { STATIC_DETAIL, err, isTerminal, safeMessage } from "./login/common.ts";
 import { DirectKeyRunner } from "./login/directKey.ts";
+import { MuseApiKeyRunner } from "./login/museApiKey.ts";
 import type { LoginRunner, LoginRunnerHost } from "./login/runner.ts";
 import { defaultLoginTransports, type LoginTransports } from "./login/transports.ts";
 import { loadNodePtySpawner, type LoginWorkerStatus, type PtySpawner } from "./loginWorker.ts";
@@ -457,6 +458,8 @@ export class LoginFlowService {
       case "codex_api_key":
       case "opencode_api_key":
         return new DirectKeyRunner(host, run.runner);
+      case "muse_api_key":
+        return new MuseApiKeyRunner(host);
       default:
         return null;
     }
