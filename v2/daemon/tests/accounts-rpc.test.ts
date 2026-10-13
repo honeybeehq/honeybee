@@ -1304,22 +1304,26 @@ test("lease account ids share core validation: retained @ ids renew, revoke and 
     assert.equal(retainedId.length, 210);
     const expiresAt = Math.floor(Date.now() / 1000) + 3600;
     const raw = JSON.stringify({ claudeAiOauth: { accessToken: "FAKE-ID-TEST-ACCESS", refreshToken: "", expiresAt: expiresAt * 1000 } });
-    const input = { id, harness: "claude", label: "id-test", shareId, authorityNodeId: "dummy-authority", epoch: 1, expiresAt, files: [{ homeRelPath: ".credentials.json", contentB64: Buffer.from(raw).toString("base64"), mode: 0o600 }] };
+    const input = { id, harness: "claude", label: retainedId, shareId, authorityNodeId: "dummy-authority", epoch: 1, expiresAt, files: [{ homeRelPath: ".credentials.json", contentB64: Buffer.from(raw).toString("base64"), mode: 0o600 }] };
     const installed = await client.request<any>("account.lease.install", input);
     assert.equal(installed.account.id, retainedId);
+    assert.equal(installed.account.label, retainedId);
     const renewal = { ...input, id: retainedId, adopt: true, epoch: 2 };
     const renewed = await client.request<any>("account.lease.install", renewal);
     assert.equal(renewed.account.id, retainedId);
     assert.equal(renewed.account.leasedFrom.epoch, 2);
+    assert.equal(renewed.account.label, retainedId);
     assert.equal((await client.request<any>("account.credentials.nativeBackup", { id: retainedId })).exists, false);
     const revoked = await client.request<any>("account.lease.remove", { id: retainedId });
     assert.equal(revoked.disposition, "revoked");
     const reinstalled = await client.request<any>("account.lease.install", { ...renewal, epoch: 3 });
     assert.equal(reinstalled.account.id, retainedId);
     assert.equal(reinstalled.account.leasedFrom.revokedAt, null);
+    assert.equal(reinstalled.account.label, retainedId);
     assert.equal(readFileSync(join(reinstalled.account.homePath, ".credentials.json"), "utf8"), raw);
     for (const invalidId of ["claude-invalid/id", "claude-invalid\\id", "claude invalid", `${retainedId}x`]) {
       await rejects(() => client.request("account.lease.install", { ...renewal, id: invalidId }), "invalid_request");
+      await rejects(() => client.request("account.lease.install", { ...renewal, label: invalidId }), "invalid_request");
       await rejects(() => client.request("account.lease.remove", { id: invalidId }), "invalid_request");
       await rejects(() => client.request("account.credentials.nativeBackup", { id: invalidId }), "invalid_request");
       await rejects(() => client.request("account.credentials.restoreNative", { id: invalidId }), "invalid_request");
@@ -1327,7 +1331,7 @@ test("lease account ids share core validation: retained @ ids renew, revoke and 
       await rejects(() => client.request("account.add", { id: invalidId, harness: "claude", label: "invalid-test" }), "invalid_request");
     }
     await rejects(() => client.request("account.lease.install", { ...input, id: `${id}x` }), "invalid_request");
-    process.stdout.write("retained @ account: install/epoch renewal/revoke/reinstall PASS; full id cap210; invalid charset/overflow typed invalid_request\n");
+    process.stdout.write("retained @ account and @ label: install/epoch renewal/revoke/reinstall PASS; full id cap210; invalid charset/overflow typed invalid_request\n");
   } finally {
     client.close();
     await daemon.stop();

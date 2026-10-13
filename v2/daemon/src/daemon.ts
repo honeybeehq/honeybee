@@ -5598,7 +5598,7 @@ export class HiveDaemon {
   private async rpcAccountLeaseInstall(params: Record<string, unknown>): Promise<AccountLeaseInstallResult> {
     const invalid = () => new RpcError("invalid_request", "Lease install requires safe ids, a supported harness, epoch, access expiry, and access-only credential files.");
     const safeId = (value: unknown): value is string => typeof value === "string" && /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,199}$/.test(value);
-    if (!isAccountId(params.id) || !safeId(params.shareId) || params.shareId.length < 8 || !safeId(params.authorityNodeId) || !safeId(params.harness) || !safeId(params.label)) throw invalid();
+    if (!isAccountId(params.id) || !safeId(params.shareId) || params.shareId.length < 8 || !safeId(params.authorityNodeId) || !safeId(params.harness) || !isAccountId(params.label)) throw invalid();
     if (params.adopt !== undefined && typeof params.adopt !== "boolean" && params.adopt !== "explicit") throw invalid();
     if (typeof params.epoch !== "number" || !Number.isSafeInteger(params.epoch) || params.epoch < 0) throw invalid();
     if (params.expiresAt !== null && (typeof params.expiresAt !== "number" || !Number.isSafeInteger(params.expiresAt) || params.expiresAt * 1000 <= Date.now())) throw invalid();
