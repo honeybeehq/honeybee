@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,7 +8,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
 test("handoff scrub: darwin security shim preserves default item and scrubs only a private per-home item", async () => {
-  const root = mkdtempSync(join(tmpdir(), "hb-handoff-security-"));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "hb-handoff-security-")));
   try {
     const bin = join(root, "bin"), secretStore = join(root, "vault", "keychain-shim");
     mkdirSync(bin, { recursive: true }); mkdirSync(secretStore, { recursive: true, mode: 0o700 });

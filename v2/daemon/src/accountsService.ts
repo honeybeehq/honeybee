@@ -955,7 +955,7 @@ export class AccountsService {
       return state;
     };
     this.leaseMaterialCodecs = createLeaseMaterialCodecs({
-      assertHome: home => { if (claudeKeychainService(home) === "Claude Code-credentials" || existsSync(home) && claudeKeychainService(realpathSync(home)) === "Claude Code-credentials") throw new RpcError("account_lease_conflict", "Native backup and lease operations require a per-home Keychain item; the default/global item is excluded."); },
+      assertHome: home => { if (claudeKeychainService(home) === "Claude Code-credentials" || existsSync(home) && existsSync(resolve(homedir(), ".claude")) && realpathSync(home) === realpathSync(resolve(homedir(), ".claude"))) throw new RpcError("account_lease_conflict", "Native backup and lease operations require a per-home Keychain item; the default/global item is excluded."); },
       read: centralKeychainReader,
       publish: (account, raw, state) => this.publishClaudeMaterial(account, JSON.parse(raw) as Record<string, unknown>, state),
       remove: opts.keychainRemover ?? removeClaudeKeychainEntry,
