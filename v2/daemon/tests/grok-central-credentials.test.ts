@@ -58,7 +58,7 @@ test("central Grok: isolated daemon rotates once, publishes access-only, refresh
     res.writeHead(200, { "Content-Type": "application/json" });
     if (unusableResponse) {
       unusableResponse = false;
-      res.end(JSON.stringify({ refresh_token: refresh, expires_in: "invalid" }));
+      res.end(JSON.stringify({ refresh_token: refresh, expires_in: 3600 }));
     } else {
       res.end(JSON.stringify({ access_token: access, refresh_token: refresh, ...(omitExpiry ? {} : { expires_in: 3600 }) }));
       omitExpiry = false;
@@ -232,6 +232,7 @@ test("central Grok review: live ownership fences, saved publication survives res
   let expected = randomUUID();
   const secrets: string[] = [expected];
   let refreshes = 0;
+  let malformedExpiry = false;
   let daemon: DaemonHandle | null = null;
   let client: RpcClient | null = null;
   const server = createServer(async (req, res) => {
@@ -246,7 +247,7 @@ test("central Grok review: live ownership fences, saved publication survives res
     secrets.push(expected, access);
     await sleep(150);
     res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ access_token: access, refresh_token: expected }));
+    res.end(JSON.stringify({ access_token: access, refresh_token: expected, ...(malformedExpiry ? { expires_in: "invalid" } : {}) }));
   });
   await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
   try {
@@ -301,6 +302,26 @@ test("central Grok review: live ownership fences, saved publication survives res
     await client.request("account.credentials.disable", { id, idempotencyKey: "healthy-disable" });
     for (const path of [homePath, join(vault, "auth.json")]) assert.ok(JSON.parse(readFileSync(path, "utf8"))[scope].refresh_token === expected, "healthy disable restores latest chain");
     console.log("Grok restart: saved rotated result published without another HTTP call; healthy disable restores latest native chain");
+    await client.request("account.credentials.enable", { id, idempotencyKey: "reenable" });
+    malformedExpiry = true;
+    const beforeMalformed = refreshes;
+    await assert.rejects(() => client!.request("account.credentials.refresh", { id, idempotencyKey: "malformed-expiry" }), (error: unknown) => error instanceof RpcError && error.message.includes("malformed expiry"));
+    const terminal = await client.request<AccountCredentialAuthority>("account.credentials.status", { id });
+    assert.equal(terminal.phase, "login_required");
+    assert.equal(terminal.failure?.error, "invalid_token_response");
+    assert.equal(terminal.failure?.retryAt, null);
+    assert.ok(JSON.parse(readFileSync(authorityPath, "utf8")).document[scope].refresh_token === expected);
+    assert.ok(JSON.parse(readFileSync(homePath, "utf8"))[scope].refresh_token === undefined);
+    client.close(); client = null;
+    await daemon.stop();
+    daemon = await startDaemon(dir, { env });
+    client = await daemon.client();
+    await sleep(1200);
+    await assert.rejects(() => client!.request("account.credentials.refresh", { id, idempotencyKey: "no-second-rotation" }), (error: unknown) => error instanceof RpcError && error.message.includes("malformed expiry"));
+    assert.equal(refreshes, beforeMalformed + 1);
+    assert.equal((await client.request<AccountCredentialAuthority>("account.credentials.status", { id })).failure?.retryAt, null);
+    console.log("Grok malformed expiry: login_required invalid_token_response retryAt=null; new private chain retained; one HTTP call total even across restart/forced refresh");
+
     client.close(); client = null;
     await daemon.stop();
     assert.ok(secrets.every(secret => !daemon!.output().includes(secret)), "successor logs contain no fixture bytes");

@@ -15,6 +15,7 @@ export interface RefreshedCredentialToken {
   scopes?: string[];
   idToken?: string;
   accessUsable?: boolean;
+  terminalAccessFailure?: "invalid_expiry";
 }
 
 export type CredentialRefreshResult =

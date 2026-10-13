@@ -10,6 +10,7 @@ export interface AuthorityDocument {
   generation: number;
   operationKey: string | null;
   accessUsable?: boolean;
+  terminalAccessFailure?: "invalid_expiry";
   document: Record<string, unknown>;
   /** The native chain enrollment adopted, secret-free, so its untouched copies are not mistaken for a foreign login. */
   adopted?: AdoptedChain;
@@ -207,7 +208,8 @@ export class CredentialAuthority {
   /** What the operator must do; also the account's status reason and the lease refusal text. */
   requiresNativeLogin(): boolean { return this.codec.nativeLoginRecovery === true; }
   loginRequiredMessage(account: AccountRow, failure: CredentialRefreshFailure | null): string {
-    const why = failure ? `the provider refused the refresh token (${describeRefreshFailure(failure)})` : "the refresh token is no longer usable";
+    const why = failure?.error === "invalid_token_response" ? "the token endpoint returned a malformed expiry; automatic rotation stopped"
+      : failure ? `the provider refused the refresh token (${describeRefreshFailure(failure)})` : "the refresh token is no longer usable";
     const recovery = this.codec.nativeLoginRecovery
       ? `stop this account's local bees, then hive account credentials disable ${account.id}; hive account login ${account.id}; hive account credentials enable ${account.id}`
       : `hive account login ${account.id}`;
@@ -398,7 +400,7 @@ export class CredentialAuthority {
       if (attempt.token.accessUsable === false) value = this.preserveEnrollmentRollback(account, value);
       value = { ...value, generation: value.generation + 1, operationKey, issuedAt: this.options.now(),
         document: this.codec.merge(value.document, attempt.token, this.options.now()),
-        ...(this.codec.retainRotatedOnUnusableAccess ? { accessUsable: attempt.token.accessUsable !== false } : {}) };
+        ...(this.codec.retainRotatedOnUnusableAccess ? { accessUsable: attempt.token.accessUsable !== false, ...(attempt.token.terminalAccessFailure ? { terminalAccessFailure: attempt.token.terminalAccessFailure } : {}) } : {}) };
       save(this.path(account), value);
       if (attempt.token.accessUsable === false) return this.retainUnusableAccess(account, value);
       await this.options.publish(account, value.document, true);
@@ -407,6 +409,11 @@ export class CredentialAuthority {
   }
   private async retainUnusableAccess(account: AccountRow, value: AuthorityDocument): Promise<never> {
     const failure = this.failureOf({ kind: "unknown_outcome", description: "the rotated refresh chain was saved, but its access token is unusable" }, null);
+    if (value.terminalAccessFailure) {
+      const error = this.requireLogin(account, value, { ...failure, error: "invalid_token_response", description: "malformed expires_in; no further rotation attempted", retryAt: null });
+      await this.options.publish(account, value.document, true);
+      throw error;
+    }
     this.outcomeUnknown(account, value, failure);
     await this.options.publish(account, value.document, true);
     throw new CredentialAuthorityError("The rotated refresh chain was saved; retrying for a usable access token.");
@@ -529,7 +536,7 @@ export class CredentialAuthority {
       value = { ...enrollment, ...(value.identity ? { identity: value.identity } : {}), issuedAt: this.options.now(),
         generation: value.generation + 1, operationKey,
         document: this.codec.merge(value.document, attempt.token, this.options.now()),
-        ...(this.codec.retainRotatedOnUnusableAccess ? { accessUsable: attempt.token.accessUsable !== false } : {}) };
+        ...(this.codec.retainRotatedOnUnusableAccess ? { accessUsable: attempt.token.accessUsable !== false, ...(attempt.token.terminalAccessFailure ? { terminalAccessFailure: attempt.token.terminalAccessFailure } : {}) } : {}) };
       save(this.path(account), value);
       if (attempt.token.accessUsable === false) return this.retainUnusableAccess(account, value);
       if (firstRefreshAfterLogin) {

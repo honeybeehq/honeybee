@@ -265,7 +265,7 @@ Use the two-stage rollout represented by the two commits in this change:
    target is then the installed v27 bridge, not the incompatible v26 runtime.
 
 The feature rollback is: for every enrolled account, stop its local bees, run
-`credentials disable`, and confirm `credentials status` reports `disabled`;
+`credentials disable`, and confirm `credentials status` reports `native` under status v2 (the durable row is `disabled`);
 then `hive deploy --rollback` to the v27 bridge. Never redeploy the feature and call
 enable against an old `ready` document after a bridge window; enable afresh
 from the current native credential. If the bridge sees any non-disabled row it
@@ -333,7 +333,11 @@ The same opt-in commands support first-party Grok OIDC credentials with exactly
 one `https://auth.x.ai::<client-id>` entry. API-key credentials, corrupt documents,
 mixed entries and conflicting scopes are refused. The daemon sends form-encoded
 refresh requests with the entry's client id and principal fields. An omitted
-`expires_in` uses the native Grok default of 3600 seconds.
+`expires_in` uses the 3600-second default of Honeybee's native Grok refresh path.
+A present expiry must be a finite positive number within the timestamp range.
+A malformed expiry retains the rotated private chain but stops in
+`login_required` with `invalid_token_response` and no scheduled retry; it never
+consumes a second rotation automatically. This terminal marker survives restart.
 
 The private rotated chain is saved before access-only publication to the account
 home and vault. Foreign refresh chains, scopes and principal identities are

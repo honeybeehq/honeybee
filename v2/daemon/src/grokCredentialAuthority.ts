@@ -56,11 +56,15 @@ export function defaultGrokRefreshTransport(timeoutMs: number, now: () => number
       endpoint: () => endpoint ?? process.env.HIVE_GROK_OAUTH_TOKEN_URL ?? GROK_OAUTH_TOKEN_URL,
       decode: (body, previousRefreshToken, at) => {
         if (body.refresh_token !== undefined && body.refresh_token !== null && (typeof body.refresh_token !== "string" || !body.refresh_token)) return null;
-        const candidateExpiry = typeof body.expires_in === "number" && Number.isFinite(body.expires_in) ? at + body.expires_in * 1000 : at + 3600 * 1000;
+        const omittedExpiry = body.expires_in === undefined;
+        const invalidExpiry = !omittedExpiry && (typeof body.expires_in !== "number" || !Number.isFinite(body.expires_in)
+          || body.expires_in <= 0 || !Number.isFinite(new Date(at + body.expires_in * 1000).getTime()));
+        const candidateExpiry = invalidExpiry ? 0 : at + (omittedExpiry ? 3600 : body.expires_in as number) * 1000;
         const expiresAt = Number.isFinite(new Date(candidateExpiry).getTime()) ? candidateExpiry : 0;
         const accessToken = typeof body.access_token === "string" ? body.access_token : "";
         return { accessToken, refreshToken: body.refresh_token as string | undefined ?? previousRefreshToken,
-          expiresAt, accessUsable: Boolean(accessToken) && expiresAt > at };
+          expiresAt, accessUsable: Boolean(accessToken) && expiresAt > at,
+          ...(invalidExpiry ? { terminalAccessFailure: "invalid_expiry" as const } : {}) };
       },
     })(refreshToken);
   };
