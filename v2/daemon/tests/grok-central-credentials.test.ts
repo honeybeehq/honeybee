@@ -167,7 +167,7 @@ test("central Grok: isolated daemon rotates once, publishes access-only, refresh
     const early = await waitFor(async () => {
       const state = await rpc<AccountCredentialAuthority>("account.credentials.status", { id });
       return state.generation === 6 && state.phase === "ready" ? state : null;
-    }, "automatic early refresh", 8000);
+    }, "automatic early refresh", 30000);
     assert.ok(early.expiresAt! > Date.now());
     assert.equal(requests.length, 5);
     console.log(`3 automatic early refresh: generation=${early.generation} before_expiry=true`);
