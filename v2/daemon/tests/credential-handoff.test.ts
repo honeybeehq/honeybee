@@ -841,15 +841,21 @@ for (const harness of ["claude", "codex", "grok"]) test(`credential handoff ${ha
     assert.equal(preparedReleased.disposition, "prepared_aborted"); assert.equal(preparedReleased.requiredEpoch, 2); assert.equal(preparedReleased.providerCalled, false); assert.equal(preparedReleased.rotationScheduled, true); assert.ok(preparedReleased.message.includes(preparedAccount) && preparedReleased.message.includes("may still hold copied refresh material"));
     assert.ok(readFileSync(join(a.dir, "vault", ".credential-authorities", preparedAccount + ".json")).equals(untouched), "prepared abort preserves private material");
     assert.equal(refreshes.length, preparedCalls);
-    await refused(() => rpc(ca!, "exportCommit", { handoffId: preparedHandoff, claimId: preparedShadow.receipt.binding.claimId }), "credential_handoff_decided");
+    await waitFor(async () => (await rpc<Result>(ca!, "handoffStatus", { handoffId: preparedHandoff })).state === "aborted", "prepared release durable abort settled");
+    await waitFor(() => existsSync(join(a.dir, "early-rotation-waiting")), "prepared release early normal rotation scheduled on next tick");
+    await refused(() => rpc(ca!, "exportCommit", { handoffId: preparedHandoff, claimId: preparedShadow.receipt.binding.claimId }), "credential_handoff_unavailable");
     await rpc(cb, "adoptAbort", { handoffId: preparedHandoff, abortReceipt: preparedReleased.abortReceipt });
     const higherLease = await cb.request<{ account: MirrorAccountRow }>("account.lease.install", { id: preparedAccount, harness, label: "release-prepared-example.com", shareId: "12345678-release-prepared", authorityNodeId: from.nodeId, epoch: preparedReleased.requiredEpoch, expiresAt: Math.floor(Date.now() / 1000) + 3600, adopt: true, files: [{ homeRelPath: primary, contentB64: readFileSync(join(a.dir, "homes", preparedAccount, primary)).toString("base64"), mode: 0o600 }] });
     assert.equal(higherLease.account.id, preparedAccount); assert.equal(higherLease.account.source, "leased");
     assert.equal(refreshes.length, preparedCalls);
-    await waitFor(() => existsSync(join(a.dir, "early-rotation-waiting")), "prepared release early normal rotation scheduled on next tick");
     assert.ok(readFileSync(join(a.dir, "vault", ".credential-authorities", preparedAccount + ".json")).equals(untouched), "prepared abort preserves private material");
     unlinkSync(join(a.dir, "crash-gate.json")); unlinkSync(join(a.dir, "early-rotation-waiting"));
-    await waitFor(async () => { const state = await rpc<AccountCredentialAuthority>(ca!, "status", { id: preparedAccount }); return state.phase === "ready" && state.generation > preparedMaterial.material.generation; }, "prepared release normal early rotation settled");
+    await waitFor(async () => {
+      const state = await rpc<AccountCredentialAuthority>(ca!, "status", { id: preparedAccount });
+      const handoff = await rpc<Result & { releasePeer: { earlyRotationPending: boolean } }>(ca!, "handoffStatus", { handoffId: preparedHandoff });
+      return state.phase === "ready" && state.generation > preparedMaterial.material.generation && handoff.state === "aborted" && handoff.releasePeer.earlyRotationPending === false;
+    }, "prepared release normal early rotation and publication settled");
+    await refused(() => rpc(ca!, "exportCommit", { handoffId: preparedHandoff, claimId: preparedShadow.receipt.binding.claimId }), "credential_handoff_decided");
     assert.equal(refreshes.length, preparedCalls + 1); assert.equal(valid.has(tokenOf(preparedMaterial)), false);
     assert.equal((await rpc<Released>(ca, "releasePeer", preparedReleaseParams)).disposition, "prepared_aborted");
     console.log(`${harness} release-peer prepared: no commit/provider in abort, chain byte-identical until scheduled next-tick normal rotation; epoch+1; signed abort clears returning shadow and same row accepts higher lease`);
