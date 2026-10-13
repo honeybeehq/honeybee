@@ -1972,6 +1972,7 @@ export class CoreStore {
     const leaseCols = new Set((this.stmt("SELECT name FROM pragma_table_info('accounts')").all() as Row[]).map(row => String(row.name)));
     if (!leaseCols.has("source")) this.db.exec("ALTER TABLE accounts ADD COLUMN source TEXT NOT NULL DEFAULT 'local' CHECK (source IN ('local','leased'))");
     if (!leaseCols.has("leased_from")) this.db.exec("ALTER TABLE accounts ADD COLUMN leased_from TEXT");
+    this.db.exec("UPDATE accounts SET leased_from = json_remove(json_set(leased_from, '$.revokedAt', json_extract(leased_from, '$.endedAt')), '$.endedAt') WHERE leased_from IS NOT NULL AND json_type(leased_from, '$.endedAt') IS NOT NULL");
     this.backfillMailHistoryEnqueues();
     this.db
       .prepare(
@@ -5249,6 +5250,16 @@ export class CoreStore {
 
   returnAdoptedAccountToLocal(id: string): AccountRow {
     return this.tx(() => this.applyAccountUpdate(id, { source: "local", leasedFrom: null, lastLoginAt: null, refreshTokenExpiresAt: null, statusReason: "Native backup retained; credentials absent. Log in locally or adopt a new lease." }, "native backup retained; credentials absent").account);
+  }
+
+  revokeAccountLease(id: string): AccountRow {
+    return this.tx(() => {
+      const before = this.mustGetAccount(id);
+      if (before.source !== "leased" || before.leasedFrom === null) throw new CoreError("Only a leased account can be revoked");
+      if (before.leasedFrom.revokedAt !== null) return before;
+      const reason = `Lease revoked; request renewal from ${before.leasedFrom.authorityNodeId}.`;
+      return this.applyAccountUpdate(id, { leasedFrom: { ...before.leasedFrom, revokedAt: this.now() }, status: before.status === "paused" ? "paused" : "auth_needed", statusReason: reason }, "lease revoked").account;
+    });
   }
 
   setAccountLease(id: string, leasedFrom: NonNullable<AccountRow["leasedFrom"]>): AccountRow {

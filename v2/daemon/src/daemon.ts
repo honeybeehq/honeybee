@@ -1168,7 +1168,6 @@ export class HiveDaemon {
       // v7: bounded in-daemon limits refresh; v16: login-flow expiry + credential landing.
       this.performance.measureSync("daemon.tick.accounts", () => {
         this.accounts?.periodicRefreshTick();
-        this.accounts?.leaseCleanupTick();
         this.accounts?.centralRefreshRetryTick();
         this.accounts?.centralEarlyRefreshTick();
         this.enforceWeeklyCeilings();
@@ -1677,7 +1676,13 @@ export class HiveDaemon {
         return this.withIdempotency(verb, params, () =>
           this.rpcEnqueue("stop", this.param(params, "beeId"), { cause: "stopped_by_user" }, params),
         );
-      case "revive":
+      case "revive": {
+        const bee = this.mustStore().getBee(this.param(params, "beeId"));
+        const account = bee?.account ? this.mustStore().getAccount(bee.account) : null;
+        if (account?.source === "leased" && account.leasedFrom?.revokedAt != null) {
+          const readiness = this.mustAccounts().credentialReadiness(account);
+          if (!readiness.ready) throw new RpcError(readiness.code, readiness.message, { account: account.id });
+        }
         return this.withIdempotency(verb, params, () =>
           this.rpcEnqueue(
             "revive",
@@ -1686,6 +1691,7 @@ export class HiveDaemon {
             params,
           ),
         );
+      }
       case "bee.setArgs":
         return this.withIdempotency(verb, params, () => this.rpcSetArgs(params));
       case "bee.reconfigure":
@@ -5093,7 +5099,7 @@ export class HiveDaemon {
   private async rpcAccountRemove(params: Record<string, unknown>): Promise<AccountRemoveResult> {
     const account = this.requireAccount(params);
     this.mustAccounts().assertLeaseWriteIdle(account.id);
-    if (account.source === "leased" && account.leasedFrom?.endedAt == null) this.mustAccounts().assertLocalAccount(account);
+    if (account.source === "leased" && account.leasedFrom?.revokedAt == null) this.mustAccounts().assertLocalAccount(account);
     try { this.mustAccounts().authorityFor(account)?.assertDisabled(account); }
     catch (error) { throw new RpcError("account_unavailable", error instanceof Error ? error.message : "Credential cleanup failed"); }
     // v16: a login worker never outlives its account (the store cascades the rows).

@@ -491,7 +491,7 @@ test("v7.migration: a v6 store opens as v7 — bees.account added, accounts/acco
     try {
       const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
       assert.equal(Number(version.value), SCHEMA_VERSION);
-      assert.equal(SCHEMA_VERSION, 36);
+      assert.equal(SCHEMA_VERSION, 37);
       const cols = (check.prepare("SELECT name FROM pragma_table_info('bees')").all() as Array<{ name: string }>).map((c) => c.name);
       assert.ok(cols.includes("account"));
       const tables = (check.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{ name: string }>).map((t) => t.name);
@@ -546,7 +546,7 @@ test("v27 bridge reopens a disabled pilot store without losing ordinary state or
         { ...(check.prepare("SELECT phase, generation, expires_at, operation_key, updated_at FROM account_credential_authorities WHERE account = ?").get(account.id) as Record<string, unknown>) },
         { phase: "disabled", generation: 4, expires_at: 9_999_999, operation_key: "rollout-4", updated_at: 7_777 },
       );
-      assert.equal((check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string }).value, "36");
+      assert.equal((check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string }).value, "37");
     } finally {
       check.close();
     }
@@ -885,6 +885,29 @@ test("v36 migrates native accounts as local without credential material", () => 
     const migrated = h.open();
     assert.equal(migrated.getAccount("claude-native")?.source, "local");
     assert.equal(migrated.getAccount("claude-native")?.leasedFrom, null);
+    migrated.close();
+  } finally { h.cleanup(); }
+});
+
+
+test("v37 migrates ended lease metadata to revoked without losing account or bee references", () => {
+  const h = harness();
+  try {
+    const initial = h.open();
+    const account = initial.createAccount({ id: "claude-migration-test", harness: "claude", homePath: "/tmp/migration-test", label: "migration-test" });
+    const { bee } = initial.createBee({ name: "migration-bee", agent: "claude", substrate: "hsr", cwd: "/tmp/work", account: account.id });
+    initial.close();
+    const db = new DatabaseSync(h.path);
+    db.prepare("UPDATE accounts SET source = 'leased', leased_from = ? WHERE id = ?").run(JSON.stringify({ shareId: "test-share", authorityNodeId: "test-node", epoch: 1, expiresAt: null, adoptedAt: null, endedAt: 1234 }), account.id);
+    db.prepare("UPDATE meta SET value = '36' WHERE key = 'schema_version'").run();
+    db.close();
+    const migrated = h.open();
+    const row = migrated.getAccount(account.id)!;
+    assert.equal(row.source, "leased");
+    assert.equal(row.leasedFrom?.revokedAt, 1234);
+    assert.equal("endedAt" in row.leasedFrom!, false);
+    assert.equal(migrated.getBee(bee.id)?.account, account.id);
+    assert.throws(() => migrated.removeAccount(account.id), AccountReferencedError);
     migrated.close();
   } finally { h.cleanup(); }
 });

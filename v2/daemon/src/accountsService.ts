@@ -230,7 +230,7 @@ export type PickOutcome =
 export type CredentialState = "present" | "absent" | "invalid" | "expired";
 
 /** Typed refusal codes shared by explicit spawn, allocator claims, swap and the runtime-start hold. */
-export type AccountRefusalCode = "account_lease_ended" | "account_paused" | "account_auth_needed" | "account_credential_missing" | "account_credential_invalid" | "account_credential_expired" | "account_unavailable";
+export type AccountRefusalCode = "account_lease_revoked" | "account_paused" | "account_auth_needed" | "account_credential_missing" | "account_credential_invalid" | "account_credential_expired" | "account_unavailable";
 
 export type AccountReadiness =
   | { ready: true }
@@ -1249,11 +1249,11 @@ export class AccountsService {
       if (!account) throw new RpcError("account_not_found", "Account not found.");
       const codec = this.leaseMaterialCodecs.get(account.harness);
       const backup = this.latestNativeBackup(account);
-      if (account.source !== "local") throw new RpcError("account_leased", "Remove the lease before restoring a native backup.");
+      if (account.source !== "local" && (account.leasedFrom?.revokedAt == null || account.leasedFrom.adoptedAt === null)) throw new RpcError("account_leased", "Revoke the adopted lease before explicitly restoring its native backup.");
       if (!codec || !backup) throw new RpcError("native_backup_absent", "No genuine native backup exists for this account.");
       const assertAllowed = () => {
         const current = this.store.getAccount(id)!;
-        if (current.source !== "local") throw new RpcError("account_leased", "Remove the lease before restoring a native backup.");
+        if (current.source !== "local" && (current.leasedFrom?.revokedAt == null || current.leasedFrom.adoptedAt === null)) throw new RpcError("account_leased", "Revoke the adopted lease before explicitly restoring its native backup.");
         if (this.store.beesOnAccount(id).some(bee => { const runtime = this.store.currentRuntime(bee.id); return runtime !== null && runtime.state !== "stopped"; }) || this.store.listUnreconciledAccountAdmissions(this.now(), { account: id }).length > 0 || this.authorityFor(current)?.enabled(current) || this.authorityFor(current)?.busy(current) || this.refreshBusy(current) || this.nativeKeychainSeeds.has(id) || this.store.activeLoginFlow(id)) throw new RpcError("native_backup_restore_refused", "Stop every bee and finish account credential operations before restoring a native backup.");
         if (this.credentialed(current)) throw new RpcError("native_backup_restore_refused", "The account already has credentials; a native backup will not overwrite them.");
       };
@@ -1280,6 +1280,7 @@ export class AccountsService {
           if (raw === null || this.nativeMaterialKind(account.harness, raw) !== "native") throw new RpcError("native_backup_invalid", "The backup has no genuine native Keychain credential.");
           keychainRestored = await codec.keychain.publish(account, raw, state);
         }
+        if (account.source === "leased") this.store.returnAdoptedAccountToLocal(id);
         this.store.setAccountStatus(id, "auth_needed", "Native backup explicitly restored; validate or log in before placing work.");
         return { account: this.store.getAccount(id)!, backupAt: backup.at, restoredAt: this.now(), files, keychainRestored };
       };
@@ -1298,7 +1299,7 @@ export class AccountsService {
       let account = this.store.getAccount(id);
       if (input.adopt && !account) throw new RpcError("account_adopt_refused", "Adoption requires an existing same-id native account.");
       const adopted = account?.source === "local";
-      const origin = { shareId: input.shareId, authorityNodeId: input.authorityNodeId, epoch: input.epoch, expiresAt: input.expiresAt, adoptedAt: adopted ? this.now() : account?.leasedFrom?.adoptedAt ?? null, endedAt: null };
+      const origin = { shareId: input.shareId, authorityNodeId: input.authorityNodeId, epoch: input.epoch, expiresAt: input.expiresAt, adoptedAt: adopted ? this.now() : account?.leasedFrom?.adoptedAt ?? null, revokedAt: null };
       if (account && account.harness !== input.harness) throw new RpcError("harness_mismatch", "Lease harness differs from the existing account.");
       if (account?.source === "leased" && (account.leasedFrom?.shareId !== input.shareId || account.leasedFrom.epoch > input.epoch || account.leasedFrom.epoch === input.epoch && (account.leasedFrom.authorityNodeId !== input.authorityNodeId || account.leasedFrom.expiresAt !== null && (input.expiresAt === null || input.expiresAt < account.leasedFrom.expiresAt)))) throw new RpcError("account_lease_conflict", "Lease origin conflicts with the installed lease.");
       if (adopted) {
@@ -1368,7 +1369,7 @@ export class AccountsService {
   removeLease(id: string): Promise<AccountLeaseRemoveResult> {
     return this.withLeaseWrite(id, async () => {
       const account = this.store.getAccount(id);
-      if (!account) return { id, disposition: "absent", removed: false, keychainRemoved: false, nativeBackupKept: existsSync(join(this.cfg.accounts.vaultDir, ".native-backup", id)) };
+      if (!account) return { id, disposition: "absent", removed: false, revokedAt: null, keychainRemoved: false, nativeBackupKept: existsSync(join(this.cfg.accounts.vaultDir, ".native-backup", id)) };
       if (account.source !== "leased") throw new RpcError("account_lease_conflict", "Only leased accounts may be removed through lease.remove.");
       const codec = this.leaseMaterialCodecs.get(account.harness)!;
       const remove = async () => {
@@ -1389,30 +1390,12 @@ export class AccountsService {
         for (const rel of this.credentialPaths(account)) {
           for (const root of [account.homePath, this.vaultDirOf(account)]) rmSync(this.leaseFilePath(root, rel), { force: true });
         }
-        this.store.setAccountStatus(id, "auth_needed", `Lease ended; request renewal from ${account.leasedFrom!.authorityNodeId}.`);
-        let disposition: AccountLeaseRemoveResult["disposition"];
-        if (account.leasedFrom!.adoptedAt !== null) {
-          this.store.returnAdoptedAccountToLocal(id);
-          disposition = "native_restored_absent";
-        } else if (this.store.beesOnAccount(id).length === 0 && this.store.listUnreconciledAccountAdmissions(this.now(), { account: id }).length === 0) {
-          this.store.removeAccount(id);
-          disposition = "removed";
-        } else {
-          this.store.setAccountLease(id, { ...account.leasedFrom!, endedAt: this.now() });
-          disposition = "ended";
-        }
-        return { id, disposition, removed: disposition === "removed", keychainRemoved, nativeBackupKept: existsSync(join(this.cfg.accounts.vaultDir, ".native-backup", id)) };
+        const revoked = this.store.revokeAccountLease(id);
+        return { id, disposition: "revoked" as const, removed: false, revokedAt: revoked.leasedFrom!.revokedAt, keychainRemoved, nativeBackupKept: existsSync(join(this.cfg.accounts.vaultDir, ".native-backup", id)) };
       };
       codec.keychain?.assertHome(account.homePath);
       return codec.keychain ? codec.keychain.withLock(account.homePath, remove) : remove();
     });
-  }
-
-  leaseCleanupTick(): void {
-    for (const account of this.store.listAccounts()) {
-      if (account.source !== "leased" || account.leasedFrom?.endedAt == null || this.leaseWrites.has(account.id)) continue;
-      if (this.store.beesOnAccount(account.id).length === 0 && this.store.listUnreconciledAccountAdmissions(this.now(), { account: account.id }).length === 0) this.store.removeAccount(account.id);
-    }
   }
 
   vaultDirOf(account: Pick<AccountRow, "harness" | "id">): string {
@@ -1469,6 +1452,7 @@ export class AccountsService {
    */
   credentialState(account: AccountRow): CredentialState {
     const recipe = recipeFor(account.harness);
+    if (account.source === "leased" && account.leasedFrom?.revokedAt != null) return "absent";
     if (account.source === "leased" && account.leasedFrom?.expiresAt != null && account.leasedFrom.expiresAt * 1000 <= this.now()) return "expired";
     if (!recipe) return "present";
     if (this.authorityFor(account)?.enabled(account)) return this.centralCredentialState(account);
@@ -1524,7 +1508,7 @@ export class AccountsService {
     const unisolated = this.isolationRefusal(account.harness);
     if (unisolated) return { ready: false, code: "account_unavailable", message: unisolated };
     if (this.leaseWrites.has(account.id)) return { ready: false, code: "account_auth_needed", message: "Account credential material is changing; retry after the operation completes." };
-    if (account.source === "leased" && account.leasedFrom?.endedAt != null) return { ready: false, code: "account_lease_ended", message: `Lease ${account.leasedFrom.shareId} from ${account.leasedFrom.authorityNodeId} has ended; request renewal from its authority.` };
+    if (account.source === "leased" && account.leasedFrom?.revokedAt != null) return { ready: false, code: "account_lease_revoked", message: `Lease ${account.leasedFrom.shareId} from ${account.leasedFrom.authorityNodeId} was revoked; request renewal from its authority.` };
     if (account.status === "auth_needed") {
       return { ready: false, code: "account_auth_needed", message: this.authNeededReason(account) ?? `account ${account.id} needs login; log in with: hive account login ${account.id}` };
     }
@@ -1542,6 +1526,7 @@ export class AccountsService {
 
   /** Node-local admission readiness for PLACING work on the account: the pause policy, then `credentialReadiness`. */
   readiness(account: AccountRow): AccountReadiness {
+    if (account.source === "leased" && account.leasedFrom?.revokedAt != null) return this.credentialReadiness(account);
     if (account.status === "paused") {
       const pause = pauseOf(account);
       return { ready: false, code: "account_paused", message: `account ${account.id} is paused by ${pause ? pauseLabel(pause) : "operator"}` };
@@ -1574,7 +1559,8 @@ export class AccountsService {
    * a good vault copy does not make a stale home work.
    */
   homeCredentialState(account: AccountRow): "usable" | "absent" | "expired" {
-    if (account.source === "leased" && (account.leasedFrom?.endedAt != null || account.leasedFrom?.expiresAt != null && account.leasedFrom.expiresAt * 1000 <= this.now())) return "expired";
+    if (account.source === "leased" && account.leasedFrom?.revokedAt != null) return "absent";
+    if (account.source === "leased" && (account.leasedFrom?.expiresAt != null && account.leasedFrom.expiresAt * 1000 <= this.now())) return "expired";
     const primary = recipeFor(account.harness)?.credentialFiles[0];
     if (!primary) return "usable";
     const raw = readIfFile(join(account.homePath, primary));

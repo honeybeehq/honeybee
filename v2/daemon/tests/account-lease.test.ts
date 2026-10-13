@@ -2041,7 +2041,7 @@ test("peer lease adoption preserves native material and refuses working or opera
     assert.ok(installed.backupPath);
     assert.equal(readFileSync(join(installed.backupPath, "home", ".credentials.json"), "utf8"), nativeRaw);
     assert.equal(installed.account.source, "leased");
-    assert.deepEqual(installed.account.leasedFrom, { authorityNodeId: input.authorityNodeId, shareId: input.shareId, epoch: 1, expiresAt: input.expiresAt, endedAt: null, adoptedAt: r.now() });
+    assert.deepEqual(installed.account.leasedFrom, { authorityNodeId: input.authorityNodeId, shareId: input.shareId, epoch: 1, expiresAt: input.expiresAt, revokedAt: null, adoptedAt: r.now() });
     await assert.rejects(accounts.captureAccount(installed.account), (error: unknown) => error instanceof RpcError && error.code === "account_leased");
     await assert.rejects(accounts.mintLease(installed.account), (error: unknown) => error instanceof RpcError && error.code === "account_leased");
     await assert.rejects(accounts.centralCredentials.enable(installed.account), (error: unknown) => error instanceof RpcError && error.code === "account_leased");
@@ -2052,13 +2052,15 @@ test("peer lease adoption preserves native material and refuses working or opera
     r.setNow(r.now() + 2 * HOUR);
     assert.equal(accounts.credentialState(installed.account), "expired");
     const removed = await accounts.removeLease(installed.account.id);
-    assert.equal(removed.disposition, "native_restored_absent");
+    assert.equal(removed.disposition, "revoked");
     assert.equal(removed.removed, false);
     assert.equal(removed.nativeBackupKept, true);
-    assert.equal(r.store.getAccount(working.id)?.source, "local");
+    assert.equal(r.store.getAccount(working.id)?.source, "leased");
     assert.equal(existsSync(join(working.homePath, ".credentials.json")), false);
     assert.equal(existsSync(installed.backupPath), true);
-    await assert.rejects(accounts.removeLease(working.id), (error: unknown) => error instanceof RpcError && error.code === "account_lease_conflict");
+    const revokeSeq = r.store.lastAuditSeq();
+    await accounts.removeLease(working.id);
+    assert.equal(r.store.lastAuditSeq(), revokeSeq);
     assert.ok(!JSON.stringify(r.store.auditTail(0, 10000)).includes("FAKE-PEER-ACCESS"));
     assert.ok(!r.log.join("\n").includes("FAKE-PEER-ACCESS"));
   } finally { r.cleanup(); }
@@ -2095,7 +2097,7 @@ test("peer lease publication uses Claude locks and keeps starts blocked until Ke
   } finally { r.cleanup(); }
 });
 
-test("ended leases preserve bee bindings, accept a newer authority epoch and clean up only when unreferenced", async () => {
+test("revoked leases retain all account rows and bee bindings, audit once and accept a newer authority epoch", async () => {
   const r = rig();
   try {
     const accounts = service(r);
@@ -2103,22 +2105,28 @@ test("ended leases preserve bee bindings, accept a newer authority epoch and cle
     const input = { id: "claude-peer", harness: "claude", label: "peer", shareId: "share-00000001", authorityNodeId: "authority-test", epoch: 1, expiresAt: (r.now() + HOUR) / 1000, files: [{ homeRelPath: ".credentials.json", contentB64: Buffer.from(raw).toString("base64"), mode: 0o600 }] };
     const installed = await accounts.installLease(input);
     const { bee } = r.store.createBee({ name: "leased-bee", agent: "claude", substrate: "hsr", cwd: r.dir, account: installed.account.id });
+    const beforeRevoke = r.store.lastAuditSeq();
     const receipt = await accounts.removeLease(installed.account.id);
-    assert.equal(receipt.disposition, "ended");
+    assert.equal(r.store.lastAuditSeq(), beforeRevoke + 1);
+    assert.equal(r.store.auditTail(beforeRevoke, 10)[0]?.payload.reason, "lease revoked");
+    await accounts.removeLease(installed.account.id);
+    assert.equal(r.store.lastAuditSeq(), beforeRevoke + 1);
+    assert.throws(() => r.store.removeAccount(installed.account.id));
+    assert.equal(receipt.disposition, "revoked");
     const ended = r.store.getAccount(installed.account.id)!;
-    assert.equal(ended.leasedFrom?.endedAt, r.now());
+    assert.equal(ended.leasedFrom?.revokedAt, r.now());
     assert.equal(accounts.credentialHealthOf(ended), "absent");
     assert.equal(accounts.credentialReadiness(ended).ready, false);
     assert.equal(r.store.getBee(bee.id)?.account, installed.account.id);
-    accounts.leaseCleanupTick();
     assert.ok(r.store.getAccount(installed.account.id));
     await assert.rejects(accounts.installLease({ ...input, authorityNodeId: "foreign-authority" }), (error: unknown) => error instanceof RpcError && error.code === "account_lease_conflict");
     const renewed = await accounts.installLease({ ...input, authorityNodeId: "new-authority", epoch: 2 });
     assert.equal(renewed.account.leasedFrom?.authorityNodeId, "new-authority");
-    assert.equal(renewed.account.leasedFrom?.endedAt, null);
+    assert.equal(renewed.account.leasedFrom?.revokedAt, null);
     await accounts.removeLease(installed.account.id);
     r.store.setBeeAccount(bee.id, null);
-    accounts.leaseCleanupTick();
+    assert.ok(r.store.getAccount(installed.account.id));
+    r.store.removeAccount(installed.account.id);
     assert.equal(r.store.getAccount(installed.account.id), null);
   } finally { r.cleanup(); }
 });
@@ -2135,6 +2143,8 @@ test("native backups exclude access-only leases, enforce permissions and retain 
     assert.equal((await accounts.installLease(input)).backupPath, null);
     assert.deepEqual(accounts.nativeBackupStatus(r.store.getAccount(row.id)!), { exists: false, backedUpAt: null });
     await accounts.removeLease(row.id);
+    r.store.removeAccount(row.id);
+    r.store.createAccount({ id: row.id, harness: row.harness, homePath: row.homePath, label: row.label, status: "auth_needed" });
     writeFileSync(join(row.homePath, ".credentials.json"), native, { mode: 0o644 });
     const first = await accounts.installLease(input);
     assert.ok(first.backupPath);

@@ -482,7 +482,7 @@ export interface CredentialRefreshFailure {
 
 /** A provider login identity: the WHO. One account = one run-home. */
 export interface AccountLeaseOrigin {
-  endedAt: number | null;
+  revokedAt: number | null;
   adoptedAt: number | null;
   shareId: string;
   authorityNodeId: string;

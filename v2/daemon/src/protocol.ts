@@ -116,6 +116,7 @@ export const DAEMON_CAPABILITIES = [
    */
   "account.lease.v1",
   "account.lease.install.v1",
+  "account.lease.revoke.v1",
   "account.credentials.native_backup.v1",
   "account.credentials.pilot.v1",
   "account.credentials.status.v2",
@@ -226,7 +227,7 @@ export interface HelloFrame {
 export const RPC_ERROR_CODES = [
   "account_leased",
   "account_lease_conflict",
-  "account_lease_ended",
+  "account_lease_revoked",
   "native_backup_absent",
   "native_backup_invalid",
   "native_backup_restore_refused",
@@ -929,7 +930,8 @@ export interface AccountLeaseInstallResult {
 }
 
 export interface AccountLeaseRemoveResult {
-  disposition: "absent" | "removed" | "ended" | "native_restored_absent";
+  disposition: "absent" | "revoked";
+  revokedAt: number | null;
   id: string;
   removed: boolean;
   keychainRemoved: boolean;
