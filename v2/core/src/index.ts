@@ -55,6 +55,7 @@ export * from "./accountMatch.ts";
 export * from "./accountRecipes.ts";
 export * from "./loginFlow.ts";
 export * from "./accountLimitsParse.ts";
+export * from "./envRedaction.ts";
 export {
   normalizeTemplate,
   normalizeTrack,

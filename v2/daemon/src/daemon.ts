@@ -100,6 +100,7 @@ import {
   type CoreStore,
   type MirrorAccountRow,
   pauseLabel,
+  redactEnvRecords,
   type RowSource,
   type Scope,
   type Urgency,
@@ -1885,9 +1886,9 @@ export class HiveDaemon {
           this.rpcEnqueue("delete", this.param(params, "beeId"), {}, params),
         );
       case "view":
-        return this.viewOf(this.mustStore(), this.param(params, "beeId"));
+        return this.envRedacted(params, this.viewOf(this.mustStore(), this.param(params, "beeId")));
       case "list":
-        return this.rpcList(params);
+        return this.envRedacted(params, this.rpcList(params));
       case "mailbox":
         return this.rpcMailbox(params);
       case "mail.ack":
@@ -1899,7 +1900,7 @@ export class HiveDaemon {
       case "commands":
         return { commands: this.mustStore().listCommands({ beeId: this.requireBee(params) }) };
       case "audit.tail":
-        return this.rpcAuditTail(params);
+        return this.envRedacted(params, this.rpcAuditTail(params));
       case "deployInfo":
         return this.rpcDeployInfo();
       case "update.status":
@@ -4867,6 +4868,10 @@ export class HiveDaemon {
       cell: bee?.cellId ? store.getCell(bee.cellId) : null,
       handoff: bee ? (() => { const h = store.latestHandoffOf(bee.id); return h ? toBeeHandoffView(h) : null; })() : null,
     };
+  }
+
+  private envRedacted<T>(params: Record<string, unknown>, result: T): T {
+    return params.revealEnv === true ? result : redactEnvRecords(result);
   }
 
   private rpcList(params: Record<string, unknown>): ListResult {

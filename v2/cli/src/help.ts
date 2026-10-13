@@ -43,7 +43,7 @@ const GROUPS: Group[] = [
     title: "Observe",
     rows: [
       ["list", "[--all|--archived]", "all bees with state (aliases: ls, ps)"],
-      ["view", "<bee>", "one bee, in full"],
+      ["view", "<bee> [--reveal-env]", "one bee, in full (secret env values print as <redacted>)"],
       ["mailbox", "<bee> [--since id] [--unread]", "queued + delivered mail; --since/--unread for pollers"],
       ["ack", "<bee> <id>|--all", "mark a mailbox-only bee's mail read through <id>"],
       ["commands", "<bee>", "command queue for a bee"],

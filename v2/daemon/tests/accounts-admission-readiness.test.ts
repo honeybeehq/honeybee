@@ -413,7 +413,7 @@ test("admission.env: inherited CLAUDE_CODE_OAUTH_TOKEN / ANTHROPIC_API_KEY never
     assert.equal(boots[0]!.env.CLAUDE_CONFIG_DIR, join(dir, "homes", "claude-a"));
     assert.equal(boots[0]!.env.CLAUDE_CODE_OAUTH_TOKEN, "", "blanked, not inherited");
     assert.equal(boots[0]!.env.ANTHROPIC_API_KEY, "", "blanked, not inherited");
-    const stored = (await client.request<ViewResult>("view", { beeId: bee.beeId })).bee?.env ?? {};
+    const stored = (await client.request<ViewResult>("view", { beeId: bee.beeId, revealEnv: true })).bee?.env ?? {};
     assert.equal(stored.CLAUDE_CODE_OAUTH_TOKEN, "", "the persisted bee env carries the scrub too");
     assert.ok(!existsSync(join(dir, "homes", "claude-a", "nope")));
     client.close();
