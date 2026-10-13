@@ -8,6 +8,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { ACCOUNT_CREDENTIAL_AUTHORITIES_TABLE_SQL } from "../src/schema.ts";
 import { DatabaseSync } from "node:sqlite";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -518,7 +519,7 @@ test("v7.migration: a v6 store opens as v7 — bees.account added, accounts/acco
     try {
       const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
       assert.equal(Number(version.value), SCHEMA_VERSION);
-      assert.equal(SCHEMA_VERSION, 37);
+      assert.equal(SCHEMA_VERSION, 38);
       const cols = (check.prepare("SELECT name FROM pragma_table_info('bees')").all() as Array<{ name: string }>).map((c) => c.name);
       assert.ok(cols.includes("account"));
       const tables = (check.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{ name: string }>).map((t) => t.name);
@@ -573,7 +574,7 @@ test("v27 bridge reopens a disabled pilot store without losing ordinary state or
         { ...(check.prepare("SELECT phase, generation, expires_at, operation_key, updated_at FROM account_credential_authorities WHERE account = ?").get(account.id) as Record<string, unknown>) },
         { phase: "disabled", generation: 4, expires_at: 9_999_999, operation_key: "rollout-4", updated_at: 7_777 },
       );
-      assert.equal((check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string }).value, "37");
+      assert.equal((check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string }).value, String(SCHEMA_VERSION));
     } finally {
       check.close();
     }
@@ -935,6 +936,30 @@ test("v37 migrates ended lease metadata to revoked without losing account or bee
     assert.equal("endedAt" in row.leasedFrom!, false);
     assert.equal(migrated.getBee(bee.id)?.account, account.id);
     assert.throws(() => migrated.removeAccount(account.id), AccountReferencedError);
+    migrated.close();
+  } finally { h.cleanup(); }
+});
+
+test("v37 credential authority migrates to the handoff phase CHECK without losing expiry or failure metadata", () => {
+  const h = harness();
+  try {
+    const store = h.open();
+    store.createAccount({ id: "codex-test-example.com", harness: "codex", label: "test-example.com", homePath: "/tmp/owned-test-home" });
+    const state = store.putAccountCredentialAuthority({ account: "codex-test-example.com", phase: "ready", generation: 4, expiresAt: 100000, operationKey: "fixture-operation", refreshTokenExpiresAt: 200000,
+      failure: { outcome: "retryable", httpStatus: 429, error: null, description: "rate limited", at: 10, attempts: 1, retryAt: 100 } });
+    store.close();
+    const old = new DatabaseSync(h.path);
+    old.exec("ALTER TABLE account_credential_authorities RENAME TO authority_v38_fixture");
+    old.exec(ACCOUNT_CREDENTIAL_AUTHORITIES_TABLE_SQL.replace(",'handing_off','adopting'", ""));
+    old.exec("INSERT INTO account_credential_authorities SELECT * FROM authority_v38_fixture");
+    old.exec("DROP TABLE authority_v38_fixture; DROP TABLE credential_handoffs; DROP TABLE credential_handoff_events; DROP TABLE credential_authority_epochs");
+    old.prepare("UPDATE meta SET value = '37' WHERE key = 'schema_version'").run();
+    old.close();
+    const migrated = h.open();
+    assert.deepEqual(migrated.getAccountCredentialAuthority(state.account), state);
+    assert.equal(migrated.getCredentialHandoff("absent", "source"), null);
+    assert.equal(migrated.putAccountCredentialAuthority({ ...state, phase: "handing_off" }).phase, "handing_off");
+    assert.equal(migrated.putAccountCredentialAuthority({ ...state, phase: "adopting" }).phase, "adopting");
     migrated.close();
   } finally { h.cleanup(); }
 });

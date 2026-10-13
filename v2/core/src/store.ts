@@ -58,6 +58,7 @@ import {
   type AuthTurnProgress,
   type AccountRow,
   type AccountCredentialAuthority,
+  type CredentialHandoffRecord,
   type AccountPause,
   type AccountPauseOwner,
   type CredentialRefreshFailure,
@@ -1813,6 +1814,14 @@ export class CoreStore {
         this.db.exec(ACCOUNT_CREDENTIAL_AUTHORITIES_TABLE_SQL);
         this.db.exec(`INSERT INTO account_credential_authorities(${carried}) SELECT ${carried} FROM account_credential_authorities_v34`);
         this.db.exec("DROP TABLE account_credential_authorities_v34");
+      }
+      const handoffAuthorityDdl = this.stmt("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'account_credential_authorities'").get() as Row;
+      if (!String(handoffAuthorityDdl.sql).includes("'handing_off'")) {
+        const carried = "account,phase,generation,expires_at,operation_key,updated_at,refresh_token_expires_at,failure";
+        this.db.exec("ALTER TABLE account_credential_authorities RENAME TO account_credential_authorities_v36");
+        this.db.exec(ACCOUNT_CREDENTIAL_AUTHORITIES_TABLE_SQL);
+        this.db.exec(`INSERT INTO account_credential_authorities(${carried}) SELECT ${carried} FROM account_credential_authorities_v36`);
+        this.db.exec("DROP TABLE account_credential_authorities_v36");
       }
       // v11 → v12: typed account-limit failure class. Existing unreadable
       // rows stay null until the next bounded limits sweep refreshes them.
@@ -5057,13 +5066,75 @@ export class CoreStore {
   // v7 — accounts (spec 08): identity rows, limits snapshots, selection cursor
   // -------------------------------------------------------------------------
 
+  getCredentialHandoff(handoffId: string, role: CredentialHandoffRecord["role"]): CredentialHandoffRecord | null {
+    const row = this.stmt("SELECT record FROM credential_handoffs WHERE handoff_id = ? AND role = ?").get(handoffId, role) as Row | undefined;
+    return row ? JSON.parse(String(row.record)) as CredentialHandoffRecord : null;
+  }
+
+  listCredentialHandoffs(): CredentialHandoffRecord[] {
+    return (this.stmt("SELECT record FROM credential_handoffs").all() as Row[]).map(row => JSON.parse(String(row.record)) as CredentialHandoffRecord);
+  }
+
+  pendingCredentialHandoffs(): CredentialHandoffRecord[] {
+    return (this.stmt("SELECT record FROM credential_handoffs WHERE state IN ('exported','failed','aborted') AND (role = 'source' AND state = 'exported' OR role = 'destination' AND COALESCE(json_extract(record,'$.scrubbed'),0) = 0)").all() as Row[]).map(row => JSON.parse(String(row.record)) as CredentialHandoffRecord);
+  }
+
+  activeCredentialHandoff(account: string): CredentialHandoffRecord | null {
+    const rows = this.stmt("SELECT record FROM credential_handoffs WHERE account = ?").all(account) as Row[];
+    return rows.map(row => JSON.parse(String(row.record)) as CredentialHandoffRecord).find(row => !["aborted", "confirmed", "failed", "adopted", "stood_down"].includes(row.state) || row.role === "destination" && ["aborted", "failed"].includes(row.state) && !row.scrubbed) ?? null;
+  }
+
+  putCredentialHandoff(record: CredentialHandoffRecord, authority?: AccountCredentialAuthority): CredentialHandoffRecord {
+    const result = this.tx(() => {
+      const previous = this.getCredentialHandoff(record.handoffId, record.role);
+      if (JSON.stringify(previous) === JSON.stringify(record)) return record;
+      this.stmt("INSERT INTO credential_handoffs(handoff_id,role,account,state,record) VALUES(?,?,?,?,?) ON CONFLICT(handoff_id,role) DO UPDATE SET state=excluded.state,record=excluded.record")
+        .run(record.handoffId, record.role, record.account, record.state, JSON.stringify(record));
+      this.stmt("INSERT INTO credential_handoff_events(handoff_id,role,state,at) VALUES(?,?,?,?)").run(record.handoffId, record.role, record.state, this.now());
+      if (authority) this.putAccountCredentialAuthority(authority);
+      return record;
+    });
+    if (this.txDepth === 0) this.db.exec("PRAGMA wal_checkpoint(FULL)");
+    return result;
+  }
+
+  credentialAuthorityEpoch(account: string): number {
+    const row = this.stmt("SELECT epoch FROM credential_authority_epochs WHERE account = ?").get(account) as Row | undefined;
+    return row ? Number(row.epoch) : 0;
+  }
+
+  credentialAuthorityIsDemoted(account: string): boolean {
+    const row = this.stmt("SELECT demoted FROM credential_authority_epochs WHERE account = ?").get(account) as Row | undefined;
+    return Number(row?.demoted ?? 0) === 1;
+  }
+
+  demoteCredentialAuthority(account: string, epoch: number): void {
+    this.tx(() => {
+      if (this.credentialAuthorityIsDemoted(account) && this.credentialAuthorityEpoch(account) === epoch) return;
+      this.stmt("INSERT INTO credential_authority_epochs(account,epoch,demoted) VALUES(?,?,1) ON CONFLICT(account) DO UPDATE SET epoch=excluded.epoch,demoted=1").run(account, epoch);
+      this.stmt("INSERT INTO credential_handoff_events(handoff_id,role,state,at) VALUES(?,?,?,?)").run(`stand-down:${account}:${epoch}`, "source", "stood_down", this.now());
+      if (this.mustGetAccount(account).source !== "leased") this.setAccountStatus(account, "auth_needed", "Authority transferred; install a lease from the new authority or explicitly take over.");
+    });
+    this.db.exec("PRAGMA wal_checkpoint(FULL)");
+  }
+
+  completeCredentialAdoption(record: CredentialHandoffRecord): void {
+    this.tx(() => {
+      this.applyAccountUpdate(record.account, { source: "local", leasedFrom: null, statusReason: "Central credential authority adopted" }, "central credential authority adopted");
+      this.stmt("INSERT INTO credential_authority_epochs(account,epoch,demoted) VALUES(?,?,0) ON CONFLICT(account) DO UPDATE SET epoch=excluded.epoch,demoted=0").run(record.account, record.binding.epoch);
+      this.putCredentialHandoff(record);
+    });
+    this.db.exec("PRAGMA wal_checkpoint(FULL)");
+  }
+
   getAccountCredentialAuthority(account: string): AccountCredentialAuthority | null {
     const row = this.stmt("SELECT * FROM account_credential_authorities WHERE account = ?").get(account) as Row | undefined;
     return row ? { account, phase: row.phase as AccountCredentialAuthority["phase"], generation: Number(row.generation),
       expiresAt: row.expires_at == null ? null : Number(row.expires_at), operationKey: row.operation_key as string | null,
       refreshTokenExpiresAt: row.refresh_token_expires_at == null ? null : Number(row.refresh_token_expires_at),
       failure: row.failure == null ? null : JSON.parse(String(row.failure)) as CredentialRefreshFailure,
-      updatedAt: Number(row.updated_at) } : null;
+      updatedAt: Number(row.updated_at),
+      ...(row.phase === "handing_off" ? (() => { const handoff = this.activeCredentialHandoff(account); return handoff ? { handoff: { handoffId: handoff.handoffId, nodeId: handoff.binding.to.nodeId, since: handoff.binding.since, state: handoff.state } } : {}; })() : {}) } : null;
   }
 
   putAccountCredentialAuthority(input: Omit<AccountCredentialAuthority, "updatedAt" | "refreshTokenExpiresAt" | "failure"> & Partial<Pick<AccountCredentialAuthority, "refreshTokenExpiresAt" | "failure">>): AccountCredentialAuthority {

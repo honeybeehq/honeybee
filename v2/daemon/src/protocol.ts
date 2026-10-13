@@ -121,6 +121,7 @@ export const DAEMON_CAPABILITIES = [
   "account.credentials.native_backup.v1",
   "account.credentials.pilot.v1",
   "account.credentials.status.v2",
+  "account.credentials.handoff.v1",
   /**
    * v35: a dying login is visible. Account rows carry `statusReason` and
    * `refreshTokenExpiresAt`; `account.credentials.status` carries
@@ -226,6 +227,17 @@ export interface HelloFrame {
 
 /** Closed-list, typed errors — never fuzzy (spec 04). */
 export const RPC_ERROR_CODES = [
+  "credential_handoff_fenced",
+  "credential_handoff_conflict",
+  "credential_handoff_not_found",
+  "credential_handoff_unsupported",
+  "credential_handoff_unavailable",
+  "credential_handoff_expired",
+  "credential_handoff_decided",
+  "credential_handoff_rejected",
+  "credential_handoff_uncertain",
+  "credential_handoff_unusable_access",
+  "credential_handoff_stale_epoch",
   "account_leased",
   "account_lease_conflict",
   "account_lease_revoked",
@@ -480,6 +492,16 @@ export const RPC_VERBS = [
   // v33 (capability account.auth_resume.v1): a credential installed outside the daemon works again.
   "account.credentialsRestored",
   "account.interruptions",
+  "account.credentials.export",
+  "account.credentials.adoptPrepare",
+  "account.credentials.exportPrepare",
+  "account.credentials.exportCommit",
+  "account.credentials.adopt",
+  "account.credentials.adoptAbort",
+  "account.credentials.exportAbort",
+  "account.credentials.exportConfirm",
+  "account.credentials.standDown",
+  "account.credentials.handoffStatus",
   "account.credentials.status",
   "account.credentials.nativeBackup",
   "account.credentials.restoreNative",

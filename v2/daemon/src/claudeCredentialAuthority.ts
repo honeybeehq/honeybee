@@ -1,7 +1,7 @@
 /** Opt-in per account. The private document is the only refresh-chain owner for each enrolled account. */
 import { createHash, randomUUID } from "node:crypto";
-import { closeSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, writeFileSync, unlinkSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { closeSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, writeFileSync, unlinkSync, readdirSync } from "node:fs";
+import { dirname, join, basename } from "node:path";
 import { parseClaudeCredentials, type AccountCredentialAuthority, type AccountRow, type CoreStore, type CredentialRefreshFailure } from "../../core/src/index.ts";
 import { describeRefreshFailure, sanitizeProviderText, type CredentialRefreshTransportFailure, type CredentialRefreshResult, type CredentialRefreshTransport } from "./claudeRefreshTransport.ts";
 import type { ClaudeIdentity } from "./login/transports.ts";
@@ -62,8 +62,13 @@ export interface CredentialCodec {
   merge: (document: Record<string, unknown>, token: Extract<CredentialRefreshResult, { kind: "success" }>["token"], at: number) => Record<string, unknown>;
 }
 const CLAUDE_CODEC: CredentialCodec = {
-  harness: "claude", label: "Claude", parse: parseClaudeCredentials,
-  merge: (document, token) => ({ ...document, claudeAiOauth: { ...(document.claudeAiOauth as Record<string, unknown>), ...token } }),
+  harness: "claude", label: "Claude", parse: parseClaudeCredentials, retainRotatedOnUnusableAccess: true,
+  merge: (document, token) => {
+    const previous = document.claudeAiOauth as Record<string, unknown>;
+    const { accessUsable, ...nativeToken } = token;
+    return { ...document, claudeAiOauth: { ...previous, ...nativeToken,
+      ...(accessUsable === false ? { accessToken: previous.accessToken, expiresAt: previous.expiresAt, scopes: previous.scopes } : {}) } };
+  },
 };
 export const REFRESH_RETRY_MAX_MS = 15 * 60_000;
 const RELOGIN_PHASES: ReadonlySet<AccountCredentialAuthority["phase"]> = new Set(["ready", "refreshing", "uncertain", "login_required"]);
@@ -90,12 +95,14 @@ function save(path: string, value: AuthorityDocument): void {
   const fd = openSync(temporary, "wx", 0o600);
   try { writeFileSync(fd, JSON.stringify(value)); fsyncSync(fd); } finally { closeSync(fd); }
   renameSync(temporary, path);
+  const prefix = `${basename(path)}.`;
+  for (const file of readdirSync(dirname(path))) if (file.startsWith(prefix) && /^[0-9a-f-]{36}\.tmp$/.test(file.slice(prefix.length))) unlinkSync(join(dirname(path), file));
   const directory = openSync(dirname(path), "r");
   try { fsyncSync(directory); } finally { closeSync(directory); }
 }
 
 export class CredentialAuthority {
-  private readonly pending = new Map<string, { kind: string; promise: Promise<AccountCredentialAuthority> }>();
+  private readonly pending = new Map<string, { kind: string; promise: Promise<unknown> }>();
   private readonly options: CentralCredentialOptions;
   constructor(options: CentralCredentialOptions) { this.options = options; }
   private get codec(): CredentialCodec { return this.options.codec ?? CLAUDE_CODEC; }
@@ -293,10 +300,10 @@ export class CredentialAuthority {
       throw new CredentialAuthorityError("Finish or cancel the account's login before changing credential ownership.");
     }
   }
-  private lane(account: AccountRow, kind: string, run: () => Promise<AccountCredentialAuthority>): Promise<AccountCredentialAuthority> {
+  private lane<T>(account: AccountRow, kind: string, run: () => Promise<T>): Promise<T> {
     const existing = this.pending.get(account.id);
     if (existing) {
-      if (kind !== "relogin" && (existing.kind === kind || (kind === "ensure" && existing.kind.startsWith("force:")))) return existing.promise;
+      if (kind !== "relogin" && (existing.kind === kind || (kind === "ensure" && existing.kind.startsWith("force:")))) return existing.promise as Promise<T>;
       const waitsForRefresh = kind === "relogin" || kind.startsWith("force:");
       if ((waitsForRefresh && (existing.kind === "ensure" || existing.kind.startsWith("force:"))) || (kind === "ensure" && existing.kind === "relogin")) {
         const retry = () => this.lane(account, kind, run);
@@ -332,6 +339,77 @@ export class CredentialAuthority {
     }
     return this.ready(account, value);
   }
+  handoffLane<T>(account: AccountRow, kind: string, run: () => Promise<T>): Promise<T> {
+    return this.lane(account, `handoff:${kind}`, run);
+  }
+
+  async inspectHandoffExport(account: AccountRow): Promise<{ state: AccountCredentialAuthority; value: AuthorityDocument }> {
+    const state = this.status(account);
+    if (state?.phase !== "ready" || state.failure !== null || this.options.store.activeLoginFlow(account.id)) throw new CredentialAuthorityError("Handoff requires a healthy central authority.");
+    const value = this.read(account);
+    const credential = this.parseDocument(value.document);
+    if (!credential?.refreshToken || credential.expiresAt <= this.options.now() || value.accessUsable === false) throw new CredentialAuthorityError("Handoff requires a usable central refresh credential.");
+    await this.options.beforeRefresh(account, value.document);
+    return { state, value };
+  }
+
+  prepareHandoffAdoption(account: AccountRow, value: AuthorityDocument): void {
+    if (!this.parseDocument(value.document)?.refreshToken) throw new CredentialAuthorityError("Handoff material is invalid.");
+    this.put(account, "adopting", value);
+    save(this.path(account), value);
+  }
+
+  async rotateHandoffAdoption(account: AccountRow, claimId: string, generation: number): Promise<AccountCredentialAuthority> {
+    let value = this.read(account);
+    const state = this.status(account);
+    if (!state || state.phase === "disabled" || state.phase === "handing_off") throw new CredentialAuthorityError("Handoff adoption is not prepared.");
+    if (state.phase === "login_required") throw new CredentialAuthorityError("Handoff rotation was rejected; the source remains fenced and needs explicit operator takeover.", "login_required");
+    if (value.generation > generation && value.accessUsable !== false) {
+      await this.options.publish(account, value.document, true);
+      return this.ready(account, value);
+    }
+    const credential = this.parseDocument(value.document);
+    if (!credential?.refreshToken) throw new CredentialAuthorityError("Handoff refresh material is unavailable.");
+    await this.options.beforeRefresh(account, value.document);
+    value = { ...value, operationKey: claimId };
+    save(this.path(account), value);
+    this.put(account, "adopting", value, state.failure);
+    const attempt = await this.attempt(account, credential.refreshToken, value.generation, state.failure, "refresh");
+    if (attempt.kind === "failed") {
+      if (attempt.result.kind === "rejected") throw this.requireLogin(account, value, attempt.failure);
+      this.outcomeUnknown(account, value, attempt.failure);
+      throw new CredentialAuthorityError("Handoff rotation outcome is uncertain; both sides remain fenced.");
+    }
+    value = { ...value, generation: value.generation + 1, issuedAt: this.options.now(),
+      document: this.codec.merge(value.document, attempt.token, this.options.now()),
+      accessUsable: attempt.token.accessUsable !== false && attempt.token.refreshToken !== credential.refreshToken,
+      ...(attempt.token.terminalAccessFailure ? { terminalAccessFailure: attempt.token.terminalAccessFailure } : {}) };
+    save(this.path(account), value);
+    if (value.accessUsable === false) return this.retainUnusableAccess(account, value);
+    await this.options.publish(account, value.document, true);
+    return this.ready(account, value);
+  }
+
+  forgetHandoffAdoption(account: AccountRow): void {
+    const prefix = `${encodeURIComponent(account.id)}.json`;
+    const previous = `${encodeURIComponent(account.id)}.previous.json`;
+    for (const file of readdirSync(this.options.root)) {
+      const currentTemporary = file.startsWith(`${prefix}.`) && /^[0-9a-f-]{36}\.tmp$/.test(file.slice(prefix.length + 1));
+      const previousTemporary = file.startsWith(`${previous}.`) && /^[0-9a-f-]{36}\.tmp$/.test(file.slice(previous.length + 1));
+      if (file === prefix || file === previous || currentTemporary || previousTemporary) unlinkSync(join(this.options.root, file));
+    }
+    const directory = openSync(this.options.root, "r");
+    try { fsyncSync(directory); } finally { closeSync(directory); }
+    const state = this.status(account);
+    if (state && state.phase !== "disabled") this.options.store.putAccountCredentialAuthority({ ...state, phase: "disabled", operationKey: null, failure: null });
+  }
+
+  async scrubHandoff(account: AccountRow): Promise<void> {
+    const value = this.read(account);
+    await this.options.publish(account, value.document, true);
+    this.forgetHandoffAdoption(account);
+  }
+
   enable(account: AccountRow): Promise<AccountCredentialAuthority> {
     return this.lane(account, "enable", async () => {
       if (account.harness !== this.codec.harness) throw new CredentialAuthorityError(`Central credential management supports ${this.codec.label} only.`);
@@ -422,6 +500,7 @@ export class CredentialAuthority {
     return this.lane(account, "disable", async () => {
       this.assertQuiescent(account);
       const state = this.status(account);
+      if (state?.phase === "handing_off" || state?.phase === "adopting") throw new CredentialAuthorityError("Credential handoff is fenced; complete or abort it before disabling.");
       if (!state) throw new CredentialAuthorityError("This account is not centrally managed.");
       if (state.phase === "disabled") return state;
       let value: AuthorityDocument;
@@ -472,6 +551,7 @@ export class CredentialAuthority {
     return this.lane(account, forceKey ? `force:${forceKey}` : "ensure", async () => {
       let state = this.status(account);
       if (!state || state.phase === "disabled") throw new CredentialAuthorityError("Enable central credentials for this account first.");
+      if (state.phase === "handing_off" || state.phase === "adopting") throw new CredentialAuthorityError("Credential handoff holds this account; complete it, or abort an unprepared export. A committed takeover needs stand-down at a higher epoch followed by native login and credentials enable on the chosen authority.");
       if (state.phase === "login_required") {
         if (!this.savedResultPending(account, state)) throw new CredentialAuthorityError(this.loginRequiredMessage(account, state.failure), "login_required");
       }

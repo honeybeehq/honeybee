@@ -896,6 +896,7 @@ export class HiveDaemon {
       performance: this.performance,
     });
     await this.rpc.listen();
+    void this.accounts?.credentialHandoff.reconcile(true).catch(() => this.log("account.credentials.handoff_reconcile_failed"));
     rpc.end();
     this.activeStartupPhase = null;
     this.scheduleTick(this.cfg.tickMs);
@@ -1168,6 +1169,7 @@ export class HiveDaemon {
       // v7: bounded in-daemon limits refresh; v16: login-flow expiry + credential landing.
       this.performance.measureSync("daemon.tick.accounts", () => {
         this.accounts?.periodicRefreshTick();
+        void this.accounts?.credentialHandoff.reconcile().catch(() => this.log("account.credentials.handoff_reconcile_failed"));
         this.accounts?.centralRefreshRetryTick();
         this.accounts?.centralEarlyRefreshTick();
         this.enforceWeeklyCeilings();
@@ -1574,6 +1576,26 @@ export class HiveDaemon {
         return this.rpcAccountLoginRetry(params);
       case "account.login.cancel":
         return this.withIdempotency(verb, params, () => this.rpcAccountLoginCancel(params));
+      case "account.credentials.export":
+        return this.mustAccounts().credentialHandoff.export(params);
+      case "account.credentials.adoptPrepare":
+        return this.mustAccounts().credentialHandoff.adoptPrepare(params);
+      case "account.credentials.exportPrepare":
+        return this.mustAccounts().credentialHandoff.exportPrepare(params);
+      case "account.credentials.exportCommit":
+        return this.mustAccounts().credentialHandoff.exportCommit(params);
+      case "account.credentials.adoptAbort":
+        return this.mustAccounts().credentialHandoff.adoptAbort(params);
+      case "account.credentials.adopt":
+        return this.mustAccounts().credentialHandoff.adopt(params);
+      case "account.credentials.exportAbort":
+        return this.mustAccounts().credentialHandoff.exportAbort(params);
+      case "account.credentials.exportConfirm":
+        return this.mustAccounts().credentialHandoff.exportConfirm(params);
+      case "account.credentials.standDown":
+        return this.mustAccounts().credentialHandoff.standDown(params);
+      case "account.credentials.handoffStatus":
+        return this.mustAccounts().credentialHandoff.status(params);
       case "account.credentials.nativeBackup":
         return this.mustAccounts().nativeBackupStatus(this.requireAccount(params));
       case "account.credentials.restoreNative": {

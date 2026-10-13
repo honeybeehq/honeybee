@@ -164,10 +164,18 @@ export function oauthRefreshTransport(options: {
       const token = options.decode(fresh as Record<string, unknown>, refreshToken, at);
       return token ? { kind: "success", token } : { kind: "unknown_outcome", description: "the provider answered with an unusable token" };
     }
+    const expiresAt = at + (typeof fresh?.expires_in === "number" ? fresh.expires_in : 3600) * 1000;
+    const rotated = typeof fresh?.refresh_token === "string" && Boolean(fresh.refresh_token) && fresh.refresh_token !== refreshToken;
+    const accessUsable = typeof fresh?.access_token === "string" && Boolean(fresh.access_token) && Number.isFinite(expiresAt) && expiresAt > at;
+    const refreshTokenExpiresAt = expiryFromSeconds(fresh?.refresh_token_expires_in, at);
+    if (rotated && !accessUsable) return { kind: "success", token: {
+      accessToken: typeof fresh.access_token === "string" ? fresh.access_token : "", refreshToken: fresh.refresh_token as string,
+      expiresAt: Number.isFinite(expiresAt) ? expiresAt : 0, accessUsable: false,
+      ...(refreshTokenExpiresAt !== undefined ? { refreshTokenExpiresAt } : {}),
+    } };
     if (typeof fresh?.access_token !== "string" || !fresh.access_token) {
       return { kind: "unknown_outcome", description: `HTTP ${response.status} without an access token` };
     }
-    const refreshTokenExpiresAt = expiryFromSeconds(fresh.refresh_token_expires_in, at);
     return { kind: "success", token: {
       accessToken: fresh.access_token,
       refreshToken: typeof fresh.refresh_token === "string" && fresh.refresh_token ? fresh.refresh_token : refreshToken,

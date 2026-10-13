@@ -18,6 +18,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, lstatSync,
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
+import { CredentialHandoffService } from "./credentialHandoff.ts";
 import { CredentialAuthority, ClaudeCredentialAuthority, CredentialAuthorityError, CredentialOwnershipConflict, refreshTokenDigest } from "./claudeCredentialAuthority.ts";
 import { defaultClaudeRefreshTransport, describeRefreshFailure, sanitizeProviderText, type ClaudeRefreshResult, type ClaudeRefreshTransport, type RefreshedClaudeToken } from "./claudeRefreshTransport.ts";
 import { CodexCredentialAuthority, CODEX_CREDENTIAL_CODEC, readCodexCredentialCopy, defaultCodexRefreshTransport } from "./codexCredentialAuthority.ts";
@@ -883,6 +884,7 @@ export class AccountsService {
    * spread instead of stacking on one snapshot. In-memory: a daemon restart
    * loses at most 15 minutes of reservations.
    */
+  readonly credentialHandoff: CredentialHandoffService;
   private readonly pendingPicks = new Map<string, PendingPick[]>();
   /**
    * Measured burn per window (points/hour) from consecutive readable
@@ -1077,6 +1079,7 @@ export class AccountsService {
     });
     this.credentialAuthorities.set("claude", this.centralCredentials);
     this.credentialAuthorities.set("codex", this.codexCredentials);
+    this.credentialHandoff = new CredentialHandoffService(this.store, this, join(this.cfg.accounts.vaultDir, ".credential-authorities"), this.now, this.log);
     this.credentialAuthorities.set("grok", this.grokCredentials);
     this.providerHttp = {
       ...defaultProviderLimitsHttp(this.cfg.accounts.limitsFetchTimeoutMs),
@@ -1097,6 +1100,7 @@ export class AccountsService {
 
   assertLocalAccount(account: AccountRow): void {
     const current = this.store.getAccount(account.id) ?? account;
+    if (this.store.activeCredentialHandoff(account.id)) throw new RpcError("credential_handoff_fenced", "Credential handoff holds this account; finish the committed takeover or abort an unprepared export.");
     if (current.source !== "leased" && this.leaseWrites.has(current.id)) throw new RpcError("lease_unavailable", "Account credential ownership is changing; retry after lease installation.");
     if (current.source === "leased") throw new RpcError("account_leased", `Account ${current.id} is leased from ${current.leasedFrom?.authorityNodeId}; request renewal from its authority.`);
   }
@@ -1147,9 +1151,49 @@ export class AccountsService {
     return current;
   }
 
+  assertHandoffAdoptable(account: AccountRow): void {
+    if (this.store.activeLoginFlow(account.id) || this.refreshBusy(account) || this.leaseMints.has(account.id) || this.nativeKeychainSeeds.has(account.id)) throw new RpcError("credential_handoff_unavailable", "The destination has an active credential operation.");
+    if (this.authorityFor(account)?.enabled(account)) throw new RpcError("credential_handoff_conflict", "The destination already owns a central refresh chain.");
+    if (account.source !== "leased" && ((account.status === "paused" && account.pausedBy === "operator") || this.credentialHealthOf(account) !== "absent")) throw new RpcError("account_adopt_refused", "Handoff cannot overwrite native credentials; use an empty or leased destination account.");
+  }
+
+  async scrubHandoff(account: AccountRow): Promise<void> {
+    const authority = this.authorityFor(account)!;
+    const authorityRoot = join(this.cfg.accounts.vaultDir, ".credential-authorities");
+    const authorityName = encodeURIComponent(account.id);
+    const codec = this.leaseMaterialCodecs.get(account.harness);
+    if (!codec) throw new RpcError("credential_handoff_unsupported", "No credential scrub codec is registered for this harness.");
+    const credentialPaths = [codec.primaryFile, ...Object.entries(codec.mirrors).filter(([canonical]) => canonical === codec.primaryFile).map(([, mirror]) => mirror)];
+    for (const rel of credentialPaths) for (const root of [account.homePath, this.vaultDirOf(account)]) {
+      const raw = readIfFile(this.leaseFilePath(root, rel));
+      if (raw !== null) JSON.parse(raw);
+    }
+    if (codec.keychain && (await codec.keychain.read(account.homePath)).status === "unreadable") throw new RpcError("credential_handoff_unavailable", "Unlock the credential Keychain before finishing takeover.");
+    if (existsSync(join(authorityRoot, `${authorityName}.json`))) await authority.scrubHandoff(account);
+    const scrub = async () => {
+      if (codec.keychain) {
+        const state = await codec.keychain.read(account.homePath);
+        if (state.status === "unreadable") throw new RpcError("credential_handoff_unavailable", "Unlock the credential Keychain before finishing takeover.");
+        if (state.status === "present") await codec.keychain.publish(account, JSON.stringify(blankRefreshTokens(JSON.parse(state.raw))), state);
+      }
+      for (const rel of credentialPaths) for (const root of [account.homePath, this.vaultDirOf(account)]) {
+        const path = this.leaseFilePath(root, rel), raw = readIfFile(path);
+        if (raw === null) continue;
+        const document = JSON.parse(raw);
+        atomicWriteFileSync(path, JSON.stringify(codec.accessOnly ? codec.accessOnly(document) : blankRefreshTokens(document)), 0o600);
+      }
+      if (existsSync(authorityRoot)) authority.forgetHandoffAdoption(account);
+    };
+    if (codec.keychain) await codec.keychain.withLock(account.homePath, scrub); else await scrub();
+  }
+
   private nativeMaterialKind(harness: string, raw: string): "native" | "access_only" | "unknown" {
     let document: unknown;
     try { document = JSON.parse(raw); } catch { return "unknown"; }
+    if (document && typeof document === "object" && !Array.isArray(document)) {
+      const credential = this.credentialAuthorities.get(harness)?.parseDocument(document as Record<string, unknown>);
+      if (credential) return credential.refreshToken ? "native" : "access_only";
+    }
     if (harness === "claude") {
       const parsed = parseClaudeCredentials(raw);
       return parsed ? hasRefreshToken(parsed) ? "native" : "access_only" : "unknown";
@@ -1302,6 +1346,7 @@ export class AccountsService {
     const id = input.adopt ? input.id : `${input.id}@${input.shareId.slice(0, 8)}`;
     return this.withLeaseWrite(id, async () => {
       let account = this.store.getAccount(id);
+      if (account && (this.store.activeCredentialHandoff(id) || ["handing_off", "adopting"].includes(this.authorityFor(account)?.status(account)?.phase ?? ""))) throw new RpcError("credential_handoff_fenced", "Credential ownership is changing; lease installation cannot overwrite an authority.");
       if (input.adopt && !account) throw new RpcError("account_adopt_refused", "Adoption requires an existing same-id native account.");
       const adopted = account?.source === "local";
       const origin = { shareId: input.shareId, authorityNodeId: input.authorityNodeId, epoch: input.epoch, expiresAt: input.expiresAt, adoptedAt: adopted ? this.now() : account?.leasedFrom?.adoptedAt ?? null, revokedAt: null };
@@ -2386,6 +2431,9 @@ export class AccountsService {
   }
 
   private async fetchByHarness(account: AccountRow): Promise<PutAccountLimitsInput> {
+    const authorityPhase = this.authorityFor(account)?.status(account)?.phase;
+    if (authorityPhase === "handing_off" || authorityPhase === "adopting") return { readable: false, unreadableReason: "provider_error", error: "Credential ownership is changing; existing access remains usable." };
+    if (account.source !== "leased" && this.store.credentialAuthorityIsDemoted(account.id) && !this.authorityFor(account)?.enabled(account)) return { readable: false, unreadableReason: "auth_failed", error: "Authority transferred; request an access-only lease from the new authority." };
     switch (account.harness) {
       case "claude": {
         if (this.authorityFor(account)?.enabled(account)) {
@@ -2618,6 +2666,7 @@ export class AccountsService {
    */
   private async refreshClaudeCredential(account: AccountRow, minTtlMs = 0, deferralDeadlineMs?: number): Promise<ClaudeRefreshOutcome> {
     this.assertLocalAccount(account);
+    if (this.store.credentialAuthorityIsDemoted(account.id) && !this.authorityFor(account)?.enabled(account)) return { kind: "no_refresh_token" };
     if (this.authorityFor(account)?.enabled(account)) {
       await this.authorityFor(account)!.ensure(account, minTtlMs);
       const credential = await this.freshestClaudeCredential(account);
@@ -2854,6 +2903,7 @@ export class AccountsService {
    */
   async mintLease(account: AccountRow, opts: LeaseOptions = {}): Promise<EphemeralCredential> {
     this.assertLocalAccount(account);
+    if (this.store.credentialAuthorityIsDemoted(account.id) && !this.authorityFor(account)?.enabled(account)) throw new RpcError("credential_handoff_decided", "Authority transferred; this daemon cannot mint or rotate a lease for this account.");
     const joined = this.leaseMints.get(account.id);
     if (joined) return joined;
     const pending = this.mintLeaseFresh(account, opts);

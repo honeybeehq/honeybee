@@ -159,7 +159,7 @@
  * v35 — a dying login is visible: `accounts.status_reason` + `accounts.refresh_token_expires_at`;
  * the credential authority gains the terminal `login_required` phase, `refresh_token_expires_at`
  * and the secret-free last refresh `failure` (table rebuild, rows carried across by name). */
-export const SCHEMA_VERSION = 37;
+export const SCHEMA_VERSION = 38;
 
 export const AUTH_INTERRUPTIONS_TABLE_SQL = `
 CREATE TABLE IF NOT EXISTS auth_interruptions (
@@ -190,7 +190,7 @@ CREATE INDEX IF NOT EXISTS auth_interruptions_by_bee ON auth_interruptions(bee_i
 export const ACCOUNT_CREDENTIAL_AUTHORITIES_TABLE_SQL = `
 CREATE TABLE IF NOT EXISTS account_credential_authorities (
   account TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
-  phase TEXT NOT NULL CHECK (phase IN ('enrolling','ready','refreshing','uncertain','login_required','disabling','disabling_uncertain','disabled')),
+  phase TEXT NOT NULL CHECK (phase IN ('enrolling','ready','refreshing','uncertain','login_required','disabling','disabling_uncertain','disabled','handing_off','adopting')),
   generation INTEGER NOT NULL,
   expires_at INTEGER,
   operation_key TEXT,
@@ -561,6 +561,29 @@ CREATE INDEX IF NOT EXISTS accounts_harness ON accounts(harness, added_at, id);
 
 -- v27: opt-in Claude credential authority. Secrets remain in the private vault.
 ${ACCOUNT_CREDENTIAL_AUTHORITIES_TABLE_SQL}
+CREATE TABLE IF NOT EXISTS credential_handoffs (
+  handoff_id TEXT NOT NULL,
+  role TEXT NOT NULL CHECK (role IN ('source','destination')),
+  account TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  state TEXT NOT NULL CHECK (state IN ('exported','preparing','prepared','committed','adopting','adopted','failed','aborted','confirmed','stood_down')),
+  record TEXT NOT NULL,
+  PRIMARY KEY (handoff_id, role)
+) STRICT;
+CREATE INDEX IF NOT EXISTS credential_handoffs_account ON credential_handoffs(account);
+CREATE INDEX IF NOT EXISTS credential_handoffs_state ON credential_handoffs(state,role);
+CREATE TABLE IF NOT EXISTS credential_handoff_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  handoff_id TEXT NOT NULL,
+  role TEXT NOT NULL,
+  state TEXT NOT NULL CHECK (state IN ('exported','preparing','prepared','committed','adopting','adopted','failed','aborted','confirmed','stood_down')),
+  at INTEGER NOT NULL
+) STRICT;
+CREATE TABLE IF NOT EXISTS credential_authority_epochs (
+  account TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
+  epoch INTEGER NOT NULL,
+  demoted INTEGER NOT NULL DEFAULT 0 CHECK (demoted IN (0,1))
+) STRICT;
+
 
 -- v7: the latest limits snapshot per account (one row, replaced on fetch).
 -- Percentages are provider "used%" per window; *_resets_at epoch ms;

@@ -308,6 +308,7 @@ export function renderCredentialAuthority(id: string, state: AccountCredentialAu
   if (state.phase === "native") return [`${id}: native credential management`];
   const lines = [`${state.account}: credentials ${state.phase}, generation ${state.generation}; expires ${state.expiresAt === null ? "unknown" : new Date(state.expiresAt).toISOString()}`
     + `; ${state.refreshTokenExpiresAt === null ? "login expiry unknown" : loginExpiryLabel(state.refreshTokenExpiresAt)}`];
+  if (state.handoff) lines.push(`  handing off to ${state.handoff.nodeId} since ${new Date(state.handoff.since).toISOString()} (${state.handoff.state})`);
   const failure = state.failure;
   if (failure) {
     const detail = [failure.httpStatus !== null ? `HTTP ${failure.httpStatus}` : null, failure.error, failure.description ? JSON.stringify(failure.description) : null].filter(Boolean).join(" ");

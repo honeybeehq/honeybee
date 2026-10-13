@@ -114,7 +114,11 @@ test("refresh transport: no answer after the request was sent is an unknown outc
     assert.deepEqual(await defaultClaudeRefreshTransport(2_000)(REFRESH), { kind: "unknown_outcome", description: "HTTP 200 with an unparseable token response" });
   });
   await withTokenEndpoint((_request, response) => json(response, 200, { refresh_token: "rotated-but-no-access" }), async () => {
-    assert.deepEqual(await defaultClaudeRefreshTransport(2_000)(REFRESH), { kind: "unknown_outcome", description: "HTTP 200 without an access token" });
+    const result = await defaultClaudeRefreshTransport(2_000)(REFRESH);
+    assert.ok(result.kind === "success", "known rotated chain is retained");
+    assert.ok(Boolean(result.token.refreshToken) && result.token.refreshToken !== REFRESH, "replacement refresh chain remains available");
+    assert.equal(result.token.accessUsable, false);
+    assert.ok(result.token.accessToken === "", "missing access remains unusable");
   });
 });
 

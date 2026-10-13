@@ -449,6 +449,7 @@ export interface AccountCredentialAuthority {
   /** The last refresh attempt that did not succeed; null after a success. */
   failure: CredentialRefreshFailure | null;
   updatedAt: number;
+  handoff?: { handoffId: string; nodeId: string; since: number; state: CredentialHandoffRecord["state"] };
 }
 
 export type AccountCredentialAuthorityStatus =
@@ -456,7 +457,7 @@ export type AccountCredentialAuthorityStatus =
   | { supported: true; phase: "native"; generation: null; expiresAt: null }
   | (AccountCredentialAuthority & { supported: true });
 
-export const ACCOUNT_CREDENTIAL_PHASES = ["enrolling", "ready", "refreshing", "uncertain", "login_required", "disabling", "disabling_uncertain", "disabled"] as const;
+export const ACCOUNT_CREDENTIAL_PHASES = ["enrolling", "ready", "refreshing", "uncertain", "login_required", "disabling", "disabling_uncertain", "disabled", "handing_off", "adopting"] as const;
 
 /**
  * How a refresh attempt ended without a token. `rejected`: the provider
@@ -1712,3 +1713,37 @@ export class ActionKindUnknownError extends CoreError {
 
 /** v24 — `action.claim` on an attempt already claimed by another executor. */
 export class ActionClaimedError extends CoreError {}
+
+export interface CredentialHandoffIdentity { nodeId: string; deviceKey: string }
+export interface CredentialHandoffBinding {
+  handoffId: string;
+  sourceAccount: string;
+  harness: string;
+  generation: number;
+  epoch: number;
+  from: CredentialHandoffIdentity;
+  to: CredentialHandoffIdentity;
+  sourceKey: string;
+  materialDigest: string;
+  since: number;
+  prepareBy: number;
+  claimId: string | null;
+  targetAccount: string | null;
+  targetKey: string | null;
+}
+export interface CredentialHandoffReceipt {
+  kind: "export" | "prepared" | "commit" | "adopted" | "aborted";
+  binding: CredentialHandoffBinding;
+  signature: string;
+}
+export interface CredentialHandoffRecord {
+  handoffId: string;
+  role: "source" | "destination";
+  account: string;
+  state: "exported" | "preparing" | "prepared" | "committed" | "adopting" | "adopted" | "failed" | "aborted" | "confirmed" | "stood_down";
+  binding: CredentialHandoffBinding;
+  receipt: CredentialHandoffReceipt | null;
+  scrubbed?: boolean;
+  generation: number | null;
+  expiresAt: number | null;
+}

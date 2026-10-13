@@ -779,6 +779,7 @@ const ACCOUNT_USAGE =
   "       hive account pause|unpause <selector> [--by operator|quota|lease] [--owner <id>] [--force]\n" +
   "       hive account login <selector> [--method <id>] [--remote] [--no-wait] [--replace-account] | login-status <selector> | login-cancel <selector>\n" +
   "       hive account credentials <status|enable|refresh|disable|backup-status|restore-native> <selector>\n" +
+  "       hive account credentials <export|adopt-prepare|export-prepare|export-commit|adopt|adopt-abort|export-abort|export-confirm|stand-down|handoff-status> --file protected-payload.json [--out protected-material.json]\n" +
   "       hive account lease install --file payload.json | lease remove <id>\n" +
   "       hive account capture <selector> | verify <selector> | limits [<selector>] | reset <selector> [--credit-id id] --idempotency-key key\n" +
   "       hive account restored <selector> | interruptions [<selector>]\n" +
@@ -1079,6 +1080,26 @@ async function cmdAccount(ctx: CliContext, parsed: Parsed): Promise<number> {
     }
     case "credentials": {
       const action = parsed.positional[2];
+      const handoffVerbs: Record<string, string> = { export: "export", "adopt-prepare": "adoptPrepare", "export-prepare": "exportPrepare", "export-commit": "exportCommit", adopt: "adopt", "adopt-abort": "adoptAbort", "export-abort": "exportAbort", "export-confirm": "exportConfirm", "stand-down": "standDown", "handoff-status": "handoffStatus" };
+      if (action && handoffVerbs[action]) {
+        const file = parsed.flags.get("--file");
+        if (typeof file !== "string") throw new Error(`Usage: hive account credentials ${action} --file protected-payload.json`);
+        if (action === "export" && typeof parsed.flags.get("--out") !== "string") throw new Error("Export requires --out protected-material.json; credential material is never printed.");
+        let params: Record<string, unknown>;
+        try { params = JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>; }
+        catch { throw new Error("Could not read protected handoff payload JSON."); }
+        const result = await withClient(ctx, client => {
+          if (!client.capabilities.includes("account.credentials.handoff.v1")) throw new RpcError("capability_missing", "Update Honeybee: account.credentials.handoff.v1 is required.");
+          return client.request(`account.credentials.${handoffVerbs[action]}` as import("../../daemon/src/protocol.ts").RpcVerb, params, ACCOUNT_LIMITS_RPC_TIMEOUT_MS);
+        });
+        if (action === "export") {
+          const output = parsed.flags.get("--out");
+          if (typeof output !== "string") throw new Error("Export requires --out protected-material.json; credential material is never printed.");
+          writeFileSync(output, JSON.stringify(result), { mode: 0o600, flag: "wx" });
+          emit(ctx, ["Handoff material saved to the protected output file."], { saved: true }, false);
+        } else emit(ctx, [JSON.stringify(result)], result, false);
+        return 0;
+      }
       const id = parsed.positional[3];
       if (!id || !["status", "enable", "refresh", "disable", "restore-native", "backup-status"].includes(action ?? "")) {
         throw new Error("Usage: hive account credentials <status|enable|refresh|disable|backup-status|restore-native> <account>");
