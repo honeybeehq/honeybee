@@ -68,6 +68,13 @@ export type AdapterSignal =
       resetsAt?: number;
     }
   /**
+   * Subscription usage the harness observed on its own provider responses
+   * (Muse MSP `usage/changed` params, or a `turn/completed` quota detail),
+   * passed through verbatim. The daemon folds it into the account's limits
+   * row with the harness's parse helper; the adapter does not interpret it.
+   */
+  | { kind: "usage_observed"; usage?: Record<string, unknown>; quota?: Record<string, unknown> }
+  /**
    * Protocol lines the driver must write back to the runtime's stdin (e.g. the
    * codex JSON-RPC handshake continuation). Derived purely from the input line.
    */

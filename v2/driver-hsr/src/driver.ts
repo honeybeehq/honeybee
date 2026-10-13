@@ -163,6 +163,20 @@ export interface SessionEvidence {
 }
 
 /**
+ * Subscription usage a runtime observed on its own provider responses
+ * (adapter `usage_observed`), stamped with process identity. `observedAt` is
+ * the driver clock when the line was parsed; a usage payload that carries its
+ * own observation time wins.
+ */
+export interface UsageEvidence {
+  beeId: string;
+  generation: number;
+  observedAt: number;
+  usage?: Record<string, unknown>;
+  quota?: Record<string, unknown>;
+}
+
+/**
  * Highest fully parsed runner-journal byte for one generation. The daemon
  * commits this only after every normalized effect emitted before it has
  * settled in the core store.
@@ -357,6 +371,7 @@ export class HsrDriver implements RuntimeDriver {
   private events: DriverObservation[] = [];
   private evidence: FlagEvidence[] = [];
   private sessions: SessionEvidence[] = [];
+  private usage: UsageEvidence[] = [];
   /** Delivery ground truth for the invariant checker: messageId → generation. */
   private readonly consumed = new Map<number, number>();
 
@@ -1234,6 +1249,14 @@ export class HsrDriver implements RuntimeDriver {
     return out;
   }
 
+  /** Drain observed subscription usage (the daemon folds it into account limits). */
+  observeUsage(): UsageEvidence[] {
+    this.pumpAll();
+    const out = this.usage;
+    this.usage = [];
+    return out;
+  }
+
   /**
    * Drain the latest signal-bearing journal cursor per live generation. The
    * daemon calls this after applying observations/evidence/session ids; if it
@@ -1497,6 +1520,16 @@ export class HsrDriver implements RuntimeDriver {
           detail: signal.detail,
           ...(signal.resetsAt !== undefined ? { resetsAt: signal.resetsAt } : {}),
           ...(signal.action === "set" ? { turn: this.turnEvidence(p) } : {}),
+        });
+        return;
+      }
+      case "usage_observed": {
+        this.usage.push({
+          beeId: p.beeId,
+          generation: p.generation,
+          observedAt: this.now(),
+          ...(signal.usage ? { usage: signal.usage } : {}),
+          ...(signal.quota ? { quota: signal.quota } : {}),
         });
         return;
       }

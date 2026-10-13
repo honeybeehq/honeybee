@@ -7,6 +7,7 @@
  * JSON-RPC) is injected by the daemon and never runs here.
  */
 import type { PutAccountLimitsInput } from "./store.ts";
+import type { AccountLimitsRow } from "./types.ts";
 
 /** GET api.anthropic.com/api/oauth/usage — the shape Claude Code's /usage panel reads. */
 export type ClaudeUsageResponse = {
@@ -131,6 +132,82 @@ export function parseCodexRateLimits(limits: CodexLiveRateLimits): PutAccountLim
     out.error = "app-server returned no rate-limit windows";
   }
   return out;
+}
+
+/**
+ * Muse MSP `SubscriptionUsage` (the `usage/changed` params and the
+ * `usage/read` result's `usage`): what the host last observed on its own
+ * provider responses. Muse has no active usage probe.
+ */
+export type MuseSubscriptionUsage = {
+  observedAtMs?: number;
+  tier?: string;
+  window?: { usedPercent?: number; resetsAtMs?: number; windowDurationMins?: number } | null;
+  weekly?: { usedPercent?: number; resetsAtMs?: number } | null;
+};
+
+/** Muse MSP `turn/completed.error.quota` (QuotaDetail). */
+export type MuseQuotaDetail = { limitKind?: string; resetsAtMs?: number };
+
+const finitePercent = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value) && value >= 0;
+const positiveMs = (value: unknown): number | null => typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null;
+
+/**
+ * Muse: the current window (the provider's 5-hour-class block) → fiveHour
+ * with its reported duration, the rolling weekly block → weekly. The tier is
+ * the provider's id verbatim, and the snapshot is dated by the host's
+ * observedAtMs — an observation, not a live read. Null when the payload
+ * carries no observation time or no window (nothing to record).
+ */
+export function parseMuseUsage(usage: MuseSubscriptionUsage): PutAccountLimitsInput | null {
+  const observedAt = positiveMs(usage.observedAtMs);
+  if (observedAt === null) return null;
+  const out: PutAccountLimitsInput = {
+    readable: true,
+    fetchedAt: observedAt,
+    ...(typeof usage.tier === "string" && usage.tier ? { plan: usage.tier } : {}),
+  };
+  const window = usage.window;
+  if (window && finitePercent(window.usedPercent)) {
+    out.fiveHour = {
+      usedPercent: window.usedPercent,
+      resetsAt: positiveMs(window.resetsAtMs),
+      windowMinutes: positiveMs(window.windowDurationMins),
+    };
+  }
+  const weekly = usage.weekly;
+  if (weekly && finitePercent(weekly.usedPercent)) {
+    out.weekly = { usedPercent: weekly.usedPercent, resetsAt: positiveMs(weekly.resetsAtMs), windowMinutes: null };
+  }
+  return out.fiveHour || out.weekly ? out : null;
+}
+
+/** A quota's reset names its window when it matches that window's observed reset within this skew. */
+const MUSE_QUOTA_RESET_MATCH_MS = 60_000;
+
+/**
+ * Muse: a quota-exhausted turn says only which reset it waits for. Mark the
+ * previously observed window with that reset as used up (at least 100%),
+ * dated observedAt. Null when no observed window has that reset: the
+ * exhaustion still reaches the account through the resource_blocked flag,
+ * and inventing a window would be a guess.
+ */
+export function museQuotaLimits(previous: AccountLimitsRow | null, quota: MuseQuotaDetail, observedAt: number): PutAccountLimitsInput | null {
+  const resetsAt = positiveMs(quota.resetsAtMs);
+  if (!previous?.readable || resetsAt === null) return null;
+  const matches = (reset: number | null) => reset !== null && Math.abs(reset - resetsAt) <= MUSE_QUOTA_RESET_MATCH_MS;
+  const window = (pct: number | null, reset: number | null, minutes: number | null, exhausted: boolean) =>
+    pct === null ? null : { usedPercent: exhausted ? Math.max(pct, 100) : pct, resetsAt: reset, windowMinutes: minutes };
+  const fiveHourExhausted = matches(previous.fiveHourResetsAt);
+  const weeklyExhausted = matches(previous.weeklyResetsAt);
+  if (!fiveHourExhausted && !weeklyExhausted) return null;
+  return {
+    readable: true,
+    fetchedAt: observedAt,
+    plan: previous.plan,
+    fiveHour: window(previous.fiveHourPct, previous.fiveHourResetsAt, previous.fiveHourMinutes, fiveHourExhausted),
+    weekly: window(previous.weeklyPct, previous.weeklyResetsAt, previous.weeklyMinutes, weeklyExhausted),
+  };
 }
 
 /**

@@ -972,6 +972,62 @@ test("limits.muse: the XDG-pair home and auth.json expiry decide credential stat
   }
 });
 
+test("limits.muse.observed: usage a Muse runtime observed becomes the readable limits row, dated by observedAtMs; the probe keeps it, a credential loss replaces it", async () => {
+  const r = rig();
+  try {
+    const svc = service(r);
+    const file = "muse/auth.json";
+    const doc = (meta: unknown) => JSON.stringify({ schema_version: 1, providers: { meta } });
+    const account = addAccount(r, "muse", "sub", { vault: { [file]: doc({ api_key: "k-123" }) } });
+    // Schema-shaped usage/changed params (tier is a placeholder: Muse's string passes through).
+    const usage = (observedAtMs: number, windowPct: number, weeklyPct: number) => ({
+      observedAtMs, tier: "fixture-tier-from-provider",
+      window: { usedPercent: windowPct, resetsAtMs: 1791880000000, windowDurationMins: 300 },
+      weekly: { usedPercent: weeklyPct, resetsAtMs: 1792300000000 },
+    });
+
+    const [placeholder] = await svc.refreshLimits([account.id]);
+    assert.equal(placeholder?.unreadableReason, "unsupported", "no observation yet: the unsupported arm stays");
+
+    const observed = svc.observeLimits(account, { observedAt: r.now(), usage: usage(1791870000000, 37, 12) });
+    assert.deepEqual(
+      [observed?.readable, observed?.fetchedAt, observed?.plan, observed?.fiveHourPct, observed?.fiveHourMinutes, observed?.fiveHourResetsAt, observed?.weeklyPct, observed?.weeklyResetsAt, observed?.weeklyMinutes],
+      [true, 1791870000000, "fixture-tier-from-provider", 37, 300, 1791880000000, 12, 1792300000000, null],
+    );
+
+    // The probe has no source: it keeps the observation (and its date) instead of "unsupported".
+    const [kept] = await svc.refreshLimits([account.id]);
+    assert.deepEqual([kept?.readable, kept?.fetchedAt, kept?.fiveHourPct], [true, 1791870000000, 37]);
+    assert.equal(r.store.getAccountLimits(account.id)?.readable, true);
+
+    // A replayed or older observation is a quiet no-op.
+    assert.equal(svc.observeLimits(account, { observedAt: r.now(), usage: usage(1791870000000, 99, 99) }), null);
+    assert.equal(svc.observeLimits(account, { observedAt: r.now(), usage: usage(1791860000000, 99, 99) }), null);
+    assert.equal(r.store.getAccountLimits(account.id)?.fiveHourPct, 37);
+
+    // A quota-exhausted turn marks the window whose reset it names, dated when it was seen.
+    const exhausted = svc.observeLimits(account, { observedAt: 1791872000000, quota: { limitKind: "tierLimit", resetsAtMs: 1791880000000 } });
+    assert.deepEqual([exhausted?.fetchedAt, exhausted?.fiveHourPct, exhausted?.weeklyPct], [1791872000000, 100, 12]);
+    assert.equal(svc.observeLimits(account, { observedAt: 1791873000000, quota: { limitKind: "tierLimit", resetsAtMs: 1700000000000 } }), null);
+
+    const newer = svc.observeLimits(account, { observedAt: r.now(), usage: usage(1791875000000, 104, 19) });
+    assert.deepEqual([newer?.fetchedAt, newer?.fiveHourPct, newer?.weeklyPct], [1791875000000, 104, 19]);
+    assert.ok(r.log.some((line) => line.includes(`account.limits account=${account.id} readable=true observed=usage plan="fixture-tier-from-provider"`)));
+
+    // Only Muse observations are read.
+    const codex = addAccount(r, "codex", "c");
+    assert.equal(svc.observeLimits(codex, { observedAt: r.now(), usage: usage(1791875000000, 1, 1) }), null);
+
+    // A credential that is gone is newer evidence than any observation.
+    rmSync(join(r.vault, "muse", account.id), { recursive: true, force: true });
+    const [lost] = await svc.refreshLimits([account.id]);
+    assert.equal(lost?.unreadableReason, "auth_failed");
+    assert.equal(r.store.getAccountLimits(account.id)?.readable, false);
+  } finally {
+    r.cleanup();
+  }
+});
+
 test("limits.1a: Codex probes are per-home single-flight; transient failure keeps the last good row while auth failure invalidates it", async () => {
   const r = rig();
   try {

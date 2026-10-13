@@ -16,6 +16,9 @@
  *   server   : turn/started {sessionId, turnId}            → turn_started
  *   server   : turn/completed {sessionId, terminal, error?} → turn_ended
  *   we write : turn/interrupt {sessionId, commandId, turnId?}
+ *   server   : usage/changed {tier, observedAtMs, window, weekly} → usage_observed
+ *                (the host's last-observed subscription usage; also a
+ *                turn/completed error.quota {limitKind, resetsAtMs})
  *
  * Every command carries a UUIDv7 `commandId`, and the host deduplicates by
  * it: a session/start retried with the same id returns the SAME session, and
@@ -165,13 +168,17 @@ export function museAdapter(opts: MuseAdapterOptions): HarnessAdapter {
         return [{ kind: "turn_started", ...(turnId ? { turnId } : {}), ...scope }];
       }
       case "turn/completed": {
+        const error = asObject(params.error);
+        const quota = params.terminal === "failed" ? asObject(error?.quota) : undefined;
         const evidence = params.terminal === "completed"
           ? successfulTurnClears()
           : params.terminal === "failed"
-            ? failureSignals(asObject(params.error), String(params.reason ?? "muse turn failed"), false)
+            ? failureSignals(error, String(params.reason ?? "muse turn failed"), false)
             : [];
-        return [...evidence, { kind: "turn_ended", ...scope }];
+        return [...evidence, ...(quota ? [{ kind: "usage_observed" as const, quota }] : []), { kind: "turn_ended", ...scope }];
       }
+      case "usage/changed":
+        return [{ kind: "usage_observed", usage: params }];
       case "item/started": {
         const kind = asObject(params.item)?.kind;
         return typeof kind === "string" && PROGRESS_ITEM_KINDS.has(kind) ? [{ kind: "turn_progress" }] : [];

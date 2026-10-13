@@ -33,6 +33,7 @@ import {
   type HsrDriverConfig,
   type ObservationCursorEvidence,
   type SessionEvidence,
+  type UsageEvidence,
   type SpawnSpec,
 } from "../../driver-hsr/src/index.ts";
 import { captureWork, type CaptureMode, type CaptureReport } from "./capture.ts";
@@ -308,6 +309,10 @@ export class CellDriver implements RuntimeDriver {
 
   observeSessions(): SessionEvidence[] {
     return this.inner.observeSessions();
+  }
+
+  observeUsage(): UsageEvidence[] {
+    return this.inner.observeUsage();
   }
 
   observeRecoveryCursors(): ObservationCursorEvidence[] {

@@ -26,6 +26,7 @@ import type {
   FlagEvidence,
   ObservationCursorEvidence,
   SessionEvidence,
+  UsageEvidence,
 } from "../../driver-hsr/src/index.ts";
 import type { CellDriver } from "../../driver-cell/src/index.ts";
 import type { TmuxDriver } from "../../driver-tmux/src/index.ts";
@@ -151,6 +152,10 @@ export class SubstrateRouter implements RuntimeDriver {
 
   observeSessions(): SessionEvidence[] {
     return [...this.hsr.observeSessions(), ...this.cell.observeSessions(), ...this.tmux.observeSessions()];
+  }
+
+  observeUsage(): UsageEvidence[] {
+    return [...this.hsr.observeUsage(), ...this.cell.observeUsage()];
   }
 
   observeRecoveryCursors(): ObservationCursorEvidence[] {

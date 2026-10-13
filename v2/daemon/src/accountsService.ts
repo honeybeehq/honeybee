@@ -37,6 +37,8 @@ import {
   measureWindowVelocity,
   parseClaudeCredentials,
   parseMuseCredentials,
+  parseMuseUsage,
+  museQuotaLimits,
   pauseLabel,
   pauseOf,
   parseClaudeUsage,
@@ -2008,11 +2010,14 @@ export class AccountsService {
       const previous = this.store.getAccountLimits(id);
       // The authority's typed phase, not the probe's error text, says whether the credential is in doubt.
       const centralInDoubt = this.centralCredentialInDoubt(account);
+      // A harness with no probe source (`unsupported`) can still hold a
+      // readable row a runtime observed (Muse usage/changed): the probe has
+      // nothing newer to say about it, so the observation stays, dated.
       const keepLastGood = previous?.readable === true
         && !fetched.readable
         && !centralInDoubt
         && (fetched.unreadableReason === "provider_error" || fetched.unreadableReason === "timeout"
-          || fetched.unreadableReason === "refresh_deferred");
+          || fetched.unreadableReason === "refresh_deferred" || fetched.unreadableReason === "unsupported");
       const credentialProbePassed = CREDENTIAL_FILE_PROBE_HARNESSES.has(account.harness)
         && !fetched.readable
         && fetched.unreadableReason === "unsupported";
@@ -2068,6 +2073,29 @@ export class AccountsService {
     return out;
   }
 
+  /**
+   * Subscription usage a runtime observed on its own provider responses
+   * (Muse MSP usage/changed or a quota-exhausted turn) → the account's limits
+   * row, dated when it was observed. An observation never replaces a newer
+   * row, except the `unsupported` placeholder a probe writes when it has no
+   * source; a duplicate (journal replay) is a quiet no-op.
+   */
+  observeLimits(account: AccountRow, ev: { observedAt: number; usage?: Record<string, unknown>; quota?: Record<string, unknown> }): AccountLimitsRow | null {
+    if (account.harness !== "muse") return null;
+    const previous = this.store.getAccountLimits(account.id);
+    const input = ev.usage ? parseMuseUsage(ev.usage) : ev.quota ? museQuotaLimits(previous, ev.quota, ev.observedAt) : null;
+    if (!input) {
+      this.log(`account.limits.observed_skip account=${account.id} reason=${ev.usage ? "no_window" : "no_matching_window"}`);
+      return null;
+    }
+    const observedAt = input.fetchedAt!;
+    if (previous && previous.fetchedAt >= observedAt && previous.unreadableReason !== "unsupported") return null;
+    if (previous?.readable) this.velocities.set(account.id, this.measureVelocities(previous, input, observedAt));
+    const row = this.store.putAccountLimits(account.id, input);
+    this.log(`account.limits account=${account.id} readable=true observed=${ev.usage ? "usage" : "quota"} plan=${JSON.stringify(row.plan)} weekly=${row.weeklyPct ?? "-"} 5h=${row.fiveHourPct ?? "-"} at=${observedAt}`);
+    return row;
+  }
+
   async resetLimits(account: AccountRow, idempotencyKey: string, creditId?: string): Promise<{ outcome: CodexResetOutcome; limits: AccountLimitsRow }> {
     this.assertLocalAccount(account);
     if (account.harness !== "codex") throw new ResetLimitsRefusal("harness_mismatch", "account.resetLimits is only supported for Codex accounts");
@@ -2081,8 +2109,7 @@ export class AccountsService {
   }
 
   /** Per-window velocity between the stored row and the snapshot about to replace it. */
-  private measureVelocities(previous: AccountLimitsRow, fetched: PutAccountLimitsInput): WindowVelocities {
-    const now = this.now();
+  private measureVelocities(previous: AccountLimitsRow, fetched: PutAccountLimitsInput, now: number = this.now()): WindowVelocities {
     const measure = (prevPct: number | null, prevReset: number | null, next: PutAccountLimitsInput["weekly"]): number | null => {
       if (prevPct === null || !next) return null;
       return measureWindowVelocity(

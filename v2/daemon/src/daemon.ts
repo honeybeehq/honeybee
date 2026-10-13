@@ -121,7 +121,7 @@ import { dirHasCredentials } from "./activation.ts";
 import { LoginFlowService, type LoginTransports } from "./loginFlows.ts";
 import type { PtySpawner } from "./loginWorker.ts";
 import type { KeychainReader, KeychainWriter } from "./keychain.ts";
-import type { CellCaptureExecutor, FlagEvidenceLike } from "./loops.ts";
+import type { CellCaptureExecutor, FlagEvidenceLike, UsageEvidenceLike } from "./loops.ts";
 import { CellRetentionService } from "./cellRetention.ts";
 import { realPreflightProbes } from "./import-probes.ts";
 import { HsrDriver, pidAlive, verifyProcessIdentity, type SpawnSpec } from "../../driver-hsr/src/index.ts";
@@ -843,6 +843,7 @@ export class HiveDaemon {
       removeSessionLog: (path) => rmSync(path, { force: true }),
       removeThreadArtifacts: operationId => this.removeThreadArtifacts(operationId),
       onFlagEvidence: (ev) => this.applyAccountPolicy(ev),
+      onUsageEvidence: (ev) => this.applyUsageObservation(ev),
       performance: this.performance,
       sourceProcessAbsent: (beeId, generation) => this.sourceProcessAbsent(beeId, generation),
       relocateSession: (move, bee) => this.relocateMoveSession(move, bee),
@@ -5680,6 +5681,14 @@ export class HiveDaemon {
     if (source.dir && !existsSync(join(destDir, seed))) cpSync(source.dir, join(destDir, seed), { recursive: true });
     this.log(`bee.swapAccount.transcript bee=${bee.id} seed=${seed} from=${source.file} to=${destFile}${source.dir ? " +dir" : ""}`);
     return "copied";
+  }
+
+  /** Observed subscription usage lands on the account the generation ran with. */
+  private applyUsageObservation(ev: UsageEvidenceLike): void {
+    const bee = this.mustStore().getBee(ev.beeId);
+    if (!bee?.account || !this.accounts) return;
+    const account = this.accounts.accountForGeneration(bee, ev.generation);
+    if (account) this.accounts.observeLimits(account, ev);
   }
 
   /**

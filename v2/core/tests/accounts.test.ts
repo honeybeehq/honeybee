@@ -9,6 +9,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   AccountNotFoundError,
   AccountReferencedError,
@@ -21,6 +24,8 @@ import {
   parseClaudeCredentials,
   parseClaudeUsage,
   parseMuseCredentials,
+  parseMuseUsage,
+  museQuotaLimits,
   parseCodexRateLimits,
   openCoreStore,
   recipeFor,
@@ -129,6 +134,58 @@ test("v7.recipes: parseMuseCredentials reads the meta entry's shape without retu
   assert.equal(parseMuseCredentials(JSON.stringify({ schema_version: 1, providers: {} })), null);
   assert.equal(parseMuseCredentials("not json"), null);
   assert.equal(parseMuseCredentials(null), null);
+});
+
+/** Schema-shaped Muse MSP lines (validated against muse 1.4.7's exported schema; tier is a placeholder). */
+const MUSE_USAGE_LINES = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "..", "adapters", "tests", "fixtures", "muse-usage-changed.jsonl"), "utf8")
+  .trim().split("\n").map((line) => JSON.parse(line) as { params: Record<string, any> });
+
+test("v7.limits: parseMuseUsage maps the observed window and weekly block, passes the tier through and dates the row by observedAtMs", () => {
+  assert.deepEqual(parseMuseUsage(MUSE_USAGE_LINES[0]!.params), {
+    readable: true,
+    fetchedAt: 1791870000000,
+    plan: "fixture-tier-from-provider",
+    fiveHour: { usedPercent: 37, resetsAt: 1791880000000, windowMinutes: 300 },
+    weekly: { usedPercent: 12, resetsAt: 1792300000000, windowMinutes: null },
+  });
+  // Over-quota percentages are verbatim provider data.
+  assert.equal(parseMuseUsage(MUSE_USAGE_LINES[1]!.params)?.fiveHour?.usedPercent, 104);
+  // Whatever tier string Muse reports is the plan; none means no plan.
+  assert.equal(parseMuseUsage({ ...MUSE_USAGE_LINES[0]!.params, tier: "some-future-tier" })?.plan, "some-future-tier");
+  assert.equal("plan" in parseMuseUsage({ ...MUSE_USAGE_LINES[0]!.params, tier: "" })!, false);
+  // A window length is the provider's, never assumed.
+  assert.equal(parseMuseUsage({ ...MUSE_USAGE_LINES[0]!.params, window: { usedPercent: 5, resetsAtMs: 1 } })?.fiveHour?.windowMinutes, null);
+  assert.deepEqual(parseMuseUsage({ observedAtMs: 1, tier: "t", weekly: { usedPercent: 3, resetsAtMs: 9 } })?.weekly, { usedPercent: 3, resetsAt: 9, windowMinutes: null });
+  // Nothing to record: no observation time, or no window with a percentage.
+  assert.equal(parseMuseUsage({ tier: "t", window: { usedPercent: 1, resetsAtMs: 2, windowDurationMins: 3 } }), null);
+  assert.equal(parseMuseUsage({ observedAtMs: 1, tier: "t" }), null);
+  assert.equal(parseMuseUsage({ observedAtMs: 1, window: { usedPercent: Number.NaN } as never }), null);
+});
+
+test("v7.limits: museQuotaLimits marks the observed window whose reset the quota names as used up, and guesses nothing else", () => {
+  const observed = {
+    account: "muse-a", fetchedAt: 1791870000000, readable: true, unreadableReason: null, error: null, plan: "fixture-tier-from-provider",
+    fiveHourPct: 37, fiveHourResetsAt: 1791880000000, fiveHourMinutes: 300,
+    weeklyPct: 12, weeklyResetsAt: 1792300000000, weeklyMinutes: null,
+    fableWeeklyPct: null, fableResetsAt: null, fableMinutes: null, displayWindows: [], rateLimitResetCredits: null,
+  };
+  const quota = MUSE_USAGE_LINES[2]!.params.error.quota;
+  assert.deepEqual(museQuotaLimits(observed, quota, 1791875000120), {
+    readable: true,
+    fetchedAt: 1791875000120,
+    plan: "fixture-tier-from-provider",
+    fiveHour: { usedPercent: 100, resetsAt: 1791880000000, windowMinutes: 300 },
+    weekly: { usedPercent: 12, resetsAt: 1792300000000, windowMinutes: null },
+  });
+  // The weekly reset (within a minute of skew) names the weekly block.
+  assert.equal(museQuotaLimits(observed, { limitKind: "tierLimit", resetsAtMs: 1792300030000 }, 5)?.weekly?.usedPercent, 100);
+  // Already over: the provider's own number stands.
+  assert.equal(museQuotaLimits({ ...observed, fiveHourPct: 104 }, quota, 5)?.fiveHour?.usedPercent, 104);
+  // No observed window with that reset, no observation, or no reset: no row change.
+  assert.equal(museQuotaLimits(observed, { limitKind: "tierLimit", resetsAtMs: 1791000000000 }, 5), null);
+  assert.equal(museQuotaLimits({ ...observed, readable: false }, quota, 5), null);
+  assert.equal(museQuotaLimits(null, quota, 5), null);
+  assert.equal(museQuotaLimits(observed, { limitKind: "tierLimit" }, 5), null);
 });
 
 test("v7.crud: create/get/list (registration order), remove; remove refused while a bee references it; replay", () => {

@@ -141,6 +141,15 @@ export interface FlagEvidenceLike {
   turn?: { messageIds: number[]; progress: "none" | "some" | "unknown" };
 }
 
+/** Observed subscription usage, structurally matching HsrDriver's UsageEvidence. */
+export interface UsageEvidenceLike {
+  beeId: string;
+  generation: number;
+  observedAt: number;
+  usage?: Record<string, unknown>;
+  quota?: Record<string, unknown>;
+}
+
 /** Harness session identity, structurally matching HsrDriver's SessionEvidence. */
 export interface SessionEvidenceLike {
   beeId: string;
@@ -172,6 +181,8 @@ interface ExtendedDriver {
   isDegraded?(beeId: string, generation: number): boolean;
   /** Drain harness session ids learned from booted signals (HsrDriver.observeSessions). */
   observeSessions?(): SessionEvidenceLike[];
+  /** Drain subscription usage runtimes observed (HsrDriver.observeUsage). */
+  observeUsage?(): UsageEvidenceLike[];
   /** Drain runner-journal cursors only after all earlier normalized effects commit. */
   observeRecoveryCursors?(): ObservationCursorEvidenceLike[];
 }
@@ -205,6 +216,11 @@ export interface DaemonCoreOptions {
    * evidence + automatic rotation). Absent in the harness (no accounts).
    */
   onFlagEvidence?: (ev: FlagEvidenceLike) => void;
+  /**
+   * Account limits hook for observed subscription usage (Muse usage/changed,
+   * quota details). Runs inside the observation fold; absent in the harness.
+   */
+  onUsageEvidence?: (ev: UsageEvidenceLike) => void;
   /** Optional process-local timing recorder. It never writes durable core state. */
   performance?: PerformanceRecorder;
   /**
@@ -283,6 +299,7 @@ export class DaemonCore {
   private readonly removeThreadArtifacts: ((operationId: string) => void) | null;
   private readonly removeSessionLog: ((path: string) => void) | null;
   private readonly onFlagEvidence: ((ev: FlagEvidenceLike) => void) | null;
+  private readonly onUsageEvidence: ((ev: UsageEvidenceLike) => void) | null;
   private readonly performance: PerformanceRecorder;
   private readonly sourceProcessAbsent: (beeId: string, generation: number) => boolean;
   private readonly relocateSession: ((move: BeeMoveRow, bee: BeeRow) => "copied" | "present" | "none") | null;
@@ -314,6 +331,7 @@ export class DaemonCore {
     this.removeSessionLog = opts.removeSessionLog ?? null;
     this.removeThreadArtifacts = opts.removeThreadArtifacts ?? null;
     this.onFlagEvidence = opts.onFlagEvidence ?? null;
+    this.onUsageEvidence = opts.onUsageEvidence ?? null;
     this.performance = opts.performance ?? NOOP_PERFORMANCE;
     this.sourceProcessAbsent = opts.sourceProcessAbsent ?? ((beeId, generation) => !this.driver.hasProcess(beeId, generation));
     this.relocateSession = opts.relocateSession ?? null;
@@ -432,6 +450,7 @@ export class DaemonCore {
       this.drainObservations();
       this.applyEvidence();
       this.applySessionIds();
+      this.applyUsage();
       this.applyObservationCursors();
     });
   }
@@ -750,6 +769,23 @@ export class DaemonCore {
       // another provider's conversation).
       const { applied } = this.store.recordProviderSessionId(ev.beeId, ev.sessionId, ev.generation);
       if (applied) this.log(`session.recorded bee=${ev.beeId} gen=${ev.generation} id=${ev.sessionId}`);
+    }
+  }
+
+  /**
+   * Observed subscription usage is account evidence, not bee state: the
+   * account hook records it (a stale generation still describes the account
+   * it ran with). Never throws into the loop.
+   */
+  private applyUsage(): void {
+    if (typeof this.ext.observeUsage !== "function") return;
+    for (const ev of this.ext.observeUsage()) {
+      if (!this.onUsageEvidence) continue;
+      try {
+        this.onUsageEvidence(ev);
+      } catch (err) {
+        this.log(`account.usage_error bee=${ev.beeId} gen=${ev.generation} err=${err instanceof Error ? err.message : String(err)}`);
+      }
     }
   }
 

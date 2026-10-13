@@ -8,6 +8,7 @@ export {
   type FlagEvidence,
   type ObservationCursorEvidence,
   type SessionEvidence,
+  type UsageEvidence,
   type HsrDriverConfig,
   type SpawnSpec,
 } from "./driver.ts";

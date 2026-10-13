@@ -6,6 +6,9 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   museAdapter,
   museFreshCommandId,
@@ -13,6 +16,7 @@ import {
   type AdapterSignal,
 } from "../src/index.ts";
 
+const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
 const SESSION_ID = "01a133e2-6725-7481-a1f9-1b611f7748be";
 const TURN_ID = "00000000-0000-7000-8000-000000000005";
 const UUID_V7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -169,8 +173,26 @@ test("muse: cancelled turns close without evidence; authRequired and quota failu
   ]);
   assert.deepEqual(adapter.parseLine(TURN_QUOTA_FAILED), [
     { kind: "flag", flag: "resource_blocked", action: "set", detail: "muse quota exhausted (tierLimit): usage limit reached", resetsAt: 1791900000000 },
+    { kind: "usage_observed", quota: { limitKind: "tierLimit", resetsAtMs: 1791900000000 } },
     { kind: "turn_ended", threadId: SESSION_ID },
   ]);
+});
+
+test("muse: usage/changed and a quota terminal pass the observed usage through verbatim (schema-shaped fixture)", () => {
+  const adapter = museAdapter({ cwd: "/work" });
+  const [first, second, quota] = readFileSync(join(FIXTURES, "muse-usage-changed.jsonl"), "utf8").trim().split("\n");
+  assert.deepEqual(adapter.parseLine(first!), [{ kind: "usage_observed", usage: {
+    observedAtMs: 1791870000000,
+    tier: "fixture-tier-from-provider",
+    weekly: { resetsAtMs: 1792300000000, usedPercent: 12 },
+    window: { resetsAtMs: 1791880000000, usedPercent: 37, windowDurationMins: 300 },
+  } }]);
+  assert.equal(adapter.parseLine(second!)[0]?.kind, "usage_observed");
+  const signals = adapter.parseLine(quota!);
+  assert.deepEqual(signals.map((s) => s.kind), ["flag", "usage_observed", "turn_ended"]);
+  assert.deepEqual(signals[1], { kind: "usage_observed", quota: { limitKind: "tierLimit", resetsAtMs: 1791880000000 } });
+  // Only a failed terminal carries a quota observation.
+  assert.equal(adapter.parseLine(TURN_COMPLETED).some((s) => s.kind === "usage_observed"), false);
 });
 
 test("muse: interrupt targets the known turn with a fresh UUIDv7 command id", () => {
