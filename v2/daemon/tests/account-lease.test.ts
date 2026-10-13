@@ -15,6 +15,9 @@
  *  - kimi: API-key lease per the design ruling; OAuth-only → lease_unsupported
  *  - opencode: single coding-plan provider filtered out of the multi-provider
  *    auth.json; every other provider dropped; none → lease_unsupported
+ *  - muse: meta entry only, refresh blanked (nested too); OAuth expiresAt
+ *    from expires_at (seconds or ms); API key static with no expiry;
+ *    storage:"keychain" → lease_unsupported; expired → lease_unavailable
  *  - single-flight per account (concurrent mints join); refused while the
  *    account's refresher is mid-rotation
  *  - NO fixture refresh token ever appears in a lease, the service log, or
@@ -53,6 +56,9 @@ const KIMI_REFRESH = "FIXTURE-KIMI-REFRESH-TOKEN-k1l2";
 const OPENCODE_REFRESH = "FIXTURE-OPENCODE-REFRESH-TOKEN-m3n4";
 const OTHER_PROVIDER_REFRESH = "FIXTURE-OTHER-PROVIDER-REFRESH-o5p6";
 const CODEX_STRAY_REFRESH = "FIXTURE-CODEX-STRAY-REFRESH-q7r8";
+const MUSE_REFRESH = "FIXTURE-MUSE-REFRESH-TOKEN-u1v2";
+const MUSE_NESTED_REFRESH = "FIXTURE-MUSE-NESTED-REFRESH-w3x4";
+const MUSE_OTHER_PROVIDER_SECRET = "FIXTURE-MUSE-OTHER-PROVIDER-y5z6";
 const CODEX_OPENAI_KEY = "FIXTURE-OPENAI-DEVELOPER-KEY-s9t0";
 const ALL_FIXTURE_REFRESHES = [
   CLAUDE_REFRESH,
@@ -65,6 +71,9 @@ const ALL_FIXTURE_REFRESHES = [
   KIMI_REFRESH,
   OPENCODE_REFRESH,
   OTHER_PROVIDER_REFRESH,
+  MUSE_REFRESH,
+  MUSE_NESTED_REFRESH,
+  MUSE_OTHER_PROVIDER_SECRET,
 ];
 
 interface Rig {
@@ -774,6 +783,110 @@ test("lease.opencode.1: single coding-plan provider filtered out of the multi-pr
       home: { "xdg-data/opencode/auth.json": JSON.stringify({ anthropic: { type: "oauth", access: "a", refresh: OTHER_PROVIDER_REFRESH } }) },
     });
     await refuses(() => service(r).mintLease(noPlan), "lease_unsupported", /no leasable coding-plan provider/);
+  } finally {
+    r.cleanup();
+  }
+});
+
+function museAuth(meta: Record<string, unknown>, extra: Record<string, unknown> = {}): string {
+  return JSON.stringify({ schema_version: 1, providers: { meta, ...extra } });
+}
+
+test("lease.muse.1: OAuth ships the meta entry only, every refresh token blanked (nested too), access token kept, expiresAt from expires_at in seconds or ms", async () => {
+  const r = rig();
+  try {
+    const expSeconds = Math.floor((r.now() + 6 * HOUR) / 1000);
+    const meta = {
+      mechanism: "oauth",
+      obtained_via: "device_code",
+      access_token: "muse-fixture-access",
+      refresh_token: MUSE_REFRESH,
+      expires_at: expSeconds,
+      session: { refresh_token: MUSE_NESTED_REFRESH, refreshToken: MUSE_NESTED_REFRESH, refresh: MUSE_NESTED_REFRESH },
+      history: [{ refresh_token: MUSE_NESTED_REFRESH }],
+    };
+    const account = addAccount(r, "muse", "oauth", {
+      home: { "muse/auth.json": museAuth(meta, { other: { api_key: MUSE_OTHER_PROVIDER_SECRET, refresh_token: MUSE_OTHER_PROVIDER_SECRET } }) },
+    });
+    const lease = await service(r).mintLease(account);
+    assert.equal(lease.files.length, 1);
+    assert.equal(lease.files[0]!.homeRelPath, "muse/auth.json");
+    assert.equal(lease.files[0]!.mode, 0o600);
+    const shipped = decodeFile(lease) as { schema_version: number; providers: Record<string, Record<string, unknown>> };
+    assert.equal(shipped.schema_version, 1);
+    assert.deepEqual(Object.keys(shipped.providers), ["meta"], "other provider entries are dropped");
+    assert.deepEqual(shipped.providers.meta, {
+      ...meta,
+      refresh_token: "",
+      session: { refresh_token: "", refreshToken: "", refresh: "" },
+      history: [{ refresh_token: "" }],
+    });
+    assert.equal(lease.expiresAt, expSeconds);
+    assert.match(lease.kindNote, /refresh token blanked/);
+    assertNoFixtureSecrets(r, lease);
+
+    const expMs = r.now() + 3 * HOUR;
+    const msAccount = addAccount(r, "muse", "ms", { home: { "muse/auth.json": museAuth({ ...meta, expires_at: expMs }) } });
+    const msLease = await service(r).mintLease(msAccount);
+    assert.equal(msLease.expiresAt, Math.floor(expMs / 1000), "a millisecond expires_at is normalized like a seconds one");
+    assertNoFixtureSecrets(r, msLease);
+  } finally {
+    r.cleanup();
+  }
+});
+
+test("lease.muse.2: an API-key login is a static lease with no expiresAt", async () => {
+  const r = rig();
+  try {
+    const account = addAccount(r, "muse", "key", { home: { "muse/auth.json": museAuth({ api_key: "muse-fixture-api-key" }) } });
+    const lease = await service(r).mintLease(account);
+    const shipped = decodeFile(lease) as { providers: Record<string, Record<string, unknown>> };
+    assert.deepEqual(shipped.providers.meta, { api_key: "muse-fixture-api-key" });
+    assert.equal(lease.expiresAt, undefined);
+    assert.match(lease.kindNote, /static API-key lease/);
+  } finally {
+    r.cleanup();
+  }
+});
+
+test("lease.muse.3: typed refusals — a Keychain-backed file is lease_unsupported; an expired, missing or tokenless login is lease_unavailable", async () => {
+  const r = rig();
+  try {
+    const keychain = addAccount(r, "muse", "keychain", {
+      home: { "muse/auth.json": JSON.stringify({ schema_version: 2, providers: { meta: { mechanism: "oauth", obtained_via: "device_code", storage: "keychain", expires_at: 4102444800 } } }) },
+    });
+    await refuses(() => service(r).mintLease(keychain), "lease_unsupported", /Keychain/);
+    const expired = addAccount(r, "muse", "expired", {
+      home: { "muse/auth.json": museAuth({ mechanism: "oauth", obtained_via: "device_code", access_token: "old", refresh_token: MUSE_REFRESH, expires_at: Math.floor((r.now() - HOUR) / 1000) }) },
+    });
+    await refuses(() => service(r).mintLease(expired), "lease_unavailable", /expired/);
+    const missing = addAccount(r, "muse", "missing");
+    await refuses(() => service(r).mintLease(missing), "lease_unavailable", /no muse\/auth.json found/);
+    const empty = addAccount(r, "muse", "empty", { home: { "muse/auth.json": JSON.stringify({ schema_version: 1, providers: {} }) } });
+    await refuses(() => service(r).mintLease(empty), "lease_unavailable", /no usable meta credential/);
+    assert.ok(!r.log.join("\n").includes(MUSE_REFRESH));
+  } finally {
+    r.cleanup();
+  }
+});
+
+test("lease.muse.4: a delivered lease imports on the recipient with account.add importExisting from <home>/muse/auth.json", async () => {
+  const r = rig();
+  try {
+    const source = addAccount(r, "muse", "src", {
+      home: { "muse/auth.json": museAuth({ mechanism: "oauth", obtained_via: "device_code", access_token: "a", refresh_token: MUSE_REFRESH, expires_at: Math.floor((r.now() + HOUR) / 1000) }) },
+    });
+    const lease = await service(r).mintLease(source);
+    // The recipient writes the files under its own home, then imports them.
+    const recipientHome = join(r.dir, "recipient", "muse-src");
+    for (const file of lease.files) {
+      mkdirSync(join(recipientHome, file.homeRelPath, ".."), { recursive: true });
+      writeFileSync(join(recipientHome, file.homeRelPath), Buffer.from(file.contentB64, "base64"));
+    }
+    const imported = await service(r).importExistingCredentials({ harness: "muse", id: "muse-recipient", homePath: recipientHome }, { env: {}, home: join(r.dir, "nohome") });
+    assert.equal(imported.ok, true);
+    assert.equal(imported.ok && imported.source, "home");
+    assert.ok(!readFileSync(join(r.vault, "muse", "muse-recipient", "muse", "auth.json"), "utf8").includes(MUSE_REFRESH));
   } finally {
     r.cleanup();
   }

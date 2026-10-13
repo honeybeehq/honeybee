@@ -2640,12 +2640,14 @@ export class AccountsService {
         return Promise.resolve(this.mintKimiLease(account));
       case "opencode":
         return Promise.resolve(this.mintOpenCodeLease(account));
+      case "muse":
+        return Promise.resolve(this.mintMuseLease(account));
       default:
         // cursor's machine-global keychain slot (and every unmodeled harness)
         // has no defensible lease artifact — a durable, typed refusal.
         throw new LeaseRefusal(
           "lease_unsupported",
-          `harness "${account.harness}" has no credential-lease strategy (supported: claude, codex, grok, kimi, opencode)`,
+          `harness "${account.harness}" has no credential-lease strategy (supported: claude, codex, grok, kimi, muse, opencode)`,
         );
     }
   }
@@ -2880,6 +2882,42 @@ export class AccountsService {
     return {
       files: [{ homeRelPath: rel, contentB64: Buffer.from(body, "utf8").toString("base64"), mode: 0o600 }],
       kindNote: `opencode: shipped single-provider (${provider}) auth.json (refresh blanked; ${dropped} other provider entr${dropped === 1 ? "y" : "ies"} dropped)`,
+    };
+  }
+
+  /**
+   * muse: ship muse/auth.json holding ONLY the meta provider entry, refresh
+   * blanked (other providers and unknown top-level keys dropped). An OAuth
+   * login carries `expiresAt` from `expires_at`; an API key is a static
+   * lease with none. A `storage:"keychain"` file (macOS) holds no token and
+   * must never seed a home, so it is a durable refusal; an expired access
+   * token cannot be refreshed by the recipient, so it is retryable after
+   * the owning node's Muse refreshes it.
+   */
+  private mintMuseLease(account: AccountRow): EphemeralCredential {
+    const rel = join("muse", "auth.json");
+    const parsed = this.leasePrimaryJson(account, rel) as { schema_version?: unknown; providers?: Record<string, unknown> };
+    const meta = parsed.providers?.meta;
+    if (meta && typeof meta === "object" && (meta as Record<string, unknown>).storage === "keychain") {
+      throw new LeaseRefusal(
+        "lease_unsupported",
+        `muse account ${account.id} keeps its login in the macOS Keychain (storage:"keychain"); only a file login on Linux can be leased`,
+      );
+    }
+    const credential = parseMuseCredentials(JSON.stringify(parsed));
+    if (!credential) throw new LeaseRefusal("lease_unavailable", `muse account ${account.id} has no usable meta credential in ${rel}; log in: hive v2 account login ${account.id}`);
+    if (credential.mechanism === "oauth" && credential.expiresAt !== null && credential.expiresAt <= this.now()) {
+      throw new LeaseRefusal("lease_unavailable", `muse account ${account.id}'s access token has expired; it is refreshed by Muse on the owning node`);
+    }
+    const shipped = { schema_version: parsed.schema_version, providers: { meta: blankRefreshTokens(meta) } };
+    const body = `${JSON.stringify(shipped, null, 2)}\n`;
+    const expiresAt = credential.mechanism === "oauth" && credential.expiresAt !== null ? Math.floor(credential.expiresAt / 1000) : undefined;
+    return {
+      files: [{ homeRelPath: rel, contentB64: Buffer.from(body, "utf8").toString("base64"), mode: 0o600 }],
+      ...(expiresAt !== undefined ? { expiresAt } : {}),
+      kindNote: credential.mechanism === "api_key"
+        ? "muse: shipped muse/auth.json as a static API-key lease (meta entry only)"
+        : "muse: shipped muse/auth.json with the OAuth refresh token blanked (meta entry only)",
     };
   }
 
