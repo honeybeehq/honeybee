@@ -116,6 +116,8 @@ for (const harness of ["claude", "codex", "grok"]) test(`credential handoff ${ha
     assert.ok(ca.capabilities.includes("account.credentials.handoff.v1"));
     const reserveId = await enroll("reserve"), reserveInput = join(a.dir, "reserve-input.json"), reserveOutput = join(a.dir, "vault", "occupied-output.json");
     writeFileSync(reserveInput, JSON.stringify({ account: reserveId, handoffId: randomUUID(), from, to, epoch: 1 }));
+    await assert.rejects(promisify(execFile)(process.execPath, [fileURLToPath(new URL("../../cli/src/bin.ts", import.meta.url)), "account", "credentials", "export", "--file", reserveInput, "--data-dir", a.dir], { env: { PATH: process.env.PATH, HOME: a.dir, HIVE_NO_KEYCHAIN: "1" } }), (error: unknown) => error instanceof Error && /Export requires --out/.test((error as Error & { stderr?: string }).stderr ?? "") && !/TypeError/.test((error as Error & { stderr?: string }).stderr ?? ""));
+    assert.equal((await rpc<AccountCredentialAuthority>(ca, "status", { id: reserveId })).phase, "ready");
     writeFileSync(reserveOutput, "{}");
     await assert.rejects(promisify(execFile)(process.execPath, [fileURLToPath(new URL("../../cli/src/bin.ts", import.meta.url)), "account", "credentials", "export", "--file", reserveInput, "--out", reserveOutput, "--data-dir", a.dir], { env: { PATH: process.env.PATH, HOME: a.dir, HIVE_NO_KEYCHAIN: "1" } }), (error: unknown) => error instanceof Error);
     assert.equal((await rpc<AccountCredentialAuthority>(ca, "status", { id: reserveId })).phase, "ready");
@@ -498,6 +500,18 @@ for (const harness of ["claude", "codex", "grok"]) test(`credential handoff ${ha
     const retryStandReceipt = await rpc<{ receipt: CredentialHandoffReceipt }>(cb, "standDownReceipt", { account: target, targetAccount: retryStandId, targetGeneration: retryStandState.generation, to: from, epoch: 2 });
     const retryStandParams = { account: retryStandId, epoch: 2, standDownReceipt: retryStandReceipt.receipt, authorityKey: retryStandReceipt.receipt.binding.sourceKey, authenticatedPeer: to };
     const retryStandPath = join(a.dir, "homes", retryStandId, primary), retryStandRaw = readFileSync(retryStandPath);
+    if (harness !== "grok") {
+      const busy = await ca.request<{ beeId: string }>("spawn", { name: `standdown-${harness}`, agent: harness, cwd: a.dir, account: retryStandId, tags: ["autoswap=false"] });
+      await waitFor(async () => ["running", "idle"].includes((await ca!.request<ViewResult>("view", { beeId: busy.beeId })).view.runtimeState!) ? true : null, "stand-down dummy bee running");
+      const calls = refreshes.length;
+      await refused(() => rpc(ca!, "standDown", retryStandParams), "credential_handoff_fenced");
+      assert.deepEqual(readFileSync(retryStandPath), retryStandRaw);
+      assert.equal((await rpc<AccountCredentialAuthority>(ca, "status", { id: retryStandId })).phase, "ready");
+      assert.equal(refreshes.length, calls);
+      await ca.request("stop", { beeId: busy.beeId });
+      await waitFor(async () => (await ca!.request<ViewResult>("view", { beeId: busy.beeId })).view.runtimeState === "stopped" ? true : null, "stand-down dummy bee stopped");
+      console.log(`${harness} standDown running-bee fence: refusal before scrub/epoch/operation changes, no provider; explicit stop permits retry`);
+    }
     writeFileSync(retryStandPath, "{");
     const retryStandCalls = refreshes.length;
     await refused(() => rpc(ca!, "standDown", retryStandParams), "credential_handoff_unavailable");

@@ -1117,6 +1117,7 @@ export class AccountsService {
   }
 
   private async publishClaudeMaterial(account: AccountRow, published: Record<string, unknown>, state: KeychainState): Promise<boolean> {
+    this.leaseMaterialCodecs.get(account.harness)?.keychain?.assertHome(account.homePath);
     const raw = JSON.stringify(published);
     mkdirSync(account.homePath, { recursive: true, mode: 0o700 });
     mkdirSync(this.vaultDirOf(account), { recursive: true, mode: 0o700 });

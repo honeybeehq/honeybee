@@ -363,6 +363,7 @@ export class CredentialHandoffService {
       if (epoch < floor || epoch === floor && !(existing && this.store.credentialAuthorityIsDemoted(account.id))) throw new RpcError("credential_handoff_stale_epoch", "Stand-down requires a higher authority epoch.");
       const state = this.accounts.authorityFor(account)!.status(account);
       if (!existing && state && state.phase !== "disabled" && state.generation !== bound.generation) throw new RpcError("credential_handoff_conflict", "Stand-down authorization names another refresh generation.");
+      this.noRunningBees(account);
       const operation = existing ?? this.store.putCredentialHandoff({ handoffId: bound.handoffId, role: "source", account: account.id, state: "committed", binding: bound, receipt: authorization, generation: null, expiresAt: null });
       await this.accounts.scrubHandoff(account);
       this.store.demoteCredentialAuthority(account.id, epoch);

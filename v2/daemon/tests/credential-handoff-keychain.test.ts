@@ -41,9 +41,11 @@ const item=home=>join(keychainStore,createHash('sha256').update(claudeKeychainSe
 const defaultHome=join(process.env.HOME,'.claude');fs.mkdirSync(defaultHome,{recursive:true});fs.writeFileSync(join(defaultHome,'.credentials.json'),raw);fs.writeFileSync(item(defaultHome),raw);
 const defaultRow=store.createAccount({id:'claude-default-example.com',harness:'claude',label:'default',homePath:defaultHome,penalty:0,status:'ok'});
 await assert.rejects(svc.scrubHandoff(defaultRow),e=>e instanceof RpcError&&e.code==='account_lease_conflict');
+await assert.rejects(svc.publishClaudeMaterial(defaultRow,JSON.parse(raw),{status:'present',raw}),e=>e instanceof RpcError&&e.code==='account_lease_conflict');
 assert.ok(fs.readFileSync(item(defaultHome),'utf8')===raw);assert.ok(!fs.existsSync(join(keychainStore,'calls')));
 const alias=join(root,'default-alias');fs.symlinkSync(defaultHome,alias);
 await assert.rejects(svc.scrubHandoff({...defaultRow,homePath:alias}),e=>e instanceof RpcError&&e.code==='account_lease_conflict');
+await assert.rejects(svc.publishClaudeMaterial({...defaultRow,homePath:alias},JSON.parse(raw),{status:'present',raw}),e=>e instanceof RpcError&&e.code==='account_lease_conflict');
 const privateHome=join(homes,'claude-private-example.com');fs.mkdirSync(privateHome,{recursive:true});fs.writeFileSync(join(privateHome,'.credentials.json'),raw);fs.writeFileSync(item(privateHome),raw);
 const privateRow=store.createAccount({id:'claude-private-example.com',harness:'claude',label:'private',homePath:privateHome,penalty:0,status:'ok'});
 await svc.scrubHandoff(privateRow);
