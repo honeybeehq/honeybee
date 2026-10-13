@@ -7,6 +7,7 @@
  * Merged, never blindly replaced, so operator/vault keys survive; a malformed
  * file is left untouched rather than clobbered.
  */
+import { randomUUID } from "node:crypto";
 import { closeSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
@@ -38,7 +39,7 @@ function readOr(path: string, fallback: string): string {
 
 /** Write via a sibling temp file + rename (atomic on POSIX). */
 export function atomicWriteFileSync(path: string, content: string, mode = 0o600): void {
-  const tmp = `${path}.tmp.${process.pid}.${Date.now()}`;
+  const tmp = `${path}.tmp.${randomUUID()}`;
   const fd = openSync(tmp, "wx", mode);
   try { writeFileSync(fd, content); fsyncSync(fd); } finally { closeSync(fd); }
   renameSync(tmp, path);

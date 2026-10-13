@@ -1,4 +1,4 @@
-import { CredentialAuthority, type CentralCredentialOptions, type CredentialCodec } from "./claudeCredentialAuthority.ts";
+import { CredentialOwnershipConflict, CredentialAuthority, type CentralCredentialOptions, type CredentialCodec } from "./claudeCredentialAuthority.ts";
 import { oauthRefreshTransport, type CredentialRefreshTransport } from "./claudeRefreshTransport.ts";
 
 export const CODEX_OAUTH_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
@@ -28,7 +28,7 @@ export const CODEX_CREDENTIAL_CODEC: CredentialCodec = {
   },
   merge: (document, token, at) => ({
     ...document, OPENAI_API_KEY: null,
-    tokens: { ...(document.tokens as Record<string, unknown>), access_token: codexAccessExpiry(token.accessToken) === null ? (document.tokens as Record<string, unknown>).access_token : token.accessToken, refresh_token: token.refreshToken,
+    tokens: { ...(document.tokens as Record<string, unknown>), access_token: (codexAccessExpiry(token.accessToken) ?? 0) <= at ? (document.tokens as Record<string, unknown>).access_token : token.accessToken, refresh_token: token.refreshToken,
       ...(token.idToken !== undefined ? { id_token: token.idToken } : {}) },
     last_refresh: new Date(at).toISOString(),
   }),
@@ -48,4 +48,13 @@ export function defaultCodexRefreshTransport(timeoutMs: number, now: () => numbe
 
 export class CodexCredentialAuthority extends CredentialAuthority {
   constructor(options: CentralCredentialOptions) { super({ ...options, codec: CODEX_CREDENTIAL_CODEC }); }
+}
+
+export function readCodexCredentialCopy(read: () => string | null, account: string): ReturnType<CredentialCodec["parse"]> {
+  let raw = read();
+  if (raw !== null && raw.trim() === "") raw = read();
+  if (raw === null) return null;
+  const credential = CODEX_CREDENTIAL_CODEC.parse(raw);
+  if (!credential) throw new CredentialOwnershipConflict(`A Codex credential copy is invalid after re-reading; stop external Codex processes, then run hive account credentials disable ${account}; hive account login ${account}; hive account credentials enable ${account}.`);
+  return credential;
 }

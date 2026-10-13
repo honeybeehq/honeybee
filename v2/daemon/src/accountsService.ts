@@ -20,7 +20,7 @@ import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { CredentialAuthority, ClaudeCredentialAuthority, CredentialAuthorityError, CredentialOwnershipConflict, refreshTokenDigest } from "./claudeCredentialAuthority.ts";
 import { defaultClaudeRefreshTransport, describeRefreshFailure, sanitizeProviderText, type ClaudeRefreshResult, type ClaudeRefreshTransport, type RefreshedClaudeToken } from "./claudeRefreshTransport.ts";
-import { CodexCredentialAuthority, CODEX_CREDENTIAL_CODEC, defaultCodexRefreshTransport } from "./codexCredentialAuthority.ts";
+import { CodexCredentialAuthority, CODEX_CREDENTIAL_CODEC, readCodexCredentialCopy, defaultCodexRefreshTransport } from "./codexCredentialAuthority.ts";
 import { GrokCredentialAuthority, GROK_CREDENTIAL_CODEC, grokAccessOnly, grokCredentialEntry, defaultGrokRefreshTransport } from "./grokCredentialAuthority.ts";
 import { liveGateways } from "./gateways.ts";
 import { withFileLock } from "../../../src/lock.ts";
@@ -992,9 +992,7 @@ export class AccountsService {
       const adopted = phase === "enrolling" ? this.codexCredentials.adopted(account)
         : this.codexCredentials.rollbackAdopted(account);
       for (const path of [join(account.homePath, "auth.json"), join(account.homePath, ".codex", "auth.json"), join(this.vaultDirOf(account), "auth.json")]) {
-        const raw = readIfFile(path);
-        const credential = raw === null ? null : CODEX_CREDENTIAL_CODEC.parse(raw);
-        if (raw !== null && !credential) throw new CredentialOwnershipConflict("A Codex credential copy is invalid; recover that copy before changing credential ownership.");
+        const credential = readCodexCredentialCopy(() => readIfFile(path), account.id);
         if (!credential?.refreshToken || credential.refreshToken === owned.refreshToken) continue;
         if (adopted && (refreshTokenDigest(credential.refreshToken) === adopted.refreshTokenDigest || credential.expiresAt < adopted.expiresAt)) continue;
         throw new CredentialOwnershipConflict("An external Codex login or refresh changed this account; stop that process and recover the account before continuing.");

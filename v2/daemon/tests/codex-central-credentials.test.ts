@@ -12,7 +12,7 @@ import { makeDaemonDir, startDaemon, waitFor, sleep, type DaemonHandle } from ".
 import type { AccountCredentialAuthority } from "../../core/src/index.ts";
 import type { RpcClient } from "../../cli/src/client.ts";
 import { RpcError } from "../src/protocol.ts";
-import { CODEX_OAUTH_CLIENT_ID } from "../src/codexCredentialAuthority.ts";
+import { CODEX_OAUTH_CLIENT_ID, readCodexCredentialCopy } from "../src/codexCredentialAuthority.ts";
 
 function token(seconds: number): string {
   return `${Buffer.from('{}').toString('base64url')}.${Buffer.from(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + seconds, fixture: randomUUID() })).toString('base64url')}.${randomUUID()}`;
@@ -268,9 +268,15 @@ test("central Codex review: running-bee ownership fence, bad access preserves ro
     console.log("running Codex bees: enable and disable refused, no ownership change; stopped bees permit enrollment");
     const authorityPath = join(dir, "vault", ".credential-authorities", `${id}.json`);
     for (const mode of ["expired", "missing"] as const) {
+      const previousAccess = JSON.parse(readFileSync(authorityPath, "utf8")).document.tokens.access_token;
       badAccess = mode;
       await assert.rejects(() => client!.request("account.credentials.refresh", { id, idempotencyKey: `bad-${mode}` }), (error: unknown) => error instanceof RpcError && error.message.includes("rotated refresh chain was saved"));
       assert.ok(JSON.parse(readFileSync(authorityPath, "utf8")).document.tokens.refresh_token === expected);
+      assert.ok(JSON.parse(readFileSync(authorityPath, "utf8")).document.tokens.access_token === previousAccess, "previous access retained privately");
+      for (const path of [join(home, "auth.json"), join(home, ".codex", "auth.json"), join(vault, "auth.json")]) {
+        assert.ok(JSON.parse(readFileSync(path, "utf8")).tokens.access_token === previousAccess, "previous access retained for runtime");
+        assert.equal(JSON.parse(readFileSync(path, "utf8")).tokens.refresh_token, "");
+      }
       assert.equal((await client.request<AccountCredentialAuthority>("account.credentials.status", { id })).phase, "uncertain");
       badAccess = null;
       await client.request("account.credentials.refresh", { id, idempotencyKey: `settle-${mode}` });
@@ -307,5 +313,17 @@ test("central Codex review: running-bee ownership fence, bad access preserves ro
     await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
     cleanup();
     console.log("review cleanup: owned daemon PID stopped, stub closed");
+  }
+});
+
+test("Codex copy inspection re-reads a transient empty copy once and gives concrete recovery for persistent corruption", () => {
+  const raw = JSON.stringify({ tokens: { access_token: token(3600), refresh_token: "" } });
+  let reads = 0;
+  assert.ok(readCodexCredentialCopy(() => ++reads === 1 ? "" : raw, "codex-test-example.com"));
+  assert.equal(reads, 2);
+  for (const invalid of ["", "{bad-json}"]) {
+    reads = 0;
+    assert.throws(() => readCodexCredentialCopy(() => { reads++; return invalid; }, "codex-test-example.com"), /hive account credentials disable codex-test-example.com; hive account login/);
+    assert.equal(reads, invalid === "" ? 2 : 1);
   }
 });
