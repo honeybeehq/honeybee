@@ -917,7 +917,7 @@ async function cmdAccount(ctx: CliContext, parsed: Parsed): Promise<number> {
       const { result, stale } = await readPath(
         ctx,
         (c) => c.request<AccountListResult>("account.list", harness ? { harness } : {}),
-        (store) => ({ accounts: store.accounts(harness), limits: store.accountLimits() }),
+        (store) => ({ accounts: store.accounts(harness).map(({ native: _native, ...account }) => account), limits: store.accountLimits() }),
       );
       emit(ctx, renderAccountList(result.accounts, result.limits, stale), result, stale);
       return 0;

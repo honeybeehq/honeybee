@@ -28,6 +28,7 @@ function account(harness: string, homePath: string): AccountRow {
     pausedBy: null,
     pausedOwner: null,
     pausedAt: null,
+    native: false,
     addedAt: 1,
     updatedAt: 1,
   };

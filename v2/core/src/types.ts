@@ -516,6 +516,7 @@ export interface AccountRow {
   /** External owner id of the pause (lease id / node); null for operator pauses. */
   pausedOwner: string | null;
   pausedAt: number | null;
+  native: boolean;
   addedAt: number;
   updatedAt: number;
 }

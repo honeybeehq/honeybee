@@ -84,7 +84,9 @@ test("mirror.1: live rows carry exactly the declared keys — bees (view/bee/run
     // v7: accounts + limits mirror as store rows, verbatim — v18: plus the
     // daemon-derived `credentialHealth` (never a store column).
     const account = store.createAccount({ id: "claude-a", harness: "claude", homePath: "/tmp/h", label: "a" });
-    assert.deepEqual(keysOf({ ...account, credentialHealth: "absent" }), [...MIRROR_ACCOUNT_KEYS].sort());
+    const { native, ...wireAccount } = account;
+    assert.equal(native, false);
+    assert.deepEqual(keysOf({ ...wireAccount, credentialHealth: "absent" }), [...MIRROR_ACCOUNT_KEYS].sort());
     assert.ok(!("credentialHealth" in account), "credentialHealth is derived at emit, never stored on the row");
     const limits = store.putAccountLimits("claude-a", { readable: true, weekly: { usedPercent: 10 } });
     // v16: login flows mirror as store rows, verbatim; method/field descriptors carry only safe metadata keys.
@@ -148,6 +150,7 @@ test("mirror.2: value-level snapshot — a deterministic store serializes to the
     store.answerQuestion(question.id, "yes", { answeredBy: "operator" });
     const seal = store.createSeal(bee.id, { id: "seal-1", title: "shipped", body: "landed on main", refs: ["main@abc"] });
     const account = store.createAccount({ id: "codex-work", harness: "codex", homePath: "/tmp/homes/codex-work", label: "work", penalty: 5 });
+    const { native: _native, ...wireAccount } = account;
     const limits = store.putAccountLimits(account.id, {
       readable: true,
       plan: "pro",
@@ -168,7 +171,7 @@ test("mirror.2: value-level snapshot — a deterministic store serializes to the
       tracks: [track],
       questions: [store.getQuestion(question.id)!],
       seals: [seal],
-      accounts: [{ ...account, credentialHealth: "absent", loginDueAt: null, nativeLogin: null }],
+      accounts: [{ ...wireAccount, credentialHealth: "absent", loginDueAt: null, nativeLogin: null }],
       accountLimits: [limits],
       accountAdmissions: [],
       tasks: [],

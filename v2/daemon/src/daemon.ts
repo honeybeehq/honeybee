@@ -1302,15 +1302,17 @@ export class HiveDaemon {
     // from the account row. The tracked pre-claim readiness gate has already
     // activated the home and reconciled its native MCP config.
     let accountEnv: Record<string, string> = {};
+    let beeEnv = bee.env;
     if (bee.account && this.accounts) {
       const account = store.getAccount(bee.account);
       if (!account) throw new Error(`resolve: bee ${beeId} is bound to unknown account ${bee.account}`);
       accountEnv = { ...this.accounts.homeEnvOf(account), ...this.accounts.credentialEnvOf(account) };
+      beeEnv = this.accounts.nativeBeeEnv(account, bee.env);
     }
     const env = {
       ...(process.env as Record<string, string>),
       ...(spec.env ?? {}),
-      ...bee.env,
+      ...beeEnv,
       ...accountEnv,
       ...beeIdentityEnv(bee, this.cfg.dataDir),
     };
@@ -1378,7 +1380,6 @@ export class HiveDaemon {
     if (!account) {
       throw new Error(`resolveCellSandboxWritablePaths: bee ${beeId} is bound to unknown account ${bee.account}`);
     }
-    // The machine's own home is not a Honeybee account home: a native bee gets what an unbound bee gets.
     if (this.mustAccounts().isNative(account)) return [];
     return [sandboxWritableDirectory(account.homePath, {
       forbiddenDirectories: [this.cfg.accounts.homesDir],
@@ -2700,7 +2701,6 @@ export class HiveDaemon {
     const { account, reason: pickReason, allocation, reservationId, claim } = this.resolveSpawnAccount(
       accountRequest, agent, params, key ?? `spawn:${id}`, "spawn", 0, null, id,
     );
-    // The native account says what it is, as is, whichever selector chose it.
     const accountReason = (account && this.accounts?.nativeDescription(account)) || pickReason;
     const accountEnv = account && this.accounts ? this.accounts.homeEnvOf(account) : {};
     const requestedEnv = this.spawnEnvParam(params);
@@ -5101,8 +5101,8 @@ export class HiveDaemon {
 
   private rpcAccountConfigPreview(params: Record<string, unknown>): AccountConfigPreviewResult {
     const account = this.requireAccount(params);
-    const native = this.mustAccounts().nativeRefusal(account);
-    if (native) throw new RpcError("config_import_refused", native);
+    const foreign = this.mustAccounts().foreignHomeRefusal(account, "imports configuration into");
+    if (foreign) throw new RpcError("config_import_refused", foreign);
     try {
       return this.accountConfigImport.preview(account);
     } catch (error) {
@@ -5124,8 +5124,8 @@ export class HiveDaemon {
         return hit.result;
       }
       const account = this.requireAccount(params);
-      const native = this.mustAccounts().nativeRefusal(account);
-      if (native) throw new RpcError("config_import_refused", native);
+      const foreign = this.mustAccounts().foreignHomeRefusal(account, "imports configuration into");
+      if (foreign) throw new RpcError("config_import_refused", foreign);
       let result: AccountConfigImportResult;
       try {
         result = this.accountConfigImport.import(account);
@@ -5174,7 +5174,7 @@ export class HiveDaemon {
     const label = this.param(params, "label");
     const id = typeof params.id === "string" && params.id.length > 0 ? params.id : accountIdFor(harness, label);
     const homePath = typeof params.homePath === "string" && params.homePath.length > 0 ? resolve(params.homePath) : accounts.defaultHomeOf(id);
-    if (accounts.isNative({ harness, source: "local", homePath })) {
+    if (homePath === accounts.nativeHomeOf(harness)) {
       throw new RpcError("invalid_request", `account.add: ${homePath} is this computer's own ${harness} sign-in; add it with native: true`);
     }
     const penalty = params.penalty === undefined ? 0 : params.penalty;
@@ -5258,7 +5258,7 @@ export class HiveDaemon {
     const id = typeof params.id === "string" && params.id.length > 0 ? params.id : accountIdFor(harness, label);
     if (store.getAccount(id)) throw new RpcError("invalid_request", `account already exists: ${id}`);
     const homePath = accounts.nativeHomeOf(harness)!;
-    const account = store.createAccount({ id, harness, label, homePath, penalty, status: accounts.honestStatus({ harness, id, homePath }, "ok") });
+    const account = store.createAccount({ id, harness, label, homePath, penalty, native: true, status: accounts.honestStatus({ harness, id, homePath }, "ok") });
     const credentialHealth = accounts.credentialHealthOf(account);
     this.log(`account.add id=${id} harness=${harness} native=true home=${homePath} status=${account.status} credentialHealth=${credentialHealth}`);
     return { account: accounts.mirrorRow(account), credentialHealth, imported: null, verification: "none" };
@@ -5489,6 +5489,8 @@ export class HiveDaemon {
       const store = this.mustStore();
       const unisolated = accounts.isolationRefusal(account.harness);
       if (unisolated && !accounts.isNative(account)) throw new RpcError("account_unavailable", unisolated);
+      const moved = accounts.nativeHomeRefusal(account);
+      if (moved) throw new RpcError("account_unavailable", moved);
       const credential = accounts.homeCredentialState(account);
       if (credential !== "usable") {
         throw new RpcError("account_unavailable", `account ${account.id} has ${credential === "absent" ? "no" : "an expired"} credential in its home`);
@@ -6090,22 +6092,21 @@ export class HiveDaemon {
   }
 }
 
-/**
- * Locate a claude transcript in a config dir: the exact project key first,
- * then any project dir (the key derivation drifted across CLI versions —
- * realpath vs raw path — and a conversation is only ever one file).
- */
-/** The first line of a harness's first version stamp beside its resolved executable (Muse's `.muse-version`); null when unreadable. */
 export function readVersionStamp(path: string, stamps: string[]): string | null {
   if (stamps.length === 0) return null;
   try {
     const line = readFileSync(join(dirname(realpathSync(path)), stamps[0]!), "utf8").split("\n").map((l) => l.trim()).find((l) => l.length > 0);
-    return line ? line.slice(0, 120) : null;
+    return line?.match(/^[0-9A-Za-z][0-9A-Za-z.+_-]{0,63}/u)?.[0] ?? null;
   } catch {
     return null;
   }
 }
 
+/**
+ * Locate a claude transcript in a config dir: the exact project key first,
+ * then any project dir (the key derivation drifted across CLI versions —
+ * realpath vs raw path — and a conversation is only ever one file).
+ */
 function findClaudeTranscript(home: string, projectKey: string, seed: string): { file: string; dir: string | null } | null {
   const projects = join(home, "projects");
   const candidates = [join(projects, projectKey)];

@@ -159,7 +159,7 @@
  * v35 — a dying login is visible: `accounts.status_reason` + `accounts.refresh_token_expires_at`;
  * the credential authority gains the terminal `login_required` phase, `refresh_token_expires_at`
  * and the secret-free last refresh `failure` (table rebuild, rows carried across by name). */
-export const SCHEMA_VERSION = 38;
+export const SCHEMA_VERSION = 39;
 
 export const AUTH_INTERRUPTIONS_TABLE_SQL = `
 CREATE TABLE IF NOT EXISTS auth_interruptions (
@@ -223,6 +223,8 @@ CREATE INDEX IF NOT EXISTS account_admission_active
   ON account_admission_reservations(account, expires_at)
   WHERE released_at IS NULL;
 `;
+
+export const ACCOUNTS_NATIVE_INDEX_SQL = "CREATE UNIQUE INDEX IF NOT EXISTS accounts_native_harness ON accounts(harness) WHERE native = 1";
 
 /**
  * Current shape shared between SCHEMA_SQL and the v19 table rebuild so a
@@ -554,6 +556,7 @@ CREATE TABLE IF NOT EXISTS accounts (
   paused_by     TEXT CHECK (paused_by IS NULL OR paused_by IN ('operator','quota','lease')),
   paused_owner  TEXT,
   paused_at     INTEGER,
+  native        INTEGER NOT NULL DEFAULT 0 CHECK (native IN (0,1)),
   added_at      INTEGER NOT NULL,
   updated_at    INTEGER NOT NULL
 ) STRICT;

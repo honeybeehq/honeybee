@@ -1156,8 +1156,10 @@ test("muse.native: This Mac — on darwin the machine's own Muse login is the on
 
     // A Studio-held account (vault only) beside This Mac.
     const held = addAccount(r, "muse", "held", { vault: { [file]: JSON.stringify({ schema_version: 1, providers: { meta: { api_key: "k" } } }) } });
-    const native = r.store.createAccount({ id: "muse-this-mac", harness: "muse", homePath: nativeHome, label: "This Mac", penalty: 0, status: "ok" });
-    assert.deepEqual([mac.isNative(native), mac.isNative(held), linux.isNative(native)], [true, false, false]);
+    const native = r.store.createAccount({ id: "muse-this-mac", harness: "muse", homePath: nativeHome, label: "This Mac", penalty: 0, status: "ok", native: true });
+    const ordinary = r.store.createAccount({ id: "muse-ordinary", harness: "muse", homePath: nativeHome, label: "ordinary", penalty: 0, status: "ok" });
+    assert.deepEqual([mac.isNative(native), mac.isNative(held), mac.isNative(ordinary), linux.isNative(native)], [true, false, false, true]);
+    assert.equal(mac.nativeHomeRefusal(native), null);
     assert.equal(mac.nativeAccount("muse")?.id, native.id);
 
     // Not signed in on this Mac: the account says to run `muse login`.
@@ -1188,6 +1190,7 @@ test("muse.native: This Mac — on darwin the machine's own Muse login is the on
     assert.equal(mac.credentialState(native), "present");
 
     // It runs as the user's own muse would: no home env, nothing activated, seeded or written.
+    r.store.removeAccount(ordinary.id);
     const before = treeOf(machine.home);
     assert.deepEqual(mac.homeEnvOf(native), {});
     assert.deepEqual(mac.credentialEnvOf(native), {});
@@ -1203,7 +1206,9 @@ test("muse.native: This Mac — on darwin the machine's own Muse login is the on
 
     assert.equal(mac.mirrorRow(native).nativeLogin, THIS_MAC);
     assert.equal(mac.mirrorRow(held).nativeLogin, null);
-    assert.equal(linux.mirrorRow(native).nativeLogin, null);
+    assert.equal(mac.mirrorRow(ordinary).nativeLogin, null);
+    assert.equal("native" in mac.mirrorRow(native), false);
+    assert.match(linux.mirrorRow(native).nativeLogin ?? "", /has no native muse sign-in on this computer; Honeybee will not run it as an ordinary account/);
 
     // A live session's usage lands on This Mac's limits row and verifies it.
     const row = mac.observeLimits(native, { observedAt: r.now(), usage: { observedAtMs: r.now(), tier: "fixture-tier-from-provider", window: { usedPercent: 21, resetsAtMs: r.now() + HOUR, windowDurationMins: 300 }, weekly: { usedPercent: 4, resetsAtMs: r.now() + DAY } } });
@@ -1214,6 +1219,91 @@ test("muse.native: This Mac — on darwin the machine's own Muse login is the on
     const rejected = mac.readiness(r.store.setAccountStatus(native.id, "auth_needed", "bee b: authRequired").account);
     assert.equal(rejected.ready ? null : rejected.code, "account_auth_needed");
     assert.match(rejected.ready ? "" : rejected.message, /needs its sign-in\. Run `muse login` in Terminal on this Mac/);
+  } finally {
+    r.cleanup();
+  }
+});
+
+test("muse.native.stranded: a native account whose daemon now resolves another muse home stays native and fails closed, never an ordinary account", async () => {
+  const r = rig();
+  try {
+    const machine = fakeMachine(r);
+    const nativeHome = join(machine.home, ".config");
+    writeAt(join(nativeHome, "muse", "auth.json"), JSON.stringify({ schema_version: 2, providers: { meta: { mechanism: "oauth", obtained_via: "device_code", storage: "keychain", expires_at: 4102444800000 } } }));
+    const native = r.store.createAccount({ id: "muse-this-mac", harness: "muse", homePath: nativeHome, label: "This Mac", penalty: 0, status: "ok", native: true });
+    const before = treeOf(machine.home);
+    const elsewhere = [
+      service(r, { platform: "darwin", env: { XDG_CONFIG_HOME: join(r.dir, "other-config") }, home: machine.home }),
+      service(r, { platform: "darwin", env: {}, home: join(r.dir, "other-home") }),
+    ];
+    const stranded = /account muse-this-mac is this computer's own muse sign-in at .*machine-home\/\.config, but the Honeybee daemon now resolves this computer's muse home to .*; Honeybee will not run it as an ordinary account/;
+    for (const mac of elsewhere) {
+      assert.equal(mac.isNative(native), true);
+      assert.match(mac.nativeHomeRefusal(native) ?? "", stranded);
+      const ready = mac.readiness(native);
+      assert.equal(ready.ready ? null : ready.code, "account_unavailable");
+      assert.match(ready.ready ? "" : ready.message, stranded);
+      for (const pick of [mac.pick("muse"), mac.pickRoundRobin("muse")]) assert.match(pick.ok ? pick.account.id : pick.message, stranded);
+      const admitted = mac.admitNewWork("muse", { operation: "spawn", requestKey: `k-${mac.nativeHomeOf("muse")}` });
+      assert.equal(admitted.ok, false);
+      assert.deepEqual(mac.homeEnvOf(native), {});
+      await assert.rejects(mac.activateForSpawn(native, { cwd: r.dir }), stranded);
+      const never = /This Mac is this computer's own muse sign-in; Honeybee never signs it in, copies, leases or changes it/;
+      await assert.rejects(mac.captureAccount(native), never);
+      await assert.rejects(mac.restoreNativeBackup(native.id), never);
+      await assert.rejects(mac.mintLease(native), (err: unknown) => err instanceof LeaseRefusal && never.test(err.message));
+      assert.match(mac.foreignHomeRefusal(native, "imports configuration into") ?? "", never);
+      assert.equal(mac.mirrorRow(native).nativeLogin, THIS_MAC);
+    }
+    assert.deepEqual(treeOf(machine.home), before);
+    assert.equal(existsSync(join(r.vault, "muse", native.id)), false);
+  } finally {
+    r.cleanup();
+  }
+});
+
+test("accounts.foreign-home: capture, config import, backup restore and adoption are refused for a home outside homesDir; homes inside it are unaffected", async () => {
+  const r = rig();
+  try {
+    const svc = service(r);
+    const foreignHome = join(r.dir, "machine-codex-home");
+    writeAt(join(foreignHome, "auth.json"), JSON.stringify({ tokens: { access_token: "stale", refresh_token: "r", id_token: "i", account_id: "a" } }));
+    const foreign = r.store.createAccount({ id: "codex-machine", harness: "codex", homePath: foreignHome, label: "machine" });
+    const outside = /account codex-machine's home .*machine-codex-home is outside Honeybee's account homes \(.*homes\); Honeybee never captures credentials from a home it does not own/;
+    await assert.rejects(svc.captureAccount(foreign), outside);
+    await assert.rejects(svc.restoreNativeBackup(foreign.id), /is outside Honeybee's account homes .*; Honeybee never restores a backup into a home it does not own/);
+    assert.match(svc.foreignHomeRefusal(foreign, "imports configuration into") ?? "", /never imports configuration into a home it does not own/);
+    const leased = { homeRelPath: "auth.json", mode: 0o600, contentB64: Buffer.from(JSON.stringify({ tokens: { access_token: "leased", id_token: "i", account_id: "a" } })).toString("base64") };
+    await assert.rejects(
+      svc.installLease({ id: foreign.id, harness: "codex", label: "machine", shareId: "12345678-foreign", authorityNodeId: "peer", epoch: 1, expiresAt: null, files: [leased], adopt: "explicit" }),
+      (err: unknown) => err instanceof Error && (err as { code?: string }).code === "account_adopt_refused" && /never moves credentials out of a home it does not own/.test(err.message),
+    );
+    assert.equal(r.store.getAccount(foreign.id)!.source, "local");
+    const sibling = r.store.createAccount({ id: "codex-sibling", harness: "codex", homePath: `${r.homes}-sibling`, label: "sibling" });
+    assert.match(svc.foreignHomeRefusal(sibling, "captures credentials from") ?? "", /outside Honeybee's account homes/);
+    const escaped = r.store.createAccount({ id: "codex-escaped", harness: "codex", homePath: join(r.homes, "..", "escaped"), label: "escaped" });
+    assert.match(svc.foreignHomeRefusal(escaped, "captures credentials from") ?? "", /outside Honeybee's account homes/);
+    const root = r.store.createAccount({ id: "codex-root", harness: "codex", homePath: r.homes, label: "root" });
+    assert.match(svc.foreignHomeRefusal(root, "captures credentials from") ?? "", /outside Honeybee's account homes/);
+    const owned = addAccount(r, "codex", "owned");
+    assert.equal(svc.foreignHomeRefusal(owned, "captures credentials from"), null);
+    assert.equal(existsSync(join(r.vault, "codex", foreign.id)), false, "nothing captured into the vault");
+    assert.ok(readFileSync(join(foreignHome, "auth.json"), "utf8").includes("stale"), "the foreign home is untouched");
+  } finally {
+    r.cleanup();
+  }
+});
+
+test("muse.native.env: a native bee's own env cannot redirect where Muse finds its login or config; other accounts keep theirs", () => {
+  const r = rig();
+  try {
+    const machine = fakeMachine(r);
+    const mac = service(r, { platform: "darwin", env: machine.env, home: machine.home });
+    const native = r.store.createAccount({ id: "muse-this-mac", harness: "muse", homePath: join(machine.home, ".config"), label: "This Mac", penalty: 0, status: "ok", native: true });
+    const held = addAccount(r, "muse", "held");
+    const env = { HOME: "/x", XDG_CONFIG_HOME: "/x/c", XDG_DATA_HOME: "/x/d", XDG_STATE_HOME: "/x/s", XDG_CACHE_HOME: "/x/k", MUSE_NO_AUTO_UPDATE: "0", TBH_CREDENTIAL_BACKEND: "file", META_API_KEY: "k", MUSE_PROJECTS_HOME: "/x/p", MUSE_AUTH_PATH: "/x/a", MUSE_LOGIN: "1", MUSE_SYNC_UPDATE: "1", MUSE_UPDATE_INTERVAL_SECONDS: "1", MUSE_CHANNEL: "muse-canary", KEEP: "1" };
+    assert.deepEqual(mac.nativeBeeEnv(native, env), { KEEP: "1" });
+    assert.deepEqual(mac.nativeBeeEnv(held, env), env);
   } finally {
     r.cleanup();
   }

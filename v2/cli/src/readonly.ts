@@ -100,6 +100,7 @@ function mapAccountRow(r: Row): AccountRow {
     pausedBy: r.paused_by == null ? null : (r.paused_by as AccountRow["pausedBy"]),
     pausedOwner: r.paused_owner == null ? null : String(r.paused_owner),
     pausedAt: r.paused_at == null ? null : Number(r.paused_at),
+    native: Number((r.native as number | null | undefined) ?? 0) === 1,
     addedAt: Number(r.added_at),
     updatedAt: Number(r.updated_at),
   };

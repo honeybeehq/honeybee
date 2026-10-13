@@ -68,6 +68,7 @@ export interface NativeAccountRecipe {
   description: string;
   /** How the user signs in, shown as is when the login is missing or rejected. */
   signIn: string;
+  redirectEnv: readonly string[];
 }
 
 export interface AccountConfigImportRecipe {
@@ -742,6 +743,7 @@ export const ACCOUNT_RECIPES: Readonly<Record<string, IdentityRecipe>> = {
         label: "This Mac",
         description: "This Mac: uses your own Muse sign-in (`muse login`) on this computer. Every Muse session on this Mac shares it. Honeybee never copies or changes it.",
         signIn: "Run `muse login` in Terminal on this Mac, then mark This Mac's account restored.",
+        redirectEnv: ["HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME", "MUSE_PROJECTS_HOME", "MUSE_AUTH_PATH", "MUSE_LOGIN", "MUSE_NO_AUTO_UPDATE", "MUSE_SYNC_UPDATE", "MUSE_UPDATE_INTERVAL_SECONDS", "MUSE_CHANNEL", "TBH_CREDENTIAL_BACKEND", "META_API_KEY"],
       },
     },
     vendorHome: { dir: ".config" },

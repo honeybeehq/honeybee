@@ -162,6 +162,7 @@ test("v7.recipes: Muse accounts are unisolated on darwin only, where This Mac (t
     label: "This Mac",
     description: "This Mac: uses your own Muse sign-in (`muse login`) on this computer. Every Muse session on this Mac shares it. Honeybee never copies or changes it.",
     signIn: "Run `muse login` in Terminal on this Mac, then mark This Mac's account restored.",
+    redirectEnv: ["HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME", "MUSE_PROJECTS_HOME", "MUSE_AUTH_PATH", "MUSE_LOGIN", "MUSE_NO_AUTO_UPDATE", "MUSE_SYNC_UPDATE", "MUSE_UPDATE_INTERVAL_SECONDS", "MUSE_CHANNEL", "TBH_CREDENTIAL_BACKEND", "META_API_KEY"],
   });
   assert.equal(nativeAccountRecipe("muse", "linux"), null);
   for (const harness of Object.keys(ACCOUNT_RECIPES)) {
@@ -528,7 +529,7 @@ test("v7.migration: a v6 store opens as v7 — bees.account added, accounts/acco
     try {
       const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
       assert.equal(Number(version.value), SCHEMA_VERSION);
-      assert.equal(SCHEMA_VERSION, 38);
+      assert.equal(SCHEMA_VERSION, 39);
       const cols = (check.prepare("SELECT name FROM pragma_table_info('bees')").all() as Array<{ name: string }>).map((c) => c.name);
       assert.ok(cols.includes("account"));
       const tables = (check.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{ name: string }>).map((t) => t.name);
@@ -970,5 +971,38 @@ test("v37 credential authority migrates to the handoff phase CHECK without losin
     assert.equal(migrated.putAccountCredentialAuthority({ ...state, phase: "handing_off" }).phase, "handing_off");
     assert.equal(migrated.putAccountCredentialAuthority({ ...state, phase: "adopting" }).phase, "adopting");
     migrated.close();
+  } finally { h.cleanup(); }
+});
+
+test("v38 store gains the persisted native marker; one native account per harness is enforced by the store", () => {
+  const h = harness();
+  try {
+    const initial = h.open();
+    initial.createAccount({ id: "muse-old", harness: "muse", homePath: "/tmp/native-test-home", label: "old" });
+    initial.close();
+    const db = new DatabaseSync(h.path);
+    db.exec("DROP INDEX accounts_native_harness");
+    db.exec("ALTER TABLE accounts DROP COLUMN native");
+    db.prepare("UPDATE meta SET value = '38' WHERE key = 'schema_version'").run();
+    db.close();
+    const store = h.open();
+    assert.equal(store.getAccount("muse-old")!.native, false);
+    assert.equal(store.nativeAccount("muse"), null);
+    const native = store.createAccount({ id: "muse-this-mac", harness: "muse", homePath: "/tmp/native-test-home", label: "This Mac", native: true });
+    assert.equal(native.native, true);
+    assert.equal(store.nativeAccount("muse")!.id, "muse-this-mac");
+    assert.throws(() => store.createAccount({ id: "muse-second", harness: "muse", homePath: "/tmp/native-test-home", label: "second", native: true }), /muse already has its native account: muse-this-mac/);
+    assert.equal(store.getAccount("muse-second"), null);
+    assert.equal(store.createAccount({ id: "codex-native", harness: "codex", homePath: "/tmp/codex-native", label: "native", native: true }).native, true);
+    assert.throws(() => store.updateAccountFields("muse-this-mac", { homePath: "/tmp/elsewhere" }), /native account; its home is the machine's own/);
+    assert.equal(store.updateAccountFields("muse-this-mac", { label: "Studio" }).account.native, true);
+    store.close();
+    const raw = new DatabaseSync(h.path);
+    assert.throws(() => raw.prepare("UPDATE accounts SET native = 1 WHERE id = 'muse-old'").run(), /UNIQUE/);
+    raw.close();
+    const reopened = h.open();
+    assert.equal(reopened.getAccount("muse-this-mac")!.native, true);
+    assert.equal(reopened.getAccount("muse-this-mac")!.homePath, "/tmp/native-test-home");
+    reopened.close();
   } finally { h.cleanup(); }
 });

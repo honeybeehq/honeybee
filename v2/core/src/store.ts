@@ -176,7 +176,7 @@ import {
   TASK_SUPPLY_SENDER_NAME,
   TASK_TRANSITIONS,
 } from "./tasks.ts";
-import { ACTIONS_TABLE_SQL, AUTH_INTERRUPTIONS_TABLE_SQL, ACCOUNT_ADMISSIONS_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_V27_COLUMNS, ACCOUNT_LIMITS_TABLE_SQL, BEES_ADDITIVE_COLUMNS, BEES_ACTIVE_MOVE_INDEX_SQL, BEES_ACTIVE_HANDOFF_INDEX_SQL, BEE_HANDOFFS_TABLE_SQL, TRANSCRIPT_SEGMENTS_TABLE_SQL, MAILBOX_PENDING_METADATA_INDEX_SQL, BEE_MOVES_TABLE_SQL, CELLS_TABLE_SQL, CELLS_V22_COLUMNS, CELL_OPS_TABLE_SQL, FLAGS_ADDITIVE_COLUMNS, FLAGS_EXPIRY_INDEX_SQL, HANDLE_INDEX_SQL, IDEMPOTENCY_INDEX_SQL, MAILBOX_ADDITIVE_COLUMNS, MAIL_HISTORY_INDEX_SQL, MAIL_HISTORY_PROJECTION_SQL, RUNTIMES_ADDITIVE_COLUMNS, SCHEMA_SQL, SCHEMA_VERSION } from "./schema.ts";
+import { ACTIONS_TABLE_SQL, AUTH_INTERRUPTIONS_TABLE_SQL, ACCOUNT_ADMISSIONS_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_V27_COLUMNS, ACCOUNT_LIMITS_TABLE_SQL, ACCOUNTS_NATIVE_INDEX_SQL, BEES_ADDITIVE_COLUMNS, BEES_ACTIVE_MOVE_INDEX_SQL, BEES_ACTIVE_HANDOFF_INDEX_SQL, BEE_HANDOFFS_TABLE_SQL, TRANSCRIPT_SEGMENTS_TABLE_SQL, MAILBOX_PENDING_METADATA_INDEX_SQL, BEE_MOVES_TABLE_SQL, CELLS_TABLE_SQL, CELLS_V22_COLUMNS, CELL_OPS_TABLE_SQL, FLAGS_ADDITIVE_COLUMNS, FLAGS_EXPIRY_INDEX_SQL, HANDLE_INDEX_SQL, IDEMPOTENCY_INDEX_SQL, MAILBOX_ADDITIVE_COLUMNS, MAIL_HISTORY_INDEX_SQL, MAIL_HISTORY_PROJECTION_SQL, RUNTIMES_ADDITIVE_COLUMNS, SCHEMA_SQL, SCHEMA_VERSION } from "./schema.ts";
 import { beeMoveReviveKey, beeMoveStopKey, beeMoveTransitionLegal, toBeeMoveView } from "./cellMove.ts";
 import {
   ACTION_DISPATCH_SENDER,
@@ -417,6 +417,7 @@ export interface CreateAccountInput {
   lastLoginAt?: number | null;
   /** Registration timestamp override (the importer preserves the old registry's addedAt). */
   addedAt?: number;
+  native?: boolean;
 }
 
 /** v16 — `createLoginFlow` input (the daemon's flow service builds it from the recipe). */
@@ -842,6 +843,7 @@ function mapAccount(r: Row): AccountRow {
     pausedBy: r.paused_by == null ? null : (r.paused_by as AccountPauseOwner),
     pausedOwner: r.paused_owner == null ? null : String(r.paused_owner),
     pausedAt: r.paused_at == null ? null : Number(r.paused_at),
+    native: Number(r.native ?? 0) === 1,
     addedAt: Number(r.added_at),
     updatedAt: Number(r.updated_at),
   };
@@ -1982,6 +1984,8 @@ export class CoreStore {
     const leaseCols = new Set((this.stmt("SELECT name FROM pragma_table_info('accounts')").all() as Row[]).map(row => String(row.name)));
     if (!leaseCols.has("source")) this.db.exec("ALTER TABLE accounts ADD COLUMN source TEXT NOT NULL DEFAULT 'local' CHECK (source IN ('local','leased'))");
     if (!leaseCols.has("leased_from")) this.db.exec("ALTER TABLE accounts ADD COLUMN leased_from TEXT");
+    if (!leaseCols.has("native")) this.db.exec("ALTER TABLE accounts ADD COLUMN native INTEGER NOT NULL DEFAULT 0 CHECK (native IN (0,1))");
+    this.db.exec(ACCOUNTS_NATIVE_INDEX_SQL);
     this.db.exec("UPDATE accounts SET leased_from = json_remove(json_set(leased_from, '$.revokedAt', json_extract(leased_from, '$.endedAt')), '$.endedAt') WHERE leased_from IS NOT NULL AND json_type(leased_from, '$.endedAt') IS NOT NULL");
     this.backfillMailHistoryEnqueues();
     this.db
@@ -5272,21 +5276,30 @@ export class CoreStore {
     const status = input.status ?? "ok";
     if (!(ACCOUNT_STATUSES as readonly string[]).includes(status)) throw new CoreError(`createAccount: status must be one of ${ACCOUNT_STATUSES.join("|")}`);
     const penalty = normalizePenalty(input.penalty ?? 0, "createAccount");
+    if (input.native !== undefined && typeof input.native !== "boolean") throw new CoreError("createAccount: native must be a boolean");
+    const native = input.native === true;
     return this.tx(() => {
       if (this.getAccount(id)) throw new CoreError(`account already exists: ${id}`);
+      const existingNative = native ? this.nativeAccount(harness) : null;
+      if (existingNative) throw new CoreError(`createAccount: ${harness} already has its native account: ${existingNative.id}`);
       const at = this.now();
       const addedAt = input.addedAt ?? at;
       if (!Number.isFinite(addedAt)) throw new CoreError("createAccount: addedAt must be a finite epoch-ms number");
       this.db
         .prepare(
-          `INSERT INTO accounts(id, harness, home_path, label, status, penalty, last_login_at, exhausted_at, paused_by, paused_owner, paused_at, added_at, updated_at)
-           VALUES(?, ?, ?, ?, ?, ?, ?, NULL, ?, NULL, ?, ?, ?)`,
+          `INSERT INTO accounts(id, harness, home_path, label, status, penalty, last_login_at, exhausted_at, paused_by, paused_owner, paused_at, native, added_at, updated_at)
+           VALUES(?, ?, ?, ?, ?, ?, ?, NULL, ?, NULL, ?, ?, ?, ?)`,
         )
-        .run(id, harness, homePath, label, status, penalty, input.lastLoginAt ?? null, status === "paused" ? "operator" : null, status === "paused" ? at : null, addedAt, at);
+        .run(id, harness, homePath, label, status, penalty, input.lastLoginAt ?? null, status === "paused" ? "operator" : null, status === "paused" ? at : null, native ? 1 : 0, addedAt, at);
       const account = this.mustGetAccount(id);
       this.audit("account.put", null, { account, outcome: "created" });
       return account;
     });
+  }
+
+  nativeAccount(harness: string): AccountRow | null {
+    const row = this.stmt("SELECT * FROM accounts WHERE harness = ? AND native = 1").get(harness) as Row | undefined;
+    return row ? mapAccount(row) : null;
   }
 
   /** Bees (any lifecycle) bound to the account, by id. */
@@ -5484,7 +5497,11 @@ export class CoreStore {
     const next: { homePath?: string; label?: string } = {};
     if (patch.homePath !== undefined) next.homePath = requireNonEmpty(patch.homePath, "updateAccountFields: homePath");
     if (patch.label !== undefined) next.label = requireNonEmpty(patch.label, "updateAccountFields: label");
-    return this.tx(() => this.applyAccountUpdate(id, next, "fields"));
+    return this.tx(() => {
+      const before = this.mustGetAccount(id);
+      if (before.native && next.homePath !== undefined && next.homePath !== before.homePath) throw new CoreError(`updateAccountFields: ${id} is a native account; its home is the machine's own and never moves`);
+      return this.applyAccountUpdate(id, next, "fields");
+    });
   }
 
   /**

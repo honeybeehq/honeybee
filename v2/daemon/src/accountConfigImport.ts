@@ -22,7 +22,7 @@ import {
 } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
-import { dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { parse as parseJsonc, type ParseError } from "jsonc-parser";
 import { parse as parseToml, stringify as stringifyToml, type TomlTable, type TomlValue } from "smol-toml";
 import {
@@ -167,6 +167,27 @@ function defineTomlValue(target: TomlTable, key: string, value: TomlValue): void
 function pathInside(root: string, candidate: string): boolean {
   const rel = relative(root, candidate);
   return rel === "" || (!rel.startsWith(`..${sep}`) && rel !== ".." && !isAbsolute(rel));
+}
+
+export function pathStrictlyInside(root: string, candidate: string): boolean {
+  const canonicalRoot = canonicalThroughExistingAncestor(root);
+  const canonicalCandidate = canonicalThroughExistingAncestor(candidate);
+  return canonicalCandidate !== canonicalRoot && pathInside(canonicalRoot, canonicalCandidate);
+}
+
+function canonicalThroughExistingAncestor(path: string): string {
+  const missing: string[] = [];
+  let current = resolve(path);
+  for (;;) {
+    try {
+      return join(realpathSync(current), ...missing.reverse());
+    } catch {
+      const parent = dirname(current);
+      if (parent === current) return resolve(path);
+      missing.push(basename(current));
+      current = parent;
+    }
+  }
 }
 
 function safeRecipePath(path: string): boolean {

@@ -17,6 +17,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, lstatSync, renameSync, rmSync, statSync, realpathSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { pathStrictlyInside } from "./accountConfigImport.ts";
 import { promisify } from "node:util";
 import { CredentialHandoffService } from "./credentialHandoff.ts";
 import { CredentialAuthority, ClaudeCredentialAuthority, CredentialAuthorityError, CredentialOwnershipConflict, refreshTokenDigest } from "./claudeCredentialAuthority.ts";
@@ -1308,8 +1309,8 @@ export class AccountsService {
     return this.withLeaseWrite(id, async () => {
       const account = this.store.getAccount(id);
       if (!account) throw new RpcError("account_not_found", "Account not found.");
-      const native = this.nativeRefusal(account);
-      if (native) throw new RpcError("native_backup_restore_refused", native);
+      const foreign = this.foreignHomeRefusal(account, "restores a backup into");
+      if (foreign) throw new RpcError("native_backup_restore_refused", foreign);
       const codec = this.leaseMaterialCodecs.get(account.harness);
       const backup = this.latestNativeBackup(account);
       if (account.source !== "local" && (account.leasedFrom?.revokedAt == null || account.leasedFrom.adoptedAt === null)) throw new RpcError("account_leased", "Revoke the adopted lease before explicitly restoring its native backup.");
@@ -1375,6 +1376,8 @@ export class AccountsService {
       if (account?.source === "leased" && (account.leasedFrom?.shareId !== input.shareId || account.leasedFrom.epoch > input.epoch || account.leasedFrom.epoch === input.epoch && (account.leasedFrom.authorityNodeId !== input.authorityNodeId || account.leasedFrom.expiresAt !== null && (input.expiresAt === null || input.expiresAt < account.leasedFrom.expiresAt)))) throw new RpcError("account_lease_conflict", "Lease origin conflicts with the installed lease.");
       if (adopted) {
         if (!input.adopt) throw new RpcError("account_adopt_refused", "An isolated lease cannot overwrite a native account.");
+        const foreign = this.foreignHomeRefusal(account!, "moves credentials out of");
+        if (foreign) throw new RpcError("account_adopt_refused", foreign);
         this.assertAdoptable(account!, explicit);
       }
       if (!account && this.credentialed({ id, harness: input.harness, homePath: this.defaultHomeOf(id) })) throw new RpcError("account_lease_conflict", "The isolated lease home already contains unregistered credentials; preserve them and resolve ownership before installing.");
@@ -1491,7 +1494,6 @@ export class AccountsService {
 
   /** The env the account binding derives: HOME_ENV[harness] = home_path (+ recipe extras). */
   homeEnvOf(account: AccountRow): Record<string, string> {
-    // The machine's own login runs as the user's own CLI would: no home env.
     if (this.isNative(account)) return {};
     const key = homeEnvFor(account.harness);
     return {
@@ -1529,11 +1531,6 @@ export class AccountsService {
     return accountIsolationRefusal(harness, this.platform);
   }
 
-  /**
-   * The machine's own home for `harness` where this node offers a native
-   * account (the recipe's `nativeOn`), else null. A native account is a local
-   * account whose home is exactly this: the machine's vendor home.
-   */
   nativeHomeOf(harness: string): string | null {
     if (!this.nativeRecipe(harness)) return null;
     const vendor = resolveVendorHome(harness, this.env, this.home);
@@ -1545,30 +1542,49 @@ export class AccountsService {
     return nativeAccountRecipe(harness, this.platform);
   }
 
-  /** Whether the account is the machine's own login: run with no home env, never logged in, copied, leased or written. */
-  isNative(account: Pick<AccountRow, "harness" | "source" | "homePath">): boolean {
-    return account.source === "local" && account.homePath === this.nativeHomeOf(account.harness);
+  isNative(account: Pick<AccountRow, "native">): boolean {
+    return account.native === true;
   }
 
-  /** This node's native account for `harness`, if one was added. */
   nativeAccount(harness: string): AccountRow | null {
-    return this.store.listAccounts({ harness }).find((account) => this.isNative(account)) ?? null;
+    return this.store.nativeAccount(harness);
   }
 
-  /** What the native account is (shown as is), else null. */
+  nativeHomeRefusal(account: AccountRow): string | null {
+    if (!this.isNative(account)) return null;
+    const home = this.nativeHomeOf(account.harness);
+    if (home !== null && home === account.homePath) return null;
+    const now = home === null ? `has no native ${account.harness} sign-in on this computer` : `resolves this computer's ${account.harness} home to ${home}`;
+    return `account ${account.id} is this computer's own ${account.harness} sign-in at ${account.homePath}, but the Honeybee daemon now ${now}; Honeybee will not run it as an ordinary account. Restart the Honeybee daemon with the HOME and XDG_CONFIG_HOME it had when ${account.label} was added.`;
+  }
+
   nativeDescription(account: AccountRow): string | null {
-    return this.isNative(account) ? nativeAccountRecipe(account.harness, this.platform)!.description : null;
+    if (!this.isNative(account)) return null;
+    return this.nativeRecipe(account.harness)?.description ?? this.nativeHomeRefusal(account);
   }
 
-  /** Why an operation that would sign in, copy, lease or write the account's login is refused, else null. */
   nativeRefusal(account: AccountRow): string | null {
     if (!this.isNative(account)) return null;
-    return `${account.label} is this computer's own ${account.harness} sign-in; Honeybee never signs it in, copies, leases or changes it. ${nativeAccountRecipe(account.harness, this.platform)!.signIn}`;
+    const signIn = this.nativeRecipe(account.harness)?.signIn;
+    return `${account.label} is this computer's own ${account.harness} sign-in; Honeybee never signs it in, copies, leases or changes it.${signIn ? ` ${signIn}` : ""}`;
   }
 
-  /** How the user signs the native account in, as the readiness message. */
+  nativeBeeEnv(account: AccountRow, env: Readonly<Record<string, string>>): Record<string, string> {
+    if (!this.isNative(account)) return { ...env };
+    const redirect = new Set(nativeAccountRecipe(account.harness, this.platform)?.redirectEnv ?? []);
+    return Object.fromEntries(Object.entries(env).filter(([key]) => !redirect.has(key)));
+  }
+
+  foreignHomeRefusal(account: AccountRow, what: string): string | null {
+    const native = this.nativeRefusal(account);
+    if (native) return native;
+    if (pathStrictlyInside(this.cfg.accounts.homesDir, account.homePath)) return null;
+    return `account ${account.id}'s home ${account.homePath} is outside Honeybee's account homes (${this.cfg.accounts.homesDir}); Honeybee never ${what} a home it does not own.`;
+  }
+
   private nativeSignInMessage(account: AccountRow, what: string): string {
-    return `account ${account.id} ${what}. ${nativeAccountRecipe(account.harness, this.platform)!.signIn}`;
+    const signIn = this.nativeRecipe(account.harness)?.signIn;
+    return `account ${account.id} ${what}.${signIn ? ` ${signIn}` : ""}`;
   }
 
   /**
@@ -1639,6 +1655,8 @@ export class AccountsService {
    */
   credentialReadiness(account: AccountRow): AccountReadiness {
     const native = this.isNative(account);
+    const moved = this.nativeHomeRefusal(account);
+    if (moved) return { ready: false, code: "account_unavailable", message: moved };
     if (this.store.credentialRecoveryPending(account.id)) return { ready: false, code: "account_auth_needed", message: "Signed ownership recovery holds this account; complete peer cleanup before starting another bee." };
     const unisolated = this.isolationRefusal(account.harness);
     if (unisolated && !native) return { ready: false, code: "account_unavailable", message: unisolated };
@@ -1673,7 +1691,7 @@ export class AccountsService {
 
   /** Usable for automatic selection: not paused, not auth_needed, credential present and not expired. */
   private usableForSelection(account: AccountRow): boolean {
-    return account.status === "ok" && (!this.isolationRefusal(account.harness) || this.isNative(account)) && this.credentialState(account) === "present";
+    return account.status === "ok" && (!this.isolationRefusal(account.harness) || this.isNative(account)) && !this.nativeHomeRefusal(account) && this.credentialState(account) === "present";
   }
 
   /**
@@ -1749,7 +1767,8 @@ export class AccountsService {
 
   /** The mirror shape of an account row: the store row plus the derived health (never stored). */
   mirrorRow(account: AccountRow): MirrorAccountRow {
-    return { ...account, credentialHealth: this.credentialHealthOf(account), loginDueAt: loginDueAtOf(account), nativeLogin: this.nativeDescription(account) };
+    const { native: _native, ...row } = account;
+    return { ...row, credentialHealth: this.credentialHealthOf(account), loginDueAt: loginDueAtOf(account), nativeLogin: this.nativeDescription(account) };
   }
 
   /**
@@ -2296,7 +2315,7 @@ export class AccountsService {
 
   /** The accounts this node can run `harness` under: all of them, or only the native one where accounts are unisolated. */
   private runnableAccounts(harness: string): AccountRow[] {
-    const accounts = this.store.listAccounts({ harness });
+    const accounts = this.store.listAccounts({ harness }).filter((account) => !this.nativeHomeRefusal(account));
     return this.isolationRefusal(harness) ? accounts.filter((account) => this.isNative(account)) : accounts;
   }
 
@@ -2304,6 +2323,9 @@ export class AccountsService {
   private unrunnableRefusal(harness: string, runnable: AccountRow[]): PickOutcome | null {
     const unisolated = this.isolationRefusal(harness);
     if (!unisolated || runnable.length > 0) return null;
+    const stranded = this.nativeAccount(harness);
+    const moved = stranded ? this.nativeHomeRefusal(stranded) : null;
+    if (moved) return { ok: false, code: "no_accounts", message: moved };
     const native = nativeAccountRecipe(harness, this.platform);
     return { ok: false, code: "no_accounts", message: native ? `${unisolated}. Add ${native.label} with: hive account add ${harness} --native` : unisolated };
   }
@@ -3552,8 +3574,11 @@ export class AccountsService {
   }
 
   async activateForSpawn(account: AccountRow, bee: { cwd: string }): Promise<ActivationResult> {
-    // The machine's own home is never activated, seeded or written.
-    if (this.isNative(account)) return { activated: false, copied: [], reason: "home_populated" };
+    if (this.isNative(account)) {
+      const moved = this.nativeHomeRefusal(account);
+      if (moved) throw new Error(moved);
+      return { activated: false, copied: [], reason: "home_populated" };
+    }
     const unisolated = this.isolationRefusal(account.harness);
     if (unisolated) throw new Error(unisolated);
     if (this.authorityFor(account)?.enabled(account)) {
@@ -3647,8 +3672,8 @@ export class AccountsService {
    */
   async captureAccount(account: AccountRow): Promise<CaptureOutcome> {
     this.assertLocalAccount(account);
-    const native = this.nativeRefusal(account);
-    if (native) throw new Error(native);
+    const foreign = this.foreignHomeRefusal(account, "captures credentials from");
+    if (foreign) throw new Error(foreign);
     if (this.authorityFor(account)?.enabled(account)) throw new CredentialAuthorityError("Disable central credentials before capturing native credentials.");
     const recipe = recipeFor(account.harness);
     if (!recipe) throw new Error(`harness ${account.harness} has no identity recipe; cannot capture credentials`);

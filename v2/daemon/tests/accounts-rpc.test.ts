@@ -1075,12 +1075,17 @@ test("rpc.accounts.f2: add refuses pre-existing credentials by default; importEx
     assert.equal(agyVerify.outcome, "unverified");
     assert.equal(agyVerify.limits, null);
 
-    // Real validation evidence upgrades honestly: an explicit capture
-    // validates the credential and records the login.
-    const captured = await client.request<AccountCaptureResult>("account.capture", { id: adopted.account.id });
+    await rejects(() => client.request("account.capture", { id: adopted.account.id }), "invalid_request");
+    await rejects(() => client.request("account.config.preview", { id: adopted.account.id }), "config_import_refused");
+    await rejects(() => client.request("account.credentials.restoreNative", { id: adopted.account.id }), "native_backup_restore_refused");
+    assert.equal(readFileSync(join(machineHome, "auth.json"), "utf8"), '{"tokens":{"access_token":"stale-april"}}', "the handed-in machine home is untouched");
+
+    mkdirSync(fresh.account.homePath, { recursive: true });
+    writeFileSync(join(fresh.account.homePath, "auth.json"), '{"tokens":{"access_token":"fresh-login"}}');
+    const captured = await client.request<AccountCaptureResult>("account.capture", { id: fresh.account.id });
     assert.ok(captured.account.lastLoginAt != null);
     assert.equal(captured.account.credentialHealth, "verified");
-    const verified = await client.request<AccountGetResult>("account.get", { id: adopted.account.id });
+    const verified = await client.request<AccountGetResult>("account.get", { id: fresh.account.id });
     assert.equal(verified.credentialHealth, "verified");
     client.close();
   } finally {

@@ -16,6 +16,7 @@ import assert from "node:assert/strict";
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { readVersionStamp } from "../src/daemon.ts";
 import { RpcError, type AccountAddResult, type AccountCredentialsRestoredResult, type AccountGetResult, type AccountLeaseResult, type AccountLoginGetResult, type AccountLoginStartResult, type ListResult, type NodeHarnessesResult, type SpawnResult } from "../src/protocol.ts";
 import type { RpcClient } from "../../cli/src/client.ts";
 import { deviceAuthorization, granted, startFakeMetaDevice } from "./fixtures/fake-meta-device.ts";
@@ -211,12 +212,13 @@ test("muse on darwin: This Mac is the machine's own `muse login` — added once 
     await refused(client, "spawn", { name: "held", agent: "muse", cwd: dir, account: "muse-held" }, "account_unavailable", REASON);
 
     // Auto picks This Mac; the bee runs with the user's HOME and no XDG overrides.
-    const spawned = await client.request<SpawnResult>("spawn", { name: "native", agent: "muse", cwd: dir, prompt: "hello" });
+    const redirect = { HOME: join(dir, "elsewhere"), XDG_CONFIG_HOME: join(dir, "elsewhere", "config"), XDG_DATA_HOME: join(dir, "elsewhere", "data"), XDG_STATE_HOME: join(dir, "elsewhere", "state"), XDG_CACHE_HOME: join(dir, "elsewhere", "cache"), MUSE_NO_AUTO_UPDATE: "0", TBH_CREDENTIAL_BACKEND: "file", META_API_KEY: "redirected-key", MUSE_AUTH_PATH: join(dir, "elsewhere", "auth.json"), MUSE_LOGIN: "1", MUSE_CHANNEL: "muse-canary" };
+    const spawned = await client.request<SpawnResult>("spawn", { name: "native", agent: "muse", cwd: dir, prompt: "hello", env: { ...redirect, FAKE_MUSE_KEPT: "kept" } });
     assert.deepEqual({ account: spawned.account, reason: spawned.accountReason }, { account: "muse-this-mac", reason: THIS_MAC });
     const ran = await waitFor(() => existsSync(envOut) ? JSON.parse(readFileSync(envOut, "utf8")) as { argv: string[]; env: Record<string, string> } : null, "native muse serve starts", 15_000);
     assert.equal(ran.argv[0], "serve");
     const inherited = (key: string) => process.env[key] === undefined ? {} : { [key]: process.env[key] };
-    assert.deepEqual(ran.env, { HOME: home, MUSE_NO_AUTO_UPDATE: "1", ...inherited("XDG_CONFIG_HOME"), ...inherited("XDG_DATA_HOME"), ...inherited("TBH_CREDENTIAL_BACKEND") }, "Honeybee sets no XDG pair or credential backend for This Mac");
+    assert.deepEqual(ran.env, { HOME: home, MUSE_NO_AUTO_UPDATE: "1", FAKE_MUSE_KEPT: "kept", ...inherited("XDG_CONFIG_HOME"), ...inherited("XDG_DATA_HOME"), ...inherited("XDG_STATE_HOME"), ...inherited("XDG_CACHE_HOME"), ...inherited("TBH_CREDENTIAL_BACKEND"), ...inherited("META_API_KEY"), ...inherited("MUSE_AUTH_PATH"), ...inherited("MUSE_LOGIN"), ...inherited("MUSE_CHANNEL") }, "Honeybee sets no XDG pair or credential backend for This Mac, and the bee's own env cannot redirect its login");
 
     // The live session's usage lands on This Mac's limits row.
     const limits = await waitFor(async () => {
@@ -234,8 +236,64 @@ test("muse on darwin: This Mac is the machine's own `muse login` — added once 
     assert.equal(existsSync(sentinelLog), false, "neither muse nor security was ever executed");
     assert.doesNotMatch(daemon.output(), /DUMMY-(ACCESS|REFRESH)|"(access|refresh)_token"\s*:\s*"[^"]/);
     client.close();
+    await daemon.stop();
+    daemon = null;
+
+    const moved: Record<string, string>[] = [
+      { HOME: home, XDG_CONFIG_HOME: join(home, "other-config"), PATH: `${bin}:${process.env.PATH ?? ""}` },
+      { HOME: join(dir, "other-home"), PATH: `${bin}:${process.env.PATH ?? ""}` },
+    ];
+    for (const env of moved) {
+      daemon = await startDaemon(dir, { platform: "darwin", env });
+      const rebooted = await daemon.client();
+      const stranded = /account muse-this-mac is this computer's own muse sign-in at .*, but the Honeybee daemon now resolves this computer's muse home to .*; Honeybee will not run it as an ordinary account/;
+      const row = await rebooted.request<AccountGetResult>("account.get", { id: "muse-this-mac" });
+      assert.deepEqual({ home: row.account.homePath, native: row.account.nativeLogin }, { home: config, native: THIS_MAC }, "still This Mac after the daemon's home moved");
+      assert.equal("native" in row.account, false, "the persisted marker stays off the wire");
+      await refused(rebooted, "spawn", { name: "auto-moved", agent: "muse", cwd: dir }, "account_unavailable", stranded);
+      await refused(rebooted, "spawn", { name: "explicit-moved", agent: "muse", cwd: dir, account: "muse-this-mac" }, "account_unavailable", stranded);
+      await refused(rebooted, "spawn", { name: "rr-moved", agent: "muse", cwd: dir, account: "rr" }, "account_unavailable", stranded);
+      await refused(rebooted, "account.capture", { id: "muse-this-mac" }, "invalid_request", never);
+      await refused(rebooted, "account.config.preview", { id: "muse-this-mac" }, "config_import_refused", never);
+      await refused(rebooted, "account.config.import", { id: "muse-this-mac", idempotencyKey: `import-${env.HOME}-${env.XDG_CONFIG_HOME ?? ""}` }, "config_import_refused", never);
+      await refused(rebooted, "account.credentials.restoreNative", { id: "muse-this-mac" }, "native_backup_restore_refused", never);
+      await refused(rebooted, "account.credentialsRestored", { id: "muse-this-mac" }, "account_unavailable", stranded);
+      await refused(rebooted, "account.add", { harness: "muse", native: true }, "invalid_request", /already has its native muse account: muse-this-mac/);
+      assert.equal((await rebooted.request<ListResult>("list", {})).views.some((view) => view.bee?.name.endsWith("-moved")), false);
+      rebooted.close();
+      await daemon.stop();
+      daemon = null;
+    }
+    assert.deepEqual(treeOf(home), before, "the machine's own Muse files are untouched");
+    assert.equal(existsSync(join(dir, "vault", "muse", "muse-this-mac")), false, "nothing reaches the vault");
+    assert.equal(existsSync(sentinelLog), false, "neither muse nor security was ever executed");
   } finally {
     if (daemon) await daemon.stop().catch(() => {});
+    cleanup();
+  }
+});
+
+test("muse version stamp: only a safe version token is reported; control characters and markup never pass through", () => {
+  const { dir, cleanup } = makeDaemonDir();
+  try {
+    const launcher = join(dir, "muse");
+    writeFileSync(launcher, "#!/bin/sh\nexit 1\n");
+    const stamp = (text: string) => {
+      writeFileSync(join(dir, ".muse-version"), text);
+      return readVersionStamp(launcher, [".muse-version"]);
+    };
+    assert.equal(stamp("1.4.7-R6101.1\n"), "1.4.7-R6101.1");
+    assert.equal(stamp("\n  1.4.7+build_2  \n"), "1.4.7+build_2");
+    assert.equal(stamp("1.4.7\u001b[31m red\n"), "1.4.7");
+    assert.equal(stamp("1.4.7\u0007\r\u0000tail"), "1.4.7");
+    assert.equal(stamp("\u001b]0;title\u0007"), null);
+    assert.equal(stamp("<script>1.0"), null);
+    assert.equal(stamp(`${"9".repeat(200)}`), "9".repeat(64));
+    assert.equal(stamp(""), null);
+    assert.equal(readVersionStamp(launcher, []), null);
+    rmSync(join(dir, ".muse-version"));
+    assert.equal(readVersionStamp(launcher, [".muse-version"]), null);
+  } finally {
     cleanup();
   }
 });
