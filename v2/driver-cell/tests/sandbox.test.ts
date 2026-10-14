@@ -362,8 +362,8 @@ test("sandbox.tmp-watch: tracked bees only, set once when full, re-set after a t
   const b = { beeId: "b", generation: 3, pid: 200 };
   const c = { beeId: "c", generation: 1, pid: 300 };
   const actions = (evs: ReturnType<SandboxTmpWatch["observe"]>) => evs.map((e) => [e.beeId, e.action]);
-  watch.track("a");
-  watch.track("b");
+  watch.track("a", 1);
+  watch.track("b", 3);
   usage.set(100, 0);
   usage.set(200, cap);
   usage.set(300, 0);
@@ -394,4 +394,19 @@ test("sandbox.tmp-watch: tracked bees only, set once when full, re-set after a t
   usage.delete(100);
   now = 30000;
   assert.deepEqual(watch.observe([a], []), [], "an unsandboxed runtime is never judged");
+});
+
+test("sandbox.tmp-watch: an exit is fenced by generation, so a respawn behind a dying runtime stays watched", () => {
+  const watch = new SandboxTmpWatch({ intervalMs: 0, now: () => 0, sample: () => [{ path: "/tmp", sizeBytes: 4194304, freeBytes: 0 }] });
+  watch.track("b", 1);
+  watch.track("b", 2);
+  watch.exited("b", 1);
+  assert.deepEqual(watch.observe([{ beeId: "b", generation: 2, pid: 1 }], []).map((e) => [e.action, e.generation]), [["set", 2]]);
+  watch.track("c", null);
+  watch.exited("c", 7);
+  assert.deepEqual(watch.observe([{ beeId: "c", generation: 8, pid: 2 }], []).map((e) => [e.action, e.generation]), [["clear", 7]], "an adopted runtime, tracked without a generation, still clears on its exit");
+  watch.track("d", 4);
+  watch.track("d", null);
+  watch.exited("d", 3);
+  assert.deepEqual(watch.observe([{ beeId: "d", generation: 4, pid: 3 }], []).map((e) => [e.action, e.generation]), [["set", 4]], "an adopt-time resolve never loosens a known generation");
 });

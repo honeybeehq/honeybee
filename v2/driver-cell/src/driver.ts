@@ -650,7 +650,7 @@ export class CellDriver implements RuntimeDriver {
         intervalMs: this.cfg.sandboxTmpSampleMs ?? 5_000,
         ...(this.cfg.log ? { log: this.cfg.log } : {}),
       });
-      this.sandboxTmp.track(beeId);
+      this.sandboxTmp.track(beeId, generation ?? null);
     }
     const wrapped = wrapWithSandbox(
       {

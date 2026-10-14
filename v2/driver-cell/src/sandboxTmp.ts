@@ -146,7 +146,7 @@ function evidence(beeId: string, generation: number, action: "set" | "clear", de
 }
 
 export class SandboxTmpWatch {
-  private readonly tracked = new Set<string>();
+  private readonly tracked = new Map<string, number | null>();
   private readonly state = new Map<string, "full" | "ok">();
   private readonly exits: SandboxTmpEvidence[] = [];
   private sampledAt = Number.NEGATIVE_INFINITY;
@@ -156,12 +156,14 @@ export class SandboxTmpWatch {
     this.opts = opts;
   }
 
-  track(beeId: string): void {
-    this.tracked.add(beeId);
+  track(beeId: string, generation: number | null): void {
+    if (generation !== null || !this.tracked.has(beeId)) this.tracked.set(beeId, generation);
   }
 
   exited(beeId: string, generation: number): void {
-    if (!this.tracked.delete(beeId)) return;
+    const tracked = this.tracked.get(beeId);
+    if (tracked === undefined || (tracked !== null && tracked !== generation)) return;
+    this.tracked.delete(beeId);
     this.state.delete(beeId);
     this.exits.push(evidence(beeId, generation, "clear", `${SANDBOX_TMP_FULL} cleared: the sandbox tmpfs went away with its runtime`));
   }
