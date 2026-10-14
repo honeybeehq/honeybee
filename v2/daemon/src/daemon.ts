@@ -209,7 +209,11 @@ import {
   contextPolicyFacts,
   contextPolicyOf,
   ContextPolicyError,
+  CONTEXT_ROLES,
   effectiveContextPolicy,
+  isContextRole,
+  roleContextPolicy,
+  roleOfTags,
   sameContextPolicy,
   storedContextPolicy,
   validWorkspaceId,
@@ -218,6 +222,8 @@ import {
   type ClaudeContextLaunch,
   type ContextPolicy,
   type ContextPolicyConfig,
+  type ContextPolicyScope,
+  type ContextRole,
 } from "./contextPolicy.ts";
 import { createStoreAutoTitleDispatcher, type AutoTitleOutcome } from "./autoTitle.ts";
 import { TitleGeneratorService } from "./namingService.ts";
@@ -4384,7 +4390,7 @@ export class HiveDaemon {
   }
 
   private claudeContextLaunchFor(bee: BeeRow, args: readonly string[], env: Record<string, string>): ClaudeContextLaunch {
-    return claudeContextLaunch(effectiveContextPolicy(this.contextPolicy, workspaceOfTags(bee.tags)), args, env, bee.env);
+    return claudeContextLaunch(effectiveContextPolicy(this.contextPolicy, workspaceOfTags(bee.tags), roleOfTags(bee.tags)), args, env, bee.env);
   }
 
   private applyContextEnv(env: Record<string, string>, context: ClaudeContextLaunch): void {
@@ -4398,12 +4404,22 @@ export class HiveDaemon {
     return workspace;
   }
 
-  private contextPolicyResult(workspace: string | null, bee?: BeeRow): ContextPolicyResult {
-    const effective = effectiveContextPolicy(this.contextPolicy, workspace);
+  private contextPolicyRoleParam(params: Record<string, unknown>, verb: string): ContextRole | null {
+    if (params.role === undefined || params.role === null) return null;
+    if (!isContextRole(params.role)) throw new RpcError("invalid_request", `${verb}: role must be one of ${CONTEXT_ROLES.join("|")} when given`);
+    return params.role;
+  }
+
+  private contextPolicyResult(workspace: string | null, role: ContextRole | null, bee?: BeeRow): ContextPolicyResult {
+    const effective = effectiveContextPolicy(this.contextPolicy, workspace, role);
+    const storedRole = role === null ? null : storedContextPolicy(this.contextPolicy, { role });
     const result: ContextPolicyResult = {
       workspace,
-      stored: storedContextPolicy(this.contextPolicy, workspace),
+      stored: storedContextPolicy(this.contextPolicy, workspace !== null ? { workspace } : role !== null ? { role } : null),
       default: storedContextPolicy(this.contextPolicy, null),
+      role,
+      rolePolicy: role === null ? null : roleContextPolicy(this.contextPolicy, role),
+      rolePolicyBuiltin: role !== null && storedRole === null,
       effective,
       facts: contextPolicyFacts(effective),
       configPath: this.cfg.configPath,
@@ -4432,15 +4448,17 @@ export class HiveDaemon {
 
   private rpcContextPolicyGet(params: Record<string, unknown>): ContextPolicyResult {
     if (params.beeId !== undefined) {
-      if (params.workspace !== undefined) throw new RpcError("invalid_request", "contextPolicy.get: give workspace or beeId, not both");
+      if (params.workspace !== undefined || params.role !== undefined) throw new RpcError("invalid_request", "contextPolicy.get: give beeId alone, or workspace and/or role");
       const bee = this.mustStore().getBee(this.requireBee(params))!;
-      return this.contextPolicyResult(workspaceOfTags(bee.tags), bee);
+      return this.contextPolicyResult(workspaceOfTags(bee.tags), roleOfTags(bee.tags), bee);
     }
-    return this.contextPolicyResult(this.contextPolicyWorkspaceParam(params, "contextPolicy.get"));
+    return this.contextPolicyResult(this.contextPolicyWorkspaceParam(params, "contextPolicy.get"), this.contextPolicyRoleParam(params, "contextPolicy.get"));
   }
 
   private rpcContextPolicySet(params: Record<string, unknown>): ContextPolicySetResult {
     const workspace = this.contextPolicyWorkspaceParam(params, "contextPolicy.set");
+    const role = this.contextPolicyRoleParam(params, "contextPolicy.set");
+    if (workspace !== null && role !== null) throw new RpcError("invalid_request", "contextPolicy.set: give workspace or role, not both");
     if (!("policy" in params)) throw new RpcError("invalid_request", "contextPolicy.set: policy is required (an object, or null to clear)");
     let policy: ContextPolicy | null = null;
     if (params.policy !== null) {
@@ -4451,17 +4469,18 @@ export class HiveDaemon {
         throw err;
       }
     }
-    const before = storedContextPolicy(this.contextPolicy, workspace);
+    const scope: ContextPolicyScope = workspace !== null ? { workspace } : role !== null ? { role } : null;
+    const before = storedContextPolicy(this.contextPolicy, scope);
     const applied = !sameContextPolicy(before, policy);
     if (applied) {
       try {
-        this.contextPolicy = writeContextPolicy(this.cfg.configPath, workspace, policy);
+        this.contextPolicy = writeContextPolicy(this.cfg.configPath, scope, policy);
       } catch (err) {
         throw new RpcError("invalid_request", err instanceof Error ? err.message : String(err));
       }
-      this.log(`contextPolicy.set workspace=${workspace ?? "(default)"} policy=${JSON.stringify(policy)}`);
+      this.log(`contextPolicy.set ${workspace !== null ? `workspace=${workspace}` : role !== null ? `role=${role}` : "default"} policy=${JSON.stringify(policy)}`);
     }
-    return { ...this.contextPolicyResult(workspace), applied };
+    return { ...this.contextPolicyResult(workspace, role), applied };
   }
 
   private rpcTag(params: Record<string, unknown>): TagResult {

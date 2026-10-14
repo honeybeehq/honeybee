@@ -5,7 +5,9 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  BUILTIN_ROLE_CONTEXT_POLICY,
   claudeContextLaunch,
+  roleOfTags,
   contextPolicyConfigOf,
   contextPolicyFacts,
   contextPolicyOf,
@@ -35,7 +37,7 @@ test("facts follow Claude Code's threshold rule: window minus the 20k output res
   assert.equal(contextPolicyFacts({ window: "1m" }).thresholdTokens, null, "auto window is Claude's choice");
   assert.deepEqual(contextPolicyFacts({ window: "200k" }), { window: "200k", windowTokens: 200_000, autoCompactWindow: 200_000, autoCompactPercent: null, thresholdTokens: 167_000 });
   assert.equal(contextPolicyFacts({ window: "1m", autoCompactWindow: 400_000 }).thresholdTokens, 367_000);
-  assert.equal(contextPolicyFacts({ window: "200k", autoCompactWindow: 400_000 }).thresholdTokens, 167_000, "clamped to the model window");
+  assert.deepEqual(contextPolicyFacts({ window: "200k", autoCompactWindow: 400_000 }), { window: "200k", windowTokens: 200_000, autoCompactWindow: 200_000, autoCompactPercent: null, thresholdTokens: 167_000 }, "clamped to the model window");
   assert.equal(contextPolicyFacts({ window: "1m", autoCompactWindow: 400_000, autoCompactPercent: 50 }).thresholdTokens, 190_000);
   assert.equal(contextPolicyFacts({ autoCompactWindow: 100_000, autoCompactPercent: 99 }).thresholdTokens, 67_000);
 });
@@ -91,14 +93,14 @@ test("writeContextPolicy keeps other config keys and clears empty scopes", () =>
   try {
     const path = join(dir, "config.json");
     writeFileSync(path, JSON.stringify({ tickMs: 20, naming: { auto: false } }));
-    writeContextPolicy(path, "w1", { window: "200k" });
+    writeContextPolicy(path, { workspace: "w1" }, { window: "200k" });
     writeContextPolicy(path, null, { autoCompactPercent: 80 });
     let raw = JSON.parse(readFileSync(path, "utf8"));
     assert.equal(raw.tickMs, 20);
     assert.deepEqual(raw.naming, { auto: false });
     assert.deepEqual(raw.contextPolicy, { default: { autoCompactPercent: 80 }, workspaces: { w1: { window: "200k" } } });
     assert.deepEqual(loadNodeConfig(dir).contextPolicy, raw.contextPolicy);
-    writeContextPolicy(path, "w1", null);
+    writeContextPolicy(path, { workspace: "w1" }, null);
     writeContextPolicy(path, null, {});
     raw = JSON.parse(readFileSync(path, "utf8"));
     assert.equal("contextPolicy" in raw, false);
@@ -106,7 +108,7 @@ test("writeContextPolicy keeps other config keys and clears empty scopes", () =>
     assert.throws(() => loadNodeConfig(dir), ConfigError);
     writeFileSync(path, '{"contextPolicy":{"workspaces":{"__proto__":{"window":"1m"}}}}');
     assert.throws(() => loadNodeConfig(dir), ConfigError);
-    assert.throws(() => writeContextPolicy(path, "constructor", { window: "1m" }), ContextPolicyError);
+    assert.throws(() => writeContextPolicy(path, { workspace: "constructor" }, { window: "1m" }), ContextPolicyError);
     assert.deepEqual(effectiveContextPolicy(contextPolicyConfigOf({ contextPolicy: { workspaces: { w1: { window: "1m" } } } }), "constructor"), {});
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -138,7 +140,7 @@ test("contextPolicy.get/set over RPC; a tagged claude bee boots with the workspa
 
     const empty = await client.request<ContextPolicyResult>("contextPolicy.get", { workspace: "w1" });
     assert.deepEqual({ ...empty, configPath: undefined }, {
-      workspace: "w1", stored: null, default: null, effective: {},
+      workspace: "w1", stored: null, default: null, role: null, rolePolicy: null, rolePolicyBuiltin: false, effective: {},
       facts: { window: null, windowTokens: null, autoCompactWindow: null, autoCompactPercent: null, thresholdTokens: null },
       configPath: undefined,
     });
@@ -203,6 +205,106 @@ test("contextPolicy.get/set over RPC; a tagged claude bee boots with the workspa
     assert.equal(revived.env.CLAUDE_CODE_DISABLE_1M_CONTEXT, null);
     assert.equal(revived.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW, "300000");
     assert.equal(revived.env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE, null);
+  } finally {
+    await daemon?.stop();
+    cleanup();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("champion role: built-in default compacts at 650k on a 1M window; workspace and stored role policy win", () => {
+  assert.equal(roleOfTags(["apiary:workspace=w1", "apiary:role=champion"]), "champion");
+  assert.equal(roleOfTags(["apiary:role=chief", "apiary:champion=kal"]), null);
+  assert.deepEqual(BUILTIN_ROLE_CONTEXT_POLICY.champion, { autoCompactWindow: 683_000 });
+  const none = contextPolicyConfigOf({});
+  assert.deepEqual(effectiveContextPolicy(none, "w1", "champion"), { autoCompactWindow: 683_000 });
+  assert.equal(contextPolicyFacts(effectiveContextPolicy(none, "w1", "champion")).thresholdTokens, 650_000);
+  assert.equal(contextPolicyFacts(effectiveContextPolicy(none, "w1", "champion")).thresholdTokens! <= 650_000, true);
+  assert.deepEqual(effectiveContextPolicy(none, "w1", null), {});
+  assert.equal(contextPolicyFacts({ window: "1m", autoCompactWindow: 683_000 }).thresholdTokens, 650_000);
+  const set = contextPolicyConfigOf({ contextPolicy: { default: { autoCompactWindow: 900_000 }, roles: { champion: { autoCompactPercent: 50 } }, workspaces: { w2: { autoCompactWindow: 500_000 } } } });
+  assert.deepEqual(effectiveContextPolicy(set, "w1", "champion"), { autoCompactWindow: 900_000, autoCompactPercent: 50 }, "a stored role policy replaces the built-in default");
+  assert.deepEqual(effectiveContextPolicy(set, "w2", "champion"), { autoCompactWindow: 500_000, autoCompactPercent: 50 }, "workspace wins");
+  assert.deepEqual(effectiveContextPolicy(contextPolicyConfigOf({ contextPolicy: { default: { autoCompactWindow: 900_000 } } }), null, "champion"), { autoCompactWindow: 683_000 }, "the champion default wins over the node default");
+  assert.throws(() => contextPolicyConfigOf({ contextPolicy: { roles: { chief: {} } } }), ContextPolicyError);
+  assert.deepEqual(claudeContextLaunch(effectiveContextPolicy(none, null, "champion"), ["--model", "opus[1m]"], {}, null), {
+    modelArgs: [],
+    env: { CLAUDE_CODE_AUTO_COMPACT_WINDOW: "683000" },
+    unset: [],
+  });
+  assert.deepEqual(claudeContextLaunch(effectiveContextPolicy(none, null, "champion"), [], {}, { CLAUDE_CODE_AUTO_COMPACT_WINDOW: "1000000" }).env, {}, "per-bee env still wins");
+});
+
+test("contextPolicy over RPC: a champion-tagged claude bee gets the 650k default, others do not, overrides win", { timeout: 120_000 }, async () => {
+  const root = mkdtempSync(join(tmpdir(), "hb-ctx-champion-"));
+  const argvLog = join(root, "argv.jsonl");
+  const claudeHome = join(root, "claude-home");
+  mkdirSync(claudeHome, { recursive: true });
+  writeFileSync(join(claudeHome, "settings.json"), JSON.stringify({ model: "opus[1m]" }));
+  const { dir, cleanup } = makeDaemonDir({
+    agents: {
+      claude: {
+        command: process.execPath,
+        args: [FAKE_CLAUDE, "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose"],
+        adapter: "claude",
+        env: { FAKE_CLAUDE_ARGV_LOG: argvLog },
+      },
+    },
+  });
+  let daemon: DaemonHandle | null = null;
+  try {
+    daemon = await startDaemon(dir);
+    const client = await daemon.client();
+    assert.ok((await client.request<DeployInfoResult>("deployInfo")).capabilities.includes("context.policy.roles.v1"));
+    type Boot = { argv: string[]; env: Record<string, string | null> };
+    const boots = (): Boot[] => existsSync(argvLog) ? readFileSync(argvLog, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l) as Boot) : [];
+    const bootOf = async (beeId: string, count = 1): Promise<Boot> => {
+      await waitFor(async () => boots().filter((b) => b.env.HIVE_BEE_ID === beeId).length >= count, `boot ${count} of ${beeId}`);
+      return boots().filter((b) => b.env.HIVE_BEE_ID === beeId).at(-1)!;
+    };
+    const spawn = async (name: string, tags: string[]): Promise<string> => {
+      const { beeId } = await client.request<SpawnResult>("spawn", { name, agent: "claude", cwd: root, tags, env: { CLAUDE_CONFIG_DIR: claudeHome } });
+      await client.request<SendRpcResult>("send", { beeId, body: "hello" });
+      return beeId;
+    };
+    const champion = await spawn("champ", ["apiary:workspace=w1", "apiary:role=champion"]);
+    const worker = await spawn("worker", ["apiary:workspace=w1", "apiary:champion=champ"]);
+    assert.equal((await bootOf(champion)).env.CLAUDE_CODE_AUTO_COMPACT_WINDOW, "683000");
+    assert.equal((await bootOf(worker)).env.CLAUDE_CODE_AUTO_COMPACT_WINDOW, null);
+
+    const got = await client.request<ContextPolicyResult>("contextPolicy.get", { beeId: champion });
+    assert.equal(got.role, "champion");
+    assert.equal(got.rolePolicyBuiltin, true);
+    assert.deepEqual(got.rolePolicy, { autoCompactWindow: 683_000 });
+    assert.equal(got.facts.thresholdTokens, 650_000);
+    assert.equal((await client.request<ContextPolicyResult>("contextPolicy.get", { beeId: worker })).role, null);
+    await assert.rejects(() => client.request("contextPolicy.set", { workspace: "w1", role: "champion", policy: null }), (e: Error & { code?: string }) => e.code === "invalid_request");
+    await assert.rejects(() => client.request("contextPolicy.set", { role: "chief", policy: null }), (e: Error & { code?: string }) => e.code === "invalid_request");
+
+    const roleSet = await client.request<ContextPolicySetResult>("contextPolicy.set", { role: "champion", policy: { autoCompactWindow: 400_000 } });
+    assert.equal(roleSet.applied, true);
+    assert.equal(roleSet.rolePolicyBuiltin, false);
+    assert.equal(roleSet.facts.thresholdTokens, 367_000);
+    const restart = async (beeId: string, count: number): Promise<Boot> => {
+      await waitFor(async () => {
+        const mailbox = await client.request<MailboxResult>("mailbox", { beeId });
+        const settled = mailbox.messages.every((m) => m.deliveredAt != null);
+        return settled && (await client.request<ViewResult>("view", { beeId })).view.runtimeState === "idle";
+      }, `${beeId} answered and idle`);
+      await client.request("stop", { beeId });
+      await waitFor(async () => (await client.request<ViewResult>("view", { beeId })).view.runtimeState === "stopped", `${beeId} stopped`);
+      await client.request<SendRpcResult>("send", { beeId, body: "again" });
+      return bootOf(beeId, count);
+    };
+    assert.equal((await restart(champion, 2)).env.CLAUDE_CODE_AUTO_COMPACT_WINDOW, "400000", "stored champion policy replaces the built-in default");
+
+    await client.request("contextPolicy.set", { workspace: "w1", policy: { autoCompactWindow: 900_000 } });
+    assert.equal((await restart(champion, 3)).env.CLAUDE_CODE_AUTO_COMPACT_WINDOW, "900000", "workspace policy wins over the champion default");
+    assert.equal((await restart(worker, 2)).env.CLAUDE_CODE_AUTO_COMPACT_WINDOW, "900000");
+
+    await client.request("contextPolicy.set", { workspace: "w1", policy: null });
+    await client.request("contextPolicy.set", { role: "champion", policy: null });
+    assert.equal((await restart(champion, 4)).env.CLAUDE_CODE_AUTO_COMPACT_WINDOW, "683000", "clearing restores the built-in default");
   } finally {
     await daemon?.stop();
     cleanup();

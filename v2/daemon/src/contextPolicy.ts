@@ -19,6 +19,19 @@ export const AUTO_COMPACT_WINDOW_MAX = 1_000_000;
 export const CLAUDE_AUTO_COMPACT_SUMMARY_BUFFER = 13_000;
 export const CLAUDE_AUTO_COMPACT_OUTPUT_RESERVE = 20_000;
 export const WORKSPACE_TAG_PREFIX = "apiary:workspace=";
+export const ROLE_TAG_PREFIX = "apiary:role=";
+export const CONTEXT_ROLES = ["champion"] as const;
+export type ContextRole = (typeof CONTEXT_ROLES)[number];
+export const CHAMPION_AUTO_COMPACT_THRESHOLD = 650_000;
+export const BUILTIN_ROLE_CONTEXT_POLICY: Record<ContextRole, ContextPolicy> = {
+  champion: { autoCompactWindow: CHAMPION_AUTO_COMPACT_THRESHOLD + CLAUDE_AUTO_COMPACT_OUTPUT_RESERVE + CLAUDE_AUTO_COMPACT_SUMMARY_BUFFER },
+};
+
+export type ContextPolicyScope = { workspace: string } | { role: ContextRole } | null;
+
+export function isContextRole(value: unknown): value is ContextRole {
+  return CONTEXT_ROLES.includes(value as ContextRole);
+}
 const RESERVED_WORKSPACE_IDS = new Set(["__proto__", "constructor", "prototype"]);
 
 export function validWorkspaceId(id: string): boolean {
@@ -43,6 +56,7 @@ export interface ContextPolicy {
 
 export interface ContextPolicyConfig {
   default?: ContextPolicy;
+  roles?: Partial<Record<ContextRole, ContextPolicy>>;
   workspaces?: Record<string, ContextPolicy>;
 }
 
@@ -91,6 +105,17 @@ export function contextPolicyConfigOf(raw: Record<string, unknown>): ContextPoli
   const value = v as Record<string, unknown>;
   const config: ContextPolicyConfig = {};
   if (value.default !== undefined) config.default = contextPolicyOf(value.default, "config: contextPolicy.default");
+  if (value.roles !== undefined) {
+    if (value.roles === null || typeof value.roles !== "object" || Array.isArray(value.roles)) {
+      throw new ContextPolicyError("config: contextPolicy.roles must be an object");
+    }
+    const roles: Partial<Record<ContextRole, ContextPolicy>> = {};
+    for (const [role, policy] of Object.entries(value.roles as Record<string, unknown>)) {
+      if (!isContextRole(role)) throw new ContextPolicyError(`config: contextPolicy.roles.${role} is not a role (${CONTEXT_ROLES.join("|")})`);
+      roles[role] = contextPolicyOf(policy, `config: contextPolicy.roles.${role}`);
+    }
+    config.roles = roles;
+  }
   if (value.workspaces !== undefined) {
     if (value.workspaces === null || typeof value.workspaces !== "object" || Array.isArray(value.workspaces)) {
       throw new ContextPolicyError("config: contextPolicy.workspaces must be an object");
@@ -109,13 +134,27 @@ function isEmpty(policy: ContextPolicy | null | undefined): boolean {
   return !policy || Object.keys(policy).length === 0;
 }
 
-export function storedContextPolicy(config: ContextPolicyConfig, workspace: string | null): ContextPolicy | null {
-  const policy = workspace === null ? config.default : workspacePolicy(config, workspace);
+function scopedPolicy(config: ContextPolicyConfig, scope: ContextPolicyScope): ContextPolicy | undefined {
+  if (scope === null) return config.default;
+  if ("role" in scope) return config.roles?.[scope.role];
+  return workspacePolicy(config, scope.workspace);
+}
+
+export function storedContextPolicy(config: ContextPolicyConfig, scope: ContextPolicyScope): ContextPolicy | null {
+  const policy = scopedPolicy(config, scope);
   return isEmpty(policy) ? null : { ...policy };
 }
 
-export function effectiveContextPolicy(config: ContextPolicyConfig, workspace: string | null): ContextPolicy {
-  return { ...(config.default ?? {}), ...(workspace === null ? {} : (workspacePolicy(config, workspace) ?? {})) };
+export function roleContextPolicy(config: ContextPolicyConfig, role: ContextRole): ContextPolicy {
+  return storedContextPolicy(config, { role }) ?? { ...BUILTIN_ROLE_CONTEXT_POLICY[role] };
+}
+
+export function effectiveContextPolicy(config: ContextPolicyConfig, workspace: string | null, role: ContextRole | null = null): ContextPolicy {
+  return {
+    ...(config.default ?? {}),
+    ...(role === null ? {} : roleContextPolicy(config, role)),
+    ...(workspace === null ? {} : (workspacePolicy(config, workspace) ?? {})),
+  };
 }
 
 export function sameContextPolicy(a: ContextPolicy | null, b: ContextPolicy | null): boolean {
@@ -124,8 +163,9 @@ export function sameContextPolicy(a: ContextPolicy | null, b: ContextPolicy | nu
     && (a?.autoCompactPercent ?? null) === (b?.autoCompactPercent ?? null);
 }
 
-export function writeContextPolicy(configPath: string, workspace: string | null, policy: ContextPolicy | null): ContextPolicyConfig {
-  if (workspace !== null && !validWorkspaceId(workspace)) throw new ContextPolicyError(`contextPolicy: '${workspace}' is not a valid workspace id`);
+export function writeContextPolicy(configPath: string, scope: ContextPolicyScope, policy: ContextPolicy | null): ContextPolicyConfig {
+  if (scope !== null && "workspace" in scope && !validWorkspaceId(scope.workspace)) throw new ContextPolicyError(`contextPolicy: '${scope.workspace}' is not a valid workspace id`);
+  if (scope !== null && "role" in scope && !isContextRole(scope.role)) throw new ContextPolicyError(`contextPolicy: '${String(scope.role)}' is not a role`);
   let raw: Record<string, unknown> = {};
   if (existsSync(configPath)) {
     let parsed: unknown;
@@ -140,15 +180,19 @@ export function writeContextPolicy(configPath: string, workspace: string | null,
     raw = parsed as Record<string, unknown>;
   }
   const current = contextPolicyConfigOf(raw);
-  const next: ContextPolicyConfig = { ...current, workspaces: { ...(current.workspaces ?? {}) } };
-  if (workspace === null) {
+  const next: ContextPolicyConfig = { ...current, roles: { ...(current.roles ?? {}) }, workspaces: { ...(current.workspaces ?? {}) } };
+  if (scope === null) {
     if (isEmpty(policy)) delete next.default;
     else next.default = { ...policy };
+  } else if ("role" in scope) {
+    if (isEmpty(policy)) delete next.roles![scope.role];
+    else next.roles![scope.role] = { ...policy };
   } else if (isEmpty(policy)) {
-    delete next.workspaces![workspace];
+    delete next.workspaces![scope.workspace];
   } else {
-    next.workspaces![workspace] = { ...policy };
+    next.workspaces![scope.workspace] = { ...policy };
   }
+  if (Object.keys(next.roles!).length === 0) delete next.roles;
   if (Object.keys(next.workspaces!).length === 0) delete next.workspaces;
   if (Object.keys(next).length === 0) delete raw.contextPolicy;
   else raw.contextPolicy = next;
@@ -164,9 +208,16 @@ export function workspaceOfTags(tags: readonly string[]): string | null {
   return tag ? tag.slice(WORKSPACE_TAG_PREFIX.length) : null;
 }
 
+export function roleOfTags(tags: readonly string[]): ContextRole | null {
+  const tag = tags.find((t) => t.startsWith(ROLE_TAG_PREFIX) && isContextRole(t.slice(ROLE_TAG_PREFIX.length)));
+  return tag ? (tag.slice(ROLE_TAG_PREFIX.length) as ContextRole) : null;
+}
+
 export function contextPolicyFacts(policy: ContextPolicy): ContextPolicyFacts {
   const windowTokens = policy.window ? CONTEXT_WINDOW_TOKENS[policy.window] : null;
-  const autoCompactWindow = policy.autoCompactWindow ?? (policy.window === "200k" ? CONTEXT_WINDOW_TOKENS["200k"] : null);
+  const autoCompactWindow = policy.window === "200k"
+    ? Math.min(policy.autoCompactWindow ?? CONTEXT_WINDOW_TOKENS["200k"], CONTEXT_WINDOW_TOKENS["200k"])
+    : (policy.autoCompactWindow ?? null);
   const autoCompactPercent = policy.autoCompactPercent ?? null;
   let thresholdTokens: number | null = null;
   if (autoCompactWindow !== null) {

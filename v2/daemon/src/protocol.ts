@@ -73,7 +73,7 @@ import type {
   Urgency,
 } from "../../core/src/index.ts";
 import type { BootReport } from "./loops.ts";
-import type { ContextPolicyFacts, ContextWindow } from "./contextPolicy.ts";
+import type { ContextPolicyFacts, ContextRole, ContextWindow } from "./contextPolicy.ts";
 import type { AccountAdmissionClaim, AccountAllocationContext, AccountAllocationReceipt, AccountNodeActivity, EphemeralCredentialFile } from "./accountsService.ts";
 
 export type { AccountAdmissionClaim, AccountAllocationContext, AccountAllocationReceipt, AccountNodeActivity, EphemeralCredential, EphemeralCredentialFile } from "./accountsService.ts";
@@ -237,6 +237,7 @@ export const DAEMON_CAPABILITIES = [
    */
   "account.native.v1",
   "context.policy.v1",
+  "context.policy.roles.v1",
 ] as const;
 export type DaemonCapability = (typeof DAEMON_CAPABILITIES)[number];
 
@@ -1189,6 +1190,9 @@ export interface ContextPolicyResult {
   workspace: string | null;
   stored: ContextPolicyView | null;
   default: ContextPolicyView | null;
+  role: ContextRole | null;
+  rolePolicy: ContextPolicyView | null;
+  rolePolicyBuiltin: boolean;
   effective: ContextPolicyView;
   facts: ContextPolicyFacts;
   configPath: string;
