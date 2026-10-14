@@ -468,3 +468,21 @@ test("mirror.3: template/track audit kinds are exactly the declared mirror kinds
     h.cleanup();
   }
 });
+
+test("mirror limits invalidates a discarded remote observation with no local baseline", () => {
+  const h = harness();
+  try {
+    const store = h.open();
+    store.createAccount({id:"muse-source",harness:"muse",label:"source",homePath:"/tmp/muse-source"});
+    const observedAt = h.now();
+    store.observeAccountLimits("muse-source",{readable:true,fetchedAt:observedAt,weekly:{usedPercent:12}},"MSP",{observerNodeId:"holder",currentHolder:true,path:{kind:"direct",holderExpiresAtMs:observedAt+10000}},()=>{});
+    let projection = store.listAccountLimits();
+    assert.equal(projection.length,1);
+    const after = store.auditRows().at(-1)!.seq;
+    assert.equal(store.discardAccountObservation("muse-source",observedAt,()=>{}),true);
+    const deltas = store.auditRows().filter(row=>row.seq>after);
+    if(deltas.some(row=>(MIRROR_ACCOUNT_LIMITS_AUDIT_KINDS as readonly string[]).includes(row.kind))) projection=store.listAccountLimits();
+    assert.deepEqual(projection,[]);
+    store.close();
+  } finally { h.cleanup(); }
+});

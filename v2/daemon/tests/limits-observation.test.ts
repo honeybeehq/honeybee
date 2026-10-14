@@ -122,12 +122,12 @@ test("v43 migration adds only local observation metadata; parser preserves opaqu
  }finally{r.close();}
 });
 
-test("a newer provider failure supersedes remote provenance without erasing lastLocal or changing authentication",()=>{
+test("a newer local provider failure supersedes remote provenance and refreshes the retained local baseline",()=>{
  const r=rig();try{
   r.service().observeLimits(r.account,{observedAt:r.now()-1,usage:{observedAtMs:r.now()-1,tier:"local",weekly:{usedPercent:4}}});
   applyObservation(r.store,r.payload(),r.account.id);
   r.store.putAccountLimits(r.account.id,{readable:false,unreadableReason:"auth_failed",error:"Provider refused",fetchedAt:r.now()+1});
-  const read=readObservation(r.store,r.account.id);assert.equal(read.selected?.provenance,null);assert.equal(read.selected?.limits.unreadableReason,"auth_failed");assert.equal(read.lastLocal?.limits.plan,"local");
+  const read=readObservation(r.store,r.account.id);assert.equal(read.selected?.provenance,null);assert.equal(read.selected?.limits.unreadableReason,"auth_failed");assert.equal(read.lastLocal?.limits.unreadableReason,"auth_failed");assert.deepEqual(read.lastLocal?.limits,read.selected?.limits);
   assert.equal(discardObservation(r.store,{id:r.account.id,expectedObservedAtMs:r.now()+1},r.account.id).discarded,false);
  }finally{r.close();}
 });
@@ -187,5 +187,43 @@ test("applying to a vault-held lease source touches usage only and attributes th
   const audit=r.store.auditRows().filter(row=>row.kind==="account_limits.observation");
   assert.deepEqual(audit.at(-1)?.payload.provenance,payload.provenance);
   assert.ok(!JSON.stringify(r.store.auditRows()).includes("fixture-private-login"));
+ }finally{r.close();}
+});
+
+for(const odd of ["tier\nwith\u0001controls", "t".repeat(300), 123, {raw:"not a string"}]) test("local provider tier/source is bounded without losing observed usage",()=>{
+ const r=rig();try{
+  const row=r.service().observeLimits(r.account,{observedAt:r.now(),usage:{observedAtMs:r.now(),tier:odd,source:odd,weekly:{usedPercent:12}}});
+  assert.equal(row?.weeklyPct,12);
+  const expected=typeof odd==="string"?odd.replace(/[\u0000-\u001f\u007f-\u009f]/g," ").slice(0,256):null;
+  assert.equal(row?.plan,expected);assert.equal(readObservation(r.store,r.account.id).lastLocal?.source,expected);
+ }finally{r.close();}
+});
+
+test("a real local probe refreshes lastLocal without turning remote applies or restores into local readings",()=>{
+ const r=rig();try{
+  r.store.putAccountLimits(r.account.id,{readable:true,fetchedAt:r.now()-10,plan:"first probe",weekly:{usedPercent:1}});
+  assert.equal(readObservation(r.store,r.account.id).lastLocal?.limits.plan,"first probe");
+  applyObservation(r.store,r.payload(),r.account.id);
+  assert.equal(readObservation(r.store,r.account.id).lastLocal?.limits.plan,"first probe");
+  r.advance(1);r.store.putAccountLimits(r.account.id,{readable:true,fetchedAt:r.now(),plan:"latest probe",weekly:{usedPercent:2}});
+  const local=r.store.getAccountLimits(r.account.id);
+  r.advance(1);applyObservation(r.store,r.payload(),r.account.id);
+  discardObservation(r.store,{id:r.account.id,expectedObservedAtMs:r.now()},r.account.id);
+  assert.deepEqual(r.store.getAccountLimits(r.account.id),local);
+  assert.deepEqual(readObservation(r.store,r.account.id).lastLocal?.limits,local);
+  assert.deepEqual(replayAudit(r.store.auditRows()),r.store.dumpState());
+ }finally{r.close();}
+});
+
+
+test("an unsupported probe placeholder never becomes or replaces local provider evidence",()=>{
+ const r=rig();try{
+  r.store.putAccountLimits(r.account.id,{readable:false,unreadableReason:"unsupported",fetchedAt:r.now()});
+  assert.equal(readObservation(r.store,r.account.id).lastLocal,null);
+  r.service().observeLimits(r.account,{observedAt:r.now()-1,usage:{observedAtMs:r.now()-1,tier:"real observation",weekly:{usedPercent:12}}});
+  const baseline=readObservation(r.store,r.account.id).lastLocal;
+  assert.equal(baseline?.limits.weeklyPct,12);
+  r.store.putAccountLimits(r.account.id,{readable:false,unreadableReason:"unsupported",fetchedAt:r.now()+1});
+  assert.deepEqual(readObservation(r.store,r.account.id).lastLocal,baseline);
  }finally{r.close();}
 });

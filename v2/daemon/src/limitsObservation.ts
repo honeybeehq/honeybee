@@ -19,6 +19,11 @@ export function observationText(value: unknown): string | null {
   if (typeof value !== "string" || value.length > 256 || /[\u0000-\u001f\u007f-\u009f]/.test(value)) throw invalid();
   return value;
 }
+export function localObservationText(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const text = value.replace(/[\u0000-\u001f\u007f-\u009f]/g," ").slice(0,256);
+  return /[\ud800-\udbff]$/.test(text) ? text.slice(0,-1) : text;
+}
 export function assertObservationAccount(account: AccountRow, harness?: string): void {
   const refuse = (reason: string): never => { throw new RpcError("account_limits_observation_refused", "Limits observation refused for this account.", {account: account.id, reason}); };
   if (!OBSERVATION_HARNESSES.has(account.harness)) refuse("unsupported_harness");

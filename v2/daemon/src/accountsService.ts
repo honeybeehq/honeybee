@@ -1,4 +1,4 @@
-import { OBSERVATION_CODECS, observationText } from "./limitsObservation.ts";
+import { OBSERVATION_CODECS, localObservationText } from "./limitsObservation.ts";
 /**
  * AccountsService — the daemon's account plane (spec 08 CORE): the calibrated
  * `auto` selection over the store (candidates → ported selector → near-tie
@@ -2874,8 +2874,8 @@ export class AccountsService {
       return null;
     }
     const observedAt = input.fetchedAt!;
-    const source = ev.quota ? metadata.lastLocal?.source ?? null : observationText(ev.usage?.source);
-    input.plan = observationText(input.plan);
+    const source = ev.quota ? metadata.lastLocal?.source ?? null : localObservationText(ev.usage?.source);
+    input.plan = localObservationText(input.plan);
     const applied = this.store.observeAccountLimits(account.id,input,source,null,()=>{});
     if (!applied) return null;
     if (previous?.readable) this.velocities.set(account.id, this.measureVelocities(previous, input, observedAt));

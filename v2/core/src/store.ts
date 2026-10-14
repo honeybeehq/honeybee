@@ -6547,6 +6547,15 @@ export class CoreStore {
   /** v7 — replace the account's limits snapshot (one row per account). Audited `account_limits.put {limits}`. */
   putAccountLimits(accountId: string, input: PutAccountLimitsInput): AccountLimitsRow {
     return this.tx(() => {
+      const limits = this.writeAccountLimits(accountId,input);
+      const metadata = this.getAccountObservation(accountId);
+      if (limits.unreadableReason !== "unsupported" && (!metadata.lastLocal || limits.fetchedAt > metadata.lastLocal.limits.fetchedAt)) this.putAccountObservation(accountId,{...metadata,lastLocal:{limits,source:null}});
+      return limits;
+    });
+  }
+
+  private writeAccountLimits(accountId: string, input: PutAccountLimitsInput): AccountLimitsRow {
+    return this.tx(() => {
       this.mustGetAccount(accountId);
       const at = input.fetchedAt ?? this.now();
       const w = (x: PutAccountLimitsInput["weekly"]) =>
@@ -6617,7 +6626,7 @@ export class CoreStore {
         this.audit("account_limits.observation", null, {account, kind: "local", observedAtMs: at});
       }
       if (previous && previous.fetchedAt >= at && previous.unreadableReason !== "unsupported") return false;
-      this.putAccountLimits(account, input);
+      this.writeAccountLimits(account, input);
       metadata.provenance = provenance;
       metadata.source = source;
       if (provenance) metadata.highWatermarkMs = Math.max(metadata.highWatermarkMs, at);
@@ -6648,7 +6657,7 @@ export class CoreStore {
       const selected = this.getAccountLimits(account);
       if (!metadata.provenance || selected?.fetchedAt !== expected) return false;
       if (metadata.lastLocal) {
-        this.putAccountLimits(account, this.accountLimitsToInput(metadata.lastLocal.limits));
+        this.writeAccountLimits(account, this.accountLimitsToInput(metadata.lastLocal.limits));
       } else {
         this.stmt("DELETE FROM account_limits WHERE account = ?").run(account);
         this.audit("account_limits.removed", null, {account});
