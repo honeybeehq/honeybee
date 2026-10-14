@@ -1687,10 +1687,7 @@ export class AccountsService {
         if (!create || (error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
         key = randomBytes(32); atomicWriteFileSync(path, key, 0o600);
       }
-      if (key.length !== 32) {
-        if (!create) throw new Error("invalid key");
-        key = randomBytes(32); atomicWriteFileSync(path, key, 0o600);
-      }
+      if (key.length !== 32) throw new Error("invalid key");
       return key;
     } catch { throw new RpcError("account_lease_remove_unavailable", `Credential proof key for ${account} is unavailable; preserve its material and restore the daemon key.`, { account, reason: "fingerprint_key_unavailable" }); }
   }
@@ -1738,9 +1735,15 @@ export class AccountsService {
         for (const copy of copies) {
           if (copy.rel !== codec.primaryFile && !Object.values(codec.mirrors).includes(copy.rel)) continue;
           let document: unknown;
-          try { document = JSON.parse(copy.raw); } catch { return unavailable("invalid_material"); }
+          try { document = JSON.parse(copy.raw); } catch {
+            if (!options.discardNative) return unavailable("invalid_material");
+            native.push(copy); continue;
+          }
           const providerNative = this.providerNativeGrant(account, copy.raw);
-          if (providerNative === null) return unavailable("invalid_material");
+          if (providerNative === null) {
+            if (!options.discardNative) return unavailable("invalid_material");
+            native.push(copy); continue;
+          }
           if (providerNative) { native.push(copy); continue; }
           if (!this.credentialAuthorities.has(account.harness) || this.staticLeaseMaterial(document, account.harness)) {
             if (!proof || !Object.keys(proof.issued).length) { staticUnverified = true; continue; }

@@ -338,3 +338,56 @@ for (const harness of ["codex", "grok"]) test(`lease-only ${harness} API-key mat
     assert.equal((await r.accounts.removeLease(installed.account.id)).disposition, "revoked");
   } finally { r.close(); }
 });
+
+for (const harness of ["claude", "codex", "grok"]) test(`confirmed discard removes unrecognised ${harness} material with one durable authorisation`, async () => {
+  const r = rig(harness);
+  try {
+    await r.accounts.installLease(r.input(1));
+    const unknown = harness === "claude" ? { mcpOAuth: { linear: { refreshToken: randomUUID() } } } : harness === "codex" ? {} : { ...documentFor("grok"), ...{ "https://auth.x.ai::second-client": Object.values(documentFor("grok"))[0] } };
+    for (const root of [r.account.homePath, r.accounts.vaultDirOf(r.account)]) r.put(root, r.primary, JSON.stringify(unknown));
+    const raw = r.hash(r.account.homePath, r.primary), seq = r.store.lastAuditSeq();
+    for (const options of [{}, { checkOnly: true }]) await assert.rejects(r.accounts.removeLease(r.account.id, options), error => error instanceof RpcError && error.code === "account_lease_remove_unavailable" && error.details?.reason === "invalid_material");
+    assert.equal(r.hash(r.account.homePath, r.primary), raw); assert.equal(r.store.lastAuditSeq(), seq);
+    const result = await r.accounts.removeLease(r.account.id, { discardNative: true, confirm: true });
+    assert.equal(result.nativeChain.present, false); assert.equal(result.nativeChain.discarded, true);
+    assert.equal(existsSync(join(r.account.homePath, r.primary)), false);
+    assert.equal(r.store.auditRows().filter(row => row.kind === "account.lease.native_discard_authorised").length, 1);
+    assert.match(result.message, /stays valid until signed out at the provider/);
+    assert.deepEqual(replayAudit(r.store.auditRows()), r.store.dumpState());
+  } finally { r.close(); }
+});
+
+test("corrupt proof key refuses publication without rotating it or other accounts' proofs", async () => {
+  const r = rig("muse");
+  try {
+    await r.accounts.installLease(r.input(1));
+    const path = join(r.accounts.vaultDirOf(r.account), "..", "..", ".lease-material-provenance.key");
+    const proof = r.store.getLeaseMaterialProof(r.account.id);
+    writeFileSync(path, "corrupt-key", { mode: 0o600 });
+    const raw = r.hash(r.account.homePath, r.primary);
+    await assert.rejects(r.accounts.installLease({ ...r.input(2), enrol: undefined }), error => error instanceof RpcError && error.code === "lease_unavailable");
+    assert.ok(readFileSync(path, "utf8") === "corrupt-key", "corrupt key is preserved, never silently rotated");
+    assert.ok(JSON.stringify(r.store.getLeaseMaterialProof(r.account.id)) === JSON.stringify(proof), "issued proof remains unchanged");
+    assert.equal(r.hash(r.account.homePath, r.primary), raw);
+    await assert.rejects(r.accounts.removeLease(r.account.id, { discardNative: true, confirm: true }), error => error instanceof RpcError && error.details?.reason === "fingerprint_key_unavailable");
+    rmSync(path);
+    const recovered = await r.accounts.removeLease(r.account.id, { discardNative: true, confirm: true });
+    assert.equal(recovered.nativeChain.discarded, true);
+    assert.equal(readFileSync(path).length, 32);
+    assert.equal(r.store.auditRows().filter(row => row.kind === "account.lease.native_discard_authorised").length, 1);
+    assert.deepEqual(replayAudit(r.store.auditRows()), r.store.dumpState());
+  } finally { r.close(); }
+});
+
+test("confirmed discard authorises unparseable owned credential bytes without exposing them", async () => {
+  const r = rig();
+  try {
+    await r.accounts.installLease(r.input(1));
+    r.put(r.account.homePath, r.primary, "not-json");
+    await assert.rejects(r.accounts.removeLease(r.account.id), error => error instanceof RpcError && error.details?.reason === "invalid_material");
+    const result = await r.accounts.removeLease(r.account.id, { discardNative: true, confirm: true });
+    assert.equal(result.nativeChain.discarded, true);
+    assert.equal(r.store.auditRows().filter(row => row.kind === "account.lease.native_discard_authorised").length, 1);
+    assert.ok(!JSON.stringify(r.store.auditRows()).includes("not-json"), "unknown credential bytes stay out of audit");
+  } finally { r.close(); }
+});
