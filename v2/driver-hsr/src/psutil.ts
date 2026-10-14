@@ -9,15 +9,27 @@
  * recorded stamp is taken a few ms after the actual fork.
  */
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 
 /** True while the OS still knows the pid (signal 0 probe; EPERM counts as alive). */
 export function pidAlive(pid: number): boolean {
   if (pid <= 0) return false;
   try {
     process.kill(pid, 0);
-    return true;
   } catch (err) {
     return (err as NodeJS.ErrnoException).code === "EPERM";
+  }
+  return !isZombie(pid);
+}
+
+function isZombie(pid: number): boolean {
+  if (process.platform !== "linux") return false;
+  try {
+    const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+    const state = stat.slice(stat.lastIndexOf(")") + 2, stat.lastIndexOf(")") + 3);
+    return state === "Z";
+  } catch {
+    return false;
   }
 }
 
