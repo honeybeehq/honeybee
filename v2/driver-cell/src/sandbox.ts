@@ -123,12 +123,24 @@ export function sandboxWritableDirectory(
   return { path: canonical };
 }
 
-/** Preserve baseline spellings; append validated per-bee grants once each. */
+function existingRealpath(path: string): string | null {
+  try {
+    return realpathSync(path);
+  } catch {
+    return null;
+  }
+}
+
+/** Preserve baseline spellings; append validated per-bee grants once each, skipping any an existing baseline path already covers. */
 export function mergeSandboxWritablePaths(
   baseline: readonly string[],
   beeSpecific: readonly SandboxWritableDirectory[],
 ): string[] {
-  return [...new Set([...baseline, ...beeSpecific.map((directory) => directory.path)])];
+  const covering = baseline.filter(isAbsolute).map(existingRealpath).filter((path): path is string => path !== null);
+  const added = beeSpecific
+    .map((directory) => directory.path)
+    .filter((path) => !covering.some((base) => containsPath(base, path)));
+  return [...new Set([...baseline, ...added])];
 }
 
 const SB_ESCAPE = /(["\\])/g;

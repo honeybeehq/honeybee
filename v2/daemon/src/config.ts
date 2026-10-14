@@ -273,6 +273,11 @@ export interface NodeConfigFile {
   /** Auto-titler. Default on, warm Codex app-server with GPT-6 Luna at no reasoning. */
   naming?: NamingConfig;
   contextPolicy?: ContextPolicyConfig;
+  /**
+   * Per-bee temp space. tmpRoot null turns it off; absent defaults to
+   * ${XDG_CACHE_HOME:-~/.cache}/honeybee/tmp on satellites. The per-bee split
+   * is cleanup, not isolation: ~/.cache is writable by every sandboxed bee.
+   */
   bees?: { tmpRoot?: string | null };
 }
 
@@ -323,6 +328,7 @@ export interface ResolvedNodeConfig {
   naming: ResolvedNamingConfig;
   contextPolicy: ContextPolicyConfig;
   beeTmpRoot?: string | null;
+  beeTmpRootInvalid?: string;
 }
 
 export class ConfigError extends Error {
@@ -413,17 +419,17 @@ function num(raw: Record<string, unknown>, key: string, fallback: number): numbe
   return v;
 }
 
-function beeTmpRootOf(raw: Record<string, unknown>): { beeTmpRoot?: string | null } {
+function beeTmpRootOf(raw: Record<string, unknown>): { beeTmpRoot?: string | null; beeTmpRootInvalid?: string } {
   const bees = raw.bees;
   if (bees === undefined) return {};
   if (bees === null || typeof bees !== "object" || Array.isArray(bees)) {
-    throw new ConfigError("config: bees must be an object");
+    return { beeTmpRoot: null, beeTmpRootInvalid: "config: bees must be an object" };
   }
   const v = (bees as Record<string, unknown>).tmpRoot;
   if (v === undefined) return {};
   if (v === null) return { beeTmpRoot: null };
   if (typeof v !== "string" || !(isAbsolute(v) || v.startsWith("~/"))) {
-    throw new ConfigError("config: bees.tmpRoot must be null, an absolute path, or a ~/ path");
+    return { beeTmpRoot: null, beeTmpRootInvalid: "config: bees.tmpRoot must be null, an absolute path, or a ~/ path" };
   }
   return { beeTmpRoot: v };
 }

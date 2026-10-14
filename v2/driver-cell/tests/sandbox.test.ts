@@ -68,6 +68,28 @@ test("sandbox.bwrap: argv is read-only root + rw cell/harness binds + net (pure,
   assert.ok(joined.endsWith("-- node agent.mjs"));
 });
 
+test("sandbox.merge: a bee grant an existing baseline path already covers is not bound again", () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "hb-v2-merge-")));
+  try {
+    const cache = join(root, "cache");
+    const inside = join(cache, "honeybee", "tmp", "bee-1");
+    const outside = join(root, "elsewhere", "bee-1");
+    mkdirSync(inside, { recursive: true });
+    mkdirSync(outside, { recursive: true });
+    assert.deepEqual(
+      mergeSandboxWritablePaths([cache, join(root, "missing")], [{ path: inside }, { path: outside }]),
+      [cache, join(root, "missing"), outside],
+    );
+    assert.deepEqual(
+      mergeSandboxWritablePaths([join(root, "missing")], [{ path: join(root, "missing", "x") }]),
+      [join(root, "missing"), join(root, "missing", "x")],
+      "a baseline path that does not exist covers nothing",
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("sandbox.account-home: bwrap grants the exact bound home, never its parent or a sibling", () => {
   const root = mkdtempSync(join(tmpdir(), "hb-v2-account-home-"));
   try {

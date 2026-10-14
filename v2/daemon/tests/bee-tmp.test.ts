@@ -1,8 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { realpathSync } from "node:fs";
 import {
   beeTmpDir,
   beeTmpName,
@@ -28,6 +29,21 @@ interface ProbeReport {
   cacheDirectory: string | null;
   cacheEntries: number;
   tmpWritable: boolean;
+  escapeWritable: boolean | null;
+}
+
+function reportsOf(dir: string, beeId: string): ProbeReport[] {
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir)
+    .filter((name) => name.startsWith(`${beeId}.`) && name.endsWith(".json"))
+    .map((name) => ({ name, at: lstatSync(join(dir, name)).mtimeMs }))
+    .sort((a, b) => a.at - b.at)
+    .map(({ name }) => JSON.parse(readFileSync(join(dir, name), "utf8")) as ProbeReport);
+}
+
+function latestReport(dir: string, beeId: string, atLeast = 1): ProbeReport | false {
+  const reports = reportsOf(dir, beeId);
+  return reports.length >= atLeast ? reports[reports.length - 1]! : false;
 }
 
 test("policy: bees.tmpRoot wins, absent defaults by nodeKind, null turns it off", () => {
@@ -39,6 +55,7 @@ test("policy: bees.tmpRoot wins, absent defaults by nodeKind, null turns it off"
     root: "/h/.cache/honeybee/tmp",
     daemonDir: "/h/.cache/honeybee/tmp/daemon",
     compileCache: "/h/.cache/honeybee/node-compile-cache",
+    ownedFrom: { root: "/h/.cache/honeybee", compileCache: "/h/.cache/honeybee" },
   });
   assert.equal(resolveBeeTmpPolicy("satellite", undefined, { XDG_CACHE_HOME: "/x" }, "/h")?.root, "/x/honeybee/tmp");
   assert.equal(resolveBeeTmpPolicy("satellite", undefined, { XDG_CACHE_HOME: "rel" }, "/h")?.root, "/h/.cache/honeybee/tmp");
@@ -48,6 +65,7 @@ test("policy: bees.tmpRoot wins, absent defaults by nodeKind, null turns it off"
     root: "/data/bee-tmp",
     daemonDir: "/data/bee-tmp/daemon",
     compileCache: "/x/honeybee/node-compile-cache",
+    ownedFrom: { root: "/data/bee-tmp", compileCache: "/x/honeybee" },
   });
   assert.equal(resolveBeeTmpPolicy("workstation", "~/t", {}, "/h")?.root, "/h/t");
   assert.equal(describeBeeTmpPolicy(null), "tmp.policy beeTmpRoot=off");
@@ -72,10 +90,16 @@ test("config: bees.tmpRoot is additive and validated", () => {
     assert.equal(loadNodeConfig(rig.dir).beeTmpRoot, "/abs");
     for (const bad of [{ tmpRoot: "rel" }, { tmpRoot: "" }, { tmpRoot: 3 }]) {
       write(bad);
-      assert.throws(() => loadNodeConfig(rig.dir), /bees\.tmpRoot/);
+      const cfg = loadNodeConfig(rig.dir);
+      assert.equal(cfg.beeTmpRoot, null, "an invalid tmpRoot falls back to off");
+      assert.match(cfg.beeTmpRootInvalid ?? "", /bees\.tmpRoot/);
     }
-    write([]);
-    assert.throws(() => loadNodeConfig(rig.dir), /bees must be an object/);
+    for (const bad of [[], "x", null]) {
+      write(bad);
+      const cfg = loadNodeConfig(rig.dir);
+      assert.equal(cfg.beeTmpRoot, null);
+      assert.match(cfg.beeTmpRootInvalid ?? "", /bees must be an object/);
+    }
   } finally {
     rig.cleanup();
   }
@@ -93,7 +117,7 @@ test("names: safe ids map to themselves; unsafe ids and the daemon name hash int
 test("dirs: ensure creates, remove deletes, sweep keeps daemon and kept bees", () => {
   const rig = makeDaemonDir();
   try {
-    const policy = resolveBeeTmpPolicy("satellite", undefined, { XDG_CACHE_HOME: join(rig.dir, "cache") })!;
+    const policy = resolveBeeTmpPolicy("satellite", undefined, { XDG_CACHE_HOME: join(realpathSync(rig.dir), "cache") })!;
     mkdirSync(policy.daemonDir, { recursive: true });
     const a = ensureBeeTmpEnv(policy, "a");
     const b = ensureBeeTmpEnv(policy, "../b");
@@ -132,12 +156,11 @@ async function runProbe(opts: { nodeKind?: "satellite"; bees?: { tmpRoot?: strin
       },
     },
   });
-  const cache = join(rig.dir, "xdg-cache");
+  const cache = join(realpathSync(rig.dir), "xdg-cache");
   const daemon = await startDaemon(rig.dir, { env: { XDG_CACHE_HOME: cache, TMPDIR: opts.inheritedTmp, ...(opts.env ?? {}) } });
   const client = await daemon.client();
   const spawned = await client.request<SpawnResult>("spawn", { name: "tmp-probe", agent: "probe", cwd: rig.dir });
-  const path = join(outDir, `${spawned.beeId}.json`);
-  const report = await waitFor(() => existsSync(path) && JSON.parse(readFileSync(path, "utf8")) as ProbeReport, "probe report", 30_000);
+  const report = await waitFor(() => latestReport(outDir, spawned.beeId), "probe report", 30_000);
   const view = await client.request<ViewResult>("view", { beeId: spawned.beeId, revealEnv: true });
   assert.equal(view.bee?.env.TMPDIR, undefined, "daemon-set tmp env never lands in the stored bee env");
   assert.equal(view.bee?.env.NODE_COMPILE_CACHE, undefined);
@@ -183,7 +206,7 @@ test("satellite daemon: per-bee TMPDIR, shared compile cache, removed on archive
 
 test("bees.tmpRoot turns it on for a node whose nodeKind is unset, and null turns a satellite off", { timeout: 90_000 }, async () => {
   const inherited = makeDaemonDir();
-  const root = join(inherited.dir, "configured-root");
+  const root = join(realpathSync(inherited.dir), "configured-root");
   const on = await runProbe({ bees: { tmpRoot: root }, inheritedTmp: inherited.dir });
   try {
     assert.equal(on.report.TMPDIR, join(root, on.beeId));
@@ -221,7 +244,7 @@ test("workstation daemon: TMPDIR and compile cache are inherited unchanged", { t
 test("a restart that turns the policy on keeps reaching the surviving runner: same generation, mail delivered", { timeout: 120_000 }, async () => {
   const inherited = makeDaemonDir();
   const rig = makeDaemonDir({ stubEnv: { STUB_SURVIVE_STDIN_CLOSE: "1" } });
-  const cache = join(rig.dir, "xdg-cache");
+  const cache = join(realpathSync(rig.dir), "xdg-cache");
   const env = { XDG_CACHE_HOME: cache, TMPDIR: inherited.dir };
   let daemon = await startDaemon(rig.dir, { env });
   let pid = 0;
@@ -262,7 +285,7 @@ test("a restart that turns the policy on keeps reaching the surviving runner: sa
 
 test("boot sweep removes only this store's archived bees' dirs", { timeout: 90_000 }, async () => {
   const rig = makeDaemonDir({ nodeKind: "satellite" });
-  const cache = join(rig.dir, "xdg-cache");
+  const cache = join(realpathSync(rig.dir), "xdg-cache");
   const root = join(cache, "honeybee", "tmp");
   let daemon = await startDaemon(rig.dir, { env: { XDG_CACHE_HOME: cache } });
   try {
@@ -308,7 +331,7 @@ test("satellite sandboxed Cell: the per-bee TMPDIR and compile cache are writabl
     },
   });
   const origin = makeOrigin(rig.dir);
-  const cache = join(rig.dir, "xdg-cache");
+  const cache = join(realpathSync(rig.dir), "xdg-cache");
   const daemon = await startDaemon(rig.dir, { env: { XDG_CACHE_HOME: cache }, platform: process.platform });
   try {
     const client = await daemon.client();
@@ -320,8 +343,7 @@ test("satellite sandboxed Cell: the per-bee TMPDIR and compile cache are writabl
       cell: { originRepo: origin.repo, sandbox: true },
     });
     const early = await client.request<ViewResult>("view", { beeId: spawned.beeId });
-    const path = join(early.bee?.cwd as string, `${spawned.beeId}.json`);
-    const report = await waitFor(() => existsSync(path) && JSON.parse(readFileSync(path, "utf8")) as ProbeReport, "sandboxed probe report", 90_000);
+    const report = await waitFor(() => latestReport(early.bee?.cwd as string, spawned.beeId), "sandboxed probe report", 90_000);
     const beeTmp = join(cache, "honeybee", "tmp", spawned.beeId);
     assert.equal(report.TMPDIR, beeTmp);
     assert.equal(report.tmpWritable, true, "the per-bee TMPDIR is writable inside the sandbox");
@@ -333,3 +355,156 @@ test("satellite sandboxed Cell: the per-bee TMPDIR and compile cache are writabl
     rig.cleanup();
   }
 });
+
+test("symlinks: a planted link at any owned level is replaced by a real dir, never granted or followed", () => {
+  const rig = makeDaemonDir();
+  try {
+    const cache = join(realpathSync(rig.dir), "cache");
+    const outside = join(rig.dir, "projects-x");
+    mkdirSync(join(outside, "keep"), { recursive: true });
+    writeFileSync(join(outside, "keep", "file"), "precious");
+    const policy = resolveBeeTmpPolicy("satellite", undefined, { XDG_CACHE_HOME: cache })!;
+    const first = ensureBeeTmpEnv(policy, "bee-a");
+    rmSync(first.TMPDIR, { recursive: true });
+    symlinkSync(outside, first.TMPDIR);
+    const again = ensureBeeTmpEnv(policy, "bee-a");
+    assert.equal(again.TMPDIR, realpathOf(join(cache, "honeybee", "tmp", "bee-a")));
+    assert.equal(lstatSync(again.TMPDIR).isSymbolicLink(), false);
+    assert.equal(lstatSync(again.TMPDIR).isDirectory(), true);
+    assert.equal(readFileSync(join(outside, "keep", "file"), "utf8"), "precious");
+
+    rmSync(policy.root, { recursive: true });
+    symlinkSync(outside, policy.root);
+    assert.equal(removeBeeTmpDir(policy, "keep"), false, "removal never follows a redirected root");
+    assert.equal(readFileSync(join(outside, "keep", "file"), "utf8"), "precious");
+    const viaRoot = ensureBeeTmpEnv(policy, "bee-b");
+    assert.equal(lstatSync(policy.root).isSymbolicLink(), false, "a symlinked root is replaced");
+    assert.ok(viaRoot.TMPDIR.startsWith(`${realpathOf(policy.root)}/`));
+    assert.equal(existsSync(join(outside, "bee-b")), false);
+
+    rmSync(policy.compileCache, { recursive: true });
+    symlinkSync(outside, policy.compileCache);
+    const cacheAgain = ensureBeeTmpEnv(policy, "bee-c");
+    assert.equal(lstatSync(policy.compileCache).isSymbolicLink(), false, "a symlinked compile cache is replaced");
+    assert.equal(cacheAgain.NODE_COMPILE_CACHE, realpathOf(policy.compileCache));
+
+    rmSync(join(cache, "honeybee"), { recursive: true });
+    symlinkSync(outside, join(cache, "honeybee"));
+    const viaParent = ensureBeeTmpEnv(policy, "bee-d");
+    assert.equal(lstatSync(join(cache, "honeybee")).isSymbolicLink(), false, "a symlinked honeybee dir is replaced");
+    assert.ok(viaParent.TMPDIR.startsWith(`${realpathOf(cache)}/honeybee/tmp/`));
+    assert.equal(existsSync(join(outside, "tmp")), false);
+
+    writeFileSync(join(policy.root, "bee-e"), "not a dir");
+    assert.equal(lstatSync(ensureBeeTmpEnv(policy, "bee-e").TMPDIR).isDirectory(), true, "a non-directory is replaced");
+    assert.equal(readFileSync(join(outside, "keep", "file"), "utf8"), "precious");
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("Queen's probe: a sandboxed bee that swaps its tmp dir for a symlink gets no write access through it on the next generation", { timeout: 180_000, skip: process.platform !== "linux" && process.platform !== "darwin" }, async () => {
+  const rig = makeDaemonDir({
+    nodeKind: "satellite",
+    agents: {
+      probe: {
+        command: process.execPath,
+        args: ["--import", PROBE, AGENT_PATH],
+        adapter: "stub",
+        env: { STUB_TURN_MS: "10", GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_SYSTEM: "/dev/null" },
+      },
+    },
+  });
+  const origin = makeOrigin(rig.dir);
+  const cache = join(realpathSync(rig.dir), "xdg-cache");
+  mkdirSync(join(process.cwd(), ".cache"), { recursive: true });
+  const outside = mkdtempSync(join(process.cwd(), ".cache", "escape-target-"));
+  const daemon = await startDaemon(rig.dir, { env: { XDG_CACHE_HOME: cache }, platform: process.platform });
+  try {
+    const client = await daemon.client();
+    const spawned = await client.request<SpawnResult>("spawn", {
+      name: "escaper",
+      agent: "probe",
+      cwd: "/ignored",
+      substrate: "cell",
+      cell: { originRepo: origin.repo, sandbox: true },
+      env: { PROBE_ESCAPE_DIR: outside },
+    });
+    const beeId = spawned.beeId;
+    const cwd = (await client.request<ViewResult>("view", { beeId })).bee?.cwd as string;
+    const first = await waitFor(() => latestReport(cwd, beeId), "first generation report", 90_000);
+    assert.equal(first.escapeWritable, false, "the outside dir is read-only to the sandbox");
+    await waitFor(async () => (await client.request<ViewResult>("view", { beeId })).view.runtimeState === "idle", "idle", 60_000);
+    await client.request("stop", { beeId });
+    await waitFor(async () => (await client.request<ViewResult>("view", { beeId })).view.runtimeState === "stopped", "stopped", 60_000);
+
+    const beeTmp = join(cache, "honeybee", "tmp", beeId);
+    rmSync(beeTmp, { recursive: true });
+    symlinkSync(outside, beeTmp);
+
+    await client.request<SendRpcResult>("send", { beeId, body: "wake" });
+    const second = await waitFor(() => latestReport(cwd, beeId, 2), "second generation report", 90_000);
+    assert.equal(second.escapeWritable, false, "no write access to the symlink target on the next generation");
+    assert.equal(existsSync(join(outside, "probe-write")), false);
+    assert.deepEqual(readdirSync(outside), []);
+    assert.equal(second.tmpWritable, true);
+    assert.equal(lstatSync(beeTmp).isSymbolicLink(), false, "the planted symlink was replaced by a real dir");
+    assert.match(readFileSync(join(rig.dir, "hived.log"), "utf8"), new RegExp(`tmp\\.replaced bee=${beeId} path=\\S+ was=symlink`));
+    client.close();
+  } finally {
+    await daemon.stop();
+    rig.cleanup();
+    rmSync(outside, { recursive: true, force: true });
+  }
+});
+
+test("an invalid bees setting boots with the policy off and logs why; a template TMPDIR override is logged once", { timeout: 90_000 }, async () => {
+  const inherited = makeDaemonDir();
+  const bad = await runProbe({ nodeKind: "satellite", bees: { tmpRoot: "relative/root" } as { tmpRoot: string }, inheritedTmp: inherited.dir });
+  try {
+    const log = readFileSync(join(bad.daemon.dir, "hived.log"), "utf8");
+    assert.match(log, /tmp\.policy beeTmpRoot=off/);
+    assert.match(log, /tmp\.policy_invalid reason=.*bees\.tmpRoot must be/);
+    assert.equal(bad.report.TMPDIR, inherited.dir);
+  } finally {
+    await bad.cleanup();
+  }
+  const outDir = join(inherited.dir, "override-out");
+  mkdirSync(outDir, { recursive: true });
+  const rig = makeDaemonDir({
+    nodeKind: "satellite",
+    agents: {
+      probe: {
+        command: process.execPath,
+        args: ["--import", PROBE, AGENT_PATH],
+        adapter: "stub",
+        env: { STUB_TURN_MS: "10", PROBE_OUT_DIR: outDir, TMPDIR: "/template/tmp" },
+      },
+    },
+  });
+  const cache = join(realpathSync(rig.dir), "xdg-cache");
+  const daemon = await startDaemon(rig.dir, { env: { XDG_CACHE_HOME: cache } });
+  try {
+    const client = await daemon.client();
+    const { beeId } = await client.request<SpawnResult>("spawn", { name: "overridden", agent: "probe", cwd: rig.dir });
+    const first = await waitFor(() => latestReport(outDir, beeId), "override report", 30_000);
+    assert.equal(first.TMPDIR, join(cache, "honeybee", "tmp", beeId));
+    await waitFor(async () => (await client.request<ViewResult>("view", { beeId })).view.runtimeState === "idle", "idle", 30_000);
+    await client.request("stop", { beeId });
+    await waitFor(async () => (await client.request<ViewResult>("view", { beeId })).view.runtimeState === "stopped", "stopped", 30_000);
+    await client.request<SendRpcResult>("send", { beeId, body: "again" });
+    await waitFor(async () => (await client.request<ViewResult>("view", { beeId })).view.generation === 2, "second generation", 30_000);
+    const lines = readFileSync(join(rig.dir, "hived.log"), "utf8").split("\n").filter((line) => line.includes("tmp.env_overridden"));
+    assert.equal(lines.length, 1, "logged once per bee");
+    assert.match(lines[0]!, new RegExp(`bee=${beeId} keys=TMPDIR by=bees\\.tmpRoot`));
+    client.close();
+  } finally {
+    await daemon.stop();
+    rig.cleanup();
+    inherited.cleanup();
+  }
+});
+
+function realpathOf(path: string): string {
+  return realpathSync(path);
+}
