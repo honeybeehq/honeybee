@@ -98,8 +98,8 @@ export interface CellRetentionDeps {
   statfs?: (path: string) => { totalBytes: number; freeBytes: number };
   /** Append an informational retention audit row. */
   audit?: (kind: "cell.retention.pass" | "cell.pressure.floor_unmet", payload: Record<string, unknown>) => void;
-  /** The newest recorded pass, to restore `lastPass` after a restart. */
-  lastRecordedPass?: () => Record<string, unknown> | null;
+  /** The newest recorded pass (optionally of one kind), to restore `lastPass` and the floor-unmet episode after a restart. */
+  lastRecordedPass?: (kind?: CellGcPassKind) => Record<string, unknown> | null;
   /** Free-space check cadence (default 60 s). */
   diskCheckMs?: number;
   /** After a pass ends floor_unmet, wait this long before the next pressure pass (default 30 min). */
@@ -260,13 +260,15 @@ export class CellRetentionService {
     this.deps = deps;
     this.bootedAt = deps.now();
     let recorded: Record<string, unknown> | null = null;
+    let pressure: Record<string, unknown> | null = null;
     try {
       recorded = deps.lastRecordedPass?.() ?? null;
+      pressure = deps.lastRecordedPass?.("pressure") ?? null;
     } catch (err) {
       deps.log(`cell.retention.last_pass_unreadable ${err instanceof Error ? err.message : String(err)}`);
     }
     this.lastPass = summaryFrom(recorded);
-    this.floorUnmet = this.lastPass?.kind === "pressure" && this.lastPass.outcome === "floor_unmet";
+    this.floorUnmet = summaryFrom(pressure)?.outcome === "floor_unmet";
   }
 
   get policy(): ResolvedCellRetention {
@@ -305,6 +307,7 @@ export class CellRetentionService {
     const root = this.diskPath();
     try {
       const { totalBytes, freeBytes } = (this.deps.statfs ?? defaultStatfs)(root);
+      if (!(totalBytes > 0) || !(freeBytes >= 0)) throw new Error(`statfs reported total=${totalBytes} free=${freeBytes}`);
       const policy = this.deps.policy;
       const reading: DiskReading = { root, totalBytes, freeBytes, ...pressureThresholds(totalBytes, policy.minFreePercent, policy.minFreeBytes), at: this.deps.now() };
       this.lastDisk = reading;
@@ -346,7 +349,16 @@ export class CellRetentionService {
     this.deps.log(`cell.pressure.below_floor free=${disk.freeBytes} floor=${disk.floorBytes} target=${disk.targetBytes} total=${disk.totalBytes}`);
     this.passInFlight = withoutRpcCaller(() => this.pressurePass(disk))
       .catch((err) => {
-        if (!this.stopping) this.deps.log(`cell.retention.error ${err instanceof Error ? err.stack ?? err.message : String(err)}`);
+        if (!this.stopping) {
+          this.deps.log(`cell.retention.error ${err instanceof Error ? err.stack ?? err.message : String(err)}`);
+          this.unmetAt = this.deps.now();
+          this.unmetFree = disk.freeBytes;
+          this.recordPass({
+            kind: "pressure", startedAt: now, endedAt: this.deps.now(), outcome: "failed", evicted: 0, freedBytes: null,
+            freeBefore: disk.freeBytes, freeAfter: null, floorBytes: disk.floorBytes, targetBytes: disk.targetBytes,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
         throw err;
       })
       .finally(() => {

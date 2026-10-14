@@ -2104,11 +2104,11 @@ export class CoreStore {
     this.tx(() => this.audit(kind, null, payload));
   }
 
-  /** The newest `cell.retention.pass` payload within the last `scanRows` audit rows (a bounded backward scan). */
-  latestCellRetentionPass(scanRows = 500_000): Record<string, unknown> | null {
+  /** The newest `cell.retention.pass` payload (of `passKind`, when given) within the last `scanRows` audit rows (a bounded backward scan). */
+  latestCellRetentionPass(passKind: string | null = null, scanRows = 500_000): Record<string, unknown> | null {
     const row = this.stmt(
-      "SELECT payload FROM audit WHERE kind = 'cell.retention.pass' AND seq > (SELECT COALESCE(MAX(seq), 0) FROM audit) - ? ORDER BY seq DESC LIMIT 1",
-    ).get(scanRows) as { payload: string } | undefined;
+      "SELECT payload FROM audit WHERE kind = 'cell.retention.pass' AND seq > (SELECT COALESCE(MAX(seq), 0) FROM audit) - ? AND (? IS NULL OR json_extract(payload, '$.kind') = ?) ORDER BY seq DESC LIMIT 1",
+    ).get(scanRows, passKind, passKind) as { payload: string } | undefined;
     if (!row) return null;
     try {
       return JSON.parse(row.payload) as Record<string, unknown>;

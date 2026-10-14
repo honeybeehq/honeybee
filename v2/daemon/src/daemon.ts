@@ -911,7 +911,7 @@ export class HiveDaemon {
       ...(this.deps.retentionStatfs ? { statfs: this.deps.retentionStatfs } : {}),
       dataDir: this.cfg.dataDir,
       audit: (kind, payload) => this.mustStore().recordCellRetentionEvent(kind, payload),
-      lastRecordedPass: () => this.mustStore().latestCellRetentionPass(),
+      lastRecordedPass: (kind) => this.mustStore().latestCellRetentionPass(kind ?? null),
     });
     for (const warning of this.cfg.cellRetention.warnings) this.log(`config.retention.invalid ${warning}`);
     this.core = new DaemonCore({

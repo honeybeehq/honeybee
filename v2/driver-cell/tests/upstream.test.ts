@@ -112,6 +112,10 @@ test("upstream.fallbacks: no upstream URL is unmirrored; a failing fetch keeps t
     renameSync(`${upstream}.away`, upstream);
     assert.equal(failed.status, "failed");
     assert.equal(failed.ref?.sha, good.ref!.sha, "the last good ref still counts");
+    const backedOff = refreshUpstreamMirror(rig.origin.repo, upstreamRoot, { maxAgeMs: 0, timeoutMs: 30_000 });
+    assert.equal(backedOff.status, "failed");
+    assert.match(backedOff.status === "failed" ? backedOff.error : "", /not retried yet/, "a failed fetch is not retried at once");
+    assert.equal(backedOff.ref?.sha, good.ref!.sha);
 
     g(rig.origin.repo, ["remote", "remove", "origin"]);
     const none = refreshUpstreamMirror(rig.origin.repo, upstreamRoot, { maxAgeMs: 0, timeoutMs: 30_000 });

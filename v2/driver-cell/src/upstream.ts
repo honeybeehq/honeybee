@@ -15,7 +15,9 @@ import { join } from "node:path";
 import { tryGit } from "./git.ts";
 
 export const UPSTREAM_REF = "refs/upstream/head";
+const MIN_FAILURE_BACKOFF_MS = 5 * 60_000;
 const FETCHED_AT_FILE = "honeybee-fetched-at";
+const FAILED_AT_FILE = "honeybee-fetch-failed-at";
 
 export interface UpstreamRef {
   objectsDir: string;
@@ -52,12 +54,16 @@ function mirrorRef(mirrorDir: string): UpstreamRef | null {
   return res.status === 0 ? { objectsDir: join(mirrorDir, "objects"), sha: res.stdout.trim() } : null;
 }
 
-function fetchedAt(mirrorDir: string): number | null {
+function mtimeOf(path: string): number | null {
   try {
-    return statSync(join(mirrorDir, FETCHED_AT_FILE)).mtimeMs;
+    return statSync(path).mtimeMs;
   } catch {
     return null;
   }
+}
+
+function fetchedAt(mirrorDir: string): number | null {
+  return mtimeOf(join(mirrorDir, FETCHED_AT_FILE));
 }
 
 function ensureMirror(mirrorDir: string, url: string, originObjects: string): void {
@@ -108,6 +114,10 @@ export function refreshUpstreamMirror(
   const last = fetchedAt(mirrorDir);
   const existing = mirrorRef(mirrorDir);
   if (existing && last != null && now() - last < opts.maxAgeMs) return { status: "fresh", url, ref: existing };
+  const failedAt = mtimeOf(join(mirrorDir, FAILED_AT_FILE));
+  if (failedAt != null && (last == null || failedAt > last) && now() - failedAt < Math.max(opts.maxAgeMs, MIN_FAILURE_BACKOFF_MS)) {
+    return { status: "failed", url, ref: existing, error: `previous fetch failed at ${new Date(failedAt).toISOString()}; not retried yet` };
+  }
   try {
     const originObjects = originObjectsDir(originRepo);
     if (originObjects == null) throw new Error("origin object directory unresolvable");
@@ -128,6 +138,9 @@ export function refreshUpstreamMirror(
     writeFileSync(join(mirrorDir, FETCHED_AT_FILE), `${new Date(now()).toISOString()}\n`);
     return { status: "fetched", url, ref };
   } catch (err) {
+    try {
+      if (existsSync(mirrorDir)) writeFileSync(join(mirrorDir, FAILED_AT_FILE), `${new Date(now()).toISOString()}\n`);
+    } catch {}
     return { status: "failed", url, ref: existing, error: err instanceof Error ? err.message : String(err) };
   }
 }
