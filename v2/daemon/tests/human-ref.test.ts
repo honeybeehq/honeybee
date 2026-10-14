@@ -6,6 +6,7 @@ import { makeDaemonDir, startDaemon, waitFor, type DaemonHandle } from "./helper
 import type { AuditRow } from "../../core/src/types.ts";
 import type { HumanRefEnrollResult, HumanRefReceipt, HumanRefStatusResult, SnapshotResult, SpawnResult, WatchFrame } from "../src/protocol.ts";
 import { resolveBeeIn, runV2Cli } from "../../cli/src/main.ts";
+import { PeerCredentials } from "../src/peerCredentials.ts";
 
 test("human-ref two-daemon smoke: serial reserve/enroll, colliding aliases, deltas, CLI, offline issuance and restart", async () => {
   const a = makeDaemonDir(), b = makeDaemonDir();
@@ -43,7 +44,12 @@ test("human-ref two-daemon smoke: serial reserve/enroll, colliding aliases, delt
     assert.equal(await runV2Cli(["human-ref", "enroll", receiptPath, "--data-dir", b.dir], io), 0, err.join("\n"));
     assert.equal((await bc.request<HumanRefEnrollResult>("humanRef.enroll", { receipt: br })).applied, false);
     await waitFor(() => events.find((e) => e.kind === "bee.human_ref"), "reference delta");
-    assert.deepEqual(events.find((e) => e.kind === "bee.human_ref")?.payload, { beeId: second.beeId, human_ref: `${second.handle}.${br.namespace}`, issuing_namespace: br.namespace, rpcCaller: {transport: "local_unix", ingress: "local_unix", uid: process.geteuid!(), pid: process.pid, verb: "humanRef.enroll"} });
+    const peerBridge = new PeerCredentials().status;
+    assert.ok(peerBridge.state === "ready" || peerBridge.reason === "artifact_missing", `peer credential bridge is ${peerBridge.state}: ${peerBridge.reason}`);
+    const rpcCaller = peerBridge.state === "ready"
+      ? { rpcCaller: {transport: "local_unix", ingress: "local_unix", uid: process.geteuid!(), pid: process.pid, verb: "humanRef.enroll"} }
+      : {};
+    assert.deepEqual(events.find((e) => e.kind === "bee.human_ref")?.payload, { beeId: second.beeId, human_ref: `${second.handle}.${br.namespace}`, issuing_namespace: br.namespace, ...rpcCaller });
     await assert.rejects(bc.request("humanRef.enroll", { receipt: { ...br, namespace: "tampered" } }), /invalid allocation receipt/);
     const asnap = await ac.request<SnapshotResult>("snapshot"), bsnap = await bc.request<SnapshotResult>("snapshot");
     const abee = asnap.views.find(v => v.bee?.id === first.beeId)!.bee!;
