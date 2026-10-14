@@ -314,8 +314,9 @@ test("config.naming: a hem apiKeyRef replaces the plaintext key and is reported 
     const back = patchNamingConfig(path, dir, { apiKey: "sk-test-write-only" });
     assert.equal(back.apiKeyRef, undefined);
     assert.throws(() => patchNamingConfig(path, dir, { apiKey: "sk-x", apiKeyRef: "global/x" }), /mutually exclusive/);
-    assert.throws(() => patchNamingConfig(path, dir, { apiKey: "", apiKeyRef: "global/x --token y" }), /apiKeyRef must be a hem secret ref/);
-    assert.throws(() => patchNamingConfig(path, dir, { apiKey: "", apiKeyRef: "-global/x" }), /apiKeyRef must be a hem secret ref/);
+    for (const bad of ["global/hive-naming-x --token y", "-global/hive-naming-x", "global/openai-prod", "project/p/hive-naming-x", "global/hive-naming-"]) {
+      assert.throws(() => patchNamingConfig(path, dir, { apiKey: "", apiKeyRef: bad }), /apiKeyRef must be a hem secret ref "global\/hive-naming-<name>"/);
+    }
     assert.throws(() => patchNamingConfig(path, dir, { apiKey: "" }), /apiKey or naming\.apiKeyRef is required/);
   });
 });

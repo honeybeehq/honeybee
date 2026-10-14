@@ -7,7 +7,7 @@ import { test } from "node:test";
 import type { ResolvedNamingConfig } from "../src/config.ts";
 import type { RecordNamingUsageInput } from "../../core/src/index.ts";
 import { openAiNamingRates, TitleGeneratorService } from "../src/namingService.ts";
-import { HemSecretResolver } from "../src/hemSecret.ts";
+import { HemSecretResolver, type HemGetOutput } from "../src/hemSecret.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FAKE_CODEX = join(HERE, "fixtures", "fake-naming-codex.mjs");
@@ -296,45 +296,87 @@ test("naming service restarts the warm app-server after an unexpected exit", asy
 });
 
 test("openai-api naming resolves apiKeyRef through hem lazily, caches it, and never leaks it in errors", async () => {
+  const hemKey = "sk-from-hem-0123456789abcdef";
   const hemCalls: string[][] = [];
   let clock = 0;
-  let hemFails = false;
+  let hemReply: HemGetOutput = { ok: true, stdout: `${hemKey}\n`, stderr: "", timedOut: false };
   const hemSecrets = new HemSecretResolver({
     locateHem: () => "/fake/hem",
     now: () => clock,
     cacheTtlMs: 1_000,
+    failureHoldMs: 500,
+    approvalHoldMs: 10_000,
     run: async (command, args) => {
       hemCalls.push([command, ...args]);
-      if (hemFails) throw new Error("secret not found: global/hive-naming-openai");
-      return "sk-from-hem\n";
+      return hemReply;
     },
   });
   const authorizations: string[] = [];
+  let openAiStatus = 200;
   const service = new TitleGeneratorService({
     hemSecrets,
     fetchImpl: async (_input, init) => {
       authorizations.push(String((init?.headers as Record<string, string>).authorization));
+      if (openAiStatus === 401) {
+        return new Response(JSON.stringify({ error: { message: "Incorrect API key provided: sk-from***cdef" } }), {
+          status: 401,
+          headers: { "content-type": "application/json" },
+        });
+      }
       return new Response(JSON.stringify({
         output: [{ type: "message", content: [{ type: "output_text", text: "Hem Keyed Title" }] }],
       }), { status: 200, headers: { "content-type": "application/json" } });
     },
   });
   const refConfig = config({ backend: "openai-api", apiKeyRef: "global/hive-naming-openai" });
+  const name = () => service.generate({ beeId: "bee-hem", userMessages: ["Name it"] }, refConfig);
+  const rejectsWith = (pattern: RegExp) =>
+    assert.rejects(name(), (error: Error) => pattern.test(error.message) && !error.message.includes("sk-from"));
   try {
-    assert.equal(await service.generate({ beeId: "bee-hem", userMessages: ["Name it"] }, refConfig), "Hem Keyed Title");
-    assert.equal(await service.generate({ beeId: "bee-hem", userMessages: ["Name it"] }, refConfig), "Hem Keyed Title");
+    assert.equal(await name(), "Hem Keyed Title");
+    assert.equal(await name(), "Hem Keyed Title");
     assert.deepEqual(hemCalls, [["/fake/hem", "get", "global/hive-naming-openai", "api_key"]]);
-    assert.deepEqual(authorizations, ["Bearer sk-from-hem", "Bearer sk-from-hem"]);
-    clock = 2_000;
-    hemFails = true;
-    await assert.rejects(
-      service.generate({ beeId: "bee-hem", userMessages: ["Name it"] }, refConfig),
-      (error: Error) =>
-        /requires a configured API key: hem ref "global\/hive-naming-openai" could not be read/.test(error.message) &&
-        !error.message.includes("sk-from-hem"),
-    );
-    assert.equal(authorizations.length, 2);
+    assert.deepEqual(authorizations, [`Bearer ${hemKey}`, `Bearer ${hemKey}`]);
+
+    openAiStatus = 401;
+    await rejectsWith(/^OpenAI API naming failed \(401\): the API key was rejected$/);
+    openAiStatus = 200;
+    assert.equal(await name(), "Hem Keyed Title");
+    assert.equal(hemCalls.length, 2, "a rejected key is re-read from hem");
+
+    for (const stdout of ["[\"sk-from-hem-0123456789abcdef\"]\n", " sk-from-hem-0123456789abcdef\n", "{\"pending\":1}\n", "short\n"]) {
+      clock += 2_000;
+      hemReply = { ok: true, stdout, stderr: "", timedOut: false };
+      await rejectsWith(/hem ref "global\/hive-naming-openai" did not return a plain secret value/);
+    }
+
+    clock += 2_000;
+    hemReply = { ok: true, stdout: "status: PendingApproval, pending_request_id: apr_1\n", stderr: "", timedOut: false };
+    await rejectsWith(/waiting for approval/);
+    const callsWhilePending = hemCalls.length;
+    clock += 5_000;
+    await rejectsWith(/waiting for approval/);
+    assert.equal(hemCalls.length, callsWhilePending, "a pending approval is not re-asked");
+
+    clock += 10_000;
+    hemReply = { ok: false, stdout: "", stderr: 'status: NotFound, message: "secret not found: global/hive-naming-openai"', timedOut: false };
+    await rejectsWith(/requires a configured API key: hem ref "global\/hive-naming-openai" could not be read: secret not found/);
   } finally {
     service.close();
   }
+});
+
+test("hem resolver refuses refs outside the naming allowlist without running hem", async () => {
+  let ran = 0;
+  const hemSecrets = new HemSecretResolver({
+    locateHem: () => "/fake/hem",
+    run: async () => {
+      ran += 1;
+      return { ok: true, stdout: "sk-should-never-be-read-000\n", stderr: "", timedOut: false };
+    },
+  });
+  for (const ref of ["global/openai-prod", "project/x/hive-naming-a", "global/hive-naming-a --token y", "-global/hive-naming-a"]) {
+    await assert.rejects(hemSecrets.resolve(ref), /not an allowed naming secret reference/);
+  }
+  assert.equal(ran, 0);
 });

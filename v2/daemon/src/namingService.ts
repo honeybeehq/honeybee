@@ -137,6 +137,11 @@ function asObject(value: unknown): JsonObject | null {
     : null;
 }
 
+function openAiFailureReason(api: OpenAiRunResult): string {
+  if (api.status === 401 || api.status === 403) return "the API key was rejected";
+  return errorMessage(api.body.error, api.statusText).replace(/\b(sk|rk|sess)-[^\s"',]+/g, "$1-[redacted]");
+}
+
 function errorMessage(value: unknown, fallback: string): string {
   const object = asObject(value);
   const message = typeof object?.message === "string" ? object.message : fallback;
@@ -448,12 +453,8 @@ export class TitleGeneratorService {
         const prompt = buildTitleContentPrompt(context);
         if (config.backend === "openai-api") {
           api = await this.runOpenAi(prompt, config);
-          if (api.status === 401 && config.apiKeyRef) this.hemSecrets.forget(config.apiKeyRef);
-          if (!api.ok) {
-            throw new Error(
-              `OpenAI API naming failed (${api.status}): ${errorMessage(api.body.error, api.statusText)}`,
-            );
-          }
+          if ((api.status === 401 || api.status === 403) && config.apiKeyRef) this.hemSecrets.forget(config.apiKeyRef);
+          if (!api.ok) throw new Error(`OpenAI API naming failed (${api.status}): ${openAiFailureReason(api)}`);
           raw = api.text;
         } else {
           raw = await this.codex.generate(prompt, config);

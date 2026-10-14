@@ -11,7 +11,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { DEFAULT_TRIM_PATTERNS } from "../../driver-cell/src/retention.ts";
 import { contextPolicyConfigOf, ContextPolicyError, type ContextPolicyConfig } from "./contextPolicy.ts";
-import { parseHemSecretRef } from "./hemSecret.ts";
+import { NAMING_HEM_SECRET_PREFIX, parseNamingHemSecretRef } from "./hemSecret.ts";
 
 /** How to spawn one agent CLI (keyed by the bee's `agent` field). */
 export interface AgentSpecConfig {
@@ -66,7 +66,7 @@ export interface NamingConfig {
   effort?: NamingEffort;
   /** OpenAI Responses API credential. Write-only over RPC; never returned publicly. */
   apiKey?: string;
-  /** Hem secret ref for the OpenAI key, `<ref> [field]` as in `hem get`; field defaults to api_key. */
+  /** Hem secret ref for the OpenAI key, `global/hive-naming-<name> [field]` as in `hem get`; field defaults to api_key. */
   apiKeyRef?: string;
   /** Custom generator command (prompt on stdin, title on stdout). Overrides tool/model. */
   command?: string;
@@ -643,8 +643,8 @@ export function namingOf(raw: Record<string, unknown>, dataDir: string): Resolve
   if (n.apiKey !== undefined && (typeof n.apiKey !== "string" || n.apiKey.length === 0)) {
     throw new ConfigError("config: naming.apiKey must be a non-empty string when given");
   }
-  if (n.apiKeyRef !== undefined && (typeof n.apiKeyRef !== "string" || !parseHemSecretRef(n.apiKeyRef))) {
-    throw new ConfigError('config: naming.apiKeyRef must be a hem secret ref such as "global/<name>" or "global/<name> <field>"');
+  if (n.apiKeyRef !== undefined && (typeof n.apiKeyRef !== "string" || !parseNamingHemSecretRef(n.apiKeyRef))) {
+    throw new ConfigError(`config: naming.apiKeyRef must be a hem secret ref "${NAMING_HEM_SECRET_PREFIX}<name>" with an optional field`);
   }
   if (n.apiKey !== undefined && n.apiKeyRef !== undefined) {
     throw new ConfigError("config: naming.apiKey and naming.apiKeyRef are mutually exclusive");
