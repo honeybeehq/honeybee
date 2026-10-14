@@ -5354,7 +5354,7 @@ export class HiveDaemon {
     const account = this.requireAccount(params);
     const assertRemovalIngress = () => {
       const origin = this.mustStore().getAccount(account.id)?.leasedFrom;
-      if ((origin?.fencesForwarded || origin?.retiredAuthorityInstanceIds?.length) && conn.ingress !== "local_unix") throw new RpcError("account_lease_conflict", "Removing an account with lease fences requires a direct local Unix-socket call.", { account: account.id, reason: "local_required" });
+      if (origin?.fencesForwarded && conn.ingress !== "local_unix") throw new RpcError("account_lease_conflict", "Removing an account with lease fences requires a direct local Unix-socket call.", { account: account.id, reason: "local_required" });
     };
     assertRemovalIngress();
     this.mustAccounts().assertLeaseWriteIdle(account.id);

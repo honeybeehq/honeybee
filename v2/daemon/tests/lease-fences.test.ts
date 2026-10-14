@@ -193,3 +193,16 @@ test("a same-instance generation floor survives an origin change even after a ge
     assert.equal(next.account.leasedFrom?.authorityGenerationFloor, 6);
   } finally { r.close(); }
 });
+
+
+test("a local plain install may preset the issuer before the first forwarded hop only", async () => {
+  const r = rig();
+  try {
+    await r.accounts.installLease(delivery(r, "instance-A", 5));
+    const preset = await r.accounts.installLease(delivery(r, "instance-A", 6, { enrol: undefined, viaNodeId: "preset-issuer" }));
+    assert.equal(preset.account.leasedFrom?.viaNodeId, "preset-issuer");
+    assert.equal(preset.account.leasedFrom?.fencesForwarded, undefined);
+    await r.accounts.installLease(delivery(r, "instance-B", 1, { enrol: undefined, viaNodeId: "preset-issuer", fencesForwarded: false }));
+    await assert.rejects(async () => r.accounts.installLease(delivery(r, "instance-B", 2, { enrol: undefined, viaNodeId: "another-issuer" })), conflict("issuer_conflict"));
+  } finally { r.close(); }
+});

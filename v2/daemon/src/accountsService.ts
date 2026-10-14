@@ -1355,7 +1355,7 @@ export class AccountsService {
       const account = this.store.getAccount(id);
       if (!account) throw new RpcError("account_not_found", "Account not found.");
       const assertLocalRestore = (current: AccountRow) => {
-        if ((current.leasedFrom?.fencesForwarded || current.leasedFrom?.retiredAuthorityInstanceIds?.length) && !localIngress) throw new RpcError("account_lease_conflict", "Restoring native ownership of an account with lease fences requires a direct local Unix-socket call.", { account: id, reason: "local_required" });
+        if (current.leasedFrom?.fencesForwarded && !localIngress) throw new RpcError("account_lease_conflict", "Restoring native ownership of an account with lease fences requires a direct local Unix-socket call.", { account: id, reason: "local_required" });
       };
       assertLocalRestore(account);
       const foreign = this.foreignHomeRefusal(account, "restores a backup into");
@@ -1541,7 +1541,7 @@ export class AccountsService {
         const adopted = account?.source === "local" && !input.enrol;
         const previous = account?.leasedFrom;
         const originChanged = previous && (previous.shareId !== input.shareId || previous.authorityNodeId !== input.authorityNodeId || previous.epoch !== input.epoch);
-        if (originChanged && (previous.fencesForwarded || previous.retiredAuthorityInstanceIds?.length) && !localIngress) throw new RpcError("account_lease_conflict", "Changing the origin of an account with lease fences requires a direct local Unix-socket call.", { account: id, reason: "local_required" });
+        if (originChanged && previous.fencesForwarded && !localIngress) throw new RpcError("account_lease_conflict", "Changing the origin of an account with lease fences requires a direct local Unix-socket call.", { account: id, reason: "local_required" });
         const enrolment = previous?.enrolment ?? (input.enrol && account ? { id: randomUUID(), at: this.now(), liveRuntimeCoveragePending: this.store.beesOnAccount(id).filter(bee => { const runtime = this.store.currentRuntime(bee.id); return runtime !== null && runtime.state !== "stopped"; }).length } : undefined);
         const viaNodeId = input.viaNodeId ?? previous?.viaNodeId;
         const sameOrigin = previous?.shareId === input.shareId && previous.authorityNodeId === input.authorityNodeId;

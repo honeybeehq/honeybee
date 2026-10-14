@@ -66,7 +66,7 @@ test("lease fences RPC: own stored export, authenticated first hop, durable hist
     assert.equal(resetExport.fencesForwarded, false);
     await a.client.request("account.lease.remove", { id: first.account.id });
     const remoteA = await RpcClient.connect(a.daemon.socketPath, 3000, "remote"); clients.push(remoteA);
-    await assert.rejects(remoteA.request("account.remove", { id: first.account.id }), error => error instanceof RpcError && error.details?.reason === "local_required");
+    await remoteA.request("account.remove", { id: first.account.id });
     const marker = await b.client.request<AccountLeaseInstallResult>("account.lease.install", { ...base, id: "claude-marker-only", authorityInstanceId: "instance-marker", generation: 1, fencesForwarded: false }, 60_000);
     assert.equal(marker.account.leasedFrom?.retiredAuthorityInstanceIds, undefined);
     await b.client.request("account.lease.remove", { id: marker.account.id });
@@ -78,6 +78,15 @@ test("lease fences RPC: own stored export, authenticated first hop, durable hist
     const baseline = await remoteB.request<AccountLeaseInstallResult>("account.lease.install", { ...unfenced, authorityNodeId: "another-authority", epoch: 2, authorityInstanceId: "unfenced-B" }, 60_000);
     assert.equal(baseline.account.leasedFrom?.authorityNodeId, "another-authority");
     assert.deepEqual(baseline.account.leasedFrom?.retiredAuthorityInstanceIds, ["unfenced-A"]);
+    const second = await remoteB.request<AccountLeaseInstallResult>("account.lease.install", { ...unfenced, authorityNodeId: "another-authority", epoch: 2, authorityInstanceId: "unfenced-C" }, 60_000);
+    assert.deepEqual(second.account.leasedFrom?.retiredAuthorityInstanceIds, ["unfenced-A", "unfenced-B"]);
+    const renewed = await remoteB.request<AccountLeaseInstallResult>("account.lease.install", { ...unfenced, authorityNodeId: "another-authority", epoch: 3, authorityInstanceId: "unfenced-C", generation: 2 }, 60_000);
+    assert.deepEqual(renewed.account.leasedFrom?.retiredAuthorityInstanceIds, ["unfenced-A", "unfenced-B"]);
+    const releasing = await remoteB.request<AccountLeaseInstallResult>("account.lease.install", { ...unfenced, authorityNodeId: "third-authority", epoch: 4, authorityInstanceId: "unfenced-D" }, 60_000);
+    assert.deepEqual(releasing.account.leasedFrom?.retiredAuthorityInstanceIds, ["unfenced-A", "unfenced-B", "unfenced-C"]);
+    assert.equal(releasing.account.leasedFrom?.fencesForwarded, undefined);
+    await remoteB.request("account.lease.remove", { id: releasing.account.id });
+    await remoteB.request("account.remove", { id: releasing.account.id });
     for (const fenced of [true, false]) {
       const added = await b.client.request<AccountAddResult>("account.add", { id: `claude-native-restore-${fenced}`, harness: "claude", label: `native-restore-${fenced}` });
       const nativeRefresh = randomUUID();
@@ -85,6 +94,11 @@ test("lease fences RPC: own stored export, authenticated first hop, durable hist
       for (const dir of [added.account.homePath, join(roots[1]!.dir, "vault", "claude", added.account.id)]) { mkdirSync(dir, { recursive: true }); writeFileSync(join(dir, ".credentials.json"), native); }
       const adopted = await b.client.request<AccountLeaseInstallResult>("account.lease.install", { ...base, id: added.account.id, label: added.account.label, adopt: "explicit", authorityInstanceId: `native-instance-${fenced}`, generation: 1, ...(fenced ? { fencesForwarded: false } : {}) }, 60_000);
       assert.equal(adopted.account.leasedFrom?.fencesForwarded === true, fenced);
+      if (!fenced) {
+        const rotated = await remoteB.request<AccountLeaseInstallResult>("account.lease.install", { ...base, id: added.account.id, label: added.account.label, adopt: true, viaNodeId: undefined, authorityInstanceId: "native-unforwarded-next", generation: 1 }, 60_000);
+        assert.equal(rotated.account.id, adopted.account.id);
+        assert.deepEqual(rotated.account.leasedFrom?.retiredAuthorityInstanceIds, ["native-instance-false"]);
+      }
       await b.client.request("account.lease.remove", { id: adopted.account.id });
       if (fenced) await assert.rejects(remoteB.request("account.credentials.restoreNative", { id: adopted.account.id, localIngress: true }), error => error instanceof RpcError && error.details?.reason === "local_required");
       const restored = await (fenced ? b.client : remoteB).request<AccountNativeBackupRestoreResult>("account.credentials.restoreNative", { id: adopted.account.id }, 60_000);
