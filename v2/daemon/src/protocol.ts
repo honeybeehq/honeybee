@@ -1165,6 +1165,7 @@ export interface NamingConfigView {
   apiKeyConfigured: boolean;
   apiKeyRef?: string;
   command?: string;
+  disabledReason?: string;
 }
 
 export interface ConfigGetResult {

@@ -83,6 +83,8 @@ export interface ResolvedNamingConfig {
   command?: string;
   /** Dedicated cwd so title-gen sessions never pollute a bee's transcript folder. */
   generatorCwd: string;
+  /** Set when config.json's naming block is invalid; auto-titling is then off. */
+  disabledReason?: string;
 }
 
 export const NAMING_DEFAULTS = {
@@ -671,6 +673,15 @@ export function namingOf(raw: Record<string, unknown>, dataDir: string): Resolve
   };
 }
 
+export function namingOrDisabled(raw: Record<string, unknown>, dataDir: string): ResolvedNamingConfig {
+  try {
+    return namingOf(raw, dataDir);
+  } catch (err) {
+    if (!(err instanceof ConfigError)) throw err;
+    return { ...namingOf({}, dataDir), auto: false, disabledReason: err.message };
+  }
+}
+
 export function publicNamingConfig(naming: ResolvedNamingConfig): {
   auto: boolean;
   backend: NamingBackend;
@@ -680,6 +691,7 @@ export function publicNamingConfig(naming: ResolvedNamingConfig): {
   apiKeyConfigured: boolean;
   apiKeyRef?: string;
   command?: string;
+  disabledReason?: string;
 } {
   return {
     auto: naming.auto,
@@ -690,6 +702,7 @@ export function publicNamingConfig(naming: ResolvedNamingConfig): {
     apiKeyConfigured: Boolean(naming.apiKey || naming.apiKeyRef),
     ...(naming.apiKeyRef ? { apiKeyRef: naming.apiKeyRef } : {}),
     ...(naming.command ? { command: naming.command } : {}),
+    ...(naming.disabledReason ? { disabledReason: naming.disabledReason } : {}),
   };
 }
 
@@ -903,7 +916,7 @@ export function loadNodeConfig(dataDir: string, configPath?: string): ResolvedNo
     sessionLogDir: str(raw, "sessionLogDir", join(dataDir, "session-logs")),
     agents: { ...BUILTIN_AGENTS, ...agentsOf(raw) },
     accounts: accountsOf(raw),
-    naming: namingOf(raw, dataDir),
+    naming: namingOrDisabled(raw, dataDir),
     contextPolicy: resolvedContextPolicyOf(raw),
   };
 }
