@@ -1,10 +1,11 @@
 import { createHash } from "node:crypto";
 import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { type } from "node:os";
 import { readBuildIdentity } from "./buildIdentity.js";
 
 /** JavaScript is portable; the only cross-build supported here uses shipped macOS PTY prebuilds. */
-export function validateRuntimeBuildTarget(target: string | undefined, host = `${process.platform}-${process.arch}`): asserts target is string {
+export function validateRuntimeBuildTarget(target: string | undefined, host = runtimeHostTarget()): asserts target is string {
   if (target !== "darwin-arm64" && target !== "linux-x64") throw new Error("Unsupported Honeybee runtime target");
   if (target !== host && !(host === "linux-x64" && target === "darwin-arm64")) {
     throw new Error(`Cannot package ${target} on ${host}`);
@@ -39,7 +40,7 @@ export async function prepareRuntimeTarget(stage: string, target: string): Promi
 
 async function stagePeerCredentials(stage: string, target: string): Promise<void> {
   const root = join(stage, "dist/v2/peercred");
-  const hostManifest = JSON.parse(await readFile(join(root, `${process.platform}-${process.arch}`, "manifest.json"), "utf8"));
+  const hostManifest = JSON.parse(await readFile(join(root, runtimeHostTarget(), "manifest.json"), "utf8"));
   const source = process.env.HIVE_PEERCRED_PREBUILTS ? join(process.env.HIVE_PEERCRED_PREBUILTS, target) : join(root, target);
   const manifest = JSON.parse(await readFile(join(source, "manifest.json"), "utf8"));
   const proof = JSON.parse(await readFile(join(source, "proof.json"), "utf8"));
@@ -56,4 +57,9 @@ async function stagePeerCredentials(stage: string, target: string): Promise<void
   await writeFile(join(destination, "manifest.json"), selected.manifest);
   await writeFile(join(destination, "proof.json"), selected.proof);
   await writeFile(join(destination, "peercred.node"), selected.binary, {mode: 0o755});
+}
+
+function runtimeHostTarget(): string {
+  const kernel = type();
+  return `${kernel === "Darwin" ? "darwin" : kernel === "Linux" ? "linux" : "unsupported"}-${process.arch}`;
 }

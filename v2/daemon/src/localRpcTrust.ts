@@ -21,7 +21,12 @@ function refusal(reason: string): never { throw new RpcError("caller_not_trusted
 function privateKey(file: string, root: string, uid: number): Buffer {
   if (!isAbsolute(file)) refusal("registration_key_unavailable");
   const canonicalRoot = realpathSync(root);
-  const rel = relative(resolve(root), resolve(file));
+  const configuredRoot = resolve(root);
+  const absoluteFile = resolve(file);
+  const configuredRelative = relative(configuredRoot, absoluteFile);
+  const throughConfiguredRoot = configuredRelative !== ".." && !configuredRelative.startsWith(`..${sep}`) && !isAbsolute(configuredRelative);
+  const canonicalFile = throughConfiguredRoot ? resolve(canonicalRoot, configuredRelative) : absoluteFile;
+  const rel = relative(canonicalRoot, canonicalFile);
   if (!rel || rel.startsWith(`..${sep}`) || rel === ".." || isAbsolute(rel)) refusal("registration_key_unavailable");
   const canonical = resolve(canonicalRoot, rel);
   const parent = dirname(canonical);

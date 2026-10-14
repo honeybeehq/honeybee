@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync, existsSync, symlinkSync, chmodSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync, existsSync, symlinkSync, chmodSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { LocalRpcTrust, localTrustMessage, type LocalTrustChallenge } from "../src/localRpcTrust.ts";
@@ -154,4 +154,26 @@ test("global eviction chooses a busy process before a lone legitimate challenge"
     trust.register({pid: 9999, challengeId: challenge.challengeId, token}, connection, identity, "local_unix");
     trust.require(connection, "local_unix");
   } finally { trust.close(); rmSync(root, {recursive: true, force: true}); }
+});
+
+
+test("a symlinked dataDir accepts canonical and configured key paths without relaxing private symlink checks", () => {
+  const parent = mkdtempSync(join(tmpdir(), "rpc-trust-root-alias-"));
+  const root = join(parent, "actual"), alias = join(parent, "configured");
+  mkdirSync(root, {mode: 0o700}); symlinkSync(root, alias);
+  const canonicalFile = join(root, "private", "key");
+  const config = {requireObservationCaller: true, registrationKeyFile: canonicalFile};
+  const trust = new LocalRpcTrust(config, alias, () => {});
+  try {
+    assert.equal(trust.state, "ready");
+    assert.equal(statSync(canonicalFile).mode & 0o777, 0o600);
+    const bytes = readFileSync(canonicalFile);
+    trust.reload({...config, registrationKeyFile: join(alias, "private", "key")}, alias);
+    assert.equal(trust.state, "ready");
+    assert.ok(readFileSync(canonicalFile).equals(bytes), "both root spellings preserve the private key");
+    symlinkSync(join(root, "private"), join(root, "private-link"));
+    trust.reload({...config, registrationKeyFile: join(alias, "private-link", "key")}, alias);
+    assert.equal(trust.state, "registration_key_unavailable");
+    bytes.fill(0);
+  } finally {trust.close(); rmSync(parent, {recursive: true, force: true});}
 });
