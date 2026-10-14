@@ -352,7 +352,6 @@ export interface ResolvedNodeConfig {
   adoptToleranceMs: number;
   watchMaxBatch: number;
   socketPath: string;
-  socketPathExplicit?: boolean;
   logPath: string;
   storePath: string;
   telemetryPath: string;

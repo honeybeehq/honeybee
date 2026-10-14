@@ -16,6 +16,7 @@ export interface DaemonTargetInputs {
 
 export interface ResolvedDaemonTarget {
   cfg: ResolvedNodeConfig;
+  recordInstanceId: string | null;
   dataDirSource: DataDirSource;
   socketSource: SocketSource;
   expectedSocketPath: string;
@@ -36,8 +37,9 @@ function envValue(env: Record<string, string | undefined>, key: string): string 
   return value ? value : undefined;
 }
 
-export function callerDataDir(env: Record<string, string | undefined> = process.env): string {
-  return canonicalPath(envValue(env, "HIVE_V2_DATA_DIR") ?? join(homedir(), ".hive", "v2"));
+export function callerDataDir(env: Record<string, string | undefined> = process.env): string | null {
+  const dataDir = envValue(env, "HIVE_V2_DATA_DIR");
+  return dataDir ? canonicalPath(dataDir) : null;
 }
 
 export function resolveDaemonTarget(inputs: DaemonTargetInputs, env: Record<string, string | undefined> = process.env): ResolvedDaemonTarget {
@@ -48,9 +50,10 @@ export function resolveDaemonTarget(inputs: DaemonTargetInputs, env: Record<stri
   const record = readLiveEndpointRecord(dataDir);
   const expectedSocketPath = resolve(record?.socketPath ?? cfg.socketPath);
   const envSocket = envValue(env, "HIVE_V2_SOCKET_PATH");
-  const socketSource: SocketSource = inputs.socketFlag ? "flag" : envSocket ? "env" : record ? "record" : "config";
-  const socketPath = resolve(inputs.socketFlag ?? envSocket ?? expectedSocketPath);
-  return { cfg: { ...cfg, socketPath }, dataDirSource, socketSource, expectedSocketPath };
+  const useEnvSocket = !inputs.socketFlag && !inputs.dataDirFlag && envSocket !== undefined;
+  const socketSource: SocketSource = inputs.socketFlag ? "flag" : useEnvSocket ? "env" : record ? "record" : "config";
+  const socketPath = resolve(inputs.socketFlag ?? (useEnvSocket ? envSocket : expectedSocketPath));
+  return { cfg: { ...cfg, socketPath }, recordInstanceId: record?.instanceId ?? null, dataDirSource, socketSource, expectedSocketPath };
 }
 
 export function socketConfigured(target: ResolvedDaemonTarget): boolean {

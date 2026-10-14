@@ -550,10 +550,15 @@ function withDaemonTarget(ctx: CliContext, value: unknown): unknown {
   return { ...(value as object), daemonTarget: daemonTargetJson(ctx.target, ctx.daemon.instance, ctx.daemon.connected) };
 }
 
+function callerHello(ctx: CliContext): { dataDir?: string; expectedInstanceId: string | null; allowForeignDaemon?: true } {
+  const dataDir = callerDataDir();
+  return { ...(dataDir ? { dataDir } : {}), expectedInstanceId: ctx.target.recordInstanceId, ...(ctx.allowForeignDaemon ? { allowForeignDaemon: true as const } : {}) };
+}
+
 async function connectDaemon(ctx: CliContext): Promise<RpcClient> {
   assertSocketMatchesDataDir(ctx.target);
   const client = await RpcClient.connect(ctx.cfg.socketPath, 3000, undefined, {
-    caller: { dataDir: callerDataDir(), ...(ctx.allowForeignDaemon ? { allowForeignDaemon: true } : {}) },
+    caller: callerHello(ctx),
     verifyInstance: (instance) => {
       assertInstanceMatchesDataDir(ctx.target, instance);
       assertSameInstance(ctx.target, ctx.daemon.instance, instance);
@@ -2840,7 +2845,7 @@ async function runCellGc(ctx: CliContext, client: RpcClient, params: { dryRun: b
   let poller: RpcClient | null = null;
   const poll = async (): Promise<void> => {
     try {
-      poller ??= await RpcClient.connect(ctx.cfg.socketPath);
+      poller ??= await connectDaemon(ctx);
       const health = await poller.request<HealthResult>("health", {}, 5_000);
       const progress = health.cellDisk?.currentPass ?? null;
       if (progress == null) return;
@@ -4726,7 +4731,7 @@ async function cmdDaemon(ctx: CliContext, parsed: Parsed): Promise<number> {
   switch (sub) {
     case "run":
       // Foreground daemon — what the service files execute.
-      return runDaemon(["--data-dir", ctx.cfg.dataDir, "--socket", ctx.cfg.socketPath]);
+      return runDaemon(["--data-dir", ctx.cfg.dataDir, ...(ctx.target.socketSource === "flag" ? ["--socket", ctx.cfg.socketPath] : [])]);
     case "install": {
       const mgr = buildServiceManager(ctx);
       await mgr.install();

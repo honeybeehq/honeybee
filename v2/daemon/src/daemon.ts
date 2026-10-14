@@ -33,7 +33,7 @@ import { appendFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
-import { canonicalPath, samePath, writeEndpointRecord } from "./endpointRecord.ts";
+import { canonicalPath, removeEndpointRecord, samePath, writeEndpointRecord } from "./endpointRecord.ts";
 import { monitorEventLoopDelay, type IntervalHistogram } from "node:perf_hooks";
 import { getSystemErrorMap } from "node:util";
 import { GatewayMcpSeedLockError } from "../../../src/accounts/gatewayMcpSeed.ts";
@@ -370,7 +370,7 @@ const ADAPTER_NAMES = ["agy", "claude", "codex", "grok", "kimi", "muse", "stub"]
 
 const FOREIGN_GUARDED_VERBS = new Set<RpcVerb>([
   "spawn", "revive", "bee.fork", "bee.reconfigure", "bee.move", "bee.handoff", "bee.swapAccount",
-  "thread.fork", "thread.handoff",
+  "thread.fork", "thread.handoff", "thread.operation.retry",
   "account.login", "account.login.start", "account.login.retry", "account.verify", "account.capture",
 ]);
 
@@ -1040,6 +1040,7 @@ export class HiveDaemon {
       await this.loginFlows?.shutdown();
       await this.threadOperations?.shutdown();
       await this.rpc?.close();
+      removeEndpointRecord(this.cfg.dataDir, this.instanceId);
       this.core?.detachReconnectOwner();
       this.store?.close();
       this.telemetry?.close();
@@ -2685,13 +2686,19 @@ export class HiveDaemon {
 
   private assertNotForeignHarnessStart(verb: RpcVerb, params: Record<string, unknown>, conn: RpcConn): void {
     const caller = conn.caller;
-    if (!caller?.dataDir || caller.allowForeignDaemon || !FOREIGN_GUARDED_VERBS.has(verb)) return;
-    if (samePath(caller.dataDir, this.cfg.dataDir)) return;
+    if (!caller || caller.allowForeignDaemon || !FOREIGN_GUARDED_VERBS.has(verb)) return;
+    const instanceForeign = caller.expectedInstanceId !== undefined && caller.expectedInstanceId !== this.instanceId;
+    const dataDirForeign = caller.dataDir !== null && !samePath(caller.dataDir, this.cfg.dataDir);
+    if (!instanceForeign && !dataDirForeign) return;
     const facts = this.harnessCredentialFacts(verb, params);
     if (!facts.real) return;
+    const reason = instanceForeign
+      ? `this daemon (instance ${this.instanceId}) is not the one recorded for the data dir the caller resolved (${caller.expectedInstanceId ?? "no live record"})`
+      : `this daemon's data dir (${this.cfg.dataDir}) is not the caller's HIVE_V2_DATA_DIR (${caller.dataDir})`;
     throw new RpcError("foreign_daemon_spawn",
-      `${verb} would start a provider harness on a daemon whose data dir (${this.cfg.dataDir}) is not the caller's HIVE_V2_DATA_DIR (${caller.dataDir}); pass --allow-foreign-daemon if this is intended`,
-      { verb, callerDataDir: caller.dataDir, daemonDataDir: this.cfg.dataDir, ...facts.details });
+      `${verb} would start a provider harness on a foreign daemon: ${reason}; pass --allow-foreign-daemon if this is intended`,
+      { verb, reason: instanceForeign ? "instance_mismatch" : "data_dir_mismatch", callerDataDir: caller.dataDir, expectedInstanceId: caller.expectedInstanceId ?? null,
+        daemonInstanceId: this.instanceId, daemonDataDir: this.cfg.dataDir, ...facts.details });
   }
 
   private harnessCredentialFacts(verb: RpcVerb, params: Record<string, unknown>): { real: boolean; details: Record<string, unknown> } {
@@ -2716,7 +2723,10 @@ export class HiveDaemon {
       const account = accountOf(params.account);
       return { real: provider(adapter) || (account !== null && provider(adapterOf(account.harness))), details: { agent, adapter, account: account?.id ?? params.account ?? null } };
     }
-    const bee = typeof params.beeId === "string" ? this.mustStore().getBee(params.beeId) : null;
+    const beeId = verb === "thread.operation.retry" && typeof params.operationId === "string"
+      ? this.mustStore().getThreadOperation(params.operationId)?.sourceBeeId
+      : params.beeId;
+    const bee = typeof beeId === "string" ? this.mustStore().getBee(beeId) : null;
     if (!bee) return { real: false, details: {} };
     const adapter = adapterOf(bee.agent);
     const accounts = [accountOf(bee.account), verb === "bee.swapAccount" ? accountOf(params.account) : null];
@@ -4546,8 +4556,7 @@ export class HiveDaemon {
       ...beeEnv,
       ...accountEnv,
     };
-    delete env.HIVE_V2_SOCKET_PATH;
-    return { ...env, ...beeIdentityEnv(bee, this.cfg.dataDir, this.cfg.socketPathExplicit ? resolve(this.cfg.socketPath) : undefined) };
+    return { ...env, ...beeIdentityEnv(bee, this.cfg.dataDir, resolve(this.cfg.socketPath)) };
   }
 
   private claudeContextLaunchFor(bee: BeeRow, args: readonly string[], env: Record<string, string>): ClaudeContextLaunch {

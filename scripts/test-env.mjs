@@ -12,5 +12,6 @@ export function compileCacheDir() {
 export function testEnv(extra = {}) {
   const dir = compileCacheDir();
   mkdirSync(dir, { recursive: true });
-  return { ...process.env, NODE_COMPILE_CACHE: dir, ...extra };
+  const { HIVE_V2_DATA_DIR: _dataDir, HIVE_V2_SOCKET_PATH: _socket, ...env } = process.env;
+  return { ...env, NODE_COMPILE_CACHE: dir, ...extra };
 }

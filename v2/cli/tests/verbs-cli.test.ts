@@ -855,7 +855,7 @@ test("verbs.account-capture: an already-authenticated home is validated, backed 
     writeFileSync(join(added.account.homePath, "auth.json"), credential);
 
     const capturedOut = capture();
-    assert.equal(await runV2Cli(["account", "capture", "codex-recovery", "--data-dir", dir, "--json", "--allow-foreign-daemon"], capturedOut.io), 0);
+    assert.equal(await runV2Cli(["account", "capture", "codex-recovery", "--data-dir", dir, "--json"], capturedOut.io), 0);
     const captured = JSON.parse(capturedOut.out[0] ?? "{}") as {
       account: { id: string; status: string; lastLoginAt: number | null };
       captured: string[];

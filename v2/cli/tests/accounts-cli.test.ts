@@ -25,7 +25,7 @@ test("cli.accounts.1: account verbs over RPC + spawn --account + bee swap-accoun
   let daemon: DaemonHandle | null = null;
   try {
     daemon = await startDaemon(dir);
-    const base = ["--data-dir", dir, "--allow-foreign-daemon"];
+    const base = ["--data-dir", dir];
     // add (json) — default id + home
     const add = capture();
     assert.equal(await runV2Cli(["account", "add", "stub", "one", "--penalty", "5", ...base, "--json"], add.io), 0);
@@ -186,7 +186,7 @@ test("cli accounts: `account login --method` picks a recipe method — the muse 
   let daemon: DaemonHandle | null = null;
   try {
     daemon = await startDaemon(dir);
-    const base = ["--data-dir", dir, "--allow-foreign-daemon"];
+    const base = ["--data-dir", dir];
     assert.equal(await runV2Cli(["account", "add", "muse", "keyed", ...base], capture().io), 0);
     const started = capture();
     assert.equal(await runV2Cli(["account", "login", "muse-keyed", "--method", "muse-api-key", "--no-wait", ...base, "--json"], started.io), 0, started.err.join("\n"));
@@ -254,7 +254,7 @@ test("cli.accounts.3: agent-auto and agent-rr collapse at the v2 CLI edge; rr ad
   let daemon: DaemonHandle | null = null;
   try {
     daemon = await startDaemon(dir);
-    const base = ["--data-dir", dir, "--json", "--allow-foreign-daemon"];
+    const base = ["--data-dir", dir, "--json"];
     assert.equal(await runV2Cli(["account", "add", "stub", "one", ...base], capture().io), 0);
     assert.equal(await runV2Cli(["account", "add", "stub", "two", ...base], capture().io), 0);
 
@@ -293,7 +293,7 @@ test("cli.accounts.4: fuzzy selectors work through spawn shorthand and account/s
   let daemon: DaemonHandle | null = null;
   try {
     daemon = await startDaemon(dir);
-    const base = ["--data-dir", dir, "--json", "--allow-foreign-daemon"];
+    const base = ["--data-dir", dir, "--json"];
     assert.equal(await runV2Cli(["account", "add", "stub", "owner@gmail.com", ...base], capture().io), 0);
     assert.equal(await runV2Cli(["account", "add", "stub", "owner@company.com", ...base], capture().io), 0);
     assert.equal(await runV2Cli(["account", "add", "codex", "coder@gmail.com", ...base], capture().io), 0);

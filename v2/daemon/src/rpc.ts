@@ -67,7 +67,7 @@ import {
 export interface RpcConn {
   readonly localPeer?: Readonly<{uid: number; pid: number; processBirth: string | null}>;
   readonly ingress?: "local_unix" | "node_relay" | "remote";
-  readonly caller?: Readonly<{dataDir: string | null; allowForeignDaemon: boolean}>;
+  readonly caller?: Readonly<HelloCaller>;
   /** Push a raw frame (used for watch deltas/gaps). */
   send(obj: unknown): void;
   /** Enter watch mode from this seq; subsequent flushes stream deltas. */
@@ -120,7 +120,7 @@ interface Connection extends RpcConn {
   buffer: string;
   helloDone: boolean;
   relayLane: "node_relay" | "remote" | null;
-  caller?: {dataDir: string | null; allowForeignDaemon: boolean};
+  caller?: HelloCaller;
   watchCursor: number | null;
 }
 
@@ -333,7 +333,7 @@ export class RpcServer {
       }
       const caller = helloCaller(frame.caller);
       if (caller === "invalid") {
-        conn.send({ id: -1, ok: false, error: { code: "invalid_request", message: "caller must be {dataDir?: string, allowForeignDaemon?: boolean}." } });
+        conn.send({ id: -1, ok: false, error: { code: "invalid_request", message: "caller must be {dataDir?: string, expectedInstanceId?: string | null, allowForeignDaemon?: boolean}." } });
         conn.socket.end();
         return;
       }
@@ -412,13 +412,24 @@ export class RpcServer {
   }
 }
 
-function helloCaller(value: unknown): {dataDir: string | null; allowForeignDaemon: boolean} | null | "invalid" {
+export interface HelloCaller {
+  dataDir: string | null;
+  expectedInstanceId: string | null | undefined;
+  allowForeignDaemon: boolean;
+}
+
+function helloCaller(value: unknown): HelloCaller | null | "invalid" {
   if (value === undefined) return null;
   if (value === null || typeof value !== "object" || Array.isArray(value)) return "invalid";
   const raw = value as Record<string, unknown>;
   if (raw.dataDir !== undefined && (typeof raw.dataDir !== "string" || raw.dataDir.length === 0)) return "invalid";
+  if (raw.expectedInstanceId !== undefined && raw.expectedInstanceId !== null && typeof raw.expectedInstanceId !== "string") return "invalid";
   if (raw.allowForeignDaemon !== undefined && typeof raw.allowForeignDaemon !== "boolean") return "invalid";
-  return { dataDir: typeof raw.dataDir === "string" ? raw.dataDir : null, allowForeignDaemon: raw.allowForeignDaemon === true };
+  return {
+    dataDir: typeof raw.dataDir === "string" ? raw.dataDir : null,
+    expectedInstanceId: raw.expectedInstanceId as string | null | undefined,
+    allowForeignDaemon: raw.allowForeignDaemon === true,
+  };
 }
 
 export function socketAcceptsConnections(socketPath: string, timeoutMs = 1000): Promise<boolean> {

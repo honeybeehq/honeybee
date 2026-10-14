@@ -38,6 +38,16 @@ export function writeEndpointRecord(dataDir: string, record: Omit<EndpointRecord
   }
 }
 
+export function removeEndpointRecord(dataDir: string, instanceId: string): void {
+  const path = join(dataDir, ENDPOINT_RECORD_FILE);
+  try {
+    const raw = JSON.parse(readFileSync(path, "utf8")) as { instanceId?: unknown };
+    if (raw.instanceId === instanceId) rmSync(path, { force: true });
+  } catch {
+    return;
+  }
+}
+
 export function pidAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);

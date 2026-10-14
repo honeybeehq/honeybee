@@ -31,7 +31,7 @@ export function parseDaemonRunArgs(argv: string[]): DaemonRunArgs {
 export function resolveDaemonConfig(args: DaemonRunArgs): ResolvedNodeConfig {
   const dataDir = args.dataDir ?? defaultDataDir();
   const cfg = loadNodeConfig(dataDir, args.configPath);
-  return args.socketPath ? { ...cfg, socketPath: resolve(args.socketPath), socketPathExplicit: true } : cfg;
+  return args.socketPath ? { ...cfg, socketPath: resolve(args.socketPath) } : cfg;
 }
 
 /** Test daemons: a volume of `totalBytes` whose only occupant is the Cells root. */
