@@ -6,13 +6,15 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { provisionCell } from "../src/provision.ts";
+import { provisionCell, reserveCell, type ProvisionRequest } from "../src/provision.ts";
 import { dirtyReport } from "../src/remove.ts";
 import { evictCellWrapper } from "../src/retention.ts";
-import { mirrorDirFor, readUpstreamMirror, refreshUpstreamMirror, UPSTREAM_REF } from "../src/upstream.ts";
-import { commitInCell, fingerprintOrigin, g, makeRig } from "./helpers.ts";
+import { buildPoolMember, claimFromPool } from "../src/warmPool.ts";
+import { mirrorDirFor, readUpstreamMirror, refreshUpstreamMirror, resolveCellBase, syncOriginFromMirror, UPSTREAM_REF } from "../src/upstream.ts";
+import { commitInCell, commitOn, fingerprintOrigin, g, makeOrigin, makeRig } from "./helpers.ts";
 
 function withUpstream() {
   const rig = makeRig();
@@ -124,5 +126,171 @@ test("upstream.fallbacks: no upstream URL is unmirrored; a failing fetch keeps t
     assert.equal(dirtyReport(cell.paths.wrapperDir, { upstream: none.ref }).unpushed, true, "unmirrored keeps the local-refs verdict");
   } finally {
     rig.cleanup();
+  }
+});
+
+const OPTS = { disableCow: true, useGitImages: false } as const;
+
+function staleSatelliteOrigin() {
+  const root = mkdtempSync(join(tmpdir(), "upstream-"));
+  const author = makeOrigin(root, "author");
+  const github = join(root, "github.git");
+  g(root, ["clone", "--bare", "--quiet", author.repo, github]);
+  const origin = join(root, "material");
+  g(root, ["clone", "--quiet", github, origin]);
+  const stale = g(origin, ["rev-parse", "HEAD"]);
+  g(author.repo, ["remote", "add", "github", github]);
+  const fresh = commitOn(author.repo, "src/app.ts", "export const version = 2;\n", "landed on main");
+  g(author.repo, ["push", "--quiet", "github", "main"]);
+  const upstreamRoot = join(root, "data", "upstream");
+  const sync = () => syncOriginFromMirror(origin, upstreamRoot, { maxAgeMs: 0, timeoutMs: 30_000 });
+  return { root, author: author.repo, github, origin, stale, fresh, upstreamRoot, sync, cleanup: () => rmSync(root, { recursive: true, force: true }) };
+}
+
+function request(originRepo: string, beeId: string, sha: string, cellId: string): ProvisionRequest {
+  return { beeId, originRepo, sha, wrapper: `w-${beeId}`, repoName: "material", cellId };
+}
+
+test("resolveCellBase: HEAD until a fetch moves the upstream tip ahead, then the tip", () => {
+  const fx = staleSatelliteOrigin();
+  try {
+    assert.deepEqual(
+      { sha: resolveCellBase(fx.origin)?.sha, source: resolveCellBase(fx.origin)?.source },
+      { sha: fx.stale, source: "head" },
+    );
+    const synced = fx.sync();
+    assert.equal(synced.refresh.status, "fetched");
+    assert.equal(synced.trackingRef, "refs/remotes/origin/main");
+    assert.equal(synced.before, fx.stale);
+    assert.equal(synced.after, fx.fresh);
+    assert.equal(g(mirrorDirFor(fx.upstreamRoot, fx.github), ["rev-parse", UPSTREAM_REF]), fx.fresh);
+    const base = resolveCellBase(fx.origin);
+    assert.equal(base?.sha, fx.fresh);
+    assert.equal(base?.source, "upstream");
+    assert.equal(base?.upstreamRef, "refs/remotes/origin/main");
+    assert.equal(typeof base?.fetchedAt, "number");
+    assert.equal(g(fx.origin, ["rev-parse", "HEAD"]), fx.stale);
+  } finally {
+    fx.cleanup();
+  }
+});
+
+test("resolveCellBase: local commits not on the upstream keep HEAD", () => {
+  const fx = staleSatelliteOrigin();
+  try {
+    fx.sync();
+    const local = commitOn(fx.origin, "README.md", "# local\n", "unpushed");
+    const base = resolveCellBase(fx.origin);
+    assert.equal(base?.sha, local);
+    assert.equal(base?.source, "head");
+    assert.equal(base?.upstreamSha, fx.fresh);
+  } finally {
+    fx.cleanup();
+  }
+});
+
+test("resolveCellBase: no upstream configured is plain HEAD", () => {
+  const root = mkdtempSync(join(tmpdir(), "upstream-"));
+  try {
+    const origin = makeOrigin(root);
+    assert.deepEqual(resolveCellBase(origin.repo), { sha: origin.sha, source: "head" });
+    const synced = syncOriginFromMirror(origin.repo, join(root, "data", "upstream"), { maxAgeMs: 0, timeoutMs: 30_000 });
+    assert.equal(synced.refresh.status, "unmirrored");
+    assert.equal(synced.after, null);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("syncOriginFromMirror: an unreachable upstream leaves the origin's tracking ref alone", () => {
+  const fx = staleSatelliteOrigin();
+  try {
+    g(fx.origin, ["remote", "set-url", "origin", join(fx.root, "missing.git")]);
+    const synced = fx.sync();
+    assert.equal(synced.refresh.status, "failed");
+    assert.equal(synced.after, fx.stale);
+    assert.equal(g(fx.origin, ["rev-parse", "refs/remotes/origin/main"]), fx.stale);
+  } finally {
+    fx.cleanup();
+  }
+});
+
+test("syncOriginFromMirror: an origin tracking a non-default branch is not moved to the upstream default", () => {
+  const fx = staleSatelliteOrigin();
+  try {
+    g(fx.author, ["push", "--quiet", "github", `${fx.stale}:refs/heads/feature`]);
+    g(fx.origin, ["fetch", "--quiet", "origin", "feature:refs/remotes/origin/feature"]);
+    g(fx.origin, ["checkout", "--quiet", "-b", "feature", "--track", "origin/feature"]);
+    const synced = fx.sync();
+    assert.equal(synced.refresh.status, "fetched");
+    assert.equal(synced.trackingRef, null);
+    assert.equal(g(fx.origin, ["rev-parse", "refs/remotes/origin/feature"]), fx.stale);
+    assert.equal(resolveCellBase(fx.origin)?.sha, fx.stale);
+  } finally {
+    fx.cleanup();
+  }
+});
+
+test("clone-provisioned Cell points origin at the real upstream, not the local origin path", () => {
+  const fx = staleSatelliteOrigin();
+  try {
+    fx.sync();
+    const cellsRoot = join(fx.root, "cells");
+    const req = request(fx.origin, "bee-a", fx.fresh, "aaaaaaaaaaaa");
+    reserveCell(cellsRoot, req);
+    const cell = provisionCell(cellsRoot, req, "op-a", OPTS);
+    assert.equal(cell.copyMode, "clone");
+    const space = cell.paths.spaceDir;
+    assert.equal(g(space, ["rev-parse", "HEAD"]), fx.fresh);
+    assert.equal(g(space, ["remote", "get-url", "origin"]), fx.github);
+    assert.equal(g(space, ["rev-parse", "refs/remotes/origin/main"]), fx.fresh);
+    assert.equal(g(space, ["symbolic-ref", "refs/remotes/origin/HEAD"]), "refs/remotes/origin/main");
+    assert.equal(g(space, ["rev-parse", "refs/heads/main"]), fx.fresh);
+    assert.equal(g(space, ["for-each-ref", "--format=%(refname)", "refs/remotes/origin/"]), "refs/remotes/origin/HEAD\nrefs/remotes/origin/main");
+    commitOn(fx.author, "README.md", "# newer\n", "newer");
+    g(fx.author, ["push", "--quiet", "github", "main"]);
+    g(space, ["fetch", "--quiet", "origin", "main"]);
+    assert.notEqual(g(space, ["rev-parse", "FETCH_HEAD"]), fx.fresh);
+  } finally {
+    fx.cleanup();
+  }
+});
+
+test("pool claim refreshes the Cell's origin/main to the current upstream tip", () => {
+  const fx = staleSatelliteOrigin();
+  try {
+    const cellsRoot = join(fx.root, "cells");
+    buildPoolMember(cellsRoot, { originRepo: fx.origin, repoName: "material", sha: fx.stale }, OPTS, { racyIndexWindowMs: 0 });
+    fx.sync();
+    const req = request(fx.origin, "bee-b", fx.fresh, "bbbbbbbbbbbb");
+    reserveCell(cellsRoot, req);
+    const claimed = claimFromPool(cellsRoot, req);
+    assert.ok(claimed);
+    const space = claimed.paths.spaceDir;
+    assert.equal(g(space, ["rev-parse", "HEAD"]), fx.fresh);
+    assert.equal(g(space, ["remote", "get-url", "origin"]), fx.github);
+    assert.equal(g(space, ["rev-parse", "refs/remotes/origin/main"]), fx.fresh);
+  } finally {
+    fx.cleanup();
+  }
+});
+
+test("upstream.lock: a refresh waits for a concurrent one instead of failing into backoff, and a stale lock is taken over", () => {
+  const fx = staleSatelliteOrigin();
+  try {
+    const mirror = mirrorDirFor(fx.upstreamRoot, fx.github);
+    mkdirSync(`${mirror}.lock`, { recursive: true });
+    const busy = refreshUpstreamMirror(fx.origin, fx.upstreamRoot, { maxAgeMs: 0, timeoutMs: 300 });
+    assert.equal(busy.status, "failed");
+    assert.equal(existsSync(join(mirror, "honeybee-fetch-failed-at")), false, "a busy mirror records no failure backoff");
+
+    const old = new Date(Date.now() - 10 * 60_000);
+    utimesSync(`${mirror}.lock`, old, old);
+    const taken = refreshUpstreamMirror(fx.origin, fx.upstreamRoot, { maxAgeMs: 0, timeoutMs: 30_000 });
+    assert.equal(taken.status, "fetched");
+    assert.equal(taken.ref?.sha, fx.fresh);
+    assert.equal(existsSync(`${mirror}.lock`), false, "the lock is released");
+  } finally {
+    fx.cleanup();
   }
 });

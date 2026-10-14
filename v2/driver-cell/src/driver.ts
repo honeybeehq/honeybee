@@ -42,7 +42,8 @@ import { cellPaths, looksLikeCellWrapper, type CellPaths } from "./layout.ts";
 import { isProvisioned, readLedger, type CellLedger } from "./ledger.ts";
 import { provisionCell, type ProvisionedCell, type ProvisionRequest } from "./provision.ts";
 import { describeSandboxTmpfs, SandboxTmpWatch, sandboxTmpfsCap, type SandboxTmpfsCap } from "./sandboxTmp.ts";
-import { claimFromPool, repoKeyFor, type TopUpRequest } from "./warmPool.ts";
+import { claimFromPool, repoKeyFor } from "./warmPool.ts";
+import type { PoolWorkerResult, RefreshRequest } from "./poolWorker.ts";
 import { deleteCell, type DeleteResult, type DirtyReportOptions } from "./remove.ts";
 import {
   DEFAULT_SANDBOX_TMPFS_BYTES,
@@ -100,12 +101,34 @@ export interface CellDriverConfig {
   warmPool?: { targetFree: number; maxSize?: number };
   /** Tests: substitute the pool top-up worker entrypoint. */
   poolWorkerUrl?: URL;
+  upstreamRefresh?: { root: string } & Partial<UpstreamRefreshPolicy>;
+  onUpstreamRefreshed?(originRepo: string, result: PoolWorkerResult): void;
   /**
    * v31 — the Cell's checkout now exists on disk for a runtime start (cold
    * provision, background provision, or a warm-pool claim). The daemon uses
    * it to move an `evicted` registry row back to `active`. Idempotent.
    */
   onCellMaterialized?(beeId: string): void;
+}
+
+export interface UpstreamRefreshPolicy {
+  intervalMs: number;
+  maxAgeMs: number;
+  recentMs: number;
+  timeoutMs: number;
+}
+
+export const DEFAULT_UPSTREAM_REFRESH: UpstreamRefreshPolicy = {
+  intervalMs: 2 * 60_000,
+  maxAgeMs: 30_000,
+  recentMs: 24 * 60 * 60_000,
+  timeoutMs: 15_000,
+};
+
+interface TrackedOrigin {
+  request: RefreshRequest;
+  lastUsedAt: number;
+  lastFetchAt: number;
 }
 
 interface PendingProvision {
@@ -143,9 +166,13 @@ export class CellDriver implements RuntimeDriver {
   private readonly pendingObservations: DriverObservation[] = [];
   private sandboxTmp: SandboxTmpWatch | null = null;
   private sandboxCap: SandboxTmpfsCap | null = null;
+  private readonly origins = new Map<string, TrackedOrigin>();
+  private readonly upstreamPolicy: (UpstreamRefreshPolicy & { root: string }) | null;
+  private upstreamTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(cfg: CellDriverConfig) {
     this.cfg = cfg;
+    this.upstreamPolicy = cfg.upstreamRefresh == null ? null : { ...DEFAULT_UPSTREAM_REFRESH, ...cfg.upstreamRefresh };
     this.inner = new HsrDriver({
       ...cfg.hsr,
       resolve: (beeId: string, generation?: number) => this.resolveCellSpawn(beeId, generation),
@@ -170,7 +197,7 @@ export class CellDriver implements RuntimeDriver {
       else this.ensureCell(beeId, opId);
       this.cfg.onCellMaterialized?.(beeId);
       this.inner.start(beeId, generation);
-      this.scheduleTopUp(beeId);
+      this.refreshOriginOf(beeId);
       return;
     }
     if (this.pending.has(beeId)) {
@@ -195,7 +222,7 @@ export class CellDriver implements RuntimeDriver {
     const pending: PendingProvision = { beeId, generation, worker, settled: false };
     this.pending.set(beeId, pending);
     worker.once("message", (message: ProvisionWorkerResult) => {
-      this.scheduleTopUp(beeId);
+      this.refreshOriginOf(beeId);
       if (message.ok) {
         // provisionWorker reports Cell-ready before doing image maintenance.
         // Keep it cancellable on driver disposal but do not keep the daemon
@@ -544,6 +571,8 @@ export class CellDriver implements RuntimeDriver {
     this.maintenanceByRuntime.clear();
     for (const worker of this.poolWorkers.values()) void worker.terminate();
     this.poolWorkers.clear();
+    if (this.upstreamTimer != null) clearInterval(this.upstreamTimer);
+    this.upstreamTimer = null;
   }
 
   // -------------------------------------------------------------------------
@@ -570,13 +599,44 @@ export class CellDriver implements RuntimeDriver {
     }
   }
 
-  /**
-   * Refill the pool for this bee's repo to `targetFree`, in a worker off the
-   * event loop. Single-flight per repoKey: while one top-up runs, another spawn
-   * for the same repo does not start a second (it refills on the next spawn).
-   */
-  private scheduleTopUp(beeId: string): void {
-    if (!this.warmPoolEnabled()) return;
+  trackOrigins(origins: readonly { originRepo: string; repoName: string; usedAt: number }[]): void {
+    for (const origin of origins) this.trackOrigin({ originRepo: origin.originRepo, repoName: origin.repoName }, origin.usedAt);
+    this.refreshRecentOrigins();
+  }
+
+  private trackOrigin(request: RefreshRequest, usedAt: number): TrackedOrigin {
+    const known = this.origins.get(request.originRepo);
+    if (known != null) {
+      known.lastUsedAt = Math.max(known.lastUsedAt, usedAt);
+      if (request.warmArtifacts != null) known.request = request;
+      return known;
+    }
+    const tracked: TrackedOrigin = { request, lastUsedAt: usedAt, lastFetchAt: 0 };
+    this.origins.set(request.originRepo, tracked);
+    this.ensureUpstreamTimer();
+    return tracked;
+  }
+
+  private ensureUpstreamTimer(): void {
+    if (this.upstreamPolicy == null || this.upstreamTimer != null) return;
+    this.upstreamTimer = setInterval(() => this.refreshRecentOrigins(), this.upstreamPolicy.intervalMs);
+    this.upstreamTimer.unref();
+  }
+
+  private refreshRecentOrigins(): void {
+    if (this.upstreamPolicy == null) return;
+    const now = Date.now();
+    for (const [originRepo, origin] of this.origins) {
+      if (now - origin.lastUsedAt > this.upstreamPolicy.recentMs) {
+        this.origins.delete(originRepo);
+        continue;
+      }
+      this.scheduleRefresh(origin);
+    }
+  }
+
+  private refreshOriginOf(beeId: string): void {
+    if (this.upstreamPolicy == null && !this.warmPoolEnabled()) return;
     let spec: CellSpec;
     try {
       spec = this.cfg.resolveCell(beeId);
@@ -584,14 +644,33 @@ export class CellDriver implements RuntimeDriver {
       return;
     }
     const p = spec.provision;
-    const repoKey = repoKeyFor(p.originRepo, p.repoName);
-    if (this.poolWorkers.has(repoKey)) return;
-    const request: TopUpRequest = {
+    const origin = this.trackOrigin({
       originRepo: p.originRepo,
       repoName: p.repoName,
-      sha: p.sha,
       ...(p.warmArtifacts && p.warmArtifacts.length > 0 ? { warmArtifacts: [...p.warmArtifacts] } : {}),
-    };
+    }, Date.now());
+    this.scheduleRefresh(origin);
+  }
+
+  /**
+   * Fetch the origin's upstream (when due) and refill its pool at the
+   * resulting Cell base, in a worker off the event loop. Single-flight per
+   * repoKey: a burst of spawns for one repo shares one in-flight worker.
+   */
+  private scheduleRefresh(origin: TrackedOrigin): void {
+    const now = Date.now();
+    const policy = this.upstreamPolicy;
+    const fetchDue = policy != null && now - origin.lastFetchAt >= policy.maxAgeMs;
+    const target = this.warmPoolEnabled() ? this.cfg.warmPool?.targetFree ?? 0 : 0;
+    if (!fetchDue && target === 0) return;
+    const request = origin.request;
+    let repoKey: string;
+    try {
+      repoKey = repoKeyFor(request.originRepo, request.repoName);
+    } catch {
+      return;
+    }
+    if (this.poolWorkers.has(repoKey)) return;
     const workerUrl = this.cfg.poolWorkerUrl ?? (import.meta.url.endsWith(".ts")
       ? new URL("./poolWorker.ts", import.meta.url)
       : new URL("./pool-worker.js", import.meta.url));
@@ -602,21 +681,26 @@ export class CellDriver implements RuntimeDriver {
         workerData: {
           cellsRoot: this.cfg.cellsRoot,
           request,
-          target: this.cfg.warmPool?.targetFree ?? 0,
+          target,
           maxSize: this.cfg.warmPool?.maxSize ?? 32,
           provisionOpts: {
             disableCow: this.cfg.disableCow ?? false,
             useGitImages: this.cfg.nodeKind === "workstation",
             ...(this.cfg.gitImagesRoot ? { gitImagesRoot: this.cfg.gitImagesRoot } : {}),
           },
+          ...(fetchDue && policy != null ? { upstream: { root: policy.root, maxAgeMs: policy.maxAgeMs, timeoutMs: policy.timeoutMs } } : {}),
         },
       });
     } catch {
-      return; // never let a top-up failure affect the spawn
+      return; // never let a refresh failure affect the spawn
     }
+    if (fetchDue) origin.lastFetchAt = now;
     this.poolWorkers.set(repoKey, worker);
     const clear = (): void => { if (this.poolWorkers.get(repoKey) === worker) this.poolWorkers.delete(repoKey); };
-    worker.once("message", clear);
+    worker.once("message", (result: PoolWorkerResult) => {
+      clear();
+      if (result.sync != null) this.cfg.onUpstreamRefreshed?.(request.originRepo, result);
+    });
     worker.once("error", clear);
     worker.once("exit", clear);
     worker.unref();

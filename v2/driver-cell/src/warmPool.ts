@@ -46,6 +46,7 @@ import {
   type LedgerOperation,
 } from "./ledger.ts";
 import { git, gitCommonDirRealpath, hasCommit, tryGit } from "./git.ts";
+import { adoptOriginRemote } from "./upstream.ts";
 import { provisionCell, type ProvisionedCell, type ProvisionOptions, type ProvisionRequest } from "./provision.ts";
 
 /** Reserved wrapper prefix; pool members live under `<cells-root>/_warmpool/<repoKey>/`. */
@@ -175,6 +176,7 @@ export function claimFromPool(
       // A cheap checkout delta to the wanted sha (the commit is present).
       git(beePaths.spaceDir, [...PARALLEL_CHECKOUT_CONFIG, "checkout", "--force", "--detach", "--no-recurse-submodules", req.sha]);
     }
+    if (member.ledger.copy_mode === "clone") adoptOriginRemote(beePaths.spaceDir, req.originRepo);
     // Rewrite the bee's seed ledger to "provisioned": keep the bee identity,
     // adopt the member's copy mode and step record, land the wanted sha.
     const beeLedger = readLedger(beePaths.ledgerPath) ?? newLedger({

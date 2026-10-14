@@ -157,6 +157,9 @@ import {
   readLedger,
   reserveCell,
   revParse,
+  resolveCellBase,
+  DEFAULT_UPSTREAM_REFRESH,
+  type CellBase,
   isAncestor,
   currentBranch,
   sandboxWritableDirectory,
@@ -877,6 +880,13 @@ export class HiveDaemon {
       ...(this.cfg.beeSandboxTmpBytes !== undefined ? { sandboxTmpfsBytes: this.cfg.beeSandboxTmpBytes } : {}),
       log: (op: string) => this.log(op),
       onCellMaterialized: (beeId: string) => this.onCellMaterialized(beeId),
+      ...(this.cfg.cellRetention.fetchUpstream ? { upstreamRefresh: { root: upstreamRootFor(this.cfg.dataDir) } } : {}),
+      onUpstreamRefreshed: (originRepo, result) => {
+        const sync = result.sync;
+        if (sync == null) return;
+        const error = sync.refresh.status === "failed" ? ` error=${JSON.stringify(sync.refresh.error)}` : "";
+        this.log(`cell.upstream origin=${originRepo} mirror=${sync.refresh.status} ref=${sync.trackingRef ?? "-"} before=${sync.before ?? "-"} after=${sync.after ?? "-"} ms=${sync.durationMs}${result.built > 0 ? ` pool_built=${result.built}` : ""}${error}`);
+      },
       hsr: hsrConfig,
       backgroundProvisioning: true,
       ...(this.cfg.cellWarmPoolFree > 0
@@ -1006,6 +1016,7 @@ export class HiveDaemon {
       removeEndpointRecord(this.cfg.dataDir, this.instanceId);
       throw error;
     }
+    cell.trackOrigins(this.recentCellOrigins(store));
     void this.accounts?.credentialHandoff.reconcileStartup().catch(() => this.log("account.credentials.handoff_reconcile_failed"));
     rpc.end();
     this.activeStartupPhase = null;
@@ -2993,7 +3004,7 @@ export class HiveDaemon {
         objectFormat: identity.objectFormat,
         sandbox: cell.reserve.sandbox,
       });
-      this.log(`cell.reserve bee=${id} origin=${cell.reserve.originRepo} sha=${cell.reserve.sha} space=${cell.spaceDir}`);
+      this.log(`cell.reserve bee=${id} origin=${cell.reserve.originRepo} sha=${cell.reserve.sha} base=${cell.base.source}${cell.base.upstreamSha ? ` upstream=${cell.base.upstreamSha}` : ""} space=${cell.spaceDir}`);
     }
     const cmd = store.enqueueCommand("spawn", id, {}, key == null ? {} : { idempotencyKey: key });
     const prompt = params.prompt === undefined || params.prompt === null
@@ -3015,6 +3026,7 @@ export class HiveDaemon {
       ...(accountReason && accountReason !== "explicit" ? { accountReason } : {}),
       ...(allocation ? { allocation } : {}),
       ...(claim ? { allocationClaimId: claim.id } : {}),
+      ...(cell ? { cellBase: cell.base } : {}),
     };
   }
 
@@ -3078,13 +3090,32 @@ export class HiveDaemon {
    * `<repo>-space-<hash(id)>` — deterministically from the bee, so a replayed
    * spawn maps to the same paths. Nothing is written here.
    */
-  private planCell(id: string, name: string, cell: SpawnCellParams): { spaceDir: string; reserve: ReserveRequest } {
+  private recentCellOrigins(store: CoreStore): { originRepo: string; repoName: string; usedAt: number }[] {
+    const since = Date.now() - DEFAULT_UPSTREAM_REFRESH.recentMs;
+    const latest = new Map<string, { originRepo: string; repoName: string; usedAt: number }>();
+    for (const row of store.listCells()) {
+      if (row.state === "removed" || row.createdAt < since) continue;
+      const parsed = parseSpaceName(row.spaceName);
+      if (parsed == null) continue;
+      const known = latest.get(row.originRepo);
+      if (known == null || known.usedAt < row.createdAt) {
+        latest.set(row.originRepo, { originRepo: row.originRepo, repoName: parsed.repoName, usedAt: row.createdAt });
+      }
+    }
+    return [...latest.values()];
+  }
+
+  private planCell(id: string, name: string, cell: SpawnCellParams): { spaceDir: string; reserve: ReserveRequest; base: CellBase } {
     const originRepo = resolve(cell.originRepo);
     if (!existsSync(join(originRepo, ".git"))) {
       throw new RpcError("invalid_request", `spawn: cell.originRepo ${originRepo} is not a git repository (no .git)`);
     }
-    const sha = revParse(originRepo, cell.sha ?? "HEAD");
-    if (sha == null) {
+    const pinned = cell.sha === undefined ? null : revParse(originRepo, cell.sha);
+    const base: CellBase | null = cell.sha === undefined
+      ? resolveCellBase(originRepo)
+      : pinned == null ? null : { sha: pinned, source: "pinned" };
+    const sha = base?.sha ?? null;
+    if (base == null || sha == null) {
       throw new RpcError(
         "invalid_request",
         cell.sha === undefined
@@ -3100,6 +3131,7 @@ export class HiveDaemon {
     const paths = cellPaths(this.cfg.cellsRoot, wrapper, repoName, cellId);
     return {
       spaceDir: paths.spaceDir,
+      base,
       reserve: {
         beeId: id,
         originRepo,

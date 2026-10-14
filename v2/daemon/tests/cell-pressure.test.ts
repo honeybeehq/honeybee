@@ -241,7 +241,7 @@ test("cell-pressure.2: a Cell whose work landed upstream, past a stale origin ch
     assert.equal(applied.outcomes!.find((o) => o.beeId === bee.beeId)!.status, "evicted");
     assert.equal(applied.pass?.kind, "manual");
     assert.equal(g(origin.repo, ["for-each-ref", "--format=%(refname) %(objectname)"]), originBefore, "the origin checkout is never written");
-    assert.match(readFileSync(join(dir, "hived.log"), "utf8"), /cell\.retention\.upstream_fetched origin=.* sha=/);
+    assert.match(readFileSync(join(dir, "hived.log"), "utf8"), /cell\.retention\.upstream_fetched origin=.* sha=|cell\.upstream origin=.* mirror=fetched /);
   } finally {
     await daemon?.stop();
     cleanup();

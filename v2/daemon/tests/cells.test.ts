@@ -100,8 +100,8 @@ function makeCellRig(extra: Parameters<typeof makeDaemonDir>[0] = {}): CellRig {
     // Provisioning is real filesystem work. Do not let the synthetic test
     // hang policy kill a healthy boot merely because the release host is busy.
     bootHangTimeoutMs: 60_000,
-    cells: { root: cellsRoot },
     ...extra,
+    cells: { root: cellsRoot, ...(extra.cells ?? {}) },
     agents: {
       cellstub: {
         command: process.execPath,
@@ -655,6 +655,54 @@ test("cells.4: spawn param validation (typed invalid_request), explicit sha/warm
     }
     const health = await client.request<HealthResult>("health");
     assert.equal(health.tickErrors, 0, "a driver start failure is never a tick error");
+    client.close();
+  } finally {
+    await daemon?.stop().catch(() => {});
+    rig.cleanup();
+  }
+});
+
+test("cells.5: an unpinned spawn from a stale origin triggers an upstream fetch; the next Cell starts at the upstream tip with origin = the real remote", async () => {
+  const rig = makeCellRig({ cells: { retention: { fetchUpstream: true } } });
+  let daemon: DaemonHandle | null = null;
+  try {
+    const root = dirname(rig.origin.repo);
+    const github = join(root, "github.git");
+    g(root, ["clone", "--bare", "--quiet", rig.origin.repo, github]);
+    const material = join(root, "material");
+    g(root, ["clone", "--quiet", github, material]);
+    g(rig.origin.repo, ["remote", "add", "github", github]);
+    const fresh = commitOn(rig.origin.repo, "landed.txt", "landed\n", "landed upstream");
+    g(rig.origin.repo, ["push", "--quiet", "github", "main"]);
+
+    daemon = await startDaemon(rig.dir);
+    const client = await daemon.client();
+    const first = await client.request<SpawnResult>("spawn", { name: "stale", agent: "cellstub", substrate: "cell", cell: { originRepo: material } });
+    assert.equal(first.cellBase?.sha, rig.origin.sha);
+    assert.equal(first.cellBase?.source, "head");
+    assert.equal(first.cellBase?.upstreamRef, "refs/remotes/origin/main");
+
+    await waitFor(async () => g(material, ["rev-parse", "refs/remotes/origin/main"]) === fresh, "upstream fetched", 30_000);
+    assert.equal(g(material, ["rev-parse", "HEAD"]), rig.origin.sha, "the origin's own checkout is untouched");
+
+    const { beeId, view } = await spawnCell(client, "fresh", material);
+    const spaceDir = view.bee?.cwd as string;
+    assert.equal(g(spaceDir, ["rev-parse", "HEAD"]), fresh);
+    assert.equal(g(spaceDir, ["remote", "get-url", "origin"]), github);
+    assert.equal(g(spaceDir, ["rev-parse", "refs/remotes/origin/main"]), fresh);
+    const pinned = await client.request<SpawnResult>("spawn", { name: "pinned", agent: "cellstub", substrate: "cell", cell: { originRepo: material, sha: rig.origin.sha } });
+    assert.deepEqual(pinned.cellBase, { sha: rig.origin.sha, source: "pinned" });
+    const burst = await Promise.all(Array.from({ length: 6 }, (_, i) =>
+      client.request<SpawnResult>("spawn", { name: `burst-${i}`, agent: "cellstub", substrate: "cell", cell: { originRepo: material } })));
+    assert.ok(burst.every((b) => b.cellBase?.sha === fresh && b.cellBase.source === "upstream"));
+    await new Promise((r) => setTimeout(r, 1_000));
+    const fetches = readFileSync(join(rig.dir, "hived.log"), "utf8").split("\n").filter((line) => line.includes("cell.upstream "));
+    assert.equal(fetches.length, 1, `one upstream fetch for nine spawns within the interval:\n${fetches.join("\n")}`);
+
+    await shInCell(client, beeId, "echo work > work.txt && git add -A && git commit -qm 'cell work'");
+    const capture = await client.request<CellCaptureResult>("cell.capture", { beeId, targetBranch: "landing", mode: "merge" });
+    assert.equal(capture.status, "landed");
+    assert.equal(g(material, ["rev-parse", "landing^"]), fresh);
     client.close();
   } finally {
     await daemon?.stop().catch(() => {});

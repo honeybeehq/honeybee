@@ -39,6 +39,7 @@ import {
   type GitImagePlacement,
 } from "./gitImage.ts";
 import { cellPaths, parseSpaceName, type CellPaths } from "./layout.ts";
+import { adoptOriginRemote } from "./upstream.ts";
 import {
   isProvisioned,
   newLedger,
@@ -393,8 +394,9 @@ function runProvisionOperation(
       scrubCowGitDir(gitDir);
       git(paths.spaceDir, ["config", "core.hooksPath", paths.emptyHooksDir]);
       git(paths.spaceDir, ["config", "core.fsmonitor", "false"]);
+    } else if (op.steps.git_placed.mode === "clone") {
+      adoptOriginRemote(paths.spaceDir, req.originRepo);
     }
-    // The clone and image paths yield factory-fresh .git dirs: nothing to scrub.
     op.steps.hygiene = { at: cfg.now() };
     save();
   }
