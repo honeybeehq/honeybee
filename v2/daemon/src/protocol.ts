@@ -683,6 +683,15 @@ export interface SpawnResult extends DedupMarkers {
   accountReason?: string;
   allocation?: AccountAllocationReceipt;
   allocationClaimId?: string;
+  cellBase?: SpawnCellBase;
+}
+
+export interface SpawnCellBase {
+  sha: string;
+  source: "pinned" | "head" | "upstream";
+  upstreamRef?: string;
+  upstreamSha?: string;
+  fetchedAt?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -1421,7 +1430,10 @@ export type SpawnSubstrate = (typeof SPAWN_SUBSTRATES)[number];
 export interface SpawnCellParams {
   /** The origin repository (working-tree root) the cell is provisioned from. */
   originRepo: string;
-  /** Commit-ish to materialize; default = the origin's HEAD. Resolved to a full sha at spawn. */
+  /**
+   * Commit-ish to materialize, resolved to a full sha at spawn. Default = the
+   * origin's upstream tracking tip when HEAD is behind it, else HEAD.
+   */
   sha?: string;
   /**
    * Warm artifact dirs (A5, CoW-only): `true` = the node's per-repo list for

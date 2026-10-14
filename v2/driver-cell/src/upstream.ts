@@ -12,10 +12,11 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { devNull } from "node:os";
 import { join } from "node:path";
-import { tryGit } from "./git.ts";
+import { isAncestor, tryGit } from "./git.ts";
 
 export const UPSTREAM_REF = "refs/upstream/head";
 const MIN_FAILURE_BACKOFF_MS = 5 * 60_000;
+const MIRROR_LOCK_STALE_MS = 5 * 60_000;
 const FETCHED_AT_FILE = "honeybee-fetched-at";
 const FAILED_AT_FILE = "honeybee-fetch-failed-at";
 
@@ -114,6 +115,47 @@ export function refreshUpstreamMirror(
   const last = fetchedAt(mirrorDir);
   const existing = mirrorRef(mirrorDir);
   if (existing && last != null && now() - last < opts.maxAgeMs) return { status: "fresh", url, ref: existing };
+  mkdirSync(upstreamRoot, { recursive: true, mode: 0o700 });
+  const lockDir = `${mirrorDir}.lock`;
+  if (!acquireMirrorLock(lockDir, opts.timeoutMs)) {
+    return { status: "failed", url, ref: mirrorRef(mirrorDir), error: "another refresh of this mirror is still running" };
+  }
+  try {
+    return refreshLocked(originRepo, mirrorDir, url, { ...opts, now });
+  } finally {
+    rmSync(lockDir, { recursive: true, force: true });
+  }
+}
+
+function acquireMirrorLock(lockDir: string, waitMs: number): boolean {
+  const deadline = Date.now() + waitMs;
+  for (;;) {
+    try {
+      mkdirSync(lockDir);
+      return true;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+    }
+    const heldSince = mtimeOf(lockDir);
+    if (heldSince != null && Date.now() - heldSince > MIRROR_LOCK_STALE_MS) {
+      rmSync(lockDir, { recursive: true, force: true });
+      continue;
+    }
+    if (Date.now() >= deadline) return false;
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100);
+  }
+}
+
+function refreshLocked(
+  originRepo: string,
+  mirrorDir: string,
+  url: string,
+  opts: { maxAgeMs: number; timeoutMs: number; now: () => number },
+): UpstreamRefresh {
+  const now = opts.now;
+  const last = fetchedAt(mirrorDir);
+  const existing = mirrorRef(mirrorDir);
+  if (existing && last != null && now() - last < opts.maxAgeMs) return { status: "fresh", url, ref: existing };
   const failedAt = mtimeOf(join(mirrorDir, FAILED_AT_FILE));
   if (failedAt != null && (last == null || failedAt > last) && now() - failedAt < Math.max(opts.maxAgeMs, MIN_FAILURE_BACKOFF_MS)) {
     return { status: "failed", url, ref: existing, error: `previous fetch failed at ${new Date(failedAt).toISOString()}; not retried yet` };
@@ -121,7 +163,6 @@ export function refreshUpstreamMirror(
   try {
     const originObjects = originObjectsDir(originRepo);
     if (originObjects == null) throw new Error("origin object directory unresolvable");
-    mkdirSync(upstreamRoot, { recursive: true, mode: 0o700 });
     ensureMirror(mirrorDir, url, originObjects);
     const args = [
       "-c", `core.hooksPath=${devNull}`,
@@ -149,4 +190,155 @@ export function refreshUpstreamMirror(
 export function readUpstreamMirror(originRepo: string, upstreamRoot: string): UpstreamRef | null {
   const url = originFetchUrl(originRepo);
   return url == null ? null : mirrorRef(mirrorDirFor(upstreamRoot, url));
+}
+
+export type CellBaseSource = "pinned" | "head" | "upstream";
+
+export interface CellBase {
+  sha: string;
+  source: CellBaseSource;
+  upstreamRef?: string;
+  upstreamSha?: string;
+  fetchedAt?: number;
+}
+
+const OBJECT_NAME = /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/;
+
+function fetchedAtIn(commonDir: string): number | undefined {
+  try {
+    return Math.round(statSync(join(commonDir, "FETCH_HEAD")).mtimeMs);
+  } catch {
+    return undefined;
+  }
+}
+
+export function resolveCellBase(originRepo: string): CellBase | null {
+  const res = tryGit(originRepo, [
+    "rev-parse", "--path-format=absolute", "--git-common-dir", "HEAD", "@{upstream}", "--symbolic-full-name", "@{upstream}",
+  ]);
+  const [commonDir, head, tip, upstreamRef] = res.stdout.split("\n");
+  if (commonDir == null || head == null || !OBJECT_NAME.test(head)) return null;
+  if (res.status !== 0 || tip == null || !OBJECT_NAME.test(tip) || !upstreamRef?.startsWith("refs/remotes/")) {
+    return { sha: head, source: "head" };
+  }
+  const fetchedAt = fetchedAtIn(commonDir);
+  const described = { upstreamRef, upstreamSha: tip, ...(fetchedAt == null ? {} : { fetchedAt }) };
+  if (tip === head || !isAncestor(originRepo, head, tip)) return { sha: head, source: "head", ...described };
+  return { sha: tip, source: "upstream", ...described };
+}
+
+export interface OriginSync {
+  refresh: UpstreamRefresh;
+  trackingRef: string | null;
+  before: string | null;
+  after: string | null;
+  durationMs: number;
+}
+
+function defaultTrackingRef(originRepo: string): { ref: string; sha: string } | null {
+  const upstream = tryGit(originRepo, ["rev-parse", "@{upstream}", "--symbolic-full-name", "@{upstream}"]);
+  const [sha, ref] = upstream.status === 0 ? upstream.stdout.split("\n") : [];
+  if (ref == null || sha == null || !OBJECT_NAME.test(sha) || !ref.startsWith("refs/remotes/origin/")) return null;
+  const head = tryGit(originRepo, ["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"]);
+  const remoteDefault = head.status === 0 ? head.stdout.trim() : null;
+  const isDefault = remoteDefault == null
+    ? ref === "refs/remotes/origin/main" || ref === "refs/remotes/origin/master"
+    : ref === remoteDefault;
+  return isDefault ? { ref, sha } : null;
+}
+
+export function syncOriginFromMirror(
+  originRepo: string,
+  upstreamRoot: string,
+  opts: { maxAgeMs: number; timeoutMs: number; now?: () => number },
+): OriginSync {
+  const started = performance.now();
+  const refresh = refreshUpstreamMirror(originRepo, upstreamRoot, opts);
+  const tracking = defaultTrackingRef(originRepo);
+  const done = (after: string | null): OriginSync => ({
+    refresh,
+    trackingRef: tracking?.ref ?? null,
+    before: tracking?.sha ?? null,
+    after,
+    durationMs: Math.round(performance.now() - started),
+  });
+  if (tracking == null || refresh.ref == null || refresh.url == null) {
+    return done(tracking?.sha ?? null);
+  }
+  const mirrorDir = mirrorDirFor(upstreamRoot, refresh.url);
+  tryGit(originRepo, ["fetch", "--quiet", "--no-tags", "--no-recurse-submodules", mirrorDir, `+${UPSTREAM_REF}:${tracking.ref}`]);
+  const after = tryGit(originRepo, ["rev-parse", "--verify", "--quiet", tracking.ref]);
+  return done(after.status === 0 ? after.stdout.trim() : tracking.sha);
+}
+
+interface OriginRemote {
+  url: string;
+  pushUrl: string | null;
+  branch: string | null;
+  tip: string | null;
+}
+
+function originRemoteOf(originRepo: string): OriginRemote | null {
+  const listed = tryGit(originRepo, ["config", "--get-regexp", "^remote\\..*\\.(url|pushurl)$"]);
+  if (listed.status !== 0) return null;
+  const remotes = new Map<string, { url?: string; pushUrl?: string }>();
+  for (const line of listed.stdout.split("\n")) {
+    const match = /^remote\.(.+)\.(url|pushurl) (.+)$/.exec(line);
+    if (match == null) continue;
+    const entry = remotes.get(match[1] as string) ?? {};
+    if (match[2] === "url") entry.url = match[3];
+    else entry.pushUrl = match[3];
+    remotes.set(match[1] as string, entry);
+  }
+  const upstream = tryGit(originRepo, ["rev-parse", "@{upstream}", "--symbolic-full-name", "@{upstream}"]);
+  const [tip, trackingRef] = upstream.status === 0 ? upstream.stdout.split("\n") : [];
+  const remote = trackingRef == null || tip == null || !OBJECT_NAME.test(tip)
+    ? null
+    : [...remotes.keys()]
+      .filter((name) => trackingRef.startsWith(`refs/remotes/${name}/`))
+      .sort((a, b) => b.length - a.length)[0] ?? null;
+  const chosen = remotes.get(remote ?? "origin");
+  if (chosen?.url == null) return null;
+  return {
+    url: chosen.url,
+    pushUrl: chosen.pushUrl ?? null,
+    branch: remote == null ? null : (trackingRef as string).slice(`refs/remotes/${remote}/`.length),
+    tip: remote == null ? null : (tip as string),
+  };
+}
+
+export function adoptOriginRemote(spaceDir: string, originRepo: string): void {
+  const origin = originRemoteOf(originRepo);
+  if (origin == null) return;
+  tryGit(spaceDir, ["config", "remote.origin.url", origin.url]);
+  if (origin.pushUrl != null) tryGit(spaceDir, ["config", "remote.origin.pushurl", origin.pushUrl]);
+
+  const trackingRef = origin.branch == null ? null : `refs/remotes/origin/${origin.branch}`;
+  const localRef = origin.branch == null ? null : `refs/heads/${origin.branch}`;
+  const listed = tryGit(spaceDir, [
+    "for-each-ref", "--format=%(refname) %(objectname) %(symref)", "refs/remotes/origin/", ...(localRef == null ? [] : [localRef]),
+  ]);
+  const refs = (listed.status === 0 ? listed.stdout.split("\n") : [])
+    .filter((line) => line.length > 0)
+    .map((line) => {
+      const [name, sha, symref] = line.split(" ");
+      return { name: name as string, sha: sha as string, symref: symref ?? "" };
+    });
+  const deletes = refs
+    .filter((ref) => ref.name.startsWith("refs/remotes/origin/") && ref.name !== trackingRef)
+    .filter((ref) => trackingRef == null || origin.tip == null || ref.symref !== trackingRef)
+    .map((ref) => `delete ${ref.name}\n`);
+  const updates: string[] = [];
+  if (trackingRef != null && origin.tip != null) {
+    updates.push(`update ${trackingRef} ${origin.tip}\n`);
+    const local = refs.find((ref) => ref.name === localRef);
+    if (local != null && local.sha !== origin.tip && isAncestor(spaceDir, local.sha, origin.tip)) {
+      updates.push(`update ${localRef} ${origin.tip} ${local.sha}\n`);
+    }
+  }
+  if (deletes.length + updates.length === 0) return;
+  const applied = tryGit(spaceDir, ["update-ref", "--no-deref", "--stdin"], { input: [...deletes, ...updates].join("") });
+  if (applied.status !== 0 && deletes.length > 0) {
+    tryGit(spaceDir, ["update-ref", "--no-deref", "--stdin"], { input: deletes.join("") });
+  }
 }

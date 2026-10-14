@@ -2,7 +2,7 @@
  * Honeybee v2 cell driver (WP5 of the reset).
  * Spec: docs/design/specs/reset-05-cell-tmux.md. Zero imports from old code.
  */
-export { CellDriver, CellRuntimeLiveError, type CellDriverConfig, type CellSpec } from "./driver.ts";
+export { CellDriver, CellRuntimeLiveError, DEFAULT_UPSTREAM_REFRESH, type CellDriverConfig, type CellSpec, type UpstreamRefreshPolicy } from "./driver.ts";
 export {
   provisionCell,
   provisionRequestOf,
@@ -69,7 +69,22 @@ export type {
   TrimVerifyWorkerRequest,
   TrimVerifyWorkerResult,
 } from "./retentionWorker.ts";
-export { UPSTREAM_REF, mirrorDirFor, originFetchUrl, readUpstreamMirror, refreshUpstreamMirror, upstreamRootFor, type UpstreamRef, type UpstreamRefresh } from "./upstream.ts";
+export {
+  UPSTREAM_REF,
+  adoptOriginRemote,
+  mirrorDirFor,
+  originFetchUrl,
+  readUpstreamMirror,
+  refreshUpstreamMirror,
+  resolveCellBase,
+  syncOriginFromMirror,
+  upstreamRootFor,
+  type CellBase,
+  type CellBaseSource,
+  type OriginSync,
+  type UpstreamRef,
+  type UpstreamRefresh,
+} from "./upstream.ts";
 export {
   bwrapArgs,
   darwinUserTempDir,
