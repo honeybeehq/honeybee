@@ -5,7 +5,7 @@ import { promisify } from "node:util";
 const execFileAsync = promisify(execFile);
 const [ownerArg, root, leaseDir] = process.argv.slice(2);
 const ownerPid = Number(ownerArg);
-const pollMs = Number(process.env.HIVE_FIXTURE_WARDEN_POLL_MS ?? 100);
+const pollMs = Number(process.env.HIVE_FIXTURE_WARDEN_POLL_MS ?? 500);
 
 if (!Number.isSafeInteger(ownerPid) || ownerPid <= 1 || !root || !leaseDir) {
   throw new Error("usage: fixture-warden.mjs <owner-pid> <gate-root> <lease-dir>");
