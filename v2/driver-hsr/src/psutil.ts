@@ -38,7 +38,7 @@ export function zombieWaitStatus(pid: number): number | null {
 
 const ZOMBIE_CENSUS_INTERVAL_MS = 500;
 const zombieNegatives = new Map<number, number>();
-const zombiePositives = new Set<number>();
+const zombiePositives = new Map<number, number>();
 const zombieCensusQueue = new Set<number>();
 let zombieCensusInFlight = false;
 
@@ -52,9 +52,14 @@ function isZombie(pid: number): boolean {
     }
   }
   if (process.platform === "win32") return false;
-  if (zombiePositives.delete(pid)) return true;
+  const now = Date.now();
+  const positiveAt = zombiePositives.get(pid);
+  if (positiveAt !== undefined) {
+    zombiePositives.delete(pid);
+    if (now - positiveAt < ZOMBIE_CENSUS_INTERVAL_MS) return true;
+  }
   const checkedAt = zombieNegatives.get(pid);
-  if (checkedAt === undefined || Date.now() - checkedAt >= ZOMBIE_CENSUS_INTERVAL_MS) {
+  if (checkedAt === undefined || now - checkedAt >= ZOMBIE_CENSUS_INTERVAL_MS) {
     zombieCensusQueue.add(pid);
     runZombieCensus();
   }
@@ -74,13 +79,15 @@ function runZombieCensus(): void {
       if (!row) continue;
       const seen = Number(row[1]);
       if (row[2]!.startsWith("Z")) {
-        zombiePositives.add(seen);
+        zombiePositives.set(seen, now);
         zombieNegatives.delete(seen);
       } else {
+        zombiePositives.delete(seen);
         zombieNegatives.set(seen, now);
       }
     }
     for (const [cached, at] of zombieNegatives) if (now - at >= ZOMBIE_CENSUS_INTERVAL_MS * 4) zombieNegatives.delete(cached);
+    for (const [cached, at] of zombiePositives) if (now - at >= ZOMBIE_CENSUS_INTERVAL_MS) zombiePositives.delete(cached);
     runZombieCensus();
   });
 }
