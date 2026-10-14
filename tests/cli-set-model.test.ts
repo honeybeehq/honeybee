@@ -4,6 +4,7 @@ import { chmod, copyFile, mkdir, readFile, readdir, rm, writeFile, mkdtemp } fro
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { scaledMs } from "./timeScale.js";
 import { promisify } from "node:util";
 import { reviveRecord } from "../src/commands/migrate.js";
 import { captureProcessBirthFingerprint } from "../src/hsr/processIdentity.js";
@@ -368,7 +369,7 @@ test("set-model rolls the record back when the relaunched harness dies immediate
     // The relaunch command exits immediately → the settle window fails → the
     // previous selection must be restored on the record.
     await assert.rejects(
-      () => hive(store, socket, ["set-model", bee, "gpt-5.5"], { HIVE_CODEX_CMD: "sh -c 'exit 7' --" }),
+      () => hive(store, socket, ["set-model", bee, "gpt-5.5"], { HIVE_CODEX_CMD: `sh -c 'sleep ${Math.min(2, scaledMs(500) / 1_000)}; exit 7' --` }),
       /previous model restored/,
     )
 

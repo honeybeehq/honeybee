@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
+import { scaledMs } from "./timeScale.js";
 import {
   daemonLockPath,
   daemonLoopStale,
@@ -187,7 +188,7 @@ test("runDaemon (child process) starts, writes state.json, and exits cleanly on 
 
     // Wait for state.json to appear.
     const statePath = daemonStatePath();
-    const deadline = Date.now() + 8_000;
+    const deadline = Date.now() + scaledMs(8_000);
     while (Date.now() < deadline) {
       const exists = await stat(statePath).then(() => true).catch(() => false);
       if (exists) break;
@@ -210,13 +211,14 @@ test("runDaemon (child process) starts, writes state.json, and exits cleanly on 
       child.on("exit", (code) => resolve(code ?? 0));
     });
     child.kill("SIGTERM");
+    const exitBudgetMs = scaledMs(5_000);
     const code = await Promise.race([
       exitPromise,
-      sleep(5_000).then(() => -1),
+      sleep(exitBudgetMs).then(() => -1),
     ]);
     if (code === -1) {
       child.kill("SIGKILL");
-      assert.fail("daemon did not exit within 5s of SIGTERM");
+      assert.fail(`daemon did not exit within ${exitBudgetMs}ms of SIGTERM`);
     }
     assert.equal(code, 0, "expected clean exit code 0");
 

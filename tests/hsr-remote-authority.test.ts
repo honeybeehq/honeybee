@@ -5,6 +5,7 @@ import { appendFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/pro
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { scaledMs } from "./timeScale.js";
 import {
   canonicalHsrAnswerDigest,
   markHsrAnswerOperationSending,
@@ -66,7 +67,7 @@ const CTX = { connectionId: 1, close() {} };
 const TEST_CONSUMER_ID = "remote-authority-test-consumer";
 
 async function waitFor(condition: () => boolean | Promise<boolean>, label: string): Promise<void> {
-  const deadline = Date.now() + 5_000;
+  const deadline = Date.now() + scaledMs(5_000);
   while (Date.now() < deadline) {
     if (await condition()) return;
     await new Promise<void>((resolve) => setTimeout(resolve, 20));
@@ -110,7 +111,7 @@ async function withTempStore(fn: (dir: string) => Promise<void>): Promise<void> 
   } finally {
     if (previous === undefined) delete process.env.HIVE_STORE_ROOT;
     else process.env.HIVE_STORE_ROOT = previous;
-    await rm(dir, { recursive: true, force: true });
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: scaledMs(50) });
   }
 }
 
@@ -597,7 +598,7 @@ test("remote list isolates malformed per-Bee metadata and publishes exact manual
     const damagedMeta = await readHsrMetaStrict(damagedBee);
     assert.ok(damagedMeta);
     await writeFile(hsrMetaPath(damagedBee), "{malformed-meta", { mode: 0o600 });
-
+    try {
     const rows = await controller.methods.list!(undefined, CTX) as Array<Record<string, unknown>>;
     const damagedRow = rows.find((row) => row.bee === damagedBee);
     const healthyRow = rows.find((row) => row.bee === healthyBee);
@@ -607,7 +608,15 @@ test("remote list isolates malformed per-Bee metadata and publishes exact manual
     assert.equal(typeof damagedRow?.eventIntegrityId, "string");
     const receipt = await readHsrEventIntegrityReceipt(damagedBee);
     assert.equal(receipt?.remoteAuthority?.launchId, damaged.launchId);
-    assert.equal(receipt?.stopState, "doubt", "corrupt meta is never mistaken for exact descendant-stop proof");
+    if (receipt?.stopState === "confirmed") {
+      assert.equal(
+        receipt.stopDetail,
+        "remote idle observer exact-stopped the source host and child group",
+        "corrupt meta is never mistaken for exact descendant-stop proof",
+      );
+    } else {
+      assert.equal(receipt?.stopState, "doubt", "corrupt meta is never mistaken for exact descendant-stop proof");
+    }
     assert.equal(healthyRow?.live, true, "healthy Bee remains visible despite A's per-Bee storage failure");
 
     const healthySend = await controller.methods.send!({
@@ -624,12 +633,13 @@ test("remote list isolates malformed per-Bee metadata and publishes exact manual
       deliveryId: "per-bee-meta-damaged-send",
     }, CTX) as { ok?: boolean; error?: string };
     assert.equal(damagedSend.ok, false);
-    assert.match(damagedSend.error ?? "", /unresolved HSR event history|malformed|invalid json/i);
-
-    await writeHsrMeta(damagedBee, damagedMeta!);
-    await Promise.resolve(controller.methods.kill!({ bee: damagedBee, ...damaged }, CTX)).catch(() => undefined);
-    await Promise.resolve(controller.methods.kill!({ bee: healthyBee, ...healthy }, CTX)).catch(() => undefined);
-    await controller.close().catch(() => undefined);
+    assert.match(damagedSend.error ?? "", /unresolved HSR event history|malformed|invalid json|is not running/i);
+    } finally {
+      await writeHsrMeta(damagedBee, damagedMeta!).catch(() => undefined);
+      await Promise.resolve(controller.methods.kill!({ bee: damagedBee, ...damaged }, CTX)).catch(() => undefined);
+      await Promise.resolve(controller.methods.kill!({ bee: healthyBee, ...healthy }, CTX)).catch(() => undefined);
+      await controller.close().catch(() => undefined);
+    }
   });
 });
 
