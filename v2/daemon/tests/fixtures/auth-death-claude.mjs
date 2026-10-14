@@ -31,7 +31,7 @@ setInterval(async () => {
     }
   } catch {} finally { polling = false; }
 }, 100);
-createInterface({ input: process.stdin }).on("line", async raw => {
+createInterface({ input: process.stdin }).on("close", () => process.exit(0)).on("line", async raw => {
   const message = JSON.parse(raw);
   if (message.type !== "user" || !await probe()) return;
   emit({ type: "assistant", message: { role: "assistant", model: "fake", content: [{ type: "text", text: "Completed" }] } });
