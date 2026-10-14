@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
-import { appendFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type Server, type Socket } from "node:net";
 import { dirname } from "node:path";
 
@@ -135,8 +135,39 @@ function sessionLogLine(line: string): string {
   }
 }
 
+function testFixtureLeaseHeld(lease: string, ownerAlive: (pid: number) => boolean = pidAlive): boolean {
+  const separator = lease.indexOf(":");
+  const ownerPid = Number(lease.slice(0, separator));
+  const leaseDir = lease.slice(separator + 1);
+  return separator > 0 && Number.isSafeInteger(ownerPid) && ownerPid > 1 && leaseDir !== "" && existsSync(leaseDir) && ownerAlive(ownerPid);
+}
+
+function pidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
+function bindToTestFixtureLease(lease: string | undefined): void {
+  if (!lease) return;
+  const check = (): void => {
+    if (testFixtureLeaseHeld(lease)) return;
+    try {
+      process.kill(-process.pid, "SIGKILL");
+    } finally {
+      process.exit(1);
+    }
+  };
+  check();
+  setInterval(check, 500).unref();
+}
+
 export function runRunnerHost(configPath: string): void {
   const cfg = JSON.parse(readFileSync(configPath, "utf8")) as RunnerHostConfig;
+  bindToTestFixtureLease(process.env.HIVE_TEST_FIXTURE_LEASE);
   mkdirSync(dirname(cfg.sessionLogPath), { recursive: true });
   mkdirSync(dirname(cfg.observationLogPath), { recursive: true });
   // Exact generation journal exists before the status becomes adoptable.
