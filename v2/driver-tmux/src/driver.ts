@@ -139,6 +139,7 @@ interface TmuxRuntime {
   stopCause: StopCause | null;
   killTimer: NodeJS.Timeout | null;
   exited: boolean;
+  deadSince: number | null;
   // observer stack
   eventsTail: JsonlTail;
   transcriptLocator: TranscriptLocator | null;
@@ -157,6 +158,7 @@ interface TmuxRuntime {
 
 const BIND_SCAN_INTERVAL_MS = 50;
 const PANE_POLL_INTERVAL_MS = 150;
+const DEAD_STATUS_GRACE_MS = 2_000;
 
 // Delivery injection tuning (spec 05 point 3, live-calibrated 2026-08-17):
 // type mode pre-delays so a TUI's input handler is actually listening (grok
@@ -694,6 +696,7 @@ export class TmuxDriver implements RuntimeDriver {
       stopCause: null,
       killTimer: null,
       exited: false,
+      deadSince: null,
       eventsTail: new JsonlTail(this.eventsFilePath(init.beeId), { skipExisting: init.adopted }),
       transcriptLocator: obs.transcript?.locator ?? null,
       transcriptParser: parser,
@@ -712,11 +715,15 @@ export class TmuxDriver implements RuntimeDriver {
 
   private harvest(p: TmuxRuntime): void {
     if (p.exited) return;
+    const now = this.now();
     if (!pidAlive(p.pid)) {
+      if (p.stopCause == null && this.deadPaneVerdict(p) === "pending") {
+        p.deadSince ??= now;
+        if (now - p.deadSince < DEAD_STATUS_GRACE_MS) return;
+      }
       this.onExit(p);
       return;
     }
-    const now = this.now();
     // (b) transcript baseline FIRST — it is the slower source (binding
     // latency), so draining it before the events file keeps same-cycle
     // ordering right: a hook/notify completion never folds ahead of the
@@ -855,6 +862,11 @@ export class TmuxDriver implements RuntimeDriver {
 
   /** Exit cause from the dead pane's status (remain-on-exit), else crashed. */
   private deadPaneCause(p: TmuxRuntime): "clean" | "crashed" {
+    return this.deadPaneVerdict(p) === "clean" ? "clean" : "crashed";
+  }
+
+  /** The pane's reaped status; pending while tmux still owns an unreaped child. */
+  private deadPaneVerdict(p: TmuxRuntime): "clean" | "crashed" | "pending" {
     const res = this.server.try([
       "list-panes",
       "-t",
@@ -866,6 +878,7 @@ export class TmuxDriver implements RuntimeDriver {
     const line = res.stdout.split("\n")[0]?.trim() ?? "";
     const [dead, status] = line.split(" ");
     if (dead === "1" && status === "0") return "clean";
+    if (dead === "1" && !status) return "pending";
     return "crashed";
   }
 
