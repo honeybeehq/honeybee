@@ -1792,7 +1792,9 @@ export interface CredentialHandoffActiveLane {
 export interface CredentialHandoffLocalFact {
   handoffId: string;
   role: CredentialHandoffRecord["role"];
-  state: CredentialHandoffRecord["state"];
+  state: CredentialHandoffRecord["state"] | "unknown";
+  durableState?: CredentialHandoffRecord["state"];
+  error?: "credential_handoff_unsupported";
   account: string;
   peerNodeId: string;
   confirmed: boolean;

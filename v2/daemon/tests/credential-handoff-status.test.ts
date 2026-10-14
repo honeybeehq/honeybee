@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { join } from "node:path";
-import { writeFileSync, unlinkSync, existsSync } from "node:fs";
+import { writeFileSync, unlinkSync, existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -137,19 +137,75 @@ test("handoff status: startup reconciliation stays unknown while held or failing
   console.log("startup held/failing stays reconciled:false; completed cleanup sets true after lane release");
 });
 
+test("handoff status: expired export boot pass owns reconciliation past the tick throttle", async () => {
+  const f = fixture();
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  let boot: Promise<void> | undefined;
+  let tick: Promise<boolean> | undefined;
+  try {
+    const expired = f.put("expired-boot", "source", "exported");
+    f.store.putCredentialHandoff({ ...expired, binding: { ...expired.binding, prepareBy: 0 } });
+    let aborts = 0;
+    f.service.exportAbort = async () => {
+      aborts++;
+      await gate;
+      return { handoffId: expired.handoffId, state: "aborted", receipt: null, generation: null, expiresAt: null, cleanupPending: false };
+    };
+    boot = f.service.reconcileStartup();
+    assert.equal(aborts, 1);
+    await new Promise(resolve => setTimeout(resolve, 1100));
+    tick = f.service.reconcile();
+    assert.equal(await Promise.race([tick, new Promise(resolve => setTimeout(() => resolve("tick_timeout"), 500))]), false);
+    assert.equal(aborts, 1);
+    assert.equal(snapshot(f.service).reconciled, false);
+    release(); await boot;
+    assert.equal(snapshot(f.service).reconciled, true);
+  } finally { release(); await boot?.catch(() => {}); await tick?.catch(() => {}); f.close(); }
+  console.log("expired export startup held past1s; tick cannot steal first pass; readiness true without restart");
+});
+
+test("handoff status: an unregistered harness remains an unknown row beside known rows", () => {
+  const f = fixture();
+  try {
+    f.put("known", "source", "committed");
+    const unknown = f.put("future", "destination", "prepared");
+    f.store.putCredentialHandoff({ ...unknown, binding: { ...unknown.binding, harness: "future-harness" } });
+    const result = snapshot(f.service);
+    assert.equal(result.handoffs.length, 2);
+    assert.equal(result.handoffs[0]!.state, "committed");
+    const row = result.handoffs[1]!;
+    assert.equal(row.state, "unknown"); assert.equal(row.durableState, "prepared");
+    assert.equal(row.error, "credential_handoff_unsupported"); assert.equal(row.activeLane, null);
+    assert.equal(row.confirmed, false);
+    assertRedacted(result);
+    assert.equal((f.service.status({ handoffId: "future", role: "destination", summary: true }) as CredentialHandoffLocalFact).state, "unknown");
+  } finally { f.close(); }
+});
+
 test("handoff status: isolated daemon capability, CLI list, missing/relay refusals and restart", { timeout: 60000 }, async () => {
   const f = fixture();
   f.put("durable-claim", "source", "committed");
   for (const role of ["source", "destination"] as const) for (const state of ["exported", "preparing", "prepared", "committed", "adopting", "adopted", "failed", "aborted", "confirmed", "stood_down"] as const) f.put(`restart-${role}-${state}`, role, state);
+  const expired = f.put("expired-at-boot", "source", "exported");
+  f.store.putCredentialHandoff({ ...expired, binding: { ...expired.binding, prepareBy: 0 } });
+  f.store.putAccountCredentialAuthority({ account: f.account.id, phase: "handing_off", generation: 1, expiresAt: Date.now() + 3600000, operationKey: null });
   const pending = f.put("boot-held", "destination", "failed"); f.store.putCredentialHandoff({ ...pending, scrubbed: false }); f.store.close();
   const gate = join(f.rig.dir, "startup-gate"), marker = join(f.rig.dir, "startup-held"), preload = join(f.rig.dir, "startup-preload.mjs");
+  const exportGate = join(f.rig.dir, "export-gate"), exportMarker = join(f.rig.dir, "expired-export-held");
+  writeFileSync(exportGate, "");
   writeFileSync(gate, "");
-  writeFileSync(preload, `import fs from 'node:fs';import{AccountsService}from${JSON.stringify(fileURLToPath(new URL("../src/accountsService.ts", import.meta.url)))};const original=AccountsService.prototype.scrubHandoff;AccountsService.prototype.scrubHandoff=async function(account){if(fs.existsSync(${JSON.stringify(gate)})){fs.writeFileSync(${JSON.stringify(marker)},'');while(fs.existsSync(${JSON.stringify(gate)}))await new Promise(r=>setTimeout(r,10));}return original.call(this,account);};`);
+  writeFileSync(preload, `import fs from 'node:fs';import{CredentialHandoffService}from${JSON.stringify(fileURLToPath(new URL('../src/credentialHandoff.ts', import.meta.url)))};const abort=CredentialHandoffService.prototype.exportAbort;CredentialHandoffService.prototype.exportAbort=async function(params){if(fs.existsSync(${JSON.stringify(exportGate)})){fs.appendFileSync(${JSON.stringify(exportMarker)},'held\\n');while(fs.existsSync(${JSON.stringify(exportGate)}))await new Promise(r=>setTimeout(r,10));}return abort.call(this,params);};globalThis.fetch=async()=>{throw new Error('External provider forbidden in isolated status fixture');};import{AccountsService}from${JSON.stringify(fileURLToPath(new URL("../src/accountsService.ts", import.meta.url)))};const original=AccountsService.prototype.scrubHandoff;AccountsService.prototype.scrubHandoff=async function(account){if(fs.existsSync(${JSON.stringify(gate)})){fs.writeFileSync(${JSON.stringify(marker)},'');while(fs.existsSync(${JSON.stringify(gate)}))await new Promise(r=>setTimeout(r,10));}return original.call(this,account);};`);
   let daemon: Awaited<ReturnType<typeof startDaemon>> | undefined;
   let client: RpcClient | undefined;
   try {
     daemon = await startDaemon(f.rig.dir, { env: { NODE_OPTIONS: `--import=${preload}`, HIVE_NO_KEYCHAIN: "1" } });
     client = await daemon.client();
+    await waitFor(() => existsSync(exportMarker), "expired export held at boot while RPC listens");
+    await new Promise(resolve => setTimeout(resolve, 1300));
+    assert.equal(readFileSync(exportMarker, "utf8").match(/held/g)?.length, 1, "ticks cannot enter the startup-owned expired export pass");
+    assert.equal((await client.request<CredentialHandoffLocalSnapshot>("account.credentials.handoffStatus", {})).reconciled, false);
+    unlinkSync(exportGate);
     await waitFor(() => existsSync(marker), "startup cleanup held while RPC listens");
     const held = await client.request<CredentialHandoffLocalSnapshot>("account.credentials.handoffStatus", {});
     assert.equal(held.reconciled, false);
@@ -157,7 +213,8 @@ test("handoff status: isolated daemon capability, CLI list, missing/relay refusa
     unlinkSync(gate);
     assert.ok(client.capabilities.includes("account.credentials.handoff_status.v2"));
     const before = await waitFor(async () => { const result = await client!.request<CredentialHandoffLocalSnapshot>("account.credentials.handoffStatus", {}); return result.reconciled ? result : null; }, "startup handoffs reconciled");
-    assert.equal(before.handoffs.length, 22); assert.equal(before.handoffs[0]!.handoffId, "durable-claim"); assert.equal(before.handoffs[0]!.activeLane, null);
+    assert.equal(before.handoffs.length, 23); assert.equal(before.handoffs[0]!.handoffId, "durable-claim"); assert.equal(before.handoffs[0]!.activeLane, null);
+    assert.equal(before.handoffs.find(row => row.handoffId === "expired-at-boot")!.state, "aborted");
     assertRedacted(before);
     await assert.rejects(client.request("account.credentials.handoffStatus", { handoffId: "missing", summary: true }), e => e instanceof RpcError && e.code === "credential_handoff_not_found");
     for (const lane of ["node_relay", "remote"] as const) {
@@ -173,5 +230,5 @@ test("handoff status: isolated daemon capability, CLI list, missing/relay refusa
     const summary = await client.request<CredentialHandoffLocalFact>("account.credentials.handoffStatus", { handoffId: "durable-claim", summary: true });
     assertRedacted(summary);
     console.log("isolated Unix daemon/CLI list, capability, missing-not_found, remote/relay refused; durable state survives restart, no stale lane");
-  } finally { if (existsSync(gate)) unlinkSync(gate); client?.close(); if (daemon) await forceStopTestDaemon(daemon); f.rig.cleanup(); }
+  } finally { if (existsSync(exportGate)) unlinkSync(exportGate); if (existsSync(gate)) unlinkSync(gate); client?.close(); if (daemon) await forceStopTestDaemon(daemon); f.rig.cleanup(); }
 });

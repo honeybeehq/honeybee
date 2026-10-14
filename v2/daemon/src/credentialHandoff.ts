@@ -805,16 +805,16 @@ export class CredentialHandoffService {
   }
 
   async reconcile(force = false): Promise<boolean> {
-    if (!force && this.now() - this.lastSweepAt < 1000) return false;
-    this.lastSweepAt = this.now();
-    const pending = this.store.pendingCredentialHandoffs();
-    for (const row of pending.filter(row => row.role === "source" && row.state === "exported" && this.now() >= row.binding.prepareBy)) {
-      try { await this.exportAbort({ handoffId: row.handoffId }); }
-      catch { this.log(`account.credentials.handoff_reconcile_pending account=${row.account} handoff=${row.handoffId}`); }
-    }
     if (this.reconciling) return false;
+    if (!force && this.now() - this.lastSweepAt < 1000) return false;
     this.reconciling = true;
     try {
+      this.lastSweepAt = this.now();
+      const pending = this.store.pendingCredentialHandoffs();
+      for (const row of pending.filter(row => row.role === "source" && row.state === "exported" && this.now() >= row.binding.prepareBy)) {
+        try { await this.exportAbort({ handoffId: row.handoffId }); }
+        catch { this.log(`account.credentials.handoff_reconcile_pending account=${row.account} handoff=${row.handoffId}`); }
+      }
       for (const row of pending.filter(row => row.role === "source" && row.releasePeer?.earlyRotationPending)) {
         try {
           const account = this.account(row.account), authority = this.accounts.authorityFor(account)!, state = authority.status(account);
@@ -859,7 +859,10 @@ export class CredentialHandoffService {
 
   private localFact(row: CredentialHandoffRecord): CredentialHandoffLocalFact {
     const authority = this.accounts.authorityFor({ harness: row.binding.harness });
-    if (!authority) throw new RpcError("credential_handoff_unsupported", "Handoff authority is unavailable on this daemon.");
+    if (!authority) return { handoffId: row.handoffId, role: row.role, state: "unknown", durableState: row.state,
+      account: row.account, peerNodeId: row.role === "source" ? row.binding.to.nodeId : row.binding.from.nodeId,
+      confirmed: false, scrubbed: row.scrubbed === true, cleanupPending: this.result(row).cleanupPending,
+      activeLane: null, error: "credential_handoff_unsupported" };
     const lane = authority.activeHandoffLane({ id: row.account });
     return { handoffId: row.handoffId, role: row.role, state: row.state, account: row.account,
       peerNodeId: row.role === "source" ? row.binding.to.nodeId : row.binding.from.nodeId,
