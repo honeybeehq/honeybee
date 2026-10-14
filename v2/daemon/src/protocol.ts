@@ -91,6 +91,7 @@ export const DAEMON_VERSION = BUILD_IDENTITY.version;
 export const DAEMON_CAPABILITIES = [
   "bee.human_ref.v1",
   "bee.turn_trigger.v1",
+  "mail.answer_marker.v1",
   "update.reservation.v1",
   "bee.reconnectTools.v1",
   "thread.operations.v1",

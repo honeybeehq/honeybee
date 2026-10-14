@@ -3831,7 +3831,14 @@ export class CoreStore {
         .prepare("UPDATE mailbox SET delivered_at = ?, delivered_generation = ? WHERE id = ?")
         .run(at, generation, messageId);
       const turnTrigger = source ? this.applyDeliveryTurnTrigger(message.beeId, current, messageId, source, at) : null;
-      this.audit("mail.delivered", message.beeId, { messageId, deliveredAt: at, deliveredGeneration: generation, ...(turnTrigger ? { turnTrigger } : {}) });
+      const questionId = this.answeredQuestionId(messageId);
+      this.audit("mail.delivered", message.beeId, {
+        messageId,
+        deliveredAt: at,
+        deliveredGeneration: generation,
+        ...(turnTrigger ? { turnTrigger } : {}),
+        ...(questionId !== null ? { questionId } : {}),
+      });
       // v24: an action instruction reached its runtime — delivery evidence only, never completion.
       this.applyActionDelivered(messageId, generation, at);
       return { applied: true };
@@ -3868,7 +3875,8 @@ export class CoreStore {
       for (const row of rows) {
         const messageId = Number(row.id);
         this.stmt("UPDATE mailbox SET delivered_at = ?, delivered_generation = ? WHERE id = ?").run(at, generation, messageId);
-        this.audit("mail.delivered", beeId, { messageId, deliveredAt: at, deliveredGeneration: generation, ack: true });
+        const questionId = this.answeredQuestionId(messageId);
+        this.audit("mail.delivered", beeId, { messageId, deliveredAt: at, deliveredGeneration: generation, ack: true, ...(questionId !== null ? { questionId } : {}) });
         acked.push(messageId);
       }
       return { acked };
@@ -3894,6 +3902,11 @@ export class CoreStore {
        WHERE id = ? RETURNING last_human_output_at`,
     ).get(at, generation, at, beeId) as Row;
     this.audit("output.recorded", beeId, { beeId, at, lastHumanOutputAt: row.last_human_output_at == null ? null : Number(row.last_human_output_at) });
+  }
+
+  answeredQuestionId(messageId: number): string | null {
+    const row = this.stmt("SELECT id FROM questions WHERE delivery_message_id = ?").get(messageId) as Row | undefined;
+    return row === undefined ? null : (row.id as string);
   }
 
   mailOrigin(messageId: number): MailOrigin {

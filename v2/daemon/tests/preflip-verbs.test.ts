@@ -43,6 +43,7 @@ import type {
   ViewResult,
   WatchFrame,
 } from "../src/protocol.ts";
+import { ANSWER_INJECTION_MARKER } from "../src/envelope.ts";
 import { RpcError } from "../src/protocol.ts";
 import type { RpcClient } from "../../cli/src/client.ts";
 import { makeDaemonDir, sleep, startDaemon, waitFor, type DaemonHandle } from "./helpers.ts";
@@ -498,9 +499,13 @@ test("v6.rpc.6: questions + seals — ask → open row → answer → delivered 
     // so waiting on idle here would pass BEFORE the turn — wait for the echo
     // (the stub's evidence it worked the answer) like the interrupt test does.
     const logPath = join(dir, "session-logs", `${beeId}.jsonl`);
-    await waitFor(() => existsSync(logPath) && /echo:\[answer to question/.test(readFileSync(logPath, "utf8")), "answer worked by the bee", 12_000);
+    const answerEcho = `echo:${ANSWER_INJECTION_MARKER}`;
+    await waitFor(() => existsSync(logPath) && readFileSync(logPath, "utf8").includes(answerEcho), "answer worked by the bee", 12_000);
     await waitState(client, beeId, "idle", "answer turn ended");
-    assert.match(readFileSync(logPath, "utf8"), /echo:\[answer to question/);
+    const worked = readFileSync(logPath, "utf8");
+    assert.ok(worked.includes(answerEcho), worked);
+    assert.ok(worked.includes(`\\"questionId\\":\\"${asked.question.id}\\"`), worked);
+    assert.ok(worked.includes(`[answer to question ${asked.question.id}] rebase`), worked);
     const replay = await client.request<QuestionAnswerResult>("question.answer", { questionId: asked.question.id, answer: "rebase", answeredBy: "tormod", idempotencyKey: "ans-1" });
     assert.equal(replay.deduped, true);
     assert.equal(replay.messageId, answered.messageId, "no second delivery");

@@ -6,7 +6,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { BUZ_INJECTION_MARKER, DELIVERY_INTERRUPT_NOTICE, REMOTE_SENDER_RE, deliveryText, isPeerSender, urgencyToTier } from "../src/envelope.ts";
+import { ANSWER_INJECTION_MARKER, BUZ_INJECTION_MARKER, DELIVERY_INTERRUPT_NOTICE, REMOTE_SENDER_RE, deliveryText, isPeerSender, urgencyToTier } from "../src/envelope.ts";
 
 const baseMsg = { id: 7, body: "shard 3 is yours", urgency: "next" as const, enqueuedAt: 1_787_000_000_000 };
 
@@ -67,4 +67,27 @@ test("envelope.5: the interrupt notice sits between the blank line and the body,
   assert.equal(noticed.split("\n")[1], plain.split("\n")[1]);
   assert.equal(deliveryText({ ...msg, sender: "operator" }, false, true), baseMsg.body);
   assert.ok(!DELIVERY_INTERRUPT_NOTICE.includes("\n"));
+});
+
+test("envelope.answer: a question answer carries the answer marker and its questionId, for people and peers alike", () => {
+  const msg = { ...baseMsg, sender: "tormod", body: "[answer to question q-1] rebase\n\n(question was: merge or rebase?)" };
+  const text = deliveryText(msg, false, false, "q-1");
+  const lines = text.split("\n");
+  assert.equal(lines[0], ANSWER_INJECTION_MARKER);
+  assert.deepEqual(JSON.parse(lines[1] as string), {
+    version: 1,
+    kind: "answer",
+    questionId: "q-1",
+    from: "tormod",
+    id: "7",
+    sentAt: new Date(baseMsg.enqueuedAt).toISOString(),
+  });
+  assert.equal(lines[2], "");
+  assert.equal(lines.slice(3).join("\n"), msg.body);
+  const peer = deliveryText({ ...msg, sender: "CL.6d44f" }, true, false, "q-1");
+  assert.equal(peer.split("\n")[0], ANSWER_INJECTION_MARKER);
+  assert.equal(JSON.parse(peer.split("\n")[1] as string).from, "CL.6d44f");
+  assert.equal(deliveryText(msg, false, false, null), msg.body);
+  assert.ok(!ANSWER_INJECTION_MARKER.includes("\n"));
+  assert.notEqual(ANSWER_INJECTION_MARKER, BUZ_INJECTION_MARKER);
 });

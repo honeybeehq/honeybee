@@ -1615,7 +1615,7 @@ export class DaemonCore {
       // durable truth — the envelope is delivery-time rendering only.
       const peer = isPeerSender(msg.sender, (id) => this.store.getBee(id) != null);
       const interruptedTurn = peer && msg.urgency === "now" && this.store.deliveryInterruptedTurn(rt.beeId, msg.id, rt.generation);
-      let body = deliveryText(msg, peer, interruptedTurn);
+      let body = deliveryText(msg, peer, interruptedTurn, this.store.answeredQuestionId(msg.id));
       const instruction = this.store.placementInstructionMove(rt.beeId);
       if (instruction && rt.generation !== instruction.sourceGeneration) {
         body = prefixPlacementDelivery(
