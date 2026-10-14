@@ -223,6 +223,7 @@ const VALUE_FLAGS = new Set([
   "--title",
   "--tag",
   "--sender",
+  "--sender-kind",
   "--urgency",
   "--timeout",
   "--lifecycle",
@@ -2299,7 +2300,7 @@ async function cmdSend(ctx: CliContext, parsed: Parsed, options: { humanSender?:
   const [, needle, ...bodyParts] = parsed.positional;
   const body = bodyParts.join(" ");
   if (!needle || body.length === 0) {
-    throw new Error("usage: hive send <bee> <message…> [--urgency now|next|idle] [--sender s] [--wait] [--timeout ms] [--idempotency-key k]");
+    throw new Error("usage: hive send <bee> <message…> [--urgency now|next|idle] [--sender s] [--sender-kind human|automation] [--wait] [--timeout ms] [--idempotency-key k]");
   }
   return withClient(ctx, async (c) => {
     // Exact IDs need no hive-wide list. Explicit sender aliases still use the
@@ -2326,6 +2327,7 @@ async function cmdSend(ctx: CliContext, parsed: Parsed, options: { humanSender?:
       sender,
       // v8: delivery urgency (validated by the daemon; omitted = next).
       urgency: parsed.flags.get("--urgency") as string | undefined,
+      senderKind: parsed.flags.get("--sender-kind") as string | undefined,
       idempotencyKey: parsed.flags.get("--idempotency-key") as string | undefined,
     });
     if (parsed.flags.get("--wait") !== true) {
@@ -3082,7 +3084,7 @@ async function cmdBuz(ctx: CliContext, parsed: Parsed): Promise<number> {
       if (!target || prompt.length === 0) {
         throw new Error(
           "usage: hive buz send <bee> -p <body> [--sender <bee>|--sender-human <name>] " +
-            "[--tier interrupt|next-tool|queue|passive | --urgency now|next|idle] [--wait]",
+            "[--tier interrupt|next-tool|queue|passive | --urgency now|next|idle] [--sender-kind human|automation] [--wait]",
         );
       }
       const tier = parsed.flags.get("--tier") as string | undefined;

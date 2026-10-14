@@ -235,6 +235,7 @@ function mapMessage(r: Row): MessageRow {
     enqueuedAt: Number(r.enqueued_at),
     deliveredAt: r.delivered_at == null ? null : Number(r.delivered_at),
     deliveredGeneration: r.delivered_generation == null ? null : Number(r.delivered_generation),
+    ...(r.sender_kind == null ? {} : { senderKind: r.sender_kind as MessageRow["senderKind"] }),
   };
 }
 

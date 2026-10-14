@@ -164,11 +164,36 @@ test("turn-trigger.4: a new generation never inherits the previous generation's 
   assert.equal(after.lastTurnTrigger!.generation, 1);
   assert.equal(after.lastHumanOutputAt, human);
 
+  store.updateRuntimeState(bee.id, 2, "stopped", { exitCause: "crashed" });
+  store.reviveBee(bee.id);
+  bootToRunning(store, bee.id, 9, 9);
   const { message } = store.send(bee.id, "boot prompt", { sender: "operator" });
-  store.updateRuntimeState(bee.id, 2, "running");
-  store.markDelivered(message.id, 2, HUMAN);
-  assert.equal(store.getBee(bee.id)!.lastTurnTrigger!.kind, "other", "the open turn has no opener");
-  assert.ok(store.getBee(bee.id)!.lastTurnTrigger!.humanAt !== null);
+  store.markDelivered(message.id, 3, HUMAN);
+  const bootTurn = store.getBee(bee.id)!.lastTurnTrigger!;
+  assert.deepEqual(
+    [bootTurn.kind, bootTurn.from, bootTurn.messageId, bootTurn.generation, bootTurn.humanAt !== null],
+    ["human", "operator", message.id, 3, true],
+    "a delivery into the boot turn keeps its sender and message",
+  );
+  assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
+  store.close();
+});
+
+test("turn-trigger.7: senderKind is stored, read back, audited and replayed; unknown kinds are refused", (t) => {
+  const h = harness();
+  t.after(() => h.cleanup());
+  const store = h.open();
+  const bee = idleBee(store);
+  const automated = store.send(bee.id, "proof landed", { senderKind: "automation" }).message;
+  const typed = store.send(bee.id, "hello", { senderKind: "human" }).message;
+  const plain = store.send(bee.id, "plain").message;
+  assert.equal(automated.senderKind, "automation");
+  assert.equal(store.getMessage(automated.id)!.senderKind, "automation");
+  assert.equal(store.getMessage(typed.id)!.senderKind, "human");
+  assert.equal("senderKind" in store.getMessage(plain.id)!, false);
+  assert.throws(() => store.send(bee.id, "x", { senderKind: "robot" as never }), /unknown sender kind/);
+  const enqueued = store.auditRows().filter((r) => r.kind === "mail.enqueued").map((r) => (r.payload.message as { senderKind?: string }).senderKind);
+  assert.deepEqual(enqueued, ["automation", "human", undefined]);
   assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
   store.close();
 });
@@ -182,10 +207,29 @@ test("turn-trigger.5: a store without the columns gains them on open; existing b
   const db = new DatabaseSync(h.path);
   db.exec("ALTER TABLE bees DROP COLUMN last_turn_trigger");
   db.exec("ALTER TABLE bees DROP COLUMN last_human_output_at");
+  db.exec("ALTER TABLE mailbox DROP COLUMN sender_kind");
   db.close();
   const store = h.open({ ephemeral: false });
   const row = store.getBee(bee.id)!;
   assert.equal(row.lastTurnTrigger, null);
   assert.equal(row.lastHumanOutputAt, null);
+  assert.equal(store.send(bee.id, "after migration", { senderKind: "automation" }).message.senderKind, "automation");
+  store.close();
+});
+
+test("turn-trigger.8: an auth-interrupted turn's redelivered mail keeps its senderKind", (t) => {
+  const h = harness();
+  t.after(() => h.cleanup());
+  const store = h.open();
+  const { bee } = makeBee(store);
+  const notice = store.send(bee.id, "proof landed", { senderKind: "automation" }).message;
+  store.markDelivered(notice.id, 1);
+  const row = store.recordAuthInterruption({
+    beeId: bee.id, account: "claude-a", generation: 1, messageIds: [notice.id], turnProgress: "none", credentialRevision: "rev-1", detail: "Not logged in",
+  });
+  store.restoreAuthInterruption(row.id, { revision: "rev-2", by: "login" });
+  assert.equal(store.resumeAuthInterruption(row.id, "continue").applied, true);
+  assert.deepEqual(store.undeliveredMessages(bee.id).map((m) => [m.body, m.senderKind]), [["proof landed", "automation"]]);
+  assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
   store.close();
 });

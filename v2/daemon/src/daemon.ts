@@ -50,6 +50,7 @@ import {
   isTaskTransitionAction,
   MAIL_HISTORY_MAX_LIMIT,
   MESSAGE_URGENCIES,
+  SENDER_KINDS,
   INBOX_AGENT,
   isInboxAgent,
   filterMailbox,
@@ -107,6 +108,7 @@ import {
   type RowSource,
   type Scope,
   type Urgency,
+  type SenderKind,
 } from "../../core/src/index.ts";
 import {
   AccountsService,
@@ -162,7 +164,7 @@ import {
   TranscriptUnavailableError,
 } from "./relocateSession.ts";
 import { SubstrateRouter } from "./substrates.ts";
-import { REMOTE_SENDER_RE } from "./envelope.ts";
+import { REMOTE_SENDER_RE, isPeerSender } from "./envelope.ts";
 import { TmuxDriver, claudeProjectKey, renderTranscriptLines } from "../../driver-tmux/src/index.ts";
 import { tmuxSpawnSpec } from "./tmuxHarness.ts";
 import {
@@ -4981,7 +4983,17 @@ export class HiveDaemon {
       }
       urgency = params.urgency as Urgency;
     }
-    const res = store.send(beeId, body, { sender, urgency });
+    let senderKind: SenderKind | undefined;
+    if (params.senderKind !== undefined && params.senderKind !== null) {
+      if (typeof params.senderKind !== "string" || !(SENDER_KINDS as readonly string[]).includes(params.senderKind)) {
+        throw new RpcError("invalid_request", `send: senderKind must be one of ${SENDER_KINDS.join("|")}`);
+      }
+      senderKind = params.senderKind as SenderKind;
+      if (isPeerSender(sender, (id) => store.getBee(id) != null)) {
+        throw new RpcError("invalid_request", "send: senderKind is only for operator and human senders; an agent's mail is always mail");
+      }
+    }
+    const res = store.send(beeId, body, { sender, urgency, ...(senderKind ? { senderKind } : {}) });
     this.forwardIfMailboxOnly(beeId, res.message);
     const held = this.authResume?.waitingForMaterial(beeId);
     return { messageId: res.message.id, commandId: res.wakeCommand?.id ?? null, unarchived: res.unarchived,
@@ -6166,7 +6178,7 @@ export class HiveDaemon {
       }
       if (!runtime || runtime.generation <= note.afterGeneration || runtime.state === "stopped") continue;
       this.weeklyCeilingNotes.delete(beeId);
-      store.send(beeId, note.body, { sender: "hive" });
+      store.send(beeId, note.body, { sender: "hive", senderKind: "automation" });
     }
   }
 

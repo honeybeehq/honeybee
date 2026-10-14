@@ -23,7 +23,7 @@ const GROUPS: Group[] = [
   {
     title: "Message",
     rows: [
-      ["send", "<bee> <message…>", "mailbox insert; --urgency now|next|idle; --wait blocks on delivery"],
+      ["send", "<bee> <message…>", "mailbox insert; --urgency now|next|idle; --sender-kind automation for scripted notices; --wait blocks on delivery"],
       ["ask", "<question…>", "(from inside a bee) ask the operator; the answer returns as mail"],
       ["answer", "<question-id> <answer…>", "answer an open question (also: question answer …)"],
       ["question", "list [--bee b] [--open]", "list questions"],

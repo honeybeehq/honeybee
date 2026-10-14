@@ -222,6 +222,7 @@ export type MirrorDelta = AuditRow;
  *   mail.delivered  → may carry { turnTrigger: TurnTrigger }             (bee row: lastTurnTrigger)
  *   runtime.updated → may carry { turnTrigger: TurnTrigger }             (bee row: lastTurnTrigger)
  *   output.recorded → carries { lastHumanOutputAt: number | null }       (bee row: lastHumanOutputAt)
+ *   mail.enqueued   → message may carry senderKind ('human'|'automation'); absent = not given (mailbox only)
  */
 export const MIRROR_TEMPLATE_AUDIT_KINDS = ["template.put", "template.deleted"] as const;
 export const MIRROR_TRACK_AUDIT_KINDS = ["track.put", "track.deleted"] as const;

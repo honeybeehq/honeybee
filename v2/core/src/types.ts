@@ -306,7 +306,11 @@ export interface MessageRow {
   enqueuedAt: number;
   deliveredAt: number | null;
   deliveredGeneration: number | null;
+  senderKind?: SenderKind;
 }
+
+export const SENDER_KINDS = ["human", "automation"] as const;
+export type SenderKind = (typeof SENDER_KINDS)[number];
 
 /** Bee ids are routing identities carried across every RPC and audit surface. */
 export const MAX_BEE_ID_BYTES = 256;

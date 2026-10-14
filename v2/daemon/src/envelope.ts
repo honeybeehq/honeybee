@@ -52,11 +52,24 @@ export function isPeerSender(sender: string, beeExists: (id: string) => boolean)
   return REMOTE_SENDER_RE.test(sender) || HANDLE_RE.test(sender) || BEE_UUID_RE.test(sender) || beeExists(sender);
 }
 
-const SYSTEM_MAIL_ORIGINS: readonly MailOrigin[] = ["action.dispatch", "handoff.seed", "auth.resume"];
+const SYSTEM_MAIL_ORIGINS: readonly MailOrigin[] = ["action.dispatch", "handoff.seed"];
 
-export function turnTriggerSource(sender: string, origin: MailOrigin, isPeer: boolean, parentId: string | null): TurnTriggerSource {
-  if (SYSTEM_MAIL_ORIGINS.includes(origin) || sender === TASK_SUPPLY_SENDER_NAME) return { kind: "other", from: sender };
+export const AUTOMATION_SENDERS: readonly string[] = [TASK_SUPPLY_SENDER_NAME, "human:pollinate"];
+
+export function isAutomationSender(sender: string): boolean {
+  return sender === "hive" || sender.startsWith("hive:") || AUTOMATION_SENDERS.includes(sender);
+}
+
+export function turnTriggerSource(
+  msg: Pick<MessageRow, "sender" | "senderKind">,
+  origin: MailOrigin,
+  isPeer: boolean,
+  parentId: string | null,
+): TurnTriggerSource {
+  const sender = msg.sender;
+  if (SYSTEM_MAIL_ORIGINS.includes(origin) || isAutomationSender(sender)) return { kind: "other", from: sender };
   if (isPeer) return { kind: "mail", from: sender };
+  if (msg.senderKind === "automation") return { kind: "other", from: sender };
   if (origin === "spawn.prompt" && parentId !== null) return { kind: "mail", from: parentId };
   return { kind: "human", from: sender };
 }

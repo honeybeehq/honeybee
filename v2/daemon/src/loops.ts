@@ -632,7 +632,7 @@ export class DaemonCore {
   }
 
   private turnTriggerSourceOf(msg: MessageRow, peer: boolean): TurnTriggerSource {
-    return turnTriggerSource(msg.sender, this.store.mailOrigin(msg.id), peer, this.store.getBee(msg.beeId)?.parentId ?? null);
+    return turnTriggerSource(msg, this.store.mailOrigin(msg.id), peer, this.store.getBee(msg.beeId)?.parentId ?? null);
   }
 
   private turnOpenerOf(obs: DriverObservation): { turnOpener?: TurnTriggerSource & { messageId: number } } {

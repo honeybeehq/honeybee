@@ -111,13 +111,23 @@ test("turn-trigger.daemon.2: a driver-opened turn keeps its opener when the stor
   }
 });
 
-test("turn-trigger.daemon.3: system origins are other, a child's spawn prompt is mail from its parent, people are human", () => {
-  assert.deepEqual(turnTriggerSource("operator", "action.dispatch", false, null), { kind: "other", from: "operator" });
-  assert.deepEqual(turnTriggerSource("operator", "handoff.seed", false, null), { kind: "other", from: "operator" });
-  assert.deepEqual(turnTriggerSource("operator", "auth.resume", false, null), { kind: "other", from: "operator" });
-  assert.deepEqual(turnTriggerSource("task-supply", "mail.send", true, null), { kind: "other", from: "task-supply" });
-  assert.deepEqual(turnTriggerSource("operator", "spawn.prompt", false, "parent-bee"), { kind: "mail", from: "parent-bee" });
-  assert.deepEqual(turnTriggerSource("operator", "spawn.prompt", false, null), { kind: "human", from: "operator" });
-  assert.deepEqual(turnTriggerSource("human:tormod", "mail.send", false, null), { kind: "human", from: "human:tormod" });
-  assert.deepEqual(turnTriggerSource("CL.a3f2", "legacy.unknown", true, null), { kind: "mail", from: "CL.a3f2" });
+test("turn-trigger.daemon.3: system origins and automation are other, a child's spawn prompt is mail from its parent, people are human", () => {
+  const from = (sender: string, senderKind?: "human" | "automation") => ({ sender, ...(senderKind ? { senderKind } : {}) });
+  assert.deepEqual(turnTriggerSource(from("operator"), "action.dispatch", false, null), { kind: "other", from: "operator" });
+  assert.deepEqual(turnTriggerSource(from("operator"), "handoff.seed", false, null), { kind: "other", from: "operator" });
+  assert.deepEqual(turnTriggerSource(from("hive:auth-resume"), "auth.resume", false, null), { kind: "other", from: "hive:auth-resume" });
+  assert.deepEqual(turnTriggerSource(from("hive:action"), "auth.resume", false, null), { kind: "other", from: "hive:action" }, "a redelivered action instruction stays other");
+  assert.deepEqual(turnTriggerSource(from("hive:handoff"), "auth.resume", false, null), { kind: "other", from: "hive:handoff" });
+  assert.deepEqual(turnTriggerSource(from("hive"), "mail.send", false, null), { kind: "other", from: "hive" });
+  assert.deepEqual(turnTriggerSource(from("operator"), "auth.resume", false, null), { kind: "human", from: "operator" }, "a redelivered human prompt stays human");
+  assert.deepEqual(turnTriggerSource(from("CL.a3f2"), "auth.resume", true, null), { kind: "mail", from: "CL.a3f2" });
+  assert.deepEqual(turnTriggerSource(from("task-supply"), "mail.send", true, null), { kind: "other", from: "task-supply" });
+  assert.deepEqual(turnTriggerSource(from("human:pollinate"), "mail.send", false, null), { kind: "other", from: "human:pollinate" });
+  assert.deepEqual(turnTriggerSource(from("operator", "automation"), "mail.send", false, null), { kind: "other", from: "operator" });
+  assert.deepEqual(turnTriggerSource(from("CL.a3f2", "automation"), "mail.send", true, null), { kind: "mail", from: "CL.a3f2" }, "an agent's mail is mail");
+  assert.deepEqual(turnTriggerSource(from("operator", "human"), "mail.send", false, null), { kind: "human", from: "operator" });
+  assert.deepEqual(turnTriggerSource(from("operator"), "spawn.prompt", false, "parent-bee"), { kind: "mail", from: "parent-bee" });
+  assert.deepEqual(turnTriggerSource(from("operator"), "spawn.prompt", false, null), { kind: "human", from: "operator" });
+  assert.deepEqual(turnTriggerSource(from("human:tormod"), "mail.send", false, null), { kind: "human", from: "human:tormod" });
+  assert.deepEqual(turnTriggerSource(from("CL.a3f2"), "legacy.unknown", true, null), { kind: "mail", from: "CL.a3f2" });
 });

@@ -438,7 +438,8 @@ CREATE TABLE IF NOT EXISTS mailbox (
   urgency              TEXT NOT NULL DEFAULT 'next' CHECK (urgency IN ('now','next','idle')),
   enqueued_at          INTEGER NOT NULL,
   delivered_at         INTEGER,
-  delivered_generation INTEGER
+  delivered_generation INTEGER,
+  sender_kind          TEXT CHECK (sender_kind IN ('human','automation'))
 ) STRICT;
 -- mailbox_undelivered (bee_id, id) was superseded by mailbox_pending_metadata
 -- (same prefix and partial predicate, wider covering payload); the store
@@ -1092,6 +1093,7 @@ export const MAILBOX_PENDING_METADATA_INDEX_SQL =
  */
 export const MAILBOX_ADDITIVE_COLUMNS: ReadonlyArray<readonly [name: string, ddl: string]> = [
   ["urgency", "urgency TEXT NOT NULL DEFAULT 'next' CHECK (urgency IN ('now','next','idle'))"],
+  ["sender_kind", "sender_kind TEXT CHECK (sender_kind IN ('human','automation'))"],
 ];
 
 /**

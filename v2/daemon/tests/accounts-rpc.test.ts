@@ -950,6 +950,12 @@ test("rpc.accounts.ceiling: past its weekly ceiling an account refuses explicit 
     }, "ceiling note delivered", 15_000);
     assert.equal(note.deliveredGeneration, 2);
     assert.match(note.body, /claude-personal is at 50% weekly usage, past its 40% ceiling/);
+    assert.equal(note.senderKind, "automation");
+    const noted = await waitFor(async () => {
+      const v = await client.request<ViewResult>("view", { beeId: idle.beeId });
+      return v.bee?.lastTurnTrigger?.messageId === note.id ? v.bee : null;
+    }, "ceiling note opened a turn", 15_000);
+    assert.equal(noted.lastTurnTrigger!.kind, "other");
 
     const stillParked = await client.request<ViewResult>("view", { beeId: parked.beeId });
     assert.equal(stillParked.bee?.account, "claude-personal", "a stopped bee is not touched until it wakes");

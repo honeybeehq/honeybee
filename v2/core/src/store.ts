@@ -31,6 +31,7 @@ import {
   RUNTIME_VERBS,
   SecondWriterError,
   MESSAGE_URGENCIES,
+  SENDER_KINDS,
   MAIL_HISTORY_BODY_PREVIEW_BYTES,
   MAIL_HISTORY_DEFAULT_LIMIT,
   MAIL_HISTORY_MAX_LIMIT,
@@ -104,6 +105,7 @@ import {
   type ActionView,
   type ActionWaitingReason,
   type BeeRow,
+  type SenderKind,
   type TurnTrigger,
   type TurnTriggerSource,
   type BeeView,
@@ -1398,6 +1400,7 @@ function mapMessage(r: Row): MessageRow {
     enqueuedAt: Number(r.enqueued_at),
     deliveredAt: r.delivered_at == null ? null : Number(r.delivered_at),
     deliveredGeneration: r.delivered_generation == null ? null : Number(r.delivered_generation),
+    ...(r.sender_kind == null ? {} : { senderKind: r.sender_kind as SenderKind }),
   };
 }
 
@@ -1768,7 +1771,7 @@ export class CoreStore {
       // v3 → v4: spawn_failures; v4 → v5: args. Same discipline: add iff
       // missing, so fresh and v1 stores (whose bees table was just created in
       // full) are untouched.
-      this.addMissingBeeColumns();
+      this.addMissingColumns("bees", BEES_ADDITIVE_COLUMNS);
       // v7 → v8: additive urgency column on mailbox (spec 01 Q2 amendment).
       const mailCols = new Set(
         (this.stmt("SELECT name FROM pragma_table_info('mailbox')").all() as Row[]).map((c) => String(c.name)),
@@ -2013,7 +2016,8 @@ export class CoreStore {
     if (!leaseCols.has("leased_from")) this.db.exec("ALTER TABLE accounts ADD COLUMN leased_from TEXT");
     if (!leaseCols.has("native")) this.db.exec("ALTER TABLE accounts ADD COLUMN native INTEGER NOT NULL DEFAULT 0 CHECK (native IN (0,1))");
     this.db.exec(ACCOUNTS_NATIVE_INDEX_SQL);
-    this.addMissingBeeColumns();
+    this.addMissingColumns("bees", BEES_ADDITIVE_COLUMNS);
+    this.addMissingColumns("mailbox", MAILBOX_ADDITIVE_COLUMNS);
     this.db.exec("UPDATE accounts SET leased_from = json_remove(json_set(leased_from, '$.revokedAt', json_extract(leased_from, '$.endedAt')), '$.endedAt') WHERE leased_from IS NOT NULL AND json_type(leased_from, '$.endedAt') IS NOT NULL");
     if (stored < 42) {
       const unscoped = this.stmt("SELECT account FROM account_credential_authorities WHERE phase <> 'disabled' AND authority_instance_id IS NULL").all() as Row[];
@@ -2032,12 +2036,12 @@ export class CoreStore {
       .run(String(SCHEMA_VERSION));
   }
 
-  private addMissingBeeColumns(): void {
-    const beeCols = new Set(
-      (this.stmt("SELECT name FROM pragma_table_info('bees')").all() as Row[]).map((c) => String(c.name)),
+  private addMissingColumns(table: "bees" | "mailbox", columns: ReadonlyArray<readonly [name: string, ddl: string]>): void {
+    const existing = new Set(
+      (this.stmt(`SELECT name FROM pragma_table_info('${table}')`).all() as Row[]).map((c) => String(c.name)),
     );
-    for (const [name, ddl] of BEES_ADDITIVE_COLUMNS) {
-      if (!beeCols.has(name)) this.db.exec(`ALTER TABLE bees ADD COLUMN ${ddl}`);
+    for (const [name, ddl] of columns) {
+      if (!existing.has(name)) this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
     }
   }
 
@@ -2782,7 +2786,7 @@ export class CoreStore {
         : current.state === "running" && state === "idle" ? this.applyTurnEndTrigger(beeId, generation, at) : null;
       const runtime = this.currentRuntime(beeId);
       this.audit("runtime.updated", beeId, { runtime, ...(turnTrigger ? { turnTrigger } : {}) });
-      if (opts.recordOutput === true) this.applyRecordOutput(beeId, at);
+      if (opts.recordOutput === true) this.applyRecordOutput(beeId, at, generation);
       // Spawn-failure budget (contract §4.2 spawn_failed, B5 bounded): an
       // unproven runtime either died on its own or exhausted the daemon's boot
       // deadline. The durable, generation-fenced stop command distinguishes a
@@ -3435,9 +3439,10 @@ export class CoreStore {
   send(
     beeId: string,
     body: string,
-    opts: { sender?: string; priority?: number; urgency?: Urgency; origin?: MailOrigin } = {},
+    opts: { sender?: string; priority?: number; urgency?: Urgency; origin?: MailOrigin; senderKind?: SenderKind } = {},
   ): SendResult {
     const urgency = opts.urgency ?? "next";
+    if (opts.senderKind !== undefined && !(SENDER_KINDS as readonly string[]).includes(opts.senderKind)) throw new CoreError(`unknown sender kind: ${String(opts.senderKind)}`);
     if (!(MESSAGE_URGENCIES as readonly string[]).includes(urgency)) throw new UnknownUrgencyError(urgency);
     const origin = opts.origin ?? "mail.send";
     if (!(MAIL_ORIGINS as readonly string[]).includes(origin)) throw new CoreError(`unknown mail origin: ${origin}`);
@@ -3455,8 +3460,8 @@ export class CoreStore {
       }
       const at = this.now();
       const res = this.db
-        .prepare("INSERT INTO mailbox(bee_id, sender, body, priority, urgency, enqueued_at) VALUES(?, ?, ?, ?, ?, ?)")
-        .run(beeId, sender, normalizedBody, opts.priority ?? 0, urgency, at);
+        .prepare("INSERT INTO mailbox(bee_id, sender, body, priority, urgency, enqueued_at, sender_kind) VALUES(?, ?, ?, ?, ?, ?, ?)")
+        .run(beeId, sender, normalizedBody, opts.priority ?? 0, urgency, at, opts.senderKind ?? null);
       const message: MessageRow = {
         id: Number(res.lastInsertRowid),
         beeId,
@@ -3467,6 +3472,7 @@ export class CoreStore {
         enqueuedAt: at,
         deliveredAt: null,
         deliveredGeneration: null,
+        ...(opts.senderKind === undefined ? {} : { senderKind: opts.senderKind }),
       };
       const enqueueSeq = this.audit("mail.enqueued", beeId, { message, origin });
       this.insertMailHistoryEnqueue(enqueueSeq, message, origin);
@@ -3876,15 +3882,18 @@ export class CoreStore {
   recordOutput(beeId: string): void {
     this.tx(() => {
       this.mustGetBee(beeId);
-      this.applyRecordOutput(beeId, this.now());
+      this.applyRecordOutput(beeId, this.now(), this.currentRuntime(beeId)?.generation ?? null);
     });
   }
 
-  private applyRecordOutput(beeId: string, at: number): void {
-    const trigger = this.mustGetBee(beeId).lastTurnTrigger;
-    const human = trigger !== null && trigger.humanAt !== null && trigger.generation === this.currentRuntime(beeId)?.generation;
-    this.stmt("UPDATE bees SET last_output_at = ?, last_human_output_at = CASE WHEN ? THEN ? ELSE last_human_output_at END WHERE id = ?").run(at, human ? 1 : 0, at, beeId);
-    this.audit("output.recorded", beeId, { beeId, at, lastHumanOutputAt: this.mustGetBee(beeId).lastHumanOutputAt });
+  private applyRecordOutput(beeId: string, at: number, generation: number | null): void {
+    const row = this.stmt(
+      `UPDATE bees SET last_output_at = ?, last_human_output_at = CASE
+         WHEN json_extract(last_turn_trigger, '$.humanAt') IS NOT NULL AND json_extract(last_turn_trigger, '$.generation') = ? THEN ?
+         ELSE last_human_output_at END
+       WHERE id = ? RETURNING last_human_output_at`,
+    ).get(at, generation, at, beeId) as Row;
+    this.audit("output.recorded", beeId, { beeId, at, lastHumanOutputAt: row.last_human_output_at == null ? null : Number(row.last_human_output_at) });
   }
 
   mailOrigin(messageId: number): MailOrigin {
@@ -3908,14 +3917,11 @@ export class CoreStore {
 
   private applyDeliveryTurnTrigger(beeId: string, runtime: RuntimeRow, messageId: number, source: TurnTriggerSource, at: number): TurnTrigger | null {
     const last = this.mustGetBee(beeId).lastTurnTrigger;
-    if (last !== null && last.generation === runtime.generation && last.messageId === messageId) return null;
-    const open = this.openTurnOf(beeId, runtime.generation);
-    const acceptPoint = runtime.state === "idle" || (runtime.state === "running" && runtime.bootEvidence === "synthetic");
-    if (open === null && acceptPoint) return this.openTurnTrigger(beeId, runtime.generation, source, messageId, at);
-    if (source.kind !== "human") return null;
-    if (open === null) return this.writeTurnTrigger(beeId, { kind: "other", from: null, messageId: null, generation: runtime.generation, startedAt: at, humanAt: at, endedAt: null });
-    if (open.humanAt !== null) return null;
-    return this.writeTurnTrigger(beeId, { ...open, humanAt: at });
+    const sameGeneration = last !== null && last.generation === runtime.generation;
+    if (sameGeneration && last.messageId === messageId) return null;
+    if (!sameGeneration || last.endedAt !== null) return this.openTurnTrigger(beeId, runtime.generation, source, messageId, at);
+    if (source.kind !== "human" || last.humanAt !== null) return null;
+    return this.writeTurnTrigger(beeId, { ...last, humanAt: at });
   }
 
   private applyTurnStartTrigger(beeId: string, runtime: RuntimeRow, opener: (TurnTriggerSource & { messageId: number }) | undefined, at: number): TurnTrigger | null {
@@ -6220,6 +6226,7 @@ export class CoreStore {
       const sent = redeliver
         ? [...notice, ...originals.map((message) => this.send(row.beeId, message!.body, {
           sender: message!.sender, urgency: message!.urgency, priority: message!.priority, origin: "auth.resume",
+          ...(message!.senderKind === undefined ? {} : { senderKind: message!.senderKind }),
         }))]
         : [this.send(row.beeId, (row.deathRecovery?.claimedAt != null ? "[Hive] Refreshed account material installed; conversation resumed automatically.\n\n" : "") + continueBody, { sender: AUTH_RESUME_SENDER, origin: "auth.resume" })];
       return {
