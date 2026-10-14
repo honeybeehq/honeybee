@@ -98,7 +98,7 @@ import { readClaudeKeychain, readClaudeKeychainState, writeClaudeKeychainEntry, 
 import { atomicWriteFileSync } from "./homeDefaults.ts";
 import { withClaudeRefreshLock } from "./claudeRefreshLock.ts";
 import { createLeaseMaterialCodecs, hasRefreshGrant, type LeaseMaterialCodec } from "./leaseMaterial.ts";
-import { RpcError, type AccountLeaseInstallParams, type AccountLeaseInstallResult, type AccountLeaseRemoveResult } from "./protocol.ts";
+import { RpcError, type AccountLeaseExportResult, type AccountLeaseInstallParams, type AccountLeaseInstallResult, type AccountLeaseRemoveResult } from "./protocol.ts";
 import { fetchClaudeIdentity, type ClaudeIdentity } from "./login/transports.ts";
 import {
   defaultProviderLimitsHttp,
@@ -1441,6 +1441,56 @@ export class AccountsService {
     }
     if (state.status === "present") check(state.raw, true, "per-home Keychain");
     if (!primary) throw new RpcError("account_lease_enrol_refused", "No existing access-only primary credential can be proved; enrolment does not create a native account.", { reason: "unknown_material" });
+  }
+
+  exportLeasedMaterial(id: string): Promise<AccountLeaseExportResult> {
+    return this.withLeaseWrite(id, async () => {
+      const account = this.store.getAccount(id);
+      if (!account) throw new RpcError("account_not_found", "Account was not found.");
+      const refuse = (reason: string, state?: string, handoffId?: string): never => {
+        throw new RpcError("account_lease_export_refused", `Leased material export refused: ${reason}${state ? ` (${state})` : ""}; retry only after its owner settles the account.`, { reason, ...(state ? { state } : {}), ...(handoffId ? { handoffId } : {}) });
+      };
+      if (account.source !== "leased" || account.native || !account.leasedFrom) refuse("not_leased", account.source);
+      const origin = account.leasedFrom!;
+      const authority = this.authorityFor(account);
+      const handoff = this.store.activeCredentialHandoff(id);
+      if (handoff) refuse("handoff", handoff.adoptionRecovery?.retainedGeneration !== undefined ? "retained_unusable" : handoff.releasePeer?.outcome ?? handoff.state, handoff.handoffId);
+      const phase = authority?.status(account)?.phase;
+      if (phase === "handing_off" || phase === "adopting") refuse("handoff", phase);
+      if (authority?.busy(account) || this.refreshBusy(account) || this.leaseMints.has(id) || this.store.activeLoginFlow(id) || this.nativeKeychainSeeds.has(id)) refuse("authority_busy", authority?.activeHandoffLane(account)?.kind ?? "active_lane");
+      const interruptions = this.store.listLiveAuthInterruptions().filter(row => row.account === id);
+      const recovery = interruptions.find(row => row.deathRecovery?.claimedAt === null);
+      if (recovery) refuse("auth_recovery", recovery.deathRecovery?.deadline === null ? "waiting_for_exit" : "waiting_for_material");
+      if (origin.revokedAt !== null) refuse("revoked");
+      if (origin.expiresAt === null) refuse("unsupported", "unbounded_expiry");
+      if (!Number.isSafeInteger(origin.expiresAt)) refuse("material_unavailable", "invalid_expiry");
+      if (origin.expiresAt! * 1000 <= this.now()) refuse("expired");
+      if (typeof origin.authorityInstanceId !== "string" || !origin.authorityInstanceId) refuse("instance_missing");
+      if (!Number.isSafeInteger(origin.generation) || origin.generation! < 0) refuse("generation_missing");
+      if (origin.materialPublished !== true) refuse("publication_pending");
+      if (account.status === "paused") refuse("paused");
+      if (account.status !== "ok") refuse("account_auth_needed", account.status);
+      const codec = this.leaseMaterialCodecs.get(account.harness);
+      if (!codec || !authority || this.isolationRefusal(account.harness)) refuse("unsupported");
+      let document: Record<string, unknown>;
+      let revision = "";
+      try {
+        const homeRaw = readFileSync(this.leaseFilePath(account.homePath, codec!.primaryFile), "utf8");
+        revision = createHash("sha256").update(homeRaw).digest("hex").slice(0, 16);
+        const home = JSON.parse(homeRaw);
+        const vault = JSON.parse(readFileSync(this.leaseFilePath(this.vaultDirOf(account), codec!.primaryFile), "utf8"));
+        const current = authority!.parseDocument(home);
+        const privateCopy = authority!.parseDocument(vault);
+        if (!current || !privateCopy || current.accessToken !== privateCopy.accessToken || current.expiresAt !== privateCopy.expiresAt || current.expiresAt < origin.expiresAt! * 1000 || hasRefreshGrant(home) || hasRefreshGrant(vault)) refuse("material_unavailable");
+        document = (codec!.accessOnly ? codec!.accessOnly(home) : blankRefreshTokens(home)) as Record<string, unknown>;
+        if (!codec!.provesAccessOnly?.(document) || hasRefreshGrant(document)) refuse("material_unavailable");
+      } catch { return refuse("material_unavailable"); }
+      if (interruptions.some(row => row.state === "open" && !row.deathRecovery && row.blockedRevision !== null && row.blockedRevision === revision)) refuse("account_auth_needed", "blocked_revision");
+      const result: AccountLeaseExportResult = { authorityInstanceId: origin.authorityInstanceId!, account: id, harness: account.harness, authorityNodeId: origin.authorityNodeId, shareId: origin.shareId,
+        epoch: origin.epoch, generation: origin.generation!, expiresAt: origin.expiresAt!, files: [{ homeRelPath: codec!.primaryFile, contentB64: Buffer.from(JSON.stringify(document)).toString("base64"), mode: 0o600 }], kindNote: "Leased access-only material; original authority retained" };
+      this.store.recordAccountLeaseExport(id);
+      return result;
+    });
   }
 
   installLease(input: AccountLeaseInstallParams, onInstalled: (account: AccountRow) => void = () => {}): Promise<Omit<AccountLeaseInstallResult, "account" | "restored"> & { account: AccountRow }> {

@@ -1712,6 +1712,8 @@ export class HiveDaemon {
       // the lease material appears.
       case "account.lease":
         return this.rpcAccountLease(params);
+      case "account.lease.export":
+        return this.mustAccounts().exportLeasedMaterial(this.accountIdParam(params));
       case "account.lease.install":
         return this.rpcAccountLeaseInstall(params);
       case "account.lease.remove": {

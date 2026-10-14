@@ -119,6 +119,7 @@ export const DAEMON_CAPABILITIES = [
   "account.lease.v1",
   "account.lease.install.v1",
   "account.lease.enrol.v1",
+  "account.lease.export.v1",
   "account.lease.revoke.v1",
   "account.lease.adopt_explicit.v1",
   "account.credentials.native_backup.v1",
@@ -256,6 +257,7 @@ export const RPC_ERROR_CODES = [
   "account_leased",
   "account_lease_conflict",
   "account_lease_enrol_refused",
+  "account_lease_export_refused",
   "account_lease_revoked",
   "native_backup_absent",
   "native_backup_invalid",
@@ -547,6 +549,7 @@ export const RPC_VERBS = [
   // account (the remote-nodes lease plane; capability account.lease.v1).
   "account.lease",
   "account.lease.install",
+  "account.lease.export",
   "account.lease.remove",
   "account.admission.acquire",
   "account.admission.confirm",
@@ -958,6 +961,19 @@ export interface AccountNativeBackupRestoreResult {
   restoredAt: number;
   files: string[];
   keychainRestored: boolean;
+}
+
+export interface AccountLeaseExportResult {
+  authorityInstanceId: string;
+  account: string;
+  harness: string;
+  authorityNodeId: string;
+  shareId: string;
+  epoch: number;
+  generation: number;
+  expiresAt: number;
+  files: EphemeralCredentialFile[];
+  kindNote: string;
 }
 
 export interface AccountLeaseInstallParams {

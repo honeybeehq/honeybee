@@ -79,6 +79,7 @@ const LOCAL_HANDOFF_VERBS = new Set<RpcVerb>([
 ]);
 
 export function assertLocalHandoffRpc(verb: RpcVerb, params: Record<string, unknown>, conn: RpcConn): void {
+  if (verb === "account.lease.export" && conn.ingress !== "local_unix") throw new RpcError("account_lease_export_refused", "Leased material export requires a direct local Unix-socket call.", { reason: "local_required" });
   if (verb === "account.lease.install" && (params.enrol !== undefined || params.viaNodeId !== undefined) && conn.ingress !== "local_unix") throw new RpcError("account_lease_enrol_refused", "Lease enrolment provenance requires a direct local Unix-socket call.", { reason: "local_required" });
   if ((LOCAL_HANDOFF_VERBS.has(verb) || params.authenticatedPeer !== undefined || params.targetKey !== undefined)
     && conn.ingress !== "local_unix") throw new RpcError("credential_handoff_conflict", "Handoff authority facts require a direct local Unix-socket call; remote and node-relayed RPCs are refused.");

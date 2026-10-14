@@ -5195,6 +5195,16 @@ export class CoreStore {
     return Boolean(this.stmt("SELECT 1 FROM credential_handoffs WHERE account = ? AND state = 'committed' AND (json_extract(record,'$.receipt.kind') IN ('stand_down','operator_takeover') OR json_extract(record,'$.releasePeer') IS NOT NULL) LIMIT 1").get(account));
   }
 
+  recordAccountLeaseExport(id: string): void {
+    this.tx(() => {
+      const account = this.getAccount(id);
+      const origin = account?.leasedFrom;
+      if (account?.source !== "leased" || !origin) throw new CoreError("Leased account was not found.");
+      this.audit("account.lease.exported", null, { account: id, harness: account.harness, authorityInstanceId: origin.authorityInstanceId, authorityNodeId: origin.authorityNodeId,
+        shareId: origin.shareId, epoch: origin.epoch, generation: origin.generation, expiresAt: origin.expiresAt, fileCount: 1 });
+    });
+  }
+
   activeCredentialHandoff(account: string): CredentialHandoffRecord | null {
     const rows = this.stmt("SELECT record FROM credential_handoffs WHERE account = ?").all(account) as Row[];
     return rows.map(row => JSON.parse(String(row.record)) as CredentialHandoffRecord).find(row => !["aborted", "confirmed", "failed", "adopted", "stood_down"].includes(row.state) || row.role === "destination" && ["aborted", "failed"].includes(row.state) && !row.scrubbed) ?? null;

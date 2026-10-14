@@ -42,6 +42,8 @@ test("handoff ingress: remote TCP cannot claim local Unix authority and missing 
         assert.equal(((await next()).error as Record<string, unknown>).code, "credential_handoff_conflict");
         socket.write(JSON.stringify({ id: 4, verb: "account.lease.install", params: { enrol: true, viaNodeId: "dummy-via", ingress: "local_unix" } }) + "\n");
         assert.equal(((await next()).error as Record<string, unknown>).code, "account_lease_enrol_refused");
+        socket.write(JSON.stringify({ id: 7, verb: "account.lease.export", params: { id: "dummy", ingress: "local_unix", clientLane: "local_unix" } }) + "\n");
+        assert.equal(((await next()).error as Record<string, unknown>).code, "account_lease_export_refused");
         socket.write(JSON.stringify({ id: 2, verb: "account.list", params: {} }) + "\n");
         assert.equal(((await next()).result as Record<string, unknown>).ingress, "remote");
       }

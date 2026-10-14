@@ -806,7 +806,7 @@ const ACCOUNT_USAGE =
   "       hive account credentials take-over <account> --confirm [--epoch higher-epoch] [--takeover-id id]\n" +
   "       hive account credentials handoff-status [--file payload.json]\n" +
   "       hive account credentials <export|adopt-prepare|export-prepare|export-commit|adopt|adopt-abort|export-abort|export-confirm|export-settle|stand-down|handoff-status|handoff-key-rotate|handoff-identity-set|stand-down-receipt|take-over-apply|take-over-complete|take-over-cancel> --file protected-payload.json [--out protected-material.json] [--replace] [--retained-generation N] [--discard-retained-chain --confirm]\n" +
-  "       hive account lease install [--enrol] --file payload.json | lease remove <id>\n" +
+  "       hive account lease install [--enrol] --file payload.json | lease remove <id> | lease export <id> --json\n" +
   "       hive account capture <selector> | verify <selector> | limits [<selector>] | reset <selector> [--credit-id id] --idempotency-key key\n" +
   "       hive account restored <selector> | interruptions [<selector>]\n" +
   "       hive account import [--root ~/.hive] [--dry-run] | backfill [--dry-run]";
@@ -910,6 +910,16 @@ async function cmdAccount(ctx: CliContext, parsed: Parsed): Promise<number> {
   switch (sub) {
     case "lease": {
       const action = parsed.positional[2];
+      if (action === "export") {
+        const id = parsed.positional[3];
+        if (!id || !ctx.json) throw new Error("usage: hive account lease export <id> --json");
+        const result = await withClient(ctx, client => {
+          if (!client.capabilities.includes("account.lease.export.v1")) throw new RpcError("capability_missing", "Update Honeybee: account.lease.export.v1 is required.");
+          return client.request("account.lease.export", { id });
+        });
+        emit(ctx, [`leased material exported for ${id}`], result, false);
+        return 0;
+      }
       if (action !== "install" && action !== "remove") throw new Error("usage: hive account lease install [--enrol] --file payload.json | remove <id>");
       let params: Record<string, unknown>;
       if (action === "install") {
