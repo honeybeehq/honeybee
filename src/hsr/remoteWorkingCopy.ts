@@ -34,6 +34,7 @@
 
 import { execFile } from "node:child_process";
 import { basename } from "node:path";
+import { hostGitEnv } from "../hostGit.js";
 import type { NodeRecord } from "../node.js";
 
 export type ExecResult = { ok: boolean; stdout: string; stderr: string; code: number | string };
@@ -56,7 +57,7 @@ export type RemoteCwdResolution = {
 function defaultExec(command: string, args: string[], opts: { cwd?: string; timeoutMs?: number }): Promise<ExecResult> {
   const timeout = opts.timeoutMs ?? 120_000;
   return new Promise((resolve) => {
-    const child = execFile(command, args, { cwd: opts.cwd, timeout, maxBuffer: 8 * 1024 * 1024 }, (error, stdout, stderr) => {
+    const child = execFile(command, args, { cwd: opts.cwd, env: hostGitEnv(), timeout, maxBuffer: 8 * 1024 * 1024 }, (error, stdout, stderr) => {
       // A timeout kills the child with a signal and no stderr of its own, which
       // would otherwise surface as a bare "exited 1" — name it instead.
       const timedOut = Boolean(error && (error as { killed?: boolean }).killed && child.exitCode === null);

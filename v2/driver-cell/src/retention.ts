@@ -136,7 +136,7 @@ export function matchesTrimPattern(name: string, isDirectory: boolean, patterns:
 export function classifyIgnored(spaceDir: string, trimPatterns: readonly string[] = DEFAULT_TRIM_PATTERNS): IgnoredEntries {
   const out: IgnoredEntries = { env: [], trim: [], keep: [] };
   if (!existsSync(join(spaceDir, ".git"))) return out;
-  const args = ["--no-optional-locks", "status", "--porcelain=v1", "-z", "--ignored=matching", "--untracked-files=normal"];
+  const args = ["--no-optional-locks", "status", "--porcelain=v1", "-z", "--ignored=matching", "--untracked-files=normal", "--ignore-submodules=all"];
   const result = tryGit(spaceDir, args);
   if (result.status !== 0) throw new GitError(args, result.status, result.stderr);
   const records = result.stdout.split("\0");

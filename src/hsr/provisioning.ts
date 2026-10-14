@@ -15,12 +15,13 @@ import { execFile } from "node:child_process";
 import { existsSync, type Dirent } from "node:fs";
 import { mkdir, readdir } from "node:fs/promises";
 import { join } from "node:path";
+import { hostGitEnv } from "../hostGit.js";
 import { worktreesRoot } from "./runDir.js";
 
 /** Run git without throwing: resolves `{ ok, stdout, stderr, code }`. */
 function runGit(args: string[], cwd?: string): Promise<{ ok: boolean; stdout: string; stderr: string; code: number }> {
   return new Promise((resolve) => {
-    execFile("git", args, { cwd, maxBuffer: 32 * 1024 * 1024 }, (error, stdout, stderr) => {
+    execFile("git", args, { cwd, env: hostGitEnv(), maxBuffer: 32 * 1024 * 1024 }, (error, stdout, stderr) => {
       if (!error) {
         resolve({ ok: true, stdout: stdout ?? "", stderr: stderr ?? "", code: 0 });
         return;
@@ -137,16 +138,16 @@ export async function provisionCheckout(params: ProvisionParams): Promise<Record
       return { ok: false, error: `${path} is a checkout of a different repo (${origin})` };
     }
     const fetchArgs = ref
-      ? ["-C", path, "fetch", "origin"]
-      : ["-C", path, "fetch", "--depth", "1", "origin", ...(branch ? ["--", branch] : [])];
+      ? ["-C", path, "fetch", "--no-recurse-submodules", "origin"]
+      : ["-C", path, "fetch", "--no-recurse-submodules", "--depth", "1", "origin", ...(branch ? ["--", branch] : [])];
     const fetched = await runGit(fetchArgs);
     if (!fetched.ok) return { ok: false, error: `fetch failed: ${firstLine(fetched.stderr) || `git exited ${fetched.code}`}` };
     if (ref) {
       // Trailing `--` pins the positional as a revision, never an option/pathspec.
-      const co = await runGit(["-C", path, "checkout", ref, "--"]);
+      const co = await runGit(["-C", path, "checkout", "--no-recurse-submodules", ref, "--"]);
       if (!co.ok) return { ok: false, error: `checkout ${ref} failed: ${firstLine(co.stderr) || `git exited ${co.code}`}` };
     } else if (branch) {
-      const co = await runGit(["-C", path, "checkout", branch, "--"]);
+      const co = await runGit(["-C", path, "checkout", "--no-recurse-submodules", branch, "--"]);
       if (!co.ok) return { ok: false, error: `checkout ${branch} failed: ${firstLine(co.stderr) || `git exited ${co.code}`}` };
       // Best-effort fast-forward to the freshly fetched tip.
       await runGit(["-C", path, "reset", "--hard", `origin/${branch}`]);
@@ -166,7 +167,7 @@ export async function provisionCheckout(params: ProvisionParams): Promise<Record
     return { ok: false, error: `clone failed: ${firstLine(cloned.stderr) || firstLine(cloned.stdout) || `git exited ${cloned.code}`}` };
   }
   if (ref) {
-    const co = await runGit(["-C", path, "checkout", ref, "--"]);
+    const co = await runGit(["-C", path, "checkout", "--no-recurse-submodules", ref, "--"]);
     if (!co.ok) return { ok: false, error: `checkout ${ref} failed: ${firstLine(co.stderr) || `git exited ${co.code}`}` };
   }
   const resolvedBranch = branch ?? (await currentBranch(path));
@@ -190,7 +191,7 @@ export async function enumerateCheckouts(): Promise<Array<Record<string, unknown
     if (!inside.ok || inside.stdout.trim() !== "true") continue; // tolerate a non-git dir
     const originRes = await runGit(["-C", path, "remote", "get-url", "origin"]);
     const branch = await currentBranch(path);
-    const dirtyRes = await runGit(["-C", path, "status", "--porcelain"]);
+    const dirtyRes = await runGit(["-C", path, "status", "--porcelain", "--ignore-submodules=all"]);
     rows.push({
       name: entry.name,
       path,

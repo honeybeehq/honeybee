@@ -25,6 +25,25 @@ export class GitError extends Error {
   }
 }
 
+export const hostGitConfig: ReadonlyArray<readonly [string, string]> = [
+  ["core.fsmonitor", "false"],
+  ["core.hooksPath", devNull],
+  ["submodule.recurse", "false"],
+  ["diff.ignoreSubmodules", "all"],
+];
+
+export function hostGitEnv(base: Record<string, string>): Record<string, string> {
+  const env = { ...base };
+  const existing = Number.parseInt(env.GIT_CONFIG_COUNT ?? "0", 10);
+  const offset = Number.isFinite(existing) && existing > 0 ? existing : 0;
+  hostGitConfig.forEach(([key, value], index) => {
+    env[`GIT_CONFIG_KEY_${offset + index}`] = key;
+    env[`GIT_CONFIG_VALUE_${offset + index}`] = value;
+  });
+  env.GIT_CONFIG_COUNT = String(offset + hostGitConfig.length);
+  return env;
+}
+
 /**
  * Deterministic environment for every driver-run git command: the user's
  * global/system config never leaks into cell operations (gpg signing, hooks
@@ -36,6 +55,7 @@ export function gitEnv(extra: Record<string, string> = {}): Record<string, strin
     ...(process.env as Record<string, string>),
     GIT_CONFIG_GLOBAL: devNull,
     GIT_CONFIG_SYSTEM: devNull,
+    GIT_CONFIG_NOSYSTEM: "1",
     GIT_TERMINAL_PROMPT: "0",
     GIT_AUTHOR_NAME: "hive-cell",
     GIT_AUTHOR_EMAIL: "cell@hive.invalid",
@@ -53,7 +73,7 @@ export interface GitResult {
 
 /** Run git, returning the result without throwing. */
 export function tryGit(cwd: string, args: string[], opts: { env?: Record<string, string>; input?: string; timeoutMs?: number } = {}): GitResult {
-  const res = spawnSync("git", args, { cwd, encoding: "utf8", env: gitEnv(opts.env), input: opts.input, timeout: opts.timeoutMs, maxBuffer: 64 * 1024 * 1024 });
+  const res = spawnSync("git", args, { cwd, encoding: "utf8", env: hostGitEnv(gitEnv(opts.env)), input: opts.input, timeout: opts.timeoutMs, maxBuffer: 64 * 1024 * 1024 });
   if (res.error) throw res.error; // git binary missing — a machine boundary, not a git failure
   return { status: res.status, stdout: res.stdout ?? "", stderr: res.stderr ?? "" };
 }
@@ -117,7 +137,7 @@ export function currentBranch(repo: string): string | null {
 
 /** `git status --porcelain` — empty string means a clean working tree. */
 export function porcelainStatus(repo: string): string {
-  return git(repo, ["status", "--porcelain"]);
+  return git(repo, ["status", "--porcelain", "--ignore-submodules=all"]);
 }
 
 /** Full ref set of a repo (`git for-each-ref`), for bit-identical assertions. */

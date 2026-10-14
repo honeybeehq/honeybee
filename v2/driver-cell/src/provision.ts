@@ -403,7 +403,7 @@ function runProvisionOperation(
   if (op.steps.checkout == null) {
     // --force: a CoW-copied index describes the origin's working tree, not
     // this empty space; force makes checkout write every tracked file.
-    git(paths.spaceDir, [...PARALLEL_CHECKOUT_CONFIG, "checkout", "--force", "--detach", req.sha]);
+    git(paths.spaceDir, [...PARALLEL_CHECKOUT_CONFIG, "checkout", "--force", "--detach", "--no-recurse-submodules", req.sha]);
     op.steps.checkout = { sha: req.sha, at: cfg.now() };
     save();
   }

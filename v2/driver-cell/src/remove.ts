@@ -103,7 +103,7 @@ export function dirtyReport(wrapperDir: string, opts: DirtyReportOptions = {}): 
   };
   if (!existsSync(join(spaceDir, ".git"))) return clean; // half-provisioned: nothing to lose
 
-  const uncommitted = git(spaceDir, ["status", "--porcelain"]).length > 0;
+  const uncommitted = git(spaceDir, ["status", "--porcelain", "--ignore-submodules=all"]).length > 0;
   const stashed = git(spaceDir, ["stash", "list"]).length > 0;
 
   let unpushed = false;

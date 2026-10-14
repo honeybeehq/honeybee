@@ -26,6 +26,7 @@ import { actionLine, bold, dim, formatRelativeTime, isPretty, note, tildify, yel
 import { flag, numberFlag, truthy, type Parsed } from "../parse.js";
 
 import { collectBuildProvenance } from "../release/buildIdentityProducer.js";
+import { hostGitEnv } from "../hostGit.js";
 import { prepareRuntimeTarget, validateRuntimeBuildTarget } from "../release/runtimeTarget.js";
 
 const execFileAsync = promisify(execFile);
@@ -80,7 +81,7 @@ export async function cmdDeploy(parsed: Parsed): Promise<void> {
 /** Stream a build/restart step; the child's output is the progress report. */
 async function runStep(command: string, args: string[], cwd: string, log: (line: string) => void): Promise<void> {
   log(`deploy: ${command} ${args.join(" ")}`);
-  const child = spawn(command, args, { cwd, stdio: ["ignore", "inherit", "inherit"] });
+  const child = spawn(command, args, { cwd, env: hostGitEnv(), stdio: ["ignore", "inherit", "inherit"] });
   const result = await new Promise<{ code: number | null; signal: NodeJS.Signals | null; error?: Error }>((resolve) => {
     child.once("error", (error) => resolve({ code: null, signal: null, error }));
     child.once("exit", (code, signal) => resolve({ code, signal }));
@@ -189,7 +190,7 @@ export async function restartDeployedDaemon({ root, log, runtime }: RestartDaemo
 async function resolveHoneybeeRepoRoot(): Promise<string> {
   let stdout: string;
   try {
-    ({ stdout } = await execFileAsync("git", ["rev-parse", "--show-toplevel"], { cwd: process.cwd() }));
+    ({ stdout } = await execFileAsync("git", ["rev-parse", "--show-toplevel"], { cwd: process.cwd(), env: hostGitEnv() }));
   } catch {
     throw new Error("deploy: run this from inside the honeybee repo (not a git repository here)");
   }

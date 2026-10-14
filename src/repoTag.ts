@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { basename } from "node:path";
+import { hostGitEnv } from "./hostGit.js";
 
 // repoTagFor maps a bee's cwd to a coarse "repo" facet: the git top-level
 // directory's basename when inside a repo, else the cwd's basename. Two
@@ -17,6 +18,7 @@ export function repoTagFor(cwd: string): string {
   try {
     const top = execFileSync("git", ["-C", cwd, "rev-parse", "--show-toplevel"], {
       encoding: "utf8",
+      env: hostGitEnv(),
       stdio: ["ignore", "pipe", "ignore"],
     }).trim();
     tag = basename(top) || basename(cwd);
