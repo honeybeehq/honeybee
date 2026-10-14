@@ -7,6 +7,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
+import { createServer } from "node:net";
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir, platform, tmpdir } from "node:os";
 import { join } from "node:path";
@@ -410,9 +411,14 @@ test("sandbox.tmp-watch: an exit is fenced by generation, so a respawn behind a 
   watch.exited("d", 3);
   assert.deepEqual(watch.observe([{ beeId: "d", generation: 4, pid: 3 }], []).map((e) => [e.action, e.generation]), [["set", 4]], "an adopt-time resolve never loosens a known generation");
 });
-test("sandbox.bwrap-real: a harness launched from under /tmp still runs, read-only, while the rest of /tmp stays private (linux)", { skip: !IS_LINUX }, () => {
+
+test("sandbox.bwrap-real: a harness launched from under /tmp still runs, read-only, while the rest of /tmp stays private (linux)", { skip: !IS_LINUX }, async () => {
   const checkout = mkdtempSync("/tmp/hb-v2-sb-checkout-");
   const neighbour = mkdtempSync("/tmp/hb-v2-sb-neighbour-");
+  const socketDir = mkdtempSync("/tmp/hb-v2-sb-socket-");
+  const socketPath = join(socketDir, "host.sock");
+  const server = createServer();
+  await new Promise<void>((listening) => server.listen(socketPath, listening));
   const root = mkdtempSync(join(tmpdir(), "hb-v2-sb-"));
   try {
     const cellDir = join(root, "cell");
@@ -424,20 +430,22 @@ test("sandbox.bwrap-real: a harness launched from under /tmp still runs, read-on
       "import { answer } from './lib.mjs';",
       "let readOnly = false;",
       "try { writeFileSync(new URL('./leak', import.meta.url), 'x'); } catch { readOnly = true; }",
-      `console.log(JSON.stringify({ answer, readOnly, neighbour: existsSync(${JSON.stringify(neighbour)}) }));`,
+      `console.log(JSON.stringify({ answer, readOnly, neighbour: existsSync(${JSON.stringify(neighbour)}), socket: existsSync(${JSON.stringify(socketPath)}) }));`,
     ].join("\n"));
     const linked = join(checkout, "linked-agent.mjs");
     symlinkSync(join(checkout, "fixtures", "agent.mjs"), linked);
     const policy = { cellDir, writablePaths: [], scratchPaths: [] };
 
     for (const script of [join(checkout, "fixtures", "agent.mjs"), linked]) {
-      const run = spawnSync("bwrap", bwrapArgs(policy, process.execPath, [script]), { encoding: "utf8" });
+      const run = spawnSync("bwrap", bwrapArgs(policy, process.execPath, [script, neighbour, socketPath]), { encoding: "utf8" });
       assert.equal(run.status, 0, run.stderr);
-      assert.deepEqual(JSON.parse(run.stdout), { answer: 42, readOnly: true, neighbour: false });
+      assert.deepEqual(JSON.parse(run.stdout), { answer: 42, readOnly: true, neighbour: false, socket: false });
     }
   } finally {
+    await new Promise((closed) => server.close(closed));
     rmSync(checkout, { recursive: true, force: true });
     rmSync(neighbour, { recursive: true, force: true });
+    rmSync(socketDir, { recursive: true, force: true });
     rmSync(root, { recursive: true, force: true });
   }
 });

@@ -10,7 +10,7 @@
  * Defaults by node kind (A4): workstation OFF, satellite ON, cloud gateway
  * OFF (the ephemeral VM is the boundary there). Per-cell override wins.
  */
-import { existsSync, realpathSync, statSync } from "node:fs";
+import { realpathSync, statSync } from "node:fs";
 import { homedir, platform } from "node:os";
 import { isAbsolute, join, parse, relative, resolve as resolvePath, sep } from "node:path";
 
@@ -208,10 +208,18 @@ function maskedLaunchRoot(path: string): string | null {
   return null;
 }
 
+function isRegularFile(path: string): boolean {
+  try {
+    return statSync(path).isFile();
+  } catch {
+    return false;
+  }
+}
+
 function bwrapLaunchBinds(command: string, args: readonly string[]): string[] {
   const roots = new Set<string>();
   for (const input of [command, ...args]) {
-    if (!isAbsolute(input) || !existsSync(input)) continue;
+    if (!isAbsolute(input) || !isRegularFile(input)) continue;
     for (const spelling of [input, realpathSync(input)]) {
       const root = maskedLaunchRoot(spelling);
       if (root) roots.add(root);
