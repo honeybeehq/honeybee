@@ -277,8 +277,18 @@ export interface NodeConfigFile {
    * Per-bee temp space. tmpRoot null turns it off; absent defaults to
    * ${XDG_CACHE_HOME:-~/.cache}/honeybee/tmp on satellites. The per-bee split
    * is cleanup, not isolation: ~/.cache is writable by every sandboxed bee.
+   * A tmpRoot (or any owned level under it) that is a symlink is replaced by
+   * an empty real directory and logged as tmp.replaced; the link target is
+   * never used, so configure the real path.
+   *
+   * sandboxTmpBytes caps each bwrap-sandboxed bee's private /tmp and /dev/shm
+   * tmpfs (bytes, integer >= 1 MiB). Absent defaults to 1 GiB; null leaves them
+   * uncapped. An invalid value logs tmp.sandbox_cap_invalid and uses the
+   * default. A bee at the cap gets resource_blocked "sandbox tmp full".
+   * Seatbelt (darwin) has no equivalent cap: there /tmp is the host's, so the
+   * knob has no effect and spawns log cap=none reason=seatbelt.
    */
-  bees?: { tmpRoot?: string | null };
+  bees?: { tmpRoot?: string | null; sandboxTmpBytes?: number | null };
 }
 
 export interface ResolvedNodeConfig {
@@ -329,6 +339,8 @@ export interface ResolvedNodeConfig {
   contextPolicy: ContextPolicyConfig;
   beeTmpRoot?: string | null;
   beeTmpRootInvalid?: string;
+  beeSandboxTmpBytes?: number | null;
+  beeSandboxTmpBytesInvalid?: string;
 }
 
 export class ConfigError extends Error {
@@ -432,6 +444,20 @@ function beeTmpRootOf(raw: Record<string, unknown>): { beeTmpRoot?: string | nul
     return { beeTmpRoot: null, beeTmpRootInvalid: "config: bees.tmpRoot must be null, an absolute path, or a ~/ path" };
   }
   return { beeTmpRoot: v };
+}
+
+export const MIN_SANDBOX_TMP_BYTES = 1024 * 1024;
+
+function beeSandboxTmpBytesOf(raw: Record<string, unknown>): { beeSandboxTmpBytes?: number | null; beeSandboxTmpBytesInvalid?: string } {
+  const bees = raw.bees;
+  if (bees === null || typeof bees !== "object" || Array.isArray(bees)) return {};
+  const v = (bees as Record<string, unknown>).sandboxTmpBytes;
+  if (v === undefined) return {};
+  if (v === null) return { beeSandboxTmpBytes: null };
+  if (typeof v !== "number" || !Number.isSafeInteger(v) || v < MIN_SANDBOX_TMP_BYTES) {
+    return { beeSandboxTmpBytesInvalid: `config: bees.sandboxTmpBytes must be null or an integer >= ${MIN_SANDBOX_TMP_BYTES}, got ${JSON.stringify(v)}` };
+  }
+  return { beeSandboxTmpBytes: v };
 }
 
 function str(raw: Record<string, unknown>, key: string, fallback: string): string {
@@ -942,6 +968,7 @@ export function loadNodeConfig(dataDir: string, configPath?: string): ResolvedNo
     naming: namingOrDisabled(raw, dataDir),
     contextPolicy: resolvedContextPolicyOf(raw),
     ...beeTmpRootOf(raw),
+    ...beeSandboxTmpBytesOf(raw),
   };
 }
 

@@ -31,6 +31,7 @@ interface ProbeReport {
   cacheEntries: number;
   tmpWritable: boolean;
   escapes: Record<string, boolean>;
+  fillError: string | null;
 }
 
 function reportsOf(dir: string, beeId: string): ProbeReport[] {
@@ -524,3 +525,93 @@ test("an invalid bees setting boots with the policy off and logs why; a template
 function realpathOf(path: string): string {
   return realpathSync(path);
 }
+
+test("config: bees.sandboxTmpBytes is additive, nullable and falls back to the default when invalid", () => {
+  const rig = makeDaemonDir();
+  try {
+    const write = (bees: unknown): void => {
+      const path = join(rig.dir, "config.json");
+      writeFileSync(path, JSON.stringify({ ...JSON.parse(readFileSync(path, "utf8")), bees }));
+    };
+    assert.equal("beeSandboxTmpBytes" in loadNodeConfig(rig.dir), false);
+    write({ tmpRoot: null });
+    assert.equal("beeSandboxTmpBytes" in loadNodeConfig(rig.dir), false);
+    write({ sandboxTmpBytes: null });
+    assert.equal(loadNodeConfig(rig.dir).beeSandboxTmpBytes, null);
+    write({ sandboxTmpBytes: 4194304 });
+    assert.equal(loadNodeConfig(rig.dir).beeSandboxTmpBytes, 4194304);
+    for (const bad of [0, -1, 1.5, 1024, "1G", true, 2 ** 60]) {
+      write({ sandboxTmpBytes: bad });
+      const cfg = loadNodeConfig(rig.dir);
+      assert.equal("beeSandboxTmpBytes" in cfg, false, `${JSON.stringify(bad)} falls back to the default`);
+      assert.match(cfg.beeSandboxTmpBytesInvalid ?? "", /bees\.sandboxTmpBytes must be null or an integer >= 1048576/);
+    }
+    write([]);
+    assert.equal("beeSandboxTmpBytesInvalid" in loadNodeConfig(rig.dir), false);
+  } finally {
+    rig.cleanup();
+  }
+});
+
+async function sandboxedFill(bees: Record<string, unknown>, fillBytes: number, expectFlag: boolean): Promise<{ log: string; beeId: string; report: ProbeReport; flags: string[]; detail: string | null }> {
+  const rig = makeDaemonDir({
+    nodeKind: "satellite",
+    bees,
+    agents: {
+      probe: {
+        command: process.execPath,
+        args: ["--import", PROBE, AGENT_PATH],
+        adapter: "stub",
+        env: { STUB_TURN_MS: "10", GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_SYSTEM: "/dev/null", PROBE_FILL_TMP_BYTES: String(fillBytes) },
+      },
+    },
+  } as Parameters<typeof makeDaemonDir>[0]);
+  const origin = makeOrigin(rig.dir);
+  const cache = join(realpathSync(rig.dir), "xdg-cache");
+  const daemon = await startDaemon(rig.dir, { env: { XDG_CACHE_HOME: cache }, platform: process.platform });
+  try {
+    const client = await daemon.client();
+    const { beeId } = await client.request<SpawnResult>("spawn", {
+      name: "filler",
+      agent: "probe",
+      cwd: "/ignored",
+      substrate: "cell",
+      cell: { originRepo: origin.repo, sandbox: true },
+    });
+    const cwd = (await client.request<ViewResult>("view", { beeId })).bee?.cwd as string;
+    const report = await waitFor(() => latestReport(cwd, beeId), "filler report", 90_000);
+    const view = expectFlag
+      ? await waitFor(async () => {
+        const v = await client.request<ViewResult>("view", { beeId });
+        return v.view.flags.includes("resource_blocked") ? v : false;
+      }, "resource_blocked", 30_000)
+      : await new Promise((resolve) => setTimeout(resolve, 7_000)).then(() => client.request<ViewResult>("view", { beeId }));
+    client.close();
+    await daemon.stop();
+    const store = new DatabaseSync(join(rig.dir, "core.sqlite3"));
+    const row = store.prepare("SELECT detail FROM flags WHERE bee_id = ? AND flag = 'resource_blocked' ORDER BY id DESC LIMIT 1").get(beeId) as { detail: string } | undefined;
+    store.close();
+    return { log: readFileSync(join(rig.dir, "hived.log"), "utf8"), beeId, report, flags: view.view.flags, detail: row?.detail ?? null };
+  } finally {
+    await daemon.stop();
+    rig.cleanup();
+  }
+}
+
+test("sandboxed bee past its tmpfs cap: ENOSPC inside, a typed resource_blocked outside, the cap logged per bee", { timeout: 180_000, skip: process.platform !== "linux" }, async () => {
+  const run = await sandboxedFill({ sandboxTmpBytes: 4 * 1024 * 1024 }, 8 * 1024 * 1024, true);
+  assert.equal(run.report.fillError, "ENOSPC");
+  assert.match(run.log, new RegExp(`sandbox\\.tmpfs bee=${run.beeId} gen=1 cap=4194304 \\(4 MiB\\) paths=/tmp,/dev/shm`));
+  assert.deepEqual(run.flags, ["resource_blocked"]);
+  assert.match(run.detail ?? "", /^sandbox tmp full: \/tmp in this bee's sandbox is at its 4 MiB cap \(bees\.sandboxTmpBytes\)/);
+  assert.match(run.log, new RegExp(`sandbox\\.tmp_full bee=${run.beeId} gen=1 path=/tmp cap=4194304 \\(4 MiB\\)`));
+  assert.doesNotMatch(run.log, /account\.rotate/);
+});
+
+test("a bad bees.sandboxTmpBytes boots, logs why and spawns with the 1 GiB default", { timeout: 180_000, skip: process.platform !== "linux" }, async () => {
+  const run = await sandboxedFill({ sandboxTmpBytes: "lots" }, 8 * 1024 * 1024, false);
+  assert.match(run.log, /tmp\.sandbox_cap_invalid reason=.*bees\.sandboxTmpBytes must be null or an integer.* using=1073741824/);
+  assert.match(run.log, new RegExp(`sandbox\\.tmpfs bee=${run.beeId} gen=1 cap=1073741824 \\(1 GiB\\)`));
+  assert.equal(run.report.fillError, null);
+  assert.deepEqual(run.flags, []);
+});

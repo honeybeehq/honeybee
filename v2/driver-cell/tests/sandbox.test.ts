@@ -6,12 +6,13 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir, platform, tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   bwrapArgs,
+  DEFAULT_SANDBOX_TMPFS_BYTES,
   defaultWritablePaths,
   mergeSandboxWritablePaths,
   sandboxWritableDirectory,
@@ -20,6 +21,18 @@ import {
   seatbeltProfile,
   wrapWithSandbox,
 } from "../src/sandbox.ts";
+import {
+  bwrapSupportsSize,
+  describeSandboxTmpfs,
+  formatBytes,
+  fullTmpfs,
+  isSandboxTmpFullDetail,
+  sampleSandboxTmpfs,
+  sandboxedPid,
+  sandboxTmpfsCap,
+  sandboxTmpFullDetail,
+  SandboxTmpWatch,
+} from "../src/sandboxTmp.ts";
 
 const IS_DARWIN = platform() === "darwin";
 const IS_LINUX = platform() === "linux";
@@ -242,4 +255,132 @@ test("sandbox.bwrap-real: bwrap confines writes to the cell (linux — metal-3 g
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("sandbox.bwrap-tmpfs: a tmpfs cap sizes /tmp and a private /dev/shm; no cap keeps the old argv", () => {
+  const capped = bwrapArgs({ cellDir: "/cells/bee-1", writablePaths: [], tmpfsBytes: 4194304 }, "node", []);
+  const joined = capped.join(" ");
+  assert.match(joined, /--dev \/dev --size 4194304 --tmpfs \/dev\/shm /);
+  assert.match(joined, /--size 4194304 --tmpfs \/tmp /);
+  assert.ok(capped.indexOf("/dev/shm") > capped.indexOf("--dev"), "the shm tmpfs mounts over the --dev tree");
+  for (const uncapped of [
+    bwrapArgs({ cellDir: "/cells/bee-1", writablePaths: [] }, "node", []),
+    bwrapArgs({ cellDir: "/cells/bee-1", writablePaths: [], tmpfsBytes: null }, "node", []),
+  ]) {
+    assert.equal(uncapped.includes("--size"), false);
+    assert.equal(uncapped.includes("/dev/shm"), false);
+  }
+});
+
+test("sandbox.tmpfs-cap: config, darwin and an old bwrap decide the effective cap", () => {
+  assert.deepEqual(sandboxTmpfsCap(DEFAULT_SANDBOX_TMPFS_BYTES, "linux", () => true), { kind: "capped", bytes: 1073741824 });
+  assert.deepEqual(sandboxTmpfsCap(null, "linux", () => true), { kind: "uncapped", reason: "config_null" });
+  assert.deepEqual(sandboxTmpfsCap(4194304, "linux", () => false), { kind: "uncapped", reason: "bwrap_no_size" });
+  assert.deepEqual(sandboxTmpfsCap(4194304, "darwin", () => true), { kind: "uncapped", reason: "seatbelt" });
+  assert.equal(describeSandboxTmpfs("b1", 2, { kind: "capped", bytes: 1073741824 }), "sandbox.tmpfs bee=b1 gen=2 cap=1073741824 (1 GiB) paths=/tmp,/dev/shm");
+  assert.equal(describeSandboxTmpfs("b1", 2, { kind: "uncapped", reason: "seatbelt" }), "sandbox.tmpfs bee=b1 gen=2 cap=none reason=seatbelt");
+  assert.equal(formatBytes(4194304), "4 MiB");
+  assert.equal(formatBytes(1500000), "1.4 MiB");
+});
+
+test("sandbox.tmp-full: a nearly full tmpfs yields the typed detail; space left yields nothing", () => {
+  const cap = 4194304;
+  assert.equal(fullTmpfs([{ path: "/tmp", sizeBytes: cap, freeBytes: cap / 2 }]), null);
+  const full = fullTmpfs([{ path: "/tmp", sizeBytes: cap, freeBytes: cap / 2 }, { path: "/dev/shm", sizeBytes: cap, freeBytes: 4096 }]);
+  assert.equal(full?.path, "/dev/shm");
+  const detail = sandboxTmpFullDetail(full!);
+  assert.ok(isSandboxTmpFullDetail(detail));
+  assert.match(detail, /^sandbox tmp full: \/dev\/shm in this bee's sandbox is at its 4 MiB cap \(bees\.sandboxTmpBytes\)/);
+  assert.equal(isSandboxTmpFullDetail("rate limit"), false);
+});
+
+test("sandbox.tmp-pid: the sandboxed process is the host's grandchild in another mount namespace", () => {
+  const root = mkdtempSync(join(tmpdir(), "hb-v2-proc-"));
+  try {
+    const proc = (pid: number, ns: string, children: number[]): void => {
+      mkdirSync(join(root, String(pid), "ns"), { recursive: true });
+      mkdirSync(join(root, String(pid), "task", String(pid)), { recursive: true });
+      symlinkSync(ns, join(root, String(pid), "ns", "mnt"));
+      writeFileSync(join(root, String(pid), "task", String(pid), "children"), children.map((c) => `${c} `).join(""));
+    };
+    proc(10, "mnt:[1]", [11]);
+    proc(11, "mnt:[1]", [12, 13]);
+    proc(12, "mnt:[1]", []);
+    proc(13, "mnt:[2]", []);
+    assert.equal(sandboxedPid(10, root), 13);
+    assert.equal(sandboxedPid(11, root), null, "a direct child in another namespace is not the shape bwrap leaves");
+    assert.equal(sandboxedPid(99, root), null);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("sandbox.tmpfs-real: a capped bwrap /tmp and /dev/shm refuse writes past the cap, visible from the host", { skip: !IS_LINUX || !bwrapSupportsSize() }, async () => {
+  const root = mkdtempSync(join(tmpdir(), "hb-v2-sb-cap-"));
+  try {
+    const cellDir = join(root, "cell");
+    mkdirSync(cellDir);
+    const policy = { cellDir, writablePaths: [], scratchPaths: [], tmpfsBytes: 2 * 1024 * 1024 };
+    for (const dir of ["/tmp", "/dev/shm"]) {
+      const res = spawnSync("bwrap", bwrapArgs(policy, "/bin/sh", ["-c", `dd if=/dev/zero of=${dir}/fill bs=1024 count=4096 2>&1; df -k ${dir} | tail -1`]), { encoding: "utf8" });
+      assert.match(res.stdout, /No space left on device/, `${dir}: ${res.stdout}${res.stderr}`);
+      assert.match(res.stdout, /\s2048\s/, `${dir} is a 2 MiB tmpfs: ${res.stdout}`);
+    }
+    const sandbox = spawn("bwrap", bwrapArgs(policy, "/bin/sh", ["-c", "dd if=/dev/zero of=/tmp/fill bs=1024 count=4096 2>/dev/null; sleep 10"]), { stdio: "ignore" });
+    try {
+      let usage: ReturnType<typeof sampleSandboxTmpfs> = [];
+      const deadline = Date.now() + 8000;
+      while (Date.now() < deadline) {
+        const pid = sandboxedPid(process.pid);
+        usage = pid === null ? [] : sampleSandboxTmpfs(pid);
+        if (fullTmpfs(usage)) break;
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      assert.equal(fullTmpfs(usage)?.path, "/tmp", JSON.stringify(usage));
+      assert.equal(usage.find((u) => u.path === "/tmp")?.sizeBytes, 2 * 1024 * 1024);
+    } finally {
+      sandbox.kill("SIGKILL");
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+
+test("sandbox.tmp-watch: set once when full, re-set after a turn clear, clear on space or runtime exit, sampled on its interval", () => {
+  let now = 0;
+  const cap = 4194304;
+  const usage = new Map<number, number>();
+  const logs: string[] = [];
+  const watch = new SandboxTmpWatch({
+    intervalMs: 5000,
+    now: () => now,
+    sample: (pid) => usage.has(pid) ? [{ path: "/tmp", sizeBytes: cap, freeBytes: usage.get(pid)! }] : null,
+    log: (op) => logs.push(op),
+  });
+  const a = { beeId: "a", generation: 1, pid: 100 };
+  const b = { beeId: "b", generation: 3, pid: 200 };
+  usage.set(100, 0);
+  usage.set(200, cap);
+  const first = watch.observe([a, b], []);
+  assert.deepEqual(first.map((e) => [e.beeId, e.action]), [["a", "set"]]);
+  assert.match(first[0]!.detail, /^sandbox tmp full: \/tmp .* 4 MiB cap/);
+  assert.match(logs[0]!, /^sandbox\.tmp_full bee=a gen=1 path=\/tmp cap=4194304 \(4 MiB\) freeBytes=0$/);
+  now = 1000;
+  assert.deepEqual(watch.observe([a, b], []), [], "between samples nothing is read");
+  assert.deepEqual(watch.observe([a, b], ["a"]).map((e) => [e.beeId, e.action]), [["a", "set"]], "a turn's clear is answered at once while still full");
+  assert.deepEqual(watch.observe([a, b], ["b"]), [], "a clear for a bee not marked full needs no sample");
+  now = 6000;
+  assert.deepEqual(watch.observe([a, b], []), [], "still full: no repeat");
+  usage.set(100, cap);
+  now = 11000;
+  assert.deepEqual(watch.observe([a, b], []).map((e) => [e.beeId, e.action]), [["a", "clear"]]);
+  usage.set(200, 0);
+  now = 16000;
+  assert.deepEqual(watch.observe([a, b], []).map((e) => [e.beeId, e.action, e.generation]), [["b", "set", 3]]);
+  now = 21000;
+  assert.deepEqual(watch.observe([a], []).map((e) => [e.beeId, e.action, e.detail]), [["b", "clear", "sandbox tmp went away with its runtime"]]);
+  usage.delete(100);
+  now = 26000;
+  assert.deepEqual(watch.observe([a], []), [], "an unsandboxed runtime is never judged");
 });

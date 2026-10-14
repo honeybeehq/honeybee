@@ -60,6 +60,7 @@ export {
 export type { RetentionWorkerRequest, RetentionWorkerResult, TrimVerifyWorkerRequest, TrimVerifyWorkerResult } from "./retentionWorker.ts";
 export {
   bwrapArgs,
+  DEFAULT_SANDBOX_TMPFS_BYTES,
   defaultWritablePaths,
   mergeSandboxWritablePaths,
   NODE_KINDS,
@@ -74,6 +75,12 @@ export {
   type SandboxWritableDirectoryOptions,
   type WrappedCommand,
 } from "./sandbox.ts";
+export {
+  formatBytes,
+  isSandboxTmpFullDetail,
+  SANDBOX_TMP_FULL,
+  type SandboxTmpfsCap,
+} from "./sandboxTmp.ts";
 export {
   cellPaths,
   CELL_SPACE_DIRECTORY,

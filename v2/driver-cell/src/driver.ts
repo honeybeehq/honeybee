@@ -18,6 +18,7 @@
  *    exposed for the daemon/UI (WP6) — they never touch runtime driving.
  */
 import { existsSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { platform } from "node:os";
 import { Worker } from "node:worker_threads";
 import type {
   DeliverOutcome,
@@ -40,9 +41,11 @@ import { captureWork, type CaptureMode, type CaptureReport } from "./capture.ts"
 import { cellPaths, looksLikeCellWrapper, type CellPaths } from "./layout.ts";
 import { isProvisioned, readLedger, type CellLedger } from "./ledger.ts";
 import { provisionCell, type ProvisionedCell, type ProvisionRequest } from "./provision.ts";
+import { describeSandboxTmpfs, SandboxTmpWatch, sandboxTmpfsCap, type SandboxTmpfsCap } from "./sandboxTmp.ts";
 import { claimFromPool, repoKeyFor, type TopUpRequest } from "./warmPool.ts";
 import { deleteCell, type DeleteResult, type DirtyReportOptions } from "./remove.ts";
 import {
+  DEFAULT_SANDBOX_TMPFS_BYTES,
   defaultWritablePaths,
   mergeSandboxWritablePaths,
   sandboxEnabled,
@@ -76,6 +79,9 @@ export interface CellDriverConfig {
    * from trusted state, never from the harness spawn environment.
    */
   resolveSandboxWritablePaths?(beeId: string): readonly SandboxWritableDirectory[];
+  sandboxTmpfsBytes?: number | null;
+  sandboxTmpSampleMs?: number;
+  log?(op: string): void;
   /** Tests: force the clone fallback / cold cells. */
   disableCow?: boolean;
   /** Daemon mode: provision Cells off the RPC/event-loop hot lane. */
@@ -135,6 +141,8 @@ export class CellDriver implements RuntimeDriver {
   /** In-flight warm-pool top-up workers (one per repoKey, single-flight). */
   private readonly poolWorkers = new Map<string, Worker>();
   private readonly pendingObservations: DriverObservation[] = [];
+  private sandboxTmp: SandboxTmpWatch | null = null;
+  private sandboxCap: SandboxTmpfsCap | null = null;
 
   constructor(cfg: CellDriverConfig) {
     this.cfg = cfg;
@@ -304,7 +312,22 @@ export class CellDriver implements RuntimeDriver {
   }
 
   observeEvidence(): FlagEvidence[] {
-    return this.inner.observeEvidence();
+    const evidence = this.inner.observeEvidence();
+    if (platform() !== "linux" || this.effectiveSandboxCap().kind !== "capped") return evidence;
+    this.sandboxTmp ??= new SandboxTmpWatch({
+      intervalMs: this.cfg.sandboxTmpSampleMs ?? 5_000,
+      ...(this.cfg.log ? { log: this.cfg.log } : {}),
+    });
+    const cleared = evidence.filter((ev) => ev.flag === "resource_blocked" && ev.action === "clear").map((ev) => ev.beeId);
+    return [...evidence, ...this.sandboxTmp.observe(this.inner.snapshotLive(), cleared)];
+  }
+
+  private effectiveSandboxCap(): SandboxTmpfsCap {
+    this.sandboxCap ??= sandboxTmpfsCap(
+      this.cfg.sandboxTmpfsBytes === undefined ? DEFAULT_SANDBOX_TMPFS_BYTES : this.cfg.sandboxTmpfsBytes,
+      platform(),
+    );
+    return this.sandboxCap;
   }
 
   observeSessions(): SessionEvidence[] {
@@ -623,6 +646,8 @@ export class CellDriver implements RuntimeDriver {
     if (!sandboxEnabled(this.cfg.nodeKind, spec.sandbox)) {
       return { ...harness, cwd: cell.paths.spaceDir, env };
     }
+    const cap = this.effectiveSandboxCap();
+    if (generation !== undefined) this.cfg.log?.(describeSandboxTmpfs(beeId, generation, cap));
     const wrapped = wrapWithSandbox(
       {
         cellDir: cell.paths.wrapperDir,
@@ -630,6 +655,7 @@ export class CellDriver implements RuntimeDriver {
           this.cfg.sandboxWritablePaths ?? defaultWritablePaths(),
           this.cfg.resolveSandboxWritablePaths?.(beeId) ?? [],
         ),
+        tmpfsBytes: cap.kind === "capped" ? cap.bytes : null,
       },
       harness.command,
       harness.args,

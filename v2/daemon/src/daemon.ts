@@ -152,6 +152,8 @@ import {
   isAncestor,
   currentBranch,
   sandboxWritableDirectory,
+  DEFAULT_SANDBOX_TMPFS_BYTES,
+  isSandboxTmpFullDetail,
   runCellExec,
   sanitizeComponent,
   type CellSpec,
@@ -740,6 +742,7 @@ export class HiveDaemon {
     if (this.beeTmp) applyDaemonTmpPolicy(this.beeTmp, process.env, (path, was) => this.log(`tmp.replaced path=${path} was=${was}`));
     this.log(describeBeeTmpPolicy(this.beeTmp));
     if (this.cfg.beeTmpRootInvalid) this.log(`tmp.policy_invalid reason=${JSON.stringify(this.cfg.beeTmpRootInvalid)}`);
+    if (this.cfg.beeSandboxTmpBytesInvalid) this.log(`tmp.sandbox_cap_invalid reason=${JSON.stringify(this.cfg.beeSandboxTmpBytesInvalid)} using=${DEFAULT_SANDBOX_TMPFS_BYTES}`);
     this.performance.start();
     const startup = this.performance.startSpan("daemon.start.total");
     try {
@@ -845,6 +848,8 @@ export class HiveDaemon {
       resolveHarness: (beeId: string, generation?: number) => this.resolveSpawnSpec(beeId, generation),
       resolveCell: (beeId: string) => this.resolveCellSpec(beeId),
       resolveSandboxWritablePaths: (beeId: string) => this.resolveCellSandboxWritablePaths(beeId),
+      ...(this.cfg.beeSandboxTmpBytes !== undefined ? { sandboxTmpfsBytes: this.cfg.beeSandboxTmpBytes } : {}),
+      log: (op: string) => this.log(op),
       onCellMaterialized: (beeId: string) => this.onCellMaterialized(beeId),
       hsr: hsrConfig,
       backgroundProvisioning: true,
@@ -6179,7 +6184,7 @@ export class HiveDaemon {
       if (account.exhaustedAt != null) store.recordAccountExhaustion(account.id, null);
       return;
     }
-    if (!isRateLimitCause(ev.detail)) return;
+    if (isSandboxTmpFullDetail(ev.detail) || !isRateLimitCause(ev.detail)) return;
     // Exhaustion evidence on the account (rotation cool-off). Debounced: a
     // provider re-reports the wall on every call; one stamp a minute is plenty.
     const now = Date.now();

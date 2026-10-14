@@ -35,7 +35,12 @@ export interface SandboxPolicy {
   writablePaths: string[];
   /** OS scratch dirs kept writable. Defaults to the platform list. */
   scratchPaths?: string[];
+  tmpfsBytes?: number | null;
 }
+
+export const DEFAULT_SANDBOX_TMPFS_BYTES = 1024 * 1024 * 1024;
+
+export const SANDBOX_TMPFS_PATHS: readonly string[] = ["/tmp", "/dev/shm"];
 
 /** OS scratch space every process needs writable (default scratch policy). */
 export function defaultScratchPaths(osPlatform: string = platform()): string[] {
@@ -198,11 +203,13 @@ export function seatbeltProfile(policy: SandboxPolicy): string {
  * is exercised by the linux gate (trmd-metal-3).
  */
 export function bwrapArgs(policy: SandboxPolicy, command: string, args: string[]): string[] {
+  const size = policy.tmpfsBytes != null ? ["--size", String(policy.tmpfsBytes)] : [];
   const out: string[] = [
     "--ro-bind", "/", "/",
     "--dev", "/dev",
+    ...(size.length > 0 ? [...size, "--tmpfs", "/dev/shm"] : []),
     "--proc", "/proc",
-    "--tmpfs", "/tmp",
+    ...size, "--tmpfs", "/tmp",
     "--bind", policy.cellDir, policy.cellDir,
   ];
   for (const p of policy.writablePaths) {

@@ -19,6 +19,14 @@ for (const dir of JSON.parse(process.env.PROBE_ESCAPE_DIRS ?? "[]")) {
     escapes[dir] = false;
   }
 }
+let fillError = null;
+if (process.env.PROBE_FILL_TMP_BYTES) {
+  try {
+    writeFileSync("/tmp/fill", Buffer.alloc(Number(process.env.PROBE_FILL_TMP_BYTES)));
+  } catch (error) {
+    fillError = error.code ?? String(error);
+  }
+}
 let tmpWritable = false;
 try {
   writeFileSync(join(tmpdir(), "probe-write"), "ok");
@@ -33,4 +41,5 @@ writeFileSync(join(process.env.PROBE_OUT_DIR ?? process.cwd(), `${process.env.HI
   cacheEntries: entries.length,
   tmpWritable,
   escapes,
+  fillError,
 }));
