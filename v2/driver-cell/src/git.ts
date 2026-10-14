@@ -44,9 +44,9 @@ const REPO_LOCAL_EXEC_CONFIG: ReadonlyArray<readonly [RegExp, string]> = [
   [/^diff\.external$/iu, ""],
 ];
 
-const CONTENT_VERBS = new Set([
-  "add", "am", "apply", "archive", "checkout", "cherry-pick", "clone", "commit", "diff", "fetch", "merge",
-  "pull", "read-tree", "rebase", "reset", "restore", "revert", "stash", "status", "switch",
+const READ_ONLY_VERBS = new Set([
+  "cat-file", "config", "count-objects", "for-each-ref", "init", "log", "merge-base", "remote", "rev-list",
+  "rev-parse", "show-ref", "symbolic-ref", "update-ref", "var",
 ]);
 
 function subcommandOf(args: readonly string[]): string | undefined {
@@ -66,6 +66,7 @@ const CONFIG_SCOPES = new Set(["system", "global", "local", "worktree", "command
 
 function readIfPresent(path: string): string | null {
   try {
+    if (!lstatSync(path).isFile()) return null;
     return readFileSync(path, "utf8");
   } catch (error) {
     return (error as { code?: string }).code === "ENOENT" ? "" : null;
@@ -122,7 +123,7 @@ export function repoLocalExecOverrides(cwd: string, env: Record<string, string>)
   const localConfig = repoLocalConfigText(cwd);
   if (localConfig !== null && !EXEC_CONFIG_HINT.test(localConfig)) return [];
   const args = ["config", "--list", "--show-scope", "--includes", "-z"];
-  const probe = spawnSync("git", args, { cwd, encoding: "utf8", env, maxBuffer: 64 * 1024 * 1024 });
+  const probe = spawnSync("git", args, { cwd, encoding: "utf8", env, maxBuffer: 64 * 1024 * 1024, timeout: 10_000 });
   if (probe.error) throw probe.error;
   if (probe.status !== 0) throw new GitError(args, probe.status, probe.stderr ?? "");
   const overrides = new Map<string, string>();
@@ -178,7 +179,7 @@ export interface GitResult {
 export function tryGit(cwd: string, args: string[], opts: { env?: Record<string, string>; input?: string; timeoutMs?: number } = {}): GitResult {
   const env = gitEnv(opts.env);
   const verb = subcommandOf(args);
-  const overrides = verb !== undefined && CONTENT_VERBS.has(verb) ? repoLocalExecOverrides(cwd, env) : [];
+  const overrides = verb !== undefined && READ_ONLY_VERBS.has(verb) ? [] : repoLocalExecOverrides(cwd, env);
   const res = spawnSync("git", args, { cwd, encoding: "utf8", env: hostGitEnv(env, overrides), input: opts.input, timeout: opts.timeoutMs, maxBuffer: 64 * 1024 * 1024 });
   if (res.error) throw res.error; // git binary missing — a machine boundary, not a git failure
   return { status: res.status, stdout: res.stdout ?? "", stderr: res.stderr ?? "" };

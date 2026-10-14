@@ -109,6 +109,7 @@ test("host git never runs a hook or fsmonitor planted in a Cell, a nested repo, 
       [["filter.evil.clean", ""], ["filter.evil.process", ""], ["filter.evil.required", "false"], ["filter.evil.smudge", ""]],
     );
     porcelainStatus(space);
+    tryGit(space, ["update-index", "--refresh"]);
     for (const target of [rig.origin.sha, work]) {
       const checkout = tryGit(space, ["checkout", "--force", "--detach", "--no-recurse-submodules", target]);
       assert.equal(checkout.status, 0, checkout.stderr);
