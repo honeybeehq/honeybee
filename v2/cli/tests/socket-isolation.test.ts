@@ -9,6 +9,8 @@ import { fileURLToPath } from "node:url";
 import { canonicalPath, ENDPOINT_RECORD_FILE, readLiveEndpointRecord, writeEndpointRecord } from "../../daemon/src/endpointRecord.ts";
 import { socketAcceptsConnections } from "../../daemon/src/rpc.ts";
 import { DAEMON_BIN, makeDaemonDir, startDaemon, waitFor, type DaemonHandle } from "../../daemon/tests/helpers.ts";
+import { RpcError } from "../../daemon/src/protocol.ts";
+import { RpcClient } from "../src/client.ts";
 import { runV2Cli } from "../src/main.ts";
 import { resolveDaemonTarget } from "../src/target.ts";
 
@@ -203,7 +205,7 @@ test("socket isolation against throwaway daemons", async (t) => {
       assert.equal(r.json[0]!.instanceId, infoA.instanceId);
       assert.equal(r.json[0]!.daemonTarget.socketSource, "record");
       assert.equal(r.json[0]!.daemonTarget.dataDirSource, "flag");
-      const spawned = await cli(["spawn", "bee-harness", "--agent", "stub", "--cwd", scratch, "--data-dir", a.dir, "--json"], { HOME: home, HIVE_V2_DATA_DIR: b.dir, HIVE_V2_SOCKET_PATH: daemonB!.socketPath });
+      const spawned = await cli(["spawn", "bee-harness", "--agent", "claude", "--cwd", scratch, "--data-dir", a.dir, "--json"], { HOME: home, HIVE_V2_DATA_DIR: b.dir, HIVE_V2_SOCKET_PATH: daemonB!.socketPath });
       assert.equal(spawned.exit, 0, spawned.out.join("\n"));
       assert.equal(spawned.json[0]!.daemonTarget.instanceId, infoA.instanceId);
     });
@@ -292,24 +294,26 @@ test("socket isolation against throwaway daemons", async (t) => {
       assert.equal(stub.exit, 0, stub.out.join("\n"));
     });
 
-    await t.test("a provider-harness spawn into a data dir other than the caller's HIVE_V2_DATA_DIR is refused unless --allow-foreign-daemon", async () => {
-      const refused = await cli(["spawn", "foreign-claude", "--agent", "claude", "--cwd", scratch, "--data-dir", b.dir, "--json"], { HOME: home, HIVE_V2_DATA_DIR: a.dir });
-      assert.equal(refused.exit, 1);
-      assert.equal(refused.json[0]!.error.code, "foreign_daemon_spawn");
-      assert.equal(refused.json[0]!.error.details.reason, "data_dir_mismatch");
-      assert.equal(refused.json[0]!.error.details.adapter, "claude");
-      assert.equal(refused.json[0]!.error.details.callerDataDir, canonicalPath(a.dir));
-      const list = await cli(["ls", "--json", "--data-dir", b.dir], { HOME: home });
-      assert.ok(!JSON.stringify(list.json[0]).includes("foreign-claude"));
-      const stub = await cli(["spawn", "foreign-stub", "--agent", "stub", "--cwd", scratch, "--data-dir", b.dir, "--json"], { HOME: home, HIVE_V2_DATA_DIR: a.dir });
-      assert.equal(stub.exit, 0, stub.out.join("\n"));
-      const allowed = await cli(["spawn", "foreign-claude", "--agent", "claude", "--cwd", scratch, "--data-dir", b.dir, "--json", "--allow-foreign-daemon"], { HOME: home, HIVE_V2_DATA_DIR: a.dir });
-      assert.equal(allowed.exit, 0, allowed.out.join("\n"));
-      assert.equal(allowed.json[0]!.daemonTarget.instanceId, infoB.instanceId);
+    await t.test("a bee spawning a provider harness into an explicit throwaway dir needs no flag", async () => {
+      const intoB = await cli(["spawn", "bee-into-b", "--agent", "claude", "--cwd", scratch, "--data-dir", b.dir, "--json"], { HOME: home, HIVE_V2_DATA_DIR: a.dir, HIVE_V2_SOCKET_PATH: aSock });
+      assert.equal(intoB.exit, 0, intoB.out.join("\n"));
+      assert.equal(intoB.json[0]!.daemonTarget.instanceId, infoB.instanceId);
       const own = await cli(["spawn", "own-claude", "--agent", "claude", "--cwd", scratch, "--data-dir", b.dir, "--json"], { HOME: home, HIVE_V2_DATA_DIR: b.dir });
       assert.equal(own.exit, 0, own.out.join("\n"));
-      const revive = await cli(["revive", "own-claude", "--data-dir", b.dir, "--json"], { HOME: home, HIVE_V2_DATA_DIR: a.dir });
-      assert.equal(revive.json[0]!.error.code, "foreign_daemon_spawn");
+      const revive = await cli(["revive", "bee-into-b", "--data-dir", b.dir, "--json"], { HOME: home, HIVE_V2_DATA_DIR: a.dir, HIVE_V2_SOCKET_PATH: aSock });
+      assert.notEqual(revive.json[0]?.error?.code, "foreign_daemon_spawn", revive.out.join("\n"));
+    });
+
+    await t.test("a caller whose env names one dir and whose hello names another is refused by the daemon (data_dir_mismatch)", async () => {
+      const client = await RpcClient.connect(daemonB!.socketPath, 3000, undefined, { caller: { dataDir: canonicalPath(a.dir), expectedInstanceId: infoB.instanceId } });
+      try {
+        await assert.rejects(client.request("spawn", { name: "raw-foreign", agent: "claude", cwd: scratch }), (err: unknown) =>
+          err instanceof RpcError && err.code === "foreign_daemon_spawn" && (err.details as Json).reason === "data_dir_mismatch");
+        const stub = await client.request<Json>("spawn", { name: "raw-stub", agent: "stub", cwd: scratch });
+        assert.ok(stub.beeId);
+      } finally {
+        client.close();
+      }
     });
 
     await t.test("every daemon exports the socket it listens on to its bees, never an inherited one", async () => {
@@ -365,6 +369,45 @@ test("socket isolation against throwaway daemons", async (t) => {
         }
       } finally {
         d.cleanup();
+      }
+    });
+
+    await t.test("an explicit target that is the live daemon is refused from a caller whose env names another dir, unless --allow-foreign-daemon", async () => {
+      const e = makeDaemonDir({ agents: claudeAgent(join(c.dir, "argv-e.jsonl")) });
+      const defaultDir = join(home, ".hive", "v2");
+      rmSync(defaultDir, { recursive: true, force: true });
+      mkdirSync(join(home, ".hive"), { recursive: true });
+      symlinkSync(e.dir, defaultDir);
+      const live = await startDaemon(e.dir);
+      try {
+        const throwawayEnv = { HOME: home, HIVE_V2_DATA_DIR: a.dir, HIVE_V2_SOCKET_PATH: aSock };
+        const refused = await cli(["spawn", "into-live", "--agent", "claude", "--cwd", scratch, "--data-dir", defaultDir, "--json"], throwawayEnv);
+        assert.equal(refused.exit, 1);
+        assert.equal(refused.json[0]!.error.code, "foreign_daemon_spawn");
+        assert.equal(refused.json[0]!.error.details.reason, "explicit_live_target");
+        assert.equal(refused.json[0]!.error.details.callerDataDir, canonicalPath(a.dir));
+        const stub = await cli(["spawn", "into-live-stub", "--agent", "stub", "--cwd", scratch, "--data-dir", defaultDir, "--json"], throwawayEnv);
+        assert.equal(stub.exit, 0, stub.out.join("\n"));
+        const allowed = await cli(["spawn", "into-live", "--agent", "claude", "--cwd", scratch, "--data-dir", defaultDir, "--json", "--allow-foreign-daemon"], throwawayEnv);
+        assert.equal(allowed.exit, 0, allowed.out.join("\n"));
+        const bothFlags = ["spawn", "into-live-2", "--agent", "claude", "--cwd", scratch, "--data-dir", defaultDir, "--socket", join(defaultDir, "hived.sock"), "--json"];
+        const viaSocket = await cli(bothFlags, throwawayEnv);
+        assert.equal(viaSocket.json[0]!.error.code, "foreign_daemon_spawn");
+        assert.equal(viaSocket.json[0]!.error.details.reason, "explicit_live_target");
+        assert.equal((await cli([...bothFlags, "--allow-foreign-daemon"], throwawayEnv)).exit, 0);
+        const socketOnly = await cli(["spawn", "into-live-3", "--agent", "claude", "--cwd", scratch, "--socket", join(defaultDir, "hived.sock"), "--json"], throwawayEnv);
+        assert.equal(socketOnly.json[0]!.error.code, "socket_mismatch");
+        const viaEnvSocket = await cli(["spawn", "into-bee-daemon", "--agent", "claude", "--cwd", scratch, "--data-dir", b.dir, "--json"], { HOME: home, HIVE_V2_DATA_DIR: a.dir, HIVE_V2_SOCKET_PATH: daemonB!.socketPath });
+        assert.equal(viaEnvSocket.json[0]!.error.code, "foreign_daemon_spawn");
+        assert.equal(viaEnvSocket.json[0]!.error.details.reason, "explicit_live_target");
+        const ownBee = await cli(["spawn", "live-own", "--agent", "claude", "--cwd", scratch, "--data-dir", defaultDir, "--json"], { HOME: home, HIVE_V2_DATA_DIR: defaultDir });
+        assert.equal(ownBee.exit, 0, ownBee.out.join("\n"));
+        const operator = await cli(["spawn", "live-operator", "--agent", "claude", "--cwd", scratch, "--data-dir", defaultDir, "--json"], { HOME: home });
+        assert.equal(operator.exit, 0, operator.out.join("\n"));
+      } finally {
+        await live.stop().catch(() => undefined);
+        rmSync(defaultDir, { force: true });
+        e.cleanup();
       }
     });
 

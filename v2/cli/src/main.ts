@@ -125,7 +125,7 @@ import {
   type WatchFrame,
 } from "../../daemon/src/protocol.ts";
 import { DaemonDownError, RpcClient, type DaemonInstance } from "./client.ts";
-import { assertInstanceMatchesDataDir, assertSameInstance, assertSocketMatchesDataDir, callerDataDir, daemonTargetJson, resolveDaemonTarget, socketConfigured, type ResolvedDaemonTarget } from "./target.ts";
+import { assertInstanceMatchesDataDir, assertSameInstance, assertSocketMatchesDataDir, callerHelloFor, daemonTargetJson, resolveDaemonTarget, socketConfigured, type ResolvedDaemonTarget } from "./target.ts";
 import { ReadOnlyStore } from "./readonly.ts";
 import {
   beeTaskList,
@@ -550,15 +550,10 @@ function withDaemonTarget(ctx: CliContext, value: unknown): unknown {
   return { ...(value as object), daemonTarget: daemonTargetJson(ctx.target, ctx.daemon.instance, ctx.daemon.connected) };
 }
 
-function callerHello(ctx: CliContext): { dataDir?: string; expectedInstanceId: string | null; allowForeignDaemon?: true } {
-  const dataDir = callerDataDir();
-  return { ...(dataDir ? { dataDir } : {}), expectedInstanceId: ctx.target.recordInstanceId, ...(ctx.allowForeignDaemon ? { allowForeignDaemon: true as const } : {}) };
-}
-
 async function connectDaemon(ctx: CliContext): Promise<RpcClient> {
   assertSocketMatchesDataDir(ctx.target);
   const client = await RpcClient.connect(ctx.cfg.socketPath, 3000, undefined, {
-    caller: callerHello(ctx),
+    caller: callerHelloFor(ctx.target, ctx.allowForeignDaemon),
     verifyInstance: (instance) => {
       assertInstanceMatchesDataDir(ctx.target, instance);
       assertSameInstance(ctx.target, ctx.daemon.instance, instance);

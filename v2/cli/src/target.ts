@@ -42,6 +42,27 @@ export function callerDataDir(env: Record<string, string | undefined> = process.
   return dataDir ? canonicalPath(dataDir) : null;
 }
 
+export interface CallerHello {
+  dataDir?: string;
+  liveTarget?: true;
+  expectedInstanceId: string | null;
+  allowForeignDaemon?: true;
+}
+
+export function callerHelloFor(target: ResolvedDaemonTarget, allowForeignDaemon: boolean, env: Record<string, string | undefined> = process.env): CallerHello {
+  const envDataDir = callerDataDir(env);
+  const explicit = target.dataDirSource === "flag" || target.socketSource === "flag";
+  const envSocket = envValue(env, "HIVE_V2_SOCKET_PATH");
+  const liveTarget = explicit && envDataDir !== null && !samePath(envDataDir, target.cfg.dataDir)
+    && (samePath(target.cfg.dataDir, join(homedir(), ".hive", "v2")) || (envSocket !== undefined && samePath(target.cfg.socketPath, envSocket)));
+  return {
+    ...(envDataDir && (!explicit || liveTarget) ? { dataDir: envDataDir } : {}),
+    ...(liveTarget ? { liveTarget: true as const } : {}),
+    expectedInstanceId: target.recordInstanceId,
+    ...(allowForeignDaemon ? { allowForeignDaemon: true as const } : {}),
+  };
+}
+
 export function resolveDaemonTarget(inputs: DaemonTargetInputs, env: Record<string, string | undefined> = process.env): ResolvedDaemonTarget {
   const envDataDir = envValue(env, "HIVE_V2_DATA_DIR");
   const dataDirSource: DataDirSource = inputs.dataDirFlag ? "flag" : envDataDir ? "env" : "default";

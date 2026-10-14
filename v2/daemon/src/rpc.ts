@@ -333,7 +333,7 @@ export class RpcServer {
       }
       const caller = helloCaller(frame.caller);
       if (caller === "invalid") {
-        conn.send({ id: -1, ok: false, error: { code: "invalid_request", message: "caller must be {dataDir?: string, expectedInstanceId?: string | null, allowForeignDaemon?: boolean}." } });
+        conn.send({ id: -1, ok: false, error: { code: "invalid_request", message: "caller must be {dataDir?: string, liveTarget?: boolean, expectedInstanceId?: string | null, allowForeignDaemon?: boolean}." } });
         conn.socket.end();
         return;
       }
@@ -414,6 +414,7 @@ export class RpcServer {
 
 export interface HelloCaller {
   dataDir: string | null;
+  liveTarget: boolean;
   expectedInstanceId: string | null | undefined;
   allowForeignDaemon: boolean;
 }
@@ -425,8 +426,10 @@ function helloCaller(value: unknown): HelloCaller | null | "invalid" {
   if (raw.dataDir !== undefined && (typeof raw.dataDir !== "string" || raw.dataDir.length === 0)) return "invalid";
   if (raw.expectedInstanceId !== undefined && raw.expectedInstanceId !== null && typeof raw.expectedInstanceId !== "string") return "invalid";
   if (raw.allowForeignDaemon !== undefined && typeof raw.allowForeignDaemon !== "boolean") return "invalid";
+  if (raw.liveTarget !== undefined && typeof raw.liveTarget !== "boolean") return "invalid";
   return {
     dataDir: typeof raw.dataDir === "string" ? raw.dataDir : null,
+    liveTarget: raw.liveTarget === true,
     expectedInstanceId: raw.expectedInstanceId as string | null | undefined,
     allowForeignDaemon: raw.allowForeignDaemon === true,
   };

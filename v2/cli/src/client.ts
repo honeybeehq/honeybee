@@ -30,7 +30,7 @@ export interface DaemonInstance {
 }
 
 export interface ConnectOptions {
-  caller?: { dataDir?: string; expectedInstanceId: string | null; allowForeignDaemon?: boolean };
+  caller?: { dataDir?: string; liveTarget?: boolean; expectedInstanceId: string | null; allowForeignDaemon?: boolean };
   verifyInstance?: (instance: DaemonInstance | null) => void;
 }
 

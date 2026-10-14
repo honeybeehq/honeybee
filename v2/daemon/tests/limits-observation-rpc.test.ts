@@ -31,7 +31,7 @@ test("observation RPC: local Unix trust, exact account, opaque data, restart and
  const discarded=await c.request<any>("account.limits.observation.discard",{id,expectedObservedAtMs:at});assert.equal(discarded.discarded,true);assert.equal(discarded.selected,null);
  assert.equal((await c.request<{applied:boolean}>("account.limits.observe",payload)).applied,false);
  const cli=join(import.meta.dirname,"..","..","cli","src","bin.ts");
- const cliResult=await exec(process.execPath,[cli,"--socket",d.socketPath,"--json","account","observation","harnesses"],{env:{...process.env,HOME:join(root.dir,"cli-home"),XDG_CONFIG_HOME:join(root.dir,"cli-config"),XDG_DATA_HOME:join(root.dir,"cli-data"),XDG_CACHE_HOME:join(root.dir,"cli-cache"),XDG_STATE_HOME:join(root.dir,"cli-state")},timeout:10_000});
+ const cliResult=await exec(process.execPath,[cli,"--socket",d.socketPath,"--json","account","observation","harnesses"],{env:{...callerEnv(),HOME:join(root.dir,"cli-home"),XDG_CONFIG_HOME:join(root.dir,"cli-config"),XDG_DATA_HOME:join(root.dir,"cli-data"),XDG_CACHE_HOME:join(root.dir,"cli-cache"),XDG_STATE_HOME:join(root.dir,"cli-state")},timeout:10_000});
  const {daemonTarget,...printed}=JSON.parse(cliResult.stdout);assert.equal(daemonTarget.socketSource,"flag");assert.deepEqual(printed,{harnesses:["muse"]});
 });
 
@@ -43,6 +43,8 @@ test("observation CLI refuses an old daemon before issuing any observation RPC",
  await new Promise<void>(resolve=>server.listen(socket,resolve));
  t.after(async()=>{for(const s of sockets)s.destroy();await new Promise<void>(resolve=>server.close(()=>resolve()));root.cleanup();});
  const cli=join(import.meta.dirname,"..","..","cli","src","bin.ts");
- await assert.rejects(exec(process.execPath,[cli,"--socket",socket,"--json","account","observation","harnesses"],{env:{...process.env,HOME:join(root.dir,"cli-home"),XDG_CONFIG_HOME:join(root.dir,"config"),XDG_DATA_HOME:join(root.dir,"data"),XDG_CACHE_HOME:join(root.dir,"cache"),XDG_STATE_HOME:join(root.dir,"state")},timeout:10_000}),e=>e instanceof Error && /capability_missing/.test(String((e as Error&{stderr?:string}).stderr)));
+ await assert.rejects(exec(process.execPath,[cli,"--socket",socket,"--json","account","observation","harnesses"],{env:{...callerEnv(),HOME:join(root.dir,"cli-home"),XDG_CONFIG_HOME:join(root.dir,"config"),XDG_DATA_HOME:join(root.dir,"data"),XDG_CACHE_HOME:join(root.dir,"cache"),XDG_STATE_HOME:join(root.dir,"state")},timeout:10_000}),e=>e instanceof Error && /capability_missing/.test(String((e as Error&{stderr?:string}).stderr)));
  assert.equal(mutations,0);
 });
+
+function callerEnv():NodeJS.ProcessEnv{const{HIVE_V2_DATA_DIR:_dataDir,HIVE_V2_SOCKET_PATH:_socket,...env}=process.env;return env;}

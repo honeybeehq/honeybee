@@ -2694,10 +2694,12 @@ export class HiveDaemon {
     if (!facts.real) return;
     const reason = instanceForeign
       ? `this daemon (instance ${this.instanceId}) is not the one recorded for the data dir the caller resolved (${caller.expectedInstanceId ?? "no live record"})`
-      : `this daemon's data dir (${this.cfg.dataDir}) is not the caller's HIVE_V2_DATA_DIR (${caller.dataDir})`;
+      : caller.liveTarget
+        ? `the caller explicitly targeted the live daemon (${this.cfg.dataDir}) while its HIVE_V2_DATA_DIR names ${caller.dataDir}`
+        : `this daemon's data dir (${this.cfg.dataDir}) is not the caller's HIVE_V2_DATA_DIR (${caller.dataDir})`;
     throw new RpcError("foreign_daemon_spawn",
       `${verb} would start a provider harness on a foreign daemon: ${reason}; pass --allow-foreign-daemon if this is intended`,
-      { verb, reason: instanceForeign ? "instance_mismatch" : "data_dir_mismatch", callerDataDir: caller.dataDir, expectedInstanceId: caller.expectedInstanceId ?? null,
+      { verb, reason: instanceForeign ? "instance_mismatch" : caller.liveTarget ? "explicit_live_target" : "data_dir_mismatch", callerDataDir: caller.dataDir, expectedInstanceId: caller.expectedInstanceId ?? null,
         daemonInstanceId: this.instanceId, daemonDataDir: this.cfg.dataDir, ...facts.details });
   }
 
