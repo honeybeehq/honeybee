@@ -145,6 +145,7 @@ import {
   deleteCell,
   dirtyCauses,
   evictCellWrapper,
+  unparkCellWrapper,
   readUpstreamMirror,
   upstreamRootFor,
   hasCommit,
@@ -912,6 +913,8 @@ export class HiveDaemon {
       dataDir: this.cfg.dataDir,
       audit: (kind, payload) => this.mustStore().recordCellRetentionEvent(kind, payload),
       lastRecordedPass: (kind) => this.mustStore().latestCellRetentionPass(kind ?? null),
+      recentEvictionTimes: (sinceTs) => this.mustStore().cellRetentionEvictionTimes(sinceTs),
+      lastDailyCapAt: () => this.mustStore().lastCellRetentionDailyCapAt(),
     });
     for (const warning of this.cfg.cellRetention.warnings) this.log(`config.retention.invalid ${warning}`);
     this.core = new DaemonCore({
@@ -3247,7 +3250,18 @@ export class HiveDaemon {
         const evicted = store.evictCell(row.id, { head: null, bytes: null, reason: "operator" });
         return { cell: evicted, status: "absent", forced: false, report: null, bytes: null, envFiles: [], keptPaths: [] };
       }
-      const evicted = store.evictCell(row.id, { head: parked.head, bytes: null, reason: "operator", envFiles: parked.envFiles, keptPaths: parked.keptPaths });
+      let evicted: CellRow;
+      try {
+        evicted = store.evictCell(row.id, { head: parked.head, bytes: null, reason: "operator", envFiles: parked.envFiles, keptPaths: parked.keptPaths });
+      } catch (err) {
+        try {
+          unparkCellWrapper(this.cfg.cellsRoot, wrapperDir, parked);
+          this.log(`cell.evict.unparked bee=${beeId} cell=${row.id} err=${JSON.stringify(err instanceof Error ? err.message : String(err))}`);
+        } catch (undoErr) {
+          this.log(`cell.evict.unpark_failed bee=${beeId} cell=${row.id} parked=${parked.parkedDir} undo_err=${JSON.stringify(undoErr instanceof Error ? undoErr.message : String(undoErr))}`);
+        }
+        throw err;
+      }
       this.log(`cell.evict bee=${beeId} cell=${row.id} forced=${parked.forced} head=${parked.head ?? "-"} parked=${parked.parkedDir} env_files=${parked.envFiles.length} kept=${parked.keptPaths.length}`);
       void this.retention?.sweep();
       return { cell: evicted, status: "evicted", forced: parked.forced, report: parked.report, bytes: null, envFiles: parked.envFiles, keptPaths: parked.keptPaths };

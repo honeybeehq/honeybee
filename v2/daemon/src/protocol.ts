@@ -2058,6 +2058,8 @@ export interface CellDiskStatus {
   belowFloor: boolean;
   /** The last pressure pass could not reach the floor and free space has not recovered since. */
   floorUnmet: boolean;
+  /** Additive (P7b): a configured floor term that was ignored, e.g. `minFreeBytes` not below the volume size. */
+  floorWarning?: string | null;
   checkedAt: number;
   currentPass: CellGcProgress | null;
   lastPass: CellGcPassSummary | null;

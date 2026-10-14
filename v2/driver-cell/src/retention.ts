@@ -38,7 +38,7 @@ import { GitError, revParse, tryGit } from "./git.ts";
 import { CELL_SPACE_DIRECTORY, looksLikeCellWrapper } from "./layout.ts";
 import type { LandingReceipt } from "./landed.ts";
 import type { UpstreamRef } from "./upstream.ts";
-import { CellDeleteRefused, CellShapeError, dirtyReport, type DirtyReport } from "./remove.ts";
+import { CellDeleteRefused, CellShapeError, dirtyReportDetailed, type DirtyReport } from "./remove.ts";
 
 /** Reserved wrapper under the cells root where evicted wrappers wait for deletion. */
 export const EVICTING_DIR = "_evicting";
@@ -60,6 +60,8 @@ export interface CellWrapperInspection {
   provisioned: boolean;
   head: string | null;
   report: DirtyReport | null;
+  /** Populated submodules holding local state (reported as `uncommitted` in `report`). */
+  dirtySubmodules: string[];
   /** Allocated bytes (du -sk semantics); null when absent. */
   bytes: number | null;
   trim: PathBytes[];
@@ -558,16 +560,16 @@ export function inspectCellWrapper(
   const target = resolve(wrapperDir);
   const spaceDir = spaceDirIn(target);
   if (spaceDir == null) {
-    return { wrapperDir: target, envFiles: [], present: false, provisioned: false, head: null, report: null, bytes: null, trim: [], keep: [], elapsedMs: Date.now() - started };
+    return { wrapperDir: target, envFiles: [], present: false, provisioned: false, head: null, report: null, dirtySubmodules: [], bytes: null, trim: [], keep: [], elapsedMs: Date.now() - started };
   }
   const provisioned = existsSync(join(spaceDir, ".git"));
   const head = provisioned ? revParse(spaceDir, "HEAD") : null;
-  const report = dirtyReport(target, { receipts: opts.receipts, upstream: opts.upstream ?? null });
+  const { report, dirtySubmodules } = dirtyReportDetailed(target, { receipts: opts.receipts, upstream: opts.upstream ?? null });
   const ignored = classifyIgnored(spaceDir, opts.trimPatterns ?? DEFAULT_TRIM_PATTERNS);
   const measure = opts.measure !== false;
   const sized = (paths: string[]): PathBytes[] => paths.map((path) => ({ path, bytes: measure ? measurePathBytes(join(spaceDir, path)) : null }));
   const bytes = measure ? measureDirectoryBytes(target) : null;
-  return { wrapperDir: target, envFiles: ignored.env, present: true, provisioned, head, report, bytes, trim: sized(ignored.trim), keep: sized(ignored.keep), elapsedMs: Date.now() - started };
+  return { wrapperDir: target, envFiles: ignored.env, present: true, provisioned, head, report, dirtySubmodules, bytes, trim: sized(ignored.trim), keep: sized(ignored.keep), elapsedMs: Date.now() - started };
 }
 
 export interface EvictResult {
@@ -607,9 +609,9 @@ export function evictCellWrapper(
   }
   const spaceDir = spaceDirIn(target);
   if (spaceDir == null) throw new CellShapeError(target, "no -space- checkout inside");
-  const report = dirtyReport(target, { receipts: opts.receipts, upstream: opts.upstream ?? null });
+  const { report, dirtySubmodules } = dirtyReportDetailed(target, { receipts: opts.receipts, upstream: opts.upstream ?? null });
   const force = opts.force ?? false;
-  if (report.dirty && !force) throw new CellDeleteRefused(target, report);
+  if (report.dirty && !force) throw new CellDeleteRefused(target, report, dirtySubmodules);
   const head = existsSync(join(spaceDir, ".git")) ? revParse(spaceDir, "HEAD") : null;
   if (opts.expectedHead !== undefined && head !== opts.expectedHead) {
     throw new CellHeadMovedError(target, opts.expectedHead, head);
@@ -626,6 +628,35 @@ export function evictCellWrapper(
     throw err;
   }
   return { parkedDir, head, report, forced: report.dirty, envFiles, keptPaths };
+}
+
+/**
+ * Undo a park whose registry write failed: rename the wrapper back to its
+ * path, return its kept paths, and drop the env copies this park made when
+ * they still equal the originals. Refuses when something already occupies
+ * the wrapper path (a concurrent re-provision); the parked copy then stays
+ * where it is and the caller reports the eviction as failed.
+ */
+export function unparkCellWrapper(cellsRoot: string, wrapperDir: string, parked: EvictResult): { restoredKept: string[]; keptConflicts: string[] } {
+  const target = resolve(wrapperDir);
+  const root = resolve(cellsRoot);
+  if (dirname(target) !== root || dirname(resolve(parked.parkedDir)) !== join(root, EVICTING_DIR)) {
+    throw new CellShapeError(target, "not a parked wrapper of this cells root");
+  }
+  if (existsSync(target)) throw new CellShapeError(target, "wrapper path is occupied; the parked copy stays in _evicting");
+  renameSync(parked.parkedDir, target);
+  const spaceDir = spaceDirIn(target);
+  if (spaceDir == null) throw new CellShapeError(target, "no -space- checkout inside after unpark");
+  const { restored, conflicts } = restoreKeptPaths(root, spaceDir);
+  if (parked.envFiles.length > 0) {
+    const stash = envStashDir(root, basename(spaceDir));
+    for (const rel of parked.envFiles) {
+      const copy = join(stash, rel);
+      const original = join(spaceDir, rel);
+      if (existsSync(copy) && existsSync(original) && lstatSync(copy).isFile() && readFileSync(copy).equals(readFileSync(original))) removeRestoredEnv(stash, copy);
+    }
+  }
+  return { restoredKept: restored, keptConflicts: conflicts };
 }
 
 /** Parked wrappers awaiting deletion. */

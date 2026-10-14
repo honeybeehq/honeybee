@@ -221,6 +221,8 @@ export interface CellRetentionConfig {
   pressureIdleAfterDays?: number | null;
   /** Fetch each origin's upstream into a Honeybee-owned mirror and use its HEAD as a landing target (satellites true; other nodes false). */
   fetchUpstream?: boolean;
+  /** At most this many Cells evicted or removed by retention passes in any rolling 24 h (default 200). null = no cap. */
+  maxEvictionsPerDay?: number | null;
 }
 
 export interface ResolvedCellRetention {
@@ -239,6 +241,7 @@ export interface ResolvedCellRetention {
   minFreeBytes: number | null;
   pressureIdleAfterMs: number | null;
   fetchUpstream: boolean;
+  maxEvictionsPerDay: number | null;
   /** Invalid keys that fell back to their default, for the boot log. */
   warnings: string[];
 }
@@ -526,6 +529,7 @@ export const DEFAULT_CELL_RETENTION: ResolvedCellRetention = {
   minFreeBytes: null,
   pressureIdleAfterMs: 3 * DAY_MS,
   fetchUpstream: false,
+  maxEvictionsPerDay: 200,
   warnings: [],
 };
 
@@ -594,6 +598,13 @@ export function cellRetentionOf(raw: unknown, nodeKind: NodeKind = "workstation"
   out.minFreeBytes = read("minFreeBytes", "a non-negative number or null", nullableNonNegative, (v) => v as number | null, out.minFreeBytes);
   out.pressureIdleAfterMs = read("pressureIdleAfterDays", "a non-negative number or null", nullableNonNegative, scaled(DAY_MS), out.pressureIdleAfterMs);
   out.fetchUpstream = read("fetchUpstream", "a boolean", (v) => typeof v === "boolean", (v) => v as boolean, out.fetchUpstream);
+  out.maxEvictionsPerDay = read(
+    "maxEvictionsPerDay",
+    "a positive integer or null",
+    (v) => v === null || (typeof v === "number" && Number.isInteger(v) && v >= 1),
+    (v) => v as number | null,
+    out.maxEvictionsPerDay,
+  );
   return out;
 }
 

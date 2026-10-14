@@ -150,7 +150,7 @@ test("cell-pressure.1: below the floor, clean archived then idle Cells go oldest
     assert.equal(passRows[0]!.kind, "pressure");
     assert.equal(passRows[0]!.outcome, "floor_met");
 
-    writeConfig(dir, cellsRoot, { ...off, minFreeBytes: volume });
+    writeConfig(dir, cellsRoot, { ...off, minFreeBytes: volume - 1 });
     daemon = await startDaemon(dir, { env: { ...pressureEnv } });
     client = await daemon.client();
     const restored = (await client.request<HealthResult>("health")).cellDisk;
@@ -249,7 +249,7 @@ test("cell-pressure.2: a Cell whose work landed upstream, past a stale origin ch
   }
 });
 
-test("cell-pressure.3: with no retention config a workstation runs no pressure pass and fetches no mirror, while a satellite does both", { timeout: 240_000 }, async () => {
+test("cell-pressure.3: with no retention config a workstation runs no pressure pass and fetches no mirror, while a satellite does both; a byte floor above the volume is refused with a warning", { timeout: 240_000 }, async () => {
   const observe = async (nodeKind: "workstation" | "satellite") => {
     const root = mkdtempSync(join(tmpdir(), `hb-v2-defaults-${nodeKind}-`));
     const origin = makeOrigin(root);
@@ -277,7 +277,7 @@ test("cell-pressure.3: with no retention config a workstation runs no pressure p
     });
     let daemon: DaemonHandle | null = null;
     try {
-      daemon = await startDaemon(dir, { env: { HIVE_TEST_CELL_VOLUME_BYTES: String(1024 ** 3), HIVE_TEST_CELL_DISK_CHECK_MS: "200" } });
+      daemon = await startDaemon(dir, { env: { HIVE_TEST_CELL_VOLUME_BYTES: String(64 * 1024), HIVE_TEST_CELL_DISK_CHECK_MS: "200" } });
       const client = await daemon.client();
       const spawned = await client.request<SpawnResult>("spawn", { name: `${nodeKind}-bee`, agent: "cellstub", substrate: "cell", cell: { originRepo: origin.repo } });
       await waitFor(async () => (await client.request<ViewResult>("view", { beeId: spawned.beeId })).cell != null, "cell registered", 60_000);
@@ -287,6 +287,7 @@ test("cell-pressure.3: with no retention config a workstation runs no pressure p
       const log = readFileSync(join(dir, "hived.log"), "utf8");
       return {
         floorBytes: disk.floorBytes,
+        floorWarning: disk.floorWarning ?? null,
         lastPassKind: disk.lastPass?.kind ?? null,
         pressureLogged: /cell\.pressure\.below_floor/.test(log),
         mirrorRoot: existsSync(join(dir, "upstream")),
@@ -306,10 +307,70 @@ test("cell-pressure.3: with no retention config a workstation runs no pressure p
   assert.equal(workstation.mirrorRoot, false, "no mirror on a workstation by default");
   assert.equal(workstation.fetchLogged, false);
   const satellite = await observe("satellite");
-  assert.equal(satellite.floorBytes, 50 * 1024 ** 3, "a 1 GiB satellite volume gets the 50 GiB floor");
+  assert.equal(satellite.floorBytes, Math.floor((64 * 1024) / 10), "on a 64 KiB volume the 50 GiB term is refused and 10% remains");
+  assert.match(satellite.floorWarning ?? "", /minFreeBytes .* is not below the Cells volume size/);
   assert.equal(satellite.pressureLogged, true, "the satellite ran a pressure pass");
   assert.equal(satellite.lastPassKind, "pressure");
   assert.equal(satellite.mirrorRoot, true, "the satellite fetched its upstream mirror");
   assert.equal(satellite.fetchLogged, true);
   assert.equal(satellite.mirrorRootMode, 0o700, "the mirror root is private to the daemon user");
+});
+
+test("cell-pressure.4: retention passes evict at most maxEvictionsPerDay Cells in a rolling day, audit the cap once, and the window survives a restart", { timeout: 240_000 }, async () => {
+  const root = mkdtempSync(join(tmpdir(), "hb-v2-daily-cap-"));
+  const origin = makeOrigin(root);
+  const cellsRoot = join(root, "cells");
+  mkdirSync(cellsRoot, { recursive: true });
+  const retention = { enabled: false, archivedAfterDays: 0, trimAfterHours: null, maxEvictionsPerDay: 1 };
+  const { dir, cleanup } = makeDaemonDir({
+    bootHangTimeoutMs: 60_000,
+    cells: { root: cellsRoot, retention },
+    agents: {
+      cellstub: {
+        command: process.execPath,
+        args: [CELL_AGENT_PATH],
+        adapter: "stub",
+        env: {
+          GIT_AUTHOR_NAME: "cell-bee", GIT_AUTHOR_EMAIL: "bee@hive.invalid",
+          GIT_COMMITTER_NAME: "cell-bee", GIT_COMMITTER_EMAIL: "bee@hive.invalid",
+          GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_SYSTEM: "/dev/null",
+        },
+      },
+    },
+  });
+  let daemon: DaemonHandle | null = null;
+  try {
+    daemon = await startDaemon(dir);
+    let client = await daemon.client();
+    const bees = [];
+    for (const name of ["capped-1", "capped-2", "capped-3"]) {
+      const bee = await spawnIdle(client, name, origin.repo);
+      await stop(client, bee.beeId);
+      await archive(client, bee.beeId);
+      bees.push(bee);
+    }
+    const plan = await client.request<CellGcResult>("cell.gc", {}, 120_000);
+    assert.equal(plan.totals.plannedCells, 1, "the plan respects the daily cap");
+    assert.equal(plan.items.filter((i) => i.reason === "pass_limit").length, 2);
+    const applied = await client.request<CellGcResult>("cell.gc", { dryRun: false }, 120_000);
+    assert.equal(applied.outcomes!.filter((o) => o.status === "evicted").length, 1);
+    await daemon.stop();
+    daemon = null;
+    daemon = await startDaemon(dir);
+    client = await daemon.client();
+    const again = await client.request<CellGcResult>("cell.gc", { dryRun: false }, 120_000);
+    assert.equal((again.outcomes ?? []).filter((o) => o.status === "evicted").length, 0, "the window is restored after a restart");
+    assert.equal(again.items.filter((i) => i.reason === "pass_limit").length, 2);
+    const states = await Promise.all(bees.map((b) => cellState(client, b.beeId)));
+    assert.deepEqual(states.filter((s) => s === "evicted").length, 1);
+    await daemon.stop();
+    daemon = null;
+    const capRows = auditRows(dir, "cell.retention.daily_cap");
+    assert.equal(capRows.length, 1, "the cap is audited once per window, across a restart, and never by a dry run");
+    assert.equal(capRows[0]!.cap, 1);
+  } finally {
+    await daemon?.stop();
+    cleanup();
+    rmSync(root, { recursive: true, force: true });
+  }
 });

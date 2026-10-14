@@ -37,6 +37,8 @@ import {
   cellEnvRootForCells,
   cellKeepRootForCells,
   evictCellWrapper,
+  unparkCellWrapper,
+  type EvictResult,
   listPendingKeeps,
   parkTrimPaths,
   restoreKeptPaths,
@@ -97,7 +99,11 @@ export interface CellRetentionDeps {
   /** Size and free bytes of the volume holding `path` (default: statfs). */
   statfs?: (path: string) => { totalBytes: number; freeBytes: number };
   /** Append an informational retention audit row. */
-  audit?: (kind: "cell.retention.pass" | "cell.pressure.floor_unmet", payload: Record<string, unknown>) => void;
+  audit?: (kind: "cell.retention.pass" | "cell.pressure.floor_unmet" | "cell.retention.daily_cap", payload: Record<string, unknown>) => void;
+  /** Times of retention evictions since `sinceTs`, to restore the daily cap's window after a restart. */
+  recentEvictionTimes?: (sinceTs: number) => number[];
+  /** When the daily cap was last audited, so a restart does not audit it twice in one window. */
+  lastDailyCapAt?: () => number | null;
   /** The newest recorded pass (optionally of one kind), to restore `lastPass` and the floor-unmet episode after a restart. */
   lastRecordedPass?: (kind?: CellGcPassKind) => Record<string, unknown> | null;
   /** Free-space check cadence (default 60 s). */
@@ -118,6 +124,7 @@ export interface DiskReading {
   floorBytes: number | null;
   targetBytes: number | null;
   bandBytes: number | null;
+  floorWarning: string | null;
   at: number;
 }
 
@@ -138,6 +145,7 @@ const DEFAULT_UPSTREAM_MAX_AGE_MS = 60 * 60_000;
 const MANUAL_UPSTREAM_MAX_AGE_MS = 60_000;
 const DEFAULT_UPSTREAM_TIMEOUT_MS = 60_000;
 const PRESSURE_BATCH = 16;
+const DAY_WINDOW_MS = 24 * 60 * 60_000;
 const GIB = 1024 ** 3;
 
 const AGE_REASONS: ReadonlySet<CellGcReason> = new Set(["archived_age", "stopped_age", "too_young", "policy_disabled"]);
@@ -237,12 +245,17 @@ export class CellRetentionService {
   private lastDiskCheckAt: number | null = null;
   private lastDisk: DiskReading | null = null;
   private lastStatfsError: string | null = null;
+  private lastFloorWarning: string | null = null;
   private floorUnmet = false;
   private unmetAt: number | null = null;
   private unmetFree: number | null = null;
   private lastPass: CellGcPassSummary | null;
   private progress: CellGcProgress | null = null;
   private upstreamRefs = new Map<string, UpstreamRef>();
+  private evictionTimes: number[] = [];
+  private submoduleHolds: Array<{ cellId: string | null; beeId: string; paths: string[] }> = [];
+  private lastCapAuditAt: number | null = null;
+  private cappedInPlan = false;
 
   async stop(): Promise<void> {
     this.stopping = true;
@@ -268,6 +281,12 @@ export class CellRetentionService {
       deps.log(`cell.retention.last_pass_unreadable ${err instanceof Error ? err.message : String(err)}`);
     }
     this.lastPass = summaryFrom(recorded);
+    try {
+      this.evictionTimes = deps.recentEvictionTimes?.(this.bootedAt - DAY_WINDOW_MS) ?? [];
+      this.lastCapAuditAt = deps.lastDailyCapAt?.() ?? null;
+    } catch (err) {
+      deps.log(`cell.retention.eviction_history_unreadable ${err instanceof Error ? err.message : String(err)}`);
+    }
     this.floorUnmet = summaryFrom(pressure)?.outcome === "floor_unmet";
   }
 
@@ -309,7 +328,20 @@ export class CellRetentionService {
       const { totalBytes, freeBytes } = (this.deps.statfs ?? defaultStatfs)(root);
       if (!(totalBytes > 0) || !(freeBytes >= 0)) throw new Error(`statfs reported total=${totalBytes} free=${freeBytes}`);
       const policy = this.deps.policy;
-      const reading: DiskReading = { root, totalBytes, freeBytes, ...pressureThresholds(totalBytes, policy.minFreePercent, policy.minFreeBytes), at: this.deps.now() };
+      const bytesTermFits = policy.minFreeBytes == null || policy.minFreeBytes < totalBytes;
+      const floorWarning = bytesTermFits
+        ? null
+        : `cells.retention.minFreeBytes ${policy.minFreeBytes} is not below the Cells volume size ${totalBytes}; ignored`;
+      if (floorWarning !== this.lastFloorWarning && floorWarning != null) this.deps.log(`config.retention.invalid ${floorWarning}`);
+      this.lastFloorWarning = floorWarning;
+      const reading: DiskReading = {
+        root,
+        totalBytes,
+        freeBytes,
+        ...pressureThresholds(totalBytes, policy.minFreePercent, bytesTermFits ? policy.minFreeBytes : null),
+        floorWarning,
+        at: this.deps.now(),
+      };
       this.lastDisk = reading;
       this.lastStatfsError = null;
       return reading;
@@ -379,6 +411,7 @@ export class CellRetentionService {
       floorBytes: disk.floorBytes,
       targetBytes: disk.targetBytes,
       belowFloor: disk.floorBytes != null && disk.freeBytes < disk.floorBytes,
+      floorWarning: disk.floorWarning,
       floorUnmet: this.floorUnmet,
       checkedAt: disk.at,
       currentPass: this.progress ? structuredClone(this.progress) : null,
@@ -435,6 +468,7 @@ export class CellRetentionService {
   }
 
   private startProgress(kind: CellGcPassKind, dryRun: boolean, total: number): CellGcProgress {
+    this.submoduleHolds = [];
     this.progress = { kind, dryRun, startedAt: this.deps.now(), total, inspected: 0, planned: 0, plannedBytes: 0, held: 0, heldBytes: 0, dirty: 0, byReason: {} };
     return this.progress;
   }
@@ -464,7 +498,7 @@ export class CellRetentionService {
         ` free_before=${summary.freeBefore ?? "?"} free_after=${summary.freeAfter ?? "?"} floor=${summary.floorBytes ?? "-"}${summary.error ? ` err=${JSON.stringify(summary.error)}` : ""}`,
     );
     try {
-      this.deps.audit?.("cell.retention.pass", { ...summary });
+      this.deps.audit?.("cell.retention.pass", { ...summary, ...(this.submoduleHolds.length > 0 ? { submoduleHolds: this.submoduleHolds } : {}) });
     } catch (err) {
       this.deps.log(`cell.retention.audit_failed ${err instanceof Error ? err.message : String(err)}`);
     }
@@ -522,7 +556,9 @@ export class CellRetentionService {
     this.assertRunning();
     const inspectMs = Date.now() - inspectStarted;
     const plannedAt = this.deps.now();
+    this.cappedInPlan = false;
     const items = this.decide(candidates, inspections, plannedAt, this.effectiveMaxBytes(disk));
+    if (this.cappedInPlan && !opts.dryRun) this.auditDailyCap(plannedAt);
     const result: CellGcResult = {
       dryRun: opts.dryRun,
       plannedAt,
@@ -595,7 +631,8 @@ export class CellRetentionService {
     let evicted = 0;
     let inspectMs = 0;
     let cursor = 0;
-    while (cursor < eligible.length && reading.freeBytes < target && evicted < policy.maxPerPass) {
+    let capped = false;
+    while (!capped && cursor < eligible.length && reading.freeBytes < target && evicted < policy.maxPerPass) {
       const batch = eligible.slice(cursor, cursor + PRESSURE_BATCH);
       const inspectStarted = Date.now();
       const inspections = await this.inspect(batch, true, "pressure");
@@ -615,7 +652,11 @@ export class CellRetentionService {
         items.push(item);
         this.countProgress(progress, item.reason, item.bytes);
         if (item.verdict !== "evict") continue;
-        const outcome = this.applyOne(item);
+        const outcome = this.applyCapped(item);
+        if (outcome == null) {
+          capped = true;
+          break;
+        }
         outcomes.push(outcome);
         if (outcome.status === "evicted") {
           evicted += 1;
@@ -754,6 +795,13 @@ export class CellRetentionService {
       onProgress,
     );
     this.noteUpstreams(message.upstreams ?? []);
+    for (const entry of message.inspections) {
+      const paths = entry.inspection?.dirtySubmodules ?? [];
+      if (paths.length === 0) continue;
+      const c = candidates.find((x) => x.key === entry.key);
+      this.submoduleHolds.push({ cellId: c?.cell?.id ?? null, beeId: c?.beeId ?? "", paths });
+      this.deps.log(`cell.retention.submodule_hold cell=${c?.cell?.id ?? "-"} bee=${c?.beeId ?? "-"} paths=${JSON.stringify(paths)}`);
+    }
     return new Map(message.inspections.map((i) => [i.key, { inspection: i.inspection, error: i.error }] as const));
   }
 
@@ -836,6 +884,19 @@ export class CellRetentionService {
         item.reason = "pass_limit";
       }
     }
+    const budget = this.evictionBudget(now);
+    if (budget != null) {
+      let allowed = budget;
+      for (const item of items) {
+        if (item.verdict !== "evict" && item.verdict !== "remove_retained") continue;
+        if (allowed > 0) allowed -= 1;
+        else {
+          item.verdict = "hold";
+          item.reason = "pass_limit";
+          this.cappedInPlan = true;
+        }
+      }
+    }
     for (const item of items) item.trim.planned = this.trimDue(item, now);
     return items;
   }
@@ -914,10 +975,50 @@ export class CellRetentionService {
     for (const item of items) {
       this.assertRunning();
       if (item.verdict !== "evict" && item.verdict !== "remove_retained") continue;
-      outcomes.push(this.applyOne(item));
+      const outcome = this.applyCapped(item);
+      if (outcome) outcomes.push(outcome);
       await new Promise<void>((r) => setImmediate(r));
     }
     return outcomes;
+  }
+
+  /** Evictions still allowed in the rolling 24 h window; null = no cap. */
+  private evictionBudget(now: number): number | null {
+    const cap = this.deps.policy.maxEvictionsPerDay;
+    if (cap == null) return null;
+    this.evictionTimes = this.evictionTimes.filter((t) => now - t < DAY_WINDOW_MS);
+    return Math.max(0, cap - this.evictionTimes.length);
+  }
+
+  /** Hold an eviction the daily cap forbids; the cap is audited once per window. */
+  private holdForDailyCap(item: CellGcItem, now: number): void {
+    item.verdict = "hold";
+    item.reason = "pass_limit";
+    this.auditDailyCap(now);
+  }
+
+  private auditDailyCap(now: number): void {
+    if (this.lastCapAuditAt != null && now - this.lastCapAuditAt < DAY_WINDOW_MS) return;
+    this.lastCapAuditAt = now;
+    const payload = { cap: this.deps.policy.maxEvictionsPerDay, evictedInWindow: this.evictionTimes.length, windowStart: now - DAY_WINDOW_MS, at: now };
+    this.deps.log(`cell.retention.daily_cap cap=${payload.cap} evicted_in_window=${payload.evictedInWindow}`);
+    try {
+      this.deps.audit?.("cell.retention.daily_cap", payload);
+    } catch (err) {
+      this.deps.log(`cell.retention.audit_failed ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  /** applyOne under the daily cap: a capped item is held, a reclaimed one counts against the window. */
+  private applyCapped(item: CellGcItem): CellGcOutcome | null {
+    const now = this.deps.now();
+    if (this.evictionBudget(now) === 0) {
+      this.holdForDailyCap(item, now);
+      return null;
+    }
+    const outcome = this.applyOne(item);
+    if (outcome.status === "evicted" || outcome.status === "removed") this.evictionTimes.push(this.deps.now());
+    return outcome;
   }
 
   /** One eviction, preconditions re-checked synchronously at the moment of the rename. */
@@ -949,12 +1050,15 @@ export class CellRetentionService {
       }
       const env = parked.envFiles.length > 0 ? ` env_files=${parked.envFiles.length} env_stash=${cellEnvRootForCells(this.deps.cellsRoot)}` : "";
       const kept = parked.keptPaths.length > 0 ? ` kept=${parked.keptPaths.length} keep_stash=${cellKeepRootForCells(this.deps.cellsRoot)}` : "";
+      const recorded = this.recordOrUnpark(cell.id, item, parked, () => {
+        if (item.verdict === "remove_retained") store.markCellRemoved(cell.id);
+        else store.evictCell(cell.id, { head: parked.head, bytes: item.bytes, reason: item.reason, envFiles: parked.envFiles, keptPaths: parked.keptPaths });
+      });
+      if (recorded != null) return outcome("failed", recorded);
       if (item.verdict === "remove_retained") {
-        store.markCellRemoved(cell.id);
         this.deps.log(`cell.retention.removed cell=${cell.id} bee=${item.beeId} reason=${item.reason} head=${parked.head ?? "-"} bytes=${item.bytes ?? "?"} parked=${parked.parkedDir}${env}${kept}`);
         return outcome("removed", item.reason, parked.envFiles, parked.keptPaths);
       }
-      store.evictCell(cell.id, { head: parked.head, bytes: item.bytes, reason: item.reason, envFiles: parked.envFiles, keptPaths: parked.keptPaths });
       this.deps.log(`cell.retention.evicted cell=${cell.id} bee=${item.beeId} reason=${item.reason} head=${parked.head ?? "-"} bytes=${item.bytes ?? "?"} parked=${parked.parkedDir}${env}${kept}`);
       return outcome("evicted", item.reason, parked.envFiles, parked.keptPaths);
     } catch (err) {
@@ -963,6 +1067,23 @@ export class CellRetentionService {
       const detail = err instanceof Error ? err.message : String(err);
       this.deps.log(`cell.retention.failed cell=${cell.id} bee=${item.beeId} err=${JSON.stringify(detail)}`);
       return outcome("failed", detail);
+    }
+  }
+
+  /** Record the park in the registry; when that write fails, put the wrapper back and return the error. */
+  private recordOrUnpark(cellId: string, item: CellGcItem, parked: EvictResult, record: () => void): string | null {
+    try {
+      record();
+      return null;
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      try {
+        const { keptConflicts } = unparkCellWrapper(this.deps.cellsRoot, item.wrapperDir, parked);
+        this.deps.log(`cell.retention.unparked cell=${cellId} bee=${item.beeId} kept_conflicts=${keptConflicts.length} err=${JSON.stringify(detail)}`);
+      } catch (undoErr) {
+        this.deps.log(`cell.retention.unpark_failed cell=${cellId} bee=${item.beeId} parked=${parked.parkedDir} err=${JSON.stringify(detail)} undo_err=${JSON.stringify(undoErr instanceof Error ? undoErr.message : String(undoErr))}`);
+      }
+      return `registry write failed: ${detail}`;
     }
   }
 

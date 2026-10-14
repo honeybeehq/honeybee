@@ -2100,8 +2100,24 @@ export class CoreStore {
   }
 
   /** P7: informational Cell retention history (one row per applied pass; one per floor-unmet episode). */
-  recordCellRetentionEvent(kind: "cell.retention.pass" | "cell.pressure.floor_unmet", payload: Record<string, unknown>): void {
+  recordCellRetentionEvent(kind: "cell.retention.pass" | "cell.pressure.floor_unmet" | "cell.retention.daily_cap", payload: Record<string, unknown>): void {
     this.tx(() => this.audit(kind, null, payload));
+  }
+
+  /** The time of the newest `cell.retention.daily_cap` row within the last `scanRows` audit rows. */
+  lastCellRetentionDailyCapAt(scanRows = 500_000): number | null {
+    const row = this.stmt(
+      "SELECT ts FROM audit WHERE kind = 'cell.retention.daily_cap' AND seq > (SELECT COALESCE(MAX(seq), 0) FROM audit) - ? ORDER BY seq DESC LIMIT 1",
+    ).get(scanRows) as { ts: number } | undefined;
+    return row ? Number(row.ts) : null;
+  }
+
+  /** Times of Cell evictions by retention passes (not operator evictions) since `sinceTs`, within the last `scanRows` audit rows. */
+  cellRetentionEvictionTimes(sinceTs: number, scanRows = 500_000): number[] {
+    const rows = this.stmt(
+      "SELECT ts FROM audit WHERE kind = 'cell.evicted' AND ts >= ? AND seq > (SELECT COALESCE(MAX(seq), 0) FROM audit) - ? AND COALESCE(json_extract(payload, '$.reason'), '') <> 'operator' ORDER BY seq",
+    ).all(sinceTs, scanRows) as Array<{ ts: number }>;
+    return rows.map((r) => Number(r.ts));
   }
 
   /** The newest `cell.retention.pass` payload (of `passKind`, when given) within the last `scanRows` audit rows (a bounded backward scan). */

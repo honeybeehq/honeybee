@@ -8,9 +8,9 @@
  * a user directory.
  * ENOTEMPTY (a racing writer mid-delete) retries exactly once.
  */
-import { existsSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, readdirSync, rmSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { git, hasCommit, revParse } from "./git.ts";
+import { git, hasCommit, revParse, tryGit } from "./git.ts";
 import { describeCommits, unlandedCommitsByTip, type LandingReceipt, type UnlandedCommit } from "./landed.ts";
 import { CELL_SPACE_DIRECTORY, looksLikeCellWrapper } from "./layout.ts";
 import { readLedger } from "./ledger.ts";
@@ -56,8 +56,12 @@ function unlandedCommitsCause(report: DirtyReport): string {
 export class CellDeleteRefused extends Error {
   readonly report: DirtyReport;
 
-  constructor(wrapperDir: string, report: DirtyReport) {
-    super(`cell ${wrapperDir} is dirty (${dirtyCauses(report).join(", ")}); pass force to delete anyway`);
+  readonly dirtySubmodules: string[];
+
+  constructor(wrapperDir: string, report: DirtyReport, dirtySubmodules: string[] = []) {
+    const submodules = dirtySubmodules.length > 0 ? `; submodules with local state: ${dirtySubmodules.join(", ")}` : "";
+    super(`cell ${wrapperDir} is dirty (${dirtyCauses(report).join(", ")}${submodules}); pass force to delete anyway`);
+    this.dirtySubmodules = dirtySubmodules;
     this.name = "CellDeleteRefused";
     this.report = report;
   }
@@ -93,6 +97,15 @@ export interface DirtyReportOptions {
 }
 
 export function dirtyReport(wrapperDir: string, opts: DirtyReportOptions = {}): DirtyReport {
+  return dirtyReportDetailed(wrapperDir, opts).report;
+}
+
+/**
+ * The dirty report plus the populated submodules that hold local state. Their
+ * dirt is reported as `uncommitted` (the report shape is a wire contract);
+ * the paths are for refusal messages, logs and audit rows.
+ */
+export function dirtyReportDetailed(wrapperDir: string, opts: DirtyReportOptions = {}): { report: DirtyReport; dirtySubmodules: string[] } {
   const spaceDir = spaceDirOf(wrapperDir);
   const clean: DirtyReport = {
     dirty: false,
@@ -104,9 +117,10 @@ export function dirtyReport(wrapperDir: string, opts: DirtyReportOptions = {}): 
     unlandedCommitCount: 0,
     originUnknown: false,
   };
-  if (!existsSync(join(spaceDir, ".git"))) return clean; // half-provisioned: nothing to lose
+  if (!existsSync(join(spaceDir, ".git"))) return { report: clean, dirtySubmodules: [] }; // half-provisioned: nothing to lose
 
-  const uncommitted = git(spaceDir, ["status", "--porcelain", "--ignore-submodules=all"]).length > 0;
+  const dirtySubmodules = submodulesWithLocalState(spaceDir);
+  const uncommitted = git(spaceDir, ["status", "--porcelain", "--ignore-submodules=all"]).length > 0 || dirtySubmodules.length > 0;
   const stashed = git(spaceDir, ["stash", "list"]).length > 0;
 
   let unpushed = false;
@@ -141,7 +155,7 @@ export function dirtyReport(wrapperDir: string, opts: DirtyReportOptions = {}): 
     }
   }
   if (unlandedBranches.length > 0) unpushed = true;
-  return {
+  const report: DirtyReport = {
     dirty: uncommitted || unpushed || stashed || originUnknown,
     uncommitted,
     unpushed,
@@ -151,6 +165,65 @@ export function dirtyReport(wrapperDir: string, opts: DirtyReportOptions = {}): 
     unlandedCommitCount: unlanded.length,
     originUnknown,
   };
+  return { report, dirtySubmodules };
+}
+
+const GITLINK_MODE = "160000";
+
+function gitlinksOf(repo: string): Array<{ path: string; sha: string }> | null {
+  const res = tryGit(repo, ["ls-files", "--stage", "-z"]);
+  if (res.status !== 0) return null;
+  const links: Array<{ path: string; sha: string }> = [];
+  for (const entry of res.stdout.split("\0")) {
+    if (!entry.startsWith(`${GITLINK_MODE} `)) continue;
+    const tab = entry.indexOf("\t");
+    const [, sha] = entry.slice(0, tab).split(" ");
+    if (tab > 0 && sha) links.push({ path: entry.slice(tab + 1), sha });
+  }
+  return links;
+}
+
+/**
+ * Submodules whose deletion would lose something: a gitlink directory holding
+ * files without its own repository (de-submoduled in place), or a populated
+ * submodule where the superproject
+ * sees a change in them, they hold uncommitted, untracked or ignored files or
+ * a stash, their HEAD or a local branch has commits on no remote-tracking ref,
+ * or they nest further submodules. An unreadable index counts as dirty.
+ */
+export function submodulesWithLocalState(spaceDir: string): string[] {
+  const links = gitlinksOf(spaceDir);
+  if (links == null) return ["(index unreadable)"];
+  if (links.length === 0) return [];
+  const changed = tryGit(spaceDir, ["status", "--porcelain=v1", "-z", "--ignore-submodules=none", "--untracked-files=no"]);
+  const changedPaths = new Set(
+    changed.status === 0 ? changed.stdout.split("\0").filter((r) => r.length > 3).map((r) => r.slice(3)) : links.map((l) => l.path),
+  );
+  const dirty: string[] = [];
+  for (const link of links) {
+    const subDir = join(spaceDir, link.path);
+    if (!existsSync(join(subDir, ".git"))) {
+      if (existsSync(subDir) && (!statSync(subDir).isDirectory() || readdirSync(subDir).length > 0)) dirty.push(link.path);
+      continue;
+    }
+    const holds = (): boolean => {
+      if (changedPaths.has(link.path)) return true;
+      const status = tryGit(subDir, ["status", "--porcelain=v1", "--ignored=matching", "--untracked-files=normal"]);
+      if (status.status !== 0 || status.stdout.trim().length > 0) return true;
+      const stash = tryGit(subDir, ["stash", "list"]);
+      if (stash.status !== 0 || stash.stdout.trim().length > 0) return true;
+      const head = revParse(subDir, "HEAD");
+      if (head == null || head !== link.sha) return true;
+      const onRemote = tryGit(subDir, ["for-each-ref", "--contains", head, "--count=1", "--format=%(refname)", "refs/remotes"]);
+      if (onRemote.status !== 0 || onRemote.stdout.trim().length === 0) return true;
+      const localOnly = tryGit(subDir, ["rev-list", "--max-count=1", "--branches", "--not", "--remotes"]);
+      if (localOnly.status !== 0 || localOnly.stdout.trim().length > 0) return true;
+      const nested = gitlinksOf(subDir);
+      return nested == null || nested.length > 0;
+    };
+    if (holds()) dirty.push(link.path);
+  }
+  return dirty;
 }
 
 export interface DeleteResult {
@@ -165,10 +238,11 @@ export interface DeleteResult {
  */
 export function deleteCell(wrapperDir: string, opts: DirtyReportOptions & { force?: boolean } = {}): DeleteResult {
   const target = resolve(wrapperDir);
-  const report = existsSync(target) ? dirtyReport(target, opts) : null;
-  if (report == null) return { deleted: false, forced: false, report: null };
+  const detailed = existsSync(target) ? dirtyReportDetailed(target, opts) : null;
+  if (detailed == null) return { deleted: false, forced: false, report: null };
+  const report = detailed.report;
   if (report.dirty && !(opts.force ?? false)) {
-    throw new CellDeleteRefused(target, report);
+    throw new CellDeleteRefused(target, report, detailed.dirtySubmodules);
   }
   try {
     rmSync(target, { recursive: true, force: true });

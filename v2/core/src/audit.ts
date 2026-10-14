@@ -525,6 +525,7 @@ export function replayAudit(rows: AuditRow[]): StateDump {
       case "cell.evicted":
       case "cell.retention.pass":
       case "cell.pressure.floor_unmet":
+      case "cell.retention.daily_cap":
       case "bee.imported":
       case "bee.interrupted":
       case "bee.forked":
