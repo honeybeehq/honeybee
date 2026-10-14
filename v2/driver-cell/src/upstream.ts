@@ -7,7 +7,7 @@
  * transfers what the origin lacks. Nothing here writes to the origin checkout
  * or to a Cell, and nothing ever pushes.
  */
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { devNull } from "node:os";
@@ -17,6 +17,14 @@ import { isAncestor, tryGit } from "./git.ts";
 export const UPSTREAM_REF = "refs/upstream/head";
 const MIN_FAILURE_BACKOFF_MS = 5 * 60_000;
 const MIRROR_LOCK_STALE_MS = 5 * 60_000;
+const MIRROR_LOCK_HEARTBEAT_MS = 30_000;
+const LOCK_HEARTBEAT_SOURCE = `const fs = require("node:fs");
+const dir = process.argv[1];
+const touch = () => { try { const now = new Date(); fs.utimesSync(dir, now, now); } catch { process.exit(0); } };
+setInterval(touch, Number(process.argv[2]));
+process.stdin.on("end", () => process.exit(0));
+process.stdin.on("error", () => process.exit(0));
+process.stdin.resume();`;
 const FETCHED_AT_FILE = "honeybee-fetched-at";
 const FAILED_AT_FILE = "honeybee-fetch-failed-at";
 
@@ -120,10 +128,25 @@ export function refreshUpstreamMirror(
   if (!acquireMirrorLock(lockDir, opts.timeoutMs)) {
     return { status: "failed", url, ref: mirrorRef(mirrorDir), error: "another refresh of this mirror is still running" };
   }
+  const heartbeat = holdMirrorLock(lockDir);
   try {
     return refreshLocked(originRepo, mirrorDir, url, { ...opts, now });
   } finally {
+    heartbeat.release();
     rmSync(lockDir, { recursive: true, force: true });
+  }
+}
+
+export function holdMirrorLock(lockDir: string, heartbeatMs = MIRROR_LOCK_HEARTBEAT_MS): { release(): void } {
+  try {
+    const child = spawn(process.execPath, ["-e", LOCK_HEARTBEAT_SOURCE, lockDir, String(heartbeatMs)], {
+      stdio: ["pipe", "ignore", "ignore"],
+    });
+    child.on("error", () => {});
+    child.unref();
+    return { release: () => { child.kill("SIGKILL"); } };
+  } catch {
+    return { release: () => {} };
   }
 }
 
@@ -229,10 +252,27 @@ export function resolveCellBase(originRepo: string): CellBase | null {
 
 export interface OriginSync {
   refresh: UpstreamRefresh;
+  skipped: string | null;
   trackingRef: string | null;
   before: string | null;
   after: string | null;
   durationMs: number;
+}
+
+const ORIGIN_WORKTREE_BUSY = ["index.lock", "HEAD.lock", "MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "BISECT_LOG", "rebase-merge", "rebase-apply", "sequencer"];
+const ORIGIN_COMMON_BUSY = ["packed-refs.lock", "config.lock", "shallow.lock", "gc.pid"];
+
+function originBusyReason(originRepo: string, trackingRef: string): string | null {
+  const dirs = tryGit(originRepo, ["rev-parse", "--path-format=absolute", "--absolute-git-dir", "--git-common-dir"]);
+  const [gitDir, commonDir] = dirs.status === 0 ? dirs.stdout.split("\n") : [];
+  if (gitDir == null || commonDir == null || gitDir.length === 0 || commonDir.length === 0) return "git dir unresolvable";
+  const markers = [
+    ...ORIGIN_WORKTREE_BUSY.map((name) => join(gitDir, name)),
+    ...ORIGIN_COMMON_BUSY.map((name) => join(commonDir, name)),
+    join(commonDir, `${trackingRef}.lock`),
+  ];
+  const found = markers.find((path) => existsSync(path));
+  return found == null ? null : found.slice(found.startsWith(commonDir) ? commonDir.length + 1 : gitDir.length + 1);
 }
 
 function defaultTrackingRef(originRepo: string): { ref: string; sha: string } | null {
@@ -255,8 +295,9 @@ export function syncOriginFromMirror(
   const started = performance.now();
   const refresh = refreshUpstreamMirror(originRepo, upstreamRoot, opts);
   const tracking = defaultTrackingRef(originRepo);
-  const done = (after: string | null): OriginSync => ({
+  const done = (after: string | null, skipped: string | null = null): OriginSync => ({
     refresh,
+    skipped,
     trackingRef: tracking?.ref ?? null,
     before: tracking?.sha ?? null,
     after,
@@ -265,8 +306,14 @@ export function syncOriginFromMirror(
   if (tracking == null || refresh.ref == null || refresh.url == null) {
     return done(tracking?.sha ?? null);
   }
+  const busy = originBusyReason(originRepo, tracking.ref);
+  if (busy != null) return done(tracking.sha, `origin busy: ${busy}`);
   const mirrorDir = mirrorDirFor(upstreamRoot, refresh.url);
-  tryGit(originRepo, ["fetch", "--quiet", "--no-tags", "--no-recurse-submodules", mirrorDir, `+${UPSTREAM_REF}:${tracking.ref}`]);
+  tryGit(originRepo, [
+    "-c", "fetch.writeCommitGraph=false",
+    "fetch", "--quiet", "--no-tags", "--no-recurse-submodules", "--no-prune", "--no-auto-gc",
+    mirrorDir, `+${UPSTREAM_REF}:${tracking.ref}`,
+  ]);
   const after = tryGit(originRepo, ["rev-parse", "--verify", "--quiet", tracking.ref]);
   return done(after.status === 0 ? after.stdout.trim() : tracking.sha);
 }
