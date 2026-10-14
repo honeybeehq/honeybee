@@ -22,6 +22,12 @@ function capture(): { io: CliIo; out: string[]; err: string[] } {
   return { io: { out: (l) => out.push(stripAnsi(l)), err: (l) => err.push(stripAnsi(l)) }, out, err };
 }
 
+
+function withoutTarget(line: string | undefined): Record<string, unknown> {
+  const { daemonTarget: _target, ...rest } = JSON.parse(line ?? "{}") as Record<string, unknown>;
+  return rest;
+}
+
 test("set-model --apply uses atomic admission and waits out an active turn", async () => {
   const { dir, cleanup } = makeDaemonDir();
   let daemon: DaemonHandle | null = null;
@@ -210,7 +216,7 @@ test("cli.3b: a misspelled flag is a LOUD error (never a silent no-op), and spaw
 
 test("cli.send-sender-wire: the real CLI request carries the authority-bound ambient bee id", async () => {
   const { dir, cleanup } = makeDaemonDir();
-  const socketPath = join(dir, "fake.sock");
+  const socketPath = join(dir, "hived.sock");
   const requests: Array<{ id: number; verb: string; params: Record<string, unknown> }> = [];
   const server = createServer((socket) => {
     socket.setEncoding("utf8");
@@ -444,7 +450,7 @@ test("cli.4c: per-bee args — `spawn --arg` (repeatable), `bee set-args <bee> -
     assert.ok(v.out.join("\n").includes('["--model","fable"]'), `human view shows args: ${v.out.join(" | ")}`);
     const a1 = capture();
     assert.equal(await runV2Cli(["bee", "args", "argsy", "--data-dir", dir, "--json"], a1.io), 0);
-    assert.deepEqual(JSON.parse(a1.out[0] ?? "{}"), { beeId: spawned.beeId, args: ["--model", "fable"] });
+    assert.deepEqual(withoutTarget(a1.out[0]), { beeId: spawned.beeId, args: ["--model", "fable"] });
 
     // spawn with `--`: harness flags after the separator stay verbatim.
     const restSpawn = capture();
@@ -455,7 +461,7 @@ test("cli.4c: per-bee args — `spawn --arg` (repeatable), `bee set-args <bee> -
     const restArgs = capture();
     assert.equal(await runV2Cli(["bee", "args", "resty", "--data-dir", dir, "--json"], restArgs.io), 0);
     assert.deepEqual(
-      JSON.parse(restArgs.out[0] ?? "{}"),
+      withoutTarget(restArgs.out[0]),
       {
         beeId: (JSON.parse(restSpawn.out[0] ?? "{}") as { beeId: string }).beeId,
         args: ["--model", "model-from-rest", "--effort", "high"],
@@ -509,7 +515,7 @@ test("cli.4c: per-bee args — `spawn --arg` (repeatable), `bee set-args <bee> -
     daemon = null;
     const stale = capture();
     assert.equal(await runV2Cli(["bee", "args", "argsy", "--data-dir", dir, "--json"], stale.io), 0);
-    assert.deepEqual(JSON.parse(stale.out[0] ?? "{}"), { stale: true, beeId: spawned.beeId, args: ["--effort", "max"] });
+    assert.deepEqual(withoutTarget(stale.out[0]), { stale: true, beeId: spawned.beeId, args: ["--effort", "max"] });
     // set-args is a mutation: never falls back
     const down = capture();
     assert.equal(await runV2Cli(["bee", "set-args", "argsy", "--data-dir", dir, "--", "--x"], down.io), 1);
@@ -661,7 +667,7 @@ test("cli.4e: v6 verbs — rename, tag, interrupt, fork, children, spawn --paren
     // interrupt an idle bee: reasoned no-op, exit 0
     const i = capture();
     assert.equal(await runV2Cli(["interrupt", "chief", "--data-dir", dir, "--json"], i.io), 0);
-    assert.deepEqual(JSON.parse(i.out[0] ?? "{}"), { beeId: boss, generation: 1, interrupted: false, reason: "idle" });
+    assert.deepEqual(withoutTarget(i.out[0]), { beeId: boss, generation: 1, interrupted: false, reason: "idle" });
 
     // spawn --parent (explicit, by name) and the ambient HIVE_BEE_ID stamp
     const c1 = capture();

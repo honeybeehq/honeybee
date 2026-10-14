@@ -20,7 +20,7 @@ const rows = [
 // are controlled. Assert both routing and mutation payloads, including failures.
 test("send: exact-ID lookup preserves fallback and sender authority", async (t) => {
   const dir = mkdtempSync(join(tmpdir(), "hb-send-target-"));
-  const socketPath = join(dir, "rpc.sock");
+  const socketPath = join(dir, "hived.sock");
   const requests: Array<{ verb: string; params: Record<string, unknown> }> = [];
   let failView = false;
   const server = new RpcServer({ socketPath, log: () => {}, dispatch(verb, params) {

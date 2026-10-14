@@ -8,7 +8,7 @@ import { makeDaemonDir } from '../../daemon/tests/helpers.ts';
 
 test('deploy-info distinguishes the running daemon from this CLI and preserves legacy unknown', async () => {
   const { dir, cleanup } = makeDaemonDir();
-  const socketPath = join(dir, 'identity.sock');
+  const socketPath = join(dir, 'hived.sock');
   const daemonIdentity = { ...BUILD_IDENTITY, version: '9.0.0', packageVersion: '9.0.0', sourceRevision: 'b'.repeat(40), dirty: false, release: true };
   let identity: unknown = daemonIdentity;
   const server = createServer(socket => {

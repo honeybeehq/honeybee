@@ -106,6 +106,7 @@ export const DAEMON_CAPABILITIES = [
   "account.login.flow.v1",
   /** Per-harness executable facts (`node.harnesses`), resolved with the same rule the spawn path uses. */
   "node.harnesses.v1",
+  "daemon.instance.v1",
   /**
    * v18 (2026-09-02): honest credentials — mirror account rows (snapshot +
    * `account.put` deltas) carry the derived `credentialHealth`; `account.add
@@ -250,12 +251,17 @@ export type DaemonCapability = (typeof DAEMON_CAPABILITIES)[number];
 export interface HelloFrame {
   clientLane?: "node_relay" | "remote";
   identity?: BuildIdentity;
+  instance?: { id: string; dataDir: string };
   protocol: string;
   capabilities: readonly DaemonCapability[];
 }
 
 /** Closed-list, typed errors — never fuzzy (spec 04). */
 export const RPC_ERROR_CODES = [
+  "socket_mismatch",
+  "socket_unreachable",
+  "socket_in_use",
+  "foreign_daemon_spawn",
   "credential_handoff_fenced",
   "credential_handoff_conflict",
   "credential_handoff_not_found",
@@ -1580,6 +1586,7 @@ export interface DeployInfoResult {
   nodeVersion: string;
   pid: number;
   startedAt: number;
+  instanceId: string;
   dataDir: string;
   socketPath: string;
   storePath: string;

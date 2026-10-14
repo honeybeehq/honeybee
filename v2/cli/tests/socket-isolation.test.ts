@@ -1,0 +1,313 @@
+import assert from "node:assert/strict";
+import { spawn, spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createServer, type Server } from "node:net";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { test } from "node:test";
+import { fileURLToPath } from "node:url";
+import { canonicalPath, ENDPOINT_RECORD_FILE, readLiveEndpointRecord, writeEndpointRecord } from "../../daemon/src/endpointRecord.ts";
+import { socketAcceptsConnections } from "../../daemon/src/rpc.ts";
+import { DAEMON_BIN, makeDaemonDir, startDaemon, waitFor, type DaemonHandle } from "../../daemon/tests/helpers.ts";
+import { runV2Cli } from "../src/main.ts";
+import { resolveDaemonTarget } from "../src/target.ts";
+
+const FAKE_CLAUDE = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "driver-hsr", "test-agent", "fake-claude.mjs");
+const ENV_KEYS = ["HIVE_V2_DATA_DIR", "HIVE_V2_SOCKET_PATH", "HIVE_BEE", "HIVE_BEE_ID", "HIVE_PARENT", "HOME"] as const;
+
+type Json = Record<string, any>;
+
+async function cli(args: string[], env: Partial<Record<(typeof ENV_KEYS)[number], string>>): Promise<{ exit: number; out: string[]; err: string[]; json: Json[] }> {
+  const saved = Object.fromEntries(ENV_KEYS.map((key) => [key, process.env[key]]));
+  for (const key of ENV_KEYS) delete process.env[key];
+  Object.assign(process.env, env);
+  const out: string[] = [];
+  const err: string[] = [];
+  try {
+    const exit = await runV2Cli(args, { out: (line) => out.push(line), err: (line) => err.push(line) });
+    const json = out.flatMap((line) => { try { return [JSON.parse(line) as Json]; } catch { return []; } });
+    return { exit, out, err, json };
+  } finally {
+    for (const key of ENV_KEYS) {
+      if (saved[key] === undefined) delete process.env[key];
+      else process.env[key] = saved[key];
+    }
+  }
+}
+
+function sentinel(path: string): Promise<{ server: Server; connections: () => number }> {
+  let count = 0;
+  const server = createServer((socket) => { count++; socket.destroy(); });
+  return new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(path, () => resolve({ server, connections: () => count }));
+  });
+}
+
+function closeServer(server: Server): Promise<void> {
+  return new Promise((resolve) => server.close(() => resolve()));
+}
+
+function deadPid(): number {
+  const child = spawnSync(process.execPath, ["-e", "process.stdout.write(String(process.pid))"], { encoding: "utf8" });
+  return Number(child.stdout);
+}
+
+test("target resolution: flag > env > live record > config, empty env is unset, dead-pid record is absent", () => {
+  const root = mkdtempSync(join(tmpdir(), "hb-p8-target-"));
+  const saved = { data: process.env.HIVE_V2_DATA_DIR, socket: process.env.HIVE_V2_SOCKET_PATH, home: process.env.HOME };
+  try {
+    const dir = join(root, "data");
+    mkdirSync(dir);
+    process.env.HOME = join(root, "home");
+    delete process.env.HIVE_V2_DATA_DIR;
+    delete process.env.HIVE_V2_SOCKET_PATH;
+    let t = resolveDaemonTarget({});
+    assert.equal(t.dataDirSource, "default");
+    assert.equal(t.cfg.dataDir, join(root, "home", ".hive", "v2"));
+    assert.equal(t.socketSource, "config");
+    t = resolveDaemonTarget({}, { HIVE_V2_DATA_DIR: dir, HIVE_V2_SOCKET_PATH: "  " });
+    assert.equal(t.dataDirSource, "env");
+    assert.equal(t.socketSource, "config");
+    assert.equal(t.cfg.socketPath, join(dir, "hived.sock"));
+    t = resolveDaemonTarget({ dataDirFlag: dir }, { HIVE_V2_DATA_DIR: join(root, "other"), HIVE_V2_SOCKET_PATH: join(root, "env.sock") });
+    assert.equal(t.dataDirSource, "flag");
+    assert.equal(t.socketSource, "env");
+    assert.equal(t.cfg.socketPath, join(root, "env.sock"));
+    t = resolveDaemonTarget({ dataDirFlag: dir, socketFlag: join(root, "flag.sock") }, { HIVE_V2_SOCKET_PATH: join(root, "env.sock") });
+    assert.equal(t.socketSource, "flag");
+    assert.equal(t.cfg.socketPath, join(root, "flag.sock"));
+    writeEndpointRecord(dir, { instanceId: "live", dataDir: dir, socketPath: join(root, "recorded.sock"), pid: process.pid, startedAt: 1 });
+    t = resolveDaemonTarget({ dataDirFlag: dir }, {});
+    assert.equal(t.socketSource, "record");
+    assert.equal(t.cfg.socketPath, join(root, "recorded.sock"));
+    assert.equal(t.expectedSocketPath, join(root, "recorded.sock"));
+    writeEndpointRecord(dir, { instanceId: "dead", dataDir: dir, socketPath: join(root, "recorded.sock"), pid: deadPid(), startedAt: 1 });
+    assert.equal(readLiveEndpointRecord(dir), null);
+    t = resolveDaemonTarget({ dataDirFlag: dir }, {});
+    assert.equal(t.socketSource, "config");
+    assert.equal(t.expectedSocketPath, join(dir, "hived.sock"));
+    writeFileSync(join(dir, ENDPOINT_RECORD_FILE), "{not json");
+    assert.equal(resolveDaemonTarget({ dataDirFlag: dir }, {}).socketSource, "config");
+  } finally {
+    for (const [key, value] of [["HIVE_V2_DATA_DIR", saved.data], ["HIVE_V2_SOCKET_PATH", saved.socket], ["HOME", saved.home]] as const) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("socket_in_use probe is a bare connect: no bytes reach the listener", async () => {
+  const root = mkdtempSync(join(tmpdir(), "hb-p8-probe-"));
+  const path = join(root, "live.sock");
+  let received = "";
+  const server = createServer((socket) => { socket.setEncoding("utf8"); socket.on("data", (chunk: string) => { received += chunk; }); });
+  try {
+    await new Promise<void>((resolve) => server.listen(path, resolve));
+    assert.equal(await socketAcceptsConnections(path), true);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.equal(received, "");
+    await closeServer(server);
+    assert.equal(await socketAcceptsConnections(join(root, "absent.sock")), false);
+  } finally {
+    if (server.listening) await closeServer(server);
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("socket isolation against throwaway daemons", async (t) => {
+  const claudeAgent = (argvLog: string) => ({
+    claude: {
+      command: process.execPath,
+      args: [FAKE_CLAUDE, "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose"],
+      adapter: "claude",
+      env: { FAKE_CLAUDE_ARGV_LOG: argvLog },
+    },
+  });
+  const c = makeDaemonDir();
+  const argvLogA = join(c.dir, "argv-a.jsonl");
+  const argvLogB = join(c.dir, "argv-b.jsonl");
+  const a = makeDaemonDir({ agents: claudeAgent(argvLogA) });
+  const b = makeDaemonDir({ agents: claudeAgent(argvLogB) });
+  const aSock = join(c.dir, "a-custom.sock");
+  const home = join(c.dir, "home");
+  mkdirSync(home, { recursive: true });
+  const scratch = join(c.dir, "work");
+  mkdirSync(scratch, { recursive: true });
+  let daemonA: DaemonHandle | null = null;
+  let daemonB: DaemonHandle | null = null;
+  try {
+    daemonA = await startDaemon(a.dir, { socketPath: aSock });
+    daemonB = await startDaemon(b.dir, { env: { HIVE_V2_SOCKET_PATH: join(c.dir, "inherited.sock") } });
+    const infoA = (await cli(["deploy-info", "--json", "--socket", aSock, "--data-dir", a.dir], { HOME: home })).json[0]!;
+    const infoB = (await cli(["deploy-info", "--json", "--data-dir", b.dir], { HOME: home })).json[0]!;
+    assert.match(infoA.instanceId, /^[0-9a-f-]{36}$/);
+    assert.notEqual(infoA.instanceId, infoB.instanceId);
+
+    await t.test("the endpoint record carries the instance, the socket and the daemon pid", () => {
+      const record = readLiveEndpointRecord(a.dir);
+      assert.equal(record?.instanceId, infoA.instanceId);
+      assert.equal(record?.socketPath, aSock);
+      assert.equal(record?.pid, infoA.pid);
+      assert.equal(record?.dataDir, canonicalPath(a.dir));
+    });
+
+    await t.test("HIVE_V2_SOCKET_PATH is honoured and --json names the daemon it reached", async () => {
+      const r = await cli(["ls", "--json"], { HOME: home, HIVE_V2_SOCKET_PATH: aSock });
+      assert.equal(r.exit, 0, r.err.join("\n"));
+      assert.deepEqual(r.json[0]!.daemonTarget, {
+        dataDir: join(home, ".hive", "v2"), dataDirSource: "default", socketPath: aSock, socketSource: "env",
+        instanceId: infoA.instanceId, daemonDataDir: canonicalPath(a.dir), connected: true,
+      });
+    });
+
+    await t.test("--socket overrides HIVE_V2_SOCKET_PATH", async () => {
+      const r = await cli(["deploy-info", "--json", "--socket", aSock], { HOME: home, HIVE_V2_SOCKET_PATH: daemonB!.socketPath });
+      assert.equal(r.exit, 0, r.err.join("\n"));
+      assert.equal(r.json[0]!.instanceId, infoA.instanceId);
+      assert.equal(r.json[0]!.daemonTarget.socketSource, "flag");
+    });
+
+    await t.test("--data-dir alone follows the live endpoint record to a --socket daemon", async () => {
+      const r = await cli(["deploy-info", "--json", "--data-dir", a.dir], { HOME: home });
+      assert.equal(r.exit, 0, r.err.join("\n"));
+      assert.equal(r.json[0]!.instanceId, infoA.instanceId);
+      assert.equal(r.json[0]!.daemonTarget.socketSource, "record");
+    });
+
+    await t.test("socket_mismatch before connecting: a configured socket that is not the data dir's", async () => {
+      for (const [args, env] of [
+        [["ls", "--json", "--data-dir", a.dir, "--socket", daemonB!.socketPath], { HOME: home }],
+        [["ls", "--json"], { HOME: home, HIVE_V2_DATA_DIR: a.dir, HIVE_V2_SOCKET_PATH: daemonB!.socketPath }],
+        [["ls", "--json", "--data-dir", a.dir], { HOME: home, HIVE_V2_SOCKET_PATH: daemonB!.socketPath }],
+      ] as const) {
+        const r = await cli([...args], env);
+        assert.equal(r.exit, 1);
+        assert.equal(r.json.length, 1, r.out.join("\n"));
+        assert.equal(r.json[0]!.error.code, "socket_mismatch");
+        assert.equal(r.json[0]!.error.details.expectedSocketPath, aSock);
+        assert.equal(r.json[0]!.daemonTarget.connected, false);
+        assert.equal(r.json[0]!.daemonTarget.instanceId, null);
+      }
+    });
+
+    await t.test("socket_mismatch after hello: the daemon behind the socket serves another data dir", async () => {
+      const other = join(c.dir, "other-data");
+      mkdirSync(other, { recursive: true });
+      writeFileSync(join(other, "config.json"), JSON.stringify({ socketPath: daemonB!.socketPath }));
+      const r = await cli(["ls", "--json", "--data-dir", other, "--socket", daemonB!.socketPath], { HOME: home });
+      assert.equal(r.exit, 1);
+      assert.equal(r.json[0]!.error.code, "socket_mismatch");
+      assert.equal(r.json[0]!.error.details.daemonDataDir, canonicalPath(b.dir));
+      assert.equal(r.json[0]!.error.details.instanceId, infoB.instanceId);
+      assert.equal(r.json[0]!.daemonTarget.connected, false);
+    });
+
+    await t.test("an unreachable configured socket fails loud and never falls back to the default socket or a stale store", async () => {
+      const defaultDir = join(home, ".hive", "v2");
+      mkdirSync(defaultDir, { recursive: true });
+      const watch = await sentinel(join(defaultDir, "hived.sock"));
+      try {
+        const missing = join(c.dir, "missing.sock");
+        for (const [args, env] of [
+          [["ls", "--json"], { HOME: home, HIVE_V2_SOCKET_PATH: missing }],
+          [["ls", "--json", "--socket", missing], { HOME: home }],
+          [["spawn", "x", "--agent", "stub", "--cwd", scratch, "--json"], { HOME: home, HIVE_V2_SOCKET_PATH: missing }],
+        ] as const) {
+          const r = await cli([...args], env);
+          assert.equal(r.exit, 1);
+          assert.equal(r.json.length, 1, r.out.join("\n"));
+          assert.equal(r.json[0]!.error.code, "socket_unreachable");
+          assert.equal(r.json[0]!.error.details.socketPath, missing);
+          assert.equal(r.json[0]!.stale, undefined);
+          assert.ok(!r.err.some((line) => /stale/i.test(line)), r.err.join("\n"));
+        }
+        assert.equal(watch.connections(), 0);
+        const viaDefault = await cli(["ls", "--json"], { HOME: home });
+        assert.equal(viaDefault.exit, 1);
+        assert.equal(watch.connections(), 1);
+      } finally {
+        await closeServer(watch.server);
+      }
+    });
+
+    await t.test("every --json error is one JSON line on stdout", async () => {
+      const r = await cli(["view", "no-such-bee", "--json", "--data-dir", b.dir], { HOME: home });
+      assert.equal(r.exit, 1);
+      assert.equal(r.out.length, 1);
+      assert.equal(r.json[0]!.error.code, "bee_not_found");
+      assert.equal(r.json[0]!.daemonTarget.instanceId, infoB.instanceId);
+      assert.equal(r.json[0]!.daemonTarget.connected, true);
+      const parse = await cli(["view", "--json", "--bogus-flag"], { HOME: home });
+      assert.equal(parse.exit, 1);
+      assert.equal(parse.json.length, 1);
+      assert.equal(parse.json[0]!.error.code, "cli_error");
+    });
+
+    await t.test("a provider-harness spawn into a foreign data dir is refused unless --allow-foreign-daemon", async () => {
+      const refused = await cli(["spawn", "foreign-claude", "--agent", "claude", "--cwd", scratch, "--data-dir", b.dir, "--json"], { HOME: home, HIVE_V2_DATA_DIR: a.dir });
+      assert.equal(refused.exit, 1);
+      assert.equal(refused.json[0]!.error.code, "foreign_daemon_spawn");
+      assert.equal(refused.json[0]!.error.details.adapter, "claude");
+      assert.equal(refused.json[0]!.error.details.callerDataDir, canonicalPath(a.dir));
+      const list = await cli(["ls", "--json", "--data-dir", b.dir], { HOME: home });
+      assert.ok(!JSON.stringify(list.json[0]).includes("foreign-claude"));
+      const stub = await cli(["spawn", "foreign-stub", "--agent", "stub", "--cwd", scratch, "--data-dir", b.dir, "--json"], { HOME: home, HIVE_V2_DATA_DIR: a.dir });
+      assert.equal(stub.exit, 0, stub.out.join("\n"));
+      const allowed = await cli(["spawn", "foreign-claude", "--agent", "claude", "--cwd", scratch, "--data-dir", b.dir, "--json", "--allow-foreign-daemon"], { HOME: home, HIVE_V2_DATA_DIR: a.dir });
+      assert.equal(allowed.exit, 0, allowed.out.join("\n"));
+      assert.equal(allowed.json[0]!.daemonTarget.instanceId, infoB.instanceId);
+      const own = await cli(["spawn", "own-claude", "--agent", "claude", "--cwd", scratch, "--data-dir", b.dir, "--json"], { HOME: home, HIVE_V2_DATA_DIR: b.dir });
+      assert.equal(own.exit, 0, own.out.join("\n"));
+      const revive = await cli(["revive", "own-claude", "--data-dir", b.dir, "--json"], { HOME: home, HIVE_V2_DATA_DIR: a.dir });
+      assert.equal(revive.json[0]!.error.code, "foreign_daemon_spawn");
+    });
+
+    await t.test("a --socket daemon exports HIVE_V2_SOCKET_PATH to its bees; a data-dir daemon does not", async () => {
+      assert.equal((await cli(["spawn", "env-a", "--agent", "claude", "--cwd", scratch, "--data-dir", a.dir, "--json"], { HOME: home, HIVE_V2_DATA_DIR: a.dir, HIVE_V2_SOCKET_PATH: aSock })).exit, 0);
+      await waitFor(() => existsSync(argvLogA) && readFileSync(argvLogA, "utf8").includes('"HIVE_BEE":"env-a"'), "fake claude env-a logged", 20_000);
+      const logged = readFileSync(argvLogA, "utf8").trim().split("\n").map((line) => JSON.parse(line) as Json).find((row) => row.env.HIVE_BEE === "env-a")!;
+      assert.equal(logged.env.HIVE_V2_SOCKET_PATH, aSock);
+      assert.equal(logged.env.HIVE_V2_DATA_DIR, a.dir);
+      await waitFor(() => existsSync(argvLogB) && readFileSync(argvLogB, "utf8").includes('"HIVE_BEE":"own-claude"'), "fake claude own-claude logged", 20_000);
+      const loggedB = readFileSync(argvLogB, "utf8").trim().split("\n").map((line) => JSON.parse(line) as Json).find((row) => row.env.HIVE_BEE === "own-claude")!;
+      assert.equal(loggedB.env.HIVE_V2_SOCKET_PATH, null);
+    });
+
+    await t.test("a second daemon refuses a live socket with socket_in_use and the first stays reachable", async () => {
+      const d = makeDaemonDir();
+      try {
+        const proc = spawn(process.execPath, [DAEMON_BIN, "--data-dir", d.dir, "--socket", aSock], {
+          env: { ...process.env, HOME: home, HIVE_V2_DATA_DIR: d.dir, HIVE_NO_KEYCHAIN: "1", HIVE_GATEWAYS_DISABLE: "1" },
+          stdio: ["ignore", "pipe", "pipe"],
+        });
+        let output = "";
+        proc.stdout.setEncoding("utf8").on("data", (chunk: string) => { output += chunk; });
+        proc.stderr.setEncoding("utf8").on("data", (chunk: string) => { output += chunk; });
+        const code = await new Promise<number | null>((resolve) => proc.once("exit", (exitCode) => resolve(exitCode)));
+        assert.notEqual(code, 0);
+        assert.match(output, /socket_in_use|already listening/);
+        const r = await cli(["deploy-info", "--json", "--socket", aSock], { HOME: home });
+        assert.equal(r.json[0]!.instanceId, infoA.instanceId);
+      } finally {
+        d.cleanup();
+      }
+    });
+
+    await t.test("a restart mints a new instance id and rewrites the record", async () => {
+      await daemonB!.stop();
+      daemonB = await startDaemon(b.dir);
+      const r = await cli(["deploy-info", "--json", "--data-dir", b.dir], { HOME: home });
+      assert.notEqual(r.json[0]!.instanceId, infoB.instanceId);
+      assert.equal(r.json[0]!.daemonTarget.instanceId, r.json[0]!.instanceId);
+      assert.equal(readLiveEndpointRecord(b.dir)?.instanceId, r.json[0]!.instanceId);
+    });
+  } finally {
+    await daemonA?.stop().catch(() => undefined);
+    await daemonB?.stop().catch(() => undefined);
+    a.cleanup();
+    b.cleanup();
+    c.cleanup();
+  }
+});

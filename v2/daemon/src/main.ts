@@ -5,6 +5,7 @@
  * (children survive — the next boot re-adopts them).
  */
 import { existsSync } from "node:fs";
+import { resolve } from "node:path";
 import { measureDirectoryBytes } from "../../driver-cell/src/index.ts";
 import { defaultDataDir, loadNodeConfig, type ResolvedNodeConfig } from "./config.ts";
 import { HiveDaemon } from "./daemon.ts";
@@ -30,7 +31,7 @@ export function parseDaemonRunArgs(argv: string[]): DaemonRunArgs {
 export function resolveDaemonConfig(args: DaemonRunArgs): ResolvedNodeConfig {
   const dataDir = args.dataDir ?? defaultDataDir();
   const cfg = loadNodeConfig(dataDir, args.configPath);
-  return args.socketPath ? { ...cfg, socketPath: args.socketPath } : cfg;
+  return args.socketPath ? { ...cfg, socketPath: resolve(args.socketPath), socketPathExplicit: true } : cfg;
 }
 
 /** Test daemons: a volume of `totalBytes` whose only occupant is the Cells root. */

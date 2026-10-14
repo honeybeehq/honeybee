@@ -33,6 +33,7 @@ import { appendFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
+import { canonicalPath, samePath, writeEndpointRecord } from "./endpointRecord.ts";
 import { monitorEventLoopDelay, type IntervalHistogram } from "node:perf_hooks";
 import { getSystemErrorMap } from "node:util";
 import { GatewayMcpSeedLockError } from "../../../src/accounts/gatewayMcpSeed.ts";
@@ -367,6 +368,12 @@ import {
 
 const ADAPTER_NAMES = ["agy", "claude", "codex", "grok", "kimi", "muse", "stub"] as const;
 
+const FOREIGN_GUARDED_VERBS = new Set<RpcVerb>([
+  "spawn", "revive", "bee.fork", "bee.reconfigure", "bee.move", "bee.handoff", "bee.swapAccount",
+  "thread.fork", "thread.handoff",
+  "account.login", "account.login.start", "account.login.retry", "account.verify", "account.capture",
+]);
+
 /**
  * Adapter for a bee. `providerSessionId` (bee row, spec 07 §F) selects the
  * harness-native resume path: claude via argv (`resumeArgs`, applied by
@@ -517,11 +524,13 @@ export function composeSpawn(
 export function beeIdentityEnv(
   bee: { id: string; name: string; parentId: string | null },
   dataDir?: string,
+  socketPath?: string,
 ): Record<string, string> {
   return {
     HIVE_BEE: bee.name,
     HIVE_BEE_ID: bee.id,
     ...(dataDir ? { HIVE_V2_DATA_DIR: dataDir } : {}),
+    ...(socketPath ? { HIVE_V2_SOCKET_PATH: socketPath } : {}),
     ...(bee.parentId ? { HIVE_PARENT: bee.parentId } : {}),
   };
 }
@@ -678,6 +687,7 @@ export class HiveDaemon {
   private loopDelay: IntervalHistogram | null = null;
   private loopDelayTimer: NodeJS.Timeout | null = null;
   private readonly startedAt = Date.now();
+  readonly instanceId = randomUUID();
   private ticks = 0;
   private tickErrors = 0;
   private lastTickAt: number | null = null;
@@ -983,6 +993,7 @@ export class HiveDaemon {
     this.rpc = new RpcServer({
       socketPath: this.cfg.socketPath,
       dataDir: this.cfg.dataDir,
+      instance: { id: this.instanceId, dataDir: canonicalPath(this.cfg.dataDir) },
       localTrust: this.cfg.rpcLocalTrust,
       securityAudit: (kind, payload) => this.mustStore().recordLocalRpcEvent(kind as "rpc.peer_credentials_unavailable" | "rpc.local_refused" | "rpc.local_registered", payload),
       log: (op) => this.log(op),
@@ -990,6 +1001,7 @@ export class HiveDaemon {
       performance: this.performance,
     });
     await this.rpc.listen();
+    writeEndpointRecord(this.cfg.dataDir, { instanceId: this.instanceId, dataDir: canonicalPath(this.cfg.dataDir), socketPath: resolve(this.cfg.socketPath), pid: process.pid, startedAt: this.startedAt });
     void this.accounts?.credentialHandoff.reconcileStartup().catch(() => this.log("account.credentials.handoff_reconcile_failed"));
     rpc.end();
     this.activeStartupPhase = null;
@@ -1653,6 +1665,7 @@ export class HiveDaemon {
 
   private dispatch(verb: RpcVerb, params: Record<string, unknown>, conn: RpcConn): unknown {
     assertLocalHandoffRpc(verb, params, conn);
+    this.assertNotForeignHarnessStart(verb, params, conn);
     if (typeof params.beeId === "string" && ["stop", "revive", "archive", "bee.swapAccount", "bee.setArgs", "bee.reconfigure", "bee.move", "bee.handoff", "bee.fork", "bee.interrupt"].includes(verb)) {
       const operation = this.mustStore().threadOperationForSuccessor(params.beeId);
       if (operation && operation.phase !== "ready") throw new RpcError("thread_busy", "Successor execution is owned by its thread operation; recover it with thread.operation.retry");
@@ -2668,6 +2681,46 @@ export class HiveDaemon {
     throw new RpcError("account_wait", "Automatic account allocation is waiting: allocation_owner_required", {
       allocation: receipt as unknown as Record<string, unknown>,
     });
+  }
+
+  private assertNotForeignHarnessStart(verb: RpcVerb, params: Record<string, unknown>, conn: RpcConn): void {
+    const caller = conn.caller;
+    if (!caller?.dataDir || caller.allowForeignDaemon || !FOREIGN_GUARDED_VERBS.has(verb)) return;
+    if (samePath(caller.dataDir, this.cfg.dataDir)) return;
+    const facts = this.harnessCredentialFacts(verb, params);
+    if (!facts.real) return;
+    throw new RpcError("foreign_daemon_spawn",
+      `${verb} would start a provider harness on a daemon whose data dir (${this.cfg.dataDir}) is not the caller's HIVE_V2_DATA_DIR (${caller.dataDir}); pass --allow-foreign-daemon if this is intended`,
+      { verb, callerDataDir: caller.dataDir, daemonDataDir: this.cfg.dataDir, ...facts.details });
+  }
+
+  private harnessCredentialFacts(verb: RpcVerb, params: Record<string, unknown>): { real: boolean; details: Record<string, unknown> } {
+    const adapterOf = (agent: string): string => this.isMailboxOnlyAgentToken(agent) ? "inbox" : this.cfg.agents[agent]?.adapter ?? agent;
+    const provider = (adapter: string): boolean => adapter !== "stub" && adapter !== "inbox";
+    const accountOf = (selector: unknown): { id: string; harness: string } | null => {
+      if (typeof selector !== "string") return null;
+      try {
+        return this.resolveAccountSelector(selector);
+      } catch {
+        return null;
+      }
+    };
+    if (verb === "account.login.retry") return { real: true, details: {} };
+    if (verb.startsWith("account.")) {
+      const account = accountOf(params.id);
+      return { real: account !== null && provider(adapterOf(account.harness)), details: { account: account?.id ?? null, accountHarness: account?.harness ?? null } };
+    }
+    if (verb === "spawn") {
+      const agent = typeof params.agent === "string" ? params.agent : "claude";
+      const adapter = adapterOf(agent);
+      const account = accountOf(params.account);
+      return { real: provider(adapter) || (account !== null && provider(adapterOf(account.harness))), details: { agent, adapter, account: account?.id ?? params.account ?? null } };
+    }
+    const bee = typeof params.beeId === "string" ? this.mustStore().getBee(params.beeId) : null;
+    if (!bee) return { real: false, details: {} };
+    const adapter = adapterOf(bee.agent);
+    const accounts = [accountOf(bee.account), verb === "bee.swapAccount" ? accountOf(params.account) : null];
+    return { real: provider(adapter) || accounts.some((account) => account !== null && provider(adapterOf(account.harness))), details: { agent: bee.agent, adapter, account: bee.account ?? null } };
   }
 
   /** `inbox` is built in; `stub` aliases it unless a configured agent owns that name. */
@@ -4487,13 +4540,14 @@ export class HiveDaemon {
       accountEnv = { ...this.accounts.homeEnvOf(account), ...this.accounts.credentialEnvOf(account) };
       beeEnv = this.accounts.nativeBeeEnv(account, bee.env);
     }
-    return {
+    const env: Record<string, string> = {
       ...(process.env as Record<string, string>),
       ...(spec.env ?? {}),
       ...beeEnv,
       ...accountEnv,
-      ...beeIdentityEnv(bee, this.cfg.dataDir),
     };
+    delete env.HIVE_V2_SOCKET_PATH;
+    return { ...env, ...beeIdentityEnv(bee, this.cfg.dataDir, this.cfg.socketPathExplicit ? resolve(this.cfg.socketPath) : undefined) };
   }
 
   private claudeContextLaunchFor(bee: BeeRow, args: readonly string[], env: Record<string, string>): ClaudeContextLaunch {
@@ -5266,6 +5320,7 @@ export class HiveDaemon {
       nodeVersion: process.version,
       pid: process.pid,
       startedAt: this.startedAt,
+      instanceId: this.instanceId,
       dataDir: this.cfg.dataDir,
       socketPath: this.cfg.socketPath,
       storePath: this.cfg.storePath,

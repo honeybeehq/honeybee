@@ -17,7 +17,7 @@ import { homedir } from "node:os";
 import { createInterface } from "node:readline";
 import { closeSync, existsSync, openSync, readSync, statSync, fsyncSync, unlinkSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
-import { defaultDataDir, loadNodeConfig, type ResolvedNodeConfig } from "../../daemon/src/config.ts";
+import { type ResolvedNodeConfig } from "../../daemon/src/config.ts";
 import { runDaemon } from "../../daemon/src/main.ts";
 import { runRunnerHost } from "../../driver-hsr/src/runner-host.ts";
 import {
@@ -124,7 +124,8 @@ import {
   type ViewResult,
   type WatchFrame,
 } from "../../daemon/src/protocol.ts";
-import { DaemonDownError, RpcClient } from "./client.ts";
+import { DaemonDownError, RpcClient, type DaemonInstance } from "./client.ts";
+import { assertInstanceMatchesDataDir, assertSameInstance, assertSocketMatchesDataDir, callerDataDir, daemonTargetJson, resolveDaemonTarget, socketConfigured, type ResolvedDaemonTarget } from "./target.ts";
 import { ReadOnlyStore } from "./readonly.ts";
 import {
   beeTaskList,
@@ -324,6 +325,7 @@ const OPTIONAL_VALUE_FLAGS = new Set(["--warm"]);
  */
 const BOOL_FLAGS = new Set([
   "--json",
+  "--allow-foreign-daemon",
   "--unread",
   "--all",
   "--archived",
@@ -518,17 +520,47 @@ export function resolveSendSender(
 
 interface CliContext {
   cfg: ResolvedNodeConfig;
+  target: ResolvedDaemonTarget;
   io: CliIo;
   json: boolean;
   revealEnv: boolean;
+  allowForeignDaemon: boolean;
+  daemon: { instance: DaemonInstance | null; connected: boolean };
 }
 
 function makeContext(parsed: Parsed, io: CliIo): CliContext {
-  const dataDir = (parsed.flags.get("--data-dir") as string | undefined) ?? defaultDataDir();
-  let cfg = loadNodeConfig(dataDir, parsed.flags.get("--config") as string | undefined);
-  const socket = parsed.flags.get("--socket") as string | undefined;
-  if (socket) cfg = { ...cfg, socketPath: socket };
-  return { cfg, io, json: parsed.flags.get("--json") === true, revealEnv: parsed.flags.get("--reveal-env") === true };
+  const target = resolveDaemonTarget({
+    dataDirFlag: parsed.flags.get("--data-dir") as string | undefined,
+    socketFlag: parsed.flags.get("--socket") as string | undefined,
+    configPath: parsed.flags.get("--config") as string | undefined,
+  });
+  return {
+    cfg: target.cfg,
+    target,
+    io,
+    json: parsed.flags.get("--json") === true,
+    revealEnv: parsed.flags.get("--reveal-env") === true,
+    allowForeignDaemon: parsed.flags.get("--allow-foreign-daemon") === true,
+    daemon: { instance: null, connected: false },
+  };
+}
+
+function withDaemonTarget(ctx: CliContext, value: unknown): unknown {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return value;
+  return { ...(value as object), daemonTarget: daemonTargetJson(ctx.target, ctx.daemon.instance, ctx.daemon.connected) };
+}
+
+async function connectDaemon(ctx: CliContext): Promise<RpcClient> {
+  assertSocketMatchesDataDir(ctx.target);
+  const client = await RpcClient.connect(ctx.cfg.socketPath, 3000, undefined, {
+    caller: { dataDir: callerDataDir(), ...(ctx.allowForeignDaemon ? { allowForeignDaemon: true } : {}) },
+    verifyInstance: (instance) => {
+      assertInstanceMatchesDataDir(ctx.target, instance);
+      assertSameInstance(ctx.target, ctx.daemon.instance, instance);
+    },
+  });
+  ctx.daemon = { instance: client.instance ?? ctx.daemon.instance, connected: true };
+  return client;
 }
 
 // ---------------------------------------------------------------------------
@@ -593,7 +625,7 @@ function envParams(ctx: CliContext): { revealEnv?: true } {
 
 function emit(ctx: CliContext, human: string[], jsonValue: unknown, stale: boolean): void {
   if (ctx.json) {
-    ctx.io.out(JSON.stringify(stale ? { stale: true, ...(jsonValue as object) } : jsonValue));
+    ctx.io.out(JSON.stringify(withDaemonTarget(ctx, stale ? { stale: true, ...(jsonValue as object) } : jsonValue)));
     return;
   }
   if (stale) ctx.io.err(staleBanner(ctx.cfg.storePath));
@@ -605,7 +637,7 @@ function emit(ctx: CliContext, human: string[], jsonValue: unknown, stale: boole
 // ---------------------------------------------------------------------------
 
 async function withClient<T>(ctx: CliContext, fn: (client: RpcClient) => Promise<T>): Promise<T> {
-  const client = await RpcClient.connect(ctx.cfg.socketPath);
+  const client = await connectDaemon(ctx);
   try {
     return await fn(client);
   } finally {
@@ -623,7 +655,7 @@ async function readPath<T>(
     const result = await withClient(ctx, rpc);
     return { result, stale: false };
   } catch (err) {
-    if (!(err instanceof DaemonDownError)) throw err;
+    if (!(err instanceof DaemonDownError) || socketConfigured(ctx.target)) throw err;
     if (!existsSync(ctx.cfg.storePath)) {
       throw new Error(`daemon not running and no store at ${ctx.cfg.storePath}`);
     }
@@ -1508,7 +1540,7 @@ async function cmdThreadOperation(ctx: CliContext, parsed: Parsed): Promise<numb
 }
 
 function validateThreadArgs(parsed: Parsed, handoff: boolean): void {
-  const allowed = new Set(["--name", "--idempotency-key", "--data-dir", "--config", "--socket", "--json", ...(handoff ? ["--instruction"] : [])]);
+  const allowed = new Set(["--name", "--idempotency-key", "--data-dir", "--config", "--socket", "--json", "--allow-foreign-daemon", ...(handoff ? ["--instruction"] : [])]);
   for (const flag of parsed.flags.keys()) if (!allowed.has(flag)) throw new Error(`${parsed.positional[0]} does not accept ${flag}`);
   if (parsed.positional.length !== 2 || parsed.tags.length || parsed.args.length || parsed.lists.size || parsed.rest !== null) throw new Error(`${parsed.positional[0]} accepts one source bee and documented options only`);
 }
@@ -3335,7 +3367,7 @@ async function cmdHarnesses(ctx: CliContext): Promise<number> {
 
 async function cmdWatch(ctx: CliContext, parsed: Parsed): Promise<number> {
   const filterBee = parsed.flags.get("--bee") as string | undefined;
-  const client = await RpcClient.connect(ctx.cfg.socketPath);
+  const client = await connectDaemon(ctx);
   const printSnapshot = (snap: SnapshotResult): void => {
     for (const line of renderWatchSnapshot(snap.seq, snap.views, filterBee)) ctx.io.out(line);
   };
@@ -3586,7 +3618,7 @@ async function cmdTemplate(ctx: CliContext, parsed: Parsed): Promise<number> {
         (store) => ({ template: resolveRegistryRow(store.listTemplates(), needle, "template") }),
       );
       if (stale) ctx.io.err(staleBanner(ctx.cfg.storePath));
-      ctx.io.out(JSON.stringify(result.template, null, 2));
+      ctx.io.out(JSON.stringify(ctx.json ? withDaemonTarget(ctx, result.template) : result.template, null, 2));
       return 0;
     }
     case "run":
@@ -4341,7 +4373,7 @@ async function cmdEvents(ctx: CliContext, parsed: Parsed): Promise<number> {
       for (const row of next.result.rows) {
         lastSeq = Math.max(lastSeq, row.seq);
         if (matcher && !matcher.test(row.kind)) continue;
-        ctx.io.out(ctx.json ? JSON.stringify(row) : auditLine(row, next.stale ? "stale: " : ""));
+        ctx.io.out(ctx.json ? JSON.stringify(withDaemonTarget(ctx, row)) : auditLine(row, next.stale ? "stale: " : ""));
       }
     }
   } finally {
@@ -4778,6 +4810,23 @@ async function cmdDaemon(ctx: CliContext, parsed: Parsed): Promise<number> {
 // entry
 // ---------------------------------------------------------------------------
 
+function versionDaemonTarget(): unknown {
+  try {
+    return daemonTargetJson(resolveDaemonTarget({}), null, false);
+  } catch {
+    return null;
+  }
+}
+
+function jsonErrorLine(err: unknown, ctx: CliContext | undefined): Record<string, unknown> {
+  const error = err instanceof DaemonDownError
+    ? { code: err.code, message: err.message, details: { socketPath: err.socketPath, socketSource: ctx?.target.socketSource ?? null, cause: err.reason } }
+    : err instanceof RpcError
+      ? { code: err.code, message: err.message, ...(err.details ? { details: err.details } : {}) }
+      : { code: "cli_error", message: err instanceof Error ? err.message : String(err) };
+  return { error, daemonTarget: ctx ? daemonTargetJson(ctx.target, ctx.daemon.instance, ctx.daemon.connected) : null };
+}
+
 /** Version of this CLI installation, independent of the daemon it connects to. */
 export function hiveVersion(): string {
   return BUILD_IDENTITY.version;
@@ -4786,19 +4835,21 @@ export function hiveVersion(): string {
 export async function runV2Cli(argv: string[], io: CliIo = defaultIo): Promise<number> {
   // Before flag parsing: --version must never be an "unknown flag" error.
   if (argv[0] === "--version" || argv[0] === "-v" || argv[0] === "version") {
-    io.out(argv.includes("--json") ? JSON.stringify(BUILD_IDENTITY) : `honeybee ${hiveVersion()}`);
+    io.out(argv.includes("--json") ? JSON.stringify({ ...BUILD_IDENTITY, daemonTarget: versionDaemonTarget() }) : `honeybee ${hiveVersion()}`);
     return 0;
   }
   let parsed: Parsed;
   try {
     parsed = parseArgs(argv);
   } catch (err) {
+    if (argv.includes("--json")) io.out(JSON.stringify(jsonErrorLine(err, undefined)));
     io.err(errorLine(err instanceof Error ? err.message : String(err)));
     return 1;
   }
   const command = parsed.positional[0] ?? "help";
+  let ctx: CliContext | undefined;
   try {
-    const ctx = makeContext(parsed, io);
+    ctx = makeContext(parsed, io);
     switch (command) {
       case "human-ref":
         return await cmdHumanRef(ctx, parsed);
@@ -4914,7 +4965,7 @@ export async function runV2Cli(argv: string[], io: CliIo = defaultIo): Promise<n
         if (sub !== "status" && sub !== "reserve" && sub !== "release") throw new Error("update-owner: expected status, reserve, or release");
         const params = sub === "status" ? {} : JSON.parse(readFileSync(parsed.args[1] ?? "", "utf8"));
         const result = await withClient(ctx, c => c.request(`update.${sub}`, params));
-        ctx.io.out(JSON.stringify(result));
+        ctx.io.out(JSON.stringify(ctx.json ? withDaemonTarget(ctx, result) : result));
         return 0;
       }
       case "health":
@@ -4958,6 +5009,7 @@ export async function runV2Cli(argv: string[], io: CliIo = defaultIo): Promise<n
         return 1;
     }
   } catch (err) {
+    if (parsed.flags.get("--json") === true) io.out(JSON.stringify(jsonErrorLine(err, ctx)));
     if (err instanceof DaemonDownError) {
       io.err(errorLine(`${err.message} — start it with: hive daemon run (or daemon start)`));
       return 1;

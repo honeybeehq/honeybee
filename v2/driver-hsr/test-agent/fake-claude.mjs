@@ -60,7 +60,7 @@ const sessionId = resumed && !forked ? resumed : (pinned ?? randomUUID());
 if (process.env.FAKE_CLAUDE_ARGV_LOG) {
   appendFileSync(
     process.env.FAKE_CLAUDE_ARGV_LOG,
-    `${JSON.stringify({ argv, cwd: process.cwd(), env: { CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR ?? null, HIVE_BEE: process.env.HIVE_BEE ?? null, HIVE_BEE_ID: process.env.HIVE_BEE_ID ?? null, HIVE_V2_DATA_DIR: process.env.HIVE_V2_DATA_DIR ?? null, HIVE_PARENT: process.env.HIVE_PARENT ?? null, CLAUDE_CODE_OAUTH_TOKEN: process.env.CLAUDE_CODE_OAUTH_TOKEN ?? null, ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ?? null, CLAUDE_CODE_DISABLE_1M_CONTEXT: process.env.CLAUDE_CODE_DISABLE_1M_CONTEXT ?? null, CLAUDE_CODE_AUTO_COMPACT_WINDOW: process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW ?? null, CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: process.env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE ?? null }, sessionId, resumed: resumed ?? null, forked })}\n`,
+    `${JSON.stringify({ argv, cwd: process.cwd(), env: { CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR ?? null, HIVE_BEE: process.env.HIVE_BEE ?? null, HIVE_BEE_ID: process.env.HIVE_BEE_ID ?? null, HIVE_V2_DATA_DIR: process.env.HIVE_V2_DATA_DIR ?? null, HIVE_V2_SOCKET_PATH: process.env.HIVE_V2_SOCKET_PATH ?? null, HIVE_PARENT: process.env.HIVE_PARENT ?? null, CLAUDE_CODE_OAUTH_TOKEN: process.env.CLAUDE_CODE_OAUTH_TOKEN ?? null, ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ?? null, CLAUDE_CODE_DISABLE_1M_CONTEXT: process.env.CLAUDE_CODE_DISABLE_1M_CONTEXT ?? null, CLAUDE_CODE_AUTO_COMPACT_WINDOW: process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW ?? null, CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: process.env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE ?? null }, sessionId, resumed: resumed ?? null, forked })}\n`,
   );
 }
 

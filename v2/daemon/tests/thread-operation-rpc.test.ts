@@ -32,12 +32,12 @@ test("thread RPC: prompt receipt, disconnect/restart, history events, native com
   const successor = receipt.operation.successorBeeId;
   const cliOut: string[] = []; const cliErr: string[] = [];
   const io = { out: (line: string) => cliOut.push(line), err: (line: string) => cliErr.push(line) };
-  assert.equal(await runV2Cli(["thread-handoff", source.beeId, "--instruction", params.instruction, "--idempotency-key", params.idempotencyKey, "--data-dir", rig.dir, "--json"], io), 0);
+  assert.equal(await runV2Cli(["thread-handoff", source.beeId, "--instruction", params.instruction, "--idempotency-key", params.idempotencyKey, "--data-dir", rig.dir, "--json", "--allow-foreign-daemon"], io), 0);
   assert.equal(JSON.parse(cliOut.pop()!).operation.successorBeeId, successor);
   assert.equal(await runV2Cli(["thread-operation", "get", receipt.operation.id, "--data-dir", rig.dir, "--json"], io), 0);
   assert.equal(JSON.parse(cliOut.pop()!).operation.id, receipt.operation.id);
   for (const args of [["--prompt", "compact"], ["--instruction", "compact"], ["compact"], ["--model", "other-provider"]]) {
-    assert.equal(await runV2Cli(["thread-fork", source.beeId, ...args, "--data-dir", rig.dir], io), 1);
+    assert.equal(await runV2Cli(["thread-fork", source.beeId, ...args, "--data-dir", rig.dir, "--allow-foreign-daemon"], io), 1);
   }
   const later = await client.request<SendRpcResult>("send", { beeId: successor, body: "later user instruction", urgency: "now" });
   const op = () => client.request<ThreadOperationResult>("thread.operation.get", { operationId: receipt.operation.id });

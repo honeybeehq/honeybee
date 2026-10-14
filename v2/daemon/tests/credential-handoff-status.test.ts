@@ -223,7 +223,9 @@ test("handoff status: isolated daemon capability, CLI list, missing/relay refusa
       finally { relayed.close(); }
     }
     const { stdout } = await promisify(execFile)(process.execPath, [fileURLToPath(new URL("../../cli/src/bin.ts", import.meta.url)), "account", "credentials", "handoff-status", "--data-dir", f.rig.dir, "--json"]);
-    assert.deepEqual(JSON.parse(stdout), before);
+    const { daemonTarget, ...printed } = JSON.parse(stdout);
+    assert.equal(daemonTarget.connected, true);
+    assert.deepEqual(printed, before);
     await daemon.kill(); client.close(); daemon = await startDaemon(f.rig.dir); client = await daemon.client();
     const after = await waitFor(async () => { const result = await client!.request<CredentialHandoffLocalSnapshot>("account.credentials.handoffStatus", {}); return result.reconciled ? result : null; }, "restarted handoffs reconciled");
     assert.deepEqual(after, before);

@@ -13,10 +13,25 @@ import {
 
 /** The daemon is not reachable at the socket — the read-fallback trigger. */
 export class DaemonDownError extends Error {
-  constructor(socketPath: string, cause: string) {
-    super(`daemon not reachable at ${socketPath} (${cause})`);
+  readonly code = "socket_unreachable";
+  readonly socketPath: string;
+  readonly reason: string;
+  constructor(socketPath: string, reason: string) {
+    super(`daemon not reachable at ${socketPath} (${reason})`);
     this.name = "DaemonDownError";
+    this.socketPath = socketPath;
+    this.reason = reason;
   }
+}
+
+export interface DaemonInstance {
+  id: string;
+  dataDir: string;
+}
+
+export interface ConnectOptions {
+  caller?: { dataDir: string; allowForeignDaemon?: boolean };
+  verifyInstance?: (instance: DaemonInstance | null) => void;
 }
 
 interface Pending {
@@ -31,6 +46,7 @@ export class RpcClient {
   private nextId = 1;
   private closed = false;
   capabilities: readonly string[] = [];
+  instance: DaemonInstance | null = null;
   /** Watch push frames (deltas/gaps) land here. */
   onEvent: ((frame: WatchFrame) => void) | null = null;
   onClose: (() => void) | null = null;
@@ -39,7 +55,7 @@ export class RpcClient {
     this.socket = socket;
   }
 
-  static connect(socketPath: string, timeoutMs = 3000, clientLane?: "node_relay" | "remote"): Promise<RpcClient> {
+  static connect(socketPath: string, timeoutMs = 3000, clientLane?: "node_relay" | "remote", options: ConnectOptions = {}): Promise<RpcClient> {
     return new Promise((resolve, reject) => {
       const socket = createConnection(socketPath);
       const timer = setTimeout(() => {
@@ -82,7 +98,15 @@ export class RpcClient {
             return;
           }
           client.capabilities = Array.isArray(hello.capabilities) ? hello.capabilities.filter((value): value is string => typeof value === "string") : [];
-          socket.write(`${JSON.stringify({ protocol: PROTOCOL, ...(clientLane ? { clientLane } : {}) })}\n`);
+          client.instance = instanceOf(hello.instance);
+          try {
+            options.verifyInstance?.(client.instance);
+          } catch (err) {
+            socket.destroy();
+            reject(err);
+            return;
+          }
+          socket.write(`${JSON.stringify({ protocol: PROTOCOL, ...(clientLane ? { clientLane } : {}), ...(options.caller ? { caller: options.caller } : {}) })}\n`);
           socket.on("data", (c: string) => client.onData(c));
           socket.on("close", () => client.onSocketClose());
           socket.on("error", () => socket.destroy());
@@ -170,4 +194,10 @@ export class RpcClient {
     this.pending.clear();
     this.onClose?.();
   }
+}
+
+function instanceOf(value: unknown): DaemonInstance | null {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return null;
+  const raw = value as Record<string, unknown>;
+  return typeof raw.id === "string" && typeof raw.dataDir === "string" ? { id: raw.id, dataDir: raw.dataDir } : null;
 }

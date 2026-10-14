@@ -301,8 +301,8 @@ export function makeDaemonDir(overrides: DaemonConfigOverrides = {}): { dir: str
 }
 
 /** `platform` makes the daemon process report that OS (default linux, so a suite run on a Mac never trips platform guards). */
-export async function startDaemon(dir: string, opts: { env?: Record<string, string>; platform?: string; stopTimeoutMs?: number } = {}): Promise<DaemonHandle> {
-  const socketPath = join(dir, "hived.sock");
+export async function startDaemon(dir: string, opts: { env?: Record<string, string>; platform?: string; stopTimeoutMs?: number; socketPath?: string } = {}): Promise<DaemonHandle> {
+  const socketPath = opts.socketPath ?? join(dir, "hived.sock");
   const storePath = join(dir, "core.sqlite3");
   const isolatedHome = mkdtempSync(join(dir, "test-home-"));
   const defaults = { HOME: isolatedHome, XDG_CONFIG_HOME: join(isolatedHome, "config"), XDG_DATA_HOME: join(isolatedHome, "data"), XDG_CACHE_HOME: join(isolatedHome, "cache"), XDG_STATE_HOME: join(isolatedHome, "state"), HIVE_GATEWAYS_DISABLE: "1" };
@@ -310,7 +310,7 @@ export async function startDaemon(dir: string, opts: { env?: Record<string, stri
   if (opts.env?.HOME !== undefined) for (const key of ["XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME"]) if (opts.env[key] === undefined) delete childEnv[key];
   if (resolve(childEnv.HOME!) === resolve(userInfo().homedir) || resolve(childEnv.HOME!) === resolve(process.env.HOME ?? userInfo().homedir)) throw new Error("Test daemon HOME must differ from the invoking user's home");
   for (const path of [childEnv.HOME, childEnv.XDG_CONFIG_HOME, childEnv.XDG_DATA_HOME, childEnv.XDG_CACHE_HOME, childEnv.XDG_STATE_HOME]) if (path !== undefined) mkdirSync(path, { recursive: true });
-  const proc = spawn(process.execPath, [DAEMON_BIN, "--data-dir", dir], {
+  const proc = spawn(process.execPath, [DAEMON_BIN, "--data-dir", dir, ...(opts.socketPath ? ["--socket", opts.socketPath] : [])], {
     // HIVE_NO_KEYCHAIN: the daemon under test never touches the developer's
     // real macOS Keychain (spec 08 keychain bridge is off unless injected).
     env: {

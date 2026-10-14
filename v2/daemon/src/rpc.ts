@@ -11,7 +11,7 @@ import { withRpcCaller } from "../../core/src/rpcAuditContext.ts";
  * errors onto the closed list, and owns the per-connection watch cursors.
  * Verb semantics live in the daemon's dispatch function.
  */
-import { createServer, type Server, type Socket } from "node:net";
+import { createConnection, createServer, type Server, type Socket } from "node:net";
 import { existsSync, unlinkSync } from "node:fs";
 import type { AuditRow } from "../../core/src/index.ts";
 import {
@@ -67,6 +67,7 @@ import {
 export interface RpcConn {
   readonly localPeer?: Readonly<{uid: number; pid: number; processBirth: string | null}>;
   readonly ingress?: "local_unix" | "node_relay" | "remote";
+  readonly caller?: Readonly<{dataDir: string | null; allowForeignDaemon: boolean}>;
   /** Push a raw frame (used for watch deltas/gaps). */
   send(obj: unknown): void;
   /** Enter watch mode from this seq; subsequent flushes stream deltas. */
@@ -103,6 +104,7 @@ export type RpcDispatch = (
 
 export interface RpcServerOptions {
   dataDir?: string;
+  instance?: {id: string; dataDir: string};
   localTrust?: LocalTrustConfig;
   peerCredentials?: PeerCredentials;
   securityAudit?: (kind: string, payload: Record<string, unknown>) => void;
@@ -118,6 +120,7 @@ interface Connection extends RpcConn {
   buffer: string;
   helloDone: boolean;
   relayLane: "node_relay" | "remote" | null;
+  caller?: {dataDir: string | null; allowForeignDaemon: boolean};
   watchCursor: number | null;
 }
 
@@ -188,10 +191,13 @@ export class RpcServer {
     this.server = createServer((socket) => this.onConnection(socket));
   }
 
-  listen(): Promise<void> {
-    // The store's EXCLUSIVE lock already guarantees single-daemon-per-node;
-    // any socket file left at this path is a stale corpse from a dead daemon.
-    if (existsSync(this.opts.socketPath)) unlinkSync(this.opts.socketPath);
+  async listen(): Promise<void> {
+    if (existsSync(this.opts.socketPath)) {
+      if (await socketAcceptsConnections(this.opts.socketPath)) {
+        throw new RpcError("socket_in_use", `another process is already listening on ${this.opts.socketPath}`, { socketPath: this.opts.socketPath });
+      }
+      unlinkSync(this.opts.socketPath);
+    }
     return new Promise((resolve, reject) => {
       this.server.once("error", reject);
       this.server.listen(this.opts.socketPath, () => {
@@ -279,7 +285,7 @@ export class RpcServer {
     socket.setEncoding("utf8");
     // Versioned hello, server side (negotiated once). Capability tags are
     // additive: a pre-v16 client ignores the extra key.
-    conn.send({ protocol: PROTOCOL, capabilities: DAEMON_CAPABILITIES, identity: BUILD_IDENTITY } satisfies HelloFrame);
+    conn.send({ protocol: PROTOCOL, capabilities: DAEMON_CAPABILITIES, identity: BUILD_IDENTITY, ...(this.opts.instance ? { instance: this.opts.instance } : {}) } satisfies HelloFrame);
     socket.on("data", (chunk: string) => this.onData(conn, chunk));
     socket.on("error", () => socket.destroy());
     socket.on("close", () => { conn.peerConnection?.close(); this.trust.disconnect(conn); this.conns.delete(conn); });
@@ -325,7 +331,14 @@ export class RpcServer {
         conn.socket.end();
         return;
       }
+      const caller = helloCaller(frame.caller);
+      if (caller === "invalid") {
+        conn.send({ id: -1, ok: false, error: { code: "invalid_request", message: "caller must be {dataDir?: string, allowForeignDaemon?: boolean}." } });
+        conn.socket.end();
+        return;
+      }
       conn.relayLane = frame.clientLane === "node_relay" || frame.clientLane === "remote" ? frame.clientLane : null;
+      if (caller) conn.caller = caller;
       conn.helloDone = true;
       return;
     }
@@ -397,4 +410,29 @@ export class RpcServer {
       conn.send({ id, ok: false, error: toRpcError(err) });
     }
   }
+}
+
+function helloCaller(value: unknown): {dataDir: string | null; allowForeignDaemon: boolean} | null | "invalid" {
+  if (value === undefined) return null;
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return "invalid";
+  const raw = value as Record<string, unknown>;
+  if (raw.dataDir !== undefined && (typeof raw.dataDir !== "string" || raw.dataDir.length === 0)) return "invalid";
+  if (raw.allowForeignDaemon !== undefined && typeof raw.allowForeignDaemon !== "boolean") return "invalid";
+  return { dataDir: typeof raw.dataDir === "string" ? raw.dataDir : null, allowForeignDaemon: raw.allowForeignDaemon === true };
+}
+
+export function socketAcceptsConnections(socketPath: string, timeoutMs = 1000): Promise<boolean> {
+  return new Promise((resolve) => {
+    const probe = createConnection(socketPath);
+    const finish = (live: boolean): void => {
+      clearTimeout(timer);
+      probe.removeAllListeners();
+      probe.on("error", () => undefined);
+      probe.destroy();
+      resolve(live);
+    };
+    const timer = setTimeout(() => finish(true), timeoutMs);
+    probe.once("connect", () => finish(true));
+    probe.once("error", (err: NodeJS.ErrnoException) => finish(err.code !== "ECONNREFUSED" && err.code !== "ENOENT" && err.code !== "ENOTSOCK"));
+  });
 }

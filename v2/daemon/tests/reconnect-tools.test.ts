@@ -59,7 +59,8 @@ test("reconnect RPC/CLI: active-turn acceptance, send race, daemon adoption and 
   assert.deepEqual(duplicate, result);
   const stdout: string[] = [];
   assert.equal(await runV2Cli(["reconnect-tools", bee.beeId, "--command-id", String(result.commandId), "--data-dir", rig.dir, "--json"], { out: text => stdout.push(text), err: text => assert.fail(text) }), 0);
-  assert.deepEqual(JSON.parse(stdout.at(-1)!), result);
+  const { daemonTarget: _target, ...printed } = JSON.parse(stdout.at(-1)!);
+  assert.deepEqual(printed, result);
   const calls = readFileSync(log, "utf8").trim().split("\n").map(line => JSON.parse(line));
   assert.equal(calls.filter(c => c.method === "config/mcpServer/reload").length, 1);
   assert.equal(calls.filter(c => c.method === "thread/start").length, 1);
