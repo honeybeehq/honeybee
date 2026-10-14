@@ -244,13 +244,41 @@ test("auth death: automatic quota and lease pauses hold rather than cancel, incl
       assert.ok(r.store.getAuthInterruption(id)?.deathRecovery?.claimedAt !== null);
       assert.equal(r.store.listCommands().filter(c => c.args.authDeathRecoveryId === id).length, 1);
       r.store.pauseAccount(r.account.id, { by, owner: "test-manager" }); r.advance(AUTH_DEATH_WINDOW_MS); r.resume.reconcile();
-      assert.equal(r.store.getAuthInterruption(id)?.deathRecovery, undefined);
+      assert.equal(r.store.getAuthInterruption(id)?.deathRecovery?.releasedWhilePaused, true);
       assert.ok(["open", "restored"].includes(r.store.getAuthInterruption(id)!.state));
       assert.equal(r.store.listCommands({ status: "queued" }).filter(c => c.args.authDeathRecoveryId === id).length, 0);
     } finally { r.close(); }
   }
 });
 
+
+test("auth death: expired pause-held claims preserve continuation until quota or lease unpause", () => {
+  for (const by of ["quota", "lease"] as const) {
+    const r = rig();
+    try {
+      r.fail([], "some"); r.die(); r.fresh();
+      const id = r.store.liveAuthInterruption(r.bee.id)!.id;
+      r.store.pauseAccount(r.account.id, { by, owner: "test-manager" });
+      r.advance(AUTH_DEATH_WINDOW_MS);
+      for (let i = 0; i < 4; i++) r.resume.reconcile();
+      assert.equal(r.store.getAuthInterruption(id)?.state, "restored");
+      assert.equal(r.store.listCommands({ status: "queued" }).filter(c => ["revive", "send_wake"].includes(c.verb)).length, 0);
+      assert.deepEqual(replayAudit(r.store.auditRows()), r.store.dumpState());
+      r.store.close(); r.open(); r.resume.reconcile();
+      assert.equal(r.store.getAuthInterruption(id)?.state, "restored");
+      const accepted = r.store.send(r.bee.id, "queued user work").message;
+      assert.equal(accepted.body, "queued user work");
+      assert.equal(r.store.listCommands({ status: "queued" }).filter(c => c.verb === "send_wake").length, 1);
+      r.store.unpauseAccount(r.account.id, { by, owner: "test-manager" }, "ok");
+      r.resume.reconcile(); r.resume.reconcile();
+      assert.equal(r.store.getAuthInterruption(id)?.state, "resumed");
+      const commands = r.store.listCommands().length;
+      r.resume.reconcile(); r.resume.reconcile();
+      assert.equal(r.store.listCommands().length, commands);
+      assert.equal(r.store.listCommands({ status: "queued" }).filter(c => c.verb === "send_wake").length, 1);
+    } finally { r.close(); }
+  }
+});
 
 test("auth death: a claim accepted just before its deadline survives ordinary executor delay and runs once", () => {
   const r = rig();

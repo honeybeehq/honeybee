@@ -204,6 +204,11 @@ export class AuthResume {
       this.store.releaseAuthDeathRecovery(row.id, "provenance_changed");
       return false;
     }
+    if (recovery.releasedWhilePaused) {
+      if (this.store.getAccount(row.account)?.status === "paused") return true;
+      this.store.releaseAuthDeathRecovery(row.id, "pause_lifted");
+      return true;
+    }
     if (recovery.claimedAt !== null) {
       if (runtime?.generation === row.generation && runtime.state === "stopped" && recovery.commandId !== null && this.store.getCommand(recovery.commandId)?.status === "queued" && this.store.getAccount(row.account)?.status === "paused" && recovery.deadline !== null && this.now() >= recovery.deadline) this.store.releaseAuthDeathRecovery(row.id, "deadline_expired");
       return true;

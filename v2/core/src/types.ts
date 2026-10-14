@@ -218,6 +218,7 @@ export interface RuntimeCredentialStamp {
 }
 
 export interface AuthDeathRecovery {
+  releasedWhilePaused?: boolean;
   admitted: RuntimeCredentialStamp;
   deathAt: number | null;
   deadline: number | null;

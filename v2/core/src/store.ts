@@ -5882,7 +5882,8 @@ export class CoreStore {
         for (const messageId of row.continuationMessageIds) this.cancelMessage(row.beeId, messageId);
       }
       const { deathRecovery, ...legacy } = row;
-      const released = this.putAuthInterruption(queued ? { ...legacy, state: "restored", continuationKind: null, continuationMessageIds: [] } : legacy);
+      const pauseHold = queued && reason === "deadline_expired" && this.getAccount(row.account)?.status === "paused";
+      const released = this.putAuthInterruption(queued ? { ...legacy, ...(pauseHold ? { deathRecovery: { ...deathRecovery, releasedWhilePaused: true } } : {}), state: "restored", continuationKind: null, continuationMessageIds: [] } : legacy);
       this.audit("auth_death.released", row.beeId, { interruptionId: row.id, generation: row.generation, reason });
       return released;
     });
