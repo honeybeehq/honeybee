@@ -22,6 +22,20 @@ export function pidAlive(pid: number): boolean {
   return !isZombie(pid);
 }
 
+/** A Linux zombie's raw wait status from /proc, or null when unreadable or not a zombie. */
+export function zombieWaitStatus(pid: number): number | null {
+  if (process.platform !== "linux") return null;
+  try {
+    const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+    const fields = stat.slice(stat.lastIndexOf(")") + 2).split(" ");
+    if (fields[0] !== "Z") return null;
+    const status = Number(fields[49]);
+    return Number.isSafeInteger(status) ? status : null;
+  } catch {
+    return null;
+  }
+}
+
 const ZOMBIE_CENSUS_INTERVAL_MS = 500;
 const zombieCensus = new Map<number, { at: number; zombie: boolean }>();
 
