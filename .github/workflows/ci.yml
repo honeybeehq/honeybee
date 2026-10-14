@@ -53,6 +53,9 @@ jobs:
     # Release archive packaging remains controlled by release.yml.
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    env:
+      HIVE_TEST_TIME_SCALE: "4"
+      HIVE_BIRTH_CAPTURE_TIMEOUT_MS: "4000"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
