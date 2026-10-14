@@ -1637,7 +1637,7 @@ export class HiveDaemon {
       case "account.config.import":
         return this.rpcAccountConfigImport(params);
       case "account.remove":
-        return this.rpcAccountRemove(params);
+        return this.rpcAccountRemove(params, conn);
       case "account.pause":
         return this.withIdempotency(verb, params, () => this.rpcAccountPause(params));
       case "account.unpause":
@@ -1700,7 +1700,7 @@ export class HiveDaemon {
       case "account.credentials.nativeBackup":
         return this.mustAccounts().nativeBackupStatus(this.requireAccount(params));
       case "account.credentials.restoreNative": {
-        return this.mustAccounts().restoreNativeBackup(this.requireAccount(params).id).then(result => ({ ...result, account: this.mirrorAccount(result.account) }));
+        return this.mustAccounts().restoreNativeBackup(this.requireAccount(params).id, conn.ingress === "local_unix").then(result => ({ ...result, account: this.mirrorAccount(result.account) }));
       }
       case "account.credentials.status": {
         const account = this.requireAccount(params);
@@ -1753,7 +1753,7 @@ export class HiveDaemon {
       case "account.lease.export":
         return this.mustAccounts().exportLeasedMaterial(this.accountIdParam(params));
       case "account.lease.install":
-        return this.rpcAccountLeaseInstall(params);
+        return this.rpcAccountLeaseInstall(params, conn);
       case "account.lease.remove": {
         const id = this.accountIdParam(params);
         for (const key of ["checkOnly", "discardNative", "confirm"]) if (params[key] !== undefined && typeof params[key] !== "boolean") throw new RpcError("invalid_request", `${key} must be a boolean.`);
@@ -5350,8 +5350,13 @@ export class HiveDaemon {
     throw error;
   }
 
-  private async rpcAccountRemove(params: Record<string, unknown>): Promise<AccountRemoveResult> {
+  private async rpcAccountRemove(params: Record<string, unknown>, conn: RpcConn): Promise<AccountRemoveResult> {
     const account = this.requireAccount(params);
+    const assertRemovalIngress = () => {
+      const origin = this.mustStore().getAccount(account.id)?.leasedFrom;
+      if ((origin?.fencesForwarded || origin?.retiredAuthorityInstanceIds?.length) && conn.ingress !== "local_unix") throw new RpcError("account_lease_conflict", "Removing an account with lease fences requires a direct local Unix-socket call.", { account: account.id, reason: "local_required" });
+    };
+    assertRemovalIngress();
     this.mustAccounts().assertLeaseWriteIdle(account.id);
     if (account.source === "leased" && account.leasedFrom?.revokedAt == null) this.mustAccounts().assertLocalAccount(account);
     try { this.mustAccounts().authorityFor(account)?.assertDisabled(account); }
@@ -5359,6 +5364,8 @@ export class HiveDaemon {
     // v16: a login worker never outlives its account (the store cascades the rows).
     await this.mustLoginFlows().abandonAccount(account.id);
     return this.withIdempotency("account.remove", params, () => {
+      assertRemovalIngress();
+      this.mustAccounts().assertLeaseWriteIdle(account.id);
       const store = this.mustStore();
       // A referenced-account refusal must not remove its credential backup.
       try {
@@ -5791,7 +5798,7 @@ export class HiveDaemon {
    * they appear — no idempotency record, no audit row, no log line with
    * material; AccountsService.mintLease logs a secret-free summary only.
    */
-  private async rpcAccountLeaseInstall(params: Record<string, unknown>): Promise<AccountLeaseInstallResult> {
+  private async rpcAccountLeaseInstall(params: Record<string, unknown>, conn: RpcConn): Promise<AccountLeaseInstallResult> {
     const invalid = () => new RpcError("invalid_request", "Lease install requires safe ids, a supported harness, epoch, access expiry, and access-only credential files.");
     const safeId = (value: unknown): value is string => typeof value === "string" && /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,199}$/.test(value);
     if (!isAccountId(params.id) || !safeId(params.shareId) || params.shareId.length < 8 || !safeId(params.authorityNodeId) || !safeId(params.harness) || !isAccountId(params.label)) throw invalid();
@@ -5823,7 +5830,7 @@ export class HiveDaemon {
     }
     if (!seen.has(codec.primaryFile)) throw invalid();
     let restored: AccountCredentialsRestoredResult | undefined;
-    const installed = await this.mustAccounts().installLease(params as unknown as AccountLeaseInstallParams, account => { restored = this.rpcAccountCredentialsRestored({ id: account.id }); });
+    const installed = await this.mustAccounts().installLease(params as unknown as AccountLeaseInstallParams, account => { restored = this.rpcAccountCredentialsRestored({ id: account.id }); }, conn.ingress === "local_unix");
     return { ...installed, account: restored!.account, restored: restored! };
   }
 
