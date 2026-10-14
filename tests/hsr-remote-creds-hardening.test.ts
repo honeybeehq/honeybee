@@ -260,8 +260,9 @@ test("changed inode/retarget and a new hard link are not overwritten or removed"
   await withTempStore(async (dir) => {
     const changedBee = "changed-inode";
     const changed = await deliverFixture(dir, changedBee);
-    await unlink(changed.target);
-    await writeFile(changed.target, "NEW-INODE-MUST-SURVIVE", { mode: 0o600 });
+    const replacement = `${changed.target}.replacement`;
+    await writeFile(replacement, "NEW-INODE-MUST-SURVIVE", { mode: 0o600 });
+    await rename(replacement, changed.target);
     const changedResult = await shredDeliveredCredentials(changedBee);
     assert.equal(changedResult.ok, false);
     if (!changedResult.ok) assert.equal(changedResult.code, "target-unverified");

@@ -623,18 +623,15 @@ test("a server-side drop re-dials with backoff, re-hellos, and a fresh subscribe
       const before = await takeHsrEvents(first, 3);
       assert.deepEqual(before.map((row) => row.event.seq), [1, 2, 3]);
 
-      // Hard drop (sleeping cell / dead tunnel). Events keep landing on disk.
-      first.destroy();
       await appendTexts(bee, 2, 200); // seq 4..5
+      // Hard drop (sleeping cell / dead tunnel).
+      first.destroy();
 
       const second = await gateway.nextConnection();
       const hello = await second.take(isHello, "re-hello");
       const params = hello.params as { bees: Array<{ bee: string; lastSeq?: number }> };
       const helloRow = params.bees.find((row) => row.bee === bee);
-      assert.ok(
-        helloRow?.lastSeq === 4 || helloRow?.lastSeq === 5,
-        "re-hello advertises the durable high-water at its point-in-time snapshot",
-      );
+      assert.equal(helloRow?.lastSeq, 5, "re-hello advertises the durable high-water");
 
       // The gateway resumes from ITS durable cursor — nothing was lost or duped.
       const response = await second.request("subscribe", { bee, afterSeq: 3 });
