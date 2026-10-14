@@ -6,7 +6,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ANSWER_INJECTION_MARKER, BUZ_INJECTION_MARKER, DELIVERY_INTERRUPT_NOTICE, REMOTE_SENDER_RE, deliveryText, isPeerSender, urgencyToTier } from "../src/envelope.ts";
+import { ANSWER_INJECTION_MARKER, AUTOMATION_INJECTION_MARKER, BUZ_INJECTION_MARKER, DELIVERY_INTERRUPT_NOTICE, REMOTE_SENDER_RE, deliveryText, isPeerSender, urgencyToTier } from "../src/envelope.ts";
 
 const baseMsg = { id: 7, body: "shard 3 is yours", urgency: "next" as const, enqueuedAt: 1_787_000_000_000 };
 
@@ -90,4 +90,26 @@ test("envelope.answer: a question answer carries the answer marker and its quest
   assert.equal(deliveryText(msg, false, false, null), msg.body);
   assert.ok(!ANSWER_INJECTION_MARKER.includes("\n"));
   assert.notEqual(ANSWER_INJECTION_MARKER, BUZ_INJECTION_MARKER);
+});
+
+test("envelope.automation: an automated send carries the automation marker and its senderKind; human and unmarked sends stay bare", () => {
+  const msg = { ...baseMsg, sender: "operator", senderKind: "automation" as const, body: "Nightly report ready." };
+  const lines = deliveryText(msg, false).split("\n");
+  assert.equal(lines[0], AUTOMATION_INJECTION_MARKER);
+  assert.deepEqual(JSON.parse(lines[1] as string), {
+    version: 1,
+    kind: "automation",
+    senderKind: "automation",
+    from: "operator",
+    id: "7",
+    sentAt: new Date(baseMsg.enqueuedAt).toISOString(),
+  });
+  assert.equal(lines[2], "");
+  assert.equal(lines.slice(3).join("\n"), msg.body);
+  assert.equal(deliveryText({ ...msg, senderKind: "human" }, false), msg.body);
+  assert.equal(deliveryText({ ...msg, senderKind: undefined }, false), msg.body);
+  assert.equal(deliveryText({ ...msg, sender: "CL.6d44f" }, true).split("\n")[0], BUZ_INJECTION_MARKER);
+  assert.equal(deliveryText(msg, false, false, "q-1").split("\n")[0], ANSWER_INJECTION_MARKER);
+  assert.ok(!AUTOMATION_INJECTION_MARKER.includes("\n"));
+  assert.notEqual(AUTOMATION_INJECTION_MARKER, BUZ_INJECTION_MARKER);
 });

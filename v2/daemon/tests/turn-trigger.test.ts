@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openCoreStore, replayAudit, type CoreStore } from "../../core/src/index.ts";
 import { DaemonCore } from "../src/loops.ts";
-import { ANSWER_INJECTION_MARKER, turnTriggerSource } from "../src/envelope.ts";
+import { ANSWER_INJECTION_MARKER, AUTOMATION_INJECTION_MARKER, turnTriggerSource } from "../src/envelope.ts";
 import { FakeDriver } from "./helpers.ts";
 
 interface Rig {
@@ -160,6 +160,34 @@ test("turn-trigger.daemon.answer: a question answer is delivered with the answer
     assert.equal(rig.driver.deliveredBodies.at(-1), "thanks");
     const plainDelivered = rig.store.auditRows().find((row) => row.kind === "mail.delivered" && row.payload.messageId === plain.id)!;
     assert.equal("questionId" in plainDelivered.payload, false);
+    assert.deepEqual(replayAudit(rig.store.auditRows()), rig.store.dumpState());
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("turn-trigger.daemon.automation: an automated send is delivered with the automation marker and mail.delivered carries its senderKind", () => {
+  const rig = makeRig();
+  try {
+    spawnIdle(rig, "champion");
+    const notice = rig.store.send("champion", "Nightly report ready.", { sender: "operator", senderKind: "automation" }).message;
+    runTurn(rig, "champion", notice.id);
+    const lines = rig.driver.deliveredBodies.at(-1)!.split("\n");
+    assert.equal(lines[0], AUTOMATION_INJECTION_MARKER);
+    const meta = JSON.parse(lines[1]!) as Record<string, unknown>;
+    assert.deepEqual([meta.kind, meta.senderKind, meta.from, meta.id], ["automation", "automation", "operator", String(notice.id)]);
+    assert.equal(lines.slice(3).join("\n"), "Nightly report ready.");
+    const delivered = rig.store.auditRows().find((row) => row.kind === "mail.delivered" && row.payload.messageId === notice.id)!;
+    assert.equal(delivered.payload.senderKind, "automation");
+    assert.equal("questionId" in delivered.payload, false);
+    assert.equal(rig.store.getBee("champion")!.lastTurnTrigger!.kind, "other");
+
+    const typed = rig.store.send("champion", "hi", { sender: "operator", senderKind: "human" }).message;
+    runTurn(rig, "champion", typed.id);
+    assert.equal(rig.driver.deliveredBodies.at(-1), "hi");
+    const typedDelivered = rig.store.auditRows().find((row) => row.kind === "mail.delivered" && row.payload.messageId === typed.id)!;
+    assert.equal(typedDelivered.payload.senderKind, "human");
+    assert.equal(rig.store.getBee("champion")!.lastTurnTrigger!.kind, "human");
     assert.deepEqual(replayAudit(rig.store.auditRows()), rig.store.dumpState());
   } finally {
     rig.cleanup();

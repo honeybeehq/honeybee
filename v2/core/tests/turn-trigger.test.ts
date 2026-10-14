@@ -253,9 +253,13 @@ test("turn-trigger.answer: mail.delivered names the answered question through an
     const { bee: inbox } = store.createBee({ name: "inbox-bee", agent: "inbox", substrate: "hsr", cwd: "" });
     const asked = store.askQuestion(inbox.id, { text: "ok?" });
     const acked = store.answerQuestion(asked.id, "yes").send.message;
-    store.ackMail(inbox.id, acked.id);
-    const ackRow = store.auditRows().filter((row) => row.kind === "mail.delivered").at(-1)!;
-    assert.deepEqual([ackRow.payload.messageId, ackRow.payload.ack, ackRow.payload.questionId], [acked.id, true, asked.id]);
+    const automated = store.send(inbox.id, "Nightly report ready.", { sender: "operator", senderKind: "automation" }).message;
+    store.ackMail(inbox.id, automated.id);
+    const ackRows = store.auditRows().filter((row) => row.kind === "mail.delivered").slice(-2);
+    assert.deepEqual(ackRows.map((row) => [row.payload.messageId, row.payload.ack, row.payload.questionId, row.payload.senderKind]), [
+      [acked.id, true, asked.id, undefined],
+      [automated.id, true, undefined, "automation"],
+    ]);
     assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
     store.close();
 

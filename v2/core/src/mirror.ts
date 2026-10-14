@@ -223,8 +223,9 @@ export type MirrorDelta = AuditRow;
  *   runtime.updated → may carry { turnTrigger: TurnTrigger }             (bee row: lastTurnTrigger)
  *   output.recorded → carries { lastHumanOutputAt: number | null }       (bee row: lastHumanOutputAt)
  *   mail.enqueued   → message may carry senderKind ('human'|'automation'); absent = not given (mailbox only)
- * Question answers (additive inside an existing payload, capability `mail.answer_marker.v1`):
+ * Delivery markers (additive inside an existing payload, capabilities `mail.answer_marker.v1`, `mail.automation_marker.v1`):
  *   mail.delivered  → may carry { questionId: string }                   (the delivered message answers that question)
+ *   mail.delivered  → may carry { senderKind: 'human'|'automation' }     (the delivered message's stored senderKind)
  */
 export const MIRROR_TEMPLATE_AUDIT_KINDS = ["template.put", "template.deleted"] as const;
 export const MIRROR_TRACK_AUDIT_KINDS = ["track.put", "track.deleted"] as const;

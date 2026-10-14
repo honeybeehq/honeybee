@@ -3838,6 +3838,7 @@ export class CoreStore {
         deliveredGeneration: generation,
         ...(turnTrigger ? { turnTrigger } : {}),
         ...(questionId !== null ? { questionId } : {}),
+        ...(message.senderKind !== undefined ? { senderKind: message.senderKind } : {}),
       });
       // v24: an action instruction reached its runtime — delivery evidence only, never completion.
       this.applyActionDelivered(messageId, generation, at);
@@ -3868,7 +3869,7 @@ export class CoreStore {
       }
       const generation = this.currentRuntime(beeId)?.generation ?? 1;
       const rows = this.stmt(
-        "SELECT id FROM mailbox WHERE bee_id = ? AND delivered_at IS NULL AND id <= ? ORDER BY id",
+        "SELECT id, sender_kind FROM mailbox WHERE bee_id = ? AND delivered_at IS NULL AND id <= ? ORDER BY id",
       ).all(beeId, throughId) as Row[];
       const at = this.now();
       const acked: number[] = [];
@@ -3876,7 +3877,14 @@ export class CoreStore {
         const messageId = Number(row.id);
         this.stmt("UPDATE mailbox SET delivered_at = ?, delivered_generation = ? WHERE id = ?").run(at, generation, messageId);
         const questionId = this.answeredQuestionId(messageId);
-        this.audit("mail.delivered", beeId, { messageId, deliveredAt: at, deliveredGeneration: generation, ack: true, ...(questionId !== null ? { questionId } : {}) });
+        this.audit("mail.delivered", beeId, {
+          messageId,
+          deliveredAt: at,
+          deliveredGeneration: generation,
+          ack: true,
+          ...(questionId !== null ? { questionId } : {}),
+          ...(row.sender_kind != null ? { senderKind: row.sender_kind as SenderKind } : {}),
+        });
         acked.push(messageId);
       }
       return { acked };
