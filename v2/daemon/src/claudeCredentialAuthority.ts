@@ -87,15 +87,27 @@ const RELOGIN_PHASES: ReadonlySet<AccountCredentialAuthority["phase"]> = new Set
  * another credential operation holds the account's lane; retry shortly.
  */
 export type CredentialUnavailableReason = "login_required" | "operation_in_progress" | "unavailable" | "different_account" | "identity_unverified";
+export type CredentialFailureReceipt = Pick<CredentialRefreshFailure, "outcome" | "httpStatus" | "error">;
 export class CredentialAuthorityError extends Error {
   readonly code = "account_unavailable";
   readonly reason: CredentialUnavailableReason;
   readonly retryAt?: number;
-  constructor(message: string, reason: CredentialUnavailableReason = "unavailable", retryAt?: number) {
+  readonly failure?: CredentialFailureReceipt;
+  constructor(message: string, reason: CredentialUnavailableReason = "unavailable", retryAt?: number, failure?: CredentialRefreshFailure) {
     super(message);
     this.reason = reason;
     this.retryAt = retryAt;
+    if (failure) this.failure = { outcome: failure.outcome, httpStatus: failure.httpStatus, error: failure.error };
   }
+}
+export function credentialErrorDetails(error: CredentialAuthorityError): Record<string, unknown> {
+  return { reason: error.reason, ...(error.retryAt !== undefined ? { retryAt: error.retryAt } : {}), ...(error.failure ? { failure: error.failure } : {}) };
+}
+function backoffError(account: AccountRow, failure: CredentialRefreshFailure, retryAt: number, tokenStateUnknown: boolean): CredentialAuthorityError {
+  const status = failure.httpStatus !== null ? ` HTTP ${failure.httpStatus}` : "";
+  const token = tokenStateUnknown ? "the refresh outcome is unknown" : "the refresh token is unused";
+  return new CredentialAuthorityError(`Central refresh for ${account.id} is backing off after ${failure.outcome}${status}; ${token}; next attempt at ${new Date(retryAt).toISOString()}.`,
+    tokenStateUnknown ? "unavailable" : "operation_in_progress", retryAt, failure);
 }
 export class CredentialOwnershipConflict extends CredentialAuthorityError {}
 type RefreshAttempt = { kind: "success"; token: Extract<CredentialRefreshResult, { kind: "success" }>["token"] } | { kind: "failed"; result: CredentialRefreshTransportFailure; failure: CredentialRefreshFailure };
@@ -758,7 +770,7 @@ export class CredentialAuthority {
           this.options.beforeUse(account, value.document);
           return state;
         }
-        throw new CredentialAuthorityError(`Central refresh for ${account.id} did not succeed (${state.failure!.outcome}: ${describeRefreshFailure(state.failure!)}); next attempt at ${new Date(retryAt).toISOString()}`);
+        throw backoffError(account, state.failure!, retryAt, tokenStateUnknown);
       }
       if (elective && this.codec.minimumRenewalIntervalMs !== undefined) {
         try { this.assertRenewalPacing(account, value, state.failure); }
@@ -788,7 +800,7 @@ export class CredentialAuthority {
             this.options.beforeUse(account, value.document);
             return kept;
           }
-          throw new CredentialAuthorityError(`The provider did not process the refresh for ${account.id} (${detail}); the refresh token is unused.`);
+          throw backoffError(account, failure, failure.retryAt!, false);
         }
         this.outcomeUnknown(account, { ...value, operationKey }, failure);
         throw new CredentialAuthorityError(`Central refresh outcome for ${account.id} is unknown (${detail}); it ends in ready or login_required.`);

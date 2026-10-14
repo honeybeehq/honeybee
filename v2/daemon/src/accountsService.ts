@@ -22,7 +22,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { pathStrictlyInside } from "./accountConfigImport.ts";
 import { promisify } from "node:util";
 import { CredentialHandoffService } from "./credentialHandoff.ts";
-import { CredentialAuthority, ClaudeCredentialAuthority, CredentialAuthorityError, CredentialOwnershipConflict, refreshTokenDigest } from "./claudeCredentialAuthority.ts";
+import { CredentialAuthority, ClaudeCredentialAuthority, CredentialAuthorityError, CredentialOwnershipConflict, credentialErrorDetails, refreshTokenDigest } from "./claudeCredentialAuthority.ts";
 import { defaultClaudeRefreshTransport, describeRefreshFailure, sanitizeProviderText, type ClaudeRefreshResult, type ClaudeRefreshTransport, type RefreshedClaudeToken } from "./claudeRefreshTransport.ts";
 import { CodexCredentialAuthority, CODEX_CREDENTIAL_CODEC, readCodexCredentialCopy, defaultCodexRefreshTransport } from "./codexCredentialAuthority.ts";
 import { MuseCredentialAuthority, MUSE_CREDENTIAL_CODEC, MUSE_DEFAULT_KEY_TTL_MS, museMeta, museWorkingDocument, defaultMuseKeyTransport } from "./museCredentialAuthority.ts";
@@ -442,11 +442,13 @@ export interface EphemeralCredential {
  */
 export class LeaseRefusal extends Error {
   readonly code: "lease_unsupported" | "lease_unavailable" | "credential_login_required";
+  readonly details?: Record<string, unknown>;
 
-  constructor(code: "lease_unsupported" | "lease_unavailable" | "credential_login_required", message: string) {
+  constructor(code: "lease_unsupported" | "lease_unavailable" | "credential_login_required", message: string, details?: Record<string, unknown>) {
     super(message);
     this.name = "LeaseRefusal";
     this.code = code;
+    if (details) this.details = details;
   }
 }
 
@@ -3516,8 +3518,8 @@ export class AccountsService {
         await this.authorityFor(account)!.ensure(account, CLAUDE_MIN_SHIP_TTL_MS, undefined, preferredTtlMs);
       } catch (error) {
         if (error instanceof CredentialAuthorityError) {
-          if (error.reason === "login_required") throw new LeaseRefusal("credential_login_required", error.message);
-          throw new LeaseRefusal("lease_unavailable", `central Claude credential for ${account.id} is unavailable: ${error.message}`);
+          if (error.reason === "login_required") throw new LeaseRefusal("credential_login_required", error.message, credentialErrorDetails(error));
+          throw new LeaseRefusal("lease_unavailable", `central Claude credential for ${account.id} is unavailable: ${error.message}`, credentialErrorDetails(error));
         }
         throw error;
       }
@@ -3569,7 +3571,7 @@ export class AccountsService {
         const preferredTtlMs = opts.minTtlMs !== undefined && opts.minTtlMs > CODEX_MIN_SHIP_TTL_MS ? opts.minTtlMs : undefined;
         await this.codexCredentials.ensure(account, CODEX_MIN_SHIP_TTL_MS, undefined, preferredTtlMs);
       } catch (error) {
-        if (error instanceof CredentialAuthorityError) throw new LeaseRefusal(error.reason === "login_required" ? "credential_login_required" : "lease_unavailable", error.message);
+        if (error instanceof CredentialAuthorityError) throw new LeaseRefusal(error.reason === "login_required" ? "credential_login_required" : "lease_unavailable", error.message, credentialErrorDetails(error));
         throw error;
       }
     }
@@ -3665,7 +3667,7 @@ export class AccountsService {
       try { await this.grokCredentials.ensure(account, CLAUDE_MIN_SHIP_TTL_MS, undefined, opts.minTtlMs); }
       catch (error) {
         if (!(error instanceof CredentialAuthorityError)) throw error;
-        throw new LeaseRefusal(error.reason === "login_required" ? "credential_login_required" : "lease_unavailable", error.message);
+        throw new LeaseRefusal(error.reason === "login_required" ? "credential_login_required" : "lease_unavailable", error.message, credentialErrorDetails(error));
       }
     }
     const parsed = this.grokCredentials.enabled(account) ? grokAccessOnly(this.grokCredentials.document(account)) : this.leasePrimaryJson(account, "auth.json");

@@ -45,6 +45,7 @@ import {
   TrackNotFoundError,
 } from "../../core/src/index.ts";
 import { LeaseRefusal } from "./accountsService.ts";
+import { CredentialAuthorityError, credentialErrorDetails } from "./claudeCredentialAuthority.ts";
 import { LoginFlowRefusal } from "./loginFlows.ts";
 import {
   NOOP_PERFORMANCE,
@@ -131,7 +132,8 @@ function isRpcVerb(value: unknown): value is RpcVerb {
 export function toRpcError(err: unknown): { code: RpcErrorCode; message: string; details?: Record<string, unknown> } {
   if (err instanceof RpcError) return { code: err.code, message: err.message, ...(err.details ? { details: err.details } : {}) };
   if (err instanceof LoginFlowRefusal) return { code: err.code, message: err.message };
-  if (err instanceof LeaseRefusal) return { code: err.code, message: err.message };
+  if (err instanceof LeaseRefusal) return { code: err.code, message: err.message, ...(err.details ? { details: err.details } : {}) };
+  if (err instanceof CredentialAuthorityError) return { code: "account_unavailable", message: err.message, details: credentialErrorDetails(err) };
   if (err instanceof BeeNotFoundError) return { code: "bee_not_found", message: err.message };
   if (err instanceof TemplateNotFoundError) return { code: "template_not_found", message: err.message };
   if (err instanceof TrackNotFoundError) return { code: "track_not_found", message: err.message };
