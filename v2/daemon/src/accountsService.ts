@@ -1203,8 +1203,11 @@ export class AccountsService {
   assertNoNewNativeTakeover(account: AccountRow): void {
     const codec = this.leaseMaterialCodecs.get(account.harness);
     if (!codec) throw new RpcError("credential_handoff_unsupported", "No takeover codec is registered.");
-    for (const { raw } of this.leaseCredentialCopies(account)) {
-      if (this.nativeMaterialKind(account.harness, raw) === "native" || (() => { try { return hasRefreshGrant(JSON.parse(raw)); } catch { return false; } })()) throw new RpcError("credential_handoff_decided", "A new native login superseded the abandoned destination; preserve its credentials.");
+    for (const { raw, rel } of this.leaseCredentialCopies(account)) {
+      if (rel !== codec.primaryFile && !Object.values(codec.mirrors).includes(rel)) continue;
+      const native = this.providerNativeGrant(account, raw);
+      if (native === null) throw new RpcError("credential_handoff_unavailable", "Provider credential material cannot be identified; preserve it for operator review.");
+      if (native) throw new RpcError("credential_handoff_decided", "A new native login superseded the abandoned destination; preserve its credentials.");
     }
   }
 
@@ -1237,6 +1240,16 @@ export class AccountsService {
       if (existsSync(authorityRoot)) authority.forgetHandoffAdoption(account);
     };
     if (codec.keychain) await codec.keychain.withLock(account.homePath, scrub); else await scrub();
+  }
+
+  private providerNativeGrant(account: AccountRow, raw: string): boolean | null {
+    try {
+      const document = JSON.parse(raw);
+      const authority = this.credentialAuthorities.get(account.harness);
+      if (!authority) return hasRefreshGrant(document);
+      const parsed = authority.parseDocument(document);
+      return parsed ? Boolean(parsed.refreshToken) : this.staticLeaseMaterial(document, account.harness) ? false : null;
+    } catch { return null; }
   }
 
   private nativeMaterialKind(harness: string, raw: string): "native" | "access_only" | "unknown" {
@@ -1652,18 +1665,26 @@ export class AccountsService {
         try { writeFileSync(path, randomBytes(32), { flag: "wx", mode: 0o600 }); }
         catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error; }
       }
-      const key = readFileSync(path);
-      if (key.length !== 32) throw new Error("invalid key");
+      let key: Buffer;
+      try { key = readFileSync(path); }
+      catch (error) {
+        if (!create || (error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+        key = randomBytes(32); atomicWriteFileSync(path, key, 0o600);
+      }
+      if (key.length !== 32) {
+        if (!create) throw new Error("invalid key");
+        key = randomBytes(32); atomicWriteFileSync(path, key, 0o600);
+      }
       return key;
     } catch { throw new RpcError("account_lease_remove_unavailable", `Credential proof key for ${account} is unavailable; preserve its material and restore the daemon key.`, { account, reason: "fingerprint_key_unavailable" }); }
   }
 
-  private staticLeaseMaterial(value: unknown): boolean {
+  private staticLeaseMaterial(value: unknown, harness: string): boolean {
     if (!value || typeof value !== "object") return false;
     const record = value as Record<string, unknown>;
-    if (["api_key", "OPENAI_API_KEY"].some(key => typeof record[key] === "string" && record[key] !== "")) return true;
-    if ((record.auth_mode === "api_key" || record.type === "api") && typeof record.key === "string" && record.key !== "") return true;
-    return Object.values(record).some(child => this.staticLeaseMaterial(child));
+    if (harness === "codex") return typeof record.OPENAI_API_KEY === "string" && record.OPENAI_API_KEY !== "";
+    if (harness === "grok") return Object.values(record).some(child => child !== null && typeof child === "object" && (child as Record<string, unknown>).auth_mode === "api_key" && typeof (child as Record<string, unknown>).key === "string" && (child as Record<string, unknown>).key !== "");
+    return false;
   }
 
   private recordLeasePublication(id: string, files: { homeRelPath: string; contentB64: string }[], codec: LeaseMaterialCodec): void {
@@ -1699,13 +1720,21 @@ export class AccountsService {
         const proof = this.store.getLeaseMaterialProof(id);
         let key: Buffer | undefined;
         for (const copy of copies) {
+          if (copy.rel !== codec.primaryFile && !Object.values(codec.mirrors).includes(copy.rel)) continue;
           let document: unknown;
           try { document = JSON.parse(copy.raw); } catch { return unavailable("invalid_material"); }
-          if (hasRefreshGrant(document) || this.nativeMaterialKind(account.harness, copy.raw) === "native") { native.push(copy); continue; }
-          if (!this.credentialAuthorities.has(account.harness) || this.staticLeaseMaterial(document)) {
+          const providerNative = this.providerNativeGrant(account, copy.raw);
+          if (providerNative === null) return unavailable("invalid_material");
+          if (providerNative) { native.push(copy); continue; }
+          if (!this.credentialAuthorities.has(account.harness) || this.staticLeaseMaterial(document, account.harness)) {
             if (!proof || !Object.keys(proof.issued).length) { staticUnverified = true; continue; }
-            key ??= this.leaseProofKey(id);
-            if (proof.keyId !== createHash("sha256").update(key).digest("hex")) unavailable("fingerprint_key_unavailable");
+            try {
+              key ??= this.leaseProofKey(id);
+              if (proof.keyId !== createHash("sha256").update(key).digest("hex")) throw new Error("proof key mismatch");
+            } catch (error) {
+              if (!options.discardNative) return unavailable("fingerprint_key_unavailable");
+              native.push(copy); continue;
+            }
             if (proof.issued[copy.rel] !== createHmac("sha256", key).update(copy.raw).digest("hex")) native.push(copy);
           }
         }
@@ -1715,22 +1744,22 @@ export class AccountsService {
         codec.keychain?.assertHome(account.homePath);
         const state: KeychainState = codec.keychain ? await codec.keychain.read(account.homePath) : { status: "unavailable" };
         let facts = inspect(state);
+        let keychainRemoved = false;
         const warning = facts.staticUnverified ? ` Static material for ${id} is unverified; a user-replaced static key on a legacy row is removed.` : "";
-        const result = (disposition: AccountLeaseRemoveResult["disposition"], present: boolean, discarded: boolean, message: string): AccountLeaseRemoveResult => ({ ...base, disposition, nativeChain: { account: id, present, discarded }, ...(facts.staticUnverified ? { staticUnverified: true as const } : {}), message: message + warning });
-        const preserved = () => result("native_preserved", true, false, `Native credentials are present for ${id}. Sign the account out or back it up first.`);
+        const result = (disposition: AccountLeaseRemoveResult["disposition"], present: boolean, discarded: boolean, message: string): AccountLeaseRemoveResult => ({ ...base, keychainRemoved, disposition, nativeChain: { account: id, present, discarded }, ...(facts.staticUnverified ? { staticUnverified: true as const } : {}), message: message + warning });
+        const preserved = () => result("native_preserved", true, false, `Native credentials are present for ${id}. Sign the account out or back it up first.${keychainRemoved ? " The leased Keychain copy is already gone; native file copies remain preserved." : ""}`);
         if (options.checkOnly) return facts.native.length ? preserved() : result("remove_allowed", false, false, `Lease material for ${id} may be removed.`);
         const authorise = () => {
           if (!facts.native.length) return;
           if (!options.discardNative) throw new RpcError("account_lease_native_present", preserved().message, { account: id, nativeChainPresent: true, result: preserved() });
           const owned = account.leasedFrom?.enrolment ? account.leasedFrom.installedFiles ?? [codec.primaryFile, ...Object.values(codec.mirrors)] : this.credentialPaths(account);
           if (facts.native.some(copy => !owned.includes(copy.rel))) unavailable("native_outside_lease_files");
-          const key = this.leaseProofKey(id, !this.store.hasLeaseMaterialProofs());
+          const key = this.leaseProofKey(id, true);
           const copies = facts.native.map(copy => createHmac("sha256", key).update(copy.name).update("\0").update(copy.raw).digest("hex")).sort();
           this.store.authoriseLeaseNativeDiscard(id, createHash("sha256").update(key).digest("hex"), copies);
         };
         authorise();
         let nativeDiscarded = facts.native.length > 0;
-        let keychainRemoved = false;
         if (codec.keychain) {
           if (state.status === "present" && !options.discardNative) {
             const installed = readIfFile(this.leaseFilePath(this.vaultDirOf(account), codec.primaryFile));

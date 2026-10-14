@@ -41,6 +41,7 @@ test("lease remove native guard RPC/CLI: local confirmation, read-only preview, 
     const runCli = (args: string[]) => promisify(execFile)(process.execPath, [bin, "account", "lease", "remove", id, ...args, "--data-dir", root.dir, "--json"], { env: { ...process.env, HOME: join(root.dir, "cli-home") } });
     await assert.rejects(runCli(["--discard-native"]), error => error instanceof Error && /--confirm/.test((error as Error & { stderr?: string }).stderr ?? ""));
     const cliCheck = await runCli(["--check-only"]); assert.equal((JSON.parse(cliCheck.stdout) as AccountLeaseRemoveResult).disposition, "native_preserved");
+    rmSync(join(root.dir, "vault", ".lease-material-provenance.key"));
     writeFileSync(gate + ".tmp", JSON.stringify({ path })); const fs = await import("node:fs"); fs.renameSync(gate + ".tmp", gate);
     const attempt = client!.request("account.lease.remove", { id, discardNative: true, confirm: true }, 60_000).catch(() => null);
     await waitFor(() => existsSync(marker), "native discard stopped before first rm", 30_000);
@@ -51,6 +52,8 @@ test("lease remove native guard RPC/CLI: local confirmation, read-only preview, 
     for (const lock of Object.values(claudeRefreshLockPaths(installed.account.homePath))) if (existsSync(lock)) utimesSync(lock, stale, stale);
     await open();
     assert.ok(readFileSync(path).equals(native), "native survives physical kill");
+    const beforeRetry = await client!.request<AuditTailResult>("audit.tail", { after: 0, limit: 10000 });
+    assert.equal(beforeRetry.rows.filter(row => row.kind === "account.lease.native_discard_authorised").length, 1, "authorisation survived SIGKILL before any retry");
     await assert.rejects(client!.request("account.lease.remove", { id }), error => error instanceof RpcError && error.code === "account_lease_native_present");
     const cli = await runCli(["--discard-native", "--confirm"]); const result = JSON.parse(cli.stdout) as AccountLeaseRemoveResult;
     assert.equal(result.nativeChain.discarded, true); assert.match(result.message, /stays valid until signed out at the provider/);

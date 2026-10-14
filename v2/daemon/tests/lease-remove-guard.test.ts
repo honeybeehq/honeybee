@@ -55,7 +55,11 @@ function rig(harness = "claude") {
 const refused = (error: unknown) => error instanceof RpcError && error.code === "account_lease_native_present" && error.details?.nativeChainPresent === true;
 function nativeFor(harness: string) {
   const document = documentFor(harness);
-  return JSON.stringify({ ...document, nested: { refresh_token: randomUUID() } });
+  if (harness === "claude") (document.claudeAiOauth as Record<string, unknown>).refreshToken = randomUUID();
+  else if (harness === "codex") (document.tokens as Record<string, unknown>).refresh_token = randomUUID();
+  else if (harness === "grok") (Object.values(document)[0] as Record<string, unknown>).refresh_token = randomUUID();
+  else return JSON.stringify({ providers: { meta: { mechanism: "oauth", access_token: randomUUID(), refresh_token: randomUUID() } } });
+  return JSON.stringify(document);
 }
 for (const harness of ["claude", "codex", "grok", "muse"]) for (const location of ["home", "vault", "temporary", "vault-temporary"]) test(`lease remove preserves ${harness} native grant in ${location} before effects`, async () => {
   const r = rig(harness);
@@ -245,7 +249,11 @@ for (const boundary of ["read", "remove"]) test(`native login arriving at awaite
     const native = nativeFor("claude"), vaultBefore = r.hash(r.accounts.vaultDirOf(r.account), r.primary);
     const write = () => r.put(r.account.homePath, r.primary, native);
     if (boundary === "read") r.setBeforeRead(write); else r.setBeforeRemove(write);
-    await assert.rejects(r.accounts.removeLease(r.account.id), refused);
+    await assert.rejects(r.accounts.removeLease(r.account.id), error => {
+      assert.ok(refused(error));
+      if (boundary === "remove") { assert.equal(((error as RpcError).details?.result as AccountLeaseRemoveResult).keychainRemoved, true); assert.match((error as Error).message, /Keychain copy is already gone/); }
+      return true;
+    });
     assert.ok(readFileSync(join(r.account.homePath, r.primary)).equals(Buffer.from(native)), "new native material is preserved");
     assert.equal(r.hash(r.accounts.vaultDirOf(r.account), r.primary), vaultBefore);
     assert.equal(r.store.getAccount(r.account.id)?.leasedFrom?.revokedAt, null);
@@ -261,5 +269,72 @@ for (const kind of ["invalid", "symlink"]) test(`lease removal refuses ${kind} s
     const seq = r.store.lastAuditSeq(), vaultBefore = r.hash(r.accounts.vaultDirOf(r.account), r.primary);
     await assert.rejects(r.accounts.removeLease(r.account.id), error => error instanceof RpcError && ["account_lease_remove_unavailable", "invalid_request"].includes(error.code));
     assert.equal(r.store.lastAuditSeq(), seq); assert.equal(r.hash(r.accounts.vaultDirOf(r.account), r.primary), vaultBefore);
+  } finally { r.close(); }
+});
+
+for (const harness of ["claude", "codex"]) test(`MCP OAuth refresh grants do not masquerade as the ${harness} provider login`, async () => {
+  const r = rig(harness);
+  try {
+    const input = r.input(1); const doc = JSON.parse(Buffer.from(input.files[0]!.contentB64, "base64").toString("utf8"));
+    doc.mcpOAuth = { linear: { accessToken: randomUUID(), refreshToken: randomUUID() } };
+    await r.accounts.installLease(input);
+    for (const root of [r.account.homePath, r.accounts.vaultDirOf(r.account)]) r.put(root, r.primary, JSON.stringify(doc));
+    assert.doesNotThrow(() => r.accounts.assertNoNewNativeTakeover(r.account));
+    assert.equal((await r.accounts.removeLease(r.account.id, { checkOnly: true })).disposition, "remove_allowed");
+    await r.accounts.scrubHandoff(r.store.getAccount(r.account.id)!);
+    assert.equal((await r.accounts.removeLease(r.account.id)).disposition, "revoked");
+  } finally { r.close(); }
+});
+
+for (const harness of ["muse", "kimi", "opencode"]) for (const missing of [true, false]) test(`confirmed ${harness} discard recovers missing or changed proof key ${missing}`, async () => {
+  const r = rig(harness);
+  try {
+    await r.accounts.installLease(r.input(1));
+    const proof = r.store.getLeaseMaterialProof(r.account.id)!;
+    const path = join(r.accounts.vaultDirOf(r.account), "..", "..", ".lease-material-provenance.key");
+    if (missing) rmSync(path); else writeFileSync(path, Buffer.alloc(32, 42));
+    await assert.rejects(r.accounts.removeLease(r.account.id), error => error instanceof RpcError && error.details?.reason === "fingerprint_key_unavailable");
+    const removed = await r.accounts.removeLease(r.account.id, { discardNative: true, confirm: true });
+    assert.equal(removed.nativeChain.discarded, true); assert.match(removed.message, /stays valid until signed out/);
+    assert.equal(r.store.auditRows().filter(row => row.kind === "account.lease.native_discard_authorised").length, 1);
+    assert.equal(r.store.getLeaseMaterialProof(r.account.id)?.keyId, proof.keyId, "issuance key identity is not relabelled by discard authorisation");
+  } finally { r.close(); }
+});
+
+test("non-JSON ancillary Claude profiles do not wedge lease removal or the handoff guard", async () => {
+  const r = rig();
+  try {
+    const input = r.input(1); input.enrol = undefined;
+    await r.accounts.installLease(r.input(1));
+    for (const root of [r.account.homePath, r.accounts.vaultDirOf(r.account)]) { r.put(root, "settings.json", "not-json-settings"); r.put(root, ".claude.json", "not-json-profile"); }
+    assert.doesNotThrow(() => r.accounts.assertNoNewNativeTakeover(r.account));
+    assert.equal((await r.accounts.removeLease(r.account.id, { checkOnly: true })).disposition, "remove_allowed");
+    assert.equal((await r.accounts.removeLease(r.account.id)).disposition, "revoked");
+    assert.equal(readFileSync(join(r.account.homePath, "settings.json"), "utf8"), "not-json-settings");
+  } finally { r.close(); }
+});
+
+test("unrecognised Grok document shape is unavailable, never mislabelled native by a generic MCP walk", async () => {
+  const r = rig("grok");
+  try {
+    await r.accounts.installLease(r.input(1));
+    const doc = documentFor("grok"); doc.mcpOAuth = { linear: { refreshToken: randomUUID() } };
+    r.put(r.account.homePath, r.primary, JSON.stringify(doc));
+    assert.throws(() => r.accounts.assertNoNewNativeTakeover(r.account), error => error instanceof RpcError && error.code === "credential_handoff_unavailable");
+    const before = r.hash(r.account.homePath, r.primary);
+    await assert.rejects(r.accounts.removeLease(r.account.id, { checkOnly: true }), error => error instanceof RpcError && error.code === "account_lease_remove_unavailable" && error.details?.reason === "invalid_material");
+    assert.equal(r.hash(r.account.homePath, r.primary), before);
+  } finally { r.close(); }
+});
+
+for (const harness of ["codex", "grok"]) test(`lease-only ${harness} API-key material bypasses OAuth-null rejection and remains removable`, async () => {
+  const r = rig(harness);
+  try {
+    const document = harness === "codex" ? { OPENAI_API_KEY: randomUUID(), tokens: null } : { "provider-api-key": { auth_mode: "api_key", key: randomUUID() } };
+    const input = { ...r.input(1), enrol: undefined, files: [{ homeRelPath: r.primary, contentB64: Buffer.from(JSON.stringify(document)).toString("base64"), mode: 0o600 }] };
+    const installed = await r.accounts.installLease(input);
+    assert.doesNotThrow(() => r.accounts.assertNoNewNativeTakeover(installed.account));
+    assert.equal((await r.accounts.removeLease(installed.account.id, { checkOnly: true })).disposition, "remove_allowed");
+    assert.equal((await r.accounts.removeLease(installed.account.id)).disposition, "revoked");
   } finally { r.close(); }
 });

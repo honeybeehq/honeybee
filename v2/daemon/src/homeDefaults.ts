@@ -38,7 +38,7 @@ function readOr(path: string, fallback: string): string {
 }
 
 /** Write via a sibling temp file + rename (atomic on POSIX). */
-export function atomicWriteFileSync(path: string, content: string, mode = 0o600): void {
+export function atomicWriteFileSync(path: string, content: string | Uint8Array, mode = 0o600): void {
   const tmp = `${path}.tmp.${randomUUID()}`;
   const fd = openSync(tmp, "wx", mode);
   try { writeFileSync(fd, content); fsyncSync(fd); } finally { closeSync(fd); }
