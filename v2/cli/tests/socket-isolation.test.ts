@@ -128,8 +128,8 @@ test("the endpoint record is written after the socket_in_use probe and before th
   const path = join(root, "rpc.sock");
   const server = new RpcServer({ socketPath: path, log: () => undefined, dispatch: () => ({ ok: true }) });
   const second = new RpcServer({ socketPath: path, log: () => undefined, dispatch: () => ({ ok: true }) });
+  const failing = new RpcServer({ socketPath: path, log: () => undefined, dispatch: () => ({ ok: true }) });
   try {
-    const failing = new RpcServer({ socketPath: path, log: () => undefined, dispatch: () => ({ ok: true }) });
     await assert.rejects(failing.listen(() => { throw new Error("record unwritable"); }), /record unwritable/);
     assert.equal(existsSync(path), false);
     let socketExistedAtHook: boolean | null = null;
@@ -140,6 +140,7 @@ test("the endpoint record is written after the socket_in_use probe and before th
     await assert.rejects(second.listen(() => { secondHookRan = true; }), (err: unknown) => err instanceof RpcError && err.code === "socket_in_use");
     assert.equal(secondHookRan, false);
   } finally {
+    await failing.close();
     await server.close();
     await second.close();
     rmSync(root, { recursive: true, force: true });
