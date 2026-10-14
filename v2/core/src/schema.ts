@@ -527,6 +527,7 @@ CREATE TABLE IF NOT EXISTS questions (
   CHECK ((status = 'answered') = (answered_at IS NOT NULL))
 ) STRICT;
 CREATE INDEX IF NOT EXISTS questions_open ON questions(bee_id, asked_at) WHERE status = 'open';
+CREATE INDEX IF NOT EXISTS questions_delivery_message ON questions(delivery_message_id) WHERE delivery_message_id IS NOT NULL;
 
 -- v6: seals — a bee's structured "here is what I did" record (metadata only:
 -- title/body/refs), tied to the generation that sealed.

@@ -233,3 +233,41 @@ test("turn-trigger.8: an auth-interrupted turn's redelivered mail keeps its send
   assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
   store.close();
 });
+
+test("turn-trigger.answer: mail.delivered names the answered question through an index, also for mailbox-only acks", () => {
+  const h = harness();
+  try {
+    const store = h.open();
+    const bee = idleBee(store);
+    const question = store.askQuestion(bee.id, { text: "merge or rebase?" });
+    const answer = store.answerQuestion(question.id, "rebase", { answeredBy: "tormod" }).send.message;
+    const plain = store.send(bee.id, "unrelated", { sender: "operator" }).message;
+    assert.equal(store.answeredQuestionId(answer.id), question.id);
+    assert.equal(store.answeredQuestionId(plain.id), null);
+    store.markDelivered(answer.id, 1, HUMAN);
+    store.markDelivered(plain.id, 1, HUMAN);
+    const delivered = store.auditRows().filter((row) => row.kind === "mail.delivered");
+    assert.deepEqual(delivered.map((row) => row.payload.questionId), [question.id, undefined]);
+    assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
+
+    const { bee: inbox } = store.createBee({ name: "inbox-bee", agent: "inbox", substrate: "hsr", cwd: "" });
+    const asked = store.askQuestion(inbox.id, { text: "ok?" });
+    const acked = store.answerQuestion(asked.id, "yes").send.message;
+    store.ackMail(inbox.id, acked.id);
+    const ackRow = store.auditRows().filter((row) => row.kind === "mail.delivered").at(-1)!;
+    assert.deepEqual([ackRow.payload.messageId, ackRow.payload.ack, ackRow.payload.questionId], [acked.id, true, asked.id]);
+    assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
+    store.close();
+
+    const check = new DatabaseSync(h.path, { readOnly: true });
+    try {
+      const plan = (check.prepare("EXPLAIN QUERY PLAN SELECT id FROM questions WHERE delivery_message_id = ?").all(1) as Array<{ detail: string }>)
+        .map((row) => row.detail).join("\n");
+      assert.match(plan, /USING (?:COVERING )?INDEX questions_delivery_message/);
+    } finally {
+      check.close();
+    }
+  } finally {
+    h.cleanup();
+  }
+});
