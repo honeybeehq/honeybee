@@ -133,7 +133,7 @@ import type { PtySpawner } from "./loginWorker.ts";
 import type { KeychainReader, KeychainWriter } from "./keychain.ts";
 import type { CellCaptureExecutor, FlagEvidenceLike, UsageEvidenceLike } from "./loops.ts";
 import { CellRetentionService } from "./cellRetention.ts";
-import { CredentialAuthorityError } from "./claudeCredentialAuthority.ts";
+import { CredentialAuthorityError, credentialErrorDetails } from "./claudeCredentialAuthority.ts";
 import { realPreflightProbes } from "./import-probes.ts";
 import { HsrDriver, pidAlive, verifyProcessIdentity, type SpawnSpec } from "../../driver-hsr/src/index.ts";
 import {
@@ -1820,7 +1820,7 @@ export class HiveDaemon {
             return await authority.ensure(account, 0, key);
           } catch (error) {
             if (error instanceof RpcError) throw error;
-            if (account.harness === "muse" && error instanceof CredentialAuthorityError) throw new RpcError("account_unavailable", error.message, { reason: error.reason, ...(error.retryAt !== undefined ? { retryAt: error.retryAt } : {}) });
+            if (account.harness === "muse" && error instanceof CredentialAuthorityError) throw new RpcError("account_unavailable", error.message, credentialErrorDetails(error));
             throw new RpcError("account_unavailable", error instanceof Error ? error.message : "Credential operation failed");
           }
         });
