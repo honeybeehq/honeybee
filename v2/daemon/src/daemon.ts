@@ -949,6 +949,7 @@ export class HiveDaemon {
     }, 60_000);
     this.loopDelayTimer.unref();
     this.log(`daemon.started pid=${process.pid} store=${this.cfg.storePath}`);
+    if (this.naming.disabledReason) this.log(`naming.disabled reason=${JSON.stringify(this.naming.disabledReason)}`);
   }
 
   async shutdown(options: ShutdownOptions = {}): Promise<void> {

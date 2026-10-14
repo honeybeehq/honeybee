@@ -11,7 +11,7 @@ const HEM_ENV_KEYS = ["PATH", "HOME", "USER", "TMPDIR", "VALHALL_HEMD_ENDPOINT",
 const DEFAULT_HEM_TIMEOUT_MS = 5_000;
 const DEFAULT_HEM_CACHE_TTL_MS = 5 * 60_000;
 const DEFAULT_HEM_FAILURE_HOLD_MS = 60_000;
-const DEFAULT_HEM_APPROVAL_HOLD_MS = 15 * 60_000;
+const DEFAULT_HEM_APPROVAL_HOLD_MS = 2 * 60_000;
 const MAX_HEM_OUTPUT_BYTES = 64 * 1024;
 const MAX_HEM_ERROR_CHARS = 200;
 
@@ -149,18 +149,18 @@ export class HemSecretResolver {
     const hem = this.locateHem();
     if (!hem) throw this.hold(ref, generation, `hem ref ${name} could not be read: hem executable not found on PATH or the standard install dirs`, this.failureHoldMs);
     const output = await this.run(hem, ["get", parsed.secret, parsed.field], this.timeoutMs);
+    const value = output.stdout.endsWith("\n") ? output.stdout.slice(0, -1) : output.stdout;
+    if (output.ok && PLAIN_SECRET_VALUE.test(value)) {
+      if (generation === this.generation) this.cache.set(ref, { value, expiresAt: this.now() + this.cacheTtlMs });
+      return value;
+    }
     if (PENDING_APPROVAL.test(output.stdout) || PENDING_APPROVAL.test(output.stderr)) {
       throw this.hold(ref, generation, `hem ref ${name} is waiting for approval in hem`, this.approvalHoldMs);
     }
     if (!output.ok) {
       throw this.hold(ref, generation, `hem ref ${name} could not be read: ${hemFailureReason(output, this.timeoutMs)}`, this.failureHoldMs);
     }
-    const value = output.stdout.endsWith("\n") ? output.stdout.slice(0, -1) : output.stdout;
-    if (!PLAIN_SECRET_VALUE.test(value)) {
-      throw this.hold(ref, generation, `hem ref ${name} did not return a plain secret value`, this.failureHoldMs);
-    }
-    if (generation === this.generation) this.cache.set(ref, { value, expiresAt: this.now() + this.cacheTtlMs });
-    return value;
+    throw this.hold(ref, generation, `hem ref ${name} did not return a plain secret value`, this.failureHoldMs);
   }
 
   private hold(ref: string, generation: number, error: string, holdMs: number): Error {

@@ -362,6 +362,12 @@ test("openai-api naming resolves apiKeyRef through hem lazily, caches it, and ne
     assert.equal(hemCalls.length, callsWhilePending, "a pending approval is not re-asked");
 
     clock += 10_000;
+    hemReply = { ok: true, stdout: "sk-approval_required-0123456789\n", stderr: "", timedOut: false };
+    assert.equal(await name(), "Hem Keyed Title", "a valid value is never mistaken for a pending approval");
+    assert.equal(authorizations.at(-1), "Bearer sk-approval_required-0123456789");
+    service.reconfigure(refConfig);
+
+    clock += 10_000;
     hemReply = { ok: false, stdout: "", stderr: 'status: NotFound, message: "secret not found: global/hive-naming-openai"', timedOut: false };
     await rejectsWith(/requires a configured API key: hem ref "global\/hive-naming-openai" could not be read: secret not found/);
   } finally {

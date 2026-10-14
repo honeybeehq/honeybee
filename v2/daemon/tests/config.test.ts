@@ -321,14 +321,25 @@ test("config.naming: a hem apiKeyRef replaces the plaintext key and is reported 
   });
 });
 
-test("config.naming: invalid tool/effort fail loudly", () => {
+test("config.naming: an invalid naming block disables naming with a reason instead of failing config load", () => {
   withDir((dir) => {
-    writeFileSync(join(dir, "config.json"), JSON.stringify({ naming: { tool: "grok" } }));
-    assert.throws(() => loadNodeConfig(dir), ConfigError);
-    writeFileSync(join(dir, "config.json"), JSON.stringify({ naming: { effort: "ludicrous" } }));
-    assert.throws(() => loadNodeConfig(dir), ConfigError);
-    writeFileSync(join(dir, "config.json"), JSON.stringify({ naming: { auto: "yes" } }));
-    assert.throws(() => loadNodeConfig(dir), ConfigError);
+    const cases: Array<[unknown, RegExp]> = [
+      [{ tool: "grok" }, /naming\.tool/],
+      [{ effort: "ludicrous" }, /naming\.effort/],
+      [{ auto: "yes" }, /naming\.auto/],
+      [{ backend: "openai-api", apiKeyRef: "global/openai-prod" }, /naming\.apiKeyRef must be a hem secret ref "global\/hive-naming-<name>"/],
+      ["not an object", /naming must be an object/],
+    ];
+    for (const [naming, reason] of cases) {
+      writeFileSync(join(dir, "config.json"), JSON.stringify({ naming }));
+      const cfg = loadNodeConfig(dir);
+      assert.equal(cfg.naming.auto, false);
+      assert.match(cfg.naming.disabledReason ?? "", reason);
+      assert.match(publicNamingConfig(cfg.naming).disabledReason ?? "", reason);
+      assert.equal(cfg.naming.apiKeyRef, undefined);
+    }
+    writeFileSync(join(dir, "config.json"), JSON.stringify({ naming: { auto: true } }));
+    assert.equal(loadNodeConfig(dir).naming.disabledReason, undefined);
   });
 });
 
