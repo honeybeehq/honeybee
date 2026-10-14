@@ -155,7 +155,7 @@ const positiveMs = (value: unknown): number | null => typeof value === "number" 
 /**
  * Muse: the current window (the provider's 5-hour-class block) → fiveHour
  * with its reported duration, the rolling weekly block → weekly. The tier is
- * an opaque subscription id, not a plan name, so it sets no plan. The snapshot
+ * preserved as the opaque plan field. The snapshot
  * is dated by the host's observedAtMs — an observation, not a live read. Null when the payload
  * carries no observation time or no window (nothing to record).
  */
@@ -165,6 +165,7 @@ export function parseMuseUsage(usage: MuseSubscriptionUsage): PutAccountLimitsIn
   const out: PutAccountLimitsInput = {
     readable: true,
     fetchedAt: observedAt,
+    plan: typeof usage.tier === "string" ? usage.tier : null,
   };
   const window = usage.window;
   if (window && finitePercent(window.usedPercent)) {
@@ -203,6 +204,7 @@ export function museQuotaLimits(previous: AccountLimitsRow | null, quota: MuseQu
   return {
     readable: true,
     fetchedAt: observedAt,
+    plan: previous.plan,
     fiveHour: window(previous.fiveHourPct, previous.fiveHourResetsAt, previous.fiveHourMinutes, fiveHourExhausted),
     weekly: window(previous.weeklyPct, previous.weeklyResetsAt, previous.weeklyMinutes, weeklyExhausted),
   };

@@ -191,10 +191,11 @@ test("v7.recipes: parseMuseCredentials reads the meta entry's shape without retu
 const MUSE_USAGE_LINES = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "..", "adapters", "tests", "fixtures", "muse-usage-changed.jsonl"), "utf8")
   .trim().split("\n").map((line) => JSON.parse(line) as { params: Record<string, any> });
 
-test("v7.limits: parseMuseUsage maps the observed window and weekly block, leaves the opaque tier id out of the plan and dates the row by observedAtMs", () => {
+test("v7.limits: parseMuseUsage maps the observed window and weekly block, preserves the opaque tier id as plan and dates the row by observedAtMs", () => {
   assert.deepEqual(parseMuseUsage(MUSE_USAGE_LINES[0]!.params), {
     readable: true,
     fetchedAt: 1791870000000,
+    plan: "fixture-tier-from-provider",
     fiveHour: { usedPercent: 37, resetsAt: 1791880000000, windowMinutes: 300 },
     weekly: { usedPercent: 12, resetsAt: 1792300000000, windowMinutes: null },
   });
@@ -208,6 +209,7 @@ test("v7.limits: parseMuseUsage maps the observed window and weekly block, leave
   }), {
     readable: true,
     fetchedAt: 1791914092800,
+    plan: "27681631238169137",
     fiveHour: { usedPercent: 0, resetsAt: 1791932002000, windowMinutes: 300 },
     weekly: { usedPercent: 12, resetsAt: 1792368000000, windowMinutes: null },
   });
@@ -231,6 +233,7 @@ test("v7.limits: museQuotaLimits marks the observed window whose reset the quota
   assert.deepEqual(museQuotaLimits(observed, quota, 1791875000120), {
     readable: true,
     fetchedAt: 1791875000120,
+    plan: "27681631238169137",
     fiveHour: { usedPercent: 100, resetsAt: 1791880000000, windowMinutes: 300 },
     weekly: { usedPercent: 12, resetsAt: 1792300000000, windowMinutes: null },
   });
@@ -536,7 +539,7 @@ test("v7.migration: a v6 store opens as v7 — bees.account added, accounts/acco
     try {
       const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
       assert.equal(Number(version.value), SCHEMA_VERSION);
-      assert.equal(SCHEMA_VERSION, 43);
+      assert.equal(SCHEMA_VERSION, 44);
       const cols = (check.prepare("SELECT name FROM pragma_table_info('bees')").all() as Array<{ name: string }>).map((c) => c.name);
       assert.ok(cols.includes("account"));
       const tables = (check.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{ name: string }>).map((t) => t.name);

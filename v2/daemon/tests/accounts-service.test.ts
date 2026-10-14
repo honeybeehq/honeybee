@@ -996,7 +996,7 @@ test("limits.muse.observed: usage a Muse runtime observed becomes the readable l
     const observed = svc.observeLimits(account, { observedAt: r.now(), usage: usage(1791870000000, 37, 12) });
     assert.deepEqual(
       [observed?.readable, observed?.fetchedAt, observed?.plan, observed?.fiveHourPct, observed?.fiveHourMinutes, observed?.fiveHourResetsAt, observed?.weeklyPct, observed?.weeklyResetsAt, observed?.weeklyMinutes],
-      [true, 1791870000000, null, 37, 300, 1791880000000, 12, 1792300000000, null],
+      [true, 1791870000000, "fixture-tier-from-provider", 37, 300, 1791880000000, 12, 1792300000000, null],
     );
 
     // The probe has no source: it keeps the observation (and its date) instead of "unsupported".
@@ -1016,7 +1016,7 @@ test("limits.muse.observed: usage a Muse runtime observed becomes the readable l
 
     const newer = svc.observeLimits(account, { observedAt: r.now(), usage: usage(1791875000000, 104, 19) });
     assert.deepEqual([newer?.fetchedAt, newer?.fiveHourPct, newer?.weeklyPct], [1791875000000, 104, 19]);
-    assert.ok(r.log.some((line) => line.includes(`account.limits account=${account.id} readable=true observed=usage plan=null`)));
+    assert.ok(r.log.some((line) => line.includes(`account.limits account=${account.id} readable=true observed=usage plan="fixture-tier-from-provider"`)));
 
     // Only Muse observations are read.
     const codex = addAccount(r, "codex", "c");

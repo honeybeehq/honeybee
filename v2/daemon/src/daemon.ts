@@ -1,3 +1,4 @@
+import { applyObservation, observationReadRequest, discardObservation } from "./limitsObservation.ts";
 import { reconnectToolsResult, type ReconnectToolsResult } from "../../core/src/reconnectTools.ts";
 import { withFileLock } from "../../../src/lock.ts";
 import { readBuildIdentity } from "../../../src/release/buildIdentity.ts";
@@ -1791,6 +1792,12 @@ export class HiveDaemon {
         return this.rpcAccountInterruptions(params);
       case "account.verify":
         return this.rpcAccountVerify(params);
+      case "account.limits.observe":
+        return applyObservation(this.mustStore(), params, this.accountIdParam(params));
+      case "account.limits.observation":
+        return observationReadRequest(this.mustStore(),params);
+      case "account.limits.observation.discard":
+        return discardObservation(this.mustStore(),params,this.accountIdParam(params));
       case "account.limits":
         return this.rpcAccountLimits(params);
       case "account.resetLimits":

@@ -96,7 +96,7 @@ test("Muse usage/changed and a quota terminal from a running bee land on its acc
     }, "usage/changed lands on the account", 15_000);
     assert.deepEqual(
       [observed.fetchedAt, observed.plan, observed.fiveHourPct, observed.fiveHourResetsAt, observed.fiveHourMinutes, observed.weeklyPct],
-      [observedAtMs, null, 37, resetsAtMs, 300, 12],
+      [observedAtMs, "fixture-tier-from-provider", 37, resetsAtMs, 300, 12],
     );
 
     await client.request<SendRpcResult>("send", { beeId: spawned.beeId, body: "second turn" });

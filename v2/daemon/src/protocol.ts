@@ -121,6 +121,7 @@ export const DAEMON_CAPABILITIES = [
    */
   "account.auth_death_recovery.v1",
   "account.lease.v1",
+  "account.limits.observation.v1",
   "account.lease.install.v1",
   "account.lease.enrol.v1",
   "account.lease.export.v1",
@@ -265,6 +266,7 @@ export const RPC_ERROR_CODES = [
   "credential_handoff_unusable_access",
   "credential_handoff_stale_epoch",
   "account_leased",
+  "account_limits_observation_refused",
   "account_lease_native_present",
   "account_lease_remove_unavailable",
   "account_lease_conflict",
@@ -555,6 +557,9 @@ export const RPC_VERBS = [
   // v18 (additive): run the harness's real credential probe on demand.
   "account.verify",
   "account.limits",
+  "account.limits.observe",
+  "account.limits.observation",
+  "account.limits.observation.discard",
   "account.resetLimits",
   "account.importRegistry",
   "account.backfill",

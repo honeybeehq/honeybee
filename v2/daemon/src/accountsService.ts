@@ -1,3 +1,4 @@
+import { OBSERVATION_CODECS, observationText } from "./limitsObservation.ts";
 /**
  * AccountsService — the daemon's account plane (spec 08 CORE): the calibrated
  * `auto` selection over the store (candidates → ported selector → near-tie
@@ -44,7 +45,6 @@ import {
   measureWindowVelocity,
   parseClaudeCredentials,
   parseMuseCredentials,
-  parseMuseUsage,
   museQuotaLimits,
   pauseLabel,
   pauseOf,
@@ -2864,17 +2864,22 @@ export class AccountsService {
    * source; a duplicate (journal replay) is a quiet no-op.
    */
   observeLimits(account: AccountRow, ev: { observedAt: number; usage?: Record<string, unknown>; quota?: Record<string, unknown> }): AccountLimitsRow | null {
-    if (account.harness !== "muse") return null;
-    const previous = this.store.getAccountLimits(account.id);
-    const input = ev.usage ? parseMuseUsage(ev.usage) : ev.quota ? museQuotaLimits(previous, ev.quota, ev.observedAt) : null;
+    const observationCodec = OBSERVATION_CODECS.get(account.harness);
+    if (!observationCodec) return null;
+    const metadata = this.store.getAccountObservation(account.id);
+    const previous = ev.quota ? metadata.lastLocal?.limits ?? (metadata.provenance ? null : this.store.getAccountLimits(account.id)) : this.store.getAccountLimits(account.id);
+    const input = ev.usage ? observationCodec.parseLocal(ev.usage) : ev.quota ? museQuotaLimits(previous, ev.quota, ev.observedAt) : null;
     if (!input) {
       this.log(`account.limits.observed_skip account=${account.id} reason=${ev.usage ? "no_window" : "no_matching_window"}`);
       return null;
     }
     const observedAt = input.fetchedAt!;
-    if (previous && previous.fetchedAt >= observedAt && previous.unreadableReason !== "unsupported") return null;
+    const source = ev.quota ? metadata.lastLocal?.source ?? null : observationText(ev.usage?.source);
+    input.plan = observationText(input.plan);
+    const applied = this.store.observeAccountLimits(account.id,input,source,null,()=>{});
+    if (!applied) return null;
     if (previous?.readable) this.velocities.set(account.id, this.measureVelocities(previous, input, observedAt));
-    const row = this.store.putAccountLimits(account.id, input);
+    const row = this.store.getAccountLimits(account.id)!;
     this.log(`account.limits account=${account.id} readable=true observed=${ev.usage ? "usage" : "quota"} plan=${JSON.stringify(row.plan)} weekly=${row.weeklyPct ?? "-"} 5h=${row.fiveHourPct ?? "-"} at=${observedAt}`);
     return row;
   }

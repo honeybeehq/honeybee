@@ -159,7 +159,7 @@
  * v35 — a dying login is visible: `accounts.status_reason` + `accounts.refresh_token_expires_at`;
  * the credential authority gains the terminal `login_required` phase, `refresh_token_expires_at`
  * and the secret-free last refresh `failure` (table rebuild, rows carried across by name). */
-export const SCHEMA_VERSION = 43;
+export const SCHEMA_VERSION = 44;
 
 export const AUTH_INTERRUPTIONS_TABLE_SQL = `
 CREATE TABLE IF NOT EXISTS auth_interruptions (
@@ -255,6 +255,11 @@ CREATE TABLE IF NOT EXISTS account_limits (
 `;
 
 export const SCHEMA_SQL = `
+CREATE TABLE IF NOT EXISTS account_limit_observations (
+  account TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
+  record TEXT NOT NULL
+) STRICT;
+
 CREATE TABLE IF NOT EXISTS lease_material_proofs (
   account TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
   record TEXT NOT NULL

@@ -1,3 +1,4 @@
+import type { AccountObservationMetadata, LimitsObserverProvenance } from "./types.ts";
 import { isAccountId } from "./accountRecipes.ts";
 import { parseUpdateReservation, type UpdateReservation } from "../../../src/updateReservation.ts";
 import type { ReconnectToolsReceipt, ReconnectToolsError } from "./reconnectTools.ts";
@@ -2026,6 +2027,13 @@ export class CoreStore {
         this.stmt("UPDATE account_credential_authorities SET authority_instance_id = ? WHERE account = ?").run(randomUUID(), String(row.account));
         this.audit("account.credentials.instance", null, { account: String(row.account), authorityInstanceId: this.getAccountCredentialAuthority(String(row.account))!.authorityInstanceId, reason: "migration" });
         this.touchAccount(String(row.account), "credential authority instance migration");
+      }
+    }
+    if (stored < 44) {
+      for (const row of this.stmt("SELECT a.id FROM accounts a JOIN account_limits l ON l.account=a.id WHERE a.harness='muse' AND l.readable=1").all() as Row[]) {
+        const account = String(row.id);
+        const previous = this.getAccountObservation(account);
+        if (!previous.lastLocal && previous.highWatermarkMs === 0) this.putAccountObservation(account,{lastLocal:{limits:this.getAccountLimits(account)!,source:null},provenance:null,source:null,highWatermarkMs:0});
       }
     }
     this.backfillMailHistoryEnqueues();
@@ -6578,9 +6586,78 @@ export class CoreStore {
           }))),
           input.rateLimitResetCredits === undefined ? null : JSON.stringify(input.rateLimitResetCredits),
         );
+      const metadata = this.getAccountObservation(accountId);
+      if (metadata.provenance || metadata.source !== null) this.putAccountObservation(accountId, {...metadata,provenance:null,source:null});
       const limits = this.getAccountLimits(accountId) as AccountLimitsRow;
       this.audit("account_limits.put", null, { limits });
       return limits;
+    });
+  }
+
+  getAccountObservation(account: string): AccountObservationMetadata {
+    const row = this.stmt("SELECT record FROM account_limit_observations WHERE account = ?").get(account) as Row | undefined;
+    return row ? JSON.parse(String(row.record)) : {lastLocal: null, provenance: null, source: null, highWatermarkMs: 0};
+  }
+
+  private putAccountObservation(account: string, record: AccountObservationMetadata): void {
+    this.stmt("INSERT INTO account_limit_observations(account,record) VALUES(?,?) ON CONFLICT(account) DO UPDATE SET record=excluded.record").run(account, JSON.stringify(record));
+  }
+
+  observeAccountLimits(account: string, input: PutAccountLimitsInput, source: string | null, provenance: LimitsObserverProvenance | null, validate: (account: AccountRow, now: number) => void): boolean {
+    return this.tx(() => {
+      validate(this.mustGetAccount(account), this.now());
+      const metadata = this.getAccountObservation(account);
+      const at = input.fetchedAt!;
+      const previous = this.getAccountLimits(account);
+      if (provenance && at <= metadata.highWatermarkMs) return false;
+      if (!provenance && (!metadata.lastLocal || at > metadata.lastLocal.limits.fetchedAt)) {
+        const local = this.accountLimitsFromInput(account, input);
+        metadata.lastLocal = {limits: local, source};
+        this.putAccountObservation(account, metadata);
+        this.audit("account_limits.observation", null, {account, kind: "local", observedAtMs: at});
+      }
+      if (previous && previous.fetchedAt >= at && previous.unreadableReason !== "unsupported") return false;
+      this.putAccountLimits(account, input);
+      metadata.provenance = provenance;
+      metadata.source = source;
+      if (provenance) metadata.highWatermarkMs = Math.max(metadata.highWatermarkMs, at);
+      this.putAccountObservation(account, metadata);
+      this.audit("account_limits.observation", null, {account, kind: provenance ? "remote" : "selected_local", observedAtMs: at, provenance, source});
+      return true;
+    });
+  }
+
+  private accountLimitsFromInput(account: string, input: PutAccountLimitsInput): AccountLimitsRow {
+    return {account, fetchedAt: input.fetchedAt!, readable: input.readable, unreadableReason: input.readable ? null : input.unreadableReason ?? "provider_error", error: input.error ?? null, plan: input.plan ?? null,
+      fiveHourPct: input.fiveHour?.usedPercent ?? null, fiveHourResetsAt: input.fiveHour?.resetsAt ?? null, fiveHourMinutes: input.fiveHour?.windowMinutes ?? null,
+      weeklyPct: input.weekly?.usedPercent ?? null, weeklyResetsAt: input.weekly?.resetsAt ?? null, weeklyMinutes: input.weekly?.windowMinutes ?? null,
+      fableWeeklyPct: input.fableWeekly?.usedPercent ?? null, fableResetsAt: input.fableWeekly?.resetsAt ?? null, fableMinutes: input.fableWeekly?.windowMinutes ?? null,
+      displayWindows: (input.displayWindows ?? []).map(w => ({...w,resetsAt:w.resetsAt ?? null,windowMinutes:w.windowMinutes ?? null})), rateLimitResetCredits: input.rateLimitResetCredits ?? null};
+  }
+
+  private accountLimitsToInput(row: AccountLimitsRow): PutAccountLimitsInput {
+    const window = (usedPercent: number | null, resetsAt: number | null, windowMinutes: number | null) => usedPercent === null ? null : {usedPercent,resetsAt,windowMinutes};
+    return {readable:row.readable,unreadableReason:row.unreadableReason,error:row.error,plan:row.plan,fetchedAt:row.fetchedAt,
+      fiveHour:window(row.fiveHourPct,row.fiveHourResetsAt,row.fiveHourMinutes),weekly:window(row.weeklyPct,row.weeklyResetsAt,row.weeklyMinutes),fableWeekly:window(row.fableWeeklyPct,row.fableResetsAt,row.fableMinutes),displayWindows:row.displayWindows,rateLimitResetCredits:row.rateLimitResetCredits};
+  }
+
+  discardAccountObservation(account: string, expected: number, validate: (account: AccountRow) => void): boolean {
+    return this.tx(() => {
+      validate(this.mustGetAccount(account));
+      const metadata = this.getAccountObservation(account);
+      const selected = this.getAccountLimits(account);
+      if (!metadata.provenance || selected?.fetchedAt !== expected) return false;
+      if (metadata.lastLocal) {
+        this.putAccountLimits(account, this.accountLimitsToInput(metadata.lastLocal.limits));
+      } else {
+        this.stmt("DELETE FROM account_limits WHERE account = ?").run(account);
+        this.audit("account_limits.removed", null, {account});
+      }
+      metadata.provenance = null;
+      metadata.source = metadata.lastLocal?.source ?? null;
+      this.putAccountObservation(account, metadata);
+      this.audit("account_limits.observation", null, {account,kind:"discard",observedAtMs:expected});
+      return true;
     });
   }
 

@@ -921,6 +921,28 @@ async function cmdAccount(ctx: CliContext, parsed: Parsed): Promise<number> {
   const sub = parsed.positional[1];
   const key = parsed.flags.get("--idempotency-key") as string | undefined;
   switch (sub) {
+    case "observation": {
+      const action = parsed.positional[2];
+      if (!ctx.json || !["apply","read","discard","harnesses"].includes(action ?? "")) throw new Error("usage: hive account observation apply --file payload.json | read <id> | discard <id> --observed-at ms | harnesses --json");
+      let params: Record<string,unknown> = {};
+      if (action === "apply") {
+        const file = parsed.flags.get("--file");
+        if (typeof file !== "string") throw new Error("observation apply requires --file");
+        params = JSON.parse(readFileSync(file,"utf8"));
+      } else if (action !== "harnesses") {
+        const id = parsed.positional[3];
+        if (!id) throw new Error("observation requires an account id");
+        params = {id};
+        if (action === "discard") params.expectedObservedAtMs = Number(parsed.flags.get("--observed-at"));
+      }
+      const verb = action === "apply" ? "account.limits.observe" : action === "discard" ? "account.limits.observation.discard" : "account.limits.observation";
+      const result = await withClient(ctx, client => {
+        if (!client.capabilities.includes("account.limits.observation.v1")) throw new RpcError("capability_missing","Update Honeybee: account.limits.observation.v1 is required.");
+        return client.request(verb,params);
+      });
+      emit(ctx,["limits observation"],result,false);
+      return 0;
+    }
     case "lease": {
       const action = parsed.positional[2];
       if (action === "export") {

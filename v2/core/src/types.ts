@@ -1882,3 +1882,19 @@ export interface CredentialHandoffLocalSnapshot {
   identityReplacing: boolean;
   reconciled: boolean;
 }
+
+export type LimitsObserverPath =
+  | {kind: "direct"; holderExpiresAtMs: number}
+  | {kind: "peer"; shareId: string; epoch: number; holderExpiresAtMs: number}
+  | {kind: "one_hop"; viaNodeId: string; shareId: string; epoch: number; observerExpiresAtMs: number; viaExpiresAtMs: number};
+export interface LimitsObserverProvenance {
+  observerNodeId: string;
+  currentHolder: true;
+  path: LimitsObserverPath;
+}
+export interface AccountObservationMetadata {
+  lastLocal: {limits: AccountLimitsRow; source: string | null} | null;
+  provenance: LimitsObserverProvenance | null;
+  source: string | null;
+  highWatermarkMs: number;
+}

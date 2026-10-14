@@ -199,6 +199,11 @@ export function replayAudit(rows: AuditRow[]): StateDump {
         if (p.cursorCleared === true) selectionCursors.delete(p.harness as string);
         break;
       }
+      case "account_limits.removed": {
+        accountLimits.delete(p.account as string);
+        break;
+      }
+      case "account_limits.observation": break;
       case "account_limits.put": {
         const limits = p.limits as AccountLimitsRow;
         accountLimits.set(limits.account, { ...limits });
