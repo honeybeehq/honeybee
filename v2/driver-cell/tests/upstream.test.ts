@@ -6,7 +6,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { provisionCell } from "../src/provision.ts";
 import { dirtyReport } from "../src/remove.ts";
@@ -42,7 +42,8 @@ test("upstream.ancestry: work landed upstream but missing from the stale origin 
     assert.equal(refreshed.status, "fetched");
     assert.equal(refreshed.ref?.sha, work);
     const mirror = mirrorDirFor(upstreamRoot, upstream);
-    assert.equal(readFileSync(join(mirror, "objects", "info", "alternates"), "utf8").trim(), join(rig.origin.repo, ".git", "objects"));
+    assert.equal(realpathSync(readFileSync(join(mirror, "objects", "info", "alternates"), "utf8").trim()), realpathSync(join(rig.origin.repo, ".git", "objects")));
+    assert.equal(statSync(upstreamRoot).mode & 0o777, 0o700, "the mirror root is private to the daemon user");
     assert.equal(g(mirror, ["remote"]), "", "the mirror has no remote to push to");
     assert.equal(g(mirror, ["rev-parse", UPSTREAM_REF]), work);
 

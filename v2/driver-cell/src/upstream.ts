@@ -121,7 +121,7 @@ export function refreshUpstreamMirror(
   try {
     const originObjects = originObjectsDir(originRepo);
     if (originObjects == null) throw new Error("origin object directory unresolvable");
-    mkdirSync(upstreamRoot, { recursive: true });
+    mkdirSync(upstreamRoot, { recursive: true, mode: 0o700 });
     ensureMirror(mirrorDir, url, originObjects);
     const args = [
       "-c", `core.hooksPath=${devNull}`,

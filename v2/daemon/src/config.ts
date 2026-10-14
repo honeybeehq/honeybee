@@ -213,13 +213,13 @@ export interface CellRetentionConfig {
   trimAfterHours?: number | null;
   /** Ignored directory names (or `*.ext` file suffixes) treated as rebuildable build output. */
   trimPatterns?: string[];
-  /** Disk-pressure floor: percent of the Cells volume kept free (default 10). null drops this term. */
+  /** Disk-pressure floor: percent of the Cells volume kept free (satellites 10; other nodes null). null drops this term. */
   minFreePercent?: number | null;
-  /** Disk-pressure floor: bytes kept free (default 50 GiB). null drops this term; both null = no pressure trigger. */
+  /** Disk-pressure floor: bytes kept free (satellites 50 GiB; other nodes null). null drops this term; both null = no pressure trigger. */
   minFreeBytes?: number | null;
   /** Under disk pressure, Cells of active bees stopped at least this long are eligible (default 3). null = never. */
   pressureIdleAfterDays?: number | null;
-  /** Fetch each origin's upstream into a Honeybee-owned mirror and count ancestry of its HEAD as landed (default true). */
+  /** Fetch each origin's upstream into a Honeybee-owned mirror and use its HEAD as a landing target (satellites true; other nodes false). */
   fetchUpstream?: boolean;
 }
 
@@ -508,6 +508,7 @@ const HOUR_MS = 60 * 60 * 1000;
 
 export const MIN_FREE_BYTES_DEFAULT = 50 * 1024 ** 3;
 const SATELLITE_ARCHIVED_AFTER_MS = 3 * DAY_MS;
+const SATELLITE_MIN_FREE_PERCENT = 10;
 const VOLUME_SHARE_DEFAULT = 0.5;
 
 export const DEFAULT_CELL_RETENTION: ResolvedCellRetention = {
@@ -521,17 +522,24 @@ export const DEFAULT_CELL_RETENTION: ResolvedCellRetention = {
   maxPerPass: 100,
   trimAfterMs: 24 * HOUR_MS,
   trimPatterns: [...DEFAULT_TRIM_PATTERNS],
-  minFreePercent: 10,
-  minFreeBytes: MIN_FREE_BYTES_DEFAULT,
+  minFreePercent: null,
+  minFreeBytes: null,
   pressureIdleAfterMs: 3 * DAY_MS,
-  fetchUpstream: true,
+  fetchUpstream: false,
   warnings: [],
 };
 
 export function defaultCellRetention(nodeKind: NodeKind = "workstation"): ResolvedCellRetention {
   const base: ResolvedCellRetention = { ...DEFAULT_CELL_RETENTION, trimPatterns: [...DEFAULT_CELL_RETENTION.trimPatterns], warnings: [] };
   if (nodeKind !== "satellite") return base;
-  return { ...base, archivedAfterMs: SATELLITE_ARCHIVED_AFTER_MS, maxBytesVolumeShare: VOLUME_SHARE_DEFAULT };
+  return {
+    ...base,
+    archivedAfterMs: SATELLITE_ARCHIVED_AFTER_MS,
+    maxBytesVolumeShare: VOLUME_SHARE_DEFAULT,
+    minFreePercent: SATELLITE_MIN_FREE_PERCENT,
+    minFreeBytes: MIN_FREE_BYTES_DEFAULT,
+    fetchUpstream: true,
+  };
 }
 
 const isNonNegative = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v >= 0;

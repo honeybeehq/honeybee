@@ -398,10 +398,10 @@ test("config.9: cells.retention (v31) — defaults on, day/hour units, null disa
     assert.equal(defaults.intervalMs, 24 * 3_600_000);
     assert.equal(defaults.maxPerPass, 100);
     assert.equal(defaults.trimAfterMs, 24 * 3_600_000);
-    assert.equal(defaults.minFreePercent, 10);
-    assert.equal(defaults.minFreeBytes, 50 * 1024 ** 3);
+    assert.equal(defaults.minFreePercent, null, "workstations have no pressure floor unless configured");
+    assert.equal(defaults.minFreeBytes, null);
     assert.equal(defaults.pressureIdleAfterMs, 3 * day);
-    assert.equal(defaults.fetchUpstream, true);
+    assert.equal(defaults.fetchUpstream, false, "workstations fetch no upstream mirror unless configured");
     assert.deepEqual(defaults.warnings, []);
     assert.ok(defaults.trimPatterns.includes(".next") && defaults.trimPatterns.includes("*.tsbuildinfo"));
 
@@ -442,10 +442,10 @@ test("config.9: cells.retention (v31) — defaults on, day/hour units, null disa
       [{ retention: { trimPatterns: [".."] } }, (r) => assert.ok(r.trimPatterns.includes(".next"))],
       [{ retention: { trimPatterns: ["*"] } }, (r) => assert.ok(r.trimPatterns.includes(".next"))],
       [{ retention: { trimPatterns: ["build*"] } }, (r) => assert.ok(r.trimPatterns.includes(".next"))],
-      [{ retention: { minFreePercent: 150 } }, (r) => assert.equal(r.minFreePercent, 10)],
-      [{ retention: { minFreeBytes: "50G" } }, (r) => assert.equal(r.minFreeBytes, 50 * 1024 ** 3)],
+      [{ retention: { minFreePercent: 150 } }, (r) => assert.equal(r.minFreePercent, null)],
+      [{ retention: { minFreeBytes: "50G" } }, (r) => assert.equal(r.minFreeBytes, null)],
       [{ retention: { pressureIdleAfterDays: -2 } }, (r) => assert.equal(r.pressureIdleAfterMs, 3 * day)],
-      [{ retention: { fetchUpstream: "no" } }, (r) => assert.equal(r.fetchUpstream, true)],
+      [{ retention: { fetchUpstream: "no" } }, (r) => assert.equal(r.fetchUpstream, false)],
     ];
     for (const [bad, check] of fallbacks) {
       writeFileSync(join(dir, "config.json"), JSON.stringify({ cells: bad }));
@@ -456,7 +456,7 @@ test("config.9: cells.retention (v31) — defaults on, day/hour units, null disa
   });
 });
 
-test("config.9b: satellites default to a 3-day archive floor and half the Cells volume as byte budget; explicit keys win", () => {
+test("config.9b: satellites default to a 3-day archive floor, half the Cells volume as byte budget, the pressure floor and the upstream mirror; workstations only by opt-in", () => {
   withDir((dir) => {
     const day = 86_400_000;
     writeFileSync(join(dir, "config.json"), JSON.stringify({ nodeKind: "satellite" }));
@@ -465,6 +465,17 @@ test("config.9b: satellites default to a 3-day archive floor and half the Cells 
     assert.equal(satellite.maxBytes, null);
     assert.equal(satellite.maxBytesVolumeShare, 0.5);
     assert.equal(satellite.stoppedAfterMs, 30 * day);
+    assert.equal(satellite.minFreePercent, 10);
+    assert.equal(satellite.minFreeBytes, 50 * 1024 ** 3);
+    assert.equal(satellite.fetchUpstream, true);
+    writeFileSync(join(dir, "config.json"), JSON.stringify({ cells: { retention: { minFreeBytes: 1e9, fetchUpstream: true } } }));
+    const optedIn = loadNodeConfig(dir).cellRetention;
+    assert.equal(optedIn.minFreeBytes, 1e9, "a workstation can opt in explicitly");
+    assert.equal(optedIn.fetchUpstream, true);
+    writeFileSync(join(dir, "config.json"), JSON.stringify({ nodeKind: "satellite", cells: { retention: { minFreeBytes: "lots", fetchUpstream: 1 } } }));
+    const satelliteFallback = loadNodeConfig(dir).cellRetention;
+    assert.equal(satelliteFallback.minFreeBytes, 50 * 1024 ** 3, "an invalid floor on a satellite falls back to the satellite default");
+    assert.equal(satelliteFallback.fetchUpstream, true);
     writeFileSync(join(dir, "config.json"), JSON.stringify({ nodeKind: "satellite", cells: { retention: { archivedAfterDays: 10, maxBytes: null } } }));
     const explicit = loadNodeConfig(dir).cellRetention;
     assert.equal(explicit.archivedAfterMs, 10 * day);

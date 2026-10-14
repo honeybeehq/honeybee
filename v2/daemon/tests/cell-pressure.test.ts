@@ -9,7 +9,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -247,4 +247,69 @@ test("cell-pressure.2: a Cell whose work landed upstream, past a stale origin ch
     cleanup();
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("cell-pressure.3: with no retention config a workstation runs no pressure pass and fetches no mirror, while a satellite does both", { timeout: 240_000 }, async () => {
+  const observe = async (nodeKind: "workstation" | "satellite") => {
+    const root = mkdtempSync(join(tmpdir(), `hb-v2-defaults-${nodeKind}-`));
+    const origin = makeOrigin(root);
+    const upstream = join(root, "upstream.git");
+    g(root, ["clone", "--quiet", "--bare", origin.repo, upstream]);
+    g(origin.repo, ["remote", "add", "origin", upstream]);
+    const cellsRoot = join(root, "cells");
+    mkdirSync(cellsRoot, { recursive: true });
+    const { dir, cleanup } = makeDaemonDir({
+      nodeKind,
+      bootHangTimeoutMs: 60_000,
+      cells: { root: cellsRoot },
+      agents: {
+        cellstub: {
+          command: process.execPath,
+          args: [CELL_AGENT_PATH],
+          adapter: "stub",
+          env: {
+            GIT_AUTHOR_NAME: "cell-bee", GIT_AUTHOR_EMAIL: "bee@hive.invalid",
+            GIT_COMMITTER_NAME: "cell-bee", GIT_COMMITTER_EMAIL: "bee@hive.invalid",
+            GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_SYSTEM: "/dev/null",
+          },
+        },
+      },
+    });
+    let daemon: DaemonHandle | null = null;
+    try {
+      daemon = await startDaemon(dir, { env: { HIVE_TEST_CELL_VOLUME_BYTES: String(1024 ** 3), HIVE_TEST_CELL_DISK_CHECK_MS: "200" } });
+      const client = await daemon.client();
+      const spawned = await client.request<SpawnResult>("spawn", { name: `${nodeKind}-bee`, agent: "cellstub", substrate: "cell", cell: { originRepo: origin.repo } });
+      await waitFor(async () => (await client.request<ViewResult>("view", { beeId: spawned.beeId })).cell != null, "cell registered", 60_000);
+      await client.request<CellGcResult>("cell.gc", {}, 120_000);
+      await new Promise((r) => setTimeout(r, 1_500));
+      const disk = (await client.request<HealthResult>("health")).cellDisk!;
+      const log = readFileSync(join(dir, "hived.log"), "utf8");
+      return {
+        floorBytes: disk.floorBytes,
+        lastPassKind: disk.lastPass?.kind ?? null,
+        pressureLogged: /cell\.pressure\.below_floor/.test(log),
+        mirrorRoot: existsSync(join(dir, "upstream")),
+        fetchLogged: /cell\.retention\.upstream_(fetched|failed)/.test(log),
+        mirrorRootMode: existsSync(join(dir, "upstream")) ? statSync(join(dir, "upstream")).mode & 0o777 : null,
+      };
+    } finally {
+      await daemon?.stop();
+      cleanup();
+      rmSync(root, { recursive: true, force: true });
+    }
+  };
+  const workstation = await observe("workstation");
+  assert.equal(workstation.floorBytes, null, "no floor on a workstation by default");
+  assert.equal(workstation.lastPassKind, null);
+  assert.equal(workstation.pressureLogged, false, "no pressure pass on a workstation by default");
+  assert.equal(workstation.mirrorRoot, false, "no mirror on a workstation by default");
+  assert.equal(workstation.fetchLogged, false);
+  const satellite = await observe("satellite");
+  assert.equal(satellite.floorBytes, 50 * 1024 ** 3, "a 1 GiB satellite volume gets the 50 GiB floor");
+  assert.equal(satellite.pressureLogged, true, "the satellite ran a pressure pass");
+  assert.equal(satellite.lastPassKind, "pressure");
+  assert.equal(satellite.mirrorRoot, true, "the satellite fetched its upstream mirror");
+  assert.equal(satellite.fetchLogged, true);
+  assert.equal(satellite.mirrorRootMode, 0o700, "the mirror root is private to the daemon user");
 });

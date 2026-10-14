@@ -747,7 +747,7 @@ export class HiveDaemon {
   // -------------------------------------------------------------------------
 
   async start(): Promise<void> {
-    mkdirSync(this.cfg.dataDir, { recursive: true });
+    mkdirSync(this.cfg.dataDir, { recursive: true, mode: 0o700 });
     mkdirSync(this.cfg.sessionLogDir, { recursive: true });
     mkdirSync(dirname(this.cfg.logPath), { recursive: true });
     if (this.beeTmp) applyDaemonTmpPolicy(this.beeTmp, process.env, (path, was) => this.log(`tmp.replaced path=${path} was=${was}`));
