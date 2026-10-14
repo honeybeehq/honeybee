@@ -7,6 +7,7 @@ import { test } from "node:test";
 import type { ResolvedNamingConfig } from "../src/config.ts";
 import type { RecordNamingUsageInput } from "../../core/src/index.ts";
 import { openAiNamingRates, TitleGeneratorService } from "../src/namingService.ts";
+import { HemSecretResolver } from "../src/hemSecret.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FAKE_CODEX = join(HERE, "fixtures", "fake-naming-codex.mjs");
@@ -291,5 +292,49 @@ test("naming service restarts the warm app-server after an unexpected exit", asy
     if (previousExit === undefined) delete process.env.FAKE_NAMING_CODEX_EXIT_AFTER_TURN;
     else process.env.FAKE_NAMING_CODEX_EXIT_AFTER_TURN = previousExit;
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("openai-api naming resolves apiKeyRef through hem lazily, caches it, and never leaks it in errors", async () => {
+  const hemCalls: string[][] = [];
+  let clock = 0;
+  let hemFails = false;
+  const hemSecrets = new HemSecretResolver({
+    locateHem: () => "/fake/hem",
+    now: () => clock,
+    cacheTtlMs: 1_000,
+    run: async (command, args) => {
+      hemCalls.push([command, ...args]);
+      if (hemFails) throw new Error("secret not found: global/hive-naming-openai");
+      return "sk-from-hem\n";
+    },
+  });
+  const authorizations: string[] = [];
+  const service = new TitleGeneratorService({
+    hemSecrets,
+    fetchImpl: async (_input, init) => {
+      authorizations.push(String((init?.headers as Record<string, string>).authorization));
+      return new Response(JSON.stringify({
+        output: [{ type: "message", content: [{ type: "output_text", text: "Hem Keyed Title" }] }],
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    },
+  });
+  const refConfig = config({ backend: "openai-api", apiKeyRef: "global/hive-naming-openai" });
+  try {
+    assert.equal(await service.generate({ beeId: "bee-hem", userMessages: ["Name it"] }, refConfig), "Hem Keyed Title");
+    assert.equal(await service.generate({ beeId: "bee-hem", userMessages: ["Name it"] }, refConfig), "Hem Keyed Title");
+    assert.deepEqual(hemCalls, [["/fake/hem", "get", "global/hive-naming-openai", "api_key"]]);
+    assert.deepEqual(authorizations, ["Bearer sk-from-hem", "Bearer sk-from-hem"]);
+    clock = 2_000;
+    hemFails = true;
+    await assert.rejects(
+      service.generate({ beeId: "bee-hem", userMessages: ["Name it"] }, refConfig),
+      (error: Error) =>
+        /requires a configured API key: hem ref "global\/hive-naming-openai" could not be read/.test(error.message) &&
+        !error.message.includes("sk-from-hem"),
+    );
+    assert.equal(authorizations.length, 2);
+  } finally {
+    service.close();
   }
 });

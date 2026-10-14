@@ -4355,6 +4355,12 @@ export class HiveDaemon {
       }
       patch.apiKey = raw.apiKey;
     }
+    if (raw.apiKeyRef !== undefined) {
+      if (typeof raw.apiKeyRef !== "string") {
+        throw new RpcError("invalid_request", "config.patch: naming.apiKeyRef must be a string");
+      }
+      patch.apiKeyRef = raw.apiKeyRef;
+    }
     if (raw.command !== undefined) {
       if (typeof raw.command !== "string") {
         throw new RpcError("invalid_request", "config.patch: naming.command must be a string");

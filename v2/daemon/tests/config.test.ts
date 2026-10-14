@@ -279,7 +279,7 @@ test("config.naming: OpenAI key is required for API mode, persisted privately, a
     const path = join(dir, "config.json");
     assert.throws(
       () => patchNamingConfig(path, dir, { backend: "openai-api" }),
-      /apiKey is required/,
+      /apiKey or naming\.apiKeyRef is required/,
     );
     const configured = patchNamingConfig(path, dir, {
       backend: "openai-api",
@@ -295,6 +295,28 @@ test("config.naming: OpenAI key is required for API mode, persisted privately, a
     });
     assert.equal(cleared.apiKey, undefined);
     assert.equal(publicNamingConfig(cleared).apiKeyConfigured, false);
+  });
+});
+
+test("config.naming: a hem apiKeyRef replaces the plaintext key and is reported publicly", () => {
+  withDir((dir) => {
+    const path = join(dir, "config.json");
+    patchNamingConfig(path, dir, { backend: "openai-api", apiKey: "sk-test-write-only" });
+    const ref = patchNamingConfig(path, dir, { apiKeyRef: "global/hive-naming-openai api_key" });
+    assert.equal(ref.apiKey, undefined);
+    assert.equal(ref.apiKeyRef, "global/hive-naming-openai api_key");
+    assert.deepEqual(
+      [publicNamingConfig(ref).apiKeyConfigured, publicNamingConfig(ref).apiKeyRef],
+      [true, "global/hive-naming-openai api_key"],
+    );
+    const onDisk = JSON.parse(readFileSync(path, "utf8")) as { naming: Record<string, unknown> };
+    assert.deepEqual(onDisk.naming, { backend: "openai-api", apiKeyRef: "global/hive-naming-openai api_key" });
+    const back = patchNamingConfig(path, dir, { apiKey: "sk-test-write-only" });
+    assert.equal(back.apiKeyRef, undefined);
+    assert.throws(() => patchNamingConfig(path, dir, { apiKey: "sk-x", apiKeyRef: "global/x" }), /mutually exclusive/);
+    assert.throws(() => patchNamingConfig(path, dir, { apiKey: "", apiKeyRef: "global/x --token y" }), /apiKeyRef must be a hem secret ref/);
+    assert.throws(() => patchNamingConfig(path, dir, { apiKey: "", apiKeyRef: "-global/x" }), /apiKeyRef must be a hem secret ref/);
+    assert.throws(() => patchNamingConfig(path, dir, { apiKey: "" }), /apiKey or naming\.apiKeyRef is required/);
   });
 });
 

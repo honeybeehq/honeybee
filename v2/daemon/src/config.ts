@@ -11,6 +11,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { DEFAULT_TRIM_PATTERNS } from "../../driver-cell/src/retention.ts";
 import { contextPolicyConfigOf, ContextPolicyError, type ContextPolicyConfig } from "./contextPolicy.ts";
+import { parseHemSecretRef } from "./hemSecret.ts";
 
 /** How to spawn one agent CLI (keyed by the bee's `agent` field). */
 export interface AgentSpecConfig {
@@ -65,6 +66,8 @@ export interface NamingConfig {
   effort?: NamingEffort;
   /** OpenAI Responses API credential. Write-only over RPC; never returned publicly. */
   apiKey?: string;
+  /** Hem secret ref for the OpenAI key, `<ref> [field]` as in `hem get`; field defaults to api_key. */
+  apiKeyRef?: string;
   /** Custom generator command (prompt on stdin, title on stdout). Overrides tool/model. */
   command?: string;
 }
@@ -76,6 +79,7 @@ export interface ResolvedNamingConfig {
   model: string;
   effort: NamingEffort;
   apiKey?: string;
+  apiKeyRef?: string;
   command?: string;
   /** Dedicated cwd so title-gen sessions never pollute a bee's transcript folder. */
   generatorCwd: string;
@@ -639,13 +643,19 @@ export function namingOf(raw: Record<string, unknown>, dataDir: string): Resolve
   if (n.apiKey !== undefined && (typeof n.apiKey !== "string" || n.apiKey.length === 0)) {
     throw new ConfigError("config: naming.apiKey must be a non-empty string when given");
   }
+  if (n.apiKeyRef !== undefined && (typeof n.apiKeyRef !== "string" || !parseHemSecretRef(n.apiKeyRef))) {
+    throw new ConfigError('config: naming.apiKeyRef must be a hem secret ref such as "global/<name>" or "global/<name> <field>"');
+  }
+  if (n.apiKey !== undefined && n.apiKeyRef !== undefined) {
+    throw new ConfigError("config: naming.apiKey and naming.apiKeyRef are mutually exclusive");
+  }
   if (n.command !== undefined && (typeof n.command !== "string" || n.command.length === 0)) {
     throw new ConfigError("config: naming.command must be a non-empty string when given");
   }
   const backend = (n.backend as NamingBackend | undefined) ??
     (n.tool === "claude" ? "claude-cli" : NAMING_DEFAULTS.backend);
-  if (backend === "openai-api" && typeof n.apiKey !== "string") {
-    throw new ConfigError("config: naming.apiKey is required when naming.backend is openai-api");
+  if (backend === "openai-api" && typeof n.apiKey !== "string" && typeof n.apiKeyRef !== "string") {
+    throw new ConfigError("config: naming.apiKey or naming.apiKeyRef is required when naming.backend is openai-api");
   }
   const tool: NamingTool = backend === "claude-cli" ? "claude" : "codex";
   return {
@@ -655,6 +665,7 @@ export function namingOf(raw: Record<string, unknown>, dataDir: string): Resolve
     model: (n.model as string | undefined) ?? NAMING_DEFAULTS.model,
     effort: (n.effort as NamingEffort | undefined) ?? NAMING_DEFAULTS.effort,
     ...(typeof n.apiKey === "string" ? { apiKey: n.apiKey } : {}),
+    ...(typeof n.apiKeyRef === "string" ? { apiKeyRef: n.apiKeyRef.trim() } : {}),
     ...(typeof n.command === "string" ? { command: n.command } : {}),
     generatorCwd: join(dataDir, "naming"),
   };
@@ -667,6 +678,7 @@ export function publicNamingConfig(naming: ResolvedNamingConfig): {
   model: string;
   effort: NamingEffort;
   apiKeyConfigured: boolean;
+  apiKeyRef?: string;
   command?: string;
 } {
   return {
@@ -675,7 +687,8 @@ export function publicNamingConfig(naming: ResolvedNamingConfig): {
     tool: naming.tool,
     model: naming.model,
     effort: naming.effort,
-    apiKeyConfigured: Boolean(naming.apiKey),
+    apiKeyConfigured: Boolean(naming.apiKey || naming.apiKeyRef),
+    ...(naming.apiKeyRef ? { apiKeyRef: naming.apiKeyRef } : {}),
     ...(naming.command ? { command: naming.command } : {}),
   };
 }
@@ -685,6 +698,9 @@ export function publicNamingConfig(naming: ResolvedNamingConfig): {
  * Unknown top-level keys in the existing file are preserved.
  */
 export function patchNamingConfig(configPath: string, dataDir: string, patch: NamingConfig): ResolvedNamingConfig {
+  if (patch.apiKey && patch.apiKeyRef) {
+    throw new ConfigError("config: naming.apiKey and naming.apiKeyRef are mutually exclusive");
+  }
   let raw: Record<string, unknown> = {};
   if (existsSync(configPath)) {
     let parsed: unknown;
@@ -709,7 +725,17 @@ export function patchNamingConfig(configPath: string, dataDir: string, patch: Na
   if (patch.effort !== undefined) next.effort = patch.effort;
   if (patch.apiKey !== undefined) {
     if (patch.apiKey.length === 0) delete next.apiKey;
-    else next.apiKey = patch.apiKey;
+    else {
+      next.apiKey = patch.apiKey;
+      delete next.apiKeyRef;
+    }
+  }
+  if (patch.apiKeyRef !== undefined) {
+    if (patch.apiKeyRef.length === 0) delete next.apiKeyRef;
+    else {
+      next.apiKeyRef = patch.apiKeyRef;
+      delete next.apiKey;
+    }
   }
   if (patch.command !== undefined) {
     if (patch.command.length === 0) delete next.command;

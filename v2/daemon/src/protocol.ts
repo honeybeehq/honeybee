@@ -1149,6 +1149,7 @@ export interface NamingConfigView {
   effort: string;
   /** The API key itself is write-only and never crosses this read boundary. */
   apiKeyConfigured: boolean;
+  apiKeyRef?: string;
   command?: string;
 }
 

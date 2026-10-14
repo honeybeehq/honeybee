@@ -9,6 +9,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import type { RecordNamingUsageInput } from "../../core/src/index.ts";
 import type { ResolvedNamingConfig } from "./config.ts";
+import { HemSecretResolver } from "./hemSecret.ts";
 import {
   buildTitleContentPrompt,
   generateTitle,
@@ -31,6 +32,7 @@ export interface TitleGeneratorServiceOptions {
   log?: (op: string) => void;
   now?: () => number;
   recordUsage?: (usage: RecordNamingUsageInput) => void;
+  hemSecrets?: HemSecretResolver;
 }
 
 interface OpenAiUsage {
@@ -408,6 +410,7 @@ export class TitleGeneratorService {
   private readonly log: (op: string) => void;
   private readonly now: () => number;
   private readonly recordUsage: ((usage: RecordNamingUsageInput) => void) | null;
+  private readonly hemSecrets: HemSecretResolver;
 
   constructor(options: TitleGeneratorServiceOptions = {}) {
     this.timeoutMs = options.timeoutMs ?? DEFAULT_GENERATOR_TIMEOUT_MS;
@@ -415,6 +418,7 @@ export class TitleGeneratorService {
     this.log = options.log ?? (() => undefined);
     this.now = options.now ?? Date.now;
     this.recordUsage = options.recordUsage ?? null;
+    this.hemSecrets = options.hemSecrets ?? new HemSecretResolver();
     this.codex = new CodexNamingAppServer(options);
   }
 
@@ -426,6 +430,7 @@ export class TitleGeneratorService {
   }
 
   reconfigure(config: ResolvedNamingConfig): void {
+    this.hemSecrets.forget();
     if (config.auto && !config.command && config.backend === "codex-app-server") this.warm(config);
     else this.codex.close();
   }
@@ -443,6 +448,7 @@ export class TitleGeneratorService {
         const prompt = buildTitleContentPrompt(context);
         if (config.backend === "openai-api") {
           api = await this.runOpenAi(prompt, config);
+          if (api.status === 401 && config.apiKeyRef) this.hemSecrets.forget(config.apiKeyRef);
           if (!api.ok) {
             throw new Error(
               `OpenAI API naming failed (${api.status}): ${errorMessage(api.body.error, api.statusText)}`,
@@ -511,11 +517,16 @@ export class TitleGeneratorService {
   }
 
   private async runOpenAi(prompt: string, config: ResolvedNamingConfig): Promise<OpenAiRunResult> {
-    if (!config.apiKey) throw new Error("OpenAI API naming requires a configured API key");
+    const apiKey = config.apiKeyRef
+      ? await this.hemSecrets.resolve(config.apiKeyRef).catch((error: unknown) => {
+        throw new Error(`OpenAI API naming requires a configured API key: ${error instanceof Error ? error.message : String(error)}`);
+      })
+      : config.apiKey;
+    if (!apiKey) throw new Error("OpenAI API naming requires a configured API key");
     const response = await this.fetchImpl("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
-        authorization: `Bearer ${config.apiKey}`,
+        authorization: `Bearer ${apiKey}`,
         "content-type": "application/json",
       },
       body: JSON.stringify({

@@ -69,6 +69,18 @@ test("config.get returns naming defaults; config.patch merges onto disk", async 
       naming: { apiKey: string };
     };
     assert.equal(apiOnDisk.naming.apiKey, "sk-test-write-only");
+
+    const ref = (await client.request("config.patch", {
+      naming: { apiKeyRef: "global/hive-naming-openai" },
+      idempotencyKey: "cfg-ref",
+    })) as ConfigPatchResult;
+    assert.equal(ref.naming.apiKeyConfigured, true);
+    assert.equal(ref.naming.apiKeyRef, "global/hive-naming-openai");
+    const refOnDisk = JSON.parse(readFileSync(join(dir, "config.json"), "utf8")) as {
+      naming: Record<string, unknown>;
+    };
+    assert.equal(refOnDisk.naming.apiKey, undefined);
+    assert.equal(refOnDisk.naming.apiKeyRef, "global/hive-naming-openai");
     client.close();
   } finally {
     await daemon?.stop().catch(() => {});
