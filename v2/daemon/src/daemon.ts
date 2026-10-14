@@ -206,6 +206,8 @@ import {
   argValue,
   claudeContextLaunch,
   claudeHomeModel,
+  claudeLaunchFacts,
+  NO_LAUNCH_FACTS,
   contextPolicyFacts,
   contextPolicyOf,
   ContextPolicyError,
@@ -4390,7 +4392,7 @@ export class HiveDaemon {
   }
 
   private claudeContextLaunchFor(bee: BeeRow, args: readonly string[], env: Record<string, string>): ClaudeContextLaunch {
-    return claudeContextLaunch(effectiveContextPolicy(this.contextPolicy, workspaceOfTags(bee.tags), roleOfTags(bee.tags)), args, env, bee.env);
+    return claudeContextLaunch(effectiveContextPolicy(this.contextPolicy, workspaceOfTags(bee.tags), roleOfTags(bee.tags), claudeLaunchFacts(env)), args, env, bee.env);
   }
 
   private applyContextEnv(env: Record<string, string>, context: ClaudeContextLaunch): void {
@@ -4411,44 +4413,47 @@ export class HiveDaemon {
   }
 
   private contextPolicyResult(workspace: string | null, role: ContextRole | null, bee?: BeeRow): ContextPolicyResult {
-    const effective = effectiveContextPolicy(this.contextPolicy, workspace, role);
+    const harness = bee ? (this.cfg.agents[bee.agent]?.adapter ?? bee.agent) : null;
+    const spec = bee ? this.cfg.agents[bee.agent] : undefined;
+    let launchEnv: Record<string, string> | null = null;
+    if (bee && harness === "claude" && spec) {
+      const account = bee.account ? this.mustStore().getAccount(bee.account) : null;
+      launchEnv = {
+        ...(process.env as Record<string, string>),
+        ...(spec.env ?? {}),
+        ...(bee.env ?? {}),
+        ...(account && this.accounts ? this.accounts.homeEnvOf(account) : {}),
+      };
+    }
+    const launch = launchEnv ? claudeLaunchFacts(launchEnv) : NO_LAUNCH_FACTS;
+    const effective = effectiveContextPolicy(this.contextPolicy, workspace, role, launch);
     const storedRole = role === null ? null : storedContextPolicy(this.contextPolicy, { role });
     const result: ContextPolicyResult = {
       workspace,
       stored: storedContextPolicy(this.contextPolicy, workspace !== null ? { workspace } : role !== null ? { role } : null),
       default: storedContextPolicy(this.contextPolicy, null),
       role,
-      rolePolicy: role === null ? null : roleContextPolicy(this.contextPolicy, role),
+      rolePolicy: role === null ? null : roleContextPolicy(this.contextPolicy, role, launch),
       rolePolicyBuiltin: role !== null && storedRole === null,
       effective,
       facts: contextPolicyFacts(effective),
       configPath: this.cfg.configPath,
     };
-    if (bee) {
-      const harness = this.cfg.agents[bee.agent]?.adapter ?? bee.agent;
-      const applies = harness === "claude";
+    if (bee && harness !== null) {
       let model: string | null = null;
-      const spec = this.cfg.agents[bee.agent];
-      if (applies && spec) {
-        const account = bee.account ? this.mustStore().getAccount(bee.account) : null;
-        const env: Record<string, string> = {
-          ...(process.env as Record<string, string>),
-          ...(spec.env ?? {}),
-          ...(bee.env ?? {}),
-          ...(account && this.accounts ? this.accounts.homeEnvOf(account) : {}),
-        };
+      if (launchEnv && spec) {
         const args = bee.substrate === "tmux" ? (bee.args ?? []) : composeSpawn(spec, harness, bee).args;
-        const context = this.claudeContextLaunchFor(bee, args, env);
-        model = argValue(composeArgv(grammarFor("claude"), [args, context.modelArgs]), "--model") ?? claudeHomeModel(env) ?? null;
+        const context = this.claudeContextLaunchFor(bee, args, launchEnv);
+        model = argValue(composeArgv(grammarFor("claude"), [args, context.modelArgs]), "--model") ?? claudeHomeModel(launchEnv) ?? null;
       }
-      result.bee = { beeId: bee.id, harness, applies, model };
+      result.bee = { beeId: bee.id, harness, applies: harness === "claude", model };
     }
     return result;
   }
 
   private rpcContextPolicyGet(params: Record<string, unknown>): ContextPolicyResult {
     if (params.beeId !== undefined) {
-      if (params.workspace !== undefined || params.role !== undefined) throw new RpcError("invalid_request", "contextPolicy.get: give beeId alone, or workspace and/or role");
+      if ((params.workspace !== undefined && params.workspace !== null) || (params.role !== undefined && params.role !== null)) throw new RpcError("invalid_request", "contextPolicy.get: give beeId alone, or workspace and/or role");
       const bee = this.mustStore().getBee(this.requireBee(params))!;
       return this.contextPolicyResult(workspaceOfTags(bee.tags), roleOfTags(bee.tags), bee);
     }

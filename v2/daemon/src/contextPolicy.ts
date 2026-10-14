@@ -23,9 +23,19 @@ export const ROLE_TAG_PREFIX = "apiary:role=";
 export const CONTEXT_ROLES = ["champion"] as const;
 export type ContextRole = (typeof CONTEXT_ROLES)[number];
 export const CHAMPION_AUTO_COMPACT_THRESHOLD = 650_000;
-export const BUILTIN_ROLE_CONTEXT_POLICY: Record<ContextRole, ContextPolicy> = {
-  champion: { autoCompactWindow: CHAMPION_AUTO_COMPACT_THRESHOLD + CLAUDE_AUTO_COMPACT_OUTPUT_RESERVE + CLAUDE_AUTO_COMPACT_SUMMARY_BUFFER },
-};
+export const BUILTIN_ROLE_THRESHOLD: Record<ContextRole, number> = { champion: CHAMPION_AUTO_COMPACT_THRESHOLD };
+
+export interface ClaudeLaunchFacts {
+  homeAutoCompactWindow: number | null;
+  maxOutputTokens: number | null;
+}
+
+export const NO_LAUNCH_FACTS: ClaudeLaunchFacts = { homeAutoCompactWindow: null, maxOutputTokens: null };
+
+export function builtinRoleContextPolicy(role: ContextRole, launch: ClaudeLaunchFacts = NO_LAUNCH_FACTS): ContextPolicy {
+  const reserve = Math.min(launch.maxOutputTokens ?? CLAUDE_AUTO_COMPACT_OUTPUT_RESERVE, CLAUDE_AUTO_COMPACT_OUTPUT_RESERVE);
+  return { autoCompactWindow: BUILTIN_ROLE_THRESHOLD[role] + CLAUDE_AUTO_COMPACT_SUMMARY_BUFFER + reserve };
+}
 
 export type ContextPolicyScope = { workspace: string } | { role: ContextRole } | null;
 
@@ -145,14 +155,17 @@ export function storedContextPolicy(config: ContextPolicyConfig, scope: ContextP
   return isEmpty(policy) ? null : { ...policy };
 }
 
-export function roleContextPolicy(config: ContextPolicyConfig, role: ContextRole): ContextPolicy {
-  return storedContextPolicy(config, { role }) ?? { ...BUILTIN_ROLE_CONTEXT_POLICY[role] };
+export function roleContextPolicy(config: ContextPolicyConfig, role: ContextRole, launch: ClaudeLaunchFacts = NO_LAUNCH_FACTS): ContextPolicy {
+  const stored = storedContextPolicy(config, { role });
+  if (stored) return stored;
+  const lower = [config.default?.autoCompactWindow, launch.homeAutoCompactWindow ?? undefined].filter((n): n is number => typeof n === "number");
+  return { autoCompactWindow: Math.min(builtinRoleContextPolicy(role, launch).autoCompactWindow!, ...lower) };
 }
 
-export function effectiveContextPolicy(config: ContextPolicyConfig, workspace: string | null, role: ContextRole | null = null): ContextPolicy {
+export function effectiveContextPolicy(config: ContextPolicyConfig, workspace: string | null, role: ContextRole | null = null, launch: ClaudeLaunchFacts = NO_LAUNCH_FACTS): ContextPolicy {
   return {
     ...(config.default ?? {}),
-    ...(role === null ? {} : roleContextPolicy(config, role)),
+    ...(role === null ? {} : roleContextPolicy(config, role, launch)),
     ...(workspace === null ? {} : (workspacePolicy(config, workspace) ?? {})),
   };
 }
@@ -242,18 +255,28 @@ export function argValue(args: readonly string[], flag: string): string | undefi
   return value;
 }
 
-export function claudeHomeModel(env: Record<string, string | undefined>): string | undefined {
+function claudeHomeSettings(env: Record<string, string | undefined>): Record<string, unknown> {
   const home = env.CLAUDE_CONFIG_DIR && env.CLAUDE_CONFIG_DIR.length > 0 ? env.CLAUDE_CONFIG_DIR : join(env.HOME ?? homedir(), ".claude");
   try {
     const parsed = JSON.parse(readFileSync(join(home, "settings.json"), "utf8")) as unknown;
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      const model = (parsed as Record<string, unknown>).model;
-      if (typeof model === "string" && model.trim().length > 0) return model.trim();
-    }
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
   } catch {
-    return undefined;
+    return {};
   }
-  return undefined;
+}
+
+export function claudeHomeModel(env: Record<string, string | undefined>): string | undefined {
+  const model = claudeHomeSettings(env).model;
+  return typeof model === "string" && model.trim().length > 0 ? model.trim() : undefined;
+}
+
+export function claudeLaunchFacts(env: Record<string, string | undefined>): ClaudeLaunchFacts {
+  const window = claudeHomeSettings(env).autoCompactWindow;
+  const maxOutput = Number(env.CLAUDE_CODE_MAX_OUTPUT_TOKENS);
+  return {
+    homeAutoCompactWindow: typeof window === "number" && Number.isFinite(window) && window > 0 ? window : null,
+    maxOutputTokens: Number.isInteger(maxOutput) && maxOutput > 0 ? maxOutput : null,
+  };
 }
 
 export interface ClaudeContextLaunch {
