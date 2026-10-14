@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { scaledMs } from "./timeScale.js";
 import { readDaemonState } from "../src/daemon/index.js";
 import { prepareBootCursors } from "../src/daemon/reAdoption.js";
 import { runDaemon, type TickResult } from "../src/daemon/run.js";
@@ -82,7 +83,7 @@ test("runDaemon: a budget-abandoned tick never overlaps the next — the loop sk
           // Arm the release only once the first tick actually starts. Doing
           // this before runDaemon boot made the gate expire during a slow,
           // contended test startup and stopped exercising abandonment.
-          setTimeout(release, 150);
+          setTimeout(release, scaledMs(150));
           await gate; // wedges well past the budget (the production failure shape), then settles
           return lateResult;
         }
@@ -93,7 +94,7 @@ test("runDaemon: a budget-abandoned tick never overlaps the next — the loop sk
     };
 
     await runDaemon({
-      config: { tickMs: 20, tickBudgetMs: 50, watchdogMs: 60_000, maxConsecutiveFailures: 1_000, maxTicks: 2 },
+      config: { tickMs: scaledMs(20), tickBudgetMs: scaledMs(50), watchdogMs: 60_000, maxConsecutiveFailures: 1_000, maxTicks: 2 },
       tickImpl,
     });
 
@@ -102,7 +103,7 @@ test("runDaemon: a budget-abandoned tick never overlaps the next — the loop sk
     assert.equal(maxActive, 1, "no two ticks ever ran concurrently");
     assert.equal(state!.tickCount, 2, "healthy ticks after the abandoned one still count");
     assert.ok(
-      state!.recentErrors.some((e) => /tick timed out after 50ms/.test(e.msg)),
+      state!.recentErrors.some((e) => e.msg.includes(`tick timed out after ${scaledMs(50)}ms`)),
       `recentErrors records the abandoned tick (got: ${JSON.stringify(state!.recentErrors)})`,
     );
     assert.ok(
