@@ -86,7 +86,8 @@ test("auth death: fixed exit deadline expires durably; late evidence or installa
   const r = rig();
   try {
     r.die(); r.advance(AUTH_DEATH_WINDOW_MS); r.fail(); r.fresh();
-    assert.equal(r.store.listAuthInterruptions({ beeId: r.bee.id })[0]!.settleReason, "auth_recovery_expired");
+    assert.equal(r.store.liveAuthInterruption(r.bee.id)?.deathRecovery, undefined);
+    assert.equal(r.store.liveAuthInterruption(r.bee.id)?.state, "open");
     assert.equal(r.store.listCommands().filter(c => c.args.authDeathRecoveryId !== undefined).length, 0);
     r.store.close(); r.open(); r.fresh(3);
     assert.equal(r.store.listCommands().filter(c => c.args.authDeathRecoveryId !== undefined).length, 0);
@@ -243,7 +244,8 @@ test("auth death: automatic quota and lease pauses hold rather than cancel, incl
       assert.ok(r.store.getAuthInterruption(id)?.deathRecovery?.claimedAt !== null);
       assert.equal(r.store.listCommands().filter(c => c.args.authDeathRecoveryId === id).length, 1);
       r.store.pauseAccount(r.account.id, { by, owner: "test-manager" }); r.advance(AUTH_DEATH_WINDOW_MS); r.resume.reconcile();
-      assert.equal(r.store.getAuthInterruption(id)?.settleReason, "auth_recovery_expired");
+      assert.equal(r.store.getAuthInterruption(id)?.deathRecovery, undefined);
+      assert.ok(["open", "restored"].includes(r.store.getAuthInterruption(id)!.state));
       assert.equal(r.store.listCommands({ status: "queued" }).filter(c => c.args.authDeathRecoveryId === id).length, 0);
     } finally { r.close(); }
   }
@@ -323,5 +325,113 @@ test("auth death: automatic recovery preserves boot-failure count/backoff and ca
     r.fresh(5); r.advance(60_000); for (let i = 0; i < 6; i++) core.step();
     assert.equal(driver.starts.length, starts, "no fifth boot without operator action");
     assert.deepEqual(replayAudit(r.store.auditRows()), r.store.dumpState());
+  } finally { r.close(); }
+});
+
+
+test("auth death compatibility: live args, env and session changes retain ordinary late-evidence continuation", () => {
+  for (const mutation of ["args", "env", "session"] as const) {
+    const r = rig();
+    try {
+      if (mutation === "args") r.store.updateBeeArgs(r.bee.id, ["--model", "fake"]);
+      if (mutation === "env") r.store.setBeeEnv(r.bee.id, { TEST_SETTING: "changed" });
+      if (mutation === "session") r.store.rekeyBeeSession(r.bee.id);
+      r.fail(); r.die();
+      assert.ok(r.store.liveAuthInterruption(r.bee.id), mutation);
+      r.resume.credentialValidated(r.store.getAccount(r.account.id)!, "limits_probe");
+      const row = r.store.liveAuthInterruption(r.bee.id)!;
+      assert.equal(row.state, "resumed", mutation);
+      assert.equal(row.deathRecovery, undefined);
+      assert.equal(row.continuationMessageIds.length, 1);
+      assert.deepEqual(replayAudit(r.store.auditRows()), r.store.dumpState());
+    } finally { r.close(); }
+  }
+});
+
+test("auth death compatibility: verified same material releases immediately; repeat failure remains revision-blocked", () => {
+  for (const kind of ["central", "lease"] as const) {
+    const r = rig(kind);
+    try {
+      r.store.setFlag(r.bee.id, "auth_needed", "test"); r.fail(); r.die(); r.resume.reconcile();
+      assert.equal(r.resume.waitingForMaterial(r.bee.id), true);
+      r.resume.credentialValidated(r.store.getAccount(r.account.id)!, "limits_probe");
+      const row = r.store.liveAuthInterruption(r.bee.id)!;
+      assert.equal(row.state, "resumed"); assert.equal(row.deathRecovery, undefined);
+      assert.equal(r.resume.waitingForMaterial(r.bee.id), false);
+      assert.equal(r.store.activeFlags(r.bee.id).some(flag => flag.flag === "auth_needed"), false);
+      assert.equal(row.continuationMessageIds.length, 1);
+      r.advance(AUTH_DEATH_WINDOW_MS); r.resume.reconcile();
+      assert.equal(r.store.listMessages(r.bee.id).length, 1);
+      r.fail(); r.resume.credentialValidated(r.store.getAccount(r.account.id)!, "limits_probe");
+      assert.equal(r.store.liveAuthInterruption(r.bee.id)?.state, "open");
+      assert.equal(r.store.listMessages(r.bee.id).length, 1, "baseline blockedRevision still prevents a same-token loop");
+    } finally { r.close(); }
+  }
+});
+
+test("auth death compatibility: a healthy account swap preserves the held continuation", () => {
+  const r = rig();
+  try {
+    r.fail(); r.die(); r.resume.reconcile();
+    const target = r.store.createAccount({ id: "claude-other-example.com", harness: "claude", label: "other", homePath: join(r.dir, "other"), status: "ok" });
+    r.store.setBeeAccount(r.bee.id, target.id); r.store.setBeeEnv(r.bee.id, { CLAUDE_CONFIG_DIR: target.homePath });
+    r.resume.beeSwapped(r.bee.id, target); r.resume.reconcile();
+    const row = r.store.liveAuthInterruption(r.bee.id)!;
+    assert.equal(row.account, target.id); assert.equal(row.state, "resumed");
+    assert.equal(row.deathRecovery, undefined); assert.equal(row.continuationMessageIds.length, 1);
+    assert.deepEqual(replayAudit(r.store.auditRows()), r.store.dumpState());
+  } finally { r.close(); }
+});
+
+
+test("auth death compatibility: a remembered validation survives the deadline and provenance changes preserve an already owed turn", () => {
+  for (const action of ["deadline", "args", "env"] as const) {
+    const r = rig();
+    try {
+      r.fail(); r.die(); r.resume.reconcile(); r.unavailable();
+      r.resume.credentialValidated(r.store.getAccount(r.account.id)!, "limits_probe");
+      assert.equal(r.store.liveAuthInterruption(r.bee.id)?.state, "restored");
+      assert.equal(r.resume.waitingForMaterial(r.bee.id), true);
+      if (action === "deadline") r.advance(AUTH_DEATH_WINDOW_MS);
+      if (action === "args") r.store.updateBeeArgs(r.bee.id, ["--model", "fake"]);
+      if (action === "env") r.store.setBeeEnv(r.bee.id, { TEST_SETTING: "changed" });
+      r.resume.reconcile();
+      const row = r.store.liveAuthInterruption(r.bee.id)!;
+      assert.equal(row.deathRecovery, undefined); assert.equal(row.state, "resumed");
+      assert.equal(row.continuationMessageIds.length, 1);
+      r.resume.reconcile(); assert.equal(r.store.listMessages(r.bee.id).length, 1);
+      assert.deepEqual(replayAudit(r.store.auditRows()), r.store.dumpState());
+    } finally { r.close(); }
+  }
+});
+
+
+test("auth death compatibility: an accepted queued claim keeps its validated continuation after an args change", () => {
+  const r = rig();
+  try {
+    r.fail(); r.die(); r.fresh();
+    const claimed = r.store.liveAuthInterruption(r.bee.id)!;
+    const oldCommand = claimed.deathRecovery!.commandId!;
+    r.store.updateBeeArgs(r.bee.id, ["--model", "fake"]); r.resume.reconcile();
+    const row = r.store.liveAuthInterruption(r.bee.id)!;
+    assert.equal(r.store.getCommand(oldCommand)?.status, "done");
+    assert.equal(row.deathRecovery, undefined); assert.equal(row.state, "resumed");
+    assert.equal(row.continuationMessageIds.length, 1);
+    assert.equal(r.store.undeliveredMessages(r.bee.id).length, 1);
+    assert.equal(r.store.listCommands({ status: "queued" }).filter(command => command.verb === "send_wake").length, 1);
+    assert.deepEqual(replayAudit(r.store.auditRows()), r.store.dumpState());
+  } finally { r.close(); }
+});
+
+
+test("auth death compatibility: machine-restart exits opt out without losing the ordinary continuation", () => {
+  const r = rig();
+  try {
+    r.fail(); r.store.updateRuntimeState(r.bee.id, 1, "stopped", { exitCause: "machine_restart" });
+    r.resume.reconcile();
+    assert.equal(r.store.liveAuthInterruption(r.bee.id)?.deathRecovery, undefined);
+    r.resume.credentialValidated(r.store.getAccount(r.account.id)!, "limits_probe");
+    assert.equal(r.store.liveAuthInterruption(r.bee.id)?.state, "resumed");
+    assert.equal(r.store.listCommands().filter(command => command.args.authDeathRecoveryId !== undefined).length, 0);
   } finally { r.close(); }
 });

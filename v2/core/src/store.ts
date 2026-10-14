@@ -3175,7 +3175,7 @@ export class CoreStore {
   private applyArgs(beeId: string, next: string[] | null): boolean {
     const bee = this.mustGetBee(beeId);
     if (sameArgs(bee.args, next)) return false;
-    this.cancelAuthDeathRecovery(beeId);
+    this.invalidateAuthDeathRecovery(beeId);
     this.stmt("UPDATE bees SET args = ? WHERE id = ?").run(next === null ? null : JSON.stringify(next), beeId);
     this.audit("bee.args_set", beeId, { beeId, args: next, previous: bee.args });
     return true;
@@ -5452,8 +5452,10 @@ export class CoreStore {
     const next: AccountRow = { ...before, ...patch, statusReason, ...pauseFieldsFor(before, patch, at) };
     const changed = (Object.keys(next) as Array<keyof AccountRow>).filter((k) => k !== "updatedAt" && before[k] !== next[k]);
     if (changed.length === 0) return { account: before, applied: false };
-    if (next.homePath !== before.homePath || next.source !== before.source || next.status === "paused" && next.pausedBy === "operator" && (before.status !== "paused" || before.pausedBy !== "operator") || next.leasedFrom?.revokedAt != null && before.leasedFrom?.revokedAt == null) {
+    if (next.status === "paused" && next.pausedBy === "operator" && (before.status !== "paused" || before.pausedBy !== "operator")) {
       for (const bee of this.beesOnAccount(id)) this.cancelAuthDeathRecovery(bee.id);
+    } else if (next.homePath !== before.homePath || next.source !== before.source || next.leasedFrom?.revokedAt != null && before.leasedFrom?.revokedAt == null) {
+      for (const bee of this.beesOnAccount(id)) this.invalidateAuthDeathRecovery(bee.id);
     }
     this.db
       .prepare(
@@ -5620,7 +5622,7 @@ export class CoreStore {
       const bee = this.mustGetBee(beeId);
       if (account !== null) this.mustGetAccount(account);
       if (bee.account === account) return { bee, applied: false };
-      this.cancelAuthDeathRecovery(beeId);
+      this.invalidateAuthDeathRecovery(beeId);
       this.stmt("UPDATE bees SET account = ? WHERE id = ?").run(account, beeId);
       this.audit("bee.account_set", beeId, { beeId, account, previous: bee.account });
       return { bee: this.mustGetBee(beeId), applied: true };
@@ -5640,7 +5642,7 @@ export class CoreStore {
       const bee = this.mustGetBee(beeId);
       const next = { ...env };
       if (JSON.stringify(bee.env) === JSON.stringify(next)) return { bee, applied: false };
-      this.cancelAuthDeathRecovery(beeId);
+      this.invalidateAuthDeathRecovery(beeId);
       this.stmt("UPDATE bees SET env = ? WHERE id = ?").run(JSON.stringify(next), beeId);
       this.audit("bee.env_set", beeId, { beeId, env: next, previous: bee.env });
       return { bee: this.mustGetBee(beeId), applied: true };
@@ -5657,7 +5659,7 @@ export class CoreStore {
     return this.tx(() => {
       const bee = this.mustGetBee(beeId);
       if (!bee.providerSessionId) return { bee, applied: false };
-      this.cancelAuthDeathRecovery(beeId);
+      this.invalidateAuthDeathRecovery(beeId);
       this.stmt("UPDATE bees SET fork_seed = ?, provider_session_id = NULL WHERE id = ?").run(bee.providerSessionId, beeId);
       this.audit("bee.session_rekeyed", beeId, { beeId, forkSeed: bee.providerSessionId, previousProviderSessionId: bee.providerSessionId });
       return { bee: this.mustGetBee(beeId), applied: true };
@@ -5852,6 +5854,37 @@ export class CoreStore {
         }
         for (const messageId of row.continuationMessageIds) this.cancelMessage(beeId, messageId);
       }
+    });
+  }
+
+  invalidateAuthDeathRecovery(beeId: string): void {
+    this.tx(() => {
+      const bee = this.mustGetBee(beeId);
+      const row = this.liveAuthInterruption(beeId);
+      if (!this.currentRuntime(beeId)?.credentialStamp && !row?.deathRecovery) return;
+      const controlFence = (bee.authControlFence ?? 0) + 1;
+      this.stmt("UPDATE bees SET auth_control_fence = ? WHERE id = ?").run(controlFence, beeId);
+      this.audit("bee.auth_control", beeId, { controlFence });
+      if (row) this.releaseAuthDeathRecovery(row.id, "provenance_changed");
+    });
+  }
+
+  releaseAuthDeathRecovery(id: number, reason: string): AuthInterruptionRow | null {
+    return this.tx(() => {
+      const row = this.getAuthInterruption(id);
+      if (!row?.deathRecovery || !AUTH_INTERRUPTION_LIVE_STATES.includes(row.state)) return row;
+      const command = row.deathRecovery.commandId === null ? null : this.getCommand(row.deathRecovery.commandId);
+      const queued = command?.status === "queued";
+      if (queued) {
+        const finishedAt = this.now();
+        this.stmt("UPDATE commands SET status = 'done', finished_at = ? WHERE id = ?").run(finishedAt, command.id);
+        this.audit("command.moot", row.beeId, { commandId: command.id, verb: command.verb, targetGeneration: command.targetGeneration, currentGeneration: this.currentRuntime(row.beeId)?.generation ?? 0, finishedAt, reason });
+        for (const messageId of row.continuationMessageIds) this.cancelMessage(row.beeId, messageId);
+      }
+      const { deathRecovery, ...legacy } = row;
+      const released = this.putAuthInterruption(queued ? { ...legacy, state: "restored", continuationKind: null, continuationMessageIds: [] } : legacy);
+      this.audit("auth_death.released", row.beeId, { interruptionId: row.id, generation: row.generation, reason });
+      return released;
     });
   }
 
@@ -6978,7 +7011,7 @@ export class CoreStore {
       const rt = this.currentRuntime(input.beeId);
       const sourceGeneration = rt?.generation ?? 0;
       const id = randomUUID();
-      this.cancelAuthDeathRecovery(input.beeId);
+      this.invalidateAuthDeathRecovery(input.beeId);
       const nextVersion = bee.placementVersion + 1;
       const stopKey = beeMoveStopKey(id, sourceGeneration);
       const reviveKey = beeMoveReviveKey(id);
@@ -7496,7 +7529,7 @@ export class CoreStore {
         throw new StaleGenerationError(`expected agent ${input.expected.agent}; bee ${input.beeId} runs ${bee.agent}`);
       }
       if (input.target.account !== null) this.mustGetAccount(input.target.account);
-      this.cancelAuthDeathRecovery(input.beeId);
+      this.invalidateAuthDeathRecovery(input.beeId);
       const segment = this.currentTranscriptSegment(input.beeId);
       if (!segment) throw new CoreError(`admitBeeHandoff: bee ${input.beeId} has no transcript segment`);
       let id = this.mintId();

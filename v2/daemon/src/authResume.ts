@@ -65,8 +65,8 @@ export class AuthResume {
     const account = this.accountForGeneration(bee, ev.generation);
     if (!account) return;
     const runtime = this.store.currentRuntime(bee.id);
-    const stamp = runtime?.credentialStamp;
-    if (stamp && (runtime.generation !== ev.generation || stamp.account !== account.id || stamp.controlFence !== (bee.authControlFence ?? 0))) return;
+    const admitted = runtime?.credentialStamp;
+    const stamp = runtime?.generation === ev.generation && admitted?.account === account.id && admitted.controlFence === (bee.authControlFence ?? 0) ? admitted : undefined;
     const row = this.store.recordAuthInterruption({
       beeId: bee.id,
       account: account.id,
@@ -106,10 +106,21 @@ export class AuthResume {
     for (const row of live.values()) if (row.account === account.id) beeIds.add(row.beeId);
     this.store.transact(() => {
       for (const beeId of beeIds) {
-        const row = live.get(beeId);
+        let row = live.get(beeId);
         // A failure recorded against another account says nothing about this one.
         if (row && row.account !== account.id) continue;
-        if (row?.deathRecovery && this.holdsStoppedRuntime(row)) continue;
+        if (row?.deathRecovery && this.holdsStoppedRuntime(row)) {
+          const recovery = row.deathRecovery;
+          const current = this.material?.(this.store.getAccount(account.id) ?? account);
+          const admitted = recovery.admitted.material;
+          const validatedSource = ["refresh", "limits_probe", "credentials_restored", "login", "capture"].includes(by);
+          if (recovery.claimedAt === null && validatedSource && current && current.kind === admitted.kind && current.scope === admitted.scope && current.epoch === admitted.epoch && current.generation === admitted.generation) {
+            row = this.store.releaseAuthDeathRecovery(row.id, "same_material_validated") ?? row;
+          } else {
+            if (row.state === "open" && (row.blockedRevision !== revision || OPERATOR_SOURCES.includes(by))) this.store.restoreAuthInterruption(row.id, { revision, by });
+            continue;
+          }
+        }
         if (row?.state === "open" && row.blockedRevision === revision && !OPERATOR_SOURCES.includes(by)) {
           receipt.blockedBeeIds.push(beeId);
           this.log(`auth.resume.blocked bee=${beeId} account=${account.id} row=${row.id} by=${by}`);
@@ -190,11 +201,11 @@ export class AuthResume {
     const bee = this.store.getBee(row.beeId);
     if (!bee) return true;
     if ((bee.authControlFence ?? 0) !== recovery.admitted.controlFence || bee.lifecycle !== "active" || bee.account !== row.account || bee.agent !== recovery.admitted.agent || bee.cwd !== recovery.admitted.cwd || bee.cellId !== recovery.admitted.cellId || bee.activeMoveId || bee.activeHandoffId) {
-      this.store.settleAuthInterruption(row.id, "cancelled", "auth_recovery_cancelled");
-      return true;
+      this.store.releaseAuthDeathRecovery(row.id, "provenance_changed");
+      return false;
     }
     if (recovery.claimedAt !== null) {
-      if (runtime?.generation === row.generation && runtime.state === "stopped" && recovery.commandId !== null && this.store.getCommand(recovery.commandId)?.status === "queued" && this.store.getAccount(row.account)?.status === "paused" && recovery.deadline !== null && this.now() >= recovery.deadline) this.store.cancelAuthDeathRecovery(bee.id, "auth_recovery_expired");
+      if (runtime?.generation === row.generation && runtime.state === "stopped" && recovery.commandId !== null && this.store.getCommand(recovery.commandId)?.status === "queued" && this.store.getAccount(row.account)?.status === "paused" && recovery.deadline !== null && this.now() >= recovery.deadline) this.store.releaseAuthDeathRecovery(row.id, "deadline_expired");
       return true;
     }
     if (runtime?.generation !== row.generation) {
@@ -203,14 +214,19 @@ export class AuthResume {
     }
     if (runtime.state !== "stopped") return false;
     if (!["clean", "crashed", "stopped_by_system"].includes(runtime.exitCause ?? "")) {
-      this.store.settleAuthInterruption(row.id, "cancelled", "auth_recovery_cancelled");
-      return true;
+      if (runtime.exitCause === "stopped_by_user") {
+        this.store.settleAuthInterruption(row.id, "cancelled", "auth_recovery_cancelled");
+        return true;
+      }
+      this.store.releaseAuthDeathRecovery(row.id, "ordinary_exit");
+      return false;
     }
     const fixed = recovery.deathAt === null ? { ...recovery, deathAt: runtime.updatedAt, deadline: runtime.updatedAt + AUTH_DEATH_WINDOW_MS } : recovery;
     this.store.setAuthDeathRecovery(row.id, fixed);
     if (this.now() >= fixed.deadline!) {
-      this.store.settleAuthInterruption(row.id, "cancelled", "auth_recovery_expired");
-      return true;
+      this.store.releaseAuthDeathRecovery(row.id, "deadline_expired");
+      if (row.state === "restored") this.store.clearFlag(bee.id, "auth_needed", "Previously validated account material; ordinary continuation restored");
+      return false;
     }
     const account = this.store.getAccount(row.account);
     const material = account ? this.material?.(account) : null;

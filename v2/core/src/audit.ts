@@ -537,6 +537,7 @@ export function replayAudit(rows: AuditRow[]): StateDump {
         actionQueues.set(queue.beeId, queue);
         break;
       }
+      case "auth_death.released":
       case "auth_death.released_legacy":
       case "auth_death.resumed":
       case "action.report_rejected":

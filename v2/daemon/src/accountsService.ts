@@ -3086,9 +3086,9 @@ export class AccountsService {
       const primary = this.leaseMaterialCodecs.get(account.harness)?.primaryFile;
       const file = lease.files.find(value => value.homeRelPath === primary);
       const shipped = file ? authority.parseDocument(JSON.parse(Buffer.from(file.contentB64, "base64").toString("utf8"))) : null;
-      const owned = central?.phase === "ready" ? authority.parseDocument(authority.document(account)) : null;
-      if (!owned || !shipped || shipped.accessToken !== owned.accessToken) throw new LeaseRefusal("lease_unavailable", "Central credential changed during lease mint; retry for the current material.");
-      return { ...lease, generation: central!.generation };
+      const owned = authority.parseDocument(authority.document(account));
+      if (!owned || !shipped || shipped.expiresAt <= this.now() || shipped.accessToken !== owned.accessToken) throw new LeaseRefusal("lease_unavailable", "Central credential changed during lease mint; retry for the current material.");
+      return central?.phase === "ready" ? { ...lease, generation: central.generation } : lease;
     } catch {
       throw new LeaseRefusal("lease_unavailable", "Central credential changed during lease mint; retry for the current material.");
     }

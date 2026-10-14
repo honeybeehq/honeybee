@@ -2399,3 +2399,34 @@ test("legacy lease renewal after auth death preserves ordinary AuthResume and re
     } finally { r.cleanup(); }
   }
 });
+
+
+test("central lease mint compatibility: Codex and Claude ship valid matching material during refreshing or uncertainty without a generation label", async () => {
+  for (const harness of ["codex", "claude"] as const) for (const phase of ["ready", "refreshing", "uncertain"] as const) {
+    const r = rig();
+    try {
+      const document = harness === "codex" ? { tokens: { access_token: fakeJwt(Math.floor((r.now() + HOUR) / 1000)), refresh_token: randomUUID(), id_token: "test-id" } } : { claudeAiOauth: { accessToken: randomUUID(), refreshToken: randomUUID(), expiresAt: r.now() + HOUR } };
+      const primary = harness === "codex" ? "auth.json" : ".credentials.json";
+      const account = addAccount(r, harness, `mint-${phase}`, { home: { [primary]: JSON.stringify(document) } });
+      const root = join(r.vault, ".credential-authorities"); mkdirSync(root, { recursive: true });
+      const path = join(root, `${encodeURIComponent(account.id)}.json`);
+      writeFileSync(path, JSON.stringify({ generation: 1, document }));
+      r.store.putAccountCredentialAuthority({ account: account.id, phase: "ready", generation: 1, expiresAt: r.now() + HOUR, operationKey: null, failure: null, refreshTokenExpiresAt: null });
+      const accounts = service(r);
+      const authority = harness === "codex" ? accounts.codexCredentials : accounts.centralCredentials;
+      authority.ensure = async () => r.store.putAccountCredentialAuthority({ account: account.id, phase, generation: 1, expiresAt: r.now() + HOUR, operationKey: null, failure: null, refreshTokenExpiresAt: null });
+      const lease = await accounts.mintLease(account);
+      assert.equal(lease.generation, phase === "ready" ? 1 : undefined);
+      assert.equal(lease.files.length, 1);
+      const changed = harness === "codex" ? { tokens: { ...document.tokens, access_token: fakeJwt(Math.floor((r.now() + 2 * HOUR) / 1000)) } } : { claudeAiOauth: { ...document.claudeAiOauth, accessToken: randomUUID() } };
+      const parse = authority.parseDocument.bind(authority);
+      let changedAfterSnapshot = false;
+      authority.parseDocument = value => {
+        const parsed = parse(value);
+        if (!changedAfterSnapshot) { changedAfterSnapshot = true; writeFileSync(path, JSON.stringify({ generation: 2, document: changed })); }
+        return parsed;
+      };
+      await assert.rejects(accounts.mintLease(account), (error: unknown) => error instanceof LeaseRefusal && error.code === "lease_unavailable", `${harness}/${phase}: a true token change after snapshot still refuses`);
+    } finally { r.cleanup(); }
+  }
+});
