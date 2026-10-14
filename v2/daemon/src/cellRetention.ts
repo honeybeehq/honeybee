@@ -174,7 +174,7 @@ export class CellRetentionService {
     if (!due) return;
     this.lastPassAt = now;
     void this.run({ dryRun: false, measure: true }).catch((err) => {
-      this.deps.log(`cell.retention.error ${err instanceof Error ? err.stack ?? err.message : String(err)}`);
+      if (!this.stopping) this.deps.log(`cell.retention.error ${err instanceof Error ? err.stack ?? err.message : String(err)}`);
     });
   }
 

@@ -8,7 +8,7 @@ import { spawn } from "node:child_process";
 const [dir, mode] = process.argv.slice(2);
 if (mode === "retention") {
   const worker = new URL(`data:text/javascript,${encodeURIComponent(`import {writeFileSync} from "node:fs";writeFileSync(${JSON.stringify(join(dir, "worker-held"))}, "held");Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0);`)}`);
-  const daemon = new HiveDaemon(loadNodeConfig(dir), { retentionWorkerUrl: worker });
+  const daemon = new HiveDaemon(loadNodeConfig(dir), { retentionWorkerUrl: worker, retentionInitialDelayMs: 0 });
   await daemon.start();
   process.once("SIGTERM", async () => {
     await daemon.shutdown();

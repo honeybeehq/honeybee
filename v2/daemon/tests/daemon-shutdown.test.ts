@@ -20,7 +20,7 @@ function identity(pid: number): Identity {
 function alive(p: Identity): boolean { return verifyProcessIdentity(p.pid, p.birth, 1000); }
 
 for (const mode of ["natural", "retention", "backstop"] as const) test(`daemon shutdown ${mode}: exits promptly and preserves detached bees`, { timeout: 90_000 }, async () => {
-  const rig = makeDaemonDir({ cells: { retention: { enabled: false } } });
+  const rig = makeDaemonDir({ cells: { retention: { enabled: mode === "retention" } } });
   const configPath = join(rig.dir, "config.json");
   const config = JSON.parse(readFileSync(configPath, "utf8"));
   config.cells.root = join(rig.dir, "cells");
@@ -54,17 +54,17 @@ for (const mode of ["natural", "retention", "backstop"] as const) test(`daemon s
     client = await connect();
     if (mode === "backstop") helpers.push(identity(Number(readFileSync(join(rig.dir, "slow-helper.pid"), "utf8"))));
     const bees: string[] = [];
-    for (let i = 0; i < (mode === "retention" ? 12 : 1); i++) {
-      const spawned = await client.request<SpawnResult>("spawn", { name: `survivor-${i}`, agent: "stub", substrate: "hsr", cwd: rig.dir });
+    for (let i = 0; i < 12; i++) {
+      const spawned: SpawnResult = await client.request<SpawnResult>("spawn", { name: `survivor-${i}`, agent: "stub", substrate: "hsr", cwd: rig.dir });
       bees.push(spawned.beeId);
       await waitFor(async () => (await client!.request<ViewResult>("view", { beeId: spawned.beeId })).view.runtimeState === "idle", "fake bee idle", 15_000);
+      assert.equal((await client.request<ViewResult>("view", { beeId: spawned.beeId })).view.generation, 1);
     }
     for (const file of readdirSync(join(rig.dir, "runners")).filter(file => file.endsWith(".status.json"))) {
       const row = JSON.parse(readFileSync(join(rig.dir, "runners", file), "utf8"));
       runners.push(identity(row.hostPid), identity(row.agentPid));
     }
     if (mode === "retention") {
-      void client.request("cell.gc", { dryRun: false, measure: true }).catch(() => undefined);
       await waitFor(() => existsSync(join(rig.dir, "worker-held")), "inspection worker held", 10_000);
     }
     client.close(); client = null;
@@ -80,10 +80,14 @@ for (const mode of ["natural", "retention", "backstop"] as const) test(`daemon s
     if (mode === "retention") {
       assert.ok(!(JSON.parse(readFileSync(join(rig.dir, "shutdown-resources.json"), "utf8")) as string[]).includes("MessagePort"));
       assert.ok(existsSync(join(config.cells.root, "candidate", "space")), "shutdown never removes the held candidate");
+      assert.doesNotMatch(readFileSync(join(rig.dir, "hived.log"), "utf8"), /cell\.retention\.error/);
     }
     const successor = launch("natural");
     client = await connect();
-    for (const beeId of bees) await waitFor(async () => (await client!.request<ViewResult>("view", { beeId })).view.runtimeState === "idle", "successor re-adopts same runtime", 15_000);
+    for (const beeId of bees) {
+      await waitFor(async () => (await client!.request<ViewResult>("view", { beeId })).view.runtimeState === "idle", "successor re-adopts same runtime", 15_000);
+      assert.equal((await client.request<ViewResult>("view", { beeId })).view.generation, 1);
+    }
     assert.ok(runners.every(alive), "successor retains exact original processes");
     for (const beeId of bees) await client.request("stop", { beeId });
     await waitFor(() => runners.every(row => !alive(row)), "owned fixture processes stopped", 10_000);
