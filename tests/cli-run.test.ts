@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { test } from "node:test";
+import { scaledMs } from "./timeScale.js";
 import { hasSession, kill } from "../src/tmux.js";
 
 const execFileAsync = promisify(execFile);
@@ -73,9 +74,9 @@ test("run --rm cleans up when known driver readiness fails", { skip: !detachedRu
         "300",
         "--rm",
         "--",
-        "-i",
+        String(Math.ceil(scaledMs(10_000) / 1_000)),
       ],
-      { HIVE_STORE_ROOT: storeRoot, HIVE_CLAUDE_CMD: "sh" },
+      { HIVE_STORE_ROOT: storeRoot, HIVE_CLAUDE_CMD: "sleep" },
     );
 
     assert.notEqual(result.code, 0);

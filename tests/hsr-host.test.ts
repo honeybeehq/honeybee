@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { scaledMs } from "./timeScale.js";
 import { withFileLock } from "../src/lock.js";
 import { connectRpcClient } from "../src/hsr/rpc.js";
 import { runHsrHost } from "../src/hsr/host.js";
@@ -53,7 +54,7 @@ async function withTempStore(fn: () => Promise<void>): Promise<void> {
 }
 
 /** Poll `cond` on a short interval until true, or throw after `timeoutMs`. */
-async function waitFor(cond: () => boolean | Promise<boolean>, label: string, timeoutMs = 5_000): Promise<void> {
+async function waitFor(cond: () => boolean | Promise<boolean>, label: string, timeoutMs = scaledMs(5_000)): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (await cond()) return;
@@ -89,10 +90,11 @@ const { spawn } = require("node:child_process");
 const frame = Buffer.from(JSON.stringify({ type: "late-result", text: "durable-tail-after-exit" })).toString("base64");
 const tail = spawn(process.execPath, [
   "-e",
-  "setTimeout(() => process.stdout.write(Buffer.from(process.argv[1], 'base64')), 200)",
+  "setTimeout(() => process.stdout.write(Buffer.from(process.argv[1], 'base64')), ${scaledMs(500)})",
   frame,
 ], { stdio: ["ignore", 1, "ignore"] });
 tail.unref();
+setTimeout(() => process.exit(0), ${scaledMs(250)});
 `;
 
 const exitBeforeStdioCloseConfig: StreamRunnerConfig = {
@@ -604,6 +606,7 @@ test("idle strict observation isolates a corrupted source Bee while a healthy Be
       await healthyClient.call("send", { text: "healthy observer remains operational" });
       await waitFor(async () => (await readHsrEventIntegrityReceipt(bee))?.phase === "unresolved", "outside idle-corruption fence");
       await handle.done;
+      await waitFor(async () => (await readHsrEventIntegrityReceipt(bee))?.stopState !== "pending", "idle-corruption stop state settles");
 
       const receipt = await readHsrEventIntegrityReceipt(bee);
       assert.equal(receipt?.stopState, "doubt");

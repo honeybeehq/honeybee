@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { scaledMs } from "./timeScale.js";
 import {
   handleVerifiedBootRuntimeDeath,
   handleVerifiedBootRuntimeLive,
@@ -791,6 +792,8 @@ test("simultaneous deaths respect the global recovery concurrency cap", async ()
     }
     let active = 0;
     let maxActive = 0;
+    let overlapped!: () => void;
+    const overlap = new Promise<void>((resolve) => { overlapped = resolve; });
     const probeCounts = new Map<string, number>();
     const outcomes = await runRuntimeRecoverySweep(records, {
       concurrency: 2,
@@ -805,7 +808,8 @@ test("simultaneous deaths respect the global recovery concurrency cap", async ()
       revive: async (candidate) => {
         active += 1;
         maxActive = Math.max(maxActive, active);
-        await sleep(15);
+        if (active >= 2) overlapped();
+        await Promise.race([overlap, sleep(scaledMs(500))]);
         active -= 1;
         return { record: candidate, replayedTurns: 0 };
       },
