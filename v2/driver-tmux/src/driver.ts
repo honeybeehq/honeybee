@@ -486,6 +486,17 @@ export class TmuxDriver implements RuntimeDriver {
     return out;
   }
 
+  debugSnapshot(): string {
+    const panes = this.server.try(["list-panes", "-a", "-F", "#{session_name} #{pane_id} pid=#{pane_pid} dead=#{pane_dead} status=#{pane_dead_status} cmd=#{pane_current_command}"]);
+    const lines = [`panes=${JSON.stringify((panes.status === 0 ? panes.stdout : panes.stderr).trim())}`];
+    for (const p of this.procs.values()) {
+      const captured = this.server.try(["capture-pane", "-p", "-t", exactPaneTarget(p.sessionName)]);
+      const tail = captured.stdout.split("\n").filter((line) => line.trim().length > 0).slice(-5).join(" | ");
+      lines.push(`${p.sessionName}: pid=${p.pid} exited=${p.exited} pane=${JSON.stringify(captured.status === 0 ? tail : captured.stderr.trim())}`);
+    }
+    return lines.join("; ");
+  }
+
   hasProcess(beeId: string, generation: number): boolean {
     const pending = this.pendingStarts.get(beeId);
     if (pending && pending.generation === generation) return true;
