@@ -23,6 +23,7 @@ import { CredentialHandoffService } from "./credentialHandoff.ts";
 import { CredentialAuthority, ClaudeCredentialAuthority, CredentialAuthorityError, CredentialOwnershipConflict, refreshTokenDigest } from "./claudeCredentialAuthority.ts";
 import { defaultClaudeRefreshTransport, describeRefreshFailure, sanitizeProviderText, type ClaudeRefreshResult, type ClaudeRefreshTransport, type RefreshedClaudeToken } from "./claudeRefreshTransport.ts";
 import { CodexCredentialAuthority, CODEX_CREDENTIAL_CODEC, readCodexCredentialCopy, defaultCodexRefreshTransport } from "./codexCredentialAuthority.ts";
+import { MuseCredentialAuthority, MUSE_CREDENTIAL_CODEC, MUSE_DEFAULT_KEY_TTL_MS, museMeta, museWorkingDocument, defaultMuseKeyTransport } from "./museCredentialAuthority.ts";
 import { GrokCredentialAuthority, GROK_CREDENTIAL_CODEC, grokAccessOnly, grokCredentialEntry, defaultGrokRefreshTransport } from "./grokCredentialAuthority.ts";
 import { liveGateways } from "./gateways.ts";
 import { withFileLock } from "../../../src/lock.ts";
@@ -186,6 +187,7 @@ export interface AccountsServiceOptions {
    * place at turn start when the access token is near expiry. Tests inject a
    * fake so no real codex runs. Default: the real `codex exec` runner.
    */
+  museKeyMint?: import("./claudeRefreshTransport.ts").CredentialRefreshTransport;
   codexLeaseRefresh?: (homePath: string) => Promise<void>;
   /** Common native MCP reconciler; injected so activation tests stay hermetic. */
   gatewayMcpSeeder?: (homePath: string, harness: string) => Promise<GatewayMcpSeedResult>;
@@ -851,6 +853,7 @@ export class AccountsService {
   readonly centralCredentials: ClaudeCredentialAuthority;
   readonly codexCredentials: CodexCredentialAuthority;
   readonly grokCredentials: GrokCredentialAuthority;
+  readonly museCredentials: MuseCredentialAuthority;
   private readonly credentialAuthorities = new Map<string, CredentialAuthority>();
 
   authorityFor(account: Pick<AccountRow, "harness">): CredentialAuthority | null {
@@ -1115,6 +1118,60 @@ export class AccountsService {
         atomicWriteFileSync(join(account.homePath, "auth.json"), raw, 0o600);
       },
     });
+    const inspectMuseCopies = (account: AccountRow, document: Record<string, unknown>): void => {
+      const owned = museMeta(document);
+      const previous = this.museCredentials?.previousDocument(account);
+      const previousKey = previous ? museMeta(previous)?.api_key : undefined;
+      for (const root of this.isolationRefusal("muse") ? [this.vaultDirOf(account)] : [account.homePath, this.vaultDirOf(account)]) {
+        for (const copy of this.leaseCopyPaths(root, "muse/auth.json")) {
+          const raw = readIfFile(this.leaseFilePath(root, copy));
+          if (raw === null) continue;
+          let meta: Record<string, unknown> | null;
+          try { meta = museMeta(JSON.parse(raw)); } catch { meta = null; }
+          if (!meta || !MUSE_CREDENTIAL_CODEC.parse(raw) || meta.storage === "keychain" || (meta.access_token && meta.access_token !== owned?.access_token)
+            || (meta.api_key && meta.api_key !== owned?.api_key && meta.api_key !== owned?.previous_api_key && meta.api_key !== previousKey)) {
+            throw new CredentialOwnershipConflict("An external Muse login or key changed this account; preserve it before publishing authority material.");
+          }
+        }
+      }
+    };
+    this.museCredentials = new MuseCredentialAuthority({
+      store: this.store, root: join(this.cfg.accounts.vaultDir, ".credential-authorities"), now: this.now,
+      log: this.log, retryBaseMs: this.cfg.accounts.centralRefreshRetryBaseMs, earlyRefreshMinIntervalMs: this.cfg.accounts.centralRefreshMinIntervalMs,
+      beforeEnroll: account => {
+        this.assertLocalAccount(account);
+        const native = this.nativeRefusal(account);
+        if (native) throw new CredentialAuthorityError(native);
+        this.assertOwnedHome(account, "holds credentials for");
+        this.store.assertNoUpdateReservation();
+        if (this.refreshBusy(account) || this.leaseMints.has(account.id)) throw new CredentialAuthorityError("Another credential operation is active.");
+      },
+      nativeCredential: async account => {
+        for (const root of this.isolationRefusal("muse") ? [this.vaultDirOf(account)] : [account.homePath, this.vaultDirOf(account)]) {
+          const raw = readIfFile(this.leaseFilePath(root, "muse/auth.json"));
+          if (raw !== null) return JSON.parse(raw) as Record<string, unknown>;
+        }
+        return null;
+      },
+      beforeUse: inspectMuseCopies,
+      beforeRefresh: async (account, document) => inspectMuseCopies(account, document),
+      refresh: opts.museKeyMint ?? defaultMuseKeyTransport(this.cfg.accounts.limitsFetchTimeoutMs, this.now),
+      onRefreshed: account => this.onCredentialValidated(account.id, "refresh"),
+      identify: async () => null, homeIdentity: () => null,
+      publish: async (account, document, accessOnly) => {
+        const native = this.nativeRefusal(account);
+        if (native) throw new CredentialAuthorityError(native);
+        this.assertOwnedHome(account, "holds credentials for");
+        inspectMuseCopies(account, document);
+        const { previous_api_key, api_key_expires_at, ...meta } = museMeta(document)!;
+        const published = accessOnly ? museWorkingDocument(document) : { schema_version: 1, providers: { meta } };
+        for (const root of this.isolationRefusal("muse") ? [this.vaultDirOf(account)] : [this.vaultDirOf(account), account.homePath]) {
+          mkdirSync(join(root, "muse"), { recursive: true, mode: 0o700 });
+          atomicWriteFileSync(this.leaseFilePath(root, "muse/auth.json"), JSON.stringify(published), 0o600);
+        }
+      },
+    });
+    this.credentialAuthorities.set("muse", this.museCredentials);
     this.credentialAuthorities.set("claude", this.centralCredentials);
     this.credentialAuthorities.set("codex", this.codexCredentials);
     this.credentialHandoff = new CredentialHandoffService(this.store, this, join(this.cfg.accounts.vaultDir, ".credential-authorities"), this.now, this.log);
@@ -1248,7 +1305,7 @@ export class AccountsService {
       const authority = this.credentialAuthorities.get(account.harness);
       if (!authority) return hasRefreshGrant(document);
       const parsed = authority.parseDocument(document);
-      return parsed ? Boolean(parsed.refreshToken) : this.staticLeaseMaterial(document, account.harness) ? false : null;
+      return parsed ? Boolean(parsed.refreshToken || parsed.bootstrapToken) : this.staticLeaseMaterial(document, account.harness) ? false : null;
     } catch { return null; }
   }
 
@@ -1257,7 +1314,7 @@ export class AccountsService {
     try { document = JSON.parse(raw); } catch { return "unknown"; }
     if (document && typeof document === "object" && !Array.isArray(document)) {
       const credential = this.credentialAuthorities.get(harness)?.parseDocument(document as Record<string, unknown>);
-      if (credential) return credential.refreshToken ? "native" : "access_only";
+      if (credential) return credential.refreshToken || credential.bootstrapToken ? "native" : "access_only";
     }
     if (harness === "claude") {
       const parsed = parseClaudeCredentials(raw);
@@ -1404,6 +1461,7 @@ export class AccountsService {
   }
 
   private assertAdoptable(account: AccountRow, explicit = false): void {
+    if (account.harness === "muse") throw new RpcError("lease_unsupported", "Muse lease adoption is not supported; enrol an access-only row instead.");
     if (!explicit) {
       if ((account.status === "paused" && account.pausedBy === "operator") || (account.status !== "auth_needed" && this.credentialHealthOf(account) !== "absent") || this.authorityFor(account)?.enabled(account) || this.authorityFor(account)?.busy(account) || this.refreshBusy(account) || this.nativeKeychainSeeds.has(account.id) || this.store.activeLoginFlow(account.id)) throw new RpcError("account_adopt_refused", "The native account is working, operator-paused, or changing credentials; it cannot be adopted.");
       return;
@@ -1489,7 +1547,7 @@ export class AccountsService {
       if (account.status === "paused") refuse("paused");
       if (account.status !== "ok") refuse("account_auth_needed", account.status);
       const codec = this.leaseMaterialCodecs.get(account.harness);
-      if (!codec || !authority || this.isolationRefusal(account.harness)) refuse("unsupported");
+      if (!codec || !authority || account.harness === "muse" || this.isolationRefusal(account.harness)) refuse("unsupported");
       let document: Record<string, unknown>;
       let revision = "";
       try {
@@ -1707,6 +1765,7 @@ export class AccountsService {
   private staticLeaseMaterial(value: unknown, harness: string): boolean {
     if (!value || typeof value !== "object") return false;
     const record = value as Record<string, unknown>;
+    if (harness === "muse") { const meta = museMeta(record); return typeof meta?.api_key === "string" && meta.api_key !== "" && !meta.access_token; }
     if (harness === "codex") return typeof record.OPENAI_API_KEY === "string" && record.OPENAI_API_KEY !== "";
     if (harness === "grok") return Object.values(record).some(child => child !== null && typeof child === "object" && (child as Record<string, unknown>).auth_mode === "api_key" && typeof (child as Record<string, unknown>).key === "string" && (child as Record<string, unknown>).key !== "");
     return false;
@@ -1777,7 +1836,7 @@ export class AccountsService {
         let facts = inspect(state);
         let keychainRemoved = false;
         const warning = facts.staticUnverified ? ` Static material for ${id} is unverified; a user-replaced static key on a legacy row is removed.` : "";
-        const result = (disposition: AccountLeaseRemoveResult["disposition"], present: boolean, discarded: boolean, message: string): AccountLeaseRemoveResult => ({ ...base, keychainRemoved, disposition, nativeChain: { account: id, present, discarded }, ...(facts.staticUnverified ? { staticUnverified: true as const } : {}), message: message + warning });
+        const result = (disposition: AccountLeaseRemoveResult["disposition"], present: boolean, discarded: boolean, message: string): AccountLeaseRemoveResult => ({ ...base, keychainRemoved, disposition, nativeChain: { account: id, present, discarded }, ...(facts.staticUnverified ? { staticUnverified: true as const } : {}), message: message + warning + (account.harness === "muse" ? " Removing or expiring this lease does not revoke its key at Meta; it may remain valid until Meta revokes it." : "") });
         const preserved = () => result("native_preserved", true, false, `Native credentials are present for ${id}. Sign the account out or back it up first.${keychainRemoved ? " The leased Keychain copy is already gone; native file copies remain preserved." : ""}`);
         if (options.checkOnly) return facts.native.length ? preserved() : result("remove_allowed", false, false, `Lease material for ${id} may be removed.`);
         const authorise = () => {
@@ -2953,6 +3012,7 @@ export class AccountsService {
       case "muse": {
         // Muse has no usage probe: MSP usage/read reports only what one
         // process observed on its own model calls.
+        if (account.source !== "leased" && this.museCredentials.enabled(account)) await this.museCredentials.ensure(account, 15 * 60_000);
         const state = this.credentialState(account);
         return state === "present"
           ? { readable: false, unreadableReason: "unsupported", error: "muse has no limits source" }
@@ -3387,7 +3447,8 @@ export class AccountsService {
       const file = lease.files.find(value => value.homeRelPath === primary);
       const shipped = file ? authority.parseDocument(JSON.parse(Buffer.from(file.contentB64, "base64").toString("utf8"))) : null;
       const owned = authority.parseDocument(authority.document(account));
-      if (!owned || !shipped || shipped.expiresAt <= this.now() || shipped.accessToken !== owned.accessToken) throw new LeaseRefusal("lease_unavailable", "Central credential changed during lease mint; retry for the current material.");
+      const expiryUsable = account.harness === "muse" ? lease.expiresAt !== undefined && lease.expiresAt * 1000 > this.now() && owned !== null && lease.expiresAt * 1000 <= owned.expiresAt : shipped !== null && shipped.expiresAt > this.now();
+      if (!owned || !shipped || !expiryUsable || shipped.accessToken !== owned.accessToken) throw new LeaseRefusal("lease_unavailable", "Central credential changed during lease mint; retry for the current material.");
       const scoped = { ...lease, ...(central?.authorityInstanceId !== undefined ? { authorityInstanceId: central.authorityInstanceId } : {}) };
       return central?.phase === "ready" ? { ...scoped, generation: central.generation } : scoped;
     } catch {
@@ -3408,7 +3469,7 @@ export class AccountsService {
       case "opencode":
         return Promise.resolve(this.mintOpenCodeLease(account));
       case "muse":
-        return Promise.resolve(this.mintMuseLease(account));
+        return this.mintMuseLease(account, opts);
       default:
         // cursor's machine-global keychain slot (and every unmodeled harness)
         // has no defensible lease artifact — a durable, typed refusal.
@@ -3674,40 +3735,26 @@ export class AccountsService {
     return candidates[0]?.document ?? null;
   }
 
-  /**
-   * muse: ship muse/auth.json holding ONLY the meta provider entry, refresh
-   * blanked (other providers and unknown top-level keys dropped). An OAuth
-   * login carries `expiresAt` from `expires_at`; an API key is a static
-   * lease with none. A `storage:"keychain"` file (macOS) holds no token and
-   * must never seed a home, so it is a durable refusal; an expired access
-   * token cannot be refreshed by the recipient, so it is retryable after
-   * the owning node's Muse refreshes it.
-   */
-  private mintMuseLease(account: AccountRow): EphemeralCredential {
-    const rel = join("muse", "auth.json");
-    const parsed = this.leasePrimaryJson(account, rel) as { schema_version?: unknown; providers?: Record<string, unknown> };
-    const meta = parsed.providers?.meta;
-    if (meta && typeof meta === "object" && (meta as Record<string, unknown>).storage === "keychain") {
-      throw new LeaseRefusal(
-        "lease_unsupported",
-        `muse account ${account.id} keeps its login in the macOS Keychain (storage:"keychain"); only a file login on Linux can be leased`,
-      );
+  private async mintMuseLease(account: AccountRow, opts: LeaseOptions): Promise<EphemeralCredential> {
+    const rel = "muse/auth.json";
+    const authority = this.museCredentials;
+    let document: Record<string, unknown>;
+    let expiresAt: number;
+    if (authority.enabled(account)) {
+      await authority.ensure(account, 15 * 60_000, undefined, opts.minTtlMs === undefined ? undefined : Math.min(opts.minTtlMs, 60 * 60_000));
+      document = museWorkingDocument(authority.document(account));
+      expiresAt = Math.floor(authority.parseDocument(authority.document(account))!.expiresAt / 1000);
+    } else {
+      const original = this.leasePrimaryJson(account, rel) as Record<string, unknown>;
+      const credential = parseMuseCredentials(JSON.stringify(original));
+      if (credential?.mechanism === "keychain") throw new LeaseRefusal("lease_unsupported", 'Muse Keychain-backed storage:"keychain" logins cannot be leased.');
+      if (!credential) throw new LeaseRefusal("lease_unavailable", "Muse has no usable meta credential; sign in again.");
+      if (museMeta(original)?.access_token) throw new LeaseRefusal("lease_unavailable", `Enable central Muse credentials for ${account.id} before leasing its login; bootstrap logins are never delivered to holders.`);
+      document = museWorkingDocument(original);
+      expiresAt = Math.floor((this.now() + MUSE_DEFAULT_KEY_TTL_MS) / 1000);
     }
-    const credential = parseMuseCredentials(JSON.stringify(parsed));
-    if (!credential) throw new LeaseRefusal("lease_unavailable", `muse account ${account.id} has no usable meta credential in ${rel}; log in: hive v2 account login ${account.id}`);
-    if (credential.mechanism === "oauth" && credential.expiresAt !== null && credential.expiresAt <= this.now()) {
-      throw new LeaseRefusal("lease_unavailable", `muse account ${account.id}'s access token has expired; it is refreshed by Muse on the owning node`);
-    }
-    const shipped = { schema_version: parsed.schema_version, providers: { meta: blankRefreshTokens(meta) } };
-    const body = `${JSON.stringify(shipped, null, 2)}\n`;
-    const expiresAt = credential.mechanism === "oauth" && credential.expiresAt !== null ? Math.floor(credential.expiresAt / 1000) : undefined;
-    return {
-      files: [{ homeRelPath: rel, contentB64: Buffer.from(body, "utf8").toString("base64"), mode: 0o600 }],
-      ...(expiresAt !== undefined ? { expiresAt } : {}),
-      kindNote: credential.mechanism === "api_key"
-        ? "muse: shipped muse/auth.json as a static API-key lease (meta entry only)"
-        : "muse: shipped muse/auth.json with the OAuth refresh token blanked (meta entry only)",
-    };
+    return { files: [{ homeRelPath: rel, contentB64: Buffer.from(JSON.stringify(document)).toString("base64"), mode: 0o600 }], expiresAt,
+      kindNote: "muse: issued working key only; lease expiry does not revoke the provider key" };
   }
 
   /**
@@ -3870,9 +3917,10 @@ export class AccountsService {
       if (account.source === "leased" || !this.credentialAuthorities.has(account.harness) || account.status === "paused") continue;
       const backoff = this.earlyRefreshBackoff.get(account.id);
       if (backoff && backoff.at > now) continue;
-      if (!this.authorityFor(account)!.earlyRefreshDue(account, aheadMs)) continue;
+      const accountAheadMs = account.harness === "muse" ? Math.min(aheadMs, 60 * 60_000) : aheadMs;
+      if (!this.authorityFor(account)!.earlyRefreshDue(account, accountAheadMs)) continue;
       this.log(`account.credentials.early_refresh account=${account.id} ahead_ms=${aheadMs}`);
-      void this.authorityFor(account)!.ensure(account, account.harness === "codex" ? CODEX_MIN_SHIP_TTL_MS : CLAUDE_MIN_SHIP_TTL_MS, undefined, aheadMs).then(() => {
+      void this.authorityFor(account)!.ensure(account, account.harness === "codex" ? CODEX_MIN_SHIP_TTL_MS : CLAUDE_MIN_SHIP_TTL_MS, undefined, accountAheadMs).then(() => {
         this.earlyRefreshBackoff.delete(account.id);
       }, (error) => {
         const failures = (this.earlyRefreshBackoff.get(account.id)?.failures ?? 0) + 1;

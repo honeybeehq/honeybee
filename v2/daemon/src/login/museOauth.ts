@@ -138,7 +138,7 @@ export class MuseOauthRunner implements LoginRunner {
         return;
       case "granted":
         this.deviceCode = null;
-        this.store(result);
+        await this.store(result);
         return;
     }
   }
@@ -157,12 +157,23 @@ export class MuseOauthRunner implements LoginRunner {
     return false;
   }
 
-  private store(grant: Extract<MuseDevicePoll, { kind: "granted" }>): void {
+  private async store(grant: Extract<MuseDevicePoll, { kind: "granted" }>): Promise<void> {
     const host = this.host;
     const account = host.account;
     const raw = museOauthDocument(grant, host.now());
     if (parseMuseCredentials(raw)?.mechanism !== "oauth") {
       host.fail(err("invalid_credential", "Meta returned an unusable credential."), true);
+      return;
+    }
+    const authority = host.accounts.authorityFor(account);
+    if (authority?.enabled(account)) {
+      try {
+        const state = await authority.relogin(account, JSON.parse(raw), null, { allowDifferentAccount: host.replaceAccount(), stillWanted: () => this.current() });
+        host.log(`account.login.captured flow=${host.flowId} account=${account.id} by=muse_oauth central=in_place generation=${state.generation}`);
+        if (this.current()) host.succeed();
+      } catch (error) {
+        if (this.current()) host.fail(err("credential_unavailable", safeMessage(error)), true);
+      }
       return;
     }
     const primary = primaryCredentialFile(recipeFor("muse") as IdentityRecipe);

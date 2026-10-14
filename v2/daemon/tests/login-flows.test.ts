@@ -683,9 +683,7 @@ test("flows.muse-oauth.darwin: the only and default Muse login on a Mac; the log
     assert.equal(accounts.credentialState(row), "present");
     const readiness = accounts.credentialReadiness(row);
     assert.equal(readiness.ready ? null : readiness.code, "account_unavailable", "the Mac never runs muse against it");
-    const lease = await accounts.mintLease(row);
-    assert.deepEqual(lease.files.map((f) => f.homeRelPath), ["muse/auth.json"]);
-    assert.equal(lease.expiresAt, Math.floor(r.now() / 1000) + 3600);
+    await assert.rejects(accounts.mintLease(row), /Enable central Muse/);
     assert.equal(existsSync(sentinel.ran), false, "muse never ran");
     assert.doesNotMatch(leakSurfaces(r), /DUMMY-(ACCESS|DEVICE)/);
   } finally {
@@ -744,8 +742,7 @@ test("flows.muse-oauth: a grant without expires_in or refresh_token, with any to
     assert.equal(accounts.credentialState(row), "present");
     r.advance(30 * 24 * 3_600_000);
     assert.equal(accounts.credentialState(row), "present", "an unknown expiry is not invented");
-    const lease = await accounts.mintLease(row);
-    assert.equal(lease.expiresAt, undefined);
+    await assert.rejects(accounts.mintLease(row), /Enable central Muse/);
     assert.equal(existsSync(sentinel.ran), false, "muse never ran");
     assert.ok(r.log.some((line) => line.includes("by=muse_oauth refresh=false expires_in_s=none store=home+vault")));
     assert.equal(r.log.filter((line) => line.includes("account.login.muse_device_retry")).length, 3);

@@ -1230,7 +1230,11 @@ async function cmdAccount(ctx: CliContext, parsed: Parsed): Promise<number> {
         emit(ctx, [action === "restore-native" ? `${id}: native backup restored; validate or log in before placing work` : `${id}: native backup ${result.exists ? `exists from ${new Date(result.backedUpAt as number).toISOString()}` : "absent"}`], result, false);
         return 0;
       }
-      const result = await withClient(ctx, c => {
+      const result = await withClient(ctx, async c => {
+        if ((action === "enable" || action === "refresh") && !c.capabilities.includes("account.credentials.muse_authority.v1")) {
+          const value = await c.request<AccountGetResult>("account.get", { id });
+          if (value.account.harness === "muse") throw new RpcError("capability_missing", "Update Honeybee: account.credentials.muse_authority.v1 is required.");
+        }
         if (action === "status" && !c.capabilities.includes("account.credentials.status.v2")) throw new RpcError("capability_missing", "Update Honeybee: account.credentials.status.v2 is required.");
         return c.request<import("../../core/src/index.ts").AccountCredentialAuthority | import("../../core/src/index.ts").AccountCredentialAuthorityStatus>(
         `account.credentials.${action}` as import("../../daemon/src/protocol.ts").RpcVerb,

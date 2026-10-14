@@ -132,6 +132,7 @@ export const DAEMON_CAPABILITIES = [
   "account.credentials.pilot.v1",
   "account.credentials.status.v2",
   "account.credentials.authority_instance.v1",
+  "account.credentials.muse_authority.v1",
   "account.credentials.handoff.v1",
   "account.credentials.handoff_status.v2",
   "account.credentials.release_peer.v1",

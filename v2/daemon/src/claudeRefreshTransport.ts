@@ -8,12 +8,13 @@ import { CLAUDE_OAUTH_CLIENT_ID, claudeOauthTokenUrl, expiryFromSeconds } from "
 
 export interface RefreshedCredentialToken {
   accessToken: string;
-  refreshToken: string;
+  refreshToken?: string;
   expiresAt: number;
   /** When the refresh token itself stops working; absent when the provider did not say. */
   refreshTokenExpiresAt?: number;
   scopes?: string[];
   idToken?: string;
+  apiBaseUrl?: string;
   accessUsable?: boolean;
   terminalAccessFailure?: "invalid_expiry";
 }

@@ -30,7 +30,7 @@ export function createLeaseMaterialCodecs(claude: LeaseKeychainCodec): ReadonlyM
     ["grok", document => grokCredentialEntry(document) !== null || Object.values(document).length > 0 && Object.values(document).every(value => value !== null && typeof value === "object" && !Array.isArray(value) && (value as Record<string, unknown>).auth_mode === "api_key" && nonempty((value as Record<string, unknown>).key))],
     ["kimi", document => nonempty(document.api_key)],
     ["opencode", document => Object.values(document).length > 0 && Object.values(document).every(value => value !== null && typeof value === "object" && !Array.isArray(value) && ((value as Record<string, unknown>).type === "oauth" && nonempty((value as Record<string, unknown>).access) || (value as Record<string, unknown>).type === "api" && nonempty((value as Record<string, unknown>).key)))],
-    ["muse", document => { const credential = parseMuseCredentials(JSON.stringify(document)); return credential !== null && credential.mechanism !== "keychain"; }],
+    ["muse", document => { const credential = parseMuseCredentials(JSON.stringify(document)); return credential !== null && credential.mechanism === "api_key"; }],
   ]);
   return new Map([...proofs.keys()].map(harness => {
     const recipe = recipeFor(harness)!;

@@ -460,7 +460,7 @@ export class LoginFlowService {
     if (!this.offered(flow.harness, methodId)) {
       return this.fail(flowId, err("unsupported_method", this.accounts.isolationRefusal(flow.harness) ?? `${flow.harness} does not offer '${methodId}' on this computer.`), false);
     }
-    if (this.accounts.authorityFor(account)?.enabled(account) && !(method.run.mode === "direct" && method.run.runner === "claude_oauth")) {
+    if (this.accounts.authorityFor(account)?.enabled(account) && !(method.run.mode === "direct" && (method.run.runner === "claude_oauth" || method.run.runner === "muse_oauth"))) {
       // Any other method lands a refresh token in the home, a second holder beside the authority.
       return this.fail(flowId, err("unsupported_method", `${account.id} is centrally managed; only '${defaultLoginMethodId(flow.harness, { platform: this.accounts.platform })}' can log it in place.`), false);
     }

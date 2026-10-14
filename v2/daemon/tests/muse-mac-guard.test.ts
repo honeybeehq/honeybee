@@ -100,9 +100,7 @@ test("muse on darwin: never executed for a probe, spawned under a held account, 
     assert.equal(existsSync(join(dir, "homes", "muse-mac", "muse", "auth.json")), false, "no Muse credential in a home on darwin");
     assert.equal(existsSync(join(dir, "vault", "muse", "muse-mac", "muse", "auth.json")), true);
 
-    const lease = await client.request<AccountLeaseResult>("account.lease", { account: "muse-mac" });
-    const shipped = JSON.parse(Buffer.from(lease.files[0]!.contentB64, "base64").toString("utf8"));
-    assert.deepEqual({ mechanism: shipped.providers.meta.mechanism, refresh: shipped.providers.meta.refresh_token }, { mechanism: "oauth", refresh: "" });
+    await refused(client, "account.lease", { account: "muse-mac" }, "lease_unavailable", /Enable central Muse/);
     await refused(client, "spawn", { name: "held", agent: "muse", cwd: dir, account: "muse-mac" }, "account_unavailable");
 
     await refused(client, "account.lease", { account: "muse-sub" }, "lease_unavailable", /no muse\/auth.json found for muse-sub/);

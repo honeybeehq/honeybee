@@ -149,7 +149,7 @@ export class CredentialHandoffService {
   private account(id: unknown): AccountRow {
     const row = this.store.getAccount(name(id));
     if (!row) throw new RpcError("account_not_found", "Handoff account must be registered on this daemon.");
-    if (!this.accounts.authorityFor(row)) throw new RpcError("credential_handoff_unsupported", "The account harness has no central credential authority.");
+    if (!this.accounts.authorityFor(row)?.supportsCredentialHandoff()) throw new RpcError("credential_handoff_unsupported", "The account harness has no central credential authority.");
     return row;
   }
   private put(row: CredentialHandoffRecord, state: CredentialHandoffRecord["state"], changes: Partial<CredentialHandoffRecord> = {}): CredentialHandoffRecord {

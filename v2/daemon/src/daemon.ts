@@ -130,6 +130,7 @@ import type { PtySpawner } from "./loginWorker.ts";
 import type { KeychainReader, KeychainWriter } from "./keychain.ts";
 import type { CellCaptureExecutor, FlagEvidenceLike, UsageEvidenceLike } from "./loops.ts";
 import { CellRetentionService } from "./cellRetention.ts";
+import { CredentialAuthorityError } from "./claudeCredentialAuthority.ts";
 import { realPreflightProbes } from "./import-probes.ts";
 import { HsrDriver, pidAlive, verifyProcessIdentity, type SpawnSpec } from "../../driver-hsr/src/index.ts";
 import {
@@ -1762,6 +1763,7 @@ export class HiveDaemon {
         return this.withAsyncIdempotency(verb, params, async () => {
           const account = this.requireAccount(params);
           this.mustAccounts().assertLocalAccount(account);
+          if (account.harness === "muse" && conn.ingress !== "local_unix") throw new RpcError("account_unavailable", "Muse credential minting requires the authority's local Unix socket.", { reason: "local_required" });
           const authority = this.mustAccounts().authorityFor(account);
           if (!authority) throw new RpcError("account_unavailable", `Central credential management is not supported for ${account.harness}.`);
           try {
@@ -1772,6 +1774,7 @@ export class HiveDaemon {
             return await authority.ensure(account, 0, key);
           } catch (error) {
             if (error instanceof RpcError) throw error;
+            if (account.harness === "muse" && error instanceof CredentialAuthorityError) throw new RpcError("account_unavailable", error.message, { reason: error.reason, ...(error.retryAt !== undefined ? { retryAt: error.retryAt } : {}) });
             throw new RpcError("account_unavailable", error instanceof Error ? error.message : "Credential operation failed");
           }
         });

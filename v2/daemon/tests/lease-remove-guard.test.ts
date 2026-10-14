@@ -1,7 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { randomUUID, createHash } from "node:crypto";
+import { randomUUID, createHash, createHmac } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -196,20 +196,29 @@ test("lease proof schema migration from42 is local-only and restart durable", ()
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-for (const mode of ["issued", "changed", "legacy"]) test(`Muse OAuth without refresh token ${mode} is classified using local issuance proof`, async () => {
+for (const mode of ["issued", "changed", "legacy"]) test(`Muse authority-era bootstrap in ${mode} material is always native, never a working-key lease`, async () => {
   const r = rig("muse");
   try {
-    const raw = JSON.stringify({ providers: { meta: { mechanism: "oauth", access_token: randomUUID() } } });
+    const raw = JSON.stringify({ schema_version: 1, providers: { meta: { mechanism: "oauth", access_token: randomUUID() } } });
     if (mode === "legacy") {
       r.store.setAccountLease(r.account.id, { shareId: "legacy", authorityNodeId: "legacy", epoch: 1, expiresAt: Math.floor((at + hour) / 1000), adoptedAt: null, revokedAt: null });
-      r.put(r.account.homePath, r.primary, raw);
     } else {
-      const input = r.input(1); input.files[0]!.contentB64 = Buffer.from(raw).toString("base64");
-      await r.accounts.installLease(input);
-      if (mode === "changed") r.put(r.account.homePath, r.primary, JSON.stringify({ providers: { meta: { mechanism: "oauth", access_token: randomUUID() } } }));
+      await r.accounts.installLease(r.input(1));
+      if (mode === "issued") {
+        const proof = r.store.getLeaseMaterialProof(r.account.id)!;
+        const key = readFileSync(join(r.accounts.vaultDirOf(r.account), "..", "..", ".lease-material-provenance.key"));
+        r.store.putLeaseMaterialProof(r.account.id, proof.keyId, { [r.primary]: createHmac("sha256", key).update(raw).digest("hex") });
+      }
     }
-    if (mode === "changed") await assert.rejects(r.accounts.removeLease(r.account.id), refused);
-    else { const result = await r.accounts.removeLease(r.account.id); assert.equal(result.disposition, "revoked"); assert.equal(result.staticUnverified, mode === "legacy" ? true : undefined); }
+    for (const root of [r.account.homePath, r.accounts.vaultDirOf(r.account)]) r.put(root, r.primary, raw);
+    const before = r.hash(r.account.homePath, r.primary);
+    assert.equal((await r.accounts.removeLease(r.account.id, { checkOnly: true })).disposition, "native_preserved");
+    await assert.rejects(r.accounts.removeLease(r.account.id), refused);
+    assert.throws(() => r.accounts.assertNoNewNativeTakeover(r.account), error => error instanceof RpcError && error.code === "credential_handoff_decided");
+    assert.equal(r.hash(r.account.homePath, r.primary), before);
+    const removed = await r.accounts.removeLease(r.account.id, { discardNative: true, confirm: true });
+    assert.equal(removed.nativeChain.discarded, true);
+    assert.match(removed.message, /does not revoke its key at Meta/);
   } finally { r.close(); }
 });
 

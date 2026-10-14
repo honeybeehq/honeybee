@@ -23,6 +23,7 @@ export interface AuthorityDocument {
   identity?: ClaudeIdentity;
   /** When the provider last issued this chain's access token, by refresh or login. */
   issuedAt?: number;
+  renewalAttemptAt?: number;
   /** Set by an in-place login; the previous generation's file is kept until this chain's first successful refresh. */
   login?: { at: number; previousGeneration: number | null };
 }
@@ -62,7 +63,9 @@ export interface CredentialCodec {
   label: string;
   retainRotatedOnUnusableAccess?: boolean;
   nativeLoginRecovery?: boolean;
-  parse: (raw: string) => { accessToken: string; refreshToken?: string; expiresAt: number; refreshTokenExpiresAt?: number } | null;
+  rotatesRefresh?: boolean;
+  minimumRenewalIntervalMs?: number;
+  parse: (raw: string) => { accessToken: string; refreshToken?: string; bootstrapToken?: string; expiresAt: number; refreshTokenExpiresAt?: number } | null;
   merge: (document: Record<string, unknown>, token: Extract<CredentialRefreshResult, { kind: "success" }>["token"], at: number) => Record<string, unknown>;
 }
 const CLAUDE_CODEC: CredentialCodec = {
@@ -84,9 +87,11 @@ export type CredentialUnavailableReason = "login_required" | "operation_in_progr
 export class CredentialAuthorityError extends Error {
   readonly code = "account_unavailable";
   readonly reason: CredentialUnavailableReason;
-  constructor(message: string, reason: CredentialUnavailableReason = "unavailable") {
+  readonly retryAt?: number;
+  constructor(message: string, reason: CredentialUnavailableReason = "unavailable", retryAt?: number) {
     super(message);
     this.reason = reason;
+    this.retryAt = retryAt;
   }
 }
 export class CredentialOwnershipConflict extends CredentialAuthorityError {}
@@ -110,6 +115,12 @@ export class CredentialAuthority {
   private readonly options: CentralCredentialOptions;
   constructor(options: CentralCredentialOptions) { this.options = options; }
   private get codec(): CredentialCodec { return this.options.codec ?? CLAUDE_CODEC; }
+
+  supportsCredentialHandoff(): boolean { return this.codec.rotatesRefresh !== false; }
+
+  private renewalCredential(credential: NonNullable<ReturnType<CredentialCodec["parse"]>>): string | undefined {
+    return this.codec.rotatesRefresh === false ? credential.bootstrapToken : credential.refreshToken;
+  }
 
   supportsAuthDeathRecovery(): boolean { return this.codec.authDeathRecovery === true; }
 
@@ -156,6 +167,10 @@ export class CredentialAuthority {
   }
   document(account: AccountRow): Record<string, unknown> {
     return this.read(account).document;
+  }
+  previousDocument(account: AccountRow): Record<string, unknown> | null {
+    try { return (JSON.parse(readFileSync(this.previousPath(account), "utf8")) as AuthorityDocument).document; }
+    catch { return null; }
   }
   private put(account: AccountRow, phase: AccountCredentialAuthority["phase"], value: AuthorityDocument, failure: CredentialRefreshFailure | null = null): AccountCredentialAuthority {
     const before = this.status(account);
@@ -223,7 +238,7 @@ export class CredentialAuthority {
     if (result.kind === "success") {
       const token = result.token;
       const retained = this.codec.retainRotatedOnUnusableAccess && token.accessUsable === false;
-      if ((token.accessToken || retained) && token.refreshToken && Number.isFinite(token.expiresAt) && (token.expiresAt > this.options.now() || retained)) {
+      if ((token.accessToken || retained) && (this.codec.rotatesRefresh === false || token.refreshToken) && Number.isFinite(token.expiresAt) && (token.expiresAt > this.options.now() || retained)) {
         persist?.(token);
         this.options.log(`account.credentials.refresh account=${account.id} during=${during} generation=${generation} outcome=success`
           + ` expires=${new Date(token.expiresAt).toISOString()} login_expires=${token.refreshTokenExpiresAt !== undefined ? new Date(token.refreshTokenExpiresAt).toISOString() : "-"}`);
@@ -239,11 +254,12 @@ export class CredentialAuthority {
   /** What the operator must do; also the account's status reason and the lease refusal text. */
   requiresNativeLogin(): boolean { return this.codec.nativeLoginRecovery === true; }
   loginRequiredMessage(account: AccountRow, failure: CredentialRefreshFailure | null): string {
-    const why = failure?.error === "invalid_token_response" ? "the token endpoint returned a malformed expiry; automatic rotation stopped"
+    const why = this.codec.rotatesRefresh === false ? `Meta refused the held login (${failure ? describeRefreshFailure(failure) : "sign in again"})`
+      : failure?.error === "invalid_token_response" ? "the token endpoint returned a malformed expiry; automatic rotation stopped"
       : failure ? `the provider refused the refresh token (${describeRefreshFailure(failure)})` : "the refresh token is no longer usable";
     const recovery = this.codec.nativeLoginRecovery
       ? `stop this account's local bees, then hive account credentials disable ${account.id}; hive account login ${account.id}; hive account credentials enable ${account.id}`
-      : `hive account login ${account.id}`;
+      : `hive account login ${account.id}${this.codec.rotatesRefresh === false ? " --replace-account" : ""}`;
     return `${this.codec.label} login required for ${account.id}: ${why}. Recover with: ${recovery}`;
   }
   /** A paused account stays paused: the operator parked it, and unpausing re-derives the honest status. */
@@ -312,7 +328,7 @@ export class CredentialAuthority {
     try { return !this.recentlyIssued(this.read(account)); } catch { return false; }
   }
   private recentlyIssued(value: AuthorityDocument): boolean {
-    return value.issuedAt !== undefined && this.options.now() - value.issuedAt < this.options.earlyRefreshMinIntervalMs;
+    return value.issuedAt !== undefined && this.options.now() - value.issuedAt < Math.max(this.options.earlyRefreshMinIntervalMs, this.codec.minimumRenewalIntervalMs ?? 0);
   }
   private assertQuiescent(account: AccountRow): void {
     if (this.options.store.activeCredentialHandoff(account.id)) throw new CredentialAuthorityError("Credential handoff or stand-down cleanup holds this account; retry its signed operation before changing ownership.");
@@ -503,6 +519,13 @@ export class CredentialAuthority {
     this.forgetHandoffAdoption(account);
   }
 
+  private assertRenewalPacing(value: AuthorityDocument, failure: CredentialRefreshFailure | null): void {
+    if (this.codec.minimumRenewalIntervalMs === undefined) return;
+    const attemptedAt = Math.max(value.issuedAt ?? 0, value.renewalAttemptAt ?? 0, failure?.at ?? 0);
+    const retryAt = Math.max(attemptedAt + this.codec.minimumRenewalIntervalMs, failure?.retryAt ?? 0);
+    if (attemptedAt > 0 && this.options.now() < retryAt) throw new CredentialAuthorityError(`Credential mint is paced; retry after ${new Date(retryAt).toISOString()}.`, "operation_in_progress", retryAt);
+  }
+
   enable(account: AccountRow): Promise<AccountCredentialAuthority> {
     return this.lane(account, "enable", async () => {
       if (account.harness !== this.codec.harness) throw new CredentialAuthorityError(`Central credential management supports ${this.codec.label} only.`);
@@ -512,6 +535,10 @@ export class CredentialAuthority {
       if (before?.phase === "ready") { this.read(account); return before; }
       if (before?.phase === "login_required") throw new CredentialAuthorityError(this.loginRequiredMessage(account, before.failure), "login_required");
       if (before && !["disabled", "enrolling"].includes(before.phase)) throw new CredentialAuthorityError("Resolve the incomplete refresh before enrolling again.");
+      if (this.codec.minimumRenewalIntervalMs !== undefined && before?.phase === "disabled") {
+        const previous = this.read(account, true);
+        if (previous) this.assertRenewalPacing(previous, before.failure);
+      }
       let value: AuthorityDocument;
       if (before?.phase === "enrolling") {
         value = this.read(account);
@@ -529,28 +556,33 @@ export class CredentialAuthority {
       } else {
         const document = await this.options.nativeCredential(account);
         const candidate = document ? this.codec.parse(JSON.stringify(document)) : null;
-        if (!document || !candidate?.refreshToken) {
-          throw new CredentialAuthorityError("This account has no refresh credential; complete a login before enrolling it.");
+        if (!document || !candidate || !this.renewalCredential(candidate)) {
+          throw new CredentialAuthorityError(this.codec.rotatesRefresh === false ? "This account has no held Muse login; sign in with Meta before enabling its authority." : "This account has no refresh credential; complete a login before enrolling it.");
         }
-        if (candidate.expiresAt <= this.options.now()) {
+        if (this.codec.rotatesRefresh !== false && candidate.expiresAt <= this.options.now()) {
           // Nothing is saved or published: native copies stay exactly as they are.
           throw new CredentialAuthorityError(`This account's credential expired at ${new Date(candidate.expiresAt).toISOString()}; log in natively (hive account login ${account.id}) before enrolling it.`);
         }
         this.assertQuiescent(account); // A spawn/login may have arrived during Keychain I/O.
         this.options.beforeEnroll(account);
         value = { generation: (before?.generation ?? 0) + 1, operationKey: null, document,
-          adopted: { refreshTokenDigest: refreshTokenDigest(candidate.refreshToken), expiresAt: candidate.expiresAt } };
+          adopted: { refreshTokenDigest: refreshTokenDigest(this.renewalCredential(candidate)!), expiresAt: candidate.expiresAt } };
         // Save first while no runtime can start in this synchronous section.
         save(this.path(account), value);
         this.put(account, "enrolling", value);
       }
+      this.assertRenewalPacing(value, before?.failure ?? null);
       // Validate the chain with one real rotation before any native copy loses its refresh token.
       const credential = this.codec.parse(JSON.stringify(value.document))!;
-      if (!credential.refreshToken) throw new CredentialAuthorityError("The authority has no refresh credential; disable central credentials and log in again.");
+      if (!this.renewalCredential(credential)) throw new CredentialAuthorityError("The authority has no renewal credential; disable central credentials and log in again.");
       await this.options.beforeRefresh(account, value.document);
       const operationKey = randomUUID();
       this.put(account, "enrolling", { ...value, operationKey });
-      const attempt = await this.attempt(account, credential.refreshToken, value.generation, null, "enroll");
+      if (this.codec.rotatesRefresh === false) {
+        value = { ...value, renewalAttemptAt: this.options.now() };
+        save(this.path(account), value);
+      }
+      const attempt = await this.attempt(account, this.renewalCredential(credential)!, value.generation, null, "enroll");
       if (attempt.kind === "failed") {
         const detail = describeRefreshFailure(attempt.failure);
         if (attempt.result.kind === "rejected") {
@@ -561,7 +593,7 @@ export class CredentialAuthority {
         }
         if (attempt.result.kind === "retryable") {
           // The provider did not process the request: the native chain is whole, so enrollment simply did not happen.
-          this.put(account, "disabled", value);
+          this.put(account, "disabled", value, this.codec.rotatesRefresh === false ? attempt.failure : null);
           throw new CredentialAuthorityError(`The provider did not process the enrollment refresh (${detail}); native copies are unchanged. Retry: hive account credentials enable ${account.id}`);
         }
         value = this.preserveEnrollmentRollback(account, value);
@@ -672,7 +704,8 @@ export class CredentialAuthority {
         this.options.beforeUse(account, value.document);
         return state;
       }
-      if (!credential.refreshToken) {
+      this.assertRenewalPacing(value, state.failure);
+      if (!this.renewalCredential(credential)) {
         throw this.requireLogin(account, value, { outcome: "rejected", httpStatus: null, error: null, description: "the authority holds no refresh token",
           at: now, attempts: (state.failure?.attempts ?? 0) + 1, retryAt: null });
       }
@@ -687,7 +720,11 @@ export class CredentialAuthority {
       await this.options.beforeRefresh(account, value.document);
       const operationKey = forceKey ?? randomUUID();
       this.put(account, "refreshing", { ...value, operationKey }, state.failure);
-      const attempt = await this.attempt(account, credential.refreshToken, value.generation, state.failure, "refresh");
+      if (this.codec.rotatesRefresh === false) {
+        value = { ...value, renewalAttemptAt: now };
+        save(this.path(account), value);
+      }
+      const attempt = await this.attempt(account, this.renewalCredential(credential)!, value.generation, state.failure, "refresh");
       if (attempt.kind === "failed") {
         const { result, failure } = attempt;
         if (result.kind === "rejected") throw this.requireLogin(account, { ...value, operationKey }, failure);
@@ -739,17 +776,30 @@ export class CredentialAuthority {
         throw new CredentialAuthorityError(`Central credentials are ${state.phase}; finish it with: hive account credentials ${state.phase === "enrolling" ? "enable" : "disable"} ${account.id}`, "operation_in_progress");
       }
       const grant = this.codec.parse(JSON.stringify(document));
-      if (!grant?.refreshToken || grant.expiresAt <= this.options.now()) throw new CredentialAuthorityError("The login did not produce a usable refresh credential.");
+      if (!grant || !this.renewalCredential(grant) || (this.codec.rotatesRefresh !== false && grant.expiresAt <= this.options.now())) throw new CredentialAuthorityError("The login did not produce a usable refresh credential.");
       let current: AuthorityDocument | null;
       try { current = this.read(account); } catch { current = null; }
       if (identity && identity.organizationUuid === null) identity = await this.options.identify(grant.accessToken).catch(() => null) ?? identity;
       const verdict = await this.sameAccount(account, current, identity);
       if (verdict !== "same" && !opts.allowDifferentAccount) {
         throw verdict === "different"
-          ? new CredentialAuthorityError(`This login belongs to a different Anthropic account than ${account.id}; nothing was changed. To replace the account's login with it anyway: hive account login ${account.id} --replace-account`, "different_account")
-          : new CredentialAuthorityError(`Honeybee cannot tell whether this login belongs to the Anthropic account ${account.id} holds; nothing was changed. If it does: hive account login ${account.id} --replace-account`, "identity_unverified");
+          ? new CredentialAuthorityError(`This login belongs to a different ${this.codec.harness === "claude" ? "Anthropic" : this.codec.label} account than ${account.id}; nothing was changed. To replace the account's login with it anyway: hive account login ${account.id} --replace-account`, "different_account")
+          : new CredentialAuthorityError(`Honeybee cannot tell whether this login belongs to the ${this.codec.harness === "claude" ? "Anthropic" : this.codec.label} account ${account.id} holds; nothing was changed. If it does: hive account login ${account.id} --replace-account`, "identity_unverified");
       }
       if (current) await this.options.beforeRefresh(account, current.document);
+      if (this.codec.rotatesRefresh === false) {
+        if (current) {
+          this.assertRenewalPacing(current, state.failure);
+          current = { ...current, renewalAttemptAt: this.options.now() };
+          save(this.path(account), current);
+        }
+        const result = await this.options.refresh(this.renewalCredential(grant)!, document);
+        if (result.kind !== "success" || !result.token.accessToken || result.token.expiresAt <= this.options.now()) {
+          if (current && result.kind !== "success") this.put(account, state.phase, current, this.failureOf(result, state.failure));
+          throw new CredentialAuthorityError("The new login did not mint a usable working key; the existing authority is unchanged.");
+        }
+        document = this.codec.merge(document, result.token, this.options.now());
+      }
       if (!opts.stillWanted()) throw new CredentialAuthorityError("The sign-in was cancelled or replaced before it could be saved; nothing was changed.", "operation_in_progress");
       const operationKey = randomUUID();
       if (current) {
