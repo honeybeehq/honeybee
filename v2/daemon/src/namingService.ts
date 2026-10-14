@@ -137,6 +137,12 @@ function asObject(value: unknown): JsonObject | null {
     : null;
 }
 
+function openAiTransportReason(error: unknown): string {
+  if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) return "timed out";
+  const code = error instanceof Error ? (error.cause as { code?: unknown } | undefined)?.code : undefined;
+  return typeof code === "string" && /^[A-Z0-9_]{1,40}$/.test(code) ? code : "network or request error";
+}
+
 function openAiFailureReason(api: OpenAiRunResult): string {
   if (api.status === 401 || api.status === 403) return "the API key was rejected";
   return errorMessage(api.body.error, api.statusText).replace(/\b(sk|rk|sess)-[^\s"',]+/g, "$1-[redacted]");
@@ -453,7 +459,7 @@ export class TitleGeneratorService {
         const prompt = buildTitleContentPrompt(context);
         if (config.backend === "openai-api") {
           api = await this.runOpenAi(prompt, config);
-          if ((api.status === 401 || api.status === 403) && config.apiKeyRef) this.hemSecrets.forget(config.apiKeyRef);
+          if ((api.status === 401 || api.status === 403) && config.apiKeyRef) this.hemSecrets.reject(config.apiKeyRef);
           if (!api.ok) throw new Error(`OpenAI API naming failed (${api.status}): ${openAiFailureReason(api)}`);
           raw = api.text;
         } else {
@@ -540,6 +546,8 @@ export class TitleGeneratorService {
         store: false,
       }),
       signal: AbortSignal.timeout(this.timeoutMs),
+    }).catch((error: unknown) => {
+      throw new Error(`OpenAI API request failed: ${openAiTransportReason(error)}`);
     });
     let body: JsonObject;
     try {

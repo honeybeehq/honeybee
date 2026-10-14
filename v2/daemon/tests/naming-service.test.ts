@@ -341,8 +341,11 @@ test("openai-api naming resolves apiKeyRef through hem lazily, caches it, and ne
     openAiStatus = 401;
     await rejectsWith(/^OpenAI API naming failed \(401\): the API key was rejected$/);
     openAiStatus = 200;
+    await rejectsWith(/hem ref "global\/hive-naming-openai" holds a key OpenAI rejected/);
+    assert.equal(hemCalls.length, 1, "a rejected key is held, not re-read at once");
+    clock += 1_000;
     assert.equal(await name(), "Hem Keyed Title");
-    assert.equal(hemCalls.length, 2, "a rejected key is re-read from hem");
+    assert.equal(hemCalls.length, 2, "a rejected key is re-read from hem after the hold");
 
     for (const stdout of ["[\"sk-from-hem-0123456789abcdef\"]\n", " sk-from-hem-0123456789abcdef\n", "{\"pending\":1}\n", "short\n"]) {
       clock += 2_000;
@@ -379,4 +382,21 @@ test("hem resolver refuses refs outside the naming allowlist without running hem
     await assert.rejects(hemSecrets.resolve(ref), /not an allowed naming secret reference/);
   }
   assert.equal(ran, 0);
+});
+
+test("openai-api transport errors never carry the key", async () => {
+  const apiKey = "sk-plain-key-with-a-control-char\n";
+  const service = new TitleGeneratorService({
+    fetchImpl: async (_input, init) => {
+      throw new TypeError(`Headers.append: "${String((init?.headers as Record<string, string>).authorization)}" is an invalid header value.`);
+    },
+  });
+  try {
+    await assert.rejects(
+      service.generate({ beeId: "bee-bad-key", userMessages: ["Name it"] }, config({ backend: "openai-api", apiKey })),
+      (error: Error) => error.message === "OpenAI API request failed: network or request error",
+    );
+  } finally {
+    service.close();
+  }
 });

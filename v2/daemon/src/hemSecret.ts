@@ -7,7 +7,7 @@ const NAMING_HEM_SECRET = /^global\/hive-naming-[A-Za-z0-9][A-Za-z0-9._-]{0,63}$
 const HEM_FIELD = /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}$/;
 const PLAIN_SECRET_VALUE = /^[A-Za-z0-9][\x21-\x7e]{15,511}$/;
 const PENDING_APPROVAL = /pending_request_id|approval_required|pendingapproval|pending approval/i;
-const HEM_ENV_KEYS = ["PATH", "HOME", "VALHALL_HEMD_ENDPOINT", "VALHALL_HEM_TOKEN", "HEM_DATA_DIR"] as const;
+const HEM_ENV_KEYS = ["PATH", "HOME", "USER", "TMPDIR", "VALHALL_HEMD_ENDPOINT", "VALHALL_HEM_TOKEN", "HEM_DATA_DIR"] as const;
 const DEFAULT_HEM_TIMEOUT_MS = 5_000;
 const DEFAULT_HEM_CACHE_TTL_MS = 5 * 60_000;
 const DEFAULT_HEM_FAILURE_HOLD_MS = 60_000;
@@ -135,6 +135,11 @@ export class HemSecretResolver {
       this.held.delete(ref);
       this.inflight.delete(ref);
     }
+  }
+
+  reject(ref: string): void {
+    this.forget(ref);
+    this.hold(ref, this.generation, `hem ref ${JSON.stringify(ref)} holds a key OpenAI rejected`, this.failureHoldMs);
   }
 
   private async fetch(ref: string, generation: number): Promise<string> {
