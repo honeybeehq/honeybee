@@ -57,6 +57,7 @@ export class HemSecretResolver {
   private readonly run: HemGetRunner;
   private readonly cache = new Map<string, { value: string; expiresAt: number }>();
   private readonly inflight = new Map<string, Promise<string>>();
+  private generation = 0;
 
   constructor(options: HemSecretResolverOptions = {}) {
     this.timeoutMs = options.timeoutMs ?? DEFAULT_HEM_TIMEOUT_MS;
@@ -72,17 +73,25 @@ export class HemSecretResolver {
     this.cache.delete(ref);
     const pending = this.inflight.get(ref);
     if (pending) return pending;
-    const lookup = this.fetch(ref).finally(() => this.inflight.delete(ref));
+    const lookup = this.fetch(ref, this.generation).finally(() => {
+      if (this.inflight.get(ref) === lookup) this.inflight.delete(ref);
+    });
     this.inflight.set(ref, lookup);
     return lookup;
   }
 
   forget(ref?: string): void {
-    if (ref === undefined) this.cache.clear();
-    else this.cache.delete(ref);
+    this.generation += 1;
+    if (ref === undefined) {
+      this.cache.clear();
+      this.inflight.clear();
+    } else {
+      this.cache.delete(ref);
+      this.inflight.delete(ref);
+    }
   }
 
-  private async fetch(ref: string): Promise<string> {
+  private async fetch(ref: string, generation: number): Promise<string> {
     const parsed = parseHemSecretRef(ref);
     if (!parsed) throw new Error(`hem ref ${JSON.stringify(ref)} is not a valid secret reference`);
     const hem = this.locateHem();
@@ -94,10 +103,10 @@ export class HemSecretResolver {
       throw new Error(`hem ref ${JSON.stringify(ref)} could not be read: ${error instanceof Error ? error.message : String(error)}`);
     }
     const value = stdout.replace(/\r?\n$/, "");
-    if (value.length === 0 || value.includes("\n")) {
-      throw new Error(`hem ref ${JSON.stringify(ref)} did not return a single-line value`);
+    if (value.length === 0 || value.includes("\n") || value.startsWith("{")) {
+      throw new Error(`hem ref ${JSON.stringify(ref)} did not return a plain secret value`);
     }
-    this.cache.set(ref, { value, expiresAt: this.now() + this.cacheTtlMs });
+    if (generation === this.generation) this.cache.set(ref, { value, expiresAt: this.now() + this.cacheTtlMs });
     return value;
   }
 }
