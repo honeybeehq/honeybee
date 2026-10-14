@@ -122,6 +122,7 @@ export const DAEMON_CAPABILITIES = [
   "account.lease.install.v1",
   "account.lease.enrol.v1",
   "account.lease.export.v1",
+  "account.lease.fence_forwarding.v1",
   "account.lease.remove_native_guard.v1",
   "account.lease.revoke.v1",
   "account.lease.adopt_explicit.v1",
@@ -971,7 +972,18 @@ export interface AccountNativeBackupRestoreResult {
   keychainRestored: boolean;
 }
 
-export interface AccountLeaseExportResult {
+export const LEASE_FENCE_FIELDS = ["retiredAuthorityInstanceIds", "authorityGenerationFloor", "legacyAuthorityInstanceId", "legacyAuthorityGenerationFloor", "fencesForwarded"] as const;
+
+export interface AccountLeaseFences {
+  retiredAuthorityInstanceIds?: string[];
+  authorityGenerationFloor?: number;
+  legacyAuthorityInstanceId?: string;
+  legacyAuthorityGenerationFloor?: number;
+  fencesForwarded?: boolean;
+}
+
+export interface AccountLeaseExportResult extends AccountLeaseFences {
+  fencesForwarded: boolean;
   authorityInstanceId: string;
   account: string;
   harness: string;
@@ -984,7 +996,7 @@ export interface AccountLeaseExportResult {
   kindNote: string;
 }
 
-export interface AccountLeaseInstallParams {
+export interface AccountLeaseInstallParams extends AccountLeaseFences {
   authorityInstanceId?: string;
   enrol?: boolean;
   viaNodeId?: string;

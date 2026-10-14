@@ -218,3 +218,21 @@ test("leased export refuses the current known-failed legacy revision, then permi
     assert.deepEqual(replayAudit(r.store.auditRows()), r.store.dumpState());
   } finally { r.close(); }
 });
+
+test("leased export copies only stored bounded fence provenance and refuses a forwarded row", async () => {
+  const r = fixture();
+  try {
+    r.store.setAccountLease(r.account.id, { ...r.origin, retiredAuthorityInstanceIds: ["older-A", "older-B"], authorityGenerationFloor: 9, legacyAuthorityInstanceId: "remembered-instance", legacyAuthorityGenerationFloor: 12 });
+    const exported = await r.accounts.exportLeasedMaterial(r.account.id);
+    assert.deepEqual(exported.retiredAuthorityInstanceIds, ["older-A", "older-B"]);
+    assert.equal(exported.authorityGenerationFloor, 9);
+    assert.equal(exported.legacyAuthorityInstanceId, "remembered-instance");
+    assert.equal(exported.legacyAuthorityGenerationFloor, 12);
+    assert.equal(exported.fencesForwarded, false);
+    r.store.setAccountLease(r.account.id, { ...r.store.getAccount(r.account.id)!.leasedFrom!, fencesForwarded: true });
+    const seq = r.store.lastAuditSeq();
+    await assert.rejects(r.accounts.exportLeasedMaterial(r.account.id), refusal("forwarding_depth_exceeded"));
+    assert.equal(r.store.lastAuditSeq(), seq);
+    assert.deepEqual(replayAudit(r.store.auditRows()), r.store.dumpState());
+  } finally { r.close(); }
+});

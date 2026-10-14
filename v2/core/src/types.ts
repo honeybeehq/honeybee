@@ -542,6 +542,7 @@ export interface AccountLeaseEnrolment {
 }
 
 export interface AccountLeaseOrigin {
+  fencesForwarded?: boolean;
   authorityGenerationFloor?: number;
   legacyAuthorityInstanceId?: string;
   legacyAuthorityGenerationFloor?: number;

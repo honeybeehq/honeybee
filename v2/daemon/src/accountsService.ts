@@ -98,7 +98,7 @@ import { readClaudeKeychain, readClaudeKeychainState, writeClaudeKeychainEntry, 
 import { atomicWriteFileSync } from "./homeDefaults.ts";
 import { withClaudeRefreshLock } from "./claudeRefreshLock.ts";
 import { createLeaseMaterialCodecs, hasRefreshGrant, type LeaseMaterialCodec } from "./leaseMaterial.ts";
-import { RpcError, type AccountLeaseExportResult, type AccountLeaseInstallParams, type AccountLeaseInstallResult, type AccountLeaseRemoveResult, type AccountLeaseRemoveParams } from "./protocol.ts";
+import { LEASE_FENCE_FIELDS, RpcError, type AccountLeaseExportResult, type AccountLeaseInstallParams, type AccountLeaseInstallResult, type AccountLeaseRemoveResult, type AccountLeaseRemoveParams } from "./protocol.ts";
 import { fetchClaudeIdentity, type ClaudeIdentity } from "./login/transports.ts";
 import {
   defaultProviderLimitsHttp,
@@ -1464,6 +1464,7 @@ export class AccountsService {
       };
       if (account.source !== "leased" || account.native || !account.leasedFrom) refuse("not_leased", account.source);
       const origin = account.leasedFrom!;
+      if (origin.fencesForwarded) refuse("forwarding_depth_exceeded");
       const authority = this.authorityFor(account);
       const handoff = this.store.activeCredentialHandoff(id);
       if (handoff) refuse("handoff", handoff.adoptionRecovery?.retainedGeneration !== undefined ? "retained_unusable" : handoff.releasePeer?.outcome ?? handoff.state, handoff.handoffId);
@@ -1498,7 +1499,11 @@ export class AccountsService {
         if (!codec!.provesAccessOnly?.(document) || hasRefreshGrant(document)) refuse("material_unavailable");
       } catch { return refuse("material_unavailable"); }
       if (interruptions.some(row => row.state === "open" && !row.deathRecovery && row.blockedRevision !== null && row.blockedRevision === revision)) refuse("account_auth_needed", "blocked_revision");
-      const result: AccountLeaseExportResult = { authorityInstanceId: origin.authorityInstanceId!, account: id, harness: account.harness, authorityNodeId: origin.authorityNodeId, shareId: origin.shareId,
+      const result: AccountLeaseExportResult = { fencesForwarded: origin.fencesForwarded === true,
+        ...(origin.retiredAuthorityInstanceIds !== undefined ? { retiredAuthorityInstanceIds: [...origin.retiredAuthorityInstanceIds].slice(-8) } : {}),
+        ...(origin.authorityGenerationFloor !== undefined ? { authorityGenerationFloor: origin.authorityGenerationFloor } : {}),
+        ...(origin.legacyAuthorityInstanceId !== undefined ? { legacyAuthorityInstanceId: origin.legacyAuthorityInstanceId } : {}),
+        ...(origin.legacyAuthorityGenerationFloor !== undefined ? { legacyAuthorityGenerationFloor: origin.legacyAuthorityGenerationFloor } : {}), authorityInstanceId: origin.authorityInstanceId!, account: id, harness: account.harness, authorityNodeId: origin.authorityNodeId, shareId: origin.shareId,
         epoch: origin.epoch, generation: origin.generation!, expiresAt: origin.expiresAt!, files: [{ homeRelPath: codec!.primaryFile, contentB64: Buffer.from(JSON.stringify(document)).toString("base64"), mode: 0o600 }], kindNote: "Leased access-only material; original authority retained" };
       this.store.recordAccountLeaseExport(id, result.files.length);
       return result;
@@ -1507,6 +1512,14 @@ export class AccountsService {
 
   installLease(input: AccountLeaseInstallParams, onInstalled: (account: AccountRow) => void = () => {}): Promise<Omit<AccountLeaseInstallResult, "account" | "restored"> & { account: AccountRow }> {
     const explicit = input.adopt === "explicit";
+    const forwarded = LEASE_FENCE_FIELDS.some(key => input[key] !== undefined);
+    if (forwarded) {
+      const safeId = (value: unknown): value is string => typeof value === "string" && /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,199}$/.test(value);
+      const floor = (value: unknown) => value === undefined || typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+      if (!safeId(input.authorityInstanceId) || !safeId(input.viaNodeId) || input.generation === undefined || !floor(input.generation) || !floor(input.authorityGenerationFloor) || !floor(input.legacyAuthorityGenerationFloor) || input.legacyAuthorityInstanceId !== undefined && !safeId(input.legacyAuthorityInstanceId) || input.legacyAuthorityGenerationFloor !== undefined && input.legacyAuthorityInstanceId === undefined || input.fencesForwarded !== undefined && typeof input.fencesForwarded !== "boolean" || input.retiredAuthorityInstanceIds !== undefined && (!Array.isArray(input.retiredAuthorityInstanceIds) || input.retiredAuthorityInstanceIds.length > 8 || !input.retiredAuthorityInstanceIds.every(safeId) || new Set(input.retiredAuthorityInstanceIds).size !== input.retiredAuthorityInstanceIds.length)) throw new RpcError("invalid_request", "Forwarded fences require a scoped material generation, issuer and bounded valid history.");
+      if (input.retiredAuthorityInstanceIds?.includes(input.authorityInstanceId)) throw new RpcError("invalid_request", "A forwarded fence cannot retire the material it carries.");
+      if (input.fencesForwarded) throw new RpcError("account_lease_conflict", "Lease fences cannot be forwarded beyond one export hop.", { reason: "forwarding_depth_exceeded" });
+    }
     if (input.enrol && input.adopt !== undefined || input.enrol && !input.viaNodeId) throw new RpcError("invalid_request", "Enrolment requires viaNodeId and cannot be combined with adoption.");
     return this.withLeaseQueue(this.leaseResolutions, input.id, async () => {
       const retainedEnrolment = this.store.getAccount(input.id)?.leasedFrom?.enrolment;
@@ -1525,23 +1538,26 @@ export class AccountsService {
         const enrolment = previous?.enrolment ?? (input.enrol && account ? { id: randomUUID(), at: this.now(), liveRuntimeCoveragePending: this.store.beesOnAccount(id).filter(bee => { const runtime = this.store.currentRuntime(bee.id); return runtime !== null && runtime.state !== "stopped"; }).length } : undefined);
         const viaNodeId = input.viaNodeId ?? previous?.viaNodeId;
         const sameOrigin = previous?.shareId === input.shareId && previous.authorityNodeId === input.authorityNodeId;
-        const retiredAuthorityInstanceIds = sameOrigin ? previous.retiredAuthorityInstanceIds ?? [] : [];
-        if (input.authorityInstanceId !== undefined && retiredAuthorityInstanceIds.includes(input.authorityInstanceId)) throw new RpcError("account_lease_conflict", "Lease material belongs to a retired authority instance.");
+        if (forwarded && sameOrigin && input.viaNodeId !== (previous.viaNodeId ?? previous.authorityNodeId)) throw new RpcError("account_lease_conflict", "Forwarded fences must come from this lease's authenticated issuer.", { reason: "issuer_conflict" });
+        const localRetired = sameOrigin ? previous.retiredAuthorityInstanceIds ?? [] : [];
+        const retiredAuthorityInstanceIds = [...new Set([...localRetired, ...(forwarded ? input.retiredAuthorityInstanceIds ?? [] : [])])];
+        if (input.authorityInstanceId !== undefined && retiredAuthorityInstanceIds.includes(input.authorityInstanceId)) throw new RpcError("account_lease_conflict", "Lease material belongs to a retired authority instance.", { reason: "retired_instance" });
         const rememberedInstance = sameOrigin ? previous.authorityInstanceId ?? previous.legacyAuthorityInstanceId : undefined;
         const rememberedFloor = sameOrigin ? Math.max(previous.generation ?? 0, previous.authorityGenerationFloor ?? 0, previous.legacyAuthorityGenerationFloor ?? 0) : 0;
         if (input.authorityInstanceId !== undefined && input.authorityInstanceId === previous?.legacyAuthorityInstanceId && (input.generation === undefined || input.generation <= rememberedFloor)) throw new RpcError("account_lease_conflict", "Returning authority instance must exceed the intervening legacy generation floor.");
         const retiredInstances = input.authorityInstanceId !== undefined && rememberedInstance !== undefined && rememberedInstance !== input.authorityInstanceId
           ? [...new Set([...retiredAuthorityInstanceIds, rememberedInstance])].slice(-8) : retiredAuthorityInstanceIds.slice(-8);
-        const currentInstanceFloor = input.authorityInstanceId !== undefined ? Math.max(input.generation ?? 0,
+        const forwardedFloor = forwarded ? Math.min(input.generation!, Math.max(input.authorityGenerationFloor ?? 0, input.legacyAuthorityInstanceId === input.authorityInstanceId ? input.legacyAuthorityGenerationFloor ?? 0 : 0)) : 0;
+        const currentInstanceFloor = input.authorityInstanceId !== undefined ? Math.max(input.generation ?? 0, forwardedFloor,
           sameOrigin && previous.authorityInstanceId === input.authorityInstanceId ? previous.authorityGenerationFloor ?? previous.generation ?? 0 : 0) : undefined;
-        if (input.authorityInstanceId !== undefined && sameOrigin && input.authorityInstanceId === previous.authorityInstanceId && input.generation !== undefined && input.generation < (previous.authorityGenerationFloor ?? previous.generation ?? 0)) throw new RpcError("account_lease_conflict", "Lease credential generation regressed within its authority instance.");
+        if (input.authorityInstanceId !== undefined && sameOrigin && input.authorityInstanceId === previous.authorityInstanceId && input.generation !== undefined && input.generation < (previous.authorityGenerationFloor ?? previous.generation ?? 0)) throw new RpcError("account_lease_conflict", "Lease credential generation regressed within its authority instance.", { reason: "generation_floor" });
         const legacyInstance = input.authorityInstanceId === undefined && rememberedInstance !== undefined
           ? { legacyAuthorityInstanceId: rememberedInstance, legacyAuthorityGenerationFloor: Math.max(rememberedFloor, input.generation ?? 0) } : {};
         const codec = this.leaseMaterialCodecs.get(input.harness);
         if (!codec) throw new RpcError("lease_unsupported", "This harness has no lease material codec.");
         if (enrolment && (input.files.length !== 1 || input.files[0]?.homeRelPath !== codec.primaryFile)) throw new RpcError("account_lease_enrol_refused", "Enrolled leases publish primary credential material only; profile files remain local.", { reason: "unknown_material" });
         if (enrolment && input.files.some(file => { try { const document = JSON.parse(Buffer.from(file.contentB64, "base64").toString("utf8")); return hasRefreshGrant(document) || !codec.provesAccessOnly?.(document); } catch { return true; } })) throw new RpcError("account_lease_enrol_refused", "Enrolment requires recognised access-only incoming material.", { reason: "unknown_material" });
-        const origin = { ...(currentInstanceFloor !== undefined ? { authorityGenerationFloor: currentInstanceFloor } : {}), ...legacyInstance, ...(retiredInstances.length ? { retiredAuthorityInstanceIds: retiredInstances } : {}), ...(input.authorityInstanceId !== undefined ? { authorityInstanceId: input.authorityInstanceId } : {}), shareId: input.shareId, authorityNodeId: input.authorityNodeId, epoch: input.epoch, ...(input.generation !== undefined ? { generation: input.generation } : {}), ...(input.generation !== undefined || enrolment ? { materialPublished: true } : {}), ...(viaNodeId !== undefined ? { viaNodeId } : {}), ...(enrolment ? { enrolment, installedFiles: previous?.installedFiles ?? [codec.primaryFile, ...Object.values(codec.mirrors)] } : {}), expiresAt: input.expiresAt, adoptedAt: adopted ? this.now() : previous?.adoptedAt ?? null, revokedAt: null };
+        const origin = { ...(forwarded || previous?.fencesForwarded ? { fencesForwarded: true } : {}), ...(currentInstanceFloor !== undefined ? { authorityGenerationFloor: currentInstanceFloor } : {}), ...legacyInstance, ...(retiredInstances.length ? { retiredAuthorityInstanceIds: retiredInstances } : {}), ...(input.authorityInstanceId !== undefined ? { authorityInstanceId: input.authorityInstanceId } : {}), shareId: input.shareId, authorityNodeId: input.authorityNodeId, epoch: input.epoch, ...(input.generation !== undefined ? { generation: input.generation } : {}), ...(input.generation !== undefined || enrolment ? { materialPublished: true } : {}), ...(viaNodeId !== undefined ? { viaNodeId } : {}), ...(enrolment ? { enrolment, installedFiles: previous?.installedFiles ?? [codec.primaryFile, ...Object.values(codec.mirrors)] } : {}), expiresAt: input.expiresAt, adoptedAt: adopted ? this.now() : previous?.adoptedAt ?? null, revokedAt: null };
         if (account && account.harness !== input.harness) throw new RpcError("harness_mismatch", "Lease harness differs from the existing account.");
         if (account?.source === "leased" && (account.leasedFrom?.shareId !== input.shareId || account.leasedFrom.epoch > input.epoch || account.leasedFrom.epoch === input.epoch && (account.leasedFrom.authorityNodeId !== input.authorityNodeId || account.leasedFrom.expiresAt !== null && (input.expiresAt === null || input.expiresAt < account.leasedFrom.expiresAt)))) throw new RpcError("account_lease_conflict", "Lease origin conflicts with the installed lease.");
         if (account?.source === "leased" && input.generation !== undefined && account.leasedFrom?.generation !== undefined && input.generation < account.leasedFrom.generation && (input.authorityInstanceId !== undefined ? input.authorityInstanceId === account.leasedFrom.authorityInstanceId : account.leasedFrom.epoch === input.epoch)) throw new RpcError("account_lease_conflict", "Lease credential generation regressed.");

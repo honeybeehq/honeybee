@@ -28,6 +28,7 @@ import {
 import { readFileSync, writeFileSync } from "node:fs";
 import {
   RpcError,
+  LEASE_FENCE_FIELDS,
   type AccountAddResult,
   type AccountConfigImportResult,
   type AccountConfigPreviewResult,
@@ -939,6 +940,7 @@ async function cmdAccount(ctx: CliContext, parsed: Parsed): Promise<number> {
       }
       const result = await withClient(ctx, client => {
         if (!client.capabilities.includes("account.lease.install.v1")) throw new RpcError("capability_missing", "Update Honeybee: account.lease.install.v1 is required.");
+        if (action === "install" && LEASE_FENCE_FIELDS.some(key => params[key] !== undefined) && !client.capabilities.includes("account.lease.fence_forwarding.v1")) throw new RpcError("capability_missing", "Update Honeybee: account.lease.fence_forwarding.v1 is required for forwarded fences.");
         if (action === "install" && params.authorityInstanceId !== undefined && !client.capabilities.includes("account.credentials.authority_instance.v1")) throw new RpcError("capability_missing", "Update Honeybee: account.credentials.authority_instance.v1 is required for scoped material.");
         if (action === "install" && params.enrol && !client.capabilities.includes("account.lease.enrol.v1")) throw new RpcError("capability_missing", "Update Honeybee: account.lease.enrol.v1 is required.");
         if (action === "install" && params.adopt === "explicit" && !client.capabilities.includes("account.lease.adopt_explicit.v1")) throw new RpcError("capability_missing", "Update Honeybee: account.lease.adopt_explicit.v1 is required for explicit native replacement.");

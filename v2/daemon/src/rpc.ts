@@ -51,6 +51,7 @@ import {
   PROTOCOL,
   RPC_VERBS,
   RpcError,
+  LEASE_FENCE_FIELDS,
   type HelloFrame,
   BUILD_IDENTITY,
   type RpcErrorCode,
@@ -79,6 +80,7 @@ const LOCAL_HANDOFF_VERBS = new Set<RpcVerb>([
 ]);
 
 export function assertLocalHandoffRpc(verb: RpcVerb, params: Record<string, unknown>, conn: RpcConn): void {
+  if (verb === "account.lease.install" && LEASE_FENCE_FIELDS.some(key => params[key] !== undefined) && conn.ingress !== "local_unix") throw new RpcError("account_lease_conflict", "Forwarded lease fences require a direct local Unix-socket call from the lease issuer.", { reason: "local_required" });
   if (verb === "account.lease.remove" && (params.discardNative !== undefined || params.confirm !== undefined) && conn.ingress !== "local_unix") throw new RpcError("account_lease_remove_unavailable", "Native credential discard requires a direct local Unix-socket call.", { reason: "local_required" });
   if (verb === "account.lease.export" && conn.ingress !== "local_unix") throw new RpcError("account_lease_export_refused", "Leased material export requires a direct local Unix-socket call.", { reason: "local_required" });
   if (verb === "account.lease.install" && (params.enrol !== undefined || params.viaNodeId !== undefined) && conn.ingress !== "local_unix") throw new RpcError("account_lease_enrol_refused", "Lease enrolment provenance requires a direct local Unix-socket call.", { reason: "local_required" });
