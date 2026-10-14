@@ -885,7 +885,8 @@ export class HiveDaemon {
         const sync = result.sync;
         if (sync == null) return;
         const error = sync.refresh.status === "failed" ? ` error=${JSON.stringify(sync.refresh.error)}` : "";
-        this.log(`cell.upstream origin=${originRepo} mirror=${sync.refresh.status} ref=${sync.trackingRef ?? "-"} before=${sync.before ?? "-"} after=${sync.after ?? "-"} ms=${sync.durationMs}${result.built > 0 ? ` pool_built=${result.built}` : ""}${error}`);
+        const skipped = sync.skipped == null ? "" : ` skipped=${JSON.stringify(sync.skipped)}`;
+        this.log(`cell.upstream origin=${originRepo} mirror=${sync.refresh.status} ref=${sync.trackingRef ?? "-"} before=${sync.before ?? "-"} after=${sync.after ?? "-"} ms=${sync.durationMs}${result.built > 0 ? ` pool_built=${result.built}` : ""}${skipped}${error}`);
       },
       hsr: hsrConfig,
       backgroundProvisioning: true,

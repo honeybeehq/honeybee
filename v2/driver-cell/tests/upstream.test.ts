@@ -13,7 +13,7 @@ import { provisionCell, reserveCell, type ProvisionRequest } from "../src/provis
 import { dirtyReport } from "../src/remove.ts";
 import { evictCellWrapper } from "../src/retention.ts";
 import { buildPoolMember, claimFromPool } from "../src/warmPool.ts";
-import { mirrorDirFor, readUpstreamMirror, refreshUpstreamMirror, resolveCellBase, syncOriginFromMirror, UPSTREAM_REF } from "../src/upstream.ts";
+import { holdMirrorLock, mirrorDirFor, readUpstreamMirror, refreshUpstreamMirror, resolveCellBase, syncOriginFromMirror, UPSTREAM_REF } from "../src/upstream.ts";
 import { commitInCell, commitOn, fingerprintOrigin, g, makeOrigin, makeRig } from "./helpers.ts";
 
 function withUpstream() {
@@ -292,5 +292,49 @@ test("upstream.lock: a refresh waits for a concurrent one instead of failing int
     assert.equal(existsSync(`${mirror}.lock`), false, "the lock is released");
   } finally {
     fx.cleanup();
+  }
+});
+
+test("syncOriginFromMirror: a busy origin (index.lock, merge in progress) is skipped with a reason and left untouched", () => {
+  const fx = staleSatelliteOrigin();
+  try {
+    for (const marker of ["index.lock", "MERGE_HEAD"]) {
+      writeFileSync(join(fx.origin, ".git", marker), "");
+      const before = fingerprintOrigin(fx.origin);
+      const synced = fx.sync();
+      assert.equal(synced.skipped, `origin busy: ${marker}`);
+      assert.equal(synced.after, fx.stale);
+      assert.deepEqual(fingerprintOrigin(fx.origin).refs, before.refs, "no ref moved while the origin was busy");
+      rmSync(join(fx.origin, ".git", marker));
+    }
+    const directRefs = () => g(fx.origin, ["for-each-ref", "--format=%(if)%(symref)%(then)%(refname) -> %(symref)%(else)%(refname) %(objectname)%(end)"]).split("\n");
+    const refsBefore = new Set(directRefs());
+    const synced = fx.sync();
+    assert.equal(synced.skipped, null);
+    assert.equal(synced.after, fx.fresh);
+    const changed = directRefs().filter((line) => !refsBefore.has(line));
+    assert.deepEqual(changed, [`refs/remotes/origin/main ${fx.fresh}`], "only the default tracking ref moved");
+  } finally {
+    fx.cleanup();
+  }
+});
+
+test("upstream.lock heartbeat: the holder keeps the lock's mtime fresh until it releases", async () => {
+  const root = mkdtempSync(join(tmpdir(), "upstream-lock-"));
+  try {
+    const lockDir = join(root, "mirror.git.lock");
+    mkdirSync(lockDir);
+    const old = new Date(Date.now() - 10 * 60_000);
+    utimesSync(lockDir, old, old);
+    const held = holdMirrorLock(lockDir, 100);
+    await new Promise((r) => setTimeout(r, 1_500));
+    assert.ok(Date.now() - statSync(lockDir).mtimeMs < 1_000, "heartbeat refreshed the mtime");
+    held.release();
+    await new Promise((r) => setTimeout(r, 300));
+    utimesSync(lockDir, old, old);
+    await new Promise((r) => setTimeout(r, 500));
+    assert.ok(Date.now() - statSync(lockDir).mtimeMs > 60_000, "no heartbeat after release");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
   }
 });

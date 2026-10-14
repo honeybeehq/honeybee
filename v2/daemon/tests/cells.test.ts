@@ -235,6 +235,7 @@ test("cells.1: spawn {substrate:cell} → row + seed ledger → provisioned on s
     assert.ok(existsSync(join(spaceDir, ".git")), "space has a .git");
     assert.ok(existsSync(join(spaceDir, "README.md")), "working tree materialized");
     assert.equal(g(spaceDir, ["rev-parse", "HEAD"]), rig.origin.sha, "checked out at the origin sha");
+    assert.doesNotMatch(readFileSync(join(rig.dir, "hived.log"), "utf8"), /cell\.upstream /, "a workstation does not fetch upstream by default");
     const provisioned = readLedger(ledgerPath);
     assert.ok(provisioned && Object.values(provisioned.operations).some((op) => op.completedAt != null), "ledger marks provisioning complete");
 
