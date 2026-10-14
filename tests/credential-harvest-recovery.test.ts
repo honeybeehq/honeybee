@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, readdir, rm, utimes, writeFile } from "node:f
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
+import { scaledMs } from "./timeScale.js";
 import {
   accountDir,
   activationHomeOwnerPath,
@@ -139,7 +140,7 @@ test("custom-home final harvest failure/timeout survives purge and restart, then
       await purgeSessionData(candidate, {
         emitLedger: false,
         finalCredentialSync: scenario.sync,
-        finalCredentialSyncBudgetMs: 20,
+        finalCredentialSyncBudgetMs: scaledMs(100),
       });
 
       assert.equal(await loadSession(candidate.name), null, "metadata purge still completes after durable handoff");
