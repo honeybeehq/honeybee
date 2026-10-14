@@ -61,7 +61,17 @@ export function darwinUserTempDir(): string | null {
   return darwinUserTemp;
 }
 
-/** OS scratch space every process needs writable (default scratch policy). On darwin only the user's own temp dir of /private/var/folders. */
+/**
+ * OS scratch space every process needs writable (default scratch policy).
+ * On darwin only the user's own temp dir of /private/var/folders is granted,
+ * falling back to all of /private/var/folders when it cannot be resolved.
+ * Residual: anything that writes DARWIN_USER_CACHE_DIR (Apple frameworks,
+ * some Electron caches) now fails inside the darwin sandbox; diagnose it with
+ * scripts/sandbox-trace.mjs, the Seatbelt deny-trace audit path. The grant was
+ * chosen from real Claude and Codex traces; Muse was not run on darwin (no
+ * mini has muse or an account, and it never runs on the Studio), and P6b is
+ * the follow-up.
+ */
 export function defaultScratchPaths(
   osPlatform: string = platform(),
   userTemp: string | null = osPlatform === "darwin" ? darwinUserTempDir() : null,
