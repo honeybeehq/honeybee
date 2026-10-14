@@ -17,7 +17,17 @@ export const CONTEXT_WINDOW_TOKENS: Record<ContextWindow, number> = { "1m": 1_00
 export const AUTO_COMPACT_WINDOW_MIN = 100_000;
 export const AUTO_COMPACT_WINDOW_MAX = 1_000_000;
 export const CLAUDE_AUTO_COMPACT_SUMMARY_BUFFER = 13_000;
+export const CLAUDE_AUTO_COMPACT_OUTPUT_RESERVE = 20_000;
 export const WORKSPACE_TAG_PREFIX = "apiary:workspace=";
+const RESERVED_WORKSPACE_IDS = new Set(["__proto__", "constructor", "prototype"]);
+
+export function validWorkspaceId(id: string): boolean {
+  return id.length > 0 && !RESERVED_WORKSPACE_IDS.has(id);
+}
+
+function workspacePolicy(config: ContextPolicyConfig, workspace: string): ContextPolicy | undefined {
+  return config.workspaces && Object.hasOwn(config.workspaces, workspace) ? config.workspaces[workspace] : undefined;
+}
 
 export const CLAUDE_CONTEXT_ENV = {
   disable1m: "CLAUDE_CODE_DISABLE_1M_CONTEXT",
@@ -87,6 +97,7 @@ export function contextPolicyConfigOf(raw: Record<string, unknown>): ContextPoli
     }
     const workspaces: Record<string, ContextPolicy> = {};
     for (const [id, policy] of Object.entries(value.workspaces as Record<string, unknown>)) {
+      if (!validWorkspaceId(id)) throw new ContextPolicyError(`config: contextPolicy.workspaces.${id} is not a valid workspace id`);
       workspaces[id] = contextPolicyOf(policy, `config: contextPolicy.workspaces.${id}`);
     }
     config.workspaces = workspaces;
@@ -99,12 +110,12 @@ function isEmpty(policy: ContextPolicy | null | undefined): boolean {
 }
 
 export function storedContextPolicy(config: ContextPolicyConfig, workspace: string | null): ContextPolicy | null {
-  const policy = workspace === null ? config.default : config.workspaces?.[workspace];
+  const policy = workspace === null ? config.default : workspacePolicy(config, workspace);
   return isEmpty(policy) ? null : { ...policy };
 }
 
 export function effectiveContextPolicy(config: ContextPolicyConfig, workspace: string | null): ContextPolicy {
-  return { ...(config.default ?? {}), ...(workspace === null ? {} : (config.workspaces?.[workspace] ?? {})) };
+  return { ...(config.default ?? {}), ...(workspace === null ? {} : (workspacePolicy(config, workspace) ?? {})) };
 }
 
 export function sameContextPolicy(a: ContextPolicy | null, b: ContextPolicy | null): boolean {
@@ -114,6 +125,7 @@ export function sameContextPolicy(a: ContextPolicy | null, b: ContextPolicy | nu
 }
 
 export function writeContextPolicy(configPath: string, workspace: string | null, policy: ContextPolicy | null): ContextPolicyConfig {
+  if (workspace !== null && !validWorkspaceId(workspace)) throw new ContextPolicyError(`contextPolicy: '${workspace}' is not a valid workspace id`);
   let raw: Record<string, unknown> = {};
   if (existsSync(configPath)) {
     let parsed: unknown;
@@ -148,7 +160,7 @@ export function writeContextPolicy(configPath: string, workspace: string | null,
 }
 
 export function workspaceOfTags(tags: readonly string[]): string | null {
-  const tag = tags.find((t) => t.startsWith(WORKSPACE_TAG_PREFIX) && t.length > WORKSPACE_TAG_PREFIX.length);
+  const tag = tags.find((t) => t.startsWith(WORKSPACE_TAG_PREFIX) && validWorkspaceId(t.slice(WORKSPACE_TAG_PREFIX.length)));
   return tag ? tag.slice(WORKSPACE_TAG_PREFIX.length) : null;
 }
 
@@ -158,7 +170,7 @@ export function contextPolicyFacts(policy: ContextPolicy): ContextPolicyFacts {
   const autoCompactPercent = policy.autoCompactPercent ?? null;
   let thresholdTokens: number | null = null;
   if (autoCompactWindow !== null) {
-    const effective = windowTokens === null ? autoCompactWindow : Math.min(autoCompactWindow, windowTokens);
+    const effective = (windowTokens === null ? autoCompactWindow : Math.min(autoCompactWindow, windowTokens)) - CLAUDE_AUTO_COMPACT_OUTPUT_RESERVE;
     const buffered = effective - CLAUDE_AUTO_COMPACT_SUMMARY_BUFFER;
     thresholdTokens = autoCompactPercent === null ? buffered : Math.min(Math.floor(effective * (autoCompactPercent / 100)), buffered);
   }

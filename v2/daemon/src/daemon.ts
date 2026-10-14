@@ -210,6 +210,7 @@ import {
   effectiveContextPolicy,
   sameContextPolicy,
   storedContextPolicy,
+  validWorkspaceId,
   workspaceOfTags,
   writeContextPolicy,
   type ClaudeContextLaunch,
@@ -4384,7 +4385,7 @@ export class HiveDaemon {
 
   private contextPolicyWorkspaceParam(params: Record<string, unknown>, verb: string): string | null {
     const workspace = this.optionalString(params, "workspace", verb);
-    if (workspace !== null && workspace.length === 0) throw new RpcError("invalid_request", `${verb}: workspace must be a non-empty string when given`);
+    if (workspace !== null && !validWorkspaceId(workspace)) throw new RpcError("invalid_request", `${verb}: workspace must be a non-empty workspace id when given`);
     return workspace;
   }
 
@@ -4411,7 +4412,7 @@ export class HiveDaemon {
           ...(bee.env ?? {}),
           ...(account && this.accounts ? this.accounts.homeEnvOf(account) : {}),
         };
-        const args = composeSpawn(spec, harness, bee).args;
+        const args = bee.substrate === "tmux" ? (bee.args ?? []) : composeSpawn(spec, harness, bee).args;
         const context = this.claudeContextLaunchFor(bee, args, env);
         model = argValue(composeArgv(grammarFor("claude"), [args, context.modelArgs]), "--model") ?? claudeHomeModel(env) ?? null;
       }

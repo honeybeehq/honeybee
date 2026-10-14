@@ -16,7 +16,7 @@ import {
   writeContextPolicy,
 } from "../src/contextPolicy.ts";
 import { ConfigError, loadNodeConfig } from "../src/config.ts";
-import type { ContextPolicyResult, ContextPolicySetResult, DeployInfoResult, SendRpcResult, SpawnResult, ViewResult } from "../src/protocol.ts";
+import type { ContextPolicyResult, ContextPolicySetResult, DeployInfoResult, MailboxResult, SendRpcResult, SpawnResult, ViewResult } from "../src/protocol.ts";
 import { makeDaemonDir, startDaemon, waitFor, type DaemonHandle } from "./helpers.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -30,14 +30,14 @@ test("context policy fields are validated and closed", () => {
   }
 });
 
-test("facts follow Claude Code's threshold rule: window minus 13k, lowered by the percent override", () => {
+test("facts follow Claude Code's threshold rule: window minus the 20k output reserve and 13k buffer, lowered by the percent override", () => {
   assert.deepEqual(contextPolicyFacts({}), { window: null, windowTokens: null, autoCompactWindow: null, autoCompactPercent: null, thresholdTokens: null });
   assert.equal(contextPolicyFacts({ window: "1m" }).thresholdTokens, null, "auto window is Claude's choice");
-  assert.deepEqual(contextPolicyFacts({ window: "200k" }), { window: "200k", windowTokens: 200_000, autoCompactWindow: 200_000, autoCompactPercent: null, thresholdTokens: 187_000 });
-  assert.equal(contextPolicyFacts({ window: "1m", autoCompactWindow: 400_000 }).thresholdTokens, 387_000);
-  assert.equal(contextPolicyFacts({ window: "200k", autoCompactWindow: 400_000 }).thresholdTokens, 187_000, "clamped to the model window");
-  assert.equal(contextPolicyFacts({ window: "1m", autoCompactWindow: 400_000, autoCompactPercent: 50 }).thresholdTokens, 200_000);
-  assert.equal(contextPolicyFacts({ autoCompactWindow: 100_000, autoCompactPercent: 99 }).thresholdTokens, 87_000);
+  assert.deepEqual(contextPolicyFacts({ window: "200k" }), { window: "200k", windowTokens: 200_000, autoCompactWindow: 200_000, autoCompactPercent: null, thresholdTokens: 167_000 });
+  assert.equal(contextPolicyFacts({ window: "1m", autoCompactWindow: 400_000 }).thresholdTokens, 367_000);
+  assert.equal(contextPolicyFacts({ window: "200k", autoCompactWindow: 400_000 }).thresholdTokens, 167_000, "clamped to the model window");
+  assert.equal(contextPolicyFacts({ window: "1m", autoCompactWindow: 400_000, autoCompactPercent: 50 }).thresholdTokens, 190_000);
+  assert.equal(contextPolicyFacts({ autoCompactWindow: 100_000, autoCompactPercent: 99 }).thresholdTokens, 67_000);
 });
 
 test("window variant rewrites the model suffix", () => {
@@ -49,6 +49,7 @@ test("window variant rewrites the model suffix", () => {
 test("workspace comes from the apiary workspace tag", () => {
   assert.equal(workspaceOfTags(["team:a", "apiary:workspace=w1"]), "w1");
   assert.equal(workspaceOfTags(["apiary:workspace="]), null);
+  assert.equal(workspaceOfTags(["apiary:workspace=__proto__", "apiary:workspace=w2"]), "w2");
   assert.equal(workspaceOfTags([]), null);
 });
 
@@ -103,6 +104,10 @@ test("writeContextPolicy keeps other config keys and clears empty scopes", () =>
     assert.equal("contextPolicy" in raw, false);
     writeFileSync(path, JSON.stringify({ contextPolicy: { workspaces: { w1: { window: "3m" } } } }));
     assert.throws(() => loadNodeConfig(dir), ConfigError);
+    writeFileSync(path, '{"contextPolicy":{"workspaces":{"__proto__":{"window":"1m"}}}}');
+    assert.throws(() => loadNodeConfig(dir), ConfigError);
+    assert.throws(() => writeContextPolicy(path, "constructor", { window: "1m" }), ContextPolicyError);
+    assert.deepEqual(effectiveContextPolicy(contextPolicyConfigOf({ contextPolicy: { workspaces: { w1: { window: "1m" } } } }), "constructor"), {});
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -142,7 +147,7 @@ test("contextPolicy.get/set over RPC; a tagged claude bee boots with the workspa
     const applied = await client.request<ContextPolicySetResult>("contextPolicy.set", set);
     assert.equal(applied.applied, true);
     assert.deepEqual(applied.stored, { window: "200k", autoCompactPercent: 50 });
-    assert.equal(applied.facts.thresholdTokens, 100_000);
+    assert.equal(applied.facts.thresholdTokens, 90_000);
     assert.deepEqual(JSON.parse(readFileSync(join(dir, "config.json"), "utf8")).contextPolicy, { workspaces: { w1: { window: "200k", autoCompactPercent: 50 } } });
     const replay = await client.request<ContextPolicySetResult>("contextPolicy.set", set);
     assert.equal(replay.deduped, true);
@@ -151,11 +156,13 @@ test("contextPolicy.get/set over RPC; a tagged claude bee boots with the workspa
     await assert.rejects(() => client.request("contextPolicy.set", { workspace: "w1", policy: { window: "2m" } }), (e: Error & { code?: string }) => e.code === "invalid_request");
     await assert.rejects(() => client.request("contextPolicy.set", { workspace: "w1" }), (e: Error & { code?: string }) => e.code === "invalid_request");
     await assert.rejects(() => client.request("contextPolicy.set", { workspace: "", policy: null }), (e: Error & { code?: string }) => e.code === "invalid_request");
+    await assert.rejects(() => client.request("contextPolicy.set", { workspace: "__proto__", policy: { window: "1m" } }), (e: Error & { code?: string }) => e.code === "invalid_request");
 
     const tagged = await client.request<SpawnResult>("spawn", { name: "ctx", agent: "claude", cwd: root, args: ["--model", "opus[1m]"], tags: ["apiary:workspace=w1"], env: { CLAUDE_CONFIG_DIR: claudeHome } });
     const plain = await client.request<SpawnResult>("spawn", { name: "plain", agent: "claude", cwd: root, tags: ["apiary:workspace=w2"], env: { CLAUDE_CONFIG_DIR: claudeHome } });
+    const hellos = new Map<string, number>();
     for (const beeId of [tagged.beeId, plain.beeId]) {
-      await client.request<SendRpcResult>("send", { beeId, body: "hello" });
+      hellos.set(beeId, (await client.request<SendRpcResult>("send", { beeId, body: "hello" })).messageId);
     }
     type Boot = { argv: string[]; env: Record<string, string | null> };
     const boots = (): Boot[] => existsSync(argvLog) ? readFileSync(argvLog, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l) as Boot) : [];
@@ -182,6 +189,11 @@ test("contextPolicy.get/set over RPC; a tagged claude bee boots with the workspa
 
     await client.request("contextPolicy.set", { policy: { window: "1m", autoCompactWindow: 300_000 } });
     await client.request("contextPolicy.set", { workspace: "w1", policy: null });
+    await waitFor(async () => {
+      const mailbox = await client.request<MailboxResult>("mailbox", { beeId: tagged.beeId });
+      const delivered = mailbox.messages.find((m) => m.id === hellos.get(tagged.beeId))?.deliveredAt != null;
+      return delivered && (await client.request<ViewResult>("view", { beeId: tagged.beeId })).view.runtimeState === "idle";
+    }, "first message delivered and answered");
     await client.request("stop", { beeId: tagged.beeId });
     await waitFor(async () => (await client.request<ViewResult>("view", { beeId: tagged.beeId })).view.runtimeState === "stopped", "stopped");
     await client.request<SendRpcResult>("send", { beeId: tagged.beeId, body: "again" });
