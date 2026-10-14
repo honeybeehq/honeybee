@@ -9,6 +9,7 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSyn
 import { tmpdir, userInfo } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { scaledMs } from "../../core/tests/timeScale.ts";
 import type { DriverObservation, InterruptOutcome, LiveProcess, RuntimeDriver, StopCause } from "../../harness/src/driver.ts";
 import type { FlagEvidenceLike, ObservationCursorEvidenceLike, SessionEvidenceLike } from "../src/loops.ts";
 import type { NodeConfigFile } from "../src/config.ts";
@@ -24,7 +25,7 @@ export const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeou
 export async function waitFor<T>(
   fn: () => Promise<T | null | undefined | false> | T | null | undefined | false,
   what: string,
-  timeoutMs = 8000,
+  timeoutMs = scaledMs(8000),
   intervalMs = 15,
 ): Promise<T> {
   const deadline = Date.now() + timeoutMs;

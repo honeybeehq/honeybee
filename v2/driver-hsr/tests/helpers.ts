@@ -7,6 +7,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { scaledMs } from "../../core/tests/timeScale.ts";
 import { HsrDriver, type SpawnSpec } from "../src/index.ts";
 import { stubAdapter } from "../../adapters/src/index.ts";
 import type { DriverObservation } from "../../harness/src/driver.ts";
@@ -58,7 +59,7 @@ export function makeRig(opts: { stopKillGraceMs?: number } = {}): TestRig {
 export async function drainUntil(
   driver: HsrDriver,
   pred: (events: DriverObservation[]) => boolean,
-  timeoutMs = 15_000,
+  timeoutMs = scaledMs(15_000),
 ): Promise<DriverObservation[]> {
   const acc: DriverObservation[] = [];
   const deadline = Date.now() + timeoutMs;

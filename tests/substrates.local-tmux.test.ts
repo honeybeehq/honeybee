@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { scaledMs } from "./timeScale.js";
 import type { NodeRecord } from "../src/node.js";
 import { clearSubstrateCache, localSubstrate, LOCAL_NODE, substrateFor, substrateForNode, substrateForRecord } from "../src/substrates/index.js";
 import { createLocalTmuxSubstrate, hasSession, kill as tmuxKillSession, killPane, newSession, sendText, terminateProcessGroup, tmux } from "../src/substrates/local-tmux.js";
@@ -480,7 +481,7 @@ test("local launcher restores real HOME from a fake parent env unless explicitly
 
   const writeHome = (path: string) => [
     "-e",
-    `require("node:fs").writeFileSync(${JSON.stringify(path)}, process.env.HOME || "")`,
+    `require("node:fs").writeFileSync(${JSON.stringify(path)}, process.env.HOME || ""); setTimeout(() => {}, 60_000)`,
   ];
   try {
     process.env.HOME = "/tmp/hive-fake-account-home";
@@ -577,7 +578,7 @@ test("local substrate applies tmux window options to an existing bee pane", { ti
 });
 
 async function waitForFile(path: string): Promise<string> {
-  const deadline = Date.now() + 5_000;
+  const deadline = Date.now() + scaledMs(5_000);
   let lastError: unknown;
   while (Date.now() < deadline) {
     try {

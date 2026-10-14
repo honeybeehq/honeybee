@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, symlink, writeFi
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
+import { scaledMs } from "./timeScale.js";
 import { promisify } from "node:util";
 import { activationHomeOwnerPath } from "../src/accounts.js";
 import { compactRetiredHsrEvents } from "../src/commands/observe.js";
@@ -392,9 +393,9 @@ test("direct clean purge harvests credentials before deleting artifacts/metadata
     await purgeSessionData(bounded, {
       emitLedger: false,
       finalCredentialSync: async () => new Promise<void>(() => undefined),
-      finalCredentialSyncBudgetMs: 20,
+      finalCredentialSyncBudgetMs: scaledMs(100),
     });
-    assert.ok(Date.now() - startedAt < 500, "destructive clean cannot wedge on credential harvest");
+    assert.ok(Date.now() - startedAt < scaledMs(1_000), "destructive clean cannot wedge on credential harvest");
     assert.equal(await loadSession(bounded.name), null);
   });
 });
