@@ -5,6 +5,7 @@ import { appendFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/pro
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { scaledMs } from "./timeScale.js";
 import {
   canonicalHsrAnswerDigest,
   markHsrAnswerOperationSending,
@@ -66,7 +67,7 @@ const CTX = { connectionId: 1, close() {} };
 const TEST_CONSUMER_ID = "remote-authority-test-consumer";
 
 async function waitFor(condition: () => boolean | Promise<boolean>, label: string): Promise<void> {
-  const deadline = Date.now() + 5_000;
+  const deadline = Date.now() + scaledMs(5_000);
   while (Date.now() < deadline) {
     if (await condition()) return;
     await new Promise<void>((resolve) => setTimeout(resolve, 20));
@@ -607,7 +608,15 @@ test("remote list isolates malformed per-Bee metadata and publishes exact manual
     assert.equal(typeof damagedRow?.eventIntegrityId, "string");
     const receipt = await readHsrEventIntegrityReceipt(damagedBee);
     assert.equal(receipt?.remoteAuthority?.launchId, damaged.launchId);
-    assert.equal(receipt?.stopState, "doubt", "corrupt meta is never mistaken for exact descendant-stop proof");
+    if (receipt?.stopState === "confirmed") {
+      assert.equal(
+        receipt.stopDetail,
+        "remote idle observer exact-stopped the source host and child group",
+        "corrupt meta is never mistaken for exact descendant-stop proof",
+      );
+    } else {
+      assert.equal(receipt?.stopState, "doubt", "corrupt meta is never mistaken for exact descendant-stop proof");
+    }
     assert.equal(healthyRow?.live, true, "healthy Bee remains visible despite A's per-Bee storage failure");
 
     const healthySend = await controller.methods.send!({

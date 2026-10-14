@@ -7,6 +7,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { scaledMs } from "../../core/tests/timeScale.ts";
 import type { DriverObservation } from "../../harness/src/driver.ts";
 import { TmuxDriver, type ObservationSpec, type TmuxSpawnSpec } from "../src/driver.ts";
 import { TmuxServer } from "../src/tmux.ts";
@@ -118,7 +119,7 @@ export function makeRig(): TmuxRig {
 export async function drainUntil(
   driver: TmuxDriver,
   pred: (events: DriverObservation[]) => boolean,
-  timeoutMs = 6000,
+  timeoutMs = scaledMs(6000),
 ): Promise<DriverObservation[]> {
   const acc: DriverObservation[] = [];
   const deadline = Date.now() + timeoutMs;
