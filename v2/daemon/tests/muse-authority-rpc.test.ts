@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
+import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync, existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
@@ -15,8 +16,14 @@ for (const platform of ["linux", "darwin"] as const) test(`Muse central ${platfo
   const target = makeDaemonDir();
   const bootstrap = randomUUID();
   const keys: string[] = [];
-  let validRequests = true;
+  let validRequests = true, modelCalls = 0;
   const server = createServer(async (request, response) => {
+    if (request.url === "/model") {
+      modelCalls++;
+      response.writeHead(keys.some(key => request.headers.authorization === `Bearer ${key}`) ? 200 : 401);
+      response.end();
+      return;
+    }
     const chunks: Buffer[] = [];
     for await (const chunk of request) chunks.push(Buffer.from(chunk));
     validRequests &&= request.url === "/muse-code/key" && request.method === "POST" && request.headers.authorization === `Bearer ${bootstrap}` && request.headers["x-api-version"] === "1.0.0" && Buffer.concat(chunks).toString() === '{"onboard":false}';
@@ -69,6 +76,12 @@ for (const platform of ["linux", "darwin"] as const) test(`Muse central ${platfo
     const installed = await peer.request<{ account: { id: string; homePath: string } }>("account.lease.install", input);
     const holderId = installed.account.id;
     const holderFile = join(installed.account.homePath, "muse", "auth.json");
+    const fakeHome = join(target.dir, "fake-muse-home");
+    mkdirSync(fakeHome, { recursive: true });
+    const fakeMuse = spawn(process.execPath, ["-e", `const fs=require("node:fs");const meta=JSON.parse(fs.readFileSync(process.argv[1],"utf8")).providers.meta;if(!meta.api_key||meta.access_token)process.exit(2);fetch(process.argv[2],{headers:{authorization:"Bearer "+meta.api_key}}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(3));`, holderFile, `${url}/model`], { env: { ...process.env, HOME: fakeHome, XDG_CONFIG_HOME: join(fakeHome, "config"), XDG_DATA_HOME: join(fakeHome, "data"), XDG_CACHE_HOME: join(fakeHome, "cache"), XDG_STATE_HOME: join(fakeHome, "state") }, stdio: "ignore" });
+    const fakeExit = await new Promise<number | null>((resolve, reject) => { fakeMuse.once("error", reject); fakeMuse.once("exit", resolve); });
+    assert.equal(fakeExit, 0);
+    assert.equal(modelCalls, 1);
     writeFileSync(holderFile, JSON.stringify({ schema_version: 1, providers: { meta: { api_key: "holder-local-rewrite" } } }));
     writeFileSync(clock, "300001");
     writeFileSync(gate, "hold");

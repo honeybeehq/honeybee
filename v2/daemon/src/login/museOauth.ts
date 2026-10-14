@@ -1,3 +1,4 @@
+import { CredentialAuthorityError } from "../claudeCredentialAuthority.ts";
 import { join } from "node:path";
 import { parseMuseCredentials, recipeFor, safeAuthorizationUrl, type IdentityRecipe, type LoginFieldDescriptor, type LoginFlowRow } from "../../../core/src/index.ts";
 import { primaryCredentialFile } from "../activation.ts";
@@ -26,11 +27,13 @@ export class MuseOauthRunner implements LoginRunner {
   private deviceCode: string | null = null;
   private intervalMs = 0;
   private deadline = 0;
+  private overallDeadline = 0;
   private nextPollAt = 0;
   private polling = false;
   private transientErrors = 0;
   private hardErrors = 0;
   private stopped = false;
+  private pendingGrant: { grant: Extract<MuseDevicePoll, { kind: "granted" }>; raw: string } | null = null;
 
   constructor(host: LoginRunnerHost) {
     this.host = host;
@@ -38,6 +41,7 @@ export class MuseOauthRunner implements LoginRunner {
 
   async start(): Promise<LoginFlowRow> {
     const host = this.host;
+    this.overallDeadline = host.flow()?.expiresAt ?? host.now() + host.cfg.accounts.loginTimeoutMs;
     const device = await host.transports.museDeviceAuthorize();
     if (!this.current()) return host.flow() as LoginFlowRow;
     if (!device.ok) {
@@ -72,6 +76,15 @@ export class MuseOauthRunner implements LoginRunner {
   }
 
   tick(now: number): void {
+    if (!this.stopped && !this.polling && this.pendingGrant && now >= this.nextPollAt) {
+      this.polling = true;
+      const { grant, raw } = this.pendingGrant;
+      this.pendingGrant = null;
+      void this.store(grant, raw).catch(error => {
+        if (this.current()) this.host.fail(err("capture_failed", `The sign-in could not be saved: ${safeMessage(error)}`), true);
+      }).finally(() => { this.polling = false; });
+      return;
+    }
     if (this.stopped || this.polling || this.deviceCode === null || now < this.nextPollAt) return;
     this.polling = true;
     void this.poll(this.deviceCode)
@@ -86,6 +99,7 @@ export class MuseOauthRunner implements LoginRunner {
   async stop(): Promise<void> {
     this.stopped = true;
     this.deviceCode = null;
+    this.pendingGrant = null;
   }
 
   workerStatus(): null {
@@ -157,21 +171,36 @@ export class MuseOauthRunner implements LoginRunner {
     return false;
   }
 
-  private async store(grant: Extract<MuseDevicePoll, { kind: "granted" }>): Promise<void> {
+  private async store(grant: Extract<MuseDevicePoll, { kind: "granted" }>, approvedRaw?: string): Promise<void> {
     const host = this.host;
     const account = host.account;
-    const raw = museOauthDocument(grant, host.now());
-    if (parseMuseCredentials(raw)?.mechanism !== "oauth") {
+    const raw = approvedRaw ?? museOauthDocument(grant, host.now());
+    const credential = parseMuseCredentials(raw);
+    if (credential?.mechanism !== "oauth") {
       host.fail(err("invalid_credential", "Meta returned an unusable credential."), true);
+      return;
+    }
+    if (approvedRaw && credential.expiresAt !== null && credential.expiresAt <= host.now()) {
+      host.fail(err("invalid_credential", "The approved sign-in expired while waiting. Sign in again."), true);
       return;
     }
     const authority = host.accounts.authorityFor(account);
     if (authority?.enabled(account)) {
       try {
-        const state = await authority.relogin(account, JSON.parse(raw), null, { allowDifferentAccount: host.replaceAccount(), stillWanted: () => this.current() });
+        const state = await authority.relogin(account, JSON.parse(raw), null, { allowDifferentAccount: host.replaceAccount(), stillWanted: () => this.current(), nativeRaw: raw });
         host.log(`account.login.captured flow=${host.flowId} account=${account.id} by=muse_oauth central=in_place generation=${state.generation}`);
         if (this.current()) host.succeed();
       } catch (error) {
+        if (this.current() && error instanceof CredentialAuthorityError && error.retryAt !== undefined) {
+          if (error.retryAt >= this.overallDeadline) {
+            host.fail(err("credential_unavailable", `Credential renewal is delayed beyond this sign-in window. Retry after ${new Date(error.retryAt).toISOString()}.`), true);
+          } else {
+            this.pendingGrant = { grant, raw };
+            this.nextPollAt = error.retryAt;
+            host.patch({ phase: "validating", expiresAt: this.overallDeadline, detail: "Sign-in approved. Waiting for the account credential renewal window." }, "credential renewal paced");
+          }
+          return;
+        }
         if (this.current()) host.fail(err("credential_unavailable", safeMessage(error)), true);
       }
       return;

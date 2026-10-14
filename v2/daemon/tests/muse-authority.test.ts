@@ -70,7 +70,7 @@ for (const platform of ["linux", "darwin"] as const) test(`Muse authority ${plat
     assert.equal(r.calls(), 1);
     await restarted.museCredentials.disable(r.account);
     assert.ok(readFileSync(r.vaultFile, "utf8").includes(login));
-    if (platform === "linux") assert.ok(readFileSync(r.homeFile, "utf8").includes(login));
+    assert.equal(existsSync(r.homeFile), false);
     await assert.rejects(restarted.museCredentials.enable(r.account), error => (error as { reason: string }).reason === "operation_in_progress");
     r.advance(MUSE_MINT_FLOOR_MS + 1);
     const recreated = await restarted.museCredentials.enable(r.account);
@@ -103,17 +103,18 @@ test("Muse renewal is shared, paced across restart, one generation per operation
   } finally { r.cleanup(); }
 });
 
-test("Muse early refresh respects the one-hour window despite the common three-hour setting", async () => {
+test("Muse idle authorities never mint on ticks, even past expiry; lease demand renews once", async () => {
   const r = rig();
   try {
     await r.svc.museCredentials.enable(r.account);
-    r.advance(2 * 60 * 60_000);
+    r.advance(5 * 60 * 60_000);
     r.svc.centralEarlyRefreshTick();
-    await new Promise(resolve => setImmediate(resolve));
+    r.svc.centralRefreshRetryTick();
+    await r.svc.refreshLimits([r.account.id]);
     assert.equal(r.calls(), 1);
-    r.advance(61 * 60_000);
-    r.svc.centralEarlyRefreshTick();
-    for (let i = 0; i < 10 && r.svc.museCredentials.busy(r.account); i++) await new Promise(resolve => setImmediate(resolve));
+    assert.equal(r.store.getAccount(r.account.id)?.status, "ok");
+    assert.equal(r.store.getAccountCredentialAuthority(r.account.id)?.phase, "ready");
+    await r.svc.mintLease(r.account);
     assert.equal(r.calls(), 2);
   } finally { r.cleanup(); }
 });
@@ -214,13 +215,15 @@ for (const platform of ["linux", "darwin"] as const) test(`Muse ${platform} stat
   const r = rig(platform);
   try {
     writeFileSync(r.vaultFile, JSON.stringify({ providers: { meta: { api_key: "fixture-static-key" } } }));
-    await assert.rejects(r.svc.museCredentials.enable(r.account), /no held Muse login/);
+    await assert.rejects(r.svc.museCredentials.enable(r.account), error => (error as { reason: string }).reason === "unavailable" && /no held Muse login/.test((error as Error).message));
     assert.equal(r.calls(), 0);
     const lease = await r.svc.mintLease(r.account);
     assert.equal(lease.expiresAt, Math.floor((r.now() + MUSE_DEFAULT_KEY_TTL_MS) / 1000));
-    const own = { ...r.account, native: true };
-    await assert.rejects(r.svc.museCredentials.enable(own));
-    await assert.rejects(r.svc.mintLease(own));
+    const own = r.store.createAccount({ id: "muse-this-mac", harness: "muse", label: "This Mac", homePath: join(r.dir, "own-home", ".config"), native: true });
+    const refused = (error: unknown) => (error as { reason?: string; code?: string }).reason === "unavailable" && (error as Error).message.includes("this computer\'s own muse sign-in");
+    await assert.rejects(r.svc.museCredentials.enable(own), refused);
+    await assert.rejects(r.svc.museCredentials.relogin(own, native, null, { allowDifferentAccount: true, stillWanted: () => true }), refused);
+    await assert.rejects(r.svc.mintLease(own), error => (error as { code: string }).code === "lease_unsupported" && (error as Error).message.includes("own muse sign-in"));
     assert.equal(r.calls(), 0);
   } finally { r.cleanup(); }
 });
@@ -245,21 +248,29 @@ test("Muse failed enrollment obeys retry-after across restart without changing n
 
 for (const platform of ["linux", "darwin"] as const) test(`Muse ${platform} device login replaces an enabled authority in place without publishing the bootstrap`, async () => {
   const r = rig(platform);
-  let completed = 0;
+  let completed = 0, grantPolls = 0;
   const flows = new LoginFlowService({ store: r.store, cfg: r.cfg, accounts: r.svc, now: r.now, log: op => r.logs.push(op), spawner: null,
     transports: {
       museDeviceAuthorize: async () => ({ ok: true, deviceCode: "fixture-device", userCode: "fixture-code", verificationUri: "https://auth.meta.com/device", verificationUriComplete: null, expiresInSeconds: 900, intervalSeconds: 1 }),
-      museDeviceToken: async () => ({ kind: "granted", accessToken: login, refreshToken: null, expiresInSeconds: null }),
+      museDeviceToken: async () => { grantPolls++; return { kind: "granted", accessToken: login, refreshToken: null, expiresInSeconds: 3600 }; },
     }, onCompleted: () => completed++ });
   try {
     const ready = await r.svc.museCredentials.enable(r.account);
-    r.advance(MUSE_MINT_FLOOR_MS + 1);
     const { flow } = await flows.start(r.account, { methodId: "muse-oauth", replaceAccount: true });
     r.advance(1001);
+    const approvedAt = r.now();
+    flows.tick();
+    for (let i = 0; i < 100 && r.store.getLoginFlow(flow.id)?.phase !== "validating"; i++) await new Promise(resolve => setTimeout(resolve, 1));
+    assert.equal(r.store.getLoginFlow(flow.id)?.phase, "validating");
+    assert.equal(r.calls(), 1);
+    r.advance(MUSE_MINT_FLOOR_MS);
     flows.tick();
     for (let i = 0; i < 100 && r.store.getLoginFlow(flow.id)?.phase !== "succeeded"; i++) await new Promise(resolve => setTimeout(resolve, 1));
     assert.equal(r.store.getLoginFlow(flow.id)?.phase, "succeeded");
     assert.equal(completed, 1);
+    assert.equal(grantPolls, 1);
+    const privateValue = JSON.parse(readFileSync(join(r.cfg.accounts.vaultDir, ".credential-authorities", `${r.account.id}.json`), "utf8"));
+    assert.equal(JSON.parse(privateValue.nativeSnapshot.vault).providers.meta.expires_at, Math.floor(approvedAt / 1000) + 3600);
     assert.equal(r.store.getAccountCredentialAuthority(r.account.id)?.generation, ready.generation + 1);
     assert.equal(r.calls(), 2);
     assert.ok(!readFileSync(r.vaultFile, "utf8").includes(login));
@@ -276,7 +287,166 @@ test("Muse a lost disabled authority can enroll a newly supplied native login", 
     await r.svc.museCredentials.disable(r.account);
     writeFileSync(r.vaultFile, JSON.stringify(native));
     writeFileSync(r.homeFile, JSON.stringify(native));
+    await assert.rejects(r.service().museCredentials.enable(r.account), error => (error as { reason: string }).reason === "operation_in_progress");
+    r.advance(MUSE_MINT_FLOOR_MS + 1);
     assert.equal((await r.service().museCredentials.enable(r.account)).phase, "ready");
     assert.equal(r.calls(), 2);
   } finally { r.cleanup(); }
+});
+
+for (const platform of ["linux", "darwin"] as const) test(`Muse ${platform} disable restores native copies byte for byte, including schema and other providers`, async () => {
+  const r = rig(platform);
+  try {
+    const vaultRaw = JSON.stringify({ ...native, schema_version: 17 }, null, 4) + "\n";
+    const homeRaw = "  " + JSON.stringify({ ...native, schema_version: 19 }) + "\n";
+    writeFileSync(r.vaultFile, vaultRaw);
+    if (platform === "linux") { mkdirSync(join(r.homeFile, ".."), { recursive: true }); writeFileSync(r.homeFile, homeRaw); }
+    const ready = await r.svc.museCredentials.enable(r.account);
+    const facts = JSON.stringify({ dump: r.store.dumpState(), audit: r.store.auditRows(), status: ready, logs: r.logs });
+    assert.ok(!facts.includes(login) && !facts.includes("foreign-private-key"));
+    r.advance(MUSE_MINT_FLOOR_MS + 1);
+    await r.svc.museCredentials.ensure(r.account, 0, "rotate");
+    await r.svc.museCredentials.disable(r.account);
+    assert.ok(readFileSync(r.vaultFile, "utf8") === vaultRaw);
+    if (platform === "linux") assert.ok(readFileSync(r.homeFile, "utf8") === homeRaw);
+    else assert.equal(existsSync(r.homeFile), false);
+    assert.ok(!readFileSync(r.vaultFile, "utf8").includes("fixture-working-key"));
+  } finally { r.cleanup(); }
+});
+
+test("Muse elective margin request keeps a usable key through backoff; forced mint remains paced", async () => {
+  const r = rig();
+  try {
+    await r.svc.museCredentials.enable(r.account);
+    r.advance(190 * 60_000);
+    r.response({ kind: "retryable", httpStatus: 429, error: null, description: "paced", retryAfterMs: 600_000 });
+    await assert.rejects(r.svc.museCredentials.ensure(r.account, 0, "failed"));
+    r.advance(60_000);
+    const result = await r.svc.mintLease(r.account, { minTtlMs: 3_600_000 });
+    assert.ok(result.expiresAt! * 1000 > r.now());
+    assert.equal(r.calls(), 2);
+    await assert.rejects(r.svc.museCredentials.ensure(r.account, 0, "forced"), error => (error as { retryAt: number }).retryAt! > r.now());
+    assert.equal(r.calls(), 2);
+  } finally { r.cleanup(); }
+});
+
+test("Muse forgetDisabled and missing authority relogin keep the persisted mint floor", async () => {
+  const r = rig();
+  try {
+    await r.svc.museCredentials.enable(r.account);
+    const authorityFile = join(r.cfg.accounts.vaultDir, ".credential-authorities", `${r.account.id}.json`);
+    rmSync(authorityFile);
+    await assert.rejects(r.service().museCredentials.relogin(r.account, native, null, { allowDifferentAccount: true, stillWanted: () => true }), error => (error as { reason: string }).reason === "operation_in_progress");
+    await r.svc.museCredentials.disable(r.account);
+    r.svc.museCredentials.forgetDisabled(r.account);
+    writeFileSync(r.vaultFile, JSON.stringify(native));
+    writeFileSync(r.homeFile, JSON.stringify(native));
+    await assert.rejects(r.service().museCredentials.enable(r.account), error => (error as { reason: string }).reason === "operation_in_progress");
+    assert.equal(r.calls(), 1);
+    r.advance(MUSE_MINT_FLOOR_MS + 1);
+    assert.equal((await r.service().museCredentials.enable(r.account)).phase, "ready");
+    assert.equal(r.calls(), 2);
+  } finally { r.cleanup(); }
+});
+
+test("Muse rollback never overwrites an external login, including where the native snapshot was absent", async () => {
+  const r = rig();
+  try {
+    await r.svc.museCredentials.enable(r.account);
+    const foreign = JSON.stringify({ providers: { meta: { access_token: "operator-new-login" } } });
+    writeFileSync(r.homeFile, foreign);
+    const vaultBefore = readFileSync(r.vaultFile, "utf8");
+    assert.equal((await r.svc.museCredentials.disable(r.account)).phase, "disabled");
+    assert.ok(readFileSync(r.homeFile, "utf8") === foreign);
+    assert.ok(readFileSync(r.vaultFile, "utf8") === vaultBefore);
+  } finally { r.cleanup(); }
+});
+
+test("Muse an old authority without a snapshot disables without fabricating native material", async () => {
+  const r = rig();
+  try {
+    await r.svc.museCredentials.enable(r.account);
+    const path = join(r.cfg.accounts.vaultDir, ".credential-authorities", `${r.account.id}.json`);
+    const value = JSON.parse(readFileSync(path, "utf8")); delete value.nativeSnapshot;
+    writeFileSync(path, JSON.stringify(value));
+    const published = readFileSync(r.vaultFile, "utf8");
+    assert.equal((await r.service().museCredentials.disable(r.account)).phase, "disabled");
+    assert.ok(readFileSync(r.vaultFile, "utf8") === published);
+    assert.ok(existsSync(path));
+    assert.match(r.store.getAccount(r.account.id)?.statusReason ?? "", /snapshot.*unavailable/i);
+  } finally { r.cleanup(); }
+});
+
+for (const end of ["cancel", "timeout", "shutdown"] as const) test(`Muse paced approved grant is dropped on ${end} without another device request or mint`, async () => {
+  const r = rig();
+  let polls = 0;
+  const flows = new LoginFlowService({ store: r.store, cfg: r.cfg, accounts: r.svc, now: r.now, log: op => r.logs.push(op), spawner: null,
+    transports: {
+      museDeviceAuthorize: async () => ({ ok: true, deviceCode: "fixture-device", userCode: "fixture-code", verificationUri: "https://auth.meta.com/device", verificationUriComplete: null, expiresInSeconds: 30, intervalSeconds: 1 }),
+      museDeviceToken: async () => { polls++; return { kind: "granted", accessToken: login, refreshToken: null, expiresInSeconds: null }; },
+    } });
+  try {
+    await r.svc.museCredentials.enable(r.account);
+    const { flow } = await flows.start(r.account, { methodId: "muse-oauth", replaceAccount: true });
+    r.advance(1001); flows.tick();
+    for (let i = 0; i < 100 && r.store.getLoginFlow(flow.id)?.phase !== "validating"; i++) await new Promise(resolve => setTimeout(resolve, 1));
+    assert.equal(r.store.getLoginFlow(flow.id)?.phase, "validating");
+    const runner = Reflect.get(flows, "runners").get(flow.id);
+    assert.ok(Reflect.get(runner, "pendingGrant"));
+    assert.ok(r.store.getLoginFlow(flow.id)!.expiresAt > r.now() + MUSE_MINT_FLOOR_MS);
+    if (end === "cancel") await flows.cancel(flow.id);
+    else if (end === "shutdown") await flows.shutdown();
+    else { r.advance(r.store.getLoginFlow(flow.id)!.expiresAt - r.now() + 1); flows.tick(); }
+    r.advance(2 * MUSE_MINT_FLOOR_MS); flows.tick();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(polls, 1);
+    assert.equal(Reflect.get(runner, "pendingGrant"), null);
+    assert.equal(r.calls(), 1);
+    assert.ok(!JSON.stringify({ audit: r.store.auditRows(), flows: r.store.listLoginFlows(), logs: r.logs }).includes(login));
+  } finally { await flows.shutdown(); r.cleanup(); }
+});
+
+test("Muse corrupt renewal marker fails closed; removing it re-paces from the authority watermark", async () => {
+  const r = rig();
+  try {
+    await r.svc.museCredentials.enable(r.account);
+    const marker = join(r.cfg.accounts.vaultDir, ".credential-authorities", `${r.account.id}.renewal.json`);
+    writeFileSync(marker, "not-json");
+    await assert.rejects(r.service().museCredentials.ensure(r.account, 0, "forced"), error => (error as { reason: string }).reason === "unavailable" && /pacing state is unavailable/.test((error as Error).message));
+    assert.equal(readFileSync(marker, "utf8"), "not-json");
+    rmSync(marker);
+    await assert.rejects(r.service().museCredentials.ensure(r.account, 0, "forced"), error => (error as { reason: string }).reason === "operation_in_progress");
+    assert.equal(r.calls(), 1);
+    r.advance(MUSE_MINT_FLOOR_MS + 1);
+    assert.equal((await r.service().museCredentials.ensure(r.account, 0, "forced")).phase, "ready");
+    assert.equal(r.calls(), 2);
+    const safe = JSON.stringify({ dump: r.store.dumpState(), audit: r.store.auditRows(), status: r.svc.museCredentials.status(r.account), logs: r.logs });
+    assert.ok(!safe.includes("attemptAt") && !safe.includes(login));
+  } finally { r.cleanup(); }
+});
+
+test("Muse an approved grant that expires during pacing fails without a mint or changing the held login", async () => {
+  const r = rig();
+  let polls = 0;
+  const flows = new LoginFlowService({ store: r.store, cfg: r.cfg, accounts: r.svc, now: r.now, log: op => r.logs.push(op), spawner: null,
+    transports: {
+      museDeviceAuthorize: async () => ({ ok: true, deviceCode: "fixture-device", userCode: "fixture-code", verificationUri: "https://auth.meta.com/device", verificationUriComplete: null, expiresInSeconds: 900, intervalSeconds: 1 }),
+      museDeviceToken: async () => { polls++; return { kind: "granted", accessToken: login, refreshToken: null, expiresInSeconds: 1 }; },
+    } });
+  try {
+    const ready = await r.svc.museCredentials.enable(r.account);
+    const { flow } = await flows.start(r.account, { methodId: "muse-oauth", replaceAccount: true });
+    r.advance(1001); flows.tick();
+    for (let i = 0; i < 100 && r.store.getLoginFlow(flow.id)?.phase !== "validating"; i++) await new Promise(resolve => setTimeout(resolve, 1));
+    const runner = Reflect.get(flows, "runners").get(flow.id);
+    r.advance(MUSE_MINT_FLOOR_MS); flows.tick();
+    for (let i = 0; i < 100 && r.store.getLoginFlow(flow.id)?.phase !== "failed"; i++) await new Promise(resolve => setTimeout(resolve, 1));
+    assert.equal(r.store.getLoginFlow(flow.id)?.phase, "failed");
+    assert.match(r.store.getLoginFlow(flow.id)?.error?.message ?? "", /expired.*sign in again/i);
+    assert.equal(Reflect.get(runner, "pendingGrant"), null);
+    assert.equal(polls, 1);
+    assert.equal(r.calls(), 1);
+    assert.equal(r.svc.museCredentials.status(r.account)?.generation, ready.generation);
+    assert.equal(r.svc.museCredentials.status(r.account)?.phase, "ready");
+  } finally { await flows.shutdown(); r.cleanup(); }
 });

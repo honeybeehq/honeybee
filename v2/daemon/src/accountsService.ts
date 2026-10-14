@@ -1120,15 +1120,18 @@ export class AccountsService {
     });
     const inspectMuseCopies = (account: AccountRow, document: Record<string, unknown>): void => {
       const owned = museMeta(document);
+      const snapshot = this.museCredentials?.rollbackSnapshot(account);
       const previous = this.museCredentials?.previousDocument(account);
       const previousKey = previous ? museMeta(previous)?.api_key : undefined;
       for (const root of this.isolationRefusal("muse") ? [this.vaultDirOf(account)] : [account.homePath, this.vaultDirOf(account)]) {
         for (const copy of this.leaseCopyPaths(root, "muse/auth.json")) {
           const raw = readIfFile(this.leaseFilePath(root, copy));
           if (raw === null) continue;
+          if (snapshot?.[root === account.homePath ? "home" : "vault"] === raw) continue;
           let meta: Record<string, unknown> | null;
           try { meta = museMeta(JSON.parse(raw)); } catch { meta = null; }
-          if (!meta || !MUSE_CREDENTIAL_CODEC.parse(raw) || meta.storage === "keychain" || (meta.access_token && meta.access_token !== owned?.access_token)
+          if (!meta || !MUSE_CREDENTIAL_CODEC.parse(raw) || meta.storage === "keychain" || meta.access_token
+            || JSON.stringify(JSON.parse(raw)) !== JSON.stringify(museWorkingDocument(JSON.parse(raw)))
             || (meta.api_key && meta.api_key !== owned?.api_key && meta.api_key !== owned?.previous_api_key && meta.api_key !== previousKey)) {
             throw new CredentialOwnershipConflict("An external Muse login or key changed this account; preserve it before publishing authority material.");
           }
@@ -1146,6 +1149,13 @@ export class AccountsService {
         this.store.assertNoUpdateReservation();
         if (this.refreshBusy(account) || this.leaseMints.has(account.id)) throw new CredentialAuthorityError("Another credential operation is active.");
       },
+      beforeRelogin: account => {
+        this.assertLocalAccount(account);
+        const refusal = this.nativeRefusal(account);
+        if (refusal) throw new CredentialAuthorityError(refusal);
+        this.assertOwnedHome(account, "holds credentials for");
+      },
+      nativeSnapshot: (account, raw) => Object.fromEntries((this.isolationRefusal("muse") ? [["vault", this.vaultDirOf(account)]] : [["home", account.homePath], ["vault", this.vaultDirOf(account)]]).map(([key, root]) => [key!, raw ?? readIfFile(this.leaseFilePath(root!, "muse/auth.json"))])),
       nativeCredential: async account => {
         for (const root of this.isolationRefusal("muse") ? [this.vaultDirOf(account)] : [account.homePath, this.vaultDirOf(account)]) {
           const raw = readIfFile(this.leaseFilePath(root, "muse/auth.json"));
@@ -1158,16 +1168,19 @@ export class AccountsService {
       refresh: opts.museKeyMint ?? defaultMuseKeyTransport(this.cfg.accounts.limitsFetchTimeoutMs, this.now),
       onRefreshed: account => this.onCredentialValidated(account.id, "refresh"),
       identify: async () => null, homeIdentity: () => null,
-      publish: async (account, document, accessOnly) => {
+      publish: async (account, document, accessOnly, snapshot) => {
         const native = this.nativeRefusal(account);
         if (native) throw new CredentialAuthorityError(native);
         this.assertOwnedHome(account, "holds credentials for");
         inspectMuseCopies(account, document);
-        const { previous_api_key, api_key_expires_at, ...meta } = museMeta(document)!;
-        const published = accessOnly ? museWorkingDocument(document) : { schema_version: 1, providers: { meta } };
+        const published = accessOnly ? JSON.stringify(museWorkingDocument(document)) : null;
         for (const root of this.isolationRefusal("muse") ? [this.vaultDirOf(account)] : [this.vaultDirOf(account), account.homePath]) {
           mkdirSync(join(root, "muse"), { recursive: true, mode: 0o700 });
-          atomicWriteFileSync(this.leaseFilePath(root, "muse/auth.json"), JSON.stringify(published), 0o600);
+          const path = this.leaseFilePath(root, "muse/auth.json");
+          const raw = accessOnly ? published : snapshot?.[root === account.homePath ? "home" : "vault"];
+          if (raw === undefined) throw new CredentialAuthorityError("Native Muse snapshot is unavailable; sign in again after disabling.");
+          if (raw === null) rmSync(path, { force: true });
+          else atomicWriteFileSync(path, raw, 0o600);
         }
       },
     });
@@ -2040,7 +2053,7 @@ export class AccountsService {
     // A refused or possibly consumed refresh token has no refresh path, however long the last access token still lives.
     if (this.centralCredentialInDoubt(account)) return "expired";
     if (parsed.expiresAt > this.now()) return "present";
-    return this.authorityFor(account)!.status(account)?.phase === "ready" && Boolean(parsed.refreshToken) ? "present" : "expired";
+    return this.authorityFor(account)!.status(account)?.phase === "ready" && Boolean(parsed.refreshToken || parsed.bootstrapToken) ? "present" : "expired";
   }
 
   private claudeDocumentState(raw: string | null): CredentialState {
@@ -3012,7 +3025,6 @@ export class AccountsService {
       case "muse": {
         // Muse has no usage probe: MSP usage/read reports only what one
         // process observed on its own model calls.
-        if (account.source !== "leased" && this.museCredentials.enabled(account)) await this.museCredentials.ensure(account, 15 * 60_000);
         const state = this.credentialState(account);
         return state === "present"
           ? { readable: false, unreadableReason: "unsupported", error: "muse has no limits source" }
@@ -3914,7 +3926,7 @@ export class AccountsService {
     if (aheadMs <= 0) return;
     const now = this.now();
     for (const account of this.store.listAccounts()) {
-      if (account.source === "leased" || !this.credentialAuthorities.has(account.harness) || account.status === "paused") continue;
+      if (account.harness === "muse" || account.source === "leased" || !this.credentialAuthorities.has(account.harness) || account.status === "paused") continue;
       const backoff = this.earlyRefreshBackoff.get(account.id);
       if (backoff && backoff.at > now) continue;
       const accountAheadMs = account.harness === "muse" ? Math.min(aheadMs, 60 * 60_000) : aheadMs;
@@ -3934,7 +3946,7 @@ export class AccountsService {
   centralRefreshRetryTick(): void {
     const now = this.now();
     const due = this.store.listAccounts()
-      .filter((account) => this.credentialAuthorities.has(account.harness) && this.authorityFor(account)!.retryDue(account)
+      .filter((account) => account.harness !== "muse" && this.credentialAuthorities.has(account.harness) && this.authorityFor(account)!.retryDue(account)
         && !this.queuedRefreshIds.has(account.id) && !this.activeRefreshIds.has(account.id)
         // A retry that cannot even start (a locked Keychain, a failing publication) must not probe on every tick.
         && (this.centralRetryProbes.get(account.id) ?? 0) <= now)

@@ -24,6 +24,7 @@ export interface AuthorityDocument {
   /** When the provider last issued this chain's access token, by refresh or login. */
   issuedAt?: number;
   renewalAttemptAt?: number;
+  nativeSnapshot?: Record<string, string | null>;
   /** Set by an in-place login; the previous generation's file is kept until this chain's first successful refresh. */
   login?: { at: number; previousGeneration: number | null };
 }
@@ -38,8 +39,10 @@ export interface CentralCredentialOptions {
   store: CoreStore;
   root: string;
   beforeEnroll: (account: AccountRow) => void;
+  beforeRelogin?: (account: AccountRow) => void;
+  nativeSnapshot?: (account: AccountRow, raw?: string) => Record<string, string | null>;
   nativeCredential: (account: AccountRow) => Promise<Record<string, unknown> | null>;
-  publish: (account: AccountRow, document: Record<string, unknown>, accessOnly: boolean) => Promise<void>;
+  publish: (account: AccountRow, document: Record<string, unknown>, accessOnly: boolean, snapshot?: Record<string, string | null>) => Promise<void>;
   beforeUse: (account: AccountRow, document: Record<string, unknown>) => void;
   beforeRefresh: (account: AccountRow, document: Record<string, unknown>) => Promise<unknown>;
   refresh: CredentialRefreshTransport;
@@ -98,7 +101,7 @@ export class CredentialOwnershipConflict extends CredentialAuthorityError {}
 type RefreshAttempt = { kind: "success"; token: Extract<CredentialRefreshResult, { kind: "success" }>["token"] } | { kind: "failed"; result: CredentialRefreshTransportFailure; failure: CredentialRefreshFailure };
 
 /** Persist the rotated chain before acknowledging it or publishing any access-only copy. */
-function save(path: string, value: AuthorityDocument): void {
+function save(path: string, value: unknown): void {
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   const temporary = `${path}.${randomUUID()}.tmp`;
   const fd = openSync(temporary, "wx", 0o600);
@@ -167,6 +170,9 @@ export class CredentialAuthority {
   }
   document(account: AccountRow): Record<string, unknown> {
     return this.read(account).document;
+  }
+  rollbackSnapshot(account: AccountRow): Record<string, string | null> | null {
+    try { return this.read(account).nativeSnapshot ?? null; } catch { return null; }
   }
   previousDocument(account: AccountRow): Record<string, unknown> | null {
     try { return (JSON.parse(readFileSync(this.previousPath(account), "utf8")) as AuthorityDocument).document; }
@@ -247,6 +253,7 @@ export class CredentialAuthority {
       result = { kind: "unknown_outcome", description: "the provider answered with an unusable token" };
     }
     const failure = this.failureOf(result, previous);
+    this.recordRenewalFailure(account, failure);
     this.options.log(`account.credentials.refresh account=${account.id} during=${during} generation=${generation} outcome=${failure.outcome}`
       + ` reason=${JSON.stringify(describeRefreshFailure(failure))} attempts=${failure.attempts} retry_at=${failure.retryAt !== null ? new Date(failure.retryAt).toISOString() : "-"}`);
     return { kind: "failed", result, failure };
@@ -283,6 +290,7 @@ export class CredentialAuthority {
     }
   }
   private outcomeUnknownMessage(account: AccountRow, failure: CredentialRefreshFailure | null): string {
+    if (this.codec.rotatesRefresh === false) return `Central key mint outcome unknown for ${account.id} (${failure ? describeRefreshFailure(failure) : "no detail"}); retry on the next lease or runtime admission after the renewal window.`;
     return `Central refresh outcome unknown for ${account.id} (${failure ? describeRefreshFailure(failure) : "no detail"}); retrying automatically, ends in ready or login_required`;
   }
   /** The token may be consumed, so the credential is not known to work until the scheduled retry answers. */
@@ -519,11 +527,32 @@ export class CredentialAuthority {
     this.forgetHandoffAdoption(account);
   }
 
-  private assertRenewalPacing(value: AuthorityDocument, failure: CredentialRefreshFailure | null): void {
+  private renewalPath(account: AccountRow): string { return join(this.options.root, `${encodeURIComponent(account.id)}.renewal.json`); }
+  private renewalMarker(account: AccountRow): { attemptAt: number; retryAt: number } | null {
+    try {
+      const value = JSON.parse(readFileSync(this.renewalPath(account), "utf8"));
+      if (!Number.isSafeInteger(value.attemptAt) || value.attemptAt < 0 || !Number.isSafeInteger(value.retryAt) || value.retryAt < 0) throw new Error();
+      return value;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw new CredentialAuthorityError("Credential renewal pacing state is unavailable.");
+    }
+  }
+  private assertRenewalPacing(account: AccountRow, value: AuthorityDocument | null, failure: CredentialRefreshFailure | null): void {
     if (this.codec.minimumRenewalIntervalMs === undefined) return;
-    const attemptedAt = Math.max(value.issuedAt ?? 0, value.renewalAttemptAt ?? 0, failure?.at ?? 0);
-    const retryAt = Math.max(attemptedAt + this.codec.minimumRenewalIntervalMs, failure?.retryAt ?? 0);
+    const marker = this.renewalMarker(account);
+    const attemptedAt = Math.max(value?.issuedAt ?? 0, value?.renewalAttemptAt ?? 0, failure?.at ?? 0, marker?.attemptAt ?? 0);
+    const retryAt = Math.max(attemptedAt + this.codec.minimumRenewalIntervalMs, failure?.retryAt ?? 0, marker?.retryAt ?? 0);
     if (attemptedAt > 0 && this.options.now() < retryAt) throw new CredentialAuthorityError(`Credential mint is paced; retry after ${new Date(retryAt).toISOString()}.`, "operation_in_progress", retryAt);
+  }
+  private recordRenewalAttempt(account: AccountRow): void {
+    if (this.codec.minimumRenewalIntervalMs === undefined) return;
+    save(this.renewalPath(account), { attemptAt: this.options.now(), retryAt: this.options.now() + this.codec.minimumRenewalIntervalMs });
+  }
+  private recordRenewalFailure(account: AccountRow, failure: CredentialRefreshFailure): void {
+    if (this.codec.minimumRenewalIntervalMs === undefined) return;
+    const marker = this.renewalMarker(account);
+    save(this.renewalPath(account), { attemptAt: Math.max(marker?.attemptAt ?? 0, failure.at), retryAt: Math.max(marker?.retryAt ?? 0, failure.retryAt ?? 0) });
   }
 
   enable(account: AccountRow): Promise<AccountCredentialAuthority> {
@@ -537,8 +566,9 @@ export class CredentialAuthority {
       if (before && !["disabled", "enrolling"].includes(before.phase)) throw new CredentialAuthorityError("Resolve the incomplete refresh before enrolling again.");
       if (this.codec.minimumRenewalIntervalMs !== undefined && before?.phase === "disabled") {
         const previous = this.read(account, true);
-        if (previous) this.assertRenewalPacing(previous, before.failure);
+        this.assertRenewalPacing(account, previous, before.failure);
       }
+      if (this.codec.minimumRenewalIntervalMs !== undefined && !before) this.assertRenewalPacing(account, null, null);
       let value: AuthorityDocument;
       if (before?.phase === "enrolling") {
         value = this.read(account);
@@ -551,7 +581,7 @@ export class CredentialAuthority {
           }
           value = this.preserveEnrollmentRollback(account, value);
           this.outcomeUnknown(account, { ...value, operationKey: before.operationKey }, this.interrupted("the daemon stopped during the enrollment refresh", before.failure));
-          throw new CredentialAuthorityError("The enrollment refresh was interrupted and its outcome is unknown; it is retried automatically and ends in ready or login_required.");
+          throw new CredentialAuthorityError(this.codec.rotatesRefresh === false ? this.outcomeUnknownMessage(account, this.status(account)?.failure ?? null) : "The enrollment refresh was interrupted and its outcome is unknown; it is retried automatically and ends in ready or login_required.");
         }
       } else {
         const document = await this.options.nativeCredential(account);
@@ -566,12 +596,13 @@ export class CredentialAuthority {
         this.assertQuiescent(account); // A spawn/login may have arrived during Keychain I/O.
         this.options.beforeEnroll(account);
         value = { generation: (before?.generation ?? 0) + 1, operationKey: null, document,
+          ...(this.options.nativeSnapshot ? { nativeSnapshot: this.options.nativeSnapshot(account) } : {}),
           adopted: { refreshTokenDigest: refreshTokenDigest(this.renewalCredential(candidate)!), expiresAt: candidate.expiresAt } };
         // Save first while no runtime can start in this synchronous section.
         save(this.path(account), value);
         this.put(account, "enrolling", value);
       }
-      this.assertRenewalPacing(value, before?.failure ?? null);
+      this.assertRenewalPacing(account, value, before?.failure ?? null);
       // Validate the chain with one real rotation before any native copy loses its refresh token.
       const credential = this.codec.parse(JSON.stringify(value.document))!;
       if (!this.renewalCredential(credential)) throw new CredentialAuthorityError("The authority has no renewal credential; disable central credentials and log in again.");
@@ -582,6 +613,7 @@ export class CredentialAuthority {
         value = { ...value, renewalAttemptAt: this.options.now() };
         save(this.path(account), value);
       }
+      this.recordRenewalAttempt(account);
       const attempt = await this.attempt(account, this.renewalCredential(credential)!, value.generation, null, "enroll");
       if (attempt.kind === "failed") {
         const detail = describeRefreshFailure(attempt.failure);
@@ -598,7 +630,7 @@ export class CredentialAuthority {
         }
         value = this.preserveEnrollmentRollback(account, value);
         this.outcomeUnknown(account, { ...value, operationKey }, attempt.failure);
-        throw new CredentialAuthorityError(`The enrollment refresh outcome is unknown (${detail}); it is retried automatically and ends in ready or login_required.`);
+        throw new CredentialAuthorityError(this.codec.rotatesRefresh === false ? this.outcomeUnknownMessage(account, attempt.failure) : `The enrollment refresh outcome is unknown (${detail}); it is retried automatically and ends in ready or login_required.`);
       }
       if (attempt.token.accessUsable === false) value = this.preserveEnrollmentRollback(account, value);
       value = { ...value, generation: value.generation + 1, operationKey, issuedAt: this.options.now(),
@@ -643,8 +675,12 @@ export class CredentialAuthority {
       const uncertain = state.phase === "refreshing" || state.phase === "uncertain" || state.phase === "login_required"
         || state.phase === "disabling_uncertain" || enrollmentUnknown;
       if (state.phase === "enrolling") value = this.preserveEnrollmentRollback(account, value);
+      if (this.codec.rotatesRefresh === false && !uncertain && !value.nativeSnapshot) {
+        this.options.store.setAccountStatus(account.id, "auth_needed", "Native snapshot is unavailable; the private authority was retained. Sign in natively after disabling central credentials.");
+        return this.put(account, "disabled", value);
+      }
       this.put(account, uncertain ? "disabling_uncertain" : "disabling", value); // Preserve rollback intent across restart.
-      try { await this.options.publish(account, value.document, uncertain); }
+      try { await this.options.publish(account, value.document, uncertain, value.nativeSnapshot); }
       catch (error) {
         if (!(error instanceof CredentialOwnershipConflict)) throw error;
         // A new external login belongs to the operator. Never overwrite it to restore an older chain.
@@ -660,6 +696,13 @@ export class CredentialAuthority {
   }
   forgetDisabled(account: AccountRow): void {
     this.assertDisabled(account);
+    if (this.codec.minimumRenewalIntervalMs !== undefined) {
+      const value = this.read(account, true);
+      const state = this.status(account);
+      const marker = this.renewalMarker(account);
+      const attemptAt = Math.max(value?.issuedAt ?? 0, value?.renewalAttemptAt ?? 0, marker?.attemptAt ?? 0, state?.failure?.at ?? 0);
+      if (attemptAt > 0) save(this.renewalPath(account), { attemptAt, retryAt: Math.max(marker?.retryAt ?? 0, state?.failure?.retryAt ?? 0, attemptAt + this.codec.minimumRenewalIntervalMs) });
+    }
     try { unlinkSync(this.path(account)); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
     this.forgetPrevious(account);
   }
@@ -704,7 +747,6 @@ export class CredentialAuthority {
         this.options.beforeUse(account, value.document);
         return state;
       }
-      this.assertRenewalPacing(value, state.failure);
       if (!this.renewalCredential(credential)) {
         throw this.requireLogin(account, value, { outcome: "rejected", httpStatus: null, error: null, description: "the authority holds no refresh token",
           at: now, attempts: (state.failure?.attempts ?? 0) + 1, retryAt: null });
@@ -717,6 +759,15 @@ export class CredentialAuthority {
         }
         throw new CredentialAuthorityError(`Central refresh for ${account.id} did not succeed (${state.failure!.outcome}: ${describeRefreshFailure(state.failure!)}); next attempt at ${new Date(retryAt).toISOString()}`);
       }
+      if (elective && this.codec.minimumRenewalIntervalMs !== undefined) {
+        try { this.assertRenewalPacing(account, value, state.failure); }
+        catch (error) {
+          if (!(error instanceof CredentialAuthorityError) || error.retryAt === undefined) throw error;
+          this.options.beforeUse(account, value.document);
+          return state;
+        }
+      }
+      this.assertRenewalPacing(account, value, state.failure);
       await this.options.beforeRefresh(account, value.document);
       const operationKey = forceKey ?? randomUUID();
       this.put(account, "refreshing", { ...value, operationKey }, state.failure);
@@ -724,6 +775,7 @@ export class CredentialAuthority {
         value = { ...value, renewalAttemptAt: now };
         save(this.path(account), value);
       }
+      this.recordRenewalAttempt(account);
       const attempt = await this.attempt(account, this.renewalCredential(credential)!, value.generation, state.failure, "refresh");
       if (attempt.kind === "failed") {
         const { result, failure } = attempt;
@@ -743,7 +795,7 @@ export class CredentialAuthority {
       // An enrollment whose first rotation had an unknown outcome completes here: its native copies still hold the adopted chain.
       const enrollment = value.rollbackAdopted ? { adopted: value.adopted, rollbackAdopted: value.rollbackAdopted } : {};
       const firstRefreshAfterLogin = value.login !== undefined;
-      value = { ...enrollment, ...(value.identity ? { identity: value.identity } : {}), issuedAt: this.options.now(),
+      value = { ...enrollment, ...(value.nativeSnapshot ? { nativeSnapshot: value.nativeSnapshot } : {}), ...(value.identity ? { identity: value.identity } : {}), issuedAt: this.options.now(),
         generation: value.generation + 1, operationKey,
         document: this.codec.merge(value.document, attempt.token, this.options.now()),
         ...(this.codec.retainRotatedOnUnusableAccess ? { accessUsable: attempt.token.accessUsable !== false, ...(attempt.token.terminalAccessFailure ? { terminalAccessFailure: attempt.token.terminalAccessFailure } : {}) } : {}) };
@@ -768,13 +820,15 @@ export class CredentialAuthority {
    * write: a sign-in cancelled or replaced while this waited changes nothing.
    * Once the new chain is saved the login stands, whatever happens to its flow.
    */
-  relogin(account: AccountRow, document: Record<string, unknown>, identity: ClaudeIdentity | null, opts: { allowDifferentAccount: boolean; stillWanted: () => boolean }): Promise<AccountCredentialAuthority> {
+  relogin(account: AccountRow, document: Record<string, unknown>, identity: ClaudeIdentity | null, opts: { allowDifferentAccount: boolean; stillWanted: () => boolean; nativeRaw?: string }): Promise<AccountCredentialAuthority> {
     return this.lane(account, "relogin", async () => {
+      this.options.beforeRelogin?.(account);
       const state = this.status(account);
       if (!state || state.phase === "disabled") throw new CredentialAuthorityError(`Central credentials are not enabled for ${account.id}.`);
       if (!RELOGIN_PHASES.has(state.phase)) {
         throw new CredentialAuthorityError(`Central credentials are ${state.phase}; finish it with: hive account credentials ${state.phase === "enrolling" ? "enable" : "disable"} ${account.id}`, "operation_in_progress");
       }
+      const nativeRaw = opts.nativeRaw ?? JSON.stringify(document);
       const grant = this.codec.parse(JSON.stringify(document));
       if (!grant || !this.renewalCredential(grant) || (this.codec.rotatesRefresh !== false && grant.expiresAt <= this.options.now())) throw new CredentialAuthorityError("The login did not produce a usable refresh credential.");
       let current: AuthorityDocument | null;
@@ -788,14 +842,19 @@ export class CredentialAuthority {
       }
       if (current) await this.options.beforeRefresh(account, current.document);
       if (this.codec.rotatesRefresh === false) {
+        this.assertRenewalPacing(account, current, state.failure);
+        this.recordRenewalAttempt(account);
         if (current) {
-          this.assertRenewalPacing(current, state.failure);
           current = { ...current, renewalAttemptAt: this.options.now() };
           save(this.path(account), current);
         }
         const result = await this.options.refresh(this.renewalCredential(grant)!, document);
         if (result.kind !== "success" || !result.token.accessToken || result.token.expiresAt <= this.options.now()) {
-          if (current && result.kind !== "success") this.put(account, state.phase, current, this.failureOf(result, state.failure));
+          if (result.kind !== "success") {
+            const failure = this.failureOf(result, state.failure);
+            this.recordRenewalFailure(account, failure);
+            if (current) this.put(account, state.phase, current, failure);
+          }
           throw new CredentialAuthorityError("The new login did not mint a usable working key; the existing authority is unchanged.");
         }
         document = this.codec.merge(document, result.token, this.options.now());
@@ -810,7 +869,8 @@ export class CredentialAuthority {
       }
       const at = this.options.now();
       const enrollment = current?.rollbackAdopted ? { adopted: current.adopted, rollbackAdopted: current.rollbackAdopted } : {};
-      const value: AuthorityDocument = { ...enrollment, generation: Math.max(state.generation, current?.generation ?? 0) + 1, operationKey, document,
+      const value: AuthorityDocument = { ...enrollment,
+        ...(this.options.nativeSnapshot ? { nativeSnapshot: this.options.nativeSnapshot(account, nativeRaw) } : {}), generation: Math.max(state.generation, current?.generation ?? 0) + 1, operationKey, document,
         ...(identity ? { identity } : {}), issuedAt: at, login: { at, previousGeneration: current?.generation ?? null } };
       save(this.path(account), value);
       this.options.log(`account.credentials.relogin account=${account.id} from_phase=${state.phase} generation=${value.generation} previous=${current?.generation ?? "-"}`
