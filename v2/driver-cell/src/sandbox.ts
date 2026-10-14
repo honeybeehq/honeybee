@@ -10,7 +10,7 @@
  * Defaults by node kind (A4): workstation OFF, satellite ON, cloud gateway
  * OFF (the ephemeral VM is the boundary there). Per-cell override wins.
  */
-import { realpathSync, statSync } from "node:fs";
+import { existsSync, realpathSync, statSync } from "node:fs";
 import { homedir, platform } from "node:os";
 import { isAbsolute, join, parse, relative, resolve as resolvePath, sep } from "node:path";
 
@@ -197,6 +197,29 @@ export function seatbeltProfile(policy: SandboxPolicy): string {
   ].join("\n");
 }
 
+const BWRAP_PRIVATE_MOUNTS = ["/tmp"];
+
+function maskedLaunchRoot(path: string): string | null {
+  for (const mount of BWRAP_PRIVATE_MOUNTS) {
+    const rel = relative(mount, path);
+    if (rel === "" || rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) continue;
+    return join(mount, rel.split(sep)[0]!);
+  }
+  return null;
+}
+
+function bwrapLaunchBinds(command: string, args: readonly string[]): string[] {
+  const roots = new Set<string>();
+  for (const input of [command, ...args]) {
+    if (!isAbsolute(input) || !existsSync(input)) continue;
+    for (const spelling of [input, realpathSync(input)]) {
+      const root = maskedLaunchRoot(spelling);
+      if (root) roots.add(root);
+    }
+  }
+  return [...roots].flatMap((root) => ["--ro-bind", realpathSync(root), root]);
+}
+
 /**
  * bwrap argv (linux): read-only root with the writable paths re-bound
  * read-write. Pure argv construction — testable on any platform; execution
@@ -209,7 +232,8 @@ export function bwrapArgs(policy: SandboxPolicy, command: string, args: string[]
     "--dev", "/dev",
     ...(size.length > 0 ? [...size, "--tmpfs", "/dev/shm"] : []),
     "--proc", "/proc",
-    ...size, "--tmpfs", "/tmp",
+    ...BWRAP_PRIVATE_MOUNTS.flatMap((mount) => [...size, "--tmpfs", mount]),
+    ...bwrapLaunchBinds(command, args),
     "--bind", policy.cellDir, policy.cellDir,
   ];
   for (const p of policy.writablePaths) {

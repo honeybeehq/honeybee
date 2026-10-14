@@ -48,6 +48,26 @@ function latestReport(dir: string, beeId: string, atLeast = 1): ProbeReport | fa
   return reports.length >= atLeast ? reports[reports.length - 1]! : false;
 }
 
+function sandboxedChildEvidence(dataDir: string, beeId: string): string {
+  const files = readdirSync(dataDir, { recursive: true, encoding: "utf8" })
+    .filter((path) => {
+      const name = path.split("/").pop()!;
+      return name.startsWith(`${beeId}.`) && (name.endsWith(".status.json") || name.endsWith(".stderr.log"));
+    })
+    .sort();
+  if (files.length === 0) return `no runner status or stderr sidecar for ${beeId} under ${dataDir}`;
+  const tail = (text: string): string => (text.length > 4000 ? text.slice(text.indexOf("\n", text.length - 4000) + 1) : text);
+  return files.map((path) => `--- ${path}\n${tail(readFileSync(join(dataDir, path), "utf8"))}`).join("\n");
+}
+
+async function waitForProbeReport(dataDir: string, beeId: string, dir: string, what: string, atLeast = 1): Promise<ProbeReport> {
+  try {
+    return await waitFor(() => latestReport(dir, beeId, atLeast), what, 90_000);
+  } catch (err) {
+    throw new Error(`${(err as Error).message}\n${sandboxedChildEvidence(dataDir, beeId)}`);
+  }
+}
+
 test("policy: bees.tmpRoot wins, absent defaults by nodeKind, null turns it off", () => {
   assert.equal(resolveBeeTmpPolicy("workstation", undefined, {}, "/h"), null);
   assert.equal(resolveBeeTmpPolicy("cloud", undefined, { XDG_CACHE_HOME: "/x" }, "/h"), null);
@@ -345,7 +365,7 @@ test("satellite sandboxed Cell: the per-bee TMPDIR and compile cache are writabl
       cell: { originRepo: origin.repo, sandbox: true },
     });
     const early = await client.request<ViewResult>("view", { beeId: spawned.beeId });
-    const report = await waitFor(() => latestReport(early.bee?.cwd as string, spawned.beeId), "sandboxed probe report", 90_000);
+    const report = await waitForProbeReport(rig.dir, spawned.beeId, early.bee?.cwd as string, "sandboxed probe report");
     const beeTmp = join(cache, "honeybee", "tmp", spawned.beeId);
     assert.equal(report.TMPDIR, beeTmp);
     assert.equal(report.tmpWritable, true, "the per-bee TMPDIR is writable inside the sandbox");
@@ -444,7 +464,7 @@ test("Queen's probe: a sandboxed bee that swaps its tmp dir for a symlink gets n
     });
     const beeId = spawned.beeId;
     const cwd = (await client.request<ViewResult>("view", { beeId })).bee?.cwd as string;
-    const first = await waitFor(() => latestReport(cwd, beeId), "first generation report", 90_000);
+    const first = await waitForProbeReport(rig.dir, beeId, cwd, "first generation report");
     const outside = candidates.find((dir) => first.escapes[dir] === false);
     if (!outside) {
       t.skip(`no escape target outside the sandbox's writable set could be created here (candidates: ${JSON.stringify(first.escapes)})`);
@@ -460,7 +480,7 @@ test("Queen's probe: a sandboxed bee that swaps its tmp dir for a symlink gets n
     symlinkSync(outside, beeTmp);
 
     await client.request<SendRpcResult>("send", { beeId, body: "wake" });
-    const second = await waitFor(() => latestReport(cwd, beeId, 2), "second generation report", 90_000);
+    const second = await waitForProbeReport(rig.dir, beeId, cwd, "second generation report", 2);
     assert.equal(second.escapes[outside], false, "no write access to the symlink target on the next generation");
     assert.equal(existsSync(join(outside, "probe-write")), false);
     assert.deepEqual(readdirSync(outside), []);
