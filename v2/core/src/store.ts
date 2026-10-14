@@ -5855,6 +5855,19 @@ export class CoreStore {
     });
   }
 
+  releaseAuthDeathRecoveryToLegacy(accountId: string): void {
+    this.tx(() => {
+      const account = this.getAccount(accountId);
+      if (account?.source !== "leased" || account.leasedFrom?.generation !== undefined) return;
+      for (const row of this.listLiveAuthInterruptions()) {
+        if (row.account !== accountId || row.deathRecovery?.admitted.material.kind !== "lease" || row.deathRecovery.claimedAt !== null) continue;
+        const { deathRecovery, ...legacy } = row;
+        this.putAuthInterruption(legacy);
+        this.audit("auth_death.released_legacy", row.beeId, { interruptionId: row.id, generation: row.generation });
+      }
+    });
+  }
+
   setAuthDeathRecovery(id: number, recovery: import("./types.ts").AuthDeathRecovery): AuthInterruptionRow | null {
     return this.tx(() => {
       const row = this.getAuthInterruption(id);

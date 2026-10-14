@@ -1432,7 +1432,10 @@ export class AccountsService {
           })
           && (!codec.keychain || state.status === "unavailable" || state.status === "present" && codec.keychain.matchesMaterial(state.raw, readIfFile(this.leaseFilePath(this.vaultDirOf(target), codec.primaryFile))!));
         if (unchanged) {
-          onInstalled(this.store.getAccount(id)!);
+          this.store.transact(() => {
+            if (input.generation === undefined) this.store.releaseAuthDeathRecoveryToLegacy(id);
+            onInstalled(this.store.getAccount(id)!);
+          });
           return { account: this.store.getAccount(id)!, adopted: false, backupPath: null, backupAt: null, replacedWorkingLogin: false, keychainPublished: state.status === "present" };
         }
         for (const rel of this.credentialPaths(target)) {
@@ -1473,8 +1476,11 @@ export class AccountsService {
           mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
           atomicWriteFileSync(path, raw, 0o600);
         }
-        if (input.generation !== undefined) this.store.setAccountLease(id, origin);
-        onInstalled(this.store.getAccount(id)!);
+        this.store.transact(() => {
+          if (input.generation !== undefined) this.store.setAccountLease(id, origin);
+          else this.store.releaseAuthDeathRecoveryToLegacy(id);
+          onInstalled(this.store.getAccount(id)!);
+        });
         return { account: this.store.getAccount(id)!, adopted, backupPath, backupAt, replacedWorkingLogin, keychainPublished };
       };
       codec.keychain?.assertHome(target.homePath);

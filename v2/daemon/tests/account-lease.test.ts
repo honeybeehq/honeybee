@@ -36,6 +36,7 @@ import { openCoreStore, parseClaudeCredentials, type CoreStore } from "../../cor
 import type { ClaudeRefreshResult, RefreshedClaudeToken } from "../src/claudeRefreshTransport.ts";
 const granted = (token: RefreshedClaudeToken): ClaudeRefreshResult => ({ kind: "success", token });
 const refused: ClaudeRefreshResult = { kind: "rejected", httpStatus: 400, error: "invalid_grant", description: "Refresh token not found or invalid" };
+import { AuthResume } from "../src/authResume.ts";
 import { AccountsService, CLAUDE_KEYCHAIN_REPAIR_RETRY_MS, CLAUDE_MIN_SHIP_TTL_MS, CLAUDE_REFRESH_DEFERRAL_DEADLINE_MS, CODEX_MIN_SHIP_TTL_MS, LeaseRefusal, type EphemeralCredential } from "../src/accountsService.ts";
 import { CredentialAuthorityError } from "../src/claudeCredentialAuthority.ts";
 import { CLAUDE_REFRESH_LOCK_STALE_MS, claudeRefreshLockPaths } from "../src/claudeRefreshLock.ts";
@@ -2343,4 +2344,58 @@ test("auth death eligibility stays harness-keyed; native, Muse, legacy and unpub
       assert.equal(accounts.authDeathMaterial(r.store.getAccount(id)!)?.generation ?? null, harness === "muse" ? null : 1);
     }
   } finally { r.cleanup(); }
+});
+
+
+test("legacy lease renewal after auth death preserves ordinary AuthResume and releases only unclaimed versioned candidates", async () => {
+  for (const scenario of ["baseline", "legacy", "versioned", "claimed"] as const) {
+    const r = rig();
+    try {
+      const accounts = service(r);
+      const input = { id: "claude-test-example.com", harness: "claude", label: "test-example.com", shareId: "share-legacy-compat", authorityNodeId: "authority-test", epoch: 1, expiresAt: Math.floor((r.now() + HOUR) / 1000), files: [{ homeRelPath: ".credentials.json", contentB64: Buffer.from(JSON.stringify({ claudeAiOauth: { accessToken: randomUUID(), expiresAt: r.now() + HOUR } })).toString("base64"), mode: 0o600 }] };
+      const versioned = scenario === "versioned" || scenario === "claimed";
+      const installed = await accounts.installLease({ ...input, ...(versioned ? { generation: 1 } : {}) });
+      const bee = r.store.createBee({ name: "compat", agent: "claude", substrate: "hsr", cwd: r.dir, account: installed.account.id }).bee;
+      if (versioned) r.store.stampRuntimeCredential(bee.id, 1, { material: accounts.authDeathMaterial(installed.account)!, revision: "before", account: installed.account.id, agent: "claude", cwd: r.dir, cellId: null, controlFence: 0 });
+      r.store.updateRuntimeState(bee.id, 1, "running");
+      const original = r.store.send(bee.id, "unchanged user instruction").message;
+      r.store.markDelivered(original.id, 1);
+      const resume = new AuthResume({ store: r.store, now: r.now, log: () => {}, accountForGeneration: row => r.store.getAccount(row.account!), credentialRevision: account => accounts.credentialRevision(account), ...(scenario === "baseline" ? {} : { material: (account: Parameters<AccountsService["authDeathMaterial"]>[0]) => accounts.authDeathMaterial(account) }) });
+      resume.interrupted({ beeId: bee.id, generation: 1, flag: "auth_needed", action: "set", detail: "Provider authentication failed", turn: { messageIds: [original.id], progress: "some" } });
+      r.store.updateRuntimeState(bee.id, 1, "stopped", { exitCause: "crashed" });
+      resume.reconcile();
+      if (versioned) assert.equal(resume.waitingForMaterial(bee.id), true);
+      const onInstalled = (account: Parameters<AuthResume["credentialValidated"]>[0]) => resume.credentialValidated(account, "credentials_restored");
+      if (scenario === "claimed") {
+        await accounts.installLease({ ...input, generation: 2, files: [{ ...input.files[0]!, contentB64: Buffer.from(JSON.stringify({ claudeAiOauth: { accessToken: randomUUID(), expiresAt: r.now() + HOUR } })).toString("base64") }] }, onInstalled);
+        const claimed = r.store.liveAuthInterruption(bee.id)!.deathRecovery!;
+        assert.notEqual(claimed.claimedAt, null);
+        await accounts.installLease(input, onInstalled);
+        assert.equal(r.store.liveAuthInterruption(bee.id)!.deathRecovery?.commandId, claimed.commandId);
+        assert.equal(r.store.auditRows().filter(row => row.kind === "auth_death.released_legacy").length, 0);
+      } else {
+        if (scenario === "versioned") {
+          const codec = accounts.leaseMaterialCodecs.get("claude")!;
+          const publish = codec.keychain!.publish;
+          codec.keychain!.publish = async () => { throw new Error("fake publication failure"); };
+          try { await assert.rejects(accounts.installLease(input, onInstalled), (error: unknown) => error instanceof RpcError && error.code === "lease_unavailable"); }
+          finally { codec.keychain!.publish = publish; }
+          assert.equal(resume.waitingForMaterial(bee.id), true);
+          assert.equal(r.store.auditRows().filter(row => row.kind === "auth_death.released_legacy").length, 0);
+        }
+        await accounts.installLease({ ...input, files: [{ ...input.files[0]!, contentB64: Buffer.from(JSON.stringify({ claudeAiOauth: { accessToken: randomUUID(), expiresAt: r.now() + HOUR } })).toString("base64") }] }, onInstalled);
+        const row = r.store.liveAuthInterruption(bee.id)!;
+        assert.equal(row.state, "resumed");
+        assert.equal(row.deathRecovery, undefined);
+        assert.equal(row.continuationKind, "continue");
+        assert.equal(row.continuationMessageIds.length, 1);
+        assert.equal(r.store.listCommands({ status: "queued" }).filter(command => command.verb === "send_wake").length, 1);
+        assert.equal(r.store.auditRows().filter(row => row.kind === "auth_death.resumed").length, 0);
+        assert.equal(r.store.auditRows().filter(row => row.kind === "auth_death.released_legacy").length, scenario === "versioned" ? 1 : 0);
+        assert.equal(r.store.getBee(bee.id)?.authControlFence ?? 0, 0);
+        assert.equal(resume.waitingForMaterial(bee.id), false);
+        assert.equal(r.store.listMessages(bee.id).find(message => message.id === original.id)?.body, "unchanged user instruction");
+      }
+    } finally { r.cleanup(); }
+  }
 });
