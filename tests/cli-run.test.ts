@@ -1,14 +1,23 @@
 import assert from "node:assert/strict";
 import { execFile, execFileSync } from "node:child_process";
+import { mkdtempSync } from "node:fs";
 import { mkdtemp, rm, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { test } from "node:test";
+import { after, test } from "node:test";
 import { scaledMs } from "./timeScale.js";
 import { hasSession, kill } from "../src/tmux.js";
+import { tmux } from "../src/substrates/local-tmux.js";
 
 const execFileAsync = promisify(execFile);
+const tmuxSocketDir = mkdtempSync(join(tmpdir(), "honeybee-run-tmux-"));
+process.env.HIVE_TMUX_SOCKET = join(tmuxSocketDir, "tmux.sock");
+
+after(async () => {
+  await tmux(["kill-server"], { reject: false });
+  await rm(tmuxSocketDir, { recursive: true, force: true });
+});
 
 function detachedRuntimeAvailable(): boolean {
   try {
