@@ -34,6 +34,7 @@
  *    session by verified pid and re-attaches observers at EOF — the runtime
  *    stays fully deliverable (tmux runtimes are never "degraded").
  */
+import { spawnSync } from "node:child_process";
 import { appendFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
@@ -492,7 +493,8 @@ export class TmuxDriver implements RuntimeDriver {
     for (const p of this.procs.values()) {
       const captured = this.server.try(["capture-pane", "-p", "-t", exactPaneTarget(p.sessionName)]);
       const tail = captured.stdout.split("\n").filter((line) => line.trim().length > 0).slice(-5).join(" | ");
-      lines.push(`${p.sessionName}: pid=${p.pid} exited=${p.exited} pane=${JSON.stringify(captured.status === 0 ? tail : captured.stderr.trim())}`);
+      const census = spawnSync("/bin/ps", ["-o", "pid=,ppid=,stat=,etimes=,args=", "-p", String(p.pid)], { encoding: "utf8", timeout: 5_000 });
+      lines.push(`${p.sessionName}: pid=${p.pid} exited=${p.exited} ps=${JSON.stringify((census.stdout ?? "").trim())} pane=${JSON.stringify(captured.status === 0 ? tail : captured.stderr.trim())}`);
     }
     return lines.join("; ");
   }
