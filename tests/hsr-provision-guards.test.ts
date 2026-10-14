@@ -13,11 +13,13 @@
 
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 import { buildController } from "../src/hsr/remoteHost.js";
+import { REMOTE_HSR_SAFETY_PROTOCOL, writeRemoteHsrLaunchReceipt } from "../src/hsr/remoteLaunchReceipt.js";
+import { ensureHsrRunDir, writeHsrMeta } from "../src/hsr/runDir.js";
 import type { RpcConnectionCtx } from "../src/hsr/rpc.js";
 
 type ProvisionResult = { ok: boolean; error?: string; path?: string; branch?: string; reused?: boolean };
@@ -209,6 +211,89 @@ test("reusing a checkout rewrites its config host-owned so planted filters, sign
       const foreign = (await provision({ repo: source.url, branch: "main", name: "wc1" }, ctx)) as ProvisionResult;
       assert.equal(foreign.ok, false);
       assert.match(foreign.error ?? "", /different repo/u);
+    } finally {
+      await controller.close();
+    }
+  });
+});
+
+test("the host-owned rewrite never follows a planted symlink, keeps branch tracking, and the listing never rewrites", async () => {
+  await withTempStore(async (dir) => {
+    const controller = buildController();
+    const provision = controller.methods.provision!;
+    const listCheckouts = controller.methods.listCheckouts!;
+    const source = await makeSourceRepo(join(dir, "source-repo"));
+    const canary = join(dir, "canary.log");
+    try {
+      const first = (await provision({ repo: source.url, branch: "main", name: "wc1" }, ctx)) as ProvisionResult;
+      assert.equal(first.ok, true, first.error ?? "");
+      const path = join(dir, "worktrees", "wc1");
+      const gitDir = join(path, ".git");
+      assert.equal(git(path, ["config", "--local", "branch.main.remote"]), "origin");
+      assert.equal(git(path, ["config", "--local", "branch.main.merge"]), "refs/heads/main");
+
+      const hostFile = join(dir, "HOST-OWNED-FILE");
+      await writeFile(hostFile, "precious host content\n");
+      symlinkSync(hostFile, join(gitDir, "config.hive-owned"));
+      git(path, ["config", "--local", "user.name", "planted"]);
+      git(path, ["config", "--local", "remote.extra.url", "file:///elsewhere/extra"]);
+      git(path, ["config", "--local", "filter.evil.clean", `${plantCommand(join(dir, "clean-canary"), canary, "filter:clean")} %f`]);
+      await writeFile(join(gitDir, "info", "attributes"), "* filter=evil\n");
+      const before = readFileSync(join(gitDir, "config"), "utf8");
+      await writeFile(join(path, "dirty.txt"), "dirty\n");
+
+      const rows = (await listCheckouts({}, ctx)) as Array<{ name: string; dirty?: boolean; repo?: string | null }>;
+      const row = rows.find((candidate) => candidate.name === "wc1");
+      assert.ok(row);
+      assert.equal(row.dirty, true);
+      assert.equal(row.repo, source.url);
+      assert.equal(readFileSync(join(gitDir, "config"), "utf8"), before, "listing must not rewrite a live checkout's config");
+      assert.deepEqual(firedCanaries(canary), [], "listing status must not run a planted clean filter");
+      assert.equal(readFileSync(hostFile, "utf8"), "precious host content\n");
+
+      await rm(join(path, "dirty.txt"));
+      const second = (await provision({ repo: source.url, branch: "main", name: "wc1" }, ctx)) as ProvisionResult;
+      assert.equal(second.ok, true, second.error ?? "");
+      assert.equal(readFileSync(hostFile, "utf8"), "precious host content\n", "the staged rewrite must never follow a planted symlink");
+      assert.equal(lstatSync(join(gitDir, "config")).isSymbolicLink(), false);
+      assert.equal(lstatSync(join(gitDir, "config.hive-owned")).isSymbolicLink(), true);
+      assert.equal(git(path, ["config", "--local", "branch.main.remote"]), "origin");
+      assert.equal(git(path, ["config", "--local", "branch.main.merge"]), "refs/heads/main");
+      assert.deepEqual(firedCanaries(canary), []);
+
+      await mkdir(join(gitDir, "config.worktree"));
+      const blocked = (await provision({ repo: source.url, branch: "main", name: "wc1" }, ctx)) as ProvisionResult;
+      assert.equal(blocked.ok, false);
+      assert.match(blocked.error ?? "", /config\.worktree is a directory/u);
+      await rm(join(gitDir, "config.worktree"), { recursive: true });
+
+      const bee = "attached-bee";
+      await ensureHsrRunDir(bee);
+      await writeHsrMeta(bee, {
+        bee,
+        harness: "stub",
+        tier: "stream",
+        hostPid: process.pid,
+        startedAt: new Date().toISOString(),
+        controlSocket: "/tmp/unused.sock",
+        status: "running",
+      });
+      await writeRemoteHsrLaunchReceipt({
+        version: REMOTE_HSR_SAFETY_PROTOCOL,
+        bee,
+        launchId: "1".repeat(64),
+        incarnation: "2".repeat(64),
+        requestDigest: "3".repeat(64),
+        state: "running",
+        createdAt: new Date().toISOString(),
+        cwd: join(path, "sub"),
+        tier: "stream",
+        host: { hostPid: process.pid, startedAt: new Date().toISOString(), hostFingerprint: { pgid: process.pid, startedAt: "attached-bee-birth" } },
+      });
+      const inUse = (await provision({ repo: source.url, branch: "main", name: "wc1" }, ctx)) as ProvisionResult;
+      assert.equal(inUse.ok, false);
+      assert.match(inUse.error ?? "", /in use by bee attached-bee/u);
+      await rm(join(dir, "hsr"), { recursive: true, force: true });
     } finally {
       await controller.close();
     }

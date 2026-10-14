@@ -60,6 +60,7 @@ export function untrustedCheckoutGitEnv(cwd: string, base: NodeJS.ProcessEnv = p
     env: hostGitEnv(base),
     maxBuffer: 64 * 1024 * 1024,
     stdio: ["ignore", "pipe", "pipe"],
+    timeout: 10_000,
   });
   const overrides = new Map<string, string>([["commit.gpgsign", "false"], ["tag.gpgsign", "false"]]);
   for (const [scope, key] of parseConfigListing(probe)) {

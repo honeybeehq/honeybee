@@ -12,50 +12,69 @@
  */
 
 import { execFile } from "node:child_process";
-import { existsSync, lstatSync, renameSync, rmSync, writeFileSync, type Dirent } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { closeSync, constants as fsConstants, existsSync, fsyncSync, lstatSync, openSync, renameSync, unlinkSync, writeSync, type Dirent } from "node:fs";
 import { mkdir, readdir } from "node:fs/promises";
 import { devNull } from "node:os";
-import { join } from "node:path";
+import { join, resolve, sep } from "node:path";
+import { hsrLiveness } from "./observe.js";
+import { listRemoteHsrLaunchReceiptsStrict } from "./remoteLaunchReceipt.js";
 import { hostGitEnv, untrustedCheckoutGitEnv } from "../hostGit.js";
 import { worktreesRoot } from "./runDir.js";
 
 /** Run git without throwing: resolves `{ ok, stdout, stderr, code }`. */
-function runGit(args: string[], cwd?: string): Promise<{ ok: boolean; stdout: string; stderr: string; code: number }> {
-  return new Promise((resolve) => {
+function runGit(args: string[], cwd?: string, timeoutMs?: number): Promise<{ ok: boolean; stdout: string; stderr: string; code: number }> {
+  return new Promise((settle) => {
     let env: Record<string, string>;
     try {
       env = args[0] === "-C" && args[1] ? untrustedCheckoutGitEnv(args[1]) : hostGitEnv();
     } catch (error) {
-      resolve({ ok: false, stdout: "", stderr: `checkout config probe failed: ${error instanceof Error ? error.message : String(error)}`, code: 1 });
+      settle({ ok: false, stdout: "", stderr: `checkout config probe failed: ${error instanceof Error ? error.message : String(error)}`, code: 1 });
       return;
     }
-    execFile("git", args, { cwd, env, maxBuffer: 32 * 1024 * 1024 }, (error, stdout, stderr) => {
+    execFile("git", args, { cwd, env, maxBuffer: 32 * 1024 * 1024, ...(timeoutMs === undefined ? {} : { timeout: timeoutMs }) }, (error, stdout, stderr) => {
       if (!error) {
-        resolve({ ok: true, stdout: stdout ?? "", stderr: stderr ?? "", code: 0 });
+        settle({ ok: true, stdout: stdout ?? "", stderr: stderr ?? "", code: 0 });
         return;
       }
       const code = typeof (error as { code?: unknown }).code === "number" ? (error as { code: number }).code : 1;
-      resolve({ ok: false, stdout: stdout ?? "", stderr: stderr ?? "", code });
+      settle({ ok: false, stdout: stdout ?? "", stderr: stderr ?? "", code });
     });
   });
 }
 
 const OWNED_CONFIG_KEEP: ReadonlyArray<readonly [RegExp, RegExp]> = [
-  [/^core\.(repositoryformatversion|filemode|bare|logallrefupdates|ignorecase|precomposeunicode|symlinks)$/u, /^(?:true|false|0|1)$/u],
+  [/^core\.(repositoryformatversion|filemode|bare|logallrefupdates|ignorecase|precomposeunicode|symlinks|sparsecheckout|sparsecheckoutcone)$/u, /^(?:true|false|0|1)$/u],
   [/^extensions\.(objectformat|refstorage|partialclone)$/u, /^(?:sha1|sha256|files|reftable|origin)$/u],
   [/^remote\.origin\.(promisor|partialclonefilter)$/u, /^[A-Za-z0-9:=._-]+$/u],
 ];
 
+const CONFIG_PROBE_TIMEOUT_MS = 10_000;
+
 function configValue(value: string): string {
-  return `"${value.replaceAll("\\", "\\\\").replaceAll("\"", "\\\"")}"`;
+  return `"${value.replaceAll("\\", "\\\\").replaceAll("\"", "\\\"").replaceAll("\n", "\\n").replaceAll("\t", "\\t")}"`;
+}
+
+function trackedBranches(entries: ReadonlyArray<readonly [string, string]>): string[] {
+  const remotes = new Set<string>();
+  const merges = new Set<string>();
+  for (const [key, value] of entries) {
+    const match = /^branch\.(.+)\.(remote|merge)$/u.exec(key);
+    if (!match) continue;
+    const name = match[1]!;
+    if (!safeGitRef(name)) continue;
+    if (match[2] === "remote" && value === "origin") remotes.add(name);
+    if (match[2] === "merge" && value === `refs/heads/${name}`) merges.add(name);
+  }
+  return [...remotes].filter((name) => merges.has(name)).sort();
 }
 
 /**
  * A reused checkout's .git/config belonged to whoever ran there last. Rewrite
  * it from the request before any host git touches the tree: only repository
- * format keys survive, hooks and fsmonitor stay pinned, and origin is exactly
- * the requested repo, so no planted filter, signing, credential, url rewrite
- * or upload-pack command can run as the host.
+ * format keys and origin-tracking branches survive, hooks and fsmonitor stay
+ * pinned, and origin is exactly the requested repo, so no planted filter,
+ * signing, credential, url rewrite or upload-pack command can run as the host.
  */
 async function ownCheckoutConfig(path: string, repo: string): Promise<{ ok: true } | { ok: false; error: string }> {
   const gitDir = join(path, ".git");
@@ -67,20 +86,23 @@ async function ownCheckoutConfig(path: string, repo: string): Promise<{ ok: true
   } catch {
     return { ok: false, error: `${path} does not own its git directory` };
   }
-  const listed = await runGit(["config", "--file", configPath, "--list", "-z"]);
+  const listed = await runGit(["config", "--file", configPath, "--list", "-z"], undefined, CONFIG_PROBE_TIMEOUT_MS);
   if (!listed.ok) return { ok: false, error: `read checkout config failed: ${firstLine(listed.stderr) || `git exited ${listed.code}`}` };
+  const entries: Array<readonly [string, string]> = [];
   const kept = new Map<string, string>();
   let origin = "";
   for (const entry of listed.stdout.split("\0")) {
     const split = entry.indexOf("\n");
     if (split < 0) continue;
-    const key = entry.slice(0, split).toLowerCase();
+    const key = entry.slice(0, split);
     const value = entry.slice(split + 1);
-    if (key === "remote.origin.url") origin = value;
-    if (OWNED_CONFIG_KEEP.some(([keyPattern, valuePattern]) => keyPattern.test(key) && valuePattern.test(value))) kept.set(key, value);
+    entries.push([key, value]);
+    const lowered = key.toLowerCase();
+    if (lowered === "remote.origin.url") origin = value;
+    if (OWNED_CONFIG_KEEP.some(([keyPattern, valuePattern]) => keyPattern.test(lowered) && valuePattern.test(value))) kept.set(lowered, value);
   }
   if (origin && !sameRepo(origin, repo)) return { ok: false, error: `${path} is a checkout of a different repo (${origin})` };
-  const core = ["repositoryformatversion", "filemode", "ignorecase", "precomposeunicode", "symlinks"]
+  const core = ["repositoryformatversion", "filemode", "ignorecase", "precomposeunicode", "symlinks", "sparsecheckout", "sparsecheckoutcone"]
     .filter((name) => kept.has(`core.${name}`))
     .map((name) => `\t${name} = ${kept.get(`core.${name}`)}`);
   const extensions = ["objectformat", "refstorage", "partialclone"]
@@ -102,18 +124,50 @@ async function ownCheckoutConfig(path: string, repo: string): Promise<{ ok: true
     `\turl = ${configValue(repo)}`,
     "\tfetch = +refs/heads/*:refs/remotes/origin/*",
     ...remote,
+    ...trackedBranches(entries).flatMap((name) => [
+      `[branch ${configValue(name)}]`,
+      "\tremote = origin",
+      `\tmerge = refs/heads/${name}`,
+    ]),
     "",
   ];
-  const staged = `${configPath}.hive-owned`;
+  const staged = join(gitDir, `config.${randomUUID()}.hive-owned`);
   try {
-    writeFileSync(staged, lines.join("\n"), { mode: 0o600 });
+    const fd = openSync(staged, fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_NOFOLLOW, 0o600);
+    try {
+      writeSync(fd, lines.join("\n"));
+      fsyncSync(fd);
+    } finally {
+      closeSync(fd);
+    }
     renameSync(staged, configPath);
-    rmSync(join(gitDir, "config.worktree"), { force: true });
+    const worktreeConfig = join(gitDir, "config.worktree");
+    try {
+      if (lstatSync(worktreeConfig).isDirectory()) return { ok: false, error: `${worktreeConfig} is a directory` };
+      unlinkSync(worktreeConfig);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
   } catch (error) {
-    rmSync(staged, { force: true });
+    try {
+      unlinkSync(staged);
+    } catch {
+      // the staged file never existed or is already gone
+    }
     return { ok: false, error: `own checkout config failed: ${error instanceof Error ? error.message : String(error)}` };
   }
   return { ok: true };
+}
+
+async function attachedBee(path: string): Promise<string | null> {
+  const [receipts, liveness] = await Promise.all([listRemoteHsrLaunchReceiptsStrict(), hsrLiveness()]);
+  const root = resolve(path);
+  for (const receipt of receipts) {
+    if (!liveness.get(receipt.bee)) continue;
+    const cwd = resolve(receipt.cwd);
+    if (cwd === root || cwd.startsWith(`${root}${sep}`)) return receipt.bee;
+  }
+  return null;
 }
 
 function firstLine(text: string): string {
@@ -212,6 +266,13 @@ export async function provisionCheckout(params: ProvisionParams): Promise<Record
   if (existsSync(path)) {
     // Reuse an existing checkout of the SAME repo (fetch + checkout); refuse to
     // clobber a directory that is not this repo's checkout.
+    let attached: string | null;
+    try {
+      attached = await attachedBee(path);
+    } catch (error) {
+      return { ok: false, error: `cannot tell whether ${path} is in use: ${error instanceof Error ? error.message : String(error)}` };
+    }
+    if (attached) return { ok: false, error: `${path} is in use by bee ${attached}` };
     const inside = await runGit(["-C", path, "rev-parse", "--is-inside-work-tree"]);
     if (!inside.ok || inside.stdout.trim() !== "true") {
       return { ok: false, error: `${path} exists but is not a git checkout` };
@@ -272,18 +333,16 @@ export async function enumerateCheckouts(): Promise<Array<Record<string, unknown
     const path = join(root, entry.name);
     const inside = await runGit(["-C", path, "rev-parse", "--is-inside-work-tree"]);
     if (!inside.ok || inside.stdout.trim() !== "true") continue; // tolerate a non-git dir
-    const originRes = await runGit(["config", "--file", join(path, ".git", "config"), "--get", "remote.origin.url"]);
+    const originRes = await runGit(["config", "--file", join(path, ".git", "config"), "--get", "remote.origin.url"], undefined, CONFIG_PROBE_TIMEOUT_MS);
     const origin = originRes.ok ? originRes.stdout.trim() : "";
-    const repo = origin ? safeRepoUrl(origin) : null;
-    const owned = repo ? await ownCheckoutConfig(path, repo) : null;
     const branch = await currentBranch(path);
-    const dirtyRes = owned?.ok ? await runGit(["-C", path, "status", "--porcelain", "--ignore-submodules=all"]) : null;
+    const dirtyRes = await runGit(["-C", path, "status", "--porcelain", "--ignore-submodules=all"]);
     rows.push({
       name: entry.name,
       path,
       repo: origin || null,
       branch: branch ?? null,
-      ...(dirtyRes?.ok ? { dirty: dirtyRes.stdout.trim().length > 0 } : {}),
+      ...(dirtyRes.ok ? { dirty: dirtyRes.stdout.trim().length > 0 } : {}),
     });
   }
   return rows;
