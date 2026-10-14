@@ -388,7 +388,7 @@ export async function startDaemon(dir: string, opts: { env?: Record<string, stri
 }
 
 /** Test postcondition: a successful graceful stop leaves no detached host. */
-function liveRunnerHostPids(dir: string): number[] {
+export function liveRunnerHostPids(dir: string): number[] {
   const runnersDir = join(dir, "runners");
   let names: string[];
   try {

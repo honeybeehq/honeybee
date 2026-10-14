@@ -14,6 +14,7 @@ import { git, hasCommit, revParse } from "./git.ts";
 import { describeCommits, unlandedCommitsByTip, type LandingReceipt, type UnlandedCommit } from "./landed.ts";
 import { CELL_SPACE_DIRECTORY, looksLikeCellWrapper } from "./layout.ts";
 import { readLedger } from "./ledger.ts";
+import type { UpstreamRef } from "./upstream.ts";
 
 const REPORTED_COMMITS = 20;
 
@@ -87,6 +88,8 @@ function spaceDirOf(wrapperDir: string): string {
 export interface DirtyReportOptions {
   /** Landing receipts for the Cell's bee: exact proof that a Cell commit landed under another SHA. */
   receipts?: readonly LandingReceipt[];
+  /** Honeybee upstream mirror ref for the origin: ancestry of it counts as landed. */
+  upstream?: UpstreamRef | null;
 }
 
 export function dirtyReport(wrapperDir: string, opts: DirtyReportOptions = {}): DirtyReport {
@@ -130,7 +133,7 @@ export function dirtyReport(wrapperDir: string, opts: DirtyReportOptions = {}): 
     }
     const tips = [...(headTip ? [headTip] : []), ...branches.map((b) => b.sha)];
     if (tips.length > 0) {
-      const byTip = unlandedCommitsByTip({ spaceDir, originRepo: origin, tips, base: ledger.sha, receipts: opts.receipts ?? [] });
+      const byTip = unlandedCommitsByTip({ spaceDir, originRepo: origin, tips, base: ledger.sha, receipts: opts.receipts ?? [], upstream: opts.upstream ?? null });
       const at = (sha: string) => byTip.get(sha) ?? [sha];
       if (headTip) unpushed = at(headTip).length > 0;
       for (const b of branches) if (at(b.sha).length > 0) unlandedBranches.push(b.name);

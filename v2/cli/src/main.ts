@@ -80,7 +80,9 @@ import {
   type CellRemoveResult,
   type CellRetainedRemoveResult,
   type CellEvictResult,
+  type CellDiskStatus,
   type CellGcItem,
+  type CellGcProgress,
   type CellGcResult,
   type QuestionAnswerResult,
   type QuestionAskResult,
@@ -2608,12 +2610,7 @@ async function cmdCell(ctx: CliContext, parsed: Parsed): Promise<number> {
     case "gc": {
       const apply = parsed.flags.get("--apply") === true;
       const measure = parsed.flags.get("--no-measure") !== true;
-      return withClient(ctx, async (c) => {
-        // A full pass walks every Cell (git status + du); give it an hour, not the default RPC budget.
-        const r = await c.request<CellGcResult>("cell.gc", { dryRun: !apply, measure }, 60 * 60_000);
-        emit(ctx, renderCellGc(r), r, false);
-        return 0;
-      });
+      return withClient(ctx, (c) => runCellGc(ctx, c, { dryRun: !apply, measure }));
     }
     case "evict": {
       if (!needle) throw new Error(usage);
@@ -2793,6 +2790,95 @@ function gib(bytes: number | null): string {
 function ageDays(sinceMs: number | null, nowMs: number): string {
   if (sinceMs == null) return "-";
   return `${Math.max(0, Math.floor((nowMs - sinceMs) / 86_400_000))}d`;
+}
+
+const CELL_GC_TIMEOUT_MS = 60 * 60_000;
+const CELL_GC_PROGRESS_MS = 2_000;
+
+/**
+ * `hive cell gc`: a full pass can take many minutes. Progress from
+ * `health.cellDisk.currentPass` streams to stderr, and a run cut off by
+ * SIGINT, SIGTERM or the client timeout still prints the partial plan. The
+ * daemon's pass carries on either way.
+ */
+async function runCellGc(ctx: CliContext, client: RpcClient, params: { dryRun: boolean; measure: boolean }): Promise<number> {
+  ctx.io.err(`cell gc: ${params.dryRun ? "planning (dry run)" : "planning and applying"} — inspecting every Cell; progress follows`);
+  let latest: CellGcProgress | null = null;
+  let lastLine = "";
+  let poller: RpcClient | null = null;
+  const poll = async (): Promise<void> => {
+    try {
+      poller ??= await RpcClient.connect(ctx.cfg.socketPath);
+      const health = await poller.request<HealthResult>("health", {}, 5_000);
+      const progress = health.cellDisk?.currentPass ?? null;
+      if (progress == null) return;
+      latest = progress;
+      const line = cellGcProgressLine(progress);
+      if (line !== lastLine) ctx.io.err(line);
+      lastLine = line;
+    } catch {
+      poller?.close();
+      poller = null;
+    }
+  };
+  const timer = setInterval(() => void poll(), CELL_GC_PROGRESS_MS);
+  let onSigint: () => void = () => undefined;
+  let onSigterm: () => void = () => undefined;
+  const cutOff = new Promise<{ code: number; why: string }>((resolveCut) => {
+    onSigint = () => resolveCut({ code: 130, why: "interrupted" });
+    onSigterm = () => resolveCut({ code: 143, why: "terminated" });
+  });
+  process.once("SIGINT", onSigint);
+  process.once("SIGTERM", onSigterm);
+  try {
+    const outcome = await Promise.race([
+      client.request<CellGcResult>("cell.gc", params, CELL_GC_TIMEOUT_MS).then(
+        (result) => ({ result }),
+        (err: unknown) => {
+          if (err instanceof DaemonDownError && /rpc timeout/.test(err.message)) return { cut: { code: 124, why: "timed out" } };
+          throw err;
+        },
+      ),
+      cutOff.then((cut) => ({ cut })),
+    ]);
+    if ("result" in outcome) {
+      emit(ctx, renderCellGc(outcome.result), outcome.result, false);
+      return 0;
+    }
+    await poll();
+    emit(ctx, renderCellGcPartial(latest, outcome.cut.why), { cutOff: outcome.cut.why, progress: latest }, false);
+    return outcome.cut.code;
+  } finally {
+    clearInterval(timer);
+    process.removeListener("SIGINT", onSigint);
+    process.removeListener("SIGTERM", onSigterm);
+    (poller as RpcClient | null)?.close();
+  }
+}
+
+function cellGcProgressLine(p: CellGcProgress): string {
+  return `cell gc: ${p.kind}${p.dryRun ? " dry run" : ""} · inspected ${p.inspected}/${p.total} · planned ${p.planned} (${gib(p.plannedBytes)}) · held ${p.held} (dirty ${p.dirty})`;
+}
+
+function renderCellGcPartial(p: CellGcProgress | null, why: string): string[] {
+  const lines = [`cell gc ${why} before the pass finished; the daemon's pass continues (its result is logged as cell.retention.plan)`];
+  if (p == null) {
+    lines.push("no progress was reported yet");
+    return lines;
+  }
+  lines.push(`partial plan after ${p.inspected}/${p.total} Cells (${p.kind}${p.dryRun ? ", dry run" : ""}): planned ${p.planned} Cells, ${gib(p.plannedBytes)} · held ${p.held} Cells, ${gib(p.heldBytes)} (${p.dirty} dirty)`);
+  const reasons = Object.entries(p.byReason).sort((a, b) => (b[1]?.cells ?? 0) - (a[1]?.cells ?? 0));
+  for (const [reason, entry] of reasons) lines.push(`  ${reason}: ${entry?.cells ?? 0} Cells, ${gib(entry?.bytes ?? 0)}`);
+  return lines;
+}
+
+/** One status line for the Cells volume: free space, the pressure floor and the last pass. */
+export function cellDiskLine(d: CellDiskStatus): string {
+  const floor = d.floorBytes == null ? "no floor" : `floor ${gib(d.floorBytes)}${d.belowFloor ? " (BELOW)" : ""}`;
+  const last = d.lastPass
+    ? `last sweep ${new Date(d.lastPass.endedAt).toISOString().slice(0, 16).replace("T", " ")}Z ${d.lastPass.kind} ${d.lastPass.outcome}, ${d.lastPass.evicted} evicted, ${gib(d.lastPass.freedBytes)} freed`
+    : "no sweep recorded";
+  return `cells disk: ${gib(d.freeBytes)} free of ${gib(d.totalBytes)} · ${floor}${d.floorUnmet ? " · FLOOR UNMET" : ""} · ${last}`;
 }
 
 /** `hive cell gc` — the plan (and outcomes after --apply), planned Cells first, then holds grouped by reason. */
@@ -3195,7 +3281,8 @@ async function cmdCommands(ctx: CliContext, parsed: Parsed): Promise<number> {
 async function cmdDeployInfo(ctx: CliContext): Promise<number> {
   const daemon = await withClient(ctx, (c) => c.request<Record<string, unknown>>("deployInfo"));
   const result = { ...daemon, cliIdentity: BUILD_IDENTITY, daemonIdentity: daemon.identity ?? null };
-  emit(ctx, [JSON.stringify(result, null, 2)], result, false);
+  const disk = daemon.cellDisk as CellDiskStatus | null | undefined;
+  emit(ctx, [...(disk ? [cellDiskLine(disk)] : []), JSON.stringify(result, null, 2)], result, false);
   return 0;
 }
 
@@ -3228,7 +3315,7 @@ async function cmdHumanRef(ctx: CliContext, parsed: Parsed): Promise<number> {
 
 async function cmdHealth(ctx: CliContext): Promise<number> {
   const result = await withClient(ctx, (c) => c.request<HealthResult>("health"));
-  emit(ctx, renderHealth(result), result, false);
+  emit(ctx, [...renderHealth(result), ...(result.cellDisk ? [cellDiskLine(result.cellDisk)] : [])], result, false);
   return 0;
 }
 

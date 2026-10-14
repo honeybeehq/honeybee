@@ -28,6 +28,7 @@ import { withoutRpcCaller } from "../../core/src/rpcAuditContext.ts";
  * back on revive.
  */
 import { Worker } from "node:worker_threads";
+import { existsSync, realpathSync, statfsSync } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
 import type { BeeRow, CellRow, CoreStore, RuntimeRow } from "../../core/src/index.ts";
 import {
@@ -41,16 +42,35 @@ import {
   restoreKeptPaths,
   retentionWorkerUrl,
   sweepEvicting,
+  upstreamRootFor,
   type CellWrapperInspection,
   type LandingReceipt,
+  type RetentionUpstreamStatus,
+  type RetentionWorkerInspection,
+  type RetentionWorkerProgress,
   type RetentionWorkerRequest,
   type RetentionWorkerResult,
+  type UpstreamRef,
   type TrimSkip,
   type TrimVerifyWorkerRequest,
   type TrimVerifyWorkerResult,
 } from "../../driver-cell/src/index.ts";
 import type { ResolvedCellRetention } from "./config.ts";
-import type { CellGcItem, CellGcOutcome, CellGcPathBytes, CellGcReason, CellGcResult, CellGcTrimOutcome, CellGcVerdict } from "./protocol.ts";
+import {
+  CELL_GC_PASS_KINDS,
+  CELL_GC_PASS_OUTCOMES,
+  type CellDiskStatus,
+  type CellGcItem,
+  type CellGcOutcome,
+  type CellGcPassKind,
+  type CellGcPassSummary,
+  type CellGcPathBytes,
+  type CellGcProgress,
+  type CellGcReason,
+  type CellGcResult,
+  type CellGcTrimOutcome,
+  type CellGcVerdict,
+} from "./protocol.ts";
 
 export interface CellRetentionDeps {
   cellsRoot: string;
@@ -72,6 +92,33 @@ export interface CellRetentionDeps {
   workerUrl?: URL;
   /** Delay before the first automatic pass after boot (default 5 min). */
   initialDelayMs?: number;
+  /** Data dir: upstream mirrors live under `<dataDir>/upstream/`. Absent = no mirrors. */
+  dataDir?: string;
+  /** Size and free bytes of the volume holding `path` (default: statfs). */
+  statfs?: (path: string) => { totalBytes: number; freeBytes: number };
+  /** Append an informational retention audit row. */
+  audit?: (kind: "cell.retention.pass" | "cell.pressure.floor_unmet", payload: Record<string, unknown>) => void;
+  /** The newest recorded pass, to restore `lastPass` after a restart. */
+  lastRecordedPass?: () => Record<string, unknown> | null;
+  /** Free-space check cadence (default 60 s). */
+  diskCheckMs?: number;
+  /** After a pass ends floor_unmet, wait this long before the next pressure pass (default 30 min). */
+  pressureRetryMs?: number;
+  /** Automatic passes refetch a mirror older than this (default 1 h); manual passes after 60 s. */
+  upstreamMaxAgeMs?: number;
+  /** Bound on one mirror fetch (default 60 s). */
+  upstreamTimeoutMs?: number;
+}
+
+
+export interface DiskReading {
+  root: string;
+  totalBytes: number;
+  freeBytes: number;
+  floorBytes: number | null;
+  targetBytes: number | null;
+  bandBytes: number | null;
+  at: number;
 }
 
 interface Candidate {
@@ -85,6 +132,50 @@ interface Candidate {
 }
 
 const DEFAULT_INITIAL_DELAY_MS = 5 * 60_000;
+const DEFAULT_DISK_CHECK_MS = 60_000;
+const DEFAULT_PRESSURE_RETRY_MS = 30 * 60_000;
+const DEFAULT_UPSTREAM_MAX_AGE_MS = 60 * 60_000;
+const MANUAL_UPSTREAM_MAX_AGE_MS = 60_000;
+const DEFAULT_UPSTREAM_TIMEOUT_MS = 60_000;
+const PRESSURE_BATCH = 16;
+const GIB = 1024 ** 3;
+
+const AGE_REASONS: ReadonlySet<CellGcReason> = new Set(["archived_age", "stopped_age", "too_young", "policy_disabled"]);
+
+function defaultStatfs(path: string): { totalBytes: number; freeBytes: number } {
+  const st = statfsSync(path);
+  return { totalBytes: Number(st.blocks) * Number(st.bsize), freeBytes: Number(st.bavail) * Number(st.bsize) };
+}
+
+/** The disk-pressure floor and hysteresis target for a volume of `totalBytes`; null floor = trigger off. */
+export function pressureThresholds(totalBytes: number, minFreePercent: number | null, minFreeBytes: number | null): { floorBytes: number | null; targetBytes: number | null; bandBytes: number | null } {
+  const terms = [minFreePercent == null ? null : (totalBytes * minFreePercent) / 100, minFreeBytes].filter((t): t is number => t != null);
+  if (terms.length === 0) return { floorBytes: null, targetBytes: null, bandBytes: null };
+  const floorBytes = Math.floor(Math.max(...terms));
+  const bandBytes = Math.floor(Math.min(Math.max(totalBytes * 0.02, 10 * GIB), floorBytes / 4));
+  return { floorBytes, targetBytes: floorBytes + bandBytes, bandBytes };
+}
+
+function summaryFrom(raw: Record<string, unknown> | null): CellGcPassSummary | null {
+  if (raw == null) return null;
+  const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+  const kind = raw.kind as CellGcPassKind;
+  const outcome = raw.outcome as CellGcPassSummary["outcome"];
+  if (!CELL_GC_PASS_KINDS.includes(kind) || !CELL_GC_PASS_OUTCOMES.includes(outcome)) return null;
+  return {
+    kind,
+    outcome,
+    startedAt: num(raw.startedAt) ?? 0,
+    endedAt: num(raw.endedAt) ?? 0,
+    evicted: num(raw.evicted) ?? 0,
+    freedBytes: num(raw.freedBytes),
+    freeBefore: num(raw.freeBefore),
+    freeAfter: num(raw.freeAfter),
+    floorBytes: num(raw.floorBytes),
+    targetBytes: num(raw.targetBytes),
+    error: typeof raw.error === "string" ? raw.error : null,
+  };
+}
 
 const TRIM_BLOCKING_REASONS: ReadonlySet<CellGcReason> = new Set([
   "runtime_live",
@@ -108,6 +199,7 @@ function verdictOf(reason: CellGcReason): CellGcVerdict {
     case "archived_age":
     case "stopped_age":
     case "byte_budget":
+    case "disk_pressure":
       return "evict";
     case "retained_age":
     case "bee_deleted":
@@ -142,6 +234,15 @@ export class CellRetentionService {
   private sweepInFlight: Promise<void> | null = null;
   private stopping = false;
   private readonly workers = new Set<Worker>();
+  private lastDiskCheckAt: number | null = null;
+  private lastDisk: DiskReading | null = null;
+  private lastStatfsError: string | null = null;
+  private floorUnmet = false;
+  private unmetAt: number | null = null;
+  private unmetFree: number | null = null;
+  private lastPass: CellGcPassSummary | null;
+  private progress: CellGcProgress | null = null;
+  private upstreamRefs = new Map<string, UpstreamRef>();
 
   async stop(): Promise<void> {
     this.stopping = true;
@@ -158,25 +259,118 @@ export class CellRetentionService {
   constructor(deps: CellRetentionDeps) {
     this.deps = deps;
     this.bootedAt = deps.now();
+    let recorded: Record<string, unknown> | null = null;
+    try {
+      recorded = deps.lastRecordedPass?.() ?? null;
+    } catch (err) {
+      deps.log(`cell.retention.last_pass_unreadable ${err instanceof Error ? err.message : String(err)}`);
+    }
+    this.lastPass = summaryFrom(recorded);
   }
 
   get policy(): ResolvedCellRetention {
     return this.deps.policy;
   }
 
-  /** Called every daemon tick; starts at most one automatic pass per interval. */
+  /** Called every daemon tick: a free-space check every `diskCheckMs`, then at most one automatic pass per interval. */
   tick(): void {
-    const policy = this.deps.policy;
-    if (this.stopping || !policy.enabled || this.passInFlight) return;
+    if (this.stopping) return;
     const now = this.deps.now();
+    this.checkPressure(now);
+    const policy = this.deps.policy;
+    if (!policy.enabled || this.passInFlight) return;
     const due = this.lastPassAt == null
       ? now - this.bootedAt >= (this.deps.initialDelayMs ?? DEFAULT_INITIAL_DELAY_MS)
       : now - this.lastPassAt >= policy.intervalMs;
     if (!due) return;
     this.lastPassAt = now;
-    void withoutRpcCaller(() => this.run({ dryRun: false, measure: true })).catch((err) => {
+    void withoutRpcCaller(() => this.run({ dryRun: false, measure: true, kind: "scheduled" })).catch((err) => {
       if (!this.stopping) this.deps.log(`cell.retention.error ${err instanceof Error ? err.stack ?? err.message : String(err)}`);
     });
+  }
+
+  private diskPath(): string {
+    let path = resolve(this.deps.cellsRoot);
+    while (!existsSync(path) && dirname(path) !== path) path = dirname(path);
+    try {
+      return realpathSync(path);
+    } catch {
+      return path;
+    }
+  }
+
+  /** Measure the Cells volume now; null when statfs fails. */
+  readDisk(): DiskReading | null {
+    const root = this.diskPath();
+    try {
+      const { totalBytes, freeBytes } = (this.deps.statfs ?? defaultStatfs)(root);
+      const policy = this.deps.policy;
+      const reading: DiskReading = { root, totalBytes, freeBytes, ...pressureThresholds(totalBytes, policy.minFreePercent, policy.minFreeBytes), at: this.deps.now() };
+      this.lastDisk = reading;
+      this.lastStatfsError = null;
+      return reading;
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      if (detail !== this.lastStatfsError) this.deps.log(`cell.disk.statfs_failed root=${root} err=${JSON.stringify(detail)}`);
+      this.lastStatfsError = detail;
+      return null;
+    }
+  }
+
+  /** The byte budget: explicit `maxBytes`, else the configured share of the Cells volume. */
+  effectiveMaxBytes(disk: DiskReading | null = this.lastDisk ?? this.readDisk()): number | null {
+    const policy = this.deps.policy;
+    if (policy.maxBytes != null) return policy.maxBytes;
+    if (policy.maxBytesVolumeShare == null || disk == null) return null;
+    return Math.floor(disk.totalBytes * policy.maxBytesVolumeShare);
+  }
+
+  private checkPressure(now: number): void {
+    if (this.lastDiskCheckAt != null && now - this.lastDiskCheckAt < (this.deps.diskCheckMs ?? DEFAULT_DISK_CHECK_MS)) return;
+    this.lastDiskCheckAt = now;
+    const disk = this.readDisk();
+    if (disk == null || disk.floorBytes == null) return;
+    if (disk.freeBytes >= disk.floorBytes) {
+      if (this.floorUnmet) this.deps.log(`cell.pressure.recovered free=${disk.freeBytes} floor=${disk.floorBytes}`);
+      this.floorUnmet = false;
+      this.unmetAt = null;
+      this.unmetFree = null;
+      return;
+    }
+    if (!this.deps.policy.enabled || this.passInFlight) return;
+    if (this.unmetAt != null && now - this.unmetAt < (this.deps.pressureRetryMs ?? DEFAULT_PRESSURE_RETRY_MS)) {
+      const droppedFurther = this.unmetFree != null && disk.bandBytes != null && this.unmetFree - disk.freeBytes >= disk.bandBytes;
+      if (!droppedFurther) return;
+    }
+    this.deps.log(`cell.pressure.below_floor free=${disk.freeBytes} floor=${disk.floorBytes} target=${disk.targetBytes} total=${disk.totalBytes}`);
+    this.passInFlight = withoutRpcCaller(() => this.pressurePass(disk))
+      .catch((err) => {
+        if (!this.stopping) this.deps.log(`cell.retention.error ${err instanceof Error ? err.stack ?? err.message : String(err)}`);
+        throw err;
+      })
+      .finally(() => {
+        this.passInFlight = null;
+        this.progress = null;
+      });
+    this.passInFlight.catch(() => undefined);
+  }
+
+  /** `cellDisk` for `deployInfo` / `health`: a fresh statfs plus the pass state. */
+  diskStatus(): CellDiskStatus | null {
+    const disk = this.readDisk();
+    if (disk == null) return null;
+    return {
+      root: disk.root,
+      totalBytes: disk.totalBytes,
+      freeBytes: disk.freeBytes,
+      floorBytes: disk.floorBytes,
+      targetBytes: disk.targetBytes,
+      belowFloor: disk.floorBytes != null && disk.freeBytes < disk.floorBytes,
+      floorUnmet: this.floorUnmet,
+      checkedAt: disk.at,
+      currentPass: this.progress ? structuredClone(this.progress) : null,
+      lastPass: this.lastPass ? { ...this.lastPass } : null,
+    };
   }
 
   /** Delete parked wrappers off the event loop; single-flight, re-armed when one is already running. */
@@ -196,38 +390,130 @@ export class CellRetentionService {
     return this.sweepInFlight;
   }
 
+  /** A sweep that starts after every park so far: waits out one already running, then runs again. */
+  private async sweepAfterParks(): Promise<void> {
+    if (this.sweepInFlight) await this.sweepInFlight;
+    await this.sweep();
+  }
+
   /** Plan (and with `dryRun: false` apply) one pass. Concurrent callers share the in-flight pass. */
-  run(opts: { dryRun: boolean; measure: boolean }): Promise<CellGcResult> {
+  run(opts: { dryRun: boolean; measure: boolean; kind?: CellGcPassKind }): Promise<CellGcResult> {
     if (this.stopping) return Promise.reject(new Error("Cell retention stopped"));
     if (this.passInFlight) return this.passInFlight;
-    this.passInFlight = this.pass(opts).finally(() => {
+    this.passInFlight = this.pass({ ...opts, kind: opts.kind ?? "manual" }).finally(() => {
       this.passInFlight = null;
+      this.progress = null;
     });
     return this.passInFlight;
   }
 
-  private async pass(opts: { dryRun: boolean; measure: boolean }): Promise<CellGcResult> {
+  private policySnapshot(disk: DiskReading | null): CellGcResult["policy"] {
+    const policy = this.deps.policy;
+    return {
+      enabled: policy.enabled,
+      archivedAfterMs: policy.archivedAfterMs,
+      stoppedAfterMs: policy.stoppedAfterMs,
+      retainedAfterMs: policy.retainedAfterMs,
+      maxBytes: this.effectiveMaxBytes(disk),
+      maxPerPass: policy.maxPerPass,
+      trimAfterMs: policy.trimAfterMs,
+      trimPatterns: [...policy.trimPatterns],
+    };
+  }
+
+  private startProgress(kind: CellGcPassKind, dryRun: boolean, total: number): CellGcProgress {
+    this.progress = { kind, dryRun, startedAt: this.deps.now(), total, inspected: 0, planned: 0, plannedBytes: 0, held: 0, heldBytes: 0, dirty: 0, byReason: {} };
+    return this.progress;
+  }
+
+  private countProgress(progress: CellGcProgress, reason: CellGcReason, bytes: number | null): void {
+    const verdict = verdictOf(reason);
+    const size = bytes ?? 0;
+    progress.inspected += 1;
+    if (verdict === "evict" || verdict === "remove_retained") {
+      progress.planned += 1;
+      progress.plannedBytes += size;
+    } else if (verdict === "hold") {
+      progress.held += 1;
+      progress.heldBytes += size;
+    }
+    if (reason.startsWith("dirty_")) progress.dirty += 1;
+    const entry = progress.byReason[reason] ?? { cells: 0, bytes: 0 };
+    entry.cells += 1;
+    entry.bytes += size;
+    progress.byReason[reason] = entry;
+  }
+
+  private recordPass(summary: CellGcPassSummary): void {
+    this.lastPass = summary;
+    this.deps.log(
+      `cell.retention.pass kind=${summary.kind} outcome=${summary.outcome} evicted=${summary.evicted} freed_bytes=${summary.freedBytes ?? "?"}` +
+        ` free_before=${summary.freeBefore ?? "?"} free_after=${summary.freeAfter ?? "?"} floor=${summary.floorBytes ?? "-"}${summary.error ? ` err=${JSON.stringify(summary.error)}` : ""}`,
+    );
+    try {
+      this.deps.audit?.("cell.retention.pass", { ...summary });
+    } catch (err) {
+      this.deps.log(`cell.retention.audit_failed ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  private async pass(opts: { dryRun: boolean; measure: boolean; kind: CellGcPassKind }): Promise<CellGcResult> {
     const startedAt = this.deps.now();
+    const before = this.readDisk();
+    try {
+      const result = await this.planAndApply(opts, startedAt, before);
+      if (opts.dryRun) return result;
+      await this.sweepAfterParks();
+      const after = this.readDisk();
+      const evicted = (result.outcomes ?? []).filter((o) => o.status === "evicted" || o.status === "removed").length;
+      const trimmed = (result.trimOutcomes ?? []).filter((o) => o.status === "trimmed").length;
+      result.pass = {
+        kind: opts.kind,
+        startedAt,
+        endedAt: this.deps.now(),
+        outcome: evicted + trimmed > 0 ? "ok" : "nothing_to_do",
+        evicted,
+        freedBytes: before && after ? Math.max(0, after.freeBytes - before.freeBytes) : null,
+        freeBefore: before?.freeBytes ?? null,
+        freeAfter: after?.freeBytes ?? null,
+        floorBytes: after?.floorBytes ?? before?.floorBytes ?? null,
+        targetBytes: after?.targetBytes ?? before?.targetBytes ?? null,
+        error: null,
+      };
+      this.recordPass(result.pass);
+      return result;
+    } catch (err) {
+      if (!opts.dryRun && !this.stopping) {
+        this.recordPass({
+          kind: opts.kind, startedAt, endedAt: this.deps.now(), outcome: "failed", evicted: 0, freedBytes: null,
+          freeBefore: before?.freeBytes ?? null, freeAfter: null, floorBytes: before?.floorBytes ?? null, targetBytes: before?.targetBytes ?? null,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+      throw err;
+    }
+  }
+
+  private async planAndApply(opts: { dryRun: boolean; measure: boolean; kind: CellGcPassKind }, startedAt: number, disk: DiskReading | null): Promise<CellGcResult> {
     const candidates = this.gather();
+    const progress = this.startProgress(opts.kind, opts.dryRun, candidates.length);
+    const byKey = new Map(candidates.map((c) => [c.key, c] as const));
+    for (const c of candidates) if (c.cell?.state === "evicted") this.countProgress(progress, "already_evicted", null);
     const inspectStarted = Date.now();
-    const inspections = await this.inspect(candidates, opts.measure);
+    const inspections = await this.inspect(candidates, opts.measure, opts.kind, (entry) => {
+      const c = byKey.get(entry.key);
+      if (!c) return;
+      const base = this.baseOf(c, entry.inspection);
+      this.countProgress(progress, this.reasonFor(c, entry.inspection, entry.error, this.deps.now(), base), entry.inspection?.bytes ?? null);
+    });
     this.assertRunning();
     const inspectMs = Date.now() - inspectStarted;
     const plannedAt = this.deps.now();
-    const items = this.decide(candidates, inspections, plannedAt);
+    const items = this.decide(candidates, inspections, plannedAt, this.effectiveMaxBytes(disk));
     const result: CellGcResult = {
       dryRun: opts.dryRun,
       plannedAt,
-      policy: {
-        enabled: this.deps.policy.enabled,
-        archivedAfterMs: this.deps.policy.archivedAfterMs,
-        stoppedAfterMs: this.deps.policy.stoppedAfterMs,
-        retainedAfterMs: this.deps.policy.retainedAfterMs,
-        maxBytes: this.deps.policy.maxBytes,
-        maxPerPass: this.deps.policy.maxPerPass,
-        trimAfterMs: this.deps.policy.trimAfterMs,
-        trimPatterns: [...this.deps.policy.trimPatterns],
-      },
+      policy: this.policySnapshot(disk),
       items,
       totals: totalsOf(items),
       outcomes: null,
@@ -235,12 +521,18 @@ export class CellRetentionService {
       inspectMs,
     };
     this.deps.log(
-      `cell.retention.plan dry_run=${opts.dryRun} cells=${result.totals.cells} planned=${result.totals.plannedCells}` +
+      `cell.retention.plan dry_run=${opts.dryRun} kind=${opts.kind} cells=${result.totals.cells} planned=${result.totals.plannedCells}` +
         ` planned_bytes=${result.totals.plannedBytes ?? "?"} held=${result.totals.heldCells} dirty=${result.totals.dirtyCells}` +
         ` present_bytes=${result.totals.presentBytes ?? "?"} trim_cells=${result.totals.trimCells} trim_bytes=${result.totals.trimBytes ?? "?"}` +
         ` inspect_ms=${inspectMs} gather_ms=${plannedAt - startedAt - inspectMs}`,
     );
-    if (opts.dryRun) return result;
+    if (opts.dryRun) {
+      result.pass = {
+        kind: opts.kind, startedAt, endedAt: this.deps.now(), outcome: "dry_run", evicted: 0, freedBytes: null,
+        freeBefore: disk?.freeBytes ?? null, freeAfter: disk?.freeBytes ?? null, floorBytes: disk?.floorBytes ?? null, targetBytes: disk?.targetBytes ?? null, error: null,
+      };
+      return result;
+    }
     result.outcomes = await this.apply(items);
     this.assertRunning();
     result.trimOutcomes = await this.applyTrims(items);
@@ -252,8 +544,137 @@ export class CellRetentionService {
         ` trimmed=${trimmed.length} trim_bytes=${trimmed.reduce((sum, o) => sum + (o.bytes ?? 0), 0)}` +
         ` trim_refused=${result.trimOutcomes.filter((o) => o.status === "refused").length} trim_failed=${result.trimOutcomes.filter((o) => o.status === "failed").length}`,
     );
-    void this.sweep();
     return result;
+  }
+
+  /**
+   * Disk pressure: free space is under the floor. Clean Cells of archived
+   * bees, then of active bees stopped at least `pressureIdleAfterMs`, oldest
+   * idle first, inspected and evicted in small batches until the measured
+   * free space reaches the target. Live, held and dirty Cells (including
+   * unlanded work) are never evicted and never forced.
+   */
+  private async pressurePass(disk: DiskReading): Promise<CellGcResult> {
+    const startedAt = this.deps.now();
+    const policy = this.deps.policy;
+    const idleAfter = policy.pressureIdleAfterMs;
+    const idle = (c: Candidate) => this.idleSinceOf(c) ?? startedAt;
+    const eligible = this.gather()
+      .filter((c) => {
+        if (c.cell?.state !== "active" || c.bee == null) return false;
+        if (c.bee.lifecycle === "archived") return true;
+        if (c.bee.lifecycle !== "active" || idleAfter == null) return false;
+        if (c.runtime != null && c.runtime.state !== "stopped") return false;
+        return startedAt - idle(c) >= idleAfter;
+      })
+      .sort((a, b) => {
+        const rank = (c: Candidate) => (c.bee?.lifecycle === "archived" ? 0 : 1);
+        return rank(a) - rank(b) || idle(a) - idle(b);
+      });
+    const floor = disk.floorBytes as number;
+    const target = disk.targetBytes as number;
+    const progress = this.startProgress("pressure", false, eligible.length);
+    const items: CellGcItem[] = [];
+    const outcomes: CellGcOutcome[] = [];
+    let reading = disk;
+    let evicted = 0;
+    let inspectMs = 0;
+    for (let i = 0; i < eligible.length && reading.freeBytes < target && evicted < policy.maxPerPass; i += PRESSURE_BATCH) {
+      const batch = eligible.slice(i, i + PRESSURE_BATCH);
+      const inspectStarted = Date.now();
+      const inspections = await this.inspect(batch, true, "pressure");
+      inspectMs += Date.now() - inspectStarted;
+      this.assertRunning();
+      const now = this.deps.now();
+      let projectedFree = reading.freeBytes;
+      for (const c of batch) {
+        if (projectedFree >= target) break;
+        const found = inspections.get(c.key);
+        const inspection = found?.inspection ?? null;
+        const base = this.baseOf(c, inspection);
+        const gate = this.reasonFor(c, inspection, found?.error ?? null, now, base);
+        const item: CellGcItem = { ...base, reason: AGE_REASONS.has(gate) ? "disk_pressure" : gate, verdict: "hold" };
+        item.verdict = verdictOf(item.reason);
+        if (item.verdict === "evict" && evicted >= policy.maxPerPass) {
+          item.verdict = "hold";
+          item.reason = "pass_limit";
+        }
+        items.push(item);
+        this.countProgress(progress, item.reason, item.bytes);
+        if (item.verdict !== "evict") continue;
+        const outcome = this.applyOne(item);
+        outcomes.push(outcome);
+        if (outcome.status === "evicted") {
+          evicted += 1;
+          projectedFree += item.bytes ?? 0;
+        }
+        await new Promise<void>((r) => setImmediate(r));
+        this.assertRunning();
+      }
+      await this.sweepAfterParks();
+      reading = this.readDisk() ?? reading;
+    }
+    const met = reading.freeBytes >= floor;
+    const summary: CellGcPassSummary = {
+      kind: "pressure",
+      startedAt,
+      endedAt: this.deps.now(),
+      outcome: met ? "floor_met" : "floor_unmet",
+      evicted,
+      freedBytes: Math.max(0, reading.freeBytes - disk.freeBytes),
+      freeBefore: disk.freeBytes,
+      freeAfter: reading.freeBytes,
+      floorBytes: floor,
+      targetBytes: target,
+      error: null,
+    };
+    const result: CellGcResult = {
+      dryRun: false,
+      plannedAt: startedAt,
+      policy: this.policySnapshot(reading),
+      items,
+      totals: totalsOf(items),
+      outcomes,
+      trimOutcomes: [],
+      inspectMs,
+      pass: summary,
+    };
+    this.recordPass(summary);
+    if (met) {
+      this.floorUnmet = false;
+      this.unmetAt = null;
+      this.unmetFree = null;
+    } else {
+      this.reportFloorUnmet(summary, items, eligible.length);
+    }
+    return result;
+  }
+
+  private reportFloorUnmet(summary: CellGcPassSummary, items: CellGcItem[], eligible: number): void {
+    this.unmetAt = summary.endedAt;
+    this.unmetFree = summary.freeAfter;
+    if (this.floorUnmet) return;
+    this.floorUnmet = true;
+    const group = (pick: (i: CellGcItem) => boolean) => {
+      const list = items.filter(pick);
+      return { cells: list.length, bytes: list.reduce((sum, i) => sum + (i.bytes ?? 0), 0) };
+    };
+    const breakdown = {
+      dirtyUnlanded: group((i) => i.reason === "dirty_unlanded"),
+      dirtyOther: group((i) => i.reason.startsWith("dirty_") && i.reason !== "dirty_unlanded"),
+      live: group((i) => i.reason === "runtime_live"),
+      otherHeld: group((i) => !i.reason.startsWith("dirty_") && i.reason !== "runtime_live" && i.verdict !== "evict"),
+    };
+    this.deps.log(
+      `cell.pressure.floor_unmet free=${summary.freeAfter} floor=${summary.floorBytes} evicted=${summary.evicted} eligible=${eligible}` +
+        ` held_unlanded=${breakdown.dirtyUnlanded.cells}/${breakdown.dirtyUnlanded.bytes} held_dirty=${breakdown.dirtyOther.cells}/${breakdown.dirtyOther.bytes}` +
+        ` live=${breakdown.live.cells} other=${breakdown.otherHeld.cells}`,
+    );
+    try {
+      this.deps.audit?.("cell.pressure.floor_unmet", { ...summary, eligible, ...breakdown });
+    } catch (err) {
+      this.deps.log(`cell.retention.audit_failed ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   /** Registry facts: every non-removed Cell row plus Cell bees the backfill could not register. */
@@ -285,24 +706,62 @@ export class CellRetentionService {
     return out;
   }
 
-  private async inspect(candidates: Candidate[], measure: boolean): Promise<Map<string, { inspection: CellWrapperInspection | null; error: string | null }>> {
+  private upstreamRequest(kind: CellGcPassKind): RetentionWorkerRequest["upstream"] {
+    if (!this.deps.dataDir || !this.deps.policy.fetchUpstream) return null;
+    return {
+      root: upstreamRootFor(this.deps.dataDir),
+      maxAgeMs: kind === "manual" ? MANUAL_UPSTREAM_MAX_AGE_MS : this.deps.upstreamMaxAgeMs ?? DEFAULT_UPSTREAM_MAX_AGE_MS,
+      timeoutMs: this.deps.upstreamTimeoutMs ?? DEFAULT_UPSTREAM_TIMEOUT_MS,
+    };
+  }
+
+  private noteUpstreams(statuses: RetentionUpstreamStatus[]): void {
+    for (const s of statuses) {
+      if (s.ref) this.upstreamRefs.set(s.originRepo, s.ref);
+      else this.upstreamRefs.delete(s.originRepo);
+      if (s.status === "fetched") this.deps.log(`cell.retention.upstream_fetched origin=${s.originRepo} sha=${s.ref?.sha ?? "-"}`);
+      if (s.status === "failed") {
+        this.deps.log(`cell.retention.upstream_failed origin=${s.originRepo} url=${JSON.stringify(s.url)} kept=${s.ref?.sha ?? "-"} err=${JSON.stringify(s.error)}`);
+      }
+    }
+  }
+
+  private async inspect(
+    candidates: Candidate[],
+    measure: boolean,
+    kind: CellGcPassKind,
+    onProgress?: (entry: RetentionWorkerInspection) => void,
+  ): Promise<Map<string, { inspection: CellWrapperInspection | null; error: string | null }>> {
     const wrappers = candidates
       .filter((c) => c.cell?.state !== "evicted")
-      .map((c) => ({ key: c.key, wrapperDir: c.wrapperDir, receipts: c.receipts }));
+      .map((c) => ({ key: c.key, wrapperDir: c.wrapperDir, receipts: c.receipts, originRepo: c.cell?.originRepo ?? null }));
     if (wrappers.length === 0) return new Map();
-    const message = await this.runWorker<RetentionWorkerResult>({ wrappers, measure, trimPatterns: [...this.deps.policy.trimPatterns] } satisfies RetentionWorkerRequest);
+    const message = await this.runWorker<RetentionWorkerResult>(
+      { wrappers, measure, trimPatterns: [...this.deps.policy.trimPatterns], upstream: this.upstreamRequest(kind), progress: onProgress != null } satisfies RetentionWorkerRequest,
+      onProgress,
+    );
+    this.noteUpstreams(message.upstreams ?? []);
     return new Map(message.inspections.map((i) => [i.key, { inspection: i.inspection, error: i.error }] as const));
   }
 
-  private runWorker<T>(request: RetentionWorkerRequest | TrimVerifyWorkerRequest): Promise<T> {
+  private runWorker<T>(request: RetentionWorkerRequest | TrimVerifyWorkerRequest, onProgress?: (entry: RetentionWorkerInspection) => void): Promise<T> {
     this.assertRunning();
     return new Promise((resolvePromise, reject) => {
       const worker = new Worker(this.deps.workerUrl ?? retentionWorkerUrl(), { execArgv: [], workerData: request });
       this.workers.add(worker);
       let settled = false;
-      worker.once("message", (message: T) => {
+      worker.on("message", (message: T | RetentionWorkerProgress) => {
+        if (settled) return;
+        if ((message as RetentionWorkerProgress).kind === "progress") {
+          try {
+            onProgress?.((message as RetentionWorkerProgress).inspection);
+          } catch (err) {
+            this.deps.log(`cell.retention.progress_error ${err instanceof Error ? err.message : String(err)}`);
+          }
+          return;
+        }
         settled = true;
-        resolvePromise(message);
+        resolvePromise(message as T);
       });
       worker.once("error", (err) => {
         if (settled) return;
@@ -318,37 +777,42 @@ export class CellRetentionService {
     });
   }
 
+  private baseOf(c: Candidate, inspection: CellWrapperInspection | null): Omit<CellGcItem, "verdict" | "reason"> {
+    return {
+      cellId: c.cell?.id ?? null,
+      beeId: c.beeId,
+      beeName: c.bee?.name ?? "",
+      beeLifecycle: c.bee?.lifecycle ?? "deleted",
+      runtimeState: c.runtime?.state ?? null,
+      cellState: c.cell?.state ?? null,
+      wrapperDir: c.wrapperDir,
+      originRepo: c.cell?.originRepo ?? null,
+      head: inspection?.head ?? null,
+      bytes: inspection?.bytes ?? null,
+      idleSince: this.idleSinceOf(c),
+      report: inspection?.report ?? null,
+      envFiles: inspection?.envFiles ?? [],
+      trim: { entries: inspection?.trim ?? [], bytes: sumBytes(inspection?.trim ?? []), planned: false },
+      keep: { entries: inspection?.keep ?? [], bytes: sumBytes(inspection?.keep ?? []) },
+    };
+  }
+
   private decide(
     candidates: Candidate[],
     inspections: Map<string, { inspection: CellWrapperInspection | null; error: string | null }>,
     now: number,
+    maxBytes: number | null,
   ): CellGcItem[] {
     const policy = this.deps.policy;
     const items: CellGcItem[] = [];
     for (const c of candidates) {
       const found = inspections.get(c.key);
       const inspection = found?.inspection ?? null;
-      const base: Omit<CellGcItem, "verdict" | "reason"> = {
-        cellId: c.cell?.id ?? null,
-        beeId: c.beeId,
-        beeName: c.bee?.name ?? "",
-        beeLifecycle: c.bee?.lifecycle ?? "deleted",
-        runtimeState: c.runtime?.state ?? null,
-        cellState: c.cell?.state ?? null,
-        wrapperDir: c.wrapperDir,
-        originRepo: c.cell?.originRepo ?? null,
-        head: inspection?.head ?? null,
-        bytes: inspection?.bytes ?? null,
-        idleSince: this.idleSinceOf(c),
-        report: inspection?.report ?? null,
-        envFiles: inspection?.envFiles ?? [],
-        trim: { entries: inspection?.trim ?? [], bytes: sumBytes(inspection?.trim ?? []), planned: false },
-        keep: { entries: inspection?.keep ?? [], bytes: sumBytes(inspection?.keep ?? []) },
-      };
+      const base = this.baseOf(c, inspection);
       const reason = this.reasonFor(c, inspection, found?.error ?? null, now, base);
       items.push({ ...base, verdict: verdictOf(reason), reason });
     }
-    this.applyByteBudget(items, policy.maxBytes);
+    this.applyByteBudget(items, maxBytes);
     let planned = 0;
     for (const item of items) {
       this.assertRunning();
@@ -463,6 +927,7 @@ export class CellRetentionService {
         now: this.deps.now,
         trimPatterns: this.deps.policy.trimPatterns,
         receipts: store.listLandingReceipts(item.beeId),
+        upstream: item.originRepo ? this.upstreamRefs.get(item.originRepo) ?? null : null,
       });
       this.deps.forgetCell(item.beeId);
       if (parked == null) {

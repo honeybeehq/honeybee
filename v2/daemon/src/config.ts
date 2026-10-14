@@ -181,11 +181,13 @@ export interface CellsConfig {
  * when it is CLEAN — no uncommitted changes, no commits the origin has not
  * seen, origin reachable — and no runtime or Cell operation is using it.
  * Dirty Cells are never reclaimed automatically; `hive cell gc` lists them.
+ * An invalid value never refuses boot: it is reported in `warnings` and the
+ * key's default applies.
  */
 export interface CellRetentionConfig {
   /** Master switch (default true). Off = no automatic pass; `hive cell gc` still works. */
   enabled?: boolean;
-  /** Evict a clean Cell whose bee has been archived for at least this long (default 7). 0 = immediately. */
+  /** Evict a clean Cell whose bee has been archived for at least this long (default 7, satellites 3). 0 = immediately. */
   archivedAfterDays?: number;
   /**
    * Evict a clean Cell whose active bee has been stopped (no runtime, no
@@ -199,7 +201,8 @@ export interface CellRetentionConfig {
    * Total allocated bytes across Cells (du semantics) the pass tries to stay
    * under. When exceeded, additional clean Cells of archived, then stopped
    * bees are evicted oldest-idle first regardless of the age floors. null =
-   * no budget (default).
+   * no budget (default on workstations; satellites default to half the
+   * Cells volume).
    */
   maxBytes?: number | null;
   /** Hours between automatic passes (default 24). */
@@ -210,6 +213,14 @@ export interface CellRetentionConfig {
   trimAfterHours?: number | null;
   /** Ignored directory names (or `*.ext` file suffixes) treated as rebuildable build output. */
   trimPatterns?: string[];
+  /** Disk-pressure floor: percent of the Cells volume kept free (default 10). null drops this term. */
+  minFreePercent?: number | null;
+  /** Disk-pressure floor: bytes kept free (default 50 GiB). null drops this term; both null = no pressure trigger. */
+  minFreeBytes?: number | null;
+  /** Under disk pressure, Cells of active bees stopped at least this long are eligible (default 3). null = never. */
+  pressureIdleAfterDays?: number | null;
+  /** Fetch each origin's upstream into a Honeybee-owned mirror and count ancestry of its HEAD as landed (default true). */
+  fetchUpstream?: boolean;
 }
 
 export interface ResolvedCellRetention {
@@ -218,10 +229,18 @@ export interface ResolvedCellRetention {
   stoppedAfterMs: number | null;
   retainedAfterMs: number | null;
   maxBytes: number | null;
+  /** When set (and `maxBytes` is null), the byte budget is this share of the Cells volume size. */
+  maxBytesVolumeShare: number | null;
   intervalMs: number;
   maxPerPass: number;
   trimAfterMs: number | null;
   trimPatterns: string[];
+  minFreePercent: number | null;
+  minFreeBytes: number | null;
+  pressureIdleAfterMs: number | null;
+  fetchUpstream: boolean;
+  /** Invalid keys that fell back to their default, for the boot log. */
+  warnings: string[];
 }
 
 /** The raw (all-optional) shape of config.json. */
@@ -487,71 +506,86 @@ function nodeKindOf(raw: Record<string, unknown>): NodeKind {
 const DAY_MS = 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
 
+export const MIN_FREE_BYTES_DEFAULT = 50 * 1024 ** 3;
+const SATELLITE_ARCHIVED_AFTER_MS = 3 * DAY_MS;
+const VOLUME_SHARE_DEFAULT = 0.5;
+
 export const DEFAULT_CELL_RETENTION: ResolvedCellRetention = {
   enabled: true,
   archivedAfterMs: 7 * DAY_MS,
   stoppedAfterMs: 30 * DAY_MS,
   retainedAfterMs: 14 * DAY_MS,
   maxBytes: null,
+  maxBytesVolumeShare: null,
   intervalMs: 24 * HOUR_MS,
   maxPerPass: 100,
   trimAfterMs: 24 * HOUR_MS,
   trimPatterns: [...DEFAULT_TRIM_PATTERNS],
+  minFreePercent: 10,
+  minFreeBytes: MIN_FREE_BYTES_DEFAULT,
+  pressureIdleAfterMs: 3 * DAY_MS,
+  fetchUpstream: true,
+  warnings: [],
 };
 
-function nonNegativeNumber(c: Record<string, unknown>, key: string): number | undefined {
-  const v = c[key];
-  if (v === undefined) return undefined;
-  if (typeof v !== "number" || !Number.isFinite(v) || v < 0) {
-    throw new ConfigError(`config: cells.retention.${key} must be a non-negative number`);
-  }
-  return v;
+export function defaultCellRetention(nodeKind: NodeKind = "workstation"): ResolvedCellRetention {
+  const base: ResolvedCellRetention = { ...DEFAULT_CELL_RETENTION, trimPatterns: [...DEFAULT_CELL_RETENTION.trimPatterns], warnings: [] };
+  if (nodeKind !== "satellite") return base;
+  return { ...base, archivedAfterMs: SATELLITE_ARCHIVED_AFTER_MS, maxBytesVolumeShare: VOLUME_SHARE_DEFAULT };
 }
 
-function nullableNonNegativeNumber(c: Record<string, unknown>, key: string): number | null | undefined {
-  if (c[key] === null) return null;
-  return nonNegativeNumber(c, key);
-}
+const isNonNegative = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v >= 0;
+const validTrimPattern = (p: unknown) =>
+  typeof p === "string" && p.length > 0 && !p.includes("/") && p !== "." && p !== ".." && (!p.includes("*") || /^\*\.[^*]+$/.test(p));
 
-export function cellRetentionOf(raw: unknown): ResolvedCellRetention {
-  if (raw === undefined) return { ...DEFAULT_CELL_RETENTION, trimPatterns: [...DEFAULT_CELL_RETENTION.trimPatterns] };
+export function cellRetentionOf(raw: unknown, nodeKind: NodeKind = "workstation"): ResolvedCellRetention {
+  const out = defaultCellRetention(nodeKind);
+  if (raw === undefined) return out;
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
-    throw new ConfigError("config: cells.retention must be an object");
+    out.warnings.push(`cells.retention must be an object, got ${JSON.stringify(raw)}; using defaults`);
+    return out;
   }
   const c = raw as Record<string, unknown>;
-  const out: ResolvedCellRetention = { ...DEFAULT_CELL_RETENTION, trimPatterns: [...DEFAULT_CELL_RETENTION.trimPatterns] };
-  if (c.enabled !== undefined) {
-    if (typeof c.enabled !== "boolean") throw new ConfigError("config: cells.retention.enabled must be a boolean");
-    out.enabled = c.enabled;
-  }
-  const archived = nonNegativeNumber(c, "archivedAfterDays");
-  if (archived !== undefined) out.archivedAfterMs = archived * DAY_MS;
-  const stopped = nullableNonNegativeNumber(c, "stoppedAfterDays");
-  if (stopped !== undefined) out.stoppedAfterMs = stopped === null ? null : stopped * DAY_MS;
-  const retained = nullableNonNegativeNumber(c, "retainedAfterDays");
-  if (retained !== undefined) out.retainedAfterMs = retained === null ? null : retained * DAY_MS;
-  const maxBytes = nullableNonNegativeNumber(c, "maxBytes");
-  if (maxBytes !== undefined) out.maxBytes = maxBytes;
-  const interval = nonNegativeNumber(c, "intervalHours");
-  if (interval !== undefined) {
-    if (interval <= 0) throw new ConfigError("config: cells.retention.intervalHours must be positive");
-    out.intervalMs = interval * HOUR_MS;
-  }
-  if (c.maxPerPass !== undefined) {
-    if (typeof c.maxPerPass !== "number" || !Number.isInteger(c.maxPerPass) || c.maxPerPass < 1) {
-      throw new ConfigError("config: cells.retention.maxPerPass must be a positive integer");
+  const fallback = (key: string, expected: string, used: unknown) =>
+    out.warnings.push(`cells.retention.${key} must be ${expected}, got ${JSON.stringify(c[key])}; using ${JSON.stringify(used)}`);
+  const read = <T>(key: string, expected: string, accept: (v: unknown) => boolean, convert: (v: unknown) => T, current: T): T => {
+    const v = c[key];
+    if (v === undefined) return current;
+    if (accept(v)) return convert(v);
+    fallback(key, expected, current);
+    return current;
+  };
+  const scaled = (unit: number) => (v: unknown) => (v === null ? null : (v as number) * unit);
+  const nullableNonNegative = (v: unknown) => v === null || isNonNegative(v);
+
+  out.enabled = read("enabled", "a boolean", (v) => typeof v === "boolean", (v) => v as boolean, out.enabled);
+  out.archivedAfterMs = read("archivedAfterDays", "a non-negative number", isNonNegative, (v) => (v as number) * DAY_MS, out.archivedAfterMs);
+  out.stoppedAfterMs = read("stoppedAfterDays", "a non-negative number or null", nullableNonNegative, scaled(DAY_MS), out.stoppedAfterMs);
+  out.retainedAfterMs = read("retainedAfterDays", "a non-negative number or null", nullableNonNegative, scaled(DAY_MS), out.retainedAfterMs);
+  if (c.maxBytes !== undefined) {
+    if (nullableNonNegative(c.maxBytes)) {
+      out.maxBytes = c.maxBytes as number | null;
+      out.maxBytesVolumeShare = null;
+    } else {
+      out.maxBytes = null;
+      out.maxBytesVolumeShare = VOLUME_SHARE_DEFAULT;
+      fallback("maxBytes", "a non-negative number or null", `${VOLUME_SHARE_DEFAULT * 100}% of the Cells volume`);
     }
-    out.maxPerPass = c.maxPerPass;
   }
-  const trimAfter = nullableNonNegativeNumber(c, "trimAfterHours");
-  if (trimAfter !== undefined) out.trimAfterMs = trimAfter === null ? null : trimAfter * HOUR_MS;
-  if (c.trimPatterns !== undefined) {
-    const valid = (p: unknown) => typeof p === "string" && p.length > 0 && !p.includes("/") && p !== "." && p !== ".." && (!p.includes("*") || /^\*\.[^*]+$/.test(p));
-    if (!Array.isArray(c.trimPatterns) || !c.trimPatterns.every(valid)) {
-      throw new ConfigError("config: cells.retention.trimPatterns must be an array of directory names or `*.ext` file suffixes");
-    }
-    out.trimPatterns = [...(c.trimPatterns as string[])];
-  }
+  out.intervalMs = read("intervalHours", "a positive number", (v) => isNonNegative(v) && v > 0, (v) => (v as number) * HOUR_MS, out.intervalMs);
+  out.maxPerPass = read("maxPerPass", "a positive integer", (v) => typeof v === "number" && Number.isInteger(v) && v >= 1, (v) => v as number, out.maxPerPass);
+  out.trimAfterMs = read("trimAfterHours", "a non-negative number or null", nullableNonNegative, scaled(HOUR_MS), out.trimAfterMs);
+  out.trimPatterns = read(
+    "trimPatterns",
+    "an array of directory names or `*.ext` file suffixes",
+    (v) => Array.isArray(v) && v.every(validTrimPattern),
+    (v) => [...(v as string[])],
+    out.trimPatterns,
+  );
+  out.minFreePercent = read("minFreePercent", "a number from 0 to 100 or null", (v) => v === null || (isNonNegative(v) && v <= 100), (v) => v as number | null, out.minFreePercent);
+  out.minFreeBytes = read("minFreeBytes", "a non-negative number or null", nullableNonNegative, (v) => v as number | null, out.minFreeBytes);
+  out.pressureIdleAfterMs = read("pressureIdleAfterDays", "a non-negative number or null", nullableNonNegative, scaled(DAY_MS), out.pressureIdleAfterMs);
+  out.fetchUpstream = read("fetchUpstream", "a boolean", (v) => typeof v === "boolean", (v) => v as boolean, out.fetchUpstream);
   return out;
 }
 
@@ -560,7 +594,7 @@ function cellsOf(raw: Record<string, unknown>, nodeKind: NodeKind): { root?: str
   const envOverride = Number.isFinite(envFree) && envFree >= 0 ? Math.floor(envFree) : null;
   const defaultWarmPoolFree = nodeKind === "satellite" ? 1 : 0;
   const v = raw.cells;
-  if (v === undefined) return { sandbox: null, warm: {}, allowStubMove: false, warmPoolFree: envOverride ?? defaultWarmPoolFree, warmPoolMaxSize: 32, retention: cellRetentionOf(undefined) };
+  if (v === undefined) return { sandbox: null, warm: {}, allowStubMove: false, warmPoolFree: envOverride ?? defaultWarmPoolFree, warmPoolMaxSize: 32, retention: cellRetentionOf(undefined, nodeKind) };
   if (v === null || typeof v !== "object" || Array.isArray(v)) {
     throw new ConfigError("config: cells must be an object of {root?, sandbox?, warm?, retention?}");
   }
@@ -571,7 +605,7 @@ function cellsOf(raw: Record<string, unknown>, nodeKind: NodeKind): { root?: str
     allowStubMove: false,
     warmPoolFree: defaultWarmPoolFree,
     warmPoolMaxSize: 32,
-    retention: cellRetentionOf(c.retention),
+    retention: cellRetentionOf(c.retention, nodeKind),
   };
   if (c.warmPoolFree !== undefined) {
     if (typeof c.warmPoolFree !== "number" || !Number.isInteger(c.warmPoolFree) || c.warmPoolFree < 0) {

@@ -60,15 +60,21 @@ A Cell that stays (held as dirty or too young, or kept within the age floors) st
 
 | key | default | meaning |
 |---|---|---|
-| `enabled` | `true` | automatic pass on/off (`hive cell gc` works either way) |
-| `archivedAfterDays` | `7` | evict a clean Cell whose bee has been archived at least this long |
+| `enabled` | `true` | automatic passes (scheduled and disk pressure) on/off (`hive cell gc` works either way) |
+| `archivedAfterDays` | `7` (satellites `3`) | evict a clean Cell whose bee has been archived at least this long |
 | `stoppedAfterDays` | `30` | evict a clean Cell whose *active* bee has had no runtime and no output for this long; `null` = never by age |
 | `retainedAfterDays` | `14` | remove a clean `retained` Cell this long after the move; `null` = never |
-| `maxBytes` | `null` | when total Cell bytes (du semantics) exceed this, also evict clean *young* Cells, archived first then stopped, oldest idle first, until under budget; never a live runtime, never dirty |
+| `maxBytes` | `null` (satellites: 50% of the Cells volume) | when total Cell bytes (du semantics) exceed this, also evict clean *young* Cells, archived first then stopped, oldest idle first, until under budget; never a live runtime, never dirty |
 | `intervalHours` | `24` | cadence of the automatic pass (first pass 5 min after boot) |
 | `maxPerPass` | `100` | evictions per pass; the rest are reported `hold/pass_limit` |
 | `trimAfterHours` | `24` | trim build output of Cells idle at least this long; `null` = never |
 | `trimPatterns` | see Trim | directory names, or `*.ext` file suffixes, that count as build output |
+| `minFreePercent` | `10` | disk-pressure floor term: percent of the Cells volume kept free; `null` drops the term |
+| `minFreeBytes` | `53687091200` (50 GiB) | disk-pressure floor term in bytes; `null` drops it; both `null` = no pressure trigger |
+| `pressureIdleAfterDays` | `3` | under pressure, Cells of active bees stopped this long are eligible; `null` = never |
+| `fetchUpstream` | `true` | keep a fetch-only upstream mirror per origin and use it as a landing target |
+
+An invalid value never refuses boot: the daemon logs `config.retention.invalid <key> …` and uses that key's default. An invalid `maxBytes` falls back to 50% of the Cells volume on every node kind, never to "no budget".
 
 Idle instant per Cell: `archived_at` for archived bees; `max(runtime.updated_at, last_output_at, created_at)` for stopped active bees; `retained_at` for retained Cells.
 
@@ -81,6 +87,21 @@ Idle instant per Cell: `archived_at` for archived bees; `max(runtime.updated_at,
 5. Trim (only `dryRun: false`): every Cell with `trim.planned`, as described under Trim; results in `trimOutcomes`.
 
 Shape checks from spec 05 point 6 hold throughout: only a wrapper directly under the cells root containing a `-space-` checkout is ever renamed or deleted.
+
+## Disk pressure (P7)
+
+The daemon checks the volume holding the real Cells root with `statfs` every 60 s. `floor = max(minFreePercent% × size, minFreeBytes)`; `target = floor + band` with `band = min(max(2% × size, 10 GiB), floor / 4)`. Below the floor (and `enabled`, no pass in flight) it runs a **pressure pass**:
+
+1. Candidates: active Cells of archived bees (any age), oldest archive first; then active Cells of active bees whose runtime is stopped and idle at least `pressureIdleAfterDays`, longest idle first. Retained Cells are not candidates.
+2. Inspect in batches of 16 in the worker. The usual gates decide: live runtime, in-flight op, move or handoff = keep; any dirty cause (including `dirty_unlanded`) or inspect failure = hold. A clean Cell is evicted with reason `disk_pressure` through the same `applyOne` re-checks and audit rows (`cell.put` + `cell.evicted{reason:"disk_pressure"}`). Nothing is ever forced.
+3. Within a batch, eviction stops once the projected free space (measured free + evicted bytes) reaches the target; after each batch the parked wrappers are swept and `statfs` is read again. `maxPerPass` bounds the pass.
+4. Outcome `floor_met` when measured free ≥ floor, else `floor_unmet`: logged as `cell.pressure.floor_unmet …` and audited **once per episode** (`cell.pressure.floor_unmet` with held bytes by cause); `cellDisk.floorUnmet` stays true until free space is back above the floor. The pass retries every 30 min, sooner if free space drops by another band.
+
+Every applied pass (scheduled, pressure, or `hive cell gc --apply` as `manual`) writes one informational audit row `cell.retention.pass {kind, startedAt, endedAt, outcome, evicted, freedBytes, freeBefore, freeAfter, floorBytes, targetBytes, error}`; `freedBytes` is the measured `statfs` delta. Both new audit kinds are informational in replay.
+
+**Upstream mirrors.** With `fetchUpstream`, each origin checkout's `remote.origin.url` is fetched (`+HEAD:refs/upstream/head`, no tags, 60 s bound) into `<data-dir>/upstream/<sha256(url)[:16]>.git`, a bare repository with the origin's objects as alternates and no remotes. Automatic passes refetch at most hourly; `hive cell gc` refetches when the mirror is older than 60 s. It uses the daemon user's git/ssh configuration plus the origin's `core.sshCommand`, never prompts, never pushes and never writes the origin checkout or a Cell. Its ref is an additional landing target for the dirty report (`dirtyReport({ upstream })`). A Cell whose origin has no upstream URL, or whose mirror never fetched, keeps the local-refs verdict; a failed fetch logs `cell.retention.upstream_failed` and keeps the last good ref.
+
+**Status.** `deployInfo` and `health` carry an additive `cellDisk {root, totalBytes, freeBytes, floorBytes, targetBytes, belowFloor, floorUnmet, checkedAt, currentPass, lastPass}`; `lastPass` survives restarts via the newest `cell.retention.pass` row. `hive deploy-info` and `hive health` print one `cells disk:` line. `hive cell gc` streams `currentPass` progress to stderr and, when cut off by SIGINT/SIGTERM or its client timeout, prints the partial plan and exits 130/143/124; the daemon's pass continues.
 
 ## Verbs
 

@@ -145,6 +145,8 @@ import {
   deleteCell,
   dirtyCauses,
   evictCellWrapper,
+  readUpstreamMirror,
+  upstreamRootFor,
   hasCommit,
   restoreEnvFiles,
   restoreKeptPaths,
@@ -582,6 +584,12 @@ export interface HiveDaemonDeps {
   retentionWorkerUrl?: URL;
   /** v31 tests: delay before the first automatic retention pass (default 5 min). */
   retentionInitialDelayMs?: number;
+  /** P7 tests: free-space check cadence (default 60 s). */
+  retentionDiskCheckMs?: number;
+  /** P7 tests: wait after a floor_unmet pass (default 30 min). */
+  retentionPressureRetryMs?: number;
+  /** P7 tests: substitute the Cells volume measurement. */
+  retentionStatfs?: (path: string) => { totalBytes: number; freeBytes: number };
   /**
    * Outbox forwarder hook for mailbox-only bees: called after a `send` to an
    * `inbox` bee commits. A future webhook or email push plugs in here; it runs
@@ -898,7 +906,14 @@ export class HiveDaemon {
       forgetCell: (beeId) => cell.forgetCell(beeId),
       ...(this.deps.retentionWorkerUrl ? { workerUrl: this.deps.retentionWorkerUrl } : {}),
       ...(this.deps.retentionInitialDelayMs !== undefined ? { initialDelayMs: this.deps.retentionInitialDelayMs } : {}),
+      ...(this.deps.retentionDiskCheckMs !== undefined ? { diskCheckMs: this.deps.retentionDiskCheckMs } : {}),
+      ...(this.deps.retentionPressureRetryMs !== undefined ? { pressureRetryMs: this.deps.retentionPressureRetryMs } : {}),
+      ...(this.deps.retentionStatfs ? { statfs: this.deps.retentionStatfs } : {}),
+      dataDir: this.cfg.dataDir,
+      audit: (kind, payload) => this.mustStore().recordCellRetentionEvent(kind, payload),
+      lastRecordedPass: () => this.mustStore().latestCellRetentionPass(),
     });
+    for (const warning of this.cfg.cellRetention.warnings) this.log(`config.retention.invalid ${warning}`);
     this.core = new DaemonCore({
       store,
       driver,
@@ -3225,6 +3240,7 @@ export class HiveDaemon {
         force,
         trimPatterns: this.cfg.cellRetention.trimPatterns,
         receipts: store.listLandingReceipts(beeId),
+        upstream: this.cfg.cellRetention.fetchUpstream ? readUpstreamMirror(row.originRepo, upstreamRootFor(this.cfg.dataDir)) : null,
       });
       driver.cell.forgetCell(beeId);
       if (parked == null) {
@@ -5240,6 +5256,7 @@ export class HiveDaemon {
       socketPath: this.cfg.socketPath,
       storePath: this.cfg.storePath,
       localSecurity: this.rpc?.localSecurity,
+      cellDisk: this.retention?.diskStatus() ?? null,
     };
   }
 
@@ -5327,6 +5344,7 @@ export class HiveDaemon {
       naming: this.naming.disabledReason
         ? { state: "disabled", reason: this.naming.disabledReason }
         : { state: this.naming.auto ? "ok" : "off" },
+      cellDisk: this.retention?.diskStatus() ?? null,
     };
   }
 

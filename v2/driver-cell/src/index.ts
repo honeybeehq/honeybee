@@ -57,7 +57,16 @@ export {
   type TrimResult,
   type TrimSkip,
 } from "./retention.ts";
-export type { RetentionWorkerRequest, RetentionWorkerResult, TrimVerifyWorkerRequest, TrimVerifyWorkerResult } from "./retentionWorker.ts";
+export type {
+  RetentionUpstreamStatus,
+  RetentionWorkerInspection,
+  RetentionWorkerProgress,
+  RetentionWorkerRequest,
+  RetentionWorkerResult,
+  TrimVerifyWorkerRequest,
+  TrimVerifyWorkerResult,
+} from "./retentionWorker.ts";
+export { UPSTREAM_REF, mirrorDirFor, originFetchUrl, readUpstreamMirror, refreshUpstreamMirror, upstreamRootFor, type UpstreamRef, type UpstreamRefresh } from "./upstream.ts";
 export {
   bwrapArgs,
   darwinUserTempDir,

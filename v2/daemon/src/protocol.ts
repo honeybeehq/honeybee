@@ -180,6 +180,7 @@ export const DAEMON_CAPABILITIES = [
    */
   "cell.retention.v1",
   "cell.retention.trim.v1",
+  "cell.retention.pressure.v1",
   /**
    * v23 (2026-09-13): durable session handoff — `bee.handoff` /
    * `bee.handoff.get`, the `handoff` mirror-row key, the `beeHandoffs` +
@@ -1582,6 +1583,8 @@ export interface DeployInfoResult {
   dataDir: string;
   socketPath: string;
   storePath: string;
+  /** Additive (P7): free space of the Cells volume and the last retention pass; null when unmeasurable. */
+  cellDisk?: CellDiskStatus | null;
 }
 
 /**
@@ -1632,6 +1635,8 @@ export interface HealthResult {
   i1Violations: number;
   bees: { total: number; active: number; archived: number };
   naming?: NamingHealth;
+  /** Additive (P7): free space of the Cells volume and the last retention pass; null when unmeasurable. */
+  cellDisk?: CellDiskStatus | null;
 }
 
 export type NamingHealth = { state: "ok" | "off" } | { state: "disabled"; reason: string };
@@ -1918,6 +1923,7 @@ export const CELL_GC_REASONS = [
   "inspect_failed",
   "bee_deleted",
   "pass_limit",
+  "disk_pressure",
 ] as const;
 export type CellGcReason = (typeof CELL_GC_REASONS)[number];
 
@@ -2001,6 +2007,60 @@ export interface CellGcResult {
   trimOutcomes: CellGcTrimOutcome[] | null;
   /** Wall-clock of the inspection worker, for operator expectations. */
   inspectMs: number;
+  /** Additive (P7): what kind of pass produced this result and how it ended. Absent on older daemons. */
+  pass?: CellGcPassSummary;
+}
+
+export const CELL_GC_PASS_KINDS = ["scheduled", "pressure", "manual"] as const;
+export type CellGcPassKind = (typeof CELL_GC_PASS_KINDS)[number];
+
+export const CELL_GC_PASS_OUTCOMES = ["ok", "nothing_to_do", "floor_met", "floor_unmet", "failed", "dry_run"] as const;
+export type CellGcPassOutcome = (typeof CELL_GC_PASS_OUTCOMES)[number];
+
+export interface CellGcPassSummary {
+  kind: CellGcPassKind;
+  startedAt: number;
+  endedAt: number;
+  outcome: CellGcPassOutcome;
+  evicted: number;
+  /** Measured free-space delta of the Cells volume (statfs), never below 0; null when unmeasurable. */
+  freedBytes: number | null;
+  freeBefore: number | null;
+  freeAfter: number | null;
+  floorBytes: number | null;
+  targetBytes: number | null;
+  error: string | null;
+}
+
+/** In-flight pass progress, for `hive cell gc` streaming. Counts are for the Cells inspected so far. */
+export interface CellGcProgress {
+  kind: CellGcPassKind;
+  dryRun: boolean;
+  startedAt: number;
+  total: number;
+  inspected: number;
+  planned: number;
+  plannedBytes: number;
+  held: number;
+  heldBytes: number;
+  dirty: number;
+  byReason: Partial<Record<CellGcReason, { cells: number; bytes: number }>>;
+}
+
+/** Additive (P7) node disk status of the volume holding the Cells root, on `deployInfo` and `health`. */
+export interface CellDiskStatus {
+  root: string;
+  totalBytes: number;
+  freeBytes: number;
+  /** null when the pressure trigger is off (both floor terms null). */
+  floorBytes: number | null;
+  targetBytes: number | null;
+  belowFloor: boolean;
+  /** The last pressure pass could not reach the floor and free space has not recovered since. */
+  floorUnmet: boolean;
+  checkedAt: number;
+  currentPass: CellGcProgress | null;
+  lastPass: CellGcPassSummary | null;
 }
 
 /** `cell.evict` — evict ONE bee's Cell now (the dirty guard applies unless `force`). */

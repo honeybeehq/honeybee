@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { isAncestor, tryGit } from "./git.ts";
+import type { UpstreamRef } from "./upstream.ts";
 
 export interface LandingReceipt {
   /** The Cell commit that was landed. */
@@ -102,10 +103,12 @@ export function unlandedCommitsByTip(req: {
   tips: readonly string[];
   base: string | null;
   receipts?: readonly LandingReceipt[];
+  /** A Honeybee upstream mirror ref: commits reachable from it are landed (ancestry only). */
+  upstream?: UpstreamRef | null;
 }): Map<string, string[]> {
   const tips = [...new Set(req.tips)];
   try {
-    return probeTips(req.spaceDir, req.originRepo, tips, req.base, req.receipts ?? []);
+    return probeTips(req.spaceDir, req.originRepo, tips, req.base, req.receipts ?? [], req.upstream ?? null);
   } catch {
     return new Map(tips.map((tip) => [tip, commitsSinceBase(req.spaceDir, tip, req.base)]));
   }
@@ -117,7 +120,7 @@ function commitsSinceBase(spaceDir: string, tip: string, base: string | null): s
   return range.length > 0 ? range : [tip];
 }
 
-function probeTips(spaceDir: string, originRepo: string, tips: string[], base: string | null, receipts: readonly LandingReceipt[]): Map<string, string[]> {
+function probeTips(spaceDir: string, originRepo: string, tips: string[], base: string | null, receipts: readonly LandingReceipt[], upstream: UpstreamRef | null): Map<string, string[]> {
   const cellObjects = objectsDir(spaceDir);
   const originObjects = objectsDir(originRepo);
   if (cellObjects == null || originObjects == null) throw new Error("object directories unresolvable");
@@ -125,7 +128,7 @@ function probeTips(spaceDir: string, originRepo: string, tips: string[], base: s
 
   const scratch = mkdtempSync(join(tmpdir(), "hive-landed-"));
   try {
-    const env = { GIT_OBJECT_DIRECTORY: scratch, GIT_ALTERNATE_OBJECT_DIRECTORIES: alternatesValue([cellObjects, originObjects]) };
+    const env = { GIT_OBJECT_DIRECTORY: scratch, GIT_ALTERNATE_OBJECT_DIRECTORIES: alternatesValue([cellObjects, originObjects, ...(upstream ? [upstream.objectsDir] : [])]) };
     const deadline = Date.now() + PROBE_BUDGET_MS;
     const run = (args: string[], opts: { input?: string; literalPaths?: boolean } = {}) => {
       const timeoutMs = deadline - Date.now();
@@ -273,7 +276,7 @@ function probeTips(spaceDir: string, originRepo: string, tips: string[], base: s
     const out = new Map<string, string[]>();
     for (const tip of tips) {
       must(["cat-file", "-e", `${tip}^{commit}`]);
-      const exclude = [...(base ? [base] : []), ...targets, ...landedHeads];
+      const exclude = [...(base ? [base] : []), ...targets, ...landedHeads, ...(upstream ? [upstream.sha] : [])];
       const range = lines(must(["rev-list", "--ignore-missing", `--max-count=${MAX_RANGE_COMMITS + 1}`, tip, "--not", ...exclude]));
       if (range.length === 0 || targets.some((t) => !provablyUnlanded(t, rangeChanges(t, tip)) && mergesToTarget(t, [t, tip]))) {
         out.set(tip, []);

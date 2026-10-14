@@ -7,16 +7,42 @@
 import { parentPort, workerData } from "node:worker_threads";
 import type { LandingReceipt } from "./landed.ts";
 import { inspectCellWrapper, verifyTrimPaths, type CellWrapperInspection, type TrimSkip } from "./retention.ts";
+import { refreshUpstreamMirror, type UpstreamRef } from "./upstream.ts";
 
 export interface RetentionWorkerRequest {
   kind?: "inspect";
-  wrappers: Array<{ key: string; wrapperDir: string; receipts?: LandingReceipt[] }>;
+  wrappers: Array<{ key: string; wrapperDir: string; receipts?: LandingReceipt[]; originRepo?: string | null }>;
   measure: boolean;
   trimPatterns: string[];
+  /** Refresh each origin's upstream mirror before inspecting; its ref counts as landed by ancestry. */
+  upstream?: { root: string; maxAgeMs: number; timeoutMs: number } | null;
+  /** Post a `RetentionWorkerProgress` message after each wrapper. */
+  progress?: boolean;
+}
+
+export interface RetentionWorkerInspection {
+  key: string;
+  inspection: CellWrapperInspection | null;
+  error: string | null;
+}
+
+export interface RetentionUpstreamStatus {
+  originRepo: string;
+  status: "fetched" | "fresh" | "unmirrored" | "failed";
+  url: string | null;
+  ref: UpstreamRef | null;
+  error: string | null;
+}
+
+export interface RetentionWorkerProgress {
+  kind: "progress";
+  inspection: RetentionWorkerInspection;
 }
 
 export interface RetentionWorkerResult {
-  inspections: Array<{ key: string; inspection: CellWrapperInspection | null; error: string | null }>;
+  kind?: "result";
+  inspections: RetentionWorkerInspection[];
+  upstreams?: RetentionUpstreamStatus[];
 }
 
 export interface TrimVerifyWorkerRequest {
@@ -42,13 +68,28 @@ if (request.kind === "verifyTrim") {
   }
   parentPort?.postMessage({ verified } satisfies TrimVerifyWorkerResult);
 } else {
-  const inspections: RetentionWorkerResult["inspections"] = [];
-  for (const { key, wrapperDir, receipts } of request.wrappers) {
-    try {
-      inspections.push({ key, inspection: inspectCellWrapper(wrapperDir, { measure: request.measure, trimPatterns: request.trimPatterns, receipts }), error: null });
-    } catch (err) {
-      inspections.push({ key, inspection: null, error: errorText(err) });
+  const upstreams = new Map<string, RetentionUpstreamStatus>();
+  if (request.upstream) {
+    for (const originRepo of new Set(request.wrappers.map((w) => w.originRepo).filter((o): o is string => typeof o === "string"))) {
+      try {
+        const refreshed = refreshUpstreamMirror(originRepo, request.upstream.root, { maxAgeMs: request.upstream.maxAgeMs, timeoutMs: request.upstream.timeoutMs });
+        upstreams.set(originRepo, { originRepo, status: refreshed.status, url: refreshed.url, ref: refreshed.ref, error: refreshed.status === "failed" ? refreshed.error : null });
+      } catch (err) {
+        upstreams.set(originRepo, { originRepo, status: "failed", url: null, ref: null, error: errorText(err) });
+      }
     }
   }
-  parentPort?.postMessage({ inspections } satisfies RetentionWorkerResult);
+  const inspections: RetentionWorkerInspection[] = [];
+  for (const { key, wrapperDir, receipts, originRepo } of request.wrappers) {
+    let entry: RetentionWorkerInspection;
+    try {
+      const upstream = originRepo ? upstreams.get(originRepo)?.ref ?? null : null;
+      entry = { key, inspection: inspectCellWrapper(wrapperDir, { measure: request.measure, trimPatterns: request.trimPatterns, receipts, upstream }), error: null };
+    } catch (err) {
+      entry = { key, inspection: null, error: errorText(err) };
+    }
+    inspections.push(entry);
+    if (request.progress) parentPort?.postMessage({ kind: "progress", inspection: entry } satisfies RetentionWorkerProgress);
+  }
+  parentPort?.postMessage({ kind: "result", inspections, upstreams: [...upstreams.values()] } satisfies RetentionWorkerResult);
 }

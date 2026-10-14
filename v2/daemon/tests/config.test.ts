@@ -385,7 +385,7 @@ test("config.warmPool: invalid values fail loudly", () => {
   });
 });
 
-test("config.9: cells.retention (v31) — defaults on, day/hour units, null disables an axis, invalid shapes refused", () => {
+test("config.9: cells.retention (v31) — defaults on, day/hour units, null disables an axis, invalid values fall back without refusing boot", () => {
   withDir((dir) => {
     const day = 86_400_000;
     const defaults = loadNodeConfig(dir).cellRetention;
@@ -394,13 +394,19 @@ test("config.9: cells.retention (v31) — defaults on, day/hour units, null disa
     assert.equal(defaults.stoppedAfterMs, 30 * day);
     assert.equal(defaults.retainedAfterMs, 14 * day);
     assert.equal(defaults.maxBytes, null);
+    assert.equal(defaults.maxBytesVolumeShare, null);
     assert.equal(defaults.intervalMs, 24 * 3_600_000);
     assert.equal(defaults.maxPerPass, 100);
     assert.equal(defaults.trimAfterMs, 24 * 3_600_000);
+    assert.equal(defaults.minFreePercent, 10);
+    assert.equal(defaults.minFreeBytes, 50 * 1024 ** 3);
+    assert.equal(defaults.pressureIdleAfterMs, 3 * day);
+    assert.equal(defaults.fetchUpstream, true);
+    assert.deepEqual(defaults.warnings, []);
     assert.ok(defaults.trimPatterns.includes(".next") && defaults.trimPatterns.includes("*.tsbuildinfo"));
 
     writeFileSync(join(dir, "config.json"), JSON.stringify({
-      cells: { retention: { enabled: false, archivedAfterDays: 0, stoppedAfterDays: null, retainedAfterDays: 1.5, maxBytes: 5e11, intervalHours: 6, maxPerPass: 3, trimAfterHours: 2, trimPatterns: [".next", "*.log"] } },
+      cells: { retention: { enabled: false, archivedAfterDays: 0, stoppedAfterDays: null, retainedAfterDays: 1.5, maxBytes: 5e11, intervalHours: 6, maxPerPass: 3, trimAfterHours: 2, trimPatterns: [".next", "*.log"], minFreePercent: null, minFreeBytes: 1e9, pressureIdleAfterDays: null, fetchUpstream: false } },
     }));
     const custom = loadNodeConfig(dir).cellRetention;
     assert.equal(custom.enabled, false);
@@ -412,27 +418,61 @@ test("config.9: cells.retention (v31) — defaults on, day/hour units, null disa
     assert.equal(custom.maxPerPass, 3);
     assert.equal(custom.trimAfterMs, 2 * 3_600_000);
     assert.deepEqual(custom.trimPatterns, [".next", "*.log"]);
+    assert.equal(custom.minFreePercent, null);
+    assert.equal(custom.minFreeBytes, 1e9);
+    assert.equal(custom.pressureIdleAfterMs, null);
+    assert.equal(custom.fetchUpstream, false);
+    assert.deepEqual(custom.warnings, []);
     writeFileSync(join(dir, "config.json"), JSON.stringify({ cells: { retention: { trimAfterHours: null } } }));
     assert.equal(loadNodeConfig(dir).cellRetention.trimAfterMs, null);
 
-    for (const bad of [
-      { retention: [] },
-      { retention: { enabled: "yes" } },
-      { retention: { archivedAfterDays: -1 } },
-      { retention: { archivedAfterDays: null } },
-      { retention: { intervalHours: 0 } },
-      { retention: { maxPerPass: 0 } },
-      { retention: { maxBytes: "1TB" } },
-      { retention: { trimAfterHours: -1 } },
-      { retention: { trimPatterns: ".next" } },
-      { retention: { trimPatterns: ["apps/.next"] } },
-      { retention: { trimPatterns: [""] } },
-      { retention: { trimPatterns: [".."] } },
-      { retention: { trimPatterns: ["*"] } },
-      { retention: { trimPatterns: ["build*"] } },
-    ]) {
+    const fallbacks: Array<[Record<string, unknown>, (r: ReturnType<typeof loadNodeConfig>["cellRetention"]) => void]> = [
+      [{ retention: [] }, (r) => assert.equal(r.archivedAfterMs, 7 * day)],
+      [{ retention: { enabled: "yes" } }, (r) => assert.equal(r.enabled, true)],
+      [{ retention: { archivedAfterDays: -1 } }, (r) => assert.equal(r.archivedAfterMs, 7 * day)],
+      [{ retention: { archivedAfterDays: null } }, (r) => assert.equal(r.archivedAfterMs, 7 * day)],
+      [{ retention: { intervalHours: 0 } }, (r) => assert.equal(r.intervalMs, 24 * 3_600_000)],
+      [{ retention: { maxPerPass: 0 } }, (r) => assert.equal(r.maxPerPass, 100)],
+      [{ retention: { maxBytes: "1TB" } }, (r) => { assert.equal(r.maxBytes, null); assert.equal(r.maxBytesVolumeShare, 0.5); }],
+      [{ retention: { maxBytes: -5 } }, (r) => { assert.equal(r.maxBytes, null); assert.equal(r.maxBytesVolumeShare, 0.5); }],
+      [{ retention: { trimAfterHours: -1 } }, (r) => assert.equal(r.trimAfterMs, 24 * 3_600_000)],
+      [{ retention: { trimPatterns: ".next" } }, (r) => assert.ok(r.trimPatterns.includes("*.tsbuildinfo"))],
+      [{ retention: { trimPatterns: ["apps/.next"] } }, (r) => assert.ok(r.trimPatterns.includes(".next"))],
+      [{ retention: { trimPatterns: [""] } }, (r) => assert.ok(r.trimPatterns.includes(".next"))],
+      [{ retention: { trimPatterns: [".."] } }, (r) => assert.ok(r.trimPatterns.includes(".next"))],
+      [{ retention: { trimPatterns: ["*"] } }, (r) => assert.ok(r.trimPatterns.includes(".next"))],
+      [{ retention: { trimPatterns: ["build*"] } }, (r) => assert.ok(r.trimPatterns.includes(".next"))],
+      [{ retention: { minFreePercent: 150 } }, (r) => assert.equal(r.minFreePercent, 10)],
+      [{ retention: { minFreeBytes: "50G" } }, (r) => assert.equal(r.minFreeBytes, 50 * 1024 ** 3)],
+      [{ retention: { pressureIdleAfterDays: -2 } }, (r) => assert.equal(r.pressureIdleAfterMs, 3 * day)],
+      [{ retention: { fetchUpstream: "no" } }, (r) => assert.equal(r.fetchUpstream, true)],
+    ];
+    for (const [bad, check] of fallbacks) {
       writeFileSync(join(dir, "config.json"), JSON.stringify({ cells: bad }));
-      assert.throws(() => loadNodeConfig(dir), ConfigError, JSON.stringify(bad));
+      const resolved = loadNodeConfig(dir).cellRetention;
+      assert.equal(resolved.warnings.length, 1, JSON.stringify(bad));
+      check(resolved);
     }
+  });
+});
+
+test("config.9b: satellites default to a 3-day archive floor and half the Cells volume as byte budget; explicit keys win", () => {
+  withDir((dir) => {
+    const day = 86_400_000;
+    writeFileSync(join(dir, "config.json"), JSON.stringify({ nodeKind: "satellite" }));
+    const satellite = loadNodeConfig(dir).cellRetention;
+    assert.equal(satellite.archivedAfterMs, 3 * day);
+    assert.equal(satellite.maxBytes, null);
+    assert.equal(satellite.maxBytesVolumeShare, 0.5);
+    assert.equal(satellite.stoppedAfterMs, 30 * day);
+    writeFileSync(join(dir, "config.json"), JSON.stringify({ nodeKind: "satellite", cells: { retention: { archivedAfterDays: 10, maxBytes: null } } }));
+    const explicit = loadNodeConfig(dir).cellRetention;
+    assert.equal(explicit.archivedAfterMs, 10 * day);
+    assert.equal(explicit.maxBytes, null);
+    assert.equal(explicit.maxBytesVolumeShare, null);
+    writeFileSync(join(dir, "config.json"), JSON.stringify({ nodeKind: "satellite", cells: { retention: { archivedAfterDays: "soon" } } }));
+    const fallback = loadNodeConfig(dir).cellRetention;
+    assert.equal(fallback.archivedAfterMs, 3 * day);
+    assert.match(fallback.warnings[0] ?? "", /archivedAfterDays/);
   });
 });
