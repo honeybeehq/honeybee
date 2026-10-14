@@ -123,6 +123,71 @@ test("lease enrol refuses unknown JSON, symlinks, private authority, active oper
   }
 });
 
+test("lease enrol serializes a plain install racing first enrolment before provenance is written", async () => {
+  const r = rig();
+  let release!: () => void;
+  let entered!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  const ready = new Promise<void>(resolve => { entered = resolve; });
+  let enrol: ReturnType<AccountsService["installLease"]> | undefined;
+  let plain: ReturnType<AccountsService["installLease"]> | undefined;
+  try {
+    const keychain = r.accounts.leaseMaterialCodecs.get("claude")!.keychain!;
+    const read = keychain.read;
+    let first = true;
+    keychain.read = async home => {
+      if (first) { first = false; entered(); await held; }
+      return read(home);
+    };
+    const input = r.input(1);
+    enrol = r.accounts.installLease(input);
+    await ready;
+    assert.equal(r.store.getAccount(r.account.id)?.source, "local");
+    plain = r.accounts.installLease({ ...input, enrol: undefined, viaNodeId: undefined });
+    release();
+    const results = await Promise.all([enrol, plain]);
+    for (const result of results) assert.equal(result.account.id, r.account.id);
+    assert.deepEqual(results[0]!.enrolment, results[1]!.enrolment);
+    assert.equal(r.store.listAccounts().length, 1);
+    assert.equal(r.store.getAccount(`${r.account.id}@${input.shareId.slice(0, 8)}`), null);
+    assert.deepEqual(replayAudit(r.store.auditRows()), r.store.dumpState());
+  } finally {
+    release();
+    await Promise.allSettled([enrol, plain]);
+    r.close();
+  }
+});
+
+test("lease enrol refuses a prior companion lease and leaves both rows untouched", async () => {
+  const r = rig();
+  try {
+    const input = r.input(1);
+    const companion = await r.accounts.installLease({ ...input, enrol: undefined, viaNodeId: undefined });
+    assert.notEqual(companion.account.id, r.account.id);
+    const before = r.store.dumpState();
+    await assert.rejects(r.accounts.installLease(input), (error: unknown) => error instanceof RpcError && error.code === "account_lease_conflict");
+    assert.deepEqual(r.store.dumpState(), before);
+  } finally { r.close(); }
+});
+
+test("lease enrol resolution queue does not fence an unrelated local base during companion publication", async () => {
+  const r = rig();
+  let release!: () => void;
+  let entered!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  const ready = new Promise<void>(resolve => { entered = resolve; });
+  let install: ReturnType<AccountsService["installLease"]> | undefined;
+  try {
+    const keychain = r.accounts.leaseMaterialCodecs.get("claude")!.keychain!;
+    const publish = keychain.publish;
+    keychain.publish = async (...args) => { entered(); await held; return publish(...args); };
+    install = r.accounts.installLease({ ...r.input(), enrol: undefined, viaNodeId: undefined });
+    await ready;
+    assert.doesNotThrow(() => r.accounts.assertLocalAccount(r.account));
+    release(); await install;
+  } finally { release(); await Promise.allSettled([install]); r.close(); }
+});
+
 test("lease enrol publication fence and receipt survive failure/restart without a generation", async () => {
   const r = rig();
   try {

@@ -884,6 +884,7 @@ export class AccountsService {
   private readonly keychainWriter: KeychainWriter;
   readonly leaseMaterialCodecs: ReadonlyMap<string, LeaseMaterialCodec>;
   private readonly leaseWrites = new Map<string, Promise<unknown>>();
+  private readonly leaseResolutions = new Map<string, Promise<unknown>>();
   private readonly keychainStateReader: KeychainStateReader;
   private readonly cursorAuthReader: CursorAuthReader;
   private readonly fetchers: Required<LimitsFetchers>;
@@ -1157,7 +1158,11 @@ export class AccountsService {
   }
 
   private async withLeaseWrite<T>(id: string, run: () => Promise<T>): Promise<T> {
-    const previous = this.leaseWrites.get(id);
+    return this.withLeaseQueue(this.leaseWrites, id, run);
+  }
+
+  private async withLeaseQueue<T>(queue: Map<string, Promise<unknown>>, id: string, run: () => Promise<T>): Promise<T> {
+    const previous = queue.get(id);
     const pending = (async () => {
       await previous?.catch(() => {});
       try { return await run(); }
@@ -1166,9 +1171,9 @@ export class AccountsService {
         throw new RpcError("lease_unavailable", "Lease material could not be installed or removed; retry after resolving account storage access.");
       }
     })();
-    this.leaseWrites.set(id, pending);
+    queue.set(id, pending);
     try { return await pending; }
-    finally { if (this.leaseWrites.get(id) === pending) this.leaseWrites.delete(id); }
+    finally { if (queue.get(id) === pending) queue.delete(id); }
   }
 
   private credentialPaths(account: AccountRow): string[] {
@@ -1440,119 +1445,124 @@ export class AccountsService {
   installLease(input: AccountLeaseInstallParams, onInstalled: (account: AccountRow) => void = () => {}): Promise<Omit<AccountLeaseInstallResult, "account" | "restored"> & { account: AccountRow }> {
     const explicit = input.adopt === "explicit";
     if (input.enrol && input.adopt !== undefined || input.enrol && !input.viaNodeId) throw new RpcError("invalid_request", "Enrolment requires viaNodeId and cannot be combined with adoption.");
-    const retainedEnrolment = this.store.getAccount(input.id)?.leasedFrom?.enrolment;
-    const id = input.adopt || input.enrol || retainedEnrolment ? input.id : `${input.id}@${input.shareId.slice(0, 8)}`;
-    if (!isAccountId(id)) throw new RpcError("invalid_request", "Account id must be a bounded safe account identity.");
-    return this.withLeaseWrite(id, async () => {
-      let account = this.store.getAccount(id);
-      if (account && (this.store.activeCredentialHandoff(id) || ["handing_off", "adopting"].includes(this.authorityFor(account)?.status(account)?.phase ?? ""))) throw new RpcError("credential_handoff_fenced", "Credential ownership is changing; lease installation cannot overwrite an authority.");
-      if (input.adopt && !account) throw new RpcError("account_adopt_refused", "Adoption requires an existing same-id native account.");
-      if (input.enrol && (!account || account.source === "leased" && !account.leasedFrom?.enrolment)) throw new RpcError("account_lease_enrol_refused", "Enrolment requires an existing local access-only row or its own pending enrolment.", { reason: "native_account" });
-      if (input.enrol && account) this.assertEnrolmentQuiescent(account);
-      const adopted = account?.source === "local" && !input.enrol;
-      const previous = account?.leasedFrom;
-      const enrolment = previous?.enrolment ?? (input.enrol && account ? { id: randomUUID(), at: this.now(), liveRuntimeCoveragePending: this.store.beesOnAccount(id).filter(bee => { const runtime = this.store.currentRuntime(bee.id); return runtime !== null && runtime.state !== "stopped"; }).length } : undefined);
-      const viaNodeId = input.viaNodeId ?? previous?.viaNodeId;
-      const codec = this.leaseMaterialCodecs.get(input.harness);
-      if (!codec) throw new RpcError("lease_unsupported", "This harness has no lease material codec.");
-      if (enrolment && (input.files.length !== 1 || input.files[0]?.homeRelPath !== codec.primaryFile)) throw new RpcError("account_lease_enrol_refused", "Enrolled leases publish primary credential material only; profile files remain local.", { reason: "unknown_material" });
-      if (enrolment && input.files.some(file => { try { const document = JSON.parse(Buffer.from(file.contentB64, "base64").toString("utf8")); return hasRefreshGrant(document) || !codec.provesAccessOnly?.(document); } catch { return true; } })) throw new RpcError("account_lease_enrol_refused", "Enrolment requires recognised access-only incoming material.", { reason: "unknown_material" });
-      const origin = { shareId: input.shareId, authorityNodeId: input.authorityNodeId, epoch: input.epoch, ...(input.generation !== undefined ? { generation: input.generation } : {}), ...(input.generation !== undefined || enrolment ? { materialPublished: true } : {}), ...(viaNodeId !== undefined ? { viaNodeId } : {}), ...(enrolment ? { enrolment, installedFiles: previous?.installedFiles ?? [codec.primaryFile, ...Object.values(codec.mirrors)] } : {}), expiresAt: input.expiresAt, adoptedAt: adopted ? this.now() : previous?.adoptedAt ?? null, revokedAt: null };
-      if (account && account.harness !== input.harness) throw new RpcError("harness_mismatch", "Lease harness differs from the existing account.");
-      if (account?.source === "leased" && (account.leasedFrom?.shareId !== input.shareId || account.leasedFrom.epoch > input.epoch || account.leasedFrom.epoch === input.epoch && (account.leasedFrom.authorityNodeId !== input.authorityNodeId || account.leasedFrom.expiresAt !== null && (input.expiresAt === null || input.expiresAt < account.leasedFrom.expiresAt)))) throw new RpcError("account_lease_conflict", "Lease origin conflicts with the installed lease.");
-      if (account?.source === "leased" && input.generation !== undefined && account.leasedFrom?.generation !== undefined && account.leasedFrom.epoch === input.epoch && input.generation < account.leasedFrom.generation) throw new RpcError("account_lease_conflict", "Lease credential generation regressed.");
-      if (adopted) {
-        if (!input.adopt) throw new RpcError("account_adopt_refused", "An isolated lease cannot overwrite a native account.");
-        const foreign = this.foreignHomeRefusal(account!, "moves credentials out of");
-        if (foreign) throw new RpcError("account_adopt_refused", foreign);
-        this.assertAdoptable(account!, explicit);
-      }
-      if (!account && this.credentialed({ id, harness: input.harness, homePath: this.defaultHomeOf(id) })) throw new RpcError("account_lease_conflict", "The isolated lease home already contains unregistered credentials; preserve them and resolve ownership before installing.");
-      if (!account) account = this.store.createAccount({ id, harness: input.harness, label: input.label, homePath: this.defaultHomeOf(id), status: "auth_needed" });
-      const target = account;
-      const initialLease = target.source === "local" && !adopted && !input.enrol;
-      let backupPath: string | null = null;
-      let backupAt: number | null = null;
-      let replacedWorkingLogin = false;
-      const write = async () => {
-        codec.keychain?.assertHome(target.homePath);
-        const state = codec.keychain ? await codec.keychain.read(target.homePath) : { status: "unavailable" } as const;
-        if (initialLease && state.status === "present") throw new RpcError("account_lease_conflict", "The isolated lease home already has an unregistered Keychain item; preserve it and resolve ownership before installing.");
-        if (adopted) this.assertAdoptable(this.store.getAccount(id)!, explicit);
-        if (input.enrol || enrolment && previous?.materialPublished !== true) {
-          const current = this.store.getAccount(id)!;
-          if (current.homePath !== target.homePath || current.harness !== target.harness || current.source !== target.source) throw new RpcError("account_lease_conflict", "Account storage changed while enrolment waited.");
-          this.assertEnrolmentQuiescent(current);
-          this.assertEnrolmentMaterial(current, codec, state);
+    return this.withLeaseQueue(this.leaseResolutions, input.id, async () => {
+      const retainedEnrolment = this.store.getAccount(input.id)?.leasedFrom?.enrolment;
+      const id = input.adopt || input.enrol || retainedEnrolment ? input.id : `${input.id}@${input.shareId.slice(0, 8)}`;
+      if (!isAccountId(id)) throw new RpcError("invalid_request", "Account id must be a bounded safe account identity.");
+      const companion = this.store.getAccount(`${input.id}@${input.shareId.slice(0, 8)}`);
+      if (input.enrol && !retainedEnrolment && companion?.source === "leased" && companion.leasedFrom?.shareId === input.shareId) throw new RpcError("account_lease_conflict", "A companion lease already exists for this share; remove its account row with account.remove before enrolling the original row. lease.remove only revokes its material.");
+      return this.withLeaseWrite(id, async () => {
+        let account = this.store.getAccount(id);
+        if (account && (this.store.activeCredentialHandoff(id) || ["handing_off", "adopting"].includes(this.authorityFor(account)?.status(account)?.phase ?? ""))) throw new RpcError("credential_handoff_fenced", "Credential ownership is changing; lease installation cannot overwrite an authority.");
+        if (input.adopt && !account) throw new RpcError("account_adopt_refused", "Adoption requires an existing same-id native account.");
+        if (input.enrol && (!account || account.source === "leased" && !account.leasedFrom?.enrolment)) throw new RpcError("account_lease_enrol_refused", "Enrolment requires an existing local access-only row or its own pending enrolment.", { reason: "native_account" });
+        if (input.enrol && account) this.assertEnrolmentQuiescent(account);
+        const adopted = account?.source === "local" && !input.enrol;
+        const previous = account?.leasedFrom;
+        const enrolment = previous?.enrolment ?? (input.enrol && account ? { id: randomUUID(), at: this.now(), liveRuntimeCoveragePending: this.store.beesOnAccount(id).filter(bee => { const runtime = this.store.currentRuntime(bee.id); return runtime !== null && runtime.state !== "stopped"; }).length } : undefined);
+        const viaNodeId = input.viaNodeId ?? previous?.viaNodeId;
+        const codec = this.leaseMaterialCodecs.get(input.harness);
+        if (!codec) throw new RpcError("lease_unsupported", "This harness has no lease material codec.");
+        if (enrolment && (input.files.length !== 1 || input.files[0]?.homeRelPath !== codec.primaryFile)) throw new RpcError("account_lease_enrol_refused", "Enrolled leases publish primary credential material only; profile files remain local.", { reason: "unknown_material" });
+        if (enrolment && input.files.some(file => { try { const document = JSON.parse(Buffer.from(file.contentB64, "base64").toString("utf8")); return hasRefreshGrant(document) || !codec.provesAccessOnly?.(document); } catch { return true; } })) throw new RpcError("account_lease_enrol_refused", "Enrolment requires recognised access-only incoming material.", { reason: "unknown_material" });
+        const origin = { shareId: input.shareId, authorityNodeId: input.authorityNodeId, epoch: input.epoch, ...(input.generation !== undefined ? { generation: input.generation } : {}), ...(input.generation !== undefined || enrolment ? { materialPublished: true } : {}), ...(viaNodeId !== undefined ? { viaNodeId } : {}), ...(enrolment ? { enrolment, installedFiles: previous?.installedFiles ?? [codec.primaryFile, ...Object.values(codec.mirrors)] } : {}), expiresAt: input.expiresAt, adoptedAt: adopted ? this.now() : previous?.adoptedAt ?? null, revokedAt: null };
+        if (account && account.harness !== input.harness) throw new RpcError("harness_mismatch", "Lease harness differs from the existing account.");
+        if (account?.source === "leased" && (account.leasedFrom?.shareId !== input.shareId || account.leasedFrom.epoch > input.epoch || account.leasedFrom.epoch === input.epoch && (account.leasedFrom.authorityNodeId !== input.authorityNodeId || account.leasedFrom.expiresAt !== null && (input.expiresAt === null || input.expiresAt < account.leasedFrom.expiresAt)))) throw new RpcError("account_lease_conflict", "Lease origin conflicts with the installed lease.");
+        if (account?.source === "leased" && input.generation !== undefined && account.leasedFrom?.generation !== undefined && account.leasedFrom.epoch === input.epoch && input.generation < account.leasedFrom.generation) throw new RpcError("account_lease_conflict", "Lease credential generation regressed.");
+        if (adopted) {
+          if (!input.adopt) throw new RpcError("account_adopt_refused", "An isolated lease cannot overwrite a native account.");
+          const foreign = this.foreignHomeRefusal(account!, "moves credentials out of");
+          if (foreign) throw new RpcError("account_adopt_refused", foreign);
+          this.assertAdoptable(account!, explicit);
         }
-        if (state.status === "unreadable") throw new RpcError("lease_unavailable", "Account Keychain is unreadable; unlock it before installing a lease.");
-        if (adopted && !explicit && target.status !== "auth_needed" && state.status === "present" && this.validPrimaryCredential(target.harness, codec.primaryFile, state.raw)) throw new RpcError("account_adopt_refused", "The native account has a Keychain credential; it cannot be adopted.");
-        const unchanged = target.source === "leased" && JSON.stringify(target.leasedFrom) === JSON.stringify(origin)
-          && input.files.every(file => {
+        if (!account && this.credentialed({ id, harness: input.harness, homePath: this.defaultHomeOf(id) })) throw new RpcError("account_lease_conflict", "The isolated lease home already contains unregistered credentials; preserve them and resolve ownership before installing.");
+        if (!account) account = this.store.createAccount({ id, harness: input.harness, label: input.label, homePath: this.defaultHomeOf(id), status: "auth_needed" });
+        const target = account;
+        const initialLease = target.source === "local" && !adopted && !input.enrol;
+        let backupPath: string | null = null;
+        let backupAt: number | null = null;
+        let replacedWorkingLogin = false;
+        const write = async () => {
+          codec.keychain?.assertHome(target.homePath);
+          const state = codec.keychain ? await codec.keychain.read(target.homePath) : { status: "unavailable" } as const;
+          if (initialLease && state.status === "present") throw new RpcError("account_lease_conflict", "The isolated lease home already has an unregistered Keychain item; preserve it and resolve ownership before installing.");
+          if (adopted) this.assertAdoptable(this.store.getAccount(id)!, explicit);
+          if (input.enrol || enrolment && previous?.materialPublished !== true) {
+            const current = this.store.getAccount(id)!;
+            if (current.homePath !== target.homePath || current.harness !== target.harness || current.source !== target.source) throw new RpcError("account_lease_conflict", "Account storage changed while enrolment waited.");
+            this.assertEnrolmentQuiescent(current);
+            this.assertEnrolmentMaterial(current, codec, state);
+          }
+          if (state.status === "unreadable") throw new RpcError("lease_unavailable", "Account Keychain is unreadable; unlock it before installing a lease.");
+          if (adopted && !explicit && target.status !== "auth_needed" && state.status === "present" && this.validPrimaryCredential(target.harness, codec.primaryFile, state.raw)) throw new RpcError("account_adopt_refused", "The native account has a Keychain credential; it cannot be adopted.");
+          const unchanged = target.source === "leased" && JSON.stringify(target.leasedFrom) === JSON.stringify(origin)
+            && input.files.every(file => {
+              const raw = JSON.stringify(JSON.parse(Buffer.from(file.contentB64, "base64").toString("utf8")));
+              return readIfFile(this.leaseFilePath(target.homePath, file.homeRelPath)) === raw
+                && readIfFile(this.leaseFilePath(this.vaultDirOf(target), file.homeRelPath)) === raw;
+            })
+            && (!codec.keychain || state.status === "unavailable" || state.status === "present" && codec.keychain.matchesMaterial(state.raw, readIfFile(this.leaseFilePath(this.vaultDirOf(target), codec.primaryFile))!));
+          if (unchanged) {
+            this.store.transact(() => {
+              if (input.generation === undefined) this.store.releaseAuthDeathRecoveryToLegacy(id);
+              onInstalled(this.store.getAccount(id)!);
+            });
+            return { account: this.store.getAccount(id)!, ...(enrolment ? { enrolment } : {}), adopted: false, backupPath: null, backupAt: null, replacedWorkingLogin: false, keychainPublished: state.status === "present" };
+          }
+          for (const rel of this.credentialPaths(target)) {
+            this.leaseFilePath(target.homePath, rel);
+            this.leaseFilePath(this.vaultDirOf(target), rel);
+          }
+          if (adopted) {
+            const current = this.store.getAccount(id)!;
+            replacedWorkingLogin = explicit && current.status !== "auth_needed" && (this.credentialHealthOf(current) !== "absent" || state.status === "present" && this.validPrimaryCredential(current.harness, codec.primaryFile, state.raw));
+            if (replacedWorkingLogin) {
+              const native = [account.homePath, this.vaultDirOf(account)].some(root => {
+                const raw = readIfFile(this.leaseFilePath(root, codec.primaryFile));
+                return raw !== null && this.nativeMaterialKind(account.harness, raw) === "native";
+              }) || state.status === "present" && this.nativeMaterialKind(account.harness, state.raw) === "native";
+              if (!native) throw new RpcError("account_adopt_refused", "A working login requires a genuine native backup before explicit replacement; access-only or unknown material cannot be backed up.");
+            }
+            backupPath = this.backupNativeMaterial(target, state);
+            backupAt = backupPath === null ? null : this.latestNativeBackup(target)!.at;
+          }
+          if (enrolment && !previous?.enrolment) {
+            enrolment.at = this.now();
+            enrolment.liveRuntimeCoveragePending = this.store.beesOnAccount(id).filter(bee => { const runtime = this.store.currentRuntime(bee.id); return runtime !== null && runtime.state !== "stopped"; }).length;
+          }
+          this.store.setAccountLease(id, input.generation === undefined && !enrolment ? origin : { ...origin, materialPublished: false });
+          if (!input.enrol || this.homeCredentialState(target) !== "usable") this.store.setAccountStatus(id, "auth_needed", "Lease installation in progress");
+          let keychainPublished = false;
+          for (const file of input.files) {
             const raw = JSON.stringify(JSON.parse(Buffer.from(file.contentB64, "base64").toString("utf8")));
-            return readIfFile(this.leaseFilePath(target.homePath, file.homeRelPath)) === raw
-              && readIfFile(this.leaseFilePath(this.vaultDirOf(target), file.homeRelPath)) === raw;
-          })
-          && (!codec.keychain || state.status === "unavailable" || state.status === "present" && codec.keychain.matchesMaterial(state.raw, readIfFile(this.leaseFilePath(this.vaultDirOf(target), codec.primaryFile))!));
-        if (unchanged) {
+            if (codec.keychain && file.homeRelPath === codec.primaryFile) {
+              keychainPublished = await codec.keychain.publish(target, raw, state);
+            } else {
+              for (const root of [this.vaultDirOf(target), target.homePath]) {
+                const path = this.leaseFilePath(root, file.homeRelPath);
+                mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+                atomicWriteFileSync(path, raw, 0o600);
+              }
+            }
+          }
+          for (const [canonical, mirror] of Object.entries(codec.mirrors)) {
+            const raw = readFileSync(this.leaseFilePath(target.homePath, canonical), "utf8");
+            const path = this.leaseFilePath(target.homePath, mirror);
+            mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+            atomicWriteFileSync(path, raw, 0o600);
+          }
+          if (enrolment) for (const rel of origin.installedFiles!) for (const root of [target.homePath, this.vaultDirOf(target)]) for (const copy of this.leaseCopyPaths(root, rel).slice(1)) rmSync(this.leaseFilePath(root, copy), { force: true });
           this.store.transact(() => {
+            if (input.generation !== undefined || enrolment) this.store.setAccountLease(id, origin);
             if (input.generation === undefined) this.store.releaseAuthDeathRecoveryToLegacy(id);
             onInstalled(this.store.getAccount(id)!);
           });
-          return { account: this.store.getAccount(id)!, ...(enrolment ? { enrolment } : {}), adopted: false, backupPath: null, backupAt: null, replacedWorkingLogin: false, keychainPublished: state.status === "present" };
-        }
-        for (const rel of this.credentialPaths(target)) {
-          this.leaseFilePath(target.homePath, rel);
-          this.leaseFilePath(this.vaultDirOf(target), rel);
-        }
-        if (adopted) {
-          const current = this.store.getAccount(id)!;
-          replacedWorkingLogin = explicit && current.status !== "auth_needed" && (this.credentialHealthOf(current) !== "absent" || state.status === "present" && this.validPrimaryCredential(current.harness, codec.primaryFile, state.raw));
-          if (replacedWorkingLogin) {
-            const native = [account.homePath, this.vaultDirOf(account)].some(root => {
-              const raw = readIfFile(this.leaseFilePath(root, codec.primaryFile));
-              return raw !== null && this.nativeMaterialKind(account.harness, raw) === "native";
-            }) || state.status === "present" && this.nativeMaterialKind(account.harness, state.raw) === "native";
-            if (!native) throw new RpcError("account_adopt_refused", "A working login requires a genuine native backup before explicit replacement; access-only or unknown material cannot be backed up.");
-          }
-          backupPath = this.backupNativeMaterial(target, state);
-          backupAt = backupPath === null ? null : this.latestNativeBackup(target)!.at;
-        }
-        if (enrolment && !previous?.enrolment) {
-          enrolment.at = this.now();
-          enrolment.liveRuntimeCoveragePending = this.store.beesOnAccount(id).filter(bee => { const runtime = this.store.currentRuntime(bee.id); return runtime !== null && runtime.state !== "stopped"; }).length;
-        }
-        this.store.setAccountLease(id, input.generation === undefined && !enrolment ? origin : { ...origin, materialPublished: false });
-        if (!input.enrol || this.homeCredentialState(target) !== "usable") this.store.setAccountStatus(id, "auth_needed", "Lease installation in progress");
-        let keychainPublished = false;
-        for (const file of input.files) {
-          const raw = JSON.stringify(JSON.parse(Buffer.from(file.contentB64, "base64").toString("utf8")));
-          if (codec.keychain && file.homeRelPath === codec.primaryFile) {
-            keychainPublished = await codec.keychain.publish(target, raw, state);
-          } else {
-            for (const root of [this.vaultDirOf(target), target.homePath]) {
-              const path = this.leaseFilePath(root, file.homeRelPath);
-              mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-              atomicWriteFileSync(path, raw, 0o600);
-            }
-          }
-        }
-        for (const [canonical, mirror] of Object.entries(codec.mirrors)) {
-          const raw = readFileSync(this.leaseFilePath(target.homePath, canonical), "utf8");
-          const path = this.leaseFilePath(target.homePath, mirror);
-          mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-          atomicWriteFileSync(path, raw, 0o600);
-        }
-        if (enrolment) for (const rel of origin.installedFiles!) for (const root of [target.homePath, this.vaultDirOf(target)]) for (const copy of this.leaseCopyPaths(root, rel).slice(1)) rmSync(this.leaseFilePath(root, copy), { force: true });
-        this.store.transact(() => {
-          if (input.generation !== undefined || enrolment) this.store.setAccountLease(id, origin);
-          if (input.generation === undefined) this.store.releaseAuthDeathRecoveryToLegacy(id);
-          onInstalled(this.store.getAccount(id)!);
-        });
-        return { account: this.store.getAccount(id)!, ...(enrolment ? { enrolment } : {}), adopted, backupPath, backupAt, replacedWorkingLogin, keychainPublished };
-      };
-      codec.keychain?.assertHome(target.homePath);
-      return codec.keychain ? codec.keychain.withLock(target.homePath, write) : write();
+          return { account: this.store.getAccount(id)!, ...(enrolment ? { enrolment } : {}), adopted, backupPath, backupAt, replacedWorkingLogin, keychainPublished };
+        };
+        codec.keychain?.assertHome(target.homePath);
+        return codec.keychain ? codec.keychain.withLock(target.homePath, write) : write();
+
+      });
     });
   }
 
