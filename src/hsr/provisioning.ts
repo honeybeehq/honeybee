@@ -17,7 +17,7 @@ import { closeSync, constants as fsConstants, existsSync, fsyncSync, lstatSync, 
 import { mkdir, readdir } from "node:fs/promises";
 import { devNull } from "node:os";
 import { join, resolve, sep } from "node:path";
-import { hsrLiveness } from "./observe.js";
+import { hsrLivenessStrict } from "./observe.js";
 import { listRemoteHsrLaunchReceiptsStrict } from "./remoteLaunchReceipt.js";
 import { hostGitEnv, untrustedCheckoutGitEnv } from "../hostGit.js";
 import { worktreesRoot } from "./runDir.js";
@@ -160,12 +160,14 @@ async function ownCheckoutConfig(path: string, repo: string): Promise<{ ok: true
 }
 
 async function attachedBee(path: string): Promise<string | null> {
-  const [receipts, liveness] = await Promise.all([listRemoteHsrLaunchReceiptsStrict(), hsrLiveness()]);
   const root = resolve(path);
-  for (const receipt of receipts) {
-    if (!liveness.get(receipt.bee)) continue;
+  const inside = (await listRemoteHsrLaunchReceiptsStrict()).filter((receipt) => {
     const cwd = resolve(receipt.cwd);
-    if (cwd === root || cwd.startsWith(`${root}${sep}`)) return receipt.bee;
+    return cwd === root || cwd.startsWith(`${root}${sep}`);
+  });
+  const liveness = await hsrLivenessStrict(inside.map((receipt) => receipt.bee));
+  for (const receipt of inside) {
+    if (liveness.get(receipt.bee) !== false) return receipt.bee;
   }
   return null;
 }
