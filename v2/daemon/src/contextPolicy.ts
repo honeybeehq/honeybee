@@ -247,7 +247,7 @@ export function roleOfTags(tags: readonly string[]): ContextRole | null {
   return tag ? (tag.slice(ROLE_TAG_PREFIX.length) as ContextRole) : null;
 }
 
-export function contextPolicyFacts(policy: ContextPolicy): ContextPolicyFacts {
+export function contextPolicyFacts(policy: ContextPolicy, launch: ClaudeLaunchFacts = NO_LAUNCH_FACTS): ContextPolicyFacts {
   const windowTokens = policy.window ? CONTEXT_WINDOW_TOKENS[policy.window] : null;
   const autoCompactWindow = policy.window === "200k"
     ? Math.min(policy.autoCompactWindow ?? CONTEXT_WINDOW_TOKENS["200k"], CONTEXT_WINDOW_TOKENS["200k"])
@@ -255,7 +255,8 @@ export function contextPolicyFacts(policy: ContextPolicy): ContextPolicyFacts {
   const autoCompactPercent = policy.autoCompactPercent ?? null;
   let thresholdTokens: number | null = null;
   if (autoCompactWindow !== null) {
-    const effective = (windowTokens === null ? autoCompactWindow : Math.min(autoCompactWindow, windowTokens)) - CLAUDE_AUTO_COMPACT_OUTPUT_RESERVE;
+    const reserve = Math.min(launch.maxOutputTokens ?? CLAUDE_AUTO_COMPACT_OUTPUT_RESERVE, CLAUDE_AUTO_COMPACT_OUTPUT_RESERVE);
+    const effective = (windowTokens === null ? autoCompactWindow : Math.min(autoCompactWindow, windowTokens)) - reserve;
     const buffered = effective - CLAUDE_AUTO_COMPACT_SUMMARY_BUFFER;
     thresholdTokens = autoCompactPercent === null ? buffered : Math.min(Math.floor(effective * (autoCompactPercent / 100)), buffered);
   }

@@ -74,7 +74,7 @@ const GROUPS: Group[] = [
       ["reconnect-tools", "<bee> [--command-id id]", "reconnect native tools in the same session; read durable status"],
       ["interrupt", "<bee>", "stop the current TURN, keep the runtime (idle = no-op)"],
       ["rename", "<bee> <new-name>", "rename (names are labels; the id is the identity)"],
-      ["tag", "<bee> [--add t]...", "edit tags (apiary:workspace=… moves a bee between workspaces)"],
+      ["tag", "<bee> [--add t]...", "edit tags (apiary:* tags are Apiary's: refused from inside a bee)"],
       ["bee", "set-args <bee> -- <args…>", "per-bee harness args; applies on the NEXT runtime"],
       ["bee", "args <bee>", "show layered args"],
       ["set-model", "<bee> <model> [--apply]", "next-runtime args; --apply requests an atomic idle restart"],

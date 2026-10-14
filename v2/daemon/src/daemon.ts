@@ -216,6 +216,7 @@ import {
   isContextRole,
   roleContextPolicy,
   roleOfTags,
+  ROLE_TAG_PREFIX,
   sameContextPolicy,
   storedContextPolicy,
   validWorkspaceId,
@@ -436,6 +437,10 @@ function grammarFor(adapterName: string): ArgGrammar {
  * the thread request (the app-server ignores TUI flags); `-c k=v` stays.
  */
 const APIARY_TAG_PREFIX = "apiary:";
+
+function withoutRoleTags(tags: readonly string[]): string[] {
+  return tags.filter((tag) => !tag.startsWith(ROLE_TAG_PREFIX));
+}
 
 export function composeSpawn(
   spec: AgentSpecConfig,
@@ -1373,21 +1378,7 @@ export class HiveDaemon {
     // v7 (spec 08): a bound bee runs in its account's home. The env is derived
     // from the account row. The tracked pre-claim readiness gate has already
     // activated the home and reconciled its native MCP config.
-    let accountEnv: Record<string, string> = {};
-    let beeEnv = bee.env;
-    if (bee.account && this.accounts) {
-      const account = store.getAccount(bee.account);
-      if (!account) throw new Error(`resolve: bee ${beeId} is bound to unknown account ${bee.account}`);
-      accountEnv = { ...this.accounts.homeEnvOf(account), ...this.accounts.credentialEnvOf(account) };
-      beeEnv = this.accounts.nativeBeeEnv(account, bee.env);
-    }
-    const env = {
-      ...(process.env as Record<string, string>),
-      ...(spec.env ?? {}),
-      ...beeEnv,
-      ...accountEnv,
-      ...beeIdentityEnv(bee, this.cfg.dataDir),
-    };
+    const env = this.runtimeEnvOf(bee, spec, "resolve");
     // Absence is authoritative too: a root must not inherit a configured parent.
     if (!bee.parentId) delete env.HIVE_PARENT;
     if (adapterName === "claude") {
@@ -1474,21 +1465,7 @@ export class HiveDaemon {
     if (!bee) throw new Error(`resolveTmux: bee ${beeId} not found`);
     const spec = this.cfg.agents[bee.agent];
     if (!spec) throw new Error(`resolveTmux: no agent spec for '${bee.agent}'`);
-    let accountEnv: Record<string, string> = {};
-    let beeEnv = bee.env;
-    if (bee.account && this.accounts) {
-      const account = store.getAccount(bee.account);
-      if (!account) throw new Error(`resolveTmux: bee ${beeId} is bound to unknown account ${bee.account}`);
-      accountEnv = { ...this.accounts.homeEnvOf(account), ...this.accounts.credentialEnvOf(account) };
-      beeEnv = this.accounts.nativeBeeEnv(account, bee.env);
-    }
-    const env = {
-      ...(process.env as Record<string, string>),
-      ...(spec.env ?? {}),
-      ...beeEnv,
-      ...accountEnv,
-      ...beeIdentityEnv(bee, this.cfg.dataDir),
-    };
+    const env = this.runtimeEnvOf(bee, spec, "resolveTmux");
     // Absence is authoritative too: a root must not inherit a configured parent.
     if (!bee.parentId) delete env.HIVE_PARENT;
     let beeArgs = bee.args;
@@ -4395,6 +4372,24 @@ export class HiveDaemon {
     return { naming: publicNamingConfig(this.naming), configPath: this.cfg.configPath };
   }
 
+  private runtimeEnvOf(bee: BeeRow, spec: AgentSpecConfig, label: string): Record<string, string> {
+    let accountEnv: Record<string, string> = {};
+    let beeEnv = bee.env;
+    if (bee.account && this.accounts) {
+      const account = this.mustStore().getAccount(bee.account);
+      if (!account) throw new Error(`${label}: bee ${bee.id} is bound to unknown account ${bee.account}`);
+      accountEnv = { ...this.accounts.homeEnvOf(account), ...this.accounts.credentialEnvOf(account) };
+      beeEnv = this.accounts.nativeBeeEnv(account, bee.env);
+    }
+    return {
+      ...(process.env as Record<string, string>),
+      ...(spec.env ?? {}),
+      ...beeEnv,
+      ...accountEnv,
+      ...beeIdentityEnv(bee, this.cfg.dataDir),
+    };
+  }
+
   private claudeContextLaunchFor(bee: BeeRow, args: readonly string[], env: Record<string, string>): ClaudeContextLaunch {
     return claudeContextLaunch(effectiveContextPolicy(this.contextPolicy, workspaceOfTags(bee.tags), roleOfTags(bee.tags), claudeLaunchFacts(env)), args, env, bee.env);
   }
@@ -4421,13 +4416,11 @@ export class HiveDaemon {
     const spec = bee ? this.cfg.agents[bee.agent] : undefined;
     let launchEnv: Record<string, string> | null = null;
     if (bee && harness === "claude" && spec) {
-      const account = bee.account ? this.mustStore().getAccount(bee.account) : null;
-      launchEnv = {
-        ...(process.env as Record<string, string>),
-        ...(spec.env ?? {}),
-        ...(bee.env ?? {}),
-        ...(account && this.accounts ? this.accounts.homeEnvOf(account) : {}),
-      };
+      try {
+        launchEnv = this.runtimeEnvOf(bee, spec, "contextPolicy.get");
+      } catch {
+        launchEnv = null;
+      }
     }
     const launch = launchEnv ? claudeLaunchFacts(launchEnv) : NO_LAUNCH_FACTS;
     const effective = effectiveContextPolicy(this.contextPolicy, workspace, role, launch);
@@ -4440,7 +4433,7 @@ export class HiveDaemon {
       rolePolicy: role === null ? null : roleContextPolicy(this.contextPolicy, role, launch),
       rolePolicyBuiltin: role !== null && storedRole === null,
       effective,
-      facts: contextPolicyFacts(effective),
+      facts: contextPolicyFacts(effective, launch),
       configPath: this.cfg.configPath,
     };
     if (bee && harness !== null) {
@@ -4675,7 +4668,7 @@ export class HiveDaemon {
       const admitted = store.admitThreadOperation({ id, kind, sourceBeeId, sourceProviderSessionId, successorBeeId, successorProviderSessionId,
         idempotencyKey: key, requestHash, instruction, source: boundary, historyPath: join(directory, "history.jsonl"), sessionPath: join(directory, "successor.jsonl") }, {
         id: successorBeeId, name: name ?? `${source.name}-${kind}-${id.slice(0, 8)}`, agent: source.agent, substrate: source.substrate,
-        cwd: source.cwd, title: source.title ?? undefined, tags: [...source.tags], env: { ...source.env }, args: source.args,
+        cwd: source.cwd, title: source.title ?? undefined, tags: withoutRoleTags(source.tags), env: { ...source.env }, args: source.args,
         account: claimedAccount?.id ?? source.account,
         parentId: source.id, forkedFrom: source.id, sessionLogPath: this.canonicalSessionLogPath(successorBeeId),
       });
@@ -4760,7 +4753,7 @@ export class HiveDaemon {
       substrate: source.substrate,
       cwd: source.cwd,
       title: source.title ?? undefined,
-      tags: [...source.tags],
+      tags: withoutRoleTags(source.tags),
       sessionLogPath: driver ? driver.sessionLogPath(id) : undefined,
       env: { ...source.env },
       args: source.args,

@@ -219,6 +219,8 @@ test("champion role: built-in default compacts at 650k on a 1M window; workspace
   assert.equal(roleOfTags(["apiary:role=chief", "apiary:champion=kal"]), null);
   assert.deepEqual(builtinRoleContextPolicy("champion"), { autoCompactWindow: 683_000 });
   assert.deepEqual(builtinRoleContextPolicy("champion", { homeAutoCompactWindow: null, envAutoCompactWindow: null, maxOutputTokens: 8_000 }), { autoCompactWindow: 671_000 }, "a smaller output reserve keeps the threshold at 650k");
+  assert.equal(contextPolicyFacts({ autoCompactWindow: 671_000 }, { homeAutoCompactWindow: null, envAutoCompactWindow: null, maxOutputTokens: 8_000 }).thresholdTokens, 650_000, "facts use the same reserve Claude does");
+  assert.equal(contextPolicyFacts({ autoCompactWindow: 683_000 }, { homeAutoCompactWindow: null, envAutoCompactWindow: null, maxOutputTokens: 64_000 }).thresholdTokens, 650_000);
   const none = contextPolicyConfigOf({});
   assert.deepEqual(effectiveContextPolicy(none, "w1", "champion"), { autoCompactWindow: 683_000 });
   assert.equal(contextPolicyFacts(effectiveContextPolicy(none, "w1", "champion")).thresholdTokens, 650_000);
