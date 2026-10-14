@@ -454,6 +454,7 @@ export class HsrDriver implements RuntimeDriver {
   // -------------------------------------------------------------------------
 
   start(beeId: string, generation: number): void {
+    if (this.detached) return;
     const existing = this.procs.get(beeId);
     if (existing) {
       if (existing.stopCause != null || this.pendingStarts.has(beeId)) {
@@ -1308,6 +1309,7 @@ export class HsrDriver implements RuntimeDriver {
    */
   detachAll(): void {
     this.detached = true;
+    this.pendingStarts.clear();
     for (const p of this.procs.values()) {
       if (p.killTimer) {
         clearTimeout(p.killTimer);

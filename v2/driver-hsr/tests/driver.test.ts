@@ -372,6 +372,27 @@ test("revive while the old process is dying: start defers, spawns after the deat
   }
 });
 
+test("detach cancels deferred starts without signaling the surviving runtime", async () => {
+  const rig = makeRig({ stopKillGraceMs: 200 });
+  try {
+    rig.agentEnv.set("detached", { STUB_IGNORE_SIGTERM: "1" });
+    rig.driver.start("detached", 1);
+    await drainUntil(rig.driver, events => ofKind(events, "booted").length > 0);
+    const pid = rig.driver.procOf("detached", 1)!.pid;
+    rig.driver.stop("detached", 1, "stopped_by_system");
+    rig.driver.start("detached", 2);
+    rig.driver.detachAll();
+    assert.ok(pidAlive(pid));
+    rig.driver.start("after-detach", 1);
+    assert.equal(rig.driver.hasProcess("after-detach", 1), false);
+    process.kill(-pid, "SIGKILL");
+    await drainUntil(rig.driver, events => ofKind(events, "exited").length > 0);
+    assert.equal(rig.driver.hasProcess("detached", 2), false);
+  } finally {
+    rig.cleanup();
+  }
+});
+
 test("observe() and observeEvidence() never block and drain exactly once", async () => {
   const rig = makeRig();
   try {

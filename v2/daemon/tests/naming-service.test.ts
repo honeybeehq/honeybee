@@ -8,6 +8,7 @@ import type { ResolvedNamingConfig } from "../src/config.ts";
 import type { RecordNamingUsageInput } from "../../core/src/index.ts";
 import { openAiNamingRates, TitleGeneratorService } from "../src/namingService.ts";
 import { HemSecretResolver, type HemGetOutput } from "../src/hemSecret.ts";
+import { waitFor } from "./helpers.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FAKE_CODEX = join(HERE, "fixtures", "fake-naming-codex.mjs");
@@ -23,6 +24,31 @@ function config(overrides: Partial<ResolvedNamingConfig> = {}): ResolvedNamingCo
     ...overrides,
   };
 }
+
+test("naming shutdown never retries or restarts an in-flight generation", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "hb-naming-stop-"));
+  const log = join(dir, "calls.jsonl");
+  const beforeLog = process.env.FAKE_NAMING_CODEX_LOG;
+  const beforeHold = process.env.FAKE_NAMING_CODEX_HOLD_TURN;
+  process.env.FAKE_NAMING_CODEX_LOG = log;
+  process.env.FAKE_NAMING_CODEX_HOLD_TURN = "1";
+  const service = new TitleGeneratorService({ codexCommand: process.execPath, codexArgs: [FAKE_CODEX] });
+  try {
+    const result = service.generate({ userMessages: ["Pending title"] }, config()).then(() => false, () => true);
+    await waitFor(() => existsSync(log) && readFileSync(log, "utf8").includes('"method":"turn/start"'), "held naming turn");
+    service.close();
+    assert.equal(await result, true);
+    await new Promise(resolve => setTimeout(resolve, 100));
+    const calls = readFileSync(log, "utf8").trim().split("\n").map(line => JSON.parse(line));
+    assert.equal(calls.filter(call => call.method === "initialize").length, 1);
+    await assert.rejects(service.generate({ userMessages: ["After close"] }, config()), /closed/);
+  } finally {
+    service.close();
+    if (beforeLog === undefined) delete process.env.FAKE_NAMING_CODEX_LOG; else process.env.FAKE_NAMING_CODEX_LOG = beforeLog;
+    if (beforeHold === undefined) delete process.env.FAKE_NAMING_CODEX_HOLD_TURN; else process.env.FAKE_NAMING_CODEX_HOLD_TURN = beforeHold;
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 
 test("naming telemetry uses GPT-6 Astra standard nano-USD rates", () => {
   assert.deepEqual(openAiNamingRates("gpt-6-astra"), {

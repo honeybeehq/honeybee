@@ -43,8 +43,21 @@ export async function runDaemon(argv: string[]): Promise<number> {
   await daemon.start();
   process.stdout.write(`hived v2 listening on ${cfg.socketPath} (store ${cfg.storePath})\n`);
   await new Promise<void>((resolve) => {
+    let stopping = false;
     const onSignal = (): void => {
-      void daemon.shutdown({ preserveRuntimes: !reapTestRuntimes }).then(resolve);
+      if (stopping) return;
+      stopping = true;
+      void daemon.shutdown({ preserveRuntimes: !reapTestRuntimes }).then(() => {
+        setTimeout(() => {
+          const resources = process.getActiveResourcesInfo().reduce<Record<string, number>>((counts, name) => {
+            counts[name] = (counts[name] ?? 0) + 1;
+            return counts;
+          }, {});
+          process.stderr.write(`hived shutdown exit backstop pid=${process.pid} resources=${JSON.stringify(resources)}\n`);
+          process.exit(0);
+        }, 1000).unref();
+        resolve();
+      });
     };
     process.once("SIGTERM", onSignal);
     process.once("SIGINT", onSignal);

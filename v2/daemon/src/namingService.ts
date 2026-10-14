@@ -192,6 +192,10 @@ export class CodexNamingAppServer {
     this.reset(new Error("Codex naming app-server closed"));
   }
 
+  reopen(): void {
+    this.closing = false;
+  }
+
   private async generateOnce(prompt: string, config: ResolvedNamingConfig): Promise<string> {
     // A process can disappear between the writability check and a request (for
     // example while Codex is updating). Title generation is side-effect free,
@@ -227,16 +231,16 @@ export class CodexNamingAppServer {
       } catch (error) {
         const failure = error instanceof Error ? error : new Error(String(error));
         this.reset(failure);
-        if (attempt === 1) throw failure;
+        if (this.closing || attempt === 1) throw failure;
       }
     }
     throw new Error("Codex naming app-server retry exhausted");
   }
 
   private ensureStarted(): Promise<void> {
+    if (this.closing) return Promise.reject(new Error("Codex naming app-server closed"));
     if (this.starting) return this.starting;
     if (this.child) return Promise.resolve();
-    this.closing = false;
     this.starting = this.startProcess()
       .catch((error) => {
         const failure = error instanceof Error ? error : new Error(String(error));
@@ -415,6 +419,7 @@ export class CodexNamingAppServer {
 }
 
 export class TitleGeneratorService {
+  private closed = false;
   private readonly codex: CodexNamingAppServer;
   private readonly fetchImpl: typeof globalThis.fetch;
   private readonly timeoutMs: number;
@@ -434,6 +439,7 @@ export class TitleGeneratorService {
   }
 
   warm(config: ResolvedNamingConfig): void {
+    if (this.closed) return;
     if (!config.auto || config.command || config.backend !== "codex-app-server") return;
     void this.codex.warm().catch((error) => {
       this.log(`autoTitle.generator warm.error=${JSON.stringify(error instanceof Error ? error.message : String(error))}`);
@@ -441,12 +447,17 @@ export class TitleGeneratorService {
   }
 
   reconfigure(config: ResolvedNamingConfig): void {
+    if (this.closed) return;
     this.hemSecrets.forget();
-    if (config.auto && !config.command && config.backend === "codex-app-server") this.warm(config);
+    if (config.auto && !config.command && config.backend === "codex-app-server") {
+      this.codex.reopen();
+      this.warm(config);
+    }
     else this.codex.close();
   }
 
   async generate(context: TitleContext, config: ResolvedNamingConfig): Promise<string> {
+    if (this.closed) throw new Error("Title generator closed");
     const startedAt = this.now();
     let api: OpenAiRunResult | null = null;
     let status: RecordNamingUsageInput["status"] = "failed";
@@ -492,6 +503,7 @@ export class TitleGeneratorService {
   }
 
   close(): void {
+    this.closed = true;
     this.codex.close();
   }
 

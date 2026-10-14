@@ -139,6 +139,20 @@ export class CellRetentionService {
   private lastPassAt: number | null = null;
   private passInFlight: Promise<CellGcResult> | null = null;
   private sweepInFlight: Promise<void> | null = null;
+  private stopping = false;
+  private readonly workers = new Set<Worker>();
+
+  async stop(): Promise<void> {
+    this.stopping = true;
+    await Promise.allSettled([...this.workers].map(worker => {
+      worker.unref();
+      return worker.terminate();
+    }));
+  }
+
+  private assertRunning(): void {
+    if (this.stopping) throw new Error("Cell retention stopped");
+  }
 
   constructor(deps: CellRetentionDeps) {
     this.deps = deps;
@@ -152,7 +166,7 @@ export class CellRetentionService {
   /** Called every daemon tick; starts at most one automatic pass per interval. */
   tick(): void {
     const policy = this.deps.policy;
-    if (!policy.enabled || this.passInFlight) return;
+    if (this.stopping || !policy.enabled || this.passInFlight) return;
     const now = this.deps.now();
     const due = this.lastPassAt == null
       ? now - this.bootedAt >= (this.deps.initialDelayMs ?? DEFAULT_INITIAL_DELAY_MS)
@@ -166,6 +180,7 @@ export class CellRetentionService {
 
   /** Delete parked wrappers off the event loop; single-flight, re-armed when one is already running. */
   sweep(): Promise<void> {
+    if (this.stopping) return Promise.resolve();
     if (this.sweepInFlight) return this.sweepInFlight;
     this.sweepInFlight = sweepEvicting(this.deps.cellsRoot)
       .then(({ removed, failed }) => {
@@ -182,6 +197,7 @@ export class CellRetentionService {
 
   /** Plan (and with `dryRun: false` apply) one pass. Concurrent callers share the in-flight pass. */
   run(opts: { dryRun: boolean; measure: boolean }): Promise<CellGcResult> {
+    if (this.stopping) return Promise.reject(new Error("Cell retention stopped"));
     if (this.passInFlight) return this.passInFlight;
     this.passInFlight = this.pass(opts).finally(() => {
       this.passInFlight = null;
@@ -194,6 +210,7 @@ export class CellRetentionService {
     const candidates = this.gather();
     const inspectStarted = Date.now();
     const inspections = await this.inspect(candidates, opts.measure);
+    this.assertRunning();
     const inspectMs = Date.now() - inspectStarted;
     const plannedAt = this.deps.now();
     const items = this.decide(candidates, inspections, plannedAt);
@@ -224,6 +241,7 @@ export class CellRetentionService {
     );
     if (opts.dryRun) return result;
     result.outcomes = await this.apply(items);
+    this.assertRunning();
     result.trimOutcomes = await this.applyTrims(items);
     const evicted = result.outcomes.filter((o) => o.status === "evicted" || o.status === "removed");
     const trimmed = result.trimOutcomes.filter((o) => o.status === "trimmed");
@@ -276,8 +294,10 @@ export class CellRetentionService {
   }
 
   private runWorker<T>(request: RetentionWorkerRequest | TrimVerifyWorkerRequest): Promise<T> {
+    this.assertRunning();
     return new Promise((resolvePromise, reject) => {
       const worker = new Worker(this.deps.workerUrl ?? retentionWorkerUrl(), { execArgv: [], workerData: request });
+      this.workers.add(worker);
       let settled = false;
       worker.once("message", (message: T) => {
         settled = true;
@@ -289,6 +309,7 @@ export class CellRetentionService {
         reject(err);
       });
       worker.once("exit", (code) => {
+        this.workers.delete(worker);
         if (settled) return;
         settled = true;
         reject(new Error(`cell retention inspection worker exited with code ${code} without a result`));
@@ -329,6 +350,7 @@ export class CellRetentionService {
     this.applyByteBudget(items, policy.maxBytes);
     let planned = 0;
     for (const item of items) {
+      this.assertRunning();
       if (item.verdict !== "evict" && item.verdict !== "remove_retained") continue;
       planned += 1;
       if (planned > policy.maxPerPass) {
@@ -412,6 +434,7 @@ export class CellRetentionService {
   private async apply(items: CellGcItem[]): Promise<CellGcOutcome[]> {
     const outcomes: CellGcOutcome[] = [];
     for (const item of items) {
+      this.assertRunning();
       if (item.verdict !== "evict" && item.verdict !== "remove_retained") continue;
       outcomes.push(this.applyOne(item));
       await new Promise<void>((r) => setImmediate(r));
@@ -473,9 +496,11 @@ export class CellRetentionService {
       cells: planned.map((i, index) => ({ key: String(index), wrapperDir: i.wrapperDir, paths: i.trim.entries.map((e) => e.path), modifiedSinceMs: this.deps.now() - after })),
       trimPatterns: [...this.deps.policy.trimPatterns],
     } satisfies TrimVerifyWorkerRequest);
+    this.assertRunning();
     const byKey = new Map(verified.verified.map((v) => [v.key, v] as const));
     const outcomes: CellGcTrimOutcome[] = [];
     for (const [index, item] of planned.entries()) {
+      this.assertRunning();
       outcomes.push(this.trimOne(item, byKey.get(String(index)) ?? null));
       await new Promise<void>((r) => setImmediate(r));
     }

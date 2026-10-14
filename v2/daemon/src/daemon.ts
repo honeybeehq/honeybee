@@ -988,6 +988,7 @@ export class HiveDaemon {
       if (this.loopDelayTimer) clearInterval(this.loopDelayTimer);
       this.loopDelay?.disable();
       this.tickTimer = null;
+      await this.retention?.stop();
       this.titleGenerator?.close();
       this.titleGenerator = null;
       // v16: no login worker outlives the daemon (boot marks their flows interrupted).
@@ -1009,6 +1010,7 @@ export class HiveDaemon {
         this.driver?.detachAll();
       }
       this.log("daemon.stopped");
+      this.log(`daemon.stop_complete pid=${process.pid}`);
     } finally {
       this.performance.stop();
     }

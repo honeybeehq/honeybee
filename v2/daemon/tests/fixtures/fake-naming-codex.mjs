@@ -22,6 +22,7 @@ createInterface({ input: process.stdin }).on("line", (line) => {
     return;
   }
   if (message.method === "turn/start") {
+    if (process.env.FAKE_NAMING_CODEX_HOLD_TURN === "1") return;
     turn += 1;
     const threadId = message.params.threadId;
     const turnId = `title-turn-${turn}`;
