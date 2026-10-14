@@ -275,3 +275,28 @@ test("turn-trigger.answer: mail.delivered names the answered question through an
     h.cleanup();
   }
 });
+
+test("turn-trigger.automation-sender: mail.delivered reports automation for automation senders that named no senderKind, on delivery and on ack", () => {
+  const h = harness();
+  try {
+    const store = h.open();
+    const bee = idleBee(store);
+    const fed = store.send(bee.id, "Next task", { sender: "task-supply" }).message;
+    const typed = store.send(bee.id, "hello", { sender: "human:tormod" }).message;
+    store.markDelivered(fed.id, 1, { kind: "other", from: "task-supply" });
+    store.markDelivered(typed.id, 1, HUMAN);
+    const delivered = store.auditRows().filter((row) => row.kind === "mail.delivered");
+    assert.deepEqual(delivered.map((row) => row.payload.senderKind), ["automation", undefined]);
+    assert.equal(store.getMessage(fed.id)!.senderKind, undefined);
+
+    const { bee: inbox } = store.createBee({ name: "inbox-bee", agent: "inbox", substrate: "hsr", cwd: "" });
+    const note = store.send(inbox.id, "Weekly ceiling reached.", { sender: "hive" }).message;
+    store.ackMail(inbox.id, note.id);
+    const ackRow = store.auditRows().filter((row) => row.kind === "mail.delivered").at(-1)!;
+    assert.deepEqual([ackRow.payload.messageId, ackRow.payload.ack, ackRow.payload.senderKind], [note.id, true, "automation"]);
+    assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
+    store.close();
+  } finally {
+    h.cleanup();
+  }
+});

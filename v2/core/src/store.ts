@@ -182,6 +182,7 @@ import {
   TASK_SUPPLY_SENDER_NAME,
   TASK_TRANSITIONS,
 } from "./tasks.ts";
+import { deliveredSenderKind } from "./automation.ts";
 import { ACTIONS_TABLE_SQL, AUTH_INTERRUPTIONS_TABLE_SQL, ACCOUNT_ADMISSIONS_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_V27_COLUMNS, ACCOUNT_LIMITS_TABLE_SQL, ACCOUNTS_NATIVE_INDEX_SQL, BEES_ADDITIVE_COLUMNS, BEES_ACTIVE_MOVE_INDEX_SQL, BEES_ACTIVE_HANDOFF_INDEX_SQL, BEE_HANDOFFS_TABLE_SQL, TRANSCRIPT_SEGMENTS_TABLE_SQL, MAILBOX_PENDING_METADATA_INDEX_SQL, BEE_MOVES_TABLE_SQL, CELLS_TABLE_SQL, CELLS_V22_COLUMNS, CELL_OPS_TABLE_SQL, FLAGS_ADDITIVE_COLUMNS, FLAGS_EXPIRY_INDEX_SQL, HANDLE_INDEX_SQL, IDEMPOTENCY_INDEX_SQL, MAILBOX_ADDITIVE_COLUMNS, MAIL_HISTORY_INDEX_SQL, MAIL_HISTORY_PROJECTION_SQL, RUNTIMES_ADDITIVE_COLUMNS, SCHEMA_SQL, SCHEMA_VERSION } from "./schema.ts";
 import { beeMoveReviveKey, beeMoveStopKey, beeMoveTransitionLegal, toBeeMoveView } from "./cellMove.ts";
 import {
@@ -3832,13 +3833,14 @@ export class CoreStore {
         .run(at, generation, messageId);
       const turnTrigger = source ? this.applyDeliveryTurnTrigger(message.beeId, current, messageId, source, at) : null;
       const questionId = this.answeredQuestionId(messageId);
+      const senderKind = deliveredSenderKind(message);
       this.audit("mail.delivered", message.beeId, {
         messageId,
         deliveredAt: at,
         deliveredGeneration: generation,
         ...(turnTrigger ? { turnTrigger } : {}),
         ...(questionId !== null ? { questionId } : {}),
-        ...(message.senderKind !== undefined ? { senderKind: message.senderKind } : {}),
+        ...(senderKind !== undefined ? { senderKind } : {}),
       });
       // v24: an action instruction reached its runtime — delivery evidence only, never completion.
       this.applyActionDelivered(messageId, generation, at);
@@ -3869,7 +3871,7 @@ export class CoreStore {
       }
       const generation = this.currentRuntime(beeId)?.generation ?? 1;
       const rows = this.stmt(
-        "SELECT id, sender_kind FROM mailbox WHERE bee_id = ? AND delivered_at IS NULL AND id <= ? ORDER BY id",
+        "SELECT id, sender, sender_kind FROM mailbox WHERE bee_id = ? AND delivered_at IS NULL AND id <= ? ORDER BY id",
       ).all(beeId, throughId) as Row[];
       const at = this.now();
       const acked: number[] = [];
@@ -3877,13 +3879,14 @@ export class CoreStore {
         const messageId = Number(row.id);
         this.stmt("UPDATE mailbox SET delivered_at = ?, delivered_generation = ? WHERE id = ?").run(at, generation, messageId);
         const questionId = this.answeredQuestionId(messageId);
+        const senderKind = deliveredSenderKind({ sender: String(row.sender), ...(row.sender_kind != null ? { senderKind: row.sender_kind as SenderKind } : {}) });
         this.audit("mail.delivered", beeId, {
           messageId,
           deliveredAt: at,
           deliveredGeneration: generation,
           ack: true,
           ...(questionId !== null ? { questionId } : {}),
-          ...(row.sender_kind != null ? { senderKind: row.sender_kind as SenderKind } : {}),
+          ...(senderKind !== undefined ? { senderKind } : {}),
         });
         acked.push(messageId);
       }

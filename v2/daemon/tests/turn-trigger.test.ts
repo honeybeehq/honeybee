@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openCoreStore, replayAudit, type CoreStore } from "../../core/src/index.ts";
 import { DaemonCore } from "../src/loops.ts";
-import { ANSWER_INJECTION_MARKER, AUTOMATION_INJECTION_MARKER, turnTriggerSource } from "../src/envelope.ts";
+import { ANSWER_INJECTION_MARKER, AUTOMATION_INJECTION_MARKER, AUTOMATION_INTERRUPT_NOTICE, turnTriggerSource } from "../src/envelope.ts";
 import { FakeDriver } from "./helpers.ts";
 
 interface Rig {
@@ -188,6 +188,42 @@ test("turn-trigger.daemon.automation: an automated send is delivered with the au
     const typedDelivered = rig.store.auditRows().find((row) => row.kind === "mail.delivered" && row.payload.messageId === typed.id)!;
     assert.equal(typedDelivered.payload.senderKind, "human");
     assert.equal(rig.store.getBee("champion")!.lastTurnTrigger!.kind, "human");
+    assert.deepEqual(replayAudit(rig.store.auditRows()), rig.store.dumpState());
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("turn-trigger.daemon.automation-sender: task-supply mail is delivered with the automation marker, mail.delivered reports automation, and an interrupting automated send carries its notice", () => {
+  const rig = makeRig();
+  try {
+    spawnIdle(rig, "champion");
+    const fed = rig.store.send("champion", "Next task: shard 4", { sender: "task-supply", urgency: "idle" }).message;
+    runTurn(rig, "champion", fed.id);
+    const lines = rig.driver.deliveredBodies.at(-1)!.split("\n");
+    assert.equal(lines[0], AUTOMATION_INJECTION_MARKER);
+    const meta = JSON.parse(lines[1]!) as Record<string, unknown>;
+    assert.deepEqual([meta.kind, meta.senderKind, meta.from], ["automation", "automation", "task-supply"]);
+    const delivered = rig.store.auditRows().find((row) => row.kind === "mail.delivered" && row.payload.messageId === fed.id)!;
+    assert.equal(delivered.payload.senderKind, "automation");
+    assert.equal(rig.store.getBee("champion")!.lastTurnTrigger!.kind, "other");
+
+    const work = rig.store.send("champion", "long job", { sender: "operator" }).message;
+    rig.clock.now += 1000;
+    rig.core.step();
+    assert.equal(rig.driver.deliveredIds.at(-1), work.id);
+    rig.driver.events.push({ beeId: "champion", generation: 1, kind: "turn_started", synthetic: true, messageId: work.id });
+    rig.core.step();
+    const urgent = rig.store.send("champion", "Deploy window opens now.", { sender: "operator", senderKind: "automation", urgency: "now" }).message;
+    rig.core.step();
+    assert.notEqual(rig.driver.deliveredIds.at(-1), urgent.id);
+    rig.driver.events.push({ beeId: "champion", generation: 1, kind: "turn_ended" });
+    rig.core.step();
+    rig.core.step();
+    assert.equal(rig.driver.deliveredIds.at(-1), urgent.id);
+    const urgentLines = rig.driver.deliveredBodies.at(-1)!.split("\n");
+    assert.equal(urgentLines[0], AUTOMATION_INJECTION_MARKER);
+    assert.equal(urgentLines.slice(3).join("\n"), `${AUTOMATION_INTERRUPT_NOTICE}\n\nDeploy window opens now.`);
     assert.deepEqual(replayAudit(rig.store.auditRows()), rig.store.dumpState());
   } finally {
     rig.cleanup();

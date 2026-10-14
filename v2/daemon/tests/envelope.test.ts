@@ -6,7 +6,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ANSWER_INJECTION_MARKER, AUTOMATION_INJECTION_MARKER, BUZ_INJECTION_MARKER, DELIVERY_INTERRUPT_NOTICE, REMOTE_SENDER_RE, deliveryText, isPeerSender, urgencyToTier } from "../src/envelope.ts";
+import { ANSWER_INJECTION_MARKER, AUTOMATION_INJECTION_MARKER, AUTOMATION_INTERRUPT_NOTICE, BUZ_INJECTION_MARKER, DELIVERY_INTERRUPT_NOTICE, REMOTE_SENDER_RE, deliveryText, isPeerSender, urgencyToTier } from "../src/envelope.ts";
 
 const baseMsg = { id: 7, body: "shard 3 is yours", urgency: "next" as const, enqueuedAt: 1_787_000_000_000 };
 
@@ -112,4 +112,32 @@ test("envelope.automation: an automated send carries the automation marker and i
   assert.equal(deliveryText(msg, false, false, "q-1").split("\n")[0], ANSWER_INJECTION_MARKER);
   assert.ok(!AUTOMATION_INJECTION_MARKER.includes("\n"));
   assert.notEqual(AUTOMATION_INJECTION_MARKER, BUZ_INJECTION_MARKER);
+});
+
+test("envelope.automation-senders: Honeybee's own and known automation senders get the automation marker without a senderKind; self-framed senders stay bare", () => {
+  for (const sender of ["task-supply", "hive", "hive:auth-resume", "human:pollinate"]) {
+    const lines = deliveryText({ ...baseMsg, sender, body: "notice" }, false).split("\n");
+    assert.equal(lines[0], AUTOMATION_INJECTION_MARKER, sender);
+    const meta = JSON.parse(lines[1] as string) as Record<string, unknown>;
+    assert.deepEqual([meta.kind, meta.senderKind, meta.from], ["automation", "automation", sender]);
+  }
+  assert.equal(deliveryText({ ...baseMsg, sender: "human:pollinate", senderKind: "human" as const, body: "notice" }, false).split("\n")[0], AUTOMATION_INJECTION_MARKER);
+  for (const sender of ["hive:action", "hive:handoff"]) {
+    assert.equal(deliveryText({ ...baseMsg, sender, body: "[Hive action] framed" }, false), "[Hive action] framed", sender);
+  }
+  assert.equal(deliveryText({ ...baseMsg, sender: "human:tormod" }, false), baseMsg.body);
+});
+
+test("envelope.automation-interrupt: an interrupting automated message carries the automation notice; human mail and human answers never claim no person is waiting", () => {
+  const msg = { ...baseMsg, urgency: "now" as const, sender: "operator", senderKind: "automation" as const };
+  const lines = deliveryText(msg, false, true).split("\n");
+  assert.equal(lines[0], AUTOMATION_INJECTION_MARKER);
+  assert.equal(lines.slice(3).join("\n"), `${AUTOMATION_INTERRUPT_NOTICE}\n\n${baseMsg.body}`);
+  assert.equal(deliveryText(msg, false, false).split("\n").slice(3).join("\n"), baseMsg.body);
+  assert.equal(deliveryText({ ...msg, senderKind: undefined }, false, true), baseMsg.body);
+  const answer = deliveryText({ ...msg, senderKind: undefined, sender: "tormod" }, false, true, "q-1").split("\n");
+  assert.equal(answer.slice(3).join("\n"), baseMsg.body);
+  const peerAnswer = deliveryText({ ...msg, senderKind: undefined, sender: "CL.6d44f" }, true, true, "q-1").split("\n");
+  assert.equal(peerAnswer.slice(3).join("\n"), `${DELIVERY_INTERRUPT_NOTICE}\n\n${baseMsg.body}`);
+  assert.ok(!AUTOMATION_INTERRUPT_NOTICE.includes("\n"));
 });

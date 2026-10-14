@@ -1611,11 +1611,12 @@ export class DaemonCore {
         throw new CoreError(`daemon projection: selected message ${selected.id} changed before delivery`);
       }
       // Peer-sent mail carries the sender-attribution envelope (envelope.ts);
-      // question answers and automation sends carry their own markers; other
-      // operator/human mail is delivered bare. The mailbox row stays the
-      // durable truth — the envelope is delivery-time rendering only.
+      // question answers and automation (by sender kind or automation sender)
+      // carry their own markers; other operator/human mail is delivered bare.
+      // The mailbox row stays the durable truth — the envelope is
+      // delivery-time rendering only.
       const peer = isPeerSender(msg.sender, (id) => this.store.getBee(id) != null);
-      const interruptedTurn = peer && msg.urgency === "now" && this.store.deliveryInterruptedTurn(rt.beeId, msg.id, rt.generation);
+      const interruptedTurn = msg.urgency === "now" && this.store.deliveryInterruptedTurn(rt.beeId, msg.id, rt.generation);
       let body = deliveryText(msg, peer, interruptedTurn, this.store.answeredQuestionId(msg.id));
       const instruction = this.store.placementInstructionMove(rt.beeId);
       if (instruction && rt.generation !== instruction.sourceGeneration) {

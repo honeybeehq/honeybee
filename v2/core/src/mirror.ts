@@ -225,7 +225,7 @@ export type MirrorDelta = AuditRow;
  *   mail.enqueued   → message may carry senderKind ('human'|'automation'); absent = not given (mailbox only)
  * Delivery markers (additive inside an existing payload, capabilities `mail.answer_marker.v1`, `mail.automation_marker.v1`):
  *   mail.delivered  → may carry { questionId: string }                   (the delivered message answers that question)
- *   mail.delivered  → may carry { senderKind: 'human'|'automation' }     (the delivered message's stored senderKind)
+ *   mail.delivered  → may carry { senderKind: 'human'|'automation' }     (derived: deliveredSenderKind, automation for automation senders)
  */
 export const MIRROR_TEMPLATE_AUDIT_KINDS = ["template.put", "template.deleted"] as const;
 export const MIRROR_TRACK_AUDIT_KINDS = ["track.put", "track.deleted"] as const;
