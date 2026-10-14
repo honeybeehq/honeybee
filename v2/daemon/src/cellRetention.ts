@@ -266,6 +266,7 @@ export class CellRetentionService {
       deps.log(`cell.retention.last_pass_unreadable ${err instanceof Error ? err.message : String(err)}`);
     }
     this.lastPass = summaryFrom(recorded);
+    this.floorUnmet = this.lastPass?.kind === "pressure" && this.lastPass.outcome === "floor_unmet";
   }
 
   get policy(): ResolvedCellRetention {
@@ -559,7 +560,9 @@ export class CellRetentionService {
     const policy = this.deps.policy;
     const idleAfter = policy.pressureIdleAfterMs;
     const idle = (c: Candidate) => this.idleSinceOf(c) ?? startedAt;
-    const eligible = this.gather()
+    const gathered = this.gather();
+    const liveCells = gathered.filter((c) => c.cell?.state === "active" && c.runtime != null && c.runtime.state !== "stopped").length;
+    const eligible = gathered
       .filter((c) => {
         if (c.cell?.state !== "active" || c.bee == null) return false;
         if (c.bee.lifecycle === "archived") return true;
@@ -579,8 +582,9 @@ export class CellRetentionService {
     let reading = disk;
     let evicted = 0;
     let inspectMs = 0;
-    for (let i = 0; i < eligible.length && reading.freeBytes < target && evicted < policy.maxPerPass; i += PRESSURE_BATCH) {
-      const batch = eligible.slice(i, i + PRESSURE_BATCH);
+    let cursor = 0;
+    while (cursor < eligible.length && reading.freeBytes < target && evicted < policy.maxPerPass) {
+      const batch = eligible.slice(cursor, cursor + PRESSURE_BATCH);
       const inspectStarted = Date.now();
       const inspections = await this.inspect(batch, true, "pressure");
       inspectMs += Date.now() - inspectStarted;
@@ -588,17 +592,14 @@ export class CellRetentionService {
       const now = this.deps.now();
       let projectedFree = reading.freeBytes;
       for (const c of batch) {
-        if (projectedFree >= target) break;
+        if (projectedFree >= target || evicted >= policy.maxPerPass) break;
+        cursor += 1;
         const found = inspections.get(c.key);
         const inspection = found?.inspection ?? null;
         const base = this.baseOf(c, inspection);
         const gate = this.reasonFor(c, inspection, found?.error ?? null, now, base);
-        const item: CellGcItem = { ...base, reason: AGE_REASONS.has(gate) ? "disk_pressure" : gate, verdict: "hold" };
-        item.verdict = verdictOf(item.reason);
-        if (item.verdict === "evict" && evicted >= policy.maxPerPass) {
-          item.verdict = "hold";
-          item.reason = "pass_limit";
-        }
+        const reason: CellGcReason = AGE_REASONS.has(gate) ? "disk_pressure" : gate;
+        const item: CellGcItem = { ...base, reason, verdict: verdictOf(reason) };
         items.push(item);
         this.countProgress(progress, item.reason, item.bytes);
         if (item.verdict !== "evict") continue;
@@ -645,12 +646,12 @@ export class CellRetentionService {
       this.unmetAt = null;
       this.unmetFree = null;
     } else {
-      this.reportFloorUnmet(summary, items, eligible.length);
+      this.reportFloorUnmet(summary, items, eligible.length, liveCells);
     }
     return result;
   }
 
-  private reportFloorUnmet(summary: CellGcPassSummary, items: CellGcItem[], eligible: number): void {
+  private reportFloorUnmet(summary: CellGcPassSummary, items: CellGcItem[], eligible: number, liveCells: number): void {
     this.unmetAt = summary.endedAt;
     this.unmetFree = summary.freeAfter;
     if (this.floorUnmet) return;
@@ -662,7 +663,7 @@ export class CellRetentionService {
     const breakdown = {
       dirtyUnlanded: group((i) => i.reason === "dirty_unlanded"),
       dirtyOther: group((i) => i.reason.startsWith("dirty_") && i.reason !== "dirty_unlanded"),
-      live: group((i) => i.reason === "runtime_live"),
+      live: { cells: liveCells + items.filter((i) => i.reason === "runtime_live").length },
       otherHeld: group((i) => !i.reason.startsWith("dirty_") && i.reason !== "runtime_live" && i.verdict !== "evict"),
     };
     this.deps.log(
