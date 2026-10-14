@@ -22,15 +22,27 @@ export function pidAlive(pid: number): boolean {
   return !isZombie(pid);
 }
 
+const ZOMBIE_CENSUS_INTERVAL_MS = 500;
+const zombieCensus = new Map<number, { at: number; zombie: boolean }>();
+
 function isZombie(pid: number): boolean {
-  if (process.platform !== "linux") return false;
-  try {
-    const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
-    const state = stat.slice(stat.lastIndexOf(")") + 2, stat.lastIndexOf(")") + 3);
-    return state === "Z";
-  } catch {
-    return false;
+  if (process.platform === "linux") {
+    try {
+      const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+      return stat.slice(stat.lastIndexOf(")") + 2, stat.lastIndexOf(")") + 3) === "Z";
+    } catch {
+      return false;
+    }
   }
+  if (process.platform === "win32") return false;
+  const now = Date.now();
+  const cached = zombieCensus.get(pid);
+  if (cached && now - cached.at < ZOMBIE_CENSUS_INTERVAL_MS) return cached.zombie;
+  const census = spawnSync("/bin/ps", ["-o", "stat=", "-p", String(pid)], { encoding: "utf8", timeout: 2_000 });
+  const zombie = census.status === 0 && (census.stdout ?? "").trim().startsWith("Z");
+  zombieCensus.set(pid, { at: now, zombie });
+  if (zombieCensus.size > 4096) zombieCensus.clear();
+  return zombie;
 }
 
 /** Parse a POSIX `ps` etime value — `[[dd-]hh:]mm:ss` — into milliseconds. */
