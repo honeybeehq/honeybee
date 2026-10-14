@@ -46,7 +46,7 @@ import type {
   RuntimeDriver,
   StopCause,
 } from "../../harness/src/driver.ts";
-import { pidAlive, verifyProcessIdentity } from "../../driver-hsr/src/psutil.ts";
+import { pidAlive, verifyProcessIdentity, zombieWaitStatus } from "../../driver-hsr/src/psutil.ts";
 import { exactPaneTarget, exactSession, shQuote, TmuxServer } from "./tmux.ts";
 import { JsonlTail } from "./tail.ts";
 import { parseEventsFileLine } from "./events-file.ts";
@@ -140,6 +140,7 @@ interface TmuxRuntime {
   killTimer: NodeJS.Timeout | null;
   exited: boolean;
   deadSince: number | null;
+  deadCause: "clean" | "crashed" | null;
   // observer stack
   eventsTail: JsonlTail;
   transcriptLocator: TranscriptLocator | null;
@@ -697,6 +698,7 @@ export class TmuxDriver implements RuntimeDriver {
       killTimer: null,
       exited: false,
       deadSince: null,
+      deadCause: null,
       eventsTail: new JsonlTail(this.eventsFilePath(init.beeId), { skipExisting: init.adopted }),
       transcriptLocator: obs.transcript?.locator ?? null,
       transcriptParser: parser,
@@ -718,8 +720,13 @@ export class TmuxDriver implements RuntimeDriver {
     const now = this.now();
     if (!pidAlive(p.pid)) {
       if (p.stopCause == null && this.deadPaneVerdict(p) === "pending") {
-        p.deadSince ??= now;
-        if (now - p.deadSince < DEAD_STATUS_GRACE_MS) return;
+        const status = zombieWaitStatus(p.pid);
+        if (status !== null) {
+          p.deadCause = status === 0 ? "clean" : "crashed";
+        } else {
+          p.deadSince ??= now;
+          if (now - p.deadSince < DEAD_STATUS_GRACE_MS) return;
+        }
       }
       this.onExit(p);
       return;
@@ -850,7 +857,7 @@ export class TmuxDriver implements RuntimeDriver {
       p.killTimer = null;
     }
     this.procs.delete(p.beeId);
-    const cause = p.stopCause ?? this.deadPaneCause(p);
+    const cause = p.stopCause ?? p.deadCause ?? this.deadPaneCause(p);
     this.tryKillSession(p.sessionName);
     this.events.push({ beeId: p.beeId, generation: p.generation, kind: "exited", exitCause: cause });
     const pending = this.pendingStarts.get(p.beeId);
