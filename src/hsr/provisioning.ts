@@ -12,16 +12,24 @@
  */
 
 import { execFile } from "node:child_process";
-import { existsSync, type Dirent } from "node:fs";
+import { existsSync, lstatSync, renameSync, rmSync, writeFileSync, type Dirent } from "node:fs";
 import { mkdir, readdir } from "node:fs/promises";
+import { devNull } from "node:os";
 import { join } from "node:path";
-import { hostGitEnv } from "../hostGit.js";
+import { hostGitEnv, untrustedCheckoutGitEnv } from "../hostGit.js";
 import { worktreesRoot } from "./runDir.js";
 
 /** Run git without throwing: resolves `{ ok, stdout, stderr, code }`. */
 function runGit(args: string[], cwd?: string): Promise<{ ok: boolean; stdout: string; stderr: string; code: number }> {
   return new Promise((resolve) => {
-    execFile("git", args, { cwd, env: hostGitEnv(), maxBuffer: 32 * 1024 * 1024 }, (error, stdout, stderr) => {
+    let env: Record<string, string>;
+    try {
+      env = args[0] === "-C" && args[1] ? untrustedCheckoutGitEnv(args[1]) : hostGitEnv();
+    } catch (error) {
+      resolve({ ok: false, stdout: "", stderr: `checkout config probe failed: ${error instanceof Error ? error.message : String(error)}`, code: 1 });
+      return;
+    }
+    execFile("git", args, { cwd, env, maxBuffer: 32 * 1024 * 1024 }, (error, stdout, stderr) => {
       if (!error) {
         resolve({ ok: true, stdout: stdout ?? "", stderr: stderr ?? "", code: 0 });
         return;
@@ -30,6 +38,82 @@ function runGit(args: string[], cwd?: string): Promise<{ ok: boolean; stdout: st
       resolve({ ok: false, stdout: stdout ?? "", stderr: stderr ?? "", code });
     });
   });
+}
+
+const OWNED_CONFIG_KEEP: ReadonlyArray<readonly [RegExp, RegExp]> = [
+  [/^core\.(repositoryformatversion|filemode|bare|logallrefupdates|ignorecase|precomposeunicode|symlinks)$/u, /^(?:true|false|0|1)$/u],
+  [/^extensions\.(objectformat|refstorage|partialclone)$/u, /^(?:sha1|sha256|files|reftable|origin)$/u],
+  [/^remote\.origin\.(promisor|partialclonefilter)$/u, /^[A-Za-z0-9:=._-]+$/u],
+];
+
+function configValue(value: string): string {
+  return `"${value.replaceAll("\\", "\\\\").replaceAll("\"", "\\\"")}"`;
+}
+
+/**
+ * A reused checkout's .git/config belonged to whoever ran there last. Rewrite
+ * it from the request before any host git touches the tree: only repository
+ * format keys survive, hooks and fsmonitor stay pinned, and origin is exactly
+ * the requested repo, so no planted filter, signing, credential, url rewrite
+ * or upload-pack command can run as the host.
+ */
+async function ownCheckoutConfig(path: string, repo: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  const gitDir = join(path, ".git");
+  const configPath = join(gitDir, "config");
+  try {
+    if (!lstatSync(gitDir).isDirectory() || !lstatSync(configPath).isFile()) {
+      return { ok: false, error: `${path} does not own its git directory` };
+    }
+  } catch {
+    return { ok: false, error: `${path} does not own its git directory` };
+  }
+  const listed = await runGit(["config", "--file", configPath, "--list", "-z"]);
+  if (!listed.ok) return { ok: false, error: `read checkout config failed: ${firstLine(listed.stderr) || `git exited ${listed.code}`}` };
+  const kept = new Map<string, string>();
+  let origin = "";
+  for (const entry of listed.stdout.split("\0")) {
+    const split = entry.indexOf("\n");
+    if (split < 0) continue;
+    const key = entry.slice(0, split).toLowerCase();
+    const value = entry.slice(split + 1);
+    if (key === "remote.origin.url") origin = value;
+    if (OWNED_CONFIG_KEEP.some(([keyPattern, valuePattern]) => keyPattern.test(key) && valuePattern.test(value))) kept.set(key, value);
+  }
+  if (origin && !sameRepo(origin, repo)) return { ok: false, error: `${path} is a checkout of a different repo (${origin})` };
+  const core = ["repositoryformatversion", "filemode", "ignorecase", "precomposeunicode", "symlinks"]
+    .filter((name) => kept.has(`core.${name}`))
+    .map((name) => `\t${name} = ${kept.get(`core.${name}`)}`);
+  const extensions = ["objectformat", "refstorage", "partialclone"]
+    .filter((name) => kept.has(`extensions.${name}`))
+    .map((name) => `\t${name} = ${kept.get(`extensions.${name}`)}`);
+  const remote = ["promisor", "partialclonefilter"]
+    .filter((name) => kept.has(`remote.origin.${name}`))
+    .map((name) => `\t${name} = ${kept.get(`remote.origin.${name}`)}`);
+  const lines = [
+    "[core]",
+    ...(kept.has("core.repositoryformatversion") ? [] : ["\trepositoryformatversion = 0"]),
+    ...core,
+    "\tbare = false",
+    "\tlogallrefupdates = true",
+    `\thooksPath = ${configValue(devNull)}`,
+    "\tfsmonitor = false",
+    ...(extensions.length > 0 ? ["[extensions]", ...extensions] : []),
+    "[remote \"origin\"]",
+    `\turl = ${configValue(repo)}`,
+    "\tfetch = +refs/heads/*:refs/remotes/origin/*",
+    ...remote,
+    "",
+  ];
+  const staged = `${configPath}.hive-owned`;
+  try {
+    writeFileSync(staged, lines.join("\n"), { mode: 0o600 });
+    renameSync(staged, configPath);
+    rmSync(join(gitDir, "config.worktree"), { force: true });
+  } catch (error) {
+    rmSync(staged, { force: true });
+    return { ok: false, error: `own checkout config failed: ${error instanceof Error ? error.message : String(error)}` };
+  }
+  return { ok: true };
 }
 
 function firstLine(text: string): string {
@@ -132,14 +216,11 @@ export async function provisionCheckout(params: ProvisionParams): Promise<Record
     if (!inside.ok || inside.stdout.trim() !== "true") {
       return { ok: false, error: `${path} exists but is not a git checkout` };
     }
-    const originRes = await runGit(["-C", path, "remote", "get-url", "origin"]);
-    const origin = originRes.stdout.trim();
-    if (originRes.ok && origin && !sameRepo(origin, repo)) {
-      return { ok: false, error: `${path} is a checkout of a different repo (${origin})` };
-    }
+    const owned = await ownCheckoutConfig(path, repo);
+    if (!owned.ok) return owned;
     const fetchArgs = ref
-      ? ["-C", path, "fetch", "--no-recurse-submodules", "origin"]
-      : ["-C", path, "fetch", "--no-recurse-submodules", "--depth", "1", "origin", ...(branch ? ["--", branch] : [])];
+      ? ["-C", path, "fetch", "--no-recurse-submodules", "--upload-pack=git-upload-pack", "origin"]
+      : ["-C", path, "fetch", "--no-recurse-submodules", "--upload-pack=git-upload-pack", "--depth", "1", "origin", ...(branch ? ["--", branch] : [])];
     const fetched = await runGit(fetchArgs);
     if (!fetched.ok) return { ok: false, error: `fetch failed: ${firstLine(fetched.stderr) || `git exited ${fetched.code}`}` };
     if (ref) {
@@ -166,6 +247,8 @@ export async function provisionCheckout(params: ProvisionParams): Promise<Record
   if (!cloned.ok) {
     return { ok: false, error: `clone failed: ${firstLine(cloned.stderr) || firstLine(cloned.stdout) || `git exited ${cloned.code}`}` };
   }
+  const owned = await ownCheckoutConfig(path, repo);
+  if (!owned.ok) return owned;
   if (ref) {
     const co = await runGit(["-C", path, "checkout", "--no-recurse-submodules", ref, "--"]);
     if (!co.ok) return { ok: false, error: `checkout ${ref} failed: ${firstLine(co.stderr) || `git exited ${co.code}`}` };
@@ -189,15 +272,18 @@ export async function enumerateCheckouts(): Promise<Array<Record<string, unknown
     const path = join(root, entry.name);
     const inside = await runGit(["-C", path, "rev-parse", "--is-inside-work-tree"]);
     if (!inside.ok || inside.stdout.trim() !== "true") continue; // tolerate a non-git dir
-    const originRes = await runGit(["-C", path, "remote", "get-url", "origin"]);
+    const originRes = await runGit(["config", "--file", join(path, ".git", "config"), "--get", "remote.origin.url"]);
+    const origin = originRes.ok ? originRes.stdout.trim() : "";
+    const repo = origin ? safeRepoUrl(origin) : null;
+    const owned = repo ? await ownCheckoutConfig(path, repo) : null;
     const branch = await currentBranch(path);
-    const dirtyRes = await runGit(["-C", path, "status", "--porcelain", "--ignore-submodules=all"]);
+    const dirtyRes = owned?.ok ? await runGit(["-C", path, "status", "--porcelain", "--ignore-submodules=all"]) : null;
     rows.push({
       name: entry.name,
       path,
-      repo: originRes.ok && originRes.stdout.trim() ? originRes.stdout.trim() : null,
+      repo: origin || null,
       branch: branch ?? null,
-      ...(dirtyRes.ok ? { dirty: dirtyRes.stdout.trim().length > 0 } : {}),
+      ...(dirtyRes?.ok ? { dirty: dirtyRes.stdout.trim().length > 0 } : {}),
     });
   }
   return rows;

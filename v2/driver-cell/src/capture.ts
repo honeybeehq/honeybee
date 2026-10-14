@@ -75,7 +75,7 @@ function report(partial: Partial<CaptureReport> & Pick<CaptureReport, "status" |
 
 /** Conflicted paths of an in-progress merge/rebase in `repo`. */
 function conflictedPaths(repo: string): string[] {
-  const out = tryGit(repo, ["diff", "--name-only", "--diff-filter=U", "--ignore-submodules=all"]);
+  const out = tryGit(repo, ["diff", "--name-only", "--diff-filter=U", "--no-ext-diff", "--no-textconv", "--ignore-submodules=all"]);
   return out.stdout
     .split("\n")
     .map((l) => l.trim())
