@@ -1488,7 +1488,7 @@ export class AccountsService {
       if (interruptions.some(row => row.state === "open" && !row.deathRecovery && row.blockedRevision !== null && row.blockedRevision === revision)) refuse("account_auth_needed", "blocked_revision");
       const result: AccountLeaseExportResult = { authorityInstanceId: origin.authorityInstanceId!, account: id, harness: account.harness, authorityNodeId: origin.authorityNodeId, shareId: origin.shareId,
         epoch: origin.epoch, generation: origin.generation!, expiresAt: origin.expiresAt!, files: [{ homeRelPath: codec!.primaryFile, contentB64: Buffer.from(JSON.stringify(document)).toString("base64"), mode: 0o600 }], kindNote: "Leased access-only material; original authority retained" };
-      this.store.recordAccountLeaseExport(id);
+      this.store.recordAccountLeaseExport(id, result.files.length);
       return result;
     });
   }

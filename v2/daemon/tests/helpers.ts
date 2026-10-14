@@ -5,9 +5,9 @@
  * The only agent ever spawned is the stub (v2/driver-hsr/test-agent).
  */
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
-import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir, userInfo } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { DriverObservation, InterruptOutcome, LiveProcess, RuntimeDriver, StopCause } from "../../harness/src/driver.ts";
 import type { FlagEvidenceLike, ObservationCursorEvidenceLike, SessionEvidenceLike } from "../src/loops.ts";
@@ -304,11 +304,17 @@ export function makeDaemonDir(overrides: DaemonConfigOverrides = {}): { dir: str
 export async function startDaemon(dir: string, opts: { env?: Record<string, string>; platform?: string; stopTimeoutMs?: number } = {}): Promise<DaemonHandle> {
   const socketPath = join(dir, "hived.sock");
   const storePath = join(dir, "core.sqlite3");
+  const isolatedHome = mkdtempSync(join(dir, "test-home-"));
+  const defaults = { HOME: isolatedHome, XDG_CONFIG_HOME: join(isolatedHome, "config"), XDG_DATA_HOME: join(isolatedHome, "data"), XDG_CACHE_HOME: join(isolatedHome, "cache"), XDG_STATE_HOME: join(isolatedHome, "state"), HIVE_GATEWAYS_DISABLE: "1" };
+  const childEnv: NodeJS.ProcessEnv = { ...process.env, ...defaults, ...(opts.env ?? {}) };
+  if (opts.env?.HOME !== undefined) for (const key of ["XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME"]) if (opts.env[key] === undefined) delete childEnv[key];
+  if (resolve(childEnv.HOME!) === resolve(userInfo().homedir) || resolve(childEnv.HOME!) === resolve(process.env.HOME ?? userInfo().homedir)) throw new Error("Test daemon HOME must differ from the invoking user's home");
+  for (const path of [childEnv.HOME, childEnv.XDG_CONFIG_HOME, childEnv.XDG_DATA_HOME, childEnv.XDG_CACHE_HOME, childEnv.XDG_STATE_HOME]) if (path !== undefined) mkdirSync(path, { recursive: true });
   const proc = spawn(process.execPath, [DAEMON_BIN, "--data-dir", dir], {
     // HIVE_NO_KEYCHAIN: the daemon under test never touches the developer's
     // real macOS Keychain (spec 08 keychain bridge is off unless injected).
     env: {
-      ...process.env,
+      ...childEnv,
       HIVE_V2_DATA_DIR: dir,
       HIVE_NO_KEYCHAIN: "1",
       HIVE_CLAUDE_USAGE_URL: "http://127.0.0.1:9/api/oauth/usage",
@@ -318,11 +324,12 @@ export async function startDaemon(dir: string, opts: { env?: Record<string, stri
       // Production never sets this; restart-survival semantics stay intact.
       HIVE_TEST_REAP_RUNTIMES_ON_SHUTDOWN: "1",
       HIVE_TEST_PLATFORM: opts.platform ?? "linux",
-      NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ""} --import=${join(here, "fixtures", "force-platform.mjs")} --import=${join(here, "fixtures", "meta-loopback.mjs")}`.trim(),
       // v18: tests that exercise the vendor-home import point HOME / the
       // harness home env var at a temp dir so the developer's real
       // ~/.codex, ~/.claude, … are never read.
       ...(opts.env ?? {}),
+      HIVE_TEST_INVOKING_HOME: process.env.HOME ?? userInfo().homedir,
+      NODE_OPTIONS: `${opts.env?.NODE_OPTIONS ?? childEnv.NODE_OPTIONS ?? ""} --import=${join(here, "fixtures", "force-platform.mjs")} --import=${join(here, "fixtures", "meta-loopback.mjs")} --import=${join(here, "fixtures", "isolated-home.mjs")}`.trim(),
     },
     stdio: ["ignore", "pipe", "pipe"],
   });

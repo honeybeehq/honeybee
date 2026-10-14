@@ -218,7 +218,7 @@ test("muse on darwin: This Mac is the machine's own `muse login` — added once 
     assert.deepEqual({ account: spawned.account, reason: spawned.accountReason }, { account: "muse-this-mac", reason: THIS_MAC });
     const ran = await waitFor(() => existsSync(envOut) ? JSON.parse(readFileSync(envOut, "utf8")) as { argv: string[]; env: Record<string, string> } : null, "native muse serve starts", 15_000);
     assert.equal(ran.argv[0], "serve");
-    const inherited = (key: string) => process.env[key] === undefined ? {} : { [key]: process.env[key] };
+    const inherited = (key: string) => key.startsWith("XDG_") || process.env[key] === undefined ? {} : { [key]: process.env[key] };
     assert.deepEqual(ran.env, { HOME: home, MUSE_NO_AUTO_UPDATE: "1", FAKE_MUSE_KEPT: "kept", ...inherited("XDG_CONFIG_HOME"), ...inherited("XDG_DATA_HOME"), ...inherited("XDG_STATE_HOME"), ...inherited("XDG_CACHE_HOME"), ...inherited("TBH_CREDENTIAL_BACKEND"), ...inherited("META_API_KEY"), ...inherited("MUSE_AUTH_PATH"), ...inherited("MUSE_LOGIN"), ...inherited("MUSE_CHANNEL") }, "Honeybee sets no XDG pair or credential backend for This Mac, and the bee's own env cannot redirect its login");
 
     // The live session's usage lands on This Mac's limits row.
@@ -313,6 +313,7 @@ test("muse on darwin: a This Mac bee on the tmux substrate gets the same env as 
     const ran = await waitFor(() => existsSync(envOut) ? JSON.parse(readFileSync(envOut, "utf8")) as { argv: string[]; env: Record<string, string> } : null, "native muse TUI starts in tmux", 15_000);
     assert.deepEqual(ran.argv, [], "the TUI seat takes no headless args");
     const expected: Record<string, string | undefined> = Object.fromEntries(Object.keys(redirect).map((key) => [key, process.env[key]]));
+    for (const key of ["XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME"]) expected[key] = undefined;
     expected.HOME = home;
     expected.MUSE_NO_AUTO_UPDATE = "1";
     assert.deepEqual(Object.fromEntries(Object.keys(redirect).map((key) => [key, ran.env[key]])), expected, "the bee's own env cannot redirect This Mac's login on tmux");
