@@ -48,7 +48,10 @@ export type ProcessBirthCaptureOptions = {
   now?: () => number;
 };
 
-const DEFAULT_BIRTH_CAPTURE_TIMEOUT_MS = 1_000;
+const configuredBirthCaptureTimeoutMs = Number(process.env.HIVE_BIRTH_CAPTURE_TIMEOUT_MS);
+const DEFAULT_BIRTH_CAPTURE_TIMEOUT_MS = Number.isFinite(configuredBirthCaptureTimeoutMs) && configuredBirthCaptureTimeoutMs > 0
+  ? configuredBirthCaptureTimeoutMs
+  : 1_000;
 const DEFAULT_BIRTH_CAPTURE_POLL_MS = 10;
 
 /** Parse one coherent topology + birth-identity process census. */
