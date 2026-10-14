@@ -422,10 +422,7 @@ test("the native macOS/Linux sandbox commits inside its Cell, blocks a canonical
       "mkdir -p .vscode 2>/dev/null || true",
       "printf project-editor > .vscode/root.json 2>/dev/null || true",
       "printf project-submodules > .gitmodules 2>/dev/null || true",
-      "mkdir -p node_modules/pkg/.git/hooks 2>/dev/null || true",
-      "printf package-hook > node_modules/pkg/.git/hooks/postinstall 2>/dev/null || true",
-      "mkdir -p node_modules/pkg/.git 2>/dev/null || true",
-      "printf package-config > node_modules/pkg/.git/config 2>/dev/null || true",
+      "printf hook > .git/hooks/post-commit 2>/dev/null || true",
     ].join("; ");
     const wrapped = await wrapCellSandboxCommand("/bin/bash", ["-c", script]);
     const outcome = await run(wrapped.command, wrapped.args, { cwd: cell, env: initialized.env });
@@ -444,8 +441,7 @@ test("the native macOS/Linux sandbox commits inside its Cell, blocks a canonical
     assert.equal(await readFile(join(cell, "node_modules", "pkg", ".gitmodules"), "utf8"), "package-submodules");
     assert.equal(await readFile(join(cell, ".vscode", "root.json"), "utf8"), "root-protected\n");
     assert.equal(await readFile(join(cell, ".gitmodules"), "utf8"), "root-protected\n");
-    await assert.rejects(readFile(join(cell, "node_modules", "pkg", ".git", "hooks", "postinstall"), "utf8"), /ENOENT/);
-    await assert.rejects(readFile(join(cell, "node_modules", "pkg", ".git", "config"), "utf8"), /ENOENT/);
+    await assert.rejects(readFile(join(cell, ".git", "hooks", "post-commit"), "utf8"), /ENOENT/);
     assert.equal(initialized.env.HIVE_LEDGER_MAX_BYTES, "0");
     const count = await run("git", ["rev-list", "--count", "HEAD"], { cwd: cell, env: baseEnv });
     assert.equal(count.stdout.trim(), "2", count.stderr);
@@ -483,6 +479,56 @@ test("the native macOS/Linux sandbox commits inside its Cell, blocks a canonical
         await new Promise<void>((resolveExit) => server.once("exit", () => resolveExit()));
       }
     }
+  } finally {
+    shutdownCellSandbox();
+    process.chdir(originalCwd);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("the native sandbox denies git hooks and config materialized below a package tree", {
+  skip: !["darwin", "linux"].includes(process.platform) ? "macOS/Linux integration probe" : false,
+}, async (context) => {
+  const support = probeCellSandbox();
+  if (support.status !== "ready") {
+    context.skip(support.installHint);
+    return;
+  }
+  if (support.backend === "linux-bubblewrap") {
+    context.skip("bubblewrap fences only paths that exist at wrap time; a .git created later below node_modules cannot be denied");
+    return;
+  }
+  const root = await mkdtemp(join(tmpdir(), "hive-cell-package-git-"));
+  const cell = join(root, "cell");
+  const runDir = join(root, "run");
+  const provider = join(root, "codex-home");
+  const store = join(root, "store");
+  await Promise.all([mkdir(cell), mkdir(runDir), mkdir(provider), mkdir(store)]);
+  const originalCwd = process.cwd();
+  try {
+    const baseEnv = {
+      ...process.env,
+      HOME: process.env.HOME ?? root,
+      CODEX_HOME: provider,
+      HIVE_STORE_ROOT: store,
+    } as Record<string, string>;
+    assert.equal((await run("git", ["init", "-q"], { cwd: cell, env: baseEnv })).code, 0);
+    process.chdir(cell);
+    const initialized = initializeCellSandbox({ kind: "codex", cwd: cell, runDir, env: baseEnv });
+    const script = [
+      "mkdir -p node_modules/pkg",
+      "printf package > node_modules/pkg/package.json",
+      "mkdir -p node_modules/pkg/.git/hooks 2>/dev/null || true",
+      "printf package-hook > node_modules/pkg/.git/hooks/postinstall 2>/dev/null || true",
+      "mkdir -p node_modules/pkg/.git 2>/dev/null || true",
+      "printf package-config > node_modules/pkg/.git/config 2>/dev/null || true",
+    ].join("; ");
+    const wrapped = await wrapCellSandboxCommand("/bin/bash", ["-c", script]);
+    const outcome = await run(wrapped.command, wrapped.args, { cwd: cell, env: initialized.env });
+    assert.equal(outcome.code, 0, outcome.stderr);
+    assert.equal(await readFile(join(cell, "node_modules", "pkg", "package.json"), "utf8"), "package");
+    await assert.rejects(readFile(join(cell, "node_modules", "pkg", ".git", "hooks", "postinstall"), "utf8"), /ENOENT/);
+    await assert.rejects(readFile(join(cell, "node_modules", "pkg", ".git", "config"), "utf8"), /ENOENT/);
   } finally {
     shutdownCellSandbox();
     process.chdir(originalCwd);
