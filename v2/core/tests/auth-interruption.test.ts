@@ -189,7 +189,7 @@ test("auth interruption: a v32 store gains the table and the auth.resume mail or
     raw.close();
 
     store = h.open();
-    assert.equal(SCHEMA_VERSION, 40);
+    assert.equal(SCHEMA_VERSION, 41);
     const row = interrupt(store, bee.id);
     store.restoreAuthInterruption(row.id, { revision: "rev-2", by: "credentials_restored" });
     store.resumeAuthInterruption(row.id, AUTH_CONTINUE_BODY);
@@ -201,5 +201,36 @@ test("auth interruption: a v32 store gains the table and the auth.resume mail or
     check.close();
   } finally {
     h.cleanup();
+  }
+});
+
+test("auth interruption: v40 migration preserves rows and monotone receipt IDs even after pruning every row", async () => {
+  const { AUTH_INTERRUPTIONS_TABLE_SQL } = await import("../src/schema.ts");
+  for (const empty of [false, true]) {
+    const h = harness();
+    try {
+      let store = h.open();
+      const { bee } = makeBee(store);
+      const before = interrupt(store, bee.id);
+      store.close();
+      const raw = new DatabaseSync(h.path);
+      const columns = (raw.prepare("SELECT name FROM pragma_table_info('auth_interruptions')").all() as { name: string }[]).map(row => row.name).filter(name => name !== "death_recovery").join(",");
+      raw.exec("DROP INDEX auth_interruptions_live; DROP INDEX auth_interruptions_by_bee; ALTER TABLE auth_interruptions RENAME TO auth_new");
+      raw.exec(AUTH_INTERRUPTIONS_TABLE_SQL.replace(",'revive'", "").replace(",'auth_recovery_expired','auth_recovery_cancelled'", "").replace(",\n  death_recovery TEXT", ""));
+      raw.exec(`INSERT INTO auth_interruptions (${columns}) SELECT ${columns} FROM auth_new; DROP TABLE auth_new`);
+      if (empty) raw.exec("DELETE FROM auth_interruptions");
+      raw.prepare("UPDATE sqlite_sequence SET seq = 100 WHERE name = 'auth_interruptions'").run();
+      raw.exec("UPDATE meta SET value = '40' WHERE key = 'schema_version'");
+      raw.close();
+      store = h.open();
+      if (!empty) {
+        assert.deepEqual(store.getAuthInterruption(before.id), before);
+        store.settleAuthInterruption(before.id, "cancelled", "stopped_by_user");
+      }
+      const after = interrupt(store, bee.id);
+      assert.equal(after.id, 101);
+      assert.equal(after.deathRecovery, undefined);
+      store.close();
+    } finally { h.cleanup(); }
   }
 });

@@ -15,7 +15,7 @@ export function codexAccessExpiry(accessToken: string): number | null {
 }
 
 export const CODEX_CREDENTIAL_CODEC: CredentialCodec = {
-  harness: "codex", label: "Codex", retainRotatedOnUnusableAccess: true, nativeLoginRecovery: true,
+  harness: "codex", authDeathRecovery: true, label: "Codex", retainRotatedOnUnusableAccess: true, nativeLoginRecovery: true,
   parse: raw => {
     try {
       const document = JSON.parse(raw) as Record<string, unknown>;

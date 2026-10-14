@@ -1012,7 +1012,9 @@ export class DaemonCore {
       case "spawn":
       case "revive":
       case "send_wake": {
-        if (cmd.verb === "revive") {
+        const interruption = typeof cmd.args.authDeathRecoveryId === "number" ? this.store.getAuthInterruption(cmd.args.authDeathRecoveryId) : null;
+        const authRecovery = interruption?.beeId === cmd.beeId && interruption.deathRecovery?.commandId === cmd.id && interruption.deathRecovery.claimedAt !== null;
+        if (cmd.verb === "revive" && !authRecovery) {
           // Operator action (explicit verb): a fresh spawn-failure budget and
           // the spawn_failed flag cleared — the attempt below runs regardless
           // of the flag. spawn_failed clears otherwise only on contrary

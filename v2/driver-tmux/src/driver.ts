@@ -101,7 +101,7 @@ export interface TmuxDriverConfig {
   sessionLogDir?: string;
   /** v23: the bee's current session log file (handoff segments); absent = `<sessionLogDir>/<beeId>.jsonl`. */
   sessionLogPathFor?: (beeId: string) => string | null;
-  resolve(beeId: string): TmuxSpawnSpec;
+  resolve(beeId: string, generation?: number): TmuxSpawnSpec;
   stopKillGraceMs?: number;
   adoptToleranceMs?: number;
   /** Test rigs only: allows killServer() teardown of the pinned socket. */
@@ -247,7 +247,7 @@ export class TmuxDriver implements RuntimeDriver {
         `tmux driver: bee ${beeId} already has a live runtime (generation ${existing.generation}, pid ${existing.pid})`,
       );
     }
-    const spec = this.cfg.resolve(beeId);
+    const spec = this.cfg.resolve(beeId, generation);
     const sessionName = sessionNameFor(beeId, generation);
     const eventsPath = this.eventsFilePath(beeId);
     const envFlags: string[] = [];

@@ -27,6 +27,7 @@
  * the RPC-tier fixture token is fresh so the default runner is never hit).
  */
 import { test } from "node:test";
+import { randomUUID } from "node:crypto";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir, homedir } from "node:os";
@@ -2286,5 +2287,60 @@ test("explicit adoption checks stopped bees again after awaiting the per-home Ke
     await assert.rejects(pending, (error: unknown) => error instanceof RpcError && error.code === "account_adopt_running");
     assert.equal(readFileSync(join(row.homePath, ".credentials.json"), "utf8"), native);
     assert.equal(accounts.nativeBackupStatus(row).exists, false);
+  } finally { r.cleanup(); }
+});
+
+test("versioned lease publication: generation is not eligible until home, mirrors and Keychain finish, durable completion marker survives service recreation", async () => {
+  const r = rig();
+  try {
+    const accounts = service(r);
+    const input = { id: "claude-test-example.com", harness: "claude", label: "test-example.com", shareId: "share-publication-test", authorityNodeId: "authority-test", epoch: 1, generation: 1, expiresAt: Math.floor((r.now() + HOUR) / 1000), files: [{ homeRelPath: ".credentials.json", contentB64: Buffer.from(JSON.stringify({ claudeAiOauth: { accessToken: randomUUID(), expiresAt: r.now() + HOUR } })).toString("base64"), mode: 0o600 }] };
+    const installed = await accounts.installLease(input);
+    assert.equal(accounts.authDeathMaterial(installed.account)?.generation, 1);
+    let enter!: () => void, release!: () => void;
+    const entered = new Promise<void>(resolve => { enter = resolve; });
+    const held = new Promise<void>(resolve => { release = resolve; });
+    const codec = accounts.leaseMaterialCodecs.get("claude")!;
+    const publish = codec.keychain!.publish;
+    codec.keychain!.publish = async (...args) => { enter(); await held; return publish(...args); };
+    const pending = accounts.installLease({ ...input, epoch: 2, generation: 2 });
+    try {
+      await entered;
+      const partial = r.store.getAccount(installed.account.id)!;
+      assert.equal(partial.leasedFrom?.generation, 2);
+      assert.equal(partial.leasedFrom?.materialPublished, false);
+      assert.equal(accounts.homeCredentialState(partial), "usable", "a still-valid previous file is not a published new generation");
+      assert.equal(accounts.authDeathMaterial(partial), null);
+    } finally { release(); codec.keychain!.publish = publish; }
+    const completed = await pending;
+    assert.equal(completed.account.leasedFrom?.materialPublished, true);
+    assert.equal(accounts.authDeathMaterial(completed.account)?.epoch, 2);
+    r.store.setAccountLease(completed.account.id, { ...completed.account.leasedFrom!, materialPublished: false });
+    assert.equal(service(r).authDeathMaterial(r.store.getAccount(completed.account.id)!), null, "recreated service cannot infer completion from usable bytes");
+    const retry = await accounts.installLease({ ...input, epoch: 2, generation: 2 });
+    assert.equal(accounts.authDeathMaterial(retry.account)?.generation, 2);
+  } finally { r.cleanup(); }
+});
+
+
+test("auth death eligibility stays harness-keyed; native, Muse, legacy and unpublished leases are excluded", () => {
+  const r = rig();
+  try {
+    const accounts = service(r);
+    for (const harness of ["claude", "codex", "grok", "muse"]) {
+      const id = `${harness}-test-example.com`;
+      const homePath = join(r.homes, id);
+      r.store.createAccount({ id, harness, homePath, label: "test-example.com" });
+      assert.equal(accounts.authDeathMaterial(r.store.getAccount(id)!), null, "native has no managed stamp");
+      mkdirSync(homePath, { recursive: true });
+      writeFileSync(join(homePath, harness === "claude" ? ".credentials.json" : "auth.json"), JSON.stringify({ claudeAiOauth: { accessToken: randomUUID(), expiresAt: r.now() + HOUR } }));
+      const origin = { authorityNodeId: "authority-test", shareId: "share-test", epoch: 1, expiresAt: Math.floor((r.now() + HOUR) / 1000), adoptedAt: null, revokedAt: null };
+      r.store.setAccountLease(id, origin);
+      assert.equal(accounts.authDeathMaterial(r.store.getAccount(id)!), null, "legacy generation is never invented");
+      r.store.setAccountLease(id, { ...origin, generation: 1, materialPublished: false });
+      assert.equal(accounts.authDeathMaterial(r.store.getAccount(id)!), null);
+      r.store.setAccountLease(id, { ...origin, generation: 1, materialPublished: true });
+      assert.equal(accounts.authDeathMaterial(r.store.getAccount(id)!)?.generation ?? null, harness === "muse" ? null : 1);
+    }
   } finally { r.cleanup(); }
 });

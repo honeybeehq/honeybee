@@ -114,6 +114,7 @@ export const DAEMON_CAPABILITIES = [
    * remote-nodes lease plane's mint side; see credential-leases.md), with
    * typed `lease_unsupported` / `lease_unavailable` refusals.
    */
+  "account.auth_death_recovery.v1",
   "account.lease.v1",
   "account.lease.install.v1",
   "account.lease.revoke.v1",
@@ -956,6 +957,7 @@ export interface AccountNativeBackupRestoreResult {
 }
 
 export interface AccountLeaseInstallParams {
+  generation?: number;
   id: string;
   harness: string;
   label: string;
@@ -1002,6 +1004,7 @@ export interface AccountLeaseRemoveResult {
  * `kindNote` and `expiresAt` (unix SECONDS) are secret-free.
  */
 export interface AccountLeaseResult {
+  generation?: number;
   account: string;
   harness: string;
   files: EphemeralCredentialFile[];
@@ -1379,6 +1382,7 @@ export type ReconfigureResult = ReturnType<import("../../core/src/index.ts").Cor
  * revive-on-message wake. An unknown urgency is `invalid_request`.
  */
 export interface SendRpcResult extends DedupMarkers {
+  runtimeStartHold?: { code: "account_auth_needed"; message: "Waiting for refreshed account material" };
   messageId: number;
   /** The send_wake enqueued in the same transaction, when one was needed. */
   commandId: number | null;

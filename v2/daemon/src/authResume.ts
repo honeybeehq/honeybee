@@ -11,10 +11,12 @@
  * transaction that marks the row `resumed`, so a daemon death can neither
  * lose it nor send it twice.
  */
-import { AUTH_CONTINUE_BODY, type AccountRow, type AuthInterruptionRow, type AuthRestoreSource, type BeeRow, type CoreStore } from "../../core/src/index.ts";
+import { AUTH_DEATH_WINDOW_MS, AUTH_CONTINUE_BODY, type AccountMaterialStamp, type AccountRow, type AuthInterruptionRow, type AuthRestoreSource, type BeeRow, type CoreStore } from "../../core/src/index.ts";
 import type { FlagEvidenceLike } from "./loops.ts";
 
 export interface AuthResumeOptions {
+  now?: () => number;
+  material?: (account: AccountRow) => AccountMaterialStamp | null;
   store: CoreStore;
   log: (op: string) => void;
   /** The account whose credential a runtime generation of the bee ran on. */
@@ -44,8 +46,12 @@ export class AuthResume {
   private readonly credentialRevision: AuthResumeOptions["credentialRevision"];
   /** Store change version of the last pass; nothing a pass decides on can change without a new audit row. */
   private reconciledSeq = -1;
+  private readonly material: AuthResumeOptions["material"];
+  private readonly now: () => number;
 
   constructor(opts: AuthResumeOptions) {
+    this.now = opts.now ?? Date.now;
+    this.material = opts.material;
     this.store = opts.store;
     this.log = opts.log;
     this.accountForGeneration = opts.accountForGeneration;
@@ -58,6 +64,9 @@ export class AuthResume {
     if (!bee) return;
     const account = this.accountForGeneration(bee, ev.generation);
     if (!account) return;
+    const runtime = this.store.currentRuntime(bee.id);
+    const stamp = runtime?.credentialStamp;
+    if (stamp && (runtime.generation !== ev.generation || stamp.account !== account.id || stamp.controlFence !== (bee.authControlFence ?? 0))) return;
     const row = this.store.recordAuthInterruption({
       beeId: bee.id,
       account: account.id,
@@ -65,8 +74,9 @@ export class AuthResume {
       messageIds: ev.turn?.messageIds ?? [],
       turnProgress: ev.turn?.progress ?? "unknown",
       credentialRevision: this.credentialRevision(account),
-      detail: ev.detail,
+      detail: stamp ? "Provider authentication failed" : ev.detail,
     });
+    if (stamp && !row.deathRecovery) this.store.setAuthDeathRecovery(row.id, { admitted: stamp, deathAt: null, deadline: null, claimedAt: null, replacement: null, commandId: null });
     this.log(
       `auth.interrupted bee=${bee.id} account=${account.id} gen=${ev.generation} row=${row.id} msgs=${row.messageIds.join(",") || "-"} progress=${row.turnProgress}`
         + (row.blockedRevision ? " blocked=1" : ""),
@@ -99,6 +109,7 @@ export class AuthResume {
         const row = live.get(beeId);
         // A failure recorded against another account says nothing about this one.
         if (row && row.account !== account.id) continue;
+        if (row?.deathRecovery && this.holdsStoppedRuntime(row)) continue;
         if (row?.state === "open" && row.blockedRevision === revision && !OPERATOR_SOURCES.includes(by)) {
           receipt.blockedBeeIds.push(beeId);
           this.log(`auth.resume.blocked bee=${beeId} account=${account.id} row=${row.id} by=${by}`);
@@ -133,13 +144,14 @@ export class AuthResume {
    * bee can take it. Runs each tick and at boot; every step is idempotent.
    */
   reconcile(): void {
-    if (this.store.lastAuditSeq() === this.reconciledSeq) return;
+    if (!this.material && this.store.lastAuditSeq() === this.reconciledSeq) return;
     this.reconcileRows();
     this.reconciledSeq = this.store.lastAuditSeq();
   }
 
   private reconcileRows(): void {
     for (const row of this.store.listLiveAuthInterruptions()) {
+      if (row.deathRecovery && this.reconcileDeath(row)) continue;
       if (row.state === "resumed") continue;
       const bee = this.store.getBee(row.beeId);
       if (!bee) continue;
@@ -156,6 +168,54 @@ export class AuthResume {
         `auth.resume bee=${bee.id} account=${row.account} row=${row.id} kind=${resumed.interruption.continuationKind} msgs=${resumed.interruption.continuationMessageIds.join(",")}`,
       );
     }
+  }
+
+  waitingForMaterial(beeId: string): boolean {
+    const row = this.store.liveAuthInterruption(beeId);
+    const recovery = row?.deathRecovery;
+    return Boolean(row && recovery && recovery.claimedAt === null && this.holdsStoppedRuntime(row) && (recovery.deadline === null || this.now() < recovery.deadline));
+  }
+
+  holdsStoppedRuntime(row: AuthInterruptionRow): boolean {
+    const runtime = this.store.currentRuntime(row.beeId);
+    const recovery = row.deathRecovery;
+    if (!recovery || runtime?.generation !== row.generation || runtime.state !== "stopped") return false;
+    if (recovery.claimedAt === null) return true;
+    return recovery.commandId !== null && this.store.getCommand(recovery.commandId)?.status === "queued" && this.store.getAccount(row.account)?.status === "paused";
+  }
+
+  private reconcileDeath(row: AuthInterruptionRow): boolean {
+    const runtime = this.store.currentRuntime(row.beeId);
+    const recovery = row.deathRecovery!;
+    const bee = this.store.getBee(row.beeId);
+    if (!bee) return true;
+    if ((bee.authControlFence ?? 0) !== recovery.admitted.controlFence || bee.lifecycle !== "active" || bee.account !== row.account || bee.agent !== recovery.admitted.agent || bee.cwd !== recovery.admitted.cwd || bee.cellId !== recovery.admitted.cellId || bee.activeMoveId || bee.activeHandoffId) {
+      this.store.settleAuthInterruption(row.id, "cancelled", "auth_recovery_cancelled");
+      return true;
+    }
+    if (recovery.claimedAt !== null) {
+      if (runtime?.generation === row.generation && runtime.state === "stopped" && recovery.commandId !== null && this.store.getCommand(recovery.commandId)?.status === "queued" && this.store.getAccount(row.account)?.status === "paused" && recovery.deadline !== null && this.now() >= recovery.deadline) this.store.cancelAuthDeathRecovery(bee.id, "auth_recovery_expired");
+      return true;
+    }
+    if (runtime?.generation !== row.generation) {
+      this.store.settleAuthInterruption(row.id, "superseded", "auth_recovery_cancelled");
+      return true;
+    }
+    if (runtime.state !== "stopped") return false;
+    if (!["clean", "crashed", "stopped_by_system"].includes(runtime.exitCause ?? "")) {
+      this.store.settleAuthInterruption(row.id, "cancelled", "auth_recovery_cancelled");
+      return true;
+    }
+    const fixed = recovery.deathAt === null ? { ...recovery, deathAt: runtime.updatedAt, deadline: runtime.updatedAt + AUTH_DEATH_WINDOW_MS } : recovery;
+    this.store.setAuthDeathRecovery(row.id, fixed);
+    if (this.now() >= fixed.deadline!) {
+      this.store.settleAuthInterruption(row.id, "cancelled", "auth_recovery_expired");
+      return true;
+    }
+    const account = this.store.getAccount(row.account);
+    const material = account ? this.material?.(account) : null;
+    if (account && material) this.store.claimAuthDeathRecovery(row.id, material, this.credentialRevision(account), AUTH_CONTINUE_BODY);
+    return true;
   }
 
   private endedByOperator(bee: BeeRow, row: AuthInterruptionRow): "archived" | "stopped_by_user" | null {

@@ -180,6 +180,7 @@ export interface BeeRow {
    * v21 — increments on each committed Cell→checkout placement. CAS target
    * for `bee.move` `expected.placementVersion`.
    */
+  authControlFence?: number;
   placementVersion: number;
   /** v21 — in-flight move id; null when idle (including after complete/failed). */
   activeMoveId: string | null;
@@ -199,7 +200,36 @@ export interface BeeRow {
  */
 export type BootEvidence = "synthetic" | "real";
 
+export interface AccountMaterialStamp {
+  kind: "central" | "lease";
+  scope: string;
+  epoch: number;
+  generation: number;
+}
+
+export interface RuntimeCredentialStamp {
+  material: AccountMaterialStamp;
+  revision: string;
+  account: string;
+  agent: string;
+  cwd: string;
+  cellId: string | null;
+  controlFence: number;
+}
+
+export interface AuthDeathRecovery {
+  admitted: RuntimeCredentialStamp;
+  deathAt: number | null;
+  deadline: number | null;
+  claimedAt: number | null;
+  replacement: AccountMaterialStamp | null;
+  commandId: number | null;
+}
+
+export const AUTH_DEATH_WINDOW_MS = 10 * 60_000;
+
 export interface RuntimeRow {
+  credentialStamp?: RuntimeCredentialStamp;
   beeId: string;
   generation: number;
   state: RuntimeState;
@@ -483,6 +513,8 @@ export interface CredentialRefreshFailure {
 
 /** A provider login identity: the WHO. One account = one run-home. */
 export interface AccountLeaseOrigin {
+  generation?: number;
+  materialPublished?: boolean;
   revokedAt: number | null;
   adoptedAt: number | null;
   shareId: string;
@@ -631,10 +663,10 @@ export const AUTH_RESTORE_SOURCES = ["login", "capture", "refresh", "limits_prob
 export type AuthRestoreSource = (typeof AUTH_RESTORE_SOURCES)[number];
 
 /** `redeliver`: the original mail again, because none of its turn ran. `continue`: one short continue message. */
-export const AUTH_CONTINUATION_KINDS = ["redeliver", "continue"] as const;
+export const AUTH_CONTINUATION_KINDS = ["redeliver", "continue", "revive"] as const;
 export type AuthContinuationKind = (typeof AUTH_CONTINUATION_KINDS)[number];
 
-export const AUTH_SETTLE_REASONS = ["stopped_by_user", "archived", "turn_succeeded", "auth_failed_again"] as const;
+export const AUTH_SETTLE_REASONS = ["stopped_by_user", "archived", "turn_succeeded", "auth_failed_again", "auth_recovery_expired", "auth_recovery_cancelled"] as const;
 export type AuthSettleReason = (typeof AUTH_SETTLE_REASONS)[number];
 
 export const AUTH_RESUME_SENDER = "hive:auth-resume";
@@ -649,6 +681,7 @@ export const AUTH_CONTINUE_BODY = "[Hive] An authentication failure cut off your
   + "Continue the work from where it stopped, and answer any message that got no reply. Do not repeat steps that already finished.";
 
 export interface AuthInterruptionRow {
+  deathRecovery?: AuthDeathRecovery;
   id: number;
   beeId: string;
   /** The node-local account whose credential must work again. Follows the bee across a swap. */

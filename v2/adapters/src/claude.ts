@@ -69,7 +69,7 @@ function resultSignals(msg: Record<string, unknown>): AdapterSignal[] {
   const signals: AdapterSignal[] = [];
   if (msg.is_error === true) {
     const message = String(msg.result ?? msg.api_error_status ?? "claude result error");
-    if (isAuthNeededMessage(message)) {
+    if (msg.api_error_status === 401 || isAuthNeededMessage(message)) {
       signals.push({ kind: "flag", flag: "auth_needed", action: "set", detail: message.slice(0, 500) });
     } else if (isResourceBlockedMessage(message)) {
       signals.push({ kind: "flag", flag: "resource_blocked", action: "set", detail: message.slice(0, 500) });
@@ -114,7 +114,7 @@ export function parseClaudeLine(line: string): AdapterSignal[] {
       // is its ONLY opening edge. Without this, self-woken bees showed
       // idle/"needs your reply" while actively working (2026-08-19, observed
       // on the cutover executor itself).
-      return isProviderServed(msg) ? [{ kind: "turn_started" }, { kind: "turn_progress" }] : [{ kind: "turn_started" }];
+      return isProviderServed(msg) ? [{ kind: "turn_started" }, { kind: "turn_progress" }] : [{ kind: "turn_started" }, ...(msg.error === "authentication_failed" ? [{ kind: "flag", flag: "auth_needed", action: "set", detail: "Claude authentication failed" } satisfies AdapterSignal] : [])];
     case "user":
     case "control_request": // interactive prompts are out of WP3 scope
     case "control_response":

@@ -419,6 +419,7 @@ export interface EphemeralCredentialFile {
  * service uses to renew before a satellite bee's token dies.
  */
 export interface EphemeralCredential {
+  generation?: number;
   files: EphemeralCredentialFile[];
   env?: Record<string, string>;
   kindNote: string;
@@ -854,6 +855,24 @@ export class AccountsService {
   authorityFor(account: Pick<AccountRow, "harness">): CredentialAuthority | null {
     return this.credentialAuthorities.get(account.harness) ?? null;
   }
+  authDeathMaterial(account: AccountRow): import("../../core/src/types.ts").AccountMaterialStamp | null {
+    const authority = this.authorityFor(account);
+    if (!authority?.supportsAuthDeathRecovery() || this.isNative(account) || account.status === "paused" || this.store.activeCredentialHandoff(account.id)) return null;
+    if (account.source === "leased") {
+      const origin = account.leasedFrom;
+      if (!origin || origin.generation === undefined || origin.materialPublished !== true || origin.revokedAt !== null || origin.expiresAt !== null && origin.expiresAt * 1000 <= this.now() || this.homeCredentialState(account) !== "usable") return null;
+      return { kind: "lease", scope: `${origin.authorityNodeId}:${origin.shareId}`, epoch: origin.epoch, generation: origin.generation };
+    }
+    const state = authority.status(account);
+    if (state?.phase !== "ready" || this.homeCredentialState(account) !== "usable") return null;
+    try {
+      const primary = recipeFor(account.harness)?.credentialFiles[0];
+      const raw = primary ? readIfFile(join(account.homePath, primary)) : null;
+      if (raw === null || !authority.publishedMaterialMatches(account, JSON.parse(raw))) return null;
+    } catch { return null; }
+    return { kind: "central", scope: account.id, epoch: this.store.credentialAuthorityEpoch(account.id), generation: state.generation };
+  }
+
   private readonly store: CoreStore;
   private readonly cfg: ResolvedNodeConfig;
   private readonly log: (op: string) => void;
@@ -1380,9 +1399,10 @@ export class AccountsService {
       if (account && (this.store.activeCredentialHandoff(id) || ["handing_off", "adopting"].includes(this.authorityFor(account)?.status(account)?.phase ?? ""))) throw new RpcError("credential_handoff_fenced", "Credential ownership is changing; lease installation cannot overwrite an authority.");
       if (input.adopt && !account) throw new RpcError("account_adopt_refused", "Adoption requires an existing same-id native account.");
       const adopted = account?.source === "local";
-      const origin = { shareId: input.shareId, authorityNodeId: input.authorityNodeId, epoch: input.epoch, expiresAt: input.expiresAt, adoptedAt: adopted ? this.now() : account?.leasedFrom?.adoptedAt ?? null, revokedAt: null };
+      const origin = { shareId: input.shareId, authorityNodeId: input.authorityNodeId, epoch: input.epoch, ...(input.generation !== undefined ? { generation: input.generation, materialPublished: true } : {}), expiresAt: input.expiresAt, adoptedAt: adopted ? this.now() : account?.leasedFrom?.adoptedAt ?? null, revokedAt: null };
       if (account && account.harness !== input.harness) throw new RpcError("harness_mismatch", "Lease harness differs from the existing account.");
       if (account?.source === "leased" && (account.leasedFrom?.shareId !== input.shareId || account.leasedFrom.epoch > input.epoch || account.leasedFrom.epoch === input.epoch && (account.leasedFrom.authorityNodeId !== input.authorityNodeId || account.leasedFrom.expiresAt !== null && (input.expiresAt === null || input.expiresAt < account.leasedFrom.expiresAt)))) throw new RpcError("account_lease_conflict", "Lease origin conflicts with the installed lease.");
+      if (account?.source === "leased" && input.generation !== undefined && account.leasedFrom?.generation !== undefined && account.leasedFrom.epoch === input.epoch && input.generation < account.leasedFrom.generation) throw new RpcError("account_lease_conflict", "Lease credential generation regressed.");
       if (adopted) {
         if (!input.adopt) throw new RpcError("account_adopt_refused", "An isolated lease cannot overwrite a native account.");
         const foreign = this.foreignHomeRefusal(account!, "moves credentials out of");
@@ -1432,7 +1452,7 @@ export class AccountsService {
           backupPath = this.backupNativeMaterial(target, state);
           backupAt = backupPath === null ? null : this.latestNativeBackup(target)!.at;
         }
-        this.store.setAccountLease(id, origin);
+        this.store.setAccountLease(id, input.generation === undefined ? origin : { ...origin, materialPublished: false });
         this.store.setAccountStatus(id, "auth_needed", "Lease installation in progress");
         let keychainPublished = false;
         for (const file of input.files) {
@@ -1453,6 +1473,7 @@ export class AccountsService {
           mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
           atomicWriteFileSync(path, raw, 0o600);
         }
+        if (input.generation !== undefined) this.store.setAccountLease(id, origin);
         onInstalled(this.store.getAccount(id)!);
         return { account: this.store.getAccount(id)!, adopted, backupPath, backupAt, replacedWorkingLogin, keychainPublished };
       };
@@ -3052,7 +3073,19 @@ export class AccountsService {
       `account.lease account=${account.id} harness=${account.harness} files=${lease.files.length}` +
         ` env=${Object.keys(lease.env ?? {}).length} exp=${lease.expiresAt !== undefined ? new Date(lease.expiresAt * 1000).toISOString() : "-"}`,
     );
-    return lease;
+    const authority = this.authorityFor(account);
+    if (!authority?.enabled(account)) return lease;
+    try {
+      const central = authority.status(account);
+      const primary = this.leaseMaterialCodecs.get(account.harness)?.primaryFile;
+      const file = lease.files.find(value => value.homeRelPath === primary);
+      const shipped = file ? authority.parseDocument(JSON.parse(Buffer.from(file.contentB64, "base64").toString("utf8"))) : null;
+      const owned = central?.phase === "ready" ? authority.parseDocument(authority.document(account)) : null;
+      if (!owned || !shipped || shipped.accessToken !== owned.accessToken) throw new LeaseRefusal("lease_unavailable", "Central credential changed during lease mint; retry for the current material.");
+      return { ...lease, generation: central!.generation };
+    } catch {
+      throw new LeaseRefusal("lease_unavailable", "Central credential changed during lease mint; retry for the current material.");
+    }
   }
 
   private mintLeaseByHarness(account: AccountRow, opts: LeaseOptions): Promise<EphemeralCredential> {

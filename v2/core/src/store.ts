@@ -668,6 +668,7 @@ export function handlePrefix(agent: string): string {
 
 function mapBee(r: Row): BeeRow {
   return {
+    ...(Number(r.auth_control_fence ?? 0) > 0 ? { authControlFence: Number(r.auth_control_fence) } : {}),
     id: r.id as string,
     name: r.name as string,
     agent: r.agent as string,
@@ -921,6 +922,7 @@ function mapAccountAdmission(r: Row): AccountAdmissionReservationRow {
 
 function mapAuthInterruption(r: Row): AuthInterruptionRow {
   return {
+    ...(r.death_recovery ? { deathRecovery: JSON.parse(String(r.death_recovery)) } : {}),
     id: Number(r.id),
     beeId: String(r.bee_id),
     account: String(r.account),
@@ -1345,6 +1347,7 @@ function mapDaemonLiveRuntime(r: Row): DaemonLiveRuntime {
 
 function mapRuntime(r: Row): RuntimeRow {
   return {
+    ...(r.credential_stamp ? { credentialStamp: JSON.parse(String(r.credential_stamp)) } : {}),
     beeId: r.bee_id as string,
     generation: Number(r.generation),
     state: r.state as RuntimeState,
@@ -1937,6 +1940,16 @@ export class CoreStore {
     this.db.exec(ACTIONS_TABLE_SQL);
     this.db.exec(THREAD_OPERATIONS_TABLE_SQL);
     this.db.exec(ACCOUNT_ADMISSIONS_TABLE_SQL);
+    const authColumns = this.stmt("SELECT name FROM pragma_table_info('auth_interruptions')").all() as Row[];
+    if (authColumns.length > 0 && !authColumns.some(column => column.name === "death_recovery")) {
+      const authSequence = Number((this.stmt("SELECT seq FROM sqlite_sequence WHERE name = 'auth_interruptions'").get() as Row | undefined)?.seq ?? 0);
+      this.db.exec("DROP INDEX IF EXISTS auth_interruptions_live; DROP INDEX IF EXISTS auth_interruptions_by_bee; ALTER TABLE auth_interruptions RENAME TO auth_interruptions_v40");
+      this.db.exec(AUTH_INTERRUPTIONS_TABLE_SQL);
+      const names = authColumns.map(column => String(column.name)).join(",");
+      this.db.exec(`INSERT INTO auth_interruptions (${names}) SELECT ${names} FROM auth_interruptions_v40; DROP TABLE auth_interruptions_v40`);
+      this.stmt("INSERT INTO sqlite_sequence(name,seq) SELECT 'auth_interruptions', ? WHERE NOT EXISTS (SELECT 1 FROM sqlite_sequence WHERE name = 'auth_interruptions')").run(authSequence);
+      this.stmt("UPDATE sqlite_sequence SET seq = max(seq, ?) WHERE name = 'auth_interruptions'").run(authSequence);
+    }
     this.db.exec(AUTH_INTERRUPTIONS_TABLE_SQL);
     // v28 was developed behind a shadow-mode rollout. Keep intermediate v28
     // databases forward-openable while the shared-owner confirmation column
@@ -2521,6 +2534,7 @@ export class CoreStore {
   }
 
   private applyArchive(beeId: string): BeeRow {
+    this.cancelAuthDeathRecovery(beeId);
     const at = this.now();
     this.stmt("UPDATE bees SET lifecycle = 'archived', archived_at = ? WHERE id = ?").run(at, beeId);
     this.audit("bee.archived", beeId, { beeId, archivedAt: at });
@@ -2900,7 +2914,7 @@ export class CoreStore {
     if (current && LIVE_STATES.includes(current.state)) return { command: null, outcome: "live" };
     const dupe = this.db
       .prepare(
-        `SELECT * FROM commands WHERE bee_id = ? AND verb = 'send_wake'
+        `SELECT * FROM commands WHERE bee_id = ? AND (verb = 'send_wake' OR verb = 'revive' AND json_type(args, '$.authDeathRecoveryId') = 'integer')
          AND status IN ('queued','running') AND target_generation = ? LIMIT 1`,
       )
       .get(beeId, targetGeneration) as Row | undefined;
@@ -3161,6 +3175,7 @@ export class CoreStore {
   private applyArgs(beeId: string, next: string[] | null): boolean {
     const bee = this.mustGetBee(beeId);
     if (sameArgs(bee.args, next)) return false;
+    this.cancelAuthDeathRecovery(beeId);
     this.stmt("UPDATE bees SET args = ? WHERE id = ?").run(next === null ? null : JSON.stringify(next), beeId);
     this.audit("bee.args_set", beeId, { beeId, args: next, previous: bee.args });
     return true;
@@ -3862,7 +3877,7 @@ export class CoreStore {
     verb: string,
     beeId: string,
     args: Record<string, unknown> = {},
-    opts: { idempotencyKey?: string } = {},
+    opts: { idempotencyKey?: string; notBefore?: number } = {},
   ): EnqueuedCommand {
     if (!(VERBS as readonly string[]).includes(verb)) throw new UnknownVerbError(verb);
     const key = opts.idempotencyKey;
@@ -3883,6 +3898,9 @@ export class CoreStore {
         }
       }
       this.mustGetBee(beeId);
+      const recovery = typeof args.authDeathRecoveryId === "number" ? this.getAuthInterruption(args.authDeathRecoveryId) : null;
+      const automatic = verb === "revive" && recovery?.beeId === beeId && recovery.deathRecovery?.claimedAt != null && recovery.deathRecovery.commandId === null && key === `auth-death:${beeId}:${recovery.generation}`;
+      if ((verb === "stop" && args.cause !== "stopped_by_system" || ["revive", "archive", "delete"].includes(verb)) && !automatic) this.cancelAuthDeathRecovery(beeId);
       let superseded = false;
       if (this.lifecycleCommandSupersedesMove(verb as Verb, args, key ?? null)) {
         const live = this.mustGetBee(beeId);
@@ -3929,7 +3947,7 @@ export class CoreStore {
           });
         }
       }
-      const command = this.applyEnqueue(verb as Verb, beeId, args, targetGeneration, key ?? null);
+      const command = this.applyEnqueue(verb as Verb, beeId, args, targetGeneration, key ?? null, opts.notBefore);
       if (superseded && verb !== "delete" && this.undeliveredMessages(beeId).length > 0) {
         this.applyWakeIfNeeded(beeId);
       }
@@ -5434,6 +5452,9 @@ export class CoreStore {
     const next: AccountRow = { ...before, ...patch, statusReason, ...pauseFieldsFor(before, patch, at) };
     const changed = (Object.keys(next) as Array<keyof AccountRow>).filter((k) => k !== "updatedAt" && before[k] !== next[k]);
     if (changed.length === 0) return { account: before, applied: false };
+    if (next.homePath !== before.homePath || next.source !== before.source || next.status === "paused" && next.pausedBy === "operator" && (before.status !== "paused" || before.pausedBy !== "operator") || next.leasedFrom?.revokedAt != null && before.leasedFrom?.revokedAt == null) {
+      for (const bee of this.beesOnAccount(id)) this.cancelAuthDeathRecovery(bee.id);
+    }
     this.db
       .prepare(
         "UPDATE accounts SET status = ?, status_reason = ?, refresh_token_expires_at = ?, penalty = ?, weekly_ceiling = ?, last_login_at = ?, exhausted_at = ?, home_path = ?, label = ?, paused_by = ?, paused_owner = ?, paused_at = ?, source = ?, leased_from = ?, updated_at = ? WHERE id = ?",
@@ -5599,6 +5620,7 @@ export class CoreStore {
       const bee = this.mustGetBee(beeId);
       if (account !== null) this.mustGetAccount(account);
       if (bee.account === account) return { bee, applied: false };
+      this.cancelAuthDeathRecovery(beeId);
       this.stmt("UPDATE bees SET account = ? WHERE id = ?").run(account, beeId);
       this.audit("bee.account_set", beeId, { beeId, account, previous: bee.account });
       return { bee: this.mustGetBee(beeId), applied: true };
@@ -5618,6 +5640,7 @@ export class CoreStore {
       const bee = this.mustGetBee(beeId);
       const next = { ...env };
       if (JSON.stringify(bee.env) === JSON.stringify(next)) return { bee, applied: false };
+      this.cancelAuthDeathRecovery(beeId);
       this.stmt("UPDATE bees SET env = ? WHERE id = ?").run(JSON.stringify(next), beeId);
       this.audit("bee.env_set", beeId, { beeId, env: next, previous: bee.env });
       return { bee: this.mustGetBee(beeId), applied: true };
@@ -5634,6 +5657,7 @@ export class CoreStore {
     return this.tx(() => {
       const bee = this.mustGetBee(beeId);
       if (!bee.providerSessionId) return { bee, applied: false };
+      this.cancelAuthDeathRecovery(beeId);
       this.stmt("UPDATE bees SET fork_seed = ?, provider_session_id = NULL WHERE id = ?").run(bee.providerSessionId, beeId);
       this.audit("bee.session_rekeyed", beeId, { beeId, forkSeed: bee.providerSessionId, previousProviderSessionId: bee.providerSessionId });
       return { bee: this.mustGetBee(beeId), applied: true };
@@ -5800,6 +5824,83 @@ export class CoreStore {
   // v33 — turns cut off by an authentication failure
   // -------------------------------------------------------------------------
 
+  stampRuntimeCredential(beeId: string, generation: number, stamp: import("./types.ts").RuntimeCredentialStamp): void {
+    this.tx(() => {
+      const runtime = this.currentRuntime(beeId);
+      if (!runtime || runtime.generation !== generation || runtime.state !== "booting") throw new CoreError("Credential stamp requires the admitted booting generation");
+      if (runtime.credentialStamp) return;
+      this.stmt("UPDATE runtimes SET credential_stamp = ? WHERE bee_id = ? AND generation = ?").run(JSON.stringify(stamp), beeId, generation);
+      this.audit("runtime.updated", beeId, { runtime: this.currentRuntime(beeId)! });
+    });
+  }
+
+  cancelAuthDeathRecovery(beeId: string, reason: AuthSettleReason = "auth_recovery_cancelled"): void {
+    this.tx(() => {
+      const bee = this.mustGetBee(beeId);
+      const row = this.liveAuthInterruption(beeId);
+      if (!this.currentRuntime(beeId)?.credentialStamp && !row?.deathRecovery) return;
+      const controlFence = (bee.authControlFence ?? 0) + 1;
+      this.stmt("UPDATE bees SET auth_control_fence = ? WHERE id = ?").run(controlFence, beeId);
+      this.audit("bee.auth_control", beeId, { controlFence });
+      if (row?.deathRecovery) {
+        this.settleAuthInterruption(row.id, "cancelled", reason);
+        const command = row.deathRecovery.commandId === null ? null : this.getCommand(row.deathRecovery.commandId);
+        if (command?.status === "queued") {
+          const finishedAt = this.now();
+          this.stmt("UPDATE commands SET status = 'done', finished_at = ? WHERE id = ?").run(finishedAt, command.id);
+          this.audit("command.moot", beeId, { commandId: command.id, verb: command.verb, targetGeneration: command.targetGeneration, currentGeneration: this.currentRuntime(beeId)?.generation ?? 0, finishedAt, reason: "auth_recovery_cancelled" });
+        }
+        for (const messageId of row.continuationMessageIds) this.cancelMessage(beeId, messageId);
+      }
+    });
+  }
+
+  setAuthDeathRecovery(id: number, recovery: import("./types.ts").AuthDeathRecovery): AuthInterruptionRow | null {
+    return this.tx(() => {
+      const row = this.getAuthInterruption(id);
+      if (!row || !AUTH_INTERRUPTION_LIVE_STATES.includes(row.state)) return row;
+      if (JSON.stringify(row.deathRecovery) === JSON.stringify(recovery)) return row;
+      return this.putAuthInterruption({ ...row, deathRecovery: recovery });
+    });
+  }
+
+  claimAuthDeathRecovery(id: number, replacement: import("./types.ts").AccountMaterialStamp, revision: string, continueBody: string): boolean {
+    return this.tx(() => {
+      const row = this.getAuthInterruption(id);
+      const recovery = row?.deathRecovery;
+      if (!row || !recovery || recovery.claimedAt !== null || recovery.deadline === null || this.now() >= recovery.deadline) return false;
+      const bee = this.mustGetBee(row.beeId);
+      const account = this.getAccount(row.account);
+      if (!account || account.native || account.status === "paused" || this.activeCredentialHandoff(row.account)) return false;
+      if (replacement.kind === "central") {
+        const authority = this.getAccountCredentialAuthority(row.account);
+        if (account.source !== "local" || replacement.scope !== account.id || authority?.phase !== "ready" || authority.generation !== replacement.generation || this.credentialAuthorityEpoch(row.account) !== replacement.epoch) return false;
+      } else {
+        const origin = account.leasedFrom;
+        if (account.source !== "leased" || !origin || origin.materialPublished !== true || origin.revokedAt !== null || origin.expiresAt !== null && origin.expiresAt * 1000 <= this.now() || origin.generation !== replacement.generation || origin.epoch !== replacement.epoch || `${origin.authorityNodeId}:${origin.shareId}` !== replacement.scope) return false;
+      }
+      if (this.activeFlags(bee.id).some(flag => flag.flag === "spawn_failed")) return false;
+      const runtime = this.currentRuntime(bee.id);
+      const admitted = recovery.admitted;
+      if (bee.lifecycle !== "active" || bee.account !== row.account || bee.agent !== admitted.agent || bee.cwd !== admitted.cwd || bee.cellId !== admitted.cellId || (bee.authControlFence ?? 0) !== admitted.controlFence || bee.activeMoveId || bee.activeHandoffId || runtime?.generation !== row.generation || runtime.state !== "stopped" || !["clean", "crashed", "stopped_by_system"].includes(runtime.exitCause ?? "")) return false;
+      const old = admitted.material;
+      if (replacement.kind !== old.kind || !(replacement.epoch > old.epoch || replacement.epoch === old.epoch && replacement.scope === old.scope && replacement.generation > old.generation)) return false;
+      if (this.listAuthInterruptions({ beeId: bee.id }).some(other => other.deathRecovery?.claimedAt != null && other.generation === row.generation)) return false;
+      if (account.status === "auth_needed") this.setAccountStatus(account.id, "ok", "Newer managed credential material installed");
+      const claimed = { ...recovery, claimedAt: this.now(), replacement };
+      this.putAuthInterruption({ ...row, deathRecovery: claimed });
+      const command = this.enqueueCommand("revive", bee.id, { authDeathRecoveryId: row.id }, { idempotencyKey: `auth-death:${bee.id}:${row.generation}`, notBefore: this.wakeNotBefore(bee, runtime) });
+      this.setAuthDeathRecovery(row.id, { ...claimed, commandId: command.id });
+      if (row.state !== "resumed") {
+        if (row.state === "open") this.restoreAuthInterruption(row.id, { revision, by: "credentials_restored" });
+        this.resumeAuthInterruption(row.id, continueBody);
+      }
+      this.clearFlag(bee.id, "auth_needed", "Newer managed credential material installed");
+      this.audit("auth_death.resumed", bee.id, { interruptionId: row.id, generation: row.generation, materialGeneration: replacement.generation, commandId: command.id });
+      return true;
+    });
+  }
+
   getAuthInterruption(id: number): AuthInterruptionRow | null {
     const row = this.stmt("SELECT * FROM auth_interruptions WHERE id = ?").get(id) as Row | undefined;
     return row ? mapAuthInterruption(row) : null;
@@ -5840,11 +5941,11 @@ export class CoreStore {
   private putAuthInterruption(row: AuthInterruptionRow): AuthInterruptionRow {
     this.stmt(`UPDATE auth_interruptions SET account = ?, generation = ?, message_ids = ?, turn_progress = ?,
         credential_revision = ?, detail = ?, state = ?, blocked_revision = ?, restored_revision = ?, restored_by = ?,
-        restored_at = ?, continuation_kind = ?, continuation_message_ids = ?, settled_at = ?, settle_reason = ?
+        restored_at = ?, continuation_kind = ?, continuation_message_ids = ?, settled_at = ?, settle_reason = ?, death_recovery = ?
       WHERE id = ?`).run(
       row.account, row.generation, JSON.stringify(row.messageIds), row.turnProgress, row.credentialRevision, row.detail,
       row.state, row.blockedRevision, row.restoredRevision, row.restoredBy, row.restoredAt, row.continuationKind,
-      JSON.stringify(row.continuationMessageIds), row.settledAt, row.settleReason, row.id,
+      JSON.stringify(row.continuationMessageIds), row.settledAt, row.settleReason, row.deathRecovery ? JSON.stringify(row.deathRecovery) : null, row.id,
     );
     this.audit("auth_interruption.put", row.beeId, { interruption: row });
     return row;
@@ -5940,14 +6041,19 @@ export class CoreStore {
     return this.tx(() => {
       const row = this.getAuthInterruption(id);
       if (!row || row.state !== "restored") return { interruption: row, applied: false };
+      if (row.deathRecovery?.claimedAt != null && row.messageIds.length === 0 && row.turnProgress !== "some") {
+        return { interruption: this.putAuthInterruption({ ...row, state: "resumed", continuationKind: "revive", continuationMessageIds: [] }), applied: true };
+      }
       const originals = row.messageIds.map((messageId) => this.getMessage(messageId));
       const redeliver = row.turnProgress === "none" && originals.length > 0
         && originals.every((message) => message !== null && message.beeId === row.beeId);
+      const notice = row.deathRecovery?.claimedAt != null && redeliver
+        ? [this.send(row.beeId, "[Hive] Refreshed account material installed; conversation resumed automatically.", { sender: AUTH_RESUME_SENDER, origin: "auth.resume" })] : [];
       const sent = redeliver
-        ? originals.map((message) => this.send(row.beeId, message!.body, {
+        ? [...notice, ...originals.map((message) => this.send(row.beeId, message!.body, {
           sender: message!.sender, urgency: message!.urgency, priority: message!.priority, origin: "auth.resume",
-        }))
-        : [this.send(row.beeId, continueBody, { sender: AUTH_RESUME_SENDER, origin: "auth.resume" })];
+        }))]
+        : [this.send(row.beeId, (row.deathRecovery?.claimedAt != null ? "[Hive] Refreshed account material installed; conversation resumed automatically.\n\n" : "") + continueBody, { sender: AUTH_RESUME_SENDER, origin: "auth.resume" })];
       return {
         interruption: this.putAuthInterruption({
           ...row,
@@ -6859,6 +6965,7 @@ export class CoreStore {
       const rt = this.currentRuntime(input.beeId);
       const sourceGeneration = rt?.generation ?? 0;
       const id = randomUUID();
+      this.cancelAuthDeathRecovery(input.beeId);
       const nextVersion = bee.placementVersion + 1;
       const stopKey = beeMoveStopKey(id, sourceGeneration);
       const reviveKey = beeMoveReviveKey(id);
@@ -7376,6 +7483,7 @@ export class CoreStore {
         throw new StaleGenerationError(`expected agent ${input.expected.agent}; bee ${input.beeId} runs ${bee.agent}`);
       }
       if (input.target.account !== null) this.mustGetAccount(input.target.account);
+      this.cancelAuthDeathRecovery(input.beeId);
       const segment = this.currentTranscriptSegment(input.beeId);
       if (!segment) throw new CoreError(`admitBeeHandoff: bee ${input.beeId} has no transcript segment`);
       let id = this.mintId();

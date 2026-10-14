@@ -58,6 +58,7 @@ export interface CentralCredentialOptions {
 }
 export interface CredentialCodec {
   harness: string;
+  authDeathRecovery?: boolean;
   label: string;
   retainRotatedOnUnusableAccess?: boolean;
   nativeLoginRecovery?: boolean;
@@ -65,7 +66,7 @@ export interface CredentialCodec {
   merge: (document: Record<string, unknown>, token: Extract<CredentialRefreshResult, { kind: "success" }>["token"], at: number) => Record<string, unknown>;
 }
 const CLAUDE_CODEC: CredentialCodec = {
-  harness: "claude", label: "Claude", parse: parseClaudeCredentials, retainRotatedOnUnusableAccess: true,
+  harness: "claude", authDeathRecovery: true, label: "Claude", parse: parseClaudeCredentials, retainRotatedOnUnusableAccess: true,
   merge: (document, token) => {
     const previous = document.claudeAiOauth as Record<string, unknown>;
     const { accessUsable, ...nativeToken } = token;
@@ -109,6 +110,16 @@ export class CredentialAuthority {
   private readonly options: CentralCredentialOptions;
   constructor(options: CentralCredentialOptions) { this.options = options; }
   private get codec(): CredentialCodec { return this.options.codec ?? CLAUDE_CODEC; }
+
+  supportsAuthDeathRecovery(): boolean { return this.codec.authDeathRecovery === true; }
+
+  publishedMaterialMatches(account: AccountRow, document: Record<string, unknown>): boolean {
+    const state = this.status(account);
+    const value = this.read(account);
+    const privateCredential = this.codec.parse(JSON.stringify(value.document));
+    const published = this.codec.parse(JSON.stringify(document));
+    return state?.phase === "ready" && value.generation === state.generation && privateCredential !== null && privateCredential.expiresAt > this.options.now() && published?.accessToken === privateCredential.accessToken;
+  }
 
   parseDocument(document: Record<string, unknown>): ReturnType<CredentialCodec["parse"]> { return this.codec.parse(JSON.stringify(document)); }
 

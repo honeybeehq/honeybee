@@ -20,7 +20,7 @@ export function grokCredentialEntry(document: Record<string, unknown>): { scope:
 }
 
 export const GROK_CREDENTIAL_CODEC: CredentialCodec = {
-  harness: "grok", label: "Grok", nativeLoginRecovery: true, retainRotatedOnUnusableAccess: true,
+  harness: "grok", authDeathRecovery: true, label: "Grok", nativeLoginRecovery: true, retainRotatedOnUnusableAccess: true,
   parse: raw => {
     try {
       const value = grokCredentialEntry(JSON.parse(raw));

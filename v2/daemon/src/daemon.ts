@@ -758,6 +758,7 @@ export class HiveDaemon {
       log: (op) => this.log(op),
       accountForGeneration: (bee, generation) => accounts.accountForGeneration(bee, generation),
       credentialRevision: (account) => accounts.credentialRevision(account),
+      material: (account) => accounts.authDeathMaterial(account),
     });
     this.loginFlows = new LoginFlowService({
       store,
@@ -786,14 +787,14 @@ export class HiveDaemon {
       adoptToleranceMs: this.cfg.adoptToleranceMs,
       onWriteLaneReady: () => this.requestTick(),
     };
-    const hsr = new HsrDriver({ ...hsrConfig, resolve: (beeId: string) => this.resolveSpawnSpec(beeId) });
+    const hsr = new HsrDriver({ ...hsrConfig, resolve: (beeId: string, generation?: number) => this.resolveSpawnSpec(beeId, generation) });
     // Cell substrate (spec 05): a CellDriver composed over its own inner
     // HsrDriver — pure delegation; the cell layer adds provisioning, cwd =
     // the space checkout, and the A4 sandbox. Same harness resolution.
     const cell = new CellDriver({
       cellsRoot: this.cfg.cellsRoot,
       nodeKind: this.cfg.nodeKind,
-      resolveHarness: (beeId: string) => this.resolveSpawnSpec(beeId),
+      resolveHarness: (beeId: string, generation?: number) => this.resolveSpawnSpec(beeId, generation),
       resolveCell: (beeId: string) => this.resolveCellSpec(beeId),
       resolveSandboxWritablePaths: (beeId: string) => this.resolveCellSandboxWritablePaths(beeId),
       onCellMaterialized: (beeId: string) => this.onCellMaterialized(beeId),
@@ -809,7 +810,7 @@ export class HiveDaemon {
       eventsDir: join(this.cfg.dataDir, "tmux-events"),
       sessionLogDir: this.cfg.sessionLogDir,
       sessionLogPathFor,
-      resolve: (beeId: string) => this.resolveTmuxSpec(beeId),
+      resolve: (beeId: string, generation?: number) => this.resolveTmuxSpec(beeId, generation),
       stopKillGraceMs: this.cfg.stopKillGraceMs,
       adoptToleranceMs: this.cfg.adoptToleranceMs,
     });
@@ -1095,8 +1096,17 @@ export class HiveDaemon {
 
   /** Refresh the bounded due-start set immediately before a command claim. */
   private prepareRuntimeStartCommands(): ReadonlySet<string> {
+    this.authResume?.reconcile();
     this.refreshAccountActivations();
-    return this.blockedRuntimeStartBeeIds();
+    const blocked = new Set(this.blockedRuntimeStartBeeIds());
+    for (const row of this.mustStore().listLiveAuthInterruptions()) if (this.authResume?.holdsStoppedRuntime(row)) {
+      blocked.add(row.beeId);
+      if (this.runtimeStartHolds.get(row.beeId) !== "account_auth_needed") {
+        this.runtimeStartHolds.set(row.beeId, "account_auth_needed");
+        this.log(`runtime.start.held bee=${row.beeId} account=${row.account} code=account_auth_needed — Waiting for refreshed account material`);
+      }
+    }
+    return blocked;
   }
 
   /**
@@ -1279,7 +1289,24 @@ export class HiveDaemon {
    * layer between the agent spec's args and the resume selector — see
    * composeSpawn for the precedence.
    */
-  private resolveSpawnSpec(beeId: string): SpawnSpec {
+  private stampRuntimeCredential(beeId: string, generation: number): void {
+    const store = this.store, accounts = this.accounts;
+    if (this.stopping || !store || !accounts) return;
+    try {
+      const runtime = store.currentRuntime(beeId);
+      if (runtime?.generation !== generation || runtime.state !== "booting") return;
+      const bee = store.getBee(beeId);
+      const account = bee?.account ? store.getAccount(bee.account) : null;
+      if (!bee || !account) return;
+      const material = accounts.authDeathMaterial(account);
+      if (material) store.stampRuntimeCredential(beeId, generation, { material, revision: accounts.credentialRevision(account), account: account.id, agent: bee.agent, cwd: bee.cwd, cellId: bee.cellId, controlFence: bee.authControlFence ?? 0 });
+    } catch {
+      this.log(`auth.material_stamp_unavailable bee=${beeId} gen=${generation}`);
+    }
+  }
+
+  private resolveSpawnSpec(beeId: string, generation?: number): SpawnSpec {
+    if (generation !== undefined) this.stampRuntimeCredential(beeId, generation);
     const store = this.mustStore();
     const bee = store.getBee(beeId);
     if (!bee) throw new Error(`resolve: bee ${beeId} not found`);
@@ -1401,7 +1428,8 @@ export class HiveDaemon {
    * Tmux TUI spawn: same account/home env as HSR, but the interactive CLI
    * (no headless plumbing args) plus the harness transcript locator.
    */
-  private resolveTmuxSpec(beeId: string): ReturnType<typeof tmuxSpawnSpec> {
+  private resolveTmuxSpec(beeId: string, generation?: number): ReturnType<typeof tmuxSpawnSpec> {
+    if (generation !== undefined) this.stampRuntimeCredential(beeId, generation);
     const store = this.mustStore();
     const bee = store.getBee(beeId);
     if (!bee) throw new Error(`resolveTmux: bee ${beeId} not found`);
@@ -4829,7 +4857,10 @@ export class HiveDaemon {
     }
     const res = store.send(beeId, body, { sender, urgency });
     this.forwardIfMailboxOnly(beeId, res.message);
-    return { messageId: res.message.id, commandId: res.wakeCommand?.id ?? null, unarchived: res.unarchived };
+    const held = this.authResume?.waitingForMaterial(beeId);
+    return { messageId: res.message.id, commandId: res.wakeCommand?.id ?? null, unarchived: res.unarchived,
+      ...(held ? { runtimeStartHold: { code: "account_auth_needed" as const, message: "Waiting for refreshed account material" as const } } : {}) };
+
   }
 
   private forwardIfMailboxOnly(beeId: string, message: MessageRow): void {
@@ -5627,6 +5658,7 @@ export class HiveDaemon {
     const safeId = (value: unknown): value is string => typeof value === "string" && /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,199}$/.test(value);
     if (!isAccountId(params.id) || !safeId(params.shareId) || params.shareId.length < 8 || !safeId(params.authorityNodeId) || !safeId(params.harness) || !isAccountId(params.label)) throw invalid();
     if (params.adopt !== undefined && typeof params.adopt !== "boolean" && params.adopt !== "explicit") throw invalid();
+    if (params.generation !== undefined && (typeof params.generation !== "number" || !Number.isSafeInteger(params.generation) || params.generation < 0)) throw invalid();
     if (typeof params.epoch !== "number" || !Number.isSafeInteger(params.epoch) || params.epoch < 0) throw invalid();
     if (params.expiresAt !== null && (typeof params.expiresAt !== "number" || !Number.isSafeInteger(params.expiresAt) || params.expiresAt * 1000 <= Date.now())) throw invalid();
     const unisolated = this.mustAccounts().isolationRefusal(params.harness);

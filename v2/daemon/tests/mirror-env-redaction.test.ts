@@ -70,7 +70,7 @@ test("mirror-env.int.2: a store seeded with a raw idempotency row is migrated at
     const stored = { bee, applied: true };
     const seed = new DatabaseSync(storePath);
     seed.prepare("INSERT INTO rpc_idempotency(key, verb, command_id, result, created_at) VALUES(?, ?, ?, ?, ?)").run("k-seeded", "bee.rename", null, JSON.stringify(stored), 5);
-    seed.prepare("UPDATE meta SET value = ? WHERE key = 'schema_version'").run(String(SCHEMA_VERSION - 1));
+    seed.prepare("UPDATE meta SET value = ? WHERE key = 'schema_version'").run(String(39));
     seed.close();
 
     daemon = await startDaemon(dir);

@@ -87,7 +87,7 @@ export interface SpawnSpec {
 
 export interface HsrDriverConfig {
   /** Resolve the spawn spec for a bee (agent binary + adapter). */
-  resolve(beeId: string): SpawnSpec;
+  resolve(beeId: string, generation?: number): SpawnSpec;
   /** Directory for session logs; one `<beeId>.jsonl` per bee, verbatim native stream. */
   sessionLogDir: string;
   /**
@@ -465,7 +465,7 @@ export class HsrDriver implements RuntimeDriver {
         `hsr driver: bee ${beeId} already has a live process (generation ${existing.generation}, pid ${existing.pid})`,
       );
     }
-    const spec = this.cfg.resolve(beeId);
+    const spec = this.cfg.resolve(beeId, generation);
     if (process.env.HIVE_SPAWN_TRACE) {
       // Diagnostics only: exact spawn shape for post-mortem replay.
       appendFileSync(process.env.HIVE_SPAWN_TRACE, JSON.stringify({ command: spec.command, args: spec.args, cwd: spec.cwd, envKeys: Object.keys(spec.env ?? {}).length, at: Date.now() }) + "\n");

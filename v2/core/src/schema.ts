@@ -159,7 +159,7 @@
  * v35 — a dying login is visible: `accounts.status_reason` + `accounts.refresh_token_expires_at`;
  * the credential authority gains the terminal `login_required` phase, `refresh_token_expires_at`
  * and the secret-free last refresh `failure` (table rebuild, rows carried across by name). */
-export const SCHEMA_VERSION = 40;
+export const SCHEMA_VERSION = 41;
 
 export const AUTH_INTERRUPTIONS_TABLE_SQL = `
 CREATE TABLE IF NOT EXISTS auth_interruptions (
@@ -177,10 +177,11 @@ CREATE TABLE IF NOT EXISTS auth_interruptions (
   restored_revision        TEXT,
   restored_by              TEXT CHECK (restored_by IN ('login','capture','refresh','limits_probe','credentials_restored','account_swap')),
   restored_at              INTEGER,
-  continuation_kind        TEXT CHECK (continuation_kind IN ('redeliver','continue')),
+  continuation_kind        TEXT CHECK (continuation_kind IN ('redeliver','continue','revive')),
   continuation_message_ids TEXT NOT NULL DEFAULT '[]',
   settled_at               INTEGER,
-  settle_reason            TEXT CHECK (settle_reason IN ('stopped_by_user','archived','turn_succeeded','auth_failed_again'))
+  settle_reason            TEXT CHECK (settle_reason IN ('stopped_by_user','archived','turn_succeeded','auth_failed_again','auth_recovery_expired','auth_recovery_cancelled')),
+  death_recovery TEXT
 ) STRICT;
 CREATE UNIQUE INDEX IF NOT EXISTS auth_interruptions_live
   ON auth_interruptions(bee_id) WHERE state IN ('open','restored','resumed');
@@ -827,6 +828,7 @@ CREATE TABLE IF NOT EXISTS cell_ops (
  * account; v21: parent_external.
  */
 export const BEES_ADDITIVE_COLUMNS: ReadonlyArray<readonly [name: string, ddl: string]> = [
+  ["auth_control_fence", "auth_control_fence INTEGER NOT NULL DEFAULT 0"],
   ["provider_session_id", "provider_session_id TEXT"],
   ["env", "env TEXT NOT NULL DEFAULT '{}'"],
   ["imported_from", "imported_from TEXT"],
@@ -1141,6 +1143,7 @@ CREATE TABLE IF NOT EXISTS mail_history_enqueues (
 `;
 
 export const RUNTIMES_ADDITIVE_COLUMNS: ReadonlyArray<readonly [name: string, ddl: string]> = [
+  ["credential_stamp", "credential_stamp TEXT"],
   ["boot_evidence", "boot_evidence TEXT CHECK (boot_evidence IN ('synthetic','real'))"],
 ];
 

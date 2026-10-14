@@ -48,7 +48,7 @@ test("claude: the assistant line Claude Code writes for a failed API call is not
     message: { role: "assistant", model: "<synthetic>", content: [{ type: "text", text: "Not logged in · Please run /login" }] },
     error: "authentication_failed",
   });
-  assert.deepEqual(parseClaudeLine(notLoggedIn), [{ kind: "turn_started" }]);
+  assert.deepEqual(parseClaudeLine(notLoggedIn), [{ kind: "turn_started" }, { kind: "flag", flag: "auth_needed", action: "set", detail: "Claude authentication failed" }]);
   assert.equal(claudeAdapter.reportsTurnProgress, true);
 });
 
@@ -146,4 +146,11 @@ test("claude v6: forkArgs = `--resume <src> --fork-session` (never --session-id)
   assert.deepEqual(parseClaudeLine(JSON.stringify({ type: "control_response", response: { subtype: "success", request_id: a.request_id } })), []);
   // the interrupted turn still ends with a result line → turn_ended (the ordinary edge)
   assert.ok(parseClaudeLine(JSON.stringify({ type: "result", subtype: "success", is_error: false, result: "[interrupted]" })).some((s) => s.kind === "turn_ended"));
+});
+
+
+test("claude: typed authentication failure and HTTP 401 work without provider prose; quota remains distinct", () => {
+  assert.ok(parseClaudeLine(JSON.stringify({ type: "assistant", error: "authentication_failed", message: { model: "<synthetic>", content: [] } })).some(signal => signal.kind === "flag" && signal.flag === "auth_needed" && signal.action === "set"));
+  assert.ok(parseClaudeLine(JSON.stringify({ type: "result", is_error: true, api_error_status: 401, result: "Request refused" })).some(signal => signal.kind === "flag" && signal.flag === "auth_needed" && signal.action === "set"));
+  assert.ok(!parseClaudeLine(JSON.stringify({ type: "result", is_error: true, api_error_status: 429, result: "Rate limit exceeded" })).some(signal => signal.kind === "flag" && signal.flag === "auth_needed"));
 });

@@ -46,7 +46,7 @@ function tableDigest(path: string): string {
   }
 }
 
-function seedStore(path: string, rows: Array<{ key: string; verb: string; commandId: number | null; result: string; createdAt: number }>, version = SCHEMA_VERSION - 1): void {
+function seedStore(path: string, rows: Array<{ key: string; verb: string; commandId: number | null; result: string; createdAt: number }>, version = 39): void {
   const db = new DatabaseSync(path);
   try {
     db.exec("BEGIN");
@@ -173,7 +173,7 @@ test("mirror-env.6: the schema migration redacts stored idempotency results once
     reopened.close();
     assert.equal(tableDigest(h.path), digest);
 
-    seedStore(h.path, [], SCHEMA_VERSION - 1);
+    seedStore(h.path, [], 39);
     const rerun = h.open();
     assert.deepEqual({ ...rerun.rpcIdempotencyRedactionReceipt, wallMs: 0 }, { seen: 5, redacted: 0, skippedUnparseable: 1, skippedUnrecognised: 1, complete: true, wallMs: 0 });
     rerun.close();

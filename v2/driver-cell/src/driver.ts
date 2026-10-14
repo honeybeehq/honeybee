@@ -64,7 +64,7 @@ export interface CellDriverConfig {
   /** Node kind, from the daemon config — decides the sandbox default (A4). */
   nodeKind: NodeKind;
   /** Resolve the harness half of a spawn (adapter/command/args/env). cwd is cell-owned. */
-  resolveHarness(beeId: string): SpawnSpec;
+  resolveHarness(beeId: string, generation?: number): SpawnSpec;
   /** Resolve the cell half (origin repo, sha, warm config, sandbox override). */
   resolveCell(beeId: string): CellSpec;
   /** Inner HSR driver settings (session logs, stop grace, …). */
@@ -140,7 +140,7 @@ export class CellDriver implements RuntimeDriver {
     this.cfg = cfg;
     this.inner = new HsrDriver({
       ...cfg.hsr,
-      resolve: (beeId: string) => this.resolveCellSpawn(beeId),
+      resolve: (beeId: string, generation?: number) => this.resolveCellSpawn(beeId, generation),
     });
   }
 
@@ -602,7 +602,7 @@ export class CellDriver implements RuntimeDriver {
     worker.unref();
   }
 
-  private resolveCellSpawn(beeId: string): SpawnSpec {
+  private resolveCellSpawn(beeId: string, generation?: number): SpawnSpec {
     // The ledger (cell.json) is the durable allocation truth; `this.cells` is
     // only a cache of it. The inner HSR driver resolves through here not just
     // on start() (cache warm from ensureCell) but on boot re-adoption, when a
@@ -611,7 +611,7 @@ export class CellDriver implements RuntimeDriver {
     // no journal tail → the bee stayed "running" after its turn ended).
     const cell = this.cellOf(beeId);
     if (!cell) throw new Error(`cell driver: bee ${beeId} has no provisioned cell (start() provisions first)`);
-    const harness = this.cfg.resolveHarness(beeId);
+    const harness = this.cfg.resolveHarness(beeId, generation);
     const spec = this.cfg.resolveCell(beeId);
     const env: Record<string, string> = {
       ...(harness.env ?? (process.env as Record<string, string>)),

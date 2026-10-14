@@ -157,6 +157,10 @@ export function replayAudit(rows: AuditRow[]): StateDump {
         mustBee(p.beeId as string).account = (p.account as string | null) ?? null;
         break;
       }
+      case "bee.auth_control": {
+        mustBee(row.beeId!).authControlFence = p.controlFence as number;
+        break;
+      }
       case "bee.env_set": {
         mustBee(p.beeId as string).env = { ...(p.env as Record<string, string>) };
         break;
@@ -533,6 +537,7 @@ export function replayAudit(rows: AuditRow[]): StateDump {
         actionQueues.set(queue.beeId, queue);
         break;
       }
+      case "auth_death.resumed":
       case "action.report_rejected":
         break;
       default:
