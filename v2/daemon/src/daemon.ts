@@ -435,6 +435,8 @@ function grammarFor(adapterName: string): ArgGrammar {
  * codex: `-m/--model` and the approval/sandbox flags are lifted off argv into
  * the thread request (the app-server ignores TUI flags); `-c k=v` stays.
  */
+const APIARY_TAG_PREFIX = "apiary:";
+
 export function composeSpawn(
   spec: AgentSpecConfig,
   adapterName: string,
@@ -1621,6 +1623,7 @@ export class HiveDaemon {
       case "humanRef.registry.reserve":
         return this.mustStore().reserveHumanRefNamespace(this.param(params, "installationId"));
       case "spawn":
+        this.assertApiaryTagWriter(verb, params);
         // The start command is due now; do not wait out the tick cadence.
         return this.releasingRefusedClaim(() => this.rpcSpawnWithAccount(params)).then((result) => { this.requestTick(); return result; });
       case "bee.swapAccount":
@@ -1893,6 +1896,7 @@ export class HiveDaemon {
       case "bee.rename":
         return this.withIdempotency(verb, params, () => this.rpcRename(params));
       case "bee.tag":
+        this.assertApiaryTagWriter(verb, params);
         return this.withIdempotency(verb, params, () => this.rpcTag(params));
       case "bee.reconnectTools":
         return this.rpcReconnectTools(params);
@@ -4486,6 +4490,17 @@ export class HiveDaemon {
       this.log(`contextPolicy.set ${workspace !== null ? `workspace=${workspace}` : role !== null ? `role=${role}` : "default"} policy=${JSON.stringify(policy)}`);
     }
     return { ...this.contextPolicyResult(workspace, role), applied };
+  }
+
+  private assertApiaryTagWriter(verb: "spawn" | "bee.tag", params: Record<string, unknown>): void {
+    const caller = params.callerBeeId;
+    if (caller === undefined || caller === null) return;
+    if (typeof caller !== "string" || caller.length === 0) throw new RpcError("invalid_request", `${verb}: callerBeeId must be a non-empty string when given`);
+    const written = verb === "spawn" ? [params.tags] : [params.add, params.remove];
+    const reserved = written.flatMap((list) => (Array.isArray(list) ? list : [])).filter((tag): tag is string => typeof tag === "string" && tag.startsWith(APIARY_TAG_PREFIX));
+    if (reserved.length > 0) {
+      throw new RpcError("tag_reserved", `${verb}: ${APIARY_TAG_PREFIX}* tags are written by Apiary only; bee ${caller} may not write ${reserved.join(", ")}`);
+    }
   }
 
   private rpcTag(params: Record<string, unknown>): TagResult {

@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   builtinRoleContextPolicy,
+  claudeEnvAutoCompactWindow,
   claudeContextLaunch,
   claudeLaunchFacts,
   roleOfTags,
@@ -217,7 +218,7 @@ test("champion role: built-in default compacts at 650k on a 1M window; workspace
   assert.equal(roleOfTags(["apiary:workspace=w1", "apiary:role=champion"]), "champion");
   assert.equal(roleOfTags(["apiary:role=chief", "apiary:champion=kal"]), null);
   assert.deepEqual(builtinRoleContextPolicy("champion"), { autoCompactWindow: 683_000 });
-  assert.deepEqual(builtinRoleContextPolicy("champion", { homeAutoCompactWindow: null, maxOutputTokens: 8_000 }), { autoCompactWindow: 671_000 }, "a smaller output reserve keeps the threshold at 650k");
+  assert.deepEqual(builtinRoleContextPolicy("champion", { homeAutoCompactWindow: null, envAutoCompactWindow: null, maxOutputTokens: 8_000 }), { autoCompactWindow: 671_000 }, "a smaller output reserve keeps the threshold at 650k");
   const none = contextPolicyConfigOf({});
   assert.deepEqual(effectiveContextPolicy(none, "w1", "champion"), { autoCompactWindow: 683_000 });
   assert.equal(contextPolicyFacts(effectiveContextPolicy(none, "w1", "champion")).thresholdTokens, 650_000);
@@ -229,9 +230,9 @@ test("champion role: built-in default compacts at 650k on a 1M window; workspace
   assert.deepEqual(effectiveContextPolicy(set, "w2", "champion"), { autoCompactWindow: 500_000, autoCompactPercent: 50 }, "workspace wins");
   assert.deepEqual(effectiveContextPolicy(contextPolicyConfigOf({ contextPolicy: { default: { autoCompactWindow: 900_000 } } }), null, "champion"), { autoCompactWindow: 683_000 }, "the champion default lowers a higher node default");
   assert.deepEqual(effectiveContextPolicy(contextPolicyConfigOf({ contextPolicy: { default: { autoCompactWindow: 400_000 } } }), null, "champion"), { autoCompactWindow: 400_000 }, "the built-in default never raises a lower node default");
-  assert.deepEqual(effectiveContextPolicy(none, null, "champion", { homeAutoCompactWindow: 300_000, maxOutputTokens: null }), { autoCompactWindow: 300_000 }, "nor a lower window in the Claude home settings");
-  assert.deepEqual(effectiveContextPolicy(none, null, "champion", { homeAutoCompactWindow: 900_000, maxOutputTokens: null }), { autoCompactWindow: 683_000 });
-  assert.deepEqual(effectiveContextPolicy(contextPolicyConfigOf({ contextPolicy: { roles: { champion: { autoCompactWindow: 800_000 } } } }), null, "champion", { homeAutoCompactWindow: 300_000, maxOutputTokens: null }), { autoCompactWindow: 800_000 }, "an explicit Champion policy is taken as given");
+  assert.deepEqual(effectiveContextPolicy(none, null, "champion", { homeAutoCompactWindow: 300_000, envAutoCompactWindow: null, maxOutputTokens: null }), { autoCompactWindow: 300_000 }, "nor a lower window in the Claude home settings");
+  assert.deepEqual(effectiveContextPolicy(none, null, "champion", { homeAutoCompactWindow: 900_000, envAutoCompactWindow: null, maxOutputTokens: null }), { autoCompactWindow: 683_000 });
+  assert.deepEqual(effectiveContextPolicy(contextPolicyConfigOf({ contextPolicy: { roles: { champion: { autoCompactWindow: 800_000 } } } }), null, "champion", { homeAutoCompactWindow: 300_000, envAutoCompactWindow: null, maxOutputTokens: null }), { autoCompactWindow: 800_000 }, "an explicit Champion policy is taken as given");
   assert.throws(() => contextPolicyConfigOf({ contextPolicy: { roles: { chief: {} } } }), ContextPolicyError);
   assert.deepEqual(claudeContextLaunch(effectiveContextPolicy(none, null, "champion"), ["--model", "opus[1m]"], {}, null), {
     modelArgs: [],
@@ -321,12 +322,68 @@ test("contextPolicy over RPC: a champion-tagged claude bee gets the 650k default
 test("claude launch facts read the home's numeric autoCompactWindow and CLAUDE_CODE_MAX_OUTPUT_TOKENS", () => {
   const home = mkdtempSync(join(tmpdir(), "hb-ctx-launch-"));
   try {
-    assert.deepEqual(claudeLaunchFacts({ CLAUDE_CONFIG_DIR: home }), { homeAutoCompactWindow: null, maxOutputTokens: null });
+    assert.deepEqual(claudeLaunchFacts({ CLAUDE_CONFIG_DIR: home }), { homeAutoCompactWindow: null, envAutoCompactWindow: null, maxOutputTokens: null });
     writeFileSync(join(home, "settings.json"), JSON.stringify({ autoCompactWindow: 400_000 }));
-    assert.deepEqual(claudeLaunchFacts({ CLAUDE_CONFIG_DIR: home, CLAUDE_CODE_MAX_OUTPUT_TOKENS: "8000" }), { homeAutoCompactWindow: 400_000, maxOutputTokens: 8_000 });
+    assert.deepEqual(claudeLaunchFacts({ CLAUDE_CONFIG_DIR: home, CLAUDE_CODE_MAX_OUTPUT_TOKENS: "8000" }), { homeAutoCompactWindow: 400_000, envAutoCompactWindow: null, maxOutputTokens: 8_000 });
     writeFileSync(join(home, "settings.json"), JSON.stringify({ autoCompactWindow: "auto" }));
-    assert.deepEqual(claudeLaunchFacts({ CLAUDE_CONFIG_DIR: home, CLAUDE_CODE_MAX_OUTPUT_TOKENS: "lots" }), { homeAutoCompactWindow: null, maxOutputTokens: null });
+    assert.deepEqual(claudeLaunchFacts({ CLAUDE_CONFIG_DIR: home, CLAUDE_CODE_MAX_OUTPUT_TOKENS: "lots" }), { homeAutoCompactWindow: null, envAutoCompactWindow: null, maxOutputTokens: null });
   } finally {
     rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("an inherited CLAUDE_CODE_AUTO_COMPACT_WINDOW is parsed like Claude does and lowers the Champion ceiling", () => {
+  assert.equal(claudeEnvAutoCompactWindow(undefined), null);
+  assert.equal(claudeEnvAutoCompactWindow(" "), null);
+  assert.equal(claudeEnvAutoCompactWindow("300000"), 300_000);
+  assert.equal(claudeEnvAutoCompactWindow("300,000"), 300_000);
+  assert.equal(claudeEnvAutoCompactWindow("300_000"), 300_000);
+  assert.equal(claudeEnvAutoCompactWindow("3e5"), 300_000);
+  assert.equal(claudeEnvAutoCompactWindow("400k"), 100_000, "parseInt reads 400, then Claude's 100k floor applies");
+  assert.equal(claudeEnvAutoCompactWindow("5000000"), 1_000_000);
+  assert.equal(claudeEnvAutoCompactWindow("0"), null);
+  assert.equal(claudeEnvAutoCompactWindow("auto"), null);
+  assert.equal(claudeEnvAutoCompactWindow("2.5e5"), 250_000);
+  assert.equal(claudeEnvAutoCompactWindow("2.555555e5"), null);
+  assert.deepEqual(claudeLaunchFacts({ CLAUDE_CONFIG_DIR: "/nonexistent-hb-ctx", CLAUDE_CODE_AUTO_COMPACT_WINDOW: "300000" }), { homeAutoCompactWindow: null, envAutoCompactWindow: 300_000, maxOutputTokens: null });
+  const none = contextPolicyConfigOf({});
+  const launch = { homeAutoCompactWindow: null, envAutoCompactWindow: 300_000, maxOutputTokens: null };
+  assert.deepEqual(effectiveContextPolicy(none, null, "champion", launch), { autoCompactWindow: 300_000 });
+  assert.deepEqual(claudeContextLaunch(effectiveContextPolicy(none, null, "champion", launch), [], { CLAUDE_CODE_AUTO_COMPACT_WINDOW: "300000" }, null).env, { CLAUDE_CODE_AUTO_COMPACT_WINDOW: "300000" });
+  assert.deepEqual(effectiveContextPolicy(none, null, "champion", { ...launch, envAutoCompactWindow: 900_000 }), { autoCompactWindow: 683_000 });
+});
+
+test("over RPC: agents.claude.env CLAUDE_CODE_AUTO_COMPACT_WINDOW=300000 stays 300000 on a Champion", { timeout: 120_000 }, async () => {
+  const root = mkdtempSync(join(tmpdir(), "hb-ctx-specenv-"));
+  const argvLog = join(root, "argv.jsonl");
+  const claudeHome = join(root, "claude-home");
+  mkdirSync(claudeHome, { recursive: true });
+  const { dir, cleanup } = makeDaemonDir({
+    agents: {
+      claude: {
+        command: process.execPath,
+        args: [FAKE_CLAUDE, "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose"],
+        adapter: "claude",
+        env: { FAKE_CLAUDE_ARGV_LOG: argvLog, CLAUDE_CODE_AUTO_COMPACT_WINDOW: "300000" },
+      },
+    },
+  });
+  let daemon: DaemonHandle | null = null;
+  try {
+    daemon = await startDaemon(dir);
+    const client = await daemon.client();
+    const { beeId } = await client.request<SpawnResult>("spawn", { name: "champ", agent: "claude", cwd: root, tags: ["apiary:role=champion"], env: { CLAUDE_CONFIG_DIR: claudeHome } });
+    await client.request<SendRpcResult>("send", { beeId, body: "hello" });
+    type Boot = { env: Record<string, string | null> };
+    await waitFor(async () => existsSync(argvLog) && readFileSync(argvLog, "utf8").includes(beeId), "champion booted");
+    const boot = readFileSync(argvLog, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l) as Boot).find((b) => b.env.HIVE_BEE_ID === beeId)!;
+    assert.equal(boot.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW, "300000");
+    const got = await client.request<ContextPolicyResult>("contextPolicy.get", { beeId });
+    assert.deepEqual(got.rolePolicy, { autoCompactWindow: 300_000 });
+    assert.equal(got.facts.thresholdTokens, 267_000);
+  } finally {
+    await daemon?.stop();
+    cleanup();
+    rmSync(root, { recursive: true, force: true });
   }
 });

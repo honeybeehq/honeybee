@@ -238,6 +238,7 @@ export const DAEMON_CAPABILITIES = [
   "account.native.v1",
   "context.policy.v1",
   "context.policy.roles.v1",
+  "bee.tag.apiary_reserved.v1",
 ] as const;
 export type DaemonCapability = (typeof DAEMON_CAPABILITIES)[number];
 
@@ -282,6 +283,7 @@ export const RPC_ERROR_CODES = [
   "node_stopped",
   "protocol_mismatch",
   "invalid_request",
+  "tag_reserved",
   /** Verb-specific refusal: the lifecycle graph forbids the transition. */
   "lifecycle_refused",
   /** Verb-specific refusal: the runtime state forbids the operation. */

@@ -27,10 +27,31 @@ export const BUILTIN_ROLE_THRESHOLD: Record<ContextRole, number> = { champion: C
 
 export interface ClaudeLaunchFacts {
   homeAutoCompactWindow: number | null;
+  envAutoCompactWindow: number | null;
   maxOutputTokens: number | null;
 }
 
-export const NO_LAUNCH_FACTS: ClaudeLaunchFacts = { homeAutoCompactWindow: null, maxOutputTokens: null };
+export const NO_LAUNCH_FACTS: ClaudeLaunchFacts = { homeAutoCompactWindow: null, envAutoCompactWindow: null, maxOutputTokens: null };
+
+const CLAUDE_EXPONENT_NUMBER = /^[+-]?(\d+(\.\d*)?|\.\d+)[eE][+-]?\d+$/;
+const CLAUDE_GROUPED_NUMBER = /^[+-]?\d{1,3}([_,\u00A0\u202F ])\d{3}(?:\1\d{3})*$/;
+
+export function claudeEnvAutoCompactWindow(value: string | undefined): number | null {
+  if (value === undefined) return null;
+  const text = value.trim();
+  if (text.length === 0) return null;
+  let n: number;
+  if (text.length <= 32 && CLAUDE_EXPONENT_NUMBER.test(text)) {
+    n = Number(text);
+    if (!Number.isInteger(n)) return null;
+  } else if (text.length <= 32 && CLAUDE_GROUPED_NUMBER.test(text)) {
+    n = parseInt(text.replace(/[_,\u00A0\u202F ]/gu, ""), 10);
+  } else {
+    n = parseInt(text, 10);
+  }
+  if (Number.isNaN(n) || n <= 0) return null;
+  return Math.min(AUTO_COMPACT_WINDOW_MAX, Math.max(AUTO_COMPACT_WINDOW_MIN, n));
+}
 
 export function builtinRoleContextPolicy(role: ContextRole, launch: ClaudeLaunchFacts = NO_LAUNCH_FACTS): ContextPolicy {
   const reserve = Math.min(launch.maxOutputTokens ?? CLAUDE_AUTO_COMPACT_OUTPUT_RESERVE, CLAUDE_AUTO_COMPACT_OUTPUT_RESERVE);
@@ -158,7 +179,7 @@ export function storedContextPolicy(config: ContextPolicyConfig, scope: ContextP
 export function roleContextPolicy(config: ContextPolicyConfig, role: ContextRole, launch: ClaudeLaunchFacts = NO_LAUNCH_FACTS): ContextPolicy {
   const stored = storedContextPolicy(config, { role });
   if (stored) return stored;
-  const lower = [config.default?.autoCompactWindow, launch.homeAutoCompactWindow ?? undefined].filter((n): n is number => typeof n === "number");
+  const lower = [config.default?.autoCompactWindow, launch.homeAutoCompactWindow ?? undefined, launch.envAutoCompactWindow ?? undefined].filter((n): n is number => typeof n === "number");
   return { autoCompactWindow: Math.min(builtinRoleContextPolicy(role, launch).autoCompactWindow!, ...lower) };
 }
 
@@ -275,6 +296,7 @@ export function claudeLaunchFacts(env: Record<string, string | undefined>): Clau
   const maxOutput = Number(env.CLAUDE_CODE_MAX_OUTPUT_TOKENS);
   return {
     homeAutoCompactWindow: typeof window === "number" && Number.isFinite(window) && window > 0 ? window : null,
+    envAutoCompactWindow: claudeEnvAutoCompactWindow(env[CLAUDE_CONTEXT_ENV.autoCompactWindow]),
     maxOutputTokens: Number.isInteger(maxOutput) && maxOutput > 0 ? maxOutput : null,
   };
 }

@@ -15,6 +15,7 @@ import { BUZ_INJECTION_MARKER } from "../../daemon/src/envelope.ts";
 import { makeDaemonDir, startDaemon, waitFor, type DaemonHandle } from "../../daemon/tests/helpers.ts";
 import {
   agentAccountSelection,
+  callerBeeIdFor,
   loginFlowExitCode,
   runV2Cli,
   shouldFollowLogin,
@@ -1289,6 +1290,45 @@ test("verbs.buz: v1 compat — buz send maps tiers onto urgency + sender; buz in
     else process.env.HIVE_BEE_ID = savedBeeId;
     if (savedDataDir === undefined) delete process.env.HIVE_V2_DATA_DIR;
     else process.env.HIVE_V2_DATA_DIR = savedDataDir;
+    await daemon?.stop().catch(() => {});
+    cleanup();
+  }
+});
+
+test("verbs.tag: a bee cannot write apiary:* tags; the operator can", async () => {
+  const { dir, cleanup } = makeDaemonDir();
+  let daemon: DaemonHandle | null = null;
+  const saved = { id: process.env.HIVE_BEE_ID, dataDir: process.env.HIVE_V2_DATA_DIR };
+  try {
+    daemon = await startDaemon(dir);
+    const s = capture();
+    assert.equal(await runV2Cli(["spawn", "selfish", "--agent", "stub", "--cwd", "/tmp", "--data-dir", dir, "--json"], s.io), 0);
+    const beeId = (JSON.parse(s.out[0] ?? "{}") as { beeId: string }).beeId;
+    assert.equal(callerBeeIdFor(dir, { HIVE_BEE_ID: beeId, HIVE_V2_DATA_DIR: dir }), beeId);
+    assert.equal(callerBeeIdFor(dir, { HIVE_BEE_ID: beeId, HIVE_V2_DATA_DIR: join(dir, "elsewhere") }), null);
+    assert.equal(callerBeeIdFor(dir, {}), null);
+
+    process.env.HIVE_BEE_ID = beeId;
+    process.env.HIVE_V2_DATA_DIR = dir;
+    const self = capture();
+    assert.equal(await runV2Cli(["tag", beeId, "--add", "apiary:role=champion", "--data-dir", dir], self.io), 1);
+    assert.ok(self.err.join("\n").includes("written by Apiary only"), self.err.join("\n"));
+    const spawned = capture();
+    assert.equal(await runV2Cli(["spawn", "kid", "--agent", "stub", "--cwd", "/tmp", "--tag", "apiary:workspace=w1", "--data-dir", dir], spawned.io), 1);
+    assert.ok(spawned.err.join("\n").includes("written by Apiary only"), spawned.err.join("\n"));
+    assert.equal(await runV2Cli(["tag", beeId, "--add", "team:a", "--data-dir", dir], capture().io), 0);
+
+    delete process.env.HIVE_BEE_ID;
+    delete process.env.HIVE_V2_DATA_DIR;
+    assert.equal(await runV2Cli(["tag", beeId, "--add", "apiary:role=champion", "--data-dir", dir], capture().io), 0);
+    const view = capture();
+    assert.equal(await runV2Cli(["view", beeId, "--json", "--data-dir", dir], view.io), 0);
+    assert.ok(view.out.join("\n").includes("apiary:role=champion"));
+  } finally {
+    if (saved.id === undefined) delete process.env.HIVE_BEE_ID;
+    else process.env.HIVE_BEE_ID = saved.id;
+    if (saved.dataDir === undefined) delete process.env.HIVE_V2_DATA_DIR;
+    else process.env.HIVE_V2_DATA_DIR = saved.dataDir;
     await daemon?.stop().catch(() => {});
     cleanup();
   }

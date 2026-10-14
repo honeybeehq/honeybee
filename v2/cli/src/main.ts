@@ -467,6 +467,13 @@ function selfBeeId(env: Record<string, string | undefined> = process.env): strin
   return typeof id === "string" && id.length > 0 ? id : null;
 }
 
+export function callerBeeIdFor(dataDir: string, env: Record<string, string | undefined> = process.env): string | null {
+  const self = selfBeeId(env);
+  const identityDataDir = env.HIVE_V2_DATA_DIR?.trim();
+  if (!self || (identityDataDir && resolve(identityDataDir) !== resolve(dataDir))) return null;
+  return self;
+}
+
 /**
  * Bind a send to the identity that Honeybee stamped on this runtime. The
  * stable id is authoritative; HIVE_BEE remains useful for the legacy buz
@@ -752,6 +759,7 @@ async function spawnBee(
         : {}),
       ...(Object.keys(env).length > 0 ? { env } : {}),
       ...(parentId ? { parentId } : {}),
+      ...(callerBeeIdFor(ctx.cfg.dataDir) ? { callerBeeId: callerBeeIdFor(ctx.cfg.dataDir) } : {}),
       ...(account !== undefined ? { account } : {}),
       ...(onlyAccountIds.length > 0 ? { onlyAccountIds } : {}),
       ...(initialPrompt !== undefined ? { prompt: initialPrompt } : {}),
@@ -1381,6 +1389,7 @@ async function cmdTag(ctx: CliContext, parsed: Parsed): Promise<number> {
       beeId,
       ...(add.length > 0 ? { add } : {}),
       ...(remove.length > 0 ? { remove } : {}),
+      ...(callerBeeIdFor(ctx.cfg.dataDir) ? { callerBeeId: callerBeeIdFor(ctx.cfg.dataDir) } : {}),
       idempotencyKey: parsed.flags.get("--idempotency-key") as string | undefined,
     });
     emit(
