@@ -289,6 +289,7 @@ async function admitTmuxLauncher(
     : undefined;
   if (paneId && launcherPgid && fingerprint?.pgid === launcherPgid) return fingerprint;
 
+  const diagnostics = await describeAdmissionFailure(paneId, launcherPgid);
   // The pane id is the unrecycled live handle returned by this exact tmux
   // create call. Roll it back before returning an error; no SessionRecord is
   // allowed to publish a runtime whose future group teardown is unprovable.
@@ -303,9 +304,29 @@ async function admitTmuxLauncher(
       : `launcher ${launcherPgid} has no verifiable birth fingerprint`;
   if (absence.status !== "absent") {
     const cleanup = absence.status === "indeterminate" ? absence.reason : `tmux pane ${paneId} is still present`;
-    throw new Error(`Local tmux birth admission failed: ${reason}; exact pane rollback unconfirmed: ${cleanup || command.stderr}`);
+    throw new Error(`Local tmux birth admission failed: ${reason}; exact pane rollback unconfirmed: ${cleanup || command.stderr}${diagnostics}`);
   }
-  throw new Error(`Local tmux birth admission failed: ${reason}; exact pane ${paneId} rolled back`);
+  throw new Error(`Local tmux birth admission failed: ${reason}; exact pane ${paneId} rolled back${diagnostics}`);
+}
+
+async function describeAdmissionFailure(paneId: string, launcherPgid: number | undefined): Promise<string> {
+  const parts: string[] = [];
+  const panes = await tmux(["list-panes", "-a", "-F", "#{pane_id} pid=#{pane_pid} dead=#{pane_dead} status=#{pane_dead_status} cmd=#{pane_current_command}"], { reject: false });
+  parts.push(`panes=${JSON.stringify((panes.ok ? panes.stdout : panes.stderr).trim())}`);
+  if (launcherPgid) {
+    try {
+      const census = await execFileAsync("/bin/ps", ["-o", "pid=,ppid=,pgid=,stat=,etimes=,args=", "-p", String(launcherPgid)], { timeout: 5_000 });
+      parts.push(`ps=${JSON.stringify(census.stdout.trim())}`);
+    } catch (error) {
+      parts.push(`ps=${JSON.stringify((error as { stdout?: string; message?: string }).stdout?.trim() || (error as Error).message)}`);
+    }
+  }
+  if (paneId) {
+    const captured = await tmux(["capture-pane", "-p", "-t", paneId], { reject: false });
+    const tail = captured.stdout.split("\n").filter((line) => line.trim().length > 0).slice(-5).join(" | ");
+    parts.push(`pane=${JSON.stringify(captured.ok ? tail : captured.stderr.trim())}`);
+  }
+  return ` [admission diagnostics: ${parts.join(" ")}]`;
 }
 
 function parsePositiveInt(value: string): number | undefined {
