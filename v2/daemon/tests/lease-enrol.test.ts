@@ -392,3 +392,19 @@ test("lease instance: a generationless delivery from the same declared instance 
     assert.deepEqual(replayAudit(r.store.auditRows()), r.store.dumpState());
   } finally { r.close(); }
 });
+
+
+test("lease instance retirement keeps the newest eight ids across restart", async () => {
+  const r = rig();
+  try {
+    const ids = Array.from({ length: 10 }, () => randomUUID());
+    for (const authorityInstanceId of ids) await r.accounts.installLease({ ...r.input(1), enrol: undefined, authorityInstanceId });
+    r.reopen();
+    const installed = r.store.listAccounts().find(account => account.leasedFrom?.authorityInstanceId === ids[9])!;
+    assert.deepEqual(installed.leasedFrom?.retiredAuthorityInstanceIds, ids.slice(1, 9));
+    for (const authorityInstanceId of ids.slice(1, 9)) await assert.rejects(r.accounts.installLease({ ...r.input(1), enrol: undefined, authorityInstanceId }), error => error instanceof RpcError && error.code === "account_lease_conflict");
+    const old = await r.accounts.installLease({ ...r.input(1), enrol: undefined, authorityInstanceId: ids[0] });
+    assert.equal(old.account.leasedFrom?.authorityInstanceId, ids[0]);
+    assert.equal(old.account.leasedFrom?.retiredAuthorityInstanceIds?.length, 8);
+  } finally { r.close(); }
+});

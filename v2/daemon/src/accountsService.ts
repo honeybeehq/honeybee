@@ -1519,7 +1519,7 @@ export class AccountsService {
         const rememberedFloor = sameOrigin ? Math.max(previous.generation ?? 0, previous.authorityGenerationFloor ?? 0, previous.legacyAuthorityGenerationFloor ?? 0) : 0;
         if (input.authorityInstanceId !== undefined && input.authorityInstanceId === previous?.legacyAuthorityInstanceId && (input.generation === undefined || input.generation <= rememberedFloor)) throw new RpcError("account_lease_conflict", "Returning authority instance must exceed the intervening legacy generation floor.");
         const retiredInstances = input.authorityInstanceId !== undefined && rememberedInstance !== undefined && rememberedInstance !== input.authorityInstanceId
-          ? [...new Set([...retiredAuthorityInstanceIds, rememberedInstance])] : retiredAuthorityInstanceIds;
+          ? [...new Set([...retiredAuthorityInstanceIds, rememberedInstance])].slice(-8) : retiredAuthorityInstanceIds.slice(-8);
         const currentInstanceFloor = input.authorityInstanceId !== undefined ? Math.max(input.generation ?? 0,
           sameOrigin && previous.authorityInstanceId === input.authorityInstanceId ? previous.authorityGenerationFloor ?? previous.generation ?? 0 : 0) : undefined;
         if (input.authorityInstanceId !== undefined && sameOrigin && input.authorityInstanceId === previous.authorityInstanceId && input.generation !== undefined && input.generation < (previous.authorityGenerationFloor ?? previous.generation ?? 0)) throw new RpcError("account_lease_conflict", "Lease credential generation regressed within its authority instance.");

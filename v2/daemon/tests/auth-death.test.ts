@@ -493,8 +493,8 @@ test("auth death: stale instance verdict cannot claim current published material
     r.fail(); r.die(); r.resume.reconcile();
     const row = r.store.liveAuthInterruption(r.bee.id)!;
     const origin = r.store.getAccount(r.account.id)!.leasedFrom!;
-    r.store.setAccountLease(r.account.id, { ...origin, generation: 0, authorityInstanceId: randomUUID() });
-    assert.equal(r.store.claimAuthDeathRecovery(row.id, { kind: "lease", scope: "authority:share", epoch: 1, generation: 0, authorityInstanceId: randomUUID() }, "new", "continue"), false);
+    r.store.setAccountLease(r.account.id, { ...origin, generation: 2, authorityInstanceId: randomUUID() });
+    assert.equal(r.store.claimAuthDeathRecovery(row.id, { kind: "lease", scope: "authority:share", epoch: 1, generation: 2, authorityInstanceId: randomUUID() }, "new", "continue"), false);
     assert.equal(r.store.listCommands().filter(command => command.args.authDeathRecoveryId === row.id).length, 0);
   } finally { r.close(); }
 });
@@ -508,7 +508,7 @@ test("auth death: admitted remembered legacy scope requires returning instance t
     const stamp = runtime.credentialStamp!;
     const bee = r.store.getBee(r.bee.id)!;
     const row = r.store.recordAuthInterruption({ beeId: bee.id, account: r.account.id, generation: 1, messageIds: [], turnProgress: "unknown", credentialRevision: "old", detail: "auth" });
-    r.store.setAuthDeathRecovery(row.id, { admitted: { ...stamp, material: { ...stamp.material, generation: 6, authorityInstanceId: undefined, legacyAuthorityInstanceId: a, legacyAuthorityGenerationFloor: 6 } }, deathAt: r.now, deadline: r.now + AUTH_DEATH_WINDOW_MS, claimedAt: null, replacement: null, commandId: null });
+    r.store.setAuthDeathRecovery(row.id, { admitted: { ...stamp, material: { ...stamp.material, generation: 1, authorityInstanceId: undefined, legacyAuthorityInstanceId: a, legacyAuthorityGenerationFloor: 6 } }, deathAt: r.now, deadline: r.now + AUTH_DEATH_WINDOW_MS, claimedAt: null, replacement: null, commandId: null });
     for (const generation of [5, 6]) {
       r.store.setAccountLease(r.account.id, { ...r.store.getAccount(r.account.id)!.leasedFrom!, authorityInstanceId: a, generation });
       assert.equal(r.store.claimAuthDeathRecovery(row.id, { kind: "lease", scope: "authority:share", epoch: 1, generation, authorityInstanceId: a }, "new", "continue"), false);
