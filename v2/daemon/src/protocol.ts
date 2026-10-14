@@ -73,6 +73,7 @@ import type {
   Urgency,
 } from "../../core/src/index.ts";
 import type { BootReport } from "./loops.ts";
+import type { ContextPolicyFacts, ContextWindow } from "./contextPolicy.ts";
 import type { AccountAdmissionClaim, AccountAllocationContext, AccountAllocationReceipt, AccountNodeActivity, EphemeralCredentialFile } from "./accountsService.ts";
 
 export type { AccountAdmissionClaim, AccountAllocationContext, AccountAllocationReceipt, AccountNodeActivity, EphemeralCredential, EphemeralCredentialFile } from "./accountsService.ts";
@@ -231,6 +232,7 @@ export const DAEMON_CAPABILITIES = [
    * unless native); a spawn on it carries the same text as `accountReason`.
    */
   "account.native.v1",
+  "context.policy.v1",
 ] as const;
 export type DaemonCapability = (typeof DAEMON_CAPABILITIES)[number];
 
@@ -563,6 +565,8 @@ export const RPC_VERBS = [
   // writes `naming` in the node's config.json.
   "config.get",
   "config.patch",
+  "contextPolicy.get",
+  "contextPolicy.set",
   // v14 operational telemetry (read-only): all-time automatic-naming spend.
   "naming.usage",
   // v11: agent task lists (mailbox is the delivery path).
@@ -1156,6 +1160,26 @@ export interface ConfigGetResult {
 export interface ConfigPatchResult extends DedupMarkers {
   naming: NamingConfigView;
   configPath: string;
+}
+
+export interface ContextPolicyView {
+  window?: ContextWindow;
+  autoCompactWindow?: number;
+  autoCompactPercent?: number;
+}
+
+export interface ContextPolicyResult {
+  workspace: string | null;
+  stored: ContextPolicyView | null;
+  default: ContextPolicyView | null;
+  effective: ContextPolicyView;
+  facts: ContextPolicyFacts;
+  configPath: string;
+  bee?: { beeId: string; harness: string; applies: boolean; model: string | null };
+}
+
+export interface ContextPolicySetResult extends ContextPolicyResult, DedupMarkers {
+  applied: boolean;
 }
 
 /** `naming.usage` — all-time automatic-naming attempts, latency, tokens, and estimated API cost. */

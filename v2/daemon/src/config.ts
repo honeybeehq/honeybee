@@ -10,6 +10,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { DEFAULT_TRIM_PATTERNS } from "../../driver-cell/src/retention.ts";
+import { contextPolicyConfigOf, ContextPolicyError, type ContextPolicyConfig } from "./contextPolicy.ts";
 
 /** How to spawn one agent CLI (keyed by the bee's `agent` field). */
 export interface AgentSpecConfig {
@@ -265,6 +266,7 @@ export interface NodeConfigFile {
   accounts?: AccountsConfig;
   /** Auto-titler. Default on, warm Codex app-server with GPT-6 Luna at no reasoning. */
   naming?: NamingConfig;
+  contextPolicy?: ContextPolicyConfig;
 }
 
 export interface ResolvedNodeConfig {
@@ -312,6 +314,7 @@ export interface ResolvedNodeConfig {
     allocationOwner: { node: string; epoch: string } | null;
   };
   naming: ResolvedNamingConfig;
+  contextPolicy: ContextPolicyConfig;
 }
 
 export class ConfigError extends Error {
@@ -875,5 +878,15 @@ export function loadNodeConfig(dataDir: string, configPath?: string): ResolvedNo
     agents: { ...BUILTIN_AGENTS, ...agentsOf(raw) },
     accounts: accountsOf(raw),
     naming: namingOf(raw, dataDir),
+    contextPolicy: resolvedContextPolicyOf(raw),
   };
+}
+
+export function resolvedContextPolicyOf(raw: Record<string, unknown>): ContextPolicyConfig {
+  try {
+    return contextPolicyConfigOf(raw);
+  } catch (err) {
+    if (err instanceof ContextPolicyError) throw new ConfigError(err.message);
+    throw err;
+  }
 }

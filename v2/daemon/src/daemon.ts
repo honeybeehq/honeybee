@@ -200,6 +200,22 @@ import {
   type ResolvedNamingConfig,
   type ResolvedNodeConfig,
 } from "./config.ts";
+import {
+  argValue,
+  claudeContextLaunch,
+  claudeHomeModel,
+  contextPolicyFacts,
+  contextPolicyOf,
+  ContextPolicyError,
+  effectiveContextPolicy,
+  sameContextPolicy,
+  storedContextPolicy,
+  workspaceOfTags,
+  writeContextPolicy,
+  type ClaudeContextLaunch,
+  type ContextPolicy,
+  type ContextPolicyConfig,
+} from "./contextPolicy.ts";
 import { createStoreAutoTitleDispatcher, type AutoTitleOutcome } from "./autoTitle.ts";
 import { TitleGeneratorService } from "./namingService.ts";
 import { TelemetryStore, formatI1Violation } from "./telemetry.ts";
@@ -273,6 +289,8 @@ import {
   type ChildrenResult,
   type ConfigGetResult,
   type ConfigPatchResult,
+  type ContextPolicyResult,
+  type ContextPolicySetResult,
   type DeployInfoResult,
   type ForkResult,
   type HarnessFact,
@@ -660,6 +678,7 @@ export class HiveDaemon {
   /** In-flight async idempotent verbs by key: a concurrent duplicate joins the first execution instead of re-running it. */
   private readonly asyncInFlight = new Map<string, Promise<object>>();
   private naming: ResolvedNamingConfig;
+  private contextPolicy: ContextPolicyConfig;
   private autoTitle: ((bees?: BeeRow[]) => Promise<AutoTitleOutcome[]>) | null = null;
   private titleGenerator: TitleGeneratorService | null = null;
   private readonly performance: PerformanceProfiler;
@@ -669,6 +688,7 @@ export class HiveDaemon {
     this.cfg = cfg;
     this.deps = deps;
     this.naming = cfg.naming;
+    this.contextPolicy = cfg.contextPolicy;
     this.performance = createPerformanceProfiler({ log: (op) => this.log(op) });
     this.accountConfigImport = new AccountConfigImportService();
   }
@@ -1334,7 +1354,7 @@ export class HiveDaemon {
     const adapter = operation && bee.providerSessionId === operation.successorProviderSessionId && adapterName === "codex"
       ? codexAdapter({ cwd: bee.cwd, model: composed.model, modelProvider: operation.source.modelProvider, resumeThreadId: bee.providerSessionId ?? undefined, resumePath: operation.sessionPath })
       : composed.adapter;
-    const args = composed.args;
+    let args = composed.args;
     if (!adapter) throw new Error(`resolve: no adapter for agent '${bee.agent}'`);
     // v7 (spec 08): a bound bee runs in its account's home. The env is derived
     // from the account row. The tracked pre-claim readiness gate has already
@@ -1356,6 +1376,11 @@ export class HiveDaemon {
     };
     // Absence is authoritative too: a root must not inherit a configured parent.
     if (!bee.parentId) delete env.HIVE_PARENT;
+    if (adapterName === "claude") {
+      const context = this.claudeContextLaunchFor(bee, args, env);
+      args = composeArgv(grammarFor("claude"), [args, context.modelArgs]);
+      this.applyContextEnv(env, context);
+    }
     // F8 — one resolution rule: the bare harness command is resolved to an
     // absolute path at spawn time with the SAME core rule every probe uses
     // (PATH of the exact spawn env, then the fallback dirs). Nothing found
@@ -1452,13 +1477,19 @@ export class HiveDaemon {
     };
     // Absence is authoritative too: a root must not inherit a configured parent.
     if (!bee.parentId) delete env.HIVE_PARENT;
+    let beeArgs = bee.args;
+    if ((spec.adapter ?? bee.agent) === "claude") {
+      const context = this.claudeContextLaunchFor(bee, bee.args ?? [], env);
+      beeArgs = composeArgv(grammarFor("claude"), [bee.args, context.modelArgs]);
+      this.applyContextEnv(env, context);
+    }
     // Same F8 resolution rule as HSR: the TUI seat must not ENOENT on a CLI
     // the node's probes can see.
     const { command, resolution } = resolveSpawnCommand(spec.command, { env });
     if (resolution.source !== "configured_path") {
       this.log(`spawn.resolve bee=${beeId} executable=${resolution.executable} source=${resolution.source}${resolution.path ? ` path=${resolution.path}` : ""}`);
     }
-    return tmuxSpawnSpec({ ...spec, command }, { agent: bee.agent, cwd: bee.cwd, args: bee.args, env });
+    return tmuxSpawnSpec({ ...spec, command }, { agent: bee.agent, cwd: bee.cwd, args: beeArgs, env });
   }
 
   private adoptSurvivors(store: CoreStore, driver: SubstrateRouter): void {
@@ -1586,6 +1617,10 @@ export class HiveDaemon {
         return this.rpcConfigGet();
       case "config.patch":
         return this.withIdempotency(verb, params, () => this.rpcConfigPatch(params));
+      case "contextPolicy.get":
+        return this.rpcContextPolicyGet(params);
+      case "contextPolicy.set":
+        return this.withIdempotency(verb, params, () => this.rpcContextPolicySet(params));
       case "naming.usage":
         return { usage: this.mustStore().namingUsageSummary() };
       case "account.list":
@@ -4336,6 +4371,87 @@ export class HiveDaemon {
     this.titleGenerator?.reconfigure(this.naming);
     this.log(`config.patch naming=${JSON.stringify(publicNamingConfig(this.naming))}`);
     return { naming: publicNamingConfig(this.naming), configPath: this.cfg.configPath };
+  }
+
+  private claudeContextLaunchFor(bee: BeeRow, args: readonly string[], env: Record<string, string>): ClaudeContextLaunch {
+    return claudeContextLaunch(effectiveContextPolicy(this.contextPolicy, workspaceOfTags(bee.tags)), args, env, bee.env);
+  }
+
+  private applyContextEnv(env: Record<string, string>, context: ClaudeContextLaunch): void {
+    for (const key of context.unset) delete env[key];
+    Object.assign(env, context.env);
+  }
+
+  private contextPolicyWorkspaceParam(params: Record<string, unknown>, verb: string): string | null {
+    const workspace = this.optionalString(params, "workspace", verb);
+    if (workspace !== null && workspace.length === 0) throw new RpcError("invalid_request", `${verb}: workspace must be a non-empty string when given`);
+    return workspace;
+  }
+
+  private contextPolicyResult(workspace: string | null, bee?: BeeRow): ContextPolicyResult {
+    const effective = effectiveContextPolicy(this.contextPolicy, workspace);
+    const result: ContextPolicyResult = {
+      workspace,
+      stored: storedContextPolicy(this.contextPolicy, workspace),
+      default: storedContextPolicy(this.contextPolicy, null),
+      effective,
+      facts: contextPolicyFacts(effective),
+      configPath: this.cfg.configPath,
+    };
+    if (bee) {
+      const harness = this.cfg.agents[bee.agent]?.adapter ?? bee.agent;
+      const applies = harness === "claude";
+      let model: string | null = null;
+      const spec = this.cfg.agents[bee.agent];
+      if (applies && spec) {
+        const account = bee.account ? this.mustStore().getAccount(bee.account) : null;
+        const env: Record<string, string> = {
+          ...(process.env as Record<string, string>),
+          ...(spec.env ?? {}),
+          ...(bee.env ?? {}),
+          ...(account && this.accounts ? this.accounts.homeEnvOf(account) : {}),
+        };
+        const args = composeSpawn(spec, harness, bee).args;
+        const context = this.claudeContextLaunchFor(bee, args, env);
+        model = argValue(composeArgv(grammarFor("claude"), [args, context.modelArgs]), "--model") ?? claudeHomeModel(env) ?? null;
+      }
+      result.bee = { beeId: bee.id, harness, applies, model };
+    }
+    return result;
+  }
+
+  private rpcContextPolicyGet(params: Record<string, unknown>): ContextPolicyResult {
+    if (params.beeId !== undefined) {
+      if (params.workspace !== undefined) throw new RpcError("invalid_request", "contextPolicy.get: give workspace or beeId, not both");
+      const bee = this.mustStore().getBee(this.requireBee(params))!;
+      return this.contextPolicyResult(workspaceOfTags(bee.tags), bee);
+    }
+    return this.contextPolicyResult(this.contextPolicyWorkspaceParam(params, "contextPolicy.get"));
+  }
+
+  private rpcContextPolicySet(params: Record<string, unknown>): ContextPolicySetResult {
+    const workspace = this.contextPolicyWorkspaceParam(params, "contextPolicy.set");
+    if (!("policy" in params)) throw new RpcError("invalid_request", "contextPolicy.set: policy is required (an object, or null to clear)");
+    let policy: ContextPolicy | null = null;
+    if (params.policy !== null) {
+      try {
+        policy = contextPolicyOf(params.policy, "contextPolicy.set: policy");
+      } catch (err) {
+        if (err instanceof ContextPolicyError) throw new RpcError("invalid_request", err.message);
+        throw err;
+      }
+    }
+    const before = storedContextPolicy(this.contextPolicy, workspace);
+    const applied = !sameContextPolicy(before, policy);
+    if (applied) {
+      try {
+        this.contextPolicy = writeContextPolicy(this.cfg.configPath, workspace, policy);
+      } catch (err) {
+        throw new RpcError("invalid_request", err instanceof Error ? err.message : String(err));
+      }
+      this.log(`contextPolicy.set workspace=${workspace ?? "(default)"} policy=${JSON.stringify(policy)}`);
+    }
+    return { ...this.contextPolicyResult(workspace), applied };
   }
 
   private rpcTag(params: Record<string, unknown>): TagResult {
