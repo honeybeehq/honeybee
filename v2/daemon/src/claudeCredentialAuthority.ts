@@ -672,8 +672,8 @@ export class CredentialAuthority {
       // Only a matching durable rotated result proves that this chain is usable.
       const enrollmentUnknown = state.phase === "enrolling" && state.operationKey !== null
         && !(value.operationKey === state.operationKey && value.generation > state.generation);
-      const uncertain = state.phase === "refreshing" || state.phase === "uncertain" || state.phase === "login_required"
-        || state.phase === "disabling_uncertain" || enrollmentUnknown;
+      const uncertain = this.codec.rotatesRefresh !== false && (state.phase === "refreshing" || state.phase === "uncertain" || state.phase === "login_required"
+        || state.phase === "disabling_uncertain" || enrollmentUnknown);
       if (state.phase === "enrolling") value = this.preserveEnrollmentRollback(account, value);
       if (this.codec.rotatesRefresh === false && !uncertain && !value.nativeSnapshot) {
         this.options.store.setAccountStatus(account.id, "auth_needed", "Native snapshot is unavailable; the private authority was retained. Sign in natively after disabling central credentials.");
@@ -697,7 +697,8 @@ export class CredentialAuthority {
   forgetDisabled(account: AccountRow): void {
     this.assertDisabled(account);
     if (this.codec.minimumRenewalIntervalMs !== undefined) {
-      const value = this.read(account, true);
+      let value: AuthorityDocument | null;
+      try { value = this.read(account, true); } catch { value = null; }
       const state = this.status(account);
       const marker = this.renewalMarker(account);
       const attemptAt = Math.max(value?.issuedAt ?? 0, value?.renewalAttemptAt ?? 0, marker?.attemptAt ?? 0, state?.failure?.at ?? 0);

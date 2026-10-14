@@ -100,6 +100,8 @@ test("Muse renewal is shared, paced across restart, one generation per operation
     assert.equal(r.store.getAccount(r.account.id)?.status, "auth_needed");
     await assert.rejects(r.svc.mintLease(r.account));
     assert.equal(r.calls(), 3);
+    await r.svc.museCredentials.disable(r.account);
+    assert.equal(r.store.getAccount(r.account.id)?.status, "auth_needed");
   } finally { r.cleanup(); }
 });
 
@@ -449,4 +451,39 @@ test("Muse an approved grant that expires during pacing fails without a mint or 
     assert.equal(r.svc.museCredentials.status(r.account)?.generation, ready.generation);
     assert.equal(r.svc.museCredentials.status(r.account)?.phase, "ready");
   } finally { await flows.shutdown(); r.cleanup(); }
+});
+
+for (const platform of ["linux", "darwin"] as const) test(`Muse ${platform}: disable after uncertain mint restores the exact native snapshot and allows later enable`, async () => {
+  const r = rig(platform);
+  try {
+    const original = readFileSync(r.vaultFile);
+    await r.svc.museCredentials.enable(r.account);
+    r.advance(MUSE_MINT_FLOOR_MS + 1);
+    r.response({ kind: "unknown_outcome", description: "fixture timeout" });
+    await assert.rejects(r.svc.museCredentials.ensure(r.account, 0, "timed-out"));
+    assert.equal(r.store.getAccountCredentialAuthority(r.account.id)?.phase, "uncertain");
+    await r.svc.museCredentials.disable(r.account);
+    assert.ok(readFileSync(r.vaultFile).equals(original));
+    assert.equal(existsSync(r.homeFile), false);
+    r.advance(MUSE_MINT_FLOOR_MS + 1);
+    r.response(null);
+    assert.equal((await r.service().museCredentials.enable(r.account)).phase, "ready");
+    assert.equal(r.calls(), 3);
+  } finally { r.cleanup(); }
+});
+
+for (const corrupt of ["{", "null", JSON.stringify({ generation: "invalid", document: {} })]) test("Muse forgetDisabled tolerates corrupt authority while preserving the durable pacing floor", async () => {
+  const r = rig();
+  try {
+    await r.svc.museCredentials.enable(r.account);
+    await r.svc.museCredentials.disable(r.account);
+    const file = join(r.cfg.accounts.vaultDir, ".credential-authorities", `${r.account.id}.json`);
+    writeFileSync(file, corrupt);
+    r.svc.museCredentials.forgetDisabled(r.account);
+    assert.equal(existsSync(file), false);
+    r.store.removeAccount(r.account.id);
+    const account = r.store.createAccount({ id: r.account.id, harness: "muse", homePath: r.account.homePath, label: r.account.label, status: "ok" });
+    await assert.rejects(r.service().museCredentials.enable(account), error => (error as { reason: string }).reason === "operation_in_progress");
+    assert.equal(r.calls(), 1);
+  } finally { r.cleanup(); }
 });

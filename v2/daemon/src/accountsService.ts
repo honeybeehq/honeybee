@@ -3934,10 +3934,9 @@ export class AccountsService {
       if (account.harness === "muse" || account.source === "leased" || !this.credentialAuthorities.has(account.harness) || account.status === "paused") continue;
       const backoff = this.earlyRefreshBackoff.get(account.id);
       if (backoff && backoff.at > now) continue;
-      const accountAheadMs = account.harness === "muse" ? Math.min(aheadMs, 60 * 60_000) : aheadMs;
-      if (!this.authorityFor(account)!.earlyRefreshDue(account, accountAheadMs)) continue;
+      if (!this.authorityFor(account)!.earlyRefreshDue(account, aheadMs)) continue;
       this.log(`account.credentials.early_refresh account=${account.id} ahead_ms=${aheadMs}`);
-      void this.authorityFor(account)!.ensure(account, account.harness === "codex" ? CODEX_MIN_SHIP_TTL_MS : CLAUDE_MIN_SHIP_TTL_MS, undefined, accountAheadMs).then(() => {
+      void this.authorityFor(account)!.ensure(account, account.harness === "codex" ? CODEX_MIN_SHIP_TTL_MS : CLAUDE_MIN_SHIP_TTL_MS, undefined, aheadMs).then(() => {
         this.earlyRefreshBackoff.delete(account.id);
       }, (error) => {
         const failures = (this.earlyRefreshBackoff.get(account.id)?.failures ?? 0) + 1;
