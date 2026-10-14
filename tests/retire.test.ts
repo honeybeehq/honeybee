@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, open, readFile, readdir, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
@@ -918,6 +918,7 @@ test("archive filing is a same-directory rename(2) commit; crashed-commit residu
     await saveSession(record);
     const recordPath = join(dir, "sessions", "atomic-archive.json");
     const before = await stat(recordPath);
+    const held = await open(recordPath, "r");
 
     // A crash between atomicWriteFile's temp write and its rename leaves
     // exactly this shape behind: a same-directory temp holding a truncated
@@ -932,6 +933,9 @@ test("archive filing is a same-directory rename(2) commit; crashed-commit residu
     // truncated and rewritten in place, so a concurrent reader can only ever
     // observe the old or the new complete document.
     const after = await stat(recordPath);
+    const heldAfter = await held.stat();
+    await held.close();
+    assert.equal(heldAfter.ino, before.ino, "the original inode is still the one this reader opened");
     assert.notEqual(after.ino, before.ino, "the archive commit lands via rename(2), not an in-place write");
     assert.equal((await loadSession("atomic-archive"))?.status, "done");
 
