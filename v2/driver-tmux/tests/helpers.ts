@@ -126,7 +126,9 @@ export async function drainUntil(
   for (;;) {
     acc.push(...driver.observe());
     if (pred(acc)) return acc;
-    if (Date.now() > deadline) throw new Error(`drainUntil timeout; saw: ${JSON.stringify(acc)}`);
+    if (Date.now() > deadline) {
+      throw new Error(`drainUntil timeout; saw: ${JSON.stringify(acc)}; snapshot: ${driver.debugSnapshot()}`);
+    }
     await sleep(8);
   }
 }
