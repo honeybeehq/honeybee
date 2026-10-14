@@ -6,7 +6,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readFileSync, renameSync } from "node:fs";
+import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { provisionCell } from "../src/provision.ts";
 import { dirtyReport } from "../src/remove.ts";
@@ -55,6 +55,32 @@ test("upstream.ancestry: work landed upstream but missing from the stale origin 
     assert.deepEqual(readUpstreamMirror(rig.origin.repo, upstreamRoot), refreshed.ref);
     const parked = evictCellWrapper(rig.cellsRoot, cell.paths.wrapperDir, { upstream: refreshed.ref });
     assert.ok(parked && !existsSync(cell.paths.wrapperDir), "eviction re-checks with the same mirror ref");
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("upstream.rebased: work rebased onto the upstream under new SHAs is landed by the existing content checks against the mirror", () => {
+  const { rig, upstream, cell, upstreamRoot } = withUpstream();
+  try {
+    const work = commitInCell(cell.paths.spaceDir, "feature.ts", "export const f = 4;\n", "cell work");
+    const landing = join(rig.root, "landing");
+    g(rig.root, ["clone", "--quiet", upstream, landing]);
+    g(landing, ["config", "user.name", "lander"]);
+    g(landing, ["config", "user.email", "lander@hive.invalid"]);
+    writeFileSync(join(landing, "other.ts"), "upstream moved\n");
+    g(landing, ["add", "-A"]);
+    g(landing, ["commit", "-q", "-m", "unrelated upstream work"]);
+    g(landing, ["fetch", "--quiet", cell.paths.spaceDir, `+${work}:refs/scratch/cell`]);
+    g(landing, ["cherry-pick", work]);
+    g(landing, ["push", "--quiet", "origin", "HEAD:main"]);
+    const refreshed = refreshUpstreamMirror(rig.origin.repo, upstreamRoot, { maxAgeMs: 0, timeoutMs: 30_000 });
+    assert.equal(refreshed.status, "fetched");
+    assert.notEqual(refreshed.ref?.sha, work, "landed under a new SHA");
+    assert.equal(dirtyReport(cell.paths.wrapperDir).unpushed, true);
+    const report = dirtyReport(cell.paths.wrapperDir, { upstream: refreshed.ref });
+    assert.equal(report.dirty, false);
+    assert.equal(report.unlandedCommitCount, 0);
   } finally {
     rig.cleanup();
   }
