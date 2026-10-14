@@ -8,7 +8,7 @@
  * within a small tolerance — `ps` rounds elapsed time to seconds and the
  * recorded stamp is taken a few ms after the actual fork.
  */
-import { spawnSync } from "node:child_process";
+import { execFile, spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
 /** True while the OS still knows the pid (signal 0 probe; EPERM counts as alive). */
@@ -37,7 +37,10 @@ export function zombieWaitStatus(pid: number): number | null {
 }
 
 const ZOMBIE_CENSUS_INTERVAL_MS = 500;
-const zombieCensus = new Map<number, { at: number; zombie: boolean }>();
+const zombieNegatives = new Map<number, number>();
+const zombiePositives = new Set<number>();
+const zombieCensusQueue = new Set<number>();
+let zombieCensusInFlight = false;
 
 function isZombie(pid: number): boolean {
   if (process.platform === "linux") {
@@ -49,14 +52,37 @@ function isZombie(pid: number): boolean {
     }
   }
   if (process.platform === "win32") return false;
-  const now = Date.now();
-  const cached = zombieCensus.get(pid);
-  if (cached && now - cached.at < ZOMBIE_CENSUS_INTERVAL_MS) return cached.zombie;
-  const census = spawnSync("/bin/ps", ["-o", "stat=", "-p", String(pid)], { encoding: "utf8", timeout: 2_000 });
-  const zombie = census.status === 0 && (census.stdout ?? "").trim().startsWith("Z");
-  zombieCensus.set(pid, { at: now, zombie });
-  if (zombieCensus.size > 4096) zombieCensus.clear();
-  return zombie;
+  if (zombiePositives.delete(pid)) return true;
+  const checkedAt = zombieNegatives.get(pid);
+  if (checkedAt === undefined || Date.now() - checkedAt >= ZOMBIE_CENSUS_INTERVAL_MS) {
+    zombieCensusQueue.add(pid);
+    runZombieCensus();
+  }
+  return false;
+}
+
+function runZombieCensus(): void {
+  if (zombieCensusInFlight || zombieCensusQueue.size === 0) return;
+  zombieCensusInFlight = true;
+  const pids = [...zombieCensusQueue];
+  zombieCensusQueue.clear();
+  execFile("/bin/ps", ["-o", "pid=,stat=", "-p", pids.join(",")], { encoding: "utf8", timeout: 2_000 }, (_error, stdout) => {
+    zombieCensusInFlight = false;
+    const now = Date.now();
+    for (const line of String(stdout ?? "").split("\n")) {
+      const row = /^\s*(\d+)\s+(\S+)/.exec(line);
+      if (!row) continue;
+      const seen = Number(row[1]);
+      if (row[2]!.startsWith("Z")) {
+        zombiePositives.add(seen);
+        zombieNegatives.delete(seen);
+      } else {
+        zombieNegatives.set(seen, now);
+      }
+    }
+    for (const [cached, at] of zombieNegatives) if (now - at >= ZOMBIE_CENSUS_INTERVAL_MS * 4) zombieNegatives.delete(cached);
+    runZombieCensus();
+  });
 }
 
 /** Parse a POSIX `ps` etime value — `[[dd-]hh:]mm:ss` — into milliseconds. */
