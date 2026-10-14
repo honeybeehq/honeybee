@@ -605,7 +605,7 @@ test("sandboxed bee past its tmpfs cap: ENOSPC inside, a typed resource_blocked 
   assert.deepEqual(run.flags, ["resource_blocked"]);
   assert.match(run.detail ?? "", /^sandbox tmp full: \/tmp in this bee's sandbox is at its 4 MiB cap \(bees\.sandboxTmpBytes\)/);
   assert.match(run.log, new RegExp(`sandbox\\.tmp_full bee=${run.beeId} gen=1 path=/tmp cap=4194304 \\(4 MiB\\)`));
-  assert.doesNotMatch(run.log, /account\.rotate/);
+  assert.match(run.log, new RegExp(`flag\\.set bee=${run.beeId} flag=resource_blocked gen=1 by=sandbox_tmp`));
 });
 
 test("a bad bees.sandboxTmpBytes boots, logs why and spawns with the 1 GiB default", { timeout: 180_000, skip: process.platform !== "linux" }, async () => {

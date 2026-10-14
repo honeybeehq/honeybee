@@ -284,7 +284,11 @@ export interface NodeConfigFile {
    * sandboxTmpBytes caps each bwrap-sandboxed bee's private /tmp and /dev/shm
    * tmpfs (bytes, integer >= 1 MiB). Absent defaults to 1 GiB; null leaves them
    * uncapped. An invalid value logs tmp.sandbox_cap_invalid and uses the
-   * default. A bee at the cap gets resource_blocked "sandbox tmp full".
+   * default. The daemon samples each capped sandbox's tmpfs every few
+   * seconds: a bee found at the cap gets resource_blocked "sandbox tmp full"
+   * (never over a provider block, never account rotation), cleared once it
+   * has room again or its runtime exits. A fill deleted before the next
+   * sample is not reported.
    * Seatbelt (darwin) has no equivalent cap: there /tmp is the host's, so the
    * knob has no effect and spawns log cap=none reason=seatbelt.
    */

@@ -25,6 +25,8 @@
  */
 
 /** Deliberate stops carry who asked; crashes and clean exits are observed, not requested. */
+export const SANDBOX_TMP_FULL = "sandbox tmp full";
+
 export type StopCause = "stopped_by_user" | "stopped_by_system";
 
 export type ObservedExitCause = "clean" | "crashed" | StopCause;

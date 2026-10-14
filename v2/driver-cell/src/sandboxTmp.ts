@@ -1,9 +1,10 @@
 import { spawnSync } from "node:child_process";
 import { readdirSync, readFileSync, readlinkSync, statfsSync } from "node:fs";
 import { join } from "node:path";
+import { SANDBOX_TMP_FULL } from "../../harness/src/driver.ts";
 import { SANDBOX_TMPFS_PATHS } from "./sandbox.ts";
 
-export const SANDBOX_TMP_FULL = "sandbox tmp full";
+export { SANDBOX_TMP_FULL };
 
 export type SandboxTmpfsCap =
   | { kind: "capped"; bytes: number }
@@ -115,12 +116,17 @@ export function fullTmpfs(usage: readonly TmpfsUsage[]): TmpfsUsage | null {
   return usage.find((u) => u.sizeBytes > 0 && u.freeBytes * 64 < u.sizeBytes) ?? null;
 }
 
+export function roomyTmpfs(usage: readonly TmpfsUsage[]): boolean {
+  return usage.every((u) => u.sizeBytes <= 0 || u.freeBytes * 8 >= u.sizeBytes);
+}
+
 export interface SandboxTmpEvidence {
   beeId: string;
   generation: number;
   flag: "resource_blocked";
   action: "set" | "clear";
   detail: string;
+  owner: "sandbox_tmp";
 }
 
 export interface SandboxTmpWatchOptions {
@@ -135,8 +141,14 @@ function sampleHost(hostPid: number): TmpfsUsage[] | null {
   return pid === null ? null : sampleSandboxTmpfs(pid);
 }
 
+function evidence(beeId: string, generation: number, action: "set" | "clear", detail: string): SandboxTmpEvidence {
+  return { beeId, generation, flag: "resource_blocked", action, detail, owner: "sandbox_tmp" };
+}
+
 export class SandboxTmpWatch {
-  private readonly full = new Map<string, number>();
+  private readonly tracked = new Set<string>();
+  private readonly state = new Map<string, "full" | "ok">();
+  private readonly exits: SandboxTmpEvidence[] = [];
   private sampledAt = Number.NEGATIVE_INFINITY;
   private readonly opts: SandboxTmpWatchOptions;
 
@@ -144,39 +156,47 @@ export class SandboxTmpWatch {
     this.opts = opts;
   }
 
+  track(beeId: string): void {
+    this.tracked.add(beeId);
+  }
+
+  exited(beeId: string, generation: number): void {
+    if (!this.tracked.delete(beeId)) return;
+    this.state.delete(beeId);
+    this.exits.push(evidence(beeId, generation, "clear", `${SANDBOX_TMP_FULL} cleared: the sandbox tmpfs went away with its runtime`));
+  }
+
   observe(
     live: readonly { beeId: string; generation: number; pid: number }[],
     cleared: Iterable<string>,
   ): SandboxTmpEvidence[] {
+    const out = this.exits.splice(0);
     const resample = new Set<string>();
-    for (const beeId of cleared) if (this.full.delete(beeId)) resample.add(beeId);
+    for (const beeId of cleared) {
+      if (this.state.get(beeId) === "full") {
+        this.state.delete(beeId);
+        resample.add(beeId);
+      }
+    }
     const now = (this.opts.now ?? Date.now)();
     const due = now - this.sampledAt >= this.opts.intervalMs;
-    if (!due && resample.size === 0) return [];
+    if (!due && resample.size === 0) return out;
     if (due) this.sampledAt = now;
     const sample = this.opts.sample ?? sampleHost;
-    const out: SandboxTmpEvidence[] = [];
-    const liveIds = new Set<string>();
     for (const proc of live) {
-      liveIds.add(proc.beeId);
+      if (!this.tracked.has(proc.beeId)) continue;
       if (!due && !resample.has(proc.beeId)) continue;
       const usage = sample(proc.pid);
       if (usage === null) continue;
+      const known = this.state.get(proc.beeId);
       const hit = fullTmpfs(usage);
-      if (hit && !this.full.has(proc.beeId)) {
-        this.full.set(proc.beeId, proc.generation);
+      if (hit && known !== "full") {
+        this.state.set(proc.beeId, "full");
         this.opts.log?.(`sandbox.tmp_full bee=${proc.beeId} gen=${proc.generation} path=${hit.path} cap=${hit.sizeBytes} (${formatBytes(hit.sizeBytes)}) freeBytes=${hit.freeBytes}`);
-        out.push({ beeId: proc.beeId, generation: proc.generation, flag: "resource_blocked", action: "set", detail: sandboxTmpFullDetail(hit) });
-      } else if (!hit && this.full.has(proc.beeId)) {
-        this.full.delete(proc.beeId);
-        out.push({ beeId: proc.beeId, generation: proc.generation, flag: "resource_blocked", action: "clear", detail: "sandbox tmp has space again" });
-      }
-    }
-    if (due) {
-      for (const [beeId, generation] of this.full) {
-        if (liveIds.has(beeId)) continue;
-        this.full.delete(beeId);
-        out.push({ beeId, generation, flag: "resource_blocked", action: "clear", detail: "sandbox tmp went away with its runtime" });
+        out.push(evidence(proc.beeId, proc.generation, "set", sandboxTmpFullDetail(hit)));
+      } else if (!hit && known !== "ok" && roomyTmpfs(usage)) {
+        this.state.set(proc.beeId, "ok");
+        out.push(evidence(proc.beeId, proc.generation, "clear", `${SANDBOX_TMP_FULL} cleared: the sandbox tmpfs has space again`));
       }
     }
     return out;

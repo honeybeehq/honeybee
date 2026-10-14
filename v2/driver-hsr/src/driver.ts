@@ -134,6 +134,7 @@ export interface FlagEvidence {
   resetsAt?: number;
   /** The turn a `set` cut off: the mail delivered into it and whether the provider served any of it. */
   turn?: TurnEvidence;
+  owner?: "sandbox_tmp";
 }
 
 export interface TurnEvidence {

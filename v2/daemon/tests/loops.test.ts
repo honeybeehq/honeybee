@@ -2164,6 +2164,62 @@ test("unit.10 (spec 08): the onFlagEvidence hook fires after each applied eviden
   }
 });
 
+test("sandbox tmp evidence owns only its own resource_blocked row and never reaches account policy", () => {
+  const dir = mkdtempSync(join(tmpdir(), "hb-v2-loops-"));
+  const clock = { now: 1000 };
+  const now = (): number => clock.now;
+  const store = openCoreStore(join(dir, "core.sqlite3"), { now, ephemeral: true });
+  const driver = new FakeDriver(now);
+  const seen: string[] = [];
+  const ops: string[] = [];
+  const core = new DaemonCore({
+    store,
+    driver,
+    policy: { bootHangTimeoutSteps: 50, commandsPerStep: 8 },
+    now,
+    log: (op) => ops.push(op),
+    onFlagEvidence: (ev) => seen.push(`${ev.flag}:${ev.action}:${ev.detail}`),
+  });
+  const full = "sandbox tmp full: /tmp in this bee's sandbox is at its 1429 MiB cap (bees.sandboxTmpBytes)";
+  const sandbox = (action: "set" | "clear", detail: string) =>
+    driver.evidence.push({ beeId: "b", generation: 1, flag: "resource_blocked", action, detail, owner: "sandbox_tmp" });
+  const open = () => store.activeFlags("b").filter((f) => f.flag === "resource_blocked").map((f) => [f.detail, f.resetsAt]);
+  try {
+    core.boot();
+    store.createBee({ id: "b", name: "b", agent: "stub", substrate: "hsr", cwd: "/w" });
+    store.enqueueCommand("spawn", "b");
+    core.step();
+    core.step();
+    sandbox("clear", "sandbox tmp full cleared: space again");
+    core.step();
+    assert.deepEqual(open(), []);
+    assert.equal(ops.filter((o) => o.includes("by=sandbox_tmp")).length, 0, "a clear with nothing open touches nothing");
+
+    sandbox("set", full);
+    core.step();
+    assert.deepEqual(open(), [[full, null]]);
+    sandbox("set", full);
+    core.step();
+    assert.equal(ops.filter((o) => o.startsWith("flag.set bee=b flag=resource_blocked gen=1 by=sandbox_tmp")).length, 1, "the same detail again is a quiet no-op");
+    sandbox("clear", "sandbox tmp full cleared: space again");
+    core.step();
+    assert.deepEqual(open(), []);
+
+    driver.evidence.push({ beeId: "b", generation: 1, flag: "resource_blocked", action: "set", detail: "usage limit reached", resetsAt: 9_000_000 });
+    core.step();
+    sandbox("set", full);
+    core.step();
+    assert.deepEqual(open(), [["usage limit reached", 9_000_000]], "a provider block and its reset time stand");
+    sandbox("clear", "sandbox tmp full cleared: went away");
+    core.step();
+    assert.deepEqual(open(), [["usage limit reached", 9_000_000]], "a sandbox clear never lifts a provider block");
+    assert.deepEqual(seen, ["resource_blocked:set:usage limit reached"], "account policy only ever saw the provider evidence");
+  } finally {
+    store.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 // ---------------------------------------------------------------------------
 // Delivery urgency (schema v8 — spec 01 Q2 amendment 2026-08-18): the delivery
 // loop's eligibility rule, the mid-turn interrupt for `now`, the FIFO-among-

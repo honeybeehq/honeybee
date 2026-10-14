@@ -347,7 +347,7 @@ test("sandbox.tmpfs-real: a capped bwrap /tmp and /dev/shm refuse writes past th
 });
 
 
-test("sandbox.tmp-watch: set once when full, re-set after a turn clear, clear on space or runtime exit, sampled on its interval", () => {
+test("sandbox.tmp-watch: tracked bees only, set once when full, re-set after a turn clear, clear with hysteresis or on exit", () => {
   let now = 0;
   const cap = 4194304;
   const usage = new Map<number, number>();
@@ -360,27 +360,38 @@ test("sandbox.tmp-watch: set once when full, re-set after a turn clear, clear on
   });
   const a = { beeId: "a", generation: 1, pid: 100 };
   const b = { beeId: "b", generation: 3, pid: 200 };
+  const c = { beeId: "c", generation: 1, pid: 300 };
+  const actions = (evs: ReturnType<SandboxTmpWatch["observe"]>) => evs.map((e) => [e.beeId, e.action]);
+  watch.track("a");
+  watch.track("b");
   usage.set(100, 0);
   usage.set(200, cap);
-  const first = watch.observe([a, b], []);
-  assert.deepEqual(first.map((e) => [e.beeId, e.action]), [["a", "set"]]);
+  usage.set(300, 0);
+  const first = watch.observe([a, b, c], []);
+  assert.deepEqual(actions(first), [["a", "set"], ["b", "clear"]], "an untracked bee is never read; an unknown roomy bee clears any stale flag once");
+  assert.ok(first.every((e) => e.owner === "sandbox_tmp"));
   assert.match(first[0]!.detail, /^sandbox tmp full: \/tmp .* 4 MiB cap/);
   assert.match(logs[0]!, /^sandbox\.tmp_full bee=a gen=1 path=\/tmp cap=4194304 \(4 MiB\) freeBytes=0$/);
   now = 1000;
   assert.deepEqual(watch.observe([a, b], []), [], "between samples nothing is read");
-  assert.deepEqual(watch.observe([a, b], ["a"]).map((e) => [e.beeId, e.action]), [["a", "set"]], "a turn's clear is answered at once while still full");
+  assert.deepEqual(actions(watch.observe([a, b], ["a"])), [["a", "set"]], "a turn's clear is answered at once while still full");
   assert.deepEqual(watch.observe([a, b], ["b"]), [], "a clear for a bee not marked full needs no sample");
   now = 6000;
-  assert.deepEqual(watch.observe([a, b], []), [], "still full: no repeat");
-  usage.set(100, cap);
+  assert.deepEqual(watch.observe([a, b], []), [], "still full: no repeat; still roomy: no repeat");
+  usage.set(100, cap / 16);
   now = 11000;
-  assert.deepEqual(watch.observe([a, b], []).map((e) => [e.beeId, e.action]), [["a", "clear"]]);
-  usage.set(200, 0);
+  assert.deepEqual(watch.observe([a, b], []), [], "between the thresholds the flag holds");
+  usage.set(100, cap / 4);
   now = 16000;
-  assert.deepEqual(watch.observe([a, b], []).map((e) => [e.beeId, e.action, e.generation]), [["b", "set", 3]]);
+  assert.deepEqual(actions(watch.observe([a, b], [])), [["a", "clear"]]);
+  usage.set(200, 0);
   now = 21000;
-  assert.deepEqual(watch.observe([a], []).map((e) => [e.beeId, e.action, e.detail]), [["b", "clear", "sandbox tmp went away with its runtime"]]);
+  assert.deepEqual(watch.observe([a, b], []).map((e) => [e.beeId, e.action, e.generation]), [["b", "set", 3]]);
+  watch.exited("b", 3);
+  watch.exited("c", 1);
+  now = 22000;
+  assert.deepEqual(watch.observe([a], []).map((e) => [e.beeId, e.action, e.generation]), [["b", "clear", 3]], "exit clears once, at the next drain, for tracked bees only");
   usage.delete(100);
-  now = 26000;
+  now = 30000;
   assert.deepEqual(watch.observe([a], []), [], "an unsandboxed runtime is never judged");
 });

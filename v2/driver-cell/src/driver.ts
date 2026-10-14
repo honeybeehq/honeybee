@@ -258,6 +258,7 @@ export class CellDriver implements RuntimeDriver {
       // cache worker begins CPU/disk-heavy packing. An early runtime exit is
       // also a safe point. The worker has its own bounded fallback if neither
       // observation arrives.
+      if (event.kind === "exited") this.sandboxTmp?.exited(event.beeId, event.generation);
       if (event.kind !== "turn_ended" && event.kind !== "exited") continue;
       const key = `${event.beeId}:g${event.generation}`;
       const worker = this.maintenanceByRuntime.get(key);
@@ -313,11 +314,7 @@ export class CellDriver implements RuntimeDriver {
 
   observeEvidence(): FlagEvidence[] {
     const evidence = this.inner.observeEvidence();
-    if (platform() !== "linux" || this.effectiveSandboxCap().kind !== "capped") return evidence;
-    this.sandboxTmp ??= new SandboxTmpWatch({
-      intervalMs: this.cfg.sandboxTmpSampleMs ?? 5_000,
-      ...(this.cfg.log ? { log: this.cfg.log } : {}),
-    });
+    if (this.sandboxTmp === null) return evidence;
     const cleared = evidence.filter((ev) => ev.flag === "resource_blocked" && ev.action === "clear").map((ev) => ev.beeId);
     return [...evidence, ...this.sandboxTmp.observe(this.inner.snapshotLive(), cleared)];
   }
@@ -648,6 +645,13 @@ export class CellDriver implements RuntimeDriver {
     }
     const cap = this.effectiveSandboxCap();
     if (generation !== undefined) this.cfg.log?.(describeSandboxTmpfs(beeId, generation, cap));
+    if (cap.kind === "capped" && platform() === "linux") {
+      this.sandboxTmp ??= new SandboxTmpWatch({
+        intervalMs: this.cfg.sandboxTmpSampleMs ?? 5_000,
+        ...(this.cfg.log ? { log: this.cfg.log } : {}),
+      });
+      this.sandboxTmp.track(beeId);
+    }
     const wrapped = wrapWithSandbox(
       {
         cellDir: cell.paths.wrapperDir,

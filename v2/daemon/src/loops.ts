@@ -76,7 +76,7 @@ import {
   NOOP_PERFORMANCE,
   type PerformanceRecorder,
 } from "./performance.ts";
-import type { DriverObservation, RuntimeDriver, StopCause } from "../../harness/src/driver.ts";
+import { SANDBOX_TMP_FULL, type DriverObservation, type RuntimeDriver, type StopCause } from "../../harness/src/driver.ts";
 
 /** Where the (injected) executor-crash fault hits, if it does. */
 export type ExecutorCrashPoint = "none" | "before_effect" | "after_effect";
@@ -141,6 +141,7 @@ export interface FlagEvidenceLike {
   resetsAt?: number;
   /** The turn a `set` cut off: the mail delivered into it and whether the provider served any of it. */
   turn?: { messageIds: number[]; progress: "none" | "some" | "unknown" };
+  owner?: "sandbox_tmp";
 }
 
 /** Observed subscription usage, structurally matching HsrDriver's UsageEvidence. */
@@ -705,11 +706,30 @@ export class DaemonCore {
    * both directions verbatim. Flags are bee-scoped; evidence from a stale
    * generation still describes this bee's provider boundary, so it applies.
    */
+  private applySandboxTmpEvidence(ev: FlagEvidenceLike): void {
+    const open = this.store.activeFlags(ev.beeId).find((f) => f.flag === ev.flag);
+    const ours = open !== undefined && open.detail.startsWith(SANDBOX_TMP_FULL);
+    if (ev.action === "set") {
+      if (open !== undefined && !ours) return;
+      if (ours && open.detail === ev.detail) return;
+      this.store.setFlag(ev.beeId, ev.flag, ev.detail, { resetsAt: null });
+      this.log(`flag.set bee=${ev.beeId} flag=${ev.flag} gen=${ev.generation} by=sandbox_tmp`);
+      return;
+    }
+    if (!ours) return;
+    const { applied } = this.store.clearFlag(ev.beeId, ev.flag, ev.detail);
+    if (applied) this.log(`flag.clear bee=${ev.beeId} flag=${ev.flag} gen=${ev.generation} by=sandbox_tmp`);
+  }
+
   private applyEvidence(): void {
     if (typeof this.ext.observeEvidence !== "function") return;
     for (const ev of this.ext.observeEvidence()) {
       if (!this.store.getBee(ev.beeId)) {
         this.log(`flag.skip bee=${ev.beeId} flag=${ev.flag} reason=no_bee`);
+        continue;
+      }
+      if (ev.owner === "sandbox_tmp") {
+        this.applySandboxTmpEvidence(ev);
         continue;
       }
       if (ev.action === "set") {

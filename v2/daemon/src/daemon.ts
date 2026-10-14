@@ -153,7 +153,6 @@ import {
   currentBranch,
   sandboxWritableDirectory,
   DEFAULT_SANDBOX_TMPFS_BYTES,
-  isSandboxTmpFullDetail,
   runCellExec,
   sanitizeComponent,
   type CellSpec,
@@ -6184,7 +6183,7 @@ export class HiveDaemon {
       if (account.exhaustedAt != null) store.recordAccountExhaustion(account.id, null);
       return;
     }
-    if (isSandboxTmpFullDetail(ev.detail) || !isRateLimitCause(ev.detail)) return;
+    if (!isRateLimitCause(ev.detail)) return;
     // Exhaustion evidence on the account (rotation cool-off). Debounced: a
     // provider re-reports the wall on every call; one stamp a minute is plenty.
     const now = Date.now();
