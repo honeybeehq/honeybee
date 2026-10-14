@@ -191,13 +191,14 @@ export class RpcServer {
     this.server = createServer((socket) => this.onConnection(socket));
   }
 
-  async listen(): Promise<void> {
+  async listen(beforeBind?: () => void): Promise<void> {
     if (existsSync(this.opts.socketPath)) {
       if (await socketAcceptsConnections(this.opts.socketPath)) {
         throw new RpcError("socket_in_use", `another process is already listening on ${this.opts.socketPath}`, { socketPath: this.opts.socketPath });
       }
       unlinkSync(this.opts.socketPath);
     }
+    beforeBind?.();
     return new Promise((resolve, reject) => {
       this.server.once("error", reject);
       this.server.listen(this.opts.socketPath, () => {

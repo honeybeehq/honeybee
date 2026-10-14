@@ -1000,8 +1000,12 @@ export class HiveDaemon {
       dispatch: (verb, params, conn) => this.dispatch(verb, params, conn),
       performance: this.performance,
     });
-    await this.rpc.listen();
-    writeEndpointRecord(this.cfg.dataDir, { instanceId: this.instanceId, dataDir: canonicalPath(this.cfg.dataDir), socketPath: resolve(this.cfg.socketPath), pid: process.pid, startedAt: this.startedAt });
+    try {
+      await this.rpc.listen(() => writeEndpointRecord(this.cfg.dataDir, { instanceId: this.instanceId, dataDir: canonicalPath(this.cfg.dataDir), socketPath: resolve(this.cfg.socketPath), pid: process.pid, startedAt: this.startedAt }));
+    } catch (error) {
+      removeEndpointRecord(this.cfg.dataDir, this.instanceId);
+      throw error;
+    }
     void this.accounts?.credentialHandoff.reconcileStartup().catch(() => this.log("account.credentials.handoff_reconcile_failed"));
     rpc.end();
     this.activeStartupPhase = null;
@@ -2693,7 +2697,9 @@ export class HiveDaemon {
     const facts = this.harnessCredentialFacts(verb, params);
     if (!facts.real) return;
     const reason = instanceForeign
-      ? `this daemon (instance ${this.instanceId}) is not the one recorded for the data dir the caller resolved (${caller.expectedInstanceId ?? "no live record"})`
+      ? caller.expectedInstanceId === null
+        ? `the caller found no live endpoint record (hived.endpoint.json) for the data dir it resolved, so it cannot confirm this daemon (instance ${this.instanceId}); while that record is deleted, or the data dir is not visible from the caller's sandbox, every provider-harness start is refused`
+        : `this daemon (instance ${this.instanceId}) is not the one recorded for the data dir the caller resolved (${caller.expectedInstanceId})`
       : caller.liveTarget
         ? `the caller explicitly targeted the live daemon (${this.cfg.dataDir}) while its HIVE_V2_DATA_DIR names ${caller.dataDir}`
         : `this daemon's data dir (${this.cfg.dataDir}) is not the caller's HIVE_V2_DATA_DIR (${caller.dataDir})`;

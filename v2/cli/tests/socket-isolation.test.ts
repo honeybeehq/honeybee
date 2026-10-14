@@ -7,7 +7,7 @@ import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { canonicalPath, ENDPOINT_RECORD_FILE, readLiveEndpointRecord, writeEndpointRecord } from "../../daemon/src/endpointRecord.ts";
-import { socketAcceptsConnections } from "../../daemon/src/rpc.ts";
+import { RpcServer, socketAcceptsConnections } from "../../daemon/src/rpc.ts";
 import { DAEMON_BIN, makeDaemonDir, startDaemon, waitFor, type DaemonHandle } from "../../daemon/tests/helpers.ts";
 import { RpcError } from "../../daemon/src/protocol.ts";
 import { RpcClient } from "../src/client.ts";
@@ -120,6 +120,57 @@ test("socket_in_use probe is a bare connect: no bytes reach the listener", async
   } finally {
     if (server.listening) await closeServer(server);
     rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("the endpoint record is written after the socket_in_use probe and before the socket accepts", async () => {
+  const root = mkdtempSync(join(tmpdir(), "hb-p8f-bind-"));
+  const path = join(root, "rpc.sock");
+  const server = new RpcServer({ socketPath: path, log: () => undefined, dispatch: () => ({ ok: true }) });
+  const second = new RpcServer({ socketPath: path, log: () => undefined, dispatch: () => ({ ok: true }) });
+  try {
+    const failing = new RpcServer({ socketPath: path, log: () => undefined, dispatch: () => ({ ok: true }) });
+    await assert.rejects(failing.listen(() => { throw new Error("record unwritable"); }), /record unwritable/);
+    assert.equal(existsSync(path), false);
+    let socketExistedAtHook: boolean | null = null;
+    await server.listen(() => { socketExistedAtHook = existsSync(path); });
+    assert.equal(socketExistedAtHook, false);
+    assert.equal(await socketAcceptsConnections(path), true);
+    let secondHookRan = false;
+    await assert.rejects(second.listen(() => { secondHookRan = true; }), (err: unknown) => err instanceof RpcError && err.code === "socket_in_use");
+    assert.equal(secondHookRan, false);
+  } finally {
+    await server.close();
+    await second.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a daemon that cannot write its endpoint record fails before it listens", async () => {
+  const d = makeDaemonDir();
+  try {
+    mkdirSync(join(d.dir, ENDPOINT_RECORD_FILE, "occupied"), { recursive: true });
+    const home = mkdtempSync(join(d.dir, "home-"));
+    const proc = spawn(process.execPath, [DAEMON_BIN, "--data-dir", d.dir], {
+      env: { ...process.env, HOME: home, HIVE_V2_DATA_DIR: d.dir, HIVE_NO_KEYCHAIN: "1", HIVE_GATEWAYS_DISABLE: "1", HIVE_TEST_REAP_RUNTIMES_ON_SHUTDOWN: "1" },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let output = "";
+    proc.stdout.setEncoding("utf8").on("data", (chunk: string) => { output += chunk; });
+    proc.stderr.setEncoding("utf8").on("data", (chunk: string) => { output += chunk; });
+    const exited = new Promise<number | null>((resolve) => proc.once("exit", (exitCode) => resolve(exitCode)));
+    const code = await Promise.race([exited, new Promise<"running">((resolve) => setTimeout(() => resolve("running"), 30_000).unref())]);
+    if (code === "running") {
+      proc.kill("SIGKILL");
+      await exited;
+    }
+    assert.notEqual(code, "running", `daemon kept running after its endpoint record failed: ${output}`);
+    assert.notEqual(code, 0, output);
+    assert.doesNotMatch(output, /listening on/);
+    assert.equal(existsSync(join(d.dir, "hived.sock")), false);
+    assert.equal(readLiveEndpointRecord(d.dir), null);
+  } finally {
+    d.cleanup();
   }
 });
 
@@ -292,6 +343,24 @@ test("socket isolation against throwaway daemons", async (t) => {
       assert.equal(r.json[0]!.error.details.daemonInstanceId, infoB.instanceId);
       const stub = await cli(["spawn", "unrecorded-stub", "--agent", "stub", "--cwd", scratch, "--json"], { HOME: home, HIVE_V2_SOCKET_PATH: daemonB!.socketPath });
       assert.equal(stub.exit, 0, stub.out.join("\n"));
+    });
+
+    await t.test("a deleted endpoint record turns every provider spawn on the live daemon into foreign_daemon_spawn", async () => {
+      const record = readLiveEndpointRecord(b.dir)!;
+      rmSync(join(b.dir, ENDPOINT_RECORD_FILE));
+      try {
+        const r = await cli(["spawn", "record-gone", "--agent", "claude", "--cwd", scratch, "--data-dir", b.dir, "--json"], { HOME: home, HIVE_V2_DATA_DIR: b.dir });
+        assert.equal(r.exit, 1);
+        assert.equal(r.json[0]!.error.code, "foreign_daemon_spawn");
+        assert.equal(r.json[0]!.error.details.reason, "instance_mismatch");
+        assert.equal(r.json[0]!.error.details.expectedInstanceId, null);
+        assert.match(r.json[0]!.error.message, /no live endpoint record \(hived\.endpoint\.json\).*every provider-harness start is refused/);
+        const allowed = await cli(["spawn", "record-gone-allowed", "--agent", "claude", "--cwd", scratch, "--data-dir", b.dir, "--allow-foreign-daemon", "--json"], { HOME: home, HIVE_V2_DATA_DIR: b.dir });
+        assert.equal(allowed.exit, 0, allowed.out.join("\n"));
+      } finally {
+        const { schema: _schema, ...rest } = record;
+        writeEndpointRecord(b.dir, rest);
+      }
     });
 
     await t.test("a bee spawning a provider harness into an explicit throwaway dir needs no flag", async () => {
