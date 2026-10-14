@@ -10,13 +10,13 @@ let entries = [];
 try {
   entries = readdirSync(cache.directory ?? "", { recursive: true });
 } catch {}
-let escapeWritable = null;
-if (process.env.PROBE_ESCAPE_DIR) {
+const escapes = {};
+for (const dir of JSON.parse(process.env.PROBE_ESCAPE_DIRS ?? "[]")) {
   try {
-    writeFileSync(join(process.env.PROBE_ESCAPE_DIR, `escape-${process.env.HIVE_BEE_ID}`), "leak");
-    escapeWritable = true;
+    writeFileSync(join(dir, `escape-${process.env.HIVE_BEE_ID}-${process.pid}`), "leak");
+    escapes[dir] = true;
   } catch {
-    escapeWritable = false;
+    escapes[dir] = false;
   }
 }
 let tmpWritable = false;
@@ -32,5 +32,5 @@ writeFileSync(join(process.env.PROBE_OUT_DIR ?? process.cwd(), `${process.env.HI
   cacheDirectory: cache.directory ?? null,
   cacheEntries: entries.length,
   tmpWritable,
-  escapeWritable,
+  escapes,
 }));

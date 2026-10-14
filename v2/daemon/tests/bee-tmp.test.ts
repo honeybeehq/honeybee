@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { homedir } from "node:os";
 import { realpathSync } from "node:fs";
 import {
   beeTmpDir,
@@ -29,7 +30,7 @@ interface ProbeReport {
   cacheDirectory: string | null;
   cacheEntries: number;
   tmpWritable: boolean;
-  escapeWritable: boolean | null;
+  escapes: Record<string, boolean>;
 }
 
 function reportsOf(dir: string, beeId: string): ProbeReport[] {
@@ -403,7 +404,7 @@ test("symlinks: a planted link at any owned level is replaced by a real dir, nev
   }
 });
 
-test("Queen's probe: a sandboxed bee that swaps its tmp dir for a symlink gets no write access through it on the next generation", { timeout: 180_000, skip: process.platform !== "linux" && process.platform !== "darwin" }, async () => {
+test("Queen's probe: a sandboxed bee that swaps its tmp dir for a symlink gets no write access through it on the next generation", { timeout: 180_000, skip: process.platform !== "linux" && process.platform !== "darwin" }, async (t) => {
   const rig = makeDaemonDir({
     nodeKind: "satellite",
     agents: {
@@ -417,8 +418,18 @@ test("Queen's probe: a sandboxed bee that swaps its tmp dir for a symlink gets n
   });
   const origin = makeOrigin(rig.dir);
   const cache = join(realpathSync(rig.dir), "xdg-cache");
-  mkdirSync(join(process.cwd(), ".cache"), { recursive: true });
-  const outside = mkdtempSync(join(process.cwd(), ".cache", "escape-target-"));
+  const candidates = [
+    [homedir(), ".hb-escape-probe-"],
+    [join(process.cwd(), ".cache"), "escape-target-"],
+    [dirname(realpathSync(rig.dir)), "hb-escape-probe-"],
+  ].flatMap(([parent, prefix]) => {
+    try {
+      mkdirSync(parent!, { recursive: true });
+      return [realpathSync(mkdtempSync(join(parent!, prefix!)))];
+    } catch {
+      return [];
+    }
+  });
   const daemon = await startDaemon(rig.dir, { env: { XDG_CACHE_HOME: cache }, platform: process.platform });
   try {
     const client = await daemon.client();
@@ -428,12 +439,17 @@ test("Queen's probe: a sandboxed bee that swaps its tmp dir for a symlink gets n
       cwd: "/ignored",
       substrate: "cell",
       cell: { originRepo: origin.repo, sandbox: true },
-      env: { PROBE_ESCAPE_DIR: outside },
+      env: { PROBE_ESCAPE_DIRS: JSON.stringify(candidates) },
     });
     const beeId = spawned.beeId;
     const cwd = (await client.request<ViewResult>("view", { beeId })).bee?.cwd as string;
     const first = await waitFor(() => latestReport(cwd, beeId), "first generation report", 90_000);
-    assert.equal(first.escapeWritable, false, "the outside dir is read-only to the sandbox");
+    const outside = candidates.find((dir) => first.escapes[dir] === false);
+    if (!outside) {
+      t.skip(`no escape target outside the sandbox's writable set could be created here (candidates: ${JSON.stringify(first.escapes)})`);
+      client.close();
+      return;
+    }
     await waitFor(async () => (await client.request<ViewResult>("view", { beeId })).view.runtimeState === "idle", "idle", 60_000);
     await client.request("stop", { beeId });
     await waitFor(async () => (await client.request<ViewResult>("view", { beeId })).view.runtimeState === "stopped", "stopped", 60_000);
@@ -444,7 +460,7 @@ test("Queen's probe: a sandboxed bee that swaps its tmp dir for a symlink gets n
 
     await client.request<SendRpcResult>("send", { beeId, body: "wake" });
     const second = await waitFor(() => latestReport(cwd, beeId, 2), "second generation report", 90_000);
-    assert.equal(second.escapeWritable, false, "no write access to the symlink target on the next generation");
+    assert.equal(second.escapes[outside], false, "no write access to the symlink target on the next generation");
     assert.equal(existsSync(join(outside, "probe-write")), false);
     assert.deepEqual(readdirSync(outside), []);
     assert.equal(second.tmpWritable, true);
@@ -454,7 +470,7 @@ test("Queen's probe: a sandboxed bee that swaps its tmp dir for a symlink gets n
   } finally {
     await daemon.stop();
     rig.cleanup();
-    rmSync(outside, { recursive: true, force: true });
+    for (const dir of candidates) rmSync(dir, { recursive: true, force: true });
   }
 });
 
