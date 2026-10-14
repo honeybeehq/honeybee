@@ -233,7 +233,7 @@ function isClean(spaceDir: string): boolean {
 function reachCommit(spaceDir: string, originRepo: string, sha: string): boolean {
   try {
     if (hasCommit(spaceDir, sha)) return true;
-    tryGit(spaceDir, ["fetch", "--quiet", "--no-tags", "--no-recurse-submodules", "--no-write-fetch-head", originRepo, sha]);
+    tryGit(spaceDir, ["fetch", "--quiet", "--no-tags", "--no-recurse-submodules", "--upload-pack=git-upload-pack", "--no-write-fetch-head", originRepo, sha]);
     return hasCommit(spaceDir, sha);
   } catch {
     return false;

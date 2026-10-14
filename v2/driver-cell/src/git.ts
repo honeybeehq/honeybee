@@ -6,9 +6,9 @@
  * pinned, deterministic environment (no user global/system config, no hooks).
  */
 import { spawnSync } from "node:child_process";
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, realpathSync } from "node:fs";
 import { devNull } from "node:os";
-import { isAbsolute, resolve } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import type { LocalRepoIdentity } from "../../core/src/types.ts";
 
 export class GitError extends Error {
@@ -30,17 +30,119 @@ export const hostGitConfig: ReadonlyArray<readonly [string, string]> = [
   ["core.hooksPath", devNull],
   ["submodule.recurse", "false"],
   ["diff.ignoreSubmodules", "all"],
+  ["commit.gpgsign", "false"],
+  ["tag.gpgsign", "false"],
+  ["log.showSignature", "false"],
+  ["core.alternateRefsCommand", ""],
 ];
 
-export function hostGitEnv(base: Record<string, string>): Record<string, string> {
+const REPO_LOCAL_EXEC_CONFIG: ReadonlyArray<readonly [RegExp, string]> = [
+  [/^filter\..+\.(?:clean|smudge|process)$/iu, ""],
+  [/^filter\..+\.required$/iu, "false"],
+  [/^diff\..+\.(?:textconv|command)$/iu, ""],
+  [/^merge\..+\.driver$/iu, ""],
+  [/^diff\.external$/iu, ""],
+];
+
+const CONTENT_VERBS = new Set([
+  "add", "am", "apply", "archive", "checkout", "cherry-pick", "clone", "commit", "diff", "fetch", "merge",
+  "pull", "read-tree", "rebase", "reset", "restore", "revert", "stash", "status", "switch",
+]);
+
+function subcommandOf(args: readonly string[]): string | undefined {
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index]!;
+    if (arg === "-c" || arg === "-C" || arg === "--git-dir" || arg === "--work-tree") {
+      index += 1;
+      continue;
+    }
+    if (!arg.startsWith("-")) return arg;
+  }
+  return undefined;
+}
+
+const EXEC_CONFIG_HINT = /filter|textconv|command|driver|external|include/iu;
+const CONFIG_SCOPES = new Set(["system", "global", "local", "worktree", "command"]);
+
+function readIfPresent(path: string): string | null {
+  try {
+    return readFileSync(path, "utf8");
+  } catch (error) {
+    return (error as { code?: string }).code === "ENOENT" ? "" : null;
+  }
+}
+
+function repoLocalConfigText(cwd: string): string | null {
+  const dotGit = join(cwd, ".git");
+  let gitDir = dotGit;
+  try {
+    const info = lstatSync(dotGit);
+    if (info.isSymbolicLink()) return null;
+    if (info.isFile()) {
+      const pointer = /^gitdir:\s*(.+)$/mu.exec(readFileSync(dotGit, "utf8"));
+      if (!pointer) return null;
+      gitDir = resolve(cwd, pointer[1]!.trim());
+    }
+  } catch {
+    return "";
+  }
+  const parts: string[] = [];
+  for (const name of ["config", "config.worktree"]) {
+    const text = readIfPresent(join(gitDir, name));
+    if (text === null) return null;
+    parts.push(text);
+  }
+  const commonDir = readIfPresent(join(gitDir, "commondir"));
+  if (commonDir === null) return null;
+  if (commonDir.trim().length > 0) {
+    const text = readIfPresent(join(resolve(gitDir, commonDir.trim()), "config"));
+    if (text === null) return null;
+    parts.push(text);
+  }
+  return parts.join("\n");
+}
+
+export function parseConfigListing(listing: string): Array<readonly [scope: string, key: string]> {
+  const fields = listing.split("\0");
+  if (fields.length % 2 !== 1 || fields[fields.length - 1] !== "") {
+    throw new Error("git config listing is not scope/record pairs");
+  }
+  const entries: Array<readonly [string, string]> = [];
+  for (let index = 0; index + 1 < fields.length; index += 2) {
+    const scope = fields[index]!;
+    if (!CONFIG_SCOPES.has(scope)) throw new Error(`git config listing has an unknown scope field: ${JSON.stringify(scope)}`);
+    const record = fields[index + 1]!;
+    const split = record.indexOf("\n");
+    entries.push([scope, split < 0 ? record : record.slice(0, split)]);
+  }
+  return entries;
+}
+
+export function repoLocalExecOverrides(cwd: string, env: Record<string, string>): Array<readonly [string, string]> {
+  const localConfig = repoLocalConfigText(cwd);
+  if (localConfig !== null && !EXEC_CONFIG_HINT.test(localConfig)) return [];
+  const args = ["config", "--list", "--show-scope", "--includes", "-z"];
+  const probe = spawnSync("git", args, { cwd, encoding: "utf8", env, maxBuffer: 64 * 1024 * 1024 });
+  if (probe.error) throw probe.error;
+  if (probe.status !== 0) throw new GitError(args, probe.status, probe.stderr ?? "");
+  const overrides = new Map<string, string>();
+  for (const [scope, key] of parseConfigListing(probe.stdout ?? "")) {
+    if (scope !== "local" && scope !== "worktree") continue;
+    for (const [pattern, value] of REPO_LOCAL_EXEC_CONFIG) if (pattern.test(key)) overrides.set(key, value);
+  }
+  return [...overrides];
+}
+
+export function hostGitEnv(base: Record<string, string>, overrides: ReadonlyArray<readonly [string, string]> = []): Record<string, string> {
   const env = { ...base };
   const existing = Number.parseInt(env.GIT_CONFIG_COUNT ?? "0", 10);
   const offset = Number.isFinite(existing) && existing > 0 ? existing : 0;
-  hostGitConfig.forEach(([key, value], index) => {
+  const entries = [...hostGitConfig, ...overrides];
+  entries.forEach(([key, value], index) => {
     env[`GIT_CONFIG_KEY_${offset + index}`] = key;
     env[`GIT_CONFIG_VALUE_${offset + index}`] = value;
   });
-  env.GIT_CONFIG_COUNT = String(offset + hostGitConfig.length);
+  env.GIT_CONFIG_COUNT = String(offset + entries.length);
   return env;
 }
 
@@ -56,6 +158,7 @@ export function gitEnv(extra: Record<string, string> = {}): Record<string, strin
     GIT_CONFIG_GLOBAL: devNull,
     GIT_CONFIG_SYSTEM: devNull,
     GIT_CONFIG_NOSYSTEM: "1",
+    GIT_ALLOW_PROTOCOL: "file",
     GIT_TERMINAL_PROMPT: "0",
     GIT_AUTHOR_NAME: "hive-cell",
     GIT_AUTHOR_EMAIL: "cell@hive.invalid",
@@ -73,7 +176,10 @@ export interface GitResult {
 
 /** Run git, returning the result without throwing. */
 export function tryGit(cwd: string, args: string[], opts: { env?: Record<string, string>; input?: string; timeoutMs?: number } = {}): GitResult {
-  const res = spawnSync("git", args, { cwd, encoding: "utf8", env: hostGitEnv(gitEnv(opts.env)), input: opts.input, timeout: opts.timeoutMs, maxBuffer: 64 * 1024 * 1024 });
+  const env = gitEnv(opts.env);
+  const verb = subcommandOf(args);
+  const overrides = verb !== undefined && CONTENT_VERBS.has(verb) ? repoLocalExecOverrides(cwd, env) : [];
+  const res = spawnSync("git", args, { cwd, encoding: "utf8", env: hostGitEnv(env, overrides), input: opts.input, timeout: opts.timeoutMs, maxBuffer: 64 * 1024 * 1024 });
   if (res.error) throw res.error; // git binary missing — a machine boundary, not a git failure
   return { status: res.status, stdout: res.stdout ?? "", stderr: res.stderr ?? "" };
 }

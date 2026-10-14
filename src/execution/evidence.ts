@@ -21,7 +21,7 @@ import type { JsonObject } from "./contract.js";
 import { executionError } from "./errors.js";
 import { executionRoot } from "./nodeState.js";
 import { runDir, runKey } from "./runStore.js";
-import { hostGitEnv } from "../hostGit.js";
+import { untrustedCheckoutGitEnv } from "../hostGit.js";
 import type { WorkingCopyRecord } from "./workingCopies.js";
 
 const execFileAsync = promisify(execFile);
@@ -83,7 +83,7 @@ export async function readEvidence(token: string): Promise<Buffer> {
 /* ---------------------------------------------------------------- */
 
 async function git(cwd: string, args: string[]): Promise<string> {
-  const { stdout } = await execFileAsync("git", args, { cwd, env: hostGitEnv(), timeout: 15_000, maxBuffer: 8 * 1024 * 1024 });
+  const { stdout } = await execFileAsync("git", args, { cwd, env: untrustedCheckoutGitEnv(cwd), timeout: 15_000, maxBuffer: 8 * 1024 * 1024 });
   return stdout;
 }
 
@@ -107,7 +107,7 @@ export async function collectGitDiffMetadata(copy: WorkingCopyRecord, generatedA
     .split("\n")
     .filter((line) => line.length > 3)
     .map((line) => ({ status: line.slice(0, 2).trim(), path: line.slice(3) }));
-  const numstatRaw = await git(copy.path, ["diff", "--numstat", "--ignore-submodules=all", base]);
+  const numstatRaw = await git(copy.path, ["diff", "--numstat", "--no-ext-diff", "--no-textconv", "--ignore-submodules=all", base]);
   let insertions = 0;
   let deletions = 0;
   const files = numstatRaw
