@@ -1615,7 +1615,10 @@ export interface HealthResult {
   lastBoot: BootReport | null;
   i1Violations: number;
   bees: { total: number; active: number; archived: number };
+  naming?: NamingHealth;
 }
+
+export type NamingHealth = { state: "ok" | "off" } | { state: "disabled"; reason: string };
 
 export interface SnapshotResult {
   threadOperations: ThreadOperationView[];

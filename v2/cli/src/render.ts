@@ -15,6 +15,7 @@ import type {
   CommandsResult,
   HealthResult,
   MailboxResult,
+  NamingHealth,
   QuestionListResult,
   SealListResult,
   ViewResult,
@@ -577,7 +578,17 @@ export function renderHealth(result: HealthResult): string[] {
       dim(`${result.bees.archived} archived`),
     ]),
     joinParts([bold("i1"), `${i1} violations`]),
+    ...(result.naming ? [namingHealthLine(result.naming)] : []),
   ];
+}
+
+export function namingHealthText(naming: NamingHealth): string {
+  return naming.state === "disabled" ? `disabled (${naming.reason})` : naming.state;
+}
+
+function namingHealthLine(naming: NamingHealth): string {
+  const text = namingHealthText(naming);
+  return `${bold("naming:")} ${naming.state === "disabled" ? yellow(text) : naming.state === "ok" ? green(text) : dim(text)}`;
 }
 
 export function renderWatchSnapshot(seq: number, views: ViewResult[], filterBee?: string): string[] {

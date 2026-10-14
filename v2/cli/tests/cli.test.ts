@@ -336,6 +336,40 @@ test("cli.4: against a live daemon — spawn, list (not stale), send --wait bloc
   }
 });
 
+test("cli.4n: health and daemon status report naming ok, off, or disabled with the reason", async () => {
+  const cases = [
+    { naming: { auto: true }, json: { state: "ok" }, text: "naming: ok" },
+    { naming: { auto: false }, json: { state: "off" }, text: "naming: off" },
+    {
+      naming: { auto: true, backend: "openai-api", apiKeyRef: "global/openai-prod" },
+      json: { state: "disabled", reason: 'config: naming.apiKeyRef must be a hem secret ref "global/hive-naming-<name>" with an optional field' },
+      text: 'naming: disabled (config: naming.apiKeyRef must be a hem secret ref "global/hive-naming-<name>" with an optional field)',
+    },
+  ];
+  for (const c of cases) {
+    const { dir, cleanup } = makeDaemonDir({ naming: c.naming } as never);
+    let daemon: DaemonHandle | null = null;
+    try {
+      daemon = await startDaemon(dir);
+      const hj = capture();
+      assert.equal(await runV2Cli(["health", "--data-dir", dir, "--json"], hj.io), 0);
+      assert.deepEqual((JSON.parse(hj.out[0] ?? "{}") as { naming: unknown }).naming, c.json);
+      const ht = capture();
+      assert.equal(await runV2Cli(["health", "--data-dir", dir], ht.io), 0);
+      assert.ok(ht.out.includes(c.text), ht.out.join("\n"));
+      const sj = capture();
+      assert.equal(await runV2Cli(["daemon", "status", "--data-dir", dir, "--json"], sj.io), 0);
+      assert.deepEqual((JSON.parse(sj.out[0] ?? "{}") as { health: { naming: unknown } }).health.naming, c.json);
+      const st = capture();
+      assert.equal(await runV2Cli(["daemon", "status", "--data-dir", dir], st.io), 0);
+      assert.ok(st.out.some((l) => l.trim().endsWith(c.text)), st.out.join("\n"));
+    } finally {
+      await daemon?.stop().catch(() => {});
+      cleanup();
+    }
+  }
+});
+
 test("cli.4b: --idempotency-key passes through on spawn and send — replays dedup to the original", async () => {
   const { dir, cleanup } = makeDaemonDir();
   let daemon: DaemonHandle | null = null;

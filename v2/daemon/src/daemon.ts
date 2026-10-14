@@ -5238,6 +5238,9 @@ export class HiveDaemon {
       lastBoot: this.lastBoot,
       i1Violations: this.telemetry?.i1Count() ?? 0,
       bees: store.countBeesByLifecycle(),
+      naming: this.naming.disabledReason
+        ? { state: "disabled", reason: this.naming.disabledReason }
+        : { state: this.naming.auto ? "ok" : "off" },
     };
   }
 

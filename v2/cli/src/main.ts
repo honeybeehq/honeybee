@@ -178,6 +178,7 @@ import {
   renderBeeView,
   renderCommands,
   renderHealth,
+  namingHealthText,
   renderHere,
   renderMailbox,
   renderSealGet,
@@ -4615,7 +4616,10 @@ async function cmdDaemon(ctx: CliContext, parsed: Parsed): Promise<number> {
         const health = await withClient(ctx, (c) => c.request<HealthResult>("health"));
         emit(
           ctx,
-          [confirm("ok", "daemon:", `running (pid ${health.pid}, ${health.ticks} ticks, ${health.i1Violations} i1 violations)`)],
+          [
+            confirm("ok", "daemon:", `running (pid ${health.pid}, ${health.ticks} ticks, ${health.i1Violations} i1 violations)`),
+            ...(health.naming ? [confirm(health.naming.state === "disabled" ? "warn" : "ok", "naming:", namingHealthText(health.naming))] : []),
+          ],
           { running: true, health },
           false,
         );
