@@ -111,7 +111,7 @@ async function withTempStore(fn: (dir: string) => Promise<void>): Promise<void> 
   } finally {
     if (previous === undefined) delete process.env.HIVE_STORE_ROOT;
     else process.env.HIVE_STORE_ROOT = previous;
-    await rm(dir, { recursive: true, force: true });
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: scaledMs(50) });
   }
 }
 
