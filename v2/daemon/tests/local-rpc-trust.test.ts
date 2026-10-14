@@ -177,3 +177,29 @@ test("a symlinked dataDir accepts canonical and configured key paths without rel
     bytes.fill(0);
   } finally {trust.close(); rmSync(parent, {recursive: true, force: true});}
 });
+
+
+test("a symlinked ancestor of the dataDir preserves the private-chain boundary", () => {
+  const parent = mkdtempSync(join(tmpdir(), "rpc-trust-ancestor-"));
+  const actual = join(parent, "actual"), alias = join(parent, "ancestor");
+  mkdirSync(actual, {mode: 0o700}); symlinkSync(actual, alias);
+  const root = join(actual, "data"), configured = join(alias, "configured");
+  mkdirSync(root, {mode: 0o700}); symlinkSync(root, configured);
+  const file = join(alias, "data", "private", "key");
+  const config = {requireObservationCaller: true, registrationKeyFile: file};
+  const trust = new LocalRpcTrust(config, configured, () => {});
+  try {
+    assert.equal(trust.state, "ready");
+    const bytes = readFileSync(file);
+    trust.reload({...config, registrationKeyFile: join(root, "private", "key")}, configured);
+    assert.equal(trust.state, "ready");
+    assert.ok(readFileSync(file).equals(bytes));
+    symlinkSync(join(root, "private"), join(root, "private-link"));
+    trust.reload({...config, registrationKeyFile: join(alias, "data", "private-link", "key")}, configured);
+    assert.equal(trust.state, "registration_key_unavailable");
+    symlinkSync(root, join(root, "root-link"));
+    trust.reload({...config, registrationKeyFile: join(alias, "data", "root-link", "key")}, configured);
+    assert.equal(trust.state, "registration_key_unavailable");
+    bytes.fill(0);
+  } finally { trust.close(); rmSync(parent, {recursive: true, force: true}); }
+});

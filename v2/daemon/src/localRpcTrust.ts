@@ -23,10 +23,23 @@ function privateKey(file: string, root: string, uid: number): Buffer {
   const canonicalRoot = realpathSync(root);
   const configuredRoot = resolve(root);
   const absoluteFile = resolve(file);
-  const configuredRelative = relative(configuredRoot, absoluteFile);
-  const throughConfiguredRoot = configuredRelative !== ".." && !configuredRelative.startsWith(`..${sep}`) && !isAbsolute(configuredRelative);
-  const canonicalFile = throughConfiguredRoot ? resolve(canonicalRoot, configuredRelative) : absoluteFile;
-  const rel = relative(canonicalRoot, canonicalFile);
+  const below = (base: string, path: string): boolean => {
+    const rel = relative(base, path);
+    return rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel);
+  };
+  let boundary = below(configuredRoot, absoluteFile) ? configuredRoot : below(canonicalRoot, absoluteFile) ? canonicalRoot : null;
+  if (boundary === null) {
+    let candidate = dirname(absoluteFile);
+    while (true) {
+      try { if (realpathSync(candidate) === canonicalRoot) boundary = candidate; }
+      catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+      const parent = dirname(candidate);
+      if (parent === candidate) break;
+      candidate = parent;
+    }
+  }
+  if (boundary === null) refusal("registration_key_unavailable");
+  const rel = relative(boundary, absoluteFile);
   if (!rel || rel.startsWith(`..${sep}`) || rel === ".." || isAbsolute(rel)) refusal("registration_key_unavailable");
   const canonical = resolve(canonicalRoot, rel);
   const parent = dirname(canonical);

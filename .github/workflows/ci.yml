@@ -42,7 +42,7 @@ jobs:
           brew list tmux >/dev/null 2>&1 || brew install tmux
           npm ci
           npm run build
-          node scripts/run-v2-daemon-tests.mjs v2/daemon/tests/local-rpc-security.test.ts v2/daemon/tests/human-ref.test.ts
+          node scripts/run-v2-daemon-tests.mjs v2/daemon/tests/local-rpc-security.test.ts v2/daemon/tests/human-ref.test.ts v2/daemon/tests/local-rpc-trust.test.ts
       - uses: actions/upload-artifact@v4
         with:
           name: peercred-${{ matrix.target }}
