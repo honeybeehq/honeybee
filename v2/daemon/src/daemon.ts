@@ -1718,7 +1718,8 @@ export class HiveDaemon {
         return this.rpcAccountLeaseInstall(params);
       case "account.lease.remove": {
         const id = this.accountIdParam(params);
-        return this.mustAccounts().removeLease(id);
+        for (const key of ["checkOnly", "discardNative", "confirm"]) if (params[key] !== undefined && typeof params[key] !== "boolean") throw new RpcError("invalid_request", `${key} must be a boolean.`);
+        return this.mustAccounts().removeLease(id, { checkOnly: params.checkOnly === true, discardNative: params.discardNative === true, confirm: params.confirm === true });
       }
       case "account.activity":
         return this.rpcAccountActivity(params);

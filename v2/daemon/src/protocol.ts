@@ -120,6 +120,7 @@ export const DAEMON_CAPABILITIES = [
   "account.lease.install.v1",
   "account.lease.enrol.v1",
   "account.lease.export.v1",
+  "account.lease.remove_native_guard.v1",
   "account.lease.revoke.v1",
   "account.lease.adopt_explicit.v1",
   "account.credentials.native_backup.v1",
@@ -255,6 +256,8 @@ export const RPC_ERROR_CODES = [
   "credential_handoff_unusable_access",
   "credential_handoff_stale_epoch",
   "account_leased",
+  "account_lease_native_present",
+  "account_lease_remove_unavailable",
   "account_lease_conflict",
   "account_lease_enrol_refused",
   "account_lease_export_refused",
@@ -1003,8 +1006,18 @@ export interface AccountLeaseInstallResult {
   restored: AccountCredentialsRestoredResult;
 }
 
+export interface AccountLeaseRemoveParams {
+  id: string;
+  checkOnly?: boolean;
+  discardNative?: boolean;
+  confirm?: boolean;
+}
+
 export interface AccountLeaseRemoveResult {
-  disposition: "absent" | "revoked";
+  nativeChain: { account: string; present: boolean; discarded: boolean };
+  staticUnverified?: true;
+  message: string;
+  disposition: "absent" | "revoked" | "native_preserved" | "remove_allowed";
   revokedAt: number | null;
   id: string;
   removed: boolean;

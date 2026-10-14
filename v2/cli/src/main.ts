@@ -328,6 +328,8 @@ const BOOL_FLAGS = new Set([
   "--native-recovery",
   "--use-retained-chain",
   "--discard-retained-chain",
+  "--discard-native",
+  "--check-only",
   "--replace",
   "--enrol",
   "--force",
@@ -806,7 +808,7 @@ const ACCOUNT_USAGE =
   "       hive account credentials take-over <account> --confirm [--epoch higher-epoch] [--takeover-id id]\n" +
   "       hive account credentials handoff-status [--file payload.json]\n" +
   "       hive account credentials <export|adopt-prepare|export-prepare|export-commit|adopt|adopt-abort|export-abort|export-confirm|export-settle|stand-down|handoff-status|handoff-key-rotate|handoff-identity-set|stand-down-receipt|take-over-apply|take-over-complete|take-over-cancel> --file protected-payload.json [--out protected-material.json] [--replace] [--retained-generation N] [--discard-retained-chain --confirm]\n" +
-  "       hive account lease install [--enrol] --file payload.json | lease remove <id> | lease export <id> --json\n" +
+  "       hive account lease install [--enrol] --file payload.json | lease remove <id> [--check-only | --discard-native --confirm] | lease export <id> --json\n" +
   "       hive account capture <selector> | verify <selector> | limits [<selector>] | reset <selector> [--credit-id id] --idempotency-key key\n" +
   "       hive account restored <selector> | interruptions [<selector>]\n" +
   "       hive account import [--root ~/.hive] [--dry-run] | backfill [--dry-run]";
@@ -932,17 +934,19 @@ async function cmdAccount(ctx: CliContext, parsed: Parsed): Promise<number> {
       } else {
         const id = parsed.positional[3];
         if (!id) throw new Error("usage: hive account lease remove <id>");
-        params = { id };
+        if (parsed.flags.get("--discard-native") === true && parsed.flags.get("--confirm") !== true) throw new Error("Native discard requires --discard-native --confirm.");
+        params = { id, ...(parsed.flags.get("--discard-native") === true ? { discardNative: true, confirm: true } : {}), ...(parsed.flags.get("--check-only") === true ? { checkOnly: true } : {}) };
       }
       const result = await withClient(ctx, client => {
         if (!client.capabilities.includes("account.lease.install.v1")) throw new RpcError("capability_missing", "Update Honeybee: account.lease.install.v1 is required.");
         if (action === "install" && params.authorityInstanceId !== undefined && !client.capabilities.includes("account.credentials.authority_instance.v1")) throw new RpcError("capability_missing", "Update Honeybee: account.credentials.authority_instance.v1 is required for scoped material.");
         if (action === "install" && params.enrol && !client.capabilities.includes("account.lease.enrol.v1")) throw new RpcError("capability_missing", "Update Honeybee: account.lease.enrol.v1 is required.");
         if (action === "install" && params.adopt === "explicit" && !client.capabilities.includes("account.lease.adopt_explicit.v1")) throw new RpcError("capability_missing", "Update Honeybee: account.lease.adopt_explicit.v1 is required for explicit native replacement.");
+        if (action === "remove" && (params.discardNative || params.checkOnly) && !client.capabilities.includes("account.lease.remove_native_guard.v1")) throw new RpcError("capability_missing", "Update Honeybee: account.lease.remove_native_guard.v1 is required.");
         if (action === "remove" && !client.capabilities.includes("account.lease.revoke.v1")) throw new RpcError("capability_missing", "Update Honeybee: account.lease.revoke.v1 is required for retained-row revocation.");
         return client.request<AccountLeaseInstallResult | AccountLeaseRemoveResult>(`account.lease.${action}`, params, 60_000);
       });
-      emit(ctx, ["account" in result ? `leased ${result.account.id}${result.replacedWorkingLogin ? `; working native login replaced; backup=${result.backupPath} at ${new Date(result.backupAt!).toISOString()}` : ""}` : `lease ${result.disposition}: ${result.id}`], result, false);
+      emit(ctx, ["account" in result ? `leased ${result.account.id}${result.replacedWorkingLogin ? `; working native login replaced; backup=${result.backupPath} at ${new Date(result.backupAt!).toISOString()}` : ""}` : result.message], result, false);
       return 0;
     }
     case "list":

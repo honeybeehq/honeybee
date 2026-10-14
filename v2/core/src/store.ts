@@ -5195,6 +5195,39 @@ export class CoreStore {
     return Boolean(this.stmt("SELECT 1 FROM credential_handoffs WHERE account = ? AND state = 'committed' AND (json_extract(record,'$.receipt.kind') IN ('stand_down','operator_takeover') OR json_extract(record,'$.releasePeer') IS NOT NULL) LIMIT 1").get(account));
   }
 
+  getLeaseMaterialProof(account: string): { keyId: string; issued: Record<string, string>; authorised: string[] } | null {
+    const row = this.stmt("SELECT record FROM lease_material_proofs WHERE account = ?").get(account) as Row | undefined;
+    return row ? JSON.parse(String(row.record)) : null;
+  }
+
+  hasLeaseMaterialProofs(): boolean {
+    return Boolean(this.stmt("SELECT 1 FROM lease_material_proofs LIMIT 1").get());
+  }
+
+  putLeaseMaterialProof(account: string, keyId: string, issued: Record<string, string>): void {
+    this.tx(() => {
+      this.mustGetAccount(account);
+      this.stmt("INSERT INTO lease_material_proofs(account, record) VALUES(?, ?) ON CONFLICT(account) DO UPDATE SET record = excluded.record").run(account, JSON.stringify({ keyId, issued, authorised: [] }));
+    });
+  }
+
+  authoriseLeaseNativeDiscard(account: string, keyId: string, copies: string[]): void {
+    this.tx(() => {
+      const previous = this.getLeaseMaterialProof(account);
+      if (previous?.keyId === keyId && copies.every(copy => previous.authorised.includes(copy))) return;
+      const proof = { keyId, issued: previous?.issued ?? {}, authorised: [...new Set([...(previous?.keyId === keyId ? previous.authorised : []), ...copies])].sort() };
+      this.stmt("INSERT INTO lease_material_proofs(account, record) VALUES(?, ?) ON CONFLICT(account) DO UPDATE SET record = excluded.record").run(account, JSON.stringify(proof));
+      this.audit("account.lease.native_discard_authorised", null, { account, copies: copies.length, at: this.now() });
+    });
+  }
+
+  clearLeaseNativeDiscard(account: string): void {
+    this.tx(() => {
+      const proof = this.getLeaseMaterialProof(account);
+      if (proof?.authorised.length) this.stmt("UPDATE lease_material_proofs SET record = ? WHERE account = ?").run(JSON.stringify({ ...proof, authorised: [] }), account);
+    });
+  }
+
   recordAccountLeaseExport(id: string, fileCount: number): void {
     this.tx(() => {
       const account = this.getAccount(id);

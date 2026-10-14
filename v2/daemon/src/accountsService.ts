@@ -13,8 +13,8 @@
  * are the real transports. Tests inject fakes.
  */
 import { execFile, spawn as spawnChild } from "node:child_process";
-import { createHash, randomUUID } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, lstatSync, renameSync, rmSync, statSync, realpathSync } from "node:fs";
+import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
+import { writeFileSync, chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, lstatSync, renameSync, rmSync, statSync, realpathSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { pathStrictlyInside } from "./accountConfigImport.ts";
@@ -98,7 +98,7 @@ import { readClaudeKeychain, readClaudeKeychainState, writeClaudeKeychainEntry, 
 import { atomicWriteFileSync } from "./homeDefaults.ts";
 import { withClaudeRefreshLock } from "./claudeRefreshLock.ts";
 import { createLeaseMaterialCodecs, hasRefreshGrant, type LeaseMaterialCodec } from "./leaseMaterial.ts";
-import { RpcError, type AccountLeaseExportResult, type AccountLeaseInstallParams, type AccountLeaseInstallResult, type AccountLeaseRemoveResult } from "./protocol.ts";
+import { RpcError, type AccountLeaseExportResult, type AccountLeaseInstallParams, type AccountLeaseInstallResult, type AccountLeaseRemoveResult, type AccountLeaseRemoveParams } from "./protocol.ts";
 import { fetchClaudeIdentity, type ClaudeIdentity } from "./login/transports.ts";
 import {
   defaultProviderLimitsHttp,
@@ -1203,9 +1203,8 @@ export class AccountsService {
   assertNoNewNativeTakeover(account: AccountRow): void {
     const codec = this.leaseMaterialCodecs.get(account.harness);
     if (!codec) throw new RpcError("credential_handoff_unsupported", "No takeover codec is registered.");
-    for (const root of [account.homePath, this.vaultDirOf(account)]) {
-      const raw = readIfFile(this.leaseFilePath(root, codec.primaryFile));
-      if (raw !== null && this.nativeMaterialKind(account.harness, raw) === "native") throw new RpcError("credential_handoff_decided", "A new native login superseded the abandoned destination; preserve its credentials.");
+    for (const { raw } of this.leaseCredentialCopies(account)) {
+      if (this.nativeMaterialKind(account.harness, raw) === "native" || (() => { try { return hasRefreshGrant(JSON.parse(raw)); } catch { return false; } })()) throw new RpcError("credential_handoff_decided", "A new native login superseded the abandoned destination; preserve its credentials.");
     }
   }
 
@@ -1567,6 +1566,7 @@ export class AccountsService {
             })
             && (!codec.keychain || state.status === "unavailable" || state.status === "present" && codec.keychain.matchesMaterial(state.raw, readIfFile(this.leaseFilePath(this.vaultDirOf(target), codec.primaryFile))!));
           if (unchanged) {
+            this.recordLeasePublication(id, input.files, codec);
             this.store.transact(() => {
               if (input.generation === undefined) this.store.releaseAuthDeathRecoveryToLegacy(id);
               onInstalled(this.store.getAccount(id)!);
@@ -1594,6 +1594,7 @@ export class AccountsService {
             enrolment.at = this.now();
             enrolment.liveRuntimeCoveragePending = this.store.beesOnAccount(id).filter(bee => { const runtime = this.store.currentRuntime(bee.id); return runtime !== null && runtime.state !== "stopped"; }).length;
           }
+          this.recordLeasePublication(id, input.files, codec);
           this.store.setAccountLease(id, input.generation === undefined && !enrolment ? origin : { ...origin, materialPublished: false });
           if (!input.enrol || this.homeCredentialState(target) !== "usable") this.store.setAccountStatus(id, "auth_needed", "Lease installation in progress");
           let keychainPublished = false;
@@ -1630,35 +1631,132 @@ export class AccountsService {
     });
   }
 
-  removeLease(id: string): Promise<AccountLeaseRemoveResult> {
+  private leaseCredentialCopies(account: AccountRow): { name: string; rel: string; raw: string }[] {
+    const copies: { name: string; rel: string; raw: string }[] = [];
+    for (const rel of [...new Set([...this.credentialPaths(account), ...(account.leasedFrom?.enrolment ? account.leasedFrom.installedFiles ?? [] : [])])]) for (const [name, root] of [["home", account.homePath], ["vault", this.vaultDirOf(account)]] as const) for (const copy of this.leaseCopyPaths(root, rel)) {
+      let raw: string;
+      try { raw = readFileSync(this.leaseFilePath(root, copy), "utf8"); }
+      catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") continue; throw error; }
+      copies.push({ name: `${name}/${copy}`, rel, raw });
+    }
+    return copies;
+  }
+
+  private leaseProofKey(account: string, create = false): Buffer {
+    const path = this.leaseFilePath(this.cfg.accounts.vaultDir, ".lease-material-provenance.key");
+    try {
+      if (!existsSync(path)) {
+        if (!create) throw new Error("missing key");
+        mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+        chmodSync(dirname(path), 0o700);
+        try { writeFileSync(path, randomBytes(32), { flag: "wx", mode: 0o600 }); }
+        catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error; }
+      }
+      const key = readFileSync(path);
+      if (key.length !== 32) throw new Error("invalid key");
+      return key;
+    } catch { throw new RpcError("account_lease_remove_unavailable", `Credential proof key for ${account} is unavailable; preserve its material and restore the daemon key.`, { account, reason: "fingerprint_key_unavailable" }); }
+  }
+
+  private staticLeaseMaterial(value: unknown): boolean {
+    if (!value || typeof value !== "object") return false;
+    const record = value as Record<string, unknown>;
+    if (["api_key", "OPENAI_API_KEY"].some(key => typeof record[key] === "string" && record[key] !== "")) return true;
+    if ((record.auth_mode === "api_key" || record.type === "api") && typeof record.key === "string" && record.key !== "") return true;
+    return Object.values(record).some(child => this.staticLeaseMaterial(child));
+  }
+
+  private recordLeasePublication(id: string, files: { homeRelPath: string; contentB64: string }[], codec: LeaseMaterialCodec): void {
+    let key: Buffer;
+    try { key = this.leaseProofKey(id, true); }
+    catch { throw new RpcError("lease_unavailable", `Cannot record lease publication proof for ${id}; resolve daemon storage access.`); }
+    const issued: Record<string, string> = {};
+    for (const file of files) {
+      const raw = JSON.stringify(JSON.parse(Buffer.from(file.contentB64, "base64").toString("utf8")));
+      issued[file.homeRelPath] = createHmac("sha256", key).update(raw).digest("hex");
+      const mirror = codec.mirrors[file.homeRelPath];
+      if (mirror) issued[mirror] = issued[file.homeRelPath]!;
+    }
+    this.store.putLeaseMaterialProof(id, createHash("sha256").update(key).digest("hex"), issued);
+  }
+
+  removeLease(id: string, options: Omit<AccountLeaseRemoveParams, "id"> = {}): Promise<AccountLeaseRemoveResult> {
+    if (options.discardNative && (!options.confirm || options.checkOnly)) throw new RpcError("invalid_request", "Native discard requires confirmation and cannot be combined with checkOnly.");
     return this.withLeaseWrite(id, async () => {
       const account = this.store.getAccount(id);
-      if (!account) return { id, disposition: "absent", removed: false, revokedAt: null, keychainRemoved: false, nativeBackupKept: existsSync(join(this.cfg.accounts.vaultDir, ".native-backup", id)) };
+      const base = { id, removed: false, revokedAt: account?.leasedFrom?.revokedAt ?? null, keychainRemoved: false, nativeBackupKept: existsSync(join(this.cfg.accounts.vaultDir, ".native-backup", id)) };
+      if (!account) return { ...base, disposition: "absent", nativeChain: { account: id, present: false, discarded: false }, message: `Account ${id} is absent.` };
       if (account.source !== "leased") throw new RpcError("account_lease_conflict", "Only leased accounts may be removed through lease.remove.");
-      const codec = this.leaseMaterialCodecs.get(account.harness)!;
+      const codec = this.leaseMaterialCodecs.get(account.harness);
+      if (!codec) throw new RpcError("account_lease_remove_unavailable", `Cannot inspect credential copies for ${id}.`, { account: id, reason: "unsupported" });
+      const unavailable = (reason: string): never => { throw new RpcError("account_lease_remove_unavailable", `Cannot establish credential ownership for ${id}; sign the account out or back it up first.`, { account: id, reason }); };
+      const inspect = (state: KeychainState) => {
+        if (state.status === "unreadable") unavailable("keychain_unreadable");
+        const copies = this.leaseCredentialCopies(account);
+        if (state.status === "present") copies.push({ name: "per-home Keychain", rel: codec.primaryFile, raw: state.raw });
+        const native: { name: string; rel: string; raw: string }[] = [];
+        let staticUnverified = false;
+        const proof = this.store.getLeaseMaterialProof(id);
+        let key: Buffer | undefined;
+        for (const copy of copies) {
+          let document: unknown;
+          try { document = JSON.parse(copy.raw); } catch { return unavailable("invalid_material"); }
+          if (hasRefreshGrant(document) || this.nativeMaterialKind(account.harness, copy.raw) === "native") { native.push(copy); continue; }
+          if (!this.credentialAuthorities.has(account.harness) || this.staticLeaseMaterial(document)) {
+            if (!proof || !Object.keys(proof.issued).length) { staticUnverified = true; continue; }
+            key ??= this.leaseProofKey(id);
+            if (proof.keyId !== createHash("sha256").update(key).digest("hex")) unavailable("fingerprint_key_unavailable");
+            if (proof.issued[copy.rel] !== createHmac("sha256", key).update(copy.raw).digest("hex")) native.push(copy);
+          }
+        }
+        return { native, staticUnverified };
+      };
       const remove = async () => {
+        codec.keychain?.assertHome(account.homePath);
+        const state: KeychainState = codec.keychain ? await codec.keychain.read(account.homePath) : { status: "unavailable" };
+        let facts = inspect(state);
+        const warning = facts.staticUnverified ? ` Static material for ${id} is unverified; a user-replaced static key on a legacy row is removed.` : "";
+        const result = (disposition: AccountLeaseRemoveResult["disposition"], present: boolean, discarded: boolean, message: string): AccountLeaseRemoveResult => ({ ...base, disposition, nativeChain: { account: id, present, discarded }, ...(facts.staticUnverified ? { staticUnverified: true as const } : {}), message: message + warning });
+        const preserved = () => result("native_preserved", true, false, `Native credentials are present for ${id}. Sign the account out or back it up first.`);
+        if (options.checkOnly) return facts.native.length ? preserved() : result("remove_allowed", false, false, `Lease material for ${id} may be removed.`);
+        const authorise = () => {
+          if (!facts.native.length) return;
+          if (!options.discardNative) throw new RpcError("account_lease_native_present", preserved().message, { account: id, nativeChainPresent: true, result: preserved() });
+          const owned = account.leasedFrom?.enrolment ? account.leasedFrom.installedFiles ?? [codec.primaryFile, ...Object.values(codec.mirrors)] : this.credentialPaths(account);
+          if (facts.native.some(copy => !owned.includes(copy.rel))) unavailable("native_outside_lease_files");
+          const key = this.leaseProofKey(id, !this.store.hasLeaseMaterialProofs());
+          const copies = facts.native.map(copy => createHmac("sha256", key).update(copy.name).update("\0").update(copy.raw).digest("hex")).sort();
+          this.store.authoriseLeaseNativeDiscard(id, createHash("sha256").update(key).digest("hex"), copies);
+        };
+        authorise();
+        let nativeDiscarded = facts.native.length > 0;
         let keychainRemoved = false;
         if (codec.keychain) {
-          codec.keychain.assertHome(account.homePath);
-          const state = await codec.keychain.read(account.homePath);
-          if (state.status === "unreadable") throw new RpcError("lease_unavailable", "Account Keychain is unreadable; unlock it before removing a lease.");
-          if (state.status === "present") {
+          if (state.status === "present" && !options.discardNative) {
             const installed = readIfFile(this.leaseFilePath(this.vaultDirOf(account), codec.primaryFile));
-            if (installed === null || !codec.keychain.matchesMaterial(state.raw, installed)) throw new RpcError("account_lease_conflict", "The account Keychain item no longer contains this lease; preserve the foreign credential and resolve its ownership.");
+            if (installed === null || !codec.keychain.matchesMaterial(state.raw, installed)) throw new RpcError("account_lease_conflict", `The Keychain item for ${id} no longer contains this lease; preserve it and resolve ownership.`);
           }
           if (state.status !== "unavailable") {
             keychainRemoved = await codec.keychain.remove(account.homePath);
             if (!keychainRemoved) throw new RpcError("lease_unavailable", "Could not remove the leased Keychain entry.");
           }
+          facts = inspect({ status: "absent" });
+          authorise();
+          nativeDiscarded ||= facts.native.length > 0;
         }
         for (const rel of account.leasedFrom?.enrolment ? account.leasedFrom.installedFiles ?? [codec.primaryFile, ...Object.values(codec.mirrors)] : this.credentialPaths(account)) {
           for (const root of [account.homePath, this.vaultDirOf(account)]) for (const copy of this.leaseCopyPaths(root, rel)) rmSync(this.leaseFilePath(root, copy), { force: true });
         }
-        const revoked = this.store.revokeAccountLease(id);
-        return { id, disposition: "revoked" as const, removed: false, revokedAt: revoked.leasedFrom!.revokedAt, keychainRemoved, nativeBackupKept: existsSync(join(this.cfg.accounts.vaultDir, ".native-backup", id)) };
+        const revoked = this.store.transact(() => {
+          const revoked = this.store.revokeAccountLease(id);
+          this.store.clearLeaseNativeDiscard(id);
+          return revoked;
+        });
+        return { ...result("revoked", false, nativeDiscarded, nativeDiscarded ? `Native credentials for ${id} were discarded. The provider session behind the discarded chain for ${id} stays valid until signed out at the provider.` : `Lease material for ${id} was revoked.`), revokedAt: revoked.leasedFrom!.revokedAt, keychainRemoved };
       };
       codec.keychain?.assertHome(account.homePath);
-      return codec.keychain ? codec.keychain.withLock(account.homePath, remove) : remove();
+      try { return codec.keychain ? await codec.keychain.withLock(account.homePath, remove) : await remove(); }
+      catch (error) { if (error instanceof RpcError) throw error; return unavailable("storage_unreadable"); }
     });
   }
 
