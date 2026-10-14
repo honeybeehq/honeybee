@@ -28,7 +28,7 @@ import { closeSync, copyFileSync, cpSync, existsSync, mkdirSync, openSync, readd
 import { execFile } from "node:child_process";
 import type { InterruptOutcome } from "../../harness/src/driver.ts";
 import { appendFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { monitorEventLoopDelay, type IntervalHistogram } from "node:perf_hooks";
@@ -237,6 +237,7 @@ import {
   type PerformanceSpan,
 } from "./performance.ts";
 import { RpcServer, assertLocalHandoffRpc, type RpcConn } from "./rpc.ts";
+import { applyDaemonTmpPolicy, describeBeeTmpPolicy, ensureBeeTmpEnv, removeBeeTmpDir, resolveBeeTmpPolicy, sweepBeeTmpDirs, type BeeTmpPolicy } from "./beeTmp.ts";
 import {
   DAEMON_VERSION,
   BUILD_IDENTITY,
@@ -701,10 +702,14 @@ export class HiveDaemon {
   private titleGenerator: TitleGeneratorService | null = null;
   private readonly performance: PerformanceProfiler;
   private activeStartupPhase: PerformanceSpan | null = null;
+  private readonly beeTmp: BeeTmpPolicy | null;
+  private readonly runnerSocketDir: string;
 
   constructor(cfg: ResolvedNodeConfig, deps: HiveDaemonDeps = {}) {
     this.cfg = cfg;
     this.deps = deps;
+    this.beeTmp = resolveBeeTmpPolicy(cfg.nodeKind, cfg.beeTmpRoot, process.env);
+    this.runnerSocketDir = tmpdir();
     this.naming = cfg.naming;
     this.contextPolicy = cfg.contextPolicy;
     this.performance = createPerformanceProfiler({ log: (op) => this.log(op) });
@@ -731,6 +736,8 @@ export class HiveDaemon {
     mkdirSync(this.cfg.dataDir, { recursive: true });
     mkdirSync(this.cfg.sessionLogDir, { recursive: true });
     mkdirSync(dirname(this.cfg.logPath), { recursive: true });
+    if (this.beeTmp) applyDaemonTmpPolicy(this.beeTmp, process.env);
+    this.log(describeBeeTmpPolicy(this.beeTmp));
     this.performance.start();
     const startup = this.performance.startSpan("daemon.start.total");
     try {
@@ -824,6 +831,7 @@ export class HiveDaemon {
       stopKillGraceMs: this.cfg.stopKillGraceMs,
       adoptToleranceMs: this.cfg.adoptToleranceMs,
       onWriteLaneReady: () => this.requestTick(),
+      socketDir: this.runnerSocketDir,
     };
     const hsr = new HsrDriver({ ...hsrConfig, resolve: (beeId: string, generation?: number) => this.resolveSpawnSpec(beeId, generation) });
     // Cell substrate (spec 05): a CellDriver composed over its own inner
@@ -890,6 +898,7 @@ export class HiveDaemon {
       log: (op) => this.log(op),
       onI1Violation: (v) => this.recordI1(v),
       removeSessionLog: (path) => rmSync(path, { force: true }),
+      ...(this.beeTmp ? { removeBeeTmp: (beeId: string) => this.removeBeeTmp(beeId) } : {}),
       removeThreadArtifacts: operationId => this.removeThreadArtifacts(operationId),
       onFlagEvidence: (ev) => this.applyAccountPolicy(ev),
       onUsageEvidence: (ev) => this.applyUsageObservation(ev),
@@ -920,6 +929,7 @@ export class HiveDaemon {
     this.backfillCellRegistry(store);
     this.adoptSurvivors(store, driver);
     this.lastBoot = this.core.boot();
+    this.sweepBeeTmpAtBoot(store);
     this.reconcileCellOpsAtBoot();
     // v31: wrappers parked by an earlier pass are already evicted; finish deleting them.
     void this.retention.sweep();
@@ -1378,7 +1388,7 @@ export class HiveDaemon {
     // v7 (spec 08): a bound bee runs in its account's home. The env is derived
     // from the account row. The tracked pre-claim readiness gate has already
     // activated the home and reconciled its native MCP config.
-    const env = this.runtimeEnvOf(bee, spec, "resolve");
+    const env = { ...this.runtimeEnvOf(bee, spec, "resolve"), ...this.beeTmpEnv(bee.id) };
     // Absence is authoritative too: a root must not inherit a configured parent.
     if (!bee.parentId) delete env.HIVE_PARENT;
     if (adapterName === "claude") {
@@ -1438,20 +1448,42 @@ export class HiveDaemon {
     };
   }
 
-  /** The exact persisted account home is the only per-bee sandbox grant. */
   private resolveCellSandboxWritablePaths(beeId: string): readonly SandboxWritableDirectory[] {
     const store = this.mustStore();
     const bee = store.getBee(beeId);
     if (!bee) throw new Error(`resolveCellSandboxWritablePaths: bee ${beeId} not found`);
-    if (!bee.account) return [];
+    const tmp = this.beeTmp ? ensureBeeTmpEnv(this.beeTmp, beeId) : null;
+    const grants = tmp ? [sandboxWritableDirectory(tmp.TMPDIR), sandboxWritableDirectory(tmp.NODE_COMPILE_CACHE)] : [];
+    if (!bee.account) return grants;
     const account = store.getAccount(bee.account);
     if (!account) {
       throw new Error(`resolveCellSandboxWritablePaths: bee ${beeId} is bound to unknown account ${bee.account}`);
     }
-    if (this.mustAccounts().isNative(account)) return [];
-    return [sandboxWritableDirectory(account.homePath, {
+    if (this.mustAccounts().isNative(account)) return grants;
+    return [...grants, sandboxWritableDirectory(account.homePath, {
       forbiddenDirectories: [this.cfg.accounts.homesDir],
     })];
+  }
+
+  private beeTmpEnv(beeId: string): Record<string, string> {
+    return this.beeTmp ? ensureBeeTmpEnv(this.beeTmp, beeId) : {};
+  }
+
+  private removeBeeTmp(beeId: string): void {
+    if (!this.beeTmp) return;
+    const removed = removeBeeTmpDir(this.beeTmp, beeId);
+    this.log(`tmp.bee_removed bee=${beeId} ok=${removed}`);
+  }
+
+  private sweepBeeTmpAtBoot(store: CoreStore): void {
+    if (!this.beeTmp) return;
+    const released: string[] = [];
+    for (const bee of store.listBees()) {
+      const rt = store.currentRuntime(bee.id);
+      if (bee.lifecycle === "archived" && (!rt || rt.state === "stopped")) released.push(bee.id);
+    }
+    const removed = sweepBeeTmpDirs(this.beeTmp, released);
+    if (removed.length > 0) this.log(`tmp.boot_sweep removed=${removed.length}`);
   }
 
   /**
@@ -1465,7 +1497,7 @@ export class HiveDaemon {
     if (!bee) throw new Error(`resolveTmux: bee ${beeId} not found`);
     const spec = this.cfg.agents[bee.agent];
     if (!spec) throw new Error(`resolveTmux: no agent spec for '${bee.agent}'`);
-    const env = this.runtimeEnvOf(bee, spec, "resolveTmux");
+    const env = { ...this.runtimeEnvOf(bee, spec, "resolveTmux"), ...this.beeTmpEnv(bee.id) };
     // Absence is authoritative too: a root must not inherit a configured parent.
     if (!bee.parentId) delete env.HIVE_PARENT;
     let beeArgs = bee.args;

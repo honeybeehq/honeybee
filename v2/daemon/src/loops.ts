@@ -211,6 +211,7 @@ export interface DaemonCoreOptions {
   /** Q1 (spec 01): delete removes the session log file; core does no file I/O, the daemon does. */
   removeSessionLog?: (path: string) => void;
   removeThreadArtifacts?: (operationId: string) => void;
+  removeBeeTmp?: (beeId: string) => void;
   /**
    * v7 (spec 08): account policy hook — called AFTER each flag evidence is
    * applied to the store, so the daemon can enact the account-level rules
@@ -300,6 +301,7 @@ export class DaemonCore {
   private readonly onI1Violation: ((violation: I1ViolationEvent) => void) | null;
   private readonly removeThreadArtifacts: ((operationId: string) => void) | null;
   private readonly removeSessionLog: ((path: string) => void) | null;
+  private readonly removeBeeTmp: ((beeId: string) => void) | null;
   private readonly onFlagEvidence: ((ev: FlagEvidenceLike) => void) | null;
   private readonly onUsageEvidence: ((ev: UsageEvidenceLike) => void) | null;
   private readonly performance: PerformanceRecorder;
@@ -332,6 +334,7 @@ export class DaemonCore {
     this.onI1Violation = opts.onI1Violation ?? null;
     this.removeSessionLog = opts.removeSessionLog ?? null;
     this.removeThreadArtifacts = opts.removeThreadArtifacts ?? null;
+    this.removeBeeTmp = opts.removeBeeTmp ?? null;
     this.onFlagEvidence = opts.onFlagEvidence ?? null;
     this.onUsageEvidence = opts.onUsageEvidence ?? null;
     this.performance = opts.performance ?? NOOP_PERFORMANCE;
@@ -606,6 +609,7 @@ export class DaemonCore {
       this.ensureWake(obs.beeId);
       if (bootRetryNeeded) this.ensureBootRetry(obs.beeId);
       this.reviveAfterStopIfRequested(obs.beeId, obs.generation);
+      this.releaseBeeTmp(obs.beeId);
     } else if (obs.kind === "booted") {
       this.store.updateRuntimeState(obs.beeId, obs.generation, "running", {
         pid: obs.pid,
@@ -932,6 +936,15 @@ export class DaemonCore {
     }
   }
 
+  private releaseBeeTmp(beeId: string): void {
+    if (!this.removeBeeTmp) return;
+    const bee = this.store.getBee(beeId);
+    if (bee && bee.lifecycle !== "archived") return;
+    const rt = this.store.currentRuntime(beeId);
+    if (rt && rt.state !== "stopped") return;
+    this.removeBeeTmp(beeId);
+  }
+
   /** Record pid + start-time at spawn (the WP2 amendment) when the driver can report it. */
   private recordProcAtSpawn(beeId: string, generation: number): void {
     if (typeof this.ext.procOf !== "function") return;
@@ -968,6 +981,7 @@ export class DaemonCore {
       case "archive": {
         const bee = this.store.getBee(cmd.beeId);
         if (bee?.lifecycle === "active") this.store.archiveBee(cmd.beeId);
+        this.releaseBeeTmp(cmd.beeId);
         this.log(`cmd.archive id=${cmd.id} bee=${cmd.beeId}`);
         return true;
       }
@@ -988,6 +1002,7 @@ export class DaemonCore {
           this.removeSessionLog(result.sessionLogPath);
         }
         if (threadOperation) this.removeThreadArtifacts?.(threadOperation.id);
+        this.removeBeeTmp?.(cmd.beeId);
         this.log(`cmd.delete id=${cmd.id} bee=${cmd.beeId}`);
         return true;
       }

@@ -107,6 +107,7 @@ export interface HsrDriverConfig {
    * generation). Default: `<sessionLogDir>/../runners`.
    */
   runnersDir?: string;
+  socketDir?: string;
   /**
    * How to launch the runner host for a written config file. The default
    * invokes the sibling TS entry under --experimental-strip-types in source
@@ -431,7 +432,7 @@ export class HsrDriver implements RuntimeDriver {
       .slice(0, 16);
     return {
       config: `${base}.json`,
-      socket: join(tmpdir(), `hb-rh-${digest}.sock`),
+      socket: join(this.cfg.socketDir ?? tmpdir(), `hb-rh-${digest}.sock`),
       status: `${base}.status.json`,
       observations: `${base}.observations.jsonl`,
     };

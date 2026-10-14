@@ -8,7 +8,7 @@
  */
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
 import { DEFAULT_TRIM_PATTERNS } from "../../driver-cell/src/retention.ts";
 import { contextPolicyConfigOf, ContextPolicyError, type ContextPolicyConfig } from "./contextPolicy.ts";
 import { NAMING_HEM_SECRET_PREFIX, parseNamingHemSecretRef } from "./hemSecret.ts";
@@ -273,6 +273,7 @@ export interface NodeConfigFile {
   /** Auto-titler. Default on, warm Codex app-server with GPT-6 Luna at no reasoning. */
   naming?: NamingConfig;
   contextPolicy?: ContextPolicyConfig;
+  bees?: { tmpRoot?: string | null };
 }
 
 export interface ResolvedNodeConfig {
@@ -321,6 +322,7 @@ export interface ResolvedNodeConfig {
   };
   naming: ResolvedNamingConfig;
   contextPolicy: ContextPolicyConfig;
+  beeTmpRoot?: string | null;
 }
 
 export class ConfigError extends Error {
@@ -409,6 +411,21 @@ function num(raw: Record<string, unknown>, key: string, fallback: number): numbe
     throw new ConfigError(`config: ${key} must be a finite number, got ${JSON.stringify(v)}`);
   }
   return v;
+}
+
+function beeTmpRootOf(raw: Record<string, unknown>): { beeTmpRoot?: string | null } {
+  const bees = raw.bees;
+  if (bees === undefined) return {};
+  if (bees === null || typeof bees !== "object" || Array.isArray(bees)) {
+    throw new ConfigError("config: bees must be an object");
+  }
+  const v = (bees as Record<string, unknown>).tmpRoot;
+  if (v === undefined) return {};
+  if (v === null) return { beeTmpRoot: null };
+  if (typeof v !== "string" || !(isAbsolute(v) || v.startsWith("~/"))) {
+    throw new ConfigError("config: bees.tmpRoot must be null, an absolute path, or a ~/ path");
+  }
+  return { beeTmpRoot: v };
 }
 
 function str(raw: Record<string, unknown>, key: string, fallback: string): string {
@@ -918,6 +935,7 @@ export function loadNodeConfig(dataDir: string, configPath?: string): ResolvedNo
     accounts: accountsOf(raw),
     naming: namingOrDisabled(raw, dataDir),
     contextPolicy: resolvedContextPolicyOf(raw),
+    ...beeTmpRootOf(raw),
   };
 }
 

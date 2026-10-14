@@ -61,6 +61,7 @@ function makeRig(
     | "performance"
     | "blockedRuntimeStartBeeIds"
     | "assertRuntimeStartReady"
+    | "removeBeeTmp"
   > = {},
 ): Rig {
   const dir = mkdtempSync(join(tmpdir(), "hb-v2-loops-"));
@@ -331,6 +332,40 @@ for (const exitCause of ["stopped_by_user", "crashed"] as const) {
     }
   });
 }
+
+test("bee tmp is released on archive only once no live runtime holds it, and on delete", () => {
+  const released: string[] = [];
+  const rig = makeRig({}, { removeBeeTmp: (beeId) => released.push(beeId) });
+  try {
+    spawnIdleBee(rig, "live");
+    spawnIdleBee(rig, "gone");
+    spawnIdleBee(rig, "cold");
+    rig.driver.stop("cold", 1, "stopped_by_user");
+    rig.core.step();
+    assert.deepEqual(released, [], "an active bee's exit keeps its tmp");
+
+    rig.store.enqueueCommand("archive", "cold");
+    rig.store.enqueueCommand("archive", "live");
+    rig.core.step();
+    assert.equal(rig.store.getBee("live")?.lifecycle, "archived");
+    assert.deepEqual(released, ["cold"], "an archived bee with a live runtime keeps its tmp");
+
+    rig.driver.stop("live", 1, "stopped_by_user");
+    rig.core.step();
+    assert.equal(rig.store.currentRuntime("live")?.state, "stopped");
+    assert.deepEqual(released, ["cold", "live"], "the archived bee's exit releases it");
+
+    rig.driver.stop("gone", 1, "stopped_by_user");
+    rig.core.step();
+    assert.deepEqual(released, ["cold", "live"], "an active bee's exit keeps its tmp");
+
+    rig.store.enqueueCommand("delete", "gone");
+    rig.core.step();
+    assert.deepEqual(released, ["cold", "live", "gone"]);
+  } finally {
+    rig.cleanup();
+  }
+});
 
 test("deferred model change does not block other commands and a stale generation does not restart again", () => {
   const rig = makeRig();
