@@ -1,3 +1,4 @@
+import { withoutRpcCaller } from "../../core/src/rpcAuditContext.ts";
 /**
  * LoginFlowService — the daemon's account LOGIN plane (tmux-independent
  * login, operator decision 2026-08-28). Owns every login flow end to end:
@@ -469,7 +470,7 @@ export class LoginFlowService {
     if (!runner) return this.fail(flowId, err("unsupported_method", `unknown direct runner`), false);
     this.runners.set(flowId, runner);
     try {
-      return await runner.start();
+      return await withoutRpcCaller(() => runner.start());
     } catch (error) {
       return this.fail(flowId, err("provider_error", safeMessage(error)), true);
     }

@@ -252,6 +252,7 @@ export interface NodeConfigFile {
   i1DeadlineMs?: number;
   /** Daemon tick interval. */
   tickMs?: number;
+  rpcLocalTrust?: {requireObservationCaller?: boolean; registrationKeyFile?: string};
   /** Executor budget per tick. */
   commandsPerTick?: number;
   /** B5 retry table. */
@@ -297,6 +298,7 @@ export interface NodeConfigFile {
 
 export interface ResolvedNodeConfig {
   dataDir: string;
+  rpcLocalTrust: {requireObservationCaller: boolean; registrationKeyFile: string};
   configPath: string;
   nodeKind: NodeKind;
   cellsRoot: string;
@@ -970,6 +972,7 @@ export function loadNodeConfig(dataDir: string, configPath?: string): ResolvedNo
     agents: { ...BUILTIN_AGENTS, ...agentsOf(raw) },
     accounts: accountsOf(raw),
     naming: namingOrDisabled(raw, dataDir),
+    rpcLocalTrust: localTrustOf(raw, dataDir),
     contextPolicy: resolvedContextPolicyOf(raw),
     ...beeTmpRootOf(raw),
     ...beeSandboxTmpBytesOf(raw),
@@ -983,4 +986,13 @@ export function resolvedContextPolicyOf(raw: Record<string, unknown>): ContextPo
     if (err instanceof ContextPolicyError) throw new ConfigError(err.message);
     throw err;
   }
+}
+
+function localTrustOf(raw: Record<string, unknown>, dataDir: string): {requireObservationCaller: boolean; registrationKeyFile: string} {
+  const value = raw.rpcLocalTrust;
+  if (value === undefined) return {requireObservationCaller: false, registrationKeyFile: join(dataDir, "rpc-private", "registration.key")};
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("rpcLocalTrust must be an object");
+  const config = value as Record<string, unknown>;
+  if (Object.keys(config).some(key => !["requireObservationCaller", "registrationKeyFile"].includes(key)) || (config.requireObservationCaller !== undefined && typeof config.requireObservationCaller !== "boolean") || (config.registrationKeyFile !== undefined && (typeof config.registrationKeyFile !== "string" || !config.registrationKeyFile.startsWith("/")))) throw new Error("Invalid rpcLocalTrust configuration");
+  return {requireObservationCaller: config.requireObservationCaller === true, registrationKeyFile: typeof config.registrationKeyFile === "string" ? config.registrationKeyFile : join(dataDir, "rpc-private", "registration.key")};
 }

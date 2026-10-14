@@ -1,3 +1,4 @@
+import { withoutRpcCaller } from "../../core/src/rpcAuditContext.ts";
 import { applyObservation, observationReadRequest, discardObservation } from "./limitsObservation.ts";
 import { reconnectToolsResult, type ReconnectToolsResult } from "../../core/src/reconnectTools.ts";
 import { withFileLock } from "../../../src/lock.ts";
@@ -963,6 +964,9 @@ export class HiveDaemon {
     this.activeStartupPhase = rpc;
     this.rpc = new RpcServer({
       socketPath: this.cfg.socketPath,
+      dataDir: this.cfg.dataDir,
+      localTrust: this.cfg.rpcLocalTrust,
+      securityAudit: (kind, payload) => this.mustStore().recordLocalRpcEvent(kind as "rpc.peer_credentials_unavailable" | "rpc.local_refused" | "rpc.local_registered", payload),
       log: (op) => this.log(op),
       dispatch: (verb, params, conn) => this.dispatch(verb, params, conn),
       performance: this.performance,
@@ -1039,14 +1043,14 @@ export class HiveDaemon {
   }
 
   private scheduleTick(delayMs: number): void {
-    this.tickTimer = setTimeout(() => {
+    this.tickTimer = withoutRpcCaller(() => setTimeout(() => {
       this.tickTimer = null;
       if (this.stopping) return;
       this.tick();
       if (!this.stopping) {
         this.scheduleTick(nextTickDelayMs(this.store?.hasBootingRuntime() ? Math.min(BOOTING_TICK_MS, this.cfg.tickMs) : this.cfg.tickMs));
       }
-    }, delayMs);
+    }, delayMs));
   }
 
   private tick(): void {
@@ -5235,6 +5239,7 @@ export class HiveDaemon {
       dataDir: this.cfg.dataDir,
       socketPath: this.cfg.socketPath,
       storePath: this.cfg.storePath,
+      localSecurity: this.rpc?.localSecurity,
     };
   }
 
@@ -5315,6 +5320,7 @@ export class HiveDaemon {
       lastTickAt: this.lastTickAt,
       tickErrors: this.tickErrors,
       stopping: this.stopping,
+      localSecurity: this.rpc?.localSecurity,
       lastBoot: this.lastBoot,
       i1Violations: this.telemetry?.i1Count() ?? 0,
       bees: store.countBeesByLifecycle(),

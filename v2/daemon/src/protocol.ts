@@ -89,6 +89,7 @@ export const DAEMON_VERSION = BUILD_IDENTITY.version;
  * client ignores the extra key) and `deployInfo` repeats the list.
  */
 export const DAEMON_CAPABILITIES = [
+  "rpc.local_trust.v1",
   "bee.human_ref.v1",
   "bee.turn_trigger.v1",
   "mail.answer_marker.v1",
@@ -286,6 +287,9 @@ export const RPC_ERROR_CODES = [
   "node_stopped",
   "protocol_mismatch",
   "invalid_request",
+  "caller_not_trusted",
+  "local_peer_credentials_unavailable",
+  "local_peer_uid_mismatch",
   "tag_reserved",
   /** Verb-specific refusal: the lifecycle graph forbids the transition. */
   "lifecycle_refused",
@@ -423,6 +427,8 @@ export const RPC_ERROR_CODES = [
 export type RpcErrorCode = (typeof RPC_ERROR_CODES)[number];
 
 export const RPC_VERBS = [
+  "rpc.localTrust.challenge",
+  "rpc.localTrust.register",
   "humanRef.status", "humanRef.enroll", "humanRef.registry.status", "humanRef.registry.init", "humanRef.registry.reserve",
   "bee.reconnectTools", "bee.reconnectTools.get",
   "thread.fork", "thread.handoff", "thread.operation.get", "thread.operation.retry", "thread.transcript", "thread.capabilities",
@@ -1564,6 +1570,7 @@ export interface AuditTailResult {
 }
 
 export interface DeployInfoResult {
+  localSecurity?: {peerCredentials: import("./peerCredentials.ts").PeerCredentialStatus; localTrust: "off" | "ready" | "registration_key_unavailable"};
   identity?: BuildIdentity;
   protocol: string;
   /** v16 (additive): the capability tags this daemon offers (also in the hello). */
@@ -1612,6 +1619,7 @@ export interface HarnessFact {
 }
 
 export interface HealthResult {
+  localSecurity?: {peerCredentials: import("./peerCredentials.ts").PeerCredentialStatus; localTrust: "off" | "ready" | "registration_key_unavailable"};
   protocol: string;
   pid: number;
   startedAt: number;

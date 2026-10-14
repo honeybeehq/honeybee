@@ -1,3 +1,4 @@
+import { withoutRpcCaller } from "../../core/src/rpcAuditContext.ts";
 import { OBSERVATION_CODECS, localObservationText } from "./limitsObservation.ts";
 /**
  * AccountsService — the daemon's account plane (spec 08 CORE): the calibrated
@@ -3886,7 +3887,7 @@ export class AccountsService {
       if (!this.activeRefreshIds.has(id)) this.queuedRefreshIds.add(id);
     }
     if (this.refreshing || this.queuedRefreshIds.size === 0) return;
-    this.refreshing = (async () => {
+    this.refreshing = withoutRpcCaller(async () => {
       while (this.queuedRefreshIds.size > 0) {
         const batch = [...this.queuedRefreshIds];
         this.queuedRefreshIds.clear();
@@ -3897,7 +3898,7 @@ export class AccountsService {
           for (const id of batch) this.activeRefreshIds.delete(id);
         }
       }
-    })()
+    })
       .catch((err) => this.log(`account.limits.sweep_error ${err instanceof Error ? err.message : String(err)}`))
       .finally(() => {
         this.refreshing = null;

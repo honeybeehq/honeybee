@@ -82,3 +82,5 @@ export * from "./actions.ts";
 export * from "./threadOperation.ts";
 
 export type { HumanRefIssuer, HumanRefReceipt, HumanRefRegistry } from "./humanRefs.ts";
+
+export * from "./rpcAuditContext.ts";

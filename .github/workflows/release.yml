@@ -71,7 +71,39 @@ concurrency:
   group: ${{ inputs.distribution != '' && inputs.distribution != 'production' && format('honeybee-release-publication-{0}', inputs.distribution) || 'honeybee-release-publication' }}
   cancel-in-progress: false
 jobs:
+  peercred:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            target: linux-x64
+          - runner: ubuntu-24.04-arm
+            target: linux-arm64
+          - runner: macos-15
+            target: darwin-arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source-revision }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.15.0
+      - name: Build and prove the target bridge on its native runner
+        shell: bash
+        run: |
+          test "$(node -p 'process.platform + "-" + process.arch')" = "${{ matrix.target }}"
+          node scripts/build-peercred.mjs
+          node scripts/probe-peercred.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: peercred-${{ matrix.target }}
+          path: dist/v2/peercred/${{ matrix.target }}/
+          if-no-files-found: error
   release:
+    needs: peercred
     environment: ${{ (inputs.distribution == '' || inputs.distribution == 'production') && 'honeybee-release' || format('honeybee-release-{0}', inputs.distribution) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
@@ -106,6 +138,17 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y tmux
       - run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: peercred-*
+          path: .native-prebuilds
+      - name: Arrange proven peer credential targets
+        shell: bash
+        run: |
+          mkdir -p .native-prebuilds/targets
+          for target in linux-x64 linux-arm64 darwin-arm64; do
+            mv ".native-prebuilds/peercred-$target" ".native-prebuilds/targets/$target"
+          done
       - name: Reserve, verify and publish exact runtime
         id: publish
         run: npm run release:publish
@@ -115,5 +158,6 @@ jobs:
           HONEYBEE_SOURCE_REVISION: ${{ inputs.source-revision }}
           HONEYBEE_API_ASSESSMENT: ${{ inputs.api-assessment }}
           HONEYBEE_TARGET: ${{ inputs.target }}
+          HIVE_PEERCRED_PREBUILTS: ${{ github.workspace }}/.native-prebuilds/targets
           DISTRIBUTION_TOKEN: ${{ secrets.DISTRIBUTION_TOKEN }}
           EVALUATOR_NOTIFICATION_TOKEN: ${{ secrets.EVALUATOR_NOTIFICATION_TOKEN }}

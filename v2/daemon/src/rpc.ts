@@ -1,3 +1,8 @@
+import { PeerCredentials, type PeerConnection } from "./peerCredentials.ts";
+import { LocalRpcTrust, type LocalTrustConfig } from "./localRpcTrust.ts";
+import { LocalRpcRefusals } from "./localRpcRefusals.ts";
+import { RPC_ACCESS } from "./rpcAccess.ts";
+import { withRpcCaller } from "../../core/src/rpcAuditContext.ts";
 /**
  * The daemon's RPC server — unix socket, jsonl frames, one negotiated
  * protocol (spec 04 "RPC surface"; framing defined in protocol.ts).
@@ -60,6 +65,7 @@ import {
 } from "./protocol.ts";
 
 export interface RpcConn {
+  readonly localPeer?: Readonly<{uid: number; pid: number; processBirth: string | null}>;
   readonly ingress?: "local_unix" | "node_relay" | "remote";
   /** Push a raw frame (used for watch deltas/gaps). */
   send(obj: unknown): void;
@@ -96,6 +102,10 @@ export type RpcDispatch = (
 ) => unknown;
 
 export interface RpcServerOptions {
+  dataDir?: string;
+  localTrust?: LocalTrustConfig;
+  peerCredentials?: PeerCredentials;
+  securityAudit?: (kind: string, payload: Record<string, unknown>) => void;
   socketPath: string;
   log: (op: string) => void;
   dispatch: RpcDispatch;
@@ -103,6 +113,7 @@ export interface RpcServerOptions {
 }
 
 interface Connection extends RpcConn {
+  peerConnection: PeerConnection | null;
   socket: Socket;
   buffer: string;
   helloDone: boolean;
@@ -161,9 +172,18 @@ export class RpcServer {
   private readonly server: Server;
   private readonly conns = new Set<Connection>();
   private listening = false;
+  private readonly credentials: PeerCredentials;
+  private readonly trust: LocalRpcTrust;
+  private readonly refusals: LocalRpcRefusals;
+
+  get localSecurity() { return {peerCredentials: {...this.credentials.status}, localTrust: this.trust.state}; }
 
   constructor(opts: RpcServerOptions) {
     this.opts = opts;
+    const audit = opts.securityAudit ?? (() => {});
+    this.credentials = opts.peerCredentials ?? new PeerCredentials({degraded: status => audit("rpc.peer_credentials_unavailable", {...status})});
+    this.trust = new LocalRpcTrust(opts.localTrust ?? {requireObservationCaller: false, registrationKeyFile: ""}, opts.dataDir ?? "/", audit);
+    this.refusals = new LocalRpcRefusals(audit);
     this.performance = opts.performance ?? NOOP_PERFORMANCE;
     this.server = createServer((socket) => this.onConnection(socket));
   }
@@ -185,6 +205,9 @@ export class RpcServer {
   close(): Promise<void> {
     for (const conn of this.conns) conn.socket.destroy();
     this.conns.clear();
+    this.credentials.close();
+    this.trust.close();
+    this.refusals.close();
     return new Promise((resolve) => {
       if (!this.listening) {
         resolve();
@@ -232,6 +255,8 @@ export class RpcServer {
     const localUnix = socket.remoteAddress === undefined;
     const conn: Connection = {
       socket,
+      peerConnection: localUnix ? this.credentials.connect(socket) : null,
+      get localPeer() { return conn.peerConnection?.state === "verified" ? conn.peerConnection.peer : undefined; },
       buffer: "",
       helloDone: false,
       relayLane: null,
@@ -257,7 +282,7 @@ export class RpcServer {
     conn.send({ protocol: PROTOCOL, capabilities: DAEMON_CAPABILITIES, identity: BUILD_IDENTITY } satisfies HelloFrame);
     socket.on("data", (chunk: string) => this.onData(conn, chunk));
     socket.on("error", () => socket.destroy());
-    socket.on("close", () => this.conns.delete(conn));
+    socket.on("close", () => { conn.peerConnection?.close(); this.trust.disconnect(conn); this.conns.delete(conn); });
   }
 
   private onData(conn: Connection, chunk: string): void {
@@ -323,7 +348,31 @@ export class RpcServer {
       return;
     }
     try {
-      const result = this.opts.dispatch(verb, params, conn);
+      const peer = conn.peerConnection;
+      if (peer?.state === "verified" && peer.peer.uid !== process.geteuid!()) {
+        this.refusals.record("local_peer_uid_mismatch", peer.peer.uid, peer.peer.pid);
+        throw new RpcError("local_peer_uid_mismatch", "Local RPC requires the daemon effective uid.");
+      }
+      if (peer?.state === "lookup_failed" && RPC_ACCESS[verb] === "mutate") {
+        this.refusals.record("local_peer_credentials_unavailable", null, null);
+        throw new RpcError("local_peer_credentials_unavailable", "Peer credentials are unavailable for this connection; reconnect before mutating state.");
+      }
+      const caller = peer?.state === "verified" ? {transport: "local_unix" as const, ingress: conn.ingress ?? "remote", uid: peer.peer.uid, pid: peer.peer.pid, verb} : null;
+      const result = withRpcCaller(caller, () => {
+        if (verb === "rpc.localTrust.challenge" || verb === "rpc.localTrust.register") {
+          if (!peer) throw new RpcError("caller_not_trusted", "Registration requires a local Unix connection.");
+          if (verb === "rpc.localTrust.challenge") {
+            if (Object.keys(params).length) throw new RpcError("invalid_request", "Challenge takes no parameters.");
+            return this.trust.challenge(peer, conn, conn.ingress);
+          }
+          return this.trust.register(params, peer, conn, conn.ingress);
+        }
+        if (verb === "account.limits.observe" || verb === "account.limits.observation.discard" || (verb === "account.limits.observation" && params.id !== undefined)) {
+          if (!peer && this.trust.enabled) throw new RpcError("caller_not_trusted", "Observation trust requires a local Unix connection.");
+          if (peer) this.trust.require(peer, conn.ingress);
+        }
+        return this.opts.dispatch(verb, params, conn);
+      });
       // v7: verbs with a bounded async leg (limits fetch before an auto pick,
       // the login seat's keychain baseline) return a promise; sync verbs are
       // answered on the spot exactly as before.
@@ -343,6 +392,7 @@ export class RpcServer {
       span.end();
       conn.send({ id, ok: true, result });
     } catch (err) {
+      if (err instanceof RpcError && err.code === "caller_not_trusted") this.refusals.record(err.code, conn.localPeer?.uid ?? null, conn.localPeer?.pid ?? null);
       span.end("error");
       conn.send({ id, ok: false, error: toRpcError(err) });
     }

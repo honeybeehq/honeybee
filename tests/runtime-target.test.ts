@@ -1,9 +1,27 @@
+import { createHash } from "node:crypto";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { prepareRuntimeTarget, validateRuntimeBuildTarget } from "../src/release/runtimeTarget.js";
+
+async function peerArtifact(stage: string, target: string): Promise<void> {
+  const bytes = Buffer.alloc(64);
+  bytes.writeUInt32LE(0xfeedfacf, 0); bytes.writeUInt32LE(0x0100000c, 4); bytes.writeUInt32LE(8, 12);
+  const sha256 = createHash("sha256").update(bytes).digest("hex");
+  const sourceSha256 = "a".repeat(64);
+  const directory = join(stage, "dist/v2/peercred", target);
+  await mkdir(directory, {recursive: true});
+  await writeFile(join(directory, "peercred.node"), bytes);
+  await writeFile(join(directory, "manifest.json"), JSON.stringify({version: 1, target, napi: 8, sha256, sourceSha256}));
+  await writeFile(join(directory, "proof.json"), JSON.stringify({passed: true, target, sha256, sourceSha256}));
+  const host = join(stage, "dist/v2/peercred", `${process.platform}-${process.arch}`);
+  if (host !== directory) {
+    await mkdir(host, {recursive: true});
+    await writeFile(join(host, "manifest.json"), JSON.stringify({sourceSha256}));
+  }
+}
 
 test("a Linux build can package macOS PTY prebuilds without retaining host binaries or host identity", async t => {
   const stage = await mkdtemp(join(tmpdir(), "honeybee-target-"));
@@ -24,11 +42,15 @@ test("a Linux build can package macOS PTY prebuilds without retaining host binar
     await writeFile(join(prebuilt, file), bytes, { mode: 0o644 });
   }
   validateRuntimeBuildTarget("darwin-arm64", "linux-x64");
+  await assert.rejects(prepareRuntimeTarget(stage, "darwin-arm64"), {code: "ENOENT"});
+  await peerArtifact(stage, "darwin-arm64");
   await prepareRuntimeTarget(stage, "darwin-arm64");
   assert.deepEqual(JSON.parse(await readFile(join(stage, "dist/build-identity.json"), "utf8")), { ...identity, target: "darwin-arm64" });
   await assert.rejects(stat(join(pty, "build")), { code: "ENOENT" });
   assert.equal((await stat(join(prebuilt, "spawn-helper"))).mode & 0o111, 0o111);
   assert.equal((await readFile(join(prebuilt, "pty.node"))).readUInt32LE(4), 0x0100000c);
+  assert.equal(JSON.parse(await readFile(join(stage, "dist/v2/peercred/darwin-arm64/proof.json"), "utf8")).passed, true);
+  if (process.platform === "linux") await assert.rejects(stat(join(stage, "dist/v2/peercred/linux-x64")), {code: "ENOENT"});
 });
 
 test("unsupported cross-builds are refused before building or reserving a release", () => {

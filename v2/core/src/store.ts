@@ -1,3 +1,4 @@
+import { currentRpcCaller } from "./rpcAuditContext.ts";
 import type { AccountObservationMetadata, LimitsObserverProvenance } from "./types.ts";
 import { isAccountId } from "./accountRecipes.ts";
 import { parseUpdateReservation, type UpdateReservation } from "../../../src/updateReservation.ts";
@@ -2094,10 +2095,14 @@ export class CoreStore {
     this.rpcIdempotencyRedaction = receipt;
   }
 
+  recordLocalRpcEvent(kind: "rpc.peer_credentials_unavailable" | "rpc.local_refused" | "rpc.local_registered", payload: Record<string, unknown>): void {
+    this.tx(() => this.audit(kind, null, payload));
+  }
+
   private audit(kind: string, beeId: string | null, payload: Record<string, unknown>, at = this.now()): number {
     const inserted = this.db
       .prepare("INSERT INTO audit(ts, kind, bee_id, payload) VALUES(?, ?, ?, ?)")
-      .run(at, kind, beeId, JSON.stringify(payload));
+      .run(at, kind, beeId, JSON.stringify(currentRpcCaller() ? {...payload, rpcCaller: currentRpcCaller()} : payload));
     return Number(inserted.lastInsertRowid);
   }
 

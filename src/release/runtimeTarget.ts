@@ -1,4 +1,5 @@
-import { chmod, readFile, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { readBuildIdentity } from "./buildIdentity.js";
 
@@ -32,5 +33,27 @@ export async function prepareRuntimeTarget(stage: string, target: string): Promi
     await rm(join(pty, "build"), { recursive: true, force: true });
     await chmod(join(prebuilt, "spawn-helper"), 0o755);
   }
+  await stagePeerCredentials(stage, target);
   await writeFile(identityPath, `${JSON.stringify({ ...identity, target }, null, 2)}\n`);
+}
+
+async function stagePeerCredentials(stage: string, target: string): Promise<void> {
+  const root = join(stage, "dist/v2/peercred");
+  const hostManifest = JSON.parse(await readFile(join(root, `${process.platform}-${process.arch}`, "manifest.json"), "utf8"));
+  const source = process.env.HIVE_PEERCRED_PREBUILTS ? join(process.env.HIVE_PEERCRED_PREBUILTS, target) : join(root, target);
+  const manifest = JSON.parse(await readFile(join(source, "manifest.json"), "utf8"));
+  const proof = JSON.parse(await readFile(join(source, "proof.json"), "utf8"));
+  const bytes = await readFile(join(source, "peercred.node"));
+  const digest = createHash("sha256").update(bytes).digest("hex");
+  if (manifest.version !== 1 || manifest.napi !== 8 || manifest.target !== target || manifest.sha256 !== digest || manifest.sourceSha256 !== hostManifest.sourceSha256 || proof.passed !== true || proof.target !== target || proof.sha256 !== digest || proof.sourceSha256 !== manifest.sourceSha256) throw new Error(`Missing or unproven peer credential artifact: ${target}`);
+  if (target === "darwin-arm64") {
+    if (bytes.length < 32 || bytes.readUInt32LE(0) !== 0xfeedfacf || bytes.readUInt32LE(4) !== 0x0100000c || bytes.readUInt32LE(12) !== 8) throw new Error(`Wrong peer credential artifact target: ${target}`);
+  } else if (bytes.length < 64 || bytes.toString("hex", 0, 4) !== "7f454c46" || bytes[4] !== 2 || bytes[5] !== 1 || bytes.readUInt16LE(16) !== 3 || bytes.readUInt16LE(18) !== (target.endsWith("arm64") ? 183 : 62)) throw new Error(`Wrong peer credential artifact target: ${target}`);
+  const selected = {manifest: await readFile(join(source, "manifest.json")), proof: await readFile(join(source, "proof.json")), binary: bytes};
+  await rm(root, {recursive: true, force: true});
+  const destination = join(root, target);
+  await mkdir(destination, {recursive: true});
+  await writeFile(join(destination, "manifest.json"), selected.manifest);
+  await writeFile(join(destination, "proof.json"), selected.proof);
+  await writeFile(join(destination, "peercred.node"), selected.binary, {mode: 0o755});
 }

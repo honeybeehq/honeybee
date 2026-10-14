@@ -1,3 +1,4 @@
+import { withoutRpcCaller } from "../../core/src/rpcAuditContext.ts";
 /**
  * Cell disk retention (v31) — the daemon policy over Honeybee-owned Cells.
  *
@@ -173,7 +174,7 @@ export class CellRetentionService {
       : now - this.lastPassAt >= policy.intervalMs;
     if (!due) return;
     this.lastPassAt = now;
-    void this.run({ dryRun: false, measure: true }).catch((err) => {
+    void withoutRpcCaller(() => this.run({ dryRun: false, measure: true })).catch((err) => {
       if (!this.stopping) this.deps.log(`cell.retention.error ${err instanceof Error ? err.stack ?? err.message : String(err)}`);
     });
   }
@@ -182,7 +183,7 @@ export class CellRetentionService {
   sweep(): Promise<void> {
     if (this.stopping) return Promise.resolve();
     if (this.sweepInFlight) return this.sweepInFlight;
-    this.sweepInFlight = sweepEvicting(this.deps.cellsRoot)
+    this.sweepInFlight = withoutRpcCaller(() => sweepEvicting(this.deps.cellsRoot))
       .then(({ removed, failed }) => {
         if (removed.length > 0 || failed.length > 0) {
           this.deps.log(`cell.retention.sweep removed=${removed.length} failed=${failed.length}${failed.length > 0 ? ` first=${JSON.stringify(failed[0])}` : ""}`);

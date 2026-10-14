@@ -4653,6 +4653,7 @@ async function cmdDaemon(ctx: CliContext, parsed: Parsed): Promise<number> {
           ctx,
           [
             confirm("ok", "daemon:", `running (pid ${health.pid}, ${health.ticks} ticks, ${health.i1Violations} i1 violations)`),
+            ...(health.localSecurity?.peerCredentials.state === "peer_credentials_unavailable" ? [confirm("warn", "local RPC:", `peer_credentials_unavailable (${health.localSecurity.peerCredentials.artifactPath})`)] : []),
             ...(health.naming ? [confirm(health.naming.state === "disabled" ? "warn" : "ok", "naming:", namingHealthText(health.naming))] : []),
           ],
           { running: true, health },
@@ -4812,6 +4813,13 @@ export async function runV2Cli(argv: string[], io: CliIo = defaultIo): Promise<n
         return await cmdAck(ctx, parsed);
       case "commands":
         return await cmdCommands(ctx, parsed);
+      case "doctor": {
+        const health = await withClient(ctx, client => client.request<HealthResult>("health"));
+        const security = health.localSecurity;
+        const degraded = security?.peerCredentials.state === "peer_credentials_unavailable";
+        emit(ctx, [confirm(degraded ? "warn" : "ok", "local RPC peer credentials:", security ? `${security.peerCredentials.state} (${security.peerCredentials.target}; ${security.peerCredentials.artifactPath})` : "not reported by this daemon")], {localSecurity: security ?? null}, false);
+        return degraded ? 1 : 0;
+      }
       case "deploy-info":
         return await cmdDeployInfo(ctx);
       case "update-owner": {

@@ -550,6 +550,9 @@ export function replayAudit(rows: AuditRow[]): StateDump {
         break;
       }
       case "account.lease.native_discard_authorised":
+      case "rpc.peer_credentials_unavailable":
+      case "rpc.local_refused":
+      case "rpc.local_registered":
       case "account.lease.exported":
       case "account.credentials.instance":
       case "auth_death.released":
