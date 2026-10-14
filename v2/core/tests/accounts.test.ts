@@ -536,7 +536,7 @@ test("v7.migration: a v6 store opens as v7 — bees.account added, accounts/acco
     try {
       const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
       assert.equal(Number(version.value), SCHEMA_VERSION);
-      assert.equal(SCHEMA_VERSION, 41);
+      assert.equal(SCHEMA_VERSION, 42);
       const cols = (check.prepare("SELECT name FROM pragma_table_info('bees')").all() as Array<{ name: string }>).map((c) => c.name);
       assert.ok(cols.includes("account"));
       const tables = (check.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{ name: string }>).map((t) => t.name);
@@ -705,7 +705,7 @@ test("v35 migration: a v34 store keeps its authority rows, gains login_required,
     db.close();
     const store = h.open();
     assert.deepEqual(store.getAccountCredentialAuthority("claude-central"), {
-      account: "claude-central", phase: "uncertain", generation: 7, expiresAt: 9999, operationKey: "op-7",
+      account: "claude-central", authorityInstanceId: store.getAccountCredentialAuthority("claude-central")!.authorityInstanceId, phase: "uncertain", generation: 7, expiresAt: 9999, operationKey: "op-7",
       refreshTokenExpiresAt: null, failure: null, updatedAt: 1234,
     });
     assert.equal(store.getAccount("claude-central")?.statusReason, null);
@@ -1027,6 +1027,29 @@ test("core account id validation admits retained @ identities and rejects unsafe
       assert.equal(isAccountId(id), false);
       assert.throws(() => store.createAccount({ id, harness: "claude", label: "id-test", homePath: "/tmp/id-test" }));
     }
+    store.close();
+  } finally { h.cleanup(); }
+});
+
+test("authority instance: v41 active authority is scoped once, disabled stays legacy, replay and restart preserve identity", () => {
+  const h = harness();
+  try {
+    let store = h.open();
+    for (const [id, phase] of [["claude-scope", "ready"], ["claude-disabled", "disabled"]] as const) {
+      store.createAccount({ id, harness: "claude", label: id, homePath: "/tmp/owned-instance-test" });
+      store.putAccountCredentialAuthority({ account: id, phase, generation: 8, expiresAt: 9999, operationKey: null });
+    }
+    store.close();
+    const db = new DatabaseSync(h.path);
+    db.exec("ALTER TABLE account_credential_authorities DROP COLUMN authority_instance_id; UPDATE meta SET value = '41' WHERE key = 'schema_version'");
+    db.close();
+    store = h.open();
+    const id = store.getAccountCredentialAuthority("claude-scope")!.authorityInstanceId;
+    assert.match(id!, /^[a-f0-9-]{36}$/);
+    assert.equal(store.getAccountCredentialAuthority("claude-disabled")!.authorityInstanceId, undefined);
+    assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
+    store.close(); store = h.open();
+    assert.equal(store.getAccountCredentialAuthority("claude-scope")!.authorityInstanceId, id);
     store.close();
   } finally { h.cleanup(); }
 });

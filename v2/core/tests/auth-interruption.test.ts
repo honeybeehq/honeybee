@@ -189,7 +189,7 @@ test("auth interruption: a v32 store gains the table and the auth.resume mail or
     raw.close();
 
     store = h.open();
-    assert.equal(SCHEMA_VERSION, 41);
+    assert.equal(SCHEMA_VERSION, 42);
     const row = interrupt(store, bee.id);
     store.restoreAuthInterruption(row.id, { revision: "rev-2", by: "credentials_restored" });
     store.resumeAuthInterruption(row.id, AUTH_CONTINUE_BODY);

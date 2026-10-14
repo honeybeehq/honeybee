@@ -114,7 +114,7 @@ export class AuthResume {
           const current = this.material?.(this.store.getAccount(account.id) ?? account);
           const admitted = recovery.admitted.material;
           const validatedSource = ["refresh", "limits_probe", "credentials_restored", "login", "capture"].includes(by);
-          if (recovery.claimedAt === null && validatedSource && current && current.kind === admitted.kind && current.scope === admitted.scope && current.epoch === admitted.epoch && current.generation === admitted.generation) {
+          if (recovery.claimedAt === null && validatedSource && current && current.kind === admitted.kind && current.scope === admitted.scope && current.epoch === admitted.epoch && current.generation === admitted.generation && current.authorityInstanceId === admitted.authorityInstanceId) {
             row = this.store.releaseAuthDeathRecovery(row.id, "same_material_validated") ?? row;
           } else {
             if (row.state === "open" && (row.blockedRevision !== revision || OPERATOR_SOURCES.includes(by))) this.store.restoreAuthInterruption(row.id, { revision, by });

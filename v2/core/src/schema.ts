@@ -159,7 +159,7 @@
  * v35 — a dying login is visible: `accounts.status_reason` + `accounts.refresh_token_expires_at`;
  * the credential authority gains the terminal `login_required` phase, `refresh_token_expires_at`
  * and the secret-free last refresh `failure` (table rebuild, rows carried across by name). */
-export const SCHEMA_VERSION = 41;
+export const SCHEMA_VERSION = 42;
 
 export const AUTH_INTERRUPTIONS_TABLE_SQL = `
 CREATE TABLE IF NOT EXISTS auth_interruptions (
@@ -197,7 +197,8 @@ CREATE TABLE IF NOT EXISTS account_credential_authorities (
   operation_key TEXT,
   updated_at INTEGER NOT NULL,
   refresh_token_expires_at INTEGER,
-  failure TEXT
+  failure TEXT,
+  authority_instance_id TEXT
 ) STRICT;
 `;
 export const ACCOUNT_CREDENTIAL_AUTHORITIES_V27_COLUMNS = ["account", "phase", "generation", "expires_at", "operation_key", "updated_at"] as const;

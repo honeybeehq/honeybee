@@ -201,6 +201,9 @@ export interface BeeRow {
 export type BootEvidence = "synthetic" | "real";
 
 export interface AccountMaterialStamp {
+  legacyAuthorityInstanceId?: string;
+  legacyAuthorityGenerationFloor?: number;
+  authorityInstanceId?: string;
   kind: "central" | "lease";
   scope: string;
   epoch: number;
@@ -465,6 +468,7 @@ export type AccountLimitsUnreadableReason = (typeof ACCOUNT_LIMITS_UNREADABLE_RE
 
 /** Secret-free central-credential state per account; only the node owning the account may rotate its chain. */
 export interface AccountCredentialAuthority {
+  authorityInstanceId?: string;
   account: string;
   /**
    * `login_required` is terminal: the provider definitively refused the
@@ -520,6 +524,11 @@ export interface AccountLeaseEnrolment {
 }
 
 export interface AccountLeaseOrigin {
+  authorityGenerationFloor?: number;
+  legacyAuthorityInstanceId?: string;
+  legacyAuthorityGenerationFloor?: number;
+  retiredAuthorityInstanceIds?: string[];
+  authorityInstanceId?: string;
   viaNodeId?: string;
   enrolment?: AccountLeaseEnrolment;
   installedFiles?: string[];

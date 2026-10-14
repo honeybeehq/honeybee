@@ -314,3 +314,81 @@ test("lease enrol requires a current canonical primary, not only an abandoned ac
     assert.deepEqual(r.store.dumpState(), before); assert.equal(r.writes, 0);
   } finally { r.close(); }
 });
+
+for (const harness of ["claude", "codex", "grok"]) test(`lease instance ${harness}: lower new scoped generation replaces legacy once, retired instances never return`, async () => {
+  const r = rig(harness);
+  try {
+    const first = await r.accounts.installLease(r.input(9));
+    const a = randomUUID(), b = randomUUID();
+    const scoped = { ...r.input(2), enrol: undefined, authorityInstanceId: a };
+    const upgraded = await r.accounts.installLease(scoped);
+    assert.equal(upgraded.account.id, first.account.id);
+    assert.equal(upgraded.account.leasedFrom?.generation, 2);
+    assert.equal(upgraded.account.leasedFrom?.authorityInstanceId, a);
+    const seq = r.store.lastAuditSeq();
+    await r.accounts.installLease(scoped);
+    assert.equal(r.store.lastAuditSeq(), seq);
+    await assert.rejects(r.accounts.installLease({ ...scoped, generation: 1 }), error => error instanceof RpcError && error.code === "account_lease_conflict");
+    await assert.rejects(r.accounts.installLease({ ...scoped, generation: 1, epoch: 2 }), error => error instanceof RpcError && error.code === "account_lease_conflict");
+    const next = await r.accounts.installLease({ ...scoped, authorityInstanceId: b, generation: 1 });
+    assert.equal(next.account.leasedFrom?.authorityInstanceId, b);
+    assert.ok(next.account.leasedFrom?.retiredAuthorityInstanceIds?.includes(a));
+    r.reopen();
+    const before = r.store.dumpState();
+    for (const change of [{ authorityInstanceId: a, generation: 100 }, { epoch: 0, authorityInstanceId: randomUUID(), generation: 1 }, { authorityNodeId: "foreign", authorityInstanceId: randomUUID(), generation: 1 }, { shareId: "foreign-share", authorityInstanceId: randomUUID(), generation: 1 }]) {
+      await assert.rejects(r.accounts.installLease({ ...scoped, ...change }), error => error instanceof RpcError && error.code === "account_lease_conflict");
+      assert.deepEqual(r.store.dumpState(), before);
+    }
+    const legacy = await r.accounts.installLease({ ...scoped, authorityInstanceId: undefined, generation: 3 });
+    assert.equal(legacy.account.leasedFrom?.authorityInstanceId, undefined);
+    await assert.rejects(r.accounts.installLease({ ...scoped, authorityInstanceId: undefined, generation: 2 }), error => error instanceof RpcError && error.code === "account_lease_conflict");
+    await assert.rejects(r.accounts.installLease({ ...scoped, authorityInstanceId: a, generation: 200 }), error => error instanceof RpcError && error.code === "account_lease_conflict");
+    assert.deepEqual(replayAudit(r.store.auditRows()), r.store.dumpState());
+  } finally { r.close(); }
+});
+
+for (const mode of ["return", "new", "advance", "generationless"]) test(`lease instance: remembered legacy floor ${mode} survives restart without stale scoped rollback`, async () => {
+  const r = rig();
+  try {
+    const a = randomUUID(), b = randomUUID();
+    const scoped = { ...r.input(5), authorityInstanceId: a };
+    await r.accounts.installLease(scoped);
+    const legacy = await r.accounts.installLease({ ...scoped, enrol: undefined, authorityInstanceId: undefined, generation: mode === "generationless" ? undefined : 6 });
+    assert.equal(legacy.account.leasedFrom?.authorityInstanceId, undefined);
+    assert.equal(legacy.account.leasedFrom?.legacyAuthorityInstanceId, a);
+    assert.equal(legacy.account.leasedFrom?.legacyAuthorityGenerationFloor, mode === "generationless" ? 5 : 6);
+    r.reopen();
+    const before = r.store.dumpState();
+    await assert.rejects(r.accounts.installLease({ ...scoped, enrol: undefined, generation: 5 }), error => error instanceof RpcError && error.code === "account_lease_conflict");
+    assert.deepEqual(r.store.dumpState(), before);
+    if (mode === "advance") {
+      await r.accounts.installLease({ ...scoped, enrol: undefined, authorityInstanceId: undefined, generation: 7 });
+      r.reopen();
+      await assert.rejects(r.accounts.installLease({ ...scoped, enrol: undefined, generation: 7 }), error => error instanceof RpcError && error.code === "account_lease_conflict");
+    }
+    const result = await r.accounts.installLease({ ...scoped, enrol: undefined, authorityInstanceId: mode === "new" ? b : a, generation: mode === "new" ? 3 : mode === "advance" ? 8 : 7 });
+    assert.equal(result.account.leasedFrom?.authorityInstanceId, mode === "new" ? b : a);
+    assert.equal(result.account.leasedFrom?.legacyAuthorityInstanceId, undefined);
+    assert.equal(result.account.leasedFrom?.legacyAuthorityGenerationFloor, undefined);
+    if (mode === "new") await assert.rejects(r.accounts.installLease({ ...scoped, enrol: undefined, generation: 100 }), error => error instanceof RpcError && error.code === "account_lease_conflict");
+    assert.deepEqual(replayAudit(r.store.auditRows()), r.store.dumpState());
+  } finally { r.close(); }
+});
+
+test("lease instance: a generationless delivery from the same declared instance cannot erase its monotonic floor", async () => {
+  const r = rig();
+  try {
+    const id = randomUUID();
+    const input = { ...r.input(5), authorityInstanceId: id };
+    await r.accounts.installLease(input);
+    const legacy = await r.accounts.installLease({ ...input, enrol: undefined, generation: undefined });
+    assert.equal(legacy.account.leasedFrom?.generation, undefined);
+    assert.equal(legacy.account.leasedFrom?.authorityInstanceId, id);
+    assert.equal(legacy.account.leasedFrom?.authorityGenerationFloor, 5);
+    r.reopen();
+    await assert.rejects(r.accounts.installLease({ ...input, enrol: undefined, generation: 4 }), error => error instanceof RpcError && error.code === "account_lease_conflict");
+    const restored = await r.accounts.installLease({ ...input, enrol: undefined, generation: 5 });
+    assert.equal(restored.account.leasedFrom?.generation, 5);
+    assert.deepEqual(replayAudit(r.store.auditRows()), r.store.dumpState());
+  } finally { r.close(); }
+});

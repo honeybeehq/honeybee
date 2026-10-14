@@ -41,7 +41,8 @@ test("lease enrol RPC: live unchanged process, generationless publication SIGKIL
   const view = (beeId: string) => client.request<ViewResult>("view", { beeId });
   const interruptions = (beeId: string) => client.request<AccountInterruptionsResult>("account.interruptions", { beeId });
   const document = () => JSON.stringify({ claudeAiOauth: { accessToken: validAccess, expiresAt: Date.now() + 3_600_000, refreshToken: "" } });
-  const params = (generation?: number, enrol = false) => ({ id, harness: "claude", label: "test-example.com", shareId: "share-enrol-test", authorityNodeId: "authority-test", epoch: 1, ...(generation !== undefined ? { generation } : {}), ...(enrol ? { enrol: true, viaNodeId: "via-test" } : {}), expiresAt: Math.floor((Date.now() + 3_600_000) / 1000), files: [{ homeRelPath: ".credentials.json", contentB64: Buffer.from(document()).toString("base64"), mode: 0o600 }] });
+  const authorityInstanceId = randomUUID();
+  const params = (generation?: number, enrol = false) => ({ id, authorityInstanceId, harness: "claude", label: "test-example.com", shareId: "share-enrol-test", authorityNodeId: "authority-test", epoch: 1, ...(generation !== undefined ? { generation } : {}), ...(enrol ? { enrol: true, viaNodeId: "via-test" } : {}), expiresAt: Math.floor((Date.now() + 3_600_000) / 1000), files: [{ homeRelPath: ".credentials.json", contentB64: Buffer.from(document()).toString("base64"), mode: 0o600 }] });
   const rotate = () => { validAccess = randomUUID(); secrets.add(validAccess); };
   try {
     await open(true);
@@ -70,6 +71,7 @@ test("lease enrol RPC: live unchanged process, generationless publication SIGKIL
     assert.equal(partial.source, "leased"); assert.equal(partial.leasedFrom?.materialPublished, false);
     assert.ok(partial.leasedFrom?.enrolment);
     const completed = await client.request<AccountLeaseInstallResult>("account.lease.install", initial, 60_000);
+    assert.equal(completed.account.leasedFrom?.authorityInstanceId, authorityInstanceId);
     assert.equal(completed.account.id, id); assert.equal(completed.account.leasedFrom?.materialPublished, true);
     assert.equal(completed.enrolment?.id, partial.leasedFrom?.enrolment?.id);
     assert.equal(completed.enrolment?.at, partial.leasedFrom?.enrolment?.at);

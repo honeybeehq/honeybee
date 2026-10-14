@@ -124,6 +124,7 @@ export const DAEMON_CAPABILITIES = [
   "account.credentials.native_backup.v1",
   "account.credentials.pilot.v1",
   "account.credentials.status.v2",
+  "account.credentials.authority_instance.v1",
   "account.credentials.handoff.v1",
   "account.credentials.handoff_status.v2",
   "account.credentials.release_peer.v1",
@@ -960,6 +961,7 @@ export interface AccountNativeBackupRestoreResult {
 }
 
 export interface AccountLeaseInstallParams {
+  authorityInstanceId?: string;
   enrol?: boolean;
   viaNodeId?: string;
   generation?: number;
@@ -1010,6 +1012,7 @@ export interface AccountLeaseRemoveResult {
  * `kindNote` and `expiresAt` (unix SECONDS) are secret-free.
  */
 export interface AccountLeaseResult {
+  authorityInstanceId?: string;
   generation?: number;
   account: string;
   harness: string;

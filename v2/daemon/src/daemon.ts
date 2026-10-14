@@ -5659,6 +5659,7 @@ export class HiveDaemon {
     if (!isAccountId(params.id) || !safeId(params.shareId) || params.shareId.length < 8 || !safeId(params.authorityNodeId) || !safeId(params.harness) || !isAccountId(params.label)) throw invalid();
     if (params.adopt !== undefined && typeof params.adopt !== "boolean" && params.adopt !== "explicit") throw invalid();
     if (params.enrol !== undefined && typeof params.enrol !== "boolean" || params.enrol && params.adopt !== undefined || params.enrol && !safeId(params.viaNodeId) || params.viaNodeId !== undefined && !safeId(params.viaNodeId)) throw invalid();
+    if (params.authorityInstanceId !== undefined && !safeId(params.authorityInstanceId)) throw invalid();
     if (params.generation !== undefined && (typeof params.generation !== "number" || !Number.isSafeInteger(params.generation) || params.generation < 0)) throw invalid();
     if (typeof params.epoch !== "number" || !Number.isSafeInteger(params.epoch) || params.epoch < 0) throw invalid();
     if (params.expiresAt !== null && (typeof params.expiresAt !== "number" || !Number.isSafeInteger(params.expiresAt) || params.expiresAt * 1000 <= Date.now())) throw invalid();

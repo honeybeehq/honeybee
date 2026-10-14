@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -8,10 +9,10 @@ import { DaemonCore } from "../src/loops.ts";
 import { FakeDriver } from "./helpers.ts";
 import { AuthResume } from "../src/authResume.ts";
 
-function rig(kind: "central" | "lease" = "lease", unproven = false) {
+function rig(kind: "central" | "lease" = "lease", unproven = false, initialInstance?: string) {
   const dir = mkdtempSync(join(tmpdir(), "hb-auth-death-"));
   let clock = 10_000;
-  let material: AccountMaterialStamp | null = { kind, scope: kind === "central" ? "claude-test-example.com" : "authority:share", epoch: kind === "central" ? 0 : 1, generation: 1 };
+  let material: AccountMaterialStamp | null = { ...(initialInstance && initialInstance !== "legacy" ? { authorityInstanceId: initialInstance } : {}), kind, scope: kind === "central" ? "claude-test-example.com" : "authority:share", epoch: kind === "central" ? 0 : 1, generation: 1 };
   let store: CoreStore;
   let resume: AuthResume;
   const open = () => {
@@ -21,19 +22,23 @@ function rig(kind: "central" | "lease" = "lease", unproven = false) {
   open();
   const account = store!.createAccount({ id: "claude-test-example.com", harness: "claude", label: "test-example.com", homePath: join(dir, "home"), status: "ok" });
   const publish = (generation: number, epoch: number) => {
-    if (kind === "central") store.putAccountCredentialAuthority({ account: account.id, phase: "ready", generation, expiresAt: clock + 3_600_000, operationKey: null, failure: null, refreshTokenExpiresAt: null });
-    else store.setAccountLease(account.id, { authorityNodeId: "authority", shareId: "share", epoch, generation, materialPublished: true, expiresAt: Math.floor((clock + 3_600_000) / 1000), adoptedAt: null, revokedAt: null });
+    if (kind === "central") {
+      const state = store.putAccountCredentialAuthority({ account: account.id, phase: "ready", generation, expiresAt: clock + 3_600_000, operationKey: null, failure: null, refreshTokenExpiresAt: null });
+      if (material) material.authorityInstanceId = state.authorityInstanceId;
+    }
+    else store.setAccountLease(account.id, { ...(material?.authorityInstanceId ? { authorityInstanceId: material.authorityInstanceId } : {}), authorityNodeId: "authority", shareId: "share", epoch, generation, materialPublished: true, expiresAt: Math.floor((clock + 3_600_000) / 1000), adoptedAt: null, revokedAt: null });
   };
   publish(1, material!.epoch);
   const bee = store!.createBee({ name: "test", agent: "claude", substrate: "hsr", cwd: dir, account: account.id }).bee;
-  store!.stampRuntimeCredential(bee.id, 1, { material: material!, revision: "revision-1", account: account.id, agent: bee.agent, cwd: dir, cellId: bee.cellId, controlFence: 0 });
+  const admittedMaterial = initialInstance === "legacy" ? { ...material!, authorityInstanceId: undefined } : material!;
+  store!.stampRuntimeCredential(bee.id, 1, { material: admittedMaterial, revision: "revision-1", account: account.id, agent: bee.agent, cwd: dir, cellId: bee.cellId, controlFence: 0 });
   if (!unproven) {
     store!.updateRuntimeState(bee.id, 1, "running", { pid: 123, pidStartedAt: 1 });
     store!.recordProviderSessionId(bee.id, "fake-session", 1);
   }
   const fail = (ids: number[] = [], progress: "none" | "some" | "unknown" = "unknown") => resume.interrupted({ beeId: bee.id, generation: store.currentRuntime(bee.id)!.generation, flag: "auth_needed", action: "set", detail: "provider auth error", turn: { messageIds: ids, progress } });
   const die = () => store.updateRuntimeState(bee.id, store.currentRuntime(bee.id)!.generation, "stopped", { exitCause: "crashed" });
-  const fresh = (generation = 2, epoch = kind === "central" ? 0 : 1) => { material = { kind, scope: kind === "central" ? account.id : "authority:share", epoch, generation }; publish(generation, epoch); resume.reconcile(); };
+  const fresh = (generation = 2, epoch = kind === "central" ? 0 : 1, authorityInstanceId = material?.authorityInstanceId) => { material = { ...(authorityInstanceId ? { authorityInstanceId } : {}), kind, scope: kind === "central" ? account.id : "authority:share", epoch, generation }; publish(generation, epoch); resume.reconcile(); };
   return { dir, bee, account, get now() { return clock; }, get store() { return store; }, get resume() { return resume; }, open, fail, die, fresh, unavailable: () => { material = null; }, advance: (ms: number) => { clock += ms; }, close: () => { store.close(); rmSync(dir, { recursive: true, force: true }); } };
 }
 
@@ -461,5 +466,67 @@ test("auth death compatibility: machine-restart exits opt out without losing the
     r.resume.credentialValidated(r.store.getAccount(r.account.id)!, "limits_probe");
     assert.equal(r.store.liveAuthInterruption(r.bee.id)?.state, "resumed");
     assert.equal(r.store.listCommands().filter(command => command.args.authDeathRecoveryId !== undefined).length, 0);
+  } finally { r.close(); }
+});
+
+for (const kind of ["central", "lease"] as const) for (const legacy of [false, true]) test(`auth death ${kind}: new authority instance recovers a lower generation from ${legacy ? "legacy" : "scoped"} admission once`, () => {
+  const r = rig(kind, false, legacy ? "legacy" : randomUUID());
+  try {
+    r.fail(); r.die();
+    const id = r.store.liveAuthInterruption(r.bee.id)!.id;
+    const oldInstance = r.store.currentRuntime(r.bee.id)?.credentialStamp?.material.authorityInstanceId;
+    if (kind === "central") r.store.putAccountCredentialAuthority({ ...r.store.getAccountCredentialAuthority(r.account.id)!, phase: "disabled" });
+    r.fresh(0, kind === "central" ? 0 : 1, randomUUID());
+    const row = r.store.getAuthInterruption(id)!;
+    assert.equal(row.state, "resumed");
+    assert.equal(row.deathRecovery?.replacement?.generation, 0);
+    assert.notEqual(row.deathRecovery?.replacement?.authorityInstanceId, oldInstance);
+    r.resume.reconcile();
+    assert.equal(r.store.auditRows().filter(row => row.kind === "auth_death.resumed").length, 1);
+    assert.deepEqual(replayAudit(r.store.auditRows()), r.store.dumpState());
+  } finally { r.close(); }
+});
+
+test("auth death: stale instance verdict cannot claim current published material", () => {
+  const r = rig("lease", false, randomUUID());
+  try {
+    r.fail(); r.die(); r.resume.reconcile();
+    const row = r.store.liveAuthInterruption(r.bee.id)!;
+    const origin = r.store.getAccount(r.account.id)!.leasedFrom!;
+    r.store.setAccountLease(r.account.id, { ...origin, generation: 0, authorityInstanceId: randomUUID() });
+    assert.equal(r.store.claimAuthDeathRecovery(row.id, { kind: "lease", scope: "authority:share", epoch: 1, generation: 0, authorityInstanceId: randomUUID() }, "new", "continue"), false);
+    assert.equal(r.store.listCommands().filter(command => command.args.authDeathRecoveryId === row.id).length, 0);
+  } finally { r.close(); }
+});
+
+test("auth death: admitted remembered legacy scope requires returning instance to exceed its floor", () => {
+  const r = rig("lease");
+  try {
+    const a = randomUUID();
+    const runtime = r.store.currentRuntime(r.bee.id)!;
+    r.store.updateRuntimeState(r.bee.id, runtime.generation, "stopped", { exitCause: "crashed" });
+    const stamp = runtime.credentialStamp!;
+    const bee = r.store.getBee(r.bee.id)!;
+    const row = r.store.recordAuthInterruption({ beeId: bee.id, account: r.account.id, generation: 1, messageIds: [], turnProgress: "unknown", credentialRevision: "old", detail: "auth" });
+    r.store.setAuthDeathRecovery(row.id, { admitted: { ...stamp, material: { ...stamp.material, generation: 6, authorityInstanceId: undefined, legacyAuthorityInstanceId: a, legacyAuthorityGenerationFloor: 6 } }, deathAt: r.now, deadline: r.now + AUTH_DEATH_WINDOW_MS, claimedAt: null, replacement: null, commandId: null });
+    for (const generation of [5, 6]) {
+      r.store.setAccountLease(r.account.id, { ...r.store.getAccount(r.account.id)!.leasedFrom!, authorityInstanceId: a, generation });
+      assert.equal(r.store.claimAuthDeathRecovery(row.id, { kind: "lease", scope: "authority:share", epoch: 1, generation, authorityInstanceId: a }, "new", "continue"), false);
+    }
+    r.store.setAccountLease(r.account.id, { ...r.store.getAccount(r.account.id)!.leasedFrom!, authorityInstanceId: a, generation: 7 });
+    assert.equal(r.store.claimAuthDeathRecovery(row.id, { kind: "lease", scope: "authority:share", epoch: 1, generation: 7, authorityInstanceId: a }, "new", "continue"), true);
+  } finally { r.close(); }
+});
+
+test("auth death: higher epoch does not turn a same-instance lower generation into new material", () => {
+  const instance = randomUUID();
+  const r = rig("lease", false, instance);
+  try {
+    r.fail(); r.die(); r.resume.reconcile();
+    r.fresh(0, 2, instance);
+    assert.equal(r.store.liveAuthInterruption(r.bee.id)?.deathRecovery?.claimedAt, null);
+    assert.equal(r.store.auditRows().filter(row => row.kind === "auth_death.resumed").length, 0);
+    r.fresh(2, 2, instance);
+    assert.notEqual(r.store.liveAuthInterruption(r.bee.id)?.deathRecovery?.claimedAt, null);
   } finally { r.close(); }
 });

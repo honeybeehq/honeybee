@@ -926,6 +926,7 @@ async function cmdAccount(ctx: CliContext, parsed: Parsed): Promise<number> {
       }
       const result = await withClient(ctx, client => {
         if (!client.capabilities.includes("account.lease.install.v1")) throw new RpcError("capability_missing", "Update Honeybee: account.lease.install.v1 is required.");
+        if (action === "install" && params.authorityInstanceId !== undefined && !client.capabilities.includes("account.credentials.authority_instance.v1")) throw new RpcError("capability_missing", "Update Honeybee: account.credentials.authority_instance.v1 is required for scoped material.");
         if (action === "install" && params.enrol && !client.capabilities.includes("account.lease.enrol.v1")) throw new RpcError("capability_missing", "Update Honeybee: account.lease.enrol.v1 is required.");
         if (action === "install" && params.adopt === "explicit" && !client.capabilities.includes("account.lease.adopt_explicit.v1")) throw new RpcError("capability_missing", "Update Honeybee: account.lease.adopt_explicit.v1 is required for explicit native replacement.");
         if (action === "remove" && !client.capabilities.includes("account.lease.revoke.v1")) throw new RpcError("capability_missing", "Update Honeybee: account.lease.revoke.v1 is required for retained-row revocation.");

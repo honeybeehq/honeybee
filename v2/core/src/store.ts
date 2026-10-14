@@ -1836,12 +1836,14 @@ export class CoreStore {
       }
       const handoffAuthorityDdl = this.stmt("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'account_credential_authorities'").get() as Row;
       if (!String(handoffAuthorityDdl.sql).includes("'handing_off'")) {
-        const carried = "account,phase,generation,expires_at,operation_key,updated_at,refresh_token_expires_at,failure";
+        const carried = "account,phase,generation,expires_at,operation_key,updated_at,refresh_token_expires_at,failure" + ((this.stmt("SELECT name FROM pragma_table_info('account_credential_authorities')").all() as Row[]).some(column => column.name === "authority_instance_id") ? ",authority_instance_id" : "");
         this.db.exec("ALTER TABLE account_credential_authorities RENAME TO account_credential_authorities_v36");
         this.db.exec(ACCOUNT_CREDENTIAL_AUTHORITIES_TABLE_SQL);
         this.db.exec(`INSERT INTO account_credential_authorities(${carried}) SELECT ${carried} FROM account_credential_authorities_v36`);
         this.db.exec("DROP TABLE account_credential_authorities_v36");
       }
+      const authorityColumns = this.stmt("SELECT name FROM pragma_table_info('account_credential_authorities')").all() as Row[];
+      if (!authorityColumns.some(column => column.name === "authority_instance_id")) this.db.exec("ALTER TABLE account_credential_authorities ADD COLUMN authority_instance_id TEXT");
       // v11 → v12: typed account-limit failure class. Existing unreadable
       // rows stay null until the next bounded limits sweep refreshes them.
       const accountLimitCols = new Set(
@@ -2013,6 +2015,14 @@ export class CoreStore {
     if (!leaseCols.has("native")) this.db.exec("ALTER TABLE accounts ADD COLUMN native INTEGER NOT NULL DEFAULT 0 CHECK (native IN (0,1))");
     this.db.exec(ACCOUNTS_NATIVE_INDEX_SQL);
     this.db.exec("UPDATE accounts SET leased_from = json_remove(json_set(leased_from, '$.revokedAt', json_extract(leased_from, '$.endedAt')), '$.endedAt') WHERE leased_from IS NOT NULL AND json_type(leased_from, '$.endedAt') IS NOT NULL");
+    if (stored < 42) {
+      const unscoped = this.stmt("SELECT account FROM account_credential_authorities WHERE phase <> 'disabled' AND authority_instance_id IS NULL").all() as Row[];
+      for (const row of unscoped) {
+        this.stmt("UPDATE account_credential_authorities SET authority_instance_id = ? WHERE account = ?").run(randomUUID(), String(row.account));
+        this.audit("account.credentials.instance", null, { account: String(row.account), authorityInstanceId: this.getAccountCredentialAuthority(String(row.account))!.authorityInstanceId, reason: "migration" });
+        this.touchAccount(String(row.account), "credential authority instance migration");
+      }
+    }
     this.backfillMailHistoryEnqueues();
     if (stored < 40) this.redactRpcIdempotencyEnv();
     this.db
@@ -5262,7 +5272,7 @@ export class CoreStore {
 
   getAccountCredentialAuthority(account: string): AccountCredentialAuthority | null {
     const row = this.stmt("SELECT * FROM account_credential_authorities WHERE account = ?").get(account) as Row | undefined;
-    return row ? { account, phase: row.phase as AccountCredentialAuthority["phase"], generation: Number(row.generation),
+    return row ? { account, ...(row.authority_instance_id == null ? {} : { authorityInstanceId: String(row.authority_instance_id) }), phase: row.phase as AccountCredentialAuthority["phase"], generation: Number(row.generation),
       expiresAt: row.expires_at == null ? null : Number(row.expires_at), operationKey: row.operation_key as string | null,
       refreshTokenExpiresAt: row.refresh_token_expires_at == null ? null : Number(row.refresh_token_expires_at),
       failure: row.failure == null ? null : JSON.parse(String(row.failure)) as CredentialRefreshFailure,
@@ -5272,19 +5282,23 @@ export class CoreStore {
 
   putAccountCredentialAuthority(input: Omit<AccountCredentialAuthority, "updatedAt" | "refreshTokenExpiresAt" | "failure"> & Partial<Pick<AccountCredentialAuthority, "refreshTokenExpiresAt" | "failure">>): AccountCredentialAuthority {
     return this.tx(() => {
+      const previous = this.getAccountCredentialAuthority(input.account);
+      const authorityInstanceId = input.phase === "disabled" ? previous?.authorityInstanceId
+        : previous?.phase !== "disabled" && previous?.authorityInstanceId ? previous.authorityInstanceId : randomUUID();
       const refreshTokenExpiresAt = input.refreshTokenExpiresAt ?? null;
       const failure = input.failure ?? null;
       if (input.phase !== "disabled") this.assertNoUpdateReservation();
       this.mustGetAccount(input.account);
       const updatedAt = this.now();
-      this.stmt(`INSERT INTO account_credential_authorities(account,phase,generation,expires_at,operation_key,updated_at,refresh_token_expires_at,failure)
-        VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(account) DO UPDATE SET phase=excluded.phase,generation=excluded.generation,
+      this.stmt(`INSERT INTO account_credential_authorities(account,phase,generation,expires_at,operation_key,updated_at,refresh_token_expires_at,failure,authority_instance_id)
+        VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(account) DO UPDATE SET phase=excluded.phase,generation=excluded.generation,
         expires_at=excluded.expires_at,operation_key=excluded.operation_key,updated_at=excluded.updated_at,
-        refresh_token_expires_at=excluded.refresh_token_expires_at,failure=excluded.failure`)
+        refresh_token_expires_at=excluded.refresh_token_expires_at,failure=excluded.failure,authority_instance_id=excluded.authority_instance_id`)
         .run(input.account,input.phase,input.generation,input.expiresAt,input.operationKey,updatedAt,
-          refreshTokenExpiresAt,failure === null ? null : JSON.stringify(failure));
+          refreshTokenExpiresAt,failure === null ? null : JSON.stringify(failure),authorityInstanceId ?? null);
+      if (authorityInstanceId !== undefined && authorityInstanceId !== previous?.authorityInstanceId) this.audit("account.credentials.instance", null, { account: input.account, authorityInstanceId, reason: "enrolled" });
       this.touchAccount(input.account, `credential authority ${input.phase}`);
-      return { ...input, refreshTokenExpiresAt, failure, updatedAt };
+      return this.getAccountCredentialAuthority(input.account)!;
     });
   }
 
@@ -5921,17 +5935,22 @@ export class CoreStore {
       if (!account || account.native || account.status === "paused" || this.activeCredentialHandoff(row.account)) return false;
       if (replacement.kind === "central") {
         const authority = this.getAccountCredentialAuthority(row.account);
-        if (account.source !== "local" || replacement.scope !== account.id || authority?.phase !== "ready" || authority.generation !== replacement.generation || this.credentialAuthorityEpoch(row.account) !== replacement.epoch) return false;
+        if (account.source !== "local" || replacement.scope !== account.id || authority?.phase !== "ready" || authority.generation !== replacement.generation || replacement.authorityInstanceId !== authority.authorityInstanceId || this.credentialAuthorityEpoch(row.account) !== replacement.epoch) return false;
       } else {
         const origin = account.leasedFrom;
-        if (account.source !== "leased" || !origin || origin.materialPublished !== true || origin.revokedAt !== null || origin.expiresAt !== null && origin.expiresAt * 1000 <= this.now() || origin.generation !== replacement.generation || origin.epoch !== replacement.epoch || `${origin.authorityNodeId}:${origin.shareId}` !== replacement.scope) return false;
+        if (account.source !== "leased" || !origin || origin.materialPublished !== true || origin.revokedAt !== null || origin.expiresAt !== null && origin.expiresAt * 1000 <= this.now() || origin.generation !== replacement.generation || replacement.authorityInstanceId !== origin.authorityInstanceId || origin.epoch !== replacement.epoch || `${origin.authorityNodeId}:${origin.shareId}` !== replacement.scope) return false;
       }
       if (this.activeFlags(bee.id).some(flag => flag.flag === "spawn_failed")) return false;
       const runtime = this.currentRuntime(bee.id);
       const admitted = recovery.admitted;
       if (bee.lifecycle !== "active" || bee.account !== row.account || bee.agent !== admitted.agent || bee.cwd !== admitted.cwd || bee.cellId !== admitted.cellId || (bee.authControlFence ?? 0) !== admitted.controlFence || bee.activeMoveId || bee.activeHandoffId || runtime?.generation !== row.generation || runtime.state !== "stopped" || !["clean", "crashed", "stopped_by_system"].includes(runtime.exitCause ?? "")) return false;
       const old = admitted.material;
-      if (replacement.kind !== old.kind || !(replacement.epoch > old.epoch || replacement.epoch === old.epoch && replacement.scope === old.scope && replacement.generation > old.generation)) return false;
+      if (replacement.authorityInstanceId !== undefined && replacement.authorityInstanceId === old.legacyAuthorityInstanceId && replacement.generation <= (old.legacyAuthorityGenerationFloor ?? old.generation)) return false;
+      const scopeAdvanced = replacement.epoch > old.epoch || replacement.epoch === old.epoch && replacement.scope === old.scope;
+      const generationAdvanced = replacement.authorityInstanceId !== undefined
+        ? replacement.authorityInstanceId !== old.authorityInstanceId || replacement.generation > old.generation
+        : replacement.epoch > old.epoch || replacement.generation > old.generation;
+      if (replacement.kind !== old.kind || !scopeAdvanced || !generationAdvanced) return false;
       if (this.listAuthInterruptions({ beeId: bee.id }).some(other => other.deathRecovery?.claimedAt != null && other.generation === row.generation)) return false;
       if (account.status === "auth_needed") this.setAccountStatus(account.id, "ok", "Newer managed credential material installed");
       const claimed = { ...recovery, claimedAt: this.now(), replacement };

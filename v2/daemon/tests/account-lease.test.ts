@@ -2417,6 +2417,8 @@ test("central lease mint compatibility: Codex and Claude ship valid matching mat
       authority.ensure = async () => r.store.putAccountCredentialAuthority({ account: account.id, phase, generation: 1, expiresAt: r.now() + HOUR, operationKey: null, failure: null, refreshTokenExpiresAt: null });
       const lease = await accounts.mintLease(account);
       assert.equal(lease.generation, phase === "ready" ? 1 : undefined);
+      assert.equal(lease.authorityInstanceId, r.store.getAccountCredentialAuthority(account.id)?.authorityInstanceId);
+      assert.ok(lease.authorityInstanceId);
       assert.equal(lease.files.length, 1);
       const changed = harness === "codex" ? { tokens: { ...document.tokens, access_token: fakeJwt(Math.floor((r.now() + 2 * HOUR) / 1000)) } } : { claudeAiOauth: { ...document.claudeAiOauth, accessToken: randomUUID() } };
       const parse = authority.parseDocument.bind(authority);
@@ -2429,4 +2431,31 @@ test("central lease mint compatibility: Codex and Claude ship valid matching mat
       await assert.rejects(accounts.mintLease(account), (error: unknown) => error instanceof LeaseRefusal && error.code === "lease_unavailable", `${harness}/${phase}: a true token change after snapshot still refuses`);
     } finally { r.cleanup(); }
   }
+});
+
+test("authority instance: actual enable, refresh, restart, disable/remove/re-add/enable scopes minted leases", async () => {
+  const r = rig();
+  try {
+    let svc = service(r, { fetchers: { claudeRefresh: async () => granted({ accessToken: randomUUID(), refreshToken: randomUUID(), expiresAt: r.now() + HOUR }) } });
+    let account = addAccount(r, "claude", "instance", { home: { ".credentials.json": nativeDocument(r) } });
+    const enabled = await svc.centralCredentials.enable(account);
+    const a = enabled.authorityInstanceId;
+    assert.match(a!, /^[a-f0-9-]{36}$/);
+    const rotated = await svc.centralCredentials.ensure(account, 0, "instance-force");
+    assert.equal(rotated.authorityInstanceId, a);
+    const lease = await svc.mintLease(account);
+    assert.equal(lease.authorityInstanceId, a);
+    svc = service(r);
+    assert.equal(svc.centralCredentials.status(account)?.authorityInstanceId, a);
+    await svc.centralCredentials.disable(account);
+    svc.centralCredentials.forgetDisabled(account);
+    r.store.removeAccount(account.id);
+    account = addAccount(r, "claude", "instance", { home: { ".credentials.json": nativeDocument(r) } });
+    writeFileSync(join(svc.vaultDirOf(account), ".credentials.json"), readFileSync(join(account.homePath, ".credentials.json")));
+    const replacement = await svc.centralCredentials.enable(account);
+    assert.ok(replacement.authorityInstanceId);
+    assert.notEqual(replacement.authorityInstanceId, a);
+    assert.ok(replacement.generation < rotated.generation);
+    assert.equal((await svc.mintLease(account)).authorityInstanceId, replacement.authorityInstanceId);
+  } finally { r.cleanup(); }
 });
