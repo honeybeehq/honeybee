@@ -512,7 +512,16 @@ export interface CredentialRefreshFailure {
 }
 
 /** A provider login identity: the WHO. One account = one run-home. */
+export interface AccountLeaseEnrolment {
+  id: string;
+  at: number;
+  liveRuntimeCoveragePending: number;
+}
+
 export interface AccountLeaseOrigin {
+  viaNodeId?: string;
+  enrolment?: AccountLeaseEnrolment;
+  installedFiles?: string[];
   generation?: number;
   materialPublished?: boolean;
   revokedAt: number | null;

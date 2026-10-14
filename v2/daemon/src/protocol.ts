@@ -22,6 +22,7 @@ import type { ThreadOperationView } from "../../core/src/threadOperation.ts";
  */
 import type {
   AccountStatus,
+  AccountLeaseEnrolment,
   AuthInterruptionRow,
   ActionDefinition,
   ActionQueueView,
@@ -117,6 +118,7 @@ export const DAEMON_CAPABILITIES = [
   "account.auth_death_recovery.v1",
   "account.lease.v1",
   "account.lease.install.v1",
+  "account.lease.enrol.v1",
   "account.lease.revoke.v1",
   "account.lease.adopt_explicit.v1",
   "account.credentials.native_backup.v1",
@@ -252,6 +254,7 @@ export const RPC_ERROR_CODES = [
   "credential_handoff_stale_epoch",
   "account_leased",
   "account_lease_conflict",
+  "account_lease_enrol_refused",
   "account_lease_revoked",
   "native_backup_absent",
   "native_backup_invalid",
@@ -957,6 +960,8 @@ export interface AccountNativeBackupRestoreResult {
 }
 
 export interface AccountLeaseInstallParams {
+  enrol?: boolean;
+  viaNodeId?: string;
   generation?: number;
   id: string;
   harness: string;
@@ -970,6 +975,7 @@ export interface AccountLeaseInstallParams {
 }
 
 export interface AccountLeaseInstallResult {
+  enrolment?: AccountLeaseEnrolment;
   account: MirrorAccountRow;
   adopted: boolean;
   backupPath: string | null;

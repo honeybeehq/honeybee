@@ -329,6 +329,7 @@ const BOOL_FLAGS = new Set([
   "--use-retained-chain",
   "--discard-retained-chain",
   "--replace",
+  "--enrol",
   "--force",
   // v31 (cell gc): skip the per-Cell du walk.
   "--no-measure",
@@ -805,7 +806,7 @@ const ACCOUNT_USAGE =
   "       hive account credentials take-over <account> --confirm [--epoch higher-epoch] [--takeover-id id]\n" +
   "       hive account credentials handoff-status [--file payload.json]\n" +
   "       hive account credentials <export|adopt-prepare|export-prepare|export-commit|adopt|adopt-abort|export-abort|export-confirm|export-settle|stand-down|handoff-status|handoff-key-rotate|handoff-identity-set|stand-down-receipt|take-over-apply|take-over-complete|take-over-cancel> --file protected-payload.json [--out protected-material.json] [--replace] [--retained-generation N] [--discard-retained-chain --confirm]\n" +
-  "       hive account lease install --file payload.json | lease remove <id>\n" +
+  "       hive account lease install [--enrol] --file payload.json | lease remove <id>\n" +
   "       hive account capture <selector> | verify <selector> | limits [<selector>] | reset <selector> [--credit-id id] --idempotency-key key\n" +
   "       hive account restored <selector> | interruptions [<selector>]\n" +
   "       hive account import [--root ~/.hive] [--dry-run] | backfill [--dry-run]";
@@ -909,13 +910,15 @@ async function cmdAccount(ctx: CliContext, parsed: Parsed): Promise<number> {
   switch (sub) {
     case "lease": {
       const action = parsed.positional[2];
-      if (action !== "install" && action !== "remove") throw new Error("usage: hive account lease install --file payload.json | remove <id>");
+      if (action !== "install" && action !== "remove") throw new Error("usage: hive account lease install [--enrol] --file payload.json | remove <id>");
       let params: Record<string, unknown>;
       if (action === "install") {
         const file = parsed.flags.get("--file");
-        if (typeof file !== "string") throw new Error("usage: hive account lease install --file payload.json");
+        if (typeof file !== "string") throw new Error("usage: hive account lease install [--enrol] --file payload.json");
         try { params = JSON.parse(readFileSync(resolve(file), "utf8")) as Record<string, unknown>; }
         catch { throw new Error("Could not read lease payload JSON."); }
+        if (params.enrol && parsed.flags.get("--enrol") !== true) throw new Error("Lease enrolment requires the explicit --enrol flag.");
+        if (parsed.flags.get("--enrol") === true) params.enrol = true;
       } else {
         const id = parsed.positional[3];
         if (!id) throw new Error("usage: hive account lease remove <id>");
@@ -923,6 +926,7 @@ async function cmdAccount(ctx: CliContext, parsed: Parsed): Promise<number> {
       }
       const result = await withClient(ctx, client => {
         if (!client.capabilities.includes("account.lease.install.v1")) throw new RpcError("capability_missing", "Update Honeybee: account.lease.install.v1 is required.");
+        if (action === "install" && params.enrol && !client.capabilities.includes("account.lease.enrol.v1")) throw new RpcError("capability_missing", "Update Honeybee: account.lease.enrol.v1 is required.");
         if (action === "install" && params.adopt === "explicit" && !client.capabilities.includes("account.lease.adopt_explicit.v1")) throw new RpcError("capability_missing", "Update Honeybee: account.lease.adopt_explicit.v1 is required for explicit native replacement.");
         if (action === "remove" && !client.capabilities.includes("account.lease.revoke.v1")) throw new RpcError("capability_missing", "Update Honeybee: account.lease.revoke.v1 is required for retained-row revocation.");
         return client.request<AccountLeaseInstallResult | AccountLeaseRemoveResult>(`account.lease.${action}`, params, 60_000);

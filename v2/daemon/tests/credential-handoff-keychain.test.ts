@@ -53,7 +53,20 @@ assert.ok(JSON.parse(fs.readFileSync(item(privateHome),'utf8')).claudeAiOauth.re
 assert.ok(JSON.parse(fs.readFileSync(join(privateHome,'.credentials.json'),'utf8')).claudeAiOauth.refreshToken==='');
 assert.ok(fs.readFileSync(item(defaultHome),'utf8')===raw);
 assert.ok(fs.readFileSync(join(keychainStore,'calls'),'utf8').split('\\n').every(s=>!s||s!=='Claude Code-credentials'));
-store.close();console.log('darwin security shim: default and symlink guards before security; per-home Keychain/file refresh blank; default unchanged; no provider');
+const enrolHome=join(homes,'claude-enrol-example.com');fs.mkdirSync(enrolHome,{recursive:true});
+const access=JSON.stringify({claudeAiOauth:{accessToken:randomUUID(),refreshToken:'',expiresAt:Date.now()+3600000}});
+fs.writeFileSync(join(enrolHome,'.credentials.json'),access);fs.writeFileSync(item(enrolHome),raw);
+const enrolRow=store.createAccount({id:'claude-enrol-example.com',harness:'claude',label:'enrol',homePath:enrolHome,status:'ok'});
+const request={id:enrolRow.id,harness:'claude',label:'enrol',shareId:'share-enrol-shim',authorityNodeId:'authority-test',viaNodeId:'via-test',epoch:1,generation:1,enrol:true,expiresAt:Math.floor((Date.now()+3600000)/1000),files:[{homeRelPath:'.credentials.json',contentB64:Buffer.from(access).toString('base64'),mode:384}]};
+const beforeEnrol=store.dumpState();
+await assert.rejects(svc.installLease(request),e=>e instanceof RpcError&&e.code==='account_lease_enrol_refused'&&e.details?.reason==='refresh_chain'&&e.details?.copy==='per-home Keychain');
+assert.deepEqual(store.dumpState(),beforeEnrol);assert.ok(fs.readFileSync(item(enrolHome),'utf8')===raw);assert.ok(fs.readFileSync(join(enrolHome,'.credentials.json'),'utf8')===access);
+await assert.rejects(svc.installLease({...request,id:defaultRow.id}),e=>e instanceof RpcError&&e.code==='account_lease_enrol_refused');
+fs.writeFileSync(item(enrolHome),access);const enrolled=await svc.installLease(request);
+assert.equal(enrolled.account.id,enrolRow.id);assert.equal(enrolled.account.source,'leased');assert.equal(enrolled.account.leasedFrom.materialPublished,true);assert.ok(enrolled.enrolment.id);
+assert.ok(JSON.parse(fs.readFileSync(item(enrolHome),'utf8')).claudeAiOauth.refreshToken==='');assert.ok(fs.readFileSync(item(defaultHome),'utf8')===raw);
+assert.ok(fs.readFileSync(join(keychainStore,'calls'),'utf8').split('\\n').every(s=>!s||s!=='Claude Code-credentials'));
+store.close();console.log('darwin security shim: default and symlink guards; per-home refresh blank; enrolment refuses Keychain refresh untouched then publishes access-only; default unchanged; no provider');
 `;
     const { stdout } = await promisify(execFile)(process.execPath, ["--input-type=module", "-e", script], {
       env: { ...process.env, HOME: join(root, "user"), PATH: `${bin}:${process.env.PATH}`, HIVE_NO_KEYCHAIN: "", HIVE_TEST_PLATFORM: "darwin",
