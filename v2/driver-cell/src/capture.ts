@@ -75,7 +75,7 @@ function report(partial: Partial<CaptureReport> & Pick<CaptureReport, "status" |
 
 /** Conflicted paths of an in-progress merge/rebase in `repo`. */
 function conflictedPaths(repo: string): string[] {
-  const out = tryGit(repo, ["diff", "--name-only", "--diff-filter=U"]);
+  const out = tryGit(repo, ["diff", "--name-only", "--diff-filter=U", "--ignore-submodules=all"]);
   return out.stdout
     .split("\n")
     .map((l) => l.trim())
@@ -112,7 +112,7 @@ export function captureWork(req: CaptureRequest): CaptureReport {
   let scratch: string | null = null;
   try {
     // 1. Cell commits into the origin, under the transient ref only.
-    git(originRepo, ["fetch", "--no-tags", cellSpaceDir, `+HEAD:${transientRef}`]);
+    git(originRepo, ["fetch", "--no-tags", "--no-recurse-submodules", cellSpaceDir, `+HEAD:${transientRef}`]);
 
     const targetTip = revParse(originRepo, `refs/heads/${targetBranch}`);
 
@@ -147,7 +147,7 @@ export function captureWork(req: CaptureRequest): CaptureReport {
       if (cleanMerge !== null) {
         resultSha = cleanMerge;
       } else {
-        git(scratchRepo, ["checkout", "--quiet", "--force", "--detach", targetTip]);
+        git(scratchRepo, ["checkout", "--quiet", "--force", "--detach", "--no-recurse-submodules", targetTip]);
         const merge = tryGit(scratchRepo, [
           "merge",
           "--no-ff",
@@ -163,7 +163,7 @@ export function captureWork(req: CaptureRequest): CaptureReport {
         resultSha = git(scratchRepo, ["rev-parse", "HEAD"]);
       }
     } else {
-      git(scratchRepo, ["checkout", "--quiet", "--force", "--detach", cellHead]);
+      git(scratchRepo, ["checkout", "--quiet", "--force", "--detach", "--no-recurse-submodules", cellHead]);
       // --empty=drop: a commit whose changes already sit on the target
       // (landed earlier in rewritten form) replays to nothing — drop it
       // instead of stopping the sequencer, which would read as a conflict
@@ -184,7 +184,7 @@ export function captureWork(req: CaptureRequest): CaptureReport {
 
     // 3. Result objects into the origin (transient ref again — force-update
     // of OUR ref), then advance the target branch by CAS.
-    git(originRepo, ["fetch", "--no-tags", scratchRepo, `+${resultSha}:${transientRef}`]);
+    git(originRepo, ["fetch", "--no-tags", "--no-recurse-submodules", scratchRepo, `+${resultSha}:${transientRef}`]);
     const cas = tryGit(originRepo, ["update-ref", `refs/heads/${targetBranch}`, resultSha, targetTip]);
     if (cas.status !== 0) {
       return report({ ...base, status: "refused", reason: "target_moved", cellHead, baseTarget: targetTip });

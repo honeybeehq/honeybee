@@ -173,7 +173,7 @@ export function claimFromPool(
     }
     if (!exact) {
       // A cheap checkout delta to the wanted sha (the commit is present).
-      git(beePaths.spaceDir, [...PARALLEL_CHECKOUT_CONFIG, "checkout", "--force", "--detach", req.sha]);
+      git(beePaths.spaceDir, [...PARALLEL_CHECKOUT_CONFIG, "checkout", "--force", "--detach", "--no-recurse-submodules", req.sha]);
     }
     // Rewrite the bee's seed ledger to "provisioned": keep the bee identity,
     // adopt the member's copy mode and step record, land the wanted sha.
@@ -223,7 +223,7 @@ function poolEntries(root: string): string[] {
 
 function isClean(spaceDir: string): boolean {
   try {
-    const res = tryGit(spaceDir, ["status", "--porcelain"]);
+    const res = tryGit(spaceDir, ["status", "--porcelain", "--ignore-submodules=all"]);
     return res.status === 0 && res.stdout.trim() === "";
   } catch {
     return false;
@@ -233,7 +233,7 @@ function isClean(spaceDir: string): boolean {
 function reachCommit(spaceDir: string, originRepo: string, sha: string): boolean {
   try {
     if (hasCommit(spaceDir, sha)) return true;
-    tryGit(spaceDir, ["fetch", "--quiet", "--no-tags", "--no-write-fetch-head", originRepo, sha]);
+    tryGit(spaceDir, ["fetch", "--quiet", "--no-tags", "--no-recurse-submodules", "--no-write-fetch-head", originRepo, sha]);
     return hasCommit(spaceDir, sha);
   } catch {
     return false;

@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseBuildIdentity, type BuildIdentity } from "./buildIdentity.js";
+import { hostGitEnv } from "../hostGit.js";
 
 const releaseTagMatches = (tag: string | null, version: string): boolean => tag === `v${version}` || tag === `honeybee-v${version}`
   || /^distribution-[a-f0-9]{64}-honeybee-v(\d+\.\d+\.\d+)$/.exec(tag ?? "")?.[1] === version;
@@ -10,10 +11,10 @@ const releaseTagMatches = (tag: string | null, version: string): boolean => tag 
 export interface BuildProvenance { sourceRevision: string | null; dirty: boolean | null; releaseTag: string | null }
 
 export function collectBuildProvenance(root: string, revision?: string): BuildProvenance {
-  const git = (...args: string[]) => execFileSync("git", ["-C", root, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+  const git = (...args: string[]) => execFileSync("git", ["-C", root, ...args], { encoding: "utf8", env: hostGitEnv(), stdio: ["ignore", "pipe", "pipe"] }).trim();
   try {
     const sourceRevision = git("rev-parse", "--verify", `${revision ?? "HEAD"}^{commit}`);
-    const dirty = revision ? false : git("status", "--porcelain", "--untracked-files=normal").length > 0;
+    const dirty = revision ? false : git("status", "--porcelain", "--untracked-files=normal", "--ignore-submodules=all").length > 0;
     const tags = git("tag", "--points-at", sourceRevision).split("\n");
     const version = JSON.parse(revision ? git("show", `${sourceRevision}:package.json`) : readFileSync(join(root, "package.json"), "utf8")).version;
     return { sourceRevision, dirty, releaseTag: tags.find(t => releaseTagMatches(t, version)) ?? null };

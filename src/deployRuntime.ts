@@ -32,6 +32,7 @@ import { canonicalDigest } from "./comb/canonical.js";
 import { assertUpdateAdmission, UPDATE_RECOVERY_CONTRACT, type UpdateAdmission } from "./updateAdmission.js";
 import { writeBuildStamp } from "./deploySettle.js";
 import { atomicWriteFile, storeRoot } from "./fsx.js";
+import { hostGitEnv } from "./hostGit.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -260,7 +261,7 @@ async function syncDeployTree(directory: string): Promise<void> {
 async function verifyCleanWorkingTree(repoRoot: string): Promise<void> {
   const { stdout } = await execFileAsync(
     "git",
-    ["-C", repoRoot, "status", "--porcelain=v1", "--untracked-files=all"],
+    ["-C", repoRoot, "status", "--porcelain=v1", "--untracked-files=all", "--ignore-submodules=all"],
   );
   const dirt = stdout.trim();
   if (dirt.length > 0) {
@@ -314,7 +315,7 @@ async function verifyDescendantOfCurrent(
   const currentSha = await currentDeployTarget(root);
   if (currentSha === null || currentSha === sha) return;
   try {
-    await execFileAsync("git", ["-C", repoRoot, "merge-base", "--is-ancestor", currentSha, sha]);
+    await execFileAsync("git", ["-C", repoRoot, "merge-base", "--is-ancestor", currentSha, sha], { env: hostGitEnv() });
   } catch {
     throw new Error(
       `deploy: ${sha.slice(0, 12)} does not contain the currently deployed ${currentSha.slice(0, 12)} — ` +

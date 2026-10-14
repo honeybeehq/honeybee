@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { assertCanonicalData, canonicalDigest } from "../comb/canonical.js";
 import { parseComponentIdentity } from "./index.js";
+import { hostGitEnv } from "../hostGit.js";
 
 const exec = promisify(execFile);
 const METADATA = ".release/release.json";
@@ -19,7 +20,7 @@ export type ReleaseReservation = {
 };
 export type PrepareReleaseOptions = { repoRoot: string; sourceRevision: string; assessment: unknown; remote?: string; profile?: DistributionProfile };
 function git(root: string, args: string[], env?: NodeJS.ProcessEnv) {
-  return exec("git", ["-C", root, ...args], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, env: { ...process.env, ...env } }).then(r => r.stdout.trimEnd());
+  return exec("git", ["-C", root, ...args], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, env: hostGitEnv({ ...process.env, ...env }) }).then(r => r.stdout.trimEnd());
 }
 function versionParts(version: string): number[] {
   if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(version)) throw new Error("Release requires a stable semantic version");
@@ -87,7 +88,7 @@ export async function prepareHoneybeeRelease(options: PrepareReleaseOptions): Pr
   const sourceRef = `refs/tags/${prefix}honeybee-source-${productSourceSha256.slice(7)}`;
   const remoteRef = async (ref: string) => (await git(repoRoot, ["ls-remote", "--refs", remote, ref])).split(/\s/)[0] || null;
   const readReservation = async (commit: string): Promise<ReleaseReservation> => {
-    await git(repoRoot, ["fetch", "--no-tags", remote, commit]);
+    await git(repoRoot, ["fetch", "--no-tags", "--no-recurse-submodules", remote, commit]);
     const metadata = JSON.parse(await git(repoRoot, ["show", `${commit}:${METADATA}`]));
     if (profile.id === "production" ? metadata.distribution !== undefined : metadata.distribution !== distributionIdentity(profile)) throw new Error("Release reservation distribution mismatch");
     if (metadata.tag !== `${prefix}honeybee-v${metadata.version}`) throw new Error("Release reservation tag mismatch");
@@ -100,7 +101,7 @@ export async function prepareHoneybeeRelease(options: PrepareReleaseOptions): Pr
       const result = await readReservation(existing);
       if (result.productSourceSha256 !== productSourceSha256 || await productSourceDigest(repoRoot, existing) !== productSourceSha256
         || await remoteRef(`refs/tags/${result.tag}`) !== existing) throw new Error("Corrupt release reservation");
-      await git(repoRoot, ["fetch", remote, `refs/tags/${result.tag}:refs/tags/${result.tag}`]);
+      await git(repoRoot, ["fetch", "--no-recurse-submodules", remote, `refs/tags/${result.tag}:refs/tags/${result.tag}`]);
       return result;
     }
     const previous = await remoteRef(ledger);
@@ -145,7 +146,7 @@ export async function prepareHoneybeeRelease(options: PrepareReleaseOptions): Pr
         if (await remoteRef(ledger) === previous && !await remoteRef(sourceRef)) throw error;
         continue;
       }
-      await git(repoRoot, ["fetch", remote, `refs/tags/${tag}:refs/tags/${tag}`]);
+      await git(repoRoot, ["fetch", "--no-recurse-submodules", remote, `refs/tags/${tag}:refs/tags/${tag}`]);
       return { ...metadata, sourceRevision: commit };
     } finally { await rm(dir, { recursive: true, force: true }); }
   }
