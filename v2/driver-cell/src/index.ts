@@ -60,6 +60,7 @@ export {
 export type { RetentionWorkerRequest, RetentionWorkerResult, TrimVerifyWorkerRequest, TrimVerifyWorkerResult } from "./retentionWorker.ts";
 export {
   bwrapArgs,
+  darwinUserTempDir,
   DEFAULT_SANDBOX_TMPFS_BYTES,
   defaultWritablePaths,
   mergeSandboxWritablePaths,

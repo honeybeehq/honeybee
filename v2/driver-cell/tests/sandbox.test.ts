@@ -8,7 +8,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { createServer } from "node:net";
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir, platform, tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -20,6 +20,8 @@ import {
   sandboxDefaultFor,
   sandboxEnabled,
   seatbeltProfile,
+  SANDBOX_TMPFS_PATHS,
+  defaultScratchPaths,
   wrapWithSandbox,
 } from "../src/sandbox.ts";
 import {
@@ -61,7 +63,10 @@ test("sandbox.profile: Seatbelt profile confines writes to cell + harness paths,
   assert.match(profile, /\(deny file-write\*\)/);
   assert.match(profile, /\(subpath "\/cells\/bee-1"\)/);
   assert.match(profile, /\(subpath "\/home\/u\/\.claude"\)/);
-  assert.match(profile, /\(subpath "\/private\/var\/folders"\)/);
+  assert.match(profile, /\(subpath "\/private\/tmp"\)/);
+  const userTemp = defaultScratchPaths("darwin")[3]!;
+  assert.ok(userTemp === "/private/var/folders" || userTemp.startsWith("/private/var/folders/"), userTemp);
+  assert.ok(profile.includes(`(subpath "${userTemp}")`));
   // Quotes/backslashes in paths are escaped, not profile-breaking.
   const tricky = seatbeltProfile({ cellDir: '/cells/we"ird', writablePaths: [] });
   assert.match(tricky, /\(subpath "\/cells\/we\\"ird"\)/);
@@ -228,6 +233,61 @@ test("sandbox.seatbelt-real: sandbox-exec confines writes to the cell (darwin)",
   }
 });
 
+test("sandbox.darwin-scratch: only the user's own temp dir of /private/var/folders is writable", () => {
+  const narrowed = defaultScratchPaths("darwin", "/var/folders/ab/cdef/T");
+  assert.deepEqual(narrowed, ["/tmp", "/private/tmp", "/private/var/tmp", "/var/folders/ab/cdef/T", "/dev"]);
+  assert.equal(narrowed.includes("/private/var/folders"), false);
+  assert.ok(defaultScratchPaths("darwin", null).includes("/private/var/folders"), "unknown user temp dir keeps the old grant");
+  assert.deepEqual(defaultScratchPaths("linux"), ["/tmp", "/var/tmp", "/dev"]);
+  const profile = seatbeltProfile({ cellDir: "/c", writablePaths: [], scratchPaths: narrowed });
+  assert.match(profile, /\(subpath "\/var\/folders\/ab\/cdef\/T"\)/);
+  assert.doesNotMatch(profile, /\(subpath "\/private\/var\/folders"\)/);
+});
+
+test("sandbox.seatbelt-user-temp: mktemp works and the user cache dir is denied (darwin)", { skip: !IS_DARWIN }, () => {
+  const root = mkdtempSync(join(homedir(), ".cache", "hb-v2-sb-temp-"));
+  try {
+    const cellDir = join(root, "cell");
+    mkdirSync(cellDir);
+    const profilePath = join(root, "profile.sb");
+    writeFileSync(profilePath, seatbeltProfile({ cellDir, writablePaths: [] }));
+    const temp = spawnSync("sandbox-exec", ["-f", profilePath, "/bin/sh", "-c", "f=$(mktemp) && rm \"$f\" && echo ok"], { encoding: "utf8" });
+    assert.equal(temp.status, 0, temp.stderr);
+    const cache = spawnSync("getconf", ["DARWIN_USER_CACHE_DIR"], { encoding: "utf8" }).stdout.trim();
+    const denied = spawnSync("sandbox-exec", ["-f", profilePath, "/bin/sh", "-c", `touch "${cache}/hb-v2-should-deny"`], { encoding: "utf8" });
+    assert.notEqual(denied.status, 0, "the user cache dir under /private/var/folders is no longer writable");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("sandbox.tmpfs-paths: the sampled tmpfs paths are exactly the tmpfs mounts bwrap makes", () => {
+  const args = bwrapArgs({ cellDir: "/cells/bee-1", writablePaths: [], tmpfsBytes: 1024 }, "node", ["a.mjs"]);
+  const mounted = args.flatMap((arg, index) => (arg === "--tmpfs" ? [args[index + 1]!] : []));
+  assert.deepEqual([...mounted].sort(), [...SANDBOX_TMPFS_PATHS].sort());
+  assert.ok(SANDBOX_TMPFS_PATHS.includes("/tmp") && SANDBOX_TMPFS_PATHS.includes("/dev/shm"));
+  let varTmpReal = false;
+  try {
+    varTmpReal = lstatSync("/var/tmp").isDirectory() && !lstatSync("/var/tmp").isSymbolicLink();
+  } catch {}
+  assert.equal(SANDBOX_TMPFS_PATHS.includes("/var/tmp"), varTmpReal);
+  args.forEach((arg, index) => {
+    if (arg === "--tmpfs") assert.equal(args[index - 2], "--size", `--size precedes --tmpfs ${args[index + 1]}`);
+  });
+});
+
+test("sandbox.bwrap: /tmp and /var/tmp are private tmpfs mounts, never host binds", () => {
+  const args = bwrapArgs({ cellDir: "/cells/bee-1", writablePaths: [] }, "node", ["a.mjs"]);
+  const joined = args.join(" ");
+  assert.match(joined, /--tmpfs \/tmp /);
+  assert.match(joined, /--tmpfs \/var\/tmp /);
+  assert.doesNotMatch(joined, /--bind(-try)? \/var\/tmp/);
+  assert.doesNotMatch(joined, /--bind(-try)? \/tmp/);
+  const lastTmpfs = args.lastIndexOf("--tmpfs");
+  const firstBind = args.findIndex((arg) => arg === "--bind" || arg === "--bind-try");
+  assert.ok(lastTmpfs < firstBind, "tmpfs mounts come before every bind so they never hide a grant under /tmp or /var/tmp");
+});
+
 test("sandbox.bwrap-real: bwrap confines writes to the cell (linux — metal-3 gate)", { skip: !IS_LINUX }, () => {
   const root = mkdtempSync(join(tmpdir(), "hb-v2-sb-"));
   try {
@@ -253,6 +313,16 @@ test("sandbox.bwrap-real: bwrap confines writes to the cell (linux — metal-3 g
 
     const read = spawnSync("bwrap", bwrapArgs(policy, "/bin/cat", ["/etc/hosts"]), { encoding: "utf8" });
     assert.equal(read.status, 0);
+
+    const marker = `hb-v2-vartmp-${process.pid}`;
+    const varTmp = spawnSync(
+      "bwrap",
+      bwrapArgs({ cellDir, writablePaths: [] }, "/bin/sh", ["-c", `echo private > /var/tmp/${marker} && cat /var/tmp/${marker}`]),
+      { encoding: "utf8" },
+    );
+    assert.equal(varTmp.status, 0, varTmp.stderr);
+    assert.equal(varTmp.stdout, "private\n");
+    assert.equal(spawnSync("test", ["-e", `/var/tmp/${marker}`]).status, 1, "the host /var/tmp is untouched");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -278,7 +348,7 @@ test("sandbox.tmpfs-cap: config, darwin and an old bwrap decide the effective ca
   assert.deepEqual(sandboxTmpfsCap(null, "linux", () => true), { kind: "uncapped", reason: "config_null" });
   assert.deepEqual(sandboxTmpfsCap(4194304, "linux", () => false), { kind: "uncapped", reason: "bwrap_no_size" });
   assert.deepEqual(sandboxTmpfsCap(4194304, "darwin", () => true), { kind: "uncapped", reason: "seatbelt" });
-  assert.equal(describeSandboxTmpfs("b1", 2, { kind: "capped", bytes: 1073741824 }), "sandbox.tmpfs bee=b1 gen=2 cap=1073741824 (1 GiB) paths=/tmp,/dev/shm");
+  assert.equal(describeSandboxTmpfs("b1", 2, { kind: "capped", bytes: 1073741824 }), `sandbox.tmpfs bee=b1 gen=2 cap=1073741824 (1 GiB) paths=${SANDBOX_TMPFS_PATHS.join(",")}`);
   assert.equal(describeSandboxTmpfs("b1", 2, { kind: "uncapped", reason: "seatbelt" }), "sandbox.tmpfs bee=b1 gen=2 cap=none reason=seatbelt");
   assert.equal(formatBytes(4194304), "4 MiB");
   assert.equal(formatBytes(1500000), "1.4 MiB");

@@ -134,6 +134,7 @@ import { CredentialAuthorityError } from "./claudeCredentialAuthority.ts";
 import { realPreflightProbes } from "./import-probes.ts";
 import { HsrDriver, pidAlive, verifyProcessIdentity, type SpawnSpec } from "../../driver-hsr/src/index.ts";
 import {
+  darwinUserTempDir,
   CellDeleteRefused,
   CellDriver,
   CellHeadMovedError,
@@ -742,6 +743,10 @@ export class HiveDaemon {
     if (this.beeTmp) applyDaemonTmpPolicy(this.beeTmp, process.env, (path, was) => this.log(`tmp.replaced path=${path} was=${was}`));
     this.log(describeBeeTmpPolicy(this.beeTmp));
     if (this.cfg.beeTmpRootInvalid) this.log(`tmp.policy_invalid reason=${JSON.stringify(this.cfg.beeTmpRootInvalid)}`);
+    if (process.platform === "darwin") {
+      const userTemp = darwinUserTempDir();
+      this.log(userTemp ? `sandbox.scratch darwinUserTemp=${userTemp}` : "sandbox.scratch darwinUserTemp=unresolved fallback=/private/var/folders");
+    }
     if (this.cfg.beeSandboxTmpBytesInvalid) this.log(`tmp.sandbox_cap_invalid reason=${JSON.stringify(this.cfg.beeSandboxTmpBytesInvalid)} using=${DEFAULT_SANDBOX_TMPFS_BYTES}`);
     this.performance.start();
     const startup = this.performance.startSpan("daemon.start.total");

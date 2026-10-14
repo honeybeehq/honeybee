@@ -18,6 +18,7 @@ import { DatabaseSync } from "node:sqlite";
 import { loadNodeConfig } from "../src/config.ts";
 import type { HealthResult, MailboxResult, MutationResult, SendRpcResult, SpawnResult, ViewResult } from "../src/protocol.ts";
 import { makeOrigin } from "../../driver-cell/tests/helpers.ts";
+import { SANDBOX_TMPFS_PATHS } from "../../driver-cell/src/sandbox.ts";
 import { AGENT_PATH, makeDaemonDir, startDaemon, waitFor, type DaemonHandle } from "./helpers.ts";
 
 const PROBE = join(dirname(fileURLToPath(import.meta.url)), "fixtures", "tmp-probe", "probe.mjs");
@@ -621,7 +622,7 @@ async function sandboxedFill(bees: Record<string, unknown>, fillBytes: number, e
 test("sandboxed bee past its tmpfs cap: ENOSPC inside, a typed resource_blocked outside, the cap logged per bee", { timeout: 180_000, skip: process.platform !== "linux" }, async () => {
   const run = await sandboxedFill({ sandboxTmpBytes: 4 * 1024 * 1024 }, 8 * 1024 * 1024, true);
   assert.equal(run.report.fillError, "ENOSPC");
-  assert.match(run.log, new RegExp(`sandbox\\.tmpfs bee=${run.beeId} gen=1 cap=4194304 \\(4 MiB\\) paths=/tmp,/dev/shm`));
+  assert.match(run.log, new RegExp(`sandbox\\.tmpfs bee=${run.beeId} gen=1 cap=4194304 \\(4 MiB\\) paths=${SANDBOX_TMPFS_PATHS.join(",")}`));
   assert.deepEqual(run.flags, ["resource_blocked"]);
   assert.match(run.detail ?? "", /^sandbox tmp full: \/tmp in this bee's sandbox is at its 4 MiB cap \(bees\.sandboxTmpBytes\)/);
   assert.match(run.log, new RegExp(`sandbox\\.tmp_full bee=${run.beeId} gen=1 path=/tmp cap=4194304 \\(4 MiB\\)`));

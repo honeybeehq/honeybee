@@ -10,7 +10,8 @@
  * Defaults by node kind (A4): workstation OFF, satellite ON, cloud gateway
  * OFF (the ephemeral VM is the boundary there). Per-cell override wins.
  */
-import { realpathSync, statSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { lstatSync, realpathSync, statSync } from "node:fs";
 import { homedir, platform } from "node:os";
 import { isAbsolute, join, parse, relative, resolve as resolvePath, sep } from "node:path";
 
@@ -40,12 +41,33 @@ export interface SandboxPolicy {
 
 export const DEFAULT_SANDBOX_TMPFS_BYTES = 1024 * 1024 * 1024;
 
-export const SANDBOX_TMPFS_PATHS: readonly string[] = ["/tmp", "/dev/shm"];
+const BWRAP_PRIVATE_MOUNTS = ["/tmp", "/var/tmp"].filter((mount) => mount === "/tmp" || isRealDirectory(mount));
 
-/** OS scratch space every process needs writable (default scratch policy). */
-export function defaultScratchPaths(osPlatform: string = platform()): string[] {
+export const SANDBOX_TMPFS_PATHS: readonly string[] = [...BWRAP_PRIVATE_MOUNTS, "/dev/shm"];
+
+let darwinUserTemp: string | null | undefined;
+
+/** The user's own DARWIN_USER_TEMP_DIR (macOS mktemp writes there whatever TMPDIR says); null when unknown. */
+export function darwinUserTempDir(): string | null {
+  if (darwinUserTemp !== undefined) return darwinUserTemp;
+  const out = spawnSync("/usr/bin/getconf", ["DARWIN_USER_TEMP_DIR"], { encoding: "utf8", timeout: 2_000 });
+  let dir: string | null = null;
+  try {
+    dir = out.status === 0 ? realpathSync(out.stdout.trim()) : null;
+  } catch {
+    dir = null;
+  }
+  darwinUserTemp = dir !== null && dir.startsWith("/private/var/folders/") && dir.split("/").length === 7 && dir.endsWith("/T") ? dir : null;
+  return darwinUserTemp;
+}
+
+/** OS scratch space every process needs writable (default scratch policy). On darwin only the user's own temp dir of /private/var/folders. */
+export function defaultScratchPaths(
+  osPlatform: string = platform(),
+  userTemp: string | null = osPlatform === "darwin" ? darwinUserTempDir() : null,
+): string[] {
   return osPlatform === "darwin"
-    ? ["/tmp", "/private/tmp", "/private/var/tmp", "/private/var/folders", "/dev"]
+    ? ["/tmp", "/private/tmp", "/private/var/tmp", userTemp ?? "/private/var/folders", "/dev"]
     : ["/tmp", "/var/tmp", "/dev"];
 }
 
@@ -197,7 +219,15 @@ export function seatbeltProfile(policy: SandboxPolicy): string {
   ].join("\n");
 }
 
-const BWRAP_PRIVATE_MOUNTS = ["/tmp"];
+
+function isRealDirectory(path: string): boolean {
+  try {
+    const info = lstatSync(path);
+    return info.isDirectory() && !info.isSymbolicLink();
+  } catch {
+    return false;
+  }
+}
 
 function maskedLaunchRoot(path: string): string | null {
   for (const mount of BWRAP_PRIVATE_MOUNTS) {
@@ -216,6 +246,15 @@ function isRegularFile(path: string): boolean {
   }
 }
 
+/**
+ * Re-binds, read-only, the top-level entry of a private mount (/tmp, /var/tmp)
+ * that holds a regular-file launch input, so the harness can still start.
+ * Contract: a unix socket inside such a re-bound directory stays connectable
+ * through the read-only bind. That is exploitable only when a socket shares a
+ * directory with a regular-file launch input; HSR runner sockets are top-level
+ * in /tmp, so none is exposed today. The grain stays the directory because
+ * per-file binds break sibling imports next to the launch input.
+ */
 function bwrapLaunchBinds(command: string, args: readonly string[]): string[] {
   const roots = new Set<string>();
   for (const input of [command, ...args]) {
@@ -249,7 +288,7 @@ export function bwrapArgs(policy: SandboxPolicy, command: string, args: string[]
     out.push("--bind-try", p, p);
   }
   for (const p of policy.scratchPaths ?? defaultScratchPaths("linux")) {
-    if (p === "/tmp" || p === "/dev") continue; // already mounted above
+    if (p === "/tmp" || p === "/var/tmp" || p === "/dev") continue; // already mounted above
     out.push("--bind-try", p, p);
   }
   out.push("--share-net", "--die-with-parent", "--", command, ...args);
