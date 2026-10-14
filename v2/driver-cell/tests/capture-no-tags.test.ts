@@ -167,7 +167,11 @@ function replaceTargetRef(refs: string, resultSha: string): string {
 function assertScratchCloneTrace(fixture: Fixture, tracePath: string, spec: CaseSpec): void {
   const argvs = traceArgvs(tracePath);
   const clones = argvs.filter((argv) => argv[1] === "clone");
-  assert.equal(clones.length, 1, `${spec.name}: expected exactly one scratch clone`);
+  assert.equal(
+    clones.length,
+    1,
+    `${spec.name}: expected exactly one scratch clone; traced ${argvs.length} git starts: ${JSON.stringify(argvs.map((argv) => argv.slice(0, 3)))}`,
+  );
   const clone = clones[0];
   assert.ok(clone);
   const executable = clone[0];
