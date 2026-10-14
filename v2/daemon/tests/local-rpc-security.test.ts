@@ -69,7 +69,7 @@ test("actual local RPC registers without cache and gates only the trusted observ
 test("RPC audit attribution stops at the daemon tick boundary", {timeout: 30_000}, async t => {
   const {makeDaemonDir, startDaemon, forceStopTestDaemon, waitFor} = await import("./helpers.ts");
   const root = makeDaemonDir();
-  const daemon = await startDaemon(root.dir);
+  const daemon = await startDaemon(root.dir, {platform: process.platform === "darwin" ? "linux" : "darwin"});
   const client = await daemon.client();
   t.after(async () => { client.close(); await forceStopTestDaemon(daemon); root.cleanup(); });
   const spawned = await client.request<{beeId: string}>("spawn", {name: "caller-boundary", agent: "stub", substrate: "hsr", cwd: root.dir});

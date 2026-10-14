@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { closeSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
+import { type } from "node:os";
 import { fileURLToPath } from "node:url";
 
 export interface LocalPeer {
@@ -62,7 +63,9 @@ export class PeerCredentials {
     degraded?: (status: PeerCredentialStatus) => void;
   } = {}) {
     this.options = options;
-    const target = options.target ?? `${process.platform}-${process.arch}`;
+    const kernel = type();
+    const hostPlatform = kernel === "Darwin" ? "darwin" : kernel === "Linux" ? "linux" : "unsupported";
+    const target = options.target ?? `${hostPlatform}-${process.arch}`;
     const root = fileURLToPath(new URL(import.meta.url.endsWith(".ts") ? "../../../dist/v2/peercred/" : "./peercred/", import.meta.url));
     const directory = options.directory ?? join(root, target);
     this.status = {state: "ready", target, artifactPath: join(directory, "peercred.node"), reason: null};

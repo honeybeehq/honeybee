@@ -4,9 +4,11 @@ import { once } from "node:events";
 import { closeSync, mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { createServer } from "node:net";
-import { tmpdir } from "node:os";
+import { tmpdir, type } from "node:os";
 import { join, resolve } from "node:path";
-const directory = resolve(process.argv.slice(2).find(value => value !== "--optional") ?? `dist/v2/peercred/${process.platform}-${process.arch}`);
+const kernel = type();
+const platform = kernel === "Darwin" ? "darwin" : kernel === "Linux" ? "linux" : "unsupported";
+const directory = resolve(process.argv.slice(2).find(value => value !== "--optional") ?? `dist/v2/peercred/${platform}-${process.arch}`);
 if (process.argv.includes("--optional") && !existsSync(join(directory, "peercred.node"))) {
   console.warn("Peer credential proof skipped: local native artifact is unavailable; release staging remains strict.");
   process.exit(0);
@@ -30,13 +32,13 @@ try {
   const peer = bridge.inspect(fd);
   assert.equal(peer.uid, process.geteuid());
   assert.equal(peer.pid, child.pid);
-  assert.match(peer.birth, process.platform === "linux" ? /^linux:\d+$/ : /^darwin:\d+:\d+$/);
+  assert.match(peer.birth, platform === "linux" ? /^linux:\d+$/ : /^darwin:\d+:\d+$/);
   assert.deepEqual(bridge.inspect(fd), peer);
   if (pin >= 0) assert.equal(bridge.alive(pin), true);
   assert.equal(socket.destroyed, false);
   const manifest = JSON.parse(readFileSync(join(directory, "manifest.json"), "utf8"));
-  writeFileSync(join(directory, "proof.json"), JSON.stringify({passed: true, target: `${process.platform}-${process.arch}`, sha256: manifest.sha256, sourceSha256: manifest.sourceSha256, node: process.version}) + "\n");
-  console.log(JSON.stringify({passed: true, target: `${process.platform}-${process.arch}`, node: process.version, uid: peer.uid, pid: peer.pid, processBirth: peer.birth, pidfd: pin >= 0}));
+  writeFileSync(join(directory, "proof.json"), JSON.stringify({passed: true, target: `${platform}-${process.arch}`, sha256: manifest.sha256, sourceSha256: manifest.sourceSha256, node: process.version}) + "\n");
+  console.log(JSON.stringify({passed: true, target: `${platform}-${process.arch}`, node: process.version, uid: peer.uid, pid: peer.pid, processBirth: peer.birth, pidfd: pin >= 0}));
 } finally {
   if (pin >= 0) closeSync(pin);
   socket?.destroy();
