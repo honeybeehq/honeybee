@@ -232,7 +232,9 @@ test("mirror.2: value-level snapshot — a deterministic store serializes to the
         "placementVersion": 0,
         "activeMoveId": null,
         "cellId": null,
-        "activeHandoffId": null
+        "activeHandoffId": null,
+        "lastTurnTrigger": null,
+        "lastHumanOutputAt": null
       },
       "runtime": {
         "beeId": "BEE_ID",

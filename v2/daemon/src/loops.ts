@@ -65,11 +65,13 @@ import {
   type HandoffContext,
   type HandoffContextTurn,
   type I1PendingBee,
+  type MessageRow,
   type RuntimeState,
   type TranscriptSegmentRow,
+  type TurnTriggerSource,
 } from "../../core/src/index.ts";
 import type { CaptureReport } from "../../driver-cell/src/index.ts";
-import { deliveryText, isPeerSender } from "./envelope.ts";
+import { deliveryText, isPeerSender, turnTriggerSource } from "./envelope.ts";
 import {
   NOOP_PERFORMANCE,
   type PerformanceRecorder,
@@ -623,10 +625,22 @@ export class DaemonCore {
         // persist idle without its corresponding last-output fact. A SYNTHETIC
         // turn_ended (the readyAtSpawn boot-to-ready edge) is a phase fact
         // only: the agent produced nothing, so lastOutputAt must not move.
-        obs.kind === "turn_ended" && obs.synthetic !== true ? { recordOutput: true } : {},
+        obs.kind === "turn_ended" && obs.synthetic !== true ? { recordOutput: true } : this.turnOpenerOf(obs),
       );
       this.log(`obs.${obs.kind} bee=${obs.beeId} gen=${obs.generation}${obs.synthetic ? " synthetic" : ""}`);
     }
+  }
+
+  private turnTriggerSourceOf(msg: MessageRow, peer: boolean): TurnTriggerSource {
+    return turnTriggerSource(msg.sender, this.store.mailOrigin(msg.id), peer, this.store.getBee(msg.beeId)?.parentId ?? null);
+  }
+
+  private turnOpenerOf(obs: DriverObservation): { turnOpener?: TurnTriggerSource & { messageId: number } } {
+    if (obs.kind !== "turn_started" || obs.messageId === undefined) return {};
+    const msg = this.store.getMessage(obs.messageId);
+    if (!msg || msg.beeId !== obs.beeId) return {};
+    const peer = isPeerSender(msg.sender, (id) => this.store.getBee(id) != null);
+    return { turnOpener: { ...this.turnTriggerSourceOf(msg, peer), messageId: msg.id } };
   }
 
   /**
@@ -1615,7 +1629,7 @@ export class DaemonCore {
       }
       const outcome = this.driver.deliver(rt.beeId, rt.generation, msg.id, body);
       if (outcome.accepted) {
-        this.store.markDelivered(msg.id, rt.generation);
+        this.store.markDelivered(msg.id, rt.generation, this.turnTriggerSourceOf(msg, peer));
         this.interruptRequested.delete(msg.id);
         if (instruction && rt.generation !== instruction.sourceGeneration) {
           this.store.markMoveInstructionsApplied(instruction.id);

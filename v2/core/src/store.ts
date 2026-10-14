@@ -104,6 +104,8 @@ import {
   type ActionView,
   type ActionWaitingReason,
   type BeeRow,
+  type TurnTrigger,
+  type TurnTriggerSource,
   type BeeView,
   type CellOpKind,
   type CellOpRow,
@@ -698,6 +700,8 @@ function mapBee(r: Row): BeeRow {
     activeMoveId: (r.active_move_id as string | null) ?? null,
     cellId: (r.cell_id as string | null) ?? null,
     activeHandoffId: (r.active_handoff_id as string | null) ?? null,
+    lastTurnTrigger: r.last_turn_trigger == null ? null : (JSON.parse(r.last_turn_trigger as string) as TurnTrigger),
+    lastHumanOutputAt: r.last_human_output_at == null ? null : Number(r.last_human_output_at),
   };
 }
 
@@ -1764,12 +1768,7 @@ export class CoreStore {
       // v3 → v4: spawn_failures; v4 → v5: args. Same discipline: add iff
       // missing, so fresh and v1 stores (whose bees table was just created in
       // full) are untouched.
-      const beeCols = new Set(
-        (this.stmt("SELECT name FROM pragma_table_info('bees')").all() as Row[]).map((c) => String(c.name)),
-      );
-      for (const [name, ddl] of BEES_ADDITIVE_COLUMNS) {
-        if (!beeCols.has(name)) this.db.exec(`ALTER TABLE bees ADD COLUMN ${ddl}`);
-      }
+      this.addMissingBeeColumns();
       // v7 → v8: additive urgency column on mailbox (spec 01 Q2 amendment).
       const mailCols = new Set(
         (this.stmt("SELECT name FROM pragma_table_info('mailbox')").all() as Row[]).map((c) => String(c.name)),
@@ -2014,6 +2013,7 @@ export class CoreStore {
     if (!leaseCols.has("leased_from")) this.db.exec("ALTER TABLE accounts ADD COLUMN leased_from TEXT");
     if (!leaseCols.has("native")) this.db.exec("ALTER TABLE accounts ADD COLUMN native INTEGER NOT NULL DEFAULT 0 CHECK (native IN (0,1))");
     this.db.exec(ACCOUNTS_NATIVE_INDEX_SQL);
+    this.addMissingBeeColumns();
     this.db.exec("UPDATE accounts SET leased_from = json_remove(json_set(leased_from, '$.revokedAt', json_extract(leased_from, '$.endedAt')), '$.endedAt') WHERE leased_from IS NOT NULL AND json_type(leased_from, '$.endedAt') IS NOT NULL");
     if (stored < 42) {
       const unscoped = this.stmt("SELECT account FROM account_credential_authorities WHERE phase <> 'disabled' AND authority_instance_id IS NULL").all() as Row[];
@@ -2030,6 +2030,15 @@ export class CoreStore {
         "INSERT INTO meta(key, value) VALUES('schema_version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
       )
       .run(String(SCHEMA_VERSION));
+  }
+
+  private addMissingBeeColumns(): void {
+    const beeCols = new Set(
+      (this.stmt("SELECT name FROM pragma_table_info('bees')").all() as Row[]).map((c) => String(c.name)),
+    );
+    for (const [name, ddl] of BEES_ADDITIVE_COLUMNS) {
+      if (!beeCols.has(name)) this.db.exec(`ALTER TABLE bees ADD COLUMN ${ddl}`);
+    }
   }
 
   private redactRpcIdempotencyEnv(): void {
@@ -2712,6 +2721,7 @@ export class CoreStore {
       synthetic?: boolean;
       /** Turn-end projection: phase + last-output fact commit together. */
       recordOutput?: boolean;
+      turnOpener?: TurnTriggerSource & { messageId: number };
     } = {},
   ): { applied: boolean } {
     if (!RUNTIME_TRANSITIONS[state]) {
@@ -2767,8 +2777,11 @@ export class CoreStore {
            WHERE bee_id = ? AND generation = ?`,
         )
         .run(state, opts.exitCause ?? null, pid, pidStartedAt, bootEvidence, at, beeId, generation);
+      const turnTrigger = current.state === "idle" && state === "running"
+        ? this.applyTurnStartTrigger(beeId, current, opts.turnOpener, at)
+        : current.state === "running" && state === "idle" ? this.applyTurnEndTrigger(beeId, generation, at) : null;
       const runtime = this.currentRuntime(beeId);
-      this.audit("runtime.updated", beeId, { runtime });
+      this.audit("runtime.updated", beeId, { runtime, ...(turnTrigger ? { turnTrigger } : {}) });
       if (opts.recordOutput === true) this.applyRecordOutput(beeId, at);
       // Spawn-failure budget (contract §4.2 spawn_failed, B5 bounded): an
       // unproven runtime either died on its own or exhausted the daemon's boot
@@ -3784,7 +3797,7 @@ export class CoreStore {
    * B4 — delivery marks delivered_generation; never twice, and only to the bee's
    * CURRENT generation (a stale consumer's mark is a recorded no-op, mirroring B6).
    */
-  markDelivered(messageId: number, generation: number): { applied: boolean } {
+  markDelivered(messageId: number, generation: number, source?: TurnTriggerSource): { applied: boolean } {
     return this.tx(() => {
       const message = this.getMessage(messageId);
       if (!message) throw new CoreError(`message not found: ${messageId}`);
@@ -3811,7 +3824,8 @@ export class CoreStore {
       this.db
         .prepare("UPDATE mailbox SET delivered_at = ?, delivered_generation = ? WHERE id = ?")
         .run(at, generation, messageId);
-      this.audit("mail.delivered", message.beeId, { messageId, deliveredAt: at, deliveredGeneration: generation });
+      const turnTrigger = source ? this.applyDeliveryTurnTrigger(message.beeId, current, messageId, source, at) : null;
+      this.audit("mail.delivered", message.beeId, { messageId, deliveredAt: at, deliveredGeneration: generation, ...(turnTrigger ? { turnTrigger } : {}) });
       // v24: an action instruction reached its runtime — delivery evidence only, never completion.
       this.applyActionDelivered(messageId, generation, at);
       return { applied: true };
@@ -3867,8 +3881,53 @@ export class CoreStore {
   }
 
   private applyRecordOutput(beeId: string, at: number): void {
-    this.stmt("UPDATE bees SET last_output_at = ? WHERE id = ?").run(at, beeId);
-    this.audit("output.recorded", beeId, { beeId, at });
+    const trigger = this.mustGetBee(beeId).lastTurnTrigger;
+    const human = trigger !== null && trigger.humanAt !== null && trigger.generation === this.currentRuntime(beeId)?.generation;
+    this.stmt("UPDATE bees SET last_output_at = ?, last_human_output_at = CASE WHEN ? THEN ? ELSE last_human_output_at END WHERE id = ?").run(at, human ? 1 : 0, at, beeId);
+    this.audit("output.recorded", beeId, { beeId, at, lastHumanOutputAt: this.mustGetBee(beeId).lastHumanOutputAt });
+  }
+
+  mailOrigin(messageId: number): MailOrigin {
+    const row = this.stmt("SELECT origin FROM mail_history_enqueues WHERE message_id = ?").get(messageId) as Row | undefined;
+    return row === undefined ? "legacy.unknown" : auditMailOrigin(row.origin, `origin for message ${messageId}`);
+  }
+
+  private writeTurnTrigger(beeId: string, trigger: TurnTrigger): TurnTrigger {
+    this.stmt("UPDATE bees SET last_turn_trigger = ? WHERE id = ?").run(JSON.stringify(trigger), beeId);
+    return trigger;
+  }
+
+  private openTurnTrigger(beeId: string, generation: number, source: TurnTriggerSource, messageId: number | null, at: number): TurnTrigger {
+    return this.writeTurnTrigger(beeId, { ...source, messageId, generation, startedAt: at, humanAt: source.kind === "human" ? at : null, endedAt: null });
+  }
+
+  private openTurnOf(beeId: string, generation: number): TurnTrigger | null {
+    const existing = this.mustGetBee(beeId).lastTurnTrigger;
+    return existing !== null && existing.generation === generation && existing.endedAt === null ? existing : null;
+  }
+
+  private applyDeliveryTurnTrigger(beeId: string, runtime: RuntimeRow, messageId: number, source: TurnTriggerSource, at: number): TurnTrigger | null {
+    const last = this.mustGetBee(beeId).lastTurnTrigger;
+    if (last !== null && last.generation === runtime.generation && last.messageId === messageId) return null;
+    const open = this.openTurnOf(beeId, runtime.generation);
+    const acceptPoint = runtime.state === "idle" || (runtime.state === "running" && runtime.bootEvidence === "synthetic");
+    if (open === null && acceptPoint) return this.openTurnTrigger(beeId, runtime.generation, source, messageId, at);
+    if (source.kind !== "human") return null;
+    if (open === null) return this.writeTurnTrigger(beeId, { kind: "other", from: null, messageId: null, generation: runtime.generation, startedAt: at, humanAt: at, endedAt: null });
+    if (open.humanAt !== null) return null;
+    return this.writeTurnTrigger(beeId, { ...open, humanAt: at });
+  }
+
+  private applyTurnStartTrigger(beeId: string, runtime: RuntimeRow, opener: (TurnTriggerSource & { messageId: number }) | undefined, at: number): TurnTrigger | null {
+    const open = this.openTurnOf(beeId, runtime.generation);
+    if (open !== null && (opener === undefined || open.messageId === opener.messageId)) return null;
+    if (opener === undefined) return this.openTurnTrigger(beeId, runtime.generation, { kind: "other", from: null }, null, at);
+    return this.openTurnTrigger(beeId, runtime.generation, { kind: opener.kind, from: opener.from }, opener.messageId, at);
+  }
+
+  private applyTurnEndTrigger(beeId: string, generation: number, at: number): TurnTrigger | null {
+    const open = this.openTurnOf(beeId, generation);
+    return open === null ? null : this.writeTurnTrigger(beeId, { ...open, endedAt: at });
   }
 
   // -------------------------------------------------------------------------

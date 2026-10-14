@@ -361,7 +361,9 @@ CREATE TABLE IF NOT EXISTS bees (
   -- v22: cells.id for the active or retained Cell.
   cell_id          TEXT,
   -- v23: in-flight bee_handoffs.id; NULL when idle (terminal receipts remain).
-  active_handoff_id TEXT
+  active_handoff_id TEXT,
+  last_turn_trigger TEXT,
+  last_human_output_at INTEGER
 ) STRICT;
 -- Note: 'deleted' never appears as a stored lifecycle — Q1 says delete removes the
 -- record row immediately, so a missing row IS the deleted state.
@@ -852,6 +854,8 @@ export const BEES_ADDITIVE_COLUMNS: ReadonlyArray<readonly [name: string, ddl: s
   ["active_move_id", "active_move_id TEXT"],
   ["cell_id", "cell_id TEXT"],
   ["active_handoff_id", "active_handoff_id TEXT"],
+  ["last_turn_trigger", "last_turn_trigger TEXT"],
+  ["last_human_output_at", "last_human_output_at INTEGER"],
 ];
 
 /** Columns carried across the v31 rebuild of `cells` (by name: an ALTER-migrated store may differ in order). */

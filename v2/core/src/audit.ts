@@ -31,6 +31,7 @@ import type {
   TemplateRow,
   TrackRow,
   TranscriptSegmentRow,
+  TurnTrigger,
 } from "./types.ts";
 import type { LoginFlowRow } from "./loginFlow.ts";
 
@@ -100,6 +101,8 @@ export function replayAudit(rows: AuditRow[]): StateDump {
           activeMoveId: bee.activeMoveId ?? null,
           cellId: bee.cellId ?? null,
           activeHandoffId: bee.activeHandoffId ?? null,
+          lastTurnTrigger: bee.lastTurnTrigger ?? null,
+          lastHumanOutputAt: bee.lastHumanOutputAt ?? null,
         });
         break;
       }
@@ -267,6 +270,7 @@ export function replayAudit(rows: AuditRow[]): StateDump {
         // v9 back-compat: pre-boot_evidence audit rows replay as the migrated
         // store reads them — the column default, NULL.
         runtimes.set(rtKey(rt.beeId, rt.generation), { ...rt, bootEvidence: rt.bootEvidence ?? null });
+        if (p.turnTrigger !== undefined) mustBee(rt.beeId).lastTurnTrigger = { ...(p.turnTrigger as TurnTrigger) };
         break;
       }
       case "flag.set": {
@@ -292,6 +296,7 @@ export function replayAudit(rows: AuditRow[]): StateDump {
         if (!message) throw new Error(`audit replay: unknown message ${String(p.messageId)}`);
         message.deliveredAt = p.deliveredAt as number;
         message.deliveredGeneration = p.deliveredGeneration as number;
+        if (p.turnTrigger !== undefined) mustBee(message.beeId).lastTurnTrigger = { ...(p.turnTrigger as TurnTrigger) };
         break;
       }
       case "mail.canceled": {
@@ -351,7 +356,9 @@ export function replayAudit(rows: AuditRow[]): StateDump {
         break;
       }
       case "output.recorded": {
-        mustBee(p.beeId as string).lastOutputAt = p.at as number;
+        const bee = mustBee(p.beeId as string);
+        bee.lastOutputAt = p.at as number;
+        if (p.lastHumanOutputAt !== undefined) bee.lastHumanOutputAt = p.lastHumanOutputAt as number | null;
         break;
       }
       case "template.put": {

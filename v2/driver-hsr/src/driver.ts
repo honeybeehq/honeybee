@@ -682,7 +682,7 @@ export class HsrDriver implements RuntimeDriver {
       // writing to stdin proves nothing about the process; only parsed
       // output is boot evidence for the spawn-failure budget.
       p.phase = "running";
-      this.events.push({ beeId, generation, kind: "turn_started", synthetic: true });
+      this.events.push({ beeId, generation, kind: "turn_started", synthetic: true, messageId });
     }
     return p.adapter.confirmsDelivery
       ? { accepted: false, reason: "not_ready" }

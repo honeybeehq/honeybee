@@ -188,6 +188,24 @@ export interface BeeRow {
   cellId: string | null;
   /** v23 — in-flight handoff id; null when idle (complete/failed receipts remain). */
   activeHandoffId: string | null;
+  lastTurnTrigger: TurnTrigger | null;
+  lastHumanOutputAt: number | null;
+}
+
+export const TURN_TRIGGER_KINDS = ["human", "mail", "other"] as const;
+export type TurnTriggerKind = (typeof TURN_TRIGGER_KINDS)[number];
+
+export interface TurnTriggerSource {
+  kind: TurnTriggerKind;
+  from: string | null;
+}
+
+export interface TurnTrigger extends TurnTriggerSource {
+  messageId: number | null;
+  generation: number;
+  startedAt: number;
+  humanAt: number | null;
+  endedAt: number | null;
 }
 
 /**

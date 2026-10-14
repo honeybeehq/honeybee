@@ -218,6 +218,10 @@ export type MirrorDelta = AuditRow;
  *                                                                        (informational: a stale/unauthorized/duplicate-
  *                                                                         conflicting report was refused; no row change)
  * bee.deleted cascades actions + action_queues for that beeId.
+ * Turn trigger (additive inside existing payloads, capability `bee.turn_trigger.v1`):
+ *   mail.delivered  → may carry { turnTrigger: TurnTrigger }             (bee row: lastTurnTrigger)
+ *   runtime.updated → may carry { turnTrigger: TurnTrigger }             (bee row: lastTurnTrigger)
+ *   output.recorded → carries { lastHumanOutputAt: number | null }       (bee row: lastHumanOutputAt)
  */
 export const MIRROR_TEMPLATE_AUDIT_KINDS = ["template.put", "template.deleted"] as const;
 export const MIRROR_TRACK_AUDIT_KINDS = ["track.put", "track.deleted"] as const;
@@ -314,6 +318,8 @@ export const MIRROR_BEE_RECORD_KEYS = [
   "cellId",
   // v23: in-flight handoff pointer.
   "activeHandoffId",
+  "lastTurnTrigger",
+  "lastHumanOutputAt",
 ] as const;
 export const MIRROR_RAW_BEE_ENV_KEYS = ["CLAUDE_CONFIG_DIR", "CODEX_HOME", "GROK_HOME"] as const;
 export const MIRROR_RUNTIME_KEYS = [

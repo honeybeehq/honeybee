@@ -63,6 +63,7 @@ export interface DriverObservation {
    * bee's spawn-failure budget exactly like an exit during `booting`.
    */
   synthetic?: boolean;
+  messageId?: number;
 }
 
 export interface DeliverOutcome {

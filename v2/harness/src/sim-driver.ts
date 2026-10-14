@@ -99,7 +99,7 @@ export class SimDriver implements RuntimeDriver {
       p.phase = "running";
       p.turnEndsAt = this.now() + this.prng.int(this.cfg.turnDuration[0], this.cfg.turnDuration[1]);
       p.hungTurn = !this.quiescent && this.prng.chance(this.cfg.hangProbability);
-      this.events.push({ beeId, generation, kind: "turn_started" });
+      this.events.push({ beeId, generation, kind: "turn_started", messageId });
     }
     return { accepted: true };
   }

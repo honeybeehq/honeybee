@@ -79,6 +79,8 @@ function mapBee(r: Row): BeeRow {
     cellId: (r.cell_id as string | null | undefined) ?? null,
     // v23 column; same tolerance.
     activeHandoffId: (r.active_handoff_id as string | null | undefined) ?? null,
+    lastTurnTrigger: r.last_turn_trigger == null ? null : JSON.parse(String(r.last_turn_trigger)) as BeeRow["lastTurnTrigger"],
+    lastHumanOutputAt: r.last_human_output_at == null ? null : Number(r.last_human_output_at),
   };
 }
 
