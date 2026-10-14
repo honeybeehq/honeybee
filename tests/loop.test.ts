@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { scaledMs } from "./timeScale.js";
 
 import { buildLoopConfig, coerceDuration, parseContextMode } from "../src/loop/context.js";
 import {
@@ -1009,7 +1010,7 @@ test("listFlows includes the built-in loop flow", async () => {
 
 function fixtureCompletes(): string {
   return `
-const { mkdir, writeFile, readFile } = require('node:fs/promises');
+const { mkdir, writeFile, readFile, rename } = require('node:fs/promises');
 const { join } = require('node:path');
 async function main() {
   if (process.argv[2] !== '__flow-exec') { process.exit(2); }
@@ -1025,8 +1026,10 @@ async function main() {
   const metaPath = join(runDir, 'meta.json');
   const meta = JSON.parse(await readFile(metaPath, 'utf8'));
   const endedAt = new Date().toISOString();
-  await writeFile(metaPath, JSON.stringify({ ...meta, status: 'ok', endedAt }, null, 2) + '\\n');
-  await writeFile(join(runDir, 'result.json'), JSON.stringify({ runId, flowName, status: 'ok', startedAt: meta.startedAt, endedAt, value: 'ok' }, null, 2) + '\\n');
+  await writeFile(join(runDir, 'result.json.tmp'), JSON.stringify({ runId, flowName, status: 'ok', startedAt: meta.startedAt, endedAt, value: 'ok' }, null, 2) + '\\n');
+  await rename(join(runDir, 'result.json.tmp'), join(runDir, 'result.json'));
+  await writeFile(metaPath + '.tmp', JSON.stringify({ ...meta, status: 'ok', endedAt }, null, 2) + '\\n');
+  await rename(metaPath + '.tmp', metaPath);
 }
 main().catch((e) => { console.error(e); process.exit(1); });
 `;
@@ -1042,7 +1045,7 @@ test("spawnDetachedRun(loopFlow, …) honors __flow-exec contract and writes met
       assert.match(result.runId, /^[0-9A-Z]{13}-[0-9a-f]{4}$/);
       assert.equal(result.pgid, result.pid);
       // Reap: wait for the child to flip meta to ok.
-      const deadline = Date.now() + 5_000;
+      const deadline = Date.now() + scaledMs(5_000);
       let meta = await readMeta("loop", result.runId);
       while ((!meta || meta.status === "running") && Date.now() < deadline) {
         await sleep(50);
