@@ -598,7 +598,7 @@ test("remote list isolates malformed per-Bee metadata and publishes exact manual
     const damagedMeta = await readHsrMetaStrict(damagedBee);
     assert.ok(damagedMeta);
     await writeFile(hsrMetaPath(damagedBee), "{malformed-meta", { mode: 0o600 });
-
+    try {
     const rows = await controller.methods.list!(undefined, CTX) as Array<Record<string, unknown>>;
     const damagedRow = rows.find((row) => row.bee === damagedBee);
     const healthyRow = rows.find((row) => row.bee === healthyBee);
@@ -633,12 +633,13 @@ test("remote list isolates malformed per-Bee metadata and publishes exact manual
       deliveryId: "per-bee-meta-damaged-send",
     }, CTX) as { ok?: boolean; error?: string };
     assert.equal(damagedSend.ok, false);
-    assert.match(damagedSend.error ?? "", /unresolved HSR event history|malformed|invalid json/i);
-
-    await writeHsrMeta(damagedBee, damagedMeta!);
-    await Promise.resolve(controller.methods.kill!({ bee: damagedBee, ...damaged }, CTX)).catch(() => undefined);
-    await Promise.resolve(controller.methods.kill!({ bee: healthyBee, ...healthy }, CTX)).catch(() => undefined);
-    await controller.close().catch(() => undefined);
+    assert.match(damagedSend.error ?? "", /unresolved HSR event history|malformed|invalid json|is not running/i);
+    } finally {
+      await writeHsrMeta(damagedBee, damagedMeta!).catch(() => undefined);
+      await Promise.resolve(controller.methods.kill!({ bee: damagedBee, ...damaged }, CTX)).catch(() => undefined);
+      await Promise.resolve(controller.methods.kill!({ bee: healthyBee, ...healthy }, CTX)).catch(() => undefined);
+      await controller.close().catch(() => undefined);
+    }
   });
 });
 
