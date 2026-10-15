@@ -36,6 +36,11 @@ test("keychain test guard: a test process refuses the real security binary befor
   await assert.rejects(readClaudeKeychainState("/tmp/home", { available: () => true }), /may not run the real security binary/);
   assert.equal(execs, 0, "the refusal comes before any exec");
 
+  const binary = join(dir, "copied-binary");
+  writeFileSync(binary, Buffer.from([0xcf, 0xfa, 0xed, 0xfe, 0x0c, 0x00, 0x00, 0x01]));
+  chmodSync(binary, 0o755);
+  assert.throws(() => securityExecutable({ HIVE_TEST_REAP_RUNTIMES_ON_SHUTDOWN: "1", HIVE_TEST_SECURITY_BIN: binary }), /is not a script/, "a copied Mach-O binary is refused");
+
   const shim = join(dir, "security");
   writeFileSync(shim, "#!/bin/sh\nexit 44\n");
   chmodSync(shim, 0o755);

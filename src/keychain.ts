@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { homedir, userInfo } from "node:os";
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
 import { promisify } from "node:util";
 
@@ -57,6 +57,9 @@ export function securityExecutable(env: NodeJS.ProcessEnv = process.env): string
   const shim = env.HIVE_TEST_SECURITY_BIN?.trim();
   if (!shim || !isAbsolute(shim) || !existsSync(shim)) {
     throw new Error("keychain: a test process may not run the real security binary; set HIVE_TEST_SECURITY_BIN to a fake shim or HIVE_NO_KEYCHAIN=1");
+  }
+  if (!readFileSync(shim).subarray(0, 2).equals(Buffer.from("#!"))) {
+    throw new Error(`keychain: HIVE_TEST_SECURITY_BIN ${shim} is not a script; a fake security shim must start with #!`);
   }
   if (existsSync("/usr/bin/security") && realpathSync(shim) === realpathSync("/usr/bin/security")) {
     throw new Error(`keychain: HIVE_TEST_SECURITY_BIN ${shim} is the real security binary`);
