@@ -1,9 +1,1 @@
-# fix a5681b83: psutil runZombieCensus execFile("/bin/ps") throws spawn EPERM under Seatbelt; these run trap-only until it is on main
-v2/cli/tests/cli.test.ts
-v2/daemon/tests/cell-move.test.ts
-v2/daemon/tests/cells.test.ts
-v2/daemon/tests/daemon-shutdown.test.ts
-v2/daemon/tests/handoff-rpc.test.ts
-v2/daemon/tests/integration.test.ts
-v2/daemon/tests/runner-host-artifact.test.ts
-v2/daemon/tests/thread-operations.test.ts
+# fix d3ea6770 landed: runZombieCensus no longer throws when /bin/ps cannot exec under Seatbelt, so no file needs a trap-only exception
