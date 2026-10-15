@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { scaledMs } from "./timeScale.js";
@@ -470,16 +470,16 @@ function processGroupAlive(pgid: number): boolean {
   }
 }
 
-test("local launcher keeps a fake HOME that exists as a directory without HIVE_REAL_HOME", { timeout: 30_000 }, async () => {
-  const target = `hive-launch-fake-home-${process.pid}`;
-  const dir = await mkdtemp(join(tmpdir(), "hive-launch-fake-home-"));
-  const fakeHome = join(dir, "home");
-  await mkdir(fakeHome);
+test("local launcher replaces an inherited scratch HOME with the account home unless HIVE_REAL_HOME names it", { timeout: 30_000 }, async () => {
+  const target = `hive-launch-scratch-home-${process.pid}`;
+  const dir = await mkdtemp(join(tmpdir(), "hive-launch-scratch-home-"));
+  const scratchHome = join(dir, "home");
+  await mkdir(scratchHome);
   const out = join(dir, "home.txt");
   const previousHome = process.env.HOME;
   const previousRealHome = process.env.HIVE_REAL_HOME;
   try {
-    process.env.HOME = fakeHome;
+    process.env.HOME = scratchHome;
     delete process.env.HIVE_REAL_HOME;
 
     await newSession(target, "/tmp", {
@@ -487,7 +487,7 @@ test("local launcher keeps a fake HOME that exists as a directory without HIVE_R
       args: ["-e", `require("node:fs").writeFileSync(${JSON.stringify(out)}, process.env.HOME || ""); setTimeout(() => {}, 60_000)`],
     });
 
-    assert.equal(await waitForFile(out), fakeHome, "the pane runs with the HOME the launcher's environment named");
+    assert.equal(await waitForFile(out), userInfo().homedir, "an inherited scratch HOME never reaches the pane");
   } finally {
     if (previousHome === undefined) delete process.env.HOME;
     else process.env.HOME = previousHome;
