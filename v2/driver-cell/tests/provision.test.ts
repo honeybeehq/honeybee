@@ -121,6 +121,14 @@ test("provision.clone: fallback places a fresh .git, records copy_mode=clone, ne
     const pushed = provisionCell(rig.cellsRoot, req(rig, { beeId: "bee-3", wrapper: "bee-3", cellId: "c3" }), "cmd-3", { disableCow: true });
     assert.equal(g(pushed.paths.spaceDir, ["remote", "get-url", "origin"]), "ssh://git@github.invalid/example/fixture.git");
     assert.equal(g(pushed.paths.spaceDir, ["remote", "get-url", "--push", "origin"]), "ssh://git@github.invalid/example/fixture-push.git");
+
+    g(rig.origin.repo, ["remote", "set-url", "--", "origin", "-f"]);
+    g(rig.origin.repo, ["remote", "set-url", "--push", "--", "origin", "-p"]);
+    const dashed = provisionCell(rig.cellsRoot, req(rig, { beeId: "bee-4", wrapper: "bee-4", cellId: "c4" }), "cmd-4", { disableCow: true });
+    assert.equal(dashed.copyMode, "clone");
+    assert.equal(g(dashed.paths.spaceDir, ["rev-parse", "HEAD"]), rig.origin.sha);
+    assert.equal(g(dashed.paths.spaceDir, ["remote", "get-url", "origin"]), "-f");
+    assert.equal(g(dashed.paths.spaceDir, ["remote", "get-url", "--push", "origin"]), "-p");
   } finally {
     rig.cleanup();
   }

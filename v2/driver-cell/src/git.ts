@@ -197,10 +197,10 @@ export function adoptOriginRemote(originRepo: string, spaceDir: string): void {
   const url = remote.status === 0 ? remote.stdout.trim() : "";
   if (url.length === 0) return;
   const existing = tryGit(spaceDir, ["remote", "get-url", "origin"]).status === 0;
-  git(spaceDir, ["remote", existing ? "set-url" : "add", "origin", url]);
+  git(spaceDir, ["remote", existing ? "set-url" : "add", "--", "origin", url]);
   const push = tryGit(originRepo, ["remote", "get-url", "--push", "origin"]);
   const pushUrl = push.status === 0 ? push.stdout.trim() : "";
-  if (pushUrl.length > 0 && pushUrl !== url) git(spaceDir, ["remote", "set-url", "--push", "origin", pushUrl]);
+  if (pushUrl.length > 0 && pushUrl !== url) git(spaceDir, ["remote", "set-url", "--push", "--", "origin", pushUrl]);
 }
 
 /** rev-parse a ref; null when it does not resolve. */
