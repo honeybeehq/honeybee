@@ -39,7 +39,6 @@ import {
   type GitImagePlacement,
 } from "./gitImage.ts";
 import { cellPaths, parseSpaceName, type CellPaths } from "./layout.ts";
-import { adoptOriginRemote } from "./upstream.ts";
 import {
   isProvisioned,
   newLedger,
@@ -380,7 +379,7 @@ function runProvisionOperation(
     }
     if (mode === "clone") {
       git(paths.boxDir, ["clone", "--local", "--no-checkout", req.originRepo, paths.spaceDir]);
-      adoptOriginRemote(req.originRepo, paths.spaceDir);
+      adoptOriginRemote(req.originRepo, paths.spaceDir, { trackingRefs: true });
     }
     op.steps.git_placed = { mode, at: cfg.now(), ...(image == null ? {} : { image }) };
     ledger.copy_mode = mode;
@@ -395,8 +394,6 @@ function runProvisionOperation(
       scrubCowGitDir(gitDir);
       git(paths.spaceDir, ["config", "core.hooksPath", paths.emptyHooksDir]);
       git(paths.spaceDir, ["config", "core.fsmonitor", "false"]);
-    } else if (op.steps.git_placed.mode === "clone") {
-      adoptOriginRemote(paths.spaceDir, req.originRepo);
     }
     op.steps.hygiene = { at: cfg.now() };
     save();

@@ -71,7 +71,6 @@ export type {
 } from "./retentionWorker.ts";
 export {
   UPSTREAM_REF,
-  adoptOriginRemote,
   mirrorDirFor,
   originFetchUrl,
   readUpstreamMirror,

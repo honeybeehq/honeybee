@@ -192,7 +192,7 @@ export function git(cwd: string, args: string[]): string {
   return res.stdout.trim();
 }
 
-export function adoptOriginRemote(originRepo: string, spaceDir: string): void {
+export function adoptOriginRemote(originRepo: string, spaceDir: string, opts: { trackingRefs?: boolean } = {}): void {
   const remote = tryGit(originRepo, ["remote", "get-url", "origin"]);
   const url = remote.status === 0 ? remote.stdout.trim() : "";
   if (url.length === 0) return;
@@ -201,6 +201,44 @@ export function adoptOriginRemote(originRepo: string, spaceDir: string): void {
   const push = tryGit(originRepo, ["remote", "get-url", "--push", "origin"]);
   const pushUrl = push.status === 0 ? push.stdout.trim() : "";
   if (pushUrl.length > 0 && pushUrl !== url) git(spaceDir, ["remote", "set-url", "--push", "--", "origin", pushUrl]);
+  if (opts.trackingRefs === true) adoptOriginTrackingRefs(originRepo, spaceDir);
+}
+
+const OBJECT_NAME = /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/;
+
+function adoptOriginTrackingRefs(originRepo: string, spaceDir: string): void {
+  const upstream = tryGit(originRepo, ["rev-parse", "@{upstream}", "--symbolic-full-name", "@{upstream}"]);
+  const [upstreamTip, upstreamRef] = upstream.status === 0 ? upstream.stdout.split("\n") : [];
+  const onOrigin = upstreamRef?.startsWith("refs/remotes/origin/") === true && upstreamTip != null && OBJECT_NAME.test(upstreamTip);
+  const tip = onOrigin ? upstreamTip as string : null;
+  const trackingRef = onOrigin ? upstreamRef as string : null;
+  const localRef = trackingRef == null ? null : `refs/heads/${trackingRef.slice("refs/remotes/origin/".length)}`;
+  const listed = tryGit(spaceDir, [
+    "for-each-ref", "--format=%(refname) %(objectname) %(symref)", "refs/remotes/origin/", ...(localRef == null ? [] : [localRef]),
+  ]);
+  const refs = (listed.status === 0 ? listed.stdout.split("\n") : [])
+    .filter((line) => line.length > 0)
+    .map((line) => {
+      const [name, sha, symref] = line.split(" ");
+      return { name: name as string, sha: sha as string, symref: symref ?? "" };
+    });
+  const deletes = refs
+    .filter((ref) => ref.name.startsWith("refs/remotes/origin/") && ref.name !== trackingRef)
+    .filter((ref) => trackingRef == null || ref.symref !== trackingRef)
+    .map((ref) => `delete ${ref.name}\n`);
+  const updates: string[] = [];
+  if (trackingRef != null && tip != null) {
+    updates.push(`update ${trackingRef} ${tip}\n`);
+    const local = refs.find((ref) => ref.name === localRef);
+    if (local != null && local.sha !== tip && isAncestor(spaceDir, local.sha, tip)) {
+      updates.push(`update ${localRef} ${tip} ${local.sha}\n`);
+    }
+  }
+  if (deletes.length + updates.length === 0) return;
+  const applied = tryGit(spaceDir, ["update-ref", "--no-deref", "--stdin"], { input: [...deletes, ...updates].join("") });
+  if (applied.status !== 0 && deletes.length > 0) {
+    tryGit(spaceDir, ["update-ref", "--no-deref", "--stdin"], { input: deletes.join("") });
+  }
 }
 
 /** rev-parse a ref; null when it does not resolve. */
