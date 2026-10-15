@@ -28,10 +28,12 @@ setTmuxSocket(process.env.HIVE_TMUX_SOCKET);
 
 // Redirect every agent launch to a harmless long-lived process so the tmux pane
 // stays alive but no real CLI ever runs. The resume/model args we append still
-// land in the frozen command, which is what the C1/model assertions inspect.
+// land in the frozen command, which is what the C1/model assertions inspect;
+// the trailing `--` makes the stub ignore them instead of exiting at once,
+// which on a loaded host could close the pane before birth admission.
 const AGENT_CMD_ENV = {
-  HIVE_CLAUDE_CMD: "sleep 600",
-  HIVE_CODEX_CMD: "sleep 600",
+  HIVE_CLAUDE_CMD: "sh -c 'sleep 600' --",
+  HIVE_CODEX_CMD: "sh -c 'sleep 600' --",
 };
 
 after(async () => {
@@ -387,10 +389,7 @@ test("fork smoke: the spawned fork session is actually live", { timeout: 40_000 
   try {
     await seedParent(storeRoot, parentName, cwd, { providerSessionId: "PS-1" });
     // --seed none boots cold (no resume/model args appended), so the stub
-    // command stays a clean `sleep 600` that keeps the pane — and the server —
-    // alive for the liveness assertion. (Resume forks append flags the `sleep`
-    // stub rejects, which is fine for the command-string assertions in C1 but
-    // would kill the pane here.)
+    // command stays clean for the liveness assertion.
     const fork = await runCli(["fork", parentName, "--seed", "none", "--no-wait"], env);
     assert.equal(fork.code, 0, fork.stderr);
     const forkRec = forkRecordOf(await listRecords(storeRoot), parentName);
