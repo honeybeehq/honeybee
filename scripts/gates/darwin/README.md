@@ -49,6 +49,11 @@ sh scripts/gates/darwin/gate-run.sh > .dg.sh
 - The probe must find `security` resolving to the fake both inside and outside Seatbelt, else exit 97.
 - This stays permanently, even after the Keychain fix lands. Code that runs `/usr/bin/security` by absolute path would bypass it; none does today.
 
+**Known hosts (2026-10-15):** macOS AppleSystemPolicy kills the ad-hoc ps shim on some builds, even outside Seatbelt. The gate tries the shim right after building it, before `npm ci`, and on such a host refuses with exit 97, naming the macOS build.
+- trmd-erebor-mini02, macOS 26.6.2 (25G83): runs the gate.
+- trmd-moria-mini03, macOS 26.3 (25D125): refused.
+- trmd-hobbiton-mini04 and trmd-lorien-mini05, macOS 26.4 (25E246): refused.
+
 **Every file runs:** each test file runs separately, so one failure doesn't stop the rest.
 - Files that spawn `sandbox: true` Cells run trap-only, because nested sandbox-exec is refused.
 - So do the files listed in `seatbelt-exceptions.txt`. Its header names the fix that removes the need for it; delete the listed lines once that fix is on main.

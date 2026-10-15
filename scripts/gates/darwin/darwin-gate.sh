@@ -301,6 +301,8 @@ export SCG_SECURITY_CALLS=$GATE_ROOT/security-calls
 : > "$SCG_SECURITY_CALLS"
 printf '#!/bin/sh\nprintf "%%s pid=%%s ppid=%%s argv=%%s\\n" "$(date -u +%%Y-%%m-%%dT%%H:%%M:%%SZ)" "$$" "$PPID" "$*" >> "%s"\nexit 1\n' "$SCG_SECURITY_CALLS" > "$SCG_PS_SHIM/security" && chmod 755 "$SCG_PS_SHIM/security" || { echo "REFUSING: cannot install the fake security"; rm -rf "$GATE_ROOT"; exit 94; }
 export PATH="$SCG_PS_SHIM:$PATH"
+"$SCG_PS_SHIM/ps" -p $$ -o lstart= 2>/dev/null | grep -qE '[0-9]{2}:[0-9]{2}:[0-9]{2} [0-9]{4}' || { echo "REFUSING: host security policy (AppleSystemPolicy) kills the ad-hoc ps shim on macOS $(sw_vers -productVersion) $(sw_vers -buildVersion); this host cannot run the darwin gate"; rm -rf "$GATE_ROOT"; exit 97; }
+echo "probe: ps shim runs outside Seatbelt (ok)"
 SOCK_LEN=$(printf %s "$TMPDIR/hb-v2-daemon-XXXXXX/hived.sock" | wc -c | tr -d ' ')
 [ "$SOCK_LEN" -lt 104 ] || { echo "REFUSING: test socket path would be $SOCK_LEN bytes (>= 104)"; rm -rf "$GATE_ROOT"; exit 94; }
 export SCG_TRAP=$GATE_ROOT/net-trap.mjs SCG_NET_VIOLATIONS=$GATE_ROOT/net-violations
