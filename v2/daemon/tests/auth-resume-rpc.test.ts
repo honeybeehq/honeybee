@@ -13,7 +13,7 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { AUTH_CONTINUE_BODY, AUTH_RESUME_SENDER, type AuthInterruptionRow } from "../../core/src/index.ts";
+import { AUTH_CONTINUE_BODY, AUTH_RESUME_SENDER, openCoreStore, type AuthInterruptionRow } from "../../core/src/index.ts";
 import type { RpcClient } from "../../cli/src/client.ts";
 import {
   RpcError,
@@ -22,9 +22,11 @@ import {
   type AccountInterruptionsResult,
   type MailboxResult,
   type SendRpcResult,
+  type SnapshotResult,
   type SpawnResult,
   type SwapAccountResult,
   type ViewResult,
+  type WatchFrame,
 } from "../src/protocol.ts";
 import { makeDaemonDir, sleep, startDaemon, waitFor, type DaemonHandle } from "./helpers.ts";
 
@@ -387,6 +389,62 @@ test("auth-resume.6: recovering a centrally managed account — the login does n
     const done = await interruptionWhere(client, bee, (row) => row.state === "completed", "resumed by the enabling rotation");
     assert.deepEqual([done.restoredBy, done.continuationKind], ["refresh", "redeliver"]);
     assert.deepEqual(continuations(await mailbox(client, bee), sent.messageId).map((m) => [m.body, m.deliveredGeneration]), [["finish after recovery", 2]]);
+    client.close();
+  } finally {
+    if (daemon) await daemon.stop();
+    cleanup();
+    await new Promise<void>((resolve) => provider.close(() => resolve()));
+  }
+});
+
+test("auth-resume.7: a readable limits probe on an account with 300 bees and nothing open reaches a watcher as deltas, never a gap", async () => {
+  const provider = createServer((request, response) => {
+    request.resume();
+    request.on("end", () => {
+      response.setHeader("Content-Type", "application/json");
+      response.end(JSON.stringify({ five_hour: { utilization: 10, resets_at: new Date(Date.now() + 3_600_000).toISOString() }, seven_day: { utilization: 20, resets_at: new Date(Date.now() + 86_400_000).toISOString() } }));
+    });
+  });
+  await new Promise<void>((resolve) => provider.listen(0, "127.0.0.1", resolve));
+  const env = { HIVE_CLAUDE_OAUTH_TOKEN_URL: DEAD_ENDPOINT, HIVE_CLAUDE_USAGE_URL: `http://127.0.0.1:${(provider.address() as AddressInfo).port}/api/oauth/usage` };
+  const { dir, cleanup } = rig();
+  let daemon: DaemonHandle | null = null;
+  try {
+    daemon = await startDaemon(dir, { env });
+    const setup = await daemon.client();
+    const account = await addAccount(setup, dir, "fleet");
+    setup.close();
+    await daemon.stop();
+    daemon = null;
+    const seed = openCoreStore(join(dir, "core.sqlite3"));
+    for (let i = 0; i < 300; i++) {
+      const { bee } = seed.createBee({ name: `fleet-${i}`, agent: "claude", substrate: "hsr", cwd: dir, account });
+      if (i % 2 === 0) seed.archiveBee(bee.id);
+    }
+    const { bee: flagged } = seed.createBee({ name: "fleet-flagged", agent: "claude", substrate: "hsr", cwd: dir, account });
+    seed.setFlag(flagged.id, "auth_needed", "Not logged in");
+    seed.archiveBee(flagged.id);
+    seed.close();
+
+    daemon = await startDaemon(dir, { env });
+    const client = await daemon.client();
+    const watcher = await daemon.client();
+    const frames: WatchFrame[] = [];
+    let cursor = -1;
+    watcher.onEvent = (frame: WatchFrame) => {
+      frames.push(frame);
+      cursor = frame.seq;
+    };
+    cursor = (await watcher.request<SnapshotResult>("watch")).seq;
+    await client.request("account.limits", { id: account });
+    const after = (await client.request<SnapshotResult>("snapshot")).seq;
+    await waitFor(() => cursor >= after, "watcher caught up with the probe", 12_000);
+    assert.deepEqual(frames.filter((frame) => frame.type === "gap"), []);
+    const kinds = frames.flatMap((frame) => (frame.type === "delta" ? frame.events.map((event) => event.kind) : []));
+    assert.ok(kinds.length > 0, "the probe reached the watcher as deltas");
+    assert.equal(kinds.filter((kind) => kind === "flag.clear_noop").length, 0);
+    assert.equal(kinds.filter((kind) => kind === "flag.cleared").length, 1, "the probe validated the account and cleared the one open flag");
+    watcher.close();
     client.close();
   } finally {
     if (daemon) await daemon.stop();

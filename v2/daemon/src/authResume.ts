@@ -109,6 +109,7 @@ export class AuthResume {
         let row = live.get(beeId);
         // A failure recorded against another account says nothing about this one.
         if (row && row.account !== account.id) continue;
+        if (!row && !this.store.activeFlags(beeId).some((flag) => flag.flag === "auth_needed")) continue;
         if (row?.deathRecovery && this.holdsStoppedRuntime(row)) {
           const recovery = row.deathRecovery;
           const current = this.material?.(this.store.getAccount(account.id) ?? account);

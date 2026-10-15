@@ -160,3 +160,38 @@ test("auth resume: a restore clears flags by where the failure came from, not on
     r.cleanup();
   }
 });
+
+test("auth resume: a probe tick touches only bees with an open flag or interruption; 300 bees with neither write nothing", () => {
+  const r = rig();
+  try {
+    const { store, resume } = r.open();
+    const a = account(store, "claude-a");
+    for (let i = 0; i < 300; i++) {
+      const { bee } = store.createBee({ name: `quiet-${i}`, agent: "claude", substrate: "hsr", cwd: "/tmp/w", account: a.id });
+      if (i % 2 === 0) store.archiveBee(bee.id);
+    }
+    const archivedCut = idleBee(store, "archived-cut", a.id);
+    cutOff(store, resume, archivedCut);
+    store.updateRuntimeState(archivedCut, 1, "stopped", { exitCause: "clean" });
+    store.archiveBee(archivedCut);
+    const archivedFlagOnly = idleBee(store, "archived-flag-only", a.id);
+    store.setFlag(archivedFlagOnly, "auth_needed", "Not logged in");
+    store.archiveBee(archivedFlagOnly);
+    const before = store.lastAuditSeq();
+
+    const receipt = resume.credentialValidated(a, "limits_probe");
+    const kinds = store.auditRows(before).map((row) => row.kind);
+    assert.equal(kinds.filter((kind) => kind === "flag.clear_noop").length, 0);
+    assert.deepEqual([...receipt.clearedBeeIds].sort(), [archivedCut, archivedFlagOnly].sort());
+    assert.deepEqual([store.activeFlags(archivedCut), store.activeFlags(archivedFlagOnly)], [[], []]);
+    assert.deepEqual(store.listAuthInterruptions({ beeId: archivedCut }).map((row) => [row.state, row.settleReason]), [["cancelled", "archived"]]);
+    assert.equal(store.getBee(archivedCut)?.lifecycle, "archived");
+
+    const quiet = store.lastAuditSeq();
+    assert.deepEqual(resume.credentialValidated(a, "limits_probe").clearedBeeIds, []);
+    assert.equal(store.lastAuditSeq(), quiet, "a tick with nothing open writes no audit row");
+    store.close();
+  } finally {
+    r.cleanup();
+  }
+});
