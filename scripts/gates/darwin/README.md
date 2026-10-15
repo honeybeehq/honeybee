@@ -28,7 +28,7 @@ sh scripts/gates/darwin/gate-run.sh > .dg.sh
 - Stage 2 re-runs under `env -i`.
 - Fake HOME, TMPDIR, XDG dirs and provider homes live under a run root shorter than 40 bytes (`~/.cache/scg/r.XXXXXX`).
 - `HIVE_REAL_HOME` is set to the fake HOME and is the only `HIVE_*` variable.
-- Real `npm ci`; a symlinked `node_modules` is refused.
+- Real `npm ci`; a symlinked `node_modules` is refused. The pnpm store points into the run root (`$GATE_ROOT/pnpm-store`), never `~/Library/pnpm`.
 
 **HOME sentinel:** before and after, on the real HOME top level, `~/.hive/v2` and `hived.sock`. The gate refuses to start without a valid before-snapshot, and any change FAILs.
 
@@ -88,6 +88,13 @@ Before and after, on `~/Library/Preferences` and on Application Support, Logs, C
 - any removal under Application Support, Logs, Caches, Containers or LaunchAgents (a removed plist WARNs unless it is ours);
 - any path containing our names (`dev.apiary.`, `dev.honeybee.`, `com.trmd.apiary`, `com.github.Electron`, `Apiary`/`apiary`, `Honeybee`/`honeybee`);
 - anything else that no rule below covers.
+
+**Fail-closed scan:** every `find`, `stat` and `plutil` error in the ~/Library scan goes to the run root's `lib.errors`.
+- The verdict and the GATE RESULT line print the error count. Any error is a FAIL with the lines printed; in the before-snapshot it refuses with exit 92.
+- An absent optional area directory (for example no LaunchAgents) is recorded explicitly as `ABSENT|<area>` and is not an error. If it appears later it is a change; if a present area disappears it is a removal.
+- A missing `~/Library/Preferences` is an error.
+
+**Key names, every run:** for every watched plist (our app and lab ids, `com.github.Electron*`, `io.tailscale.*`, `.GlobalPreferences.plist`, `com.apple.spaces.plist`), the before and after key-name sets are compared on every run, even when mtime, size and birth time are unchanged. Values are never read into the record.
 
 **WARN (key names only):** modified `com.apple.*` plists; `io.tailscale.*` plists with an unchanged key set; `.GlobalPreferences.plist`; `com.apple.spaces.plist`.
 

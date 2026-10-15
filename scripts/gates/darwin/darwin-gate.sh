@@ -132,12 +132,17 @@ claude_attribution() {
   if [ -n "$foreign" ]; then echo "host shared: foreign Claude CLI pids $foreign; no gate-owned Claude CLI seen"; return 0; fi
   echo "unknown: no Claude CLI process seen by the census"; return 1
 }
-plist_keys() { plutil -convert xml1 -o - "$1" 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{let depth=0,keys=[];const re=/<(\/?)(dict|key)>([^<]*)/g;let m;while((m=re.exec(s))){if(m[2]==="dict"){depth+=m[1]?-1:1}else if(!m[1]&&depth===1)keys.push(m[3])}console.log(keys.sort().join(","))})'; }
+plist_keys() { plutil -convert xml1 -o - "$1" 2>>"$LIB_ERR" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{let depth=0,keys=[];const re=/<(\/?)(dict|key)>([^<]*)/g;let m;while((m=re.exec(s))){if(m[2]==="dict"){depth+=m[1]?-1:1}else if(!m[1]&&depth===1)keys.push(m[3])}console.log(keys.sort().join(","))})'; }
 lib_watch() { case "$1" in com.github.Electron*|dev.apiary.*|dev.honeybee.*|com.trmd.apiary*|io.tailscale.*|.GlobalPreferences.plist|com.apple.spaces.plist) return 0;; esac; for i in ${SCG_LAB_BUNDLE_IDS:-}; do case "$1" in "$i"*) return 0;; esac; done; return 1; }
 lib_snap() {
-  ( cd "$LIB/Preferences" 2>/dev/null && for f in .[!.]*.plist *.plist; do [ -f "$f" ] && stat -f "%N|%B|%m|%z" "$f"; done ) | sort > "$1.prefs"
+  if [ -d "$LIB/Preferences" ]; then
+    ( cd "$LIB/Preferences" && for f in .[!.]*.plist *.plist; do [ -f "$f" ] && stat -f "%N|%B|%m|%z" "$f"; done ) 2>>"$LIB_ERR" | sort > "$1.prefs"
+  else echo "$1: ~/Library/Preferences is missing" >> "$LIB_ERR"; : > "$1.prefs"; fi
   : > "$1.keys"; while IFS='|' read -r n _; do lib_watch "$n" && echo "$n|$(plist_keys "$LIB/Preferences/$n")" >> "$1.keys"; done < "$1.prefs"
-  ( IFS='|'; for a in $LIB_AREAS; do find "$LIB/$a" -maxdepth 2 2>/dev/null | while read -r p; do echo "$(stat -f %i "$p" 2>/dev/null)|${p#$LIB/}"; done; done ) | sort -t'|' -k2 > "$1.areas"
+  ( IFS='|'; for a in $LIB_AREAS; do
+      if [ -d "$LIB/$a" ]; then find "$LIB/$a" -maxdepth 2 | while IFS= read -r p; do echo "$(stat -f %i "$p")|${p#$LIB/}"; done
+      else echo "ABSENT|$a"; fi
+    done ) 2>>"$LIB_ERR" | sort -t'|' -k2 > "$1.areas"
 }
 lib_valid() { [ -s "$1.prefs" ] && [ -s "$1.areas" ] && grep -q '|' "$1.prefs" || { echo "empty ~/Library snapshot"; return 1; }; }
 lib_verdict() {
@@ -147,8 +152,8 @@ lib_verdict() {
     if ! grep -q "^$(printf %s "$n" | sed 's/[.[\*^$]/\\&/g')|" "$b.prefs"; then
       case "$n" in com.apple.*) echo "WARN created $n mtime=$am size=$az";; *) gate_fail "plist CREATED under ~/Library/Preferences: $n (mtime=$am size=$az)";; esac; continue; fi
     IFS='|' read -r _ bb bm bz < <(grep "^$(printf %s "$n" | sed 's/[.[\*^$]/\\&/g')|" "$b.prefs")
-    [ "$bm" = "$am" ] && [ "$bz" = "$az" ] && [ "$bb" = "$ab" ] && continue
-    ak=$(lib_watch "$n" && plist_keys "$LIB/Preferences/$n"); bk=$(grep "^$(printf %s "$n" | sed 's/[.[\*^$]/\\&/g')|" "$b.keys" | cut -d'|' -f2)
+    ak=$(grep "^$(printf %s "$n" | sed 's/[.[\*^$]/\\&/g')|" "$a.keys" | cut -d'|' -f2); bk=$(grep "^$(printf %s "$n" | sed 's/[.[\*^$]/\\&/g')|" "$b.keys" | cut -d'|' -f2)
+    [ "$bm" = "$am" ] && [ "$bz" = "$az" ] && [ "$bb" = "$ab" ] && [ "$ak" = "$bk" ] && continue
     case "$n" in
       com.github.Electron*) extra=""; for k in $(echo "$ak" | tr ',' ' '); do case " $LIB_ELECTRON_OK " in *" $k "*) ;; *) extra="$extra $k";; esac; done
         [ -n "$extra" ] && gate_fail "modified $n carries keys beyond the allowed set:$extra" || echo "WARN modified $n (allowed keys only) mtime=$am size=$az keys=$ak";;
@@ -159,7 +164,7 @@ lib_verdict() {
     esac
   done < "$a.prefs"
   while IFS='|' read -r n _; do grep -q "^$(printf %s "$n" | sed 's/[.[\*^$]/\\&/g')|" "$a.prefs" || { own=0; for i in $LIB_OWN_IDS; do case "$n" in "$i"*) own=1;; esac; done; [ $own = 1 ] && gate_fail "our app plist removed: $n" || echo "WARN plist removed: $n"; }; done < "$b.prefs"
-  local changed; changed=$( ( IFS='|'; for ar in $LIB_AREAS; do find "$LIB/$ar" \( -newer "$GATE_ROOT/lib.marker" -o -cnewer "$GATE_ROOT/lib.marker" \) 2>/dev/null; done ) | sed "s|^$LIB/||" | sort -u)
+  local changed; changed=$( ( IFS='|'; for ar in $LIB_AREAS; do [ -d "$LIB/$ar" ] && find "$LIB/$ar" \( -newer "$GATE_ROOT/lib.marker" -o -cnewer "$GATE_ROOT/lib.marker" \); done ) 2>>"$LIB_ERR" | sed "s|^$LIB/||" | sort -u)
   local gone; gone=$(comm -23 <(cut -d'|' -f2 "$b.areas") <(cut -d'|' -f2 "$a.areas"))
   printf '%s\n' "$changed" | while read -r p; do [ -z "$p" ] && continue
     if owner=$(lib_third_party_owner "$p" "$b.areas"); then echo "WARN third-party ($owner): $p"
@@ -170,6 +175,9 @@ lib_verdict() {
   echo "(~/Library: $(grep -c '^WARN third-party' "$GATE_ROOT/lib.changes") third-party WARN, $(grep -c '^LIBFAIL' "$GATE_ROOT/lib.changes") FAIL)"
   grep -q '^LIBFAIL' "$GATE_ROOT/lib.changes" && gate_fail "~/Library changed outside the Queen-approved third-party list ($(grep -c '^LIBFAIL' "$GATE_ROOT/lib.changes") entries)"
   [ -n "$gone" ] && { printf '%s\n' "$gone" | sed 's/^/LIBFAIL removed: /' | head -20; gate_fail "~/Library entries removed"; }
+  SCG_LIB_ERRORS=$(grep -c . "$LIB_ERR" 2>/dev/null || true)
+  echo "== ~/Library scan errors: ${SCG_LIB_ERRORS:-0}"
+  [ "${SCG_LIB_ERRORS:-0}" -eq 0 ] || { head -40 "$LIB_ERR"; gate_fail "~/Library scan had ${SCG_LIB_ERRORS} find/stat/plutil errors; the sentinel fails closed"; }
   echo "(~/Library verdict done)"
 }
 
@@ -258,15 +266,17 @@ GATE_ROOT=$(mktemp -d "$REAL_HOME/.cache/scg/r.XXXXXX") || { echo "REFUSING: can
 GATE_ROOT_LEN=$(printf %s "$GATE_ROOT" | wc -c | tr -d ' ')
 [ "$GATE_ROOT_LEN" -lt 40 ] || { echo "REFUSING: run root $GATE_ROOT is $GATE_ROOT_LEN bytes (>= 40)"; rm -rf "$GATE_ROOT"; exit 93; }
 home_snap "$GATE_ROOT/sb"; why=$(home_valid "$GATE_ROOT/sb") || { echo "REFUSING: before-sentinel invalid: $why"; rm -rf "$GATE_ROOT"; exit 92; }
+LIB_ERR=$GATE_ROOT/lib.errors; : > "$LIB_ERR"
 touch "$GATE_ROOT/lib.marker"; sleep 1
 lib_snap "$GATE_ROOT/lb"; why=$(lib_valid "$GATE_ROOT/lb") || { echo "REFUSING: ~/Library before-sentinel invalid: $why"; rm -rf "$GATE_ROOT"; exit 92; }
+[ -s "$LIB_ERR" ] && { echo "REFUSING: ~/Library before-snapshot had scan errors:"; head -20 "$LIB_ERR"; rm -rf "$GATE_ROOT"; exit 92; }
 export HOME=$GATE_ROOT/h TMPDIR=$GATE_ROOT/t TMP=$GATE_ROOT/t TEMP=$GATE_ROOT/t
 export XDG_CONFIG_HOME=$HOME/.config XDG_DATA_HOME=$HOME/.local/share XDG_CACHE_HOME=$HOME/.cache XDG_STATE_HOME=$HOME/.local/state XDG_RUNTIME_DIR=$GATE_ROOT/r
 export HIVE_REAL_HOME=$HOME
 export CLAUDE_CONFIG_DIR=$HOME/.claude CODEX_HOME=$HOME/.codex GROK_HOME=$HOME/.grok OPENCODE_CONFIG_DIR=$HOME/.config/opencode KIMI_CODE_HOME=$HOME/.kimi CURSOR_CONFIG_DIR=$HOME/.cursor
 mkdir -p "$HOME" "$TMPDIR" "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_CACHE_HOME" "$XDG_STATE_HOME" "$XDG_RUNTIME_DIR" "$CLAUDE_CONFIG_DIR" "$CODEX_HOME"
 chmod 700 "$XDG_RUNTIME_DIR"
-export npm_config_cache=$REAL_HOME/.npm npm_config_store_dir=$REAL_HOME/Library/pnpm/store
+export npm_config_cache=$REAL_HOME/.npm npm_config_store_dir=$GATE_ROOT/pnpm-store
 SCG_PS_SHIM=$GATE_ROOT/bin
 mkdir -p "$SCG_PS_SHIM" && cp /bin/ps "$SCG_PS_SHIM/ps" && chmod 755 "$SCG_PS_SHIM/ps" && codesign --remove-signature "$SCG_PS_SHIM/ps" && codesign -f -s - "$SCG_PS_SHIM/ps" 2>/dev/null || { echo "REFUSING: cannot build the non-setuid ps shim (Seatbelt refuses setuid /bin/ps)"; rm -rf "$GATE_ROOT"; exit 94; }
 export SCG_SECURITY_CALLS=$GATE_ROOT/security-calls
@@ -311,12 +321,12 @@ gate_finish() {
   lib_snap "$GATE_ROOT/la"
   if why=$(lib_valid "$GATE_ROOT/la"); then lib_verdict "$GATE_ROOT/lb" "$GATE_ROOT/la"; else gate_fail "~/Library after-sentinel invalid: $why"; fi
   [ $rc -eq 0 ] && [ $SCG_RC -ne 0 ] && rc=95
-  mkdir -p "$REAL_HOME/.cache/scg/sentinels"; for f in "$GATE_ROOT"/s[ab].* "$GATE_ROOT"/l[ab].* "$GATE_ROOT/lib.changes" "$GATE_ROOT/net-violations" "$GATE_ROOT/claude.census" "$GATE_ROOT/security-calls"; do [ -f "$f" ] && mv "$f" "$REAL_HOME/.cache/scg/sentinels/$(basename "$GATE_ROOT")-$(basename "$f")"; done
+  mkdir -p "$REAL_HOME/.cache/scg/sentinels"; for f in "$GATE_ROOT"/s[ab].* "$GATE_ROOT"/l[ab].* "$GATE_ROOT/lib.changes" "$GATE_ROOT/net-violations" "$GATE_ROOT/claude.census" "$GATE_ROOT/security-calls" "$GATE_ROOT/lib.errors"; do [ -f "$f" ] && mv "$f" "$REAL_HOME/.cache/scg/sentinels/$(basename "$GATE_ROOT")-$(basename "$f")"; done
   [ $rc -ne 0 ] && [ -d "$GATE_ROOT/logs" ] && mv "$GATE_ROOT/logs" "$REAL_HOME/.cache/scg/sentinels/$(basename "$GATE_ROOT")-logs" && echo "== per-file logs kept in $REAL_HOME/.cache/scg/sentinels/$(basename "$GATE_ROOT")-logs"
   gate_logs_sweep
   rm -rf "$GATE_ROOT"
   gate_lock_release
-  echo "== GATE RESULT: $([ $rc -eq 0 ] && echo PASS || echo "FAIL (rc=$rc)") · $SCG_GATE_VERSION · forage run $(basename "$SCG_FORAGE_JOB") · lane $SCG_LANE · snapshot $SCG_SNAPSHOT${SCG_SOURCE_SHA:+ · source $SCG_SOURCE_SHA}${SCG_SCRIPTS:+ · scripts $SCG_SCRIPTS} · EXCLUDED $(echo ${SCG_EXCLUDED:-} | wc -w | tr -d ' ') [$(echo ${SCG_EXCLUDED:-})]"
+  echo "== GATE RESULT: $([ $rc -eq 0 ] && echo PASS || echo "FAIL (rc=$rc)") · $SCG_GATE_VERSION · forage run $(basename "$SCG_FORAGE_JOB") · lane $SCG_LANE · snapshot $SCG_SNAPSHOT${SCG_SOURCE_SHA:+ · source $SCG_SOURCE_SHA}${SCG_SCRIPTS:+ · scripts $SCG_SCRIPTS} · ~/Library scan errors ${SCG_LIB_ERRORS:-n/a} · EXCLUDED $(echo ${SCG_EXCLUDED:-} | wc -w | tr -d ' ') [$(echo ${SCG_EXCLUDED:-})]"
   exit $rc
 }
 trap gate_finish EXIT
