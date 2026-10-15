@@ -266,7 +266,7 @@ test("rpc account.resetLimits: duplicate keys return one effect; uncertain and w
   const { dir, cleanup } = makeDaemonDir();
   let daemon: DaemonHandle | null = null;
   try {
-    const stub = join(dir, "codex-reset-stub");
+    const stub = join(dir, "codex-reset-stub.cjs");
     const calls = join(dir, "reset-calls.jsonl");
     writeFileSync(stub, [
       "#!/usr/bin/env node",

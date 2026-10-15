@@ -738,7 +738,7 @@ test("reset limits: passes one key through consume, accepts only closed outcomes
 test("reset transport: sends the supplied key, refreshes after redemption, and rejects unknown outcomes", async () => {
   const r = rig();
   try {
-    const stub = join(r.dir, "codex-reset-stub");
+    const stub = join(r.dir, "codex-reset-stub.cjs");
     const writeStub = (outcome: string) => {
       writeFileSync(stub, [
         "#!/usr/bin/env node",

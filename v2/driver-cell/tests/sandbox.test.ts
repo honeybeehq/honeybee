@@ -245,6 +245,7 @@ test("sandbox.darwin-scratch: only the user's own temp dir of /private/var/folde
 });
 
 test("sandbox.seatbelt-user-temp: mktemp works and the user cache dir is denied (darwin)", { skip: !IS_DARWIN }, () => {
+  mkdirSync(join(homedir(), ".cache"), { recursive: true });
   const root = mkdtempSync(join(homedir(), ".cache", "hb-v2-sb-temp-"));
   try {
     const cellDir = join(root, "cell");
