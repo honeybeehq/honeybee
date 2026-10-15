@@ -240,6 +240,7 @@ test("verified idle death parks silently while mid-turn death recovers; uncertai
       transition: async (bee, event) => { transitions.push([bee, event]); },
       now: () => START,
       random: () => 0.5,
+      concurrency: 1,
     });
 
     assert.deepEqual(decisions.map(({ bee, action, suppressLegacyCrash }) => ({ bee, action, suppressLegacyCrash })), [

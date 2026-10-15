@@ -595,6 +595,7 @@ test("remote list isolates malformed per-Bee metadata and publishes exact manual
     const healthyBee = "list-meta-healthy-b";
     const damaged = authority(await controller.methods.spawn!({ ...base, bee: damagedBee, launchId: randomUUID() }, CTX));
     const healthy = authority(await controller.methods.spawn!({ ...base, bee: healthyBee, launchId: randomUUID() }, CTX));
+    await waitFor(async () => !!(await readHsrMetaStrict(damagedBee))?.sessionId, "damaged bee host has published its session id");
     const damagedMeta = await readHsrMetaStrict(damagedBee);
     assert.ok(damagedMeta);
     await writeFile(hsrMetaPath(damagedBee), "{malformed-meta", { mode: 0o600 });
