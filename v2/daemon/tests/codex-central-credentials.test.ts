@@ -69,7 +69,7 @@ test("central Codex: isolated daemon rotates once, publishes access-only, refres
     writeFileSync(mirrorPath, readFileSync(join(dir, "vault", "codex", id, "auth.json")), { mode: 0o600 });
     const native = "codex-native-example.com";
     seed(native, 5, randomUUID());
-    const binary = join(dir, "fake-codex");
+    const binary = join(dir, "fake-codex.cjs");
     writeFileSync(binary, `#!${process.execPath}\nif(process.argv[2]!=='exec')process.exit(1);const fs=require('node:fs');const p=require('node:path');const home=process.env.CODEX_HOME;fs.appendFileSync(p.join(home,'native-calls'),'called\\n');const path=p.join(home,'auth.json');const doc=JSON.parse(fs.readFileSync(path));doc.tokens.access_token=Buffer.from('{}').toString('base64url')+'.'+Buffer.from(JSON.stringify({exp:Math.floor(Date.now()/1000)+3600})).toString('base64url')+'.fixture';fs.writeFileSync(path,JSON.stringify(doc));\n`);
     chmodSync(binary, 0o700);
     const cfgPath = join(dir, "config.json");
@@ -245,7 +245,7 @@ test("central Codex review: running-bee ownership fence, bad access preserves ro
     const home = join(dir, "homes", id);
     mkdirSync(vault, { recursive: true, mode: 0o700 });
     writeFileSync(join(vault, "auth.json"), JSON.stringify({ OPENAI_API_KEY: null, tokens: { access_token: token(3600), refresh_token: expected, id_token: "fixture", account_id: "fixture-account" } }), { mode: 0o600 });
-    const binary = join(dir, "fake-codex-review");
+    const binary = join(dir, "fake-codex-review.cjs");
     const fakeServer = new URL("../../driver-hsr/test-agent/fake-codex.mjs", import.meta.url).href;
     writeFileSync(binary, `#!${process.execPath}\nif(process.argv.includes('app-server')){import(${JSON.stringify(fakeServer)});}else if(process.argv.includes('login')){setTimeout(()=>{const fs=require('node:fs'),p=require('node:path'),c=require('node:crypto');const h=process.env.CODEX_HOME;fs.mkdirSync(h,{recursive:true});const a=Buffer.from('{}').toString('base64url')+'.'+Buffer.from(JSON.stringify({exp:Math.floor(Date.now()/1000)+3600})).toString('base64url')+'.fixture';fs.writeFileSync(p.join(h,'auth.json'),JSON.stringify({OPENAI_API_KEY:null,tokens:{access_token:a,refresh_token:c.randomUUID(),id_token:'fixture',account_id:'fixture-account'}}));console.log('Login successful');},200);}else process.exit(1);\n`);
     chmodSync(binary, 0o700);
