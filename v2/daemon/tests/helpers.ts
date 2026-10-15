@@ -329,7 +329,8 @@ export async function startDaemon(dir: string, opts: { env?: Record<string, stri
       // ~/.codex, ~/.claude, … are never read.
       ...(opts.env ?? {}),
       HIVE_TEST_INVOKING_HOME: process.env.HOME ?? userInfo().homedir,
-      NODE_OPTIONS: `${opts.env?.NODE_OPTIONS ?? childEnv.NODE_OPTIONS ?? ""} --import=${join(here, "fixtures", "force-platform.mjs")} --import=${join(here, "fixtures", "meta-loopback.mjs")} --import=${join(here, "fixtures", "isolated-home.mjs")}`.trim(),
+      HIVE_TEST_OWNER_PID: String(process.pid),
+      NODE_OPTIONS: `${opts.env?.NODE_OPTIONS ?? childEnv.NODE_OPTIONS ?? ""} --import=${join(here, "fixtures", "force-platform.mjs")} --import=${join(here, "fixtures", "meta-loopback.mjs")} --import=${join(here, "fixtures", "isolated-home.mjs")} --import=${join(here, "fixtures", "owner-bound.mjs")}`.trim(),
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
