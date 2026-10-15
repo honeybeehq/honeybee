@@ -470,6 +470,33 @@ function processGroupAlive(pgid: number): boolean {
   }
 }
 
+test("local launcher keeps a fake HOME that exists as a directory without HIVE_REAL_HOME", { timeout: 30_000 }, async () => {
+  const target = `hive-launch-fake-home-${process.pid}`;
+  const dir = await mkdtemp(join(tmpdir(), "hive-launch-fake-home-"));
+  const fakeHome = join(dir, "home");
+  await mkdir(fakeHome);
+  const out = join(dir, "home.txt");
+  const previousHome = process.env.HOME;
+  const previousRealHome = process.env.HIVE_REAL_HOME;
+  try {
+    process.env.HOME = fakeHome;
+    delete process.env.HIVE_REAL_HOME;
+
+    await newSession(target, "/tmp", {
+      command: process.execPath,
+      args: ["-e", `require("node:fs").writeFileSync(${JSON.stringify(out)}, process.env.HOME || ""); setTimeout(() => {}, 60_000)`],
+    });
+
+    assert.equal(await waitForFile(out), fakeHome, "the pane runs with the HOME the launcher's environment named");
+  } finally {
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousRealHome !== undefined) process.env.HIVE_REAL_HOME = previousRealHome;
+    await tmuxKillSession(target).catch(() => undefined);
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("local launcher restores real HOME from a fake parent env unless explicitly overridden", { timeout: 30_000 }, async () => {
   const targetA = `hive-launch-home-a-${process.pid}`;
   const targetB = `hive-launch-home-b-${process.pid}`;
