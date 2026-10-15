@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { test } from "node:test";
 import { readLiveEndpointRecord } from "../src/endpointRecord.ts";
 import { RpcError } from "../src/protocol.ts";
@@ -69,19 +69,35 @@ test("socket placement: a recorded dir that is world-writable or a symlink to a 
     assert.equal(readFileSync(join(dir, SOCKET_DIR_RECORD_FILE), "utf8").trim(), afterLoose.socketDir);
 
     const foreign = mkdtempSync(join("/tmp", "hb-sp-foreign-"));
-    chmodSync(foreign, 0o777);
     const link = join("/tmp", `hb-sp-link-${process.pid}`);
-    rmSync(link, { force: true });
-    symlinkSync(foreign, link);
-    writeFileSync(join(dir, SOCKET_DIR_RECORD_FILE), `${link}\n`);
-    assert.equal(ownedPrivateDir(link), false);
-    const afterLink = place();
-    assert.notEqual(afterLink.socketDir, link, "a symlink to a foreign 0777 dir is replaced");
-    assert.ok(ownedPrivateDir(afterLink.socketDir!));
-    assert.equal(readFileSync(join(dir, SOCKET_DIR_RECORD_FILE), "utf8").trim(), afterLink.socketDir);
+    const ancestorLink = join("/tmp", `hb-sp-ancestor-${process.pid}`);
+    const minted: string[] = [first.socketDir!, afterLoose.socketDir!];
+    try {
+      chmodSync(foreign, 0o777);
+      rmSync(link, { force: true });
+      symlinkSync(foreign, link);
+      writeFileSync(join(dir, SOCKET_DIR_RECORD_FILE), `${link}\n`);
+      assert.equal(ownedPrivateDir(link), false);
+      const afterLink = place();
+      minted.push(afterLink.socketDir!);
+      assert.notEqual(afterLink.socketDir, link, "a symlink to a foreign 0777 dir is replaced");
+      assert.ok(ownedPrivateDir(afterLink.socketDir!));
+      assert.equal(readFileSync(join(dir, SOCKET_DIR_RECORD_FILE), "utf8").trim(), afterLink.socketDir);
 
-    for (const path of [first.socketDir!, afterLoose.socketDir!, afterLink.socketDir!, foreign]) rmSync(path, { recursive: true, force: true });
-    rmSync(link, { force: true });
+      rmSync(ancestorLink, { force: true });
+      symlinkSync(dirname(afterLink.socketDir!), ancestorLink);
+      const throughAncestor = join(ancestorLink, basename(afterLink.socketDir!));
+      assert.equal(ownedPrivateDir(throughAncestor), false, "a path through a symlinked ancestor is not the recorded dir");
+      writeFileSync(join(dir, SOCKET_DIR_RECORD_FILE), `${throughAncestor}\n`);
+      const afterAncestor = place();
+      minted.push(afterAncestor.socketDir!);
+      assert.notEqual(afterAncestor.socketDir, throughAncestor);
+      assert.equal(afterAncestor.socketDir, realpathSync(afterAncestor.socketDir!), "the record holds a real path");
+    } finally {
+      for (const path of [...minted, foreign]) rmSync(path, { recursive: true, force: true });
+      rmSync(link, { force: true });
+      rmSync(ancestorLink, { force: true });
+    }
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

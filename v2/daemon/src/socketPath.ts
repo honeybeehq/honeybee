@@ -1,4 +1,4 @@
-import { lstatSync, readFileSync, writeFileSync } from "node:fs";
+import { lstatSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { requireSocketPathFits, shortSocketDir as pickShortSocketDir, socketPathFits, SocketPathTooLongError, UNIX_SOCKET_PATH_LIMIT } from "../../core/src/socketPath.ts";
@@ -38,7 +38,8 @@ export function shortSocketDir(prefix: string, name: string, bases?: Array<strin
 export function ownedPrivateDir(path: string): boolean {
   try {
     const stat = lstatSync(path);
-    return stat.isDirectory() && !stat.isSymbolicLink() && stat.uid === process.geteuid?.() && (stat.mode & 0o777) === 0o700;
+    return stat.isDirectory() && !stat.isSymbolicLink() && stat.uid === process.geteuid?.() && (stat.mode & 0o777) === 0o700
+      && realpathSync(path) === path;
   } catch {
     return false;
   }
@@ -50,7 +51,7 @@ function persistentSocketDir(dataDir: string, name: string, bases?: Array<string
     const recorded = readFileSync(recordPath, "utf8").trim();
     if (recorded && ownedPrivateDir(recorded) && socketPathFits(join(recorded, name))) return recorded;
   } catch {}
-  const dir = shortSocketDir(SOCKET_DIR_PREFIX, name, bases);
+  const dir = realpathSync(shortSocketDir(SOCKET_DIR_PREFIX, name, bases));
   writeFileSync(recordPath, `${dir}\n`, { mode: 0o600 });
   return dir;
 }
