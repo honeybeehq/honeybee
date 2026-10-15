@@ -300,6 +300,15 @@ export function makeDaemonDir(overrides: DaemonConfigOverrides = {}): { dir: str
   };
 }
 
+let ownerBirth: string | undefined;
+
+export function ownerBoundEnv(nodeOptions = ""): { HIVE_TEST_OWNER_PID: string; HIVE_TEST_OWNER_BIRTH: string; NODE_OPTIONS: string } {
+  if (ownerBirth === undefined) {
+    try { ownerBirth = execFileSync("ps", ["-p", String(process.pid), "-o", "lstart="], { encoding: "utf8", env: { ...process.env, LC_ALL: "C", TZ: "UTC" } }).trim().replace(/\s+/g, " "); } catch { ownerBirth = ""; }
+  }
+  return { HIVE_TEST_OWNER_PID: String(process.pid), HIVE_TEST_OWNER_BIRTH: ownerBirth, NODE_OPTIONS: `${nodeOptions} --import=${join(here, "fixtures", "owner-bound.mjs")}`.trim() };
+}
+
 /** `platform` makes the daemon process report that OS (default linux, so a suite run on a Mac never trips platform guards). */
 export async function startDaemon(dir: string, opts: { env?: Record<string, string>; platform?: string; stopTimeoutMs?: number; socketPath?: string } = {}): Promise<DaemonHandle> {
   const socketPath = opts.socketPath ?? join(dir, "hived.sock");
@@ -329,8 +338,7 @@ export async function startDaemon(dir: string, opts: { env?: Record<string, stri
       // ~/.codex, ~/.claude, … are never read.
       ...(opts.env ?? {}),
       HIVE_TEST_INVOKING_HOME: process.env.HOME ?? userInfo().homedir,
-      HIVE_TEST_OWNER_PID: String(process.pid),
-      NODE_OPTIONS: `${opts.env?.NODE_OPTIONS ?? childEnv.NODE_OPTIONS ?? ""} --import=${join(here, "fixtures", "force-platform.mjs")} --import=${join(here, "fixtures", "meta-loopback.mjs")} --import=${join(here, "fixtures", "isolated-home.mjs")} --import=${join(here, "fixtures", "owner-bound.mjs")}`.trim(),
+      ...ownerBoundEnv(`${opts.env?.NODE_OPTIONS ?? childEnv.NODE_OPTIONS ?? ""} --import=${join(here, "fixtures", "force-platform.mjs")} --import=${join(here, "fixtures", "meta-loopback.mjs")} --import=${join(here, "fixtures", "isolated-home.mjs")}`),
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
