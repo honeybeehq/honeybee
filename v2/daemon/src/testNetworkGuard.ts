@@ -16,6 +16,7 @@ function requestUrl(input: unknown): URL | null {
 }
 
 function redirectedByTestPreload(url: URL): boolean {
+  if ((globalThis as { __hiveMetaLoopback?: unknown }).__hiveMetaLoopback !== true) return false;
   const target = process.env.HIVE_TEST_META_URL;
   if (!target) return false;
   const loopback = requestUrl(target);

@@ -25,6 +25,8 @@ test("test network guard: a test daemon env refuses real provider hosts and allo
     await assert.rejects(fetch(url, { method: "POST" }), /test daemon refused a non-loopback request/, url);
   }
   assert.deepEqual(refused, ["test.network.refused host=platform.claude.com", "test.network.refused host=api.anthropic.com", "test.network.refused host=auth.openai.com", "test.network.refused host=auth.meta.com"]);
+  process.env.HIVE_TEST_META_URL = "http://127.0.0.1:9";
+  await assert.rejects(fetch("https://auth.meta.com/oauth/token"), /test daemon refused/, "the env var alone, without the meta preload, never opens Meta");
   const local = await fetch(`http://127.0.0.1:${(server.address() as AddressInfo).port}/`);
   assert.equal(await local.text(), "ok");
 });
