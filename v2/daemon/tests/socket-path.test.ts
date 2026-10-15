@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { readLiveEndpointRecord } from "../src/endpointRecord.ts";
 import { RpcError } from "../src/protocol.ts";
-import { placeDaemonSockets, shortSocketDir, socketPathBytes, socketPathFits, SOCKET_DIR_RECORD_FILE, UNIX_SOCKET_PATH_LIMIT } from "../src/socketPath.ts";
+import { ownedPrivateDir, placeDaemonSockets, shortSocketDir, socketPathBytes, socketPathFits, SOCKET_DIR_RECORD_FILE, UNIX_SOCKET_PATH_LIMIT } from "../src/socketPath.ts";
 import { resolveDaemonTarget } from "../../cli/src/target.ts";
 import { makeDaemonDir, startDaemon, type DaemonHandle } from "./helpers.ts";
 
@@ -48,6 +48,40 @@ test("socket placement: a deep data dir moves every socket into one short dir th
     const replaced = placeDaemonSockets(dir, join(dir, "hived.sock"), { runnerSocketDir: dir });
     assert.notEqual(replaced.socketDir, placed.socketDir, "a vanished short dir is replaced");
     rmSync(replaced.socketDir!, { recursive: true, force: true });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("socket placement: a recorded dir that is world-writable or a symlink to a foreign dir is never reused", () => {
+  const root = mkdtempSync(join(tmpdir(), "hb-sp-trust-"));
+  try {
+    const dir = deepDir(root);
+    const place = () => placeDaemonSockets(dir, join(dir, "hived.sock"), { runnerSocketDir: dir });
+    const first = place();
+    assert.ok(first.socketDir && ownedPrivateDir(first.socketDir), "a freshly minted dir is private and owned");
+
+    chmodSync(first.socketDir!, 0o777);
+    assert.equal(ownedPrivateDir(first.socketDir!), false);
+    const afterLoose = place();
+    assert.notEqual(afterLoose.socketDir, first.socketDir, "a 0777 recorded dir is replaced");
+    assert.ok(ownedPrivateDir(afterLoose.socketDir!));
+    assert.equal(readFileSync(join(dir, SOCKET_DIR_RECORD_FILE), "utf8").trim(), afterLoose.socketDir);
+
+    const foreign = mkdtempSync(join("/tmp", "hb-sp-foreign-"));
+    chmodSync(foreign, 0o777);
+    const link = join("/tmp", `hb-sp-link-${process.pid}`);
+    rmSync(link, { force: true });
+    symlinkSync(foreign, link);
+    writeFileSync(join(dir, SOCKET_DIR_RECORD_FILE), `${link}\n`);
+    assert.equal(ownedPrivateDir(link), false);
+    const afterLink = place();
+    assert.notEqual(afterLink.socketDir, link, "a symlink to a foreign 0777 dir is replaced");
+    assert.ok(ownedPrivateDir(afterLink.socketDir!));
+    assert.equal(readFileSync(join(dir, SOCKET_DIR_RECORD_FILE), "utf8").trim(), afterLink.socketDir);
+
+    for (const path of [first.socketDir!, afterLoose.socketDir!, afterLink.socketDir!, foreign]) rmSync(path, { recursive: true, force: true });
+    rmSync(link, { force: true });
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
