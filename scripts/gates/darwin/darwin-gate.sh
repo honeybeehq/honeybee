@@ -23,6 +23,14 @@ if [ -z "${SCG_STAGE:-}" ]; then
 fi
 REAL_HOME=$SCG_REAL_HOME; NODE_BIN=$SCG_NODE_BIN; LIB=$REAL_HOME/Library
 SCG_RC=0
+LIB_THIRD_PARTY_FILE=scripts/gates/darwin/third-party-warn.txt
+LIB_THIRD_PARTY=$(grep -v '^#' "$LIB_THIRD_PARTY_FILE" 2>/dev/null | grep .)
+[ -n "$LIB_THIRD_PARTY" ] || { echo "REFUSING: third-party WARN list $LIB_THIRD_PARTY_FILE is missing or empty"; exit 99; }
+while IFS='|' read -r entry owner mode extra; do
+  [ -n "$entry" ] && [ -n "$owner" ] && [ -z "$extra" ] || { echo "REFUSING: malformed line in $LIB_THIRD_PARTY_FILE: $entry|$owner|$mode${extra:+|$extra}"; exit 99; }
+  case "$mode" in ""|inside|existing|modified|interim) ;; *) echo "REFUSING: unknown mode '$mode' in $LIB_THIRD_PARTY_FILE"; exit 99;; esac
+  case "$mode" in inside|modified) case "$entry" in */) ;; *) echo "REFUSING: mode $mode needs a trailing / in $LIB_THIRD_PARTY_FILE: $entry"; exit 99;; esac;; esac
+done <<< "$LIB_THIRD_PARTY"
 gate_fail() { echo "GATE FAIL: $*"; SCG_RC=1; }
 
 SENTINEL_KNOWN="hived.sock core.sqlite3"
@@ -44,29 +52,13 @@ home_valid() {
 LIB_AREAS="Application Support|Logs|Caches|Containers|LaunchAgents"
 LIB_OWN_IDS="dev.apiary. dev.honeybee. com.trmd.apiary ${SCG_LAB_BUNDLE_IDS:-}"
 LIB_ELECTRON_OK="AppleTextDirection NSForceRightToLeftWritingDirection NSTreatUnknownArgumentsAsOpen SKPurchaseIntentUpdatesLastChecked"
-LIB_THIRD_PARTY_CHANGES_ONLY_VIA_QUEEN='Containers/com.apple.lighthouse.PnROnDeviceWorker|Apple lighthouse|existing
-Containers/com.apple.unilog.SearchUploadWorker|Apple unilog|existing
-Containers/com.apple.siri.ODDIPoirotExperimentationExtension|Apple Siri|existing
-Containers/com.apple.UsageTrackingAgent|Apple UsageTrackingAgent|existing
-Containers/com.apple.lighthouse.PnROnDeviceWorker/|Apple lighthouse|inside
-Containers/com.apple.unilog.SearchUploadWorker/|Apple unilog|inside
-Containers/com.apple.siri.ODDIPoirotExperimentationExtension/|Apple Siri|inside
-Containers/com.apple.UsageTrackingAgent/|Apple UsageTrackingAgent|inside
-Application Support/Google/Chrome/|Google Chrome
-Application Support/Google/GoogleUpdater/|Google Updater
-Caches/io.tailscale.ipn.macsys/|Tailscale
-Caches/tv.parsec.www/|Parsec
-Containers/com.apple.Safari.CacheDeleteExtension/|Safari CacheDelete extension
-Containers/com.apple.geod/Data/Library/Caches/com.apple.geod/|Apple geod
-Caches/com.apple.duetexpertd/com.apple.e5rt.e5bundlecache/|Apple duetexpertd
-Application Support/networkserviceproxy/|Apple (iCloud Private Relay)|modified'
 LIB_HOST_SHARED_CLAUDE='Caches/claude-cli-nodejs'
-LIB_INTERIM_APPLE_UNTIL_GATE_USER='Application Support/com.apple.*|Containers/com.apple.*'
 LIB_OUR_NAMES='dev.apiary.|dev.honeybee.|com.trmd.apiary|com.github.Electron|Apiary|apiary|Honeybee|honeybee'
 lib_third_party_owner() {
   local p=$1 before=$2 entry owner mode
   ( IFS='|'; for n in $LIB_OUR_NAMES; do case "$p" in *"$n"*) exit 0;; esac; done; exit 1 ) && return 1
   while IFS='|' read -r entry owner mode; do
+    case "$mode" in interim) continue;; esac
     case "$entry" in
       */) case "$mode" in inside) case "$p" in "$entry"?*) echo "$owner"; return 0;; esac;;
             modified) case "$p/" in "$entry"*) cut -d'|' -f2 "$before" | grep -qxF "$p" && { echo "$owner, modified existing entry"; return 0; }; break;; esac;;
@@ -75,8 +67,11 @@ lib_third_party_owner() {
          [ "$mode" = existing ] && ! cut -d'|' -f2 "$before" | grep -qxF "$p" && break
          echo "$owner"; return 0;;
     esac
-  done <<< "$LIB_THIRD_PARTY_CHANGES_ONLY_VIA_QUEEN"
-  ( IFS='|'; for g in $LIB_INTERIM_APPLE_UNTIL_GATE_USER; do case "$p" in $g) exit 0;; esac; done; exit 1 ) && { echo "Apple, interim com.apple.* rule until a dedicated gate user"; return 0; }
+  done <<< "$LIB_THIRD_PARTY"
+  while IFS='|' read -r entry owner mode; do
+    [ "$mode" = interim ] || continue
+    case "$p" in $entry) echo "$owner"; return 0;; esac
+  done <<< "$LIB_THIRD_PARTY"
   return 1
 }
 claude_census() {

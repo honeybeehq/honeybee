@@ -15,7 +15,7 @@ sh scripts/gates/darwin/gate-run.sh > .dg.sh
 
 - `gate-run.sh` puts `darwin-gate.sh` and a body (default `daemon-suite-body.sh`) into one script.
   - It pins the source commit; the sha gets `+dirty` if this directory has local changes.
-  - It also records a short sha256 of each gate file.
+  - It also records a short sha256 of each gate file and data file.
 - forage syncs the working tree, untracked `.dg.sh` included, into the lane.
 - Every run prints and ends with `forage run · lane · snapshot · source · scripts`.
 - Stage output only under `~/.cache`, never `/tmp`.
@@ -64,7 +64,9 @@ Before and after, on `~/Library/Preferences` and on Application Support, Logs, C
 
 **WARN (key names only):** modified `com.apple.*` plists; `io.tailscale.*` plists with an unchanged key set; `.GlobalPreferences.plist`; `com.apple.spaces.plist`.
 
-**Third-party list:** `LIB_THIRD_PARTY_CHANGES_ONLY_VIA_QUEEN` in `darwin-gate.sh`. Only Queen changes it. Every warned path is printed with its owner.
+**Third-party list:** `third-party-warn.txt`, one `path|owner|mode` per line. Only Queen changes it.
+- If the file is missing, empty or has a malformed line, the gate refuses (exit 99) before any test runs.
+- Every warned path is printed with its owner.
 
 | Entry under ~/Library | Owner | WARNs for |
 |---|---|---|
@@ -76,16 +78,18 @@ Before and after, on `~/Library/Preferences` and on Application Support, Logs, C
 | Containers/com.apple.geod/Data/Library/Caches/com.apple.geod/ | Apple geod | the dir and below |
 | Caches/com.apple.duetexpertd/com.apple.e5rt.e5bundlecache/ | Apple duetexpertd | the dir and below |
 | Application Support/networkserviceproxy/ | Apple (iCloud Private Relay) | only paths present in the before-snapshot; new files FAIL |
+| Caches/com.apple.cache_delete/ | Apple CacheDelete | the dir and below |
 | Containers/com.apple.lighthouse.PnROnDeviceWorker | Apple lighthouse | paths inside; the dir itself only if it existed |
 | Containers/com.apple.unilog.SearchUploadWorker | Apple unilog | paths inside; the dir itself only if it existed |
 | Containers/com.apple.siri.ODDIPoirotExperimentationExtension | Apple Siri | paths inside; the dir itself only if it existed |
 | Containers/com.apple.UsageTrackingAgent | Apple UsageTrackingAgent | paths inside; the dir itself only if it existed |
 
-**Interim Apple rule:** `LIB_INTERIM_APPLE_UNTIL_GATE_USER`, until a dedicated macOS gate user exists.
+**Interim Apple rule:** mode `interim` in the same file, until a dedicated macOS gate user exists.
 - Created or modified entries under `Application Support/com.apple.*` and `Containers/com.apple.*` WARN.
+- Interim globs are checked only after every other entry.
 - Our names and removals still FAIL.
 
-**Caches/claude-cli-nodejs:** a census samples Claude CLI processes every 2 s.
+**Caches/claude-cli-nodejs** is decided by attribution, not by the list. A census samples Claude CLI processes every 2 s.
 - A process is gate-owned if it descends from the gate shell, shares its process group, or has the run root in its argv or cwd.
 - A change WARNs as "host shared" only when foreign Claude CLIs were seen and no gate-owned one was. Gate-owned or unknown FAILs.
 
@@ -102,3 +106,4 @@ Before and after, on `~/Library/Preferences` and on Application Support, Logs, C
 | 94 | test socket path would be 104 bytes or longer, or the ps shim could not be built |
 | 97 | probe failed |
 | 98 | a file in `seatbelt-exceptions.txt` is not in the suite |
+| 99 | `third-party-warn.txt` is missing, empty or malformed |

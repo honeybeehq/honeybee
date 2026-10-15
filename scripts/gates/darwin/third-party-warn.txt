@@ -1,0 +1,21 @@
+# ~/Library third-party WARN list for darwin-gate. Changes only via Queen. One entry per line: path relative to ~/Library|owner|mode
+# Modes: (none) the dir and below; inside = paths under it only; existing = exact dir, WARN only if it existed before; modified = paths under it that existed before; interim = glob, until a dedicated macOS gate user exists
+Containers/com.apple.lighthouse.PnROnDeviceWorker|Apple lighthouse|existing
+Containers/com.apple.unilog.SearchUploadWorker|Apple unilog|existing
+Containers/com.apple.siri.ODDIPoirotExperimentationExtension|Apple Siri|existing
+Containers/com.apple.UsageTrackingAgent|Apple UsageTrackingAgent|existing
+Containers/com.apple.lighthouse.PnROnDeviceWorker/|Apple lighthouse|inside
+Containers/com.apple.unilog.SearchUploadWorker/|Apple unilog|inside
+Containers/com.apple.siri.ODDIPoirotExperimentationExtension/|Apple Siri|inside
+Containers/com.apple.UsageTrackingAgent/|Apple UsageTrackingAgent|inside
+Application Support/Google/Chrome/|Google Chrome
+Application Support/Google/GoogleUpdater/|Google Updater
+Caches/io.tailscale.ipn.macsys/|Tailscale
+Caches/tv.parsec.www/|Parsec
+Containers/com.apple.Safari.CacheDeleteExtension/|Safari CacheDelete extension
+Containers/com.apple.geod/Data/Library/Caches/com.apple.geod/|Apple geod
+Caches/com.apple.duetexpertd/com.apple.e5rt.e5bundlecache/|Apple duetexpertd
+Application Support/networkserviceproxy/|Apple (iCloud Private Relay)|modified
+Caches/com.apple.cache_delete/|Apple CacheDelete
+Application Support/com.apple.*|Apple, interim com.apple.* rule until a dedicated gate user|interim
+Containers/com.apple.*|Apple, interim com.apple.* rule until a dedicated gate user|interim
