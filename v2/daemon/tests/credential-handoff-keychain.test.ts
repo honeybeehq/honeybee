@@ -12,6 +12,7 @@ test("handoff scrub: darwin security shim preserves default item and scrubs only
   try {
     const bin = join(root, "bin"), secretStore = join(root, "vault", "keychain-shim");
     mkdirSync(bin, { recursive: true }); mkdirSync(secretStore, { recursive: true, mode: 0o700 });
+    writeFileSync(join(bin, "package.json"), JSON.stringify({ type: "commonjs" }));
     writeFileSync(join(bin, "security"), `#!${process.execPath}
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
 const args=process.argv.slice(2),store=process.env.HANDOFF_SHIM_STORE;
