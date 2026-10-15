@@ -22,6 +22,7 @@ async function fixture() {
   db.prepare("INSERT INTO meta VALUES('coordinated_update',?)").run(JSON.stringify(reservation));
   db.close();
   await mkdir(join(root, "current", "dist", "v2"), { recursive: true });
+  await writeFile(join(root, "current", "package.json"), JSON.stringify({ type: "commonjs" }));
   const status = { contract: UPDATE_RECOVERY_CONTRACT, schemaVersion: 27, runtimeRoot: root,
     storePath: join(dir, "v2", "core.sqlite3"), blockers: [], reservation };
   const statusFile = join(root, "current", "dist", "v2", "cli.js");
