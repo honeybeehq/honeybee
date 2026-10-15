@@ -12,7 +12,8 @@ import { join } from "node:path";
 import { provisionCell, reserveCell, type ProvisionRequest } from "../src/provision.ts";
 import { dirtyReport } from "../src/remove.ts";
 import { evictCellWrapper } from "../src/retention.ts";
-import { buildPoolMember, claimFromPool } from "../src/warmPool.ts";
+import { buildPoolMember, claimFromPool, listPoolMembers, repoKeyFor } from "../src/warmPool.ts";
+import { hasCommit, tryGit } from "../src/git.ts";
 import { holdMirrorLock, mirrorDirFor, readUpstreamMirror, refreshUpstreamMirror, resolveCellBase, syncOriginFromMirror, UPSTREAM_REF } from "../src/upstream.ts";
 import { commitInCell, commitOn, fingerprintOrigin, g, makeOrigin, makeRig } from "./helpers.ts";
 
@@ -336,5 +337,64 @@ test("upstream.lock heartbeat: the holder keeps the lock's mtime fresh until it 
     assert.ok(Date.now() - statSync(lockDir).mtimeMs > 60_000, "no heartbeat after release");
   } finally {
     rmSync(root, { recursive: true, force: true });
+  }
+});
+
+function originRemoteState(originRepo: string): string {
+  const config = tryGit(originRepo, ["config", "--get-regexp", "^remote\\.origin\\.(url|pushurl)$"]).stdout;
+  const refs = g(originRepo, ["for-each-ref", "--format=%(refname) %(objectname) %(symref)", "refs/remotes/origin/"]);
+  return `${config}\n${refs}`;
+}
+
+test("adoptOriginRemote never writes the origin checkout: clone provision and pool claim leave its origin url, pushurl and origin/* refs unchanged", () => {
+  const fx = staleSatelliteOrigin();
+  try {
+    g(fx.origin, ["remote", "set-url", "--push", "origin", join(fx.root, "push-only.git")]);
+    fx.sync();
+    const before = originRemoteState(fx.origin);
+    const cellsRoot = join(fx.root, "cells");
+
+    const req = request(fx.origin, "bee-c", fx.fresh, "cccccccccccc");
+    reserveCell(cellsRoot, req);
+    const cell = provisionCell(cellsRoot, req, "op-c", OPTS);
+    assert.equal(cell.copyMode, "clone");
+    assert.equal(g(cell.paths.spaceDir, ["remote", "get-url", "--push", "origin"]), join(fx.root, "push-only.git"));
+    assert.equal(originRemoteState(fx.origin), before, "clone provision left the origin checkout untouched");
+
+    buildPoolMember(cellsRoot, { originRepo: fx.origin, repoName: "material", sha: fx.fresh }, OPTS, { racyIndexWindowMs: 0 });
+    const claimReq = request(fx.origin, "bee-d", fx.fresh, "dddddddddddd");
+    reserveCell(cellsRoot, claimReq);
+    const claimed = claimFromPool(cellsRoot, claimReq);
+    assert.ok(claimed);
+    assert.equal(g(claimed.paths.spaceDir, ["remote", "get-url", "origin"]), fx.github);
+    assert.equal(originRemoteState(fx.origin), before, "pool claim left the origin checkout untouched");
+  } finally {
+    fx.cleanup();
+  }
+});
+
+test("pool claim whose member lacks the origin's new upstream tip still provisions: stale origin/* refs are dropped, the tracking ref is not moved", () => {
+  const fx = staleSatelliteOrigin();
+  try {
+    const cellsRoot = join(fx.root, "cells");
+    buildPoolMember(cellsRoot, { originRepo: fx.origin, repoName: "material", sha: fx.stale }, OPTS, { racyIndexWindowMs: 0 });
+    const [member] = listPoolMembers(cellsRoot, repoKeyFor(fx.origin, "material"));
+    assert.ok(member);
+    g(member.paths.spaceDir, ["update-ref", "refs/remotes/origin/leftover", fx.stale]);
+    fx.sync();
+    assert.equal(g(fx.origin, ["rev-parse", "refs/remotes/origin/main"]), fx.fresh);
+    assert.equal(hasCommit(member.paths.spaceDir, fx.fresh), false, "the member's clone lacks the new tip");
+
+    const req = request(fx.origin, "bee-e", fx.stale, "eeeeeeeeeeee");
+    reserveCell(cellsRoot, req);
+    const claimed = claimFromPool(cellsRoot, req);
+    assert.ok(claimed, "the claim still succeeds");
+    const space = claimed.paths.spaceDir;
+    assert.equal(g(space, ["rev-parse", "HEAD"]), fx.stale);
+    assert.equal(g(space, ["remote", "get-url", "origin"]), fx.github);
+    assert.equal(g(space, ["for-each-ref", "--format=%(refname)", "refs/remotes/origin/leftover"]), "", "stale origin/* refs are dropped");
+    assert.equal(g(space, ["rev-parse", "refs/remotes/origin/main"]), fx.stale, "the tracking ref stays put when its new tip is missing");
+  } finally {
+    fx.cleanup();
   }
 });
