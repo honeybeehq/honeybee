@@ -293,7 +293,8 @@ export HIVE_REAL_HOME=$HOME
 export CLAUDE_CONFIG_DIR=$HOME/.claude CODEX_HOME=$HOME/.codex GROK_HOME=$HOME/.grok OPENCODE_CONFIG_DIR=$HOME/.config/opencode KIMI_CODE_HOME=$HOME/.kimi CURSOR_CONFIG_DIR=$HOME/.cursor
 mkdir -p "$HOME" "$TMPDIR" "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_CACHE_HOME" "$XDG_STATE_HOME" "$XDG_RUNTIME_DIR" "$CLAUDE_CONFIG_DIR" "$CODEX_HOME"
 chmod 700 "$XDG_RUNTIME_DIR"
-export npm_config_cache=$REAL_HOME/.npm npm_config_store_dir=$GATE_ROOT/pnpm-store
+export npm_config_cache=$REAL_HOME/.npm npm_config_store_dir=$GATE_ROOT/pnpm-store npm_config_logs_dir=$GATE_ROOT/npm-logs
+mkdir -p "$npm_config_logs_dir"
 SCG_PS_SHIM=$GATE_ROOT/bin
 mkdir -p "$SCG_PS_SHIM" && cp /bin/ps "$SCG_PS_SHIM/ps" && chmod 755 "$SCG_PS_SHIM/ps" && codesign --remove-signature "$SCG_PS_SHIM/ps" && codesign -f -s - "$SCG_PS_SHIM/ps" 2>/dev/null || { echo "REFUSING: cannot build the non-setuid ps shim (Seatbelt refuses setuid /bin/ps)"; rm -rf "$GATE_ROOT"; exit 94; }
 export SCG_SECURITY_CALLS=$GATE_ROOT/security-calls

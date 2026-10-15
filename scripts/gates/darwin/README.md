@@ -28,7 +28,7 @@ sh scripts/gates/darwin/gate-run.sh > .dg.sh
 - Stage 2 re-runs under `env -i`.
 - Fake HOME, TMPDIR, XDG dirs and provider homes live under a run root shorter than 40 bytes (`~/.cache/scg/r.XXXXXX`).
 - `HIVE_REAL_HOME` is set to the fake HOME and is the only `HIVE_*` variable.
-- Real `npm ci`; a symlinked `node_modules` is refused. The pnpm store points into the run root (`$GATE_ROOT/pnpm-store`), never `~/Library/pnpm`.
+- Real `npm ci`; a symlinked `node_modules` is refused. The pnpm store (`$GATE_ROOT/pnpm-store`) and npm's logs (`$GATE_ROOT/npm-logs`) live in the run root, never `~/Library/pnpm` or `~/.npm/_logs`.
 
 **HOME sentinel:** before and after, on the real HOME top level, `~/.hive/v2` and `hived.sock`. The gate refuses to start without a valid before-snapshot, and any change FAILs.
 
