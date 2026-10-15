@@ -1,16 +1,38 @@
+import { statSync } from "node:fs";
 import { userInfo } from "node:os";
 
-/** The developer's OS account home, not a provider/account sandbox home. */
+/**
+ * The home the caller's environment names. HOME wins whenever it is set and
+ * is a directory; the passwd entry is consulted only when HOME is unset, so a
+ * run that deliberately points HOME elsewhere never reaches the account home
+ * behind its back.
+ */
 export function realUserHome(env: NodeJS.ProcessEnv = process.env): string | undefined {
   const explicit = env.HIVE_REAL_HOME;
   if (explicit && explicit.trim().length > 0) return explicit;
+  const home = env.HOME;
+  if (home !== undefined) {
+    if (home.length > 0 && isDirectory(home)) return home;
+    return passwdHome() ?? (home.length > 0 ? home : undefined);
+  }
+  return passwdHome();
+}
+
+function passwdHome(): string | undefined {
   try {
     const home = userInfo().homedir;
-    if (home && home.length > 0) return home;
+    return home && home.length > 0 ? home : undefined;
   } catch {
-    // Fall back below.
+    return undefined;
   }
-  return env.HOME;
+}
+
+function isDirectory(path: string): boolean {
+  try {
+    return statSync(path).isDirectory();
+  } catch {
+    return false;
+  }
 }
 
 /**
