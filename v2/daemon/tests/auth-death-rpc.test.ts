@@ -13,7 +13,7 @@ import { RpcError, type AuditTailResult, type AccountInterruptionsResult, type A
 import { forceStopTestDaemon, makeDaemonDir, startDaemon, waitFor, type DaemonHandle } from "./helpers.ts";
 
 const birthOf = (pid: number) => {
-  try { return execFileSync("ps", ["-p", String(pid), "-o", "lstart="], { encoding: "utf8" }).trim().replace(/\s+/g, " "); } catch { return null; }
+  try { return execFileSync("ps", ["-p", String(pid), "-o", "lstart="], { encoding: "utf8", env: { ...process.env, LC_ALL: "C", TZ: "UTC" } }).trim().replace(/\s+/g, " "); } catch { return null; }
 };
 
 async function killFixtures(pidDir: string): Promise<void> {

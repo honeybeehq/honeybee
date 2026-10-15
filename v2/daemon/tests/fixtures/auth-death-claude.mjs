@@ -27,7 +27,7 @@ const orphaned = () =>
 if (orphaned()) process.exit(1);
 if (process.env.AUTH_DEATH_PID_DIR) {
   mkdirSync(process.env.AUTH_DEATH_PID_DIR, { recursive: true });
-  const birth = execFileSync("ps", ["-p", String(process.pid), "-o", "lstart="], { encoding: "utf8" }).trim().replace(/\s+/g, " ");
+  const birth = execFileSync("ps", ["-p", String(process.pid), "-o", "lstart="], { encoding: "utf8", env: { ...process.env, LC_ALL: "C", TZ: "UTC" } }).trim().replace(/\s+/g, " ");
   writeFileSync(join(process.env.AUTH_DEATH_PID_DIR, String(process.pid)), birth);
 }
 let connectionFailures = 0;
