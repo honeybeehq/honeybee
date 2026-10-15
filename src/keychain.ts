@@ -1,7 +1,8 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { homedir, userInfo } from "node:os";
-import { resolve } from "node:path";
+import { existsSync, realpathSync } from "node:fs";
+import { isAbsolute, resolve } from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
@@ -40,6 +41,28 @@ type KeychainReadDeps = {
 // activation so claude in an activated home finds the new identity instead
 // of a stale entry.
 // ──────────────────────────────────────────────────────────────────────────
+
+/** True inside a test run: any HIVE_TEST_* variable, or a node --test child. */
+export function underTest(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.NODE_TEST_CONTEXT !== undefined || Object.keys(env).some((key) => key.startsWith("HIVE_TEST_"));
+}
+
+/**
+ * The `security` executable to run. A test process never runs the real one:
+ * it must name a fake shim in HIVE_TEST_SECURITY_BIN, else this throws before
+ * anything is executed.
+ */
+export function securityExecutable(env: NodeJS.ProcessEnv = process.env): string {
+  if (!underTest(env)) return "security";
+  const shim = env.HIVE_TEST_SECURITY_BIN?.trim();
+  if (!shim || !isAbsolute(shim) || !existsSync(shim)) {
+    throw new Error("keychain: a test process may not run the real security binary; set HIVE_TEST_SECURITY_BIN to a fake shim or HIVE_NO_KEYCHAIN=1");
+  }
+  if (existsSync("/usr/bin/security") && realpathSync(shim) === realpathSync("/usr/bin/security")) {
+    throw new Error(`keychain: HIVE_TEST_SECURITY_BIN ${shim} is the real security binary`);
+  }
+  return shim;
+}
 
 export function keychainAvailable(): boolean {
   // HIVE_NO_KEYCHAIN lets tests exercise activation against temp homes
@@ -104,8 +127,9 @@ function keychainReadFailureDetail(error: unknown): string | undefined {
 export async function readClaudeKeychainState(homePath: string, deps: KeychainReadDeps = {}): Promise<ClaudeKeychainReadResult> {
   const available = deps.available ?? keychainAvailable;
   if (!available()) return { status: "unavailable" };
+  const security = deps.execSecurity ? null : securityExecutable();
   const execSecurity = deps.execSecurity ?? (async (args, options) => {
-    const { stdout } = await execFileAsync("security", args, options);
+    const { stdout } = await execFileAsync(security!, args, options);
     return { stdout: String(stdout) };
   });
   try {
@@ -251,6 +275,7 @@ export function identityOnlyCredentials(credentials: string): string | null {
  */
 export async function writeClaudeKeychainEntry(homePath: string, credentials: string): Promise<KeychainWriteReport> {
   if (!keychainAvailable()) return { ok: false, reason: "unavailable" };
+  const security = securityExecutable();
   // Repair legacy vaults that captured `security -w`'s hex rendering. Refuse
   // anything that still is not credential JSON instead of faithfully storing
   // an unusable string and reporting success.
@@ -268,7 +293,7 @@ export async function writeClaudeKeychainEntry(homePath: string, credentials: st
       // visible to any local process while `security` runs — so the whole
       // command is fed to `security -i` on stdin instead. A failing command
       // sets the exit status, which rejects the promise below.
-      const pending = execFileAsync("security", ["-i"], { timeout: SECURITY_EXEC_TIMEOUT_MS });
+      const pending = execFileAsync(security, ["-i"], { timeout: SECURITY_EXEC_TIMEOUT_MS });
       const stdin = pending.child.stdin;
       if (stdin) {
         // Swallow EPIPE from an early security exit; the exit status carries
