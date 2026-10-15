@@ -32,6 +32,9 @@ sh scripts/gates/darwin/gate-run.sh > .dg.sh
 
 **HOME sentinel:** before and after, on the real HOME top level, `~/.hive/v2` and `hived.sock`. The gate refuses to start without a valid before-snapshot, and any change FAILs.
 
+**~/.npm record:** npm's cache stays at the real `~/.npm`, because it is content-addressed and integrity-checked. The HOME sentinel only compares top-level names and inodes, so the gate also records `~/.npm`'s file count and newest mtime before and after.
+- Any change, or any path newer than the run start, prints `WARN ~/.npm changed (npm cache)` with the paths (first 100 and a count), never contents.
+
 **No outside network:**
 - Seatbelt (`sandbox-exec`) denies everything outbound except localhost and unix sockets.
 - A Node preload trap blocks non-loopback connect, dns and dgram and records each attempt.

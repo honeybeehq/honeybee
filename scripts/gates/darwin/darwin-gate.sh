@@ -81,6 +81,22 @@ home_valid() {
   [ $known -eq 1 ] || { echo "no known real entry (~/.hive/v2/hived.sock or core.sqlite3)"; return 1; }
 }
 
+npm_snap() {
+  local d=$REAL_HOME/.npm
+  if [ -d "$d" ]; then echo "$(find "$d" -type f 2>>"$GATE_ROOT/npm.errors" | wc -l | tr -d ' ') files, newest mtime $(find "$d" -type f -exec stat -f %m {} + 2>>"$GATE_ROOT/npm.errors" | sort -n | tail -1)"; else echo "absent"; fi
+}
+npm_verdict() {
+  local d=$REAL_HOME/.npm after changed n
+  after=$(npm_snap); changed=$( [ -d "$d" ] && find "$d" \( -newer "$GATE_ROOT/lib.marker" -o -cnewer "$GATE_ROOT/lib.marker" \) 2>>"$GATE_ROOT/npm.errors" | sed "s|^$REAL_HOME/||")
+  n=$(printf '%s\n' "$changed" | grep -c .)
+  echo "== ~/.npm (npm cache): before $SCG_NPM_BEFORE; after $after"
+  if [ "$after" != "$SCG_NPM_BEFORE" ] || [ "$n" -gt 0 ]; then
+    echo "WARN ~/.npm changed (npm cache): $n paths new or modified"; printf '%s\n' "$changed" | grep . | head -100 | sed 's/^/WARN   /'; [ "$n" -gt 100 ] && echo "WARN   … $((n - 100)) more"
+  else echo "(no change)"; fi
+  [ -s "$GATE_ROOT/npm.errors" ] && { echo "WARN ~/.npm scan errors:"; head -20 "$GATE_ROOT/npm.errors" | sed 's/^/WARN   /'; }
+  return 0
+}
+
 LIB_AREAS="Application Support|Logs|Caches|Containers|LaunchAgents"
 LIB_OWN_IDS="dev.apiary. dev.honeybee. com.trmd.apiary ${SCG_LAB_BUNDLE_IDS:-}"
 LIB_ELECTRON_OK="AppleTextDirection NSForceRightToLeftWritingDirection NSTreatUnknownArgumentsAsOpen SKPurchaseIntentUpdatesLastChecked"
@@ -267,6 +283,7 @@ GATE_ROOT_LEN=$(printf %s "$GATE_ROOT" | wc -c | tr -d ' ')
 [ "$GATE_ROOT_LEN" -lt 40 ] || { echo "REFUSING: run root $GATE_ROOT is $GATE_ROOT_LEN bytes (>= 40)"; rm -rf "$GATE_ROOT"; exit 93; }
 home_snap "$GATE_ROOT/sb"; why=$(home_valid "$GATE_ROOT/sb") || { echo "REFUSING: before-sentinel invalid: $why"; rm -rf "$GATE_ROOT"; exit 92; }
 LIB_ERR=$GATE_ROOT/lib.errors; : > "$LIB_ERR"
+SCG_NPM_BEFORE=$(npm_snap)
 touch "$GATE_ROOT/lib.marker"; sleep 1
 lib_snap "$GATE_ROOT/lb"; why=$(lib_valid "$GATE_ROOT/lb") || { echo "REFUSING: ~/Library before-sentinel invalid: $why"; rm -rf "$GATE_ROOT"; exit 92; }
 [ -s "$LIB_ERR" ] && { echo "REFUSING: ~/Library before-snapshot had scan errors:"; head -20 "$LIB_ERR"; rm -rf "$GATE_ROOT"; exit 92; }
@@ -318,6 +335,7 @@ gate_finish() {
     echo "== HOME sentinel (real HOME top level, ~/.hive/v2, live socket)"
     if diff "$GATE_ROOT/sb.ids" "$GATE_ROOT/sa.ids"; then echo "(no change)"; else gate_fail "real HOME / ~/.hive/v2 / socket changed"; fi
   else gate_fail "HOME after-sentinel invalid: $why"; fi
+  npm_verdict
   lib_snap "$GATE_ROOT/la"
   if why=$(lib_valid "$GATE_ROOT/la"); then lib_verdict "$GATE_ROOT/lb" "$GATE_ROOT/la"; else gate_fail "~/Library after-sentinel invalid: $why"; fi
   [ $rc -eq 0 ] && [ $SCG_RC -ne 0 ] && rc=95
