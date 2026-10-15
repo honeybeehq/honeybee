@@ -2,6 +2,21 @@ set -u
 SCG_GATE_VERSION=darwin-gate/1
 SCG_ALLOWED_HOSTS="trmd-erebor-mini02 trmd-moria-mini03 trmd-hobbiton-mini04 trmd-lorien-mini05"
 if [ -z "${SCG_STAGE:-}" ]; then
+  EXPECT=${SCG_SOURCE_SHA:-}; EXPECT=${EXPECT%+dirty}
+  case "$EXPECT" in [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]*) ;; *) echo "REFUSING: no pinned source sha; launch through scripts/gates/darwin/gate-run.sh"; exit 88;; esac
+  LANE_HEAD=$(git rev-parse HEAD 2>/dev/null)
+  if [ "$LANE_HEAD" != "$EXPECT" ] && ! { [ "$(git log -1 --format=%s HEAD 2>/dev/null)" = "forage snapshot" ] && [ "$(git rev-parse HEAD^ 2>/dev/null)" = "$EXPECT" ]; }; then
+    echo "REFUSING: lane tree is not the pinned source (lane HEAD ${LANE_HEAD:-none}, parent $(git rev-parse HEAD^ 2>/dev/null || echo none), expected $EXPECT); another sync may have replaced it"; exit 88
+  fi
+  for pin in ${SCG_SCRIPTS:-}; do
+    name=${pin%%:*}; want=${pin#*:}; file=scripts/gates/darwin/$name
+    if [ -f "$file" ]; then
+      got=$(shasum -a 256 "$file" | cut -c1-12)
+      [ "$got" = "$want" ] || { echo "REFUSING: $file in the lane hashes $got, gate-run.sh pinned $want"; exit 88; }
+    else
+      case "$name" in darwin-gate.sh|daemon-suite-body.sh|seatbelt-exceptions.txt|third-party-warn.txt|excluded-tests.txt) echo "REFUSING: pinned $file is missing from the lane"; exit 88;; esac
+    fi
+  done
   H=$(hostname -s | tr '[:upper:]' '[:lower:]')
   case " $SCG_ALLOWED_HOSTS " in *" $H "*) ;; *) echo "REFUSING: host '$H' is not a lab/satellite mini (allowed: $SCG_ALLOWED_HOSTS)"; exit 90;; esac
   [ "$(uname -s)" = Darwin ] || { echo "REFUSING: darwin gate on $(uname -s)"; exit 90; }
@@ -23,6 +38,23 @@ if [ -z "${SCG_STAGE:-}" ]; then
 fi
 REAL_HOME=$SCG_REAL_HOME; NODE_BIN=$SCG_NODE_BIN; LIB=$REAL_HOME/Library
 SCG_RC=0
+SCG_LOCK=$REAL_HOME/.cache/scg/gate.lock
+SCG_LOCK_ID="$$ $(ps -o lstart= -p $$ | tr -s ' ')"
+gate_lock_release() { [ "$(cat "$SCG_LOCK/owner" 2>/dev/null)" = "$SCG_LOCK_ID" ] && rm -rf "$SCG_LOCK"; }
+gate_lock_acquire() {
+  local owner pid birth
+  mkdir -p "$REAL_HOME/.cache/scg"
+  if mkdir "$SCG_LOCK" 2>/dev/null; then echo "$SCG_LOCK_ID" > "$SCG_LOCK/owner"; return 0; fi
+  owner=$(cat "$SCG_LOCK/owner" 2>/dev/null); pid=${owner%% *}; birth=${owner#* }
+  case "$pid" in ''|*[!0-9]*) echo "REFUSING: host gate lock $SCG_LOCK has no readable owner; another darwin gate may be starting (check it and remove it by hand only if it is stale)"; exit 89;; esac
+  if [ "$(ps -o lstart= -p "$pid" 2>/dev/null | tr -s ' ')" = "$birth" ]; then echo "REFUSING: another darwin gate holds the host lock (pid $pid, started $birth); one gate per host"; exit 89; fi
+  echo "== stale host gate lock from pid $pid (started $birth) is gone; clearing it"
+  rm -rf "$SCG_LOCK"
+  mkdir "$SCG_LOCK" 2>/dev/null || { echo "REFUSING: host gate lock $SCG_LOCK was taken while clearing a stale lock"; exit 89; }
+  echo "$SCG_LOCK_ID" > "$SCG_LOCK/owner"
+}
+gate_lock_acquire
+trap gate_lock_release EXIT
 LIB_THIRD_PARTY_FILE=scripts/gates/darwin/third-party-warn.txt
 LIB_THIRD_PARTY=$(grep -v '^#' "$LIB_THIRD_PARTY_FILE" 2>/dev/null | grep .)
 [ -n "$LIB_THIRD_PARTY" ] || { echo "REFUSING: third-party WARN list $LIB_THIRD_PARTY_FILE is missing or empty"; exit 99; }
@@ -255,6 +287,13 @@ gate_reap() {
   kill -TERM $pids 2>/dev/null; for i in 1 2 3 4 5 6 7 8 9 10; do left=$(for p in $pids; do ps -p $p >/dev/null 2>&1 && echo $p; done); [ -z "$left" ] && break; sleep 1; done
   [ -n "$left" ] && { kill -KILL $left 2>/dev/null; echo "   KILL after 10s: $left"; }
 }
+gate_logs_sweep() {
+  local dir=$REAL_HOME/.cache/scg/sentinels old
+  command -v trash >/dev/null 2>&1 || { echo "== failure-log sweep skipped: trash is not available on this host"; return 0; }
+  old=$(ls -1td "$dir"/r.??????-logs 2>/dev/null | while IFS= read -r d; do [ "$(dirname "$d")" = "$dir" ] && [ -d "$d" ] && [ ! -L "$d" ] && basename "$d" | grep -qE '^r\.[A-Za-z0-9]{6}-logs$' && echo "$d"; done | tail -n +11)
+  [ -n "$old" ] || return 0
+  printf '%s\n' "$old" | while IFS= read -r d; do trash "$d" && echo "   trashed old failure logs: $(basename "$d")"; done
+}
 gate_finish() {
   local rc=$? why
   [ $rc -eq 0 ] && [ $SCG_RC -ne 0 ] && rc=$SCG_RC
@@ -273,7 +312,10 @@ gate_finish() {
   if why=$(lib_valid "$GATE_ROOT/la"); then lib_verdict "$GATE_ROOT/lb" "$GATE_ROOT/la"; else gate_fail "~/Library after-sentinel invalid: $why"; fi
   [ $rc -eq 0 ] && [ $SCG_RC -ne 0 ] && rc=95
   mkdir -p "$REAL_HOME/.cache/scg/sentinels"; for f in "$GATE_ROOT"/s[ab].* "$GATE_ROOT"/l[ab].* "$GATE_ROOT/lib.changes" "$GATE_ROOT/net-violations" "$GATE_ROOT/claude.census" "$GATE_ROOT/security-calls"; do [ -f "$f" ] && mv "$f" "$REAL_HOME/.cache/scg/sentinels/$(basename "$GATE_ROOT")-$(basename "$f")"; done
+  [ $rc -ne 0 ] && [ -d "$GATE_ROOT/logs" ] && mv "$GATE_ROOT/logs" "$REAL_HOME/.cache/scg/sentinels/$(basename "$GATE_ROOT")-logs" && echo "== per-file logs kept in $REAL_HOME/.cache/scg/sentinels/$(basename "$GATE_ROOT")-logs"
+  gate_logs_sweep
   rm -rf "$GATE_ROOT"
+  gate_lock_release
   echo "== GATE RESULT: $([ $rc -eq 0 ] && echo PASS || echo "FAIL (rc=$rc)") · $SCG_GATE_VERSION · forage run $(basename "$SCG_FORAGE_JOB") · lane $SCG_LANE · snapshot $SCG_SNAPSHOT${SCG_SOURCE_SHA:+ · source $SCG_SOURCE_SHA}${SCG_SCRIPTS:+ · scripts $SCG_SCRIPTS} · EXCLUDED $(echo ${SCG_EXCLUDED:-} | wc -w | tr -d ' ') [$(echo ${SCG_EXCLUDED:-})]"
   exit $rc
 }

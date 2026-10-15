@@ -58,6 +58,22 @@ sh scripts/gates/darwin/gate-run.sh > .dg.sh
 - A listed file missing from the suite refuses with exit 98.
 - The banner and the GATE RESULT line print every excluded file.
 
+**Stale-tree guard:** before anything else, the gate checks the lane and refuses with exit 88 unless both hold:
+- The lane HEAD is the source sha pinned by `gate-run.sh`, or a `forage snapshot` commit whose parent is that sha.
+- Every pinned gate file in the lane (`scripts/gates/darwin/`) has the sha256 `gate-run.sh` recorded.
+
+So a lane that another author resynced can never run under this provenance.
+
+**One gate per host:** the gate holds `~/.cache/scg/gate.lock` (owner pid plus its start time) for the whole run.
+- A second gate on the same host refuses with exit 89.
+- A lock whose owner pid is gone, or now has a different start time, is stale and is cleared.
+- A lock with no readable owner is never cleared automatically.
+- The gate releases the lock only if it still owns it.
+
+**Logs on failure:** when a run fails, its per-file test logs are kept in `~/.cache/scg/sentinels/<run root>-logs/`, next to the sentinels.
+- After each run, only the newest 10 `r.XXXXXX-logs` directories are kept; older ones go to the Trash with `trash`.
+- If `trash` is missing, the sweep is skipped and says so; it never uses rm.
+
 **Reaping:** at exit the gate kills every process tied to the run root or the gate's own process tree.
 
 **No foreign environment reads:** no step reads another process's environment. The census reads only pid, ppid, pgid, argv, and cwd via `lsof`.
@@ -110,6 +126,8 @@ Before and after, on `~/Library/Preferences` and on Application Support, Logs, C
 |---|---|
 | 0 | PASS |
 | 1, 95 | a test, network or sentinel FAIL |
+| 88 | the lane tree or a gate file is not what `gate-run.sh` pinned, or no source sha was pinned |
+| 89 | another darwin gate holds the host lock |
 | 90 | wrong host, a Cell, outside a forage job or lane, or no Node ≥ 24 |
 | 91 | `node_modules` is a symlink |
 | 92 | before-sentinel invalid |
