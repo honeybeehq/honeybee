@@ -103,6 +103,24 @@ test("socket placement: a recorded dir that is world-writable or a symlink to a 
   }
 });
 
+test("socket placement: the fit check uses the real path of the base", () => {
+  const root = mkdtempSync(join(tmpdir(), "hb-sp-real-"));
+  const link = join("/tmp", `hb-sp-base-${process.pid}`);
+  try {
+    let real = realpathSync(root);
+    const name = "x.sock";
+    while (socketPathBytes(join(real, "hived-XXXXXX", name)) < UNIX_SOCKET_PATH_LIMIT) real = join(real, "pad");
+    mkdirSync(real, { recursive: true });
+    rmSync(link, { force: true });
+    symlinkSync(real, link);
+    assert.ok(socketPathFits(join(link, "hived-XXXXXX", name)), "the short link spelling would pass a lexical check");
+    assert.throws(() => shortSocketDir("hived-", name, [link]), (error: unknown) => error instanceof RpcError && error.code === "socket_path_too_long");
+  } finally {
+    rmSync(link, { force: true });
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("socket placement: the refusal names the path when no base can hold a short socket", () => {
   const root = mkdtempSync(join(tmpdir(), "hb-sp-refuse-"));
   try {
