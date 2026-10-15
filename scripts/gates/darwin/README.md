@@ -96,7 +96,7 @@ Before and after, on `~/Library/Preferences` and on Application Support, Logs, C
 | Containers/com.apple.UsageTrackingAgent | Apple UsageTrackingAgent | paths inside; the dir itself only if it existed |
 
 **Interim Apple rule:** mode `interim` in the same file, until a dedicated macOS gate user exists.
-- Created or modified entries under `Application Support/com.apple.*` and `Containers/com.apple.*` WARN.
+- Created or modified entries under `Application Support/com.apple.*`, `Containers/com.apple.*` and `Caches/com.apple.*` WARN.
 - Interim globs are checked only after every other entry.
 - Our names and removals still FAIL.
 
