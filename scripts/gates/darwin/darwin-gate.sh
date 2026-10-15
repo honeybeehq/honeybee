@@ -211,6 +211,7 @@ net_probe() {
   out=$(sandbox-exec -p "$SCG_SB_PROFILE" env SCG_NET_VIOLATIONS=$pv node --import="$SCG_TRAP" -e 'const s=require("net").createServer(c=>c.end("hi")).listen(0,"127.0.0.1",()=>{require("net").connect(s.address().port,"127.0.0.1").on("data",d=>{console.log(String(d));process.exit(0)}).on("error",e=>{console.log(e.code);process.exit(3)})})' 2>&1); [ "$out" = hi ] && echo "probe: loopback under both layers works (ok)" || { echo "probe: loopback -> $out"; ok=0; }
   out=$(sandbox-exec -p "$SCG_SB_PROFILE" sh -c 'GIT_ALLOW_PROTOCOL=file git ls-remote https://github.com/honeybeehq/honeybee 2>&1 | head -1'); case "$out" in *"not allowed"*|*"transport"*) echo "probe: git https refused (ok): $out";; *) echo "probe: git https -> $out"; ok=0;; esac
   out=$(sandbox-exec -p "$SCG_SB_PROFILE" ps -p $$ -o lstart= 2>&1); printf %s "$out" | grep -qE '[0-9]{2}:[0-9]{2}:[0-9]{2} [0-9]{4}' && [ "$(command -v ps)" = "$SCG_PS_SHIM/ps" ] && echo "probe: seatbelt ps via the non-setuid shim reads lstart (ok)" || { echo "probe: seatbelt ps -> $out ($(command -v ps))"; ok=0; }
+  [ "$(command -v security)" = "$SCG_PS_SHIM/security" ] && [ "$(sandbox-exec -p "$SCG_SB_PROFILE" /bin/sh -c 'command -v security')" = "$SCG_PS_SHIM/security" ] && [ ! -s "$SCG_SECURITY_CALLS" ] && echo "probe: security resolves to the fake inside and outside Seatbelt (ok)" || { echo "probe: security -> $(command -v security) / sandbox $(sandbox-exec -p "$SCG_SB_PROFILE" /bin/sh -c 'command -v security' 2>&1)"; ok=0; }
   [ $ok = 1 ] || { echo "REFUSING: gate probe failed; the gate cannot prove outbound is blocked or that tests can run under Seatbelt"; exit 97; }
 }
 net_verdict() {
@@ -236,6 +237,9 @@ chmod 700 "$XDG_RUNTIME_DIR"
 export npm_config_cache=$REAL_HOME/.npm npm_config_store_dir=$REAL_HOME/Library/pnpm/store
 SCG_PS_SHIM=$GATE_ROOT/bin
 mkdir -p "$SCG_PS_SHIM" && cp /bin/ps "$SCG_PS_SHIM/ps" && chmod 755 "$SCG_PS_SHIM/ps" && codesign --remove-signature "$SCG_PS_SHIM/ps" && codesign -f -s - "$SCG_PS_SHIM/ps" 2>/dev/null || { echo "REFUSING: cannot build the non-setuid ps shim (Seatbelt refuses setuid /bin/ps)"; rm -rf "$GATE_ROOT"; exit 94; }
+export SCG_SECURITY_CALLS=$GATE_ROOT/security-calls
+: > "$SCG_SECURITY_CALLS"
+printf '#!/bin/sh\nprintf "%%s pid=%%s ppid=%%s argv=%%s\\n" "$(date -u +%%Y-%%m-%%dT%%H:%%M:%%SZ)" "$$" "$PPID" "$*" >> "%s"\nexit 1\n' "$SCG_SECURITY_CALLS" > "$SCG_PS_SHIM/security" && chmod 755 "$SCG_PS_SHIM/security" || { echo "REFUSING: cannot install the fake security"; rm -rf "$GATE_ROOT"; exit 94; }
 export PATH="$SCG_PS_SHIM:$PATH"
 SOCK_LEN=$(printf %s "$TMPDIR/hb-v2-daemon-XXXXXX/hived.sock" | wc -c | tr -d ' ')
 [ "$SOCK_LEN" -lt 104 ] || { echo "REFUSING: test socket path would be $SOCK_LEN bytes (>= 104)"; rm -rf "$GATE_ROOT"; exit 94; }
@@ -257,6 +261,8 @@ gate_finish() {
   [ -n "${SCG_CENSUS_PID:-}" ] && { pkill -P "$SCG_CENSUS_PID" 2>/dev/null; kill "$SCG_CENSUS_PID" 2>/dev/null; }
   gate_reap
   [ -n "${SCG_T0:-}" ] && net_verdict
+  echo "== security calls"
+  if [ -s "$SCG_SECURITY_CALLS" ]; then cat "$SCG_SECURITY_CALLS"; gate_fail "a test ran security ($(wc -l < "$SCG_SECURITY_CALLS" | tr -d ' ') calls); the fake refused them"; else echo "security: 0 calls"; fi
   echo "== Claude CLI census: $(awk '{print $2}' "$GATE_ROOT/claude.census" 2>/dev/null | sort | uniq -c | tr -s ' ' | tr '\n' ';')"
   home_snap "$GATE_ROOT/sa"
   if why=$(home_valid "$GATE_ROOT/sa"); then
@@ -266,9 +272,9 @@ gate_finish() {
   lib_snap "$GATE_ROOT/la"
   if why=$(lib_valid "$GATE_ROOT/la"); then lib_verdict "$GATE_ROOT/lb" "$GATE_ROOT/la"; else gate_fail "~/Library after-sentinel invalid: $why"; fi
   [ $rc -eq 0 ] && [ $SCG_RC -ne 0 ] && rc=95
-  mkdir -p "$REAL_HOME/.cache/scg/sentinels"; for f in "$GATE_ROOT"/s[ab].* "$GATE_ROOT"/l[ab].* "$GATE_ROOT/lib.changes" "$GATE_ROOT/net-violations" "$GATE_ROOT/claude.census"; do [ -f "$f" ] && mv "$f" "$REAL_HOME/.cache/scg/sentinels/$(basename "$GATE_ROOT")-$(basename "$f")"; done
+  mkdir -p "$REAL_HOME/.cache/scg/sentinels"; for f in "$GATE_ROOT"/s[ab].* "$GATE_ROOT"/l[ab].* "$GATE_ROOT/lib.changes" "$GATE_ROOT/net-violations" "$GATE_ROOT/claude.census" "$GATE_ROOT/security-calls"; do [ -f "$f" ] && mv "$f" "$REAL_HOME/.cache/scg/sentinels/$(basename "$GATE_ROOT")-$(basename "$f")"; done
   rm -rf "$GATE_ROOT"
-  echo "== GATE RESULT: $([ $rc -eq 0 ] && echo PASS || echo "FAIL (rc=$rc)") · $SCG_GATE_VERSION · forage run $(basename "$SCG_FORAGE_JOB") · lane $SCG_LANE · snapshot $SCG_SNAPSHOT${SCG_SOURCE_SHA:+ · source $SCG_SOURCE_SHA}${SCG_SCRIPTS:+ · scripts $SCG_SCRIPTS}"
+  echo "== GATE RESULT: $([ $rc -eq 0 ] && echo PASS || echo "FAIL (rc=$rc)") · $SCG_GATE_VERSION · forage run $(basename "$SCG_FORAGE_JOB") · lane $SCG_LANE · snapshot $SCG_SNAPSHOT${SCG_SOURCE_SHA:+ · source $SCG_SOURCE_SHA}${SCG_SCRIPTS:+ · scripts $SCG_SCRIPTS} · EXCLUDED $(echo ${SCG_EXCLUDED:-} | wc -w | tr -d ' ') [$(echo ${SCG_EXCLUDED:-})]"
   exit $rc
 }
 trap gate_finish EXIT

@@ -15,7 +15,7 @@ sh scripts/gates/darwin/gate-run.sh > .dg.sh
 
 - `gate-run.sh` puts `darwin-gate.sh` and a body (default `daemon-suite-body.sh`) into one script.
   - It pins the source commit; the sha gets `+dirty` if this directory has local changes.
-  - It also records a short sha256 of each gate file and data file.
+  - It also records a short sha256 of each gate file and data file (including `excluded-tests.txt`).
 - forage syncs the working tree, untracked `.dg.sh` included, into the lane.
 - Every run prints and ends with `forage run · lane · snapshot · source · scripts`.
 - Stage output only under `~/.cache`, never `/tmp`.
@@ -41,11 +41,22 @@ sh scripts/gates/darwin/gate-run.sh > .dg.sh
 
 **ps shim:** Seatbelt refuses setuid binaries, and `/bin/ps` is setuid. The gate puts an ad-hoc-signed copy without the setuid bit first on PATH inside the run root.
 
+**Fake security:** the gate puts a fake `security` first on PATH, next to the ps shim.
+- It records the time, pid, ppid and argv of every call in the run root's `security-calls`, never reads stdin, and exits 1. Any recorded call FAILs the gate; the calls are printed in the result and kept with the sentinels.
+- The probe must find `security` resolving to the fake both inside and outside Seatbelt, else exit 97.
+- This stays permanently, even after the Keychain fix lands. Code that runs `/usr/bin/security` by absolute path would bypass it; none does today.
+
 **Every file runs:** each test file runs separately, so one failure doesn't stop the rest.
 - Files that spawn `sandbox: true` Cells run trap-only, because nested sandbox-exec is refused.
 - So do the files listed in `seatbelt-exceptions.txt`. Its header names the fix that removes the need for it; delete the listed lines once that fix is on main.
 - A listed file that no longer exists in the suite is refused with exit 98.
 - Trap-only files must still pass.
+
+**Excluded tests:** `excluded-tests.txt` lists test files the gate does not run at all, in either phase. Its header gives the reason.
+- Today: files that reach `v2/daemon/src/keychain.ts` and so the real `/usr/bin/security`, until c51035e5's fake-security fix lands. The list comes from c51035e5 via Queen.
+- The file must exist; an empty list is allowed for this file only.
+- A listed file missing from the suite refuses with exit 98.
+- The banner and the GATE RESULT line print every excluded file.
 
 **Reaping:** at exit the gate kills every process tied to the run root or the gate's own process tree.
 
@@ -103,7 +114,7 @@ Before and after, on `~/Library/Preferences` and on Application Support, Logs, C
 | 91 | `node_modules` is a symlink |
 | 92 | before-sentinel invalid |
 | 93 | run root could not be made or is 40 bytes or longer |
-| 94 | test socket path would be 104 bytes or longer, or the ps shim could not be built |
+| 94 | test socket path would be 104 bytes or longer, or the ps shim or fake security could not be installed |
 | 97 | probe failed |
-| 98 | a file in `seatbelt-exceptions.txt` is not in the suite |
+| 98 | a file in `seatbelt-exceptions.txt` or `excluded-tests.txt` is not in the suite, or `excluded-tests.txt` is missing |
 | 99 | `third-party-warn.txt` is missing, empty or malformed |
