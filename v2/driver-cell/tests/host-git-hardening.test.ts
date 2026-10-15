@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { captureWork } from "../src/capture.ts";
 import { gitEnv, hostGitConfig, parseConfigListing, porcelainStatus, repoLocalExecOverrides, tryGit } from "../src/git.ts";
@@ -81,6 +81,8 @@ test("host git never runs a hook or fsmonitor planted in a Cell, a nested repo, 
     const previousTrace = process.env.GIT_TRACE;
     process.env.GIT_TRACE = trace;
 
+    const staleStat = new Date(Date.now() + 2_000);
+    utimesSync(join(space, "feature.ts"), staleStat, staleStat);
     const unguarded = spawnSync("git", ["status", "--porcelain"], { cwd: space, encoding: "utf8", env: gitEnv() });
     assert.equal(unguarded.status, 0, unguarded.stderr);
     const unguardedFired = firedCanaries(canary);
