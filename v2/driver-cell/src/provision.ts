@@ -31,7 +31,7 @@ import { availableParallelism } from "node:os";
 import { performance } from "node:perf_hooks";
 import { join } from "node:path";
 import { cowCopy, cowPlatform, probeCow, type CowPlatform } from "./cow.ts";
-import { git } from "./git.ts";
+import { adoptOriginRemote, git } from "./git.ts";
 import {
   gitImagesRootForCells,
   refreshGitImage,
@@ -379,6 +379,7 @@ function runProvisionOperation(
     }
     if (mode === "clone") {
       git(paths.boxDir, ["clone", "--local", "--no-checkout", req.originRepo, paths.spaceDir]);
+      adoptOriginRemote(req.originRepo, paths.spaceDir);
     }
     op.steps.git_placed = { mode, at: cfg.now(), ...(image == null ? {} : { image }) };
     ledger.copy_mode = mode;

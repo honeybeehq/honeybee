@@ -33,7 +33,7 @@ import {
 } from "node:fs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { cowCopy, cowPlatform, probeCow, type CowPlatform } from "./cow.ts";
-import { git, gitEnv, hasCommit, tryGit } from "./git.ts";
+import { adoptOriginRemote, git, gitEnv, hasCommit, tryGit } from "./git.ts";
 
 export const CELL_GIT_IMAGE_VERSION = 1 as const;
 const IMAGE_LOCK_STALE_MS = 30 * 60 * 1_000;
@@ -226,14 +226,7 @@ function configureFreshCellGit(spaceDir: string, originRepo: string, emptyHooksD
     }
     renameSync(configLockPath, configPath);
   }
-  const remote = tryGit(originRepo, ["remote", "get-url", "origin"]);
-  if (remote.status === 0 && remote.stdout.trim().length > 0) {
-    git(spaceDir, ["remote", "add", "origin", remote.stdout.trim()]);
-    const push = tryGit(originRepo, ["remote", "get-url", "--push", "origin"]);
-    if (push.status === 0 && push.stdout.trim().length > 0 && push.stdout.trim() !== remote.stdout.trim()) {
-      git(spaceDir, ["remote", "set-url", "--push", "origin", push.stdout.trim()]);
-    }
-  }
+  adoptOriginRemote(originRepo, spaceDir);
 }
 
 /**

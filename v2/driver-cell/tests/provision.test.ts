@@ -5,7 +5,8 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { platform } from "node:os";
 import { join } from "node:path";
 import { provisionCell, provisionRequestOf, reserveCell } from "../src/provision.ts";
@@ -99,6 +100,27 @@ test("provision.clone: fallback places a fresh .git, records copy_mode=clone, ne
     // Detached at the requested sha, deliberately not on a branch.
     const sym = g(space, ["rev-parse", "--abbrev-ref", "HEAD"]);
     assert.equal(sym, "HEAD");
+    assert.equal(g(space, ["remote", "get-url", "origin"]), rig.origin.repo);
+
+    g(rig.origin.repo, ["remote", "add", "origin", "ssh://git@github.invalid/example/fixture.git"]);
+    const upstreamed = provisionCell(rig.cellsRoot, req(rig, { beeId: "bee-2", wrapper: "bee-2", cellId: "c2" }), "cmd-2", { disableCow: true });
+    const upstreamSpace = upstreamed.paths.spaceDir;
+    assert.equal(upstreamed.copyMode, "clone");
+    assert.equal(g(upstreamSpace, ["rev-parse", "HEAD"]), rig.origin.sha);
+    assert.equal(g(upstreamSpace, ["status", "--porcelain"]), "");
+    assert.equal(g(upstreamSpace, ["remote", "get-url", "origin"]), "ssh://git@github.invalid/example/fixture.git");
+    assert.equal(spawnSync("git", ["config", "--get", "remote.origin.pushurl"], { cwd: upstreamSpace }).status, 1);
+    const offline = spawnSync("git", ["fetch", "origin"], { cwd: upstreamSpace, env: { ...process.env, GIT_SSH_COMMAND: "false" } });
+    assert.notEqual(offline.status, 0);
+    const object = g(upstreamSpace, ["rev-parse", "HEAD:README.md"]);
+    const objectPath = (repo: string) => join(repo, ".git", "objects", object.slice(0, 2), object.slice(2));
+    assert.equal(statSync(objectPath(upstreamSpace)).ino, statSync(objectPath(rig.origin.repo)).ino);
+    assert.ok(statSync(objectPath(upstreamSpace)).nlink > 1);
+
+    g(rig.origin.repo, ["remote", "set-url", "--push", "origin", "ssh://git@github.invalid/example/fixture-push.git"]);
+    const pushed = provisionCell(rig.cellsRoot, req(rig, { beeId: "bee-3", wrapper: "bee-3", cellId: "c3" }), "cmd-3", { disableCow: true });
+    assert.equal(g(pushed.paths.spaceDir, ["remote", "get-url", "origin"]), "ssh://git@github.invalid/example/fixture.git");
+    assert.equal(g(pushed.paths.spaceDir, ["remote", "get-url", "--push", "origin"]), "ssh://git@github.invalid/example/fixture-push.git");
   } finally {
     rig.cleanup();
   }
