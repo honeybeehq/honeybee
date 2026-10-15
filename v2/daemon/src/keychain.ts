@@ -18,7 +18,7 @@
  * so tests never touch a real keychain; the default reader is a no-op off
  * macOS or under HIVE_NO_KEYCHAIN.
  */
-import { readClaudeKeychainState as readNativeKeychainState } from "../../../src/keychain.ts";
+import { readClaudeKeychainState as readNativeKeychainState, securityExecutable } from "../../../src/keychain.ts";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { homedir, userInfo } from "node:os";
@@ -122,6 +122,7 @@ export function identityOnlyCredentials(credentials: string): string | null {
  */
 export const writeClaudeKeychainEntry: KeychainWriter = async (homePath, credentials) => {
   if (!keychainAvailable()) return false;
+  const security = securityExecutable();
   const normalized = decodeSecurityPasswordOutput(credentials);
   try {
     JSON.parse(normalized);
@@ -132,7 +133,7 @@ export const writeClaudeKeychainEntry: KeychainWriter = async (homePath, credent
   const service = claudeKeychainService(homePath);
   const writeAndVerify = async (command: string, expected: string): Promise<boolean> => {
     try {
-      const pending = execFileAsync("security", ["-i"], { timeout: SECURITY_EXEC_TIMEOUT_MS });
+      const pending = execFileAsync(security, ["-i"], { timeout: SECURITY_EXEC_TIMEOUT_MS });
       const stdin = pending.child.stdin;
       if (stdin) {
         stdin.on("error", () => {});
@@ -160,8 +161,9 @@ export type KeychainRemover = (homePath: string) => Promise<boolean>;
 
 export const removeClaudeKeychainEntry: KeychainRemover = async homePath => {
   if (!keychainAvailable()) return false;
+  const security = securityExecutable();
   try {
-    await execFileAsync("security", ["delete-generic-password", "-a", userInfo().username, "-s", claudeKeychainService(homePath)], { timeout: SECURITY_EXEC_TIMEOUT_MS });
+    await execFileAsync(security, ["delete-generic-password", "-a", userInfo().username, "-s", claudeKeychainService(homePath)], { timeout: SECURITY_EXEC_TIMEOUT_MS });
     return true;
   } catch {
     return (await readClaudeKeychainState(homePath)).status === "absent";

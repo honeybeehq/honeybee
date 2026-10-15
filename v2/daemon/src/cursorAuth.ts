@@ -19,6 +19,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { keychainAvailable } from "./keychain.ts";
+import { securityExecutable } from "../../../src/keychain.ts";
 
 const execFileAsync = promisify(execFile);
 const SECURITY_EXEC_TIMEOUT_MS = 60_000;
@@ -73,9 +74,10 @@ function readCursorAuthFile(path: string): CursorAuthSnapshot | null {
 }
 
 async function readCursorKeychainSecret(service: string): Promise<string | undefined> {
+  const security = securityExecutable();
   try {
     const { stdout } = await execFileAsync(
-      "security",
+      security,
       ["find-generic-password", "-a", "cursor-user", "-s", service, "-w"],
       { timeout: SECURITY_EXEC_TIMEOUT_MS },
     );
