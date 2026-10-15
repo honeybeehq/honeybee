@@ -75,6 +75,7 @@ import type {
 import type { HarnessAdapter } from "../../adapters/src/index.ts";
 import { executableNotFoundDetail, type SpawnCommandResolution } from "../../core/src/executables.ts";
 import { inspectProcess, sameProcess, processDisposition, legacyProcessCandidate, ProcessIdentityUnavailableError, verifyProcessIdentity, type ProcessIdentity } from "./psutil.ts";
+import { shortSocketDir, socketPathFits } from "../../core/src/socketPath.ts";
 
 // Pin the module's physical deployment before an immutable runtime's
 // `current` symlink can move. Node normally realpaths imported modules, but
@@ -392,6 +393,7 @@ export class HsrDriver implements RuntimeDriver {
   private readonly reconnecting = new Set<string>();
   private detached = false;
   private readonly cfg: HsrDriverConfig;
+  private fallbackSocketDir: string | null = null;
   private readonly hostLaunch: HostLaunch;
   private readonly now: () => number;
   private readonly graceMs: number;
@@ -461,6 +463,15 @@ export class HsrDriver implements RuntimeDriver {
       );
     }
     return source ? { kind: "source", entry } : { kind: "artifact", entry };
+  }
+
+  private socketDir(): string {
+    if (this.cfg.socketDir) return this.cfg.socketDir;
+    if (!this.fallbackSocketDir) {
+      const sample = `hb-rh-${"0".repeat(16)}.sock`;
+      this.fallbackSocketDir = socketPathFits(join(tmpdir(), sample)) ? tmpdir() : shortSocketDir("hb-rh-", sample);
+    }
+    return this.fallbackSocketDir;
   }
 
   private runnerPaths(
