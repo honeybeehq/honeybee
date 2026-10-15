@@ -28,9 +28,12 @@ function setup(t: { after: (fn: () => Promise<void> | void) => void }) {
     for (const child of children) if (running(child)) child.kill("SIGKILL");
     for (const { pid, birth } of grandchildren) if (birth !== null && birthOf(pid) === birth) process.kill(pid, "SIGKILL");
     for (const child of children) child.stdin?.destroy();
-    await waitFor(() => !children.some(running) && grandchildren.every(({ pid, birth }) => birthOf(pid) !== birth), "fixture test processes exited", 10_000, 50);
-    for (const server of servers) { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); }
-    rmSync(dir, { recursive: true, force: true });
+    try {
+      await waitFor(() => !children.some(running) && grandchildren.every(({ pid, birth }) => birthOf(pid) !== birth), "fixture test processes exited", 10_000, 50);
+    } finally {
+      for (const server of servers) { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); }
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
   const env = (extra: Record<string, string>) => ({ PATH: process.env.PATH ?? "", HOME: dir, CLAUDE_CONFIG_DIR: config, ...extra });
   const start = (args: string[], extra: Record<string, string>) => {
