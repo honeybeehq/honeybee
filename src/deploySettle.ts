@@ -33,6 +33,9 @@ export const BUILD_STAMP_FILENAME = ".build-stamp.json";
  */
 export const REPACK_RECORD_FILENAME = ".build-repack.json";
 
+/** Stamps are verified on other machines; the walk order must not follow the host locale. */
+const TREE_HASH_LOCALE = "en-US";
+
 const DIST_ROOT_METADATA: ReadonlySet<string> = new Set([BUILD_STAMP_FILENAME, REPACK_RECORD_FILENAME]);
 
 export type RepackRecord = {
@@ -78,7 +81,7 @@ export async function hashDirectoryTree(dir: string, omit: ReadonlySet<string> =
   const relativeFiles: string[] = [];
   const walk = async (relative: string): Promise<void> => {
     const entries = await readdir(join(dir, relative), { withFileTypes: true });
-    for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+    for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name, TREE_HASH_LOCALE))) {
       const relPath = relative ? `${relative}/${entry.name}` : entry.name;
       if (entry.isDirectory()) await walk(relPath);
       else if (entry.isFile() && !DIST_ROOT_METADATA.has(relPath) && !omit.has(relPath)) relativeFiles.push(relPath);
