@@ -116,6 +116,9 @@ Before and after, on `~/Library/Preferences` and on Application Support, Logs, C
 | Caches/com.apple.duetexpertd/com.apple.e5rt.e5bundlecache/ | Apple duetexpertd | the dir and below |
 | Application Support/networkserviceproxy/ | Apple (iCloud Private Relay) | only paths present in the before-snapshot; new files FAIL |
 | Caches/com.apple.cache_delete/ | Apple CacheDelete | the dir and below |
+| Caches/CloudKit/ | Apple CloudKit | the dir and below |
+| Caches/GeoServices/ | Apple GeoServices | the dir and below |
+| Caches/Google/Chrome/ | Google Chrome | the dir and below |
 | Containers/com.apple.lighthouse.PnROnDeviceWorker | Apple lighthouse | paths inside; the dir itself only if it existed |
 | Containers/com.apple.unilog.SearchUploadWorker | Apple unilog | paths inside; the dir itself only if it existed |
 | Containers/com.apple.siri.ODDIPoirotExperimentationExtension | Apple Siri | paths inside; the dir itself only if it existed |
