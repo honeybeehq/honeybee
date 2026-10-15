@@ -33,6 +33,7 @@ import {
 import { execFileSync } from "node:child_process";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { securityExecutable } from "../../src/keychain.ts";
 import { fileURLToPath } from "node:url";
 import { TmuxDriver, type TmuxSpawnSpec } from "./src/driver.ts";
 import { exactPaneTarget, TmuxServer } from "./src/tmux.ts";
@@ -130,9 +131,10 @@ function prepClaudeHome(home: string, cwd: string, eventsPath: string | null): v
     // macOS: claude stores OAuth creds in the Keychain, and an ISOLATED config
     // dir does NOT read them (verified live: pane shows "Not logged in").
     // Extract and place them in the isolated home; shredded at teardown.
+    const security = securityExecutable();
     try {
       const secret = execFileSync(
-        "security",
+        security,
         ["find-generic-password", "-s", "Claude Code-credentials", "-w"],
         { encoding: "utf8" },
       ).trim();
