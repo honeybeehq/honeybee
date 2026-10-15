@@ -551,7 +551,7 @@ try {
     console.log(`  [${kind}] phase wall time: ${((Date.now() - phaseT0) / 1000).toFixed(1)}s`);
   }
   const failed = results.filter(([, ok]) => !ok);
-  console.log(`\nartifacts kept for inspection under: ${runDir}`);
+  console.log(`\nartifacts kept for inspection under: ${runDir}${dirname(socketPath) === runDir ? "" : ` (socket dir ${dirname(socketPath)})`}`);
   if (harness === "grok") {
     console.log("note: grok's parser was fixture-derived — a passing transcript phase here is");
     console.log("      the first live validation of that format. Record the result in SMOKE.md.");
