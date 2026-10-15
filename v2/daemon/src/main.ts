@@ -5,6 +5,7 @@ import { validateDaemonNode } from "../../../src/nodeRuntime.ts";
  * executes; it runs until SIGTERM/SIGINT and then shuts down cleanly
  * (children survive — the next boot re-adopts them).
  */
+import { isTestDaemonEnv, refuseNonLoopbackFetch } from "./testNetworkGuard.ts";
 import { existsSync } from "node:fs";
 import { dirname, parse, resolve } from "node:path";
 import { measureDirectoryBytes } from "../../driver-cell/src/index.ts";
@@ -58,6 +59,7 @@ function simulatedCellVolume(cellsRoot: string, totalBytes: number): (path: stri
 
 /** Run the daemon in the foreground until a termination signal. */
 export async function runDaemon(argv: string[]): Promise<number> {
+  if (isTestDaemonEnv()) refuseNonLoopbackFetch((op) => process.stderr.write(`${op}\n`));
   const args = parseDaemonRunArgs(argv);
   const dataDir = resolveDaemonDataDir(args);
   const held = validateDaemonNode(dataDir, true);
