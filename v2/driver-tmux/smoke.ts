@@ -33,6 +33,7 @@ import {
 import { execFileSync } from "node:child_process";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { shortSocketDir, socketPathFits } from "../core/src/socketPath.ts";
 import { fileURLToPath } from "node:url";
 import { TmuxDriver, type TmuxSpawnSpec } from "./src/driver.ts";
 import { exactPaneTarget, TmuxServer } from "./src/tmux.ts";
@@ -68,7 +69,7 @@ const PHASES: Record<string, PhaseKind[]> = {
 };
 
 const runDir = mkdtempSync(join(tmpdir(), "hive-tmux-smoke-"));
-const socketPath = join(runDir, "tmux.sock");
+const socketPath = socketPathFits(join(runDir, "tmux.sock")) ? join(runDir, "tmux.sock") : join(shortSocketDir("hive-tmux-smoke-", "tmux.sock"), "tmux.sock");
 /** Read-only pane peeking + final server teardown (same private socket). */
 const server = new TmuxServer({ socketPath, allowKillServer: true });
 
