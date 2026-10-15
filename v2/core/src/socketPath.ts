@@ -1,4 +1,4 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 
 export const UNIX_SOCKET_PATH_LIMIT = process.platform === "darwin" ? 104 : 108;
@@ -34,8 +34,14 @@ export function requireSocketPathFits(path: string, what: string): string {
 
 export function shortSocketDir(prefix: string, name: string, bases: Array<string | undefined> = [process.env.TMPDIR, "/tmp"]): string {
   const probes: string[] = [];
-  for (const base of bases) {
-    if (!base) continue;
+  for (const given of bases) {
+    if (!given) continue;
+    let base: string;
+    try {
+      base = realpathSync(given);
+    } catch {
+      continue;
+    }
     const probe = join(base, `${prefix}XXXXXX`, name);
     probes.push(probe);
     if (!socketPathFits(probe)) continue;
