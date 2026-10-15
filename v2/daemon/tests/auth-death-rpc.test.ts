@@ -3,12 +3,28 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { RpcClient } from "../../cli/src/client.ts";
 import { RpcError, type AuditTailResult, type AccountInterruptionsResult, type AccountLeaseInstallResult, type AccountLeaseResult, type MailboxResult, type SendRpcResult, type SpawnResult, type ViewResult } from "../src/protocol.ts";
 import { forceStopTestDaemon, makeDaemonDir, startDaemon, waitFor, type DaemonHandle } from "./helpers.ts";
+
+const birthOf = (pid: number) => {
+  try { return execFileSync("ps", ["-p", String(pid), "-o", "lstart="], { encoding: "utf8" }).trim().replace(/\s+/g, " "); } catch { return null; }
+};
+
+async function killFixtures(pidDir: string): Promise<void> {
+  const fixtures = existsSync(pidDir) ? readdirSync(pidDir).map(name => ({ pid: Number(name), birth: readFileSync(join(pidDir, name), "utf8") })) : [];
+  for (const { pid, birth } of fixtures) {
+    if (birthOf(pid) !== birth) continue;
+    try { process.kill(pid, "SIGKILL"); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; }
+  }
+  await waitFor(() => fixtures.every(({ pid, birth }) => birthOf(pid) !== birth), "auth-death fixtures exited", 10_000, 50);
+  rmSync(pidDir, { recursive: true, force: true });
+}
 
 for (const stayAlive of [false, true]) test(`auth death isolated daemons: revoked provider access, ${stayAlive ? "system idle stop" : "process exit"}, newer lease revives once; restart, mail FIFO and operator stop`, { timeout: 120_000 }, async t => {
   const access = new Set<string>(), refresh = new Set<string>();
@@ -27,13 +43,16 @@ for (const stayAlive of [false, true]) test(`auth death isolated daemons: revoke
   });
   await new Promise<void>(resolve => provider.listen(0, "127.0.0.1", resolve));
   const endpoint = `http://127.0.0.1:${(provider.address() as AddressInfo).port}`;
-  const source = makeDaemonDir({ accounts: { centralRefreshAheadMs: 0 }, agents: { claude: { command: process.execPath, args: [fileURLToPath(new URL("./fixtures/auth-death-claude.mjs", import.meta.url))], adapter: "claude", env: { AUTH_DEATH_PROVIDER_URL: endpoint + "/call" } } } });
-  const holder = makeDaemonDir({ idleWindowMs: stayAlive ? 700 : 0, agents: { claude: { command: process.execPath, args: [fileURLToPath(new URL("./fixtures/auth-death-claude.mjs", import.meta.url))], adapter: "claude", env: { AUTH_DEATH_PROVIDER_URL: endpoint + "/call", AUTH_DEATH_STAY_ALIVE: stayAlive ? "1" : "0" } } } });
+  const pidDir = mkdtempSync(join(tmpdir(), "auth-death-fixtures-"));
+  const fixtureEnv = { AUTH_DEATH_PROVIDER_URL: endpoint + "/call", AUTH_DEATH_OWNER_PID: String(process.pid), AUTH_DEATH_PID_DIR: pidDir };
+  const source = makeDaemonDir({ accounts: { centralRefreshAheadMs: 0 }, agents: { claude: { command: process.execPath, args: [fileURLToPath(new URL("./fixtures/auth-death-claude.mjs", import.meta.url))], adapter: "claude", env: fixtureEnv } } });
+  const holder = makeDaemonDir({ idleWindowMs: stayAlive ? 700 : 0, agents: { claude: { command: process.execPath, args: [fileURLToPath(new URL("./fixtures/auth-death-claude.mjs", import.meta.url))], adapter: "claude", env: { ...fixtureEnv, AUTH_DEATH_STAY_ALIVE: stayAlive ? "1" : "0" } } } });
   let da: DaemonHandle | null = null, db: DaemonHandle | null = null, ca: RpcClient | null = null, cb: RpcClient | null = null;
   let cleaned: Promise<void> | undefined;
   const cleanup = () => cleaned ??= (async () => {
     ca?.close(); cb?.close();
     const stopped = await Promise.allSettled([da && forceStopTestDaemon(da), db && forceStopTestDaemon(db)]);
+    stopped.push(...await Promise.allSettled([killFixtures(pidDir)]));
     provider.closeAllConnections(); await new Promise<void>(resolve => provider.close(() => resolve()));
     source.cleanup(); holder.cleanup();
     for (const result of stopped) if (result.status === "rejected") throw result.reason;

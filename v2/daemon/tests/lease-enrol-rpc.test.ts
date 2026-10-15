@@ -18,7 +18,7 @@ test("lease enrol RPC: live unchanged process, generationless publication SIGKIL
   const provider = createServer((req, res) => { res.writeHead(req.headers.authorization === `Bearer ${validAccess}` ? 200 : 401); res.end("{}"); });
   await new Promise<void>(resolve => provider.listen(0, "127.0.0.1", resolve));
   const endpoint = `http://127.0.0.1:${(provider.address() as AddressInfo).port}`;
-  const root = makeDaemonDir({ idleWindowMs: 0, agents: { claude: { command: process.execPath, args: [fileURLToPath(new URL("./fixtures/auth-death-claude.mjs", import.meta.url))], adapter: "claude", env: { AUTH_DEATH_PROVIDER_URL: endpoint } } } });
+  const root = makeDaemonDir({ idleWindowMs: 0, agents: { claude: { command: process.execPath, args: [fileURLToPath(new URL("./fixtures/auth-death-claude.mjs", import.meta.url))], adapter: "claude", env: { AUTH_DEATH_PROVIDER_URL: endpoint, AUTH_DEATH_OWNER_PID: String(process.pid) } } } });
   const handles: DaemonHandle[] = [];
   const clients: RpcClient[] = [];
   let db!: DaemonHandle;
