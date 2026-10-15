@@ -5,7 +5,7 @@ import { join, posix, relative, isAbsolute, sep } from "node:path";
 import { x } from "tar";
 import { parseComponentIdentity, type ComponentIdentity } from "./release/index.js";
 import { readBuildIdentity, parseBuildIdentity } from "./release/buildIdentity.js";
-import { hashDirectoryTree } from "./deploySettle.js";
+import { verifyDistAgainstArtifact } from "./deploySettle.js";
 import { parseRuntimeArtifactManifest, readArtifactExecutionDigest, readArtifactProtocol, sha256File } from "./runtimeArtifact.js";
 
 export async function unpackDeployArtifact(archive: string, expected: ComponentIdentity, workDir: string) {
@@ -58,9 +58,11 @@ export async function unpackDeployArtifact(archive: string, expected: ComponentI
     || build.sourceRevision !== identity.sourceRevision || build.target !== identity.target
     || manifest.sha !== identity.sourceRevision || !manifest.identity
     || JSON.stringify(parseBuildIdentity(manifest.identity)) !== JSON.stringify(build)) throw new Error("deploy: artifact identity/gate mismatch");
-  if (await hashDirectoryTree(join(artifactDir, "dist")) !== manifest.artifactHash
+  const dist = await verifyDistAgainstArtifact(join(artifactDir, "dist"), manifest.artifactHash)
+    .then(() => null, (error: unknown) => error instanceof Error ? error.message : String(error));
+  if (dist !== null
     || await readArtifactProtocol(artifactDir) !== manifest.protocol
-    || readArtifactExecutionDigest(artifactDir) !== manifest.executionCorpusDigest) throw new Error("deploy: artifact contents mismatch");
+    || readArtifactExecutionDigest(artifactDir) !== manifest.executionCorpusDigest) throw new Error(`deploy: artifact contents mismatch${dist ? ` (${dist})` : ""}`);
   await readFile(join(artifactDir, "dist", "cli.js"));
   const bundle = await readFile(join(artifactDir, "dist", "v2", "cli.js"), "utf8");
   const recoveryContract = /\bUPDATE_RECOVERY_CONTRACT\d* = "([^"]+)"/.exec(bundle)?.[1] ?? null;
