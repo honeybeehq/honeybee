@@ -57,7 +57,7 @@ export async function runDaemon(argv: string[]): Promise<number> {
   // this test-only flag so deploy/restart continues to preserve live bees.
   const reapTestRuntimes = process.env.HIVE_TEST_REAP_RUNTIMES_ON_SHUTDOWN === "1";
   await daemon.start();
-  process.stdout.write(`hived v2 listening on ${cfg.socketPath} (store ${cfg.storePath})\n`);
+  process.stdout.write(`hived v2 listening on ${daemon.cfg.socketPath} (store ${cfg.storePath})\n`);
   await new Promise<void>((resolve) => {
     let stopping = false;
     const onSignal = (): void => {
