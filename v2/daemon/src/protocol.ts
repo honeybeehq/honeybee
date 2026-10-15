@@ -261,6 +261,7 @@ export const RPC_ERROR_CODES = [
   "socket_mismatch",
   "socket_unreachable",
   "socket_in_use",
+  "socket_path_too_long",
   "foreign_daemon_spawn",
   "credential_handoff_fenced",
   "credential_handoff_conflict",
