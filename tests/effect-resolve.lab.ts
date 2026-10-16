@@ -25,11 +25,11 @@ for (const mode of ["clean-pruned", "unclean-pruned", "fenced-then-legacy-pruned
       if (mode === "fenced-then-legacy-pruned") assert.equal(store.resolveEffect(key, "spawn").status, "never_seen_fenced");
       store.close();
       const out = join(dir, "old.mjs");
-      await build({ stdin: { contents: `export {openCoreStore} from ${JSON.stringify(join(base,"v2/core/src/index.ts"))}; export {HiveDaemon} from ${JSON.stringify(join(base,"v2/daemon/src/daemon.ts"))}; export {RpcServer} from ${JSON.stringify(join(base,"v2/daemon/src/rpc.ts"))};`, resolveDir: base, loader: "ts" }, outfile: out, bundle: true, platform: "node", format: "esm", external: ["node-pty"], banner: { js: 'import {createRequire} from "node:module";const require=createRequire(import.meta.url);' }, alias: { "jsonc-parser": resolve("node_modules/jsonc-parser/lib/esm/main.js") }, logLevel: "silent" });
+      await build({ stdin: { contents: `export {openCoreStore} from ${JSON.stringify(join(base,"v2/core/src/index.ts"))}; export {HiveDaemon} from ${JSON.stringify(join(base,"v2/daemon/src/daemon.ts"))}; export {RpcServer} from ${JSON.stringify(join(base,"v2/daemon/src/rpc.ts"))};`, resolveDir: base, loader: "ts" }, outfile: out, bundle: true, platform: "node", format: "esm", external: ["node-pty"], banner: { js: 'import {createRequire as effectCreateRequire} from "node:module";const require=effectCreateRequire(import.meta.url);' }, alias: { "jsonc-parser": resolve("node_modules/jsonc-parser/lib/esm/main.js") }, logLevel: "silent" });
       const worker = join(dir, "worker.mjs");
       await writeFile(worker, `import {openCoreStore,HiveDaemon,RpcServer} from './old.mjs';
 const store=openCoreStore(${JSON.stringify(path)},{ephemeral:true,maxRpcIdempotencyRows:1});
-const d=Object.create(HiveDaemon.prototype);Object.assign(d,{store,cfg:{dataDir:${JSON.stringify(dir)},logPath:${JSON.stringify(join(dir,"old.log"))},agents:{stub:{adapter:'stub'}}},stopping:true,opLog:[],deps:{},refusedClaims:new Map()});
+const d=Object.create(HiveDaemon.prototype);Object.assign(d,{store,cfg:{dataDir:${JSON.stringify(dir)},logPath:${JSON.stringify(join(dir,"old.log"))},agents:{stub:{adapter:'stub'}}},stopping:false,opLog:[],deps:{},refusedClaims:new Map()});
 const server=new RpcServer({socketPath:${JSON.stringify(socket)},log(){},dispatch:(v,p,c)=>d.dispatch(v,p,c)});await server.listen();process.send({ready:true});
 process.on('message',async()=>{await server.close();store.close();process.exit(0);});`);
       const env = { ...process.env }; delete env.NODE_TEST_CONTEXT;

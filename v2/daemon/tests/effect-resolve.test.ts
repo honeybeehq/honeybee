@@ -13,7 +13,7 @@ async function fixture(t: TestContext) {
   const dir = mkdtempSync(join(tmpdir(), "effect-rpc-")), path = join(dir, "core.sqlite3");
   let store = openCoreStore(path, { ephemeral: true, maxRpcIdempotencyRows: 2 });
   const owner = Object.create(HiveDaemon.prototype) as Record<string, unknown>;
-  Object.assign(owner, { cfg: { dataDir: dir, logPath: join(dir, "log"), agents: { stub: { adapter: "stub" } } }, store, stopping: true, opLog: [], deps: {}, refusedClaims: new Map() });
+  Object.assign(owner, { cfg: { dataDir: dir, logPath: join(dir, "log"), agents: { stub: { adapter: "stub" } } }, store, stopping: false, opLog: [], deps: {}, refusedClaims: new Map() });
   const calls: string[] = [];
   const server = new RpcServer({ socketPath: join(dir, "s"), log() {}, dispatch: (verb, params, conn) => { calls.push(verb); return (owner.dispatch as RpcDispatch).call(owner, verb, params, conn); } });
   await server.listen();

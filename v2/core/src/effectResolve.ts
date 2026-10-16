@@ -11,9 +11,11 @@ export type EffectResolution = EffectCoverage & { verb: EffectVerb; idempotencyK
   | { status: "never_seen_fenced" | "in_flight" }
 );
 export class EffectKeyError extends Error {
-  constructor(readonly code: "rpc_effect_fenced" | "rpc_effect_history_unknown" | "idempotency_conflict" | "invalid_request", message: string) {
+  readonly code: "rpc_effect_fenced" | "rpc_effect_history_unknown" | "idempotency_conflict" | "invalid_request";
+  constructor(code: "rpc_effect_fenced" | "rpc_effect_history_unknown" | "idempotency_conflict" | "invalid_request", message: string) {
     super(message);
     this.name = "EffectKeyError";
+    this.code = code;
   }
 }
 export function effectVerb(value: unknown): EffectVerb {
@@ -26,7 +28,9 @@ function key(value: string): void {
 
 export class EffectLedger {
   private coverage!: EffectCoverage;
-  constructor(private readonly db: DatabaseSync, private readonly now: () => number) {}
+  private readonly db: DatabaseSync;
+  private readonly now: () => number;
+  constructor(db: DatabaseSync, now: () => number) { this.db = db; this.now = now; }
   open(): void {
     this.db.exec("CREATE TABLE IF NOT EXISTS rpc_effect_keys (key TEXT PRIMARY KEY, verb TEXT NOT NULL, state TEXT NOT NULL CHECK(state IN ('committed','fenced')), receipt TEXT, created_at INTEGER NOT NULL) STRICT");
     const row = this.db.prepare("SELECT value FROM meta WHERE key='rpc_effect_owner'").get();
