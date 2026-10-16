@@ -174,7 +174,9 @@ env -i HOME="$HOME" PATH="$PATH" node scripts/proof/question-withdraw.ts .proof/
 ```
 
 The script starts only disposable foreground daemons under `~/.cache`, with
-explicit data/socket paths and private account paths. It uses mailbox-only bees,
+explicit data/socket paths and private account paths. Its scrubbed child environment
+sets HIVE_NODE_PATH to the managed versioned Node executable running the lab,
+satisfying current main's native-Node identity check. It uses mailbox-only bees,
 no units/services or real harnesses. It retains receipts, snapshot/mailbox rows,
 audit and reconnect evidence. Both answer/withdraw requests are submitted before
 either response; alternating their frame order proves each first-commit winner.

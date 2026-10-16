@@ -18,7 +18,7 @@ const root = mkdtempSync(join(base, "lab-"));
 const data = join(root, "data"); mkdirSync(data, { mode: 0o700 });
 const socket = join(root, "rpc.sock");
 const keyFile = join(data, "rpc-private", "registration.key");
-const receipts: unknown[] = [{ host: hostname(), root, data, socket, env: "env -i HOME=$HOME PATH=$PATH", runtime: resolve("dist/cli.js") }];
+const receipts: unknown[] = [{ host: hostname(), root, data, socket, nodePath: process.execPath, env: "env -i HOME=$HOME PATH=$PATH", runtime: resolve("dist/cli.js") }];
 let daemon: ChildProcess | undefined;
 const clients: RpcClient[] = [];
 const config = (enabled: boolean) => writeFileSync(join(data, "config.json"), JSON.stringify({
@@ -30,7 +30,7 @@ async function connect(lane?: "remote" | "node_relay") {
   const c = await RpcClient.connect(socket, 500, lane); clients.push(c); return c;
 }
 async function start() {
-  daemon = spawn("env", ["-i", `HOME=${process.env.HOME}`, `PATH=${process.env.PATH}`, process.execPath, resolve("dist/cli.js"), "v2", "daemon", "run", "--data-dir", data, "--socket", socket], { stdio: ["ignore", "pipe", "pipe"] });
+  daemon = spawn("env", ["-i", `HOME=${process.env.HOME}`, `PATH=${process.env.PATH}`, `HIVE_NODE_PATH=${process.execPath}`, process.execPath, resolve("dist/cli.js"), "v2", "daemon", "run", "--data-dir", data, "--socket", socket], { stdio: ["ignore", "pipe", "pipe"] });
   const child = daemon;
   let output = "";
   daemon.stdout!.on("data", c => { output += c; }); daemon.stderr!.on("data", c => { output += c; });
@@ -79,6 +79,10 @@ try {
   await refused(service.request("question.withdraw"), "question_withdraw_unsupported");
   await stop(); config(true); service = await start();
   assert.ok(service.capabilities.includes("question.withdraw.v1"));
+  const swapBefore = await service.request<{ schemaVersion: number; storageSupported: boolean }>("update.apiarySwap.status");
+  assert.equal(swapBefore.schemaVersion, 44);
+  assert.equal(swapBefore.storageSupported, true);
+  receipts.push({ apiarySwapBefore: swapBefore });
   const { beeId } = await service.request<SpawnResult>("spawn", { name: "asker", agent: "inbox", cwd: root });
   const { beeId: other } = await service.request<SpawnResult>("spawn", { name: "other", agent: "inbox", cwd: root });
   const context = { sessionPrincipal: { beeId } };
@@ -145,6 +149,10 @@ try {
   }
   receipts.push({ races: raceRows });
   await new Promise(r => setTimeout(r, 100));
+  const swapAfter = await service.request<{ schemaVersion: number; storageSupported: boolean }>("update.apiarySwap.status");
+  assert.equal(swapAfter.schemaVersion, 44);
+  assert.equal(swapAfter.storageSupported, true);
+  receipts.push({ apiarySwapAfter: swapAfter });
   const snapshot = await service.request<SnapshotResult>("snapshot");
   const mailbox = await service.request<MailboxResult>("mailbox", { beeId });
   const events = frames.flatMap(f => f.type === "delta" ? f.events : []);
@@ -152,7 +160,7 @@ try {
   assert.equal(withdrawals.length, 1);
   assert.equal(events.filter(e => e.kind === "question.answered" && e.payload.questionId === q.id).length, 0);
   assert.equal(mailbox.messages.filter(m => m.body.startsWith(`[answer to question ${q.id}]`)).length, 0);
-  const cliQuestionList = execFileSync("env", ["-i", `HOME=${process.env.HOME}`, `PATH=${process.env.PATH}`, process.execPath, resolve("dist/cli.js"), "v2", "question", "list", "--data-dir", data, "--socket", socket], { encoding: "utf8" });
+  const cliQuestionList = execFileSync("env", ["-i", `HOME=${process.env.HOME}`, `PATH=${process.env.PATH}`, `HIVE_NODE_PATH=${process.execPath}`, process.execPath, resolve("dist/cli.js"), "v2", "question", "list", "--data-dir", data, "--socket", socket], { encoding: "utf8" });
   assert.ok(cliQuestionList.includes("withdrawn"));
   assert.ok(cliQuestionList.includes("reason: Superseded."));
   receipts.push({ watch: withdrawals, snapshot, mailbox, cliQuestionList });

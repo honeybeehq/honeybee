@@ -1,0 +1,869 @@
+[
+  {
+    "host": "trmd-metal-1",
+    "root": "/home/trmd/.cache/T15h-honeybee-withdraw/lab-K6ddbl",
+    "data": "/home/trmd/.cache/T15h-honeybee-withdraw/lab-K6ddbl/data",
+    "socket": "/home/trmd/.cache/T15h-honeybee-withdraw/lab-K6ddbl/rpc.sock",
+    "nodePath": "/opt/node-v24.18.0-linux-x64/bin/node",
+    "env": "env -i HOME=$HOME PATH=$PATH",
+    "runtime": "/home/trmd/.hive/v2/cells/apib-t15h-honeybee-withdraw-a4184d39ad80/github-com-honeybeehq-honeybee-a9015b303498-space-a4184d39ad80/dist/cli.js"
+  },
+  {
+    "refusal": "question_withdraw_unsupported",
+    "message": "Question withdrawal is unsupported by this Honeybee."
+  },
+  {
+    "shutdown": {
+      "pid": 714286,
+      "code": 0,
+      "signal": null
+    }
+  },
+  {
+    "apiarySwapBefore": {
+      "contract": "update.reservation.apiary-swap.v1",
+      "receiptAuthority": "trusted-local-owner-attestation",
+      "schemaVersion": 44,
+      "storageSupported": true,
+      "node": "trmd-metal-1",
+      "runtimeRoot": "/home/trmd/.cache/T15h-honeybee-withdraw/lab-K6ddbl/runtime",
+      "storePath": "/home/trmd/.cache/T15h-honeybee-withdraw/lab-K6ddbl/data/core.sqlite3",
+      "identity": {
+        "schemaVersion": 1,
+        "component": "honeybee",
+        "version": "0.0.1-dev.c4f7ac42ad4a.dirty",
+        "packageVersion": "0.0.1",
+        "sourceRevision": "c4f7ac42ad4a887133690245f0269cacd2b3403f",
+        "dirty": true,
+        "release": false,
+        "target": "linux-x64"
+      },
+      "installedIdentity": null,
+      "reservation": {
+        "epoch": 0,
+        "id": "",
+        "recoverySubjectDigest": "",
+        "active": false
+      }
+    }
+  },
+  {
+    "refusal": "caller_not_trusted",
+    "message": "The local caller is not registered as trusted.",
+    "details": {
+      "reason": "registration_required"
+    }
+  },
+  {
+    "registration": {
+      "registered": true,
+      "uid": 1001,
+      "pid": 714201,
+      "expiresAtMs": 1792177149263
+    }
+  },
+  {
+    "refusal": "caller_not_trusted",
+    "message": "Withdrawal requires an authenticated session principal."
+  },
+  {
+    "refusal": "caller_not_trusted",
+    "message": "Withdrawal requires a registered local service."
+  },
+  {
+    "refusal": "caller_not_trusted",
+    "message": "Withdrawal requires a registered local service."
+  },
+  {
+    "refusal": "question_not_owner",
+    "message": "question 81dff7ef-c920-42f3-8c15-5f84e9a88b73 belongs to another bee"
+  },
+  {
+    "refusal": "question_not_found",
+    "message": "question not found: missing"
+  },
+  {
+    "refusal": "invalid_request",
+    "message": "param 'reason' must be a non-empty string"
+  },
+  {
+    "refusal": "invalid_request",
+    "message": "withdrawQuestion: reason must contain 1 to 500 characters after trimming"
+  },
+  {
+    "refusal": "invalid_request",
+    "message": "withdrawQuestion: reason must contain 1 to 500 characters after trimming"
+  },
+  {
+    "refusal": "invalid_request",
+    "message": "question.withdraw requires idempotencyKey"
+  },
+  {
+    "refusal": "question_not_owner",
+    "message": "question 81dff7ef-c920-42f3-8c15-5f84e9a88b73 belongs to another bee"
+  },
+  {
+    "receiptIsolation": {
+      "collisionKey": "question.withdraw:[\"14a57465-55b2-4464-8542-e083d04c45e3\",\"first\"]",
+      "poison": {
+        "bee": {
+          "id": "c6a42b63-d163-4dbb-83ed-7c71f4bbf938",
+          "name": "poison",
+          "agent": "inbox",
+          "substrate": "hsr",
+          "cwd": "/home/trmd/.cache/T15h-honeybee-withdraw/lab-K6ddbl",
+          "title": null,
+          "tags": [],
+          "sessionLogPath": null,
+          "lifecycle": "active",
+          "createdAt": 1792176849255,
+          "archivedAt": null,
+          "lastOutputAt": null,
+          "providerSessionId": null,
+          "env": {},
+          "importedFrom": null,
+          "spawnFailures": 0,
+          "args": null,
+          "parentId": null,
+          "parentExternal": false,
+          "forkedFrom": null,
+          "forkSeed": null,
+          "account": null,
+          "handle": "IN.0001",
+          "human_ref": null,
+          "issuing_namespace": null,
+          "placementVersion": 0,
+          "activeMoveId": null,
+          "cellId": null,
+          "activeHandoffId": null,
+          "lastTurnTrigger": null,
+          "lastHumanOutputAt": null
+        },
+        "applied": true
+      },
+      "poisonReplay": {
+        "bee": {
+          "id": "c6a42b63-d163-4dbb-83ed-7c71f4bbf938",
+          "name": "poison",
+          "agent": "inbox",
+          "substrate": "hsr",
+          "cwd": "/home/trmd/.cache/T15h-honeybee-withdraw/lab-K6ddbl",
+          "title": null,
+          "tags": [],
+          "sessionLogPath": null,
+          "lifecycle": "active",
+          "createdAt": 1792176849255,
+          "archivedAt": null,
+          "lastOutputAt": null,
+          "providerSessionId": null,
+          "env": {},
+          "importedFrom": null,
+          "spawnFailures": 0,
+          "args": null,
+          "parentId": null,
+          "parentExternal": false,
+          "forkedFrom": null,
+          "forkSeed": null,
+          "account": null,
+          "handle": "IN.0001",
+          "human_ref": null,
+          "issuing_namespace": null,
+          "placementVersion": 0,
+          "activeMoveId": null,
+          "cellId": null,
+          "activeHandoffId": null,
+          "lastTurnTrigger": null,
+          "lastHumanOutputAt": null
+        },
+        "applied": true,
+        "deduped": true
+      },
+      "noDisclosure": {
+        "bee": {
+          "id": "c6a42b63-d163-4dbb-83ed-7c71f4bbf938",
+          "name": "no-disclosure",
+          "agent": "inbox",
+          "substrate": "hsr",
+          "cwd": "/home/trmd/.cache/T15h-honeybee-withdraw/lab-K6ddbl",
+          "title": null,
+          "tags": [],
+          "sessionLogPath": null,
+          "lifecycle": "active",
+          "createdAt": 1792176849255,
+          "archivedAt": null,
+          "lastOutputAt": null,
+          "providerSessionId": null,
+          "env": {},
+          "importedFrom": null,
+          "spawnFailures": 0,
+          "args": null,
+          "parentId": null,
+          "parentExternal": false,
+          "forkedFrom": null,
+          "forkSeed": null,
+          "account": null,
+          "handle": "IN.0001",
+          "human_ref": null,
+          "issuing_namespace": null,
+          "placementVersion": 0,
+          "activeMoveId": null,
+          "cellId": null,
+          "activeHandoffId": null,
+          "lastTurnTrigger": null,
+          "lastHumanOutputAt": null
+        },
+        "applied": true
+      }
+    }
+  },
+  {
+    "refusal": "question_withdrawn",
+    "message": "This question was withdrawn: Superseded.",
+    "details": {
+      "withdrawalReason": "Superseded."
+    }
+  },
+  {
+    "refusal": "idempotency_conflict",
+    "message": "Withdrawal key belongs to another question"
+  },
+  {
+    "refusal": "question_already_answered",
+    "message": "question d637d3ef-8e16-4109-b49a-57362b4bbc08 is already answered"
+  },
+  {
+    "first": {
+      "question": {
+        "id": "81dff7ef-c920-42f3-8c15-5f84e9a88b73",
+        "beeId": "14a57465-55b2-4464-8542-e083d04c45e3",
+        "generation": 1,
+        "text": "Withdraw this?",
+        "options": null,
+        "status": "withdrawn",
+        "withdrawalReason": "Superseded.",
+        "withdrawnAt": 1792176849270,
+        "answer": null,
+        "askedAt": 1792176849256,
+        "answeredAt": null,
+        "answeredBy": null,
+        "deliveryMessageId": null
+      }
+    },
+    "replay": {
+      "question": {
+        "id": "81dff7ef-c920-42f3-8c15-5f84e9a88b73",
+        "beeId": "14a57465-55b2-4464-8542-e083d04c45e3",
+        "generation": 1,
+        "text": "Withdraw this?",
+        "options": null,
+        "status": "withdrawn",
+        "withdrawalReason": "Superseded.",
+        "withdrawnAt": 1792176849270,
+        "answer": null,
+        "askedAt": 1792176849256,
+        "answeredAt": null,
+        "answeredBy": null,
+        "deliveryMessageId": null
+      },
+      "deduped": true
+    },
+    "answered": {
+      "question": {
+        "id": "d637d3ef-8e16-4109-b49a-57362b4bbc08",
+        "beeId": "14a57465-55b2-4464-8542-e083d04c45e3",
+        "generation": 1,
+        "text": "Answer first?",
+        "options": null,
+        "status": "answered",
+        "withdrawalReason": null,
+        "withdrawnAt": null,
+        "answer": "yes",
+        "askedAt": 1792176849275,
+        "answeredAt": 1792176849275,
+        "answeredBy": "operator",
+        "deliveryMessageId": 1
+      },
+      "messageId": 1,
+      "commandId": null,
+      "unarchived": false
+    }
+  },
+  {
+    "races": [
+      {
+        "winner": "withdraw",
+        "row": {
+          "id": "2ecafcc4-acd7-48ff-9daa-dc40ce5f700a",
+          "beeId": "14a57465-55b2-4464-8542-e083d04c45e3",
+          "generation": 1,
+          "text": "Concurrent race: withdraw first",
+          "options": null,
+          "status": "withdrawn",
+          "withdrawalReason": "Race withdrawn.",
+          "withdrawnAt": 1792176849277,
+          "answer": null,
+          "askedAt": 1792176849277,
+          "answeredAt": null,
+          "answeredBy": null,
+          "deliveryMessageId": null
+        },
+        "mail": [],
+        "settled": [
+          {
+            "status": "fulfilled",
+            "value": {
+              "question": {
+                "id": "2ecafcc4-acd7-48ff-9daa-dc40ce5f700a",
+                "beeId": "14a57465-55b2-4464-8542-e083d04c45e3",
+                "generation": 1,
+                "text": "Concurrent race: withdraw first",
+                "options": null,
+                "status": "withdrawn",
+                "withdrawalReason": "Race withdrawn.",
+                "withdrawnAt": 1792176849277,
+                "answer": null,
+                "askedAt": 1792176849277,
+                "answeredAt": null,
+                "answeredBy": null,
+                "deliveryMessageId": null
+              }
+            }
+          },
+          {
+            "status": "rejected",
+            "code": "question_withdrawn"
+          }
+        ]
+      },
+      {
+        "winner": "answer",
+        "row": {
+          "id": "eb89484b-2489-4938-8b5a-931aa41affa0",
+          "beeId": "14a57465-55b2-4464-8542-e083d04c45e3",
+          "generation": 1,
+          "text": "Concurrent race: answer first",
+          "options": null,
+          "status": "answered",
+          "withdrawalReason": null,
+          "withdrawnAt": null,
+          "answer": "yes",
+          "askedAt": 1792176849278,
+          "answeredAt": 1792176849279,
+          "answeredBy": "operator",
+          "deliveryMessageId": 2
+        },
+        "mail": [
+          {
+            "id": 2,
+            "beeId": "14a57465-55b2-4464-8542-e083d04c45e3",
+            "sender": "operator",
+            "body": "[answer to question eb89484b-2489-4938-8b5a-931aa41affa0] yes\n\n(question was: Concurrent race: answer first)",
+            "priority": 0,
+            "urgency": "next",
+            "enqueuedAt": 1792176849279,
+            "deliveredAt": null,
+            "deliveredGeneration": null
+          }
+        ],
+        "settled": [
+          {
+            "status": "fulfilled",
+            "value": {
+              "question": {
+                "id": "eb89484b-2489-4938-8b5a-931aa41affa0",
+                "beeId": "14a57465-55b2-4464-8542-e083d04c45e3",
+                "generation": 1,
+                "text": "Concurrent race: answer first",
+                "options": null,
+                "status": "answered",
+                "withdrawalReason": null,
+                "withdrawnAt": null,
+                "answer": "yes",
+                "askedAt": 1792176849278,
+                "answeredAt": 1792176849279,
+                "answeredBy": "operator",
+                "deliveryMessageId": 2
+              },
+              "messageId": 2,
+              "commandId": null,
+              "unarchived": false
+            }
+          },
+          {
+            "status": "rejected",
+            "code": "question_already_answered"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "apiarySwapAfter": {
+      "contract": "update.reservation.apiary-swap.v1",
+      "receiptAuthority": "trusted-local-owner-attestation",
+      "schemaVersion": 44,
+      "storageSupported": true,
+      "node": "trmd-metal-1",
+      "runtimeRoot": "/home/trmd/.cache/T15h-honeybee-withdraw/lab-K6ddbl/runtime",
+      "storePath": "/home/trmd/.cache/T15h-honeybee-withdraw/lab-K6ddbl/data/core.sqlite3",
+      "identity": {
+        "schemaVersion": 1,
+        "component": "honeybee",
+        "version": "0.0.1-dev.c4f7ac42ad4a.dirty",
+        "packageVersion": "0.0.1",
+        "sourceRevision": "c4f7ac42ad4a887133690245f0269cacd2b3403f",
+        "dirty": true,
+        "release": false,
+        "target": "linux-x64"
+      },
+      "installedIdentity": null,
+      "reservation": {
+        "epoch": 0,
+        "id": "",
+        "recoverySubjectDigest": "",
+        "active": false
+      }
+    }
+  },
+  {
+    "watch": [
+      {
+        "seq": 12,
+        "ts": 1792176849270,
+        "kind": "question.withdrawn",
+        "beeId": "14a57465-55b2-4464-8542-e083d04c45e3",
+        "payload": {
+          "questionId": "81dff7ef-c920-42f3-8c15-5f84e9a88b73",
+          "withdrawalReason": "Superseded.",
+          "withdrawnAt": 1792176849270,
+          "rpcCaller": {
+            "transport": "local_unix",
+            "ingress": "local_unix",
+            "uid": 1001,
+            "pid": 714201,
+            "verb": "question.withdraw"
+          }
+        }
+      }
+    ],
+    "snapshot": {
+      "seq": 24,
+      "views": [
+        {
+          "bee": {
+            "id": "14a57465-55b2-4464-8542-e083d04c45e3",
+            "name": "asker",
+            "agent": "inbox",
+            "substrate": "hsr",
+            "cwd": "/home/trmd/.cache/T15h-honeybee-withdraw/lab-K6ddbl",
+            "title": null,
+            "tags": [],
+            "sessionLogPath": null,
+            "lifecycle": "active",
+            "createdAt": 1792176849254,
+            "archivedAt": null,
+            "lastOutputAt": null,
+            "providerSessionId": null,
+            "env": {},
+            "importedFrom": null,
+            "spawnFailures": 0,
+            "args": null,
+            "parentId": null,
+            "parentExternal": false,
+            "forkedFrom": null,
+            "forkSeed": null,
+            "account": null,
+            "handle": "IN.0000",
+            "human_ref": null,
+            "issuing_namespace": null,
+            "placementVersion": 0,
+            "activeMoveId": null,
+            "cellId": null,
+            "activeHandoffId": null,
+            "lastTurnTrigger": null,
+            "lastHumanOutputAt": null
+          },
+          "runtime": {
+            "beeId": "14a57465-55b2-4464-8542-e083d04c45e3",
+            "generation": 1,
+            "state": "stopped",
+            "exitCause": "clean",
+            "pid": null,
+            "pidStartedAt": null,
+            "bootEvidence": null,
+            "startedAt": 1792176849254,
+            "updatedAt": 1792176849254
+          },
+          "view": {
+            "beeId": "14a57465-55b2-4464-8542-e083d04c45e3",
+            "exists": true,
+            "lifecycle": "active",
+            "generation": 1,
+            "runtimeState": "stopped",
+            "exitCause": "clean",
+            "working": false,
+            "waitingForYou": false,
+            "lastOutputAt": null,
+            "reachable": true,
+            "blocked": false,
+            "flags": []
+          },
+          "move": null,
+          "cell": null,
+          "handoff": null
+        },
+        {
+          "bee": {
+            "id": "c6a42b63-d163-4dbb-83ed-7c71f4bbf938",
+            "name": "no-disclosure",
+            "agent": "inbox",
+            "substrate": "hsr",
+            "cwd": "/home/trmd/.cache/T15h-honeybee-withdraw/lab-K6ddbl",
+            "title": null,
+            "tags": [],
+            "sessionLogPath": null,
+            "lifecycle": "active",
+            "createdAt": 1792176849255,
+            "archivedAt": null,
+            "lastOutputAt": null,
+            "providerSessionId": null,
+            "env": {},
+            "importedFrom": null,
+            "spawnFailures": 0,
+            "args": null,
+            "parentId": null,
+            "parentExternal": false,
+            "forkedFrom": null,
+            "forkSeed": null,
+            "account": null,
+            "handle": "IN.0001",
+            "human_ref": null,
+            "issuing_namespace": null,
+            "placementVersion": 0,
+            "activeMoveId": null,
+            "cellId": null,
+            "activeHandoffId": null,
+            "lastTurnTrigger": null,
+            "lastHumanOutputAt": null
+          },
+          "runtime": {
+            "beeId": "c6a42b63-d163-4dbb-83ed-7c71f4bbf938",
+            "generation": 1,
+            "state": "stopped",
+            "exitCause": "clean",
+            "pid": null,
+            "pidStartedAt": null,
+            "bootEvidence": null,
+            "startedAt": 1792176849255,
+            "updatedAt": 1792176849255
+          },
+          "view": {
+            "beeId": "c6a42b63-d163-4dbb-83ed-7c71f4bbf938",
+            "exists": true,
+            "lifecycle": "active",
+            "generation": 1,
+            "runtimeState": "stopped",
+            "exitCause": "clean",
+            "working": false,
+            "waitingForYou": false,
+            "lastOutputAt": null,
+            "reachable": true,
+            "blocked": false,
+            "flags": []
+          },
+          "move": null,
+          "cell": null,
+          "handoff": null
+        }
+      ],
+      "templates": [],
+      "tracks": [],
+      "questions": [
+        {
+          "id": "81dff7ef-c920-42f3-8c15-5f84e9a88b73",
+          "beeId": "14a57465-55b2-4464-8542-e083d04c45e3",
+          "generation": 1,
+          "text": "Withdraw this?",
+          "options": null,
+          "status": "withdrawn",
+          "withdrawalReason": "Superseded.",
+          "withdrawnAt": 1792176849270,
+          "answer": null,
+          "askedAt": 1792176849256,
+          "answeredAt": null,
+          "answeredBy": null,
+          "deliveryMessageId": null
+        },
+        {
+          "id": "1c4931db-e8cf-4f20-b732-55c43cf955a9",
+          "beeId": "c6a42b63-d163-4dbb-83ed-7c71f4bbf938",
+          "generation": 1,
+          "text": "Other owner same key?",
+          "options": null,
+          "status": "withdrawn",
+          "withdrawalReason": "Other owner.",
+          "withdrawnAt": 1792176849274,
+          "answer": null,
+          "askedAt": 1792176849274,
+          "answeredAt": null,
+          "answeredBy": null,
+          "deliveryMessageId": null
+        },
+        {
+          "id": "663e36c7-38be-49d6-a075-695d04ec72f2",
+          "beeId": "14a57465-55b2-4464-8542-e083d04c45e3",
+          "generation": 1,
+          "text": "Key reuse?",
+          "options": null,
+          "status": "open",
+          "withdrawalReason": null,
+          "withdrawnAt": null,
+          "answer": null,
+          "askedAt": 1792176849274,
+          "answeredAt": null,
+          "answeredBy": null,
+          "deliveryMessageId": null
+        },
+        {
+          "id": "d637d3ef-8e16-4109-b49a-57362b4bbc08",
+          "beeId": "14a57465-55b2-4464-8542-e083d04c45e3",
+          "generation": 1,
+          "text": "Answer first?",
+          "options": null,
+          "status": "answered",
+          "withdrawalReason": null,
+          "withdrawnAt": null,
+          "answer": "yes",
+          "askedAt": 1792176849275,
+          "answeredAt": 1792176849275,
+          "answeredBy": "operator",
+          "deliveryMessageId": 1
+        },
+        {
+          "id": "2ecafcc4-acd7-48ff-9daa-dc40ce5f700a",
+          "beeId": "14a57465-55b2-4464-8542-e083d04c45e3",
+          "generation": 1,
+          "text": "Concurrent race: withdraw first",
+          "options": null,
+          "status": "withdrawn",
+          "withdrawalReason": "Race withdrawn.",
+          "withdrawnAt": 1792176849277,
+          "answer": null,
+          "askedAt": 1792176849277,
+          "answeredAt": null,
+          "answeredBy": null,
+          "deliveryMessageId": null
+        },
+        {
+          "id": "eb89484b-2489-4938-8b5a-931aa41affa0",
+          "beeId": "14a57465-55b2-4464-8542-e083d04c45e3",
+          "generation": 1,
+          "text": "Concurrent race: answer first",
+          "options": null,
+          "status": "answered",
+          "withdrawalReason": null,
+          "withdrawnAt": null,
+          "answer": "yes",
+          "askedAt": 1792176849278,
+          "answeredAt": 1792176849279,
+          "answeredBy": "operator",
+          "deliveryMessageId": 2
+        }
+      ],
+      "seals": [],
+      "accounts": [],
+      "accountLimits": [],
+      "accountAdmissions": [],
+      "tasks": [],
+      "taskSupply": [],
+      "loginFlows": [],
+      "cells": [],
+      "beeMoves": [],
+      "beeHandoffs": [],
+      "transcriptSegments": [
+        {
+          "id": "seg:14a57465-55b2-4464-8542-e083d04c45e3:0",
+          "beeId": "14a57465-55b2-4464-8542-e083d04c45e3",
+          "ordinal": 0,
+          "harness": "inbox",
+          "providerSessionId": null,
+          "fromGeneration": 1,
+          "toGeneration": null,
+          "path": null,
+          "handoffId": null,
+          "createdAt": 1792176849254,
+          "closedAt": null
+        },
+        {
+          "id": "seg:c6a42b63-d163-4dbb-83ed-7c71f4bbf938:0",
+          "beeId": "c6a42b63-d163-4dbb-83ed-7c71f4bbf938",
+          "ordinal": 0,
+          "harness": "inbox",
+          "providerSessionId": null,
+          "fromGeneration": 1,
+          "toGeneration": null,
+          "path": null,
+          "handoffId": null,
+          "createdAt": 1792176849255,
+          "closedAt": null
+        }
+      ],
+      "threadOperations": [],
+      "actions": [],
+      "actionQueues": []
+    },
+    "mailbox": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "14a57465-55b2-4464-8542-e083d04c45e3",
+          "sender": "operator",
+          "body": "[answer to question d637d3ef-8e16-4109-b49a-57362b4bbc08] yes\n\n(question was: Answer first?)",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792176849275,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        },
+        {
+          "id": 2,
+          "beeId": "14a57465-55b2-4464-8542-e083d04c45e3",
+          "sender": "operator",
+          "body": "[answer to question eb89484b-2489-4938-8b5a-931aa41affa0] yes\n\n(question was: Concurrent race: answer first)",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792176849279,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    },
+    "cliQuestionList": "81dff7ef-c920-42f3-8c15-5f84e9a88b73  bee=14a57465-55b2-4464-8542-e083d04c45e3  withdrawn  Withdraw this?  reason: Superseded.\n1c4931db-e8cf-4f20-b732-55c43cf955a9  bee=c6a42b63-d163-4dbb-83ed-7c71f4bbf938  withdrawn  Other owner same key?  reason: Other owner.\n663e36c7-38be-49d6-a075-695d04ec72f2  bee=14a57465-55b2-4464-8542-e083d04c45e3  open  Key reuse?\nd637d3ef-8e16-4109-b49a-57362b4bbc08  bee=14a57465-55b2-4464-8542-e083d04c45e3  answered  Answer first?  answered by operator: yes\n2ecafcc4-acd7-48ff-9daa-dc40ce5f700a  bee=14a57465-55b2-4464-8542-e083d04c45e3  withdrawn  Concurrent race: withdraw first  reason: Race withdrawn.\neb89484b-2489-4938-8b5a-931aa41affa0  bee=14a57465-55b2-4464-8542-e083d04c45e3  answered  Concurrent race: answer first  answered by operator: yes\n"
+  },
+  {
+    "shutdown": {
+      "pid": 714396,
+      "code": 0,
+      "signal": null
+    }
+  },
+  {
+    "refusal": "caller_not_trusted",
+    "message": "The local caller is not registered as trusted.",
+    "details": {
+      "reason": "registration_required"
+    }
+  },
+  {
+    "registration": {
+      "registered": true,
+      "uid": 1001,
+      "pid": 714201,
+      "expiresAtMs": 1792177149812
+    }
+  },
+  {
+    "replay": "audit equals authoritative dump",
+    "reconnect": [
+      {
+        "id": "81dff7ef-c920-42f3-8c15-5f84e9a88b73",
+        "beeId": "14a57465-55b2-4464-8542-e083d04c45e3",
+        "generation": 1,
+        "text": "Withdraw this?",
+        "options": null,
+        "status": "withdrawn",
+        "withdrawalReason": "Superseded.",
+        "withdrawnAt": 1792176849270,
+        "answer": null,
+        "askedAt": 1792176849256,
+        "answeredAt": null,
+        "answeredBy": null,
+        "deliveryMessageId": null
+      },
+      {
+        "id": "1c4931db-e8cf-4f20-b732-55c43cf955a9",
+        "beeId": "c6a42b63-d163-4dbb-83ed-7c71f4bbf938",
+        "generation": 1,
+        "text": "Other owner same key?",
+        "options": null,
+        "status": "withdrawn",
+        "withdrawalReason": "Other owner.",
+        "withdrawnAt": 1792176849274,
+        "answer": null,
+        "askedAt": 1792176849274,
+        "answeredAt": null,
+        "answeredBy": null,
+        "deliveryMessageId": null
+      },
+      {
+        "id": "663e36c7-38be-49d6-a075-695d04ec72f2",
+        "beeId": "14a57465-55b2-4464-8542-e083d04c45e3",
+        "generation": 1,
+        "text": "Key reuse?",
+        "options": null,
+        "status": "open",
+        "withdrawalReason": null,
+        "withdrawnAt": null,
+        "answer": null,
+        "askedAt": 1792176849274,
+        "answeredAt": null,
+        "answeredBy": null,
+        "deliveryMessageId": null
+      },
+      {
+        "id": "d637d3ef-8e16-4109-b49a-57362b4bbc08",
+        "beeId": "14a57465-55b2-4464-8542-e083d04c45e3",
+        "generation": 1,
+        "text": "Answer first?",
+        "options": null,
+        "status": "answered",
+        "withdrawalReason": null,
+        "withdrawnAt": null,
+        "answer": "yes",
+        "askedAt": 1792176849275,
+        "answeredAt": 1792176849275,
+        "answeredBy": "operator",
+        "deliveryMessageId": 1
+      },
+      {
+        "id": "2ecafcc4-acd7-48ff-9daa-dc40ce5f700a",
+        "beeId": "14a57465-55b2-4464-8542-e083d04c45e3",
+        "generation": 1,
+        "text": "Concurrent race: withdraw first",
+        "options": null,
+        "status": "withdrawn",
+        "withdrawalReason": "Race withdrawn.",
+        "withdrawnAt": 1792176849277,
+        "answer": null,
+        "askedAt": 1792176849277,
+        "answeredAt": null,
+        "answeredBy": null,
+        "deliveryMessageId": null
+      },
+      {
+        "id": "eb89484b-2489-4938-8b5a-931aa41affa0",
+        "beeId": "14a57465-55b2-4464-8542-e083d04c45e3",
+        "generation": 1,
+        "text": "Concurrent race: answer first",
+        "options": null,
+        "status": "answered",
+        "withdrawalReason": null,
+        "withdrawnAt": null,
+        "answer": "yes",
+        "askedAt": 1792176849278,
+        "answeredAt": 1792176849279,
+        "answeredBy": "operator",
+        "deliveryMessageId": 2
+      }
+    ],
+    "dedupAfterRestart": "stable",
+    "passed": true
+  },
+  {
+    "shutdown": {
+      "pid": 714565,
+      "code": 0,
+      "signal": null
+    }
+  }
+]

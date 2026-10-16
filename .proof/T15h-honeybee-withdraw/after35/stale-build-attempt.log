@@ -1,0 +1,18 @@
+file:///home/trmd/.hive/v2/cells/apib-t15h-honeybee-withdraw-a4184d39ad80/github-com-honeybeehq-honeybee-a9015b303498-space-a4184d39ad80/v2/cli/src/client.ts:184
+        new RpcError(
+        ^
+
+RpcError: unknown verb: update.apiarySwap.status
+    at RpcClient.onFrame (file:///home/trmd/.hive/v2/cells/apib-t15h-honeybee-withdraw-a4184d39ad80/github-com-honeybeehq-honeybee-a9015b303498-space-a4184d39ad80/v2/cli/src/client.ts:184:9)
+    at RpcClient.onData (file:///home/trmd/.hive/v2/cells/apib-t15h-honeybee-withdraw-a4184d39ad80/github-com-honeybeehq-honeybee-a9015b303498-space-a4184d39ad80/v2/cli/src/client.ts:160:12)
+    at Socket.<anonymous> (file:///home/trmd/.hive/v2/cells/apib-t15h-honeybee-withdraw-a4184d39ad80/github-com-honeybeehq-honeybee-a9015b303498-space-a4184d39ad80/v2/cli/src/client.ts:111:51)
+    at Socket.emit (node:events:509:28)
+    at addChunk (node:internal/streams/readable:563:12)
+    at readableAddChunkPushByteMode (node:internal/streams/readable:514:3)
+    at Readable.push (node:internal/streams/readable:394:5)
+    at Pipe.onStreamRead (node:internal/stream_base_commons:189:23) {
+  code: 'invalid_request',
+  details: undefined
+}
+
+Node.js v24.18.0
