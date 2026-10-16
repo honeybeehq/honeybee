@@ -4,10 +4,13 @@ import pathlib
 import subprocess
 import sys
 import time
+from home_guard import entry_guard
 
 root, label = pathlib.Path(sys.argv[1]), sys.argv[2]
+ENTRY_GUARD = entry_guard(root)
 assert os.getpid() == 1
 out = root / 'receipts' / label
+(out / 'entry-guard-init.json').write_text(json.dumps(ENTRY_GUARD))
 process = subprocess.Popen(sys.argv[3:])
 status = None
 reaped = []

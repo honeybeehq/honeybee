@@ -1,8 +1,17 @@
 import errno
 import unittest
+import contextlib
+import io
+import os
+import pathlib
+import posixpath
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from policy import closing_verdict, error_verdict, wal_mtime_only, preexec_verdict, flake_verdict,update_fd_prior,namespace_pid,mapping_coverage,probe_failed,pid_observation
 from gate import fake_env, lab_home, socket_path_lengths
+from home_guard import home_guard, entry_guard, pull_destination, PROVIDER_DIRS, PROVIDER_KEYS
+from thread_records import ThreadRecords
 
 HOME = '/home/lab'
 HIVE = HOME + '/.hive'
@@ -25,7 +34,8 @@ class PolicyTests(unittest.TestCase):
     def test_zombie_and_running_to_zombie(self):
         self.assertEqual(self.error(before='Z', after='Z', number=errno.EACCES), 'scope_proven_exiting')
         self.assertEqual(self.error(before='R', after='Z', number=errno.EACCES), 'scope_proven_exiting')
-        self.assertEqual(self.error(before='S', after='Z', number=errno.EACCES), 'FAIL')
+        for state in ('S','D','T','t','I','P','K','W','X','x'):
+            self.assertEqual(self.error(before=state, after='Z', number=errno.EACCES), 'scope_proven_exiting')
 
     def test_reuse_fails(self):
         self.assertEqual(self.error(before='Z', after='R'), 'FAIL')
@@ -129,7 +139,7 @@ class PolicyTests(unittest.TestCase):
         self.assertTrue(probe_failed(dict(valid,probes=[dict(expectedFailure=False)]+valid['probes'][1:])))
 
     def test_mapping_and_read_errors_share_exit_evidence(self):
-        for before, after, start, expected in [('Z','Z','12',True),('R','Z','12',True),('S','Z','12',False),('Z',None,None,True),('R','S','12',False),('Z','R','12',False),('Z','Z','13',False)]:
+        for before, after, start, expected in [('Z','Z','12',True),('R','Z','12',True),('S','Z','12',True),('D','Z','12',True),('Z',None,None,True),('R','S','12',False),('Z','R','12',False),('Z','Z','13',False)]:
             birth=dict(pid=4893,ownTreeAtFirstSight=True,procStat=dict(state=before,starttime='12'))
             observation=dict(state='pid_present' if after else 'pid_gone',procStat=dict(state=after,starttime=start) if after else {})
             birth['nextBirthSample']=observation
@@ -174,6 +184,130 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(pid_observation(False,None,False)['state'],'pid_gone')
         self.assertEqual(pid_observation(False,None,True)['state'],'pid_outside_scope')
 
+    def test_raw_r16_sleeping_runner_exit(self):
+        birth=dict(pid=8292,ownTreeAtFirstSight=True,procStat=dict(state='R',starttime='303018549'))
+        observation=dict(state='pid_present',procStat=dict(state='Z',starttime='303018549'))
+        error=dict(pid=8292,fd='28',slot='fd/28',errno=errno.ENOENT,previousTarget=None,atErrorStat=dict(state='S',starttime='303018549'),nextSample=observation)
+        self.assertEqual(error_verdict(error,birth,True,HIVE),'scope_proven_exiting')
+        birth['nextBirthSample']=observation
+        self.assertEqual(mapping_coverage(birth,[],[]),'mapping unavailable: exited before host capture')
+        error['nextSample']=dict(state='pid_present',procStat=dict(errno=errno.ENOENT))
+        self.assertEqual(error_verdict(error,birth,True,HIVE),'scope_proven_exiting')
+
+    def thread_case(self, tgid=8927, tid=8991):
+        records=ThreadRecords()
+        birth=records.observe(tgid,tid,dict(state='R',starttime='77'),1,10,'pid:[lab]')
+        records.scope({tgid:dict(ownTreeAtFirstSight=True,parentChain=[tgid,1],procStat=dict(starttime='55'))})
+        error=dict(pid=tid,tid=tid,tgid=tgid,threadScoped=True,slot='children',errno=errno.ENOENT,fd=None,sample=1,atErrorStat=dict(errno=errno.ENOENT))
+        return records,birth,error
+
+    def test_thread_gone_uses_tid_even_with_live_parent(self):
+        records,birth,error=self.thread_case()
+        calls=[]
+        def read(tgid,tid):
+            calls.append((tgid,tid));return dict(errno=errno.ENOENT)
+        error['nextSample']=records.next_observation(8927,8991,2,11,read)
+        self.assertEqual(calls,[(8927,8991)])
+        self.assertEqual(error_verdict(error,birth,True,HIVE),'scope_proven_exiting')
+        self.assertEqual(birth['procStat']['starttime'],'77')
+        self.assertEqual(birth['nextBirthSample']['tid'],8991)
+        self.assertEqual(birth['nextBirthSample']['state'],'pid_gone')
+
+    def test_thread_z_same_identity_and_reuse(self):
+        records,birth,error=self.thread_case()
+        records.observe(8927,8991,dict(state='Z',starttime='77'),2,11)
+        error['nextSample']=records.next_observation(8927,8991,2,11,lambda *_:self.fail('observed TID should not be re-read'))
+        self.assertEqual(error_verdict(error,birth,True,HIVE),'scope_proven_exiting')
+        records.observe(8927,8991,dict(state='Z',starttime='78'),3,12)
+        error['nextSample']=records.current[(8927,8991)]
+        self.assertTrue(error['nextSample']['identityChanged'])
+        self.assertEqual(error_verdict(error,birth,True,HIVE),'FAIL')
+
+    def test_raw_r16_parent_observations_do_not_prove_thread_exit(self):
+        for tgid,tid in ((8927,8991),(11247,11259)):
+            records,birth,error=self.thread_case(tgid,tid)
+            for observation in ({},dict(sample=2,state='pid_present',procStat=dict(state='S',starttime='77')),dict(sample=2,state='pid_gone',procStat=dict(errno=errno.ENOENT))):
+                error['nextSample']=observation
+                self.assertEqual(error_verdict(error,birth,True,HIVE),'FAIL')
+            error['nextSample']=dict(sample=2,tid=tid,tgid=tgid,state='pid_present',procStat=dict(state='S',starttime='77'))
+            self.assertEqual(error_verdict(error,birth,True,HIVE),'FAIL')
+
+    def test_thread_unknown_identity_and_scope_fail_closed(self):
+        records,birth,error=self.thread_case()
+        error['nextSample']=records.next_observation(8927,8991,2,11,lambda *_:dict(errno=errno.EACCES))
+        self.assertEqual(error_verdict(error,birth,True,HIVE),'FAIL')
+        error['nextSample']=dict(sample=2,tid=8991,tgid=8927,state='pid_present',procStat=dict(state='Z'))
+        self.assertEqual(error_verdict(error,birth,True,HIVE),'FAIL')
+        error['nextSample']=dict(sample=2,tid=8991,tgid=8927,state='pid_gone')
+        birth['ownTreeAtFirstSight']=False
+        self.assertEqual(error_verdict(error,birth,True,HIVE),'FAIL')
+
+    def test_thread_exit_before_birth_stat_is_retained(self):
+        records=ThreadRecords()
+        birth=records.observe(10,11,dict(errno=errno.ENOENT),1,10)
+        records.scope({10:dict(ownTreeAtFirstSight=True,parentChain=[10,1],procStat=dict(starttime='4'))})
+        error=dict(pid=11,tid=11,tgid=10,threadScoped=True,slot='children',errno=errno.ENOENT,fd=None,sample=1,atErrorStat=dict(errno=errno.ENOENT),nextSample=records.next_observation(10,11,2,11,lambda *_:dict(errno=errno.ENOENT)))
+        self.assertEqual(error_verdict(error,birth,True,HIVE),'scope_proven_exiting')
+
+    def test_guard_refuses_each_sensitive_home_and_variable(self):
+        real='/home/unit-passwd'
+        allowed=dict(HOME=real+'/.cache/hbl/abc/h/0',TMPDIR=real+'/.cache/hbl/abc/h/0/t')
+        for name in ('HOME','TMPDIR','XDG_CONFIG_HOME','XDG_RUNTIME_DIR','XDG_CUSTOM_LOCATION'):
+            for target in (real,*[real+'/'+directory for directory in ('.hive','.config','Library',*PROVIDER_DIRS)]):
+                for value in (target,target+'/nested') if target!=real else (target,):
+                    result=home_guard(dict(allowed,**{name:value}),[real],posixpath.normpath)
+                    self.assertFalse(result['allowed'],(name,value))
+                    self.assertEqual(result['offendingVariable'],name)
+
+    def test_guard_resolves_symlinks_lists_and_prefix_boundaries(self):
+        real='/home/unit-passwd';base=dict(HOME=real+'/.cache/lab',TMPDIR=real+'/.cache/lab/t')
+        result=home_guard(dict(base,TMPDIR='/fake/link'),[real],lambda path:real+'/.hive/v2' if path=='/fake/link' else posixpath.normpath(path))
+        self.assertEqual(result['offendingVariable'],'TMPDIR')
+        self.assertEqual(home_guard(dict(base,XDG_DATA_DIRS='/safe:'+real+'/.config/data'),[real],posixpath.normpath)['offendingVariable'],'XDG_DATA_DIRS')
+        self.assertTrue(home_guard(dict(base,HOME=real+'/.hive-other'),[real],posixpath.normpath)['allowed'])
+        result=home_guard(dict(base,XDG_CONFIG_HOME='/volume/config/nested'),[real],lambda path:'/volume/config' if path==real+'/.config' else posixpath.normpath(path))
+        self.assertEqual(result['offendingVariable'],'XDG_CONFIG_HOME')
+
+    def test_guard_allowed_case_and_refusal_output_has_no_values(self):
+        real='/home/unit-passwd';env=dict(HOME=real+'/.cache/lab',TMPDIR=real+'/.cache/lab/t',XDG_CONFIG_HOME=real+'/.cache/lab/config')
+        self.assertTrue(home_guard(env,[real],posixpath.normpath)['allowed'])
+        stream=io.StringIO()
+        with patch('home_guard.pwd.getpwuid',return_value=SimpleNamespace(pw_dir=real)),patch('home_guard.os.environ',dict(env,HOME=real)),contextlib.redirect_stderr(stream):
+            with self.assertRaises(SystemExit):entry_guard()
+        self.assertEqual(stream.getvalue(),'refused unsafe HOME\n')
+        self.assertNotIn(real,stream.getvalue())
+
+    def test_pull_output_cannot_escape_or_share_local_script_name(self):
+        self.assertEqual(pull_destination('/runroot','candidate-source.tar',{'mask.py','run.sh'}),pathlib.Path('/runroot/pull/candidate-source.tar'))
+        for name in ('mask.py','run.sh','../mask.py','/elsewhere/cache.tar','sub/cache.tar','..',''):
+            with self.assertRaises(ValueError):pull_destination('/runroot',name,{'mask.py','run.sh'})
+
+    def test_guard_provider_overrides_and_missing_required_paths(self):
+        real='/home/unit-passwd';env=dict(HOME=real+'/.cache/lab',TMPDIR=real+'/.cache/lab/t')
+        for name in PROVIDER_KEYS:
+            result=home_guard(dict(env,**{name:real+'/.hive/private'}),[real],posixpath.normpath)
+            self.assertEqual(result['offendingVariable'],name)
+        for missing in ('HOME','TMPDIR'):
+            current=dict(env);del current[missing]
+            self.assertEqual(home_guard(current,[real],posixpath.normpath)['offendingVariable'],missing)
+
+    def test_controller_refusal_precedes_writes_and_lab_commands(self):
+        from gate import main
+        argv=['run.sh','--real-home','/home/unit-passwd','--candidate','candidate','--base','base','--steps','gate-tests','--npm-cache','cache','--npm-cache-sha256','digest']
+        with patch('sys.argv',argv),patch('gate.entry_guard',side_effect=SystemExit(2)),patch('gate.pathlib.Path.mkdir') as mkdir,patch('gate.subprocess.check_output') as command:
+            with self.assertRaises(SystemExit):main()
+            mkdir.assert_not_called()
+            command.assert_not_called()
+
+    def test_guard_preserves_canonical_roots_after_home_overlay(self):
+        real='/home/unit-passwd';env=dict(HOME=real+'/.cache/lab',TMPDIR=real+'/.cache/lab/t')
+        outside=home_guard(env,[real],lambda path:'/volume/provider' if path==real+'/.codex' else posixpath.normpath(path))
+        self.assertIn('/volume/provider',outside['protectedRoots'])
+        inside=home_guard(dict(env,XDG_CUSTOM_HOME='/volume/provider/nested'),[real],posixpath.normpath,outside['protectedRoots'])
+        self.assertEqual(inside['offendingVariable'],'XDG_CUSTOM_HOME')
+
 
 if __name__ == '__main__':
+    guard=entry_guard(pathlib.Path(__file__).parent)
+    (pathlib.Path(os.environ['HOME'])/'entry-guard-tests.json').write_text(__import__('json').dumps(guard))
     unittest.main()

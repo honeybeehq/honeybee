@@ -1,10 +1,14 @@
 import os, sys, json, time, pathlib, subprocess, threading, errno, re, hashlib, shutil, collections,signal
 from policy import error_verdict, RULE_VERSION, within,update_fd_prior,pid_observation
+from home_guard import entry_guard
+from thread_records import ThreadRecords
 ROOT = pathlib.Path(sys.argv[1])
 LABEL = sys.argv[2]
 CMD = sys.argv[3:]
 OUT = ROOT / 'receipts' / LABEL
+ENTRY_GUARD = entry_guard(ROOT)
 OUT.mkdir(parents=True, exist_ok=True)
+(OUT / 'entry-guard-monitor.json').write_text(json.dumps(ENTRY_GUARD))
 REAL_HIVE = pathlib.Path(json.loads((ROOT / 'config.json').read_text())['realHome']) / '.hive/v2'
 HASH = hashlib.sha256(pathlib.Path(__file__).read_bytes()).hexdigest()
 CG = open('/proc/self/cgroup').read().strip().split('::', 1)[1]
@@ -20,6 +24,7 @@ forbidden = []
 peers = []
 previous = {}
 parent_edges = {}
+threads = ThreadRecords()
 samples = 0
 stopped = False
 lock = threading.Lock()
@@ -52,6 +57,17 @@ def stat_fields(pid):
         return dict(state=fields[0], ppid=int(fields[1]), starttime=fields[19])
     except OSError as exc:
         return dict(error=type(exc).__name__, errno=exc.errno)
+
+def thread_stat(tgid, tid):
+    try:
+        raw = pathlib.Path(f'/proc/{tgid}/task/{tid}/stat').read_text()
+        fields = raw[raw.rfind(')') + 2:].split()
+        return dict(state=fields[0], ppid=int(fields[1]), starttime=fields[19])
+    except OSError as exc:
+        return dict(error=type(exc).__name__, errno=exc.errno)
+
+def thread_error(tgid, tid, slot, number, message):
+    errors.append(dict(pid=tid, tid=tid, tgid=tgid, threadScoped=True, fd=None, slot=slot, time=time.time(), sample=samples, errno=number, message=message, previousTarget=None, atErrorStat=thread_stat(tgid, tid)))
 
 def checked_stat(pid, slot):
     value = stat_fields(pid)
@@ -113,11 +129,26 @@ def do_sample():
         try:
             tasks=list(pathlib.Path(f'/proc/{pid}/task').iterdir())
             for task in tasks:
+                tid = int(task.name)
+                current = thread_stat(pid, tid)
+                key = (pid, tid)
+                namespace = None
+                if key not in threads.births:
+                    try:
+                        namespace = os.readlink(str(task / 'ns/pid'))
+                    except OSError as error:
+                        threads.observe(pid, tid, current, samples, time.time())
+                        thread_error(pid, tid, 'thread/ns/pid', error.errno, str(error))
+                threads.observe(pid, tid, current, samples, time.time(), namespace)
+                if threads.current[key].get('identityChanged'):
+                    thread_error(pid, tid, 'pid_reused', None, 'thread starttime changed after first sight')
+                if 'errno' in current:
+                    thread_error(pid, tid, 'thread/stat', current['errno'], 'thread stat metadata read failed')
                 try:
                     children=[int(value) for value in (task/'children').read_text().split()]
                     for child in children:parent_edges[child]=pid
                     pending.extend(children)
-                except OSError as e:err(pid,'children',e)
+                except OSError as e:thread_error(pid,tid,'children',e.errno,str(e))
         except OSError as e:err(pid,'task',e)
     for pid in pids:
         if pid not in births:
@@ -198,6 +229,9 @@ def do_sample():
         if e['sample'] >= samples or 'nextSample' in e:
             continue
         pid = e['pid']
+        if e.get('threadScoped'):
+            e['nextSample'] = threads.next_observation(e['tgid'], e['tid'], samples, time.time(), thread_stat)
+            continue
         row = next((r for r in rows if r['pid'] == pid), None)
         obs = dict(time=time.time(), sample=samples, **pid_observation(pid in pids, row.get('procStat') if row else None))
         if obs['state'] == 'pid_gone':
@@ -223,7 +257,11 @@ def do_sample():
         if birth['firstSample']<samples and 'nextBirthSample' not in birth:
             row=next((item for item in rows if item['pid']==pid),None)
             birth['nextBirthSample']=dict(time=time.time(),sample=samples,**pid_observation(pid in pids,row['procStat'] if row else None,os.path.exists(f'/proc/{pid}') if row is None else None),ppidSource='process-tree edges from /proc/<own parent>/task/<own tid>/children; status PPid when readable')
-    fdlog.write(json.dumps(dict(time=now, sample=samples, scopePids=pids, pids=rows, realSocketLines=lines, ownSocketLines=ownlines, ssStderr=ss_stderr)) + '\n')
+    for key,birth in threads.births.items():
+        if birth['firstSample'] < samples and 'nextBirthSample' not in birth:
+            threads.next_observation(*key, samples, time.time(), thread_stat)
+    threads.scope(births)
+    fdlog.write(json.dumps(dict(time=now, sample=samples, scopePids=pids, pids=rows, threads=[observation for observation in threads.current.values() if observation['sample']==samples],realSocketLines=lines, ownSocketLines=ownlines, ssStderr=ss_stderr)) + '\n')
     (OUT / 'first-sight.json').write_text(json.dumps(list(births.values()), indent=2))
     (OUT / 'errors.json').write_text(json.dumps(errors, indent=2))
 
@@ -272,6 +310,10 @@ thread.join()
 final_observations=[]
 for error in errors:
     if 'nextSample' in error:continue
+    if error.get('threadScoped'):
+        error['nextSample'] = threads.next_observation(error['tgid'], error['tid'], samples+1, time.time(), thread_stat)
+        final_observations.append(dict(pid=error['pid'],tid=error['tid'],tgid=error['tgid'],errorTime=error['time'],observation=error['nextSample']))
+        continue
     current=stat_fields(error['pid'])
     gone=current.get('errno')==errno.ENOENT and not os.path.exists(f"/proc/{error['pid']}")
     observation=dict(time=time.time(),sample=samples+1,procStat=current,state='pid_gone' if gone else 'pid_present',observationOnly=True)
@@ -284,7 +326,9 @@ cglog.close()
 lsoflog.close()
 lsoferr.close()
 for e in errors:
-    e['scopeProof'] = births.get(e['pid'], {})
+    e['scopeProof'] = threads.births.get((e['tgid'],e['tid']),{}) if e.get('threadScoped') else births.get(e['pid'], {})
+    if e.get('threadScoped'):
+        e['exitIdentitySource'] = 'atErrorStat' if e.get('atErrorStat',{}).get('starttime') else 'thread birth'
     e['verdict'] = error_verdict(e, e['scopeProof'], MASK['maskAsserted'], str(REAL_HIVE.parent))
 counts = {k: sum((e['verdict'] == k for e in errors)) for k in ('scope_proven_exiting', 'prior_target_outside_hive', 'masked_unknown_prior_WARN', 'FAIL')}
 byerrno = collections.defaultdict(collections.Counter)
@@ -292,7 +336,7 @@ for e in errors:
     byerrno[str(e.get('errno'))][e['verdict']] += 1
 test_input=json.loads((OUT/'test-input.json').read_text()) if (OUT/'test-input.json').exists() else {}
 test_input['testFailure']=bool(re.search(r'^# fail [1-9]\d*$',(OUT/'stdout.log').read_text(),re.M))
-result = dict(ruleVersion=RULE_VERSION, label=LABEL, command=CMD, exit=rc, testEvidence=test_input,cleanup=cleanup,monitorSha256=HASH, ownPids=sorted(births), errors=errors, errorCounts=counts, errnoCounts={k: dict(v) for k, v in byerrno.items()}, forbidden=forbidden, peers=peers, fullyClean=not (counts['FAIL'] or forbidden or peers), births=list(births.values()))
+result = dict(ruleVersion=RULE_VERSION, label=LABEL, command=CMD, exit=rc, testEvidence=test_input,cleanup=cleanup,monitorSha256=HASH, ownPids=sorted(births), errors=errors, errorCounts=counts, errnoCounts={k: dict(v) for k, v in byerrno.items()}, forbidden=forbidden, peers=peers, fullyClean=not (counts['FAIL'] or forbidden or peers), births=list(births.values()),threadBirths=list(threads.births.values()),samplingLimitation='A failed children-file read can leave that sample tree walk incomplete; processes born and gone between samples may be unseen.')
 (OUT / 'result.json').write_text(json.dumps(result, indent=2))
 print(json.dumps(dict(label=LABEL, exit=rc, ownPids=len(births), errorCounts=counts, forbidden=len(forbidden), peers=len(peers), fullyClean=result['fullyClean'])), flush=True)
 sys.exit(rc)

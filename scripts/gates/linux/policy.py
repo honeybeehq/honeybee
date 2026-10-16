@@ -1,7 +1,7 @@
 import errno
 import pathlib
 
-RULE_VERSION = 27
+RULE_VERSION = 29
 
 
 def within(target, root):
@@ -15,9 +15,9 @@ def pid_transition(before, observation):
     reused |= bool(before.get('starttime') and after.get('starttime') and not same)
     if reused:
         return 'reused'
-    exiting = observation.get('state') == 'pid_gone'
+    exiting = observation.get('state') == 'pid_gone' or after.get('errno') == errno.ENOENT
     exiting |= before.get('state') == 'Z' and after.get('state') == 'Z' and same
-    exiting |= before.get('state') == 'R' and after.get('state') == 'Z' and same
+    exiting |= before.get('state') not in (None, '', 'Z') and after.get('state') == 'Z' and same
     return 'exiting' if exiting else 'unproven'
 
 
@@ -30,12 +30,28 @@ def pid_observation(tree_listed, proc_stat, proc_exists=None):
 def error_verdict(error, birth, masked, real_hive):
     observation = error.get('nextSample') or {}
     after = observation.get('procStat') or {}
-    transition = pid_transition(error.get('atErrorStat') or {}, observation)
+    before = error.get('atErrorStat') or {}
+    if error.get('threadScoped') and not before.get('starttime'):
+        before = birth.get('procStat') or {}
+    transition = pid_transition(before, observation)
     scoped = birth.get('cgroupSightingTime') is not None or birth.get('ownTreeAtFirstSight', False)
+    if error.get('threadScoped'):
+        membership = birth.get('taskMembership', {})
+        if birth.get('tid') != error.get('tid') or birth.get('tgid') != error.get('tgid') or membership.get('tid') != error.get('tid') or membership.get('ownerPid') != error.get('tgid'):
+            return 'FAIL'
+        if observation.get('tid') != error.get('tid') or observation.get('tgid') != error.get('tgid') or observation.get('sample', -1) <= error.get('sample', -1):
+            return 'FAIL'
+        born_start = birth.get('procStat', {}).get('starttime')
+        if born_start and before.get('starttime') and born_start != before['starttime']:
+            return 'FAIL'
+        if after.get('state') == 'Z' and (not born_start or after.get('starttime') != born_start):
+            return 'FAIL'
     if not scoped or transition == 'reused' or error.get('slot') in ('ss', 'sampler_gap', 'cgroup.procs', 'pid_reused', 'lingering_pid'):
         return 'FAIL'
     if transition == 'exiting':
         return 'scope_proven_exiting'
+    if error.get('threadScoped'):
+        return 'FAIL'
     live = after.get('state') not in (None, 'Z') and observation.get('state') != 'pid_gone'
     if live and error.get('errno') == errno.ENOENT and error.get('fd') is not None:
         prior = error.get('previousTarget')
