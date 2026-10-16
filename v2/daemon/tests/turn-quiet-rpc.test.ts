@@ -39,6 +39,7 @@ test("quiet facts through a throwaway daemon: root/child isolation, failure, int
     console.log("LAB quiet then explicit interrupt: endedQuiet absent");
     const restart = await send("@restart");
     const database = new DatabaseSync(daemon.storePath, { readOnly: true });
+    database.exec("PRAGMA busy_timeout = 1000");
     let before: ViewResult;
     try {
       before = await waitFor(async () => {
@@ -50,8 +51,13 @@ test("quiet facts through a throwaway daemon: root/child isolation, failure, int
         const messageAt = journal.lastIndexOf("restart ready <quiet/>");
         if (messageAt < 0) return null;
         const messageEnd = Buffer.byteLength(journal.slice(0, journal.indexOf("\n", messageAt) + 1));
-        const row = database.prepare("SELECT cursor FROM runtime_observation_cursors WHERE bee_id = ? AND generation = 1").get(beeId);
-        return row && Number(row.cursor) >= messageEnd ? value : null;
+        try {
+          const row = database.prepare("SELECT cursor FROM runtime_observation_cursors WHERE bee_id = ? AND generation = 1").get(beeId);
+          return row && Number(row.cursor) >= messageEnd ? value : null;
+        } catch (error) {
+          if (error instanceof Error && /database is (locked|busy)/.test(error.message)) return null;
+          throw error;
+        }
       }, "quiet final message committed before restart", 10_000);
     } finally { database.close(); }
     await daemon.kill();
