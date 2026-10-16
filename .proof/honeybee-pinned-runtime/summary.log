@@ -32,3 +32,12 @@ CLEANUP VERIFIED dev.honeybee.lab.pinned.17252 absent
 == GATE RESULT: PASS · darwin-gate/1 · forage run 6VNxEM · lane github-com-honeybeehq-honeybee-a9015b303498-space-110f4b740e82-3506a99a · snapshot 3b16b65dc427f141d3a3046d32747d52bc653b0c · source 73a5e57a6421abac5d092780db8f2ba194c14a38 · scripts darwin-gate.sh:801d19bc23a5 cleanup-body.sh:f31eab7c14e2 seatbelt-exceptions.txt:0b53680ac9f7 third-party-warn.txt:3ab8b270e918 excluded-tests.txt:c41bc443568d · ~/Library scan errors 0 · EXCLUDED 0 []
 
 Review attention: baseline legacy skip; existing 15 Darwin Keychain exclusions; earlier disposable cleanup-script failure and its verified cleanup retained in logs.
+
+QUEEN REVIEW FIXES (current implementation 1220e05f; final gates pending)
+The earlier receipts above describe the pre-review implementation. Queen's H1-H3/M1-M3/L fixes are now in the review branch.
+Typecheck/v2:check/build pass; 46 focused regression tests pass.
+Linux guarded lab: kill9 respawn PASS; full deployVersion forced post-stop exit17 recovers prior runtime, pin, exact service bytes/mode and old daemon; real runDaemon drift entry exits0 with held record, no store/socket, no respawn for60201ms. Disposable label cleaned.
+Erebor initial review lab vMPF1n PASS: equivalent crash/recovery/60154ms hold and real service-directory/unit hashes unchanged. Final rerun is pending because another session holds gate lock (refused89); lock untouched.
+Policy change: launchd KeepAlive SuccessfulExit:false; systemd Restart:on-failure. Linux v2 deploy now manages systemd activation; legacy deploy activation refuses.
+Incident is explicitly recorded in incident.log. Orchestrator read-only verification: real hived active,NRestarts=0, same installer bytes/mode0600; no repair needed. Subsequent guards/sentinels preserve real SHA/mode/mtime/inode.
+Remaining: final full Linux battery and final erebor extended/full gates, then Queen review of all shas before proof_submit.
