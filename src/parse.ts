@@ -70,6 +70,7 @@ export const BOOLEAN_FLAGS = new Set([
   "rm",
   "samples",
   "seal",
+  "skip-tests",
   "tmux",
   "transcript",
   "trust",

@@ -174,3 +174,12 @@ test("deploy --skip-tests is accepted and threaded to the source build", async (
   assert.match(source, /skipTests: truthy\(flag\(parsed, "skip-tests"\)\)/);
   assert.match(source, /WARNING test gate skipped .*not release-grade/);
 });
+
+test("deploy refuses invalid skip-tests values and conflicting modes", async () => {
+  await withStore(async (dir) => {
+    assert.match(await hiveExpectFail(dir, "deploy", "--skip-tests=banana"), /requires a boolean value/);
+    for (const mode of ["--rollback", "--list", "--init", "--artifact=missing.tgz"]) {
+      assert.match(await hiveExpectFail(dir, "deploy", "--skip-tests", mode), /Usage: hive deploy/);
+    }
+  });
+});
