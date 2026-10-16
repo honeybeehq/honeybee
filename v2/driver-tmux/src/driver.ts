@@ -1,3 +1,4 @@
+import { TurnQuiet } from "./turn-quiet.ts";
 /**
  * TmuxDriver — the tmux substrate driver (WP5, spec 05).
  *
@@ -145,6 +146,7 @@ interface TmuxRuntime {
   eventsTail: JsonlTail;
   transcriptLocator: TranscriptLocator | null;
   transcriptParser: TranscriptParser | null;
+  quiet: TurnQuiet | null;
   transcriptTail: JsonlTail | null;
   lastBindScanAt: number;
   paneFallback: boolean;
@@ -702,6 +704,7 @@ export class TmuxDriver implements RuntimeDriver {
       eventsTail: new JsonlTail(this.eventsFilePath(init.beeId), { skipExisting: init.adopted }),
       transcriptLocator: obs.transcript?.locator ?? null,
       transcriptParser: parser,
+      quiet: parser ? new TurnQuiet(parser.harness) : null,
       transcriptTail: null,
       lastBindScanAt: 0,
       paneFallback: obs.paneFallback ?? false,
@@ -747,6 +750,7 @@ export class TmuxDriver implements RuntimeDriver {
         for (const line of p.transcriptTail.poll()) {
           p.lastActivityAt = now;
           this.mirrorSessionLog(p.beeId, line);
+          p.quiet?.pushLine(line, null);
           for (const ev of p.transcriptParser.parseLine(line)) this.fold(p, ev);
         }
       }
@@ -829,7 +833,8 @@ export class TmuxDriver implements RuntimeDriver {
           this.fold(p, { kind: "turn_started" });
         }
         p.phase = "idle";
-        this.events.push({ beeId: p.beeId, generation: p.generation, kind: "turn_ended" });
+        const endedQuiet = p.quiet?.end();
+        this.events.push({ beeId: p.beeId, generation: p.generation, kind: "turn_ended", ...(endedQuiet !== undefined ? { endedQuiet } : {}) });
         return;
       }
       case "output": {

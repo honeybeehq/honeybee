@@ -796,3 +796,29 @@ test("adoption with dead host artifacts falls back to refusing, never a phantom 
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+
+test("quiet final assistant evidence survives a restart before turn completion", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "hb-v2-quiet-recovery-"));
+  const first = makeCodexDriver(dir);
+  let second: HsrDriver | null = null;
+  try {
+    first.start("bee-quiet", 1);
+    await drainUntil(first, events => ofKind(events, "turn_ended").length > 0);
+    const sessionId = first.observeSessions().find(row => row.beeId === "bee-quiet")!.sessionId;
+    await deliverUntilAccepted(first, "bee-quiet", 1, 101, "@slow:1500 @quiet");
+    await waitForJournal(first.observationLogPath("bee-quiet", 1), text => text.includes('"type":"agentMessage"'));
+    first.observe();
+    const cursor = checkpointOf(first, "bee-quiet");
+    const proc = first.procOf("bee-quiet", 1)!;
+    first.detachAll();
+    second = makeCodexDriver(dir);
+    assert.equal(second.adopt("bee-quiet", 1, proc.pid, proc.pidStartedAt, "running", cursor, sessionId), true);
+    const events = await drainUntil(second, rows => ofKind(rows, "turn_ended").length > 0);
+    assert.equal(ofKind(events, "turn_ended")[0]!.endedQuiet, true);
+  } finally {
+    first.disposeAll();
+    second?.disposeAll();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

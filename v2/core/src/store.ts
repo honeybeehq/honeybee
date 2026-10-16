@@ -2773,6 +2773,7 @@ export class CoreStore {
       synthetic?: boolean;
       /** Turn-end projection: phase + last-output fact commit together. */
       recordOutput?: boolean;
+      endedQuiet?: boolean;
       turnOpener?: TurnTriggerSource & { messageId: number };
     } = {},
   ): { applied: boolean } {
@@ -2831,7 +2832,7 @@ export class CoreStore {
         .run(state, opts.exitCause ?? null, pid, pidStartedAt, bootEvidence, at, beeId, generation);
       const turnTrigger = current.state === "idle" && state === "running"
         ? this.applyTurnStartTrigger(beeId, current, opts.turnOpener, at)
-        : current.state === "running" && state === "idle" ? this.applyTurnEndTrigger(beeId, generation, at) : null;
+        : current.state === "running" && state === "idle" ? this.applyTurnEndTrigger(beeId, generation, at, opts.endedQuiet) : null;
       const runtime = this.currentRuntime(beeId);
       this.audit("runtime.updated", beeId, { runtime, ...(turnTrigger ? { turnTrigger } : {}) });
       if (opts.recordOutput === true) this.applyRecordOutput(beeId, at, generation);
@@ -3955,7 +3956,8 @@ export class CoreStore {
   private applyRecordOutput(beeId: string, at: number, generation: number | null): void {
     const row = this.stmt(
       `UPDATE bees SET last_output_at = ?, last_human_output_at = CASE
-         WHEN json_extract(last_turn_trigger, '$.humanAt') IS NOT NULL AND json_extract(last_turn_trigger, '$.generation') = ? THEN ?
+         WHEN json_extract(last_turn_trigger, '$.humanAt') IS NOT NULL AND json_extract(last_turn_trigger, '$.generation') = ?
+           AND COALESCE(json_extract(last_turn_trigger, '$.endedQuiet'), 0) = 0 THEN ?
          ELSE last_human_output_at END
        WHERE id = ? RETURNING last_human_output_at`,
     ).get(at, generation, at, beeId) as Row;
@@ -4002,9 +4004,9 @@ export class CoreStore {
     return this.openTurnTrigger(beeId, runtime.generation, { kind: opener.kind, from: opener.from }, opener.messageId, at);
   }
 
-  private applyTurnEndTrigger(beeId: string, generation: number, at: number): TurnTrigger | null {
+  private applyTurnEndTrigger(beeId: string, generation: number, at: number, endedQuiet?: boolean): TurnTrigger | null {
     const open = this.openTurnOf(beeId, generation);
-    return open === null ? null : this.writeTurnTrigger(beeId, { ...open, endedAt: at });
+    return open === null ? null : this.writeTurnTrigger(beeId, { ...open, endedAt: at, ...(endedQuiet !== undefined ? { endedQuiet } : {}) });
   }
 
   // -------------------------------------------------------------------------
