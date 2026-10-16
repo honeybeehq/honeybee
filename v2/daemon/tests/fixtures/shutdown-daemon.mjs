@@ -6,6 +6,7 @@ import { runDaemon } from "../../src/main.ts";
 import { spawn } from "node:child_process";
 
 const [dir, mode] = process.argv.slice(2);
+process.env.HIVE_NODE_PATH = process.execPath;
 if (mode === "retention") {
   const worker = new URL(`data:text/javascript,${encodeURIComponent(`import {writeFileSync} from "node:fs";writeFileSync(${JSON.stringify(join(dir, "worker-held"))}, "held");Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0);`)}`);
   const daemon = new HiveDaemon(loadNodeConfig(dir), { retentionWorkerUrl: worker, retentionInitialDelayMs: 0 });

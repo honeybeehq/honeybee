@@ -15,6 +15,7 @@ const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const outDir = join(root, "dist", "v2");
 const runnerHostOutput = join(outDir, "runner-host.js");
 const runnerHostInputs = [
+  "src/runtimeEnvironment.ts",
   "v2/driver-hsr/src/runner-host-main.ts",
   "v2/driver-hsr/src/runner-host.ts",
 ];

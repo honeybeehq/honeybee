@@ -1,0 +1,26 @@
+REAL SERVICE SENTINEL before {"systemd":{"count":11,"hash":"8efcf56583cd752a72316e27a2e23c2d808799c57a83c1273574862e83075a30"},"launchd":{"absent":true},"realUnit":{"path":"/home/trmd/.config/systemd/user/dev.honeybee.hive.v2.service","mode":"600","mtimeNs":"1792139687890245908","ino":"30499345","size":"927","sha256":"f1138adc1ee1d4819ae217c83a1dee3c27c110f9ac0cf3c4142dceb109d866bf"}}
+Apiary main 39a7835d146a2bff7bbd83941b5d1cd6654f1609; Honeybee base a1da490a4d39c904e1af8016e664905daa543ef5
+Same label, argv, data dir, HOME, PATH, version, hash and log path; existing unit already has pin env.
+updater sha256=879db539fc99a119bd99908555ce2376dbfb7f86da3c7b050e6c80f0f1aaf5a1
+deploy sha256=fe762caf2de7ee06c8dbfec4a9bc7bdf843a25fcfd8c290bdad2b3fcefee1d1b
+byte_equal=False
+--- apiary-updater
++++ honeybee-deploy
+@@ -12,7 +12,8 @@
+ # Honeybee owns detached runner process groups; daemon stop/restart preserves them for re-adoption.
+ # Ephemeral workers are stopped during clean daemon shutdown, and explicit bee stop/delete reaps its runner group.
+ KillMode=process
+-Restart=always
++UnsetEnvironment=ELECTRON_RUN_AS_NODE NODE_OPTIONS
++Restart=on-failure
+ RestartSec=2
+ StandardOutput=append:/scratch/.hive/logs/hived.log
+ StandardError=append:/scratch/.hive/logs/hived.log
+
+Already-canonical new unit: updater preserves exact bytes=True
+Older units lacking HIVE_NODE_PATH/VERSION/SHA256 keep lacking them; updater does not persist node-runtime.json or scrub inherited environment. Apiary-side fix must call Honeybee install with pin before activation or share canonical rendering; updater does not currently defer.
+REAL SERVICE SENTINEL after {"systemd":{"count":11,"hash":"8efcf56583cd752a72316e27a2e23c2d808799c57a83c1273574862e83075a30"},"launchd":{"absent":true},"realUnit":{"path":"/home/trmd/.config/systemd/user/dev.honeybee.hive.v2.service","mode":"600","mtimeNs":"1792139687890245908","ino":"30499345","size":"927","sha256":"f1138adc1ee1d4819ae217c83a1dee3c27c110f9ac0cf3c4142dceb109d866bf"}}
+Reproduce inputs before the scrubbed run (read-only GitHub fetches; LAB_ROOT is an owned scratch root):
+gh api 'repos/honeybeehq/honeybee/contents/v2/daemon/src/service.ts?ref=a1da490a4d39c904e1af8016e664905daa543ef5' --jq .content | base64 -d > "$LAB_ROOT/old-service.ts"
+gh api 'repos/honeybeehq/apiary/contents/scripts/satellite/honeybee_update_host.py?ref=39a7835d146a2bff7bbd83941b5d1cd6654f1609' --jq .content | base64 -d > "$LAB_ROOT/apiary-honeybee-update-host.py"
+bash .proof/honeybee-pinned-runtime/run-scrubbed.sh "$LAB_ROOT" bash -c 'node .proof/honeybee-pinned-runtime/compare-updater.mjs && python3 .proof/honeybee-pinned-runtime/compare-updater.py'

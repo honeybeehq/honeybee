@@ -1,3 +1,4 @@
+import { resolveNodePin } from "./nodeRuntime.js";
 /**
  * Versioned runtime deploys (reset WP0 — docs/design/specs/reset-00-deploy.md).
  *
@@ -90,6 +91,7 @@ export type RestartDaemonContext = {
   installedDir: string;
   sha: string;
   log: (line: string) => void;
+  restorePrevious?: () => Promise<boolean>;
 };
 
 export type DeployHooks = {
@@ -103,6 +105,24 @@ export type DeployHooks = {
   /** Separate final step so tests (and --no-restart futures) never touch a real daemon. */
   restartDaemon: (context: RestartDaemonContext) => Promise<void>;
 };
+
+const admittedRestarts = new WeakMap<RestartDaemonContext, Pick<RestartDaemonContext, "root" | "installedDir" | "sha" | "runtime">>();
+
+export function hasDeployRestartAdmission(context: RestartDaemonContext): boolean {
+  const admission = admittedRestarts.get(context);
+  return admission !== undefined && admission.root === context.root && admission.installedDir === context.installedDir
+    && admission.sha === context.sha && admission.runtime === context.runtime;
+}
+
+async function restartWithAdmission(hooks: Pick<DeployHooks, "restartDaemon">, context: RestartDaemonContext): Promise<void> {
+  const restore = context.restorePrevious;
+  if (restore) context.restorePrevious = async () => {
+    if (!hasDeployRestartAdmission(context)) throw new Error("deploy: restart admission expired");
+    return restore();
+  };
+  admittedRestarts.set(context, { root: context.root, installedDir: context.installedDir, sha: context.sha, runtime: context.runtime });
+  try { await hooks.restartDaemon(context); } finally { admittedRestarts.delete(context); }
+}
 
 export type DeployOptions = {
   repoRoot: string;
@@ -440,21 +460,37 @@ async function publishDeploy({ root, sha, artifactDir, artifactHash, keep, by, n
       throw error;
     }
     staging = null;
-    if (displaced) await rm(displaced, { recursive: true, force: true }).catch(() => undefined);
-
     const previousSha = await currentDeployTarget(root);
     await retargetCurrent(root, sha);
     const last = immutable && previousSha === sha ? (await readDeployHistory(root)).at(-1) : undefined;
     const entry: DeployHistoryEntry = last?.sha === sha && last.artifactHash === artifactHash
       ? last : { sha, at: now().toISOString(), artifactHash, by, ...(gate ? { gate } : {}) };
+    let restored = false;
+    const restorePrevious = async (): Promise<boolean> => {
+      if (!previousSha) return false;
+      if (restored) return true;
+      if (displaced && previousSha === sha) {
+        await rm(versionDir, { recursive: true, force: true });
+        await rename(displaced, versionDir);
+        displaced = null;
+      }
+      await retargetCurrent(root, previousSha);
+      restored = true;
+      log(`deploy: restored previous runtime ${previousSha}`);
+      return true;
+    };
+    try {
+      await restartWithAdmission(hooks, { root, installedDir: versionDir, sha, log, restorePrevious, ...(v2 ? { runtime: "v2" as const } : {}) });
+      if (restored) throw new Error("deploy: activation rolled back");
+    } catch (error) {
+      await restorePrevious();
+      throw error;
+    } finally {
+      if (displaced) await rm(displaced, { recursive: true, force: true }).catch(() => undefined);
+    }
     if (entry !== last) await appendDeployHistory(root, entry);
-    // Keep every recovery candidate while the coordinated reservation is held.
     const pruned = immutable ? [] : await pruneRuntimeVersionsLocked(root, { keep });
     for (const removed of pruned) log(`deploy: pruned old version ${removed.slice(0, 12)}`);
-
-    // Deliberately last and separate: the install is fully recorded before
-    // anything restarts, and a restart failure never un-publishes a deploy.
-    await hooks.restartDaemon({ root, installedDir: versionDir, sha, log, ...(v2 ? { runtime: "v2" as const } : {}) });
     return { sha, artifactHash: artifactHash, installedDir: versionDir, previousSha, pruned, entry };
   } finally {
     if (staging) await rm(staging, { recursive: true, force: true });
@@ -507,7 +543,7 @@ export async function deployArtifact(options: DeployArtifactOptions): Promise<De
       const outcome = await publishDeploy({ root, sha: prepared.identity.sourceRevision, ...prepared,
         keep: DEFAULT_KEEP_VERSIONS, by: deployedBy(), now: () => new Date(), log: () => undefined,
         hooks: options.hooks, immutable: true });
-      if (options.cliBinDirectory !== undefined) await exposeDeployedCli(root, options.cliBinDirectory, process.execPath);
+      if (options.cliBinDirectory !== undefined) await exposeDeployedCli(root, options.cliBinDirectory, resolveNodePin(join(root, "..", "v2")).path);
       return outcome;
     });
   } finally {
@@ -549,9 +585,16 @@ async function rollbackDeployLocked(options: RollbackOptions): Promise<RollbackO
     artifactHash: target.artifactHash,
     by,
   };
-  await appendDeployHistory(root, entry);
   log(`deploy: rolled back ${currentSha.slice(0, 12)} → ${target.sha.slice(0, 12)}`);
-  await options.hooks.restartDaemon({ root, installedDir: join(root, target.sha), sha: target.sha, log, ...(v2 ? { runtime: "v2" as const } : {}) });
+  try {
+    await restartWithAdmission(options.hooks, { root, installedDir: join(root, target.sha), sha: target.sha, log,
+      restorePrevious: async () => { await retargetCurrent(root, currentSha); return true; },
+      ...(v2 ? { runtime: "v2" as const } : {}) });
+  } catch (error) {
+    await retargetCurrent(root, currentSha);
+    throw error;
+  }
+  await appendDeployHistory(root, entry);
   return { from: currentSha, sha: target.sha, entry };
 }
 

@@ -1,3 +1,4 @@
+import { childNodePath, nativeNodeEnv } from "../nodeRuntime.js";
 // Isolated HSR observation (CL.701 §5 fix 1). The tick's heavy fs fan-out —
 // hundreds of run-dir meta/event reads per tick — used to share the daemon's
 // libuv threadpool with everything else. withTimeout never cancels the
@@ -86,9 +87,10 @@ export type IsolatedHsrObservations = ((beeNames: readonly string[]) => Promise<
 };
 
 function defaultSpawnChild(): ObserverChild {
-  const child: ChildProcess = spawn(process.execPath, daemonWorkerArgv("hsr-observe-worker", import.meta.url), {
+  const child: ChildProcess = spawn(childNodePath(), daemonWorkerArgv("hsr-observe-worker", import.meta.url), {
     // stderr inherits so a child crash is visible in the daemon's stream file.
     stdio: ["pipe", "pipe", "inherit"],
+    env: nativeNodeEnv(),
   });
   child.unref();
   return child as unknown as ObserverChild;

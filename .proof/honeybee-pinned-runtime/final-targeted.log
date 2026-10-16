@@ -1,0 +1,25 @@
+✔ deploy-owned CLI follows current, preserves argument quoting, and replays exposure (415.348458ms)
+✔ deploy-owned CLI preserves an existing user command and dangling link (299.779966ms)
+✔ fresh service pin requires explicit managed node and refuses Electron (5.801781ms)
+✔ pin persists resolved executable identity and refuses version or byte drift (1143.572102ms)
+✔ runtime environment and inspector arguments are scrubbed (0.549508ms)
+✔ service environment records native pin and drops Electron mode (304.691949ms)
+✔ service entry follows selected node current, independent of ambient home (149.328678ms)
+✔ fresh service install requires a pin and validates explicit argv overrides (454.845317ms)
+✔ service.1: launchd plist snapshot (1.063476ms)
+✔ service.2: systemd owns only the daemon process so detached bee runtimes survive restart (0.3452ms)
+✔ service.3: launchd manager — install writes the plist; start/stop/status drive launchctl (1.645316ms)
+✔ service.4: launchd start falls back to kickstart when already bootstrapped (0.364027ms)
+✔ service.4b: launchd stop waits through the asynchronous bootout window (0.426469ms)
+✔ service.5: systemd manager — install writes unit + daemon-reload; start/stop/status; uninstall removes (0.928113ms)
+✔ service.6: one factory per platform; anything else refuses (0.472818ms)
+✔ service.7: a failing systemctl surfaces as a typed ServiceError, never silence (0.409676ms)
+✔ service renderers exclude Electron and Node option environment injection (0.309ms)
+ℹ tests 17
+ℹ suites 0
+ℹ pass 17
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2844.650648

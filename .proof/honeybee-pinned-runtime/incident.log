@@ -1,0 +1,10 @@
+Incident: an unwrapped dummy-CLI restart test reached metal-3's real service file through default HOME resolution.
+It rewrote /home/trmd/.config/systemd/user/dev.honeybee.hive.v2.service from an identical in-memory snapshot, then ran systemctl --user daemon-reload.
+It issued no real-unit stop/start; lifecycle commands were fixture JavaScript.
+Read-only verification relayed by the orchestrator (messages 5001,5006,5009): hived stayed active, NRestarts=0, no restart; unit is SHA-identical to metal-2 installer output, 927 bytes, mode0600. No repair needed.
+The initial report assumed a mode change; Needle confirmed 0600 is the installer mode. The observed unintended change was mtime.
+No mode repair was attempted. Initial Apiary report attempts failed gateway_disconnected/not_sent; authorized local hive send delivered mailbox message5000 with idempotency key pinned-runtime-lab-isolation-incident-1.
+Guards: every subsequent check/build/test/lab uses env-i scratch HOME/XDG_CONFIG_HOME/TMPDIR; actual lab managers assert an explicit service directory below scratch HOME and a disposable label.
+Service paths use explicit HOME/XDG_CONFIG_HOME or an absolute override, never getpwuid/os.userInfo. Missing HOME fails instead of resolving the real home.
+Sentinels hash both real service directories, require the current OS directory non-empty with the real unit present, and compare hashes plus real unit SHA/mode/mtime/inode before and after.
+Queen read-only verification (relayed 2026-10-16 09:05Z): at 08:40Z, metal-3 unit sha f1138adc identical to metal-2 installer output; NRestarts=0; active since 15 Oct 08:40 CEST. No repair required or performed.

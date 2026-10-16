@@ -1,0 +1,33 @@
+REVIEW STATUS: no proof submitted; Queen code approval and orchestrator's explicit submit/order go still required.
+Product SHA f914e2ec54c14dbf6210eb9f0b4e623b76d5fdba
+Gate-only overlay SHA0f3a8db77703583cd3b90c16cf3adbb484d765cf
+Base GitHub main a1da490a4d39c904e1af8016e664905daa543ef5
+
+Gate -> host -> result -> evidence path (all paths under .proof/honeybee-pinned-runtime/)
+check/v2:check/build -> metal-3 -> PASS exact productSHA -> r2-linux-gates.log, r2-linux-{check,v2-check,build}.log
+legacy -> metal-3 -> PASS with exactly one anchored baseline skip -> r2-linux-gates.log, r2-linux-legacy.log
+core/HSR/Cell/harness/daemon -> metal-3 -> PASS437/147/248(+22skip)/14/1202(+5skip),0fail -> r2-linux-{core,driver,driver2,harness,daemon}.log
+pin/children/pre-stop -> metal-3 -> PASS, bad pin retains oldPID, pinnedargv,reinstall -> r2-linux-basic-lab.log
+full deploy/delay/stuck/drift -> metal-3 -> PASS,8sdelay,stuck no-old-start,60216msheld,cleanup -> r2-linux-lab.log
+real service isolation -> metal-3 -> PASS before/after SHA,mode,mtime,inode,dir hashes identical -> r2-linux-wrapper.log
+extended service labs -> erebor -> CZ2qCn PASS per Queen exact-sentinel ruling; interim NOT invoked -> r2-darwin-extended.log + r2-darwin-extended-ruling.log
+full source suite -> erebor -> 108files,704tests,698pass,6skip,0fail; existing15Keychain exclusions -> r2-darwin-full.log
+full outer gate -> erebor -> FAIL95: CrashReporter dir+Intervals plist changed outside approvedlist; config/services/HOME exact -> r2-darwin-full.log, r2-crashreporter-metadata.log
+interim rule unit checks -> metal-3 ->10PASS -> interim-gate-tests.log
+updater unit comparison -> pure same-input render -> NOT equal until canonicalized: Restart+UnsetEnvironment -> updater-unit-comparison.log, compare-updater.{mjs,py}
+
+Pin interface: explicit HIVE_NODE_PATH required for fresh unconfigured service; persisted resolved path/version/SHA256 in data-dir/../node-runtime.json with file+dir fsync. Service carries HIVE_NODE_PATH/VERSION/SHA256. Migration requires explicit different requested path AND different resolved executable. Alias/version/hash/corrupt drift refuses. Daemon entry holds before store/socket and exits0 with node-runtime-held.json. New generated units: launchd KeepAlive SuccessfulExit:false; systemd Restart=on-failure. Crash respawn remains proven. Linux deploy now activates systemd; legacy deploy activation refuses.
+Deploy validates before stop; recovery confirms manager absence, restores prior runtime/service/pin/repair, and checks prior complete build identity plus PID executable pin hash. An unconfirmed stuck replacement never starts a competing old daemon. Bee harness runtime choice/explicit spec.env preserved; helper ambient Electron/NODE_OPTIONS/inspector flags scrubbed.
+
+Retained command (run-final-gates.sh prints exact sourceSHA and refuses tracked source diffs):
+npm test -- '--test-skip-pattern=^run --rm cleans up when known driver readiness fails$'
+The sole legacy failure reproduces unchanged on base main; baseline-cli-run.log/test-baseline-failure.log retain that evidence. No lint script exists. Existing15 Darwin Keychain exclusions unchanged.
+
+CZ2qCn lsof coverage reported plainly:1257samples,334seen,230sampled,131exited before sampling attempt,6live-missing,0observed real Hive opens. Config unchanged/logically equal; every service/HOME sentinel exact, so Queen's interim rule was not invoked (orchestrator5236). Later fullKozAGY:2789samples,1945seen,1600sampled,534terminal,0errors,0realHiveopens; config unchanged/logically equal; interim NOT invoked. Coverage sets can overlap across attempts.
+Prior yJ5G7f remains FAIL: configinode rewrite had config.patch within0.001s but no prior hash/lsof. r2-config-attribution.log/r2-config-connection-metadata.log retain only metadata, key names and per-run HMACs; no config values or salt. Caller transport/peer/client/open-time unavailable. Interim exception only that real config.json with config.patch +/-2s AND clean lab-pid lsof; remove after d9182a65 fleet deployment. All other guards exact; no allowlist broadened.
+Supplementary6mXeRp remains FAIL95: GoogleUpdater Cache.db/-shm/-wal outside approvedlist. FullKozAGY remains outerFAIL95: CrashReporter directory/plist at09:54:48Z. No repair, preference change, trust change or allowlist change attempted.
+
+ISOLATION INCIDENT: an earlier unwrapped recovery test rewrote real metal-3 service with identical bytes and daemon-reloaded the user manager. No real stop/start issued. Queen's08:40Z read-only verification: sha f1138adc identical to metal-2 installer output,0600 mode,NRestarts=0,active since15Oct08:40CEST; no repair required. Incident.log records it. Subsequent mandatory scrubbed HOME/XDG/TMP wrapper, scratch-path/disposable-label assertions, HOME/XDG-only service paths and real-dir/unit hash+metadata sentinels all preserve real state. r2-home-audit.log and service-isolation-audit.log and service-test-audit.log contain the path audit.
+Prior Darwin census logs exposed only fake HIVE_REAL_HOME path; Queen required git-rm from final branch without history rewrite. Affected logs removed; scratch raw logs retained until proof, then trash only owned ~/.cache/honeybee-pin.kx4W50/logs. New entry env-i/census records names only. No proof submitted and no hive deploy run.
+
+Apiary installer/updater interface and Queen-only24.18.0 migration lines live in Project findings/honeybee-pinned-runtime.md, not repo docs. Updater at Apiary main39a7835d currently preserves old restart policy and lacks pin persistence; orchestrator owns its separate fix/order gate. Pin binary must remain available across rollback and surviving runner hosts. Accepted residual: same-user hash-to-exec TOCTOU. figure-it-out referenced astack-mode and repository verification skill are missing; available astack-principles/core contract/figure-it-out/show-me-your-work used. Cross-family agent audit not run under fixed model policy; Queen reviews everySHA before landing.

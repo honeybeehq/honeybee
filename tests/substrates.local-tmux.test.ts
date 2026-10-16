@@ -617,3 +617,15 @@ async function waitForFile(path: string): Promise<string> {
   }
   throw lastError instanceof Error ? lastError : new Error(`timed out waiting for ${path}`);
 }
+
+test("local launcher preserves explicit harness Node options", { timeout: 30_000 }, async () => {
+  const dir = await mkdtemp(join(tmpdir(), "hive-explicit-node-env-")), output = join(dir, "env.json");
+  const target = `hive-explicit-node-env-${process.pid}`;
+  try {
+    await newSession(target, dir, { command: process.execPath, args: ["-e", `require('node:fs').writeFileSync(${JSON.stringify(output)},JSON.stringify({node:process.env.NODE_OPTIONS,electron:process.env.ELECTRON_RUN_AS_NODE}));setTimeout(()=>{},60000);`], env: { NODE_OPTIONS: "--no-warnings", ELECTRON_RUN_AS_NODE: "explicit" } });
+    assert.deepEqual(JSON.parse(await waitForFile(output)), { node: "--no-warnings", electron: "explicit" });
+  } finally {
+    await tmuxKillSession(target).catch(() => undefined);
+    await rm(dir, { recursive: true, force: true });
+  }
+});

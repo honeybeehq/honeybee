@@ -1,0 +1,48 @@
+v2/daemon/tests/service.test.ts:106:function recordingExec(results: ExecResult[] = []): {
+v2/daemon/tests/service.test.ts:123:    const rec = recordingExec([
+v2/daemon/tests/service.test.ts:152:    const rec = recordingExec([
+v2/daemon/tests/service.test.ts:170:    const rec = recordingExec([
+v2/daemon/tests/service.test.ts:194:    const rec = recordingExec([
+v2/daemon/tests/service.test.ts:227:  const exec = recordingExec().exec;
+v2/daemon/tests/service.test.ts:236:    const rec = recordingExec([{ code: 1, stdout: "", stderr: "Failed to connect to bus" }]);
+tests/deploy-restart.test.ts:11:  const previousServiceDir = process.env.HIVE_V2_SERVICE_DIR;
+tests/deploy-restart.test.ts:12:  const previousHome = process.env.HOME;
+tests/deploy-restart.test.ts:13:  process.env.HOME = join(dir, "home");
+tests/deploy-restart.test.ts:14:  process.env.HIVE_V2_SERVICE_DIR = join(process.env.HOME, "units");
+tests/deploy-restart.test.ts:15:  assert.ok(process.env.HIVE_V2_SERVICE_DIR.startsWith(process.env.HOME + "/"));
+tests/deploy-restart.test.ts:27:    if (previousHome === undefined) delete process.env.HOME;
+tests/deploy-restart.test.ts:28:    else process.env.HOME = previousHome;
+tests/deploy-restart.test.ts:29:    if (previousServiceDir === undefined) delete process.env.HIVE_V2_SERVICE_DIR;
+tests/deploy-restart.test.ts:30:    else process.env.HIVE_V2_SERVICE_DIR = previousServiceDir;
+tests/deploy-restart.test.ts:38:    const previousServiceDir = process.env.HIVE_V2_SERVICE_DIR;
+tests/deploy-restart.test.ts:39:    const previousHome = process.env.HOME;
+tests/deploy-restart.test.ts:40:    process.env.HOME = join(dir, "home");
+tests/deploy-restart.test.ts:41:    process.env.HIVE_V2_SERVICE_DIR = join(process.env.HOME, "units");
+tests/deploy-restart.test.ts:42:    assert.ok(process.env.HIVE_V2_SERVICE_DIR.startsWith(process.env.HOME + "/"));
+tests/deploy-restart.test.ts:59:    if (previousHome === undefined) delete process.env.HOME;
+tests/deploy-restart.test.ts:60:    else process.env.HOME = previousHome;
+tests/deploy-restart.test.ts:61:    if (previousServiceDir === undefined) delete process.env.HIVE_V2_SERVICE_DIR;
+tests/deploy-restart.test.ts:62:    else process.env.HIVE_V2_SERVICE_DIR = previousServiceDir;
+tests/deploy-restart.test.ts:72:  const previousServiceDir = process.env.HIVE_V2_SERVICE_DIR;
+tests/deploy-restart.test.ts:73:  const previousHome = process.env.HOME;
+tests/deploy-restart.test.ts:74:  process.env.HOME = join(dir, "home");
+tests/deploy-restart.test.ts:75:  process.env.HIVE_V2_SERVICE_DIR = join(process.env.HOME, "units");
+tests/deploy-restart.test.ts:76:  assert.ok(process.env.HIVE_V2_SERVICE_DIR.startsWith(process.env.HOME + "/"));
+tests/deploy-restart.test.ts:87:    if (previousHome === undefined) delete process.env.HOME;
+tests/deploy-restart.test.ts:88:    else process.env.HOME = previousHome;
+tests/deploy-restart.test.ts:89:    if (previousServiceDir === undefined) delete process.env.HIVE_V2_SERVICE_DIR;
+tests/deploy-restart.test.ts:90:    else process.env.HIVE_V2_SERVICE_DIR = previousServiceDir;
+src/servicePaths.ts:3:export function serviceDirectory(platform: NodeJS.Platform = process.platform, env: NodeJS.ProcessEnv = process.env): string {
+src/servicePaths.ts:4:  const override = env.HIVE_V2_SERVICE_DIR;
+src/servicePaths.ts:6:    if (!isAbsolute(override)) throw new Error("HIVE_V2_SERVICE_DIR must be absolute");
+tests/daemon-install.test.ts:13:  setLaunchctlRunner,
+tests/daemon-install.test.ts:25:  const dispose = setLaunchctlRunner(async (args) => {
+tests/daemon-install.test.ts:35:  const prevHome = process.env.HOME;
+tests/daemon-install.test.ts:37:  process.env.HOME = home;
+tests/daemon-install.test.ts:41:  assert.ok(plistPathForLabel(DEFAULT_LAUNCH_LABEL).startsWith(home + "/"));
+tests/daemon-install.test.ts:45:    if (prevHome === undefined) delete process.env.HOME;
+tests/daemon-install.test.ts:46:    else process.env.HOME = prevHome;
+tests/daemon-install.test.ts:169:    const dispose = setLaunchctlRunner(async (args) => {
+tests/daemon-install.test.ts:316:    const dispose = setLaunchctlRunner(async (args) => {
+tests/daemon-install.test.ts:346:    const expected = join(process.env.HOME!, "Library", "LaunchAgents", "dev.honeybee.hive.plist");
+tests/daemon-install.test.ts:368:    const dispose = setLaunchctlRunner(async (args) => {

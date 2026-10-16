@@ -81,6 +81,7 @@ function runtimeEnv(dir: string): NodeJS.ProcessEnv {
     HIVE_BEE_ID: undefined,
     HIVE_BEE: undefined,
     HIVE_V2_DATA_DIR: dir,
+    HIVE_NODE_PATH: process.execPath,
     HIVE_NO_KEYCHAIN: "1",
     HIVE_TEST_REAP_RUNTIMES_ON_SHUTDOWN: "1",
   };

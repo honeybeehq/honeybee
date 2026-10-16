@@ -1,0 +1,49 @@
+tests/deploy-restart.test.ts:7:import { restartDeployedDaemon } from "../src/commands/deploy.js";
+tests/deploy-restart.test.ts:20:    await restartDeployedDaemon({ root, installedDir: join(root, "current"), sha: "a".repeat(40), runtime: "v2", log() {} });
+tests/deploy-restart.test.ts:45:      const result = restartDeployedDaemon({ root, installedDir: join(root, "current"), sha: "a".repeat(40), runtime: "v2", log() {} });
+tests/deploy-restart.test.ts:70:    await restartDeployedDaemon({ root, installedDir: join(root, "current"), sha: "b".repeat(40), log() {} });
+tests/daemon-install.test.ts:53:test("installAgent writes the plist to ~/Library/LaunchAgents/ and bootstraps via launchctl", async () => {
+tests/daemon-install.test.ts:57:      const result = await installAgent({
+tests/daemon-install.test.ts:100:      const first = await installAgent({
+tests/daemon-install.test.ts:106:      const second = await installAgent({
+tests/daemon-install.test.ts:123:      await installAgent({ cliEntry: "/abs/cli.js", nodeBinary: process.execPath });
+tests/daemon-install.test.ts:125:      const second = await installAgent({
+tests/daemon-install.test.ts:143:      await installAgent({ cliEntry: "/abs/cli.js", nodeBinary: process.execPath });
+tests/daemon-install.test.ts:145:      const second = await installAgent({
+tests/daemon-install.test.ts:176:      await installAgent({ cliEntry: "/abs/cli.js", nodeBinary: process.execPath, skipBootstrap: true });
+tests/daemon-install.test.ts:177:      const result = await installAgent({
+tests/daemon-install.test.ts:194:test("installAgent --skipBootstrap writes the plist without invoking launchctl", async () => {
+tests/daemon-install.test.ts:198:      const result = await installAgent({
+tests/daemon-install.test.ts:212:test("uninstallAgent removes the plist and runs launchctl bootout", async () => {
+tests/daemon-install.test.ts:216:      await installAgent({ cliEntry: "/abs/cli.js", nodeBinary: process.execPath });
+tests/daemon-install.test.ts:218:      const result = await uninstallAgent({});
+tests/daemon-install.test.ts:236:      const result = await uninstallAgent({});
+tests/daemon-install.test.ts:253:      await installAgent({ cliEntry: "/abs/cli.js", nodeBinary: process.execPath });
+tests/daemon-install.test.ts:255:      await uninstallAgent({});
+tests/daemon-install.test.ts:270:      await installAgent({ cliEntry: "/abs/cli.js", nodeBinary: process.execPath });
+tests/daemon-install.test.ts:284:      await installAgent({ cliEntry: "/abs/cli.js", nodeBinary: process.execPath });
+tests/daemon-install.test.ts:327:      await installAgent({
+tests/daemon-install.test.ts:334:      // Linux must not infer a supervisor from a plist or call launchctl.
+tests/daemon-install.test.ts:354:      const result = await startAgent("dev.honeybee.hive");
+tests/daemon-install.test.ts:375:      const result = await startAgent("dev.honeybee.hive");
+tests/daemon-install.test.ts:389:      const result = await stopAgent("dev.honeybee.hive");
+v2/daemon/tests/service.test.ts:3: * launchctl/systemctl — every invocation goes through an injected recording
+v2/daemon/tests/service.test.ts:120:test("service.3: launchd manager — install writes the plist; start/stop/status drive launchctl", async () => {
+v2/daemon/tests/service.test.ts:129:    const mgr = new LaunchdServiceManager(SPEC, { exec: rec.exec, agentsDir: dir, uid: 501 });
+v2/daemon/tests/service.test.ts:132:    assert.equal(rec.calls.length, 0, "install is a file write, no launchctl");
+v2/daemon/tests/service.test.ts:135:    assert.deepEqual(rec.calls[0], { cmd: "launchctl", args: ["bootstrap", "gui/501", mgr.servicePath] });
+v2/daemon/tests/service.test.ts:138:    assert.deepEqual(rec.calls[1], { cmd: "launchctl", args: ["print", "gui/501/dev.honeybee.hive.v2.test"] });
+v2/daemon/tests/service.test.ts:142:    assert.deepEqual(rec.calls[2], { cmd: "launchctl", args: ["bootout", "gui/501/dev.honeybee.hive.v2.test"] });
+v2/daemon/tests/service.test.ts:143:    assert.deepEqual(rec.calls[3], { cmd: "launchctl", args: ["print", "gui/501/dev.honeybee.hive.v2.test"] });
+v2/daemon/tests/service.test.ts:156:    const mgr = new LaunchdServiceManager(SPEC, { exec: rec.exec, agentsDir: dir, uid: 501 });
+v2/daemon/tests/service.test.ts:177:    const mgr = new LaunchdServiceManager(SPEC, {
+v2/daemon/tests/service.test.ts:191:test("service.5: systemd manager — install writes unit + daemon-reload; start/stop/status; uninstall removes", async () => {
+v2/daemon/tests/service.test.ts:195:      { code: 0, stdout: "", stderr: "" }, // install → daemon-reload
+v2/daemon/tests/service.test.ts:201:      { code: 0, stdout: "", stderr: "" }, // uninstall → daemon-reload
+v2/daemon/tests/service.test.ts:203:    const mgr = new SystemdServiceManager(SPEC, { exec: rec.exec, unitDir: dir });
+v2/daemon/tests/service.test.ts:206:    assert.deepEqual(rec.calls[0], { cmd: "systemctl", args: ["--user", "daemon-reload"] });
+v2/daemon/tests/service.test.ts:220:    assert.deepEqual(rec.calls[6], { cmd: "systemctl", args: ["--user", "daemon-reload"] });
+v2/daemon/tests/service.test.ts:228:  assert.equal(createServiceManager("darwin", SPEC, { exec, dir: "/tmp/x", uid: 1 }).platform, "launchd");
+v2/daemon/tests/service.test.ts:229:  assert.equal(createServiceManager("linux", SPEC, { exec, dir: "/tmp/x", uid: 1 }).platform, "systemd");
+v2/daemon/tests/service.test.ts:230:  assert.throws(() => createServiceManager("win32", SPEC, { exec, dir: "/tmp/x", uid: 1 }), ServiceError);
+v2/daemon/tests/service.test.ts:237:    const mgr = new SystemdServiceManager(SPEC, { exec: rec.exec, unitDir: dir });

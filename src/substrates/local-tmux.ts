@@ -1,3 +1,4 @@
+import { childNodePath, nativeNodeEnv } from "../nodeRuntime.js";
 import { execFile, spawn } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -144,7 +145,7 @@ export async function newSession(
   const launcher = await createLauncher(spec);
   try {
     // -P -F prints the new pane's id so spawn can pin the bee to it.
-    const result = await tmux(["new-session", "-d", "-P", "-F", "#{pane_id}:#{pane_pid}", "-s", name, "-c", cwd, shellCommand([process.execPath, launcher.runnerPath, launcher.payloadPath])]);
+    const result = await tmux(["new-session", "-d", "-P", "-F", "#{pane_id}:#{pane_pid}", "-s", name, "-c", cwd, shellCommand(["/usr/bin/env", "-u", "ELECTRON_RUN_AS_NODE", "-u", "NODE_OPTIONS", childNodePath(), launcher.runnerPath, launcher.payloadPath])]);
     const { paneId, launcherPgid } = parseLaunchResult(result.stdout);
     await applyTmuxWindowOptions(paneId || `=${name}:`, spec.tmuxOptions);
     const launcherFingerprint = await admitTmuxLauncher(paneId, launcherPgid, birthCapture);
@@ -167,7 +168,7 @@ export async function newPane(
   birthCapture: ProcessBirthCaptureOptions = {},
 ): Promise<NewSessionResult> {
   const launcher = await createLauncher(spec);
-  const command = shellCommand([process.execPath, launcher.runnerPath, launcher.payloadPath]);
+  const command = shellCommand(["/usr/bin/env", "-u", "ELECTRON_RUN_AS_NODE", "-u", "NODE_OPTIONS", childNodePath(), launcher.runnerPath, launcher.payloadPath]);
   try {
     if (opts?.dir === "window") {
       // A fresh window in the same session. -P -F prints the new pane id.
@@ -725,8 +726,11 @@ if (typeof payload.realHome === "string" && payload.realHome.length > 0) {
 }
 repairInteractiveColorEnv(baseEnv);
 
+delete baseEnv.ELECTRON_RUN_AS_NODE;
+delete baseEnv.NODE_OPTIONS;
+const childEnv = { ...baseEnv, ...(payload.env && typeof payload.env === "object" ? payload.env : {}) };
 const child = spawn(payload.command, Array.isArray(payload.args) ? payload.args : [], {
-  env: { ...baseEnv, ...(payload.env && typeof payload.env === "object" ? payload.env : {}) },
+  env: childEnv,
   stdio: "inherit",
 });
 

@@ -38,6 +38,7 @@ async function withTempHome(fn: () => Promise<void>): Promise<void> {
   process.env.HIVE_STORE_ROOT = store;
   // Pre-create LaunchAgents so atomic write doesn't race the mkdir.
   await mkdir(join(home, "Library", "LaunchAgents"), { recursive: true });
+  assert.ok(plistPathForLabel(DEFAULT_LAUNCH_LABEL).startsWith(home + "/"));
   try {
     await fn();
   } finally {
@@ -57,14 +58,14 @@ test("installAgent writes the plist to ~/Library/LaunchAgents/ and bootstraps vi
       const result = await installAgent({
         label: DEFAULT_LAUNCH_LABEL,
         cliEntry: "/usr/local/lib/honeybee/dist/cli.js",
-        nodeBinary: "/usr/local/bin/node",
+        nodeBinary: process.execPath,
       });
       assert.equal(result.installed, true);
       assert.equal(result.label, DEFAULT_LAUNCH_LABEL);
       assert.ok(result.plistPath.endsWith("dev.honeybee.hive.plist"));
       const plistText = await readFile(result.plistPath, "utf8");
       assert.match(plistText, /<key>Label<\/key>\s+<string>dev\.honeybee\.hive<\/string>/);
-      assert.match(plistText, /<string>\/usr\/local\/bin\/node<\/string>/);
+      assert.ok(plistText.includes(`<string>${process.execPath}</string>`));
       assert.match(plistText, /<string>\/usr\/local\/lib\/honeybee\/dist\/cli\.js<\/string>/);
       // PATH must be burned in: user-domain launchd's default PATH lacks the
       // Homebrew prefixes, so without this the daemon cannot find tmux.
@@ -99,13 +100,13 @@ test("installAgent is idempotent: second install without --force is a noop", asy
     try {
       const first = await installAgent({
         cliEntry: "/abs/cli.js",
-        nodeBinary: "/usr/bin/node",
+        nodeBinary: process.execPath,
       });
       assert.equal(first.installed, true);
 
       const second = await installAgent({
         cliEntry: "/abs/cli.js",
-        nodeBinary: "/usr/bin/node",
+        nodeBinary: process.execPath,
       });
       assert.equal(second.installed, false);
       assert.match(second.message, /already installed/);
@@ -120,11 +121,11 @@ test("installAgent without --force reports staleness when the on-disk plist diff
   await withTempHome(async () => {
     const { dispose } = captureRunner();
     try {
-      await installAgent({ cliEntry: "/abs/cli.js", nodeBinary: "/usr/bin/node" });
+      await installAgent({ cliEntry: "/abs/cli.js", nodeBinary: process.execPath });
       // Same label, but the CLI moved — the rendered candidate differs.
       const second = await installAgent({
         cliEntry: "/abs/elsewhere/cli.js",
-        nodeBinary: "/usr/bin/node",
+        nodeBinary: process.execPath,
       });
       assert.equal(second.installed, false);
       assert.match(second.message, /already installed/);
@@ -140,11 +141,11 @@ test("installAgent --force overwrites an existing plist and boots out before boo
   await withTempHome(async () => {
     const { calls, dispose } = captureRunner();
     try {
-      await installAgent({ cliEntry: "/abs/cli.js", nodeBinary: "/usr/bin/node" });
+      await installAgent({ cliEntry: "/abs/cli.js", nodeBinary: process.execPath });
       calls.length = 0;
       const second = await installAgent({
         cliEntry: "/abs/cli.js",
-        nodeBinary: "/usr/bin/node",
+        nodeBinary: process.execPath,
         force: true,
       });
       assert.equal(second.installed, true);
@@ -173,10 +174,10 @@ test("installAgent --force ignores a 'not loaded' bootout failure", async () => 
       return { ok: true, stdout: "", stderr: "", exitCode: 0 };
     });
     try {
-      await installAgent({ cliEntry: "/abs/cli.js", nodeBinary: "/usr/bin/node", skipBootstrap: true });
+      await installAgent({ cliEntry: "/abs/cli.js", nodeBinary: process.execPath, skipBootstrap: true });
       const result = await installAgent({
         cliEntry: "/abs/cli.js",
-        nodeBinary: "/usr/bin/node",
+        nodeBinary: process.execPath,
         force: true,
       });
       assert.equal(result.installed, true);
@@ -197,7 +198,7 @@ test("installAgent --skipBootstrap writes the plist without invoking launchctl",
     try {
       const result = await installAgent({
         cliEntry: "/abs/cli.js",
-        nodeBinary: "/usr/bin/node",
+        nodeBinary: process.execPath,
         skipBootstrap: true,
       });
       assert.equal(result.installed, true);
@@ -213,7 +214,7 @@ test("uninstallAgent removes the plist and runs launchctl bootout", async () => 
   await withTempHome(async () => {
     const { calls, dispose } = captureRunner();
     try {
-      await installAgent({ cliEntry: "/abs/cli.js", nodeBinary: "/usr/bin/node" });
+      await installAgent({ cliEntry: "/abs/cli.js", nodeBinary: process.execPath });
       calls.length = 0;
       const result = await uninstallAgent({});
       assert.equal(result.removed, true);
@@ -250,7 +251,7 @@ test("isAgentInstalled returns true after install, false after uninstall", async
     const { dispose } = captureRunner();
     try {
       assert.equal(await isAgentInstalled(), false);
-      await installAgent({ cliEntry: "/abs/cli.js", nodeBinary: "/usr/bin/node" });
+      await installAgent({ cliEntry: "/abs/cli.js", nodeBinary: process.execPath });
       assert.equal(await isAgentInstalled(), true);
       await uninstallAgent({});
       assert.equal(await isAgentInstalled(), false);
@@ -267,7 +268,7 @@ test("getAgentInstallStatus reports plist presence and a stable checksum", async
       const before = await getAgentInstallStatus();
       assert.equal(before.plistExists, false);
       assert.equal(before.plistChecksum, undefined);
-      await installAgent({ cliEntry: "/abs/cli.js", nodeBinary: "/usr/bin/node" });
+      await installAgent({ cliEntry: "/abs/cli.js", nodeBinary: process.execPath });
       const after = await getAgentInstallStatus();
       assert.equal(after.plistExists, true);
       assert.ok(after.plistChecksum && /^[0-9a-f]{8}$/.test(after.plistChecksum));
@@ -281,7 +282,7 @@ test("readDaemonStatus surfaces installed=true when a plist exists", async () =>
   await withTempHome(async () => {
     const { dispose } = captureRunner();
     try {
-      await installAgent({ cliEntry: "/abs/cli.js", nodeBinary: "/usr/bin/node" });
+      await installAgent({ cliEntry: "/abs/cli.js", nodeBinary: process.execPath });
       const status = await readDaemonStatus();
       assert.equal(status.installed, true);
       assert.ok(status.plistPath);
@@ -326,7 +327,7 @@ test("readDaemonStatus reports launchd's pre-lock boot window only on macOS", as
     try {
       await installAgent({
         cliEntry: "/abs/cli.js",
-        nodeBinary: "/usr/bin/node",
+        nodeBinary: process.execPath,
         skipBootstrap: true,
       });
       const status = await readDaemonStatus();

@@ -1,3 +1,4 @@
+import { childNodePath } from "./nodeRuntime.js";
 /**
  * tmux left sidebar for `hive bees`: split wiring and persistence.
  *
@@ -113,7 +114,7 @@ function hiveBeesSidebarCommand(): string {
   if (process.env.HIVE_BEES_SIDEBAR_COMMAND) return process.env.HIVE_BEES_SIDEBAR_COMMAND;
   const argv0 = process.argv[1];
   if (argv0 && (argv0.endsWith("cli.ts") || argv0.endsWith("cli.js"))) {
-    return formatShellCommand([process.execPath, argv0, "bees", "--sidebar"]);
+    return formatShellCommand(["/usr/bin/env", "-u", "ELECTRON_RUN_AS_NODE", "-u", "NODE_OPTIONS", childNodePath(), argv0, "bees", "--sidebar"]);
   }
   return formatShellCommand(["hive", "bees", "--sidebar"]);
 }

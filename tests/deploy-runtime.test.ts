@@ -14,6 +14,7 @@ import { DatabaseSync } from "node:sqlite";
 import { withFileLock } from "../src/lock.js";
 import { DeployReservationHeldError } from "../src/deployRuntime.js";
 import { readUpdateReservation } from "../src/readUpdateReservation.js";
+import { restartDeployedDaemon } from "../src/commands/deploy.js";
 import {
   CURRENT_LINK_NAME,
   DEPLOY_HISTORY_FILENAME,
@@ -516,3 +517,88 @@ for (const skipTests of [false, true]) {
     });
   });
 }
+test("failed activation restores current and preserves successful deploy history", async () => {
+  await withDeployWorld(async ({ root, repoRoot, commit, hooks }) => {
+    const old = await commit("old");
+    await deployVersion({ repoRoot, root, hooks });
+    const history = await readDeployHistory(root);
+    await commit("new");
+    await assert.rejects(deployVersion({ repoRoot, root, hooks: { ...hooks, async restartDaemon(ctx) {
+      assert.equal(await ctx.restorePrevious?.(), true);
+      assert.equal(await currentDeployTarget(root), old);
+      throw new Error("forced activation failure");
+    } } }), /forced activation failure/);
+    assert.equal(await currentDeployTarget(root), old);
+    assert.equal(await runInstalledCli(root), "old");
+    assert.deepEqual(await readDeployHistory(root), history);
+  });
+});
+
+test("failed same-revision activation restores displaced runtime bytes", async () => {
+  await withDeployWorld(async ({ root, repoRoot, commit, hooks }) => {
+    await commit("old");
+    await deployVersion({ repoRoot, root, hooks });
+    const history = await readDeployHistory(root);
+    await assert.rejects(deployVersion({ repoRoot, root, hooks: { ...hooks,
+      async buildArtifact(ctx) { const stage = await hooks.buildArtifact(ctx); await writeFile(join(stage.artifactDir, "dist", "cli.js"), 'console.log("replacement")'); return stage; },
+      async restartDaemon(ctx) { await ctx.restorePrevious?.(); throw new Error("forced same revision failure"); },
+    } }), /forced same revision failure/);
+    assert.equal(await runInstalledCli(root), "old");
+    assert.deepEqual(await readDeployHistory(root), history);
+  });
+});
+
+test("failed rollback restores the active version without recording success", async () => {
+  await withDeployWorld(async ({ root, repoRoot, commit, hooks }) => {
+    await commit("old"); await deployVersion({ repoRoot, root, hooks });
+    const active = await commit("active"); await deployVersion({ repoRoot, root, hooks });
+    const history = await readDeployHistory(root);
+    await assert.rejects(rollbackDeploy({ root, hooks: { async restartDaemon(ctx) { await ctx.restorePrevious?.(); throw new Error("forced rollback failure"); } } }), /forced rollback failure/);
+    assert.equal(await currentDeployTarget(root), active);
+    assert.equal(await runInstalledCli(root), "active");
+    assert.deepEqual(await readDeployHistory(root), history);
+  });
+});
+
+for (const operation of ["deploy", "rollback"] as const) {
+  test(`held reservation fences pinned restart and recovery with an installed runtime: ${operation}`, async () => {
+    await withDeployWorld(async ({ root, repoRoot, commit, hooks }) => {
+      const prior = await commit("prior");
+      await deployVersion({ root, repoRoot, hooks });
+      await commit("candidate");
+      const history = await readDeployHistory(root);
+      await seedReservation(root, true);
+      let builds = 0, restarts = 0;
+      const guardedHooks: DeployHooks = {
+        buildArtifact: async context => { builds++; return hooks.buildArtifact(context); },
+        restartDaemon: async context => { restarts++; await restartDeployedDaemon(context); },
+      };
+      await assert.rejects(operation === "deploy"
+        ? deployVersion({ root, repoRoot, hooks: guardedHooks })
+        : rollbackDeploy({ root, hooks: guardedHooks }), DeployReservationHeldError);
+      assert.equal(builds, 0);
+      assert.equal(restarts, 0);
+      assert.equal(await currentDeployTarget(root), prior);
+      assert.deepEqual(await readDeployHistory(root), history);
+    });
+  });
+}
+
+test("unadmitted pinned restart refuses a held reservation before pin or service effects", async () => {
+  await withDeployWorld(async ({ root }) => {
+    await seedReservation(root, true);
+    await assert.rejects(restartDeployedDaemon({ root, installedDir: root, sha: "a".repeat(40), runtime: "v2", log() {} }), DeployReservationHeldError);
+    assert.equal(await currentDeployTarget(root), null);
+  });
+});
+
+test("restart recovery capability expires when its admitted hook returns", async () => {
+  await withDeployWorld(async ({ root, repoRoot, commit, hooks }) => {
+    await commit("prior"); await deployVersion({ root, repoRoot, hooks });
+    const next = await commit("next");
+    let captured: RestartDaemonContext | undefined;
+    await deployVersion({ root, repoRoot, hooks: { ...hooks, async restartDaemon(context) { captured = context; } } });
+    await assert.rejects(captured!.restorePrevious!(), /admission expired/);
+    assert.equal(await currentDeployTarget(root), next);
+  });
+});
