@@ -1,3 +1,4 @@
+import { CoreError } from "./types.ts";
 import { randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 
@@ -10,7 +11,7 @@ export type EffectResolution = EffectCoverage & { verb: EffectVerb; idempotencyK
   { status: "committed"; receipt: EffectReceipt; commandStatus?: string }
   | { status: "never_seen_fenced" | "in_flight" }
 );
-export class EffectKeyError extends Error {
+export class EffectKeyError extends CoreError {
   readonly code: "rpc_effect_fenced" | "rpc_effect_history_unknown" | "idempotency_conflict" | "invalid_request";
   constructor(code: "rpc_effect_fenced" | "rpc_effect_history_unknown" | "idempotency_conflict" | "invalid_request", message: string) {
     super(message);
@@ -23,7 +24,7 @@ export function effectVerb(value: unknown): EffectVerb {
   return value as EffectVerb;
 }
 function key(value: string): void {
-  if (typeof value !== "string" || !value.length || value.length > 1024) throw new EffectKeyError("invalid_request", "Effect key must be a nonempty bounded string");
+  if (typeof value !== "string" || !value.length) throw new EffectKeyError("invalid_request", "Effect key must be a nonempty string");
 }
 
 export class EffectLedger {

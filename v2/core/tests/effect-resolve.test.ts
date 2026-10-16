@@ -93,3 +93,25 @@ test("effect additive tables preserve schema44 and retained legacy positives boo
   try { assert.equal(inspect.prepare("SELECT value FROM meta WHERE key='schema_version'").get()?.value, "44"); }
   finally { inspect.close(); h.cleanup(); }
 });
+
+test("effect upgrade preserves legal long legacy keys and unrelated keyed verbs", () => {
+  const h = harness(); let store = h.open(); store.close();
+  const long = "legacy-" + "x".repeat(2048), db = new DatabaseSync(h.path);
+  db.prepare("INSERT INTO rpc_idempotency VALUES(?,?,?,?,?)").run(long, "spawn", null, JSON.stringify({ beeId: "legacy-long" }), 1);
+  db.close(); store = h.open();
+  try {
+    assert.equal(store.resolveEffect(long, "spawn").status, "committed");
+    const unrelated = "other-" + "y".repeat(4096);
+    store.recordRpcResult(unrelated, "bee.tag", null, { applied: true });
+    assert.deepEqual(store.lookupRpcResult(unrelated)?.result, { applied: true });
+    assert.throws(() => store.resolveEffect(unrelated, "send"), error("idempotency_conflict"));
+  } finally { store.close(); h.cleanup(); }
+});
+
+test("effect owner corruption fails closed with the real ledger error, never second-writer", () => {
+  const h = harness(), store = h.open(); store.close();
+  const db = new DatabaseSync(h.path);
+  db.prepare("UPDATE meta SET value='corrupt' WHERE key='rpc_effect_owner'").run(); db.close();
+  try { assert.throws(() => h.open(), value => value instanceof EffectKeyError && /Corrupt effect owner/.test(value.message)); }
+  finally { h.cleanup(); }
+});

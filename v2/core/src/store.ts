@@ -1,4 +1,4 @@
-import { EffectLedger, type EffectVerb, type EffectResolution } from "./effectResolve.ts";
+import { EffectKeyError, EffectLedger, type EffectVerb, type EffectResolution } from "./effectResolve.ts";
 import { parseDurableUpdateReservation, parseApiarySwapAcquire, parseApiarySwapSettle, parseApiarySwapRecover, acquireApiarySwap, settleApiarySwap, recoverApiarySwap, type DurableUpdateReservation, type ApiarySwapReservation } from "../../../src/apiarySwap.ts";
 import { currentRpcCaller } from "./rpcAuditContext.ts";
 import type { AccountObservationMetadata, LimitsObserverProvenance } from "./types.ts";
@@ -4635,7 +4635,6 @@ export class CoreStore {
     return this.rpcIdempotencyRedaction === null ? null : { ...this.rpcIdempotencyRedaction };
   }
 
-  /** The recorded result for a caller-supplied RPC idempotency key, if any. */
   afterCommit(callback: () => void): void {
     if (this.inTransaction) this.commitCallbacks.push(callback);
     else queueMicrotask(callback);
@@ -4645,7 +4644,10 @@ export class CoreStore {
 
   resolveEffect(key: string, verb: EffectVerb, inFlight = false): EffectResolution {
     return this.tx(() => {
-      const result = this.effectLedger.resolve(key, verb, inFlight, this.getCommandByIdempotencyKey(key) !== null);
+      const seen = this.db.prepare("SELECT verb FROM rpc_idempotency WHERE key=?").get(key);
+      const command = this.getCommandByIdempotencyKey(key);
+      if (seen && seen.verb !== verb || command && command.verb !== verb) throw new EffectKeyError("idempotency_conflict", "Key belongs to another verb");
+      const result = this.effectLedger.resolve(key, verb, inFlight, command !== null);
       if (result.status === "committed" && result.receipt.commandId !== null) {
         const command = this.getCommand(result.receipt.commandId);
         if (command) return { ...result, commandStatus: command.status };

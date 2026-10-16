@@ -1,3 +1,4 @@
+import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, writeFile, readFile, rm } from "node:fs/promises";
@@ -12,7 +13,7 @@ import { EffectKeyError } from "../v2/core/src/effectResolve.ts";
 import { RpcClient } from "../v2/cli/src/client.ts";
 
 const base = resolve("..", "base");
-for (const mode of ["clean-pruned", "unclean-pruned", "fenced-then-legacy-pruned"] as const) {
+for (const mode of ["clean-pruned", "unclean-pruned", "fenced-then-legacy-pruned", "retained-positive", "fenced-then-legacy-retained"] as const) {
   test(`effect resolve real old owner upgrade downgrade spawn reupgrade: ${mode}`, async () => {
     assert.ok(existsSync(join(base, "v2/core/src/store.ts")), "requires masked gate base export");
     const config = JSON.parse(await readFile(resolve("..", "config.json"), "utf8"));
@@ -22,7 +23,7 @@ for (const mode of ["clean-pruned", "unclean-pruned", "fenced-then-legacy-pruned
     let child: ReturnType<typeof fork> | undefined;
     try {
       const previous = store.effectCoverage(), key = `effect-v1:${previous.coverageId}:original`;
-      if (mode === "fenced-then-legacy-pruned") assert.equal(store.resolveEffect(key, "spawn").status, "never_seen_fenced");
+      if (mode.startsWith("fenced-then-legacy")) assert.equal(store.resolveEffect(key, "spawn").status, "never_seen_fenced");
       store.close();
       const out = join(dir, "old.mjs");
       await build({ stdin: { contents: `export {openCoreStore} from ${JSON.stringify(join(base,"v2/core/src/index.ts"))}; export {HiveDaemon} from ${JSON.stringify(join(base,"v2/daemon/src/daemon.ts"))}; export {RpcServer} from ${JSON.stringify(join(base,"v2/daemon/src/rpc.ts"))};`, resolveDir: base, loader: "ts" }, outfile: out, bundle: true, platform: "node", format: "esm", external: ["node-pty"], banner: { js: 'import {createRequire as effectCreateRequire} from "node:module";const require=effectCreateRequire(import.meta.url);' }, alias: { "jsonc-parser": resolve("node_modules/jsonc-parser/lib/esm/main.js") }, logLevel: "silent" });
@@ -41,16 +42,20 @@ process.on('message',async()=>{await server.close();store.close();process.exit(0
       assert.equal(client.capabilities.includes("rpc-effect-resolve.v1"), false);
       const spawned = await client.request<{ beeId: string }>("spawn", { name: "legacy-original", agent: "stub", account: null, cwd: dir, idempotencyKey: key });
       assert.equal(typeof spawned.beeId, "string");
-      for (let i = 0; i < 3; i++) await client.request("spawn", { name: `prune-${i}`, agent: "stub", account: null, cwd: dir, idempotencyKey: `legacy-padding-${i}` });
+      if (mode.endsWith("pruned")) for (let i = 0; i < 3; i++) await client.request("spawn", { name: `prune-${i}`, agent: "stub", account: null, cwd: dir, idempotencyKey: `legacy-padding-${i}` });
       client.close(); client = undefined;
       const exited = once(child, "exit");
       if (mode === "unclean-pruned") child.kill("SIGKILL"); else child.send("close");
       await exited;
+      const inspect = new DatabaseSync(path, { readOnly: true });
+      const receiptRetained = Boolean(inspect.prepare("SELECT key FROM rpc_idempotency WHERE key=?").get(key)); inspect.close();
+      assert.equal(receiptRetained, !mode.endsWith("pruned"));
       store = openCoreStore(path, { ephemeral: true });
       assert.notEqual(store.effectCoverage().coverageId, previous.coverageId);
       assert.equal(store.getBee(spawned.beeId)?.name, "legacy-original");
-      assert.throws(() => store.resolveEffect(key, "spawn"), error => error instanceof EffectKeyError && error.code === "rpc_effect_history_unknown");
-      console.log(JSON.stringify({ oldOwnerSource: config.shas.base, mode, result: "rpc_effect_history_unknown", neverSeenFenced: false, oldRpcReceiptPruned: true, oldSpawnCommitted: true }));
+      if (receiptRetained) assert.equal(store.resolveEffect(key, "spawn").status, "committed");
+      else assert.throws(() => store.resolveEffect(key, "spawn"), error => error instanceof EffectKeyError && error.code === "rpc_effect_history_unknown");
+      console.log(JSON.stringify({ oldOwnerSource: config.shas.base, mode, result: receiptRetained ? "committed" : "rpc_effect_history_unknown", neverSeenFenced: false, oldRpcReceiptPruned: !receiptRetained, oldSpawnCommitted: true }));
     } finally {
       client?.close();
       if (child && child.exitCode === null && child.signalCode === null) { const exited = once(child, "exit"); child.kill("SIGKILL"); await exited; }

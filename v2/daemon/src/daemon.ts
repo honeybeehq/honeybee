@@ -2346,13 +2346,6 @@ export class HiveDaemon {
     return params.revealEnv === true ? result : this.beeEnvRedacted(result);
   }
 
-  /**
-   * v7 (spec 08): `spawn {account?}` — 'auto' (default) resolves to a concrete
-   * account BEFORE the bee row is written. Stale limits are queued onto the
-   * account service's bounded background lane; the pick reads the current
-   * snapshot, then createBee + spawn command run in ONE store transaction
-   * under the idempotency wrapper.
-   */
   private rpcSpawnEffect(params: Record<string, unknown>): Promise<SpawnResult> {
     const key = this.idempotencyKeyOf(params);
     if (key === null) return this.rpcSpawnWithAccount(params);
@@ -2362,7 +2355,7 @@ export class HiveDaemon {
     const existing = registry.get(key);
     if (existing) {
       if (existing.fingerprint !== fingerprint) throw new RpcError("idempotency_conflict", "In-flight spawn key has different arguments");
-      return existing.promise;
+      return existing.promise.then(result => ({ ...result, deduped: true }));
     }
     const entry = { verb: "spawn" as const, fingerprint, promise: Promise.resolve().then(() => this.rpcSpawnWithAccount(params)) };
     registry.set(key, entry);

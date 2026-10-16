@@ -75,7 +75,9 @@ test("effect RPC registers before the actual account freshness await, joins exac
   const duplicate = f.client.request<SpawnResult>("spawn", params);
   await assert.rejects(f.client.request("spawn", { ...params, name: "other" }), refusal("idempotency_conflict"));
   release();
-  assert.equal((await pending).beeId, (await duplicate).beeId);
+  const original = await pending, joined = await duplicate;
+  assert.equal(original.beeId, joined.beeId);
+  assert.equal(joined.deduped, true);
   assert.equal((await f.client.resolveEffect("spawn", key, coverage)).status, "committed");
   assert.equal(f.store.listBees().length, 1);
 });
