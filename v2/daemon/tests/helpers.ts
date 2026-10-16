@@ -325,6 +325,7 @@ export async function startDaemon(dir: string, opts: { env?: Record<string, stri
     // real macOS Keychain (spec 08 keychain bridge is off unless injected).
     env: {
       ...childEnv,
+      HIVE_NODE_PATH: process.execPath,
       HIVE_V2_DATA_DIR: dir,
       HIVE_NO_KEYCHAIN: "1",
       HIVE_CLAUDE_USAGE_URL: "http://127.0.0.1:9/api/oauth/usage",
