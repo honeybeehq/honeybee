@@ -1,0 +1,58 @@
+Base a1da490a4d39c904e1af8016e664905daa543ef5; source comparison only, not a baseline runtime run.
+The existing security audit callback calls mustStore while shutdown sets stopping before RpcServer.close flushes refusal buckets.
+
+Base daemon.ts:
+1002:     const rpc = this.performance.startSpan("daemon.start.rpc");
+1003:     this.activeStartupPhase = rpc;
+1004:     this.rpc = new RpcServer({
+1005:       socketPath: this.cfg.socketPath,
+1006:       dataDir: this.cfg.dataDir,
+1007:       instance: { id: this.instanceId, dataDir: canonicalPath(this.cfg.dataDir) },
+1008:       localTrust: this.cfg.rpcLocalTrust,
+1009:       securityAudit: (kind, payload) => this.mustStore().recordLocalRpcEvent(kind as "rpc.peer_credentials_unavailable" | "rpc.local_refused" | "rpc.local_registered", payload),
+1010:       log: (op) => this.log(op),
+1011:       dispatch: (verb, params, conn) => this.dispatch(verb, params, conn),
+1012:       performance: this.performance,
+
+Base daemon.ts:
+1044:     if (this.stopping) return;
+1045:     this.stopping = true;
+1046:     this.log(`daemon.stopping pid=${process.pid}`);
+1047:     try {
+1048:       if (this.tickTimer) clearTimeout(this.tickTimer);
+1049:       if (this.loopDelayTimer) clearInterval(this.loopDelayTimer);
+1050:       this.loopDelay?.disable();
+1051:       this.tickTimer = null;
+1052:       await this.retention?.stop();
+1053:       this.titleGenerator?.close();
+1054:       this.titleGenerator = null;
+1055:       // v16: no login worker outlives the daemon (boot marks their flows interrupted).
+1056:       await this.loginFlows?.shutdown();
+1057:       await this.threadOperations?.shutdown();
+1058:       await this.rpc?.close();
+1059:       removeEndpointRecord(this.cfg.dataDir, this.instanceId);
+1060:       this.core?.detachReconnectOwner();
+1061:       this.store?.close();
+1062:       this.telemetry?.close();
+1063:       if (options.preserveRuntimes === false) {
+1064:         // Test/ephemeral ownership only. Production never selects this path:
+
+Base daemon.ts:
+2165:           params,
+2166:           () => ({ track: this.mustStore().deleteTrack(this.param(params, "id")) }) satisfies TrackDeleteResult,
+2167:         );
+2168:       case "track.export": {
+2169:         const doc = exportTrack(this.requireTrack(params));
+2170:         return { package: doc, text: serializePackage(doc) } satisfies TrackExportResult;
+2171:       }
+2172:       case "track.import":
+2173:         return this.withIdempotency(verb, params, () => {
+2174:           const res = importTrack(this.mustStore(), params.package, this.importOptions(params));
+2175:           return { track: res.row, outcome: res.outcome } satisfies TrackImportResult;
+
+Base mustStore:
+1650:   private mustStore(): CoreStore {
+1651:     if (!this.store || this.stopping) throw new RpcError("node_stopped", "daemon is shutting down");
+1652:     return this.store;
+1653:   }
+1654:

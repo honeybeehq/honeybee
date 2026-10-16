@@ -113,7 +113,8 @@ answered state from answeredAt.
 Only open → withdrawn is permitted. An owner retry, including a new key and a
 different valid reason, returns the original withdrawn row and preserves the
 first reason/time. It emits no additional withdrawal event or mail. Keys are
-scoped by `(caller bee, idempotencyKey)` for withdrawal; reusing that pair for a
+scoped by `(caller bee, idempotencyKey)` in a dedicated `question_withdraw_receipts`
+table, structurally separate from caller-controlled generic RPC keys; reusing that pair for a
 different question returns `idempotency_conflict`. Failed calls record no receipt.
 Authorization precedes receipt lookup, including on successful replay.
 
@@ -173,4 +174,9 @@ explicit data/socket paths and private account paths. It uses mailbox-only bees,
 no units/services or real harnesses. It retains receipts, snapshot/mailbox rows,
 audit and reconnect evidence. Both answer/withdraw requests are submitted before
 either response; alternating their frame order proves each first-commit winner.
-No daemon remains after the script. No live store is opened.
+Every daemon shutdown must exit with code 0 and no signal before the lab can
+report success. No daemon remains after the script. No live store is opened.
+
+Older Honeybee CLIs display an unfamiliar withdrawn status as “answered”. This
+change updates the current CLI; withdrawal is available only to capability-gated
+new clients. Older external projectors must be upgraded before enabling the feature.

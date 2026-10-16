@@ -87,3 +87,29 @@ test("v44 question migration preserves open/answered rows, indexes and legacy au
     store = f.open();
   } finally { store.close(); f.cleanup(); }
 });
+
+
+test("withdrawal receipts cannot be poisoned or disclosed by generic RPC keys", () => {
+  const f = fixture();
+  let store = f.open();
+  try {
+    const bee = store.createBee({ name: "asker", agent: "inbox", substrate: "hsr", cwd: f.dir }).bee;
+    const other = store.createBee({ name: "other", agent: "inbox", substrate: "hsr", cwd: f.dir }).bee;
+    const q = store.askQuestion(bee.id, { text: "Poison?" });
+    const collision = `question.withdraw:${JSON.stringify([bee.id, "key"])}`;
+    store.recordRpcResult(collision, "bee.rename", null, { sentinel: "generic receipt" });
+    const first = store.withdrawQuestionWithKey(q.id, bee.id, "First.", "key");
+    assert.equal(first.question.status, "withdrawn");
+    assert.deepEqual(store.lookupRpcResult(collision)?.result, { sentinel: "generic receipt" });
+    const second = store.withdrawQuestionWithKey(q.id, bee.id, "Another.", "unpoisoned");
+    assert.deepEqual(second.question, first.question);
+    assert.equal(store.lookupRpcResult(`question.withdraw:${JSON.stringify([bee.id, "unpoisoned"])}`), null);
+    assert.throws(() => store.withdrawQuestionWithKey(q.id, other.id, "Stolen.", "key"), QuestionNotOwnerError);
+    assert.throws(() => store.withdrawQuestionWithKey(q.id, bee.id, " ", "key"), CoreError);
+    const otherQuestion = store.askQuestion(other.id, { text: "Same key, other owner?" });
+    assert.equal(store.withdrawQuestionWithKey(otherQuestion.id, other.id, "Other.", "key").question.status, "withdrawn");
+    store.close(); store = f.open();
+    assert.deepEqual(store.withdrawQuestionWithKey(q.id, bee.id, "Changed.", "key"), { ...first, deduped: true });
+    assert.equal(store.auditRows().filter(row => row.kind === "question.withdrawn" && row.beeId === bee.id).length, 1);
+  } finally { store.close(); f.cleanup(); }
+});
