@@ -6,7 +6,7 @@ export interface QuietReply {
 }
 
 export function quietReply(text: string, token: string = QUIET_REPLY): QuietReply {
-  const blank = /[\s\p{Default_Ignorable_Code_Point}⠀]/u
+  const blank = /[\s\p{Default_Ignorable_Code_Point}\u2800]/u
   const before = (at: number): string => {
     const low = text.charCodeAt(at - 1)
     return at >= 2 && low >= 0xdc00 && low <= 0xdfff ? text.slice(at - 2, at) : text.charAt(at - 1)
@@ -21,7 +21,7 @@ export function quietReply(text: string, token: string = QUIET_REPLY): QuietRepl
   }
   const quiet = cut >= 0
   const said = quiet ? text.slice(0, cut).trimEnd() : text
-  return { said: said.replace(/[\p{Default_Ignorable_Code_Point}⠀]/gu, '').trim() === '' ? '' : said, quiet }
+  return { said: said.replace(/[\p{Default_Ignorable_Code_Point}\u2800]/gu, '').trim() === '' ? '' : said, quiet }
 }
 
 export function spokenReply(text: string): string | null {
