@@ -4982,9 +4982,10 @@ export async function runV2Cli(argv: string[], io: CliIo = defaultIo): Promise<n
       case "deploy-info":
         return await cmdDeployInfo(ctx);
       case "update-owner": {
-        const sub = parsed.args[0];
+        const updateArgs = parsed.positional.slice(1);
+        const sub = updateArgs[0];
         if (sub !== "status" && sub !== "reserve" && sub !== "release") throw new Error("update-owner: expected status, reserve, or release");
-        const params = sub === "status" ? {} : JSON.parse(readFileSync(parsed.args[1] ?? "", "utf8"));
+        const params = sub === "status" ? {} : JSON.parse(readFileSync(updateArgs[1] ?? "", "utf8"));
         const result = await withClient(ctx, c => c.request(`update.${sub}`, params));
         ctx.io.out(JSON.stringify(ctx.json ? withDaemonTarget(ctx, result) : result));
         return 0;

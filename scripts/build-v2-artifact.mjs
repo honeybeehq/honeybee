@@ -23,6 +23,15 @@ const runnerHostMaxBytes = 32 * 1024;
 await mkdir(outDir, { recursive: true });
 await writeFile(join(root, "dist", "build-identity.json"), `${JSON.stringify(collectBuildIdentity(root), null, 2)}\n`);
 await build({
+  entryPoints: [join(root, "src", "v2", "updateOwnerClient.mjs")],
+  outfile: join(outDir, "updateOwnerClient.mjs"),
+  bundle: true,
+  platform: "node",
+  format: "esm",
+  target: "node22",
+  logLevel: "silent",
+});
+await build({
   absWorkingDir: root,
   entryPoints: [join(root, "v2", "cli", "src", "main.ts")],
   outfile: join(outDir, "cli.js"),

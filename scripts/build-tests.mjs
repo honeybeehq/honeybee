@@ -50,6 +50,9 @@ const assetFiles = [
   ...(await listedFiles(join(root, "docs"), () => true)),
 ];
 const stampInputs = [
+  join(root, "src", "v2", "updateOwnerClient.mjs"),
+  join(root, "v2", "cli", "src", "client.ts"),
+  join(root, "v2", "daemon", "src", "protocol.ts"),
   ...sourceFiles,
   ...testFiles,
   ...assetFiles,
@@ -99,6 +102,15 @@ await build({
 // A handful of tests and source modules resolve fixtures/contracts relative to
 // import.meta.url. Mirror those non-TypeScript assets beside the transpiled
 // modules so that path behavior stays identical.
+await build({
+  entryPoints: [join(root, "src", "v2", "updateOwnerClient.mjs")],
+  outfile: join(outDir, "src", "v2", "updateOwnerClient.mjs"),
+  bundle: true,
+  platform: "node",
+  format: "esm",
+  target: "node22",
+  logLevel: "silent",
+});
 await Promise.all([
   cp(join(root, "tests", "fixtures"), join(outDir, "tests", "fixtures"), { recursive: true }),
   cp(join(root, "docs"), join(outDir, "docs"), { recursive: true }),
