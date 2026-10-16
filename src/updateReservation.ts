@@ -4,7 +4,7 @@ export type UpdateReservation = { epoch: number; id: string; recoverySubjectDige
 
 export function parseUpdateReservation(value: unknown): UpdateReservation {
   const r = value as Partial<UpdateReservation> | null;
-  if (!r || !Number.isSafeInteger(r.epoch) || r.epoch! < 1 || typeof r.active !== "boolean"
+  if (!r || Object.hasOwn(r, "purpose") || Object.hasOwn(r, "format") || Object.hasOwn(r, "transactionDigest") || !Number.isSafeInteger(r.epoch) || r.epoch! < 1 || typeof r.active !== "boolean"
     || typeof r.id !== "string" || !/^[a-zA-Z0-9_-]{1,128}$/.test(r.id)
     || typeof r.recoverySubjectDigest !== "string" || !/^sha256:[a-f0-9]{64}$/.test(r.recoverySubjectDigest)) {
     throw new Error("Corrupt coordinated update reservation; recovery required");
