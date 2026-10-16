@@ -12,5 +12,5 @@ export function compileCacheDir() {
 export function testEnv(extra = {}) {
   const dir = compileCacheDir();
   mkdirSync(dir, { recursive: true });
-  return { ...process.env, NODE_COMPILE_CACHE: dir, ...extra };
+  return { ...process.env, HIVE_NO_KEYCHAIN: process.env.HIVE_NO_KEYCHAIN ?? "1", NODE_COMPILE_CACHE: dir, ...extra };
 }
