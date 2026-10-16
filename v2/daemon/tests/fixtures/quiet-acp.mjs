@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import { createInterface } from "node:readline";
 const emit = row => process.stdout.write(JSON.stringify({ jsonrpc: "2.0", ...row }) + "\n");
 createInterface({ input: process.stdin }).on("line", raw => {
