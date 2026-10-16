@@ -6,7 +6,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { TmuxServer } from "../src/tmux.ts";
@@ -227,4 +227,34 @@ test("tmux.interrupt (v6): idle → no-op; a hung turn is ended by C-c to the ex
   } finally {
     rig.cleanup();
   }
+});
+
+
+test("tmux quiet facts require final evidence and discard late text between hook turns", async () => {
+  const rig = makeRig();
+  try {
+    rig.configure("quiet", "hooks");
+    rig.driver.start("quiet", 1);
+    await drainUntil(rig.driver, rows => rows.some(row => row.kind === "turn_ended"));
+    assert.equal(rig.driver.deliver("quiet", 1, 1, "@hang").accepted, true);
+    await drainUntil(rig.driver, rows => rows.some(row => row.kind === "turn_started"));
+    const dir = rig.transcriptDirOf("quiet");
+    const transcript = join(dir, readdirSync(dir).find(name => name.endsWith(".jsonl"))!);
+    const hooks = rig.driver.eventsFilePath("quiet");
+    const append = (path: string, value: unknown) => appendFileSync(path, JSON.stringify(value) + "\n");
+    append(transcript, { type: "assistant", message: { content: [{ type: "text", text: "intermediate <quiet/>" }] } });
+    rig.driver.observe();
+    append(hooks, { hook_event_name: "Stop" });
+    const unproven = rig.driver.observe().find(row => row.kind === "turn_ended")!;
+    assert.equal(unproven.endedQuiet, undefined);
+    append(transcript, { type: "assistant", message: { content: [{ type: "text", text: "late <quiet/>" }] } });
+    rig.driver.observe();
+    append(hooks, { hook_event_name: "UserPromptSubmit" });
+    rig.driver.observe();
+    append(hooks, { hook_event_name: "Stop", last_assistant_message: "Please review" });
+    assert.equal(rig.driver.observe().find(row => row.kind === "turn_ended")!.endedQuiet, false);
+    append(hooks, { hook_event_name: "UserPromptSubmit" });
+    append(hooks, { hook_event_name: "Stop", last_assistant_message: "done <quiet/>\u{E0100}" });
+    assert.equal(rig.driver.observe().find(row => row.kind === "turn_ended")!.endedQuiet, true);
+  } finally { rig.cleanup(); }
 });

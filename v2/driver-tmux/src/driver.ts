@@ -817,11 +817,13 @@ export class TmuxDriver implements RuntimeDriver {
         p.pendingConfirms = [];
         if (p.phase !== "idle") return;
         p.phase = "running";
+        p.quiet?.reset();
         p.sawOutputThisTurn = false;
         this.events.push({ beeId: p.beeId, generation: p.generation, kind: "turn_started" });
         return;
       }
       case "turn_ended": {
+        const endedQuiet = p.quiet?.end({ requireTerminal: true, finalText: ev.finalText });
         if (p.phase !== "running") {
           // Explicit end evidence while idle WITH a delivery pending
           // confirmation: the turn demonstrably ran — a fast hook/notify
@@ -833,7 +835,6 @@ export class TmuxDriver implements RuntimeDriver {
           this.fold(p, { kind: "turn_started" });
         }
         p.phase = "idle";
-        const endedQuiet = p.quiet?.end();
         this.events.push({ beeId: p.beeId, generation: p.generation, kind: "turn_ended", ...(endedQuiet !== undefined ? { endedQuiet } : {}) });
         return;
       }

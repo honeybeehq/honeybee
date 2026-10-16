@@ -54,7 +54,7 @@ import type { TranscriptProjectedEvent, TranscriptProjector } from "./transcript
 
 export type TranscriptEvent =
   | { kind: "turn_started" }
-  | { kind: "turn_ended" }
+  | { kind: "turn_ended"; finalText?: string }
   /** Output/recency evidence (assistant text, tool traffic, …). */
   | { kind: "output" };
 
