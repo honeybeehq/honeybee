@@ -54,6 +54,7 @@ export type DeployHistoryEntry = {
   at: string;
   artifactHash: string;
   by: string;
+  gate?: "full" | "tests-skipped";
 };
 
 export type BuildArtifactContext = {
@@ -63,9 +64,7 @@ export type BuildArtifactContext = {
   workDir: string;
   log: (line: string) => void;
   /**
-   * Skip the test gate (check + build still run). Never set by `hive deploy`;
-   * only scripts/build-runtime-artifact.mjs --skip-tests for local iteration,
-   * and such an artifact is marked `gate: "tests-skipped"` in its manifest.
+   * Skip the test gate (check + build still run).
    */
   skipTests?: boolean;
   /** Publication runs every release gate regardless of local deployment state. */
@@ -115,6 +114,7 @@ export type DeployOptions = {
    * non-linear replacement is genuinely intended.
    */
   allowNonDescendant?: boolean;
+  skipTests?: boolean;
 };
 
 export type DeployOutcome = {
@@ -352,6 +352,7 @@ async function deployVersionLocked(options: DeployOptions): Promise<DeployOutcom
       sha,
       workDir,
       log,
+      skipTests: options.skipTests,
     });
     if (!existsSync(join(artifactDir, "dist", "cli.js"))) {
       throw new Error(`deploy: built artifact has no dist/cli.js under ${artifactDir}`);
@@ -360,7 +361,7 @@ async function deployVersionLocked(options: DeployOptions): Promise<DeployOutcom
     // that get installed (deploySettle's tree digest, stamp excluded).
     const stamp = await writeBuildStamp(join(artifactDir, "dist"));
 
-    return await publishDeploy({ root, sha, artifactDir, artifactHash: stamp.hash, keep, by, now, log, hooks: options.hooks });
+    return await publishDeploy({ root, sha, artifactDir, artifactHash: stamp.hash, keep, by, now, log, hooks: options.hooks, gate: options.skipTests ? "tests-skipped" : "full" });
   } finally {
     await rm(workDir, { recursive: true, force: true }).catch(() => undefined);
   }
@@ -390,9 +391,9 @@ async function persistV2RuntimeMode(root: string): Promise<void> {
   }
 }
 
-async function publishDeploy({ root, sha, artifactDir, artifactHash, keep, by, now, log, hooks, immutable = false }: {
+async function publishDeploy({ root, sha, artifactDir, artifactHash, keep, by, now, log, hooks, immutable = false, gate }: {
   root: string; sha: string; artifactDir: string; artifactHash: string; keep: number; by: string;
-  now: () => Date; log: (line: string) => void; hooks: Pick<DeployHooks, "restartDaemon">; immutable?: boolean;
+  now: () => Date; log: (line: string) => void; hooks: Pick<DeployHooks, "restartDaemon">; immutable?: boolean; gate?: "full" | "tests-skipped";
 }): Promise<DeployOutcome> {
   const v2 = runtimeUsesV2(root) || immutable;
   let staging: string | null = null;
@@ -433,7 +434,7 @@ async function publishDeploy({ root, sha, artifactDir, artifactHash, keep, by, n
     await retargetCurrent(root, sha);
     const last = immutable && previousSha === sha ? (await readDeployHistory(root)).at(-1) : undefined;
     const entry: DeployHistoryEntry = last?.sha === sha && last.artifactHash === artifactHash
-      ? last : { sha, at: now().toISOString(), artifactHash, by };
+      ? last : { sha, at: now().toISOString(), artifactHash, by, ...(gate ? { gate } : {}) };
     if (entry !== last) await appendDeployHistory(root, entry);
     // Keep every recovery candidate while the coordinated reservation is held.
     const pruned = immutable ? [] : await pruneRuntimeVersionsLocked(root, { keep });

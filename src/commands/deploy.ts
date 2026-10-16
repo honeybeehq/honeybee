@@ -40,7 +40,7 @@ const USAGE = [
   "       hive deploy --init                 print the manual steps that make the global `hive` resolve through ~/.hive/runtime/current",
 ].join("\n");
 
-const KNOWN_FLAGS = new Set(["keep", "allow-non-descendant", "rollback", "list", "json", "init", "artifact", "identity", "expected-current", "admission", "bin-dir"]);
+const KNOWN_FLAGS = new Set(["skip-tests", "keep", "allow-non-descendant", "rollback", "list", "json", "init", "artifact", "identity", "expected-current", "admission", "bin-dir"]);
 
 export async function cmdDeploy(parsed: Parsed): Promise<void> {
   // Help and unknown flags must never fall through to a real deploy: a bare
@@ -231,6 +231,7 @@ async function deployRun(parsed: Parsed): Promise<void> {
     repoRoot,
     ...(ref !== undefined ? { ref } : {}),
     keep,
+    skipTests: truthy(flag(parsed, "skip-tests")),
     log,
     ...(parsed.flags.has("allow-non-descendant") ? { allowNonDescendant: true } : {}),
     hooks: { buildArtifact: buildDeployArtifact, restartDaemon: restartDeployedDaemon },
