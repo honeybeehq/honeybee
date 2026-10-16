@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { DatabaseSync } from "node:sqlite";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { makeDaemonDir, startDaemon, waitFor } from "./helpers.ts";
+import { makeDaemonDir, sleep, startDaemon, waitFor } from "./helpers.ts";
 import type { SendRpcResult, SpawnResult, ViewResult } from "../src/protocol.ts";
 
 const fixture = new URL("./fixtures/quiet-claude.mjs", import.meta.url).pathname;
@@ -38,30 +38,27 @@ test("quiet facts through a throwaway daemon: root/child isolation, failure, int
     assert.equal((await ended(interruption.messageId)).bee!.lastTurnTrigger!.endedQuiet, undefined);
     console.log("LAB quiet then explicit interrupt: endedQuiet absent");
     const restart = await send("@restart");
-    const database = new DatabaseSync(daemon.storePath, { readOnly: true });
-    database.exec("PRAGMA busy_timeout = 1000");
-    let before: ViewResult;
-    try {
-      before = await waitFor(async () => {
-        const value = await view();
-        if (value.bee?.lastTurnTrigger?.messageId !== restart.messageId || value.runtime?.state !== "running") return null;
-        const journalPath = join(rig.dir, "runners", `${beeId}.1.observations.jsonl`);
-        let journal: string;
-        try { journal = readFileSync(journalPath, "utf8"); } catch { return null; }
-        const messageAt = journal.lastIndexOf("restart ready <quiet/>");
-        if (messageAt < 0) return null;
-        const messageEnd = Buffer.byteLength(journal.slice(0, journal.indexOf("\n", messageAt) + 1));
-        try {
-          const row = database.prepare("SELECT cursor FROM runtime_observation_cursors WHERE bee_id = ? AND generation = 1").get(beeId);
-          return row && Number(row.cursor) >= messageEnd ? value : null;
-        } catch (error) {
-          if (error instanceof Error && /database is (locked|busy)/.test(error.message)) return null;
-          throw error;
-        }
-      }, "quiet final message committed before restart", 10_000);
-    } finally { database.close(); }
+    let messageEnd = 0;
+    const before = await waitFor(async () => {
+      const value = await view();
+      if (value.bee?.lastTurnTrigger?.messageId !== restart.messageId || value.runtime?.state !== "running") return null;
+      const journalPath = join(rig.dir, "runners", `${beeId}.1.observations.jsonl`);
+      let journal: string;
+      try { journal = readFileSync(journalPath, "utf8"); } catch { return null; }
+      const messageAt = journal.lastIndexOf("restart ready <quiet/>");
+      if (messageAt < 0) return null;
+      messageEnd = Buffer.byteLength(journal.slice(0, journal.indexOf("\n", messageAt) + 1));
+      return value;
+    }, "quiet final native message before restart", 10_000);
+    await sleep(100);
     await daemon.kill();
     client.close();
+    const database = new DatabaseSync(daemon.storePath, { readOnly: true });
+    try {
+      const row = database.prepare("SELECT cursor FROM runtime_observation_cursors WHERE bee_id = ? AND generation = 1").get(beeId);
+      assert.ok(row && Number(row.cursor) >= messageEnd, `committed cursor ${String(row?.cursor)} must include final message through ${messageEnd}`);
+      console.log(`LAB committed final message boundary=${messageEnd}, cursor=${String(row.cursor)}`);
+    } finally { database.close(); }
     daemon = await startDaemon(rig.dir);
     client = await daemon.client();
     const after = await ended(restart.messageId);
