@@ -76,6 +76,10 @@ def update_fd_prior(prior, observed, complete):
     return dict(prior, **observed)
 
 
+def namespace_pid(nspid):
+    return nspid[1] if len(nspid) > 1 else None
+
+
 def closing_verdict(change, real_home, masked_eligible, clean, config_times, touched, named):
     path, old, new = change['path'], change['before'], change['after']
     hive = str(pathlib.Path(real_home) / '.hive')

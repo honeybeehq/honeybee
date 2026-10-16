@@ -85,13 +85,13 @@ def capture(pid):
 def chain(pid):
     path = []
     visited = set()
-    while pid != ANCHOR:
+    while pid != 1:
         if pid in visited or pid not in births:
             return (False, path)
         visited.add(pid)
         path.append(pid)
         pid = births[pid].get('ppid')
-    path.append(ANCHOR)
+    path.append(1)
     return (True, path)
 
 def do_sample():
@@ -105,7 +105,7 @@ def do_sample():
     except OSError as e:
         err(ANCHOR, 'cgroup.procs', e)
         return
-    pids=[];pending=[ANCHOR];seen=set()
+    pids=[];pending=[1];seen=set()
     while pending:
         pid=pending.pop()
         if pid in seen:continue
@@ -242,7 +242,7 @@ time.sleep(0.15)
 sample()
 cleanup=[]
 for pid,birth in list(births.items()):
-    if pid==ANCHOR:continue
+    if pid in (1,ANCHOR):continue
     current=stat_fields(pid)
     if current.get('state') in (None,'Z'):continue
     errors.append(dict(pid=pid,slot='lingering_pid',time=time.time(),sample=samples,errno=None,atErrorStat=current))
@@ -262,6 +262,15 @@ for pid,birth in list(births.items()):
 sample()
 stopped = True
 thread.join()
+final_observations=[]
+for error in errors:
+    if 'nextSample' in error:continue
+    current=stat_fields(error['pid'])
+    gone=current.get('errno')==errno.ENOENT and not os.path.exists(f"/proc/{error['pid']}")
+    observation=dict(time=time.time(),sample=samples+1,procStat=current,state='pid_gone' if gone else 'pid_present',observationOnly=True)
+    error['nextSample']=observation
+    final_observations.append(dict(pid=error['pid'],errorTime=error['time'],observation=observation))
+(OUT/'final-observations.json').write_text(json.dumps(final_observations,indent=2))
 log.close()
 fdlog.close()
 cglog.close()

@@ -16,7 +16,7 @@ import time
 import uuid
 import threading
 
-from policy import RULE_VERSION, closing_verdict, differences, preexec_verdict, flake_verdict, within
+from policy import RULE_VERSION, closing_verdict, differences, preexec_verdict, flake_verdict, within,namespace_pid
 
 
 def save(path, value):
@@ -186,7 +186,7 @@ def map_host_pids(group, out, stopped):
                         status = pathlib.Path('/proc') / str(pid) / 'status'
                         fields = dict(line.split(':', 1) for line in status.read_text().splitlines() if ':' in line)
                         item['NSpid'] = [int(value) for value in fields['NSpid'].split()]
-                        item['namespacePid'] = item['NSpid'][-1] if len(item['NSpid']) > 1 else None
+                        item['namespacePid'] = namespace_pid(item['NSpid'])
                         raw = (status.parent / 'stat').read_text()
                         item['starttime'] = raw[raw.rfind(')')+2:].split()[19]
                     except (OSError, KeyError) as error:
@@ -241,7 +241,7 @@ def run_step(config, step):
     if before['valid']:
         scope = 'hbl-' + root.name + '-' + label
         launcher = dict(PATH=config['path'], HOME=str(fake), TMPDIR=str(fake / 'tmp'), LANG='C.UTF-8', XDG_RUNTIME_DIR='/run/user/' + str(os.getuid()), DBUS_SESSION_BUS_ADDRESS='unix:path=/run/user/' + str(os.getuid()) + '/bus')
-        args = ['systemd-run', '--user', '--scope', '--quiet', '--unit=' + scope, '--', 'env', '-i'] + [key + '=' + value for key, value in env.items()] + ['unshare', '-rmnpf', '--mount-proc', 'python3', str(root / 'mask.py'), str(root), label, *step['command']]
+        args = ['systemd-run', '--user', '--scope', '--quiet', '--unit=' + scope, '--', 'env', '-i'] + [key + '=' + value for key, value in env.items()] + ['unshare', '-rmnpf', '--mount-proc','python3', str(root / 'mask.py'), str(root), label, *step['command']]
         save(out / 'launch.json', dict(argv=args, environment=env, scope=scope, envException='HIVE_REAL_HOME equals fake HOME; all other HIVE_*/APIARY_* absent'))
         with (out / 'launcher.log').open('w') as log:
             process = subprocess.Popen(args, cwd=root / step['version'] if (root / step['version']).exists() else root, env=launcher, stdout=log, stderr=subprocess.STDOUT)

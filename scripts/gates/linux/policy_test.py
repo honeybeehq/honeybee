@@ -1,7 +1,7 @@
 import errno
 import unittest
 
-from policy import closing_verdict, error_verdict, wal_mtime_only, preexec_verdict, flake_verdict,update_fd_prior
+from policy import closing_verdict, error_verdict, wal_mtime_only, preexec_verdict, flake_verdict,update_fd_prior,namespace_pid
 
 HOME = '/home/lab'
 HIVE = HOME + '/.hive'
@@ -17,6 +17,9 @@ class PolicyTests(unittest.TestCase):
         for number in (errno.EACCES, errno.ENOENT, errno.ESRCH, errno.EIO):
             self.assertEqual(self.error(after=None, number=number), 'scope_proven_exiting')
             self.assertEqual(self.error(after=None, number=number, scoped=False), 'FAIL')
+        record=dict(errno=errno.EACCES,slot='fd',nextSample=dict(state='pid_gone'))
+        self.assertEqual(error_verdict(record,dict(ownTreeAtFirstSight=True),True,HIVE),'scope_proven_exiting')
+        self.assertEqual(error_verdict(record,dict(ownTreeAtFirstSight=False),True,HIVE),'FAIL')
 
     def test_zombie_and_running_to_zombie(self):
         self.assertEqual(self.error(before='Z', after='Z', number=errno.EACCES), 'scope_proven_exiting')
@@ -98,6 +101,11 @@ class PolicyTests(unittest.TestCase):
         self.assertIsNone(prior.get('4'))
         self.assertEqual(update_fd_prior({'4':'/safe/file'},{},False),{'4':'/safe/file'})
         self.assertEqual(update_fd_prior(prior,{'4':'/new/file'},True),{'4':'/new/file'})
+
+    def test_pid_mapping_uses_lab_level(self):
+        self.assertIsNone(namespace_pid([123]))
+        self.assertEqual(namespace_pid([123,4]),4)
+        self.assertEqual(namespace_pid([123,4,1]),4)
 
 
 if __name__ == '__main__':

@@ -40,7 +40,7 @@ try:
     visible = sorted(int(name) for name in os.listdir('/proc') if name.isdigit())
     assert os.getpid() == 1 and visible == [1]
     assert os.readlink('/proc/1/ns/pid') == os.readlink('/proc/self/ns/pid')
-    receipt['privateProcAssertion'] = dict(asserted=True, initPid=1, visiblePids=visible, namespace=os.readlink('/proc/self/ns/pid'), filesystem=mount_table()['/proc']['type'])
+    receipt['privateProcAssertion'] = dict(asserted=True, initPid=1, init='mask.py execs reaping init.py before monitor',visiblePids=visible, namespace=os.readlink('/proc/self/ns/pid'), filesystem=mount_table()['/proc']['type'],mountOrder='unshare makes propagation recursively private before --mount-proc; explicit propagation assertions at Python entry')
     assert receipt['privateProcAssertion']['filesystem'] == 'proc'
     save('mask-setup.json', receipt)
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -90,6 +90,34 @@ try:
     assert sorted(os.listdir(H / '.cache')) == [CACHE.parent.name]
     assert sorted(os.listdir(CACHE.parent)) == [CACHE.name]
     assert not os.path.lexists(H / '.hive/v2/hived.sock')
+    libc=ctypes.CDLL(None,use_errno=True)
+    parent_namespaces=dict(receipt['namespaces'])
+    outer_uid,outer_gid=os.getuid(),os.getgid()
+    if libc.unshare(ctypes.c_int(0x10000000|0x00020000))!=0:raise OSError(ctypes.get_errno(),'nested user/mount unshare failed')
+    pathlib.Path('/proc/self/setgroups').write_text('deny')
+    pathlib.Path('/proc/self/uid_map').write_text(f'0 {outer_uid} 1')
+    pathlib.Path('/proc/self/gid_map').write_text(f'0 {outer_gid} 1')
+    receipt['namespaces']={key:os.readlink('/proc/self/ns/'+key) for key in ('user','mnt','net','pid')}
+    receipt['parentNamespaces']=parent_namespaces
+    readfd,writefd=os.pipe()
+    probe=os.fork()
+    if probe==0:
+        os.close(readfd)
+        if libc.unshare(ctypes.c_int(0x00020000))!=0:os._exit(3)
+        for name,target,operation in [('umount-home',str(H),'umount'),('umount-proc','/proc','umount'),('remount-hive-rw',str(H/'.hive'),'mount')]:
+            ctypes.set_errno(0)
+            result=libc.umount2(target.encode(),0) if operation=='umount' else libc.mount(None,target.encode(),None,ctypes.c_ulong(4096|32),None)
+            number=ctypes.get_errno()
+            record=dict(probe=name,result=result,errno=number,expectedFailure=result==-1 and number in (1,22))
+            os.write(writefd,(json.dumps(record)+'\n').encode())
+            if not record['expectedFailure']:os._exit(2)
+        os._exit(0)
+    os.close(writefd)
+    with os.fdopen(readfd) as stream:probe_records=[json.loads(line) for line in stream]
+    unused,probe_status=os.waitpid(probe,0)
+    receipt['lockedMountProbes']=probe_records
+    save('locked-mount-probes.json',dict(probes=probe_records,childExit=os.waitstatus_to_exitcode(probe_status)))
+    if probe_status or len(probe_records)!=3 or not all(item['expectedFailure'] for item in probe_records):raise RuntimeError('locked mount negative probe failed; workload forbidden')
     receipt.update(maskTargets=assertions, syntheticScaffolds=sorted(scaffolds), realHomeOverlay=mounts[str(H)], cacheException=dict(path=str(CACHE), inode=cacheid.st_ino, device=cacheid.st_dev), insideAsserted=True, insideAssertedAt=time.time(), loopbackUp=True, cwdAfter=os.getcwd())
     save('mask-inside.json', receipt)
     save('mask-ready.json', dict(nonce=nonce, time=time.time(), insideAsserted=True))
@@ -105,7 +133,7 @@ try:
     receipt.update(outsideAssertion=go, maskAsserted=True, maskAssertedAt=time.time())
     save('mask-proof.json', receipt)
     os.close(outfd)
-    os.execvpe('python3', ['python3', str(R / 'monitor.py'), str(R), label, 'python3', str(R / 'workload.py'), str(R), label, *cmd], os.environ)
+    os.execvpe('python3', ['python3',str(R/'init.py'),str(R),label,'python3', str(R / 'monitor.py'), str(R), label, 'python3', str(R / 'workload.py'), str(R), label, *cmd], os.environ)
 except BaseException as e:
     receipt.update(maskAsserted=False, error=type(e).__name__ + ': ' + str(e), failedAt=time.time())
     save('mask-failure.json', receipt)
