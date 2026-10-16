@@ -134,6 +134,7 @@ export function parseApiarySwapReservation(value: unknown): ApiarySwapReservatio
 export function isApiarySwap(value: DurableUpdateReservation): value is ApiarySwapReservation { return "purpose" in value && value.purpose === "apiary-swap"; }
 export function parseDurableUpdateReservation(value: unknown): DurableUpdateReservation {
   if (typeof value === "object" && value !== null && ("format" in value || "purpose" in value)) return parseApiarySwapReservation(value);
+  shape(value, ["epoch", "id", "recoverySubjectDigest", "active"]);
   return parseUpdateReservation(value);
 }
 export function acquireApiarySwap(previous: DurableUpdateReservation, input: ApiarySwapAcquire): ApiarySwapReservation {
