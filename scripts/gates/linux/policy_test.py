@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 from policy import closing_verdict, error_verdict, wal_mtime_only, preexec_verdict, flake_verdict,update_fd_prior,namespace_pid,mapping_coverage,probe_failed,pid_observation
 from gate import fake_env, lab_home, socket_path_lengths
-from home_guard import home_guard, entry_guard, pull_destination, PROVIDER_DIRS, PROVIDER_KEYS
+from home_guard import home_guard, entry_guard, pull_destination, PROVIDER_DIRS, PROVIDER_KEYS, APIARY_DIRS
 from thread_records import ThreadRecords
 
 HOME = '/home/lab'
@@ -253,23 +253,33 @@ class PolicyTests(unittest.TestCase):
         real='/home/unit-passwd'
         allowed=dict(HOME=real+'/.cache/hbl/abc/h/0',TMPDIR=real+'/.cache/hbl/abc/h/0/t')
         for name in ('HOME','TMPDIR','XDG_CONFIG_HOME','XDG_RUNTIME_DIR','XDG_CUSTOM_LOCATION'):
-            for target in (real,*[real+'/'+directory for directory in ('.hive','.config','Library',*PROVIDER_DIRS)]):
+            for target in (real,*[real+'/'+directory for directory in ('.hive','.config','Library',*PROVIDER_DIRS,*APIARY_DIRS)]):
                 for value in (target,target+'/nested') if target!=real else (target,):
                     result=home_guard(dict(allowed,**{name:value}),[real],posixpath.normpath)
                     self.assertFalse(result['allowed'],(name,value))
                     self.assertEqual(result['offendingVariable'],name)
 
     def test_guard_resolves_symlinks_lists_and_prefix_boundaries(self):
-        real='/home/unit-passwd';base=dict(HOME=real+'/.cache/lab',TMPDIR=real+'/.cache/lab/t')
+        real='/home/unit-passwd';base=dict(HOME=real+'/.cache/hbl/lab',TMPDIR=real+'/.cache/hbl/lab/t')
         result=home_guard(dict(base,TMPDIR='/fake/link'),[real],lambda path:real+'/.hive/v2' if path=='/fake/link' else posixpath.normpath(path))
         self.assertEqual(result['offendingVariable'],'TMPDIR')
         self.assertEqual(home_guard(dict(base,XDG_DATA_DIRS='/safe:'+real+'/.config/data'),[real],posixpath.normpath)['offendingVariable'],'XDG_DATA_DIRS')
-        self.assertTrue(home_guard(dict(base,HOME=real+'/.hive-other'),[real],posixpath.normpath)['allowed'])
+        self.assertFalse(home_guard(dict(base,HOME=real+'/.hive-other'),[real],posixpath.normpath)['allowed'])
         result=home_guard(dict(base,XDG_CONFIG_HOME='/volume/config/nested'),[real],lambda path:'/volume/config' if path==real+'/.config' else posixpath.normpath(path))
         self.assertEqual(result['offendingVariable'],'XDG_CONFIG_HOME')
 
+    def test_guard_requires_cache_or_run_root_for_home_tmp_and_all_xdg(self):
+        real='/home/unit-passwd';root=real+'/.cache/hbl/abc'
+        base=dict(HOME=root+'/h',TMPDIR=root+'/t')
+        for name in ('HOME','TMPDIR','XDG_CONFIG_HOME','XDG_CUSTOM','XDG_DATA_DIRS'):
+            for value in (real+'/lab',real+'/.cache/hbl-other',real+'/.cache/hbl/../elsewhere'):
+                self.assertEqual(home_guard(dict(base,**{name:value}),[real],posixpath.normpath)['offendingVariable'],name)
+            self.assertTrue(home_guard(dict(base,**{name:root+'/allowed'}),[real],posixpath.normpath)['allowed'])
+        self.assertFalse(home_guard(dict(base,XDG_DATA_DIRS=root+':'+real+'/lab'),[real],posixpath.normpath)['allowed'])
+        self.assertTrue(home_guard(dict(HOME='/isolated/run/h',TMPDIR='/isolated/run/t'),[real],posixpath.normpath,allowed_roots=['/isolated/run'])['allowed'])
+
     def test_guard_allowed_case_and_refusal_output_has_no_values(self):
-        real='/home/unit-passwd';env=dict(HOME=real+'/.cache/lab',TMPDIR=real+'/.cache/lab/t',XDG_CONFIG_HOME=real+'/.cache/lab/config')
+        real='/home/unit-passwd';env=dict(HOME=real+'/.cache/hbl/lab',TMPDIR=real+'/.cache/hbl/lab/t',XDG_CONFIG_HOME=real+'/.cache/hbl/lab/config')
         self.assertTrue(home_guard(env,[real],posixpath.normpath)['allowed'])
         stream=io.StringIO()
         with patch('home_guard.pwd.getpwuid',return_value=SimpleNamespace(pw_dir=real)),patch('home_guard.os.environ',dict(env,HOME=real)),contextlib.redirect_stderr(stream):
@@ -283,7 +293,7 @@ class PolicyTests(unittest.TestCase):
             with self.assertRaises(ValueError):pull_destination('/runroot',name,{'mask.py','run.sh'})
 
     def test_guard_provider_overrides_and_missing_required_paths(self):
-        real='/home/unit-passwd';env=dict(HOME=real+'/.cache/lab',TMPDIR=real+'/.cache/lab/t')
+        real='/home/unit-passwd';env=dict(HOME=real+'/.cache/hbl/lab',TMPDIR=real+'/.cache/hbl/lab/t')
         for name in PROVIDER_KEYS:
             result=home_guard(dict(env,**{name:real+'/.hive/private'}),[real],posixpath.normpath)
             self.assertEqual(result['offendingVariable'],name)
@@ -300,7 +310,7 @@ class PolicyTests(unittest.TestCase):
             command.assert_not_called()
 
     def test_guard_preserves_canonical_roots_after_home_overlay(self):
-        real='/home/unit-passwd';env=dict(HOME=real+'/.cache/lab',TMPDIR=real+'/.cache/lab/t')
+        real='/home/unit-passwd';env=dict(HOME=real+'/.cache/hbl/lab',TMPDIR=real+'/.cache/hbl/lab/t')
         outside=home_guard(env,[real],lambda path:'/volume/provider' if path==real+'/.codex' else posixpath.normpath(path))
         self.assertIn('/volume/provider',outside['protectedRoots'])
         inside=home_guard(dict(env,XDG_CUSTOM_HOME='/volume/provider/nested'),[real],posixpath.normpath,outside['protectedRoots'])
