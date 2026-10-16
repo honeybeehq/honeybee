@@ -5,7 +5,7 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, readdir, readlink, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, readlink, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -224,6 +224,21 @@ test("reservation lab: live schema 44 owner takes precedence over offline reserv
     await assert.rejects(readUpdateReservation(root), /cannot identify/);
   });
 });
+
+for (const path of ["config.json", "core.sqlite3"] as const) {
+  test(`reservation lab: unreadable ${path} refuses deploy and rollback`, async () => {
+    await withDeployWorld(async ({ root, repoRoot, commit, hooks, log }) => {
+      await commit("v1");
+      const data = join(root, "..", "v2");
+      await mkdir(data, { recursive: true });
+      await symlink(path, join(data, path));
+      const refusal = /ELOOP|unable to open database file/;
+      await assert.rejects(deployVersion({ root, repoRoot, hooks }), refusal);
+      await assert.rejects(rollbackDeploy({ root, hooks }), refusal);
+      assert.deepEqual(log, { builds: [], restarts: [] });
+    });
+  });
+}
 
 // 1. deploy from clean HEAD installs, switches `current` atomically, restarts daemon
 test("deploy from clean HEAD installs the version, retargets current, records history, restarts daemon", async () => {

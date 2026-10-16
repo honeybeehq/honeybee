@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { readFileSync, statSync } from "node:fs";
+import { lstatSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { promisify } from "node:util";
@@ -15,7 +15,7 @@ function parseOwnerReservation(value: unknown): UpdateReservation | null {
 
 function existsOrThrow(path: string): boolean {
   try {
-    statSync(path);
+    lstatSync(path);
     return true;
   } catch (error) {
     if (error instanceof Error && "code" in error && error.code === "ENOENT") return false;
