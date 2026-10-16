@@ -516,3 +516,45 @@ for (const skipTests of [false, true]) {
     });
   });
 }
+test("failed activation restores current and preserves successful deploy history", async () => {
+  await withDeployWorld(async ({ root, repoRoot, commit, hooks }) => {
+    const old = await commit("old");
+    await deployVersion({ repoRoot, root, hooks });
+    const history = await readDeployHistory(root);
+    await commit("new");
+    await assert.rejects(deployVersion({ repoRoot, root, hooks: { ...hooks, async restartDaemon(ctx) {
+      assert.equal(await ctx.restorePrevious?.(), true);
+      assert.equal(await currentDeployTarget(root), old);
+      throw new Error("forced activation failure");
+    } } }), /forced activation failure/);
+    assert.equal(await currentDeployTarget(root), old);
+    assert.equal(await runInstalledCli(root), "old");
+    assert.deepEqual(await readDeployHistory(root), history);
+  });
+});
+
+test("failed same-revision activation restores displaced runtime bytes", async () => {
+  await withDeployWorld(async ({ root, repoRoot, commit, hooks }) => {
+    await commit("old");
+    await deployVersion({ repoRoot, root, hooks });
+    const history = await readDeployHistory(root);
+    await assert.rejects(deployVersion({ repoRoot, root, hooks: { ...hooks,
+      async buildArtifact(ctx) { const stage = await hooks.buildArtifact(ctx); await writeFile(join(stage.artifactDir, "dist", "cli.js"), 'console.log("replacement")'); return stage; },
+      async restartDaemon(ctx) { await ctx.restorePrevious?.(); throw new Error("forced same revision failure"); },
+    } }), /forced same revision failure/);
+    assert.equal(await runInstalledCli(root), "old");
+    assert.deepEqual(await readDeployHistory(root), history);
+  });
+});
+
+test("failed rollback restores the active version without recording success", async () => {
+  await withDeployWorld(async ({ root, repoRoot, commit, hooks }) => {
+    await commit("old"); await deployVersion({ repoRoot, root, hooks });
+    const active = await commit("active"); await deployVersion({ repoRoot, root, hooks });
+    const history = await readDeployHistory(root);
+    await assert.rejects(rollbackDeploy({ root, hooks: { async restartDaemon(ctx) { await ctx.restorePrevious?.(); throw new Error("forced rollback failure"); } } }), /forced rollback failure/);
+    assert.equal(await currentDeployTarget(root), active);
+    assert.equal(await runInstalledCli(root), "active");
+    assert.deepEqual(await readDeployHistory(root), history);
+  });
+});

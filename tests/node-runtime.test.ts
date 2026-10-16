@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { appendFileSync, copyFileSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { appendFileSync, copyFileSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { nativeNodeEnv, nodePinFile, persistNodePin, probeNativeNode, resolveNodePin, withoutInspectorArgs } from "../src/nodeRuntime.js";
+import { childNodePath, nativeNodeEnv, nodePinFile, persistNodePin, probeNativeNode, resolveNodePin, withoutInspectorArgs } from "../src/nodeRuntime.js";
 
 function fixture(run: (dir: string) => void): void {
   const dir = mkdtempSync(join(tmpdir(), "hb-pin-"));
@@ -44,3 +44,42 @@ test("runtime environment and inspector arguments are scrubbed", () => {
   assert.deepEqual(nativeNodeEnv({ PATH: "/bin", ELECTRON_RUN_AS_NODE: "1", NODE_OPTIONS: "--inspect" }), { PATH: "/bin" });
   assert.deepEqual(withoutInspectorArgs(["--inspect", "--inspect-brk=0", "--inspect-port=9229", "--import", "tsx", "--debug=123"]), ["--import", "tsx"]);
 });
+
+test("foreground helpers discover the persisted pin without inherited service environment", () => fixture(dir => {
+  const keys = ["HIVE_NODE_PATH", "HIVE_NODE_VERSION", "HIVE_NODE_SHA256", "HIVE_STORE_ROOT", "HIVE_V2_DATA_DIR"];
+  const saved = new Map(keys.map(key => [key, process.env[key]]));
+  try {
+    for (const key of keys) delete process.env[key];
+    process.env.HIVE_STORE_ROOT = dir;
+    const node = join(dir, "node-pinned");
+    copyFileSync(process.execPath, node);
+    const pin = probeNativeNode(node);
+    persistNodePin(join(dir, "v2"), pin);
+    assert.equal(childNodePath(), node);
+    persistNodePin(join(dir, "v2"), { ...pin, version: "0.0.0" });
+    assert.throws(() => childNodePath(), /identity drift/);
+  } finally {
+    for (const [key, value] of saved) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+}));
+
+test("a recorded real executable replaced by a symlink cannot silently move the pin", () => fixture(dir => {
+  const node = join(dir, "node-pinned"), moved = join(dir, "node-moved"), data = join(dir, "v2");
+  copyFileSync(process.execPath, node);
+  persistNodePin(data, probeNativeNode(node));
+  renameSync(node, moved);
+  symlinkSync(moved, node);
+  assert.throws(() => resolveNodePin(data, {}), /identity drift/);
+}));
+
+test("only an explicit different HIVE_NODE_PATH permits installer migration", () => fixture(dir => {
+  const node = join(dir, "node-other"), data = join(dir, "v2");
+  copyFileSync(process.execPath, node);
+  persistNodePin(data, probeNativeNode(process.execPath));
+  assert.throws(() => resolveNodePin(data, {}, node, true), /identity drift/);
+  assert.throws(() => resolveNodePin(data, { HIVE_NODE_PATH: node }), /identity drift/);
+  assert.equal(resolveNodePin(data, { HIVE_NODE_PATH: node }, node, true).path, node);
+}));

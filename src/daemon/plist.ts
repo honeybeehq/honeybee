@@ -1,4 +1,3 @@
-import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
 
 /**
@@ -212,7 +211,9 @@ function shellEscape(value: string): string {
  * writes outside ~/Library/LaunchAgents/ for plist installation.
  */
 export function launchAgentsDir(): string {
-  return join(homedir(), "Library", "LaunchAgents");
+  const home = process.env.HOME;
+  if (!home || !isAbsolute(home)) throw new Error("HOME required for the LaunchAgents directory");
+  return join(home, "Library", "LaunchAgents");
 }
 
 /**

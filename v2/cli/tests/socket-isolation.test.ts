@@ -153,7 +153,7 @@ test("a daemon that cannot write its endpoint record fails before it listens", a
     mkdirSync(join(d.dir, ENDPOINT_RECORD_FILE, "occupied"), { recursive: true });
     const home = mkdtempSync(join(d.dir, "home-"));
     const proc = spawn(process.execPath, [DAEMON_BIN, "--data-dir", d.dir], {
-      env: { ...process.env, HOME: home, HIVE_V2_DATA_DIR: d.dir, HIVE_NO_KEYCHAIN: "1", HIVE_GATEWAYS_DISABLE: "1", HIVE_TEST_REAP_RUNTIMES_ON_SHUTDOWN: "1", ...ownerBoundEnv(process.env.NODE_OPTIONS) },
+      env: { ...process.env, HOME: home, HIVE_NODE_PATH: process.execPath, HIVE_V2_DATA_DIR: d.dir, HIVE_NO_KEYCHAIN: "1", HIVE_GATEWAYS_DISABLE: "1", HIVE_TEST_REAP_RUNTIMES_ON_SHUTDOWN: "1", ...ownerBoundEnv(process.env.NODE_OPTIONS) },
       stdio: ["ignore", "pipe", "pipe"],
     });
     let output = "";
@@ -401,7 +401,7 @@ test("socket isolation against throwaway daemons", async (t) => {
       const d = makeDaemonDir();
       try {
         const proc = spawn(process.execPath, [DAEMON_BIN, "--data-dir", d.dir, "--socket", aSock], {
-          env: { ...process.env, HOME: home, HIVE_V2_DATA_DIR: d.dir, HIVE_NO_KEYCHAIN: "1", HIVE_GATEWAYS_DISABLE: "1", ...ownerBoundEnv(process.env.NODE_OPTIONS) },
+          env: { ...process.env, HOME: home, HIVE_NODE_PATH: process.execPath, HIVE_V2_DATA_DIR: d.dir, HIVE_NO_KEYCHAIN: "1", HIVE_GATEWAYS_DISABLE: "1", ...ownerBoundEnv(process.env.NODE_OPTIONS) },
           stdio: ["ignore", "pipe", "pipe"],
         });
         let output = "";
@@ -421,7 +421,7 @@ test("socket isolation against throwaway daemons", async (t) => {
       const d = makeDaemonDir();
       try {
         const proc = spawn(process.execPath, [CLI_BIN, "daemon", "run", "--data-dir", d.dir], {
-          env: { ...process.env, HOME: home, HIVE_V2_DATA_DIR: d.dir, HIVE_V2_SOCKET_PATH: daemonB!.socketPath, HIVE_NO_KEYCHAIN: "1", HIVE_GATEWAYS_DISABLE: "1", HIVE_TEST_REAP_RUNTIMES_ON_SHUTDOWN: "1", ...ownerBoundEnv(process.env.NODE_OPTIONS) },
+          env: { ...process.env, HOME: home, HIVE_NODE_PATH: process.execPath, HIVE_V2_DATA_DIR: d.dir, HIVE_V2_SOCKET_PATH: daemonB!.socketPath, HIVE_NO_KEYCHAIN: "1", HIVE_GATEWAYS_DISABLE: "1", HIVE_TEST_REAP_RUNTIMES_ON_SHUTDOWN: "1", ...ownerBoundEnv(process.env.NODE_OPTIONS) },
           stdio: ["ignore", "pipe", "pipe"],
         });
         let output = "";

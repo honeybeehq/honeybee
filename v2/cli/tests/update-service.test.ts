@@ -3,8 +3,8 @@ import { test } from "node:test";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { nodePinEnv, probeNativeNode } from "../../../src/nodeRuntime.ts";
-import { serviceEnv, serviceExecArgs } from "../src/main.ts";
+import { nodePinEnv, probeNativeNode, persistNodePin } from "../../../src/nodeRuntime.ts";
+import { runV2Cli, serviceEnv, serviceExecArgs } from "../src/main.ts";
 
 test("service environment records native pin and drops Electron mode", () => {
   assert.deepEqual(serviceEnv("/data", { PATH: "/bin", ELECTRON_RUN_AS_NODE: "1", HIVE_NODE_PATH: process.execPath }),
@@ -32,4 +32,17 @@ test("fresh service install requires a pin and validates explicit argv overrides
     assert.throws(() => serviceExecArgs(data, { HIVE_V2_SERVICE_ARGS: JSON.stringify([process.execPath, "--inspect=0", "cli.js"]) }), /inspector/);
     assert.deepEqual(serviceExecArgs(data, { HIVE_V2_SERVICE_ARGS: JSON.stringify([process.execPath, "cli.js", "custom"]) }), [probeNativeNode(process.execPath).path, "cli.js", "custom"]);
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("daemon start, restart and status expose a held pin without opening the store", async () => {
+  const root = mkdtempSync(join(tmpdir(), "hb-held-cli-")), data = join(root, "v2");
+  try {
+    persistNodePin(data, { ...probeNativeNode(process.execPath), version: "0.0.0" });
+    for (const verb of ["start", "restart", "status"]) {
+      const out: string[] = [], err: string[] = [];
+      assert.equal(await runV2Cli(["daemon", verb, "--data-dir", data, "--json"], { out: line => out.push(line), err: line => err.push(line) }), 0, err.join("\n"));
+      assert.equal(JSON.parse(out[0] ?? "{}").repair.state, "held");
+    }
+    assert.equal((await import("node:fs")).existsSync(join(data, "core.sqlite3")), false);
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });

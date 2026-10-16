@@ -55,7 +55,10 @@ const PLIST_SNAPSHOT = `<?xml version="1.0" encoding="UTF-8"?>
   <key>RunAtLoad</key>
   <true/>
   <key>KeepAlive</key>
-  <true/>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
   <key>ProcessType</key>
   <string>Interactive</string>
   <key>StandardOutPath</key>
@@ -77,7 +80,7 @@ Environment="HIVE_V2_DATA_DIR=/data/v2"
 # Ephemeral workers are stopped during clean daemon shutdown, and explicit bee stop/delete reaps its runner group.
 KillMode=process
 UnsetEnvironment=ELECTRON_RUN_AS_NODE NODE_OPTIONS
-Restart=always
+Restart=on-failure
 RestartSec=2
 StandardOutput=append:/data/v2/hived.log
 StandardError=append:/data/v2/hived.log

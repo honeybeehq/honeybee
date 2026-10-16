@@ -1,4 +1,6 @@
-import { resolveNodePin, nativeNodeEnv, nodePinEnv } from "../nodeRuntime.js";
+import { serviceDirectory } from "../servicePaths.js";
+import { randomUUID } from "node:crypto";
+import { resolveNodePin, nativeNodeEnv, nodePinEnv, nodePinFile, nodeRepairFile, type NodePin } from "../nodeRuntime.js";
 // `hive deploy` — versioned runtime deploys (reset WP0, spec 00). The
 // orchestration lives in src/deployRuntime.ts; this module wires the CLI
 // surface plus the two production hooks: the real clean-checkout build and
@@ -6,8 +8,8 @@ import { resolveNodePin, nativeNodeEnv, nodePinEnv } from "../nodeRuntime.js";
 // never reach the code in this file's hook implementations.
 import { execFile, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { cp, lstat, mkdir, readFile, readlink, writeFile } from "node:fs/promises";
-import { basename, delimiter, join } from "node:path";
+import { cp, lstat, mkdir, open, readFile, readlink, rename, rm, writeFile } from "node:fs/promises";
+import { basename, delimiter, dirname, join } from "node:path";
 import { promisify } from "node:util";
 import {
   CURRENT_LINK_NAME,
@@ -100,9 +102,9 @@ async function keychainFreeGateEnv(workDir: string): Promise<NodeJS.ProcessEnv> 
 }
 
 /** Stream a build/restart step; the child's output is the progress report. */
-async function runStep(command: string, args: string[], cwd: string, log: (line: string) => void, env: NodeJS.ProcessEnv = hostGitEnv()): Promise<void> {
+async function runStep(command: string, args: string[], cwd: string, log: (line: string) => void, env: NodeJS.ProcessEnv = {}): Promise<void> {
   log(`deploy: ${command} ${args.join(" ")}`);
-  const child = spawn(command, args, { cwd, env: nativeNodeEnv(env), stdio: ["ignore", "inherit", "inherit"] });
+  const child = spawn(command, args, { cwd, env: nativeNodeEnv({ ...hostGitEnv(), ...env }), stdio: ["ignore", "inherit", "inherit"] });
   const result = await new Promise<{ code: number | null; signal: NodeJS.Signals | null; error?: Error }>((resolve) => {
     child.once("error", (error) => resolve({ code: null, signal: null, error }));
     child.once("exit", (code, signal) => resolve({ code, signal }));
@@ -180,35 +182,77 @@ export async function buildDeployArtifact(
  * The production restart, run THROUGH the `current` symlink so the LaunchAgent
  * plist binds the stable path — future deploys then only move the symlink.
  */
-export async function restartDeployedDaemon({ root, log, runtime }: RestartDaemonContext): Promise<void> {
+async function restoreServiceFile(file: string, data: Buffer | null, mode = 0o600): Promise<void> {
+  if (data === null) { await rm(file, { force: true }); return; }
+  await mkdir(dirname(file), { recursive: true });
+  const temporary = `${file}.${randomUUID()}`;
+  const fd = await open(temporary, "wx", mode);
+  try { await fd.writeFile(data); await fd.sync(); } finally { await fd.close(); }
+  await rename(temporary, file);
+  const directory = await open(dirname(file), "r");
+  try { await directory.sync(); } finally { await directory.close(); }
+}
+
+export async function restartDeployedDaemon({ root, log, runtime, restorePrevious }: RestartDaemonContext): Promise<void> {
   const v2 = runtime === "v2" || runtimeUsesV2(root);
-  const pin = resolveNodePin(join(root, "..", "v2"));
-  const interpreter = pin.path;
-  if (process.platform !== "darwin") {
-    log("deploy: daemon restart skipped (launchctl unavailable on this platform; restart the daemon manually)");
-    return;
-  }
+  if (!v2) throw new Error("deploy: legacy service activation is refused; install the pinned v2 service first");
+  const dataDir = join(root, "..", "v2");
+  const pin = resolveNodePin(dataDir, process.env, undefined, true);
+  if (process.platform !== "darwin" && process.platform !== "linux") throw new Error("deploy: unsupported service platform");
+  const directory = serviceDirectory();
+  const service = join(directory, `${process.env.HIVE_V2_SERVICE_LABEL ?? "dev.honeybee.hive.v2"}.${process.platform === "darwin" ? "plist" : "service"}`);
+  const files = await Promise.all([service, nodePinFile(dataDir), nodeRepairFile(dataDir)].map(async file => {
+    const data = await readFile(file).catch((error: NodeJS.ErrnoException) => { if (error.code === "ENOENT") return null; throw error; });
+    return { file, data, mode: data === null ? 0o600 : (await lstat(file)).mode & 0o777 };
+  }));
   const cli = join(root, CURRENT_LINK_NAME, "dist", "cli.js");
-  if (v2) {
-    // Runtime mode survives source deploys; manage the same service selected
-    // by the dependency-light CLI routing config.
-    await runStep(interpreter, [cli, "v2", "daemon", "install", "--data-dir", join(root, "..", "v2")], root, log);
-    try {
-      await runStep(interpreter, [cli, "v2", "daemon", "stop", "--data-dir", join(root, "..", "v2")], root, log);
-    } catch (error) {
-      // A failed stop can mean either absence or an uncertain unload. Only
-      // confirmed absence permits a fresh start; never hide a live old owner.
-      const { stdout } = await execFileAsync(interpreter,
-        [cli, "v2", "daemon", "status", "--json", "--data-dir", join(root, "..", "v2")], { timeout: 10_000, env: { ...nativeNodeEnv(), ...nodePinEnv(pin) } });
-      const status = JSON.parse(stdout);
-      if (status.running !== false || status.service?.installed !== false) throw error;
+  const args = (verb: string) => [cli, "v2", "daemon", verb, "--data-dir", dataDir];
+  const run = (verb: string, selected: NodePin = pin) => runStep(selected.path, args(verb), root, log, nodePinEnv(selected));
+  const status = async (selected: NodePin) => {
+    const { stdout } = await execFileAsync(selected.path, [...args("status"), "--json"], { timeout: 2000, env: { ...nativeNodeEnv(), ...nodePinEnv(selected) } });
+    return JSON.parse(stdout) as { running?: boolean; repair?: unknown; service?: { installed?: boolean } };
+  };
+  const ready = async (selected: NodePin) => {
+    const deadline = Date.now() + 10_000;
+    while (true) {
+      try {
+        const state = await status(selected);
+        if (state.running === true) return;
+        if (state.repair) throw new Error("deploy: daemon held, needs Node pin repair");
+      } catch (error) {
+        if (error instanceof Error && error.message.includes("needs Node pin repair")) throw error;
+      }
+      if (Date.now() >= deadline) throw new Error("deploy: daemon failed readiness after start");
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+  };
+  let stopped = false;
+  try {
+    await run("install");
+    try { await run("stop"); stopped = true; }
+    catch (error) {
+      const state = await status(pin);
+      if (state.running !== false || state.service?.installed !== false) throw error;
+      stopped = true;
       log("deploy: v2 service is absent (fresh start)");
     }
-    await runStep(interpreter, [cli, "v2", "daemon", "start", "--data-dir", join(root, "..", "v2")], root, log);
-    return;
+    await run("start");
+    await ready(pin);
+  } catch (error) {
+    if (stopped) await run("stop").catch(() => undefined);
+    const restored = await restorePrevious?.();
+    if (restorePrevious) {
+      for (const snapshot of files) await restoreServiceFile(snapshot.file, snapshot.data, snapshot.mode);
+      if (process.platform === "linux") await execFileAsync("systemctl", ["--user", "daemon-reload"], { env: nativeNodeEnv() });
+    }
+    if (stopped && restored) {
+      const priorPin = resolveNodePin(dataDir, { ...process.env, HIVE_NODE_PATH: undefined, HIVE_NODE_VERSION: undefined, HIVE_NODE_SHA256: undefined });
+      await run("start", priorPin);
+      await ready(priorPin);
+      log("deploy: previous runtime and service recovered after failed activation");
+    }
+    throw error;
   }
-  await runStep(interpreter, [cli, "daemon", "install", "--force"], root, log);
-  await runStep(interpreter, [cli, "daemon", "restart"], root, log);
 }
 
 async function resolveHoneybeeRepoRoot(): Promise<string> {

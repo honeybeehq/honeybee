@@ -38,6 +38,7 @@ async function withTempHome(fn: () => Promise<void>): Promise<void> {
   process.env.HIVE_STORE_ROOT = store;
   // Pre-create LaunchAgents so atomic write doesn't race the mkdir.
   await mkdir(join(home, "Library", "LaunchAgents"), { recursive: true });
+  assert.ok(plistPathForLabel(DEFAULT_LAUNCH_LABEL).startsWith(home + "/"));
   try {
     await fn();
   } finally {

@@ -1,3 +1,4 @@
+import { validateDaemonNode } from "../../../src/nodeRuntime.ts";
 /**
  * Foreground daemon entry: `hive v2 daemon run [--data-dir d] [--config p]
  * [--socket s]`. This is what the rendered launchd plist / systemd unit
@@ -41,7 +42,10 @@ function simulatedCellVolume(cellsRoot: string, totalBytes: number): (path: stri
 
 /** Run the daemon in the foreground until a termination signal. */
 export async function runDaemon(argv: string[]): Promise<number> {
-  const cfg = resolveDaemonConfig(parseDaemonRunArgs(argv));
+  const args = parseDaemonRunArgs(argv);
+  const held = validateDaemonNode(args.dataDir ?? defaultDataDir(), true);
+  if (held) { process.stderr.write(`hived held, needs repair: ${held}\n`); return 0; }
+  const cfg = resolveDaemonConfig(args);
   // Test daemons shorten the delay before the first automatic Cell retention pass.
   const retentionDelay = Number(process.env.HIVE_TEST_RETENTION_INITIAL_DELAY_MS);
   const diskCheckMs = Number(process.env.HIVE_TEST_CELL_DISK_CHECK_MS);
