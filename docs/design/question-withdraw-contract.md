@@ -14,8 +14,12 @@ not already exist when the hello is sent. Clients return typed
 `question_withdraw_unsupported` ("Question withdrawal is unsupported by this
 Honeybee.") when the capability is absent; Honeybee's RPC client enforces this.
 The server also refuses the verb with that code when the prerequisites are absent.
-The protocol remains `v2/1`; schema v45 migrates v44 question rows without changing
-existing open/answered behavior. Downgrading requires restoring the older store.
+The protocol remains `v2/1` and the store stamp remains **44**, preserving
+apiary-swap storage support and the older writer's version gate. At open,
+`CREATE TABLE IF NOT EXISTS` adds the isolated receipt table; older binaries
+ignore this extra table. The questions table is rebuilt transactionally when its DDL
+lacks the withdrawn status, preserving existing open/answered rows. No schema
+version bump or store restore is required for rollback.
 
 ```json
 {
@@ -180,3 +184,15 @@ report success. No daemon remains after the script. No live store is opened.
 Older Honeybee CLIs display an unfamiliar withdrawn status as “answered”. This
 change updates the current CLI; withdrawal is available only to capability-gated
 new clients. Older external projectors must be upgraded before enabling the feature.
+
+For the schema-44 rollback check, run:
+
+```sh
+env -i HOME="$HOME" PATH="$PATH" node scripts/proof/question-withdraw-schema44.ts
+```
+
+It builds the older committed core from this repository's Git objects, without
+using another checkout, then exercises old writer → withdrawal writer → old
+writer → withdrawal writer on one disposable cache store. The older writer
+opens and writes while the isolated receipt table exists; stamp 44, SQLite
+integrity, foreign keys and the original withdrawal receipt must all survive.

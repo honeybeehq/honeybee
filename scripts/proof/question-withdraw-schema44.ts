@@ -1,0 +1,60 @@
+import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { hostname, homedir } from "node:os";
+import { join, posix, resolve } from "node:path";
+import { DatabaseSync } from "node:sqlite";
+import { pathToFileURL } from "node:url";
+import { build } from "esbuild";
+import { openCoreStore, replayAudit, SCHEMA_VERSION, type CoreStore } from "../../v2/core/src/index.ts";
+
+const baseline = "7d4be4b50e339e8c1ea02be08bb4a3c6659743ea";
+const evidence = resolve(process.argv[2] ?? ".proof/T15h-honeybee-withdraw/schema44");
+const base = join(homedir(), ".cache", "T15h-honeybee-withdraw-schema44");
+mkdirSync(base, { recursive: true });
+mkdirSync(evidence, { recursive: true });
+const root = mkdtempSync(join(base, "lab-"));
+const path = join(root, "core.sqlite3");
+const artifact = join(root, "baseline-core.mjs");
+const bundle = await build({
+  entryPoints: ["v2/core/src/index.ts"], bundle: true, write: false, format: "esm", platform: "node", target: "node24",
+  plugins: [{ name: "committed-baseline", setup(api) {
+    api.onResolve({ filter: /^v2\/core\/src\/index\.ts$/ }, args => ({ path: args.path, namespace: "baseline" }));
+    api.onResolve({ filter: /^\./, namespace: "baseline" }, args => ({ path: posix.normalize(posix.join(posix.dirname(args.importer), args.path)), namespace: "baseline" }));
+    api.onLoad({ filter: /.*/, namespace: "baseline" }, args => ({ contents: execFileSync("git", ["show", `${baseline}:${args.path}`], { encoding: "utf8" }), loader: args.path.endsWith(".json") ? "json" : "ts" }));
+  } }],
+});
+writeFileSync(artifact, bundle.outputFiles[0]!.contents);
+const older = await import(pathToFileURL(artifact).href) as { openCoreStore(path: string): CoreStore; SCHEMA_VERSION: number };
+assert.equal(older.SCHEMA_VERSION, 44);
+assert.equal(SCHEMA_VERSION, 44);
+let old = older.openCoreStore(path);
+const beeId = old.createBee({ name: "rollback", agent: "inbox", substrate: "hsr", cwd: root }).bee.id;
+const pending = old.askQuestion(beeId, { text: "Answer after rollback?" });
+const withdrawn = old.askQuestion(beeId, { text: "Withdraw before rollback?" });
+old.close();
+let current = openCoreStore(path);
+const receipt = current.withdrawQuestionWithKey(withdrawn.id, beeId, "Superseded before rollback.", "rollback-key");
+current.close();
+old = older.openCoreStore(path);
+assert.equal(old.getQuestion(pending.id)?.status, "open");
+old.answerQuestion(pending.id, "Old writer still answers open questions.");
+const oldCreated = old.askQuestion(beeId, { text: "Created by rolled-back writer." });
+assert.equal(oldCreated.status, "open");
+old.close();
+const db = new DatabaseSync(path);
+const schemaVersion = String(db.prepare("SELECT value FROM meta WHERE key='schema_version'").get()!.value);
+const integrity = String(db.prepare("PRAGMA integrity_check").get()!.integrity_check);
+const foreignKeys = db.prepare("PRAGMA foreign_key_check").all();
+const receiptCount = Number(db.prepare("SELECT count(*) AS n FROM question_withdraw_receipts").get()!.n);
+assert.equal(schemaVersion, "44"); assert.equal(integrity, "ok"); assert.equal(receiptCount, 1); assert.deepEqual(foreignKeys, []);
+db.close();
+current = openCoreStore(path);
+assert.deepEqual(current.withdrawQuestionWithKey(withdrawn.id, beeId, "Retry after re-upgrade.", "rollback-key"), { ...receipt, deduped: true });
+assert.equal(current.getQuestion(pending.id)?.status, "answered");
+assert.equal(current.getQuestion(oldCreated.id)?.withdrawalReason, null);
+assert.deepEqual(replayAudit(current.auditRows()), current.dumpState());
+current.close();
+const result = { passed: true, host: hostname(), baseline, root, schemaVersion, integrity, foreignKeys, receiptCount, rollbackOpenedAndWrote: true, retryAfterReupgrade: "deduped; first withdrawal preserved" };
+writeFileSync(join(evidence, "rollback-receipts.json"), JSON.stringify(result, null, 2) + "\n");
+console.log(JSON.stringify(result));

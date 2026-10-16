@@ -1,0 +1,628 @@
+[
+  {
+    "seq": 1,
+    "ts": 1792176107900,
+    "kind": "boot.reconciled",
+    "beeId": null,
+    "payload": {
+      "stopped": [],
+      "adopted": [],
+      "requeuedCommandIds": []
+    }
+  },
+  {
+    "seq": 2,
+    "ts": 1792176108017,
+    "kind": "boot.reconciled",
+    "beeId": null,
+    "payload": {
+      "stopped": [],
+      "adopted": [],
+      "requeuedCommandIds": []
+    }
+  },
+  {
+    "seq": 3,
+    "ts": 1792176108036,
+    "kind": "bee.created",
+    "beeId": "c6dbf293-84e1-4749-a7da-40e6cdc5a859",
+    "payload": {
+      "bee": {
+        "id": "c6dbf293-84e1-4749-a7da-40e6cdc5a859",
+        "name": "asker",
+        "agent": "inbox",
+        "substrate": "hsr",
+        "cwd": "/home/trmd/.cache/T15h-honeybee-withdraw/lab-WPLgoC",
+        "title": null,
+        "tags": [],
+        "sessionLogPath": null,
+        "lifecycle": "active",
+        "createdAt": 1792176108036,
+        "archivedAt": null,
+        "lastOutputAt": null,
+        "providerSessionId": null,
+        "env": {},
+        "importedFrom": null,
+        "spawnFailures": 0,
+        "args": null,
+        "parentId": null,
+        "parentExternal": false,
+        "forkedFrom": null,
+        "forkSeed": null,
+        "account": null,
+        "handle": "IN.0000",
+        "human_ref": null,
+        "issuing_namespace": null,
+        "placementVersion": 0,
+        "activeMoveId": null,
+        "cellId": null,
+        "activeHandoffId": null,
+        "lastTurnTrigger": null,
+        "lastHumanOutputAt": null
+      },
+      "rpcCaller": {
+        "transport": "local_unix",
+        "ingress": "local_unix",
+        "uid": 1001,
+        "pid": 497850,
+        "verb": "spawn"
+      }
+    }
+  },
+  {
+    "seq": 4,
+    "ts": 1792176108036,
+    "kind": "transcript_segment.put",
+    "beeId": "c6dbf293-84e1-4749-a7da-40e6cdc5a859",
+    "payload": {
+      "segment": {
+        "id": "seg:c6dbf293-84e1-4749-a7da-40e6cdc5a859:0",
+        "beeId": "c6dbf293-84e1-4749-a7da-40e6cdc5a859",
+        "ordinal": 0,
+        "harness": "inbox",
+        "providerSessionId": null,
+        "fromGeneration": 1,
+        "toGeneration": null,
+        "path": null,
+        "handoffId": null,
+        "createdAt": 1792176108036,
+        "closedAt": null
+      },
+      "rpcCaller": {
+        "transport": "local_unix",
+        "ingress": "local_unix",
+        "uid": 1001,
+        "pid": 497850,
+        "verb": "spawn"
+      }
+    }
+  },
+  {
+    "seq": 5,
+    "ts": 1792176108036,
+    "kind": "runtime.created",
+    "beeId": "c6dbf293-84e1-4749-a7da-40e6cdc5a859",
+    "payload": {
+      "runtime": {
+        "beeId": "c6dbf293-84e1-4749-a7da-40e6cdc5a859",
+        "generation": 1,
+        "state": "stopped",
+        "exitCause": "clean",
+        "pid": null,
+        "pidStartedAt": null,
+        "bootEvidence": null,
+        "startedAt": 1792176108036,
+        "updatedAt": 1792176108036
+      },
+      "rpcCaller": {
+        "transport": "local_unix",
+        "ingress": "local_unix",
+        "uid": 1001,
+        "pid": 497850,
+        "verb": "spawn"
+      }
+    }
+  },
+  {
+    "seq": 6,
+    "ts": 1792176108037,
+    "kind": "bee.created",
+    "beeId": "73198eeb-e6e4-4f12-91d8-be8c766d89c9",
+    "payload": {
+      "bee": {
+        "id": "73198eeb-e6e4-4f12-91d8-be8c766d89c9",
+        "name": "other",
+        "agent": "inbox",
+        "substrate": "hsr",
+        "cwd": "/home/trmd/.cache/T15h-honeybee-withdraw/lab-WPLgoC",
+        "title": null,
+        "tags": [],
+        "sessionLogPath": null,
+        "lifecycle": "active",
+        "createdAt": 1792176108037,
+        "archivedAt": null,
+        "lastOutputAt": null,
+        "providerSessionId": null,
+        "env": {},
+        "importedFrom": null,
+        "spawnFailures": 0,
+        "args": null,
+        "parentId": null,
+        "parentExternal": false,
+        "forkedFrom": null,
+        "forkSeed": null,
+        "account": null,
+        "handle": "IN.0001",
+        "human_ref": null,
+        "issuing_namespace": null,
+        "placementVersion": 0,
+        "activeMoveId": null,
+        "cellId": null,
+        "activeHandoffId": null,
+        "lastTurnTrigger": null,
+        "lastHumanOutputAt": null
+      },
+      "rpcCaller": {
+        "transport": "local_unix",
+        "ingress": "local_unix",
+        "uid": 1001,
+        "pid": 497850,
+        "verb": "spawn"
+      }
+    }
+  },
+  {
+    "seq": 7,
+    "ts": 1792176108037,
+    "kind": "transcript_segment.put",
+    "beeId": "73198eeb-e6e4-4f12-91d8-be8c766d89c9",
+    "payload": {
+      "segment": {
+        "id": "seg:73198eeb-e6e4-4f12-91d8-be8c766d89c9:0",
+        "beeId": "73198eeb-e6e4-4f12-91d8-be8c766d89c9",
+        "ordinal": 0,
+        "harness": "inbox",
+        "providerSessionId": null,
+        "fromGeneration": 1,
+        "toGeneration": null,
+        "path": null,
+        "handoffId": null,
+        "createdAt": 1792176108037,
+        "closedAt": null
+      },
+      "rpcCaller": {
+        "transport": "local_unix",
+        "ingress": "local_unix",
+        "uid": 1001,
+        "pid": 497850,
+        "verb": "spawn"
+      }
+    }
+  },
+  {
+    "seq": 8,
+    "ts": 1792176108038,
+    "kind": "runtime.created",
+    "beeId": "73198eeb-e6e4-4f12-91d8-be8c766d89c9",
+    "payload": {
+      "runtime": {
+        "beeId": "73198eeb-e6e4-4f12-91d8-be8c766d89c9",
+        "generation": 1,
+        "state": "stopped",
+        "exitCause": "clean",
+        "pid": null,
+        "pidStartedAt": null,
+        "bootEvidence": null,
+        "startedAt": 1792176108037,
+        "updatedAt": 1792176108037
+      },
+      "rpcCaller": {
+        "transport": "local_unix",
+        "ingress": "local_unix",
+        "uid": 1001,
+        "pid": 497850,
+        "verb": "spawn"
+      }
+    }
+  },
+  {
+    "seq": 9,
+    "ts": 1792176108038,
+    "kind": "question.asked",
+    "beeId": "c6dbf293-84e1-4749-a7da-40e6cdc5a859",
+    "payload": {
+      "question": {
+        "id": "2d27a6ed-dd48-4a0b-bd15-01c9bb23b353",
+        "beeId": "c6dbf293-84e1-4749-a7da-40e6cdc5a859",
+        "generation": 1,
+        "text": "Withdraw this?",
+        "options": null,
+        "status": "open",
+        "withdrawalReason": null,
+        "withdrawnAt": null,
+        "answer": null,
+        "askedAt": 1792176108038,
+        "answeredAt": null,
+        "answeredBy": null,
+        "deliveryMessageId": null
+      },
+      "rpcCaller": {
+        "transport": "local_unix",
+        "ingress": "local_unix",
+        "uid": 1001,
+        "pid": 497850,
+        "verb": "question.ask"
+      }
+    }
+  },
+  {
+    "seq": 10,
+    "ts": 1792176108045,
+    "kind": "rpc.local_registered",
+    "beeId": null,
+    "payload": {
+      "uid": 1001,
+      "pid": 497850,
+      "replacedPid": null,
+      "expiresAtMs": 1792176408045,
+      "rpcCaller": {
+        "transport": "local_unix",
+        "ingress": "local_unix",
+        "uid": 1001,
+        "pid": 497850,
+        "verb": "rpc.localTrust.register"
+      }
+    }
+  },
+  {
+    "seq": 11,
+    "ts": 1792176108052,
+    "kind": "bee.renamed",
+    "beeId": "73198eeb-e6e4-4f12-91d8-be8c766d89c9",
+    "payload": {
+      "beeId": "73198eeb-e6e4-4f12-91d8-be8c766d89c9",
+      "name": "poison",
+      "previous": "other",
+      "rpcCaller": {
+        "transport": "local_unix",
+        "ingress": "local_unix",
+        "uid": 1001,
+        "pid": 497850,
+        "verb": "bee.rename"
+      }
+    }
+  },
+  {
+    "seq": 12,
+    "ts": 1792176108053,
+    "kind": "question.withdrawn",
+    "beeId": "c6dbf293-84e1-4749-a7da-40e6cdc5a859",
+    "payload": {
+      "questionId": "2d27a6ed-dd48-4a0b-bd15-01c9bb23b353",
+      "withdrawalReason": "Superseded.",
+      "withdrawnAt": 1792176108053,
+      "rpcCaller": {
+        "transport": "local_unix",
+        "ingress": "local_unix",
+        "uid": 1001,
+        "pid": 497850,
+        "verb": "question.withdraw"
+      }
+    }
+  },
+  {
+    "seq": 13,
+    "ts": 1792176108056,
+    "kind": "bee.renamed",
+    "beeId": "73198eeb-e6e4-4f12-91d8-be8c766d89c9",
+    "payload": {
+      "beeId": "73198eeb-e6e4-4f12-91d8-be8c766d89c9",
+      "name": "no-disclosure",
+      "previous": "poison",
+      "rpcCaller": {
+        "transport": "local_unix",
+        "ingress": "local_unix",
+        "uid": 1001,
+        "pid": 497850,
+        "verb": "bee.rename"
+      }
+    }
+  },
+  {
+    "seq": 14,
+    "ts": 1792176108057,
+    "kind": "question.asked",
+    "beeId": "73198eeb-e6e4-4f12-91d8-be8c766d89c9",
+    "payload": {
+      "question": {
+        "id": "6d078722-73ea-483a-bd67-918a1fcebf29",
+        "beeId": "73198eeb-e6e4-4f12-91d8-be8c766d89c9",
+        "generation": 1,
+        "text": "Other owner same key?",
+        "options": null,
+        "status": "open",
+        "withdrawalReason": null,
+        "withdrawnAt": null,
+        "answer": null,
+        "askedAt": 1792176108057,
+        "answeredAt": null,
+        "answeredBy": null,
+        "deliveryMessageId": null
+      },
+      "rpcCaller": {
+        "transport": "local_unix",
+        "ingress": "local_unix",
+        "uid": 1001,
+        "pid": 497850,
+        "verb": "question.ask"
+      }
+    }
+  },
+  {
+    "seq": 15,
+    "ts": 1792176108058,
+    "kind": "question.withdrawn",
+    "beeId": "73198eeb-e6e4-4f12-91d8-be8c766d89c9",
+    "payload": {
+      "questionId": "6d078722-73ea-483a-bd67-918a1fcebf29",
+      "withdrawalReason": "Other owner.",
+      "withdrawnAt": 1792176108058,
+      "rpcCaller": {
+        "transport": "local_unix",
+        "ingress": "local_unix",
+        "uid": 1001,
+        "pid": 497850,
+        "verb": "question.withdraw"
+      }
+    }
+  },
+  {
+    "seq": 16,
+    "ts": 1792176108058,
+    "kind": "question.asked",
+    "beeId": "c6dbf293-84e1-4749-a7da-40e6cdc5a859",
+    "payload": {
+      "question": {
+        "id": "af4a8ea1-ab56-4c79-af6d-18de0f3203da",
+        "beeId": "c6dbf293-84e1-4749-a7da-40e6cdc5a859",
+        "generation": 1,
+        "text": "Key reuse?",
+        "options": null,
+        "status": "open",
+        "withdrawalReason": null,
+        "withdrawnAt": null,
+        "answer": null,
+        "askedAt": 1792176108058,
+        "answeredAt": null,
+        "answeredBy": null,
+        "deliveryMessageId": null
+      },
+      "rpcCaller": {
+        "transport": "local_unix",
+        "ingress": "local_unix",
+        "uid": 1001,
+        "pid": 497850,
+        "verb": "question.ask"
+      }
+    }
+  },
+  {
+    "seq": 17,
+    "ts": 1792176108059,
+    "kind": "question.asked",
+    "beeId": "c6dbf293-84e1-4749-a7da-40e6cdc5a859",
+    "payload": {
+      "question": {
+        "id": "3922501d-96cd-4e54-8cf4-b159e103ddaa",
+        "beeId": "c6dbf293-84e1-4749-a7da-40e6cdc5a859",
+        "generation": 1,
+        "text": "Answer first?",
+        "options": null,
+        "status": "open",
+        "withdrawalReason": null,
+        "withdrawnAt": null,
+        "answer": null,
+        "askedAt": 1792176108059,
+        "answeredAt": null,
+        "answeredBy": null,
+        "deliveryMessageId": null
+      },
+      "rpcCaller": {
+        "transport": "local_unix",
+        "ingress": "local_unix",
+        "uid": 1001,
+        "pid": 497850,
+        "verb": "question.ask"
+      }
+    }
+  },
+  {
+    "seq": 18,
+    "ts": 1792176108059,
+    "kind": "mail.enqueued",
+    "beeId": "c6dbf293-84e1-4749-a7da-40e6cdc5a859",
+    "payload": {
+      "message": {
+        "id": 1,
+        "beeId": "c6dbf293-84e1-4749-a7da-40e6cdc5a859",
+        "sender": "operator",
+        "body": "[answer to question 3922501d-96cd-4e54-8cf4-b159e103ddaa] yes\n\n(question was: Answer first?)",
+        "priority": 0,
+        "urgency": "next",
+        "enqueuedAt": 1792176108059,
+        "deliveredAt": null,
+        "deliveredGeneration": null
+      },
+      "origin": "mail.send",
+      "rpcCaller": {
+        "transport": "local_unix",
+        "ingress": "local_unix",
+        "uid": 1001,
+        "pid": 497850,
+        "verb": "question.answer"
+      }
+    }
+  },
+  {
+    "seq": 19,
+    "ts": 1792176108060,
+    "kind": "question.answered",
+    "beeId": "c6dbf293-84e1-4749-a7da-40e6cdc5a859",
+    "payload": {
+      "questionId": "3922501d-96cd-4e54-8cf4-b159e103ddaa",
+      "beeId": "c6dbf293-84e1-4749-a7da-40e6cdc5a859",
+      "answer": "yes",
+      "answeredAt": 1792176108059,
+      "answeredBy": "operator",
+      "deliveryMessageId": 1,
+      "rpcCaller": {
+        "transport": "local_unix",
+        "ingress": "local_unix",
+        "uid": 1001,
+        "pid": 497850,
+        "verb": "question.answer"
+      }
+    }
+  },
+  {
+    "seq": 20,
+    "ts": 1792176108061,
+    "kind": "question.asked",
+    "beeId": "c6dbf293-84e1-4749-a7da-40e6cdc5a859",
+    "payload": {
+      "question": {
+        "id": "4b18638b-4c7d-4cde-8fe7-839b9e13e02a",
+        "beeId": "c6dbf293-84e1-4749-a7da-40e6cdc5a859",
+        "generation": 1,
+        "text": "Concurrent race: withdraw first",
+        "options": null,
+        "status": "open",
+        "withdrawalReason": null,
+        "withdrawnAt": null,
+        "answer": null,
+        "askedAt": 1792176108061,
+        "answeredAt": null,
+        "answeredBy": null,
+        "deliveryMessageId": null
+      },
+      "rpcCaller": {
+        "transport": "local_unix",
+        "ingress": "local_unix",
+        "uid": 1001,
+        "pid": 497850,
+        "verb": "question.ask"
+      }
+    }
+  },
+  {
+    "seq": 21,
+    "ts": 1792176108061,
+    "kind": "question.withdrawn",
+    "beeId": "c6dbf293-84e1-4749-a7da-40e6cdc5a859",
+    "payload": {
+      "questionId": "4b18638b-4c7d-4cde-8fe7-839b9e13e02a",
+      "withdrawalReason": "Race withdrawn.",
+      "withdrawnAt": 1792176108061,
+      "rpcCaller": {
+        "transport": "local_unix",
+        "ingress": "local_unix",
+        "uid": 1001,
+        "pid": 497850,
+        "verb": "question.withdraw"
+      }
+    }
+  },
+  {
+    "seq": 22,
+    "ts": 1792176108063,
+    "kind": "question.asked",
+    "beeId": "c6dbf293-84e1-4749-a7da-40e6cdc5a859",
+    "payload": {
+      "question": {
+        "id": "8e1d518e-4f03-44da-b318-9bf2039843ef",
+        "beeId": "c6dbf293-84e1-4749-a7da-40e6cdc5a859",
+        "generation": 1,
+        "text": "Concurrent race: answer first",
+        "options": null,
+        "status": "open",
+        "withdrawalReason": null,
+        "withdrawnAt": null,
+        "answer": null,
+        "askedAt": 1792176108063,
+        "answeredAt": null,
+        "answeredBy": null,
+        "deliveryMessageId": null
+      },
+      "rpcCaller": {
+        "transport": "local_unix",
+        "ingress": "local_unix",
+        "uid": 1001,
+        "pid": 497850,
+        "verb": "question.ask"
+      }
+    }
+  },
+  {
+    "seq": 23,
+    "ts": 1792176108063,
+    "kind": "mail.enqueued",
+    "beeId": "c6dbf293-84e1-4749-a7da-40e6cdc5a859",
+    "payload": {
+      "message": {
+        "id": 2,
+        "beeId": "c6dbf293-84e1-4749-a7da-40e6cdc5a859",
+        "sender": "operator",
+        "body": "[answer to question 8e1d518e-4f03-44da-b318-9bf2039843ef] yes\n\n(question was: Concurrent race: answer first)",
+        "priority": 0,
+        "urgency": "next",
+        "enqueuedAt": 1792176108063,
+        "deliveredAt": null,
+        "deliveredGeneration": null
+      },
+      "origin": "mail.send",
+      "rpcCaller": {
+        "transport": "local_unix",
+        "ingress": "local_unix",
+        "uid": 1001,
+        "pid": 497850,
+        "verb": "question.answer"
+      }
+    }
+  },
+  {
+    "seq": 24,
+    "ts": 1792176108063,
+    "kind": "question.answered",
+    "beeId": "c6dbf293-84e1-4749-a7da-40e6cdc5a859",
+    "payload": {
+      "questionId": "8e1d518e-4f03-44da-b318-9bf2039843ef",
+      "beeId": "c6dbf293-84e1-4749-a7da-40e6cdc5a859",
+      "answer": "yes",
+      "answeredAt": 1792176108063,
+      "answeredBy": "operator",
+      "deliveryMessageId": 2,
+      "rpcCaller": {
+        "transport": "local_unix",
+        "ingress": "local_unix",
+        "uid": 1001,
+        "pid": 497850,
+        "verb": "question.answer"
+      }
+    }
+  },
+  {
+    "seq": 25,
+    "ts": 1792176108256,
+    "kind": "rpc.local_refused",
+    "beeId": null,
+    "payload": {
+      "reason": "caller_not_trusted",
+      "uid": 1001,
+      "count": 4,
+      "firstAtMs": 1792176108042,
+      "lastAtMs": 1792176108050,
+      "firstPid": 497850,
+      "lastPid": 497850
+    }
+  }
+]

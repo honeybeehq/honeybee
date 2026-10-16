@@ -1756,16 +1756,14 @@ export class CoreStore {
         "core store is schema v29 from reverted build 7374447d; restore from backup before opening with this build.",
       );
     }
-    if (stored < 45) {
-      const ddl = String((this.db.prepare("SELECT sql FROM sqlite_master WHERE name = 'questions'").get() as Row).sql);
-      if (!ddl.includes("'withdrawn'")) {
-        this.db.exec("ALTER TABLE questions RENAME TO questions_v44");
-        this.db.exec(QUESTIONS_TABLE_SQL);
-        const columns = "id,bee_id,generation,text,options,status,answer,asked_at,answered_at,answered_by,delivery_message_id";
-        this.db.exec(`INSERT INTO questions(${columns}) SELECT ${columns} FROM questions_v44`);
-        this.db.exec("DROP TABLE questions_v44");
-        this.db.exec(QUESTIONS_TABLE_SQL);
-      }
+    const ddl = String((this.db.prepare("SELECT sql FROM sqlite_master WHERE name = 'questions'").get() as Row).sql);
+    if (!ddl.includes("'withdrawn'")) {
+      this.db.exec("ALTER TABLE questions RENAME TO questions_v44");
+      this.db.exec(QUESTIONS_TABLE_SQL);
+      const columns = "id,bee_id,generation,text,options,status,answer,asked_at,answered_at,answered_by,delivery_message_id";
+      this.db.exec(`INSERT INTO questions(${columns}) SELECT ${columns} FROM questions_v44`);
+      this.db.exec("DROP TABLE questions_v44");
+      this.db.exec(QUESTIONS_TABLE_SQL);
     }
     const needsHumanRefMigration = stored < 30;
     if (needsHumanRefMigration && !this.stmt("SELECT 1 FROM meta WHERE key = 'human_ref_installation_id'").get()) {

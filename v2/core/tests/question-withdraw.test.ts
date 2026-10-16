@@ -4,7 +4,7 @@ import { DatabaseSync } from "node:sqlite";
 import { mkdtempSync, mkdirSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { openCoreStore, replayAudit, QuestionNotOwnerError, QuestionAlreadyAnsweredError, QuestionWithdrawnError, QuestionNotFoundError, CoreError } from "../src/index.ts";
+import { openCoreStore, replayAudit, QuestionNotOwnerError, QuestionAlreadyAnsweredError, QuestionWithdrawnError, QuestionNotFoundError, CoreError, SCHEMA_VERSION } from "../src/index.ts";
 
 function fixture() {
   const base = join(homedir(), ".cache", "honeybee-question-withdraw-tests");
@@ -58,7 +58,7 @@ test("withdrawal is owner-only, quiet across retries, replayable and durable; bo
   } finally { store.close(); f.cleanup(); }
 });
 
-test("v44 question migration preserves open/answered rows, indexes and legacy audit defaults", () => {
+test("schema 44 opens legacy questions additively without a version bump or extra-table refusal", () => {
   const f = fixture();
   let store = f.open();
   const bee = store.createBee({ name: "legacy", agent: "stub", substrate: "hsr", cwd: f.dir }).bee;
@@ -71,6 +71,8 @@ test("v44 question migration preserves open/answered rows, indexes and legacy au
     CREATE TABLE questions(id TEXT PRIMARY KEY, bee_id TEXT NOT NULL REFERENCES bees(id) ON DELETE CASCADE, generation INTEGER, text TEXT NOT NULL, options TEXT, status TEXT NOT NULL CHECK(status IN ('open','answered')), answer TEXT, asked_at INTEGER NOT NULL, answered_at INTEGER, answered_by TEXT, delivery_message_id INTEGER, CHECK((status='answered')=(answered_at IS NOT NULL))) STRICT;
     INSERT INTO questions SELECT id,bee_id,generation,text,options,status,answer,asked_at,answered_at,answered_by,delivery_message_id FROM questions_new;
     DROP TABLE questions_new;
+    DROP TABLE question_withdraw_receipts;
+    CREATE TABLE unrelated_extension(id TEXT PRIMARY KEY) STRICT;
     UPDATE meta SET value='44' WHERE key='schema_version';
     UPDATE audit SET payload=json_remove(payload,'$.question.withdrawalReason','$.question.withdrawnAt') WHERE kind='question.asked';`);
   db.close();
@@ -78,10 +80,16 @@ test("v44 question migration preserves open/answered rows, indexes and legacy au
   try {
     assert.equal(store.getQuestion(open.id)?.withdrawalReason, null);
     assert.equal(store.getQuestion(answered.id)?.status, "answered");
-    store.withdrawQuestion(open.id, bee.id, "Migrated.");
+    store.withdrawQuestionWithKey(open.id, bee.id, "Migrated.", "migration-44");
     assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
     store.close();
     const check = new DatabaseSync(f.path);
+    assert.equal(SCHEMA_VERSION, 44);
+    assert.equal(check.prepare("SELECT value FROM meta WHERE key='schema_version'").get()!.value, "44");
+    assert.equal(check.prepare("PRAGMA integrity_check").get()!.integrity_check, "ok");
+    assert.deepEqual(check.prepare("PRAGMA foreign_key_check").all(), []);
+    assert.equal(check.prepare("SELECT count(*) AS n FROM question_withdraw_receipts").get()!.n, 1);
+    assert.ok(check.prepare("SELECT name FROM sqlite_master WHERE name='unrelated_extension'").get());
     assert.equal(check.prepare("SELECT count(*) AS n FROM sqlite_master WHERE type='index' AND name IN ('questions_open','questions_delivery_message')").get()!.n, 2);
     check.close();
     store = f.open();
