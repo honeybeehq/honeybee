@@ -7,6 +7,7 @@ import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, readdir, readlink, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { createServer } from "node:net";
 import { join } from "node:path";
 import { test } from "node:test";
 import { promisify } from "node:util";
@@ -212,17 +213,32 @@ for (const state of ["corrupt", "null", "sentinel", "missing-meta"] as const) {
 test("reservation lab: live schema 44 owner takes precedence over offline reservation", async () => {
   await withDeployWorld(async ({ root }) => {
     await seedReservation(root, false);
-    const cliDir = join(root, "current", "dist", "v2");
-    await mkdir(cliDir, { recursive: true });
     const reservation = { id: "live-owner", epoch: 8, active: true, recoverySubjectDigest: `sha256:${"b".repeat(64)}` };
-    const status = { runtimeRoot: root, storePath: join(root, "..", "v2", "core.sqlite3"), schemaVersion: 44, reservation };
-    await writeFile(join(cliDir, "cli.js"), `console.log(${JSON.stringify(JSON.stringify(status))});`);
-    assert.deepEqual(await readUpdateReservation(root), reservation);
-    status.reservation = { id: "", epoch: 0, active: false, recoverySubjectDigest: "" };
-    await writeFile(join(cliDir, "cli.js"), `console.log(${JSON.stringify(JSON.stringify(status))});`);
-    assert.equal(await readUpdateReservation(root), null);
-    await writeFile(join(cliDir, "cli.js"), `console.log('{}');`);
-    await assert.rejects(readUpdateReservation(root), /cannot identify/);
+    let status: unknown = { runtimeRoot: root, storePath: join(root, "..", "v2", "core.sqlite3"), schemaVersion: 44, reservation };
+    const server = createServer(socket => {
+      socket.write(`${JSON.stringify({ protocol: "v2/1" })}\n`);
+      let buffer = "";
+      socket.on("data", chunk => {
+        buffer += chunk;
+        for (;;) {
+          const nl = buffer.indexOf("\n");
+          if (nl < 0) break;
+          const frame = JSON.parse(buffer.slice(0, nl));
+          buffer = buffer.slice(nl + 1);
+          if (frame.id !== undefined) socket.write(`${JSON.stringify({ id: frame.id, ok: true, result: status })}\n`);
+        }
+      });
+    });
+    await new Promise<void>((resolve, reject) => { server.once("error", reject); server.listen(join(root, "..", "v2", "hived.sock"), resolve); });
+    try {
+      assert.deepEqual(await readUpdateReservation(root), reservation);
+      status = { runtimeRoot: root, storePath: join(root, "..", "v2", "core.sqlite3"), reservation: { id: "", epoch: 0, active: false, recoverySubjectDigest: "" } };
+      assert.equal(await readUpdateReservation(root), null);
+      for (const malformed of [{}, undefined, { runtimeRoot: root, storePath: "wrong", reservation: null }]) {
+        status = malformed;
+        await assert.rejects(readUpdateReservation(root), /cannot identify/);
+      }
+    } finally { await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); }
   });
 });
 

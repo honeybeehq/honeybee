@@ -1,9 +1,8 @@
-import { execFile } from "node:child_process";
 import { lstatSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { promisify } from "node:util";
 import { parseUpdateReservation, type UpdateReservation } from "./updateReservation.js";
+import { readLiveUpdateOwner } from "./v2/updateOwnerClient.mjs";
 
 function parseOwnerReservation(value: unknown): UpdateReservation | null {
   if (value === null) return null;
@@ -37,18 +36,13 @@ export async function readUpdateReservation(root: string): Promise<UpdateReserva
     }
   }
   if (!existsOrThrow(storePath)) return null;
-  let response: string | undefined;
-  try {
-    const { stdout } = await promisify(execFile)(process.execPath,
-      [join(root, "current", "dist", "v2", "cli.js"), "update-owner", "status", "--data-dir", dataDir, "--socket", socketPath],
-      { timeout: 10_000 });
-    response = stdout;
-  } catch {}
-  if (response !== undefined) {
-    const live = JSON.parse(response);
+  const response = await readLiveUpdateOwner(socketPath, dataDir);
+  if (response.kind === "live") {
+    const live = response.owner;
     if (!live || typeof live !== "object" || Array.isArray(live)
-      || typeof live.runtimeRoot !== "string" || resolve(live.runtimeRoot) !== resolve(root)
-      || typeof live.storePath !== "string" || resolve(live.storePath) !== storePath) {
+      || !("runtimeRoot" in live) || typeof live.runtimeRoot !== "string" || resolve(live.runtimeRoot) !== resolve(root)
+      || !("storePath" in live) || typeof live.storePath !== "string" || resolve(live.storePath) !== storePath
+      || !("reservation" in live)) {
       throw new Error("deploy: cannot identify update reservation owner");
     }
     return parseOwnerReservation(live.reservation);
