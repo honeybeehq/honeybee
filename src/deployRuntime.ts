@@ -33,18 +33,11 @@ import { assertUpdateAdmission, UPDATE_RECOVERY_CONTRACT, type UpdateAdmission }
 import { writeBuildStamp } from "./deploySettle.js";
 import { atomicWriteFile, storeRoot } from "./fsx.js";
 import { hostGitEnv } from "./hostGit.js";
-import { readUpdateReservation } from "./readUpdateReservation.js";
+import { assertRuntimeUpdateAllowed } from "./readUpdateReservation.js";
 
 const execFileAsync = promisify(execFile);
 
-export class DeployReservationHeldError extends Error {
-  readonly code = "DEPLOY_RESERVATION_HELD";
-
-  constructor(readonly reservationId: string, readonly epoch: number) {
-    super(`deploy: update reservation ${reservationId} at epoch ${epoch} is held; finish or recover the coordinated update, then clear it with hive update-owner release using its exact id, epoch, recoverySubjectDigest and expectedIdentity`);
-    this.name = "DeployReservationHeldError";
-  }
-}
+export { DeployReservationHeldError } from "./readUpdateReservation.js";
 
 export const RUNTIME_DIR_NAME = "runtime";
 export const CURRENT_LINK_NAME = "current";
@@ -345,8 +338,7 @@ export async function deployVersion(options: DeployOptions): Promise<DeployOutco
 
 async function deployVersionLocked(options: DeployOptions): Promise<DeployOutcome> {
   const root = options.root ?? runtimeRoot();
-  const reservation = await readUpdateReservation(root);
-  if (reservation?.active) throw new DeployReservationHeldError(reservation.id, reservation.epoch);
+  await assertRuntimeUpdateAllowed(root, "deploy");
   const keep = Math.max(1, Math.floor(options.keep ?? DEFAULT_KEEP_VERSIONS));
   const log = options.log ?? (() => undefined);
   const now = options.now ?? (() => new Date());
@@ -479,6 +471,7 @@ export async function deployArtifact(options: DeployArtifactOptions): Promise<De
   const workDir = await mkdtemp(join(root, ".artifact-"));
   try {
     return await withFileLock(join(root, ".deploy.lock"), async () => {
+      await assertRuntimeUpdateAllowed(root, "artifact");
       const prepared = await unpackDeployArtifact(options.archive, options.identity, workDir);
       if (prepared.recoveryContract !== UPDATE_RECOVERY_CONTRACT) throw new Error("deploy: artifact lacks the recovery admission contract; coordinated migration required");
       // The archive cannot supply its own admission receipt or redirect this write.
@@ -528,8 +521,7 @@ export async function rollbackDeploy(options: RollbackOptions): Promise<Rollback
 
 async function rollbackDeployLocked(options: RollbackOptions): Promise<RollbackOutcome> {
   const root = options.root ?? runtimeRoot();
-  const reservation = await readUpdateReservation(root);
-  if (reservation?.active) throw new DeployReservationHeldError(reservation.id, reservation.epoch);
+  await assertRuntimeUpdateAllowed(root, "rollback");
   const log = options.log ?? (() => undefined);
   const now = options.now ?? (() => new Date());
   const by = options.by ?? deployedBy();
@@ -569,6 +561,7 @@ export async function pruneRuntimeVersions(
 }
 
 async function pruneRuntimeVersionsLocked(root: string, options: { keep?: number }): Promise<string[]> {
+  await assertRuntimeUpdateAllowed(root, "prune");
   const keep = Math.max(1, Math.floor(options.keep ?? DEFAULT_KEEP_VERSIONS));
   const entries = await readDeployHistory(root);
   const currentSha = await currentDeployTarget(root);

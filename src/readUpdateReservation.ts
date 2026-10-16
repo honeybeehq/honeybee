@@ -3,14 +3,14 @@ import { lstatSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { promisify } from "node:util";
-import { parseUpdateReservation, type UpdateReservation } from "./updateReservation.js";
+import { parseDurableUpdateReservation, isApiarySwap, type DurableUpdateReservation } from "./apiarySwap.js";
 
-function parseOwnerReservation(value: unknown): UpdateReservation | null {
+function parseOwnerReservation(value: unknown): DurableUpdateReservation | null {
   if (value === null) return null;
   if (typeof value === "object" && value !== null && "epoch" in value && value.epoch === 0
     && "id" in value && value.id === "" && "recoverySubjectDigest" in value && value.recoverySubjectDigest === ""
     && "active" in value && value.active === false) return null;
-  return parseUpdateReservation(value);
+  return parseDurableUpdateReservation(value);
 }
 
 function existsOrThrow(path: string): boolean {
@@ -23,7 +23,7 @@ function existsOrThrow(path: string): boolean {
   }
 }
 
-export async function readUpdateReservation(root: string): Promise<UpdateReservation | null> {
+export async function readUpdateReservation(root: string): Promise<DurableUpdateReservation | null> {
   const dataDir = resolve(root, "..", "v2");
   const storePath = join(dataDir, "core.sqlite3");
   const socketPath = join(dataDir, "hived.sock");
@@ -56,6 +56,21 @@ export async function readUpdateReservation(root: string): Promise<UpdateReserva
   const db = new DatabaseSync(storePath, { readOnly: true });
   try {
     const row = db.prepare("SELECT value FROM meta WHERE key='coordinated_update'").get();
-    return row ? parseUpdateReservation(JSON.parse(String(row.value))) : null;
+    return row ? parseDurableUpdateReservation(JSON.parse(String(row.value))) : null;
   } finally { db.close(); }
+}
+
+export class DeployReservationHeldError extends Error {
+  readonly code = "DEPLOY_RESERVATION_HELD";
+  constructor(readonly reservationId: string, readonly epoch: number, readonly purpose: "paired-recovery" | "apiary-swap" = "paired-recovery") {
+    super(`deploy: ${purpose} update reservation ${reservationId} at epoch ${epoch} is held; finish or recover the coordinated update, then clear it with hive update-owner ${purpose === "apiary-swap" ? "apiary-swap release" : "release"} using its exact owner tuple and completion receipt`);
+    this.name = "DeployReservationHeldError";
+  }
+}
+
+export async function assertRuntimeUpdateAllowed(root: string, operation: "deploy" | "rollback" | "restart" | "artifact" | "prune" = "deploy"): Promise<void> {
+  const reservation = await readUpdateReservation(root);
+  if (reservation?.active && (isApiarySwap(reservation) || !["artifact", "prune"].includes(operation))) {
+    throw new DeployReservationHeldError(reservation.id, reservation.epoch, isApiarySwap(reservation) ? "apiary-swap" : "paired-recovery");
+  }
 }

@@ -1,3 +1,4 @@
+import { parseDurableUpdateReservation, parseApiarySwapAcquire, parseApiarySwapSettle, parseApiarySwapRecover, acquireApiarySwap, settleApiarySwap, recoverApiarySwap, type DurableUpdateReservation, type ApiarySwapReservation } from "../../../src/apiarySwap.ts";
 import { currentRpcCaller } from "./rpcAuditContext.ts";
 import type { AccountObservationMetadata, LimitsObserverProvenance } from "./types.ts";
 import { isAccountId } from "./accountRecipes.ts";
@@ -5524,8 +5525,42 @@ export class CoreStore {
     return parseUpdateReservation(JSON.parse(row.value));
   }
 
+  durableUpdateReservation(): DurableUpdateReservation {
+    const row = this.stmt("SELECT value FROM meta WHERE key = 'coordinated_update'").get() as { value: string } | undefined;
+    return row ? parseDurableUpdateReservation(JSON.parse(row.value)) : { epoch: 0, id: "", recoverySubjectDigest: "", active: false };
+  }
+
+  private writeApiarySwap(reservation: ApiarySwapReservation): ApiarySwapReservation {
+    this.stmt("INSERT INTO meta(key,value) VALUES('coordinated_update',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(JSON.stringify(reservation));
+    return reservation;
+  }
+
+  acquireApiarySwap(value: unknown): ApiarySwapReservation {
+    const input = parseApiarySwapAcquire(value);
+    return this.tx(() => {
+      const previous = this.durableUpdateReservation(), next = acquireApiarySwap(previous, input);
+      return next === previous ? next : this.writeApiarySwap(next);
+    });
+  }
+
+  settleApiarySwap(value: unknown, kind: "release" | "abandon"): ApiarySwapReservation {
+    const input = parseApiarySwapSettle(value, kind);
+    return this.tx(() => {
+      const previous = this.durableUpdateReservation(), next = settleApiarySwap(previous, input, kind);
+      return next === previous ? next : this.writeApiarySwap(next);
+    });
+  }
+
+  recoverApiarySwap(value: unknown): ApiarySwapReservation {
+    const input = parseApiarySwapRecover(value);
+    return this.tx(() => {
+      const previous = this.durableUpdateReservation(), next = recoverApiarySwap(previous, input);
+      return next === previous ? next : this.writeApiarySwap(next);
+    });
+  }
+
   assertNoUpdateReservation(): void {
-    if (this.updateReservation().active) throw new CoreError("Coordinated update is reserved; finish or recover the update before enrolling credentials");
+    if (this.durableUpdateReservation().active) throw new CoreError("Coordinated update is reserved; finish or recover the update before enrolling credentials");
   }
 
   reserveUpdate(input: { id: string; recoverySubjectDigest: string; expectedEpoch: number }) {
