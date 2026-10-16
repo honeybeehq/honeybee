@@ -1,3 +1,4 @@
+import { childNodePath, nativeNodeEnv } from "../nodeRuntime.js";
 /**
  * Disposable-process session enumeration. A lost fs.promises completion cannot
  * be cancelled in-process; timing it out merely leaves the registry walk alive
@@ -64,10 +65,10 @@ function reconcileActiveIndexIsolated(root: string, signal?: AbortSignal): Promi
   const timeoutMs = envMs("HIVE_DAEMON_ACTIVE_SESSION_RECONCILE_TIMEOUT_MS", 60_000);
   return new Promise<number>((resolve, reject) => {
     const child = spawn(
-      process.execPath,
+      childNodePath(),
       daemonWorkerArgv("active-index-reconcile-worker", import.meta.url),
       {
-        env: { ...process.env, HIVE_STORE_ROOT: root },
+        env: nativeNodeEnv({ ...process.env, HIVE_STORE_ROOT: root }),
         stdio: ["ignore", "ignore", "pipe"],
       },
     );
@@ -175,8 +176,9 @@ export type IsolatedSessionListerOptions = {
 export type IsolatedSessionLister = (() => Promise<SessionRecord[]>) & { close: () => Promise<void> };
 
 function defaultSpawnChild(): SessionListChild {
-  const child: ChildProcess = spawn(process.execPath, daemonWorkerArgv("session-list-worker", import.meta.url), {
+  const child: ChildProcess = spawn(childNodePath(), daemonWorkerArgv("session-list-worker", import.meta.url), {
     stdio: ["pipe", "pipe", "inherit"],
+    env: nativeNodeEnv(),
   });
   child.unref();
   return child as unknown as SessionListChild;

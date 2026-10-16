@@ -1,3 +1,4 @@
+import { nodePinEnv, probeNativeNode } from "../../../src/nodeRuntime.ts";
 /**
  * WP4 CLI tier: the thin client — RPC when the daemon is up, read-only
  * SQLite fallback clearly labeled stale when it is down, `send --wait` (Q3),
@@ -818,16 +819,16 @@ test("cli.6: service glue — label never the live daemon's, exec args env overr
   assert.notEqual(serviceLabel({}), "dev.honeybee.hive");
   assert.equal(serviceLabel({ HIVE_V2_SERVICE_LABEL: "x.test" }), "x.test");
   assert.deepEqual(
-    serviceExecArgs("/data", { HIVE_V2_SERVICE_ARGS: JSON.stringify(["/bin/node", "/x.js", "daemon", "run"]) }),
-    ["/bin/node", "/x.js", "daemon", "run"],
+    serviceExecArgs("/data", { HIVE_V2_SERVICE_ARGS: JSON.stringify([process.execPath, "/x.js", "daemon", "run"]) }),
+    [process.execPath, "/x.js", "daemon", "run"],
   );
-  const computed = serviceExecArgs("/data", {});
+  const computed = serviceExecArgs("/data", { HIVE_NODE_PATH: process.execPath });
   assert.equal(computed[0], process.execPath);
   assert.deepEqual(computed.slice(-3), ["run", "--data-dir", "/data"]);
   // Service env bakes the installing shell's PATH (launchd/systemd give the
   // daemon a bare PATH that cannot resolve claude/codex — 2026-08-19 soak).
-  assert.deepEqual(serviceEnv("/data", { PATH: "/a:/b" }), { HIVE_V2_DATA_DIR: "/data", PATH: "/a:/b" });
-  assert.deepEqual(serviceEnv("/data", {}), { HIVE_V2_DATA_DIR: "/data" });
+  assert.deepEqual(serviceEnv("/data", { PATH: "/a:/b", HIVE_NODE_PATH: process.execPath }), { HIVE_V2_DATA_DIR: "/data", PATH: "/a:/b", ...nodePinEnv(probeNativeNode(process.execPath)) });
+  assert.deepEqual(serviceEnv("/data", { HIVE_NODE_PATH: process.execPath }), { HIVE_V2_DATA_DIR: "/data", ...nodePinEnv(probeNativeNode(process.execPath)) });
 });
 
 test("cli.7: cutover verbs — `freeze` writes/refuses locally; `import --from-frozen` reports (dry-run, marker refusal, real import, idempotent) over RPC", async () => {

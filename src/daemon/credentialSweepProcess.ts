@@ -1,3 +1,4 @@
+import { childNodePath, nativeNodeEnv } from "../nodeRuntime.js";
 /**
  * Disposable-process credential sweep. Credential reads touch thousands of
  * historical records, macOS Keychain subprocesses, and per-account locks.
@@ -126,8 +127,9 @@ export class CredentialSweepTimeoutError extends Error {
 }
 
 function defaultSpawnChild(): CredentialSweepChild {
-  const child: ChildProcess = spawn(process.execPath, daemonWorkerArgv("credential-sweep-worker", import.meta.url), {
+  const child: ChildProcess = spawn(childNodePath(), daemonWorkerArgv("credential-sweep-worker", import.meta.url), {
     stdio: ["pipe", "pipe", "inherit"],
+    env: nativeNodeEnv(),
     // pgid === pid: timeout can terminate every inherited helper/descendant,
     // not merely the Node worker that launched `security`/Keychain work.
     detached: true,

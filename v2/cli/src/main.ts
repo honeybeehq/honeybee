@@ -1,3 +1,4 @@
+import { resolveNodePin, persistNodePin, nodePinEnv } from "../../../src/nodeRuntime.ts";
 import { BUILD_IDENTITY } from "../../daemon/src/protocol.ts";
 /**
  * The thin v2 CLI (spec 04 "CLI"). Ships inside the existing `hive` binary as
@@ -4679,6 +4680,7 @@ export function serviceLabel(env: Record<string, string | undefined> = process.e
 export function serviceEnv(
   dataDir: string,
   env: Record<string, string | undefined> = process.env,
+  interpreter?: string,
 ): Record<string, string> {
   // launchd/systemd start services with a bare PATH (/usr/bin:/bin:…) that
   // cannot resolve the harness binaries (claude/codex/…) living in
@@ -4686,11 +4688,17 @@ export function serviceEnv(
   // (2026-08-19 soak finding). Bake the installing shell's PATH into the
   // unit, exactly like the v1 daemon install does.
   return { HIVE_V2_DATA_DIR: dataDir, ...(env.PATH ? { PATH: env.PATH } : {}),
-    ...(env.ELECTRON_RUN_AS_NODE === "1" ? { ELECTRON_RUN_AS_NODE: "1" } : {}) };
+    ...nodePinEnv(resolveNodePin(dataDir, env, interpreter)) };
 }
 
 export function serviceExecArgs(dataDir: string, env: Record<string, string | undefined> = process.env): string[] {
-  if (env.HIVE_V2_SERVICE_ARGS) return JSON.parse(env.HIVE_V2_SERVICE_ARGS) as string[];
+  if (env.HIVE_V2_SERVICE_ARGS) {
+    const args: unknown = JSON.parse(env.HIVE_V2_SERVICE_ARGS);
+    if (!Array.isArray(args) || args.length < 2 || !args.every((arg): arg is string => typeof arg === "string")) throw new Error("HIVE_V2_SERVICE_ARGS must be an argv array");
+    const pin = resolveNodePin(dataDir, env, args[0]);
+    if (args.slice(1).some(arg => /^--(?:inspect|debug)/.test(arg))) throw new Error("service interpreter inspector arguments are forbidden");
+    return [pin.path, ...args.slice(1)];
+  }
   // Prefer the versioned-runtime entry over argv[1]: the PATH `hive` shim can
   // drift (2026-08-19: it pointed at a working checkout), and the `current`
   // symlink is the deploy contract — a service pinned to it follows every
@@ -4701,10 +4709,12 @@ export function serviceExecArgs(dataDir: string, env: Record<string, string | un
   // unit installed before freeze still hits this stack (`hive v2 daemon run`).
   // The standalone v2 bin already is this CLI, so no prefix.
   const viaHive = !/[/\\]v2[/\\]/.test(entry);
-  return [process.execPath, entry, ...(viaHive ? ["v2"] : []), "daemon", "run", "--data-dir", dataDir];
+  return [resolveNodePin(dataDir, env).path, entry, ...(viaHive ? ["v2"] : []), "daemon", "run", "--data-dir", dataDir];
 }
 
-function buildServiceManager(ctx: CliContext): ServiceManager {
+function buildServiceManager(ctx: CliContext, installing = false): ServiceManager {
+  const args = installing ? serviceExecArgs(ctx.cfg.dataDir) : [];
+  const pin = installing ? resolveNodePin(ctx.cfg.dataDir, process.env, args[0]) : undefined;
   const platform = process.platform;
   const dir =
     process.env.HIVE_V2_SERVICE_DIR ??
@@ -4713,9 +4723,9 @@ function buildServiceManager(ctx: CliContext): ServiceManager {
     platform,
     {
       label: serviceLabel(),
-      execArgs: serviceExecArgs(ctx.cfg.dataDir),
+      execArgs: args,
       logPath: ctx.cfg.logPath,
-      env: serviceEnv(ctx.cfg.dataDir),
+      env: pin ? serviceEnv(ctx.cfg.dataDir, process.env, pin.path) : {},
     },
     { exec: realExec, dir, uid: process.getuid?.() ?? 0 },
   );
@@ -4728,8 +4738,9 @@ async function cmdDaemon(ctx: CliContext, parsed: Parsed): Promise<number> {
       // Foreground daemon — what the service files execute.
       return runDaemon(["--data-dir", ctx.cfg.dataDir, ...(ctx.target.socketSource === "flag" ? ["--socket", ctx.cfg.socketPath] : [])]);
     case "install": {
-      const mgr = buildServiceManager(ctx);
+      const mgr = buildServiceManager(ctx, true);
       await mgr.install();
+      persistNodePin(ctx.cfg.dataDir, resolveNodePin(ctx.cfg.dataDir, process.env, serviceExecArgs(ctx.cfg.dataDir)[0]));
       emit(ctx, [confirm("ok", "installed", `${mgr.platform} service at ${mgr.servicePath}`)], { servicePath: mgr.servicePath }, false);
       return 0;
     }

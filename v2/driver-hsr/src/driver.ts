@@ -1,3 +1,4 @@
+import { childNodePath, nativeNodeEnv } from "../../../src/nodeRuntime.ts";
 import type { ReconnectToolsReceipt } from "../../core/src/reconnectTools.ts";
 /**
  * HsrDriver — the first real substrate driver (WP3 of the reset).
@@ -443,11 +444,11 @@ export class HsrDriver implements RuntimeDriver {
     if (this.hostLaunch.kind === "override") return this.hostLaunch.commandFor(configPath);
     if (this.hostLaunch.kind === "source") {
       return {
-        command: process.execPath,
+        command: childNodePath(),
         args: ["--experimental-strip-types", this.hostLaunch.entry, configPath],
       };
     }
-    return { command: process.execPath, args: [this.hostLaunch.entry, configPath] };
+    return { command: childNodePath(), args: [this.hostLaunch.entry, configPath] };
   }
 
   // -------------------------------------------------------------------------
@@ -486,7 +487,7 @@ export class HsrDriver implements RuntimeDriver {
       command: spec.command,
       args: spec.args,
       ...(spec.cwd !== undefined ? { cwd: spec.cwd } : {}),
-      env: spec.env ?? ({ ...process.env } as Record<string, string>),
+      env: nativeNodeEnv(spec.env ?? process.env),
       sessionLogPath: this.sessionLogPath(beeId),
       observationLogPath: paths.observations,
       sidecarPath: join(this.cfg.sessionLogDir, `${beeId}.stderr.log`),
@@ -497,6 +498,7 @@ export class HsrDriver implements RuntimeDriver {
     writeFileSync(paths.config, JSON.stringify(hostConfig));
     const launch = this.hostCommandFor(paths.config);
     const child = spawn(launch.command, launch.args, {
+      env: nativeNodeEnv(),
       detached: true,
       stdio: ["ignore", "ignore", "ignore"],
     });

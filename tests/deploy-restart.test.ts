@@ -1,3 +1,4 @@
+import { persistNodePin, probeNativeNode } from "../src/nodeRuntime.js";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
@@ -10,6 +11,7 @@ test("fresh verified activation executes installed current v2 CLI with scoped da
   try {
     const root = join(dir, "runtime"), calls = join(dir, "calls.jsonl");
     await mkdir(join(root, "current", "dist"), { recursive: true });
+    persistNodePin(join(dir, "v2"), probeNativeNode(process.execPath));
     await writeFile(join(root, "current", "dist", "cli.js"), `require('node:fs').appendFileSync(${JSON.stringify(calls)}, JSON.stringify(process.argv.slice(2))+'\\n');`);
     await restartDeployedDaemon({ root, installedDir: join(root, "current"), sha: "a".repeat(40), runtime: "v2", log() {} });
     assert.deepEqual((await readFile(calls, "utf8")).trim().split("\n").map(line => JSON.parse(line)),
@@ -23,6 +25,7 @@ for (const absent of [false, true]) {
     try {
       const root = join(dir, "runtime"), calls = join(dir, "calls.jsonl");
       await mkdir(join(root, "current", "dist"), { recursive: true });
+    persistNodePin(join(dir, "v2"), probeNativeNode(process.execPath));
       await writeFile(join(root, "current", "dist", "cli.js"), `
         require('node:fs').appendFileSync(${JSON.stringify(calls)}, JSON.stringify(process.argv.slice(2))+'\\n');
         if (process.argv[4] === 'stop') process.exit(1);
@@ -44,6 +47,7 @@ test("persisted v2 config selects the v2 service for an ordinary source restart"
   try {
     const root = join(dir, "runtime"), calls = join(dir, "calls.jsonl");
     await mkdir(join(root, "current", "dist"), { recursive: true });
+    persistNodePin(join(dir, "v2"), probeNativeNode(process.execPath));
     await writeFile(join(root, RUNTIME_MODE_CONFIG), JSON.stringify({ schemaVersion: 1, runtime: "v2" }));
     await writeFile(join(root, "current", "dist", "cli.js"), `require('node:fs').appendFileSync(${JSON.stringify(calls)}, JSON.stringify(process.argv.slice(2))+'\\n');`);
     await restartDeployedDaemon({ root, installedDir: join(root, "current"), sha: "b".repeat(40), log() {} });

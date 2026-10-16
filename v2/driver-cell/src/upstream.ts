@@ -1,3 +1,4 @@
+import { childNodePath, nativeNodeEnv } from "../../../src/nodeRuntime.ts";
 /**
  * Honeybee-owned upstream mirrors: one bare repository per origin URL under
  * `<data-dir>/upstream/`, fetch-only, whose `refs/upstream/head` is the
@@ -139,8 +140,9 @@ export function refreshUpstreamMirror(
 
 export function holdMirrorLock(lockDir: string, heartbeatMs = MIRROR_LOCK_HEARTBEAT_MS): { release(): void } {
   try {
-    const child = spawn(process.execPath, ["-e", LOCK_HEARTBEAT_SOURCE, lockDir, String(heartbeatMs)], {
+    const child = spawn(childNodePath(), ["-e", LOCK_HEARTBEAT_SOURCE, lockDir, String(heartbeatMs)], {
       stdio: ["pipe", "ignore", "ignore"],
+      env: nativeNodeEnv(),
     });
     child.on("error", () => {});
     child.unref();
