@@ -16,7 +16,7 @@ import time
 import uuid
 import threading
 
-from policy import RULE_VERSION, closing_verdict, differences, preexec_verdict, flake_verdict, within,namespace_pid,error_verdict,mapping_coverage
+from policy import RULE_VERSION, closing_verdict, differences, preexec_verdict, flake_verdict, within,namespace_pid,error_verdict,mapping_coverage,probe_failed
 
 
 def save(path, value):
@@ -320,7 +320,7 @@ def run_step(config, step):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Guarded Linux gate, rules v25. One physical attempt per planned step; no retries.', epilog='Steps: check,v2:check,v2:test,v2:daemon,v2:driver,v2:driver2,v2:harness,build,gate-tests,test:<repo-relative.test.ts>,flake:<repo-relative.test.ts>:N. N>=3; daemon-shutdown N>=10. Preparation, offline npm ci and peercred prebuild are automatic. Receipts: REAL_HOME/.cache/hbl/<run>. Approved satellites only. Start with env -i PATH=... HOME=<fake> TMPDIR=<fake> LANG=C.UTF-8 run.sh --real-home REAL_HOME --candidate SHA --base SHA --steps LIST --npm-cache FILE --npm-cache-sha256 SHA256. No other HIVE_*/APIARY_* variables are accepted.')
+    parser = argparse.ArgumentParser(description='Guarded Linux gate, rules v27. One physical attempt per planned step; no retries.', epilog='Steps: check,v2:check,v2:test,v2:daemon,v2:driver,v2:driver2,v2:harness,build,gate-tests,test:<repo-relative.test.ts>,flake:<repo-relative.test.ts>:N. N>=3; daemon-shutdown N>=10. Preparation, offline npm ci and peercred prebuild are automatic. Receipts: REAL_HOME/.cache/hbl/<run>. Approved satellites only. Start with env -i PATH=... HOME=<fake> TMPDIR=<fake> LANG=C.UTF-8 run.sh --real-home REAL_HOME --candidate SHA --base SHA --steps LIST --npm-cache FILE --npm-cache-sha256 SHA256. No other HIVE_*/APIARY_* variables are accepted.')
     parser.add_argument('--real-home', required=True)
     parser.add_argument('--candidate', required=True)
     parser.add_argument('--base', required=True)
@@ -338,6 +338,9 @@ def main():
     if any(within(path, '/home') or '.hive' in pathlib.Path(path).parts or not path.startswith('/') for path in args.lsof_exclude):
         parser.error('lsof exclusions must be exact unrelated absolute mountpoints outside /home and .hive')
     repo = pathlib.Path(__file__).resolve().parents[3]
+    gate_sha = subprocess.check_output(['git', '-C', str(repo), 'rev-parse', 'HEAD'], text=True).strip()
+    if subprocess.check_output(['git', '-C', str(repo), 'status', '--porcelain', '--', 'scripts/gates/linux'], text=True).strip():
+        parser.error('gate source must match its committed revision')
     shas = {key: subprocess.check_output(['git', '-C', str(repo), 'rev-parse', '--verify', value + '^{commit}'], text=True).strip() for key, value in dict(candidate=args.candidate, base=args.base).items()}
     plan, flakes = [], []
     for version in shas:
@@ -376,7 +379,7 @@ def main():
     parent.mkdir(parents=True, exist_ok=True)
     root = parent / (time.strftime('%y%m%d%H%M%S') + '-' + uuid.uuid4().hex[:6])
     root.mkdir()
-    config = dict(runRoot=str(root), realHome=str(home), controllerEnvironmentKeys=sorted(os.environ), controllerHome=os.environ['HOME'], path=os.environ['PATH'], shas=shas, rulesVersion=RULE_VERSION, lsofExclusions=args.lsof_exclude, cacheSource=str(pathlib.Path(args.npm_cache).absolute()), cacheSha256=args.npm_cache_sha256, provenance='findings/hb-turn-quiet-netcup2-script-bundle.json v1', flakePlan=flakes)
+    config = dict(runRoot=str(root), realHome=str(home), gateSha=gate_sha,controllerEnvironmentKeys=sorted(os.environ), path=os.environ['PATH'], shas=shas, rulesVersion=RULE_VERSION, lsofExclusions=args.lsof_exclude, cacheSource=str(pathlib.Path(args.npm_cache).absolute()), cacheSha256=args.npm_cache_sha256, provenance='findings/hb-turn-quiet-netcup2-script-bundle.json v1', flakePlan=flakes)
     config['toolHashes'] = {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in pathlib.Path(__file__).parent.iterdir() if path.is_file()}
     config['ledger'] = str(parent / 'attempt-ledger.jsonl')
     save(root / 'config.json', config)
@@ -404,9 +407,15 @@ def main():
     save(root / 'cache-transfer.json', dict(source=str(cache), sha256=digest, bytes=cache.stat().st_size))
     print(json.dumps(dict(runRoot=str(root), candidate=shas['candidate'], base=shas['base'], planned=len(plan))), flush=True)
     results = []
+    abort_reason = None
     for step in plan:
         result = run_step(config, step)
         results.append(result)
+        probe_path = pathlib.Path(result['physical']['receipt'])/'locked-mount-probes.json'
+        if probe_failed(read(probe_path) if probe_path.exists() else None):
+            abort_reason = 'locked mount negative probe failed; invocation aborted before any further step'
+            record_attempt(root,dict(event='invocation-aborted',rulesVersion=RULE_VERSION,attemptId=result['physical']['attemptId'],reason=abort_reason,at=time.time()))
+            break
         if step['label'].endswith(('-prepare', '-ci', '-prebuild')) and result['outcome'] == 'FAIL':
             break
     flake_results = []
@@ -414,7 +423,7 @@ def main():
         rows = [item for item in results if '-step' + str(flake['index']) + '-' in item['physical']['label']]
         flake_results.append(dict(**flake, **flake_verdict(rows, flake['count'])))
     pre_warnings = sum(any(change['verdict'] == 'WARN' and change.get('category') == 'WAL/SHM mtime-only' for change in item.get('preExec', {}).get('changes', [])) for item in results)
-    summary = dict(config=config, planned=len(plan), completed=len(results), overall='PASS' if len(results) == len(plan) and all(item['outcome'] != 'FAIL' for item in results) else 'FAIL', preExecWalShmWarnAttempts=pre_warnings, physicalAttempts=len(results), preExecWalShmWarnRate=pre_warnings / len(results), flakeResults=flake_results, steps=[dict(label=item['physical']['label'], outcome=item['outcome'], citedAttempt=item['citedAttempt']) for item in results])
+    summary = dict(config=config, planned=len(plan), completed=len(results), overall='PASS' if len(results) == len(plan) and all(item['outcome'] != 'FAIL' for item in results) else 'FAIL', abortReason=abort_reason,preExecWalShmWarnAttempts=pre_warnings, physicalAttempts=len(results), preExecWalShmWarnRate=pre_warnings / len(results), flakeResults=flake_results, steps=[dict(label=item['physical']['label'], outcome=item['outcome'], citedAttempt=item['citedAttempt']) for item in results])
     save(root / 'receipt.json', summary)
     print(json.dumps(summary), flush=True)
     return 0 if summary['overall'] == 'PASS' else 1

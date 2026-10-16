@@ -1,7 +1,7 @@
 import errno
 import pathlib
 
-RULE_VERSION = 25
+RULE_VERSION = 27
 
 
 def within(target, root):
@@ -88,6 +88,10 @@ def mapping_coverage(birth, mappings, errors):
     if scoped and birth.get('nextBirthSample',{}).get('state')=='pid_gone':
         return 'mapping unavailable: exited before host capture'
     return 'FAIL'
+
+
+def probe_failed(result):
+    return result is not None and (result.get('childExit') != 0 or len(result.get('probes', [])) != 3 or any(not item.get('expectedFailure') for item in result.get('probes', [])))
 
 
 def closing_verdict(change, real_home, masked_eligible, clean, config_times, touched, named):

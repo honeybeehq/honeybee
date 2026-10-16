@@ -1,7 +1,7 @@
 import errno
 import unittest
 
-from policy import closing_verdict, error_verdict, wal_mtime_only, preexec_verdict, flake_verdict,update_fd_prior,namespace_pid,mapping_coverage
+from policy import closing_verdict, error_verdict, wal_mtime_only, preexec_verdict, flake_verdict,update_fd_prior,namespace_pid,mapping_coverage,probe_failed
 
 HOME = '/home/lab'
 HIVE = HOME + '/.hive'
@@ -118,6 +118,14 @@ class PolicyTests(unittest.TestCase):
         birth['nextBirthSample']['state']='pid_present'
         self.assertEqual(mapping_coverage(birth,[],errors),'FAIL')
         self.assertEqual(mapping_coverage(birth,[dict(namespacePid=4,starttime='12')],errors),'mapped')
+
+    def test_probe_failure_aborts_invocation(self):
+        valid=dict(childExit=0,probes=[dict(expectedFailure=True) for unused in range(3)])
+        self.assertFalse(probe_failed(None))
+        self.assertFalse(probe_failed(valid))
+        self.assertTrue(probe_failed(dict(valid,childExit=2)))
+        self.assertTrue(probe_failed(dict(valid,probes=valid['probes'][:-1])))
+        self.assertTrue(probe_failed(dict(valid,probes=[dict(expectedFailure=False)]+valid['probes'][1:])))
 
 
 if __name__ == '__main__':
