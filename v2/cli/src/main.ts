@@ -4961,18 +4961,19 @@ export async function runV2Cli(argv: string[], io: CliIo = defaultIo): Promise<n
       case "deploy-info":
         return await cmdDeployInfo(ctx);
       case "update-owner": {
-        const sub = parsed.args[0];
+        const updateArgs = parsed.positional.slice(1);
+        const sub = updateArgs[0];
         if (sub === "apiary-swap") {
-          const operation = parsed.args[1];
+          const operation = updateArgs[1];
           if (operation !== "status" && operation !== "acquire" && operation !== "release" && operation !== "abandon" && operation !== "recover") throw new Error("update-owner apiary-swap: expected status, acquire, release, abandon, or recover");
-          if (parsed.args.length !== (operation === "status" ? 2 : 3)) throw new Error("update-owner apiary-swap: expected an exact request file for mutations");
-          const params = operation === "status" ? {} : JSON.parse(readFileSync(parsed.args[2]!, "utf8"));
+          if (updateArgs.length !== (operation === "status" ? 2 : 3)) throw new Error("update-owner apiary-swap: expected an exact request file for mutations");
+          const params = operation === "status" ? {} : JSON.parse(readFileSync(updateArgs[2]!, "utf8"));
           const result = await withClient(ctx, c => c.request(`update.apiarySwap.${operation}`, params));
           ctx.io.out(JSON.stringify(ctx.json ? withDaemonTarget(ctx, result) : result));
           return 0;
         }
         if (sub !== "status" && sub !== "reserve" && sub !== "release") throw new Error("update-owner: expected status, reserve, or release");
-        const params = sub === "status" ? {} : JSON.parse(readFileSync(parsed.args[1] ?? "", "utf8"));
+        const params = sub === "status" ? {} : JSON.parse(readFileSync(updateArgs[1] ?? "", "utf8"));
         const result = await withClient(ctx, c => c.request(`update.${sub}`, params));
         ctx.io.out(JSON.stringify(ctx.json ? withDaemonTarget(ctx, result) : result));
         return 0;
