@@ -838,7 +838,7 @@ test("runner host preserves explicit harness Node options", (t) => {
   const preload = join(dir, "explicit.cjs"), marker = join(dir, "marker.json");
   writeFileSync(preload, `require('node:fs').writeFileSync(${JSON.stringify(marker)}, JSON.stringify({node:process.env.NODE_OPTIONS,electron:process.env.ELECTRON_RUN_AS_NODE}));`);
   const options = `--require ${preload}`;
-  const result = runHostWithStdoutLines([], { NODE_OPTIONS: options, ELECTRON_RUN_AS_NODE: "explicit" });
+  const result = runHostWithStdoutLines(["explicit harness options"], { NODE_OPTIONS: options, ELECTRON_RUN_AS_NODE: "explicit" });
   t.after(result.cleanup);
   assert.deepEqual(JSON.parse(readFileSync(marker, "utf8")), { node: options, electron: "explicit" });
 });
