@@ -1642,7 +1642,11 @@ export class CoreStore {
         // Version gate + explicit migrations FIRST (before any other write
         // touches possibly-old tables), atomically with the stamp.
         this.ensureSchemaVersion();
-        this.effectLedger.open();
+        try { this.effectLedger.open(); }
+        catch (error) {
+          if (error instanceof CoreError) throw error;
+          throw new CoreError("Effect ledger initialization failed; store recovery required");
+        }
         // Guaranteed write on open: takes the exclusive lock now, not lazily.
         this.stmt(
           "INSERT INTO meta(key, value) VALUES('opened_at', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",

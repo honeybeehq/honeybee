@@ -2355,7 +2355,7 @@ export class HiveDaemon {
     const existing = registry.get(key);
     if (existing) {
       if (existing.fingerprint !== fingerprint) throw new RpcError("idempotency_conflict", "In-flight spawn key has different arguments");
-      return existing.promise.then(result => ({ ...result, deduped: true }));
+      return existing.promise.then((result: SpawnResult) => ({ ...result, deduped: true }));
     }
     const entry = { verb: "spawn" as const, fingerprint, promise: Promise.resolve().then(() => this.rpcSpawnWithAccount(params)) };
     registry.set(key, entry);
