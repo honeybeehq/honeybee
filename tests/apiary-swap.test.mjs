@@ -1,6 +1,6 @@
 import { tsImport } from "tsx/esm/api";
 
-await tsImport("./apiary-swap.test.ts", import.meta.url);
+await tsImport("./apiary-swap.lab.ts", import.meta.url);
 await tsImport("./canonical-json.test.ts", import.meta.url);
 await tsImport("./deploy-runtime.test.ts", import.meta.url);
 await tsImport("./deploy-artifact.test.ts", import.meta.url);
