@@ -1,7 +1,7 @@
 import { resolve, isAbsolute } from "node:path";
-import { canonicalDigest } from "./comb/canonical.js";
-import { parseComponentIdentity, type ComponentIdentity } from "./release/index.js";
-import { parseUpdateReservation, type UpdateReservation } from "./updateReservation.js";
+import { canonicalDigest } from "./comb/canonical.ts";
+import { parseComponentIdentity, type ComponentIdentity } from "./release/index.ts";
+import { parseUpdateReservation, type UpdateReservation } from "./updateReservation.ts";
 
 export const APIARY_SWAP_CAPABILITY = "update.reservation.apiary-swap.v1";
 export type ApiaryBuild = { protocol: string; buildId: string; version: string; target: string; artifact: { url: string; sha256: string } };

@@ -1,5 +1,5 @@
 /** Versioned release metadata. Parsing establishes consistency, not authenticity. */
-import { canonicalDigest } from "../comb/canonical.js";
+import { canonicalDigest } from "../comb/canonical.ts";
 import { readFileSync } from "node:fs";
 import { Ajv2020 } from "ajv/dist/2020.js";
 
@@ -215,4 +215,4 @@ export function parseReleaseManifest(value: unknown): ReleaseManifest {
   return manifest;
 }
 
-export { parseBuildIdentity, readBuildIdentity, type BuildIdentity } from "./buildIdentity.js";
+export { parseBuildIdentity, readBuildIdentity, type BuildIdentity } from "./buildIdentity.ts";
