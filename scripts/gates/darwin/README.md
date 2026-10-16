@@ -134,6 +134,13 @@ Before and after, on `~/Library/Preferences` and on Application Support, Logs, C
 - Interim globs are checked only after every other entry.
 - Our names and removals still FAIL.
 
+**Application Support/AddressBook** (the user's Contacts) is decided by attribution too, never by the list. The gate never opens or reads these files; it only sees their names in the scan.
+- On any change there, the gate queries the system log for the run window (process names and pids only, no message text) for the named non-gate writers: `contactsd`, `AddressBookSourceSync` and `AddressBookManager`.
+- A live writer counts as gate-owned if it descends from the gate shell, shares its process group, or has the run root in its argv or cwd. Otherwise it is foreign.
+- An exited writer counts as foreign only if runningboardd recorded it as a launchd OS service (`Resolved pid N to [osservice<…>]`); otherwise it is unknown.
+- The change WARNs `host shared (writer: <name> <pid>, …)` only when at least one foreign writer was seen and no gate-owned or unknown one. Anything else FAILs, including no writer seen.
+- The per-run attribution (process, pid, owner) is printed and kept with the sentinels.
+
 **Caches/claude-cli-nodejs** is decided by attribution, not by the list. A census samples Claude CLI processes every 2 s.
 - A process is gate-owned if it descends from the gate shell, shares its process group, or has the run root in its argv or cwd.
 - A change WARNs as "host shared" only when foreign Claude CLIs were seen and no gate-owned one was. Gate-owned or unknown FAILs.

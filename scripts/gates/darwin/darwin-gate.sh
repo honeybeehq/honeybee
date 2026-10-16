@@ -101,6 +101,32 @@ LIB_AREAS="Application Support|Logs|Caches|Containers|LaunchAgents"
 LIB_OWN_IDS="dev.apiary. dev.honeybee. com.trmd.apiary ${SCG_LAB_BUNDLE_IDS:-}"
 LIB_ELECTRON_OK="AppleTextDirection NSForceRightToLeftWritingDirection NSTreatUnknownArgumentsAsOpen SKPurchaseIntentUpdatesLastChecked"
 LIB_HOST_SHARED_CLAUDE='Caches/claude-cli-nodejs'
+LIB_HOST_SHARED_CONTACTS='Application Support/AddressBook'
+LIB_CONTACTS_WRITERS='contactsd AddressBookSourceSync AddressBookManager'
+contacts_attribution() {
+  local out=$GATE_ROOT/contacts.attribution pred="" n w pid name own gpg gate=0 foreign=0 unknown=0 list=""
+  if [ ! -f "$out" ]; then
+    for n in $LIB_CONTACTS_WRITERS; do pred="${pred:+$pred OR }process == \"$n\""; done
+    gpg=$(ps -o pgid= -p "$SCG_GATE_PID" | tr -d ' ')
+    /usr/bin/log show --start "$SCG_LOG_START" --end "$(date '+%Y-%m-%d %H:%M:%S')" --style syslog --predicate 'process == "runningboardd" AND eventMessage CONTAINS "Resolved pid"' 2>>"$GATE_ROOT/contacts.errors" | grep -oE 'Resolved pid [0-9]+ to \[osservice<[^>]*>' > "$GATE_ROOT/contacts.rb"
+    /usr/bin/log show --start "$SCG_LOG_START" --end "$(date '+%Y-%m-%d %H:%M:%S')" --style syslog --predicate "$pred" 2>>"$GATE_ROOT/contacts.errors" | awk '$4 ~ /^[A-Za-z]+\[[0-9]+\]:$/ {sub(/:$/, "", $4); print $4}' | sort -u | while IFS= read -r w; do
+      name=${w%%[*}; pid=${w#*[}; pid=${pid%]}; own=unknown
+      if ps -p "$pid" >/dev/null 2>&1; then
+        own=foreign; p=$pid
+        for k in $(seq 1 64); do [ "$p" = "$SCG_GATE_PID" ] && { own=gate; break; }; [ "${p:-1}" -le 1 ] && break; p=$(ps -o ppid= -p "$p" | tr -d ' '); done
+        [ "$(ps -o pgid= -p "$pid" | tr -d ' ')" = "$gpg" ] && own=gate
+        ps -o command= -p "$pid" | grep -qF "$GATE_ROOT" && own=gate
+        lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | grep -q "^n$GATE_ROOT" && own=gate
+      elif grep -q "Resolved pid $pid to \[osservice<" "$GATE_ROOT/contacts.rb"; then own=foreign
+      fi
+      echo "$name $pid $own"
+    done > "$out"
+  fi
+  gate=$(awk '$3=="gate"' "$out" | wc -l | tr -d ' '); foreign=$(awk '$3=="foreign"' "$out" | wc -l | tr -d ' '); unknown=$(awk '$3=="unknown"' "$out" | wc -l | tr -d ' ')
+  list=$(awk '$3=="foreign"{print $1" "$2}' "$out" | head -8 | paste -sd, -)
+  if [ "$gate" -eq 0 ] && [ "$unknown" -eq 0 ] && [ "$foreign" -gt 0 ]; then echo "writer: $list"; return 0; fi
+  echo "writers gate=$gate foreign=$foreign unknown=$unknown"; return 1
+}
 LIB_OUR_NAMES='dev.apiary.|dev.honeybee.|com.trmd.apiary|com.github.Electron|Apiary|apiary|Honeybee|honeybee'
 lib_third_party_owner() {
   local p=$1 before=$2 entry owner mode
@@ -184,6 +210,8 @@ lib_verdict() {
   local gone; gone=$(comm -23 <(cut -d'|' -f2 "$b.areas") <(cut -d'|' -f2 "$a.areas"))
   printf '%s\n' "$changed" | while read -r p; do [ -z "$p" ] && continue
     if owner=$(lib_third_party_owner "$p" "$b.areas"); then echo "WARN third-party ($owner): $p"
+    elif [ "$p" = "$LIB_HOST_SHARED_CONTACTS" ] || case "$p" in "$LIB_HOST_SHARED_CONTACTS"/*) true;; *) false;; esac; then
+      if why=$(contacts_attribution); then echo "WARN host shared ($why): $p"; else echo "LIBFAIL Contacts changed, $why: $p"; fi
     elif [ "$p" = "$LIB_HOST_SHARED_CLAUDE" ] || case "$p" in "$LIB_HOST_SHARED_CLAUDE"/*) true;; *) false;; esac; then
       if why=$(claude_attribution); then echo "WARN host shared ($why): $p"; else echo "LIBFAIL claude-cli-nodejs changed, $why: $p"; fi
     else echo "LIBFAIL new/modified under ~/Library: $p"; fi; done > "$GATE_ROOT/lib.changes"
@@ -192,6 +220,7 @@ lib_verdict() {
   grep -q '^LIBFAIL' "$GATE_ROOT/lib.changes" && gate_fail "~/Library changed outside the Queen-approved third-party list ($(grep -c '^LIBFAIL' "$GATE_ROOT/lib.changes") entries)"
   [ -n "$gone" ] && { printf '%s\n' "$gone" | sed 's/^/LIBFAIL removed: /' | head -20; gate_fail "~/Library entries removed"; }
   SCG_LIB_ERRORS=$(grep -c . "$LIB_ERR" 2>/dev/null || true)
+  [ -f "$GATE_ROOT/contacts.attribution" ] && { echo "== Contacts writer attribution (process pid owner):"; sed 's/^/   /' "$GATE_ROOT/contacts.attribution"; }
   echo "== ~/Library scan errors: ${SCG_LIB_ERRORS:-0}"
   [ "${SCG_LIB_ERRORS:-0}" -eq 0 ] || { head -40 "$LIB_ERR"; gate_fail "~/Library scan had ${SCG_LIB_ERRORS} find/stat/plutil errors; the sentinel fails closed"; }
   echo "(~/Library verdict done)"
@@ -283,6 +312,7 @@ GATE_ROOT_LEN=$(printf %s "$GATE_ROOT" | wc -c | tr -d ' ')
 [ "$GATE_ROOT_LEN" -lt 40 ] || { echo "REFUSING: run root $GATE_ROOT is $GATE_ROOT_LEN bytes (>= 40)"; rm -rf "$GATE_ROOT"; exit 93; }
 home_snap "$GATE_ROOT/sb"; why=$(home_valid "$GATE_ROOT/sb") || { echo "REFUSING: before-sentinel invalid: $why"; rm -rf "$GATE_ROOT"; exit 92; }
 LIB_ERR=$GATE_ROOT/lib.errors; : > "$LIB_ERR"
+SCG_LOG_START=$(date '+%Y-%m-%d %H:%M:%S')
 SCG_NPM_BEFORE=$(npm_snap)
 touch "$GATE_ROOT/lib.marker"; sleep 1
 lib_snap "$GATE_ROOT/lb"; why=$(lib_valid "$GATE_ROOT/lb") || { echo "REFUSING: ~/Library before-sentinel invalid: $why"; rm -rf "$GATE_ROOT"; exit 92; }
@@ -342,7 +372,7 @@ gate_finish() {
   lib_snap "$GATE_ROOT/la"
   if why=$(lib_valid "$GATE_ROOT/la"); then lib_verdict "$GATE_ROOT/lb" "$GATE_ROOT/la"; else gate_fail "~/Library after-sentinel invalid: $why"; fi
   [ $rc -eq 0 ] && [ $SCG_RC -ne 0 ] && rc=95
-  mkdir -p "$REAL_HOME/.cache/scg/sentinels"; for f in "$GATE_ROOT"/s[ab].* "$GATE_ROOT"/l[ab].* "$GATE_ROOT/lib.changes" "$GATE_ROOT/net-violations" "$GATE_ROOT/claude.census" "$GATE_ROOT/security-calls" "$GATE_ROOT/lib.errors"; do [ -f "$f" ] && mv "$f" "$REAL_HOME/.cache/scg/sentinels/$(basename "$GATE_ROOT")-$(basename "$f")"; done
+  mkdir -p "$REAL_HOME/.cache/scg/sentinels"; for f in "$GATE_ROOT"/s[ab].* "$GATE_ROOT"/l[ab].* "$GATE_ROOT/lib.changes" "$GATE_ROOT/net-violations" "$GATE_ROOT/claude.census" "$GATE_ROOT/security-calls" "$GATE_ROOT/lib.errors" "$GATE_ROOT/contacts.attribution" "$GATE_ROOT/contacts.errors"; do [ -f "$f" ] && mv "$f" "$REAL_HOME/.cache/scg/sentinels/$(basename "$GATE_ROOT")-$(basename "$f")"; done
   [ $rc -ne 0 ] && [ -d "$GATE_ROOT/logs" ] && mv "$GATE_ROOT/logs" "$REAL_HOME/.cache/scg/sentinels/$(basename "$GATE_ROOT")-logs" && echo "== per-file logs kept in $REAL_HOME/.cache/scg/sentinels/$(basename "$GATE_ROOT")-logs"
   gate_logs_sweep
   rm -rf "$GATE_ROOT"
