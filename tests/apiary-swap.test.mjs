@@ -5,6 +5,7 @@ await tsImport("./canonical-json.test.ts", import.meta.url);
 await tsImport("./release-contract.test.ts", import.meta.url);
 await tsImport("./release-contract-v2.test.ts", import.meta.url);
 await tsImport("./deploy-runtime.test.ts", import.meta.url);
+await tsImport("./deploy-restart.test.ts", import.meta.url);
 await tsImport("./deploy-artifact.test.ts", import.meta.url);
 await tsImport("../v2/core/tests/update-reservation.test.ts", import.meta.url);
 await tsImport("../v2/core/tests/apiary-swap.test.ts", import.meta.url);

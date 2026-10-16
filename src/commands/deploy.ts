@@ -12,7 +12,7 @@ import { cp, lstat, mkdir, open, readFile, readlink, realpath, rename, rm, write
 import { basename, delimiter, dirname, join } from "node:path";
 import { promisify } from "node:util";
 import {
-  DeployReservationHeldError,
+  assertDeployRestartAdmission,
   hasDeployRestartAdmission,
   CURRENT_LINK_NAME,
   DEFAULT_KEEP_VERSIONS,
@@ -26,7 +26,7 @@ import {
   type BuildArtifactContext,
   type RestartDaemonContext,
 } from "../deployRuntime.js";
-import { readUpdateReservation } from "../readUpdateReservation.js";
+import { assertRuntimeUpdateAllowed } from "../readUpdateReservation.js";
 import { withFileLock } from "../lock.js";
 import { runtimeUsesV2 } from "../cliRoute.js";
 import { actionLine, bold, dim, formatRelativeTime, isPretty, note, tildify, yellow } from "../format.js";
@@ -198,10 +198,12 @@ async function restoreServiceFile(file: string, data: Buffer | null, mode = 0o60
 }
 
 export async function restartDeployedDaemon(context: RestartDaemonContext): Promise<void> {
-  if (hasDeployRestartAdmission(context)) return restartAdmittedDaemon(context);
+  if (hasDeployRestartAdmission(context)) {
+    await assertDeployRestartAdmission(context);
+    return restartAdmittedDaemon(context);
+  }
   await withFileLock(join(context.root, ".deploy.lock"), async () => {
-    const reservation = await readUpdateReservation(context.root);
-    if (reservation?.active) throw new DeployReservationHeldError(reservation.id, reservation.epoch);
+    await assertRuntimeUpdateAllowed(context.root, "restart");
     await restartAdmittedDaemon(context);
   });
 }
