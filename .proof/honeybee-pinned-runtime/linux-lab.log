@@ -1,0 +1,38 @@
+[Unit]
+Description=Honeybee v2 hive daemon (dev.honeybee.lab.pinned.1352524)
+
+[Service]
+Type=simple
+ExecStart="/opt/node-v24.18.0-linux-x64/bin/node" "/home/trmd/.cache/honeybee-pin.dlvXuG/home/pinned-PsEwSQ/worker.mjs"
+Environment="HIVE_NODE_PATH=/opt/node-v24.18.0-linux-x64/bin/node"
+Environment="HIVE_NODE_VERSION=24.18.0"
+Environment="HIVE_NODE_SHA256=41a74efb34cbde5c7632cdac0cf8bd1a14d0b8d73dc1e82755014d9a9ce70f5c"
+Environment="HOME=/home/trmd/.cache/honeybee-pin.dlvXuG/home"
+Environment="HIVE_V2_DATA_DIR=/home/trmd/.cache/honeybee-pin.dlvXuG/home/pinned-PsEwSQ/v2"
+Environment="PATH=/home/trmd/.local/share/apiary-satellite/tools/codex/0.163.0/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/codex-path:/home/trmd/.local/bin:/home/trmd/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games"
+# Honeybee owns detached runner process groups; daemon stop/restart preserves them for re-adoption.
+# Ephemeral workers are stopped during clean daemon shutdown, and explicit bee stop/delete reaps its runner group.
+KillMode=process
+UnsetEnvironment=ELECTRON_RUN_AS_NODE NODE_OPTIONS
+Restart=always
+RestartSec=2
+StandardOutput=append:/home/trmd/.cache/honeybee-pin.dlvXuG/home/pinned-PsEwSQ/daemon.log
+StandardError=append:/home/trmd/.cache/honeybee-pin.dlvXuG/home/pinned-PsEwSQ/daemon.log
+
+[Install]
+WantedBy=default.target
+
+HSR HOST / HEARTBEAT / LAB CHILD PS
+1353053 1352992 /opt/node-v24.18.0-linux-x64/bin/node -e const fs = require("node:fs"); const dir = process.argv[1]; const touch = () => { try { const now = new Date(); fs.utimesSync(dir, now, now); } catch { process.exit(0); } }; setInterval(touch, Number(process.argv[2])); process.stdin.on("end", () => process.exit(0)); process.stdin.on("error", () => process.exit(0)); process.stdin.resume(); /home/trmd/.cache/honeybee-pin.dlvXuG/home/pinned-PsEwSQ/mirror.lock 1000
+1353113 1352992 /opt/node-v24.18.0-linux-x64/bin/node --experimental-strip-types /home/trmd/.hive/v2/cells/resident-apiaryd-honeybee-pinned-runtime-110f4b740e82/github-com-honeybeehq-honeybee-a9015b303498-space-110f4b740e82/v2/driver-hsr/src/runner-host-main.ts /home/trmd/.cache/honeybee-pin.dlvXuG/home/pinned-PsEwSQ/runners/bee-lab.1.json
+1353128 1353113 /opt/node-v24.18.0-linux-x64/bin/node /home/trmd/.hive/v2/cells/resident-apiaryd-honeybee-pinned-runtime-110f4b740e82/github-com-honeybeehq-honeybee-a9015b303498-space-110f4b740e82/v2/driver-hsr/test-agent/agent.mjs
+1353183 1352992 /opt/node-v24.18.0-linux-x64/bin/node -e setInterval(()=>{},1000) honeybee-pinned-child
+
+LAB PS BEFORE
+1352992    4900 /opt/node-v24.18.0-linux-x64/bin/node /home/trmd/.cache/honeybee-pin.dlvXuG/home/pinned-PsEwSQ/worker.mjs
+1353183 1352992 /opt/node-v24.18.0-linux-x64/bin/node -e setInterval(()=>{},1000) honeybee-pinned-child
+
+BAD PIN REJECTED: old scratch daemon pid 1352992 unchanged
+REINSTALL PRESERVES PIN {"path":"/opt/node-v24.18.0-linux-x64/bin/node","version":"24.18.0","sha256":"41a74efb34cbde5c7632cdac0cf8bd1a14d0b8d73dc1e82755014d9a9ce70f5c"}
+PASS missing/Electron/version-drift rejection; installed ExecStart; pinned child argv; reinstall pin; bad deploy preserves pid
+CLEANUP disposable unit and scratch files removed dev.honeybee.lab.pinned.1352524

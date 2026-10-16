@@ -1,0 +1,35 @@
+forage: host trmd-erebor-mini02 (darwin/arm64, 10 cores, load 2.39, 1 forage jobs)
+forage: synced github-com-honeybeehq-honeybee-a9015b303498-space-110f4b740e82-3506a99a @ 3b16b65dc4 in 3,583,492µs
+forage: lane github-com-honeybeehq-honeybee-a9015b303498-space-110f4b740e82-3506a99a · scratch /Users/trmd/.cache/fj/6VNxEM · network SHARED: this Darwin job is NOT offline, it has the host's network (no network namespace on Darwin)
+probe: ps shim runs outside Seatbelt (ok)
+darwin-gate/1: host=trmd-erebor-mini02 forage-run=6VNxEM lane=github-com-honeybeehq-honeybee-a9015b303498-space-110f4b740e82-3506a99a snapshot=3b16b65dc427f141d3a3046d32747d52bc653b0c source=73a5e57a6421abac5d092780db8f2ba194c14a38 scripts=[darwin-gate.sh:801d19bc23a5 cleanup-body.sh:f31eab7c14e2 seatbelt-exceptions.txt:0b53680ac9f7 third-party-warn.txt:3ab8b270e918 excluded-tests.txt:c41bc443568d] root=/Users/trmd/.cache/scg/r.bL3dH4 (31B) socket-probe=64B node=/Users/trmd/.local/share/mise/installs/node/24.18.0/bin/node v24.18.0 env-vars=38 HIVE_/APIARY_=[HIVE_REAL_HOME=/Users/trmd/.cache/scg/r.bL3dH4/h ]
+bootout exit=0 dev.honeybee.lab.pinned.17252
+CLEANUP VERIFIED dev.honeybee.lab.pinned.17252 absent
+.dg.sh: line 152: 39294 Terminated: 15          while :; do
+    snap=$(ps -axo pid=,ppid=,pgid=,command= 2>/dev/null); printf '%s\n' "$snap" | awk -v gate="$SCG_GATE_PID" -v gpg="$gate_pgid" -v root="$GATE_ROOT" -v lane="$PWD" '
+      { pid=$1; ppid[pid]=$2; pg[pid]=$3; exe=""
+        for (i=4; i<=5 && i<=NF; i++) { n=split($i, parts, "/"); if (parts[n]=="claude" || $i ~ /@anthropic-ai\/claude-code/) { exe=$i; break } }
+        if (exe != "" && index(exe, root) != 1 && index(exe, lane) != 1) { cand[pid]=exe; argv_root[pid]=(index($0, root) > 0) } }
+      END { for (pid in cand) { own="foreign"; if (pg[pid]==gpg || argv_root[pid]) own="gate"; p=pid
+              for (k=0; k<64 && own=="foreign" && p+0>1; k++) { if (p==gate) own="gate"; p=ppid[p] }
+              print pid, own, cand[pid] } }'; sleep 2;
+done
+     39295                       | while read -r pid own exe; do
+    [ "$own" = foreign ] && lsof -a -p "$pid" -d cwd -Fn 2> /dev/null | grep -q "^n$GATE_ROOT" && own=gate; echo "$pid $own $exe";
+done >> "$GATE_ROOT/claude.census"
+== REAP: 0 process(es) tied to /Users/trmd/.cache/scg/r.bL3dH4 or this gate's tree
+== security calls
+security: 0 calls
+== Claude CLI census: 
+== HOME sentinel (real HOME top level, ~/.hive/v2, live socket)
+(no change)
+== ~/.npm (npm cache): before 4205 files, newest mtime 1792125091; after 4205 files, newest mtime 1792125091
+(no change)
+== ~/Library sentinel (Preferences, Application Support|Logs|Caches|Containers|LaunchAgents)
+WARN modified com.github.Electron.plist (allowed keys only) mtime=1792138275 size=199 keys=AppleTextDirection,NSForceRightToLeftWritingDirection,NSTreatUnknownArgumentsAsOpen,SKPurchaseIntentUpdatesLastChecked
+(~/Library: 0 third-party WARN, 0 FAIL)
+== ~/Library scan errors: 0
+(~/Library verdict done)
+== GATE RESULT: PASS · darwin-gate/1 · forage run 6VNxEM · lane github-com-honeybeehq-honeybee-a9015b303498-space-110f4b740e82-3506a99a · snapshot 3b16b65dc427f141d3a3046d32747d52bc653b0c · source 73a5e57a6421abac5d092780db8f2ba194c14a38 · scripts darwin-gate.sh:801d19bc23a5 cleanup-body.sh:f31eab7c14e2 seatbelt-exceptions.txt:0b53680ac9f7 third-party-warn.txt:3ab8b270e918 excluded-tests.txt:c41bc443568d · ~/Library scan errors 0 · EXCLUDED 0 []
+forage: reaped 0 leftover job processes
+forage: exit 0 · run 22,439,174µs · trmd-erebor-mini02
