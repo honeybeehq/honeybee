@@ -21,6 +21,12 @@ def pid_transition(before, observation):
     return 'exiting' if exiting else 'unproven'
 
 
+def pid_observation(tree_listed, proc_stat, proc_exists=None):
+    stat_enoent = (proc_stat or {}).get('errno') == errno.ENOENT
+    gone = stat_enoent or not tree_listed and proc_exists is False
+    return dict(treeListed=tree_listed, procStat=proc_stat, statEnoent=stat_enoent, procExistsObserved=proc_exists, state='pid_gone' if gone else 'pid_present' if tree_listed else 'pid_outside_scope')
+
+
 def error_verdict(error, birth, masked, real_hive):
     observation = error.get('nextSample') or {}
     after = observation.get('procStat') or {}

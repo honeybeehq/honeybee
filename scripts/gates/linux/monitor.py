@@ -1,5 +1,5 @@
 import os, sys, json, time, pathlib, subprocess, threading, errno, re, hashlib, shutil, collections,signal
-from policy import error_verdict, RULE_VERSION, within,update_fd_prior
+from policy import error_verdict, RULE_VERSION, within,update_fd_prior,pid_observation
 ROOT = pathlib.Path(sys.argv[1])
 LABEL = sys.argv[2]
 CMD = sys.argv[3:]
@@ -199,12 +199,15 @@ def do_sample():
             continue
         pid = e['pid']
         row = next((r for r in rows if r['pid'] == pid), None)
-        obs = dict(time=time.time(), sample=samples, procStat=row.get('procStat') if row else None)
-        if pid not in pids:
+        obs = dict(time=time.time(), sample=samples, **pid_observation(pid in pids, row.get('procStat') if row else None))
+        if obs['state'] == 'pid_gone':
+            pass
+        elif pid not in pids:
             obs['state'] = 'pid_gone' if not os.path.exists(f'/proc/{pid}') else 'pid_outside_scope'
             if obs['state'] == 'pid_outside_scope':
                 obs['procStat'] = checked_stat(pid, 'nextSampleStat')
-                if obs['procStat'].get('errno') == errno.ENOENT and (not os.path.exists(f'/proc/{pid}')):
+                obs['statEnoent'] = obs['procStat'].get('errno') == errno.ENOENT
+                if obs['statEnoent']:
                     obs['state'] = 'pid_gone'
         elif row is None:
             obs['state'] = 'pid_unreadable'
@@ -219,7 +222,7 @@ def do_sample():
     for pid,birth in births.items():
         if birth['firstSample']<samples and 'nextBirthSample' not in birth:
             row=next((item for item in rows if item['pid']==pid),None)
-            birth['nextBirthSample']=dict(time=time.time(),sample=samples,state='pid_gone' if row is None and not os.path.exists(f'/proc/{pid}') else 'pid_present',procStat=row['procStat'] if row else None,ppidSource='process-tree edges from /proc/<own parent>/task/<own tid>/children; status PPid when readable')
+            birth['nextBirthSample']=dict(time=time.time(),sample=samples,**pid_observation(pid in pids,row['procStat'] if row else None,os.path.exists(f'/proc/{pid}') if row is None else None),ppidSource='process-tree edges from /proc/<own parent>/task/<own tid>/children; status PPid when readable')
     fdlog.write(json.dumps(dict(time=now, sample=samples, scopePids=pids, pids=rows, realSocketLines=lines, ownSocketLines=ownlines, ssStderr=ss_stderr)) + '\n')
     (OUT / 'first-sight.json').write_text(json.dumps(list(births.values()), indent=2))
     (OUT / 'errors.json').write_text(json.dumps(errors, indent=2))

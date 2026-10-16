@@ -1,7 +1,7 @@
 import errno
 import unittest
 
-from policy import closing_verdict, error_verdict, wal_mtime_only, preexec_verdict, flake_verdict,update_fd_prior,namespace_pid,mapping_coverage,probe_failed
+from policy import closing_verdict, error_verdict, wal_mtime_only, preexec_verdict, flake_verdict,update_fd_prior,namespace_pid,mapping_coverage,probe_failed,pid_observation
 from gate import fake_env, lab_home, socket_path_lengths
 
 HOME = '/home/lab'
@@ -155,6 +155,24 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(record['encodedBytes'],109)
         self.assertFalse(record['fits'])
         self.assertEqual(socket_path_lengths(['/é.sock'])[0]['encodedBytes'],8)
+
+    def test_next_stat_enoent_overrides_stale_tree_listing(self):
+        stat=dict(error='FileNotFoundError',errno=errno.ENOENT)
+        observation=pid_observation(True,stat)
+        self.assertTrue(observation['treeListed'])
+        self.assertTrue(observation['statEnoent'])
+        self.assertEqual(observation['procStat'],stat)
+        self.assertEqual(observation['state'],'pid_gone')
+        birth=dict(pid=5602,ownTreeAtFirstSight=True,procStat=dict(state='R',starttime='12'),nextBirthSample=observation)
+        error=dict(slot='fd/41',fd='41',errno=errno.ENOENT,previousTarget='socket:[123]',atErrorStat=dict(state='S',starttime='12'),nextSample=observation)
+        self.assertEqual(error_verdict(error,birth,True,HIVE),'scope_proven_exiting')
+        self.assertEqual(mapping_coverage(birth,[],[]),'mapping unavailable: exited before host capture')
+        for number in (errno.EACCES,errno.EIO):
+            current=pid_observation(True,dict(errno=number))
+            self.assertEqual(current['state'],'pid_present')
+            self.assertEqual(error_verdict(dict(error,nextSample=current),birth,True,HIVE),'FAIL')
+        self.assertEqual(pid_observation(False,None,False)['state'],'pid_gone')
+        self.assertEqual(pid_observation(False,None,True)['state'],'pid_outside_scope')
 
 
 if __name__ == '__main__':
