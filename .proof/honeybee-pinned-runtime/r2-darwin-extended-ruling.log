@@ -1,0 +1,8 @@
+Product source f914e2ec54c14dbf6210eb9f0b4e623b76d5fdba; erebor run CZ2qCn.
+Orchestrator relayed Queen interpretation in message5236 at2026-10-16T09:49:17Z:
+In Queen's interim rule, lab-pid lsof is a condition for attributing a config.json change. In CZ2qCn, config.json was unchanged and logically equal, and every real service and home sentinel was exact. No attribution was needed; the run passes on exact sentinels alone. The lsof coverage gap does not make it fail.
+Accepted result: PASS on exact HOME and service sentinels; interim attribution rule NOT INVOKED.
+Coverage reported plainly:1257 samples;334 seen PIDs;230 sampled PIDs;131 exited before a sampling attempt;6 live PIDs missing from lsof;0 observed real Hive opens. Sets may overlap across sampling attempts.
+Raw gate rc1 and GATE FAIL scoped-lsof remain visible in r2-darwin-extended.log; this ruling corrects the earlier unconditional watcher requirement, without broadening any allowlist.
+Product feature cases: native pin/Electron refusal, bad pin leaves same PID, pinned child argv, reinstall, kill9 respawn, full deploy rollback, delayed8s unload recovery, stuck replacement no competing old daemon,60202ms drift hold with actual runDaemon/no store/socket, disposable cleanup.
+Improved sampler and conditional gate logic are separate gate-only commit0f3a8db77703583cd3b90c16cf3adbb484d765cf. Ten focused verdict tests pass. Supplementary6mXeRp has clean lsof/config but remains FAIL95 for GoogleUpdater cache entries outside approved list; no allowlist changed.

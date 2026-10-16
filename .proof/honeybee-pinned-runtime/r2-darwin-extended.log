@@ -1,0 +1,383 @@
+forage: host trmd-erebor-mini02 (darwin/arm64, 10 cores, load 1.64, 0 forage jobs)
+forage: synced github-com-honeybeehq-honeybee-a9015b303498-space-110f4b740e82-3506a99a @ a8edd00242 in 2,812,934µs
+forage: lane github-com-honeybeehq-honeybee-a9015b303498-space-110f4b740e82-3506a99a · scratch /Users/trmd/.cache/fj/CZ2qCn · network SHARED: this Darwin job is NOT offline, it has the host's network (no network namespace on Darwin)
+ENTRY_ENV_NAMES_ONLY
+FORAGE_JOB
+HOME
+LANG
+LC_ALL
+LC_CTYPE
+LOGNAME
+PATH
+PWD
+SHELL
+SHLVL
+TERM
+TMPDIR
+TZ
+USER
+XDG_CACHE_HOME
+XDG_CONFIG_HOME
+XDG_DATA_HOME
+XDG_RUNTIME_DIR
+XDG_STATE_HOME
+_
+VERIFICATION_OVERLAY .proof/honeybee-pinned-runtime/interim-config-watch.py sha256=3e71cc9e0e4c0f83b2f7173d44fa1786b09057a7a7261b6ba365b709451c18ad
+VERIFICATION_OVERLAY .proof/honeybee-pinned-runtime/build-interim-gate.py sha256=924f0df11b7c675f7ffc3a7198dd1bb71a2b1246937d17e553923dc32fa027a8
+VERIFICATION_OVERLAY .proof/honeybee-pinned-runtime/interim-runtime-body.sh sha256=c5c6a7fa90a7c13db076ce13afa95be1d38b01f94a997a631d053bfd6a3265c6
+VERIFICATION_OVERLAY .proof/honeybee-pinned-runtime/interim-config-watch.py sha256=3e71cc9e0e4c0f83b2f7173d44fa1786b09057a7a7261b6ba365b709451c18ad
+VERIFICATION_OVERLAY .proof/honeybee-pinned-runtime/build-interim-gate.py sha256=924f0df11b7c675f7ffc3a7198dd1bb71a2b1246937d17e553923dc32fa027a8
+VERIFICATION_OVERLAY .proof/honeybee-pinned-runtime/interim-runtime-body.sh sha256=c5c6a7fa90a7c13db076ce13afa95be1d38b01f94a997a631d053bfd6a3265c6
+probe: ps shim runs outside Seatbelt (ok)
+darwin-gate/1: host=trmd-erebor-mini02 forage-run=CZ2qCn lane=github-com-honeybeehq-honeybee-a9015b303498-space-110f4b740e82-3506a99a snapshot=a8edd00242ac713cbd629816525ddb7ada91b4e7 source=f914e2ec54c14dbf6210eb9f0b4e623b76d5fdba scripts=[darwin-gate.sh:801d19bc23a5 interim-runtime-body.sh:c5c6a7fa90a7 seatbelt-exceptions.txt:0b53680ac9f7 third-party-warn.txt:3ab8b270e918 excluded-tests.txt:c41bc443568d] root=/Users/trmd/.cache/scg/r.A87Y7i (31B) socket-probe=64B node=/Users/trmd/.local/share/mise/installs/node/24.18.0/bin/node v24.18.0 env-vars=38 HIVE_/APIARY_=[HIVE_REAL_HOME ]
+REAL SERVICE SENTINEL before {"systemd":{"absent":true},"launchd":{"count":17,"hash":"714595ac66a67064fab0da75d897b2ed8cc5e829d88ff102921a1709b9f23bf9"},"realUnit":{"path":"/Users/trmd/Library/LaunchAgents/dev.honeybee.hive.v2.plist","mode":"600","mtimeNs":"1792045755634638567","ino":"96191437","size":"1362","sha256":"d4cf0bbcad78a4863d780e4cf1a684196b61c9c88e43f86632cc2980711cad50"}}
+STEP npm ci exit=0
+STEP check exit=0
+STEP v2:check exit=0
+STEP build exit=0
+== NETWORK PROBE (must refuse outbound, allow loopback) before any measured run
+probe: seatbelt nc 1.1.1.1:443 refused (ok)
+probe: seatbelt node 1.1.1.1:443 -> EPERM (ok)
+probe: trap node 1.1.1.1:443 -> ESCGNET, recorded (ok)
+probe: trap dns example.com -> ESCGNET (ok)
+probe: loopback under both layers works (ok)
+probe: git https refused (ok): fatal: transport 'https' not allowed
+probe: seatbelt ps via the non-setuid shim reads lstart (ok)
+probe: security resolves to the fake inside and outside Seatbelt (ok)
+== LOCKDOWN armed at 2026-10-16 11:44:43: Seatbelt profile for sb(), Node trap via NODE_OPTIONS, GIT_ALLOW_PROTOCOL=file, proxies -> 127.0.0.1:9
+✔ deploy-owned CLI follows current, preserves argument quoting, and replays exposure (438.625958ms)
+✔ deploy-owned CLI preserves an existing user command and dangling link (153.911166ms)
+✔ fresh verified activation executes installed current v2 CLI with scoped data directory (1249.227167ms)
+✔ restart after stop failure refuses a still-loaded service (204.625958ms)
+✔ restart after stop failure requires confirmed absence (251.055208ms)
+✔ persisted v2 config selects the v2 service for an ordinary source restart (214.81975ms)
+✔ legacy deployment refuses activation before selecting a service (0.453916ms)
+✔ fresh service pin requires explicit managed node and refuses Electron (222.152292ms)
+✔ pin persists resolved executable identity and refuses version or byte drift (1503.760083ms)
+✔ runtime environment and inspector arguments are scrubbed (0.255708ms)
+✔ foreground helpers discover the persisted pin without inherited service environment (1070.022375ms)
+✔ a recorded real executable replaced by a symlink cannot silently move the pin (1623.453417ms)
+✔ only an explicit different HIVE_NODE_PATH permits installer migration (1112.789584ms)
+✔ aliases to the recorded executable cannot migrate changed bytes (1072.914042ms)
+✔ service paths depend only on explicit HOME/XDG configuration and overrides (0.476458ms)
+hived held, needs repair: Honeybee Node pin identity drift: path, version or sha256 differs from the recorded pin
+hived held, needs repair: Unexpected token 'c', "corrupt JSON" is not valid JSON
+✔ daemon entry holds before store/socket open on identity drift (257.992417ms)
+✔ daemon entry holds before store/socket open on corrupt record (166.666708ms)
+✔ service.1: launchd plist snapshot (0.4085ms)
+✔ service.2: systemd owns only the daemon process so detached bee runtimes survive restart (0.1485ms)
+✔ service.3: launchd manager — install writes the plist; start/stop/status drive launchctl (0.817792ms)
+✔ service.4: launchd start falls back to kickstart when already bootstrapped (0.177708ms)
+✔ service.4b: launchd stop waits through the asynchronous bootout window (0.1865ms)
+✔ service.5: systemd manager — install writes unit + daemon-reload; start/stop/status; uninstall removes (0.433458ms)
+✔ service.6: one factory per platform; anything else refuses (0.17925ms)
+✔ service.7: a failing systemctl surfaces as a typed ServiceError, never silence (0.170916ms)
+✔ service renderers exclude Electron and Node option environment injection (0.119583ms)
+ℹ tests 26
+ℹ suites 0
+ℹ pass 26
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 6712.561959
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>dev.honeybee.lab.pinned.39281</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/trmd/.local/share/mise/installs/node/24.18.0/bin/node</string>
+    <string>/Users/trmd/.cache/scg/r.A87Y7i/h/pinned-Hr7j1b/worker.mjs</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HIVE_NODE_PATH</key>
+    <string>/Users/trmd/.local/share/mise/installs/node/24.18.0/bin/node</string>
+    <key>HIVE_NODE_VERSION</key>
+    <string>24.18.0</string>
+    <key>HIVE_NODE_SHA256</key>
+    <string>ee6fb0e015284d83a91e8ec5213f43a157f8a392b58555301682892ba928c04a</string>
+    <key>HOME</key>
+    <string>/Users/trmd/.cache/scg/r.A87Y7i/h</string>
+    <key>HIVE_V2_DATA_DIR</key>
+    <string>/Users/trmd/.cache/scg/r.A87Y7i/h/pinned-Hr7j1b/v2</string>
+    <key>PATH</key>
+    <string>/Users/trmd/.cache/scg/r.A87Y7i/bin:/Users/trmd/.local/share/mise/installs/node/24.18.0/bin:/nonexistent:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+  <key>ProcessType</key>
+  <string>Interactive</string>
+  <key>StandardOutPath</key>
+  <string>/Users/trmd/.cache/scg/r.A87Y7i/h/pinned-Hr7j1b/daemon.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/trmd/.cache/scg/r.A87Y7i/h/pinned-Hr7j1b/daemon.log</string>
+</dict>
+</plist>
+
+HSR HOST / HEARTBEAT / LAB CHILD PS
+39301 39293 /Users/trmd/.local/share/mise/installs/node/24.18.0/bin/node -e const fs = require("node:fs");\012const dir = process.argv[1];\012const touch = () => { try { const now = new Date(); fs.utimesSync(dir, now, now); } catch { process.exit(0); } };\012setInterval(touch, Number(process.argv[2]));\012process.stdin.on("end", () => process.exit(0));\012process.stdin.on("error", () => process.exit(0));\012process.stdin.resume(); /Users/trmd/.cache/scg/r.A87Y7i/h/pinned-Hr7j1b/mirror.lock 1000
+39303 39293 /Users/trmd/.local/share/mise/installs/node/24.18.0/bin/node --experimental-strip-types /Users/trmd/.forage/work/github-com-honeybeehq-honeybee-a9015b303498-space-110f4b740e82-3506a99a/v2/driver-hsr/src/runner-host-main.ts /Users/trmd/.cache/scg/r.A87Y7i/h/pinned-Hr7j1b/runners/bee-lab.1.json
+39306 39303 /Users/trmd/.local/share/mise/installs/node/24.18.0/bin/node /Users/trmd/.forage/work/github-com-honeybeehq-honeybee-a9015b303498-space-110f4b740e82-3506a99a/v2/driver-hsr/test-agent/agent.mjs
+39309 39293 /Users/trmd/.local/share/mise/installs/node/24.18.0/bin/node -e setInterval(()=>{},1000) honeybee-pinned-child
+
+LAB PS BEFORE
+39293     1 /Users/trmd/.local/share/mise/installs/node/24.18.0/bin/node /Users/trmd/.cache/scg/r.A87Y7i/h/pinned-Hr7j1b/worker.mjs
+39309 39293 /Users/trmd/.local/share/mise/installs/node/24.18.0/bin/node -e setInterval(()=>{},1000) honeybee-pinned-child
+
+BAD PIN REJECTED: old scratch daemon pid 39293 unchanged
+REINSTALL PRESERVES PIN {"path":"/Users/trmd/.local/share/mise/installs/node/24.18.0/bin/node","version":"24.18.0","sha256":"ee6fb0e015284d83a91e8ec5213f43a157f8a392b58555301682892ba928c04a"}
+PASS missing/Electron/version-drift rejection; installed ExecStart; pinned child argv; reinstall pin; bad deploy preserves pid
+Bad request.
+Could not find service "dev.honeybee.lab.pinned.39281" in domain for user gui: 501
+CLEANUP disposable unit and scratch files removed dev.honeybee.lab.pinned.39281
+ISOLATION ASSERTION PASSED {"home":"/Users/trmd/.cache/scg/r.A87Y7i/h","unitDir":"/Users/trmd/.cache/scg/r.A87Y7i/h/pinned-review-ZdtLAm/units","label":"dev.honeybee.lab.pinned.review.39403"}
+UNIT POLICY
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>dev.honeybee.lab.pinned.review.39403</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/trmd/.local/share/mise/installs/node/24.18.0/bin/node</string>
+    <string>/Users/trmd/.cache/scg/r.A87Y7i/h/pinned-review-ZdtLAm/runtime/current/dist/cli.js</string>
+    <string>v2</string>
+    <string>daemon</string>
+    <string>run</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>npm_config_audit</key>
+    <string>false</string>
+    <key>OPENCODE_CONFIG_DIR</key>
+    <string>/Users/trmd/.cache/scg/r.A87Y7i/h/.config/opencode</string>
+    <key>XDG_DATA_HOME</key>
+    <string>/Users/trmd/.cache/scg/r.A87Y7i/h/.local/share</string>
+    <key>SCG_SCRIPTS</key>
+    <string>darwin-gate.sh:801d19bc23a5 interim-runtime-body.sh:c5c6a7fa90a7 seatbelt-exceptions.txt:0b53680ac9f7 third-party-warn.txt:3ab8b270e918 excluded-tests.txt:c41bc443568d</string>
+    <key>CODEX_HOME</key>
+    <string>/Users/trmd/.cache/scg/r.A87Y7i/h/.codex</string>
+    <key>SHELL</key>
+    <string>/bin/bash</string>
+    <key>CURSOR_CONFIG_DIR</key>
+    <string>/Users/trmd/.cache/scg/r.A87Y7i/h/.cursor</string>
+    <key>TMPDIR</key>
+    <string>/Users/trmd/.cache/scg/r.A87Y7i/t</string>
+    <key>GIT_ALLOW_PROTOCOL</key>
+    <string>file</string>
+    <key>SCG_STAGE</key>
+    <string>1</string>
+    <key>NO_PROXY</key>
+    <string>localhost,127.0.0.1,::1</string>
+    <key>http_proxy</key>
+    <string>http://127.0.0.1:9</string>
+    <key>USER</key>
+    <string>trmd</string>
+    <key>TEMP</key>
+    <string>/Users/trmd/.cache/scg/r.A87Y7i/t</string>
+    <key>SCG_SNAPSHOT</key>
+    <string>a8edd00242ac713cbd629816525ddb7ada91b4e7</string>
+    <key>npm_config_update_notifier</key>
+    <string>false</string>
+    <key>SCG_NODE_BIN</key>
+    <string>/Users/trmd/.local/share/mise/installs/node/24.18.0/bin/node</string>
+    <key>ALL_PROXY</key>
+    <string>http://127.0.0.1:9</string>
+    <key>npm_config_offline</key>
+    <string>true</string>
+    <key>HIVE_REAL_HOME</key>
+    <string>/Users/trmd/.cache/scg/r.A87Y7i/h</string>
+    <key>PATH</key>
+    <string>/Users/trmd/.cache/scg/r.A87Y7i/bin:/Users/trmd/.local/share/mise/installs/node/24.18.0/bin:/nonexistent:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>SCG_SOURCE_SHA</key>
+    <string>f914e2ec54c14dbf6210eb9f0b4e623b76d5fdba</string>
+    <key>PWD</key>
+    <string>/Users/trmd/.forage/work/github-com-honeybeehq-honeybee-a9015b303498-space-110f4b740e82-3506a99a</string>
+    <key>npm_config_logs_dir</key>
+    <string>/Users/trmd/.cache/scg/r.A87Y7i/npm-logs</string>
+    <key>SCG_LANE</key>
+    <string>github-com-honeybeehq-honeybee-a9015b303498-space-110f4b740e82-3506a99a</string>
+    <key>LANG</key>
+    <string>en_US.UTF-8</string>
+    <key>XDG_STATE_HOME</key>
+    <string>/Users/trmd/.cache/scg/r.A87Y7i/h/.local/state</string>
+    <key>SCG_NET_VIOLATIONS</key>
+    <string>/Users/trmd/.cache/scg/r.A87Y7i/net-violations</string>
+    <key>KIMI_CODE_HOME</key>
+    <string>/Users/trmd/.cache/scg/r.A87Y7i/h/.kimi</string>
+    <key>https_proxy</key>
+    <string>http://127.0.0.1:9</string>
+    <key>HTTPS_PROXY</key>
+    <string>http://127.0.0.1:9</string>
+    <key>REAL_SERVICE_HOME</key>
+    <string>/Users/trmd</string>
+    <key>SCG_FORAGE_JOB</key>
+    <string>/Users/trmd/.cache/fj/CZ2qCn</string>
+    <key>SCG_SECURITY_CALLS</key>
+    <string>/Users/trmd/.cache/scg/r.A87Y7i/security-calls</string>
+    <key>SCG_TRAP</key>
+    <string>/Users/trmd/.cache/scg/r.A87Y7i/net-trap.mjs</string>
+    <key>GROK_HOME</key>
+    <string>/Users/trmd/.cache/scg/r.A87Y7i/h/.grok</string>
+    <key>HOME</key>
+    <string>/Users/trmd/.cache/scg/r.A87Y7i/h</string>
+    <key>SHLVL</key>
+    <string>1</string>
+    <key>XDG_CONFIG_HOME</key>
+    <string>/Users/trmd/.cache/scg/r.A87Y7i/h/.config</string>
+    <key>CLAUDE_CONFIG_DIR</key>
+    <string>/Users/trmd/.cache/scg/r.A87Y7i/h/.claude</string>
+    <key>no_proxy</key>
+    <string>localhost,127.0.0.1,::1</string>
+    <key>HTTP_PROXY</key>
+    <string>http://127.0.0.1:9</string>
+    <key>npm_config_store_dir</key>
+    <string>/Users/trmd/.cache/scg/r.A87Y7i/pnpm-store</string>
+    <key>XDG_CACHE_HOME</key>
+    <string>/Users/trmd/.cache/scg/r.A87Y7i/h/.cache</string>
+    <key>npm_config_cache</key>
+    <string>/Users/trmd/.npm</string>
+    <key>TMP</key>
+    <string>/Users/trmd/.cache/scg/r.A87Y7i/t</string>
+    <key>LOGNAME</key>
+    <string>trmd</string>
+    <key>npm_config_fund</key>
+    <string>false</string>
+    <key>SCG_T0</key>
+    <string>2026-10-16 11:44:43</string>
+    <key>XDG_RUNTIME_DIR</key>
+    <string>/Users/trmd/.cache/scg/r.A87Y7i/r</string>
+    <key>SCG_REAL_HOME</key>
+    <string>/Users/trmd</string>
+    <key>_</key>
+    <string>/Users/trmd/.local/share/mise/installs/node/24.18.0/bin/node</string>
+    <key>__CF_USER_TEXT_ENCODING</key>
+    <string>0x1F5:0x0:0x0</string>
+    <key>HIVE_NODE_PATH</key>
+    <string>/Users/trmd/.local/share/mise/installs/node/24.18.0/bin/node</string>
+    <key>HIVE_NODE_VERSION</key>
+    <string>24.18.0</string>
+    <key>HIVE_NODE_SHA256</key>
+    <string>ee6fb0e015284d83a91e8ec5213f43a157f8a392b58555301682892ba928c04a</string>
+    <key>HIVE_V2_SERVICE_DIR</key>
+    <string>/Users/trmd/.cache/scg/r.A87Y7i/h/pinned-review-ZdtLAm/units</string>
+    <key>HIVE_V2_SERVICE_LABEL</key>
+    <string>dev.honeybee.lab.pinned.review.39403</string>
+    <key>HIVE_STORE_ROOT</key>
+    <string>/Users/trmd/.cache/scg/r.A87Y7i/h/pinned-review-ZdtLAm</string>
+    <key>HIVE_V2_DATA_DIR</key>
+    <string>/Users/trmd/.cache/scg/r.A87Y7i/h/pinned-review-ZdtLAm/v2</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+  <key>ProcessType</key>
+  <string>Interactive</string>
+  <key>StandardOutPath</key>
+  <string>/Users/trmd/.cache/scg/r.A87Y7i/h/pinned-review-ZdtLAm/daemon.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/trmd/.cache/scg/r.A87Y7i/h/pinned-review-ZdtLAm/daemon.log</string>
+</dict>
+</plist>
+
+CRASH RESPAWN PASS old=39480 new=39855
+deploy: building 6cb9d738a6b2 in a clean temp checkout
+deploy: /Users/trmd/.local/share/mise/installs/node/24.18.0/bin/node /Users/trmd/.cache/scg/r.A87Y7i/h/pinned-review-ZdtLAm/runtime/current/dist/cli.js v2 daemon install --data-dir /Users/trmd/.cache/scg/r.A87Y7i/h/pinned-review-ZdtLAm/v2
+deploy: /Users/trmd/.local/share/mise/installs/node/24.18.0/bin/node /Users/trmd/.cache/scg/r.A87Y7i/h/pinned-review-ZdtLAm/runtime/current/dist/cli.js v2 daemon stop --data-dir /Users/trmd/.cache/scg/r.A87Y7i/h/pinned-review-ZdtLAm/v2
+deploy: /Users/trmd/.local/share/mise/installs/node/24.18.0/bin/node /Users/trmd/.cache/scg/r.A87Y7i/h/pinned-review-ZdtLAm/runtime/current/dist/cli.js v2 daemon start --data-dir /Users/trmd/.cache/scg/r.A87Y7i/h/pinned-review-ZdtLAm/v2
+forced post-stop start failure
+deploy: /Users/trmd/.local/share/mise/installs/node/24.18.0/bin/node /Users/trmd/.cache/scg/r.A87Y7i/h/pinned-review-ZdtLAm/runtime/current/dist/cli.js v2 daemon stop --data-dir /Users/trmd/.cache/scg/r.A87Y7i/h/pinned-review-ZdtLAm/v2
+file:///Users/trmd/.forage/work/github-com-honeybeehq-honeybee-a9015b303498-space-110f4b740e82-3506a99a/v2/daemon/src/service.ts:158
+    throw new ServiceError(`${cmd} ${args.join(" ")} exited ${res.code}: ${res.stderr.trim() || res.stdout.trim()}`);
+          ^
+
+ServiceError: launchctl bootout gui/501/dev.honeybee.lab.pinned.review.39403 exited 3: Boot-out failed: 3: No such process
+    at must (file:///Users/trmd/.forage/work/github-com-honeybeehq-honeybee-a9015b303498-space-110f4b740e82-3506a99a/v2/daemon/src/service.ts:158:11)
+    at async LaunchdServiceManager.stop (file:///Users/trmd/.forage/work/github-com-honeybeehq-honeybee-a9015b303498-space-110f4b740e82-3506a99a/v2/daemon/src/service.ts:216:5)
+    at async file:///Users/trmd/.cache/scg/r.A87Y7i/h/pinned-review-ZdtLAm/runtime/6cb9d738a6b28e0d6766e351143154ab6f9ac9cc/dist/cli.js:22:2
+
+Node.js v24.18.0
+deploy: restored previous runtime f173846d6a4cb5a48006b87350791f60025dd344
+deploy: /Users/trmd/.local/share/mise/installs/node/24.18.0/bin/node /Users/trmd/.cache/scg/r.A87Y7i/h/pinned-review-ZdtLAm/runtime/current/dist/cli.js v2 daemon start --data-dir /Users/trmd/.cache/scg/r.A87Y7i/h/pinned-review-ZdtLAm/v2
+deploy: previous runtime and service recovered after failed activation
+FULL DEPLOY RECOVERY PASS stopped=39855 recovered=39990 runtime=f173846d6a4cb5a48006b87350791f60025dd344 exact-service-bytes-and-mode-restored
+deploy: building 6cb9d738a6b2 in a clean temp checkout
+deploy: /Users/trmd/.local/share/mise/installs/node/24.18.0/bin/node /Users/trmd/.cache/scg/r.A87Y7i/h/pinned-review-ZdtLAm/runtime/current/dist/cli.js v2 daemon install --data-dir /Users/trmd/.cache/scg/r.A87Y7i/h/pinned-review-ZdtLAm/v2
+deploy: /Users/trmd/.local/share/mise/installs/node/24.18.0/bin/node /Users/trmd/.cache/scg/r.A87Y7i/h/pinned-review-ZdtLAm/runtime/current/dist/cli.js v2 daemon stop --data-dir /Users/trmd/.cache/scg/r.A87Y7i/h/pinned-review-ZdtLAm/v2
+forced pending unload
+deploy: /Users/trmd/.local/share/mise/installs/node/24.18.0/bin/node /Users/trmd/.cache/scg/r.A87Y7i/h/pinned-review-ZdtLAm/runtime/current/dist/cli.js v2 daemon stop --data-dir /Users/trmd/.cache/scg/r.A87Y7i/h/pinned-review-ZdtLAm/v2
+file:///Users/trmd/.forage/work/github-com-honeybeehq-honeybee-a9015b303498-space-110f4b740e82-3506a99a/v2/daemon/src/service.ts:158
+    throw new ServiceError(`${cmd} ${args.join(" ")} exited ${res.code}: ${res.stderr.trim() || res.stdout.trim()}`);
+          ^
+
+ServiceError: launchctl bootout gui/501/dev.honeybee.lab.pinned.review.39403 exited 3: Boot-out failed: 3: No such process
+    at must (file:///Users/trmd/.forage/work/github-com-honeybeehq-honeybee-a9015b303498-space-110f4b740e82-3506a99a/v2/daemon/src/service.ts:158:11)
+    at async LaunchdServiceManager.stop (file:///Users/trmd/.forage/work/github-com-honeybeehq-honeybee-a9015b303498-space-110f4b740e82-3506a99a/v2/daemon/src/service.ts:216:5)
+    at async file:///Users/trmd/.cache/scg/r.A87Y7i/h/pinned-review-ZdtLAm/runtime/6cb9d738a6b28e0d6766e351143154ab6f9ac9cc/dist/cli.js:22:2
+
+Node.js v24.18.0
+deploy: restored previous runtime f173846d6a4cb5a48006b87350791f60025dd344
+deploy: /Users/trmd/.local/share/mise/installs/node/24.18.0/bin/node /Users/trmd/.cache/scg/r.A87Y7i/h/pinned-review-ZdtLAm/runtime/current/dist/cli.js v2 daemon start --data-dir /Users/trmd/.cache/scg/r.A87Y7i/h/pinned-review-ZdtLAm/v2
+deploy: previous runtime and service recovered after failed activation
+DELAYED UNLOAD RECOVERY PASS old=39990 recovered=41780 waited-for-manager-absence build-and-executable-hash-verified
+deploy: building 3af6665ffa3c in a clean temp checkout
+deploy: /Users/trmd/.local/share/mise/installs/node/24.18.0/bin/node /Users/trmd/.cache/scg/r.A87Y7i/h/pinned-review-ZdtLAm/runtime/current/dist/cli.js v2 daemon install --data-dir /Users/trmd/.cache/scg/r.A87Y7i/h/pinned-review-ZdtLAm/v2
+deploy: /Users/trmd/.local/share/mise/installs/node/24.18.0/bin/node /Users/trmd/.cache/scg/r.A87Y7i/h/pinned-review-ZdtLAm/runtime/current/dist/cli.js v2 daemon stop --data-dir /Users/trmd/.cache/scg/r.A87Y7i/h/pinned-review-ZdtLAm/v2
+deploy: /Users/trmd/.local/share/mise/installs/node/24.18.0/bin/node /Users/trmd/.cache/scg/r.A87Y7i/h/pinned-review-ZdtLAm/runtime/current/dist/cli.js v2 daemon start --data-dir /Users/trmd/.cache/scg/r.A87Y7i/h/pinned-review-ZdtLAm/v2
+deploy: /Users/trmd/.local/share/mise/installs/node/24.18.0/bin/node /Users/trmd/.cache/scg/r.A87Y7i/h/pinned-review-ZdtLAm/runtime/current/dist/cli.js v2 daemon stop --data-dir /Users/trmd/.cache/scg/r.A87Y7i/h/pinned-review-ZdtLAm/v2
+forced replacement stop refusal
+deploy: restored previous runtime f173846d6a4cb5a48006b87350791f60025dd344
+STUCK REPLACEMENT PASS pid=41934 still-live no-old-start no-false-recovery
+DRIFT HOLD PASS elapsedMs=60123 real-runDaemon-entry exit=0 no-store-or-socket no-respawn held={"state":"held","reason":"node_pin_invalid","detail":"Honeybee Node pin identity drift: path, version or sha256 differs from the recorded pin","at":"2026-10-16T09:46:22.698Z"}
+CLEANUP PASS disposable service removed dev.honeybee.lab.pinned.review.39403
+REAL SERVICE SENTINEL after {"systemd":{"absent":true},"launchd":{"count":17,"hash":"714595ac66a67064fab0da75d897b2ed8cc5e829d88ff102921a1709b9f23bf9"},"realUnit":{"path":"/Users/trmd/Library/LaunchAgents/dev.honeybee.hive.v2.plist","mode":"600","mtimeNs":"1792045755634638567","ino":"96191437","size":"1362","sha256":"d4cf0bbcad78a4863d780e4cf1a684196b61c9c88e43f86632cc2980711cad50"}}
+GATE FAIL: scoped-lsof
+SCOPED_LSOF_CONFIG_RECEIPT {"after": {"canonicalSaltedHash": "d30069390d8a8325745ee9660ad7ce69362c5dc73bfbc65bb9fd646f5b6f3078", "ctimeNs": 1792142683524730807, "inode": 152498856, "keySaltedHashes": {"naming": "2be31a7c0ef8878e07c2609c2bdeebaf20ea7e7b6993970906d8fbfc41d0b9a4", "nodeKind": "ed01c73ab1ceb531ef0ae1f3a12cf1920cfc2dd9678080ce32f4d7d6970efdc0"}, "mtimeNs": 1792142683524376970}, "attributed": true, "before": {"canonicalSaltedHash": "d30069390d8a8325745ee9660ad7ce69362c5dc73bfbc65bb9fd646f5b6f3078", "ctimeNs": 1792142683524730807, "inode": 152498856, "keySaltedHashes": {"naming": "2be31a7c0ef8878e07c2609c2bdeebaf20ea7e7b6993970906d8fbfc41d0b9a4", "nodeKind": "ed01c73ab1ceb531ef0ae1f3a12cf1920cfc2dd9678080ce32f4d7d6970efdc0"}, "mtimeNs": 1792142683524376970}, "configChanges": [], "configPatchOps": [], "errors": ["live_pid_unsampled_38001", "live_pid_unsampled_38384", "live_pid_unsampled_38478", "live_pid_unsampled_39306", "live_pid_unsampled_39301", "live_pid_unsampled_39303"], "exitedBeforeSample": [37869, 38905, 38906, 38968, 38976, 39008, 39019, 39053, 39061, 39077, 39193, 39450, 39559, 39560, 39634, 39696, 39905, 39927, 40002, 40015, 40044, 40068, 40335, 40431, 40794, 41018, 41114, 41225, 41412, 41553, 41598, 41765, 41783, 41816, 41866, 41953, 41967, 42024, 42044, 42136, 42148, 42243, 42246, 42334, 42335, 42418, 42419, 42430, 42625, 42641, 42755, 42773, 43093, 43136, 43206, 43232, 43233, 43324, 43440, 43562, 43632, 43683, 43826, 43917, 43987, 44070, 44142, 44455, 44469, 44503, 44576, 44711, 45013, 45131, 45206, 45298, 45299, 45325, 45395, 45471, 45505, 45711, 45862, 45983, 46106, 46173, 46305, 46619, 46770, 46796, 46797, 46883, 47192, 47246, 47402, 47559, 47751, 47893, 48312, 48336, 48363, 48415, 48834, 49030, 49209, 49608, 49763, 49764, 50218, 50219, 50524, 50525, 50617, 50811, 50812, 50825, 50931, 51209, 51608, 51609, 51614, 51911, 51912, 51918, 52010, 52323, 52324, 52328, 52604, 52605, 52614], "logicalEqual": true, "lsofClean": false, "realHiveOpen": [], "rule": "INTERIM only ~/.hive/v2/config.json; config.patch +/-2s and clean lab-pid lsof; remove after d9182a65 fleet deployment", "sampledPids": [34049, 37735, 37741, 37742, 37760, 37764, 37774, 37852, 37869, 37882, 37904, 37905, 37940, 38001, 38012, 38091, 38173, 38192, 38193, 38219, 38250, 38295, 38314, 38343, 38384, 38439, 38478, 38523, 38537, 38584, 38605, 38633, 38655, 38656, 38707, 38795, 38796, 38822, 38834, 38839, 38877, 38927, 38963, 38967, 38968, 38969, 38971, 38972, 38973, 38974, 38976, 38977, 38978, 38979, 38988, 38989, 38999, 39007, 39009, 39040, 39054, 39063, 39082, 39120, 39132, 39163, 39196, 39200, 39237, 39269, 39281, 39293, 39301, 39303, 39306, 39309, 39403, 39480, 39493, 39566, 39634, 39696, 39764, 39855, 39863, 39900, 39905, 39913, 39953, 39958, 39978, 39990, 39991, 40014, 40027, 40033, 40037, 40068, 40070, 40075, 40084, 40095, 40103, 40586, 41225, 41735, 41761, 41764, 41780, 41781, 41782, 41802, 41825, 41856, 41859, 41863, 41875, 41914, 41934, 41935, 41960, 41988, 42005, 42008, 42009, 42047, 42063, 42084, 42099, 42120, 42133, 42148, 42172, 42173, 42188, 42209, 42224, 42257, 42276, 42293, 42308, 42330, 42346, 42367, 42382, 42403, 42430, 42451, 42466, 42481, 42492, 42507, 42509, 42540, 42555, 42576, 42591, 42612, 42613, 42625, 42632, 42650, 42665, 42688, 42710, 42732, 42743, 42755, 42838, 43042, 43246, 43440, 43639, 43874, 44070, 44274, 44469, 44678, 44909, 45113, 45309, 45505, 45722, 45953, 46173, 46401, 46801, 47034, 47289, 47525, 47751, 47982, 48336, 48841, 49074, 49287, 49518, 49774, 49838, 49876, 49886, 49947, 50042, 50135, 50224, 50336, 50445, 50526, 50627, 50719, 50825, 50931, 51023, 51116, 51209, 51327, 51424, 51512, 51614, 51706, 51816, 51918, 52010, 52103, 52196, 52328, 52423, 52515, 52614, 52699], "samples": 1257, "seenPids": [34049, 37735, 37741, 37742, 37760, 37764, 37774, 37852, 37869, 37882, 37904, 37905, 37940, 38001, 38012, 38091, 38173, 38192, 38193, 38219, 38250, 38295, 38314, 38343, 38384, 38439, 38478, 38523, 38537, 38584, 38605, 38633, 38655, 38656, 38707, 38795, 38796, 38822, 38834, 38839, 38877, 38905, 38906, 38927, 38963, 38967, 38968, 38969, 38971, 38972, 38973, 38974, 38976, 38977, 38978, 38979, 38988, 38989, 38999, 39007, 39008, 39009, 39019, 39040, 39053, 39054, 39061, 39063, 39077, 39082, 39120, 39132, 39163, 39193, 39196, 39200, 39237, 39269, 39281, 39293, 39301, 39303, 39306, 39309, 39403, 39450, 39480, 39493, 39559, 39560, 39566, 39634, 39696, 39764, 39855, 39863, 39900, 39905, 39913, 39927, 39953, 39958, 39978, 39990, 39991, 40002, 40014, 40015, 40027, 40033, 40037, 40044, 40068, 40070, 40075, 40084, 40095, 40103, 40335, 40431, 40586, 40794, 41018, 41114, 41225, 41412, 41553, 41598, 41735, 41761, 41764, 41765, 41780, 41781, 41782, 41783, 41802, 41816, 41825, 41856, 41859, 41863, 41866, 41875, 41914, 41934, 41935, 41953, 41960, 41967, 41988, 42005, 42008, 42009, 42024, 42044, 42047, 42063, 42084, 42099, 42120, 42133, 42136, 42148, 42172, 42173, 42188, 42209, 42224, 42243, 42246, 42257, 42276, 42293, 42308, 42330, 42334, 42335, 42346, 42367, 42382, 42403, 42418, 42419, 42430, 42451, 42466, 42481, 42492, 42507, 42509, 42540, 42555, 42576, 42591, 42612, 42613, 42625, 42632, 42641, 42650, 42665, 42688, 42710, 42732, 42743, 42755, 42773, 42838, 43042, 43093, 43136, 43206, 43232, 43233, 43246, 43324, 43440, 43562, 43632, 43639, 43683, 43826, 43874, 43917, 43987, 44070, 44142, 44274, 44455, 44469, 44503, 44576, 44678, 44711, 44909, 45013, 45113, 45131, 45206, 45298, 45299, 45309, 45325, 45395, 45471, 45505, 45711, 45722, 45862, 45953, 45983, 46106, 46173, 46305, 46401, 46619, 46770, 46796, 46797, 46801, 46883, 47034, 47192, 47246, 47289, 47402, 47525, 47559, 47751, 47893, 47982, 48312, 48336, 48363, 48415, 48834, 48841, 49030, 49074, 49209, 49287, 49518, 49608, 49763, 49764, 49774, 49838, 49876, 49886, 49947, 50042, 50135, 50218, 50219, 50224, 50336, 50445, 50524, 50525, 50526, 50617, 50627, 50719, 50811, 50812, 50825, 50931, 51023, 51116, 51209, 51327, 51424, 51512, 51608, 51609, 51614, 51706, 51816, 51911, 51912, 51918, 52010, 52103, 52196, 52323, 52324, 52328, 52423, 52515, 52604, 52605, 52614, 52699]}
+== REAP: 0 process(es) tied to /Users/trmd/.cache/scg/r.A87Y7i or this gate's tree
+== NETWORK verdict
+trap: 0 non-loopback attempts
+seatbelt: 0 outbound denies in the system log since 2026-10-16 11:44:43
+== security calls
+security: 0 calls
+== Claude CLI census: 
+== HOME sentinel (real HOME top level, ~/.hive/v2, live socket)
+(no change)
+== ~/.npm (npm cache): before 4205 files, newest mtime 1792125091; after 4205 files, newest mtime 1792125091
+(no change)
+== ~/Library sentinel (Preferences, Application Support|Logs|Caches|Containers|LaunchAgents)
+WARN modified com.apple.icloud.searchpartyuseragent.plist mtime=1792143095->1792143985 size=714->714
+WARN modified com.apple.siri.ODDI.MetricsWorker.plist mtime=1792140329->1792143929 size=1252->1252
+WARN modified com.apple.xpc.activity2.plist mtime=1792143675->1792143979 size=18691->18691
+WARN modified third-party plist TokenBucketRateLimiter.plist mtime=1792143665->1792143985 size=991->991
+WARN third-party (Google Chrome): Application Support/Google/Chrome/Default/DawnGraphiteCache/data_1
+WARN third-party (Google Chrome): Application Support/Google/Chrome/Default/DawnWebGPUCache/data_1
+WARN third-party (Google Chrome): Application Support/Google/Chrome/Default/GPUCache/data_1
+WARN third-party (Google Chrome): Application Support/Google/Chrome/GraphiteDawnCache/data_1
+WARN third-party (Apple, interim com.apple.* rule until a dedicated gate user): Containers/com.apple.siri.metrics.AssetMetricsExtension
+WARN third-party (Apple, interim com.apple.* rule until a dedicated gate user): Containers/com.apple.siri.metrics.DevicePropertiesExtension
+WARN third-party (Apple, interim com.apple.* rule until a dedicated gate user): Containers/com.apple.siri.metrics.MetricsExtension
+WARN third-party (Apple, interim com.apple.* rule until a dedicated gate user): Containers/com.apple.siri.ODDIExperimentationExtension
+WARN third-party (Apple, interim com.apple.* rule until a dedicated gate user): Containers/com.apple.siri.ODDIMetricsExtension
+WARN third-party (Apple, interim com.apple.* rule until a dedicated gate user): Containers/com.apple.siri.ODDIPoirotMetricsExtension
+(~/Library: 10 third-party WARN, 0 FAIL)
+== ~/Library scan errors: 0
+(~/Library verdict done)
+== per-file logs kept in /Users/trmd/.cache/scg/sentinels/r.A87Y7i-logs
+   trashed old failure logs: r.uQhOcS-logs
+== GATE RESULT: FAIL (rc=1) · darwin-gate/1 · forage run CZ2qCn · lane github-com-honeybeehq-honeybee-a9015b303498-space-110f4b740e82-3506a99a · snapshot a8edd00242ac713cbd629816525ddb7ada91b4e7 · source f914e2ec54c14dbf6210eb9f0b4e623b76d5fdba · scripts darwin-gate.sh:801d19bc23a5 interim-runtime-body.sh:c5c6a7fa90a7 seatbelt-exceptions.txt:0b53680ac9f7 third-party-warn.txt:3ab8b270e918 excluded-tests.txt:c41bc443568d · ~/Library scan errors 0 · EXCLUDED 0 []
+forage: reaped 0 leftover job processes
+forage: exit 1 · run 203,342,199µs · trmd-erebor-mini02
