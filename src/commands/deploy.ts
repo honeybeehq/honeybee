@@ -1,6 +1,6 @@
 import { serviceDirectory } from "../servicePaths.js";
 import { randomUUID } from "node:crypto";
-import { resolveNodePin, nativeNodeEnv, nodePinEnv, nodePinFile, nodeRepairFile, type NodePin } from "../nodeRuntime.js";
+import { probeNativeNode, resolveNodePin, nativeNodeEnv, nodePinEnv, nodePinFile, nodeRepairFile, type NodePin } from "../nodeRuntime.js";
 // `hive deploy` — versioned runtime deploys (reset WP0, spec 00). The
 // orchestration lives in src/deployRuntime.ts; this module wires the CLI
 // surface plus the two production hooks: the real clean-checkout build and
@@ -8,7 +8,7 @@ import { resolveNodePin, nativeNodeEnv, nodePinEnv, nodePinFile, nodeRepairFile,
 // never reach the code in this file's hook implementations.
 import { execFile, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { cp, lstat, mkdir, open, readFile, readlink, rename, rm, writeFile } from "node:fs/promises";
+import { cp, lstat, mkdir, open, readFile, readlink, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { basename, delimiter, dirname, join } from "node:path";
 import { promisify } from "node:util";
 import {
@@ -208,6 +208,27 @@ export async function restartDeployedDaemon({ root, log, runtime, restorePreviou
   const cli = join(root, CURRENT_LINK_NAME, "dist", "cli.js");
   const args = (verb: string) => [cli, "v2", "daemon", verb, "--data-dir", dataDir];
   const run = (verb: string, selected: NodePin = pin) => runStep(selected.path, args(verb), root, log, nodePinEnv(selected));
+  const deployedIdentity = async (selected: NodePin) => {
+    const { stdout } = await execFileAsync(selected.path, [cli, "v2", "deploy-info", "--data-dir", dataDir, "--json"], { timeout: 2000, env: { ...nativeNodeEnv(), ...nodePinEnv(selected) } });
+    return JSON.parse(stdout) as { pid: number; startedAt: number; nodeVersion: string; identity?: { sourceRevision?: string } };
+  };
+  const label = process.env.HIVE_V2_SERVICE_LABEL ?? "dev.honeybee.hive.v2";
+  const absent = async () => {
+    if (process.platform === "darwin") {
+      try { await execFileAsync("launchctl", ["print", `gui/${process.getuid!()}/${label}`], { env: nativeNodeEnv(), timeout: 2000 }); return false; }
+      catch (error) { const e = error as { stderr?: string }; if (/Could not find service/.test(e.stderr ?? "")) return true; throw error; }
+    }
+    const { stdout } = await execFileAsync("systemctl", ["--user", "show", `${label}.service`, "--property=ActiveState,MainPID"], { env: nativeNodeEnv(), timeout: 2000 });
+    return /^(?:ActiveState=inactive|ActiveState=failed)$/m.test(stdout) && /^MainPID=0$/m.test(stdout);
+  };
+  const waitAbsent = async () => {
+    const deadline = Date.now() + 60_000;
+    while (true) {
+      if (await absent()) return;
+      if (Date.now() >= deadline) throw new Error("deploy: service unload is unconfirmed; refusing recovery while a daemon may still be running");
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+  };
   const status = async (selected: NodePin) => {
     const { stdout } = await execFileAsync(selected.path, [...args("status"), "--json"], { timeout: 2000, env: { ...nativeNodeEnv(), ...nodePinEnv(selected) } });
     return JSON.parse(stdout) as { running?: boolean; repair?: unknown; service?: { installed?: boolean } };
@@ -226,11 +247,19 @@ export async function restartDeployedDaemon({ root, log, runtime, restorePreviou
       await new Promise(resolve => setTimeout(resolve, 100));
     }
   };
+  let previousIdentity: Awaited<ReturnType<typeof deployedIdentity>> | undefined;
+  if (restorePrevious) {
+    try { previousIdentity = await deployedIdentity(pin); }
+    catch (error) { if (!await absent()) throw error; }
+    if (previousIdentity && (!Number.isSafeInteger(previousIdentity.pid) || !previousIdentity.identity?.sourceRevision)) throw new Error("deploy: previous daemon identity unavailable; refusing to stop");
+  }
   let stopped = false;
+  let stopInitiated = false;
   try {
     await run("install");
-    try { await run("stop"); stopped = true; }
+    try { stopInitiated = true; await run("stop"); if (restorePrevious) await waitAbsent(); stopped = true; }
     catch (error) {
+      if (restorePrevious) { await waitAbsent(); stopped = true; throw error; }
       const state = await status(pin);
       if (state.running !== false || state.service?.installed !== false) throw error;
       stopped = true;
@@ -239,16 +268,29 @@ export async function restartDeployedDaemon({ root, log, runtime, restorePreviou
     await run("start");
     await ready(pin);
   } catch (error) {
-    if (stopped) await run("stop").catch(() => undefined);
+    if (stopInitiated && restorePrevious) {
+      await run("stop").catch(() => undefined);
+      await waitAbsent();
+      stopped = true;
+    } else if (stopped) await run("stop").catch(() => undefined);
     const restored = await restorePrevious?.();
     if (restorePrevious) {
       for (const snapshot of files) await restoreServiceFile(snapshot.file, snapshot.data, snapshot.mode);
       if (process.platform === "linux") await execFileAsync("systemctl", ["--user", "daemon-reload"], { env: nativeNodeEnv() });
     }
-    if (stopped && restored) {
+    if (stopped && restored && previousIdentity) {
       const priorPin = resolveNodePin(dataDir, { ...process.env, HIVE_NODE_PATH: undefined, HIVE_NODE_VERSION: undefined, HIVE_NODE_SHA256: undefined });
       await run("start", priorPin);
       await ready(priorPin);
+      const recovered = await deployedIdentity(priorPin);
+      if (JSON.stringify(recovered.identity) !== JSON.stringify(previousIdentity.identity) || recovered.pid === previousIdentity.pid
+        || recovered.nodeVersion !== `v${priorPin.version}` || !Number.isSafeInteger(recovered.pid)) throw new Error("deploy: recovered daemon build or interpreter identity differs from the previous runtime");
+      const executable = process.platform === "linux" ? await realpath(`/proc/${recovered.pid}/exe`)
+        : (await execFileAsync("ps", ["-p", String(recovered.pid), "-o", "comm="], { env: nativeNodeEnv(), timeout: 2000 })).stdout.trim();
+      const runningPin = probeNativeNode(executable);
+      const confirmed = await deployedIdentity(priorPin);
+      if (runningPin.path !== priorPin.path || runningPin.version !== priorPin.version || runningPin.sha256 !== priorPin.sha256
+        || confirmed.pid !== recovered.pid || confirmed.startedAt !== recovered.startedAt) throw new Error("deploy: recovered daemon executable identity differs from the previous pin");
       log("deploy: previous runtime and service recovered after failed activation");
     }
     throw error;
