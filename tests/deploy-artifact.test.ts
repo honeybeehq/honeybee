@@ -1,3 +1,4 @@
+import { persistNodePin, probeNativeNode } from "../src/nodeRuntime.js";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -329,6 +330,7 @@ test("fresh artifact exposes its owner CLI only after restart succeeds and retri
   try {
     const fixture = await release(dir), root = join(dir, "runtime"), bin = join(dir, "local", "bin");
     let restartFailed = false;
+    persistNodePin(join(root, "..", "v2"), probeNativeNode(process.execPath));
     const options = { ...fixture, root, admission: { fresh: true as const }, expectedCurrent: null,
       cliBinDirectory: bin, hooks: { async restartDaemon() { if (!restartFailed) { restartFailed = true; throw new Error("restart interrupted"); } } } };
     await assert.rejects(deployArtifact(options), /restart interrupted/);

@@ -1,3 +1,4 @@
+import { childNodePath, nativeNodeEnv, withoutInspectorArgs } from "../nodeRuntime.js";
 // ──────────────────────────────────────────────────────────────────────────
 // Detached limits refresh — the revalidate half of the auto pick's
 // stale-while-revalidate. The pick itself never blocks on provider
@@ -51,13 +52,13 @@ export async function scheduleDetachedLimitsRefresh(): Promise<boolean> {
     if (!rawEntry) return false;
     const entry = await realpath(rawEntry).catch(() => rawEntry);
     // Keep loader flags (tsx dev runs) but never inherit test/watch modes.
-    const execArgv = process.execArgv.filter(
+    const execArgv = withoutInspectorArgs(process.execArgv).filter(
       (arg) => arg !== "--test" && !arg.startsWith("--test=") && arg !== "--watch" && !arg.startsWith("--watch="),
     );
-    const child = spawnChild(process.execPath, [...execArgv, entry, "limits"], {
+    const child = spawnChild(childNodePath(), [...execArgv, entry, "limits"], {
       detached: true,
       stdio: "ignore",
-      env: { ...process.env },
+      env: nativeNodeEnv(),
     });
     child.once("error", () => undefined);
     child.unref();

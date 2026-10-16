@@ -1,3 +1,4 @@
+import { nativeNodeEnv } from "../../../src/nodeRuntime.ts";
 /**
  * Platform service management behind ONE interface (spec 04 behavior 6):
  * launchd (macOS) and a systemd user unit (Linux), with install / uninstall /
@@ -79,7 +80,7 @@ export function renderLaunchdPlist(spec: ServiceSpec): string {
       ? `
   <key>EnvironmentVariables</key>
   <dict>
-${Object.entries(spec.env)
+${Object.entries(nativeNodeEnv(spec.env))
   .map(([k, v]) => `    <key>${xmlEscape(k)}</key>\n    <string>${xmlEscape(v)}</string>`)
   .join("\n")}
   </dict>`
@@ -123,7 +124,7 @@ function unitEscape(s: string): string {
 export function renderSystemdUnit(spec: ServiceSpec): string {
   const exec = spec.execArgs.map(unitEscape).join(" ");
   const envLines = spec.env
-    ? Object.entries(spec.env)
+    ? Object.entries(nativeNodeEnv(spec.env))
         .map(([k, v]) => `Environment=${unitEscape(`${k}=${v}`)}\n`)
         .join("")
     : "";
@@ -137,6 +138,7 @@ ExecStart=${exec}
 ${cwdLine}${envLines}# Honeybee owns detached runner process groups; daemon stop/restart preserves them for re-adoption.
 # Ephemeral workers are stopped during clean daemon shutdown, and explicit bee stop/delete reaps its runner group.
 KillMode=process
+UnsetEnvironment=ELECTRON_RUN_AS_NODE NODE_OPTIONS
 Restart=always
 RestartSec=2
 StandardOutput=append:${spec.logPath}

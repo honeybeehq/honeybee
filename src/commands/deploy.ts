@@ -1,3 +1,4 @@
+import { resolveNodePin, nativeNodeEnv, nodePinEnv } from "../nodeRuntime.js";
 // `hive deploy` — versioned runtime deploys (reset WP0, spec 00). The
 // orchestration lives in src/deployRuntime.ts; this module wires the CLI
 // surface plus the two production hooks: the real clean-checkout build and
@@ -81,7 +82,7 @@ export async function cmdDeploy(parsed: Parsed): Promise<void> {
 /** Stream a build/restart step; the child's output is the progress report. */
 async function runStep(command: string, args: string[], cwd: string, log: (line: string) => void): Promise<void> {
   log(`deploy: ${command} ${args.join(" ")}`);
-  const child = spawn(command, args, { cwd, env: hostGitEnv(), stdio: ["ignore", "inherit", "inherit"] });
+  const child = spawn(command, args, { cwd, env: nativeNodeEnv(hostGitEnv()), stdio: ["ignore", "inherit", "inherit"] });
   const result = await new Promise<{ code: number | null; signal: NodeJS.Signals | null; error?: Error }>((resolve) => {
     child.once("error", (error) => resolve({ code: null, signal: null, error }));
     child.once("exit", (code, signal) => resolve({ code, signal }));
@@ -160,6 +161,8 @@ export async function buildDeployArtifact(
  */
 export async function restartDeployedDaemon({ root, log, runtime }: RestartDaemonContext): Promise<void> {
   const v2 = runtime === "v2" || runtimeUsesV2(root);
+  const pin = resolveNodePin(join(root, "..", "v2"));
+  const interpreter = pin.path;
   if (process.platform !== "darwin") {
     log("deploy: daemon restart skipped (launchctl unavailable on this platform; restart the daemon manually)");
     return;
@@ -168,23 +171,23 @@ export async function restartDeployedDaemon({ root, log, runtime }: RestartDaemo
   if (v2) {
     // Runtime mode survives source deploys; manage the same service selected
     // by the dependency-light CLI routing config.
-    await runStep(process.execPath, [cli, "v2", "daemon", "install", "--data-dir", join(root, "..", "v2")], root, log);
+    await runStep(interpreter, [cli, "v2", "daemon", "install", "--data-dir", join(root, "..", "v2")], root, log);
     try {
-      await runStep(process.execPath, [cli, "v2", "daemon", "stop", "--data-dir", join(root, "..", "v2")], root, log);
+      await runStep(interpreter, [cli, "v2", "daemon", "stop", "--data-dir", join(root, "..", "v2")], root, log);
     } catch (error) {
       // A failed stop can mean either absence or an uncertain unload. Only
       // confirmed absence permits a fresh start; never hide a live old owner.
-      const { stdout } = await execFileAsync(process.execPath,
-        [cli, "v2", "daemon", "status", "--json", "--data-dir", join(root, "..", "v2")], { timeout: 10_000 });
+      const { stdout } = await execFileAsync(interpreter,
+        [cli, "v2", "daemon", "status", "--json", "--data-dir", join(root, "..", "v2")], { timeout: 10_000, env: { ...nativeNodeEnv(), ...nodePinEnv(pin) } });
       const status = JSON.parse(stdout);
       if (status.running !== false || status.service?.installed !== false) throw error;
       log("deploy: v2 service is absent (fresh start)");
     }
-    await runStep(process.execPath, [cli, "v2", "daemon", "start", "--data-dir", join(root, "..", "v2")], root, log);
+    await runStep(interpreter, [cli, "v2", "daemon", "start", "--data-dir", join(root, "..", "v2")], root, log);
     return;
   }
-  await runStep(process.execPath, [cli, "daemon", "install", "--force"], root, log);
-  await runStep(process.execPath, [cli, "daemon", "restart"], root, log);
+  await runStep(interpreter, [cli, "daemon", "install", "--force"], root, log);
+  await runStep(interpreter, [cli, "daemon", "restart"], root, log);
 }
 
 async function resolveHoneybeeRepoRoot(): Promise<string> {

@@ -1,3 +1,4 @@
+import { childNodePath, nativeNodeEnv } from "./nodeRuntime.js";
 /** Read-only deploy admission. SQLite remains the daemon's sole authority. */
 import { DatabaseSync } from "node:sqlite";
 import { existsSync, readFileSync } from "node:fs";
@@ -51,9 +52,9 @@ async function readUpdateOwner(root: string): Promise<Owner> {
   if (!existsSync(join(dataDir, "core.sqlite3"))) return { reservation: null, blockers: false };
   let response: string | undefined;
   try {
-    const { stdout } = await promisify(execFile)(process.execPath,
+    const { stdout } = await promisify(execFile)(childNodePath(),
       [join(root, "current", "dist", "v2", "cli.js"), "update-owner", "status", "--data-dir", dataDir, "--socket", join(dataDir, "hived.sock")],
-      { timeout: 10_000 });
+      { timeout: 10_000, env: nativeNodeEnv() });
     response = stdout;
   } catch {
     // The core holds SQLite EXCLUSIVE for its entire lifetime. A read can only
