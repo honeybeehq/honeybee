@@ -103,7 +103,10 @@ ${args}
   <key>RunAtLoad</key>
   <true/>
   <key>KeepAlive</key>
-  <true/>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
   <key>ProcessType</key>
   <string>Interactive</string>
   <key>StandardOutPath</key>
@@ -139,7 +142,7 @@ ${cwdLine}${envLines}# Honeybee owns detached runner process groups; daemon stop
 # Ephemeral workers are stopped during clean daemon shutdown, and explicit bee stop/delete reaps its runner group.
 KillMode=process
 UnsetEnvironment=ELECTRON_RUN_AS_NODE NODE_OPTIONS
-Restart=always
+Restart=on-failure
 RestartSec=2
 StandardOutput=append:${spec.logPath}
 StandardError=append:${spec.logPath}

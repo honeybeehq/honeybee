@@ -726,9 +726,9 @@ if (typeof payload.realHome === "string" && payload.realHome.length > 0) {
 }
 repairInteractiveColorEnv(baseEnv);
 
+delete baseEnv.ELECTRON_RUN_AS_NODE;
+delete baseEnv.NODE_OPTIONS;
 const childEnv = { ...baseEnv, ...(payload.env && typeof payload.env === "object" ? payload.env : {}) };
-delete childEnv.ELECTRON_RUN_AS_NODE;
-delete childEnv.NODE_OPTIONS;
 const child = spawn(payload.command, Array.isArray(payload.args) ? payload.args : [], {
   env: childEnv,
   stdio: "inherit",
