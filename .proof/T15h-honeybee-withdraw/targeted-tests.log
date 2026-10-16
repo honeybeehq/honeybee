@@ -1,0 +1,27 @@
+✔ mirror.1: live rows carry exactly the declared keys — bees (view/bee/runtime), templates, tracks (20.834586ms)
+✔ mirror.2: value-level snapshot — a deterministic store serializes to the frozen mirror document (9.908851ms)
+✔ mirror.3: template/track audit kinds are exactly the declared mirror kinds with the declared payloads (11.537843ms)
+✔ mirror limits invalidates a discarded remote observation with no local baseline (8.118936ms)
+✔ setBeeTitle: sets title, audits bee.titled with previous, replays; identical = silent no-op; empty refused (15.641929ms)
+✔ v6.rename: renames, audits bee.renamed with previous, replays; identical = silent no-op; empty refused (9.409421ms)
+✔ v6.tag: remove-then-add, order preserved, duplicates collapse, audit carries the full list; replay (9.312877ms)
+✔ v6.parenting: parent_id at create; children read; archive parent leaves children; delete parent ORPHANS (audit bee.orphaned), never cascades; replay (11.116231ms)
+✔ v6.fork-seed: forkedFrom/forkSeed at create; recording the fork's own session id consumes the seed (audit forkSeedConsumed); replay (9.963342ms)
+✔ v6.questions: ask → open row (generation stamped); answer → answered + delivered as prefixed mail (+ wake when no live runtime); twice refused; unknown refused; list filters; replay; cascade on delete (12.472615ms)
+✔ v6.seals: create ties to the current generation; list/get; refs; typed not-found; replay; cascade on delete (10.501519ms)
+✔ v6.migration: a v5 store opens as v6 — parent_id/forked_from/fork_seed added, questions/seals created, data intact, stamp bumped (17.538602ms)
+✔ v6.dump: StateDump carries questions + seals; a fresh store's replay equals its dump (8.123373ms)
+✔ withdrawal is owner-only, quiet across retries, replayable and durable; both first-commit winners (20.494937ms)
+✔ v44 question migration preserves open/answered rows, indexes and legacy audit defaults (19.591812ms)
+✔ withdrawal capability and authenticated session boundary: disabled (8.450994ms)
+✔ withdrawal capability and authenticated session boundary: missing-key (4.921802ms)
+✔ withdrawal capability and authenticated session boundary: degraded (2.471256ms)
+✔ withdrawal capability and authenticated session boundary: ready (5.659188ms)
+ℹ tests 19
+ℹ suites 0
+ℹ pass 19
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 238.977605

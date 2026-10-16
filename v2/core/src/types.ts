@@ -827,7 +827,7 @@ export interface NamingUsageSummary {
 // v6 — questions (a bee asks the operator) and seals (a bee's structured record)
 // ---------------------------------------------------------------------------
 
-export const QUESTION_STATUSES = ["open", "answered"] as const;
+export const QUESTION_STATUSES = ["open", "answered", "withdrawn"] as const;
 export type QuestionStatus = (typeof QUESTION_STATUSES)[number];
 
 export interface QuestionRow {
@@ -839,6 +839,8 @@ export interface QuestionRow {
   /** Suggested answers, when the bee offered a closed set; null = free-form. */
   options: string[] | null;
   status: QuestionStatus;
+  withdrawalReason: string | null;
+  withdrawnAt: number | null;
   answer: string | null;
   askedAt: number;
   answeredAt: number | null;
@@ -1664,6 +1666,15 @@ export class QuestionNotFoundError extends CoreError {
 
 /** Answering a question that is no longer open (already answered). */
 export class QuestionNotOpenError extends CoreError {}
+export class QuestionNotOwnerError extends CoreError {}
+export class QuestionAlreadyAnsweredError extends CoreError {}
+export class QuestionWithdrawnError extends CoreError {
+  readonly withdrawalReason: string;
+  constructor(withdrawalReason: string) {
+    super(`This question was withdrawn: ${withdrawalReason}`);
+    this.withdrawalReason = withdrawalReason;
+  }
+}
 
 export class SealNotFoundError extends CoreError {
   constructor(id: string) {
