@@ -134,6 +134,14 @@ lib_third_party_owner() {
   ( IFS='|'; for n in $LIB_OUR_NAMES; do case "$p" in *"$n"*) exit 0;; esac; done; exit 1 ) && return 1
   while IFS='|' read -r entry owner mode; do
     case "$mode" in interim|parent-meta) continue;; esac
+    if [ "$entry" = 'Application Support/CrashReporter' ] && [ "$mode" = existing ]; then
+      case "$p" in
+        'Application Support/CrashReporter'/Intervals_*.plist)
+          case "${p#Application Support/CrashReporter/}" in */*) continue;; esac
+          cut -d'|' -f2 "$before" | grep -qxF "$p" && { echo "$owner, modified existing entry"; return 0; }
+          continue;;
+      esac
+    fi
     case "$entry" in
       */) case "$mode" in inside) case "$p" in "$entry"?*) echo "$owner"; return 0;; esac;;
             modified) case "$p/" in "$entry"*) cut -d'|' -f2 "$before" | grep -qxF "$p" && { echo "$owner, modified existing entry"; return 0; }; break;; esac;;
