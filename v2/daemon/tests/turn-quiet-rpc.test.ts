@@ -73,3 +73,30 @@ test("quiet facts through a throwaway daemon: root/child isolation, failure, int
     rig.cleanup();
   }
 });
+
+for (const harness of ["grok", "kimi"] as const) {
+  test(`quiet ACP facts through a throwaway ${harness} daemon`, { timeout: 60_000 }, async () => {
+    const acpFixture = new URL("./fixtures/quiet-acp.mjs", import.meta.url).pathname;
+    const rig = makeDaemonDir({ agents: { [harness]: { command: process.execPath, args: [acpFixture], adapter: harness } } });
+    const daemon = await startDaemon(rig.dir);
+    const client = await daemon.client();
+    try {
+      const spawned = await client.request<SpawnResult>("spawn", { name: `quiet-${harness}`, agent: harness, substrate: "hsr", cwd: rig.dir });
+      const beeId = spawned.beeId;
+      await waitFor(async () => (await client.request<ViewResult>("view", { beeId })).runtime?.state === "idle", `${harness} fixture ready`, 20_000);
+      for (const [body, expected] of [["@success", true], ["@error", undefined], ["@cancelled", undefined], ["@refusal", undefined]] as const) {
+        const sent = await client.request<SendRpcResult>("send", { beeId, body });
+        const value = await waitFor(async () => {
+          const current = await client.request<ViewResult>("view", { beeId });
+          return current.bee?.lastTurnTrigger?.messageId === sent.messageId && current.bee.lastTurnTrigger.endedAt !== null ? current : null;
+        }, `${harness} ${body} turn ended`, 20_000);
+        assert.equal(value.bee!.lastTurnTrigger!.endedQuiet, expected, `${harness} ${body}`);
+        console.log(`LAB ${harness} ${body}: endedQuiet=${String(expected)}`);
+      }
+    } finally {
+      client.close();
+      await daemon.stop();
+      rig.cleanup();
+    }
+  });
+}

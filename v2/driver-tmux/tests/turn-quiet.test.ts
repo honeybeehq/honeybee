@@ -85,3 +85,31 @@ test("quiet text followed by failure or interruption stays unclassified", () => 
   turn.invalidate();
   assert.equal(turn.end({ finalText: "<quiet/>" }), undefined);
 });
+
+test("ACP errors and cancelled prompt results cannot classify prior quiet chunks", () => {
+  for (const harness of ["grok", "kimi"]) {
+    for (const completion of [
+      { id: 1000001, error: { message: "fixture failure" } },
+      ...["cancelled", "refusal", "max_tokens", "max_turn_requests"].map(stopReason => ({ id: 1000001, result: { stopReason } })),
+      { method: "_x.ai/session/prompt_complete", params: { sessionId: "root", stopReason: "cancelled" } },
+      { method: "session/update", params: { sessionId: "root", update: { sessionUpdate: "turn_completed", error: { message: "failed" } } } },
+    ]) {
+      const turn = new TurnQuiet(harness);
+      turn.pushLine(JSON.stringify({ method: "session/update", params: { sessionId: "root", update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "done <quiet/>" } } } }), "root");
+      turn.pushLine(JSON.stringify(completion), "root");
+      assert.equal(turn.end(), undefined, harness + " " + JSON.stringify(completion));
+    }
+  }
+});
+
+
+test("ACP successful completion stays quiet and foreign sessions cannot replace the root", () => {
+  for (const harness of ["grok", "kimi"]) {
+    const turn = new TurnQuiet(harness);
+    const chunk = (sessionId: string, text: string) => JSON.stringify({ method: "session/update", params: { sessionId, update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text } } } });
+    turn.pushLine(chunk("root", "done <quiet/>"), "root");
+    turn.pushLine(chunk("child", "Please review"), "root");
+    turn.pushLine(JSON.stringify({ id: 1001, result: { stopReason: "end_turn" } }), "root");
+    assert.equal(turn.end(), true);
+  }
+});

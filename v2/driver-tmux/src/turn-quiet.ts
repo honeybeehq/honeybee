@@ -31,6 +31,20 @@ export class TurnQuiet {
     this.sessionId = sessionId;
     const row = parseJsonLine(line);
     if (row?.isSidechain === true || row?.parent_tool_use_id != null) return;
+    const params = asObject(row?.params);
+    const scope = params?.threadId ?? params?.sessionId ?? row?.session_id ?? row?.sessionId;
+    if (sessionId && typeof scope === "string" && scope !== sessionId) return;
+    if (this.harness === "grok" || this.harness === "kimi") {
+      const promptResponse = row?.method === undefined && typeof row?.id === "number" && row.id >= 1000;
+      const update = asObject(params?.update);
+      const completion = typeof row?.method === "string" && (
+        row.method.endsWith("/prompt_complete") || row.method.endsWith("/prompt_completed")
+        || update?.sessionUpdate === "turn_completed" || update?.type === "turn_completed"
+      );
+      const outcome = promptResponse ? asObject(row?.result) : update ?? params;
+      if (promptResponse && (row?.error != null || outcome?.stopReason !== "end_turn")) this.invalidate();
+      if (completion && (outcome?.error != null || outcome?.stopReason !== undefined && outcome.stopReason !== "end_turn")) this.invalidate();
+    }
     if (row?.type === "result" && row.is_error === true) this.invalidate();
     const response = asObject(row?.response);
     if (row?.type === "control_response" && typeof response?.request_id === "string" && response.request_id.startsWith("hive-interrupt-")) this.invalidate();
