@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import type { JsonValue } from "./types.js";
+export type JsonPrimitive = string | number | boolean | null;
+export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
 
 export function canonicalJson(value: JsonValue): string {
   return JSON.stringify(sortValue(value));
