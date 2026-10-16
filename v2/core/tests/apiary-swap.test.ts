@@ -109,4 +109,3 @@ test("apiary schema: current 44 remains unchanged and newer storage refuses", as
     assert.throws(() => openCoreStore(join(root, "v2", "core.sqlite3"), { ephemeral: true }), /newer store/);
   });
 });
-
