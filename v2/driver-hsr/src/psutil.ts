@@ -66,30 +66,55 @@ function isZombie(pid: number): boolean {
   return false;
 }
 
+let zombieCensusWarned = false;
+let zombieCensusRetryAt = 0;
+
+function markZombieCensusUnavailable(error: unknown): void {
+  zombieCensusRetryAt = Date.now() + ZOMBIE_CENSUS_INTERVAL_MS;
+  if (zombieCensusWarned) return;
+  zombieCensusWarned = true;
+  const detail = error instanceof Error ? error.message : String(error);
+  process.emitWarning(`zombie census unavailable (${detail}); liveness falls back to kill(pid, 0), which may report a zombie as alive`);
+}
+
+function settleZombieCensus(stdout: string): void {
+  const now = Date.now();
+  for (const line of stdout.split("\n")) {
+    const row = /^\s*(\d+)\s+(\S+)/.exec(line);
+    if (!row) continue;
+    const seen = Number(row[1]);
+    if (row[2]!.startsWith("Z")) {
+      zombiePositives.set(seen, now);
+      zombieNegatives.delete(seen);
+    } else {
+      zombiePositives.delete(seen);
+      zombieNegatives.set(seen, now);
+    }
+  }
+  for (const [cached, at] of zombieNegatives) if (now - at >= ZOMBIE_CENSUS_INTERVAL_MS * 4) zombieNegatives.delete(cached);
+  for (const [cached, at] of zombiePositives) if (now - at >= ZOMBIE_CENSUS_INTERVAL_MS) zombiePositives.delete(cached);
+}
+
 function runZombieCensus(): void {
-  if (zombieCensusInFlight || zombieCensusQueue.size === 0) return;
+  if (zombieCensusInFlight || zombieCensusQueue.size === 0 || Date.now() < zombieCensusRetryAt) return;
   zombieCensusInFlight = true;
   const pids = [...zombieCensusQueue];
   zombieCensusQueue.clear();
-  execFile("/bin/ps", ["-o", "pid=,stat=", "-p", pids.join(",")], { encoding: "utf8", timeout: 2_000 }, (_error, stdout) => {
-    zombieCensusInFlight = false;
-    const now = Date.now();
-    for (const line of String(stdout ?? "").split("\n")) {
-      const row = /^\s*(\d+)\s+(\S+)/.exec(line);
-      if (!row) continue;
-      const seen = Number(row[1]);
-      if (row[2]!.startsWith("Z")) {
-        zombiePositives.set(seen, now);
-        zombieNegatives.delete(seen);
-      } else {
-        zombiePositives.delete(seen);
-        zombieNegatives.set(seen, now);
+  try {
+    execFile("/bin/ps", ["-o", "pid=,stat=", "-p", pids.join(",")], { encoding: "utf8", timeout: 2_000 }, (error, stdout) => {
+      const spawnFailed = !!error && typeof (error as NodeJS.ErrnoException).code === "string";
+      try {
+        if (spawnFailed) markZombieCensusUnavailable(error);
+        else settleZombieCensus(String(stdout ?? ""));
+      } finally {
+        zombieCensusInFlight = false;
       }
-    }
-    for (const [cached, at] of zombieNegatives) if (now - at >= ZOMBIE_CENSUS_INTERVAL_MS * 4) zombieNegatives.delete(cached);
-    for (const [cached, at] of zombiePositives) if (now - at >= ZOMBIE_CENSUS_INTERVAL_MS) zombiePositives.delete(cached);
-    runZombieCensus();
-  });
+      if (!spawnFailed) runZombieCensus();
+    });
+  } catch (error) {
+    zombieCensusInFlight = false;
+    markZombieCensusUnavailable(error);
+  }
 }
 
 /** Parse a POSIX `ps` etime value — `[[dd-]hh:]mm:ss` — into milliseconds. */

@@ -60,6 +60,7 @@ import type {
 } from "../../harness/src/driver.ts";
 import type { HarnessAdapter } from "../../adapters/src/index.ts";
 import { executableNotFoundDetail, type SpawnCommandResolution } from "../../core/src/executables.ts";
+import { shortSocketDir, socketPathFits } from "../../core/src/socketPath.ts";
 import { pidAlive, verifyProcessIdentity } from "./psutil.ts";
 
 // Pin the module's physical deployment before an immutable runtime's
@@ -361,6 +362,7 @@ export class HsrDriver implements RuntimeDriver {
   private readonly reconnecting = new Set<string>();
   private detached = false;
   private readonly cfg: HsrDriverConfig;
+  private fallbackSocketDir: string | null = null;
   private readonly hostLaunch: HostLaunch;
   private readonly now: () => number;
   private readonly graceMs: number;
@@ -422,6 +424,15 @@ export class HsrDriver implements RuntimeDriver {
     return source ? { kind: "source", entry } : { kind: "artifact", entry };
   }
 
+  private socketDir(): string {
+    if (this.cfg.socketDir) return this.cfg.socketDir;
+    if (!this.fallbackSocketDir) {
+      const sample = `hb-rh-${"0".repeat(16)}.sock`;
+      this.fallbackSocketDir = socketPathFits(join(tmpdir(), sample)) ? tmpdir() : shortSocketDir("hb-rh-", sample);
+    }
+    return this.fallbackSocketDir;
+  }
+
   private runnerPaths(
     beeId: string,
     generation: number,
@@ -438,7 +449,7 @@ export class HsrDriver implements RuntimeDriver {
       .slice(0, 16);
     return {
       config: `${base}.json`,
-      socket: join(this.cfg.socketDir ?? tmpdir(), `hb-rh-${digest}.sock`),
+      socket: join(this.socketDir(), `hb-rh-${digest}.sock`),
       status: `${base}.status.json`,
       observations: `${base}.observations.jsonl`,
     };

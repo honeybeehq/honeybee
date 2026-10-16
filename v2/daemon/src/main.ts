@@ -4,6 +4,7 @@
  * executes; it runs until SIGTERM/SIGINT and then shuts down cleanly
  * (children survive — the next boot re-adopts them).
  */
+import { isTestDaemonEnv, refuseNonLoopbackFetch } from "./testNetworkGuard.ts";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { measureDirectoryBytes } from "../../driver-cell/src/index.ts";
@@ -41,6 +42,7 @@ function simulatedCellVolume(cellsRoot: string, totalBytes: number): (path: stri
 
 /** Run the daemon in the foreground until a termination signal. */
 export async function runDaemon(argv: string[]): Promise<number> {
+  if (isTestDaemonEnv()) refuseNonLoopbackFetch((op) => process.stderr.write(`${op}\n`));
   const cfg = resolveDaemonConfig(parseDaemonRunArgs(argv));
   // Test daemons shorten the delay before the first automatic Cell retention pass.
   const retentionDelay = Number(process.env.HIVE_TEST_RETENTION_INITIAL_DELAY_MS);
@@ -57,7 +59,7 @@ export async function runDaemon(argv: string[]): Promise<number> {
   // this test-only flag so deploy/restart continues to preserve live bees.
   const reapTestRuntimes = process.env.HIVE_TEST_REAP_RUNTIMES_ON_SHUTDOWN === "1";
   await daemon.start();
-  process.stdout.write(`hived v2 listening on ${cfg.socketPath} (store ${cfg.storePath})\n`);
+  process.stdout.write(`hived v2 listening on ${daemon.cfg.socketPath} (store ${cfg.storePath})\n`);
   await new Promise<void>((resolve) => {
     let stopping = false;
     const onSignal = (): void => {

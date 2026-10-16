@@ -6,6 +6,8 @@
  */
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { readLiveEndpointRecord } from "../src/endpointRecord.ts";
+import { socketPathFits } from "../src/socketPath.ts";
 import { tmpdir, userInfo } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -258,8 +260,15 @@ export interface DaemonConfigOverrides extends NodeConfigFile {
   stubEnv?: Record<string, string>;
 }
 
+function shortDaemonBase(): string {
+  for (const base of [process.env.TMPDIR, "/tmp"]) {
+    if (base && socketPathFits(join(base, "hb-v2-daemon-XXXXXX", "home", ".hive", "v2", "hived.sock"))) return base;
+  }
+  return tmpdir();
+}
+
 export function makeDaemonDir(overrides: DaemonConfigOverrides = {}): { dir: string; cleanup: () => void } {
-  const dir = mkdtempSync(join(tmpdir(), "hb-v2-daemon-"));
+  const dir = mkdtempSync(join(shortDaemonBase(), "hb-v2-daemon-"));
   const { stubEnv, ...file } = overrides;
   const config: NodeConfigFile = {
     tickMs: 20,
@@ -305,14 +314,21 @@ let ownerBirth: string | undefined;
 
 export function ownerBoundEnv(nodeOptions = ""): { HIVE_TEST_OWNER_PID: string; HIVE_TEST_OWNER_BIRTH: string; NODE_OPTIONS: string } {
   if (ownerBirth === undefined) {
-    try { ownerBirth = execFileSync("ps", ["-p", String(process.pid), "-o", "lstart="], { encoding: "utf8", env: { ...process.env, LC_ALL: "C", TZ: "UTC" } }).trim().replace(/\s+/g, " "); } catch { ownerBirth = ""; }
+    let birth: string;
+    try {
+      birth = execFileSync("ps", ["-p", String(process.pid), "-o", "lstart="], { encoding: "utf8", env: { ...process.env, LC_ALL: "C", TZ: "UTC" } }).trim().replace(/\s+/g, " ");
+    } catch (error) {
+      throw new Error(`ownerBoundEnv: cannot read this test process's birth with ps, so test daemons could outlive a recycled owner pid: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    if (birth.length === 0) throw new Error("ownerBoundEnv: ps printed no birth for this test process, so test daemons could outlive a recycled owner pid");
+    ownerBirth = birth;
   }
   return { HIVE_TEST_OWNER_PID: String(process.pid), HIVE_TEST_OWNER_BIRTH: ownerBirth, NODE_OPTIONS: `${nodeOptions} --import=${join(here, "fixtures", "owner-bound.mjs")}`.trim() };
 }
 
 /** `platform` makes the daemon process report that OS (default linux, so a suite run on a Mac never trips platform guards). */
 export async function startDaemon(dir: string, opts: { env?: Record<string, string>; platform?: string; stopTimeoutMs?: number; socketPath?: string } = {}): Promise<DaemonHandle> {
-  const socketPath = opts.socketPath ?? join(dir, "hived.sock");
+  let socketPath = opts.socketPath ?? join(dir, "hived.sock");
   const storePath = join(dir, "core.sqlite3");
   const isolatedHome = mkdtempSync(join(dir, "test-home-"));
   const defaults = { HOME: isolatedHome, XDG_CONFIG_HOME: join(isolatedHome, "config"), XDG_DATA_HOME: join(isolatedHome, "data"), XDG_CACHE_HOME: join(isolatedHome, "cache"), XDG_STATE_HOME: join(isolatedHome, "state"), HIVE_GATEWAYS_DISABLE: "1" };
@@ -329,6 +345,9 @@ export async function startDaemon(dir: string, opts: { env?: Record<string, stri
       HIVE_NO_KEYCHAIN: "1",
       HIVE_CLAUDE_USAGE_URL: "http://127.0.0.1:9/api/oauth/usage",
       HIVE_CLAUDE_PROFILE_URL: "http://127.0.0.1:9/api/oauth/profile",
+      HIVE_CLAUDE_OAUTH_TOKEN_URL: "http://127.0.0.1:9/v1/oauth/token",
+      HIVE_CODEX_OAUTH_TOKEN_URL: "http://127.0.0.1:9/oauth/token",
+      HIVE_GROK_OAUTH_TOKEN_URL: "http://127.0.0.1:9/oauth/token",
       HIVE_TEST_META_URL: "http://127.0.0.1:9",
       // Successful test shutdown owns and reaps its disposable runtimes.
       // Production never sets this; restart-survival semantics stay intact.
@@ -354,7 +373,7 @@ export async function startDaemon(dir: string, opts: { env?: Record<string, stri
     storePath,
     proc,
     output: () => out,
-    client: () => RpcClient.connect(socketPath),
+    client: () => RpcClient.connect(handle.socketPath),
     kill: async () => {
       proc.kill("SIGKILL");
       await waitFor(() => proc.exitCode != null || proc.signalCode != null, "daemon killed", 4000);
@@ -374,6 +393,13 @@ export async function startDaemon(dir: string, opts: { env?: Record<string, stri
     await waitFor(
       async () => {
         if (proc.exitCode != null) throw new Error(`daemon exited early (${proc.exitCode}):\n${out}`);
+        if (!opts.socketPath) {
+          const live = readLiveEndpointRecord(dir);
+          if (live) {
+            socketPath = live.socketPath;
+            handle.socketPath = socketPath;
+          }
+        }
         try {
           const c = await RpcClient.connect(socketPath, 500);
           c.close();

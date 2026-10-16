@@ -500,7 +500,8 @@ export class TmuxDriver implements RuntimeDriver {
       const captured = this.server.try(["capture-pane", "-p", "-t", exactPaneTarget(p.sessionName)]);
       const tail = captured.stdout.split("\n").filter((line) => line.trim().length > 0).slice(-5).join(" | ");
       const census = spawnSync("/bin/ps", ["-o", "pid=,ppid=,stat=,etimes=,args=", "-p", String(p.pid)], { encoding: "utf8", timeout: 5_000 });
-      lines.push(`${p.sessionName}: pid=${p.pid} exited=${p.exited} ps=${JSON.stringify((census.stdout ?? "").trim())} pane=${JSON.stringify(captured.status === 0 ? tail : captured.stderr.trim())}`);
+      const ps = census.error ? `unavailable (${(census.error as NodeJS.ErrnoException).code ?? census.error.message})` : (census.stdout ?? "").trim();
+      lines.push(`${p.sessionName}: pid=${p.pid} exited=${p.exited} ps=${JSON.stringify(ps)} pane=${JSON.stringify(captured.status === 0 ? tail : captured.stderr.trim())}`);
     }
     return lines.join("; ");
   }
