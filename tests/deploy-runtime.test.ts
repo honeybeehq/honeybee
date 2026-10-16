@@ -14,6 +14,7 @@ import { DatabaseSync } from "node:sqlite";
 import { withFileLock } from "../src/lock.js";
 import { DeployReservationHeldError } from "../src/deployRuntime.js";
 import { readUpdateReservation } from "../src/readUpdateReservation.js";
+import { restartDeployedDaemon } from "../src/commands/deploy.js";
 import {
   CURRENT_LINK_NAME,
   DEPLOY_HISTORY_FILENAME,
@@ -558,3 +559,27 @@ test("failed rollback restores the active version without recording success", as
     assert.deepEqual(await readDeployHistory(root), history);
   });
 });
+
+for (const operation of ["deploy", "rollback"] as const) {
+  test(`held reservation fences pinned restart and recovery with an installed runtime: ${operation}`, async () => {
+    await withDeployWorld(async ({ root, repoRoot, commit, hooks }) => {
+      const prior = await commit("prior");
+      await deployVersion({ root, repoRoot, hooks });
+      await commit("candidate");
+      const history = await readDeployHistory(root);
+      await seedReservation(root, true);
+      let builds = 0, restarts = 0;
+      const guardedHooks: DeployHooks = {
+        buildArtifact: async context => { builds++; return hooks.buildArtifact(context); },
+        restartDaemon: async context => { restarts++; await restartDeployedDaemon(context); },
+      };
+      await assert.rejects(operation === "deploy"
+        ? deployVersion({ root, repoRoot, hooks: guardedHooks })
+        : rollbackDeploy({ root, hooks: guardedHooks }), DeployReservationHeldError);
+      assert.equal(builds, 0);
+      assert.equal(restarts, 0);
+      assert.equal(await currentDeployTarget(root), prior);
+      assert.deepEqual(await readDeployHistory(root), history);
+    });
+  });
+}
