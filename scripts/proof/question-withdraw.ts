@@ -31,21 +31,33 @@ async function connect(lane?: "remote" | "node_relay") {
 }
 async function start() {
   daemon = spawn("env", ["-i", `HOME=${process.env.HOME}`, `PATH=${process.env.PATH}`, process.execPath, resolve("dist/cli.js"), "v2", "daemon", "run", "--data-dir", data, "--socket", socket], { stdio: ["ignore", "pipe", "pipe"] });
+  const child = daemon;
   let output = "";
   daemon.stdout!.on("data", c => { output += c; }); daemon.stderr!.on("data", c => { output += c; });
-  daemon.once("exit", () => writeFileSync(join(evidence, `daemon-${daemon?.pid}.log`), output));
+  daemon.once("exit", () => writeFileSync(join(evidence, `daemon-${child.pid}.log`), output));
   const deadline = Date.now() + 20000;
   while (Date.now() < deadline) {
-    if (daemon.exitCode !== null) throw new Error(output);
+    if (daemon.exitCode !== null || daemon.signalCode !== null) throw new Error(output);
     try { return await connect(); } catch { await new Promise(r => setTimeout(r, 50)); }
   }
   throw new Error(`daemon timeout: ${output}`);
 }
 async function stop() {
   clients.splice(0).forEach(c => c.close());
-  if (!daemon || daemon.exitCode !== null) return;
-  const exited = once(daemon, "exit"); daemon.kill("SIGTERM"); await exited; daemon = undefined;
+  if (!daemon) return;
+  const child = daemon;
+  daemon = undefined;
+  let code = child.exitCode;
+  let signal = child.signalCode;
+  if (code === null && signal === null) {
+    const exited = once(child, "exit"); child.kill("SIGTERM");
+    [code, signal] = await exited;
+  }
+  receipts.push({ shutdown: { pid: child.pid, code, signal } });
+  assert.equal(signal, null, "daemon shutdown must not die from a signal");
+  assert.equal(code, 0, "daemon shutdown must exit cleanly");
 }
+
 async function register(c: RpcClient) {
   const challenge = await c.request<LocalTrustChallenge>("rpc.localTrust.challenge");
   assert.equal(challenge.pid, process.pid);
@@ -88,12 +100,21 @@ try {
   await refused(withdraw("missing", "missing"), "question_not_found");
   for (const reason of ["", " \n ", "x".repeat(501)]) await refused(withdraw(q.id, "bad", reason), "invalid_request");
   await refused(service.request("question.withdraw", { questionId: q.id, reason: "valid" }, 1000, context), "invalid_request");
+  const collisionKey = `question.withdraw:${JSON.stringify([beeId, "first"])}`;
+  const poison = await human.request("bee.rename", { beeId: other, name: "poison", idempotencyKey: collisionKey });
   const first = await withdraw(q.id, "first", "  Superseded.  ");
+  const poisonReplay = await human.request<Record<string, unknown>>("bee.rename", { beeId: other, name: "different", idempotencyKey: collisionKey });
+  assert.equal(poisonReplay.deduped, true);
+  assert.deepEqual({ ...poisonReplay, deduped: undefined }, { ...poison as object, deduped: undefined });
+  const probeKey = `question.withdraw:${JSON.stringify([beeId, "new-key"])}`;
   assert.equal(first.question.withdrawalReason, "Superseded.");
   const replay = await withdraw(q.id, "first", "new reason");
   assert.equal(replay.deduped, true); assert.deepEqual(replay.question, first.question);
   assert.deepEqual((await withdraw(q.id, "new-key", "different")).question, first.question);
   await refused(withdraw(q.id, "first", "stolen", other), "question_not_owner");
+  const noDisclosure = await human.request<Record<string, unknown>>("bee.rename", { beeId: other, name: "no-disclosure", idempotencyKey: probeKey });
+  assert.equal(noDisclosure.deduped, undefined);
+  receipts.push({ receiptIsolation: { collisionKey, poison, poisonReplay, noDisclosure } });
   await refused(human.request("question.answer", { questionId: q.id, answer: "late" }), "question_withdrawn", "This question was withdrawn: Superseded.");
   const qOther = (await service.request<QuestionAskResult>("question.ask", { beeId: other, text: "Other owner same key?" })).question;
   assert.equal((await withdraw(qOther.id, "first", "Other owner.", other)).question.status, "withdrawn");
@@ -149,6 +170,7 @@ try {
   const listed = await service.request<{ questions: unknown[] }>("question.list", { open: false });
   assert.ok(listed.questions.some(r => (r as { id: string }).id === q.id));
   receipts.push({ replay: "audit equals authoritative dump", reconnect: reconnected.questions, dedupAfterRestart: "stable", passed: true });
+  await stop();
   writeFileSync(join(evidence, "receipts.json"), JSON.stringify(receipts, null, 2));
   console.log(JSON.stringify({ passed: true, host: hostname(), root, evidence, raceWinners: raceRows.map(r => r.row.status) }));
 } finally { await stop(); }
