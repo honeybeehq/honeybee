@@ -1173,6 +1173,12 @@ function normalizeStringList(value: unknown, where: string): string[] {
   return [...(value as string[])];
 }
 
+function normalizeWithdrawalReason(reason: string): string {
+  const text = requireNonEmpty(reason, "withdrawQuestion: reason").trim();
+  if (!text || text.length > 500) throw new CoreError("withdrawQuestion: reason must contain 1 to 500 characters after trimming");
+  return text;
+}
+
 function requireNonEmpty(value: unknown, where: string): string {
   if (typeof value !== "string" || value.length === 0) throw new CoreError(`${where}: expected a non-empty string`);
   return value;
@@ -5249,8 +5255,7 @@ export class CoreStore {
   }
 
   withdrawQuestion(questionId: string, callerBeeId: string, reason: string): QuestionRow {
-    const text = requireNonEmpty(reason, "withdrawQuestion: reason").trim();
-    if (!text || text.length > 500) throw new CoreError("withdrawQuestion: reason must contain 1 to 500 characters after trimming");
+    const text = normalizeWithdrawalReason(reason);
     return this.tx(() => {
       const question = this.requireQuestionOwner(questionId, callerBeeId);
       if (question.status === "withdrawn") return question;
@@ -5263,7 +5268,25 @@ export class CoreStore {
     });
   }
 
-  requireQuestionOwner(questionId: string, callerBeeId: string): QuestionRow {
+  withdrawQuestionWithKey(questionId: string, callerBeeId: string, reason: string, key: string): { question: QuestionRow; deduped?: true } {
+    requireNonEmpty(key, "withdrawQuestion: idempotencyKey");
+    const text = normalizeWithdrawalReason(reason);
+    return this.tx(() => {
+      this.requireQuestionOwner(questionId, callerBeeId);
+      const hit = this.stmt("SELECT question_id, result FROM question_withdraw_receipts WHERE bee_id = ? AND key = ?").get(callerBeeId, key) as Row | undefined;
+      if (hit) {
+        if (hit.question_id !== questionId) throw new IdempotencyConflictError("Withdrawal key belongs to another question");
+        return { question: JSON.parse(String(hit.result)) as QuestionRow, deduped: true };
+      }
+      const question = this.withdrawQuestion(questionId, callerBeeId, text);
+      this.stmt("INSERT INTO question_withdraw_receipts(bee_id,key,question_id,result,created_at) VALUES(?,?,?,?,?)").run(callerBeeId, key, questionId, JSON.stringify(question), this.now());
+      const count = Number((this.stmt("SELECT count(*) AS n FROM question_withdraw_receipts").get() as Row).n);
+      if (count > this.maxRpcIdempotencyRows) this.stmt("DELETE FROM question_withdraw_receipts WHERE rowid IN (SELECT rowid FROM question_withdraw_receipts ORDER BY created_at, rowid LIMIT ?)").run(count - this.maxRpcIdempotencyRows);
+      return { question };
+    });
+  }
+
+  private requireQuestionOwner(questionId: string, callerBeeId: string): QuestionRow {
     const question = this.getQuestion(questionId);
     if (!question) throw new QuestionNotFoundError(questionId);
     if (question.beeId !== callerBeeId) throw new QuestionNotOwnerError(`question ${questionId} belongs to another bee`);

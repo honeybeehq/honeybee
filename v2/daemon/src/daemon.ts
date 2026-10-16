@@ -1010,7 +1010,7 @@ export class HiveDaemon {
       dataDir: this.cfg.dataDir,
       instance: { id: this.instanceId, dataDir: canonicalPath(this.cfg.dataDir) },
       localTrust: this.cfg.rpcLocalTrust,
-      securityAudit: (kind, payload) => this.mustStore().recordLocalRpcEvent(kind as "rpc.peer_credentials_unavailable" | "rpc.local_refused" | "rpc.local_registered", payload),
+      securityAudit: (kind, payload) => store.recordLocalRpcEvent(kind as "rpc.peer_credentials_unavailable" | "rpc.local_refused" | "rpc.local_registered", payload),
       log: (op) => this.log(op),
       dispatch: (verb, params, conn) => this.dispatch(verb, params, conn),
       performance: this.performance,
@@ -5081,24 +5081,10 @@ export class HiveDaemon {
     if (!caller) throw new RpcError("caller_not_trusted", "Withdrawal requires an authenticated session principal.");
     for (const key of Object.keys(params)) if (!["questionId", "reason", "idempotencyKey"].includes(key)) throw new RpcError("invalid_request", `question.withdraw does not accept ${key}`);
     const questionId = this.param(params, "questionId");
-    const reason = this.param(params, "reason").trim();
-    if (!reason || reason.length > 500) throw new RpcError("invalid_request", "reason must contain 1 to 500 characters after trimming");
+    const reason = this.param(params, "reason");
     const callerKey = this.idempotencyKeyOf(params);
     if (!callerKey) throw new RpcError("invalid_request", "question.withdraw requires idempotencyKey");
-    const key = `question.withdraw:${JSON.stringify([caller, callerKey])}`;
-    const store = this.mustStore();
-    return store.transact(() => {
-      store.requireQuestionOwner(questionId, caller);
-      const hit = store.lookupRpcResult(key);
-      if (hit) {
-        const result = hit.result as QuestionWithdrawResult;
-        if (hit.verb !== "question.withdraw" || result.question.id !== questionId || result.question.beeId !== caller) throw new RpcError("idempotency_conflict", "Withdrawal key belongs to another question");
-        return { ...result, deduped: true };
-      }
-      const result = { question: store.withdrawQuestion(questionId, caller, reason) };
-      store.recordRpcResult(key, "question.withdraw", null, result);
-      return result;
-    });
+    return this.mustStore().withdrawQuestionWithKey(questionId, caller, reason, callerKey);
   }
 
   private rpcQuestionList(params: Record<string, unknown>): QuestionListResult {

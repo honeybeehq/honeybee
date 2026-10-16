@@ -543,6 +543,15 @@ CREATE INDEX IF NOT EXISTS rpc_idempotency_created_at ON rpc_idempotency(created
 -- message (delivery_message_id) so the bee learns it through the one channel.
 ${QUESTIONS_TABLE_SQL}
 
+CREATE TABLE IF NOT EXISTS question_withdraw_receipts (
+  bee_id TEXT NOT NULL REFERENCES bees(id) ON DELETE CASCADE,
+  key TEXT NOT NULL,
+  question_id TEXT NOT NULL,
+  result TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (bee_id, key)
+) STRICT;
+
 -- v6: seals — a bee's structured "here is what I did" record (metadata only:
 -- title/body/refs), tied to the generation that sealed.
 CREATE TABLE IF NOT EXISTS seals (
