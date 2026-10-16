@@ -1,7 +1,7 @@
 import { persistNodePin, probeNativeNode } from "../src/nodeRuntime.js";
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { restartDeployedDaemon } from "../src/commands/deploy.js";
@@ -11,11 +11,13 @@ test("fresh verified activation executes installed current v2 CLI with scoped da
   try {
     const root = join(dir, "runtime"), calls = join(dir, "calls.jsonl");
     await mkdir(join(root, "current", "dist"), { recursive: true });
-    persistNodePin(join(dir, "v2"), probeNativeNode(process.execPath));
-    await writeFile(join(root, "current", "dist", "cli.js"), `require('node:fs').appendFileSync(${JSON.stringify(calls)}, JSON.stringify(process.argv.slice(2))+'\\n');`);
+    const pinnedNode = join(dir, "node-24-pinned");
+    await copyFile(process.execPath, pinnedNode);
+    persistNodePin(join(dir, "v2"), probeNativeNode(pinnedNode));
+    await writeFile(join(root, "current", "dist", "cli.js"), `require('node:fs').appendFileSync(${JSON.stringify(calls)}, JSON.stringify({ args: process.argv.slice(2), interpreter: process.execPath })+'\\n');`);
     await restartDeployedDaemon({ root, installedDir: join(root, "current"), sha: "a".repeat(40), runtime: "v2", log() {} });
     assert.deepEqual((await readFile(calls, "utf8")).trim().split("\n").map(line => JSON.parse(line)),
-      ["install", "stop", "start"].map(verb => ["v2", "daemon", verb, "--data-dir", join(dir, "v2")]));
+      ["install", "stop", "start"].map(verb => ({ args: ["v2", "daemon", verb, "--data-dir", join(dir, "v2")], interpreter: pinnedNode })));
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
