@@ -1,0 +1,28 @@
+✖ run --rm cleans up when known driver readiness fails (6541.330483ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 7344.640999
+
+✖ failing tests:
+
+test at tests/cli-run.test.ts:1:1788
+✖ run --rm cleans up when known driver readiness fails (6541.330483ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /Timed out waiting for claude to become ready/. Input:
+  
+  'hive: Local tmux birth admission failed: launcher 1301283 has no verifiable birth fingerprint; exact pane %0 rolled back [admission diagnostics: panes="no server running on /home/trmd/.cache/honeybee-pin.dlvXuG/tmp/honeybee-run-tmux-qdK0Id/tmux.sock" ps="Command failed: /bin/ps -o pid=,ppid=,pgid=,stat=,etimes=,args= -p 1301283\\n" pane="no server running on /home/trmd/.cache/honeybee-pin.dlvXuG/tmp/honeybee-run-tmux-qdK0Id/tmux.sock"]\n'
+  
+      at TestContext.<anonymous> (/home/trmd/.cache/honeybee-pin.dlvXuG/baseline/tests/cli-run.test.ts:92:12)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'hive: Local tmux birth admission failed: launcher 1301283 has no verifiable birth fingerprint; exact pane %0 rolled back [admission diagnostics: panes="no server running on /home/trmd/.cache/honeybee-pin.dlvXuG/tmp/honeybee-run-tmux-qdK0Id/tmux.sock" ps="Command failed: /bin/ps -o pid=,ppid=,pgid=,stat=,etimes=,args= -p 1301283\\n" pane="no server running on /home/trmd/.cache/honeybee-pin.dlvXuG/tmp/honeybee-run-tmux-qdK0Id/tmux.sock"]\n',
+    expected: /Timed out waiting for claude to become ready/,
+    operator: 'match',
+    diff: 'simple'
+  }

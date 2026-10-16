@@ -1,0 +1,122 @@
+forage: host trmd-erebor-mini02 (darwin/arm64, 10 cores, load 1.63, 0 forage jobs)
+forage: synced github-com-honeybeehq-honeybee-a9015b303498-space-110f4b740e82-3506a99a @ d6d45e2917 in 2,353,463µs
+forage: lane github-com-honeybeehq-honeybee-a9015b303498-space-110f4b740e82-3506a99a · scratch /Users/trmd/.cache/fj/ZVr63G · network SHARED: this Darwin job is NOT offline, it has the host's network (no network namespace on Darwin)
+probe: ps shim runs outside Seatbelt (ok)
+darwin-gate/1: host=trmd-erebor-mini02 forage-run=ZVr63G lane=github-com-honeybeehq-honeybee-a9015b303498-space-110f4b740e82-3506a99a snapshot=d6d45e2917df472cd79595858fdda2369a9bfa94 source=6d58f9d7abf01a5dd7bd986c38a48ffd569de5c0 scripts=[darwin-gate.sh:801d19bc23a5 pinned-runtime-body.sh:ca55cb00b70a seatbelt-exceptions.txt:0b53680ac9f7 third-party-warn.txt:3ab8b270e918 excluded-tests.txt:c41bc443568d] root=/Users/trmd/.cache/scg/r.o7QMla (31B) socket-probe=64B node=/Users/trmd/.local/share/mise/installs/node/24.18.0/bin/node v24.18.0 env-vars=38 HIVE_/APIARY_=[HIVE_REAL_HOME=/Users/trmd/.cache/scg/r.o7QMla/h ]
+STEP npm ci exit=0
+STEP build exit=0
+== NETWORK PROBE (must refuse outbound, allow loopback) before any measured run
+probe: seatbelt nc 1.1.1.1:443 refused (ok)
+probe: seatbelt node 1.1.1.1:443 -> EPERM (ok)
+probe: trap node 1.1.1.1:443 -> ESCGNET, recorded (ok)
+probe: trap dns example.com -> ESCGNET (ok)
+probe: loopback under both layers works (ok)
+probe: git https refused (ok): fatal: transport 'https' not allowed
+probe: seatbelt ps via the non-setuid shim reads lstart (ok)
+probe: security resolves to the fake inside and outside Seatbelt (ok)
+== LOCKDOWN armed at 2026-10-16 10:21:31: Seatbelt profile for sb(), Node trap via NODE_OPTIONS, GIT_ALLOW_PROTOCOL=file, proxies -> 127.0.0.1:9
+✔ deploy-owned CLI follows current, preserves argument quoting, and replays exposure (757.011458ms)
+✔ deploy-owned CLI preserves an existing user command and dangling link (131.739916ms)
+✔ fresh verified activation executes installed current v2 CLI with scoped data directory (1539.264583ms)
+✔ restart after stop failure refuses a still-loaded service (193.667667ms)
+✔ restart after stop failure requires confirmed absence (202.527833ms)
+✔ persisted v2 config selects the v2 service for an ordinary source restart (181.328208ms)
+✔ fresh service pin requires explicit managed node and refuses Electron (381.54975ms)
+✔ pin persists resolved executable identity and refuses version or byte drift (1563.301042ms)
+✔ runtime environment and inspector arguments are scrubbed (0.295542ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 9
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2298.1535
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>dev.honeybee.lab.pinned.29455</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/trmd/.local/share/mise/installs/node/24.18.0/bin/node</string>
+    <string>/Users/trmd/.cache/scg/r.o7QMla/h/pinned-LL0HKc/worker.mjs</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HIVE_NODE_PATH</key>
+    <string>/Users/trmd/.local/share/mise/installs/node/24.18.0/bin/node</string>
+    <key>HIVE_NODE_VERSION</key>
+    <string>24.18.0</string>
+    <key>HIVE_NODE_SHA256</key>
+    <string>ee6fb0e015284d83a91e8ec5213f43a157f8a392b58555301682892ba928c04a</string>
+    <key>HOME</key>
+    <string>/Users/trmd/.cache/scg/r.o7QMla/h</string>
+    <key>HIVE_V2_DATA_DIR</key>
+    <string>/Users/trmd/.cache/scg/r.o7QMla/h/pinned-LL0HKc/v2</string>
+    <key>PATH</key>
+    <string>/Users/trmd/.cache/scg/r.o7QMla/bin:/Users/trmd/.local/share/mise/installs/node/24.18.0/bin:/Users/trmd/.local/share/mise/installs/pnpm/10.28.0:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ProcessType</key>
+  <string>Interactive</string>
+  <key>StandardOutPath</key>
+  <string>/Users/trmd/.cache/scg/r.o7QMla/h/pinned-LL0HKc/daemon.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/trmd/.cache/scg/r.o7QMla/h/pinned-LL0HKc/daemon.log</string>
+</dict>
+</plist>
+
+HSR HOST / HEARTBEAT / LAB CHILD PS
+29472 29470 /Users/trmd/.local/share/mise/installs/node/24.18.0/bin/node -e const fs = require("node:fs");\012const dir = process.argv[1];\012const touch = () => { try { const now = new Date(); fs.utimesSync(dir, now, now); } catch { process.exit(0); } };\012setInterval(touch, Number(process.argv[2]));\012process.stdin.on("end", () => process.exit(0));\012process.stdin.on("error", () => process.exit(0));\012process.stdin.resume(); /Users/trmd/.cache/scg/r.o7QMla/h/pinned-LL0HKc/mirror.lock 1000
+29474 29470 /Users/trmd/.local/share/mise/installs/node/24.18.0/bin/node --experimental-strip-types /Users/trmd/.forage/work/github-com-honeybeehq-honeybee-a9015b303498-space-110f4b740e82-3506a99a/v2/driver-hsr/src/runner-host-main.ts /Users/trmd/.cache/scg/r.o7QMla/h/pinned-LL0HKc/runners/bee-lab.1.json
+29476 29474 /Users/trmd/.local/share/mise/installs/node/24.18.0/bin/node /Users/trmd/.forage/work/github-com-honeybeehq-honeybee-a9015b303498-space-110f4b740e82-3506a99a/v2/driver-hsr/test-agent/agent.mjs
+29477 29470 /Users/trmd/.local/share/mise/installs/node/24.18.0/bin/node -e setInterval(()=>{},1000) honeybee-pinned-child
+
+LAB PS BEFORE
+29470     1 /Users/trmd/.local/share/mise/installs/node/24.18.0/bin/node /Users/trmd/.cache/scg/r.o7QMla/h/pinned-LL0HKc/worker.mjs
+29477 29470 /Users/trmd/.local/share/mise/installs/node/24.18.0/bin/node -e setInterval(()=>{},1000) honeybee-pinned-child
+
+BAD PIN REJECTED: old scratch daemon pid 29470 unchanged
+REINSTALL PRESERVES PIN {"path":"/Users/trmd/.local/share/mise/installs/node/24.18.0/bin/node","version":"24.18.0","sha256":"ee6fb0e015284d83a91e8ec5213f43a157f8a392b58555301682892ba928c04a"}
+PASS missing/Electron/version-drift rejection; installed ExecStart; pinned child argv; reinstall pin; bad deploy preserves pid
+Bad request.
+Could not find service "dev.honeybee.lab.pinned.29455" in domain for user gui: 501
+CLEANUP disposable unit and scratch files removed dev.honeybee.lab.pinned.29455
+.dg.sh: line 152: 29087 Terminated: 15          while :; do
+    snap=$(ps -axo pid=,ppid=,pgid=,command= 2>/dev/null); printf '%s\n' "$snap" | awk -v gate="$SCG_GATE_PID" -v gpg="$gate_pgid" -v root="$GATE_ROOT" -v lane="$PWD" '
+      { pid=$1; ppid[pid]=$2; pg[pid]=$3; exe=""
+        for (i=4; i<=5 && i<=NF; i++) { n=split($i, parts, "/"); if (parts[n]=="claude" || $i ~ /@anthropic-ai\/claude-code/) { exe=$i; break } }
+        if (exe != "" && index(exe, root) != 1 && index(exe, lane) != 1) { cand[pid]=exe; argv_root[pid]=(index($0, root) > 0) } }
+      END { for (pid in cand) { own="foreign"; if (pg[pid]==gpg || argv_root[pid]) own="gate"; p=pid
+              for (k=0; k<64 && own=="foreign" && p+0>1; k++) { if (p==gate) own="gate"; p=ppid[p] }
+              print pid, own, cand[pid] } }'; sleep 2;
+done
+     29088                       | while read -r pid own exe; do
+    [ "$own" = foreign ] && lsof -a -p "$pid" -d cwd -Fn 2> /dev/null | grep -q "^n$GATE_ROOT" && own=gate; echo "$pid $own $exe";
+done >> "$GATE_ROOT/claude.census"
+== REAP: 0 process(es) tied to /Users/trmd/.cache/scg/r.o7QMla or this gate's tree
+== NETWORK verdict
+trap: 0 non-loopback attempts
+seatbelt: 0 outbound denies in the system log since 2026-10-16 10:21:31
+== security calls
+security: 0 calls
+== Claude CLI census: 
+== HOME sentinel (real HOME top level, ~/.hive/v2, live socket)
+(no change)
+== ~/.npm (npm cache): before 4205 files, newest mtime 1792125091; after 4205 files, newest mtime 1792125091
+(no change)
+== ~/Library sentinel (Preferences, Application Support|Logs|Caches|Containers|LaunchAgents)
+WARN third-party (Google Chrome): Application Support/Google/Chrome/Default/DawnGraphiteCache/data_1
+WARN third-party (Google Chrome): Application Support/Google/Chrome/Default/DawnWebGPUCache/data_1
+WARN third-party (Google Chrome): Application Support/Google/Chrome/Default/GPUCache/data_1
+(~/Library: 3 third-party WARN, 0 FAIL)
+== ~/Library scan errors: 0
+(~/Library verdict done)
+== GATE RESULT: PASS · darwin-gate/1 · forage run ZVr63G · lane github-com-honeybeehq-honeybee-a9015b303498-space-110f4b740e82-3506a99a · snapshot d6d45e2917df472cd79595858fdda2369a9bfa94 · source 6d58f9d7abf01a5dd7bd986c38a48ffd569de5c0 · scripts darwin-gate.sh:801d19bc23a5 pinned-runtime-body.sh:ca55cb00b70a seatbelt-exceptions.txt:0b53680ac9f7 third-party-warn.txt:3ab8b270e918 excluded-tests.txt:c41bc443568d · ~/Library scan errors 0 · EXCLUDED 0 []
+forage: reaped 0 leftover job processes
+forage: exit 0 · run 29,365,584µs · trmd-erebor-mini02
