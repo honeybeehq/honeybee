@@ -1,5 +1,7 @@
 import os, sys, pathlib, json, ctypes, subprocess, time, stat, uuid, socket, fcntl, struct, hashlib
+from home_guard import entry_guard
 R = pathlib.Path(sys.argv[1])
+ENTRY_GUARD = entry_guard(R)
 H = pathlib.Path(json.loads((R / 'config.json').read_text())['realHome'])
 CACHE = R
 label = sys.argv[2]
@@ -12,6 +14,8 @@ def save(name, value):
     fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 384, dir_fd=outfd)
     with os.fdopen(fd, 'w') as f:
         json.dump(value, f, indent=2)
+
+save('entry-guard-mask.json', ENTRY_GUARD)
 
 def mount(source, target, kind, flags, data=None):
     args = [x.encode() if isinstance(x, str) else x for x in (source, str(target), kind, data)]
@@ -133,7 +137,7 @@ try:
     receipt.update(outsideAssertion=go, maskAsserted=True, maskAssertedAt=time.time())
     save('mask-proof.json', receipt)
     os.close(outfd)
-    os.execvpe('python3', ['python3',str(R/'init.py'),str(R),label,'python3', str(R / 'monitor.py'), str(R), label, 'python3', str(R / 'workload.py'), str(R), label, *cmd], os.environ)
+    os.execvpe('python3', ['python3','-B',str(R/'init.py'),str(R),label,'python3','-B', str(R / 'monitor.py'), str(R), label, 'python3','-B', str(R / 'workload.py'), str(R), label, *cmd], os.environ)
 except BaseException as e:
     receipt.update(maskAsserted=False, error=type(e).__name__ + ': ' + str(e), failedAt=time.time())
     save('mask-failure.json', receipt)

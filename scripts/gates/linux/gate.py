@@ -15,6 +15,8 @@ import sys
 import time
 import uuid
 import threading
+import pwd
+from home_guard import entry_guard, pull_destination
 
 from policy import RULE_VERSION, closing_verdict, differences, preexec_verdict, flake_verdict, within,namespace_pid,error_verdict,mapping_coverage,probe_failed
 
@@ -239,6 +241,12 @@ def map_host_pids(group, out, stopped):
 
 def adjudicate(home, root, out, physical, before, after):
     raw = read(out / 'result.json') if (out / 'result.json').exists() else {}
+    guard_names = ['mask','init','monitor','workload']
+    if pathlib.Path(physical['command'][-1]).name == 'policy_test.py':
+        guard_names.append('tests')
+    guard_records = {name: read(out / ('entry-guard-'+name+'.json')) if (out / ('entry-guard-'+name+'.json')).exists() else None for name in guard_names}
+    entry_guards = bool(read(root/'config.json').get('entryGuard',{}).get('allowed')) and all(record and record.get('allowed') and record.get('beforeFirstWrite') and record.get('ruleVersion') == RULE_VERSION for record in guard_records.values())
+    save(out/'entry-guards.json',dict(asserted=entry_guards,records=guard_records))
     inv = inventory(out)
     audit = log_audit(home, out, before, after, inv, root)
     mask = read(out / 'mask-proof.json') if (out / 'mask-proof.json').exists() else {}
@@ -254,7 +262,7 @@ def adjudicate(home, root, out, physical, before, after):
         if change['path'] in inv['touched']:
             change['verdict'] = 'FAIL'
     pre_clean = pre['asserted'] and all(item['verdict'] != 'FAIL' for item in pre['changes'])
-    eligible = valid_mask and pre_clean and clean and audit['valid'] and not any(audit.get('matchLineCounts', {}).values())
+    eligible = entry_guards and valid_mask and pre_clean and clean and audit['valid'] and not any(audit.get('matchLineCounts', {}).values())
     changes = differences(before['entries'], after['entries'])
     config_times = [item['time'] for item in audit.get('configPatch', [])]
     for change in changes:
@@ -284,7 +292,7 @@ def run_step(config, step):
     if before['valid']:
         scope = 'hbl-' + root.name + '-' + label
         launcher = dict(PATH=config['path'], HOME=str(fake), TMPDIR=env['TMPDIR'], LANG='C.UTF-8', XDG_RUNTIME_DIR='/run/user/' + str(os.getuid()), DBUS_SESSION_BUS_ADDRESS='unix:path=/run/user/' + str(os.getuid()) + '/bus')
-        args = ['systemd-run', '--user', '--scope', '--quiet', '--unit=' + scope, '--', 'env', '-i'] + [key + '=' + value for key, value in env.items()] + ['unshare', '-rmnpf', '--mount-proc','python3', str(root / 'mask.py'), str(root), label, *step['command']]
+        args = ['systemd-run', '--user', '--scope', '--quiet', '--unit=' + scope, '--', 'env', '-i'] + [key + '=' + value for key, value in env.items()] + ['unshare', '-rmnpf', '--mount-proc','python3', '-B', str(root / 'mask.py'), str(root), label, *step['command']]
         save(out / 'launch.json', dict(argv=args, environment=env, scope=scope, envException='HIVE_REAL_HOME equals fake HOME; all other HIVE_*/APIARY_* absent'))
         with (out / 'launcher.log').open('w') as log:
             process = subprocess.Popen(args, cwd=root / step['version'] if (root / step['version']).exists() else root, env=launcher, stdout=log, stderr=subprocess.STDOUT)
@@ -318,6 +326,9 @@ def run_step(config, step):
                 mapper.join()
     attempt.update(end=time.time(), workloadStarted=(out / 'workload-started.json').exists())
     save(out / 'physical-attempt.json', attempt)
+    test_guard = fake/'entry-guard-tests.json'
+    if test_guard.exists():
+        shutil.copyfile(test_guard,out/'entry-guard-tests.json')
     after = snapshot(home)
     save(out / 'after.json', after)
     try:
@@ -331,7 +342,7 @@ def run_step(config, step):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Guarded Linux gate, rules v27. One physical attempt per planned step; no retries.', epilog='Steps: check,v2:check,v2:test,v2:daemon,v2:driver,v2:driver2,v2:harness,build,gate-tests,test:<repo-relative.test.ts>,flake:<repo-relative.test.ts>:N. N>=3; daemon-shutdown N>=10. Preparation, offline npm ci and peercred prebuild are automatic. Receipts: REAL_HOME/.cache/hbl/<run>. Approved satellites only. Start with env -i PATH=... HOME=<fake> TMPDIR=<fake> LANG=C.UTF-8 run.sh --real-home REAL_HOME --candidate SHA --base SHA --steps LIST --npm-cache FILE --npm-cache-sha256 SHA256. No other HIVE_*/APIARY_* variables are accepted.')
+    parser = argparse.ArgumentParser(description='Guarded Linux gate, rules v29. One physical attempt per planned step; no retries.', epilog='Steps: check,v2:check,v2:test,v2:daemon,v2:driver,v2:driver2,v2:harness,build,gate-tests,test:<repo-relative.test.ts>,flake:<repo-relative.test.ts>:N. N>=3; daemon-shutdown N>=10. Preparation, offline npm ci and peercred prebuild are automatic. Receipts: REAL_HOME/.cache/hbl/<run>. Approved satellites only. Start with env -i PATH=... HOME=<fake under ~/.cache> TMPDIR=<fake> LANG=C.UTF-8 run.sh --real-home REAL_HOME --candidate SHA --base SHA --steps LIST --npm-cache FILE --npm-cache-sha256 SHA256. No other HIVE_*/APIARY_* variables are accepted.')
     parser.add_argument('--real-home', required=True)
     parser.add_argument('--candidate', required=True)
     parser.add_argument('--base', required=True)
@@ -340,10 +351,14 @@ def main():
     parser.add_argument('--npm-cache-sha256', required=True)
     parser.add_argument('--lsof-exclude', action='append', default=[])
     args = parser.parse_args()
+    controller_guard = entry_guard()
     if any(key.startswith(('HIVE_', 'APIARY_')) for key in os.environ):
         parser.error('controller must start under env -i with no HIVE_*/APIARY_* variables')
     if pathlib.Path(os.environ['HOME']).absolute() == pathlib.Path(args.real_home).absolute():
         parser.error('controller HOME must be fake; pass the real home explicitly')
+    passwd_home = pathlib.Path(pwd.getpwuid(os.getuid()).pw_dir).resolve()
+    if pathlib.Path(args.real_home).resolve() != passwd_home:
+        parser.error('--real-home must match the passwd home')
     if platform.system() != 'Linux' or not re.match(r'^(netcup-|.*metal-)', platform.node()):
         parser.error('satellite Linux host required')
     if any(within(path, '/home') or '.hive' in pathlib.Path(path).parts or not path.startswith('/') for path in args.lsof_exclude):
@@ -373,7 +388,7 @@ def main():
             parser.error('test path must be a repository relative test file')
         for version, n in versions:
             if token == 'gate-tests':
-                command = ['python3', str(pathlib.Path(__file__).parent / 'policy_test.py')]
+                command = ['python3', '-B', str(pathlib.Path(__file__).parent / 'policy_test.py')]
             elif test:
                 command = ['node', 'scripts/with-fixture-warden.mjs', 'node', '--test', '--test-reporter=tap',test]
             elif token in ('check', 'v2:check', 'v2:test', 'v2:daemon', 'v2:driver', 'v2:driver2', 'v2:harness', 'build'):
@@ -393,6 +408,8 @@ def main():
     config = dict(runRoot=str(root), realHome=str(home), gateSha=gate_sha,controllerEnvironmentKeys=sorted(os.environ), path=os.environ['PATH'], shas=shas, rulesVersion=RULE_VERSION, lsofExclusions=args.lsof_exclude, cacheSource=str(pathlib.Path(args.npm_cache).absolute()), cacheSha256=args.npm_cache_sha256, provenance='findings/hb-turn-quiet-netcup2-script-bundle.json v1', flakePlan=flakes)
     config['toolHashes'] = {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in pathlib.Path(__file__).parent.iterdir() if path.is_file()}
     config['ledger'] = str(parent / 'attempt-ledger.jsonl')
+    config['entryGuard'] = controller_guard
+    config['passwdHome'] = str(passwd_home)
     config['createdAt'] = time.time()
     config['createdUtc'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
     config['socketPathLimitBytes'] = 108
@@ -403,18 +420,26 @@ def main():
             parser.error('lab TMPDIR exceeds the 48-byte gate budget')
     config['maxTmpdirBytes'] = max(len(os.fsencode(fake_env(lab_home(root, index), config['path'])['TMPDIR'])) for index in range(len(plan)))
     save(root / 'config.json', config)
+    save(root / 'entry-guard-controller.json', controller_guard)
     save(root / 'plan.json', plan)
     for path in pathlib.Path(__file__).parent.glob('*.py'):
         shutil.copyfile(path, root / path.name)
     for step in plan:
         if step.get('token') == 'gate-tests':
-            step['command'] = ['python3', str(root / 'policy_test.py')]
+            step['command'] = ['python3', '-B', str(root / 'policy_test.py')]
     save(root / 'plan.json', plan)
     bootstrap = root / 'bootstrap'
     bootstrap.mkdir()
     env = fake_env(bootstrap, config['path'])
+    pull = root / 'pull'
+    pull.mkdir()
+    scripts = set(config['toolHashes'])
+    config['sourceArchives'] = {version: str(pull_destination(root, version+'-source.tar', scripts)) for version in shas}
+    config['cacheArchive'] = str(pull_destination(root, 'npm-cache.tar.gz', scripts))
+    config['pullDirectory'] = str(pull)
+    save(root/'config.json',config)
     for version, sha in shas.items():
-        with (root / (version + '.tar')).open('wb') as archive:
+        with pathlib.Path(config['sourceArchives'][version]).open('xb') as archive:
             subprocess.run(['git', '-C', str(repo), 'archive', sha], env=env, stdout=archive, check=True)
     cache = pathlib.Path(args.npm_cache)
     digest = hashlib.sha256(cache.read_bytes()).hexdigest()
@@ -423,7 +448,8 @@ def main():
         save(root / 'receipt.json', failure)
         record_attempt(root, dict(event='setup-failed', **failure))
         raise RuntimeError('npm cache SHA256 mismatch')
-    shutil.copyfile(cache, root / 'npm-cache.tar.gz')
+    with cache.open('rb') as source, pathlib.Path(config['cacheArchive']).open('xb') as destination:
+        shutil.copyfileobj(source,destination)
     save(root / 'cache-transfer.json', dict(source=str(cache), sha256=digest, bytes=cache.stat().st_size))
     print(json.dumps(dict(runRoot=str(root), candidate=shas['candidate'], base=shas['base'], planned=len(plan))), flush=True)
     results = []

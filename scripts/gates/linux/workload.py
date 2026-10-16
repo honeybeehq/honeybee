@@ -5,8 +5,10 @@ import pathlib
 import sys
 import tarfile
 import time
+from home_guard import entry_guard
 
 root = pathlib.Path(sys.argv[1])
+ENTRY_GUARD = entry_guard(root)
 label = sys.argv[2]
 command = sys.argv[3:]
 out = root / 'receipts' / label
@@ -22,6 +24,8 @@ source = root / version
 def save(name, value):
     (out / name).write_text(json.dumps(value, indent=2))
 
+save('entry-guard-workload.json', ENTRY_GUARD)
+
 
 def verify():
     manifest = json.loads((root / (version + '-manifest.json')).read_text())
@@ -35,7 +39,7 @@ def verify():
         if not match:
             mismatches.append(entry['path'])
     deps = source / 'node_modules'
-    result = dict(sha=config['shas'][version], archiveSha256=hashlib.sha256((root / (version + '.tar')).read_bytes()).hexdigest(), files=len(manifest), mismatches=mismatches, nodeModulesExists=deps.is_dir(), nodeModulesSymlink=deps.is_symlink())
+    result = dict(sha=config['shas'][version], archiveSha256=hashlib.sha256(pathlib.Path(config['sourceArchives'][version]).read_bytes()).hexdigest(), files=len(manifest), mismatches=mismatches, nodeModulesExists=deps.is_dir(), nodeModulesSymlink=deps.is_symlink())
     save('source-verification.json', result)
     assert not mismatches and not deps.is_symlink()
     return result
@@ -44,7 +48,7 @@ def verify():
 save('workload-started.json', dict(command=command, at=time.time(), maskAssertedAt=proof['maskAssertedAt']))
 if command == ['@prepare']:
     source.mkdir()
-    archive = root / (version + '.tar')
+    archive = pathlib.Path(config['sourceArchives'][version])
     with tarfile.open(archive) as stream:
         stream.extractall(source, filter='data')
     manifest = []
@@ -65,7 +69,7 @@ if '--test' in command:
     path=source/command[-1]
     save('test-input.json',dict(path=command[-1],exists=path.is_file() and not path.is_symlink(),sha256=hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None))
 if command[:2] == ['npm', 'ci']:
-    archive = root / 'npm-cache.tar.gz'
+    archive = pathlib.Path(config['cacheArchive'])
     assert hashlib.sha256(archive.read_bytes()).hexdigest() == config['cacheSha256']
     cache = pathlib.Path(os.environ['HOME']) / '.npm'
     cache.mkdir()
