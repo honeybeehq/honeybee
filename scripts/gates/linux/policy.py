@@ -1,7 +1,7 @@
 import errno
 import pathlib
 
-RULE_VERSION = 23
+RULE_VERSION = 24
 
 
 def within(target, root):
@@ -42,6 +42,32 @@ def wal_mtime_only(path, old, new, real_home):
 
 def differences(before, after):
     return [dict(path=path, before=before.get(path), after=after.get(path)) for path in sorted(before.keys() | after.keys()) if before.get(path) != after.get(path)]
+
+
+def preexec_verdict(change, real_home, named=(), touched=()):
+    path, old, new = change['path'], change['before'], change['after']
+    hive = str(pathlib.Path(real_home) / '.hive')
+    if not old or not new or path in touched or any(within(path, name) for name in named):
+        return 'FAIL', 'other'
+    if pathlib.Path(path).parent == pathlib.Path(real_home) or path == hive + '/v2/core.sqlite3':
+        return 'FAIL', 'other'
+    identity = all(old.get(key) == new.get(key) for key in ('inode', 'uid', 'gid', 'mode', 'type'))
+    if wal_mtime_only(path, old, new, real_home):
+        return 'WARN', 'WAL/SHM mtime-only'
+    if identity and path == hive + '/v2/hived.log' and new['size'] > old['size']:
+        return 'WARN', 'hived.log growth'
+    direct = str(pathlib.Path(path).parent) in (hive, hive + '/v2')
+    if identity and direct and old['type'] == 'directory' and all(old[key] == new[key] for key in old if key != 'mtime_ns'):
+        return 'WARN', '~/.hive direct-entry directory mtime-only'
+    return 'FAIL', 'other'
+
+
+def flake_verdict(rows, count):
+    versions = ('candidate', 'base')
+    by_version = {version: [row for row in rows if row['physical']['version'] == version] for version in versions}
+    valid = all(len(items) == count and all(item.get('guardAccepted') and item.get('testExit') is not None for item in items) for items in by_version.values())
+    failures = {version: sum(item.get('testExit') not in (None, 0) for item in items) for version, items in by_version.items()}
+    return dict(failures=failures, classification='flake evidence' if valid and all(failures.values()) else 'no flake attribution', attempts=[item['physical']['attemptId'] for item in rows])
 
 
 def closing_verdict(change, real_home, masked_eligible, clean, config_times, touched, named):

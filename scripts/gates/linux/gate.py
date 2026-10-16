@@ -15,7 +15,7 @@ import sys
 import time
 import uuid
 
-from policy import RULE_VERSION, closing_verdict, differences, wal_mtime_only, within
+from policy import RULE_VERSION, closing_verdict, differences, preexec_verdict, flake_verdict, within
 
 
 def save(path, value):
@@ -155,10 +155,10 @@ def outside_assertion(home, out, before):
     inside, ready = read(out / 'mask-inside.json'), read(out / 'mask-ready.json')
     changes = differences(before['entries'], after['entries'])
     for change in changes:
-        change['verdict'] = 'WARN' if wal_mtime_only(change['path'], change['before'], change['after'], str(home)) else 'FAIL'
+        change['verdict'], change['category'] = preexec_verdict(change, str(home), inside['namedRealExceptions'])
     ns = {key: os.readlink('/proc/self/ns/' + key) for key in ('user', 'mnt', 'net')}
     asserted = before['valid'] and after['valid'] and inside['insideAsserted'] and ns['mnt'] != inside['namespaces']['mnt'] and all(item['verdict'] == 'WARN' for item in changes)
-    result = dict(asserted=asserted, insideAsserted=inside['insideAsserted'], nonce=ready['nonce'], at=time.time(), changes=changes, outsideNamespaces=ns, fdHistoryCondition='provisional until closing sampler adjudication')
+    result = dict(asserted=asserted, insideAsserted=inside['insideAsserted'], nonce=ready['nonce'], at=time.time(), windowMs=(after['time']-before['time'])*1000, changes=changes, outsideNamespaces=ns, fdHistoryCondition='provisional until closing sampler adjudication')
     save(out / 'outside-preexec.json', result)
     save(out / ('GO.json' if asserted else 'ABORT.json'), result)
 
@@ -180,9 +180,10 @@ def adjudicate(home, root, out, physical, before, after):
     config_times = [item['time'] for item in audit.get('configPatch', [])]
     for change in changes:
         change['verdict'] = closing_verdict(change, str(home), eligible, clean, config_times, inv['touched'], mask.get('namedRealExceptions', []))
-    ok = physical.get('scopeExit') == 0 and physical['workloadStarted'] and eligible and before['valid'] and after['valid'] and all(item['verdict'] != 'FAIL' for item in changes)
+    guard_accepted = physical['workloadStarted'] and eligible and before['valid'] and after['valid'] and all(item['verdict'] != 'FAIL' for item in changes)
+    ok = physical.get('scopeExit') == 0 and guard_accepted
     warnings = sum(item['verdict'] == 'WARN' for item in changes) + sum(item['verdict'] == 'WARN' for item in pre['changes']) + raw.get('errorCounts', {}).get('masked_unknown_prior_WARN', 0)
-    result = dict(ruleVersion=RULE_VERSION, outcome=('WARN' if warnings else 'PASS') if ok else 'FAIL', preExec=pre, closingChanges=changes, errorCounts=raw.get('errorCounts'), errnoCounts=raw.get('errnoCounts'), samplerClean=clean, logAudit=audit, maskAsserted=valid_mask, citedAttempt=physical['attemptId'] if ok else None, physical=physical)
+    result = dict(ruleVersion=RULE_VERSION, outcome=('WARN' if warnings else 'PASS') if ok else 'FAIL', guardAccepted=guard_accepted, testExit=raw.get('exit'), preExec=pre, closingChanges=changes, errorCounts=raw.get('errorCounts'), errnoCounts=raw.get('errnoCounts'), samplerClean=clean, logAudit=audit, maskAsserted=valid_mask, citedAttempt=physical['attemptId'] if ok else None, physical=physical)
     save(out / 'adjudication.json', result)
     return result
 
@@ -228,13 +229,13 @@ def run_step(config, step):
     except Exception as error:
         result = dict(ruleVersion=RULE_VERSION, outcome='FAIL', citedAttempt=None, error=type(error).__name__ + ': ' + str(error), physical=attempt)
         save(out / 'adjudication.json', result)
-    record_attempt(root, dict(event='finished', attemptId=attempt['attemptId'], rulesVersion=RULE_VERSION, outcome=result['outcome'], citedAttempt=result['citedAttempt'], label=label, receipt=str(out)))
+    record_attempt(root, dict(event='finished', attemptId=attempt['attemptId'], rulesVersion=RULE_VERSION, outcome=result['outcome'], citedAttempt=result['citedAttempt'], label=label, receipt=str(out), preExecChanges=result.get('preExec', {}).get('changes', [])))
     print(json.dumps(dict(step=label, outcome=result['outcome'], receipt=str(out))), flush=True)
     return result
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Guarded Linux gate, rules v23. One physical attempt per planned step; no retries.', epilog='Steps: check,v2:check,v2:test,v2:daemon,v2:driver,v2:driver2,v2:harness,build,gate-tests,test:<repo-relative.test.ts>,flake:<repo-relative.test.ts>:N. Flake helper runs N isolated candidate and N base attempts (N>=3; daemon-shutdown N>=10), retaining every result. Source extraction, offline npm ci and peercred prebuild are automatic. Receipts stay under ~/.cache/hbl/<run>. Requires satellite host approval; never deploys. Example: run.sh --candidate SHA --base SHA --steps gate-tests,test:v2/core/tests/turn-trigger.test.ts,flake:v2/core/tests/turn-trigger.test.ts:3 --npm-cache FILE --npm-cache-sha256 SHA256')
+    parser = argparse.ArgumentParser(description='Guarded Linux gate, rules v24. One physical attempt per planned step; no retries.', epilog='Steps: check,v2:check,v2:test,v2:daemon,v2:driver,v2:driver2,v2:harness,build,gate-tests,test:<repo-relative.test.ts>,flake:<repo-relative.test.ts>:N. Flake helper runs N isolated candidate and N base attempts (N>=3; daemon-shutdown N>=10), retaining every result. Source extraction, offline npm ci and peercred prebuild are automatic. Receipts stay under ~/.cache/hbl/<run>. Requires satellite host approval; never deploys. Example: run.sh --candidate SHA --base SHA --steps gate-tests,test:v2/core/tests/turn-trigger.test.ts,flake:v2/core/tests/turn-trigger.test.ts:3 --npm-cache FILE --npm-cache-sha256 SHA256')
     parser.add_argument('--candidate', required=True)
     parser.add_argument('--base', required=True)
     parser.add_argument('--steps', required=True)
@@ -321,11 +322,8 @@ def main():
     flake_results = []
     for flake in flakes:
         rows = [item for item in results if '-step' + str(flake['index']) + '-' in item['physical']['label']]
-        by_version = {version: [item for item in rows if item['physical']['version'] == version] for version in shas}
-        valid = all(len(items) == flake['count'] and all(item.get('samplerClean') and item.get('maskAsserted') and item.get('logAudit', {}).get('valid') and not any(change['verdict'] == 'FAIL' for change in item.get('closingChanges', [])) for item in items) for items in by_version.values())
-        fails = {version: sum(read(pathlib.Path(item['physical']['receipt']) / 'result.json')['exit'] != 0 for item in items) if items else 0 for version, items in by_version.items()}
-        flake_results.append(dict(**flake, failures=fails, classification='flake evidence' if valid and all(fails.values()) else 'no flake attribution', attempts=[item['physical']['attemptId'] for item in rows]))
-    pre_warnings = sum(any(change['verdict'] == 'WARN' for change in item.get('preExec', {}).get('changes', [])) for item in results)
+        flake_results.append(dict(**flake, **flake_verdict(rows, flake['count'])))
+    pre_warnings = sum(any(change['verdict'] == 'WARN' and change.get('category') == 'WAL/SHM mtime-only' for change in item.get('preExec', {}).get('changes', [])) for item in results)
     summary = dict(config=config, planned=len(plan), completed=len(results), overall='PASS' if len(results) == len(plan) and all(item['outcome'] != 'FAIL' for item in results) else 'FAIL', preExecWalShmWarnAttempts=pre_warnings, physicalAttempts=len(results), preExecWalShmWarnRate=pre_warnings / len(results), flakeResults=flake_results, steps=[dict(label=item['physical']['label'], outcome=item['outcome'], citedAttempt=item['citedAttempt']) for item in results])
     save(root / 'receipt.json', summary)
     print(json.dumps(summary), flush=True)

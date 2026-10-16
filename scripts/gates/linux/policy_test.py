@@ -1,7 +1,7 @@
 import errno
 import unittest
 
-from policy import closing_verdict, error_verdict, wal_mtime_only
+from policy import closing_verdict, error_verdict, wal_mtime_only, preexec_verdict, flake_verdict
 
 HOME = '/home/lab'
 HIVE = HOME + '/.hive'
@@ -63,6 +63,34 @@ class PolicyTests(unittest.TestCase):
         new = dict(META, type='directory')
         self.assertEqual(self.closing(HOME + '/.nectar', new), 'WARN')
         self.assertEqual(self.closing(HOME + '/.nectar', new, touched=[HOME + '/.nectar/file']), 'FAIL')
+
+    def test_preexec_v24_classes_and_boundaries(self):
+        for path, old, new in ((HIVE + '/v2/hived.log', META, dict(META, size=101)), (HIVE + '/v2/runners', dict(META, type='directory'), dict(META, type='directory', mtime_ns=11000000000))):
+            change = dict(path=path, before=old, after=new)
+            self.assertEqual(preexec_verdict(change, HOME)[0], 'WARN')
+            self.assertEqual(preexec_verdict(change, HOME, touched=[path])[0], 'FAIL')
+            self.assertEqual(preexec_verdict(change, HOME, named=[path])[0], 'FAIL')
+            for key in ('inode', 'uid', 'gid', 'mode'):
+                altered = dict(change, after=dict(new, **{key: old[key]+1}))
+                self.assertEqual(preexec_verdict(altered, HOME)[0], 'FAIL')
+            self.assertEqual(preexec_verdict(dict(change, before=None), HOME)[0], 'FAIL')
+            self.assertEqual(preexec_verdict(dict(change, after=None), HOME)[0], 'FAIL')
+        for path in (HOME + '/.nectar', HIVE, HIVE + '/v2/core.sqlite3', HIVE + '/v2/runners/child'):
+            change = dict(path=path, before=dict(META, type='directory'), after=dict(META, type='directory', mtime_ns=11000000000))
+            self.assertEqual(preexec_verdict(change, HOME)[0], 'FAIL')
+        self.assertEqual(preexec_verdict(dict(path=HIVE + '/v2/hived.log', before=META, after=dict(META, size=99)), HOME)[0], 'FAIL')
+
+    def test_flake_requires_complete_guarded_candidate_and_base(self):
+        rows = [dict(physical=dict(version=version, attemptId=version+str(n)), guardAccepted=True, testExit=1 if n==0 else 0) for version in ('candidate', 'base') for n in range(3)]
+        self.assertEqual(flake_verdict(rows, 3)['classification'], 'flake evidence')
+        for updates in (dict(guardAccepted=False), dict(testExit=None)):
+            broken = [dict(row) for row in rows]
+            broken[0].update(updates)
+            self.assertEqual(flake_verdict(broken, 3)['classification'], 'no flake attribution')
+        self.assertEqual(flake_verdict(rows[:-1], 3)['classification'], 'no flake attribution')
+        for row in rows:
+            if row['physical']['version']=='base':row['testExit']=0
+        self.assertEqual(flake_verdict(rows, 3)['classification'], 'no flake attribution')
 
 
 if __name__ == '__main__':
