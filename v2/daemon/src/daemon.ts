@@ -1,3 +1,6 @@
+import { APIARY_SWAP_CAPABILITY, ApiarySwapError, parseApiarySwapAcquire, parseApiarySwapSettle, parseApiarySwapRecover } from "../../../src/apiarySwap.ts";
+import { canonicalDigest } from "../../../src/comb/canonical.ts";
+import { parseComponentIdentity, type ComponentIdentity } from "../../../src/release/index.ts";
 import { withoutRpcCaller } from "../../core/src/rpcAuditContext.ts";
 import { applyObservation, observationReadRequest, discardObservation } from "./limitsObservation.ts";
 import { reconnectToolsResult, type ReconnectToolsResult } from "../../core/src/reconnectTools.ts";
@@ -30,7 +33,7 @@ import { closeSync, copyFileSync, cpSync, existsSync, mkdirSync, openSync, readd
 import { execFile } from "node:child_process";
 import type { InterruptOutcome } from "../../harness/src/driver.ts";
 import { appendFileSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { homedir, tmpdir, hostname } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { canonicalPath, removeEndpointRecord, samePath, writeEndpointRecord } from "./endpointRecord.ts";
@@ -2094,10 +2097,16 @@ export class HiveDaemon {
         return this.envRedacted(params, this.rpcAuditTail(params));
       case "deployInfo":
         return this.rpcDeployInfo();
+      case "update.apiarySwap.status":
+      case "update.apiarySwap.acquire":
+      case "update.apiarySwap.release":
+      case "update.apiarySwap.abandon":
+      case "update.apiarySwap.recover":
+        return this.rpcApiarySwap(verb, params);
       case "update.status":
         return { contract: UPDATE_RECOVERY_CONTRACT, schemaVersion: SCHEMA_VERSION,
           runtimeRoot: join(dirname(this.cfg.dataDir), "runtime"), storePath: this.cfg.storePath,
-          identity: BUILD_IDENTITY, reservation: this.mustStore().updateReservation(),
+          identity: BUILD_IDENTITY, reservation: this.mustStore().durableUpdateReservation(),
           blockers: this.mustStore().credentialAuthorityRollbackBlockers() };
       case "update.reserve":
         if (typeof params.expectedEpoch !== "number") throw new RpcError("invalid_request", "expectedEpoch must be a number");
@@ -2202,6 +2211,51 @@ export class HiveDaemon {
       throw new RpcError("invalid_request", `${verb}: args must be an array of strings${nullable ? " (or null to clear)" : ""}`);
     }
     return v as string[];
+  }
+
+  private apiarySwapInstalledIdentity(): ComponentIdentity {
+    const root = join(dirname(this.cfg.dataDir), "runtime"), current = join(root, "current");
+    const installed = installedV2Identity(root);
+    if (!installed || !BUILD_IDENTITY.release || BUILD_IDENTITY.dirty !== false
+      || ["component", "version", "sourceRevision", "target"].some(key => Reflect.get(BUILD_IDENTITY, key) !== Reflect.get(installed, key))) {
+      throw new RpcError("invalid_request", "apiary-swap: pinned running identity differs", { reason: "identity_mismatch" });
+    }
+    try {
+      if (readlinkSync(current) !== installed.sourceRevision
+        || JSON.stringify(readBuildIdentity(join(current, "dist", "build-identity.json"))) !== JSON.stringify(BUILD_IDENTITY)) throw new Error("current differs");
+      return parseComponentIdentity(installed);
+    } catch {
+      throw new RpcError("invalid_request", "apiary-swap: installed current identity differs", { reason: "identity_mismatch" });
+    }
+  }
+
+  private async rpcApiarySwap(verb: "update.apiarySwap.status" | "update.apiarySwap.acquire" | "update.apiarySwap.release" | "update.apiarySwap.abandon" | "update.apiarySwap.recover", params: Record<string, unknown>): Promise<unknown> {
+    const runtimeRoot = resolve(dirname(this.cfg.dataDir), "runtime"), storePath = resolve(this.cfg.storePath);
+    const storageSupported = SCHEMA_VERSION === 44 && storePath === resolve(this.cfg.dataDir, "core.sqlite3");
+    if (verb === "update.apiarySwap.status") {
+      let installedIdentity: ComponentIdentity | null = null;
+      try { installedIdentity = this.apiarySwapInstalledIdentity(); } catch {}
+      return { contract: APIARY_SWAP_CAPABILITY, receiptAuthority: "trusted-local-owner-attestation", schemaVersion: SCHEMA_VERSION, storageSupported,
+        node: hostname(), runtimeRoot, storePath, identity: BUILD_IDENTITY, installedIdentity,
+        reservation: this.mustStore().durableUpdateReservation() };
+    }
+    return withFileLock(join(runtimeRoot, ".deploy.lock"), async () => {
+      if (!storageSupported) throw new RpcError("invalid_request", "apiary-swap: unsupported storage", { reason: "unsupported_storage" });
+      try {
+        const operation = verb === "update.apiarySwap.acquire" ? "acquire" : verb === "update.apiarySwap.release" ? "release" : verb === "update.apiarySwap.abandon" ? "abandon" : "recover";
+        const request = operation === "acquire" ? parseApiarySwapAcquire(params) : operation === "recover" ? parseApiarySwapRecover(params) : parseApiarySwapSettle(params, operation);
+        const installed = this.apiarySwapInstalledIdentity();
+        if (canonicalDigest(installed) !== canonicalDigest(request.expectedHoneybeeIdentity)) throw new RpcError("invalid_request", "apiary-swap: expected identity differs", { reason: "identity_mismatch" });
+        if ("transaction" in request && (request.transaction.scope.node !== hostname() || request.transaction.scope.runtimeRoot !== runtimeRoot || request.transaction.scope.storePath !== storePath)) throw new RpcError("invalid_request", "apiary-swap: transaction scope differs", { reason: "invalid_transaction" });
+        if (operation === "acquire") return this.mustStore().acquireApiarySwap(params);
+        if (operation === "recover") return this.mustStore().recoverApiarySwap(params);
+        return this.mustStore().settleApiarySwap(params, operation);
+      } catch (error) {
+        if (error instanceof RpcError) throw error;
+        if (error instanceof ApiarySwapError) throw new RpcError("invalid_request", error.message, { reason: error.code });
+        throw error;
+      }
+    });
   }
 
   private rpcSetArgs(params: Record<string, unknown>): SetArgsResult {

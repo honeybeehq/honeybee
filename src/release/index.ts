@@ -1,5 +1,5 @@
 /** Versioned release metadata. Parsing establishes consistency, not authenticity. */
-import { canonicalDigest } from "../comb/canonical.js";
+import { canonicalDigest } from "../comb/canonical.ts";
 import { readFileSync } from "node:fs";
 import { Ajv2020 } from "ajv/dist/2020.js";
 
@@ -13,14 +13,19 @@ export type ComponentIdentity = {
   artifact: ArtifactReference;
 };
 
-const schema = JSON.parse(readFileSync(new URL("../../contracts/release/v1/schema.json", import.meta.url), "utf8"));
-const ajv = new Ajv2020({ allErrors: true, strict: true });
-// HTTPS is constrained by the schema; parsing also rejects malformed authorities/ports.
-ajv.addFormat("uri", (value: string) => URL.canParse(value));
-ajv.addSchema(schema);
+let contract: { schemaId: string; ajv: Ajv2020 } | undefined;
+function releaseContract(): { schemaId: string; ajv: Ajv2020 } {
+  if (contract) return contract;
+  const schema = JSON.parse(readFileSync(new URL("../../contracts/release/v1/schema.json", import.meta.url), "utf8"));
+  const ajv = new Ajv2020({ allErrors: true, strict: true });
+  ajv.addFormat("uri", (value: string) => URL.canParse(value));
+  ajv.addSchema(schema);
+  return contract = { schemaId: schema.$id, ajv };
+}
 
 function parse<T>(name: string, value: unknown): T {
-  const validate = ajv.getSchema(`${schema.$id}#/$defs/${name}`);
+  const { schemaId, ajv } = releaseContract();
+  const validate = ajv.getSchema(`${schemaId}#/$defs/${name}`);
   if (!validate) throw new Error(`Unknown release contract: ${name}`);
   if (!validate(value)) throw new Error(`Invalid ${name}: ${ajv.errorsText(validate.errors)}`);
   return structuredClone(value) as T;
@@ -215,4 +220,4 @@ export function parseReleaseManifest(value: unknown): ReleaseManifest {
   return manifest;
 }
 
-export { parseBuildIdentity, readBuildIdentity, type BuildIdentity } from "./buildIdentity.js";
+export { parseBuildIdentity, readBuildIdentity, type BuildIdentity } from "./buildIdentity.ts";

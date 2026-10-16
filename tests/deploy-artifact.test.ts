@@ -1,10 +1,12 @@
-import { persistNodePin, probeNativeNode } from "../src/nodeRuntime.js";
+import { persistNodePin, probeNativeNode, nodePinFile, nodeRepairFile } from "../src/nodeRuntime.js";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { deployArtifact, deployVersion, currentDeployTarget } from "../src/deployRuntime.js";
+import { deployArtifact, deployVersion, currentDeployTarget, hasDeployRestartAdmission, DeployReservationHeldError } from "../src/deployRuntime.js";
+import { restartDeployedDaemon } from "../src/commands/deploy.js";
+import { existsSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { recoverySubjectDigest, parseRecoveryPlan } from "../src/release/index.js";
 import * as v2 from "../src/release/v2.js";
@@ -27,14 +29,14 @@ test("artifact deploy refuses unchecked bytes before switching or restarting", a
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
-import { cp, mkdir, readFile, readlink, symlink } from "node:fs/promises";
+import { cp, mkdir, readFile, readlink, symlink, lstat } from "node:fs/promises";
 import { packRuntimeArtifact, sha256File } from "../src/runtimeArtifact.js";
 import type { ComponentIdentity } from "../src/release/index.js";
 
-async function release(dir: string, sha = "a".repeat(40), gate: "full" | "tests-skipped" = "full") {
+async function release(dir: string, sha = "a".repeat(40), gate: "full" | "tests-skipped" = "full", cli = "console.log('hive');\n") {
   const stage = join(dir, `stage-${sha}`);
   await mkdir(join(stage, "dist", "v2"), { recursive: true });
-  await writeFile(join(stage, "dist", "cli.js"), "console.log('hive');\n");
+  await writeFile(join(stage, "dist", "cli.js"), cli);
   await writeFile(join(stage, "dist", "v2", "cli.js"), `var PROTOCOL = "v2/1";\nvar UPDATE_RECOVERY_CONTRACT = "${UPDATE_RECOVERY_CONTRACT}";\nprocess.exit(1);\n`);
   await writeFile(join(stage, "dist", "build-identity.json"), JSON.stringify({ schemaVersion: 1,
     component: "honeybee", version: "0.1.0", packageVersion: "0.1.0", sourceRevision: sha,
@@ -61,6 +63,62 @@ async function reserve(dir: string, identity: ComponentIdentity): Promise<Update
   db.prepare("INSERT INTO meta VALUES('coordinated_update',?)").run(JSON.stringify(reservation));
   db.close();
   return { reservation, recovery };
+}
+
+for (const state of ["apiary-swap", "absent", "own-paired", "different-id", "different-epoch", "different-digest"] as const) {
+  test(`restart admission re-reads live reservation before pin or service effects: ${state}`, async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hb-restart-owner-")), root = join(dir, "runtime"), calls = join(dir, "calls.jsonl"), units = join(dir, "units");
+    const previousUnits = process.env.HIVE_V2_SERVICE_DIR;
+    process.env.HIVE_V2_SERVICE_DIR = units;
+    try {
+      const previous = await release(dir, "b".repeat(40));
+      await deployArtifact({ ...previous, root, expectedCurrent: null, admission: { fresh: true }, hooks: { async restartDaemon() {} } });
+      const cli = `require('node:fs').appendFileSync(${JSON.stringify(calls)}, JSON.stringify(process.argv.slice(2))+'\\n'); if(process.argv[4] === 'status') console.log(JSON.stringify({running:true}));`;
+      const next = await release(dir, "a".repeat(40), "full", cli), admission = await reserve(dir, next.identity);
+      const data = join(dir, "v2");
+      persistNodePin(data, probeNativeNode(process.execPath));
+      const pin = await readFile(nodePinFile(data)), pinStat = await lstat(nodePinFile(data));
+      const proceeds = state === "absent" || state === "own-paired";
+      const operation = deployArtifact({ ...next, root, expectedCurrent: previous.identity.sourceRevision, admission, hooks: {
+        async restartDaemon(context) {
+          assert.equal(hasDeployRestartAdmission(context), true);
+          const db = new DatabaseSync(join(data, "core.sqlite3"));
+          try {
+            if (state === "absent") db.exec("DELETE FROM meta WHERE key='coordinated_update'");
+            else {
+              const live = state === "apiary-swap"
+                ? { format: 2, purpose: "apiary-swap", id: "apiary-owner", epoch: admission.reservation.epoch + 1, transactionDigest: `sha256:${"e".repeat(64)}`, expectedHoneybeeIdentity: next.identity, active: true }
+                : { ...admission.reservation,
+                  ...(state === "different-id" ? { id: "another-owner" } : {}),
+                  ...(state === "different-epoch" ? { epoch: admission.reservation.epoch + 1 } : {}),
+                  ...(state === "different-digest" ? { recoverySubjectDigest: `sha256:${"e".repeat(64)}` } : {}) };
+              db.prepare("UPDATE meta SET value=? WHERE key='coordinated_update'").run(JSON.stringify(live));
+            }
+          } finally { db.close(); }
+          context.restorePrevious = undefined;
+          await restartDeployedDaemon(context);
+        },
+      } });
+      if (proceeds) {
+        await operation;
+        assert.deepEqual((await readFile(calls, "utf8")).trim().split("\n").map(line => JSON.parse(line)[2]), ["install", "stop", "start", "status"]);
+        assert.equal(await currentDeployTarget(root), next.identity.sourceRevision);
+      } else {
+        await assert.rejects(operation, error => error instanceof DeployReservationHeldError
+          && (state !== "apiary-swap" || (error.purpose === "apiary-swap" && /update-owner apiary-swap release/.test(error.message))));
+        if (state === "apiary-swap") await assert.rejects(restartDeployedDaemon({ root, installedDir: root, sha: previous.identity.sourceRevision, runtime: "v2", log() {} }), /update-owner apiary-swap release/);
+        assert.equal(existsSync(calls), false);
+        assert.equal(existsSync(units), false);
+        assert.equal(existsSync(nodeRepairFile(data)), false);
+        assert.deepEqual(await readFile(nodePinFile(data)), pin);
+        assert.equal((await lstat(nodePinFile(data))).mtimeMs, pinStat.mtimeMs);
+        assert.equal(await currentDeployTarget(root), previous.identity.sourceRevision);
+      }
+    } finally {
+      if (previousUnits === undefined) delete process.env.HIVE_V2_SERVICE_DIR; else process.env.HIVE_V2_SERVICE_DIR = previousUnits;
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
 }
 
 test("v2 recovery admits artifact deployment and rollback while preserving the foreign caller", async () => {

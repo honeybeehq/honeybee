@@ -34,18 +34,13 @@ import { assertUpdateAdmission, UPDATE_RECOVERY_CONTRACT, type UpdateAdmission }
 import { writeBuildStamp } from "./deploySettle.js";
 import { atomicWriteFile, storeRoot } from "./fsx.js";
 import { hostGitEnv } from "./hostGit.js";
-import { readUpdateReservation } from "./readUpdateReservation.js";
+import { assertRuntimeUpdateAllowed, readUpdateReservation, DeployReservationHeldError } from "./readUpdateReservation.js";
+import { isApiarySwap } from "./apiarySwap.js";
+import { parseUpdateReservation, type UpdateReservation } from "./updateReservation.js";
 
 const execFileAsync = promisify(execFile);
 
-export class DeployReservationHeldError extends Error {
-  readonly code = "DEPLOY_RESERVATION_HELD";
-
-  constructor(readonly reservationId: string, readonly epoch: number) {
-    super(`deploy: update reservation ${reservationId} at epoch ${epoch} is held; finish or recover the coordinated update, then clear it with hive update-owner release using its exact id, epoch, recoverySubjectDigest and expectedIdentity`);
-    this.name = "DeployReservationHeldError";
-  }
-}
+export { DeployReservationHeldError } from "./readUpdateReservation.js";
 
 export const RUNTIME_DIR_NAME = "runtime";
 export const CURRENT_LINK_NAME = "current";
@@ -106,7 +101,7 @@ export type DeployHooks = {
   restartDaemon: (context: RestartDaemonContext) => Promise<void>;
 };
 
-const admittedRestarts = new WeakMap<RestartDaemonContext, Pick<RestartDaemonContext, "root" | "installedDir" | "sha" | "runtime">>();
+const admittedRestarts = new WeakMap<RestartDaemonContext, Pick<RestartDaemonContext, "root" | "installedDir" | "sha" | "runtime"> & { reservation?: UpdateReservation }>();
 
 export function hasDeployRestartAdmission(context: RestartDaemonContext): boolean {
   const admission = admittedRestarts.get(context);
@@ -114,13 +109,25 @@ export function hasDeployRestartAdmission(context: RestartDaemonContext): boolea
     && admission.sha === context.sha && admission.runtime === context.runtime;
 }
 
-async function restartWithAdmission(hooks: Pick<DeployHooks, "restartDaemon">, context: RestartDaemonContext): Promise<void> {
+export async function assertDeployRestartAdmission(context: RestartDaemonContext): Promise<void> {
+  if (!hasDeployRestartAdmission(context)) throw new Error("deploy: restart admission expired");
+  const expected = admittedRestarts.get(context)!.reservation;
+  const live = await readUpdateReservation(context.root);
+  if (!hasDeployRestartAdmission(context)) throw new Error("deploy: restart admission expired");
+  if (!live?.active) return;
+  if (isApiarySwap(live)) throw new DeployReservationHeldError(live.id, live.epoch, "apiary-swap");
+  const reservation = parseUpdateReservation(live);
+  if (!expected || reservation.id !== expected.id || reservation.epoch !== expected.epoch
+    || reservation.recoverySubjectDigest !== expected.recoverySubjectDigest) throw new DeployReservationHeldError(reservation.id, reservation.epoch);
+}
+
+async function restartWithAdmission(hooks: Pick<DeployHooks, "restartDaemon">, context: RestartDaemonContext, reservation?: UpdateReservation): Promise<void> {
   const restore = context.restorePrevious;
   if (restore) context.restorePrevious = async () => {
     if (!hasDeployRestartAdmission(context)) throw new Error("deploy: restart admission expired");
     return restore();
   };
-  admittedRestarts.set(context, { root: context.root, installedDir: context.installedDir, sha: context.sha, runtime: context.runtime });
+  admittedRestarts.set(context, { root: context.root, installedDir: context.installedDir, sha: context.sha, runtime: context.runtime, reservation });
   try { await hooks.restartDaemon(context); } finally { admittedRestarts.delete(context); }
 }
 
@@ -365,8 +372,7 @@ export async function deployVersion(options: DeployOptions): Promise<DeployOutco
 
 async function deployVersionLocked(options: DeployOptions): Promise<DeployOutcome> {
   const root = options.root ?? runtimeRoot();
-  const reservation = await readUpdateReservation(root);
-  if (reservation?.active) throw new DeployReservationHeldError(reservation.id, reservation.epoch);
+  await assertRuntimeUpdateAllowed(root, "deploy");
   const keep = Math.max(1, Math.floor(options.keep ?? DEFAULT_KEEP_VERSIONS));
   const log = options.log ?? (() => undefined);
   const now = options.now ?? (() => new Date());
@@ -423,9 +429,9 @@ async function persistV2RuntimeMode(root: string): Promise<void> {
   }
 }
 
-async function publishDeploy({ root, sha, artifactDir, artifactHash, keep, by, now, log, hooks, immutable = false, gate }: {
+async function publishDeploy({ root, sha, artifactDir, artifactHash, keep, by, now, log, hooks, immutable = false, gate, reservation }: {
   root: string; sha: string; artifactDir: string; artifactHash: string; keep: number; by: string;
-  now: () => Date; log: (line: string) => void; hooks: Pick<DeployHooks, "restartDaemon">; immutable?: boolean; gate?: "full" | "tests-skipped";
+  now: () => Date; log: (line: string) => void; hooks: Pick<DeployHooks, "restartDaemon">; immutable?: boolean; gate?: "full" | "tests-skipped"; reservation?: UpdateReservation;
 }): Promise<DeployOutcome> {
   const v2 = runtimeUsesV2(root) || immutable;
   let staging: string | null = null;
@@ -480,7 +486,7 @@ async function publishDeploy({ root, sha, artifactDir, artifactHash, keep, by, n
       return true;
     };
     try {
-      await restartWithAdmission(hooks, { root, installedDir: versionDir, sha, log, restorePrevious, ...(v2 ? { runtime: "v2" as const } : {}) });
+      await restartWithAdmission(hooks, { root, installedDir: versionDir, sha, log, restorePrevious, ...(v2 ? { runtime: "v2" as const } : {}) }, reservation);
       if (restored) throw new Error("deploy: activation rolled back");
     } catch (error) {
       await restorePrevious();
@@ -515,6 +521,7 @@ export async function deployArtifact(options: DeployArtifactOptions): Promise<De
   const workDir = await mkdtemp(join(root, ".artifact-"));
   try {
     return await withFileLock(join(root, ".deploy.lock"), async () => {
+      await assertRuntimeUpdateAllowed(root, "artifact");
       const prepared = await unpackDeployArtifact(options.archive, options.identity, workDir);
       if (prepared.recoveryContract !== UPDATE_RECOVERY_CONTRACT) throw new Error("deploy: artifact lacks the recovery admission contract; coordinated migration required");
       // The archive cannot supply its own admission receipt or redirect this write.
@@ -535,14 +542,15 @@ export async function deployArtifact(options: DeployArtifactOptions): Promise<De
         && installed !== null && canonicalDigest(installed) === canonicalDigest(prepared.identity)
         && await artifactTreeDigest(join(root, currentSha)) === await artifactTreeDigest(prepared.artifactDir);
       if (currentSha !== options.expectedCurrent && !replay) throw new Error("deploy: current runtime changed");
+      const reservation = "fresh" in options.admission ? undefined : parseUpdateReservation(options.admission.reservation);
       if ("fresh" in options.admission) {
         if (options.admission.fresh !== true || Object.keys(options.admission).length !== 1 || options.expectedCurrent !== null
           || (!replay && ["v2", "store.json", "bees", "sessions", "legacy-agentpit", "FROZEN"].some(name => existsSync(join(root, "..", name)))))
           throw new Error("deploy: fresh installation requires an empty node; coordinated migration required");
-      } else await assertUpdateAdmission(root, prepared.identity, options.admission);
+      } else await assertUpdateAdmission(root, prepared.identity, { ...options.admission, reservation: reservation! });
       const outcome = await publishDeploy({ root, sha: prepared.identity.sourceRevision, ...prepared,
         keep: DEFAULT_KEEP_VERSIONS, by: deployedBy(), now: () => new Date(), log: () => undefined,
-        hooks: options.hooks, immutable: true });
+        hooks: options.hooks, immutable: true, reservation });
       if (options.cliBinDirectory !== undefined) await exposeDeployedCli(root, options.cliBinDirectory, resolveNodePin(join(root, "..", "v2")).path);
       return outcome;
     });
@@ -564,8 +572,7 @@ export async function rollbackDeploy(options: RollbackOptions): Promise<Rollback
 
 async function rollbackDeployLocked(options: RollbackOptions): Promise<RollbackOutcome> {
   const root = options.root ?? runtimeRoot();
-  const reservation = await readUpdateReservation(root);
-  if (reservation?.active) throw new DeployReservationHeldError(reservation.id, reservation.epoch);
+  await assertRuntimeUpdateAllowed(root, "rollback");
   const log = options.log ?? (() => undefined);
   const now = options.now ?? (() => new Date());
   const by = options.by ?? deployedBy();
@@ -608,7 +615,10 @@ export async function pruneRuntimeVersions(
   root: string,
   options: { keep?: number } = {},
 ): Promise<string[]> {
-  return withFileLock(join(root, ".deploy.lock"), () => pruneRuntimeVersionsLocked(root, options));
+  return withFileLock(join(root, ".deploy.lock"), async () => {
+    await assertRuntimeUpdateAllowed(root, "prune");
+    return pruneRuntimeVersionsLocked(root, options);
+  });
 }
 
 async function pruneRuntimeVersionsLocked(root: string, options: { keep?: number }): Promise<string[]> {

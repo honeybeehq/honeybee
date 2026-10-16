@@ -4984,6 +4984,17 @@ export async function runV2Cli(argv: string[], io: CliIo = defaultIo): Promise<n
       case "update-owner": {
         const updateArgs = parsed.positional.slice(1);
         const sub = updateArgs[0];
+        if (sub === "apiary-swap") {
+          if ([...parsed.flags.keys()].some(flag => !["--data-dir", "--socket", "--json"].includes(flag))
+            || parsed.args.length || parsed.tags.length || parsed.lists.size || parsed.rest !== null) throw new Error("update-owner apiary-swap: only --data-dir, --socket and --json are supported");
+          const operation = updateArgs[1];
+          if (operation !== "status" && operation !== "acquire" && operation !== "release" && operation !== "abandon" && operation !== "recover") throw new Error("update-owner apiary-swap: expected status, acquire, release, abandon, or recover");
+          if (updateArgs.length !== (operation === "status" ? 2 : 3)) throw new Error("update-owner apiary-swap: expected an exact request file for mutations");
+          const params = operation === "status" ? {} : JSON.parse(readFileSync(updateArgs[2]!, "utf8"));
+          const result = await withClient(ctx, c => c.request(`update.apiarySwap.${operation}`, params));
+          ctx.io.out(JSON.stringify(ctx.json ? withDaemonTarget(ctx, result) : result));
+          return 0;
+        }
         if (sub !== "status" && sub !== "reserve" && sub !== "release") throw new Error("update-owner: expected status, reserve, or release");
         const params = sub === "status" ? {} : JSON.parse(readFileSync(updateArgs[1] ?? "", "utf8"));
         const result = await withClient(ctx, c => c.request(`update.${sub}`, params));
