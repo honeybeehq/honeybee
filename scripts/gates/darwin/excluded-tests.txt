@@ -1,16 +1,1 @@
-# excluded: these test files reach v2/daemon/src/keychain.ts, which runs the real /usr/bin/security; not run at all until c51035e5's fake-security fix lands (Queen, 2026-10-15)
-v2/daemon/tests/accounts-activity-batch.test.ts
-v2/daemon/tests/accounts-activity.test.ts
-v2/daemon/tests/accounts-admission-batch.test.ts
-v2/daemon/tests/accounts-generation-read.test.ts
-v2/daemon/tests/accounts-reservation-visits.test.ts
-v2/daemon/tests/limits-observation.test.ts
-v2/daemon/tests/muse-authority.test.ts
-v2/daemon/tests/accounts-service.test.ts
-v2/daemon/tests/login-flows.test.ts
-v2/daemon/tests/lease-export.test.ts
-v2/daemon/tests/account-lease.test.ts
-v2/daemon/tests/lease-enrol.test.ts
-v2/daemon/tests/lease-fences.test.ts
-v2/daemon/tests/lease-remove-guard.test.ts
-v2/daemon/tests/credential-handoff-status.test.ts
+# excluded: none. The fake-security guard (securityExecutable) refuses the real /usr/bin/security in every test process, and the test runners set HIVE_NO_KEYCHAIN=1, so the 15 Keychain-reaching files run again
