@@ -61,6 +61,7 @@ export const RPC_ACCESS = {
   "bee.children": "read",
   "question.ask": "mutate",
   "question.answer": "mutate",
+  "question.withdraw": "mutate",
   "question.list": "read",
   "seal.create": "mutate",
   "seal.list": "read",

@@ -1,0 +1,20 @@
+hived v2 listening on /home/trmd/.cache/T15h-honeybee-withdraw/lab-rDfpe6/rpc.sock (store /home/trmd/.cache/T15h-honeybee-withdraw/lab-rDfpe6/data/core.sqlite3)
+file:///home/trmd/.hive/v2/cells/apib-t15h-honeybee-withdraw-a4184d39ad80/github-com-honeybeehq-honeybee-a9015b303498-space-a4184d39ad80/dist/v2/cli.js:42004
+    if (!this.store || this.stopping) throw new RpcError("node_stopped", "daemon is shutting down");
+                                            ^
+
+RpcError: daemon is shutting down
+    at HiveDaemon.mustStore (file:///home/trmd/.hive/v2/cells/apib-t15h-honeybee-withdraw-a4184d39ad80/github-com-honeybeehq-honeybee-a9015b303498-space-a4184d39ad80/dist/v2/cli.js:42004:45)
+    at LocalRpcRefusals.securityAudit [as audit] (file:///home/trmd/.hive/v2/cells/apib-t15h-honeybee-withdraw-a4184d39ad80/github-com-honeybeehq-honeybee-a9015b303498-space-a4184d39ad80/dist/v2/cli.js:41450:46)
+    at file:///home/trmd/.hive/v2/cells/apib-t15h-honeybee-withdraw-a4184d39ad80/github-com-honeybeehq-honeybee-a9015b303498-space-a4184d39ad80/dist/v2/cli.js:40305:56
+    at AsyncLocalStorage.run (node:internal/async_local_storage/async_context_frame:63:14)
+    at withoutRpcCaller (file:///home/trmd/.hive/v2/cells/apib-t15h-honeybee-withdraw-a4184d39ad80/github-com-honeybeehq-honeybee-a9015b303498-space-a4184d39ad80/dist/v2/cli.js:2382:18)
+    at LocalRpcRefusals.flush (file:///home/trmd/.hive/v2/cells/apib-t15h-honeybee-withdraw-a4184d39ad80/github-com-honeybeehq-honeybee-a9015b303498-space-a4184d39ad80/dist/v2/cli.js:40304:5)
+    at LocalRpcRefusals.close (file:///home/trmd/.hive/v2/cells/apib-t15h-honeybee-withdraw-a4184d39ad80/github-com-honeybeehq-honeybee-a9015b303498-space-a4184d39ad80/dist/v2/cli.js:40311:10)
+    at RpcServer.close (file:///home/trmd/.hive/v2/cells/apib-t15h-honeybee-withdraw-a4184d39ad80/github-com-honeybeehq-honeybee-a9015b303498-space-a4184d39ad80/dist/v2/cli.js:40608:19)
+    at HiveDaemon.shutdown (file:///home/trmd/.hive/v2/cells/apib-t15h-honeybee-withdraw-a4184d39ad80/github-com-honeybeehq-honeybee-a9015b303498-space-a4184d39ad80/dist/v2/cli.js:41494:23) {
+  code: 'node_stopped',
+  details: undefined
+}
+
+Node.js v24.18.0

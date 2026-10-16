@@ -329,6 +329,7 @@ import {
   type MutationResult,
   type QuestionAnswerResult,
   type QuestionAskResult,
+  type QuestionWithdrawResult,
   type QuestionListResult,
   type RenameResult,
   type RpcVerb,
@@ -2036,6 +2037,8 @@ export class HiveDaemon {
         return this.withIdempotency(verb, params, () => this.rpcQuestionAsk(params));
       case "question.answer":
         return this.withIdempotency(verb, params, () => this.rpcQuestionAnswer(params));
+      case "question.withdraw":
+        return this.rpcQuestionWithdraw(params, conn);
       case "question.list":
         return this.rpcQuestionList(params);
       case "seal.create":
@@ -5019,6 +5022,31 @@ export class HiveDaemon {
     };
   }
 
+  private rpcQuestionWithdraw(params: Record<string, unknown>, conn: RpcConn): QuestionWithdrawResult {
+    const caller = conn.authenticatedBeeId;
+    if (!caller) throw new RpcError("caller_not_trusted", "Withdrawal requires an authenticated session principal.");
+    for (const key of Object.keys(params)) if (!["questionId", "reason", "idempotencyKey"].includes(key)) throw new RpcError("invalid_request", `question.withdraw does not accept ${key}`);
+    const questionId = this.param(params, "questionId");
+    const reason = this.param(params, "reason").trim();
+    if (!reason || reason.length > 500) throw new RpcError("invalid_request", "reason must contain 1 to 500 characters after trimming");
+    const callerKey = this.idempotencyKeyOf(params);
+    if (!callerKey) throw new RpcError("invalid_request", "question.withdraw requires idempotencyKey");
+    const key = `question.withdraw:${JSON.stringify([caller, callerKey])}`;
+    const store = this.mustStore();
+    return store.transact(() => {
+      store.requireQuestionOwner(questionId, caller);
+      const hit = store.lookupRpcResult(key);
+      if (hit) {
+        const result = hit.result as QuestionWithdrawResult;
+        if (hit.verb !== "question.withdraw" || result.question.id !== questionId || result.question.beeId !== caller) throw new RpcError("idempotency_conflict", "Withdrawal key belongs to another question");
+        return { ...result, deduped: true };
+      }
+      const result = { question: store.withdrawQuestion(questionId, caller, reason) };
+      store.recordRpcResult(key, "question.withdraw", null, result);
+      return result;
+    });
+  }
+
   private rpcQuestionList(params: Record<string, unknown>): QuestionListResult {
     const store = this.mustStore();
     const beeId = params.beeId === undefined || params.beeId === null ? undefined : this.requireBee(params);
@@ -5364,7 +5392,7 @@ export class HiveDaemon {
   private rpcDeployInfo(): DeployInfoResult {
     return {
       protocol: PROTOCOL,
-      capabilities: DAEMON_CAPABILITIES,
+      capabilities: this.rpc?.capabilities ?? DAEMON_CAPABILITIES.filter(c => c !== "question.withdraw.v1"),
       daemonVersion: DAEMON_VERSION,
       identity: BUILD_IDENTITY,
       nodeVersion: process.version,

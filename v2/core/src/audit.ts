@@ -386,7 +386,7 @@ export function replayAudit(rows: AuditRow[]): StateDump {
       }
       case "question.asked": {
         const question = p.question as QuestionRow;
-        questions.set(question.id, { ...question, options: question.options === null ? null : [...question.options] });
+        questions.set(question.id, { ...question, status: question.status ?? (question.answeredAt == null ? "open" : "answered"), withdrawalReason: question.withdrawalReason ?? null, withdrawnAt: question.withdrawnAt ?? null, options: question.options === null ? null : [...question.options] });
         break;
       }
       case "question.answered": {
@@ -397,6 +397,14 @@ export function replayAudit(rows: AuditRow[]): StateDump {
         question.answeredAt = p.answeredAt as number;
         question.answeredBy = p.answeredBy as string;
         question.deliveryMessageId = p.deliveryMessageId as number;
+        break;
+      }
+      case "question.withdrawn": {
+        const question = questions.get(p.questionId as string);
+        if (!question) throw new Error(`audit replay: unknown question ${String(p.questionId)}`);
+        question.status = "withdrawn";
+        question.withdrawalReason = p.withdrawalReason as string;
+        question.withdrawnAt = p.withdrawnAt as number;
         break;
       }
       case "seal.created": {

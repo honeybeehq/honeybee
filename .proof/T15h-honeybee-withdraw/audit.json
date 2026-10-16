@@ -1,0 +1,577 @@
+[
+  {
+    "seq": 1,
+    "ts": 1792144908285,
+    "kind": "boot.reconciled",
+    "beeId": null,
+    "payload": {
+      "stopped": [],
+      "adopted": [],
+      "requeuedCommandIds": []
+    }
+  },
+  {
+    "seq": 2,
+    "ts": 1792144908399,
+    "kind": "boot.reconciled",
+    "beeId": null,
+    "payload": {
+      "stopped": [],
+      "adopted": [],
+      "requeuedCommandIds": []
+    }
+  },
+  {
+    "seq": 3,
+    "ts": 1792144908419,
+    "kind": "bee.created",
+    "beeId": "f7cc4927-6f81-4289-af13-b453ac7692d4",
+    "payload": {
+      "bee": {
+        "id": "f7cc4927-6f81-4289-af13-b453ac7692d4",
+        "name": "asker",
+        "agent": "inbox",
+        "substrate": "hsr",
+        "cwd": "/home/trmd/.cache/T15h-honeybee-withdraw/lab-17xuAD",
+        "title": null,
+        "tags": [],
+        "sessionLogPath": null,
+        "lifecycle": "active",
+        "createdAt": 1792144908419,
+        "archivedAt": null,
+        "lastOutputAt": null,
+        "providerSessionId": null,
+        "env": {},
+        "importedFrom": null,
+        "spawnFailures": 0,
+        "args": null,
+        "parentId": null,
+        "parentExternal": false,
+        "forkedFrom": null,
+        "forkSeed": null,
+        "account": null,
+        "handle": "IN.0000",
+        "human_ref": null,
+        "issuing_namespace": null,
+        "placementVersion": 0,
+        "activeMoveId": null,
+        "cellId": null,
+        "activeHandoffId": null,
+        "lastTurnTrigger": null,
+        "lastHumanOutputAt": null
+      },
+      "rpcCaller": {
+        "transport": "local_unix",
+        "ingress": "local_unix",
+        "uid": 1001,
+        "pid": 341405,
+        "verb": "spawn"
+      }
+    }
+  },
+  {
+    "seq": 4,
+    "ts": 1792144908419,
+    "kind": "transcript_segment.put",
+    "beeId": "f7cc4927-6f81-4289-af13-b453ac7692d4",
+    "payload": {
+      "segment": {
+        "id": "seg:f7cc4927-6f81-4289-af13-b453ac7692d4:0",
+        "beeId": "f7cc4927-6f81-4289-af13-b453ac7692d4",
+        "ordinal": 0,
+        "harness": "inbox",
+        "providerSessionId": null,
+        "fromGeneration": 1,
+        "toGeneration": null,
+        "path": null,
+        "handoffId": null,
+        "createdAt": 1792144908419,
+        "closedAt": null
+      },
+      "rpcCaller": {
+        "transport": "local_unix",
+        "ingress": "local_unix",
+        "uid": 1001,
+        "pid": 341405,
+        "verb": "spawn"
+      }
+    }
+  },
+  {
+    "seq": 5,
+    "ts": 1792144908419,
+    "kind": "runtime.created",
+    "beeId": "f7cc4927-6f81-4289-af13-b453ac7692d4",
+    "payload": {
+      "runtime": {
+        "beeId": "f7cc4927-6f81-4289-af13-b453ac7692d4",
+        "generation": 1,
+        "state": "stopped",
+        "exitCause": "clean",
+        "pid": null,
+        "pidStartedAt": null,
+        "bootEvidence": null,
+        "startedAt": 1792144908419,
+        "updatedAt": 1792144908419
+      },
+      "rpcCaller": {
+        "transport": "local_unix",
+        "ingress": "local_unix",
+        "uid": 1001,
+        "pid": 341405,
+        "verb": "spawn"
+      }
+    }
+  },
+  {
+    "seq": 6,
+    "ts": 1792144908420,
+    "kind": "bee.created",
+    "beeId": "4c5a1d9e-96e9-4a8a-9b95-f5ab5dc4a4a5",
+    "payload": {
+      "bee": {
+        "id": "4c5a1d9e-96e9-4a8a-9b95-f5ab5dc4a4a5",
+        "name": "other",
+        "agent": "inbox",
+        "substrate": "hsr",
+        "cwd": "/home/trmd/.cache/T15h-honeybee-withdraw/lab-17xuAD",
+        "title": null,
+        "tags": [],
+        "sessionLogPath": null,
+        "lifecycle": "active",
+        "createdAt": 1792144908420,
+        "archivedAt": null,
+        "lastOutputAt": null,
+        "providerSessionId": null,
+        "env": {},
+        "importedFrom": null,
+        "spawnFailures": 0,
+        "args": null,
+        "parentId": null,
+        "parentExternal": false,
+        "forkedFrom": null,
+        "forkSeed": null,
+        "account": null,
+        "handle": "IN.0001",
+        "human_ref": null,
+        "issuing_namespace": null,
+        "placementVersion": 0,
+        "activeMoveId": null,
+        "cellId": null,
+        "activeHandoffId": null,
+        "lastTurnTrigger": null,
+        "lastHumanOutputAt": null
+      },
+      "rpcCaller": {
+        "transport": "local_unix",
+        "ingress": "local_unix",
+        "uid": 1001,
+        "pid": 341405,
+        "verb": "spawn"
+      }
+    }
+  },
+  {
+    "seq": 7,
+    "ts": 1792144908420,
+    "kind": "transcript_segment.put",
+    "beeId": "4c5a1d9e-96e9-4a8a-9b95-f5ab5dc4a4a5",
+    "payload": {
+      "segment": {
+        "id": "seg:4c5a1d9e-96e9-4a8a-9b95-f5ab5dc4a4a5:0",
+        "beeId": "4c5a1d9e-96e9-4a8a-9b95-f5ab5dc4a4a5",
+        "ordinal": 0,
+        "harness": "inbox",
+        "providerSessionId": null,
+        "fromGeneration": 1,
+        "toGeneration": null,
+        "path": null,
+        "handoffId": null,
+        "createdAt": 1792144908420,
+        "closedAt": null
+      },
+      "rpcCaller": {
+        "transport": "local_unix",
+        "ingress": "local_unix",
+        "uid": 1001,
+        "pid": 341405,
+        "verb": "spawn"
+      }
+    }
+  },
+  {
+    "seq": 8,
+    "ts": 1792144908420,
+    "kind": "runtime.created",
+    "beeId": "4c5a1d9e-96e9-4a8a-9b95-f5ab5dc4a4a5",
+    "payload": {
+      "runtime": {
+        "beeId": "4c5a1d9e-96e9-4a8a-9b95-f5ab5dc4a4a5",
+        "generation": 1,
+        "state": "stopped",
+        "exitCause": "clean",
+        "pid": null,
+        "pidStartedAt": null,
+        "bootEvidence": null,
+        "startedAt": 1792144908420,
+        "updatedAt": 1792144908420
+      },
+      "rpcCaller": {
+        "transport": "local_unix",
+        "ingress": "local_unix",
+        "uid": 1001,
+        "pid": 341405,
+        "verb": "spawn"
+      }
+    }
+  },
+  {
+    "seq": 9,
+    "ts": 1792144908421,
+    "kind": "question.asked",
+    "beeId": "f7cc4927-6f81-4289-af13-b453ac7692d4",
+    "payload": {
+      "question": {
+        "id": "3c81ba3e-0d60-4665-96db-5650395a2aef",
+        "beeId": "f7cc4927-6f81-4289-af13-b453ac7692d4",
+        "generation": 1,
+        "text": "Withdraw this?",
+        "options": null,
+        "status": "open",
+        "withdrawalReason": null,
+        "withdrawnAt": null,
+        "answer": null,
+        "askedAt": 1792144908421,
+        "answeredAt": null,
+        "answeredBy": null,
+        "deliveryMessageId": null
+      },
+      "rpcCaller": {
+        "transport": "local_unix",
+        "ingress": "local_unix",
+        "uid": 1001,
+        "pid": 341405,
+        "verb": "question.ask"
+      }
+    }
+  },
+  {
+    "seq": 10,
+    "ts": 1792144908428,
+    "kind": "rpc.local_registered",
+    "beeId": null,
+    "payload": {
+      "uid": 1001,
+      "pid": 341405,
+      "replacedPid": null,
+      "expiresAtMs": 1792145208428,
+      "rpcCaller": {
+        "transport": "local_unix",
+        "ingress": "local_unix",
+        "uid": 1001,
+        "pid": 341405,
+        "verb": "rpc.localTrust.register"
+      }
+    }
+  },
+  {
+    "seq": 11,
+    "ts": 1792144908435,
+    "kind": "question.withdrawn",
+    "beeId": "f7cc4927-6f81-4289-af13-b453ac7692d4",
+    "payload": {
+      "questionId": "3c81ba3e-0d60-4665-96db-5650395a2aef",
+      "withdrawalReason": "Superseded.",
+      "withdrawnAt": 1792144908435,
+      "rpcCaller": {
+        "transport": "local_unix",
+        "ingress": "local_unix",
+        "uid": 1001,
+        "pid": 341405,
+        "verb": "question.withdraw"
+      }
+    }
+  },
+  {
+    "seq": 12,
+    "ts": 1792144908438,
+    "kind": "question.asked",
+    "beeId": "4c5a1d9e-96e9-4a8a-9b95-f5ab5dc4a4a5",
+    "payload": {
+      "question": {
+        "id": "40938e93-bfd5-42ba-b1ef-e852ecf058c6",
+        "beeId": "4c5a1d9e-96e9-4a8a-9b95-f5ab5dc4a4a5",
+        "generation": 1,
+        "text": "Other owner same key?",
+        "options": null,
+        "status": "open",
+        "withdrawalReason": null,
+        "withdrawnAt": null,
+        "answer": null,
+        "askedAt": 1792144908438,
+        "answeredAt": null,
+        "answeredBy": null,
+        "deliveryMessageId": null
+      },
+      "rpcCaller": {
+        "transport": "local_unix",
+        "ingress": "local_unix",
+        "uid": 1001,
+        "pid": 341405,
+        "verb": "question.ask"
+      }
+    }
+  },
+  {
+    "seq": 13,
+    "ts": 1792144908439,
+    "kind": "question.withdrawn",
+    "beeId": "4c5a1d9e-96e9-4a8a-9b95-f5ab5dc4a4a5",
+    "payload": {
+      "questionId": "40938e93-bfd5-42ba-b1ef-e852ecf058c6",
+      "withdrawalReason": "Other owner.",
+      "withdrawnAt": 1792144908439,
+      "rpcCaller": {
+        "transport": "local_unix",
+        "ingress": "local_unix",
+        "uid": 1001,
+        "pid": 341405,
+        "verb": "question.withdraw"
+      }
+    }
+  },
+  {
+    "seq": 14,
+    "ts": 1792144908439,
+    "kind": "question.asked",
+    "beeId": "f7cc4927-6f81-4289-af13-b453ac7692d4",
+    "payload": {
+      "question": {
+        "id": "d56b41c2-9a86-41e7-a974-4da6295f6dce",
+        "beeId": "f7cc4927-6f81-4289-af13-b453ac7692d4",
+        "generation": 1,
+        "text": "Key reuse?",
+        "options": null,
+        "status": "open",
+        "withdrawalReason": null,
+        "withdrawnAt": null,
+        "answer": null,
+        "askedAt": 1792144908439,
+        "answeredAt": null,
+        "answeredBy": null,
+        "deliveryMessageId": null
+      },
+      "rpcCaller": {
+        "transport": "local_unix",
+        "ingress": "local_unix",
+        "uid": 1001,
+        "pid": 341405,
+        "verb": "question.ask"
+      }
+    }
+  },
+  {
+    "seq": 15,
+    "ts": 1792144908440,
+    "kind": "question.asked",
+    "beeId": "f7cc4927-6f81-4289-af13-b453ac7692d4",
+    "payload": {
+      "question": {
+        "id": "92a26bb3-a190-4562-bf90-91feafa84e30",
+        "beeId": "f7cc4927-6f81-4289-af13-b453ac7692d4",
+        "generation": 1,
+        "text": "Answer first?",
+        "options": null,
+        "status": "open",
+        "withdrawalReason": null,
+        "withdrawnAt": null,
+        "answer": null,
+        "askedAt": 1792144908440,
+        "answeredAt": null,
+        "answeredBy": null,
+        "deliveryMessageId": null
+      },
+      "rpcCaller": {
+        "transport": "local_unix",
+        "ingress": "local_unix",
+        "uid": 1001,
+        "pid": 341405,
+        "verb": "question.ask"
+      }
+    }
+  },
+  {
+    "seq": 16,
+    "ts": 1792144908440,
+    "kind": "mail.enqueued",
+    "beeId": "f7cc4927-6f81-4289-af13-b453ac7692d4",
+    "payload": {
+      "message": {
+        "id": 1,
+        "beeId": "f7cc4927-6f81-4289-af13-b453ac7692d4",
+        "sender": "operator",
+        "body": "[answer to question 92a26bb3-a190-4562-bf90-91feafa84e30] yes\n\n(question was: Answer first?)",
+        "priority": 0,
+        "urgency": "next",
+        "enqueuedAt": 1792144908440,
+        "deliveredAt": null,
+        "deliveredGeneration": null
+      },
+      "origin": "mail.send",
+      "rpcCaller": {
+        "transport": "local_unix",
+        "ingress": "local_unix",
+        "uid": 1001,
+        "pid": 341405,
+        "verb": "question.answer"
+      }
+    }
+  },
+  {
+    "seq": 17,
+    "ts": 1792144908441,
+    "kind": "question.answered",
+    "beeId": "f7cc4927-6f81-4289-af13-b453ac7692d4",
+    "payload": {
+      "questionId": "92a26bb3-a190-4562-bf90-91feafa84e30",
+      "beeId": "f7cc4927-6f81-4289-af13-b453ac7692d4",
+      "answer": "yes",
+      "answeredAt": 1792144908440,
+      "answeredBy": "operator",
+      "deliveryMessageId": 1,
+      "rpcCaller": {
+        "transport": "local_unix",
+        "ingress": "local_unix",
+        "uid": 1001,
+        "pid": 341405,
+        "verb": "question.answer"
+      }
+    }
+  },
+  {
+    "seq": 18,
+    "ts": 1792144908441,
+    "kind": "question.asked",
+    "beeId": "f7cc4927-6f81-4289-af13-b453ac7692d4",
+    "payload": {
+      "question": {
+        "id": "81aebbd3-bc53-4387-b3ab-d328e57ecc7d",
+        "beeId": "f7cc4927-6f81-4289-af13-b453ac7692d4",
+        "generation": 1,
+        "text": "Concurrent race: withdraw first",
+        "options": null,
+        "status": "open",
+        "withdrawalReason": null,
+        "withdrawnAt": null,
+        "answer": null,
+        "askedAt": 1792144908441,
+        "answeredAt": null,
+        "answeredBy": null,
+        "deliveryMessageId": null
+      },
+      "rpcCaller": {
+        "transport": "local_unix",
+        "ingress": "local_unix",
+        "uid": 1001,
+        "pid": 341405,
+        "verb": "question.ask"
+      }
+    }
+  },
+  {
+    "seq": 19,
+    "ts": 1792144908442,
+    "kind": "question.withdrawn",
+    "beeId": "f7cc4927-6f81-4289-af13-b453ac7692d4",
+    "payload": {
+      "questionId": "81aebbd3-bc53-4387-b3ab-d328e57ecc7d",
+      "withdrawalReason": "Race withdrawn.",
+      "withdrawnAt": 1792144908442,
+      "rpcCaller": {
+        "transport": "local_unix",
+        "ingress": "local_unix",
+        "uid": 1001,
+        "pid": 341405,
+        "verb": "question.withdraw"
+      }
+    }
+  },
+  {
+    "seq": 20,
+    "ts": 1792144908443,
+    "kind": "question.asked",
+    "beeId": "f7cc4927-6f81-4289-af13-b453ac7692d4",
+    "payload": {
+      "question": {
+        "id": "2a73172d-cd5e-4202-90dc-293604dd2e4a",
+        "beeId": "f7cc4927-6f81-4289-af13-b453ac7692d4",
+        "generation": 1,
+        "text": "Concurrent race: answer first",
+        "options": null,
+        "status": "open",
+        "withdrawalReason": null,
+        "withdrawnAt": null,
+        "answer": null,
+        "askedAt": 1792144908443,
+        "answeredAt": null,
+        "answeredBy": null,
+        "deliveryMessageId": null
+      },
+      "rpcCaller": {
+        "transport": "local_unix",
+        "ingress": "local_unix",
+        "uid": 1001,
+        "pid": 341405,
+        "verb": "question.ask"
+      }
+    }
+  },
+  {
+    "seq": 21,
+    "ts": 1792144908444,
+    "kind": "mail.enqueued",
+    "beeId": "f7cc4927-6f81-4289-af13-b453ac7692d4",
+    "payload": {
+      "message": {
+        "id": 2,
+        "beeId": "f7cc4927-6f81-4289-af13-b453ac7692d4",
+        "sender": "operator",
+        "body": "[answer to question 2a73172d-cd5e-4202-90dc-293604dd2e4a] yes\n\n(question was: Concurrent race: answer first)",
+        "priority": 0,
+        "urgency": "next",
+        "enqueuedAt": 1792144908444,
+        "deliveredAt": null,
+        "deliveredGeneration": null
+      },
+      "origin": "mail.send",
+      "rpcCaller": {
+        "transport": "local_unix",
+        "ingress": "local_unix",
+        "uid": 1001,
+        "pid": 341405,
+        "verb": "question.answer"
+      }
+    }
+  },
+  {
+    "seq": 22,
+    "ts": 1792144908444,
+    "kind": "question.answered",
+    "beeId": "f7cc4927-6f81-4289-af13-b453ac7692d4",
+    "payload": {
+      "questionId": "2a73172d-cd5e-4202-90dc-293604dd2e4a",
+      "beeId": "f7cc4927-6f81-4289-af13-b453ac7692d4",
+      "answer": "yes",
+      "answeredAt": 1792144908444,
+      "answeredBy": "operator",
+      "deliveryMessageId": 2,
+      "rpcCaller": {
+        "transport": "local_unix",
+        "ingress": "local_unix",
+        "uid": 1001,
+        "pid": 341405,
+        "verb": "question.answer"
+      }
+    }
+  }
+]
