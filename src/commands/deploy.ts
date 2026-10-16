@@ -102,9 +102,9 @@ async function keychainFreeGateEnv(workDir: string): Promise<NodeJS.ProcessEnv> 
 }
 
 /** Stream a build/restart step; the child's output is the progress report. */
-async function runStep(command: string, args: string[], cwd: string, log: (line: string) => void, env: NodeJS.ProcessEnv = {}): Promise<void> {
+async function runStep(command: string, args: string[], cwd: string, log: (line: string) => void, env: NodeJS.ProcessEnv = hostGitEnv()): Promise<void> {
   log(`deploy: ${command} ${args.join(" ")}`);
-  const child = spawn(command, args, { cwd, env: nativeNodeEnv({ ...hostGitEnv(), ...env }), stdio: ["ignore", "inherit", "inherit"] });
+  const child = spawn(command, args, { cwd, env, stdio: ["ignore", "inherit", "inherit"] });
   const result = await new Promise<{ code: number | null; signal: NodeJS.Signals | null; error?: Error }>((resolve) => {
     child.once("error", (error) => resolve({ code: null, signal: null, error }));
     child.once("exit", (code, signal) => resolve({ code, signal }));
@@ -207,7 +207,7 @@ export async function restartDeployedDaemon({ root, log, runtime, restorePreviou
   }));
   const cli = join(root, CURRENT_LINK_NAME, "dist", "cli.js");
   const args = (verb: string) => [cli, "v2", "daemon", verb, "--data-dir", dataDir];
-  const run = (verb: string, selected: NodePin = pin) => runStep(selected.path, args(verb), root, log, nodePinEnv(selected));
+  const run = (verb: string, selected: NodePin = pin) => runStep(selected.path, args(verb), root, log, { ...nativeNodeEnv(hostGitEnv()), ...nodePinEnv(selected) });
   const deployedIdentity = async (selected: NodePin) => {
     const { stdout } = await execFileAsync(selected.path, [cli, "v2", "deploy-info", "--data-dir", dataDir, "--json"], { timeout: 2000, env: { ...nativeNodeEnv(), ...nodePinEnv(selected) } });
     return JSON.parse(stdout) as { pid: number; startedAt: number; nodeVersion: string; identity?: { sourceRevision?: string } };

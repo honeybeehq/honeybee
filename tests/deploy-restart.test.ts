@@ -10,6 +10,10 @@ test("fresh verified activation executes installed current v2 CLI with scoped da
   const dir = await mkdtemp(join(tmpdir(), "hon8-restart-"));
   const previousServiceDir = process.env.HIVE_V2_SERVICE_DIR;
   const previousHome = process.env.HOME;
+  const previousNodeOptions = process.env.NODE_OPTIONS;
+  const previousElectron = process.env.ELECTRON_RUN_AS_NODE;
+  process.env.NODE_OPTIONS = "--no-warnings";
+  process.env.ELECTRON_RUN_AS_NODE = "parent-runtime-only";
   process.env.HOME = join(dir, "home");
   process.env.HIVE_V2_SERVICE_DIR = join(process.env.HOME, "units");
   assert.ok(process.env.HIVE_V2_SERVICE_DIR.startsWith(process.env.HOME + "/"));
@@ -19,11 +23,13 @@ test("fresh verified activation executes installed current v2 CLI with scoped da
     const pinnedNode = join(dir, "node-24-pinned");
     await copyFile(process.execPath, pinnedNode);
     persistNodePin(join(dir, "v2"), probeNativeNode(pinnedNode));
-    await writeFile(join(root, "current", "dist", "cli.js"), `require('node:fs').appendFileSync(${JSON.stringify(calls)}, JSON.stringify({ args: process.argv.slice(2), interpreter: process.execPath })+'\\n'); if(process.argv[4] === 'status') console.log(JSON.stringify({running:true}));`);
+    await writeFile(join(root, "current", "dist", "cli.js"), `require('node:fs').appendFileSync(${JSON.stringify(calls)}, JSON.stringify({ args: process.argv.slice(2), interpreter: process.execPath, nodeOptions: process.env.NODE_OPTIONS, electron: process.env.ELECTRON_RUN_AS_NODE })+'\\n'); if(process.argv[4] === 'status') console.log(JSON.stringify({running:true}));`);
     await restartDeployedDaemon({ root, installedDir: join(root, "current"), sha: "a".repeat(40), runtime: "v2", log() {} });
     assert.deepEqual((await readFile(calls, "utf8")).trim().split("\n").map(line => JSON.parse(line)),
       ["install", "stop", "start", "status"].map(verb => ({ args: ["v2", "daemon", verb, "--data-dir", join(dir, "v2"), ...(verb === "status" ? ["--json"] : [])], interpreter: pinnedNode })));
   } finally {
+    if (previousNodeOptions === undefined) delete process.env.NODE_OPTIONS; else process.env.NODE_OPTIONS = previousNodeOptions;
+    if (previousElectron === undefined) delete process.env.ELECTRON_RUN_AS_NODE; else process.env.ELECTRON_RUN_AS_NODE = previousElectron;
     if (previousHome === undefined) delete process.env.HOME;
     else process.env.HOME = previousHome;
     if (previousServiceDir === undefined) delete process.env.HIVE_V2_SERVICE_DIR;
