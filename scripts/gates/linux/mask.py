@@ -85,7 +85,7 @@ try:
         if not v['asserted']:
             raise RuntimeError('mask assertion failed: ' + target)
     os.chdir(initialcwd)
-    assert os.getcwd().startswith(str(CACHE) + '/')
+    assert os.getcwd() == str(CACHE) or os.getcwd().startswith(str(CACHE) + '/'), 'cwd must be inside the current run root'
     assert mounts[str(H)]['type'] == 'tmpfs' and 'ro' in mounts[str(H)]['options']
     assert sorted(os.listdir(H / '.cache')) == [CACHE.parent.name]
     assert sorted(os.listdir(CACHE.parent)) == [CACHE.name]
