@@ -161,13 +161,19 @@ async function releasedRpc(root: string) {
   const socket = join(root, "v2", "hived.sock");
   const calls: string[] = [];
   let onAcquire: (() => void) | undefined;
-  const server = new api.RpcServer({ socketPath: socket, log() {}, dispatch: (verb: string, params: Record<string, unknown>, conn: unknown) => { calls.push(verb); if (verb === "update.apiarySwap.acquire") onAcquire?.(); return daemon.dispatch(verb, params, conn); } });
+  const newServer = () => new api.RpcServer({ socketPath: socket, log() {}, dispatch: (verb: string, params: Record<string, unknown>, conn: unknown) => { calls.push(verb); if (verb === "update.apiarySwap.acquire") onAcquire?.(); return daemon.dispatch(verb, params, conn); } });
+  let server = newServer();
   await server.listen();
-  const client = await api.RpcClient.connect(socket);
+  let client = await api.RpcClient.connect(socket);
   const statusCli = `void (async () => { const {RpcClient} = await import(${JSON.stringify(pathToFileURL(out).href)}); const client = await RpcClient.connect(${JSON.stringify(socket)}); try { console.log(JSON.stringify(await client.request("update.status"))); } finally { client.close(); } })().catch(error => { console.error(error.message); process.exitCode = 1; });`;
   await mkdir(join(root, "runtime", identity.sourceRevision, "dist", "v2"));
   await writeFile(join(root, "runtime", identity.sourceRevision, "dist", "v2", "cli.js"), statusCli);
-  return { client, calls, daemon, api, socket, statusCli,
+  return { get client() { return client; }, calls, daemon, api, socket, statusCli,
+    async restart() {
+      client.close(); await server.close(); store.close();
+      store = api.openCoreStore(join(root, "v2", "core.sqlite3"), { ephemeral: true }); daemon.store = store;
+      server = newServer(); await server.listen(); client = await api.RpcClient.connect(socket);
+    },
     nextAcquire() { return new Promise<void>(resolveSeen => { onAcquire = resolveSeen; }); },
     reopen() { store.close(); store = api.openCoreStore(join(root, "v2", "core.sqlite3"), { ephemeral: true }); daemon.store = store; },
     async close() { client.close(); await server.close(); store.close(); },
@@ -185,7 +191,7 @@ test("apiary RPC: released identity, acquire/release/abandon/recover lost replie
       await f.client.request("update.apiarySwap.acquire", request);
       const held = (await f.client.request("update.apiarySwap.status")).reservation;
       assert.deepEqual(await f.client.request("update.apiarySwap.acquire", request), held);
-      f.reopen();
+      await f.restart();
       assert.deepEqual((await f.client.request("update.apiarySwap.status")).reservation, held);
       await assert.rejects(f.client.request("update.reserve", { id: "paired", expectedEpoch: held.epoch, recoverySubjectDigest: hash("f") }), /Corrupt/);
       const lines: string[] = [], errors: string[] = [];
