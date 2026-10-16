@@ -821,6 +821,7 @@ export class HsrDriver implements RuntimeDriver {
       return { interrupted: false, reason: "no_process" };
     }
     this.writeLine(p, encoded);
+    p.quiet?.invalidate();
     return { interrupted: true };
   }
 
@@ -1089,7 +1090,7 @@ export class HsrDriver implements RuntimeDriver {
             legacySharedObservation = false;
             if (
               recovered.sessionId == null
-              || adapter.midTurnMessageNeedsTurnId === true && lastKnownState === "running"
+              || lastKnownState === "running"
               || adapter.confirmsDelivery === true
             ) {
               recovered = recoverAdapterContext(adapter, observationPath, observationOffset, recovered.sessionId);

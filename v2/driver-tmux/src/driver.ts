@@ -482,6 +482,7 @@ export class TmuxDriver implements RuntimeDriver {
     if (p.phase === "idle") return { interrupted: false, reason: "idle" };
     const res = this.server.try(["send-keys", "-t", p.paneId, "C-c"]);
     if (res.status !== 0) return { interrupted: false, reason: "no_process" };
+    p.quiet?.invalidate();
     return { interrupted: true };
   }
 
@@ -823,6 +824,7 @@ export class TmuxDriver implements RuntimeDriver {
         return;
       }
       case "turn_ended": {
+        if (p.phase !== "running") p.quiet?.reset();
         const endedQuiet = p.quiet?.end({ requireTerminal: true, finalText: ev.finalText });
         if (p.phase !== "running") {
           // Explicit end evidence while idle WITH a delivery pending

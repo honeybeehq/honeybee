@@ -51,3 +51,37 @@ test("tmux hook or quiescence cannot classify intermediate transcript text", () 
   assert.equal(turn.end({ requireTerminal: true, finalText: "done <quiet/>\u{E0100}" }), true);
   assert.equal(turn.end({ requireTerminal: true, finalText: "" }), false);
 });
+
+test("Claude native sidechain rows cannot replace root final text", () => {
+  for (const scope of [{ isSidechain: true }, { parent_tool_use_id: "child-tool" }]) {
+    const turn = new TurnQuiet("claude");
+    turn.pushLine(JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "Please review" }] } }), null);
+    turn.pushLine(JSON.stringify({ type: "assistant", ...scope, message: { content: [{ type: "text", text: "sub done <quiet/>" }] } }), null);
+    turn.pushLine(JSON.stringify({ type: "result", result: "Please review" }), null);
+    assert.equal(turn.end({ requireTerminal: true }), false);
+  }
+});
+
+test("quiet text followed by failure or interruption stays unclassified", () => {
+  const assistant = JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "done <quiet/>" }] } });
+  for (const terminal of [
+    { type: "result", is_error: true, result: "failed" },
+    { type: "control_response", response: { request_id: "hive-interrupt-1", subtype: "success" } },
+  ]) {
+    const turn = new TurnQuiet("claude");
+    turn.pushLine(assistant, null);
+    turn.pushLine(JSON.stringify(terminal), null);
+    assert.equal(turn.end({ finalText: "<quiet/>" }), undefined);
+  }
+  for (const status of ["failed", "interrupted"]) {
+    const turn = new TurnQuiet("codex");
+    turn.pushLine(codex("turn/started", { turn: { id: "failed-turn" } }), "root");
+    turn.pushLine(codex("item/completed", { item: { type: "agentMessage", id: "quiet", text: "<quiet/>" } }), "root");
+    turn.pushLine(codex("turn/completed", { turn: { id: "failed-turn", status } }), "root");
+    assert.equal(turn.end(), undefined);
+  }
+  const turn = new TurnQuiet("claude");
+  turn.pushLine(assistant, null);
+  turn.invalidate();
+  assert.equal(turn.end({ finalText: "<quiet/>" }), undefined);
+});

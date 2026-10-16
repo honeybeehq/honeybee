@@ -241,6 +241,11 @@ test("tmux quiet facts require final evidence and discard late text between hook
     const dir = rig.transcriptDirOf("quiet");
     const transcript = join(dir, readdirSync(dir).find(name => name.endsWith(".jsonl"))!);
     const hooks = rig.driver.eventsFilePath("quiet");
+    const readyBy = Date.now() + 2000;
+    while (!readFileSync(hooks, "utf8").includes("UserPromptSubmit") && Date.now() < readyBy) await sleep(10);
+    assert.match(readFileSync(hooks, "utf8"), /UserPromptSubmit/);
+    await sleep(80);
+    rig.driver.observe();
     const append = (path: string, value: unknown) => appendFileSync(path, JSON.stringify(value) + "\n");
     append(transcript, { type: "assistant", message: { content: [{ type: "text", text: "intermediate <quiet/>" }] } });
     rig.driver.observe();
@@ -248,7 +253,11 @@ test("tmux quiet facts require final evidence and discard late text between hook
     const unproven = rig.driver.observe().find(row => row.kind === "turn_ended")!;
     assert.equal(unproven.endedQuiet, undefined);
     append(transcript, { type: "assistant", message: { content: [{ type: "text", text: "late <quiet/>" }] } });
+    append(transcript, { type: "result", result: "late <quiet/>" });
     rig.driver.observe();
+    assert.equal(rig.driver.deliver("quiet", 1, 2, "next").accepted, true);
+    append(hooks, { event: "turn_ended" });
+    assert.equal(rig.driver.observe().find(row => row.kind === "turn_ended")!.endedQuiet, undefined);
     append(hooks, { hook_event_name: "UserPromptSubmit" });
     rig.driver.observe();
     append(hooks, { hook_event_name: "Stop", last_assistant_message: "Please review" });

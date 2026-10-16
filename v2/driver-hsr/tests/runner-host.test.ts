@@ -807,9 +807,18 @@ test("quiet final assistant evidence survives a restart before turn completion",
     await drainUntil(first, events => ofKind(events, "turn_ended").length > 0);
     const sessionId = first.observeSessions().find(row => row.beeId === "bee-quiet")!.sessionId;
     await deliverUntilAccepted(first, "bee-quiet", 1, 101, "@slow:1500 @quiet");
-    await waitForJournal(first.observationLogPath("bee-quiet", 1), text => text.includes('"type":"agentMessage"'));
-    first.observe();
-    const cursor = checkpointOf(first, "bee-quiet");
+    const journal = await waitForJournal(first.observationLogPath("bee-quiet", 1), text => text.includes('"rateLimitReachedType":"probe"'));
+    const messageAt = journal.indexOf('"type":"agentMessage"');
+    assert.ok(messageAt >= 0);
+    const messageEnd = Buffer.byteLength(journal.slice(0, journal.indexOf("\n", messageAt) + 1));
+    let cursor = 0;
+    const deadline = Date.now() + 1000;
+    while (cursor <= messageEnd && Date.now() < deadline) {
+      first.observe();
+      cursor = first.observeRecoveryCursors().find(row => row.beeId === "bee-quiet")?.cursor ?? cursor;
+      if (cursor <= messageEnd) await sleep(10);
+    }
+    assert.ok(cursor > messageEnd, `committed cursor ${cursor} must be beyond final assistant row ${messageEnd}`);
     const proc = first.procOf("bee-quiet", 1)!;
     first.detachAll();
     second = makeCodexDriver(dir);
