@@ -3,8 +3,8 @@ import type { SealRecord } from "../seal.js";
 
 export const COMB_DEFINITION_FORMAT = 2 as const;
 
-export type JsonPrimitive = string | number | boolean | null;
-export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
+import type { JsonValue } from "./canonical.js";
+export type { JsonPrimitive, JsonValue } from "./canonical.js";
 export type JsonObject = { [key: string]: JsonValue };
 export type JsonPointer = string;
 export type NodeId = string;

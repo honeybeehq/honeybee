@@ -16,7 +16,6 @@ import { parseUpdateReservation, UPDATE_RECOVERY_CONTRACT } from "../src/updateR
 import { APIARY_SWAP_CAPABILITY, parseApiarySwapAcquire, parseDurableUpdateReservation, type ApiarySwapAcquire, type ApiarySwapReservation, type ApiarySwapReceipt } from "../src/apiarySwap.js";
 import { assertRuntimeUpdateAllowed } from "../src/readUpdateReservation.js";
 import { deployVersion, rollbackDeploy, deployArtifact, pruneRuntimeVersions, DeployReservationHeldError } from "../src/deployRuntime.js";
-import { runV2Cli } from "../v2/cli/src/main.ts";
 import { withFileLock } from "../src/lock.js";
 
 const exec = promisify(execFile);
@@ -146,7 +145,7 @@ async function releasedRpc(root: string) {
   await cp(resolve("contracts"), join(fixture, "contracts"), { recursive: true });
   const buildIdentity = { schemaVersion: 1, component: identity.component, version: identity.version, packageVersion: identity.version, sourceRevision: identity.sourceRevision, dirty: false, release: true, target: identity.target };
   await writeFile(join(fixture, "dist", "build-identity.json"), JSON.stringify(buildIdentity));
-  await build({ stdin: { contents: `export { HiveDaemon } from ${JSON.stringify(resolve("v2/daemon/src/daemon.ts"))}; export { RpcServer } from ${JSON.stringify(resolve("v2/daemon/src/rpc.ts"))}; export { RpcClient } from ${JSON.stringify(resolve("v2/cli/src/client.ts"))}; export { openCoreStore } from ${JSON.stringify(resolve("v2/core/src/index.ts"))}; export { BUILD_IDENTITY, DAEMON_CAPABILITIES } from ${JSON.stringify(resolve("v2/daemon/src/protocol.ts"))};`, resolveDir: process.cwd(), loader: "ts" }, bundle: true, platform: "node", format: "esm", outfile: out, banner: { js: 'import { createRequire } from "node:module"; const require = createRequire(import.meta.url);' }, external: ["node-pty"], alias: { "jsonc-parser": resolve("node_modules/jsonc-parser/lib/esm/main.js") }, logLevel: "silent" });
+  await build({ stdin: { contents: `export { runV2Cli } from ${JSON.stringify(resolve("v2/cli/src/main.ts"))}; export { HiveDaemon } from ${JSON.stringify(resolve("v2/daemon/src/daemon.ts"))}; export { RpcServer } from ${JSON.stringify(resolve("v2/daemon/src/rpc.ts"))}; export { RpcClient } from ${JSON.stringify(resolve("v2/cli/src/client.ts"))}; export { openCoreStore } from ${JSON.stringify(resolve("v2/core/src/index.ts"))}; export { BUILD_IDENTITY, DAEMON_CAPABILITIES } from ${JSON.stringify(resolve("v2/daemon/src/protocol.ts"))};`, resolveDir: process.cwd(), loader: "ts" }, bundle: true, platform: "node", format: "esm", outfile: out, banner: { js: 'import { createRequire as fixtureCreateRequire } from "node:module"; const require = fixtureCreateRequire(import.meta.url);' }, external: ["node-pty"], alias: { "jsonc-parser": resolve("node_modules/jsonc-parser/lib/esm/main.js") }, logLevel: "silent" });
   const api = await import(pathToFileURL(out).href);
   assert.equal(api.BUILD_IDENTITY.release, true);
   await mkdir(join(root, "runtime", identity.sourceRevision, "dist"), { recursive: true });
@@ -191,7 +190,7 @@ test("apiary RPC: released identity, acquire/release/abandon/recover lost replie
       await assert.rejects(f.client.request("update.reserve", { id: "paired", expectedEpoch: held.epoch, recoverySubjectDigest: hash("f") }), /Corrupt/);
       const lines: string[] = [], errors: string[] = [];
       const io = { out: (line: string) => lines.push(line), err: (line: string) => errors.push(line) };
-      assert.equal(await runV2Cli(["update-owner", "apiary-swap", "status", "--data-dir", join(root, "v2"), "--socket", f.socket], io), 0, errors.join("\n"));
+      assert.equal(await f.api.runV2Cli(["update-owner", "apiary-swap", "status", "--data-dir", join(root, "v2"), "--socket", f.socket], io), 0, errors.join("\n"));
       assert.deepEqual(JSON.parse(lines.pop()!).reservation, held);
       const repoRoot = await repo(root), hooks = { async buildArtifact(): Promise<never> { assert.fail("reserved build"); }, async restartDaemon() { assert.fail("reserved restart"); } };
       await assert.rejects(deployVersion({ root: join(root, "runtime"), repoRoot, hooks }), DeployReservationHeldError);
@@ -232,7 +231,7 @@ test("apiary compatibility: unmodified 0507721a deploy refuses a format-2 reserv
     await seed(root);
     const fixture = join(root, "fixture"), out = join(fixture, "dist", "v2", "old-deploy.mjs");
     await cp(resolve("contracts"), join(fixture, "contracts"), { recursive: true });
-    await build({ entryPoints: [join(gateBase, "src", "deployRuntime.ts")], bundle: true, platform: "node", format: "esm", outfile: out, banner: { js: 'import { createRequire } from "node:module"; const require = createRequire(import.meta.url);' }, logLevel: "silent" });
+    await build({ entryPoints: [join(gateBase, "src", "deployRuntime.ts")], bundle: true, platform: "node", format: "esm", outfile: out, banner: { js: 'import { createRequire as fixtureCreateRequire } from "node:module"; const require = fixtureCreateRequire(import.meta.url);' }, logLevel: "silent" });
     const old = await import(pathToFileURL(out).href), runtime = join(root, "runtime"), repoRoot = await repo(root);
     await assert.rejects(old.deployVersion({ root: runtime, repoRoot, hooks: { buildArtifact() { assert.fail("old build"); }, restartDaemon() { assert.fail("old restart"); } } }), /Corrupt coordinated update reservation/);
     assert.equal(existsSync(join(runtime, "current")), false);
@@ -256,8 +255,9 @@ for (const operation of ["deploy", "rollback"] as const) {
       let acquisition: Promise<unknown> | undefined;
       const queueAcquire = async () => {
         const seen = f.nextAcquire();
-        acquisition = f.client.request("update.apiarySwap.acquire", acquire(root));
-        void acquisition.catch(() => {});
+        const pending: Promise<unknown> = f.client.request("update.apiarySwap.acquire", acquire(root));
+        acquisition = pending;
+        void pending.catch(() => {});
         await seen;
       };
       try {
@@ -276,7 +276,7 @@ for (const operation of ["deploy", "rollback"] as const) {
           const previous = "b".repeat(40);
           await mkdir(join(runtime, previous), { recursive: true });
           await writeFile(join(runtime, "deploys.json"), JSON.stringify([{ sha: previous, at: "2026-01-01T00:00:00Z", artifactHash: hash("b"), by: "lab" }, { sha: identity.sourceRevision, at: "2026-01-02T00:00:00Z", artifactHash: hash("a"), by: "lab" }]));
-          await rollbackDeploy({ root: runtime, hooks: { async buildArtifact(): Promise<never> { assert.fail("rollback build"); }, async restartDaemon() { await queueAcquire(); } } });
+          await rollbackDeploy({ root: runtime, hooks: { async restartDaemon() { await queueAcquire(); } } });
           assert.equal(await readlink(join(runtime, "current")), previous);
         }
         assert.ok(acquisition);
