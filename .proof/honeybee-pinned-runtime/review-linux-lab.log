@@ -1,0 +1,55 @@
+ISOLATION ASSERTION PASSED {"home":"/home/trmd/.cache/honeybee-pin.kx4W50/home","unitDir":"/home/trmd/.cache/honeybee-pin.kx4W50/home/pinned-review-yHfVkh/units","label":"dev.honeybee.lab.pinned.review.1877191"}
+UNIT POLICY
+[Unit]
+Description=Honeybee v2 hive daemon (dev.honeybee.lab.pinned.review.1877191)
+
+[Service]
+Type=simple
+ExecStart="/opt/node-v24.18.0-linux-x64/bin/node" "/home/trmd/.cache/honeybee-pin.kx4W50/home/pinned-review-yHfVkh/runtime/current/dist/cli.js" "v2" "daemon" "run"
+Environment="XDG_DATA_HOME=/home/trmd/.cache/honeybee-pin.kx4W50/home/.local/share"
+Environment="LAB_ROOT=/home/trmd/.cache/honeybee-pin.kx4W50"
+Environment="XDG_CONFIG_HOME=/home/trmd/.cache/honeybee-pin.kx4W50/home/.config"
+Environment="PWD=/home/trmd/.cache/honeybee-pin.kx4W50/repo"
+Environment="HOME=/home/trmd/.cache/honeybee-pin.kx4W50/home"
+Environment="LANG=C.UTF-8"
+Environment="TMPDIR=/home/trmd/.cache/honeybee-pin.kx4W50/home/tmp"
+Environment="XDG_CACHE_HOME=/home/trmd/.cache/honeybee-pin.kx4W50/home/.cache"
+Environment="REAL_SERVICE_HOME=/home/trmd"
+Environment="SHLVL=2"
+Environment="XDG_STATE_HOME=/home/trmd/.cache/honeybee-pin.kx4W50/home/.local/state"
+Environment="XDG_RUNTIME_DIR=/run/user/1001"
+Environment="PATH=/home/trmd/.local/share/apiary-satellite/tools/codex/0.163.0/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/codex-path:/home/trmd/.local/bin:/home/trmd/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games"
+Environment="OLDPWD=/home/trmd/.hive/v2/cells/resident-apiaryd-honeybee-pinned-runtime-110f4b740e82/github-com-honeybeehq-honeybee-a9015b303498-space-110f4b740e82"
+Environment="_=/usr/local/bin/node"
+Environment="HIVE_NODE_PATH=/opt/node-v24.18.0-linux-x64/bin/node"
+Environment="HIVE_NODE_VERSION=24.18.0"
+Environment="HIVE_NODE_SHA256=41a74efb34cbde5c7632cdac0cf8bd1a14d0b8d73dc1e82755014d9a9ce70f5c"
+Environment="HIVE_V2_SERVICE_DIR=/home/trmd/.cache/honeybee-pin.kx4W50/home/pinned-review-yHfVkh/units"
+Environment="HIVE_V2_SERVICE_LABEL=dev.honeybee.lab.pinned.review.1877191"
+Environment="HIVE_STORE_ROOT=/home/trmd/.cache/honeybee-pin.kx4W50/home/pinned-review-yHfVkh"
+Environment="HIVE_V2_DATA_DIR=/home/trmd/.cache/honeybee-pin.kx4W50/home/pinned-review-yHfVkh/v2"
+# Honeybee owns detached runner process groups; daemon stop/restart preserves them for re-adoption.
+# Ephemeral workers are stopped during clean daemon shutdown, and explicit bee stop/delete reaps its runner group.
+KillMode=process
+UnsetEnvironment=ELECTRON_RUN_AS_NODE NODE_OPTIONS
+Restart=on-failure
+RestartSec=2
+StandardOutput=append:/home/trmd/.cache/honeybee-pin.kx4W50/home/pinned-review-yHfVkh/daemon.log
+StandardError=append:/home/trmd/.cache/honeybee-pin.kx4W50/home/pinned-review-yHfVkh/daemon.log
+
+[Install]
+WantedBy=default.target
+
+CRASH RESPAWN PASS old=1877281 new=1877987
+deploy: building 2057cf15fb72 in a clean temp checkout
+deploy: /opt/node-v24.18.0-linux-x64/bin/node /home/trmd/.cache/honeybee-pin.kx4W50/home/pinned-review-yHfVkh/runtime/current/dist/cli.js v2 daemon install --data-dir /home/trmd/.cache/honeybee-pin.kx4W50/home/pinned-review-yHfVkh/v2
+deploy: /opt/node-v24.18.0-linux-x64/bin/node /home/trmd/.cache/honeybee-pin.kx4W50/home/pinned-review-yHfVkh/runtime/current/dist/cli.js v2 daemon stop --data-dir /home/trmd/.cache/honeybee-pin.kx4W50/home/pinned-review-yHfVkh/v2
+deploy: /opt/node-v24.18.0-linux-x64/bin/node /home/trmd/.cache/honeybee-pin.kx4W50/home/pinned-review-yHfVkh/runtime/current/dist/cli.js v2 daemon start --data-dir /home/trmd/.cache/honeybee-pin.kx4W50/home/pinned-review-yHfVkh/v2
+forced post-stop start failure
+deploy: /opt/node-v24.18.0-linux-x64/bin/node /home/trmd/.cache/honeybee-pin.kx4W50/home/pinned-review-yHfVkh/runtime/current/dist/cli.js v2 daemon stop --data-dir /home/trmd/.cache/honeybee-pin.kx4W50/home/pinned-review-yHfVkh/v2
+deploy: restored previous runtime 28db478c2e5a8514b16e7d961f71665ea3f46bed
+deploy: /opt/node-v24.18.0-linux-x64/bin/node /home/trmd/.cache/honeybee-pin.kx4W50/home/pinned-review-yHfVkh/runtime/current/dist/cli.js v2 daemon start --data-dir /home/trmd/.cache/honeybee-pin.kx4W50/home/pinned-review-yHfVkh/v2
+deploy: previous runtime and service recovered after failed activation
+FULL DEPLOY RECOVERY PASS stopped=1877987 recovered=1879269 runtime=28db478c2e5a8514b16e7d961f71665ea3f46bed exact-service-bytes-and-mode-restored
+DRIFT HOLD PASS elapsedMs=60201 real-runDaemon-entry exit=0 no-store-or-socket no-respawn held={"state":"held","reason":"node_pin_invalid","detail":"Honeybee Node pin identity drift: path, version or sha256 differs from the recorded pin","at":"2026-10-16T08:55:51.885Z"}
+CLEANUP PASS disposable service removed dev.honeybee.lab.pinned.review.1877191
