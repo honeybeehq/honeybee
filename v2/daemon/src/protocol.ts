@@ -90,6 +90,7 @@ export const DAEMON_VERSION = BUILD_IDENTITY.version;
  */
 export const DAEMON_CAPABILITIES = [
   "rpc.local_trust.v1",
+  "rpc-effect-resolve.v1",
   "question.withdraw.v1",
   "bee.human_ref.v1",
   "bee.turn_trigger.v1",
@@ -261,6 +262,7 @@ export interface HelloFrame {
 
 /** Closed-list, typed errors — never fuzzy (spec 04). */
 export const RPC_ERROR_CODES = [
+  "rpc_effect_fenced", "rpc_effect_history_unknown", "rpc_effect_resolve_unsupported",
   "socket_mismatch",
   "socket_unreachable",
   "socket_in_use",
@@ -441,6 +443,8 @@ export const RPC_ERROR_CODES = [
 export type RpcErrorCode = (typeof RPC_ERROR_CODES)[number];
 
 export const RPC_VERBS = [
+  "rpc.effect.resolve",
+  "rpc.effect.status",
   "rpc.localTrust.challenge",
   "rpc.localTrust.register",
   "humanRef.status", "humanRef.enroll", "humanRef.registry.status", "humanRef.registry.init", "humanRef.registry.reserve",

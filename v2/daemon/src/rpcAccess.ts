@@ -1,6 +1,8 @@
 import type { RpcVerb } from "./protocol.ts";
 
 export const RPC_ACCESS = {
+  "rpc.effect.resolve": "mutate",
+  "rpc.effect.status": "read",
   "rpc.localTrust.challenge": "mutate",
   "rpc.localTrust.register": "mutate",
   "humanRef.status": "read",

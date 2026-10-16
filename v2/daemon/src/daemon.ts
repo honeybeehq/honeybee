@@ -1,3 +1,4 @@
+import { effectVerb } from "../../core/src/effectResolve.ts";
 import { APIARY_SWAP_CAPABILITY, ApiarySwapError, parseApiarySwapAcquire, parseApiarySwapSettle, parseApiarySwapRecover } from "../../../src/apiarySwap.ts";
 import { canonicalDigest } from "../../../src/comb/canonical.ts";
 import { parseComponentIdentity, type ComponentIdentity } from "../../../src/release/index.ts";
@@ -726,6 +727,7 @@ export class HiveDaemon {
   private readonly weeklyCeilingMoves = new Map<string, { account: string; at: number }>();
   private readonly weeklyCeilingNotes = new Map<string, { afterGeneration: number; body: string }>();
   /** In-flight async idempotent verbs by key: a concurrent duplicate joins the first execution instead of re-running it. */
+  private effectInFlight?: Map<string, { verb: "spawn"; fingerprint: string; promise: Promise<SpawnResult> }>;
   private readonly asyncInFlight = new Map<string, Promise<object>>();
   private naming: ResolvedNamingConfig;
   private contextPolicy: ContextPolicyConfig;
@@ -1693,7 +1695,7 @@ export class HiveDaemon {
     }
     if (verb === "bee.fork") for (const key of Object.keys(params)) if (!["beeId", "name", "id", "idempotencyKey", "allocationContext", "allocationClaim"].includes(key)) throw new RpcError("thread_unsupported", `Fork is a plain copy and does not accept '${key}'`);
     if (typeof params.idempotencyKey === "string" && verb !== "thread.fork" && verb !== "thread.handoff" && this.mustStore().threadOperationByKey(params.idempotencyKey)) throw new RpcError("idempotency_conflict", "Key belongs to a thread operation");
-    if (typeof params.idempotencyKey === "string") {
+    if (verb !== "rpc.effect.resolve" && typeof params.idempotencyKey === "string") {
       const reconnect = this.mustStore().getCommandByIdempotencyKey(params.idempotencyKey);
       if (reconnect?.verb === "reconnect_tools" && (verb !== "bee.reconnectTools" || reconnect.beeId !== params.beeId)) throw new RpcError("idempotency_conflict", "Key belongs to a reconnect command");
       const prior = this.mustStore().lookupRpcResult(params.idempotencyKey);
@@ -1707,6 +1709,17 @@ export class HiveDaemon {
       if (operation && ((operation.phase !== "ready" && operation.phase !== "failed") || (operation.worker && pidAlive(operation.worker.pid)))) throw new RpcError("thread_busy", "Thread operation still owns execution; wait for settlement before deletion");
     }
     switch (verb) {
+      case "rpc.effect.status":
+        if (Object.keys(params).length) throw new RpcError("invalid_request", "Effect status takes no parameters");
+        return this.mustStore().effectCoverage();
+      case "rpc.effect.resolve": {
+        if (Object.keys(params).some(key => key !== "verb" && key !== "idempotencyKey")) throw new RpcError("invalid_request", "Unexpected effect resolve parameter");
+        const target = effectVerb(params.verb), key = this.idempotencyKeyOf(params);
+        if (!key) throw new RpcError("invalid_request", "Effect resolve requires idempotencyKey");
+        const pending = this.effectInFlight?.get(key);
+        if (pending && pending.verb !== target) throw new RpcError("idempotency_conflict", "Key belongs to an in-flight spawn");
+        return this.mustStore().resolveEffect(key, target, pending !== undefined);
+      }
       case "humanRef.status":
         return { installationId: this.mustStore().humanRefInstallationId(), issuer: this.mustStore().humanRefIssuer() };
       case "humanRef.enroll":
@@ -1722,7 +1735,7 @@ export class HiveDaemon {
       case "spawn":
         this.assertApiaryTagWriter(verb, params);
         // The start command is due now; do not wait out the tick cadence.
-        return this.releasingRefusedClaim(() => this.rpcSpawnWithAccount(params)).then((result) => { this.requestTick(); return result; });
+        return this.releasingRefusedClaim(() => this.rpcSpawnEffect(params)).then((result) => { this.requestTick(); return result; });
       case "bee.swapAccount":
         return this.releasingRefusedClaim(() => this.rpcSwapAccountWithAdmission(params));
       case "config.get":
@@ -2302,6 +2315,7 @@ export class HiveDaemon {
     const key = this.idempotencyKeyOf(params);
     if (key == null) return this.revealedOrRedacted(params, fn());
     const store = this.mustStore();
+    if (this.effectInFlight?.has(key) && verb !== "spawn") throw new RpcError("idempotency_conflict", "Key belongs to an in-flight spawn");
     return store.transact(() => {
       const hit = store.lookupRpcResult(key);
       if (hit) {
@@ -2332,13 +2346,23 @@ export class HiveDaemon {
     return params.revealEnv === true ? result : this.beeEnvRedacted(result);
   }
 
-  /**
-   * v7 (spec 08): `spawn {account?}` — 'auto' (default) resolves to a concrete
-   * account BEFORE the bee row is written. Stale limits are queued onto the
-   * account service's bounded background lane; the pick reads the current
-   * snapshot, then createBee + spawn command run in ONE store transaction
-   * under the idempotency wrapper.
-   */
+  private rpcSpawnEffect(params: Record<string, unknown>): Promise<SpawnResult> {
+    const key = this.idempotencyKeyOf(params);
+    if (key === null) return this.rpcSpawnWithAccount(params);
+    this.mustStore().transact(() => this.mustStore().lookupRpcResult(key));
+    const fingerprint = canonicalDigest(JSON.parse(JSON.stringify(params)));
+    const registry = this.effectInFlight ??= new Map();
+    const existing = registry.get(key);
+    if (existing) {
+      if (existing.fingerprint !== fingerprint) throw new RpcError("idempotency_conflict", "In-flight spawn key has different arguments");
+      return existing.promise.then((result: SpawnResult) => ({ ...result, deduped: true }));
+    }
+    const entry = { verb: "spawn" as const, fingerprint, promise: Promise.resolve().then(() => this.rpcSpawnWithAccount(params)) };
+    registry.set(key, entry);
+    entry.promise = entry.promise.finally(() => { if (registry.get(key) === entry) registry.delete(key); });
+    return entry.promise;
+  }
+
   private async rpcSpawnWithAccount(params: Record<string, unknown>): Promise<SpawnResult> {
     const store = this.mustStore();
     const key = this.idempotencyKeyOf(params);
@@ -5317,7 +5341,7 @@ export class HiveDaemon {
     if (!forward) return;
     const bee = this.mustStore().getBee(beeId);
     if (!bee || !isInboxAgent(bee.agent)) return;
-    queueMicrotask(() => {
+    this.mustStore().afterCommit(() => {
       Promise.resolve()
         .then(() => forward({ bee, message }))
         .catch((err: unknown) => this.log(`mailbox_only.forward_failed bee=${beeId} message=${message.id} error=${activationFailureName(err)}`));
