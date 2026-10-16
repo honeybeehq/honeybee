@@ -1,0 +1,81 @@
+✔ v6.rpc.1: rename / tag / children round-trips, idempotent replays, typed refusals; snapshot + watch carry the new rows/kinds (1145.962344ms)
+✔ v6.rpc.2: bee.interrupt — idle no-op; mid-turn (hung) interrupt → turn_ended, runtime live, next message delivers to the same generation; replay dedups (1024.964063ms)
+✔ v6.rpc.3: bee.fork (claude) — forks the source session into a NEW one (--resume <src> --fork-session), records the fork's own id (seed consumed), parentId/forkedFrom set, HIVE_* env stamps; revive resumes the fork's own id; copy has no prompt; replay dedups (1815.126388ms)
+✔ v6.rpc.4: bee.fork (codex) — the fork's handshake sends thread/fork {threadId: source}; the NEW thread id is recorded; delivery targets the new thread (1212.079344ms)
+✔ daemon restart: adopted Codex keeps its thread id and confirms queued mail (1302.999399ms)
+✔ v6.rpc.5: parenting policy over RPC — archive parent leaves children; delete parent orphans (bee.orphaned in the watch stream, children alive, parentId null); fork of a cell bee refused (1436.915504ms)
+✔ v6.rpc.6: questions + seals — ask → open row → answer → delivered as mailbox message → answered; list filters; seals CRUD; typed not-found; idempotent replays; snapshot carries them (1180.833616ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 9260.493627
+✔ actions.rpc.ship: Commit → Land → Archive over a real daemon + real Cell — capability, durable acceptance, mailbox dispatch, SIGKILL mid-sequence, real landing receipt, archive, mirror shapes (4161.78267ms)
+✔ actions.rpc.controls: pause/resume, cancel, invalid reorder, a question that holds the lane, retry after a conflict, external claim (2192.117066ms)
+✔ actions.rpc.external-land: destination Land holds Archive across an uncertain result and daemon restart (906.476466ms)
+✔ actions.rpc.complete: the operator completes an unreported commit — HEAD filled from the Cell space (or the checkout), Land proceeds, late report dedupes; refusals are typed (1879.446818ms)
+✔ actions.rpc.failed-exits: a failed Commit is completed (HEAD filled, failure kept in the receipt, Land proceeds) or cancelled (a $ref Land fails input_unresolved); keys replay; late reports are refused (1154.834157ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 10354.765735
+✔ local connection policy: foreign_uid (8.59363ms)
+✔ local connection policy: lookup_failed (4.52637ms)
+✔ local connection policy: load_failed (1.638197ms)
+✔ actual local RPC registers without cache and gates only the trusted observation handlers (13.329253ms)
+✔ RPC audit attribution stops at the daemon tick boundary (1088.003484ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1232.458146
+✔ withdrawal capability and authenticated session boundary: disabled (7.462382ms)
+✔ withdrawal capability and authenticated session boundary: missing-key (4.069994ms)
+✔ withdrawal capability and authenticated session boundary: degraded (3.802162ms)
+✔ withdrawal capability and authenticated session boundary: ready (5.703645ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 136.900112
+✔ set-model --apply uses atomic admission and waits out an active turn (1210.643545ms)
+✔ cli.1: help prints and exits 0; unknown command exits 1 (5.342003ms)
+✔ cli.2: reads fall back to the read-only store when the daemon is down — labeled stale (26.092417ms)
+✔ cli.children: stale reads exclude external lineage that collides with a local bee id (13.12755ms)
+✔ cli.3: mutations NEVER fall back — daemon down means a loud, typed failure (11.221471ms)
+✔ cli.3b: a misspelled flag is a LOUD error (never a silent no-op), and spawn takes the agent positionally (3.503324ms)
+✔ cli.send-sender-wire: the real CLI request carries the authority-bound ambient bee id (6.123535ms)
+✔ cli.4: against a live daemon — spawn, list (not stale), send --wait blocks on the delivery mark (780.496203ms)
+✔ cli.4n: health and daemon status report naming ok, off, or disabled with the reason (1427.861919ms)
+✔ cli.4b: --idempotency-key passes through on spawn and send — replays dedup to the original (615.811356ms)
+✔ cli.4c: per-bee args — `spawn --arg` (repeatable), `bee set-args <bee> -- <args…>` / --clear, `bee args`, `revive --arg`, view/list carry args; stale read shows them too (1273.772294ms)
+✔ cli.4d: cells — `spawn --substrate cell --origin`, `cell capture --onto` (landed / refused as results), `cell remove` (refused-dirty exit 2, --force) (1231.019317ms)
+✔ cli.4e: v6 verbs — rename, tag, interrupt, fork, children, spawn --parent (+ ambient HIVE_BEE_ID), ask/answer/question list, seal create/list/get; stale fallbacks for the reads (1587.415838ms)
+✔ cli.daemon: usage lists restart as a stop+start alias (2.306129ms)
+✔ cli.5: daemon status when nothing runs and no service is installed (2.717727ms)
+✔ cli.6: service glue — label never the live daemon's, exec args env override wins (1115.172713ms)
+✔ cli.7: cutover verbs — `freeze` writes/refuses locally; `import --from-frozen` reports (dry-run, marker refusal, real import, idempotent) over RPC (923.150003ms)
+✔ cli.urgency: send --urgency passes through to the row; the mailbox read surfaces it; an unknown value is a typed error (919.90812ms)
+✔ cli.version: --version answers (Apiary's Doctor gates local runs on it) (0.568302ms)
+✔ cli.task: add/ls/done/supply round-trip through the daemon; unknown command is gone (627.433718ms)
+ℹ tests 20
+ℹ suites 0
+ℹ pass 20
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 12059.251742

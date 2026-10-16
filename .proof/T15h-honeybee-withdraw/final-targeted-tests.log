@@ -1,0 +1,19 @@
+✔ mirror.1: live rows carry exactly the declared keys — bees (view/bee/runtime), templates, tracks (19.902198ms)
+✔ mirror.2: value-level snapshot — a deterministic store serializes to the frozen mirror document (9.683543ms)
+✔ mirror.3: template/track audit kinds are exactly the declared mirror kinds with the declared payloads (11.798675ms)
+✔ mirror limits invalidates a discarded remote observation with no local baseline (8.590443ms)
+✔ withdrawal is owner-only, quiet across retries, replayable and durable; both first-commit winners (20.716269ms)
+✔ v44 question migration preserves open/answered rows, indexes and legacy audit defaults (21.368016ms)
+✔ withdrawal receipts cannot be poisoned or disclosed by generic RPC keys (11.306738ms)
+✔ withdrawal capability and authenticated session boundary: disabled (7.064515ms)
+✔ withdrawal capability and authenticated session boundary: missing-key (3.785989ms)
+✔ withdrawal capability and authenticated session boundary: degraded (2.167531ms)
+✔ withdrawal capability and authenticated session boundary: ready (8.273038ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 163.520317

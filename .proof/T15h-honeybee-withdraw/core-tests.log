@@ -1,0 +1,86 @@
+✔ mirror.1: live rows carry exactly the declared keys — bees (view/bee/runtime), templates, tracks (42.537132ms)
+✖ mirror.2: value-level snapshot — a deterministic store serializes to the frozen mirror document (20.639153ms)
+✔ mirror.3: template/track audit kinds are exactly the declared mirror kinds with the declared payloads (28.393651ms)
+✔ mirror limits invalidates a discarded remote observation with no local baseline (13.501618ms)
+✔ setBeeTitle: sets title, audits bee.titled with previous, replays; identical = silent no-op; empty refused (36.263494ms)
+✔ v6.rename: renames, audits bee.renamed with previous, replays; identical = silent no-op; empty refused (23.414744ms)
+✔ v6.tag: remove-then-add, order preserved, duplicates collapse, audit carries the full list; replay (23.483178ms)
+✔ v6.parenting: parent_id at create; children read; archive parent leaves children; delete parent ORPHANS (audit bee.orphaned), never cascades; replay (16.280506ms)
+✔ v6.fork-seed: forkedFrom/forkSeed at create; recording the fork's own session id consumes the seed (audit forkSeedConsumed); replay (20.903067ms)
+✔ v6.questions: ask → open row (generation stamped); answer → answered + delivered as prefixed mail (+ wake when no live runtime); twice refused; unknown refused; list filters; replay; cascade on delete (30.913841ms)
+✔ v6.seals: create ties to the current generation; list/get; refs; typed not-found; replay; cascade on delete (31.470106ms)
+✖ v6.migration: a v5 store opens as v6 — parent_id/forked_from/fork_seed added, questions/seals created, data intact, stamp bumped (46.352043ms)
+✔ v6.dump: StateDump carries questions + seals; a fresh store's replay equals its dump (23.535275ms)
+✔ withdrawal is owner-only, quiet across retries, replayable and durable; both first-commit winners (35.568632ms)
+✔ v44 question migration preserves open/answered rows, indexes and legacy audit defaults (48.221877ms)
+ℹ tests 15
+ℹ suites 0
+ℹ pass 13
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 433.319422
+
+✖ failing tests:
+
+test at v2/core/tests/mirror.test.ts:129:1
+✖ mirror.2: value-level snapshot — a deterministic store serializes to the frozen mirror document (20.639153ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  ... Skipped lines
+
+    '{\n' +
+      '  "threadOperations": [],\n' +
+      '  "seq": 11,\n' +
+      '  "bees": [\n' +
+      '    {\n' +
+  ...
+      '      "status": "answered",\n' +
+  +   '      "withdrawalReason": null,\n' +
+  +   '      "withdrawnAt": null,\n' +
+      '      "answer": "yes",\n' +
+      '      "askedAt": 1010000,\n' +
+  +   '      "answeredAt": 1012000,\n' +
+  -   '      "answeredAt": 1014000,\n' +
+      '      "answeredBy": "operator",\n' +
+      '      "deliveryMessageId": 1\n' +
+      '    }\n' +
+      '  ],\n' +
+      '  "seals": [\n' +
+
+      at TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/apib-t15h-honeybee-withdraw-a4184d39ad80/github-com-honeybeehq-honeybee-a9015b303498-space-a4184d39ad80/v2/core/tests/mirror.test.ts:185:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '{\n  "threadOperations": [],\n  "seq": 11,\n  "bees": [\n    {\n      "view": {\n        "beeId": "BEE_ID",\n        "exists": true,\n        "lifecycle": "active",\n        "generation": 1,\n        "runtimeState": "booting",\n        "exitCause": null,\n        "working": true,\n        "waitingForYou": false,\n        "lastOutputAt": null,\n        "reachable": true,\n        "blocked": false,\n        "flags": []\n      },\n      "bee": {\n        "id": "BEE_ID",\n        "name": "alpha",\n        "agent": "claude",\n        "substrate": "tmux",\n        "cwd": "/tmp/w",\n        "title": null,\n        "tags": [],\n        "sessionLogPath": null,\n        "lifecycle": "active",\n        "createdAt": 1002000,\n        "archivedAt": null,\n        "lastOutputAt": null,\n        "providerSessionId": null,\n        "env": {},\n        "importedFrom": null,\n        "spawnFailures": 0,\n        "args": null,\n        "parentId": null,\n        "parentExternal": false,\n        "forkedFrom": null,\n        "forkSeed": null,\n        "account": null,\n        "handle": "BEE_HANDLE",\n        "human_ref": null,\n        "issuing_namespace": null,\n        "placementVersion": 0,\n        "activeMoveId": null,\n        "cellId": null,\n        "activeHandoffId": null,\n        "lastTurnTrigger": null,\n        "lastHumanOutputAt": null\n      },\n      "runtime": {\n        "beeId": "BEE_ID",\n        "generation": 1,\n        "state": "booting",\n        "exitCause": null,\n        "pid": null,\n        "pidStartedAt": null,\n        "bootEvidence": null,\n        "startedAt": 1002000,\n        "updatedAt": 1002000\n      },\n      "move": null,\n      "cell": null,\n      "handoff": null\n    }\n  ],\n  "cells": [],\n  "beeMoves": [],\n  "beeHandoffs": [],\n  "transcriptSegments": [],\n  "actions": [],\n  "actionQueues": [],\n  "templates": [\n    {\n      "id": "tpl-1",\n      "name": "commit",\n      "scope": "team",\n      "source": "api",\n      "description": null,\n      "agent": "codex",\n      "substrate": null,\n      "model": null,\n      "effort": null,\n      "args": [],\n      "prompt": "Commit.",\n      "preamble": null,\n      "preambleEnabled": true,\n      "cwdPolicy": "caller",\n      "cwd": null,\n      "env": {\n        "A": "1"\n      },\n      "account": null,\n      "yolo": false,\n      "tags": [\n        "git"\n      ],\n      "createdAt": 1006000,\n      "updatedAt": 1006000\n    }\n  ],\n  "tracks": [\n    {\n      "id": "trk-1",\n      "name": "ship",\n      "scope": "personal",\n      "source": "api",\n      "description": "d",\n      "steps": [\n        {\n          "id": "s1",\n          "name": "Build",\n          "kind": "action",\n          "templateId": "tpl-1",\n          "instruction": "go",\n          "note": null,\n          "status": "pending"\n        }\n      ],\n      "tags": [],\n      "createdAt": 1008000,\n      "updatedAt": 1008000\n    }\n  ],\n  "questions": [\n    {\n      "id": "q-1",\n      "beeId": "BEE_ID",\n      "generation": 1,\n      "text": "ship it?",\n      "options": [\n        "yes",\n        "no"\n      ],\n      "status": "answered",\n      "withdrawalReason": null,\n      "withdrawnAt": null,\n      "answer": "yes",\n      "askedAt": 1010000,\n      "answeredAt": 1012000,\n      "answeredBy": "operator",\n      "deliveryMessageId": 1\n    }\n  ],\n  "seals": [\n    {\n      "id": "seal-1",\n      "beeId": "BEE_ID",\n      "generation": 1,\n      "title": "shipped",\n      "body": "landed on main",\n      "refs": [\n        "main@abc"\n      ],\n      "createdAt": 1016000\n    }\n  ],\n  "accounts": [\n    {\n      "source": "local",\n      "leasedFrom": null,\n      "id": "codex-work",\n      "harness": "codex",\n      "homePath": "/tmp/homes/codex-work",\n      "label": "work",\n      "status": "ok",\n      "statusReason": null,\n      "refreshTokenExpiresAt": null,\n      "penalty": 5,\n      "weeklyCeiling": null,\n      "lastLoginAt": null,\n      "exhaustedAt": null,\n      "pausedBy": null,\n      "pausedOwner": null,\n      "pausedAt": null,\n      "addedAt": 1018000,\n      "updatedAt": 1018000,\n      "credentialHealth": "absent",\n      "loginDueAt": null,\n      "nativeLogin": null\n    }\n  ],\n  "accountLimits": [\n    {\n      "account": "codex-work",\n      "fetchedAt": 1020000,\n      "readable": true,\n      "unreadableReason": null,\n      "error": null,\n      "plan": "pro",\n      "fiveHourPct": 12,\n      "fiveHourResetsAt": 2000000,\n      "fiveHourMinutes": 300,\n      "weeklyPct": 40,\n      "weeklyResetsAt": 3000000,\n      "weeklyMinutes": 10080,\n      "fableWeeklyPct": null,\n      "fableResetsAt": null,\n      "fableMinutes": null,\n      "displayWindows": [],\n      "rateLimitResetCredits": null\n    }\n  ],\n  "accountAdmissions": [],\n  "tasks": [],\n  "taskSupply": [],\n  "loginFlows": []\n}',
+    expected: '{\n  "threadOperations": [],\n  "seq": 11,\n  "bees": [\n    {\n      "view": {\n        "beeId": "BEE_ID",\n        "exists": true,\n        "lifecycle": "active",\n        "generation": 1,\n        "runtimeState": "booting",\n        "exitCause": null,\n        "working": true,\n        "waitingForYou": false,\n        "lastOutputAt": null,\n        "reachable": true,\n        "blocked": false,\n        "flags": []\n      },\n      "bee": {\n        "id": "BEE_ID",\n        "name": "alpha",\n        "agent": "claude",\n        "substrate": "tmux",\n        "cwd": "/tmp/w",\n        "title": null,\n        "tags": [],\n        "sessionLogPath": null,\n        "lifecycle": "active",\n        "createdAt": 1002000,\n        "archivedAt": null,\n        "lastOutputAt": null,\n        "providerSessionId": null,\n        "env": {},\n        "importedFrom": null,\n        "spawnFailures": 0,\n        "args": null,\n        "parentId": null,\n        "parentExternal": false,\n        "forkedFrom": null,\n        "forkSeed": null,\n        "account": null,\n        "handle": "BEE_HANDLE",\n        "human_ref": null,\n        "issuing_namespace": null,\n        "placementVersion": 0,\n        "activeMoveId": null,\n        "cellId": null,\n        "activeHandoffId": null,\n        "lastTurnTrigger": null,\n        "lastHumanOutputAt": null\n      },\n      "runtime": {\n        "beeId": "BEE_ID",\n        "generation": 1,\n        "state": "booting",\n        "exitCause": null,\n        "pid": null,\n        "pidStartedAt": null,\n        "bootEvidence": null,\n        "startedAt": 1002000,\n        "updatedAt": 1002000\n      },\n      "move": null,\n      "cell": null,\n      "handoff": null\n    }\n  ],\n  "cells": [],\n  "beeMoves": [],\n  "beeHandoffs": [],\n  "transcriptSegments": [],\n  "actions": [],\n  "actionQueues": [],\n  "templates": [\n    {\n      "id": "tpl-1",\n      "name": "commit",\n      "scope": "team",\n      "source": "api",\n      "description": null,\n      "agent": "codex",\n      "substrate": null,\n      "model": null,\n      "effort": null,\n      "args": [],\n      "prompt": "Commit.",\n      "preamble": null,\n      "preambleEnabled": true,\n      "cwdPolicy": "caller",\n      "cwd": null,\n      "env": {\n        "A": "1"\n      },\n      "account": null,\n      "yolo": false,\n      "tags": [\n        "git"\n      ],\n      "createdAt": 1006000,\n      "updatedAt": 1006000\n    }\n  ],\n  "tracks": [\n    {\n      "id": "trk-1",\n      "name": "ship",\n      "scope": "personal",\n      "source": "api",\n      "description": "d",\n      "steps": [\n        {\n          "id": "s1",\n          "name": "Build",\n          "kind": "action",\n          "templateId": "tpl-1",\n          "instruction": "go",\n          "note": null,\n          "status": "pending"\n        }\n      ],\n      "tags": [],\n      "createdAt": 1008000,\n      "updatedAt": 1008000\n    }\n  ],\n  "questions": [\n    {\n      "id": "q-1",\n      "beeId": "BEE_ID",\n      "generation": 1,\n      "text": "ship it?",\n      "options": [\n        "yes",\n        "no"\n      ],\n      "status": "answered",\n      "answer": "yes",\n      "askedAt": 1010000,\n      "answeredAt": 1014000,\n      "answeredBy": "operator",\n      "deliveryMessageId": 1\n    }\n  ],\n  "seals": [\n    {\n      "id": "seal-1",\n      "beeId": "BEE_ID",\n      "generation": 1,\n      "title": "shipped",\n      "body": "landed on main",\n      "refs": [\n        "main@abc"\n      ],\n      "createdAt": 1016000\n    }\n  ],\n  "accounts": [\n    {\n      "source": "local",\n      "leasedFrom": null,\n      "id": "codex-work",\n      "harness": "codex",\n      "homePath": "/tmp/homes/codex-work",\n      "label": "work",\n      "status": "ok",\n      "statusReason": null,\n      "refreshTokenExpiresAt": null,\n      "penalty": 5,\n      "weeklyCeiling": null,\n      "lastLoginAt": null,\n      "exhaustedAt": null,\n      "pausedBy": null,\n      "pausedOwner": null,\n      "pausedAt": null,\n      "addedAt": 1018000,\n      "updatedAt": 1018000,\n      "credentialHealth": "absent",\n      "loginDueAt": null,\n      "nativeLogin": null\n    }\n  ],\n  "accountLimits": [\n    {\n      "account": "codex-work",\n      "fetchedAt": 1020000,\n      "readable": true,\n      "unreadableReason": null,\n      "error": null,\n      "plan": "pro",\n      "fiveHourPct": 12,\n      "fiveHourResetsAt": 2000000,\n      "fiveHourMinutes": 300,\n      "weeklyPct": 40,\n      "weeklyResetsAt": 3000000,\n      "weeklyMinutes": 10080,\n      "fableWeeklyPct": null,\n      "fableResetsAt": null,\n      "fableMinutes": null,\n      "displayWindows": [],\n      "rateLimitResetCredits": null\n    }\n  ],\n  "accountAdmissions": [],\n  "tasks": [],\n  "taskSupply": [],\n  "loginFlows": []\n}',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at v2/core/tests/preflip-verbs.test.ts:279:1
+✖ v6.migration: a v5 store opens as v6 — parent_id/forked_from/fork_seed added, questions/seals created, data intact, stamp bumped (46.352043ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  45 !== 44
+
+      at TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/apib-t15h-honeybee-withdraw-a4184d39ad80/github-com-honeybeehq-honeybee-a9015b303498-space-a4184d39ad80/v2/core/tests/preflip-verbs.test.ts:324:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 45,
+    expected: 44,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

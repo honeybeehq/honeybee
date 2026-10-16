@@ -332,6 +332,7 @@ import {
   type MutationResult,
   type QuestionAnswerResult,
   type QuestionAskResult,
+  type QuestionWithdrawResult,
   type QuestionListResult,
   type RenameResult,
   type RpcVerb,
@@ -1009,7 +1010,7 @@ export class HiveDaemon {
       dataDir: this.cfg.dataDir,
       instance: { id: this.instanceId, dataDir: canonicalPath(this.cfg.dataDir) },
       localTrust: this.cfg.rpcLocalTrust,
-      securityAudit: (kind, payload) => this.mustStore().recordLocalRpcEvent(kind as "rpc.peer_credentials_unavailable" | "rpc.local_refused" | "rpc.local_registered", payload),
+      securityAudit: (kind, payload) => store.recordLocalRpcEvent(kind as "rpc.peer_credentials_unavailable" | "rpc.local_refused" | "rpc.local_registered", payload),
       log: (op) => this.log(op),
       dispatch: (verb, params, conn) => this.dispatch(verb, params, conn),
       performance: this.performance,
@@ -2039,6 +2040,8 @@ export class HiveDaemon {
         return this.withIdempotency(verb, params, () => this.rpcQuestionAsk(params));
       case "question.answer":
         return this.withIdempotency(verb, params, () => this.rpcQuestionAnswer(params));
+      case "question.withdraw":
+        return this.rpcQuestionWithdraw(params, conn);
       case "question.list":
         return this.rpcQuestionList(params);
       case "seal.create":
@@ -5073,6 +5076,17 @@ export class HiveDaemon {
     };
   }
 
+  private rpcQuestionWithdraw(params: Record<string, unknown>, conn: RpcConn): QuestionWithdrawResult {
+    const caller = conn.authenticatedBeeId;
+    if (!caller) throw new RpcError("caller_not_trusted", "Withdrawal requires an authenticated session principal.");
+    for (const key of Object.keys(params)) if (!["questionId", "reason", "idempotencyKey"].includes(key)) throw new RpcError("invalid_request", `question.withdraw does not accept ${key}`);
+    const questionId = this.param(params, "questionId");
+    const reason = this.param(params, "reason");
+    const callerKey = this.idempotencyKeyOf(params);
+    if (!callerKey) throw new RpcError("invalid_request", "question.withdraw requires idempotencyKey");
+    return this.mustStore().withdrawQuestionWithKey(questionId, caller, reason, callerKey);
+  }
+
   private rpcQuestionList(params: Record<string, unknown>): QuestionListResult {
     const store = this.mustStore();
     const beeId = params.beeId === undefined || params.beeId === null ? undefined : this.requireBee(params);
@@ -5418,7 +5432,7 @@ export class HiveDaemon {
   private rpcDeployInfo(): DeployInfoResult {
     return {
       protocol: PROTOCOL,
-      capabilities: DAEMON_CAPABILITIES,
+      capabilities: this.rpc?.capabilities ?? DAEMON_CAPABILITIES.filter(c => c !== "question.withdraw.v1"),
       daemonVersion: DAEMON_VERSION,
       identity: BUILD_IDENTITY,
       nodeVersion: process.version,

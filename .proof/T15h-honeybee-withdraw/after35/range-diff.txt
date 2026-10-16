@@ -1,0 +1,12 @@
+1:  588b740a ! 1:  7dfc3223 feat(questions): withdraw owner questions through trusted RPC
+    @@ v2/daemon/src/protocol.ts: export const DAEMON_VERSION = BUILD_IDENTITY.version;
+     +  "question.withdraw.v1",
+        "bee.human_ref.v1",
+        "bee.turn_trigger.v1",
+    -   "mail.answer_marker.v1",
+    +   "bee.turn_quiet.v1",
+     @@ v2/daemon/src/protocol.ts: export const RPC_ERROR_CODES = [
+        "invalid_package",
+        /** v6 (additive): question / seal lookups. */
+2:  d563c057 = 2:  8f4ec16f fix(questions): isolate withdrawal receipts and check lab shutdowns
+3:  126de04e = 3:  c4f7ac42 fix(questions): retain schema 44 for additive withdrawal storage

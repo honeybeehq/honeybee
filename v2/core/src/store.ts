@@ -156,6 +156,9 @@ import {
   StalePlacementError,
   QuestionNotFoundError,
   QuestionNotOpenError,
+  QuestionNotOwnerError,
+  QuestionAlreadyAnsweredError,
+  QuestionWithdrawnError,
   SchemaVersionError,
   SealNotFoundError,
   TaskNotFoundError,
@@ -186,7 +189,7 @@ import {
   TASK_TRANSITIONS,
 } from "./tasks.ts";
 import { deliveredSenderKind } from "./automation.ts";
-import { ACTIONS_TABLE_SQL, AUTH_INTERRUPTIONS_TABLE_SQL, ACCOUNT_ADMISSIONS_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_V27_COLUMNS, ACCOUNT_LIMITS_TABLE_SQL, ACCOUNTS_NATIVE_INDEX_SQL, BEES_ADDITIVE_COLUMNS, BEES_ACTIVE_MOVE_INDEX_SQL, BEES_ACTIVE_HANDOFF_INDEX_SQL, BEE_HANDOFFS_TABLE_SQL, TRANSCRIPT_SEGMENTS_TABLE_SQL, MAILBOX_PENDING_METADATA_INDEX_SQL, BEE_MOVES_TABLE_SQL, CELLS_TABLE_SQL, CELLS_V22_COLUMNS, CELL_OPS_TABLE_SQL, FLAGS_ADDITIVE_COLUMNS, FLAGS_EXPIRY_INDEX_SQL, HANDLE_INDEX_SQL, IDEMPOTENCY_INDEX_SQL, MAILBOX_ADDITIVE_COLUMNS, MAIL_HISTORY_INDEX_SQL, MAIL_HISTORY_PROJECTION_SQL, RUNTIMES_ADDITIVE_COLUMNS, SCHEMA_SQL, SCHEMA_VERSION } from "./schema.ts";
+import { QUESTIONS_TABLE_SQL, ACTIONS_TABLE_SQL, AUTH_INTERRUPTIONS_TABLE_SQL, ACCOUNT_ADMISSIONS_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_V27_COLUMNS, ACCOUNT_LIMITS_TABLE_SQL, ACCOUNTS_NATIVE_INDEX_SQL, BEES_ADDITIVE_COLUMNS, BEES_ACTIVE_MOVE_INDEX_SQL, BEES_ACTIVE_HANDOFF_INDEX_SQL, BEE_HANDOFFS_TABLE_SQL, TRANSCRIPT_SEGMENTS_TABLE_SQL, MAILBOX_PENDING_METADATA_INDEX_SQL, BEE_MOVES_TABLE_SQL, CELLS_TABLE_SQL, CELLS_V22_COLUMNS, CELL_OPS_TABLE_SQL, FLAGS_ADDITIVE_COLUMNS, FLAGS_EXPIRY_INDEX_SQL, HANDLE_INDEX_SQL, IDEMPOTENCY_INDEX_SQL, MAILBOX_ADDITIVE_COLUMNS, MAIL_HISTORY_INDEX_SQL, MAIL_HISTORY_PROJECTION_SQL, RUNTIMES_ADDITIVE_COLUMNS, SCHEMA_SQL, SCHEMA_VERSION } from "./schema.ts";
 import { beeMoveReviveKey, beeMoveStopKey, beeMoveTransitionLegal, toBeeMoveView } from "./cellMove.ts";
 import {
   ACTION_DISPATCH_SENDER,
@@ -1103,7 +1106,9 @@ function mapQuestion(r: Row): QuestionRow {
     generation: r.generation == null ? null : Number(r.generation),
     text: r.text as string,
     options: r.options == null ? null : (JSON.parse(r.options as string) as string[]),
-    status: r.status as QuestionRow["status"],
+    status: (r.status ?? (r.answered_at == null ? "open" : "answered")) as QuestionRow["status"],
+    withdrawalReason: (r.withdrawal_reason as string | null) ?? null,
+    withdrawnAt: r.withdrawn_at == null ? null : Number(r.withdrawn_at),
     answer: (r.answer as string | null) ?? null,
     askedAt: Number(r.asked_at),
     answeredAt: r.answered_at == null ? null : Number(r.answered_at),
@@ -1166,6 +1171,12 @@ function normalizeStringList(value: unknown, where: string): string[] {
     throw new CoreError(`${where}: expected an array of strings`);
   }
   return [...(value as string[])];
+}
+
+function normalizeWithdrawalReason(reason: string): string {
+  const text = requireNonEmpty(reason, "withdrawQuestion: reason").trim();
+  if (!text || text.length > 500) throw new CoreError("withdrawQuestion: reason must contain 1 to 500 characters after trimming");
+  return text;
 }
 
 function requireNonEmpty(value: unknown, where: string): string {
@@ -1744,6 +1755,15 @@ export class CoreStore {
         "schema_newer",
         "core store is schema v29 from reverted build 7374447d; restore from backup before opening with this build.",
       );
+    }
+    const ddl = String((this.db.prepare("SELECT sql FROM sqlite_master WHERE name = 'questions'").get() as Row).sql);
+    if (!ddl.includes("'withdrawn'")) {
+      this.db.exec("ALTER TABLE questions RENAME TO questions_v44");
+      this.db.exec(QUESTIONS_TABLE_SQL);
+      const columns = "id,bee_id,generation,text,options,status,answer,asked_at,answered_at,answered_by,delivery_message_id";
+      this.db.exec(`INSERT INTO questions(${columns}) SELECT ${columns} FROM questions_v44`);
+      this.db.exec("DROP TABLE questions_v44");
+      this.db.exec(QUESTIONS_TABLE_SQL);
     }
     const needsHumanRefMigration = stored < 30;
     if (needsHumanRefMigration && !this.stmt("SELECT 1 FROM meta WHERE key = 'human_ref_installation_id'").get()) {
@@ -5206,20 +5226,17 @@ export class CoreStore {
     return this.tx(() => {
       const question = this.getQuestion(questionId);
       if (!question) throw new QuestionNotFoundError(questionId);
+      if (question.status === "withdrawn") throw new QuestionWithdrawnError(question.withdrawalReason!);
       if (question.status !== "open") {
         throw new QuestionNotOpenError(`question ${questionId} is already ${question.status} (answered at ${question.answeredAt})`);
       }
       const answeredBy = opts.answeredBy ?? "operator";
       const body = `[answer to question ${questionId}] ${text}\n\n(question was: ${question.text})`;
-      // Urgency ruling: an answer is "as soon as convenient" — `next`, never an
-      // interrupt (the bee asked; it is presumably working toward the answer).
-      const send = this.send(question.beeId, body, { sender: answeredBy, urgency: "next" });
       const at = this.now();
-      this.db
-        .prepare(
-          "UPDATE questions SET status = 'answered', answer = ?, answered_at = ?, answered_by = ?, delivery_message_id = ? WHERE id = ?",
-        )
-        .run(text, at, answeredBy, send.message.id, questionId);
+      const won = this.db.prepare("UPDATE questions SET status = 'answered', answer = ?, answered_at = ?, answered_by = ? WHERE id = ? AND status = 'open'").run(text, at, answeredBy, questionId);
+      if (won.changes !== 1) throw new QuestionNotOpenError(`question ${questionId} is no longer open`);
+      const send = this.send(question.beeId, body, { sender: answeredBy, urgency: "next" });
+      this.db.prepare("UPDATE questions SET delivery_message_id = ? WHERE id = ?").run(send.message.id, questionId);
       const updated = this.getQuestion(questionId) as QuestionRow;
       this.audit("question.answered", question.beeId, {
         questionId,
@@ -5235,6 +5252,45 @@ export class CoreStore {
     });
   }
 
+  withdrawQuestion(questionId: string, callerBeeId: string, reason: string): QuestionRow {
+    const text = normalizeWithdrawalReason(reason);
+    return this.tx(() => {
+      const question = this.requireQuestionOwner(questionId, callerBeeId);
+      if (question.status === "withdrawn") return question;
+      if (question.status === "answered") throw new QuestionAlreadyAnsweredError(`question ${questionId} is already answered`);
+      const withdrawnAt = this.now();
+      const won = this.db.prepare("UPDATE questions SET status = 'withdrawn', withdrawal_reason = ?, withdrawn_at = ? WHERE id = ? AND status = 'open'").run(text, withdrawnAt, questionId);
+      if (won.changes !== 1) throw new QuestionNotOpenError(`question ${questionId} is no longer open`);
+      this.audit("question.withdrawn", question.beeId, { questionId, withdrawalReason: text, withdrawnAt });
+      return this.getQuestion(questionId)!;
+    });
+  }
+
+  withdrawQuestionWithKey(questionId: string, callerBeeId: string, reason: string, key: string): { question: QuestionRow; deduped?: true } {
+    requireNonEmpty(key, "withdrawQuestion: idempotencyKey");
+    const text = normalizeWithdrawalReason(reason);
+    return this.tx(() => {
+      this.requireQuestionOwner(questionId, callerBeeId);
+      const hit = this.stmt("SELECT question_id, result FROM question_withdraw_receipts WHERE bee_id = ? AND key = ?").get(callerBeeId, key) as Row | undefined;
+      if (hit) {
+        if (hit.question_id !== questionId) throw new IdempotencyConflictError("Withdrawal key belongs to another question");
+        return { question: JSON.parse(String(hit.result)) as QuestionRow, deduped: true };
+      }
+      const question = this.withdrawQuestion(questionId, callerBeeId, text);
+      this.stmt("INSERT INTO question_withdraw_receipts(bee_id,key,question_id,result,created_at) VALUES(?,?,?,?,?)").run(callerBeeId, key, questionId, JSON.stringify(question), this.now());
+      const count = Number((this.stmt("SELECT count(*) AS n FROM question_withdraw_receipts").get() as Row).n);
+      if (count > this.maxRpcIdempotencyRows) this.stmt("DELETE FROM question_withdraw_receipts WHERE rowid IN (SELECT rowid FROM question_withdraw_receipts ORDER BY created_at, rowid LIMIT ?)").run(count - this.maxRpcIdempotencyRows);
+      return { question };
+    });
+  }
+
+  private requireQuestionOwner(questionId: string, callerBeeId: string): QuestionRow {
+    const question = this.getQuestion(questionId);
+    if (!question) throw new QuestionNotFoundError(questionId);
+    if (question.beeId !== callerBeeId) throw new QuestionNotOwnerError(`question ${questionId} belongs to another bee`);
+    return question;
+  }
+
   getQuestion(id: string): QuestionRow | null {
     const row = this.stmt("SELECT * FROM questions WHERE id = ?").get(id) as Row | undefined;
     return row ? mapQuestion(row) : null;
@@ -5248,7 +5304,7 @@ export class CoreStore {
       params.push(filter.beeId);
     }
     if (filter.open === true) where.push("status = 'open'");
-    else if (filter.open === false) where.push("status = 'answered'");
+    else if (filter.open === false) where.push("status <> 'open'");
     const sql = `SELECT * FROM questions${where.length > 0 ? ` WHERE ${where.join(" AND ")}` : ""} ORDER BY asked_at, rowid`;
     return (this.stmt(sql).all(...params) as Row[]).map(mapQuestion);
   }

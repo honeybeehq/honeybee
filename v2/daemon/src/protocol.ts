@@ -90,6 +90,7 @@ export const DAEMON_VERSION = BUILD_IDENTITY.version;
  */
 export const DAEMON_CAPABILITIES = [
   "rpc.local_trust.v1",
+  "question.withdraw.v1",
   "bee.human_ref.v1",
   "bee.turn_trigger.v1",
   "bee.turn_quiet.v1",
@@ -313,6 +314,10 @@ export const RPC_ERROR_CODES = [
   "invalid_package",
   /** v6 (additive): question / seal lookups. */
   "question_not_found",
+  "question_not_owner",
+  "question_already_answered",
+  "question_withdrawn",
+  "question_withdraw_unsupported",
   "seal_not_found",
   /** v7 (spec 08, additive): account verbs. */
   "account_not_found",
@@ -511,6 +516,7 @@ export const RPC_VERBS = [
   "bee.children",
   "question.ask",
   "question.answer",
+  "question.withdraw",
   "question.list",
   "seal.create",
   "seal.list",
@@ -631,9 +637,15 @@ export const RPC_VERBS = [
 ] as const;
 export type RpcVerb = (typeof RPC_VERBS)[number];
 
+/** Service assertion, accepted only on a registered direct-local RPC connection. */
+export interface RpcRequestContext {
+  sessionPrincipal: { beeId: string };
+}
+
 export interface RpcRequest {
   id: number;
   verb: RpcVerb;
+  context?: RpcRequestContext;
   params?: Record<string, unknown>;
 }
 
@@ -1317,7 +1329,8 @@ export interface QuestionAskResult extends DedupMarkers {
  * `question.answer {questionId, answer, answeredBy?}` — marks answered AND
  * delivers the answer to the bee as an ordinary mailbox message prefixed
  * `[answer to question <id>]` (send()'s wake/unarchive rules apply). A
- * non-open question is `invalid_request`. Audit `question.answered`.
+ * answered question is `invalid_request`; a withdrawn question is `question_withdrawn`
+ * with its withdrawalReason in details and a clear message. Audit `question.answered`.
  */
 export interface QuestionAnswerResult extends DedupMarkers {
   question: MirrorQuestionRow;
@@ -1325,6 +1338,17 @@ export interface QuestionAnswerResult extends DedupMarkers {
   /** The send_wake enqueued for the delivery, when one was needed. */
   commandId: number | null;
   unarchived: boolean;
+}
+
+/** Requires question.withdraw.v1 and an authenticated session principal; see docs/design/question-withdraw-contract.md. */
+export interface QuestionWithdrawParams {
+  questionId: string;
+  reason: string;
+  idempotencyKey: string;
+}
+
+export interface QuestionWithdrawResult extends DedupMarkers {
+  question: MirrorQuestionRow;
 }
 
 /** `question.list {beeId?, open?}` */

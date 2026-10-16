@@ -161,6 +161,30 @@
  * and the secret-free last refresh `failure` (table rebuild, rows carried across by name). */
 export const SCHEMA_VERSION = 44;
 
+export const QUESTIONS_TABLE_SQL = `
+CREATE TABLE IF NOT EXISTS questions (
+  id                  TEXT PRIMARY KEY,
+  bee_id              TEXT NOT NULL REFERENCES bees(id) ON DELETE CASCADE,
+  generation          INTEGER,
+  text                TEXT NOT NULL,
+  options             TEXT,
+  status              TEXT NOT NULL CHECK (status IN ('open','answered','withdrawn')),
+  answer              TEXT,
+  asked_at            INTEGER NOT NULL,
+  answered_at         INTEGER,
+  answered_by         TEXT,
+  delivery_message_id INTEGER,
+  withdrawal_reason   TEXT,
+  withdrawn_at        INTEGER,
+  CHECK ((status = 'withdrawn') = (withdrawn_at IS NOT NULL)),
+  CHECK ((status = 'withdrawn') = (withdrawal_reason IS NOT NULL)),
+  CHECK (status <> 'withdrawn' OR (answer IS NULL AND answered_at IS NULL AND answered_by IS NULL AND delivery_message_id IS NULL)),
+  CHECK ((status = 'answered') = (answered_at IS NOT NULL))
+) STRICT;
+CREATE INDEX IF NOT EXISTS questions_open ON questions(bee_id, asked_at) WHERE status = 'open';
+CREATE INDEX IF NOT EXISTS questions_delivery_message ON questions(delivery_message_id) WHERE delivery_message_id IS NOT NULL;
+`;
+
 export const AUTH_INTERRUPTIONS_TABLE_SQL = `
 CREATE TABLE IF NOT EXISTS auth_interruptions (
   id                       INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -517,22 +541,16 @@ CREATE INDEX IF NOT EXISTS rpc_idempotency_created_at ON rpc_idempotency(created
 -- v6: a bee's question to the operator (spec: pre-flip verbs). Open until
 -- answered; the answer is ALSO delivered to the bee as an ordinary mailbox
 -- message (delivery_message_id) so the bee learns it through the one channel.
-CREATE TABLE IF NOT EXISTS questions (
-  id                  TEXT PRIMARY KEY,
-  bee_id              TEXT NOT NULL REFERENCES bees(id) ON DELETE CASCADE,
-  generation          INTEGER,
-  text                TEXT NOT NULL,
-  options             TEXT,
-  status              TEXT NOT NULL CHECK (status IN ('open','answered')),
-  answer              TEXT,
-  asked_at            INTEGER NOT NULL,
-  answered_at         INTEGER,
-  answered_by         TEXT,
-  delivery_message_id INTEGER,
-  CHECK ((status = 'answered') = (answered_at IS NOT NULL))
+${QUESTIONS_TABLE_SQL}
+
+CREATE TABLE IF NOT EXISTS question_withdraw_receipts (
+  bee_id TEXT NOT NULL REFERENCES bees(id) ON DELETE CASCADE,
+  key TEXT NOT NULL,
+  question_id TEXT NOT NULL,
+  result TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (bee_id, key)
 ) STRICT;
-CREATE INDEX IF NOT EXISTS questions_open ON questions(bee_id, asked_at) WHERE status = 'open';
-CREATE INDEX IF NOT EXISTS questions_delivery_message ON questions(delivery_message_id) WHERE delivery_message_id IS NOT NULL;
 
 -- v6: seals — a bee's structured "here is what I did" record (metadata only:
 -- title/body/refs), tied to the generation that sealed.
