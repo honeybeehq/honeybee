@@ -1,0 +1,56 @@
+✔ deploy-owned CLI follows current, preserves argument quoting, and replays exposure (441.491424ms)
+✔ deploy-owned CLI preserves an existing user command and dangling link (310.11764ms)
+✔ fresh verified activation executes installed current v2 CLI with scoped data directory (692.216372ms)
+✔ restart after stop failure refuses a still-loaded service (417.309591ms)
+✔ restart after stop failure requires confirmed absence (483.736ms)
+✔ persisted v2 config selects the v2 service for an ordinary source restart (442.440978ms)
+✔ legacy deployment refuses activation before selecting a service (1.584869ms)
+✔ deploy from clean HEAD installs the version, retargets current, records history, restarts daemon (73.373947ms)
+✔ deploy accepts an explicit sha that is not HEAD (126.10163ms)
+✔ a dirty working tree refuses before building (29.249247ms)
+✔ an untracked file also counts as dirty (32.167027ms)
+✔ a failing build never touches the runtime root, current, or history (85.84681ms)
+✔ an artifact without dist/cli.js is refused before install (42.925219ms)
+✔ rollback retargets current to the previous deploy and restarts the daemon (171.075318ms)
+✔ rollback refuses when there is no previous installed version (52.095075ms)
+✔ prune keeps current, the rollback target, and the last N versions (193.943017ms)
+✔ prune never removes the rollback target even after rolling back (102.035452ms)
+✔ the installed CLI resolves through current and ignores working-tree edits until the next deploy (246.869206ms)
+✔ redeploying the same sha replaces the install without breaking current (136.791138ms)
+✔ deploy history tolerates a missing or foreign deploys.json (1.573787ms)
+✔ ancestry guard: non-descendant refused, descendant allowed, override honored (218.19177ms)
+✔ failed activation restores current and preserves successful deploy history (129.239246ms)
+✔ failed same-revision activation restores displaced runtime bytes (106.843364ms)
+✔ failed rollback restores the active version without recording success (194.35119ms)
+✔ fresh service pin requires explicit managed node and refuses Electron (6.763ms)
+✔ pin persists resolved executable identity and refuses version or byte drift (1206.456006ms)
+✔ runtime environment and inspector arguments are scrubbed (2.789389ms)
+✔ foreground helpers discover the persisted pin without inherited service environment (698.944353ms)
+✔ a recorded real executable replaced by a symlink cannot silently move the pin (517.759022ms)
+✔ only an explicit different HIVE_NODE_PATH permits installer migration (795.240635ms)
+✔ service paths depend only on explicit HOME/XDG configuration and overrides (1.151668ms)
+✔ service environment records native pin and drops Electron mode (322.808537ms)
+✔ service entry follows selected node current, independent of ambient home (160.651987ms)
+✔ fresh service install requires a pin and validates explicit argv overrides (466.818111ms)
+✔ daemon start, restart and status expose a held pin without opening the store (491.552225ms)
+hived held, needs repair: Honeybee Node pin identity drift: path, version or sha256 differs from the recorded pin
+hived held, needs repair: Unexpected token 'c', "corrupt JSON" is not valid JSON
+✔ daemon entry holds before store/socket open on identity drift (470.454826ms)
+✔ daemon entry holds before store/socket open on corrupt record (309.224395ms)
+✔ service.1: launchd plist snapshot (1.118753ms)
+✔ service.2: systemd owns only the daemon process so detached bee runtimes survive restart (0.439013ms)
+✔ service.3: launchd manager — install writes the plist; start/stop/status drive launchctl (1.739199ms)
+✔ service.4: launchd start falls back to kickstart when already bootstrapped (0.385369ms)
+✔ service.4b: launchd stop waits through the asynchronous bootout window (0.446057ms)
+✔ service.5: systemd manager — install writes unit + daemon-reload; start/stop/status; uninstall removes (1.022707ms)
+✔ service.6: one factory per platform; anything else refuses (0.521083ms)
+✔ service.7: a failing systemctl surfaces as a typed ServiceError, never silence (0.451307ms)
+✔ service renderers exclude Electron and Node option environment injection (0.342465ms)
+ℹ tests 46
+ℹ suites 0
+ℹ pass 46
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3450.880206
