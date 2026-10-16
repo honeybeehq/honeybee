@@ -16,7 +16,7 @@ import time
 import uuid
 import threading
 
-from policy import RULE_VERSION, closing_verdict, differences, preexec_verdict, flake_verdict, within,namespace_pid,error_verdict
+from policy import RULE_VERSION, closing_verdict, differences, preexec_verdict, flake_verdict, within,namespace_pid,error_verdict,mapping_coverage
 
 
 def save(path, value):
@@ -228,7 +228,9 @@ def adjudicate(home, root, out, physical, before, after):
     audit = log_audit(home, out, before, after, inv, root)
     mask = read(out / 'mask-proof.json') if (out / 'mask-proof.json').exists() else {}
     valid_mask = mask.get('maskAsserted', False)
-    missing_mappings = [birth['pid'] for birth in raw.get('births', []) if not any(item.get('namespacePid') == birth['pid'] and item.get('starttime') == birth.get('procStat', {}).get('starttime') for item in inv['hostPidMap'])]
+    coverage = [dict(pid=birth['pid'],outcome=mapping_coverage(birth,inv['hostPidMap'],raw.get('errors',[]))) for birth in raw.get('births',[])]
+    save(out/'mapping-coverage.json',coverage)
+    missing_mappings = [item['pid'] for item in coverage if item['outcome']=='FAIL']
     host_errors = [item['readError'] for item in inv['hostPidMap'] if 'readError' in item]
     mapper_events = [json.loads(line) for line in (out / 'host-mapper-events.jsonl').open()] if (out / 'host-mapper-events.jsonl').exists() else []
     clean = bool(raw.get('fullyClean')) and not missing_mappings and all(item.get('verdict') == 'scope_proven_exiting' for item in host_errors) and not any(item['event'] == 'FAIL' for item in mapper_events)

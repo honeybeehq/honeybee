@@ -80,6 +80,16 @@ def namespace_pid(nspid):
     return nspid[1] if len(nspid) > 1 else None
 
 
+def mapping_coverage(birth, mappings, errors):
+    start = birth.get('procStat', {}).get('starttime')
+    if start and any(item.get('namespacePid') == birth['pid'] and item.get('starttime') == start for item in mappings):
+        return 'mapped'
+    capture_errors = [item for item in errors if item['pid'] == birth['pid'] and item.get('slot') == 'firstSightStat']
+    if not start and capture_errors and all(item.get('verdict') == 'scope_proven_exiting' for item in capture_errors):
+        return 'scope_proven_exiting; mapping unavailable'
+    return 'FAIL'
+
+
 def closing_verdict(change, real_home, masked_eligible, clean, config_times, touched, named):
     path, old, new = change['path'], change['before'], change['after']
     hive = str(pathlib.Path(real_home) / '.hive')

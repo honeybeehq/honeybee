@@ -1,7 +1,7 @@
 import errno
 import unittest
 
-from policy import closing_verdict, error_verdict, wal_mtime_only, preexec_verdict, flake_verdict,update_fd_prior,namespace_pid
+from policy import closing_verdict, error_verdict, wal_mtime_only, preexec_verdict, flake_verdict,update_fd_prior,namespace_pid,mapping_coverage
 
 HOME = '/home/lab'
 HIVE = HOME + '/.hive'
@@ -106,6 +106,15 @@ class PolicyTests(unittest.TestCase):
         self.assertIsNone(namespace_pid([123]))
         self.assertEqual(namespace_pid([123,4]),4)
         self.assertEqual(namespace_pid([123,4,1]),4)
+
+    def test_mapping_missing_after_birth_exit_is_explicit(self):
+        birth=dict(pid=4,procStat={})
+        self.assertEqual(mapping_coverage(birth,[],[]),'FAIL')
+        errors=[dict(pid=4,slot='firstSightStat',verdict='scope_proven_exiting')]
+        self.assertEqual(mapping_coverage(birth,[],errors),'scope_proven_exiting; mapping unavailable')
+        birth['procStat']['starttime']='12'
+        self.assertEqual(mapping_coverage(birth,[],errors),'FAIL')
+        self.assertEqual(mapping_coverage(birth,[dict(namespacePid=4,starttime='12')],errors),'mapped')
 
 
 if __name__ == '__main__':
