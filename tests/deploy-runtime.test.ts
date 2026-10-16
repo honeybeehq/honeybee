@@ -5,11 +5,15 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, readdir, readlink, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, readlink, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { promisify } from "node:util";
+import { DatabaseSync } from "node:sqlite";
+import { withFileLock } from "../src/lock.js";
+import { DeployReservationHeldError } from "../src/deployRuntime.js";
+import { readUpdateReservation } from "../src/readUpdateReservation.js";
 import {
   CURRENT_LINK_NAME,
   DEPLOY_HISTORY_FILENAME,
@@ -104,6 +108,136 @@ async function runInstalledCli(root: string): Promise<string> {
     [join(root, CURRENT_LINK_NAME, "dist", "cli.js")],
   );
   return stdout.trim();
+}
+
+async function seedReservation(root: string, active: boolean): Promise<void> {
+  const data = join(root, "..", "v2");
+  await mkdir(data, { recursive: true });
+  const db = new DatabaseSync(join(data, "core.sqlite3"));
+  try {
+    db.exec("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT); CREATE TABLE IF NOT EXISTS account_credential_authorities (phase TEXT)");
+    db.prepare("INSERT OR REPLACE INTO meta VALUES ('schema_version', '27')").run();
+    db.prepare("INSERT OR REPLACE INTO meta VALUES ('coordinated_update', ?)").run(JSON.stringify({
+      id: "deploy-lab", epoch: 7, active, recoverySubjectDigest: `sha256:${"a".repeat(64)}`,
+    }));
+  } finally { db.close(); }
+}
+
+for (const operation of ["deploy", "rollback"] as const) {
+  test(`reservation lab: ${operation} refused while reserved`, async () => {
+    await withDeployWorld(async ({ root, repoRoot, commit, hooks, log }) => {
+      await commit("v1");
+      await seedReservation(root, true);
+      const invoke = () => operation === "deploy" ? deployVersion({ root, repoRoot, hooks }) : rollbackDeploy({ root, hooks });
+      await assert.rejects(invoke(), (error: unknown) => {
+        assert.ok(error instanceof DeployReservationHeldError);
+        assert.equal(error.reservationId, "deploy-lab");
+        assert.equal(error.epoch, 7);
+        assert.match(error.message, /update-owner release/);
+        return true;
+      });
+      assert.deepEqual(log, { builds: [], restarts: [] });
+      assert.equal(await currentDeployTarget(root), null);
+      assert.deepEqual(await readDeployHistory(root), []);
+    });
+  });
+}
+
+test("reservation lab: deploy and rollback proceed without a held reservation", async () => {
+  await withDeployWorld(async ({ root, repoRoot, commit, hooks, log }) => {
+    await seedReservation(root, false);
+    const first = await commit("v1");
+    await deployVersion({ root, repoRoot, hooks });
+    const second = await commit("v2");
+    await deployVersion({ root, repoRoot, hooks });
+    const result = await rollbackDeploy({ root, hooks });
+    assert.equal(result.from, second);
+    assert.equal(result.sha, first);
+    assert.equal(await currentDeployTarget(root), first);
+    assert.equal(log.builds.length, 2);
+    assert.equal(log.restarts.length, 3);
+  });
+});
+
+test("reservation lab: acquire under deploy lock fences a queued deploy", async () => {
+  await withDeployWorld(async ({ root, repoRoot, commit, hooks, log }) => {
+    await commit("v1");
+    await mkdir(root, { recursive: true });
+    let deployment!: Promise<unknown>;
+    await withFileLock(join(root, ".deploy.lock"), async () => {
+      deployment = deployVersion({ root, repoRoot, hooks });
+      await seedReservation(root, true);
+    });
+    await assert.rejects(deployment, DeployReservationHeldError);
+    assert.deepEqual(log, { builds: [], restarts: [] });
+    assert.equal(await currentDeployTarget(root), null);
+  });
+});
+
+test("reservation lab: schema 44 without a reservation permits deploy and rollback", async () => {
+  await withDeployWorld(async ({ root, repoRoot, commit, hooks }) => {
+    await seedReservation(root, false);
+    const db = new DatabaseSync(join(root, "..", "v2", "core.sqlite3"));
+    db.exec("UPDATE meta SET value='44' WHERE key='schema_version'; DELETE FROM meta WHERE key='coordinated_update'; DROP TABLE account_credential_authorities");
+    db.close();
+    const first = await commit("v1");
+    await deployVersion({ root, repoRoot, hooks });
+    await commit("v2");
+    await deployVersion({ root, repoRoot, hooks });
+    await rollbackDeploy({ root, hooks });
+    assert.equal(await currentDeployTarget(root), first);
+  });
+});
+
+for (const state of ["corrupt", "null", "sentinel", "missing-meta"] as const) {
+  test(`reservation lab: ${state} refuses deploy and rollback`, async () => {
+    await withDeployWorld(async ({ root, repoRoot, commit, hooks, log }) => {
+      await commit("v1");
+      await seedReservation(root, false);
+      const db = new DatabaseSync(join(root, "..", "v2", "core.sqlite3"));
+      if (state === "missing-meta") db.exec("DROP TABLE meta");
+      else db.prepare("UPDATE meta SET value=? WHERE key='coordinated_update'").run(state === "null" ? "null"
+        : state === "sentinel" ? JSON.stringify({ epoch: 0, id: "", recoverySubjectDigest: "", active: false }) : "{}");
+      db.close();
+      const refusal = state === "missing-meta" ? /no such table: meta/ : /Corrupt coordinated update reservation/;
+      await assert.rejects(deployVersion({ root, repoRoot, hooks }), refusal);
+      await assert.rejects(rollbackDeploy({ root, hooks }), refusal);
+      assert.deepEqual(log, { builds: [], restarts: [] });
+      assert.equal(await currentDeployTarget(root), null);
+    });
+  });
+}
+
+test("reservation lab: live schema 44 owner takes precedence over offline reservation", async () => {
+  await withDeployWorld(async ({ root }) => {
+    await seedReservation(root, false);
+    const cliDir = join(root, "current", "dist", "v2");
+    await mkdir(cliDir, { recursive: true });
+    const reservation = { id: "live-owner", epoch: 8, active: true, recoverySubjectDigest: `sha256:${"b".repeat(64)}` };
+    const status = { runtimeRoot: root, storePath: join(root, "..", "v2", "core.sqlite3"), schemaVersion: 44, reservation };
+    await writeFile(join(cliDir, "cli.js"), `console.log(${JSON.stringify(JSON.stringify(status))});`);
+    assert.deepEqual(await readUpdateReservation(root), reservation);
+    status.reservation = { id: "", epoch: 0, active: false, recoverySubjectDigest: "" };
+    await writeFile(join(cliDir, "cli.js"), `console.log(${JSON.stringify(JSON.stringify(status))});`);
+    assert.equal(await readUpdateReservation(root), null);
+    await writeFile(join(cliDir, "cli.js"), `console.log('{}');`);
+    await assert.rejects(readUpdateReservation(root), /cannot identify/);
+  });
+});
+
+for (const path of ["config.json", "core.sqlite3"] as const) {
+  test(`reservation lab: unreadable ${path} refuses deploy and rollback`, async () => {
+    await withDeployWorld(async ({ root, repoRoot, commit, hooks, log }) => {
+      await commit("v1");
+      const data = join(root, "..", "v2");
+      await mkdir(data, { recursive: true });
+      await symlink(path, join(data, path));
+      const refusal = /ELOOP|unable to open database file/;
+      await assert.rejects(deployVersion({ root, repoRoot, hooks }), refusal);
+      await assert.rejects(rollbackDeploy({ root, hooks }), refusal);
+      assert.deepEqual(log, { builds: [], restarts: [] });
+    });
+  });
 }
 
 // 1. deploy from clean HEAD installs, switches `current` atomically, restarts daemon
