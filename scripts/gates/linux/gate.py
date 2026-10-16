@@ -16,7 +16,7 @@ import time
 import uuid
 import threading
 
-from policy import RULE_VERSION, closing_verdict, differences, preexec_verdict, flake_verdict, within,namespace_pid
+from policy import RULE_VERSION, closing_verdict, differences, preexec_verdict, flake_verdict, within,namespace_pid,error_verdict
 
 
 def save(path, value):
@@ -74,7 +74,7 @@ def inventory(out):
         for line in samples.open():
             record = json.loads(line)
             for socket_line in record.get('ownSocketLines', []):
-                sockets.update(re.findall(r'/[^\s]*\.sock\b', socket_line))
+                sockets.update(value for value in socket_line.split() if value.startswith('/'))
             for row in record['pids']:
                 pid = row['pid']
                 pids.add(pid)
@@ -101,7 +101,7 @@ def inventory(out):
     if sightings.exists():
         for line in sightings.open():
             host_pids.update(json.loads(line)['pids'])
-    result = dict(pids=sorted(host_pids), namespacePids=sorted(pids), hostPidMap=host_map, daemonPids=sorted(daemons), socketOwningPids=sorted(socket_pids), runnerBeeIds=sorted(bees), uuidCandidates=sorted(ids), socketPaths=sorted(sockets), touched=sorted(touched))
+    result = dict(pids=sorted(host_pids), namespacePids=sorted(pids), hostPidMap=host_map, daemonNamespacePids=sorted(daemons), daemonPids=sorted(item['hostPid'] for item in host_map if item.get('namespacePid') in daemons),socketOwningNamespacePids=sorted(socket_pids), socketOwningPids=sorted(item['hostPid'] for item in host_map if item.get('namespacePid') in socket_pids), runnerBeeIds=sorted(bees), uuidCandidates=sorted(ids), socketPaths=sorted(sockets), touched=sorted(touched))
     save(out / 'lab-inventory.json', result)
     return result
 
@@ -178,6 +178,20 @@ def map_host_pids(group, out, stopped):
                 pids = [int(value) for value in group.read_text().split()]
                 stamp = time.time()
                 sightings.write(json.dumps(dict(time=stamp, pids=pids))+'\n')
+                for known in births.values():
+                    if 'readError' in known and 'nextSample' not in known['readError']:
+                        error = known['readError']
+                        current = {}
+                        if known['hostPid'] in pids:
+                            try:
+                                raw = pathlib.Path(f"/proc/{known['hostPid']}/stat").read_text()
+                                values = raw[raw.rfind(')')+2:].split()
+                                current = dict(state=values[0],starttime=values[19])
+                            except OSError:
+                                pass
+                        gone = known['hostPid'] not in pids and not os.path.exists(f"/proc/{known['hostPid']}")
+                        error['nextSample']=dict(time=stamp,state='pid_gone' if gone else 'pid_present',procStat=current)
+                        error['verdict']=error_verdict(error,dict(cgroupSightingTime=known['scopeSightingAt']),False,'')
                 for pid in pids:
                     if pid in births:
                         continue
@@ -191,11 +205,21 @@ def map_host_pids(group, out, stopped):
                         item['starttime'] = raw[raw.rfind(')')+2:].split()[19]
                     except (OSError, KeyError) as error:
                         item['error'] = type(error).__name__
+                        item['readError']=dict(pid=pid,slot='host-pid-map',errno=getattr(error,'errno',None),time=time.time(),scopeSightingAt=stamp,atErrorStat={})
                     births[pid] = item
                 save(out / 'host-pid-map.json', list(births.values()))
-            except OSError:
-                pass
+            except OSError as error:
+                removed = error.errno == 2 and not group.exists()
+                append(out / 'host-mapper-events.jsonl', dict(time=time.time(), errno=error.errno, event='scope_removed' if removed else 'FAIL'))
+                if removed:
+                    break
             stopped.wait(.02)
+    for item in births.values():
+        if 'readError' in item and 'nextSample' not in item['readError']:
+            gone = not os.path.exists(f"/proc/{item['hostPid']}")
+            item['readError']['nextSample']=dict(time=time.time(),state='pid_gone' if gone else 'pid_present')
+            item['readError']['verdict']=error_verdict(item['readError'],dict(cgroupSightingTime=item['scopeSightingAt']),False,'')
+    save(out / 'host-pid-map.json',list(births.values()))
 
 
 def adjudicate(home, root, out, physical, before, after):
@@ -205,7 +229,9 @@ def adjudicate(home, root, out, physical, before, after):
     mask = read(out / 'mask-proof.json') if (out / 'mask-proof.json').exists() else {}
     valid_mask = mask.get('maskAsserted', False)
     missing_mappings = [birth['pid'] for birth in raw.get('births', []) if not any(item.get('namespacePid') == birth['pid'] and item.get('starttime') == birth.get('procStat', {}).get('starttime') for item in inv['hostPidMap'])]
-    clean = bool(raw.get('fullyClean')) and not missing_mappings
+    host_errors = [item['readError'] for item in inv['hostPidMap'] if 'readError' in item]
+    mapper_events = [json.loads(line) for line in (out / 'host-mapper-events.jsonl').open()] if (out / 'host-mapper-events.jsonl').exists() else []
+    clean = bool(raw.get('fullyClean')) and not missing_mappings and all(item.get('verdict') == 'scope_proven_exiting' for item in host_errors) and not any(item['event'] == 'FAIL' for item in mapper_events)
     pre = read(out / 'outside-preexec.json') if (out / 'outside-preexec.json').exists() else dict(asserted=False, changes=[])
     for change in pre['changes']:
         if change['path'] in inv['touched']:
@@ -219,7 +245,7 @@ def adjudicate(home, root, out, physical, before, after):
     guard_accepted = physical['workloadStarted'] and eligible and before['valid'] and after['valid'] and all(item['verdict'] != 'FAIL' for item in changes)
     ok = physical.get('scopeExit') == 0 and guard_accepted
     warnings = sum(item['verdict'] == 'WARN' for item in changes) + sum(item['verdict'] == 'WARN' for item in pre['changes']) + raw.get('errorCounts', {}).get('masked_unknown_prior_WARN', 0)
-    result = dict(ruleVersion=RULE_VERSION, outcome=('WARN' if warnings else 'PASS') if ok else 'FAIL', guardAccepted=guard_accepted, testExit=raw.get('exit'), testEvidence=raw.get('testEvidence'),missingHostPidMappings=missing_mappings,preExec=pre, closingChanges=changes, errorCounts=raw.get('errorCounts'), errnoCounts=raw.get('errnoCounts'), samplerClean=clean, logAudit=audit, maskAsserted=valid_mask, citedAttempt=physical['attemptId'] if ok else None, physical=physical)
+    result = dict(ruleVersion=RULE_VERSION, outcome=('WARN' if warnings else 'PASS') if ok else 'FAIL', guardAccepted=guard_accepted, testExit=raw.get('exit'), testEvidence=raw.get('testEvidence'),missingHostPidMappings=missing_mappings,hostMapErrors=host_errors,preExec=pre, closingChanges=changes, errorCounts=raw.get('errorCounts'), errnoCounts=raw.get('errnoCounts'), samplerClean=clean, logAudit=audit, maskAsserted=valid_mask, citedAttempt=physical['attemptId'] if ok else None, physical=physical)
     save(out / 'adjudication.json', result)
     return result
 
