@@ -1,3 +1,4 @@
+import { resolveNodePin } from "./nodeRuntime.js";
 /**
  * Versioned runtime deploys (reset WP0 — docs/design/specs/reset-00-deploy.md).
  *
@@ -507,7 +508,7 @@ export async function deployArtifact(options: DeployArtifactOptions): Promise<De
       const outcome = await publishDeploy({ root, sha: prepared.identity.sourceRevision, ...prepared,
         keep: DEFAULT_KEEP_VERSIONS, by: deployedBy(), now: () => new Date(), log: () => undefined,
         hooks: options.hooks, immutable: true });
-      if (options.cliBinDirectory !== undefined) await exposeDeployedCli(root, options.cliBinDirectory, process.execPath);
+      if (options.cliBinDirectory !== undefined) await exposeDeployedCli(root, options.cliBinDirectory, resolveNodePin(join(root, "..", "v2")).path);
       return outcome;
     });
   } finally {

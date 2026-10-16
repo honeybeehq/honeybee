@@ -1,3 +1,4 @@
+import { childNodePath, nativeNodeEnv, withoutInspectorArgs } from "../nodeRuntime.js";
 // Background flow runs — detached fork + cancel-by-pgid.
 //
 // Design (locked in PHASE2_PLAN.md §"Locked decisions" #3):
@@ -52,7 +53,7 @@ export type SpawnDetachedOptions = {
   runId?: string;
   /** Override the CLI entry path (default = realpath(process.argv[1])). */
   entryOverride?: string;
-  /** Override node binary (default = process.execPath). Used by tests. */
+  /** Override node binary (default = childNodePath()). Used by tests. */
   execPath?: string;
   /**
    * Extra argv prepended to the entry (e.g. `["--import","tsx"]` for tsx dev).
@@ -76,7 +77,7 @@ export const DETACHED_RUN_ENV = "HIVE_FLOW_DETACHED";
 
 /** process.execArgv minus flags that would change the child's execution mode. */
 function inheritableExecArgv(): string[] {
-  return process.execArgv.filter(
+  return withoutInspectorArgs(process.execArgv).filter(
     (arg) => arg !== "--test" && !arg.startsWith("--test=") && arg !== "--watch" && !arg.startsWith("--watch="),
   );
 }
@@ -106,7 +107,7 @@ export async function spawnDetachedRun(
   }
   const runId = options.runId ?? generateRunId();
   const entry = options.entryOverride ?? (await resolveEntry());
-  const execPath = options.execPath ?? process.execPath;
+  const execPath = options.execPath ?? childNodePath();
   const startedAt = new Date().toISOString();
   const logPath = runLogPath(flow.name, runId);
 
@@ -132,7 +133,7 @@ export async function spawnDetachedRun(
   let spawnedPid: number | undefined;
   try {
     const childArgv = [
-      ...(options.execArgv ?? inheritableExecArgv()),
+      ...withoutInspectorArgs(options.execArgv ?? inheritableExecArgv()),
       entry,
       "__flow-exec",
       runId,
@@ -142,11 +143,11 @@ export async function spawnDetachedRun(
     const child = spawn(execPath, childArgv, {
       detached: true,
       stdio: ["ignore", logFd, logFd],
-      env: {
+      env: nativeNodeEnv({
         ...process.env,
         [DETACHED_RUN_ENV]: "1",
         ...(options.env ?? {}),
-      },
+      }),
     });
     // Async spawn failures (e.g. ENOENT exec path) surface via the 'error'
     // event AFTER spawn() returns; without a listener they would crash the

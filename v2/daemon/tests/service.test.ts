@@ -76,6 +76,7 @@ Environment="HIVE_V2_DATA_DIR=/data/v2"
 # Honeybee owns detached runner process groups; daemon stop/restart preserves them for re-adoption.
 # Ephemeral workers are stopped during clean daemon shutdown, and explicit bee stop/delete reaps its runner group.
 KillMode=process
+UnsetEnvironment=ELECTRON_RUN_AS_NODE NODE_OPTIONS
 Restart=always
 RestartSec=2
 StandardOutput=append:/data/v2/hived.log
@@ -235,4 +236,12 @@ test("service.7: a failing systemctl surfaces as a typed ServiceError, never sil
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("service renderers exclude Electron and Node option environment injection", () => {
+  const spec = { ...SPEC, env: { SAFE: "yes", ELECTRON_RUN_AS_NODE: "1", NODE_OPTIONS: "--inspect" } };
+  assert.doesNotMatch(renderLaunchdPlist(spec), /ELECTRON_RUN_AS_NODE|NODE_OPTIONS|--inspect/);
+  const unit = renderSystemdUnit(spec);
+  assert.doesNotMatch(unit, /Environment="(?:ELECTRON_RUN_AS_NODE|NODE_OPTIONS)=/);
+  assert.match(unit, /UnsetEnvironment=ELECTRON_RUN_AS_NODE NODE_OPTIONS/);
 });

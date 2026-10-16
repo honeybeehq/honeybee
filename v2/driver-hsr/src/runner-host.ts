@@ -1,3 +1,4 @@
+import { nativeNodeEnv } from "../../../src/runtimeEnvironment.ts";
 import { spawn, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -191,7 +192,7 @@ export function runRunnerHost(configPath: string): void {
   // existing group signaling (TERM/KILL to -pid) reaches the whole tree.
   const child: ChildProcess = spawn(cfg.command, cfg.args, {
     cwd: cfg.cwd,
-    env: cfg.env ?? { ...process.env },
+    env: nativeNodeEnv(cfg.env ?? process.env),
     stdio: ["pipe", "pipe", "pipe"],
   });
 

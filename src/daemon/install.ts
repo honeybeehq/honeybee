@@ -1,3 +1,4 @@
+import { probeNativeNode, resolveNodePin } from "../nodeRuntime.js";
 import { execFile } from "node:child_process";
 import { mkdir, readFile, rm, stat } from "node:fs/promises";
 import { promisify } from "node:util";
@@ -169,7 +170,7 @@ export async function isAgentInstalled(label: string = DEFAULT_LAUNCH_LABEL): Pr
 export async function renderCandidatePlist(options: InstallOptions = {}): Promise<string> {
   const label = options.label ?? DEFAULT_LAUNCH_LABEL;
   const cliEntry = await resolveCliEntry(options.cliEntry);
-  const nodeBinary = options.nodeBinary ?? process.execPath;
+  const nodeBinary = options.nodeBinary ? probeNativeNode(options.nodeBinary).path : resolveNodePin(`${storeRoot()}/v2`).path;
   const extraArgs = options.extraArgs ?? [];
 
   const env: Record<string, string> = {};

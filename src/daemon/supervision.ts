@@ -1,3 +1,4 @@
+import { childNodePath, nativeNodeEnv } from "../nodeRuntime.js";
 /**
  * The daemon's self-supervision defenses: the in-process watchdog, the
  * synchronous breach/hard-kill self-destruct, and the out-of-process sentinel
@@ -193,7 +194,7 @@ export function recordFatalDiagnosticSync(
  */
 export function spawnSentinel(config: DaemonConfig): ChildProcess {
   const sentinel = spawn(
-    process.execPath,
+    childNodePath(),
     [
       ...daemonWorkerArgv("sentinel", import.meta.url),
       "--parent-pid",
@@ -207,7 +208,7 @@ export function spawnSentinel(config: DaemonConfig): ChildProcess {
       "--log-path",
       daemonLogPath(),
     ],
-    { stdio: "ignore" },
+    { stdio: "ignore", env: nativeNodeEnv() },
   );
   sentinel.unref();
   return sentinel;

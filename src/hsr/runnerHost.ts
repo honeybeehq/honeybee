@@ -1,3 +1,4 @@
+import { childNodePath, nativeNodeEnv } from "../nodeRuntime.js";
 // Local HSR runner-host launcher (APIA-76): resolves and forks the minimal
 // detached child entry. The child lifecycle lives in runner-entry.ts; its
 // __hsr-run compatibility export stays here for the existing CLI dispatch.
@@ -192,16 +193,16 @@ export async function spawnHsrHost(
     logHandle = await open(join(hsrRunDir(launchPayload.bee), "host.log"), "a", 0o600);
     const entry = await (dependencies.resolveEntry ?? (() => resolveHsrEntry()))();
     const childArgv = [...inheritableExecArgvForHsr(), ...hsrEntryArgv(entry, payloadPath)];
-    const child = (dependencies.spawn ?? spawnChild)(process.execPath, childArgv, {
+    const child = (dependencies.spawn ?? spawnChild)(childNodePath(), childArgv, {
       detached: true,
       stdio: ["ignore", logHandle.fd, logHandle.fd],
-      env: hsrHostEnvironment(launchPayload, {
+      env: nativeNodeEnv(hsrHostEnvironment(launchPayload, {
         ...process.env,
         // HOME becomes per-Cell scratch in the child. Keep the control-plane
         // store explicit so hive buz/runtime locks still address Honeybee's
         // canonical store instead of an isolated HOME fallback.
         HIVE_STORE_ROOT: storeRoot(),
-      }),
+      })),
     });
     // Async spawn failures surface via 'error' after spawn() returns; the
     // missing-pid check below converts them into a thrown error.
