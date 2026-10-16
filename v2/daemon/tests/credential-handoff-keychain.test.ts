@@ -70,7 +70,7 @@ assert.ok(fs.readFileSync(join(keychainStore,'calls'),'utf8').split('\\n').every
 store.close();console.log('darwin security shim: default and symlink guards; per-home refresh blank; enrolment refuses Keychain refresh untouched then publishes access-only; default unchanged; no provider');
 `;
     const { stdout } = await promisify(execFile)(process.execPath, ["--input-type=module", "-e", script], {
-      env: { ...process.env, HOME: join(root, "user"), PATH: `${bin}:${process.env.PATH}`, HIVE_NO_KEYCHAIN: "", HIVE_TEST_PLATFORM: "darwin",
+      env: { ...process.env, HOME: join(root, "user"), PATH: `${bin}:${process.env.PATH}`, HIVE_TEST_SECURITY_BIN: join(bin, "security"), HIVE_NO_KEYCHAIN: "", HIVE_TEST_PLATFORM: "darwin",
         NODE_OPTIONS: `--import=${fileURLToPath(new URL("./fixtures/force-platform.mjs", import.meta.url))}`,
         HANDOFF_SHIM_ROOT: root, HANDOFF_SHIM_STORE: secretStore },
       timeout: 30_000,

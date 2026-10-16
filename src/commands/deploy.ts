@@ -6,7 +6,7 @@
 import { execFile, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { cp, lstat, mkdir, readFile, readlink, writeFile } from "node:fs/promises";
-import { basename, join } from "node:path";
+import { basename, delimiter, join } from "node:path";
 import { promisify } from "node:util";
 import {
   CURRENT_LINK_NAME,
@@ -78,10 +78,24 @@ export async function cmdDeploy(parsed: Parsed): Promise<void> {
   return deployRun(parsed);
 }
 
+/**
+ * The test steps of a deploy gate never reach the login Keychain: the
+ * Keychain bridge is switched off and a refusing `security` stands first on
+ * PATH, so even a test child spawned with a fully replaced environment that
+ * keeps PATH cannot run the real binary by name.
+ */
+async function keychainFreeGateEnv(workDir: string): Promise<NodeJS.ProcessEnv> {
+  const bin = join(workDir, "gate-bin");
+  await mkdir(bin, { recursive: true });
+  await writeFile(join(bin, "security"), "#!/bin/sh\necho 'deploy gate: a test tried to run security; refused' >&2\nexit 1\n", { mode: 0o755 });
+  const env = hostGitEnv();
+  return { ...env, HIVE_NO_KEYCHAIN: "1", PATH: `${bin}${delimiter}${env.PATH ?? ""}` };
+}
+
 /** Stream a build/restart step; the child's output is the progress report. */
-async function runStep(command: string, args: string[], cwd: string, log: (line: string) => void): Promise<void> {
+async function runStep(command: string, args: string[], cwd: string, log: (line: string) => void, env: NodeJS.ProcessEnv = hostGitEnv()): Promise<void> {
   log(`deploy: ${command} ${args.join(" ")}`);
-  const child = spawn(command, args, { cwd, env: hostGitEnv(), stdio: ["ignore", "inherit", "inherit"] });
+  const child = spawn(command, args, { cwd, env, stdio: ["ignore", "inherit", "inherit"] });
   const result = await new Promise<{ code: number | null; signal: NodeJS.Signals | null; error?: Error }>((resolve) => {
     child.once("error", (error) => resolve({ code: null, signal: null, error }));
     child.once("exit", (code, signal) => resolve({ code, signal }));
@@ -112,16 +126,17 @@ export async function buildDeployArtifact(
 
   // git archive removes .git; capture facts for the exported revision, not the working tree.
   await writeFile(join(checkout, ".build-provenance.json"), JSON.stringify(collectBuildProvenance(repoRoot, sha)));
-  await runStep("npm", ["ci"], checkout, log);
-  await runStep("npm", ["run", "check"], checkout, log);
-  await runStep("npm", ["run", "build"], checkout, log);
+  const gateEnv = await keychainFreeGateEnv(workDir);
+  await runStep("npm", ["ci"], checkout, log, gateEnv);
+  await runStep("npm", ["run", "check"], checkout, log, gateEnv);
+  await runStep("npm", ["run", "build"], checkout, log, gateEnv);
   if (skipTests === true) {
     log("deploy: WARNING test gate skipped (--skip-tests) — this artifact is not release-grade");
   } else if (release) {
     for (const script of ["v2:check", "v2:test", "v2:daemon", "v2:driver", "v2:driver2", "v2:harness"]) {
-      await runStep("npm", ["run", script], checkout, log);
+      await runStep("npm", ["run", script], checkout, log, gateEnv);
     }
-    await runStep("npm", ["test"], checkout, log);
+    await runStep("npm", ["test"], checkout, log, gateEnv);
   } else if (runtimeUsesV2(runtimeRoot())) {
     // Post-flip node (WP7): the old suite's CLI-shelling tests don't override
     // the store root, so on a frozen machine they route into v2 and hang
@@ -130,10 +145,10 @@ export async function buildDeployArtifact(
     // running in repo CI until WP8 removes the old tree.
     log("deploy: v2 node — gating on the v2 battery instead of the legacy suite");
     for (const script of ["v2:test", "v2:daemon", "v2:driver", "v2:harness"]) {
-      await runStep("npm", ["run", script], checkout, log);
+      await runStep("npm", ["run", script], checkout, log, gateEnv);
     }
   } else {
-    await runStep("npm", ["test"], checkout, log);
+    await runStep("npm", ["test"], checkout, log, gateEnv);
   }
 
   // npm pack gives exactly the `files` set a real install would receive; the
