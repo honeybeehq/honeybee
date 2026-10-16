@@ -2,6 +2,7 @@ import errno
 import unittest
 
 from policy import closing_verdict, error_verdict, wal_mtime_only, preexec_verdict, flake_verdict,update_fd_prior,namespace_pid,mapping_coverage,probe_failed
+from gate import fake_env, lab_home, socket_path_lengths
 
 HOME = '/home/lab'
 HIVE = HOME + '/.hive'
@@ -126,6 +127,34 @@ class PolicyTests(unittest.TestCase):
         self.assertTrue(probe_failed(dict(valid,childExit=2)))
         self.assertTrue(probe_failed(dict(valid,probes=valid['probes'][:-1])))
         self.assertTrue(probe_failed(dict(valid,probes=[dict(expectedFailure=False)]+valid['probes'][1:])))
+
+    def test_mapping_and_read_errors_share_exit_evidence(self):
+        for before, after, start, expected in [('Z','Z','12',True),('R','Z','12',True),('S','Z','12',False),('Z',None,None,True),('R','S','12',False),('Z','R','12',False),('Z','Z','13',False)]:
+            birth=dict(pid=4893,ownTreeAtFirstSight=True,procStat=dict(state=before,starttime='12'))
+            observation=dict(state='pid_present' if after else 'pid_gone',procStat=dict(state=after,starttime=start) if after else {})
+            birth['nextBirthSample']=observation
+            error=dict(slot='ns/mnt',errno=errno.ENOENT,atErrorStat=birth['procStat'],nextSample=observation)
+            self.assertEqual(error_verdict(error,birth,True,HIVE)=='scope_proven_exiting',expected)
+            self.assertEqual(mapping_coverage(birth,[],[])=='mapping unavailable: exited before host capture',expected)
+            birth['ownTreeAtFirstSight']=False
+            self.assertEqual(mapping_coverage(birth,[],[]),'FAIL')
+
+    def test_short_lab_paths_and_socket_byte_budget(self):
+        root='/home/trmd/.cache/hbl/12345678'
+        home=lab_home(root,36)
+        env=fake_env(home,'/usr/bin:/bin')
+        self.assertEqual(env['HIVE_REAL_HOME'],env['HOME'])
+        for key,value in env.items():
+            if key not in ('PATH','LANG'):
+                self.assertTrue(value.startswith(root+'/'))
+        self.assertLessEqual(len(env['TMPDIR'].encode()),48)
+        socket=env['TMPDIR']+'/hive-drv-ras-poll-12nKM9/poll-idle.sock'
+        self.assertTrue(socket_path_lengths([socket])[0]['fits'])
+        old='/home/trmd/.cache/hbl/261016142406-8fba30/homes/candidate-step6-0/tmp/hive-drv-ras-poll-12nKM9/poll-idle.sock'
+        record=socket_path_lengths([old])[0]
+        self.assertEqual(record['encodedBytes'],109)
+        self.assertFalse(record['fits'])
+        self.assertEqual(socket_path_lengths(['/é.sock'])[0]['encodedBytes'],8)
 
 
 if __name__ == '__main__':

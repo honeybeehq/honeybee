@@ -61,10 +61,18 @@ def snapshot(home):
 
 
 def fake_env(home, search_path):
-    env = dict(PATH=search_path, HOME=str(home), TMPDIR=str(home / 'tmp'), LANG='C.UTF-8', HIVE_REAL_HOME=str(home))
+    env = dict(PATH=search_path, HOME=str(home), TMPDIR=str(home / 't'), LANG='C.UTF-8', HIVE_REAL_HOME=str(home))
     for key, folder in dict(XDG_CONFIG_HOME='config', XDG_DATA_HOME='data', XDG_CACHE_HOME='cache', XDG_STATE_HOME='state', XDG_RUNTIME_DIR='runtime', CLAUDE_CONFIG_DIR='claude', CODEX_HOME='codex', GROK_HOME='grok', GEMINI_CLI_HOME='gemini', OPENCODE_CONFIG_DIR='opencode', KIMI_CODE_HOME='kimi', CURSOR_CONFIG_DIR='cursor').items():
         env[key] = str(home / folder)
     return env
+
+
+def lab_home(root, index):
+    return pathlib.Path(root) / 'h' / format(index, 'x')
+
+
+def socket_path_lengths(paths):
+    return [dict(path=path, encodedBytes=len(os.fsencode(path)), sunPathBytes=108, fits=len(os.fsencode(path)) < 108) for path in sorted(set(paths))]
 
 
 def inventory(out):
@@ -102,6 +110,9 @@ def inventory(out):
         for line in sightings.open():
             host_pids.update(json.loads(line)['pids'])
     result = dict(pids=sorted(host_pids), namespacePids=sorted(pids), hostPidMap=host_map, daemonNamespacePids=sorted(daemons), daemonPids=sorted(item['hostPid'] for item in host_map if item.get('namespacePid') in daemons),socketOwningNamespacePids=sorted(socket_pids), socketOwningPids=sorted(item['hostPid'] for item in host_map if item.get('namespacePid') in socket_pids), runnerBeeIds=sorted(bees), uuidCandidates=sorted(ids), socketPaths=sorted(sockets), touched=sorted(touched))
+    diagnostics = out / 'stdout.log'
+    diagnostic_paths = re.findall(r'/[^\s\'\"]+\.sock\b', diagnostics.read_text(errors='replace')) if diagnostics.exists() else []
+    result['socketPathLengths'] = socket_path_lengths(sockets | set(diagnostic_paths))
     save(out / 'lab-inventory.json', result)
     return result
 
@@ -261,7 +272,7 @@ def run_step(config, step):
     label = step['label']
     out = root / 'receipts' / label
     out.mkdir(parents=True)
-    fake = root / 'homes' / label
+    fake = lab_home(root, step['homeIndex'])
     env = fake_env(fake, config['path'])
     for directory in set(env.values()):
         if directory.startswith(str(fake)):
@@ -272,7 +283,7 @@ def run_step(config, step):
     record_attempt(root, dict(event='started', **attempt))
     if before['valid']:
         scope = 'hbl-' + root.name + '-' + label
-        launcher = dict(PATH=config['path'], HOME=str(fake), TMPDIR=str(fake / 'tmp'), LANG='C.UTF-8', XDG_RUNTIME_DIR='/run/user/' + str(os.getuid()), DBUS_SESSION_BUS_ADDRESS='unix:path=/run/user/' + str(os.getuid()) + '/bus')
+        launcher = dict(PATH=config['path'], HOME=str(fake), TMPDIR=env['TMPDIR'], LANG='C.UTF-8', XDG_RUNTIME_DIR='/run/user/' + str(os.getuid()), DBUS_SESSION_BUS_ADDRESS='unix:path=/run/user/' + str(os.getuid()) + '/bus')
         args = ['systemd-run', '--user', '--scope', '--quiet', '--unit=' + scope, '--', 'env', '-i'] + [key + '=' + value for key, value in env.items()] + ['unshare', '-rmnpf', '--mount-proc','python3', str(root / 'mask.py'), str(root), label, *step['command']]
         save(out / 'launch.json', dict(argv=args, environment=env, scope=scope, envException='HIVE_REAL_HOME equals fake HOME; all other HIVE_*/APIARY_* absent'))
         with (out / 'launcher.log').open('w') as log:
@@ -377,11 +388,20 @@ def main():
     if len(os.fsencode(parent)) >= 40:
         parser.error('run-root prefix must be shorter than 40 bytes')
     parent.mkdir(parents=True, exist_ok=True)
-    root = parent / (time.strftime('%y%m%d%H%M%S') + '-' + uuid.uuid4().hex[:6])
+    root = parent / uuid.uuid4().hex[:8]
     root.mkdir()
     config = dict(runRoot=str(root), realHome=str(home), gateSha=gate_sha,controllerEnvironmentKeys=sorted(os.environ), path=os.environ['PATH'], shas=shas, rulesVersion=RULE_VERSION, lsofExclusions=args.lsof_exclude, cacheSource=str(pathlib.Path(args.npm_cache).absolute()), cacheSha256=args.npm_cache_sha256, provenance='findings/hb-turn-quiet-netcup2-script-bundle.json v1', flakePlan=flakes)
     config['toolHashes'] = {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in pathlib.Path(__file__).parent.iterdir() if path.is_file()}
     config['ledger'] = str(parent / 'attempt-ledger.jsonl')
+    config['createdAt'] = time.time()
+    config['createdUtc'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    config['socketPathLimitBytes'] = 108
+    for index, step in enumerate(plan):
+        step['homeIndex'] = index
+        tmpdir = fake_env(lab_home(root, index), config['path'])['TMPDIR']
+        if len(os.fsencode(tmpdir)) > 48:
+            parser.error('lab TMPDIR exceeds the 48-byte gate budget')
+    config['maxTmpdirBytes'] = max(len(os.fsencode(fake_env(lab_home(root, index), config['path'])['TMPDIR'])) for index in range(len(plan)))
     save(root / 'config.json', config)
     save(root / 'plan.json', plan)
     for path in pathlib.Path(__file__).parent.glob('*.py'):

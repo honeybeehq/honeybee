@@ -8,20 +8,27 @@ def within(target, root):
     return target == root or target.startswith(root + '/')
 
 
-def error_verdict(error, birth, masked, real_hive):
-    observation = error.get('nextSample') or {}
-    before = error.get('atErrorStat') or {}
+def pid_transition(before, observation):
     after = observation.get('procStat') or {}
-    scoped = birth.get('cgroupSightingTime') is not None or birth.get('ownTreeAtFirstSight', False)
     same = before.get('starttime') is not None and before.get('starttime') == after.get('starttime')
     reused = before.get('state') == 'Z' and after.get('state') not in (None, 'Z')
     reused |= bool(before.get('starttime') and after.get('starttime') and not same)
-    if not scoped or reused or error.get('slot') in ('ss', 'sampler_gap', 'cgroup.procs', 'pid_reused', 'lingering_pid'):
-        return 'FAIL'
+    if reused:
+        return 'reused'
     exiting = observation.get('state') == 'pid_gone'
     exiting |= before.get('state') == 'Z' and after.get('state') == 'Z' and same
     exiting |= before.get('state') == 'R' and after.get('state') == 'Z' and same
-    if exiting:
+    return 'exiting' if exiting else 'unproven'
+
+
+def error_verdict(error, birth, masked, real_hive):
+    observation = error.get('nextSample') or {}
+    after = observation.get('procStat') or {}
+    transition = pid_transition(error.get('atErrorStat') or {}, observation)
+    scoped = birth.get('cgroupSightingTime') is not None or birth.get('ownTreeAtFirstSight', False)
+    if not scoped or transition == 'reused' or error.get('slot') in ('ss', 'sampler_gap', 'cgroup.procs', 'pid_reused', 'lingering_pid'):
+        return 'FAIL'
+    if transition == 'exiting':
         return 'scope_proven_exiting'
     live = after.get('state') not in (None, 'Z') and observation.get('state') != 'pid_gone'
     if live and error.get('errno') == errno.ENOENT and error.get('fd') is not None:
@@ -84,8 +91,8 @@ def mapping_coverage(birth, mappings, errors):
     start = birth.get('procStat', {}).get('starttime')
     if start and any(item.get('namespacePid') == birth['pid'] and item.get('starttime') == start for item in mappings):
         return 'mapped'
-    scoped = birth.get('ownTreeAtFirstSight') or start and birth.get('pidNamespace')
-    if scoped and birth.get('nextBirthSample',{}).get('state')=='pid_gone':
+    scoped = birth.get('ownTreeAtFirstSight') or birth.get('cgroupSightingTime') is not None
+    if scoped and pid_transition(birth.get('procStat') or {}, birth.get('nextBirthSample') or {}) == 'exiting':
         return 'mapping unavailable: exited before host capture'
     return 'FAIL'
 
