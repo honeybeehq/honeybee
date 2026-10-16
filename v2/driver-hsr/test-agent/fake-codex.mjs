@@ -84,6 +84,10 @@ rl.on("line", (raw) => {
         currentTurnId = null;
         return;
       }
+      if (String(text).includes("@quiet")) {
+        emit({ method: "item/completed", params: { threadId, item: { id: randomUUID(), type: "agentMessage", text: "done <quiet/>\u{E0100}" } } });
+        emit({ method: "account/rateLimits/updated", params: { rateLimits: { primary: { usedPercent: 0 } } } });
+      }
       turnTimer = setTimeout(() => {
         turnTimer = null;
         currentTurnId = null;

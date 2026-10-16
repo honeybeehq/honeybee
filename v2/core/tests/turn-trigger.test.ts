@@ -300,3 +300,39 @@ test("turn-trigger.automation-sender: mail.delivered reports automation for auto
     h.cleanup();
   }
 });
+
+
+test("quiet completion preserves human recency across replay, restart and stale generations", (t) => {
+  const h = harness();
+  t.after(() => h.cleanup());
+  let store = h.open();
+  const bee = idleBee(store);
+  deliver(store, bee.id, HUMAN);
+  store.updateRuntimeState(bee.id, 1, "running");
+  store.updateRuntimeState(bee.id, 1, "idle", { recordOutput: true, endedQuiet: false });
+  const spokenAt = store.getBee(bee.id)!.lastHumanOutputAt;
+  deliver(store, bee.id, HUMAN);
+  store.updateRuntimeState(bee.id, 1, "running");
+  store.updateRuntimeState(bee.id, 1, "idle", { recordOutput: true, endedQuiet: true });
+  const quiet = store.getBee(bee.id)!;
+  assert.equal(quiet.lastTurnTrigger!.endedQuiet, true);
+  assert.equal(quiet.lastHumanOutputAt, spokenAt);
+  assert.ok(quiet.lastOutputAt! > spokenAt!);
+  const delta = store.auditRows().filter(r => r.kind === "runtime.updated").at(-1)!;
+  assert.equal((delta.payload.turnTrigger as { endedQuiet: boolean }).endedQuiet, true);
+  assert.equal(store.auditRows().filter(r => r.kind === "output.recorded").at(-1)!.payload.lastHumanOutputAt, spokenAt);
+  assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
+  store.close();
+  store = h.open();
+  assert.deepEqual(store.getBee(bee.id)!.lastTurnTrigger, quiet.lastTurnTrigger);
+  assert.equal(store.getBee(bee.id)!.lastHumanOutputAt, spokenAt);
+  assert.equal(store.updateRuntimeState(bee.id, 0, "idle", { recordOutput: true, endedQuiet: false }).applied, false);
+  assert.deepEqual(store.getBee(bee.id)!.lastTurnTrigger, quiet.lastTurnTrigger);
+  deliver(store, bee.id, HUMAN);
+  assert.equal(store.getBee(bee.id)!.lastTurnTrigger!.endedQuiet, undefined);
+  store.updateRuntimeState(bee.id, 1, "running");
+  store.updateRuntimeState(bee.id, 1, "idle", { recordOutput: true, endedQuiet: false });
+  assert.ok(store.getBee(bee.id)!.lastHumanOutputAt! > quiet.lastOutputAt!);
+  assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
+  store.close();
+});

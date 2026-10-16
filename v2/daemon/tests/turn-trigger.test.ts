@@ -34,13 +34,13 @@ function spawnIdle(rig: Rig, id: string): void {
   assert.equal(rig.store.currentRuntime(id)?.state, "idle");
 }
 
-function runTurn(rig: Rig, beeId: string, messageId: number): void {
+function runTurn(rig: Rig, beeId: string, messageId: number, endedQuiet?: boolean): void {
   rig.clock.now += 1000;
   rig.core.step();
   assert.equal(rig.driver.deliveredIds.at(-1), messageId);
   rig.driver.events.push({ beeId, generation: 1, kind: "turn_started", synthetic: true, messageId });
   rig.core.step();
-  rig.driver.events.push({ beeId, generation: 1, kind: "turn_ended" });
+  rig.driver.events.push({ beeId, generation: 1, kind: "turn_ended", endedQuiet });
   rig.core.step();
 }
 
@@ -228,4 +228,22 @@ test("turn-trigger.daemon.automation-sender: task-supply mail is delivered with 
   } finally {
     rig.cleanup();
   }
+});
+
+
+test("quiet turn observations preserve the spoken human output cursor", () => {
+  const rig = makeRig();
+  try {
+    spawnIdle(rig, "quiet");
+    const spoken = rig.store.send("quiet", "hello", { sender: "operator" }).message;
+    runTurn(rig, "quiet", spoken.id, false);
+    const cursor = rig.store.getBee("quiet")!.lastHumanOutputAt;
+    const silent = rig.store.send("quiet", "routine", { sender: "operator" }).message;
+    runTurn(rig, "quiet", silent.id, true);
+    const bee = rig.store.getBee("quiet")!;
+    assert.equal(bee.lastTurnTrigger!.endedQuiet, true);
+    assert.equal(bee.lastHumanOutputAt, cursor);
+    assert.ok(bee.lastOutputAt! > cursor!);
+    assert.deepEqual(replayAudit(rig.store.auditRows()), rig.store.dumpState());
+  } finally { rig.cleanup(); }
 });

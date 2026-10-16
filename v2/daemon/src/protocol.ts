@@ -92,6 +92,7 @@ export const DAEMON_CAPABILITIES = [
   "rpc.local_trust.v1",
   "bee.human_ref.v1",
   "bee.turn_trigger.v1",
+  "bee.turn_quiet.v1",
   "mail.answer_marker.v1",
   "mail.automation_marker.v1",
   "update.reservation.v1",

@@ -206,6 +206,7 @@ export interface TurnTrigger extends TurnTriggerSource {
   startedAt: number;
   humanAt: number | null;
   endedAt: number | null;
+  endedQuiet?: boolean;
 }
 
 /**

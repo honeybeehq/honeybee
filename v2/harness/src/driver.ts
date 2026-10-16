@@ -66,6 +66,7 @@ export interface DriverObservation {
    */
   synthetic?: boolean;
   messageId?: number;
+  endedQuiet?: boolean;
 }
 
 export interface DeliverOutcome {

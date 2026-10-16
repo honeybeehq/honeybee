@@ -1,3 +1,4 @@
+import { TurnQuiet } from "../../driver-tmux/src/turn-quiet.ts";
 import type { ReconnectToolsReceipt } from "../../core/src/reconnectTools.ts";
 /**
  * HsrDriver — the first real substrate driver (WP3 of the reset).
@@ -207,6 +208,7 @@ interface ManagedProcess {
   turnId: string | null;
   /** Mail and provider progress of the turn in flight, for auth-interruption evidence. */
   turn: TurnTrack;
+  quiet: TurnQuiet | null;
   /** RPC deliveries written but not yet accepted by the harness. */
   pendingDeliveries: Set<number>;
   /** Durable protocol acknowledgements waiting for the daemon to mark mailbox truth. */
@@ -278,6 +280,7 @@ interface RecoveredAdapterContext {
   turnId: string | null;
   confirmedDeliveries: Set<number>;
   reconnectReplies: Map<string, string | null>;
+  quiet: TurnQuiet;
 }
 
 /**
@@ -292,6 +295,7 @@ function recoverAdapterContext(
   endOffset: number,
   providerSessionId: string | null,
 ): RecoveredAdapterContext {
+  const quiet = new TurnQuiet(adapter.harness);
   let sessionId = providerSessionId;
   let turnId: string | null = null;
   const confirmedDeliveries = new Set<number>();
@@ -316,6 +320,7 @@ function recoverAdapterContext(
         if (raw.length > 0 && raw[raw.length - 1] === 0x0d) raw = raw.subarray(0, raw.length - 1);
         lineStart = newline + 1;
         if (raw.length === 0) continue;
+        quiet.pushLine(raw.toString("utf8"), sessionId);
         for (const signal of adapter.parseLine(raw.toString("utf8"))) {
           if (signal.kind === "booted" && signal.sessionId && sessionId == null) {
             sessionId = signal.sessionId;
@@ -333,7 +338,7 @@ function recoverAdapterContext(
           if (signal.kind !== "turn_started" && signal.kind !== "turn_ended") continue;
           if (signal.threadId && sessionId && signal.threadId !== sessionId) continue;
           if (signal.kind === "turn_started") turnId = signal.turnId ?? null;
-          else turnId = null;
+          else { turnId = null; quiet.end(); }
         }
       }
       rest = Buffer.from(data.subarray(lineStart));
@@ -344,7 +349,7 @@ function recoverAdapterContext(
   } finally {
     if (fd != null) closeSync(fd);
   }
-  return { sessionId, turnId, confirmedDeliveries, reconnectReplies };
+  return { sessionId, turnId, confirmedDeliveries, reconnectReplies, quiet };
 }
 
 export class ReconnectToolsControlError extends Error {
@@ -510,6 +515,7 @@ export class HsrDriver implements RuntimeDriver {
       pidStartedAt: this.now(),
       child,
       adapter: spec.adapter,
+      quiet: new TurnQuiet(spec.adapter.harness),
       degraded: false,
       phase: "booting",
       sessionId: null,
@@ -980,6 +986,7 @@ export class HsrDriver implements RuntimeDriver {
         p.outboundPending.shift();
         continue;
       }
+      p.quiet?.pushLine(line, p.sessionId);
       const signals = p.adapter.parseLine(line);
       const lateBoot = p.phase !== "booting" && signals.some((sig) => sig.kind === "booted");
       for (const signal of signals) {
@@ -1056,6 +1063,7 @@ export class HsrDriver implements RuntimeDriver {
         let observationOffset: number;
         let legacySharedObservation: boolean;
         let recovered: RecoveredAdapterContext = {
+          quiet: new TurnQuiet(adapter.harness),
           sessionId: providerSessionId ?? null,
           turnId: null,
           confirmedDeliveries: new Set(),
@@ -1119,6 +1127,7 @@ export class HsrDriver implements RuntimeDriver {
             // turn and accepted-request evidence are replayed from the exact
             // generation journal so a daemon deploy cannot strand either a
             // mid-turn steer or an acknowledgement in the crash gap.
+            quiet: recovered.quiet,
             sessionId: recovered.sessionId,
             turnId: lastKnownState === "running" ? recovered.turnId : null,
             turn: { ...freshTurn(), observedFromStart: lastKnownState !== "running" },
@@ -1163,6 +1172,7 @@ export class HsrDriver implements RuntimeDriver {
       pidStartedAt,
       child: null,
       adapter: null,
+      quiet: null,
       degraded: true,
       // Unknown phase — the event stream died with the old daemon. "running"
       // is the conservative claim. Mail-driven degraded-runtime rotation
@@ -1497,11 +1507,12 @@ export class HsrDriver implements RuntimeDriver {
         return;
       }
       case "turn_ended": {
+        const endedQuiet = p.quiet?.end();
         p.turnId = null;
         p.turn = freshTurn();
         if (p.phase !== "running") return;
         p.phase = "idle";
-        this.events.push({ beeId: p.beeId, generation: p.generation, kind: "turn_ended" });
+        this.events.push({ beeId: p.beeId, generation: p.generation, kind: "turn_ended", ...(endedQuiet !== undefined ? { endedQuiet } : {}) });
         return;
       }
       case "delivery_confirmed": {
