@@ -216,6 +216,10 @@ def do_sample():
         e['nextSample'] = obs
     for row in rows:
         previous[row['pid']]=update_fd_prior(previous.get(row['pid'],{}),dict(row['fds']),not row.get('fdReadError'))
+    for pid,birth in births.items():
+        if birth['firstSample']<samples and 'nextBirthSample' not in birth:
+            row=next((item for item in rows if item['pid']==pid),None)
+            birth['nextBirthSample']=dict(time=time.time(),sample=samples,state='pid_gone' if row is None and not os.path.exists(f'/proc/{pid}') else 'pid_present',procStat=row['procStat'] if row else None,ppidSource='process-tree edges from /proc/<own parent>/task/<own tid>/children; status PPid when readable')
     fdlog.write(json.dumps(dict(time=now, sample=samples, scopePids=pids, pids=rows, realSocketLines=lines, ownSocketLines=ownlines, ssStderr=ss_stderr)) + '\n')
     (OUT / 'first-sight.json').write_text(json.dumps(list(births.values()), indent=2))
     (OUT / 'errors.json').write_text(json.dumps(errors, indent=2))

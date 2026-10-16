@@ -111,8 +111,11 @@ class PolicyTests(unittest.TestCase):
         birth=dict(pid=4,procStat={})
         self.assertEqual(mapping_coverage(birth,[],[]),'FAIL')
         errors=[dict(pid=4,slot='firstSightStat',verdict='scope_proven_exiting')]
-        self.assertEqual(mapping_coverage(birth,[],errors),'scope_proven_exiting; mapping unavailable')
+        birth.update(ownTreeAtFirstSight=True,nextBirthSample=dict(state='pid_gone'))
+        self.assertEqual(mapping_coverage(birth,[],errors),'mapping unavailable: exited before host capture')
         birth['procStat']['starttime']='12'
+        self.assertEqual(mapping_coverage(birth,[],errors),'mapping unavailable: exited before host capture')
+        birth['nextBirthSample']['state']='pid_present'
         self.assertEqual(mapping_coverage(birth,[],errors),'FAIL')
         self.assertEqual(mapping_coverage(birth,[dict(namespacePid=4,starttime='12')],errors),'mapped')
 

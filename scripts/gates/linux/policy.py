@@ -84,9 +84,9 @@ def mapping_coverage(birth, mappings, errors):
     start = birth.get('procStat', {}).get('starttime')
     if start and any(item.get('namespacePid') == birth['pid'] and item.get('starttime') == start for item in mappings):
         return 'mapped'
-    capture_errors = [item for item in errors if item['pid'] == birth['pid'] and item.get('slot') == 'firstSightStat']
-    if not start and capture_errors and all(item.get('verdict') == 'scope_proven_exiting' for item in capture_errors):
-        return 'scope_proven_exiting; mapping unavailable'
+    scoped = birth.get('ownTreeAtFirstSight') or start and birth.get('pidNamespace')
+    if scoped and birth.get('nextBirthSample',{}).get('state')=='pid_gone':
+        return 'mapping unavailable: exited before host capture'
     return 'FAIL'
 
 

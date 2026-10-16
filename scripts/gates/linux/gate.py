@@ -217,7 +217,7 @@ def map_host_pids(group, out, stopped):
                 append(out / 'host-mapper-events.jsonl', dict(time=time.time(), errno=error.errno, event='scope_removed' if removed else 'FAIL'))
                 if removed:
                     break
-            stopped.wait(.001)
+            stopped.wait(.02)
     for item in births.values():
         if 'readError' in item and 'nextSample' not in item['readError']:
             gone = not os.path.exists(f"/proc/{item['hostPid']}")
