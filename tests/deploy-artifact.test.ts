@@ -342,3 +342,31 @@ test("fresh artifact exposes its owner CLI only after restart succeeds and retri
     assert.match(await readFile(join(root, "hive"), "utf8"), /runtime\/current\/dist\/cli.js/);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
+
+test("reserved artifact restart receives structural admission that expires after the hook", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "hon-pinned-admission-"));
+  try {
+    const fixture = await release(dir), root = join(dir, "runtime"), admission = await reserve(dir, fixture.identity);
+    const { restartDeployedDaemon } = await import("../src/commands/deploy.js");
+    const { hasDeployRestartAdmission, DeployReservationHeldError } = await import("../src/deployRuntime.js");
+    let captured: import("../src/deployRuntime.js").RestartDaemonContext | undefined;
+    await deployArtifact({ ...fixture, root, admission, expectedCurrent: null, hooks: {
+      async restartDaemon(context) {
+        captured = context;
+        assert.equal(hasDeployRestartAdmission(context), true);
+        assert.equal(hasDeployRestartAdmission({ ...context }), false);
+        const boundRoot = context.root;
+        context.root = join(dir, "other-runtime");
+        assert.equal(hasDeployRestartAdmission(context), false);
+        context.root = boundRoot;
+        const configuredPin = process.env.HIVE_NODE_PATH;
+        delete process.env.HIVE_NODE_PATH;
+        try { await assert.rejects(restartDeployedDaemon(context), /HIVE_NODE_PATH required/); }
+        finally { if (configuredPin === undefined) delete process.env.HIVE_NODE_PATH; else process.env.HIVE_NODE_PATH = configuredPin; }
+      },
+    } });
+    assert.equal(await currentDeployTarget(root), fixture.identity.sourceRevision);
+    assert.equal(hasDeployRestartAdmission(captured!), false);
+    await assert.rejects(restartDeployedDaemon(captured!), DeployReservationHeldError);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});

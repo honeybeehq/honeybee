@@ -583,3 +583,22 @@ for (const operation of ["deploy", "rollback"] as const) {
     });
   });
 }
+
+test("unadmitted pinned restart refuses a held reservation before pin or service effects", async () => {
+  await withDeployWorld(async ({ root }) => {
+    await seedReservation(root, true);
+    await assert.rejects(restartDeployedDaemon({ root, installedDir: root, sha: "a".repeat(40), runtime: "v2", log() {} }), DeployReservationHeldError);
+    assert.equal(await currentDeployTarget(root), null);
+  });
+});
+
+test("restart recovery capability expires when its admitted hook returns", async () => {
+  await withDeployWorld(async ({ root, repoRoot, commit, hooks }) => {
+    await commit("prior"); await deployVersion({ root, repoRoot, hooks });
+    const next = await commit("next");
+    let captured: RestartDaemonContext | undefined;
+    await deployVersion({ root, repoRoot, hooks: { ...hooks, async restartDaemon(context) { captured = context; } } });
+    await assert.rejects(captured!.restorePrevious!(), /admission expired/);
+    assert.equal(await currentDeployTarget(root), next);
+  });
+});

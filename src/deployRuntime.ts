@@ -106,6 +106,24 @@ export type DeployHooks = {
   restartDaemon: (context: RestartDaemonContext) => Promise<void>;
 };
 
+const admittedRestarts = new WeakMap<RestartDaemonContext, Pick<RestartDaemonContext, "root" | "installedDir" | "sha" | "runtime">>();
+
+export function hasDeployRestartAdmission(context: RestartDaemonContext): boolean {
+  const admission = admittedRestarts.get(context);
+  return admission !== undefined && admission.root === context.root && admission.installedDir === context.installedDir
+    && admission.sha === context.sha && admission.runtime === context.runtime;
+}
+
+async function restartWithAdmission(hooks: Pick<DeployHooks, "restartDaemon">, context: RestartDaemonContext): Promise<void> {
+  const restore = context.restorePrevious;
+  if (restore) context.restorePrevious = async () => {
+    if (!hasDeployRestartAdmission(context)) throw new Error("deploy: restart admission expired");
+    return restore();
+  };
+  admittedRestarts.set(context, { root: context.root, installedDir: context.installedDir, sha: context.sha, runtime: context.runtime });
+  try { await hooks.restartDaemon(context); } finally { admittedRestarts.delete(context); }
+}
+
 export type DeployOptions = {
   repoRoot: string;
   hooks: DeployHooks;
@@ -462,7 +480,7 @@ async function publishDeploy({ root, sha, artifactDir, artifactHash, keep, by, n
       return true;
     };
     try {
-      await hooks.restartDaemon({ root, installedDir: versionDir, sha, log, restorePrevious, ...(v2 ? { runtime: "v2" as const } : {}) });
+      await restartWithAdmission(hooks, { root, installedDir: versionDir, sha, log, restorePrevious, ...(v2 ? { runtime: "v2" as const } : {}) });
       if (restored) throw new Error("deploy: activation rolled back");
     } catch (error) {
       await restorePrevious();
@@ -569,7 +587,7 @@ async function rollbackDeployLocked(options: RollbackOptions): Promise<RollbackO
   };
   log(`deploy: rolled back ${currentSha.slice(0, 12)} → ${target.sha.slice(0, 12)}`);
   try {
-    await options.hooks.restartDaemon({ root, installedDir: join(root, target.sha), sha: target.sha, log,
+    await restartWithAdmission(options.hooks, { root, installedDir: join(root, target.sha), sha: target.sha, log,
       restorePrevious: async () => { await retargetCurrent(root, currentSha); return true; },
       ...(v2 ? { runtime: "v2" as const } : {}) });
   } catch (error) {

@@ -12,6 +12,8 @@ import { cp, lstat, mkdir, open, readFile, readlink, realpath, rename, rm, write
 import { basename, delimiter, dirname, join } from "node:path";
 import { promisify } from "node:util";
 import {
+  DeployReservationHeldError,
+  hasDeployRestartAdmission,
   CURRENT_LINK_NAME,
   DEFAULT_KEEP_VERSIONS,
   currentDeployTarget,
@@ -24,6 +26,8 @@ import {
   type BuildArtifactContext,
   type RestartDaemonContext,
 } from "../deployRuntime.js";
+import { readUpdateReservation } from "../readUpdateReservation.js";
+import { withFileLock } from "../lock.js";
 import { runtimeUsesV2 } from "../cliRoute.js";
 import { actionLine, bold, dim, formatRelativeTime, isPretty, note, tildify, yellow } from "../format.js";
 import { flag, numberFlag, truthy, type Parsed } from "../parse.js";
@@ -193,7 +197,16 @@ async function restoreServiceFile(file: string, data: Buffer | null, mode = 0o60
   try { await directory.sync(); } finally { await directory.close(); }
 }
 
-export async function restartDeployedDaemon({ root, log, runtime, restorePrevious }: RestartDaemonContext): Promise<void> {
+export async function restartDeployedDaemon(context: RestartDaemonContext): Promise<void> {
+  if (hasDeployRestartAdmission(context)) return restartAdmittedDaemon(context);
+  await withFileLock(join(context.root, ".deploy.lock"), async () => {
+    const reservation = await readUpdateReservation(context.root);
+    if (reservation?.active) throw new DeployReservationHeldError(reservation.id, reservation.epoch);
+    await restartAdmittedDaemon(context);
+  });
+}
+
+async function restartAdmittedDaemon({ root, log, runtime, restorePrevious }: RestartDaemonContext): Promise<void> {
   const v2 = runtime === "v2" || runtimeUsesV2(root);
   if (!v2) throw new Error("deploy: legacy service activation is refused; install the pinned v2 service first");
   const dataDir = join(root, "..", "v2");
