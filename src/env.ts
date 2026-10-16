@@ -1,21 +1,16 @@
-import { statSync } from "node:fs";
 import { userInfo } from "node:os";
 
 /**
- * The home the caller's environment names. HOME wins whenever it is set and
- * is a directory; the passwd entry is consulted only when HOME is unset, so a
- * run that deliberately points HOME elsewhere never reaches the account home
- * behind its back.
+ * The developer's OS account home: the explicit HIVE_REAL_HOME override, else
+ * the passwd entry, else the caller's HOME only when passwd has no answer. An
+ * account-sandbox home inherited in HOME (the agy recipe activates with
+ * HOME={home}) therefore never reaches a launched tool or pane; a run that
+ * must keep a scratch HOME names it in HIVE_REAL_HOME.
  */
 export function realUserHome(env: NodeJS.ProcessEnv = process.env): string | undefined {
   const explicit = env.HIVE_REAL_HOME;
   if (explicit && explicit.trim().length > 0) return explicit;
-  const home = env.HOME;
-  if (home !== undefined) {
-    if (home.length > 0 && isDirectory(home)) return home;
-    return passwdHome() ?? (home.length > 0 ? home : undefined);
-  }
-  return passwdHome();
+  return passwdHome() ?? (env.HOME && env.HOME.length > 0 ? env.HOME : undefined);
 }
 
 function passwdHome(): string | undefined {
@@ -24,14 +19,6 @@ function passwdHome(): string | undefined {
     return home && home.length > 0 ? home : undefined;
   } catch {
     return undefined;
-  }
-}
-
-function isDirectory(path: string): boolean {
-  try {
-    return statSync(path).isDirectory();
-  } catch {
-    return false;
   }
 }
 
