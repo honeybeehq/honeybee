@@ -189,16 +189,19 @@ test("reservation lab: schema 44 without a reservation permits deploy and rollba
   });
 });
 
-for (const state of ["corrupt", "missing-meta"] as const) {
+for (const state of ["corrupt", "null", "sentinel", "missing-meta"] as const) {
   test(`reservation lab: ${state} refuses deploy and rollback`, async () => {
     await withDeployWorld(async ({ root, repoRoot, commit, hooks, log }) => {
       await commit("v1");
       await seedReservation(root, false);
       const db = new DatabaseSync(join(root, "..", "v2", "core.sqlite3"));
-      db.exec(state === "corrupt" ? "UPDATE meta SET value='{}' WHERE key='coordinated_update'" : "DROP TABLE meta");
+      if (state === "missing-meta") db.exec("DROP TABLE meta");
+      else db.prepare("UPDATE meta SET value=? WHERE key='coordinated_update'").run(state === "null" ? "null"
+        : state === "sentinel" ? JSON.stringify({ epoch: 0, id: "", recoverySubjectDigest: "", active: false }) : "{}");
       db.close();
-      await assert.rejects(deployVersion({ root, repoRoot, hooks }));
-      await assert.rejects(rollbackDeploy({ root, hooks }));
+      const refusal = state === "missing-meta" ? /no such table: meta/ : /Corrupt coordinated update reservation/;
+      await assert.rejects(deployVersion({ root, repoRoot, hooks }), refusal);
+      await assert.rejects(rollbackDeploy({ root, hooks }), refusal);
       assert.deepEqual(log, { builds: [], restarts: [] });
       assert.equal(await currentDeployTarget(root), null);
     });

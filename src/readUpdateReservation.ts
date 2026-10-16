@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { promisify } from "node:util";
@@ -13,12 +13,22 @@ function parseOwnerReservation(value: unknown): UpdateReservation | null {
   return parseUpdateReservation(value);
 }
 
+function existsOrThrow(path: string): boolean {
+  try {
+    statSync(path);
+    return true;
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return false;
+    throw error;
+  }
+}
+
 export async function readUpdateReservation(root: string): Promise<UpdateReservation | null> {
   const dataDir = resolve(root, "..", "v2");
   const storePath = join(dataDir, "core.sqlite3");
   const socketPath = join(dataDir, "hived.sock");
   const configPath = join(dataDir, "config.json");
-  if (existsSync(configPath)) {
+  if (existsOrThrow(configPath)) {
     const config = JSON.parse(readFileSync(configPath, "utf8"));
     if (!config || typeof config !== "object" || Array.isArray(config)
       || (config.storePath !== undefined && config.storePath !== storePath)
@@ -26,7 +36,7 @@ export async function readUpdateReservation(root: string): Promise<UpdateReserva
       throw new Error("deploy: cannot read update reservation from custom storage/socket");
     }
   }
-  if (!existsSync(storePath)) return null;
+  if (!existsOrThrow(storePath)) return null;
   let response: string | undefined;
   try {
     const { stdout } = await promisify(execFile)(process.execPath,
@@ -46,6 +56,6 @@ export async function readUpdateReservation(root: string): Promise<UpdateReserva
   const db = new DatabaseSync(storePath, { readOnly: true });
   try {
     const row = db.prepare("SELECT value FROM meta WHERE key='coordinated_update'").get();
-    return row ? parseOwnerReservation(JSON.parse(String(row.value))) : null;
+    return row ? parseUpdateReservation(JSON.parse(String(row.value))) : null;
   } finally { db.close(); }
 }

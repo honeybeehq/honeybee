@@ -41,7 +41,7 @@ export class DeployReservationHeldError extends Error {
   readonly code = "DEPLOY_RESERVATION_HELD";
 
   constructor(readonly reservationId: string, readonly epoch: number) {
-    super(`deploy: update reservation ${reservationId} at epoch ${epoch} is held; finish or recover the coordinated update, then clear it with hive update-owner release using its exact id, epoch and recoverySubjectDigest`);
+    super(`deploy: update reservation ${reservationId} at epoch ${epoch} is held; finish or recover the coordinated update, then clear it with hive update-owner release using its exact id, epoch, recoverySubjectDigest and expectedIdentity`);
     this.name = "DeployReservationHeldError";
   }
 }
