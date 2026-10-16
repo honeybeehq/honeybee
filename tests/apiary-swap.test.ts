@@ -195,7 +195,11 @@ test("apiary RPC: released identity, acquire/release/abandon/recover lost replie
       const repoRoot = await repo(root), hooks = { async buildArtifact(): Promise<never> { assert.fail("reserved build"); }, async restartDaemon() { assert.fail("reserved restart"); } };
       await assert.rejects(deployVersion({ root: join(root, "runtime"), repoRoot, hooks }), DeployReservationHeldError);
       await assert.rejects(rollbackDeploy({ root: join(root, "runtime"), hooks }), DeployReservationHeldError);
-      await f.client.request("update.apiarySwap.release", release(held));
+      assert.equal(await f.api.runV2Cli(["update-owner", "status", "--data-dir", join(root, "v2"), "--socket", f.socket], io), 0);
+      assert.deepEqual(JSON.parse(lines.pop()!).reservation, held);
+      const completionFile = join(root, "completion.json");
+      await writeFile(completionFile, JSON.stringify(release(held)));
+      assert.equal(await f.api.runV2Cli(["update-owner", "apiary-swap", "release", completionFile, "--data-dir", join(root, "v2"), "--socket", f.socket], io), 0, errors.join("\n"));
       const inactive = (await f.client.request("update.apiarySwap.status")).reservation;
       assert.equal(inactive.active, false);
       assert.deepEqual(await f.client.request("update.apiarySwap.release", release(held)), inactive);
@@ -274,8 +278,9 @@ for (const operation of ["deploy", "rollback"] as const) {
           } });
         } else {
           const previous = "b".repeat(40);
-          await mkdir(join(runtime, previous), { recursive: true });
-          await writeFile(join(runtime, "deploys.json"), JSON.stringify([{ sha: previous, at: "2026-01-01T00:00:00Z", artifactHash: hash("b"), by: "lab" }, { sha: identity.sourceRevision, at: "2026-01-02T00:00:00Z", artifactHash: hash("a"), by: "lab" }]));
+          await mkdir(join(runtime, previous, "dist"), { recursive: true });
+          await writeFile(join(runtime, previous, "dist", "cli.js"), "console.log('previous');");
+          await writeFile(join(runtime, "deploys.json"), JSON.stringify({ schemaVersion: 1, entries: [{ sha: previous, at: "2026-01-01T00:00:00Z", artifactHash: hash("b"), by: "lab" }, { sha: identity.sourceRevision, at: "2026-01-02T00:00:00Z", artifactHash: hash("a"), by: "lab" }] }));
           await rollbackDeploy({ root: runtime, hooks: { async restartDaemon() { await queueAcquire(); } } });
           assert.equal(await readlink(join(runtime, "current")), previous);
         }
