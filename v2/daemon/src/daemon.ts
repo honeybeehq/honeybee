@@ -34,6 +34,7 @@ import { homedir, tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { canonicalPath, removeEndpointRecord, samePath, writeEndpointRecord } from "./endpointRecord.ts";
+import { placeDaemonSockets } from "./socketPath.ts";
 import { monitorEventLoopDelay, type IntervalHistogram } from "node:perf_hooks";
 import { getSystemErrorMap } from "node:util";
 import { GatewayMcpSeedLockError } from "../../../src/accounts/gatewayMcpSeed.ts";
@@ -677,7 +678,7 @@ const OWN_STATUS_VERBS: ReadonlySet<RpcVerb> = new Set<RpcVerb>([
 ]);
 
 export class HiveDaemon {
-  readonly cfg: ResolvedNodeConfig;
+  cfg: ResolvedNodeConfig;
   private store: CoreStore | null = null;
   private threadOperations: ThreadOperations | null = null;
   /** The substrate router DaemonCore drives; `.hsr` / `.cell` / `.tmux` are the substrate drivers. */
@@ -730,7 +731,8 @@ export class HiveDaemon {
   private readonly performance: PerformanceProfiler;
   private activeStartupPhase: PerformanceSpan | null = null;
   private readonly beeTmp: BeeTmpPolicy | null;
-  private readonly runnerSocketDir: string;
+  private runnerSocketDir: string;
+  private tmuxSocketPath = "";
   private readonly beeTmpOverrideLogged = new Set<string>();
 
   constructor(cfg: ResolvedNodeConfig, deps: HiveDaemonDeps = {}) {
@@ -762,6 +764,11 @@ export class HiveDaemon {
 
   async start(): Promise<void> {
     mkdirSync(this.cfg.dataDir, { recursive: true, mode: 0o700 });
+    const sockets = placeDaemonSockets(this.cfg.dataDir, this.cfg.socketPath, { runnerSocketDir: this.runnerSocketDir });
+    this.cfg = { ...this.cfg, socketPath: sockets.socketPath };
+    this.tmuxSocketPath = sockets.tmuxSocketPath;
+    this.runnerSocketDir = sockets.runnerSocketDir;
+    if (sockets.socketDir) this.log(`socket.relocated dir=${sockets.socketDir} socket=${sockets.socketPath} tmux=${sockets.tmuxSocketPath}`);
     mkdirSync(this.cfg.sessionLogDir, { recursive: true });
     mkdirSync(dirname(this.cfg.logPath), { recursive: true });
     if (this.beeTmp) applyDaemonTmpPolicy(this.beeTmp, process.env, (path, was) => this.log(`tmp.replaced path=${path} was=${was}`));
@@ -896,7 +903,7 @@ export class HiveDaemon {
     });
     mkdirSync(join(this.cfg.dataDir, "tmux-events"), { recursive: true });
     const tmux = new TmuxDriver({
-      socketPath: join(this.cfg.dataDir, "tmux.sock"),
+      socketPath: this.tmuxSocketPath,
       eventsDir: join(this.cfg.dataDir, "tmux-events"),
       sessionLogDir: this.cfg.sessionLogDir,
       sessionLogPathFor,
@@ -1012,7 +1019,7 @@ export class HiveDaemon {
       performance: this.performance,
     });
     try {
-      await this.rpc.listen(() => writeEndpointRecord(this.cfg.dataDir, { instanceId: this.instanceId, dataDir: canonicalPath(this.cfg.dataDir), socketPath: resolve(this.cfg.socketPath), pid: process.pid, startedAt: this.startedAt }));
+      await this.rpc.listen(() => writeEndpointRecord(this.cfg.dataDir, { instanceId: this.instanceId, dataDir: canonicalPath(this.cfg.dataDir), socketPath: resolve(this.cfg.socketPath), tmuxSocketPath: this.tmuxSocketPath, pid: process.pid, startedAt: this.startedAt }));
     } catch (error) {
       removeEndpointRecord(this.cfg.dataDir, this.instanceId);
       throw error;
