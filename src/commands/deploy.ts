@@ -32,7 +32,8 @@ import { prepareRuntimeTarget, validateRuntimeBuildTarget } from "../release/run
 const execFileAsync = promisify(execFile);
 
 const USAGE = [
-  "Usage: hive deploy [<sha>] [--keep <n>]   build+verify <sha> (default HEAD) in a temp checkout, install to ~/.hive/runtime/<sha>, retarget current, restart daemon",
+  "Usage: hive deploy [<sha>] [--keep <n>] [--skip-tests]   build+verify <sha> (default HEAD) in a temp checkout, install to ~/.hive/runtime/<sha>, retarget current, restart daemon",
+  "       --skip-tests skips tests with a not release-grade warning; release artifacts cannot skip tests",
   "       refuses a <sha> that does not contain the deployed commit (silent-revert guard); --allow-non-descendant overrides",
   "       hive deploy --rollback             retarget current to the previous deploy and restart the daemon",
   "       hive deploy --artifact <archive> --identity <json> --admission <json> --expected-current <sha|none> [--bin-dir <directory>]   install exact verified release bytes",
@@ -40,7 +41,7 @@ const USAGE = [
   "       hive deploy --init                 print the manual steps that make the global `hive` resolve through ~/.hive/runtime/current",
 ].join("\n");
 
-const KNOWN_FLAGS = new Set(["keep", "allow-non-descendant", "rollback", "list", "json", "init", "artifact", "identity", "expected-current", "admission", "bin-dir"]);
+const KNOWN_FLAGS = new Set(["skip-tests", "keep", "allow-non-descendant", "rollback", "list", "json", "init", "artifact", "identity", "expected-current", "admission", "bin-dir"]);
 
 export async function cmdDeploy(parsed: Parsed): Promise<void> {
   // Help and unknown flags must never fall through to a real deploy: a bare
@@ -51,6 +52,11 @@ export async function cmdDeploy(parsed: Parsed): Promise<void> {
   }
   const unknown = [...parsed.flags.keys()].filter((key) => !KNOWN_FLAGS.has(key));
   if (unknown.length > 0) throw new Error(`deploy: unknown flag ${unknown.map((key) => `--${key}`).join(", ")}\n${USAGE}`);
+  const skipTests = flag(parsed, "skip-tests");
+  if (skipTests !== undefined && skipTests !== true && !["true", "1", "yes", "false", "0", "no"].includes(String(skipTests))) {
+    throw new Error("deploy: --skip-tests requires a boolean value");
+  }
+  if (skipTests !== undefined && ["artifact", "rollback", "list", "init"].some(name => parsed.flags.has(name))) throw new Error(USAGE);
   const archive = flag(parsed, "artifact");
   if (archive !== undefined) {
     const identity = flag(parsed, "identity"), expected = flag(parsed, "expected-current"), admission = flag(parsed, "admission"), binDirectory = flag(parsed, "bin-dir");
@@ -231,6 +237,7 @@ async function deployRun(parsed: Parsed): Promise<void> {
     repoRoot,
     ...(ref !== undefined ? { ref } : {}),
     keep,
+    skipTests: truthy(flag(parsed, "skip-tests")),
     log,
     ...(parsed.flags.has("allow-non-descendant") ? { allowNonDescendant: true } : {}),
     hooks: { buildArtifact: buildDeployArtifact, restartDaemon: restartDeployedDaemon },

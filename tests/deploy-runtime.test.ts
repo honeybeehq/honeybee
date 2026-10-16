@@ -122,6 +122,7 @@ test("deploy from clean HEAD installs the version, retargets current, records hi
     assert.equal(entries.length, 1);
     assert.equal(entries[0]!.sha, sha);
     assert.equal(entries[0]!.by, "tester");
+    assert.equal(entries[0]!.gate, "full");
     assert.equal(entries[0]!.artifactHash, outcome.artifactHash);
     assert.ok(entries[0]!.artifactHash.length === 64);
     assert.ok(Number.isFinite(Date.parse(entries[0]!.at)));
@@ -362,3 +363,22 @@ test("ancestry guard: non-descendant refused, descendant allowed, override honor
     assert.equal(await currentDeployTarget(root), c);
   });
 });
+
+for (const skipTests of [false, true]) {
+  test(`deploy threads skipTests=${skipTests} into the build and records its gate`, async () => {
+    await withDeployWorld(async ({ root, repoRoot, commit, hooks }) => {
+      await commit("skip-tests");
+      let observed: boolean | undefined;
+      const outcome = await deployVersion({ repoRoot, root, skipTests, hooks: {
+        ...hooks,
+        buildArtifact: async (context) => {
+          observed = context.skipTests;
+          return hooks.buildArtifact(context);
+        },
+      } });
+      assert.equal(observed, skipTests);
+      assert.equal(outcome.entry.gate, skipTests ? "tests-skipped" : "full");
+      assert.equal((await readDeployHistory(root))[0]!.gate, outcome.entry.gate);
+    });
+  });
+}

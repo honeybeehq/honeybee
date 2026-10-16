@@ -71,3 +71,12 @@ test("truthy accepts explicit opt-in values only", () => {
   assert.equal(truthy("false"), false);
   assert.equal(truthy(undefined), false);
 });
+
+test("deploy skip-tests keeps the revision positional in either flag order", () => {
+  const sha = "a".repeat(40);
+  for (const argv of [["deploy", "--skip-tests", sha], ["deploy", sha, "--skip-tests"]]) {
+    const parsed = parse(argv);
+    assert.deepEqual(parsed.args, [sha]);
+    assert.equal(flag(parsed, "skip-tests"), true);
+  }
+});

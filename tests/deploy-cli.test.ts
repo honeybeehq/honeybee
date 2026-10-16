@@ -159,3 +159,27 @@ test("hive deploy outside the honeybee repo refuses before doing anything", asyn
     }
   });
 });
+
+test("deploy --skip-tests is accepted and threaded to the source build", async () => {
+  await withStore(async (dir) => {
+    const stderr = await execFileAsync(process.execPath,
+      [join(process.cwd(), "tests/cli-entry.mjs"), "deploy", "--skip-tests"],
+      { cwd: dir, env: ENV(dir) }).then(
+        () => { throw new Error("expected refusal outside repo"); },
+        (error: NodeJS.ErrnoException & { stderr?: string }) => error.stderr ?? "");
+    assert.doesNotMatch(stderr, /unknown flag/);
+    assert.match(stderr, /not a git repository here|not the honeybee repo/);
+  });
+  const source = await (await import("node:fs/promises")).readFile("src/commands/deploy.ts", "utf8");
+  assert.match(source, /skipTests: truthy\(flag\(parsed, "skip-tests"\)\)/);
+  assert.match(source, /WARNING test gate skipped .*not release-grade/);
+});
+
+test("deploy refuses invalid skip-tests values and conflicting modes", async () => {
+  await withStore(async (dir) => {
+    assert.match(await hiveExpectFail(dir, "deploy", "--skip-tests=banana"), /requires a boolean value/);
+    for (const mode of ["--rollback", "--list", "--init", "--artifact=missing.tgz"]) {
+      assert.match(await hiveExpectFail(dir, "deploy", "--skip-tests", mode), /Usage: hive deploy/);
+    }
+  });
+});
