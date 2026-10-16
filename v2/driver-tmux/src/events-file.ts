@@ -38,7 +38,9 @@ export function parseEventsFileLine(line: string): TranscriptEvent[] {
         return [{ kind: "turn_started" }];
       case "Stop":
       case "SubagentStop":
-        return row.hook_event_name === "Stop" ? [{ kind: "turn_ended" }] : [{ kind: "output" }];
+        return row.hook_event_name === "Stop"
+          ? [{ kind: "turn_ended", ...(typeof row.last_assistant_message === "string" ? { finalText: row.last_assistant_message } : {}) }]
+          : [{ kind: "output" }];
       case "Notification":
         return [{ kind: "output" }];
       default:
@@ -46,7 +48,7 @@ export function parseEventsFileLine(line: string): TranscriptEvent[] {
     }
   }
   // codex notify shape
-  if (row.type === "agent-turn-complete") return [{ kind: "turn_ended" }];
+  if (row.type === "agent-turn-complete") return [{ kind: "turn_ended", ...(typeof row["last-assistant-message"] === "string" ? { finalText: row["last-assistant-message"] } : {}) }];
   // generic v2 shape
   if (row.event === "turn_started") return [{ kind: "turn_started" }];
   if (row.event === "turn_ended") return [{ kind: "turn_ended" }];

@@ -35,3 +35,19 @@ test("Claude assistant final text is classified and reset between turns", () => 
   assert.equal(turn.end(), true);
   assert.equal(turn.end(), undefined);
 });
+
+test("tmux hook or quiescence cannot classify intermediate transcript text", () => {
+  const turn = new TurnQuiet("claude");
+  const assistant = (text: string) => JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text }] } });
+  turn.pushLine(assistant("intermediate <quiet/>"), null);
+  assert.equal(turn.end({ requireTerminal: true }), undefined);
+  turn.pushLine(assistant("late final <quiet/>"), null);
+  turn.reset();
+  assert.equal(turn.end({ requireTerminal: true }), undefined);
+  turn.pushLine(assistant("Please review"), null);
+  turn.pushLine(JSON.stringify({ type: "result", result: "Please review" }), null);
+  assert.equal(turn.end({ requireTerminal: true }), false);
+  turn.pushLine(assistant("intermediate"), null);
+  assert.equal(turn.end({ requireTerminal: true, finalText: "done <quiet/>\u{E0100}" }), true);
+  assert.equal(turn.end({ requireTerminal: true, finalText: "" }), false);
+});

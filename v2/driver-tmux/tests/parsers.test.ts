@@ -268,3 +268,9 @@ test("parsers.events-file: claude-hook, codex-notify and generic shapes normaliz
   assert.deepEqual(parseEventsFileLine(j({ event: "turn_ended" })), [{ kind: "turn_ended" }]);
   assert.deepEqual(parseEventsFileLine("garbage"), []);
 });
+
+test("native completion hooks carry final assistant text, never subagent text", () => {
+  assert.deepEqual(parseEventsFileLine(j({ hook_event_name: "Stop", last_assistant_message: "done <quiet/>" })), [{ kind: "turn_ended", finalText: "done <quiet/>" }]);
+  assert.deepEqual(parseEventsFileLine(j({ type: "agent-turn-complete", "last-assistant-message": "Please review" })), [{ kind: "turn_ended", finalText: "Please review" }]);
+  assert.deepEqual(parseEventsFileLine(j({ hook_event_name: "SubagentStop", last_assistant_message: "<quiet/>" })), [{ kind: "output" }]);
+});
