@@ -321,9 +321,11 @@ test("mirror.2: value-level snapshot — a deterministic store serializes to the
         "no"
       ],
       "status": "answered",
+      "withdrawalReason": null,
+      "withdrawnAt": null,
       "answer": "yes",
       "askedAt": 1010000,
-      "answeredAt": 1014000,
+      "answeredAt": 1012000,
       "answeredBy": "operator",
       "deliveryMessageId": 1
     }

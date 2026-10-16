@@ -8,6 +8,7 @@ import {
   PROTOCOL,
   RpcError,
   type RpcVerb,
+  type RpcRequestContext,
   type WatchFrame,
 } from "../../daemon/src/protocol.ts";
 
@@ -119,7 +120,8 @@ export class RpcClient {
     });
   }
 
-  request<T = unknown>(verb: RpcVerb, params: Record<string, unknown> = {}, timeoutMs = 10_000): Promise<T> {
+  request<T = unknown>(verb: RpcVerb, params: Record<string, unknown> = {}, timeoutMs = 10_000, context?: RpcRequestContext): Promise<T> {
+    if (verb === "question.withdraw" && !this.capabilities.includes("question.withdraw.v1")) return Promise.reject(new RpcError("question_withdraw_unsupported", "Question withdrawal is unsupported by this Honeybee."));
     if (this.closed) return Promise.reject(new DaemonDownError("(closed)", "connection closed"));
     const id = this.nextId++;
     return new Promise<T>((resolve, reject) => {
@@ -138,7 +140,7 @@ export class RpcClient {
           reject(e);
         },
       });
-      this.socket.write(`${JSON.stringify({ id, verb, params })}\n`);
+      this.socket.write(`${JSON.stringify({ id, verb, params, ...(context ? { context } : {}) })}\n`);
     });
   }
 

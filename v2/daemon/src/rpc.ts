@@ -38,6 +38,9 @@ import {
   StalePlacementError,
   PackageError,
   QuestionNotFoundError,
+  QuestionNotOwnerError,
+  QuestionAlreadyAnsweredError,
+  QuestionWithdrawnError,
   SealNotFoundError,
   TaskNotFoundError,
   TemplateEnvWipeError,
@@ -66,6 +69,7 @@ import {
 } from "./protocol.ts";
 
 export interface RpcConn {
+  readonly authenticatedBeeId?: string;
   readonly localPeer?: Readonly<{uid: number; pid: number; processBirth: string | null}>;
   readonly ingress?: "local_unix" | "node_relay" | "remote";
   readonly caller?: Readonly<HelloCaller>;
@@ -140,6 +144,9 @@ export function toRpcError(err: unknown): { code: RpcErrorCode; message: string;
   if (err instanceof BeeNotFoundError) return { code: "bee_not_found", message: err.message };
   if (err instanceof TemplateNotFoundError) return { code: "template_not_found", message: err.message };
   if (err instanceof TrackNotFoundError) return { code: "track_not_found", message: err.message };
+  if (err instanceof QuestionNotOwnerError) return { code: "question_not_owner", message: err.message };
+  if (err instanceof QuestionAlreadyAnsweredError) return { code: "question_already_answered", message: err.message };
+  if (err instanceof QuestionWithdrawnError) return { code: "question_withdrawn", message: err.message, details: { withdrawalReason: err.withdrawalReason } };
   if (err instanceof QuestionNotFoundError) return { code: "question_not_found", message: err.message };
   if (err instanceof SealNotFoundError) return { code: "seal_not_found", message: err.message };
   if (err instanceof TaskNotFoundError) return { code: "task_not_found", message: err.message };
@@ -260,6 +267,10 @@ export class RpcServer {
     }
   }
 
+  get capabilities(): typeof DAEMON_CAPABILITIES[number][] {
+    return DAEMON_CAPABILITIES.filter(capability => capability !== "question.withdraw.v1" || (this.trust.enabled && this.trust.state === "ready" && this.credentials.status.state === "ready"));
+  }
+
   private onConnection(socket: Socket): void {
     const localUnix = socket.remoteAddress === undefined;
     const conn: Connection = {
@@ -288,7 +299,7 @@ export class RpcServer {
     socket.setEncoding("utf8");
     // Versioned hello, server side (negotiated once). Capability tags are
     // additive: a pre-v16 client ignores the extra key.
-    conn.send({ protocol: PROTOCOL, capabilities: DAEMON_CAPABILITIES, identity: BUILD_IDENTITY, ...(this.opts.instance ? { instance: this.opts.instance } : {}) } satisfies HelloFrame);
+    conn.send({ protocol: PROTOCOL, capabilities: this.capabilities, identity: BUILD_IDENTITY, ...(this.opts.instance ? { instance: this.opts.instance } : {}) } satisfies HelloFrame);
     socket.on("data", (chunk: string) => this.onData(conn, chunk));
     socket.on("error", () => socket.destroy());
     socket.on("close", () => { conn.peerConnection?.close(); this.trust.disconnect(conn); this.conns.delete(conn); });
@@ -386,6 +397,18 @@ export class RpcServer {
         if (verb === "account.limits.observe" || verb === "account.limits.observation.discard" || (verb === "account.limits.observation" && params.id !== undefined)) {
           if (!peer && this.trust.enabled) throw new RpcError("caller_not_trusted", "Observation trust requires a local Unix connection.");
           if (peer) this.trust.require(peer, conn.ingress);
+        }
+        if (verb === "question.withdraw") {
+          if (!this.capabilities.includes("question.withdraw.v1")) throw new RpcError("question_withdraw_unsupported", "Question withdrawal is unsupported by this Honeybee.");
+          if (!peer || !this.trust.enabled || conn.ingress !== "local_unix") throw new RpcError("caller_not_trusted", "Withdrawal requires a registered local service.");
+          this.trust.require(peer, conn.ingress);
+          const context = frame.context;
+          if (!context || typeof context !== "object" || Array.isArray(context)) throw new RpcError("caller_not_trusted", "Withdrawal requires an authenticated session principal.");
+          const principal = (context as Record<string, unknown>).sessionPrincipal;
+          if (!principal || typeof principal !== "object" || Array.isArray(principal)) throw new RpcError("caller_not_trusted", "Withdrawal requires an authenticated session principal.");
+          const beeId = (principal as Record<string, unknown>).beeId;
+          if (typeof beeId !== "string" || !beeId.trim() || beeId.length > 256) throw new RpcError("caller_not_trusted", "Invalid authenticated session principal.");
+          return this.opts.dispatch(verb, params, { ...conn, authenticatedBeeId: beeId });
         }
         return this.opts.dispatch(verb, params, conn);
       });

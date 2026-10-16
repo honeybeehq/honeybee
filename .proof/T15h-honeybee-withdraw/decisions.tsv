@@ -1,0 +1,5 @@
+ts	phase	decision	why	evidence	result
+2026-10-16T09:51:50Z	design	Use registered local service and per-request authenticated session context	No authenticated bee principal exists on current RPC; body identity is not authorization	v2/daemon/src/localRpcTrust.ts	implementation pending
+2026-10-16T10:00:14Z	verification	Passed scrubbed metal-1 RPC lab with both terminal winners and restart	Receipts and mailbox state directly prove the owner contract	.proof/T15h-honeybee-withdraw/receipts.json	passed; final rebuild pending
+2026-10-16T10:01:48Z	compatibility	Updated schema-version and frozen mirror expectations; retained initial failures for audit	Schema v45 adds fields and the earlier guard assigns answer time before send	.proof/T15h-honeybee-withdraw/core-tests.log	superseded by green targeted-tests and full v2-tests
+2026-10-16T10:01:48Z	verification	Typechecks, build, core suite, daemon/CLI gates and final lab passed	Verified actual compiled runtime and durable replay rather than only unit tests	.proof/T15h-honeybee-withdraw/real-run.log	green; Queen review required
