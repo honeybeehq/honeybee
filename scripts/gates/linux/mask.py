@@ -1,7 +1,7 @@
 import os, sys, pathlib, json, ctypes, subprocess, time, stat, uuid, socket, fcntl, struct, hashlib
 R = pathlib.Path(sys.argv[1])
 H = pathlib.Path(json.loads((R / 'config.json').read_text())['realHome'])
-CACHE = R.parent
+CACHE = R
 label = sys.argv[2]
 cmd = sys.argv[3:]
 out = R / 'receipts' / label
@@ -28,7 +28,7 @@ def mount_table():
     return result
 initialcwd = os.getcwd()
 nonce = str(uuid.uuid4())
-receipt = dict(label=label, nonce=nonce, preparedAt=time.time(), pid=os.getpid(), command=cmd, ownCgroup=pathlib.Path('/proc/self/cgroup').read_text(), namespaces={k: os.readlink('/proc/self/ns/' + k) for k in ('user', 'mnt', 'net')}, namedRealExceptions=[str(CACHE)], samplerStartsBeforeWorkload=True)
+receipt = dict(label=label, nonce=nonce, preparedAt=time.time(), pid=os.getpid(), command=cmd, ownCgroup=pathlib.Path('/proc/self/cgroup').read_text(), namespaces={k: os.readlink('/proc/self/ns/' + k) for k in ('user', 'mnt', 'net','pid')}, namedRealExceptions=[str(CACHE)], samplerStartsBeforeWorkload=True)
 try:
     propagation = {}
     for target in ('/', '/home'):
@@ -37,6 +37,11 @@ try:
         if p.returncode or p.stdout.strip() != 'private' or p.stderr:
             raise RuntimeError('mount propagation is not private: ' + target)
     receipt['preMountPropagation'] = propagation
+    visible = sorted(int(name) for name in os.listdir('/proc') if name.isdigit())
+    assert os.getpid() == 1 and visible == [1]
+    assert os.readlink('/proc/1/ns/pid') == os.readlink('/proc/self/ns/pid')
+    receipt['privateProcAssertion'] = dict(asserted=True, initPid=1, visiblePids=visible, namespace=os.readlink('/proc/self/ns/pid'), filesystem=mount_table()['/proc']['type'])
+    assert receipt['privateProcAssertion']['filesystem'] == 'proc'
     save('mask-setup.json', receipt)
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     request = struct.pack('16sH14s', b'lo', 0, b'')
@@ -82,7 +87,8 @@ try:
     os.chdir(initialcwd)
     assert os.getcwd().startswith(str(CACHE) + '/')
     assert mounts[str(H)]['type'] == 'tmpfs' and 'ro' in mounts[str(H)]['options']
-    assert sorted(os.listdir(H / '.cache')) == [CACHE.name]
+    assert sorted(os.listdir(H / '.cache')) == [CACHE.parent.name]
+    assert sorted(os.listdir(CACHE.parent)) == [CACHE.name]
     assert not os.path.lexists(H / '.hive/v2/hived.sock')
     receipt.update(maskTargets=assertions, syntheticScaffolds=sorted(scaffolds), realHomeOverlay=mounts[str(H)], cacheException=dict(path=str(CACHE), inode=cacheid.st_ino, device=cacheid.st_dev), insideAsserted=True, insideAssertedAt=time.time(), loopbackUp=True, cwdAfter=os.getcwd())
     save('mask-inside.json', receipt)

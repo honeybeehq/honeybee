@@ -1,5 +1,5 @@
-import os, sys, json, time, pathlib, subprocess, threading, errno, re, hashlib, shutil, collections
-from policy import error_verdict, RULE_VERSION, within
+import os, sys, json, time, pathlib, subprocess, threading, errno, re, hashlib, shutil, collections,signal
+from policy import error_verdict, RULE_VERSION, within,update_fd_prior
 ROOT = pathlib.Path(sys.argv[1])
 LABEL = sys.argv[2]
 CMD = sys.argv[3:]
@@ -12,13 +12,14 @@ assert '/hbl-' in CG
 CGFILE = pathlib.Path('/sys/fs/cgroup' + CG + '/cgroup.procs')
 MASK = json.loads((OUT / 'mask-proof.json').read_text())
 assert MASK['maskAsserted'] and MASK['insideAsserted'] and MASK['outsideAssertion']['asserted']
-LAB = {k: os.readlink('/proc/self/ns/' + k) for k in ('user', 'mnt', 'net')}
+LAB = {k: os.readlink('/proc/self/ns/' + k) for k in ('user', 'mnt', 'net','pid')}
 ANCHOR = os.getpid()
 births = {}
 errors = []
 forbidden = []
 peers = []
 previous = {}
+parent_edges = {}
 samples = 0
 stopped = False
 lock = threading.Lock()
@@ -31,7 +32,7 @@ LSOF = shutil.which('lsof')
 EXCLUSIONS = CONFIG['lsofExclusions']
 lsoflog = open(OUT / 'lsof.jsonl', 'w', buffering=1)
 lsoferr = open(OUT / 'lsof-stderr.log', 'w', buffering=1)
-identity = dict(maskProof=MASK, cgroup=CG, anchor=ANCHOR, namespaces=LAB, uid_map=pathlib.Path('/proc/self/uid_map').read_text(), command=CMD, monitorSha256=HASH, lsof=LSOF or 'unavailable; proc+ss fallback', exclusions=EXCLUSIONS)
+identity = dict(maskProof=MASK, cgroup=CG, anchor=ANCHOR, namespaces=LAB, uid_map=pathlib.Path('/proc/self/uid_map').read_text(), command=CMD, monitorSha256=HASH, lsof=LSOF or 'unavailable; proc+ss fallback', exclusions=EXCLUSIONS, socketLimitation='ss unix_diag is private-netns scoped; real daemon sockets are inaccessible and not visible; only own-namespace peers can be compared')
 (OUT / 'identity.json').write_text(json.dumps(identity, indent=2))
 (OUT / 'exclusions.json').write_text(json.dumps(EXCLUSIONS))
 mountpoints = {line.split()[4] for line in pathlib.Path('/proc/self/mountinfo').read_text().splitlines()}
@@ -63,14 +64,14 @@ def err(pid, slot, e):
     errors.append(dict(pid=pid, fd=fd, slot=slot, time=time.time(), sample=samples, errno=e.errno, error=type(e).__name__, message=str(e), previousTarget=previous.get(pid, {}).get(fd), atErrorStat=checked_stat(pid, 'atErrorStat')))
 
 def capture(pid):
-    b = dict(pid=pid, time=time.time(), firstSample=samples, cgroupSightingTime=cgroupTime, procStat=checked_stat(pid, 'firstSightStat'))
+    b = dict(pid=pid,ppid=parent_edges.get(pid), time=time.time(), firstSample=samples, cgroupSightingTime=None, procStat=checked_stat(pid, 'firstSightStat'))
     pending = []
     base = f'/proc/{pid}'
-    for k, suffix in [('argv', 'cmdline'), ('status', 'status'), ('uid_map', 'uid_map'), ('user', 'ns/user'), ('mnt', 'ns/mnt'), ('net', 'ns/net')]:
+    for k, suffix in [('argv', 'cmdline'), ('status', 'status'), ('uid_map', 'uid_map'), ('user', 'ns/user'), ('mnt', 'ns/mnt'), ('net', 'ns/net'),('pidNamespace','ns/pid')]:
         try:
-            v = os.readlink(base + '/' + suffix) if k in LAB else pathlib.Path(base + '/' + suffix).read_text(errors='replace').replace('\x00', ' ')
+            v = os.readlink(base + '/' + suffix) if suffix.startswith('ns/') else pathlib.Path(base + '/' + suffix).read_text(errors='replace').replace('\x00', ' ')
             if k == 'status':
-                v = {l.split(':', 1)[0]: l.split(':', 1)[1].strip() for l in v.splitlines() if l.split(':', 1)[0] in ('State', 'PPid', 'Uid', 'Gid', 'NoNewPrivs', 'CoreDumping', 'Dumpable')}
+                v = {l.split(':', 1)[0]: l.split(':', 1)[1].strip() for l in v.splitlines() if l.split(':', 1)[0] in ('State', 'PPid', 'Uid', 'Gid', 'NoNewPrivs', 'NSpid','CoreDumping', 'Dumpable')}
                 if 'PPid' in v:
                     b['ppid'] = int(v['PPid'])
             b[k] = v
@@ -98,12 +99,26 @@ def do_sample():
     samples += 1
     now = time.time()
     try:
-        pids = [int(p) for p in CGFILE.read_text().split()]
+        host_pids = [int(p) for p in CGFILE.read_text().split()]
         cgroupTime = time.time()
-        cglog.write(json.dumps(dict(time=cgroupTime, sample=samples, pids=pids)) + '\n')
+        cglog.write(json.dumps(dict(time=cgroupTime, sample=samples, hostPids=host_pids)) + '\n')
     except OSError as e:
         err(ANCHOR, 'cgroup.procs', e)
         return
+    pids=[];pending=[ANCHOR];seen=set()
+    while pending:
+        pid=pending.pop()
+        if pid in seen:continue
+        seen.add(pid);pids.append(pid)
+        try:
+            tasks=list(pathlib.Path(f'/proc/{pid}/task').iterdir())
+            for task in tasks:
+                try:
+                    children=[int(value) for value in (task/'children').read_text().split()]
+                    for child in children:parent_edges[child]=pid
+                    pending.extend(children)
+                except OSError as e:err(pid,'children',e)
+        except OSError as e:err(pid,'task',e)
     for pid in pids:
         if pid not in births:
             capture(pid)
@@ -145,7 +160,7 @@ def do_sample():
         first = births[pid].get('procStat', {})
         current = row['procStat']
         if first.get('starttime') and current.get('starttime') and (first['starttime'] != current['starttime']) or (births[pid].get('seenZombie') and current.get('state') not in (None, 'Z')):
-            errors.append(dict(pid=pid, slot='pid_reused', time=time.time(), sample=samples, errno=None, atErrorStat=dict(state='Z', starttime=first['starttime']), nextSample=dict(state='pid_present', procStat=current)))
+            errors.append(dict(pid=pid, slot='pid_reused', time=time.time(), sample=samples, errno=None, atErrorStat=first, nextSample=dict(state='pid_present', procStat=current)))
         births[pid]['seenZombie'] = births[pid].get('seenZombie', False) or current.get('state') == 'Z'
         rows.append(row)
     if LSOF and pids:
@@ -200,7 +215,7 @@ def do_sample():
             obs['state'] = 'pid_present'
         e['nextSample'] = obs
     for row in rows:
-        previous.setdefault(row['pid'], {}).update(dict(row['fds']))
+        previous[row['pid']]=update_fd_prior(previous.get(row['pid'],{}),dict(row['fds']),not row.get('fdReadError'))
     fdlog.write(json.dumps(dict(time=now, sample=samples, scopePids=pids, pids=rows, realSocketLines=lines, ownSocketLines=ownlines, ssStderr=ss_stderr)) + '\n')
     (OUT / 'first-sight.json').write_text(json.dumps(list(births.values()), indent=2))
     (OUT / 'errors.json').write_text(json.dumps(errors, indent=2))
@@ -225,6 +240,26 @@ rc = process.wait()
 sample()
 time.sleep(0.15)
 sample()
+cleanup=[]
+for pid,birth in list(births.items()):
+    if pid==ANCHOR:continue
+    current=stat_fields(pid)
+    if current.get('state') in (None,'Z'):continue
+    errors.append(dict(pid=pid,slot='lingering_pid',time=time.time(),sample=samples,errno=None,atErrorStat=current))
+    if current.get('starttime')!=birth.get('procStat',{}).get('starttime') or not birth.get('ownTreeAtFirstSight'):continue
+    try:
+        descriptor=os.pidfd_open(pid)
+        if stat_fields(pid).get('starttime')!=current['starttime']:
+            os.close(descriptor);continue
+        signal.pidfd_send_signal(descriptor,signal.SIGTERM)
+        cleanup.append(dict(pid=pid,starttime=current['starttime'],signal='SIGTERM',time=time.time()))
+        time.sleep(.1)
+        if stat_fields(pid).get('state') not in (None,'Z'):
+            signal.pidfd_send_signal(descriptor,signal.SIGKILL)
+            cleanup.append(dict(pid=pid,starttime=current['starttime'],signal='SIGKILL',time=time.time()))
+        os.close(descriptor)
+    except ProcessLookupError:pass
+sample()
 stopped = True
 thread.join()
 log.close()
@@ -239,7 +274,9 @@ counts = {k: sum((e['verdict'] == k for e in errors)) for k in ('scope_proven_ex
 byerrno = collections.defaultdict(collections.Counter)
 for e in errors:
     byerrno[str(e.get('errno'))][e['verdict']] += 1
-result = dict(ruleVersion=RULE_VERSION, label=LABEL, command=CMD, exit=rc, monitorSha256=HASH, ownPids=sorted(births), errors=errors, errorCounts=counts, errnoCounts={k: dict(v) for k, v in byerrno.items()}, forbidden=forbidden, peers=peers, fullyClean=not (counts['FAIL'] or forbidden or peers), births=list(births.values()))
+test_input=json.loads((OUT/'test-input.json').read_text()) if (OUT/'test-input.json').exists() else {}
+test_input['testFailure']=bool(re.search(r'^# fail [1-9]\d*$',(OUT/'stdout.log').read_text(),re.M))
+result = dict(ruleVersion=RULE_VERSION, label=LABEL, command=CMD, exit=rc, testEvidence=test_input,cleanup=cleanup,monitorSha256=HASH, ownPids=sorted(births), errors=errors, errorCounts=counts, errnoCounts={k: dict(v) for k, v in byerrno.items()}, forbidden=forbidden, peers=peers, fullyClean=not (counts['FAIL'] or forbidden or peers), births=list(births.values()))
 (OUT / 'result.json').write_text(json.dumps(result, indent=2))
 print(json.dumps(dict(label=LABEL, exit=rc, ownPids=len(births), errorCounts=counts, forbidden=len(forbidden), peers=len(peers), fullyClean=result['fullyClean'])), flush=True)
 sys.exit(rc)

@@ -1,7 +1,7 @@
 import errno
 import unittest
 
-from policy import closing_verdict, error_verdict, wal_mtime_only, preexec_verdict, flake_verdict
+from policy import closing_verdict, error_verdict, wal_mtime_only, preexec_verdict, flake_verdict,update_fd_prior
 
 HOME = '/home/lab'
 HIVE = HOME + '/.hive'
@@ -81,9 +81,9 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(preexec_verdict(dict(path=HIVE + '/v2/hived.log', before=META, after=dict(META, size=99)), HOME)[0], 'FAIL')
 
     def test_flake_requires_complete_guarded_candidate_and_base(self):
-        rows = [dict(physical=dict(version=version, attemptId=version+str(n)), guardAccepted=True, testExit=1 if n==0 else 0) for version in ('candidate', 'base') for n in range(3)]
+        rows = [dict(physical=dict(version=version, attemptId=version+str(n)), guardAccepted=True,testEvidence=dict(exists=True,testFailure=True), testExit=1 if n==0 else 0) for version in ('candidate', 'base') for n in range(3)]
         self.assertEqual(flake_verdict(rows, 3)['classification'], 'flake evidence')
-        for updates in (dict(guardAccepted=False), dict(testExit=None)):
+        for updates in (dict(guardAccepted=False), dict(testExit=None),dict(testEvidence=dict(exists=False,testFailure=True)),dict(testEvidence=dict(exists=True,testFailure=False))):
             broken = [dict(row) for row in rows]
             broken[0].update(updates)
             self.assertEqual(flake_verdict(broken, 3)['classification'], 'no flake attribution')
@@ -91,6 +91,13 @@ class PolicyTests(unittest.TestCase):
         for row in rows:
             if row['physical']['version']=='base':row['testExit']=0
         self.assertEqual(flake_verdict(rows, 3)['classification'], 'no flake attribution')
+
+    def test_fd_prior_invalidates_closed_incarnation(self):
+        prior={'4':'/safe/file'}
+        prior=update_fd_prior(prior,{},True)
+        self.assertIsNone(prior.get('4'))
+        self.assertEqual(update_fd_prior({'4':'/safe/file'},{},False),{'4':'/safe/file'})
+        self.assertEqual(update_fd_prior(prior,{'4':'/new/file'},True),{'4':'/new/file'})
 
 
 if __name__ == '__main__':

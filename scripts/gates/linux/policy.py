@@ -1,7 +1,7 @@
 import errno
 import pathlib
 
-RULE_VERSION = 24
+RULE_VERSION = 25
 
 
 def within(target, root):
@@ -16,7 +16,7 @@ def error_verdict(error, birth, masked, real_hive):
     same = before.get('starttime') is not None and before.get('starttime') == after.get('starttime')
     reused = before.get('state') == 'Z' and after.get('state') not in (None, 'Z')
     reused |= bool(before.get('starttime') and after.get('starttime') and not same)
-    if not scoped or reused or error.get('slot') in ('ss', 'sampler_gap', 'cgroup.procs', 'pid_reused'):
+    if not scoped or reused or error.get('slot') in ('ss', 'sampler_gap', 'cgroup.procs', 'pid_reused', 'lingering_pid'):
         return 'FAIL'
     exiting = observation.get('state') == 'pid_gone'
     exiting |= before.get('state') == 'Z' and after.get('state') == 'Z' and same
@@ -65,9 +65,15 @@ def preexec_verdict(change, real_home, named=(), touched=()):
 def flake_verdict(rows, count):
     versions = ('candidate', 'base')
     by_version = {version: [row for row in rows if row['physical']['version'] == version] for version in versions}
-    valid = all(len(items) == count and all(item.get('guardAccepted') and item.get('testExit') is not None for item in items) for items in by_version.values())
+    valid = all(len(items) == count and all(item.get('guardAccepted') and item.get('testExit') is not None and item.get('testEvidence', {}).get('exists') and item.get('testEvidence', {}).get('testFailure') for item in items if item.get('testExit') not in (None, 0)) and all(item.get('guardAccepted') and item.get('testEvidence', {}).get('exists') and item.get('testExit') is not None for item in items) for items in by_version.values())
     failures = {version: sum(item.get('testExit') not in (None, 0) for item in items) for version, items in by_version.items()}
     return dict(failures=failures, classification='flake evidence' if valid and all(failures.values()) else 'no flake attribution', attempts=[item['physical']['attemptId'] for item in rows])
+
+
+def update_fd_prior(prior, observed, complete):
+    if complete:
+        return dict(observed)
+    return dict(prior, **observed)
 
 
 def closing_verdict(change, real_home, masked_eligible, clean, config_times, touched, named):

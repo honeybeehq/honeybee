@@ -61,6 +61,9 @@ verify()
 if command == ['@verify']:
     assert (source / 'node_modules').is_dir()
     sys.exit(0)
+if '--test' in command:
+    path=source/command[-1]
+    save('test-input.json',dict(path=command[-1],exists=path.is_file() and not path.is_symlink(),sha256=hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None))
 if command[:2] == ['npm', 'ci']:
     archive = root / 'npm-cache.tar.gz'
     assert hashlib.sha256(archive.read_bytes()).hexdigest() == config['cacheSha256']

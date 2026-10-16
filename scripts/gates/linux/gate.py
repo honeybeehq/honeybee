@@ -14,6 +14,7 @@ import subprocess
 import sys
 import time
 import uuid
+import threading
 
 from policy import RULE_VERSION, closing_verdict, differences, preexec_verdict, flake_verdict, within
 
@@ -94,7 +95,13 @@ def inventory(out):
     if lsof.exists():
         for line in lsof.open():
             touched.update(value[1:] for value in json.loads(line).get('stdout', '').splitlines() if value.startswith('n'))
-    result = dict(pids=sorted(pids), daemonPids=sorted(daemons), socketOwningPids=sorted(socket_pids), runnerBeeIds=sorted(bees), uuidCandidates=sorted(ids), socketPaths=sorted(sockets), touched=sorted(touched))
+    host_map = read(out / 'host-pid-map.json') if (out / 'host-pid-map.json').exists() else []
+    host_pids = set()
+    sightings = out / 'host-cgroup-sightings.jsonl'
+    if sightings.exists():
+        for line in sightings.open():
+            host_pids.update(json.loads(line)['pids'])
+    result = dict(pids=sorted(host_pids), namespacePids=sorted(pids), hostPidMap=host_map, daemonPids=sorted(daemons), socketOwningPids=sorted(socket_pids), runnerBeeIds=sorted(bees), uuidCandidates=sorted(ids), socketPaths=sorted(sockets), touched=sorted(touched))
     save(out / 'lab-inventory.json', result)
     return result
 
@@ -163,13 +170,42 @@ def outside_assertion(home, out, before):
     save(out / ('GO.json' if asserted else 'ABORT.json'), result)
 
 
+def map_host_pids(group, out, stopped):
+    births = {}
+    with (out / 'host-cgroup-sightings.jsonl').open('w', buffering=1) as sightings:
+        while not stopped.is_set():
+            try:
+                pids = [int(value) for value in group.read_text().split()]
+                stamp = time.time()
+                sightings.write(json.dumps(dict(time=stamp, pids=pids))+'\n')
+                for pid in pids:
+                    if pid in births:
+                        continue
+                    item = dict(hostPid=pid, scopeSightingAt=stamp, capturedAt=time.time())
+                    try:
+                        status = pathlib.Path('/proc') / str(pid) / 'status'
+                        fields = dict(line.split(':', 1) for line in status.read_text().splitlines() if ':' in line)
+                        item['NSpid'] = [int(value) for value in fields['NSpid'].split()]
+                        item['namespacePid'] = item['NSpid'][-1] if len(item['NSpid']) > 1 else None
+                        raw = (status.parent / 'stat').read_text()
+                        item['starttime'] = raw[raw.rfind(')')+2:].split()[19]
+                    except (OSError, KeyError) as error:
+                        item['error'] = type(error).__name__
+                    births[pid] = item
+                save(out / 'host-pid-map.json', list(births.values()))
+            except OSError:
+                pass
+            stopped.wait(.02)
+
+
 def adjudicate(home, root, out, physical, before, after):
     raw = read(out / 'result.json') if (out / 'result.json').exists() else {}
     inv = inventory(out)
     audit = log_audit(home, out, before, after, inv, root)
     mask = read(out / 'mask-proof.json') if (out / 'mask-proof.json').exists() else {}
     valid_mask = mask.get('maskAsserted', False)
-    clean = bool(raw.get('fullyClean'))
+    missing_mappings = [birth['pid'] for birth in raw.get('births', []) if not any(item.get('namespacePid') == birth['pid'] and item.get('starttime') == birth.get('procStat', {}).get('starttime') for item in inv['hostPidMap'])]
+    clean = bool(raw.get('fullyClean')) and not missing_mappings
     pre = read(out / 'outside-preexec.json') if (out / 'outside-preexec.json').exists() else dict(asserted=False, changes=[])
     for change in pre['changes']:
         if change['path'] in inv['touched']:
@@ -183,7 +219,7 @@ def adjudicate(home, root, out, physical, before, after):
     guard_accepted = physical['workloadStarted'] and eligible and before['valid'] and after['valid'] and all(item['verdict'] != 'FAIL' for item in changes)
     ok = physical.get('scopeExit') == 0 and guard_accepted
     warnings = sum(item['verdict'] == 'WARN' for item in changes) + sum(item['verdict'] == 'WARN' for item in pre['changes']) + raw.get('errorCounts', {}).get('masked_unknown_prior_WARN', 0)
-    result = dict(ruleVersion=RULE_VERSION, outcome=('WARN' if warnings else 'PASS') if ok else 'FAIL', guardAccepted=guard_accepted, testExit=raw.get('exit'), preExec=pre, closingChanges=changes, errorCounts=raw.get('errorCounts'), errnoCounts=raw.get('errnoCounts'), samplerClean=clean, logAudit=audit, maskAsserted=valid_mask, citedAttempt=physical['attemptId'] if ok else None, physical=physical)
+    result = dict(ruleVersion=RULE_VERSION, outcome=('WARN' if warnings else 'PASS') if ok else 'FAIL', guardAccepted=guard_accepted, testExit=raw.get('exit'), testEvidence=raw.get('testEvidence'),missingHostPidMappings=missing_mappings,preExec=pre, closingChanges=changes, errorCounts=raw.get('errorCounts'), errnoCounts=raw.get('errnoCounts'), samplerClean=clean, logAudit=audit, maskAsserted=valid_mask, citedAttempt=physical['attemptId'] if ok else None, physical=physical)
     save(out / 'adjudication.json', result)
     return result
 
@@ -205,21 +241,38 @@ def run_step(config, step):
     if before['valid']:
         scope = 'hbl-' + root.name + '-' + label
         launcher = dict(PATH=config['path'], HOME=str(fake), TMPDIR=str(fake / 'tmp'), LANG='C.UTF-8', XDG_RUNTIME_DIR='/run/user/' + str(os.getuid()), DBUS_SESSION_BUS_ADDRESS='unix:path=/run/user/' + str(os.getuid()) + '/bus')
-        args = ['systemd-run', '--user', '--scope', '--quiet', '--unit=' + scope, '--', 'env', '-i'] + [key + '=' + value for key, value in env.items()] + ['unshare', '-rmn', 'python3', str(root / 'mask.py'), str(root), label, *step['command']]
+        args = ['systemd-run', '--user', '--scope', '--quiet', '--unit=' + scope, '--', 'env', '-i'] + [key + '=' + value for key, value in env.items()] + ['unshare', '-rmnpf', '--mount-proc', 'python3', str(root / 'mask.py'), str(root), label, *step['command']]
         save(out / 'launch.json', dict(argv=args, environment=env, scope=scope, envException='HIVE_REAL_HOME equals fake HOME; all other HIVE_*/APIARY_* absent'))
         with (out / 'launcher.log').open('w') as log:
             process = subprocess.Popen(args, cwd=root / step['version'] if (root / step['version']).exists() else root, env=launcher, stdout=log, stderr=subprocess.STDOUT)
+            mapper_stop = threading.Event()
+            mapper = None
+            for unused in range(100):
+                unit = subprocess.run(['systemctl', '--user', 'show', scope+'.scope', '--property=ControlGroup', '--value'], env=launcher, capture_output=True, text=True)
+                group = pathlib.Path('/sys/fs/cgroup'+unit.stdout.strip()) / 'cgroup.procs'
+                if unit.returncode == 0 and unit.stdout.strip().startswith('/') and group.is_file():
+                    mapper = threading.Thread(target=map_host_pids, args=(group, out, mapper_stop))
+                    mapper.start()
+                    break
+                if process.poll() is not None:
+                    break
+                time.sleep(.01)
             deadline = time.monotonic() + 30
             while process.poll() is None and not (out / 'mask-ready.json').exists() and not (out / 'mask-failure.json').exists() and time.monotonic() < deadline:
                 time.sleep(.05)
             if (out / 'mask-ready.json').exists():
                 try:
+                    if mapper is None:
+                        raise RuntimeError('own scope host-pid mapper unavailable')
                     outside_assertion(home, out, before)
                 except Exception as error:
                     save(out / 'ABORT.json', dict(reason='outside assertion error', error=type(error).__name__))
             elif process.poll() is None:
                 save(out / 'ABORT.json', dict(reason='mask assertion timeout'))
             attempt['scopeExit'] = process.wait()
+            mapper_stop.set()
+            if mapper:
+                mapper.join()
     attempt.update(end=time.time(), workloadStarted=(out / 'workload-started.json').exists())
     save(out / 'physical-attempt.json', attempt)
     after = snapshot(home)
@@ -235,7 +288,8 @@ def run_step(config, step):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Guarded Linux gate, rules v24. One physical attempt per planned step; no retries.', epilog='Steps: check,v2:check,v2:test,v2:daemon,v2:driver,v2:driver2,v2:harness,build,gate-tests,test:<repo-relative.test.ts>,flake:<repo-relative.test.ts>:N. Flake helper runs N isolated candidate and N base attempts (N>=3; daemon-shutdown N>=10), retaining every result. Source extraction, offline npm ci and peercred prebuild are automatic. Receipts stay under ~/.cache/hbl/<run>. Requires satellite host approval; never deploys. Example: run.sh --candidate SHA --base SHA --steps gate-tests,test:v2/core/tests/turn-trigger.test.ts,flake:v2/core/tests/turn-trigger.test.ts:3 --npm-cache FILE --npm-cache-sha256 SHA256')
+    parser = argparse.ArgumentParser(description='Guarded Linux gate, rules v25. One physical attempt per planned step; no retries.', epilog='Steps: check,v2:check,v2:test,v2:daemon,v2:driver,v2:driver2,v2:harness,build,gate-tests,test:<repo-relative.test.ts>,flake:<repo-relative.test.ts>:N. N>=3; daemon-shutdown N>=10. Preparation, offline npm ci and peercred prebuild are automatic. Receipts: REAL_HOME/.cache/hbl/<run>. Approved satellites only. Start with env -i PATH=... HOME=<fake> TMPDIR=<fake> LANG=C.UTF-8 run.sh --real-home REAL_HOME --candidate SHA --base SHA --steps LIST --npm-cache FILE --npm-cache-sha256 SHA256. No other HIVE_*/APIARY_* variables are accepted.')
+    parser.add_argument('--real-home', required=True)
     parser.add_argument('--candidate', required=True)
     parser.add_argument('--base', required=True)
     parser.add_argument('--steps', required=True)
@@ -243,6 +297,10 @@ def main():
     parser.add_argument('--npm-cache-sha256', required=True)
     parser.add_argument('--lsof-exclude', action='append', default=[])
     args = parser.parse_args()
+    if any(key.startswith(('HIVE_', 'APIARY_')) for key in os.environ):
+        parser.error('controller must start under env -i with no HIVE_*/APIARY_* variables')
+    if pathlib.Path(os.environ['HOME']).absolute() == pathlib.Path(args.real_home).absolute():
+        parser.error('controller HOME must be fake; pass the real home explicitly')
     if platform.system() != 'Linux' or not re.match(r'^(netcup-|.*metal-)', platform.node()):
         parser.error('satellite Linux host required')
     if any(within(path, '/home') or '.hive' in pathlib.Path(path).parts or not path.startswith('/') for path in args.lsof_exclude):
@@ -271,7 +329,7 @@ def main():
             if token == 'gate-tests':
                 command = ['python3', str(pathlib.Path(__file__).parent / 'policy_test.py')]
             elif test:
-                command = ['node', 'scripts/with-fixture-warden.mjs', 'node', '--test', test]
+                command = ['node', 'scripts/with-fixture-warden.mjs', 'node', '--test', '--test-reporter=tap',test]
             elif token in ('check', 'v2:check', 'v2:test', 'v2:daemon', 'v2:driver', 'v2:driver2', 'v2:harness', 'build'):
                 command = ['npm', 'run', token]
             else:
@@ -279,14 +337,14 @@ def main():
             plan.append(dict(label=version + '-step' + str(index) + '-' + str(n), version=version, command=command, token=token))
     for version in shas:
         plan.append(dict(label=version + '-verify', version=version, command=['@verify']))
-    home = pathlib.Path(os.environ['HOME']).absolute()
+    home = pathlib.Path(args.real_home).absolute()
     parent = home / '.cache/hbl'
     if len(os.fsencode(parent)) >= 40:
         parser.error('run-root prefix must be shorter than 40 bytes')
     parent.mkdir(parents=True, exist_ok=True)
     root = parent / (time.strftime('%y%m%d%H%M%S') + '-' + uuid.uuid4().hex[:6])
     root.mkdir()
-    config = dict(runRoot=str(root), realHome=str(home), path=os.environ['PATH'], shas=shas, rulesVersion=RULE_VERSION, lsofExclusions=args.lsof_exclude, cacheSource=str(pathlib.Path(args.npm_cache).absolute()), cacheSha256=args.npm_cache_sha256, provenance='findings/hb-turn-quiet-netcup2-script-bundle.json v1', flakePlan=flakes)
+    config = dict(runRoot=str(root), realHome=str(home), controllerEnvironmentKeys=sorted(os.environ), controllerHome=os.environ['HOME'], path=os.environ['PATH'], shas=shas, rulesVersion=RULE_VERSION, lsofExclusions=args.lsof_exclude, cacheSource=str(pathlib.Path(args.npm_cache).absolute()), cacheSha256=args.npm_cache_sha256, provenance='findings/hb-turn-quiet-netcup2-script-bundle.json v1', flakePlan=flakes)
     config['toolHashes'] = {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in pathlib.Path(__file__).parent.iterdir() if path.is_file()}
     config['ledger'] = str(parent / 'attempt-ledger.jsonl')
     save(root / 'config.json', config)
