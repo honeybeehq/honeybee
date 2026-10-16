@@ -1,3 +1,4 @@
+import type { EffectCoverage, EffectResolution, EffectVerb } from "../../core/src/effectResolve.ts";
 /**
  * Thin RPC client over the daemon's unix socket (protocol.ts framing).
  * Mutations and watch ALWAYS go through here; reads fall back to the
@@ -120,7 +121,24 @@ export class RpcClient {
     });
   }
 
+  async effectCoverage(): Promise<EffectCoverage> {
+    if (!this.capabilities.includes("rpc-effect-resolve.v1")) throw new RpcError("rpc_effect_resolve_unsupported", "Owner does not support effect resolution");
+    const result = await this.request<EffectCoverage>("rpc.effect.status");
+    if (!result || typeof result.ownerStoreId !== "string" || !/^[a-f0-9-]{36}$/.test(result.ownerStoreId) || typeof result.coverageId !== "string" || !/^[a-f0-9-]{36}$/.test(result.coverageId)) throw new RpcError("invalid_request", "Malformed effect coverage");
+    return result;
+  }
+
+  async resolveEffect(verb: EffectVerb, idempotencyKey: string, expected: EffectCoverage): Promise<EffectResolution> {
+    if (!this.capabilities.includes("rpc-effect-resolve.v1")) throw new RpcError("rpc_effect_resolve_unsupported", "Owner does not support effect resolution");
+    const result = await this.request<EffectResolution>("rpc.effect.resolve", { verb, idempotencyKey });
+    if (!result || result.ownerStoreId !== expected.ownerStoreId || result.coverageId !== expected.coverageId || result.verb !== verb || result.idempotencyKey !== idempotencyKey
+      || !["committed", "never_seen_fenced", "in_flight"].includes(result.status)
+      || result.status === "committed" && (!result.receipt || result.receipt.key !== idempotencyKey || result.receipt.verb !== verb || !Object.hasOwn(result.receipt, "result"))) throw new RpcError("invalid_request", "Malformed or changed-owner effect resolution; hold the effect");
+    return result;
+  }
+
   request<T = unknown>(verb: RpcVerb, params: Record<string, unknown> = {}, timeoutMs = 10_000, context?: RpcRequestContext): Promise<T> {
+    if ((verb === "rpc.effect.resolve" || verb === "rpc.effect.status") && !this.capabilities.includes("rpc-effect-resolve.v1")) return Promise.reject(new RpcError("rpc_effect_resolve_unsupported", "Owner does not support effect resolution"));
     if (verb === "question.withdraw" && !this.capabilities.includes("question.withdraw.v1")) return Promise.reject(new RpcError("question_withdraw_unsupported", "Question withdrawal is unsupported by this Honeybee."));
     if (this.closed) return Promise.reject(new DaemonDownError("(closed)", "connection closed"));
     const id = this.nextId++;

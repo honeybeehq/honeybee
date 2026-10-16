@@ -1,3 +1,4 @@
+import { EffectLedger, type EffectVerb, type EffectResolution } from "./effectResolve.ts";
 import { parseDurableUpdateReservation, parseApiarySwapAcquire, parseApiarySwapSettle, parseApiarySwapRecover, acquireApiarySwap, settleApiarySwap, recoverApiarySwap, type DurableUpdateReservation, type ApiarySwapReservation } from "../../../src/apiarySwap.ts";
 import { currentRpcCaller } from "./rpcAuditContext.ts";
 import type { AccountObservationMetadata, LimitsObserverProvenance } from "./types.ts";
@@ -1597,6 +1598,7 @@ function mailPendingMessage(row: Row): MailPendingMessage {
 
 export class CoreStore {
   readonly path: string;
+  private readonly effectLedger: EffectLedger;
   private readonly db: DatabaseSync;
   private readonly now: () => number;
   private readonly random: () => number;
@@ -1605,6 +1607,7 @@ export class CoreStore {
   private readonly maxRpcIdempotencyRows: number;
   private readonly stmts = new Map<string, ReturnType<DatabaseSync["prepare"]>>();
   private txDepth = 0;
+  private commitCallbacks: Array<() => void> = [];
   private closed = false;
   private rpcIdempotencyRedaction: RpcIdempotencyRedactionReceipt | null = null;
   /** Commands requeued running→queued by open() (B5 boot replay); reported by reconcileAtBoot. */
@@ -1618,6 +1621,7 @@ export class CoreStore {
     this.backoffBaseMs = opts.backoffBaseMs ?? 30_000;
     this.maxRpcIdempotencyRows = opts.maxRpcIdempotencyRows ?? 10_000;
     this.db = new DatabaseSync(path);
+    this.effectLedger = new EffectLedger(this.db, this.now);
     try {
       // Fail immediately (no waiting) if another writer holds the lock.
       this.db.exec("PRAGMA busy_timeout = 0");
@@ -1638,6 +1642,7 @@ export class CoreStore {
         // Version gate + explicit migrations FIRST (before any other write
         // touches possibly-old tables), atomically with the stamp.
         this.ensureSchemaVersion();
+        this.effectLedger.open();
         // Guaranteed write on open: takes the exclusive lock now, not lazily.
         this.stmt(
           "INSERT INTO meta(key, value) VALUES('opened_at', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
@@ -1691,8 +1696,12 @@ export class CoreStore {
     try {
       const result = fn();
       this.db.exec("COMMIT");
+      const callbacks = this.commitCallbacks;
+      this.commitCallbacks = [];
+      for (const callback of callbacks) queueMicrotask(callback);
       return result;
     } catch (err) {
+      this.commitCallbacks = [];
       try {
         this.db.exec("ROLLBACK");
       } catch {
@@ -4055,6 +4064,7 @@ export class CoreStore {
     }
     return this.tx(() => {
       if (key !== undefined) {
+        this.effectLedger.lookup(key, verb);
         const original = this.getCommandByIdempotencyKey(key);
         if (original) {
           this.audit("command.dedup", original.beeId, {
@@ -4626,7 +4636,27 @@ export class CoreStore {
   }
 
   /** The recorded result for a caller-supplied RPC idempotency key, if any. */
+  afterCommit(callback: () => void): void {
+    if (this.inTransaction) this.commitCallbacks.push(callback);
+    else queueMicrotask(callback);
+  }
+
+  effectCoverage() { return this.effectLedger.status(); }
+
+  resolveEffect(key: string, verb: EffectVerb, inFlight = false): EffectResolution {
+    return this.tx(() => {
+      const result = this.effectLedger.resolve(key, verb, inFlight, this.getCommandByIdempotencyKey(key) !== null);
+      if (result.status === "committed" && result.receipt.commandId !== null) {
+        const command = this.getCommand(result.receipt.commandId);
+        if (command) return { ...result, commandStatus: command.status };
+      }
+      return result;
+    });
+  }
+
   lookupRpcResult(key: string): RpcIdempotencyRecord | null {
+    const effect = this.effectLedger.lookup(key);
+    if (effect) return effect;
     const row = this.db
       .prepare("SELECT * FROM rpc_idempotency WHERE key = ?")
       .get(key) as Row | undefined;
@@ -4648,6 +4678,8 @@ export class CoreStore {
    */
   recordRpcResult(key: string, verb: string, commandId: number | null, result: unknown): void {
     this.tx(() => {
+      this.effectLedger.lookup(key, verb);
+      this.effectLedger.record({ key, verb, commandId, result, createdAt: this.now() });
       this.db
         .prepare("INSERT INTO rpc_idempotency(key, verb, command_id, result, created_at) VALUES(?, ?, ?, ?, ?)")
         .run(key, verb, commandId, JSON.stringify(result ?? null), this.now());

@@ -202,15 +202,15 @@ test("idem.9: rpc_idempotency records round-trip and retention evicts the oldest
   const h = harness();
   const store = h.open({ maxRpcIdempotencyRows: 3 });
   assert.equal(store.lookupRpcResult("nope"), null);
-  store.recordRpcResult("r1", "spawn", 7, { beeId: "b", commandId: 7 });
+  store.recordRpcResult("r1", "bee.tag", 7, { beeId: "b", commandId: 7 });
   const hit = store.lookupRpcResult("r1");
-  assert.equal(hit?.verb, "spawn");
+  assert.equal(hit?.verb, "bee.tag");
   assert.equal(hit?.commandId, 7);
   assert.deepEqual(hit?.result, { beeId: "b", commandId: 7 });
 
-  store.recordRpcResult("r2", "send", null, { messageId: 1 });
+  store.recordRpcResult("r2", "bee.rename", null, { messageId: 1 });
   store.recordRpcResult("r3", "stop", 9, { commandId: 9 });
-  store.recordRpcResult("r4", "archive", 10, { commandId: 10 });
+  store.recordRpcResult("r4", "bee.setArgs", 10, { commandId: 10 });
   // Bound 3: the oldest (r1) is gone; the newest three answer.
   assert.equal(store.lookupRpcResult("r1"), null);
   assert.ok(store.lookupRpcResult("r2"));
@@ -240,7 +240,7 @@ test("idem.11: RPC retention preserves timestamp/rowid order across clock and ca
     ephemeral: true,
   });
   try {
-    store.recordRpcResult("z-first", "spawn", 1, { value: "first" });
+    store.recordRpcResult("z-first", "bee.tag", 1, { value: "first" });
     store.recordRpcResult("a-second", "send", null, null);
     clock = 50;
     store.recordRpcResult("backward", "stop", 3, { value: "backward" });
@@ -263,7 +263,7 @@ test("idem.11: RPC retention preserves timestamp/rowid order across clock and ca
     });
     assert.throws(
       () => store.recordRpcResult("a-second", "delete", 99, { replacement: true }),
-      /UNIQUE constraint failed: rpc_idempotency\.key/,
+      /UNIQUE constraint failed: rpc_idempotency\.key|Effect key belongs to another verb/,
     );
     for (const key of ["z-first", "a-second", "backward", "m-third"]) {
       assert.ok(store.lookupRpcResult(key), `failed duplicate must not prune ${key}`);

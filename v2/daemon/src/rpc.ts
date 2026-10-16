@@ -1,3 +1,4 @@
+import { EffectKeyError } from "../../core/src/effectResolve.ts";
 import { PeerCredentials, type PeerConnection } from "./peerCredentials.ts";
 import { LocalRpcTrust, type LocalTrustConfig } from "./localRpcTrust.ts";
 import { LocalRpcRefusals } from "./localRpcRefusals.ts";
@@ -137,6 +138,7 @@ function isRpcVerb(value: unknown): value is RpcVerb {
 
 /** Map any thrown error onto the closed RPC error list. */
 export function toRpcError(err: unknown): { code: RpcErrorCode; message: string; details?: Record<string, unknown> } {
+  if (err instanceof EffectKeyError) return { code: err.code, message: err.message };
   if (err instanceof RpcError) return { code: err.code, message: err.message, ...(err.details ? { details: err.details } : {}) };
   if (err instanceof LoginFlowRefusal) return { code: err.code, message: err.message };
   if (err instanceof LeaseRefusal) return { code: err.code, message: err.message, ...(err.details ? { details: err.details } : {}) };
