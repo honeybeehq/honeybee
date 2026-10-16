@@ -1,0 +1,34 @@
+forage: host trmd-erebor-mini02 (darwin/arm64, 10 cores, load 1.32, 1 forage jobs)
+forage: synced github-com-honeybeehq-honeybee-a9015b303498-space-110f4b740e82-3506a99a @ 26f6a7ae33 in 3,069,555µs
+forage: lane github-com-honeybeehq-honeybee-a9015b303498-space-110f4b740e82-3506a99a · scratch /Users/trmd/.cache/fj/8PTTaZ · network SHARED: this Darwin job is NOT offline, it has the host's network (no network namespace on Darwin)
+SENTINEL sb.ids path /Users/trmd/.hive/v2/config.json inode 151933503
+SENTINEL sa.ids path /Users/trmd/.hive/v2/config.json inode 152498856
+CURRENT_METADATA {"path": "/Users/trmd/.hive/v2/config.json", "inode": 152498856, "size": 347, "mtimeUtc": "2026-10-16T09:24:43.524377+00:00", "ctimeUtc": "2026-10-16T09:24:43.524731+00:00"}
+SENTINEL_MTIME sb.mtimes 1792140493
+SENTINEL_MTIME sa.mtimes 1792142683
+CURRENT_KEY_SALTED_HASHES {"naming": "f375445deec22680a459240f51b0adbd6ab1d8ed5c435f0201937fc43b03fb81", "nodeKind": "cd920628aeb5a6f90f9a7daf22f9242ac9cae8906eb1149051f0deb2c1015c93"}
+CURRENT_CANONICAL_SALTED_HASH fdfe523c9126a48b33ae8a25f1a31b84837b0d8c00dc473636611d4eda5244f1
+COMPARISON_UNAVAILABLE: gate retained inode/mtime only; no before-content or before-hash exists in these receipts
+LOG_PATH /Users/trmd/.hive/v2/hived.log bytes 2485228
+LOG_OP_RANGE_TIME {"byteStart": 2485047, "byteEndExclusive": 2485228, "op": "config.patch", "timeUtc": "2026-10-16T09:24:43.525000+00:00", "deltaSecondsFromConfigMtime": 0.0006229877471923828}
+CURRENT_RELEVANT_PROCESS_ARGV_ONLY
+12697 12532 Fri Oct 16 11:27:20 2026     /bin/bash .dg.sh
+16414 12697 Fri Oct 16 11:27:26 2026     /bin/bash .dg.sh
+16420 16414 Fri Oct 16 11:27:26 2026     /bin/bash .dg.sh
+16421 16414 Fri Oct 16 11:27:26 2026     /bin/bash .dg.sh
+22056 22055 Fri Oct 16 11:29:12 2026     /Users/trmd/.local/share/mise/installs/node/24.18.0/bin/node --test-concurrency=1 --heap-prof-interval=524288 --test-timeout=0 --stack-trace-limit=10 --report-signal=SIGUSR2 --max-http-header-size=16384 --heapsnapshot-near-heap-limit=0 --tls-cipher-list=TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA256:ECDHE-RSA-AES256-SHA384:DHE-RSA-AES256-SHA384:ECDHE-RSA-AES256-SHA256:DHE-RSA-AES256-SHA256:HIGH:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!MD5:!PSK:!SRP:!CAMELLIA --watch-kill-signal=SIGTERM --inspect-publish-uid=stderr,http --cpu-prof-interval=1000 --test-coverage-functions=0 --test-coverage-lines=0 --inspect-port=127.0.0.1:9229 --test-coverage-branches=0 --test-isolation=process --use-largepages=off --network-family-autoselection-attempt-timeout=250 --secure-heap-min=2 --import=/Users/trmd/.cache/scg/r.pw58IG/net-trap.mjs --v8-pool-size=4 --node-snapshot --trace-event-file-pattern=node_trace.${rotation}.log --secure-heap=0 v2/daemon/tests/auth-death-fixture.test.ts
+22232 22056 Fri Oct 16 11:29:15 2026     /Users/trmd/.local/share/mise/installs/node/24.18.0/bin/node /Users/trmd/.forage/work/honeybee-bf9ebc3f/v2/daemon/tests/fixtures/auth-death-claude.mjs
+54654     1 Thu Oct 15 08:29:15 2026     /Users/trmd/.local/share/apiary/tools/node-v24.18.0-darwin-arm64/bin/node /Users/trmd/.apiary/honeybee-runtime/557e91d4a7194b8583e33bb7f06aa36b89c67ca4733ce5f568eeed362dba8d18/lib/node_modules/honeybee/dist/cli.js v2 daemon run --data-dir /Users/trmd/.hive/v2
+70695 54654 Fri Oct 16 10:45:32 2026     /Users/trmd/.local/share/apiary/tools/node-v24.18.0-darwin-arm64/bin/node /Users/trmd/.apiary/honeybee-runtime/557e91d4a7194b8583e33bb7f06aa36b89c67ca4733ce5f568eeed362dba8d18/lib/node_modules/honeybee/dist/v2/runner-host.js /Users/trmd/.hive/v2/runners/ee433038-e548-4135-a2f1-e3ee8f4be53c.1.json
+FORAGE_JOB_RECORDS_AROUND_RUN
+JOB_METADATA {"time": "2026-10-16T09:20:37Z", "op": "start", "run": "e8e9b8a8ad74", "repository": "apiary-8f99dff7", "command": "python3 -c [inline program omitted]"}
+JOB_METADATA {"time": "2026-10-16T09:20:49Z", "op": "end", "run": "e8e9b8a8ad74", "repository": "apiary-8f99dff7", "command": "python3 -c [inline program omitted]"}
+JOB_METADATA {"time": "2026-10-16T09:21:27Z", "op": "end", "run": "b43b42235903", "repository": "github-com-honeybeehq-honeybee-a9015b303498-space-110f4b740e82-3506a99a", "command": "bash .dg.sh"}
+JOB_METADATA {"time": "2026-10-16T09:21:46Z", "op": "start", "run": "29a6147a6cef", "repository": "github-com-honeybeehq-honeybee-a9015b303498-space-110f4b740e82-3506a99a", "command": "bash .dg.sh"}
+JOB_METADATA {"time": "2026-10-16T09:22:57Z", "op": "start", "run": "f18cd492dacc", "repository": "apiary-8f99dff7", "command": "python3 -c [inline program omitted]"}
+JOB_METADATA {"time": "2026-10-16T09:23:03Z", "op": "end", "run": "f18cd492dacc", "repository": "apiary-8f99dff7", "command": "python3 -c [inline program omitted]"}
+JOB_METADATA {"time": "2026-10-16T09:23:59Z", "op": "start", "run": "5017588e4337", "repository": "apiary-8f99dff7", "command": "python3 -c [inline program omitted]"}
+JOB_METADATA {"time": "2026-10-16T09:24:06Z", "op": "end", "run": "5017588e4337", "repository": "apiary-8f99dff7", "command": "python3 -c [inline program omitted]"}
+JOB_METADATA {"time": "2026-10-16T09:25:07Z", "op": "end", "run": "29a6147a6cef", "repository": "github-com-honeybeehq-honeybee-a9015b303498-space-110f4b740e82-3506a99a", "command": "bash .dg.sh"}
+forage: reaped 0 leftover job processes
+forage: exit 0 · run 1,057,078µs · trmd-erebor-mini02

@@ -1,0 +1,1802 @@
+diff --git a/scripts/build-v2-artifact.mjs b/scripts/build-v2-artifact.mjs
+index 9014862c..5b488982 100644
+--- a/scripts/build-v2-artifact.mjs
++++ b/scripts/build-v2-artifact.mjs
+@@ -15,6 +15,7 @@ const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
+ const outDir = join(root, "dist", "v2");
+ const runnerHostOutput = join(outDir, "runner-host.js");
+ const runnerHostInputs = [
++  "src/runtimeEnvironment.ts",
+   "v2/driver-hsr/src/runner-host-main.ts",
+   "v2/driver-hsr/src/runner-host.ts",
+ ];
+diff --git a/scripts/gates/darwin/pinned-full-body.sh b/scripts/gates/darwin/pinned-full-body.sh
+new file mode 100644
+index 00000000..1a49e83c
+--- /dev/null
++++ b/scripts/gates/darwin/pinned-full-body.sh
+@@ -0,0 +1,5 @@
++export REAL_SERVICE_HOME="$SCG_REAL_HOME"
++node .proof/honeybee-pinned-runtime/service-sentinel.mjs before "$GATE_ROOT/full-service-before.json" || { gate_fail sentinel-before; exit 97; }
++. scripts/gates/darwin/daemon-suite-body.sh
++node .proof/honeybee-pinned-runtime/service-sentinel.mjs after "$GATE_ROOT/full-service-before.json" || gate_fail sentinel-after
++true
+diff --git a/scripts/gates/darwin/pinned-runtime-body.sh b/scripts/gates/darwin/pinned-runtime-body.sh
+new file mode 100644
+index 00000000..58649b9b
+--- /dev/null
++++ b/scripts/gates/darwin/pinned-runtime-body.sh
+@@ -0,0 +1,13 @@
++L=$GATE_ROOT/logs; mkdir -p "$L"
++export REAL_SERVICE_HOME="$SCG_REAL_HOME"
++node .proof/honeybee-pinned-runtime/service-sentinel.mjs before "$GATE_ROOT/service-before.json" || { gate_fail sentinel-before; exit 97; }
++npm ci --no-audit --no-fund > "$L/ci.log" 2>&1; rc=$?; echo "STEP npm ci exit=$rc"; [ $rc -ne 0 ] && { gate_fail ci; exit 1; }; deps_check
++npm run check > "$L/check.log" 2>&1; rc=$?; echo "STEP check exit=$rc"; [ $rc -ne 0 ] && { cat "$L/check.log"; gate_fail check; exit 1; }
++npm run v2:check > "$L/v2-check.log" 2>&1; rc=$?; echo "STEP v2:check exit=$rc"; [ $rc -ne 0 ] && { cat "$L/v2-check.log"; gate_fail v2-check; exit 1; }
++npm run build > "$L/build.log" 2>&1; rc=$?; echo "STEP build exit=$rc"; [ $rc -ne 0 ] && { tail -20 "$L/build.log"; gate_fail build; exit 1; }
++gate_lockdown
++sb node --import tsx --test tests/node-runtime.test.ts tests/service-paths.test.ts tests/deploy-cli-exposure.test.ts tests/deploy-restart.test.ts v2/daemon/tests/node-pin-entry.test.ts v2/daemon/tests/service.test.ts > "$L/pinned-tests.log" 2>&1; rc=$?; cat "$L/pinned-tests.log"; [ $rc -ne 0 ] && { gate_fail pinned-tests; exit 1; }
++node .proof/honeybee-pinned-runtime/darwin-lab.mjs > "$L/pinned-lab.log" 2>&1; rc=$?; cat "$L/pinned-lab.log"; [ $rc -ne 0 ] && gate_fail pinned-lab
++node .proof/honeybee-pinned-runtime/review-lab.mjs > "$L/review-lab.log" 2>&1; rc=$?; cat "$L/review-lab.log"; [ $rc -ne 0 ] && gate_fail review-lab
++node .proof/honeybee-pinned-runtime/service-sentinel.mjs after "$GATE_ROOT/service-before.json" || gate_fail sentinel-after
++true
+diff --git a/src/beesSidebar.ts b/src/beesSidebar.ts
+index b81672f6..54ab8a1f 100644
+--- a/src/beesSidebar.ts
++++ b/src/beesSidebar.ts
+@@ -1,3 +1,4 @@
++import { childNodePath } from "./nodeRuntime.js";
+ /**
+  * tmux left sidebar for `hive bees`: split wiring and persistence.
+  *
+@@ -113,7 +114,7 @@ function hiveBeesSidebarCommand(): string {
+   if (process.env.HIVE_BEES_SIDEBAR_COMMAND) return process.env.HIVE_BEES_SIDEBAR_COMMAND;
+   const argv0 = process.argv[1];
+   if (argv0 && (argv0.endsWith("cli.ts") || argv0.endsWith("cli.js"))) {
+-    return formatShellCommand([process.execPath, argv0, "bees", "--sidebar"]);
++    return formatShellCommand(["/usr/bin/env", "-u", "ELECTRON_RUN_AS_NODE", "-u", "NODE_OPTIONS", childNodePath(), argv0, "bees", "--sidebar"]);
+   }
+   return formatShellCommand(["hive", "bees", "--sidebar"]);
+ }
+diff --git a/src/commands/deploy.ts b/src/commands/deploy.ts
+index 7183b376..6b3aa12e 100644
+--- a/src/commands/deploy.ts
++++ b/src/commands/deploy.ts
+@@ -1,3 +1,6 @@
++import { serviceDirectory } from "../servicePaths.js";
++import { randomUUID } from "node:crypto";
++import { probeNativeNode, resolveNodePin, nativeNodeEnv, nodePinEnv, nodePinFile, nodeRepairFile, type NodePin } from "../nodeRuntime.js";
+ // `hive deploy` — versioned runtime deploys (reset WP0, spec 00). The
+ // orchestration lives in src/deployRuntime.ts; this module wires the CLI
+ // surface plus the two production hooks: the real clean-checkout build and
+@@ -5,8 +8,8 @@
+ // never reach the code in this file's hook implementations.
+ import { execFile, spawn } from "node:child_process";
+ import { existsSync } from "node:fs";
+-import { cp, lstat, mkdir, readFile, readlink, writeFile } from "node:fs/promises";
+-import { basename, join } from "node:path";
++import { cp, lstat, mkdir, open, readFile, readlink, realpath, rename, rm, writeFile } from "node:fs/promises";
++import { basename, dirname, join } from "node:path";
+ import { promisify } from "node:util";
+ import {
+   CURRENT_LINK_NAME,
+@@ -79,9 +82,9 @@ export async function cmdDeploy(parsed: Parsed): Promise<void> {
+ }
+ 
+ /** Stream a build/restart step; the child's output is the progress report. */
+-async function runStep(command: string, args: string[], cwd: string, log: (line: string) => void): Promise<void> {
++async function runStep(command: string, args: string[], cwd: string, log: (line: string) => void, env: NodeJS.ProcessEnv = {}): Promise<void> {
+   log(`deploy: ${command} ${args.join(" ")}`);
+-  const child = spawn(command, args, { cwd, env: hostGitEnv(), stdio: ["ignore", "inherit", "inherit"] });
++  const child = spawn(command, args, { cwd, env: { ...nativeNodeEnv(hostGitEnv()), ...env }, stdio: ["ignore", "inherit", "inherit"] });
+   const result = await new Promise<{ code: number | null; signal: NodeJS.Signals | null; error?: Error }>((resolve) => {
+     child.once("error", (error) => resolve({ code: null, signal: null, error }));
+     child.once("exit", (code, signal) => resolve({ code, signal }));
+@@ -158,33 +161,119 @@ export async function buildDeployArtifact(
+  * The production restart, run THROUGH the `current` symlink so the LaunchAgent
+  * plist binds the stable path — future deploys then only move the symlink.
+  */
+-export async function restartDeployedDaemon({ root, log, runtime }: RestartDaemonContext): Promise<void> {
++async function restoreServiceFile(file: string, data: Buffer | null, mode = 0o600): Promise<void> {
++  if (data === null) { await rm(file, { force: true }); return; }
++  await mkdir(dirname(file), { recursive: true });
++  const temporary = `${file}.${randomUUID()}`;
++  const fd = await open(temporary, "wx", mode);
++  try { await fd.writeFile(data); await fd.sync(); } finally { await fd.close(); }
++  await rename(temporary, file);
++  const directory = await open(dirname(file), "r");
++  try { await directory.sync(); } finally { await directory.close(); }
++}
++
++export async function restartDeployedDaemon({ root, log, runtime, restorePrevious }: RestartDaemonContext): Promise<void> {
+   const v2 = runtime === "v2" || runtimeUsesV2(root);
+-  if (process.platform !== "darwin") {
+-    log("deploy: daemon restart skipped (launchctl unavailable on this platform; restart the daemon manually)");
+-    return;
+-  }
++  if (!v2) throw new Error("deploy: legacy service activation is refused; install the pinned v2 service first");
++  const dataDir = join(root, "..", "v2");
++  const pin = resolveNodePin(dataDir, process.env, undefined, true);
++  if (process.platform !== "darwin" && process.platform !== "linux") throw new Error("deploy: unsupported service platform");
++  const directory = serviceDirectory();
++  const service = join(directory, `${process.env.HIVE_V2_SERVICE_LABEL ?? "dev.honeybee.hive.v2"}.${process.platform === "darwin" ? "plist" : "service"}`);
++  const files = await Promise.all([service, nodePinFile(dataDir), nodeRepairFile(dataDir)].map(async file => {
++    const data = await readFile(file).catch((error: NodeJS.ErrnoException) => { if (error.code === "ENOENT") return null; throw error; });
++    return { file, data, mode: data === null ? 0o600 : (await lstat(file)).mode & 0o777 };
++  }));
+   const cli = join(root, CURRENT_LINK_NAME, "dist", "cli.js");
+-  if (v2) {
+-    // Runtime mode survives source deploys; manage the same service selected
+-    // by the dependency-light CLI routing config.
+-    await runStep(process.execPath, [cli, "v2", "daemon", "install", "--data-dir", join(root, "..", "v2")], root, log);
+-    try {
+-      await runStep(process.execPath, [cli, "v2", "daemon", "stop", "--data-dir", join(root, "..", "v2")], root, log);
+-    } catch (error) {
+-      // A failed stop can mean either absence or an uncertain unload. Only
+-      // confirmed absence permits a fresh start; never hide a live old owner.
+-      const { stdout } = await execFileAsync(process.execPath,
+-        [cli, "v2", "daemon", "status", "--json", "--data-dir", join(root, "..", "v2")], { timeout: 10_000 });
+-      const status = JSON.parse(stdout);
+-      if (status.running !== false || status.service?.installed !== false) throw error;
++  const args = (verb: string) => [cli, "v2", "daemon", verb, "--data-dir", dataDir];
++  const run = (verb: string, selected: NodePin = pin) => runStep(selected.path, args(verb), root, log, nodePinEnv(selected));
++  const deployedIdentity = async (selected: NodePin) => {
++    const { stdout } = await execFileAsync(selected.path, [cli, "v2", "deploy-info", "--data-dir", dataDir, "--json"], { timeout: 2000, env: { ...nativeNodeEnv(), ...nodePinEnv(selected) } });
++    return JSON.parse(stdout) as { pid: number; startedAt: number; nodeVersion: string; identity?: { sourceRevision?: string } };
++  };
++  const label = process.env.HIVE_V2_SERVICE_LABEL ?? "dev.honeybee.hive.v2";
++  const absent = async () => {
++    if (process.platform === "darwin") {
++      try { await execFileAsync("launchctl", ["print", `gui/${process.getuid!()}/${label}`], { env: nativeNodeEnv(), timeout: 2000 }); return false; }
++      catch (error) { const e = error as { stderr?: string }; if (/Could not find service/.test(e.stderr ?? "")) return true; throw error; }
++    }
++    const { stdout } = await execFileAsync("systemctl", ["--user", "show", `${label}.service`, "--property=ActiveState,MainPID"], { env: nativeNodeEnv(), timeout: 2000 });
++    return /^(?:ActiveState=inactive|ActiveState=failed)$/m.test(stdout) && /^MainPID=0$/m.test(stdout);
++  };
++  const waitAbsent = async () => {
++    const deadline = Date.now() + 60_000;
++    while (true) {
++      if (await absent()) return;
++      if (Date.now() >= deadline) throw new Error("deploy: service unload is unconfirmed; refusing recovery while a daemon may still be running");
++      await new Promise(resolve => setTimeout(resolve, 100));
++    }
++  };
++  const status = async (selected: NodePin) => {
++    const { stdout } = await execFileAsync(selected.path, [...args("status"), "--json"], { timeout: 2000, env: { ...nativeNodeEnv(), ...nodePinEnv(selected) } });
++    return JSON.parse(stdout) as { running?: boolean; repair?: unknown; service?: { installed?: boolean } };
++  };
++  const ready = async (selected: NodePin) => {
++    const deadline = Date.now() + 10_000;
++    while (true) {
++      try {
++        const state = await status(selected);
++        if (state.running === true) return;
++        if (state.repair) throw new Error("deploy: daemon held, needs Node pin repair");
++      } catch (error) {
++        if (error instanceof Error && error.message.includes("needs Node pin repair")) throw error;
++      }
++      if (Date.now() >= deadline) throw new Error("deploy: daemon failed readiness after start");
++      await new Promise(resolve => setTimeout(resolve, 100));
++    }
++  };
++  let previousIdentity: Awaited<ReturnType<typeof deployedIdentity>> | undefined;
++  if (restorePrevious) {
++    try { previousIdentity = await deployedIdentity(pin); }
++    catch (error) { if (!await absent()) throw error; }
++    if (previousIdentity && (!Number.isSafeInteger(previousIdentity.pid) || !previousIdentity.identity?.sourceRevision)) throw new Error("deploy: previous daemon identity unavailable; refusing to stop");
++  }
++  let stopped = false;
++  let stopInitiated = false;
++  try {
++    await run("install");
++    try { stopInitiated = true; await run("stop"); if (restorePrevious) await waitAbsent(); stopped = true; }
++    catch (error) {
++      if (restorePrevious) { await waitAbsent(); stopped = true; throw error; }
++      const state = await status(pin);
++      if (state.running !== false || state.service?.installed !== false) throw error;
++      stopped = true;
+       log("deploy: v2 service is absent (fresh start)");
+     }
+-    await runStep(process.execPath, [cli, "v2", "daemon", "start", "--data-dir", join(root, "..", "v2")], root, log);
+-    return;
++    await run("start");
++    await ready(pin);
++  } catch (error) {
++    if (stopInitiated && restorePrevious) {
++      await run("stop").catch(() => undefined);
++      await waitAbsent();
++      stopped = true;
++    } else if (stopped) await run("stop").catch(() => undefined);
++    const restored = await restorePrevious?.();
++    if (restorePrevious) {
++      for (const snapshot of files) await restoreServiceFile(snapshot.file, snapshot.data, snapshot.mode);
++      if (process.platform === "linux") await execFileAsync("systemctl", ["--user", "daemon-reload"], { env: nativeNodeEnv() });
++    }
++    if (stopped && restored && previousIdentity) {
++      const priorPin = resolveNodePin(dataDir, { ...process.env, HIVE_NODE_PATH: undefined, HIVE_NODE_VERSION: undefined, HIVE_NODE_SHA256: undefined });
++      await run("start", priorPin);
++      await ready(priorPin);
++      const recovered = await deployedIdentity(priorPin);
++      if (JSON.stringify(recovered.identity) !== JSON.stringify(previousIdentity.identity) || recovered.pid === previousIdentity.pid
++        || recovered.nodeVersion !== `v${priorPin.version}` || !Number.isSafeInteger(recovered.pid)) throw new Error("deploy: recovered daemon build or interpreter identity differs from the previous runtime");
++      const executable = process.platform === "linux" ? await realpath(`/proc/${recovered.pid}/exe`)
++        : (await execFileAsync("ps", ["-p", String(recovered.pid), "-o", "comm="], { env: nativeNodeEnv(), timeout: 2000 })).stdout.trim();
++      const runningPin = probeNativeNode(executable);
++      const confirmed = await deployedIdentity(priorPin);
++      if (runningPin.path !== priorPin.path || runningPin.version !== priorPin.version || runningPin.sha256 !== priorPin.sha256
++        || confirmed.pid !== recovered.pid || confirmed.startedAt !== recovered.startedAt) throw new Error("deploy: recovered daemon executable identity differs from the previous pin");
++      log("deploy: previous runtime and service recovered after failed activation");
++    }
++    throw error;
+   }
+-  await runStep(process.execPath, [cli, "daemon", "install", "--force"], root, log);
+-  await runStep(process.execPath, [cli, "daemon", "restart"], root, log);
+ }
+ 
+ async function resolveHoneybeeRepoRoot(): Promise<string> {
+diff --git a/src/daemon/credentialSweepProcess.ts b/src/daemon/credentialSweepProcess.ts
+index dca5f9b2..550bcbcc 100644
+--- a/src/daemon/credentialSweepProcess.ts
++++ b/src/daemon/credentialSweepProcess.ts
+@@ -1,3 +1,4 @@
++import { childNodePath, nativeNodeEnv } from "../nodeRuntime.js";
+ /**
+  * Disposable-process credential sweep. Credential reads touch thousands of
+  * historical records, macOS Keychain subprocesses, and per-account locks.
+@@ -126,8 +127,9 @@ export class CredentialSweepTimeoutError extends Error {
+ }
+ 
+ function defaultSpawnChild(): CredentialSweepChild {
+-  const child: ChildProcess = spawn(process.execPath, daemonWorkerArgv("credential-sweep-worker", import.meta.url), {
++  const child: ChildProcess = spawn(childNodePath(), daemonWorkerArgv("credential-sweep-worker", import.meta.url), {
+     stdio: ["pipe", "pipe", "inherit"],
++    env: nativeNodeEnv(),
+     // pgid === pid: timeout can terminate every inherited helper/descendant,
+     // not merely the Node worker that launched `security`/Keychain work.
+     detached: true,
+diff --git a/src/daemon/install.ts b/src/daemon/install.ts
+index 279212f2..4a2891f7 100644
+--- a/src/daemon/install.ts
++++ b/src/daemon/install.ts
+@@ -1,3 +1,4 @@
++import { probeNativeNode, resolveNodePin } from "../nodeRuntime.js";
+ import { execFile } from "node:child_process";
+ import { mkdir, readFile, rm, stat } from "node:fs/promises";
+ import { promisify } from "node:util";
+@@ -169,7 +170,7 @@ export async function isAgentInstalled(label: string = DEFAULT_LAUNCH_LABEL): Pr
+ export async function renderCandidatePlist(options: InstallOptions = {}): Promise<string> {
+   const label = options.label ?? DEFAULT_LAUNCH_LABEL;
+   const cliEntry = await resolveCliEntry(options.cliEntry);
+-  const nodeBinary = options.nodeBinary ?? process.execPath;
++  const nodeBinary = options.nodeBinary ? probeNativeNode(options.nodeBinary).path : resolveNodePin(`${storeRoot()}/v2`).path;
+   const extraArgs = options.extraArgs ?? [];
+ 
+   const env: Record<string, string> = {};
+diff --git a/src/daemon/observerProcess.ts b/src/daemon/observerProcess.ts
+index 5721838b..d152f321 100644
+--- a/src/daemon/observerProcess.ts
++++ b/src/daemon/observerProcess.ts
+@@ -1,3 +1,4 @@
++import { childNodePath, nativeNodeEnv } from "../nodeRuntime.js";
+ // Isolated HSR observation (CL.701 §5 fix 1). The tick's heavy fs fan-out —
+ // hundreds of run-dir meta/event reads per tick — used to share the daemon's
+ // libuv threadpool with everything else. withTimeout never cancels the
+@@ -86,9 +87,10 @@ export type IsolatedHsrObservations = ((beeNames: readonly string[]) => Promise<
+ };
+ 
+ function defaultSpawnChild(): ObserverChild {
+-  const child: ChildProcess = spawn(process.execPath, daemonWorkerArgv("hsr-observe-worker", import.meta.url), {
++  const child: ChildProcess = spawn(childNodePath(), daemonWorkerArgv("hsr-observe-worker", import.meta.url), {
+     // stderr inherits so a child crash is visible in the daemon's stream file.
+     stdio: ["pipe", "pipe", "inherit"],
++    env: nativeNodeEnv(),
+   });
+   child.unref();
+   return child as unknown as ObserverChild;
+diff --git a/src/daemon/plist.ts b/src/daemon/plist.ts
+index 064f9d4e..c8c8f287 100644
+--- a/src/daemon/plist.ts
++++ b/src/daemon/plist.ts
+@@ -1,4 +1,3 @@
+-import { homedir } from "node:os";
+ import { isAbsolute, join } from "node:path";
+ 
+ /**
+@@ -212,7 +211,9 @@ function shellEscape(value: string): string {
+  * writes outside ~/Library/LaunchAgents/ for plist installation.
+  */
+ export function launchAgentsDir(): string {
+-  return join(homedir(), "Library", "LaunchAgents");
++  const home = process.env.HOME;
++  if (!home || !isAbsolute(home)) throw new Error("HOME required for the LaunchAgents directory");
++  return join(home, "Library", "LaunchAgents");
+ }
+ 
+ /**
+diff --git a/src/daemon/sessionListProcess.ts b/src/daemon/sessionListProcess.ts
+index e579afe2..4b993f49 100644
+--- a/src/daemon/sessionListProcess.ts
++++ b/src/daemon/sessionListProcess.ts
+@@ -1,3 +1,4 @@
++import { childNodePath, nativeNodeEnv } from "../nodeRuntime.js";
+ /**
+  * Disposable-process session enumeration. A lost fs.promises completion cannot
+  * be cancelled in-process; timing it out merely leaves the registry walk alive
+@@ -64,10 +65,10 @@ function reconcileActiveIndexIsolated(root: string, signal?: AbortSignal): Promi
+   const timeoutMs = envMs("HIVE_DAEMON_ACTIVE_SESSION_RECONCILE_TIMEOUT_MS", 60_000);
+   return new Promise<number>((resolve, reject) => {
+     const child = spawn(
+-      process.execPath,
++      childNodePath(),
+       daemonWorkerArgv("active-index-reconcile-worker", import.meta.url),
+       {
+-        env: { ...process.env, HIVE_STORE_ROOT: root },
++        env: nativeNodeEnv({ ...process.env, HIVE_STORE_ROOT: root }),
+         stdio: ["ignore", "ignore", "pipe"],
+       },
+     );
+@@ -175,8 +176,9 @@ export type IsolatedSessionListerOptions = {
+ export type IsolatedSessionLister = (() => Promise<SessionRecord[]>) & { close: () => Promise<void> };
+ 
+ function defaultSpawnChild(): SessionListChild {
+-  const child: ChildProcess = spawn(process.execPath, daemonWorkerArgv("session-list-worker", import.meta.url), {
++  const child: ChildProcess = spawn(childNodePath(), daemonWorkerArgv("session-list-worker", import.meta.url), {
+     stdio: ["pipe", "pipe", "inherit"],
++    env: nativeNodeEnv(),
+   });
+   child.unref();
+   return child as unknown as SessionListChild;
+diff --git a/src/daemon/supervision.ts b/src/daemon/supervision.ts
+index adc43e3c..37a93ab1 100644
+--- a/src/daemon/supervision.ts
++++ b/src/daemon/supervision.ts
+@@ -1,3 +1,4 @@
++import { childNodePath, nativeNodeEnv } from "../nodeRuntime.js";
+ /**
+  * The daemon's self-supervision defenses: the in-process watchdog, the
+  * synchronous breach/hard-kill self-destruct, and the out-of-process sentinel
+@@ -193,7 +194,7 @@ export function recordFatalDiagnosticSync(
+  */
+ export function spawnSentinel(config: DaemonConfig): ChildProcess {
+   const sentinel = spawn(
+-    process.execPath,
++    childNodePath(),
+     [
+       ...daemonWorkerArgv("sentinel", import.meta.url),
+       "--parent-pid",
+@@ -207,7 +208,7 @@ export function spawnSentinel(config: DaemonConfig): ChildProcess {
+       "--log-path",
+       daemonLogPath(),
+     ],
+-    { stdio: "ignore" },
++    { stdio: "ignore", env: nativeNodeEnv() },
+   );
+   sentinel.unref();
+   return sentinel;
+diff --git a/src/deployCli.ts b/src/deployCli.ts
+index 61a17772..5f93d352 100644
+--- a/src/deployCli.ts
++++ b/src/deployCli.ts
+@@ -1,3 +1,4 @@
++import { probeNativeNode } from "./nodeRuntime.js";
+ /** The deploy owner exposes its stable CLI without rewriting user-managed bins. */
+ import { lstat, mkdir, open, readFile, readlink, rename, symlink, unlink } from "node:fs/promises";
+ import { dirname, join, resolve } from "node:path";
+@@ -15,6 +16,7 @@ async function pathState(path: string) {
+ }
+ 
+ export async function exposeDeployedCli(runtimeRoot: string, binDirectory: string, interpreter: string): Promise<void> {
++  interpreter = probeNativeNode(interpreter).path;
+   const root = resolve(runtimeRoot), bin = resolve(binDirectory), shim = join(root, "hive"), link = join(bin, "hive");
+   const existing = await pathState(link);
+   if (existing && (!existing.isSymbolicLink() || await readlink(link) !== shim)) {
+@@ -23,7 +25,7 @@ export async function exposeDeployedCli(runtimeRoot: string, binDirectory: strin
+   const prior = await pathState(shim);
+   if (prior && (!prior.isFile() || !(await readFile(shim, "utf8")).startsWith(HEADER))) throw new Error("deploy: runtime CLI shim is not owner-managed");
+   const data = dirname(root);
+-  const content = HEADER + `exec /usr/bin/env ELECTRON_RUN_AS_NODE=1 HIVE_STORE_ROOT=${quote(data)} HIVE_V2_DATA_DIR=${quote(join(data, "v2"))} ${quote(resolve(interpreter))} ${quote(join(root, "current", "dist", "cli.js"))} "$@"\n`;
++  const content = HEADER + `exec /usr/bin/env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS HIVE_STORE_ROOT=${quote(data)} HIVE_V2_DATA_DIR=${quote(join(data, "v2"))} ${quote(resolve(interpreter))} ${quote(join(root, "current", "dist", "cli.js"))} "$@"\n`;
+   const temporary = join(root, `.hive-${randomUUID()}`);
+   const fd = await open(temporary, "wx", 0o755);
+   try { await fd.writeFile(content); await fd.sync(); } finally { await fd.close(); }
+diff --git a/src/deployRuntime.ts b/src/deployRuntime.ts
+index 7b6feb84..d18901bd 100644
+--- a/src/deployRuntime.ts
++++ b/src/deployRuntime.ts
+@@ -1,3 +1,4 @@
++import { resolveNodePin } from "./nodeRuntime.js";
+ /**
+  * Versioned runtime deploys (reset WP0 — docs/design/specs/reset-00-deploy.md).
+  *
+@@ -81,6 +82,7 @@ export type RestartDaemonContext = {
+   installedDir: string;
+   sha: string;
+   log: (line: string) => void;
++  restorePrevious?: () => Promise<boolean>;
+ };
+ 
+ export type DeployHooks = {
+@@ -427,21 +429,37 @@ async function publishDeploy({ root, sha, artifactDir, artifactHash, keep, by, n
+       throw error;
+     }
+     staging = null;
+-    if (displaced) await rm(displaced, { recursive: true, force: true }).catch(() => undefined);
+-
+     const previousSha = await currentDeployTarget(root);
+     await retargetCurrent(root, sha);
+     const last = immutable && previousSha === sha ? (await readDeployHistory(root)).at(-1) : undefined;
+     const entry: DeployHistoryEntry = last?.sha === sha && last.artifactHash === artifactHash
+       ? last : { sha, at: now().toISOString(), artifactHash, by };
++    let restored = false;
++    const restorePrevious = async (): Promise<boolean> => {
++      if (!previousSha) return false;
++      if (restored) return true;
++      if (displaced && previousSha === sha) {
++        await rm(versionDir, { recursive: true, force: true });
++        await rename(displaced, versionDir);
++        displaced = null;
++      }
++      await retargetCurrent(root, previousSha);
++      restored = true;
++      log(`deploy: restored previous runtime ${previousSha}`);
++      return true;
++    };
++    try {
++      await hooks.restartDaemon({ root, installedDir: versionDir, sha, log, restorePrevious, ...(v2 ? { runtime: "v2" as const } : {}) });
++      if (restored) throw new Error("deploy: activation rolled back");
++    } catch (error) {
++      await restorePrevious();
++      throw error;
++    } finally {
++      if (displaced) await rm(displaced, { recursive: true, force: true }).catch(() => undefined);
++    }
+     if (entry !== last) await appendDeployHistory(root, entry);
+-    // Keep every recovery candidate while the coordinated reservation is held.
+     const pruned = immutable ? [] : await pruneRuntimeVersionsLocked(root, { keep });
+     for (const removed of pruned) log(`deploy: pruned old version ${removed.slice(0, 12)}`);
+-
+-    // Deliberately last and separate: the install is fully recorded before
+-    // anything restarts, and a restart failure never un-publishes a deploy.
+-    await hooks.restartDaemon({ root, installedDir: versionDir, sha, log, ...(v2 ? { runtime: "v2" as const } : {}) });
+     return { sha, artifactHash: artifactHash, installedDir: versionDir, previousSha, pruned, entry };
+   } finally {
+     if (staging) await rm(staging, { recursive: true, force: true });
+@@ -494,7 +512,7 @@ export async function deployArtifact(options: DeployArtifactOptions): Promise<De
+       const outcome = await publishDeploy({ root, sha: prepared.identity.sourceRevision, ...prepared,
+         keep: DEFAULT_KEEP_VERSIONS, by: deployedBy(), now: () => new Date(), log: () => undefined,
+         hooks: options.hooks, immutable: true });
+-      if (options.cliBinDirectory !== undefined) await exposeDeployedCli(root, options.cliBinDirectory, process.execPath);
++      if (options.cliBinDirectory !== undefined) await exposeDeployedCli(root, options.cliBinDirectory, resolveNodePin(join(root, "..", "v2")).path);
+       return outcome;
+     });
+   } finally {
+@@ -534,9 +552,16 @@ async function rollbackDeployLocked(options: RollbackOptions): Promise<RollbackO
+     artifactHash: target.artifactHash,
+     by,
+   };
+-  await appendDeployHistory(root, entry);
+   log(`deploy: rolled back ${currentSha.slice(0, 12)} → ${target.sha.slice(0, 12)}`);
+-  await options.hooks.restartDaemon({ root, installedDir: join(root, target.sha), sha: target.sha, log, ...(v2 ? { runtime: "v2" as const } : {}) });
++  try {
++    await options.hooks.restartDaemon({ root, installedDir: join(root, target.sha), sha: target.sha, log,
++      restorePrevious: async () => { await retargetCurrent(root, currentSha); return true; },
++      ...(v2 ? { runtime: "v2" as const } : {}) });
++  } catch (error) {
++    await retargetCurrent(root, currentSha);
++    throw error;
++  }
++  await appendDeployHistory(root, entry);
+   return { from: currentSha, sha: target.sha, entry };
+ }
+ 
+diff --git a/src/flow/background.ts b/src/flow/background.ts
+index c511abee..0f0d9c37 100644
+--- a/src/flow/background.ts
++++ b/src/flow/background.ts
+@@ -1,3 +1,4 @@
++import { childNodePath, nativeNodeEnv, withoutInspectorArgs } from "../nodeRuntime.js";
+ // Background flow runs — detached fork + cancel-by-pgid.
+ //
+ // Design (locked in PHASE2_PLAN.md §"Locked decisions" #3):
+@@ -52,7 +53,7 @@ export type SpawnDetachedOptions = {
+   runId?: string;
+   /** Override the CLI entry path (default = realpath(process.argv[1])). */
+   entryOverride?: string;
+-  /** Override node binary (default = process.execPath). Used by tests. */
++  /** Override node binary (default = childNodePath()). Used by tests. */
+   execPath?: string;
+   /**
+    * Extra argv prepended to the entry (e.g. `["--import","tsx"]` for tsx dev).
+@@ -76,7 +77,7 @@ export const DETACHED_RUN_ENV = "HIVE_FLOW_DETACHED";
+ 
+ /** process.execArgv minus flags that would change the child's execution mode. */
+ function inheritableExecArgv(): string[] {
+-  return process.execArgv.filter(
++  return withoutInspectorArgs(process.execArgv).filter(
+     (arg) => arg !== "--test" && !arg.startsWith("--test=") && arg !== "--watch" && !arg.startsWith("--watch="),
+   );
+ }
+@@ -106,7 +107,7 @@ export async function spawnDetachedRun(
+   }
+   const runId = options.runId ?? generateRunId();
+   const entry = options.entryOverride ?? (await resolveEntry());
+-  const execPath = options.execPath ?? process.execPath;
++  const execPath = options.execPath ?? childNodePath();
+   const startedAt = new Date().toISOString();
+   const logPath = runLogPath(flow.name, runId);
+ 
+@@ -132,7 +133,7 @@ export async function spawnDetachedRun(
+   let spawnedPid: number | undefined;
+   try {
+     const childArgv = [
+-      ...(options.execArgv ?? inheritableExecArgv()),
++      ...withoutInspectorArgs(options.execArgv ?? inheritableExecArgv()),
+       entry,
+       "__flow-exec",
+       runId,
+@@ -142,11 +143,11 @@ export async function spawnDetachedRun(
+     const child = spawn(execPath, childArgv, {
+       detached: true,
+       stdio: ["ignore", logFd, logFd],
+-      env: {
++      env: nativeNodeEnv({
+         ...process.env,
+         [DETACHED_RUN_ENV]: "1",
+         ...(options.env ?? {}),
+-      },
++      }),
+     });
+     // Async spawn failures (e.g. ENOENT exec path) surface via the 'error'
+     // event AFTER spawn() returns; without a listener they would crash the
+diff --git a/src/hsr/runnerHost.ts b/src/hsr/runnerHost.ts
+index e016a3c0..1277ea9f 100644
+--- a/src/hsr/runnerHost.ts
++++ b/src/hsr/runnerHost.ts
+@@ -1,3 +1,4 @@
++import { childNodePath, nativeNodeEnv } from "../nodeRuntime.js";
+ // Local HSR runner-host launcher (APIA-76): resolves and forks the minimal
+ // detached child entry. The child lifecycle lives in runner-entry.ts; its
+ // __hsr-run compatibility export stays here for the existing CLI dispatch.
+@@ -192,16 +193,16 @@ export async function spawnHsrHost(
+     logHandle = await open(join(hsrRunDir(launchPayload.bee), "host.log"), "a", 0o600);
+     const entry = await (dependencies.resolveEntry ?? (() => resolveHsrEntry()))();
+     const childArgv = [...inheritableExecArgvForHsr(), ...hsrEntryArgv(entry, payloadPath)];
+-    const child = (dependencies.spawn ?? spawnChild)(process.execPath, childArgv, {
++    const child = (dependencies.spawn ?? spawnChild)(childNodePath(), childArgv, {
+       detached: true,
+       stdio: ["ignore", logHandle.fd, logHandle.fd],
+-      env: hsrHostEnvironment(launchPayload, {
++      env: nativeNodeEnv(hsrHostEnvironment(launchPayload, {
+         ...process.env,
+         // HOME becomes per-Cell scratch in the child. Keep the control-plane
+         // store explicit so hive buz/runtime locks still address Honeybee's
+         // canonical store instead of an isolated HOME fallback.
+         HIVE_STORE_ROOT: storeRoot(),
+-      }),
++      })),
+     });
+     // Async spawn failures surface via 'error' after spawn() returns; the
+     // missing-pid check below converts them into a thrown error.
+diff --git a/src/limits/refresh.ts b/src/limits/refresh.ts
+index 0d9855e8..9f51cb40 100644
+--- a/src/limits/refresh.ts
++++ b/src/limits/refresh.ts
+@@ -1,3 +1,4 @@
++import { childNodePath, nativeNodeEnv, withoutInspectorArgs } from "../nodeRuntime.js";
+ // ──────────────────────────────────────────────────────────────────────────
+ // Detached limits refresh — the revalidate half of the auto pick's
+ // stale-while-revalidate. The pick itself never blocks on provider
+@@ -51,13 +52,13 @@ export async function scheduleDetachedLimitsRefresh(): Promise<boolean> {
+     if (!rawEntry) return false;
+     const entry = await realpath(rawEntry).catch(() => rawEntry);
+     // Keep loader flags (tsx dev runs) but never inherit test/watch modes.
+-    const execArgv = process.execArgv.filter(
++    const execArgv = withoutInspectorArgs(process.execArgv).filter(
+       (arg) => arg !== "--test" && !arg.startsWith("--test=") && arg !== "--watch" && !arg.startsWith("--watch="),
+     );
+-    const child = spawnChild(process.execPath, [...execArgv, entry, "limits"], {
++    const child = spawnChild(childNodePath(), [...execArgv, entry, "limits"], {
+       detached: true,
+       stdio: "ignore",
+-      env: { ...process.env },
++      env: nativeNodeEnv(),
+     });
+     child.once("error", () => undefined);
+     child.unref();
+diff --git a/src/nodeRuntime.ts b/src/nodeRuntime.ts
+new file mode 100644
+index 00000000..844cccee
+--- /dev/null
++++ b/src/nodeRuntime.ts
+@@ -0,0 +1,109 @@
++import { nativeNodeEnv } from "./runtimeEnvironment.ts";
++export { nativeNodeEnv, withoutInspectorArgs } from "./runtimeEnvironment.ts";
++import { execFileSync } from "node:child_process";
++import { createHash, randomUUID } from "node:crypto";
++import { accessSync, closeSync, constants, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
++import { homedir } from "node:os";
++import { dirname, isAbsolute, join, resolve } from "node:path";
++
++export interface NodePin {
++  path: string;
++  version: string;
++  sha256: string;
++}
++
++export function nodePinFile(dataDir: string): string {
++  return join(resolve(dataDir, ".."), "node-runtime.json");
++}
++
++export function probeNativeNode(path: string): NodePin {
++  if (!isAbsolute(path) || /\.app[/\\]Contents[/\\]MacOS[/\\]/i.test(path)) throw new Error("HIVE_NODE_PATH must be an absolute native Node executable, never Electron");
++  const real = realpathSync(path);
++  if (/\.app[/\\]Contents[/\\]MacOS[/\\]/i.test(real)) throw new Error("HIVE_NODE_PATH refuses an Electron app executable");
++  accessSync(real, constants.X_OK);
++  const sha256 = createHash("sha256").update(readFileSync(real)).digest("hex");
++  let identity: { node?: unknown; electron?: unknown; execPath?: unknown };
++  try {
++    identity = JSON.parse(execFileSync(real, ["--eval", "process.stdout.write(JSON.stringify({node:process.versions.node,electron:process.versions.electron,execPath:process.execPath}))"], {
++      env: nativeNodeEnv(), timeout: 5000, maxBuffer: 4096, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"],
++    }));
++  } catch { throw new Error("HIVE_NODE_PATH identity probe failed; a native Node executable is required"); }
++  if (identity.electron !== undefined || typeof identity.node !== "string" || !/^\d+\.\d+\.\d+$/.test(identity.node)
++    || typeof identity.execPath !== "string" || realpathSync(identity.execPath) !== real) throw new Error("HIVE_NODE_PATH identity probe refused Electron or an invalid Node identity");
++  return { path: real, version: identity.node, sha256 };
++}
++
++function checkPin(value: unknown): NodePin {
++  if (value == null || typeof value !== "object" || !("path" in value) || !("version" in value) || !("sha256" in value)
++    || typeof value.path !== "string" || !isAbsolute(value.path) || typeof value.version !== "string"
++    || !/^\d+\.\d+\.\d+$/.test(value.version) || typeof value.sha256 !== "string" || !/^[a-f0-9]{64}$/.test(value.sha256)) throw new Error("invalid persisted Honeybee Node pin");
++  return { path: value.path, version: value.version, sha256: value.sha256 };
++}
++
++export function resolveNodePin(dataDir: string, env: NodeJS.ProcessEnv = process.env, interpreter?: string, allowMigration = false): NodePin {
++  const file = nodePinFile(dataDir);
++  const recorded = existsSync(file) ? checkPin(JSON.parse(readFileSync(file, "utf8"))) : undefined;
++  const selected = interpreter ?? env.HIVE_NODE_PATH ?? recorded?.path;
++  if (!selected) throw new Error("HIVE_NODE_PATH required: supply an absolute managed, versioned native Node executable before installing or deploying Honeybee");
++  const migrationRequested = allowMigration && env.HIVE_NODE_PATH !== undefined && env.HIVE_NODE_PATH !== recorded?.path;
++  const pin = probeNativeNode(selected);
++  const migrationPath = migrationRequested ? (env.HIVE_NODE_PATH === selected ? pin.path : probeNativeNode(env.HIVE_NODE_PATH!).path) : undefined;
++  const migrating = migrationRequested && (!recorded || migrationPath !== recorded.path);
++  const expected = recorded && !migrating ? recorded : undefined;
++  if (migrationRequested && migrationPath !== pin.path) throw new Error("HIVE_NODE_PATH and service interpreter must select the same native Node pin");
++  if ((expected && (expected.path !== pin.path || expected.version !== pin.version || expected.sha256 !== pin.sha256))
++    || (env.HIVE_NODE_VERSION && env.HIVE_NODE_VERSION !== pin.version)
++    || (env.HIVE_NODE_SHA256 && env.HIVE_NODE_SHA256 !== pin.sha256)) throw new Error("Honeybee Node pin identity drift: path, version or sha256 differs from the recorded pin");
++  return pin;
++}
++
++export function writeNodeRuntimeState(file: string, value: unknown): void {
++  mkdirSync(dirname(file), { recursive: true });
++  const temporary = `${file}.${randomUUID()}`;
++  const fd = openSync(temporary, "wx", 0o600);
++  try { writeFileSync(fd, JSON.stringify(value) + "\n"); fsyncSync(fd); } finally { closeSync(fd); }
++  renameSync(temporary, file);
++  const directory = openSync(dirname(file), "r");
++  try { fsyncSync(directory); } finally { closeSync(directory); }
++}
++
++export function persistNodePin(dataDir: string, pin: NodePin): void {
++  writeNodeRuntimeState(nodePinFile(dataDir), pin);
++}
++
++export function nodeRepairFile(dataDir: string): string {
++  return join(dirname(nodePinFile(dataDir)), "node-runtime-held.json");
++}
++
++export function readNodeRepair(dataDir: string): unknown {
++  const file = nodeRepairFile(dataDir);
++  return existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : null;
++}
++
++export function validateDaemonNode(dataDir: string, actualProcess = false): string | null {
++  try {
++    const pin = resolveNodePin(dataDir);
++    if (actualProcess && (process.versions.electron || realpathSync(process.execPath) !== pin.path || process.versions.node !== pin.version)) throw new Error("running daemon interpreter differs from the recorded native Node pin");
++    rmSync(nodeRepairFile(dataDir), { force: true });
++    return null;
++  } catch (error) {
++    const detail = error instanceof Error ? error.message : String(error);
++    writeNodeRuntimeState(nodeRepairFile(dataDir), { state: "held", reason: "node_pin_invalid", detail, at: new Date().toISOString() });
++    return detail;
++  }
++}
++
++export function nodePinEnv(pin: NodePin): Record<string, string> {
++  return { HIVE_NODE_PATH: pin.path, HIVE_NODE_VERSION: pin.version, HIVE_NODE_SHA256: pin.sha256 };
++}
++
++export function childNodePath(): string {
++  const env = process.env;
++  const dataDir = env.HIVE_V2_DATA_DIR ?? join(env.HIVE_STORE_ROOT ?? join(homedir(), ".hive"), "v2");
++  if (env.HIVE_NODE_PATH || env.HIVE_NODE_VERSION || env.HIVE_NODE_SHA256 || existsSync(nodePinFile(dataDir))) {
++    return resolveNodePin(dataDir).path;
++  }
++  if (process.versions.electron) throw new Error("HIVE_NODE_PATH required: Electron cannot launch Honeybee Node children");
++  return realpathSync(process.execPath);
++}
++
+diff --git a/src/runtimeEnvironment.ts b/src/runtimeEnvironment.ts
+new file mode 100644
+index 00000000..8107a222
+--- /dev/null
++++ b/src/runtimeEnvironment.ts
+@@ -0,0 +1,11 @@
++export function nativeNodeEnv(env: NodeJS.ProcessEnv = process.env): Record<string, string> {
++  const clean: Record<string, string> = {};
++  for (const [key, value] of Object.entries(env)) if (value !== undefined) clean[key] = value;
++  delete clean.ELECTRON_RUN_AS_NODE;
++  delete clean.NODE_OPTIONS;
++  return clean;
++}
++
++export function withoutInspectorArgs(args: readonly string[]): string[] {
++  return args.filter(arg => !/^--inspect(?:-brk|-wait|-port|-publish-uid)?(?:=|$)/.test(arg) && !/^--debug(?:-brk|-port)?(?:=|$)/.test(arg));
++}
+diff --git a/src/servicePaths.ts b/src/servicePaths.ts
+new file mode 100644
+index 00000000..852c9f1a
+--- /dev/null
++++ b/src/servicePaths.ts
+@@ -0,0 +1,16 @@
++import { isAbsolute, join } from "node:path";
++
++export function serviceDirectory(platform: NodeJS.Platform = process.platform, env: NodeJS.ProcessEnv = process.env): string {
++  const override = env.HIVE_V2_SERVICE_DIR;
++  if (override) {
++    if (!isAbsolute(override)) throw new Error("HIVE_V2_SERVICE_DIR must be absolute");
++    return override;
++  }
++  if (platform === "linux" && env.XDG_CONFIG_HOME) {
++    if (!isAbsolute(env.XDG_CONFIG_HOME)) throw new Error("XDG_CONFIG_HOME must be absolute");
++    return join(env.XDG_CONFIG_HOME, "systemd", "user");
++  }
++  const home = env.HOME;
++  if (!home || !isAbsolute(home)) throw new Error("HOME required for the service directory");
++  return platform === "darwin" ? join(home, "Library", "LaunchAgents") : join(home, ".config", "systemd", "user");
++}
+diff --git a/src/substrates/local-tmux.ts b/src/substrates/local-tmux.ts
+index 41998f88..efebeb02 100644
+--- a/src/substrates/local-tmux.ts
++++ b/src/substrates/local-tmux.ts
+@@ -1,3 +1,4 @@
++import { childNodePath, nativeNodeEnv } from "../nodeRuntime.js";
+ import { execFile, spawn } from "node:child_process";
+ import { mkdtemp, rm, writeFile } from "node:fs/promises";
+ import { tmpdir } from "node:os";
+@@ -144,7 +145,7 @@ export async function newSession(
+   const launcher = await createLauncher(spec);
+   try {
+     // -P -F prints the new pane's id so spawn can pin the bee to it.
+-    const result = await tmux(["new-session", "-d", "-P", "-F", "#{pane_id}:#{pane_pid}", "-s", name, "-c", cwd, shellCommand([process.execPath, launcher.runnerPath, launcher.payloadPath])]);
++    const result = await tmux(["new-session", "-d", "-P", "-F", "#{pane_id}:#{pane_pid}", "-s", name, "-c", cwd, shellCommand(["/usr/bin/env", "-u", "ELECTRON_RUN_AS_NODE", "-u", "NODE_OPTIONS", childNodePath(), launcher.runnerPath, launcher.payloadPath])]);
+     const { paneId, launcherPgid } = parseLaunchResult(result.stdout);
+     await applyTmuxWindowOptions(paneId || `=${name}:`, spec.tmuxOptions);
+     const launcherFingerprint = await admitTmuxLauncher(paneId, launcherPgid, birthCapture);
+@@ -167,7 +168,7 @@ export async function newPane(
+   birthCapture: ProcessBirthCaptureOptions = {},
+ ): Promise<NewSessionResult> {
+   const launcher = await createLauncher(spec);
+-  const command = shellCommand([process.execPath, launcher.runnerPath, launcher.payloadPath]);
++  const command = shellCommand(["/usr/bin/env", "-u", "ELECTRON_RUN_AS_NODE", "-u", "NODE_OPTIONS", childNodePath(), launcher.runnerPath, launcher.payloadPath]);
+   try {
+     if (opts?.dir === "window") {
+       // A fresh window in the same session. -P -F prints the new pane id.
+@@ -725,8 +726,11 @@ if (typeof payload.realHome === "string" && payload.realHome.length > 0) {
+ }
+ repairInteractiveColorEnv(baseEnv);
+ 
++delete baseEnv.ELECTRON_RUN_AS_NODE;
++delete baseEnv.NODE_OPTIONS;
++const childEnv = { ...baseEnv, ...(payload.env && typeof payload.env === "object" ? payload.env : {}) };
+ const child = spawn(payload.command, Array.isArray(payload.args) ? payload.args : [], {
+-  env: { ...baseEnv, ...(payload.env && typeof payload.env === "object" ? payload.env : {}) },
++  env: childEnv,
+   stdio: "inherit",
+ });
+ 
+diff --git a/src/updateAdmission.ts b/src/updateAdmission.ts
+index ebf82e0d..0d54a0bb 100644
+--- a/src/updateAdmission.ts
++++ b/src/updateAdmission.ts
+@@ -1,3 +1,4 @@
++import { childNodePath, nativeNodeEnv } from "./nodeRuntime.js";
+ /** Read-only deploy admission. SQLite remains the daemon's sole authority. */
+ import { DatabaseSync } from "node:sqlite";
+ import { existsSync, readFileSync } from "node:fs";
+@@ -51,9 +52,9 @@ async function readUpdateOwner(root: string): Promise<Owner> {
+   if (!existsSync(join(dataDir, "core.sqlite3"))) return { reservation: null, blockers: false };
+   let response: string | undefined;
+   try {
+-    const { stdout } = await promisify(execFile)(process.execPath,
++    const { stdout } = await promisify(execFile)(childNodePath(),
+       [join(root, "current", "dist", "v2", "cli.js"), "update-owner", "status", "--data-dir", dataDir, "--socket", join(dataDir, "hived.sock")],
+-      { timeout: 10_000 });
++      { timeout: 10_000, env: nativeNodeEnv() });
+     response = stdout;
+   } catch {
+     // The core holds SQLite EXCLUSIVE for its entire lifetime. A read can only
+diff --git a/tests/daemon-install.test.ts b/tests/daemon-install.test.ts
+index 517ad80e..5433b318 100644
+--- a/tests/daemon-install.test.ts
++++ b/tests/daemon-install.test.ts
+@@ -38,6 +38,7 @@ async function withTempHome(fn: () => Promise<void>): Promise<void> {
+   process.env.HIVE_STORE_ROOT = store;
+   // Pre-create LaunchAgents so atomic write doesn't race the mkdir.
+   await mkdir(join(home, "Library", "LaunchAgents"), { recursive: true });
++  assert.ok(plistPathForLabel(DEFAULT_LAUNCH_LABEL).startsWith(home + "/"));
+   try {
+     await fn();
+   } finally {
+@@ -57,14 +58,14 @@ test("installAgent writes the plist to ~/Library/LaunchAgents/ and bootstraps vi
+       const result = await installAgent({
+         label: DEFAULT_LAUNCH_LABEL,
+         cliEntry: "/usr/local/lib/honeybee/dist/cli.js",
+-        nodeBinary: "/usr/local/bin/node",
++        nodeBinary: process.execPath,
+       });
+       assert.equal(result.installed, true);
+       assert.equal(result.label, DEFAULT_LAUNCH_LABEL);
+       assert.ok(result.plistPath.endsWith("dev.honeybee.hive.plist"));
+       const plistText = await readFile(result.plistPath, "utf8");
+       assert.match(plistText, /<key>Label<\/key>\s+<string>dev\.honeybee\.hive<\/string>/);
+-      assert.match(plistText, /<string>\/usr\/local\/bin\/node<\/string>/);
++      assert.ok(plistText.includes(`<string>${process.execPath}</string>`));
+       assert.match(plistText, /<string>\/usr\/local\/lib\/honeybee\/dist\/cli\.js<\/string>/);
+       // PATH must be burned in: user-domain launchd's default PATH lacks the
+       // Homebrew prefixes, so without this the daemon cannot find tmux.
+@@ -99,13 +100,13 @@ test("installAgent is idempotent: second install without --force is a noop", asy
+     try {
+       const first = await installAgent({
+         cliEntry: "/abs/cli.js",
+-        nodeBinary: "/usr/bin/node",
++        nodeBinary: process.execPath,
+       });
+       assert.equal(first.installed, true);
+ 
+       const second = await installAgent({
+         cliEntry: "/abs/cli.js",
+-        nodeBinary: "/usr/bin/node",
++        nodeBinary: process.execPath,
+       });
+       assert.equal(second.installed, false);
+       assert.match(second.message, /already installed/);
+@@ -120,11 +121,11 @@ test("installAgent without --force reports staleness when the on-disk plist diff
+   await withTempHome(async () => {
+     const { dispose } = captureRunner();
+     try {
+-      await installAgent({ cliEntry: "/abs/cli.js", nodeBinary: "/usr/bin/node" });
++      await installAgent({ cliEntry: "/abs/cli.js", nodeBinary: process.execPath });
+       // Same label, but the CLI moved — the rendered candidate differs.
+       const second = await installAgent({
+         cliEntry: "/abs/elsewhere/cli.js",
+-        nodeBinary: "/usr/bin/node",
++        nodeBinary: process.execPath,
+       });
+       assert.equal(second.installed, false);
+       assert.match(second.message, /already installed/);
+@@ -140,11 +141,11 @@ test("installAgent --force overwrites an existing plist and boots out before boo
+   await withTempHome(async () => {
+     const { calls, dispose } = captureRunner();
+     try {
+-      await installAgent({ cliEntry: "/abs/cli.js", nodeBinary: "/usr/bin/node" });
++      await installAgent({ cliEntry: "/abs/cli.js", nodeBinary: process.execPath });
+       calls.length = 0;
+       const second = await installAgent({
+         cliEntry: "/abs/cli.js",
+-        nodeBinary: "/usr/bin/node",
++        nodeBinary: process.execPath,
+         force: true,
+       });
+       assert.equal(second.installed, true);
+@@ -173,10 +174,10 @@ test("installAgent --force ignores a 'not loaded' bootout failure", async () =>
+       return { ok: true, stdout: "", stderr: "", exitCode: 0 };
+     });
+     try {
+-      await installAgent({ cliEntry: "/abs/cli.js", nodeBinary: "/usr/bin/node", skipBootstrap: true });
++      await installAgent({ cliEntry: "/abs/cli.js", nodeBinary: process.execPath, skipBootstrap: true });
+       const result = await installAgent({
+         cliEntry: "/abs/cli.js",
+-        nodeBinary: "/usr/bin/node",
++        nodeBinary: process.execPath,
+         force: true,
+       });
+       assert.equal(result.installed, true);
+@@ -197,7 +198,7 @@ test("installAgent --skipBootstrap writes the plist without invoking launchctl",
+     try {
+       const result = await installAgent({
+         cliEntry: "/abs/cli.js",
+-        nodeBinary: "/usr/bin/node",
++        nodeBinary: process.execPath,
+         skipBootstrap: true,
+       });
+       assert.equal(result.installed, true);
+@@ -213,7 +214,7 @@ test("uninstallAgent removes the plist and runs launchctl bootout", async () =>
+   await withTempHome(async () => {
+     const { calls, dispose } = captureRunner();
+     try {
+-      await installAgent({ cliEntry: "/abs/cli.js", nodeBinary: "/usr/bin/node" });
++      await installAgent({ cliEntry: "/abs/cli.js", nodeBinary: process.execPath });
+       calls.length = 0;
+       const result = await uninstallAgent({});
+       assert.equal(result.removed, true);
+@@ -250,7 +251,7 @@ test("isAgentInstalled returns true after install, false after uninstall", async
+     const { dispose } = captureRunner();
+     try {
+       assert.equal(await isAgentInstalled(), false);
+-      await installAgent({ cliEntry: "/abs/cli.js", nodeBinary: "/usr/bin/node" });
++      await installAgent({ cliEntry: "/abs/cli.js", nodeBinary: process.execPath });
+       assert.equal(await isAgentInstalled(), true);
+       await uninstallAgent({});
+       assert.equal(await isAgentInstalled(), false);
+@@ -267,7 +268,7 @@ test("getAgentInstallStatus reports plist presence and a stable checksum", async
+       const before = await getAgentInstallStatus();
+       assert.equal(before.plistExists, false);
+       assert.equal(before.plistChecksum, undefined);
+-      await installAgent({ cliEntry: "/abs/cli.js", nodeBinary: "/usr/bin/node" });
++      await installAgent({ cliEntry: "/abs/cli.js", nodeBinary: process.execPath });
+       const after = await getAgentInstallStatus();
+       assert.equal(after.plistExists, true);
+       assert.ok(after.plistChecksum && /^[0-9a-f]{8}$/.test(after.plistChecksum));
+@@ -281,7 +282,7 @@ test("readDaemonStatus surfaces installed=true when a plist exists", async () =>
+   await withTempHome(async () => {
+     const { dispose } = captureRunner();
+     try {
+-      await installAgent({ cliEntry: "/abs/cli.js", nodeBinary: "/usr/bin/node" });
++      await installAgent({ cliEntry: "/abs/cli.js", nodeBinary: process.execPath });
+       const status = await readDaemonStatus();
+       assert.equal(status.installed, true);
+       assert.ok(status.plistPath);
+@@ -326,7 +327,7 @@ test("readDaemonStatus reports launchd's pre-lock boot window only on macOS", as
+     try {
+       await installAgent({
+         cliEntry: "/abs/cli.js",
+-        nodeBinary: "/usr/bin/node",
++        nodeBinary: process.execPath,
+         skipBootstrap: true,
+       });
+       const status = await readDaemonStatus();
+diff --git a/tests/deploy-artifact.test.ts b/tests/deploy-artifact.test.ts
+index b7a44eb4..b3d2a064 100644
+--- a/tests/deploy-artifact.test.ts
++++ b/tests/deploy-artifact.test.ts
+@@ -1,3 +1,4 @@
++import { persistNodePin, probeNativeNode } from "../src/nodeRuntime.js";
+ import assert from "node:assert/strict";
+ import { test } from "node:test";
+ import { mkdtemp, rm, writeFile } from "node:fs/promises";
+@@ -329,6 +330,7 @@ test("fresh artifact exposes its owner CLI only after restart succeeds and retri
+   try {
+     const fixture = await release(dir), root = join(dir, "runtime"), bin = join(dir, "local", "bin");
+     let restartFailed = false;
++    persistNodePin(join(root, "..", "v2"), probeNativeNode(process.execPath));
+     const options = { ...fixture, root, admission: { fresh: true as const }, expectedCurrent: null,
+       cliBinDirectory: bin, hooks: { async restartDaemon() { if (!restartFailed) { restartFailed = true; throw new Error("restart interrupted"); } } } };
+     await assert.rejects(deployArtifact(options), /restart interrupted/);
+diff --git a/tests/deploy-restart.test.ts b/tests/deploy-restart.test.ts
+index 8862a6ea..260f91d7 100644
+--- a/tests/deploy-restart.test.ts
++++ b/tests/deploy-restart.test.ts
+@@ -1,53 +1,100 @@
++import { persistNodePin, probeNativeNode } from "../src/nodeRuntime.js";
+ import assert from "node:assert/strict";
+ import { test } from "node:test";
+-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
++import { copyFile, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+ import { join } from "node:path";
+ import { tmpdir } from "node:os";
+ import { restartDeployedDaemon } from "../src/commands/deploy.js";
+ 
+-test("fresh verified activation executes installed current v2 CLI with scoped data directory", { skip: process.platform !== "darwin" }, async () => {
++test("fresh verified activation executes installed current v2 CLI with scoped data directory", { skip: process.platform !== "darwin" && process.platform !== "linux" }, async () => {
+   const dir = await mkdtemp(join(tmpdir(), "hon8-restart-"));
++  const previousServiceDir = process.env.HIVE_V2_SERVICE_DIR;
++  const previousHome = process.env.HOME;
++  process.env.HOME = join(dir, "home");
++  process.env.HIVE_V2_SERVICE_DIR = join(process.env.HOME, "units");
++  assert.ok(process.env.HIVE_V2_SERVICE_DIR.startsWith(process.env.HOME + "/"));
+   try {
+     const root = join(dir, "runtime"), calls = join(dir, "calls.jsonl");
+     await mkdir(join(root, "current", "dist"), { recursive: true });
+-    await writeFile(join(root, "current", "dist", "cli.js"), `require('node:fs').appendFileSync(${JSON.stringify(calls)}, JSON.stringify(process.argv.slice(2))+'\\n');`);
++    const pinnedNode = join(dir, "node-24-pinned");
++    await copyFile(process.execPath, pinnedNode);
++    persistNodePin(join(dir, "v2"), probeNativeNode(pinnedNode));
++    await writeFile(join(root, "current", "dist", "cli.js"), `require('node:fs').appendFileSync(${JSON.stringify(calls)}, JSON.stringify({ args: process.argv.slice(2), interpreter: process.execPath })+'\\n'); if(process.argv[4] === 'status') console.log(JSON.stringify({running:true}));`);
+     await restartDeployedDaemon({ root, installedDir: join(root, "current"), sha: "a".repeat(40), runtime: "v2", log() {} });
+     assert.deepEqual((await readFile(calls, "utf8")).trim().split("\n").map(line => JSON.parse(line)),
+-      ["install", "stop", "start"].map(verb => ["v2", "daemon", verb, "--data-dir", join(dir, "v2")]));
+-  } finally { await rm(dir, { recursive: true, force: true }); }
++      ["install", "stop", "start", "status"].map(verb => ({ args: ["v2", "daemon", verb, "--data-dir", join(dir, "v2"), ...(verb === "status" ? ["--json"] : [])], interpreter: pinnedNode })));
++  } finally {
++    if (previousHome === undefined) delete process.env.HOME;
++    else process.env.HOME = previousHome;
++    if (previousServiceDir === undefined) delete process.env.HIVE_V2_SERVICE_DIR;
++    else process.env.HIVE_V2_SERVICE_DIR = previousServiceDir;
++    await rm(dir, { recursive: true, force: true });
++  }
+ });
+ 
+ for (const absent of [false, true]) {
+-  test(`restart after stop failure ${absent ? "requires confirmed absence" : "refuses a still-loaded service"}`, { skip: process.platform !== "darwin" }, async () => {
++  test(`restart after stop failure ${absent ? "requires confirmed absence" : "refuses a still-loaded service"}`, { skip: process.platform !== "darwin" && process.platform !== "linux" }, async () => {
+     const dir = await mkdtemp(join(tmpdir(), "hon8-stop-"));
++    const previousServiceDir = process.env.HIVE_V2_SERVICE_DIR;
++    const previousHome = process.env.HOME;
++    process.env.HOME = join(dir, "home");
++    process.env.HIVE_V2_SERVICE_DIR = join(process.env.HOME, "units");
++    assert.ok(process.env.HIVE_V2_SERVICE_DIR.startsWith(process.env.HOME + "/"));
+     try {
+       const root = join(dir, "runtime"), calls = join(dir, "calls.jsonl");
+       await mkdir(join(root, "current", "dist"), { recursive: true });
++    persistNodePin(join(dir, "v2"), probeNativeNode(process.execPath));
+       await writeFile(join(root, "current", "dist", "cli.js"), `
+         require('node:fs').appendFileSync(${JSON.stringify(calls)}, JSON.stringify(process.argv.slice(2))+'\\n');
+         if (process.argv[4] === 'stop') process.exit(1);
+-        if (process.argv[4] === 'status') console.log(${JSON.stringify(JSON.stringify({ running: !absent, service: { installed: !absent, running: !absent } }))});
++        if (process.argv[4] === 'start') require('node:fs').writeFileSync(${JSON.stringify(join(dir, "started"))}, 'yes');
++        if (process.argv[4] === 'status') console.log(JSON.stringify(require('node:fs').existsSync(${JSON.stringify(join(dir, "started"))}) ? {running:true} : ${JSON.stringify({ running: !absent, service: { installed: !absent, running: !absent } })}));
+       `);
+       const result = restartDeployedDaemon({ root, installedDir: join(root, "current"), sha: "a".repeat(40), runtime: "v2", log() {} });
+       if (absent) await result;
+       else await assert.rejects(result, /exited/);
+       const verbs = (await readFile(calls, "utf8")).trim().split("\n").map(line => JSON.parse(line)[2]);
+-      assert.deepEqual(verbs, absent ? ["install", "stop", "status", "start"] : ["install", "stop", "status"]);
+-    } finally { await rm(dir, { recursive: true, force: true }); }
++      assert.deepEqual(verbs, absent ? ["install", "stop", "status", "start", "status"] : ["install", "stop", "status"]);
++    } finally {
++    if (previousHome === undefined) delete process.env.HOME;
++    else process.env.HOME = previousHome;
++    if (previousServiceDir === undefined) delete process.env.HIVE_V2_SERVICE_DIR;
++    else process.env.HIVE_V2_SERVICE_DIR = previousServiceDir;
++    await rm(dir, { recursive: true, force: true });
++  }
+   });
+ }
+ 
+ import { RUNTIME_MODE_CONFIG } from "../src/cliRoute.js";
+ 
+-test("persisted v2 config selects the v2 service for an ordinary source restart", { skip: process.platform !== "darwin" }, async () => {
++test("persisted v2 config selects the v2 service for an ordinary source restart", { skip: process.platform !== "darwin" && process.platform !== "linux" }, async () => {
+   const dir = await mkdtemp(join(tmpdir(), "hon8-config-restart-"));
++  const previousServiceDir = process.env.HIVE_V2_SERVICE_DIR;
++  const previousHome = process.env.HOME;
++  process.env.HOME = join(dir, "home");
++  process.env.HIVE_V2_SERVICE_DIR = join(process.env.HOME, "units");
++  assert.ok(process.env.HIVE_V2_SERVICE_DIR.startsWith(process.env.HOME + "/"));
+   try {
+     const root = join(dir, "runtime"), calls = join(dir, "calls.jsonl");
+     await mkdir(join(root, "current", "dist"), { recursive: true });
++    persistNodePin(join(dir, "v2"), probeNativeNode(process.execPath));
+     await writeFile(join(root, RUNTIME_MODE_CONFIG), JSON.stringify({ schemaVersion: 1, runtime: "v2" }));
+-    await writeFile(join(root, "current", "dist", "cli.js"), `require('node:fs').appendFileSync(${JSON.stringify(calls)}, JSON.stringify(process.argv.slice(2))+'\\n');`);
++    await writeFile(join(root, "current", "dist", "cli.js"), `require('node:fs').appendFileSync(${JSON.stringify(calls)}, JSON.stringify(process.argv.slice(2))+'\\n'); if(process.argv[4] === 'status') console.log(JSON.stringify({running:true}));`);
+     await restartDeployedDaemon({ root, installedDir: join(root, "current"), sha: "b".repeat(40), log() {} });
+     assert.deepEqual((await readFile(calls, "utf8")).trim().split("\n").map(line => JSON.parse(line)),
+-      ["install", "stop", "start"].map(verb => ["v2", "daemon", verb, "--data-dir", join(dir, "v2")]));
++      ["install", "stop", "start", "status"].map(verb => ["v2", "daemon", verb, "--data-dir", join(dir, "v2"), ...(verb === "status" ? ["--json"] : [])]));
++  } finally {
++    if (previousHome === undefined) delete process.env.HOME;
++    else process.env.HOME = previousHome;
++    if (previousServiceDir === undefined) delete process.env.HIVE_V2_SERVICE_DIR;
++    else process.env.HIVE_V2_SERVICE_DIR = previousServiceDir;
++    await rm(dir, { recursive: true, force: true });
++  }
++});
++
++test("legacy deployment refuses activation before selecting a service", async () => {
++  const dir = await mkdtemp(join(tmpdir(), "hb-legacy-deploy-refuse-"));
++  try {
++    await assert.rejects(restartDeployedDaemon({ root: dir, installedDir: dir, sha: "a".repeat(40), log() {} }), /legacy service activation is refused/);
+   } finally { await rm(dir, { recursive: true, force: true }); }
+ });
+diff --git a/tests/deploy-runtime.test.ts b/tests/deploy-runtime.test.ts
+index 2ac1788a..72faf202 100644
+--- a/tests/deploy-runtime.test.ts
++++ b/tests/deploy-runtime.test.ts
+@@ -362,3 +362,46 @@ test("ancestry guard: non-descendant refused, descendant allowed, override honor
+     assert.equal(await currentDeployTarget(root), c);
+   });
+ });
++
++test("failed activation restores current and preserves successful deploy history", async () => {
++  await withDeployWorld(async ({ root, repoRoot, commit, hooks }) => {
++    const old = await commit("old");
++    await deployVersion({ repoRoot, root, hooks });
++    const history = await readDeployHistory(root);
++    await commit("new");
++    await assert.rejects(deployVersion({ repoRoot, root, hooks: { ...hooks, async restartDaemon(ctx) {
++      assert.equal(await ctx.restorePrevious?.(), true);
++      assert.equal(await currentDeployTarget(root), old);
++      throw new Error("forced activation failure");
++    } } }), /forced activation failure/);
++    assert.equal(await currentDeployTarget(root), old);
++    assert.equal(await runInstalledCli(root), "old");
++    assert.deepEqual(await readDeployHistory(root), history);
++  });
++});
++
++test("failed same-revision activation restores displaced runtime bytes", async () => {
++  await withDeployWorld(async ({ root, repoRoot, commit, hooks }) => {
++    await commit("old");
++    await deployVersion({ repoRoot, root, hooks });
++    const history = await readDeployHistory(root);
++    await assert.rejects(deployVersion({ repoRoot, root, hooks: { ...hooks,
++      async buildArtifact(ctx) { const stage = await hooks.buildArtifact(ctx); await writeFile(join(stage.artifactDir, "dist", "cli.js"), 'console.log("replacement")'); return stage; },
++      async restartDaemon(ctx) { await ctx.restorePrevious?.(); throw new Error("forced same revision failure"); },
++    } }), /forced same revision failure/);
++    assert.equal(await runInstalledCli(root), "old");
++    assert.deepEqual(await readDeployHistory(root), history);
++  });
++});
++
++test("failed rollback restores the active version without recording success", async () => {
++  await withDeployWorld(async ({ root, repoRoot, commit, hooks }) => {
++    await commit("old"); await deployVersion({ repoRoot, root, hooks });
++    const active = await commit("active"); await deployVersion({ repoRoot, root, hooks });
++    const history = await readDeployHistory(root);
++    await assert.rejects(rollbackDeploy({ root, hooks: { async restartDaemon(ctx) { await ctx.restorePrevious?.(); throw new Error("forced rollback failure"); } } }), /forced rollback failure/);
++    assert.equal(await currentDeployTarget(root), active);
++    assert.equal(await runInstalledCli(root), "active");
++    assert.deepEqual(await readDeployHistory(root), history);
++  });
++});
+diff --git a/tests/node-runtime.test.ts b/tests/node-runtime.test.ts
+new file mode 100644
+index 00000000..f274e35b
+--- /dev/null
++++ b/tests/node-runtime.test.ts
+@@ -0,0 +1,97 @@
++import assert from "node:assert/strict";
++import { test } from "node:test";
++import { appendFileSync, copyFileSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
++import { join } from "node:path";
++import { tmpdir } from "node:os";
++import { childNodePath, nativeNodeEnv, nodePinFile, persistNodePin, probeNativeNode, resolveNodePin, withoutInspectorArgs } from "../src/nodeRuntime.js";
++
++function fixture(run: (dir: string) => void): void {
++  const dir = mkdtempSync(join(tmpdir(), "hb-pin-"));
++  try { run(dir); } finally { rmSync(dir, { recursive: true, force: true }); }
++}
++
++test("fresh service pin requires explicit managed node and refuses Electron", () => fixture(dir => {
++  assert.throws(() => resolveNodePin(join(dir, "v2"), {}), /HIVE_NODE_PATH required/);
++  assert.throws(() => probeNativeNode("/Applications/Apiary.app/Contents/MacOS/Apiary"), /never Electron/);
++  assert.throws(() => probeNativeNode("node"), /absolute native Node/);
++  const electron = join(dir, "electron");
++  writeFileSync(electron, '#!/bin/sh\nprintf \'{"node":"24.18.0","electron":"40.0.0","execPath":"' + electron + '"}\'\n', { mode: 0o755 });
++  assert.throws(() => probeNativeNode(electron), /refused Electron/);
++}));
++
++test("pin persists resolved executable identity and refuses version or byte drift", () => fixture(dir => {
++  const node = join(dir, "node-24"), link = join(dir, "node"), data = join(dir, "v2");
++  copyFileSync(process.execPath, node);
++  symlinkSync(node, link);
++  const pin = resolveNodePin(data, { HIVE_NODE_PATH: link });
++  assert.equal(pin.path, node);
++  assert.equal(pin.version, process.versions.node);
++  assert.match(pin.sha256, /^[a-f0-9]{64}$/);
++  persistNodePin(data, pin);
++  assert.deepEqual(JSON.parse(readFileSync(nodePinFile(data), "utf8")), pin);
++  assert.deepEqual(resolveNodePin(data, {}), pin);
++  assert.throws(() => resolveNodePin(data, { HIVE_NODE_VERSION: "0.0.0" }), /identity drift/);
++  persistNodePin(data, { ...pin, sha256: "0".repeat(64) });
++  assert.throws(() => resolveNodePin(data, {}), /identity drift/);
++  persistNodePin(data, { ...pin, version: "0.0.0" });
++  assert.throws(() => resolveNodePin(data, {}), /identity drift/);
++  persistNodePin(data, pin);
++  appendFileSync(node, "changed bytes");
++  assert.throws(() => resolveNodePin(data, {}), /identity drift|identity probe failed/);
++}));
++
++test("runtime environment and inspector arguments are scrubbed", () => {
++  assert.deepEqual(nativeNodeEnv({ PATH: "/bin", ELECTRON_RUN_AS_NODE: "1", NODE_OPTIONS: "--inspect" }), { PATH: "/bin" });
++  assert.deepEqual(withoutInspectorArgs(["--inspect", "--inspect-brk=0", "--inspect-port=9229", "--import", "tsx", "--debug=123"]), ["--import", "tsx"]);
++});
++
++test("foreground helpers discover the persisted pin without inherited service environment", () => fixture(dir => {
++  const keys = ["HIVE_NODE_PATH", "HIVE_NODE_VERSION", "HIVE_NODE_SHA256", "HIVE_STORE_ROOT", "HIVE_V2_DATA_DIR"];
++  const saved = new Map(keys.map(key => [key, process.env[key]]));
++  try {
++    for (const key of keys) delete process.env[key];
++    process.env.HIVE_STORE_ROOT = dir;
++    const node = join(dir, "node-pinned");
++    copyFileSync(process.execPath, node);
++    const pin = probeNativeNode(node);
++    persistNodePin(join(dir, "v2"), pin);
++    assert.equal(childNodePath(), node);
++    persistNodePin(join(dir, "v2"), { ...pin, version: "0.0.0" });
++    assert.throws(() => childNodePath(), /identity drift/);
++  } finally {
++    for (const [key, value] of saved) {
++      if (value === undefined) delete process.env[key];
++      else process.env[key] = value;
++    }
++  }
++}));
++
++test("a recorded real executable replaced by a symlink cannot silently move the pin", () => fixture(dir => {
++  const node = join(dir, "node-pinned"), moved = join(dir, "node-moved"), data = join(dir, "v2");
++  copyFileSync(process.execPath, node);
++  persistNodePin(data, probeNativeNode(node));
++  renameSync(node, moved);
++  symlinkSync(moved, node);
++  assert.throws(() => resolveNodePin(data, {}), /identity drift/);
++}));
++
++test("only an explicit different HIVE_NODE_PATH permits installer migration", () => fixture(dir => {
++  const node = join(dir, "node-other"), data = join(dir, "v2");
++  copyFileSync(process.execPath, node);
++  persistNodePin(data, probeNativeNode(process.execPath));
++  assert.throws(() => resolveNodePin(data, { HIVE_NODE_PATH: "/Applications/Apiary.app/Contents/MacOS/Apiary" }, undefined, true), /never Electron/);
++  assert.throws(() => resolveNodePin(data, {}, node, true), /identity drift/);
++  assert.throws(() => resolveNodePin(data, { HIVE_NODE_PATH: node }), /identity drift/);
++  assert.equal(resolveNodePin(data, { HIVE_NODE_PATH: node }, node, true).path, node);
++}));
++
++test("aliases to the recorded executable cannot migrate changed bytes", () => fixture(dir => {
++  const node = join(dir, "node"), alias = join(dir, "alias"), data = join(dir, "v2");
++  copyFileSync(process.execPath, node);
++  persistNodePin(data, probeNativeNode(node));
++  symlinkSync(node, alias);
++  appendFileSync(node, "changed bytes");
++  for (const path of [alias, `${dir}/./node`]) {
++    assert.throws(() => resolveNodePin(data, { HIVE_NODE_PATH: path }, undefined, true), /identity drift|identity probe failed/);
++  }
++}));
+diff --git a/tests/service-paths.test.ts b/tests/service-paths.test.ts
+new file mode 100644
+index 00000000..b815092f
+--- /dev/null
++++ b/tests/service-paths.test.ts
+@@ -0,0 +1,12 @@
++import assert from "node:assert/strict";
++import { test } from "node:test";
++import { serviceDirectory } from "../src/servicePaths.js";
++
++test("service paths depend only on explicit HOME/XDG configuration and overrides", () => {
++  assert.equal(serviceDirectory("linux", { HOME: "/scratch/home" }), "/scratch/home/.config/systemd/user");
++  assert.equal(serviceDirectory("linux", { HOME: "/scratch/home", XDG_CONFIG_HOME: "/scratch/config" }), "/scratch/config/systemd/user");
++  assert.equal(serviceDirectory("darwin", { HOME: "/scratch/home" }), "/scratch/home/Library/LaunchAgents");
++  assert.equal(serviceDirectory("darwin", { HIVE_V2_SERVICE_DIR: "/scratch/agents" }), "/scratch/agents");
++  assert.throws(() => serviceDirectory("linux", {}), /HOME required/);
++  assert.throws(() => serviceDirectory("darwin", { HOME: "relative" }), /HOME required/);
++});
+diff --git a/tests/substrates.local-tmux.test.ts b/tests/substrates.local-tmux.test.ts
+index cef94ecf..2cf97bf7 100644
+--- a/tests/substrates.local-tmux.test.ts
++++ b/tests/substrates.local-tmux.test.ts
+@@ -617,3 +617,15 @@ async function waitForFile(path: string): Promise<string> {
+   }
+   throw lastError instanceof Error ? lastError : new Error(`timed out waiting for ${path}`);
+ }
++
++test("local launcher preserves explicit harness Node options", { timeout: 30_000 }, async () => {
++  const dir = await mkdtemp(join(tmpdir(), "hive-explicit-node-env-")), output = join(dir, "env.json");
++  const target = `hive-explicit-node-env-${process.pid}`;
++  try {
++    await newSession(target, dir, { command: process.execPath, args: ["-e", `require('node:fs').writeFileSync(${JSON.stringify(output)},JSON.stringify({node:process.env.NODE_OPTIONS,electron:process.env.ELECTRON_RUN_AS_NODE}));setTimeout(()=>{},60000);`], env: { NODE_OPTIONS: "--no-warnings", ELECTRON_RUN_AS_NODE: "explicit" } });
++    assert.deepEqual(JSON.parse(await waitForFile(output)), { node: "--no-warnings", electron: "explicit" });
++  } finally {
++    await tmuxKillSession(target).catch(() => undefined);
++    await rm(dir, { recursive: true, force: true });
++  }
++});
+diff --git a/v2/cli/src/main.ts b/v2/cli/src/main.ts
+index f0224e14..68e38272 100644
+--- a/v2/cli/src/main.ts
++++ b/v2/cli/src/main.ts
+@@ -1,3 +1,5 @@
++import { serviceDirectory } from "../../../src/servicePaths.ts";
++import { resolveNodePin, persistNodePin, nodePinEnv, validateDaemonNode, readNodeRepair } from "../../../src/nodeRuntime.ts";
+ import { BUILD_IDENTITY } from "../../daemon/src/protocol.ts";
+ /**
+  * The thin v2 CLI (spec 04 "CLI"). Ships inside the existing `hive` binary as
+@@ -4679,18 +4681,30 @@ export function serviceLabel(env: Record<string, string | undefined> = process.e
+ export function serviceEnv(
+   dataDir: string,
+   env: Record<string, string | undefined> = process.env,
++  interpreter?: string,
+ ): Record<string, string> {
+   // launchd/systemd start services with a bare PATH (/usr/bin:/bin:…) that
+   // cannot resolve the harness binaries (claude/codex/…) living in
+   // user-managed dirs — every spawn would die instantly with a mute ENOENT
+   // (2026-08-19 soak finding). Bake the installing shell's PATH into the
+   // unit, exactly like the v1 daemon install does.
+-  return { HIVE_V2_DATA_DIR: dataDir, ...(env.PATH ? { PATH: env.PATH } : {}),
+-    ...(env.ELECTRON_RUN_AS_NODE === "1" ? { ELECTRON_RUN_AS_NODE: "1" } : {}) };
++  const inherited: Record<string, string> = {};
++  for (const key of ["HOME", "PATH", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME"]) {
++    const value = env[key];
++    if (value !== undefined) inherited[key] = value;
++  }
++  return { HIVE_V2_DATA_DIR: dataDir, ...inherited,
++    ...nodePinEnv(resolveNodePin(dataDir, env, interpreter, true)) };
+ }
+ 
+ export function serviceExecArgs(dataDir: string, env: Record<string, string | undefined> = process.env): string[] {
+-  if (env.HIVE_V2_SERVICE_ARGS) return JSON.parse(env.HIVE_V2_SERVICE_ARGS) as string[];
++  if (env.HIVE_V2_SERVICE_ARGS) {
++    const args: unknown = JSON.parse(env.HIVE_V2_SERVICE_ARGS);
++    if (!Array.isArray(args) || args.length < 2 || !args.every((arg): arg is string => typeof arg === "string")) throw new Error("HIVE_V2_SERVICE_ARGS must be an argv array");
++    const pin = resolveNodePin(dataDir, env, args[0], true);
++    if (args.slice(1).some(arg => /^--(?:inspect|debug)/.test(arg))) throw new Error("service interpreter inspector arguments are forbidden");
++    return [pin.path, ...args.slice(1)];
++  }
+   // Prefer the versioned-runtime entry over argv[1]: the PATH `hive` shim can
+   // drift (2026-08-19: it pointed at a working checkout), and the `current`
+   // symlink is the deploy contract — a service pinned to it follows every
+@@ -4701,21 +4715,21 @@ export function serviceExecArgs(dataDir: string, env: Record<string, string | un
+   // unit installed before freeze still hits this stack (`hive v2 daemon run`).
+   // The standalone v2 bin already is this CLI, so no prefix.
+   const viaHive = !/[/\\]v2[/\\]/.test(entry);
+-  return [process.execPath, entry, ...(viaHive ? ["v2"] : []), "daemon", "run", "--data-dir", dataDir];
++  return [resolveNodePin(dataDir, env, undefined, true).path, entry, ...(viaHive ? ["v2"] : []), "daemon", "run", "--data-dir", dataDir];
+ }
+ 
+-function buildServiceManager(ctx: CliContext): ServiceManager {
++function buildServiceManager(ctx: CliContext, installing = false): ServiceManager {
++  const args = installing ? serviceExecArgs(ctx.cfg.dataDir) : [];
++  const pin = installing ? resolveNodePin(ctx.cfg.dataDir, process.env, args[0], true) : undefined;
+   const platform = process.platform;
+-  const dir =
+-    process.env.HIVE_V2_SERVICE_DIR ??
+-    (platform === "darwin" ? join(homedir(), "Library", "LaunchAgents") : join(homedir(), ".config", "systemd", "user"));
++  const dir = serviceDirectory(platform);
+   return createServiceManager(
+     platform,
+     {
+       label: serviceLabel(),
+-      execArgs: serviceExecArgs(ctx.cfg.dataDir),
++      execArgs: args,
+       logPath: ctx.cfg.logPath,
+-      env: serviceEnv(ctx.cfg.dataDir),
++      env: pin ? serviceEnv(ctx.cfg.dataDir, process.env, pin.path) : {},
+     },
+     { exec: realExec, dir, uid: process.getuid?.() ?? 0 },
+   );
+@@ -4728,8 +4742,9 @@ async function cmdDaemon(ctx: CliContext, parsed: Parsed): Promise<number> {
+       // Foreground daemon — what the service files execute.
+       return runDaemon(["--data-dir", ctx.cfg.dataDir, ...(ctx.target.socketSource === "flag" ? ["--socket", ctx.cfg.socketPath] : [])]);
+     case "install": {
+-      const mgr = buildServiceManager(ctx);
++      const mgr = buildServiceManager(ctx, true);
+       await mgr.install();
++      persistNodePin(ctx.cfg.dataDir, resolveNodePin(ctx.cfg.dataDir, process.env, serviceExecArgs(ctx.cfg.dataDir)[0], true));
+       emit(ctx, [confirm("ok", "installed", `${mgr.platform} service at ${mgr.servicePath}`)], { servicePath: mgr.servicePath }, false);
+       return 0;
+     }
+@@ -4740,6 +4755,8 @@ async function cmdDaemon(ctx: CliContext, parsed: Parsed): Promise<number> {
+       return 0;
+     }
+     case "start": {
++      const held = validateDaemonNode(ctx.cfg.dataDir);
++      if (held) { emit(ctx, [`daemon held, needs repair: ${held}`], { running: false, repair: readNodeRepair(ctx.cfg.dataDir) }, false); return 0; }
+       const mgr = buildServiceManager(ctx);
+       await mgr.start();
+       emit(ctx, [confirm("ok", "started", serviceLabel())], { label: serviceLabel() }, false);
+@@ -4754,6 +4771,8 @@ async function cmdDaemon(ctx: CliContext, parsed: Parsed): Promise<number> {
+     case "restart": {
+       // Compatibility alias at the CLI edge (v1 `hive daemon restart`).
+       // Stop may fail when nothing is loaded; start still bootstraps.
++      const held = validateDaemonNode(ctx.cfg.dataDir);
++      if (held) { emit(ctx, [`daemon held, needs repair: ${held}`], { running: false, repair: readNodeRepair(ctx.cfg.dataDir) }, false); return 0; }
+       const mgr = buildServiceManager(ctx);
+       try {
+         await mgr.stop();
+@@ -4782,6 +4801,8 @@ async function cmdDaemon(ctx: CliContext, parsed: Parsed): Promise<number> {
+       } catch (err) {
+         if (!(err instanceof DaemonDownError)) throw err;
+       }
++      const repair = readNodeRepair(ctx.cfg.dataDir);
++      if (repair) { emit(ctx, ["daemon held, needs repair: invalid Node pin"], { running: false, repair }, false); return 0; }
+       const mgr = buildServiceManager(ctx);
+       if (existsSync(mgr.servicePath)) {
+         const status = await mgr.status();
+diff --git a/v2/cli/tests/cli.test.ts b/v2/cli/tests/cli.test.ts
+index 497f81db..08f8ecc2 100644
+--- a/v2/cli/tests/cli.test.ts
++++ b/v2/cli/tests/cli.test.ts
+@@ -1,3 +1,4 @@
++import { nodePinEnv, probeNativeNode } from "../../../src/nodeRuntime.ts";
+ /**
+  * WP4 CLI tier: the thin client — RPC when the daemon is up, read-only
+  * SQLite fallback clearly labeled stale when it is down, `send --wait` (Q3),
+@@ -818,16 +819,16 @@ test("cli.6: service glue — label never the live daemon's, exec args env overr
+   assert.notEqual(serviceLabel({}), "dev.honeybee.hive");
+   assert.equal(serviceLabel({ HIVE_V2_SERVICE_LABEL: "x.test" }), "x.test");
+   assert.deepEqual(
+-    serviceExecArgs("/data", { HIVE_V2_SERVICE_ARGS: JSON.stringify(["/bin/node", "/x.js", "daemon", "run"]) }),
+-    ["/bin/node", "/x.js", "daemon", "run"],
++    serviceExecArgs("/data", { HIVE_V2_SERVICE_ARGS: JSON.stringify([process.execPath, "/x.js", "daemon", "run"]) }),
++    [process.execPath, "/x.js", "daemon", "run"],
+   );
+-  const computed = serviceExecArgs("/data", {});
++  const computed = serviceExecArgs("/data", { HIVE_NODE_PATH: process.execPath });
+   assert.equal(computed[0], process.execPath);
+   assert.deepEqual(computed.slice(-3), ["run", "--data-dir", "/data"]);
+   // Service env bakes the installing shell's PATH (launchd/systemd give the
+   // daemon a bare PATH that cannot resolve claude/codex — 2026-08-19 soak).
+-  assert.deepEqual(serviceEnv("/data", { PATH: "/a:/b" }), { HIVE_V2_DATA_DIR: "/data", PATH: "/a:/b" });
+-  assert.deepEqual(serviceEnv("/data", {}), { HIVE_V2_DATA_DIR: "/data" });
++  assert.deepEqual(serviceEnv("/data", { PATH: "/a:/b", HIVE_NODE_PATH: process.execPath }), { HIVE_V2_DATA_DIR: "/data", PATH: "/a:/b", ...nodePinEnv(probeNativeNode(process.execPath)) });
++  assert.deepEqual(serviceEnv("/data", { HIVE_NODE_PATH: process.execPath }), { HIVE_V2_DATA_DIR: "/data", ...nodePinEnv(probeNativeNode(process.execPath)) });
+ });
+ 
+ test("cli.7: cutover verbs — `freeze` writes/refuses locally; `import --from-frozen` reports (dry-run, marker refusal, real import, idempotent) over RPC", async () => {
+diff --git a/v2/cli/tests/socket-isolation.test.ts b/v2/cli/tests/socket-isolation.test.ts
+index cbdd544b..fd3f06c6 100644
+--- a/v2/cli/tests/socket-isolation.test.ts
++++ b/v2/cli/tests/socket-isolation.test.ts
+@@ -153,7 +153,7 @@ test("a daemon that cannot write its endpoint record fails before it listens", a
+     mkdirSync(join(d.dir, ENDPOINT_RECORD_FILE, "occupied"), { recursive: true });
+     const home = mkdtempSync(join(d.dir, "home-"));
+     const proc = spawn(process.execPath, [DAEMON_BIN, "--data-dir", d.dir], {
+-      env: { ...process.env, HOME: home, HIVE_V2_DATA_DIR: d.dir, HIVE_NO_KEYCHAIN: "1", HIVE_GATEWAYS_DISABLE: "1", HIVE_TEST_REAP_RUNTIMES_ON_SHUTDOWN: "1", ...ownerBoundEnv(process.env.NODE_OPTIONS) },
++      env: { ...process.env, HOME: home, HIVE_NODE_PATH: process.execPath, HIVE_V2_DATA_DIR: d.dir, HIVE_NO_KEYCHAIN: "1", HIVE_GATEWAYS_DISABLE: "1", HIVE_TEST_REAP_RUNTIMES_ON_SHUTDOWN: "1", ...ownerBoundEnv(process.env.NODE_OPTIONS) },
+       stdio: ["ignore", "pipe", "pipe"],
+     });
+     let output = "";
+@@ -401,7 +401,7 @@ test("socket isolation against throwaway daemons", async (t) => {
+       const d = makeDaemonDir();
+       try {
+         const proc = spawn(process.execPath, [DAEMON_BIN, "--data-dir", d.dir, "--socket", aSock], {
+-          env: { ...process.env, HOME: home, HIVE_V2_DATA_DIR: d.dir, HIVE_NO_KEYCHAIN: "1", HIVE_GATEWAYS_DISABLE: "1", ...ownerBoundEnv(process.env.NODE_OPTIONS) },
++          env: { ...process.env, HOME: home, HIVE_NODE_PATH: process.execPath, HIVE_V2_DATA_DIR: d.dir, HIVE_NO_KEYCHAIN: "1", HIVE_GATEWAYS_DISABLE: "1", ...ownerBoundEnv(process.env.NODE_OPTIONS) },
+           stdio: ["ignore", "pipe", "pipe"],
+         });
+         let output = "";
+@@ -421,7 +421,7 @@ test("socket isolation against throwaway daemons", async (t) => {
+       const d = makeDaemonDir();
+       try {
+         const proc = spawn(process.execPath, [CLI_BIN, "daemon", "run", "--data-dir", d.dir], {
+-          env: { ...process.env, HOME: home, HIVE_V2_DATA_DIR: d.dir, HIVE_V2_SOCKET_PATH: daemonB!.socketPath, HIVE_NO_KEYCHAIN: "1", HIVE_GATEWAYS_DISABLE: "1", HIVE_TEST_REAP_RUNTIMES_ON_SHUTDOWN: "1", ...ownerBoundEnv(process.env.NODE_OPTIONS) },
++          env: { ...process.env, HOME: home, HIVE_NODE_PATH: process.execPath, HIVE_V2_DATA_DIR: d.dir, HIVE_V2_SOCKET_PATH: daemonB!.socketPath, HIVE_NO_KEYCHAIN: "1", HIVE_GATEWAYS_DISABLE: "1", HIVE_TEST_REAP_RUNTIMES_ON_SHUTDOWN: "1", ...ownerBoundEnv(process.env.NODE_OPTIONS) },
+           stdio: ["ignore", "pipe", "pipe"],
+         });
+         let output = "";
+diff --git a/v2/cli/tests/update-service.test.ts b/v2/cli/tests/update-service.test.ts
+index d8408878..cb575d8d 100644
+--- a/v2/cli/tests/update-service.test.ts
++++ b/v2/cli/tests/update-service.test.ts
+@@ -3,11 +3,12 @@ import { test } from "node:test";
+ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+ import { join } from "node:path";
+ import { tmpdir } from "node:os";
+-import { serviceEnv, serviceExecArgs } from "../src/main.ts";
++import { nodePinEnv, probeNativeNode, persistNodePin } from "../../../src/nodeRuntime.ts";
++import { runV2Cli, serviceEnv, serviceExecArgs } from "../src/main.ts";
+ 
+-test("verified installation preserves Electron's Node mode in the service", () => {
+-  assert.deepEqual(serviceEnv("/data", { PATH: "/bin", ELECTRON_RUN_AS_NODE: "1" }),
+-    { HIVE_V2_DATA_DIR: "/data", PATH: "/bin", ELECTRON_RUN_AS_NODE: "1" });
++test("service environment records native pin and drops Electron mode", () => {
++  assert.deepEqual(serviceEnv("/data", { PATH: "/bin", ELECTRON_RUN_AS_NODE: "1", HIVE_NODE_PATH: process.execPath }),
++    { HIVE_V2_DATA_DIR: "/data", PATH: "/bin", ...nodePinEnv(probeNativeNode(process.execPath)) });
+ });
+ 
+ test("service entry follows selected node current, independent of ambient home", () => {
+@@ -16,6 +17,32 @@ test("service entry follows selected node current, independent of ambient home",
+     const entry = join(dir, "runtime", "current", "dist", "cli.js");
+     mkdirSync(join(dir, "runtime", "current", "dist"), { recursive: true });
+     writeFileSync(entry, "fixture");
+-    assert.deepEqual(serviceExecArgs(join(dir, "v2"), {}), [process.execPath, entry, "v2", "daemon", "run", "--data-dir", join(dir, "v2")]);
++    assert.deepEqual(serviceExecArgs(join(dir, "v2"), { HIVE_NODE_PATH: process.execPath }), [process.execPath, entry, "v2", "daemon", "run", "--data-dir", join(dir, "v2")]);
+   } finally { rmSync(dir, { recursive: true, force: true }); }
+ });
++
++test("fresh service install requires a pin and validates explicit argv overrides", () => {
++  const dir = mkdtempSync(join(tmpdir(), "hb-service-pin-"));
++  const data = join(dir, "v2");
++  try {
++    assert.throws(() => serviceExecArgs(data, {}), /HIVE_NODE_PATH required/);
++    for (const args of ["node", [], [1, "cli.js"], ["/Applications/Apiary.app/Contents/MacOS/Apiary", "cli.js"]]) {
++      assert.throws(() => serviceExecArgs(data, { HIVE_V2_SERVICE_ARGS: JSON.stringify(args) }));
++    }
++    assert.throws(() => serviceExecArgs(data, { HIVE_V2_SERVICE_ARGS: JSON.stringify([process.execPath, "--inspect=0", "cli.js"]) }), /inspector/);
++    assert.deepEqual(serviceExecArgs(data, { HIVE_V2_SERVICE_ARGS: JSON.stringify([process.execPath, "cli.js", "custom"]) }), [probeNativeNode(process.execPath).path, "cli.js", "custom"]);
++  } finally { rmSync(dir, { recursive: true, force: true }); }
++});
++
++test("daemon start, restart and status expose a held pin without opening the store", async () => {
++  const root = mkdtempSync(join(tmpdir(), "hb-held-cli-")), data = join(root, "v2");
++  try {
++    persistNodePin(data, { ...probeNativeNode(process.execPath), version: "0.0.0" });
++    for (const verb of ["start", "restart", "status"]) {
++      const out: string[] = [], err: string[] = [];
++      assert.equal(await runV2Cli(["daemon", verb, "--data-dir", data, "--json"], { out: line => out.push(line), err: line => err.push(line) }), 0, err.join("\n"));
++      assert.equal(JSON.parse(out[0] ?? "{}").repair.state, "held");
++    }
++    assert.equal((await import("node:fs")).existsSync(join(data, "core.sqlite3")), false);
++  } finally { rmSync(root, { recursive: true, force: true }); }
++});
+diff --git a/v2/daemon/src/main.ts b/v2/daemon/src/main.ts
+index 5ce372a5..1b8dbd82 100644
+--- a/v2/daemon/src/main.ts
++++ b/v2/daemon/src/main.ts
+@@ -1,3 +1,4 @@
++import { validateDaemonNode } from "../../../src/nodeRuntime.ts";
+ /**
+  * Foreground daemon entry: `hive v2 daemon run [--data-dir d] [--config p]
+  * [--socket s]`. This is what the rendered launchd plist / systemd unit
+@@ -41,7 +42,10 @@ function simulatedCellVolume(cellsRoot: string, totalBytes: number): (path: stri
+ 
+ /** Run the daemon in the foreground until a termination signal. */
+ export async function runDaemon(argv: string[]): Promise<number> {
+-  const cfg = resolveDaemonConfig(parseDaemonRunArgs(argv));
++  const args = parseDaemonRunArgs(argv);
++  const held = validateDaemonNode(args.dataDir ?? defaultDataDir(), true);
++  if (held) { process.stderr.write(`hived held, needs repair: ${held}\n`); return 0; }
++  const cfg = resolveDaemonConfig(args);
+   // Test daemons shorten the delay before the first automatic Cell retention pass.
+   const retentionDelay = Number(process.env.HIVE_TEST_RETENTION_INITIAL_DELAY_MS);
+   const diskCheckMs = Number(process.env.HIVE_TEST_CELL_DISK_CHECK_MS);
+diff --git a/v2/daemon/src/service.ts b/v2/daemon/src/service.ts
+index d548c51b..45231839 100644
+--- a/v2/daemon/src/service.ts
++++ b/v2/daemon/src/service.ts
+@@ -1,3 +1,4 @@
++import { nativeNodeEnv } from "../../../src/nodeRuntime.ts";
+ /**
+  * Platform service management behind ONE interface (spec 04 behavior 6):
+  * launchd (macOS) and a systemd user unit (Linux), with install / uninstall /
+@@ -79,7 +80,7 @@ export function renderLaunchdPlist(spec: ServiceSpec): string {
+       ? `
+   <key>EnvironmentVariables</key>
+   <dict>
+-${Object.entries(spec.env)
++${Object.entries(nativeNodeEnv(spec.env))
+   .map(([k, v]) => `    <key>${xmlEscape(k)}</key>\n    <string>${xmlEscape(v)}</string>`)
+   .join("\n")}
+   </dict>`
+@@ -102,7 +103,10 @@ ${args}
+   <key>RunAtLoad</key>
+   <true/>
+   <key>KeepAlive</key>
+-  <true/>
++  <dict>
++    <key>SuccessfulExit</key>
++    <false/>
++  </dict>
+   <key>ProcessType</key>
+   <string>Interactive</string>
+   <key>StandardOutPath</key>
+@@ -123,7 +127,7 @@ function unitEscape(s: string): string {
+ export function renderSystemdUnit(spec: ServiceSpec): string {
+   const exec = spec.execArgs.map(unitEscape).join(" ");
+   const envLines = spec.env
+-    ? Object.entries(spec.env)
++    ? Object.entries(nativeNodeEnv(spec.env))
+         .map(([k, v]) => `Environment=${unitEscape(`${k}=${v}`)}\n`)
+         .join("")
+     : "";
+@@ -137,7 +141,8 @@ ExecStart=${exec}
+ ${cwdLine}${envLines}# Honeybee owns detached runner process groups; daemon stop/restart preserves them for re-adoption.
+ # Ephemeral workers are stopped during clean daemon shutdown, and explicit bee stop/delete reaps its runner group.
+ KillMode=process
+-Restart=always
++UnsetEnvironment=ELECTRON_RUN_AS_NODE NODE_OPTIONS
++Restart=on-failure
+ RestartSec=2
+ StandardOutput=append:${spec.logPath}
+ StandardError=append:${spec.logPath}
+diff --git a/v2/daemon/tests/fixtures/shutdown-daemon.mjs b/v2/daemon/tests/fixtures/shutdown-daemon.mjs
+index 2bbf685a..a92afa44 100644
+--- a/v2/daemon/tests/fixtures/shutdown-daemon.mjs
++++ b/v2/daemon/tests/fixtures/shutdown-daemon.mjs
+@@ -6,6 +6,7 @@ import { runDaemon } from "../../src/main.ts";
+ import { spawn } from "node:child_process";
+ 
+ const [dir, mode] = process.argv.slice(2);
++process.env.HIVE_NODE_PATH = process.execPath;
+ if (mode === "retention") {
+   const worker = new URL(`data:text/javascript,${encodeURIComponent(`import {writeFileSync} from "node:fs";writeFileSync(${JSON.stringify(join(dir, "worker-held"))}, "held");Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0);`)}`);
+   const daemon = new HiveDaemon(loadNodeConfig(dir), { retentionWorkerUrl: worker, retentionInitialDelayMs: 0 });
+diff --git a/v2/daemon/tests/helpers.ts b/v2/daemon/tests/helpers.ts
+index 7d49d7a8..621cc7c3 100644
+--- a/v2/daemon/tests/helpers.ts
++++ b/v2/daemon/tests/helpers.ts
+@@ -325,6 +325,7 @@ export async function startDaemon(dir: string, opts: { env?: Record<string, stri
+     // real macOS Keychain (spec 08 keychain bridge is off unless injected).
+     env: {
+       ...childEnv,
++      HIVE_NODE_PATH: process.execPath,
+       HIVE_V2_DATA_DIR: dir,
+       HIVE_NO_KEYCHAIN: "1",
+       HIVE_CLAUDE_USAGE_URL: "http://127.0.0.1:9/api/oauth/usage",
+diff --git a/v2/daemon/tests/node-pin-entry.test.ts b/v2/daemon/tests/node-pin-entry.test.ts
+new file mode 100644
+index 00000000..c20979c9
+--- /dev/null
++++ b/v2/daemon/tests/node-pin-entry.test.ts
+@@ -0,0 +1,23 @@
++import assert from "node:assert/strict";
++import { test } from "node:test";
++import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
++import { join } from "node:path";
++import { tmpdir } from "node:os";
++import { nodePinFile, nodeRepairFile, persistNodePin, probeNativeNode, validateDaemonNode } from "../../../src/nodeRuntime.ts";
++import { runDaemon } from "../src/main.ts";
++
++for (const corrupt of [false, true]) test(`daemon entry holds before store/socket open on ${corrupt ? "corrupt record" : "identity drift"}`, async () => {
++  const root = mkdtempSync(join(tmpdir(), "hb-node-entry-")), data = join(root, "v2");
++  try {
++    const pin = probeNativeNode(process.execPath);
++    persistNodePin(data, { ...pin, version: "0.0.0" });
++    if (corrupt) writeFileSync(nodePinFile(data), "corrupt JSON");
++    assert.equal(await runDaemon(["--data-dir", data]), 0);
++    assert.equal(existsSync(join(data, "core.sqlite3")), false);
++    assert.equal(existsSync(join(data, "hived.sock")), false);
++    assert.equal(JSON.parse(readFileSync(nodeRepairFile(data), "utf8")).state, "held");
++    persistNodePin(data, pin);
++    assert.equal(validateDaemonNode(data, true), null);
++    assert.equal(existsSync(nodeRepairFile(data)), false);
++  } finally { rmSync(root, { recursive: true, force: true }); }
++});
+diff --git a/v2/daemon/tests/runner-host-artifact.test.ts b/v2/daemon/tests/runner-host-artifact.test.ts
+index 84007eb0..2f8a1945 100644
+--- a/v2/daemon/tests/runner-host-artifact.test.ts
++++ b/v2/daemon/tests/runner-host-artifact.test.ts
+@@ -81,6 +81,7 @@ function runtimeEnv(dir: string): NodeJS.ProcessEnv {
+     HIVE_BEE_ID: undefined,
+     HIVE_BEE: undefined,
+     HIVE_V2_DATA_DIR: dir,
++    HIVE_NODE_PATH: process.execPath,
+     HIVE_NO_KEYCHAIN: "1",
+     HIVE_TEST_REAP_RUNTIMES_ON_SHUTDOWN: "1",
+   };
+diff --git a/v2/daemon/tests/service.test.ts b/v2/daemon/tests/service.test.ts
+index 23887701..54dfac3f 100644
+--- a/v2/daemon/tests/service.test.ts
++++ b/v2/daemon/tests/service.test.ts
+@@ -55,7 +55,10 @@ const PLIST_SNAPSHOT = `<?xml version="1.0" encoding="UTF-8"?>
+   <key>RunAtLoad</key>
+   <true/>
+   <key>KeepAlive</key>
+-  <true/>
++  <dict>
++    <key>SuccessfulExit</key>
++    <false/>
++  </dict>
+   <key>ProcessType</key>
+   <string>Interactive</string>
+   <key>StandardOutPath</key>
+@@ -76,7 +79,8 @@ Environment="HIVE_V2_DATA_DIR=/data/v2"
+ # Honeybee owns detached runner process groups; daemon stop/restart preserves them for re-adoption.
+ # Ephemeral workers are stopped during clean daemon shutdown, and explicit bee stop/delete reaps its runner group.
+ KillMode=process
+-Restart=always
++UnsetEnvironment=ELECTRON_RUN_AS_NODE NODE_OPTIONS
++Restart=on-failure
+ RestartSec=2
+ StandardOutput=append:/data/v2/hived.log
+ StandardError=append:/data/v2/hived.log
+@@ -236,3 +240,11 @@ test("service.7: a failing systemctl surfaces as a typed ServiceError, never sil
+     rmSync(dir, { recursive: true, force: true });
+   }
+ });
++
++test("service renderers exclude Electron and Node option environment injection", () => {
++  const spec = { ...SPEC, env: { SAFE: "yes", ELECTRON_RUN_AS_NODE: "1", NODE_OPTIONS: "--inspect" } };
++  assert.doesNotMatch(renderLaunchdPlist(spec), /ELECTRON_RUN_AS_NODE|NODE_OPTIONS|--inspect/);
++  const unit = renderSystemdUnit(spec);
++  assert.doesNotMatch(unit, /Environment="(?:ELECTRON_RUN_AS_NODE|NODE_OPTIONS)=/);
++  assert.match(unit, /UnsetEnvironment=ELECTRON_RUN_AS_NODE NODE_OPTIONS/);
++});
+diff --git a/v2/driver-cell/src/upstream.ts b/v2/driver-cell/src/upstream.ts
+index 3b108406..93c41bef 100644
+--- a/v2/driver-cell/src/upstream.ts
++++ b/v2/driver-cell/src/upstream.ts
+@@ -1,3 +1,4 @@
++import { childNodePath, nativeNodeEnv } from "../../../src/nodeRuntime.ts";
+ /**
+  * Honeybee-owned upstream mirrors: one bare repository per origin URL under
+  * `<data-dir>/upstream/`, fetch-only, whose `refs/upstream/head` is the
+@@ -139,8 +140,9 @@ export function refreshUpstreamMirror(
+ 
+ export function holdMirrorLock(lockDir: string, heartbeatMs = MIRROR_LOCK_HEARTBEAT_MS): { release(): void } {
+   try {
+-    const child = spawn(process.execPath, ["-e", LOCK_HEARTBEAT_SOURCE, lockDir, String(heartbeatMs)], {
++    const child = spawn(childNodePath(), ["-e", LOCK_HEARTBEAT_SOURCE, lockDir, String(heartbeatMs)], {
+       stdio: ["pipe", "ignore", "ignore"],
++      env: nativeNodeEnv(),
+     });
+     child.on("error", () => {});
+     child.unref();
+diff --git a/v2/driver-hsr/src/driver.ts b/v2/driver-hsr/src/driver.ts
+index a673d11b..e6cf8dc6 100644
+--- a/v2/driver-hsr/src/driver.ts
++++ b/v2/driver-hsr/src/driver.ts
+@@ -1,3 +1,4 @@
++import { childNodePath, nativeNodeEnv } from "../../../src/nodeRuntime.ts";
+ import type { ReconnectToolsReceipt } from "../../core/src/reconnectTools.ts";
+ /**
+  * HsrDriver — the first real substrate driver (WP3 of the reset).
+@@ -443,11 +444,11 @@ export class HsrDriver implements RuntimeDriver {
+     if (this.hostLaunch.kind === "override") return this.hostLaunch.commandFor(configPath);
+     if (this.hostLaunch.kind === "source") {
+       return {
+-        command: process.execPath,
++        command: childNodePath(),
+         args: ["--experimental-strip-types", this.hostLaunch.entry, configPath],
+       };
+     }
+-    return { command: process.execPath, args: [this.hostLaunch.entry, configPath] };
++    return { command: childNodePath(), args: [this.hostLaunch.entry, configPath] };
+   }
+ 
+   // -------------------------------------------------------------------------
+@@ -486,7 +487,7 @@ export class HsrDriver implements RuntimeDriver {
+       command: spec.command,
+       args: spec.args,
+       ...(spec.cwd !== undefined ? { cwd: spec.cwd } : {}),
+-      env: spec.env ?? ({ ...process.env } as Record<string, string>),
++      env: spec.env ?? nativeNodeEnv(),
+       sessionLogPath: this.sessionLogPath(beeId),
+       observationLogPath: paths.observations,
+       sidecarPath: join(this.cfg.sessionLogDir, `${beeId}.stderr.log`),
+@@ -497,6 +498,7 @@ export class HsrDriver implements RuntimeDriver {
+     writeFileSync(paths.config, JSON.stringify(hostConfig));
+     const launch = this.hostCommandFor(paths.config);
+     const child = spawn(launch.command, launch.args, {
++      env: nativeNodeEnv(),
+       detached: true,
+       stdio: ["ignore", "ignore", "ignore"],
+     });
+diff --git a/v2/driver-hsr/src/runner-host.ts b/v2/driver-hsr/src/runner-host.ts
+index 2dcfabcc..508418db 100644
+--- a/v2/driver-hsr/src/runner-host.ts
++++ b/v2/driver-hsr/src/runner-host.ts
+@@ -1,3 +1,4 @@
++import { nativeNodeEnv } from "../../../src/runtimeEnvironment.ts";
+ import { spawn, type ChildProcess } from "node:child_process";
+ import { createHash } from "node:crypto";
+ import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+@@ -191,7 +192,7 @@ export function runRunnerHost(configPath: string): void {
+   // existing group signaling (TERM/KILL to -pid) reaches the whole tree.
+   const child: ChildProcess = spawn(cfg.command, cfg.args, {
+     cwd: cfg.cwd,
+-    env: cfg.env ?? { ...process.env },
++    env: cfg.env ?? nativeNodeEnv(),
+     stdio: ["pipe", "pipe", "pipe"],
+   });
+ 
+diff --git a/v2/driver-hsr/tests/runner-host.test.ts b/v2/driver-hsr/tests/runner-host.test.ts
+index 2d81e953..a0c2d35b 100644
+--- a/v2/driver-hsr/tests/runner-host.test.ts
++++ b/v2/driver-hsr/tests/runner-host.test.ts
+@@ -32,7 +32,7 @@ function imageReference(result: string, path: string): Record<string, unknown> {
+   };
+ }
+ 
+-function runHostWithStdoutLines(lines: string[]): {
++function runHostWithStdoutLines(lines: string[], env: Record<string, string> = {}): {
+   sessionLog: string;
+   observationLog: string;
+   cleanup(): void;
+@@ -52,7 +52,7 @@ function runHostWithStdoutLines(lines: string[]): {
+         'for (const line of JSON.parse(process.env.HSR_TEST_LINES)) process.stdout.write(`${line}\\n`);',
+       ],
+       cwd: dir,
+-      env: { ...process.env, HSR_TEST_LINES: JSON.stringify(lines) },
++      env: { ...process.env, ...env, HSR_TEST_LINES: JSON.stringify(lines) },
+       sessionLogPath,
+       observationLogPath,
+       sidecarPath: join(dir, "stderr.log"),
+@@ -796,3 +796,14 @@ test("adoption with dead host artifacts falls back to refusing, never a phantom
+     rmSync(dir, { recursive: true, force: true });
+   }
+ });
++
++test("runner host preserves explicit harness Node options", (t) => {
++  const dir = mkdtempSync(join(tmpdir(), "hb-explicit-node-options-"));
++  t.after(() => rmSync(dir, { recursive: true, force: true }));
++  const preload = join(dir, "explicit.cjs"), marker = join(dir, "marker.json");
++  writeFileSync(preload, `require('node:fs').writeFileSync(${JSON.stringify(marker)}, JSON.stringify({node:process.env.NODE_OPTIONS,electron:process.env.ELECTRON_RUN_AS_NODE}));`);
++  const options = `--require ${preload}`;
++  const result = runHostWithStdoutLines(["explicit harness options"], { NODE_OPTIONS: options, ELECTRON_RUN_AS_NODE: "explicit" });
++  t.after(result.cleanup);
++  assert.deepEqual(JSON.parse(readFileSync(marker, "utf8")), { node: options, electron: "explicit" });
++});

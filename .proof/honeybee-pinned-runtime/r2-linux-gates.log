@@ -1,0 +1,23 @@
+SOURCE SHA f914e2ec54c14dbf6210eb9f0b4e623b76d5fdba
+COMMAND npm run check
+EXIT 0
+COMMAND npm run v2:check
+EXIT 0
+COMMAND npm run build
+EXIT 0
+COMMAND node .proof/honeybee-pinned-runtime/linux-lab.mjs
+EXIT 0
+COMMAND node .proof/honeybee-pinned-runtime/review-lab.mjs
+EXIT 0
+COMMAND npm test -- --test-skip-pattern=\^run\ --rm\ cleans\ up\ when\ known\ driver\ readiness\ fails\$
+EXIT 0
+COMMAND npm run v2:test
+EXIT 0
+COMMAND npm run v2:driver
+EXIT 0
+COMMAND npm run v2:driver2
+EXIT 0
+COMMAND npm run v2:harness
+EXIT 0
+COMMAND npm run v2:daemon
+EXIT 0

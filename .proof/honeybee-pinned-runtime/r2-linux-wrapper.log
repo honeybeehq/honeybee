@@ -1,0 +1,25 @@
+REAL SERVICE SENTINEL before {"systemd":{"count":11,"hash":"8efcf56583cd752a72316e27a2e23c2d808799c57a83c1273574862e83075a30"},"launchd":{"absent":true},"realUnit":{"path":"/home/trmd/.config/systemd/user/dev.honeybee.hive.v2.service","mode":"600","mtimeNs":"1792139687890245908","ino":"30499345","size":"927","sha256":"f1138adc1ee1d4819ae217c83a1dee3c27c110f9ac0cf3c4142dceb109d866bf"}}
+SOURCE SHA f914e2ec54c14dbf6210eb9f0b4e623b76d5fdba
+COMMAND npm run check
+EXIT 0
+COMMAND npm run v2:check
+EXIT 0
+COMMAND npm run build
+EXIT 0
+COMMAND node .proof/honeybee-pinned-runtime/linux-lab.mjs
+EXIT 0
+COMMAND node .proof/honeybee-pinned-runtime/review-lab.mjs
+EXIT 0
+COMMAND npm test -- --test-skip-pattern=\^run\ --rm\ cleans\ up\ when\ known\ driver\ readiness\ fails\$
+EXIT 0
+COMMAND npm run v2:test
+EXIT 0
+COMMAND npm run v2:driver
+EXIT 0
+COMMAND npm run v2:driver2
+EXIT 0
+COMMAND npm run v2:harness
+EXIT 0
+COMMAND npm run v2:daemon
+EXIT 0
+REAL SERVICE SENTINEL after {"systemd":{"count":11,"hash":"8efcf56583cd752a72316e27a2e23c2d808799c57a83c1273574862e83075a30"},"launchd":{"absent":true},"realUnit":{"path":"/home/trmd/.config/systemd/user/dev.honeybee.hive.v2.service","mode":"600","mtimeNs":"1792139687890245908","ino":"30499345","size":"927","sha256":"f1138adc1ee1d4819ae217c83a1dee3c27c110f9ac0cf3c4142dceb109d866bf"}}
