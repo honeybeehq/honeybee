@@ -60,7 +60,8 @@ LIB_THIRD_PARTY=$(grep -v '^#' "$LIB_THIRD_PARTY_FILE" 2>/dev/null | grep .)
 [ -n "$LIB_THIRD_PARTY" ] || { echo "REFUSING: third-party WARN list $LIB_THIRD_PARTY_FILE is missing or empty"; exit 99; }
 while IFS='|' read -r entry owner mode extra; do
   [ -n "$entry" ] && [ -n "$owner" ] && [ -z "$extra" ] || { echo "REFUSING: malformed line in $LIB_THIRD_PARTY_FILE: $entry|$owner|$mode${extra:+|$extra}"; exit 99; }
-  case "$mode" in ""|inside|existing|modified|interim) ;; *) echo "REFUSING: unknown mode '$mode' in $LIB_THIRD_PARTY_FILE"; exit 99;; esac
+  case "$mode" in ""|inside|existing|modified|interim|parent-meta) ;; *) echo "REFUSING: unknown mode '$mode' in $LIB_THIRD_PARTY_FILE"; exit 99;; esac
+  [ "$mode" = parent-meta ] && [ "$entry" != "*/" ] && { echo "REFUSING: mode parent-meta takes the entry */ in $LIB_THIRD_PARTY_FILE: $entry"; exit 99; }
   case "$mode" in inside|modified) case "$entry" in */) ;; *) echo "REFUSING: mode $mode needs a trailing / in $LIB_THIRD_PARTY_FILE: $entry"; exit 99;; esac;; esac
 done <<< "$LIB_THIRD_PARTY"
 gate_fail() { echo "GATE FAIL: $*"; SCG_RC=1; }
@@ -132,7 +133,7 @@ lib_third_party_owner() {
   local p=$1 before=$2 entry owner mode
   ( IFS='|'; for n in $LIB_OUR_NAMES; do case "$p" in *"$n"*) exit 0;; esac; done; exit 1 ) && return 1
   while IFS='|' read -r entry owner mode; do
-    case "$mode" in interim) continue;; esac
+    case "$mode" in interim|parent-meta) continue;; esac
     case "$entry" in
       */) case "$mode" in inside) case "$p" in "$entry"?*) echo "$owner"; return 0;; esac;;
             modified) case "$p/" in "$entry"*) cut -d'|' -f2 "$before" | grep -qxF "$p" && { echo "$owner, modified existing entry"; return 0; }; break;; esac;;
@@ -185,6 +186,22 @@ lib_snap() {
       if [ -d "$LIB/$a" ]; then find "$LIB/$a" -maxdepth 2 | while IFS= read -r p; do echo "$(stat -f %i "$p")|${p#$LIB/}"; done
       else echo "ABSENT|$a"; fi
     done ) 2>>"$LIB_ERR" | sort -t'|' -k2 > "$1.areas"
+  ( IFS='|'; for a in $LIB_AREAS; do [ -d "$LIB/$a" ] && find "$LIB/$a" -maxdepth 2 -type d -exec stat -f '%N|%p %u %g %f' {} +; done ) 2>>"$LIB_ERR" | sed "s|^$LIB/||" | sort > "$1.dirstat"
+  ( IFS='|'; for a in $LIB_AREAS; do [ -d "$LIB/$a" ] && find "$LIB/$a" -maxdepth 2 -type d -exec ls -ld@ {} +; done ) 2>>"$LIB_ERR" | awk -v L="$LIB/" '/^d/ {i = index($0, L); cur = substr($0, i + length(L)); print cur "|"; next} /^\t/ {sub(/^\t/, ""); split($0, x, "\t"); print cur "|" x[1]}' | sort > "$1.dirxattr"
+}
+lib_dir_meta() { awk -F'|' -v k="$1" '$1 == k {print $2}' "$2.dirstat"; awk -F'|' -v k="$1" '$1 == k && $2 != "" {print "xattr " $2}' "$2.dirxattr" | sort; }
+lib_parent_meta() {
+  local b=$1 a=$2 gone=$3 st=$GATE_ROOT/lib.status P n bad bm
+  printf '%s\n' "$LIB_THIRD_PARTY" | grep -q '|parent-meta$' || return 0
+  awk -F'\t' 'index($2, "LIBFAIL new/modified under ~/Library: ") == 1 {n = split($1, x, "/"); print n "\t" $1}' "$st" | sort -t"$(printf '\t')" -k1,1nr | cut -f2- | while IFS= read -r P; do
+    ( IFS='|'; for n in $LIB_OUR_NAMES; do case "$P" in *"$n"*) exit 1;; esac; done ) || continue
+    bm=$(lib_dir_meta "$P" "$b"); [ -n "$bm" ] && [ "$bm" = "$(lib_dir_meta "$P" "$a")" ] || continue
+    printf '%s\n' "$gone" | awk -v k="$P/" 'index($0, k) == 1 {f = 1} END {exit !f}' && continue
+    n=$(awk -F'\t' -v k="$P/" 'index($1, k) == 1' "$st" | wc -l | tr -d ' ')
+    bad=$(awk -F'\t' -v k="$P/" 'index($1, k) == 1 && index($2, "LIBFAIL") == 1' "$st" | wc -l | tr -d ' ')
+    [ "$n" -ge 1 ] && [ "$bad" -eq 0 ] || continue
+    awk -F'\t' -v k="$P" -v n="$n" 'BEGIN {OFS = "\t"} $1 == k {$2 = "WARN parent dir metadata only (" n " allowed children): " k} {print}' "$st" > "$st.tmp" && mv "$st.tmp" "$st"
+  done
 }
 lib_valid() { [ -s "$1.prefs" ] && [ -s "$1.areas" ] && grep -q '|' "$1.prefs" || { echo "empty ~/Library snapshot"; return 1; }; }
 lib_verdict() {
@@ -209,14 +226,17 @@ lib_verdict() {
   local changed; changed=$( ( IFS='|'; for ar in $LIB_AREAS; do [ -d "$LIB/$ar" ] && find "$LIB/$ar" \( -newer "$GATE_ROOT/lib.marker" -o -cnewer "$GATE_ROOT/lib.marker" \); done ) 2>>"$LIB_ERR" | sed "s|^$LIB/||" | sort -u)
   local gone; gone=$(comm -23 <(cut -d'|' -f2 "$b.areas") <(cut -d'|' -f2 "$a.areas"))
   printf '%s\n' "$changed" | while read -r p; do [ -z "$p" ] && continue
-    if owner=$(lib_third_party_owner "$p" "$b.areas"); then echo "WARN third-party ($owner): $p"
+    if owner=$(lib_third_party_owner "$p" "$b.areas"); then line="WARN third-party ($owner): $p"
     elif [ "$p" = "$LIB_HOST_SHARED_CONTACTS" ] || case "$p" in "$LIB_HOST_SHARED_CONTACTS"/*) true;; *) false;; esac; then
-      if why=$(contacts_attribution); then echo "WARN host shared ($why): $p"; else echo "LIBFAIL Contacts changed, $why: $p"; fi
+      if why=$(contacts_attribution); then line="WARN host shared ($why): $p"; else line="LIBFAIL Contacts changed, $why: $p"; fi
     elif [ "$p" = "$LIB_HOST_SHARED_CLAUDE" ] || case "$p" in "$LIB_HOST_SHARED_CLAUDE"/*) true;; *) false;; esac; then
-      if why=$(claude_attribution); then echo "WARN host shared ($why): $p"; else echo "LIBFAIL claude-cli-nodejs changed, $why: $p"; fi
-    else echo "LIBFAIL new/modified under ~/Library: $p"; fi; done > "$GATE_ROOT/lib.changes"
+      if why=$(claude_attribution); then line="WARN host shared ($why): $p"; else line="LIBFAIL claude-cli-nodejs changed, $why: $p"; fi
+    else line="LIBFAIL new/modified under ~/Library: $p"; fi
+    printf '%s\t%s\n' "$p" "$line"; done > "$GATE_ROOT/lib.status"
+  lib_parent_meta "$b" "$a" "$gone"
+  cut -f2- "$GATE_ROOT/lib.status" > "$GATE_ROOT/lib.changes"
   cat "$GATE_ROOT/lib.changes"
-  echo "(~/Library: $(grep -c '^WARN third-party' "$GATE_ROOT/lib.changes") third-party WARN, $(grep -c '^LIBFAIL' "$GATE_ROOT/lib.changes") FAIL)"
+  echo "(~/Library: $(grep -c '^WARN third-party' "$GATE_ROOT/lib.changes") third-party WARN, $(grep -c '^WARN parent dir metadata only' "$GATE_ROOT/lib.changes") parent-dir WARN, $(grep -c '^LIBFAIL' "$GATE_ROOT/lib.changes") FAIL)"
   grep -q '^LIBFAIL' "$GATE_ROOT/lib.changes" && gate_fail "~/Library changed outside the Queen-approved third-party list ($(grep -c '^LIBFAIL' "$GATE_ROOT/lib.changes") entries)"
   [ -n "$gone" ] && { printf '%s\n' "$gone" | sed 's/^/LIBFAIL removed: /' | head -20; gate_fail "~/Library entries removed"; }
   SCG_LIB_ERRORS=$(grep -c . "$LIB_ERR" 2>/dev/null || true)

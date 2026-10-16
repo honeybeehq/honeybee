@@ -1,5 +1,5 @@
 # ~/Library third-party WARN list for darwin-gate. Changes only via Queen. One entry per line: path relative to ~/Library|owner|mode
-# Modes: (none) the dir and below; inside = paths under it only; existing = exact dir, WARN only if it existed before; modified = paths under it that existed before; interim = glob, until a dedicated macOS gate user exists
+# Modes: (none) the dir and below; inside = paths under it only; existing = exact dir, WARN only if it existed before; modified = paths under it that existed before; interim = glob, until a dedicated macOS gate user exists; parent-meta = only for the */ rule: a changed directory WARNs when only its mtime/ctime moved, every changed child under it WARNs, nothing under it was removed, and its mode, owner, group, flags and xattr names are unchanged
 Containers/com.apple.lighthouse.PnROnDeviceWorker|Apple lighthouse|existing
 Containers/com.apple.unilog.SearchUploadWorker|Apple unilog|existing
 Containers/com.apple.siri.ODDIPoirotExperimentationExtension|Apple Siri|existing
@@ -23,3 +23,4 @@ Caches/Google/Chrome/|Google Chrome
 Application Support/com.apple.*|Apple, interim com.apple.* rule until a dedicated gate user|interim
 Containers/com.apple.*|Apple, interim com.apple.* rule until a dedicated gate user|interim
 Caches/com.apple.*|Apple, interim com.apple.* rule until a dedicated gate user|interim
+*/|parent dir metadata only|parent-meta

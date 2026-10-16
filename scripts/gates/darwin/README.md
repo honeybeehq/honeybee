@@ -129,6 +129,16 @@ Before and after, on `~/Library/Preferences` and on Application Support, Logs, C
 | Containers/com.apple.siri.ODDIPoirotExperimentationExtension | Apple Siri | paths inside; the dir itself only if it existed |
 | Containers/com.apple.UsageTrackingAgent | Apple UsageTrackingAgent | paths inside; the dir itself only if it existed |
 
+**Parent directory metadata (Queen):** the `*/|parent dir metadata only|parent-meta` line in `third-party-warn.txt` turns on one narrow rule.
+- A changed directory under the watched areas WARNs `parent dir metadata only (N allowed children)` only if all of these hold:
+  - it existed before the run, and at least one changed or added path strictly under it was seen;
+  - every changed or added path under it is itself WARN (a list entry, the interim rule, or host-shared attribution);
+  - nothing under it was removed;
+  - its mode, owner, group, BSD flags and xattr names are unchanged. The before and after snapshots record `stat -f '%p %u %g %f'` and the xattr names (names only, from `ls -ld@`) for every directory down to two levels below each area.
+- Anything else stays FAIL: a directory deeper than that, a new directory, or a path containing our names.
+- Directories are checked deepest first, so a parent counts a child directory that this rule already made WARN.
+- Without the line the rule is off.
+
 **Interim Apple rule:** mode `interim` in the same file, until a dedicated macOS gate user exists.
 - Created or modified entries under `Application Support/com.apple.*`, `Containers/com.apple.*` and `Caches/com.apple.*` WARN.
 - Interim globs are checked only after every other entry.
@@ -160,4 +170,4 @@ Before and after, on `~/Library/Preferences` and on Application Support, Logs, C
 | 94 | test socket path would be 104 bytes or longer, or the ps shim or fake security could not be installed |
 | 97 | probe failed |
 | 98 | a file in `seatbelt-exceptions.txt` or `excluded-tests.txt` is not in the suite, or `excluded-tests.txt` is missing |
-| 99 | `third-party-warn.txt` is missing, empty or malformed |
+| 99 | `third-party-warn.txt` is missing, empty or malformed (including a `parent-meta` line whose entry is not `*/`) |
