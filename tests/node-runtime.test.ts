@@ -79,7 +79,19 @@ test("only an explicit different HIVE_NODE_PATH permits installer migration", ()
   const node = join(dir, "node-other"), data = join(dir, "v2");
   copyFileSync(process.execPath, node);
   persistNodePin(data, probeNativeNode(process.execPath));
+  assert.throws(() => resolveNodePin(data, { HIVE_NODE_PATH: "/Applications/Apiary.app/Contents/MacOS/Apiary" }, undefined, true), /never Electron/);
   assert.throws(() => resolveNodePin(data, {}, node, true), /identity drift/);
   assert.throws(() => resolveNodePin(data, { HIVE_NODE_PATH: node }), /identity drift/);
   assert.equal(resolveNodePin(data, { HIVE_NODE_PATH: node }, node, true).path, node);
+}));
+
+test("aliases to the recorded executable cannot migrate changed bytes", () => fixture(dir => {
+  const node = join(dir, "node"), alias = join(dir, "alias"), data = join(dir, "v2");
+  copyFileSync(process.execPath, node);
+  persistNodePin(data, probeNativeNode(node));
+  symlinkSync(node, alias);
+  appendFileSync(node, "changed bytes");
+  for (const path of [alias, `${dir}/./node`]) {
+    assert.throws(() => resolveNodePin(data, { HIVE_NODE_PATH: path }, undefined, true), /identity drift|identity probe failed/);
+  }
 }));

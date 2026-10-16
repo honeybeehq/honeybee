@@ -45,10 +45,12 @@ export function resolveNodePin(dataDir: string, env: NodeJS.ProcessEnv = process
   const recorded = existsSync(file) ? checkPin(JSON.parse(readFileSync(file, "utf8"))) : undefined;
   const selected = interpreter ?? env.HIVE_NODE_PATH ?? recorded?.path;
   if (!selected) throw new Error("HIVE_NODE_PATH required: supply an absolute managed, versioned native Node executable before installing or deploying Honeybee");
-  const migrating = allowMigration && env.HIVE_NODE_PATH !== undefined && env.HIVE_NODE_PATH !== recorded?.path;
-  const expected = recorded && !migrating ? recorded : undefined;
+  const migrationRequested = allowMigration && env.HIVE_NODE_PATH !== undefined && env.HIVE_NODE_PATH !== recorded?.path;
   const pin = probeNativeNode(selected);
-  if (migrating && realpathSync(env.HIVE_NODE_PATH ?? selected) !== pin.path) throw new Error("HIVE_NODE_PATH and service interpreter must select the same native Node pin");
+  const migrationPath = migrationRequested ? (env.HIVE_NODE_PATH === selected ? pin.path : probeNativeNode(env.HIVE_NODE_PATH!).path) : undefined;
+  const migrating = migrationRequested && (!recorded || migrationPath !== recorded.path);
+  const expected = recorded && !migrating ? recorded : undefined;
+  if (migrationRequested && migrationPath !== pin.path) throw new Error("HIVE_NODE_PATH and service interpreter must select the same native Node pin");
   if ((expected && (expected.path !== pin.path || expected.version !== pin.version || expected.sha256 !== pin.sha256))
     || (env.HIVE_NODE_VERSION && env.HIVE_NODE_VERSION !== pin.version)
     || (env.HIVE_NODE_SHA256 && env.HIVE_NODE_SHA256 !== pin.sha256)) throw new Error("Honeybee Node pin identity drift: path, version or sha256 differs from the recorded pin");
