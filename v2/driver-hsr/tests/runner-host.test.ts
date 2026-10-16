@@ -32,7 +32,7 @@ function imageReference(result: string, path: string): Record<string, unknown> {
   };
 }
 
-function runHostWithStdoutLines(lines: string[]): {
+function runHostWithStdoutLines(lines: string[], env: Record<string, string> = {}): {
   sessionLog: string;
   observationLog: string;
   cleanup(): void;
@@ -52,7 +52,7 @@ function runHostWithStdoutLines(lines: string[]): {
         'for (const line of JSON.parse(process.env.HSR_TEST_LINES)) process.stdout.write(`${line}\\n`);',
       ],
       cwd: dir,
-      env: { ...process.env, HSR_TEST_LINES: JSON.stringify(lines) },
+      env: { ...process.env, ...env, HSR_TEST_LINES: JSON.stringify(lines) },
       sessionLogPath,
       observationLogPath,
       sidecarPath: join(dir, "stderr.log"),
@@ -795,4 +795,15 @@ test("adoption with dead host artifacts falls back to refusing, never a phantom 
     driver.disposeAll();
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("runner host preserves explicit harness Node options", (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "hb-explicit-node-options-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const preload = join(dir, "explicit.cjs"), marker = join(dir, "marker.json");
+  writeFileSync(preload, `require('node:fs').writeFileSync(${JSON.stringify(marker)}, JSON.stringify({node:process.env.NODE_OPTIONS,electron:process.env.ELECTRON_RUN_AS_NODE}));`);
+  const options = `--require ${preload}`;
+  const result = runHostWithStdoutLines([], { NODE_OPTIONS: options, ELECTRON_RUN_AS_NODE: "explicit" });
+  t.after(result.cleanup);
+  assert.deepEqual(JSON.parse(readFileSync(marker, "utf8")), { node: options, electron: "explicit" });
 });

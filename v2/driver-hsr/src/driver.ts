@@ -487,7 +487,7 @@ export class HsrDriver implements RuntimeDriver {
       command: spec.command,
       args: spec.args,
       ...(spec.cwd !== undefined ? { cwd: spec.cwd } : {}),
-      env: nativeNodeEnv(spec.env ?? process.env),
+      env: spec.env ?? nativeNodeEnv(),
       sessionLogPath: this.sessionLogPath(beeId),
       observationLogPath: paths.observations,
       sidecarPath: join(this.cfg.sessionLogDir, `${beeId}.stderr.log`),

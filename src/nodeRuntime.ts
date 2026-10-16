@@ -2,7 +2,7 @@ import { nativeNodeEnv } from "./runtimeEnvironment.ts";
 export { nativeNodeEnv, withoutInspectorArgs } from "./runtimeEnvironment.ts";
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { accessSync, constants, existsSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from "node:fs";
+import { accessSync, closeSync, constants, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 
@@ -40,25 +40,55 @@ function checkPin(value: unknown): NodePin {
   return { path: value.path, version: value.version, sha256: value.sha256 };
 }
 
-export function resolveNodePin(dataDir: string, env: NodeJS.ProcessEnv = process.env, interpreter?: string): NodePin {
+export function resolveNodePin(dataDir: string, env: NodeJS.ProcessEnv = process.env, interpreter?: string, allowMigration = false): NodePin {
   const file = nodePinFile(dataDir);
   const recorded = existsSync(file) ? checkPin(JSON.parse(readFileSync(file, "utf8"))) : undefined;
   const selected = interpreter ?? env.HIVE_NODE_PATH ?? recorded?.path;
   if (!selected) throw new Error("HIVE_NODE_PATH required: supply an absolute managed, versioned native Node executable before installing or deploying Honeybee");
+  const migrating = allowMigration && env.HIVE_NODE_PATH !== undefined && env.HIVE_NODE_PATH !== recorded?.path;
+  const expected = recorded && !migrating ? recorded : undefined;
   const pin = probeNativeNode(selected);
-  const expected = recorded?.path === pin.path ? recorded : undefined;
-  if ((expected && (expected.version !== pin.version || expected.sha256 !== pin.sha256))
+  if (migrating && realpathSync(env.HIVE_NODE_PATH ?? selected) !== pin.path) throw new Error("HIVE_NODE_PATH and service interpreter must select the same native Node pin");
+  if ((expected && (expected.path !== pin.path || expected.version !== pin.version || expected.sha256 !== pin.sha256))
     || (env.HIVE_NODE_VERSION && env.HIVE_NODE_VERSION !== pin.version)
-    || (env.HIVE_NODE_SHA256 && env.HIVE_NODE_SHA256 !== pin.sha256)) throw new Error("Honeybee Node pin identity drift: version or sha256 differs from the recorded pin");
+    || (env.HIVE_NODE_SHA256 && env.HIVE_NODE_SHA256 !== pin.sha256)) throw new Error("Honeybee Node pin identity drift: path, version or sha256 differs from the recorded pin");
   return pin;
 }
 
-export function persistNodePin(dataDir: string, pin: NodePin): void {
-  const file = nodePinFile(dataDir);
+export function writeNodeRuntimeState(file: string, value: unknown): void {
   mkdirSync(dirname(file), { recursive: true });
   const temporary = `${file}.${randomUUID()}`;
-  writeFileSync(temporary, JSON.stringify(pin) + "\n", { mode: 0o600, flag: "wx" });
+  const fd = openSync(temporary, "wx", 0o600);
+  try { writeFileSync(fd, JSON.stringify(value) + "\n"); fsyncSync(fd); } finally { closeSync(fd); }
   renameSync(temporary, file);
+  const directory = openSync(dirname(file), "r");
+  try { fsyncSync(directory); } finally { closeSync(directory); }
+}
+
+export function persistNodePin(dataDir: string, pin: NodePin): void {
+  writeNodeRuntimeState(nodePinFile(dataDir), pin);
+}
+
+export function nodeRepairFile(dataDir: string): string {
+  return join(dirname(nodePinFile(dataDir)), "node-runtime-held.json");
+}
+
+export function readNodeRepair(dataDir: string): unknown {
+  const file = nodeRepairFile(dataDir);
+  return existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : null;
+}
+
+export function validateDaemonNode(dataDir: string, actualProcess = false): string | null {
+  try {
+    const pin = resolveNodePin(dataDir);
+    if (actualProcess && (process.versions.electron || realpathSync(process.execPath) !== pin.path || process.versions.node !== pin.version)) throw new Error("running daemon interpreter differs from the recorded native Node pin");
+    rmSync(nodeRepairFile(dataDir), { force: true });
+    return null;
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    writeNodeRuntimeState(nodeRepairFile(dataDir), { state: "held", reason: "node_pin_invalid", detail, at: new Date().toISOString() });
+    return detail;
+  }
 }
 
 export function nodePinEnv(pin: NodePin): Record<string, string> {
@@ -67,8 +97,8 @@ export function nodePinEnv(pin: NodePin): Record<string, string> {
 
 export function childNodePath(): string {
   const env = process.env;
-  if (env.HIVE_NODE_PATH || env.HIVE_NODE_VERSION || env.HIVE_NODE_SHA256) {
-    const dataDir = env.HIVE_V2_DATA_DIR ?? join(env.HIVE_STORE_ROOT ?? join(homedir(), ".hive"), "v2");
+  const dataDir = env.HIVE_V2_DATA_DIR ?? join(env.HIVE_STORE_ROOT ?? join(homedir(), ".hive"), "v2");
+  if (env.HIVE_NODE_PATH || env.HIVE_NODE_VERSION || env.HIVE_NODE_SHA256 || existsSync(nodePinFile(dataDir))) {
     return resolveNodePin(dataDir).path;
   }
   if (process.versions.electron) throw new Error("HIVE_NODE_PATH required: Electron cannot launch Honeybee Node children");

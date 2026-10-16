@@ -192,7 +192,7 @@ export function runRunnerHost(configPath: string): void {
   // existing group signaling (TERM/KILL to -pid) reaches the whole tree.
   const child: ChildProcess = spawn(cfg.command, cfg.args, {
     cwd: cfg.cwd,
-    env: nativeNodeEnv(cfg.env ?? process.env),
+    env: cfg.env ?? nativeNodeEnv(),
     stdio: ["pipe", "pipe", "pipe"],
   });
 
