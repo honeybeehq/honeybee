@@ -1,0 +1,34 @@
+Honeybee pinned native Node verification receipts
+Implementation 3aea8fd0bf13833a6446bfedab142762c104ba25; distinct-interpreter test 6d58f9d7abf01a5dd7bd986c38a48ffd569de5c0
+check, v2:check, build: exit 0; package.json has no lint script
+v2-test {"tests":437,"pass":437,"fail":0,"skipped":0}
+v2-driver {"tests":146,"pass":146,"fail":0,"skipped":0}
+v2-driver2 {"tests":270,"pass":248,"fail":0,"skipped":22}
+v2-harness {"tests":14,"pass":14,"fail":0,"skipped":0}
+v2-daemon {"tests":1204,"pass":1199,"fail":0,"skipped":5}
+final-targeted {"tests":17,"pass":17,"fail":0,"skipped":0}
+Legacy npm test: exit 1, sole failure cli-run readiness. Same assertion reproduced on unchanged main a1da490a. Remainder with precisely that named skip: exit 0.
+
+linux-lab
+BAD PIN REJECTED: old scratch daemon pid 1352992 unchanged
+REINSTALL PRESERVES PIN {"path":"/opt/node-v24.18.0-linux-x64/bin/node","version":"24.18.0","sha256":"41a74efb34cbde5c7632cdac0cf8bd1a14d0b8d73dc1e82755014d9a9ce70f5c"}
+PASS missing/Electron/version-drift rejection; installed ExecStart; pinned child argv; reinstall pin; bad deploy preserves pid
+CLEANUP disposable unit and scratch files removed dev.honeybee.lab.pinned.1352524
+
+darwin-final
+STEP v2:daemon seatbelt exit=0 files=98 failed=0 tests=617 pass=613 fail=0 skipped=4
+STEP v2:daemon trap-only exit=0 files=9 failed=0 tests=84 pass=82 fail=0 skipped=2
+== GATE RESULT: PASS · darwin-gate/1 · forage run nwtwqx · lane github-com-honeybeehq-honeybee-a9015b303498-space-110f4b740e82-3506a99a · snapshot b39e440ff4a2571e8bf98cb248956c46237faebb · source 3aea8fd0bf13833a6446bfedab142762c104ba25 · scripts darwin-gate.sh:801d19bc23a5 daemon-suite-body.sh:5f5a80bf2160 seatbelt-exceptions.txt:0b53680ac9f7 third-party-warn.txt:3ab8b270e918 excluded-tests.txt:c41bc443568d · ~/Library scan errors 0 · EXCLUDED 15 [v2/daemon/tests/account-lease.test.ts v2/daemon/tests/accounts-activity-batch.test.ts v2/daemon/tests/accounts-activity.test.ts v2/daemon/tests/accounts-admission-batch.test.ts v2/daemon/tests/accounts-generation-read.test.ts v2/daemon/tests/accounts-reservation-visits.test.ts v2/daemon/tests/accounts-service.test.ts v2/daemon/tests/credential-handoff-status.test.ts v2/daemon/tests/lease-enrol.test.ts v2/daemon/tests/lease-export.test.ts v2/daemon/tests/lease-fences.test.ts v2/daemon/tests/lease-remove-guard.test.ts v2/daemon/tests/limits-observation.test.ts v2/daemon/tests/login-flows.test.ts v2/daemon/tests/muse-authority.test.ts]
+
+darwin-final-pinned
+BAD PIN REJECTED: old scratch daemon pid 29470 unchanged
+REINSTALL PRESERVES PIN {"path":"/Users/trmd/.local/share/mise/installs/node/24.18.0/bin/node","version":"24.18.0","sha256":"ee6fb0e015284d83a91e8ec5213f43a157f8a392b58555301682892ba928c04a"}
+PASS missing/Electron/version-drift rejection; installed ExecStart; pinned child argv; reinstall pin; bad deploy preserves pid
+CLEANUP disposable unit and scratch files removed dev.honeybee.lab.pinned.29455
+== GATE RESULT: PASS · darwin-gate/1 · forage run ZVr63G · lane github-com-honeybeehq-honeybee-a9015b303498-space-110f4b740e82-3506a99a · snapshot d6d45e2917df472cd79595858fdda2369a9bfa94 · source 6d58f9d7abf01a5dd7bd986c38a48ffd569de5c0 · scripts darwin-gate.sh:801d19bc23a5 pinned-runtime-body.sh:ca55cb00b70a seatbelt-exceptions.txt:0b53680ac9f7 third-party-warn.txt:3ab8b270e918 excluded-tests.txt:c41bc443568d · ~/Library scan errors 0 · EXCLUDED 0 []
+
+darwin-cleanup
+CLEANUP VERIFIED dev.honeybee.lab.pinned.17252 absent
+== GATE RESULT: PASS · darwin-gate/1 · forage run 6VNxEM · lane github-com-honeybeehq-honeybee-a9015b303498-space-110f4b740e82-3506a99a · snapshot 3b16b65dc427f141d3a3046d32747d52bc653b0c · source 73a5e57a6421abac5d092780db8f2ba194c14a38 · scripts darwin-gate.sh:801d19bc23a5 cleanup-body.sh:f31eab7c14e2 seatbelt-exceptions.txt:0b53680ac9f7 third-party-warn.txt:3ab8b270e918 excluded-tests.txt:c41bc443568d · ~/Library scan errors 0 · EXCLUDED 0 []
+
+Review attention: baseline legacy skip; existing 15 Darwin Keychain exclusions; earlier disposable cleanup-script failure and its verified cleanup retained in logs.
