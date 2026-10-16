@@ -77,7 +77,7 @@ test("quiet facts through a throwaway daemon: root/child isolation, failure, int
 for (const harness of ["grok", "kimi"] as const) {
   test(`quiet ACP facts through a throwaway ${harness} daemon`, { timeout: 60_000 }, async () => {
     const acpFixture = new URL("./fixtures/quiet-acp.mjs", import.meta.url).pathname;
-    const rig = makeDaemonDir({ agents: { [harness]: { command: process.execPath, args: [acpFixture], adapter: harness } } });
+    const rig = makeDaemonDir({ agents: { [harness]: { command: acpFixture, args: [], adapter: harness } } });
     const daemon = await startDaemon(rig.dir);
     const client = await daemon.client();
     try {
