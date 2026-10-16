@@ -6,7 +6,7 @@ import { parseDurableUpdateReservation, isApiarySwap, type DurableUpdateReservat
 
 function parseOwnerReservation(value: unknown): DurableUpdateReservation | null {
   if (value === null) return null;
-  if (typeof value === "object" && value !== null && "epoch" in value && value.epoch === 0
+  if (typeof value === "object" && value !== null && Object.keys(value).length === 4 && "epoch" in value && value.epoch === 0
     && "id" in value && value.id === "" && "recoverySubjectDigest" in value && value.recoverySubjectDigest === ""
     && "active" in value && value.active === false) return null;
   return parseDurableUpdateReservation(value);

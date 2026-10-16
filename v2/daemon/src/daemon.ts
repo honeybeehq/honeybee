@@ -2232,14 +2232,14 @@ export class HiveDaemon {
   private async rpcApiarySwap(verb: "update.apiarySwap.status" | "update.apiarySwap.acquire" | "update.apiarySwap.release" | "update.apiarySwap.abandon" | "update.apiarySwap.recover", params: Record<string, unknown>): Promise<unknown> {
     const runtimeRoot = resolve(dirname(this.cfg.dataDir), "runtime"), storePath = resolve(this.cfg.storePath);
     const storageSupported = SCHEMA_VERSION === 44 && storePath === resolve(this.cfg.dataDir, "core.sqlite3");
+    if (verb === "update.apiarySwap.status") {
+      let installedIdentity: ComponentIdentity | null = null;
+      try { installedIdentity = this.apiarySwapInstalledIdentity(); } catch {}
+      return { contract: APIARY_SWAP_CAPABILITY, receiptAuthority: "trusted-local-owner-attestation", schemaVersion: SCHEMA_VERSION, storageSupported,
+        node: hostname(), runtimeRoot, storePath, identity: BUILD_IDENTITY, installedIdentity,
+        reservation: this.mustStore().durableUpdateReservation() };
+    }
     return withFileLock(join(runtimeRoot, ".deploy.lock"), async () => {
-      if (verb === "update.apiarySwap.status") {
-        let installedIdentity: ComponentIdentity | null = null;
-        try { installedIdentity = this.apiarySwapInstalledIdentity(); } catch {}
-        return { contract: APIARY_SWAP_CAPABILITY, receiptAuthority: "trusted-local-owner-attestation", schemaVersion: SCHEMA_VERSION, storageSupported,
-          node: hostname(), runtimeRoot, storePath, identity: BUILD_IDENTITY, installedIdentity,
-          reservation: this.mustStore().durableUpdateReservation() };
-      }
       if (!storageSupported) throw new RpcError("invalid_request", "apiary-swap: unsupported storage", { reason: "unsupported_storage" });
       try {
         const operation = verb === "update.apiarySwap.acquire" ? "acquire" : verb === "update.apiarySwap.release" ? "release" : verb === "update.apiarySwap.abandon" ? "abandon" : "recover";

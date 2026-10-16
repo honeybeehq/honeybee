@@ -4985,6 +4985,8 @@ export async function runV2Cli(argv: string[], io: CliIo = defaultIo): Promise<n
         const updateArgs = parsed.positional.slice(1);
         const sub = updateArgs[0];
         if (sub === "apiary-swap") {
+          if ([...parsed.flags.keys()].some(flag => !["--data-dir", "--socket", "--json"].includes(flag))
+            || parsed.args.length || parsed.tags.length || parsed.lists.size || parsed.rest !== null) throw new Error("update-owner apiary-swap: only --data-dir, --socket and --json are supported");
           const operation = updateArgs[1];
           if (operation !== "status" && operation !== "acquire" && operation !== "release" && operation !== "abandon" && operation !== "recover") throw new Error("update-owner apiary-swap: expected status, acquire, release, abandon, or recover");
           if (updateArgs.length !== (operation === "status" ? 2 : 3)) throw new Error("update-owner apiary-swap: expected an exact request file for mutations");

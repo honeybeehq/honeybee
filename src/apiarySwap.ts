@@ -25,8 +25,11 @@ export type ApiarySwapReceipt = ApiarySwapOwner & { version: 1; journalDigest: s
   & ({ outcome: "succeeded" | "rolled-back"; policy: "restored" }
     | { outcome: "abandoned"; phase: "acquired"; policy: "unchanged" }
     | { outcome: "recovered"; policy: "restored"; coordinator: "fenced"; generations: "reconciled" });
-export type ApiarySwapSettle = ApiarySwapOwner & { receipt: ApiarySwapReceipt };
-export type ApiarySwapRecover = Omit<ApiarySwapOwner, "epoch"> & { expectedEpoch: number; recoveryId: string; receipt: ApiarySwapReceipt };
+export type ApiarySwapRelease = ApiarySwapOwner & { completionReceipt: Extract<ApiarySwapReceipt, { outcome: "succeeded" | "rolled-back" }> };
+export type ApiarySwapAbandon = ApiarySwapOwner & { cancellationReceipt: Extract<ApiarySwapReceipt, { outcome: "abandoned" }> };
+export type ApiarySwapRecover = Omit<ApiarySwapOwner, "epoch"> & { expectedEpoch: number; recoveryId: string; recoveryReceipt: Extract<ApiarySwapReceipt, { outcome: "recovered" }> };
+export type ParsedApiarySwapSettle = ApiarySwapOwner & { receipt: ApiarySwapReceipt };
+export type ParsedApiarySwapRecover = Omit<ApiarySwapOwner, "epoch"> & { expectedEpoch: number; recoveryId: string; receipt: ApiarySwapReceipt };
 export class ApiarySwapError extends Error {
   readonly code: "invalid_request" | "reservation_mismatch" | "epoch_changed" | "recovery_needed";
   constructor(code: ApiarySwapError["code"], message: string) { super(`apiary-swap: ${message}`); this.name = "ApiarySwapError"; this.code = code; }
@@ -101,13 +104,13 @@ function receipt(value: unknown): ApiarySwapReceipt {
   }
   return invalid("incomplete owner receipt; recovery needed");
 }
-export function parseApiarySwapSettle(value: unknown, kind: "release" | "abandon"): ApiarySwapSettle {
+export function parseApiarySwapSettle(value: unknown, kind: "release" | "abandon"): ParsedApiarySwapSettle {
   const key = kind === "release" ? "completionReceipt" : "cancellationReceipt";
   const r = shape(value, [...OWNER_KEYS, key]), token = owner(r), parsed = receipt(r[key]);
   if (!sameOwner(token, parsed) || (kind === "release" ? !["succeeded", "rolled-back"].includes(parsed.outcome) : parsed.outcome !== "abandoned")) invalid("receipt does not bind this operation and owner");
   return { ...token, receipt: parsed };
 }
-export function parseApiarySwapRecover(value: unknown): ApiarySwapRecover {
+export function parseApiarySwapRecover(value: unknown): ParsedApiarySwapRecover {
   const r = shape(value, ["purpose", "id", "expectedEpoch", "transactionDigest", "expectedHoneybeeIdentity", "recoveryId", "recoveryReceipt"]);
   const token = owner({ ...r, epoch: r.expectedEpoch }), parsed = receipt(r.recoveryReceipt);
   if (!sameOwner(token, parsed) || parsed.outcome !== "recovered") invalid("recovery receipt does not bind held owner");
@@ -146,7 +149,7 @@ export function acquireApiarySwap(previous: DurableUpdateReservation, input: Api
   epoch(token.epoch);
   return { format: 2, ...token, active: true };
 }
-export function settleApiarySwap(previous: DurableUpdateReservation, input: ApiarySwapSettle, kind: "release" | "abandon"): ApiarySwapReservation {
+export function settleApiarySwap(previous: DurableUpdateReservation, input: ParsedApiarySwapSettle, kind: "release" | "abandon"): ApiarySwapReservation {
   if (!isApiarySwap(previous) || !sameOwner({ purpose: previous.purpose, id: previous.id, epoch: previous.epoch, transactionDigest: previous.transactionDigest, expectedHoneybeeIdentity: previous.expectedHoneybeeIdentity }, input)) throw new ApiarySwapError("reservation_mismatch", "reservation owner mismatch");
   const resolution: ApiarySwapResolution = { kind: kind === "release" ? "released" : "abandoned", receiptDigest: canonicalDigest(input.receipt) };
   if (!previous.active) {
@@ -155,7 +158,7 @@ export function settleApiarySwap(previous: DurableUpdateReservation, input: Apia
   }
   return { ...previous, active: false, resolution };
 }
-export function recoverApiarySwap(previous: DurableUpdateReservation, input: ApiarySwapRecover): ApiarySwapReservation {
+export function recoverApiarySwap(previous: DurableUpdateReservation, input: ParsedApiarySwapRecover): ApiarySwapReservation {
   if (!isApiarySwap(previous)) throw new ApiarySwapError("reservation_mismatch", "not an Apiary owner");
   const token = { purpose: previous.purpose, id: previous.id, epoch: previous.epoch, transactionDigest: previous.transactionDigest, expectedHoneybeeIdentity: previous.expectedHoneybeeIdentity };
   const requested = { purpose: input.purpose, id: input.id, epoch: input.expectedEpoch, transactionDigest: input.transactionDigest, expectedHoneybeeIdentity: input.expectedHoneybeeIdentity };

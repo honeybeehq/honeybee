@@ -238,6 +238,8 @@ test("reservation lab: live schema 44 owner takes precedence over offline reserv
         status = malformed;
         await assert.rejects(readUpdateReservation(root), /cannot identify/);
       }
+      status = { runtimeRoot: root, storePath: join(root, "..", "v2", "core.sqlite3"), reservation: { id: "", epoch: 0, active: false, recoverySubjectDigest: "", purpose: "unknown" } };
+      await assert.rejects(readUpdateReservation(root), /unknown/);
     } finally { await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); }
   });
 });

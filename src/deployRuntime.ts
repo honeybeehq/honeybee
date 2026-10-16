@@ -600,11 +600,13 @@ export async function pruneRuntimeVersions(
   root: string,
   options: { keep?: number } = {},
 ): Promise<string[]> {
-  return withFileLock(join(root, ".deploy.lock"), () => pruneRuntimeVersionsLocked(root, options));
+  return withFileLock(join(root, ".deploy.lock"), async () => {
+    await assertRuntimeUpdateAllowed(root, "prune");
+    return pruneRuntimeVersionsLocked(root, options);
+  });
 }
 
 async function pruneRuntimeVersionsLocked(root: string, options: { keep?: number }): Promise<string[]> {
-  await assertRuntimeUpdateAllowed(root, "prune");
   const keep = Math.max(1, Math.floor(options.keep ?? DEFAULT_KEEP_VERSIONS));
   const entries = await readDeployHistory(root);
   const currentSha = await currentDeployTarget(root);
