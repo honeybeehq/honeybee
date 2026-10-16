@@ -178,8 +178,10 @@ def map_host_pids(group, out, stopped):
                 pids = [int(value) for value in group.read_text().split()]
                 stamp = time.time()
                 sightings.write(json.dumps(dict(time=stamp, pids=pids))+'\n')
+                changed=False
                 for known in births.values():
                     if 'readError' in known and 'nextSample' not in known['readError']:
+                        changed=True
                         error = known['readError']
                         current = {}
                         if known['hostPid'] in pids:
@@ -195,6 +197,7 @@ def map_host_pids(group, out, stopped):
                 for pid in pids:
                     if pid in births:
                         continue
+                    changed=True
                     item = dict(hostPid=pid, scopeSightingAt=stamp, capturedAt=time.time())
                     try:
                         status = pathlib.Path('/proc') / str(pid) / 'status'
@@ -207,13 +210,14 @@ def map_host_pids(group, out, stopped):
                         item['error'] = type(error).__name__
                         item['readError']=dict(pid=pid,slot='host-pid-map',errno=getattr(error,'errno',None),time=time.time(),scopeSightingAt=stamp,atErrorStat={})
                     births[pid] = item
-                save(out / 'host-pid-map.json', list(births.values()))
+                if changed:
+                    save(out / 'host-pid-map.json', list(births.values()))
             except OSError as error:
                 removed = error.errno == 2 and not group.exists()
                 append(out / 'host-mapper-events.jsonl', dict(time=time.time(), errno=error.errno, event='scope_removed' if removed else 'FAIL'))
                 if removed:
                     break
-            stopped.wait(.02)
+            stopped.wait(.001)
     for item in births.values():
         if 'readError' in item and 'nextSample' not in item['readError']:
             gone = not os.path.exists(f"/proc/{item['hostPid']}")
