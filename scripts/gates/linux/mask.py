@@ -152,9 +152,25 @@ try:
     assert go['nonce'] == nonce and go['asserted'] and go['insideAsserted']
     assert go['outsideNamespaces']['mnt'] != receipt['namespaces']['mnt']
     receipt.update(outsideAssertion=go, maskAsserted=True, maskAssertedAt=time.time())
+    class CapHeader(ctypes.Structure):
+        _fields_ = [('version', ctypes.c_uint32), ('pid', ctypes.c_int)]
+    class CapData(ctypes.Structure):
+        _fields_ = [('effective', ctypes.c_uint32), ('permitted', ctypes.c_uint32), ('inheritable', ctypes.c_uint32)]
+    header, capabilities = CapHeader(0x20080522, 0), (CapData * 2)()
+    if libc.capget(ctypes.byref(header), capabilities) != 0:
+        raise OSError(ctypes.get_errno(), 'sampler capability read failed')
+    for word in capabilities:
+        word.inheritable = word.permitted
+    if libc.capset(ctypes.byref(header), capabilities) != 0:
+        raise OSError(ctypes.get_errno(), 'sampler capability inheritance failed')
+    for number in range(64):
+        if capabilities[number // 32].permitted & (1 << (number % 32)):
+            if libc.prctl(47, 2, number, 0, 0) != 0:
+                raise OSError(ctypes.get_errno(), 'sampler ambient capability failed')
+    receipt['samplerCapabilitiesBeforeExec'] = {key:value.strip() for line in pathlib.Path('/proc/self/status').read_text().splitlines() for key, separator, value in [line.partition(':')] if key.startswith('Cap')}
     save('mask-proof.json', receipt)
     os.close(outfd)
-    os.execvpe('setpriv', ['setpriv','--inh-caps=+all','--ambient-caps=+all','python3','-B',str(R/'init.py'),str(R),label,'python3','-B', str(R / 'monitor.py'), str(R), label, *SETPRIV_ARGS, 'python3','-B',str(R/'test_capabilities.py'),str(R),label,'python3','-B', str(R / 'workload.py'), str(R), label, *cmd], os.environ)
+    os.execvpe('python3', ['python3','-B',str(R/'init.py'),str(R),label,'python3','-B', str(R / 'monitor.py'), str(R), label, *SETPRIV_ARGS, 'python3','-B',str(R/'test_capabilities.py'),str(R),label,'python3','-B', str(R / 'workload.py'), str(R), label, *cmd], os.environ)
 except BaseException as e:
     receipt.update(maskAsserted=False, error=type(e).__name__ + ': ' + str(e), failedAt=time.time())
     save('mask-failure.json', receipt)
