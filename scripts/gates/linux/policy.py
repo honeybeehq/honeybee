@@ -127,8 +127,41 @@ def mapping_coverage(birth, mappings, errors):
     return 'FAIL'
 
 
-def probe_failed(result):
-    return result is not None and (result.get('childExit') != 0 or len(result.get('probes', [])) != 3 or any(not item.get('expectedFailure') for item in result.get('probes', [])))
+def mask_targets(real_home, run_root, entries):
+    home = pathlib.Path(real_home)
+    explicit = ['.hive', '.claude', '.codex', '.grok', '.kimi', '.gemini', '.cursor', '.muse', '.ssh', '.gnupg', '.config/systemd/user', '.config/opencode', '.config/muse', '.local/share/opencode', 'Code', 'Projects']
+    scaffolds = {str(home), str(home / '.cache'), str(home / '.config'), str(home / '.config/systemd'), str(home / '.local'), str(home / '.local/share')}
+    targets = {str(home / name) for name in explicit}
+    targets.update(path for path in entries if pathlib.Path(path).parent == home and path not in scaffolds)
+    targets.discard(str(run_root))
+    targets.discard(str(home / '.cache'))
+    return targets, scaffolds
+
+
+def mask_probe_failed(result, inside, real_home, run_root, before):
+    if not isinstance(inside, dict) or not isinstance(inside.get('maskTargets'), list) or not inside['maskTargets']:
+        return True
+    targets = []
+    for row in inside['maskTargets']:
+        if not isinstance(row, dict) or not isinstance(row.get('path'), str):
+            return True
+        targets.append(row['path'])
+    expected, unused = mask_targets(real_home, run_root, before['entries'])
+    if len(targets) != len(set(targets)) or set(targets) != expected:
+        return True
+    return probe_failed(result, real_home, expected)
+
+
+def probe_failed(result, real_home, targets):
+    if not isinstance(result, dict) or result.get('childExit') != 0 or not targets:
+        return True
+    expected = {('umount-home', str(real_home)), ('umount-proc', '/proc'), ('remount-hive-rw', str(pathlib.Path(real_home) / '.hive'))}
+    expected.update((operation + ':' + target, target) for target in targets for operation in ('umount', 'mount'))
+    probes = result.get('probes', [])
+    if not isinstance(probes, list) or any(not isinstance(item, dict) or item.get('expectedFailure') is not True or item.get('result') != -1 or item.get('errno') not in (1, 22) for item in probes):
+        return True
+    actual = [(item.get('probe'), item.get('path')) for item in probes]
+    return len(actual) != len(expected) or any(pair not in expected for pair in actual) or len(set(actual)) != len(expected)
 
 
 def closing_verdict(change, real_home, masked_eligible, clean, config_times, touched, named):

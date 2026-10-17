@@ -1,5 +1,6 @@
 import os, sys, pathlib, json, ctypes, subprocess, time, stat, uuid, socket, fcntl, struct, hashlib
 from home_guard import entry_guard
+from policy import mask_targets
 from filesystem import seal_filesystem, mount_readonly, assert_filesystem, filesystem_probes
 from test_capabilities import SETPRIV_ARGS
 R = pathlib.Path(sys.argv[1])
@@ -56,15 +57,7 @@ try:
     sock.close()
     before = json.loads((out / 'before.json').read_text())
     assert before['entries'] and str(H / '.hive/v2/hived.sock') in before['entries'] and (not before['errors'])
-    explicit = ['.hive', '.claude', '.codex', '.grok', '.kimi', '.gemini', '.cursor', '.muse', '.ssh', '.gnupg', '.config/systemd/user', '.config/opencode', '.config/muse', '.local/share/opencode']
-    scaffolds = {str(H), str(H / '.cache'), str(H / '.config'), str(H / '.config/systemd'), str(H / '.local'), str(H / '.local/share')}
-    targets = set((str(H / p) for p in explicit))
-    for path, meta in before['entries'].items():
-        p = pathlib.Path(path)
-        if p.parent == H and p.name.startswith('.') and (stat.S_ISDIR(meta['mode']) or stat.S_ISLNK(meta['mode'])) and (str(p) not in scaffolds):
-            targets.add(str(p))
-    targets.discard(str(CACHE))
-    targets.discard(str(H / '.cache'))
+    targets, scaffolds = mask_targets(H, CACHE, before['entries'])
     empty = R / 'empty' / label
     empty.mkdir(parents=True, exist_ok=True)
     cachefd = os.open(CACHE, os.O_PATH | os.O_DIRECTORY)
@@ -115,16 +108,20 @@ try:
     receipt['filesystem'] = assert_filesystem(CACHE, 'mask.py')
     receipt['namespaces']={key:os.readlink('/proc/self/ns/'+key) for key in ('user','mnt','net','pid')}
     receipt['parentNamespaces']=parent_namespaces
+    receipt['maskCoverage'] = dict(boundary='whole-HOME tmpfs overlay', targetList='explicit paths plus unnamed entries from the pre-overlay metadata snapshot', completeness='target list does not claim to enumerate every host entry; the whole-HOME overlay hides late-created and renamed entries')
+    repo_targets = sorted(targets)
+    locked_probes = [('umount-home', str(H), 'umount'), ('umount-proc', '/proc', 'umount'), ('remount-hive-rw', str(H / '.hive'), 'mount')]
+    locked_probes += [(operation + ':' + target, target, operation) for target in repo_targets for operation in ('umount', 'mount')]
     readfd,writefd=os.pipe()
     probe=os.fork()
     if probe==0:
         os.close(readfd)
         if libc.unshare(ctypes.c_int(0x00020000))!=0:os._exit(3)
-        for name,target,operation in [('umount-home',str(H),'umount'),('umount-proc','/proc','umount'),('remount-hive-rw',str(H/'.hive'),'mount')]:
+        for name,target,operation in locked_probes:
             ctypes.set_errno(0)
             result=libc.umount2(target.encode(),0) if operation=='umount' else libc.mount(None,target.encode(),None,ctypes.c_ulong(4096|32),None)
             number=ctypes.get_errno()
-            record=dict(probe=name,result=result,errno=number,expectedFailure=result==-1 and number in (1,22))
+            record=dict(probe=name,path=target,result=result,errno=number,expectedFailure=result==-1 and number in (1,22))
             os.write(writefd,(json.dumps(record)+'\n').encode())
             if not record['expectedFailure']:os._exit(2)
         os._exit(0)
@@ -133,7 +130,20 @@ try:
     unused,probe_status=os.waitpid(probe,0)
     receipt['lockedMountProbes']=probe_records
     save('locked-mount-probes.json',dict(probes=probe_records,childExit=os.waitstatus_to_exitcode(probe_status)))
-    if probe_status or len(probe_records)!=3 or not all(item['expectedFailure'] for item in probe_records):raise RuntimeError('locked mount negative probe failed; workload forbidden')
+    if probe_status or len(probe_records)!=len(locked_probes) or not all(item['expectedFailure'] for item in probe_records):raise RuntimeError('locked mount negative probe failed; workload forbidden')
+    code = H / 'Code'
+    code_probe = dict(path=str(code), empty=os.listdir(code) == [], refused=False)
+    try:
+        fd = os.open(code / ('gate-write-' + nonce), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except OSError as error:
+        code_probe.update(errno=error.errno, refused=error.errno in (13, 30))
+    else:
+        os.close(fd)
+    code_probe['asserted'] = code_probe['empty'] and code_probe['refused']
+    receipt['repoRootSelfTests'] = code_probe
+    save('repo-root-tests.json', code_probe)
+    if not code_probe['asserted']:
+        raise RuntimeError('Code mask read/write self-test failed; workload forbidden')
     receipt['filesystemProbes'] = filesystem_probes(CACHE, privilege_checks=False)
     save('filesystem-proof.json', dict(state=receipt['filesystem'], probes=receipt['filesystemProbes']))
     if not receipt['filesystemProbes']['asserted']:
