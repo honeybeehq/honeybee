@@ -177,3 +177,22 @@ test("credential recovery redelivers original phone bytes with typed ancestry an
     assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
   } finally { store.close(); h.cleanup(); }
 });
+
+test("phone projections survive malformed legacy audit bodies without reparsing history", () => {
+  const h = harness(); let store = h.open();
+  try {
+    const { bee } = makeBee(store);
+    const message = store.send(bee.id, "retained phone", { phone: { origin: origin(bee.id), key: "retained" } }).message;
+    store.close();
+    const db = new DatabaseSync(h.path);
+    db.prepare("UPDATE audit SET payload = 'not-json' WHERE kind IN ('mail.enqueued', 'bee.created')").run();
+    db.prepare("DELETE FROM meta WHERE key = 'phone_inputs_seq'").run();
+    db.close();
+    store = h.open();
+    assert.deepEqual(store.getMessage(message.id), message);
+    assert.deepEqual(store.mailHistory().messages[0]?.phoneOrigin, message.phoneInput!.envelope);
+    assert.equal(store.mailHistory().messages[0]?.body, message.body);
+    store.close(); store = h.open();
+    assert.deepEqual(store.mailHistory().messages[0]?.phoneOrigin, message.phoneInput!.envelope);
+  } finally { store.close(); h.cleanup(); }
+});

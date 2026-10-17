@@ -2087,7 +2087,14 @@ export class CoreStore {
       if (!rows.length) break;
       for (const row of rows) {
         phoneSeq = Number(row.seq);
-        const payload = JSON.parse(String(row.payload)) as { message?: MessageRow; bee?: BeeRow };
+        let payload: { message?: MessageRow; bee?: BeeRow };
+        try {
+          const parsed: unknown = JSON.parse(String(row.payload));
+          if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) continue;
+          payload = parsed as typeof payload;
+        } catch {
+          continue;
+        }
         if (payload.bee?.phoneOperationOrigin && this.getBee(payload.bee.id)) this.stmt("INSERT INTO phone_spawn_origins(bee_id, origin_json) VALUES(?, ?) ON CONFLICT(bee_id) DO NOTHING").run(payload.bee.id, JSON.stringify(payload.bee.phoneOperationOrigin));
         if (payload.message?.phoneInput && this.stmt("SELECT 1 FROM mail_history_enqueues WHERE message_id = ?").get(payload.message.id)) this.stmt("INSERT INTO phone_inputs(message_id, admission_id, input_json) VALUES(?, ?, ?) ON CONFLICT(message_id) DO NOTHING").run(payload.message.id, payload.message.phoneInput.envelope.admissionId, JSON.stringify(payload.message.phoneInput));
       }
