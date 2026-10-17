@@ -1,173 +1,94 @@
-# darwin-gate/1
+# Darwin gate v2
 
-Runs the Honeybee v2 daemon suite (`v2/daemon/tests`, `v2/cli/tests`) on a lab Mac mini through forage. The run is scrubbed, kept off the network, and checked by sentinels. Proof history and incident notes are kept in the Project file `ops/darwin-gate.md`.
+This wrapper runs only on erebor, through the orchestrator-authorized absolute forage route. All ordinary Darwin runs remain held pending Queen's review of this hardening. This PR's self-test uses only its private run root; it does not read the real HOME sentinel or LaunchAgents.
 
-## How to run
+## Entry and provenance
 
-Dispatch from metal-1/3 or a lab mini (mini02–05), never from a workstation or mini01. Use a full clone (never shallow) under that host's `~/.cache`, and add no ssh trust.
+Use a committed, pinned Honeybee checkout. Run all fetch/push/gh commands from an explicit absolute checkout cwd, under the exact I-8 authorization and provisioned config. Never use origin, credential overrides or host-key workarounds.
+
+The runner invokes a committed script by path, rather than an inline remote shell payload:
 
 ```sh
-git clone git@github.com:honeybeehq/honeybee.git ~/.cache/dg/honeybee
-cd ~/.cache/dg/honeybee && git fetch origin && git checkout --detach <sha>
-sh scripts/gates/darwin/gate-run.sh > .dg.sh
-~/.local/bin/forage --needs darwin --host trmd-erebor-mini02 -- "bash .dg.sh" > ~/.cache/dg/<name>.txt 2>&1; rm -f .dg.sh
+/home/trmd/.local/bin/forage --host trmd-erebor-mini02 --needs darwin -- /bin/sh scripts/gates/darwin/self-test-run.sh <exact-approved-sha>
 ```
 
-- `gate-run.sh` puts `darwin-gate.sh` and a body (default `daemon-suite-body.sh`) into one script.
-  - It pins the source commit; the sha gets `+dirty` if this directory has local changes.
-  - It also records a short sha256 of each gate file and data file (including `excluded-tests.txt`).
-- forage syncs the working tree, untracked `.dg.sh` included, into the lane.
-- Every run prints and ends with `forage run · lane · snapshot · source · scripts`.
-- Stage output only under `~/.cache`, never `/tmp`.
+The metal-1 runner needs PATH=/usr/local/bin:/usr/bin:/bin. Its tool call supplies its absolute checkout cwd explicitly. Forage syncs into /Users/trmd/.cache/fj/<lane>; the gate also recognizes the older .forage/work lane. Source HEAD must equal the approved SHA or be forage's snapshot child. Gate file hashes are full SHA256, including the guard, native scope helper and bodies. Uncommitted gate files and redirected files refuse. The wrapper archives the pinned Git commit into the run root before compiling or running anything, so it does not execute a mutable lane copy.
 
-## Rules
+Node is selected from an explicit configured absolute path, or /opt/homebrew/bin/node, /usr/local/bin/node, /opt/homebrew/opt/node@24/bin/node. No mise, nvm or real-HOME discovery. A selected Node below 24 refuses. Python is explicitly /usr/bin/python3 or /opt/homebrew/bin/python3. Selected canonical executable paths and versions go in the retained receipts. No Keychain or security command runs; the workload's security shim refuses, and Seatbelt denies /usr/bin/security and Mach service lookup.
 
-**Where it runs:** hosts `trmd-erebor-mini02`, `trmd-moria-mini03`, `trmd-hobbiton-mini04` and `trmd-lorien-mini05` only, inside a forage job, inside a forage lane, and never in a Cell checkout or with `HIVE_CELL*` set. Cells never run the daemon suite.
+## Before the first write
 
-**Scrubbed environment:**
-- Stage 2 re-runs under `env -i`.
-- Fake HOME, TMPDIR, XDG dirs and provider homes live under a run root shorter than 40 bytes (`~/.cache/scg/r.XXXXXX`).
-- `HIVE_REAL_HOME` is set to the fake HOME and is the only `HIVE_*` variable.
-- Real `npm ci`; a symlinked `node_modules` is refused. The pnpm store (`$GATE_ROOT/pnpm-store`) and npm's logs (`$GATE_ROOT/npm-logs`) live in the run root, never `~/Library/pnpm` or `~/.npm/_logs`.
+The stdlib Python guard canonicalizes the planned /private/var/tmp/g.<id> root and every fake HOME, TMPDIR, XDG, provider and cache path before opening the host lock or creating any directory. Fake paths must be absolute and resolve inside that root. The passwd HOME, Library, all provider homes and symlink escapes refuse. The environment is rebuilt without stamped HIVE_/APIARY_ values; only HIVE_REAL_HOME names the fake HOME.
 
-**HOME sentinel:** before and after, on the real HOME top level, `~/.hive/v2` and `hived.sock`. The gate refuses to start without a valid before-snapshot, and any change FAILs.
+The host lock is exactly /private/var/tmp/hb-darwin-gate.lock (Queen, 17 Oct 12:13Z). It must be an empty regular file, mode0600, owned by the lab user. A non-following open refuses symlinks; wrong owner, mode or nonempty content refuses. Only flock is used: no writes, removal or sweep. Device, inode, mode and uid are recorded in the receipt. Run roots are created exclusively with mode0700.
 
-**~/.npm record:** npm's cache stays at the real `~/.npm`, because it is content-addressed and integrity-checked. The HOME sentinel only compares top-level names and inodes, so the gate also records `~/.npm`'s file count and newest mtime before and after.
-- Any change, or any path newer than the run start, prints `WARN ~/.npm changed (npm cache)` with the paths (first 100 and a count), never contents.
+## Storage, caches and network
 
-**No outside network:**
-- Seatbelt (`sandbox-exec`) denies everything outbound except localhost and unix sockets.
-- A Node preload trap blocks non-loopback connect, dns and dgram and records each attempt.
-- Also: `GIT_ALLOW_PROTOCOL=file`, proxies pointed at `127.0.0.1:9`, npm offline.
-- A mandatory probe runs before any test and must show outbound refused (nc, node, dns, git https), loopback working and the ps shim working. Otherwise exit 97.
-- Any trap violation or Seatbelt `network-outbound` deny FAILs the gate.
+The complete workload, including dependency preparation, runs under an inherited Seatbelt policy denying writes outside its run root and reads under the real HOME. It cannot relax the policy through a plain or nested subprocess. Source and dependencies live in the root; the original forage lane is not writable or readable by the workload.
 
-**ps shim:** Seatbelt refuses setuid binaries, and `/bin/ps` is setuid. The gate puts an ad-hoc-signed copy without the setuid bit first on PATH inside the run root.
+npm, pnpm, Node compile caches, compiler caches and logs are per-run. Normal runs require an explicit hashed cache-seed archive from the pinned lane or this root. Only npm/, pnpm/ and node/ regular-file/directory entries are accepted; unsafe members and hash mismatches refuse before extraction. Self-tests create a fresh empty seed inside their own root. Nothing inspects or shares the real ~/.npm.
 
-**Fake security:** the gate puts a fake `security` first on PATH, next to the ps shim.
-- It records the time, pid, ppid and argv of every call in the run root's `security-calls`, never reads stdin, and exits 1. Any recorded call FAILs the gate; the calls are printed in the result and kept with the sentinels.
-- The probe must find `security` resolving to the fake both inside and outside Seatbelt, else exit 97.
-- This stays permanently, even after the Keychain fix lands. Code that runs `/usr/bin/security` by absolute path would bypass it; none does today.
+Darwin network is SHARED, not a Linux network namespace. The 52e76fd3 probe accepted a remote tailnet connection: Seatbelt did not restrict IP bind or inbound despite the localhost policy. The controller now samples only birth-verified workload processes for TCP LISTEN and bound UDP, fails on addresses outside 127.0.0.0/8 or ::1, and invokes the fenced reaper. Sampling sleeps 50 ms between cycles; actual intervals include the scan cost and are recorded. A listener can be exposed between observations, and a short-lived process may escape observation. Loopback outbound can reach host-local services. Unix socket permission is limited to TMPDIR. No system-log or foreign-process census is performed.
 
-**Known hosts (2026-10-15):** macOS AppleSystemPolicy kills the ad-hoc ps shim on some builds, even outside Seatbelt. The gate tries the shim right after building it, before `npm ci`, and on such a host refuses with exit 97, naming the macOS build.
-- trmd-erebor-mini02, macOS 26.6.2 (25G83): runs the gate.
-- trmd-moria-mini03, macOS 26.3 (25D125): refused.
-- trmd-hobbiton-mini04 and trmd-lorien-mini05, macOS 26.4 (25E246): refused.
+The static listener check scans every file under v2/** and tests/**. Unknown extensions containing listen/bind fail closed. Listen targets must be literal Unix paths or loopback addresses, or have an audited entry in listener-allowlist.json. Entries combine normalized call-context hashes with hashes of exact cited receiver declaration lines; changing or moving a declaration fails closed. Bind scanning covers modules importing dgram/socket; a socket passed across modules is covered only by the runtime own-pid sampler. No variable-name assumption is used. No product test was modified to hide a finding. Self-tests record wildcard TCP and UDP detections, including a retained reparented grandchild, as expected FAIL observations followed by fenced cleanup; they make no remote connection. The one-shot inbound diagnostic mode has been removed after the probe.
 
-**Every file runs:** each test file runs separately, so one failure doesn't stop the rest.
-- Files that spawn `sandbox: true` Cells run trap-only, because nested sandbox-exec is refused.
-- So do the files listed in `seatbelt-exceptions.txt`. Its header names the fix that removes the need for it; delete the listed lines once that fix is on main.
-- A listed file that no longer exists in the suite is refused with exit 98.
-- Trap-only files must still pass.
+The gates perform no remote Git operations: only local status, revision checks and archive. Forage transport is tool-owned. The common fixture runners also perform no remote Git operations. Disposable perf fixtures configure synthetic remotes and exercise local clones; cell-warmpool-bench uses GIT_CONFIG_GLOBAL/SYSTEM. These are existing repository test/bench behavior, left unchanged under the orchestrator's ruling. Agent fetch/push commands separately require the exact authorized URL variable and allowlist guard.
 
-**Excluded tests:** `excluded-tests.txt` lists test files the gate does not run at all, in either phase. Its header gives the reason.
-- Today: files that reach `v2/daemon/src/keychain.ts` and so the real `/usr/bin/security`, until c51035e5's fake-security fix lands. The list comes from c51035e5 via Queen.
-- The file must exist; an empty list is allowed for this file only.
-- A listed file missing from the suite refuses with exit 98.
-- The banner and the GATE RESULT line print every excluded file.
+## Sentinels, cleanup and evidence
 
-**Stale-tree guard:** before anything else, the gate checks the lane and refuses with exit 88 unless both hold:
-- The lane HEAD is the source sha pinned by `gate-run.sh`, or a `forage snapshot` commit whose parent is that sha.
-- Every pinned gate file in the lane (`scripts/gates/darwin/`) has the sha256 `gate-run.sh` recorded.
+The only Library sentinel is LaunchAgents: immediate entry names and SHA256 content hashes. It never reads Preferences keys, other plist bodies, Contacts, caches or other Library areas. Symlinks and non-regular entries refuse. Any snapshot change fails. Self-tests substitute a fixture entirely inside the run root.
 
-So a lane that another author resynced can never run under this provenance.
+The native scope helper discovers only children of the gate's own workload. It records kernel process births with seconds and microseconds. Cleanup rechecks each recorded birth immediately before TERM/KILL; an unreadable or mismatched identity refuses and fails, never falls back to argv, a process-group number or a foreign census. Scope observations and signal outcomes are retained. Sampling can miss a process born and reparented between observations; this is not a same-UID-adversary security boundary.
 
-**One gate per host:** the gate holds `~/.cache/scg/gate.lock` (owner pid plus its start time) for the whole run.
-- A second gate on the same host refuses with exit 89.
-- A lock whose owner pid is gone, or now has a different start time, is stale and is cleared.
-- A lock with no readable owner is never cleared automatically.
-- The gate releases the lock only if it still owns it.
+Every run root remains in place, including failures. Logs, source manifest, guard evidence, scope records, sentinel hashes and result are retained there. SHA256SUMS.json hashes receipt files and logs; its own SHA256 is printed. Source and caches are represented by their source manifest and seed hash. Nothing moves into a shared HOME sentinels directory; no sweep, trash or previous-run cleanup exists. Pull only this recorded root into a dedicated local pull directory.
 
-**Logs on failure:** when a run fails, its per-file test logs are kept in `~/.cache/scg/sentinels/<run root>-logs/`, next to the sentinels.
-- After each run, only the newest 10 `r.XXXXXX-logs` directories are kept; older ones go to the Trash with `trash`.
-- If `trash` is missing, the sweep is skipped and says so; it never uses rm.
+## Self-tests
 
-**Reaping:** at exit the gate kills every process tied to the run root or the gate's own process tree.
+Linux: linux-self-test.sh runs the pure guard tests in a private user/network namespace, checks Bash syntax, and runs shellcheck when installed. The entry guard validates its cache-root fake environment before the test writes. Native Darwin scope and Seatbelt behavior require the erebor self-test; Linux success does not establish them.
 
-**No foreign environment reads:** no step reads another process's environment. The census reads only pid, ppid, pgid, argv, and cwd via `lsof`.
+Darwin: self-test-run.sh <sha> runs the same guard tests plus physical rows for an allowed in-root write, refused outside-root write, isolated per-run caches, exact-birth signaling/refusal and non-loopback network refusal. No test invokes security or probes any real HOME file. Earlier-run log retention and LaunchAgents-only behavior are exercised with owned fixtures. A planted write must fail before bytes land outside the root. Any unexpected success is a failure, never an expanded allowance.
 
-## ~/Library sentinel
+No deployment or proof is authorized by this gate.
 
-Before and after, on `~/Library/Preferences` and on Application Support, Logs, Caches, Containers and LaunchAgents.
+## Per-run Node bootstrap
 
-**FAIL:**
-- our app or lab plists (`dev.apiary.*`, `dev.honeybee.*`, `com.github.Electron*` with keys beyond AppleTextDirection, NSForceRightToLeftWritingDirection, NSTreatUnknownArgumentsAsOpen, SKPurchaseIntentUpdatesLastChecked);
-- any created non-com.apple plist;
-- any removal under Application Support, Logs, Caches, Containers or LaunchAgents (a removed plist WARNs unless it is ours);
-- any path containing our names (`dev.apiary.`, `dev.honeybee.`, `com.trmd.apiary`, `com.github.Electron`, `Apiary`/`apiary`, `Honeybee`/`honeybee`);
-- anything else that no rule below covers.
+The legacy pinned-runtime and pinned-full bodies refuse before work with
+`darwin_gate_body_unsupported_until_audited`. Their old real-home service sentinel
+needs a root-only conversion and Queen audit. Only daemon-suite and self-test
+bodies are supported by this change.
 
-**Fail-closed scan:** every `find`, `stat` and `plutil` error in the ~/Library scan goes to the run root's `lib.errors`.
-- The verdict and the GATE RESULT line print the error count. Any error is a FAIL with the lines printed; in the before-snapshot it refuses with exit 92.
-- An absent optional area directory (for example no LaunchAgents) is recorded explicitly as `ABSENT|<area>` and is not an error. If it appears later it is a change; if a present area disappears it is a removal.
-- A missing `~/Library/Preferences` is an error.
+Network policy denies network operations by default, allowing Unix sockets only
+under the run's TMPDIR (<root>/t) and IP only on loopback. Loopback is necessary for the HTTP
+fixtures in daemon auth-death-fixture, claude-refresh-transport, lease-enrol-rpc
+and auth-death-rpc tests. Darwin shares the host network namespace: outbound
+loopback could reach real host-local services. This residual risk is explicit
+in the receipt; this gate does not claim Linux network-namespace isolation.
+The controller creates two real listeners before the self-test: one under t
+for a successful connect, one outside t but still inside the run root for an
+EPERM/EACCES refusal. ENOENT never counts as enforcement. The controller removes
+both using recorded inode/type identities. Future suite sockets outside TMPDIR
+remain held pending audit; the scope is never widened silently.
 
-**Key names, every run:** for every watched plist (our app and lab ids, `com.github.Electron*`, `io.tailscale.*`, `.GlobalPreferences.plist`, `com.apple.spaces.plist`), the before and after key-name sets are compared on every run, even when mtime, size and birth time are unchanged. Values are never read into the record.
+The native scope helper uses only an absolute clang, matching absolute linker
+and explicit SDK from the fixed Xcode/CommandLineTools candidates. Metadata and
+selected paths are recorded. No cc, xcrun, xcodebuild or xcode-select discovery
+runs. The compiler has an exact executable allowlist and read access to the
+selected toolchain/SDK, with module cache inside the root. The one permitted
+device write is file-write-data on literal /dev/null, a kernel sink. Other /dev
+writes stay denied and are tested. No storage exception is granted by this rule.
+After flags-only attempts still produced an empty cc1 executable, the compiler
+policy adds metadata-only literal access to clang and its exact ancestor
+directories, never a subpath or a path under /Users. These literals are recorded.
+The dry run must show absolute job executables/resources before compilation.
 
-**WARN (key names only):** modified `com.apple.*` plists; `io.tailscale.*` plists with an unchanged key set; `.GlobalPreferences.plist`; `com.apple.spaces.plist`.
-
-**Third-party list:** `third-party-warn.txt`, one `path|owner|mode` per line. Only Queen changes it.
-- If the file is missing, empty or has a malformed line, the gate refuses (exit 99) before any test runs.
-- Every warned path is printed with its owner.
-
-| Entry under ~/Library | Owner | WARNs for |
-|---|---|---|
-| Application Support/Google/Chrome/ | Google Chrome | the dir and below |
-| Application Support/Google/GoogleUpdater/ | Google Updater | the dir and below |
-| Caches/io.tailscale.ipn.macsys/ | Tailscale | the dir and below |
-| Caches/tv.parsec.www/ | Parsec | the dir and below |
-| Containers/com.apple.Safari.CacheDeleteExtension/ | Safari CacheDelete extension | the dir and below |
-| Containers/com.apple.geod/Data/Library/Caches/com.apple.geod/ | Apple geod | the dir and below |
-| Caches/com.apple.duetexpertd/com.apple.e5rt.e5bundlecache/ | Apple duetexpertd | the dir and below |
-| Application Support/networkserviceproxy/ | Apple (iCloud Private Relay) | only paths present in the before-snapshot; new files FAIL |
-| Caches/com.apple.cache_delete/ | Apple CacheDelete | the dir and below |
-| Caches/CloudKit/ | Apple CloudKit | the dir and below |
-| Caches/GeoServices/ | Apple GeoServices | the dir and below |
-| Caches/Google/Chrome/ | Google Chrome | the dir and below |
-| Containers/com.apple.lighthouse.PnROnDeviceWorker | Apple lighthouse | paths inside; the dir itself only if it existed |
-| Containers/com.apple.unilog.SearchUploadWorker | Apple unilog | paths inside; the dir itself only if it existed |
-| Containers/com.apple.siri.ODDIPoirotExperimentationExtension | Apple Siri | paths inside; the dir itself only if it existed |
-| Containers/com.apple.UsageTrackingAgent | Apple UsageTrackingAgent | paths inside; the dir itself only if it existed |
-
-**Parent directory metadata (Queen):** the `*/|parent dir metadata only|parent-meta` line in `third-party-warn.txt` turns on one narrow rule.
-- A changed directory under the watched areas WARNs `parent dir metadata only (N allowed children)` only if all of these hold:
-  - it existed before the run, and at least one changed or added path strictly under it was seen;
-  - every changed or added path under it is itself WARN (a list entry, the interim rule, or host-shared attribution);
-  - nothing under it was removed;
-  - its mode, owner, group, BSD flags and xattr names are unchanged. The before and after snapshots record `stat -f '%p %u %g %f'` and the xattr names (names only, from `ls -ld@`) for every directory down to two levels below each area.
-- Anything else stays FAIL: a directory deeper than that, a new directory, or a path containing our names.
-- Directories are checked deepest first, so a parent counts a child directory that this rule already made WARN.
-- Without the line the rule is off.
-
-**Interim Apple rule:** mode `interim` in the same file, until a dedicated macOS gate user exists.
-- Created or modified entries under `Application Support/com.apple.*`, `Containers/com.apple.*` and `Caches/com.apple.*` WARN.
-- Interim globs are checked only after every other entry.
-- Our names and removals still FAIL.
-
-**Application Support/AddressBook** (the user's Contacts) is decided by attribution too, never by the list. The gate never opens or reads these files; it only sees their names in the scan.
-- On any change there, the gate queries the system log for the run window (process names and pids only, no message text) for the named non-gate writers: `contactsd`, `AddressBookSourceSync` and `AddressBookManager`.
-- A live writer counts as gate-owned if it descends from the gate shell, shares its process group, or has the run root in its argv or cwd. Otherwise it is foreign.
-- An exited writer counts as foreign only if runningboardd recorded it as a launchd OS service (`Resolved pid N to [osservice<…>]`); otherwise it is unknown.
-- The change WARNs `host shared (writer: <name> <pid>, …)` only when at least one foreign writer was seen and no gate-owned or unknown one. Anything else FAILs, including no writer seen.
-- The per-run attribution (process, pid, owner) is printed and kept with the sentinels.
-
-**Caches/claude-cli-nodejs** is decided by attribution, not by the list. A census samples Claude CLI processes every 2 s.
-- A process is gate-owned if it descends from the gate shell, shares its process group, or has the run root in its argv or cwd.
-- A change WARNs as "host shared" only when foreign Claude CLIs were seen and no gate-owned one was. Gate-owned or unknown FAILs.
-
-## Exit codes
-
-| Code | Meaning |
-|---|---|
-| 0 | PASS |
-| 1, 95 | a test, network or sentinel FAIL |
-| 88 | the lane tree or a gate file is not what `gate-run.sh` pinned, or no source sha was pinned |
-| 89 | another darwin gate holds the host lock |
-| 90 | wrong host, a Cell, outside a forage job or lane, or no Node ≥ 24 |
-| 91 | `node_modules` is a symlink |
-| 92 | before-sentinel invalid |
-| 93 | run root could not be made or is 40 bytes or longer |
-| 94 | test socket path would be 104 bytes or longer, or the ps shim or fake security could not be installed |
-| 97 | probe failed |
-| 98 | a file in `seatbelt-exceptions.txt` or `excluded-tests.txt` is not in the suite, or `excluded-tests.txt` is missing |
-| 99 | `third-party-warn.txt` is missing, empty or malformed (including a `parent-meta` line whose entry is not `*/`) |
+`self-test-run.sh <sha> --download-node` explicitly enables the Queen-approved
+per-run official Node download. `node_bootstrap.py` is the single archive pin:
+v24.18.0 darwin-arm64, from nodejs.org over HTTPS/TLS1.2 or newer. SHA256 is
+checked before opening the tar or creating its extraction directory. A mismatch
+extracts nothing. Node is first on PATH by absolute run-root path; npm and Node
+caches remain under that root. No system install or real-HOME Node is used.
+The distribution has the run root's lifetime and is deleted only with that root;
+the gate retains the root and its receipts for collection, never sweeps it.
+Honeybee's Node runtime uses per-install binary pins, and the inspected Apiary
+bootstrap has no shared pinned archive list (orchestrator1918), so this gate pin
+does not duplicate an existing staging pin source.

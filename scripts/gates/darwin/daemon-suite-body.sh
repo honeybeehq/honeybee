@@ -1,6 +1,6 @@
 L=$GATE_ROOT/logs; mkdir -p "$L"
-npm ci --no-audit --no-fund > "$L/ci.log" 2>&1; echo "npm ci exit=$?"; deps_check
-npm run build > "$L/build.log" 2>&1; echo "build exit=$?"
+npm ci --offline --no-audit --no-fund > "$L/ci.log" 2>&1; rc=$?; echo "npm ci exit=$rc"; [ "$rc" -eq 0 ] || { gate_fail ci; exit 1; }; deps_check
+npm run build > "$L/build.log" 2>&1; rc=$?; echo "build exit=$rc"; [ "$rc" -eq 0 ] || { gate_fail build; exit 1; }
 gate_lockdown
 sum() { cat "$@" | awk '/^ℹ tests/{t+=$3} /^ℹ pass/{p+=$3} /^ℹ fail/{f+=$3} /^ℹ skipped/{k+=$3} END{print "tests="t+0" pass="p+0" fail="f+0" skipped="k+0}'; }
 sb node_modules/.bin/tsc -p tsconfig.json --noEmit > "$L/check.log" 2>&1 && sb node_modules/.bin/tsc -p tsconfig.test.json --noEmit >> "$L/check.log" 2>&1; rc=$?; echo "STEP check (seatbelt) exit=$rc"; [ $rc -ne 0 ] && { tail -20 "$L/check.log"; gate_fail check; }
@@ -30,5 +30,5 @@ run_each() {
   [ -z "$failed" ] || gate_fail "v2:daemon $tag:$failed"
 }
 run_each sb seatbelt $OUTER
-run_each plain trap-only $TRAPONLY
+run_each plain inherited-profile $TRAPONLY
 true
