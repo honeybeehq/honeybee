@@ -2249,6 +2249,7 @@ export class CoreStore {
          FROM audit a
          LEFT JOIN mail_history_enqueues h ON h.seq = a.seq
          WHERE a.kind = 'mail.enqueued' AND a.seq > ? AND a.seq <= ? AND h.seq IS NULL AND json_valid(a.payload)
+           AND json_type(CASE WHEN json_valid(a.payload) THEN a.payload ELSE '{}' END, '$.message.id') = 'integer'
            AND json_type(CASE WHEN json_valid(a.payload) THEN a.payload ELSE '{}' END, '$.message.sender') = 'text'
            AND json_type(CASE WHEN json_valid(a.payload) THEN a.payload ELSE '{}' END, '$.message.body') = 'text'
          ORDER BY a.seq`,
@@ -2269,39 +2270,39 @@ export class CoreStore {
       for (const row of rows) {
         let values: (string | number | Buffer)[];
         try {
-        const seq = auditNumber(row.seq, "mail.enqueued seq");
-        const messageId = auditNumber(row.message_id, `mail.enqueued message.id at seq ${seq}`);
-        const beeId = auditString(row.bee_id, `mail.enqueued bee_id at seq ${seq}`);
-        if (row.origin == null && legacySpawnMessages === null) {
-          const facts = this.stmt(
-            `SELECT
-               json_extract(result, '$.beeId') AS bee_id,
-               json_extract(result, '$.messageId') AS message_id
-             FROM rpc_idempotency
-             WHERE verb = 'spawn' AND json_valid(result) AND json_extract(result, '$.messageId') IS NOT NULL`,
-          ).all() as Row[];
-          legacySpawnMessages = new Set(
-            facts.map((fact) => JSON.stringify([String(fact.bee_id), Number(fact.message_id)])),
-          );
-        }
-        const origin = row.origin == null
-          ? legacySpawnMessages!.has(JSON.stringify([beeId, messageId]))
-            ? "spawn.prompt"
-            : "legacy.unknown"
-          : auditMailOrigin(row.origin, `mail.enqueued origin at seq ${seq}`);
-        values = [
-          seq,
-          messageId,
-          beeId,
-          origin,
-          decodeBoundedUtf8Hex(row.sender_hex, MAIL_HISTORY_SENDER_PREVIEW_BYTES, `sender at seq ${seq}`),
-          Number(row.sender_truncated) === 1 ? 1 : 0,
-          decodeBoundedUtf8Hex(row.body_hex, MAIL_HISTORY_BODY_PREVIEW_BYTES, `body at seq ${seq}`),
-          Number(row.body_truncated) === 1 ? 1 : 0,
-          auditNumber(row.priority, `mail.enqueued priority at seq ${seq}`),
-          auditUrgency(row.urgency ?? "next", `mail.enqueued urgency at seq ${seq}`),
-          auditNumber(row.enqueued_at, `mail.enqueued enqueuedAt at seq ${seq}`),
-        ];
+          const seq = auditNumber(row.seq, "mail.enqueued seq");
+          const messageId = auditNumber(row.message_id, `mail.enqueued message.id at seq ${seq}`);
+          const beeId = auditString(row.bee_id, `mail.enqueued bee_id at seq ${seq}`);
+          if (row.origin == null && legacySpawnMessages === null) {
+            const facts = this.stmt(
+              `SELECT
+                 json_extract(result, '$.beeId') AS bee_id,
+                 json_extract(result, '$.messageId') AS message_id
+               FROM rpc_idempotency
+               WHERE verb = 'spawn' AND json_valid(result) AND json_extract(result, '$.messageId') IS NOT NULL`,
+            ).all() as Row[];
+            legacySpawnMessages = new Set(
+              facts.map((fact) => JSON.stringify([String(fact.bee_id), Number(fact.message_id)])),
+            );
+          }
+          const origin = row.origin == null
+            ? legacySpawnMessages!.has(JSON.stringify([beeId, messageId]))
+              ? "spawn.prompt"
+              : "legacy.unknown"
+            : auditMailOrigin(row.origin, `mail.enqueued origin at seq ${seq}`);
+          values = [
+            seq,
+            messageId,
+            beeId,
+            origin,
+            decodeBoundedUtf8Hex(row.sender_hex, MAIL_HISTORY_SENDER_PREVIEW_BYTES, `sender at seq ${seq}`),
+            Number(row.sender_truncated) === 1 ? 1 : 0,
+            decodeBoundedUtf8Hex(row.body_hex, MAIL_HISTORY_BODY_PREVIEW_BYTES, `body at seq ${seq}`),
+            Number(row.body_truncated) === 1 ? 1 : 0,
+            auditNumber(row.priority, `mail.enqueued priority at seq ${seq}`),
+            auditUrgency(row.urgency ?? "next", `mail.enqueued urgency at seq ${seq}`),
+            auditNumber(row.enqueued_at, `mail.enqueued enqueuedAt at seq ${seq}`),
+          ];
         } catch (error) {
           if (error instanceof CoreError && error.message.startsWith("mail history: malformed")) continue;
           throw error;
