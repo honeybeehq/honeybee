@@ -19,6 +19,8 @@ import node_bootstrap
 import listener_static
 import git_boundary
 import focused_flow
+import focused_seal
+import scope_controls
 
 LISTENER_LIMIT = 'Seatbelt does not mediate IP bind/inbound on macOS 26 (probe 52e76fd3: remote tailnet connect accepted); mitigated by own-pid listener sampling (FAIL + fenced kill); exposure window up to one sample interval.'
 STATIC_BIND_LIMIT = 'static bind scan covers modules importing dgram/socket; a socket passed across modules is covered only by the runtime own-pid sampler'
@@ -76,7 +78,7 @@ def write_json(path, value, root):
     if not inside(path.resolve(), root.resolve()):
         raise Refusal('write outside run root')
     if path == Path(root) / 'receipt.json' and isinstance(value, dict):
-        value = dict(value, gitBoundary=GIT_AUDITS.get(str(root.resolve())), entryNotes=list(ENTRY_NOTES), leftoverChild=value.get('leftoverChild') or list(LEFTOVER_CHILDREN) or None, listenerLimit=LISTENER_LIMIT, staticBindLimit=STATIC_BIND_LIMIT, hostLock=LOCK_METADATA.get(str(Path(root).resolve())))
+        value = dict(value, rootCreation=focused_seal.ROOT_CREATION.get(str(root.resolve())), exeUnlinkedLimit=focused_seal.UNLINKED_LIMIT, fdUnobservableLimit=focused_seal.FD_UNOBSERVABLE_LIMIT, fdUnobservableDisclosure=focused_seal.fd_disclosure((focused_seal.QUIESCENCE_OBSERVATIONS[-1].get('reason') or {}).get('counts', {}).get('fdUnobservableSandboxDenied', 0) if focused_seal.QUIESCENCE_OBSERVATIONS else 0), fdUnobservableWriteDeniedDisclosure=focused_seal.fd_write_disclosure((focused_seal.QUIESCENCE_OBSERVATIONS[-1].get('reason') or {}).get('counts', {}).get('fdUnobservableWriteDenied', 0) if focused_seal.QUIESCENCE_OBSERVATIONS else 0), fdUnobservablePlatformBinaryDisclosure=focused_seal.fd_platform_disclosure((focused_seal.QUIESCENCE_OBSERVATIONS[-1].get('reason') or {}).get('counts', {}).get('fdUnobservablePlatformBinary', 0) if focused_seal.QUIESCENCE_OBSERVATIONS else 0), fdDisclosureCountScope='most recent quiescence scan; each retained observation also carries its own disclosure', foreignRootUseCounts=dict(focused_seal.FOREIGN_ROOT_USE_COUNTS), unobservedOwnChildren=list(focused_seal.UNOBSERVED_OWN_CHILDREN), gateLaunchBirths=sorted(focused_seal.GATE_LAUNCH_BIRTHS), gateLaunchPids=sorted(focused_seal.GATE_LAUNCH_PIDS), quiescenceObservations=list(focused_seal.QUIESCENCE_OBSERVATIONS), gitBoundary=GIT_AUDITS.get(str(root.resolve())), entryNotes=list(ENTRY_NOTES), leftoverChild=value.get('leftoverChild') or list(LEFTOVER_CHILDREN) or None, listenerLimit=LISTENER_LIMIT, staticBindLimit=STATIC_BIND_LIMIT, hostLock=LOCK_METADATA.get(str(Path(root).resolve())))
     path.write_text(json.dumps(value, indent=2) + '\n')
 
 
@@ -412,7 +414,11 @@ def scope_call(helper, command, *args, timeout=2):
     value = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
     SCOPE_OBSERVATIONS.append({'time': time.time(), 'argv': argv, 'exit': value.returncode, 'stdout': value.stdout, 'stderr': value.stderr})
     value.check_returncode()
-    return [line.split() for line in value.stdout.splitlines()]
+    rows = [line.split() for line in value.stdout.splitlines()]
+    if command in ('identity', 'scan'):
+        for row in rows:
+            focused_seal.remember_birth(row)
+    return rows
 
 
 def sample_listeners(helper, birth):
@@ -455,6 +461,7 @@ def listener_self_tests(root, workspace, prefix, helper, env):
         read_fd, release_fd = os.pipe()
         with (root / ('listener-fixture-' + proto + '.log')).open('wb') as output:
             child = subprocess.Popen([sys.executable, '-B', str(workspace / 'scripts/gates/darwin/start_wait.py'), str(read_fd), *prefix, env['SCG_PYTHON_BIN'], '-B', str(workspace / 'scripts/gates/darwin/listener_fixture.py'), proto], pass_fds=(read_fd,), cwd=workspace, env=env, stdout=output, stderr=subprocess.STDOUT)
+            focused_seal.remember_launch(child.pid)
             os.close(read_fd)
             birth = None
             samples = []
@@ -506,6 +513,7 @@ def tree_scan_self_test(root, workspace, prefix, helper, env):
     observations_start = len(SCOPE_OBSERVATIONS)
     with (root / 'tree-scan-fixture.log').open('wb') as output:
         child = subprocess.Popen([*prefix, env['SCG_PYTHON_BIN'], '-B', str(workspace / 'scripts/gates/darwin/listener_fixture.py'), 'tree-parent'], cwd=workspace, env=env, stdout=output, stderr=subprocess.STDOUT)
+        focused_seal.remember_launch(child.pid)
         try:
             birth = scope_call(helper, 'identity', child.pid)[0]
             if birth[1] != str(os.getpid()):
@@ -545,12 +553,12 @@ def tree_scan_self_test(root, workspace, prefix, helper, env):
                         if status.returncode == 3:
                             break
                 if status.returncode != 3:
-                    LEFTOVER_CHILDREN.append({'pid': row[0], 'birth': row, 'reason': 'fenced cleanup unresolved'})
+                    focused_seal.record_leftover(LEFTOVER_CHILDREN, {'pid': row[0], 'birth': row, 'reason': 'fenced cleanup unresolved'})
                     failure = failure or 'scan preflight retained child cleanup unresolved'
             for name in ('tree-parent', 'tree-child', 'tree-grandchild'):
                 path = root / (name + '-pid')
                 if path.exists() and path.read_text().strip() not in births:
-                    LEFTOVER_CHILDREN.append({'pid': path.read_text().strip(), 'birth': None, 'reason': 'birth unobserved, not fenced', 'fixture': name})
+                    focused_seal.record_leftover(LEFTOVER_CHILDREN, {'birth': None}, unverified_label=name)
                     failure = failure or 'scan preflight unobserved child'
             try:
                 child.wait(timeout=2)
@@ -574,6 +582,7 @@ def reparent_listener_self_test(root, workspace, prefix, helper, env):
     observations_start = len(SCOPE_OBSERVATIONS)
     with (root / 'listener-fixture-reparent.log').open('wb') as output:
         parent = subprocess.Popen([sys.executable, '-B', str(workspace / 'scripts/gates/darwin/start_wait.py'), str(read_fd), *prefix, env['SCG_PYTHON_BIN'], '-B', str(workspace / 'scripts/gates/darwin/listener_fixture.py'), 'reparent-parent'], pass_fds=(read_fd,), cwd=workspace, env=env, stdout=output, stderr=subprocess.STDOUT)
+        focused_seal.remember_launch(parent.pid)
         os.close(read_fd)
         tree = []
         try:
@@ -633,7 +642,7 @@ def reparent_listener_self_test(root, workspace, prefix, helper, env):
             candidate_path = root / 'reparent-child-pid'
             candidate_pid = candidate_path.read_text().strip() if candidate_path.exists() else None
             if candidate_pid and not any(row[0] == candidate_pid for row in cleanup_births.values()):
-                LEFTOVER_CHILDREN.append({'pid': candidate_pid, 'birth': None, 'reason': 'birth unobserved, not fenced', 'argv': [env['SCG_PYTHON_BIN'], '-B', str(workspace / 'scripts/gates/darwin/listener_fixture.py'), 'reparent-child']})
+                focused_seal.record_leftover(LEFTOVER_CHILDREN, {'birth': None}, unverified_label='reparent-child')
             (root / 'reparent-abort').write_text('abort\n')
             for birth in sorted(cleanup_births.values(), key=lambda row: row[0] == str(parent.pid)):
                 for sig in (signal.SIGTERM, signal.SIGKILL):
@@ -647,12 +656,12 @@ def reparent_listener_self_test(root, workspace, prefix, helper, env):
                         break
                 status = subprocess.run([str(helper), 'status', *birth], capture_output=True, text=True)
                 if status.returncode != 3:
-                    LEFTOVER_CHILDREN.append({'pid': birth[0], 'birth': birth, 'reason': 'fenced cleanup unresolved', 'statusExit': status.returncode})
+                    focused_seal.record_leftover(LEFTOVER_CHILDREN, {'pid': birth[0], 'birth': birth, 'reason': 'fenced cleanup unresolved', 'statusExit': status.returncode})
             try:
                 parent.wait(timeout=2)
             except subprocess.TimeoutExpired:
                 if parent_birth is None:
-                    LEFTOVER_CHILDREN.append({'pid': parent.pid, 'birth': None, 'reason': 'birth unobserved, not fenced', 'argv': parent.args})
+                    focused_seal.record_leftover(LEFTOVER_CHILDREN, {'birth': None}, unverified_label='reparent-parent')
             check = subprocess.run([str(helper), 'status', *retained], capture_output=True, text=True) if retained else None
             result = {'proto': 'TCP', 'case': 'retained reparented grandchild', 'expectedClassification': 'FAIL', 'detected': detected, 'failure': failure, 'birth': retained, 'parentBirth': parent_birth, 'retainedBirths': list(cleanup_births.values()), 'firstSightTree': tree, 'samples': samples, 'signals': signals, 'leftoverChild': list(LEFTOVER_CHILDREN), 'scopeObservations': SCOPE_OBSERVATIONS[observations_start:], 'childExit': 'gone or zombie' if check and check.returncode == 3 else None, 'noRemoteConnect': True}
             write_json(root / 'listener-reparent-self-test.json', result, root)
@@ -683,8 +692,12 @@ def run(args):
     lock_path = Path('/private/var/tmp/hb-darwin-gate.lock')
     fd, lock_metadata = acquire_lock(lock_path)
     LOCK_METADATA[str(root.resolve())] = lock_metadata
+    before_mkdir = time.time_ns()
     root.mkdir(mode=0o700)
+    focused_seal.ROOT_CREATION[str(root.resolve())] = {'clock': 'CLOCK_REALTIME', 'beforeMkdirNs': before_mkdir, 'afterMkdirNs': time.time_ns(), 'marginMicroseconds': 1000000}
     CREATED_ROOTS.add(root.resolve())
+    if focused_seal.ROOT_CREATION[str(root.resolve())]['afterMkdirNs'] < before_mkdir:
+        raise Refusal('run-root realtime clock moved backwards during mkdir')
     (root / 'workload.log').touch()
     for value in set(env[k] for k in DIRS):
         Path(value).mkdir(parents=True, exist_ok=True)
@@ -711,6 +724,7 @@ def run(args):
     env['SCG_SCOPE_HELPER'] = str(root / 'scope')
     env['LAB_ROOT'] = str(root / 't/selftests')
     workspace = source_copy(lane, args.source, root, env)
+    focused_seal.quiescence_input(root, root / 'scope')
     identity = root / 'scope'
     prefix = ['/usr/bin/sandbox-exec', '-p', policy]
     preflight = subprocess.run(['/usr/bin/sandbox-exec', '-f', str(root / 'workload.sb'), '/usr/bin/true'], cwd=workspace, env=env, capture_output=True)
@@ -750,6 +764,11 @@ def run(args):
         print('\n'.join(diagnostic.splitlines()[-60:]), flush=True)
         raise Refusal('scope helper build failed; receipts retained at ' + str(root))
     tree_scan_self_test(root, workspace, prefix, identity, env)
+    if args.self_test:
+        try:
+            scope_controls.run(sys.modules[__name__], root, workspace, identity, node, env)
+        except (ValueError, OSError, subprocess.SubprocessError) as error:
+            raise Refusal('real scope control failed: ' + str(error)) from error
     static_rows = listener_static.scan(workspace)
     write_json(root / 'listener-static.json', {'violations': static_rows, 'scope': 'v2/** and tests/**'}, root)
     if static_rows and not args.self_test:
@@ -803,6 +822,7 @@ def run(args):
     read_fd, release_fd = os.pipe()
     command = prefix + ['/bin/bash', str(workspace / 'scripts/gates/darwin/workload.sh'), str(workspace / args.body)]
     proc = subprocess.Popen([sys.executable, '-B', str(workspace / 'scripts/gates/darwin/start_wait.py'), str(read_fd), *command], pass_fds=(read_fd,), cwd=workspace, env=env, stdout=output, stderr=subprocess.STDOUT)
+    focused_seal.remember_launch(proc.pid)
     os.close(read_fd)
     write_json(root / 'workload-dispatch.json', {'pid': proc.pid, 'time': time.time(), 'cwd': str(workspace)}, root)
     try:
@@ -896,19 +916,53 @@ def run(args):
         except (ValueError, OSError):
             leftover = {'state': 'unknown', 'error': 'malformed leftover child record'}
             rc = 95
-    if args.self_test and not audit_git_controls(root):
-        rc = 95
-        scope_error = scope_error or 'Git boundary audit failed'
-    reason = scope_error or ('LaunchAgents sentinel changed' if before != after else ('workload exited ' + str(rc) + '; diagnostic: ' + str(root / 'workload.log') if rc else None))
+    outcome = workload_outcome(root, proc.returncode, rc, scope_error, before != after, args.self_test)
+    rc, reason = outcome['exit'], outcome['reason']
     if leftover:
         reason = (reason or 'recorded self-expiring test child') + '; leftoverChild=' + json.dumps(leftover, sort_keys=True)
-    write_json(root / 'receipt.json', {'version': 2, 'exit': rc, 'reason': reason, 'leftoverChild': leftover, 'source': args.source, 'selfTest': args.self_test, 'libraryScope': 'LaunchAgents names and sha256 only', 'cacheSeed': seed, 'rootRetained': True, 'network': {'namespace': 'SHARED', 'seatbelt': 'deny network*, allow loopback IP and Unix sockets under TMPDIR only', 'unixScope': str(root / 't'), 'residualRisk': 'outbound loopback can reach host-local services; no Darwin network namespace', 'neededBy': ['v2/daemon/tests/auth-death-fixture.test.ts:44,49', 'v2/daemon/tests/claude-refresh-transport.test.ts:22', 'v2/daemon/tests/lease-enrol-rpc.test.ts:19', 'v2/daemon/tests/auth-death-rpc.test.ts:44']}, 'scopeLimitation': 'sampling may miss a process born and reparented between observations'}, root)
+    write_json(root / 'receipt.json', {'version': 2, 'exit': rc, 'reason': reason, 'workloadExit': outcome['workloadExit'], 'workloadNonzeroReason': outcome['workloadNonzeroReason'], 'secondaryNotes': outcome['secondaryNotes'], 'leftoverChild': leftover, 'source': args.source, 'selfTest': args.self_test, 'libraryScope': 'LaunchAgents names and sha256 only', 'cacheSeed': seed, 'rootRetained': True, 'network': {'namespace': 'SHARED', 'seatbelt': 'deny network*, allow loopback IP and Unix sockets under TMPDIR only', 'unixScope': str(root / 't'), 'residualRisk': 'outbound loopback can reach host-local services; no Darwin network namespace', 'neededBy': ['v2/daemon/tests/auth-death-fixture.test.ts:44,49', 'v2/daemon/tests/claude-refresh-transport.test.ts:22', 'v2/daemon/tests/lease-enrol-rpc.test.ts:19', 'v2/daemon/tests/auth-death-rpc.test.ts:44']}, 'scopeLimitation': 'sampling may miss a process born and reparented between observations'}, root)
     if rc or leftover:
         print('GATE_NONZERO_REASON=' + json.dumps(reason), flush=True)
     digest = receipt_hashes(root)
     print('GATE_RECEIPT_SHA256=' + digest, flush=True)
     os.close(fd)
     return rc
+
+
+def workload_outcome(root, body_exit, rc, scope_error, launch_changed, git_required):
+    notes = []
+    body_reason = None
+    if body_exit not in (None, 0):
+        body_reason = 'workload exited ' + str(body_exit)
+        try:
+            descriptor = os.open(root / 'workload.log', os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+            with os.fdopen(descriptor, 'rb') as stream:
+                info = os.fstat(stream.fileno())
+                if not stat.S_ISREG(info.st_mode):
+                    raise ValueError('nonregular workload log')
+                stream.seek(max(0, info.st_size - 16384))
+                tail = stream.read(16384).decode('utf-8', 'replace')
+            for line in tail.splitlines():
+                match = re.fullmatch(r'WORKLOAD_NONZERO_REASON=(phase:(?:startup|node-validation|body|final-guards) exit:([0-9]+))', line)
+                if match and int(match[2]) == body_exit:
+                    body_reason = match[1]
+        except (OSError, ValueError):
+            notes.append('workload nonzero marker unavailable')
+    reason = body_reason or scope_error or ('LaunchAgents sentinel changed' if launch_changed else ('workload exited ' + str(rc) if rc else None))
+    if body_reason and scope_error:
+        notes.append(scope_error)
+    if body_reason and launch_changed:
+        notes.append('LaunchAgents sentinel changed')
+    if git_required and not audit_git_controls(root):
+        if body_exit not in (None, 0):
+            notes.append('Git boundary audit failed; secondary to nonzero workload exit')
+            audit = GIT_AUDITS.setdefault(str(root.resolve()), {'accepted': False, 'error': 'Git boundary fixture controls absent'})
+            audit['secondaryToWorkloadExit'] = body_exit
+            write_json(root / 'git-boundary-controller.json', audit, root)
+        else:
+            rc = 95
+            reason = reason or 'Git boundary audit failed'
+    return {'exit': rc, 'reason': reason, 'workloadExit': body_exit, 'workloadNonzeroReason': body_reason, 'secondaryNotes': notes}
 
 
 def audit_git_controls(root):

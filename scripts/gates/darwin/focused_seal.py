@@ -127,7 +127,13 @@ def copy_dependencies(source, target, expected=None):
 
 def prepare(root, workspace, node, audit, controls, native, dependencies):
     sealed = root / 'sealed-target'
-    sealed.mkdir(mode=0o700)
+    existed = sealed.exists() or sealed.is_symlink()
+    sealed.mkdir(mode=0o700, exist_ok=True)
+    if existed:
+        validate_probe(root, initial=True)
+    info = sealed.lstat()
+    if not stat.S_ISDIR(info.st_mode) or stat.S_IMODE(info.st_mode) != 0o700 or info.st_uid != os.getuid() or sealed.resolve(strict=True) != sealed:
+        raise ValueError('sealed directory is redirected or unsafe')
     destination = sealed / 'src'
     destination.mkdir()
     for row in audit['files']:
@@ -160,33 +166,229 @@ def prepare(root, workspace, node, audit, controls, native, dependencies):
     return sealed, destination, str(copied_node)
 
 
+FOREIGN_ROOT_USE_COUNTS = {'cwd': 0, 'exe': 0, 'fd': 0}
+UNOBSERVED_OWN_CHILDREN = []
+
+
+UNVERIFIED_FIXTURES = ('tree-parent', 'tree-child', 'tree-grandchild', 'reparent-child', 'reparent-parent', 'focused-step', 'scope-control', 'unverified-child')
+
+
+def record_leftover(leftovers, value, unverified_label='unverified-child'):
+    birth = value.get('birth')
+    if birth is None:
+        label = unverified_label if unverified_label in UNVERIFIED_FIXTURES else 'unverified-child'
+        for row in UNOBSERVED_OWN_CHILDREN:
+            if row['fixture'] == label:
+                row['count'] += 1
+                break
+        else:
+            UNOBSERVED_OWN_CHILDREN.append({'fixture': label, 'count': 1})
+        return
+    if tuple(map(str, birth)) not in GATE_LAUNCH_BIRTHS:
+        raise ValueError('leftover lacks retained own birth')
+    leftovers.append(value)
+
+
 def root_users(root, output, controller_pid):
-    root = str(root.resolve(strict=True))
     lines = output.splitlines()
     if not lines or lines[-1] != 'COMPLETE':
         raise ValueError('same-uid root-use observation absent or incomplete')
     rows = []
+    foreign = dict.fromkeys(('cwd', 'exe', 'fd'), 0)
     for line in lines[:-1]:
         parts = line.split('\t')
-        if len(parts) != 2 or not parts[0].isdigit() or int(parts[0]) <= 0:
+        if len(parts) == 3 and parts[0] == 'FOREIGN' and parts[1] in foreign and parts[2].isdigit():
+            foreign[parts[1]] += int(parts[2])
+        elif len(parts) == 7 and parts[0] == 'OWN' and all(value.isdigit() for value in parts[1:5]) and parts[5] in foreign:
+            birth = parts[1:5]
+            relative = Path(parts[6])
+            if int(birth[0]) <= 0 or tuple(birth) not in GATE_LAUNCH_BIRTHS or relative.is_absolute() or '..' in relative.parts:
+                raise ValueError('unverified own root-use observation')
+            if int(birth[0]) != controller_pid:
+                rows.append({'pid': int(birth[0]), 'birth': birth, 'category': parts[5], 'path': str(relative)})
+        else:
             raise ValueError('malformed same-uid process observation')
-        pid, path = int(parts[0]), parts[1]
-        if pid != controller_pid and (path == root or path.startswith(root + '/')):
-            rows.append({'pid': pid, 'path': path})
+    FOREIGN_ROOT_USE_COUNTS.update(foreign)
     return rows
 
 
 class BusyRoot(ValueError):
-    def __init__(self, rows):
+    def __init__(self, rows, foreign=None):
         self.rows = rows
-        super().__init__('another same-uid process retains run-root access: ' + str(rows))
+        self.foreign_counts = dict(foreign or dict.fromkeys(('cwd', 'exe', 'fd'), 0))
+        super().__init__('run-root access remains: ownCount=' + str(len(rows)) + '; foreignRootUseCounts=' + str(self.foreign_counts))
+
+
+SEALED_PROBES = {}
+GATE_LAUNCH_PIDS = set()
+GATE_LAUNCH_BIRTHS = set()
+
+
+def remember_launch(pid):
+    GATE_LAUNCH_PIDS.add(int(pid))
+
+
+def remember_birth(birth):
+    if len(birth) != 4 or not all(str(value).isdigit() for value in birth):
+        raise ValueError('malformed gate launch birth')
+    GATE_LAUNCH_BIRTHS.add(tuple(map(str, birth)))
+    remember_launch(birth[0])
+
+
+ROOT_CREATION = {}
+ROOT_INODES = {}
+def fd_disclosure(count):
+    return "fd introspection denied by MAC for " + str(count) + " same-uid sandboxed processes; accepted because each one's own sandbox denies read and write on the run root; an fd passed in over IPC by another process is not excluded."
+
+
+def fd_write_disclosure(count):
+    return str(count) + " same-uid sandboxed processes with MAC-denied fd introspection may READ the run root; each one's own sandbox denies write and create on all probed root paths; integrity relies on that write denial plus N1 before/after hashing; read access and an fd passed in over IPC are not excluded."
+
+
+def fd_platform_disclosure(count):
+    return str(count) + " same-uid Apple platform binaries with MAC-denied fd introspection were accepted by code-signing platform status and SIP-protected executable path; their open descriptors were not observed."
+
+
+FD_UNOBSERVABLE_LIMIT = 'fdUnobservableSandboxDenied: fd-passing residual remains; sampled sandbox denial on the four probe paths does not prove that a pre-existing or passed descriptor cannot access another root path.'
+UNLINKED_LIMIT = 'exeUnlinkedPreRoot accepted by birth-time; exec-after-birth of a since-unlinked root binary by a non-gate process is not excluded.'
+
+
+def validate_probe(root, initial=False):
+    key = str(root.resolve(strict=True))
+    expected = SEALED_PROBES.get(key)
+    if expected is None:
+        raise ValueError('sealed probe creation identity unavailable')
+    sealed = root / 'sealed-target'
+    directory_info = sealed.lstat()
+    file_info = (sealed / 'quiescence-probe').lstat()
+    if (directory_info.st_dev, directory_info.st_ino, file_info.st_dev, file_info.st_ino) != expected or not stat.S_ISDIR(directory_info.st_mode) or stat.S_IMODE(directory_info.st_mode) != 0o700 or directory_info.st_uid != os.getuid() or sealed.resolve(strict=True) != sealed or not stat.S_ISREG(file_info.st_mode) or file_info.st_nlink != 1 or file_info.st_uid != os.getuid():
+        raise ValueError('sealed probe identity or permissions changed')
+    if initial and set(os.listdir(sealed)) != {'quiescence-probe'}:
+        raise ValueError('sealed probe directory has extra entry')
+
+
+def quiescence_input(root, helper):
+    key = str(root.resolve(strict=True))
+    stamp = ROOT_CREATION.get(key)
+    if stamp is None:
+        raise ValueError('run-root creation clock unavailable')
+    sealed = root / 'sealed-target'
+    probe = sealed / 'quiescence-probe'
+    if key not in SEALED_PROBES:
+        sealed.mkdir(mode=0o700)
+        descriptor = os.open(probe, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        try:
+            file_info = os.fstat(descriptor)
+        finally:
+            os.close(descriptor)
+        directory_info = sealed.lstat()
+        SEALED_PROBES[key] = (directory_info.st_dev, directory_info.st_ino, file_info.st_dev, file_info.st_ino)
+    validate_probe(root)
+    package = root / 'src/package.json'
+    for path in (probe, package):
+        if path.resolve(strict=True) != path or not stat.S_ISREG(path.lstat().st_mode):
+            raise ValueError('quiescence probe is not canonical regular file')
+    parent = root / 't'
+    if parent.resolve(strict=True) != parent or not parent.is_dir():
+        raise ValueError('quiescence absent probe parent unsafe')
+    absent = parent / 'quiescence-must-not-exist'
+    if absent.exists() or absent.is_symlink():
+        raise ValueError('quiescence absent probe unexpectedly exists')
+    inodes = ROOT_INODES.setdefault(key, set())
+    def collect(descriptor, depth):
+        if depth > 128:
+            raise ValueError('root inode depth exceeds bound')
+        for name in os.listdir(descriptor):
+            info = os.stat(name, dir_fd=descriptor, follow_symlinks=False)
+            inodes.add((info.st_dev, info.st_ino))
+            if len(inodes) > 1000000:
+                raise ValueError('root inode inventory exceeds bound')
+            if stat.S_ISDIR(info.st_mode):
+                child = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=descriptor)
+                try:
+                    opened = os.fstat(child)
+                    if (opened.st_dev, opened.st_ino) != (info.st_dev, info.st_ino):
+                        raise ValueError('root inode directory changed')
+                    collect(child, depth + 1)
+                finally:
+                    os.close(child)
+    descriptor = directory_descriptor(root)
+    try:
+        info = os.fstat(descriptor)
+        inodes.add((info.st_dev, info.st_ino))
+        collect(descriptor, 0)
+    finally:
+        os.close(descriptor)
+    text = str(len(inodes)) + '\n' + ''.join(str(dev) + ' ' + str(ino) + '\n' for dev, ino in sorted(inodes))
+    text += str(len(GATE_LAUNCH_PIDS)) + '\n' + ''.join(str(pid) + '\n' for pid in sorted(GATE_LAUNCH_PIDS))
+    text += str(len(GATE_LAUNCH_BIRTHS)) + '\n' + ''.join(' '.join(birth) + '\n' for birth in sorted(GATE_LAUNCH_BIRTHS))
+    return [str(helper), 'quiescence', str(os.getpid()), key, str(stamp['beforeMkdirNs'] // 1000), str(probe), str(package), str(absent)], text
 
 
 def require_quiescent(root, helper):
-    observed = subprocess.run([str(helper), 'quiescence', str(os.getpid()), str(root)], cwd='/', env={'PATH': '/usr/bin:/bin', 'LANG': 'C'}, capture_output=True, text=True, timeout=2)
+    command, inventory = quiescence_input(root, helper)
+    observed = subprocess.run(command, input=inventory, cwd='/', env={'PATH': '/usr/bin:/bin', 'LANG': 'C'}, capture_output=True, text=True, timeout=2)
+    quiescence_evidence(observed)
     if observed.returncode != 0:
         raise ValueError('same-uid root-use observation unresolved')
     rows = root_users(root, observed.stdout, os.getpid())
-    if rows:
-        raise BusyRoot(rows)
+    if rows or any(FOREIGN_ROOT_USE_COUNTS.values()):
+        raise BusyRoot(rows, FOREIGN_ROOT_USE_COUNTS)
     return rows
+
+
+QUIESCENCE_OBSERVATIONS = []
+
+
+PLATFORM_FAILURE_CONDITIONS = ('unlinked', 'birthBeforePath', 'pidpath', 'birthAfterPath', 'realpath', 'pathChanged', 'prefix', 'csopsUnavailable', 'birthBeforeCsops', 'csops', 'birthAfterCsops', 'notPlatform', 'stat', 'birthAfterStat', 'inodeMatch', 'regionRejected', 'regionUnavailableFirst', 'regionPartial', 'mainImageMissing')
+QUIESCENCE_ERRNOS = ('NONE', 'EPERM', 'EACCES', 'ESRCH', 'EBADF', 'ENOENT', 'EINVAL', 'ENOMEM', 'EINTR', 'EFAULT', 'EIO', 'ENOTSUP', 'EOVERFLOW', 'EBUSY', 'EAGAIN', 'ENOSYS', 'OTHER')
+
+
+def quiescence_evidence(result):
+    import json
+    foreign = dict.fromkeys(('cwd', 'exe', 'fd'), 0)
+    for line in result.stdout.splitlines():
+        parts = line.split('\t')
+        if len(parts) == 3 and parts[0] == 'FOREIGN' and parts[1] in foreign and parts[2].isdigit():
+            foreign[parts[1]] += int(parts[2])
+    FOREIGN_ROOT_USE_COUNTS.update(foreign)
+    evidence = {'exit': result.returncode, 'reason': None, 'foreignRootUseCounts': foreign}
+    if result.returncode or result.stderr:
+        try:
+            if len(result.stderr) > 4096:
+                raise ValueError('oversized quiescence diagnostic')
+            reason = json.loads(result.stderr)
+            if set(reason) != {'type', 'call', 'errno', 'errnoNumber', 'sameBirth', 'counts', 'fdAllowedByQuery', 'fdFailedQueryResults', 'fdWriteDeniedReadResults', 'regionPartialDetail', 'platformFailures', 'regionZeroSizeDetail'} or reason['type'] != ('QuiescenceFailure' if result.returncode else 'QuiescenceComplete'):
+                raise ValueError('unexpected quiescence diagnostic schema')
+            if reason['call'] not in ('root', 'allocation', 'proc_listpids', 'pidinfo vnode', 'pidpath', 'listfds', 'fdinfo', 'birth', 'none', 'unlinked policy', 'region inode') or reason['errno'] not in QUIESCENCE_ERRNOS:
+                raise ValueError('unexpected quiescence diagnostic value')
+            if type(reason['errnoNumber']) is not int or type(reason['sameBirth']) is not int or reason['sameBirth'] not in (-1, 0, 3, 4):
+                raise ValueError('unexpected quiescence numeric value')
+            if set(reason['counts']) != {'scanned', 'skippedGone', 'skippedUidChanged', 'skippedFdClosed', 'matched', 'failed', 'exeUnlinkedPreRoot', 'regionCompared', 'regionUnavailable', 'regionPartial', 'regionZeroSize', 'sessionLeaderNotUidListed', 'fdUnobservableSandboxDenied', 'fdNonGateFailed', 'fdCleanFailed', 'fdSandboxFailed', 'fdDeniedQueries', 'fdAllowedQueries', 'fdQueryErrors', 'fdNotSandboxed', 'fdUnobservableWriteDenied', 'fdUnobservablePlatformBinary', 'notPlatform', 'pathDisallowed', 'csopsError', 'csopsUnavailable', 'inodeMatch', 'platformInodeUnobserved'} or any(type(value) is not int or value < 0 for value in reason['counts'].values()):
+                raise ValueError('unexpected quiescence counts')
+            slots = {'root:read', 'root:write', 'probe:read', 'probe:write', 'src:read', 'src:write', 'absent:read', 'absent:write', 'root:create', 'root:unlink', 'probe:create', 'probe:unlink', 'src:create', 'src:unlink', 'absent:create', 'absent:unlink'}
+            if not isinstance(reason['fdAllowedByQuery'], dict) or set(reason['fdAllowedByQuery']) != slots or any(type(value) is not int or value < 0 for value in reason['fdAllowedByQuery'].values()):
+                raise ValueError('unexpected fixed-slot query counts')
+            if not isinstance(reason['fdFailedQueryResults'], list) or len(reason['fdFailedQueryResults']) != 16 or any(type(value) is not int or value not in (-2, -1, 0, 1) for value in reason['fdFailedQueryResults']):
+                raise ValueError('unexpected anonymous query vector')
+            reads = reason['fdWriteDeniedReadResults']
+            if not isinstance(reads, dict) or set(reads) != {'root:read', 'probe:read', 'src:read', 'absent:read'} or any(not isinstance(row, dict) or set(row) != {'allowed', 'denied'} or any(type(value) is not int or value < 0 for value in row.values()) for row in reads.values()):
+                raise ValueError('unexpected write-denied read diagnostics')
+            partial = reason['regionPartialDetail']
+            if not isinstance(partial, dict) or set(partial) != {'errno', 'regionsRead', 'mainImageSeen', 'termination', 'regionKind', 'lastBeforeEINVAL'} or partial['errno'] not in QUIESCENCE_ERRNOS or type(partial['regionsRead']) is not int or not 0 <= partial['regionsRead'] <= 65536 or type(partial['mainImageSeen']) is not int or partial['mainImageSeen'] not in (0, 1) or partial['termination'] not in ('none', 'read-error', 'short-read', 'zero-size', 'limit', 'overflow', 'end-not-past-request') or partial['regionKind'] not in ('mapping', 'submap', 'unobserved') or partial['lastBeforeEINVAL'] not in ('unknown', 'not-applicable'):
+                raise ValueError('unexpected anonymous partial-region diagnostic')
+            failures = reason['platformFailures']
+            if not isinstance(failures, dict) or set(failures) != set(PLATFORM_FAILURE_CONDITIONS) or any(type(value) is not int or value < 0 for value in failures.values()):
+                raise ValueError('unexpected platform-condition counts')
+            zero = reason['regionZeroSizeDetail']
+            if not isinstance(zero, dict) or set(zero) != {'returnLength', 'shareMode', 'regionKind', 'lastBeforeEINVAL'} or zero['returnLength'] not in ('exact', 'unobserved') or zero['shareMode'] not in ('UNOBSERVED', 'UNKNOWN', 'SM_COW', 'SM_PRIVATE', 'SM_EMPTY', 'SM_SHARED', 'SM_TRUESHARED', 'SM_PRIVATE_ALIASED', 'SM_SHARED_ALIASED', 'SM_LARGE_PAGE') or zero['regionKind'] not in ('mapping', 'submap', 'unobserved') or zero['lastBeforeEINVAL'] not in ('unknown', 'not-applicable', 'yes', 'no'):
+                raise ValueError('unexpected zero-region diagnostic')
+            evidence['reason'] = reason
+        except (ValueError, TypeError, KeyError):
+            evidence['reason'] = {'type': 'UnobservedQuiescenceFailure'}
+    counts = evidence.get('reason', {}).get('counts', {}) if isinstance(evidence.get('reason'), dict) else {}
+    evidence['fdUnobservablePlatformBinaryDisclosure'] = fd_platform_disclosure(counts.get('fdUnobservablePlatformBinary', 0))
+    evidence['fdUnobservableWriteDeniedDisclosure'] = fd_write_disclosure(counts.get('fdUnobservableWriteDenied', 0))
+    evidence['fdUnobservableDisclosure'] = fd_disclosure(counts.get('fdUnobservableSandboxDenied', 0))
+    QUIESCENCE_OBSERVATIONS.append(evidence)
+    return evidence

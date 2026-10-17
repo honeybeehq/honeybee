@@ -33,10 +33,14 @@ class RevisionTests(unittest.TestCase):
     def test_scope_quiescence_complete_busy_and_unresolved(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary).resolve()
-            with patch('focused_seal.subprocess.run', return_value=subprocess.CompletedProcess([], 0, 'COMPLETE\n', 'warning')) as call:
+            focused_seal.ROOT_CREATION[str(root)] = {'beforeMkdirNs': 200000000000}
+            (root / 'src').mkdir(exist_ok=True)
+            (root / 'src/package.json').write_text('{}')
+            (root / 't').mkdir(exist_ok=True)
+            with patch('focused_seal.subprocess.run', return_value=subprocess.CompletedProcess([], 0, 'COMPLETE\n', '')) as call:
                 self.assertEqual(focused_seal.require_quiescent(root, root / 'scope'), [])
-                self.assertEqual(call.call_args.args[0], [str(root / 'scope'), 'quiescence', str(os.getpid()), str(root)])
-            output = '22\t' + str(root / 'open') + '\nCOMPLETE\n'
+                self.assertEqual(call.call_args.args[0], [str(root / 'scope'), 'quiescence', str(os.getpid()), str(root), '200000000', str(root / 'sealed-target/quiescence-probe'), str(root / 'src/package.json'), str(root / 't/quiescence-must-not-exist')])
+            output = 'FOREIGN\tfd\t1\nCOMPLETE\n'
             with patch('focused_seal.subprocess.run', return_value=subprocess.CompletedProcess([], 0, output, '')):
                 with self.assertRaises(focused_seal.BusyRoot):
                     focused_seal.require_quiescent(root, root / 'scope')
