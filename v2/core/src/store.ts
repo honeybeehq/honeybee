@@ -1738,14 +1738,20 @@ export class CoreStore {
       reserveAlias(row.handle as string | null);
       if (HANDLE_RE.test(String(row.id))) reserveAlias(String(row.id));
     }
-    const historical = this.stmt(`SELECT json_extract(payload, '$.bee.id') AS id,
-      json_extract(payload, '$.bee.handle') AS handle FROM audit WHERE kind = 'bee.created' ORDER BY seq DESC`);
+    const historical = this.stmt("SELECT seq, payload FROM audit WHERE kind = 'bee.created' ORDER BY seq DESC");
     for (const row of historical.iterate() as Iterable<Row>) {
-      const id = row.id as string | null;
-      const handle = row.handle as string | null;
-      if (id) this.stmt("INSERT OR IGNORE INTO bee_reference_claims(bee_id, handle) VALUES(?, ?)").run(id, handle);
+      let value: unknown;
+      try { value = JSON.parse(String(row.payload)); } catch { value = null; }
+      const bee = value !== null && typeof value === "object" && !Array.isArray(value) && "bee" in value ? value.bee : null;
+      if (bee === null || typeof bee !== "object" || Array.isArray(bee) || !("id" in bee) || typeof bee.id !== "string" || !bee.id.length || "handle" in bee && bee.handle !== null && typeof bee.handle !== "string") {
+        this.stmt("INSERT OR IGNORE INTO meta(key, value) VALUES(?, 'unknown')").run(`legacy_bee_reference_unknown:${row.seq}`);
+        continue;
+      }
+      const id = bee.id;
+      const handle = "handle" in bee ? bee.handle as string | null : null;
+      this.stmt("INSERT OR IGNORE INTO bee_reference_claims(bee_id, handle) VALUES(?, ?)").run(id, handle);
       reserveAlias(handle);
-      if (id && HANDLE_RE.test(id)) reserveAlias(id);
+      if (HANDLE_RE.test(id)) reserveAlias(id);
     }
   }
 
