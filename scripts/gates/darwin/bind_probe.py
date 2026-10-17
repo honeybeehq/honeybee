@@ -39,8 +39,10 @@ def main():
     except OSError as error:
         row.update({'result': 'REFUSED' if error.errno in (errno.EPERM, errno.EACCES) else 'INCONCLUSIVE', 'errno': error.errno, 'error': str(error)})
     rows.append(row)
-    write_json(root / 'no-ip-bind-results.json', rows, root)
-    print('NO_IP_BIND_DIAGNOSTIC=' + json.dumps(rows), flush=True)
+    name = sys.argv[2]
+    assert name in ('real-profile', 'no-ip-bind')
+    write_json(root / (name + '-results.json'), rows, root)
+    print('BIND_PROFILE_DIAGNOSTIC=' + json.dumps({'profile': name, 'rows': rows}), flush=True)
 
 
 if __name__ == '__main__':

@@ -14,7 +14,7 @@ import unittest
 from unittest.mock import patch
 import node_bootstrap
 import guard
-from physical_test import without_ip_bind
+from guard import without_ip_bind
 
 from guard import DIRS, PROTECTED, Refusal, absolute_compiler_jobs, close_socket_controls, compiler_metadata_literals, compiler_profile, compiler_tools, environment, launchagents, make_socket_controls, profile, receipt_hashes, run, seed_cache, select_node, validate, write_json
 

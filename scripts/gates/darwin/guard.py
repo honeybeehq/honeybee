@@ -145,6 +145,12 @@ def profile(root, home, lane):
     ))
 
 
+def without_ip_bind(policy):
+    rule = '(allow network-bind (local ip "localhost:*"))'
+    assert policy.count(rule) == 1, 'expected exactly one IP bind rule'
+    return policy.replace(rule, '', 1)
+
+
 def socket_identity(path):
     value = path.lstat()
     if not stat.S_ISSOCK(value.st_mode):
@@ -383,6 +389,17 @@ def run(args):
     env['SCG_SCOPE_HELPER'] = str(root / 'scope')
     env['LAB_ROOT'] = str(root / 't/selftests')
     workspace = source_copy(lane, args.source, root, env)
+    if args.self_test:
+        for name, probe_policy in (('real-profile', policy), ('no-ip-bind', without_ip_bind(policy))):
+            profile_path = root / (name + '-probe.sb')
+            profile_path.write_text(probe_policy)
+            command = ['/usr/bin/sandbox-exec', '-f', str(profile_path), env['SCG_PYTHON_BIN'], '-B', str(workspace / 'scripts/gates/darwin/bind_probe.py'), str(root), name]
+            probe = subprocess.run(command, cwd=workspace, env=env, capture_output=True, text=True)
+            diagnostic = {'selfTestOnly': True, 'profile': name, 'argv': command, 'exit': probe.returncode, 'stdout': probe.stdout[-16384:], 'stderr': probe.stderr[-4096:]}
+            write_json(root / (name + '-probe.json'), diagnostic, root)
+            print('CONTROLLER_BIND_PROFILE_DIAGNOSTIC=' + json.dumps(diagnostic), flush=True)
+            if probe.returncode:
+                raise Refusal('controller bind probe failed: ' + name)
     identity = root / 'scope'
     prefix = ['/usr/bin/sandbox-exec', '-p', policy]
     preflight = subprocess.run(['/usr/bin/sandbox-exec', '-f', str(root / 'workload.sb'), '/usr/bin/true'], cwd=workspace, env=env, capture_output=True)

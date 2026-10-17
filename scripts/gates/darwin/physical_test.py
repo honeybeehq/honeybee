@@ -10,24 +10,10 @@ import sys
 from guard import DIRS, Refusal, scope_call, validate, write_json
 
 
-def without_ip_bind(policy):
-    rule = '(allow network-bind (local ip "localhost:*"))'
-    assert policy.count(rule) == 1, 'expected exactly one IP bind rule'
-    return policy.replace(rule, '', 1)
-
-
 def main():
     root = Path(os.environ['GATE_ROOT'])
     validate(root, os.environ, Path(os.environ['SCG_REAL_HOME']))
     rows = []
-    variant = without_ip_bind(os.environ['SCG_SB_PROFILE'])
-    variant_path = root / 'self-test-no-ip-bind.sb'
-    variant_path.write_text(variant)
-    probe = subprocess.run(['/usr/bin/sandbox-exec', '-f', str(variant_path), sys.executable, '-B', str(Path(__file__).with_name('bind_probe.py')), str(root)], capture_output=True, text=True)
-    diagnostic = {'selfTestOnly': True, 'removedOnly': '(allow network-bind (local ip "localhost:*"))', 'exit': probe.returncode, 'stdout': probe.stdout[-16384:], 'stderr': probe.stderr[-4096:]}
-    write_json(root / 'no-ip-bind-probe.json', diagnostic, root)
-    print('NO_IP_BIND_PROFILE_DIAGNOSTIC=' + json.dumps(diagnostic), flush=True)
-    assert probe.returncode == 0, 'self-test-only bind probe failed'
     bind_diagnostics = []
     for family, address, port in ((socket.AF_INET, '0.0.0.0', 49197), (socket.AF_INET6, '::', 0), (socket.AF_INET, '127.0.0.1', 0)):
         row = {'family': int(family), 'address': address, 'requestedPort': port}
@@ -66,8 +52,6 @@ def main():
     else:
         raise AssertionError('outside write unexpectedly succeeded')
     assert outside.exists() == before
-    stricter = subprocess.run(['/usr/bin/sandbox-exec', '-p', '(version 1)(allow default)(deny network*)', sys.executable, '-B', str(Path(__file__).with_name('socket_probe.py')), str(root / 't')], capture_output=True, text=True)
-    rows.append({'row': 'nested stricter deny-network-only probe', 'exit': stricter.returncode, 'stdout': stricter.stdout[-4096:], 'stderr': stricter.stderr[-4096:], 'rootOnlyRuleRetainedUnlessStricterProven': True})
     with socket.socket(socket.AF_UNIX) as server, socket.socket(socket.AF_UNIX) as client:
         path = str(root / 't/self-test.sock')
         server.bind(path)
