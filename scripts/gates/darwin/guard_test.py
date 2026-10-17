@@ -14,12 +14,46 @@ import unittest
 from unittest.mock import patch
 import node_bootstrap
 import guard
+import inbound_probe
 from guard import without_ip_bind
 
 from guard import DIRS, PROTECTED, Refusal, absolute_compiler_jobs, close_socket_controls, compiler_metadata_literals, compiler_profile, compiler_tools, environment, launchagents, make_socket_controls, profile, receipt_hashes, run, seed_cache, select_node, validate, write_json
 
 
 class GuardTests(unittest.TestCase):
+    def test_inbound_probe_timeout_closes_and_records(self):
+        from unittest.mock import MagicMock
+        listener = MagicMock()
+        listener.__enter__.return_value = listener
+        listener.getsockname.return_value = ('0.0.0.0', 49198)
+        listener.accept.side_effect = inbound_probe.socket.timeout()
+        with patch.dict(os.environ, {'GATE_ROOT': str(self.base)}), patch('inbound_probe.socket.socket', return_value=listener), patch('inbound_probe.secrets.token_hex', return_value='test-nonce'), patch('sys.stdout', io.StringIO()) as output:
+            inbound_probe.main()
+        listener.bind.assert_called_once_with(('0.0.0.0', 0))
+        listener.settimeout.assert_called_once_with(30)
+        listener.__exit__.assert_called_once()
+        row = json.loads((self.base / 'inbound-probe.json').read_text())
+        self.assertEqual(row['result'], 'timeout')
+        self.assertEqual(row['nonce'], 'test-nonce')
+        self.assertIsNone(row['peer'])
+        self.assertTrue(row['listenerClosed'])
+        self.assertIn('INBOUND_PROBE_PORT=49198\n', output.getvalue())
+
+    def test_inbound_probe_one_accept_sends_nonce(self):
+        from unittest.mock import MagicMock
+        listener = MagicMock()
+        listener.__enter__.return_value = listener
+        listener.getsockname.return_value = ('0.0.0.0', 49198)
+        accepted = MagicMock()
+        listener.accept.return_value = (accepted, ('192.0.2.1', 12345))
+        with patch.dict(os.environ, {'GATE_ROOT': str(self.base)}), patch('inbound_probe.socket.socket', return_value=listener), patch('inbound_probe.secrets.token_hex', return_value='test-nonce'), patch('sys.stdout', io.StringIO()):
+            inbound_probe.main()
+        listener.accept.assert_called_once()
+        accepted.sendall.assert_called_once_with(b'test-nonce\n')
+        row = json.loads((self.base / 'inbound-probe.json').read_text())
+        self.assertEqual(row['result'], 'accepted')
+        self.assertEqual(row['peer'], ['192.0.2.1', 12345])
+
     def test_no_ip_bind_variant_changes_only_one_rule(self):
         policy = profile(self.root, self.home, self.base)
         rule = '(allow network-bind (local ip "localhost:*"))'

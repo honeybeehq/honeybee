@@ -389,7 +389,7 @@ def run(args):
     env['SCG_SCOPE_HELPER'] = str(root / 'scope')
     env['LAB_ROOT'] = str(root / 't/selftests')
     workspace = source_copy(lane, args.source, root, env)
-    if args.self_test:
+    if args.self_test and args.body != 'scripts/gates/darwin/inbound-probe-body.sh':
         for name, probe_policy in (('real-profile', policy), ('no-ip-bind', without_ip_bind(policy))):
             profile_path = root / (name + '-probe.sb')
             profile_path.write_text(probe_policy)
@@ -455,7 +455,7 @@ def run(args):
     sentinel_home = root / 'sentinel-fixture' if args.self_test else real_home
     before = launchagents(sentinel_home)
     write_json(root / 'launchagents-before.json', before, root)
-    if args.self_test:
+    if args.self_test and args.body != 'scripts/gates/darwin/inbound-probe-body.sh':
         env.update(make_socket_controls(root))
     output = (root / 'workload.log').open('wb')
     read_fd, release_fd = os.pipe()
@@ -480,8 +480,15 @@ def run(args):
     scans = []
     tracked[tuple(birth[0])] = birth[0]
     scope_error = None
+    probe_port_printed = False
     try:
         while proc.poll() is None:
+            if args.body == 'scripts/gates/darwin/inbound-probe-body.sh' and not probe_port_printed:
+                with (root / 'workload.log').open('rb') as probe_log:
+                    match = re.search(rb'^INBOUND_PROBE_PORT=([0-9]{1,5})$', probe_log.read(65536), re.MULTILINE)
+                if match and 0 < int(match.group(1)) < 65536:
+                    print('INBOUND_PROBE_PORT=' + match.group(1).decode('ascii'), flush=True)
+                    probe_port_printed = True
             rows = scope_call(identity, 'scan', *birth[0])
             for row in rows:
                 tracked[tuple(row)] = row
