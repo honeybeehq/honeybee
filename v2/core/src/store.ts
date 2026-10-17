@@ -1615,7 +1615,7 @@ export class CoreStore {
   private readonly maxAttempts: number;
   private readonly backoffBaseMs: number;
   private readonly maxRpcIdempotencyRows: number;
-  private readonly multilineUnsupportedActive = new Set<number>();
+  private readonly multilineUnsupportedActive = new Map<number, { beeId: string; generation: number }>();
   private readonly stmts = new Map<string, ReturnType<DatabaseSync["prepare"]>>();
   private txDepth = 0;
   private commitCallbacks: Array<() => void> = [];
@@ -2914,6 +2914,7 @@ export class CoreStore {
            WHERE bee_id = ? AND generation = ?`,
         )
         .run(state, opts.exitCause ?? null, pid, pidStartedAt, bootEvidence, at, beeId, generation);
+      if (state === "stopped") this.pauseMultilineDeliveryBee(beeId);
       const turnTrigger = current.state === "idle" && state === "running"
         ? this.applyTurnStartTrigger(beeId, current, opts.turnOpener, at)
         : current.state === "running" && state === "idle" ? this.applyTurnEndTrigger(beeId, generation, at, opts.endedQuiet) : null;
@@ -3585,6 +3586,14 @@ export class CoreStore {
     this.audit(kind, row.beeId, { row });
   }
 
+  retainMultilineDeliveryWaits(attempted: ReadonlySet<number>): void {
+    for (const id of this.multilineUnsupportedActive.keys()) if (!attempted.has(id)) this.multilineUnsupportedActive.delete(id);
+  }
+
+  private pauseMultilineDeliveryBee(beeId: string): void {
+    for (const [id, interval] of this.multilineUnsupportedActive) if (interval.beeId === beeId) this.multilineUnsupportedActive.delete(id);
+  }
+
   pauseMultilineDeliveryWait(messageId: number): void {
     this.multilineUnsupportedActive.delete(messageId);
   }
@@ -3605,7 +3614,7 @@ export class CoreStore {
       const at = this.now();
       const progress = typeAfterWait
         ? { attempts: previous.attempts, unsupportedMs: previous.unsupportedMs, lastAttemptAt: previous.lastAttemptAt, lastUnsupported: previous.lastUnsupported, hold: true }
-        : advanceMultilineUnsupported(previous ? { ...previous, lastUnsupported: previous.lastUnsupported && this.multilineUnsupportedActive.has(messageId) } : null, detail, at);
+        : advanceMultilineUnsupported(previous ? { ...previous, lastUnsupported: previous.lastUnsupported && this.multilineUnsupportedActive.get(messageId)?.generation === generation } : null, detail, at);
       if (!previous && progress.attempts === 0) return undefined;
       const typeHeld = progress.hold && detail === "multiline_type_mode";
       let receipt: DeliveryHoldReceipt | null = previous?.receipt ?? null;
@@ -3623,7 +3632,7 @@ export class CoreStore {
         stage: typeHeld ? "held" : progress.hold ? "expired" : "waiting", notice: previous?.notice ?? null,
       };
       this.putMultilineDelivery(row, typeHeld ? "mail.delivery_unsupported_multiline" : progress.hold ? "mail.delivery_hold_expired" : previous ? "mail.multiline_progress" : "mail.delivery_held");
-      if (row.stage === "waiting") this.multilineUnsupportedActive.add(messageId);
+      if (row.stage === "waiting") this.multilineUnsupportedActive.set(messageId, { beeId: message.beeId, generation });
       else this.multilineUnsupportedActive.delete(messageId);
       return row;
     });
@@ -5093,6 +5102,7 @@ export class CoreStore {
              WHERE bee_id = ? AND generation = ?`,
           )
           .run(at, rt.beeId, rt.generation);
+        this.pauseMultilineDeliveryBee(rt.beeId);
         const updated = this.db
           .prepare("SELECT * FROM runtimes WHERE bee_id = ? AND generation = ?")
           .get(rt.beeId, rt.generation) as Row;

@@ -10,9 +10,11 @@ import type { DeliverOutcome } from "../../harness/src/driver.ts";
 
 class MultilineDriver extends FakeDriver {
   refusal: string | null | undefined = undefined;
+  noProcess = false;
   readonly calls: number[] = [];
   override deliver(beeId: string, generation: number, messageId: number, body: string, options?: { multilineWaitExpired?: boolean }): DeliverOutcome {
     this.calls.push(messageId);
+    if (this.noProcess) return { accepted: false, reason: "no_process" };
     if (body.includes("\n") && this.refusal !== null && (!options?.multilineWaitExpired || this.refusal === "multiline_type_mode") && this.refusal !== "multiline_bracketed_paste_version_unsupported" && this.refusal !== "multiline_bracketed_paste_unknown") return { accepted: false, reason: "not_ready", ...(this.refusal ? { detail: this.refusal } : {}) };
     return super.deliver(beeId, generation, messageId, body);
   }
@@ -125,5 +127,21 @@ for (const telemetry of [false,true]) test(`long busy turn produces no extra mul
   assert.deepEqual(r.store.auditRows().filter(row=>row.kind.startsWith("mail.")),audits);
   r.driver.refusal="multiline_type_mode";r.core.step();
   assert.equal(r.store.multilineDelivery(message.id)?.stage,"waiting");assert.equal(r.store.multilineDelivery(message.id)?.unsupportedMs,0);
+ }finally{r.cleanup();}
+});
+
+for (const skipped of ["no_process","ineligible"] as const) test(`unsupported time pauses across ${skipped} without resetting attempts`,()=>{
+ const r=rig(false);
+ try{
+  const m=r.store.send(r.bee.id,"one\ntwo",{urgency:skipped==="ineligible"?"idle":"next"}).message;
+  r.driver.refusal="multiline_type_mode";r.core.step();assert.equal(r.store.multilineDelivery(m.id)?.attempts,1);
+  if(skipped==="no_process")r.driver.noProcess=true;
+  else r.store.updateRuntimeState(r.bee.id,1,"running");
+  r.clock.now+=100_000;r.core.step();
+  if(skipped==="no_process")r.driver.noProcess=false;
+  else r.store.updateRuntimeState(r.bee.id,1,"idle");
+  r.clock.now+=100_000;r.core.step();
+  const next=r.store.multilineDelivery(m.id)!;assert.equal(next.stage,"waiting");assert.equal(next.attempts,2);assert.equal(next.unsupportedMs,0);
+  r.core.step();assert.equal(r.store.multilineDelivery(m.id)?.stage,"held");
  }finally{r.cleanup();}
 });

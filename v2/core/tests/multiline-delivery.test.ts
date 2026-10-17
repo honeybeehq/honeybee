@@ -246,3 +246,17 @@ test("reopen never charges unobserved downtime as unsupported wait",()=>{
   assert.equal(next.stage,"waiting");assert.equal(next.attempts,2);assert.equal(next.unsupportedMs,0);
  }finally{store.close();h.cleanup();}
 });
+
+test("same-store runtime stop and new generation cannot charge stopped time",()=>{
+ const h=harness();const store=h.open();
+ try{
+  const {bee}=makeBee(store);bootToRunning(store,bee.id,100,1);const m=store.send(bee.id,"one\ntwo").message;
+  store.recordMultilineDeliveryRefusal(m.id,1,"multiline_type_mode");
+  store.updateRuntimeState(bee.id,1,"stopped",{exitCause:"stopped_by_user"});
+  for(let i=0;i<100;i++)h.now();
+  const rt=store.reviveBee(bee.id);bootToRunning(store,bee.id,101,2);
+  const next=store.recordMultilineDeliveryRefusal(m.id,rt.generation,"multiline_type_mode")!;
+  assert.equal(next.stage,"waiting");assert.equal(next.attempts,2);assert.equal(next.unsupportedMs,0);
+  assert.equal(store.recordMultilineDeliveryRefusal(m.id,rt.generation,"multiline_type_mode")!.stage,"held");
+ }finally{store.close();h.cleanup();}
+});
