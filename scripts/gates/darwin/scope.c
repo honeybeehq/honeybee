@@ -228,7 +228,12 @@ int main(int argc, char **argv) {
     print_identity(pid, &b);
     return 0;
   }
-  if (!strcmp(argv[1], "quiescence")) return argc == 4 ? quiescence(pid, argv[3]) : 2;
+  if (!strcmp(argv[1], "quiescence")) {
+    char *end = NULL;
+    errno = 0;
+    unsigned long long created = argc == 5 ? strtoull(argv[4], &end, 10) : 0;
+    return !errno && created && end && !*end ? quiescence(pid, argv[3], created) : 2;
+  }
   if (argc < 6) return 2;
   unsigned long long sec = strtoull(argv[4], NULL, 10), usec = strtoull(argv[5], NULL, 10);
   if (!strcmp(argv[1], "group")) return group_members(pid, sec, usec, 0, 0, NULL);

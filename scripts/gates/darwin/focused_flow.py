@@ -294,6 +294,7 @@ def run(api, root, workspace, env, tools, real_home):
     source_manifest = json.loads((root / 'source-manifest.json').read_text())
     native_source_pins = {kind: source_manifest['v2/daemon/native/' + kind + '.c']['sha256'] for kind in ('delivery-file', 'peercred')}
     prefix = ['/usr/bin/sandbox-exec', '-f', str(root / 'workload.sb')]
+    focused_seal.quiescence_input(root, root / 'scope')
     result, _ = supervise(api, root, workspace, env, prefix + ['/bin/bash', str(workspace / 'scripts/gates/darwin/workload.sh'), str(workspace / 'scripts/gates/darwin/focused-manifest-body.sh')], 'focused-prepare')
     if result['exit'] != 0 or result['reason']:
         raise api.Refusal('focused offline dependency/build phase failed')
@@ -318,10 +319,12 @@ def run(api, root, workspace, env, tools, real_home):
                 focused_native.confined(path, root).unlink()
         native = focused_native.build(root, workspace, tools, env['SCG_NODE_BIN'], env, kind, source_sha256=native_source_pins[kind])
         api.write_json(root / ('focused-native-build-' + kind + '.json'), native, root)
+        focused_seal.quiescence_input(root, root / 'scope')
         probe_path = workspace / ('scripts/probe-' + kind + '.mjs')
         probe, _ = supervise(api, root, workspace, env, prefix + [env['SCG_NODE_BIN'], str(probe_path)], 'focused-native-probe-' + kind)
         if probe['exit'] != 0 or probe['reason']:
             raise api.Refusal('non-optional confined native probe failed: ' + kind)
+    focused_seal.quiescence_input(root, root / 'scope')
     before_artifact = artifacts(workspace, root)
     resolved_edges = []
     for edge in audit['nativeEdges']:

@@ -182,8 +182,48 @@ class BusyRoot(ValueError):
         super().__init__('another same-uid process retains run-root access: ' + str(rows))
 
 
+ROOT_CREATION = {}
+ROOT_INODES = {}
+UNLINKED_LIMIT = 'exeUnlinkedPreRoot accepted by birth-time; exec-after-birth of a since-unlinked root binary by a non-gate process is not excluded.'
+
+
+def quiescence_input(root, helper):
+    key = str(root.resolve(strict=True))
+    stamp = ROOT_CREATION.get(key)
+    if stamp is None:
+        raise ValueError('run-root creation clock unavailable')
+    inodes = ROOT_INODES.setdefault(key, set())
+    def collect(descriptor, depth):
+        if depth > 128:
+            raise ValueError('root inode depth exceeds bound')
+        for name in os.listdir(descriptor):
+            info = os.stat(name, dir_fd=descriptor, follow_symlinks=False)
+            inodes.add((info.st_dev, info.st_ino))
+            if len(inodes) > 1000000:
+                raise ValueError('root inode inventory exceeds bound')
+            if stat.S_ISDIR(info.st_mode):
+                child = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=descriptor)
+                try:
+                    opened = os.fstat(child)
+                    if (opened.st_dev, opened.st_ino) != (info.st_dev, info.st_ino):
+                        raise ValueError('root inode directory changed')
+                    collect(child, depth + 1)
+                finally:
+                    os.close(child)
+    descriptor = directory_descriptor(root)
+    try:
+        info = os.fstat(descriptor)
+        inodes.add((info.st_dev, info.st_ino))
+        collect(descriptor, 0)
+    finally:
+        os.close(descriptor)
+    text = str(len(inodes)) + '\n' + ''.join(str(dev) + ' ' + str(ino) + '\n' for dev, ino in sorted(inodes))
+    return [str(helper), 'quiescence', str(os.getpid()), key, str(stamp['beforeMkdirNs'] // 1000)], text
+
+
 def require_quiescent(root, helper):
-    observed = subprocess.run([str(helper), 'quiescence', str(os.getpid()), str(root)], cwd='/', env={'PATH': '/usr/bin:/bin', 'LANG': 'C'}, capture_output=True, text=True, timeout=2)
+    command, inventory = quiescence_input(root, helper)
+    observed = subprocess.run(command, input=inventory, cwd='/', env={'PATH': '/usr/bin:/bin', 'LANG': 'C'}, capture_output=True, text=True, timeout=2)
     quiescence_evidence(observed)
     if observed.returncode != 0:
         raise ValueError('same-uid root-use observation unresolved')
@@ -199,18 +239,18 @@ QUIESCENCE_OBSERVATIONS = []
 def quiescence_evidence(result):
     import json
     evidence = {'exit': result.returncode, 'reason': None}
-    if result.returncode:
+    if result.returncode or result.stderr:
         try:
             if len(result.stderr) > 4096:
                 raise ValueError('oversized quiescence diagnostic')
             reason = json.loads(result.stderr)
-            if set(reason) != {'type', 'call', 'errno', 'errnoNumber', 'sameBirth', 'counts'} or reason['type'] != 'QuiescenceFailure':
+            if set(reason) != {'type', 'call', 'errno', 'errnoNumber', 'sameBirth', 'counts'} or reason['type'] != ('QuiescenceFailure' if result.returncode else 'QuiescenceComplete'):
                 raise ValueError('unexpected quiescence diagnostic schema')
-            if reason['call'] not in ('root', 'allocation', 'proc_listpids', 'pidinfo vnode', 'pidpath', 'listfds', 'fdinfo', 'birth') or reason['errno'] not in ('NONE', 'EPERM', 'EACCES', 'ESRCH', 'EBADF', 'ENOENT', 'EINVAL', 'ENOMEM', 'EINTR', 'OTHER'):
+            if reason['call'] not in ('root', 'allocation', 'proc_listpids', 'pidinfo vnode', 'pidpath', 'listfds', 'fdinfo', 'birth', 'none', 'unlinked policy', 'region inode') or reason['errno'] not in ('NONE', 'EPERM', 'EACCES', 'ESRCH', 'EBADF', 'ENOENT', 'EINVAL', 'ENOMEM', 'EINTR', 'OTHER'):
                 raise ValueError('unexpected quiescence diagnostic value')
             if type(reason['errnoNumber']) is not int or type(reason['sameBirth']) is not int or reason['sameBirth'] not in (-1, 0, 3, 4):
                 raise ValueError('unexpected quiescence numeric value')
-            if set(reason['counts']) != {'scanned', 'skippedGone', 'skippedUidChanged', 'skippedFdClosed', 'matched', 'failed'} or any(type(value) is not int or value < 0 for value in reason['counts'].values()):
+            if set(reason['counts']) != {'scanned', 'skippedGone', 'skippedUidChanged', 'skippedFdClosed', 'matched', 'failed', 'exeUnlinkedPreRoot', 'regionCompared', 'regionUnavailable', 'sessionLeaderNotUidListed'} or any(type(value) is not int or value < 0 for value in reason['counts'].values()):
                 raise ValueError('unexpected quiescence counts')
             evidence['reason'] = reason
         except (ValueError, TypeError, KeyError):

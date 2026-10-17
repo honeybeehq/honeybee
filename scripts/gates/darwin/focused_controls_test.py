@@ -23,7 +23,7 @@ class ScopeControlTests(unittest.TestCase):
                     scope_controls.observation(bad_output, '/node', '/reader', '/work', sandboxed, bad_policy)
 
     def test_quiescence_reason_is_bounded_and_has_no_foreign_fields(self):
-        reason = {'type': 'QuiescenceFailure', 'call': 'pidinfo vnode', 'errno': 'EPERM', 'errnoNumber': 1, 'sameBirth': 0, 'counts': {'scanned': 2, 'skippedGone': 0, 'skippedUidChanged': 0, 'skippedFdClosed': 0, 'matched': 0, 'failed': 1}}
+        reason = {'type': 'QuiescenceFailure', 'call': 'pidinfo vnode', 'errno': 'EPERM', 'errnoNumber': 1, 'sameBirth': 0, 'counts': {'scanned': 2, 'skippedGone': 0, 'skippedUidChanged': 0, 'skippedFdClosed': 0, 'matched': 0, 'failed': 1, 'exeUnlinkedPreRoot': 0, 'regionCompared': 0, 'regionUnavailable': 0, 'sessionLeaderNotUidListed': 0}}
         result = subprocess.CompletedProcess([], 4, '', json.dumps(reason))
         evidence = focused_seal.quiescence_evidence(result)
         self.assertEqual(evidence, {'exit': 4, 'reason': reason})
@@ -34,15 +34,31 @@ class ScopeControlTests(unittest.TestCase):
 
     def test_prelaunch_failure_and_receipt_retain_reason_and_exit(self):
         import guard
-        reason = {'type': 'QuiescenceFailure', 'call': 'fdinfo', 'errno': 'EPERM', 'errnoNumber': 1, 'sameBirth': 0, 'counts': {'scanned': 1, 'skippedGone': 0, 'skippedUidChanged': 0, 'skippedFdClosed': 0, 'matched': 0, 'failed': 1}}
+        reason = {'type': 'QuiescenceFailure', 'call': 'fdinfo', 'errno': 'EPERM', 'errnoNumber': 1, 'sameBirth': 0, 'counts': {'scanned': 1, 'skippedGone': 0, 'skippedUidChanged': 0, 'skippedFdClosed': 0, 'matched': 0, 'failed': 1, 'exeUnlinkedPreRoot': 0, 'regionCompared': 0, 'regionUnavailable': 0, 'sessionLeaderNotUidListed': 0}}
         result = subprocess.CompletedProcess([], 4, '', json.dumps(reason))
         with tempfile.TemporaryDirectory() as temporary, patch.object(focused_seal, 'QUIESCENCE_OBSERVATIONS', []), patch.object(focused_seal.subprocess, 'run', return_value=result):
             root = Path(temporary).resolve()
+            focused_seal.ROOT_CREATION[str(root)] = {'beforeMkdirNs': 200000000000}
             with self.assertRaisesRegex(ValueError, 'unresolved'):
                 focused_seal.require_quiescent(root, root / 'scope')
             guard.write_json(root / 'receipt.json', {'exit': 90}, root)
             receipt = json.loads((root / 'receipt.json').read_text())
             self.assertEqual(receipt['quiescenceObservations'], [{'exit': 4, 'reason': reason}])
+
+    def test_root_clock_and_inode_inventory_are_controller_owned_and_retained(self):
+        with tempfile.TemporaryDirectory() as temporary, patch.object(focused_seal, 'ROOT_CREATION', {}), patch.object(focused_seal, 'ROOT_INODES', {}):
+            root = Path(temporary).resolve()
+            with self.assertRaisesRegex(ValueError, 'creation clock'):
+                focused_seal.quiescence_input(root, root / 'scope')
+            focused_seal.ROOT_CREATION[str(root)] = {'beforeMkdirNs': 200000000123}
+            file = root / 'binary'
+            file.write_text('fixture')
+            key = (file.stat().st_dev, file.stat().st_ino)
+            command, inventory = focused_seal.quiescence_input(root, root / 'scope')
+            self.assertEqual(command[-1], '200000000')
+            self.assertIn(str(key[0]) + ' ' + str(key[1]), inventory)
+            file.unlink()
+            self.assertIn(str(key[0]) + ' ' + str(key[1]), focused_seal.quiescence_input(root, root / 'scope')[1])
 
     @unittest.skipUnless(sys.platform == 'darwin', 'real controller scope controls run only on Darwin')
     def test_real_controller_controls_preceded_self_test_body(self):

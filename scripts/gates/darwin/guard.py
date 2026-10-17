@@ -78,7 +78,7 @@ def write_json(path, value, root):
     if not inside(path.resolve(), root.resolve()):
         raise Refusal('write outside run root')
     if path == Path(root) / 'receipt.json' and isinstance(value, dict):
-        value = dict(value, quiescenceObservations=list(focused_seal.QUIESCENCE_OBSERVATIONS), gitBoundary=GIT_AUDITS.get(str(root.resolve())), entryNotes=list(ENTRY_NOTES), leftoverChild=value.get('leftoverChild') or list(LEFTOVER_CHILDREN) or None, listenerLimit=LISTENER_LIMIT, staticBindLimit=STATIC_BIND_LIMIT, hostLock=LOCK_METADATA.get(str(Path(root).resolve())))
+        value = dict(value, rootCreation=focused_seal.ROOT_CREATION.get(str(root.resolve())), exeUnlinkedLimit=focused_seal.UNLINKED_LIMIT, quiescenceObservations=list(focused_seal.QUIESCENCE_OBSERVATIONS), gitBoundary=GIT_AUDITS.get(str(root.resolve())), entryNotes=list(ENTRY_NOTES), leftoverChild=value.get('leftoverChild') or list(LEFTOVER_CHILDREN) or None, listenerLimit=LISTENER_LIMIT, staticBindLimit=STATIC_BIND_LIMIT, hostLock=LOCK_METADATA.get(str(Path(root).resolve())))
     path.write_text(json.dumps(value, indent=2) + '\n')
 
 
@@ -685,8 +685,12 @@ def run(args):
     lock_path = Path('/private/var/tmp/hb-darwin-gate.lock')
     fd, lock_metadata = acquire_lock(lock_path)
     LOCK_METADATA[str(root.resolve())] = lock_metadata
+    before_mkdir = time.time_ns()
     root.mkdir(mode=0o700)
+    focused_seal.ROOT_CREATION[str(root.resolve())] = {'clock': 'CLOCK_REALTIME', 'beforeMkdirNs': before_mkdir, 'afterMkdirNs': time.time_ns(), 'marginMicroseconds': 1000000}
     CREATED_ROOTS.add(root.resolve())
+    if focused_seal.ROOT_CREATION[str(root.resolve())]['afterMkdirNs'] < before_mkdir:
+        raise Refusal('run-root realtime clock moved backwards during mkdir')
     (root / 'workload.log').touch()
     for value in set(env[k] for k in DIRS):
         Path(value).mkdir(parents=True, exist_ok=True)
@@ -713,6 +717,7 @@ def run(args):
     env['SCG_SCOPE_HELPER'] = str(root / 'scope')
     env['LAB_ROOT'] = str(root / 't/selftests')
     workspace = source_copy(lane, args.source, root, env)
+    focused_seal.quiescence_input(root, root / 'scope')
     identity = root / 'scope'
     prefix = ['/usr/bin/sandbox-exec', '-p', policy]
     preflight = subprocess.run(['/usr/bin/sandbox-exec', '-f', str(root / 'workload.sb'), '/usr/bin/true'], cwd=workspace, env=env, capture_output=True)

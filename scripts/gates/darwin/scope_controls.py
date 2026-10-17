@@ -72,7 +72,8 @@ def child(api, root, helper, node, reader, cwd, env, sandboxed, profile, content
         policy = call(helper, 'write-policy', birth, cwd, content, sealed)
         row.update(observation(actual, node, reader, cwd, sandboxed, policy))
         if not sandboxed:
-            result = subprocess.run([str(helper), 'quiescence', str(os.getpid()), str(root)], capture_output=True, text=True, timeout=2)
+            command, inventory = focused_seal.quiescence_input(root, helper)
+            result = subprocess.run(command, input=inventory, capture_output=True, text=True, timeout=2)
             row['quiescence'] = focused_seal.quiescence_evidence(result)
             if result.returncode:
                 raise ValueError('real quiescence control unresolved')
