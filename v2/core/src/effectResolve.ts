@@ -4,6 +4,11 @@ import type { DatabaseSync } from "node:sqlite";
 
 export const EFFECT_RESOLVE_CAPABILITY = "rpc-effect-resolve.v1";
 export const EFFECT_VERBS = ["spawn", "send", "archive"] as const;
+export const EFFECT_RESULT_REQUIRED_FIELDS = {
+  spawn: { beeId: "nonempty-string", commandId: "command-id-or-null" },
+  send: { messageId: "positive-integer", commandId: "command-id-or-null", unarchived: "boolean" },
+  archive: { commandId: "positive-integer" },
+} as const;
 export type EffectVerb = typeof EFFECT_VERBS[number];
 export type EffectReceipt = { key: string; verb: string; commandId: number | null; result: unknown; createdAt: number };
 export type EffectCoverage = { ownerStoreId: string; coverageId: string };
@@ -27,30 +32,35 @@ function key(value: string): void {
   if (typeof value !== "string" || !value.length) throw new EffectKeyError("invalid_request", "Effect key must be a nonempty string");
 }
 
-function validEffectResult(verb: string, value: unknown, commandId: number | null): boolean {
+function validEffectResult(verb: EffectVerb, value: unknown, commandId: number | null): boolean {
   if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
   const result = value as Record<string, unknown>;
-  const fields = verb === "spawn"
-    ? ["beeId", "agent", "handle", "humanRef", "issuingNamespace", "commandId", "messageId", "account", "accountReason", "allocation", "allocationClaimId", "cellBase", "deduped", "status"]
-    : verb === "send" ? ["messageId", "commandId", "unarchived", "runtimeStartHold", "deduped", "status"] : ["commandId", "deduped", "status"];
-  if (Object.keys(result).some(name => !fields.includes(name))) return false;
   const text = (v: unknown) => typeof v === "string" && v.length > 0;
   const number = (v: unknown) => typeof v === "number" && Number.isFinite(v) && v >= 0;
   const positive = (v: unknown) => number(v) && Number.isSafeInteger(v) && (v as number) > 0;
   const object = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === "object" && !Array.isArray(v);
+  const member = (value: unknown, values: readonly string[]) => typeof value === "string" && values.includes(value);
   const optional = (row: Record<string, unknown>, name: string, check: (v: unknown) => boolean) => !Object.hasOwn(row, name) || check(row[name]);
-  if (verb === "spawn" && !text(result.beeId) || verb === "send" && !positive(result.messageId) || verb === "archive" && !positive(result.commandId)) return false;
+  for (const [name, type] of Object.entries(EFFECT_RESULT_REQUIRED_FIELDS[verb])) {
+    if (!Object.hasOwn(result, name)) return false;
+    const field = result[name];
+    if (type === "nonempty-string" && !text(field) || type === "positive-integer" && !positive(field)
+      || type === "command-id-or-null" && field !== null && !positive(field) || type === "boolean" && typeof field !== "boolean") return false;
+  }
+  if (!optional(result, "generation", positive)) return false;
+  if (!optional(result, "requestBinding", v => object(v) && v.version === 1 && v.verb === verb && member(v.lane, ["envelope-v1", "interim-v1", "legacy"]) && text(v.requestDigest))) return false;
+  if (!optional(result, "phoneAdmission", v => object(v) && text(v.ownerStoreId) && text(v.admissionId) && (v.contentDigest === null || typeof v.contentDigest === "string" && /^sha256:[a-f0-9]{64}$/.test(v.contentDigest)) && v.lane === "envelope-v1")) return false;
   if (!optional(result, "commandId", v => v === commandId) || !optional(result, "messageId", v => v === null || positive(v))) return false;
   for (const name of ["agent", "accountReason", "allocationClaimId"]) if (!optional(result, name, text)) return false;
   for (const name of ["handle", "humanRef", "issuingNamespace", "account"]) if (!optional(result, name, v => v === null || text(v))) return false;
   for (const name of ["unarchived", "deduped"]) if (!optional(result, name, v => typeof v === "boolean")) return false;
-  if (!optional(result, "status", v => ["queued", "running", "done", "failed"].includes(String(v)))) return false;
+  if (!optional(result, "status", v => member(v, ["queued", "running", "done", "failed"]))) return false;
   if (!optional(result, "runtimeStartHold", v => object(v) && v.code === "account_auth_needed" && v.message === "Waiting for refreshed account material")) return false;
-  if (!optional(result, "cellBase", v => object(v) && text(v.sha) && ["pinned", "head", "upstream"].includes(String(v.source)) && optional(v, "upstreamRef", text) && optional(v, "upstreamSha", text) && optional(v, "fetchedAt", number))) return false;
-  if (!optional(result, "allocation", v => object(v) && v.version === 1 && ["shadow", "active"].includes(String(v.mode)) && text(v.scope)
-    && (v.revision === null || text(v.revision)) && number(v.observedAt) && ["spawn", "fork", "handoff", "swap", "revive"].includes(String(v.operation))
-    && ["selected", "wait"].includes(String(v.outcome)) && (v.account === null || text(v.account)) && text(v.reason) && (v.retryAt === null || number(v.retryAt))
-    && Array.isArray(v.candidates) && v.candidates.every(c => object(c) && text(c.accountId) && ["eligible", "ineligible", "uncertain", "protected"].includes(String(c.status))
+  if (!optional(result, "cellBase", v => object(v) && text(v.sha) && member(v.source, ["pinned", "head", "upstream"]) && optional(v, "upstreamRef", text) && optional(v, "upstreamSha", text) && optional(v, "fetchedAt", number))) return false;
+  if (!optional(result, "allocation", v => object(v) && v.version === 1 && member(v.mode, ["shadow", "active"]) && text(v.scope)
+    && (v.revision === null || text(v.revision)) && number(v.observedAt) && member(v.operation, ["spawn", "fork", "handoff", "swap"])
+    && member(v.outcome, ["selected", "wait"]) && (v.account === null || text(v.account)) && text(v.reason) && (v.retryAt === null || number(v.retryAt))
+    && Array.isArray(v.candidates) && v.candidates.every(c => object(c) && text(c.accountId) && member(c.status, ["eligible", "ineligible", "uncertain", "protected"])
       && optional(c, "reason", text) && ["rate", "fairFinish", "maxProjectedPercent"].every(name => optional(c, name, number))))) return false;
   return true;
 }
@@ -91,7 +101,7 @@ export class EffectLedger {
     if (receipt === null || typeof receipt !== "object" || Array.isArray(receipt)) return unknown();
     const value = receipt as EffectReceipt;
     if (value.key !== id || !(EFFECT_VERBS as readonly string[]).includes(value.verb) || row && value.verb !== row.verb || !Number.isFinite(value.createdAt) || value.createdAt < 0 || value.commandId !== null && (!Number.isSafeInteger(value.commandId) || value.commandId <= 0) || !Object.hasOwn(value, "result")) return unknown();
-    if (!validEffectResult(value.verb, value.result, value.commandId)) return unknown();
+    if (!validEffectResult(value.verb as EffectVerb, value.result, value.commandId)) return unknown();
     if (row?.state !== "committed") this.db.prepare("INSERT INTO rpc_effect_keys(key,verb,state,receipt,created_at) VALUES(?,?,'committed',?,?) ON CONFLICT(key) DO UPDATE SET verb=excluded.verb,state=excluded.state,receipt=excluded.receipt,created_at=excluded.created_at").run(id, value.verb, JSON.stringify(value), value.createdAt);
     return { verb: value.verb, state: "committed", receipt: value };
   }
