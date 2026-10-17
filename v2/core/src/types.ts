@@ -575,6 +575,7 @@ export interface AccountLeaseOrigin {
 export interface AccountRow {
   source: "local" | "leased";
   leasedFrom: AccountLeaseOrigin | null;
+  leaseError?: "lease_unknown";
   /** `<harness>-<label>` (safe-named, lower-cased). */
   id: string;
   harness: string;

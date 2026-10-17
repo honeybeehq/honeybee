@@ -1,3 +1,4 @@
+import { LEASE_UNKNOWN_MESSAGE } from "../../core/src/accountLease.ts";
 import { withoutRpcCaller } from "../../core/src/rpcAuditContext.ts";
 import { OBSERVATION_CODECS, localObservationText } from "./limitsObservation.ts";
 /**
@@ -241,7 +242,7 @@ export type PickOutcome =
 export type CredentialState = "present" | "absent" | "invalid" | "expired";
 
 /** Typed refusal codes shared by explicit spawn, allocator claims, swap and the runtime-start hold. */
-export type AccountRefusalCode = "account_lease_revoked" | "account_paused" | "account_auth_needed" | "account_credential_missing" | "account_credential_invalid" | "account_credential_expired" | "account_unavailable";
+export type AccountRefusalCode = "lease_unknown" | "account_lease_revoked" | "account_paused" | "account_auth_needed" | "account_credential_missing" | "account_credential_invalid" | "account_credential_expired" | "account_unavailable";
 
 export type AccountReadiness =
   | { ready: true }
@@ -2014,6 +2015,7 @@ export class AccountsService {
    * expired home the harness will actually use.
    */
   credentialState(account: AccountRow): CredentialState {
+    if (account.leaseError) return "invalid";
     const recipe = recipeFor(account.harness);
     if (account.source === "leased" && account.leasedFrom?.revokedAt != null) return "absent";
     if (account.source === "leased" && account.leasedFrom?.expiresAt != null && account.leasedFrom.expiresAt * 1000 <= this.now()) return "expired";
@@ -2074,6 +2076,7 @@ export class AccountsService {
    * judged separately by `readiness`.
    */
   credentialReadiness(account: AccountRow): AccountReadiness {
+    if (account.leaseError) return { ready: false, code: "lease_unknown", message: `account ${account.id}: ${LEASE_UNKNOWN_MESSAGE}` };
     const native = this.isNative(account);
     const moved = this.nativeHomeRefusal(account);
     if (moved) return { ready: false, code: "account_unavailable", message: moved };
@@ -2101,6 +2104,7 @@ export class AccountsService {
 
   /** Node-local admission readiness for PLACING work on the account: the pause policy, then `credentialReadiness`. */
   readiness(account: AccountRow): AccountReadiness {
+    if (account.leaseError) return this.credentialReadiness(account);
     if (account.source === "leased" && account.leasedFrom?.revokedAt != null) return this.credentialReadiness(account);
     if (account.status === "paused") {
       const pause = pauseOf(account);
@@ -2111,7 +2115,7 @@ export class AccountsService {
 
   /** Usable for automatic selection: not paused, not auth_needed, credential present and not expired. */
   private usableForSelection(account: AccountRow): boolean {
-    return account.status === "ok" && (!this.isolationRefusal(account.harness) || this.isNative(account)) && !this.nativeHomeRefusal(account) && !this.ownedHomeRefusal(account, "writes into") && this.credentialState(account) === "present";
+    return !account.leaseError && account.status === "ok" && (!this.isolationRefusal(account.harness) || this.isNative(account)) && !this.nativeHomeRefusal(account) && !this.ownedHomeRefusal(account, "writes into") && this.credentialState(account) === "present";
   }
 
   /**
@@ -2160,6 +2164,7 @@ export class AccountsService {
    * must render over a historical `verified`.
    */
   credentialHealthOf(account: AccountRow): CredentialHealth {
+    if (account.leaseError) return "unverified";
     if (!this.credentialed(account)) return "absent";
     if (this.centralCredentialInDoubt(account)) return "unverified";
     if (account.lastLoginAt != null) return "verified";
@@ -2414,7 +2419,8 @@ export class AccountsService {
       && applicableObserved.length > 0
       && applicableObserved.every((value) => value < DEFAULT_ACCOUNT_ADMISSION_POLICY.completionReservePercent);
     let eligibility: AccountAdmissionCandidate["eligibility"] = { state: "eligible" };
-    if (account.status === "paused") eligibility = { state: "ineligible", reason: "paused" };
+    if (account.leaseError) eligibility = { state: "unknown", reason: "auth" };
+    else if (account.status === "paused") eligibility = { state: "ineligible", reason: "paused" };
     else if (this.weeklyCeilingBreach(account, options.model)) eligibility = { state: "ineligible", reason: "ceiling" };
     else if (!this.usableForSelection(account)) eligibility = { state: "ineligible", reason: "auth" };
     else if (this.credentialHealthOf(account) !== "verified") eligibility = { state: "unknown", reason: "auth" };

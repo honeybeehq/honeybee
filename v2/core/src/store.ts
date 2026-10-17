@@ -1,5 +1,6 @@
 import { PHONE_PROVENANCE_SQL } from "./schema.ts";
 import { type PhoneInput, type PhoneOperationOrigin, type PhoneOriginRequest, type PhoneSource, parsePhoneOrigin, phoneDigest, renderPhoneInput, forwardPhoneOrigin } from "./phoneOrigin.ts";
+import { readAccountLease } from "./accountLease.ts";
 import { ExecutionLedger, ExecutionFenceError, executionRequest, type ExecutionRequest } from "./executionFence.ts";
 import { EffectKeyError, EffectLedger, type EffectVerb, type EffectResolution } from "./effectResolve.ts";
 import { parseDurableUpdateReservation, parseApiarySwapAcquire, parseApiarySwapSettle, parseApiarySwapRecover, acquireApiarySwap, settleApiarySwap, recoverApiarySwap, type DurableUpdateReservation, type ApiarySwapReservation } from "../../../src/apiarySwap.ts";
@@ -859,7 +860,7 @@ function mapCellOp(r: Row): CellOpRow {
 function mapAccount(r: Row): AccountRow {
   return {
     source: r.source as AccountRow["source"],
-    leasedFrom: r.leased_from == null ? null : JSON.parse(String(r.leased_from)) as AccountRow["leasedFrom"],
+    ...readAccountLease(r.leased_from, r.source),
     id: r.id as string,
     harness: r.harness as string,
     homePath: r.home_path as string,
@@ -2068,7 +2069,8 @@ export class CoreStore {
     this.db.exec(ACCOUNTS_NATIVE_INDEX_SQL);
     this.addMissingColumns("bees", BEES_ADDITIVE_COLUMNS);
     this.addMissingColumns("mailbox", MAILBOX_ADDITIVE_COLUMNS);
-    this.db.exec("UPDATE accounts SET leased_from = json_remove(json_set(leased_from, '$.revokedAt', json_extract(leased_from, '$.endedAt')), '$.endedAt') WHERE leased_from IS NOT NULL AND json_type(leased_from, '$.endedAt') IS NOT NULL");
+    this.db.function("account_lease_readable", raw => readAccountLease(raw, "leased").leaseError ? 0 : 1);
+    this.db.exec("UPDATE accounts SET leased_from = json_remove(json_set(leased_from, '$.revokedAt', json_extract(leased_from, '$.endedAt')), '$.endedAt') WHERE CASE WHEN json_valid(leased_from) THEN json_type(leased_from, '$.endedAt') IS NOT NULL AND account_lease_readable(leased_from) = 1 ELSE 0 END");
     if (stored < 42) {
       const unscoped = this.stmt("SELECT account FROM account_credential_authorities WHERE phase <> 'disabled' AND authority_instance_id IS NULL").all() as Row[];
       for (const row of unscoped) {

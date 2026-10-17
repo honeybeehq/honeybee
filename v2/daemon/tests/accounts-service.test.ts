@@ -1,3 +1,5 @@
+import { DatabaseSync } from "node:sqlite";
+import { accountLine } from "../../cli/src/render.ts";
 /**
  * Spec 08 at the daemon tier, in-process (AccountsService over a real store,
  * temp dirs, injected transports):
@@ -2472,4 +2474,37 @@ test("Grok central busy limits probes preserve account auth during ownership cha
     }
     console.log("Grok busy probes: enrolling/disabling/refreshing operation_in_progress=provider_error; account auth remains ok");
   } finally { r.cleanup(); }
+});
+
+test("lease unknown stays raw across reopen, refuses readiness and admission, and names the account", () => {
+  for (const raw of ["{", "{}", '{"shareId":7}', '{"shareId":"s","authorityNodeId":"n","epoch":1,"expiresAt":null,"adoptedAt":null,"endedAt":[]}']) {
+    const r = rig({ accounts: { allocationMode: "active" } });
+    try {
+      const account = addAccount(r, "claude", "unknown");
+      limitsRow(r, account.id, 1, 1, r.now() + DAY);
+      r.store.close();
+      const seed = new DatabaseSync(join(r.dir, "core.sqlite3"));
+      seed.prepare("UPDATE accounts SET source='leased', leased_from=? WHERE id=?").run(raw, account.id);
+      seed.close();
+      for (let reopen = 0; reopen < 2; reopen++) {
+        r.store = openCoreStore(join(r.dir, "core.sqlite3"), { now: r.now, ephemeral: true });
+        const svc = service(r);
+        const row = r.store.getAccount(account.id)!;
+        assert.equal(row.leaseError, "lease_unknown");
+        assert.equal(r.store.listAccounts()[0]!.leaseError, "lease_unknown");
+        assert.deepEqual(svc.credentialReadiness(row), { ready: false, code: "lease_unknown", message: `account ${account.id}: lease record unreadable; re-lease or repair before it can take work` });
+        assert.equal(svc.readiness(row).ready, false);
+        assert.equal(svc.credentialHealthOf(row), "unverified");
+        assert.equal(svc.admitNewWork("claude", { operation: "spawn", requestKey: "unknown-lease", context: null }).ok, false);
+        assert.equal(svc.pick("claude").ok, false);
+        const text = accountLine(svc.mirrorRow(row), undefined, false);
+        assert.ok(text.includes(account.id));
+        assert.ok(text.includes("lease record unreadable; re-lease or repair before it can take work"));
+        r.store.close();
+        const inspect = new DatabaseSync(join(r.dir, "core.sqlite3"), { readOnly: true });
+        try { assert.equal(inspect.prepare("SELECT leased_from FROM accounts WHERE id=?").get(account.id)?.leased_from, raw); }
+        finally { inspect.close(); }
+      }
+    } finally { r.cleanup(); }
+  }
 });
