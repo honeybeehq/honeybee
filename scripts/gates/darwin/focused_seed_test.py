@@ -85,16 +85,37 @@ class SeedBoundaryTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 seed_policy.canonical_url(url)
 
-    def test_only_prepare_is_exempt_and_postprepare_is_examined(self):
-        for event in ('prepublish', 'preprepare', 'postprepare'):
+    def test_registry_noninstall_scripts_recorded_and_install_boundaries_hold(self):
+        def archive(name, version, scripts, binding=False):
             output = io.BytesIO()
-            with tarfile.open(fileobj=output, mode='w:gz') as archive:
-                data = json.dumps({'name': 'fixture', 'version': '1', 'scripts': {event: 'unexpected'}}).encode()
+            with tarfile.open(fileobj=output, mode='w:gz') as target:
+                data = json.dumps({'name': name, 'version': version, 'scripts': scripts}).encode()
                 info = tarfile.TarInfo('package/package.json')
                 info.size = len(data)
-                archive.addfile(info, io.BytesIO(data))
-            with self.assertRaisesRegex(ValueError, 'unexpected dependency lifecycle'):
-                seed_npm.scan_tarball(output.getvalue())
+                target.addfile(info, io.BytesIO(data))
+                if binding:
+                    info = tarfile.TarInfo('package/binding.gyp')
+                    info.size = 2
+                    target.addfile(info, io.BytesIO(b'{}'))
+            return output.getvalue()
+        scripts = {'prepublish': 'npm run build', 'prepare': 'build', 'postprepare': 'record', 'prepack': 'record', 'postpack': 'record', 'publish': 'record', 'postpublish': 'record', 'version': 'record', 'custom': 'record'}
+        row = seed_npm.scan_tarball(archive('ajv', '8.17.1', scripts))
+        self.assertEqual(row['lifecycle'], scripts)
+        with self.assertRaisesRegex(ValueError, 'unexpected dependency lifecycle'):
+            seed_npm.scan_tarball(archive('unknown', '1', {'postinstall': 'run'}))
+        with self.assertRaisesRegex(ValueError, 'unexpected binding.gyp'):
+            seed_npm.scan_tarball(archive('unknown', '1', {}, True))
+        with self.assertRaisesRegex(ValueError, 'unexpected binding.gyp'):
+            seed_npm.scan_tarball(archive('node-pty', '1.1.0', {}, True))
+        for name, version in seed_npm.VERSIONS.items():
+            scripts = seed_npm.ALLOWED[name]
+            seed_npm.scan_tarball(archive(name, version, scripts, name == 'node-pty'))
+            with self.assertRaises(ValueError):
+                seed_npm.scan_tarball(archive(name, version, dict(scripts, preinstall='unexpected')))
+            with self.assertRaises(ValueError):
+                seed_npm.scan_tarball(archive(name, 'wrong', scripts))
+            with self.assertRaises(ValueError):
+                seed_npm.scan_tarball(archive(name, version, {event: 'wrong' for event in scripts}))
 
     def test_keychain_list_denial_preserves_unobservable(self):
         with tempfile.TemporaryDirectory() as temporary:
