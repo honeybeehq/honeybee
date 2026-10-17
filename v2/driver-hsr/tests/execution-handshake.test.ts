@@ -49,9 +49,13 @@ test("owner disconnect before release never forks an agent",async t=>{
   writeFileSync(config,JSON.stringify({beeId:start.beeId,generation:1,executionStart:start,executionOwner:{pid:process.pid,birth:ownerBirth},command:process.execPath,args:["-e","require('fs').writeFileSync(process.argv[1],'BAD')",counter],cwd:root,env:{PATH:process.env.PATH ?? ""},sessionLogPath:join(root,"log"),observationLogPath:join(root,"obs"),sidecarPath:join(root,"err"),socketPath:join(root,"s"),statusPath:join(root,"status"),bootLines:[]}));
   const child=spawn(process.execPath,["--experimental-strip-types",resolve("v2/driver-hsr/src/runner-host-main.ts"),config],{detached:true,stdio:["ignore","ignore","pipe","ipc"],env:{PATH:process.env.PATH ?? "",HOME:process.env.HOME ?? "",TMPDIR:process.env.TMPDIR ?? ""}});
   t.after(async()=>{await stop(child);rmSync(root,{recursive:true,force:true});});
-  let stderr="";child.stderr?.on("data",data=>{stderr+=data;});
-  await Promise.race([once(child,"message",{signal:AbortSignal.timeout(10000)}),once(child,"exit",{signal:AbortSignal.timeout(10000)}).then(([code,signal])=>{throw new Error("Host exited before ready "+code+" "+signal+" "+stderr);})]);
-  const closed=once(child,"close",{signal:AbortSignal.timeout(10000)});child.disconnect();await closed;assert.equal(existsSync(counter),false);
+  let stderr="",ready=false;child.stderr?.on("data",data=>{stderr+=data;});
+  child.on("message",()=>{ready=true;});
+  await wait(()=>ready||child.exitCode!==null||child.signalCode!==null,"disconnect host ready "+stderr);
+  assert.equal(ready,true,"host exited before ready: "+stderr);
+  child.disconnect();
+  await wait(()=>child.exitCode!==null||child.signalCode!==null,"unreleased host exit; stderr="+stderr);
+  assert.equal(existsSync(counter),false);
 });
 test("HSR owner commits exact release before IPC and persists agent-start completion",async t=>{
   const root=mkdtempSync(join(tmpdir(),"fenced-owner-")),store=openCoreStore(join(root,"db"),{ephemeral:true}),args={id:"fenced",name:"fenced",agent:"stub",substrate:"hsr",cwd:root},resource={beeId:args.id};
@@ -65,4 +69,11 @@ test("HSR owner commits exact release before IPC and persists agent-start comple
   driver.start("fenced",1,start);
   await wait(()=>{driver.observe();const r=store.resolveExecution(request,1000);return "executionReceipt" in r&&r.executionReceipt.status==="completed";},"owner completion");
   assert.equal(commits,1);assert.ok(store.executionStartHost(start)?.birth);
+});
+
+test("HSR refuses a mismatched bee or runtime generation before spec preparation",()=>{
+  let resolved=0;
+  const driver=new HsrDriver({sessionLogDir:tmpdir(),resolve:()=>{resolved++;throw new Error("must not resolve");}});
+  for(const [bee,generation] of [["other",1],["fenced",2]] as const)assert.throws(()=>driver.start(bee,generation,context()),e=>(e as {code?:string}).code==="rpc_execution_history_unknown");
+  assert.equal(resolved,0);driver.disposeAll();
 });

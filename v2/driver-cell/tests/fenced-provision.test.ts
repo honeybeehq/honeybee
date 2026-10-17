@@ -25,7 +25,7 @@ test("fenced Cell worker carries the original binding through checkpoints and qu
   driver.start(beeId,1,start);
   assert.throws(()=>store.compareAndSetExecutionClaim({transitionId:"two",expectedClaim:claim,claim:{...claim,generation:2,claimId:"two"}},1000),e=>(e as {code?:string}).code==="rpc_execution_busy");
   await wait(()=>{driver.observe();const r=store.resolveExecution(request,1000);return "executionReceipt" in r&&r.executionReceipt.status==="completed";},"fenced Cell start");
-  assert.ok(checks.includes("cell_provision"));assert.ok(checks.includes("cell_final_start"));assert.ok(checks.includes("host_dispatch"));
+  assert.ok(checks.includes("cell_provision"));assert.ok(checks.includes("cell_final_start"));assert.ok(store.auditTail(0,1000).some(row=>row.kind==="rpc.execution.host_dispatch_intent"));
   assert.ok(driver.cellOf(beeId));assert.ok(store.executionStartHost(start)?.birth);
 });
 test("stale Cell context refuses before pool claim or filesystem provisioning",()=>{

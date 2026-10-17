@@ -238,6 +238,7 @@ export class CellDriver implements RuntimeDriver {
 
   start(beeId: string, generation: number, execution?: ExecutionStart | null): void {
     const start = execution ?? this.cfg.hsr.executionStartFor?.(beeId,generation) ?? null;
+    if (start && (start.beeId !== beeId || start.runtimeGeneration !== generation)) throw new ExecutionFenceError("rpc_execution_history_unknown", "Start intent does not bind the requested bee and runtime generation");
     if (start) { this.startFenced(start); return; }
     // Provisioning is idempotent and ledger-keyed: a replayed spawn command
     // (crash mid-provision, executor replay) resumes instead of redoing.

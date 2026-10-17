@@ -473,6 +473,7 @@ export class HsrDriver implements RuntimeDriver {
 
   start(beeId: string, generation: number, execution?: ExecutionStart | null): void {
     const start = execution ?? this.cfg.executionStartFor?.(beeId,generation) ?? null;
+    if (start && (start.beeId !== beeId || start.runtimeGeneration !== generation)) throw new ExecutionFenceError("rpc_execution_history_unknown", "Start intent does not bind the requested bee and runtime generation");
     if (start && !this.cfg.execution) throw new ExecutionFenceError("rpc_execution_fence_unsupported", "Fenced HSR start requires owner hooks");
     if (start) this.cfg.execution!.check(start,"hsr_start");
     if (this.detached) return;
