@@ -62,9 +62,10 @@ def permission_denial(stderr, row):
     if not fatal:
         return False
     last = fatal[-1]
-    if not re.search(r'Operation not permitted|Permission denied|\bEPERM\b|\bEACCES\b', last, re.IGNORECASE):
-        return False
-    return row in ('non-loopback-fetch', 'non-loopback-push') and bool(re.search(r'\bconnect', last, re.IGNORECASE))
+    if row in ('non-loopback-fetch', 'non-loopback-push'):
+        trace = any(re.search(r'(?:^\*\s*|== Info: )Immediate connect fail for 192\.0\.2\.1:\s*(?:Operation not permitted|Permission denied)\s*$', line, re.IGNORECASE) for line in stderr.splitlines())
+        return trace and bool(re.search(r"unable to access 'https://192\.0\.2\.1/x\.git/': Failed to connect to 192\.0\.2\.1 port 443\b.*Couldn't connect to server", last, re.IGNORECASE))
+    return False
 
 
 def storage_probes(root):
@@ -112,7 +113,8 @@ def workload(root):
         for name, args in commands:
             argv = [git, '-C', controls['source'], *args]
             try:
-                result = subprocess.run(argv, env=env, capture_output=True, text=True, timeout=10)
+                command_env = dict(env, GIT_CURL_VERBOSE='1') if name.startswith('non-loopback-') else env
+                result = subprocess.run(argv, env=command_env, capture_output=True, text=True, timeout=10)
                 denied = result.returncode != 0 and permission_denial(result.stderr, name)
                 rows.append({'row': name, 'argv': argv, 'exit': result.returncode, 'stderr': result.stderr[-8192:], 'permissionDenied': denied, 'realGit': True})
             except (OSError, subprocess.TimeoutExpired) as error:

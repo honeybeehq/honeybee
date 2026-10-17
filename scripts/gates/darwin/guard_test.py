@@ -33,7 +33,7 @@ class GuardTests(unittest.TestCase):
         controls = {'git': git_boundary.GIT_CANDIDATES[0], 'target': str(self.base / 'sealed-target'), 'source': str(self.base / 'git-source')}
         (self.base / 'git-controls.json').write_text(json.dumps(controls))
         sealed = subprocess.CompletedProcess([], 128, '', 'error: remote unpack failed: unable to create temporary object directory\n ! [remote rejected] fixture -> denied (unpacker error)')
-        network = subprocess.CompletedProcess([], 128, '', 'fatal: Failed to connect: Operation not permitted')
+        network = subprocess.CompletedProcess([], 128, '', "* Immediate connect fail for 192.0.2.1: Operation not permitted\nfatal: unable to access 'https://192.0.2.1/x.git/': Failed to connect to 192.0.2.1 port 443 after 0 ms: Couldn't connect to server")
         probes = [{'refused': True}] * 4
         with patch('git_boundary.subprocess.run', side_effect=[sealed, network, network]) as calls, patch('git_boundary.storage_probes', return_value=probes), patch('git_boundary.network_probe', return_value={'refused': True, 'errno': 1}):
             git_boundary.workload(self.base)
@@ -68,7 +68,12 @@ class GuardTests(unittest.TestCase):
         self.assertFalse(git_boundary.permission_denial('fatal: config open: Permission denied', 'non-loopback-fetch'))
         self.assertFalse(git_boundary.permission_denial('fatal: connect: Permission denied', 'sealed-target-push'))
         self.assertTrue(git_boundary.permission_denial('fatal: cannot create object: Permission denied', 'sealed-target-push'))
-        self.assertTrue(git_boundary.permission_denial('fatal: Failed to connect: Operation not permitted', 'non-loopback-fetch'))
+        real_fatal = "fatal: unable to access 'https://192.0.2.1/x.git/': Failed to connect to 192.0.2.1 port 443 after 1 ms: Couldn't connect to server"
+        self.assertFalse(git_boundary.permission_denial(real_fatal, 'non-loopback-fetch'))
+        trace = '14:52:00.000000 http.c:699 == Info: Immediate connect fail for 192.0.2.1: Operation not permitted\n'
+        self.assertTrue(git_boundary.permission_denial(trace + real_fatal, 'non-loopback-fetch'))
+        self.assertFalse(git_boundary.permission_denial(trace.replace('192.0.2.1', '192.0.2.2') + real_fatal, 'non-loopback-fetch'))
+        self.assertFalse(git_boundary.permission_denial(trace + real_fatal.replace('port 443', 'port 444'), 'non-loopback-fetch'))
         for failure in ('does not appear to be a git repository', 'not a git repository', 'No such file or directory', "fatal: 'target' does not exist"):
             self.assertFalse(git_boundary.permission_denial('error: unpacker error\n' + failure, 'sealed-target-push'))
 
