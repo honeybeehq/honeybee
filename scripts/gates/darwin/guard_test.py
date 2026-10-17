@@ -104,6 +104,13 @@ class GuardTests(unittest.TestCase):
         print('STATIC_LISTENER_CENSUS=' + json.dumps(rows))
         self.assertEqual(rows, [])
 
+    def test_importing_module_bind_and_options_overloads_fail_closed(self):
+        importing = "import dgram from 'node:dgram';\n"
+        for source in ('socket.bind(undefined)', 'socket.bind(null)', 'socket.bind(this)', 'socket.bind()', "server.listen({port: 0}, '127.0.0.1')", "server.listen({port: 0, ...options}, '127.0.0.1')", "server.listen(options, '127.0.0.1')", "server.listen({port:0,host:'127.0.0.1',...options})", "server.listen({port:0,host:'127.0.0.1',host:other})"):
+            self.assertTrue(listener_static.violations(importing + source), source)
+        for source in ("socket.bind(0, '127.0.0.1')", "server.listen(0, '127.0.0.1')", "server.listen({port:0,host:'127.0.0.1'})", "server.listen({host:'::1',port:0}, callback)"):
+            self.assertFalse(listener_static.violations(importing + source), source)
+
     def test_static_allowlist_changed_fingerprint_fails(self):
         folder = self.base / 'tests'
         folder.mkdir()

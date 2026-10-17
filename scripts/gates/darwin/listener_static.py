@@ -45,12 +45,12 @@ def violations(text):
         if operation == 'bind' and not bind_module:
             continue
         args = arguments(text, call.end())
-        if operation == 'bind' and args and args[0] in ('this', 'null', 'undefined'):
-            continue
         reason = 'unresolved listen/bind target or omitted host'
         if args and literal_unix(args[0]):
             reason = None
-        elif args and len(args) >= 2 and literal_loopback(args[1]):
+        elif args and literal_options_loopback(args[0]):
+            reason = None
+        elif args and len(args) >= 2 and literal_port(args[0]) and literal_loopback(args[1]):
             reason = None
         elif args and operation == 'bind':
             try:
@@ -84,6 +84,33 @@ def literal_loopback(text):
     except (ValueError, SyntaxError):
         return False
     return address is not None and ((address.version == 4 and address in ipaddress.ip_network('127.0.0.0/8')) or str(address) == '::1')
+
+
+def literal_port(text):
+    try:
+        value = ast.literal_eval(text)
+    except (ValueError, SyntaxError):
+        return False
+    return type(value) is int and 0 <= value <= 65535
+
+
+def literal_options_loopback(text):
+    text = text.strip()
+    if not text.startswith('{') or not text.endswith('}'):
+        return False
+    pairs = arguments(text, 1)
+    if pairs is None:
+        return False
+    fields = {}
+    for pair in pairs:
+        match = re.fullmatch(r'''(?:([A-Za-z_$][\w$]*)|["']([A-Za-z_$][\w$]*)["'])\s*:\s*(.+)''', pair, re.DOTALL)
+        if not match:
+            return False
+        key = match.group(1) or match.group(2)
+        if key in fields:
+            return False
+        fields[key] = match.group(3).strip()
+    return 'host' in fields and literal_loopback(fields['host']) and 'path' not in fields
 
 
 def source_fingerprint(text):
