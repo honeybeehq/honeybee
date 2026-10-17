@@ -30,7 +30,7 @@ def pinned_path(workspace, relative):
 def validate(workspace, audit_path):
     audit_file = pinned_path(workspace, audit_path)
     data = json.loads(audit_file.read_text())
-    exact_keys(data, ('version', 'files', 'spawns', 'packages', 'capabilityReferences', 'nativeEdges'))
+    exact_keys(data, ('version', 'files', 'spawns', 'packages', 'capabilityReferences', 'nativeEdges', 'entryPins'))
     if data['version'] != 1 or not isinstance(data['files'], list) or not isinstance(data['spawns'], list):
         raise ValueError('unsupported audit schema')
     files = {}
@@ -62,6 +62,17 @@ def validate(workspace, audit_path):
             closure.add(row['path'])
     if not set(FILES).issubset(files):
         raise ValueError('audit must pin all three manifest files')
+    roles = set()
+    if not isinstance(data['entryPins'], list):
+        raise ValueError('entryPins array required')
+    for row in data['entryPins']:
+        exact_keys(row, ('path', 'line', 'context', 'role'))
+        citation(row, files, closure)
+        if row['role'] not in ('production-sandbox-exec', 'reader-entry') or row['role'] in roles:
+            raise ValueError('unapproved or duplicate entry pin role')
+        roles.add(row['role'])
+    if roles != {'production-sandbox-exec', 'reader-entry'}:
+        raise ValueError('required entry pin missing')
     sites = set()
     for row in data['spawns']:
         if not isinstance(row, dict):
@@ -113,7 +124,7 @@ def validate(workspace, audit_path):
         citation(row, files, closure)
         if row['kind'] != 'native-artifact' or row['sha256Source'] != 'controller-manifest' or row['artifact'] not in ('src/dist/v2/delivery-file/darwin-arm64/delivery-file.node', 'src/dist/v2/peercred/darwin-arm64/peercred.node'):
             raise ValueError('unapproved native artifact edge')
-    return {'schemaVersion': 1, 'auditSha256': hashlib.sha256(audit_file.read_bytes()).hexdigest(), 'files': data['files'], 'spawns': data['spawns'], 'packages': data['packages'], 'capabilityReferences': data['capabilityReferences'], 'nativeEdges': data['nativeEdges']}
+    return {'schemaVersion': 1, 'auditSha256': hashlib.sha256(audit_file.read_bytes()).hexdigest(), 'files': data['files'], 'spawns': data['spawns'], 'packages': data['packages'], 'capabilityReferences': data['capabilityReferences'], 'nativeEdges': data['nativeEdges'], 'entryPins': data['entryPins']}
 
 
 def citation(row, files, closure):

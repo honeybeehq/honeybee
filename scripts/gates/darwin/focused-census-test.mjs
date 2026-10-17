@@ -47,11 +47,71 @@ try {
     data.files.push({path: 'facade.ts', siblingClosure: true});
     const result = validate(ts, root, data);
     assert.equal(result.ok, false);
-    assert(result.capabilityGroups.some(row => row.path === 'entry.ts' && row.module === './facade.ts'));
+    assert(result.capabilityGroups.some(row => row.path === 'entry.ts' && row.module === 'node:child_process'));
   });
   test('stale citations fail', () => {
     const data = audit(root, 'const harmless = 1;', {capabilityReferences: [{path: 'entry.ts', line: 1, module: 'node:child_process', kind: 'reference'}]});
     assert(validate(ts, root, data).errors.some(value => value.includes('stale census')));
+  });
+  test('scoped aliases do not taint wrapper callers, result data, or property names', () => {
+    const text = [
+      "import {spawn} from 'node:child_process';",
+      'export function wrapper() { return spawn("node", []); }',
+      'const result = wrapper();',
+      'result.on("exit", () => {});',
+      'const child = spawn("node", []);',
+      'child.on("exit", () => {});',
+      'function unrelated(spawn) { spawn("harmless"); }',
+      'const object = {spawn: 1}; object.spawn;',
+      'const direct = spawn;',
+      'direct("node", []);',
+    ].join('\n');
+    const result = analyze(ts, 'entry.ts', text);
+    assert.deepEqual([...new Set(result.capabilities.map(row => row.line))], [1, 2, 5, 9, 10]);
+    assert.equal(result.exports.wrapper, undefined);
+    assert.deepEqual(result.calls.map(row => row.line), [2, 5, 10]);
+  });
+  test('destructuring and assignment aliases remain direct capabilities', () => {
+    const result = analyze(ts, 'entry.ts', "import * as cp from 'node:child_process';\nconst {spawn: launch} = cp;\nlet again; again = launch;\nagain('node', []);");
+    assert(result.calls.some(row => row.line === 4 && row.module === 'node:child_process'));
+    assert(result.capabilities.some(row => row.line === 2 && row.kind === 'binding'));
+    assert(result.capabilities.some(row => row.line === 3 && row.kind === 'binding'));
+  });
+  test('local re-export aliases keep builtin origin and wrappers do not propagate', () => {
+    writeFileSync(join(root, 'facade.ts'), "import {spawn} from 'node:child_process';\nconst launch = spawn;\nexport {launch};\nexport function wrapper() { spawn('node', []); }");
+    const data = audit(root, "import {launch, wrapper} from './facade.ts';\nlaunch('node', []);\nwrapper();");
+    data.files.push({path: 'facade.ts', siblingClosure: true});
+    const result = validate(ts, root, data);
+    assert(result.capabilityGroups.some(row => row.path === 'entry.ts' && row.line === 2 && row.module === 'node:child_process'));
+    assert(!result.capabilityGroups.some(row => row.path === 'entry.ts' && row.line === 3));
+  });
+  test('explicit type-only AST flags erase edges; mixed and value imports remain', () => {
+    for (const text of ["import type {Thing} from './dormant.ts';", "import {type Thing} from './dormant.ts';", "export type {Thing} from './dormant.ts';", "export {type Thing} from './dormant.ts';", "import type X = require('./dormant.ts');"]) {
+      assert.deepEqual(analyze(ts, 'entry.ts', text).edges, []);
+      const output = ts.transpileModule(text, {compilerOptions: {module: ts.ModuleKind.ESNext, verbatimModuleSyntax: true}}).outputText;
+      assert.equal(analyze(ts, 'entry.ts', text, {}, {verbatimModuleSyntax: true}).edges.length, output.includes('dormant') ? 1 : 0);
+    }
+    for (const text of ["import {type Thing, value} from './live.ts';", "import {Thing} from './live.ts';", "import './live.ts';"]) assert.equal(analyze(ts, 'entry.ts', text).edges.length, 1);
+    assert.deepEqual(analyze(ts, 'entry.ts', "import type {spawn} from 'node:child_process';\nlet value: typeof spawn;").capabilities, []);
+  });
+  test('candidate tsconfig flags preserve empty value-import side effects', () => {
+    writeFileSync(join(root, 'tsconfig.json'), JSON.stringify({compilerOptions: {verbatimModuleSyntax: true}}));
+    const data = audit(root, "import {type Thing} from './dormant.ts';");
+    const result = validate(ts, root, data);
+    assert(result.errors.some(value => value.includes('unpinned module edge')));
+    assert.equal(result.compilerConfigPins.length, 1);
+    rmSync(join(root, 'tsconfig.json'));
+  });
+  test('entry pins are required, exact, separate from capability citations', () => {
+    const text = "const wrapper = {command: 'sandbox-exec'};\nconst reader = new URL('./reader.ts', import.meta.url);";
+    const data = audit(root, text, {entryPins: [{path: 'entry.ts', line: 1, context: text.split('\n')[0], role: 'production-sandbox-exec'}, {path: 'entry.ts', line: 2, context: text.split('\n')[1], role: 'reader-entry'}]});
+    let result = validate(ts, root, data);
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.capabilityGroups, []);
+    data.entryPins[0].context = 'changed';
+    assert.equal(validate(ts, root, data).ok, false);
+    data.entryPins = [];
+    assert.equal(validate(ts, root, data).ok, false);
   });
   test('ESM conditional exports and legacy main match Node import resolution', () => {
     for (const name of ['ajv', 'jsonc-parser', 'smol-toml']) {
