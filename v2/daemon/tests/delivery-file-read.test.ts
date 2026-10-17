@@ -64,6 +64,7 @@ for (const substrate of ["hsr", "cell-sandbox", "satellite-default"] as const) t
   if (sandboxed) assert.ok(["EACCES", "EPERM", "EROFS"].includes(reply.writeDeniedErrno));
   assert.deepEqual(reply, {sha256: row.digest, header: content.split("\n")[0], cwd: work, writeDenied: sandboxed ? true : null, writeDeniedErrno: sandboxed ? reply.writeDeniedErrno : null});
   assert.equal(readFileSync(row.path, "utf8"), content);
+  assert.ok(typeof reply.header === "string");
   t.diagnostic(`SCG_READ_RESULT=${JSON.stringify({substrate, expectedDigest: row.digest, observedDigest: reply.sha256, expectedHeaderSha256: createHash("sha256").update(content.split("\n")[0]!).digest("hex"), observedHeaderSha256: createHash("sha256").update(reply.header).digest("hex"), readClass: "read", writeDenied: reply.writeDenied})}`);
   t.diagnostic(substrate === "hsr" ? "write denied: NOT APPLICABLE (unsandboxed by design)" : `write denied: ${substrate}; errno=${reply.writeDeniedErrno}; scratchPaths:[] fixture narrowing; all other SBPL rules byte-for-byte production`);
   for (const harness of ["Claude", "Codex", "Grok", "Kimi", "Muse", "Agy"]) t.diagnostic(`${harness}: tool-policy read UNVERIFIED (OS-level only)`);

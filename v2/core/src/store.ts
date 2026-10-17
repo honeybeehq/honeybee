@@ -1,4 +1,4 @@
-import { MULTILINE_UNSUPPORTED_DETAILS, MULTILINE_DELIVERY_SQL, advanceMultilineUnsupported, deliveryHold, publicDeliveryFallback, readMultilineDelivery, readDeliveryFallback, type DeliveryFallback, type DeliveryHoldReceipt, type MultilineDeliveryRow } from "./multilineDelivery.ts";
+import { MULTILINE_UNSUPPORTED_DETAILS, MULTILINE_DELIVERY_SQL, MULTILINE_UNKNOWN_SQL, advanceMultilineUnsupported, deliveryHold, publicDeliveryFallback, readMultilineDelivery, readDeliveryFallback, type DeliveryFallback, type DeliveryHoldReceipt, type MultilineDeliveryRow } from "./multilineDelivery.ts";
 import { ExecutionStarts, type ExecutionStart, type ExecutionRuntimeHooks } from "./executionStart.ts";
 import { PHONE_PROVENANCE_SQL } from "./schema.ts";
 import { type PhoneInput, type PhoneOperationOrigin, type PhoneOriginRequest, type PhoneSource, parsePhoneOrigin, phoneDigest, renderPhoneInput, forwardPhoneOrigin } from "./phoneOrigin.ts";
@@ -3615,9 +3615,7 @@ export class CoreStore {
   }
 
   countUnknownMultilineHolds(): number {
-    return Number((this.stmt(`SELECT COUNT(*) AS count FROM multiline_delivery WHERE CASE WHEN json_valid(row_json)
-      THEN json_type(row_json) != 'object' OR json_extract(row_json, '$.detail') = 'delivery_hold_state_unknown' OR json_extract(row_json, '$.fallback.state') = 'unknown'
-      ELSE 1 END`).get() as Row).count);
+    return Number((this.stmt(`SELECT COUNT(*) AS count FROM multiline_delivery WHERE ${MULTILINE_UNKNOWN_SQL}`).get() as Row).count);
   }
 
   recoverInFlightMultilineFallbacks(): void {

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { advanceMultilineUnsupported, readDeliveryFallback, type DeliveryFallback } from "../src/multilineDelivery.ts";
+import { advanceMultilineUnsupported, MULTILINE_UNKNOWN_SQL, readMultilineDelivery, readDeliveryFallback, type DeliveryFallback } from "../src/multilineDelivery.ts";
 
 test("unsupported versions expire immediately; supported off expires after three attempts", () => {
   assert.equal(advanceMultilineUnsupported(null, "multiline_bracketed_paste_version_unsupported", 0).hold, true);
@@ -280,4 +280,58 @@ for (const invalid of ["zero_generation", "negative_generation", "mismatched_gen
   }
   const held = readDeliveryFallback(row)!;
   assert.equal(held.state, "unknown"); assert.equal(held.id, ""); assert.equal(held.generation, null); assert.equal(held.paneInput, undefined);
+});
+
+for (const content of ["{}", "nested", "valid"]) test(`unknown count matches projection immediately after reopen before normalization: ${content}`, () => {
+  const h = harness(); let store = h.open();
+  try {
+    const {bee} = makeBee(store); bootToRunning(store, bee.id, 100, 1);
+    const message = store.send(bee.id, "one\ntwo").message;
+    store.recordMultilineDeliveryRefusal(message.id, 1, "multiline_type_mode");
+    store.close();
+    const db = new DatabaseSync(h.path);
+    const raw = db.prepare("SELECT row_json FROM multiline_delivery WHERE message_id = ?").get(message.id) as {row_json: string};
+    const body = JSON.parse(raw.row_json);
+    if (content === "nested") body.fallback = {state: "ready"};
+    db.prepare("UPDATE multiline_delivery SET row_json = ? WHERE message_id = ?").run(content === "{}" ? "{}" : JSON.stringify(body), message.id); db.close();
+    store = h.open();
+    assert.equal(store.countUnknownMultilineHolds(), content === "valid" ? 0 : 1);
+    assert.equal(store.multilineDelivery(message.id)?.detail === "delivery_hold_state_unknown", content !== "valid");
+  } finally {store.close(); h.cleanup();}
+});
+
+test("SQL unknown count agrees with decoder for outer and fallback shape boundaries without normalization", () => {
+  const h = harness(); const store = h.open();
+  try {
+    const {bee} = makeBee(store); bootToRunning(store, bee.id, 100, 1);
+    const message = store.send(bee.id, "one\ntwo").message;
+    for (let index = 0; index < 3; index++) store.recordMultilineDeliveryRefusal(message.id, 1, "multiline_type_mode");
+    store.close();
+    const db = new DatabaseSync(h.path);
+    try {
+      const raw = db.prepare("SELECT * FROM multiline_delivery WHERE message_id = ?").get(message.id) as {row_json: string; held_at: number; held_since: number};
+      const base = JSON.parse(raw.row_json);
+      const fallback: DeliveryFallback = {code: "delivery_file_fallback", state: "ready", id: "00000000-0000-4000-8000-000000000000", ownerStoreId: "owner", root: "/data", worktrees: [], path: "/data/content", pointer: "full text: /data/content", digest: "a".repeat(64), bytes: 10, generation: 1, detail: null, senderNoticeMessageId: null};
+      const pane = {code: "pane_input_unknown", generation: 1, since: 1000, reason: "unverified_clear", socketPath: "/runtime/t.sock", paneId: "%1", serverIdentity: "1:2:3.5:4:5.5"};
+      const cases: unknown[] = [base, {...base, fallback}, {...base, fallback: {...fallback, state: "held", attempts: 1, attemptPhase: "before_enter_cleared", paneInput: pane}}];
+      for (const key of Object.keys(base)) {
+        const missing = {...base}; delete missing[key]; cases.push(missing);
+        for (const value of [null, true, 0, "", [], {}]) cases.push({...base, [key]: value});
+      }
+      for (const key of Object.keys(fallback)) {
+        const missing = {...fallback} as Record<string, unknown>; delete missing[key]; cases.push({...base, fallback: missing});
+        for (const value of [null, true, -1, 0, "", [], {}]) cases.push({...base, fallback: {...fallback, [key]: value}});
+      }
+      for (const key of Object.keys(pane)) for (const value of [null, true, -1, 0, "", [], {}]) cases.push({...base, fallback: {...fallback, state: "held", attempts: 1, attemptPhase: "before_enter_cleared", paneInput: {...pane, [key]: value}}});
+      for (const key of ["id", "digest"]) for (const suffix of ["\x00", "\n", "\r", "\u2028", "\u2029"]) cases.push({...base, fallback: {...fallback, [key]: String(fallback[key as "id" | "digest"]) + suffix}});
+      for (const key of ["reason", "paneId", "serverIdentity"]) for (const suffix of ["\x00", "\n", "\r", "\u2028", "\u2029"]) cases.push({...base, fallback: {...fallback, state: "held", attempts: 1, attemptPhase: "before_enter_cleared", paneInput: {...pane, [key]: pane[key as "reason" | "paneId" | "serverIdentity"] + suffix}}});
+      for (const candidate of cases) {
+        const json = JSON.stringify(candidate);
+        db.prepare("UPDATE multiline_delivery SET row_json = ? WHERE message_id = ?").run(json, message.id);
+        const decoded = readMultilineDelivery(json, message.id, bee.id, raw.held_at, raw.held_since);
+        const expected = decoded.detail === "delivery_hold_state_unknown" || decoded.fallback?.state === "unknown";
+        assert.equal(Number((db.prepare(`SELECT COUNT(*) AS count FROM multiline_delivery WHERE ${MULTILINE_UNKNOWN_SQL}`).get() as {count: number}).count), expected ? 1 : 0, json);
+      }
+    } finally {db.close();}
+  } finally {h.cleanup();}
 });
