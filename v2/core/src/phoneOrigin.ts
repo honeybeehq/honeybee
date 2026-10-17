@@ -28,6 +28,7 @@ export interface PhoneOriginRequest {
 }
 export interface PhoneInput {
   envelope: PhoneOriginRequest & {
+    ancestryDepth: number;
     ownerStoreId: string;
     admissionId: string;
     targetBeeId: string;

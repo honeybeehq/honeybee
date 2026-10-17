@@ -3548,9 +3548,9 @@ export class CoreStore {
     return row ? JSON.parse(String(row.input_json)) as PhoneInput : undefined;
   }
 
-  private withPhoneInput<T>(message: T, messageId: number): T & { phoneOrigin?: PhoneInput["envelope"] } {
+  private withPhoneInput<T extends object>(message: T, messageId: number): T & { phoneOrigin?: PhoneInput["envelope"] } {
     const input = this.phoneInput(messageId);
-    return input ? { ...message, phoneOrigin: input.envelope } : message;
+    return { ...message, ...(input ? { phoneOrigin: input.envelope } : {}) };
   }
 
   private mapPhoneMessage(row: Row): MessageRow {
@@ -3575,6 +3575,7 @@ export class CoreStore {
     if (request.target.kind === "bee" && request.target.id !== beeId) throw new EffectKeyError("invalid_request", "Phone target differs from accepting bee");
     const ownerStoreId = this.effectCoverage().ownerStoreId;
     let unknown = request.ancestry === "unknown-overflow";
+    let ancestryDepth = 0;
     const roots: PhoneSource[] = [...request.rootSources];
     for (const parent of [...request.parentSources, ...request.rootSources]) {
       const row = parent.ownerStoreId === ownerStoreId ? this.stmt("SELECT input_json FROM phone_inputs WHERE admission_id = ?").get(parent.admissionId) as Row | undefined : undefined;
@@ -3582,13 +3583,14 @@ export class CoreStore {
       const prior = JSON.parse(String(row.input_json)) as PhoneInput;
       if (prior.envelope.contentDigest !== parent.contentDigest) throw new EffectKeyError("invalid_request", "Phone parent digest differs from durable source");
       roots.push(...prior.envelope.rootSources);
+      ancestryDepth = Math.max(ancestryDepth, (prior.envelope.ancestryDepth ?? 0) + 1);
       if (prior.envelope.ancestry !== "complete") unknown = true;
     }
     const admissionId = randomUUID(), contentDigest = phoneDigest(originalContent);
     if (!request.parentSources.length) roots.push({ ownerStoreId, admissionId, contentDigest, relation: "forward" });
     const unique = [...new Map(roots.map(root => [JSON.stringify(root), root])).values()];
-    if (unique.length > 8) unknown = true;
-    const envelope: PhoneInput["envelope"] = { ...request, rootSources: unique.slice(0, 8), ancestry: unknown ? "unknown-overflow" : "complete", ownerStoreId, admissionId, targetBeeId: beeId, idempotencyKey: key, contentDigest };
+    if (unique.length > 8 || ancestryDepth > 8) unknown = true;
+    const envelope: PhoneInput["envelope"] = { ...request, rootSources: unique.slice(0, 8), ancestry: unknown ? "unknown-overflow" : "complete", ownerStoreId, admissionId, targetBeeId: beeId, idempotencyKey: key, contentDigest, ancestryDepth: Math.min(8, ancestryDepth) };
     return { envelope, originalContent };
   }
 
