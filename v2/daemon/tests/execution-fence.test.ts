@@ -39,7 +39,7 @@ async function fixture(t: TestContext, enabled = true) {
   t.after(async () => { clients.forEach(client => client.close()); await server.close(); store.close(); rmSync(root, { recursive: true, force: true }); });
   const register = async () => store.registerExecutionCoordinator("project-home", process.geteuid!());
   const internal = { request: async <T = unknown>(verb: Parameters<RpcDispatch>[0], params: Record<string, unknown>) => {
-    try { return (owner.rpcExecution as RpcDispatch).call(owner, verb, params, { executionCoordinatorUid: process.geteuid!() } as Parameters<RpcDispatch>[2]) as T; }
+    try { return await (owner.rpcExecution as RpcDispatch).call(owner, verb, params, { executionCoordinatorUid: process.geteuid!() } as Parameters<RpcDispatch>[2]) as T; }
     catch (error) { const wire = toRpcError(error); throw new RpcError(wire.code, wire.message, wire.details); }
   } };
   const plan = async (verb: "send" | "archive", suffix: string = verb) => {
@@ -51,14 +51,14 @@ async function fixture(t: TestContext, enabled = true) {
     await internal.request("rpc.execution.claim.compareAndSet", { transitionId: suffix, expectedClaim: null, claim });
     return { request, claim, bee };
   };
-  return { client, internal, clients, register, plan, store, calls, root };
+  return { client, internal, clients, register, plan, store, calls, root, owner };
 }
 
 test("execution capability is phase-scoped, disabled without trust, and rejects spawn without fallback", async t => {
   const off = await fixture(t, false);
   assert.equal(off.client.capabilities.includes("rpc-execution-fence.archive-send.v1"), false);
   assert.equal(off.client.capabilities.includes("rpc-execution-fence.v1"), false);
-  await assert.rejects(off.internal.request("rpc.execution.execute", { verb: "spawn" }), code("rpc_execution_fence_unsupported"));
+  await assert.rejects(off.client.request("rpc.execution.execute", { verb: "spawn" }), code("rpc_execution_fence_unsupported"));
   assert.equal(off.calls.length, 0);
   const on = await fixture(t);
   assert.equal(on.client.capabilities.includes("rpc-execution-fence.archive-send.v1"), false);
@@ -118,4 +118,29 @@ test("dormant internal owner: execution resolve is read-only; only explicit effe
   const resolution = await f.internal.request<{ status: string }>("rpc.execution.resolve", late.request);
   assert.equal(resolution.status, "never_seen_fenced");
   await assert.rejects(f.internal.request("rpc.execution.execute", late.request), code("rpc_effect_fenced"));
+});
+
+async function spawnPlan(f: Awaited<ReturnType<typeof fixture>>, suffix: string) {
+  const args = { id: suffix, name: suffix, agent: "stub", substrate: "hsr", cwd: f.root }, resource = { beeId: suffix };
+  const claim: ExecutionClaim = { version: 1, issuerId: "project-home", continuationId: suffix, grantDigest: "sha256:"+"a".repeat(64), generation: 1, claimId: "one", ...f.store.effectCoverage(), digestVersion: 1, verb: "spawn", resource, requestDigest: executionRequestDigest("spawn",resource,args), idempotencyKey: "effect-v1:"+f.store.effectCoverage().coverageId+":"+suffix };
+  await f.internal.request("rpc.execution.claim.compareAndSet",{transitionId:suffix,expectedClaim:null,claim});
+  const {verb,resource:r,digestVersion,requestDigest,idempotencyKey,...executionFence}=claim;
+  return {claim,request:{verb,resource:r,digestVersion,requestDigest,idempotencyKey,executionFence,args}};
+}
+test("dormant spawn owner gates account and bee preparation, and exact retry only observes admission",async t=>{
+  const f=await fixture(t);await f.register();const p=await spawnPlan(f,"spawn-once");
+  const reply=await f.internal.request<{executionReceipt:ExecutionReceipt}>("rpc.execution.execute",p.request);
+  assert.equal(reply.executionReceipt.status,"queued");
+  assert.equal(f.store.listBees().length,1);
+  assert.deepEqual(await f.internal.request("rpc.execution.execute",p.request),reply);
+  assert.equal(f.store.listBees().length,1);
+  const checks=f.store.auditTail(0,1000).filter(row=>row.kind==="rpc.execution.spawn_preparation_checked").map(row=>row.payload.operation);
+  for(const operation of ["admission","account_admission","create_bee","consume_account_claim"])assert.ok(checks.includes(operation),operation);
+});
+test("dormant stale spawn refuses before the account selector or createBee",async t=>{
+  const f=await fixture(t);await f.register();const p=await spawnPlan(f,"spawn-stale");let selections=0;
+  f.owner.resolveSpawnAccount=()=>{selections++;throw new Error("must not allocate");};
+  await f.internal.request("rpc.execution.claim.compareAndSet",{transitionId:"revoke",expectedClaim:p.claim,claim:{...p.claim,generation:2,claimId:"two"}});
+  await assert.rejects(f.internal.request("rpc.execution.execute",p.request),error=>code("rpc_execution_stale")(error)&&(error as RpcError).details?.executionReceipt!==undefined);
+  assert.equal(selections,0);assert.equal(f.store.listBees().length,0);
 });

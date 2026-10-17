@@ -1,4 +1,5 @@
 import { test } from "node:test";
+import { DatabaseSync } from "node:sqlite";
 import assert from "node:assert/strict";
 import { harness } from "./helpers.ts";
 import { executionRequestDigest, type ExecutionClaim, type ExecutionRequest, ExecutionFenceError } from "../src/executionFence.ts";
@@ -99,4 +100,16 @@ test("stale spawn admission records a typed zero-effect receipt before preparati
     assert.ok("executionReceipt" in observed);
     assert.equal(observed.executionReceipt.status,"refused_stale");
   }finally{f.close();}
+});
+
+test("additive start tables reopen without parsing malformed legacy audit payloads",()=>{
+  const h=harness(),first=h.open();first.close();
+  const db=new DatabaseSync(h.path);
+  db.prepare("INSERT INTO audit(ts,kind,bee_id,payload) VALUES(?,?,?,?)").run(1,"legacy.spawn",null,"not-json");
+  db.close();
+  const store=h.open();try{
+    assert.equal(store.executionOrigin("legacy"),null);
+    assert.equal(store.prepareExecutionStart("legacy",1),null);
+    assert.ok(store.effectCoverage().coverageId);
+  }finally{store.close();h.cleanup();}
 });

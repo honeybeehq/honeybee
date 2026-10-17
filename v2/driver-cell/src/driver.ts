@@ -197,7 +197,7 @@ export class CellDriver implements RuntimeDriver {
     if (this.fencedPending.has(start.beeId)) throw new ExecutionFenceError("rpc_execution_busy", "Cell preparation already owns this bee");
     hooks.check(start,"cell_spec");
     const spec = this.cfg.resolveCell(start.beeId), lease = hooks.begin(start,"cell_provision_process");
-    const source = import.meta.url.endsWith(".ts"), entry = new URL(source ? "./fencedProvisionWorker.ts" : "./fenced-provision-worker.js",import.meta.url);
+    const source = fileURLToPath(import.meta.url).endsWith(".ts"), entry = new URL(source ? "./fencedProvisionWorker.ts" : "./fenced-provision-worker.js",import.meta.url);
     const child = spawn(childNodePath(),[...(source ? ["--experimental-strip-types"] : []), fileURLToPath(entry)], { detached: true, env: nativeNodeEnv(), stdio: ["ignore","ignore","ignore","ipc"] });
     const pending = { start, child, lease, cancelled: false, ready: false };
     this.fencedPending.set(start.beeId,pending);
