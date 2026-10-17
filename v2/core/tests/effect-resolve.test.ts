@@ -161,3 +161,35 @@ test("effect lazy legacy lookup validates send and archive receipts and preserve
     }
   } finally { h.cleanup(); }
 });
+
+test("effect accepts historical production daemon result shapes for every effect verb", () => {
+  const h = harness(); h.open().close();
+  const allocation = { version: 1, mode: "active", scope: "claude:node", revision: "node:1", observedAt: 1, operation: "spawn", outcome: "selected", account: "claude-main", reason: "weighted_fair", retryAt: null, candidates: [{ accountId: "claude-main", status: "eligible", rate: 1, fairFinish: 1, maxProjectedPercent: 5 }] };
+  const cases: Array<{ verb: "spawn" | "send" | "archive"; commandId: number | null; result: Record<string, unknown> }> = [
+    { verb: "send", commandId: null, result: { messageId: 1, commandId: null, unarchived: false } },
+    { verb: "send", commandId: 2, result: { messageId: 2, commandId: 2, unarchived: true, runtimeStartHold: { code: "account_auth_needed", message: "Waiting for refreshed account material" } } },
+    { verb: "archive", commandId: 3, result: { commandId: 3 } },
+    { verb: "archive", commandId: 4, result: { commandId: 4, status: "done", deduped: true } },
+    { verb: "spawn", commandId: 5, result: { beeId: "oldest", commandId: 5 } },
+    { verb: "spawn", commandId: 6, result: { beeId: "replayed", commandId: 6, status: "running", deduped: true } },
+    { verb: "spawn", commandId: 7, result: { beeId: "account", commandId: 7, account: "claude-main", accountReason: "automatic selection" } },
+    { verb: "spawn", commandId: 8, result: { beeId: "handle", commandId: 8, handle: null, messageId: null, account: null } },
+    { verb: "spawn", commandId: 9, result: { beeId: "full", commandId: 9, agent: "claude", handle: "CL.abcd", humanRef: "CL.abcd@node", issuingNamespace: "node", messageId: 3, account: "claude-main", accountReason: "automatic selection", allocation, allocationClaimId: "claim", cellBase: { sha: "a".repeat(40), source: "upstream", upstreamRef: "refs/heads/main", upstreamSha: "b".repeat(40), fetchedAt: 1 } } },
+    { verb: "spawn", commandId: null, result: { beeId: "inbox", agent: "inbox", handle: "IN.abcd", commandId: null, messageId: null, account: null } },
+  ];
+  const db = new DatabaseSync(h.path);
+  for (const [i, row] of cases.entries()) db.prepare("INSERT INTO rpc_idempotency VALUES(?,?,?,?,?)").run(`writer-${i}`, row.verb, row.commandId, JSON.stringify(row.result), 1);
+  db.close();
+  try {
+    for (let reopen = 0; reopen < 2; reopen++) {
+      const store = h.open();
+      try {
+        for (const [i, row] of cases.entries()) {
+          const observed = store.resolveEffect(`writer-${i}`, row.verb);
+          assert.equal(observed.status, "committed");
+          if (observed.status === "committed") assert.deepEqual(observed.receipt.result, row.result);
+        }
+      } finally { store.close(); }
+    }
+  } finally { h.cleanup(); }
+});
