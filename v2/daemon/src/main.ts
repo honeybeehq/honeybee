@@ -6,9 +6,9 @@ import { validateDaemonNode } from "../../../src/nodeRuntime.ts";
  * (children survive — the next boot re-adopts them).
  */
 import { existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { dirname, parse, resolve } from "node:path";
 import { measureDirectoryBytes } from "../../driver-cell/src/index.ts";
-import { defaultDataDir, loadNodeConfig, type ResolvedNodeConfig } from "./config.ts";
+import { ConfigError, defaultDataDir, loadNodeConfig, type ResolvedNodeConfig } from "./config.ts";
 import { HiveDaemon } from "./daemon.ts";
 
 export interface DaemonRunArgs {
@@ -21,18 +21,34 @@ export function parseDaemonRunArgs(argv: string[]): DaemonRunArgs {
   const out: DaemonRunArgs = {};
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === "--data-dir") out.dataDir = argv[++i];
-    else if (a === "--config") out.configPath = argv[++i];
+    if (a === "--data-dir") {
+      const value = argv[++i];
+      if (value === undefined || value.startsWith("--")) throw new ConfigError("daemon run: --data-dir requires a non-empty path");
+      out.dataDir = value;
+    } else if (a === "--config") out.configPath = argv[++i];
     else if (a === "--socket") out.socketPath = argv[++i];
     else throw new Error(`daemon run: unknown argument '${a}'`);
   }
   return out;
 }
 
-export function resolveDaemonConfig(args: DaemonRunArgs): ResolvedNodeConfig {
+function resolveDaemonDataDir(args: DaemonRunArgs): string {
   const dataDir = args.dataDir ?? defaultDataDir();
+  if (typeof dataDir !== "string" || dataDir.length === 0) throw new ConfigError("daemon run: --data-dir requires a non-empty path");
+  const resolved = resolve(dataDir);
+  if (resolved === parse(resolved).root || dirname(resolved) === parse(resolved).root) {
+    throw Object.assign(new ConfigError("daemon run: --data-dir / HIVE_V2_DATA_DIR must use a nested directory, not the filesystem root or its direct child"), { code: "invalid_runtime_root" as const });
+  }
+  return resolved;
+}
+
+function loadDaemonConfig(args: DaemonRunArgs, dataDir: string): ResolvedNodeConfig {
   const cfg = loadNodeConfig(dataDir, args.configPath);
   return args.socketPath ? { ...cfg, socketPath: resolve(args.socketPath) } : cfg;
+}
+
+export function resolveDaemonConfig(args: DaemonRunArgs): ResolvedNodeConfig {
+  return loadDaemonConfig(args, resolveDaemonDataDir(args));
 }
 
 /** Test daemons: a volume of `totalBytes` whose only occupant is the Cells root. */
@@ -43,9 +59,10 @@ function simulatedCellVolume(cellsRoot: string, totalBytes: number): (path: stri
 /** Run the daemon in the foreground until a termination signal. */
 export async function runDaemon(argv: string[]): Promise<number> {
   const args = parseDaemonRunArgs(argv);
-  const held = validateDaemonNode(args.dataDir ?? defaultDataDir(), true);
+  const dataDir = resolveDaemonDataDir(args);
+  const held = validateDaemonNode(dataDir, true);
   if (held) { process.stderr.write(`hived held, needs repair: ${held}\n`); return 0; }
-  const cfg = resolveDaemonConfig(args);
+  const cfg = loadDaemonConfig(args, dataDir);
   // Test daemons shorten the delay before the first automatic Cell retention pass.
   const retentionDelay = Number(process.env.HIVE_TEST_RETENTION_INITIAL_DELAY_MS);
   const diskCheckMs = Number(process.env.HIVE_TEST_CELL_DISK_CHECK_MS);
