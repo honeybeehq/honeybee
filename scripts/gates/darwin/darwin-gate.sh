@@ -1,5 +1,6 @@
 #!/bin/bash
 set -eu
+case "${1:-}" in scripts/gates/darwin/pinned-runtime-body.sh|scripts/gates/darwin/pinned-full-body.sh) echo '{"ok":false,"code":"darwin_gate_body_unsupported_until_audited"}' >&2; exit 88;; esac
 [ "$(uname -s)" = Darwin ] || { echo "REFUSING: Darwin required"; exit 90; }
 [ "$(hostname -s)" = trmd-erebor-mini02 ] || { echo "REFUSING: pinned erebor host required"; exit 90; }
 [ -n "${FORAGE_JOB:-}" ] || { echo "REFUSING: forage job required"; exit 90; }

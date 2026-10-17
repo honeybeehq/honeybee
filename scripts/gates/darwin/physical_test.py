@@ -28,6 +28,8 @@ def main():
     else:
         raise AssertionError('outside write unexpectedly succeeded')
     assert outside.exists() == before
+    stricter = subprocess.run(['/usr/bin/sandbox-exec', '-p', '(version 1)(allow default)(deny network*)', sys.executable, '-B', str(Path(__file__).with_name('socket_probe.py')), str(root)], capture_output=True, text=True)
+    rows.append({'row': 'nested stricter deny-network-only probe', 'exit': stricter.returncode, 'stdout': stricter.stdout[-4096:], 'stderr': stricter.stderr[-4096:], 'rootOnlyRuleRetainedUnlessStricterProven': True})
     with socket.socket(socket.AF_UNIX) as server, socket.socket(socket.AF_UNIX) as client:
         path = str(root / 'self-test.sock')
         server.bind(path)
@@ -65,6 +67,14 @@ def main():
     finally:
         if child.poll() is None:
             raise AssertionError('own child remains; no unfenced fallback kill')
+    with socket.socket() as sock:
+        try:
+            sock.bind(('0.0.0.0', 0))
+        except OSError as error:
+            assert error.errno in (errno.EPERM, errno.EACCES), error
+            rows.append({'row': 'non-loopback bind', 'result': 'REFUSED', 'errno': error.errno})
+        else:
+            raise AssertionError('non-loopback bind unexpectedly allowed')
     with socket.socket() as sock:
         sock.settimeout(2)
         try:

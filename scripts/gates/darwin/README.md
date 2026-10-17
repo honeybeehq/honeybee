@@ -48,6 +48,18 @@ No deployment or proof is authorized by this gate.
 
 ## Per-run Node bootstrap
 
+The legacy pinned-runtime and pinned-full bodies refuse before work with
+`darwin_gate_body_unsupported_until_audited`. Their old real-home service sentinel
+needs a root-only conversion and Queen audit. Only daemon-suite and self-test
+bodies are supported by this change.
+
+Network policy denies network operations by default, allowing Unix sockets only
+under the run root and IP only on loopback. Loopback is necessary for the HTTP
+fixtures in daemon auth-death-fixture, claude-refresh-transport, lease-enrol-rpc
+and auth-death-rpc tests. Darwin shares the host network namespace: outbound
+loopback could reach real host-local services. This residual risk is explicit
+in the receipt; this gate does not claim Linux network-namespace isolation.
+
 `self-test-run.sh <sha> --download-node` explicitly enables the Queen-approved
 per-run official Node download. `node_bootstrap.py` is the single archive pin:
 v24.18.0 darwin-arm64, from nodejs.org over HTTPS/TLS1.2 or newer. SHA256 is

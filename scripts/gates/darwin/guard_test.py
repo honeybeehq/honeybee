@@ -17,10 +17,38 @@ from guard import DIRS, PROTECTED, Refusal, environment, launchagents, profile, 
 
 
 class GuardTests(unittest.TestCase):
+    def test_profile_parentheses_balance_outside_strings(self):
+        text = profile(Path('/private/var/tmp/g.test'), Path('/Users/example'), Path('/lane'))
+        depth = 0
+        quoted = False
+        escaped = False
+        for char in text:
+            if escaped:
+                escaped = False
+            elif quoted and char == '\\':
+                escaped = True
+            elif char == '"':
+                quoted = not quoted
+            elif not quoted:
+                depth += (char == '(') - (char == ')')
+                self.assertGreaterEqual(depth, 0)
+        self.assertFalse(quoted)
+        self.assertEqual(depth, 0)
+
     def test_python39_grammar(self):
         for path in Path(__file__).parent.glob('*.py'):
             with self.subTest(path=path.name):
                 ast.parse(path.read_text(), feature_version=9)
+
+    def test_legacy_bodies_refuse_before_work(self):
+        directory = Path(__file__).parent.resolve()
+        before = sorted(self.base.iterdir())
+        for name in ('pinned-runtime-body.sh', 'pinned-full-body.sh'):
+            for argv in (['/bin/sh', str(directory / name)], ['/bin/sh', str(directory / 'gate-run.sh'), '--execute', 'scripts/gates/darwin/' + name, '0' * 40]):
+                result = subprocess.run(argv, cwd=self.base, env=self.env, capture_output=True, text=True)
+                self.assertEqual(result.returncode, 88)
+                self.assertEqual(json.loads(result.stderr)['code'], 'darwin_gate_body_unsupported_until_audited')
+        self.assertEqual(sorted(self.base.iterdir()), before)
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(dir=os.environ['LAB_ROOT'])
@@ -241,7 +269,11 @@ class GuardTests(unittest.TestCase):
         policy = profile(self.root, self.home, self.base / 'lane')
         self.assertIn('(deny file-write*)', policy)
         self.assertIn('(deny process-exec (literal "/usr/bin/security"))', policy)
-        self.assertIn('(deny network-outbound)', policy)
+        self.assertIn('(deny network*)', policy)
+        self.assertIn('(allow network-bind (local ip "localhost:*"))', policy)
+        self.assertIn('(allow network-inbound (local ip "localhost:*"))', policy)
+        for operation, endpoint in (('bind', 'local'), ('inbound', 'local'), ('outbound', 'remote')):
+            self.assertIn('(allow network-' + operation + ' (' + endpoint + ' unix-socket (subpath ' + json.dumps(str(self.root)) + ')))', policy)
         self.assertNotIn('Preferences', policy)
 
     def test_receipt_hashes_every_regular_file(self):

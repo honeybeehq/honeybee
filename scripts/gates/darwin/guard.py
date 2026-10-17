@@ -122,7 +122,22 @@ def seed_cache(source, expected, root, lane):
 
 def profile(root, home, lane):
     quote = lambda p: json.dumps(str(p))
-    return '(version 1)(allow default)(deny file-write*)(allow file-write* (subpath ' + quote(root) + '))(deny file-read* (subpath ' + quote(home) + '))(deny file-read* (subpath "/Library/Keychains") (subpath "/private/var/db/Keychains"))(deny process-exec (literal "/usr/bin/security"))(deny mach-lookup)(deny signal)(allow signal (target same-sandbox))(deny process-info*)(allow process-info* (target same-sandbox))(deny network-outbound)(allow network-outbound (remote ip "localhost:*"))(allow network-outbound (subpath ' + quote(root) + ')))'
+    return ''.join((
+        '(version 1)(allow default)',
+        '(deny file-write*)(allow file-write* (subpath ' + quote(root) + '))',
+        '(deny file-read* (subpath ' + quote(home) + '))',
+        '(deny file-read* (subpath "/Library/Keychains") (subpath "/private/var/db/Keychains"))',
+        '(deny process-exec (literal "/usr/bin/security"))(deny mach-lookup)',
+        '(deny signal)(allow signal (target same-sandbox))',
+        '(deny process-info*)(allow process-info* (target same-sandbox))',
+        '(deny network*)',
+        '(allow network-bind (local ip "localhost:*"))',
+        '(allow network-inbound (local ip "localhost:*"))',
+        '(allow network-outbound (remote ip "localhost:*"))',
+        '(allow network-bind (local unix-socket (subpath ' + quote(root) + ')))',
+        '(allow network-inbound (local unix-socket (subpath ' + quote(root) + ')))',
+        '(allow network-outbound (remote unix-socket (subpath ' + quote(root) + ')))',
+    ))
 
 
 def source_copy(lane, source, root, env):
@@ -348,7 +363,7 @@ def run(args):
         rc = 95
     if before != after:
         rc = 95
-    write_json(root / 'receipt.json', {'version': 2, 'exit': rc, 'source': args.source, 'selfTest': args.self_test, 'libraryScope': 'LaunchAgents names and sha256 only', 'cacheSeed': seed, 'rootRetained': True, 'network': {'namespace': 'SHARED', 'seatbelt': 'non-loopback outbound denied'}, 'scopeLimitation': 'sampling may miss a process born and reparented between observations'}, root)
+    write_json(root / 'receipt.json', {'version': 2, 'exit': rc, 'source': args.source, 'selfTest': args.self_test, 'libraryScope': 'LaunchAgents names and sha256 only', 'cacheSeed': seed, 'rootRetained': True, 'network': {'namespace': 'SHARED', 'seatbelt': 'deny network*, allow loopback IP and run-root Unix sockets only', 'residualRisk': 'outbound loopback can reach host-local services; no Darwin network namespace', 'neededBy': ['v2/daemon/tests/auth-death-fixture.test.ts:44,49', 'v2/daemon/tests/claude-refresh-transport.test.ts:22', 'v2/daemon/tests/lease-enrol-rpc.test.ts:19', 'v2/daemon/tests/auth-death-rpc.test.ts:44']}, 'scopeLimitation': 'sampling may miss a process born and reparented between observations'}, root)
     digest = receipt_hashes(root)
     print('GATE_RECEIPT_SHA256=' + digest, flush=True)
     os.close(fd)
