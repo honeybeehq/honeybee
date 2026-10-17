@@ -91,7 +91,6 @@ export const DAEMON_VERSION = BUILD_IDENTITY.version;
 export const DAEMON_CAPABILITIES = [
   "rpc.local_trust.v1",
   "rpc-effect-resolve.v1",
-  "rpc-execution-fence.archive-send.v1",
   "question.withdraw.v1",
   "bee.human_ref.v1",
   "bee.turn_trigger.v1",

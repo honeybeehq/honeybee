@@ -158,6 +158,12 @@ export class ExecutionLedger {
     if (!same(this.current(claim), claim)) throw new ExecutionFenceError("rpc_execution_stale", "Execution claim is not current");
     return null;
   }
+  observation(request: ExecutionRequest): ExecutionReceipt | null {
+    const claim = { ...request.executionFence, digestVersion: request.digestVersion, verb: request.verb, resource: request.resource, requestDigest: request.requestDigest, idempotencyKey: request.idempotencyKey };
+    const refusal = this.db.prepare("SELECT receipt FROM rpc_execution_refusals WHERE digest=?").get(canonicalDigest(claim as unknown as JsonValue));
+    if (refusal) return JSON.parse(String(refusal.receipt)) as ExecutionReceipt;
+    return this.prepare(request);
+  }
   refusedAdmission(request: ExecutionRequest): ExecutionReceipt {
     const claim = { ...request.executionFence, digestVersion: request.digestVersion, verb: request.verb, resource: request.resource, requestDigest: request.requestDigest, idempotencyKey: request.idempotencyKey };
     const receipt: ExecutionReceipt = { ...claim, status: "refused_stale", boundary: request.verb === "send" ? "mailbox-admission" : "lifecycle-transaction", commandId: null, result: null };
@@ -189,7 +195,7 @@ export class ExecutionLedger {
     if (!row) return;
     const effect = this.row(String(row.key))!;
     if (effect.receipt.status !== "queued") return;
-    this.db.prepare("UPDATE rpc_execution_effects SET receipt=? WHERE key=?").run(JSON.stringify({ ...effect.receipt, status: "completed" }), row.key);
+    this.db.prepare("UPDATE rpc_execution_effects SET receipt=? WHERE key=?").run(JSON.stringify({ ...effect.receipt, status: "completed" }), String(row.key));
     this.audit("rpc.execution.completed", effect.binding.resource.beeId, { idempotencyKey: row.key, commandId });
   }
   private refuse(key: string): void {

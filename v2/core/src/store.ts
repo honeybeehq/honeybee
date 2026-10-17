@@ -4691,7 +4691,7 @@ export class CoreStore {
   resolveExecution(value: unknown) {
     const request = executionRequest(value);
     return this.tx(() => {
-      const receipt = this.executionLedger.prepare(request);
+      const receipt = this.executionLedger.observation(request);
       if (receipt) return { ...this.effectCoverage(), admissionReceipt: this.lookupRpcResult(request.idempotencyKey), executionReceipt: receipt };
       const observation = this.effectLedger.observe(request.idempotencyKey, request.verb);
       if (observation.status === "committed") throw new ExecutionFenceError("rpc_execution_history_unknown", "Admission has no execution receipt; hold the effect");

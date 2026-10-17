@@ -380,6 +380,7 @@ export class RpcServer {
       return;
     }
     try {
+      if (verb.startsWith("rpc.execution.")) throw new RpcError("rpc_execution_fence_unsupported", "Execution fencing is dark: coordinator installation is NOT_COVERED pending the shared step-up Stage B protected-credential prerequisite");
       const peer = conn.peerConnection;
       if (peer?.state === "verified" && peer.peer.uid !== process.geteuid!()) {
         this.refusals.record("local_peer_uid_mismatch", peer.peer.uid, peer.peer.pid);
@@ -402,12 +403,6 @@ export class RpcServer {
         if (verb === "account.limits.observe" || verb === "account.limits.observation.discard" || (verb === "account.limits.observation" && params.id !== undefined)) {
           if (!peer && this.trust.enabled) throw new RpcError("caller_not_trusted", "Observation trust requires a local Unix connection.");
           if (peer) this.trust.require(peer, conn.ingress);
-        }
-        if (verb.startsWith("rpc.execution.")) {
-          if (!this.capabilities.includes("rpc-execution-fence.archive-send.v1") || !peer || conn.ingress !== "local_unix") throw new RpcError("rpc_execution_fence_unsupported", "Execution fencing requires a trusted registered local coordinator; org transport is unsupported");
-          this.trust.require(peer, conn.ingress);
-          if (peer.state !== "verified" || !peer.current()) throw new RpcError("caller_not_trusted", "Execution coordinator identity is unavailable");
-          return this.opts.dispatch(verb, params, { ...conn, executionCoordinatorUid: peer.peer.uid });
         }
         if (verb === "question.withdraw") {
           if (!this.capabilities.includes("question.withdraw.v1")) throw new RpcError("question_withdraw_unsupported", "Question withdrawal is unsupported by this Honeybee.");

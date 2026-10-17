@@ -6,4 +6,4 @@ process.stdout.write(result.stdout ?? "");
 process.stderr.write(result.stderr ?? "");
 if (result.error) throw result.error;
 if (result.status !== 0) throw new Error(`native execution tests failed: ${result.status ?? result.signal}`);
-if (!/^# tests [1-9][0-9]*$/m.test(result.stdout ?? "")) throw new Error("Native execution test runner ran no target tests");
+if (!/^(?:# |ℹ )tests [1-9][0-9]*$/m.test(result.stdout ?? "")) throw new Error("Native execution test runner ran no target tests");

@@ -1687,6 +1687,33 @@ export class HiveDaemon {
     return message.beeId;
   }
 
+  private rpcExecution(verb: RpcVerb, params: Record<string, unknown>, conn: RpcConn): unknown {
+    switch (verb) {
+      case "rpc.execution.coordinator.register":
+        if (Object.keys(params).length !== 1 || !Object.hasOwn(params, "issuerId")) throw new RpcError("invalid_request", "Coordinator registration requires issuerId only");
+        if (conn.executionCoordinatorUid === undefined) throw new RpcError("caller_not_trusted", "Execution requires an authenticated local coordinator");
+        return this.mustStore().registerExecutionCoordinator(params.issuerId, conn.executionCoordinatorUid);
+      case "rpc.execution.claim.compareAndSet":
+        if (conn.executionCoordinatorUid === undefined) throw new RpcError("caller_not_trusted", "Execution requires an authenticated local coordinator");
+        return this.mustStore().compareAndSetExecutionClaim(params, conn.executionCoordinatorUid);
+      case "rpc.execution.resolve":
+        if (conn.executionCoordinatorUid === undefined) throw new RpcError("caller_not_trusted", "Execution requires an authenticated local coordinator");
+        return this.mustStore().resolveExecution(params);
+      case "rpc.execution.execute": {
+        if (params.verb === "spawn") throw new ExecutionFenceError("rpc_execution_fence_unsupported", "Spawn execution fencing requires phase B; no fallback is permitted");
+        if (conn.executionCoordinatorUid === undefined) throw new RpcError("caller_not_trusted", "Execution requires an authenticated local coordinator");
+        const receipt = this.mustStore().executeWithFence(params, conn.executionCoordinatorUid, request => {
+          const result = request.verb === "send" ? this.rpcSend(request.args) : this.rpcEnqueue("archive", request.resource.beeId, {}, { idempotencyKey: request.idempotencyKey });
+          return { commandId: result.commandId, result };
+        });
+        if (receipt.status === "refused_stale") throw new ExecutionFenceError("rpc_execution_stale", "Archive execution was refused as stale", { executionReceipt: receipt });
+        this.requestTick();
+        return { ...this.mustStore().effectCoverage(), admissionReceipt: this.mustStore().lookupRpcResult(receipt.idempotencyKey), executionReceipt: receipt };
+      }
+      default: throw new RpcError("rpc_execution_fence_unsupported", "Unsupported execution-fence verb");
+    }
+  }
+
   private dispatch(verb: RpcVerb, params: Record<string, unknown>, conn: RpcConn): unknown {
     assertLocalHandoffRpc(verb, params, conn);
     this.assertNotForeignHarnessStart(verb, params, conn);
@@ -1711,26 +1738,10 @@ export class HiveDaemon {
     }
     switch (verb) {
       case "rpc.execution.coordinator.register":
-        if (Object.keys(params).length !== 1 || !Object.hasOwn(params, "issuerId")) throw new RpcError("invalid_request", "Coordinator registration requires issuerId only");
-        if (conn.executionCoordinatorUid === undefined) throw new RpcError("caller_not_trusted", "Execution requires an authenticated local coordinator");
-        return this.mustStore().registerExecutionCoordinator(params.issuerId, conn.executionCoordinatorUid);
       case "rpc.execution.claim.compareAndSet":
-        if (conn.executionCoordinatorUid === undefined) throw new RpcError("caller_not_trusted", "Execution requires an authenticated local coordinator");
-        return this.mustStore().compareAndSetExecutionClaim(params, conn.executionCoordinatorUid);
       case "rpc.execution.resolve":
-        if (conn.executionCoordinatorUid === undefined) throw new RpcError("caller_not_trusted", "Execution requires an authenticated local coordinator");
-        return this.mustStore().resolveExecution(params);
-      case "rpc.execution.execute": {
-        if (params.verb === "spawn") throw new ExecutionFenceError("rpc_execution_fence_unsupported", "Spawn execution fencing requires phase B; no fallback is permitted");
-        if (conn.executionCoordinatorUid === undefined) throw new RpcError("caller_not_trusted", "Execution requires an authenticated local coordinator");
-        const receipt = this.mustStore().executeWithFence(params, conn.executionCoordinatorUid, request => {
-          const result = request.verb === "send" ? this.rpcSend(request.args) : this.rpcEnqueue("archive", request.resource.beeId, {}, { idempotencyKey: request.idempotencyKey });
-          return { commandId: result.commandId, result };
-        });
-        if (receipt.status === "refused_stale") throw new ExecutionFenceError("rpc_execution_stale", "Archive execution was refused as stale", { executionReceipt: receipt });
-        this.requestTick();
-        return { ...this.mustStore().effectCoverage(), admissionReceipt: this.mustStore().lookupRpcResult(receipt.idempotencyKey), executionReceipt: receipt };
-      }
+      case "rpc.execution.execute":
+        throw new RpcError("rpc_execution_fence_unsupported", "Execution fencing is dark: local coordinator installation is NOT_COVERED");
       case "rpc.effect.status":
         if (Object.keys(params).length) throw new RpcError("invalid_request", "Effect status takes no parameters");
         return this.mustStore().effectCoverage();
