@@ -106,14 +106,7 @@ export const MULTILINE_DELIVERY_SQL = `CREATE TABLE IF NOT EXISTS multiline_deli
   row_json TEXT NOT NULL
 ) STRICT;
 CREATE INDEX IF NOT EXISTS multiline_delivery_bee ON multiline_delivery(bee_id, held_at);
-CREATE TABLE IF NOT EXISTS multiline_fallback_fence (
-  message_id INTEGER PRIMARY KEY,
-  bee_id TEXT NOT NULL,
-  state TEXT NOT NULL CHECK(state IN ('unattempted', 'prepared')),
-  attempted INTEGER NOT NULL DEFAULT 0 CHECK(attempted IN (0, 1)),
-  publication_id TEXT,
-  CHECK((state = 'unattempted' AND publication_id IS NULL) OR (state = 'prepared' AND publication_id IS NOT NULL))
-) STRICT;`;
+`;
 export function deliveryHold(row: MultilineDeliveryRow): DeliveryHold | undefined {
   return row.heldAt === null ? undefined : { code: "delivery_unsupported_multiline", stage: row.stage, messageId: row.messageId, heldAt: row.heldAt, heldSince: row.heldSince, receipt: row.receipt, detail: row.detail, attempts: row.attempts, unsupportedMs: row.unsupportedMs, notice: row.notice };
 }

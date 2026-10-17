@@ -95,7 +95,6 @@ export class MultilineFallback {
     }
     const paneInput = pane ? {code: "pane_input_unknown" as const, ...pane, generation, since: Date.now(), reason: "single_attempt_injection_in_progress"} : undefined;
     fallback = this.store.transitionMultilineFallback(message.id, "ready", "in_flight", { generation, attempts: (fallback.attempts ?? 0) + 1, attemptPhase: "injecting", ...(paneInput ? {paneInput} : {}) })!;
-    this.store.recordMultilineDriverAttempt(message.id);
     try {
       const outcome = this.driver.deliver(message.beeId, generation, message.id, fallback.pointer!, { singleAttempt: true, ...(pane ? {expectedPane: pane} : {}) });
       if (outcome.accepted) {
@@ -119,7 +118,6 @@ export class MultilineFallback {
 
   cleanupDeleted(): void {
     if (this.store.inTransaction) return;
-    this.store.cleanupDeletedUnattemptedMultilineFences();
     for (const row of this.store.deletedMultilineFiles()) {
       const fallback = row.fallback;
       if (!fallback || fallback.state === "removed" || !fallback.id) continue;

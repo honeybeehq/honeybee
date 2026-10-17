@@ -91,7 +91,7 @@ for (const scenario of ["normal", "legacy-no-projection", "malformed-waiting", "
     assert.deepEqual(calls.filter(call => [second.id, third.id].includes(call.id)).map(call => call.id), [second.id, third.id]);
     const delivered = rows(receiver.id).filter(row => row.submittedBody !== undefined);
     assert.equal(delivered.length, 2);
-    assert.ok(delivered[0]!.submittedBody!.includes(malformed ? "state unknown, not delivered" : "delivered later messages; this one is held"));
+    assert.ok(delivered[0]!.submittedBody!.includes(malformed ? "state unknown, may have been delivered" : "delivered later messages; this one is held"));
     assert.ok(delivered[0]!.submittedBody!.endsWith("second"));
     assert.equal(delivered[0]!.submittedBody!.includes("\n"), false);
     assert.equal(delivered[1]!.submittedBody, "third");
@@ -107,7 +107,7 @@ for (const scenario of ["normal", "legacy-no-projection", "malformed-waiting", "
     store.recordMultilineDeliveryRefusal(first.id, store.currentRuntime(receiver.id)!.generation, "multiline_type_mode");
     assert.equal(store.listMessages(sender.id).filter(message => message.sender === "automation:delivery").length, malformed ? 0 : 1);
     assert.equal(store.getMessage(first.id)?.deliveredAt, null);
-    assert.equal(store.multilineDelivery(first.id)?.notice, malformed ? "state unknown, not delivered" : "delivered later messages; this one is held");
+    assert.equal(store.multilineDelivery(first.id)?.notice, malformed ? "state unknown, may have been delivered" : "delivered later messages; this one is held");
     if (scenario !== "legacy-no-projection") assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
     store.close(); store = openCoreStore(path, { now: () => clock.now, ephemeral: true });
     assert.equal(store.getMessage(first.id)?.deliveryHold?.heldSince, hold.heldSince);

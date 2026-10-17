@@ -195,7 +195,7 @@ for (const malformed of ["not-json", "{}", '{"stage":"waiting","attempts":"bad"}
     assert.equal(store.auditRows().filter(row => row.kind === "mail.delivery_fallback_unknown").length, 1);
     store.markDelivered(later.id, 1, undefined, store.multilineReorderNotice(bee.id, later.id).messageIds);
     assert.equal(store.getMessage(first.id)?.deliveredAt, null);
-    assert.equal(store.multilineDelivery(first.id)?.notice, "state unknown, not delivered");
+    assert.equal(store.multilineDelivery(first.id)?.notice, "state unknown, may have been delivered");
   } finally { store.close(); h.cleanup(); }
 });
 

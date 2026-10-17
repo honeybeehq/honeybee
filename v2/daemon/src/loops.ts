@@ -1709,7 +1709,6 @@ export class DaemonCore {
           );
         }
         const fallback = this.multilineFallback?.deliver(msg, body, rt.generation, peer, this.store.answeredQuestionId(msg.id), this.turnTriggerSourceOf(msg, peer), reorderNotice.messageIds);
-        if (!fallback?.handled) this.store.recordMultilineDriverAttempt(msg.id);
         const outcome = fallback?.handled ? { accepted: fallback.accepted, reason: "not_ready" as const, detail: undefined }
           : this.driver.deliver(rt.beeId, rt.generation, msg.id, body, { multilineWaitExpired: msg.deliveryHold?.stage === "expired" });
         if (outcome.accepted) {

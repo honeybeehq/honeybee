@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import { DatabaseSync } from "node:sqlite";
 import assert from "node:assert/strict";
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -114,18 +114,6 @@ test("real ordinary paste post-Enter commit failure and corruption cannot claim 
   const pane = server.run(["list-panes", "-a", "-F", "#{pane_id}"]).trim().split("\n")[0]!;
   server.run(["send-keys", "-t", pane, "C-b"]);
   await wait(() => rows().some(row => row.bracketedEnabled));
-  const deliver = driver.deliver.bind(driver);
-  driver.deliver = (beeId, generation, id, body, options) => {
-    if (id === message.id) {
-      assert.equal(store.inTransaction, false);
-      const owned = (store as unknown as {db: DatabaseSync}).db;
-      assert.equal(owned.prepare("PRAGMA wal_checkpoint(TRUNCATE)").get()?.busy, 0);
-      const proof = join(root, "attempt-proof.sqlite3"); copyFileSync(path, proof);
-      const db = new DatabaseSync(proof, {readOnly: true});
-      assert.equal(db.prepare("SELECT attempted FROM multiline_fallback_fence WHERE message_id = ?").get(id)?.attempted, 1); db.close();
-    }
-    return deliver(beeId, generation, id, body, options);
-  };
   const mark = store.markDelivered.bind(store);
   store.markDelivered = (id, generation, source, ids) => {if (id === message.id) throw new Error("ordinary completion commit lost"); return mark(id, generation, source, ids);};
   assert.throws(() => core.step(), /ordinary completion commit lost/);
