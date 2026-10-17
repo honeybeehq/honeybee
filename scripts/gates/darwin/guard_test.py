@@ -144,7 +144,7 @@ static int proc_listchildpids(int pid, void *buffer, int bytes) {
         process.poll.return_value = None
         process.args = ['fixture-parent']
         process.wait.return_value = -15
-        replies = [[parent_birth], Refusal('forced acquisition failure'), [parent_birth, child_birth]]
+        replies = [[parent_birth], [parent_birth, child_birth], Refusal('forced acquisition failure'), [parent_birth]]
         helper_result = subprocess.CompletedProcess([], 3, 'gone', '')
         with patch('guard.subprocess.Popen', return_value=process), patch('guard.os.write'), patch('guard.scope_call', side_effect=replies), patch('guard.subprocess.run', return_value=helper_result) as invoked, patch('guard.time.sleep'), self.assertRaisesRegex(Refusal, 'forced acquisition failure'):
             guard.reparent_listener_self_test(self.base, self.base, [], self.base / 'scope', {'SCG_PYTHON_BIN': sys.executable})
@@ -154,6 +154,30 @@ static int proc_listchildpids(int pid, void *buffer, int bytes) {
         signalled = [call.args[0][2:6] for call in invoked.call_args_list if call.args[0][1] == 'signal']
         self.assertIn(child_birth, signalled)
         self.assertIn(parent_birth, signalled)
+
+    def test_tree_preflight_cleans_descendant_after_root_nonzero_exit(self):
+        rows = [['12345', str(os.getpid()), '10', '20'], ['12346', '12345', '10', '21'], ['12347', '12346', '10', '22']]
+        (self.base / 'tree-child-pid').write_text('12346')
+        (self.base / 'tree-grandchild-pid').write_text('12347')
+        process = unittest.mock.MagicMock()
+        process.pid = 12345
+        process.wait.return_value = 1
+        gone = {'12345'}
+        def helper(argv, **kwargs):
+            if argv[1] == 'signal':
+                gone.add(argv[2])
+                return subprocess.CompletedProcess(argv, 0, '', '')
+            return subprocess.CompletedProcess(argv, 3 if argv[2] in gone else 0, '', '')
+        with patch('guard.subprocess.Popen', return_value=process), patch('guard.scope_call', side_effect=[[rows[0]], rows]), patch('guard.subprocess.run', side_effect=helper) as invoked, self.assertRaisesRegex(Refusal, 'root exited nonzero'):
+            guard.tree_scan_self_test(self.base, self.base, [], self.base / 'scope', {'SCG_PYTHON_BIN': sys.executable})
+        self.assertEqual(gone, {'12345', '12346', '12347'})
+        self.assertTrue(any(call.args[0][1:3] == ['signal', '12346'] for call in invoked.call_args_list))
+
+    def test_tree_preflight_is_unconditional(self):
+        tree = ast.parse((Path(__file__).parent / 'guard.py').read_text())
+        run_node = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == 'run')
+        calls = [node for node in run_node.body if isinstance(node, ast.Expr) and isinstance(node.value, ast.Call) and isinstance(node.value.func, ast.Name) and node.value.func.id == 'tree_scan_self_test']
+        self.assertEqual(len(calls), 1)
 
     def test_gate_shell_diagnostics_never_dump_environment_values(self):
         def unsafe(text):

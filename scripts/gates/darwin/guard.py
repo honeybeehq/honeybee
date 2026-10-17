@@ -447,7 +447,9 @@ def tree_scan_self_test(root, workspace, prefix, helper, env):
             while time.monotonic() < deadline:
                 rows = scope_call(helper, 'scan', *birth)
                 for row in rows:
-                    births[row[0]] = row
+                    if row[0] in births and births[row[0]][2:] != row[2:]:
+                        raise Refusal('tree preflight observed pid reuse')
+                    births.setdefault(row[0], row)
                 paths = [root / (name + '-pid') for name in ('tree-child', 'tree-grandchild')]
                 if all(path.exists() for path in paths):
                     direct, grandchild = [path.read_text().strip() for path in paths]
@@ -462,26 +464,30 @@ def tree_scan_self_test(root, workspace, prefix, helper, env):
         finally:
             (root / 'tree-abort').write_text('abort\n')
             try:
-                child.wait(timeout=4)
+                if child.wait(timeout=4) != 0:
+                    failure = failure or 'scan preflight root exited nonzero'
             except subprocess.TimeoutExpired:
-                for row in reversed(list(births.values())):
+                pass
+            for row in reversed(list(births.values())):
+                status = subprocess.run([str(helper), 'status', *row], capture_output=True, text=True)
+                if status.returncode == 0:
                     for sig in (signal.SIGTERM, signal.SIGKILL):
                         subprocess.run([str(helper), 'signal', *row, str(int(sig))], capture_output=True, text=True)
                         status = subprocess.run([str(helper), 'status', *row], capture_output=True, text=True)
                         if status.returncode == 3:
                             break
-                for name in ('tree-parent', 'tree-child', 'tree-grandchild'):
-                    path = root / (name + '-pid')
-                    if path.exists():
-                        pid = path.read_text().strip()
-                        row = births.get(pid)
-                        status = subprocess.run([str(helper), 'status', *row], capture_output=True, text=True) if row else None
-                        if not status or status.returncode != 3:
-                            LEFTOVER_CHILDREN.append({'pid': pid, 'birth': row, 'reason': 'birth unobserved, not fenced' if row is None else 'fenced cleanup unresolved', 'fixture': name})
-                try:
-                    child.wait(timeout=2)
-                except subprocess.TimeoutExpired:
-                    failure = failure or 'scan preflight root cleanup unresolved'
+                if status.returncode != 3:
+                    LEFTOVER_CHILDREN.append({'pid': row[0], 'birth': row, 'reason': 'fenced cleanup unresolved'})
+                    failure = failure or 'scan preflight retained child cleanup unresolved'
+            for name in ('tree-parent', 'tree-child', 'tree-grandchild'):
+                path = root / (name + '-pid')
+                if path.exists() and path.read_text().strip() not in births:
+                    LEFTOVER_CHILDREN.append({'pid': path.read_text().strip(), 'birth': None, 'reason': 'birth unobserved, not fenced', 'fixture': name})
+                    failure = failure or 'scan preflight unobserved child'
+            try:
+                child.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                failure = failure or 'scan preflight root cleanup unresolved'
             write_json(root / 'tree-scan-self-test.json', {'failure': failure, 'rows': rows, 'births': list(births.values()), 'scopeObservations': SCOPE_OBSERVATIONS[observations_start:], 'leftoverChild': list(LEFTOVER_CHILDREN), 'required': 'live direct child and grandchild with verified parentage and births'}, root)
     if failure:
         raise Refusal(failure)
@@ -496,6 +502,7 @@ def reparent_listener_self_test(root, workspace, prefix, helper, env):
     detected = False
     failure = None
     check = None
+    all_births = {}
     observations_start = len(SCOPE_OBSERVATIONS)
     with (root / 'listener-fixture-reparent.log').open('wb') as output:
         parent = subprocess.Popen([sys.executable, '-B', str(workspace / 'scripts/gates/darwin/start_wait.py'), str(read_fd), *prefix, env['SCG_PYTHON_BIN'], '-B', str(workspace / 'scripts/gates/darwin/listener_fixture.py'), 'reparent-parent'], pass_fds=(read_fd,), cwd=workspace, env=env, stdout=output, stderr=subprocess.STDOUT)
@@ -503,12 +510,15 @@ def reparent_listener_self_test(root, workspace, prefix, helper, env):
         tree = []
         try:
             parent_birth = scope_call(helper, 'identity', parent.pid)[0]
+            all_births.setdefault(tuple(parent_birth), parent_birth)
             if int(parent_birth[1]) != os.getpid():
                 raise Refusal('reparent fixture parent outside controller scope')
             os.write(release_fd, b'1')
             deadline = time.monotonic() + 15
             while parent.poll() is None and time.monotonic() < deadline:
                 tree = scope_call(helper, 'scan', *parent_birth)
+                for row in tree:
+                    all_births.setdefault(tuple(row), row)
                 children = [row for row in tree if row[1] == str(parent.pid)]
                 ready = root / 'reparent-child-ready'
                 if ready.exists() and any(row[0] == ready.read_text().strip() for row in children):
@@ -545,7 +555,7 @@ def reparent_listener_self_test(root, workspace, prefix, helper, env):
             raise
         finally:
             os.close(release_fd)
-            cleanup_births = {tuple(row): row for row in (retained, parent_birth) if row is not None}
+            cleanup_births = dict(all_births)
             if parent_birth is not None:
                 try:
                     for row in scope_call(helper, 'scan', *parent_birth):
@@ -576,7 +586,7 @@ def reparent_listener_self_test(root, workspace, prefix, helper, env):
                 if parent_birth is None:
                     LEFTOVER_CHILDREN.append({'pid': parent.pid, 'birth': None, 'reason': 'birth unobserved, not fenced', 'argv': parent.args})
             check = subprocess.run([str(helper), 'status', *retained], capture_output=True, text=True) if retained else None
-            result = {'proto': 'TCP', 'case': 'retained reparented grandchild', 'expectedClassification': 'FAIL', 'detected': detected, 'failure': failure, 'birth': retained, 'parentBirth': parent_birth, 'firstSightTree': tree, 'samples': samples, 'signals': signals, 'leftoverChild': list(LEFTOVER_CHILDREN), 'scopeObservations': SCOPE_OBSERVATIONS[observations_start:], 'childExit': 'gone or zombie' if check and check.returncode == 3 else None, 'noRemoteConnect': True}
+            result = {'proto': 'TCP', 'case': 'retained reparented grandchild', 'expectedClassification': 'FAIL', 'detected': detected, 'failure': failure, 'birth': retained, 'parentBirth': parent_birth, 'retainedBirths': list(cleanup_births.values()), 'firstSightTree': tree, 'samples': samples, 'signals': signals, 'leftoverChild': list(LEFTOVER_CHILDREN), 'scopeObservations': SCOPE_OBSERVATIONS[observations_start:], 'childExit': 'gone or zombie' if check and check.returncode == 3 else None, 'noRemoteConnect': True}
             write_json(root / 'listener-reparent-self-test.json', result, root)
     if not detected or not check or check.returncode != 3:
         raise Refusal('reparented wildcard listener detection or cleanup failed')
@@ -671,12 +681,12 @@ def run(args):
         print('SCOPE_BUILD_DIAGNOSTIC_LAST_60_LINES', flush=True)
         print('\n'.join(diagnostic.splitlines()[-60:]), flush=True)
         raise Refusal('scope helper build failed; receipts retained at ' + str(root))
+    tree_scan_self_test(root, workspace, prefix, identity, env)
     static_rows = listener_static.scan(workspace)
     write_json(root / 'listener-static.json', {'violations': static_rows, 'scope': 'v2/** and tests/**'}, root)
     if static_rows and not args.self_test:
         raise Refusal('static listener check found wildcard or omitted/unresolved hosts')
     if args.self_test:
-        tree_scan_self_test(root, workspace, prefix, identity, env)
         negative = listener_static.violations('server.listen(0)')
         write_json(root / 'listener-static-self-test.json', {'fixture': 'server.listen(0)', 'expectedClassification': 'FAIL', 'detected': bool(negative), 'violations': negative}, root)
         if not negative:
