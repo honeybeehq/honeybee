@@ -2,7 +2,7 @@ import os, sys, json, time, pathlib, subprocess, threading, errno, re, hashlib, 
 from policy import error_verdict, RULE_VERSION, within,update_fd_prior,pid_observation
 from home_guard import entry_guard
 from thread_records import ThreadRecords
-from birth_identity import birth_identity, parent_chain
+from birth_identity import birth_identity, parent_chain, scope_parent
 from stat_observation import parse_stat, resolve_stat_observation
 from error_summary import error_summary
 ROOT = pathlib.Path(sys.argv[1])
@@ -119,6 +119,7 @@ def capture(pid):
         b['ppidSource'] = 'recorded first-sight process-tree edge; birth stat unavailable'
     else:
         b['ppidSource'] = 'recorded first-sight proc stat'
+    b['scopeParent'], b['scopeParentSource'] = scope_parent(b)
     births[pid] = b
     if 'identityErrno' in identity:
         pending.append(('birthIdentity', OSError(identity['identityErrno'], 'supplemental birth identity unavailable or changed')))

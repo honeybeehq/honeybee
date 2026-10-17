@@ -12,7 +12,7 @@ from policy import closing_verdict, error_verdict, wal_mtime_only, preexec_verdi
 from gate import fake_env, lab_home, socket_path_lengths, host_observation
 from home_guard import home_guard, entry_guard, pull_destination, PROVIDER_DIRS, PROVIDER_KEYS, APIARY_DIRS
 from thread_records import ThreadRecords
-from birth_identity import birth_identity, parent_chain
+from birth_identity import birth_identity, parent_chain, scope_parent
 from test_capabilities import assert_capabilities, capability_receipt_valid, SETPRIV_ARGS, CAPABILITY_SETS
 from policy import RULE_VERSION
 from filesystem import assert_filesystem, filesystem_probes, proc_receipt_valid
@@ -25,6 +25,40 @@ META = dict(inode=1, size=100, mtime_ns=10000000000, mode=33152, uid=1000, gid=1
 
 
 class PolicyTests(unittest.TestCase):
+    def test_dead_first_stat_uses_recorded_tree_edge_without_rewriting_birth(self):
+        parents = {19943:19519, 19519:19513, 19513:49, 49:34, 34:33, 33:7, 7:5, 5:1}
+        records = {pid:dict(pid=pid, procStat=dict(state='R', ppid=parent, starttime=str(pid))) for pid,parent in parents.items()}
+        first = dict(state='X', ppid=0, starttime='308986648')
+        birth = dict(pid=19962, procStat=dict(first), ppid=0, observedParentEdge=19943)
+        records[19962] = birth
+        parent, source = scope_parent(birth)
+        self.assertEqual(parent, 19943)
+        self.assertEqual(source, 'recorded first-sight children/task edge')
+        for state, parent in (('x',0), ('X',19900), ('R',0)):
+            raw = dict(state=state,ppid=parent,starttime='308986648')
+            self.assertEqual(scope_parent(dict(birth,procStat=raw))[0],19943)
+            self.assertEqual(raw,dict(state=state,ppid=parent,starttime='308986648'))
+        own, path = parent_chain(19962, records)
+        self.assertTrue(own)
+        self.assertEqual(path, [19962,19943,19519,19513,49,34,33,7,5,1])
+        self.assertEqual(birth['procStat'], first)
+        self.assertEqual(birth['ppid'], 0)
+        birth.update(ownTreeAtFirstSight=own, parentChain=path, nextBirthSample=pid_observation(False,dict(errno=errno.ENOENT)))
+        error = dict(pid=19962, slot='cmdline', errno=errno.ENOENT, atErrorStat={}, nextSample=birth['nextBirthSample'])
+        self.assertEqual(error_verdict(error,birth,True,HIVE), 'scope_proven_exiting')
+        self.assertEqual(mapping_coverage(birth,[],[]), 'mapping unavailable: exited before host capture')
+        for edge in (None, 999999):
+            refused = dict(pid=19962, procStat=dict(first), ppid=0)
+            if edge is not None:
+                refused['observedParentEdge'] = edge
+            own, path = parent_chain(19962, records | {19962:refused})
+            self.assertFalse(own)
+            refused.update(ownTreeAtFirstSight=own, parentChain=path, nextBirthSample=birth['nextBirthSample'])
+            self.assertEqual(error_verdict(error,refused,True,HIVE), 'FAIL')
+            self.assertEqual(mapping_coverage(refused,[],[]), 'FAIL')
+        usable = dict(birth, procStat=dict(state='R',ppid=999999,starttime='308986648'))
+        self.assertFalse(parent_chain(19962, records | {19962:usable})[0])
+
     def test_bbbc_host_mapping_empty_next_stats_resolve_with_recorded_identity(self):
         for pid, state, starttime in ((1144210, 'R', '308779201'), (1145613, 'Z', '308779255')):
             before = dict(state=state, ppid=1141201, starttime=starttime)
