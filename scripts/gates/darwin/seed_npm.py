@@ -77,7 +77,7 @@ def verify_cached(path, expected):
 
 def pack(root, target):
     cache = root / 'npm/_cacache'
-    with tarfile.open(target, 'w', format=tarfile.USTAR_FORMAT) as archive:
+    with tarfile.open(target, 'w', format=tarfile.PAX_FORMAT) as archive:
         for path in [cache.parent, cache, *sorted(cache.rglob('*'))]:
             if path.is_symlink() or not (path.is_file() or path.is_dir()):
                 raise ValueError('unsafe seed cache member')
