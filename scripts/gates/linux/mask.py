@@ -96,6 +96,8 @@ try:
     mount(str(private_tmp), '/tmp', None, 4096)
     os.close(outfd)
     outfd = os.open(out, os.O_RDONLY | os.O_DIRECTORY)
+    boundary_directory = CACHE / 'git-boundary' / label
+    mount(str(boundary_directory), '/mnt', None, 4096)
     seal_filesystem(CACHE)
     parent_namespaces=dict(receipt['namespaces'])
     outer_uid,outer_gid=os.getuid(),os.getgid()
