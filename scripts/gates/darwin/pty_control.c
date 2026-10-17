@@ -76,6 +76,10 @@ static const char *fork_probe(int *exit_status) {
   return got == 0 && *exit_status == 0 ? "NONE" : "OTHER";
 }
 int main(int argc, char **argv) {
+  if (argc == 2 && !strcmp(argv[1], "--tmux-marker")) {
+    if (fputs("SCG_PTY_TMUX_READY\n", stdout) == EOF || fflush(stdout)) return 95;
+    for (;;) pause();
+  }
   char release;
   if (argc != 2 || strncmp(argv[1], "/dev/ttys", 9) || strchr(argv[1] + 9, '/') || read(STDIN_FILENO, &release, 1) != 1 || release != '1') return 95;
   struct foreign_outcome foreign_before = foreign_probe(argv[1]);

@@ -77,6 +77,7 @@ class PtyTests(unittest.TestCase):
     def test_tmux_foreground_control_has_private_socket_and_fenced_cleanup(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary).resolve()
+            (root / 'pty-control').write_bytes(b'fixed-marker-binary')
             fixture = root / 't/control'
             fixture.mkdir(parents=True)
             connection = socket.socket(socket.AF_UNIX)
@@ -84,10 +85,11 @@ class PtyTests(unittest.TestCase):
             server = Mock()
             birth = ['12', '1', '100', '1']
             pin = {'path': '/pinned/tmux', 'sha256': '0' * 64, 'dev': 1, 'ino': 2}
-            api = SimpleNamespace(write_json=Mock())
-            completed = ({'exit': 0, 'cleanup': {'gone': True}}, b'SCG_PTY_TMUX_READY\n')
+            api = SimpleNamespace(write_json=Mock(), scope_call=Mock(return_value=[['13', '12', '101', '1']]))
+            def completed(*args):
+                return ({'exit': 0, 'cleanup': {'gone': True}}, b'0 13\n' if 'display-message' in args[-1] else b'SCG_PTY_TMUX_READY\n')
             try:
-                with patch('pty_controls.select_tmux', return_value=pin), patch('pty_controls.check_tmux'), patch('pty_controls.start', return_value=(server, birth)) as start, patch('pty_controls.execute', return_value=completed) as execute, patch('pty_controls.fenced_cleanup', return_value={'gone': True}) as cleanup:
+                with patch('pty_controls.select_tmux', return_value=pin), patch('pty_controls.check_tmux'), patch('pty_controls.start', return_value=(server, birth)) as start, patch('pty_controls.execute', side_effect=completed) as execute, patch('pty_controls.fenced_cleanup', return_value={'gone': True}) as cleanup, patch('pty_controls.marker_gone', return_value=True), patch('pty_controls.scope_controls.call', return_value=str(root / 'pty-control')), patch('pty_controls.subprocess.run', return_value=SimpleNamespace(returncode=0)):
                     report = pty_controls.tmux_control(api, root, root / 'src', root / 'scope', {}, root / 'candidate.sb', fixture)
                 self.assertTrue(report['ok'])
                 self.assertIn('-D', start.call_args.args[-1])
@@ -100,6 +102,12 @@ class PtyTests(unittest.TestCase):
                 self.assertNotIn('SCG_PTY_TMUX_READY', json.dumps(report))
             finally:
                 connection.close()
+
+    def test_live_marker_is_required(self):
+        self.assertFalse(pty_controls.capture_verdict(b'SCG_PTY_TMUX_READY\n', False)['ok'])
+        self.assertFalse(pty_controls.capture_verdict(b'no marker\n', True)['ok'])
+        self.assertTrue(pty_controls.capture_verdict(b'SCG_PTY_TMUX_READY\n', True)['ok'])
+        self.assertFalse(pty_controls.capture_verdict(b'Pane is dead (status 0)\n', False)['ok'])
 
     @unittest.skipUnless(sys.platform.startswith('linux'), 'public C control syntax compiled on Linux only')
     def test_native_control_compiles_with_werror(self):

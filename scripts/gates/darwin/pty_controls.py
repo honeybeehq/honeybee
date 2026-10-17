@@ -132,10 +132,26 @@ def check_tmux(pin):
         raise ValueError('tmux control pin changed')
 
 
+def capture_verdict(captured, pane_alive):
+    return {'ok': pane_alive is True and b'SCG_PTY_TMUX_READY' in captured, 'paneAlive': pane_alive is True, 'fixtureMarkerPresent': b'SCG_PTY_TMUX_READY' in captured, 'captureBytes': len(captured), 'captureSha256': hashlib.sha256(captured).hexdigest()}
+
+
+def marker_gone(helper, birth):
+    deadline = time.monotonic() + 2
+    while True:
+        result = subprocess.run([str(helper), 'status', *birth], capture_output=True, timeout=2)
+        if result.returncode == 3: return True
+        if result.returncode != 0 or time.monotonic() >= deadline: return False
+        time.sleep(0.02)
+
+
 def tmux_control(api, root, workspace, helper, env, profile, fixture):
     env = dict(env, LC_CTYPE='en_US.UTF-8')
     pin = select_tmux()
     socket = fixture / 'tmux.sock'
+    marker_binary = root / 'pty-control'
+    marker_pin = hashlib.sha256(marker_binary.read_bytes()).hexdigest()
+    marker_birth = None
     config = fixture / 'empty.conf'
     config.touch(mode=0o600, exist_ok=False)
     prefix = ['/usr/bin/sandbox-exec', '-f', str(profile), pin['path']]
@@ -152,7 +168,7 @@ def tmux_control(api, root, workspace, helper, env, profile, fixture):
             raise ValueError('PTY control socket redirected')
         operations = [
             ['set-option', '-g', 'remain-on-exit', 'on'],
-            ['new-session', '-d', '-s', 'scg-pty-control', '/usr/bin/printf', 'SCG_PTY_TMUX_READY'],
+            ['new-session', '-d', '-s', 'scg-pty-control', str(marker_binary), '--tmux-marker'],
         ]
         captured = b''
         for args in operations:
@@ -161,6 +177,26 @@ def tmux_control(api, root, workspace, helper, env, profile, fixture):
             report['commands'].append(dict(result, operation=args[0]))
             if result['exit'] != 0:
                 raise ValueError('PTY tmux control command failed')
+        def observe_pane():
+            result, data = execute(api, root, workspace, helper, env, prefix + ['-N', *common, 'display-message', '-p', '-t', 'scg-pty-control:0.0', '#{pane_dead} #{pane_pid}'])
+            report['commands'].append(dict(result, operation='display-message'))
+            parts = data.split()
+            if result['exit'] != 0 or len(parts) != 2 or parts[0] not in (b'0', b'1') or not parts[1].isdigit():
+                raise ValueError('PTY pane observation unresolved')
+            report['paneAlive'] = parts[0] == b'0'
+            if not report['paneAlive']:
+                raise ValueError('PTY marker pane is dead')
+            return parts[1].decode('ascii')
+        marker_pid = observe_pane()
+        rows = api.scope_call(helper, 'scan', *birth)
+        matches = [row for row in rows if row[0] == marker_pid and row[1] == birth[0]]
+        if len(matches) != 1:
+            raise ValueError('PTY marker birth not verified as server child')
+        marker_birth = matches[0]
+        focused_seal.remember_birth(marker_birth)
+        image = scope_controls.call(helper, 'executable', marker_birth).strip()
+        if image != str(marker_binary) or hashlib.sha256(marker_binary.read_bytes()).hexdigest() != marker_pin:
+            raise ValueError('PTY marker executable pin mismatch')
         deadline = time.monotonic() + 3
         while b'SCG_PTY_TMUX_READY' not in captured and time.monotonic() < deadline:
             check_tmux(pin)
@@ -170,14 +206,18 @@ def tmux_control(api, root, workspace, helper, env, profile, fixture):
                 raise ValueError('PTY tmux control capture failed')
             if b'SCG_PTY_TMUX_READY' not in captured:
                 time.sleep(0.03)
-        report.update(ok=b'SCG_PTY_TMUX_READY' in captured, captureBytes=len(captured), captureSha256=hashlib.sha256(captured).hexdigest(), fixtureMarkerPresent=b'SCG_PTY_TMUX_READY' in captured)
+        alive = observe_pane() == marker_pid and subprocess.run([str(helper), 'status', *marker_birth], capture_output=True, timeout=2).returncode == 0
+        report.update(capture_verdict(captured, alive))
         if not report['ok']:
             raise ValueError('PTY tmux capture marker absent')
     finally:
         report['cleanup'] = fenced_cleanup(api, helper, server, birth)
         for stream in (server.stdin, server.stdout, server.stderr):
             stream.close()
-        report['ok'] = report['ok'] and report['cleanup']['gone']
+        report['markerGone'] = marker_birth is not None and marker_gone(helper, marker_birth)
+        if marker_birth is not None and not report['markerGone']:
+            focused_seal.record_leftover(api.LEFTOVER_CHILDREN, {'pid': marker_birth[0], 'birth': marker_birth, 'reason': 'PTY marker remained after fenced server teardown'})
+        report['ok'] = report['ok'] and report['cleanup']['gone'] and report['markerGone']
         api.write_json(root / 'pty-tmux-control.json', report, root)
         check_tmux(pin)
     return report
