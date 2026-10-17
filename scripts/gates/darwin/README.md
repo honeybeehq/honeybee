@@ -281,3 +281,11 @@ once and its original result is returned; original exceptions retain their norma
 behavior. Diagnostic failures never introduce an exception into the test, and
 capture can never prevent kill-server. Strict controller schemas reject raw or
 unknown fields before retaining diagnostic JSON.
+
+B2-R: fallback enum output uses only fs.writeSync(2, fixedLine) inside try/catch,
+including the hook-setup fallback. It never accesses process.stderr or changes
+stream listeners, so EPIPE/EBADF cannot create a later Writable error event. Linux
+subprocess regressions exercise an inherited pipe with no reader and a temporarily
+invalid fd 2 through the actual preloader. Both keep the test outcome and teardown;
+the invalid-fd case mocks the original command result while fd 2 is closed and
+restores fd 2 before returning to Node's event loop.

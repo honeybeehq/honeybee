@@ -82,6 +82,35 @@ class FlowTests(unittest.TestCase):
         result = subprocess.run([node, '--test', str(Path(__file__).parent.resolve() / 'focused-tmux-observer.test.mjs')], capture_output=True, text=True, timeout=15)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_tmux_fallback_closed_pipe_and_invalid_stderr_preserve_teardown(self):
+        node = os.environ.get('SCG_NODE_BIN')
+        if not node:
+            self.skipTest('pinned Node not configured')
+        preloader = Path(__file__).parent.resolve() / 'focused-tmux-diagnostics.mjs'
+        self.assertNotIn('process.stderr', preloader.read_text())
+        for mode in ('EPIPE', 'EBADF'):
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary).resolve()
+                binary = root / 'tmux'
+                marker = root / 'teardown'
+                binary.write_text('#!/bin/sh\ncase "$3" in\nkill-server) echo killed > ' + str(marker) + '; exit 0;;\nlist-panes) exit 0;;\n*) echo original-stderr >&2; exit 7;;\nesac\n')
+                binary.chmod(0o700)
+                script = root / 'fixture.mjs'
+                script.write_text("import {test} from 'node:test'; import {spawnSync} from 'node:child_process'; import {closeSync,writeSync} from 'node:fs'; import assert from 'node:assert/strict'; process.on('SIGPIPE',()=>{}); test('selected',async t=>{t.after(()=>{const r=spawnSync('tmux',['-S'," + json.dumps(str(root / 'socket')) + ",'kill-server']); assert.equal(r.status,0);}); " + ('closeSync(2);' if mode == 'EBADF' else '') + "assert.throws(()=>writeSync(2,'probe'),{code:" + json.dumps(mode) + "}); const r=spawnSync('tmux',['-S'," + json.dumps(str(root / 'socket')) + ",'new-session'],{encoding:'utf8'}); assert.equal(r.status,7); assert.equal(r.stderr.trim(),'original-stderr'); await new Promise(resolve=>setImmediate(resolve));});\n")
+                if mode == 'EBADF':
+                    script.write_text("import {test} from 'node:test'; import cp from 'node:child_process'; import {closeSync,writeSync,openSync,writeFileSync} from 'node:fs'; import assert from 'node:assert/strict'; const original={status:7,signal:null,error:null,stderr:'original-stderr',stdout:''}; cp.spawnSync=(_cmd,args)=>{if(args[2]==='kill-server'){writeFileSync(" + json.dumps(str(marker)) + ",'killed\\n');return {...original,status:0};} return original;}; await import(" + json.dumps(preloader.as_uri()) + "); test('selected',async t=>{t.after(()=>assert.equal(cp.spawnSync('tmux',['-S'," + json.dumps(str(root / 'socket')) + ",'kill-server']).status,0)); closeSync(2); try {assert.throws(()=>writeSync(2,'probe'),{code:'EBADF'}); const r=cp.spawnSync('tmux',['-S'," + json.dumps(str(root / 'socket')) + ",'new-session']); assert.equal(r,original);} finally {assert.equal(openSync('/dev/null','w'),2);} await new Promise(resolve=>setImmediate(resolve));});\n")
+                read_fd, write_fd = os.pipe()
+                os.close(read_fd)
+                try:
+                    argv = [node, str(script)] if mode == 'EBADF' else [node, '--import', str(preloader), str(script)]
+                    result = subprocess.run(argv, env={'PATH': str(root) + ':/usr/bin:/bin', 'HOME': str(root), 'TMPDIR': str(root), 'SCG_TMUX_DIAGNOSTIC_FILE': str(root / 'missing' / 'diagnostic')}, stdout=subprocess.PIPE, stderr=write_fd, text=True, timeout=15)
+                finally:
+                    os.close(write_fd)
+                self.assertEqual(result.returncode, 0, result.stdout)
+                self.assertIn('pass 1', result.stdout)
+                self.assertNotIn('uncaughtException', result.stdout)
+                self.assertEqual(marker.read_text(), 'killed\n')
+
     def test_tmux_preload_preserves_status_and_captures_before_teardown(self):
         node = os.environ.get('SCG_NODE_BIN')
         if not node:
