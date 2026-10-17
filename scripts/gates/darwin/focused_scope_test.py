@@ -54,6 +54,9 @@ int main(void) {
 
 
     def test_same_uid_quiescence_census_count_and_fd_paths(self):
+        scope = Path(__file__).with_name('scope.c').read_text()
+        start = scope.index('static int quiescence_sandbox_denied(', scope.index('static sandbox_check_function sandbox_checker'))
+        query_function = scope[start:scope.index('static int node_observation(', start)]
         function = Path(__file__).with_name('quiescence.h').read_text().replace('counts.skipped_uid_changed++;', 'counts.skipped_uid_changed++; observed_uid_skip++;')
         stub = r'''#include <stdio.h>
 #include <stdlib.h>
@@ -74,33 +77,36 @@ struct vnode_path { char vip_path[4096]; };
 struct proc_vnodepathinfo { struct vnode_path pvi_cdir; };
 struct proc_fdinfo { unsigned int proc_fdtype; int proc_fd; };
 struct vnode_fdinfowithpath { struct vnode_path pvip; };
-static int mode=0,foreign_read=0,stage=0,checks=0,observed_uid_skip=0;
+static int mode=0,foreign_read=0,stage=0,checks=0,observed_uid_skip=0,query_index=0;
 static unsigned int getuid(void) { return 501; }
 static int getpid(void) { return 99; }
-static char *realpath(const char *input,char *out) { strcpy(out,input);return out; }
-static int identity(int pid,struct proc_bsdinfo *b) { if(pid==12)foreign_read=1;if(mode==17){errno=EPERM;return 0;}b->pbi_uid=pid==12||mode==16?999:501;b->pbi_status=1;b->pbi_pgid=mode==30?88:11;b->pbi_start_tvsec=pid==10?150:mode==19?250:mode==20?160:mode==28?199:100;b->pbi_start_tvusec=1;return 1; }
+static char *realpath(const char *input,char *out) { if(!strcmp(input,"/fixture/t/nonexistent")){errno=ENOENT;return NULL;}strcpy(out,input);return out; }
+static int identity(int pid,struct proc_bsdinfo *b) { if(pid==12)foreign_read=1;if(mode==17){errno=EPERM;return 0;}b->pbi_uid=pid==12||mode==16?999:501;b->pbi_status=1;b->pbi_pgid=mode==30?88:11;b->pbi_start_tvsec=pid==10?150:mode==19?250:mode==20||mode==47?160:mode==28?199:100;b->pbi_start_tvusec=1;return 1; }
 static int same_birth(int pid,unsigned long long sec,unsigned long long usec) { (void)pid;(void)sec;(void)usec;checks++;errno=0;if((mode==3&&stage==1)||(mode==4&&stage==2)||(mode==5&&stage==3)||(mode==6&&stage==4)||(mode==7&&stage==1)||(mode==8&&stage==4)||(mode==13&&checks>=3))return 3;if(mode==11&&stage==1)return 4;return 0; }
 static int proc_listpids(unsigned int type,unsigned int uid,void *out,int bytes) { if(type!=PROC_UID_ONLY||uid!=501){foreign_read=1;return 0;}if(mode==1){errno=EPERM;return 0;}if(out){int p[]={10,11,99};if(bytes<12)return -1;memcpy(out,p,sizeof(p));}return 12; }
 static int getsid(int pid) { if(pid==10)return 10;return mode==21?10:mode==26?66:mode==29?77:11; }
-static int proc_pidpath(int pid,void *out,unsigned int size) { (void)size;if(pid==12)foreign_read=1;if(mode>=18){errno=mode==27?EPERM:ENOENT;return 0;}strcpy(out,"/fixture/node");return 14; }
+static int proc_pidpath(int pid,void *out,unsigned int size) { (void)size;if(pid==12)foreign_read=1;if((mode>=18&&mode<=30)||mode==50){errno=mode==27||mode==50?EPERM:ENOENT;return 0;}strcpy(out,mode>=31&&mode!=49?"/outside/node":"/fixture/node");return 14; }
 static int proc_pidinfo(int pid,int flavor,unsigned long long arg,void *out,int size) {
  (void)size;if(pid==12)foreign_read=1;
  if(flavor==PROC_PIDREGIONPATHINFO){if((mode==24||mode==25)&&arg==0){struct proc_regionwithpathinfo *r=out;r->prp_prinfo.pri_address=4096;r->prp_prinfo.pri_size=4096;r->prp_vip.vip_vi.vi_stat.vst_dev=7;r->prp_vip.vip_vi.vi_stat.vst_ino=mode==24?42:43;return sizeof(*r);}errno=ENOENT;return 0;}
- if(flavor==PROC_PIDVNODEPATHINFO){stage=1;if(mode==3||mode==9){errno=mode==3?ESRCH:EACCES;return -1;}strcpy(((struct proc_vnodepathinfo*)out)->pvi_cdir.vip_path,mode>=18&&mode!=22?"/outside":"/fixture/cwd");return sizeof(struct proc_vnodepathinfo);}
+ if(flavor==PROC_PIDVNODEPATHINFO){stage=1;if(mode==3||mode==9){errno=mode==3?ESRCH:EACCES;return -1;}strcpy(((struct proc_vnodepathinfo*)out)->pvi_cdir.vip_path,mode>=18&&mode!=22&&mode!=48?"/outside":"/fixture/cwd");return sizeof(struct proc_vnodepathinfo);}
  if(!out){stage=2;if(mode==4){errno=ESRCH;return -1;}return (mode==12||mode==14||mode==15?2:1)*sizeof(struct proc_fdinfo);}
  stage=3;
  if(mode==2||mode==5||mode==10){errno=mode==5?ESRCH:EPERM;return -1;}
  ((struct proc_fdinfo*)out)->proc_fdtype=PROX_FDTYPE_VNODE;((struct proc_fdinfo*)out)->proc_fd=3;if(mode==12||mode==14||mode==15){((struct proc_fdinfo*)out)[1].proc_fdtype=PROX_FDTYPE_VNODE;((struct proc_fdinfo*)out)[1].proc_fd=4;return 2*sizeof(struct proc_fdinfo);}return sizeof(struct proc_fdinfo);
 }
-static int proc_pidfdinfo(int pid,int fd,int flavor,void *out,int size) { (void)pid;(void)fd;(void)flavor;(void)size;stage=4;if(mode==6||(fd==3&&(mode==12||mode==14||mode==15))){errno=mode==6?ESRCH:mode==12?EBADF:mode==14?ENOENT:EPERM;return -1;}strcpy(((struct vnode_fdinfowithpath*)out)->pvip.vip_path,mode>=18&&mode!=23?"/outside":"/fixture/open");return sizeof(struct vnode_fdinfowithpath); }
+static int proc_pidfdinfo(int pid,int fd,int flavor,void *out,int size) { (void)pid;(void)fd;(void)flavor;(void)size;stage=4;if(mode>=31){errno=EPERM;return -1;}if(mode==6||(fd==3&&(mode==12||mode==14||mode==15))){errno=mode==6?ESRCH:mode==12?EBADF:mode==14?ENOENT:EPERM;return -1;}strcpy(((struct vnode_fdinfowithpath*)out)->pvip.vip_path,mode>=18&&mode!=23?"/outside":"/fixture/open");return sizeof(struct vnode_fdinfowithpath); }
+typedef int (*sandbox_check_function)(pid_t,const char*,int,...);
+static int fake_sandbox_check(pid_t pid,const char *op,int filter,...) { (void)pid;(void)filter;if(!op)return mode==41?0:1;int index=query_index++;if(mode==40){errno=EPERM;return 1;}if(mode>=32&&mode<=39&&index==mode-32)return 0;return 1; }
+static sandbox_check_function sandbox_checker(void) { return mode==44?NULL:fake_sandbox_check; }
 '''
         main = r'''
-int main(int argc,char **argv) { mode=argc>1?atoi(argv[1]):0;int rc=quiescence(10,"/fixture",200000000);if(foreign_read)return 9;if(mode==16&&observed_uid_skip!=1)return 10;return rc; }
+int main(int argc,char **argv) { mode=argc>1?atoi(argv[1]):0;int rc=quiescence(10,"/fixture",200000000,(char*[]){"/fixture","/fixture/sealed-probe","/fixture/src/package.json","/fixture/t/nonexistent"});if(foreign_read)return 9;if(mode==16&&observed_uid_skip!=1)return 10;return rc; }
 '''
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             source = root / 'quiescent.c'
-            source.write_text(stub + function + main)
+            source.write_text(stub + query_function + function + main)
             binary = root / 'quiescent'
             result = subprocess.run(['/usr/bin/cc', '-std=c11', '-Wall', '-Wextra', '-Werror', str(source), '-o', str(binary)], capture_output=True, text=True, timeout=10)
             self.assertEqual(result.returncode, 0, result.stderr)
@@ -116,7 +122,7 @@ int main(int argc,char **argv) { mode=argc>1?atoi(argv[1]):0;int rc=quiescence(1
                 9: ('live vnode read error', 4), 10: ('live fd-list error', 4),
                 11: ('birth mismatch', 4), 12: ('live EBADF skips fd and continues', 0),
                 13: ('exit after matched paths before final fence', 0),
-                14: ('live ENOENT skips fd and continues', 0), 15: ('live EPERM fails', 4), 16: ('uid changed after enumeration skips', 0), 17: ('same uid identity EPERM fails', 4), 18: ('pre-root unlinked unavailable region allowed', 0), 19: ('post-root unlinked fails', 4), 20: ('gate descendant birth fails', 4), 21: ('gate session or pgid fails', 4), 22: ('unlinked dirty cwd fails', 4), 23: ('unlinked dirty fd fails', 4), 24: ('region inode in manifest fails', 4), 25: ('region inode outside manifest allowed', 0), 26: ('root-owned session leader informational only', 0), 27: ('pidpath EPERM still fails', 4), 28: ('one second margin fails', 4), 29: ('sid in retained gate launch set fails', 4), 30: ('pgid in retained gate launch set fails', 4)}
+                14: ('live ENOENT skips fd and continues', 0), 15: ('live EPERM fails', 4), 16: ('uid changed after enumeration skips', 0), 17: ('same uid identity EPERM fails', 4), 18: ('pre-root unlinked unavailable region allowed', 0), 19: ('post-root unlinked fails', 4), 20: ('gate descendant birth fails', 4), 21: ('gate session or pgid fails', 4), 22: ('unlinked dirty cwd fails', 4), 23: ('unlinked dirty fd fails', 4), 24: ('region inode in manifest fails', 4), 25: ('region inode outside manifest allowed', 0), 26: ('root-owned session leader informational only', 0), 27: ('pidpath EPERM still fails', 4), 28: ('one second margin fails', 4), 29: ('sid in retained gate launch set fails', 4), 30: ('pgid in retained gate launch set fails', 4), 31: ('fd EPERM all eight denied accepts', 0), **{mode: ('each individual allowed query fails',4) for mode in range(32,40)}, 40: ('sandbox query error fails',4), 41: ('not sandboxed fails',4), 44: ('SPI unavailable fails',4), 47: ('fd EPERM gate process fails',4), 48: ('fd EPERM dirty cwd fails',4), 49: ('fd EPERM dirty exe fails',4), 50: ('exe EPERM fails before fd exception',4)}
             for mode, (name, expected) in cases.items():
                 with self.subTest(case=name):
                     result = subprocess.run([str(binary), str(mode)], input="1\n7 42\n2\n77\n88\n", capture_output=True, text=True, timeout=2)
@@ -126,6 +132,9 @@ int main(int argc,char **argv) { mode=argc>1?atoi(argv[1]):0;int rc=quiescence(1
                     elif not expected:
                         self.assertEqual(result.stdout, 'COMPLETE\n')
                         reason = json.loads(result.stderr)
+                        if mode==31:
+                            self.assertEqual(reason['counts']['fdUnobservableSandboxDenied'],1)
+                            self.assertEqual(reason['counts']['fdDeniedQueries'],8)
                         if mode==26:
                             self.assertEqual(reason['counts']['exeUnlinkedPreRoot'], 1)
                             self.assertGreaterEqual(reason['counts']['sessionLeaderNotUidListed'], 1)
@@ -140,6 +149,17 @@ int main(int argc,char **argv) { mode=argc>1?atoi(argv[1]):0;int rc=quiescence(1
                         self.assertEqual(reason['counts']['failed'], 1)
                         self.assertNotIn('/fixture', result.stderr)
                         self.assertNotIn('pid', reason)
+                        if 32 <= mode <= 39:
+                            self.assertEqual(reason['counts']['fdSandboxFailed'],1)
+                            self.assertEqual(reason['counts']['fdAllowedQueries'],1)
+                        if mode in (40,44):
+                            self.assertEqual(reason['counts']['fdQueryErrors'],1)
+                        if mode==41:
+                            self.assertEqual(reason['counts']['fdNotSandboxed'],1)
+                        if mode==47:
+                            self.assertEqual(reason['counts']['fdNonGateFailed'],1)
+                        if mode in (48,49):
+                            self.assertEqual(reason['counts']['fdCleanFailed'],1)
                         if mode == 17:
                             self.assertEqual((reason['call'], reason['errno']), ('birth', 'EPERM'))
                         if mode == 15:

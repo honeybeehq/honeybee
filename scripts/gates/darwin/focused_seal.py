@@ -127,7 +127,13 @@ def copy_dependencies(source, target, expected=None):
 
 def prepare(root, workspace, node, audit, controls, native, dependencies):
     sealed = root / 'sealed-target'
-    sealed.mkdir(mode=0o700)
+    existed = sealed.exists() or sealed.is_symlink()
+    sealed.mkdir(mode=0o700, exist_ok=True)
+    if existed:
+        validate_probe(root, initial=True)
+    info = sealed.lstat()
+    if not stat.S_ISDIR(info.st_mode) or stat.S_IMODE(info.st_mode) != 0o700 or info.st_uid != os.getuid() or sealed.resolve(strict=True) != sealed:
+        raise ValueError('sealed directory is redirected or unsafe')
     destination = sealed / 'src'
     destination.mkdir()
     for row in audit['files']:
@@ -182,6 +188,7 @@ class BusyRoot(ValueError):
         super().__init__('another same-uid process retains run-root access: ' + str(rows))
 
 
+SEALED_PROBES = {}
 GATE_LAUNCH_PIDS = set()
 GATE_LAUNCH_BIRTHS = set()
 
@@ -199,7 +206,26 @@ def remember_birth(birth):
 
 ROOT_CREATION = {}
 ROOT_INODES = {}
+def fd_disclosure(count):
+    return "fd introspection denied by MAC for " + str(count) + " same-uid sandboxed processes; accepted because each one's own sandbox denies read and write on the run root; an fd passed in over IPC by another process is not excluded."
+
+
+FD_UNOBSERVABLE_LIMIT = 'fdUnobservableSandboxDenied: fd-passing residual remains; sampled sandbox denial on the four probe paths does not prove that a pre-existing or passed descriptor cannot access another root path.'
 UNLINKED_LIMIT = 'exeUnlinkedPreRoot accepted by birth-time; exec-after-birth of a since-unlinked root binary by a non-gate process is not excluded.'
+
+
+def validate_probe(root, initial=False):
+    key = str(root.resolve(strict=True))
+    expected = SEALED_PROBES.get(key)
+    if expected is None:
+        raise ValueError('sealed probe creation identity unavailable')
+    sealed = root / 'sealed-target'
+    directory_info = sealed.lstat()
+    file_info = (sealed / 'quiescence-probe').lstat()
+    if (directory_info.st_dev, directory_info.st_ino, file_info.st_dev, file_info.st_ino) != expected or not stat.S_ISDIR(directory_info.st_mode) or stat.S_IMODE(directory_info.st_mode) != 0o700 or directory_info.st_uid != os.getuid() or sealed.resolve(strict=True) != sealed or not stat.S_ISREG(file_info.st_mode) or file_info.st_nlink != 1 or file_info.st_uid != os.getuid():
+        raise ValueError('sealed probe identity or permissions changed')
+    if initial and set(os.listdir(sealed)) != {'quiescence-probe'}:
+        raise ValueError('sealed probe directory has extra entry')
 
 
 def quiescence_input(root, helper):
@@ -207,6 +233,28 @@ def quiescence_input(root, helper):
     stamp = ROOT_CREATION.get(key)
     if stamp is None:
         raise ValueError('run-root creation clock unavailable')
+    sealed = root / 'sealed-target'
+    probe = sealed / 'quiescence-probe'
+    if key not in SEALED_PROBES:
+        sealed.mkdir(mode=0o700)
+        descriptor = os.open(probe, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        try:
+            file_info = os.fstat(descriptor)
+        finally:
+            os.close(descriptor)
+        directory_info = sealed.lstat()
+        SEALED_PROBES[key] = (directory_info.st_dev, directory_info.st_ino, file_info.st_dev, file_info.st_ino)
+    validate_probe(root)
+    package = root / 'src/package.json'
+    for path in (probe, package):
+        if path.resolve(strict=True) != path or not stat.S_ISREG(path.lstat().st_mode):
+            raise ValueError('quiescence probe is not canonical regular file')
+    parent = root / 't'
+    if parent.resolve(strict=True) != parent or not parent.is_dir():
+        raise ValueError('quiescence absent probe parent unsafe')
+    absent = parent / 'quiescence-must-not-exist'
+    if absent.exists() or absent.is_symlink():
+        raise ValueError('quiescence absent probe unexpectedly exists')
     inodes = ROOT_INODES.setdefault(key, set())
     def collect(descriptor, depth):
         if depth > 128:
@@ -234,7 +282,7 @@ def quiescence_input(root, helper):
         os.close(descriptor)
     text = str(len(inodes)) + '\n' + ''.join(str(dev) + ' ' + str(ino) + '\n' for dev, ino in sorted(inodes))
     text += str(len(GATE_LAUNCH_PIDS)) + '\n' + ''.join(str(pid) + '\n' for pid in sorted(GATE_LAUNCH_PIDS))
-    return [str(helper), 'quiescence', str(os.getpid()), key, str(stamp['beforeMkdirNs'] // 1000)], text
+    return [str(helper), 'quiescence', str(os.getpid()), key, str(stamp['beforeMkdirNs'] // 1000), str(probe), str(package), str(absent)], text
 
 
 def require_quiescent(root, helper):
@@ -266,10 +314,12 @@ def quiescence_evidence(result):
                 raise ValueError('unexpected quiescence diagnostic value')
             if type(reason['errnoNumber']) is not int or type(reason['sameBirth']) is not int or reason['sameBirth'] not in (-1, 0, 3, 4):
                 raise ValueError('unexpected quiescence numeric value')
-            if set(reason['counts']) != {'scanned', 'skippedGone', 'skippedUidChanged', 'skippedFdClosed', 'matched', 'failed', 'exeUnlinkedPreRoot', 'regionCompared', 'regionUnavailable', 'sessionLeaderNotUidListed'} or any(type(value) is not int or value < 0 for value in reason['counts'].values()):
+            if set(reason['counts']) != {'scanned', 'skippedGone', 'skippedUidChanged', 'skippedFdClosed', 'matched', 'failed', 'exeUnlinkedPreRoot', 'regionCompared', 'regionUnavailable', 'sessionLeaderNotUidListed', 'fdUnobservableSandboxDenied', 'fdNonGateFailed', 'fdCleanFailed', 'fdSandboxFailed', 'fdDeniedQueries', 'fdAllowedQueries', 'fdQueryErrors', 'fdNotSandboxed'} or any(type(value) is not int or value < 0 for value in reason['counts'].values()):
                 raise ValueError('unexpected quiescence counts')
             evidence['reason'] = reason
         except (ValueError, TypeError, KeyError):
             evidence['reason'] = {'type': 'UnobservedQuiescenceFailure'}
+    counts = evidence.get('reason', {}).get('counts', {}) if isinstance(evidence.get('reason'), dict) else {}
+    evidence['fdUnobservableDisclosure'] = fd_disclosure(counts.get('fdUnobservableSandboxDenied', 0))
     QUIESCENCE_OBSERVATIONS.append(evidence)
     return evidence

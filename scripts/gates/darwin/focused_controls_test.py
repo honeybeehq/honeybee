@@ -23,10 +23,10 @@ class ScopeControlTests(unittest.TestCase):
                     scope_controls.observation(bad_output, '/node', '/reader', '/work', sandboxed, bad_policy)
 
     def test_quiescence_reason_is_bounded_and_has_no_foreign_fields(self):
-        reason = {'type': 'QuiescenceFailure', 'call': 'pidinfo vnode', 'errno': 'EPERM', 'errnoNumber': 1, 'sameBirth': 0, 'counts': {'scanned': 2, 'skippedGone': 0, 'skippedUidChanged': 0, 'skippedFdClosed': 0, 'matched': 0, 'failed': 1, 'exeUnlinkedPreRoot': 0, 'regionCompared': 0, 'regionUnavailable': 0, 'sessionLeaderNotUidListed': 0}}
+        reason = {'type': 'QuiescenceFailure', 'call': 'pidinfo vnode', 'errno': 'EPERM', 'errnoNumber': 1, 'sameBirth': 0, 'counts': {'scanned': 2, 'skippedGone': 0, 'skippedUidChanged': 0, 'skippedFdClosed': 0, 'matched': 0, 'failed': 1, 'exeUnlinkedPreRoot': 0, 'regionCompared': 0, 'regionUnavailable': 0, 'sessionLeaderNotUidListed': 0, 'fdUnobservableSandboxDenied': 0, 'fdNonGateFailed': 0, 'fdCleanFailed': 0, 'fdSandboxFailed': 0, 'fdDeniedQueries': 0, 'fdAllowedQueries': 0, 'fdQueryErrors': 0, 'fdNotSandboxed': 0}}
         result = subprocess.CompletedProcess([], 4, '', json.dumps(reason))
         evidence = focused_seal.quiescence_evidence(result)
-        self.assertEqual(evidence, {'exit': 4, 'reason': reason})
+        self.assertEqual(evidence, {'exit': 4, 'reason': reason, 'fdUnobservableDisclosure': focused_seal.fd_disclosure(0)})
         result.stderr = json.dumps(dict(reason, path='/foreign/private'))
         self.assertEqual(focused_seal.quiescence_evidence(result)['reason'], {'type': 'UnobservedQuiescenceFailure'})
         result.stderr = 'x' * 4097
@@ -34,16 +34,20 @@ class ScopeControlTests(unittest.TestCase):
 
     def test_prelaunch_failure_and_receipt_retain_reason_and_exit(self):
         import guard
-        reason = {'type': 'QuiescenceFailure', 'call': 'fdinfo', 'errno': 'EPERM', 'errnoNumber': 1, 'sameBirth': 0, 'counts': {'scanned': 1, 'skippedGone': 0, 'skippedUidChanged': 0, 'skippedFdClosed': 0, 'matched': 0, 'failed': 1, 'exeUnlinkedPreRoot': 0, 'regionCompared': 0, 'regionUnavailable': 0, 'sessionLeaderNotUidListed': 0}}
+        reason = {'type': 'QuiescenceFailure', 'call': 'fdinfo', 'errno': 'EPERM', 'errnoNumber': 1, 'sameBirth': 0, 'counts': {'scanned': 1, 'skippedGone': 0, 'skippedUidChanged': 0, 'skippedFdClosed': 0, 'matched': 0, 'failed': 1, 'exeUnlinkedPreRoot': 0, 'regionCompared': 0, 'regionUnavailable': 0, 'sessionLeaderNotUidListed': 0, 'fdUnobservableSandboxDenied': 0, 'fdNonGateFailed': 0, 'fdCleanFailed': 0, 'fdSandboxFailed': 0, 'fdDeniedQueries': 0, 'fdAllowedQueries': 0, 'fdQueryErrors': 0, 'fdNotSandboxed': 0}}
         result = subprocess.CompletedProcess([], 4, '', json.dumps(reason))
         with tempfile.TemporaryDirectory() as temporary, patch.object(focused_seal, 'QUIESCENCE_OBSERVATIONS', []), patch.object(focused_seal.subprocess, 'run', return_value=result):
             root = Path(temporary).resolve()
             focused_seal.ROOT_CREATION[str(root)] = {'beforeMkdirNs': 200000000000}
+            (root / 'src').mkdir(exist_ok=True)
+            (root / 'src/package.json').write_text('{}')
+            (root / 't').mkdir(exist_ok=True)
             with self.assertRaisesRegex(ValueError, 'unresolved'):
                 focused_seal.require_quiescent(root, root / 'scope')
             guard.write_json(root / 'receipt.json', {'exit': 90}, root)
             receipt = json.loads((root / 'receipt.json').read_text())
-            self.assertEqual(receipt['quiescenceObservations'], [{'exit': 4, 'reason': reason}])
+            self.assertEqual(receipt['quiescenceObservations'], [{'exit': 4, 'reason': reason, 'fdUnobservableDisclosure': focused_seal.fd_disclosure(0)}])
+            self.assertEqual(receipt['fdUnobservableDisclosure'], focused_seal.fd_disclosure(0))
 
     def test_root_clock_and_inode_inventory_are_controller_owned_and_retained(self):
         with tempfile.TemporaryDirectory() as temporary, patch.object(focused_seal, 'ROOT_CREATION', {}), patch.object(focused_seal, 'ROOT_INODES', {}):
@@ -51,11 +55,14 @@ class ScopeControlTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'creation clock'):
                 focused_seal.quiescence_input(root, root / 'scope')
             focused_seal.ROOT_CREATION[str(root)] = {'beforeMkdirNs': 200000000123}
+            (root / 'src').mkdir(exist_ok=True)
+            (root / 'src/package.json').write_text('{}')
+            (root / 't').mkdir(exist_ok=True)
             file = root / 'binary'
             file.write_text('fixture')
             key = (file.stat().st_dev, file.stat().st_ino)
             command, inventory = focused_seal.quiescence_input(root, root / 'scope')
-            self.assertEqual(command[-1], '200000000')
+            self.assertEqual(command[-4], '200000000')
             self.assertIn(str(key[0]) + ' ' + str(key[1]), inventory)
             file.unlink()
             self.assertIn(str(key[0]) + ' ' + str(key[1]), focused_seal.quiescence_input(root, root / 'scope')[1])
@@ -64,6 +71,9 @@ class ScopeControlTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary, patch.object(focused_seal, 'GATE_LAUNCH_PIDS', set()), patch.object(focused_seal, 'GATE_LAUNCH_BIRTHS', set()):
             root = Path(temporary).resolve()
             focused_seal.ROOT_CREATION[str(root)] = {'beforeMkdirNs': 200000000000}
+            (root / 'src').mkdir(exist_ok=True)
+            (root / 'src/package.json').write_text('{}')
+            (root / 't').mkdir(exist_ok=True)
             focused_seal.remember_launch(77)
             focused_seal.remember_birth(['88', '77', '100', '1'])
             focused_seal.remember_birth(['88', '77', '101', '1'])
@@ -71,6 +81,15 @@ class ScopeControlTests(unittest.TestCase):
             command, inventory = focused_seal.quiescence_input(root, root / 'scope')
             self.assertTrue(inventory.endswith('2\n77\n88\n'))
             self.assertNotIn('77', command)
+
+    def test_fd_disclosure_is_verbatim_with_scan_count(self):
+        expected = "fd introspection denied by MAC for 3 same-uid sandboxed processes; accepted because each one's own sandbox denies read and write on the run root; an fd passed in over IPC by another process is not excluded."
+        self.assertEqual(focused_seal.fd_disclosure(3), expected)
+        counts = dict.fromkeys(('scanned', 'skippedGone', 'skippedUidChanged', 'skippedFdClosed', 'matched', 'failed', 'exeUnlinkedPreRoot', 'regionCompared', 'regionUnavailable', 'sessionLeaderNotUidListed', 'fdUnobservableSandboxDenied', 'fdNonGateFailed', 'fdCleanFailed', 'fdSandboxFailed', 'fdDeniedQueries', 'fdAllowedQueries', 'fdQueryErrors', 'fdNotSandboxed'), 0)
+        counts['fdUnobservableSandboxDenied'] = 3
+        reason = {'type': 'QuiescenceComplete', 'call': 'none', 'errno': 'NONE', 'errnoNumber': 0, 'sameBirth': -1, 'counts': counts}
+        evidence = focused_seal.quiescence_evidence(subprocess.CompletedProcess([], 0, 'COMPLETE\n', json.dumps(reason)))
+        self.assertEqual(evidence['fdUnobservableDisclosure'], expected)
 
     @unittest.skipUnless(sys.platform == 'darwin', 'real controller scope controls run only on Darwin')
     def test_real_controller_controls_preceded_self_test_body(self):

@@ -40,6 +40,7 @@ static int same_birth(int pid, unsigned long long sec, unsigned long long usec) 
   if (b.pbi_start_tvsec != sec || b.pbi_start_tvusec != usec) return 4;
   return b.pbi_status == 5 ? 3 : 0;
 }
+static int quiescence_sandbox_denied(int pid, unsigned long long sec, unsigned long long usec, char **paths, int *denied, int *allowed, int *errors, int *not_sandboxed);
 #include "quiescence.h"
 static int listeners(int pid, unsigned long long sec, unsigned long long usec, int connected) {
   int rc = same_birth(pid, sec, usec);
@@ -124,6 +125,37 @@ static int group_members(int pid, unsigned long long sec, unsigned long long use
 typedef int (*sandbox_check_function)(pid_t, const char *, int, ...);
 static sandbox_check_function sandbox_checker(void) {
   return (sandbox_check_function)dlsym(RTLD_DEFAULT, "sandbox_check");
+}
+static int quiescence_sandbox_denied(int pid, unsigned long long sec, unsigned long long usec, char **paths, int *denied, int *allowed, int *errors, int *not_sandboxed) {
+  char canonical[PATH_MAX], parent[PATH_MAX];
+  for (int index = 0; index < 3; index++) if (!realpath(paths[index], canonical) || strcmp(canonical, paths[index])) { (*errors)++; return 0; }
+  if (strlen(paths[3]) >= sizeof(parent)) { (*errors)++; return 0; }
+  strcpy(parent, paths[3]);
+  char *slash = strrchr(parent, '/');
+  if (!slash || !slash[1]) { (*errors)++; return 0; }
+  *slash = 0;
+  if (!realpath(parent, canonical) || strcmp(parent, canonical)) { (*errors)++; return 0; }
+  errno = 0;
+  if (realpath(paths[3], canonical) || errno != ENOENT) { (*errors)++; return 0; }
+  sandbox_check_function check = sandbox_checker();
+  if (!check || same_birth(pid, sec, usec)) { (*errors)++; return 0; }
+  errno = 0;
+  int sandboxed = check(pid, NULL, 0);
+  int error = errno;
+  if (error || (sandboxed != 0 && sandboxed != 1) || same_birth(pid, sec, usec)) { (*errors)++; return 0; }
+  if (!sandboxed) { (*not_sandboxed)++; return 0; }
+  const char *operations[] = {"file-read-data", "file-write-data"};
+  for (int path = 0; path < 4; path++) for (int operation = 0; operation < 2; operation++) {
+    if (same_birth(pid, sec, usec)) { (*errors)++; return 0; }
+    errno = 0;
+    int result = check(pid, operations[operation], 1, paths[path]);
+    error = errno;
+    if (error || (result != 0 && result != 1) || same_birth(pid, sec, usec)) { (*errors)++; return 0; }
+    if (!result) { (*allowed)++; return 0; }
+    (*denied)++;
+  }
+  if (same_birth(pid, sec, usec)) { (*errors)++; return 0; }
+  return 1;
 }
 static int node_observation(int pid, unsigned long long sec, unsigned long long usec, const char *expected_node, const char *reader, const char *preloader) {
   int rc = same_birth(pid, sec, usec);
@@ -231,8 +263,8 @@ int main(int argc, char **argv) {
   if (!strcmp(argv[1], "quiescence")) {
     char *end = NULL;
     errno = 0;
-    unsigned long long created = argc == 5 ? strtoull(argv[4], &end, 10) : 0;
-    return !errno && created && end && !*end ? quiescence(pid, argv[3], created) : 2;
+    unsigned long long created = argc == 8 ? strtoull(argv[4], &end, 10) : 0;
+    return !errno && created && end && !*end ? quiescence(pid, argv[3], created, (char *[]){argv[3], argv[5], argv[6], argv[7]}) : 2;
   }
   if (argc < 6) return 2;
   unsigned long long sec = strtoull(argv[4], NULL, 10), usec = strtoull(argv[5], NULL, 10);

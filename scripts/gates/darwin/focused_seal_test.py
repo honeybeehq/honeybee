@@ -3,6 +3,7 @@ import os
 import tempfile
 import unittest
 
+import focused_seal
 from focused_seal import copy_dependencies, copy_file, digest, prepare, root_users
 
 
@@ -71,15 +72,43 @@ class SealTests(unittest.TestCase):
                         path.write_text('controller built fixture')
                         records[str(path.relative_to(root))] = {'sha256': digest(path)}
                     native[kind] = {'files': records}
+                (workspace / 'package.json').write_text('{}')
+                (root / 't').mkdir()
+                focused_seal.ROOT_CREATION[str(root)] = {'beforeMkdirNs': 200000000000}
+                focused_seal.quiescence_input(root, root / 'scope')
+                probe_ino = (root / 'sealed-target/quiescence-probe').stat().st_ino
                 if mismatch:
                     (root / 'scope').write_text('outer changed scanner')
                     with self.assertRaisesRegex(ValueError, 'reviewed pin'):
                         prepare(root, workspace, str(node), {'files': []}, controls, native, {})
                 else:
                     sealed, copied, copied_node = prepare(root, workspace, str(node), {'files': []}, controls, native, {})
+                    self.assertEqual((sealed / 'quiescence-probe').stat().st_ino, probe_ino)
+                    self.assertFalse((copied / 'quiescence-probe').exists())
                     self.assertEqual(digest(sealed / 'control/scope'), controls[str(root / 'scope')][-1])
                     self.assertNotEqual((sealed / 'control/scope').stat().st_ino, (root / 'scope').stat().st_ino)
                     self.assertEqual(digest(Path(copied_node)), controls[str(node)][-1])
+
+    def test_precreated_probe_extra_entry_and_swapped_directory_refuse(self):
+        for mutation in ('extra', 'swapped'):
+            with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary).resolve()
+                (root / 'src').mkdir()
+                (root / 'src/package.json').write_text('{}')
+                (root / 't').mkdir()
+                focused_seal.ROOT_CREATION[str(root)] = {'beforeMkdirNs': 200000000000}
+                focused_seal.quiescence_input(root, root / 'scope')
+                sealed = root / 'sealed-target'
+                probe = sealed / 'quiescence-probe'
+                self.assertIn((probe.stat().st_dev, probe.stat().st_ino), focused_seal.ROOT_INODES[str(root)])
+                if mutation == 'extra':
+                    (sealed / 'extra').write_text('unexpected')
+                else:
+                    sealed.rename(root / 'original-sealed')
+                    sealed.mkdir(mode=0o700)
+                    (sealed / 'quiescence-probe').write_text('replacement')
+                with self.assertRaisesRegex(ValueError, 'sealed probe'):
+                    prepare(root, root / 'src', '/node', {}, {}, {}, {})
 
     def test_same_uid_open_file_cwd_and_image_are_all_root_uses(self):
         with tempfile.TemporaryDirectory() as temporary:
