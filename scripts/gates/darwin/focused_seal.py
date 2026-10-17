@@ -349,13 +349,13 @@ def quiescence_evidence(result):
             if len(result.stderr) > 4096:
                 raise ValueError('oversized quiescence diagnostic')
             reason = json.loads(result.stderr)
-            if set(reason) != {'type', 'call', 'errno', 'errnoNumber', 'sameBirth', 'counts', 'fdAllowedByQuery', 'fdFailedQueryResults', 'fdWriteDeniedReadResults', 'regionPartialDetail', 'platformFailures'} or reason['type'] != ('QuiescenceFailure' if result.returncode else 'QuiescenceComplete'):
+            if set(reason) != {'type', 'call', 'errno', 'errnoNumber', 'sameBirth', 'counts', 'fdAllowedByQuery', 'fdFailedQueryResults', 'fdWriteDeniedReadResults', 'regionPartialDetail', 'platformFailures', 'regionZeroSizeDetail'} or reason['type'] != ('QuiescenceFailure' if result.returncode else 'QuiescenceComplete'):
                 raise ValueError('unexpected quiescence diagnostic schema')
             if reason['call'] not in ('root', 'allocation', 'proc_listpids', 'pidinfo vnode', 'pidpath', 'listfds', 'fdinfo', 'birth', 'none', 'unlinked policy', 'region inode') or reason['errno'] not in QUIESCENCE_ERRNOS:
                 raise ValueError('unexpected quiescence diagnostic value')
             if type(reason['errnoNumber']) is not int or type(reason['sameBirth']) is not int or reason['sameBirth'] not in (-1, 0, 3, 4):
                 raise ValueError('unexpected quiescence numeric value')
-            if set(reason['counts']) != {'scanned', 'skippedGone', 'skippedUidChanged', 'skippedFdClosed', 'matched', 'failed', 'exeUnlinkedPreRoot', 'regionCompared', 'regionUnavailable', 'regionPartial', 'sessionLeaderNotUidListed', 'fdUnobservableSandboxDenied', 'fdNonGateFailed', 'fdCleanFailed', 'fdSandboxFailed', 'fdDeniedQueries', 'fdAllowedQueries', 'fdQueryErrors', 'fdNotSandboxed', 'fdUnobservableWriteDenied', 'fdUnobservablePlatformBinary', 'notPlatform', 'pathDisallowed', 'csopsError', 'csopsUnavailable', 'inodeMatch', 'platformInodeUnobserved'} or any(type(value) is not int or value < 0 for value in reason['counts'].values()):
+            if set(reason['counts']) != {'scanned', 'skippedGone', 'skippedUidChanged', 'skippedFdClosed', 'matched', 'failed', 'exeUnlinkedPreRoot', 'regionCompared', 'regionUnavailable', 'regionPartial', 'regionZeroSize', 'sessionLeaderNotUidListed', 'fdUnobservableSandboxDenied', 'fdNonGateFailed', 'fdCleanFailed', 'fdSandboxFailed', 'fdDeniedQueries', 'fdAllowedQueries', 'fdQueryErrors', 'fdNotSandboxed', 'fdUnobservableWriteDenied', 'fdUnobservablePlatformBinary', 'notPlatform', 'pathDisallowed', 'csopsError', 'csopsUnavailable', 'inodeMatch', 'platformInodeUnobserved'} or any(type(value) is not int or value < 0 for value in reason['counts'].values()):
                 raise ValueError('unexpected quiescence counts')
             slots = {'root:read', 'root:write', 'probe:read', 'probe:write', 'src:read', 'src:write', 'absent:read', 'absent:write', 'root:create', 'root:unlink', 'probe:create', 'probe:unlink', 'src:create', 'src:unlink', 'absent:create', 'absent:unlink'}
             if not isinstance(reason['fdAllowedByQuery'], dict) or set(reason['fdAllowedByQuery']) != slots or any(type(value) is not int or value < 0 for value in reason['fdAllowedByQuery'].values()):
@@ -371,6 +371,9 @@ def quiescence_evidence(result):
             failures = reason['platformFailures']
             if not isinstance(failures, dict) or set(failures) != set(PLATFORM_FAILURE_CONDITIONS) or any(type(value) is not int or value < 0 for value in failures.values()):
                 raise ValueError('unexpected platform-condition counts')
+            zero = reason['regionZeroSizeDetail']
+            if not isinstance(zero, dict) or set(zero) != {'returnLength', 'shareMode', 'regionKind', 'lastBeforeEINVAL'} or zero['returnLength'] not in ('exact', 'unobserved') or zero['shareMode'] not in ('UNOBSERVED', 'UNKNOWN', 'SM_COW', 'SM_PRIVATE', 'SM_EMPTY', 'SM_SHARED', 'SM_TRUESHARED', 'SM_PRIVATE_ALIASED', 'SM_SHARED_ALIASED', 'SM_LARGE_PAGE') or zero['regionKind'] not in ('mapping', 'submap', 'unobserved') or zero['lastBeforeEINVAL'] not in ('unknown', 'not-applicable', 'yes', 'no'):
+                raise ValueError('unexpected zero-region diagnostic')
             evidence['reason'] = reason
         except (ValueError, TypeError, KeyError):
             evidence['reason'] = {'type': 'UnobservedQuiescenceFailure'}

@@ -69,6 +69,14 @@ int main(void) {
 #define PROC_UID_ONLY 4
 #define PROC_PIDREGIONPATHINFO 8
 #define PROC_REGION_SUBMAP 1
+#define SM_COW 1
+#define SM_PRIVATE 2
+#define SM_EMPTY 3
+#define SM_SHARED 4
+#define SM_TRUESHARED 5
+#define SM_PRIVATE_ALIASED 6
+#define SM_SHARED_ALIASED 7
+#define SM_LARGE_PAGE 8
 #define RTLD_DEFAULT ((void*)0)
 #define CS_OPS_STATUS 0U
 #define CS_PLATFORM_BINARY 0x04000000U
@@ -76,7 +84,7 @@ int main(void) {
 #define PROC_PIDLISTFDS 2
 #define PROC_PIDFDVNODEPATHINFO 3
 #define PROX_FDTYPE_VNODE 1
-struct proc_regionwithpathinfo { struct { unsigned long long pri_address,pri_size; unsigned int pri_flags; } prp_prinfo; struct { struct { struct { unsigned int vst_dev; unsigned long long vst_ino; } vi_stat; } vip_vi; } prp_vip; };
+struct proc_regionwithpathinfo { struct { unsigned long long pri_address,pri_size; unsigned int pri_flags,pri_share_mode; } prp_prinfo; struct { struct { struct { unsigned int vst_dev; unsigned long long vst_ino; } vi_stat; } vip_vi; } prp_vip; };
 struct proc_bsdinfo { unsigned int pbi_uid,pbi_status,pbi_pgid,pbi_ppid; unsigned long long pbi_start_tvsec,pbi_start_tvusec; };
 struct vnode_path { char vip_path[4096]; };
 struct proc_vnodepathinfo { struct vnode_path pvi_cdir; };
@@ -98,6 +106,14 @@ static int proc_pidpath(int pid,void *out,unsigned int size) { (void)size;if(pid
 static int proc_pidinfo(int pid,int flavor,unsigned long long arg,void *out,int size) {
  (void)size;if(pid==12)foreign_read=1;
  if(flavor==PROC_PIDREGIONPATHINFO){
+ if(mode==124){errno=0;return 1;}
+ if(mode>=120){
+ struct proc_regionwithpathinfo *r=out;r->prp_vip.vip_vi.vi_stat.vst_dev=7;r->prp_vip.vip_vi.vi_stat.vst_ino=43;
+ if(arg==0){r->prp_prinfo.pri_address=4096;r->prp_prinfo.pri_size=4096;return sizeof(*r);}
+ if(arg==8192){r->prp_prinfo.pri_address=mode==122?4096:mode==123?~0ULL:8192;r->prp_prinfo.pri_size=0;r->prp_prinfo.pri_share_mode=mode==120?SM_COW:SM_PRIVATE;r->prp_vip.vip_vi.vi_stat.vst_ino=42;return sizeof(*r);}
+ if(mode==120&&arg==8193){r->prp_prinfo.pri_address=12288;r->prp_prinfo.pri_size=4096;return sizeof(*r);}
+ errno=EINVAL;return 0;
+ }
  if(mode>=110){
  struct proc_regionwithpathinfo *r=out;
  r->prp_vip.vip_vi.vi_stat.vst_dev=7;r->prp_vip.vip_vi.vi_stat.vst_ino=43;
@@ -152,7 +168,7 @@ int main(int argc,char **argv) { mode=argc>1?atoi(argv[1]):0;int rc=quiescence(1
                 9: ('live vnode read error', 4), 10: ('live fd-list error', 4),
                 11: ('birth mismatch', 4), 12: ('live EBADF skips fd and continues', 0),
                 13: ('exit after matched paths before final fence', 0),
-                14: ('live ENOENT skips fd and continues', 0), 15: ('live EPERM fails', 4), 16: ('uid changed after enumeration skips', 0), 17: ('same uid identity EPERM fails', 4), 18: ('pre-root unlinked unavailable region allowed', 0), 19: ('post-root unlinked fails', 4), 20: ('gate descendant birth fails', 4), 21: ('gate session or pgid fails', 4), 22: ('unlinked dirty cwd fails', 4), 23: ('unlinked dirty fd fails', 4), 24: ('region inode in manifest fails', 4), 25: ('region inode outside manifest allowed', 0), 26: ('root-owned session leader informational only', 0), 27: ('pidpath EPERM still fails', 4), 28: ('one second margin fails', 4), 29: ('sid in retained gate launch set fails', 4), 30: ('pgid in retained gate launch set fails', 4), 31: ('fd EPERM all eight denied accepts', 0), **{mode: ('read-only alternative or data-write refusal',0 if mode%2==0 else 4) for mode in range(32,40)}, 40: ('sandbox query error fails',4), 41: ('not sandboxed fails',4), 44: ('SPI unavailable fails',4), 47: ('fd EPERM gate process fails',4), 48: ('fd EPERM dirty cwd fails',4), 49: ('fd EPERM dirty exe fails',4), 50: ('exe EPERM fails before fd exception',4),60:('read allowed twelve writes denied accepts',0),**{mode:('each of twelve write allows fails',4) for mode in range(61,73)},73:('unknown write-create op errors',4),**{mode:('platform binary prefix and status proof',0 if mode in (80,94,95,96) else 4) for mode in range(80,100)},100:('region mid-walk error refuses ENOENT',4),101:('region short read refuses ENOENT',4),102:('later inventory inode refuses ENOENT',4),103:('main image then error refuses platform',4),104:('main image then short read refuses platform',4),105:('main image then inventory inode refuses platform',4),106:('complete platform walk accepts main image',0),107:('first unavailable refuses platform',4),108:('partial before main-image proof',4),109:('complete without main-image proof',4),110:('containing submap sequence completes',0),111:('normal last-region EINVAL completes',0),112:('synthetic footprint then EINVAL completes',0),113:('repeated last region remains partial',4),114:('zero-sized region fails',4),115:('region end overflow fails',4),116:('highest representable end then EINVAL completes',0),117:('request increment overflow fails',4)}
+                14: ('live ENOENT skips fd and continues', 0), 15: ('live EPERM fails', 4), 16: ('uid changed after enumeration skips', 0), 17: ('same uid identity EPERM fails', 4), 18: ('pre-root unlinked unavailable region allowed', 0), 19: ('post-root unlinked fails', 4), 20: ('gate descendant birth fails', 4), 21: ('gate session or pgid fails', 4), 22: ('unlinked dirty cwd fails', 4), 23: ('unlinked dirty fd fails', 4), 24: ('region inode in manifest fails', 4), 25: ('region inode outside manifest allowed', 0), 26: ('root-owned session leader informational only', 0), 27: ('pidpath EPERM still fails', 4), 28: ('one second margin fails', 4), 29: ('sid in retained gate launch set fails', 4), 30: ('pgid in retained gate launch set fails', 4), 31: ('fd EPERM all eight denied accepts', 0), **{mode: ('read-only alternative or data-write refusal',0 if mode%2==0 else 4) for mode in range(32,40)}, 40: ('sandbox query error fails',4), 41: ('not sandboxed fails',4), 44: ('SPI unavailable fails',4), 47: ('fd EPERM gate process fails',4), 48: ('fd EPERM dirty cwd fails',4), 49: ('fd EPERM dirty exe fails',4), 50: ('exe EPERM fails before fd exception',4),60:('read allowed twelve writes denied accepts',0),**{mode:('each of twelve write allows fails',4) for mode in range(61,73)},73:('unknown write-create op errors',4),**{mode:('platform binary prefix and status proof',0 if mode in (80,94,95,96) else 4) for mode in range(80,100)},100:('region mid-walk error refuses ENOENT',4),101:('region short read refuses ENOENT',4),102:('later inventory inode refuses ENOENT',4),103:('main image then error refuses platform',4),104:('main image then short read refuses platform',4),105:('main image then inventory inode refuses platform',4),106:('complete platform walk accepts main image',0),107:('first unavailable refuses platform',4),108:('partial before main-image proof',4),109:('complete without main-image proof',4),110:('containing submap sequence completes',0),111:('normal last-region EINVAL completes',0),112:('synthetic footprint then EINVAL completes',0),113:('repeated last region remains partial',4),114:('zero cannot supply main-image proof',4),115:('region end overflow fails',4),116:('highest representable end then EINVAL completes',0),117:('request increment overflow fails',4),120:('mid-walk zero skipped without inode comparison',0),121:('end zero skipped then EINVAL',0),122:('zero start below request remains partial',4),123:('zero start increment overflow fails',4),124:('first successful short read remains partial',4)}
             for mode, (name, expected) in cases.items():
                 with self.subTest(case=name):
                     result = subprocess.run([str(binary), str(mode)], input="1\n7 42\n2\n77\n88\n1\n11 10 100 1\n", capture_output=True, text=True, timeout=2)
@@ -168,10 +184,14 @@ int main(int argc,char **argv) { mode=argc>1?atoi(argv[1]):0;int rc=quiescence(1
                             self.assertEqual(reason['counts']['fdDeniedQueries'],8)
                             self.assertEqual(reason['fdFailedQueryResults'],[-2]*16)
                             self.assertEqual(sum(reason['fdAllowedByQuery'].values()),0)
-                        if mode in (80,94,95,96,106,110,111,112,116):
+                        if mode in (80,94,95,96,106,110,111,112,116,120,121):
                             self.assertEqual(reason['counts']['fdUnobservablePlatformBinary'],1)
                             self.assertEqual(reason['counts']['fdUnobservableSandboxDenied'],0)
                             self.assertEqual(reason['counts']['fdUnobservableWriteDenied'],0)
+                        if mode in (120,121):
+                            self.assertEqual(reason['counts']['regionZeroSize'],1)
+                            self.assertEqual(reason['counts']['regionCompared'],2 if mode==120 else 1)
+                            self.assertEqual(reason['regionZeroSizeDetail'], {'returnLength':'exact','shareMode':'SM_COW' if mode==120 else 'SM_PRIVATE','regionKind':'mapping','lastBeforeEINVAL':'no' if mode==120 else 'yes'})
                         if mode==60 or mode in (32,34,36,38):
                             self.assertEqual(reason['counts']['fdUnobservableWriteDenied'],1)
                             self.assertEqual(reason['counts']['fdUnobservableSandboxDenied'],0)
@@ -192,16 +212,24 @@ int main(int argc,char **argv) { mode=argc>1?atoi(argv[1]):0;int rc=quiescence(1
                         if mode in (100,101,103,104,108):
                             self.assertEqual(reason['counts']['regionPartial'],1)
                             self.assertEqual(reason['regionPartialDetail'], {'errno':'EPERM' if mode in (100,103,108) else 'NONE','regionsRead':1,'mainImageSeen':int(mode in (103,104)), 'termination':'read-error' if mode in (100,103,108) else 'short-read', 'regionKind':'unobserved','lastBeforeEINVAL':'unknown'})
-                        if mode in (113,114,115,117):
+                        if mode in (113,115,117):
                             self.assertEqual(reason['counts']['regionPartial'],1)
-                            self.assertEqual(reason['regionPartialDetail'], {'errno':'NONE','regionsRead':2 if mode in (113,117) else 1,'mainImageSeen':1,'termination':{113:'end-not-past-request',114:'zero-size',115:'overflow',117:'overflow'}[mode],'regionKind':'submap' if mode==113 else 'mapping','lastBeforeEINVAL':'unknown'})
+                            self.assertEqual(reason['regionPartialDetail'], {'errno':'NONE','regionsRead':2 if mode in (113,117) else 1,'mainImageSeen':1,'termination':{113:'end-not-past-request',115:'overflow',117:'overflow'}[mode],'regionKind':'submap' if mode==113 else 'mapping','lastBeforeEINVAL':'unknown'})
                             self.assertEqual(reason['platformFailures']['regionPartial'],1)
                         if mode in (103,104,108):
                             self.assertEqual(reason['platformFailures']['regionPartial'],1)
-                        if mode==109:
+                        if mode in (109,114):
                             self.assertEqual(reason['platformFailures']['mainImageMissing'],1)
-                        if 80 <= mode <= 109 and mode not in (100,101,102):
+                        if 80 <= mode <= 124 and mode not in (100,101,102):
                             self.assertEqual(sum(reason['platformFailures'].values()),1)
+                        if mode in (122,123):
+                            self.assertEqual(reason['counts']['regionZeroSize'],0)
+                            self.assertEqual(reason['regionPartialDetail']['termination'],'end-not-past-request' if mode==122 else 'overflow')
+                            self.assertEqual(reason['regionZeroSizeDetail'],{'returnLength':'exact','shareMode':'SM_PRIVATE','regionKind':'mapping','lastBeforeEINVAL':'unknown'})
+                        if mode==124:
+                            self.assertEqual(reason['counts']['regionPartial'],1)
+                            self.assertEqual(reason['counts']['regionUnavailable'],0)
+                            self.assertEqual(reason['regionZeroSizeDetail'],{'returnLength':'unobserved','shareMode':'UNOBSERVED','regionKind':'unobserved','lastBeforeEINVAL':'not-applicable'})
                         if mode==107:
                             self.assertEqual(reason['counts']['regionUnavailable'],1)
                         self.assertNotIn('/fixture', result.stderr)
