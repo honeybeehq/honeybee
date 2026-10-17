@@ -94,12 +94,12 @@ class PolicyTests(unittest.TestCase):
         digest='a'*64
         config=dict(toolHashes={'test_capabilities.py':digest},runRoot='/runroot')
         command=['npm','test']
-        record=dict(asserted=True,helperSha256=digest,execArgv=['python3','-B','/runroot/workload.py','/runroot','candidate-step0-0',*command],setprivArgv=SETPRIV_ARGS,command=command,status={**{key:'0' for key in CAPABILITY_SETS},'NoNewPrivs':'1'},entryGuard=dict(allowed=True,beforeFirstWrite=True,ruleVersion=RULE_VERSION))
+        record=dict(asserted=True,uid=1000,gid=1000,uidMap='1000 0 1',gidMap='1000 0 1',helperSha256=digest,execArgv=['python3','-B','/runroot/workload.py','/runroot','candidate-step0-0',*command],setprivArgv=SETPRIV_ARGS,command=command,status={**{key:'0' for key in CAPABILITY_SETS},'NoNewPrivs':'1'},entryGuard=dict(allowed=True,beforeFirstWrite=True,ruleVersion=RULE_VERSION))
         self.assertTrue(capability_receipt_valid(record,config,command,'candidate-step0-0'))
-        for missing in ('helperSha256','setprivArgv','command','status','entryGuard','asserted','execArgv'):
+        for missing in ('helperSha256','setprivArgv','command','status','entryGuard','asserted','execArgv','uid','gid','uidMap','gidMap'):
             changed=dict(record);del changed[missing]
             self.assertFalse(capability_receipt_valid(changed,config,command,'candidate-step0-0'))
-        for updates in (dict(helperSha256='b'*64),dict(execArgv=['other']),dict(setprivArgv=['setpriv','--no-new-privs']),dict(command=['npm','run','build']),dict(asserted=False),dict(entryGuard=dict(record['entryGuard'],beforeFirstWrite=False))):
+        for updates in (dict(uid=0),dict(gid=0),dict(uidMap='0 0 1'),dict(gidMap='0 0 1'),dict(helperSha256='b'*64),dict(execArgv=['other']),dict(setprivArgv=['setpriv','--no-new-privs']),dict(command=['npm','run','build']),dict(asserted=False),dict(entryGuard=dict(record['entryGuard'],beforeFirstWrite=False))):
             self.assertFalse(capability_receipt_valid(dict(record,**updates),config,command,'candidate-step0-0'))
         for key in CAPABILITY_SETS:
             fields=dict(record['status']);del fields[key]

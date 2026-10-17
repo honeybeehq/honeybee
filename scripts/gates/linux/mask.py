@@ -108,8 +108,10 @@ try:
     outer_uid,outer_gid=os.getuid(),os.getgid()
     if libc.unshare(ctypes.c_int(0x10000000|0x00020000))!=0:raise OSError(ctypes.get_errno(),'nested user/mount unshare failed')
     pathlib.Path('/proc/self/setgroups').write_text('deny')
-    pathlib.Path('/proc/self/uid_map').write_text(f'0 {outer_uid} 1')
-    pathlib.Path('/proc/self/gid_map').write_text(f'0 {outer_gid} 1')
+    pathlib.Path('/proc/self/uid_map').write_text(f'1000 {outer_uid} 1')
+    pathlib.Path('/proc/self/gid_map').write_text(f'1000 {outer_gid} 1')
+    assert os.getuid() == os.getgid() == 1000
+    receipt['workloadIdentity'] = dict(uid=1000, gid=1000, uidMap=pathlib.Path('/proc/self/uid_map').read_text(), gidMap=pathlib.Path('/proc/self/gid_map').read_text())
     mount_readonly('/proc', True, recursive=True)
     receipt['filesystem'] = assert_filesystem(CACHE)
     receipt['namespaces']={key:os.readlink('/proc/self/ns/'+key) for key in ('user','mnt','net','pid')}
@@ -152,7 +154,7 @@ try:
     receipt.update(outsideAssertion=go, maskAsserted=True, maskAssertedAt=time.time())
     save('mask-proof.json', receipt)
     os.close(outfd)
-    os.execvpe('python3', ['python3','-B',str(R/'init.py'),str(R),label,'python3','-B', str(R / 'monitor.py'), str(R), label, *SETPRIV_ARGS, 'python3','-B',str(R/'test_capabilities.py'),str(R),label,'python3','-B', str(R / 'workload.py'), str(R), label, *cmd], os.environ)
+    os.execvpe('setpriv', ['setpriv','--inh-caps=+all','--ambient-caps=+all','python3','-B',str(R/'init.py'),str(R),label,'python3','-B', str(R / 'monitor.py'), str(R), label, *SETPRIV_ARGS, 'python3','-B',str(R/'test_capabilities.py'),str(R),label,'python3','-B', str(R / 'workload.py'), str(R), label, *cmd], os.environ)
 except BaseException as e:
     receipt.update(maskAsserted=False, error=type(e).__name__ + ': ' + str(e), failedAt=time.time())
     save('mask-failure.json', receipt)
