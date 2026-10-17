@@ -18,8 +18,6 @@ const emit = record => {
   const bytes = Buffer.from(JSON.stringify({pid: process.pid, parent: process.ppid, ...record}) + '\n');
   if (bytes.length > 4096) throw new Error('Gate execution trace incomplete');
   const seq = ++traceSequence, parts = Math.ceil(bytes.length / 192);
-  // Stay below POSIX's minimum PIPE_BUF (512), including on Darwin. Records
-  // from several descendants may interleave, but individual frames cannot.
   for (let part = 0; part < parts; part++) {
     const frame = Buffer.from(JSON.stringify({pid: process.pid, seq, part, parts, data: bytes.subarray(part * 192, (part + 1) * 192).toString('base64')}) + '\n');
     if (frame.length > 512 || writeSync(traceFd, frame) !== frame.length) throw new Error('Gate execution trace incomplete');
@@ -94,8 +92,6 @@ cp.ChildProcess.prototype.spawn = function(options) {
   if (typeof stdio === 'string') stdio = [stdio, stdio, stdio];
   if (!Array.isArray(stdio)) refuse('unprepared low-level stdio', launch.executable);
   stdio = [...stdio];
-  // execFile drops the public stdio option. Append the approved observer fd
-  // here without changing its default stdin/stdout/stderr pipes or callbacks.
   while (stdio.length < launch.childFd) stdio.push('pipe');
   if (stdio[launch.childFd] !== undefined && stdio[launch.childFd] !== traceFd) refuse('trace fd collision', launch.executable);
   stdio[launch.childFd] = traceFd;

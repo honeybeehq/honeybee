@@ -8,6 +8,7 @@ FILES = ('v2/daemon/tests/delivery-file.test.ts', 'v2/daemon/tests/delivery-file
 EXECUTABLES = {'node', 'production-sandbox-exec', 'production-wrapWithSandbox', 'delivery-file-reader', 'build-refused-prebuilt-only'}
 PACKAGES = {'ajv/dist/2020.js', 'jsonc-parser', 'smol-toml'}
 SHA = re.compile(r'[0-9a-f]{64}')
+NATIVE_ARTIFACTS = {'src/dist/v2/delivery-file/darwin-arm64/delivery-file.node', 'src/dist/v2/peercred/darwin-arm64/peercred.node'}
 
 
 def exact_keys(value, keys):
@@ -119,10 +120,13 @@ def validate(workspace, audit_path):
                 name, number = proof.rsplit(':', 1)
                 if name not in files or int(number) > len(files[name].splitlines()):
                     raise ValueError('reachability proof outside pinned files')
-    for row in data['nativeEdges']:
+    edges = data['nativeEdges']
+    if not isinstance(edges, list) or len(edges) != 2 or not all(isinstance(row, dict) and isinstance(row.get('artifact'), str) for row in edges) or {row['artifact'] for row in edges} != NATIVE_ARTIFACTS:
+        raise ValueError('nativeEdges must name exactly the two distinct approved artifacts')
+    for row in edges:
         exact_keys(row, ('kind', 'path', 'line', 'context', 'artifact', 'sha256Source'))
         citation(row, files, closure)
-        if row['kind'] != 'native-artifact' or row['sha256Source'] != 'controller-manifest' or row['artifact'] not in ('src/dist/v2/delivery-file/darwin-arm64/delivery-file.node', 'src/dist/v2/peercred/darwin-arm64/peercred.node'):
+        if row['kind'] != 'native-artifact' or row['sha256Source'] != 'controller-manifest' or row['artifact'] not in NATIVE_ARTIFACTS:
             raise ValueError('unapproved native artifact edge')
     return {'schemaVersion': 1, 'auditSha256': hashlib.sha256(audit_file.read_bytes()).hexdigest(), 'files': data['files'], 'spawns': data['spawns'], 'packages': data['packages'], 'capabilityReferences': data['capabilityReferences'], 'nativeEdges': data['nativeEdges'], 'entryPins': data['entryPins']}
 

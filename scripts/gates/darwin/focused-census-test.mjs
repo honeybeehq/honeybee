@@ -73,7 +73,6 @@ try {
   });
   test('untyped calls with function-expression and object-method arguments use binding only', () => {
     const text = ["import {spawn} from 'node:child_process';", 'untyped(function callback(value) { const result = spawn("node", []); return value(result); });', 'untyped({method(value) { return value(() => spawn("node", [])); }});', 'untyped((spawn) => spawn("unrelated"));'].join('\n');
-    // Reproduce the contextual-checker path without ever invoking a checker.
     const bindingOnly = new Proxy(ts, {get(target, name) { if (['createProgram', 'createTypeChecker'].includes(name)) throw new Error('type checking forbidden'); return target[name]; }});
     const result = analyze(bindingOnly, 'entry.ts', text);
     assert.deepEqual(result.calls.map(row => row.line), [2, 3]);
@@ -90,8 +89,6 @@ try {
     assert.equal(result.edges, undefined);
   });
   test('real-source minimized untyped callback crash regression', () => {
-    // Reduced from main's auth-death-claude.mjs. The previous checker-backed
-    // implementation crashes on this input during contextual object checking.
     const text = 'import {createInterface} from "node:readline"; createInterface({input:process.stdin}).on("line", function(raw) { return JSON.parse(raw); });';
     const result = analyze(ts, 'entry.mjs', text);
     assert.deepEqual(result.errors, []);
@@ -103,6 +100,45 @@ try {
     assert(result.calls.some(row => row.line === 4 && row.module === 'node:child_process'));
     assert(result.capabilities.some(row => row.line === 2 && row.kind === 'binding'));
     assert(result.capabilities.some(row => row.line === 3 && row.kind === 'binding'));
+  });
+  test('object and array assignment patterns include nested defaults and rest', () => {
+    const forms = [
+      "let launch; ({spawn:launch}=cp);",
+      "let launch; ({['spawn']:launch}=cp);",
+      "let launch; ([launch]=[cp.spawn]);",
+      "let launch; ({nested:{spawn:launch}}={nested:cp});",
+      "let launch; ([[launch]]=[[cp.spawn]]);",
+      "let launch; ({spawn:launch=cp.spawn}={});",
+      "let launch; ([launch=cp.spawn]=[]);",
+      "const {nested:{spawn:launch}=cp}={};",
+      "const [launch=cp.spawn]=[];",
+      "let rest; ([,...rest]=[0,cp.spawn]); const [launch]=rest;",
+      "let rest; ({...rest}=cp); const {spawn:launch}=rest;",
+      "let launch; ({nested:{spawn:launch}=cp}={});",
+    ];
+    for (const form of forms) {
+      const result = analyze(ts, 'entry.ts', "import * as cp from 'node:child_process';\n" + form + "\nlaunch('ps',[]);");
+      assert(result.calls.some(row => row.callee === 'launch' && row.executable === 'ps'), form);
+      assert(result.capabilities.some(row => row.kind === 'binding' && row.line === 2), form);
+    }
+    const parameter = analyze(ts, 'entry.ts', "import * as cp from 'node:child_process'; function f({spawn:launch}=cp) {launch('ps',[]);}");
+    assert(parameter.calls.some(row => row.callee === 'launch'));
+  });
+  test('nested assignment aliases retain createRequire loader capability', () => {
+    const text = "import * as mod from 'node:module'; let cr; ({createRequire:cr}=mod); const req=cr(import.meta.url); req(variable);";
+    assert(analyze(ts, 'entry.ts', text).edges.some(row => row.kind === 'require' && row.specifier === null));
+    const coalesced = analyze(ts, 'entry.ts', "import {createRequire} from 'node:module'; const bridge=(custom ?? createRequire(import.meta.url))(artifactPath);");
+    assert(coalesced.edges.some(row => row.kind === 'require' && row.specifier === null));
+  });
+  test('unsupported sensitive binding forms return typed failures', () => {
+    for (const form of ["holder.launch=cp.spawn;", "let launch; ({[key]:launch}=cp);", "let launch; launch ||= cp.spawn;", "const launch=condition ? cp.spawn : cp.execFile;", "const holder={[key]:cp.spawn};", "({spawn:holder.launch}=cp);", "for(const launch of [cp.spawn]) launch('ps');"]) {
+      const result = validate(ts, root, audit(root, "import * as cp from 'node:child_process';\n" + form));
+      assert.equal(result.ok, false, form);
+      assert.equal(result.error?.type, 'CensusFailure', form);
+      assert.equal(result.error?.path, 'entry.ts', form);
+      assert.equal(result.error?.phase, 'binding', form);
+      assert.equal(result.capabilityGroups, undefined, form);
+    }
   });
   test('local re-export aliases keep builtin origin and wrappers do not propagate', () => {
     writeFileSync(join(root, 'facade.ts'), "import {spawn} from 'node:child_process';\nconst launch = spawn;\nexport {launch};\nexport function wrapper() { spawn('node', []); }");

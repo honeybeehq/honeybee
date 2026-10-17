@@ -52,6 +52,12 @@ def artifacts(workspace, root):
     return {kind: focused_native.artifact_state(workspace, root, kind) for kind in ('delivery-file', 'peercred')}
 
 
+def validate_native_edges(edges):
+    expected = {'src/dist/v2/delivery-file/darwin-arm64/delivery-file.node', 'src/dist/v2/peercred/darwin-arm64/peercred.node'}
+    if not isinstance(edges, list) or len(edges) != 2 or not all(isinstance(row, dict) and isinstance(row.get('artifact'), str) for row in edges) or {row['artifact'] for row in edges} != expected:
+        raise ValueError('flow nativeEdges must name exactly the two distinct approved artifacts')
+
+
 def supervise(api, root, workspace, env, argv, tag, timeout=600, trace=None):
     helper = root / 'scope'
     read_fd, release_fd = os.pipe()
@@ -173,6 +179,7 @@ def run(api, root, workspace, env, tools, real_home):
     if manifest['version'] != 1 or tuple(item['path'] for item in manifest['files']) != focused_audit.FILES:
         raise api.Refusal('focused manifest schema or file list changed')
     audit = focused_audit.validate(workspace, 'scripts/gates/darwin/focused-sibling-audit.json')
+    validate_native_edges(audit['nativeEdges'])
     focused_diagnostics.validate_ready()
     api.write_json(root / 'focused-audit.json', audit, root)
     compiler_hash = focused_native.digest(root / 'compiler.sb')

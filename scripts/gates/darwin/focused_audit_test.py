@@ -12,6 +12,10 @@ def entry_pins(files, texts):
     return [{'path': name, 'line': 1, 'context': texts[name].splitlines()[0], 'role': role} for role in ('production-sandbox-exec', 'reader-entry')]
 
 
+def native_edges(text):
+    return [{'kind': 'native-artifact', 'path': focused_audit.FILES[1], 'line': 1, 'context': text, 'artifact': artifact, 'sha256Source': 'controller-manifest'} for artifact in sorted(focused_audit.NATIVE_ARTIFACTS)]
+
+
 class AuditTests(unittest.TestCase):
     def test_disabled_build_requires_pinned_prior_refusal(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -26,7 +30,7 @@ class AuditTests(unittest.TestCase):
                 files.append({'path': name, 'sha256': hashlib.sha256(path.read_bytes()).hexdigest(), 'siblingClosure': name == focused_audit.FILES[1]})
             row = {'path': focused_audit.FILES[1], 'line': 2, 'context': call, 'executable': 'build-refused-prebuilt-only', 'receiver': 'before-hook build path is dominated by prebuilt refusal', 'manualReview': True, 'prebuiltGuard': {'path': focused_audit.FILES[1], 'line': 1, 'context': guard}}
             audit = workspace / 'audit.json'
-            data = {'version': 1, 'files': files, 'spawns': [row], 'packages': [], 'nativeEdges': [], 'capabilityReferences': [], 'entryPins': entry_pins(files, {focused_audit.FILES[1]: guard})}
+            data = {'version': 1, 'files': files, 'spawns': [row], 'packages': [], 'nativeEdges': native_edges(guard), 'capabilityReferences': [], 'entryPins': entry_pins(files, {focused_audit.FILES[1]: guard})}
             audit.write_text(json.dumps(data))
             focused_audit.validate(workspace, 'audit.json')
             row['prebuiltGuard']['context'] = 'wrong guard'
@@ -45,9 +49,16 @@ class AuditTests(unittest.TestCase):
                 files.append({'path': path, 'sha256': hashlib.sha256(full.read_bytes()).hexdigest(), 'siblingClosure': True})
             spawns = [{'path': path, 'line': 1, 'context': 'spawn(process.execPath, []);', 'executable': 'node', 'receiver': 'node:child_process spawn; process.execPath is pinned Node', 'manualReview': True} for path in focused_audit.FILES]
             audit = workspace / 'audit.json'
-            data = {'version': 1, 'files': files, 'spawns': spawns, 'packages': [], 'nativeEdges': [], 'capabilityReferences': [], 'entryPins': entry_pins(files, {focused_audit.FILES[1]: 'spawn(process.execPath, []);'})}
+            data = {'version': 1, 'files': files, 'spawns': spawns, 'packages': [], 'nativeEdges': native_edges('spawn(process.execPath, []);'), 'capabilityReferences': [], 'entryPins': entry_pins(files, {focused_audit.FILES[1]: 'spawn(process.execPath, []);'})}
             audit.write_text(json.dumps(data))
             self.assertEqual(len(focused_audit.validate(workspace, 'audit.json')['files']), 3)
+            edges = data['nativeEdges']
+            for bad in ([], edges[:1], [edges[0], edges[0]], [edges[0], dict(edges[1], artifact='wrong.node')], [*edges, edges[0]]):
+                data['nativeEdges'] = bad
+                audit.write_text(json.dumps(data))
+                with self.subTest(edges=bad), self.assertRaisesRegex(ValueError, 'exactly the two distinct'):
+                    focused_audit.validate(workspace, 'audit.json')
+            data['nativeEdges'] = edges
             pins = data['entryPins']
             data['entryPins'] = []
             audit.write_text(json.dumps(data))

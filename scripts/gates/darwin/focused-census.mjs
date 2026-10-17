@@ -10,15 +10,12 @@ const normalize = value => typeof value === 'string' ? value.replace(/^node:/, '
 
 export function analyze(ts, path, text, imported = {}, compilerOptions = {}) {
   const source = ts.createSourceFile(path, text, ts.ScriptTarget.Latest, true);
-  // Bind syntax only. getSymbolAtLocation can invoke contextual type inference
-  // for an untyped call's callback; that is unnecessary and unsafe here. The
-  // pinned TS binder supplies lexical locals and declaration symbols directly.
   ts.bindSourceFile(source, {target: ts.ScriptTarget.Latest});
   const symbols = new Map();
   const lexicalSymbol = node => {
     if (!node || !ts.isIdentifier(node)) return null;
     const parent = node.parent;
-    if (parent?.name === node && parent.symbol && !ts.isPropertyAccessExpression(parent) && !ts.isExportSpecifier(parent)) return parent.symbol;
+    if (parent?.name === node && parent.symbol && !ts.isPropertyAccessExpression(parent) && !ts.isExportSpecifier(parent) && !ts.isShorthandPropertyAssignment(parent)) return parent.symbol;
     if (ts.isPropertyAccessExpression(parent) && parent.name === node || ts.isBindingElement(parent) && parent.propertyName === node || ts.isImportSpecifier(parent) && parent.propertyName === node || ts.isPropertyAssignment(parent) && parent.name === node) return null;
     const name = ts.escapeLeadingUnderscores(node.text);
     for (let scope = parent; scope; scope = scope.parent) {
@@ -35,6 +32,7 @@ export function analyze(ts, path, text, imported = {}, compilerOptions = {}) {
     return symbols.get(symbol);
   };
   const edges = [], capabilities = [], calls = [], errors = [];
+  const bindingNodes = new Set();
   const aliases = new Map(), factories = new Set(), requires = new Set(['require']), constants = new Map(), assignments = new Set(), processAliases = new Set(['process']), declarations = new Map();
   const line = node => source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1;
   const literal = node => node && (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) ? node.text : null;
@@ -48,8 +46,9 @@ export function analyze(ts, path, text, imported = {}, compilerOptions = {}) {
   const unwrap = node => node && (ts.isParenthesizedExpression(node) || ts.isAsExpression(node) || ts.isTypeAssertionExpression(node) || ts.isNonNullExpression(node) || ts.isAwaitExpression(node)) ? unwrap(node.expression) : node;
   requires.clear(); requires.add('$global:require');
   processAliases.clear(); processAliases.add('$global:process');
-  const factory = value => { const node = unwrap(value); return !!node && (ts.isIdentifier(node) && factories.has(key(node)) || object(node) && member(node) === 'createRequire' && normalize(aliases.get(key(object(node))) ?? '') === 'module'); };
-  const loader = value => { const node = unwrap(value); return !!node && (ts.isIdentifier(node) && requires.has(key(node)) || ts.isCallExpression(node) && factory(node.expression) || object(node) && member(node) === 'require' && key(object(node)) === '$global:module'); };
+  const choice = (node, predicate) => ts.isConditionalExpression(node) ? predicate(node.whenTrue) || predicate(node.whenFalse) : ts.isBinaryExpression(node) && [ts.SyntaxKind.QuestionQuestionToken, ts.SyntaxKind.BarBarToken, ts.SyntaxKind.AmpersandAmpersandToken].includes(node.operatorToken.kind) && (predicate(node.left) || predicate(node.right));
+  const factory = value => { const node = unwrap(value); return !!node && (ts.isIdentifier(node) && factories.has(key(node)) || object(node) && (originOf(object(node))?.namespace?.[member(node)]?.factory || member(node) === 'createRequire' && normalize(originOf(object(node))) === 'module') || choice(node, factory)); };
+  const loader = value => { const node = unwrap(value); return !!node && (ts.isIdentifier(node) && requires.has(key(node)) || ts.isCallExpression(node) && factory(node.expression) || object(node) && (originOf(object(node))?.namespace?.[member(node)]?.loader || member(node) === 'require' && key(object(node)) === '$global:module') || choice(node, loader)); };
   const keepsEmptyImports = compilerOptions.verbatimModuleSyntax || compilerOptions.preserveValueImports || compilerOptions.importsNotUsedAsValues === 1;
   const erased = node => node.isTypeOnly || ts.isImportDeclaration(node) && node.importClause && (node.importClause.isTypeOnly || !keepsEmptyImports && !node.importClause.name && ts.isNamedImports(node.importClause.namedBindings) && node.importClause.namedBindings.elements.length > 0 && node.importClause.namedBindings.elements.every(item => item.isTypeOnly)) || !keepsEmptyImports && ts.isExportDeclaration(node) && node.exportClause && ts.isNamedExports(node.exportClause) && node.exportClause.elements.length > 0 && node.exportClause.elements.every(item => item.isTypeOnly);
   const edge = (node, specifier, kind = 'import') => edges.push({line: line(node), kind, specifier: literal(specifier), expression: specifier?.getText(source) ?? ''});
@@ -114,39 +113,102 @@ export function analyze(ts, path, text, imported = {}, compilerOptions = {}) {
       if (normalize(parent) === 'module' && member(node) !== 'createRequire' && member(node) !== null) return null;
       return parent;
     }
-    // Only module/loader factories yield sensitive bindings. The result of a
-    // spawn, a wrapper invocation, or a callback is ordinary data, not an alias.
     if (ts.isCallExpression(node) && (loader(node.expression) || node.expression.kind === ts.SyntaxKind.ImportKeyword)) {
       const specifier = literal(node.arguments[0]);
       if (specifier && sensitive.has(normalize(specifier))) return specifier;
     }
+    if (ts.isObjectLiteralExpression(node) || ts.isArrayLiteralExpression(node)) {
+      const namespace = {};
+      const items = ts.isObjectLiteralExpression(node) ? node.properties : node.elements;
+      for (const [index, item] of items.entries()) {
+        if (ts.isOmittedExpression(item)) continue;
+        if (ts.isSpreadAssignment(item) || ts.isSpreadElement(item)) {
+          if (hasSensitive(descriptor(item.expression))) throw new CensusFailure(path, 'binding', 'unsupported sensitive container spread at ' + line(item));
+          continue;
+        }
+        const name = ts.isObjectLiteralExpression(node) ? item.name && (ts.isIdentifier(item.name) ? item.name.text : literal(item.name)) : String(index);
+        const value = ts.isPropertyAssignment(item) ? item.initializer : ts.isShorthandPropertyAssignment(item) ? item.name : ts.isArrayLiteralExpression(node) ? item : null;
+        if (!value) continue;
+        const info = descriptor(value);
+        if (hasSensitive(info)) {
+          if (name === null || name === undefined) throw new CensusFailure(path, 'binding', 'unsupported computed sensitive container at ' + line(item));
+          namespace[name] = info;
+        }
+      }
+      return Object.keys(namespace).length ? {namespace} : null;
+    }
+    if (ts.isConditionalExpression(node) || ts.isBinaryExpression(node)) {
+      if (factory(node) || loader(node)) return 'node:module';
+      const branches = ts.isConditionalExpression(node) ? [node.whenTrue, node.whenFalse] : [node.left, node.right];
+      if (branches.some(branch => hasSensitive(descriptor(branch)))) throw new CensusFailure(path, 'binding', 'unsupported sensitive expression at ' + line(node));
+    }
     return null;
+  };
+  const descriptor = value => ({module: originOf(value), factory: factory(value), loader: loader(value), process: processAliases.has(key(unwrap(value)))});
+  const hasSensitive = info => !!(info.module || info.factory || info.loader || info.process);
+  const propertyInfo = (info, property) => {
+    if (info.module?.namespace) return info.module.namespace[property] ?? {};
+    if (info.process) return ['binding', 'dlopen'].includes(property) ? {module: 'node:process'} : {};
+    if (normalize(info.module) === 'module') return property === 'createRequire' ? {module: info.module, factory: true} : {};
+    return info.module ? {module: info.module} : {};
   };
   for (let turn = 0; turn <= text.length; turn++) {
     let changed = false;
     walk(source, node => {
-      const declaration = ts.isVariableDeclaration(node) && node.initializer;
-      const assignment = ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken;
+      if ((ts.isForOfStatement(node) || ts.isForInStatement(node)) && hasSensitive(descriptor(node.expression))) throw new CensusFailure(path, 'binding', 'unsupported sensitive iteration binding at ' + line(node));
+      const declaration = (ts.isVariableDeclaration(node) || ts.isParameter(node)) && node.initializer;
+      const assignment = ts.isBinaryExpression(node) && node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment && node.operatorToken.kind <= ts.SyntaxKind.LastAssignment;
       if (!declaration && !assignment) return;
       const target = declaration ? node.name : node.left;
       const initializer = unwrap(declaration ? node.initializer : node.right);
-      const bind = (targetNode, origin, property = null) => {
-        if (!ts.isIdentifier(targetNode)) return;
+      const info = descriptor(initializer);
+      if (assignment && node.operatorToken.kind !== ts.SyntaxKind.EqualsToken && hasSensitive(info)) throw new CensusFailure(path, 'binding', 'unsupported sensitive assignment operator at ' + line(node));
+      const bind = (value, selected) => {
+        const targetNode = unwrap(value);
+        if (ts.isBinaryExpression(targetNode) && targetNode.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+          const fallback = descriptor(targetNode.right);
+          bind(targetNode.left, hasSensitive(selected) ? selected : fallback);
+          if (hasSensitive(selected) && hasSensitive(fallback) && JSON.stringify(selected) !== JSON.stringify(fallback)) bind(targetNode.left, fallback);
+          return;
+        }
+        const objectPattern = ts.isObjectBindingPattern(targetNode) || ts.isObjectLiteralExpression(targetNode);
+        const arrayPattern = ts.isArrayBindingPattern(targetNode) || ts.isArrayLiteralExpression(targetNode);
+        if (objectPattern || arrayPattern) {
+          const elements = objectPattern ? targetNode.elements ?? targetNode.properties : targetNode.elements;
+          for (const [index, item] of elements.entries()) {
+            if (ts.isOmittedExpression(item)) continue;
+            const rest = item.dotDotDotToken || ts.isSpreadAssignment(item) || ts.isSpreadElement(item);
+            let nested, name, fallback;
+            if (ts.isBindingElement(item)) { nested = item.name; name = item.propertyName ?? item.name; fallback = item.initializer; }
+            else if (ts.isPropertyAssignment(item)) { nested = item.initializer; name = item.name; }
+            else if (ts.isShorthandPropertyAssignment(item)) { nested = item.name; name = item.name; fallback = item.objectAssignmentInitializer; }
+            else if (rest) nested = item.expression;
+            else if (arrayPattern) nested = item;
+            else { if (hasSensitive(selected)) throw new CensusFailure(path, 'binding', 'unsupported sensitive object pattern at ' + line(item)); continue; }
+            const property = rest ? null : objectPattern ? name && ts.isIdentifier(name) ? name.text : name && ts.isComputedPropertyName(name) ? literal(name.expression) : literal(name) : String(index);
+            if (!rest && property === null && hasSensitive(selected)) throw new CensusFailure(path, 'binding', 'unsupported computed sensitive pattern at ' + line(item));
+            let next = rest ? selected : propertyInfo(selected, property);
+            if (rest && arrayPattern && selected.module?.namespace) {
+              const namespace = Object.fromEntries(Object.entries(selected.module.namespace).filter(([key]) => /^\d+$/.test(key) && Number(key) >= index).map(([key, value]) => [String(Number(key) - index), value]));
+              next = {module: {namespace}};
+            }
+            if (fallback && !hasSensitive(next)) next = descriptor(fallback);
+            bind(nested, next);
+          }
+          return;
+        }
+        if (!hasSensitive(selected)) return;
+        if (!ts.isIdentifier(targetNode)) throw new CensusFailure(path, 'binding', 'unsupported sensitive binding target at ' + line(targetNode));
+        bindingNodes.add(targetNode);
         const name = key(targetNode);
-        if (origin?.namespace && property !== null) origin = origin.namespace[property]?.module ?? null;
-        if (normalize(origin) === 'module' && property !== null && property !== 'createRequire') origin = null;
+        const origin = selected.module ?? (selected.factory || selected.loader ? 'node:module' : null);
+        if (origin && aliases.has(name) && JSON.stringify(aliases.get(name)) !== JSON.stringify(origin)) throw new CensusFailure(path, 'binding', 'conflicting sensitive alias origins at ' + line(targetNode));
         if (origin && !aliases.has(name)) { aliases.set(name, origin); changed = true; }
-        if (loader(initializer) || ts.isCallExpression(initializer) && factory(initializer.expression)) {
-          if (!requires.has(name)) { requires.add(name); changed = true; }
-        }
-        if (factory(initializer) || normalize(origin) === 'module' && property === 'createRequire') {
-          if (!factories.has(name)) { factories.add(name); changed = true; }
-        }
-        if (processAliases.has(key(initializer)) && property === null && !processAliases.has(name)) { processAliases.add(name); changed = true; }
-        if (processAliases.has(key(initializer)) && ['binding', 'dlopen'].includes(property) && !aliases.has(name)) { aliases.set(name, 'node:process'); changed = true; }
+        if (selected.loader && !requires.has(name)) { requires.add(name); changed = true; }
+        if (selected.factory && !factories.has(name)) { factories.add(name); changed = true; }
+        if (selected.process && !processAliases.has(name)) { processAliases.add(name); changed = true; }
       };
-      if (ts.isObjectBindingPattern(target)) for (const item of target.elements) bind(item.name, originOf(initializer), (item.propertyName ?? item.name).getText(source));
-      else bind(target, originOf(initializer));
+      bind(target, info);
     });
     if (!changed) break;
     if (turn === text.length) errors.push('alias closure did not converge');
@@ -158,13 +220,13 @@ export function analyze(ts, path, text, imported = {}, compilerOptions = {}) {
     if (ts.isIdentifier(node) && constants.get(key(node)) && !assignments.has(key(node)) && !seen.has(key(node))) return executable(constants.get(key(node)), new Set([...seen, key(node)]));
     return null;
   };
+  const origins = origin => typeof origin === 'string' ? [origin] : Object.values(origin?.namespace ?? {}).flatMap(value => origins(value.module));
   walk(source, node => {
     if (ts.isIdentifier(node) && aliases.has(key(node))) {
       const parent = node.parent;
-      const kind = ts.isImportSpecifier(parent) || ts.isNamespaceImport(parent) || ts.isImportClause(parent) || ts.isImportEqualsDeclaration(parent) ? 'import' : ts.isVariableDeclaration(parent) && parent.name === node || ts.isBindingElement(parent) && parent.name === node || ts.isBinaryExpression(parent) && parent.left === node ? 'binding' : 'reference';
+      const kind = ts.isImportSpecifier(parent) || ts.isNamespaceImport(parent) || ts.isImportClause(parent) || ts.isImportEqualsDeclaration(parent) ? 'import' : bindingNodes.has(node) ? 'binding' : 'reference';
       const origin = aliases.get(key(node));
-      if (typeof origin === 'string') capabilities.push({line: line(node), module: origin, kind});
-      else for (const module of new Set(Object.values(origin.namespace).map(value => value.module))) capabilities.push({line: line(node), module, kind});
+      for (const module of new Set(origins(origin))) capabilities.push({line: line(node), module, kind});
     }
     if (object(node) && processAliases.has(key(object(node))) && (['binding', 'dlopen'].includes(member(node)) || ts.isElementAccessExpression(node) && member(node) === null)) capabilities.push({line: line(node), module: 'node:process', kind: 'reference'});
     if (ts.isCallExpression(node) || ts.isNewExpression(node)) {

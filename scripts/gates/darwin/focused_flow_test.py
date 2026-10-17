@@ -14,6 +14,13 @@ class Refusal(Exception):
 
 
 class FlowTests(unittest.TestCase):
+    def test_flow_requires_exactly_two_unique_native_edges(self):
+        a = {'artifact': 'src/dist/v2/delivery-file/darwin-arm64/delivery-file.node'}
+        b = {'artifact': 'src/dist/v2/peercred/darwin-arm64/peercred.node'}
+        focused_flow.validate_native_edges([a, b])
+        for bad in ([], [a], [a, a], [a, {'artifact': 'wrong.node'}], [a, b, a]):
+            with self.subTest(edges=bad), self.assertRaisesRegex(ValueError, 'exactly the two distinct'):
+                focused_flow.validate_native_edges(bad)
     def test_workload_only_narrows_compiler_execution(self):
         base = '(version 1)(allow default)'
         tools = {'clang': '/Applications/Xcode.app/toolchain/bin/clang', 'ld': '/Applications/Xcode.app/toolchain/bin/ld', 'toolchain': '/Applications/Xcode.app/toolchain'}
