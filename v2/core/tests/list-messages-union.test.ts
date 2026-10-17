@@ -74,6 +74,7 @@ const MATRIX: Array<{ name: string; sql: string; pin: RegExp }> = [
          )
          AND message.bee_id = runtime.bee_id
          AND message.delivered_at IS NULL
+         AND NOT EXISTS (SELECT 1 FROM multiline_delivery AS held WHERE held.message_id = message.id AND held.held_since IS NOT NULL)
        ORDER BY runtime.bee_id, message.id`,
     pin: /SEARCH message USING COVERING INDEX mailbox_pending_metadata \(bee_id=\?\)/,
   },
@@ -299,7 +300,7 @@ test("listMessages union holds on same-bee heavy delivered history with a tiny p
     "the pending read stays on its own arm and sees only the tail");
 });
 
-test("the union statement is production SQL, merges without a sort, and steals no plans", (t) => {
+for (const withHold of [false, true]) test(`the union statement is production SQL, merges without a sort, and steals no plans; holds=${withHold}`, (t) => {
   const h = harness();
   t.after(() => h.cleanup());
   let store = h.open();
@@ -308,7 +309,9 @@ test("the union statement is production SQL, merges without a sort, and steals n
   const { bee } = makeBee(store, "plan-probe");
   const delivered = store.send(bee.id, "delivered").message;
   assert.deepEqual(store.markDelivered(delivered.id, 1), { applied: true });
-  store.send(bee.id, "pending");
+  const pending = store.send(bee.id, "pending").message;
+  if (withHold) for (let attempt = 0; attempt < 3; attempt++) store.recordMultilineDeliveryRefusal(pending.id, 1, "multiline_type_mode");
+  assert.equal(store.multilineDelivery(pending.id)?.stage, withHold ? "held" : undefined);
   store.close();
 
   const source = readFileSync(new URL("../src/store.ts", import.meta.url), "utf8");
@@ -331,6 +334,12 @@ test("the union statement is production SQL, merges without a sort, and steals n
     for (const { name, sql, pin } of MATRIX) {
       const plan = planOf(check, sql);
       assert.match(plan, pin, `${name} keeps its pinned access path`);
+      if (name === "work messages") {
+        assert.doesNotMatch(plan, /SCAN message|SCAN held/);
+        assert.match(plan, /SEARCH held USING INTEGER PRIMARY KEY/);
+        const legacy = planOf(check, sql.replace(/\s+AND NOT EXISTS \(SELECT 1 FROM multiline_delivery[^\n]+/, ""));
+        assert.equal(plan.replace(/\nCORRELATED SCALAR SUBQUERY 2\nSEARCH held USING INTEGER PRIMARY KEY \(rowid=\?\)/, ""), legacy);
+      }
       if (name !== "listMessages (union)" && name !== "delivered-arm content read (test-pinned)") {
         assert.doesNotMatch(plan, /mailbox_delivered_by_bee/,
           `${name} must not be stolen by the delivered-only index`);
