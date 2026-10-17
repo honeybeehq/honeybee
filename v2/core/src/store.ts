@@ -1,4 +1,4 @@
-import { MULTILINE_DELIVERY_SQL, advanceMultilineUnsupported, deliveryHold, readMultilineDelivery, type DeliveryHoldReceipt, type MultilineDeliveryRow } from "./multilineDelivery.ts";
+import { MULTILINE_UNSUPPORTED_DETAILS, MULTILINE_DELIVERY_SQL, advanceMultilineUnsupported, deliveryHold, readMultilineDelivery, type DeliveryHoldReceipt, type MultilineDeliveryRow } from "./multilineDelivery.ts";
 import { ExecutionStarts, type ExecutionStart, type ExecutionRuntimeHooks } from "./executionStart.ts";
 import { PHONE_PROVENANCE_SQL } from "./schema.ts";
 import { type PhoneInput, type PhoneOperationOrigin, type PhoneOriginRequest, type PhoneSource, parsePhoneOrigin, phoneDigest, renderPhoneInput, forwardPhoneOrigin } from "./phoneOrigin.ts";
@@ -1615,6 +1615,7 @@ export class CoreStore {
   private readonly maxAttempts: number;
   private readonly backoffBaseMs: number;
   private readonly maxRpcIdempotencyRows: number;
+  private readonly multilineUnsupportedActive = new Set<number>();
   private readonly stmts = new Map<string, ReturnType<DatabaseSync["prepare"]>>();
   private txDepth = 0;
   private commitCallbacks: Array<() => void> = [];
@@ -3584,7 +3585,15 @@ export class CoreStore {
     this.audit(kind, row.beeId, { row });
   }
 
+  pauseMultilineDeliveryWait(messageId: number): void {
+    this.multilineUnsupportedActive.delete(messageId);
+  }
+
   recordMultilineDeliveryRefusal(messageId: number, generation: number, detail: string | undefined): MultilineDeliveryRow | undefined {
+    if (!MULTILINE_UNSUPPORTED_DETAILS.some(value => value === detail)) {
+      this.pauseMultilineDeliveryWait(messageId);
+      return this.multilineDelivery(messageId);
+    }
     return this.tx(() => {
       const message = this.getMessage(messageId);
       if (!message || message.deliveredAt !== null) return undefined;
@@ -3596,7 +3605,7 @@ export class CoreStore {
       const at = this.now();
       const progress = typeAfterWait
         ? { attempts: previous.attempts, unsupportedMs: previous.unsupportedMs, lastAttemptAt: previous.lastAttemptAt, lastUnsupported: previous.lastUnsupported, hold: true }
-        : advanceMultilineUnsupported(previous ?? null, detail, at);
+        : advanceMultilineUnsupported(previous ? { ...previous, lastUnsupported: previous.lastUnsupported && this.multilineUnsupportedActive.has(messageId) } : null, detail, at);
       if (!previous && progress.attempts === 0) return undefined;
       const typeHeld = progress.hold && detail === "multiline_type_mode";
       let receipt: DeliveryHoldReceipt | null = previous?.receipt ?? null;
@@ -3614,6 +3623,8 @@ export class CoreStore {
         stage: typeHeld ? "held" : progress.hold ? "expired" : "waiting", notice: previous?.notice ?? null,
       };
       this.putMultilineDelivery(row, typeHeld ? "mail.delivery_unsupported_multiline" : progress.hold ? "mail.delivery_hold_expired" : previous ? "mail.multiline_progress" : "mail.delivery_held");
+      if (row.stage === "waiting") this.multilineUnsupportedActive.add(messageId);
+      else this.multilineUnsupportedActive.delete(messageId);
       return row;
     });
   }
@@ -3621,6 +3632,7 @@ export class CoreStore {
   private resetMultilineDeliveryProgress(messageId: number, beeId: string): void {
     const previous = this.multilineDelivery(messageId);
     if (!previous || previous.stage === "delivered") return;
+    this.multilineUnsupportedActive.delete(messageId);
     this.putMultilineDelivery({ ...previous, stage: "delivered" }, "mail.multiline_completed");
   }
 
@@ -4052,6 +4064,7 @@ export class CoreStore {
       if (message.deliveredAt != null) return { canceled: false, reason: "delivered" };
       const canceledAt = this.now();
       this.stmt("DELETE FROM mailbox WHERE id = ?").run(messageId);
+      this.multilineUnsupportedActive.delete(messageId);
       this.auditMailCanceled(message, "requested", canceledAt);
       // v24: withdrawing a dispatched action instruction fails that attempt (typed, retryable).
       this.applyActionDispatchCanceled(messageId, canceledAt);

@@ -45,8 +45,7 @@ export const MULTILINE_DELIVERY_SQL = `CREATE TABLE IF NOT EXISTS multiline_deli
   held_at INTEGER,
   held_since INTEGER,
   sender_notice_message_id INTEGER,
-  row_json TEXT NOT NULL,
-  FOREIGN KEY(message_id) REFERENCES mail_history_enqueues(message_id) ON DELETE CASCADE
+  row_json TEXT NOT NULL
 ) STRICT;
 CREATE INDEX IF NOT EXISTS multiline_delivery_bee ON multiline_delivery(bee_id, held_at);`;
 export function deliveryHold(row: MultilineDeliveryRow): DeliveryHold | undefined {

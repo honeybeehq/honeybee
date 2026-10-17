@@ -112,3 +112,18 @@ for (const telemetry of [false, true]) test(`thirty-second type expiry holds acc
     assert.equal(r.store.multilineDelivery(message.id)?.heldSince, r.clock.now);
   } finally { r.cleanup(); }
 });
+
+for (const telemetry of [false,true]) test(`long busy turn produces no extra multiline writes or audit; telemetry=${telemetry}`,()=>{
+ const r=rig(telemetry);
+ try {
+  const message=r.store.send(r.bee.id,"one\ntwo").message;
+  r.driver.refusal="multiline_type_mode";r.core.step();
+  const before=r.store.multilineDelivery(message.id);const audits=r.store.auditRows().filter(row=>row.kind.startsWith("mail."));
+  r.driver.refusal=undefined;
+  for(let index=0;index<1000;index++){r.clock.now+=1000;r.core.step();}
+  assert.deepEqual(r.store.multilineDelivery(message.id),before);
+  assert.deepEqual(r.store.auditRows().filter(row=>row.kind.startsWith("mail.")),audits);
+  r.driver.refusal="multiline_type_mode";r.core.step();
+  assert.equal(r.store.multilineDelivery(message.id)?.stage,"waiting");assert.equal(r.store.multilineDelivery(message.id)?.unsupportedMs,0);
+ }finally{r.cleanup();}
+});

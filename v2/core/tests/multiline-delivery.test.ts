@@ -196,3 +196,53 @@ for (const malformed of ["not-json", "{}", '{"stage":"waiting","attempts":"bad"}
     assert.equal(store.multilineDelivery(first.id)?.notice, "delivered later messages; this one is held");
   } finally { store.close(); h.cleanup(); }
 });
+
+test("long ordinary busy wait writes no progress or audits and pauses unsupported time", () => {
+  const h = harness(); const store = h.open();
+  try {
+    const { bee } = makeBee(store); bootToRunning(store, bee.id, 100, 1);
+    const first = store.send(bee.id, "one\ntwo").message;
+    store.recordMultilineDeliveryRefusal(first.id, 1, "multiline_type_mode");
+    const before = store.multilineDelivery(first.id)!; const audit = store.auditRows();
+    for (let index = 0; index < 1000; index++) {
+      h.now();
+      assert.deepEqual(store.recordMultilineDeliveryRefusal(first.id, 1, undefined), before);
+    }
+    assert.deepEqual(store.auditRows(), audit);
+    const next = store.recordMultilineDeliveryRefusal(first.id, 1, "multiline_type_mode")!;
+    assert.equal(next.stage, "waiting"); assert.equal(next.attempts, 2); assert.equal(next.unsupportedMs, 0);
+  } finally { store.close(); h.cleanup(); }
+});
+
+test("retained holds for cancelled or delivered messages are inert", () => {
+ const h = harness(); const store = h.open();
+ try {
+  const {bee}=makeBee(store);bootToRunning(store,bee.id,100,1);
+  const cancelled=store.send(bee.id,"one\ntwo").message;const delivered=store.send(bee.id,"three\nfour").message;
+  for(const message of [cancelled,delivered])for(let i=0;i<3;i++)store.recordMultilineDeliveryRefusal(message.id,1,"multiline_type_mode");
+  store.cancelMessage(bee.id,cancelled.id);store.markDelivered(delivered.id,1);
+  assert.equal(store.getMessage(cancelled.id),null);
+  assert.equal(store.recordMultilineDeliveryRefusal(cancelled.id,1,"multiline_type_mode"),undefined);
+  assert.equal(store.recordMultilineDeliveryRefusal(delivered.id,1,"multiline_type_mode"),undefined);
+  assert.deepEqual(store.readDaemonWork()[0]!.pending,[]);assert.deepEqual(store.readDaemonStepInputs().work[0]!.pending,[]);
+  assert.equal(store.pendingMail(bee.id).messages.length,0);
+  assert.equal(store.pendingMultilineReorderNotice(bee.id,delivered.id+1),null);
+  assert.equal(store.multilineDelivery(cancelled.id)?.stage,"held");
+  assert.equal(store.multilineDelivery(delivered.id)?.stage,"delivered");
+  store.deleteBee(bee.id);
+  assert.deepEqual(store.readDaemonWork(),[]);
+  assert.equal(store.recordMultilineDeliveryRefusal(delivered.id,1,"multiline_type_mode"),undefined);
+  assert.deepEqual(replayAudit(store.auditRows()),store.dumpState());
+ }finally{store.close();h.cleanup();}
+});
+
+test("reopen never charges unobserved downtime as unsupported wait",()=>{
+ const h=harness();let store=h.open();
+ try{
+  const {bee}=makeBee(store);bootToRunning(store,bee.id,100,1);const m=store.send(bee.id,"one\ntwo").message;
+  store.recordMultilineDeliveryRefusal(m.id,1,"multiline_type_mode");store.close();
+  for(let i=0;i<100;i++)h.now();store=h.open();
+  const next=store.recordMultilineDeliveryRefusal(m.id,1,"multiline_type_mode")!;
+  assert.equal(next.stage,"waiting");assert.equal(next.attempts,2);assert.equal(next.unsupportedMs,0);
+ }finally{store.close();h.cleanup();}
+});

@@ -13,7 +13,7 @@ import { TmuxServer } from "../../driver-tmux/src/tmux.ts";
 
 const fixture = fileURLToPath(new URL("../../driver-tmux/test-agent/phone-terminal.mjs", import.meta.url));
 
-for (const scenario of ["normal", "malformed-waiting", "expired-paste"] as const) test(`real type-mode driver ${scenario}: HOLD, single-line receipts, FIFO and no retry`, async () => {
+for (const scenario of ["normal", "legacy-no-projection", "malformed-waiting", "expired-paste"] as const) test(`real type-mode driver ${scenario}: HOLD, single-line receipts, FIFO and no retry`, async () => {
   const root = mkdtempSync(join(tmpdir(), "mtype-")), socketPath = join(root, "t.sock"), path = join(root, "core.sqlite3");
   const clock = { now: 1000 };
   let store = openCoreStore(path, { now: () => clock.now, ephemeral: true });
@@ -42,6 +42,15 @@ for (const scenario of ["normal", "malformed-waiting", "expired-paste"] as const
     const first = store.send(receiver.id, "one\ntwo", { sender: sender.id }).message;
     const second = store.send(receiver.id, "second").message;
     const third = store.send(receiver.id, "third").message;
+    if (scenario === "legacy-no-projection") {
+      store.close();
+      const db = new DatabaseSync(path);
+      db.prepare("DELETE FROM mail_history_enqueues WHERE message_id = ?").run(first.id);
+      db.prepare("UPDATE audit SET payload = 'not-json' WHERE kind = 'mail.enqueued' AND json_extract(payload, '$.message.id') = ?").run(first.id);
+      db.close();
+      store = openCoreStore(path, { now: () => clock.now, ephemeral: true });
+      core = makeCore(); core.boot();
+    }
     let previousCounters: { attempts: number; unsupportedMs: number; lastAttemptAt: number } | null = null;
     if (scenario === "malformed-waiting") {
       clock.now += 1000; core.step();
@@ -74,7 +83,7 @@ for (const scenario of ["normal", "malformed-waiting", "expired-paste"] as const
     const noticeId = hold.receipt!.senderNoticeMessageId!;
     assert.equal(store.getMessage(noticeId)?.body.includes("\n"), false);
     const originalCalls = calls.filter(call => call.id === first.id).length;
-    assert.equal(originalCalls, scenario === "normal" ? 3 : scenario === "malformed-waiting" ? 2 : 1);
+    assert.equal(originalCalls, (scenario === "normal" || scenario === "legacy-no-projection") ? 3 : scenario === "malformed-waiting" ? 2 : 1);
     await wait(() => { clock.now += 1000; core.step(); return store.getMessage(second.id)?.deliveredAt != null && store.getMessage(third.id)?.deliveredAt != null && store.getMessage(noticeId)?.deliveredAt != null; });
     await wait(() => rows(receiver.id).filter(row => row.submittedBody !== undefined).length >= 2 && rows(sender.id).some(row => row.submittedBody !== undefined));
     assert.deepEqual(calls.filter(call => [second.id, third.id].includes(call.id)).map(call => call.id), [second.id, third.id]);
@@ -94,7 +103,7 @@ for (const scenario of ["normal", "malformed-waiting", "expired-paste"] as const
     assert.equal(store.listMessages(sender.id).filter(message => message.sender === "automation:delivery").length, 1);
     assert.equal(store.getMessage(first.id)?.deliveredAt, null);
     assert.equal(store.multilineDelivery(first.id)?.notice, "delivered later messages; this one is held");
-    assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
+    if (scenario !== "legacy-no-projection") assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
     store.close(); store = openCoreStore(path, { now: () => clock.now, ephemeral: true });
     assert.equal(store.getMessage(first.id)?.deliveryHold?.heldSince, hold.heldSince);
     assert.equal(store.getMessage(first.id)?.deliveryHold?.receipt?.senderNoticeMessageId, noticeId);

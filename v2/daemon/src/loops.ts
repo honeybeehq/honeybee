@@ -1689,7 +1689,10 @@ export class DaemonCore {
         }
         this.log(`deliver bee=${rt.beeId} msg=${msg.id} gen=${rt.generation} urgency=${msg.urgency}`);
       } else {
-        if (body.includes("\n") && outcome.reason === "not_ready") this.store.recordMultilineDeliveryRefusal(msg.id, rt.generation, outcome.detail);
+        if (body.includes("\n") && outcome.reason === "not_ready") {
+          if (outcome.detail === "multiline_type_mode" || outcome.detail === "multiline_bracketed_paste_disabled") this.store.recordMultilineDeliveryRefusal(msg.id, rt.generation, outcome.detail);
+          else this.store.pauseMultilineDeliveryWait(msg.id);
+        }
         this.log(`deliver.refused bee=${rt.beeId} msg=${msg.id} reason=${outcome.reason}`);
       }
     }
