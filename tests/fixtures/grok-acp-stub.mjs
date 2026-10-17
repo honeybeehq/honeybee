@@ -1,4 +1,5 @@
-import { appendFileSync } from "node:fs";
+import { appendFileSync, existsSync, watch } from "node:fs";
+import { dirname } from "node:path";
 import { createInterface } from "node:readline";
 
 const sessionId = process.env.GROK_STUB_SESSION_ID ?? "grok_session_stub";
@@ -20,6 +21,18 @@ function response(id, result) {
 
 function update(updateValue, method = "session/update") {
   send({ jsonrpc: "2.0", method, params: { sessionId, update: updateValue } });
+}
+
+function onToolRelease(release) {
+  const path = process.env.GROK_STUB_TOOL_RELEASE;
+  if (!path) throw new Error("tool release path is required");
+  let released = false;
+  const watcher = watch(dirname(path), () => {
+    if (released || !existsSync(path)) return;
+    released = true;
+    watcher.close();
+    release();
+  });
 }
 
 function usage(seed = 1) {
@@ -104,6 +117,7 @@ createInterface({ input: process.stdin }).on("line", (line) => {
     update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: `interjected:${message.params?.text}` } });
     if (message.params?.text === "hang-interject") return;
     response(message.id, {});
+    if (activePrompt?.text === "tool-boundary" && message.params?.text === "steer-at-tool") finishPrompt("after-tool", 2);
     return;
   }
   if (message.method === "session/prompt") {
@@ -189,13 +203,17 @@ createInterface({ input: process.stdin }).on("line", (line) => {
       return;
     }
     if (text === "tool-boundary") {
-      update({ sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "considering a tool" } });
-      update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "before-tool" } });
-      setTimeout(() => {
+      onToolRelease(() => {
         update({ sessionUpdate: "tool_call", toolCallId: "tool-1", title: "Read file", kind: "read", rawInput: { path: "README.md" } });
         update({ sessionUpdate: "tool_call_update", toolCallId: "tool-1", title: "Read file", status: "completed" });
-      }, 30);
-      setTimeout(() => finishPrompt("after-tool", 2), 100);
+      });
+      update({ sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "considering a tool" } });
+      update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "before-tool" } });
+      return;
+    }
+    if (text === "no-tool-boundary") {
+      onToolRelease(() => finishPrompt("without-tool", 2));
+      update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "before-tool" } });
       return;
     }
     if (text === "usage-fallback") {
