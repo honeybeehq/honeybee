@@ -2,6 +2,7 @@ import os, sys, json, time, pathlib, subprocess, threading, errno, re, hashlib, 
 from policy import error_verdict, RULE_VERSION, within,update_fd_prior,pid_observation
 from home_guard import entry_guard
 from thread_records import ThreadRecords
+from birth_identity import birth_identity, parent_chain
 ROOT = pathlib.Path(sys.argv[1])
 LABEL = sys.argv[2]
 CMD = sys.argv[3:]
@@ -80,7 +81,7 @@ def err(pid, slot, e):
     errors.append(dict(pid=pid, fd=fd, slot=slot, time=time.time(), sample=samples, errno=e.errno, error=type(e).__name__, message=str(e), previousTarget=previous.get(pid, {}).get(fd), atErrorStat=checked_stat(pid, 'atErrorStat')))
 
 def capture(pid):
-    b = dict(pid=pid,ppid=parent_edges.get(pid), time=time.time(), firstSample=samples, cgroupSightingTime=None, procStat=checked_stat(pid, 'firstSightStat'))
+    b = dict(pid=pid, time=time.time(), firstSample=samples, cgroupSightingTime=None, procStat=checked_stat(pid, 'firstSightStat'), observedParentEdge=parent_edges.get(pid))
     pending = []
     base = f'/proc/{pid}'
     for k, suffix in [('argv', 'cmdline'), ('status', 'status'), ('uid_map', 'uid_map'), ('user', 'ns/user'), ('mnt', 'ns/mnt'), ('net', 'ns/net'),('pidNamespace','ns/pid')]:
@@ -88,27 +89,28 @@ def capture(pid):
             v = os.readlink(base + '/' + suffix) if suffix.startswith('ns/') else pathlib.Path(base + '/' + suffix).read_text(errors='replace').replace('\x00', ' ')
             if k == 'status':
                 v = {l.split(':', 1)[0]: l.split(':', 1)[1].strip() for l in v.splitlines() if l.split(':', 1)[0] in ('State', 'PPid', 'Uid', 'Gid', 'NoNewPrivs', 'NSpid','CoreDumping', 'Dumpable')}
-                if 'PPid' in v:
-                    b['ppid'] = int(v['PPid'])
             b[k] = v
         except OSError as e:
             b[k + '_error'] = dict(errno=e.errno, error=type(e).__name__)
             pending.append((suffix, e))
+    identity = birth_identity(b['procStat'], b.get('status', {}), {key: b[key] for key in ('user', 'mnt', 'net', 'pidNamespace') if key in b}, checked_stat(pid, 'birthConfirmationStat'))
+    b.update(identity)
+    for key in ('user', 'mnt', 'net', 'pidNamespace'):
+        b.pop(key, None)
+    b.update(identity['namespaces'])
+    if 'ppid' not in b['procStat']:
+        b['ppid'] = b['observedParentEdge']
+        b['ppidSource'] = 'recorded first-sight process-tree edge; birth stat unavailable'
+    else:
+        b['ppidSource'] = 'recorded first-sight proc stat'
     births[pid] = b
+    if 'identityErrno' in identity:
+        pending.append(('birthIdentity', OSError(identity['identityErrno'], 'supplemental birth identity unavailable or changed')))
     for slot, e in pending:
         err(pid, slot, e)
 
 def chain(pid):
-    path = []
-    visited = set()
-    while pid != 1:
-        if pid in visited or pid not in births:
-            return (False, path)
-        visited.add(pid)
-        path.append(pid)
-        pid = births[pid].get('ppid')
-    path.append(1)
-    return (True, path)
+    return parent_chain(pid, births)
 
 def do_sample():
     global samples, previous, cgroupTime
@@ -256,7 +258,7 @@ def do_sample():
     for pid,birth in births.items():
         if birth['firstSample']<samples and 'nextBirthSample' not in birth:
             row=next((item for item in rows if item['pid']==pid),None)
-            birth['nextBirthSample']=dict(time=time.time(),sample=samples,**pid_observation(pid in pids,row['procStat'] if row else None,os.path.exists(f'/proc/{pid}') if row is None else None),ppidSource='process-tree edges from /proc/<own parent>/task/<own tid>/children; status PPid when readable')
+            birth['nextBirthSample']=dict(time=time.time(),sample=samples,**pid_observation(pid in pids,row['procStat'] if row else None,os.path.exists(f'/proc/{pid}') if row is None else None))
     for key,birth in threads.births.items():
         if birth['firstSample'] < samples and 'nextBirthSample' not in birth:
             threads.next_observation(*key, samples, time.time(), thread_stat)

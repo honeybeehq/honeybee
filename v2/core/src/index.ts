@@ -84,3 +84,5 @@ export * from "./threadOperation.ts";
 export type { HumanRefIssuer, HumanRefReceipt, HumanRefRegistry } from "./humanRefs.ts";
 
 export * from "./rpcAuditContext.ts";
+
+export * from "./phoneOrigin.ts";

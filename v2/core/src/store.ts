@@ -1,4 +1,6 @@
 import { ExecutionStarts, type ExecutionStart, type ExecutionRuntimeHooks } from "./executionStart.ts";
+import { PHONE_PROVENANCE_SQL } from "./schema.ts";
+import { type PhoneInput, type PhoneOperationOrigin, type PhoneOriginRequest, type PhoneSource, parsePhoneOrigin, phoneDigest, renderPhoneInput, forwardPhoneOrigin } from "./phoneOrigin.ts";
 import { ExecutionLedger, ExecutionFenceError, executionRequest, type ExecutionRequest } from "./executionFence.ts";
 import { EffectKeyError, EffectLedger, type EffectVerb, type EffectResolution } from "./effectResolve.ts";
 import { parseDurableUpdateReservation, parseApiarySwapAcquire, parseApiarySwapSettle, parseApiarySwapRecover, acquireApiarySwap, settleApiarySwap, recoverApiarySwap, type DurableUpdateReservation, type ApiarySwapReservation } from "../../../src/apiarySwap.ts";
@@ -277,6 +279,7 @@ export interface CoreStoreOptions {
 }
 
 export interface CreateBeeInput {
+  phoneOperation?: { origin: PhoneOriginRequest; key: string };
   /** Known process identity at spawn time, so a daemon restart mid-boot can re-adopt (WP2 finding). */
   proc?: { pid: number; pidStartedAt: number };
   id?: string;
@@ -2078,7 +2081,7 @@ export class CoreStore {
         if (!previous.lastLocal && previous.highWatermarkMs === 0) this.putAccountObservation(account,{lastLocal:{limits:this.getAccountLimits(account)!,source:null},provenance:null,source:null,highWatermarkMs:0});
       }
     }
-    this.backfillMailHistoryEnqueues();
+    this.db.exec(PHONE_PROVENANCE_SQL);
     if (stored < 40) this.redactRpcIdempotencyEnv();
     this.db
       .prepare(
@@ -2211,10 +2214,7 @@ export class CoreStore {
       message.urgency,
       message.enqueuedAt,
     );
-    this.stmt(
-      `INSERT INTO meta(key, value) VALUES('mail_history_projection_seq', ?)
-       ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-    ).run(String(seq));
+
   }
 
   /** One-time bounded-memory projection fill for stores created by older builds. */
@@ -2237,18 +2237,21 @@ export class CoreStore {
         `SELECT
            a.seq,
            a.bee_id,
-           json_extract(a.payload, '$.message.id') AS message_id,
-           json_extract(a.payload, '$.origin') AS origin,
-           hex(substr(CAST(json_extract(a.payload, '$.message.sender') AS BLOB), 1, ?)) AS sender_hex,
-           length(CAST(json_extract(a.payload, '$.message.sender') AS BLOB)) > ? AS sender_truncated,
-           hex(substr(CAST(json_extract(a.payload, '$.message.body') AS BLOB), 1, ?)) AS body_hex,
-           length(CAST(json_extract(a.payload, '$.message.body') AS BLOB)) > ? AS body_truncated,
-           json_extract(a.payload, '$.message.priority') AS priority,
-           COALESCE(json_extract(a.payload, '$.message.urgency'), 'next') AS urgency,
-           json_extract(a.payload, '$.message.enqueuedAt') AS enqueued_at
+           json_extract(CASE WHEN json_valid(a.payload) THEN a.payload ELSE '{}' END, '$.message.id') AS message_id,
+           json_extract(CASE WHEN json_valid(a.payload) THEN a.payload ELSE '{}' END, '$.origin') AS origin,
+           hex(substr(CAST(json_extract(CASE WHEN json_valid(a.payload) THEN a.payload ELSE '{}' END, '$.message.sender') AS BLOB), 1, ?)) AS sender_hex,
+           length(CAST(json_extract(CASE WHEN json_valid(a.payload) THEN a.payload ELSE '{}' END, '$.message.sender') AS BLOB)) > ? AS sender_truncated,
+           hex(substr(CAST(json_extract(CASE WHEN json_valid(a.payload) THEN a.payload ELSE '{}' END, '$.message.body') AS BLOB), 1, ?)) AS body_hex,
+           length(CAST(json_extract(CASE WHEN json_valid(a.payload) THEN a.payload ELSE '{}' END, '$.message.body') AS BLOB)) > ? AS body_truncated,
+           json_extract(CASE WHEN json_valid(a.payload) THEN a.payload ELSE '{}' END, '$.message.priority') AS priority,
+           COALESCE(json_extract(CASE WHEN json_valid(a.payload) THEN a.payload ELSE '{}' END, '$.message.urgency'), 'next') AS urgency,
+           json_extract(CASE WHEN json_valid(a.payload) THEN a.payload ELSE '{}' END, '$.message.enqueuedAt') AS enqueued_at
          FROM audit a
          LEFT JOIN mail_history_enqueues h ON h.seq = a.seq
-         WHERE a.kind = 'mail.enqueued' AND a.seq > ? AND a.seq <= ? AND h.seq IS NULL
+         WHERE a.kind = 'mail.enqueued' AND a.seq > ? AND a.seq <= ? AND h.seq IS NULL AND json_valid(a.payload)
+           AND json_type(CASE WHEN json_valid(a.payload) THEN a.payload ELSE '{}' END, '$.message.id') = 'integer'
+           AND json_type(CASE WHEN json_valid(a.payload) THEN a.payload ELSE '{}' END, '$.message.sender') = 'text'
+           AND json_type(CASE WHEN json_valid(a.payload) THEN a.payload ELSE '{}' END, '$.message.body') = 'text'
          ORDER BY a.seq`,
       ).all(
         MAIL_HISTORY_SENDER_PREVIEW_BYTES + 3,
@@ -2265,39 +2268,46 @@ export class CoreStore {
          ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       );
       for (const row of rows) {
-        const seq = auditNumber(row.seq, "mail.enqueued seq");
-        const messageId = auditNumber(row.message_id, `mail.enqueued message.id at seq ${seq}`);
-        const beeId = auditString(row.bee_id, `mail.enqueued bee_id at seq ${seq}`);
-        if (row.origin == null && legacySpawnMessages === null) {
-          const facts = this.stmt(
-            `SELECT
-               json_extract(result, '$.beeId') AS bee_id,
-               json_extract(result, '$.messageId') AS message_id
-             FROM rpc_idempotency
-             WHERE verb = 'spawn' AND json_extract(result, '$.messageId') IS NOT NULL`,
-          ).all() as Row[];
-          legacySpawnMessages = new Set(
-            facts.map((fact) => JSON.stringify([String(fact.bee_id), Number(fact.message_id)])),
-          );
+        let values: (string | number | Buffer)[];
+        try {
+          const seq = auditNumber(row.seq, "mail.enqueued seq");
+          const messageId = auditNumber(row.message_id, `mail.enqueued message.id at seq ${seq}`);
+          const beeId = auditString(row.bee_id, `mail.enqueued bee_id at seq ${seq}`);
+          if (row.origin == null && legacySpawnMessages === null) {
+            const facts = this.stmt(
+              `SELECT
+                 json_extract(result, '$.beeId') AS bee_id,
+                 json_extract(result, '$.messageId') AS message_id
+               FROM rpc_idempotency
+               WHERE verb = 'spawn' AND json_valid(result) AND json_extract(result, '$.messageId') IS NOT NULL`,
+            ).all() as Row[];
+            legacySpawnMessages = new Set(
+              facts.map((fact) => JSON.stringify([String(fact.bee_id), Number(fact.message_id)])),
+            );
+          }
+          const origin = row.origin == null
+            ? legacySpawnMessages!.has(JSON.stringify([beeId, messageId]))
+              ? "spawn.prompt"
+              : "legacy.unknown"
+            : auditMailOrigin(row.origin, `mail.enqueued origin at seq ${seq}`);
+          values = [
+            seq,
+            messageId,
+            beeId,
+            origin,
+            decodeBoundedUtf8Hex(row.sender_hex, MAIL_HISTORY_SENDER_PREVIEW_BYTES, `sender at seq ${seq}`),
+            Number(row.sender_truncated) === 1 ? 1 : 0,
+            decodeBoundedUtf8Hex(row.body_hex, MAIL_HISTORY_BODY_PREVIEW_BYTES, `body at seq ${seq}`),
+            Number(row.body_truncated) === 1 ? 1 : 0,
+            auditNumber(row.priority, `mail.enqueued priority at seq ${seq}`),
+            auditUrgency(row.urgency ?? "next", `mail.enqueued urgency at seq ${seq}`),
+            auditNumber(row.enqueued_at, `mail.enqueued enqueuedAt at seq ${seq}`),
+          ];
+        } catch (error) {
+          if (error instanceof CoreError && error.message.startsWith("mail history: malformed")) continue;
+          throw error;
         }
-        const origin = row.origin == null
-          ? legacySpawnMessages!.has(JSON.stringify([beeId, messageId]))
-            ? "spawn.prompt"
-            : "legacy.unknown"
-          : auditMailOrigin(row.origin, `mail.enqueued origin at seq ${seq}`);
-        insert.run(
-          seq,
-          messageId,
-          beeId,
-          origin,
-          decodeBoundedUtf8Hex(row.sender_hex, MAIL_HISTORY_SENDER_PREVIEW_BYTES, `sender at seq ${seq}`),
-          Number(row.sender_truncated) === 1 ? 1 : 0,
-          decodeBoundedUtf8Hex(row.body_hex, MAIL_HISTORY_BODY_PREVIEW_BYTES, `body at seq ${seq}`),
-          Number(row.body_truncated) === 1 ? 1 : 0,
-          auditNumber(row.priority, `mail.enqueued priority at seq ${seq}`),
-          auditUrgency(row.urgency ?? "next", `mail.enqueued urgency at seq ${seq}`),
-          auditNumber(row.enqueued_at, `mail.enqueued enqueuedAt at seq ${seq}`),
-        );
+        insert.run(...values);
       }
       cursor = batchEnd;
     }
@@ -2511,6 +2521,7 @@ export class CoreStore {
           humanRef,
           namespace,
         );
+      if (input.phoneOperation) this.stmt("INSERT INTO phone_spawn_origins(bee_id, origin_json) VALUES(?, ?)").run(id, JSON.stringify(this.makePhoneOrigin(input.phoneOperation.origin, null, input.phoneOperation.key, id)));
       const bee = this.mustGetBee(id);
       this.audit("bee.created", id, { bee });
       // v23: segment 0 — the spawn harness owns the session log from generation 1.
@@ -2533,14 +2544,20 @@ export class CoreStore {
     });
   }
 
+  private mapPhoneBee(row: Row): BeeRow {
+    const bee = mapBee(row);
+    const origin = this.stmt("SELECT origin_json FROM phone_spawn_origins WHERE bee_id = ?").get(bee.id) as Row | undefined;
+    return origin ? { ...bee, phoneOperationOrigin: JSON.parse(String(origin.origin_json)) as PhoneOperationOrigin } : bee;
+  }
+
   getBee(beeId: string): BeeRow | null {
     const row = this.stmt("SELECT * FROM bees WHERE id = ?").get(beeId) as Row | undefined;
-    return row ? mapBee(row) : null;
+    return row ? this.mapPhoneBee(row) : null;
   }
 
   listBees(): BeeRow[] {
     const rows = this.stmt("SELECT * FROM bees ORDER BY id").all() as Row[];
-    return rows.map(mapBee);
+    return rows.map(row => this.mapPhoneBee(row));
   }
 
   /** Naming needs only eligible identities, never process env or archived history. */
@@ -2630,7 +2647,7 @@ export class CoreStore {
     const rows = this.stmt(
       "SELECT * FROM bees WHERE parent_id = ? AND parent_external = 0 ORDER BY id",
     ).all(beeId) as Row[];
-    return rows.map(mapBee);
+    return rows.map(row => this.mapPhoneBee(row));
   }
 
   archiveBee(beeId: string, executionCommandId?: number): BeeRow {
@@ -3531,20 +3548,85 @@ export class CoreStore {
    * bee has no row → BeeNotFoundError). Archived bees auto-unarchive (Q3). When no
    * live runtime exists, a `send_wake` command is enqueued in the SAME transaction.
    */
+  phoneInput(messageId: number): PhoneInput | undefined {
+    const row = this.stmt("SELECT input_json FROM phone_inputs WHERE message_id = ?").get(messageId) as Row | undefined;
+    return row ? JSON.parse(String(row.input_json)) as PhoneInput : undefined;
+  }
+
+  private withPhoneInput<T extends object>(message: T, messageId: number): T & { phoneOrigin?: PhoneInput["envelope"] } {
+    const input = this.phoneInput(messageId);
+    return { ...message, ...(input ? { phoneOrigin: input.envelope } : {}) };
+  }
+
+  private mapPhoneMessage(row: Row): MessageRow {
+    const message = mapMessage(row), input = this.phoneInput(message.id);
+    if (input && (phoneDigest(input.originalContent) !== input.envelope.contentDigest || renderPhoneInput(input.originalContent) !== message.body)) throw new CoreError("Phone input and body shadow differ");
+    return input ? { ...message, phoneInput: input, renderedBody: message.body } : message;
+  }
+
+  checkPhoneBinding(key: string, verb: string, lane: string, digest: string): void {
+    const row = this.stmt("SELECT * FROM phone_admission_bindings WHERE key = ?").get(key) as Row | undefined;
+    if (row && (row.verb !== verb || row.lane !== lane || row.request_digest !== digest)) throw new EffectKeyError("idempotency_conflict", "Key is bound to different content, target, origin or lane");
+    if (!row) {
+      const receipt = this.lookupRpcResult(key);
+      const binding = (receipt?.result as { requestBinding?: { verb: string; lane: string; requestDigest: string } } | undefined)?.requestBinding;
+      if (binding) {
+        if (binding.verb !== verb || binding.lane !== lane || binding.requestDigest !== digest) throw new EffectKeyError("idempotency_conflict", "Durable effect receipt has a different request binding");
+        return;
+      }
+    }
+    if (!row && lane === "envelope-v1" && (this.lookupRpcResult(key) || this.getCommandByIdempotencyKey(key))) throw new EffectKeyError("idempotency_conflict", "Historical key has no phone admission binding");
+  }
+
+  bindPhoneAdmission(key: string, verb: string, lane: string, digest: string): void {
+    this.checkPhoneBinding(key, verb, lane, digest);
+    this.stmt("INSERT INTO phone_admission_bindings(key, verb, lane, request_digest) VALUES(?, ?, ?, ?) ON CONFLICT(key) DO NOTHING").run(key, verb, lane, digest);
+  }
+
+  private makePhoneOrigin(raw: PhoneOriginRequest, contentDigest: string | null, key: string, beeId: string): PhoneOperationOrigin | PhoneInput["envelope"] {
+    const request = parsePhoneOrigin(raw);
+    if (request.target.kind === "bee" && request.target.id !== beeId) throw new EffectKeyError("invalid_request", "Phone target differs from accepting bee");
+    const ownerStoreId = this.effectCoverage().ownerStoreId;
+    let unknown = request.ancestry === "unknown-overflow", ancestryDepth = 0;
+    const knownRoots: PhoneSource[] = [];
+    for (const parent of [...request.parentSources, ...request.rootSources]) {
+      const row = parent.ownerStoreId === ownerStoreId ? this.stmt("SELECT input_json FROM phone_inputs WHERE admission_id = ?").get(parent.admissionId) as Row | undefined : undefined;
+      if (!row) { unknown = true; continue; }
+      const prior = JSON.parse(String(row.input_json)) as PhoneInput;
+      if (prior.envelope.contentDigest !== parent.contentDigest) throw new EffectKeyError("invalid_request", "Phone parent digest differs from durable source");
+      knownRoots.push(...prior.envelope.rootSources);
+      ancestryDepth = Math.max(ancestryDepth, prior.envelope.ancestryDepth + 1);
+      if (prior.envelope.ancestry !== "complete") unknown = true;
+    }
+    const admissionId = randomUUID();
+    if (!request.parentSources.length && contentDigest !== null) knownRoots.push({ ownerStoreId, admissionId, contentDigest, relation: "forward" });
+    const unique = [...new Map([...knownRoots, ...request.rootSources].map(root => [JSON.stringify([root.ownerStoreId, root.admissionId, root.contentDigest]), root])).values()];
+    const omitted = request.parentSources.length > 8 || unique.length > 8 || request.rootSources.length > 8;
+    if (omitted || ancestryDepth > 8) unknown = true;
+    const omittedSourcesDigest = omitted ? phoneDigest(JSON.stringify({ parents: request.parentSources, roots: request.rootSources, resolvedRoots: knownRoots })) : undefined;
+    return { ...request, parentSources: request.parentSources.slice(0, 8), rootSources: unique.slice(0, 8), ancestry: unknown ? "unknown-overflow" : "complete", ownerStoreId, admissionId, targetBeeId: beeId, idempotencyKey: key, contentDigest, ancestryDepth: Math.min(8, ancestryDepth), ...(omittedSourcesDigest ? { omittedSourcesDigest } : {}) };
+  }
+
+  private makePhoneInput(raw: PhoneOriginRequest, originalContent: string, key: string, beeId: string): PhoneInput {
+    const contentDigest = phoneDigest(originalContent);
+    return { envelope: { ...this.makePhoneOrigin(raw, contentDigest, key, beeId), contentDigest }, originalContent };
+  }
+
   send(
     beeId: string,
     body: string,
-    opts: { sender?: string; priority?: number; urgency?: Urgency; origin?: MailOrigin; senderKind?: SenderKind } = {},
+    opts: { sender?: string; priority?: number; urgency?: Urgency; origin?: MailOrigin; senderKind?: SenderKind; phone?: { origin: PhoneOriginRequest; key: string } } = {},
   ): SendResult {
     const urgency = opts.urgency ?? "next";
     if (opts.senderKind !== undefined && !(SENDER_KINDS as readonly string[]).includes(opts.senderKind)) throw new CoreError(`unknown sender kind: ${String(opts.senderKind)}`);
     if (!(MESSAGE_URGENCIES as readonly string[]).includes(urgency)) throw new UnknownUrgencyError(urgency);
     const origin = opts.origin ?? "mail.send";
     if (!(MAIL_ORIGINS as readonly string[]).includes(origin)) throw new CoreError(`unknown mail origin: ${origin}`);
-    if (body.includes("\0")) throw new CoreError("send: body must not contain U+0000");
+    const phoneInput = opts.phone ? this.makePhoneInput(opts.phone.origin, body, opts.phone.key, beeId) : undefined;
+    if (!phoneInput && body.includes("\0")) throw new CoreError("send: body must not contain U+0000");
     const rawSender = opts.sender ?? "operator";
     if (rawSender.includes("\0")) throw new CoreError("send: sender must not contain U+0000");
-    const normalizedBody = wellFormedUtf16(body);
+    const normalizedBody = phoneInput ? renderPhoneInput(body) : wellFormedUtf16(body);
     const sender = wellFormedUtf16(rawSender);
     return this.tx(() => {
       const bee = this.mustGetBee(beeId);
@@ -3568,7 +3650,9 @@ export class CoreStore {
         deliveredAt: null,
         deliveredGeneration: null,
         ...(opts.senderKind === undefined ? {} : { senderKind: opts.senderKind }),
+        ...(phoneInput ? { phoneInput, renderedBody: normalizedBody } : {}),
       };
+      if (phoneInput) this.stmt("INSERT INTO phone_inputs(message_id, admission_id, input_json) VALUES(?, ?, ?)").run(message.id, phoneInput.envelope.admissionId, JSON.stringify(phoneInput));
       const enqueueSeq = this.audit("mail.enqueued", beeId, { message, origin });
       this.insertMailHistoryEnqueue(enqueueSeq, message, origin);
       // Human (and bee) interaction resets the consecutive-feed counter; the
@@ -3590,7 +3674,7 @@ export class CoreStore {
     const rows = this.db
       .prepare("SELECT * FROM mailbox WHERE bee_id = ? AND delivered_at IS NULL ORDER BY id")
       .all(beeId) as Row[];
-    return rows.map(mapMessage);
+    return rows.map(row => this.mapPhoneMessage(row));
   }
 
   private hasUndeliveredMessage(beeId: string): boolean {
@@ -3604,7 +3688,7 @@ export class CoreStore {
     const rows = this.stmt(
       "SELECT * FROM mailbox WHERE delivered_at IS NULL ORDER BY bee_id, id",
     ).all() as Row[];
-    return rows.map(mapMessage);
+    return rows.map(row => this.mapPhoneMessage(row));
   }
 
   /**
@@ -3622,7 +3706,7 @@ export class CoreStore {
          SELECT * FROM mailbox WHERE bee_id = ? AND delivered_at IS NOT NULL
          ORDER BY id`,
     ).all(beeId, beeId) as Row[];
-    return rows.map(mapMessage);
+    return rows.map(row => this.mapPhoneMessage(row));
   }
 
   /**
@@ -3660,6 +3744,7 @@ export class CoreStore {
 
   /** Bounded undelivered-only mailbox snapshot for frequent live indicators. */
   pendingMail(beeId: string, params: MailPendingParams = {}): MailPendingResult {
+    this.tx(() => this.backfillMailHistoryEnqueues());
     const requestedLimit = params.limit ?? MAIL_HISTORY_DEFAULT_LIMIT;
     const limit = Number.isFinite(requestedLimit)
       ? Math.max(1, Math.min(MAIL_HISTORY_MAX_LIMIT, Math.floor(requestedLimit)))
@@ -3672,7 +3757,7 @@ export class CoreStore {
        ORDER BY m.id
        LIMIT ?`,
     ).all(beeId, limit + 1) as Row[];
-    const candidates = rows.slice(0, limit).map(mailPendingMessage);
+    const candidates = rows.slice(0, limit).map(row => this.withPhoneInput(mailPendingMessage(row), Number(row.message_id)));
     const messages: MailPendingMessage[] = [];
     let bodyBytes = 0;
     let jsonBytes = 0;
@@ -3692,7 +3777,7 @@ export class CoreStore {
 
   getMessage(messageId: number): MessageRow | null {
     const row = this.stmt("SELECT * FROM mailbox WHERE id = ?").get(messageId) as Row | undefined;
-    return row ? mapMessage(row) : null;
+    return row ? this.mapPhoneMessage(row) : null;
   }
 
   /**
@@ -3701,6 +3786,7 @@ export class CoreStore {
    * messages' lifecycle events, so unrelated audit traffic cannot evict mail.
    */
   mailHistory(params: MailHistoryParams = {}): MailHistoryResult {
+    this.tx(() => this.backfillMailHistoryEnqueues());
     const headSeq = this.lastAuditSeq();
     const requestedSnapshot = params.snapshotSeq ?? headSeq;
     const snapshotSeq = Number.isSafeInteger(requestedSnapshot)
@@ -3720,7 +3806,7 @@ export class CoreStore {
        WHERE seq <= ? AND seq < ?
        ORDER BY seq DESC LIMIT ?`,
     ).all(snapshotSeq, beforeSeq, limit + 1) as Row[];
-    const candidates = enqueueRows.slice(0, limit).map(mailHistoryEnqueue);
+    const candidates = enqueueRows.slice(0, limit).map(row => this.withPhoneInput(mailHistoryEnqueue(row), Number(row.message_id)));
 
     // Exactly three indexed point reads per candidate at most. Repeated
     // expedites or historical duplicate terminal rows cannot enlarge work.
@@ -3932,6 +4018,7 @@ export class CoreStore {
         messageId,
         deliveredAt: at,
         deliveredGeneration: generation,
+        ...(message.phoneInput ? { phoneOrigin: message.phoneInput.envelope } : {}),
         ...(turnTrigger ? { turnTrigger } : {}),
         ...(questionId !== null ? { questionId } : {}),
         ...(senderKind !== undefined ? { senderKind } : {}),
@@ -3979,6 +4066,7 @@ export class CoreStore {
           deliveredAt: at,
           deliveredGeneration: generation,
           ack: true,
+          ...(this.phoneInput(messageId) ? { phoneOrigin: this.phoneInput(messageId)!.envelope } : {}),
           ...(questionId !== null ? { questionId } : {}),
           ...(senderKind !== undefined ? { senderKind } : {}),
         });
@@ -4016,6 +4104,7 @@ export class CoreStore {
   }
 
   mailOrigin(messageId: number): MailOrigin {
+    this.tx(() => this.backfillMailHistoryEnqueues());
     const row = this.stmt("SELECT origin FROM mail_history_enqueues WHERE message_id = ?").get(messageId) as Row | undefined;
     return row === undefined ? "legacy.unknown" : auditMailOrigin(row.origin, `origin for message ${messageId}`);
   }
@@ -5132,7 +5221,7 @@ export class CoreStore {
   listBeeViewRows(lifecycle: string | null = null): BeeViewRow[] {
     const bees = lifecycle === null
       ? this.listBees()
-      : (this.stmt("SELECT * FROM bees WHERE lifecycle = ? ORDER BY id").all(lifecycle) as Row[]).map(mapBee);
+      : (this.stmt("SELECT * FROM bees WHERE lifecycle = ? ORDER BY id").all(lifecycle) as Row[]).map(row => this.mapPhoneBee(row));
     if (bees.length === 0) return [];
     const selected = new Set(bees.map((bee) => bee.id));
 
@@ -5883,7 +5972,7 @@ export class CoreStore {
   /** Bees (any lifecycle) bound to the account, by id. */
   beesOnAccount(accountId: string): BeeRow[] {
     const rows = this.stmt("SELECT * FROM bees WHERE account = ? ORDER BY id").all(accountId) as Row[];
-    return rows.map(mapBee);
+    return rows.map(row => this.mapPhoneBee(row));
   }
 
   /**
@@ -6579,9 +6668,10 @@ export class CoreStore {
       const notice = row.deathRecovery?.claimedAt != null && redeliver
         ? [this.send(row.beeId, "[Hive] Refreshed account material installed; conversation resumed automatically.", { sender: AUTH_RESUME_SENDER, origin: "auth.resume" })] : [];
       const sent = redeliver
-        ? [...notice, ...originals.map((message) => this.send(row.beeId, message!.body, {
+        ? [...notice, ...originals.map((message) => this.send(row.beeId, message!.phoneInput?.originalContent ?? message!.body, {
           sender: message!.sender, urgency: message!.urgency, priority: message!.priority, origin: "auth.resume",
           ...(message!.senderKind === undefined ? {} : { senderKind: message!.senderKind }),
+          ...(message!.phoneInput ? { phone: { origin: forwardPhoneOrigin(message!.phoneInput, "forward"), key: `auth-resume:${row.id}:${message!.id}` } } : {}),
         }))]
         : [this.send(row.beeId, (row.deathRecovery?.claimedAt != null ? "[Hive] Refreshed account material installed; conversation resumed automatically.\n\n" : "") + continueBody, { sender: AUTH_RESUME_SENDER, origin: "auth.resume" })];
       return {
@@ -9667,7 +9757,7 @@ export class CoreStore {
         mapRuntime,
       ),
       flags: (this.stmt("SELECT * FROM flags ORDER BY id").all() as Row[]).map(mapFlag),
-      mailbox: (this.stmt("SELECT * FROM mailbox ORDER BY id").all() as Row[]).map(mapMessage),
+      mailbox: (this.stmt("SELECT * FROM mailbox ORDER BY id").all() as Row[]).map(row => this.mapPhoneMessage(row)),
       commands: (this.stmt("SELECT * FROM commands ORDER BY id").all() as Row[]).map(mapCommand),
       templates: this.listTemplates(),
       tracks: this.listTracks(),

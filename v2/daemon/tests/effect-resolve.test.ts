@@ -62,13 +62,13 @@ test("effect RPC fences late spawn send archive before effects and holds retired
   await assert.rejects(f.client.resolveEffect("spawn", `effect-v1:${coverage.coverageId}:spawn`, await f.client.effectCoverage()), refusal("rpc_effect_history_unknown"));
 });
 
-test("effect RPC registers before the actual account freshness await, joins exact replay, then commits", async t => {
+test("legacy effect RPC rejects changed in-flight args but replays changed args after commit and reopen", async t => {
   const f = await fixture(t), coverage = await f.client.effectCoverage();
   let entered!: () => void, release!: () => void;
   const seen = new Promise<void>(resolve => { entered = resolve; });
   const wait = new Promise<void>(resolve => { release = resolve; });
   f.owner.accounts = { allocationMode: () => "shadow", async ensureFreshAdmissionLimits() { entered(); await wait; }, isolationRefusal: () => null };
-  const key = `effect-v1:${coverage.coverageId}:pending`, params = { name: "pending", agent: "stub", cwd: tmpdir(), idempotencyKey: key };
+  const key = `effect-v1:${coverage.coverageId}:pending`, params = { name: "pending", agent: "stub", cwd: tmpdir(), prompt: "original prompt", idempotencyKey: key };
   const pending = f.client.request<SpawnResult>("spawn", params);
   await seen;
   assert.equal((await f.client.resolveEffect("spawn", key, coverage)).status, "in_flight");
@@ -80,6 +80,11 @@ test("effect RPC registers before the actual account freshness await, joins exac
   assert.equal(joined.deduped, true);
   assert.equal((await f.client.resolveEffect("spawn", key, coverage)).status, "committed");
   assert.equal(f.store.listBees().length, 1);
+  const replayArgs = { ...params, name: "ignored-after-commit", parentExternal: false, prompt: undefined };
+  assert.equal((await f.client.request<SpawnResult>("spawn", replayArgs)).beeId, original.beeId);
+  f.reopen();
+  assert.equal((await f.client.request<SpawnResult>("spawn", replayArgs)).beeId, original.beeId);
+
 });
 
 test("effect RPC missing capability fails locally without sending a resolver frame", async t => {

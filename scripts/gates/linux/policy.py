@@ -83,6 +83,8 @@ def preexec_verdict(change, real_home, named=(), touched=()):
     identity = all(old.get(key) == new.get(key) for key in ('inode', 'uid', 'gid', 'mode', 'type'))
     if wal_mtime_only(path, old, new, real_home):
         return 'WARN', 'WAL/SHM mtime-only'
+    if identity and path == hive + '/v2/auto-title.json' and old.keys() == new.keys() and all(old[key] == new[key] for key in old if key != 'mtime_ns') and old != new:
+        return 'WARN', '~/.hive/v2/auto-title.json mtime-only'
     if identity and path == hive + '/v2/hived.log' and new['size'] > old['size']:
         return 'WARN', 'hived.log growth'
     direct = str(pathlib.Path(path).parent) in (hive, hive + '/v2')

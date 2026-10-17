@@ -1,3 +1,5 @@
+import { canonicalDigest } from "../../../src/comb/canonical.ts";
+import { parsePhoneOrigin, type PhoneOriginRequest } from "../../core/src/phoneOrigin.ts";
 import { ExecutionFenceError } from "../../core/src/executionFence.ts";
 import { EffectKeyError } from "../../core/src/effectResolve.ts";
 import { PeerCredentials, type PeerConnection } from "./peerCredentials.ts";
@@ -71,6 +73,9 @@ import {
 } from "./protocol.ts";
 
 export interface RpcConn {
+  readonly phoneOrigin?: PhoneOriginRequest;
+  readonly phoneCarrierDigest?: string;
+  readonly phoneLane?: "envelope-v1" | "interim-v1";
   readonly executionCoordinatorUid?: number;
   readonly authenticatedBeeId?: string;
   readonly localPeer?: Readonly<{uid: number; pid: number; processBirth: string | null}>;
@@ -415,6 +420,19 @@ export class RpcServer {
           const beeId = (principal as Record<string, unknown>).beeId;
           if (typeof beeId !== "string" || !beeId.trim() || beeId.length > 256) throw new RpcError("caller_not_trusted", "Invalid authenticated session principal.");
           return this.opts.dispatch(verb, params, { ...conn, authenticatedBeeId: beeId });
+        }
+        if (params.phoneOrigin !== undefined || params.phoneInput !== undefined || params.phoneLane !== undefined) throw new RpcError("invalid_request", "Phone carriers belong in RPC context, not args");
+        const context = frame.context as Record<string, unknown> | undefined;
+        if (context?.phoneOrigin !== undefined) {
+          if (verb !== "send" && verb !== "spawn") throw new RpcError("invalid_request", "Phone envelope is only valid for send or spawn");
+          if (!peer || !this.trust.enabled || conn.ingress !== "local_unix") throw new RpcError("caller_not_trusted", "Phone envelope requires a LocalRpcTrust-authenticated local caller");
+          this.trust.require(peer, conn.ingress);
+          if (context.phoneLane !== undefined && context.phoneLane !== "envelope-v1") throw new RpcError("invalid_request", "Phone envelope lane mismatch");
+          return this.opts.dispatch(verb, params, { ...conn, phoneOrigin: parsePhoneOrigin(context.phoneOrigin), phoneCarrierDigest: canonicalDigest(JSON.parse(JSON.stringify(context.phoneOrigin))), phoneLane: "envelope-v1" });
+        }
+        if (context?.phoneLane !== undefined) {
+          if (context.phoneLane !== "interim-v1" || (verb !== "send" && verb !== "spawn")) throw new RpcError("invalid_request", "Invalid phone lane");
+          return this.opts.dispatch(verb, params, { ...conn, phoneLane: "interim-v1" });
         }
         return this.opts.dispatch(verb, params, conn);
       });
