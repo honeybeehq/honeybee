@@ -366,6 +366,8 @@ def run_step(config, step):
     fixture = read(root / 'git-boundary' / label / 'fixture.json')
     baseline = git_boundary_snapshot(fixture['backingTarget'])
     assert baseline == fixture['before']
+    fixture.update(controllerUid=os.getuid(), controllerGid=os.getgid())
+    save(root / 'git-boundary' / label / 'fixture.json', fixture)
     save(out / 'git-boundary-baseline.json', dict(entries=baseline, metadataAndHashesOnly=True))
     before = snapshot(home)
     save(out / 'before.json', before)

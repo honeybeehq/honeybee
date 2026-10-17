@@ -25,6 +25,19 @@ def snapshot(repo):
     return rows
 
 
+def translate_ownership(rows, uid_map, gid_map):
+    def translate(value, mapping):
+        matches = [outside + value - inside for inside, outside, count in mapping if inside <= value < inside + count]
+        if len(matches) != 1:
+            raise ValueError('fixture ownership has no unique namespace mapping')
+        return matches[0]
+    return {path: dict(row, uid=translate(row['uid'], uid_map), gid=translate(row['gid'], gid_map)) for path, row in rows.items()}
+
+
+def namespace_map(name):
+    return [[int(value) for value in line.split()] for line in pathlib.Path('/proc/self/' + name).read_text().splitlines()]
+
+
 def fixture_env():
     env = dict(os.environ)
     for name in list(env):
@@ -63,7 +76,8 @@ def prepare(root, label):
     attempted = checked(str(binary), source, ['rev-parse', 'HEAD'])
     bare = checked(str(binary), target, ['rev-parse', '--is-bare-repository']) == 'true'
     seed = checked(str(binary), target, ['rev-parse', 'refs/heads/seed'])
-    record = dict(entryGuard=guard, binary=str(binary), binarySha256=hashlib.sha256(binary.read_bytes()).hexdigest(), source=str(source), backingTarget=str(target), outsideTarget='/mnt/target.git', bare=bare, seed=seed, attempted=attempted, before=snapshot(target))
+    record = dict(entryGuard=guard, binary=str(binary), binarySha256=hashlib.sha256(binary.read_bytes()).hexdigest(), source=str(source), backingTarget=str(target), outsideTarget='/mnt/target.git', bare=bare, seed=seed, attempted=attempted, namespaceBefore=snapshot(target), uidMap=namespace_map('uid_map'), gidMap=namespace_map('gid_map'))
+    record['before'] = translate_ownership(record['namespaceBefore'], record['uidMap'], record['gidMap'])
     assert bare and record['before']
     (directory / 'fixture.json').write_text(json.dumps(record))
     return directory
@@ -129,7 +143,9 @@ def run(root, label):
     binary, source, target = fixture['binary'], fixture['source'], fixture['outsideTarget']
     assert hashlib.sha256(pathlib.Path(binary).read_bytes()).hexdigest() == fixture['binarySha256']
     assert not pathlib.Path(target).is_relative_to(pathlib.Path(root))
-    before = snapshot(target)
+    uid_map = [[os.getuid(), fixture['controllerUid'], 1]]
+    gid_map = [[os.getgid(), fixture['controllerGid'], 1]]
+    before = translate_ownership(snapshot(target), uid_map, gid_map)
     bare = checked(binary, target, ['rev-parse', '--is-bare-repository']) == 'true'
     seed_present = checked(binary, target, ['rev-parse', 'refs/heads/seed']) == fixture['seed']
     checked(binary, target, ['cat-file', '-e', fixture['seed'] + '^{commit}'])
@@ -138,7 +154,7 @@ def run(root, label):
     push = git_call(binary, source, ['push', target, 'HEAD:refs/heads/boundary'])
     storage = storage_probes(target)
     classified = classify_stderr(push.stderr.decode(errors='replace'), 'push', target)
-    after = snapshot(target)
+    after = translate_ownership(snapshot(target), uid_map, gid_map)
     local = dict(proof='combined boundary proof: git write-failure class plus direct EROFS syscall probes plus an unchanged tree', asserted=bare and seed_present and source_ready and readonly and push.returncode != 0 and classified['classification'] == 'local_write_failure' and all(row['refused'] for row in storage) and before == after == fixture['before'], operation='push', path=target, bare=bare, seedPresent=seed_present, sourceReady=source_ready, readOnly=readonly, pushExit=push.returncode, storageProbes=storage, before=before, after=after, unchanged=before == after == fixture['before'], metadataAndHashesOnly=True, **classified)
     network = []
     for operation, args in [('fetch', ['fetch', NETWORK_URL]), ('push', ['push', NETWORK_URL, 'HEAD:refs/heads/boundary'])]:
@@ -146,11 +162,14 @@ def run(root, label):
         probe = network_probe()
         classified = classify_stderr(result.stderr.decode(errors='replace'), operation, NETWORK_URL)
         network.append(dict(operation=operation, url=NETWORK_URL, exit=result.returncode, connectProbe=probe, asserted=result.returncode != 0 and classified['classification'] == 'network_unreachable' and probe['refused'], **classified))
-    return dict(entryGuard=fixture['entryGuard'], asserted=local['asserted'] and all(row['asserted'] for row in network), binary=binary, binarySha256=fixture['binarySha256'], outsidePush=local, network=network, fixtureOnlyException=['GIT_CONFIG_NOSYSTEM=1', 'GIT_CONFIG_GLOBAL=/dev/null'])
+    return dict(ownershipMaps=dict(uid=uid_map, gid=gid_map, namespaceUid=namespace_map('uid_map'), namespaceGid=namespace_map('gid_map')), entryGuard=fixture['entryGuard'], asserted=local['asserted'] and all(row['asserted'] for row in network), binary=binary, binarySha256=fixture['binarySha256'], outsidePush=local, network=network, fixtureOnlyException=['GIT_CONFIG_NOSYSTEM=1', 'GIT_CONFIG_GLOBAL=/dev/null'])
 
 
 def receipt_valid(record, fixture, outside_after):
     try:
+        maps = record['ownershipMaps']
+        assert maps['uid'] == [[1000, fixture['controllerUid'], 1]] and maps['gid'] == [[1000, fixture['controllerGid'], 1]]
+        assert maps['namespaceUid'] == maps['namespaceGid'] == [[1000, 0, 1]]
         guard = record['entryGuard']
         assert guard == fixture['entryGuard'] and guard['allowed'] is True and guard['beforeFirstWrite'] is True
         local = record['outsidePush']

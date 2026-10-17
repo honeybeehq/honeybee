@@ -419,6 +419,18 @@ class PolicyTests(unittest.TestCase):
         changed[-1] = dict(probes[-2])
         self.assertTrue(probe_failed(dict(valid, probes=changed), HOME, targets))
 
+    def test_git_boundary_manifest_translates_ownership_without_losing_changes(self):
+        from git_boundary import translate_ownership
+        namespace = {'HEAD': dict(uid=0, gid=0, inode=10, sha256='same')}
+        host = {'HEAD': dict(uid=1000, gid=1000, inode=10, sha256='same')}
+        self.assertEqual(translate_ownership(namespace, [[0, 1000, 1]], [[0, 1000, 1]]), host)
+        self.assertNotEqual(translate_ownership(namespace, [[0, 1001, 1]], [[0, 1000, 1]]), host)
+        changed = {'HEAD': dict(host['HEAD'], uid=1001)}
+        self.assertNotEqual(translate_ownership(namespace, [[0, 1000, 1]], [[0, 1000, 1]]), changed)
+        with self.assertRaises(ValueError):
+            translate_ownership(namespace, [[1, 1000, 1]], [[0, 1000, 1]])
+        self.assertEqual(namespace['HEAD']['uid'], 0)
+
     def test_git_boundary_entry_guard_precedes_setup(self):
         import git_boundary
         with patch('git_boundary.entry_guard', side_effect=SystemExit(2)), patch('git_boundary.pathlib.Path.mkdir') as mkdir, patch('git_boundary.git_call') as command:
@@ -441,11 +453,11 @@ class PolicyTests(unittest.TestCase):
                 self.assertEqual(classify_stderr(text + '\n' + forbidden, operation, target)['classification'], 'forbidden_error')
         manifest = {'.': dict(inode=1), 'HEAD': dict(sha256='head'), 'config': dict(sha256='config')}
         guard = dict(allowed=True, beforeFirstWrite=True)
-        fixture = dict(entryGuard=guard, binary='/usr/bin/git', binarySha256='hash', before=manifest)
+        fixture = dict(controllerUid=1000, controllerGid=1000, entryGuard=guard, binary='/usr/bin/git', binarySha256='hash', before=manifest)
         storage = [dict(path=OUTSIDE_TARGET + '/' + directory + '/gate-write-' + operation, operation=operation, errno=errno.EROFS, refused=True) for directory in ('objects', 'refs') for operation in ('mkdir', 'open')]
         local = dict(asserted=True, operation='push', path=OUTSIDE_TARGET, bare=True, readOnly=True, seedPresent=True, sourceReady=True, pushExit=1, unchanged=True, before=manifest, after=manifest, storageProbes=storage, **classify_stderr(local_text, 'push', OUTSIDE_TARGET))
         network = [dict(asserted=True, operation=operation, url=NETWORK_URL, exit=128, connectProbe=dict(address='192.0.2.1', port=9418, errno=errno.ENETUNREACH, refused=True), **classify_stderr(network_text, operation, NETWORK_URL)) for operation in ('fetch', 'push')]
-        record = dict(entryGuard=guard, asserted=True, binary='/usr/bin/git', binarySha256='hash', outsidePush=local, network=network)
+        record = dict(ownershipMaps=dict(uid=[[1000, 1000, 1]], gid=[[1000, 1000, 1]], namespaceUid=[[1000, 0, 1]], namespaceGid=[[1000, 0, 1]]), entryGuard=guard, asserted=True, binary='/usr/bin/git', binarySha256='hash', outsidePush=local, network=network)
         self.assertTrue(receipt_valid(record, fixture, manifest))
         for field, value in [('classification', 'network_unreachable'), ('operation', 'fetch'), ('path', '/wrong'), ('matchedEvidence', []), ('matchedEvidence', ['unrelated']), ('matchedEvidence', [local_text, 'Permission denied']), ('after', {}), ('pushExit', 0)]:
             changed = deepcopy(record); changed['outsidePush'][field] = value
