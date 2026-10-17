@@ -5,6 +5,7 @@ from pathlib import Path
 import tarfile
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import guard
 import seed_npm
@@ -89,6 +90,46 @@ class SeedPaxTests(unittest.TestCase):
                 root = lane / ('run-' + str(number))
                 root.mkdir()
                 with self.subTest(kind=kind), self.assertRaises(guard.Refusal):
+                    guard.seed_cache(archive, sha(archive), root, lane)
+                self.assertFalse((root / 'cache').exists())
+
+    def test_nonzero_directory_cannot_hide_global_or_gnu_headers(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            lane = Path(temporary).resolve()
+            directory = tarfile.TarInfo('npm')
+            directory.type = tarfile.DIRTYPE
+            directory.size = 1024
+            regular = tarfile.TarInfo('npm/visible')
+            global_header = tarfile.TarInfo.create_pax_global_header({'path': 'npm/hidden'})
+            gnu = tarfile.TarInfo('npm/' + 'x' * 150).tobuf(format=tarfile.GNU_FORMAT)
+            cases = {
+                'global': directory.tobuf(format=tarfile.USTAR_FORMAT) + global_header + regular.tobuf(format=tarfile.USTAR_FORMAT),
+                'gnu': directory.tobuf(format=tarfile.USTAR_FORMAT) + gnu}
+            for kind, contents in cases.items():
+                archive = lane / (kind + '.tar')
+                archive.write_bytes(contents + bytes(1024))
+                with tarfile.open(archive, 'r:') as target:
+                    names = [row.name for row in target.getmembers()]
+                self.assertTrue('npm/hidden' in names if kind == 'global' else any(len(name) > 100 for name in names))
+                root = lane / ('run-' + kind)
+                root.mkdir()
+                with self.subTest(kind=kind), self.assertRaisesRegex(guard.Refusal, 'directory payload'):
+                    guard.seed_cache(archive, sha(archive), root, lane)
+                self.assertFalse((root / 'cache').exists())
+
+    def test_raw_and_tarfile_sequence_disagreement_refuses(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            lane = Path(temporary).resolve()
+            archive = lane / 'seed.tar'
+            with tarfile.open(archive, 'w', format=tarfile.PAX_FORMAT) as target:
+                target.addfile(tarfile.TarInfo('npm/valid'))
+            expected = guard.validate_seed_headers(archive)
+            root = lane / 'run'
+            root.mkdir()
+            for index, value in ((0, 512), (1, tarfile.DIRTYPE), (2, 'npm/different'), (3, 1)):
+                changed = list(expected[0])
+                changed[index] = value
+                with patch('guard.validate_seed_headers', return_value=[tuple(changed)]), self.subTest(field=index), self.assertRaisesRegex(guard.Refusal, 'parser disagree'):
                     guard.seed_cache(archive, sha(archive), root, lane)
                 self.assertFalse((root / 'cache').exists())
 
