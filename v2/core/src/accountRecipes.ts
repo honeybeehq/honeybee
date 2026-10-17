@@ -9,7 +9,7 @@
  * preserved when present but never gate anything.
  */
 import { HARNESS_HOME_ENV } from "./import-frozen.ts";
-import type { LoginFieldDescriptor, LoginMethodDescriptor } from "./loginFlow.ts";
+import type { LoginAuthorizationPolicy, LoginFieldDescriptor, LoginMethodDescriptor } from "./loginFlow.ts";
 
 export interface IdentityRecipe {
   /** Home-relative credential files; the same relative paths are used inside the vault. */
@@ -155,6 +155,7 @@ export type LoginMethodRun =
 export type LoginRecipeMethod = LoginMethodDescriptor & {
   run: LoginMethodRun;
   harnessFree?: true;
+  authorizationUrl?: LoginAuthorizationPolicy;
 };
 
 export interface LoginCliCue {
@@ -191,6 +192,7 @@ export interface LoginCliSpec {
 
 export interface LoginRecipe {
   methods: LoginRecipeMethod[];
+  authorizationUrl?: LoginAuthorizationPolicy;
   /** Method chosen when the client does not pick one (local pairing). */
   defaultMethodId: string;
   /** Method chosen for a remote node (must be remoteCapable); absent = the default when it is remoteCapable, else refuse. */
@@ -400,6 +402,7 @@ export const ACCOUNT_RECIPES: Readonly<Record<string, IdentityRecipe>> = {
     login: { command: "claude", args: ["auth", "login"] },
     loginFlow: {
       defaultMethodId: "claude-oauth",
+      authorizationUrl: { hosts: ["claude.com"], paths: ["/cai/oauth/authorize"], parameters: ["client_id", "response_type", "redirect_uri", "scope", "code_challenge", "code_challenge_method", "state"], claudeCodeFlag: true },
       methods: [
         {
           id: "claude-oauth",
@@ -461,6 +464,7 @@ export const ACCOUNT_RECIPES: Readonly<Record<string, IdentityRecipe>> = {
       methods: [
         {
           id: "codex-browser",
+          authorizationUrl: { hosts: ["auth.openai.com"], paths: ["/oauth/authorize"], parameters: ["response_type", "client_id", "redirect_uri", "scope", "code_challenge", "code_challenge_method", "id_token_add_organizations", "codex_cli_simplified_flow", "state", "originator", "allowed_workspace_id"] },
           kind: "browser",
           label: "Sign in with ChatGPT",
           description: "Approve access in your browser; Codex finishes the sign-in on this computer.",
@@ -479,6 +483,7 @@ export const ACCOUNT_RECIPES: Readonly<Record<string, IdentityRecipe>> = {
         },
         {
           id: "codex-device",
+          authorizationUrl: { hosts: ["auth.openai.com"], paths: ["/codex/device"], parameters: [] },
           kind: "device_code",
           label: "Sign in with a device code",
           description: "Open the sign-in page anywhere and enter the code shown here.",
@@ -750,6 +755,7 @@ export const ACCOUNT_RECIPES: Readonly<Record<string, IdentityRecipe>> = {
     login: { command: "muse", args: ["login"] },
     loginFlow: {
       defaultMethodId: "muse-device",
+      authorizationUrl: { hosts: ["auth.meta.com"], paths: ["/oauth/device/", "/device"], parameters: [] },
       methods: [
         {
           id: "muse-device",

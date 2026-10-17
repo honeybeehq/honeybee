@@ -26,7 +26,7 @@ export function plausibleOption(value: string, kind: "url" | "text"): boolean {
   try {
     const url = new URL(value);
     // A key is sent to this host during the check: https, or loopback http (local proxies).
-    return url.protocol === "https:" || (url.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname));
+    return !url.username && !url.password && !url.search && !url.hash && (url.protocol === "https:" || (url.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)));
   } catch {
     return false;
   }
@@ -82,7 +82,7 @@ export class DirectKeyRunner implements LoginRunner {
     const headers: Record<string, string> = {};
     const baseUrl = (values.baseUrl ?? "").trim();
     if (baseUrl) {
-      if (!known.baseUrl || !plausibleOption(baseUrl, "url")) return host.reask(err("invalid_input", "The base URL must be an http(s) URL."));
+      if (!known.baseUrl || !plausibleOption(baseUrl, "url")) return host.reask(err("invalid_input", "The base URL must use HTTPS (or loopback HTTP), without userinfo, query parameters or a fragment."));
       options.baseURL = baseUrl;
     }
     const organization = (values.organization ?? "").trim();

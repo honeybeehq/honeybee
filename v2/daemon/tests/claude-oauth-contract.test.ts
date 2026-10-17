@@ -48,3 +48,18 @@ test("claude oauth URL encoding stays stable for known verifier and state", () =
   assert.equal(url.searchParams.get("state"), "b".repeat(43));
   assert.equal(url.searchParams.get("scope"), CLAUDE_OAUTH_SCOPES.join(" "));
 });
+
+
+test("claude oauth refuses a null authorization URL as a typed failure", async () => {
+  let patched = false;
+  const host = {
+    method: { fields: [], authorizationUrl: { hosts: ["refused.example"], paths: ["/authorize"], parameters: [] } },
+    patch: () => { patched = true; throw new Error("a refused URL must not enter waiting_input"); },
+    fail: (error: { code: string; message: string }, retryable: boolean) => ({ phase: "failed", authorizationUrl: null, error, retryable }),
+  } as unknown as LoginRunnerHost;
+  const flow = await new ClaudeOauthRunner(host).start();
+  assert.equal(flow.phase, "failed");
+  assert.equal(flow.error?.code, "provider_error");
+  assert.equal(flow.authorizationUrl, null);
+  assert.equal(patched, false);
+});

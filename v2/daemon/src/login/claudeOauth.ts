@@ -11,7 +11,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { parseClaudeCredentials, safeAuthorizationUrl, type LoginFieldDescriptor, type LoginFlowRow } from "../../../core/src/index.ts";
+import { parseClaudeCredentials, recipeFor, safeAuthorizationUrl, type LoginFieldDescriptor, type LoginFlowRow } from "../../../core/src/index.ts";
 import { CredentialAuthorityError } from "../claudeCredentialAuthority.ts";
 import { seedClaudeHomeAcceptance, seedClaudeHomeDefaults, atomicWriteFileSync } from "../homeDefaults.ts";
 import { STATIC_DETAIL, err } from "./common.ts";
@@ -65,7 +65,8 @@ export class ClaudeOauthRunner implements LoginRunner {
   }
 
   async start(): Promise<LoginFlowRow> {
-    const url = safeAuthorizationUrl(claudeAuthorizeUrl(this.codeVerifier, this.state));
+    const url = safeAuthorizationUrl(claudeAuthorizeUrl(this.codeVerifier, this.state), this.host.method.authorizationUrl ?? recipeFor("claude")!.loginFlow.authorizationUrl!);
+    if (!url) return this.host.fail(err("provider_error", "Claude's sign-in returned an unusable sign-in page address."), true);
     return this.host.patch(
       { phase: "waiting_input", detail: STATIC_DETAIL.code, authorizationUrl: url, inputFields: this.host.method.fields.map((f) => ({ ...f })) },
       "authorization url issued",

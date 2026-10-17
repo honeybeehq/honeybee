@@ -118,7 +118,7 @@ export class CliRunner implements LoginRunner {
   async submit(values: Record<string, string>, fields: readonly LoginFieldDescriptor[]): Promise<LoginFlowRow> {
     for (const field of fields) {
       const value = values[field.id];
-      if (value !== undefined) this.worker?.submit(value, field.secret);
+      if (value !== undefined) this.worker?.submit(value, true);
     }
     return this.host.flow() as LoginFlowRow;
   }
@@ -143,8 +143,11 @@ export class CliRunner implements LoginRunner {
     if (!flow || !host.stillActive()) return;
     switch (event.kind) {
       case "url": {
-        const url = safeAuthorizationUrl(event.url);
-        if (!url) return;
+        const url = safeAuthorizationUrl(event.url, host.method.authorizationUrl ?? "cli");
+        if (!url) {
+          host.fail(err("provider_error", "The sign-in page address was refused because it may contain credentials."), true);
+          return;
+        }
         const reissued = flow.authorizationUrl !== null && flow.authorizationUrl !== url;
         const device = host.method.kind === "device_code";
         this.idlePhase = device ? (flow.userCode ? "waiting_device" : "waiting_browser") : "waiting_browser";

@@ -1,0 +1,49 @@
+export class LoginRedactor {
+  private readonly values = new Set<string>();
+
+  add(values: Readonly<Record<string, string>>): void {
+    for (const [field, raw] of Object.entries(values)) {
+      for (const value of [raw, raw.trim(), ...(field === "code" ? raw.trim().split("#") : [])]) {
+        if (!value) continue;
+        const safeUnicode = Buffer.from(value).toString("utf8");
+        const variants = [value, encodeURI(safeUnicode), encodeURIComponent(safeUnicode), new URLSearchParams({ v: value }).toString().slice(2), JSON.stringify(value).slice(1, -1), Buffer.from(value).toString("base64"), Buffer.from(value).toString("base64url")];
+        try {
+          variants.push(new URL(value).toString());
+        } catch {}
+        for (const variant of [...variants]) {
+          let encoded = variant;
+          for (let layer = 0; layer < 3; layer++) {
+            encoded = encodeURIComponent(Buffer.from(encoded).toString("utf8"));
+            variants.push(encoded);
+          }
+        }
+        for (const variant of variants) {
+          this.values.add(variant);
+          this.values.add(variant.replace(/%[0-9A-F]{2}/g, (part) => part.toLowerCase()));
+        }
+      }
+    }
+  }
+
+  contains(text: string): boolean {
+    let normalized = text.replace(/%(?:25)*[0-9a-f]{2}/gi, (part) => part.toUpperCase());
+    for (let i = 0; i < 3; i++) {
+      try {
+        const next = decodeURIComponent(normalized);
+        if (next === normalized) break;
+        if ([...this.values].some((value) => next.includes(value))) return true;
+        normalized = next;
+      } catch {
+        break;
+      }
+    }
+    return [...this.values].some((value) => normalized.includes(value.replace(/%(?:25)*[0-9a-f]{2}/gi, (part) => part.toUpperCase())));
+  }
+
+  redact(text: string): string {
+    const values = [...this.values].sort((a, b) => b.length - a.length);
+    let result = text.replace(/%(?:25)*[0-9a-f]{2}/gi, (part) => part.toUpperCase()).replace(/https?:[^\s<>"']+/gi, () => "[redacted URL]");
+    for (const value of values) result = result.split(value.replace(/%(?:25)*[0-9a-f]{2}/gi, (part) => part.toUpperCase())).join("[redacted]");
+    return result.replace(/[A-Za-z0-9_\-]{32,}/g, "…");
+  }
+}
