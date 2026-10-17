@@ -300,6 +300,7 @@ export function replayAudit(rows: AuditRow[]): StateDump {
       }
       case "mail.multiline_progress":
       case "mail.delivery_held":
+      case "mail.delivery_unsupported_multiline":
       case "mail.delivery_hold_expired":
       case "mail.multiline_completed":
       case "mail.delivery_reordered": {

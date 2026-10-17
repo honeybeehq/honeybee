@@ -114,10 +114,57 @@ test("reorder notice requires an actual later delivery and a still-undelivered o
     bootToRunning(store, bee.id, 100, 1);
     const first = store.send(bee.id, "one\ntwo").message;
     const later = store.send(bee.id, "later").message;
-    store.recordMultilineDeliveryRefusal(first.id, 1, "multiline_bracketed_paste_disabled");
+    for (let index = 0; index < 3; index++) store.recordMultilineDeliveryRefusal(first.id, 1, "multiline_type_mode");
     assert.equal(store.multilineDelivery(first.id)?.notice, null);
     store.markDelivered(later.id, 1);
     assert.equal(store.multilineDelivery(first.id)?.notice, "delivered later messages; this one is held");
+    assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
+  } finally { store.close(); h.cleanup(); }
+});
+
+test("type hold emits one local sender mail receipt atomically and survives reopen", () => {
+  const h = harness(); let store = h.open();
+  try {
+    const { bee } = makeBee(store);
+    const sender = store.createBee({ name: "sender", agent: "inbox", substrate: "hsr", cwd: "/tmp/sender" }).bee;
+    bootToRunning(store, bee.id, 100, 1);
+    const original = store.send(bee.id, "one\ntwo", { sender: sender.id }).message;
+    for (let index = 0; index < 3; index++) store.recordMultilineDeliveryRefusal(original.id, 1, "multiline_type_mode");
+    const hold = store.multilineDelivery(original.id)!;
+    assert.equal(hold.stage, "held");
+    assert.equal(hold.receipt?.code, "delivery_unsupported_multiline");
+    assert.equal(hold.receipt?.delivered, false);
+    assert.equal(hold.receipt?.channel, "mail");
+    assert.equal(hold.receipt?.heldSince, hold.heldSince);
+    const notices = store.listMessages(sender.id);
+    assert.equal(notices.length, 1);
+    assert.equal(notices[0]!.body.includes("\n"), false);
+    assert.equal(store.multilineSenderReceipt(notices[0]!.id)?.messageId, original.id);
+    assert.deepEqual(store.readDaemonWork()[0]!.pending, []);
+    assert.deepEqual(store.readDaemonStepInputs().work[0]!.pending, []);
+    assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
+    store.close(); store = h.open();
+    store.recordMultilineDeliveryRefusal(original.id, 1, "multiline_type_mode");
+    assert.deepEqual(store.multilineDelivery(original.id), hold);
+    assert.equal(store.listMessages(sender.id).length, 1);
+  } finally { store.close(); h.cleanup(); }
+});
+
+for (const sender of ["operator", "remote:node-a/phone-0123456789abcdef"]) test(`operator and remote hold receipt is exposed on original projections: ${sender}`, () => {
+  const h = harness(), store = h.open();
+  try {
+    const { bee } = makeBee(store);
+    bootToRunning(store, bee.id, 100, 1);
+    const message = store.send(bee.id, "one\ntwo", { sender }).message;
+    for (let index = 0; index < 3; index++) store.recordMultilineDeliveryRefusal(message.id, 1, "multiline_type_mode");
+    const receipt = store.getMessage(message.id)?.deliveryHold?.receipt;
+    assert.equal(receipt?.code, "delivery_unsupported_multiline");
+    assert.equal(receipt?.channel, "mail.history+audit");
+    assert.equal(receipt?.senderNoticeMessageId, null);
+    assert.deepEqual(store.pendingMail(bee.id).messages[0]?.deliveryHold?.receipt, receipt);
+    assert.deepEqual(store.mailHistory().messages[0]?.deliveryHold?.receipt, receipt);
+    assert.ok(store.auditRows().some(row => row.kind === "mail.delivery_unsupported_multiline"));
+    assert.equal(store.listMessages(bee.id).length, 1);
     assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
   } finally { store.close(); h.cleanup(); }
 });

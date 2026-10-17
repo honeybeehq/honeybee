@@ -1656,6 +1656,9 @@ export class DaemonCore {
       const peer = isPeerSender(msg.sender, (id) => this.store.getBee(id) != null);
       const interruptedTurn = msg.urgency === "now" && this.store.deliveryInterruptedTurn(rt.beeId, msg.id, rt.generation);
       let body = deliveryText(msg, peer, interruptedTurn, this.store.answeredQuestionId(msg.id));
+      if (!msg.phoneInput && msg.sender === "automation:delivery" && msg.senderKind === "automation" && this.store.multilineSenderReceipt(msg.id)) body = msg.body;
+      const reorderNotice = this.store.pendingMultilineReorderNotice(rt.beeId, msg.id);
+      if (reorderNotice) body = reorderNotice + body;
       const instruction = this.store.placementInstructionMove(rt.beeId);
       if (instruction && rt.generation !== instruction.sourceGeneration) {
         body = prefixPlacementDelivery(

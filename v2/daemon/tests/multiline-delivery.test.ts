@@ -10,7 +10,9 @@ import type { DeliverOutcome } from "../../harness/src/driver.ts";
 
 class MultilineDriver extends FakeDriver {
   refusal: string | null | undefined = undefined;
+  readonly calls: number[] = [];
   override deliver(beeId: string, generation: number, messageId: number, body: string, options?: { multilineWaitExpired?: boolean }): DeliverOutcome {
+    this.calls.push(messageId);
     if (body.includes("\n") && this.refusal !== null && (!options?.multilineWaitExpired || this.refusal === "multiline_type_mode") && this.refusal !== "multiline_bracketed_paste_version_unsupported" && this.refusal !== "multiline_bracketed_paste_unknown") return { accepted: false, reason: "not_ready", ...(this.refusal ? { detail: this.refusal } : {}) };
     return super.deliver(beeId, generation, messageId, body);
   }
@@ -88,7 +90,7 @@ for (const telemetry of [false, true]) {
   });
 }
 
-for (const telemetry of [false, true]) test(`thirty-second expiry and type-mode refusal preserve accepted mail; telemetry=${telemetry}`, () => {
+for (const telemetry of [false, true]) test(`thirty-second type expiry holds accepted mail without further driver calls; telemetry=${telemetry}`, () => {
   const r = rig(telemetry);
   try {
     const message = r.store.send(r.bee.id, "one\ntwo").message;
@@ -97,12 +99,16 @@ for (const telemetry of [false, true]) test(`thirty-second expiry and type-mode 
     assert.equal(r.store.multilineDelivery(message.id)?.stage, "waiting");
     r.clock.now += 30_000;
     r.core.step();
-    assert.equal(r.store.multilineDelivery(message.id)?.stage, "expired");
+    assert.equal(r.store.multilineDelivery(message.id)?.stage, "held");
+    assert.equal(r.store.multilineDelivery(message.id)?.heldSince, r.clock.now);
     const before = r.store.auditRows().filter(row => row.kind.startsWith("mail.")).length;
+    const calls = r.driver.calls.length;
     for (let index = 0; index < 5; index++) r.core.step();
     assert.equal(r.store.getMessage(message.id)?.body, "one\ntwo");
     assert.equal(r.store.getMessage(message.id)?.deliveredAt, null);
     assert.equal(r.store.auditRows().filter(row => row.kind.startsWith("mail.")).length, before);
-    assert.equal(r.store.multilineDelivery(message.id)?.stage, "expired");
+    assert.equal(r.driver.calls.length, calls);
+    assert.equal(r.store.multilineDelivery(message.id)?.stage, "held");
+    assert.equal(r.store.multilineDelivery(message.id)?.heldSince, r.clock.now);
   } finally { r.cleanup(); }
 });
