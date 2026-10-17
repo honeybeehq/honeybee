@@ -2511,7 +2511,16 @@ test("lease unknown stays raw across reopen, refuses readiness and admission, an
         assert.equal(r.store.activeLoginFlow(row.id), null);
         assert.equal(existsSync(row.homePath), homeBefore);
         assert.equal(readFileSync(join(r.vault, "claude", row.id, ".credentials.json"), "utf8"), vaultBefore);
-        const text = accountLine(svc.mirrorRow(row), undefined, false);
+        const presented = svc.mirrorRow(row);
+        assert.equal(presented.source, "leased");
+        assert.equal(presented.leasedFrom, null);
+        assert.equal(presented.status, "paused");
+        assert.equal(presented.pausedBy, "lease");
+        assert.equal(presented.pausedOwner, null);
+        assert.equal(presented.statusReason, "lease record unreadable; re-lease or repair before it can take work");
+        assert.throws(() => svc.installLease({ id: row.id, harness: row.harness, label: row.label, shareId: "replacement", authorityNodeId: "other-node", epoch: 2, files: [], expiresAt: null }), error => error instanceof Error && "code" in error && error.code === "account_lease_conflict" && error.message === presented.statusReason);
+        assert.equal(r.store.listAccounts().length, 1);
+        const text = accountLine(presented, undefined, false);
         assert.ok(text.includes(account.id));
         assert.ok(text.includes("lease record unreadable; re-lease or repair before it can take work"));
         r.store.close();
@@ -2519,6 +2528,43 @@ test("lease unknown stays raw across reopen, refuses readiness and admission, an
         try { assert.equal(inspect.prepare("SELECT leased_from FROM accounts WHERE id=?").get(account.id)?.leased_from, raw); }
         finally { inspect.close(); }
       }
+    } finally { r.cleanup(); }
+  }
+});
+
+test("lease unknown background refresh cannot activate a home or probe credentials", async () => {
+  for (const harness of ["claude", "codex"]) for (const source of ["local", "leased"]) {
+    const r = rig({ accounts: { limitsRefreshMs: 1 } });
+    try {
+      const account = addAccount(r, harness, "background");
+      r.store.close();
+      const seed = new DatabaseSync(join(r.dir, "core.sqlite3"));
+      seed.prepare("UPDATE accounts SET source=?, leased_from=? WHERE id=?").run(source, "{}", account.id);
+      seed.close();
+      r.store = openCoreStore(join(r.dir, "core.sqlite3"), { now: r.now, ephemeral: true });
+      let probes = 0;
+      const svc = service(r, { fetchers: {
+        claudeUsage: async () => { probes++; throw new Error("unexpected probe"); },
+        codexRateLimits: async () => { probes++; throw new Error("unexpected probe"); },
+      } });
+      const row = r.store.getAccount(account.id)!;
+      const out = await svc.refreshLimits();
+      assert.equal(out[0]?.readable, false);
+      assert.equal(out[0]?.error, "lease record unreadable; re-lease or repair before it can take work");
+      svc.periodicRefreshTick(); svc.centralEarlyRefreshTick(); svc.centralRefreshRetryTick();
+      await assert.rejects(() => svc.activateForSpawn(row, { cwd: r.dir }), /lease record unreadable/);
+      await assert.rejects(() => svc.verifyCredentials(row), /lease record unreadable/);
+      assert.equal(probes, 0);
+      assert.equal(existsSync(row.homePath), false);
+      assert.equal(r.store.getAccount(row.id)?.source, source);
+      const presented = svc.mirrorRow(row);
+      assert.equal(presented.source, "leased");
+      assert.equal(presented.status, "paused");
+      assert.equal(presented.pausedBy, "lease");
+      r.store.close();
+      const inspect = new DatabaseSync(join(r.dir, "core.sqlite3"), { readOnly: true });
+      try { assert.equal(inspect.prepare("SELECT leased_from FROM accounts").get()?.leased_from, "{}"); }
+      finally { inspect.close(); }
     } finally { r.cleanup(); }
   }
 });

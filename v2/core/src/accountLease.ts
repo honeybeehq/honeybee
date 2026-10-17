@@ -21,7 +21,7 @@ export function knownAccountLease(account: Pick<AccountRow, "leasedFrom"> | null
 
 export function presentAccountLease(account: AccountRow): Omit<AccountRow, "leasedFrom"> & { leasedFrom: AccountLeaseOrigin | null } {
   return accountLeaseUnknown(account)
-    ? { ...account, leasedFrom: null, status: "auth_needed", statusReason: LEASE_UNKNOWN_MESSAGE }
+    ? { ...account, source: "leased", leasedFrom: null, status: "paused", pausedBy: "lease", pausedOwner: null, pausedAt: account.updatedAt, statusReason: LEASE_UNKNOWN_MESSAGE }
     : { ...account, leasedFrom: knownAccountLease(account) };
 }
 

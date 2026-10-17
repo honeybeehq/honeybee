@@ -1602,13 +1602,21 @@ export class AccountsService {
       if (input.fencesForwarded) throw new RpcError("account_lease_conflict", "Lease fences cannot be forwarded beyond one export hop.", { reason: "forwarding_depth_exceeded" });
     }
     if (input.enrol && input.adopt !== undefined || input.enrol && !input.viaNodeId) throw new RpcError("invalid_request", "Enrolment requires viaNodeId and cannot be combined with adoption.");
+    const assertKnownTarget = (id: string): void => {
+      const account = this.store.getAccount(id);
+      if (account && accountLeaseUnknown(account)) throw new RpcError("account_lease_conflict", LEASE_UNKNOWN_MESSAGE, { account: id, reason: "lease_unknown" });
+    };
+    assertKnownTarget(input.id);
     return this.withLeaseQueue(this.leaseResolutions, input.id, async () => {
+      assertKnownTarget(input.id);
       const retainedEnrolment = knownAccountLease(this.store.getAccount(input.id))?.enrolment;
       const id = input.adopt || input.enrol || retainedEnrolment ? input.id : `${input.id}@${input.shareId.slice(0, 8)}`;
       if (!isAccountId(id)) throw new RpcError("invalid_request", "Account id must be a bounded safe account identity.");
       const companion = this.store.getAccount(`${input.id}@${input.shareId.slice(0, 8)}`);
       if (input.enrol && !retainedEnrolment && companion?.source === "leased" && knownAccountLease(companion)?.shareId === input.shareId) throw new RpcError("account_lease_conflict", "A companion lease already exists for this share; remove its account row with account.remove before enrolling the original row. lease.remove only revokes its material.");
+      assertKnownTarget(id);
       return this.withLeaseWrite(id, async () => {
+        assertKnownTarget(id);
         let account = this.store.getAccount(id);
         if (account && (this.store.activeCredentialHandoff(id) || ["handing_off", "adopting"].includes(this.authorityFor(account)?.status(account)?.phase ?? ""))) throw new RpcError("credential_handoff_fenced", "Credential ownership is changing; lease installation cannot overwrite an authority.");
         if (input.adopt && !account) throw new RpcError("account_adopt_refused", "Adoption requires an existing same-id native account.");
@@ -2797,6 +2805,10 @@ export class AccountsService {
     for (const id of ids) {
       const account = this.store.getAccount(id);
       if (!account) continue;
+      if (accountLeaseUnknown(account)) {
+        out.push(this.store.putAccountLimits(id, { readable: false, unreadableReason: "auth_failed", error: LEASE_UNKNOWN_MESSAGE }));
+        continue;
+      }
       const healthBefore = this.credentialHealthOf(account);
       const fetched = await this.fetchOne(account);
       if (!this.store.getAccount(id)) continue; // removed mid-fetch
@@ -2929,6 +2941,7 @@ export class AccountsService {
 
   /** One account's limits via its harness's transport; never throws (an unreadable row instead). */
   private async fetchOne(account: AccountRow): Promise<PutAccountLimitsInput> {
+    if (accountLeaseUnknown(account)) return { readable: false, unreadableReason: "auth_failed", error: LEASE_UNKNOWN_MESSAGE };
     if (account.harness === "codex") {
       const joined = this.codexFetches.get(account.homePath);
       if (joined) return joined;
@@ -2970,6 +2983,7 @@ export class AccountsService {
   }
 
   private async fetchByHarness(account: AccountRow): Promise<PutAccountLimitsInput> {
+    if (accountLeaseUnknown(account)) return { readable: false, unreadableReason: "auth_failed", error: LEASE_UNKNOWN_MESSAGE };
     const authorityPhase = this.authorityFor(account)?.status(account)?.phase;
     if (authorityPhase === "handing_off" || authorityPhase === "adopting") return { readable: false, unreadableReason: "provider_error", error: "Credential ownership is changing; existing access remains usable." };
     if (account.source !== "leased" && this.store.credentialAuthorityIsDemoted(account.id) && !this.authorityFor(account)?.enabled(account)) return { readable: false, unreadableReason: "auth_failed", error: "Authority transferred; request an access-only lease from the new authority." };
@@ -3385,6 +3399,7 @@ export class AccountsService {
    * unverified until login records fresh evidence.
    */
   async verifyCredentials(account: AccountRow): Promise<VerifyOutcome> {
+    knownAccountLease(account);
     const probe = this.credentialProbeOf(account.harness);
     if (!this.credentialed(account)) {
       const updated = this.store.setAccountStatus(
@@ -3921,7 +3936,7 @@ export class AccountsService {
     const now = this.now();
     if (now - this.lastPeriodicRefreshAt < every) return;
     this.lastPeriodicRefreshAt = now;
-    const ids = this.store.listAccounts().map((account) => account.id);
+    const ids = this.store.listAccounts().filter(account => !accountLeaseUnknown(account)).map((account) => account.id);
     if (ids.length === 0) return;
     this.enqueueLimitsRefresh(ids);
   }
@@ -3941,7 +3956,7 @@ export class AccountsService {
     if (aheadMs <= 0) return;
     const now = this.now();
     for (const account of this.store.listAccounts()) {
-      if (account.harness === "muse" || account.source === "leased" || !this.credentialAuthorities.has(account.harness) || account.status === "paused") continue;
+      if (accountLeaseUnknown(account) || account.harness === "muse" || account.source === "leased" || !this.credentialAuthorities.has(account.harness) || account.status === "paused") continue;
       const backoff = this.earlyRefreshBackoff.get(account.id);
       if (backoff && backoff.at > now) continue;
       if (!this.authorityFor(account)!.earlyRefreshDue(account, aheadMs)) continue;
@@ -3960,7 +3975,7 @@ export class AccountsService {
   centralRefreshRetryTick(): void {
     const now = this.now();
     const due = this.store.listAccounts()
-      .filter((account) => account.harness !== "muse" && this.credentialAuthorities.has(account.harness) && this.authorityFor(account)!.retryDue(account)
+      .filter((account) => !accountLeaseUnknown(account) && account.harness !== "muse" && this.credentialAuthorities.has(account.harness) && this.authorityFor(account)!.retryDue(account)
         && !this.queuedRefreshIds.has(account.id) && !this.activeRefreshIds.has(account.id)
         // A retry that cannot even start (a locked Keychain, a failing publication) must not probe on every tick.
         && (this.centralRetryProbes.get(account.id) ?? 0) <= now)
@@ -4007,6 +4022,7 @@ export class AccountsService {
   }
 
   async activateForSpawn(account: AccountRow, bee: { cwd: string }): Promise<ActivationResult> {
+    knownAccountLease(account);
     if (this.isNative(account)) {
       const moved = this.nativeHomeRefusal(account);
       if (moved) throw new Error(moved);
