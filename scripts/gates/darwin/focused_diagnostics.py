@@ -23,7 +23,14 @@ def read_result(row, kind):
     if len(lines) != 1:
         return {'ok': False, 'reason': 'missing or duplicate read-result diagnostic'}
     try:
-        value = json.loads(lines[0])
+        def unique_keys(pairs):
+            value = {}
+            for key, item in pairs:
+                if key in value:
+                    raise ValueError('duplicate read-result key')
+                value[key] = item
+            return value
+        value = json.loads(lines[0], object_pairs_hook=unique_keys)
         if set(value) != {'substrate', 'expectedDigest', 'observedDigest', 'expectedHeaderSha256', 'observedHeaderSha256', 'readClass', 'writeDenied'}:
             raise ValueError('wrong read-result schema')
         if value['substrate'] != kind or value['readClass'] != 'read':
@@ -73,4 +80,4 @@ def compare_pair(instrumented, production):
         if ok:
             ok = all(values[0][key] == values[1][key] for key in ('readClass', 'writeDenied'))
         rows.append({'fullName': name, 'ok': ok, 'instrumented': values[0], 'production': values[1]})
-    return {'ok': instrumented['ok'] and production['ok'] and len(rows) == 2 and all(row['ok'] for row in rows), 'rows': rows}
+    return {'ok': instrumented['ok'] and production['ok'] and len(rows) == 2 and all(row['ok'] for row in rows), 'rows': rows, 'instrumentedHarnessArgv': instrumented.get('harnessArgv'), 'productionHarnessArgv': production.get('harnessArgv'), 'isolationDifference': 'instrumented uses --test-isolation=none to preserve the inherited trace fd; production uses default isolation without a preloader'}

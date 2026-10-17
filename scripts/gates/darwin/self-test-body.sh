@@ -5,5 +5,6 @@
 "$SCG_PYTHON_BIN" -B scripts/gates/darwin/focused_audit_test.py || exit $?
 "$SCG_PYTHON_BIN" -B scripts/gates/darwin/focused_diagnostics_test.py || exit $?
 "$SCG_PYTHON_BIN" -B scripts/gates/darwin/focused_flow_test.py || exit $?
+"$SCG_PYTHON_BIN" -B scripts/gates/darwin/focused_trace_test.py || exit $?
 "$SCG_PYTHON_BIN" -B scripts/gates/darwin/git_boundary.py || exit $?
 "$SCG_PYTHON_BIN" -B scripts/gates/darwin/physical_test.py || exit $?

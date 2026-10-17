@@ -51,6 +51,7 @@ class FlowTests(unittest.TestCase):
             calls = [call.args[0] for call in invoked.call_args_list if call.args[0][1] == 'signal']
             self.assertEqual({call[2] for call in calls}, {'11', '12'})
             self.assertTrue(all(call[-1] in ('15', '9') for call in calls))
+            self.assertTrue(all(0 < call.kwargs['timeout'] <= 2 for call in invoked.call_args_list))
             self.assertEqual(api.LEFTOVER_CHILDREN, [])
 
     def test_manifest_partition_is_exact(self):

@@ -21,7 +21,7 @@ def workload_profile(base, tools):
 
 
 def control_state(root, workspace, node):
-    paths = [root / 'scope', root / 'compiler.sb', root / 'workload.sb', root / 'compiler-version.log', Path(node)]
+    paths = [root / 'scope', root / 'compiler.sb', root / 'workload.sb', root / 'compiler-version.log', root / 'source-manifest.json', Path(node)]
     paths += [path for path in (workspace / 'scripts/gates/darwin').rglob('*') if path.is_file()]
     result = {}
     for path in paths:
@@ -182,6 +182,8 @@ def run(api, root, workspace, env, tools, real_home):
     if focused_native.digest(root / 'compiler.sb') != compiler_hash:
         raise api.Refusal('focused build must reuse unchanged compiler profile')
     controls = control_state(root, workspace, env['SCG_NODE_BIN'])
+    source_manifest = json.loads((root / 'source-manifest.json').read_text())
+    native_source_pins = {kind: source_manifest['v2/daemon/native/' + kind + '.c']['sha256'] for kind in ('delivery-file', 'peercred')}
     prefix = ['/usr/bin/sandbox-exec', '-f', str(root / 'workload.sb')]
     result, _ = supervise(api, root, workspace, env, prefix + ['/bin/bash', str(workspace / 'scripts/gates/darwin/workload.sh'), str(workspace / 'scripts/gates/darwin/focused-manifest-body.sh')], 'focused-prepare')
     if result['exit'] != 0 or result['reason']:
@@ -205,7 +207,7 @@ def run(api, root, workspace, env, tools, real_home):
             path = directory / name
             if path.exists() or path.is_symlink():
                 focused_native.confined(path, root).unlink()
-        native = focused_native.build(root, workspace, tools, env['SCG_NODE_BIN'], env, kind)
+        native = focused_native.build(root, workspace, tools, env['SCG_NODE_BIN'], env, kind, source_sha256=native_source_pins[kind])
         api.write_json(root / ('focused-native-build-' + kind + '.json'), native, root)
         probe_path = workspace / ('scripts/probe-' + kind + '.mjs')
         probe, _ = supervise(api, root, workspace, env, prefix + [env['SCG_NODE_BIN'], str(probe_path)], 'focused-native-probe-' + kind)
@@ -219,9 +221,9 @@ def run(api, root, workspace, env, tools, real_home):
         resolved_edges.append(dict(edge, sha256=state['sha256'], inode=state['ino'], mtimeNs=state['mtimeNs']))
     api.write_json(root / 'focused-native-edges.json', resolved_edges, root)
     outcomes = []
-    for mode in ('outer', 'sibling'):
+    for mode in ('outer', 'sibling-instrumented', 'sibling-production'):
         for number, item in enumerate(manifest['files']):
-            names = item[mode]
+            names = item['outer' if mode == 'outer' else 'sibling']
             if not names:
                 continue
             if control_state(root, workspace, env['SCG_NODE_BIN']) != controls:
@@ -234,7 +236,7 @@ def run(api, root, workspace, env, tools, real_home):
                     raise api.Refusal('audited source drift before focused launch')
             if artifacts(workspace, root) != before_artifact:
                 raise api.Refusal('native artifact changed before focused launch')
-            sibling = mode == 'sibling'
+            sibling = mode != 'outer'
             child_env = api.environment(root, env['SCG_NODE_BIN']) if sibling else dict(env)
             child_env['SCG_DELIVERY_FILE_PREBUILT_ONLY'] = '1'
             if sibling:
@@ -242,19 +244,27 @@ def run(api, root, workspace, env, tools, real_home):
                 api.validate(root, child_env, real_home)
                 before = focused_sentinel.snapshot(real_home, ('Library', *api.PROVIDERS))
                 before_agents = api.launchagents(real_home)
-                api.write_json(root / 'focused-home-before.json', before, root)
-                api.write_json(root / 'focused-launchagents-before.json', before_agents, root)
+                api.write_json(root / ('focused-home-before-' + mode + '.json'), before, root)
+                api.write_json(root / ('focused-launchagents-before-' + mode + '.json'), before_agents, root)
             pattern = '^(?:' + '|'.join(re.escape(name) for name in names) + ')$'
             command = [env['SCG_NODE_BIN'], '--test', '--test-concurrency=1', '--test-reporter=tap', '--test-name-pattern=' + pattern, item['path']]
+            if mode == 'sibling-instrumented':
+                command.insert(2, '--test-isolation=none')
             verdict = {'ok': False, 'file': item['path'], 'mode': mode, 'harnessOutsideOuterSeatbelt': sibling, 'excludedNotProof': item['excluded']}
             try:
-                result, log = supervise(api, root, workspace, child_env, command if sibling else prefix + command, 'focused-' + mode + '-' + str(number))
+                trace = focused_trace.Trace(root, workspace, env['SCG_NODE_BIN'], audit, before_artifact) if mode == 'sibling-instrumented' else None
+                result, log = supervise(api, root, workspace, child_env, command if sibling else prefix + command, 'focused-' + mode + '-' + str(number), trace=trace)
+                verdict['harnessArgv'] = result['argv']
+                verdict['isolationNoneInstrumentedOnly'] = mode == 'sibling-instrumented'
+                if mode == 'sibling-instrumented':
+                    verdict['isolationReason'] = 'default test runner child is born before preloader hooks and loses inherited trace fd; instrumented only uses isolation=none; plain run uses default isolation'
                 verdict.update(focused_tap.adjudicate(log.read_text(), names, result['exit']))
                 verdict['processReason'] = result['reason']
                 if result['reason']:
                     verdict['ok'] = False
-                if sibling:
-                    verdict['diagnostics'] = focused_diagnostics.check(verdict['expectedRows'])
+                matrix_rows = [row for row in verdict['expectedRows'] if row['fullName'].startswith('Darwin OS-level file read outside cwd: ')]
+                if matrix_rows:
+                    verdict['diagnostics'] = focused_diagnostics.check(matrix_rows, ('cell-sandbox', 'satellite-default') if sibling else ('hsr',))
                     verdict['ok'] = verdict['ok'] and verdict['diagnostics']['ok']
             except (ValueError, OSError, subprocess.SubprocessError, api.Refusal) as error:
                 verdict.update({'ok': False, 'error': str(error)})
@@ -263,8 +273,8 @@ def run(api, root, workspace, env, tools, real_home):
                     if sibling:
                         after = focused_sentinel.snapshot(real_home, ('Library', *api.PROVIDERS))
                         after_agents = api.launchagents(real_home)
-                        api.write_json(root / 'focused-home-after.json', after, root)
-                        api.write_json(root / 'focused-launchagents-after.json', after_agents, root)
+                        api.write_json(root / ('focused-home-after-' + mode + '.json'), after, root)
+                        api.write_json(root / ('focused-launchagents-after-' + mode + '.json'), after_agents, root)
                         verdict['homeMetadataUnchanged'] = before == after
                         verdict['launchAgentsUnchanged'] = before_agents == after_agents
                         if before != after or before_agents != after_agents:
@@ -276,7 +286,11 @@ def run(api, root, workspace, env, tools, real_home):
                 outcomes.append(verdict)
                 api.write_json(root / 'focused-rows.json', outcomes, root)
     expected = sum(len(item['outer']) + len(item['sibling']) for item in manifest['files'])
-    passed = sum(row.get('classification') == 'PASS' for outcome in outcomes for row in outcome.get('expectedRows', []))
-    ok = bool(outcomes) and all(row['ok'] for row in outcomes) and passed == expected
+    passed = sum(row.get('classification') == 'PASS' for outcome in outcomes if outcome['mode'] != 'sibling-instrumented' for row in outcome.get('expectedRows', []))
+    instrumented = next((row for row in outcomes if row['mode'] == 'sibling-instrumented'), None)
+    production = next((row for row in outcomes if row['mode'] == 'sibling-production'), None)
+    pair = focused_diagnostics.compare_pair(instrumented, production) if instrumented and production and 'diagnostics' in instrumented and 'diagnostics' in production else {'ok': False, 'reason': 'missing instrumented or production pair evidence'}
+    api.write_json(root / 'focused-pair.json', pair, root)
+    ok = bool(outcomes) and all(row['ok'] for row in outcomes) and passed == expected and pair['ok']
     api.write_json(root / 'focused-summary.json', {'ok': ok, 'required': expected, 'passed': passed, 'excludedNotProof': sum(len(item['excluded']) for item in manifest['files']), 'siblingRows': sum(len(item['sibling']) for item in manifest['files']), 'harnessOutsideOuterSeatbelt': True}, root)
     return 0 if ok else 95

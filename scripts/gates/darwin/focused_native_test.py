@@ -3,10 +3,20 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from focused_native import artifact_state, digest
+from focused_native import artifact_state, digest, build
 
 
 class NativeTests(unittest.TestCase):
+    def test_native_source_must_match_archive_before_any_compiler_or_output(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            workspace = root / 'src'
+            source = workspace / 'v2/daemon/native/peercred.c'
+            source.parent.mkdir(parents=True)
+            source.write_text('changed after archive')
+            with self.assertRaisesRegex(ValueError, 'pinned candidate archive'):
+                build(root, workspace, {}, '/absent/node', {}, 'peercred', source_sha256='0' * 64)
+            self.assertFalse((workspace / 'dist').exists())
     def test_peercred_manifest_matches_loader_and_probe(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary).resolve()

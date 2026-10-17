@@ -38,10 +38,12 @@ def artifact_state(workspace, root, kind='delivery-file'):
     return {'manifest': data, 'files': records}
 
 
-def build(root, workspace, tools, node, env, kind='delivery-file'):
+def build(root, workspace, tools, node, env, kind='delivery-file', source_sha256=None):
     if kind not in ('delivery-file', 'peercred'):
         raise ValueError('unapproved native build')
     source = confined(workspace / 'v2/daemon/native' / (kind + '.c'), root)
+    if not isinstance(source_sha256, str) or not re.fullmatch(r'[0-9a-f]{64}', source_sha256) or digest(source) != source_sha256:
+        raise ValueError('native C source differs from pinned candidate archive')
     include = confined(Path(node).parent.parent / 'include/node', root)
     if kind == 'peercred' and len(source.read_text().rstrip().split('\n')) >= 200:
         raise ValueError('peercred bridge exceeds product source-line limit')
@@ -64,6 +66,8 @@ def build(root, workspace, tools, node, env, kind='delivery-file'):
         result = subprocess.run(argv, cwd=workspace, env=env, stdout=output, stderr=subprocess.STDOUT, timeout=120)
     if result.returncode:
         raise ValueError('confined native compiler failed')
+    if digest(source) != source_sha256:
+        raise ValueError('native C source changed during build')
     data = {'version': 1, 'target': 'darwin-arm64', 'napi': 8, 'sourceSha256': digest(source), 'sha256': digest(confined(binary, root))}
     with manifest.open('x') as output:
         json.dump(data, output, sort_keys=True)
