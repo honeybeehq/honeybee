@@ -255,7 +255,7 @@ function credentialValue(value: string): boolean {
   return false;
 }
 
-export function safeAuthorizationUrl(candidate: string, policy: LoginAuthorizationPolicy | "cli"): string | null {
+export function safeAuthorizationUrl(candidate: string, policy: LoginAuthorizationPolicy | "cli", onStrictDrop?: (names: readonly string[]) => void): string | null {
   if (typeof candidate !== "string" || candidate.length === 0 || candidate.length > 4096) return null;
   let url: URL;
   try {
@@ -267,10 +267,15 @@ export function safeAuthorizationUrl(candidate: string, policy: LoginAuthorizati
   if (url.protocol !== "https:" && !(url.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname))) return null;
   if (policy !== "cli" && (!policy.hosts.includes(url.hostname) || !policy.paths.includes(url.pathname) || url.port)) return null;
   url.hash = "";
+  const dropped = new Set<string>();
   for (const name of [...url.searchParams.keys()]) {
     const claudeFlag = policy !== "cli" && policy.claudeCodeFlag === true && name === "code" && url.searchParams.getAll(name).length === 1 && url.searchParams.get(name) === "true";
-    if (!claudeFlag && (policy === "cli" ? credentialParameter(name) : !policy.parameters.includes(name))) url.searchParams.delete(name);
+    if (!claudeFlag && (policy === "cli" ? credentialParameter(name) : !policy.parameters.includes(name))) {
+      url.searchParams.delete(name);
+      if (policy !== "cli") dropped.add(name);
+    }
   }
+  if (dropped.size) onStrictDrop?.([...dropped]);
   if (credentialValue(url.pathname) || [...url.searchParams.values()].some(credentialValue)) return null;
   return url.toString();
 }

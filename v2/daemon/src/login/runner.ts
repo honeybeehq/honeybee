@@ -16,6 +16,7 @@
 import type {
   AccountRow,
   CoreStore,
+  LoginAuthorizationPolicy,
   LoginFieldDescriptor,
   LoginFlowError,
   LoginFlowPatch,
@@ -71,6 +72,7 @@ export interface LoginRunnerHost {
   release(runner: LoginRunner): void;
   /** The PTY backend, resolved lazily (null = pipe-only node). */
   resolveSpawner(): Promise<PtySpawner | null>;
+  sanitizeAuthorizationUrl(candidate: string, policy: LoginAuthorizationPolicy): string | null;
   patch(patch: LoginFlowPatch, reason: string): LoginFlowRow;
   /** Terminal failure: stops and unregisters the flow's runner. */
   fail(error: LoginFlowError, retryable: boolean): LoginFlowRow;

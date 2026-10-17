@@ -311,7 +311,7 @@ test("rpc.redaction: actual snapshot and watch projection never carry CLI URL cr
   for (const mode of ["stripped", "unsafe", "real"] as const) {
     const unsafe = mode === "unsafe";
     const real = "https://auth.openai.com/oauth/authorize?response_type=code&client_id=app&redirect_uri=http%3A%2F%2Flocalhost%3A1455%2Fauth%2Fcallback&scope=openid%20profile%20email%20offline_access%20api.connectors.read%20api.connectors.invoke&code_challenge=x-sk-public-random-0123456789abcdef&code_challenge_method=S256&id_token_add_organizations=true&codex_cli_simplified_flow=true&state=x-sk-public-random-0123456789abcdef&originator=codex_cli_rs&allowed_workspace_id=workspace-a%2Cworkspace-b";
-    const url = mode === "real" ? real : unsafe ? "https://u:planted-pass@auth.openai.com/oauth/authorize?client_id=app" : "https://auth.openai.com/oauth/authorize?client_id=app&redirect_uri=http%3A%2F%2Flocalhost%3A1455%2Fauth%2Fcallback&state=public&scope=openid&code_verifier=planted-verifier&token=planted-token#planted-fragment";
+    const url = mode === "real" ? real : unsafe ? "https://u:planted-pass@auth.openai.com/oauth/authorize?client_id=app" : "https://auth.openai.com/oauth/authorize?client_id=app&redirect_uri=http%3A%2F%2Flocalhost%3A1455%2Fauth%2Fcallback&state=public&scope=openid&future_option=planted-future-value&code_verifier=planted-verifier&token=planted-token#planted-fragment";
     const { dir, cleanup } = makeDaemonDir({ accounts: { loginWorkerBackend: "pipe" }, agents: { codex: { command: process.execPath, args: [], adapter: "codex", login: { command: process.execPath, args: [FAKE_CLI] }, env: { FAKE_LOGIN_HOME_ENV: "CODEX_HOME", FAKE_LOGIN_FILE: "auth.json", FAKE_CLI_URL: url, FAKE_CLI_HANG: "1" } } } });
     let daemon: DaemonHandle | null = null;
     try {
@@ -347,6 +347,13 @@ test("rpc.redaction: actual snapshot and watch projection never carry CLI URL cr
       daemon = null;
       assert.doesNotMatch(dumpSqlite(join(dir, "core.sqlite3")), /planted-/);
       assert.doesNotMatch(daemonLog(dir), /planted-/);
+      if (mode === "stripped") {
+        const lines = daemonLog(dir).split("\n").filter((line) => line.includes("account.login.authorization_parameters_dropped "));
+        assert.equal(lines.length, 1);
+        assert.match(lines[0]!, /future_option/);
+        assert.ok(!lines[0]!.includes(url));
+        assert.doesNotMatch(lines[0]!, /planted-|https?:/);
+      }
     } finally {
       await daemon?.stop().catch(() => {});
       cleanup();

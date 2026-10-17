@@ -24,7 +24,7 @@ import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, statSync, wri
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { ACCOUNT_RECIPES, safeAuthorizationUrl, MIRROR_LOGIN_FLOW_KEYS, defaultLoginMethodId, loginMethodsFor, openCoreStore, type CoreStore, type LoginFlowRow } from "../../core/src/index.ts";
+import { ACCOUNT_RECIPES, safeAuthorizationUrl, MIRROR_LOGIN_FLOW_KEYS, defaultLoginMethodId, loginMethodsFor, openCoreStore, type CoreStore, type LoginAuthorizationPolicy, type LoginFlowRow } from "../../core/src/index.ts";
 import { AccountsService } from "../src/accountsService.ts";
 import { loadNodeConfig, type NodeConfigFile, type ResolvedNodeConfig } from "../src/config.ts";
 import { LoginFlowService, LoginFlowRefusal, MUSE_OAUTH_CLIENT_ID, WORKER_ENV_ALLOWLIST, claudeAuthorizeUrl, legacyLoginSeatName, museDeviceAuthorize, museDeviceToken, plausibleApiKey, splitClaudeCode, workerBaseEnv, type LoginTransports } from "../src/loginFlows.ts";
@@ -1527,5 +1527,106 @@ test("redaction: Muse refuses a null authorization URL as a typed terminal failu
   } finally {
     await flows.shutdown();
     r.cleanup();
+  }
+});
+
+
+const STRICT_DROP_OP = "account.login.authorization_parameters_dropped ";
+
+test("strict-drop-log: Codex policies log all future names once per flow, never values or URL", async () => {
+  for (const methodId of ["codex-browser", "codex-device"]) {
+    const base = methodId === "codex-browser" ? "https://auth.openai.com/oauth/authorize?client_id=public" : "https://auth.openai.com/codex/device";
+    const url = `${base}${base.includes("?") ? "&" : "?"}future_option=planted-future-value&another_option=planted-another-value&future_option=planted-duplicate-value`;
+    const r = rig({ agents: fakeCliAgent("codex", "CODEX_HOME", "auth.json", { FAKE_CLI_URL: url, FAKE_CLI_HANG: "1" }) });
+    const { flows } = services(r);
+    try {
+      const { flow } = await flows.start(account(r, "codex", methodId), { methodId });
+      const ready = await waitFor(() => { const f = r.store.getLoginFlow(flow.id); return f?.authorizationUrl ? f : null; }, "strict dropped URL", CLI_READY_TIMEOUT_MS, 20);
+      assert.equal(ready.authorizationUrl, base);
+      const lines = () => r.log.filter((line) => line.startsWith(STRICT_DROP_OP));
+      assert.equal(lines().length, 1);
+      assert.deepEqual(JSON.parse(lines()[0]!.slice(STRICT_DROP_OP.length)), { recipe: "codex", policy: methodId, names: ["another_option", "future_option"] });
+      const policy = ACCOUNT_RECIPES.codex!.loginFlow.methods.find((m) => m.id === methodId)!.authorizationUrl!;
+      const internal = flows as unknown as { sanitizeAuthorizationUrl(id: string, recipe: string, methodId: string, url: string, policy: LoginAuthorizationPolicy): string | null };
+      assert.equal(internal.sanitizeAuthorizationUrl(flow.id, "codex", methodId, url, policy), base);
+      assert.equal(lines().length, 1);
+      assert.ok(!r.log.join("\n").includes(url));
+      assert.doesNotMatch(redactionSurfaces(r), /planted-/);
+    } finally {
+      await flows.shutdown();
+      r.cleanup();
+    }
+  }
+});
+
+test("strict-drop-log: unsafe and submitted-secret parameter names become marker plus count", async () => {
+  const r = rig();
+  const { flows } = services(r, { transports: { claudeTokenExchange: async () => null } });
+  try {
+    const { flow } = await flows.start(account(r, "claude", "drop-privacy"));
+    const submitted = "submitted_name";
+    const asking = await flows.submit(flow.id, { code: submitted });
+    assert.equal(asking.phase, "waiting_input");
+    const unsafe = ["not.identifier", "control\nname", "https://credential.example/private", "ghp_abcdefghijklmnopqrst", "z".repeat(65), submitted];
+    const url = new URL(claudeAuthorizeUrl("synthetic-verifier", "public-state"));
+    for (const name of [...unsafe, "future_option"]) url.searchParams.append(name, "planted-parameter-value");
+    const internal = flows as unknown as { sanitizeAuthorizationUrl(id: string, recipe: string, methodId: string, url: string, policy: LoginAuthorizationPolicy): string | null };
+    const policy = ACCOUNT_RECIPES.claude!.loginFlow.authorizationUrl!;
+    const clean = internal.sanitizeAuthorizationUrl(flow.id, "claude", "claude-oauth", url.toString(), policy);
+    assert.ok(clean);
+    for (const name of [...unsafe, "future_option"]) assert.equal(new URL(clean).searchParams.has(name), false);
+    const lines = r.log.filter((line) => line.startsWith(STRICT_DROP_OP));
+    assert.equal(lines.length, 1);
+    assert.deepEqual(JSON.parse(lines[0]!.slice(STRICT_DROP_OP.length)), { recipe: "claude", policy: "claude-oauth", names: ["future_option"], redacted: { name: "[redacted]", count: unsafe.length } });
+    assert.ok(lines[0]!.length < 8192);
+    for (const name of unsafe) assert.ok(!lines[0]!.includes(name));
+    assert.doesNotMatch(lines[0]!, /planted-parameter-value|https?:/);
+  } finally {
+    await flows.shutdown();
+    r.cleanup();
+  }
+});
+
+test("strict-drop-log: Muse strict drops are logged; general CLI behavior is unchanged", async () => {
+  const r = rig();
+  const { flows } = services(r, { transports: { museDeviceAuthorize: async () => ({ ok: true, deviceCode: "private-device", userCode: "ABCD-EFGH", verificationUri: "https://auth.meta.com/oauth/device/?future_option=planted-value", verificationUriComplete: null, expiresInSeconds: 600, intervalSeconds: 5 }) } });
+  try {
+    const { flow } = await flows.start(account(r, "muse", "drop-muse"), { methodId: "muse-oauth" });
+    assert.equal(flow.authorizationUrl, "https://auth.meta.com/oauth/device/");
+    const lines = r.log.filter((line) => line.startsWith(STRICT_DROP_OP));
+    assert.equal(lines.length, 1);
+    assert.deepEqual(JSON.parse(lines[0]!.slice(STRICT_DROP_OP.length)), { recipe: "muse", policy: "muse-oauth", names: ["future_option"] });
+    assert.doesNotMatch(redactionSurfaces(r), /planted-value/);
+    let callbacks = 0;
+    assert.equal(safeAuthorizationUrl("https://auth.example/authorize?future_option=public&state=nonce&token=planted-token", "cli", () => { callbacks++; }), "https://auth.example/authorize?future_option=public&state=nonce");
+    assert.equal(callbacks, 0);
+  } finally {
+    await flows.shutdown();
+    r.cleanup();
+  }
+});
+
+
+test("strict-drop-log: dedupe entries release on terminal, deletion, account abandonment and shutdown", async () => {
+  for (const operation of ["terminal", "deleted", "abandoned", "shutdown"]) {
+    const r = rig();
+    const { flows } = services(r);
+    try {
+      const a = account(r, "claude", `drop-${operation}`);
+      const { flow } = await flows.start(a);
+      const internal = flows as unknown as { strictDropLogged: Set<string>; sanitizeAuthorizationUrl(id: string, recipe: string, methodId: string, url: string, policy: LoginAuthorizationPolicy): string | null };
+      const url = new URL(claudeAuthorizeUrl("synthetic-verifier", "public-state"));
+      url.searchParams.set("future_option", "private-value");
+      internal.sanitizeAuthorizationUrl(flow.id, "claude", "claude-oauth", url.toString(), ACCOUNT_RECIPES.claude!.loginFlow.authorizationUrl!);
+      assert.equal(internal.strictDropLogged.has(flow.id), true);
+      if (operation === "terminal") await flows.cancel(flow.id);
+      if (operation === "deleted") { r.store.removeLoginFlow(flow.id); flows.tick(); }
+      if (operation === "abandoned") await flows.abandonAccount(a.id);
+      if (operation === "shutdown") await flows.shutdown();
+      assert.equal(internal.strictDropLogged.has(flow.id), false);
+    } finally {
+      await flows.shutdown();
+      r.cleanup();
+    }
   }
 });

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { LoginFlowRow } from "../../core/src/index.ts";
+import { safeAuthorizationUrl, type LoginFlowRow } from "../../core/src/index.ts";
 import { ClaudeOauthRunner, claudeAuthorizeUrl } from "../src/login/claudeOauth.ts";
 import type { LoginRunnerHost } from "../src/login/runner.ts";
 import {
@@ -26,6 +26,7 @@ test("claude oauth matches the current Claude Code authorization contract", asyn
   let authorizationUrl: string | null = null;
   const host = {
     method: { fields: [] },
+    sanitizeAuthorizationUrl: safeAuthorizationUrl,
     patch: (patch: { authorizationUrl?: string | null }) => {
       authorizationUrl = patch.authorizationUrl ?? null;
       return patch as LoginFlowRow;
@@ -53,6 +54,7 @@ test("claude oauth URL encoding stays stable for known verifier and state", () =
 test("claude oauth refuses a null authorization URL as a typed failure", async () => {
   let patched = false;
   const host = {
+    sanitizeAuthorizationUrl: safeAuthorizationUrl,
     method: { fields: [], authorizationUrl: { hosts: ["refused.example"], paths: ["/authorize"], parameters: [] } },
     patch: () => { patched = true; throw new Error("a refused URL must not enter waiting_input"); },
     fail: (error: { code: string; message: string }, retryable: boolean) => ({ phase: "failed", authorizationUrl: null, error, retryable }),
