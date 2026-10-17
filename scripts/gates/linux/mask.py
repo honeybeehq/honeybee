@@ -96,6 +96,8 @@ try:
     assert sorted(os.listdir(CACHE.parent)) == [CACHE.name]
     assert not os.path.lexists(H / '.hive/v2/hived.sock')
     libc=ctypes.CDLL(None,use_errno=True)
+    os.close(outfd)
+    outfd = os.open(out, os.O_RDONLY | os.O_DIRECTORY)
     seal_filesystem(CACHE)
     parent_namespaces=dict(receipt['namespaces'])
     outer_uid,outer_gid=os.getuid(),os.getgid()
