@@ -213,6 +213,10 @@ export function sessionNameFor(beeId: string, generation: number): string {
   return `hive-v2-${safe}-g${generation}`;
 }
 
+class MultilinePasteUnavailable extends Error {
+  constructor(readonly detail: string) { super(detail); }
+}
+
 export class TmuxDriver implements RuntimeDriver {
   private readonly cfg: TmuxDriverConfig;
   private readonly server: TmuxServer;
@@ -348,7 +352,8 @@ export class TmuxDriver implements RuntimeDriver {
     const before = tail == null ? 0 : this.countTailInPane(p, tail);
     try {
       this.inject(p, body, p.deliveryMode);
-    } catch {
+    } catch (error) {
+      if (error instanceof MultilinePasteUnavailable) return { accepted: false, reason: "not_ready", detail: error.detail };
       return { accepted: false, reason: "no_process" };
     }
     let verified = tail == null ? true : this.verifyEcho(p, tail, before);
@@ -362,7 +367,8 @@ export class TmuxDriver implements RuntimeDriver {
       try {
         this.inject(p, body, retryMode);
         verified = this.verifyEcho(p, tail, beforeRetry);
-      } catch {
+      } catch (error) {
+        if (error instanceof MultilinePasteUnavailable) return { accepted: false, reason: "not_ready", detail: error.detail };
         verified = false;
       }
     }
@@ -415,11 +421,16 @@ export class TmuxDriver implements RuntimeDriver {
       }
       return;
     }
+    if (body.includes("\n")) {
+      const state = this.server.try(["display-message", "-p", "-t", p.paneId, "#{bracketed_paste_flag}"]);
+      const flag = state.stdout.trim();
+      if (state.status !== 0 || flag !== "1") throw new MultilinePasteUnavailable(flag === "0" ? "multiline_bracketed_paste_disabled" : "multiline_bracketed_paste_unknown");
+    }
     const buf = `hive-v2-deliver-${this.deliverSeq++}`;
     try {
       // load-buffer avoids send-keys key interpretation of the body.
       this.server.run(["load-buffer", "-b", buf, "-"], { input: body });
-      this.server.run(["paste-buffer", "-d", "-b", buf, "-t", p.paneId]);
+      this.server.run(["paste-buffer", "-p", "-r", "-d", "-b", buf, "-t", p.paneId]);
     } catch (err) {
       this.server.try(["delete-buffer", "-b", buf]);
       throw err;
