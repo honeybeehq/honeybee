@@ -150,3 +150,15 @@ test("archive lifecycle commit before command settlement cannot rearchive after 
     const observed = store.resolveExecution(f.request, 1000); assert.ok("executionReceipt" in observed); assert.equal(observed.executionReceipt.status, "completed");
   } finally { store.close(); f.h.cleanup(); }
 });
+
+test("a legacy command on an execution-reserved key with missing binding is held, never executed", () => {
+  const f = setup();
+  try {
+    const cmd = f.store.enqueueCommand("archive", f.bee.id);
+    const db = (f.store as unknown as { db: DatabaseSync }).db;
+    db.prepare("UPDATE commands SET idempotency_key=? WHERE id=?").run(f.claim.idempotencyKey, cmd.id);
+    assert.throws(() => f.store.claimNextCommand(), code("rpc_execution_history_unknown"));
+    assert.equal(f.store.getCommand(cmd.id)?.status, "queued");
+    assert.equal(f.store.getBee(f.bee.id)?.lifecycle, "active");
+  } finally { f.cleanup(); }
+});

@@ -185,7 +185,14 @@ export class ExecutionLedger {
   }
   commandAllowed(commandId: number): boolean {
     const row = this.db.prepare("SELECT key FROM rpc_execution_effects WHERE command_id=?").get(commandId);
-    if (!row) return true;
+    if (!row) {
+      const command = this.db.prepare("SELECT idempotency_key FROM commands WHERE id=?").get(commandId);
+      if (command?.idempotency_key) {
+        const grant = this.db.prepare("SELECT 1 FROM rpc_execution_claims WHERE json_extract(claim,'$.idempotencyKey')=?").get(command.idempotency_key);
+        if (grant) throw new ExecutionFenceError("rpc_execution_history_unknown", "Command has an execution grant but no atomic effect binding; hold the command");
+      }
+      return true;
+    }
     const effect = this.row(String(row.key))!;
     const command = this.db.prepare("SELECT bee_id,verb,idempotency_key FROM commands WHERE id=?").get(commandId);
     if (!command || command.verb !== "archive" || command.bee_id !== effect.binding.resource.beeId || command.idempotency_key !== effect.binding.idempotencyKey) throw new ExecutionFenceError("rpc_execution_history_unknown", "Archive command differs from its durable execution resource; hold the effect");
