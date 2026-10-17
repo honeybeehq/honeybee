@@ -70,25 +70,26 @@ struct vnode_path { char vip_path[4096]; };
 struct proc_vnodepathinfo { struct vnode_path pvi_cdir; };
 struct proc_fdinfo { unsigned int proc_fdtype; int proc_fd; };
 struct vnode_fdinfowithpath { struct vnode_path pvip; };
-static int mode=0,foreign_read=0;
+static int mode=0,foreign_read=0,stage=0,checks=0;
 static unsigned int getuid(void) { return 501; }
 static int getpid(void) { return 99; }
 static char *realpath(const char *input,char *out) { strcpy(out,input);return out; }
 static int identity(int pid,struct proc_bsdinfo *b) { b->pbi_uid=pid==12?999:501;b->pbi_status=1;b->pbi_start_tvsec=100;b->pbi_start_tvusec=1;return 1; }
-static int same_birth(int pid,unsigned long long sec,unsigned long long usec) { (void)pid;(void)sec;(void)usec;return 0; }
+static int same_birth(int pid,unsigned long long sec,unsigned long long usec) { (void)pid;(void)sec;(void)usec;checks++;errno=0;if((mode==3&&stage==1)||(mode==4&&stage==2)||(mode==5&&stage==3)||(mode==6&&stage==4)||(mode==7&&stage==1)||(mode==8&&stage==4)||(mode==13&&checks>=3))return 3;if(mode==11&&stage==1)return 4;return 0; }
 static int proc_listallpids(void *out,int bytes) { if(mode==1){errno=EPERM;return 0;}if(out){int p[]={10,11,12,99};if(bytes<16)return -1;memcpy(out,p,sizeof(p));}return 4; }
 static int proc_pidpath(int pid,void *out,unsigned int size) { (void)size;if(pid==12)foreign_read=1;strcpy(out,"/fixture/node");return 14; }
 static int proc_pidinfo(int pid,int flavor,unsigned long long arg,void *out,int size) {
  (void)arg;(void)size;if(pid==12)foreign_read=1;
- if(flavor==PROC_PIDVNODEPATHINFO){strcpy(((struct proc_vnodepathinfo*)out)->pvi_cdir.vip_path,"/fixture/cwd");return sizeof(struct proc_vnodepathinfo);}
- if(!out)return sizeof(struct proc_fdinfo);
- if(mode==2){errno=EPERM;return -1;}
- ((struct proc_fdinfo*)out)->proc_fdtype=PROX_FDTYPE_VNODE;((struct proc_fdinfo*)out)->proc_fd=3;return sizeof(struct proc_fdinfo);
+ if(flavor==PROC_PIDVNODEPATHINFO){stage=1;if(mode==3||mode==9){errno=mode==3?ESRCH:EACCES;return -1;}strcpy(((struct proc_vnodepathinfo*)out)->pvi_cdir.vip_path,"/fixture/cwd");return sizeof(struct proc_vnodepathinfo);}
+ if(!out){stage=2;if(mode==4){errno=ESRCH;return -1;}return (mode==12||mode==14||mode==15?2:1)*sizeof(struct proc_fdinfo);}
+ stage=3;
+ if(mode==2||mode==5||mode==10){errno=mode==5?ESRCH:EPERM;return -1;}
+ ((struct proc_fdinfo*)out)->proc_fdtype=PROX_FDTYPE_VNODE;((struct proc_fdinfo*)out)->proc_fd=3;if(mode==12||mode==14||mode==15){((struct proc_fdinfo*)out)[1].proc_fdtype=PROX_FDTYPE_VNODE;((struct proc_fdinfo*)out)[1].proc_fd=4;return 2*sizeof(struct proc_fdinfo);}return sizeof(struct proc_fdinfo);
 }
-static int proc_pidfdinfo(int pid,int fd,int flavor,void *out,int size) { (void)pid;(void)fd;(void)flavor;(void)size;strcpy(((struct vnode_fdinfowithpath*)out)->pvip.vip_path,"/fixture/open");return sizeof(struct vnode_fdinfowithpath); }
+static int proc_pidfdinfo(int pid,int fd,int flavor,void *out,int size) { (void)pid;(void)fd;(void)flavor;(void)size;stage=4;if(mode==6||(fd==3&&(mode==12||mode==14||mode==15))){errno=mode==6?ESRCH:mode==12?EBADF:mode==14?ENOENT:EPERM;return -1;}strcpy(((struct vnode_fdinfowithpath*)out)->pvip.vip_path,"/fixture/open");return sizeof(struct vnode_fdinfowithpath); }
 '''
         main = r'''
-int main(void) { if(quiescence(10,"/fixture")||foreign_read)return 1;mode=1;if(quiescence(10,"/fixture")!=4)return 2;mode=2;if(quiescence(10,"/fixture")!=4)return 3;return 0; }
+int main(int argc,char **argv) { mode=argc>1?atoi(argv[1]):0;int rc=quiescence(10,"/fixture");if(foreign_read)return 9;return rc; }
 '''
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -101,6 +102,26 @@ int main(void) { if(quiescence(10,"/fixture")||foreign_read)return 1;mode=1;if(q
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn('11\t/fixture/open', result.stdout)
             self.assertIn('COMPLETE', result.stdout)
+            cases = {
+                1: ('enumeration error', 4), 2: ('live fd read error', 4),
+                3: ('exit before vnode read', 0), 4: ('exit at fd sizing', 0),
+                5: ('exit during fd list', 0), 6: ('exit during fd vnode read', 0),
+                7: ('exit after vnode read', 0), 8: ('exit after fd vnode read', 0),
+                9: ('live vnode read error', 4), 10: ('live fd-list error', 4),
+                11: ('birth mismatch', 4), 12: ('live EBADF skips fd and continues', 0),
+                13: ('exit after matched paths before final fence', 0),
+                14: ('live ENOENT skips fd and continues', 0), 15: ('live EPERM fails', 4)}
+            for mode, (name, expected) in cases.items():
+                with self.subTest(case=name):
+                    result = subprocess.run([str(binary), str(mode)], capture_output=True, text=True, timeout=2)
+                    self.assertEqual(result.returncode, expected, result.stderr)
+                    if mode in (12, 14):
+                        self.assertEqual(result.stdout, '11\t/fixture/open\nCOMPLETE\n')
+                    elif not expected:
+                        self.assertEqual(result.stdout, 'COMPLETE\n')
+                    else:
+                        self.assertNotIn('COMPLETE', result.stdout)
+
 
 if __name__ == '__main__':
     unittest.main()

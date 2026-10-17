@@ -6,12 +6,14 @@ import os
 from pathlib import Path
 import subprocess
 import tarfile
+import unicodedata
 
 import seed_policy
 
 
 LIFECYCLE = ('preinstall', 'install', 'postinstall', 'prepare', 'prepublish', 'preprepare', 'postprepare')
 ALLOWED = {'esbuild': {'postinstall': 'node install.js'}, 'node-pty': {'install': 'node scripts/prebuild.js || node-gyp rebuild', 'postinstall': 'node scripts/post-install.js'}}
+VERSIONS = {'esbuild': '0.27.7', 'node-pty': '1.1.0'}
 
 
 def digest(path):
@@ -23,21 +25,45 @@ def verify_input(path, expected):
         raise ValueError('seed input hash mismatch')
 
 
+def folded_path(value):
+    return unicodedata.normalize('NFD', unicodedata.normalize('NFD', value).casefold())
+
+
+def check_member_names(members):
+    seen = set()
+    prefixes = {}
+    for member in members:
+        parts = Path(member.name).parts
+        key = folded_path('/'.join(parts))
+        if key in seen:
+            raise ValueError('case or normalization colliding archive members')
+        seen.add(key)
+        for size in range(1, len(parts) + 1):
+            original = '/'.join(parts[:size])
+            normalized = folded_path(original)
+            if normalized in prefixes and prefixes[normalized] != original:
+                raise ValueError('case or normalization colliding archive paths')
+            prefixes[normalized] = original
+
+
 def scan_tarball(data):
     with tarfile.open(fileobj=io.BytesIO(data), mode='r:gz') as archive:
         members = archive.getmembers()
+        check_member_names(members)
         roots = [m for m in members if m.isfile() and len(Path(m.name).parts) == 2 and Path(m.name).name == 'package.json']
         if len(roots) != 1:
             raise ValueError('seed package manifest ambiguous')
         package = json.load(archive.extractfile(roots[0]))
-        scripts = {k: v for k, v in package.get('scripts', {}).items() if k in LIFECYCLE}
+        scripts = package.get('scripts', {})
+        if not isinstance(scripts, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in scripts.items()):
+            raise ValueError('invalid package script inventory')
         for event, command in scripts.items():
-            if event == 'prepare':
+            if event not in ('preinstall', 'install', 'postinstall'):
                 continue
-            if ALLOWED.get(package['name'], {}).get(event) != command:
+            if VERSIONS.get(package['name']) != package['version'] or ALLOWED.get(package['name'], {}).get(event) != command:
                 raise ValueError('unexpected dependency lifecycle: ' + package['name'] + ':' + event)
-        gyp = [m.name for m in members if Path(m.name).name == 'binding.gyp']
-        if gyp and (package['name'] != 'node-pty' or gyp != ['package/binding.gyp']):
+        gyp = [m.name for m in members if folded_path(Path(m.name).name) == 'binding.gyp']
+        if gyp and (package['name'] != 'node-pty' or package['version'] != VERSIONS['node-pty'] or gyp != ['package/binding.gyp'] or any(scripts.get(event) != command for event, command in ALLOWED['node-pty'].items())):
             raise ValueError('unexpected binding.gyp')
         return {'name': package['name'], 'version': package['version'], 'lifecycle': scripts, 'bindingGyp': gyp, 'sha256': hashlib.sha256(data).hexdigest()}
 
@@ -108,7 +134,7 @@ def run(args):
     target = root / 'darwin-npm-seed.tar'
     cache_index_entries = seed_policy.audit_index(root / 'npm/_cacache')
     pack(root, target)
-    report = {'version': 1, 'packageSha256': args.package_sha256, 'lockSha256': args.lock_sha256, 'nodeSha256': digest(node), 'npmCliSha256': digest(npm), 'nodeVersion': subprocess.check_output([str(node), '--version'], env=env, text=True).strip(), 'npmVersion': subprocess.check_output([str(node), str(npm), '--version'], env=env, text=True).strip(), 'rootLifecycle': root_scripts, 'registryPrepareOnlyAllowed': True, 'cacheIndexEntriesAudited': cache_index_entries, 'command': command, 'environmentKeys': sorted(env), 'integrity': inventory, 'tarballScan': scans, 'archive': str(target), 'archiveSha256': digest(target)}
+    report = {'version': 1, 'packageSha256': args.package_sha256, 'lockSha256': args.lock_sha256, 'nodeSha256': digest(node), 'npmCliSha256': digest(npm), 'nodeVersion': subprocess.check_output([str(node), '--version'], env=env, text=True).strip(), 'npmVersion': subprocess.check_output([str(node), str(npm), '--version'], env=env, text=True).strip(), 'rootLifecycle': root_scripts, 'registryNonInstallScriptsRecordedOnly': True, 'cacheIndexEntriesAudited': cache_index_entries, 'command': command, 'environmentKeys': sorted(env), 'integrity': inventory, 'tarballScan': scans, 'archive': str(target), 'archiveSha256': digest(target)}
     manifest = root / 'inventory-manifest.json'
     manifest.write_text(json.dumps(report, indent=2) + '\n')
     print(json.dumps({'archive': str(target), 'archiveSha256': digest(target), 'inventory': str(manifest), 'inventorySha256': digest(manifest)}))
