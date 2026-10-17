@@ -273,7 +273,7 @@ export class LoginOutputParser {
 
   /** Never let a submitted secret survive its echo in the tail. */
   mask(secret: string): void {
-    if (secret.length >= 4) this.masks.push(secret);
+    if (secret.length > 0) this.masks.push(secret);
   }
 
   feed(raw: string, now: number): ParsedLoginState {

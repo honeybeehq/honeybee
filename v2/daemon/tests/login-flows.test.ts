@@ -24,7 +24,7 @@ import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, statSync, wri
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { ACCOUNT_RECIPES, defaultLoginMethodId, loginMethodsFor, openCoreStore, type CoreStore, type LoginFlowRow } from "../../core/src/index.ts";
+import { ACCOUNT_RECIPES, safeAuthorizationUrl, MIRROR_LOGIN_FLOW_KEYS, defaultLoginMethodId, loginMethodsFor, openCoreStore, type CoreStore, type LoginFlowRow } from "../../core/src/index.ts";
 import { AccountsService } from "../src/accountsService.ts";
 import { loadNodeConfig, type NodeConfigFile, type ResolvedNodeConfig } from "../src/config.ts";
 import { LoginFlowService, LoginFlowRefusal, MUSE_OAUTH_CLIENT_ID, WORKER_ENV_ALLOWLIST, claudeAuthorizeUrl, legacyLoginSeatName, museDeviceAuthorize, museDeviceToken, plausibleApiKey, splitClaudeCode, workerBaseEnv, type LoginTransports } from "../src/loginFlows.ts";
@@ -550,7 +550,7 @@ test("flows.muse-device: `muse login` output → url + user code → waiting_dev
       const f = r.store.getLoginFlow(flow.id) as LoginFlowRow;
       return f.phase === "waiting_device" && f.userCode ? f : null;
     }, "muse waiting_device", 5000, 20);
-    assert.equal(device.authorizationUrl, "https://auth.meta.com/oauth/device/?code=FAKE-CODE");
+    assert.equal(device.authorizationUrl, "https://auth.meta.com/oauth/device/");
     assert.equal(device.userCode, "FAKE-CODE");
     const done = await waitFor(() => {
       flows.tick();
@@ -607,9 +607,9 @@ test("flows.muse-oauth: Honeybee runs Meta's device flow itself — URL + code, 
     assert.deepEqual(flow.methods.map((m) => m.id), ["muse-device", "muse-oauth", "muse-api-key"]);
     assert.equal(flow.methodId, "muse-oauth");
     assert.equal(flow.phase, "waiting_device");
-    assert.equal(flow.authorizationUrl, "https://auth.meta.com/oauth/device/?code=ABCD-EFGH");
+    assert.equal(flow.authorizationUrl, "https://auth.meta.com/oauth/device/");
     assert.equal(flow.userCode, "ABCD-EFGH");
-    assert.equal(flow.detail, "Open the sign-in page and check that it shows the same code.");
+    assert.equal(flow.detail, "Enter the code on the sign-in page.");
     assert.equal(flow.expiresAt, t0 + 900_000, "the flow ends when the device code does");
     assert.deepEqual(meta.requests[0], { path: "/oidc/device/authorization/", form: { client_id: MUSE_OAUTH_CLIENT_ID }, contentType: "application/x-www-form-urlencoded" });
 
@@ -1287,5 +1287,117 @@ test("flows.foreign-home: no login starts, retries or captures into an account w
     await flows.cancel(flow.id);
   } finally {
     r.cleanup();
+  }
+});
+
+function redactionSurfaces(r: Rig): string {
+  const mirror = r.store.listLoginFlows().map((flow) => Object.fromEntries(MIRROR_LOGIN_FLOW_KEYS.map((key) => [key, flow[key]])));
+  return `${leakSurfaces(r)}\n${JSON.stringify(mirror)}`;
+}
+
+test("redaction: OpenCode false fields remain private and unsafe base URLs refuse before checking", async () => {
+  const r = rig();
+  let checks = 0;
+  const { flows } = services(r, { transports: { openaiKeyCheck: async () => { checks++; return "valid"; } } });
+  try {
+    const a = account(r, "opencode", "redaction");
+    const { flow } = await flows.start(a);
+    for (const baseUrl of ["https://u:short-pass@proxy.example/v1", "https://proxy.example/v1?key=short-key", "https://proxy.example/v1#short-token"]) {
+      const rejected = await flows.submit(flow.id, { provider: "openai", apiKey: SENTINEL_KEY, baseUrl });
+      assert.equal(rejected.error?.code, "invalid_input");
+      assert.equal(checks, 0);
+      assert.ok(!redactionSurfaces(r).includes(baseUrl));
+    }
+    const values = { provider: "openai", apiKey: SENTINEL_KEY, baseUrl: "https://proxy.example/private-value", organization: "org-short-credential", project: "project-short-credential" };
+    const done = await flows.submit(flow.id, values);
+    assert.equal(done.phase, "succeeded");
+    assert.equal(checks, 1);
+    const config = readFileSync(join(a.homePath, "opencode.json"), "utf8");
+    for (const value of [values.baseUrl, values.organization, values.project]) {
+      assert.ok(config.includes(value));
+      assert.ok(!redactionSurfaces(r).includes(value));
+    }
+  } finally {
+    await flows.shutdown();
+    r.cleanup();
+  }
+});
+
+test("redaction: thrown input and encoded variants never reach flow, audit, mirror or logs", async () => {
+  for (const harness of ["claude", "codex", "opencode"]) {
+    const r = rig();
+    const values: Record<string, string> = harness === "claude" ? { code: 'short-code-"&/' } : { apiKey: "sk-short-credential", ...(harness === "opencode" ? { provider: "openai", baseUrl: "https://proxy.example/short", organization: 'short-org-"&/', project: "short-project" } : {}) };
+    const variants = Object.values(values).flatMap((value) => [value, encodeURIComponent(value), JSON.stringify(value).slice(1, -1), Buffer.from(value).toString("base64")]);
+    const explode = async (): Promise<never> => { throw new Error(`provider failed ${variants.join(" ")} https://proxy.example/short/models`); };
+    const { flows } = services(r, { transports: { openaiKeyCheck: explode, claudeTokenExchange: explode } });
+    try {
+      const { flow } = await flows.start(account(r, harness, "thrown"), { methodId: harness === "claude" ? "claude-oauth" : harness === "codex" ? "codex-api-key" : "opencode-api-key" });
+      const failed = await flows.submit(flow.id, values);
+      assert.equal(failed.error?.code, "provider_error");
+      assert.match(failed.error.message, /provider failed/);
+      for (const value of variants.filter((value) => value !== "openai" && value.length > 5)) assert.ok(!redactionSurfaces(r).includes(value), `${harness} leaked a submitted encoding`);
+    } finally {
+      await flows.shutdown();
+      r.cleanup();
+    }
+  }
+});
+
+test("redaction: every CLI recipe strips credential queries and fragments before persistence", async () => {
+  const words = ["code", "token", "access_token", "id_token", "refresh_token", "password", "secret", "apikey", "api_key", "key", "auth", "assertion", "session", "credential", "passwd", "cookie", "signature", "sig", "secrets", "tokens", "credentials", "secret_ref", "secret-ref", "secretref", "authorization", "bearer", "otp", "passphrase", "pin", "private-key", "accessKey", "signing_key", "sessionKey", "auth-key", "encryption_key", "masterKey", "code_verifier", "client_secret", "codeChallengeEvil", "Code", "ToKeNs"];
+  for (const [harness, homeEnv, file, host] of [["grok", "GROK_HOME", "auth.json", "accounts.x.ai"], ["kimi", "KIMI_CODE_HOME", "credentials/kimi-code.json", "auth.kimi.com"], ["agy", "HOME", ".gemini/antigravity-cli/antigravity-oauth-token", "accounts.google.com"], ["codex", "CODEX_HOME", "auth.json", "auth.openai.com"], ["muse", "XDG_CONFIG_HOME", "muse/auth.json", "auth.meta.com"], ["cursor", "CURSOR_CONFIG_DIR", "auth.json", "cursor.com"]]) {
+    const url = new URL(`https://${host}/oauth/authorize?client_id=app&redirect_uri=https%3A%2F%2Fcallback.example%2Fdone&state=nonce&nonce=public-nonce&scope=openid&code_challenge=public-challenge&code_challenge_method=S256`);
+    for (const word of words) url.searchParams.set(word, `planted-${word}-value`);
+    url.hash = "fragment-credential";
+    const r = rig({ agents: fakeCliAgent(harness!, homeEnv!, file!, { FAKE_CLI_URL: url.toString(), FAKE_CLI_HANG: "1" }) });
+    const { flows } = services(r);
+    try {
+      const { flow } = await flows.start(account(r, harness!, "url"));
+      const ready = await waitFor(() => { const f = r.store.getLoginFlow(flow.id); return f?.authorizationUrl ? f : null; }, "sanitized URL", CLI_READY_TIMEOUT_MS, 20);
+      const clean = new URL(ready.authorizationUrl!);
+      assert.equal(clean.searchParams.get("client_id"), "app");
+      assert.equal(clean.searchParams.get("redirect_uri"), "https://callback.example/done");
+      assert.equal(clean.searchParams.get("state"), "nonce");
+      assert.equal(clean.searchParams.get("scope"), "openid");
+      assert.equal(clean.searchParams.get("nonce"), "public-nonce");
+      assert.equal(clean.searchParams.get("code_challenge"), "public-challenge");
+      assert.equal(clean.searchParams.get("code_challenge_method"), "S256");
+      for (const word of words) assert.equal(clean.searchParams.has(word), false, word);
+      assert.doesNotMatch(redactionSurfaces(r), /planted-|fragment-credential/);
+    } finally {
+      await flows.shutdown();
+      r.cleanup();
+    }
+  }
+});
+
+test("redaction: userinfo and nested credentials refuse; Claude flag is restricted to its built policy", () => {
+  const policy = ACCOUNT_RECIPES.claude!.loginFlow.authorizationUrl!;
+  const built = claudeAuthorizeUrl("synthetic-verifier", "nonce");
+  assert.equal(safeAuthorizationUrl(built, policy), built);
+  assert.equal(new URL(safeAuthorizationUrl(built, "cli")!).searchParams.has("code"), false);
+  assert.equal(new URL(safeAuthorizationUrl(built.replace("code=true", "code=planted-code"), policy)!).searchParams.has("code"), false);
+  assert.equal(safeAuthorizationUrl("https://u:planted@accounts.x.ai/authorize", "cli"), null);
+  assert.equal(safeAuthorizationUrl("https://accounts.x.ai/authorize?return=https%3A%2F%2Fevil.example%2F%3Ftoken%3Dplanted", "cli"), null);
+  assert.equal(safeAuthorizationUrl("https://evil.example/authorize", policy), null);
+  assert.equal(safeAuthorizationUrl("https://claude.com/cai/oauth/authorize?unknown=planted", policy), "https://claude.com/cai/oauth/authorize");
+});
+
+test("redaction: unsafe CLI URLs fail typed without reaching persisted or mirrored fields", async () => {
+  for (const [harness, homeEnv, file] of [["grok", "GROK_HOME", "auth.json"], ["kimi", "KIMI_CODE_HOME", "credentials/kimi-code.json"], ["agy", "HOME", ".gemini/antigravity-cli/antigravity-oauth-token"], ["codex", "CODEX_HOME", "auth.json"], ["muse", "XDG_CONFIG_HOME", "muse/auth.json"], ["cursor", "CURSOR_CONFIG_DIR", "auth.json"]]) {
+    for (const url of ["https://user:planted-pass@auth.openai.com/oauth/authorize", "https://auth.openai.com/oauth/authorize?next=https%3A%2F%2Fcallback.example%2F%3Ftoken%3Dplanted-nested", "https://auth.openai.com/oauth/authorize?extra=sk-planted-key"]) {
+      const r = rig({ agents: fakeCliAgent(harness!, homeEnv!, file!, { FAKE_CLI_URL: url, FAKE_CLI_HANG: "1" }) });
+      const { flows } = services(r);
+      try {
+        const { flow } = await flows.start(account(r, harness!, "refused"));
+        const failed = await waitFor(() => { const f = r.store.getLoginFlow(flow.id); return f?.phase === "failed" ? f : null; }, `unsafe URL refused ${harness} ${url}`, CLI_READY_TIMEOUT_MS, 20);
+        assert.equal(failed.error?.code, "provider_error");
+        assert.equal(failed.authorizationUrl, null);
+        assert.doesNotMatch(redactionSurfaces(r), /planted-/);
+      } finally {
+        await flows.shutdown();
+        r.cleanup();
+      }
+    }
   }
 });

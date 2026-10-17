@@ -50,7 +50,7 @@ export class MuseOauthRunner implements LoginRunner {
         : `Meta's sign-in could not be started (HTTP ${device.status}).`;
       return host.fail(err("provider_error", message), true);
     }
-    const url = safeAuthorizationUrl(device.verificationUriComplete ?? device.verificationUri);
+    const url = safeAuthorizationUrl(device.verificationUri, recipeFor("muse")!.loginFlow.authorizationUrl!);
     if (!url) return host.fail(err("provider_error", "Meta's sign-in returned an unusable sign-in page address."), true);
     const now = host.now();
     this.deviceCode = device.deviceCode;
@@ -62,7 +62,7 @@ export class MuseOauthRunner implements LoginRunner {
     return host.patch(
       {
         phase: "waiting_device",
-        detail: device.verificationUriComplete ? STATIC_DETAIL.deviceConfirm : STATIC_DETAIL.device,
+        detail: STATIC_DETAIL.device,
         authorizationUrl: url,
         userCode: device.userCode,
         ...(flow && flow.expiresAt > this.deadline ? { expiresAt: this.deadline } : {}),

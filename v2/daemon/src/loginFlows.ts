@@ -43,7 +43,8 @@ import type { AccountsService } from "./accountsService.ts";
 import type { ResolvedNodeConfig } from "./config.ts";
 import { ClaudeOauthRunner } from "./login/claudeOauth.ts";
 import { CliRunner } from "./login/cliRunner.ts";
-import { STATIC_DETAIL, err, isTerminal, safeMessage } from "./login/common.ts";
+import { STATIC_DETAIL, err, isTerminal } from "./login/common.ts";
+import { LoginRedactor } from "./login/redaction.ts";
 import { DirectKeyRunner } from "./login/directKey.ts";
 import { MuseApiKeyRunner } from "./login/museApiKey.ts";
 import { MuseOauthRunner } from "./login/museOauth.ts";
@@ -107,6 +108,7 @@ export class LoginFlowService {
   private readonly transports: LoginTransports;
   private readonly onCompleted: (accountId: string) => void;
   private readonly tmuxExec: (args: string[]) => { status: number | null; stdout: string };
+  private readonly redactors = new Map<string, LoginRedactor>();
   private readonly runners = new Map<string, LoginRunner>();
   /** Flows whose runner is being replaced (selectMethod / live retry): submits are refused meanwhile. */
   private readonly switching = new Set<string>();
@@ -193,6 +195,7 @@ export class LoginFlowService {
       remote,
       expiresAt: this.now() + this.cfg.accounts.loginTimeoutMs,
     });
+    for (const id of this.redactors.keys()) if (!this.store.getLoginFlow(id)) this.redactors.delete(id);
     if (opts.replaceAccount === true) this.replacingAccount.add(flow.id);
     this.log(`account.login.start account=${account.id} flow=${flow.id} harness=${account.harness} remote=${remote}`
       + `${this.accounts.authorityFor(account)?.enabled(account) ? " central=in_place" : ""}${opts.replaceAccount === true ? " replace_account=true" : ""}`);
@@ -254,12 +257,15 @@ export class LoginFlowService {
     if (!flow.methodId || !loginMethodFor(flow.harness, flow.methodId)) throw new LoginFlowRefusal("login_flow_refused", `login flow ${flowId} has no method`);
     if (!this.store.getAccount(flow.account)) throw new LoginFlowRefusal("login_flow_not_found", `login flow ${flowId} belongs to a removed account`);
     // The fields the flow asked for, captured before `validating` clears them.
+    const redactor = this.redactors.get(flowId) ?? new LoginRedactor();
+    redactor.add(values);
+    this.redactors.set(flowId, redactor);
     const fields = flow.inputFields.map((f) => ({ ...f }));
     this.patch(flowId, { phase: "validating", detail: STATIC_DETAIL.validating, inputFields: [], error: null }, "input received");
     try {
       return await runner.submit(values, fields);
     } catch (error) {
-      return this.fail(flowId, err("provider_error", `The provider could not be reached: ${safeMessage(error)}`), true);
+      return this.fail(flowId, err("provider_error", `The provider could not be reached: ${redactor.redact(error instanceof Error ? error.message : String(error)).slice(0, 200)}`), true);
     }
   }
 
@@ -407,6 +413,7 @@ export class LoginFlowService {
   async shutdown(): Promise<void> {
     this.stopping = true;
     await Promise.all([...this.runners.keys()].map((flowId) => this.stopRunner(flowId)));
+    this.redactors.clear();
   }
 
   /** The account is being removed: stop its worker first (the store cascades the rows). */
@@ -472,7 +479,7 @@ export class LoginFlowService {
     try {
       return await withoutRpcCaller(() => runner.start());
     } catch (error) {
-      return this.fail(flowId, err("provider_error", safeMessage(error)), true);
+      return this.fail(flowId, err("provider_error", (error instanceof Error ? error.message : String(error))), true);
     }
   }
 
@@ -545,7 +552,11 @@ export class LoginFlowService {
   // -------------------------------------------------------------------------
 
   private patch(flowId: string, patch: LoginFlowPatch, reason: string): LoginFlowRow {
-    return this.store.updateLoginFlow(flowId, patch, reason).flow;
+    const redactor = this.redactors.get(flowId) ?? new LoginRedactor();
+    const safePatch = { ...patch };
+    if (safePatch.error) safePatch.error = { ...safePatch.error, message: redactor.redact(safePatch.error.message).slice(0, 200) };
+    if (safePatch.detail) safePatch.detail = redactor.redact(safePatch.detail);
+    return this.store.updateLoginFlow(flowId, safePatch, reason).flow;
   }
 
   private fail(flowId: string, error: LoginFlowError, retryable: boolean): LoginFlowRow {

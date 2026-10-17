@@ -90,7 +90,7 @@ test("muse on darwin: never executed for a probe, spawned under a held account, 
     const started = await client.request<AccountLoginStartResult>("account.login.start", { id: "muse-mac", remote: true });
     assert.deepEqual(
       { methodId: started.flow.methodId, methods: started.flow.methods.map((m) => m.id), phase: started.flow.phase, url: started.flow.authorizationUrl, code: started.flow.userCode },
-      { methodId: "muse-oauth", methods: ["muse-oauth"], phase: "waiting_device", url: "https://auth.meta.com/oauth/device/?code=ABCD-EFGH", code: "ABCD-EFGH" },
+      { methodId: "muse-oauth", methods: ["muse-oauth"], phase: "waiting_device", url: "https://auth.meta.com/oauth/device/", code: "ABCD-EFGH" },
     );
     const done = await waitFor(async () => {
       const { flow } = await client.request<AccountLoginGetResult>("account.login.get", { flowId: started.flow.id });

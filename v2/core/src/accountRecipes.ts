@@ -9,7 +9,7 @@
  * preserved when present but never gate anything.
  */
 import { HARNESS_HOME_ENV } from "./import-frozen.ts";
-import type { LoginFieldDescriptor, LoginMethodDescriptor } from "./loginFlow.ts";
+import type { LoginAuthorizationPolicy, LoginFieldDescriptor, LoginMethodDescriptor } from "./loginFlow.ts";
 
 export interface IdentityRecipe {
   /** Home-relative credential files; the same relative paths are used inside the vault. */
@@ -191,6 +191,7 @@ export interface LoginCliSpec {
 
 export interface LoginRecipe {
   methods: LoginRecipeMethod[];
+  authorizationUrl?: LoginAuthorizationPolicy;
   /** Method chosen when the client does not pick one (local pairing). */
   defaultMethodId: string;
   /** Method chosen for a remote node (must be remoteCapable); absent = the default when it is remoteCapable, else refuse. */
@@ -400,6 +401,7 @@ export const ACCOUNT_RECIPES: Readonly<Record<string, IdentityRecipe>> = {
     login: { command: "claude", args: ["auth", "login"] },
     loginFlow: {
       defaultMethodId: "claude-oauth",
+      authorizationUrl: { hosts: ["claude.com"], paths: ["/cai/oauth/authorize"], parameters: ["client_id", "response_type", "redirect_uri", "scope", "code_challenge", "code_challenge_method", "state"], claudeCodeFlag: true },
       methods: [
         {
           id: "claude-oauth",
@@ -750,6 +752,7 @@ export const ACCOUNT_RECIPES: Readonly<Record<string, IdentityRecipe>> = {
     login: { command: "muse", args: ["login"] },
     loginFlow: {
       defaultMethodId: "muse-device",
+      authorizationUrl: { hosts: ["auth.meta.com"], paths: ["/oauth/device/", "/device"], parameters: [] },
       methods: [
         {
           id: "muse-device",
