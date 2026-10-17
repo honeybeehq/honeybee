@@ -23,7 +23,7 @@ from test_capabilities import SETPRIV_ARGS, capability_receipt_valid
 from stat_observation import parse_stat, resolve_stat_observation, STAT_RETRY_LIMIT, STAT_RETRY_DELAY
 from error_summary import error_summary_valid, error_summary_totals
 
-from policy import RULE_VERSION, closing_verdict, differences, preexec_verdict, flake_verdict, within,namespace_pid,error_verdict,mapping_coverage,probe_failed,pid_observation
+from policy import RULE_VERSION, closing_verdict, differences, preexec_verdict, flake_verdict, within,namespace_pid,error_verdict,mapping_coverage,mask_probe_failed,pid_observation
 
 
 def save(path, value):
@@ -209,7 +209,11 @@ def outside_assertion(home, out, before):
         change['verdict'], change['category'] = preexec_verdict(change, str(home), inside['namedRealExceptions'])
     ns = {key: os.readlink('/proc/self/ns/' + key) for key in ('user', 'mnt', 'net')}
     asserted = before['valid'] and after['valid'] and inside['insideAsserted'] and ns['mnt'] != inside['namespaces']['mnt'] and all(item['verdict'] == 'WARN' for item in changes)
-    result = dict(asserted=asserted, insideAsserted=inside['insideAsserted'], nonce=ready['nonce'], at=time.time(), windowMs=(after['time']-before['time'])*1000, changes=changes, outsideNamespaces=ns, fdHistoryCondition='provisional until closing sampler adjudication')
+    code = str(home / 'Code')
+    code_before, code_after = before['entries'].get(code), after['entries'].get(code)
+    code_unchanged = code_before == code_after
+    asserted = asserted and code_unchanged
+    result = dict(repoRootSelfTests=dict(path=code, before=code_before, after=code_after, unchanged=code_unchanged, metadataOnly=True), asserted=asserted, insideAsserted=inside['insideAsserted'], nonce=ready['nonce'], at=time.time(), windowMs=(after['time']-before['time'])*1000, changes=changes, outsideNamespaces=ns, fdHistoryCondition='provisional until closing sampler adjudication')
     save(out / 'outside-preexec.json', result)
     save(out / ('GO.json' if asserted else 'ABORT.json'), result)
 
@@ -298,7 +302,12 @@ def adjudicate(home, root, out, physical, before, after):
     inv = inventory(out)
     audit = log_audit(home, out, before, after, inv, root)
     mask = read(out / 'mask-proof.json') if (out / 'mask-proof.json').exists() else {}
-    valid_mask = mask.get('maskAsserted', False)
+    code_probe = mask.get('repoRootSelfTests', {})
+    code = str(home / 'Code')
+    code_outside = dict(path=code, before=before['entries'].get(code), after=after['entries'].get(code), metadataOnly=True)
+    code_outside['unchanged'] = code_outside['before'] == code_outside['after']
+    save(out / 'repo-root-outside.json', code_outside)
+    valid_mask = code_outside['unchanged'] and mask.get('maskAsserted', False) and code_probe.get('asserted') is True and code_probe.get('empty') is True and code_probe.get('refused') is True and code_probe.get('errno') in (13, 30)
     filesystem = read(out / 'filesystem-workload.json') if (out / 'filesystem-workload.json').exists() else {}
     fs_probes = filesystem.get('probes', {})
     valid_mask = valid_mask and proc_receipt_valid(filesystem, root, mask.get('namespaces', {}).get('pid'))
@@ -522,7 +531,10 @@ def main():
         result = run_step(config, step)
         results.append(result)
         probe_path = pathlib.Path(result['physical']['receipt'])/'locked-mount-probes.json'
-        if probe_failed(read(probe_path) if probe_path.exists() else None):
+        inside_path = probe_path.parent / 'mask-inside.json'
+        inside = read(inside_path) if inside_path.exists() else None
+        before = read(probe_path.parent / 'before.json')
+        if mask_probe_failed(read(probe_path) if probe_path.exists() else None, inside, home, root, before):
             abort_reason = 'locked mount negative probe failed; invocation aborted before any further step'
             record_attempt(root,dict(event='invocation-aborted',rulesVersion=RULE_VERSION,attemptId=result['physical']['attemptId'],reason=abort_reason,at=time.time()))
             break

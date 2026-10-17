@@ -8,7 +8,7 @@ import posixpath
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from policy import closing_verdict, error_verdict, wal_mtime_only, preexec_verdict, flake_verdict,update_fd_prior,namespace_pid,mapping_coverage,probe_failed,pid_observation
+from policy import closing_verdict, error_verdict, wal_mtime_only, preexec_verdict, flake_verdict,update_fd_prior,namespace_pid,mapping_coverage,probe_failed,mask_targets,mask_probe_failed,pid_observation
 from gate import fake_env, lab_home, socket_path_lengths, host_observation
 from home_guard import home_guard, entry_guard, pull_destination, PROVIDER_DIRS, PROVIDER_KEYS, APIARY_DIRS
 from thread_records import ThreadRecords
@@ -397,12 +397,54 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(mapping_coverage(birth,[dict(namespacePid=4,starttime='12')],errors),'mapped')
 
     def test_probe_failure_aborts_invocation(self):
-        valid=dict(childExit=0,probes=[dict(expectedFailure=True) for unused in range(3)])
-        self.assertFalse(probe_failed(None))
-        self.assertFalse(probe_failed(valid))
-        self.assertTrue(probe_failed(dict(valid,childExit=2)))
-        self.assertTrue(probe_failed(dict(valid,probes=valid['probes'][:-1])))
-        self.assertTrue(probe_failed(dict(valid,probes=[dict(expectedFailure=False)]+valid['probes'][1:])))
+        targets = [HOME + '/' + name for name in ('.hive', '.bashrc', '.gitconfig', 'Code', 'Projects')]
+        pairs = [('umount-home', HOME), ('umount-proc', '/proc'), ('remount-hive-rw', HIVE)]
+        pairs += [(operation + ':' + target, target) for target in targets for operation in ('umount', 'mount')]
+        probes = [dict(probe=name, path=target, result=-1, errno=22 if name.startswith('umount') else 1, expectedFailure=True) for name, target in pairs]
+        valid = dict(childExit=0, probes=probes)
+        self.assertFalse(probe_failed(valid, HOME, targets))
+        self.assertFalse(probe_failed(dict(valid, probes=list(reversed(probes))), HOME, targets))
+        self.assertTrue(probe_failed(None, HOME, targets))
+        self.assertTrue(probe_failed(dict(valid, childExit=2), HOME, targets))
+        for index in range(len(probes)):
+            self.assertTrue(probe_failed(dict(valid, probes=probes[:index] + probes[index+1:]), HOME, targets))
+            changed = [dict(row) for row in probes]
+            changed[index].update(expectedFailure=False, result=0, errno=0)
+            self.assertTrue(probe_failed(dict(valid, probes=changed), HOME, targets))
+        for extra in (probes[0], dict(probes[-1], path=HOME + '/unexpected'), dict(probes[-1], probe='unexpected')):
+            self.assertTrue(probe_failed(dict(valid, probes=probes + [extra]), HOME, targets))
+        changed = [dict(row) for row in probes]
+        changed[-1]['path'] = HOME + '/unexpected'
+        self.assertTrue(probe_failed(dict(valid, probes=changed), HOME, targets))
+        changed[-1] = dict(probes[-2])
+        self.assertTrue(probe_failed(dict(valid, probes=changed), HOME, targets))
+
+    def test_probe_targets_come_from_controller_snapshot(self):
+        root = HOME + '/.cache/hbl/run'
+        before = dict(entries={HOME + '/' + name: {} for name in ('.bashrc', '.gitconfig', 'Code', 'Projects', 'repo', 'repo-link', 'note', '.cache')})
+        targets, scaffolds = mask_targets(HOME, root, before['entries'])
+        self.assertNotIn(HOME + '/.cache', targets)
+        self.assertTrue({HOME + '/' + name for name in ('Code', 'Projects', 'repo', 'repo-link', 'note', '.bashrc', '.gitconfig')} <= targets)
+        inside = dict(maskTargets=[dict(path=path) for path in sorted(targets)])
+        def receipt(paths):
+            pairs = [('umount-home', HOME), ('umount-proc', '/proc'), ('remount-hive-rw', HIVE)]
+            pairs += [(operation + ':' + target, target) for target in paths for operation in ('umount', 'mount')]
+            return dict(childExit=0, probes=[dict(probe=name, path=target, result=-1, errno=22 if name.startswith('umount') else 1, expectedFailure=True) for name, target in pairs])
+        valid = receipt(targets)
+        def failed(probes=valid, mask=inside):
+            return mask_probe_failed(probes, mask, HOME, root, before)
+        self.assertFalse(failed())
+        truncated = targets - {HOME + '/Code'}
+        self.assertTrue(failed(receipt(truncated), dict(maskTargets=[dict(path=path) for path in truncated])))
+        changed = truncated | {HOME + '/replacement'}
+        self.assertTrue(failed(receipt(changed), dict(maskTargets=[dict(path=path) for path in changed])))
+        for bad in (None, {}, dict(maskTargets=[]), dict(maskTargets=[{}]), dict(maskTargets=[dict(path=None)]), dict(maskTargets=inside['maskTargets'] + inside['maskTargets'][:1])):
+            self.assertTrue(failed(mask=bad))
+        self.assertTrue(failed(dict(valid, childExit=1)))
+        for field, value in (('expectedFailure', False), ('result', 0), ('errno', errno.EACCES)):
+            probes = [dict(row) for row in valid['probes']]
+            probes[-1][field] = value
+            self.assertTrue(failed(dict(valid, probes=probes)))
 
     def test_mapping_and_read_errors_share_exit_evidence(self):
         for before, after, start, expected in [('Z','Z','12',True),('R','Z','12',True),('S','Z','12',True),('D','Z','12',True),('Z',None,None,True),('R','S','12',False),('Z','R','12',False),('Z','Z','13',False)]:
