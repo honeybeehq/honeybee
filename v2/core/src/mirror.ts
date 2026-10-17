@@ -580,3 +580,10 @@ export interface QuestionWithdrawnEvent {
   withdrawalReason: string;
   withdrawnAt: number;
 }
+
+export const MIRROR_PHONE_OPTIONAL_BEE_KEYS = ["phoneOperationOrigin"] as const;
+export const MIRROR_PHONE_OPTIONAL_MESSAGE_KEYS = ["phoneInput", "renderedBody"] as const;
+export const MIRROR_PHONE_OPTIONAL_HISTORY_KEYS = ["phoneOrigin"] as const;
+export const MIRROR_PHONE_ORIGIN_KEYS = ["format", "channel", "issuerNodeId", "assigner", "credentialRef", "target", "contentKind", "assurance", "humanApproval", "lane", "parentSources", "rootSources", "ancestry", "ownerStoreId", "admissionId", "targetBeeId", "idempotencyKey", "contentDigest", "ancestryDepth"] as const;
+export const MIRROR_PHONE_OPTIONAL_ORIGIN_KEYS = ["omittedSourcesDigest"] as const;
+export const MIRROR_PHONE_SOURCE_KEYS = ["ownerStoreId", "admissionId", "contentDigest", "relation"] as const;

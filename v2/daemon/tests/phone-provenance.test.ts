@@ -1,3 +1,4 @@
+import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
@@ -57,7 +58,20 @@ test("real owner phone admission: trust, atomic replay, lane pinning, initial pr
       assert.equal((await client.request<{ beeId: string }>("spawn", args, 2000, spawnContext)).beeId, admitted.beeId);
       await assert.rejects(client.request("spawn", { ...args, idempotencyKey: `empty-${agent}`, prompt: "" }, 2000, spawnContext), { code: "invalid_request" });
     }
-    client.close(); await daemon.stop(); daemon = await startDaemon(dir); client = await daemon.client();
+    for (const agent of ["inbox", "stub"]) {
+      for (const [index, prompt] of [7, false, { text: "bad" }].entries()) {
+        const id = `malformed-${agent}-${index}`;
+        await assert.rejects(client.request("spawn", { name: id, id, agent, cwd: dir, prompt, idempotencyKey: id }, 2000, spawnContext), { code: "invalid_request" });
+        const absent = await client.request<{ bee: unknown }>("view", { beeId: id });
+        assert.equal(absent.bee, null);
+      }
+    }
+    client.close(); await daemon.stop();
+    const db = new DatabaseSync(join(dir, "core.sqlite3"), { readOnly: true });
+    for (const table of ["rpc_idempotency", "rpc_effect_keys", "phone_admission_bindings"]) assert.equal(db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE key LIKE 'malformed-%'`).get()!.n, 0);
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM mailbox WHERE bee_id LIKE 'malformed-%'").get()!.n, 0);
+    db.close();
+    daemon = await startDaemon(dir); client = await daemon.client();
     const challenge2 = await client.request<LocalTrustChallenge>("rpc.localTrust.challenge");
     const key2 = readFileSync(join(dir, "rpc-private", "registration.key"));
     const token2 = createHmac("sha256", key2).update(localTrustMessage(challenge2)).digest("hex"); key2.fill(0);

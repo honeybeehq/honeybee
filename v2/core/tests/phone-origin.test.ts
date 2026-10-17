@@ -155,3 +155,25 @@ test("cancel, expedite, deletion and reopen preserve origin with retained mail h
     assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
   } finally { store.close(); h.cleanup(); }
 });
+
+
+test("credential recovery redelivers original phone bytes with typed ancestry and one frame", () => {
+  const h = harness(), store = h.open();
+  try {
+    const { bee } = makeBee(store);
+    const original = store.send(bee.id, "original\0<&", { phone: { origin: origin(bee.id), key: "recover" } }).message;
+    store.markDelivered(original.id, 1);
+    const interruption = store.recordAuthInterruption({ beeId: bee.id, account: "claude-a", generation: 1, messageIds: [original.id], turnProgress: "none", credentialRevision: "one", detail: "Not logged in" });
+    store.restoreAuthInterruption(interruption.id, { revision: "two", by: "login" });
+    store.resumeAuthInterruption(interruption.id, "Continue.");
+    const pending = store.undeliveredMessages(bee.id);
+    assert.equal(pending.length, 1);
+    assert.equal(pending[0]!.phoneInput!.originalContent, original.phoneInput!.originalContent);
+    assert.equal(pending[0]!.body, original.body);
+    assert.deepEqual(pending[0]!.phoneInput!.envelope.rootSources, original.phoneInput!.envelope.rootSources);
+    assert.equal(pending[0]!.phoneInput!.envelope.parentSources[0]!.admissionId, original.phoneInput!.envelope.admissionId);
+    assert.equal(pending[0]!.body.split("<apiary-phone-unverified encoding=escaped-text-v1>").length, 2);
+    assert.equal(store.resumeAuthInterruption(interruption.id, "Continue.").applied, false);
+    assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
+  } finally { store.close(); h.cleanup(); }
+});

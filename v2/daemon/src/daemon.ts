@@ -1725,6 +1725,7 @@ export class HiveDaemon {
       if (conn.phoneOrigin) {
         if (typeof params.idempotencyKey !== "string" || !params.idempotencyKey.length) throw new RpcError("invalid_request", "Phone admission requires idempotencyKey");
         const origin = parsePhoneOrigin(conn.phoneOrigin);
+        if (verb === "spawn" && params.prompt != null && typeof params.prompt !== "string") throw new RpcError("invalid_request", "Phone prompt must be a string or absent");
         if (verb === "spawn" && params.prompt === "") throw new RpcError("invalid_request", "An explicit empty phone prompt is invalid; omit prompt for a promptless operation");
         if (verb === "spawn" && origin.contentKind !== "initial-prompt" && origin.contentKind !== "crew-bio" || verb === "send" && origin.contentKind === "initial-prompt") throw new RpcError("invalid_request", "Phone content kind differs from operation");
         params = { ...params, [PHONE_CONTEXT]: origin, [PHONE_LANE]: "envelope-v1", [PHONE_CARRIER_DIGEST]: conn.phoneCarrierDigest };

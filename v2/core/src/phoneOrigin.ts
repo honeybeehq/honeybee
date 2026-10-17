@@ -103,3 +103,15 @@ export interface PhoneAdmissionReceipt {
   contentDigest: string | null;
   lane: "envelope-v1";
 }
+
+export function forwardPhoneOrigin(input: PhoneInput, relation: PhoneSource["relation"]): PhoneOriginRequest {
+  const source = input.envelope;
+  return {
+    format: PHONE_FORMAT, channel: "phone", issuerNodeId: source.issuerNodeId,
+    assigner: source.assigner, credentialRef: source.credentialRef,
+    target: source.target, contentKind: "message", assurance: "credential-possession-only",
+    humanApproval: "not-verified", lane: "envelope-v1", ancestry: source.ancestry,
+    parentSources: [{ ownerStoreId: source.ownerStoreId, admissionId: source.admissionId, contentDigest: source.contentDigest, relation }],
+    rootSources: source.rootSources,
+  };
+}
