@@ -17,6 +17,7 @@ import tarfile
 import time
 import node_bootstrap
 import listener_static
+import git_boundary
 
 LISTENER_LIMIT = 'Seatbelt does not mediate IP bind/inbound on macOS 26 (probe 52e76fd3: remote tailnet connect accepted); mitigated by own-pid listener sampling (FAIL + fenced kill); exposure window up to one sample interval.'
 STATIC_BIND_LIMIT = 'static bind scan covers modules importing dgram/socket; a socket passed across modules is covered only by the runtime own-pid sampler'
@@ -65,6 +66,8 @@ def validate(root, env, real_home, parent=Path('/private/var/tmp')):
 
 ENTRY_NOTES = []
 LEFTOVER_CHILDREN = []
+GIT_CONTROLS = {}
+GIT_AUDITS = {}
 
 
 def write_json(path, value, root):
@@ -72,7 +75,7 @@ def write_json(path, value, root):
     if not inside(path.resolve(), root.resolve()):
         raise Refusal('write outside run root')
     if path == Path(root) / 'receipt.json' and isinstance(value, dict):
-        value = dict(value, entryNotes=list(ENTRY_NOTES), leftoverChild=value.get('leftoverChild') or list(LEFTOVER_CHILDREN) or None, listenerLimit=LISTENER_LIMIT, staticBindLimit=STATIC_BIND_LIMIT, hostLock=LOCK_METADATA.get(str(Path(root).resolve())))
+        value = dict(value, gitBoundary=GIT_AUDITS.get(str(root.resolve())), entryNotes=list(ENTRY_NOTES), leftoverChild=value.get('leftoverChild') or list(LEFTOVER_CHILDREN) or None, listenerLimit=LISTENER_LIMIT, staticBindLimit=STATIC_BIND_LIMIT, hostLock=LOCK_METADATA.get(str(Path(root).resolve())))
     path.write_text(json.dumps(value, indent=2) + '\n')
 
 
@@ -141,6 +144,7 @@ def profile(root, home, lane):
     return ''.join((
         '(version 1)(allow default)',
         '(deny file-write*)(allow file-write* (subpath ' + quote(root) + '))',
+        '(deny file-write* (subpath ' + quote(root / 'sealed-target') + '))',
         '(allow file-write-data (literal "/dev/null"))',
         '(deny file-read* (subpath ' + quote(home) + '))',
         '(deny file-read* (subpath "/Library/Keychains") (subpath "/private/var/db/Keychains"))',
@@ -711,6 +715,10 @@ def run(args):
     write_json(root / 'launchagents-before.json', before, root)
     if args.self_test:
         env.update(make_socket_controls(root))
+        try:
+            GIT_CONTROLS[str(root.resolve())] = git_boundary.prepare(root, env)
+        except (ValueError, subprocess.SubprocessError) as error:
+            raise Refusal('Git boundary fixture preparation failed: ' + str(error)) from error
     output = (root / 'workload.log').open('wb')
     read_fd, release_fd = os.pipe()
     command = prefix + ['/bin/bash', str(workspace / 'scripts/gates/darwin/workload.sh'), str(workspace / args.body)]
@@ -808,6 +816,9 @@ def run(args):
         except (ValueError, OSError):
             leftover = {'state': 'unknown', 'error': 'malformed leftover child record'}
             rc = 95
+    if args.self_test and not audit_git_controls(root):
+        rc = 95
+        scope_error = scope_error or 'Git boundary audit failed'
     reason = scope_error or ('LaunchAgents sentinel changed' if before != after else ('workload exited ' + str(rc) + '; diagnostic: ' + str(root / 'workload.log') if rc else None))
     if leftover:
         reason = (reason or 'recorded self-expiring test child') + '; leftoverChild=' + json.dumps(leftover, sort_keys=True)
@@ -818,6 +829,24 @@ def run(args):
     print('GATE_RECEIPT_SHA256=' + digest, flush=True)
     os.close(fd)
     return rc
+
+
+def audit_git_controls(root):
+    controls = GIT_CONTROLS.get(str(root.resolve()))
+    if controls is None:
+        return False
+    try:
+        after = git_boundary.snapshot(root / 'sealed-target')
+        evidence = json.loads((root / 'git-boundary-workload.json').read_text())
+        audit = {'unchanged': after == controls['before'], 'before': controls['before'], 'after': after, 'workload': evidence}
+        accepted = audit['unchanged'] and evidence.get('allDenied') is True
+    except (OSError, ValueError) as error:
+        audit = {'accepted': False, 'error': str(error)}
+        accepted = False
+    audit['accepted'] = accepted
+    GIT_AUDITS[str(root.resolve())] = audit
+    write_json(root / 'git-boundary-controller.json', audit, root)
+    return accepted
 
 
 def acquire_lock(path):
@@ -857,6 +886,8 @@ def main():
         print('GATE_NONZERO_REASON=' + json.dumps('guard refusal: ' + str(error)), flush=True)
         root = Path(args.root)
         if root.resolve() in CREATED_ROOTS:
+            if str(root.resolve()) in GIT_CONTROLS:
+                audit_git_controls(root)
             try:
                 close_socket_controls(root)
             except (OSError, Refusal) as cleanup:

@@ -17,11 +17,46 @@ from unittest.mock import patch
 import node_bootstrap
 import guard
 import listener_static
+import git_boundary
 
 from guard import DIRS, PROTECTED, Refusal, absolute_compiler_jobs, close_socket_controls, compiler_metadata_literals, compiler_profile, compiler_tools, environment, launchagents, make_socket_controls, profile, receipt_hashes, run, seed_cache, select_node, validate, write_json
 
 
 class GuardTests(unittest.TestCase):
+    def test_git_sealed_target_deny_follows_root_allow(self):
+        policy = profile(self.base, self.base / 'real-home', self.base / 'lane')
+        allowed = '(allow file-write* (subpath ' + json.dumps(str(self.base)) + '))'
+        denied = '(deny file-write* (subpath ' + json.dumps(str(self.base / 'sealed-target')) + '))'
+        self.assertGreater(policy.index(denied), policy.index(allowed))
+
+    def test_git_boundary_requires_permission_evidence_for_every_row(self):
+        controls = {'git': git_boundary.GIT_CANDIDATES[0], 'target': str(self.base / 'sealed-target'), 'source': str(self.base / 'git-source')}
+        (self.base / 'git-controls.json').write_text(json.dumps(controls))
+        refused = subprocess.CompletedProcess([], 128, '', 'Operation not permitted')
+        with patch('git_boundary.subprocess.run', side_effect=[subprocess.CompletedProcess([], 0, '', ''), refused, refused, refused]) as calls:
+            git_boundary.workload(self.base)
+        rows = json.loads((self.base / 'git-boundary-workload.json').read_text())
+        self.assertTrue(rows['allDenied'])
+        self.assertEqual(len(rows['rows']), 3)
+        self.assertEqual(calls.call_args_list[2].args[0][-1], 'https://192.0.2.1/x.git')
+        with patch('git_boundary.subprocess.run', side_effect=[subprocess.CompletedProcess([], 0, '', ''), subprocess.CompletedProcess([], 128, '', 'Could not resolve host')]), self.assertRaisesRegex(ValueError, 'lacks permission-denial evidence'):
+            git_boundary.workload(self.base)
+        self.assertFalse(json.loads((self.base / 'git-boundary-workload.json').read_text())['allDenied'])
+
+    def test_git_target_snapshot_detects_ref_or_object_changes(self):
+        target = self.base / 'sealed-target'
+        (target / 'objects').mkdir(parents=True)
+        (target / 'refs').mkdir()
+        path = target / 'objects/object'
+        path.write_bytes(b'original')
+        before = git_boundary.snapshot(target)
+        path.write_bytes(b'changed')
+        self.assertNotEqual(before, git_boundary.snapshot(target))
+        path.unlink()
+        path.symlink_to(self.base / 'elsewhere')
+        with self.assertRaisesRegex(ValueError, 'non-regular'):
+            git_boundary.snapshot(target)
+
     def test_stamped_shell_entries_refuse_before_other_commands(self):
         directory = Path(__file__).parent
         for name in ('gate-run.sh', 'darwin-gate.sh'):
