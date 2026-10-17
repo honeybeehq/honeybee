@@ -9,7 +9,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -1850,7 +1850,7 @@ test("budget.10: real evidence (the late init a readyAtSpawn harness emits) rese
   }
 });
 
-test("budget.11 (end-to-end repro): a REAL readyAtSpawn process that spawns fine, emits zero output and dies ~60ms later — bounded generations over wall time; fixed harness + operator revive recovers", async () => {
+test("budget.11 (end-to-end repro): a REAL readyAtSpawn process that spawns fine, emits zero output and dies after observed readiness — bounded generations; fixed harness + operator revive recovers", async () => {
   // The operator's first-soak audit shape: command.enqueued → command.claimed
   // → runtime.created → … → command.completed → runtime.updated, repeating
   // unbounded. Pre-fix the driver's spawn-event synthetic booted reset the
@@ -1863,14 +1863,14 @@ test("budget.11 (end-to-end repro): a REAL readyAtSpawn process that spawns fine
   const driver = new HsrDriver({
     sessionLogDir: join(dir, "logs"),
     stopKillGraceMs: 300,
-    resolve: () => ({
-      // The claude shape without claude: a readyAtSpawn adapter over a child
-      // that spawns cleanly, writes NOTHING, and exits 9 after ~60ms. The
-      // "fixed" harness is the ordinary stub agent (its ready line is real
-      // parsed output — boot evidence).
+    resolve: (_beeId, generation) => ({
       adapter: { ...stubAdapter, readyAtSpawn: true },
       command: process.execPath,
-      args: fixed ? [AGENT_PATH] : ["-e", "setTimeout(() => process.exit(9), 60)"],
+      args: fixed ? [AGENT_PATH] : [
+        "-e",
+        "const fs = require('node:fs'); const timer = setInterval(() => { if (fs.existsSync(process.argv[1])) { clearInterval(timer); process.exit(9); } }, 10)",
+        join(dir, `release-${generation}`),
+      ],
       cwd: dir,
       env: { ...process.env, STUB_TURN_MS: "5" },
     }),
@@ -1894,6 +1894,10 @@ test("budget.11 (end-to-end repro): a REAL readyAtSpawn process that spawns fine
     const deadline = Date.now() + PROCESS_WAIT_TIMEOUT_MS;
     for (;;) {
       core.step();
+      const current = store.currentRuntime("bee-x");
+      if (current?.bootEvidence === "synthetic" && current.state !== "stopped") {
+        writeFileSync(join(dir, `release-${current.generation}`), "");
+      }
       const flagged = store.activeFlags("bee-x").some((f) => f.flag === "spawn_failed");
       const stopped = store.currentRuntime("bee-x")?.state === "stopped";
       if (flagged && stopped) break;
@@ -1934,11 +1938,10 @@ test("budget.11 (end-to-end repro): a REAL readyAtSpawn process that spawns fine
     fixed = true;
     if (store.undeliveredMessages("bee-x").length === 0) store.send("bee-x", "hello again?");
     store.enqueueCommand("revive", "bee-x");
-    const ok = Date.now() + PROCESS_WAIT_TIMEOUT_MS;
     for (;;) {
       core.step();
       if (store.undeliveredMessages("bee-x").length === 0 && store.currentRuntime("bee-x")?.state === "idle") break;
-      assert.ok(Date.now() < ok, `revive did not recover; ops tail: ${ops.slice(-25).join(" | ")}`);
+      assert.ok(Date.now() < deadline, `revive did not recover; ops tail: ${ops.slice(-25).join(" | ")}`);
       await sleep(20);
     }
     assert.deepEqual(store.activeFlags("bee-x"), []);
