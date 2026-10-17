@@ -44,7 +44,7 @@ test("node state roots refuse missing or relative paths before filesystem effect
     }
     for(const field of ["socketPath","sessionLogDir"]){
       writeFileSync(join(dir,"config.json"),JSON.stringify({[field]:""}));
-      assert.throws(()=>loadNodeConfig(dir),invalid);
+      assert.throws(()=>loadNodeConfig(dir),(error:unknown)=>error instanceof ConfigError&&error.message===`config: ${field} must be a non-empty string`);
       assert.deepEqual(readdirSync(dir),["config.json"]);
     }
   });
