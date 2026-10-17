@@ -12,6 +12,8 @@ from policy import closing_verdict, error_verdict, wal_mtime_only, preexec_verdi
 from gate import fake_env, lab_home, socket_path_lengths
 from home_guard import home_guard, entry_guard, pull_destination, PROVIDER_DIRS, PROVIDER_KEYS, APIARY_DIRS
 from thread_records import ThreadRecords
+from birth_identity import birth_identity, parent_chain
+from test_capabilities import assert_capabilities, is_test_command, CAPABILITY_SETS
 
 HOME = '/home/lab'
 HIVE = HOME + '/.hive'
@@ -19,6 +21,73 @@ META = dict(inode=1, size=100, mtime_ns=10000000000, mode=33152, uid=1000, gid=1
 
 
 class PolicyTests(unittest.TestCase):
+    def test_birth_stat_parent_survives_dead_status_13f09289(self):
+        first = dict(state='Z', ppid=36, starttime='307527235')
+        birth = dict(pid=27349, **birth_identity(first, dict(State='X (dead)', PPid='0', NSpid='0'), dict(user='user:[lab]', mnt='mnt:[lab]'), dict(errno=errno.ENOENT)))
+        births = {27349: birth, **{pid: dict(ppid=parent) for pid, parent in ((36,29),(29,28),(28,7),(7,5),(5,1))}}
+        scoped, chain = parent_chain(27349, births)
+        birth.update(ownTreeAtFirstSight=scoped, parentChain=chain, nextBirthSample=dict(state='pid_gone'))
+        self.assertEqual(chain, [27349,36,29,28,7,5,1])
+        self.assertEqual(birth['ppid'], 36)
+        self.assertEqual(birth['procStat'], first)
+        self.assertEqual(birth['rawStatus']['PPid'], '0')
+        self.assertFalse(birth['supplementalIdentityAccepted'])
+        self.assertEqual(birth['NSpid'], [])
+        self.assertEqual(birth['namespaces'], {})
+        for unused in range(17):
+            error = dict(slot='fd/4', errno=errno.ENOENT, atErrorStat=first, nextSample=dict(state='pid_gone'))
+            self.assertEqual(error_verdict(error, birth, True, HIVE), 'scope_proven_exiting')
+        self.assertEqual(mapping_coverage(birth, [], []), 'mapping unavailable: exited before host capture')
+
+    def test_outside_birth_parent_cannot_be_replaced_by_status(self):
+        first = dict(state='Z', ppid=999, starttime='307527235')
+        birth = dict(pid=27349, **birth_identity(first, dict(State='Z', PPid='36', NSpid='27349'), {}, first))
+        scoped, chain = parent_chain(27349, {27349: birth, 36: dict(ppid=1)})
+        birth.update(ownTreeAtFirstSight=scoped, parentChain=chain, nextBirthSample=dict(state='pid_gone'))
+        self.assertEqual(birth['ppid'], 999)
+        self.assertFalse(scoped)
+        self.assertEqual(error_verdict(dict(slot='fd/4',errno=errno.ENOENT,atErrorStat=first,nextSample=dict(state='pid_gone')), birth, True, HIVE), 'FAIL')
+        self.assertEqual(mapping_coverage(birth, [], []), 'FAIL')
+
+    def test_supplemental_identity_never_replaces_birth_start(self):
+        first = dict(state='S', ppid=36, starttime='7')
+        status = dict(State='S', PPid='36', NSpid='111 12')
+        links = dict(user='user:[1]', mnt='mnt:[2]', net='net:[3]', pid='pid:[4]')
+        valid = birth_identity(first, status, links, first)
+        self.assertEqual(valid['NSpid'], [111,12])
+        self.assertEqual(valid['namespaces'], links)
+        for confirmation, later in ((dict(first,starttime='8'),status),(first,dict(status,NSpid='0')),(first,dict(status,State='X (dead)'))):
+            record = birth_identity(first, later, links, confirmation)
+            self.assertEqual(record['procStat']['starttime'], '7')
+            self.assertFalse(record['supplementalIdentityAccepted'])
+            self.assertEqual(record['NSpid'], [])
+            self.assertEqual(record['namespaces'], {})
+
+    def test_dac_drop_asserts_every_set_and_no_new_privileges(self):
+        fields = {key:'000001fffffffff9' for key in CAPABILITY_SETS}
+        fields['NoNewPrivs'] = '1'
+        assert_capabilities(fields)
+        for key in CAPABILITY_SETS:
+            for bit in (2,4):
+                with self.assertRaises(ValueError):
+                    assert_capabilities(dict(fields, **{key:format(int(fields[key],16)|bit,'x')}))
+        with self.assertRaises(ValueError):
+            assert_capabilities(dict(fields,NoNewPrivs='0'))
+        for command in (['npm','test'],['npm','run','v2:test'],['npm','run','v2:daemon'],['npm','run','v2:driver'],['npm','run','v2:driver2'],['npm','run','v2:harness'],['node','--test','a.test.ts'],['python3','-B','/run/policy_test.py']):
+            self.assertTrue(is_test_command(command))
+        for command in (['npm','ci'],['npm','run','build'],['npm','run','check'],['npm','run','v2:check'],['@prepare']):
+            self.assertFalse(is_test_command(command))
+
+    def test_auto_title_preexec_exception_is_exact_and_identity_preserving(self):
+        path = HIVE + '/v2/auto-title.json'
+        change = dict(path=path,before=META,after=dict(META,mtime_ns=META['mtime_ns']+1))
+        self.assertEqual(preexec_verdict(change,HOME)[0], 'WARN')
+        for key in ('inode','size','uid','gid','mode'):
+            self.assertEqual(preexec_verdict(dict(change,after=dict(change['after'],**{key:META[key]+1})),HOME)[0], 'FAIL')
+        self.assertEqual(preexec_verdict(change,HOME,touched=[path])[0], 'FAIL')
+        for other in (HIVE+'/auto-title.json',HIVE+'/v2/other.json',HIVE+'/v2/auto-title.json.other'):
+            self.assertEqual(preexec_verdict(dict(change,path=other),HOME)[0], 'FAIL')
+
     def error(self, before='R', after='S', number=errno.ENOENT, prior=None, scoped=True, masked=True, next_birth='100'):
         record = dict(errno=number, fd='4', slot='fd/4', previousTarget=prior, atErrorStat=dict(state=before, starttime='100'), nextSample=dict(state='pid_present' if after else 'pid_gone', procStat=dict(state=after, starttime=next_birth) if after else None))
         return error_verdict(record, dict(cgroupSightingTime=1) if scoped else {}, masked, HIVE)

@@ -17,6 +17,8 @@ import uuid
 import threading
 import pwd
 from home_guard import entry_guard, pull_destination
+from birth_identity import birth_identity
+from test_capabilities import SETPRIV_ARGS, is_test_command, assert_capabilities
 
 from policy import RULE_VERSION, closing_verdict, differences, preexec_verdict, flake_verdict, within,namespace_pid,error_verdict,mapping_coverage,probe_failed
 
@@ -214,14 +216,23 @@ def map_host_pids(group, out, stopped):
                     item = dict(hostPid=pid, scopeSightingAt=stamp, capturedAt=time.time())
                     try:
                         status = pathlib.Path('/proc') / str(pid) / 'status'
+                        def proc_stat():
+                            raw = (status.parent / 'stat').read_text()
+                            values = raw[raw.rfind(')')+2:].split()
+                            return dict(state=values[0], ppid=int(values[1]), starttime=values[19])
+                        first = proc_stat()
+                        item['procStat'] = first
                         fields = dict(line.split(':', 1) for line in status.read_text().splitlines() if ':' in line)
-                        item['NSpid'] = [int(value) for value in fields['NSpid'].split()]
+                        namespaces = {key: os.readlink(status.parent / 'ns' / key) for key in ('user', 'mnt', 'net', 'pid')}
+                        identity = birth_identity(first, fields, namespaces, proc_stat())
+                        item.update(identity)
+                        if 'identityErrno' in identity:
+                            raise OSError(identity['identityErrno'], 'supplemental birth identity unavailable or changed')
                         item['namespacePid'] = namespace_pid(item['NSpid'])
-                        raw = (status.parent / 'stat').read_text()
-                        item['starttime'] = raw[raw.rfind(')')+2:].split()[19]
+                        item['starttime'] = first['starttime']
                     except (OSError, KeyError) as error:
                         item['error'] = type(error).__name__
-                        item['readError']=dict(pid=pid,slot='host-pid-map',errno=getattr(error,'errno',None),time=time.time(),scopeSightingAt=stamp,atErrorStat={})
+                        item['readError']=dict(pid=pid,slot='host-pid-map',errno=getattr(error,'errno',None),time=time.time(),scopeSightingAt=stamp,atErrorStat=item.get('procStat',{}))
                     births[pid] = item
                 if changed:
                     save(out / 'host-pid-map.json', list(births.values()))
@@ -246,6 +257,13 @@ def adjudicate(home, root, out, physical, before, after):
         guard_names.append('tests')
     guard_records = {name: read(out / ('entry-guard-'+name+'.json')) if (out / ('entry-guard-'+name+'.json')).exists() else None for name in guard_names}
     entry_guards = bool(read(root/'config.json').get('entryGuard',{}).get('allowed')) and all(record and record.get('allowed') and record.get('beforeFirstWrite') and record.get('ruleVersion') == RULE_VERSION for record in guard_records.values())
+    capabilities = read(out / 'capability-drop.json') if (out / 'capability-drop.json').exists() else None
+    if is_test_command(physical['command']):
+        try:
+            assert capabilities and capabilities.get('asserted') and capabilities.get('setprivArgv') == SETPRIV_ARGS and capabilities.get('command') == physical['command'] and capabilities.get('entryGuard', {}).get('beforeFirstWrite') and capabilities['entryGuard'].get('allowed')
+            assert_capabilities(capabilities['status'])
+        except (AssertionError, KeyError, ValueError, TypeError):
+            entry_guards = False
     save(out/'entry-guards.json',dict(asserted=entry_guards,records=guard_records))
     inv = inventory(out)
     audit = log_audit(home, out, before, after, inv, root)
@@ -270,7 +288,7 @@ def adjudicate(home, root, out, physical, before, after):
     guard_accepted = physical['workloadStarted'] and eligible and before['valid'] and after['valid'] and all(item['verdict'] != 'FAIL' for item in changes)
     ok = physical.get('scopeExit') == 0 and guard_accepted
     warnings = sum(item['verdict'] == 'WARN' for item in changes) + sum(item['verdict'] == 'WARN' for item in pre['changes']) + raw.get('errorCounts', {}).get('masked_unknown_prior_WARN', 0)
-    result = dict(ruleVersion=RULE_VERSION, outcome=('WARN' if warnings else 'PASS') if ok else 'FAIL', guardAccepted=guard_accepted, testExit=raw.get('exit'), testEvidence=raw.get('testEvidence'),missingHostPidMappings=missing_mappings,hostMapErrors=host_errors,preExec=pre, closingChanges=changes, errorCounts=raw.get('errorCounts'), errnoCounts=raw.get('errnoCounts'), samplerClean=clean, logAudit=audit, maskAsserted=valid_mask, citedAttempt=physical['attemptId'] if ok else None, physical=physical)
+    result = dict(ruleVersion=RULE_VERSION, outcome=('WARN' if warnings else 'PASS') if ok else 'FAIL', guardAccepted=guard_accepted, testCapabilities=capabilities, testExit=raw.get('exit'), testEvidence=raw.get('testEvidence'),missingHostPidMappings=missing_mappings,hostMapErrors=host_errors,preExec=pre, closingChanges=changes, errorCounts=raw.get('errorCounts'), errnoCounts=raw.get('errnoCounts'), samplerClean=clean, logAudit=audit, maskAsserted=valid_mask, citedAttempt=physical['attemptId'] if ok else None, physical=physical)
     save(out / 'adjudication.json', result)
     return result
 
@@ -342,7 +360,7 @@ def run_step(config, step):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Guarded Linux gate, rules v29. One physical attempt per planned step; no retries.', epilog='Steps: check,v2:check,v2:test,v2:daemon,v2:driver,v2:driver2,v2:harness,build,gate-tests,test:<repo-relative.test.ts>,flake:<repo-relative.test.ts>:N. N>=3; daemon-shutdown N>=10. Preparation, offline npm ci and peercred prebuild are automatic. Receipts: REAL_HOME/.cache/hbl/<run>. Approved satellites only. Start with env -i PATH=... HOME=<fake under ~/.cache> TMPDIR=<fake> LANG=C.UTF-8 run.sh --real-home REAL_HOME --candidate SHA --base SHA --steps LIST --npm-cache FILE --npm-cache-sha256 SHA256. No other HIVE_*/APIARY_* variables are accepted.')
+    parser = argparse.ArgumentParser(description='Guarded Linux gate, rules v29. One physical attempt per planned step; no retries.', epilog='Steps: check,v2:check,npm-test,v2:test,v2:daemon,v2:driver,v2:driver2,v2:harness,build,gate-tests,test:<repo-relative.test.ts>,flake:<repo-relative.test.ts>:N. N>=3; daemon-shutdown N>=10. Preparation, offline npm ci and peercred prebuild are automatic. Receipts: REAL_HOME/.cache/hbl/<run>. Approved satellites only. Start with env -i PATH=... HOME=<fake under ~/.cache> TMPDIR=<fake> LANG=C.UTF-8 run.sh --real-home REAL_HOME --candidate SHA --base SHA --steps LIST --npm-cache FILE --npm-cache-sha256 SHA256. No other HIVE_*/APIARY_* variables are accepted.')
     parser.add_argument('--real-home', required=True)
     parser.add_argument('--candidate', required=True)
     parser.add_argument('--base', required=True)
@@ -391,6 +409,8 @@ def main():
                 command = ['python3', '-B', str(pathlib.Path(__file__).parent / 'policy_test.py')]
             elif test:
                 command = ['node', 'scripts/with-fixture-warden.mjs', 'node', '--test', '--test-reporter=tap',test]
+            elif token == 'npm-test':
+                command = ['npm', 'test']
             elif token in ('check', 'v2:check', 'v2:test', 'v2:daemon', 'v2:driver', 'v2:driver2', 'v2:harness', 'build'):
                 command = ['npm', 'run', token]
             else:
@@ -407,6 +427,7 @@ def main():
     root.mkdir()
     config = dict(runRoot=str(root), realHome=str(home), gateSha=gate_sha,controllerEnvironmentKeys=sorted(os.environ), path=os.environ['PATH'], shas=shas, rulesVersion=RULE_VERSION, lsofExclusions=args.lsof_exclude, cacheSource=str(pathlib.Path(args.npm_cache).absolute()), cacheSha256=args.npm_cache_sha256, provenance='findings/hb-turn-quiet-netcup2-script-bundle.json v1', flakePlan=flakes)
     config['toolHashes'] = {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in pathlib.Path(__file__).parent.iterdir() if path.is_file()}
+    config['testCapabilities'] = dict(setprivArgv=SETPRIV_ARGS, assertedSets=['CapEff','CapPrm','CapBnd','CapInh','CapAmb'], noNewPrivs=1, appliedAfter='mask assertions and locked-mount negative probes')
     config['ledger'] = str(parent / 'attempt-ledger.jsonl')
     config['entryGuard'] = controller_guard
     config['passwdHome'] = str(passwd_home)
