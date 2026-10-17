@@ -9,7 +9,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from policy import closing_verdict, error_verdict, wal_mtime_only, preexec_verdict, flake_verdict,update_fd_prior,namespace_pid,mapping_coverage,probe_failed,pid_observation
-from gate import fake_env, lab_home, socket_path_lengths
+from gate import fake_env, lab_home, socket_path_lengths, host_observation
 from home_guard import home_guard, entry_guard, pull_destination, PROVIDER_DIRS, PROVIDER_KEYS, APIARY_DIRS
 from thread_records import ThreadRecords
 from birth_identity import birth_identity, parent_chain
@@ -25,6 +25,18 @@ META = dict(inode=1, size=100, mtime_ns=10000000000, mode=33152, uid=1000, gid=1
 
 
 class PolicyTests(unittest.TestCase):
+    def test_bbbc_host_mapping_empty_next_stats_resolve_with_recorded_identity(self):
+        for pid, state, starttime in ((1144210, 'R', '308779201'), (1145613, 'Z', '308779255')):
+            before = dict(state=state, ppid=1141201, starttime=starttime)
+            with patch('gate.host_stat', side_effect=[{}, dict(state='Z', starttime=starttime)]) as read, patch('gate.os.path.exists', return_value=True):
+                observation = host_observation(pid, True, 2)
+            self.assertEqual(read.call_count, 2)
+            self.assertEqual(observation['procStat']['state'], 'Z')
+            self.assertFalse(observation['statRetryExhausted'])
+            self.assertEqual(len(observation['statObservationAttempts']), 2)
+            error = dict(pid=pid, slot='host-pid-map', errno=errno.ENOENT, atErrorStat=before, nextSample=observation)
+            self.assertEqual(error_verdict(error, dict(cgroupSightingTime=1, procStat=before), False, ''), 'scope_proven_exiting')
+
     def test_budget11_empty_next_stat_retries_to_z_for_both_reported_pids(self):
         for pid in (120215,130601):
             birth=dict(pid=pid,ownTreeAtFirstSight=True,parentChain=[pid,36,1],procStat=dict(state='Z',starttime='77'))
