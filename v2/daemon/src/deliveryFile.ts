@@ -21,6 +21,10 @@ export class DeliveryFiles {
     this.worktreeSearchBoundary = worktreeSearchBoundary;
     this.directory = directory ?? join(fileURLToPath(new URL(import.meta.url.endsWith(".ts") ? "../../../dist/v2/delivery-file/" : "./delivery-file/", import.meta.url)), `${process.platform}-${process.arch}`);
   }
+  status(): {state: "ready" | "delivery_file_helper_unavailable"; target: string; artifactPath: string} {
+    const result = {target: `${process.platform}-${process.arch}`, artifactPath: join(this.directory, "delivery-file.node")};
+    try {this.native(); return {...result, state: "ready"};} catch {return {...result, state: "delivery_file_helper_unavailable"};}
+  }
   private native(): Bridge {
     if (this.bridge) return this.bridge;
     try {

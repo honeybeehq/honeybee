@@ -11,5 +11,6 @@ export function ensureDeliveryFileArtifact(): void {
     const hash = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
     if (manifest.sourceSha256 === hash(source) && manifest.sha256 === hash(binary) && manifest.target === `${process.platform}-${process.arch}`) return;
   } catch {}
+  if (process.env.SCG_DELIVERY_FILE_PREBUILT_ONLY === "1") throw new Error("prebuilt delivery helper required");
   execFileSync(process.execPath, ["scripts/build-delivery-file.mjs"], {stdio: "pipe"});
 }

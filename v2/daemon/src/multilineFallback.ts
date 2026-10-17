@@ -28,13 +28,13 @@ export class MultilineFallback {
     this.files = options.files ?? new DeliveryFiles();
   }
 
-  private receipt(beeId: string, fallback: DeliveryFallback, messageId: number): "accepted" | "unknown" {
+  private receipt(beeId: string, fallback: DeliveryFallback, messageId: number): "accepted" | "unknown" | "not_attempted" {
     try {return fallback.generation !== null && fallback.pointer !== null ? this.driver.deliveryReceipt?.(beeId, fallback.generation, messageId, fallback.pointer) ?? "unknown" : "unknown";} catch {return "unknown";}
   }
 
   eligible(beeId: string, messageId: number, fallback: DeliveryFallback | undefined): boolean {
     if (!fallback) return true;
-    if (fallback.state === "unknown") return this.receipt(beeId, fallback, messageId) === "accepted";
+    if (fallback.state === "unknown") return this.receipt(beeId, fallback, messageId) !== "unknown";
     return ["preparing", "ready", "in_flight"].includes(fallback.state);
   }
 
@@ -42,7 +42,12 @@ export class MultilineFallback {
     if (this.store.inTransaction || message.deliveredAt !== null) return false;
     const fallback = this.store.multilineDelivery(message.id)?.fallback;
     if (!fallback || !["in_flight", "unknown"].includes(fallback.state)) return false;
-    if (this.receipt(message.beeId, fallback, message.id) === "accepted") return this.complete(message, fallback, source);
+    const receipt = this.receipt(message.beeId, fallback, message.id);
+    if (receipt === "accepted") return this.complete(message, fallback, source);
+    if (receipt === "not_attempted") {
+      this.store.transitionMultilineFallback(message.id, fallback.state, "ready", {detail: "delivery_not_attempted", attemptPhase: "before_enter_cleared"});
+      return false;
+    }
     const runtime = this.store.currentRuntime(message.beeId);
     if (fallback.state === "in_flight" && (!runtime || runtime.generation !== fallback.generation || !["booting", "running", "idle"].includes(runtime.state))) {
       this.store.transitionMultilineFallback(message.id, "in_flight", "unknown", { detail: "delivery_pointer_outcome_unknown" });
@@ -75,13 +80,13 @@ export class MultilineFallback {
     if (fallback.state !== "preparing" && fallback.state !== "ready") return { handled: true, accepted: false };
     try {
       if (fallback.ownerStoreId !== this.store.effectCoverage().ownerStoreId) throw Object.assign(new Error("owner differs"), { code: "delivery_file_owner_mismatch" });
-      this.store.fenceMultilineFallbackPublication(message.id, fallback.id);
-      const content = `Honeybee delivery content: message=${message.id} publication=${fallback.id}\n\n${text}`;
-      const published = this.files.publish(fallback.root, fallback.ownerStoreId, message.beeId, fallback.id, content, fallback.worktrees);
-      const pointer = deliveryPointer(message, published.path, peer, questionId);
-      if (fallback.state === "preparing") fallback = this.store.transitionMultilineFallback(message.id, "preparing", "ready", { ...published, pointer })!;
-      else if (published.path !== fallback.path || published.digest !== fallback.digest || published.bytes !== fallback.bytes) throw Object.assign(new Error("content differs"), { code: "delivery_file_content_mismatch" });
-      else if (pointer !== fallback.pointer) throw Object.assign(new Error("pointer differs"), { code: "delivery_file_pointer_mismatch" });
+      if (fallback.state === "preparing") {
+        this.store.fenceMultilineFallbackPublication(message.id, fallback.id);
+        const content = `Honeybee delivery content: message=${message.id} publication=${fallback.id}\n\n${text}`;
+        const published = this.files.publish(fallback.root, fallback.ownerStoreId, message.beeId, fallback.id, content, fallback.worktrees);
+        const pointer = deliveryPointer(message, published.path, peer, questionId);
+        fallback = this.store.transitionMultilineFallback(message.id, "preparing", "ready", { ...published, pointer })!;
+      }
     } catch (error) {
       const detail = error && typeof error === "object" && "code" in error && typeof error.code === "string" ? error.code : "delivery_file_error";
       this.store.transitionMultilineFallback(message.id, fallback.state, "held", { detail });
@@ -100,6 +105,7 @@ export class MultilineFallback {
       if (outcome.accepted) {
         return { handled: true, accepted: this.complete(message, fallback, source), generation: fallback.generation! };
       }
+      if (outcome.pendingConfirmation) return {handled: true, accepted: false};
       const cleared = outcome.attemptPhase === "before_enter_cleared" || outcome.detail === "delivery_not_attempted";
       this.store.transitionMultilineFallback(message.id, "in_flight", cleared ? "ready" : "unknown", {
         detail: outcome.detail ?? "delivery_pointer_outcome_unknown", ...(outcome.attemptPhase ? {attemptPhase: outcome.attemptPhase} : cleared ? {attemptPhase: "before_enter_cleared" as const} : {}),

@@ -184,6 +184,7 @@ import {
   type SandboxWritableDirectory,
 } from "../../driver-cell/src/index.ts";
 import { deliveryContentRoot } from "./multilineFallback.ts";
+import { DeliveryFiles } from "./deliveryFile.ts";
 import {
   relocateClaudeSession,
   TranscriptConflictError,
@@ -694,6 +695,7 @@ const OWN_STATUS_VERBS: ReadonlySet<RpcVerb> = new Set<RpcVerb>([
 
 export class HiveDaemon {
   readonly cfg: ResolvedNodeConfig;
+  private readonly deliveryFiles = new DeliveryFiles();
   private store: CoreStore | null = null;
   private threadOperations: ThreadOperations | null = null;
   /** The substrate router DaemonCore drives; `.hsr` / `.cell` / `.tmux` are the substrate drivers. */
@@ -970,6 +972,7 @@ export class HiveDaemon {
       store,
       driver,
       multilineFallback: {
+        files: this.deliveryFiles,
         root: canonicalPath(this.cfg.dataDir),
         rootForBee: bee => {
           const wrapper = cell.cellOf(bee.id)?.paths.wrapperDir;
@@ -5697,6 +5700,7 @@ export class HiveDaemon {
       lastBoot: this.lastBoot,
       i1Violations: this.telemetry?.i1Count() ?? 0,
       deliveryHoldUnknown: store.countUnknownMultilineHolds(),
+      ...(params.includeDeliveryPrepareAuditUnknown === true ? {deliveryFileHelper: this.deliveryFiles.status()} : {}),
       ...(params.includeDeliveryPrepareAuditUnknown === true ? {deliveryPrepareAuditUnknown: store.countUnknownMultilinePrepareAudits()} : {}),
       paneInputUnknown: store.multilinePaneQuarantines().length,
       bees: store.countBeesByLifecycle(),

@@ -134,7 +134,7 @@ test("real ordinary paste post-Enter commit failure and corruption cannot claim 
   assert.equal(rows().filter(row => row.submittedBody === "ordinary\nbody").length, 1);
 });
 
-for (const clearWorks of [true, false, "unset_failure", "missing_identity"] as const) test(`real pointer phase ${typeof clearWorks === "string" ? clearWorks : clearWorks ? "clears and retries the same publication" : "quarantines all later mail"}`, async t => {
+for (const clearWorks of [true, false, "unset_failure", "missing_identity", "legacy_query"] as const) test(`real pointer phase ${typeof clearWorks === "string" ? clearWorks : clearWorks ? "clears and retries the same publication" : "quarantines all later mail"}`, async t => {
   ensureDeliveryFileArtifact();
   const root = realpathSync(mkdtempSync(join(tmpdir(), "mfp-partial-"))), data = join(root, "data"), work = join(root, "work"), socketPath = join(root, "t.sock"), receipt = join(root, "receipt.jsonl");
   mkdirSync(data, {mode: 0o700}); mkdirSync(work, {mode: 0o700});
@@ -149,6 +149,19 @@ for (const clearWorks of [true, false, "unset_failure", "missing_identity"] as c
   const wait = async (condition: () => boolean) => {for (let i = 0; i < 400; i++) {if (condition()) return; await new Promise(resolve => setTimeout(resolve, 15));} assert.fail("partial terminal timed out");};
   const bee = store.createBee({name: "partial", agent: "stub", substrate: "tmux", cwd: work}).bee; store.enqueueCommand("spawn", bee.id);
   await wait(() => {core.step(); return rows().some(row => row.ready) && store.currentRuntime(bee.id)?.state === "idle";});
+  if (clearWorks === "legacy_query") {
+    const serverTry = TmuxServer.prototype.try;
+    TmuxServer.prototype.try = function(args, options) {
+      if (this.socketPath === socketPath && args[0] === "show-options" && args.includes("-p")) return {status: 1, stdout: "", stderr: "simulated tmux2 pane options unsupported"};
+      if (this.socketPath === socketPath && args[0] === "display-message" && args.at(-1) === "#{version}") return {status: 0, stdout: "2.9a\n", stderr: ""};
+      return serverTry.call(this, args, options);
+    };
+    t.after(() => {TmuxServer.prototype.try = serverTry;});
+    const ordinary = store.send(bee.id, "legacy-exact").message;
+    await wait(() => {core.step(); return store.getMessage(ordinary.id)?.deliveredAt !== null && rows().some(row => row.submittedBody === "legacy-exact");});
+    assert.equal(store.multilinePaneQuarantines().length, 0);
+    return;
+  }
   const hook = driver as unknown as {inject: (...args: unknown[]) => void}, inject = hook.inject.bind(driver); let partial = typeof clearWorks === "boolean";
   hook.inject = (...args) => {if (partial && String(args[1]).includes("full text: ")) {partial = false; args[1] = "partial-pointer";} inject(...args);};
   const message = store.send(bee.id, "one\ntwo").message;

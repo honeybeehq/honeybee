@@ -394,7 +394,7 @@ export class HsrDriver implements RuntimeDriver {
   private usage: UsageEvidence[] = [];
   /** Delivery ground truth for the invariant checker: messageId → generation. */
   private readonly consumed = new Map<number, number>();
-  private readonly pointerAttempts = new Map<number, { beeId: string; generation: number; digest: string }>();
+  private readonly pointerAttempts = new Map<number, { beeId: string; generation: number; digest: string; refused?: boolean }>();
 
   constructor(cfg: HsrDriverConfig) {
     this.cfg = cfg;
@@ -699,10 +699,11 @@ export class HsrDriver implements RuntimeDriver {
 
   deliveryPane(_beeId: string, _generation: number): null { return null; }
 
-  deliveryReceipt(beeId: string, generation: number, messageId: number, body: string): "accepted" | "unknown" {
+  deliveryReceipt(beeId: string, generation: number, messageId: number, body: string): "accepted" | "unknown" | "not_attempted" {
     const p = this.procs.get(beeId);
     const attempt = this.pointerAttempts.get(messageId);
     const matching = attempt?.beeId === beeId && attempt.generation === generation && attempt.digest === createHash("sha256").update(body).digest("hex");
+    if (matching && attempt.refused) return "not_attempted";
     return matching && (this.consumed.get(messageId) === generation || p?.generation === generation && p.confirmedDeliveries.has(messageId)) ? "accepted" : "unknown";
   }
 
@@ -733,7 +734,7 @@ export class HsrDriver implements RuntimeDriver {
         this.consumed.set(messageId, generation);
         return { accepted: true };
       }
-      if (p.pendingDeliveries.has(messageId)) return { accepted: false, reason: "not_ready" };
+      if (p.pendingDeliveries.has(messageId)) return { accepted: false, reason: "not_ready", ...(options?.singleAttempt ? {pendingConfirmation: true} : {}) };
     }
     if (p.hostStyle && (p.socketBroken || !p.socket || p.socket.destroyed || !p.socket.writable)) {
       // pendingWrites dies with this daemon. Refuse until the runner's socket
@@ -769,7 +770,7 @@ export class HsrDriver implements RuntimeDriver {
       this.events.push({ beeId, generation, kind: "turn_started", synthetic: true, messageId });
     }
     return p.adapter.confirmsDelivery
-      ? { accepted: false, reason: "not_ready" }
+      ? { accepted: false, reason: "not_ready", ...(options?.singleAttempt ? {pendingConfirmation: true} : {}) }
       : { accepted: true };
   }
 
@@ -1616,9 +1617,15 @@ export class HsrDriver implements RuntimeDriver {
         return;
       }
       case "delivery_refused": {
+        const attempt = this.pointerAttempts.get(signal.messageId);
+        if (attempt?.beeId === p.beeId && attempt.generation === p.generation) attempt.refused = true;
         p.pendingDeliveries.delete(signal.messageId);
         p.confirmedDeliveries.delete(signal.messageId);
         p.turn.messageIds = p.turn.messageIds.filter((id) => id !== signal.messageId);
+        if (p.phase === "running" && p.turn.messageIds.length === 0 && p.turnId === null) {
+          p.phase = "idle";
+          this.events.push({beeId: p.beeId, generation: p.generation, kind: "turn_ended", synthetic: true});
+        }
         return;
       }
       case "flag": {

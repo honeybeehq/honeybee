@@ -81,6 +81,7 @@ export interface DeliverOutcome {
    */
   detail?: string;
   attemptPhase?: "before_enter_cleared" | "before_enter_unknown" | "enter_attempted";
+  pendingConfirmation?: boolean;
 }
 
 /**
@@ -123,7 +124,7 @@ export interface RuntimeDriver {
   deliveryPaneClear?(beeId: string, generation: number): boolean;
   reconcileDeliveryPane?(beeId: string, generation: number, messageId: number, body: string): boolean;
   deliveryPane?(beeId: string, generation: number): {socketPath: string; paneId: string; serverIdentity: string} | null;
-  deliveryReceipt?(beeId: string, generation: number, messageId: number, body: string): "accepted" | "unknown";
+  deliveryReceipt?(beeId: string, generation: number, messageId: number, body: string): "accepted" | "unknown" | "not_attempted";
 
   /**
    * Stop the runtime process. Parenthood makes this certain: if a process

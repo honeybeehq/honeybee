@@ -1687,6 +1687,7 @@ export interface HealthResult {
   paneInputUnknown?: number;
   deliveryHoldUnknown?: number;
   deliveryPrepareAuditUnknown?: number;
+  deliveryFileHelper?: {state: "ready" | "delivery_file_helper_unavailable"; target: string; artifactPath: string};
   localSecurity?: {peerCredentials: import("./peerCredentials.ts").PeerCredentialStatus; localTrust: "off" | "ready" | "registration_key_unavailable"};
   protocol: string;
   pid: number;

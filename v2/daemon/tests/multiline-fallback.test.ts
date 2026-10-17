@@ -102,6 +102,32 @@ test("missing native helper gives a typed visible hold while later mail continue
   assert.equal(r.store.getMessage(message.id)?.deliveryFallback?.detail, "delivery_file_helper_unavailable");
   assert.equal(r.store.getMessage(message.id)?.deliveryFallback?.state, "held");
   assert.deepEqual(r.driver.deliveredIds, [later.id]); assert.equal(r.driver.pointers.length, 0);
+  assert.equal(r.files.status().state, "delivery_file_helper_unavailable");
+});
+test("UNKNOWN fallback sender and recipient notices are cautious even with an intact type-mode detail", t => {
+  const r = rig(); t.after(r.close); r.driver.uncertain = true;
+  const sender = r.store.createBee({name: "sender", agent: "stub", substrate: "hsr", cwd: join(r.root, "work")}).bee;
+  const message = r.store.send(r.bee.id, "one\ntwo", {sender: sender.id}).message; r.hold(message.id); r.step();
+  assert.equal(r.store.multilineDelivery(message.id)?.detail, "multiline_type_mode");
+  assert.equal(r.store.countUnknownMultilineHolds(), 1);
+  assert.ok(r.store.pendingMail(sender.id).messages.some(row => row.body.includes("state unknown, may have been delivered")));
+  const later = r.store.send(r.bee.id, "later").message; r.step();
+  assert.ok(r.driver.deliveredBodies[r.driver.deliveredIds.indexOf(later.id)]?.includes("state unknown, may have been delivered"));
+  assert.equal(r.store.multilineDelivery(message.id)?.notice, "state unknown, may have been delivered");
+});
+test("ready retry reuses the published bytes and pointer when the current envelope changes", t => {
+  const r = rig(); t.after(r.close);
+  const message = r.store.send(r.bee.id, "one\ntwo").message; r.hold(message.id);
+  const prepared = r.store.prepareMultilineFallback(message.id, r.data, [join(r.root, "work")])!;
+  const text = `Honeybee delivery content: message=${message.id} publication=${prepared.id}\n\noriginal placement and notices\none\ntwo`;
+  const published = r.files.publish(prepared.root, prepared.ownerStoreId, r.bee.id, prepared.id, text, prepared.worktrees);
+  const pointer = `full text: ${published.path}`;
+  r.store.transitionMultilineFallback(message.id, "preparing", "ready", {...published, pointer});
+  r.step();
+  assert.equal(r.store.getMessage(message.id)?.deliveryFallback?.state, "delivered");
+  assert.deepEqual(r.driver.pointers, [{id: message.id, text: pointer}]);
+  assert.equal(readFileSync(published.path, "utf8"), text);
+  assert.equal(r.files.status().state, "ready");
 });
 test("archive retains content and bee deletion cleans it durably", t => {
   const r = rig(); t.after(r.close);
@@ -125,9 +151,13 @@ for (const boundary of ["prepared", "published", "in_flight"] as const) test(`re
   r.restart(true); r.step();
   assert.equal(r.store.getMessage(message.id)?.deliveryFallback?.id, fallback.id);
   assert.equal(r.driver.pointers.length, boundary === "in_flight" ? 0 : 1);
-  assert.equal(r.store.getMessage(message.id)?.deliveryFallback?.state, boundary === "in_flight" ? "in_flight" : "delivered");
+  assert.equal(r.store.getMessage(message.id)?.deliveryFallback?.state, boundary === "in_flight" ? "unknown" : "delivered");
   if (boundary === "in_flight") {
-    r.step(); assert.equal(r.store.getMessage(message.id)?.deliveryFallback?.state, "in_flight");
+    const later = r.store.send(r.bee.id, "later after daemon restart").message;
+    r.step(); assert.equal(r.store.getMessage(message.id)?.deliveryFallback?.state, "unknown");
+    assert.equal(r.store.countUnknownMultilineHolds(), 1);
+    assert.ok(r.driver.deliveredIds.includes(later.id));
+    assert.ok(r.driver.deliveredBodies[r.driver.deliveredIds.indexOf(later.id)]?.includes("state unknown, may have been delivered"));
     r.driver.proved = true; r.step();
     assert.equal(r.store.getMessage(message.id)?.deliveryFallback?.state, "delivered");
     assert.equal(r.driver.pointers.length, 0);

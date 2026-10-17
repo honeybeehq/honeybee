@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RpcServer } from "../src/rpc.ts";
@@ -87,7 +87,20 @@ test("RPC audit attribution stops at the daemon tick boundary", {timeout: 30_000
   const deploy = await client.request<any>("deployInfo");
   assert.equal(health.localSecurity.peerCredentials.state, "ready");
   assert.equal("deliveryPrepareAuditUnknown" in health, false);
+  assert.equal("deliveryFileHelper" in health, false);
   const doctorHealth = await client.request<any>("health", {includeDeliveryPrepareAuditUnknown: true});
   assert.equal(doctorHealth.deliveryPrepareAuditUnknown, 0);
   assert.equal(deploy.localSecurity.peerCredentials.target, `${process.platform}-${process.arch}`);
+});
+
+for (const present of [true, false]) test(`RPC doctor reports delivery native helper ${present ? "ready for the matching target" : "unavailable for an absent target"}`, {timeout: 30_000}, async t => {
+  const {makeDaemonDir, startDaemon, forceStopTestDaemon} = await import("./helpers.ts");
+  const root = makeDaemonDir(), platform = present ? process.platform : process.platform === "darwin" ? "linux" : "darwin";
+  const daemon = await startDaemon(root.dir, {platform});
+  const client = await daemon.client();
+  t.after(async () => {client.close(); await forceStopTestDaemon(daemon); root.cleanup();});
+  const health = await client.request<any>("health", {includeDeliveryPrepareAuditUnknown: true});
+  assert.equal(health.deliveryFileHelper.target, `${platform}-${process.arch}`);
+  assert.equal(existsSync(health.deliveryFileHelper.artifactPath), present);
+  assert.equal(health.deliveryFileHelper.state, present ? "ready" : "delivery_file_helper_unavailable");
 });

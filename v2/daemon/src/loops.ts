@@ -365,6 +365,7 @@ export class DaemonCore {
 
   /** Boot: reconcile, reap orphans, sweep the mailbox for needed wakes (spec 04 behavior 2). */
   boot(): BootReport {
+    this.store.recoverInFlightMultilineFallbacks();
     const live = this.driver.snapshotLive();
     const rec = this.store.reconcileAtBoot(
       live.map((p) => ({ pid: p.pid, startedAt: p.pidStartedAt })),

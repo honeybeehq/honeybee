@@ -266,7 +266,7 @@ export class CellDriver implements RuntimeDriver {
 
   deliveryPane(_beeId: string, _generation: number): null { return null; }
 
-  deliveryReceipt(beeId: string, generation: number, messageId: number, body: string): "accepted" | "unknown" {
+  deliveryReceipt(beeId: string, generation: number, messageId: number, body: string): "accepted" | "unknown" | "not_attempted" {
     return this.inner.deliveryReceipt(beeId, generation, messageId, body);
   }
 
