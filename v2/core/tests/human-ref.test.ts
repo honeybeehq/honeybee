@@ -267,3 +267,43 @@ test("human-ref migration: reserve live and deleted pretty IDs before v9 handle 
     assert.throws(() => store.createBee({ ...input, handle: "CO.0001" }), /already taken/);
   } finally { store.close(); h.cleanup(); }
 });
+
+test("human-ref migration retains unreadable audit rows as unknown and reopens idempotently", () => {
+  const h = harness(); h.open().close();
+  const seed = new DatabaseSync(h.path);
+  const unknown = ["{", "{}", '{"bee":{"id":7,"handle":[]}}', '{"bee":{"id":"known","handle":[]}}', '{"bee":{"id":7,"handle":"CO.dcba"}}'];
+  const payloads = [...unknown, '{"bee":{"id":"valid-history","handle":"CO.abcd"}}'];
+  const seqs = payloads.map(payload => Number(seed.prepare("INSERT INTO audit(ts, kind, payload) VALUES(0, 'bee.created', ?)").run(payload).lastInsertRowid));
+  seed.exec("UPDATE meta SET value='28' WHERE key='schema_version'");
+  seed.close();
+  let previous: string | null = null;
+  try {
+    for (let reopen = 0; reopen < 2; reopen++) {
+      const reopened = h.open();
+      try {
+        assert.throws(() => reopened.createBee({ ...input, id: "known" }), /was deleted/);
+        assert.throws(() => reopened.createBee({ ...input, handle: "CO.dcba" }), /already taken/);
+      }
+      finally { reopened.close(); }
+      const inspect = new DatabaseSync(h.path, { readOnly: true });
+      try {
+        for (let i = 0; i < payloads.length; i++) {
+          assert.equal(inspect.prepare("SELECT payload FROM audit WHERE seq=?").get(seqs[i]!)?.payload, payloads[i]);
+          const marker = inspect.prepare("SELECT value FROM meta WHERE key=?").get(`legacy_bee_reference_unknown:${seqs[i]}`)?.value;
+          if (i < unknown.length) assert.equal(JSON.parse(String(marker)).state, "unknown");
+          else assert.equal(marker, undefined);
+        }
+        assert.deepEqual(inspect.prepare("SELECT bee_id, handle FROM bee_reference_claims ORDER BY bee_id").all().map(row => ({ ...row })), [{ bee_id: "known", handle: null }, { bee_id: "valid-history", handle: "CO.abcd" }]);
+        assert.deepEqual(inspect.prepare("SELECT handle FROM bee_handle_reservations ORDER BY handle").all().map(row => ({ ...row })), [{ handle: "CO.abcd" }, { handle: "CO.dcba" }]);
+        const snapshot = JSON.stringify([
+          inspect.prepare("SELECT * FROM audit ORDER BY seq").all(),
+          inspect.prepare("SELECT * FROM bee_reference_claims ORDER BY bee_id").all(),
+          inspect.prepare("SELECT * FROM bee_handle_reservations ORDER BY handle").all(),
+          inspect.prepare("SELECT * FROM meta WHERE key LIKE 'legacy_bee_reference_unknown:%' ORDER BY key").all(),
+        ]);
+        if (previous !== null) assert.equal(snapshot, previous);
+        previous = snapshot;
+      } finally { inspect.close(); }
+    }
+  } finally { h.cleanup(); }
+});

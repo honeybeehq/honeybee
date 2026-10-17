@@ -4,6 +4,11 @@ import type { DatabaseSync } from "node:sqlite";
 
 export const EFFECT_RESOLVE_CAPABILITY = "rpc-effect-resolve.v1";
 export const EFFECT_VERBS = ["spawn", "send", "archive"] as const;
+export const EFFECT_RESULT_REQUIRED_FIELDS = {
+  spawn: { beeId: "nonempty-string", commandId: "command-id-or-null" },
+  send: { messageId: "positive-integer", commandId: "command-id-or-null", unarchived: "boolean" },
+  archive: { commandId: "positive-integer" },
+} as const;
 export type EffectVerb = typeof EFFECT_VERBS[number];
 export type EffectReceipt = { key: string; verb: string; commandId: number | null; result: unknown; createdAt: number };
 export type EffectCoverage = { ownerStoreId: string; coverageId: string };
@@ -27,6 +32,39 @@ function key(value: string): void {
   if (typeof value !== "string" || !value.length) throw new EffectKeyError("invalid_request", "Effect key must be a nonempty string");
 }
 
+function validEffectResult(verb: EffectVerb, value: unknown, commandId: number | null): boolean {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  const result = value as Record<string, unknown>;
+  const text = (v: unknown) => typeof v === "string" && v.length > 0;
+  const number = (v: unknown) => typeof v === "number" && Number.isFinite(v) && v >= 0;
+  const positive = (v: unknown) => number(v) && Number.isSafeInteger(v) && (v as number) > 0;
+  const object = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === "object" && !Array.isArray(v);
+  const member = (value: unknown, values: readonly string[]) => typeof value === "string" && values.includes(value);
+  const optional = (row: Record<string, unknown>, name: string, check: (v: unknown) => boolean) => !Object.hasOwn(row, name) || check(row[name]);
+  for (const [name, type] of Object.entries(EFFECT_RESULT_REQUIRED_FIELDS[verb])) {
+    if (!Object.hasOwn(result, name)) return false;
+    const field = result[name];
+    if (type === "nonempty-string" && !text(field) || type === "positive-integer" && !positive(field)
+      || type === "command-id-or-null" && field !== null && !positive(field) || type === "boolean" && typeof field !== "boolean") return false;
+  }
+  if (!optional(result, "generation", positive)) return false;
+  if (!optional(result, "requestBinding", v => object(v) && v.version === 1 && v.verb === verb && member(v.lane, ["envelope-v1", "interim-v1", "legacy"]) && text(v.requestDigest))) return false;
+  if (!optional(result, "phoneAdmission", v => object(v) && text(v.ownerStoreId) && text(v.admissionId) && (v.contentDigest === null || typeof v.contentDigest === "string" && /^sha256:[a-f0-9]{64}$/.test(v.contentDigest)) && v.lane === "envelope-v1")) return false;
+  if (!optional(result, "commandId", v => v === commandId) || !optional(result, "messageId", v => v === null || positive(v))) return false;
+  for (const name of ["agent", "accountReason", "allocationClaimId"]) if (!optional(result, name, text)) return false;
+  for (const name of ["handle", "humanRef", "issuingNamespace", "account"]) if (!optional(result, name, v => v === null || text(v))) return false;
+  for (const name of ["unarchived", "deduped"]) if (!optional(result, name, v => typeof v === "boolean")) return false;
+  if (!optional(result, "status", v => member(v, ["queued", "running", "done", "failed"]))) return false;
+  if (!optional(result, "runtimeStartHold", v => object(v) && v.code === "account_auth_needed" && v.message === "Waiting for refreshed account material")) return false;
+  if (!optional(result, "cellBase", v => object(v) && text(v.sha) && member(v.source, ["pinned", "head", "upstream"]) && optional(v, "upstreamRef", text) && optional(v, "upstreamSha", text) && optional(v, "fetchedAt", number))) return false;
+  if (!optional(result, "allocation", v => object(v) && v.version === 1 && member(v.mode, ["shadow", "active"]) && text(v.scope)
+    && (v.revision === null || text(v.revision)) && number(v.observedAt) && member(v.operation, ["spawn", "fork", "handoff", "swap"])
+    && member(v.outcome, ["selected", "wait"]) && (v.account === null || text(v.account)) && text(v.reason) && (v.retryAt === null || number(v.retryAt))
+    && Array.isArray(v.candidates) && v.candidates.every(c => object(c) && text(c.accountId) && member(c.status, ["eligible", "ineligible", "uncertain", "protected"])
+      && optional(c, "reason", text) && ["rate", "fairFinish", "maxProjectedPercent"].every(name => optional(c, name, number))))) return false;
+  return true;
+}
+
 export class EffectLedger {
   private coverage!: EffectCoverage;
   private readonly db: DatabaseSync;
@@ -40,23 +78,32 @@ export class EffectLedger {
     this.db.prepare("INSERT INTO meta(key,value) VALUES('rpc_effect_owner',?) ON CONFLICT(key) DO NOTHING").run(ownerStoreId);
     this.coverage = { ownerStoreId, coverageId: randomUUID() };
     this.db.prepare("INSERT INTO meta(key,value) VALUES('rpc_effect_coverage',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(this.coverage.coverageId);
-    for (const row of this.db.prepare("SELECT * FROM rpc_idempotency WHERE verb IN ('spawn','send','archive')").all()) {
-      const existing = this.raw(String(row.key));
-      if (existing?.state === "committed") continue;
-      if (existing) this.db.prepare("DELETE FROM rpc_effect_keys WHERE key=?").run(String(row.key));
-      this.record({ key: String(row.key), verb: String(row.verb), commandId: row.command_id === null ? null : Number(row.command_id), result: JSON.parse(String(row.result)), createdAt: Number(row.created_at) });
-    }
+
   }
   status(): EffectCoverage { return { ...this.coverage }; }
   private raw(id: string): { verb: string; state: string; receipt: EffectReceipt | null } | null {
     key(id);
     const row = this.db.prepare("SELECT * FROM rpc_effect_keys WHERE key=?").get(id);
-    if (!row) return null;
-    effectVerb(row.verb);
-    if (row.state !== "committed" && row.state !== "fenced") throw new EffectKeyError("invalid_request", "Corrupt effect key state");
-    const receipt = row.receipt === null ? null : JSON.parse(String(row.receipt)) as EffectReceipt;
-    if ((row.state === "committed") !== (receipt !== null) || receipt && (receipt.key !== id || receipt.verb !== row.verb || typeof receipt.createdAt !== "number" || !Object.hasOwn(receipt, "result") || receipt.commandId !== null && !Number.isSafeInteger(receipt.commandId))) throw new EffectKeyError("invalid_request", "Corrupt effect receipt");
-    return { verb: String(row.verb), state: String(row.state), receipt };
+    const legacy = this.db.prepare("SELECT * FROM rpc_idempotency WHERE key=? AND verb IN ('spawn','send','archive')").get(id);
+    const unknown = (): never => { throw new EffectKeyError("rpc_effect_history_unknown", "Effect receipt is unreadable or unknown; hold the effect"); };
+    if (!row && !legacy) return null;
+    if (row && (typeof row.verb !== "string" || !(EFFECT_VERBS as readonly string[]).includes(row.verb) || row.state !== "committed" && row.state !== "fenced")) return unknown();
+    if (row?.state === "fenced" && !legacy) {
+      if (row.receipt !== null) return unknown();
+      return { verb: String(row.verb), state: "fenced", receipt: null };
+    }
+    let receipt: unknown;
+    try {
+      receipt = row?.state === "committed"
+        ? JSON.parse(String(row.receipt))
+        : { key: id, verb: legacy!.verb, commandId: legacy!.command_id, result: JSON.parse(String(legacy!.result)), createdAt: legacy!.created_at };
+    } catch { return unknown(); }
+    if (receipt === null || typeof receipt !== "object" || Array.isArray(receipt)) return unknown();
+    const value = receipt as EffectReceipt;
+    if (value.key !== id || !(EFFECT_VERBS as readonly string[]).includes(value.verb) || row && value.verb !== row.verb || !Number.isFinite(value.createdAt) || value.createdAt < 0 || value.commandId !== null && (!Number.isSafeInteger(value.commandId) || value.commandId <= 0) || !Object.hasOwn(value, "result")) return unknown();
+    if (!validEffectResult(value.verb as EffectVerb, value.result, value.commandId)) return unknown();
+    if (row?.state !== "committed") this.db.prepare("INSERT INTO rpc_effect_keys(key,verb,state,receipt,created_at) VALUES(?,?,'committed',?,?) ON CONFLICT(key) DO UPDATE SET verb=excluded.verb,state=excluded.state,receipt=excluded.receipt,created_at=excluded.created_at").run(id, value.verb, JSON.stringify(value), value.createdAt);
+    return { verb: value.verb, state: "committed", receipt: value };
   }
   lookup(id: string, verb?: string): EffectReceipt | null {
     const row = this.raw(id);

@@ -241,15 +241,15 @@ test("idem.11: RPC retention preserves timestamp/rowid order across clock and ca
   });
   try {
     store.recordRpcResult("z-first", "bee.tag", 1, { value: "first" });
-    store.recordRpcResult("a-second", "send", null, null);
+    store.recordRpcResult("a-second", "bee.tag", null, null);
     clock = 50;
     store.recordRpcResult("backward", "stop", 3, { value: "backward" });
     clock = 100;
-    store.recordRpcResult("m-third", "archive", 4, { value: "third-at-100" });
+    store.recordRpcResult("m-third", "unarchive", 4, { value: "third-at-100" });
     const nullRecord = store.lookupRpcResult("a-second");
     assert.deepEqual(nullRecord, {
       key: "a-second",
-      verb: "send",
+      verb: "bee.tag",
       commandId: null,
       result: null,
       createdAt: 100,
@@ -285,7 +285,7 @@ test("idem.11: RPC retention preserves timestamp/rowid order across clock and ca
       ephemeral: true,
     });
     clock = 25;
-    store.recordRpcResult("backward-under-raised-cap", "send", null, { value: "kept" });
+    store.recordRpcResult("backward-under-raised-cap", "bee.tag", null, { value: "kept" });
     clock = 200;
     store.recordRpcResult("fifth", "stop", null, { value: "also kept" });
     store.close();
@@ -308,7 +308,7 @@ test("idem.12: RPC retention index reinstalls and naturally satisfies the exact 
   let store = h.open({ maxRpcIdempotencyRows: 10 });
   try {
     for (let i = 0; i < 6; i += 1) {
-      store.recordRpcResult(`plan-${i}`, "send", null, { i });
+      store.recordRpcResult(`plan-${i}`, "bee.tag", null, { i });
     }
     store.close();
 

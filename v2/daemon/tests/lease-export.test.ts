@@ -1,3 +1,4 @@
+import { knownAccountLease } from "../../core/src/accountLease.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID, createHash } from "node:crypto";
@@ -229,7 +230,7 @@ test("leased export copies only stored bounded fence provenance and refuses a fo
     assert.equal(exported.legacyAuthorityInstanceId, "remembered-instance");
     assert.equal(exported.legacyAuthorityGenerationFloor, 12);
     assert.equal(exported.fencesForwarded, false);
-    r.store.setAccountLease(r.account.id, { ...r.store.getAccount(r.account.id)!.leasedFrom!, fencesForwarded: true });
+    r.store.setAccountLease(r.account.id, { ...knownAccountLease(r.store.getAccount(r.account.id)!)!, fencesForwarded: true });
     const seq = r.store.lastAuditSeq();
     await assert.rejects(r.accounts.exportLeasedMaterial(r.account.id), refusal("forwarding_depth_exceeded"));
     assert.equal(r.store.lastAuditSeq(), seq);

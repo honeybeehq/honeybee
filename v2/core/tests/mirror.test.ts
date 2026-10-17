@@ -1,3 +1,4 @@
+import { presentAccountLease } from "../src/accountLease.ts";
 /**
  * WP6a — mirror-shape stability (spec 06 §2.2 "the mirror consumes view()
  * verbatim"). These snapshots ARE the contract apiaryd's materializer codes
@@ -150,7 +151,7 @@ test("mirror.2: value-level snapshot — a deterministic store serializes to the
     store.answerQuestion(question.id, "yes", { answeredBy: "operator" });
     const seal = store.createSeal(bee.id, { id: "seal-1", title: "shipped", body: "landed on main", refs: ["main@abc"] });
     const account = store.createAccount({ id: "codex-work", harness: "codex", homePath: "/tmp/homes/codex-work", label: "work", penalty: 5 });
-    const { native: _native, ...wireAccount } = account;
+    const { native: _native, ...wireAccount } = presentAccountLease(account);
     const limits = store.putAccountLimits(account.id, {
       readable: true,
       plan: "pro",

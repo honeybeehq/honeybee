@@ -15,7 +15,7 @@ function setup(verb: "send" | "archive" = "archive") {
   const { verb: v, resource: r, idempotencyKey, requestDigest, digestVersion, ...executionFence } = claim;
   const request: ExecutionRequest = { digestVersion, verb: v, resource: r, idempotencyKey, requestDigest, executionFence, args };
   const execute = (input = request) => store.executeWithFence(input, 1000, request => {
-    if (request.verb === "send") { const sent = store.send(bee.id, String(request.args.body)); return { commandId: sent.wakeCommand?.id ?? null, result: { messageId: sent.message.id } }; }
+    if (request.verb === "send") { const sent = store.send(bee.id, String(request.args.body)); return { commandId: sent.wakeCommand?.id ?? null, result: { commandId: sent.wakeCommand?.id ?? null, unarchived: sent.unarchived, messageId: sent.message.id } }; }
     const command = store.enqueueCommand("archive", bee.id, {}, { idempotencyKey: request.idempotencyKey });
     return { commandId: command.id, result: { commandId: command.id } };
   });

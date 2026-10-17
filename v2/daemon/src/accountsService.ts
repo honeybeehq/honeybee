@@ -1,3 +1,4 @@
+import { LEASE_UNKNOWN_MESSAGE, accountLeaseUnknown, knownAccountLease, presentAccountLease } from "../../core/src/accountLease.ts";
 import { withoutRpcCaller } from "../../core/src/rpcAuditContext.ts";
 import { OBSERVATION_CODECS, localObservationText } from "./limitsObservation.ts";
 /**
@@ -245,7 +246,7 @@ export type AccountRefusalCode = "account_lease_revoked" | "account_paused" | "a
 
 export type AccountReadiness =
   | { ready: true }
-  | { ready: false; code: AccountRefusalCode; message: string };
+  | { ready: false; code: AccountRefusalCode; message: string; reason?: "lease_unknown" };
 
 export interface WeeklyCeilingBreach {
   window: "weekly" | "fableWeekly";
@@ -866,7 +867,7 @@ export class AccountsService {
     const authority = this.authorityFor(account);
     if (!authority?.supportsAuthDeathRecovery() || this.isNative(account) || account.status === "paused" || this.store.activeCredentialHandoff(account.id)) return null;
     if (account.source === "leased") {
-      const origin = account.leasedFrom;
+      const origin = knownAccountLease(account);
       if (!origin || origin.generation === undefined || origin.materialPublished !== true || origin.revokedAt !== null || origin.expiresAt !== null && origin.expiresAt * 1000 <= this.now() || this.homeCredentialState(account) !== "usable") return null;
       return { ...(origin.authorityInstanceId !== undefined ? { authorityInstanceId: origin.authorityInstanceId } : {}), ...(origin.legacyAuthorityInstanceId ? { legacyAuthorityInstanceId: origin.legacyAuthorityInstanceId, legacyAuthorityGenerationFloor: origin.legacyAuthorityGenerationFloor } : {}), kind: "lease", scope: `${origin.authorityNodeId}:${origin.shareId}`, epoch: origin.epoch, generation: origin.generation };
     }
@@ -1211,9 +1212,10 @@ export class AccountsService {
 
   assertLocalAccount(account: AccountRow): void {
     const current = this.store.getAccount(account.id) ?? account;
+    knownAccountLease(current);
     if (this.store.activeCredentialHandoff(account.id)) throw new RpcError("credential_handoff_fenced", "Credential handoff holds this account; finish the committed takeover or abort an unprepared export.");
     if (current.source !== "leased" && this.leaseWrites.has(current.id)) throw new RpcError("lease_unavailable", "Account credential ownership is changing; retry after lease installation.");
-    if (current.source === "leased") throw new RpcError("account_leased", `Account ${current.id} is leased from ${current.leasedFrom?.authorityNodeId}; request renewal from its authority.`);
+    if (current.source === "leased") throw new RpcError("account_leased", `Account ${current.id} is leased from ${knownAccountLease(current)?.authorityNodeId}; request renewal from its authority.`);
   }
 
   private async publishClaudeMaterial(account: AccountRow, published: Record<string, unknown>, state: KeychainState): Promise<boolean> {
@@ -1428,19 +1430,19 @@ export class AccountsService {
       const account = this.store.getAccount(id);
       if (!account) throw new RpcError("account_not_found", "Account not found.");
       const assertLocalRestore = (current: AccountRow) => {
-        if (current.leasedFrom?.fencesForwarded && !localIngress) throw new RpcError("account_lease_conflict", "Restoring native ownership of an account with lease fences requires a direct local Unix-socket call.", { account: id, reason: "local_required" });
+        if (knownAccountLease(current)?.fencesForwarded && !localIngress) throw new RpcError("account_lease_conflict", "Restoring native ownership of an account with lease fences requires a direct local Unix-socket call.", { account: id, reason: "local_required" });
       };
       assertLocalRestore(account);
       const foreign = this.foreignHomeRefusal(account, "restores a backup into");
       if (foreign) throw new RpcError("native_backup_restore_refused", foreign);
       const codec = this.leaseMaterialCodecs.get(account.harness);
       const backup = this.latestNativeBackup(account);
-      if (account.source !== "local" && (account.leasedFrom?.revokedAt == null || account.leasedFrom.adoptedAt === null)) throw new RpcError("account_leased", "Revoke the adopted lease before explicitly restoring its native backup.");
+      if (account.source !== "local" && (knownAccountLease(account)?.revokedAt == null || knownAccountLease(account)!.adoptedAt === null)) throw new RpcError("account_leased", "Revoke the adopted lease before explicitly restoring its native backup.");
       if (!codec || !backup) throw new RpcError("native_backup_absent", "No genuine native backup exists for this account.");
       const assertAllowed = () => {
         const current = this.store.getAccount(id)!;
         assertLocalRestore(current);
-        if (current.source !== "local" && (current.leasedFrom?.revokedAt == null || current.leasedFrom.adoptedAt === null)) throw new RpcError("account_leased", "Revoke the adopted lease before explicitly restoring its native backup.");
+        if (current.source !== "local" && (knownAccountLease(current)?.revokedAt == null || knownAccountLease(current)!.adoptedAt === null)) throw new RpcError("account_leased", "Revoke the adopted lease before explicitly restoring its native backup.");
         if (this.store.beesOnAccount(id).some(bee => { const runtime = this.store.currentRuntime(bee.id); return runtime !== null && runtime.state !== "stopped"; }) || this.store.listUnreconciledAccountAdmissions(this.now(), { account: id }).length > 0 || this.authorityFor(current)?.enabled(current) || this.authorityFor(current)?.busy(current) || this.refreshBusy(current) || this.nativeKeychainSeeds.has(id) || this.store.activeLoginFlow(id)) throw new RpcError("native_backup_restore_refused", "Stop every bee and finish account credential operations before restoring a native backup.");
         if (this.credentialed(current)) throw new RpcError("native_backup_restore_refused", "The account already has credentials; a native backup will not overwrite them.");
       };
@@ -1541,8 +1543,8 @@ export class AccountsService {
       const refuse = (reason: string, state?: string, handoffId?: string): never => {
         throw new RpcError("account_lease_export_refused", `Leased material export refused: ${reason}${state ? ` (${state})` : ""}; retry only after its owner settles the account.`, { reason, ...(state ? { state } : {}), ...(handoffId ? { handoffId } : {}) });
       };
-      if (account.source !== "leased" || account.native || !account.leasedFrom) refuse("not_leased", account.source);
-      const origin = account.leasedFrom!;
+      if (account.source !== "leased" || account.native || !knownAccountLease(account)) refuse("not_leased", account.source);
+      const origin = knownAccountLease(account)!;
       if (origin.fencesForwarded) refuse("forwarding_depth_exceeded");
       const authority = this.authorityFor(account);
       const handoff = this.store.activeCredentialHandoff(id);
@@ -1600,20 +1602,28 @@ export class AccountsService {
       if (input.fencesForwarded) throw new RpcError("account_lease_conflict", "Lease fences cannot be forwarded beyond one export hop.", { reason: "forwarding_depth_exceeded" });
     }
     if (input.enrol && input.adopt !== undefined || input.enrol && !input.viaNodeId) throw new RpcError("invalid_request", "Enrolment requires viaNodeId and cannot be combined with adoption.");
+    const assertKnownTarget = (id: string): void => {
+      const account = this.store.getAccount(id);
+      if (account && accountLeaseUnknown(account)) throw new RpcError("account_lease_conflict", LEASE_UNKNOWN_MESSAGE, { account: id, reason: "lease_unknown" });
+    };
+    assertKnownTarget(input.id);
     return this.withLeaseQueue(this.leaseResolutions, input.id, async () => {
-      const retainedEnrolment = this.store.getAccount(input.id)?.leasedFrom?.enrolment;
+      assertKnownTarget(input.id);
+      const retainedEnrolment = knownAccountLease(this.store.getAccount(input.id))?.enrolment;
       const id = input.adopt || input.enrol || retainedEnrolment ? input.id : `${input.id}@${input.shareId.slice(0, 8)}`;
       if (!isAccountId(id)) throw new RpcError("invalid_request", "Account id must be a bounded safe account identity.");
       const companion = this.store.getAccount(`${input.id}@${input.shareId.slice(0, 8)}`);
-      if (input.enrol && !retainedEnrolment && companion?.source === "leased" && companion.leasedFrom?.shareId === input.shareId) throw new RpcError("account_lease_conflict", "A companion lease already exists for this share; remove its account row with account.remove before enrolling the original row. lease.remove only revokes its material.");
+      if (input.enrol && !retainedEnrolment && companion?.source === "leased" && knownAccountLease(companion)?.shareId === input.shareId) throw new RpcError("account_lease_conflict", "A companion lease already exists for this share; remove its account row with account.remove before enrolling the original row. lease.remove only revokes its material.");
+      assertKnownTarget(id);
       return this.withLeaseWrite(id, async () => {
+        assertKnownTarget(id);
         let account = this.store.getAccount(id);
         if (account && (this.store.activeCredentialHandoff(id) || ["handing_off", "adopting"].includes(this.authorityFor(account)?.status(account)?.phase ?? ""))) throw new RpcError("credential_handoff_fenced", "Credential ownership is changing; lease installation cannot overwrite an authority.");
         if (input.adopt && !account) throw new RpcError("account_adopt_refused", "Adoption requires an existing same-id native account.");
-        if (input.enrol && (!account || account.source === "leased" && !account.leasedFrom?.enrolment)) throw new RpcError("account_lease_enrol_refused", "Enrolment requires an existing local access-only row or its own pending enrolment.", { reason: "native_account" });
+        if (input.enrol && (!account || account.source === "leased" && !knownAccountLease(account)?.enrolment)) throw new RpcError("account_lease_enrol_refused", "Enrolment requires an existing local access-only row or its own pending enrolment.", { reason: "native_account" });
         if (input.enrol && account) this.assertEnrolmentQuiescent(account);
         const adopted = account?.source === "local" && !input.enrol;
-        const previous = account?.leasedFrom;
+        const previous = knownAccountLease(account);
         const originChanged = previous && (previous.shareId !== input.shareId || previous.authorityNodeId !== input.authorityNodeId || previous.epoch !== input.epoch);
         if (originChanged && previous.fencesForwarded && !localIngress) throw new RpcError("account_lease_conflict", "Changing the origin of an account with lease fences requires a direct local Unix-socket call.", { account: id, reason: "local_required" });
         const enrolment = previous?.enrolment ?? (input.enrol && account ? { id: randomUUID(), at: this.now(), liveRuntimeCoveragePending: this.store.beesOnAccount(id).filter(bee => { const runtime = this.store.currentRuntime(bee.id); return runtime !== null && runtime.state !== "stopped"; }).length } : undefined);
@@ -1645,8 +1655,8 @@ export class AccountsService {
         if (enrolment && input.files.some(file => { try { const document = JSON.parse(Buffer.from(file.contentB64, "base64").toString("utf8")); return hasRefreshGrant(document) || !codec.provesAccessOnly?.(document); } catch { return true; } })) throw new RpcError("account_lease_enrol_refused", "Enrolment requires recognised access-only incoming material.", { reason: "unknown_material" });
         const origin = { ...(forwarded || previous?.fencesForwarded ? { fencesForwarded: true } : {}), ...(currentInstanceFloor !== undefined ? { authorityGenerationFloor: currentInstanceFloor } : {}), ...legacyInstance, ...(retiredInstances.length ? { retiredAuthorityInstanceIds: retiredInstances } : {}), ...(input.authorityInstanceId !== undefined ? { authorityInstanceId: input.authorityInstanceId } : {}), shareId: input.shareId, authorityNodeId: input.authorityNodeId, epoch: input.epoch, ...(input.generation !== undefined ? { generation: input.generation } : {}), ...(input.generation !== undefined || enrolment ? { materialPublished: true } : {}), ...(viaNodeId !== undefined ? { viaNodeId } : {}), ...(enrolment ? { enrolment, installedFiles: previous?.installedFiles ?? [codec.primaryFile, ...Object.values(codec.mirrors)] } : {}), expiresAt: input.expiresAt, adoptedAt: adopted ? this.now() : previous?.adoptedAt ?? null, revokedAt: null };
         if (account && account.harness !== input.harness) throw new RpcError("harness_mismatch", "Lease harness differs from the existing account.");
-        if (account?.source === "leased" && (account.leasedFrom?.shareId !== input.shareId || account.leasedFrom.epoch > input.epoch || account.leasedFrom.epoch === input.epoch && (account.leasedFrom.authorityNodeId !== input.authorityNodeId || account.leasedFrom.expiresAt !== null && (input.expiresAt === null || input.expiresAt < account.leasedFrom.expiresAt)))) throw new RpcError("account_lease_conflict", "Lease origin conflicts with the installed lease.");
-        if (account?.source === "leased" && input.generation !== undefined && account.leasedFrom?.generation !== undefined && input.generation < account.leasedFrom.generation && (input.authorityInstanceId !== undefined ? input.authorityInstanceId === account.leasedFrom.authorityInstanceId : account.leasedFrom.epoch === input.epoch)) throw new RpcError("account_lease_conflict", "Lease credential generation regressed.");
+        if (account?.source === "leased" && (knownAccountLease(account)?.shareId !== input.shareId || knownAccountLease(account)!.epoch > input.epoch || knownAccountLease(account)!.epoch === input.epoch && (knownAccountLease(account)!.authorityNodeId !== input.authorityNodeId || knownAccountLease(account)!.expiresAt !== null && (input.expiresAt === null || input.expiresAt < knownAccountLease(account)!.expiresAt!)))) throw new RpcError("account_lease_conflict", "Lease origin conflicts with the installed lease.");
+        if (account?.source === "leased" && input.generation !== undefined && knownAccountLease(account)?.generation !== undefined && input.generation < knownAccountLease(account)!.generation! && (input.authorityInstanceId !== undefined ? input.authorityInstanceId === knownAccountLease(account)!.authorityInstanceId : knownAccountLease(account)!.epoch === input.epoch)) throw new RpcError("account_lease_conflict", "Lease credential generation regressed.");
         if (adopted) {
           if (!input.adopt) throw new RpcError("account_adopt_refused", "An isolated lease cannot overwrite a native account.");
           const foreign = this.foreignHomeRefusal(account!, "moves credentials out of");
@@ -1673,7 +1683,7 @@ export class AccountsService {
           }
           if (state.status === "unreadable") throw new RpcError("lease_unavailable", "Account Keychain is unreadable; unlock it before installing a lease.");
           if (adopted && !explicit && target.status !== "auth_needed" && state.status === "present" && this.validPrimaryCredential(target.harness, codec.primaryFile, state.raw)) throw new RpcError("account_adopt_refused", "The native account has a Keychain credential; it cannot be adopted.");
-          const unchanged = target.source === "leased" && JSON.stringify(target.leasedFrom) === JSON.stringify(origin)
+          const unchanged = target.source === "leased" && JSON.stringify(knownAccountLease(target)) === JSON.stringify(origin)
             && input.files.every(file => {
               const raw = JSON.stringify(JSON.parse(Buffer.from(file.contentB64, "base64").toString("utf8")));
               return readIfFile(this.leaseFilePath(target.homePath, file.homeRelPath)) === raw
@@ -1748,7 +1758,7 @@ export class AccountsService {
 
   private leaseCredentialCopies(account: AccountRow): { name: string; rel: string; raw: string }[] {
     const copies: { name: string; rel: string; raw: string }[] = [];
-    for (const rel of [...new Set([...this.credentialPaths(account), ...(account.leasedFrom?.enrolment ? account.leasedFrom.installedFiles ?? [] : [])])]) for (const [name, root] of [["home", account.homePath], ["vault", this.vaultDirOf(account)]] as const) for (const copy of this.leaseCopyPaths(root, rel)) {
+    for (const rel of [...new Set([...this.credentialPaths(account), ...(knownAccountLease(account)?.enrolment ? knownAccountLease(account)!.installedFiles ?? [] : [])])]) for (const [name, root] of [["home", account.homePath], ["vault", this.vaultDirOf(account)]] as const) for (const copy of this.leaseCopyPaths(root, rel)) {
       let raw: string;
       try { raw = readFileSync(this.leaseFilePath(root, copy), "utf8"); }
       catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") continue; throw error; }
@@ -1805,7 +1815,7 @@ export class AccountsService {
     if (options.discardNative && (!options.confirm || options.checkOnly)) throw new RpcError("invalid_request", "Native discard requires confirmation and cannot be combined with checkOnly.");
     return this.withLeaseWrite(id, async () => {
       const account = this.store.getAccount(id);
-      const base = { id, removed: false, revokedAt: account?.leasedFrom?.revokedAt ?? null, keychainRemoved: false, nativeBackupKept: existsSync(join(this.cfg.accounts.vaultDir, ".native-backup", id)) };
+      const base = { id, removed: false, revokedAt: knownAccountLease(account)?.revokedAt ?? null, keychainRemoved: false, nativeBackupKept: existsSync(join(this.cfg.accounts.vaultDir, ".native-backup", id)) };
       if (!account) return { ...base, disposition: "absent", nativeChain: { account: id, present: false, discarded: false }, message: `Account ${id} is absent.` };
       if (account.source !== "leased") throw new RpcError("account_lease_conflict", "Only leased accounts may be removed through lease.remove.");
       const codec = this.leaseMaterialCodecs.get(account.harness);
@@ -1858,7 +1868,7 @@ export class AccountsService {
         const authorise = () => {
           if (!facts.native.length) return;
           if (!options.discardNative) throw new RpcError("account_lease_native_present", preserved().message, { account: id, nativeChainPresent: true, result: preserved() });
-          const owned = account.leasedFrom?.enrolment ? account.leasedFrom.installedFiles ?? [codec.primaryFile, ...Object.values(codec.mirrors)] : this.credentialPaths(account);
+          const owned = knownAccountLease(account)?.enrolment ? knownAccountLease(account)!.installedFiles ?? [codec.primaryFile, ...Object.values(codec.mirrors)] : this.credentialPaths(account);
           if (facts.native.some(copy => !owned.includes(copy.rel))) unavailable("native_outside_lease_files");
           const key = this.leaseProofKey(id, true);
           const copies = facts.native.map(copy => createHmac("sha256", key).update(copy.name).update("\0").update(copy.raw).digest("hex")).sort();
@@ -1879,7 +1889,7 @@ export class AccountsService {
           authorise();
           nativeDiscarded ||= facts.native.length > 0;
         }
-        for (const rel of account.leasedFrom?.enrolment ? account.leasedFrom.installedFiles ?? [codec.primaryFile, ...Object.values(codec.mirrors)] : this.credentialPaths(account)) {
+        for (const rel of knownAccountLease(account)?.enrolment ? knownAccountLease(account)!.installedFiles ?? [codec.primaryFile, ...Object.values(codec.mirrors)] : this.credentialPaths(account)) {
           for (const root of [account.homePath, this.vaultDirOf(account)]) for (const copy of this.leaseCopyPaths(root, rel)) rmSync(this.leaseFilePath(root, copy), { force: true });
         }
         const revoked = this.store.transact(() => {
@@ -1887,7 +1897,7 @@ export class AccountsService {
           this.store.clearLeaseNativeDiscard(id);
           return revoked;
         });
-        return { ...result("revoked", false, nativeDiscarded, nativeDiscarded ? `Native credentials for ${id} were discarded. The provider session behind the discarded chain for ${id} stays valid until signed out at the provider.` : `Lease material for ${id} was revoked.`), revokedAt: revoked.leasedFrom!.revokedAt, keychainRemoved };
+        return { ...result("revoked", false, nativeDiscarded, nativeDiscarded ? `Native credentials for ${id} were discarded. The provider session behind the discarded chain for ${id} stays valid until signed out at the provider.` : `Lease material for ${id} was revoked.`), revokedAt: knownAccountLease(revoked)!.revokedAt, keychainRemoved };
       };
       codec.keychain?.assertHome(account.homePath);
       try { return codec.keychain ? await codec.keychain.withLock(account.homePath, remove) : await remove(); }
@@ -2014,9 +2024,10 @@ export class AccountsService {
    * expired home the harness will actually use.
    */
   credentialState(account: AccountRow): CredentialState {
+    if (accountLeaseUnknown(account)) return "invalid";
     const recipe = recipeFor(account.harness);
-    if (account.source === "leased" && account.leasedFrom?.revokedAt != null) return "absent";
-    if (account.source === "leased" && account.leasedFrom?.expiresAt != null && account.leasedFrom.expiresAt * 1000 <= this.now()) return "expired";
+    if (account.source === "leased" && knownAccountLease(account)?.revokedAt != null) return "absent";
+    if (account.source === "leased" && knownAccountLease(account)?.expiresAt != null && knownAccountLease(account)!.expiresAt! * 1000 <= this.now()) return "expired";
     if (!recipe) return "present";
     if (this.authorityFor(account)?.enabled(account)) return this.centralCredentialState(account);
     const primary = primaryCredentialFile(recipe);
@@ -2074,6 +2085,7 @@ export class AccountsService {
    * judged separately by `readiness`.
    */
   credentialReadiness(account: AccountRow): AccountReadiness {
+    if (accountLeaseUnknown(account)) return { ready: false, code: "account_unavailable", reason: "lease_unknown", message: `account ${account.id}: ${LEASE_UNKNOWN_MESSAGE}` };
     const native = this.isNative(account);
     const moved = this.nativeHomeRefusal(account);
     if (moved) return { ready: false, code: "account_unavailable", message: moved };
@@ -2081,7 +2093,7 @@ export class AccountsService {
     const unisolated = this.isolationRefusal(account.harness);
     if (unisolated && !native) return { ready: false, code: "account_unavailable", message: unisolated };
     if (this.leaseWrites.has(account.id)) return { ready: false, code: "account_auth_needed", message: "Account credential material is changing; retry after the operation completes." };
-    if (account.source === "leased" && account.leasedFrom?.revokedAt != null) return { ready: false, code: "account_lease_revoked", message: `Lease ${account.leasedFrom.shareId} from ${account.leasedFrom.authorityNodeId} was revoked; request renewal from its authority.` };
+    if (account.source === "leased" && knownAccountLease(account)?.revokedAt != null) return { ready: false, code: "account_lease_revoked", message: `Lease ${knownAccountLease(account)!.shareId} from ${knownAccountLease(account)!.authorityNodeId} was revoked; request renewal from its authority.` };
     if (account.status === "auth_needed") {
       if (native) return { ready: false, code: "account_auth_needed", message: this.nativeSignInMessage(account, "needs its sign-in") };
       return { ready: false, code: "account_auth_needed", message: this.authNeededReason(account) ?? `account ${account.id} needs login; log in with: hive account login ${account.id}` };
@@ -2101,7 +2113,8 @@ export class AccountsService {
 
   /** Node-local admission readiness for PLACING work on the account: the pause policy, then `credentialReadiness`. */
   readiness(account: AccountRow): AccountReadiness {
-    if (account.source === "leased" && account.leasedFrom?.revokedAt != null) return this.credentialReadiness(account);
+    if (accountLeaseUnknown(account)) return this.credentialReadiness(account);
+    if (account.source === "leased" && knownAccountLease(account)?.revokedAt != null) return this.credentialReadiness(account);
     if (account.status === "paused") {
       const pause = pauseOf(account);
       return { ready: false, code: "account_paused", message: `account ${account.id} is paused by ${pause ? pauseLabel(pause) : "operator"}` };
@@ -2111,7 +2124,7 @@ export class AccountsService {
 
   /** Usable for automatic selection: not paused, not auth_needed, credential present and not expired. */
   private usableForSelection(account: AccountRow): boolean {
-    return account.status === "ok" && (!this.isolationRefusal(account.harness) || this.isNative(account)) && !this.nativeHomeRefusal(account) && !this.ownedHomeRefusal(account, "writes into") && this.credentialState(account) === "present";
+    return !accountLeaseUnknown(account) && account.status === "ok" && (!this.isolationRefusal(account.harness) || this.isNative(account)) && !this.nativeHomeRefusal(account) && !this.ownedHomeRefusal(account, "writes into") && this.credentialState(account) === "present";
   }
 
   /**
@@ -2134,8 +2147,8 @@ export class AccountsService {
    * a good vault copy does not make a stale home work.
    */
   homeCredentialState(account: AccountRow): "usable" | "absent" | "expired" {
-    if (account.source === "leased" && account.leasedFrom?.revokedAt != null) return "absent";
-    if (account.source === "leased" && (account.leasedFrom?.expiresAt != null && account.leasedFrom.expiresAt * 1000 <= this.now())) return "expired";
+    if (account.source === "leased" && knownAccountLease(account)?.revokedAt != null) return "absent";
+    if (account.source === "leased" && (knownAccountLease(account)?.expiresAt != null && knownAccountLease(account)!.expiresAt! * 1000 <= this.now())) return "expired";
     const primary = recipeFor(account.harness)?.credentialFiles[0];
     if (!primary) return "usable";
     const raw = readIfFile(join(account.homePath, primary));
@@ -2160,6 +2173,7 @@ export class AccountsService {
    * must render over a historical `verified`.
    */
   credentialHealthOf(account: AccountRow): CredentialHealth {
+    if (accountLeaseUnknown(account)) return "unverified";
     if (!this.credentialed(account)) return "absent";
     if (this.centralCredentialInDoubt(account)) return "unverified";
     if (account.lastLoginAt != null) return "verified";
@@ -2187,7 +2201,7 @@ export class AccountsService {
 
   /** The mirror shape of an account row: the store row plus the derived health (never stored). */
   mirrorRow(account: AccountRow): MirrorAccountRow {
-    const { native: _native, ...row } = account;
+    const { native: _native, ...row } = presentAccountLease(account);
     return { ...row, credentialHealth: this.credentialHealthOf(account), loginDueAt: loginDueAtOf(account), nativeLogin: this.nativeDescription(account) };
   }
 
@@ -2414,7 +2428,8 @@ export class AccountsService {
       && applicableObserved.length > 0
       && applicableObserved.every((value) => value < DEFAULT_ACCOUNT_ADMISSION_POLICY.completionReservePercent);
     let eligibility: AccountAdmissionCandidate["eligibility"] = { state: "eligible" };
-    if (account.status === "paused") eligibility = { state: "ineligible", reason: "paused" };
+    if (accountLeaseUnknown(account)) eligibility = { state: "unknown", reason: "auth" };
+    else if (account.status === "paused") eligibility = { state: "ineligible", reason: "paused" };
     else if (this.weeklyCeilingBreach(account, options.model)) eligibility = { state: "ineligible", reason: "ceiling" };
     else if (!this.usableForSelection(account)) eligibility = { state: "ineligible", reason: "auth" };
     else if (this.credentialHealthOf(account) !== "verified") eligibility = { state: "unknown", reason: "auth" };
@@ -2790,6 +2805,10 @@ export class AccountsService {
     for (const id of ids) {
       const account = this.store.getAccount(id);
       if (!account) continue;
+      if (accountLeaseUnknown(account)) {
+        out.push(this.store.putAccountLimits(id, { readable: false, unreadableReason: "auth_failed", error: LEASE_UNKNOWN_MESSAGE }));
+        continue;
+      }
       const healthBefore = this.credentialHealthOf(account);
       const fetched = await this.fetchOne(account);
       if (!this.store.getAccount(id)) continue; // removed mid-fetch
@@ -2922,6 +2941,7 @@ export class AccountsService {
 
   /** One account's limits via its harness's transport; never throws (an unreadable row instead). */
   private async fetchOne(account: AccountRow): Promise<PutAccountLimitsInput> {
+    if (accountLeaseUnknown(account)) return { readable: false, unreadableReason: "auth_failed", error: LEASE_UNKNOWN_MESSAGE };
     if (account.harness === "codex") {
       const joined = this.codexFetches.get(account.homePath);
       if (joined) return joined;
@@ -2963,6 +2983,7 @@ export class AccountsService {
   }
 
   private async fetchByHarness(account: AccountRow): Promise<PutAccountLimitsInput> {
+    if (accountLeaseUnknown(account)) return { readable: false, unreadableReason: "auth_failed", error: LEASE_UNKNOWN_MESSAGE };
     const authorityPhase = this.authorityFor(account)?.status(account)?.phase;
     if (authorityPhase === "handing_off" || authorityPhase === "adopting") return { readable: false, unreadableReason: "provider_error", error: "Credential ownership is changing; existing access remains usable." };
     if (account.source !== "leased" && this.store.credentialAuthorityIsDemoted(account.id) && !this.authorityFor(account)?.enabled(account)) return { readable: false, unreadableReason: "auth_failed", error: "Authority transferred; request an access-only lease from the new authority." };
@@ -3378,6 +3399,7 @@ export class AccountsService {
    * unverified until login records fresh evidence.
    */
   async verifyCredentials(account: AccountRow): Promise<VerifyOutcome> {
+    knownAccountLease(account);
     const probe = this.credentialProbeOf(account.harness);
     if (!this.credentialed(account)) {
       const updated = this.store.setAccountStatus(
@@ -3914,7 +3936,7 @@ export class AccountsService {
     const now = this.now();
     if (now - this.lastPeriodicRefreshAt < every) return;
     this.lastPeriodicRefreshAt = now;
-    const ids = this.store.listAccounts().map((account) => account.id);
+    const ids = this.store.listAccounts().filter(account => !accountLeaseUnknown(account)).map((account) => account.id);
     if (ids.length === 0) return;
     this.enqueueLimitsRefresh(ids);
   }
@@ -3934,7 +3956,7 @@ export class AccountsService {
     if (aheadMs <= 0) return;
     const now = this.now();
     for (const account of this.store.listAccounts()) {
-      if (account.harness === "muse" || account.source === "leased" || !this.credentialAuthorities.has(account.harness) || account.status === "paused") continue;
+      if (accountLeaseUnknown(account) || account.harness === "muse" || account.source === "leased" || !this.credentialAuthorities.has(account.harness) || account.status === "paused") continue;
       const backoff = this.earlyRefreshBackoff.get(account.id);
       if (backoff && backoff.at > now) continue;
       if (!this.authorityFor(account)!.earlyRefreshDue(account, aheadMs)) continue;
@@ -3953,7 +3975,7 @@ export class AccountsService {
   centralRefreshRetryTick(): void {
     const now = this.now();
     const due = this.store.listAccounts()
-      .filter((account) => account.harness !== "muse" && this.credentialAuthorities.has(account.harness) && this.authorityFor(account)!.retryDue(account)
+      .filter((account) => !accountLeaseUnknown(account) && account.harness !== "muse" && this.credentialAuthorities.has(account.harness) && this.authorityFor(account)!.retryDue(account)
         && !this.queuedRefreshIds.has(account.id) && !this.activeRefreshIds.has(account.id)
         // A retry that cannot even start (a locked Keychain, a failing publication) must not probe on every tick.
         && (this.centralRetryProbes.get(account.id) ?? 0) <= now)
@@ -4000,6 +4022,7 @@ export class AccountsService {
   }
 
   async activateForSpawn(account: AccountRow, bee: { cwd: string }): Promise<ActivationResult> {
+    knownAccountLease(account);
     if (this.isNative(account)) {
       const moved = this.nativeHomeRefusal(account);
       if (moved) throw new Error(moved);

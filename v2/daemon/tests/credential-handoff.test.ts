@@ -1,3 +1,4 @@
+import { knownAccountLease } from "../../core/src/accountLease.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID, createHash } from "node:crypto";
@@ -662,7 +663,7 @@ for (const harness of ["claude", "codex", "grok"]) test(`credential handoff ${ha
       else assert.equal(existsSync(authorityPath), false);
       if (state === "prepared" || state === "failed") {
         const afterRow: MirrorAccountRow = (await cb.request<{ accounts: MirrorAccountRow[] }>("account.list", {})).accounts.find(account => account.id === fixture.account)!;
-        assert.equal(afterRow.source, beforeRow.source); assert.deepEqual(afterRow.leasedFrom, beforeRow.leasedFrom); assert.equal(afterRow.status, beforeRow.status);
+        assert.equal(afterRow.source, beforeRow.source); assert.deepEqual(knownAccountLease(afterRow), knownAccountLease(beforeRow)); assert.equal(afterRow.status, beforeRow.status);
       }
       await refused(() => rpc(cb!, "adopt", { account: fixture.account, handoffId: fixture.handoffId, commitReceipt: fixture.committed.receipt }), "credential_handoff_decided");
       await refused(() => prepare(fixture.account, fixture.handoffId, fixture.material), "credential_handoff_decided");
