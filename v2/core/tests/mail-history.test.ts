@@ -262,6 +262,7 @@ test("mail history projection persists an audit high-water and advances without 
     initial.close();
 
     const firstReopen = rig.open();
+    firstReopen.mailHistory();
     firstReopen.close();
     const fixture = new DatabaseSync(rig.path);
     const firstHighWater = Number(
@@ -276,6 +277,7 @@ test("mail history projection persists an audit high-water and advances without 
     fixture.close();
 
     const secondReopen = rig.open();
+    secondReopen.mailHistory();
     secondReopen.close();
     const check = new DatabaseSync(rig.path, { readOnly: true });
     try {

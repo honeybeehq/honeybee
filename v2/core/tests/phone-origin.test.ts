@@ -213,3 +213,24 @@ test("malformed legacy audit rows reopen as origin unknown with intact send-time
     assert.equal(store.getMessage(message.id)?.phoneInput, undefined);
   } finally { store.close(); h.cleanup(); }
 });
+
+for (const payload of ["not-json", "{}", JSON.stringify({message:{id:"bad",sender:"operator",body:"x",priority:0,enqueuedAt:1}}), JSON.stringify({origin:"bogus",message:{id:1,sender:"operator",body:"x",priority:0,enqueuedAt:1}})]) test(`malformed unprojected legacy audit is lazy and unknown: ${payload}`, () => {
+  const h = harness(); let store = h.open();
+  try {
+    const { bee } = makeBee(store);
+    const message = store.send(bee.id, "unprojected legacy").message;
+    store.close();
+    const db = new DatabaseSync(h.path);
+    db.prepare("DELETE FROM mail_history_enqueues WHERE message_id = ?").run(message.id);
+    db.prepare("DELETE FROM meta WHERE key = 'mail_history_projection_seq'").run();
+    db.prepare("UPDATE audit SET payload = ? WHERE kind = 'mail.enqueued'").run(payload);
+    db.close();
+    store = h.open();
+    assert.equal(store.getMessage(message.id)?.phoneInput, undefined);
+    assert.deepEqual(store.mailHistory().messages, []);
+    assert.deepEqual(store.pendingMail(bee.id).messages, []);
+    assert.equal(store.mailOrigin(message.id), "legacy.unknown");
+    store.close(); store = h.open();
+    assert.deepEqual(store.mailHistory().messages, []);
+  } finally { store.close(); h.cleanup(); }
+});

@@ -2079,7 +2079,6 @@ export class CoreStore {
       }
     }
     this.db.exec(PHONE_PROVENANCE_SQL);
-    this.backfillMailHistoryEnqueues();
     if (stored < 40) this.redactRpcIdempotencyEnv();
     this.db
       .prepare(
@@ -2238,18 +2237,20 @@ export class CoreStore {
         `SELECT
            a.seq,
            a.bee_id,
-           json_extract(a.payload, '$.message.id') AS message_id,
-           json_extract(a.payload, '$.origin') AS origin,
-           hex(substr(CAST(json_extract(a.payload, '$.message.sender') AS BLOB), 1, ?)) AS sender_hex,
-           length(CAST(json_extract(a.payload, '$.message.sender') AS BLOB)) > ? AS sender_truncated,
-           hex(substr(CAST(json_extract(a.payload, '$.message.body') AS BLOB), 1, ?)) AS body_hex,
-           length(CAST(json_extract(a.payload, '$.message.body') AS BLOB)) > ? AS body_truncated,
-           json_extract(a.payload, '$.message.priority') AS priority,
-           COALESCE(json_extract(a.payload, '$.message.urgency'), 'next') AS urgency,
-           json_extract(a.payload, '$.message.enqueuedAt') AS enqueued_at
+           json_extract(CASE WHEN json_valid(a.payload) THEN a.payload ELSE '{}' END, '$.message.id') AS message_id,
+           json_extract(CASE WHEN json_valid(a.payload) THEN a.payload ELSE '{}' END, '$.origin') AS origin,
+           hex(substr(CAST(json_extract(CASE WHEN json_valid(a.payload) THEN a.payload ELSE '{}' END, '$.message.sender') AS BLOB), 1, ?)) AS sender_hex,
+           length(CAST(json_extract(CASE WHEN json_valid(a.payload) THEN a.payload ELSE '{}' END, '$.message.sender') AS BLOB)) > ? AS sender_truncated,
+           hex(substr(CAST(json_extract(CASE WHEN json_valid(a.payload) THEN a.payload ELSE '{}' END, '$.message.body') AS BLOB), 1, ?)) AS body_hex,
+           length(CAST(json_extract(CASE WHEN json_valid(a.payload) THEN a.payload ELSE '{}' END, '$.message.body') AS BLOB)) > ? AS body_truncated,
+           json_extract(CASE WHEN json_valid(a.payload) THEN a.payload ELSE '{}' END, '$.message.priority') AS priority,
+           COALESCE(json_extract(CASE WHEN json_valid(a.payload) THEN a.payload ELSE '{}' END, '$.message.urgency'), 'next') AS urgency,
+           json_extract(CASE WHEN json_valid(a.payload) THEN a.payload ELSE '{}' END, '$.message.enqueuedAt') AS enqueued_at
          FROM audit a
          LEFT JOIN mail_history_enqueues h ON h.seq = a.seq
          WHERE a.kind = 'mail.enqueued' AND a.seq > ? AND a.seq <= ? AND h.seq IS NULL AND json_valid(a.payload)
+           AND json_type(CASE WHEN json_valid(a.payload) THEN a.payload ELSE '{}' END, '$.message.sender') = 'text'
+           AND json_type(CASE WHEN json_valid(a.payload) THEN a.payload ELSE '{}' END, '$.message.body') = 'text'
          ORDER BY a.seq`,
       ).all(
         MAIL_HISTORY_SENDER_PREVIEW_BYTES + 3,
@@ -2266,6 +2267,8 @@ export class CoreStore {
          ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       );
       for (const row of rows) {
+        let values: (string | number | Buffer)[];
+        try {
         const seq = auditNumber(row.seq, "mail.enqueued seq");
         const messageId = auditNumber(row.message_id, `mail.enqueued message.id at seq ${seq}`);
         const beeId = auditString(row.bee_id, `mail.enqueued bee_id at seq ${seq}`);
@@ -2286,7 +2289,7 @@ export class CoreStore {
             ? "spawn.prompt"
             : "legacy.unknown"
           : auditMailOrigin(row.origin, `mail.enqueued origin at seq ${seq}`);
-        insert.run(
+        values = [
           seq,
           messageId,
           beeId,
@@ -2298,7 +2301,12 @@ export class CoreStore {
           auditNumber(row.priority, `mail.enqueued priority at seq ${seq}`),
           auditUrgency(row.urgency ?? "next", `mail.enqueued urgency at seq ${seq}`),
           auditNumber(row.enqueued_at, `mail.enqueued enqueuedAt at seq ${seq}`),
-        );
+        ];
+        } catch (error) {
+          if (error instanceof CoreError && error.message.startsWith("mail history: malformed")) continue;
+          throw error;
+        }
+        insert.run(...values);
       }
       cursor = batchEnd;
     }
@@ -3735,6 +3743,7 @@ export class CoreStore {
 
   /** Bounded undelivered-only mailbox snapshot for frequent live indicators. */
   pendingMail(beeId: string, params: MailPendingParams = {}): MailPendingResult {
+    this.tx(() => this.backfillMailHistoryEnqueues());
     const requestedLimit = params.limit ?? MAIL_HISTORY_DEFAULT_LIMIT;
     const limit = Number.isFinite(requestedLimit)
       ? Math.max(1, Math.min(MAIL_HISTORY_MAX_LIMIT, Math.floor(requestedLimit)))
@@ -3776,6 +3785,7 @@ export class CoreStore {
    * messages' lifecycle events, so unrelated audit traffic cannot evict mail.
    */
   mailHistory(params: MailHistoryParams = {}): MailHistoryResult {
+    this.tx(() => this.backfillMailHistoryEnqueues());
     const headSeq = this.lastAuditSeq();
     const requestedSnapshot = params.snapshotSeq ?? headSeq;
     const snapshotSeq = Number.isSafeInteger(requestedSnapshot)
@@ -4093,6 +4103,7 @@ export class CoreStore {
   }
 
   mailOrigin(messageId: number): MailOrigin {
+    this.tx(() => this.backfillMailHistoryEnqueues());
     const row = this.stmt("SELECT origin FROM mail_history_enqueues WHERE message_id = ?").get(messageId) as Row | undefined;
     return row === undefined ? "legacy.unknown" : auditMailOrigin(row.origin, `origin for message ${messageId}`);
   }
