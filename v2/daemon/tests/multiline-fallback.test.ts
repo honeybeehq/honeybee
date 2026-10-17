@@ -1,4 +1,5 @@
 import { before, test } from "node:test";
+import { DatabaseSync } from "node:sqlite";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -17,7 +18,10 @@ class PointerDriver extends FakeDriver {
   readonly pointers: {id: number; text: string}[] = [];
   uncertain = false;
   proved = false;
-  deliveryReceipt(): "accepted" | "unknown" { return this.proved ? "accepted" : "unknown"; }
+  receiptBinding: {generation: number; pointer: string} | null = null;
+  deliveryReceipt(_bee: string, generation: number, _message: number, pointer: string): "accepted" | "unknown" {
+    return this.proved && (!this.receiptBinding || this.receiptBinding.generation === generation && this.receiptBinding.pointer === pointer) ? "accepted" : "unknown";
+  }
   override deliver(bee: string, generation: number, id: number, text: string, options?: {singleAttempt?: boolean}): DeliverOutcome {
     if (text.includes("\n")) return {accepted: false, reason: "not_ready", detail: "multiline_type_mode"};
     if (options?.singleAttempt) {
@@ -39,8 +43,10 @@ function rig(missingHelper = false, runtimeRoot = false) {
   const bee = store.createBee({name: "recipient", agent: "stub", substrate: "tmux", cwd}).bee;
   store.enqueueCommand("spawn", bee.id); for (let i = 0; i < 4; i++) core.step();
   const hold = (id: number) => {for (let i = 0; i < 3; i++) store.recordMultilineDeliveryRefusal(id, 1, "multiline_type_mode");};
-  return {root, data, get store() {return store;}, driver, bee, hold, step: () => core.step(), restart: (reopen = false) => {
-    if (reopen) {store.close(); store = openCoreStore(join(data, "core.sqlite3"), {now: () => 1000, ephemeral: true}); options.store = store;}
+  return {root, data, files: options.multilineFallback.files, get store() {return store;}, driver, bee, hold, step: () => core.step(), restart: (reopen = false, corrupt?: string) => {
+    if (reopen) {store.close();
+      if (corrupt !== undefined) {const db = new DatabaseSync(join(data, "core.sqlite3")); db.prepare("UPDATE multiline_delivery SET row_json = ?").run(corrupt); db.close();}
+      store = openCoreStore(join(data, "core.sqlite3"), {now: () => 1000, ephemeral: true}); options.store = store;}
     core = new DaemonCore(options); core.boot();
   }, close: () => {store.close(); rmSync(root, {recursive: true, force: true});}};
 }
@@ -116,7 +122,13 @@ for (const boundary of ["prepared", "published", "in_flight"] as const) test(`re
   r.restart(true); r.step();
   assert.equal(r.store.getMessage(message.id)?.deliveryFallback?.id, fallback.id);
   assert.equal(r.driver.pointers.length, boundary === "in_flight" ? 0 : 1);
-  assert.equal(r.store.getMessage(message.id)?.deliveryFallback?.state, boundary === "in_flight" ? "unknown" : "delivered");
+  assert.equal(r.store.getMessage(message.id)?.deliveryFallback?.state, boundary === "in_flight" ? "in_flight" : "delivered");
+  if (boundary === "in_flight") {
+    r.step(); assert.equal(r.store.getMessage(message.id)?.deliveryFallback?.state, "in_flight");
+    r.driver.proved = true; r.step();
+    assert.equal(r.store.getMessage(message.id)?.deliveryFallback?.state, "delivered");
+    assert.equal(r.driver.pointers.length, 0);
+  }
 });
 test("file and pointer effects wait for an outer transaction to commit", t => {
   const r = rig(); t.after(r.close);
@@ -165,4 +177,71 @@ test("Cell private mount policy chooses only the own runtime area or a typed unr
   assert.equal(deliveryContentRoot("/tmp/data", "cell", false, null, "linux"), "/tmp/data");
   assert.equal(deliveryContentRoot("/tmp/data", "cell", true, null, "darwin"), "/tmp/data");
   for (const substrate of ["hsr", "tmux"] as const) assert.equal(deliveryContentRoot("/tmp/data", substrate, true, null, "linux"), "/tmp/data");
+});
+
+for (const state of ["in_flight", "unknown", "not_attempted"] as const) test(`whole-row corruption after ${state} is UNKNOWN and never creates a fresh pointer`, t => {
+  const r = rig(false, true); t.after(r.close);
+  const message = r.store.send(r.bee.id, "one\ntwo").message; r.hold(message.id);
+  let path: string | null = null;
+  if (state !== "not_attempted") {
+    r.driver.uncertain = true; r.step();
+    path = r.store.getMessage(message.id)!.deliveryFallback!.path!;
+    if (state === "in_flight") {
+      const original = r.store.multilineDelivery(message.id)!;
+      r.restart(true, JSON.stringify({...original, fallback: {...original.fallback, state: "in_flight"}}));
+    }
+  }
+  const attempts = r.driver.pointers.length;
+  r.restart(true, "{"); r.driver.proved = true;
+  const later = r.store.send(r.bee.id, "later").message;
+  for (let i = 0; i < 4; i++) r.step();
+  const visible = r.store.pendingMail(r.bee.id).messages.find(row => row.id === message.id)!;
+  assert.equal(visible.deliveryFallback?.state, "unknown");
+  assert.equal(visible.deliveryFallback?.detail, "delivery_hold_state_unknown");
+  assert.equal(visible.deliveryHold?.detail, "delivery_hold_state_unknown");
+  assert.equal(r.driver.pointers.length, attempts);
+  assert.ok(r.driver.deliveredIds.includes(later.id));
+  assert.equal(r.store.prepareMultilineFallback(message.id, r.data, [])?.state, "unknown");
+  assert.equal(r.store.retainsMultilineRuntimeContent(r.bee.id, r.data), true);
+  if (path !== null) assert.equal(existsSync(path), true);
+  r.restart(true); for (let i = 0; i < 3; i++) r.step();
+  assert.equal(r.driver.pointers.length, attempts);
+  assert.equal(r.store.getMessage(message.id)?.deliveryFallback?.state, "unknown");
+  if (path !== null) assert.equal(existsSync(path), true);
+});
+
+for (const proof of ["exact", "none", "other_generation", "other_pointer"] as const) test(`stopped fallback reconciles ${proof} proof without a successor or another injection`, t => {
+  const r = rig(); t.after(r.close); r.driver.uncertain = true;
+  const message = r.store.send(r.bee.id, "one\ntwo").message; r.hold(message.id); r.step();
+  const fallback = r.store.getMessage(message.id)!.deliveryFallback!;
+  r.driver.stop(r.bee.id, 1, "stopped_by_user"); r.step();
+  r.driver.proved = proof !== "none";
+  r.driver.receiptBinding = {generation: proof === "other_generation" ? 2 : 1, pointer: fallback.pointer! + (proof === "other_pointer" ? " altered" : "")};
+  for (let i = 0; i < 4; i++) r.step();
+  assert.equal(r.store.getMessage(message.id)?.deliveryFallback?.state, proof === "exact" ? "delivered" : "unknown");
+  assert.equal(r.store.getMessage(message.id)?.deliveredGeneration, proof === "exact" ? 1 : null);
+  assert.equal(r.driver.pointers.length, 1);
+  assert.equal(r.store.currentRuntime(r.bee.id)?.generation, 1);
+  assert.equal(r.store.currentRuntime(r.bee.id)?.state, "stopped");
+});
+
+test("deleted-bee cleanup retries converge while another archived bee still references its file", t => {
+  const r = rig(); t.after(r.close);
+  const first = r.store.send(r.bee.id, "one\ntwo").message; r.hold(first.id); r.step();
+  const firstPath = r.store.getMessage(first.id)!.deliveryFallback!.path!;
+  const other = r.store.createBee({name: "retained", agent: "stub", substrate: "tmux", cwd: join(r.root, "work")}).bee;
+  r.store.enqueueCommand("spawn", other.id); for (let i = 0; i < 4; i++) r.step();
+  const second = r.store.send(other.id, "other\nframe").message; r.hold(second.id); r.step();
+  const secondPath = r.store.getMessage(second.id)!.deliveryFallback!.path!;
+  r.store.archiveBee(other.id);
+  const remove = r.files.remove.bind(r.files); let fail = true;
+  r.files.remove = (...args) => {if (fail) throw Object.assign(new Error("injected cleanup failure"), {code: "delivery_file_remove"}); return remove(...args);};
+  r.store.deleteBee(r.bee.id); r.step();
+  assert.equal(existsSync(firstPath), true); assert.equal(existsSync(secondPath), true);
+  assert.equal(r.store.multilineDelivery(first.id)?.fallback?.detail, "delivery_file_remove");
+  assert.ok(r.store.auditRows().some(row => row.kind === "mail.delivery_fallback_cleanup_held"));
+  fail = false; r.step(); r.step();
+  assert.equal(existsSync(firstPath), false); assert.equal(existsSync(secondPath), true);
+  assert.equal(r.store.multilineDelivery(first.id)?.fallback?.state, "removed");
+  assert.equal(r.store.multilineDelivery(second.id)?.fallback?.state, "delivered");
 });

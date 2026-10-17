@@ -306,6 +306,7 @@ export function replayAudit(rows: AuditRow[]): StateDump {
       case "mail.delivery_fallback_prepared":
       case "mail.delivery_fallback_ready":
       case "mail.delivery_fallback_in_flight":
+      case "mail.delivery_fallback_quarantine_cleared":
       case "mail.delivery_fallback_unknown":
       case "mail.delivery_fallback_held":
       case "mail.delivery_fallback_delivered":

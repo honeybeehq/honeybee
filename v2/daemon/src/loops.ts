@@ -1588,9 +1588,28 @@ export class DaemonCore {
   private deliveryLoop(work: readonly DaemonWorkRow[]): void {
     const unsupportedAttempts = new Set<number>();
     this.multilineFallback?.cleanupDeleted();
+    const quarantines = this.multilineFallback ? this.store.multilinePaneQuarantines() : [];
     const heldMail = this.multilineFallback ? this.store.heldMultilineMail() : null;
+    if (heldMail) for (const [beeId, pending] of heldMail) {
+      heldMail.set(beeId, pending.filter(row => {
+        if (!row.fallback || !["in_flight", "unknown"].includes(row.fallback.state)) return true;
+        const message = this.store.getMessage(row.id);
+        if (!message) return false;
+        const peer = isPeerSender(message.sender, id => this.store.getBee(id) != null);
+        return !this.multilineFallback!.reconcile(message, this.turnTriggerSourceOf(message, peer));
+      }));
+    }
     try {
       for (const { runtime: rt, pending: ordinaryPending } of work) {
+        let quarantined = false;
+        for (const row of quarantines) {
+          if (row.beeId !== rt.beeId) continue;
+          const pane = row.fallback!.paneInput!;
+          if (pane.generation !== rt.generation) {this.store.clearMultilinePaneQuarantine(row.messageId, rt.generation); continue;}
+          const identity = this.driver.deliveryPane?.(rt.beeId, rt.generation);
+          if (!identity || identity.socketPath === pane.socketPath && identity.paneId === pane.paneId && identity.serverIdentity === pane.serverIdentity) quarantined = true;
+        }
+        if (quarantined) continue;
         const pending = this.multilineFallback
           ? [...ordinaryPending, ...(heldMail!.get(rt.beeId) ?? []).filter(message => this.multilineFallback!.eligible(rt.beeId, message.id, message.fallback))].sort((a, b) => a.id - b.id)
           : ordinaryPending;

@@ -264,6 +264,8 @@ export class CellDriver implements RuntimeDriver {
     return this.inner.deliver(beeId, generation, messageId, body, options);
   }
 
+  deliveryPane(_beeId: string, _generation: number): null { return null; }
+
   deliveryReceipt(beeId: string, generation: number, messageId: number, body: string): "accepted" | "unknown" {
     return this.inner.deliveryReceipt(beeId, generation, messageId, body);
   }

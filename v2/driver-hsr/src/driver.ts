@@ -697,6 +697,8 @@ export class HsrDriver implements RuntimeDriver {
     this.onExit(p, status?.exited ? (status.exitCode ?? null) : null, null);
   }
 
+  deliveryPane(_beeId: string, _generation: number): null { return null; }
+
   deliveryReceipt(beeId: string, generation: number, messageId: number, body: string): "accepted" | "unknown" {
     const p = this.procs.get(beeId);
     const attempt = this.pointerAttempts.get(messageId);

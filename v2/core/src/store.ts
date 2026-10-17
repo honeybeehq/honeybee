@@ -3610,6 +3610,18 @@ export class CoreStore {
     });
   }
 
+  multilinePaneQuarantines(): MultilineDeliveryRow[] {
+    return this.listMultilineDeliveries().filter(row => row.fallback?.paneInput && row.fallback.paneInput.clearedAt === undefined);
+  }
+
+  clearMultilinePaneQuarantine(messageId: number, generation: number): void {
+    this.tx(() => {
+      const row = this.multilineDelivery(messageId), pane = row?.fallback?.paneInput;
+      if (!row?.fallback || !pane || pane.clearedAt !== undefined || pane.generation === generation) return;
+      this.putMultilineDelivery({...row, fallback: {...row.fallback, paneInput: {...pane, clearedAt: this.now(), reason: "runtime_generation_replaced"}}}, "mail.delivery_fallback_quarantine_cleared");
+    });
+  }
+
   recordMultilineCleanupFailure(messageId: number, detail: string): void {
     this.tx(() => {
       const row = this.multilineDelivery(messageId);
@@ -3630,7 +3642,7 @@ export class CoreStore {
     });
   }
 
-  transitionMultilineFallback(messageId: number, expected: DeliveryFallback["state"], state: DeliveryFallback["state"], values: Partial<Pick<DeliveryFallback, "path" | "pointer" | "digest" | "bytes" | "generation" | "detail">> = {}): DeliveryFallback | undefined {
+  transitionMultilineFallback(messageId: number, expected: DeliveryFallback["state"], state: DeliveryFallback["state"], values: Partial<Pick<DeliveryFallback, "path" | "pointer" | "digest" | "bytes" | "generation" | "detail" | "attempts" | "attemptPhase" | "paneInput">> = {}): DeliveryFallback | undefined {
     const allowed: Record<DeliveryFallback["state"], readonly DeliveryFallback["state"][]> = {
       preparing: ["ready", "held", "removed"], ready: ["in_flight", "held", "removed"], in_flight: ["ready", "unknown", "delivered", "removed"],
       unknown: ["delivered", "removed"], held: ["removed"], delivered: ["removed"], removed: [],
@@ -3680,6 +3692,7 @@ export class CoreStore {
       const runtime = this.currentRuntime(message.beeId);
       if (!runtime || runtime.generation !== generation || !LIVE_STATES.includes(runtime.state)) return undefined;
       const previous = this.multilineDelivery(messageId);
+      if (previous?.detail === "delivery_hold_state_unknown") return previous;
       const typeAfterWait = previous !== undefined && previous.stage !== "waiting" && previous.heldSince === null && detail === "multiline_type_mode";
       if (previous && previous.stage !== "waiting" && !typeAfterWait) return previous;
       const at = this.now();
@@ -4193,7 +4206,7 @@ export class CoreStore {
       const message = this.getMessage(messageId);
       if (!message || message.deliveredAt !== null) return { applied: false };
       const result = this.commitMessageDelivery(messageId, generation, source, true);
-      if (result.applied) this.transitionMultilineFallback(messageId, row.fallback.state, "delivered");
+      if (result.applied) this.transitionMultilineFallback(messageId, row.fallback.state, "delivered", {attemptPhase: "enter_attempted", ...(row.fallback.paneInput ? {paneInput: {...row.fallback.paneInput, clearedAt: this.now(), reason: "pointer_accepted"}} : {})});
       return result;
     });
   }

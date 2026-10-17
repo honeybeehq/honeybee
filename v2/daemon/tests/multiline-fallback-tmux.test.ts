@@ -58,3 +58,46 @@ test("real type-mode terminal receives one phone pointer, reads original frame, 
   for (let attempt = 0; attempt < 5; attempt++) core.step();
   assert.equal(rows().filter(row => row.submittedBody !== undefined).length, 2);
 });
+
+for (const clearWorks of [true, false]) test(`real partial pointer before Enter ${clearWorks ? "clears and retries the same publication" : "quarantines all later mail"}`, async t => {
+  ensureDeliveryFileArtifact();
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "mfp-partial-"))), data = join(root, "data"), work = join(root, "work"), socketPath = join(root, "t.sock"), receipt = join(root, "receipt.jsonl");
+  mkdirSync(data, {mode: 0o700}); mkdirSync(work, {mode: 0o700});
+  const store = openCoreStore(join(data, "core.sqlite3"), {now: () => 1000, ephemeral: true});
+  const server = new TmuxServer({socketPath, allowKillServer: true});
+  const fixture = fileURLToPath(new URL("../../driver-tmux/test-agent/phone-terminal.mjs", import.meta.url));
+  const driver = new TmuxDriver({socketPath, eventsDir: join(root, "events"), allowKillServer: true, stopKillGraceMs: 100,
+    resolve: () => ({command: process.execPath, args: [fixture, "off"], cwd: work, env: {...process.env, PHONE_PROVIDER_RECEIPT: receipt, PHONE_FALLBACK_ROOT: data, PHONE_IGNORE_CLEAR: clearWorks ? "0" : "1"}, deliveryMode: "type", observation: {paneFallback: true, quiesceMs: 10, deliveryGraceMs: 1000}})});
+  t.after(() => {driver.disposeAll(); server.killServer(); store.close(); rmSync(root, {recursive: true, force: true});});
+  const core = new DaemonCore({store, driver, now: () => 1000, log: () => {}, policy: {commandsPerStep: 8, idleWindowSteps: null, bootHangTimeoutSteps: 100000}, multilineFallback: {root: data, worktrees: () => [work], files: new DeliveryFiles(undefined, root)}}); core.boot();
+  const rows = (): {ready?: boolean; submittedBody?: string}[] => {try {return readFileSync(receipt, "utf8").trim().split("\n").map(line => JSON.parse(line));} catch {return [];}};
+  const wait = async (condition: () => boolean) => {for (let i = 0; i < 400; i++) {if (condition()) return; await new Promise(resolve => setTimeout(resolve, 15));} assert.fail("partial terminal timed out");};
+  const bee = store.createBee({name: "partial", agent: "stub", substrate: "tmux", cwd: work}).bee; store.enqueueCommand("spawn", bee.id);
+  await wait(() => {core.step(); return rows().some(row => row.ready) && store.currentRuntime(bee.id)?.state === "idle";});
+  const hook = driver as unknown as {inject: (...args: unknown[]) => void}, inject = hook.inject.bind(driver); let partial = true;
+  hook.inject = (...args) => {if (partial && String(args[1]).includes("full text: ")) {partial = false; args[1] = "partial-pointer";} inject(...args);};
+  const message = store.send(bee.id, "one\ntwo").message;
+  for (let i = 0; i < 3; i++) store.recordMultilineDeliveryRefusal(message.id, 1, "multiline_type_mode");
+  const later = store.send(bee.id, "later-exact").message;
+  core.step(); const initial = store.getMessage(message.id)!.deliveryFallback!;
+  assert.equal(initial.attemptPhase, clearWorks ? "before_enter_cleared" : "before_enter_unknown");
+  assert.equal(initial.attempts, 1); assert.equal(rows().filter(row => row.submittedBody !== undefined).length, 0);
+  if (clearWorks) {
+    await wait(() => {core.step(); return store.getMessage(later.id)?.deliveredAt !== null && rows().filter(row => row.submittedBody !== undefined).length === 2;});
+    const final = store.getMessage(message.id)!.deliveryFallback!;
+    assert.equal(final.id, initial.id); assert.equal(final.path, initial.path); assert.equal(final.attempts, 2);
+    assert.deepEqual(rows().filter(row => row.submittedBody !== undefined).map(row => row.submittedBody), [final.pointer, "later-exact"]);
+  } else {
+    for (let i = 0; i < 5; i++) core.step();
+    assert.equal(store.getMessage(message.id)?.deliveryFallback?.detail, "pane_input_unknown");
+    assert.equal(store.getMessage(later.id)?.deliveredAt, null); assert.equal(store.multilinePaneQuarantines().length, 1);
+    assert.equal(driver.deliver(bee.id, 1, later.id, "direct-later").detail, "pane_input_unknown");
+    assert.equal(rows().filter(row => row.submittedBody !== undefined).length, 0);
+    store.cancelMessage(bee.id, message.id); core.step(); assert.equal(store.getMessage(later.id)?.deliveredAt, null);
+    driver.stop(bee.id, 1, "stopped_by_user");
+    await wait(() => {core.step(); return store.currentRuntime(bee.id)!.generation > 1 && store.getMessage(later.id)?.deliveredAt !== null;});
+    assert.equal(store.multilinePaneQuarantines().length, 0);
+    assert.ok(store.auditRows().some(row => row.kind === "mail.delivery_fallback_quarantine_cleared"));
+    assert.deepEqual(rows().filter(row => row.submittedBody !== undefined).map(row => row.submittedBody), ["later-exact"]);
+  }
+});

@@ -4976,8 +4976,9 @@ export async function runV2Cli(argv: string[], io: CliIo = defaultIo): Promise<n
         const health = await withClient(ctx, client => client.request<HealthResult>("health"));
         const security = health.localSecurity;
         const degraded = security?.peerCredentials.state === "peer_credentials_unavailable";
-        emit(ctx, [confirm(degraded ? "warn" : "ok", "local RPC peer credentials:", security ? `${security.peerCredentials.state} (${security.peerCredentials.target}; ${security.peerCredentials.artifactPath})` : "not reported by this daemon")], {localSecurity: security ?? null}, false);
-        return degraded ? 1 : 0;
+        const paneInputUnknown = health.paneInputUnknown ?? 0;
+        emit(ctx, [confirm(degraded ? "warn" : "ok", "local RPC peer credentials:", security ? `${security.peerCredentials.state} (${security.peerCredentials.target}; ${security.peerCredentials.artifactPath})` : "not reported by this daemon"), confirm(paneInputUnknown ? "warn" : "ok", "pane_input_unknown:", String(paneInputUnknown))], {localSecurity: security ?? null, paneInputUnknown}, false);
+        return degraded || paneInputUnknown ? 1 : 0;
       }
       case "deploy-info":
         return await cmdDeployInfo(ctx);

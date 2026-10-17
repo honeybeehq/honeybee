@@ -80,6 +80,7 @@ export interface DeliverOutcome {
    * body — the daemon may route it for paste delivery later).
    */
   detail?: string;
+  attemptPhase?: "before_enter_cleared" | "before_enter_unknown" | "enter_attempted";
 }
 
 /**
@@ -119,6 +120,7 @@ export interface RuntimeDriver {
    * is the durable truth and the daemon retries against it.
    */
   deliver(beeId: string, generation: number, messageId: number, body: string, options?: { multilineWaitExpired?: boolean; singleAttempt?: boolean }): DeliverOutcome;
+  deliveryPane?(beeId: string, generation: number): {socketPath: string; paneId: string; serverIdentity: string} | null;
   deliveryReceipt?(beeId: string, generation: number, messageId: number, body: string): "accepted" | "unknown";
 
   /**

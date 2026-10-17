@@ -16,6 +16,9 @@ export interface DeliveryFallback {
   generation: number | null;
   detail: string | null;
   senderNoticeMessageId: number | null;
+  attempts?: number;
+  attemptPhase?: "injecting" | "before_enter_cleared" | "before_enter_unknown" | "enter_attempted";
+  paneInput?: {code: "pane_input_unknown"; since: number; reason: string; socketPath: string; paneId: string; serverIdentity: string; generation: number; clearedAt?: number};
 }
 export function readDeliveryFallback(value: unknown): DeliveryFallback | undefined {
   if (value === undefined) return undefined;
@@ -31,10 +34,16 @@ export function readDeliveryFallback(value: unknown): DeliveryFallback | undefin
     && (row.bytes === null || Number.isSafeInteger(row.bytes) && row.bytes >= 0)
     && (row.generation === null || Number.isSafeInteger(row.generation) && row.generation > 0)
     && (row.detail === null || typeof row.detail === "string")
+    && (row.attempts === undefined || Number.isSafeInteger(row.attempts) && row.attempts >= 0)
+    && (row.attemptPhase === undefined || ["injecting", "before_enter_cleared", "before_enter_unknown", "enter_attempted"].includes(row.attemptPhase))
+    && (row.paneInput === undefined || row.paneInput && row.paneInput.code === "pane_input_unknown" && Number.isFinite(row.paneInput.since)
+      && typeof row.paneInput.reason === "string" && typeof row.paneInput.socketPath === "string" && typeof row.paneInput.paneId === "string"
+      && typeof row.paneInput.serverIdentity === "string" && Number.isSafeInteger(row.paneInput.generation)
+      && (row.paneInput.clearedAt === undefined || Number.isFinite(row.paneInput.clearedAt)))
     && (row.senderNoticeMessageId === null || Number.isSafeInteger(row.senderNoticeMessageId) && row.senderNoticeMessageId > 0)
     && (!["ready", "in_flight", "delivered"].includes(row.state) || row.path !== null && row.pointer !== null && row.digest !== null && row.bytes !== null)
     && (row.state !== "in_flight" || row.generation !== null)) return row;
-  return { code: "delivery_file_fallback", state: "unknown", id: "", ownerStoreId: "", root: "", worktrees: [], path: null, pointer: null, digest: null, bytes: null, generation: null, detail: "delivery_fallback_state_unknown", senderNoticeMessageId: null };
+  return { code: "delivery_file_fallback", state: "unknown", id: "", ownerStoreId: "", root: "", worktrees: [], path: null, pointer: null, digest: null, bytes: null, generation: null, detail: row?.detail === "delivery_hold_state_unknown" ? row.detail : "delivery_fallback_state_unknown", senderNoticeMessageId: null };
 }
 export interface DeliveryHoldReceipt {
   code: "delivery_unsupported_multiline";
@@ -127,5 +136,5 @@ export function readMultilineDelivery(json: string, messageId: number, beeId: st
           delivered: false, reason: "multiline_type_mode", channel: row.receipt.channel, senderNoticeMessageId: row.receipt.senderNoticeMessageId },
       };
   } catch {}
-  return { messageId, beeId, heldAt: heldAt ?? 0, heldSince, receipt: null, stage: heldSince === null ? "expired" : "held", attempts: 0, unsupportedMs: 0, lastAttemptAt: 0, lastUnsupported: false, detail: "delivery_hold_state_unknown", notice: null };
+  return { messageId, beeId, heldAt: heldAt ?? 0, heldSince, receipt: null, stage: heldSince === null ? "expired" : "held", attempts: 0, unsupportedMs: 0, lastAttemptAt: 0, lastUnsupported: false, detail: "delivery_hold_state_unknown", notice: null, fallback: { ...readDeliveryFallback(null)!, detail: "delivery_hold_state_unknown" } };
 }

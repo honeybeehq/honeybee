@@ -5696,6 +5696,7 @@ export class HiveDaemon {
       localSecurity: this.rpc?.localSecurity,
       lastBoot: this.lastBoot,
       i1Violations: this.telemetry?.i1Count() ?? 0,
+      paneInputUnknown: store.multilinePaneQuarantines().length,
       bees: store.countBeesByLifecycle(),
       naming: this.naming.disabledReason
         ? { state: "disabled", reason: this.naming.disabledReason }

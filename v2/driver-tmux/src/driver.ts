@@ -337,6 +337,27 @@ export class TmuxDriver implements RuntimeDriver {
     this.events.push({ beeId, generation, kind: "turn_ended" });
   }
 
+  deliveryPane(beeId: string, generation: number): {socketPath: string; paneId: string; serverIdentity: string} | null {
+    const p = this.procs.get(beeId);
+    if (!p || p.generation !== generation || p.exited) return null;
+    try {const socket = statSync(this.server.socketPath); return {socketPath: this.server.socketPath, paneId: p.paneId, serverIdentity: `${socket.dev}:${socket.ino}:${socket.ctimeMs}:${p.pid}:${p.pidStartedAt}`};} catch {return null;}
+  }
+
+  private clearPointerInput(p: TmuxRuntime): DeliverOutcome {
+    const cleared = this.server.try(["send-keys", "-t", p.paneId, "C-u"]);
+    if (cleared.status === 0) for (let attempt = 0; attempt < 5; attempt++) {
+      sleepSync(ECHO_VERIFY_POLL_MS);
+      const cursor = this.server.try(["display-message", "-p", "-t", p.paneId, "#{cursor_x}:#{cursor_y}"]);
+      const match = cursor.status === 0 ? /^0:(\d+)$/.exec(cursor.stdout.trim()) : null;
+      if (!match) continue;
+      const line = this.server.try(["capture-pane", "-p", "-t", p.paneId, "-S", match[1]!, "-E", match[1]!]);
+      if (line.status !== 0 || line.stdout.trim() !== "") continue;
+      const unset = this.server.try(["set-option", "-p", "-u", "-t", p.paneId, "@honeybee_input_unknown"]);
+      if (unset.status === 0) return {accepted: false, reason: "not_ready", detail: "delivery_not_submitted_input_cleared", attemptPhase: "before_enter_cleared"};
+    }
+    return {accepted: false, reason: "not_ready", detail: "pane_input_unknown", attemptPhase: "before_enter_unknown"};
+  }
+
   deliveryReceipt(beeId: string, generation: number, messageId: number, body: string): "accepted" | "unknown" {
     const receipt = this.pointerReceipts.get(messageId);
     return receipt?.beeId === beeId && receipt.generation === generation && receipt.digest === createHash("sha256").update(body).digest("hex") ? "accepted" : "unknown";
@@ -346,6 +367,9 @@ export class TmuxDriver implements RuntimeDriver {
     const p = this.procs.get(beeId);
     if (!p || p.generation !== generation || p.exited) return { accepted: false, reason: "no_process", ...(options?.singleAttempt ? { detail: "delivery_not_attempted" } : {}) };
     if (p.stopCause != null) return { accepted: false, reason: "not_ready", ...(options?.singleAttempt ? { detail: "delivery_not_attempted" } : {}) };
+    const quarantine = this.server.try(["show-options", "-p", "-q", "-v", "-t", p.paneId, "@honeybee_input_unknown"]);
+    if (quarantine.status !== 0 || quarantine.stdout.trim() !== "") return {accepted: false, reason: "not_ready", detail: "pane_input_unknown", attemptPhase: "before_enter_unknown"};
+    if (options?.singleAttempt && this.server.try(["set-option", "-p", "-t", p.paneId, "@honeybee_input_unknown", `${generation}:${messageId}`]).status !== 0) return {accepted: false, reason: "not_ready", detail: "delivery_not_attempted"};
     if (p.deliveryMode === "type" && body.includes("\n")) {
       // Typed delivery cannot carry newlines — each would submit mid-body.
       // Typed refusal reason: the daemon can route this body for paste
@@ -363,10 +387,11 @@ export class TmuxDriver implements RuntimeDriver {
       this.inject(p, body, p.deliveryMode, options?.multilineWaitExpired);
     } catch (error) {
       if (error instanceof MultilinePasteUnavailable) return { accepted: false, reason: "not_ready", detail: error.detail };
+      if (options?.singleAttempt) return this.clearPointerInput(p);
       return { accepted: false, reason: "no_process" };
     }
     let verified = tail == null ? true : this.verifyEcho(p, tail, before);
-    if (!verified && options?.singleAttempt) return { accepted: false, reason: "not_ready", detail: "delivery_pointer_unknown" };
+    if (!verified && options?.singleAttempt) return this.clearPointerInput(p);
     if (!verified && tail != null) {
       // One reinjection: clear the input line, re-send by TYPING (paced
       // literal chunks demonstrably land where paste doesn't), verify again.
@@ -404,8 +429,9 @@ export class TmuxDriver implements RuntimeDriver {
     try {
       this.server.run(["send-keys", "-t", p.paneId, "Enter"]);
     } catch {
-      return { accepted: false, reason: "no_process" };
+      return { accepted: false, reason: "no_process", ...(options?.singleAttempt ? {attemptPhase: "enter_attempted" as const, detail: "delivery_pointer_unknown"} : {}) };
     }
+    if (options?.singleAttempt) this.server.try(["set-option", "-p", "-u", "-t", p.paneId, "@honeybee_input_unknown"]);
     // Echo-verify proved the INJECTION; the observer still proves the TURN.
     // The mailbox record is durable truth; an unconfirmed turn within grace
     // surfaces as a visible note.

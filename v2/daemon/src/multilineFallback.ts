@@ -38,6 +38,18 @@ export class MultilineFallback {
     return ["preparing", "ready", "in_flight"].includes(fallback.state);
   }
 
+  reconcile(message: MessageRow, source: TurnTriggerSource): boolean {
+    if (this.store.inTransaction || message.deliveredAt !== null) return false;
+    const fallback = this.store.multilineDelivery(message.id)?.fallback;
+    if (!fallback || !["in_flight", "unknown"].includes(fallback.state)) return false;
+    if (this.receipt(message.beeId, fallback, message.id) === "accepted") return this.complete(message, fallback, source);
+    const runtime = this.store.currentRuntime(message.beeId);
+    if (fallback.state === "in_flight" && (!runtime || runtime.generation !== fallback.generation || !["booting", "running", "idle"].includes(runtime.state))) {
+      this.store.transitionMultilineFallback(message.id, "in_flight", "unknown", { detail: "delivery_pointer_outcome_unknown" });
+    }
+    return false;
+  }
+
   deliver(message: MessageRow, text: string, generation: number, peer: boolean, questionId: string | null, source: TurnTriggerSource): { handled: boolean; accepted: boolean; generation?: number } {
     const hold = this.store.multilineDelivery(message.id);
     if (!hold || !hold.fallback && !["held", "expired"].includes(hold.stage)) return { handled: false, accepted: false };
@@ -57,11 +69,7 @@ export class MultilineFallback {
     }
     if (!fallback) return { handled: true, accepted: false };
     if (fallback.state === "in_flight" || fallback.state === "unknown") {
-      if (this.receipt(message.beeId, fallback, message.id) === "accepted") {
-        return { handled: true, accepted: this.complete(message, fallback, source), generation: fallback.generation! };
-      }
-      if (fallback.state === "in_flight") this.store.transitionMultilineFallback(message.id, "in_flight", "unknown", { detail: "delivery_pointer_outcome_unknown" });
-      return { handled: true, accepted: false };
+      return { handled: true, accepted: this.reconcile(message, source), ...(fallback.generation === null ? {} : { generation: fallback.generation }) };
     }
     if (fallback.state !== "preparing" && fallback.state !== "ready") return { handled: true, accepted: false };
     try {
@@ -78,13 +86,19 @@ export class MultilineFallback {
       return { handled: true, accepted: false };
     }
     if (!fallback.path) return { handled: true, accepted: false };
-    fallback = this.store.transitionMultilineFallback(message.id, "ready", "in_flight", { generation })!;
+    const pane = this.driver.deliveryPane?.(message.beeId, generation);
+    const paneInput = pane ? {code: "pane_input_unknown" as const, ...pane, generation, since: Date.now(), reason: "single_attempt_injection_in_progress"} : undefined;
+    fallback = this.store.transitionMultilineFallback(message.id, "ready", "in_flight", { generation, attempts: (fallback.attempts ?? 0) + 1, attemptPhase: "injecting", ...(paneInput ? {paneInput} : {}) })!;
     try {
       const outcome = this.driver.deliver(message.beeId, generation, message.id, fallback.pointer!, { singleAttempt: true });
       if (outcome.accepted) {
         return { handled: true, accepted: this.complete(message, fallback, source), generation: fallback.generation! };
       }
-      this.store.transitionMultilineFallback(message.id, "in_flight", outcome.detail === "delivery_not_attempted" ? "ready" : "unknown", { detail: outcome.detail ?? "delivery_pointer_outcome_unknown" });
+      const cleared = outcome.attemptPhase === "before_enter_cleared" || outcome.detail === "delivery_not_attempted";
+      this.store.transitionMultilineFallback(message.id, "in_flight", cleared ? "ready" : "unknown", {
+        detail: outcome.detail ?? "delivery_pointer_outcome_unknown", ...(outcome.attemptPhase ? {attemptPhase: outcome.attemptPhase} : {}),
+        ...(paneInput ? {paneInput: {...paneInput, reason: outcome.detail ?? "delivery_pointer_outcome_unknown", ...(cleared || outcome.attemptPhase === "enter_attempted" && outcome.accepted ? {clearedAt: Date.now()} : {})}} : {}),
+      });
     } catch {
       this.store.transitionMultilineFallback(message.id, "in_flight", "unknown", { detail: "delivery_pointer_outcome_unknown" });
     }

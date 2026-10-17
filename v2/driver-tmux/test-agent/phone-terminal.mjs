@@ -29,6 +29,7 @@ process.stdin.on("data", chunk => {
       record({ submittedBody: body }); body = "";
       process.stdout.write("\r\nreceived\r\n");
     } else if (char === "\u0015" && !pasting) {
+      if (process.env.PHONE_IGNORE_CLEAR === "1") continue;
       body = ""; process.stdout.write("\r\x1b[2K");
     } else {
       body += char; process.stdout.write(char === "\n" ? "\r\n" : char);

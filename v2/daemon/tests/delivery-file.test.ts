@@ -174,4 +174,5 @@ for(const depth of [0,1,2])for(const entry of ["file","directory"])test(`metadat
  else mkdirSync(join(ancestors[depth]!,".git"),{mode:0o000});
  assert.throws(()=>f.files.publish(root,owner,bee,f.id,"content",[]),code("delivery_file_inside_worktree"));
  assert.equal(existsSync(join(root,"delivery-content")),false);
+ if(entry==="directory")chmodSync(join(ancestors[depth]!,".git"),0o700);
 });
