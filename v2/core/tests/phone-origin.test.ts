@@ -196,3 +196,20 @@ test("phone projections survive malformed legacy audit bodies without reparsing 
     assert.deepEqual(store.mailHistory().messages[0]?.phoneOrigin, message.phoneInput!.envelope);
   } finally { store.close(); h.cleanup(); }
 });
+
+test("malformed legacy audit rows reopen as origin unknown with intact send-time history", () => {
+  const h = harness(); let store = h.open();
+  try {
+    const { bee } = makeBee(store);
+    const message = store.send(bee.id, "legacy projected body").message;
+    store.close();
+    const db = new DatabaseSync(h.path);
+    db.prepare("UPDATE audit SET payload = 'not-json' WHERE kind IN ('mail.enqueued', 'bee.created')").run();
+    db.prepare("DELETE FROM meta WHERE key IN ('phone_inputs_seq', 'mail_history_projection_seq')").run();
+    db.close();
+    store = h.open();
+    assert.equal(store.mailHistory().messages[0]?.body, message.body);
+    assert.equal(store.mailHistory().messages[0]?.phoneOrigin, undefined);
+    assert.equal(store.getMessage(message.id)?.phoneInput, undefined);
+  } finally { store.close(); h.cleanup(); }
+});

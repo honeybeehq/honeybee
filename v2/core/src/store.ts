@@ -2080,26 +2080,6 @@ export class CoreStore {
     }
     this.db.exec(PHONE_PROVENANCE_SQL);
     this.backfillMailHistoryEnqueues();
-    const phoneCursor = Number((this.stmt("SELECT value FROM meta WHERE key = 'phone_inputs_seq'").get() as Row | undefined)?.value ?? 0);
-    let phoneSeq = phoneCursor;
-    for (;;) {
-      const rows = this.stmt("SELECT seq, payload FROM audit WHERE kind IN ('mail.enqueued', 'bee.created') AND seq > ? ORDER BY seq LIMIT 250").all(phoneSeq) as Row[];
-      if (!rows.length) break;
-      for (const row of rows) {
-        phoneSeq = Number(row.seq);
-        let payload: { message?: MessageRow; bee?: BeeRow };
-        try {
-          const parsed: unknown = JSON.parse(String(row.payload));
-          if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) continue;
-          payload = parsed as typeof payload;
-        } catch {
-          continue;
-        }
-        if (payload.bee?.phoneOperationOrigin && this.getBee(payload.bee.id)) this.stmt("INSERT INTO phone_spawn_origins(bee_id, origin_json) VALUES(?, ?) ON CONFLICT(bee_id) DO NOTHING").run(payload.bee.id, JSON.stringify(payload.bee.phoneOperationOrigin));
-        if (payload.message?.phoneInput && this.stmt("SELECT 1 FROM mail_history_enqueues WHERE message_id = ?").get(payload.message.id)) this.stmt("INSERT INTO phone_inputs(message_id, admission_id, input_json) VALUES(?, ?, ?) ON CONFLICT(message_id) DO NOTHING").run(payload.message.id, payload.message.phoneInput.envelope.admissionId, JSON.stringify(payload.message.phoneInput));
-      }
-    }
-    this.stmt("INSERT INTO meta(key,value) VALUES('phone_inputs_seq',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(String(phoneSeq));
     if (stored < 40) this.redactRpcIdempotencyEnv();
     this.db
       .prepare(
@@ -2269,7 +2249,7 @@ export class CoreStore {
            json_extract(a.payload, '$.message.enqueuedAt') AS enqueued_at
          FROM audit a
          LEFT JOIN mail_history_enqueues h ON h.seq = a.seq
-         WHERE a.kind = 'mail.enqueued' AND a.seq > ? AND a.seq <= ? AND h.seq IS NULL
+         WHERE a.kind = 'mail.enqueued' AND a.seq > ? AND a.seq <= ? AND h.seq IS NULL AND json_valid(a.payload)
          ORDER BY a.seq`,
       ).all(
         MAIL_HISTORY_SENDER_PREVIEW_BYTES + 3,
@@ -2295,7 +2275,7 @@ export class CoreStore {
                json_extract(result, '$.beeId') AS bee_id,
                json_extract(result, '$.messageId') AS message_id
              FROM rpc_idempotency
-             WHERE verb = 'spawn' AND json_extract(result, '$.messageId') IS NOT NULL`,
+             WHERE verb = 'spawn' AND json_valid(result) AND json_extract(result, '$.messageId') IS NOT NULL`,
           ).all() as Row[];
           legacySpawnMessages = new Set(
             facts.map((fact) => JSON.stringify([String(fact.bee_id), Number(fact.message_id)])),
