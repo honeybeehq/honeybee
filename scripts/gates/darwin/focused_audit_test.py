@@ -1,10 +1,13 @@
 import hashlib
 import json
+import os
 from pathlib import Path
 import tempfile
 import unittest
 
 import focused_audit
+import focused_flow
+import focused_trace
 
 
 def entry_pins(files, texts):
@@ -75,7 +78,23 @@ class AuditTests(unittest.TestCase):
             data = {'version': 1, 'files': files, 'spawns': spawns, 'packages': [], 'nativeEdges': native_edges('spawn(process.execPath, []);'), 'capabilityReferences': [], 'entryPins': entry_pins(files, {focused_audit.FILES[1]: 'spawn(process.execPath, []);'})}
             data.update(gatePins=gate_pins(workspace), nodeEntries=node_entries(workspace, files))
             audit.write_text(json.dumps(data))
-            self.assertEqual(len(focused_audit.validate(workspace, 'audit.json')['files']), 5)
+            validated = focused_audit.validate(workspace, 'audit.json')
+            self.assertEqual(len(validated['files']), 5)
+            for key in ('version', 'files', 'spawns', 'packages', 'capabilityReferences', 'nativeEdges', 'entryPins', 'gatePins', 'nodeEntries'):
+                self.assertEqual(validated[key], data[key])
+            focused_flow.validate_native_edges(validated['nativeEdges'])
+            focused_audit.validate_gate_pins(workspace, validated['gatePins'])
+            entries = {str(workspace / row['path']): row['role'] for row in validated['nodeEntries']}
+            trace = focused_trace.Trace(workspace, workspace, '/pinned/node', validated, {})
+            try:
+                self.assertEqual({path: row['role'] for path, row in trace.policy['entries'].items()}, entries)
+            finally:
+                trace.parent_close()
+                os.close(trace.read_fd)
+            audit.write_text(json.dumps(dict(data, unvalidated='must refuse')))
+            with self.assertRaisesRegex(ValueError, 'audit schema mismatch'):
+                focused_audit.validate(workspace, 'audit.json')
+            audit.write_text(json.dumps(data))
             correct_gate = dict(data['gatePins'])
             data['gatePins']['preloaderSha256'] = '0' * 64
             audit.write_text(json.dumps(data))

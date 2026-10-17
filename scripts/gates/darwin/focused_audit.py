@@ -151,7 +151,7 @@ def validate(workspace, audit_path):
         citation(row, files, closure)
         if row['kind'] != 'native-artifact' or row['sha256Source'] != 'controller-manifest' or row['artifact'] not in NATIVE_ARTIFACTS:
             raise ValueError('unapproved native artifact edge')
-    return {'schemaVersion': 1, 'auditSha256': hashlib.sha256(audit_file.read_bytes()).hexdigest(), 'files': data['files'], 'spawns': data['spawns'], 'packages': data['packages'], 'capabilityReferences': data['capabilityReferences'], 'nativeEdges': data['nativeEdges'], 'entryPins': data['entryPins']}
+    return {**data, 'schemaVersion': 1, 'auditSha256': hashlib.sha256(audit_file.read_bytes()).hexdigest()}
 
 
 def citation(row, files, closure):
