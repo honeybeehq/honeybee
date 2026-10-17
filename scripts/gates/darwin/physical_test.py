@@ -14,19 +14,14 @@ def main():
     root = Path(os.environ['GATE_ROOT'])
     validate(root, os.environ, Path(os.environ['SCG_REAL_HOME']))
     rows = []
-    bind_diagnostics = []
-    for family, address, port in ((socket.AF_INET, '0.0.0.0', 49197), (socket.AF_INET6, '::', 0), (socket.AF_INET, '127.0.0.1', 0)):
-        row = {'family': int(family), 'address': address, 'requestedPort': port}
-        try:
-            with socket.socket(family, socket.SOCK_STREAM) as probe:
-                probe.bind((address, port))
-                row.update({'result': 'allowed', 'boundAddress': probe.getsockname()})
-        except OSError as error:
-            row.update({'result': 'REFUSED' if error.errno in (errno.EPERM, errno.EACCES) else 'INCONCLUSIVE', 'errno': error.errno, 'error': str(error)})
-        bind_diagnostics.append(row)
-        print('BIND_DIAGNOSTIC=' + json.dumps(row), flush=True)
-    write_json(root / 'bind-diagnostics.json', bind_diagnostics, root)
-    assert bind_diagnostics[-1]['result'] == 'allowed', 'positive loopback bind failed'
+    detections = json.loads((root / 'listener-self-tests.json').read_text())
+    assert {row['proto'] for row in detections} == {'TCP', 'UDP'}
+    assert all(row['detected'] and row['expectedClassification'] == 'FAIL' and row['childExit'] is not None for row in detections)
+    rows.append({'row': 'wildcard listeners', 'result': 'expected FAIL detected and fenced killed', 'evidence': 'listener-self-tests.json'})
+    with socket.socket() as positive:
+        positive.bind(('127.0.0.1', 0))
+        positive.listen(1)
+        rows.append({'row': 'loopback listener', 'result': 'allowed', 'endpoint': positive.getsockname()})
     with open('/dev/null', 'wb') as sink:
         sink.write(b'gate pseudo-device probe')
     rows.append({'row': 'literal /dev/null write-data', 'result': 'allowed kernel sink'})
@@ -120,14 +115,6 @@ def main():
             write_json(root / 'leftover-child.json', leftover, root)
             print('GATE_NONZERO_REASON=' + json.dumps({'leftoverChild': leftover}), flush=True)
         write_json(root / 'physical-child-cleanup.json', {'attempts': cleanup, 'childPoll': child.poll(), 'leftoverChild': leftover}, root)
-    with socket.socket() as sock:
-        try:
-            sock.bind(('0.0.0.0', 0))
-        except OSError as error:
-            assert error.errno in (errno.EPERM, errno.EACCES), error
-            rows.append({'row': 'non-loopback bind', 'result': 'REFUSED', 'errno': error.errno})
-        else:
-            raise AssertionError('non-loopback bind unexpectedly allowed')
     with socket.socket() as sock:
         sock.settimeout(2)
         try:

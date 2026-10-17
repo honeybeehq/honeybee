@@ -4,6 +4,7 @@ import hashlib
 import io
 import json
 import os
+import re
 import subprocess
 from pathlib import Path
 import sys
@@ -14,54 +15,67 @@ import unittest
 from unittest.mock import patch
 import node_bootstrap
 import guard
-import inbound_probe
-from guard import without_ip_bind
+import listener_static
 
 from guard import DIRS, PROTECTED, Refusal, absolute_compiler_jobs, close_socket_controls, compiler_metadata_literals, compiler_profile, compiler_tools, environment, launchagents, make_socket_controls, profile, receipt_hashes, run, seed_cache, select_node, validate, write_json
 
 
 class GuardTests(unittest.TestCase):
-    def test_inbound_probe_timeout_closes_and_records(self):
-        from unittest.mock import MagicMock
-        listener = MagicMock()
-        listener.__enter__.return_value = listener
-        listener.getsockname.return_value = ('0.0.0.0', 49198)
-        listener.accept.side_effect = inbound_probe.socket.timeout()
-        with patch.dict(os.environ, {'GATE_ROOT': str(self.base)}), patch('inbound_probe.socket.socket', return_value=listener), patch('inbound_probe.secrets.token_hex', return_value='test-nonce'), patch('sys.stdout', io.StringIO()) as output:
-            inbound_probe.main()
-        listener.bind.assert_called_once_with(('0.0.0.0', 0))
-        listener.settimeout.assert_called_once_with(30)
-        listener.__exit__.assert_called_once()
-        row = json.loads((self.base / 'inbound-probe.json').read_text())
-        self.assertEqual(row['result'], 'timeout')
-        self.assertEqual(row['nonce'], 'test-nonce')
-        self.assertIsNone(row['peer'])
-        self.assertTrue(row['listenerClosed'])
-        self.assertIn('INBOUND_PROBE_PORT=49198\n', output.getvalue())
+    def test_gate_shell_diagnostics_never_dump_environment_values(self):
+        def unsafe(text):
+            if 'HIVE_/APIARY_=[' in text or re.search(r'\b(?:printenv|export\s+-p|declare\s+-x)\b', text):
+                return True
+            return any(not re.match(r'\s*cut\s+-d=\s+-f1\s*\|', tail) for tail in re.findall(r'\benv\s*\|([^\n]*)', text))
 
-    def test_inbound_probe_one_accept_sends_nonce(self):
-        from unittest.mock import MagicMock
-        listener = MagicMock()
-        listener.__enter__.return_value = listener
-        listener.getsockname.return_value = ('0.0.0.0', 49198)
-        accepted = MagicMock()
-        listener.accept.return_value = (accepted, ('192.0.2.1', 12345))
-        with patch.dict(os.environ, {'GATE_ROOT': str(self.base)}), patch('inbound_probe.socket.socket', return_value=listener), patch('inbound_probe.secrets.token_hex', return_value='test-nonce'), patch('sys.stdout', io.StringIO()):
-            inbound_probe.main()
-        listener.accept.assert_called_once()
-        accepted.sendall.assert_called_once_with(b'test-nonce\n')
-        row = json.loads((self.base / 'inbound-probe.json').read_text())
-        self.assertEqual(row['result'], 'accepted')
-        self.assertEqual(row['peer'], ['192.0.2.1', 12345])
+        self.assertTrue(unsafe("env | grep -E '^(HIVE_|APIARY_)'"))
+        self.assertFalse(unsafe("env | cut -d= -f1 | grep -E '^(HIVE_|APIARY_)'"))
+        for directory in (Path(__file__).parent, Path(__file__).parent.parent / 'linux'):
+            for path in directory.glob('*.sh'):
+                with self.subTest(path=path.name):
+                    self.assertFalse(unsafe(path.read_text()))
 
-    def test_no_ip_bind_variant_changes_only_one_rule(self):
-        policy = profile(self.root, self.home, self.base)
-        rule = '(allow network-bind (local ip "localhost:*"))'
-        self.assertEqual(without_ip_bind(policy), policy.replace(rule, '', 1))
-        self.assertEqual(len(policy) - len(without_ip_bind(policy)), len(rule))
-        for invalid in ('', policy + rule):
-            with self.assertRaises(AssertionError):
-                without_ip_bind(invalid)
+    def test_static_listener_negative_and_loopback_rows(self):
+        for source in ('server.listen(0)', 'server.listen(0, () => {})', 'server.listen({port: 0})', 'server.listen({port: 0, host: undefined})', "server.listen(0, '0.0.0.0')", "server.listen(0, '::')", "socket.bind(0, '0.0.0.0')", 'socket.bind(0)'):
+            self.assertTrue(listener_static.violations(source), source)
+        for source in ("server.listen(0, '127.0.0.1')", "server.listen(0, '::1')", 'server.listen(socketPath)'):
+            self.assertFalse(listener_static.violations(source), source)
+        rows = listener_static.scan(Path(__file__).resolve().parents[3])
+        write_json(self.base / 'static-census.json', rows, self.base)
+        print('STATIC_LISTENER_CENSUS=' + json.dumps(rows))
+        self.assertEqual(rows, [])
+
+    def test_static_allowlist_changed_fingerprint_fails(self):
+        folder = self.base / 'tests'
+        folder.mkdir()
+        source = folder / 'unix.test.ts'
+        source.write_text('const server = new RpcServer({socketPath});\nserver.listen();\n')
+        row = listener_static.scan(self.base, allowlist=[])[0]
+        approved = [{'file': row['file'], 'sha256': row['sha256'], 'reason': 'test RpcServer declaration line1'}]
+        self.assertEqual(listener_static.scan(self.base, approved), [])
+        source.write_text('const server = createServer();\nserver.listen();\n')
+        changed = listener_static.scan(self.base, approved)
+        self.assertEqual(len(changed), 2)
+        self.assertTrue(any('fingerprint missing or changed' in item['reason'] for item in changed))
+
+    def test_receipt_includes_listener_limit(self):
+        target = self.base / 'receipt.json'
+        write_json(target, {'exit': 0}, self.base)
+        self.assertEqual(json.loads(target.read_text())['listenerLimit'], guard.LISTENER_LIMIT)
+
+    def test_listener_sampler_accepts_only_loopback(self):
+        birth = ['100', '99', '10', '20']
+        value = SimpleNamespace(returncode=0, stdout='3 TCP 127.2.3.4 1234\n4 UDP ::1 1235\n5 TCP 0.0.0.0 1236\n6 UDP :: 1237\n', stderr='')
+        with patch('guard.subprocess.run', return_value=value) as called:
+            result = guard.sample_listeners(Path('/root/scope'), birth)
+        self.assertEqual(called.call_args.args[0], ['/root/scope', 'listeners', *birth])
+        self.assertEqual([row['loopback'] for row in result['listeners']], [True, True, False, False])
+        self.assertTrue(all(row['birth'] == birth and row['pid'] == 100 for row in result['listeners']))
+
+    def test_listener_sampler_unresolved_is_failure(self):
+        bad = SimpleNamespace(returncode=4, stdout='', stderr='denied')
+        for status_code in (0, 4):
+            with patch('guard.subprocess.run', side_effect=[bad, SimpleNamespace(returncode=status_code, stdout='same-birth-alive', stderr='')]):
+                self.assertIn('error', guard.sample_listeners(Path('/root/scope'), ['100', '99', '10', '20']))
 
     def test_signal_arguments_are_numeric_on_python39(self):
         class LegacySignal(IntEnum):
@@ -82,7 +96,7 @@ class GuardTests(unittest.TestCase):
                     value = eval(compile(expression, filename, 'eval'), {'sig': sig, 'signal': SimpleNamespace(SIGTERM=sig)})
                     self.assertEqual(value, str(int(sig)))
                 count += 1
-        self.assertEqual(count, 4)
+        self.assertEqual(count, 5)
 
     def test_profile_parentheses_balance_outside_strings(self):
         text = profile(Path('/private/var/tmp/g.test'), Path('/Users/example'), Path('/lane'))

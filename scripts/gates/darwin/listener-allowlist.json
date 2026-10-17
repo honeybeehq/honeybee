@@ -1,0 +1,106 @@
+{
+  "version": 1,
+  "normalization": "call line plus two surrounding lines each side; whitespace collapsed",
+  "entries": [
+    {
+      "file": "v2/cli/tests/send-target.test.ts",
+      "sha256": "f8e091f083647bdf05421bac079802d6daf5bcc79a7cead45204a712931aaacc",
+      "reason": "server declared as new RpcServer at v2/cli/tests/send-target.test.ts:26 with socketPath; RpcServer.listen binds opts.socketPath at v2/daemon/src/rpc.ts:225"
+    },
+    {
+      "file": "v2/cli/tests/socket-isolation.test.ts",
+      "sha256": "091c54fdafb70481a407f315f05447c07812d89a6613b3a68e35c0f2d0fce4c8",
+      "reason": "failing/server/second declared new RpcServer with socketPath at v2/cli/tests/socket-isolation.test.ts:129-131; listen(callback) is RpcServer hook, not net.Server"
+    },
+    {
+      "file": "v2/cli/tests/socket-isolation.test.ts",
+      "sha256": "1a4d8089a0d7f27b14094badf75b9bca1c9a52665757d4bfb069f77323c38beb",
+      "reason": "failing/server/second declared new RpcServer with socketPath at v2/cli/tests/socket-isolation.test.ts:129-131; listen(callback) is RpcServer hook, not net.Server"
+    },
+    {
+      "file": "v2/cli/tests/socket-isolation.test.ts",
+      "sha256": "549b073ddcf77b01aa583f32e55a07742742ae1496ddc49cb5e94fe300c0dbb4",
+      "reason": "failing/server/second declared new RpcServer with socketPath at v2/cli/tests/socket-isolation.test.ts:129-131; listen(callback) is RpcServer hook, not net.Server"
+    },
+    {
+      "file": "v2/daemon/src/daemon.ts",
+      "sha256": "cfa43f2f68fe967a84720684c5f4fe73d48134ce4a50ae906173c14ddee41dcc",
+      "reason": "receiver is this.rpc (not this.server), declared RpcServer|null at daemon.ts:701 and constructed at1030 with socketPath"
+    },
+    {
+      "file": "v2/daemon/src/rpc.ts",
+      "sha256": "c53f727c1c975b9f7aa0fe4ba4b158c22274d2d975eaf6d8b72926ba88148a42",
+      "reason": "this.server declared node net.Server at rpc.ts:196; call explicitly passes this.opts.socketPath at225, opts stored at206"
+    },
+    {
+      "file": "v2/daemon/tests/effect-resolve.test.ts",
+      "sha256": "347a046ba815ced97770fba09d840afb8a98933310f49b67820129c58ddfa455",
+      "reason": "server declared new RpcServer with socketPath at effect-resolve.test.ts:35"
+    },
+    {
+      "file": "v2/daemon/tests/execution-fence.test.ts",
+      "sha256": "595b79bcb2a9a507e590bec6a913818b1338a5eba1f1a08b2896fddedd046f7b",
+      "reason": "server declared new RpcServer with socketPath at execution-fence.test.ts:36"
+    },
+    {
+      "file": "v2/daemon/tests/local-rpc-security.test.ts",
+      "sha256": "6aa5cf448ce33eea35600e5c279d8807ad8d6ade7b72c7ecd8558a2565545231",
+      "reason": "server declared new RpcServer with socketPath at local-rpc-security.test.ts:21 or45 in separate test scopes"
+    },
+    {
+      "file": "v2/daemon/tests/local-rpc-security.test.ts",
+      "sha256": "4d3ae3c6f8f1ca69b9b3adece177f21a7b37a6e62bc1ff3c9835cc03b0fa7611",
+      "reason": "server declared new RpcServer with socketPath at local-rpc-security.test.ts:21 or45 in separate test scopes"
+    },
+    {
+      "file": "v2/daemon/tests/performance.test.ts",
+      "sha256": "7095d7aee20947dba4353c45b35292454ca960b86f0079ca1e8f16a68915e540",
+      "reason": "server declared new RpcServer with socketPath at performance.test.ts:233 or324 in separate test scopes"
+    },
+    {
+      "file": "v2/daemon/tests/performance.test.ts",
+      "sha256": "9627751af9f991b5aadef1dfd26722cd2875729ddb5f760a15772ce8698df05f",
+      "reason": "server declared new RpcServer with socketPath at performance.test.ts:233 or324 in separate test scopes"
+    },
+    {
+      "file": "v2/daemon/tests/question-withdraw-rpc.test.ts",
+      "sha256": "eca01a8e6e862715c54c6be064b068f4cf574c274a959d715647ce063411b8b1",
+      "reason": "server declared new RpcServer with socketPath at question-withdraw-rpc.test.ts:21"
+    },
+    {
+      "file": "v2/daemon/tests/update-owner.test.ts",
+      "sha256": "cc11cfeaae100eab70cd271c3ffe0a20df319b7490b0912ebd3da59296338949",
+      "reason": "server declared new RpcServer with socketPath at update-owner.test.ts:53-54"
+    },
+    {
+      "file": "tests/apiary-swap.lab.ts",
+      "sha256": "6ad1e944054fe0aa9e2aed7b1213c4c4f95575b5cb68533775ea414398d48628",
+      "reason": "server declared through newServer()=>new api.RpcServer({socketPath:socket}) at apiary-swap.lab.ts:99-100; generated node:net server at205 passes serialized Unix socket path"
+    },
+    {
+      "file": "tests/apiary-swap.lab.ts",
+      "sha256": "5ca7a953e587db129c99bf55517d4b939446065983d6a5c2dd794ec2ecd8a0b5",
+      "reason": "server declared through newServer()=>new api.RpcServer({socketPath:socket}) at apiary-swap.lab.ts:99-100; generated node:net server at205 passes serialized Unix socket path"
+    },
+    {
+      "file": "tests/apiary-swap.lab.ts",
+      "sha256": "3b3bada813bcd5689a5bbc87bdef929009cb679f29722a3149713030f03aeac0",
+      "reason": "server declared through newServer()=>new api.RpcServer({socketPath:socket}) at apiary-swap.lab.ts:99-100; generated node:net server at205 passes serialized Unix socket path"
+    },
+    {
+      "file": "tests/deploy-runtime.test.ts",
+      "sha256": "f276952588f4023e4824f482bbf118ef1dfa1f87bdc55c414a046848d9327e4a",
+      "reason": "server declared node:net createServer at deploy-runtime.test.ts:218; call232 explicitly passes join(root,..,v2,hived.sock) Unix path"
+    },
+    {
+      "file": "tests/effect-resolve.lab.ts",
+      "sha256": "c7318d0c43861f4b353f2645aed4be9f0ef7d883f08358d9514f3a4deaac6429",
+      "reason": "generated server declared new RpcServer with socketPath on effect-resolve.lab.ts:34"
+    },
+    {
+      "file": "tests/guard-live-rpc.lab.ts",
+      "sha256": "3802464551bd46afa5460c43ed84d621010411253756b960d7d62ae5f1387d3c",
+      "reason": "server declared new api.RpcServer with socketPath at guard-live-rpc.lab.ts:43"
+    }
+  ]
+}

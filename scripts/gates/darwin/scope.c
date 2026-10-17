@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <arpa/inet.h>
 
 static int identity(int pid, struct proc_bsdinfo *b) {
   errno = 0;
@@ -16,6 +17,53 @@ static int identity(int pid, struct proc_bsdinfo *b) {
 }
 static void print_identity(int pid, struct proc_bsdinfo *b) {
   printf("%d %d %llu %llu\n", pid, b->pbi_ppid, b->pbi_start_tvsec, b->pbi_start_tvusec);
+}
+static int same_birth(int pid, unsigned long long sec, unsigned long long usec) {
+  struct proc_bsdinfo b;
+  if (!identity(pid, &b)) return errno == ESRCH ? 3 : 4;
+  if (b.pbi_start_tvsec != sec || b.pbi_start_tvusec != usec) return 4;
+  return b.pbi_status == 5 ? 3 : 0;
+}
+static int listeners(int pid, unsigned long long sec, unsigned long long usec) {
+  int rc = same_birth(pid, sec, usec);
+  if (rc) return rc;
+  int size = proc_pidinfo(pid, PROC_PIDLISTFDS, 0, NULL, 0);
+  if (size < 0 || size > 1048576) return 4;
+  int capacity = size + 4096;
+  struct proc_fdinfo *fds = calloc(1, capacity);
+  if (!fds) return 4;
+  int got = proc_pidinfo(pid, PROC_PIDLISTFDS, 0, fds, capacity);
+  if (got < 0 || got >= capacity || got % sizeof(*fds)) { free(fds); return 4; }
+  for (int i = 0; i < got / sizeof(*fds); i++) {
+    if (fds[i].proc_fdtype != PROX_FDTYPE_SOCKET) continue;
+    rc = same_birth(pid, sec, usec);
+    if (rc) { free(fds); return rc; }
+    struct socket_fdinfo info;
+    errno = 0;
+    if (proc_pidfdinfo(pid, fds[i].proc_fd, PROC_PIDFDSOCKETINFO, &info, sizeof(info)) != sizeof(info)) {
+      fprintf(stderr, "socket read fd=%d errno=%d\n", fds[i].proc_fd, errno);
+      free(fds); return 4;
+    }
+    rc = same_birth(pid, sec, usec);
+    if (rc) { free(fds); return rc; }
+    struct socket_info *s = &info.psi;
+    if (s->soi_family != AF_INET && s->soi_family != AF_INET6) continue;
+    const struct in_sockinfo *in = NULL;
+    const char *proto = NULL;
+    if (s->soi_protocol == IPPROTO_TCP && s->soi_kind == SOCKINFO_TCP && s->soi_proto.pri_tcp.tcpsi_state == TSI_S_LISTEN) {
+      proto = "TCP"; in = &s->soi_proto.pri_tcp.tcpsi_ini;
+    } else if (s->soi_protocol == IPPROTO_UDP && s->soi_kind == SOCKINFO_IN) {
+      proto = "UDP"; in = &s->soi_proto.pri_in;
+    }
+    if (!in || !in->insi_lport) continue;
+    char address[INET6_ADDRSTRLEN];
+    int family = (in->insi_vflag & INI_IPV4) ? AF_INET : AF_INET6;
+    const void *local = family == AF_INET ? (const void *)&in->insi_laddr.ina_46.i46a_addr4 : (const void *)&in->insi_laddr.ina_6;
+    if (!inet_ntop(family, local, address, sizeof(address))) { free(fds); return 4; }
+    printf("%d %s %s %u\n", fds[i].proc_fd, proto, address, ntohs((unsigned short)in->insi_lport));
+  }
+  free(fds);
+  return same_birth(pid, sec, usec);
 }
 static int scan(int pid, unsigned long long sec, unsigned long long usec, int depth) {
   struct proc_bsdinfo b;
@@ -58,6 +106,7 @@ int main(int argc, char **argv) {
   }
   if (argc < 6) return 2;
   unsigned long long sec = strtoull(argv[4], NULL, 10), usec = strtoull(argv[5], NULL, 10);
+  if (!strcmp(argv[1], "listeners")) return listeners(pid, sec, usec);
   if (!strcmp(argv[1], "scan")) return scan(pid, sec, usec, 0);
   if (!strcmp(argv[1], "status")) {
     if (!identity(pid, &b)) { int error = errno; puts(error == ESRCH ? "gone" : "unobserved-refused"); return error == ESRCH ? 3 : 4; }

@@ -1,6 +1,7 @@
 import argparse
 import fcntl
 import hashlib
+import ipaddress
 import json
 import os
 from pathlib import Path
@@ -15,6 +16,9 @@ import sys
 import tarfile
 import time
 import node_bootstrap
+import listener_static
+
+LISTENER_LIMIT = 'Seatbelt does not mediate IP bind/inbound on macOS 26 (probe 52e76fd3: remote tailnet connect accepted); mitigated by own-pid listener sampling (FAIL + fenced kill); exposure window up to one sample interval.'
 
 PROVIDERS = ('.claude', '.codex', '.grok', '.kimi', '.gemini', '.cursor', '.muse', '.config/opencode', '.config/muse', '.local/share/opencode')
 PROTECTED = ('.hive', '.config', '.ssh', '.gnupg', 'Library', '.apiary', '.local/share/apiary', '.local/share/apiary-satellite', '.local/share/apiary/satellite-updater', *PROVIDERS)
@@ -61,6 +65,8 @@ def write_json(path, value, root):
     path = Path(path)
     if not inside(path.resolve(), root.resolve()):
         raise Refusal('write outside run root')
+    if path == Path(root) / 'receipt.json' and isinstance(value, dict):
+        value = dict(value, listenerLimit=LISTENER_LIMIT)
     path.write_text(json.dumps(value, indent=2) + '\n')
 
 
@@ -143,12 +149,6 @@ def profile(root, home, lane):
         '(allow network-inbound (local unix-socket (subpath ' + quote(root / 't') + ')))',
         '(allow network-outbound (remote unix-socket (subpath ' + quote(root / 't') + ')))',
     ))
-
-
-def without_ip_bind(policy):
-    rule = '(allow network-bind (local ip "localhost:*"))'
-    assert policy.count(rule) == 1, 'expected exactly one IP bind rule'
-    return policy.replace(rule, '', 1)
 
 
 def socket_identity(path):
@@ -341,6 +341,76 @@ def scope_call(helper, command, *args):
     return [line.split() for line in value.stdout.splitlines()]
 
 
+def sample_listeners(helper, birth):
+    timestamp = time.time()
+    command = [str(helper), 'listeners', *birth]
+    value = subprocess.run(command, capture_output=True, text=True)
+    observation = {'timestamp': timestamp, 'birth': birth, 'pid': int(birth[0]), 'argv': command, 'exit': value.returncode, 'stderr': value.stderr, 'listeners': []}
+    if value.returncode:
+        status = subprocess.run([str(helper), 'status', *birth], capture_output=True, text=True)
+        observation['exitEvidence'] = {'exit': status.returncode, 'result': status.stdout.strip()}
+        if status.returncode != 3:
+            observation['error'] = 'listener observation unresolved'
+        return observation
+    for line in value.stdout.splitlines():
+        parts = line.split()
+        if len(parts) != 4 or parts[1] not in ('TCP', 'UDP'):
+            raise Refusal('malformed native listener record')
+        fd, proto, address, port = parts
+        ip = ipaddress.ip_address(address)
+        loopback = (ip.version == 4 and ip in ipaddress.ip_network('127.0.0.0/8')) or (ip.version == 6 and ip == ipaddress.ip_address('::1'))
+        observation['listeners'].append({'pid': int(birth[0]), 'birth': birth, 'proto': proto, 'localAddress': address, 'port': int(port), 'fd': int(fd), 'timestamp': timestamp, 'loopback': loopback})
+    return observation
+
+
+def listener_self_tests(root, workspace, prefix, helper, env):
+    results = []
+    for proto in ('TCP', 'UDP'):
+        read_fd, release_fd = os.pipe()
+        with (root / ('listener-fixture-' + proto + '.log')).open('wb') as output:
+            child = subprocess.Popen([sys.executable, '-B', str(workspace / 'scripts/gates/darwin/start_wait.py'), str(read_fd), *prefix, env['SCG_PYTHON_BIN'], '-B', str(workspace / 'scripts/gates/darwin/listener_fixture.py'), proto], pass_fds=(read_fd,), cwd=workspace, env=env, stdout=output, stderr=subprocess.STDOUT)
+            os.close(read_fd)
+            birth = None
+            samples = []
+            signals = []
+            detected = False
+            try:
+                birth = scope_call(helper, 'identity', child.pid)[0]
+                if int(birth[1]) != os.getpid():
+                    raise Refusal('listener fixture is not the controller own child')
+                os.write(release_fd, b'1')
+                deadline = time.monotonic() + 3
+                while child.poll() is None and time.monotonic() < deadline:
+                    sample = sample_listeners(helper, birth)
+                    samples.append(sample)
+                    if sample.get('error'):
+                        break
+                    if any(not row['loopback'] and row['proto'] == proto for row in sample['listeners']):
+                        detected = True
+                        break
+                    time.sleep(0.05)
+            finally:
+                os.close(release_fd)
+                if birth is not None:
+                    for sig in (signal.SIGTERM, signal.SIGKILL):
+                        attempt = subprocess.run([str(helper), 'signal', *birth, str(int(sig))], capture_output=True, text=True)
+                        signals.append({'signal': int(sig), 'exit': attempt.returncode, 'result': attempt.stdout.strip()})
+                        if attempt.returncode not in (0, 3):
+                            break
+                        try:
+                            child.wait(timeout=1)
+                            break
+                        except subprocess.TimeoutExpired:
+                            if attempt.returncode == 3:
+                                break
+            row = {'proto': proto, 'expectedClassification': 'FAIL', 'detected': detected, 'birth': birth, 'samples': samples, 'signals': signals, 'childExit': child.poll(), 'noRemoteConnect': True}
+            results.append(row)
+            write_json(root / 'listener-self-tests.json', results, root)
+            if not detected or child.poll() is None or not signals or signals[0]['exit'] != 0:
+                raise Refusal('expected wildcard listener detection or fenced kill failed: ' + proto)
+    return results
+
+
 def run(args):
     lane = Path.cwd().resolve()
     try:
@@ -389,17 +459,6 @@ def run(args):
     env['SCG_SCOPE_HELPER'] = str(root / 'scope')
     env['LAB_ROOT'] = str(root / 't/selftests')
     workspace = source_copy(lane, args.source, root, env)
-    if args.self_test and args.body != 'scripts/gates/darwin/inbound-probe-body.sh':
-        for name, probe_policy in (('real-profile', policy), ('no-ip-bind', without_ip_bind(policy))):
-            profile_path = root / (name + '-probe.sb')
-            profile_path.write_text(probe_policy)
-            command = ['/usr/bin/sandbox-exec', '-f', str(profile_path), env['SCG_PYTHON_BIN'], '-B', str(workspace / 'scripts/gates/darwin/bind_probe.py'), str(root), name]
-            probe = subprocess.run(command, cwd=workspace, env=env, capture_output=True, text=True)
-            diagnostic = {'selfTestOnly': True, 'profile': name, 'argv': command, 'exit': probe.returncode, 'stdout': probe.stdout[-16384:], 'stderr': probe.stderr[-4096:]}
-            write_json(root / (name + '-probe.json'), diagnostic, root)
-            print('CONTROLLER_BIND_PROFILE_DIAGNOSTIC=' + json.dumps(diagnostic), flush=True)
-            if probe.returncode:
-                raise Refusal('controller bind probe failed: ' + name)
     identity = root / 'scope'
     prefix = ['/usr/bin/sandbox-exec', '-p', policy]
     preflight = subprocess.run(['/usr/bin/sandbox-exec', '-f', str(root / 'workload.sb'), '/usr/bin/true'], cwd=workspace, env=env, capture_output=True)
@@ -438,6 +497,16 @@ def run(args):
         print('SCOPE_BUILD_DIAGNOSTIC_LAST_60_LINES', flush=True)
         print('\n'.join(diagnostic.splitlines()[-60:]), flush=True)
         raise Refusal('scope helper build failed; receipts retained at ' + str(root))
+    static_rows = listener_static.scan(workspace)
+    write_json(root / 'listener-static.json', {'violations': static_rows, 'scope': 'v2/** and tests/**'}, root)
+    if static_rows and not args.self_test:
+        raise Refusal('static listener check found wildcard or omitted/unresolved hosts')
+    if args.self_test:
+        negative = listener_static.violations('server.listen(0)')
+        write_json(root / 'listener-static-self-test.json', {'fixture': 'server.listen(0)', 'expectedClassification': 'FAIL', 'detected': bool(negative), 'violations': negative}, root)
+        if not negative:
+            raise Refusal('static no-host listener self-test failed')
+        listener_self_tests(root, workspace, prefix, identity, env)
     if args.self_test:
         seed_file = root / 'self-test-cache-seed.tar'
         with tarfile.open(seed_file, 'w') as archive:
@@ -455,7 +524,7 @@ def run(args):
     sentinel_home = root / 'sentinel-fixture' if args.self_test else real_home
     before = launchagents(sentinel_home)
     write_json(root / 'launchagents-before.json', before, root)
-    if args.self_test and args.body != 'scripts/gates/darwin/inbound-probe-body.sh':
+    if args.self_test:
         env.update(make_socket_controls(root))
     output = (root / 'workload.log').open('wb')
     read_fd, release_fd = os.pipe()
@@ -480,22 +549,22 @@ def run(args):
     scans = []
     tracked[tuple(birth[0])] = birth[0]
     scope_error = None
-    probe_port_printed = False
+    listener_samples = []
     try:
         while proc.poll() is None:
-            if args.body == 'scripts/gates/darwin/inbound-probe-body.sh' and not probe_port_printed:
-                with (root / 'workload.log').open('rb') as probe_log:
-                    match = re.search(rb'^INBOUND_PROBE_PORT=([0-9]{1,5})$', probe_log.read(65536), re.MULTILINE)
-                if match and 0 < int(match.group(1)) < 65536:
-                    print('INBOUND_PROBE_PORT=' + match.group(1).decode('ascii'), flush=True)
-                    probe_port_printed = True
             rows = scope_call(identity, 'scan', *birth[0])
             for row in rows:
                 tracked[tuple(row)] = row
+                sample = sample_listeners(identity, row)
+                listener_samples.append(sample)
+                if sample.get('error') or any(not listener['loopback'] for listener in sample['listeners']):
+                    scope_error = 'non-loopback listener or unresolved listener observation'
             scans.append({'time': time.time(), 'rows': rows})
+            if scope_error:
+                break
             time.sleep(0.05)
-    except subprocess.SubprocessError:
-        scope_error = 'scope observation failed; no unobserved identity may be signalled'
+    except (subprocess.SubprocessError, Refusal, OSError, ValueError):
+        scope_error = 'scope or listener observation failed; no unobserved identity may be signalled'
     signals = []
     for row in tracked.values():
         if row == birth[0] and scope_error is None:
@@ -522,6 +591,8 @@ def run(args):
     output.close()
     close_socket_controls(root)
     write_json(root / 'scope.json', {'rootBirth': birth, 'scans': scans, 'signals': signals, 'postCleanup': remaining, 'observations': SCOPE_OBSERVATIONS, 'error': scope_error}, root)
+    intervals = [scans[index + 1]['time'] - scans[index]['time'] for index in range(len(scans) - 1)]
+    write_json(root / 'listeners.json', {'samples': listener_samples, 'sleepSeconds': 0.05, 'cycleIntervalsSeconds': intervals, 'maximumCycleSeconds': max(intervals) if intervals else None, 'limit': LISTENER_LIMIT}, root)
     after = launchagents(sentinel_home)
     write_json(root / 'launchagents-after.json', after, root)
     rc = proc.returncode if proc.returncode is not None else 95
