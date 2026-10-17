@@ -1,5 +1,7 @@
 import os, sys, pathlib, json, ctypes, subprocess, time, stat, uuid, socket, fcntl, struct, hashlib
 from home_guard import entry_guard
+from filesystem import seal_filesystem, mount_readonly, assert_filesystem, filesystem_probes
+from test_capabilities import SETPRIV_ARGS
 R = pathlib.Path(sys.argv[1])
 ENTRY_GUARD = entry_guard(R)
 H = pathlib.Path(json.loads((R / 'config.json').read_text())['realHome'])
@@ -95,12 +97,22 @@ try:
     assert sorted(os.listdir(CACHE.parent)) == [CACHE.name]
     assert not os.path.lexists(H / '.hive/v2/hived.sock')
     libc=ctypes.CDLL(None,use_errno=True)
+    private_tmp = CACHE / 'lab-tmp' / label
+    private_tmp.mkdir(parents=True, mode=0o1777)
+    private_tmp.chmod(0o1777)
+    mount(str(private_tmp), '/tmp', None, 4096)
+    os.close(outfd)
+    outfd = os.open(out, os.O_RDONLY | os.O_DIRECTORY)
+    seal_filesystem(CACHE)
     parent_namespaces=dict(receipt['namespaces'])
     outer_uid,outer_gid=os.getuid(),os.getgid()
     if libc.unshare(ctypes.c_int(0x10000000|0x00020000))!=0:raise OSError(ctypes.get_errno(),'nested user/mount unshare failed')
     pathlib.Path('/proc/self/setgroups').write_text('deny')
-    pathlib.Path('/proc/self/uid_map').write_text(f'0 {outer_uid} 1')
-    pathlib.Path('/proc/self/gid_map').write_text(f'0 {outer_gid} 1')
+    pathlib.Path('/proc/self/uid_map').write_text(f'1000 {outer_uid} 1')
+    pathlib.Path('/proc/self/gid_map').write_text(f'1000 {outer_gid} 1')
+    assert os.getuid() == os.getgid() == 1000
+    receipt['workloadIdentity'] = dict(uid=1000, gid=1000, uidMap=pathlib.Path('/proc/self/uid_map').read_text(), gidMap=pathlib.Path('/proc/self/gid_map').read_text())
+    receipt['filesystem'] = assert_filesystem(CACHE, 'mask.py')
     receipt['namespaces']={key:os.readlink('/proc/self/ns/'+key) for key in ('user','mnt','net','pid')}
     receipt['parentNamespaces']=parent_namespaces
     readfd,writefd=os.pipe()
@@ -122,6 +134,10 @@ try:
     receipt['lockedMountProbes']=probe_records
     save('locked-mount-probes.json',dict(probes=probe_records,childExit=os.waitstatus_to_exitcode(probe_status)))
     if probe_status or len(probe_records)!=3 or not all(item['expectedFailure'] for item in probe_records):raise RuntimeError('locked mount negative probe failed; workload forbidden')
+    receipt['filesystemProbes'] = filesystem_probes(CACHE, privilege_checks=False)
+    save('filesystem-proof.json', dict(state=receipt['filesystem'], probes=receipt['filesystemProbes']))
+    if not receipt['filesystemProbes']['asserted']:
+        raise RuntimeError('filesystem write-exclusion or device probe failed; workload forbidden')
     receipt.update(maskTargets=assertions, syntheticScaffolds=sorted(scaffolds), realHomeOverlay=mounts[str(H)], cacheException=dict(path=str(CACHE), inode=cacheid.st_ino, device=cacheid.st_dev), insideAsserted=True, insideAssertedAt=time.time(), loopbackUp=True, cwdAfter=os.getcwd())
     save('mask-inside.json', receipt)
     save('mask-ready.json', dict(nonce=nonce, time=time.time(), insideAsserted=True))
@@ -135,9 +151,25 @@ try:
     assert go['nonce'] == nonce and go['asserted'] and go['insideAsserted']
     assert go['outsideNamespaces']['mnt'] != receipt['namespaces']['mnt']
     receipt.update(outsideAssertion=go, maskAsserted=True, maskAssertedAt=time.time())
+    class CapHeader(ctypes.Structure):
+        _fields_ = [('version', ctypes.c_uint32), ('pid', ctypes.c_int)]
+    class CapData(ctypes.Structure):
+        _fields_ = [('effective', ctypes.c_uint32), ('permitted', ctypes.c_uint32), ('inheritable', ctypes.c_uint32)]
+    header, capabilities = CapHeader(0x20080522, 0), (CapData * 2)()
+    if libc.capget(ctypes.byref(header), capabilities) != 0:
+        raise OSError(ctypes.get_errno(), 'sampler capability read failed')
+    for word in capabilities:
+        word.inheritable = word.permitted
+    if libc.capset(ctypes.byref(header), capabilities) != 0:
+        raise OSError(ctypes.get_errno(), 'sampler capability inheritance failed')
+    for number in range(64):
+        if capabilities[number // 32].permitted & (1 << (number % 32)):
+            if libc.prctl(47, 2, number, 0, 0) != 0:
+                raise OSError(ctypes.get_errno(), 'sampler ambient capability failed')
+    receipt['samplerCapabilitiesBeforeExec'] = {key:value.strip() for line in pathlib.Path('/proc/self/status').read_text().splitlines() for key, separator, value in [line.partition(':')] if key.startswith('Cap')}
     save('mask-proof.json', receipt)
     os.close(outfd)
-    os.execvpe('python3', ['python3','-B',str(R/'init.py'),str(R),label,'python3','-B', str(R / 'monitor.py'), str(R), label, 'python3','-B', str(R / 'workload.py'), str(R), label, *cmd], os.environ)
+    os.execvpe('python3', ['python3','-B',str(R/'init.py'),str(R),label,'python3','-B', str(R / 'monitor.py'), str(R), label, *SETPRIV_ARGS, 'python3','-B',str(R/'test_capabilities.py'),str(R),label,'python3','-B', str(R / 'workload.py'), str(R), label, *cmd], os.environ)
 except BaseException as e:
     receipt.update(maskAsserted=False, error=type(e).__name__ + ': ' + str(e), failedAt=time.time())
     save('mask-failure.json', receipt)
