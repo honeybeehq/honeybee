@@ -34,7 +34,9 @@ import type {
   AccountLoginStartResult,
   LoginFlowRow,
 } from "../src/protocol.ts";
-import type { RpcClient } from "../../cli/src/client.ts";
+import { RpcClient } from "../../cli/src/client.ts";
+import { HiveDaemon } from "../src/daemon.ts";
+import { loadNodeConfig } from "../src/config.ts";
 import { makeDaemonDir, startDaemon, waitFor, type DaemonHandle } from "./helpers.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -209,7 +211,7 @@ test("rpc.login.2: browser-style landing over RPC with a real daemon: restart ma
     const started = await client.request<AccountLoginStartResult>("account.login.start", { id: added.account.id });
     assert.equal(started.flow.methodId, "codex-browser");
     const waiting = await waitPhase(client, started.flow.id, ["waiting_browser"], "waiting_browser");
-    assert.equal(waiting.authorizationUrl, "https://auth.openai.com/oauth/authorize?x=1");
+    assert.equal(waiting.authorizationUrl, "https://auth.openai.com/oauth/authorize");
     // `values` are checked for shape before anything else — a secret in the
     // wrong phase is refused without being recorded anywhere.
     await rejects(() => client.request("account.login.submit", { flowId: started.flow.id, values: { code: SENTINEL } }), "login_flow_refused");
@@ -301,6 +303,103 @@ test("rpc.login.3: a completed login survives a restart as succeeded; account.re
     await rejects(() => client.request("account.login.get", { flowId: started.flow.id }), "login_flow_not_found");
   } finally {
     await daemon?.stop().catch(() => {});
+    cleanup();
+  }
+});
+
+test("rpc.redaction: actual snapshot and watch projection never carry CLI URL credentials", async () => {
+  for (const mode of ["stripped", "unsafe", "real"] as const) {
+    const unsafe = mode === "unsafe";
+    const real = "https://auth.openai.com/oauth/authorize?response_type=code&client_id=app&redirect_uri=http%3A%2F%2Flocalhost%3A1455%2Fauth%2Fcallback&scope=openid%20profile%20email%20offline_access%20api.connectors.read%20api.connectors.invoke&code_challenge=x-sk-public-random-0123456789abcdef&code_challenge_method=S256&id_token_add_organizations=true&codex_cli_simplified_flow=true&state=x-sk-public-random-0123456789abcdef&originator=codex_cli_rs&allowed_workspace_id=workspace-a%2Cworkspace-b";
+    const url = mode === "real" ? real : unsafe ? "https://u:planted-pass@auth.openai.com/oauth/authorize?client_id=app" : "https://auth.openai.com/oauth/authorize?client_id=app&redirect_uri=http%3A%2F%2Flocalhost%3A1455%2Fauth%2Fcallback&state=public&scope=openid&future_option=planted-future-value&code_verifier=planted-verifier&token=planted-token#planted-fragment";
+    const { dir, cleanup } = makeDaemonDir({ accounts: { loginWorkerBackend: "pipe" }, agents: { codex: { command: process.execPath, args: [], adapter: "codex", login: { command: process.execPath, args: [FAKE_CLI] }, env: { FAKE_LOGIN_HOME_ENV: "CODEX_HOME", FAKE_LOGIN_FILE: "auth.json", FAKE_CLI_URL: url, FAKE_CLI_HANG: "1" } } } });
+    let daemon: DaemonHandle | null = null;
+    try {
+      daemon = await startDaemon(dir);
+      const client = await daemon.client();
+      const watch = await daemon.client();
+      const frames: WatchFrame[] = [];
+      watch.onEvent = (frame: WatchFrame) => frames.push(frame);
+      await watch.request("watch");
+      const added = await client.request<AccountAddResult>("account.add", { harness: "codex", label: "redaction" });
+      const started = await client.request<AccountLoginStartResult>("account.login.start", { id: added.account.id });
+      const flow = await waitPhase(client, started.flow.id, [unsafe ? "failed" : "waiting_browser"], "URL policy applied");
+      if (unsafe) assert.equal(flow.error?.code, "provider_error");
+      else {
+        const clean = new URL(flow.authorizationUrl!);
+        assert.equal(clean.searchParams.get("client_id"), "app");
+        assert.equal(clean.searchParams.get("state"), mode === "real" ? "x-sk-public-random-0123456789abcdef" : "public");
+        assert.equal(clean.searchParams.get("scope"), mode === "real" ? "openid profile email offline_access api.connectors.read api.connectors.invoke" : "openid");
+        if (mode === "real") assert.equal(flow.authorizationUrl, real);
+        assert.equal(clean.searchParams.get("redirect_uri"), "http://localhost:1455/auth/callback");
+      }
+      await waitFor(() => frames.some((frame) => frame.type === "delta" && frame.events.some((event) => event.kind === "login_flow.put" && (event.payload as { flow?: { phase?: string } }).flow?.phase === flow.phase)) ? true : null, "mirror delta", 5000);
+      const snapshot = await client.request<SnapshotResult>("snapshot");
+      assert.equal(snapshot.loginFlows[0]?.phase, flow.phase);
+      if (mode === "real") {
+        assert.equal(snapshot.loginFlows[0]?.authorizationUrl, real);
+        assert.ok(frames.some((frame) => frame.type === "delta" && frame.events.some((event) => event.kind === "login_flow.put" && (event.payload as { flow?: { authorizationUrl?: string } }).flow?.authorizationUrl === real)));
+      }
+      assert.doesNotMatch(JSON.stringify({ snapshot, frames, flow }), /planted-/);
+      client.close();
+      watch.close();
+      await daemon.stop();
+      daemon = null;
+      assert.doesNotMatch(dumpSqlite(join(dir, "core.sqlite3")), /planted-/);
+      assert.doesNotMatch(daemonLog(dir), /planted-/);
+      if (mode === "stripped") {
+        const lines = daemonLog(dir).split("\n").filter((line) => line.includes("account.login.authorization_parameters_dropped "));
+        assert.equal(lines.length, 1);
+        assert.match(lines[0]!, /future_option/);
+        assert.ok(!lines[0]!.includes(url));
+        assert.doesNotMatch(lines[0]!, /planted-|https?:/);
+      }
+    } finally {
+      await daemon?.stop().catch(() => {});
+      cleanup();
+    }
+  }
+});
+
+test("rpc.redaction: repeated encoded provider errors are absent from real snapshot and watch", async () => {
+  const { dir, cleanup } = makeDaemonDir();
+  const cfg = loadNodeConfig(dir);
+  let variants: string[] = [];
+  const explode = async (): Promise<never> => { throw new Error(`provider failed ${variants.join(" ")}`); };
+  const daemon = new HiveDaemon(cfg, { loginTransports: { openaiKeyCheck: explode, claudeTokenExchange: explode }, keychainReader: async () => null, keychainWriter: async () => false });
+  try {
+    await daemon.start();
+    const client = await RpcClient.connect(cfg.socketPath);
+    const watch = await RpcClient.connect(cfg.socketPath);
+    const frames: WatchFrame[] = [];
+    watch.onEvent = (frame: WatchFrame) => frames.push(frame);
+    await watch.request("watch");
+    for (const harness of ["claude", "codex", "opencode"]) {
+      const values: Record<string, string> = harness === "claude" ? { code: "short/planted" } : { apiKey: "sk-short/planted", ...(harness === "opencode" ? { provider: "openai", baseUrl: "https://proxy.example/short", organization: "org/planted", project: "project/planted" } : {}) };
+      variants = Object.values(values).filter((value) => value !== "openai").flatMap((value) => {
+        const one = encodeURIComponent(value);
+        const two = encodeURIComponent(one);
+        const three = encodeURIComponent(two);
+        const lowerFirst = one.replace(/%[0-9a-f]{2}/gi, (part) => part.toLowerCase());
+        return [value, one, two, three, encodeURIComponent(lowerFirst), encodeURIComponent(encodeURIComponent(lowerFirst)), two.replace(/%[0-9a-f]{2}/gi, (part) => part.toLowerCase())];
+      });
+      const added = await client.request<AccountAddResult>("account.add", { harness, label: "encoded" });
+      const started = await client.request<AccountLoginStartResult>("account.login.start", { id: added.account.id, methodId: harness === "claude" ? "claude-oauth" : harness === "codex" ? "codex-api-key" : "opencode-api-key" });
+      const result = await client.request<{ flow: LoginFlowRow }>("account.login.submit", { flowId: started.flow.id, values });
+      assert.equal(result.flow.error?.code, "provider_error");
+      assert.match(result.flow.error.message, /provider failed/);
+      await waitFor(() => frames.some((frame) => frame.type === "delta" && frame.events.some((event) => event.kind === "login_flow.put" && (event.payload as { flow?: { id?: string; phase?: string } }).flow?.id === started.flow.id && (event.payload as { flow: { phase: string } }).flow.phase === "failed")) ? true : null, "error mirrored", 5000);
+      const snapshot = await client.request<SnapshotResult>("snapshot");
+      const surfaces = JSON.stringify({ snapshot, frames, result });
+      for (const value of variants) assert.ok(!surfaces.includes(value), `${harness} leaked an encoded field`);
+    }
+    client.close();
+    watch.close();
+    await daemon.shutdown();
+    assert.doesNotMatch(dumpSqlite(join(dir, "core.sqlite3")), /planted/);
+    assert.doesNotMatch(daemonLog(dir), /planted/);
+  } finally {
+    await daemon.shutdown().catch(() => {});
     cleanup();
   }
 });

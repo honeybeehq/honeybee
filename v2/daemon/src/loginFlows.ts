@@ -31,8 +31,10 @@ import {
   loginMethodsFor,
   offeredLoginMethods,
   recipeFor,
+  safeAuthorizationUrl,
   type AccountRow,
   type CoreStore,
+  type LoginAuthorizationPolicy,
   type LoginFieldDescriptor,
   type LoginFlowError,
   type LoginFlowPatch,
@@ -43,7 +45,8 @@ import type { AccountsService } from "./accountsService.ts";
 import type { ResolvedNodeConfig } from "./config.ts";
 import { ClaudeOauthRunner } from "./login/claudeOauth.ts";
 import { CliRunner } from "./login/cliRunner.ts";
-import { STATIC_DETAIL, err, isTerminal, safeMessage } from "./login/common.ts";
+import { STATIC_DETAIL, err, isTerminal } from "./login/common.ts";
+import { LoginRedactor } from "./login/redaction.ts";
 import { DirectKeyRunner } from "./login/directKey.ts";
 import { MuseApiKeyRunner } from "./login/museApiKey.ts";
 import { MuseOauthRunner } from "./login/museOauth.ts";
@@ -107,6 +110,8 @@ export class LoginFlowService {
   private readonly transports: LoginTransports;
   private readonly onCompleted: (accountId: string) => void;
   private readonly tmuxExec: (args: string[]) => { status: number | null; stdout: string };
+  private readonly redactors = new Map<string, LoginRedactor>();
+  private readonly strictDropLogged = new Set<string>();
   private readonly runners = new Map<string, LoginRunner>();
   /** Flows whose runner is being replaced (selectMethod / live retry): submits are refused meanwhile. */
   private readonly switching = new Set<string>();
@@ -193,6 +198,8 @@ export class LoginFlowService {
       remote,
       expiresAt: this.now() + this.cfg.accounts.loginTimeoutMs,
     });
+    for (const id of this.redactors.keys()) if (!this.store.getLoginFlow(id)) this.redactors.delete(id);
+    for (const id of this.strictDropLogged) if (!this.store.getLoginFlow(id)) this.strictDropLogged.delete(id);
     if (opts.replaceAccount === true) this.replacingAccount.add(flow.id);
     this.log(`account.login.start account=${account.id} flow=${flow.id} harness=${account.harness} remote=${remote}`
       + `${this.accounts.authorityFor(account)?.enabled(account) ? " central=in_place" : ""}${opts.replaceAccount === true ? " replace_account=true" : ""}`);
@@ -254,12 +261,15 @@ export class LoginFlowService {
     if (!flow.methodId || !loginMethodFor(flow.harness, flow.methodId)) throw new LoginFlowRefusal("login_flow_refused", `login flow ${flowId} has no method`);
     if (!this.store.getAccount(flow.account)) throw new LoginFlowRefusal("login_flow_not_found", `login flow ${flowId} belongs to a removed account`);
     // The fields the flow asked for, captured before `validating` clears them.
+    const redactor = this.redactors.get(flowId) ?? new LoginRedactor();
+    redactor.add(values);
+    this.redactors.set(flowId, redactor);
     const fields = flow.inputFields.map((f) => ({ ...f }));
     this.patch(flowId, { phase: "validating", detail: STATIC_DETAIL.validating, inputFields: [], error: null }, "input received");
     try {
       return await runner.submit(values, fields);
     } catch (error) {
-      return this.fail(flowId, err("provider_error", `The provider could not be reached: ${safeMessage(error)}`), true);
+      return this.fail(flowId, err("provider_error", `The provider could not be reached: ${redactor.redact(error instanceof Error ? error.message : String(error)).slice(0, 200)}`), true);
     }
   }
 
@@ -381,11 +391,13 @@ export class LoginFlowService {
       for (const [flowId, runner] of [...this.runners.entries()]) {
         const flow = this.store.getLoginFlow(flowId);
         if (!flow || isTerminal(flow.phase)) {
+          this.strictDropLogged.delete(flowId);
           // Row gone (account removed / superseded) or settled elsewhere: no worker may outlive its flow.
           void this.stopRunner(flowId);
           continue;
         }
         if (!this.store.getAccount(flow.account)) {
+          this.strictDropLogged.delete(flowId);
           void this.stopRunner(flowId);
           this.store.removeLoginFlow(flowId, "account_removed");
           continue;
@@ -407,11 +419,16 @@ export class LoginFlowService {
   async shutdown(): Promise<void> {
     this.stopping = true;
     await Promise.all([...this.runners.keys()].map((flowId) => this.stopRunner(flowId)));
+    this.redactors.clear();
+    this.strictDropLogged.clear();
   }
 
   /** The account is being removed: stop its worker first (the store cascades the rows). */
   async abandonAccount(accountId: string): Promise<void> {
-    for (const flow of this.store.listLoginFlows({ account: accountId })) await this.stopRunner(flow.id);
+    for (const flow of this.store.listLoginFlows({ account: accountId })) {
+      this.strictDropLogged.delete(flow.id);
+      await this.stopRunner(flow.id);
+    }
   }
 
   /**
@@ -472,7 +489,7 @@ export class LoginFlowService {
     try {
       return await withoutRpcCaller(() => runner.start());
     } catch (error) {
-      return this.fail(flowId, err("provider_error", safeMessage(error)), true);
+      return this.fail(flowId, err("provider_error", (error instanceof Error ? error.message : String(error))), true);
     }
   }
 
@@ -517,6 +534,7 @@ export class LoginFlowService {
         if (this.runners.get(flowId) === runner) this.runners.delete(flowId);
       },
       resolveSpawner: () => this.resolveSpawner(),
+      sanitizeAuthorizationUrl: (candidate, policy) => this.sanitizeAuthorizationUrl(flowId, account.harness, method.id, candidate, policy),
       patch: (patch, reason) => this.patch(flowId, patch, reason),
       fail: (error, retryable) => this.fail(flowId, error, retryable),
       reask: (error) => this.reask(flowId, error),
@@ -544,8 +562,36 @@ export class LoginFlowService {
   // state helpers
   // -------------------------------------------------------------------------
 
+  private sanitizeAuthorizationUrl(flowId: string, recipe: string, policyId: string, candidate: string, policy: LoginAuthorizationPolicy): string | null {
+    return safeAuthorizationUrl(candidate, policy, (dropped) => {
+      if (this.strictDropLogged.has(flowId)) return;
+      const redactor = this.redactors.get(flowId) ?? new LoginRedactor();
+      const names: string[] = [];
+      let redacted = 0;
+      for (const name of dropped) {
+        const safe = redactor.redact(name);
+        if (safe !== name || redactor.contains(name) || !/^[a-z_][a-z0-9_]{0,63}$/i.test(name) || /^(?:sk|xai|ghp|github_pat)[_-]/i.test(name)) redacted++;
+        else names.push(name);
+      }
+      this.strictDropLogged.add(flowId);
+      this.log(`account.login.authorization_parameters_dropped ${JSON.stringify({ recipe, policy: policyId, names: names.sort(), ...(redacted ? { redacted: { name: "[redacted]", count: redacted } } : {}) })}`);
+    });
+  }
+
   private patch(flowId: string, patch: LoginFlowPatch, reason: string): LoginFlowRow {
-    return this.store.updateLoginFlow(flowId, patch, reason).flow;
+    const redactor = this.redactors.get(flowId) ?? new LoginRedactor();
+    if (patch.authorizationUrl && redactor.contains(patch.authorizationUrl) || patch.userCode && redactor.contains(patch.userCode)) {
+      return this.fail(flowId, err("provider_error", "The sign-in response was refused because it may contain submitted credentials."), true);
+    }
+    const safePatch = { ...patch };
+    if (safePatch.error) safePatch.error = { ...safePatch.error, message: redactor.redact(safePatch.error.message).slice(0, 200) };
+    if (safePatch.detail) safePatch.detail = redactor.redact(safePatch.detail);
+    const updated = this.store.updateLoginFlow(flowId, safePatch, reason).flow;
+    if (isTerminal(updated.phase)) {
+      this.redactors.delete(flowId);
+      this.strictDropLogged.delete(flowId);
+    }
+    return updated;
   }
 
   private fail(flowId: string, error: LoginFlowError, retryable: boolean): LoginFlowRow {

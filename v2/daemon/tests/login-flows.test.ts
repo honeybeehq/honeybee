@@ -24,7 +24,7 @@ import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, statSync, wri
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { ACCOUNT_RECIPES, defaultLoginMethodId, loginMethodsFor, openCoreStore, type CoreStore, type LoginFlowRow } from "../../core/src/index.ts";
+import { ACCOUNT_RECIPES, safeAuthorizationUrl, MIRROR_LOGIN_FLOW_KEYS, defaultLoginMethodId, loginMethodsFor, openCoreStore, type CoreStore, type LoginAuthorizationPolicy, type LoginFlowRow } from "../../core/src/index.ts";
 import { AccountsService } from "../src/accountsService.ts";
 import { loadNodeConfig, type NodeConfigFile, type ResolvedNodeConfig } from "../src/config.ts";
 import { LoginFlowService, LoginFlowRefusal, MUSE_OAUTH_CLIENT_ID, WORKER_ENV_ALLOWLIST, claudeAuthorizeUrl, legacyLoginSeatName, museDeviceAuthorize, museDeviceToken, plausibleApiKey, splitClaudeCode, workerBaseEnv, type LoginTransports } from "../src/loginFlows.ts";
@@ -550,7 +550,7 @@ test("flows.muse-device: `muse login` output → url + user code → waiting_dev
       const f = r.store.getLoginFlow(flow.id) as LoginFlowRow;
       return f.phase === "waiting_device" && f.userCode ? f : null;
     }, "muse waiting_device", 5000, 20);
-    assert.equal(device.authorizationUrl, "https://auth.meta.com/oauth/device/?code=FAKE-CODE");
+    assert.equal(device.authorizationUrl, "https://auth.meta.com/oauth/device/");
     assert.equal(device.userCode, "FAKE-CODE");
     const done = await waitFor(() => {
       flows.tick();
@@ -607,9 +607,9 @@ test("flows.muse-oauth: Honeybee runs Meta's device flow itself — URL + code, 
     assert.deepEqual(flow.methods.map((m) => m.id), ["muse-device", "muse-oauth", "muse-api-key"]);
     assert.equal(flow.methodId, "muse-oauth");
     assert.equal(flow.phase, "waiting_device");
-    assert.equal(flow.authorizationUrl, "https://auth.meta.com/oauth/device/?code=ABCD-EFGH");
+    assert.equal(flow.authorizationUrl, "https://auth.meta.com/oauth/device/");
     assert.equal(flow.userCode, "ABCD-EFGH");
-    assert.equal(flow.detail, "Open the sign-in page and check that it shows the same code.");
+    assert.equal(flow.detail, "Enter the code on the sign-in page.");
     assert.equal(flow.expiresAt, t0 + 900_000, "the flow ends when the device code does");
     assert.deepEqual(meta.requests[0], { path: "/oidc/device/authorization/", form: { client_id: MUSE_OAUTH_CLIENT_ID }, contentType: "application/x-www-form-urlencoded" });
 
@@ -1287,5 +1287,346 @@ test("flows.foreign-home: no login starts, retries or captures into an account w
     await flows.cancel(flow.id);
   } finally {
     r.cleanup();
+  }
+});
+
+function redactionSurfaces(r: Rig): string {
+  const mirror = r.store.listLoginFlows().map((flow) => Object.fromEntries(MIRROR_LOGIN_FLOW_KEYS.map((key) => [key, flow[key]])));
+  return `${leakSurfaces(r)}\n${JSON.stringify(mirror)}`;
+}
+
+test("redaction: OpenCode false fields remain private and unsafe base URLs refuse before checking", async () => {
+  const r = rig();
+  let checks = 0;
+  const { flows } = services(r, { transports: { openaiKeyCheck: async () => { checks++; return "valid"; } } });
+  try {
+    const a = account(r, "opencode", "redaction");
+    const { flow } = await flows.start(a);
+    for (const baseUrl of ["https://u:short-pass@proxy.example/v1", "https://proxy.example/v1?key=short-key", "https://proxy.example/v1#short-token"]) {
+      const rejected = await flows.submit(flow.id, { provider: "openai", apiKey: SENTINEL_KEY, baseUrl });
+      assert.equal(rejected.error?.code, "invalid_input");
+      assert.equal(checks, 0);
+      assert.ok(!redactionSurfaces(r).includes(baseUrl));
+    }
+    const values = { provider: "openai", apiKey: SENTINEL_KEY, baseUrl: "https://proxy.example/private-value", organization: "org-short-credential", project: "project-short-credential" };
+    const done = await flows.submit(flow.id, values);
+    assert.equal(done.phase, "succeeded");
+    assert.equal(checks, 1);
+    const config = readFileSync(join(a.homePath, "opencode.json"), "utf8");
+    for (const value of [values.baseUrl, values.organization, values.project]) {
+      assert.ok(config.includes(value));
+      assert.ok(!redactionSurfaces(r).includes(value));
+    }
+  } finally {
+    await flows.shutdown();
+    r.cleanup();
+  }
+});
+
+test("redaction: thrown input and encoded variants never reach flow, audit, mirror or logs", async () => {
+  for (const harness of ["claude", "codex", "opencode"]) {
+    const r = rig();
+    const values: Record<string, string> = harness === "claude" ? { code: 'short-code-"&/' } : { apiKey: "sk-short-credential", ...(harness === "opencode" ? { provider: "openai", baseUrl: "https://proxy.example/short", organization: 'short-org-"&/', project: "short-project" } : {}) };
+    const variants = Object.values(values).flatMap((value) => {
+      const once = encodeURIComponent(value);
+      const twice = encodeURIComponent(once);
+      const thrice = encodeURIComponent(twice);
+      const lowerFirst = once.replace(/%[0-9a-f]{2}/gi, (part) => part.toLowerCase());
+      return [value, once, twice, thrice, encodeURIComponent(lowerFirst), encodeURIComponent(encodeURIComponent(lowerFirst)), twice.replace(/%[0-9a-f]{2}/gi, (part) => part.toLowerCase()), JSON.stringify(value).slice(1, -1), Buffer.from(value).toString("base64")];
+    });
+    const explode = async (): Promise<never> => { throw new Error(`provider failed ${variants.join(" ")} https://proxy.example/short/models`); };
+    const { flows } = services(r, { transports: { openaiKeyCheck: explode, claudeTokenExchange: explode } });
+    try {
+      const { flow } = await flows.start(account(r, harness, "thrown"), { methodId: harness === "claude" ? "claude-oauth" : harness === "codex" ? "codex-api-key" : "opencode-api-key" });
+      const failed = await flows.submit(flow.id, values);
+      assert.equal(failed.error?.code, "provider_error");
+      assert.match(failed.error.message, /provider failed/);
+      for (const value of variants.filter((value) => value !== "openai" && value.length > 5)) assert.ok(!redactionSurfaces(r).includes(value), `${harness} leaked a submitted encoding`);
+    } finally {
+      await flows.shutdown();
+      r.cleanup();
+    }
+  }
+});
+
+test("redaction: every CLI recipe strips credential queries and fragments before persistence", async () => {
+  const words = ["code", "token", "access_token", "id_token", "refresh_token", "password", "secret", "apikey", "api_key", "key", "auth", "assertion", "session", "credential", "passwd", "cookie", "signature", "sig", "secrets", "tokens", "credentials", "secret_ref", "secret-ref", "secretref", "authorization", "bearer", "otp", "passphrase", "pin", "private-key", "accessKey", "signing_key", "sessionKey", "auth-key", "encryption_key", "masterKey", "code_verifier", "client_secret", "codeChallengeEvil", "Code", "ToKeNs"];
+  for (const [harness, homeEnv, file, host] of [["grok", "GROK_HOME", "auth.json", "accounts.x.ai"], ["kimi", "KIMI_CODE_HOME", "credentials/kimi-code.json", "auth.kimi.com"], ["agy", "HOME", ".gemini/antigravity-cli/antigravity-oauth-token", "accounts.google.com"], ["codex", "CODEX_HOME", "auth.json", "auth.openai.com"], ["muse", "XDG_CONFIG_HOME", "muse/auth.json", "auth.meta.com"], ["cursor", "CURSOR_CONFIG_DIR", "auth.json", "cursor.com"]]) {
+    const url = new URL(`https://${host}/oauth/authorize?client_id=app&redirect_uri=https%3A%2F%2Fcallback.example%2Fdone&state=nonce&nonce=public-nonce&scope=openid&code_challenge=public-challenge&code_challenge_method=S256`);
+    for (const word of words) url.searchParams.set(word, `planted-${word}-value`);
+    url.hash = "fragment-credential";
+    const r = rig({ agents: fakeCliAgent(harness!, homeEnv!, file!, { FAKE_CLI_URL: url.toString(), FAKE_CLI_HANG: "1" }) });
+    const { flows } = services(r);
+    try {
+      const { flow } = await flows.start(account(r, harness!, "url"));
+      const ready = await waitFor(() => { const f = r.store.getLoginFlow(flow.id); return f?.authorizationUrl ? f : null; }, "sanitized URL", CLI_READY_TIMEOUT_MS, 20);
+      const clean = new URL(ready.authorizationUrl!);
+      assert.equal(clean.searchParams.get("client_id"), "app");
+      assert.equal(clean.searchParams.get("redirect_uri"), "https://callback.example/done");
+      assert.equal(clean.searchParams.get("state"), "nonce");
+      assert.equal(clean.searchParams.get("scope"), "openid");
+      assert.equal(clean.searchParams.get("nonce"), harness === "codex" ? null : "public-nonce");
+      assert.equal(clean.searchParams.get("code_challenge"), "public-challenge");
+      assert.equal(clean.searchParams.get("code_challenge_method"), "S256");
+      for (const word of words) assert.equal(clean.searchParams.has(word), false, word);
+      assert.doesNotMatch(redactionSurfaces(r), /planted-|fragment-credential/);
+    } finally {
+      await flows.shutdown();
+      r.cleanup();
+    }
+  }
+});
+
+test("redaction: userinfo and nested credentials refuse; Claude flag is restricted to its built policy", () => {
+  const policy = ACCOUNT_RECIPES.claude!.loginFlow.authorizationUrl!;
+  const built = claudeAuthorizeUrl("synthetic-verifier", "nonce");
+  assert.equal(safeAuthorizationUrl(built, policy), built);
+  assert.equal(new URL(safeAuthorizationUrl(built, "cli")!).searchParams.has("code"), false);
+  assert.equal(new URL(safeAuthorizationUrl(built.replace("code=true", "code=planted-code"), policy)!).searchParams.has("code"), false);
+  assert.equal(safeAuthorizationUrl("https://u:planted@accounts.x.ai/authorize", "cli"), null);
+  assert.equal(safeAuthorizationUrl("https://accounts.x.ai/authorize?return=https%3A%2F%2Fevil.example%2F%3Ftoken%3Dplanted", "cli"), null);
+  assert.equal(safeAuthorizationUrl("https://evil.example/authorize", policy), null);
+  assert.equal(safeAuthorizationUrl("https://claude.com/cai/oauth/authorize?unknown=planted", policy), "https://claude.com/cai/oauth/authorize");
+});
+
+test("redaction: unsafe CLI URLs fail typed without reaching persisted or mirrored fields", async () => {
+  for (const [harness, homeEnv, file] of [["grok", "GROK_HOME", "auth.json"], ["kimi", "KIMI_CODE_HOME", "credentials/kimi-code.json"], ["agy", "HOME", ".gemini/antigravity-cli/antigravity-oauth-token"], ["codex", "CODEX_HOME", "auth.json"], ["muse", "XDG_CONFIG_HOME", "muse/auth.json"], ["cursor", "CURSOR_CONFIG_DIR", "auth.json"]]) {
+    for (const url of ["https://user:planted-pass@auth.openai.com/oauth/authorize?client_id=app", "https://auth.openai.com/oauth/authorize?redirect_uri=https%3A%2F%2Fcallback.example%2F%3Ftoken%3Dplanted-nested", "https://auth.openai.com/oauth/authorize?state=sk-planted-key-0123456789abcdef", "https://auth.openai.com/oauth/authorize?redirect_uri=https%3A%2F%2Fu%3Aplanted-nested-pass%40callback.example%2Fdone", "https://auth.openai.com/oauth/authorize?state=%7B%22access_token%22%3A%22planted-json%22%7D"]) {
+      const r = rig({ agents: fakeCliAgent(harness!, homeEnv!, file!, { FAKE_CLI_URL: url, FAKE_CLI_HANG: "1" }) });
+      const { flows } = services(r);
+      try {
+        const { flow } = await flows.start(account(r, harness!, "refused"));
+        const failed = await waitFor(() => { const f = r.store.getLoginFlow(flow.id); return f?.phase === "failed" ? f : null; }, `unsafe URL refused ${harness} ${url}`, CLI_READY_TIMEOUT_MS, 20);
+        assert.equal(failed.error?.code, "provider_error");
+        assert.equal(failed.authorizationUrl, null);
+        assert.doesNotMatch(redactionSurfaces(r), /planted-/);
+      } finally {
+        await flows.shutdown();
+        r.cleanup();
+      }
+    }
+  }
+});
+
+test("redaction: CLI-echoed callback URLs never project codes, tokens or fragments", async () => {
+  for (const [harness, homeEnv, file] of [["grok", "GROK_HOME", "auth.json"], ["kimi", "KIMI_CODE_HOME", "credentials/kimi-code.json"], ["agy", "HOME", ".gemini/antigravity-cli/antigravity-oauth-token"], ["codex", "CODEX_HOME", "auth.json"], ["muse", "XDG_CONFIG_HOME", "muse/auth.json"], ["cursor", "CURSOR_CONFIG_DIR", "auth.json"]]) {
+    const r = rig({ agents: fakeCliAgent(harness!, homeEnv!, file!, { FAKE_CLI_URL: "https://callback.example/callback?code=planted-code&token=planted-token&client_secret=planted-secret#planted-fragment", FAKE_CLI_EXIT_NO_CRED_MS: "200" }) });
+    const { flows } = services(r);
+    try {
+      const { flow } = await flows.start(account(r, harness!, "callback"));
+      await waitFor(() => r.store.getLoginFlow(flow.id)?.phase === "failed" ? true : null, "callback process consumed", CLI_READY_TIMEOUT_MS, 20);
+      assert.doesNotMatch(redactionSurfaces(r), /planted-/);
+      if (harness !== "codex") assert.ok(r.store.auditRows().some((row) => JSON.stringify(row.payload).includes("https://callback.example/callback")));
+    } finally {
+      await flows.shutdown();
+      r.cleanup();
+    }
+  }
+});
+
+test("redaction: encoded submitted values in CLI state or userCode are held before projection", async () => {
+  for (const [harness, homeEnv, file] of [["grok", "GROK_HOME", "auth.json"], ["kimi", "KIMI_CODE_HOME", "credentials/kimi-code.json"], ["agy", "HOME", ".gemini/antigravity-cli/antigravity-oauth-token"]]) {
+    for (const channel of harness === "agy" ? ["url"] : ["url", "userCode"]) {
+      const input = channel === "url" ? "short/planted" : "ABC";
+      const encoded = channel === "url" ? encodeURIComponent(input) : Buffer.from(input).toString("base64");
+      const r = rig({ agents: fakeCliAgent(harness!, homeEnv!, file!, { FAKE_CLI_URL: "https://auth.example/authorize?state=public", FAKE_CLI_PROMPT: harness === "agy" ? "agy" : "code", FAKE_CLI_EXPECT: input, ...(channel === "url" ? { FAKE_CLI_AFTER_INPUT_URL: `https://auth.example/authorize?state=${encoded}` } : { FAKE_CLI_AFTER_INPUT_CODE: `${encoded}-AAAA` }) }) });
+      const { flows } = services(r);
+      try {
+        const { flow } = await flows.start(account(r, harness!, "encoded"));
+        await waitFor(() => r.store.getLoginFlow(flow.id)?.phase === "waiting_input" ? true : null, "prompt", CLI_READY_TIMEOUT_MS, 20);
+        await flows.submit(flow.id, { code: input });
+        const failed = await waitFor(() => { const f = r.store.getLoginFlow(flow.id); return f?.phase === "failed" ? f : null; }, `encoded echo refused ${harness} ${channel}`, CLI_READY_TIMEOUT_MS, 20);
+        assert.equal(failed.error?.code, "provider_error");
+        assert.ok(!redactionSurfaces(r).includes(encoded));
+        if (input !== "ABC") assert.ok(!redactionSurfaces(r).includes(input));
+      } finally {
+        await flows.shutdown();
+        r.cleanup();
+      }
+    }
+  }
+});
+
+
+test("redaction: verified Codex and Grok authorize parameters survive byte-for-byte", async () => {
+  const publicRandom = "x-sk-public-random-0123456789abcdef";
+  const codex = `https://auth.openai.com/oauth/authorize?response_type=code&client_id=app_EMoamEEZ73f0CkXaXp7hrann&redirect_uri=http%3A%2F%2Flocalhost%3A1455%2Fauth%2Fcallback&scope=openid%20profile%20email%20offline_access%20api.connectors.read%20api.connectors.invoke&code_challenge=${publicRandom}&code_challenge_method=S256&id_token_add_organizations=true&codex_cli_simplified_flow=true&state=${publicRandom}&originator=codex_cli_rs&allowed_workspace_id=workspace-a%2Cworkspace-b`;
+  const grok = `https://auth.x.ai/authorize?response_type=code&client_id=public-client&redirect_uri=http%3A%2F%2Flocalhost%3A1455%2Fcallback&scope=openid%20profile%20offline_access&code_challenge=${publicRandom}&code_challenge_method=S256&state=${publicRandom}&nonce=public-nonce&audience=public-audience&principal_type=user&principal_id=public-principal&referrer=grok-build`;
+  for (const [harness, homeEnv, url] of [["codex", "CODEX_HOME", codex], ["grok", "GROK_HOME", grok]]) {
+    const r = rig({ agents: fakeCliAgent(harness!, homeEnv!, "auth.json", { FAKE_CLI_URL: url!, FAKE_CLI_HANG: "1" }) });
+    const { flows } = services(r);
+    try {
+      const { flow } = await flows.start(account(r, harness!, "verified"));
+      const ready = await waitFor(() => { const f = r.store.getLoginFlow(flow.id); return f?.authorizationUrl ? f : null; }, "verified authorize URL", CLI_READY_TIMEOUT_MS, 20);
+      assert.equal(ready.authorizationUrl, url);
+      const policy = ACCOUNT_RECIPES.codex!.loginFlow.methods.find((m) => m.id === "codex-browser")!.authorizationUrl!;
+      if (harness === "codex") {
+        assert.equal(safeAuthorizationUrl(url!, policy), url);
+        assert.equal(safeAuthorizationUrl(url!.replace("auth.openai.com", "other.example"), policy), null);
+        assert.equal(safeAuthorizationUrl(url!.replace("/oauth/authorize", "/other"), policy), null);
+        const stripped = new URL(safeAuthorizationUrl(`${url}&code_verifier=planted-verifier&unknown=planted-unknown`, policy)!);
+        assert.equal(stripped.searchParams.has("code_verifier"), false);
+        assert.equal(stripped.searchParams.has("unknown"), false);
+        const devicePolicy = ACCOUNT_RECIPES.codex!.loginFlow.methods.find((m) => m.id === "codex-device")!.authorizationUrl!;
+        assert.equal(safeAuthorizationUrl("https://auth.openai.com/codex/device?user_code=planted-device", devicePolicy), "https://auth.openai.com/codex/device");
+      }
+    } finally {
+      await flows.shutdown();
+      r.cleanup();
+    }
+  }
+  const claude = claudeAuthorizeUrl("synthetic-verifier", publicRandom);
+  assert.equal(safeAuthorizationUrl(claude, ACCOUNT_RECIPES.claude!.loginFlow.authorizationUrl!), claude);
+});
+
+test("redaction: Kimi opaque complete URI strips user_code but keeps separate code", async () => {
+  const r = rig({ agents: fakeCliAgent("kimi", "KIMI_CODE_HOME", "credentials/kimi-code.json", { FAKE_CLI_URL: "https://auth.kimi.com/device?user_code=planted-url-code&state=public-state", FAKE_CLI_CODE: "ABCD-EFGH", FAKE_CLI_HANG: "1" }) });
+  const { flows } = services(r);
+  try {
+    const { flow } = await flows.start(account(r, "kimi", "opaque"));
+    const ready = await waitFor(() => { const f = r.store.getLoginFlow(flow.id); return f?.authorizationUrl && f.userCode ? f : null; }, "Kimi separate code", CLI_READY_TIMEOUT_MS, 20);
+    assert.equal(ready.authorizationUrl, "https://auth.kimi.com/device?state=public-state");
+    assert.equal(ready.userCode, "ABCD-EFGH");
+    assert.doesNotMatch(redactionSurfaces(r), /planted-url-code/);
+  } finally {
+    await flows.shutdown();
+    r.cleanup();
+  }
+});
+
+test("redaction: terminal patches release submitted-value redactors immediately", async () => {
+  for (const terminal of ["succeeded", "failed", "cancelled", "expired", "interrupted"] as const) {
+    const r = rig();
+    const { flows } = services(r, { transports: { openaiKeyCheck: async () => "invalid" } });
+    try {
+      const { flow } = await flows.start(account(r, "codex", terminal), { methodId: "codex-api-key" });
+      await flows.submit(flow.id, { apiKey: "sk-short-submitted" });
+      const internal = flows as unknown as { redactors: Map<string, unknown>; patch(id: string, patch: Partial<LoginFlowRow>, reason: string): LoginFlowRow };
+      assert.equal(internal.redactors.has(flow.id), true);
+      const updated = internal.patch(flow.id, { phase: terminal, error: { code: "provider_error", message: "provider failed sk-short-submitted" } }, "terminal cleanup proof");
+      assert.equal(updated.phase, terminal);
+      assert.doesNotMatch(updated.error!.message, /sk-short-submitted/);
+      assert.equal(internal.redactors.has(flow.id), false);
+    } finally {
+      await flows.shutdown();
+      r.cleanup();
+    }
+  }
+});
+
+
+test("redaction: Muse refuses a null authorization URL as a typed terminal failure", async () => {
+  const r = rig();
+  const { flows } = services(r, { transports: { museDeviceAuthorize: async () => ({ ok: true, deviceCode: "private-device-code", userCode: "ABCD-EFGH", verificationUri: "https://refused.example/device", verificationUriComplete: "https://refused.example/device?code=private-device-code", expiresInSeconds: 600, intervalSeconds: 5 }) } });
+  try {
+    const { flow } = await flows.start(account(r, "muse", "null-url"), { methodId: "muse-oauth" });
+    assert.equal(flow.phase, "failed");
+    assert.equal(flow.error?.code, "provider_error");
+    assert.equal(flow.authorizationUrl, null);
+    assert.doesNotMatch(redactionSurfaces(r), /refused.example|private-device-code/);
+  } finally {
+    await flows.shutdown();
+    r.cleanup();
+  }
+});
+
+
+const STRICT_DROP_OP = "account.login.authorization_parameters_dropped ";
+
+test("strict-drop-log: Codex policies log all future names once per flow, never values or URL", async () => {
+  for (const methodId of ["codex-browser", "codex-device"]) {
+    const base = methodId === "codex-browser" ? "https://auth.openai.com/oauth/authorize?client_id=public" : "https://auth.openai.com/codex/device";
+    const url = `${base}${base.includes("?") ? "&" : "?"}future_option=planted-future-value&another_option=planted-another-value&future_option=planted-duplicate-value`;
+    const r = rig({ agents: fakeCliAgent("codex", "CODEX_HOME", "auth.json", { FAKE_CLI_URL: url, FAKE_CLI_HANG: "1" }) });
+    const { flows } = services(r);
+    try {
+      const { flow } = await flows.start(account(r, "codex", methodId), { methodId });
+      const ready = await waitFor(() => { const f = r.store.getLoginFlow(flow.id); return f?.authorizationUrl ? f : null; }, "strict dropped URL", CLI_READY_TIMEOUT_MS, 20);
+      assert.equal(ready.authorizationUrl, base);
+      const lines = () => r.log.filter((line) => line.startsWith(STRICT_DROP_OP));
+      assert.equal(lines().length, 1);
+      assert.deepEqual(JSON.parse(lines()[0]!.slice(STRICT_DROP_OP.length)), { recipe: "codex", policy: methodId, names: ["another_option", "future_option"] });
+      const policy = ACCOUNT_RECIPES.codex!.loginFlow.methods.find((m) => m.id === methodId)!.authorizationUrl!;
+      const internal = flows as unknown as { sanitizeAuthorizationUrl(id: string, recipe: string, methodId: string, url: string, policy: LoginAuthorizationPolicy): string | null };
+      assert.equal(internal.sanitizeAuthorizationUrl(flow.id, "codex", methodId, url, policy), base);
+      assert.equal(lines().length, 1);
+      assert.ok(!r.log.join("\n").includes(url));
+      assert.doesNotMatch(redactionSurfaces(r), /planted-/);
+    } finally {
+      await flows.shutdown();
+      r.cleanup();
+    }
+  }
+});
+
+test("strict-drop-log: unsafe and submitted-secret parameter names become marker plus count", async () => {
+  const r = rig();
+  const { flows } = services(r, { transports: { claudeTokenExchange: async () => null } });
+  try {
+    const { flow } = await flows.start(account(r, "claude", "drop-privacy"));
+    const submitted = "submitted_name";
+    const asking = await flows.submit(flow.id, { code: submitted });
+    assert.equal(asking.phase, "waiting_input");
+    const unsafe = ["not.identifier", "control\nname", "https://credential.example/private", "ghp_abcdefghijklmnopqrst", "z".repeat(65), submitted];
+    const url = new URL(claudeAuthorizeUrl("synthetic-verifier", "public-state"));
+    for (const name of [...unsafe, "future_option"]) url.searchParams.append(name, "planted-parameter-value");
+    const internal = flows as unknown as { sanitizeAuthorizationUrl(id: string, recipe: string, methodId: string, url: string, policy: LoginAuthorizationPolicy): string | null };
+    const policy = ACCOUNT_RECIPES.claude!.loginFlow.authorizationUrl!;
+    const clean = internal.sanitizeAuthorizationUrl(flow.id, "claude", "claude-oauth", url.toString(), policy);
+    assert.ok(clean);
+    for (const name of [...unsafe, "future_option"]) assert.equal(new URL(clean).searchParams.has(name), false);
+    const lines = r.log.filter((line) => line.startsWith(STRICT_DROP_OP));
+    assert.equal(lines.length, 1);
+    assert.deepEqual(JSON.parse(lines[0]!.slice(STRICT_DROP_OP.length)), { recipe: "claude", policy: "claude-oauth", names: ["future_option"], redacted: { name: "[redacted]", count: unsafe.length } });
+    assert.ok(lines[0]!.length < 8192);
+    for (const name of unsafe) assert.ok(!lines[0]!.includes(name));
+    assert.doesNotMatch(lines[0]!, /planted-parameter-value|https?:/);
+  } finally {
+    await flows.shutdown();
+    r.cleanup();
+  }
+});
+
+test("strict-drop-log: Muse strict drops are logged; general CLI behavior is unchanged", async () => {
+  const r = rig();
+  const { flows } = services(r, { transports: { museDeviceAuthorize: async () => ({ ok: true, deviceCode: "private-device", userCode: "ABCD-EFGH", verificationUri: "https://auth.meta.com/oauth/device/?future_option=planted-value", verificationUriComplete: null, expiresInSeconds: 600, intervalSeconds: 5 }) } });
+  try {
+    const { flow } = await flows.start(account(r, "muse", "drop-muse"), { methodId: "muse-oauth" });
+    assert.equal(flow.authorizationUrl, "https://auth.meta.com/oauth/device/");
+    const lines = r.log.filter((line) => line.startsWith(STRICT_DROP_OP));
+    assert.equal(lines.length, 1);
+    assert.deepEqual(JSON.parse(lines[0]!.slice(STRICT_DROP_OP.length)), { recipe: "muse", policy: "muse-oauth", names: ["future_option"] });
+    assert.doesNotMatch(redactionSurfaces(r), /planted-value/);
+    let callbacks = 0;
+    assert.equal(safeAuthorizationUrl("https://auth.example/authorize?future_option=public&state=nonce&token=planted-token", "cli", () => { callbacks++; }), "https://auth.example/authorize?future_option=public&state=nonce");
+    assert.equal(callbacks, 0);
+  } finally {
+    await flows.shutdown();
+    r.cleanup();
+  }
+});
+
+
+test("strict-drop-log: dedupe entries release on terminal, deletion, account abandonment and shutdown", async () => {
+  for (const operation of ["terminal", "deleted", "abandoned", "shutdown"]) {
+    const r = rig();
+    const { flows } = services(r);
+    try {
+      const a = account(r, "claude", `drop-${operation}`);
+      const { flow } = await flows.start(a);
+      const internal = flows as unknown as { strictDropLogged: Set<string>; sanitizeAuthorizationUrl(id: string, recipe: string, methodId: string, url: string, policy: LoginAuthorizationPolicy): string | null };
+      const url = new URL(claudeAuthorizeUrl("synthetic-verifier", "public-state"));
+      url.searchParams.set("future_option", "private-value");
+      internal.sanitizeAuthorizationUrl(flow.id, "claude", "claude-oauth", url.toString(), ACCOUNT_RECIPES.claude!.loginFlow.authorizationUrl!);
+      assert.equal(internal.strictDropLogged.has(flow.id), true);
+      if (operation === "terminal") await flows.cancel(flow.id);
+      if (operation === "deleted") { r.store.removeLoginFlow(flow.id); flows.tick(); }
+      if (operation === "abandoned") await flows.abandonAccount(a.id);
+      if (operation === "shutdown") await flows.shutdown();
+      assert.equal(internal.strictDropLogged.has(flow.id), false);
+    } finally {
+      await flows.shutdown();
+      r.cleanup();
+    }
   }
 });

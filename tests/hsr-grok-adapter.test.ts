@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -60,7 +60,7 @@ async function start(over: Partial<RunnerOpts> = {}): Promise<Running> {
   const logPath = join(dir, "rpc.jsonl");
   const previousStore = process.env.HIVE_STORE_ROOT;
   process.env.HIVE_STORE_ROOT = dir;
-  const env = stringEnv({ GROK_STUB_LOG: logPath, GROK_HOME: join(dir, "grok-home") });
+  const env = stringEnv({ GROK_STUB_LOG: logPath, GROK_STUB_TOOL_RELEASE: join(dir, "release-tool"), GROK_HOME: join(dir, "grok-home") });
   const bee = `GR-test-${Math.random().toString(16).slice(2)}`;
   const opts: RunnerOpts = {
     bee,
@@ -226,20 +226,41 @@ test("Grok ACP serializes multi-turn sends and emits exact per-prompt usage", as
   }
 });
 
-test("Grok ACP delivers next-tool sends through the next real tool boundary", async () => {
+test("Grok ACP delivers next-tool sends through the next real tool boundary", { timeout: 15_000 }, async () => {
   const running = await start();
   const iterator = running.session.events[Symbol.asyncIterator]();
   try {
     await running.session.send("tool-boundary");
     assert.equal((await nextEvent(iterator)).type, "turn_start");
+    const before = await until(iterator, (event) => event.type === "text" && event.text === "before-tool");
     await running.session.send("steer-at-tool", { mode: "next-tool" });
-    const events = await until(iterator, (event) => event.type === "turn_end");
+    await writeFile(join(running.dir, "release-tool"), "");
+    const events = [...before, ...await until(iterator, (event) => event.type === "turn_end")];
     assert.equal(events.filter((event) => event.type === "thought").length, 1);
     assert.equal(events.filter((event) => event.type === "tool_use").length, 1, "tool_call_update is not a second boundary");
     assert.ok(events.some((event) => event.type === "text" && event.text === "interjected:steer-at-tool"));
     const log = await rpcLog(running.logPath);
     assert.ok(log.some((entry) => entry.method === "_x.ai/interject" && (entry.params as { text?: string }).text === "steer-at-tool"));
     assert.equal(log.filter((entry) => entry.method === "session/prompt").length, 1, "interjection is not serialized as a later turn");
+  } finally {
+    await cleanup(running);
+  }
+});
+
+test("Grok ACP next-tool send falls back to the next turn when no later tool boundary arrives", { timeout: 15_000 }, async () => {
+  const running = await start();
+  const iterator = running.session.events[Symbol.asyncIterator]();
+  try {
+    await running.session.send("no-tool-boundary");
+    await until(iterator, (event) => event.type === "text" && event.text === "before-tool");
+    await running.session.send("fallback-send", { mode: "next-tool" });
+    await writeFile(join(running.dir, "release-tool"), "");
+    const events = await until(iterator, (_event, seen) => seen.filter((event) => event.type === "turn_end").length === 2);
+    assert.deepEqual(events.filter((event) => event.type === "text").map((event) => event.text), ["without-tool", "reply:fallback-send"]);
+    const log = await rpcLog(running.logPath);
+    assert.deepEqual(log.filter((entry) => entry.method === "session/prompt").map((entry) =>
+      ((entry.params as { prompt?: Array<{ text?: string }> }).prompt?.[0]?.text)), ["no-tool-boundary", "fallback-send"]);
+    assert.equal(log.filter((entry) => entry.method === "_x.ai/interject").length, 0);
   } finally {
     await cleanup(running);
   }
@@ -368,7 +389,9 @@ test("Grok ACP stop does not wait for an unanswered interject request", async ()
   try {
     await running.session.send("tool-boundary");
     assert.equal((await nextEvent(iterator)).type, "turn_start");
+    await until(iterator, (event) => event.type === "text" && event.text === "before-tool");
     await running.session.send("hang-interject", { mode: "next-tool" });
+    await writeFile(join(running.dir, "release-tool"), "");
     await until(iterator, (event) => event.type === "tool_use");
     const startedAt = Date.now();
     await running.session.stop();
