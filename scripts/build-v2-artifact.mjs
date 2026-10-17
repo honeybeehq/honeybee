@@ -18,6 +18,7 @@ const runnerHostInputs = [
   "src/comb/canonical.ts",
   "v2/driver-hsr/src/gated-runner-host.ts",
   "v2/harness/src/processIdentity.ts",
+  "v2/harness/src/statePath.ts",
   "src/runtimeEnvironment.ts",
   "v2/driver-hsr/src/runner-host-main.ts",
   "v2/driver-hsr/src/runner-host.ts",

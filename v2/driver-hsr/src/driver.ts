@@ -1,6 +1,7 @@
 import { ExecutionFenceError } from "../../core/src/executionFence.ts";
 import type { ExecutionStart, ExecutionRuntimeHooks, ExecutionProcess } from "../../core/src/executionStart.ts";
 import { exactProcessBirth } from "../../harness/src/processIdentity.ts";
+import { stateDirectory, stateFile } from "../../harness/src/statePath.ts";
 import { canonicalDigest, type JsonValue } from "../../../src/comb/canonical.ts";
 import { TurnQuiet } from "../../driver-tmux/src/turn-quiet.ts";
 import { childNodePath, nativeNodeEnv } from "../../../src/nodeRuntime.ts";
@@ -396,6 +397,9 @@ export class HsrDriver implements RuntimeDriver {
 
   constructor(cfg: HsrDriverConfig) {
     this.cfg = cfg;
+    stateDirectory(cfg.sessionLogDir, "sessionLogDir");
+    this.runnersDir();
+    this.socketDir();
     this.hostLaunch = this.selectHostLaunch();
     this.now = cfg.now ?? Date.now;
     this.graceMs = cfg.stopKillGraceMs ?? 5000;
@@ -405,7 +409,13 @@ export class HsrDriver implements RuntimeDriver {
   }
 
   private runnersDir(): string {
-    return this.cfg.runnersDir ?? resolvePath(this.cfg.sessionLogDir, "..", "runners");
+    if (this.cfg.runnersDir !== undefined) return stateDirectory(this.cfg.runnersDir, "runnersDir");
+    const parent = stateDirectory(dirname(stateDirectory(this.cfg.sessionLogDir, "sessionLogDir")), "default runners parent");
+    return resolvePath(parent, "runners");
+  }
+
+  private socketDir(): string {
+    return stateDirectory(this.cfg.socketDir === undefined ? tmpdir() : this.cfg.socketDir, "socketDir");
   }
 
   private selectHostLaunch(): HostLaunch {
@@ -450,7 +460,7 @@ export class HsrDriver implements RuntimeDriver {
       .slice(0, 16);
     return {
       config: `${base}.json`,
-      socket: join(this.cfg.socketDir ?? tmpdir(), `hb-rh-${digest}.sock`),
+      socket: join(this.socketDir(), `hb-rh-${digest}.sock`),
       status: `${base}.status.json`,
       observations: `${base}.observations.jsonl`,
     };
@@ -1361,7 +1371,7 @@ export class HsrDriver implements RuntimeDriver {
 
   /** Verbatim native-stream session log path for a bee (Q1; v23: the current transcript segment's file). */
   sessionLogPath(beeId: string): string {
-    return this.cfg.sessionLogPathFor?.(beeId) ?? join(this.cfg.sessionLogDir, `${beeId}.jsonl`);
+    return stateFile(this.cfg.sessionLogPathFor?.(beeId) ?? join(stateDirectory(this.cfg.sessionLogDir,"sessionLogDir"), `${beeId}.jsonl`), "sessionLogPath");
   }
 
   /** Output-only recovery journal for exactly one runtime generation. */

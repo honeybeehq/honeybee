@@ -3,10 +3,12 @@ import { appendFileSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { dirname } from "node:path";
 import { exactProcessBirth } from "../../harness/src/processIdentity.ts";
+import { runnerStateFiles } from "../../harness/src/statePath.ts";
 import { canonicalDigest, type JsonValue } from "../../../src/comb/canonical.ts";
 import type { RunnerHostConfig, RunnerStatus } from "./runner-host.ts";
 
 export function runGatedRunnerHost(cfg: RunnerHostConfig, sessionLogLine: (line: string) => string): void {
+  runnerStateFiles(cfg);
   const start = cfg.executionStart, owner = cfg.executionOwner;
   const birth = exactProcessBirth(process.pid);
   if (!start || !owner || !process.send || !birth || process.ppid !== owner.pid || exactProcessBirth(owner.pid) !== owner.birth || start.beeId !== cfg.beeId || start.runtimeGeneration !== cfg.generation) throw new Error("Fenced host requires its exact inherited owner channel");

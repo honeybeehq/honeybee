@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync,writeFileSync,readFileSync,existsSync,rmSync } from "node:fs";
+import { mkdtempSync,writeFileSync,readFileSync,existsSync,rmSync,readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join,resolve } from "node:path";
 import { spawn,type ChildProcess } from "node:child_process";
@@ -12,6 +12,7 @@ import { executionRequestDigest } from "../../core/src/executionFence.ts";
 import { HsrDriver } from "../src/driver.ts";
 import { stubAdapter } from "../../adapters/src/index.ts";
 import { openCoreStore } from "../../core/src/index.ts";
+import { runnerStateFiles, StatePathError } from "../../harness/src/statePath.ts";
 
 const wait = async (fn:()=>boolean,label:string) => { const end=Date.now()+10000;while(!fn()){if(Date.now()>end)throw new Error("timeout "+label);await new Promise(r=>setTimeout(r,10));}};
 function context():ExecutionStart {
@@ -65,16 +66,39 @@ test("HSR owner commits exact release before IPC and persists agent-start comple
   const {verb,resource:r,digestVersion,requestDigest,idempotencyKey,...executionFence}=claim,request={verb,resource:r,digestVersion,requestDigest,idempotencyKey,executionFence,args};
   store.beginFencedSpawn(request,1000);store.admitFencedSpawn(request,()=>{store.createBee({id:"fenced",name:"fenced",agent:"stub",substrate:"hsr",cwd:root});return{commandId:store.enqueueCommand("spawn","fenced",{},{idempotencyKey}).id};});
   const start=store.prepareExecutionStart("fenced",1)!,base=store.executionRuntimeHooks();let commits=0;
-  const driver=new HsrDriver({sessionLogDir:join(root,"logs"),execution:{...base,bindAndRelease(s,host){base.bindAndRelease(s,host);assert.equal(store.currentRuntime("fenced")?.pid,host.pid);commits++;assert.throws(()=>store.compareAndSetExecutionClaim({transitionId:"two",expectedClaim:claim,claim:{...claim,generation:2,claimId:"two"}},1000),e=>(e as {code?:string}).code==="rpc_execution_busy");}},resolve:()=>({command:process.execPath,args:["-e","setInterval(()=>{},1000)"],cwd:root,env:{PATH:process.env.PATH ?? "",HOME:process.env.HOME ?? "",TMPDIR:process.env.TMPDIR ?? ""},adapter:stubAdapter})});
+  const driver=new HsrDriver({sessionLogDir:join(root,"logs"),runnersDir:join(root,"runners"),socketDir:root,execution:{...base,bindAndRelease(s,host){base.bindAndRelease(s,host);assert.equal(store.currentRuntime("fenced")?.pid,host.pid);commits++;assert.throws(()=>store.compareAndSetExecutionClaim({transitionId:"two",expectedClaim:claim,claim:{...claim,generation:2,claimId:"two"}},1000),e=>(e as {code?:string}).code==="rpc_execution_busy");}},resolve:()=>({command:process.execPath,args:["-e","setInterval(()=>{},1000)"],cwd:root,env:{PATH:process.env.PATH ?? "",HOME:process.env.HOME ?? "",TMPDIR:process.env.TMPDIR ?? ""},adapter:stubAdapter})});
   t.after(()=>{driver.disposeAll();store.close();rmSync(root,{recursive:true,force:true});});
   driver.start("fenced",1,start);
   await wait(()=>{driver.observe();const r=store.resolveExecution(request,1000);return "executionReceipt" in r&&r.executionReceipt.status==="completed";},"owner completion");
   assert.equal(commits,1);assert.ok(store.executionStartHost(start)?.birth);
 });
 
-test("HSR refuses a mismatched bee or runtime generation before spec preparation",()=>{
+test("HSR refuses a mismatched bee or runtime generation before spec preparation",t=>{
+  const root=mkdtempSync(join(tmpdir(),"fenced-mismatch-"));
+  t.after(()=>rmSync(root,{recursive:true,force:true}));
   let resolved=0;
-  const driver=new HsrDriver({sessionLogDir:tmpdir(),resolve:()=>{resolved++;throw new Error("must not resolve");}});
+  const driver=new HsrDriver({sessionLogDir:join(root,"logs"),runnersDir:join(root,"runners"),socketDir:root,resolve:()=>{resolved++;throw new Error("must not resolve");}});
   for(const [bee,generation] of [["other",1],["fenced",2]] as const)assert.throws(()=>driver.start(bee,generation,context()),e=>(e as {code?:string}).code==="rpc_execution_history_unknown");
   assert.equal(resolved,0);driver.disposeAll();
+});
+
+test("unset, empty, relative or root runtime directories refuse before mkdir",t=>{
+  const root=mkdtempSync(join(tmpdir(),"invalid-root-"));
+  t.after(()=>rmSync(root,{recursive:true,force:true}));
+  const invalid=(error:unknown)=>error instanceof StatePathError&&error.code==="invalid_runtime_root";
+  for(const field of ["sessionLogDir","runnersDir","socketDir"] as const){
+    for(const value of ["", "relative", "/", "/tmp/..", ...(field==="sessionLogDir"?[undefined]:[])]){
+      const cfg={sessionLogDir:join(root,"logs"),runnersDir:join(root,"runners"),socketDir:root,resolve:()=>{throw new Error("must not resolve");},[field]:value};
+      assert.throws(()=>new HsrDriver(cfg as ConstructorParameters<typeof HsrDriver>[0]),invalid);
+      assert.deepEqual(readdirSync(root),[],"invalid root must not create even the valid logs directory");
+    }
+  }
+  assert.throws(()=>new HsrDriver({sessionLogDir:"/tmp",resolve:()=>{throw new Error("must not resolve");}}),invalid);
+  for(const field of ["sessionLogPath","observationLogPath","sidecarPath","socketPath","statusPath"] as const){
+    const cfg={sessionLogPath:join(root,"log"),observationLogPath:join(root,"obs"),sidecarPath:join(root,"err"),socketPath:join(root,"s"),statusPath:join(root,"status")};
+    for(const value of [undefined,"","relative","/", "/socket"]){
+      assert.throws(()=>runnerStateFiles({...cfg,[field]:value} as typeof cfg),invalid);
+      assert.deepEqual(readdirSync(root),[]);
+    }
+  }
 });

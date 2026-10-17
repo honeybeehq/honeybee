@@ -6,6 +6,7 @@
  * malformed json or wrongly-typed values fail loudly — a half-read config is
  * worse than no config.
  */
+import { stateDirectory, stateFile } from "../../harness/src/statePath.ts";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join } from "node:path";
@@ -958,6 +959,7 @@ function accountsOf(raw: Record<string, unknown>): ResolvedNodeConfig["accounts"
  * `<dataDir>/config.json`; an absent file resolves to pure defaults.
  */
 export function loadNodeConfig(dataDir: string, configPath?: string): ResolvedNodeConfig {
+  stateDirectory(dataDir, "dataDir");
   const path = configPath ?? join(dataDir, "config.json");
   let raw: Record<string, unknown> = {};
   if (existsSync(path)) {
@@ -993,7 +995,7 @@ export function loadNodeConfig(dataDir: string, configPath?: string): ResolvedNo
 
   const nodeKind = nodeKindOf(raw);
   const cells = cellsOf(raw, nodeKind);
-  return {
+  const resolved: ResolvedNodeConfig = {
     dataDir,
     configPath: path,
     nodeKind,
@@ -1030,6 +1032,14 @@ export function loadNodeConfig(dataDir: string, configPath?: string): ResolvedNo
     ...beeTmpRootOf(raw),
     ...beeSandboxTmpBytesOf(raw),
   };
+  validateNodeStatePaths(resolved);
+  return resolved;
+}
+
+export function validateNodeStatePaths(cfg: ResolvedNodeConfig): void {
+  for (const field of ["dataDir", "cellsRoot", "sessionLogDir"] as const) stateDirectory(cfg[field], field);
+  stateDirectory(dirname(cfg.sessionLogDir), "default runners parent");
+  for (const field of ["socketPath", "logPath", "storePath", "telemetryPath"] as const) stateFile(cfg[field], field);
 }
 
 export function resolvedContextPolicyOf(raw: Record<string, unknown>): ContextPolicyConfig {

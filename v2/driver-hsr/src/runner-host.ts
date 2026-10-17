@@ -1,4 +1,5 @@
 import { runGatedRunnerHost } from "./gated-runner-host.ts";
+import { stateFile, runnerStateFiles } from "../../harness/src/statePath.ts";
 import type { ExecutionStart, ExecutionProcess } from "../../core/src/executionStart.ts";
 import { nativeNodeEnv } from "../../../src/runtimeEnvironment.ts";
 import { spawn, type ChildProcess } from "node:child_process";
@@ -176,7 +177,9 @@ function bindToTestFixtureLease(lease: string | undefined): void {
 }
 
 export function runRunnerHost(configPath: string): void {
+  stateFile(configPath, "runner configPath");
   const cfg = JSON.parse(readFileSync(configPath, "utf8")) as RunnerHostConfig;
+  runnerStateFiles(cfg);
   bindToTestFixtureLease(process.env.HIVE_TEST_FIXTURE_LEASE);
   if (Object.hasOwn(cfg,"executionStart") || Object.hasOwn(cfg,"executionOwner")) {
     if (!cfg.executionStart || !cfg.executionOwner) throw new Error("Missing fenced host origin");

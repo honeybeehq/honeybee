@@ -215,6 +215,7 @@ import {
   loadNodeConfig,
   patchNamingConfig,
   publicNamingConfig,
+  validateNodeStatePaths,
   type AgentSpecConfig,
   type NamingConfig,
   type ResolvedNamingConfig,
@@ -742,6 +743,7 @@ export class HiveDaemon {
   private readonly beeTmpOverrideLogged = new Set<string>();
 
   constructor(cfg: ResolvedNodeConfig, deps: HiveDaemonDeps = {}) {
+    validateNodeStatePaths(cfg);
     this.cfg = cfg;
     this.deps = deps;
     this.beeTmp = resolveBeeTmpPolicy(cfg.nodeKind, cfg.beeTmpRoot, process.env);

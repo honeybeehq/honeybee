@@ -1,5 +1,6 @@
 import type { ExecutionStart } from "../../core/src/executionStart.ts";
 import { ExecutionFenceError } from "../../core/src/executionFence.ts";
+import { stateDirectory } from "../../harness/src/statePath.ts";
 /**
  * CellDriver — runtime encapsulation by PURE DELEGATION (WP5, spec 05).
  *
@@ -173,6 +174,9 @@ export class CellDriver implements RuntimeDriver {
   private upstreamTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(cfg: CellDriverConfig) {
+    stateDirectory(cfg.cellsRoot, "cellsRoot");
+    if (cfg.gitImagesRoot !== undefined) stateDirectory(cfg.gitImagesRoot, "gitImagesRoot");
+    if (cfg.upstreamRefresh !== undefined) stateDirectory(cfg.upstreamRefresh.root, "upstreamRefresh.root");
     this.cfg = cfg;
     this.upstreamPolicy = cfg.upstreamRefresh == null ? null : { ...DEFAULT_UPSTREAM_REFRESH, ...cfg.upstreamRefresh };
     this.inner = new HsrDriver({
