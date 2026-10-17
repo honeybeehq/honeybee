@@ -30,6 +30,10 @@ function key(value: string): void {
 function validEffectResult(verb: string, value: unknown, commandId: number | null): boolean {
   if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
   const result = value as Record<string, unknown>;
+  const fields = verb === "spawn"
+    ? ["beeId", "agent", "handle", "humanRef", "issuingNamespace", "commandId", "messageId", "account", "accountReason", "allocation", "allocationClaimId", "cellBase", "deduped", "status"]
+    : verb === "send" ? ["messageId", "commandId", "unarchived", "runtimeStartHold", "deduped", "status"] : ["commandId", "deduped", "status"];
+  if (Object.keys(result).some(name => !fields.includes(name))) return false;
   const text = (v: unknown) => typeof v === "string" && v.length > 0;
   const number = (v: unknown) => typeof v === "number" && Number.isFinite(v) && v >= 0;
   const positive = (v: unknown) => number(v) && Number.isSafeInteger(v) && (v as number) > 0;
@@ -86,7 +90,7 @@ export class EffectLedger {
     } catch { return unknown(); }
     if (receipt === null || typeof receipt !== "object" || Array.isArray(receipt)) return unknown();
     const value = receipt as EffectReceipt;
-    if (value.key !== id || !(EFFECT_VERBS as readonly string[]).includes(value.verb) || row && value.verb !== row.verb || !Number.isFinite(value.createdAt) || value.commandId !== null && (!Number.isSafeInteger(value.commandId) || value.commandId <= 0) || !Object.hasOwn(value, "result")) return unknown();
+    if (value.key !== id || !(EFFECT_VERBS as readonly string[]).includes(value.verb) || row && value.verb !== row.verb || !Number.isFinite(value.createdAt) || value.createdAt < 0 || value.commandId !== null && (!Number.isSafeInteger(value.commandId) || value.commandId <= 0) || !Object.hasOwn(value, "result")) return unknown();
     if (!validEffectResult(value.verb, value.result, value.commandId)) return unknown();
     if (row?.state !== "committed") this.db.prepare("INSERT INTO rpc_effect_keys(key,verb,state,receipt,created_at) VALUES(?,?,'committed',?,?) ON CONFLICT(key) DO UPDATE SET verb=excluded.verb,state=excluded.state,receipt=excluded.receipt,created_at=excluded.created_at").run(id, value.verb, JSON.stringify(value), value.createdAt);
     return { verb: value.verb, state: "committed", receipt: value };
