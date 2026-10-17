@@ -134,3 +134,19 @@ test("paused old invocation refuses after owner ACK, records zero-effect receipt
     assert.equal(replacement.status, "queued");
   } finally { f.cleanup(); }
 });
+
+test("archive lifecycle commit before command settlement cannot rearchive after restart and manual unarchive", () => {
+  const f = setup(), receipt = f.execute();
+  let command;
+  while ((command = f.store.claimNextCommand()) && command.id !== receipt.commandId) f.store.completeCommand(command.id);
+  assert.equal(f.store.executeArchiveCommand(receipt.commandId!), true);
+  f.store.unarchiveBee(f.bee.id);
+  f.store.close();
+  const store = f.h.open();
+  try {
+    while ((command = store.claimNextCommand())) store.completeCommand(command.id);
+    assert.equal(store.getBee(f.bee.id)?.lifecycle, "active");
+    assert.equal(store.getCommand(receipt.commandId!)?.status, "done");
+    const observed = store.resolveExecution(f.request); assert.ok("executionReceipt" in observed); assert.equal(observed.executionReceipt.status, "completed");
+  } finally { store.close(); f.h.cleanup(); }
+});

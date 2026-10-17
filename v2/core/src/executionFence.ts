@@ -142,9 +142,11 @@ export class ExecutionLedger {
     return claim;
   }
   private row(key: string): { binding: ExecutionClaim; receipt: ExecutionReceipt } | null {
-    const row = this.db.prepare("SELECT binding,receipt FROM rpc_execution_effects WHERE key=?").get(key);
+    const row = this.db.prepare("SELECT binding,receipt,command_id FROM rpc_execution_effects WHERE key=?").get(key);
     if (!row) return null;
     const bound = executionClaim(JSON.parse(String(row.binding))), receipt = JSON.parse(String(row.receipt)) as ExecutionReceipt;
+    object(receipt, [...TOKEN_KEYS, ...BINDING_KEYS, "status", "boundary", "commandId", "result"]);
+    if (bound.idempotencyKey !== key || receipt.boundary !== (bound.verb === "send" ? "mailbox-admission" : "lifecycle-transaction") || receipt.commandId !== null && !Number.isSafeInteger(receipt.commandId) || bound.verb === "archive" && (receipt.commandId === null || receipt.commandId !== Number(row.command_id))) throw new ExecutionFenceError("rpc_execution_history_unknown", "Corrupt execution receipt binding; hold the effect");
     if (!["queued", "completed", "refused_stale"].includes(receipt.status) || !same(executionClaim(Object.fromEntries([...TOKEN_KEYS, ...BINDING_KEYS].map(key => [key, receipt[key as keyof ExecutionReceipt]]))), bound)) throw new ExecutionFenceError("rpc_execution_history_unknown", "Corrupt execution receipt; hold the effect");
     return { binding: bound, receipt };
   }
@@ -185,7 +187,13 @@ export class ExecutionLedger {
     const row = this.db.prepare("SELECT key FROM rpc_execution_effects WHERE command_id=?").get(commandId);
     if (!row) return true;
     const effect = this.row(String(row.key))!;
-    if (effect.receipt.status === "completed") return true;
+    const command = this.db.prepare("SELECT bee_id,verb,idempotency_key FROM commands WHERE id=?").get(commandId);
+    if (!command || command.verb !== "archive" || command.bee_id !== effect.binding.resource.beeId || command.idempotency_key !== effect.binding.idempotencyKey) throw new ExecutionFenceError("rpc_execution_history_unknown", "Archive command differs from its durable execution resource; hold the effect");
+    if (effect.receipt.status === "completed") {
+      this.db.prepare("UPDATE commands SET status='done',finished_at=? WHERE id=? AND status IN ('queued','running')").run(this.now(), commandId);
+      this.audit("rpc.execution.completed_replay", effect.binding.resource.beeId, { commandId, disposition: "settled_noop" });
+      return false;
+    }
     if (effect.receipt.status === "refused_stale") return false;
     if (!this.covered(effect.binding) || !same(this.current(effect.binding), effect.binding)) { this.refuse(String(row.key)); return false; }
     return true;
