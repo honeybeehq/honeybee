@@ -12,6 +12,7 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 import node_bootstrap
+import guard
 
 from guard import DIRS, PROTECTED, Refusal, absolute_compiler_jobs, compiler_metadata_literals, compiler_profile, compiler_tools, environment, launchagents, profile, receipt_hashes, run, seed_cache, select_node, validate, write_json
 
@@ -74,6 +75,23 @@ class GuardTests(unittest.TestCase):
             run(args)
         opened.assert_not_called()
         mkdir.assert_not_called()
+
+    def test_missing_passwd_identity_refuses_before_any_write(self):
+        args = SimpleNamespace(root=str(self.root), node='/usr/local/bin/node')
+        for error in (KeyError('uid unavailable'), OSError('lookup unavailable')):
+            with patch('guard.pwd.getpwuid', side_effect=error), patch('os.open') as opened, patch.object(Path, 'mkdir') as mkdir, self.assertRaisesRegex(Refusal, 'passwd identity unavailable'):
+                run(args)
+            opened.assert_not_called()
+            mkdir.assert_not_called()
+
+    def test_refusal_prints_one_line_stdout_reason(self):
+        output = io.StringIO()
+        errors = io.StringIO()
+        argv = ['guard.py', '--root', str(self.root), '--source', '0' * 40, 'self-test-body']
+        with patch.object(sys, 'argv', argv), patch.object(sys, 'stdout', output), patch.object(sys, 'stderr', errors), patch('guard.run', side_effect=Refusal('test refusal')):
+            self.assertEqual(guard.main(), 90)
+        self.assertEqual(output.getvalue().splitlines(), ['GATE_NONZERO_REASON="guard refusal: test refusal"'])
+        self.assertFalse(self.root.exists())
 
     def waiting_child(self):
         target = self.base / 'effect.py'

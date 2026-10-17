@@ -286,7 +286,10 @@ def scope_call(helper, command, *args):
 
 def run(args):
     lane = Path.cwd().resolve()
-    real_home = Path(pwd.getpwuid(os.getuid()).pw_dir).resolve()
+    try:
+        real_home = Path(pwd.getpwuid(os.getuid()).pw_dir).resolve()
+    except (KeyError, OSError) as error:
+        raise Refusal('passwd identity unavailable before first write') from error
     root = Path(args.root)
     bootstrap = getattr(args, 'download_node', False)
     if bootstrap and args.node:
@@ -448,7 +451,10 @@ def run(args):
         rc = 95
     if before != after:
         rc = 95
-    write_json(root / 'receipt.json', {'version': 2, 'exit': rc, 'source': args.source, 'selfTest': args.self_test, 'libraryScope': 'LaunchAgents names and sha256 only', 'cacheSeed': seed, 'rootRetained': True, 'network': {'namespace': 'SHARED', 'seatbelt': 'deny network*, allow loopback IP and run-root Unix sockets only', 'residualRisk': 'outbound loopback can reach host-local services; no Darwin network namespace', 'neededBy': ['v2/daemon/tests/auth-death-fixture.test.ts:44,49', 'v2/daemon/tests/claude-refresh-transport.test.ts:22', 'v2/daemon/tests/lease-enrol-rpc.test.ts:19', 'v2/daemon/tests/auth-death-rpc.test.ts:44']}, 'scopeLimitation': 'sampling may miss a process born and reparented between observations'}, root)
+    reason = scope_error or ('LaunchAgents sentinel changed' if before != after else ('workload exited ' + str(rc) + '; diagnostic: ' + str(root / 'workload.log') if rc else None))
+    write_json(root / 'receipt.json', {'version': 2, 'exit': rc, 'reason': reason, 'source': args.source, 'selfTest': args.self_test, 'libraryScope': 'LaunchAgents names and sha256 only', 'cacheSeed': seed, 'rootRetained': True, 'network': {'namespace': 'SHARED', 'seatbelt': 'deny network*, allow loopback IP and run-root Unix sockets only', 'residualRisk': 'outbound loopback can reach host-local services; no Darwin network namespace', 'neededBy': ['v2/daemon/tests/auth-death-fixture.test.ts:44,49', 'v2/daemon/tests/claude-refresh-transport.test.ts:22', 'v2/daemon/tests/lease-enrol-rpc.test.ts:19', 'v2/daemon/tests/auth-death-rpc.test.ts:44']}, 'scopeLimitation': 'sampling may miss a process born and reparented between observations'}, root)
+    if rc:
+        print('GATE_NONZERO_REASON=' + json.dumps(reason), flush=True)
     digest = receipt_hashes(root)
     print('GATE_RECEIPT_SHA256=' + digest, flush=True)
     os.close(fd)
@@ -470,6 +476,7 @@ def main():
         return run(args)
     except (Refusal, OSError, subprocess.SubprocessError) as error:
         print('REFUSING: ' + str(error), file=sys.stderr)
+        print('GATE_NONZERO_REASON=' + json.dumps('guard refusal: ' + str(error)), flush=True)
         root = Path(args.root)
         if root.resolve() in CREATED_ROOTS:
             write_json(root / 'receipt.json', {'version': 2, 'exit': 90, 'source': args.source, 'error': str(error), 'rootRetained': True, 'complete': False}, root)
