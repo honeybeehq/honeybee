@@ -1,4 +1,5 @@
 #!/bin/bash
+if /usr/bin/env | /usr/bin/cut -d= -f1 | /usr/bin/grep -Eq '^(HIVE_|APIARY_)'; then echo 'REFUSING: stamped controller environment'; exit 90; fi
 set -eu
 case "${1:-}" in scripts/gates/darwin/pinned-runtime-body.sh|scripts/gates/darwin/pinned-full-body.sh) echo '{"ok":false,"code":"darwin_gate_body_unsupported_until_audited"}' >&2; exit 88;; esac
 [ "$(uname -s)" = Darwin ] || { echo "REFUSING: Darwin required"; exit 90; }

@@ -19,12 +19,14 @@ import node_bootstrap
 import listener_static
 
 LISTENER_LIMIT = 'Seatbelt does not mediate IP bind/inbound on macOS 26 (probe 52e76fd3: remote tailnet connect accepted); mitigated by own-pid listener sampling (FAIL + fenced kill); exposure window up to one sample interval.'
+STATIC_BIND_LIMIT = 'static bind scan covers modules importing dgram/socket; a socket passed across modules is covered only by the runtime own-pid sampler'
 
 PROVIDERS = ('.claude', '.codex', '.grok', '.kimi', '.gemini', '.cursor', '.muse', '.config/opencode', '.config/muse', '.local/share/opencode')
 PROTECTED = ('.hive', '.config', '.ssh', '.gnupg', 'Library', '.apiary', '.local/share/apiary', '.local/share/apiary-satellite', '.local/share/apiary/satellite-updater', *PROVIDERS)
 SCOPE_OBSERVATIONS = []
 CREATED_ROOTS = set()
 CONTROL_SOCKETS = []
+LOCK_METADATA = {}
 DIRS = {'HOME': 'h', 'TMPDIR': 't', 'TMP': 't', 'TEMP': 't', 'HIVE_REAL_HOME': 'h', 'XDG_CONFIG_HOME': 'config', 'XDG_DATA_HOME': 'data', 'XDG_CACHE_HOME': 'cache', 'XDG_STATE_HOME': 'state', 'XDG_RUNTIME_DIR': 'runtime', 'CLAUDE_CONFIG_DIR': 'claude', 'CODEX_HOME': 'codex', 'GROK_HOME': 'grok', 'GEMINI_CLI_HOME': 'gemini', 'OPENCODE_CONFIG_DIR': 'opencode', 'KIMI_CODE_HOME': 'kimi', 'CURSOR_CONFIG_DIR': 'cursor', 'MUSE_HOME': 'muse', 'npm_config_cache': 'cache/npm', 'npm_config_store_dir': 'cache/pnpm', 'npm_config_logs_dir': 'logs/npm', 'PNPM_HOME': 'pnpm', 'PNPM_STORE_DIR': 'cache/pnpm', 'NODE_COMPILE_CACHE': 'cache/node', 'CLANG_MODULE_CACHE_PATH': 'cache/clang'}
 
 
@@ -66,7 +68,7 @@ def write_json(path, value, root):
     if not inside(path.resolve(), root.resolve()):
         raise Refusal('write outside run root')
     if path == Path(root) / 'receipt.json' and isinstance(value, dict):
-        value = dict(value, listenerLimit=LISTENER_LIMIT)
+        value = dict(value, listenerLimit=LISTENER_LIMIT, staticBindLimit=STATIC_BIND_LIMIT, hostLock=LOCK_METADATA.get(str(Path(root).resolve())))
     path.write_text(json.dumps(value, indent=2) + '\n')
 
 
@@ -349,7 +351,7 @@ def sample_listeners(helper, birth):
     if value.returncode:
         status = subprocess.run([str(helper), 'status', *birth], capture_output=True, text=True)
         observation['exitEvidence'] = {'exit': status.returncode, 'result': status.stdout.strip()}
-        if status.returncode != 3:
+        if status.returncode != 3 or status.stdout.strip() not in ('gone', 'same-birth-zombie'):
             observation['error'] = 'listener observation unresolved'
         return observation
     for line in value.stdout.splitlines():
@@ -361,6 +363,18 @@ def sample_listeners(helper, birth):
         loopback = (ip.version == 4 and ip in ipaddress.ip_network('127.0.0.0/8')) or (ip.version == 6 and ip == ipaddress.ip_address('::1'))
         observation['listeners'].append({'pid': int(birth[0]), 'birth': birth, 'proto': proto, 'localAddress': address, 'port': int(port), 'fd': int(fd), 'timestamp': timestamp, 'loopback': loopback})
     return observation
+
+
+def sample_retained_listeners(helper, tracked, exited):
+    samples = []
+    for key, birth in tracked.items():
+        if key in exited:
+            continue
+        sample = sample_listeners(helper, birth)
+        samples.append(sample)
+        if sample.get('exitEvidence', {}).get('exit') == 3 and not sample.get('error'):
+            exited.add(key)
+    return samples
 
 
 def listener_self_tests(root, workspace, prefix, helper, env):
@@ -408,10 +422,78 @@ def listener_self_tests(root, workspace, prefix, helper, env):
             write_json(root / 'listener-self-tests.json', results, root)
             if not detected or child.poll() is None or not signals or signals[0]['exit'] != 0:
                 raise Refusal('expected wildcard listener detection or fenced kill failed: ' + proto)
+    results.append(reparent_listener_self_test(root, workspace, prefix, helper, env))
+    write_json(root / 'listener-self-tests.json', results, root)
     return results
 
 
+def reparent_listener_self_test(root, workspace, prefix, helper, env):
+    read_fd, release_fd = os.pipe()
+    samples = []
+    signals = []
+    parent_birth = None
+    retained = None
+    detected = False
+    with (root / 'listener-fixture-reparent.log').open('wb') as output:
+        parent = subprocess.Popen([sys.executable, '-B', str(workspace / 'scripts/gates/darwin/start_wait.py'), str(read_fd), *prefix, env['SCG_PYTHON_BIN'], '-B', str(workspace / 'scripts/gates/darwin/listener_fixture.py'), 'reparent-parent'], pass_fds=(read_fd,), cwd=workspace, env=env, stdout=output, stderr=subprocess.STDOUT)
+        os.close(read_fd)
+        tree = []
+        try:
+            parent_birth = scope_call(helper, 'identity', parent.pid)[0]
+            if int(parent_birth[1]) != os.getpid():
+                raise Refusal('reparent fixture parent outside controller scope')
+            os.write(release_fd, b'1')
+            deadline = time.monotonic() + 3
+            while parent.poll() is None and time.monotonic() < deadline:
+                tree = scope_call(helper, 'scan', *parent_birth)
+                children = [row for row in tree if row[1] == str(parent.pid)]
+                if children:
+                    retained = children[0]
+                    break
+                time.sleep(0.05)
+            if retained is None:
+                raise Refusal('grandchild birth unobserved')
+            (root / 'reparent-parent-release').write_text('release\n')
+            parent.wait(timeout=2)
+            now = scope_call(helper, 'identity', retained[0])[0]
+            if now[1] == retained[1] or now[2:] != retained[2:]:
+                raise Refusal('grandchild did not reparent with preserved birth')
+            (root / 'reparent-listen-release').write_text('release\n')
+            deadline = time.monotonic() + 3
+            while time.monotonic() < deadline:
+                sample = sample_listeners(helper, retained)
+                samples.append(sample)
+                if sample.get('error'):
+                    break
+                if any(not row['loopback'] for row in sample['listeners']):
+                    detected = True
+                    break
+                time.sleep(0.05)
+        finally:
+            os.close(release_fd)
+            for birth in [row for row in (retained, parent_birth) if row is not None]:
+                for sig in (signal.SIGTERM, signal.SIGKILL):
+                    attempt = subprocess.run([str(helper), 'signal', *birth, str(int(sig))], capture_output=True, text=True)
+                    signals.append({'birth': birth, 'signal': int(sig), 'exit': attempt.returncode, 'result': attempt.stdout.strip()})
+                    if attempt.returncode not in (0, 3):
+                        break
+                    time.sleep(0.1)
+                    check = subprocess.run([str(helper), 'status', *birth], capture_output=True, text=True)
+                    if check.returncode == 3:
+                        break
+            if parent.poll() is not None:
+                parent.wait()
+    check = subprocess.run([str(helper), 'status', *retained], capture_output=True, text=True) if retained else None
+    result = {'proto': 'TCP', 'case': 'retained reparented grandchild', 'expectedClassification': 'FAIL', 'detected': detected, 'birth': retained, 'parentBirth': parent_birth, 'firstSightTree': tree, 'samples': samples, 'signals': signals, 'childExit': 'gone or zombie' if check and check.returncode == 3 else None, 'noRemoteConnect': True}
+    write_json(root / 'listener-reparent-self-test.json', result, root)
+    if not detected or not check or check.returncode != 3:
+        raise Refusal('reparented wildcard listener detection or cleanup failed')
+    return result
+
+
 def run(args):
+    if any(key.startswith(('HIVE_', 'APIARY_')) for key in os.environ):
+        raise Refusal('stamped controller environment')
     lane = Path.cwd().resolve()
     try:
         real_home = Path(pwd.getpwuid(os.getuid()).pw_dir).resolve()
@@ -425,19 +507,14 @@ def run(args):
     env = environment(root, node)
     guard = validate(root, env, real_home)
     lock_path = Path('/private/var/tmp/hb-darwin-gate.lock')
-    fd = os.open(lock_path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
-    lock_stat = os.fstat(fd)
-    if lock_stat.st_uid != os.getuid() or not stat.S_ISREG(lock_stat.st_mode):
-        raise Refusal('unsafe host lock')
-    try:
-        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except BlockingIOError:
-        raise Refusal('another gate holds the host lock')
+    fd, lock_metadata = acquire_lock(lock_path)
+    LOCK_METADATA[str(root.resolve())] = lock_metadata
     root.mkdir(mode=0o700)
     CREATED_ROOTS.add(root.resolve())
     for value in set(env[k] for k in DIRS):
         Path(value).mkdir(parents=True, exist_ok=True)
     write_json(root / 'entry-guard.json', guard, root)
+    write_json(root / 'lock.json', lock_metadata, root)
     write_json(root / 'environment.json', {'keys': sorted(env), 'paths': {k: env[k] for k in DIRS}, 'node': node, 'python': str(Path(sys.executable).resolve()), 'pythonVersion': sys.version, 'architecture': os.uname().machine}, root)
     print('GATE_ROOT=' + str(root), flush=True)
     if bootstrap:
@@ -547,15 +624,16 @@ def run(args):
         os.close(release_fd)
     tracked = {}
     scans = []
-    tracked[tuple(birth[0])] = birth[0]
+    tracked[(birth[0][0], birth[0][2], birth[0][3])] = birth[0]
+    exited = set()
     scope_error = None
     listener_samples = []
     try:
         while proc.poll() is None:
             rows = scope_call(identity, 'scan', *birth[0])
             for row in rows:
-                tracked[tuple(row)] = row
-                sample = sample_listeners(identity, row)
+                tracked.setdefault((row[0], row[2], row[3]), row)
+            for sample in sample_retained_listeners(identity, tracked, exited):
                 listener_samples.append(sample)
                 if sample.get('error') or any(not listener['loopback'] for listener in sample['listeners']):
                     scope_error = 'non-loopback listener or unresolved listener observation'
@@ -632,6 +710,22 @@ def run(args):
     print('GATE_RECEIPT_SHA256=' + digest, flush=True)
     os.close(fd)
     return rc
+
+
+def acquire_lock(path):
+    try:
+        fd = os.open(path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+    except OSError as error:
+        raise Refusal('unsafe or unavailable host lock') from error
+    try:
+        value = os.fstat(fd)
+        if value.st_uid != os.getuid() or not stat.S_ISREG(value.st_mode) or stat.S_IMODE(value.st_mode) != 0o600 or value.st_size != 0:
+            raise Refusal('unsafe host lock owner, mode, type or nonempty contents')
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return fd, {'path': str(path), 'dev': value.st_dev, 'ino': value.st_ino, 'mode': stat.S_IMODE(value.st_mode), 'uid': value.st_uid, 'size': value.st_size, 'operation': 'flock only; never written, removed or swept', 'authorization': 'Queen, 17 Oct 12:13Z'}
+    except Exception:
+        os.close(fd)
+        raise
 
 
 def main():

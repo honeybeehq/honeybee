@@ -1,106 +1,578 @@
 {
-  "version": 1,
-  "normalization": "call line plus two surrounding lines each side; whitespace collapsed",
+  "version": 2,
+  "normalization": "call line plus two surrounding lines each side, whitespace collapsed; combined with SHA256 of exact cited declaration lines",
   "entries": [
     {
+      "file": "v2/cli/tests/build-identity.test.ts",
+      "line": 28,
+      "sha256": "891879f7c5f37ea21b0eae151906de31f9617c31a687849473f2098fa1945ca6",
+      "receiverDeclaration": {
+        "file": "v2/cli/tests/build-identity.test.ts",
+        "startLine": 11,
+        "endLine": 14,
+        "sha256": "5ddf63ba82db9bd05a9f2167653be69e256c0b13cb7653e63ab91865978a72f3"
+      },
+      "fingerprintSha256": "70a9620f22de5bd89fc7d20e51622964b5f862d8b2e62559a5baec46599451d0",
+      "reason": "Unix socket listener with audited path or RpcServer wrapper; receiver declaration v2/cli/tests/build-identity.test.ts:11-14"
+    },
+    {
+      "file": "v2/cli/tests/cli.test.ts",
+      "line": 265,
+      "sha256": "0c5dd0e185d7ff40b74ee5893b34282054580132d2f6ba13577e03c5ee74da26",
+      "receiverDeclaration": {
+        "file": "v2/cli/tests/cli.test.ts",
+        "startLine": 220,
+        "endLine": 222,
+        "sha256": "e9b08cc0b9a4847023a2465e970a978f97ca3fb91976164f201e72cb00afe339"
+      },
+      "fingerprintSha256": "36463fdd9e8d6c6df8b676549c69d59d4a87a50f66e87cafdeac212b0f18b7e5",
+      "reason": "Unix socket listener with audited path or RpcServer wrapper; receiver declaration v2/cli/tests/cli.test.ts:220-222"
+    },
+    {
       "file": "v2/cli/tests/send-target.test.ts",
+      "line": 48,
       "sha256": "f8e091f083647bdf05421bac079802d6daf5bcc79a7cead45204a712931aaacc",
-      "reason": "server declared as new RpcServer at v2/cli/tests/send-target.test.ts:26 with socketPath; RpcServer.listen binds opts.socketPath at v2/daemon/src/rpc.ts:225"
+      "receiverDeclaration": {
+        "file": "v2/cli/tests/send-target.test.ts",
+        "startLine": 23,
+        "endLine": 26,
+        "sha256": "d8f847a00454c54d10f482e7739f9f2419b442fdec1d3086339eb0afdd4251fb"
+      },
+      "fingerprintSha256": "b2927b04bb8f37357ca31579da9b408358f4672bd124f9b8822244f2ce8b4ead",
+      "reason": "Unix socket listener with audited path or RpcServer wrapper; receiver declaration v2/cli/tests/send-target.test.ts:23-26"
     },
     {
       "file": "v2/cli/tests/socket-isolation.test.ts",
+      "line": 46,
+      "sha256": "b5cfdac7d17ede81543e6a62a6ed6b23bbe0e9ed412d68f063d0ce828220fb9b",
+      "receiverDeclaration": {
+        "file": "v2/cli/tests/socket-isolation.test.ts",
+        "startLine": 41,
+        "endLine": 43,
+        "sha256": "54dd99fd455225db115540c6aa28b21bfa150a59de1d8f11bfb716bcf6d7636c"
+      },
+      "fingerprintSha256": "8ee3729365a9c63996331f2966bbae32c28a7713b7551c225a1381fa2c07d15d",
+      "reason": "Unix socket listener with audited path or RpcServer wrapper; receiver declaration v2/cli/tests/socket-isolation.test.ts:41-43"
+    },
+    {
+      "file": "v2/cli/tests/socket-isolation.test.ts",
+      "line": 114,
+      "sha256": "978481554610c4c24f188e8d972425d81036e3e8f835c71aeb0fc163c3503acd",
+      "receiverDeclaration": {
+        "file": "v2/cli/tests/socket-isolation.test.ts",
+        "startLine": 110,
+        "endLine": 112,
+        "sha256": "9e6112cb8ae194733530cf1d39478ba7bd357c3a2fb4bfb0a0eac77afb9faa91"
+      },
+      "fingerprintSha256": "641034980c0f4c4dfcbf6f9a71d5e6e06521fe8645e292b1376ca6ce9ed5e693",
+      "reason": "Unix socket listener with audited path or RpcServer wrapper; receiver declaration v2/cli/tests/socket-isolation.test.ts:110-112"
+    },
+    {
+      "file": "v2/cli/tests/socket-isolation.test.ts",
+      "line": 133,
       "sha256": "091c54fdafb70481a407f315f05447c07812d89a6613b3a68e35c0f2d0fce4c8",
-      "reason": "failing/server/second declared new RpcServer with socketPath at v2/cli/tests/socket-isolation.test.ts:129-131; listen(callback) is RpcServer hook, not net.Server"
+      "receiverDeclaration": {
+        "file": "v2/cli/tests/socket-isolation.test.ts",
+        "startLine": 128,
+        "endLine": 131,
+        "sha256": "28e1a9a72b786ceb0b01725ca06ce62f9254b7b512b3076d712d716b46ce7fe3"
+      },
+      "fingerprintSha256": "b1c1108996b60a4c40de620b2d889cb9f055618ea6f4e36f17c8f87881ed469c",
+      "reason": "Unix socket listener with audited path or RpcServer wrapper; receiver declaration v2/cli/tests/socket-isolation.test.ts:128-131"
     },
     {
       "file": "v2/cli/tests/socket-isolation.test.ts",
+      "line": 136,
       "sha256": "1a4d8089a0d7f27b14094badf75b9bca1c9a52665757d4bfb069f77323c38beb",
-      "reason": "failing/server/second declared new RpcServer with socketPath at v2/cli/tests/socket-isolation.test.ts:129-131; listen(callback) is RpcServer hook, not net.Server"
+      "receiverDeclaration": {
+        "file": "v2/cli/tests/socket-isolation.test.ts",
+        "startLine": 128,
+        "endLine": 131,
+        "sha256": "28e1a9a72b786ceb0b01725ca06ce62f9254b7b512b3076d712d716b46ce7fe3"
+      },
+      "fingerprintSha256": "f2f90114cf42a755b2cdb8c64ce63ad399473366d3310fa983e3593b0b6e9912",
+      "reason": "Unix socket listener with audited path or RpcServer wrapper; receiver declaration v2/cli/tests/socket-isolation.test.ts:128-131"
     },
     {
       "file": "v2/cli/tests/socket-isolation.test.ts",
+      "line": 140,
       "sha256": "549b073ddcf77b01aa583f32e55a07742742ae1496ddc49cb5e94fe300c0dbb4",
-      "reason": "failing/server/second declared new RpcServer with socketPath at v2/cli/tests/socket-isolation.test.ts:129-131; listen(callback) is RpcServer hook, not net.Server"
+      "receiverDeclaration": {
+        "file": "v2/cli/tests/socket-isolation.test.ts",
+        "startLine": 128,
+        "endLine": 131,
+        "sha256": "28e1a9a72b786ceb0b01725ca06ce62f9254b7b512b3076d712d716b46ce7fe3"
+      },
+      "fingerprintSha256": "414bd2ecd317f85602f204404db047cb703b05281e6da730f53b6a9eb0e0592d",
+      "reason": "Unix socket listener with audited path or RpcServer wrapper; receiver declaration v2/cli/tests/socket-isolation.test.ts:128-131"
     },
     {
       "file": "v2/daemon/src/daemon.ts",
+      "line": 1041,
       "sha256": "cfa43f2f68fe967a84720684c5f4fe73d48134ce4a50ae906173c14ddee41dcc",
-      "reason": "receiver is this.rpc (not this.server), declared RpcServer|null at daemon.ts:701 and constructed at1030 with socketPath"
+      "receiverDeclaration": {
+        "file": "v2/daemon/src/daemon.ts",
+        "startLine": 701,
+        "endLine": 701,
+        "sha256": "f94e1df94d05ee439fc50dd374c585a7909408b98791596318c95d0cc23a83bf"
+      },
+      "fingerprintSha256": "de77a7fbf3c083c3c3d2545b05b7d9efc838659e54343be91b03a8e91c680aae",
+      "reason": "Unix socket listener with audited path or RpcServer wrapper; receiver declaration v2/daemon/src/daemon.ts:701-701"
     },
     {
       "file": "v2/daemon/src/rpc.ts",
+      "line": 215,
+      "sha256": "b8db777ddf2ee8fd44d04b7ce087f0bd0d3922164fc08cee48bc57ab04b355e6",
+      "receiverDeclaration": {
+        "file": "v2/daemon/src/rpc.ts",
+        "startLine": 193,
+        "endLine": 212,
+        "sha256": "b7a5ea7270d35ddee13cdb7b10793f25f9c25072ee0a63218e1a64ec93aa8bd1"
+      },
+      "fingerprintSha256": "c5c387472d40b6c47a02146276799406dda3ee408873d6080e92a081e11cd381",
+      "reason": "RpcServer.listen method declaration, implementation binds opts.socketPath; receiver declaration v2/daemon/src/rpc.ts:193-212"
+    },
+    {
+      "file": "v2/daemon/src/rpc.ts",
+      "line": 225,
       "sha256": "c53f727c1c975b9f7aa0fe4ba4b158c22274d2d975eaf6d8b72926ba88148a42",
-      "reason": "this.server declared node net.Server at rpc.ts:196; call explicitly passes this.opts.socketPath at225, opts stored at206"
+      "receiverDeclaration": {
+        "file": "v2/daemon/src/rpc.ts",
+        "startLine": 193,
+        "endLine": 212,
+        "sha256": "b7a5ea7270d35ddee13cdb7b10793f25f9c25072ee0a63218e1a64ec93aa8bd1"
+      },
+      "fingerprintSha256": "e6ee712fb8585c0e355b0393cb8fab1dd0fdb6b2703e640e61c4e8ee314bfc5e",
+      "reason": "Unix socket listener with audited path or RpcServer wrapper; receiver declaration v2/daemon/src/rpc.ts:193-212"
+    },
+    {
+      "file": "v2/daemon/tests/auth-death-fixture.test.ts",
+      "line": 71,
+      "sha256": "72ab85bc5daddfad57a43c2dc57429c8dd9c940c2f95cdc1a995eed8c127cdd2",
+      "receiverDeclaration": {
+        "file": "v2/daemon/tests/auth-death-fixture.test.ts",
+        "startLine": 41,
+        "endLine": 45,
+        "sha256": "38c9186a85bb35d2fe5820cbb0092a516a755f52ea0969d4f651379cddaf56ac"
+      },
+      "fingerprintSha256": "8a3fe1375b698040c0fb798c4ded5bfdf8a3a7170ce3dc4f01a6959844389f01",
+      "reason": "Fixture listen(status) helper; declaration explicitly binds 127.0.0.1; receiver declaration v2/daemon/tests/auth-death-fixture.test.ts:41-45"
+    },
+    {
+      "file": "v2/daemon/tests/auth-death-fixture.test.ts",
+      "line": 79,
+      "sha256": "73204338ece0ba5b467cc0662bc35ef447414aa158960a7f401c14d5d7902fd4",
+      "receiverDeclaration": {
+        "file": "v2/daemon/tests/auth-death-fixture.test.ts",
+        "startLine": 41,
+        "endLine": 45,
+        "sha256": "38c9186a85bb35d2fe5820cbb0092a516a755f52ea0969d4f651379cddaf56ac"
+      },
+      "fingerprintSha256": "7c7ad72f6babe55f76855051ceb92390f78ae6ef7f17b72a13832ad98841e83f",
+      "reason": "Fixture listen(status) helper; declaration explicitly binds 127.0.0.1; receiver declaration v2/daemon/tests/auth-death-fixture.test.ts:41-45"
+    },
+    {
+      "file": "v2/daemon/tests/auth-death-fixture.test.ts",
+      "line": 88,
+      "sha256": "e95635f0a901dd5f668e4b7abcc39f75230cc3e5e24eda3e533ac1000d7280e5",
+      "receiverDeclaration": {
+        "file": "v2/daemon/tests/auth-death-fixture.test.ts",
+        "startLine": 41,
+        "endLine": 45,
+        "sha256": "38c9186a85bb35d2fe5820cbb0092a516a755f52ea0969d4f651379cddaf56ac"
+      },
+      "fingerprintSha256": "0cbc37c19c7369f5c82f21aa8a7ef31f16fafce41881bee5f8bdf8c0f409da36",
+      "reason": "Fixture listen(status) helper; declaration explicitly binds 127.0.0.1; receiver declaration v2/daemon/tests/auth-death-fixture.test.ts:41-45"
+    },
+    {
+      "file": "v2/daemon/tests/auth-death-fixture.test.ts",
+      "line": 102,
+      "sha256": "c794af0a2cd2365e446a35f5cd84827f029e8ccdf401a03255582cf5e43112d9",
+      "receiverDeclaration": {
+        "file": "v2/daemon/tests/auth-death-fixture.test.ts",
+        "startLine": 41,
+        "endLine": 45,
+        "sha256": "38c9186a85bb35d2fe5820cbb0092a516a755f52ea0969d4f651379cddaf56ac"
+      },
+      "fingerprintSha256": "30d9b807573c5752793aaab67583990a7a3e704583b04bd28921218a23da6b3d",
+      "reason": "Fixture listen(status) helper; declaration explicitly binds 127.0.0.1; receiver declaration v2/daemon/tests/auth-death-fixture.test.ts:41-45"
     },
     {
       "file": "v2/daemon/tests/effect-resolve.test.ts",
+      "line": 36,
       "sha256": "347a046ba815ced97770fba09d840afb8a98933310f49b67820129c58ddfa455",
-      "reason": "server declared new RpcServer with socketPath at effect-resolve.test.ts:35"
+      "receiverDeclaration": {
+        "file": "v2/daemon/tests/effect-resolve.test.ts",
+        "startLine": 35,
+        "endLine": 35,
+        "sha256": "4a1b7ae9fb6576ed2647909ed3015f09391e4f860e7a855393003a537f3c9412"
+      },
+      "fingerprintSha256": "b58d46455e11c0101c8e4c825923345d3289850f9814c0099d4849655a33a6b3",
+      "reason": "Unix socket listener with audited path or RpcServer wrapper; receiver declaration v2/daemon/tests/effect-resolve.test.ts:35-35"
     },
     {
       "file": "v2/daemon/tests/execution-fence.test.ts",
+      "line": 37,
       "sha256": "595b79bcb2a9a507e590bec6a913818b1338a5eba1f1a08b2896fddedd046f7b",
-      "reason": "server declared new RpcServer with socketPath at execution-fence.test.ts:36"
+      "receiverDeclaration": {
+        "file": "v2/daemon/tests/execution-fence.test.ts",
+        "startLine": 36,
+        "endLine": 36,
+        "sha256": "800704cb316e7c081cf41ccef5c235ceb9cde72c92e7a2ad5e70b54a5c508efe"
+      },
+      "fingerprintSha256": "b4c1a5c550fee60a394994ea683e1e322d8f2bcf2c664f2cfe6172996c6bc850",
+      "reason": "Unix socket listener with audited path or RpcServer wrapper; receiver declaration v2/daemon/tests/execution-fence.test.ts:36-36"
+    },
+    {
+      "file": "v2/daemon/tests/limits-observation-rpc.test.ts",
+      "line": 43,
+      "sha256": "77aee768c7fac5cec2bb8497a95a4e74b8002213b8c91ffa293dcad502c0bb98",
+      "receiverDeclaration": {
+        "file": "v2/daemon/tests/limits-observation-rpc.test.ts",
+        "startLine": 41,
+        "endLine": 42,
+        "sha256": "d0f8dcc56322b48f77294d0db11c6e16297dba4be16f25c8d4e092243b709d65"
+      },
+      "fingerprintSha256": "677d180cb3d529eea49b0c9693afa2c20e122a25c11ac08fd9ffe093773aa5f8",
+      "reason": "Unix socket listener with audited path or RpcServer wrapper; receiver declaration v2/daemon/tests/limits-observation-rpc.test.ts:41-42"
     },
     {
       "file": "v2/daemon/tests/local-rpc-security.test.ts",
+      "line": 24,
       "sha256": "6aa5cf448ce33eea35600e5c279d8807ad8d6ade7b72c7ecd8558a2565545231",
-      "reason": "server declared new RpcServer with socketPath at local-rpc-security.test.ts:21 or45 in separate test scopes"
+      "receiverDeclaration": {
+        "file": "v2/daemon/tests/local-rpc-security.test.ts",
+        "startLine": 21,
+        "endLine": 21,
+        "sha256": "f073235616eff02e2325b8d783623fa37bd3acbcecbbdca1330f1018a5c651d4"
+      },
+      "fingerprintSha256": "4ed97b4097ab10df91734dc3e68397102b3af1d7f0586ad160d07dc35bfeb1f2",
+      "reason": "Unix socket listener with audited path or RpcServer wrapper; receiver declaration v2/daemon/tests/local-rpc-security.test.ts:21-21"
     },
     {
       "file": "v2/daemon/tests/local-rpc-security.test.ts",
+      "line": 52,
       "sha256": "4d3ae3c6f8f1ca69b9b3adece177f21a7b37a6e62bc1ff3c9835cc03b0fa7611",
-      "reason": "server declared new RpcServer with socketPath at local-rpc-security.test.ts:21 or45 in separate test scopes"
+      "receiverDeclaration": {
+        "file": "v2/daemon/tests/local-rpc-security.test.ts",
+        "startLine": 45,
+        "endLine": 46,
+        "sha256": "bb1a5d1242395b80530b2797bcbc20522f7b600d14b170a0c0b697ae38cffc67"
+      },
+      "fingerprintSha256": "47ed2365dff6a12262367755edf8b8fde4fe5df382d7a734aee15ebfbac37842",
+      "reason": "Unix socket listener with audited path or RpcServer wrapper; receiver declaration v2/daemon/tests/local-rpc-security.test.ts:45-46"
+    },
+    {
+      "file": "v2/daemon/tests/peer-credentials.test.ts",
+      "line": 16,
+      "sha256": "91a0ceecc7b37343b783cb5b497b92fce79fc034f62a08312a8c191dbd1acb09",
+      "receiverDeclaration": {
+        "file": "v2/daemon/tests/peer-credentials.test.ts",
+        "startLine": 14,
+        "endLine": 15,
+        "sha256": "e3524d88bbca9645e2b7cb45d3038b83a9886411f44805e3cfca82c88f15e4ad"
+      },
+      "fingerprintSha256": "e2d40eb81721a3ceec7432c4e147aa98f5d7d7ef782b597499c0e78737874994",
+      "reason": "Unix socket listener with audited path or RpcServer wrapper; receiver declaration v2/daemon/tests/peer-credentials.test.ts:14-15"
     },
     {
       "file": "v2/daemon/tests/performance.test.ts",
+      "line": 247,
       "sha256": "7095d7aee20947dba4353c45b35292454ca960b86f0079ca1e8f16a68915e540",
-      "reason": "server declared new RpcServer with socketPath at performance.test.ts:233 or324 in separate test scopes"
+      "receiverDeclaration": {
+        "file": "v2/daemon/tests/performance.test.ts",
+        "startLine": 227,
+        "endLine": 235,
+        "sha256": "7eb322af755c11008af20c83edb70f8397dbf072488714995016ecf8df724e50"
+      },
+      "fingerprintSha256": "fef1618f532ab2baffa0f80ae96f2edda12df7266c428c3f429701699a83f847",
+      "reason": "Unix socket listener with audited path or RpcServer wrapper; receiver declaration v2/daemon/tests/performance.test.ts:227-235"
     },
     {
       "file": "v2/daemon/tests/performance.test.ts",
+      "line": 337,
       "sha256": "9627751af9f991b5aadef1dfd26722cd2875729ddb5f760a15772ce8698df05f",
-      "reason": "server declared new RpcServer with socketPath at performance.test.ts:233 or324 in separate test scopes"
+      "receiverDeclaration": {
+        "file": "v2/daemon/tests/performance.test.ts",
+        "startLine": 314,
+        "endLine": 326,
+        "sha256": "6fb49bac489084a5e446359493bc094963adb5941b42002ca955508736288b2b"
+      },
+      "fingerprintSha256": "e124cb9b12ff25dcf771426f1a90d94ecfdc987d89ae0c760a6ab132a1833175",
+      "reason": "Unix socket listener with audited path or RpcServer wrapper; receiver declaration v2/daemon/tests/performance.test.ts:314-326"
     },
     {
       "file": "v2/daemon/tests/question-withdraw-rpc.test.ts",
+      "line": 26,
       "sha256": "eca01a8e6e862715c54c6be064b068f4cf574c274a959d715647ce063411b8b1",
-      "reason": "server declared new RpcServer with socketPath at question-withdraw-rpc.test.ts:21"
+      "receiverDeclaration": {
+        "file": "v2/daemon/tests/question-withdraw-rpc.test.ts",
+        "startLine": 21,
+        "endLine": 22,
+        "sha256": "661a548d797160202e3eccb29a4752b75c654aa6b8d3993a9f41a3d95ce36d41"
+      },
+      "fingerprintSha256": "679de2ce1fff744cf06b41046c64d791b103221b64d1559a72cef655fd4ad64e",
+      "reason": "Unix socket listener with audited path or RpcServer wrapper; receiver declaration v2/daemon/tests/question-withdraw-rpc.test.ts:21-22"
     },
     {
       "file": "v2/daemon/tests/update-owner.test.ts",
+      "line": 69,
       "sha256": "cc11cfeaae100eab70cd271c3ffe0a20df319b7490b0912ebd3da59296338949",
-      "reason": "server declared new RpcServer with socketPath at update-owner.test.ts:53-54"
+      "receiverDeclaration": {
+        "file": "v2/daemon/tests/update-owner.test.ts",
+        "startLine": 53,
+        "endLine": 55,
+        "sha256": "b27043cc23b035ce96827aebac383b962d38617c3e65fe7168df68058eb51efb"
+      },
+      "fingerprintSha256": "3d1061238b82228d6513893ac2a1be2955787b45bf5d89dd23911c52f59b57ff",
+      "reason": "Unix socket listener with audited path or RpcServer wrapper; receiver declaration v2/daemon/tests/update-owner.test.ts:53-55"
+    },
+    {
+      "file": "v2/driver-cell/tests/sandbox.test.ts",
+      "line": 492,
+      "sha256": "fa111035d7aeeaee85244ab6bc77bd057ce1b0f55d71d86c655479043666119f",
+      "receiverDeclaration": {
+        "file": "v2/driver-cell/tests/sandbox.test.ts",
+        "startLine": 489,
+        "endLine": 491,
+        "sha256": "d5e016f7a2cd596f71fdb3a4ecc1b3fab418a871ae1fed23bd4798a4df659fb8"
+      },
+      "fingerprintSha256": "cb57c7e99b8f9213ef5aac3ed4946dfb7ffc735b7bfceaacef43b53099055566",
+      "reason": "Unix socket listener with audited path or RpcServer wrapper; receiver declaration v2/driver-cell/tests/sandbox.test.ts:489-491"
+    },
+    {
+      "file": "v2/driver-hsr/src/gated-runner-host.ts",
+      "line": 40,
+      "sha256": "87ee42cc0b801983a06b14ccb554cfef90c72cd51d505e982b5a4b55ec478360",
+      "receiverDeclaration": {
+        "file": "v2/driver-hsr/src/gated-runner-host.ts",
+        "startLine": 31,
+        "endLine": 32,
+        "sha256": "00cf6f3548073553aa156fe88f83d345c4e4d047409c6ddbec3635f24faa36d7"
+      },
+      "fingerprintSha256": "c76f676bd6c61ecc19cf3af5a8409cd6b34da178e11936bfd4403c80254b96e6",
+      "reason": "Unix socket listener with audited path or RpcServer wrapper; receiver declaration v2/driver-hsr/src/gated-runner-host.ts:31-32"
+    },
+    {
+      "file": "v2/driver-hsr/src/runner-host.ts",
+      "line": 320,
+      "sha256": "6251e1d34d2373f8863795173ccf851560088c5860b078347d8d5006f23f8e22",
+      "receiverDeclaration": {
+        "file": "v2/driver-hsr/src/runner-host.ts",
+        "startLine": 291,
+        "endLine": 291,
+        "sha256": "fcd92aa9c5f4ebf397642efaf7dd4fd09b6c51629c3795695f97b5851cc6d786"
+      },
+      "fingerprintSha256": "9ad713d7f65e2529bbf3eaed4e478bd854e296909ccca2c295dcf7e1670f87c5",
+      "reason": "Unix socket listener with audited path or RpcServer wrapper; receiver declaration v2/driver-hsr/src/runner-host.ts:291-291"
+    },
+    {
+      "file": "v2/driver-hsr/tests/driver.test.ts",
+      "line": 595,
+      "sha256": "569f8d7e47d83129a799c4d2d9ef6fc59471c0211fb589858fd5973e72e8c960",
+      "receiverDeclaration": {
+        "file": "v2/driver-hsr/tests/driver.test.ts",
+        "startLine": 593,
+        "endLine": 594,
+        "sha256": "43c971e137dea4d55e85d3a561f0f694087fb3a95cbd51d58f7d6b846905e54c"
+      },
+      "fingerprintSha256": "a0b157b4ea5d1d815e09426ccbbb087118d94ac31050eabedd9ef1cffd396b40",
+      "reason": "Unix socket listener with audited path or RpcServer wrapper; receiver declaration v2/driver-hsr/tests/driver.test.ts:593-594"
     },
     {
       "file": "tests/apiary-swap.lab.ts",
+      "line": 101,
       "sha256": "6ad1e944054fe0aa9e2aed7b1213c4c4f95575b5cb68533775ea414398d48628",
-      "reason": "server declared through newServer()=>new api.RpcServer({socketPath:socket}) at apiary-swap.lab.ts:99-100; generated node:net server at205 passes serialized Unix socket path"
+      "receiverDeclaration": {
+        "file": "tests/apiary-swap.lab.ts",
+        "startLine": 96,
+        "endLine": 100,
+        "sha256": "60187a2831421510980b1649943ebe03171c7daf2618951c309bb00fe82073b8"
+      },
+      "fingerprintSha256": "99574d2513687ca1c870b1e7662137899413abd3d5e741d926d58fb23d61dff3",
+      "reason": "Unix socket listener with audited path or RpcServer wrapper; receiver declaration tests/apiary-swap.lab.ts:96-100"
     },
     {
       "file": "tests/apiary-swap.lab.ts",
+      "line": 110,
       "sha256": "5ca7a953e587db129c99bf55517d4b939446065983d6a5c2dd794ec2ecd8a0b5",
-      "reason": "server declared through newServer()=>new api.RpcServer({socketPath:socket}) at apiary-swap.lab.ts:99-100; generated node:net server at205 passes serialized Unix socket path"
+      "receiverDeclaration": {
+        "file": "tests/apiary-swap.lab.ts",
+        "startLine": 96,
+        "endLine": 100,
+        "sha256": "60187a2831421510980b1649943ebe03171c7daf2618951c309bb00fe82073b8"
+      },
+      "fingerprintSha256": "550643b01805514e7865f0171a9ea42fd1dae3e17341f2ff9eb2cb5ac9436fea",
+      "reason": "Unix socket listener with audited path or RpcServer wrapper; receiver declaration tests/apiary-swap.lab.ts:96-100"
     },
     {
       "file": "tests/apiary-swap.lab.ts",
+      "line": 205,
       "sha256": "3b3bada813bcd5689a5bbc87bdef929009cb679f29722a3149713030f03aeac0",
-      "reason": "server declared through newServer()=>new api.RpcServer({socketPath:socket}) at apiary-swap.lab.ts:99-100; generated node:net server at205 passes serialized Unix socket path"
+      "receiverDeclaration": {
+        "file": "tests/apiary-swap.lab.ts",
+        "startLine": 205,
+        "endLine": 205,
+        "sha256": "e6ddf411c6ab395bad9d0fbeb3a035df4fab533172e8037631ffb305e9779f87"
+      },
+      "fingerprintSha256": "1009d01287cf6020c3af86babb6d604f727185dff158bbebe6f2f196621e00da",
+      "reason": "Unix socket listener with audited path or RpcServer wrapper; receiver declaration tests/apiary-swap.lab.ts:205-205"
     },
     {
       "file": "tests/deploy-runtime.test.ts",
+      "line": 232,
       "sha256": "f276952588f4023e4824f482bbf118ef1dfa1f87bdc55c414a046848d9327e4a",
-      "reason": "server declared node:net createServer at deploy-runtime.test.ts:218; call232 explicitly passes join(root,..,v2,hived.sock) Unix path"
+      "receiverDeclaration": {
+        "file": "tests/deploy-runtime.test.ts",
+        "startLine": 218,
+        "endLine": 218,
+        "sha256": "35550021ce0a890aa319064427975d29b974e6ab8f16f6d094c665929de2d3a4"
+      },
+      "fingerprintSha256": "da5499a7e019405d7190e40a1c2e92e4fb3b566b7b6d0599ef29096cad9e53df",
+      "reason": "Unix socket listener with audited path or RpcServer wrapper; receiver declaration tests/deploy-runtime.test.ts:218-218"
     },
     {
       "file": "tests/effect-resolve.lab.ts",
+      "line": 34,
       "sha256": "c7318d0c43861f4b353f2645aed4be9f0ef7d883f08358d9514f3a4deaac6429",
-      "reason": "generated server declared new RpcServer with socketPath on effect-resolve.lab.ts:34"
+      "receiverDeclaration": {
+        "file": "tests/effect-resolve.lab.ts",
+        "startLine": 34,
+        "endLine": 34,
+        "sha256": "36711ee22f8796f6daf62b8a1ea6abf40970ce8c077be1970036046c733a2b2a"
+      },
+      "fingerprintSha256": "233912910e50f8d4a0dc2131ddb391fd6f159a45a0e6a8038eae2ac8cc8bbcab",
+      "reason": "Unix socket listener with audited path or RpcServer wrapper; receiver declaration tests/effect-resolve.lab.ts:34-34"
     },
     {
       "file": "tests/guard-live-rpc.lab.ts",
+      "line": 44,
       "sha256": "3802464551bd46afa5460c43ed84d621010411253756b960d7d62ae5f1387d3c",
-      "reason": "server declared new api.RpcServer with socketPath at guard-live-rpc.lab.ts:43"
+      "receiverDeclaration": {
+        "file": "tests/guard-live-rpc.lab.ts",
+        "startLine": 43,
+        "endLine": 43,
+        "sha256": "dff0fa16f5fa375867209750c0821e7cb278c62e1ebb4be58744f1657203378a"
+      },
+      "fingerprintSha256": "a86232943fb0fead3570984d196210d719bccdbf1676b2ca9b5291a2a166ec10",
+      "reason": "Unix socket listener with audited path or RpcServer wrapper; receiver declaration tests/guard-live-rpc.lab.ts:43-43"
+    },
+    {
+      "file": "tests/guard-live-rpc.lab.ts",
+      "line": 80,
+      "sha256": "be790dbbbd8a68c9828dd7fcbd27396b3297dac4f43bf4765135cad6a43eaeab",
+      "receiverDeclaration": {
+        "file": "tests/guard-live-rpc.lab.ts",
+        "startLine": 79,
+        "endLine": 79,
+        "sha256": "af5ae3d5a5d237bbca657f3ec7049fc3599249ad325b35b9afc462648100bb70"
+      },
+      "fingerprintSha256": "2f9b66f2cb633d7138122f15a6d465fb2885d8d56ad3df61e5828eddf317420b",
+      "reason": "Unix socket listener with audited path or RpcServer wrapper; receiver declaration tests/guard-live-rpc.lab.ts:79-79"
+    },
+    {
+      "file": "tests/hsr-node-status.test.ts",
+      "line": 109,
+      "sha256": "db6b00a72be7a5e2f365120206b0561340e86c7ab7e965afa359a76c63d209d3",
+      "receiverDeclaration": {
+        "file": "tests/hsr-node-status.test.ts",
+        "startLine": 75,
+        "endLine": 89,
+        "sha256": "003756ff4fcd46db7d038d1130ac63ce88ec09f6bd001a0e97b0b4eed49d5ba9"
+      },
+      "fingerprintSha256": "e1f8b4e68340a7396f7070c68e6baaa91a48b738815cb0da13fae113d5732e02",
+      "reason": "Unix socket listener with audited path or RpcServer wrapper; receiver declaration tests/hsr-node-status.test.ts:75-89"
+    },
+    {
+      "file": "tests/hsr-orphan-reap.test.ts",
+      "line": 397,
+      "sha256": "1e2177dc2879e7ec99bb10d9a28b3483fb3c963f1d32cd8b17d88492da3bf849",
+      "receiverDeclaration": {
+        "file": "tests/hsr-orphan-reap.test.ts",
+        "startLine": 375,
+        "endLine": 376,
+        "sha256": "09aea8aec065fea8876d3891820e32f96d26a190dad03cb96f36cdda3e7b7c11"
+      },
+      "fingerprintSha256": "96295481d785c63ac02a1bc1a4e8b545f968410565570d8ed974cebc3f1b61ad",
+      "reason": "Unix socket listener with audited path or RpcServer wrapper; receiver declaration tests/hsr-orphan-reap.test.ts:375-376"
+    },
+    {
+      "file": "tests/hsr-remote-creds.test.ts",
+      "line": 435,
+      "sha256": "db6b00a72be7a5e2f365120206b0561340e86c7ab7e965afa359a76c63d209d3",
+      "receiverDeclaration": {
+        "file": "tests/hsr-remote-creds.test.ts",
+        "startLine": 402,
+        "endLine": 415,
+        "sha256": "b089e178b1a07292d46285eeba499541d68aa8250a40df9b194bda2920266082"
+      },
+      "fingerprintSha256": "4a3327193da39a9ed9363b639304b80058b8f9ab78142ba6ff5ac8143dedc178",
+      "reason": "Unix socket listener with audited path or RpcServer wrapper; receiver declaration tests/hsr-remote-creds.test.ts:402-415"
+    },
+    {
+      "file": "tests/hsr-remote-mirror.test.ts",
+      "line": 162,
+      "sha256": "db6b00a72be7a5e2f365120206b0561340e86c7ab7e965afa359a76c63d209d3",
+      "receiverDeclaration": {
+        "file": "tests/hsr-remote-mirror.test.ts",
+        "startLine": 128,
+        "endLine": 142,
+        "sha256": "bd2049cf7505d9a42940f6a5d3b9cd3ad379442ce350658c7bb7ff5f518e4402"
+      },
+      "fingerprintSha256": "2eecec573a450f0eb28838b05ad14e0db9eabdbfb814ec0050793e2617c9cc0b",
+      "reason": "Unix socket listener with audited path or RpcServer wrapper; receiver declaration tests/hsr-remote-mirror.test.ts:128-142"
+    },
+    {
+      "file": "tests/hsr-remote-provision.test.ts",
+      "line": 127,
+      "sha256": "db6b00a72be7a5e2f365120206b0561340e86c7ab7e965afa359a76c63d209d3",
+      "receiverDeclaration": {
+        "file": "tests/hsr-remote-provision.test.ts",
+        "startLine": 93,
+        "endLine": 107,
+        "sha256": "bd2049cf7505d9a42940f6a5d3b9cd3ad379442ce350658c7bb7ff5f518e4402"
+      },
+      "fingerprintSha256": "2eecec573a450f0eb28838b05ad14e0db9eabdbfb814ec0050793e2617c9cc0b",
+      "reason": "Unix socket listener with audited path or RpcServer wrapper; receiver declaration tests/hsr-remote-provision.test.ts:93-107"
+    },
+    {
+      "file": "tests/hsr-remote-spawn-paths.test.ts",
+      "line": 155,
+      "sha256": "db6b00a72be7a5e2f365120206b0561340e86c7ab7e965afa359a76c63d209d3",
+      "receiverDeclaration": {
+        "file": "tests/hsr-remote-spawn-paths.test.ts",
+        "startLine": 122,
+        "endLine": 135,
+        "sha256": "b089e178b1a07292d46285eeba499541d68aa8250a40df9b194bda2920266082"
+      },
+      "fingerprintSha256": "4a3327193da39a9ed9363b639304b80058b8f9ab78142ba6ff5ac8143dedc178",
+      "reason": "Unix socket listener with audited path or RpcServer wrapper; receiver declaration tests/hsr-remote-spawn-paths.test.ts:122-135"
+    },
+    {
+      "file": "tests/hsr-remote-substrate.test.ts",
+      "line": 160,
+      "sha256": "db6b00a72be7a5e2f365120206b0561340e86c7ab7e965afa359a76c63d209d3",
+      "receiverDeclaration": {
+        "file": "tests/hsr-remote-substrate.test.ts",
+        "startLine": 126,
+        "endLine": 140,
+        "sha256": "c4f80e83273ba55f433bf78701c324d9b4524c41fac9d3177b7f30c388203e71"
+      },
+      "fingerprintSha256": "8c5563b806ad8c226bc9d1b8a89ae698ce2ee1ffb037c04ae3afeba339003502",
+      "reason": "Unix socket listener with audited path or RpcServer wrapper; receiver declaration tests/hsr-remote-substrate.test.ts:126-140"
+    },
+    {
+      "file": "tests/hsr-remote-transport.test.ts",
+      "line": 94,
+      "sha256": "db6b00a72be7a5e2f365120206b0561340e86c7ab7e965afa359a76c63d209d3",
+      "receiverDeclaration": {
+        "file": "tests/hsr-remote-transport.test.ts",
+        "startLine": 48,
+        "endLine": 74,
+        "sha256": "53e99f9a443cacc29b95a5fdaa0e53379c3e232ec84c9076895a4099929e07d3"
+      },
+      "fingerprintSha256": "bc469cf4026e8e1c4e816f09d79d8197f00cf74c42e280cdc17069ceb711c3e5",
+      "reason": "Unix socket listener with audited path or RpcServer wrapper; receiver declaration tests/hsr-remote-transport.test.ts:48-74"
     }
   ]
 }

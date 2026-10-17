@@ -1,4 +1,5 @@
 #!/bin/sh
+if /usr/bin/env | /usr/bin/cut -d= -f1 | /usr/bin/grep -Eq '^(HIVE_|APIARY_)'; then echo 'REFUSING: stamped controller environment'; exit 90; fi
 set -eu
 execute=0
 if [ "${1:-}" = --execute ]; then execute=1; shift; fi

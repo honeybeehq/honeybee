@@ -21,11 +21,71 @@ from guard import DIRS, PROTECTED, Refusal, absolute_compiler_jobs, close_socket
 
 
 class GuardTests(unittest.TestCase):
+    def test_stamped_shell_entries_refuse_before_other_commands(self):
+        directory = Path(__file__).parent
+        for name in ('gate-run.sh', 'darwin-gate.sh'):
+            for key in ('APIARY_TEST_STAMP', 'HIVE_TEST_STAMP'):
+                env = {'PATH': '/usr/bin:/bin', 'HOME': str(self.base), key: 'must-never-be-printed'}
+                result = subprocess.run(['/bin/sh', str(directory / name)], env=env, cwd=self.base, capture_output=True, text=True)
+                self.assertEqual(result.returncode, 90)
+                self.assertEqual(result.stdout.strip(), 'REFUSING: stamped controller environment')
+                self.assertNotIn('must-never-be-printed', result.stdout + result.stderr)
+
+    def test_stamped_python_controller_refuses_before_identity_or_write(self):
+        with patch.dict(os.environ, {'APIARY_TEST_STAMP': 'not-printed'}, clear=True), patch('guard.pwd.getpwuid') as passwd, patch('guard.os.open') as opened, self.assertRaisesRegex(Refusal, 'stamped controller environment'):
+            run(SimpleNamespace())
+        passwd.assert_not_called()
+        opened.assert_not_called()
+
+    def test_lock_refuses_symlink_wrong_mode_and_nonempty(self):
+        path = self.base / 'lock'
+        target = self.base / 'target'
+        target.touch(mode=0o600)
+        path.symlink_to(target)
+        with self.assertRaises(Refusal):
+            guard.acquire_lock(path)
+        path.unlink()
+        path.touch(mode=0o644)
+        with self.assertRaises(Refusal):
+            guard.acquire_lock(path)
+        path.chmod(0o600)
+        path.write_text('nonempty')
+        with self.assertRaises(Refusal):
+            guard.acquire_lock(path)
+
+    def test_lock_metadata_and_wrong_owner(self):
+        path = self.base / 'lock'
+        fd, record = guard.acquire_lock(path)
+        os.close(fd)
+        self.assertEqual(record['mode'], 0o600)
+        self.assertEqual(record['size'], 0)
+        self.assertEqual(record['uid'], os.getuid())
+        self.assertEqual(record['ino'], path.stat().st_ino)
+        with patch('guard.os.getuid', return_value=os.getuid() + 1), self.assertRaises(Refusal):
+            guard.acquire_lock(path)
+
+    def test_retained_reparented_birth_still_sampled(self):
+        birth = ['100', '99', '10', '20']
+        key = ('100', '10', '20')
+        retained = {key: birth}
+        exited = set()
+        sample = {'pid': 100, 'birth': birth, 'listeners': [{'loopback': False, 'proto': 'TCP', 'localAddress': '0.0.0.0'}]}
+        with patch('guard.sample_listeners', return_value=sample) as observed:
+            rows = guard.sample_retained_listeners(Path('/root/scope'), retained, exited)
+        observed.assert_called_once_with(Path('/root/scope'), birth)
+        self.assertFalse(rows[0]['listeners'][0]['loopback'])
+        self.assertEqual(exited, set())
+        gone = {'pid': 100, 'birth': birth, 'listeners': [], 'exitEvidence': {'exit': 3, 'result': 'gone'}}
+        with patch('guard.sample_listeners', return_value=gone):
+            guard.sample_retained_listeners(Path('/root/scope'), retained, exited)
+        with patch('guard.sample_listeners') as observed:
+            self.assertEqual(guard.sample_retained_listeners(Path('/root/scope'), retained, exited), [])
+            observed.assert_not_called()
     def test_gate_shell_diagnostics_never_dump_environment_values(self):
         def unsafe(text):
             if 'HIVE_/APIARY_=[' in text or re.search(r'\b(?:printenv|export\s+-p|declare\s+-x)\b', text):
                 return True
-            return any(not re.match(r'\s*cut\s+-d=\s+-f1\s*\|', tail) for tail in re.findall(r'\benv\s*\|([^\n]*)', text))
+            return any(not re.match(r'\s*(?:/usr/bin/)?cut\s+-d=\s+-f1\s*\|', tail) for tail in re.findall(r'\benv\s*\|([^\n]*)', text))
 
         self.assertTrue(unsafe("env | grep -E '^(HIVE_|APIARY_)'"))
         self.assertFalse(unsafe("env | cut -d= -f1 | grep -E '^(HIVE_|APIARY_)'"))
@@ -35,9 +95,9 @@ class GuardTests(unittest.TestCase):
                     self.assertFalse(unsafe(path.read_text()))
 
     def test_static_listener_negative_and_loopback_rows(self):
-        for source in ('server.listen(0)', 'server.listen(0, () => {})', 'server.listen({port: 0})', 'server.listen({port: 0, host: undefined})', "server.listen(0, '0.0.0.0')", "server.listen(0, '::')", "socket.bind(0, '0.0.0.0')", 'socket.bind(0)'):
+        for source in ('server.listen(0)', 'server["listen"](0)', 'server.listen(0, () => {})', 'server.listen({port: 0})', 'server.listen({port: 0, host: undefined})', "server.listen(0, '0.0.0.0')", "server.listen(0, '::')", "import dgram from 'node:dgram';socket.bind(0, '0.0.0.0')", "import 'node:dgram';socket.bind()", "require('dgram');socket.bind(port)", 'server.listen(path)', 'import socket\nsocket.bind((host, port))'):
             self.assertTrue(listener_static.violations(source), source)
-        for source in ("server.listen(0, '127.0.0.1')", "server.listen(0, '::1')", 'server.listen(socketPath)'):
+        for source in ("server.listen(0, '127.0.0.1')", "server.listen(0, '::1')", "server.listen('/private/var/tmp/root/socket')", "import socket\nsocket.bind(('127.0.0.1', 0))", 'function.bind(this)', 'function.bind(null)', 'function.bind(undefined)'):
             self.assertFalse(listener_static.violations(source), source)
         rows = listener_static.scan(Path(__file__).resolve().parents[3])
         write_json(self.base / 'static-census.json', rows, self.base)
@@ -48,19 +108,30 @@ class GuardTests(unittest.TestCase):
         folder = self.base / 'tests'
         folder.mkdir()
         source = folder / 'unix.test.ts'
-        source.write_text('const server = new RpcServer({socketPath});\nserver.listen();\n')
+        source.write_text('const server = new RpcServer({socketPath});\n\n\n\n\n\nserver.listen();\n')
         row = listener_static.scan(self.base, allowlist=[])[0]
-        approved = [{'file': row['file'], 'sha256': row['sha256'], 'reason': 'test RpcServer declaration line1'}]
+        digest = hashlib.sha256(source.read_text().splitlines()[0].encode()).hexdigest()
+        approved = [{'file': row['file'], 'sha256': row['sha256'], 'receiverDeclaration': {'file': row['file'], 'startLine': 1, 'endLine': 1, 'sha256': digest}, 'fingerprintSha256': hashlib.sha256((row['sha256']+'\n'+digest).encode()).hexdigest(), 'reason': 'test RpcServer declaration line1'}]
         self.assertEqual(listener_static.scan(self.base, approved), [])
-        source.write_text('const server = createServer();\nserver.listen();\n')
+        source.write_text('const server = createServer();\n\n\n\n\n\nserver.listen();\n')
         changed = listener_static.scan(self.base, approved)
         self.assertEqual(len(changed), 2)
         self.assertTrue(any('fingerprint missing or changed' in item['reason'] for item in changed))
+
+    def test_unknown_extension_and_python_bind_fail_closed(self):
+        folder = self.base / 'tests'
+        folder.mkdir()
+        (folder / 'unknown.weird').write_text('custom listen target')
+        (folder / 'socket.py').write_text('import socket\nsocket.bind((host, port))\n')
+        rows = listener_static.scan(self.base, [])
+        self.assertEqual(len(rows), 2)
+        self.assertEqual({row['file'] for row in rows}, {'tests/unknown.weird', 'tests/socket.py'})
 
     def test_receipt_includes_listener_limit(self):
         target = self.base / 'receipt.json'
         write_json(target, {'exit': 0}, self.base)
         self.assertEqual(json.loads(target.read_text())['listenerLimit'], guard.LISTENER_LIMIT)
+        self.assertEqual(json.loads(target.read_text())['staticBindLimit'], guard.STATIC_BIND_LIMIT)
 
     def test_listener_sampler_accepts_only_loopback(self):
         birth = ['100', '99', '10', '20']
@@ -96,7 +167,7 @@ class GuardTests(unittest.TestCase):
                     value = eval(compile(expression, filename, 'eval'), {'sig': sig, 'signal': SimpleNamespace(SIGTERM=sig)})
                     self.assertEqual(value, str(int(sig)))
                 count += 1
-        self.assertEqual(count, 5)
+        self.assertEqual(count, 6)
 
     def test_profile_parentheses_balance_outside_strings(self):
         text = profile(Path('/private/var/tmp/g.test'), Path('/Users/example'), Path('/lane'))
@@ -126,7 +197,8 @@ class GuardTests(unittest.TestCase):
         before = sorted(self.base.iterdir())
         for name in ('pinned-runtime-body.sh', 'pinned-full-body.sh'):
             for argv in (['/bin/sh', str(directory / name)], ['/bin/sh', str(directory / 'gate-run.sh'), '--execute', 'scripts/gates/darwin/' + name, '0' * 40]):
-                result = subprocess.run(argv, cwd=self.base, env=self.env, capture_output=True, text=True)
+                env = {key: value for key, value in self.env.items() if not key.startswith(('HIVE_', 'APIARY_'))}
+                result = subprocess.run(argv, cwd=self.base, env=env, capture_output=True, text=True)
                 self.assertEqual(result.returncode, 88)
                 self.assertEqual(json.loads(result.stderr)['code'], 'darwin_gate_body_unsupported_until_audited')
         self.assertEqual(sorted(self.base.iterdir()), before)
@@ -159,7 +231,7 @@ class GuardTests(unittest.TestCase):
     def test_missing_passwd_identity_refuses_before_any_write(self):
         args = SimpleNamespace(root=str(self.root), node='/usr/local/bin/node')
         for error in (KeyError('uid unavailable'), OSError('lookup unavailable')):
-            with patch('guard.pwd.getpwuid', side_effect=error), patch('os.open') as opened, patch.object(Path, 'mkdir') as mkdir, self.assertRaisesRegex(Refusal, 'passwd identity unavailable'):
+            with patch.dict(os.environ, {}, clear=True), patch('guard.pwd.getpwuid', side_effect=error), patch('os.open') as opened, patch.object(Path, 'mkdir') as mkdir, self.assertRaisesRegex(Refusal, 'passwd identity unavailable'):
                 run(args)
             opened.assert_not_called()
             mkdir.assert_not_called()
