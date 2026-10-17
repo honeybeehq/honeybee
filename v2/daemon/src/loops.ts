@@ -1592,6 +1592,7 @@ export class DaemonCore {
     const heldMail = this.multilineFallback ? this.store.heldMultilineMail() : null;
     if (heldMail) for (const [beeId, pending] of heldMail) {
       heldMail.set(beeId, pending.filter(row => {
+        if (row.fallback?.id === "") this.store.reconcileUnknownMultilineHold(row.id);
         if (!row.fallback || !["in_flight", "unknown"].includes(row.fallback.state)) return true;
         const message = this.store.getMessage(row.id);
         if (!message) return false;
@@ -1607,6 +1608,10 @@ export class DaemonCore {
           const pane = row.fallback!.paneInput!;
           if (pane.generation !== rt.generation) {this.store.clearMultilinePaneQuarantine(row.messageId, rt.generation); continue;}
           const identity = this.driver.deliveryPane?.(rt.beeId, rt.generation);
+          if (identity && identity.socketPath === pane.socketPath && identity.paneId === pane.paneId && identity.serverIdentity === pane.serverIdentity
+            && row.fallback?.state === "delivered" && row.fallback.pointer && this.driver.reconcileDeliveryPane?.(rt.beeId, rt.generation, row.messageId, row.fallback.pointer)) {
+            this.store.clearAcceptedMultilinePaneQuarantine(row.messageId); continue;
+          }
           if (!identity || identity.socketPath === pane.socketPath && identity.paneId === pane.paneId && identity.serverIdentity === pane.serverIdentity) quarantined = true;
         }
         if (quarantined) continue;
@@ -1685,6 +1690,7 @@ export class DaemonCore {
         // carry their own markers; other operator/human mail is delivered bare.
         // The mailbox row stays the durable truth — the envelope is
         // delivery-time rendering only.
+        if (msg.deliveryHold?.detail === "delivery_hold_state_unknown") {this.store.reconcileUnknownMultilineHold(msg.id); continue;}
         const peer = isPeerSender(msg.sender, (id) => this.store.getBee(id) != null);
         const interruptedTurn = msg.urgency === "now" && this.store.deliveryInterruptedTurn(rt.beeId, msg.id, rt.generation);
         let body = deliveryText(msg, peer, interruptedTurn, this.store.answeredQuestionId(msg.id));

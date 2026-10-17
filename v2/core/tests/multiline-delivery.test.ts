@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { advanceMultilineUnsupported } from "../src/multilineDelivery.ts";
+import { advanceMultilineUnsupported, readDeliveryFallback, type DeliveryFallback } from "../src/multilineDelivery.ts";
 
 test("unsupported versions expire immediately; supported off expires after three attempts", () => {
   assert.equal(advanceMultilineUnsupported(null, "multiline_bracketed_paste_version_unsupported", 0).hold, true);
@@ -169,7 +169,7 @@ for (const sender of ["operator", "remote:node-a/phone-0123456789abcdef"]) test(
   } finally { store.close(); h.cleanup(); }
 });
 
-for (const malformed of ["not-json", "{}", '{"stage":"waiting","attempts":"bad"}']) test(`malformed waiting reopen becomes type HOLD once without restarting counters: ${malformed}`, () => {
+for (const malformed of ["not-json", "{}", '{"stage":"waiting","attempts":"bad"}']) test(`malformed waiting reopen becomes visible UNKNOWN without reattempt and lets later mail flow: ${malformed}`, () => {
   const h = harness(); let store = h.open();
   try {
     const { bee } = makeBee(store);
@@ -186,14 +186,16 @@ for (const malformed of ["not-json", "{}", '{"stage":"waiting","attempts":"bad"}
     const held = store.recordMultilineDeliveryRefusal(first.id, 1, "multiline_type_mode")!;
     assert.equal(held.stage, "held");
     assert.deepEqual([held.attempts, held.unsupportedMs, held.lastAttemptAt], [previous.attempts, previous.unsupportedMs, previous.lastAttemptAt]);
-    assert.equal(held.receipt?.code, "delivery_unsupported_multiline");
+    assert.equal(held.receipt, null);
+    assert.equal(store.countUnknownMultilineHolds(), 1);
+    assert.equal(held.detail, "delivery_hold_state_unknown"); assert.equal(held.fallback?.state, "unknown");
     assert.deepEqual(store.readDaemonWork()[0]!.pending.map(row => row.id), [later.id]);
     for (let index = 0; index < 3; index++) assert.deepEqual(store.recordMultilineDeliveryRefusal(first.id, 1, "multiline_type_mode"), held);
-    assert.equal(store.listMessages(sender.id).length, 1);
-    assert.equal(store.auditRows().filter(row => row.kind === "mail.delivery_unsupported_multiline").length, 1);
+    assert.equal(store.listMessages(sender.id).length, 0);
+    assert.equal(store.auditRows().filter(row => row.kind === "mail.delivery_fallback_unknown").length, 1);
     store.markDelivered(later.id, 1);
     assert.equal(store.getMessage(first.id)?.deliveredAt, null);
-    assert.equal(store.multilineDelivery(first.id)?.notice, "delivered later messages; this one is held");
+    assert.equal(store.multilineDelivery(first.id)?.notice, "state unknown, not delivered");
   } finally { store.close(); h.cleanup(); }
 });
 
@@ -259,4 +261,23 @@ test("same-store runtime stop and new generation cannot charge stopped time",()=
   assert.equal(next.stage,"waiting");assert.equal(next.attempts,2);assert.equal(next.unsupportedMs,0);
   assert.equal(store.recordMultilineDeliveryRefusal(m.id,rt.generation,"multiline_type_mode")!.stage,"held");
  }finally{store.close();h.cleanup();}
+});
+
+for (const invalid of ["zero_generation", "negative_generation", "mismatched_generation", "pane", "socket", "identity", "phase", "attempts", "negative_since", "negative_cleared"] as const) test(`malformed pane fence ${invalid} projects UNKNOWN without an identity or automatic-clear authority`, () => {
+  const row: DeliveryFallback = {code: "delivery_file_fallback", state: "unknown", id: "00000000-0000-4000-8000-000000000000", ownerStoreId: "owner", root: "/data", worktrees: [], path: "/data/content", pointer: "full text: /data/content", digest: "a".repeat(64), bytes: 10, generation: 1, detail: "pane_input_unknown", senderNoticeMessageId: null, attempts: 1, attemptPhase: "before_enter_unknown", paneInput: {code: "pane_input_unknown", generation: 1, since: 1000, reason: "unverified_clear", socketPath: "/runtime/t.sock", paneId: "%1", serverIdentity: "1:2:3.5:4:5.5"}};
+  assert.equal(readDeliveryFallback(row), row);
+  switch (invalid) {
+    case "zero_generation": row.paneInput!.generation = 0; break;
+    case "negative_generation": row.paneInput!.generation = -1; break;
+    case "mismatched_generation": row.paneInput!.generation = 2; break;
+    case "pane": row.paneInput!.paneId = "recycled"; break;
+    case "socket": row.paneInput!.socketPath = "relative.sock"; break;
+    case "identity": row.paneInput!.serverIdentity = "unknown"; break;
+    case "phase": row.attemptPhase = "before_enter_cleared"; break;
+    case "attempts": row.attempts = 0; break;
+    case "negative_since": row.paneInput!.since = -1; break;
+    case "negative_cleared": row.paneInput!.clearedAt = -1; break;
+  }
+  const held = readDeliveryFallback(row)!;
+  assert.equal(held.state, "unknown"); assert.equal(held.id, ""); assert.equal(held.generation, null); assert.equal(held.paneInput, undefined);
 });

@@ -35,11 +35,19 @@ export function readDeliveryFallback(value: unknown): DeliveryFallback | undefin
     && (row.generation === null || Number.isSafeInteger(row.generation) && row.generation > 0)
     && (row.detail === null || typeof row.detail === "string")
     && (row.attempts === undefined || Number.isSafeInteger(row.attempts) && row.attempts >= 0)
-    && (row.attemptPhase === undefined || ["injecting", "before_enter_cleared", "before_enter_unknown", "enter_attempted"].includes(row.attemptPhase))
-    && (row.paneInput === undefined || row.paneInput && row.paneInput.code === "pane_input_unknown" && Number.isFinite(row.paneInput.since)
-      && typeof row.paneInput.reason === "string" && typeof row.paneInput.socketPath === "string" && typeof row.paneInput.paneId === "string"
-      && typeof row.paneInput.serverIdentity === "string" && Number.isSafeInteger(row.paneInput.generation)
-      && (row.paneInput.clearedAt === undefined || Number.isFinite(row.paneInput.clearedAt)))
+    && (row.attemptPhase === undefined || Number.isSafeInteger(row.attempts) && row.attempts! > 0 && (
+      row.attemptPhase === "injecting" && ["in_flight", "unknown", "removed"].includes(row.state)
+      || row.attemptPhase === "before_enter_cleared" && ["ready", "held", "removed"].includes(row.state)
+      || row.attemptPhase === "before_enter_unknown" && ["unknown", "removed"].includes(row.state)
+      || row.attemptPhase === "enter_attempted" && ["unknown", "delivered", "removed"].includes(row.state)))
+    && (row.paneInput === undefined || row.paneInput && row.paneInput.code === "pane_input_unknown" && Number.isFinite(row.paneInput.since) && row.paneInput.since >= 0
+      && typeof row.paneInput.reason === "string" && /^[a-z][a-z0-9_]*$/.test(row.paneInput.reason)
+      && typeof row.paneInput.socketPath === "string" && row.paneInput.socketPath.startsWith("/") && !/[\x00-\x1f\x7f\u0085\u2028\u2029]/.test(row.paneInput.socketPath)
+      && typeof row.paneInput.paneId === "string" && /^%[0-9]+$/.test(row.paneInput.paneId)
+      && typeof row.paneInput.serverIdentity === "string" && /^[0-9]+:[0-9]+:[0-9]+(?:\.[0-9]+)?:[1-9][0-9]*:[0-9]+(?:\.[0-9]+)?$/.test(row.paneInput.serverIdentity)
+      && Number.isSafeInteger(row.paneInput.generation) && row.paneInput.generation > 0 && row.paneInput.generation === row.generation
+      && row.attemptPhase !== undefined && !["preparing"].includes(row.state)
+      && (row.paneInput.clearedAt === undefined || Number.isFinite(row.paneInput.clearedAt) && row.paneInput.clearedAt >= 0))
     && (row.senderNoticeMessageId === null || Number.isSafeInteger(row.senderNoticeMessageId) && row.senderNoticeMessageId > 0)
     && (!["ready", "in_flight", "delivered"].includes(row.state) || row.path !== null && row.pointer !== null && row.digest !== null && row.bytes !== null)
     && (row.state !== "in_flight" || row.generation !== null)) return row;
@@ -91,7 +99,14 @@ export const MULTILINE_DELIVERY_SQL = `CREATE TABLE IF NOT EXISTS multiline_deli
   sender_notice_message_id INTEGER,
   row_json TEXT NOT NULL
 ) STRICT;
-CREATE INDEX IF NOT EXISTS multiline_delivery_bee ON multiline_delivery(bee_id, held_at);`;
+CREATE INDEX IF NOT EXISTS multiline_delivery_bee ON multiline_delivery(bee_id, held_at);
+CREATE TABLE IF NOT EXISTS multiline_fallback_fence (
+  message_id INTEGER PRIMARY KEY,
+  bee_id TEXT NOT NULL,
+  state TEXT NOT NULL CHECK(state IN ('unattempted', 'prepared')),
+  publication_id TEXT,
+  CHECK((state = 'unattempted' AND publication_id IS NULL) OR (state = 'prepared' AND publication_id IS NOT NULL))
+) STRICT;`;
 export function deliveryHold(row: MultilineDeliveryRow): DeliveryHold | undefined {
   return row.heldAt === null ? undefined : { code: "delivery_unsupported_multiline", stage: row.stage, messageId: row.messageId, heldAt: row.heldAt, heldSince: row.heldSince, receipt: row.receipt, detail: row.detail, attempts: row.attempts, unsupportedMs: row.unsupportedMs, notice: row.notice };
 }
@@ -128,13 +143,16 @@ export function readMultilineDelivery(json: string, messageId: number, beeId: st
         && (row.receipt.senderNoticeMessageId === null || Number.isSafeInteger(row.receipt.senderNoticeMessageId) && row.receipt.senderNoticeMessageId > 0))
       && Number.isSafeInteger(row.attempts) && row.attempts >= 0 && Number.isFinite(row.unsupportedMs) && row.unsupportedMs >= 0
       && Number.isFinite(row.lastAttemptAt) && typeof row.lastUnsupported === "boolean"
-      && typeof row.detail === "string" && (row.notice === null || typeof row.notice === "string")) return {
+      && typeof row.detail === "string" && (row.notice === null || typeof row.notice === "string")) {
+      const fallback = readDeliveryFallback(row.fallback);
+      return {
         messageId, beeId, heldAt, heldSince, stage: row.stage, attempts: row.attempts, unsupportedMs: row.unsupportedMs, lastAttemptAt: row.lastAttemptAt,
-        lastUnsupported: row.lastUnsupported, detail: row.detail, notice: row.notice,
-        ...(row.fallback === undefined ? {} : { fallback: readDeliveryFallback(row.fallback) }),
+        lastUnsupported: row.lastUnsupported, detail: fallback?.id === "" ? "delivery_hold_state_unknown" : row.detail, notice: row.notice,
+        ...(fallback === undefined ? {} : { fallback }),
         receipt: row.receipt === null ? null : { code: "delivery_unsupported_multiline", messageId, beeId, sender: row.receipt.sender, heldSince: row.receipt.heldSince,
           delivered: false, reason: "multiline_type_mode", channel: row.receipt.channel, senderNoticeMessageId: row.receipt.senderNoticeMessageId },
       };
+    }
   } catch {}
   return { messageId, beeId, heldAt: heldAt ?? 0, heldSince, receipt: null, stage: heldSince === null ? "expired" : "held", attempts: 0, unsupportedMs: 0, lastAttemptAt: 0, lastUnsupported: false, detail: "delivery_hold_state_unknown", notice: null, fallback: { ...readDeliveryFallback(null)!, detail: "delivery_hold_state_unknown" } };
 }

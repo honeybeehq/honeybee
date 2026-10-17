@@ -343,6 +343,25 @@ export class TmuxDriver implements RuntimeDriver {
     try {const socket = statSync(this.server.socketPath); return {socketPath: this.server.socketPath, paneId: p.paneId, serverIdentity: `${socket.dev}:${socket.ino}:${socket.ctimeMs}:${p.pid}:${p.pidStartedAt}`};} catch {return null;}
   }
 
+  deliveryPaneClear(beeId: string, generation: number): boolean {
+    const pane = this.deliveryPane(beeId, generation);
+    if (!pane) return false;
+    const marker = this.server.try(["show-options", "-p", "-q", "-v", "-t", pane.paneId, "@honeybee_input_unknown"]);
+    return marker.status === 0 && marker.stdout.trim() === "";
+  }
+
+  reconcileDeliveryPane(beeId: string, generation: number, messageId: number, body: string): boolean {
+    if (this.deliveryReceipt(beeId, generation, messageId, body) !== "accepted") return false;
+    const pane = this.deliveryPane(beeId, generation);
+    if (!pane) return false;
+    const marker = this.server.try(["show-options", "-p", "-q", "-v", "-t", pane.paneId, "@honeybee_input_unknown"]);
+    if (marker.status !== 0) return false;
+    if (marker.stdout.trim() === "") return true;
+    if (marker.stdout.trim() !== `${generation}:${messageId}`) return false;
+    if (this.server.try(["set-option", "-p", "-u", "-t", pane.paneId, "@honeybee_input_unknown"]).status !== 0) return false;
+    return this.deliveryPaneClear(beeId, generation);
+  }
+
   private clearPointerInput(p: TmuxRuntime): DeliverOutcome {
     const cleared = this.server.try(["send-keys", "-t", p.paneId, "C-u"]);
     if (cleared.status === 0) for (let attempt = 0; attempt < 5; attempt++) {
@@ -363,10 +382,14 @@ export class TmuxDriver implements RuntimeDriver {
     return receipt?.beeId === beeId && receipt.generation === generation && receipt.digest === createHash("sha256").update(body).digest("hex") ? "accepted" : "unknown";
   }
 
-  deliver(beeId: string, generation: number, messageId: number, body: string, options?: { multilineWaitExpired?: boolean; singleAttempt?: boolean }): DeliverOutcome {
+  deliver(beeId: string, generation: number, messageId: number, body: string, options?: { multilineWaitExpired?: boolean; singleAttempt?: boolean; expectedPane?: {socketPath: string; paneId: string; serverIdentity: string} }): DeliverOutcome {
     const p = this.procs.get(beeId);
     if (!p || p.generation !== generation || p.exited) return { accepted: false, reason: "no_process", ...(options?.singleAttempt ? { detail: "delivery_not_attempted" } : {}) };
     if (p.stopCause != null) return { accepted: false, reason: "not_ready", ...(options?.singleAttempt ? { detail: "delivery_not_attempted" } : {}) };
+    if (options?.singleAttempt) {
+      const identity = this.deliveryPane(beeId, generation), expected = options.expectedPane;
+      if (!identity || expected && (expected.socketPath !== identity.socketPath || expected.paneId !== identity.paneId || expected.serverIdentity !== identity.serverIdentity)) return {accepted: false, reason: "not_ready", detail: "delivery_not_attempted"};
+    }
     const quarantine = this.server.try(["show-options", "-p", "-q", "-v", "-t", p.paneId, "@honeybee_input_unknown"]);
     if (quarantine.status !== 0 || quarantine.stdout.trim() !== "") return {accepted: false, reason: "not_ready", detail: "pane_input_unknown", attemptPhase: "before_enter_unknown"};
     if (options?.singleAttempt && this.server.try(["set-option", "-p", "-t", p.paneId, "@honeybee_input_unknown", `${generation}:${messageId}`]).status !== 0) return {accepted: false, reason: "not_ready", detail: "delivery_not_attempted"};
@@ -431,12 +454,14 @@ export class TmuxDriver implements RuntimeDriver {
     } catch {
       return { accepted: false, reason: "no_process", ...(options?.singleAttempt ? {attemptPhase: "enter_attempted" as const, detail: "delivery_pointer_unknown"} : {}) };
     }
-    if (options?.singleAttempt) this.server.try(["set-option", "-p", "-u", "-t", p.paneId, "@honeybee_input_unknown"]);
     // Echo-verify proved the INJECTION; the observer still proves the TURN.
     // The mailbox record is durable truth; an unconfirmed turn within grace
     // surfaces as a visible note.
     this.consumed.set(messageId, generation);
-    if (options?.singleAttempt) this.pointerReceipts.set(messageId, { beeId, generation, digest: createHash("sha256").update(body).digest("hex") });
+    if (options?.singleAttempt) {
+      this.pointerReceipts.set(messageId, { beeId, generation, digest: createHash("sha256").update(body).digest("hex") });
+      this.reconcileDeliveryPane(beeId, generation, messageId, body);
+    }
     if (p.phase === "idle") {
       p.pendingConfirms.push({ messageId, deadline: this.now() + p.deliveryGraceMs });
     }

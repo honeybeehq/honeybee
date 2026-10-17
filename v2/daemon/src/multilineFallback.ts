@@ -54,6 +54,7 @@ export class MultilineFallback {
     const hold = this.store.multilineDelivery(message.id);
     if (!hold || !hold.fallback && !["held", "expired"].includes(hold.stage)) return { handled: false, accepted: false };
     if (this.store.inTransaction) return { handled: true, accepted: false };
+    if (hold.detail === "delivery_hold_state_unknown") {this.store.reconcileUnknownMultilineHold(message.id); return {handled: true, accepted: false};}
     const bee = this.store.getBee(message.beeId);
     if (!bee || message.deliveredAt !== null) return { handled: true, accepted: false };
     let fallback = hold.fallback;
@@ -74,6 +75,7 @@ export class MultilineFallback {
     if (fallback.state !== "preparing" && fallback.state !== "ready") return { handled: true, accepted: false };
     try {
       if (fallback.ownerStoreId !== this.store.effectCoverage().ownerStoreId) throw Object.assign(new Error("owner differs"), { code: "delivery_file_owner_mismatch" });
+      this.store.fenceMultilineFallbackPublication(message.id, fallback.id);
       const content = `Honeybee delivery content: message=${message.id} publication=${fallback.id}\n\n${text}`;
       const published = this.files.publish(fallback.root, fallback.ownerStoreId, message.beeId, fallback.id, content, fallback.worktrees);
       const pointer = deliveryPointer(message, published.path, peer, questionId);
@@ -87,16 +89,20 @@ export class MultilineFallback {
     }
     if (!fallback.path) return { handled: true, accepted: false };
     const pane = this.driver.deliveryPane?.(message.beeId, generation);
+    if (bee.substrate === "tmux" && !pane) {
+      this.store.transitionMultilineFallback(message.id, "ready", "held", {detail: "delivery_pane_identity_unavailable"});
+      return {handled: true, accepted: false};
+    }
     const paneInput = pane ? {code: "pane_input_unknown" as const, ...pane, generation, since: Date.now(), reason: "single_attempt_injection_in_progress"} : undefined;
     fallback = this.store.transitionMultilineFallback(message.id, "ready", "in_flight", { generation, attempts: (fallback.attempts ?? 0) + 1, attemptPhase: "injecting", ...(paneInput ? {paneInput} : {}) })!;
     try {
-      const outcome = this.driver.deliver(message.beeId, generation, message.id, fallback.pointer!, { singleAttempt: true });
+      const outcome = this.driver.deliver(message.beeId, generation, message.id, fallback.pointer!, { singleAttempt: true, ...(pane ? {expectedPane: pane} : {}) });
       if (outcome.accepted) {
         return { handled: true, accepted: this.complete(message, fallback, source), generation: fallback.generation! };
       }
       const cleared = outcome.attemptPhase === "before_enter_cleared" || outcome.detail === "delivery_not_attempted";
       this.store.transitionMultilineFallback(message.id, "in_flight", cleared ? "ready" : "unknown", {
-        detail: outcome.detail ?? "delivery_pointer_outcome_unknown", ...(outcome.attemptPhase ? {attemptPhase: outcome.attemptPhase} : {}),
+        detail: outcome.detail ?? "delivery_pointer_outcome_unknown", ...(outcome.attemptPhase ? {attemptPhase: outcome.attemptPhase} : cleared ? {attemptPhase: "before_enter_cleared" as const} : {}),
         ...(paneInput ? {paneInput: {...paneInput, reason: outcome.detail ?? "delivery_pointer_outcome_unknown", ...(cleared || outcome.attemptPhase === "enter_attempted" && outcome.accepted ? {clearedAt: Date.now()} : {})}} : {}),
       });
     } catch {
@@ -107,11 +113,12 @@ export class MultilineFallback {
 
   private complete(message: MessageRow, fallback: DeliveryFallback, source: TurnTriggerSource): boolean {
     if (fallback.generation === null) return false;
-    return this.store.completeMultilineFallback(message.id, fallback.generation, source).applied;
+    return this.store.completeMultilineFallback(message.id, fallback.generation, source, !fallback.paneInput || this.driver.deliveryPaneClear?.(message.beeId, fallback.generation) === true).applied;
   }
 
   cleanupDeleted(): void {
     if (this.store.inTransaction) return;
+    this.store.cleanupDeletedUnattemptedMultilineFences();
     for (const row of this.store.deletedMultilineFiles()) {
       const fallback = row.fallback;
       if (!fallback || fallback.state === "removed" || !fallback.id) continue;

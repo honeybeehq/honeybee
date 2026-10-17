@@ -1685,6 +1685,7 @@ export interface HarnessFact {
 
 export interface HealthResult {
   paneInputUnknown?: number;
+  deliveryHoldUnknown?: number;
   localSecurity?: {peerCredentials: import("./peerCredentials.ts").PeerCredentialStatus; localTrust: "off" | "ready" | "registration_key_unavailable"};
   protocol: string;
   pid: number;

@@ -81,6 +81,14 @@ export class SubstrateRouter implements RuntimeDriver {
     driver.start(beeId, generation, execution);
   }
 
+  deliveryPaneClear(beeId: string, generation: number): boolean {
+    return (this.driverFor(beeId, generation) as RuntimeDriver).deliveryPaneClear?.(beeId, generation) ?? true;
+  }
+
+  reconcileDeliveryPane(beeId: string, generation: number, messageId: number, body: string): boolean {
+    return (this.driverFor(beeId, generation) as RuntimeDriver).reconcileDeliveryPane?.(beeId, generation, messageId, body) ?? false;
+  }
+
   deliveryPane(beeId: string, generation: number): {socketPath: string; paneId: string; serverIdentity: string} | null {
     return this.driverFor(beeId, generation).deliveryPane?.(beeId, generation) ?? null;
   }

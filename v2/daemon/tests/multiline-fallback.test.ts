@@ -1,4 +1,6 @@
 import { before, test } from "node:test";
+import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
@@ -40,12 +42,15 @@ function rig(missingHelper = false, runtimeRoot = false) {
   const options = {store, driver, log: () => {}, now: () => 1000, policy: {commandsPerStep: 8, bootHangTimeoutSteps: 50},
     multilineFallback: {root: data, ...(runtimeRoot ? {rootForBee: () => join(root, "runtime")} : {}), worktrees: () => [cwd], files: new DeliveryFiles(missingHelper ? join(root, "missing") : undefined, root)}};
   let core = new DaemonCore(options); core.boot();
-  const bee = store.createBee({name: "recipient", agent: "stub", substrate: "tmux", cwd}).bee;
+  const bee = store.createBee({name: "recipient", agent: "stub", substrate: "hsr", cwd}).bee;
   store.enqueueCommand("spawn", bee.id); for (let i = 0; i < 4; i++) core.step();
   const hold = (id: number) => {for (let i = 0; i < 3; i++) store.recordMultilineDeliveryRefusal(id, 1, "multiline_type_mode");};
-  return {root, data, files: options.multilineFallback.files, get store() {return store;}, driver, bee, hold, step: () => core.step(), restart: (reopen = false, corrupt?: string) => {
+  return {root, data, files: options.multilineFallback.files, get store() {return store;}, driver, bee, hold, step: () => core.step(), restart: (reopen = false, corrupt?: string, fence?: "missing" | "malformed") => {
     if (reopen) {store.close();
-      if (corrupt !== undefined) {const db = new DatabaseSync(join(data, "core.sqlite3")); db.prepare("UPDATE multiline_delivery SET row_json = ?").run(corrupt); db.close();}
+      if (corrupt !== undefined) {const db = new DatabaseSync(join(data, "core.sqlite3")); db.prepare("UPDATE multiline_delivery SET row_json = ?").run(corrupt);
+        if (fence === "missing") db.exec("DELETE FROM multiline_fallback_fence");
+        if (fence === "malformed") {db.exec("PRAGMA ignore_check_constraints = ON"); db.exec("UPDATE multiline_fallback_fence SET state = 'malformed'");}
+        db.close();}
       store = openCoreStore(join(data, "core.sqlite3"), {now: () => 1000, ephemeral: true}); options.store = store;}
     core = new DaemonCore(options); core.boot();
   }, close: () => {store.close(); rmSync(root, {recursive: true, force: true});}};
@@ -229,7 +234,7 @@ test("deleted-bee cleanup retries converge while another archived bee still refe
   const r = rig(); t.after(r.close);
   const first = r.store.send(r.bee.id, "one\ntwo").message; r.hold(first.id); r.step();
   const firstPath = r.store.getMessage(first.id)!.deliveryFallback!.path!;
-  const other = r.store.createBee({name: "retained", agent: "stub", substrate: "tmux", cwd: join(r.root, "work")}).bee;
+  const other = r.store.createBee({name: "retained", agent: "stub", substrate: "hsr", cwd: join(r.root, "work")}).bee;
   r.store.enqueueCommand("spawn", other.id); for (let i = 0; i < 4; i++) r.step();
   const second = r.store.send(other.id, "other\nframe").message; r.hold(second.id); r.step();
   const secondPath = r.store.getMessage(second.id)!.deliveryFallback!.path!;
@@ -244,4 +249,86 @@ test("deleted-bee cleanup retries converge while another archived bee still refe
   assert.equal(existsSync(firstPath), false); assert.equal(existsSync(secondPath), true);
   assert.equal(r.store.multilineDelivery(first.id)?.fallback?.state, "removed");
   assert.equal(r.store.multilineDelivery(second.id)?.fallback?.state, "delivered");
+  const db = (r.store as unknown as {db: DatabaseSync}).db;
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM multiline_fallback_fence WHERE message_id = ?").get(first.id)?.count, 0);
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM multiline_fallback_fence WHERE message_id = ?").get(second.id)?.count, 1);
+});
+
+for (const evidence of ["unattempted", "missing", "malformed", "unreadable", "prepared-crash"] as const) test(`corrupt hold notice uses outside ${evidence} evidence exactly once and never republishes`, t => {
+  const r = rig(false, true); t.after(r.close);
+  const message = r.store.send(r.bee.id, "one\ntwo").message; r.hold(message.id);
+  if (evidence === "prepared-crash") r.store.prepareMultilineFallback(message.id, join(r.root, "runtime"), [join(r.root, "work")]);
+  r.restart(true, "{", evidence === "missing" || evidence === "malformed" ? evidence : undefined);
+  if (evidence === "unreadable") {
+    const access = r.store as unknown as {stmt: (sql: string) => unknown}, stmt = access.stmt.bind(r.store);
+    access.stmt = sql => {if (sql.startsWith("SELECT * FROM multiline_fallback_fence")) throw new Error("injected unreadable fence"); return stmt(sql);};
+  }
+  const first = r.store.send(r.bee.id, "later-one").message, second = r.store.send(r.bee.id, "later-two").message;
+  for (let i = 0; i < 6; i++) r.step();
+  const wording = evidence === "unattempted" ? "state unknown, not delivered" : "state unknown, may have been delivered";
+  assert.equal(r.store.multilineDelivery(message.id)?.notice, wording);
+  const firstBody = r.driver.deliveredBodies[r.driver.deliveredIds.indexOf(first.id)]!;
+  assert.equal(firstBody.split(wording).length - 1, 1);
+  assert.equal(r.driver.deliveredBodies[r.driver.deliveredIds.indexOf(second.id)], "later-two");
+  assert.equal(r.driver.pointers.length, 0); assert.equal(r.store.getMessage(message.id)?.deliveredAt, null);
+  assert.equal(r.store.countUnknownMultilineHolds(), 1);
+  assert.equal(r.store.auditRows().filter(row => row.kind === "mail.delivery_fallback_unknown").length, 1);
+  assert.equal(existsSync(join(r.root, "runtime", "delivery-content")), false);
+});
+
+test("valid waiting outer row with malformed nested fallback becomes visible UNKNOWN outside FIFO", t => {
+  const r = rig(); t.after(r.close);
+  const message = r.store.send(r.bee.id, "one\ntwo").message;
+  r.store.recordMultilineDeliveryRefusal(message.id, 1, "multiline_type_mode");
+  const waiting = r.store.multilineDelivery(message.id)!;
+  assert.equal(waiting.stage, "waiting"); assert.equal(waiting.heldSince, null);
+  r.restart(true, JSON.stringify({...waiting, fallback: {state: "ready"}}));
+  const first = r.store.send(r.bee.id, "later-one").message, second = r.store.send(r.bee.id, "later-two").message;
+  for (let i = 0; i < 6; i++) r.step();
+  const unknown = r.store.getMessage(message.id)!;
+  assert.equal(unknown.deliveryFallback?.state, "unknown"); assert.equal(unknown.deliveryHold?.stage, "held");
+  assert.equal(unknown.deliveryHold?.detail, "delivery_hold_state_unknown"); assert.equal(unknown.deliveryHold?.receipt, null);
+  assert.equal(r.store.countUnknownMultilineHolds(), 1); assert.equal(r.driver.pointers.length, 0);
+  assert.equal(r.store.auditRows().filter(row => row.kind === "mail.delivery_fallback_unknown").length, 1);
+  assert.equal(r.driver.deliveredBodies[r.driver.deliveredIds.indexOf(first.id)]!.split("state unknown, not delivered").length - 1, 1);
+  assert.equal(r.driver.deliveredBodies[r.driver.deliveredIds.indexOf(second.id)], "later-two");
+  assert.equal(existsSync(join(r.data, "delivery-content")), false);
+});
+
+test("SIGKILL after prepared commits but before any native call keeps outside evidence conservative", async t => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "prepared-crash-"))), data = join(root, "data"), work = join(root, "work"), path = join(data, "core.sqlite3");
+  mkdirSync(data, {mode: 0o700}); mkdirSync(work, {mode: 0o700});
+  const modulePath = (relative: string) => fileURLToPath(new URL(relative, import.meta.url));
+  const code = `import {openCoreStore} from ${JSON.stringify(modulePath("../../core/src/store.ts"))};
+import {DaemonCore} from ${JSON.stringify(modulePath("../src/loops.ts"))};
+import {FakeDriver} from ${JSON.stringify(modulePath("./helpers.ts"))};
+const store=openCoreStore(${JSON.stringify(path)},{now:()=>1000}), driver=new FakeDriver(()=>1000), core=new DaemonCore({store,driver,now:()=>1000,log:()=>{},policy:{commandsPerStep:8,bootHangTimeoutSteps:50}});core.boot();
+const bee=store.createBee({name:"crash",agent:"stub",substrate:"hsr",cwd:${JSON.stringify(work)}}).bee;
+store.enqueueCommand("spawn",bee.id);for(let i=0;i<4;i++)core.step();
+const message=store.send(bee.id,"one\\ntwo").message;for(let i=0;i<3;i++)store.recordMultilineDeliveryRefusal(message.id,1,"multiline_type_mode");
+const prepared=store.prepareMultilineFallback(message.id,${JSON.stringify(data)},[${JSON.stringify(work)}]);
+process.stdout.write(JSON.stringify({messageId:message.id,beeId:bee.id,id:prepared.id})+"\\n");setInterval(()=>{},1000);`;
+  const child = spawn(process.execPath, ["--input-type=module", "-e", code], {cwd: root, env: process.env, stdio: ["ignore", "pipe", "pipe"]});
+  let store: ReturnType<typeof openCoreStore> | undefined;
+  t.after(() => {if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL"); store?.close(); rmSync(root, {recursive: true, force: true});});
+  const prepared = await new Promise<{messageId: number; beeId: string; id: string}>((resolve, reject) => {
+    let output = "", errors = "";
+    const timeout = setTimeout(() => {child.kill("SIGKILL"); reject(new Error("prepared child timeout: " + errors));}, 5000);
+    child.stderr.on("data", chunk => {errors += String(chunk);});
+    child.stdout.on("data", chunk => {output += String(chunk); try {const row = JSON.parse(output.trim()); clearTimeout(timeout); resolve(row);} catch {}});
+    child.on("exit", code => {clearTimeout(timeout); if (!output.trim()) reject(new Error(`prepared child exit ${code}: ${errors}`));});
+  });
+  const exited = new Promise<string | null>(resolve => child.once("exit", (_code, signal) => resolve(signal)));
+  child.kill("SIGKILL"); assert.equal(await exited, "SIGKILL");
+  assert.equal(existsSync(join(data, "delivery-content")), false);
+  const db = new DatabaseSync(path); db.prepare("UPDATE multiline_delivery SET row_json = ? WHERE message_id = ?").run("{", prepared.messageId); db.close();
+  store = openCoreStore(path, {now: () => 1000});
+  const driver = new PointerDriver(() => 1000), core = new DaemonCore({store, driver, now: () => 1000, log: () => {}, policy: {commandsPerStep: 8, bootHangTimeoutSteps: 50}, multilineFallback: {root: data, worktrees: () => [work], files: new DeliveryFiles(undefined, root)}}); core.boot();
+  const later = store.send(prepared.beeId, "later").message;
+  for (let i = 0; i < 10; i++) core.step();
+  assert.equal(store.unknownMultilineNotice(prepared.messageId, prepared.beeId), "state unknown, may have been delivered");
+  assert.equal(store.getMessage(prepared.messageId)?.deliveryFallback?.state, "unknown");
+  assert.equal(store.countUnknownMultilineHolds(), 1); assert.equal(driver.pointers.length, 0);
+  assert.ok(driver.deliveredBodies[driver.deliveredIds.indexOf(later.id)]?.includes("state unknown, may have been delivered"));
+  assert.equal(existsSync(join(data, "delivery-content")), false);
 });
