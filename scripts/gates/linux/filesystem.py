@@ -50,8 +50,8 @@ def assert_filesystem(root, init_name='init.py'):
             raise RuntimeError('writable mount outside run root: ' + target)
     assert any(row['path'] == '/' and not row['writable'] for row in mounts)
     assert any(row['path'] == root and row['writable'] for row in mounts)
-    proc = next(row for row in mounts if row['path'] == '/proc')
-    proc_type = next(line.split(' - ', 1)[1].split()[0] for line in pathlib.Path('/proc/self/mountinfo').read_text().splitlines() if line.split()[4] == '/proc')
+    proc = [row for row in mounts if row['path'] == '/proc'][-1]
+    proc_type = [line.split(' - ', 1)[1].split()[0] for line in pathlib.Path('/proc/self/mountinfo').read_text().splitlines() if line.split()[4] == '/proc'][-1]
     init_argv = pathlib.Path('/proc/1/cmdline').read_bytes().split(b'\0')
     pidns = os.readlink('/proc/self/ns/pid')
     assert proc_type == 'proc' and proc['writable'], 'private procfs must be writable: ' + str(proc)
