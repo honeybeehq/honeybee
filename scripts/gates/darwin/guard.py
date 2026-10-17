@@ -305,11 +305,16 @@ def run(args):
     build_policy = compiler_profile(policy, tools)
     (root / 'compiler.sb').write_text(build_policy)
     compile_command = ['/usr/bin/sandbox-exec', '-f', str(root / 'compiler.sb'), tools['clang'], '-isysroot', tools['sdk'], '--ld-path=' + tools['ld'], '-fmodules-cache-path=' + env['CLANG_MODULE_CACHE_PATH'], str(workspace / 'scripts/gates/darwin/scope.c'), '-o', str(identity)]
-    write_json(root / 'compiler-command.json', {'argv': compile_command, 'noLauncher': True}, root)
+    dry_command = compile_command + ['-###']
+    write_json(root / 'compiler-command.json', {'argv': compile_command, 'dryRunArgv': dry_command, 'noLauncher': True}, root)
+    dry_run = subprocess.run(dry_command, cwd=workspace, env=env, capture_output=True)
+    dry_log = b'CLANG_DRY_RUN\n' + dry_run.stdout + dry_run.stderr
+    (root / 'compiler-dry-run.log').write_bytes(dry_log)
     compile_result = subprocess.run(compile_command, cwd=workspace, env=env, capture_output=True)
-    (root / 'scope-build.log').write_bytes(compile_result.stdout + compile_result.stderr)
+    build_log = dry_log + b'CLANG_BUILD\n' + compile_result.stdout + compile_result.stderr
+    (root / 'scope-build.log').write_bytes(build_log)
     if compile_result.returncode:
-        diagnostic = (compile_result.stdout + compile_result.stderr)[-16384:].decode('utf-8', errors='replace')
+        diagnostic = build_log[-16384:].decode('utf-8', errors='replace')
         print('SCOPE_BUILD_DIAGNOSTIC_LAST_60_LINES', flush=True)
         print('\n'.join(diagnostic.splitlines()[-60:]), flush=True)
         raise Refusal('scope helper build failed; receipts retained at ' + str(root))
