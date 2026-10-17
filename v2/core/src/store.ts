@@ -1,3 +1,4 @@
+import { ExecutionLedger, ExecutionFenceError, executionRequest, type ExecutionRequest } from "./executionFence.ts";
 import { EffectKeyError, EffectLedger, type EffectVerb, type EffectResolution } from "./effectResolve.ts";
 import { parseDurableUpdateReservation, parseApiarySwapAcquire, parseApiarySwapSettle, parseApiarySwapRecover, acquireApiarySwap, settleApiarySwap, recoverApiarySwap, type DurableUpdateReservation, type ApiarySwapReservation } from "../../../src/apiarySwap.ts";
 import { currentRpcCaller } from "./rpcAuditContext.ts";
@@ -1599,6 +1600,8 @@ function mailPendingMessage(row: Row): MailPendingMessage {
 export class CoreStore {
   readonly path: string;
   private readonly effectLedger: EffectLedger;
+  private readonly executionLedger: ExecutionLedger;
+  private executionKey: string | null = null;
   private readonly db: DatabaseSync;
   private readonly now: () => number;
   private readonly random: () => number;
@@ -1622,6 +1625,7 @@ export class CoreStore {
     this.maxRpcIdempotencyRows = opts.maxRpcIdempotencyRows ?? 10_000;
     this.db = new DatabaseSync(path);
     this.effectLedger = new EffectLedger(this.db, this.now);
+    this.executionLedger = new ExecutionLedger(this.db, this.now, () => this.effectCoverage(), (kind, beeId, data) => { this.audit(kind, beeId, data); });
     try {
       // Fail immediately (no waiting) if another writer holds the lock.
       this.db.exec("PRAGMA busy_timeout = 0");
@@ -1642,7 +1646,7 @@ export class CoreStore {
         // Version gate + explicit migrations FIRST (before any other write
         // touches possibly-old tables), atomically with the stamp.
         this.ensureSchemaVersion();
-        try { this.effectLedger.open(); }
+        try { this.effectLedger.open(); this.executionLedger.open(); }
         catch (error) {
           if (error instanceof CoreError) throw error;
           throw new CoreError("Effect ledger initialization failed; store recovery required");
@@ -2626,8 +2630,13 @@ export class CoreStore {
     return rows.map(mapBee);
   }
 
-  archiveBee(beeId: string): BeeRow {
+  archiveBee(beeId: string, executionCommandId?: number): BeeRow {
     return this.tx(() => {
+      if (executionCommandId !== undefined) {
+        const command = this.getCommand(executionCommandId);
+        if (!command || command.beeId !== beeId || command.verb !== "archive" || command.status !== "running") throw new ExecutionFenceError("rpc_execution_stale", "Archive command binding is not running");
+        if (!this.executionLedger.commandAllowed(executionCommandId)) return this.mustGetBee(beeId);
+      }
       const bee = this.mustGetBee(beeId);
       if (bee.lifecycle !== "active") {
         throw new IllegalTransitionError(
@@ -4068,6 +4077,7 @@ export class CoreStore {
     }
     return this.tx(() => {
       if (key !== undefined) {
+        if (this.executionKey !== key) this.executionLedger.assertLegacyKey(key);
         this.effectLedger.lookup(key, verb);
         const original = this.getCommandByIdempotencyKey(key);
         if (original) {
@@ -4370,6 +4380,7 @@ export class CoreStore {
           .get(this.now(), ...(blockedRuntimeStartBeeIds.length > 0 ? [JSON.stringify(blockedRuntimeStartBeeIds)] : [])) as Row | undefined;
         if (!row) return null;
         const command = mapCommand(row);
+        if (!this.executionLedger.commandAllowed(command.id)) continue;
         if (
           (command.verb === "stop" || command.verb === "archive" || command.verb === "delete" || command.verb === "revive")
         ) {
@@ -4644,6 +4655,63 @@ export class CoreStore {
     else queueMicrotask(callback);
   }
 
+  registerExecutionCoordinator(issuerId: unknown, uid: number) {
+    return this.tx(() => this.executionLedger.register(issuerId, uid));
+  }
+
+  compareAndSetExecutionClaim(params: unknown, uid: number) {
+    return this.tx(() => this.executionLedger.compareAndSet(params, uid));
+  }
+
+  executeWithFence(value: unknown, uid: number, effect: (request: ExecutionRequest) => { commandId: number | null; result: unknown }) {
+    const request = executionRequest(value);
+    const outcome = this.tx(() => {
+      this.executionLedger.requireCoordinator(request.executionFence.issuerId, uid);
+      let prior;
+      try { prior = this.executionLedger.prepare(request); }
+      catch (error) {
+        if (!(error instanceof ExecutionFenceError) || error.code !== "rpc_execution_stale") throw error;
+        return { refused: this.executionLedger.refusedAdmission(request) };
+      }
+      if (prior) return { receipt: prior };
+      const hit = this.lookupRpcResult(request.idempotencyKey);
+      if (hit || this.getCommandByIdempotencyKey(request.idempotencyKey)) throw new ExecutionFenceError("rpc_execution_history_unknown", "Key has an admission without an execution binding; hold the effect");
+      const previous = this.executionKey;
+      this.executionKey = request.idempotencyKey;
+      try {
+        const result = effect(request);
+        this.recordRpcResult(request.idempotencyKey, request.verb, result.commandId, result.result);
+        return { receipt: this.executionLedger.record(request, result.commandId, result.result) };
+      } finally { this.executionKey = previous; }
+    });
+    if (outcome.refused) throw new ExecutionFenceError("rpc_execution_stale", "Execution claim is stale; this invocation added zero effects", { executionReceipt: outcome.refused });
+    return outcome.receipt!;
+  }
+
+  resolveExecution(value: unknown, uid: number) {
+    const request = executionRequest(value);
+    return this.tx(() => {
+      this.executionLedger.requireCoordinator(request.executionFence.issuerId, uid);
+      const receipt = this.executionLedger.observation(request);
+      if (receipt) return { ...this.effectCoverage(), admissionReceipt: this.lookupRpcResult(request.idempotencyKey), executionReceipt: receipt };
+      const observation = this.effectLedger.observe(request.idempotencyKey, request.verb);
+      if (observation.status === "committed") throw new ExecutionFenceError("rpc_execution_history_unknown", "Admission has no execution receipt; hold the effect");
+      return observation;
+    });
+  }
+
+  executeArchiveCommand(id: number): boolean {
+    return this.tx(() => {
+      const command = this.getCommand(id);
+      if (!command || command.verb !== "archive" || command.status !== "running") throw new ExecutionFenceError("rpc_execution_stale", "Archive command is not running");
+      if (!this.executionLedger.commandAllowed(id)) return false;
+      const bee = this.mustGetBee(command.beeId);
+      if (bee.lifecycle === "active") this.archiveBee(bee.id, id);
+      this.executionLedger.completed(id);
+      return true;
+    });
+  }
+
   effectCoverage() { return this.effectLedger.status(); }
 
   resolveEffect(key: string, verb: EffectVerb, inFlight = false): EffectResolution {
@@ -4684,6 +4752,7 @@ export class CoreStore {
    */
   recordRpcResult(key: string, verb: string, commandId: number | null, result: unknown): void {
     this.tx(() => {
+      if (this.executionKey !== key) this.executionLedger.assertLegacyKey(key);
       this.effectLedger.lookup(key, verb);
       this.effectLedger.record({ key, verb, commandId, result, createdAt: this.now() });
       this.db

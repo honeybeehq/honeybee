@@ -999,8 +999,7 @@ export class DaemonCore {
         return false;
       }
       case "archive": {
-        const bee = this.store.getBee(cmd.beeId);
-        if (bee?.lifecycle === "active") this.store.archiveBee(cmd.beeId);
+        if (!this.store.executeArchiveCommand(cmd.id)) return true;
         this.releaseBeeTmp(cmd.beeId);
         this.log(`cmd.archive id=${cmd.id} bee=${cmd.beeId}`);
         return true;

@@ -1,3 +1,4 @@
+import { ExecutionFenceError } from "../../core/src/executionFence.ts";
 import { EffectKeyError } from "../../core/src/effectResolve.ts";
 import { PeerCredentials, type PeerConnection } from "./peerCredentials.ts";
 import { LocalRpcTrust, type LocalTrustConfig } from "./localRpcTrust.ts";
@@ -70,6 +71,7 @@ import {
 } from "./protocol.ts";
 
 export interface RpcConn {
+  readonly executionCoordinatorUid?: number;
   readonly authenticatedBeeId?: string;
   readonly localPeer?: Readonly<{uid: number; pid: number; processBirth: string | null}>;
   readonly ingress?: "local_unix" | "node_relay" | "remote";
@@ -138,6 +140,7 @@ function isRpcVerb(value: unknown): value is RpcVerb {
 
 /** Map any thrown error onto the closed RPC error list. */
 export function toRpcError(err: unknown): { code: RpcErrorCode; message: string; details?: Record<string, unknown> } {
+  if (err instanceof ExecutionFenceError) return { code: err.code, message: err.message, ...(err.details ? { details: err.details } : {}) };
   if (err instanceof EffectKeyError) return { code: err.code, message: err.message };
   if (err instanceof RpcError) return { code: err.code, message: err.message, ...(err.details ? { details: err.details } : {}) };
   if (err instanceof LoginFlowRefusal) return { code: err.code, message: err.message };
@@ -377,6 +380,7 @@ export class RpcServer {
       return;
     }
     try {
+      if (verb.startsWith("rpc.execution.")) throw new RpcError("rpc_execution_fence_unsupported", "Execution fencing is dark: coordinator installation is NOT_COVERED pending the shared step-up Stage B protected-credential prerequisite");
       const peer = conn.peerConnection;
       if (peer?.state === "verified" && peer.peer.uid !== process.geteuid!()) {
         this.refusals.record("local_peer_uid_mismatch", peer.peer.uid, peer.peer.pid);

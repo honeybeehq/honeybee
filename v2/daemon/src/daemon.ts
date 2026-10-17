@@ -1,3 +1,4 @@
+import { ExecutionFenceError } from "../../core/src/executionFence.ts";
 import { effectVerb } from "../../core/src/effectResolve.ts";
 import { APIARY_SWAP_CAPABILITY, ApiarySwapError, parseApiarySwapAcquire, parseApiarySwapSettle, parseApiarySwapRecover } from "../../../src/apiarySwap.ts";
 import { canonicalDigest } from "../../../src/comb/canonical.ts";
@@ -1686,7 +1687,35 @@ export class HiveDaemon {
     return message.beeId;
   }
 
+  private rpcExecution(verb: RpcVerb, params: Record<string, unknown>, conn: RpcConn): unknown {
+    switch (verb) {
+      case "rpc.execution.coordinator.register":
+        if (Object.keys(params).length !== 1 || !Object.hasOwn(params, "issuerId")) throw new RpcError("invalid_request", "Coordinator registration requires issuerId only");
+        if (conn.executionCoordinatorUid === undefined) throw new RpcError("caller_not_trusted", "Execution requires an authenticated local coordinator");
+        return this.mustStore().registerExecutionCoordinator(params.issuerId, conn.executionCoordinatorUid);
+      case "rpc.execution.claim.compareAndSet":
+        if (conn.executionCoordinatorUid === undefined) throw new RpcError("caller_not_trusted", "Execution requires an authenticated local coordinator");
+        return this.mustStore().compareAndSetExecutionClaim(params, conn.executionCoordinatorUid);
+      case "rpc.execution.resolve":
+        if (conn.executionCoordinatorUid === undefined) throw new RpcError("caller_not_trusted", "Execution requires an authenticated local coordinator");
+        return this.mustStore().resolveExecution(params, conn.executionCoordinatorUid);
+      case "rpc.execution.execute": {
+        if (params.verb === "spawn") throw new ExecutionFenceError("rpc_execution_fence_unsupported", "Spawn execution fencing requires phase B; no fallback is permitted");
+        if (conn.executionCoordinatorUid === undefined) throw new RpcError("caller_not_trusted", "Execution requires an authenticated local coordinator");
+        const receipt = this.mustStore().executeWithFence(params, conn.executionCoordinatorUid, request => {
+          const result = request.verb === "send" ? this.rpcSend(request.args) : this.rpcEnqueue("archive", request.resource.beeId, {}, { idempotencyKey: request.idempotencyKey });
+          return { commandId: result.commandId, result };
+        });
+        if (receipt.status === "refused_stale") throw new ExecutionFenceError("rpc_execution_stale", "Archive execution was refused as stale", { executionReceipt: receipt });
+        this.requestTick();
+        return { ...this.mustStore().effectCoverage(), admissionReceipt: this.mustStore().lookupRpcResult(receipt.idempotencyKey), executionReceipt: receipt };
+      }
+      default: throw new RpcError("rpc_execution_fence_unsupported", "Unsupported execution-fence verb");
+    }
+  }
+
   private dispatch(verb: RpcVerb, params: Record<string, unknown>, conn: RpcConn): unknown {
+    if (verb.startsWith("rpc.execution.")) throw new RpcError("rpc_execution_fence_unsupported", "Execution fencing is dark: local coordinator installation is NOT_COVERED");
     assertLocalHandoffRpc(verb, params, conn);
     this.assertNotForeignHarnessStart(verb, params, conn);
     if (typeof params.beeId === "string" && ["stop", "revive", "archive", "bee.swapAccount", "bee.setArgs", "bee.reconfigure", "bee.move", "bee.handoff", "bee.fork", "bee.interrupt"].includes(verb)) {
@@ -1695,7 +1724,7 @@ export class HiveDaemon {
     }
     if (verb === "bee.fork") for (const key of Object.keys(params)) if (!["beeId", "name", "id", "idempotencyKey", "allocationContext", "allocationClaim"].includes(key)) throw new RpcError("thread_unsupported", `Fork is a plain copy and does not accept '${key}'`);
     if (typeof params.idempotencyKey === "string" && verb !== "thread.fork" && verb !== "thread.handoff" && this.mustStore().threadOperationByKey(params.idempotencyKey)) throw new RpcError("idempotency_conflict", "Key belongs to a thread operation");
-    if (verb !== "rpc.effect.resolve" && typeof params.idempotencyKey === "string") {
+    if (!verb.startsWith("rpc.execution.") && verb !== "rpc.effect.resolve" && typeof params.idempotencyKey === "string") {
       const reconnect = this.mustStore().getCommandByIdempotencyKey(params.idempotencyKey);
       if (reconnect?.verb === "reconnect_tools" && (verb !== "bee.reconnectTools" || reconnect.beeId !== params.beeId)) throw new RpcError("idempotency_conflict", "Key belongs to a reconnect command");
       const prior = this.mustStore().lookupRpcResult(params.idempotencyKey);
