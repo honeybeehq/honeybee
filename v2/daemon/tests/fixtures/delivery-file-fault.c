@@ -44,6 +44,7 @@ int fstat(int fd,struct stat *st) {
   int (*real_fstat)(int,struct stat *)=dlsym(RTLD_NEXT,"fstat");
   int result=real_fstat(fd,st);
   if(result==0 && selected(fd,"fstat")) st->st_uid=geteuid()+1;
+  if(result==0 && selected(fd,"device")) st->st_dev++;
   return result;
 }
 int linkat(int from,const char *source,int to,const char *destination,int flags) {

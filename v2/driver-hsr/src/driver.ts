@@ -394,6 +394,7 @@ export class HsrDriver implements RuntimeDriver {
   private usage: UsageEvidence[] = [];
   /** Delivery ground truth for the invariant checker: messageId → generation. */
   private readonly consumed = new Map<number, number>();
+  private readonly pointerAttempts = new Map<number, { beeId: string; generation: number; digest: string }>();
 
   constructor(cfg: HsrDriverConfig) {
     this.cfg = cfg;
@@ -696,26 +697,34 @@ export class HsrDriver implements RuntimeDriver {
     this.onExit(p, status?.exited ? (status.exitCode ?? null) : null, null);
   }
 
-  deliver(beeId: string, generation: number, messageId: number, body: string): DeliverOutcome {
+  deliveryReceipt(beeId: string, generation: number, messageId: number, body: string): "accepted" | "unknown" {
+    const p = this.procs.get(beeId);
+    const attempt = this.pointerAttempts.get(messageId);
+    const matching = attempt?.beeId === beeId && attempt.generation === generation && attempt.digest === createHash("sha256").update(body).digest("hex");
+    return matching && (this.consumed.get(messageId) === generation || p?.generation === generation && p.confirmedDeliveries.has(messageId)) ? "accepted" : "unknown";
+  }
+
+  deliver(beeId: string, generation: number, messageId: number, body: string, options?: { singleAttempt?: boolean }): DeliverOutcome {
+    const refused = (reason: "no_process" | "not_ready"): DeliverOutcome => ({ accepted: false, reason, ...(options?.singleAttempt ? { detail: "delivery_not_attempted" } : {}) });
     const p = this.procs.get(beeId);
     if (!p || p.generation !== generation || p.exited) {
-      return { accepted: false, reason: "no_process" };
+      return refused("no_process");
     }
-    if (this.reconnecting.has(`${beeId}:${generation}`)) return { accepted: false, reason: "not_ready" };
+    if (this.reconnecting.has(`${beeId}:${generation}`)) return refused("not_ready");
     // A re-adopted process has no stdin (pipes died with the previous daemon).
     // Refuse deterministically; the daemon's degraded-runtime policy rotates
     // the generation so the mailbox record reaches a fresh runtime.
-    if (p.degraded || p.adapter == null) return { accepted: false, reason: "not_ready" };
+    if (p.degraded || p.adapter == null) return refused("not_ready");
     // Q2 resolution: a booting runtime refuses; the daemon retries.
-    if (p.phase === "booting") return { accepted: false, reason: "not_ready" };
+    if (p.phase === "booting") return refused("not_ready");
     // A dying (TERM'd) process has no accept point: it might still read stdin
     // but will never work the turn — accepting would mark the mailbox row
     // delivered and doom the message. Refuse; the exit observation follows
     // and the next generation consumes it (delivery doubt cannot exist).
-    if (p.stopCause != null) return { accepted: false, reason: "not_ready" };
+    if (p.stopCause != null) return refused("not_ready");
     // A harness without a mid-turn accept point refuses until idle.
     if (p.phase === "running" && !p.adapter.acceptsMidTurn) {
-      return { accepted: false, reason: "not_ready" };
+      return refused("not_ready");
     }
     if (p.adapter.confirmsDelivery) {
       if (p.confirmedDeliveries.delete(messageId)) {
@@ -727,11 +736,11 @@ export class HsrDriver implements RuntimeDriver {
     if (p.hostStyle && (p.socketBroken || !p.socket || p.socket.destroyed || !p.socket.writable)) {
       // pendingWrites dies with this daemon. Refuse until the runner's socket
       // is connected so the mailbox row remains durable and retries next tick.
-      return { accepted: false, reason: "not_ready" };
+      return refused("not_ready");
     }
     if (!p.hostStyle && (!p.child?.stdin || p.child.stdin.destroyed || !p.child.stdin.writable)) {
       // stdin gone means the process is dying; its exit observation follows.
-      return { accepted: false, reason: "no_process" };
+      return refused("no_process");
     }
     const encoded = p.adapter.encodeMessage(body, {
       sessionId: p.sessionId,
@@ -739,11 +748,12 @@ export class HsrDriver implements RuntimeDriver {
       turnActive: p.phase === "running",
       turnId: p.turnId,
     });
-    if (encoded == null) return { accepted: false, reason: "not_ready" };
+    if (encoded == null) return refused("not_ready");
     // Host-style reaches here only with a connected write lane. Node's
     // socket.write(false) means accepted with backpressure, not rejected; the
     // write remains one delivery and must never trigger a duplicate retry.
     if (!this.writeLine(p, encoded)) return { accepted: false, reason: "not_ready" };
+    if (options?.singleAttempt) this.pointerAttempts.set(messageId, { beeId, generation, digest: createHash("sha256").update(body).digest("hex") });
     p.turn.messageIds.push(messageId);
     if (p.adapter.confirmsDelivery) p.pendingDeliveries.add(messageId);
     else this.consumed.set(messageId, generation);

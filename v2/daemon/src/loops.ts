@@ -47,6 +47,7 @@ import type { ReconnectToolsReceipt } from "../../core/src/reconnectTools.ts";
  */
 import {
   CoreError,
+  MULTILINE_UNSUPPORTED_DETAILS,
   RUNTIME_TRANSITIONS,
   actionIsActive,
   actionNudgeDueAt,
@@ -73,6 +74,7 @@ import {
 } from "../../core/src/index.ts";
 import type { CaptureReport } from "../../driver-cell/src/index.ts";
 import { deliveryText, isPeerSender, turnTriggerSource } from "./envelope.ts";
+import { MultilineFallback, type MultilineFallbackOptions } from "./multilineFallback.ts";
 import {
   NOOP_PERFORMANCE,
   type PerformanceRecorder,
@@ -202,6 +204,7 @@ export interface I1ViolationEvent {
 }
 
 export interface DaemonCoreOptions {
+  multilineFallback?: MultilineFallbackOptions;
   store: CoreStore;
   driver: RuntimeDriver;
   policy: DaemonPolicy;
@@ -294,6 +297,7 @@ type StepSnapshot =
   };
 
 export class DaemonCore {
+  private readonly multilineFallback: MultilineFallback | null;
   protected readonly store: CoreStore;
   protected readonly driver: RuntimeDriver;
   protected readonly policy: DaemonPolicy;
@@ -329,6 +333,7 @@ export class DaemonCore {
   constructor(opts: DaemonCoreOptions) {
     this.store = opts.store;
     this.driver = opts.driver;
+    this.multilineFallback = opts.multilineFallback ? new MultilineFallback(opts.store, opts.driver, opts.multilineFallback) : null;
     this.policy = opts.policy;
     this.now = opts.now;
     this.log = opts.log;
@@ -1017,6 +1022,7 @@ export class DaemonCore {
         const rt = this.store.currentRuntime(cmd.beeId);
         const threadOperation = this.store.threadOperationForSuccessor(cmd.beeId);
         const result = this.store.deleteBee(cmd.beeId); // settles this command too (pending → done)
+        this.multilineFallback?.cleanupDeleted();
         if (rt && LIVE.includes(rt.state)) {
           this.driver.stop(cmd.beeId, rt.generation, "stopped_by_system");
         }
@@ -1581,8 +1587,13 @@ export class DaemonCore {
    */
   private deliveryLoop(work: readonly DaemonWorkRow[]): void {
     const unsupportedAttempts = new Set<number>();
+    this.multilineFallback?.cleanupDeleted();
+    const heldMail = this.multilineFallback ? this.store.heldMultilineMail() : null;
     try {
-      for (const { runtime: rt, pending } of work) {
+      for (const { runtime: rt, pending: ordinaryPending } of work) {
+        const pending = this.multilineFallback
+          ? [...ordinaryPending, ...(heldMail!.get(rt.beeId) ?? []).filter(message => this.multilineFallback!.eligible(rt.beeId, message.id, message.fallback))].sort((a, b) => a.id - b.id)
+          : ordinaryPending;
         if (rt.state === "booting") continue;
         if (rt.state === "idle" && this.store.hasPendingReconnect(rt.beeId, rt.generation)) continue;
         const threadOperation = this.store.threadOperationForSuccessor(rt.beeId);
@@ -1658,7 +1669,7 @@ export class DaemonCore {
         const peer = isPeerSender(msg.sender, (id) => this.store.getBee(id) != null);
         const interruptedTurn = msg.urgency === "now" && this.store.deliveryInterruptedTurn(rt.beeId, msg.id, rt.generation);
         let body = deliveryText(msg, peer, interruptedTurn, this.store.answeredQuestionId(msg.id));
-        if (!msg.phoneInput && msg.sender === "automation:delivery" && msg.senderKind === "automation" && this.store.multilineSenderReceipt(msg.id)) body = msg.body;
+        if (!msg.phoneInput && msg.sender === "automation:delivery" && msg.senderKind === "automation" && this.store.multilineSenderNotice(msg.id)) body = msg.body;
         const reorderNotice = this.store.pendingMultilineReorderNotice(rt.beeId, msg.id);
         if (reorderNotice) body = reorderNotice + body;
         const instruction = this.store.placementInstructionMove(rt.beeId);
@@ -1672,27 +1683,30 @@ export class DaemonCore {
             }),
           );
         }
-        const outcome = this.driver.deliver(rt.beeId, rt.generation, msg.id, body, { multilineWaitExpired: msg.deliveryHold?.stage === "expired" });
+        const fallback = this.multilineFallback?.deliver(msg, body, rt.generation, peer, this.store.answeredQuestionId(msg.id), this.turnTriggerSourceOf(msg, peer));
+        const outcome = fallback?.handled ? { accepted: fallback.accepted, reason: "not_ready" as const, detail: undefined }
+          : this.driver.deliver(rt.beeId, rt.generation, msg.id, body, { multilineWaitExpired: msg.deliveryHold?.stage === "expired" });
         if (outcome.accepted) {
-          this.store.markDelivered(msg.id, rt.generation, this.turnTriggerSourceOf(msg, peer));
+          if (!fallback?.handled) this.store.markDelivered(msg.id, rt.generation, this.turnTriggerSourceOf(msg, peer));
+          const deliveredGeneration = fallback?.generation ?? rt.generation;
           this.interruptRequested.delete(msg.id);
-          if (instruction && rt.generation !== instruction.sourceGeneration) {
+          if (instruction && deliveredGeneration === rt.generation && rt.generation !== instruction.sourceGeneration) {
             this.store.markMoveInstructionsApplied(instruction.id);
             if (this.store.activeMoveOf(rt.beeId)?.phase === "starting") {
               this.store.completeBeeMove(instruction.id);
             }
           }
-          if (seed && msg.id === seed.id) {
+          if (seed && msg.id === seed.id && deliveredGeneration === rt.generation) {
             const active = this.store.activeHandoffOf(rt.beeId);
             if (active?.phase === "starting" && active.seedMessageId === msg.id) {
               this.store.completeBeeHandoff(active.id);
               this.log(`handoff.complete bee=${rt.beeId} handoff=${active.id} gen=${rt.generation}`);
             }
           }
-          this.log(`deliver bee=${rt.beeId} msg=${msg.id} gen=${rt.generation} urgency=${msg.urgency}`);
+          this.log(`deliver bee=${rt.beeId} msg=${msg.id} gen=${deliveredGeneration} urgency=${msg.urgency}`);
         } else {
-          if (body.includes("\n")) {
-            if (outcome.reason === "not_ready" && (outcome.detail === "multiline_type_mode" || outcome.detail === "multiline_bracketed_paste_disabled")) {
+          if (!fallback?.handled && body.includes("\n")) {
+            if (outcome.reason === "not_ready" && outcome.detail !== undefined && MULTILINE_UNSUPPORTED_DETAILS.some(detail => detail === outcome.detail)) {
               this.store.recordMultilineDeliveryRefusal(msg.id, rt.generation, outcome.detail);
               unsupportedAttempts.add(msg.id);
             }

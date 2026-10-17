@@ -1,7 +1,41 @@
 export const MULTILINE_UNSUPPORTED_ATTEMPTS = 3;
 export const MULTILINE_UNSUPPORTED_MS = 30_000;
-export const MULTILINE_UNSUPPORTED_DETAILS = ["multiline_type_mode", "multiline_bracketed_paste_disabled"] as const;
+export const MULTILINE_UNSUPPORTED_DETAILS = ["multiline_type_mode", "multiline_bracketed_paste_disabled", "multiline_bracketed_paste_unknown", "multiline_bracketed_paste_version_unsupported"] as const;
 export type MultilineStage = "waiting" | "expired" | "held" | "delivered";
+export interface DeliveryFallback {
+  code: "delivery_file_fallback";
+  state: "preparing" | "ready" | "in_flight" | "unknown" | "held" | "delivered" | "removed";
+  id: string;
+  ownerStoreId: string;
+  root: string;
+  worktrees: string[];
+  path: string | null;
+  pointer: string | null;
+  digest: string | null;
+  bytes: number | null;
+  generation: number | null;
+  detail: string | null;
+  senderNoticeMessageId: number | null;
+}
+export function readDeliveryFallback(value: unknown): DeliveryFallback | undefined {
+  if (value === undefined) return undefined;
+  const row = value as DeliveryFallback;
+  if (row && typeof row === "object" && !Array.isArray(row) && row.code === "delivery_file_fallback"
+    && ["preparing", "ready", "in_flight", "unknown", "held", "delivered", "removed"].includes(row.state)
+    && typeof row.id === "string" && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(row.id)
+    && typeof row.ownerStoreId === "string" && typeof row.root === "string" && row.root.startsWith("/")
+    && Array.isArray(row.worktrees) && row.worktrees.every(path => typeof path === "string")
+    && (row.path === null || typeof row.path === "string" && row.path.startsWith("/") && !/[\x00-\x1f]/.test(row.path))
+    && (row.pointer === null || typeof row.pointer === "string" && !/[\x00-\x1f\x7f\u0085\u2028\u2029]/.test(row.pointer))
+    && (row.digest === null || typeof row.digest === "string" && /^[a-f0-9]{64}$/.test(row.digest))
+    && (row.bytes === null || Number.isSafeInteger(row.bytes) && row.bytes >= 0)
+    && (row.generation === null || Number.isSafeInteger(row.generation) && row.generation > 0)
+    && (row.detail === null || typeof row.detail === "string")
+    && (row.senderNoticeMessageId === null || Number.isSafeInteger(row.senderNoticeMessageId) && row.senderNoticeMessageId > 0)
+    && (!["ready", "in_flight", "delivered"].includes(row.state) || row.path !== null && row.pointer !== null && row.digest !== null && row.bytes !== null)
+    && (row.state !== "in_flight" || row.generation !== null)) return row;
+  return { code: "delivery_file_fallback", state: "unknown", id: "", ownerStoreId: "", root: "", worktrees: [], path: null, pointer: null, digest: null, bytes: null, generation: null, detail: "delivery_fallback_state_unknown", senderNoticeMessageId: null };
+}
 export interface DeliveryHoldReceipt {
   code: "delivery_unsupported_multiline";
   messageId: number;
@@ -26,6 +60,7 @@ export interface MultilineDeliveryRow {
   detail: string;
   stage: MultilineStage;
   notice: string | null;
+  fallback?: DeliveryFallback;
 }
 export interface DeliveryHold {
   code: "delivery_unsupported_multiline";
@@ -65,7 +100,7 @@ export function advanceMultilineUnsupported(previous: MultilineUnsupportedProgre
   const unsupportedMs = (previous?.unsupportedMs ?? 0) + elapsed;
   return {
     attempts, unsupportedMs, lastAttemptAt: now, lastUnsupported: unsupported,
-    hold: unsupported && (attempts >= MULTILINE_UNSUPPORTED_ATTEMPTS || unsupportedMs >= MULTILINE_UNSUPPORTED_MS),
+    hold: unsupported && (detail === "multiline_bracketed_paste_version_unsupported" || attempts >= MULTILINE_UNSUPPORTED_ATTEMPTS || unsupportedMs >= MULTILINE_UNSUPPORTED_MS),
   };
 }
 
@@ -87,6 +122,7 @@ export function readMultilineDelivery(json: string, messageId: number, beeId: st
       && typeof row.detail === "string" && (row.notice === null || typeof row.notice === "string")) return {
         messageId, beeId, heldAt, heldSince, stage: row.stage, attempts: row.attempts, unsupportedMs: row.unsupportedMs, lastAttemptAt: row.lastAttemptAt,
         lastUnsupported: row.lastUnsupported, detail: row.detail, notice: row.notice,
+        ...(row.fallback === undefined ? {} : { fallback: readDeliveryFallback(row.fallback) }),
         receipt: row.receipt === null ? null : { code: "delivery_unsupported_multiline", messageId, beeId, sender: row.receipt.sender, heldSince: row.receipt.heldSince,
           delivered: false, reason: "multiline_type_mode", channel: row.receipt.channel, senderNoticeMessageId: row.receipt.senderNoticeMessageId },
       };

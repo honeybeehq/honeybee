@@ -7,11 +7,12 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DeliveryFiles, MULTILINE_FILE_MAX_BYTES } from "../src/deliveryFile.ts";
+import { ensureDeliveryFileArtifact } from "./delivery-file-build.ts";
 const owner="owner", bee="bee";
-before(() => execFileSync(process.execPath,["scripts/build-delivery-file.mjs"],{stdio:"pipe"}));
+before(ensureDeliveryFileArtifact);
 function fixture() {
  const root=realpathSync(mkdtempSync(join(tmpdir(),"delivery-file-")));
- return {root,files:new DeliveryFiles(),id:randomUUID(),close:()=>rmSync(root,{recursive:true,force:true})};
+ return {root,files:new DeliveryFiles(undefined,root),id:randomUUID(),close:()=>rmSync(root,{recursive:true,force:true})};
 }
 function code(expected:string){return (e:unknown)=>e instanceof Error && "code" in e && e.code===expected;}
 test("secure file publication preserves bytes, permissions, and idempotent inode", t=>{
@@ -57,7 +58,7 @@ test("writer refuses worktree paths, control characters and missing helper",t=>{
  assert.throws(()=>f.files.publish(f.root,owner,bee,f.id,"content",[f.root]),code("delivery_file_inside_worktree"));
  assert.throws(()=>f.files.publish(f.root+"\n",owner,bee,f.id,"content",[]),code("delivery_file_location_invalid"));
  assert.throws(()=>f.files.publish(f.root,owner,bee,"../wrong","content",[]),code("delivery_file_location_invalid"));
- assert.throws(()=>new DeliveryFiles(join(f.root,"missing")).publish(f.root,owner,bee,f.id,"content",[]),code("delivery_file_helper_unavailable"));
+ assert.throws(()=>new DeliveryFiles(join(f.root,"missing"),f.root).publish(f.root,owner,bee,f.id,"content",[]),code("delivery_file_helper_unavailable"));
 });
 test("cleanup validates UUID, canonical roots, and worktree exclusion",t=>{
  const f=fixture();t.after(f.close);
@@ -113,14 +114,15 @@ for(const mode of [0o700,0o755,0o720,0o702,0o1777])test(`accepting root mode ${m
  if(mode&0o22)assert.throws(()=>f.files.publish(f.root,owner,bee,f.id,"content",[]),code("delivery_file_directory"));
  else assert.equal(readFileSync(f.files.publish(f.root,owner,bee,f.id,"content",[]).path,"utf8"),"content");
 });
-for(const operation of ["fstat","swap"])test(`native ${operation==="fstat"?"simulated foreign-owned root":"directory swap after link"} refuses publication`,{skip:process.platform!=="linux"},t=>{
+for(const operation of ["fstat","swap","device"])test(`native ${operation==="fstat"?"simulated foreign-owned root":operation==="device"?"simulated mount-device boundary":"directory swap after link"} refuses publication`,{skip:process.platform!=="linux"},t=>{
  const f=fixture();t.after(f.close);const shim=join(f.root,"fault.so");
  execFileSync("cc",["-shared","-fPIC","-Wall","-Wextra","-Werror",fileURLToPath(new URL("./fixtures/delivery-file-fault.c",import.meta.url)),"-ldl","-o",shim]);
  const directory=createHash("sha256").update(JSON.stringify([owner,bee])).digest("hex");
- const result=spawnSync(process.execPath,["-e",nativePublish,binary,f.root,directory,f.id],{env:{...process.env,LD_PRELOAD:shim,HB_FILE_ROOT:f.root,HB_FILE_OP:operation,HB_FILE_N:"1",HB_FILE_MODE:"error"},encoding:"utf8"});
+ const result=spawnSync(process.execPath,["-e",nativePublish,binary,f.root,directory,f.id],{env:{...process.env,LD_PRELOAD:shim,HB_FILE_ROOT:f.root,HB_FILE_OP:operation,HB_FILE_N:operation==="device"?"2":"1",HB_FILE_MODE:"error"},encoding:"utf8"});
  assert.equal(result.error,undefined);assert.equal(result.status,1);assert.match(result.stderr,/delivery_file_(directory|publish)/);
  if(operation==="fstat")assert.equal(existsSync(join(f.root,"delivery-content")),false);
- else assert.equal(readFileSync(join(f.root,"detached",directory,f.id+".txt"),"utf8"),"content");
+ else if(operation==="swap")assert.equal(readFileSync(join(f.root,"detached",directory,f.id+".txt"),"utf8"),"content");
+ else assert.equal(existsSync(join(f.root,"delivery-content",directory,f.id+".txt")),false);
 });
 test("development scale: publication and retry with ten thousand retained files",t=>{
  const f=fixture();t.after(f.close);const row=f.files.publish(f.root,owner,bee,f.id,"content",[]),directory=dirname(row.path);
@@ -152,4 +154,24 @@ test("remove racing a publication leaves either absent or complete content and r
  f.files.publish(f.root,owner,bee,f.id,"content",[]);assert.equal(readFileSync(path,"utf8"),"content");
  assert.deepEqual(requireEntries(dirname(path)),[f.id+".txt"]);
  f.files.remove(f.root,owner,bee,f.id,[]);assert.equal(existsSync(dirname(path)),false);
+});
+for(const fault of [{operation:"unlinkat",nth:1},{operation:"unlinkat",nth:2},{operation:"fsync",nth:3}])test(`cleanup ${fault.operation} boundary ${fault.nth} fails visibly and retry converges`,{skip:process.platform!=="linux"},t=>{
+ const f=fixture();t.after(f.close);const row=f.files.publish(f.root,owner,bee,f.id,"content",[]),shim=join(f.root,"fault.so");
+ execFileSync("cc",["-shared","-fPIC","-Wall","-Wextra","-Werror",fileURLToPath(new URL("./fixtures/delivery-file-fault.c",import.meta.url)),"-ldl","-o",shim]);
+ const directory=createHash("sha256").update(JSON.stringify([owner,bee])).digest("hex");
+ const script='const [binary,root,bee,id]=process.argv.slice(1);require(binary).remove(root,bee,id);';
+ const result=spawnSync(process.execPath,["-e",script,binary,f.root,directory,f.id],{env:{...process.env,LD_PRELOAD:shim,HB_FILE_ROOT:f.root,HB_FILE_OP:fault.operation,HB_FILE_N:String(fault.nth),HB_FILE_MODE:"error"},encoding:"utf8"});
+ assert.equal(result.error,undefined);assert.equal(result.status,1);assert.match(result.stderr,/delivery_file_remove/);
+ f.files.remove(f.root,owner,bee,f.id,[]);assert.equal(existsSync(row.path),false);assert.equal(existsSync(dirname(row.path)),false);
+});
+test("production worktree search defaults to the filesystem root without walking it in development",()=>{
+ assert.equal(new DeliveryFiles().worktreeSearchBoundary,"/");
+});
+for(const depth of [0,1,2])for(const entry of ["file","directory"])test(`metadata-only git ${entry} ancestor depth ${depth} refuses an unrelated delivery root`,t=>{
+ const f=fixture();t.after(f.close);const ancestors=[f.root,join(f.root,"a"),join(f.root,"a","b")],root=join(f.root,"a","b","data");
+ mkdirSync(root,{recursive:true,mode:0o700});
+ if(entry==="file")writeFileSync(join(ancestors[depth]!,".git"),"gitdir: unread-target",{mode:0o000});
+ else mkdirSync(join(ancestors[depth]!,".git"),{mode:0o000});
+ assert.throws(()=>f.files.publish(root,owner,bee,f.id,"content",[]),code("delivery_file_inside_worktree"));
+ assert.equal(existsSync(join(root,"delivery-content")),false);
 });

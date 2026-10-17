@@ -260,8 +260,12 @@ export class CellDriver implements RuntimeDriver {
     });
   }
 
-  deliver(beeId: string, generation: number, messageId: number, body: string): DeliverOutcome {
-    return this.inner.deliver(beeId, generation, messageId, body);
+  deliver(beeId: string, generation: number, messageId: number, body: string, options?: { singleAttempt?: boolean }): DeliverOutcome {
+    return this.inner.deliver(beeId, generation, messageId, body, options);
+  }
+
+  deliveryReceipt(beeId: string, generation: number, messageId: number, body: string): "accepted" | "unknown" {
+    return this.inner.deliveryReceipt(beeId, generation, messageId, body);
   }
 
   stop(beeId: string, generation: number, cause: StopCause): { hadProcess: boolean } {

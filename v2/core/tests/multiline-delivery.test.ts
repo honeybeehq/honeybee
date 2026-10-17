@@ -2,8 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { advanceMultilineUnsupported } from "../src/multilineDelivery.ts";
 
-test("unsupported versions never hold; supported off expires after three attempts", () => {
-  assert.equal(advanceMultilineUnsupported(null, "multiline_bracketed_paste_version_unsupported", 0).hold, false);
+test("unsupported versions expire immediately; supported off expires after three attempts", () => {
+  assert.equal(advanceMultilineUnsupported(null, "multiline_bracketed_paste_version_unsupported", 0).hold, true);
   const first = advanceMultilineUnsupported(null, "multiline_bracketed_paste_disabled", 0);
   const second = advanceMultilineUnsupported(first, "multiline_bracketed_paste_disabled", 100);
   const third = advanceMultilineUnsupported(second, "multiline_bracketed_paste_disabled", 200);
@@ -69,14 +69,14 @@ test("durable bounded wait preserves FIFO, stays visible and replays across reop
   } finally { store.close(); h.cleanup(); }
 });
 
-test("static unsupported never holds; busy never holds and inline acceptance completes progress", () => {
+test("static unsupported expires immediately; busy never holds and inline acceptance completes progress", () => {
   const h = harness(), store = h.open();
   try {
     const { bee } = makeBee(store);
     bootToRunning(store, bee.id, 100, 1);
     const generation = store.currentRuntime(bee.id)!.generation;
     const immediate = store.send(bee.id, "one\ntwo").message;
-    assert.equal(store.recordMultilineDeliveryRefusal(immediate.id, generation, "multiline_bracketed_paste_version_unsupported"), undefined);
+    assert.equal(store.recordMultilineDeliveryRefusal(immediate.id, generation, "multiline_bracketed_paste_version_unsupported")?.stage, "expired");
     const waiting = store.send(bee.id, "three\nfour").message;
     for (let index = 0; index < 5; index++) assert.equal(store.recordMultilineDeliveryRefusal(waiting.id, generation, undefined), undefined);
     assert.equal(store.recordMultilineDeliveryRefusal(waiting.id, generation, "multiline_type_mode")?.attempts, 1);

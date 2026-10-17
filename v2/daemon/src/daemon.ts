@@ -175,6 +175,7 @@ import {
   isAncestor,
   currentBranch,
   sandboxWritableDirectory,
+  sandboxEnabled,
   DEFAULT_SANDBOX_TMPFS_BYTES,
   runCellExec,
   sanitizeComponent,
@@ -182,6 +183,7 @@ import {
   type ReserveRequest,
   type SandboxWritableDirectory,
 } from "../../driver-cell/src/index.ts";
+import { deliveryContentRoot } from "./multilineFallback.ts";
 import {
   relocateClaudeSession,
   TranscriptConflictError,
@@ -944,9 +946,9 @@ export class HiveDaemon {
       now: () => Date.now(),
       log: (op) => this.log(op),
       cellInUse: (beeId, runtime, cellState) =>
-        cellState === "retained"
+        store.retainsMultilineRuntimeContent(beeId, canonicalPath(this.cfg.dataDir)) || (cellState === "retained"
           ? cell.hasProcess(beeId, runtime?.generation ?? 0)
-          : (runtime != null && runtime.state !== "stopped") || (this.driver?.hasProcess(beeId, runtime?.generation ?? 0) ?? false),
+          : (runtime != null && runtime.state !== "stopped") || (this.driver?.hasProcess(beeId, runtime?.generation ?? 0) ?? false)),
       opInFlight: (cellId) => {
         this.releaseAbsentCellOps(cellId);
         return this.cellHasInFlightOp(cellId);
@@ -967,6 +969,17 @@ export class HiveDaemon {
     this.core = new DaemonCore({
       store,
       driver,
+      multilineFallback: {
+        root: canonicalPath(this.cfg.dataDir),
+        rootForBee: bee => {
+          const wrapper = cell.cellOf(bee.id)?.paths.wrapperDir;
+          return deliveryContentRoot(canonicalPath(this.cfg.dataDir), bee.substrate, bee.substrate === "cell" && sandboxEnabled(this.cfg.nodeKind, this.resolveCellSpec(bee.id).sandbox), wrapper ? canonicalPath(wrapper) : null);
+        },
+        worktrees: bee => {
+          const space = cell.cellOf(bee.id)?.paths.spaceDir;
+          return [canonicalPath(bee.cwd), ...(space ? [canonicalPath(space)] : [])];
+        },
+      },
       policy: {
         bootHangTimeoutSteps: this.cfg.bootHangTimeoutMs,
         commandsPerStep: this.cfg.commandsPerTick,

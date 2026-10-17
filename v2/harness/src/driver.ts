@@ -118,7 +118,8 @@ export interface RuntimeDriver {
    * mid-turn); never blocks. A refusal is not a failure — the mailbox record
    * is the durable truth and the daemon retries against it.
    */
-  deliver(beeId: string, generation: number, messageId: number, body: string, options?: { multilineWaitExpired?: boolean }): DeliverOutcome;
+  deliver(beeId: string, generation: number, messageId: number, body: string, options?: { multilineWaitExpired?: boolean; singleAttempt?: boolean }): DeliverOutcome;
+  deliveryReceipt?(beeId: string, generation: number, messageId: number, body: string): "accepted" | "unknown";
 
   /**
    * Stop the runtime process. Parenthood makes this certain: if a process

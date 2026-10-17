@@ -10,6 +10,7 @@ const source = join(root, "v2/daemon/native/delivery-file.c");
 const binary = join(directory, "delivery-file.node");
 const hash = bytes => createHash("sha256").update(bytes).digest("hex");
 try {
+  rmSync(join(directory, "proof.json"), { force: true });
   if (!["linux-x64", "linux-arm64", "darwin-arm64", "darwin-x64"].includes(target)) throw new Error("Unsupported delivery-file native target");
   mkdirSync(directory, { recursive: true });
   const include = join(dirname(dirname(realpathSync(process.execPath))), "include/node");
