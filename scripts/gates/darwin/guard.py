@@ -916,19 +916,53 @@ def run(args):
         except (ValueError, OSError):
             leftover = {'state': 'unknown', 'error': 'malformed leftover child record'}
             rc = 95
-    if args.self_test and not audit_git_controls(root):
-        rc = 95
-        scope_error = scope_error or 'Git boundary audit failed'
-    reason = scope_error or ('LaunchAgents sentinel changed' if before != after else ('workload exited ' + str(rc) + '; diagnostic: ' + str(root / 'workload.log') if rc else None))
+    outcome = workload_outcome(root, proc.returncode, rc, scope_error, before != after, args.self_test)
+    rc, reason = outcome['exit'], outcome['reason']
     if leftover:
         reason = (reason or 'recorded self-expiring test child') + '; leftoverChild=' + json.dumps(leftover, sort_keys=True)
-    write_json(root / 'receipt.json', {'version': 2, 'exit': rc, 'reason': reason, 'leftoverChild': leftover, 'source': args.source, 'selfTest': args.self_test, 'libraryScope': 'LaunchAgents names and sha256 only', 'cacheSeed': seed, 'rootRetained': True, 'network': {'namespace': 'SHARED', 'seatbelt': 'deny network*, allow loopback IP and Unix sockets under TMPDIR only', 'unixScope': str(root / 't'), 'residualRisk': 'outbound loopback can reach host-local services; no Darwin network namespace', 'neededBy': ['v2/daemon/tests/auth-death-fixture.test.ts:44,49', 'v2/daemon/tests/claude-refresh-transport.test.ts:22', 'v2/daemon/tests/lease-enrol-rpc.test.ts:19', 'v2/daemon/tests/auth-death-rpc.test.ts:44']}, 'scopeLimitation': 'sampling may miss a process born and reparented between observations'}, root)
+    write_json(root / 'receipt.json', {'version': 2, 'exit': rc, 'reason': reason, 'workloadExit': outcome['workloadExit'], 'workloadNonzeroReason': outcome['workloadNonzeroReason'], 'secondaryNotes': outcome['secondaryNotes'], 'leftoverChild': leftover, 'source': args.source, 'selfTest': args.self_test, 'libraryScope': 'LaunchAgents names and sha256 only', 'cacheSeed': seed, 'rootRetained': True, 'network': {'namespace': 'SHARED', 'seatbelt': 'deny network*, allow loopback IP and Unix sockets under TMPDIR only', 'unixScope': str(root / 't'), 'residualRisk': 'outbound loopback can reach host-local services; no Darwin network namespace', 'neededBy': ['v2/daemon/tests/auth-death-fixture.test.ts:44,49', 'v2/daemon/tests/claude-refresh-transport.test.ts:22', 'v2/daemon/tests/lease-enrol-rpc.test.ts:19', 'v2/daemon/tests/auth-death-rpc.test.ts:44']}, 'scopeLimitation': 'sampling may miss a process born and reparented between observations'}, root)
     if rc or leftover:
         print('GATE_NONZERO_REASON=' + json.dumps(reason), flush=True)
     digest = receipt_hashes(root)
     print('GATE_RECEIPT_SHA256=' + digest, flush=True)
     os.close(fd)
     return rc
+
+
+def workload_outcome(root, body_exit, rc, scope_error, launch_changed, git_required):
+    notes = []
+    body_reason = None
+    if body_exit not in (None, 0):
+        body_reason = 'workload exited ' + str(body_exit)
+        try:
+            descriptor = os.open(root / 'workload.log', os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+            with os.fdopen(descriptor, 'rb') as stream:
+                info = os.fstat(stream.fileno())
+                if not stat.S_ISREG(info.st_mode):
+                    raise ValueError('nonregular workload log')
+                stream.seek(max(0, info.st_size - 16384))
+                tail = stream.read(16384).decode('utf-8', 'replace')
+            for line in tail.splitlines():
+                match = re.fullmatch(r'WORKLOAD_NONZERO_REASON=(phase:(?:startup|node-validation|body|final-guards) exit:([0-9]+))', line)
+                if match and int(match[2]) == body_exit:
+                    body_reason = match[1]
+        except (OSError, ValueError):
+            notes.append('workload nonzero marker unavailable')
+    reason = body_reason or scope_error or ('LaunchAgents sentinel changed' if launch_changed else ('workload exited ' + str(rc) if rc else None))
+    if body_reason and scope_error:
+        notes.append(scope_error)
+    if body_reason and launch_changed:
+        notes.append('LaunchAgents sentinel changed')
+    if git_required and not audit_git_controls(root):
+        if body_exit not in (None, 0):
+            notes.append('Git boundary audit failed; secondary to nonzero workload exit')
+            audit = GIT_AUDITS.setdefault(str(root.resolve()), {'accepted': False, 'error': 'Git boundary fixture controls absent'})
+            audit['secondaryToWorkloadExit'] = body_exit
+            write_json(root / 'git-boundary-controller.json', audit, root)
+        else:
+            rc = 95
+            reason = reason or 'Git boundary audit failed'
+    return {'exit': rc, 'reason': reason, 'workloadExit': body_exit, 'workloadNonzeroReason': body_reason, 'secondaryNotes': notes}
 
 
 def audit_git_controls(root):

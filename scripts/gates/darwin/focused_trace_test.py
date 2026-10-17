@@ -1,4 +1,5 @@
 import hashlib
+import json
 import os
 from pathlib import Path
 import shutil
@@ -10,7 +11,7 @@ import focused_trace
 
 
 class TraceTests(unittest.TestCase):
-    def launch(self, files, entry='parent.mjs', flags=(), roles=None, extra_env=None):
+    def launch(self, files, entry='parent.mjs', flags=(), roles=None, extra_env=None, wrong_transport=False):
         node = os.environ.get('SCG_NODE_BIN') or shutil.which('node')
         self.assertIsNotNone(node, 'pinned Node required for trace tests')
         node = str(Path(node).resolve())
@@ -26,6 +27,9 @@ class TraceTests(unittest.TestCase):
             audit = {'files': [{'path': name, 'siblingClosure': True} for name in files if name != 'unpinned.mjs']}
             audit['nodeEntries'] = [{'role': (roles or {}).get(name, 'test-runner' if name == entry else 'runner-host-main'), 'path': name, 'sha256': hashlib.sha256((workspace / name).read_bytes()).hexdigest()} for name in files if name != 'unpinned.mjs']
             trace = focused_trace.Trace(root, workspace, node, audit, {})
+            self.assertFalse(os.get_inheritable(trace.write_fd))
+            if wrong_transport:
+                trace.policy['traceTransport']['ino'] = str(int(trace.policy['traceTransport']['ino']) + 1)
             env = trace.environment({'HOME': str(root), 'TMPDIR': str(root), 'PATH': str(Path(node).parent) + ':/usr/bin:/bin', 'LANG': 'C'})
             env.update(extra_env or {})
             process = subprocess.Popen(trace.command([node, *flags, entry]), cwd=workspace, env=env, pass_fds=(trace.write_fd,), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -61,10 +65,17 @@ class TraceTests(unittest.TestCase):
 
     def test_default_isolation_instrumentation_fails_closed(self):
         code, stdout, stderr, trace = self.launch({'parent.mjs': "import {test} from 'node:test'; test('fixture', () => {});"}, flags=('--test', '--test-concurrency=1', '--test-reporter=tap'))
+        diagnostic = {'exit': code, 'traceOk': trace['ok'], 'verdict': 'complete' if trace['ok'] else 'invalid-trace' if trace.get('error') else 'missing-or-incomplete-trace', 'helloCount': len(trace.get('helloPids', [])), 'missingHelloCount': len(trace.get('missingHelloPids', [])), 'missingLaunchCount': len(trace.get('missingLaunchHellos', [])), 'recordCount': len(trace.get('records', []))}
+        print('DEFAULT_ISOLATION_TRACE_DIAGNOSTIC=' + json.dumps(diagnostic, sort_keys=True), flush=True)
+        self.assertFalse(trace['ok'], json.dumps(diagnostic, sort_keys=True))
+
+    def test_reused_or_mismatched_trace_descriptor_refuses_before_hello(self):
+        code, stdout, stderr, trace = self.launch({'parent.mjs': "console.log('must-not-run');"}, wrong_transport=True)
         self.assertNotEqual(code, 0)
+        self.assertNotIn('must-not-run', stdout)
         self.assertFalse(trace['ok'])
-        self.assertTrue(trace['missingHelloPids'])
-        self.assertIn('invalid argument, write', stdout + stderr)
+        self.assertTrue(trace.get('missingHelloPids'))
+        self.assertIn('Unbound gate trace transport', stderr)
 
     def test_sync_execfile_launch_requires_its_own_hello(self):
         code, stdout, stderr, trace = self.launch({'parent.mjs': "import {execFileSync} from 'node:child_process'; process.stdout.write(execFileSync(process.execPath,['child.mjs'],{encoding:'utf8'}));", 'child.mjs': "console.log('sync-child-ok');"})

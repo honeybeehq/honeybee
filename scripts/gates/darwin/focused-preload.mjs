@@ -9,7 +9,7 @@ import http2 from 'node:http2';
 import workers from 'node:worker_threads';
 import cluster from 'node:cluster';
 import modules, { registerHooks, syncBuiltinESMExports } from 'node:module';
-import { realpathSync, statSync, lstatSync, writeSync, readSync } from 'node:fs';
+import { realpathSync, statSync, lstatSync, fstatSync, writeSync, readSync } from 'node:fs';
 import { dirname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
@@ -20,6 +20,9 @@ const policy = JSON.parse(encoded);
 const traceFd = Number(process.env.SCG_EXEC_TRACE_FD);
 const self = fileURLToPath(import.meta.url);
 if (!Number.isSafeInteger(traceFd) || traceFd < 3 || self !== policy.preloader || process.execPath !== policy.node) throw new Error('Unbound gate execution observer');
+const traceTransport = fstatSync(traceFd, {bigint: true});
+const traceType = traceTransport.mode & 0o170000n;
+if (![0o010000n, 0o140000n].includes(traceType) || String(traceTransport.dev) !== policy.traceTransport?.dev || String(traceTransport.ino) !== policy.traceTransport?.ino || String(traceType) !== policy.traceTransport?.type) throw new Error('Unbound gate trace transport');
 let traceSequence = 0;
 const emit = record => {
   const bytes = Buffer.from(JSON.stringify({pid: process.pid, parent: process.ppid, emittedAtMs: Date.now(), ...record}) + '\n');
