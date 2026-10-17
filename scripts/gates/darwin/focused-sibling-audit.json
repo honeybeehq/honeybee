@@ -213,7 +213,7 @@
     },
     {
       "path": "v2/core/src/multilineDelivery.ts",
-      "sha256": "c2cdd6a2564bde7e753afe8ccf4ca1d36d43129a5b19e2ddf9b84c9dc2e9312e",
+      "sha256": "d0b816cbe10f29cd6be5bccd467f697047c8351f993e0bed62c404f6f1ba45fa",
       "siblingClosure": true
     },
     {
@@ -767,6 +767,14 @@
     {
       "kind": "reference",
       "path": "v2/daemon/src/accountsService.ts",
+      "line": 586,
+      "context": "  const response = await fetch(url, {",
+      "module": "global:fetch",
+      "manualReview": true
+    },
+    {
+      "kind": "reference",
+      "path": "v2/daemon/src/accountsService.ts",
       "line": 610,
       "context": "const execFileP = promisify(execFile);",
       "module": "node:child_process",
@@ -786,6 +794,14 @@
       "line": 780,
       "context": "        child = spawnChild(command, [\"app-server\"], { stdio: [\"pipe\", \"pipe\", \"pipe\"], env: { ...process.env, CODEX_HOME: homePath } });",
       "module": "node:child_process",
+      "manualReview": true
+    },
+    {
+      "kind": "reference",
+      "path": "v2/daemon/src/claudeRefreshTransport.ts",
+      "line": 125,
+      "context": "      response = await fetch(options.endpoint(), {",
+      "module": "global:fetch",
       "manualReview": true
     },
     {
@@ -853,6 +869,102 @@
       "manualReview": true
     },
     {
+      "kind": "reference",
+      "path": "v2/daemon/src/login/transports.ts",
+      "line": 84,
+      "context": "  const response = await fetch(`${baseUrl.replace(/\\/+$/, \"\")}${path}`, {",
+      "module": "global:fetch",
+      "manualReview": true
+    },
+    {
+      "kind": "reference",
+      "path": "v2/daemon/src/login/transports.ts",
+      "line": 174,
+      "context": "    const response = await fetch(claudeProfileUrl(), {",
+      "module": "global:fetch",
+      "manualReview": true
+    },
+    {
+      "kind": "reference",
+      "path": "v2/daemon/src/login/transports.ts",
+      "line": 212,
+      "context": "      const response = await fetch(claudeOauthTokenUrl(), {",
+      "module": "global:fetch",
+      "manualReview": true
+    },
+    {
+      "kind": "reference",
+      "path": "v2/daemon/src/login/transports.ts",
+      "line": 234,
+      "context": "      const response = await fetch(claudeUsageUrl(), {",
+      "module": "global:fetch",
+      "manualReview": true
+    },
+    {
+      "kind": "reference",
+      "path": "v2/daemon/src/login/transports.ts",
+      "line": 254,
+      "context": "      const response = await fetch(`${(baseUrl ?? \"https://api.openai.com/v1\").replace(/\\/+$/, \"\")}/models`, {",
+      "module": "global:fetch",
+      "manualReview": true
+    },
+    {
+      "kind": "reference",
+      "path": "v2/daemon/src/login/transports.ts",
+      "line": 261,
+      "context": "      const response = await fetch(`${(baseUrl ?? \"https://api.anthropic.com/v1\").replace(/\\/+$/, \"\")}/models`, {",
+      "module": "global:fetch",
+      "manualReview": true
+    },
+    {
+      "kind": "binding",
+      "path": "v2/daemon/src/museCredentialAuthority.ts",
+      "line": 40,
+      "context": "export function defaultMuseKeyTransport(timeoutMs: number, now: () => number = Date.now, fetchImpl: typeof fetch = fetch): CredentialRefreshTransport {",
+      "module": "global:fetch",
+      "manualReview": true
+    },
+    {
+      "kind": "reference",
+      "path": "v2/daemon/src/museCredentialAuthority.ts",
+      "line": 40,
+      "context": "export function defaultMuseKeyTransport(timeoutMs: number, now: () => number = Date.now, fetchImpl: typeof fetch = fetch): CredentialRefreshTransport {",
+      "module": "global:fetch",
+      "manualReview": true
+    },
+    {
+      "kind": "reference",
+      "path": "v2/daemon/src/museCredentialAuthority.ts",
+      "line": 44,
+      "context": "      response = await fetchImpl(MUSE_KEY_URL, { method: \"POST\", headers: { Authorization: `Bearer ${bootstrap}`, \"x-api-version\": \"1.0.0\", \"Content-Type\": \"application/json\" },",
+      "module": "global:fetch",
+      "manualReview": true
+    },
+    {
+      "kind": "reference",
+      "path": "v2/daemon/src/providerLimits.ts",
+      "line": 42,
+      "context": "    getJson: async (url, headers) => checked(await fetch(url, { headers, signal: AbortSignal.timeout(timeoutMs) }), url),",
+      "module": "global:fetch",
+      "manualReview": true
+    },
+    {
+      "kind": "reference",
+      "path": "v2/daemon/src/providerLimits.ts",
+      "line": 43,
+      "context": "    postJson: async (url, headers, body) => checked(await fetch(url, {",
+      "module": "global:fetch",
+      "manualReview": true
+    },
+    {
+      "kind": "reference",
+      "path": "v2/daemon/src/providerLimits.ts",
+      "line": 49,
+      "context": "    postForm: async (url, headers, form) => checked(await fetch(url, {",
+      "module": "global:fetch",
+      "manualReview": true
+    },
+    {
       "kind": "import",
       "path": "v2/daemon/tests/delivery-file-build.ts",
       "line": 3,
@@ -874,6 +986,22 @@
       "line": 7,
       "context": "import { spawn } from \"node:child_process\";",
       "module": "node:child_process",
+      "manualReview": true
+    },
+    {
+      "kind": "reference",
+      "path": "v2/daemon/tests/delivery-file-read.test.ts",
+      "line": 78,
+      "context": "    syncBuiltinESMExports();",
+      "module": "node:module",
+      "manualReview": true
+    },
+    {
+      "kind": "reference",
+      "path": "v2/daemon/tests/delivery-file-read.test.ts",
+      "line": 82,
+      "context": "    syncBuiltinESMExports();",
+      "module": "node:module",
       "manualReview": true
     },
     {
@@ -989,218 +1117,10 @@
       "manualReview": true
     },
     {
-      "kind": "binding",
-      "path": "v2/driver-cell/src/poolWorker.ts",
-      "line": 38,
-      "context": "const data = workerData as PoolWorkerData;",
-      "module": "node:worker_threads",
-      "manualReview": true
-    },
-    {
-      "kind": "reference",
-      "path": "v2/driver-cell/src/poolWorker.ts",
-      "line": 38,
-      "context": "const data = workerData as PoolWorkerData;",
-      "module": "node:worker_threads",
-      "manualReview": true
-    },
-    {
-      "kind": "reference",
-      "path": "v2/driver-cell/src/poolWorker.ts",
-      "line": 41,
-      "context": "  if (data.upstream != null) {",
-      "module": "node:worker_threads",
-      "manualReview": true
-    },
-    {
-      "kind": "reference",
-      "path": "v2/driver-cell/src/poolWorker.ts",
-      "line": 42,
-      "context": "    result.sync = syncOriginFromMirror(data.request.originRepo, data.upstream.root, data.upstream);",
-      "module": "node:worker_threads",
-      "manualReview": true
-    },
-    {
-      "kind": "reference",
-      "path": "v2/driver-cell/src/poolWorker.ts",
-      "line": 44,
-      "context": "  const sha = data.request.sha ?? resolveCellBase(data.request.originRepo)?.sha;",
-      "module": "node:worker_threads",
-      "manualReview": true
-    },
-    {
-      "kind": "reference",
-      "path": "v2/driver-cell/src/poolWorker.ts",
-      "line": 47,
-      "context": "    if (data.target > 0) {",
-      "module": "node:worker_threads",
-      "manualReview": true
-    },
-    {
-      "kind": "reference",
-      "path": "v2/driver-cell/src/poolWorker.ts",
-      "line": 48,
-      "context": "      const request: TopUpRequest = { ...data.request, sha };",
-      "module": "node:worker_threads",
-      "manualReview": true
-    },
-    {
-      "kind": "reference",
-      "path": "v2/driver-cell/src/poolWorker.ts",
-      "line": 50,
-      "context": "      result.reaped = reapPool(data.cellsRoot, repoKey, sha);",
-      "module": "node:worker_threads",
-      "manualReview": true
-    },
-    {
-      "kind": "reference",
-      "path": "v2/driver-cell/src/poolWorker.ts",
-      "line": 51,
-      "context": "      let count = poolMemberCount(data.cellsRoot, repoKey);",
-      "module": "node:worker_threads",
-      "manualReview": true
-    },
-    {
-      "kind": "reference",
-      "path": "v2/driver-cell/src/poolWorker.ts",
-      "line": 52,
-      "context": "      while (count < data.target && count < data.maxSize) {",
-      "module": "node:worker_threads",
-      "manualReview": true
-    },
-    {
-      "kind": "reference",
-      "path": "v2/driver-cell/src/poolWorker.ts",
-      "line": 53,
-      "context": "        const built = buildPoolMember(data.cellsRoot, request, data.provisionOpts, { maxSize: data.maxSize });",
-      "module": "node:worker_threads",
-      "manualReview": true
-    },
-    {
-      "kind": "reference",
-      "path": "v2/driver-cell/src/poolWorker.ts",
-      "line": 56,
-      "context": "        count = poolMemberCount(data.cellsRoot, repoKey);",
-      "module": "node:worker_threads",
-      "manualReview": true
-    },
-    {
-      "kind": "reference",
-      "path": "v2/driver-cell/src/poolWorker.ts",
-      "line": 65,
-      "context": "parentPort?.postMessage(result);",
-      "module": "node:worker_threads",
-      "manualReview": true
-    },
-    {
       "kind": "import",
       "path": "v2/driver-cell/src/retentionWorker.ts",
       "line": 7,
       "context": "import { parentPort, workerData } from \"node:worker_threads\";",
-      "module": "node:worker_threads",
-      "manualReview": true
-    },
-    {
-      "kind": "binding",
-      "path": "v2/driver-cell/src/retentionWorker.ts",
-      "line": 58,
-      "context": "const request = workerData as RetentionWorkerRequest | TrimVerifyWorkerRequest;",
-      "module": "node:worker_threads",
-      "manualReview": true
-    },
-    {
-      "kind": "reference",
-      "path": "v2/driver-cell/src/retentionWorker.ts",
-      "line": 58,
-      "context": "const request = workerData as RetentionWorkerRequest | TrimVerifyWorkerRequest;",
-      "module": "node:worker_threads",
-      "manualReview": true
-    },
-    {
-      "kind": "reference",
-      "path": "v2/driver-cell/src/retentionWorker.ts",
-      "line": 60,
-      "context": "if (request.kind === \"verifyTrim\") {",
-      "module": "node:worker_threads",
-      "manualReview": true
-    },
-    {
-      "kind": "reference",
-      "path": "v2/driver-cell/src/retentionWorker.ts",
-      "line": 62,
-      "context": "  for (const { key, wrapperDir, paths, modifiedSinceMs } of request.cells) {",
-      "module": "node:worker_threads",
-      "manualReview": true
-    },
-    {
-      "kind": "reference",
-      "path": "v2/driver-cell/src/retentionWorker.ts",
-      "line": 64,
-      "context": "      verified.push({ key, ...verifyTrimPaths(wrapperDir, paths, { trimPatterns: request.trimPatterns, modifiedSinceMs }), error: null });",
-      "module": "node:worker_threads",
-      "manualReview": true
-    },
-    {
-      "kind": "reference",
-      "path": "v2/driver-cell/src/retentionWorker.ts",
-      "line": 69,
-      "context": "  parentPort?.postMessage({ verified } satisfies TrimVerifyWorkerResult);",
-      "module": "node:worker_threads",
-      "manualReview": true
-    },
-    {
-      "kind": "reference",
-      "path": "v2/driver-cell/src/retentionWorker.ts",
-      "line": 72,
-      "context": "  if (request.upstream) {",
-      "module": "node:worker_threads",
-      "manualReview": true
-    },
-    {
-      "kind": "reference",
-      "path": "v2/driver-cell/src/retentionWorker.ts",
-      "line": 73,
-      "context": "    for (const originRepo of new Set(request.wrappers.map((w) => w.originRepo).filter((o): o is string => typeof o === \"string\"))) {",
-      "module": "node:worker_threads",
-      "manualReview": true
-    },
-    {
-      "kind": "reference",
-      "path": "v2/driver-cell/src/retentionWorker.ts",
-      "line": 75,
-      "context": "        const refreshed = refreshUpstreamMirror(originRepo, request.upstream.root, { maxAgeMs: request.upstream.maxAgeMs, timeoutMs: request.upstream.timeoutMs });",
-      "module": "node:worker_threads",
-      "manualReview": true
-    },
-    {
-      "kind": "reference",
-      "path": "v2/driver-cell/src/retentionWorker.ts",
-      "line": 83,
-      "context": "  for (const { key, wrapperDir, receipts, originRepo } of request.wrappers) {",
-      "module": "node:worker_threads",
-      "manualReview": true
-    },
-    {
-      "kind": "reference",
-      "path": "v2/driver-cell/src/retentionWorker.ts",
-      "line": 87,
-      "context": "      entry = { key, inspection: inspectCellWrapper(wrapperDir, { measure: request.measure, trimPatterns: request.trimPatterns, receipts, upstream }), error: null };",
-      "module": "node:worker_threads",
-      "manualReview": true
-    },
-    {
-      "kind": "reference",
-      "path": "v2/driver-cell/src/retentionWorker.ts",
-      "line": 92,
-      "context": "    if (request.progress) parentPort?.postMessage({ kind: \"progress\", inspection: entry } satisfies RetentionWorkerProgress);",
-      "module": "node:worker_threads",
-      "manualReview": true
-    },
-    {
-      "kind": "reference",
-      "path": "v2/driver-cell/src/retentionWorker.ts",
-      "line": 94,
-      "context": "  parentPort?.postMessage({ kind: \"result\", inspections, upstreams: [...upstreams.values()] } satisfies RetentionWorkerResult);",
       "module": "node:worker_threads",
       "manualReview": true
     },
@@ -1270,10 +1190,42 @@
     },
     {
       "kind": "import",
+      "path": "v2/driver-hsr/src/driver.ts",
+      "line": 55,
+      "context": "import { connect, type Socket } from \"node:net\";",
+      "module": "node:net",
+      "manualReview": true
+    },
+    {
+      "kind": "reference",
+      "path": "v2/driver-hsr/src/driver.ts",
+      "line": 661,
+      "context": "    const attempt = connect(p.socketPath);",
+      "module": "node:net",
+      "manualReview": true
+    },
+    {
+      "kind": "import",
       "path": "v2/driver-hsr/src/gated-runner-host.ts",
       "line": 1,
       "context": "import { spawn, type ChildProcess } from \"node:child_process\";",
       "module": "node:child_process",
+      "manualReview": true
+    },
+    {
+      "kind": "import",
+      "path": "v2/driver-hsr/src/gated-runner-host.ts",
+      "line": 3,
+      "context": "import { createServer } from \"node:net\";",
+      "module": "node:net",
+      "manualReview": true
+    },
+    {
+      "kind": "reference",
+      "path": "v2/driver-hsr/src/gated-runner-host.ts",
+      "line": 32,
+      "context": "  const server = createServer(socket => {",
+      "module": "node:net",
       "manualReview": true
     },
     {
@@ -1303,12 +1255,43 @@
       "executable": "/bin/ps",
       "runtime": "forbidden",
       "reachabilityProof": [
-        "v2/daemon/tests/delivery-file-read.test.ts:44-46",
-        "v2/driver-hsr/src/driver.ts:537-555",
+        "v2/daemon/tests/delivery-file-read.test.ts:44",
+        "v2/daemon/tests/delivery-file-read.test.ts:45",
+        "v2/daemon/tests/delivery-file-read.test.ts:46",
+        "v2/driver-hsr/src/driver.ts:537",
+        "v2/driver-hsr/src/driver.ts:538",
+        "v2/driver-hsr/src/driver.ts:539",
+        "v2/driver-hsr/src/driver.ts:540",
+        "v2/driver-hsr/src/driver.ts:541",
+        "v2/driver-hsr/src/driver.ts:542",
+        "v2/driver-hsr/src/driver.ts:543",
+        "v2/driver-hsr/src/driver.ts:544",
+        "v2/driver-hsr/src/driver.ts:545",
+        "v2/driver-hsr/src/driver.ts:546",
+        "v2/driver-hsr/src/driver.ts:547",
+        "v2/driver-hsr/src/driver.ts:548",
+        "v2/driver-hsr/src/driver.ts:549",
+        "v2/driver-hsr/src/driver.ts:550",
+        "v2/driver-hsr/src/driver.ts:551",
+        "v2/driver-hsr/src/driver.ts:552",
+        "v2/driver-hsr/src/driver.ts:553",
+        "v2/driver-hsr/src/driver.ts:554",
+        "v2/driver-hsr/src/driver.ts:555",
         "v2/driver-hsr/src/driver.ts:1012",
         "v2/driver-hsr/src/driver.ts:1318",
-        "v2/driver-hsr/src/driver.ts:1442-1449",
-        "v2/driver-hsr/src/driver.ts:1503-1507",
+        "v2/driver-hsr/src/driver.ts:1442",
+        "v2/driver-hsr/src/driver.ts:1443",
+        "v2/driver-hsr/src/driver.ts:1444",
+        "v2/driver-hsr/src/driver.ts:1445",
+        "v2/driver-hsr/src/driver.ts:1446",
+        "v2/driver-hsr/src/driver.ts:1447",
+        "v2/driver-hsr/src/driver.ts:1448",
+        "v2/driver-hsr/src/driver.ts:1449",
+        "v2/driver-hsr/src/driver.ts:1503",
+        "v2/driver-hsr/src/driver.ts:1504",
+        "v2/driver-hsr/src/driver.ts:1505",
+        "v2/driver-hsr/src/driver.ts:1506",
+        "v2/driver-hsr/src/driver.ts:1507",
         "v2/driver-hsr/src/driver.ts:1131"
       ]
     },
@@ -1323,12 +1306,43 @@
       "executable": "ps",
       "runtime": "forbidden",
       "reachabilityProof": [
-        "v2/daemon/tests/delivery-file-read.test.ts:44-46",
-        "v2/driver-hsr/src/driver.ts:537-555",
+        "v2/daemon/tests/delivery-file-read.test.ts:44",
+        "v2/daemon/tests/delivery-file-read.test.ts:45",
+        "v2/daemon/tests/delivery-file-read.test.ts:46",
+        "v2/driver-hsr/src/driver.ts:537",
+        "v2/driver-hsr/src/driver.ts:538",
+        "v2/driver-hsr/src/driver.ts:539",
+        "v2/driver-hsr/src/driver.ts:540",
+        "v2/driver-hsr/src/driver.ts:541",
+        "v2/driver-hsr/src/driver.ts:542",
+        "v2/driver-hsr/src/driver.ts:543",
+        "v2/driver-hsr/src/driver.ts:544",
+        "v2/driver-hsr/src/driver.ts:545",
+        "v2/driver-hsr/src/driver.ts:546",
+        "v2/driver-hsr/src/driver.ts:547",
+        "v2/driver-hsr/src/driver.ts:548",
+        "v2/driver-hsr/src/driver.ts:549",
+        "v2/driver-hsr/src/driver.ts:550",
+        "v2/driver-hsr/src/driver.ts:551",
+        "v2/driver-hsr/src/driver.ts:552",
+        "v2/driver-hsr/src/driver.ts:553",
+        "v2/driver-hsr/src/driver.ts:554",
+        "v2/driver-hsr/src/driver.ts:555",
         "v2/driver-hsr/src/driver.ts:1012",
         "v2/driver-hsr/src/driver.ts:1318",
-        "v2/driver-hsr/src/driver.ts:1442-1449",
-        "v2/driver-hsr/src/driver.ts:1503-1507",
+        "v2/driver-hsr/src/driver.ts:1442",
+        "v2/driver-hsr/src/driver.ts:1443",
+        "v2/driver-hsr/src/driver.ts:1444",
+        "v2/driver-hsr/src/driver.ts:1445",
+        "v2/driver-hsr/src/driver.ts:1446",
+        "v2/driver-hsr/src/driver.ts:1447",
+        "v2/driver-hsr/src/driver.ts:1448",
+        "v2/driver-hsr/src/driver.ts:1449",
+        "v2/driver-hsr/src/driver.ts:1503",
+        "v2/driver-hsr/src/driver.ts:1504",
+        "v2/driver-hsr/src/driver.ts:1505",
+        "v2/driver-hsr/src/driver.ts:1506",
+        "v2/driver-hsr/src/driver.ts:1507",
         "v2/driver-hsr/src/driver.ts:1131"
       ]
     },
@@ -1338,6 +1352,22 @@
       "line": 5,
       "context": "import { spawn, type ChildProcess } from \"node:child_process\";",
       "module": "node:child_process",
+      "manualReview": true
+    },
+    {
+      "kind": "import",
+      "path": "v2/driver-hsr/src/runner-host.ts",
+      "line": 8,
+      "context": "import { createServer, type Server, type Socket } from \"node:net\";",
+      "module": "node:net",
+      "manualReview": true
+    },
+    {
+      "kind": "reference",
+      "path": "v2/driver-hsr/src/runner-host.ts",
+      "line": 291,
+      "context": "  const server: Server = createServer((socket: Socket) => {",
+      "module": "node:net",
       "manualReview": true
     },
     {
@@ -1369,6 +1399,27 @@
       "line": 27,
       "context": "  const fixture = fileURLToPath(new URL(\"./fixtures/delivery-file-reader.mjs\", import.meta.url));",
       "role": "reader-entry"
+    }
+  ],
+  "gatePins": {
+    "manifestSha256": "1ca5ff1a4cca3b8626c4c2b62814f5b3de4e03f89d1bd17edcf2a0a450764258",
+    "preloaderSha256": "ab375be4bc1bea15e351dc9a6b530b99c244b915ec55c30084a48b368d0c52ed"
+  },
+  "nodeEntries": [
+    {
+      "role": "reader",
+      "path": "v2/daemon/tests/fixtures/delivery-file-reader.mjs",
+      "sha256": "bc4500e9e7e3082d55adbe63f80e04886065b5b29e37771eb27b5df308fac320"
+    },
+    {
+      "role": "test-runner",
+      "path": "v2/daemon/tests/delivery-file-read.test.ts",
+      "sha256": "abe90e1ba001009cf4a14ed38a08c400e827676fee6eac6f9b82d3405f4f30c7"
+    },
+    {
+      "role": "runner-host-main",
+      "path": "v2/driver-hsr/src/runner-host-main.ts",
+      "sha256": "10c4f1c2af2e2dc20bdddba51e7972bc976831c1bf40b5f5772a2519538411da"
     }
   ]
 }
