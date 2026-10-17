@@ -5,7 +5,6 @@ import json
 import os
 from pathlib import Path
 import pwd
-import re
 import signal
 import stat
 import subprocess
@@ -123,8 +122,7 @@ def seed_cache(source, expected, root, lane):
 
 def profile(root, home, lane):
     quote = lambda p: json.dumps(str(p))
-    socket_paths = '#' + json.dumps('^' + re.escape(str(root)) + '(/|$)')
-    return '(version 1)(allow default)(deny file-write*)(allow file-write* (subpath ' + quote(root) + '))(deny file-read* (subpath ' + quote(home) + '))(deny file-read* (subpath "/Library/Keychains") (subpath "/private/var/db/Keychains"))(deny process-exec (literal "/usr/bin/security"))(deny mach-lookup)(deny signal)(allow signal (target same-sandbox))(deny process-info*)(allow process-info* (target same-sandbox))(deny network-outbound)(allow network-outbound (remote ip "localhost:*"))(allow network-outbound (remote unix-socket (path-regex ' + socket_paths + '))))'
+    return '(version 1)(allow default)(deny file-write*)(allow file-write* (subpath ' + quote(root) + '))(deny file-read* (subpath ' + quote(home) + '))(deny file-read* (subpath "/Library/Keychains") (subpath "/private/var/db/Keychains"))(deny process-exec (literal "/usr/bin/security"))(deny mach-lookup)(deny signal)(allow signal (target same-sandbox))(deny process-info*)(allow process-info* (target same-sandbox))(deny network-outbound)(allow network-outbound (remote ip "localhost:*"))(allow network-outbound (subpath ' + quote(root) + ')))'
 
 
 def source_copy(lane, source, root, env):
@@ -255,9 +253,19 @@ def run(args):
     workspace = source_copy(lane, args.source, root, env)
     identity = root / 'scope'
     prefix = ['/usr/bin/sandbox-exec', '-p', policy]
+    preflight = subprocess.run(['/usr/bin/sandbox-exec', '-f', str(root / 'workload.sb'), '/usr/bin/true'], cwd=workspace, env=env, capture_output=True)
+    (root / 'policy-preflight.log').write_bytes(preflight.stdout + preflight.stderr)
+    if preflight.returncode:
+        diagnostic = (preflight.stdout + preflight.stderr)[-16384:].decode('utf-8', errors='replace')
+        print('POLICY_PREFLIGHT_DIAGNOSTIC_LAST_60_LINES', flush=True)
+        print('\n'.join(diagnostic.splitlines()[-60:]), flush=True)
+        raise Refusal('policy preflight failed; receipts retained at ' + str(root))
     compile_result = subprocess.run(prefix + ['/usr/bin/cc', str(workspace / 'scripts/gates/darwin/scope.c'), '-o', str(identity)], cwd=workspace, env=env, capture_output=True)
     (root / 'scope-build.log').write_bytes(compile_result.stdout + compile_result.stderr)
     if compile_result.returncode:
+        diagnostic = (compile_result.stdout + compile_result.stderr)[-16384:].decode('utf-8', errors='replace')
+        print('SCOPE_BUILD_DIAGNOSTIC_LAST_60_LINES', flush=True)
+        print('\n'.join(diagnostic.splitlines()[-60:]), flush=True)
         raise Refusal('scope helper build failed; receipts retained at ' + str(root))
     if args.self_test:
         seed_file = root / 'self-test-cache-seed.tar'
