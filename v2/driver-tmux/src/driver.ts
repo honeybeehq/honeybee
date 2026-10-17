@@ -214,7 +214,8 @@ export function sessionNameFor(beeId: string, generation: number): string {
 }
 
 class MultilinePasteUnavailable extends Error {
-  constructor(readonly detail: string) { super(detail); }
+  readonly detail: string;
+  constructor(detail: string) { super(detail); this.detail = detail; }
 }
 
 export class TmuxDriver implements RuntimeDriver {
