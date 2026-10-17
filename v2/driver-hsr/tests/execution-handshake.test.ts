@@ -35,6 +35,7 @@ test("runner host waits for exact inherited release, rejects wrong attempts, and
   const ready=frames.find(x=>x.op==="execution_ready")!;assert.equal(existsSync(counter),false);
   child.send({op:"execution_release",intentId:"wrong-attempt",bindingDigest:ready.bindingDigest,host:ready.host});
   child.send({op:"execution_release",intentId:start.intentId,bindingDigest:ready.bindingDigest,host:{pid:child.pid,birth:"linux:0"}});
+  await wait(()=>frames.filter(x=>x.op==="execution_release_refused").length===2,"wrong release refusals");
   assert.equal(existsSync(counter),false);
   const release={op:"execution_release",intentId:start.intentId,bindingDigest:canonicalDigest(start as unknown as JsonValue),host:ready.host};
   child.send(release);

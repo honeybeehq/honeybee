@@ -1,9 +1,5 @@
-import { fileURLToPath } from "node:url";
-import { spawn, type ChildProcess } from "node:child_process";
-import { childNodePath, nativeNodeEnv } from "../../../src/nodeRuntime.ts";
 import type { ExecutionStart } from "../../core/src/executionStart.ts";
 import { ExecutionFenceError } from "../../core/src/executionFence.ts";
-import { canonicalDigest, type JsonValue } from "../../../src/comb/canonical.ts";
 /**
  * CellDriver — runtime encapsulation by PURE DELEGATION (WP5, spec 05).
  *
@@ -189,57 +185,9 @@ export class CellDriver implements RuntimeDriver {
   // RuntimeDriver — pure delegation
   // -------------------------------------------------------------------------
 
-  private readonly fencedPending = new Map<string, { start: ExecutionStart; child: ChildProcess; lease: string; cancelled: boolean; ready: boolean }>();
-
-  private startFenced(start: ExecutionStart): void {
-    const hooks = this.cfg.hsr.execution;
-    if (!hooks) throw new ExecutionFenceError("rpc_execution_fence_unsupported", "Cell provisioning requires its owner execution hooks");
-    if (this.fencedPending.has(start.beeId)) throw new ExecutionFenceError("rpc_execution_busy", "Cell preparation already owns this bee");
-    hooks.check(start,"cell_spec");
-    const spec = this.cfg.resolveCell(start.beeId), lease = hooks.begin(start,"cell_provision_process");
-    const source = fileURLToPath(import.meta.url).endsWith(".ts"), entry = new URL(source ? "./fencedProvisionWorker.ts" : "./fenced-provision-worker.js",import.meta.url);
-    const child = spawn(childNodePath(),[...(source ? ["--experimental-strip-types"] : []), fileURLToPath(entry)], { detached: true, env: nativeNodeEnv(), stdio: ["ignore","ignore","ignore","ipc"] });
-    const pending = { start, child, lease, cancelled: false, ready: false };
-    this.fencedPending.set(start.beeId,pending);
-    const bindingDigest = canonicalDigest(start as unknown as JsonValue);
-    child.on("message",(value: unknown) => {
-      if (!value || typeof value !== "object" || pending.cancelled || this.fencedPending.get(start.beeId) !== pending) return;
-      const frame = value as Record<string,unknown>;
-      if (frame.intentId !== start.intentId || frame.bindingDigest !== bindingDigest) return;
-      try {
-        if (frame.op === "execution_checkpoint" && ["pool_claim","cell_provision"].includes(String(frame.operation)) && Number.isSafeInteger(frame.sequence)) {
-          hooks.check(start,String(frame.operation));
-          child.send({op:"execution_permit",sequence:frame.sequence},()=>{});
-        } else if (frame.op === "execution_ready") pending.ready = true;
-      } catch { pending.cancelled = true; if (child.pid && child.exitCode === null) { try { process.kill(-child.pid,"SIGTERM"); } catch {} } }
-    });
-    child.once("error",()=>{ try { hooks.finish(start,lease,false); } catch {} });
-    child.once("exit",(code) => {
-      let quiescent = false;
-      if (child.pid) { try { process.kill(-child.pid,0); } catch(error) { quiescent = (error as NodeJS.ErrnoException).code === "ESRCH"; } }
-      try { hooks.finish(start,lease,quiescent); } catch { return; }
-      if (!quiescent) return;
-      this.fencedPending.delete(start.beeId);
-      if (pending.cancelled || !pending.ready || code !== 0) {
-        this.pendingObservations.push({beeId:start.beeId,generation:start.runtimeGeneration,kind:"exited",exitCause:"stopped_by_system"});
-        return;
-      }
-      try {
-        hooks.check(start,"cell_materialize");
-        this.ensureCell(start.beeId,"start-"+start.beeId+"-g"+start.runtimeGeneration);
-        hooks.check(start,"cell_materialized_callback");
-        this.cfg.onCellMaterialized?.(start.beeId,start);
-        hooks.check(start,"cell_final_start");
-        this.inner.start(start.beeId,start.runtimeGeneration,start);
-      } catch { this.cfg.log?.("execution.cell_start_held bee="+start.beeId+" intent="+start.intentId); }
-    });
-    child.send({op:"execution_work",work:{start,cellsRoot:this.cfg.cellsRoot,request:spec.provision,opId:"start-"+start.beeId+"-g"+start.runtimeGeneration,disableCow:this.cfg.disableCow ?? false,useGitImages:this.cfg.nodeKind === "workstation",gitImagesRoot:this.cfg.gitImagesRoot,claimFromPool:this.warmPoolEnabled()}},()=>{});
-  }
-
   start(beeId: string, generation: number, execution?: ExecutionStart | null): void {
     const start = execution ?? this.cfg.hsr.executionStartFor?.(beeId,generation) ?? null;
-    if (start && (start.beeId !== beeId || start.runtimeGeneration !== generation)) throw new ExecutionFenceError("rpc_execution_history_unknown", "Start intent does not bind the requested bee and runtime generation");
-    if (start) { this.startFenced(start); return; }
+    if (start) throw new ExecutionFenceError("rpc_execution_fence_unsupported", "Fenced Cell preparation is NOT_COVERED until descendant containment is reviewed and proven");
     // Provisioning is idempotent and ledger-keyed: a replayed spawn command
     // (crash mid-provision, executor replay) resumes instead of redoing.
     const opId = `start-${beeId}-g${generation}`;
@@ -313,12 +261,6 @@ export class CellDriver implements RuntimeDriver {
   }
 
   stop(beeId: string, generation: number, cause: StopCause): { hadProcess: boolean } {
-    const fenced = this.fencedPending.get(beeId);
-    if (fenced?.start.runtimeGeneration === generation) {
-      fenced.cancelled = true;
-      if (fenced.child.pid && fenced.child.exitCode === null) { try { process.kill(-fenced.child.pid,"SIGTERM"); } catch {} }
-      return {hadProcess:true};
-    }
     const pending = this.pending.get(beeId);
     if (pending?.generation === generation) {
       pending.settled = true;
@@ -359,7 +301,6 @@ export class CellDriver implements RuntimeDriver {
   }
 
   hasProcess(beeId: string, generation: number): boolean {
-    if (this.fencedPending.get(beeId)?.start.runtimeGeneration === generation) return true;
     return this.pending.get(beeId)?.generation === generation || this.inner.hasProcess(beeId, generation);
   }
 
@@ -624,10 +565,6 @@ export class CellDriver implements RuntimeDriver {
   }
 
   private cancelPending(): void {
-    for (const pending of this.fencedPending.values()) {
-      pending.cancelled = true;
-      if (pending.child.pid && pending.child.exitCode === null) { try { process.kill(-pending.child.pid,"SIGTERM"); } catch {} }
-    }
     for (const pending of this.pending.values()) {
       pending.settled = true;
       void pending.worker.terminate();

@@ -12,6 +12,7 @@ export function runGatedRunnerHost(cfg: RunnerHostConfig, sessionLogLine: (line:
   if (!start || !owner || !process.send || !birth || process.ppid !== owner.pid || exactProcessBirth(owner.pid) !== owner.birth || start.beeId !== cfg.beeId || start.runtimeGeneration !== cfg.generation) throw new Error("Fenced host requires its exact inherited owner channel");
   const bindingDigest = canonicalDigest(start as unknown as JsonValue);
   let child: ChildProcess | null = null, consumed = false, finished = false;
+  const report = (frame: Record<string, unknown>): void => { if (process.connected) process.send?.(frame,()=>{}); };
   mkdirSync(dirname(cfg.sessionLogPath), { recursive: true });
   mkdirSync(dirname(cfg.observationLogPath), { recursive: true });
   writeFileSync(cfg.observationLogPath, "", { flag: "a" });
@@ -36,21 +37,24 @@ export function runGatedRunnerHost(cfg: RunnerHostConfig, sessionLogLine: (line:
   server.on("error", () => { if (!child) finish({ spawnError: "Fenced host control socket unavailable", exited: true }); });
   server.listen(cfg.socketPath, () => {
     persist();
-    process.send!({ op: "execution_ready", intentId: start.intentId, bindingDigest, host: { pid: process.pid, birth } });
+    report({ op: "execution_ready", intentId: start.intentId, bindingDigest, host: { pid: process.pid, birth } });
   });
   process.on("disconnect", () => { if (!consumed) finish({ executionState: "cancelled", exited: true }); });
   for (const signal of ["SIGTERM", "SIGINT", "SIGHUP"] as const) process.on(signal, () => { if (!consumed) finish({ executionState: "cancelled", exited: true }); });
   process.on("message", (value: unknown) => {
     if (!value || typeof value !== "object" || consumed || finished) return;
     const frame = value as Record<string, unknown>, host = frame.host as { pid?: unknown; birth?: unknown } | undefined;
-    if (Object.keys(frame).sort().join(",") !== "bindingDigest,host,intentId,op" || frame.op !== "execution_release" || frame.intentId !== start.intentId || frame.bindingDigest !== bindingDigest || host?.pid !== process.pid || host.birth !== birth || exactProcessBirth(process.pid) !== birth || process.ppid !== owner.pid || exactProcessBirth(owner.pid) !== owner.birth) return;
+    if (Object.keys(frame).sort().join(",") !== "bindingDigest,host,intentId,op" || frame.op !== "execution_release" || frame.intentId !== start.intentId || frame.bindingDigest !== bindingDigest || host?.pid !== process.pid || host.birth !== birth || exactProcessBirth(process.pid) !== birth || process.ppid !== owner.pid || exactProcessBirth(owner.pid) !== owner.birth) {
+      if (frame.op === "execution_release") report({ op: "execution_release_refused", intentId: start.intentId, reason: "binding_mismatch" });
+      return;
+    }
     consumed = true; status.executionState = "released"; persist();
     child = spawn(cfg.command, cfg.args, { cwd: cfg.cwd, env: cfg.env, stdio: ["pipe","pipe","pipe"] });
     child.once("spawn", () => {
       const agentPid = child!.pid, agentBirth = agentPid ? exactProcessBirth(agentPid) : null;
       if (!agentPid || !agentBirth) { status.spawnError = "Agent process identity unavailable"; persist(); return; }
       Object.assign(status, { agentPid, agentBirth, executionState: "started" }); persist();
-      process.send?.({ op: "execution_started", intentId: start.intentId, bindingDigest, host: { pid: process.pid, birth }, agent: { pid: agentPid, birth: agentBirth } });
+      report({ op: "execution_started", intentId: start.intentId, bindingDigest, host: { pid: process.pid, birth }, agent: { pid: agentPid, birth: agentBirth } });
       for (const line of cfg.bootLines) write(line);
     });
     child.once("error", () => finish({ spawnError: "Agent fork failed", exited: true, exitCode: null, exitSignal: null }));

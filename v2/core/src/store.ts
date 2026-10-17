@@ -4669,7 +4669,7 @@ export class CoreStore {
 
   beginFencedSpawn(value: unknown, uid: number) {
     const request = executionRequest(value);
-    if (request.verb !== "spawn" || !["hsr","cell"].includes(String(request.args.substrate ?? "hsr"))) throw new ExecutionFenceError("rpc_execution_fence_unsupported", "Fenced spawn requires HSR or Cell agent-start handshake");
+    if (request.verb !== "spawn" || String(request.args.substrate ?? "hsr") !== "hsr") throw new ExecutionFenceError("rpc_execution_fence_unsupported", "Fenced spawn requires HSR; Cell preparation is NOT_COVERED pending descendant containment");
     const outcome = this.tx(() => {
       this.executionLedger.requireCoordinator(request.executionFence.issuerId, uid);
       let prior;
@@ -4745,6 +4745,7 @@ export class CoreStore {
 
   executeWithFence(value: unknown, uid: number, effect: (request: ExecutionRequest) => { commandId: number | null; result: unknown }) {
     const request = executionRequest(value);
+    if (request.verb === "spawn") throw new ExecutionFenceError("rpc_execution_fence_unsupported", "Spawn requires its durable preparation and host-start admission path");
     const outcome = this.tx(() => {
       this.executionLedger.requireCoordinator(request.executionFence.issuerId, uid);
       let prior;

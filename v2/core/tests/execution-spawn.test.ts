@@ -132,3 +132,11 @@ test("exact unreleased host death permits revocation but not a second start atte
     assert.throws(()=>hooks.bindAndRelease(start,{pid:100,birth:"linux:123456789"}),code("rpc_execution_stale"));
   }finally{f.close();}
 });
+
+test("generic effect admission cannot bypass the specialized spawn preparation path",()=>{
+  const f=fixture();try{
+    let effects=0;
+    assert.throws(()=>f.store.executeWithFence(f.request,1000,()=>{effects++;return{commandId:null,result:null};}),code("rpc_execution_fence_unsupported"));
+    assert.equal(effects,0);assert.equal(f.store.listBees().length,0);assert.equal(f.store.executionOrigin("fenced-bee"),null);
+  }finally{f.close();}
+});
