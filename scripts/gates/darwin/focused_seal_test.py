@@ -1,4 +1,7 @@
 from pathlib import Path
+from contextlib import redirect_stdout, redirect_stderr
+import io
+import json
 import os
 import tempfile
 import unittest
@@ -126,15 +129,33 @@ class SealTests(unittest.TestCase):
                     root_users(root, bad, 10)
 
     def test_leftovers_require_a_retained_birth_and_never_store_none(self):
-        with patch.object(focused_seal, 'GATE_LAUNCH_BIRTHS', {('11','10','100','1')}), patch.object(focused_seal, 'UNOBSERVED_OWN_CHILDREN', []):
+        import guard
+        with patch.object(focused_seal, 'GATE_LAUNCH_BIRTHS', {('11','10','100','1')}), patch.object(focused_seal, 'UNOBSERVED_OWN_CHILDREN', []), tempfile.TemporaryDirectory() as temporary:
             rows = []
-            focused_seal.record_leftover(rows, {'pid':11,'birth':['11','10','100','1']})
-            focused_seal.record_leftover(rows, {'pid':12,'birth':None,'reason':'birth unobserved, not fenced'})
+            output, errors = io.StringIO(), io.StringIO()
+            with redirect_stdout(output), redirect_stderr(errors):
+                focused_seal.record_leftover(rows, {'pid':11,'birth':['11','10','100','1']})
+                candidate = {'pid':987654321,'birth':None,'argv':['/unverified-argv-marker'],'path':'/unverified-path-marker','fixture':'/unverified-fixture-marker','reason':'/unverified-reason-marker'}
+                focused_seal.record_leftover(rows, candidate, unverified_label='focused-step')
+                focused_seal.record_leftover(rows, candidate, unverified_label='focused-step')
+                focused_seal.record_leftover(rows, candidate, unverified_label='/unverified-label-marker')
+                with self.assertRaises(ValueError) as caught:
+                    focused_seal.record_leftover(rows, {'pid':987654321,'birth':['987654321','10','100','1'],'argv':candidate['argv']})
+                root=Path(temporary).resolve()
+                with patch.object(guard, 'LEFTOVER_CHILDREN', rows):
+                    guard.write_json(root/'receipt.json', {'exit':90,'reason':str(caught.exception)}, root)
             self.assertEqual(len(rows),1)
             self.assertTrue(all(row['birth'] is not None for row in rows))
-            self.assertNotIn('birth', focused_seal.UNOBSERVED_OWN_CHILDREN[0])
-            with self.assertRaises(ValueError):
-                focused_seal.record_leftover(rows, {'pid':13,'birth':['13','10','100','1']})
+            expected=[{'fixture':'focused-step','count':2},{'fixture':'unverified-child','count':1}]
+            self.assertEqual(focused_seal.UNOBSERVED_OWN_CHILDREN, expected)
+            receipt=json.loads((root/'receipt.json').read_text())
+            self.assertEqual(receipt['unobservedOwnChildren'],expected)
+            for row in receipt['unobservedOwnChildren']:
+                self.assertEqual(set(row),{'fixture','count'})
+            combined=output.getvalue()+errors.getvalue()+json.dumps(receipt)+str(caught.exception)+str(focused_seal.BusyRoot([],{'cwd':1,'exe':0,'fd':0}))
+            for secret in ('987654321','/unverified-argv-marker','/unverified-path-marker','/unverified-fixture-marker','/unverified-reason-marker','/unverified-label-marker'):
+                self.assertNotIn(secret,combined)
+            self.assertEqual(output.getvalue()+errors.getvalue(),'')
 
 
 if __name__ == '__main__':

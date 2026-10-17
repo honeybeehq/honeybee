@@ -558,7 +558,7 @@ def tree_scan_self_test(root, workspace, prefix, helper, env):
             for name in ('tree-parent', 'tree-child', 'tree-grandchild'):
                 path = root / (name + '-pid')
                 if path.exists() and path.read_text().strip() not in births:
-                    focused_seal.record_leftover(LEFTOVER_CHILDREN, {'pid': path.read_text().strip(), 'birth': None, 'reason': 'birth unobserved, not fenced', 'fixture': name})
+                    focused_seal.record_leftover(LEFTOVER_CHILDREN, {'birth': None}, unverified_label=name)
                     failure = failure or 'scan preflight unobserved child'
             try:
                 child.wait(timeout=2)
@@ -642,7 +642,7 @@ def reparent_listener_self_test(root, workspace, prefix, helper, env):
             candidate_path = root / 'reparent-child-pid'
             candidate_pid = candidate_path.read_text().strip() if candidate_path.exists() else None
             if candidate_pid and not any(row[0] == candidate_pid for row in cleanup_births.values()):
-                focused_seal.record_leftover(LEFTOVER_CHILDREN, {'pid': candidate_pid, 'birth': None, 'reason': 'birth unobserved, not fenced', 'argv': [env['SCG_PYTHON_BIN'], '-B', str(workspace / 'scripts/gates/darwin/listener_fixture.py'), 'reparent-child']})
+                focused_seal.record_leftover(LEFTOVER_CHILDREN, {'birth': None}, unverified_label='reparent-child')
             (root / 'reparent-abort').write_text('abort\n')
             for birth in sorted(cleanup_births.values(), key=lambda row: row[0] == str(parent.pid)):
                 for sig in (signal.SIGTERM, signal.SIGKILL):
@@ -661,7 +661,7 @@ def reparent_listener_self_test(root, workspace, prefix, helper, env):
                 parent.wait(timeout=2)
             except subprocess.TimeoutExpired:
                 if parent_birth is None:
-                    focused_seal.record_leftover(LEFTOVER_CHILDREN, {'pid': parent.pid, 'birth': None, 'reason': 'birth unobserved, not fenced', 'argv': parent.args})
+                    focused_seal.record_leftover(LEFTOVER_CHILDREN, {'birth': None}, unverified_label='reparent-parent')
             check = subprocess.run([str(helper), 'status', *retained], capture_output=True, text=True) if retained else None
             result = {'proto': 'TCP', 'case': 'retained reparented grandchild', 'expectedClassification': 'FAIL', 'detected': detected, 'failure': failure, 'birth': retained, 'parentBirth': parent_birth, 'retainedBirths': list(cleanup_births.values()), 'firstSightTree': tree, 'samples': samples, 'signals': signals, 'leftoverChild': list(LEFTOVER_CHILDREN), 'scopeObservations': SCOPE_OBSERVATIONS[observations_start:], 'childExit': 'gone or zombie' if check and check.returncode == 3 else None, 'noRemoteConnect': True}
             write_json(root / 'listener-reparent-self-test.json', result, root)

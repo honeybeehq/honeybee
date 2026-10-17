@@ -110,7 +110,7 @@ def child(api, root, helper, node, reader, cwd, env, sandboxed, profile, content
             row['ok'] = False
         finally:
             if process.poll() is None:
-                focused_seal.record_leftover(api.LEFTOVER_CHILDREN, {'pid': process.pid, 'birth': birth, 'reason': 'scope control cleanup unresolved; no unfenced signal', 'selfExpiresSeconds': 30})
+                focused_seal.record_leftover(api.LEFTOVER_CHILDREN, {'pid': process.pid, 'birth': birth, 'reason': 'scope control cleanup unresolved; no unfenced signal', 'selfExpiresSeconds': 30}, unverified_label='scope-control')
                 row['ok'] = False
             for stream in (process.stdin, process.stdout, process.stderr):
                 try:

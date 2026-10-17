@@ -170,10 +170,19 @@ FOREIGN_ROOT_USE_COUNTS = {'cwd': 0, 'exe': 0, 'fd': 0}
 UNOBSERVED_OWN_CHILDREN = []
 
 
-def record_leftover(leftovers, value):
+UNVERIFIED_FIXTURES = ('tree-parent', 'tree-child', 'tree-grandchild', 'reparent-child', 'reparent-parent', 'focused-step', 'scope-control', 'unverified-child')
+
+
+def record_leftover(leftovers, value, unverified_label='unverified-child'):
     birth = value.get('birth')
     if birth is None:
-        UNOBSERVED_OWN_CHILDREN.append({key: item for key, item in value.items() if key != 'birth'})
+        label = unverified_label if unverified_label in UNVERIFIED_FIXTURES else 'unverified-child'
+        for row in UNOBSERVED_OWN_CHILDREN:
+            if row['fixture'] == label:
+                row['count'] += 1
+                break
+        else:
+            UNOBSERVED_OWN_CHILDREN.append({'fixture': label, 'count': 1})
         return
     if tuple(map(str, birth)) not in GATE_LAUNCH_BIRTHS:
         raise ValueError('leftover lacks retained own birth')

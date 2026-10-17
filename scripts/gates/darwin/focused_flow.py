@@ -238,7 +238,7 @@ def supervise(api, root, workspace, env, argv, tag, timeout=600, trace=None, sib
             except subprocess.TimeoutExpired:
                 reason = reason or 'focused root remains'
                 if not tracked:
-                    focused_seal.record_leftover(api.LEFTOVER_CHILDREN, {'pid': proc.pid, 'birth': None, 'reason': 'birth unobserved, not fenced'})
+                    focused_seal.record_leftover(api.LEFTOVER_CHILDREN, {'birth': None}, unverified_label='focused-step')
     if sibling:
         try:
             focused_seal.require_quiescent(root, helper)
