@@ -2429,7 +2429,8 @@ export class HiveDaemon {
     const key = this.idempotencyKeyOf(params);
     if (key === null) return this.rpcSpawnWithAccount(params);
     this.mustStore().transact(() => this.mustStore().lookupRpcResult(key));
-    const fingerprint = this.phoneRequestBinding(params).digest;
+    const binding = this.phoneRequestBinding(params);
+    const fingerprint = binding.lane === "legacy" ? canonicalDigest(JSON.parse(JSON.stringify(params))) : binding.digest;
     const registry = this.effectInFlight ??= new Map();
     const existing = registry.get(key);
     if (existing) {
