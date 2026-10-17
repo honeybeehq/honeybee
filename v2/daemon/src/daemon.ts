@@ -1725,6 +1725,7 @@ export class HiveDaemon {
       if (conn.phoneOrigin) {
         if (typeof params.idempotencyKey !== "string" || !params.idempotencyKey.length) throw new RpcError("invalid_request", "Phone admission requires idempotencyKey");
         const origin = parsePhoneOrigin(conn.phoneOrigin);
+        if (verb === "spawn" && params.prompt === "") throw new RpcError("invalid_request", "An explicit empty phone prompt is invalid; omit prompt for a promptless operation");
         if (verb === "spawn" && origin.contentKind !== "initial-prompt" && origin.contentKind !== "crew-bio" || verb === "send" && origin.contentKind === "initial-prompt") throw new RpcError("invalid_request", "Phone content kind differs from operation");
         params = { ...params, [PHONE_CONTEXT]: origin, [PHONE_LANE]: "envelope-v1", [PHONE_CARRIER_DIGEST]: conn.phoneCarrierDigest };
       } else params = { ...params, [PHONE_LANE]: conn.phoneLane ?? "legacy" };
@@ -2405,7 +2406,9 @@ export class HiveDaemon {
       const effect = fn();
       const messageId = (effect as { messageId?: number }).messageId;
       const input = typeof messageId === "number" ? store.phoneInput(messageId) : undefined;
-      const result = input ? { ...effect, phoneAdmission: { ownerStoreId: input.envelope.ownerStoreId, admissionId: input.envelope.admissionId, contentDigest: input.envelope.contentDigest, lane: input.envelope.lane } } : effect;
+      const operationOrigin = this.phoneOriginOf(params) && !input && typeof (effect as { beeId?: unknown }).beeId === "string" ? store.getBee((effect as { beeId: string }).beeId)?.phoneOperationOrigin : undefined;
+      const boundEffect = (verb === "send" || verb === "spawn") ? { ...effect, requestBinding: { version: 1, verb, lane: this.phoneRequestBinding(params).lane, requestDigest: this.phoneRequestBinding(params).digest } } : effect;
+      const result = input ? { ...boundEffect, phoneAdmission: { ownerStoreId: input.envelope.ownerStoreId, admissionId: input.envelope.admissionId, contentDigest: input.envelope.contentDigest, lane: input.envelope.lane } } : operationOrigin ? { ...boundEffect, phoneAdmission: { ownerStoreId: operationOrigin.ownerStoreId, admissionId: operationOrigin.admissionId, contentDigest: null, lane: operationOrigin.lane } } : boundEffect;
       const commandId = (result as { commandId?: unknown }).commandId;
       store.recordRpcResult(key, verb, typeof commandId === "number" ? commandId : null, this.beeEnvRedacted(result));
       return this.revealedOrRedacted(params, result);
@@ -2934,6 +2937,7 @@ export class HiveDaemon {
     const parent = this.parentParam(params);
     const id = typeof params.id === "string" && params.id.length > 0 ? params.id : randomUUID();
     const { bee } = store.createBee({
+      ...(this.phoneOriginOf(params) && params.prompt == null ? { phoneOperation: this.phoneSendOptions(params).phone } : {}),
       id,
       name,
       agent: INBOX_AGENT,
@@ -2944,7 +2948,7 @@ export class HiveDaemon {
       parentId: parent.parentId,
       parentExternal: parent.parentExternal,
     });
-    const prompt = this.phoneOriginOf(params) ? (typeof params.prompt === "string" ? params.prompt : "") : typeof params.prompt === "string" && params.prompt.length > 0 ? params.prompt : null;
+    const prompt = typeof params.prompt === "string" && params.prompt.length > 0 ? params.prompt : null;
     const sent = prompt == null ? null : store.send(id, prompt, { sender: this.phoneOriginOf(params) ? `remote:${this.phoneOriginOf(params)!.issuerNodeId}/phone` : "operator", origin: "spawn.prompt", ...this.phoneSendOptions(params) });
     this.log(`spawn.mailbox_only bee=${id}`);
     return { beeId: id, agent: INBOX_AGENT, handle: bee.handle, commandId: null, messageId: sent?.message.id ?? null, account: null };
@@ -3123,6 +3127,7 @@ export class HiveDaemon {
     // inside the idempotency transaction, so a failure here leaves no bee.
     const cell = substrate === "cell" ? this.planCell(id, name, this.cellParam(params)) : null;
     const { bee: created } = store.createBee({
+      ...(this.phoneOriginOf(params) && params.prompt == null ? { phoneOperation: this.phoneSendOptions(params).phone } : {}),
       id,
       name,
       agent,
@@ -3160,9 +3165,9 @@ export class HiveDaemon {
     }
     const cmd = store.enqueueCommand("spawn", id, {}, key == null ? {} : { idempotencyKey: key });
     const prompt = params.prompt === undefined || params.prompt === null
-      ? (this.phoneOriginOf(params) ? "" : null)
+      ? null
       : this.param(params, "prompt");
-    const sent = prompt == null || (prompt.length === 0 && !this.phoneOriginOf(params))
+    const sent = prompt == null || prompt.length === 0
       ? null
       : store.send(id, prompt, { sender: this.phoneOriginOf(params) ? `remote:${this.phoneOriginOf(params)!.issuerNodeId}/phone` : "operator", origin: "spawn.prompt", ...this.phoneSendOptions(params) });
     if (account) this.log(`spawn.account bee=${id} account=${account.id}${accountReason ? ` reason=${JSON.stringify(accountReason)}` : ""}`);

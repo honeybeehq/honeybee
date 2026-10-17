@@ -690,6 +690,8 @@ export interface DedupMarkers {
 }
 
 export interface SpawnResult extends DedupMarkers {
+  phoneAdmission?: import("../../core/src/phoneOrigin.ts").PhoneAdmissionReceipt;
+  requestBinding?: import("../../core/src/phoneOrigin.ts").PhoneRequestBinding;
   beeId: string;
   /** The concrete configured agent after resolving an embedded account selector. */
   agent?: string;
@@ -1537,6 +1539,8 @@ export type ReconfigureResult = ReturnType<import("../../core/src/index.ts").Cor
  * revive-on-message wake. An unknown urgency is `invalid_request`.
  */
 export interface SendRpcResult extends DedupMarkers {
+  phoneAdmission?: import("../../core/src/phoneOrigin.ts").PhoneAdmissionReceipt;
+  requestBinding?: import("../../core/src/phoneOrigin.ts").PhoneRequestBinding;
   runtimeStartHold?: { code: "account_auth_needed"; message: "Waiting for refreshed account material" };
   messageId: number;
   /** The send_wake enqueued in the same transaction, when one was needed. */

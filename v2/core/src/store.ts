@@ -1,5 +1,5 @@
 import { PHONE_PROVENANCE_SQL } from "./schema.ts";
-import { type PhoneInput, type PhoneOriginRequest, type PhoneSource, parsePhoneOrigin, phoneDigest, renderPhoneInput } from "./phoneOrigin.ts";
+import { type PhoneInput, type PhoneOperationOrigin, type PhoneOriginRequest, type PhoneSource, parsePhoneOrigin, phoneDigest, renderPhoneInput } from "./phoneOrigin.ts";
 import { ExecutionLedger, ExecutionFenceError, executionRequest, type ExecutionRequest } from "./executionFence.ts";
 import { EffectKeyError, EffectLedger, type EffectVerb, type EffectResolution } from "./effectResolve.ts";
 import { parseDurableUpdateReservation, parseApiarySwapAcquire, parseApiarySwapSettle, parseApiarySwapRecover, acquireApiarySwap, settleApiarySwap, recoverApiarySwap, type DurableUpdateReservation, type ApiarySwapReservation } from "../../../src/apiarySwap.ts";
@@ -278,6 +278,7 @@ export interface CoreStoreOptions {
 }
 
 export interface CreateBeeInput {
+  phoneOperation?: { origin: PhoneOriginRequest; key: string };
   /** Known process identity at spawn time, so a daemon restart mid-boot can re-adopt (WP2 finding). */
   proc?: { pid: number; pidStartedAt: number };
   id?: string;
@@ -2082,12 +2083,13 @@ export class CoreStore {
     const phoneCursor = Number((this.stmt("SELECT value FROM meta WHERE key = 'phone_inputs_seq'").get() as Row | undefined)?.value ?? 0);
     let phoneSeq = phoneCursor;
     for (;;) {
-      const rows = this.stmt("SELECT seq, payload FROM audit WHERE kind = 'mail.enqueued' AND seq > ? AND EXISTS (SELECT 1 FROM mail_history_enqueues h WHERE h.seq = audit.seq) ORDER BY seq LIMIT 250").all(phoneSeq) as Row[];
+      const rows = this.stmt("SELECT seq, payload FROM audit WHERE kind IN ('mail.enqueued', 'bee.created') AND seq > ? ORDER BY seq LIMIT 250").all(phoneSeq) as Row[];
       if (!rows.length) break;
       for (const row of rows) {
         phoneSeq = Number(row.seq);
-        const payload = JSON.parse(String(row.payload)) as { message?: MessageRow };
-        if (payload.message?.phoneInput) this.stmt("INSERT INTO phone_inputs(message_id, admission_id, input_json) VALUES(?, ?, ?) ON CONFLICT(message_id) DO NOTHING").run(payload.message.id, payload.message.phoneInput.envelope.admissionId, JSON.stringify(payload.message.phoneInput));
+        const payload = JSON.parse(String(row.payload)) as { message?: MessageRow; bee?: BeeRow };
+        if (payload.bee?.phoneOperationOrigin && this.getBee(payload.bee.id)) this.stmt("INSERT INTO phone_spawn_origins(bee_id, origin_json) VALUES(?, ?) ON CONFLICT(bee_id) DO NOTHING").run(payload.bee.id, JSON.stringify(payload.bee.phoneOperationOrigin));
+        if (payload.message?.phoneInput && this.stmt("SELECT 1 FROM mail_history_enqueues WHERE message_id = ?").get(payload.message.id)) this.stmt("INSERT INTO phone_inputs(message_id, admission_id, input_json) VALUES(?, ?, ?) ON CONFLICT(message_id) DO NOTHING").run(payload.message.id, payload.message.phoneInput.envelope.admissionId, JSON.stringify(payload.message.phoneInput));
       }
     }
     this.stmt("INSERT INTO meta(key,value) VALUES('phone_inputs_seq',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(String(phoneSeq));
@@ -2523,6 +2525,7 @@ export class CoreStore {
           humanRef,
           namespace,
         );
+      if (input.phoneOperation) this.stmt("INSERT INTO phone_spawn_origins(bee_id, origin_json) VALUES(?, ?)").run(id, JSON.stringify(this.makePhoneOrigin(input.phoneOperation.origin, null, input.phoneOperation.key, id)));
       const bee = this.mustGetBee(id);
       this.audit("bee.created", id, { bee });
       // v23: segment 0 — the spawn harness owns the session log from generation 1.
@@ -2545,14 +2548,20 @@ export class CoreStore {
     });
   }
 
+  private mapPhoneBee(row: Row): BeeRow {
+    const bee = mapBee(row);
+    const origin = this.stmt("SELECT origin_json FROM phone_spawn_origins WHERE bee_id = ?").get(bee.id) as Row | undefined;
+    return origin ? { ...bee, phoneOperationOrigin: JSON.parse(String(origin.origin_json)) as PhoneOperationOrigin } : bee;
+  }
+
   getBee(beeId: string): BeeRow | null {
     const row = this.stmt("SELECT * FROM bees WHERE id = ?").get(beeId) as Row | undefined;
-    return row ? mapBee(row) : null;
+    return row ? this.mapPhoneBee(row) : null;
   }
 
   listBees(): BeeRow[] {
     const rows = this.stmt("SELECT * FROM bees ORDER BY id").all() as Row[];
-    return rows.map(mapBee);
+    return rows.map(row => this.mapPhoneBee(row));
   }
 
   /** Naming needs only eligible identities, never process env or archived history. */
@@ -2642,7 +2651,7 @@ export class CoreStore {
     const rows = this.stmt(
       "SELECT * FROM bees WHERE parent_id = ? AND parent_external = 0 ORDER BY id",
     ).all(beeId) as Row[];
-    return rows.map(mapBee);
+    return rows.map(row => this.mapPhoneBee(row));
   }
 
   archiveBee(beeId: string, executionCommandId?: number): BeeRow {
@@ -3562,6 +3571,14 @@ export class CoreStore {
   checkPhoneBinding(key: string, verb: string, lane: string, digest: string): void {
     const row = this.stmt("SELECT * FROM phone_admission_bindings WHERE key = ?").get(key) as Row | undefined;
     if (row && (row.verb !== verb || row.lane !== lane || row.request_digest !== digest)) throw new EffectKeyError("idempotency_conflict", "Key is bound to different content, target, origin or lane");
+    if (!row) {
+      const receipt = this.lookupRpcResult(key);
+      const binding = (receipt?.result as { requestBinding?: { verb: string; lane: string; requestDigest: string } } | undefined)?.requestBinding;
+      if (binding) {
+        if (binding.verb !== verb || binding.lane !== lane || binding.requestDigest !== digest) throw new EffectKeyError("idempotency_conflict", "Durable effect receipt has a different request binding");
+        return;
+      }
+    }
     if (!row && lane === "envelope-v1" && (this.lookupRpcResult(key) || this.getCommandByIdempotencyKey(key))) throw new EffectKeyError("idempotency_conflict", "Historical key has no phone admission binding");
   }
 
@@ -3570,28 +3587,33 @@ export class CoreStore {
     this.stmt("INSERT INTO phone_admission_bindings(key, verb, lane, request_digest) VALUES(?, ?, ?, ?) ON CONFLICT(key) DO NOTHING").run(key, verb, lane, digest);
   }
 
-  private makePhoneInput(raw: PhoneOriginRequest, originalContent: string, key: string, beeId: string): PhoneInput {
+  private makePhoneOrigin(raw: PhoneOriginRequest, contentDigest: string | null, key: string, beeId: string): PhoneOperationOrigin | PhoneInput["envelope"] {
     const request = parsePhoneOrigin(raw);
     if (request.target.kind === "bee" && request.target.id !== beeId) throw new EffectKeyError("invalid_request", "Phone target differs from accepting bee");
     const ownerStoreId = this.effectCoverage().ownerStoreId;
-    let unknown = request.ancestry === "unknown-overflow";
-    let ancestryDepth = 0;
-    const roots: PhoneSource[] = [...request.rootSources];
+    let unknown = request.ancestry === "unknown-overflow", ancestryDepth = 0;
+    const knownRoots: PhoneSource[] = [];
     for (const parent of [...request.parentSources, ...request.rootSources]) {
       const row = parent.ownerStoreId === ownerStoreId ? this.stmt("SELECT input_json FROM phone_inputs WHERE admission_id = ?").get(parent.admissionId) as Row | undefined : undefined;
       if (!row) { unknown = true; continue; }
       const prior = JSON.parse(String(row.input_json)) as PhoneInput;
       if (prior.envelope.contentDigest !== parent.contentDigest) throw new EffectKeyError("invalid_request", "Phone parent digest differs from durable source");
-      roots.push(...prior.envelope.rootSources);
-      ancestryDepth = Math.max(ancestryDepth, (prior.envelope.ancestryDepth ?? 0) + 1);
+      knownRoots.push(...prior.envelope.rootSources);
+      ancestryDepth = Math.max(ancestryDepth, prior.envelope.ancestryDepth + 1);
       if (prior.envelope.ancestry !== "complete") unknown = true;
     }
-    const admissionId = randomUUID(), contentDigest = phoneDigest(originalContent);
-    if (!request.parentSources.length) roots.push({ ownerStoreId, admissionId, contentDigest, relation: "forward" });
-    const unique = [...new Map(roots.map(root => [JSON.stringify(root), root])).values()];
-    if (unique.length > 8 || ancestryDepth > 8) unknown = true;
-    const envelope: PhoneInput["envelope"] = { ...request, rootSources: unique.slice(0, 8), ancestry: unknown ? "unknown-overflow" : "complete", ownerStoreId, admissionId, targetBeeId: beeId, idempotencyKey: key, contentDigest, ancestryDepth: Math.min(8, ancestryDepth) };
-    return { envelope, originalContent };
+    const admissionId = randomUUID();
+    if (!request.parentSources.length && contentDigest !== null) knownRoots.push({ ownerStoreId, admissionId, contentDigest, relation: "forward" });
+    const unique = [...new Map([...knownRoots, ...request.rootSources].map(root => [JSON.stringify([root.ownerStoreId, root.admissionId, root.contentDigest]), root])).values()];
+    const omitted = request.parentSources.length > 8 || unique.length > 8 || request.rootSources.length > 8;
+    if (omitted || ancestryDepth > 8) unknown = true;
+    const omittedSourcesDigest = omitted ? phoneDigest(JSON.stringify({ parents: request.parentSources, roots: request.rootSources, resolvedRoots: knownRoots })) : undefined;
+    return { ...request, parentSources: request.parentSources.slice(0, 8), rootSources: unique.slice(0, 8), ancestry: unknown ? "unknown-overflow" : "complete", ownerStoreId, admissionId, targetBeeId: beeId, idempotencyKey: key, contentDigest, ancestryDepth: Math.min(8, ancestryDepth), ...(omittedSourcesDigest ? { omittedSourcesDigest } : {}) };
+  }
+
+  private makePhoneInput(raw: PhoneOriginRequest, originalContent: string, key: string, beeId: string): PhoneInput {
+    const contentDigest = phoneDigest(originalContent);
+    return { envelope: { ...this.makePhoneOrigin(raw, contentDigest, key, beeId), contentDigest }, originalContent };
   }
 
   send(
@@ -5119,7 +5141,7 @@ export class CoreStore {
   listBeeViewRows(lifecycle: string | null = null): BeeViewRow[] {
     const bees = lifecycle === null
       ? this.listBees()
-      : (this.stmt("SELECT * FROM bees WHERE lifecycle = ? ORDER BY id").all(lifecycle) as Row[]).map(mapBee);
+      : (this.stmt("SELECT * FROM bees WHERE lifecycle = ? ORDER BY id").all(lifecycle) as Row[]).map(row => this.mapPhoneBee(row));
     if (bees.length === 0) return [];
     const selected = new Set(bees.map((bee) => bee.id));
 
@@ -5870,7 +5892,7 @@ export class CoreStore {
   /** Bees (any lifecycle) bound to the account, by id. */
   beesOnAccount(accountId: string): BeeRow[] {
     const rows = this.stmt("SELECT * FROM bees WHERE account = ? ORDER BY id").all(accountId) as Row[];
-    return rows.map(mapBee);
+    return rows.map(row => this.mapPhoneBee(row));
   }
 
   /**

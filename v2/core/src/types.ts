@@ -1,4 +1,4 @@
-import type { PhoneInput } from "./phoneOrigin.ts";
+import type { PhoneInput, PhoneOperationOrigin } from "./phoneOrigin.ts";
 import type { ThreadOperationRow } from "./threadOperation.ts";
 /**
  * Closed vocabularies and row shapes for the v2 core store.
@@ -89,6 +89,7 @@ export const RUNTIME_TRANSITIONS: Readonly<Record<RuntimeState, readonly Runtime
 // ---------------------------------------------------------------------------
 
 export interface BeeRow {
+  phoneOperationOrigin?: PhoneOperationOrigin;
   id: string;
   name: string;
   agent: string;

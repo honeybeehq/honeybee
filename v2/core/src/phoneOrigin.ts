@@ -29,6 +29,7 @@ export interface PhoneOriginRequest {
 export interface PhoneInput {
   envelope: PhoneOriginRequest & {
     ancestryDepth: number;
+    omittedSourcesDigest?: string;
     ownerStoreId: string;
     admissionId: string;
     targetBeeId: string;
@@ -37,6 +38,7 @@ export interface PhoneInput {
   };
   originalContent: string;
 }
+export type PhoneOperationOrigin = Omit<PhoneInput["envelope"], "contentDigest"> & { contentDigest: null };
 function invalid(message: string): never { throw new EffectKeyError("invalid_request", message); }
 function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) invalid("Phone origin requires an object");
@@ -74,7 +76,7 @@ export function parsePhoneOrigin(value: unknown): PhoneOriginRequest {
     format: PHONE_FORMAT, channel: "phone", issuerNodeId: reference(row.issuerNodeId), assigner: reference(row.assigner), credentialRef: reference(row.credentialRef),
     target: { kind: target.kind, id: reference(target.id) }, contentKind: row.contentKind as PhoneOriginRequest["contentKind"],
     assurance: "credential-possession-only", humanApproval: "not-verified", lane: "envelope-v1",
-    parentSources: parents.slice(0, 8), rootSources: roots.slice(0, 8), ancestry: parents.length > 8 || roots.length > 8 ? "unknown-overflow" : row.ancestry as PhoneOriginRequest["ancestry"],
+    parentSources: parents, rootSources: roots, ancestry: parents.length > 8 || roots.length > 8 ? "unknown-overflow" : row.ancestry as PhoneOriginRequest["ancestry"],
   };
 }
 export function escapePhoneText(value: string): string {
@@ -87,4 +89,17 @@ export function escapePhoneText(value: string): string {
 }
 export function renderPhoneInput(originalContent: string): string {
   return `${PHONE_LABEL}\n<apiary-phone-unverified encoding=escaped-text-v1>\n${escapePhoneText(originalContent)}\n</apiary-phone-unverified>\n${PHONE_LABEL}`;
+}
+
+export interface PhoneRequestBinding {
+  version: 1;
+  verb: "send" | "spawn";
+  lane: "envelope-v1" | "interim-v1" | "legacy";
+  requestDigest: string;
+}
+export interface PhoneAdmissionReceipt {
+  ownerStoreId: string;
+  admissionId: string;
+  contentDigest: string | null;
+  lane: "envelope-v1";
 }

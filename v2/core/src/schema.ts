@@ -1204,6 +1204,9 @@ export const PHONE_PROVENANCE_SQL = `
 CREATE TABLE IF NOT EXISTS phone_admission_bindings (
   key TEXT PRIMARY KEY, verb TEXT NOT NULL, lane TEXT NOT NULL, request_digest TEXT NOT NULL
 ) STRICT;
+CREATE TABLE IF NOT EXISTS phone_spawn_origins (
+  bee_id TEXT PRIMARY KEY REFERENCES bees(id) ON DELETE CASCADE, origin_json TEXT NOT NULL
+) STRICT;
 CREATE TABLE IF NOT EXISTS phone_inputs (
   message_id INTEGER PRIMARY KEY, admission_id TEXT NOT NULL UNIQUE, input_json TEXT NOT NULL,
   FOREIGN KEY(message_id) REFERENCES mail_history_enqueues(message_id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED

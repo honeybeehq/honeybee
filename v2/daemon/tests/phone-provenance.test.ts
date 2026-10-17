@@ -13,7 +13,7 @@ import { deliveryText } from "../src/envelope.ts";
 const origin: PhoneOriginRequest = { format: PHONE_FORMAT, channel: "phone", issuerNodeId: "fixture-node", assigner: "listener/1", credentialRef: "opaque-ref", target: { kind: "crew", id: "crew" }, contentKind: "message", assurance: "credential-possession-only", humanApproval: "not-verified", lane: "envelope-v1", parentSources: [], rootSources: [], ancestry: "complete" };
 test("real owner phone admission: trust, atomic replay, lane pinning, initial prompt and mailbox-only polling", async () => {
   const { dir, cleanup } = makeDaemonDir({ rpcLocalTrust: { requireObservationCaller: true } });
-  const daemon = await startDaemon(dir); const client = await daemon.client();
+  let daemon = await startDaemon(dir); let client = await daemon.client();
   const context: RpcRequestContext = { phoneOrigin: origin };
   try {
     assert.equal(client.capabilities.includes("mail.phone_provenance.v1"), false);
@@ -45,5 +45,29 @@ test("real owner phone admission: trust, atomic replay, lane pinning, initial pr
     assert.equal(prompts.messages[0]!.body, renderPhoneInput(args.body));
     await assert.rejects(client.request("spawn", { ...spawnArgs, prompt: "other" }, 2000, spawnContext), { code: "idempotency_conflict" });
     assert.equal((await client.request<{ beeId: string }>("spawn", spawnArgs, 2000, spawnContext)).beeId, spawned.beeId);
+    const operations: { args: Record<string, unknown>; beeId: string; admissionId: string }[] = [];
+    for (const agent of ["inbox", "stub"]) {
+      const args = { name: `promptless-${agent}`, agent, cwd: dir, idempotencyKey: `operation-${agent}` };
+      const admitted = await client.request<{ beeId: string; messageId: null; phoneAdmission: { admissionId: string; contentDigest: null } }>("spawn", args, 2000, spawnContext);
+      assert.equal(admitted.messageId, null);
+      assert.equal(admitted.phoneAdmission.contentDigest, null);
+      const polled = await client.request<{ messages: MessageRow[] }>("mailbox", { beeId: admitted.beeId });
+      assert.equal(polled.messages.length, 0);
+      operations.push({ args, beeId: admitted.beeId, admissionId: admitted.phoneAdmission.admissionId });
+      assert.equal((await client.request<{ beeId: string }>("spawn", args, 2000, spawnContext)).beeId, admitted.beeId);
+      await assert.rejects(client.request("spawn", { ...args, idempotencyKey: `empty-${agent}`, prompt: "" }, 2000, spawnContext), { code: "invalid_request" });
+    }
+    client.close(); await daemon.stop(); daemon = await startDaemon(dir); client = await daemon.client();
+    const challenge2 = await client.request<LocalTrustChallenge>("rpc.localTrust.challenge");
+    const key2 = readFileSync(join(dir, "rpc-private", "registration.key"));
+    const token2 = createHmac("sha256", key2).update(localTrustMessage(challenge2)).digest("hex"); key2.fill(0);
+    await client.request("rpc.localTrust.register", { pid: process.pid, challengeId: challenge2.challengeId, token: token2 });
+    for (const operation of operations) {
+      const replay = await client.request<{ beeId: string; messageId: null; phoneAdmission: { admissionId: string } }>("spawn", operation.args, 2000, spawnContext);
+      assert.equal(replay.beeId, operation.beeId); assert.equal(replay.messageId, null);
+      assert.equal(replay.phoneAdmission.admissionId, operation.admissionId);
+      assert.deepEqual(await client.request("mailbox", { beeId: operation.beeId }), { messages: [] });
+    }
+
   } finally { client.close(); await daemon.stop(); cleanup(); }
 });
