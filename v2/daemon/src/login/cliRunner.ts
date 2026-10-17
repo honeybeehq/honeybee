@@ -143,7 +143,7 @@ export class CliRunner implements LoginRunner {
     if (!flow || !host.stillActive()) return;
     switch (event.kind) {
       case "url": {
-        const url = safeAuthorizationUrl(event.url, host.method.authorizationUrl ?? "cli");
+        const url = host.method.authorizationUrl ? host.sanitizeAuthorizationUrl(event.url, host.method.authorizationUrl) : safeAuthorizationUrl(event.url, "cli");
         if (!url) {
           host.fail(err("provider_error", "The sign-in page address was refused because it may contain credentials."), true);
           return;

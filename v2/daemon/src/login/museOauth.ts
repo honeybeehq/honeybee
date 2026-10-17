@@ -1,6 +1,6 @@
 import { CredentialAuthorityError } from "../claudeCredentialAuthority.ts";
 import { join } from "node:path";
-import { parseMuseCredentials, recipeFor, safeAuthorizationUrl, type IdentityRecipe, type LoginFieldDescriptor, type LoginFlowRow } from "../../../core/src/index.ts";
+import { parseMuseCredentials, recipeFor, type IdentityRecipe, type LoginFieldDescriptor, type LoginFlowRow } from "../../../core/src/index.ts";
 import { primaryCredentialFile } from "../activation.ts";
 import { STATIC_DETAIL, err, safeMessage, writePrivateRaw } from "./common.ts";
 import type { LoginRunner, LoginRunnerHost } from "./runner.ts";
@@ -50,7 +50,7 @@ export class MuseOauthRunner implements LoginRunner {
         : `Meta's sign-in could not be started (HTTP ${device.status}).`;
       return host.fail(err("provider_error", message), true);
     }
-    const url = safeAuthorizationUrl(device.verificationUri, recipeFor("muse")!.loginFlow.authorizationUrl!);
+    const url = host.sanitizeAuthorizationUrl(device.verificationUri, recipeFor("muse")!.loginFlow.authorizationUrl!);
     if (!url) return host.fail(err("provider_error", "Meta's sign-in returned an unusable sign-in page address."), true);
     const now = host.now();
     this.deviceCode = device.deviceCode;
