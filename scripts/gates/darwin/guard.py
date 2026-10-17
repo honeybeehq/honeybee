@@ -238,7 +238,18 @@ def compiler_tools(root, env):
 
 def compiler_profile(base, tools):
     q = json.dumps
-    return base + '(deny process-exec)(allow process-exec (literal ' + q(tools['clang']) + ') (literal ' + q(tools['ld']) + '))(deny file-read* (subpath "/Applications") (subpath "/Library/Developer"))(allow file-read* (subpath ' + q(tools['toolchain']) + ') (subpath ' + q(tools['sdk']) + '))'
+    metadata = '(allow file-read-metadata ' + ' '.join('(literal ' + q(path) + ')' for path in compiler_metadata_literals(tools['clang'])) + ')'
+    return base + '(deny process-exec)(allow process-exec (literal ' + q(tools['clang']) + ') (literal ' + q(tools['ld']) + '))(deny file-read* (subpath "/Applications") (subpath "/Library/Developer"))(allow file-read* (subpath ' + q(tools['toolchain']) + ') (subpath ' + q(tools['sdk']) + '))' + metadata
+
+
+def compiler_metadata_literals(clang):
+    path = Path(clang)
+    if not path.is_absolute() or not (inside(path, Path('/Applications')) or inside(path, Path('/Library/Developer'))):
+        raise Refusal('compiler metadata scope outside fixed toolchain roots')
+    paths = [path, *path.parents]
+    if any(inside(p, Path('/Users')) for p in paths):
+        raise Refusal('compiler metadata scope includes Users')
+    return [str(p) for p in paths]
 
 
 def absolute_compiler_jobs(text):
@@ -329,6 +340,7 @@ def run(args):
         raise Refusal('policy preflight failed; receipts retained at ' + str(root))
     tools = compiler_tools(root, env)
     build_policy = compiler_profile(policy, tools)
+    write_json(root / 'compiler-permissions.json', {'literalAncestorMetadataOnly': compiler_metadata_literals(tools['clang']), 'noUserPaths': True, 'noAdditionalDataRead': True}, root)
     (root / 'compiler.sb').write_text(build_policy)
     version_command = ['/usr/bin/sandbox-exec', '-f', str(root / 'compiler.sb'), tools['clang'], '--version']
     version = subprocess.run(version_command, cwd=workspace, env=env, capture_output=True)

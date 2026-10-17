@@ -67,6 +67,10 @@ runs. The compiler has an exact executable allowlist and read access to the
 selected toolchain/SDK, with module cache inside the root. The one permitted
 device write is file-write-data on literal /dev/null, a kernel sink. Other /dev
 writes stay denied and are tested. No storage exception is granted by this rule.
+After flags-only attempts still produced an empty cc1 executable, the compiler
+policy adds metadata-only literal access to clang and its exact ancestor
+directories, never a subpath or a path under /Users. These literals are recorded.
+The dry run must show absolute job executables/resources before compilation.
 
 `self-test-run.sh <sha> --download-node` explicitly enables the Queen-approved
 per-run official Node download. `node_bootstrap.py` is the single archive pin:

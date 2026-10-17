@@ -13,7 +13,7 @@ import unittest
 from unittest.mock import patch
 import node_bootstrap
 
-from guard import DIRS, PROTECTED, Refusal, absolute_compiler_jobs, compiler_profile, compiler_tools, environment, launchagents, profile, receipt_hashes, run, seed_cache, select_node, validate, write_json
+from guard import DIRS, PROTECTED, Refusal, absolute_compiler_jobs, compiler_metadata_literals, compiler_profile, compiler_tools, environment, launchagents, profile, receipt_hashes, run, seed_cache, select_node, validate, write_json
 
 
 class GuardTests(unittest.TestCase):
@@ -109,7 +109,7 @@ class GuardTests(unittest.TestCase):
     def test_missing_compiler_refuses_with_metadata(self):
         self.root.mkdir()
         missing = SimpleNamespace(returncode=1, stdout='', stderr='missing')
-        with patch('subprocess.run', return_value=missing), self.assertRaises(Refusal):
+        with patch('subprocess.run', return_value=missing), patch.object(Path, 'is_file', return_value=False), self.assertRaises(Refusal):
             compiler_tools(self.root, self.env)
         receipt = json.loads((self.root / 'compiler-tools.json').read_text())
         self.assertIsNone(receipt['selected'])
@@ -130,6 +130,19 @@ class GuardTests(unittest.TestCase):
         self.assertIn('(allow file-write-data (literal "/dev/null"))', policy)
         self.assertNotIn('xcrun', policy)
         self.assertNotIn('xcodebuild', policy)
+
+    def test_compiler_metadata_is_literal_ancestors_only(self):
+        clang = '/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang'
+        paths = compiler_metadata_literals(clang)
+        self.assertEqual(paths, [str(Path(clang)), *map(str, Path(clang).parents)])
+        for bad in ('clang', '/Users/example/clang', '/usr/local/bin/clang'):
+            with self.assertRaises(Refusal):
+                compiler_metadata_literals(bad)
+        tools = {'clang': clang, 'ld': str(Path(clang).with_name('ld')), 'toolchain': str(Path(clang).parents[2]), 'sdk': '/Applications/Xcode.app/SDK'}
+        clause = compiler_profile('', tools).split('(allow file-read-metadata ', 1)[1]
+        self.assertNotIn('subpath', clause)
+        self.assertNotIn('/Users', clause)
+        self.assertEqual(clause.count('(literal '), len(paths))
 
     def test_node_archive_mismatch_extracts_nothing(self):
         archive = self.base / 'node.tar.gz'
