@@ -1,3 +1,5 @@
+import { createScanner } from "jsonc-parser";
+
 export const MULTILINE_UNSUPPORTED_ATTEMPTS = 3;
 export const MULTILINE_UNSUPPORTED_MS = 30_000;
 export const MULTILINE_UNSUPPORTED_DETAILS = ["multiline_type_mode", "multiline_bracketed_paste_disabled", "multiline_bracketed_paste_unknown", "multiline_bracketed_paste_version_unsupported"] as const;
@@ -128,8 +130,39 @@ export function advanceMultilineUnsupported(previous: MultilineUnsupportedProgre
   };
 }
 
+export const MULTILINE_JSON_SCAN_ERROR_NONE = 0;
+export const MULTILINE_JSON_TOKEN = {OpenBraceToken: 1, CloseBraceToken: 2, OpenBracketToken: 3, CloseBracketToken: 4, CommaToken: 5, StringLiteral: 10, LineCommentTrivia: 12, BlockCommentTrivia: 13, Unknown: 16, EOF: 17} as const;
+
+function uniqueJsonObjectKeys(json: string): boolean {
+  const scanner = createScanner(json, false);
+  const stack: ({object: true; keys: Set<string>; expectsKey: boolean} | {object: false})[] = [];
+  for (let remaining = json.length + 1; remaining > 0; remaining--) {
+    const token = scanner.scan();
+    if (scanner.getTokenError() !== MULTILINE_JSON_SCAN_ERROR_NONE || token === MULTILINE_JSON_TOKEN.LineCommentTrivia || token === MULTILINE_JSON_TOKEN.BlockCommentTrivia || token === MULTILINE_JSON_TOKEN.Unknown) return false;
+    if (token === MULTILINE_JSON_TOKEN.EOF) return stack.length === 0;
+    if (scanner.getTokenLength() === 0) return false;
+    const frame = stack[stack.length - 1];
+    if (token === MULTILINE_JSON_TOKEN.OpenBraceToken || token === MULTILINE_JSON_TOKEN.OpenBracketToken) {
+      if (stack.length >= 1000) return false;
+      stack.push(token === MULTILINE_JSON_TOKEN.OpenBraceToken ? {object: true, keys: new Set(), expectsKey: true} : {object: false});
+    } else if (token === MULTILINE_JSON_TOKEN.CloseBraceToken || token === MULTILINE_JSON_TOKEN.CloseBracketToken) {
+      if (!frame || frame.object !== (token === MULTILINE_JSON_TOKEN.CloseBraceToken)) return false;
+      stack.pop();
+    } else if (token === MULTILINE_JSON_TOKEN.CommaToken && frame?.object) {
+      frame.expectsKey = true;
+    } else if (token === MULTILINE_JSON_TOKEN.StringLiteral && frame?.object && frame.expectsKey) {
+      const key = scanner.getTokenValue();
+      if (frame.keys.has(key)) return false;
+      frame.keys.add(key);
+      frame.expectsKey = false;
+    }
+  }
+  return false;
+}
+
 export function readMultilineDelivery(json: string, messageId: number, beeId: string, heldAt: number | null, heldSince: number | null): MultilineDeliveryRow {
   try {
+    if (!uniqueJsonObjectKeys(json)) throw new Error("delivery_hold_state_unknown");
     const row = JSON.parse(json) as MultilineDeliveryRow;
     if (row && typeof row === "object" && !Array.isArray(row) && row.messageId === messageId && row.beeId === beeId && row.heldAt === heldAt && row.heldSince === heldSince
       && ["waiting", "expired", "held", "delivered"].includes(row.stage)
@@ -160,7 +193,7 @@ export function readMultilineDelivery(json: string, messageId: number, beeId: st
 const jsonType = (path: string): string => `json_type(row_json, '${path}')`;
 const jsonValue = (path: string): string => `json_extract(row_json, '${path}')`;
 const jsonText = (path: string): string => `${jsonType(path)} = 'text'`;
-const jsonFinite = (path: string): string => `${jsonType(path)} IN ('integer', 'real') AND abs(${jsonValue(path)}) <= 1.7976931348623157e308`;
+const jsonFinite = (path: string): string => `${jsonType(path)} IN ('integer', 'real') AND ${jsonValue(path)} BETWEEN -1.7976931348623157e308 AND 1.7976931348623157e308`;
 const jsonInteger = (path: string, minimum: number): string => `${jsonType(path)} IN ('integer', 'real') AND ${jsonValue(path)} BETWEEN ${minimum} AND 9007199254740991 AND ${jsonValue(path)} = CAST(${jsonValue(path)} AS INTEGER)`;
 const jsonNullable = (path: string, check: string): string => `(${jsonType(path)} = 'null' OR (${check}))`;
 const jsonOptional = (path: string, check: string): string => `(${jsonType(path)} IS NULL OR (${check}))`;
@@ -171,7 +204,7 @@ const fallbackState = jsonValue(`${fallbackPath}.state`);
 const fallbackPhase = jsonValue(`${fallbackPath}.attemptPhase`);
 const panePath = `${fallbackPath}.paneInput`;
 const server = jsonValue(`${panePath}.serverIdentity`);
-const serverParts = `json_each('[' || replace(json_quote(${server}), ':', '","') || ']')`;
+const serverParts = `json_each(CASE WHEN ${jsonText(`${panePath}.serverIdentity`)} THEN '[' || replace(json_quote(${server}), ':', '","') || ']' ELSE '[]' END)`;
 const fallbackValidSql = [
   `${jsonType(fallbackPath)} = 'object'`,
   `${jsonText(`${fallbackPath}.code`)} AND ${jsonValue(`${fallbackPath}.code`)} = 'delivery_file_fallback'`,
@@ -217,7 +250,7 @@ const multilineValidSql = [
   `${jsonType('$.heldAt')} IN ('null','integer','real') AND CAST(${jsonValue('$.heldAt')} AS REAL) IS CAST(held_at AS REAL)`,
   `${jsonType('$.heldSince')} IN ('null','integer','real') AND CAST(${jsonValue('$.heldSince')} AS REAL) IS CAST(held_since AS REAL)`,
   `${jsonValue('$.stage')} IN ('waiting','expired','held','delivered')`,
-  `(held_since IS NULL OR abs(held_since) <= 1.7976931348623157e308)`,
+  `(held_since IS NULL OR held_since BETWEEN -1.7976931348623157e308 AND 1.7976931348623157e308)`,
   `(${jsonValue('$.stage')} != 'held' OR held_since IS NOT NULL)`,
   `(held_since IS NULL OR ${jsonValue('$.stage')} IN ('held','delivered'))`,
   jsonNullable('$.receipt', `${jsonType('$.receipt')} = 'object'
@@ -236,7 +269,9 @@ const multilineValidSql = [
   jsonText('$.detail'), jsonNullable('$.notice', jsonText('$.notice')),
   jsonOptional(fallbackPath, fallbackValidSql),
 ].map(check => `(${check})`).join(' AND ');
-export const MULTILINE_UNKNOWN_SQL = `CASE WHEN json_valid(row_json) THEN
-  NOT COALESCE((${multilineValidSql}), 0)
-  OR ${jsonValue('$.detail')} = 'delivery_hold_state_unknown'
-  OR ${fallbackState} = 'unknown' ELSE 1 END`;
+export const MULTILINE_UNKNOWN_SQL = `CASE WHEN NOT json_valid(row_json) THEN 1
+  WHEN EXISTS (SELECT 1 FROM json_tree(row_json) AS member
+    WHERE typeof(member.key) = 'text' GROUP BY member.parent, member.key HAVING COUNT(*) > 1) THEN 1
+  ELSE NOT COALESCE((${multilineValidSql}), 0)
+    OR ${jsonValue('$.detail')} = 'delivery_hold_state_unknown'
+    OR ${fallbackState} = 'unknown' END`;

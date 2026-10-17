@@ -1,6 +1,13 @@
 import { test } from "node:test";
+import * as jsoncRuntime from "jsonc-parser";
 import assert from "node:assert/strict";
-import { advanceMultilineUnsupported, MULTILINE_UNKNOWN_SQL, readMultilineDelivery, readDeliveryFallback, type DeliveryFallback } from "../src/multilineDelivery.ts";
+import { advanceMultilineUnsupported, MULTILINE_JSON_TOKEN, MULTILINE_JSON_SCAN_ERROR_NONE, MULTILINE_UNKNOWN_SQL, readMultilineDelivery, readDeliveryFallback, type DeliveryFallback } from "../src/multilineDelivery.ts";
+
+test("duplicate scanner token constants match the installed jsonc-parser runtime", () => {
+  const runtime = jsoncRuntime as unknown as {SyntaxKind: Record<string, number>; ScanError: Record<string, number>};
+  for (const [name, value] of Object.entries(MULTILINE_JSON_TOKEN)) assert.equal(value, runtime.SyntaxKind[name], name);
+  assert.equal(MULTILINE_JSON_SCAN_ERROR_NONE, runtime.ScanError.None);
+});
 
 test("unsupported versions expire immediately; supported off expires after three attempts", () => {
   assert.equal(advanceMultilineUnsupported(null, "multiline_bracketed_paste_version_unsupported", 0).hold, true);
@@ -325,12 +332,52 @@ test("SQL unknown count agrees with decoder for outer and fallback shape boundar
       for (const key of Object.keys(pane)) for (const value of [null, true, -1, 0, "", [], {}]) cases.push({...base, fallback: {...fallback, state: "held", attempts: 1, attemptPhase: "before_enter_cleared", paneInput: {...pane, [key]: value}}});
       for (const key of ["id", "digest"]) for (const suffix of ["\x00", "\n", "\r", "\u2028", "\u2029"]) cases.push({...base, fallback: {...fallback, [key]: String(fallback[key as "id" | "digest"]) + suffix}});
       for (const key of ["reason", "paneId", "serverIdentity"]) for (const suffix of ["\x00", "\n", "\r", "\u2028", "\u2029"]) cases.push({...base, fallback: {...fallback, state: "held", attempts: 1, attemptPhase: "before_enter_cleared", paneInput: {...pane, [key]: pane[key as "reason" | "paneId" | "serverIdentity"] + suffix}}});
-      for (const candidate of cases) {
-        const json = JSON.stringify(candidate);
+      const jsonVectors = cases.map(candidate => JSON.stringify(candidate));
+      const numericBase = {...base, fallback: {...fallback, state: "held", attempts: 1, attemptPhase: "before_enter_cleared", paneInput: {...pane, clearedAt: 0}}};
+      const numericPaths = ["messageId", "heldAt", "heldSince", "attempts", "unsupportedMs", "lastAttemptAt", "receipt.messageId", "receipt.heldSince", "receipt.senderNoticeMessageId", "fallback.bytes", "fallback.generation", "fallback.attempts", "fallback.senderNoticeMessageId", "fallback.paneInput.since", "fallback.paneInput.generation", "fallback.paneInput.clearedAt"];
+      for (const path of numericPaths) for (const literal of ["-9223372036854775808", "9223372036854775807", "1e309", "-1e309", "-0"]) {
+        const row = JSON.parse(JSON.stringify(numericBase));
+        const parts = path.split("."); let parent = row;
+        for (const key of parts.slice(0, -1)) parent = parent[key];
+        parent[parts[parts.length - 1]!] = "numeric-literal";
+        jsonVectors.push(JSON.stringify(row).replace('"numeric-literal"', literal));
+      }
+      const original = JSON.stringify(base);
+      const append = (raw: string): string => original.slice(0, -1) + "," + raw + "}";
+      const semanticStart = jsonVectors.length;
+      jsonVectors.push(
+        append('"detail":"delivery_hold_state_unknown"'),
+        original.replace('"detail":"multiline_type_mode"', '"detail":"delivery_hold_state_unknown","detail":"multiline_type_mode"'),
+        append('"fallback":' + JSON.stringify(fallback) + ',"fallback":{"state":"ready"}'),
+        append('"fallback":{"state":"ready"},"fallback":' + JSON.stringify(fallback)),
+        append('"fallback":' + JSON.stringify(fallback).replace('"generation":1', '"generation":1,"generation":"wrong"')),
+        append('"fallback":' + JSON.stringify(fallback).replace('"generation":1', '"generation":"wrong","generation":1')),
+        append('"extra":[{"a":1,"a":2}]'),
+        append('"extra":[{"a":2,"a":1}]'),
+        append('"extra":{"a":1,"b":{"a":2}}'),
+        append('"extra":[{"a":1},{"a":2}]'),
+        append(String.raw`"extra":{"a":1,"\u0061":2}`),
+        append(String.raw`"extra":{"\u0061":2,"a":1}`),
+        append('"extra":NaN'), append('"extra":/*comment*/0'), append('"extra":[0,]'),
+        append('"extra":"' + String.fromCharCode(1) + '"'),
+      );
+      assert.equal(db.prepare("SELECT sqlite_version() AS version").get()!.version, process.versions.sqlite);
+      assert.deepEqual(db.prepare("SELECT key FROM json_tree(?) WHERE parent = 0").all(String.raw`{"a":1,"\u0061":2}`).map(row => row.key), ["a", "a"]);
+      for (const depth of [1000, 1001]) {
+        const raw = "[".repeat(depth) + "0" + "]".repeat(depth);
+        assert.equal((db.prepare("SELECT json_valid(?) AS valid").get(raw) as {valid: number}).valid, depth === 1000 ? 1 : 0);
+        const parent = append('"extra":' + "[".repeat(depth - 1) + "0" + "]".repeat(depth - 1));
+        jsonVectors.push(parent);
+      }
+      for (const [vectorIndex, json] of jsonVectors.entries()) {
         db.prepare("UPDATE multiline_delivery SET row_json = ? WHERE message_id = ?").run(json, message.id);
         const decoded = readMultilineDelivery(json, message.id, bee.id, raw.held_at, raw.held_since);
         const expected = decoded.detail === "delivery_hold_state_unknown" || decoded.fallback?.state === "unknown";
-        assert.equal(Number((db.prepare(`SELECT COUNT(*) AS count FROM multiline_delivery WHERE ${MULTILINE_UNKNOWN_SQL}`).get() as {count: number}).count), expected ? 1 : 0, json);
+        if (vectorIndex >= semanticStart && vectorIndex < semanticStart + 16) assert.equal(expected, ![semanticStart + 8, semanticStart + 9].includes(vectorIndex), json);
+        if (vectorIndex >= semanticStart + 16) assert.equal(expected, vectorIndex === semanticStart + 17, json);
+        let count: number | undefined;
+        assert.doesNotThrow(() => {count = Number((db.prepare(`SELECT COUNT(*) AS count FROM multiline_delivery WHERE ${MULTILINE_UNKNOWN_SQL}`).get() as {count: number}).count);}, json);
+        assert.equal(count, expected ? 1 : 0, json);
       }
     } finally {db.close();}
   } finally {h.cleanup();}
