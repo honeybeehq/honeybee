@@ -33,7 +33,7 @@ class Trace:
         self.read_fd, self.write_fd = os.pipe()
         os.set_inheritable(self.write_fd, False)
         transport = os.fstat(self.write_fd)
-        self.policy['traceTransport'] = {'dev': str(transport.st_dev), 'ino': str(transport.st_ino), 'type': str(stat.S_IFMT(transport.st_mode))}
+        self.policy['traceTransport'] = {'dev': str(transport.st_dev & ((1 << 64) - 1)), 'ino': str(transport.st_ino & ((1 << 64) - 1)), 'type': str(stat.S_IFMT(transport.st_mode))}
         os.set_blocking(self.read_fd, False)
 
     def environment(self, env):
