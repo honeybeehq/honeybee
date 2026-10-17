@@ -9,7 +9,7 @@ import http2 from 'node:http2';
 import workers from 'node:worker_threads';
 import cluster from 'node:cluster';
 import modules, { registerHooks, syncBuiltinESMExports } from 'node:module';
-import { realpathSync, statSync, lstatSync, writeSync, readSync } from 'node:fs';
+import { realpathSync, statSync, lstatSync, fstatSync, writeSync, readSync } from 'node:fs';
 import { dirname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
@@ -20,6 +20,16 @@ const policy = JSON.parse(encoded);
 const traceFd = Number(process.env.SCG_EXEC_TRACE_FD);
 const self = fileURLToPath(import.meta.url);
 if (!Number.isSafeInteger(traceFd) || traceFd < 3 || self !== policy.preloader || process.execPath !== policy.node) throw new Error('Unbound gate execution observer');
+const transportFailure = reason => { throw new Error('Unbound gate trace transport:' + reason); };
+const unsigned64 = (value, field) => {
+  if (typeof value !== 'bigint' && (typeof value !== 'string' || !/^-?[0-9]+$/.test(value))) transportFailure(field);
+  return BigInt.asUintN(64, BigInt(value));
+};
+let traceTransport;
+try { traceTransport = fstatSync(traceFd, {bigint: true}); } catch { transportFailure('fstat'); }
+const traceType = unsigned64(traceTransport.mode, 'type') & 0o170000n;
+if (![0o010000n, 0o140000n].includes(traceType) || traceType !== unsigned64(policy.traceTransport?.type, 'type')) transportFailure('type');
+for (const field of ['dev', 'ino']) if (unsigned64(traceTransport[field], field) !== unsigned64(policy.traceTransport?.[field], field)) transportFailure(field);
 let traceSequence = 0;
 const emit = record => {
   const bytes = Buffer.from(JSON.stringify({pid: process.pid, parent: process.ppid, emittedAtMs: Date.now(), ...record}) + '\n');

@@ -116,6 +116,7 @@ def supervise(api, root, workspace, env, argv, tag, timeout=600, trace=None, sib
     with log.open('xb') as output:
         try:
             proc = subprocess.Popen([sys.executable, '-B', str(workspace / 'scripts/gates/darwin/start_wait.py'), str(read_fd), *argv], pass_fds=(read_fd,) + ((trace.write_fd,) if trace is not None else ()) + ((mediation.request_fd, mediation.response_fd, mediation.lock_read_fd, mediation.lock_write_fd) if mediation is not None and trace is not None else ()), cwd=workspace, env=env, stdout=output, stderr=subprocess.STDOUT, start_new_session=sibling)
+            focused_seal.remember_launch(proc.pid)
         except OSError:
             os.close(read_fd)
             os.close(release_fd)
@@ -137,6 +138,7 @@ def supervise(api, root, workspace, env, argv, tag, timeout=600, trace=None, sib
             if len(births) != 1:
                 raise ValueError('focused process birth unavailable')
             birth = births[0]
+            focused_seal.remember_birth(birth)
             tracked[(birth[0], birth[2], birth[3])] = birth
             os.write(release_fd, b'1')
             os.close(release_fd)
@@ -145,6 +147,7 @@ def supervise(api, root, workspace, env, argv, tag, timeout=600, trace=None, sib
                 if trace is not None:
                     trace.drain()
                 for row in api.scope_call(helper, 'scan', *birth):
+                    focused_seal.remember_birth(row)
                     tracked.setdefault((row[0], row[2], row[3]), row)
                 for sample in api.sample_retained_listeners(helper, tracked, exited):
                     samples.append(sample)
@@ -213,7 +216,7 @@ def supervise(api, root, workspace, env, argv, tag, timeout=600, trace=None, sib
             for row in tracked.values():
                 if time.monotonic() >= cleanup_deadline:
                     reason = reason or 'focused fenced cleanup deadline'
-                    api.LEFTOVER_CHILDREN.append({'pid': row[0], 'birth': row, 'reason': 'cleanup deadline; no unfenced signal'})
+                    focused_seal.record_leftover(api.LEFTOVER_CHILDREN, {'pid': row[0], 'birth': row, 'reason': 'cleanup deadline; no unfenced signal'})
                     continue
                 status = bounded_helper([str(helper), 'status', *row])
                 if status.returncode == 3:
@@ -229,27 +232,22 @@ def supervise(api, root, workspace, env, argv, tag, timeout=600, trace=None, sib
                     time.sleep(0.25)
                 check = bounded_helper([str(helper), 'status', *row])
                 if check.returncode != 3:
-                    api.LEFTOVER_CHILDREN.append({'pid': row[0], 'birth': row, 'reason': 'focused fenced cleanup unresolved'})
+                    focused_seal.record_leftover(api.LEFTOVER_CHILDREN, {'pid': row[0], 'birth': row, 'reason': 'focused fenced cleanup unresolved'})
             try:
                 proc.wait(timeout=3)
             except subprocess.TimeoutExpired:
                 reason = reason or 'focused root remains'
                 if not tracked:
-                    api.LEFTOVER_CHILDREN.append({'pid': proc.pid, 'birth': None, 'reason': 'birth unobserved, not fenced'})
+                    focused_seal.record_leftover(api.LEFTOVER_CHILDREN, {'birth': None}, unverified_label='focused-step')
     if sibling:
         try:
             focused_seal.require_quiescent(root, helper)
         except focused_seal.BusyRoot as error:
             reason = reason or 'same-uid run-root process remains after fenced cleanup'
-            for pid in sorted({row['pid'] for row in error.rows}):
-                known = None
-                for birth in tracked.values():
-                    if int(birth[0]) == pid:
-                        status = bounded_helper([str(helper), 'status', *birth])
-                        if status.returncode == 0:
-                            known = birth
-                if not any(int(row['pid']) == pid for row in api.LEFTOVER_CHILDREN):
-                    api.LEFTOVER_CHILDREN.append({'pid': pid, 'birth': known, 'reason': 'same-uid root-use candidate; birth unobserved, not fenced' if known is None else 'retained birth still holds run-root after fenced cleanup'})
+            for row in error.rows:
+                birth = row['birth']
+                if not any(tuple(map(str, child['birth'])) == tuple(birth) for child in api.LEFTOVER_CHILDREN):
+                    focused_seal.record_leftover(api.LEFTOVER_CHILDREN, {'pid': row['pid'], 'birth': birth, 'reason': 'retained own birth still holds run-root after fenced cleanup'})
         except (ValueError, OSError, subprocess.SubprocessError) as error:
             reason = reason or 'post-workload root-use observation unresolved: ' + str(error)
     result = {'argv': argv, 'environmentKeys': sorted(env), 'cwd': str(workspace), 'timeoutSeconds': timeout, 'newSession': sibling, 'executableSamples': executable_samples, 'connectionSamples': connection_samples, 'exit': proc.returncode, 'reason': reason, 'retainedBirths': list(tracked.values()), 'listenerSamples': samples, 'signals': signals, 'log': str(log.relative_to(root))}
@@ -294,6 +292,7 @@ def run(api, root, workspace, env, tools, real_home):
     source_manifest = json.loads((root / 'source-manifest.json').read_text())
     native_source_pins = {kind: source_manifest['v2/daemon/native/' + kind + '.c']['sha256'] for kind in ('delivery-file', 'peercred')}
     prefix = ['/usr/bin/sandbox-exec', '-f', str(root / 'workload.sb')]
+    focused_seal.quiescence_input(root, root / 'scope')
     result, _ = supervise(api, root, workspace, env, prefix + ['/bin/bash', str(workspace / 'scripts/gates/darwin/workload.sh'), str(workspace / 'scripts/gates/darwin/focused-manifest-body.sh')], 'focused-prepare')
     if result['exit'] != 0 or result['reason']:
         raise api.Refusal('focused offline dependency/build phase failed')
@@ -318,10 +317,12 @@ def run(api, root, workspace, env, tools, real_home):
                 focused_native.confined(path, root).unlink()
         native = focused_native.build(root, workspace, tools, env['SCG_NODE_BIN'], env, kind, source_sha256=native_source_pins[kind])
         api.write_json(root / ('focused-native-build-' + kind + '.json'), native, root)
+        focused_seal.quiescence_input(root, root / 'scope')
         probe_path = workspace / ('scripts/probe-' + kind + '.mjs')
         probe, _ = supervise(api, root, workspace, env, prefix + [env['SCG_NODE_BIN'], str(probe_path)], 'focused-native-probe-' + kind)
         if probe['exit'] != 0 or probe['reason']:
             raise api.Refusal('non-optional confined native probe failed: ' + kind)
+    focused_seal.quiescence_input(root, root / 'scope')
     before_artifact = artifacts(workspace, root)
     resolved_edges = []
     for edge in audit['nativeEdges']:

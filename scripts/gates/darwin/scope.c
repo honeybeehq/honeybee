@@ -1,6 +1,8 @@
+#define __STDC_WANT_LIB_EXT1__ 1
 #ifdef __APPLE__
 #include <libproc.h>
 #include <sys/proc_info.h>
+#include <sys/stat.h>
 #include <signal.h>
 #include <unistd.h>
 #include <errno.h>
@@ -12,6 +14,17 @@
 #include <dlfcn.h>
 #include <limits.h>
 #include "argv_observation.h"
+
+static void secure_zero(void *pointer, size_t size) {
+#ifdef __APPLE__
+  if (memset_s(pointer, size, 0, size) != 0) {
+    fputs("secure zero failed\n", stderr);
+    exit(4);
+  }
+#else
+  explicit_bzero(pointer, size);
+#endif
+}
 
 static int identity(int pid, struct proc_bsdinfo *b) {
   errno = 0;
@@ -28,6 +41,13 @@ static int same_birth(int pid, unsigned long long sec, unsigned long long usec) 
   if (b.pbi_start_tvsec != sec || b.pbi_start_tvusec != usec) return 4;
   return b.pbi_status == 5 ? 3 : 0;
 }
+#define CS_OPS_STATUS 0U
+#define CS_PLATFORM_BINARY 0x04000000U
+typedef int (*csops_function)(pid_t, unsigned int, void *, size_t);
+static csops_function csops_checker(void) {
+  return (csops_function)dlsym(RTLD_DEFAULT, "csops");
+}
+static int quiescence_sandbox_denied(int pid, unsigned long long sec, unsigned long long usec, char **paths, int *denied, int *allowed, int *errors, int *not_sandboxed, int *allowed_by_query, int *results);
 #include "quiescence.h"
 static int listeners(int pid, unsigned long long sec, unsigned long long usec, int connected) {
   int rc = same_birth(pid, sec, usec);
@@ -113,6 +133,43 @@ typedef int (*sandbox_check_function)(pid_t, const char *, int, ...);
 static sandbox_check_function sandbox_checker(void) {
   return (sandbox_check_function)dlsym(RTLD_DEFAULT, "sandbox_check");
 }
+static int quiescence_sandbox_denied(int pid, unsigned long long sec, unsigned long long usec, char **paths, int *denied, int *allowed, int *errors, int *not_sandboxed, int *allowed_by_query, int *results) {
+  char canonical[PATH_MAX], parent[PATH_MAX];
+  for (int index = 0; index < 3; index++) if (!realpath(paths[index], canonical) || strcmp(canonical, paths[index])) { (*errors)++; return 0; }
+  if (strlen(paths[3]) >= sizeof(parent)) { (*errors)++; return 0; }
+  strcpy(parent, paths[3]);
+  char *slash = strrchr(parent, '/');
+  if (!slash || !slash[1]) { (*errors)++; return 0; }
+  *slash = 0;
+  if (!realpath(parent, canonical) || strcmp(parent, canonical)) { (*errors)++; return 0; }
+  errno = 0;
+  if (realpath(paths[3], canonical) || errno != ENOENT) { (*errors)++; return 0; }
+  sandbox_check_function check = sandbox_checker();
+  if (!check || same_birth(pid, sec, usec)) { (*errors)++; return 0; }
+  errno = 0;
+  int sandboxed = check(pid, NULL, 0);
+  int error = errno;
+  if (error || (sandboxed != 0 && sandboxed != 1) || same_birth(pid, sec, usec)) { (*errors)++; return 0; }
+  if (!sandboxed) { (*not_sandboxed)++; return 0; }
+  int had_allowed = 0, writes_denied = 1;
+  const char *operations[] = {"file-read-data", "file-write-data", "file-write-create", "file-write-unlink"};
+  for (int slot = 0; slot < 16; slot++) {
+    int path = slot < 8 ? slot / 2 : (slot - 8) / 2;
+    int operation = slot < 8 ? slot % 2 : 2 + (slot - 8) % 2;
+    if (same_birth(pid, sec, usec)) { results[slot] = -1; (*errors)++; return 0; }
+    errno = 0;
+    int result = check(pid, operations[operation], 1, paths[path]);
+    error = errno;
+    if (error || (result != 0 && result != 1) || same_birth(pid, sec, usec)) { results[slot] = -1; (*errors)++; return 0; }
+    results[slot] = result;
+    if (!result) { (*allowed)++; allowed_by_query[slot]++; had_allowed = 1; if (operation) writes_denied = 0; }
+    else (*denied)++;
+    if (slot == 7 && !had_allowed) return 1;
+  }
+  if (same_birth(pid, sec, usec)) { (*errors)++; return 0; }
+  return writes_denied ? 2 : 0;
+
+}
 static int node_observation(int pid, unsigned long long sec, unsigned long long usec, const char *expected_node, const char *reader, const char *preloader) {
   int rc = same_birth(pid, sec, usec);
   if (rc) return rc;
@@ -127,21 +184,21 @@ static int node_observation(int pid, unsigned long long sec, unsigned long long 
   errno = 0;
   int got = sysctl(mib, 3, buffer, &size, NULL, 0);
   rc = same_birth(pid, sec, usec);
-  if (got || rc || size >= capacity || !parse_argv_only(buffer, size, args, 1024, &count)) { explicit_bzero(buffer, capacity); free(buffer); return rc ? rc : 4; }
+  if (got || rc || size >= capacity || !parse_argv_only(buffer, size, args, 1024, &count)) { secure_zero(buffer, capacity); free(buffer); return rc ? rc : 4; }
   size_t entry = 1;
   while (entry < count && buffer[args[entry].start] == '-') {
     const char *flag = (char *)buffer + args[entry].start;
     if (!strcmp(flag, "--import")) { entry += 2; continue; }
     if (!strcmp(flag, "--experimental-strip-types") || !strcmp(flag, "--no-warnings") || !strcmp(flag, "--test") || !strncmp(flag, "--test-", 7)) { entry++; continue; }
-    explicit_bzero(buffer, capacity); free(buffer); return 4;
+    secure_zero(buffer, capacity); free(buffer); return 4;
   }
   struct proc_vnodepathinfo paths;
   char cwd[PATH_MAX], resolved_entry[PATH_MAX], candidate[PATH_MAX];
-  if (entry >= count || proc_pidinfo(pid, PROC_PIDVNODEPATHINFO, 0, &paths, sizeof(paths)) != sizeof(paths) || !realpath(paths.pvi_cdir.vip_path, cwd)) { explicit_bzero(buffer, capacity); free(buffer); return 4; }
+  if (entry >= count || proc_pidinfo(pid, PROC_PIDVNODEPATHINFO, 0, &paths, sizeof(paths)) != sizeof(paths) || !realpath(paths.pvi_cdir.vip_path, cwd)) { secure_zero(buffer, capacity); free(buffer); return 4; }
   int printed = snprintf(candidate, sizeof(candidate), "%s%s%s", buffer[args[entry].start] == '/' ? "" : cwd, buffer[args[entry].start] == '/' ? "" : "/", buffer + args[entry].start);
   int valid = printed > 0 && printed < sizeof(candidate) && realpath(candidate, resolved_entry) != NULL;
   if (valid && !strcmp(resolved_entry, reader) && !reader_argv_exact(buffer, args, count, expected_node, reader, preloader)) valid = 0;
-  explicit_bzero(buffer, capacity);
+  secure_zero(buffer, capacity);
   free(buffer);
   if (!valid) return 4;
   sandbox_check_function check = sandbox_checker();
@@ -216,7 +273,12 @@ int main(int argc, char **argv) {
     print_identity(pid, &b);
     return 0;
   }
-  if (!strcmp(argv[1], "quiescence")) return argc == 4 ? quiescence(pid, argv[3]) : 2;
+  if (!strcmp(argv[1], "quiescence")) {
+    char *end = NULL;
+    errno = 0;
+    unsigned long long created = argc == 8 ? strtoull(argv[4], &end, 10) : 0;
+    return !errno && created && end && !*end ? quiescence(pid, argv[3], created, (char *[]){argv[3], argv[5], argv[6], argv[7]}) : 2;
+  }
   if (argc < 6) return 2;
   unsigned long long sec = strtoull(argv[4], NULL, 10), usec = strtoull(argv[5], NULL, 10);
   if (!strcmp(argv[1], "group")) return group_members(pid, sec, usec, 0, 0, NULL);

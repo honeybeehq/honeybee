@@ -93,12 +93,13 @@ class FlowTests(unittest.TestCase):
             process = Mock(returncode=0)
             process.pid = 11
             process.poll.return_value = 0
-            busy = focused_flow.focused_seal.BusyRoot([{'pid': 22, 'path': str(root / 'node')}])
+            busy = focused_flow.focused_seal.BusyRoot([], {'cwd':0,'exe':1,'fd':0})
             with patch('focused_flow.subprocess.Popen', return_value=process), patch('focused_flow.subprocess.run', return_value=subprocess.CompletedProcess([], 3, '', '')) as invoked, patch('focused_flow.os.write', return_value=1), patch('focused_flow.focused_seal.require_quiescent', side_effect=busy):
                 result, _ = focused_flow.supervise(api, root, workspace, {'SCG_NODE_BIN': '/fixture/node'}, ['/fixture/node'], 'leftover', sibling=True)
             self.assertIn('run-root process remains', result['reason'])
-            self.assertEqual(api.LEFTOVER_CHILDREN[0]['pid'], 22)
-            self.assertIsNone(api.LEFTOVER_CHILDREN[0]['birth'])
+            self.assertEqual(api.LEFTOVER_CHILDREN, [])
+            self.assertNotIn('22', json.dumps(result))
+            self.assertNotIn(str(root / 'node'), json.dumps(result))
             self.assertFalse(any(call.args[0][1] == 'signal' and call.args[0][2] == '22' for call in invoked.call_args_list))
 
     def test_connection_parser_keeps_remote_address_and_fails_unobserved(self):

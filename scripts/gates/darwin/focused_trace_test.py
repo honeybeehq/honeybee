@@ -1,16 +1,21 @@
 import hashlib
+import json
 import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
 import focused_trace
 
 
+DEFAULT_DIAGNOSTIC = None
+
+
 class TraceTests(unittest.TestCase):
-    def launch(self, files, entry='parent.mjs', flags=(), roles=None, extra_env=None):
+    def launch(self, files, entry='parent.mjs', flags=(), roles=None, extra_env=None, wrong_transport=False):
         node = os.environ.get('SCG_NODE_BIN') or shutil.which('node')
         self.assertIsNotNone(node, 'pinned Node required for trace tests')
         node = str(Path(node).resolve())
@@ -26,6 +31,14 @@ class TraceTests(unittest.TestCase):
             audit = {'files': [{'path': name, 'siblingClosure': True} for name in files if name != 'unpinned.mjs']}
             audit['nodeEntries'] = [{'role': (roles or {}).get(name, 'test-runner' if name == entry else 'runner-host-main'), 'path': name, 'sha256': hashlib.sha256((workspace / name).read_bytes()).hexdigest()} for name in files if name != 'unpinned.mjs']
             trace = focused_trace.Trace(root, workspace, node, audit, {})
+            self.assertFalse(os.get_inheritable(trace.write_fd))
+            if wrong_transport:
+                field = 'ino' if wrong_transport is True else wrong_transport
+                if field == 'signed':
+                    for key in ('dev', 'ino'):
+                        trace.policy['traceTransport'][key] = str(int(trace.policy['traceTransport'][key]) - (1 << 64))
+                else:
+                    trace.policy['traceTransport'][field] = str(int(trace.policy['traceTransport'][field]) + 1)
             env = trace.environment({'HOME': str(root), 'TMPDIR': str(root), 'PATH': str(Path(node).parent) + ':/usr/bin:/bin', 'LANG': 'C'})
             env.update(extra_env or {})
             process = subprocess.Popen(trace.command([node, *flags, entry]), cwd=workspace, env=env, pass_fds=(trace.write_fd,), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -61,10 +74,44 @@ class TraceTests(unittest.TestCase):
 
     def test_default_isolation_instrumentation_fails_closed(self):
         code, stdout, stderr, trace = self.launch({'parent.mjs': "import {test} from 'node:test'; test('fixture', () => {});"}, flags=('--test', '--test-concurrency=1', '--test-reporter=tap'))
+        diagnostic = {'exit': code, 'traceOk': trace['ok'], 'verdict': 'complete' if trace['ok'] else 'invalid-trace' if trace.get('error') else 'missing-or-incomplete-trace', 'helloCount': len(trace.get('helloPids', [])), 'missingHelloCount': len(trace.get('missingHelloPids', [])), 'missingLaunchCount': len(trace.get('missingLaunchHellos', [])), 'recordCount': len(trace.get('records', []))}
+        global DEFAULT_DIAGNOSTIC
+        DEFAULT_DIAGNOSTIC = diagnostic
+        print('DEFAULT_ISOLATION_TRACE_DIAGNOSTIC=' + json.dumps(diagnostic, sort_keys=True), flush=True)
+        self.assertFalse(trace['ok'], json.dumps(diagnostic, sort_keys=True))
+
+    def test_reused_or_mismatched_trace_descriptor_refuses_before_hello(self):
+        code, stdout, stderr, trace = self.launch({'parent.mjs': "console.log('must-not-run');"}, wrong_transport=True)
         self.assertNotEqual(code, 0)
+        self.assertNotIn('must-not-run', stdout)
         self.assertFalse(trace['ok'])
-        self.assertTrue(trace['missingHelloPids'])
-        self.assertIn('invalid argument, write', stdout + stderr)
+        self.assertTrue(trace.get('missingHelloPids'))
+        self.assertIn('Unbound gate trace transport', stderr)
+
+    def test_signed_transport_representations_match_unsigned_identity(self):
+        code, stdout, stderr, trace = self.launch({'parent.mjs': "console.log('bound');"}, wrong_transport='signed')
+        self.assertEqual(code, 0, stderr)
+        self.assertTrue(trace['ok'], trace)
+
+    def test_transport_refusal_identifies_only_the_comparison(self):
+        for field in ('type', 'dev', 'ino'):
+            with self.subTest(field=field):
+                code, stdout, stderr, trace = self.launch({'parent.mjs': "console.log('must-not-run');"}, wrong_transport=field)
+                self.assertNotEqual(code, 0)
+                self.assertNotIn('must-not-run', stdout)
+                self.assertFalse(trace['ok'])
+                self.assertIn('Unbound gate trace transport:' + field, stderr)
+
+    def test_body_exit_preserves_reason_and_repeats_bounded_summary_last(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            summary = 'TRACE_TEST_SUMMARY=[]\nDEFAULT_ISOLATION_TRACE_DIAGNOSTIC={"verdict":"invalid-trace"}\n'
+            (root / 'trace-test-summary.txt').write_text(summary)
+            body = str(Path(__file__).with_name('self-test-body.sh').resolve())
+            result = subprocess.run(['/bin/bash', '-c', 'SCG_PHASE=body; . "$1"', 'fixture', body], env={'GATE_ROOT': str(root), 'SCG_PYTHON_BIN': '/usr/bin/false', 'PATH': '/usr/bin:/bin'}, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=5)
+            self.assertEqual(result.returncode, 1, result.stderr)
+            self.assertIn('WORKLOAD_NONZERO_REASON=phase:body exit:1', result.stdout)
+            self.assertTrue(result.stdout.endswith(summary), result.stdout)
 
     def test_sync_execfile_launch_requires_its_own_hello(self):
         code, stdout, stderr, trace = self.launch({'parent.mjs': "import {execFileSync} from 'node:child_process'; process.stdout.write(execFileSync(process.execPath,['child.mjs'],{encoding:'utf8'}));", 'child.mjs': "console.log('sync-child-ok');"})
@@ -158,5 +205,43 @@ class TraceTests(unittest.TestCase):
             self.assertEqual(result['missingHelloPids'], [100])
 
 
+class SummaryResult(unittest.TextTestResult):
+    def startTestRun(self):
+        super().startTestRun()
+        self.rows = []
+
+    def addSuccess(self, test):
+        super().addSuccess(test)
+        self.rows.append({'test': test._testMethodName, 'outcome': 'PASS'})
+
+    def addFailure(self, test, err):
+        super().addFailure(test, err)
+        self.rows.append({'test': test._testMethodName, 'outcome': 'FAIL'})
+
+    def addError(self, test, err):
+        super().addError(test, err)
+        self.rows.append({'test': test._testMethodName, 'outcome': 'ERROR'})
+
+    def addSubTest(self, test, subtest, err):
+        super().addSubTest(test, subtest, err)
+        if err is not None:
+            self.rows.append({'test': test._testMethodName, 'outcome': 'FAIL'})
+
+
+def emit_summary(result):
+    lines = ['TRACE_TEST_SUMMARY=' + json.dumps(result.rows, separators=(',', ':'))]
+    if DEFAULT_DIAGNOSTIC is not None:
+        lines.append('DEFAULT_ISOLATION_TRACE_DIAGNOSTIC=' + json.dumps(DEFAULT_DIAGNOSTIC, sort_keys=True))
+    text = '\n'.join(lines) + '\n'
+    print(text, end='', flush=True)
+    if os.environ.get('GATE_ROOT'):
+        path = Path(os.environ['GATE_ROOT']) / 'trace-test-summary.txt'
+        fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(fd, 'w') as output:
+            output.write(text)
+
+
 if __name__ == '__main__':
-    unittest.main()
+    program = unittest.main(testRunner=unittest.TextTestRunner(resultclass=SummaryResult), exit=False)
+    emit_summary(program.result)
+    sys.exit(not program.result.wasSuccessful())

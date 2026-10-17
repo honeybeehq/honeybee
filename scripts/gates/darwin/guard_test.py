@@ -23,6 +23,27 @@ from guard import DIRS, PROTECTED, Refusal, absolute_compiler_jobs, close_socket
 
 
 class GuardTests(unittest.TestCase):
+    def test_body_exit_and_marker_are_primary_when_git_rows_never_ran(self):
+        with tempfile.TemporaryDirectory() as temporary, patch.dict(guard.GIT_CONTROLS, {}, clear=True), patch.dict(guard.GIT_AUDITS, {}, clear=True):
+            root = Path(temporary).resolve()
+            (root / 'workload.log').write_text('earlier unit failed\nWORKLOAD_NONZERO_REASON=phase:body exit:1\n')
+            guard.GIT_CONTROLS[str(root)] = {'before': {}}
+            with patch('guard.git_boundary.snapshot', return_value={}):
+                outcome = guard.workload_outcome(root, 1, 1, None, False, True)
+            guard.write_json(root / 'receipt.json', outcome, root)
+            receipt = json.loads((root / 'receipt.json').read_text())
+            self.assertEqual(receipt['exit'], 1)
+            self.assertEqual(receipt['reason'], 'phase:body exit:1')
+            self.assertEqual(receipt['workloadExit'], 1)
+            self.assertEqual(receipt['workloadNonzeroReason'], 'phase:body exit:1')
+            self.assertEqual(receipt['gitBoundary']['secondaryToWorkloadExit'], 1)
+            self.assertIn('git-boundary-workload.json', receipt['gitBoundary']['error'])
+            self.assertTrue(receipt['secondaryNotes'])
+            with patch('guard.git_boundary.snapshot', return_value={}):
+                success_body = guard.workload_outcome(root, 0, 0, None, False, True)
+            self.assertEqual(success_body['exit'], 95)
+            self.assertEqual(success_body['reason'], 'Git boundary audit failed')
+
     def test_git_config_exception_is_exact_and_fixture_only(self):
         env = {'PATH': '/usr/bin:/bin', 'HOME': str(self.base)}
         result = subprocess.CompletedProcess([], 0, '0' * 40 + '\n', '')

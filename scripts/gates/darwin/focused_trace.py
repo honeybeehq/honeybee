@@ -1,6 +1,7 @@
 import json
 import base64
 import os
+import stat
 from pathlib import Path
 
 import focused_native
@@ -30,6 +31,9 @@ class Trace:
             entries[str(path)] = {'role': row['role'], 'sha256': row['sha256']}
         self.policy = {'root': str(workspace.parent), 'node': node, 'entries': entries, 'rowId': mediation.row_id if mediation else None, 'mediationRequired': mediation is not None, 'preloader': str(preloader), 'preloaderSha256': focused_native.digest(preloader), 'files': [str(workspace / row['path']) for row in audit['files'] if row['siblingClosure']], 'forbiddenEntries': [str(workspace / 'scripts' / ('build-' + kind + '.mjs')) for kind in ('delivery-file', 'peercred')], 'modules': str(workspace / 'node_modules'), 'native': artifacts}
         self.read_fd, self.write_fd = os.pipe()
+        os.set_inheritable(self.write_fd, False)
+        transport = os.fstat(self.write_fd)
+        self.policy['traceTransport'] = {'dev': str(transport.st_dev & ((1 << 64) - 1)), 'ino': str(transport.st_ino & ((1 << 64) - 1)), 'type': str(stat.S_IFMT(transport.st_mode))}
         os.set_blocking(self.read_fd, False)
 
     def environment(self, env):
