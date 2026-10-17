@@ -7,24 +7,33 @@ import focused_native
 
 
 class Trace:
-    def __init__(self, root, workspace, node, audit, native):
+    def __init__(self, root, workspace, node, audit, native, mediation=None):
+        self.mediation = mediation
         self.records = []
         self.buffer = b''
         self.frames = {}
         self.total = 0
         self.root_pid = None
         self.node_pids = set()
+        self.node_observations = []
         preloader = focused_native.confined(workspace / 'scripts/gates/darwin/focused-preload.mjs', root)
         artifacts = {}
         for kind, state in native.items():
             path = workspace / 'dist/v2' / kind / 'darwin-arm64' / (kind + '.node')
             info = state['files'][str(path.relative_to(root))]
             artifacts[str(path)] = {'sha256': info['sha256'], 'inode': str(info['ino']), 'mtimeNs': str(info['mtimeNs'])}
-        self.policy = {'root': str(root), 'node': node, 'preloader': str(preloader), 'preloaderSha256': focused_native.digest(preloader), 'files': [str(workspace / row['path']) for row in audit['files'] if row['siblingClosure']], 'forbiddenEntries': [str(workspace / 'scripts' / ('build-' + kind + '.mjs')) for kind in ('delivery-file', 'peercred')], 'modules': str(workspace / 'node_modules'), 'native': artifacts}
+        entries = {}
+        for row in audit['nodeEntries']:
+            path = focused_native.confined(workspace / row['path'], root)
+            if focused_native.digest(path) != row['sha256']:
+                raise ValueError('Node entry differs from reviewed SHA pin')
+            entries[str(path)] = {'role': row['role'], 'sha256': row['sha256']}
+        self.policy = {'root': str(workspace.parent), 'node': node, 'entries': entries, 'rowId': mediation.row_id if mediation else None, 'mediationRequired': mediation is not None, 'preloader': str(preloader), 'preloaderSha256': focused_native.digest(preloader), 'files': [str(workspace / row['path']) for row in audit['files'] if row['siblingClosure']], 'forbiddenEntries': [str(workspace / 'scripts' / ('build-' + kind + '.mjs')) for kind in ('delivery-file', 'peercred')], 'modules': str(workspace / 'node_modules'), 'native': artifacts}
         self.read_fd, self.write_fd = os.pipe()
         os.set_blocking(self.read_fd, False)
 
     def environment(self, env):
+        env = self.mediation.environment(env) if self.mediation else env
         return dict(env, SCG_EXEC_TRACE_FD=str(self.write_fd), SCG_EXEC_POLICY=json.dumps(self.policy, separators=(',', ':')))
 
     def command(self, argv):
@@ -93,6 +102,12 @@ class Trace:
         allowed = {self.policy['node'], '/usr/bin/sandbox-exec'}
         forbidden = [row for row in self.records if row.get('kind') in ('spawn', 'argv-instrumented') and row.get('executable') not in allowed]
         invalid_native = [row for row in self.records if row.get('kind') == 'dlopen' and (row.get('artifact') not in self.policy['native'] or row.get('controllerSha256') != self.policy['native'][row['artifact']]['sha256'])]
-        result = {'ok': not self.buffer and not self.frames and bool(expected) and expected.issubset(hellos) and not missing_launches and not forbidden and not invalid_native and not any(row.get('kind') == 'refused' for row in self.records), 'preloaderSha256': self.policy['preloaderSha256'], 'expectedNodePids': sorted(expected), 'helloPids': sorted(hellos), 'missingHelloPids': sorted(expected - hellos), 'missingLaunchHellos': sorted(str(value) for value in missing_launches), 'records': self.records, 'addedFlag': ['--import', self.policy['preloader']], 'nativeArtifacts': self.policy['native'], 'transport': 'inherited fd; atomic frames at most 512 bytes; preloader opens no files or trace files'}
+        uncovered = []
+        for sample in self.node_observations:
+            birth = sample['birth']
+            earliest = int(birth[2]) * 1000 + int(birth[3]) // 1000
+            if not any(row.get('kind') == 'hello' and row['pid'] == int(birth[0]) and type(row.get('emittedAtMs')) is int and row['emittedAtMs'] >= earliest for row in self.records):
+                uncovered.append(sample)
+        result = {'ok': not self.buffer and not self.frames and bool(expected) and expected.issubset(hellos) and not missing_launches and not forbidden and not invalid_native and not uncovered and not any(row.get('kind') == 'refused' for row in self.records), 'preloaderSha256': self.policy['preloaderSha256'], 'sampledNodeExecutionCount': len(self.node_observations), 'uncoveredNodeExecutions': uncovered, 'expectedNodePids': sorted(expected), 'helloPids': sorted(hellos), 'missingHelloPids': sorted(expected - hellos), 'missingLaunchHellos': sorted(str(value) for value in missing_launches), 'records': self.records, 'addedFlag': ['--import', self.policy['preloader']], 'nativeArtifacts': self.policy['native'], 'transport': 'inherited fd; atomic frames at most 512 bytes; preloader opens no files or trace files'}
         os.close(self.read_fd)
         return result

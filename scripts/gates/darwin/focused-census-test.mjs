@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, copyFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -40,6 +41,53 @@ try {
   });
   test('module factories, process bindings and workers are capabilities', () => {
     for (const text of ["import {createRequire as cr} from 'node:module'; cr(import.meta.url);", "const p=process; p['binding']('spawn_sync');", "import {Worker as W} from 'node:worker_threads'; new W('entry.js');"]) assert(analyze(ts, 'entry.ts', text).capabilities.length > 0);
+  });
+  test('workerData and parentPort remain data through properties and optional chains', () => {
+    const text = ["import {workerData,parentPort} from 'node:worker_threads';", 'const data=workerData as PoolWorkerData;', 'const sha=data.request.sha ?? resolveCellBase(data.request.originRepo)?.sha;', 'parentPort?.postMessage({sha});'].join('\n');
+    const result = analyze(ts, 'entry.ts', text);
+    assert.deepEqual(result.capabilities, [{line: 1, module: 'node:worker_threads', kind: 'import'}]);
+    assert.deepEqual(result.calls, []);
+    const namespace = analyze(ts, 'entry.ts', "import wt from 'node:worker_threads';\nconst data=wt.workerData;\nconst sha=data?.request?.sha ?? 'none';\nwt.parentPort.postMessage(sha);");
+    assert.deepEqual(namespace.capabilities, [{line: 1, module: 'node:worker_threads', kind: 'import'}]);
+    assert.deepEqual(namespace.calls, []);
+  });
+  test('Worker constructors and destructured aliases remain capabilities', () => {
+    for (const text of ["import {Worker} from 'node:worker_threads'; new Worker('reader.mjs');", "import * as wt from 'node:worker_threads'; const {Worker: W}=wt; new W('reader.mjs');", "import * as wt from 'node:worker_threads'; let W; ({Worker:W}=wt); new W('reader.mjs');", "import wt from 'node:worker_threads'; new wt.Worker('reader.mjs');"]) {
+      assert(analyze(ts, 'entry.ts', text).calls.some(row => row.module === 'node:worker_threads'));
+    }
+    assert.equal(validate(ts, root, audit(root, "import * as wt from 'node:worker_threads'; const W=wt[name];")).error?.type, 'CensusFailure');
+  });
+  test('cluster startup exports are capabilities and cluster state is data', () => {
+    const text = "import cluster,{isPrimary,isWorker,worker} from 'node:cluster';\nconst state=isPrimary || isWorker; const pid=worker?.process?.pid;\ncluster.worker?.send({state});\ncluster.fork(); cluster.setupPrimary({}); new cluster.Worker({});";
+    const result = analyze(ts, 'entry.ts', text);
+    assert(!result.capabilities.some(row => [2,3].includes(row.line)));
+    assert.equal(result.calls.length, 3);
+  });
+  test('module loader mutation exports remain sensitive and unknown exports fail', () => {
+    for (const text of ["import {register} from 'node:module'; register('loader.mjs');", "import {Module} from 'node:module'; Module._load('reader.mjs');", "import Module from 'node:module'; const handlers=Module._extensions;", "import Module from 'node:module'; const load=Module.prototype.require;", "import {syncBuiltinESMExports} from 'node:module'; syncBuiltinESMExports();"]) {
+      assert(analyze(ts, 'entry.ts', text).capabilities.some(row => row.kind === 'reference' || row.kind === 'binding'));
+    }
+    for (const text of ["import {unreviewed} from 'node:module';", "import Module from 'node:module'; Module.unreviewed();", "import Module from 'node:module'; const method=Module[name];"]) {
+      assert.equal(validate(ts, root, audit(root, text)).error?.type, 'CensusFailure');
+    }
+  });
+  test('re-exported builtin namespaces preserve data and loader distinctions', () => {
+    writeFileSync(join(root, 'facade.ts'), "export * from 'node:worker_threads';");
+    let data = audit(root, "import {workerData,Worker} from './facade.ts';\nconst sha=workerData.request.sha ?? 'none';\nnew Worker('reader.mjs');");
+    data.files.push({path: 'facade.ts', siblingClosure: true});
+    let result = validate(ts, root, data);
+    assert(!result.error);
+    assert(!result.capabilityGroups.some(row => row.path === 'entry.ts' && row.line === 2));
+    assert(result.capabilityGroups.some(row => row.path === 'entry.ts' && row.line === 3));
+    writeFileSync(join(root, 'facade.ts'), "export * from 'node:module';");
+    data = audit(root, "import {unreviewed} from './facade.ts';");
+    data.files.push({path: 'facade.ts', siblingClosure: true});
+    assert.equal(validate(ts, root, data).error?.type, 'CensusFailure');
+    writeFileSync(join(root, 'facade.ts'), "export {createRequire as default} from 'node:module';");
+    data = audit(root, "import cr from './facade.ts'; const req=cr(import.meta.url); req(variable);");
+    data.files.push({path: 'facade.ts', siblingClosure: true});
+    result = validate(ts, root, data);
+    assert(result.errors.some(value => value.includes('nonliteral module edge')));
   });
   test('re-exported primitive alias reaches caller census', () => {
     writeFileSync(join(root, 'facade.ts'), "export {spawn as launch} from 'node:child_process';");
@@ -175,6 +223,29 @@ try {
     assert.equal(validate(ts, root, data).ok, false);
     data.entryPins = [];
     assert.equal(validate(ts, root, data).ok, false);
+  });
+  test('Node reader pin must equal the cited literal URL and closure hash', () => {
+    const text = "const reader=new URL('./reader.mjs', import.meta.url);\nconst wrapper='sandbox-exec';";
+    const data = audit(root, text, {entryPins: [{path: 'entry.ts', line: 1, context: text.split('\n')[0], role: 'reader-entry'}, {path: 'entry.ts', line: 2, context: text.split('\n')[1], role: 'production-sandbox-exec'}]});
+    for (const [name, content] of [['entry.ts', text], ['reader.mjs', ''], ['host.ts', '']]) {
+      writeFileSync(join(root, name), content);
+      const pin = {path: name, siblingClosure: true, sha256: createHash('sha256').update(content).digest('hex')};
+      if (name === 'entry.ts') data.files[0] = pin; else data.files.push(pin);
+    }
+    data.nodeEntries = [['test-runner', 'entry.ts'], ['reader', 'reader.mjs'], ['runner-host-main', 'host.ts']].map(([role, path]) => ({role, path, sha256: data.files.find(row => row.path === path).sha256}));
+    assert.equal(validate(ts, root, data).ok, true);
+    data.nodeEntries[1] = {...data.nodeEntries[1], path: 'host.ts'};
+    assert.equal(validate(ts, root, data).ok, false);
+    data.nodeEntries[1] = {role: 'reader', path: 'reader.mjs', sha256: '0'.repeat(64)};
+    assert.equal(validate(ts, root, data).ok, false);
+  });
+  test('network modules and unshadowed network globals require citations', () => {
+    const result = analyze(ts, 'network.ts', "import * as net from 'node:net';\nnet.connect(443);\nconst request=fetch;\nrequest('https://fixture.invalid');\nnew WebSocket('wss://fixture.invalid');\nglobalThis.fetch('https://fixture.invalid');");
+    for (const module of ['node:net', 'global:fetch', 'global:WebSocket']) assert.ok(result.capabilities.some(row => row.module === module));
+    const aliases = analyze(ts, 'global-aliases.ts', "const {fetch:request}=globalThis; request('https://fixture.invalid'); const g=global; new g.WebSocket('wss://fixture.invalid');");
+    assert.ok(aliases.capabilities.some(row => row.module === 'global:fetch'));
+    assert.ok(aliases.capabilities.some(row => row.module === 'global:WebSocket'));
+    assert.equal(analyze(ts, 'shadow.ts', 'function fixture(fetch, WebSocket) { fetch(); new WebSocket(); }').capabilities.length, 0);
   });
   test('ESM conditional exports and legacy main match Node import resolution', () => {
     for (const name of ['ajv', 'jsonc-parser', 'smol-toml']) {

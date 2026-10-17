@@ -16,6 +16,28 @@ def native_edges(text):
     return [{'kind': 'native-artifact', 'path': focused_audit.FILES[1], 'line': 1, 'context': text, 'artifact': artifact, 'sha256Source': 'controller-manifest'} for artifact in sorted(focused_audit.NATIVE_ARTIFACTS)]
 
 
+def gate_pins(workspace):
+    pins = {}
+    for key, name in (('manifestSha256', 'focused-manifest.json'), ('preloaderSha256', 'focused-preload.mjs')):
+        path = workspace / 'scripts/gates/darwin' / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text('fixture')
+        pins[key] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return pins
+
+
+def node_entries(workspace, files):
+    rows = []
+    for role, name in tuple(focused_audit.NODE_ENTRIES.items()):
+        path = workspace / name
+        if not path.exists():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text('fixture')
+            files.append({'path': name, 'sha256': hashlib.sha256(path.read_bytes()).hexdigest(), 'siblingClosure': True})
+        rows.append({'role': role, 'path': name, 'sha256': hashlib.sha256(path.read_bytes()).hexdigest()})
+    return rows
+
+
 class AuditTests(unittest.TestCase):
     def test_disabled_build_requires_pinned_prior_refusal(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -31,6 +53,7 @@ class AuditTests(unittest.TestCase):
             row = {'path': focused_audit.FILES[1], 'line': 2, 'context': call, 'executable': 'build-refused-prebuilt-only', 'receiver': 'before-hook build path is dominated by prebuilt refusal', 'manualReview': True, 'prebuiltGuard': {'path': focused_audit.FILES[1], 'line': 1, 'context': guard}}
             audit = workspace / 'audit.json'
             data = {'version': 1, 'files': files, 'spawns': [row], 'packages': [], 'nativeEdges': native_edges(guard), 'capabilityReferences': [], 'entryPins': entry_pins(files, {focused_audit.FILES[1]: guard})}
+            data.update(gatePins=gate_pins(workspace), nodeEntries=node_entries(workspace, files))
             audit.write_text(json.dumps(data))
             focused_audit.validate(workspace, 'audit.json')
             row['prebuiltGuard']['context'] = 'wrong guard'
@@ -50,8 +73,22 @@ class AuditTests(unittest.TestCase):
             spawns = [{'path': path, 'line': 1, 'context': 'spawn(process.execPath, []);', 'executable': 'node', 'receiver': 'node:child_process spawn; process.execPath is pinned Node', 'manualReview': True} for path in focused_audit.FILES]
             audit = workspace / 'audit.json'
             data = {'version': 1, 'files': files, 'spawns': spawns, 'packages': [], 'nativeEdges': native_edges('spawn(process.execPath, []);'), 'capabilityReferences': [], 'entryPins': entry_pins(files, {focused_audit.FILES[1]: 'spawn(process.execPath, []);'})}
+            data.update(gatePins=gate_pins(workspace), nodeEntries=node_entries(workspace, files))
             audit.write_text(json.dumps(data))
-            self.assertEqual(len(focused_audit.validate(workspace, 'audit.json')['files']), 3)
+            self.assertEqual(len(focused_audit.validate(workspace, 'audit.json')['files']), 5)
+            correct_gate = dict(data['gatePins'])
+            data['gatePins']['preloaderSha256'] = '0' * 64
+            audit.write_text(json.dumps(data))
+            with self.assertRaisesRegex(ValueError, 'gate pin drift'):
+                focused_audit.validate(workspace, 'audit.json')
+            data['gatePins'] = correct_gate
+            correct_nodes = list(data['nodeEntries'])
+            for nodes in ([], correct_nodes[:2], [correct_nodes[0], correct_nodes[0], correct_nodes[2]], [dict(correct_nodes[0], sha256='0' * 64), *correct_nodes[1:]]):
+                data['nodeEntries'] = nodes
+                audit.write_text(json.dumps(data))
+                with self.subTest(nodes=nodes), self.assertRaises(ValueError):
+                    focused_audit.validate(workspace, 'audit.json')
+            data['nodeEntries'] = correct_nodes
             edges = data['nativeEdges']
             for bad in ([], edges[:1], [edges[0], edges[0]], [edges[0], dict(edges[1], artifact='wrong.node')], [*edges, edges[0]]):
                 data['nativeEdges'] = bad

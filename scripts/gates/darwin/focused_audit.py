@@ -9,6 +9,7 @@ EXECUTABLES = {'node', 'production-sandbox-exec', 'production-wrapWithSandbox', 
 PACKAGES = {'ajv/dist/2020.js', 'jsonc-parser', 'smol-toml'}
 SHA = re.compile(r'[0-9a-f]{64}')
 NATIVE_ARTIFACTS = {'src/dist/v2/delivery-file/darwin-arm64/delivery-file.node', 'src/dist/v2/peercred/darwin-arm64/peercred.node'}
+NODE_ENTRIES = {'reader': 'v2/daemon/tests/fixtures/delivery-file-reader.mjs', 'test-runner': FILES[1], 'runner-host-main': 'v2/driver-hsr/src/runner-host-main.ts'}
 
 
 def exact_keys(value, keys):
@@ -28,10 +29,18 @@ def pinned_path(workspace, relative):
     return full
 
 
+def validate_gate_pins(workspace, pins):
+    exact_keys(pins, ('manifestSha256', 'preloaderSha256'))
+    for key, name in (('manifestSha256', 'focused-manifest.json'), ('preloaderSha256', 'focused-preload.mjs')):
+        expected = pins[key]
+        if not isinstance(expected, str) or not SHA.fullmatch(expected) or hashlib.sha256(pinned_path(workspace, 'scripts/gates/darwin/' + name).read_bytes()).hexdigest() != expected:
+            raise ValueError('reviewed gate pin drift')
+
+
 def validate(workspace, audit_path):
     audit_file = pinned_path(workspace, audit_path)
     data = json.loads(audit_file.read_text())
-    exact_keys(data, ('version', 'files', 'spawns', 'packages', 'capabilityReferences', 'nativeEdges', 'entryPins'))
+    exact_keys(data, ('version', 'files', 'spawns', 'packages', 'capabilityReferences', 'nativeEdges', 'entryPins', 'gatePins', 'nodeEntries'))
     if data['version'] != 1 or not isinstance(data['files'], list) or not isinstance(data['spawns'], list):
         raise ValueError('unsupported audit schema')
     files = {}
@@ -63,6 +72,20 @@ def validate(workspace, audit_path):
             closure.add(row['path'])
     if not set(FILES).issubset(files):
         raise ValueError('audit must pin all three manifest files')
+    validate_gate_pins(workspace, data['gatePins'])
+    node_roles = set()
+    if not isinstance(data['nodeEntries'], list) or len(data['nodeEntries']) != 3:
+        raise ValueError('exactly three Node entry roles required')
+    for row in data['nodeEntries']:
+        exact_keys(row, ('role', 'path', 'sha256'))
+        if row['role'] not in NODE_ENTRIES or row['role'] in node_roles or row['path'] not in closure:
+            raise ValueError('invalid or duplicate Node entry role')
+        if row['path'] != NODE_ENTRIES[row['role']]:
+            raise ValueError('Node entry role path mismatch')
+        pin = next(item for item in data['files'] if item['path'] == row['path'])
+        if row['sha256'] != pin['sha256']:
+            raise ValueError('Node entry hash differs from closure pin')
+        node_roles.add(row['role'])
     roles = set()
     if not isinstance(data['entryPins'], list):
         raise ValueError('entryPins array required')

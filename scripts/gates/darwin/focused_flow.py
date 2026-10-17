@@ -1,3 +1,4 @@
+import ipaddress
 import json
 import os
 from pathlib import Path
@@ -10,7 +11,10 @@ import time
 import focused_audit
 import focused_diagnostics
 import focused_native
+import focused_mediation
 import focused_sentinel
+import focused_seal
+import focused_roles
 import focused_tap
 import focused_trace
 
@@ -58,8 +62,24 @@ def validate_native_edges(edges):
         raise ValueError('flow nativeEdges must name exactly the two distinct approved artifacts')
 
 
-def supervise(api, root, workspace, env, argv, tag, timeout=600, trace=None):
-    helper = root / 'scope'
+def connection_observation(helper, birth):
+    observed = subprocess.run([str(helper), 'connections', *birth], capture_output=True, text=True, timeout=2)
+    row = {'birth': birth, 'timestamp': time.time(), 'exit': observed.returncode, 'connections': []}
+    if observed.returncode == 3:
+        return row
+    if observed.returncode != 0:
+        raise ValueError('unobserved own connected sockets')
+    for line in observed.stdout.splitlines():
+        parts = line.split()
+        if len(parts) != 4 or parts[1] not in ('TCP', 'UDP') or not parts[0].isdigit() or not parts[3].isdigit() or not 0 < int(parts[3]) <= 65535:
+            raise ValueError('malformed own connected socket observation')
+        address = ipaddress.ip_address(parts[2])
+        row['connections'].append({'fd': int(parts[0]), 'protocol': parts[1], 'remoteAddress': str(address), 'remotePort': int(parts[3]), 'loopback': address.is_loopback})
+    return row
+
+
+def supervise(api, root, workspace, env, argv, tag, timeout=600, trace=None, sibling=False, mediation=None):
+    helper = mediation.helper if mediation is not None else root / 'scope'
     read_fd, release_fd = os.pipe()
     tracked = {}
     exited = set()
@@ -67,19 +87,25 @@ def supervise(api, root, workspace, env, argv, tag, timeout=600, trace=None):
     signals = []
     reason = None
     executable_samples = []
+    connection_samples = []
     if trace is not None:
         env = trace.environment(env)
         argv = trace.command(argv)
     log = root / 'logs' / (tag + '.tap')
     with log.open('xb') as output:
         try:
-            proc = subprocess.Popen([sys.executable, '-B', str(workspace / 'scripts/gates/darwin/start_wait.py'), str(read_fd), *argv], pass_fds=(read_fd,) + ((trace.write_fd,) if trace is not None else ()), cwd=workspace, env=env, stdout=output, stderr=subprocess.STDOUT)
+            proc = subprocess.Popen([sys.executable, '-B', str(workspace / 'scripts/gates/darwin/start_wait.py'), str(read_fd), *argv], pass_fds=(read_fd,) + ((trace.write_fd,) if trace is not None else ()) + ((mediation.request_fd, mediation.response_fd, mediation.lock_read_fd, mediation.lock_write_fd) if mediation is not None and trace is not None else ()), cwd=workspace, env=env, stdout=output, stderr=subprocess.STDOUT, start_new_session=sibling)
         except OSError:
             os.close(read_fd)
             os.close(release_fd)
             if trace is not None:
                 trace.finish()
+            if mediation is not None:
+                mediation.close()
             raise
+        if mediation is not None:
+            mediation.roles = focused_roles.Roles(proc.pid, mediation.entries, trace is not None)
+            mediation.parent_close()
         if trace is not None:
             trace.root_pid = proc.pid
             trace.parent_close()
@@ -103,10 +129,14 @@ def supervise(api, root, workspace, env, argv, tag, timeout=600, trace=None):
                     samples.append(sample)
                     if sample.get('error') or any(not listener['loopback'] for listener in sample['listeners']):
                         raise ValueError('focused listener observation failed or non-loopback listener')
-                if trace is not None:
+                if sibling:
                     for key, row in tracked.items():
                         if key in exited:
                             continue
+                        connected = connection_observation(helper, row)
+                        connection_samples.append(connected)
+                        if any(not item['loopback'] for item in connected['connections']):
+                            raise ValueError('non-loopback own connection')
                         observed = subprocess.run([str(helper), 'executable', *row], capture_output=True, text=True, timeout=2)
                         executable = observed.stdout.strip()
                         executable_samples.append({'birth': row, 'timestamp': time.time(), 'exit': observed.returncode, 'executable': executable})
@@ -114,10 +144,35 @@ def supervise(api, root, workspace, env, argv, tag, timeout=600, trace=None):
                             continue
                         if observed.returncode != 0:
                             raise ValueError('unresolved own executable observation')
-                        if executable == env.get('SCG_NODE_BIN', trace.policy['node']):
-                            trace.node_pids.add(int(row[0]))
+                        if executable == env['SCG_NODE_BIN']:
+                            if mediation is not None:
+                                detail = subprocess.run([str(helper), 'node-observation', *row, env['SCG_NODE_BIN']], capture_output=True, text=True, timeout=2)
+                                executable_samples[-1]['nodeObservation'] = {'exit': detail.returncode, 'stdout': detail.stdout, 'diagnostic': detail.stderr}
+                                if detail.returncode != 0:
+                                    raise ValueError('own Node argv/cwd/sandbox observation unresolved: ' + detail.stderr.strip())
+                                observation = focused_mediation.focused_profile.parse_node_observation(detail.stdout, env['SCG_NODE_BIN'])
+                                cwd = Path(observation['cwd'])
+                                if not (cwd == workspace.parent or workspace.parent in cwd.parents) or cwd.resolve(strict=True) != cwd:
+                                    raise ValueError('own Node cwd outside sealed workspace boundary')
+                                role = mediation.roles.observe(row, observation['entry'])
+                                executable_samples[-1]['roleObservation'] = observation
+                                if role == 'reader':
+                                    mediation.observe_reader(helper, row, observation)
+                            if trace is not None:
+                                trace.node_pids.add(int(row[0]))
+                                trace.node_observations.append(executable_samples[-1])
                         elif executable != '/usr/bin/sandbox-exec' and not (int(row[0]) == proc.pid and executable == str(Path(sys.executable).resolve())):
                             raise ValueError('own executable outside sibling allowlist')
+                if mediation is not None and trace is not None:
+                    for event in trace.records:
+                        if event.get('kind') == 'hello' and event.get('role') == 'reader' and event.get('entry') == mediation.reader:
+                            for candidate in tracked.values():
+                                if int(candidate[0]) == event['pid']:
+                                    mediation.recipient_births[tuple(candidate)] = candidate
+                    approved = mediation.approved_launches(trace.records, tracked)
+                    mediation.drain(tracked, lambda request, caller: mediation.signal(request, caller, tracked, approved))
+                if mediation is not None:
+                    mediation.check_deaths(trace is not None)
                 if time.monotonic() - started > timeout:
                     raise ValueError('focused hard timeout')
                 time.sleep(0.05)
@@ -160,7 +215,23 @@ def supervise(api, root, workspace, env, argv, tag, timeout=600, trace=None):
                 reason = reason or 'focused root remains'
                 if not tracked:
                     api.LEFTOVER_CHILDREN.append({'pid': proc.pid, 'birth': None, 'reason': 'birth unobserved, not fenced'})
-    result = {'argv': argv, 'environmentKeys': sorted(env), 'cwd': str(workspace), 'timeoutSeconds': timeout, 'exit': proc.returncode, 'reason': reason, 'retainedBirths': list(tracked.values()), 'listenerSamples': samples, 'signals': signals, 'log': str(log.relative_to(root))}
+    if sibling:
+        try:
+            focused_seal.require_quiescent(root)
+        except focused_seal.BusyRoot as error:
+            reason = reason or 'same-uid run-root process remains after fenced cleanup'
+            for pid in sorted({row['pid'] for row in error.rows}):
+                known = None
+                for birth in tracked.values():
+                    if int(birth[0]) == pid:
+                        status = bounded_helper([str(helper), 'status', *birth])
+                        if status.returncode == 0:
+                            known = birth
+                if not any(int(row['pid']) == pid for row in api.LEFTOVER_CHILDREN):
+                    api.LEFTOVER_CHILDREN.append({'pid': pid, 'birth': known, 'reason': 'same-uid root-use candidate; birth unobserved, not fenced' if known is None else 'retained birth still holds run-root after fenced cleanup'})
+        except (ValueError, OSError, subprocess.SubprocessError) as error:
+            reason = reason or 'post-workload root-use observation unresolved: ' + str(error)
+    result = {'argv': argv, 'environmentKeys': sorted(env), 'cwd': str(workspace), 'timeoutSeconds': timeout, 'newSession': sibling, 'executableSamples': executable_samples, 'connectionSamples': connection_samples, 'exit': proc.returncode, 'reason': reason, 'retainedBirths': list(tracked.values()), 'listenerSamples': samples, 'signals': signals, 'log': str(log.relative_to(root))}
     if trace is not None:
         try:
             result['executionTrace'] = trace.finish()
@@ -169,6 +240,14 @@ def supervise(api, root, workspace, env, argv, tag, timeout=600, trace=None):
         result['executableSamples'] = executable_samples
         if not result['executionTrace']['ok']:
             result['reason'] = result['reason'] or 'execution trace or Node hello coverage failed'
+    if mediation is not None:
+        try:
+            result['nodeEntryRoles'] = mediation.roles.finish()
+            result['recipientMediation'] = mediation.finish(trace is not None)
+        except (ValueError, OSError, subprocess.SubprocessError) as error:
+            result['recipientMediation'] = {'ok': False, 'error': str(error), 'requests': mediation.requests, 'profileApprovals': [record['state'] for record in mediation.records.values()]}
+            mediation.close()
+            result['reason'] = result['reason'] or 'recipient profile or signal mediation failed'
     api.write_json(root / (tag + '-process.json'), result, root)
     return result, log
 
@@ -180,6 +259,8 @@ def run(api, root, workspace, env, tools, real_home):
         raise api.Refusal('focused manifest schema or file list changed')
     audit = focused_audit.validate(workspace, 'scripts/gates/darwin/focused-sibling-audit.json')
     validate_native_edges(audit['nativeEdges'])
+    if manifest.get('recipientPolicy') != focused_mediation.focused_profile.TEMPLATE:
+        raise api.Refusal('focused recipient policy template mismatch')
     focused_diagnostics.validate_ready()
     api.write_json(root / 'focused-audit.json', audit, root)
     compiler_hash = focused_native.digest(root / 'compiler.sb')
@@ -228,8 +309,16 @@ def run(api, root, workspace, env, tools, real_home):
         resolved_edges.append(dict(edge, sha256=state['sha256'], inode=state['ino'], mtimeNs=state['mtimeNs']))
     api.write_json(root / 'focused-native-edges.json', resolved_edges, root)
     outcomes = []
+    sealed_context = None
     for mode in ('outer', 'sibling-instrumented', 'sibling-production'):
-        for number, item in enumerate(manifest['files']):
+        if mode != 'outer' and sealed_context is None:
+            focused_seal.require_quiescent(root)
+            sealed_context = focused_seal.prepare(root, workspace, env['SCG_NODE_BIN'], audit, controls, before_artifact, dependencies)
+            sealed_artifacts = artifacts(sealed_context[1], root)
+            sealed_dependencies = dependency_state(sealed_context[1])
+            sealed_node_digest = focused_native.digest(Path(sealed_context[2]))
+        selected = manifest['files'] if mode == 'outer' else [dict(item, sibling=[name]) for item in manifest['files'] for name in item['sibling']]
+        for number, item in enumerate(selected):
             names = item['outer' if mode == 'outer' else 'sibling']
             if not names:
                 continue
@@ -244,23 +333,42 @@ def run(api, root, workspace, env, tools, real_home):
             if artifacts(workspace, root) != before_artifact:
                 raise api.Refusal('native artifact changed before focused launch')
             sibling = mode != 'outer'
-            child_env = api.environment(root, env['SCG_NODE_BIN']) if sibling else dict(env)
+            active_workspace = sealed_context[1] if sibling else workspace
+            active_node = sealed_context[2] if sibling else env['SCG_NODE_BIN']
+            active_artifacts = sealed_artifacts if sibling else before_artifact
+            if sibling:
+                focused_seal.require_quiescent(root)
+                fresh = sealed_context[0] / (('i' if mode == 'sibling-instrumented' else 'p') + str(number))
+                fresh.mkdir(mode=0o700)
+                child_env = api.environment(fresh, active_node)
+                for key in api.DIRS:
+                    Path(child_env[key]).mkdir(mode=0o700, parents=True, exist_ok=True)
+                child_env['SCG_NODE_BIN'] = active_node
+                if focused_native.digest(focused_native.confined(Path(active_node), root)) != sealed_node_digest or dependency_state(active_workspace) != sealed_dependencies or artifacts(active_workspace, root) != sealed_artifacts:
+                    raise api.Refusal('sealed sibling inputs changed')
+                for record in audit['files']:
+                    if record['siblingClosure'] and focused_native.digest(focused_audit.pinned_path(active_workspace, record['path'])) != record['sha256']:
+                        raise api.Refusal('sealed closure source drift')
+            else:
+                child_env = dict(env)
+            focused_audit.validate_gate_pins(active_workspace, audit['gatePins'])
             child_env['SCG_DELIVERY_FILE_PREBUILT_ONLY'] = '1'
             if sibling:
-                child_env['PATH'] = str(Path(env['SCG_NODE_BIN']).parent) + ':/usr/bin:/bin'
+                child_env['PATH'] = str(Path(active_node).parent) + ':/usr/bin:/bin'
                 api.validate(root, child_env, real_home)
-                before = focused_sentinel.snapshot(real_home, ('Library', *api.PROVIDERS))
-                before_agents = api.launchagents(real_home)
+                before = focused_sentinel.snapshot(real_home)
+                before_agents = before['Library/LaunchAgents'] if before['Library/LaunchAgents'].get('unobservable') else api.launchagents(real_home)
                 api.write_json(root / ('focused-home-before-' + mode + '.json'), before, root)
                 api.write_json(root / ('focused-launchagents-before-' + mode + '.json'), before_agents, root)
             pattern = '^(?:' + '|'.join(re.escape(name) for name in names) + ')$'
-            command = [env['SCG_NODE_BIN'], '--test', '--test-concurrency=1', '--test-reporter=tap', '--test-name-pattern=' + pattern, item['path']]
+            command = [active_node, '--test', '--test-concurrency=1', '--test-reporter=tap', '--test-name-pattern=' + pattern, item['path']]
             if mode == 'sibling-instrumented':
                 command.insert(2, '--test-isolation=none')
             verdict = {'ok': False, 'file': item['path'], 'mode': mode, 'harnessOutsideOuterSeatbelt': sibling, 'excludedNotProof': item['excluded']}
             try:
-                trace = focused_trace.Trace(root, workspace, env['SCG_NODE_BIN'], audit, before_artifact) if mode == 'sibling-instrumented' else None
-                result, log = supervise(api, root, workspace, child_env, command if sibling else prefix + command, 'focused-' + mode + '-' + str(number), trace=trace)
+                mediation = focused_mediation.Mediation(root, active_workspace, active_node, child_env['TMPDIR'], names[0], manifest['recipientPolicy'], active_workspace / 'scripts/gates/darwin/focused-render-profile.mjs', dict(child_env, NODE_DISABLE_COMPILE_CACHE='1'), ['/usr/bin/sandbox-exec', '-f', str(sealed_context[0] / 'control/workload.sb')], helper=sealed_context[0] / 'control/scope', entries={str(active_workspace / row['path']): row['role'] for row in audit['nodeEntries']}) if sibling else None
+                trace = focused_trace.Trace(root, active_workspace, active_node, audit, active_artifacts, mediation=mediation) if mode == 'sibling-instrumented' else None
+                result, log = supervise(api, root, active_workspace, child_env, command if sibling else prefix + command, 'focused-' + mode + '-' + str(number), trace=trace, sibling=sibling, mediation=mediation)
                 verdict['harnessArgv'] = result['argv']
                 verdict['isolationNoneInstrumentedOnly'] = mode == 'sibling-instrumented'
                 if mode == 'sibling-instrumented':
@@ -278,15 +386,24 @@ def run(api, root, workspace, env, tools, real_home):
             finally:
                 try:
                     if sibling:
-                        after = focused_sentinel.snapshot(real_home, ('Library', *api.PROVIDERS))
-                        after_agents = api.launchagents(real_home)
+                        after = focused_sentinel.snapshot(real_home)
+                        after_agents = after['Library/LaunchAgents'] if after['Library/LaunchAgents'].get('unobservable') else api.launchagents(real_home)
                         api.write_json(root / ('focused-home-after-' + mode + '.json'), after, root)
                         api.write_json(root / ('focused-launchagents-after-' + mode + '.json'), after_agents, root)
                         verdict['homeMetadataUnchanged'] = before == after
                         verdict['launchAgentsUnchanged'] = before_agents == after_agents
                         if before != after or before_agents != after_agents:
                             verdict['ok'] = False
-                    verdict['artifactUnchanged'] = artifacts(workspace, root) == before_artifact
+                    focused_audit.validate_gate_pins(active_workspace, audit['gatePins'])
+                    verdict['artifactUnchanged'] = artifacts(active_workspace, root) == active_artifacts
+                    if sibling:
+                        verdict['sealedDependenciesUnchanged'] = dependency_state(active_workspace) == sealed_dependencies
+                        if focused_native.digest(focused_native.confined(Path(active_node), root)) != sealed_node_digest:
+                            raise api.Refusal('sealed Node bytes changed')
+                        for record in audit['files']:
+                            if record['siblingClosure'] and focused_native.digest(focused_audit.pinned_path(active_workspace, record['path'])) != record['sha256']:
+                                raise api.Refusal('sealed closure changed during sibling run')
+                        verdict['ok'] = verdict['ok'] and verdict['sealedDependenciesUnchanged']
                     verdict['ok'] = verdict['ok'] and verdict['artifactUnchanged']
                 except (ValueError, OSError) as error:
                     verdict.update({'ok': False, 'closingError': str(error)})
@@ -294,9 +411,13 @@ def run(api, root, workspace, env, tools, real_home):
                 api.write_json(root / 'focused-rows.json', outcomes, root)
     expected = sum(len(item['outer']) + len(item['sibling']) for item in manifest['files'])
     passed = sum(row.get('classification') == 'PASS' for outcome in outcomes if outcome['mode'] != 'sibling-instrumented' for row in outcome.get('expectedRows', []))
-    instrumented = next((row for row in outcomes if row['mode'] == 'sibling-instrumented'), None)
-    production = next((row for row in outcomes if row['mode'] == 'sibling-production'), None)
-    pair = focused_diagnostics.compare_pair(instrumented, production) if instrumented and production and 'diagnostics' in instrumented and 'diagnostics' in production else {'ok': False, 'reason': 'missing instrumented or production pair evidence'}
+    pairs = {}
+    for mode in ('sibling-instrumented', 'sibling-production'):
+        rows = [row for row in outcomes if row['mode'] == mode]
+        diagnostics = [item for row in rows for item in row.get('diagnostics', {}).get('rows', [])]
+        names = [row['fullName'] for row in diagnostics]
+        pairs[mode] = {'ok': len(rows) == 2 and len(names) == len(set(names)) == 2 and all(row['ok'] for row in rows), 'diagnostics': {'rows': diagnostics}, 'harnessArgv': [row.get('harnessArgv') for row in rows]}
+    pair = focused_diagnostics.compare_pair(pairs['sibling-instrumented'], pairs['sibling-production'])
     api.write_json(root / 'focused-pair.json', pair, root)
     ok = bool(outcomes) and all(row['ok'] for row in outcomes) and passed == expected and pair['ok']
     api.write_json(root / 'focused-summary.json', {'ok': ok, 'required': expected, 'passed': passed, 'excludedNotProof': sum(len(item['excluded']) for item in manifest['files']), 'siblingRows': sum(len(item['sibling']) for item in manifest['files']), 'harnessOutsideOuterSeatbelt': True}, root)

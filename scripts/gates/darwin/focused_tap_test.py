@@ -1,3 +1,8 @@
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import tempfile
 import unittest
 
 from focused_tap import adjudicate
@@ -23,6 +28,18 @@ class TapTests(unittest.TestCase):
     def test_unexpected_skip_fails(self):
         self.assertFalse(adjudicate('TAP version 13\nok 1 - required\nok 2 - extra # SKIP\n', ['required'], 0)['ok'])
         self.assertFalse(adjudicate('TAP version 13\nok 1 - required\nok 2 - extra\n1..2\n', ['required'], 0)['ok'])
+
+    def test_pinned_node_filter_and_diagnostic_channel_are_adjudicated(self):
+        node = os.environ.get('SCG_NODE_BIN') or shutil.which('node')
+        self.assertIsNotNone(node)
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / 'fixture.mjs'
+            path.write_text("import {test} from 'node:test'; test('required', t=>{t.diagnostic('fixture diagnostic');}); test('excluded',()=>{throw new Error('must not execute');});")
+            for flags in ([], ['--test-isolation=none']):
+                result = subprocess.run([node, '--test', '--test-reporter=tap', '--test-name-pattern=^required$', *flags, str(path)], capture_output=True, text=True, timeout=5)
+                verdict = adjudicate(result.stdout, ['required'], result.returncode)
+                self.assertTrue(verdict['ok'], result.stdout + result.stderr + repr(verdict))
+                self.assertIn('fixture diagnostic', verdict['expectedRows'][0]['diagnostics'])
 
     def test_plan_required_and_consistent(self):
         for plan in ('', '1..0\n', '1..2\n', '1..1\n1..1\n'):

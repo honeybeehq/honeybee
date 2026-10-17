@@ -4,9 +4,19 @@ import { createHash } from 'node:crypto';
 import { dirname, resolve, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const sensitive = new Set(['child_process', 'worker_threads', 'cluster', 'module']);
+const sensitive = new Set(['child_process', 'worker_threads', 'cluster', 'module', 'net', 'http', 'https', 'tls', 'dgram', 'dns', 'http2']);
+const sensitiveExports = {
+  worker_threads: new Set(['Worker']),
+  cluster: new Set(['fork', 'setupPrimary', 'setupMaster', 'Worker']),
+  module: new Set(['createRequire', 'register', '_load', '_resolveFilename', 'syncBuiltinESMExports', '_extensions', 'require']),
+};
+const dataExports = {
+  worker_threads: new Set(['workerData', 'parentPort', 'isMainThread', 'threadId', 'MessageChannel', 'MessagePort', 'BroadcastChannel', 'receiveMessageOnPort', 'markAsUntransferable', 'resourceLimits', 'SHARE_ENV', 'getEnvironmentData', 'setEnvironmentData']),
+  cluster: new Set(['isPrimary', 'isWorker', 'worker']),
+  module: new Set(),
+};
 const builtins = new Set(builtinModules.map(value => value.replace(/^node:/, '')));
-const normalize = value => typeof value === 'string' ? value.replace(/^node:/, '') : '';
+const normalize = value => typeof value === 'string' ? value.replace(/^node:/, '') : value?.builtin ? normalize(value.builtin) : '';
 
 export function analyze(ts, path, text, imported = {}, compilerOptions = {}) {
   const source = ts.createSourceFile(path, text, ts.ScriptTarget.Latest, true);
@@ -36,6 +46,15 @@ export function analyze(ts, path, text, imported = {}, compilerOptions = {}) {
   const aliases = new Map(), factories = new Set(), requires = new Set(['require']), constants = new Map(), assignments = new Set(), processAliases = new Set(['process']), declarations = new Map();
   const line = node => source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1;
   const literal = node => node && (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) ? node.text : null;
+  const exportInfo = (specifier, name, node) => {
+    const module = normalize(specifier);
+    if (name === null) throw new CensusFailure(path, 'binding', 'unknown sensitive namespace access at ' + line(node));
+    if (name === 'default' || module === 'module' && ['Module', 'prototype'].includes(name)) return {module: {builtin: specifier}};
+    if (!sensitiveExports[module] || sensitiveExports[module].has(name)) return {module: specifier, factory: module === 'module' && name === 'createRequire', loader: module === 'module' && ['_load', 'require'].includes(name)};
+    if (dataExports[module].has(name)) return {};
+    throw new CensusFailure(path, 'binding', 'unknown ' + module + ' export ' + name + ' at ' + line(node));
+  };
+  const importedInfo = (available, name, node) => available?.[name] ?? (available?.['*']?.module?.builtin ? exportInfo(available['*'].module.builtin, name, node) : null);
   const walk = (node, action) => {
     if (ts.isTypeNode(node) || erased(node) || ts.isImportSpecifier(node) && node.isTypeOnly || ts.isExportSpecifier(node) && node.isTypeOnly) return;
     action(node); ts.forEachChild(node, child => walk(child, action));
@@ -47,10 +66,12 @@ export function analyze(ts, path, text, imported = {}, compilerOptions = {}) {
   requires.clear(); requires.add('$global:require');
   processAliases.clear(); processAliases.add('$global:process');
   const choice = (node, predicate) => ts.isConditionalExpression(node) ? predicate(node.whenTrue) || predicate(node.whenFalse) : ts.isBinaryExpression(node) && [ts.SyntaxKind.QuestionQuestionToken, ts.SyntaxKind.BarBarToken, ts.SyntaxKind.AmpersandAmpersandToken].includes(node.operatorToken.kind) && (predicate(node.left) || predicate(node.right));
-  const factory = value => { const node = unwrap(value); return !!node && (ts.isIdentifier(node) && factories.has(key(node)) || object(node) && (originOf(object(node))?.namespace?.[member(node)]?.factory || member(node) === 'createRequire' && normalize(originOf(object(node))) === 'module') || choice(node, factory)); };
-  const loader = value => { const node = unwrap(value); return !!node && (ts.isIdentifier(node) && requires.has(key(node)) || ts.isCallExpression(node) && factory(node.expression) || object(node) && (originOf(object(node))?.namespace?.[member(node)]?.loader || member(node) === 'require' && key(object(node)) === '$global:module') || choice(node, loader)); };
+  const memberInfo = node => { const parent = object(node) && originOf(object(node)); return parent?.builtin ? exportInfo(parent.builtin, member(node), node) : importedInfo(parent?.namespace, member(node), node); };
+  const factory = value => { const node = unwrap(value); return !!node && (ts.isIdentifier(node) && factories.has(key(node)) || object(node) && memberInfo(node)?.factory || choice(node, factory)); };
+  const loader = value => { const node = unwrap(value); return !!node && (ts.isIdentifier(node) && requires.has(key(node)) || ts.isCallExpression(node) && factory(node.expression) || object(node) && (memberInfo(node)?.loader || member(node) === 'require' && key(object(node)) === '$global:module') || choice(node, loader)); };
   const keepsEmptyImports = compilerOptions.verbatimModuleSyntax || compilerOptions.preserveValueImports || compilerOptions.importsNotUsedAsValues === 1;
   const erased = node => node.isTypeOnly || ts.isImportDeclaration(node) && node.importClause && (node.importClause.isTypeOnly || !keepsEmptyImports && !node.importClause.name && ts.isNamedImports(node.importClause.namedBindings) && node.importClause.namedBindings.elements.length > 0 && node.importClause.namedBindings.elements.every(item => item.isTypeOnly)) || !keepsEmptyImports && ts.isExportDeclaration(node) && node.exportClause && ts.isNamedExports(node.exportClause) && node.exportClause.elements.length > 0 && node.exportClause.elements.every(item => item.isTypeOnly);
+  const networkGlobal = node => ts.isIdentifier(node) && ['$global:fetch', '$global:WebSocket'].includes(key(node)) && !(ts.isPropertyAccessExpression(node.parent) && node.parent.name === node) && !(ts.isPropertyAssignment(node.parent) && node.parent.name === node);
   const edge = (node, specifier, kind = 'import') => edges.push({line: line(node), kind, specifier: literal(specifier), expression: specifier?.getText(source) ?? ''});
   walk(source, node => {
     if (ts.isVariableDeclaration(node) || ts.isParameter(node) || ts.isImportSpecifier(node) || ts.isNamespaceImport(node) || ts.isFunctionDeclaration(node)) for (const name of node.name ? names(node.name) : []) declarations.set(name, (declarations.get(name) ?? 0) + 1);
@@ -60,13 +81,18 @@ export function analyze(ts, path, text, imported = {}, compilerOptions = {}) {
       const specifier = literal(node.moduleSpecifier);
       if (ts.isImportDeclaration(node) && node.importClause && imported[specifier]) {
         const clause = node.importClause;
-        if (clause.name && imported[specifier].default) aliases.set(key(clause.name), imported[specifier].default.module);
+        if (clause.name) {
+          const origin = importedInfo(imported[specifier], 'default', clause.name);
+          if (origin?.module) aliases.set(key(clause.name), origin.module);
+          if (origin?.factory) factories.add(key(clause.name));
+          if (origin?.loader) requires.add(key(clause.name));
+        }
         if (clause.namedBindings) {
           if (ts.isNamespaceImport(clause.namedBindings) && Object.keys(imported[specifier]).length) aliases.set(key(clause.namedBindings.name), {namespace: imported[specifier]});
           else if (ts.isNamedImports(clause.namedBindings)) for (const item of clause.namedBindings.elements) {
             if (item.isTypeOnly) continue;
-            const origin = imported[specifier][(item.propertyName ?? item.name).text];
-            if (origin) aliases.set(key(item.name), origin.module);
+            const origin = importedInfo(imported[specifier], (item.propertyName ?? item.name).text, item);
+            if (origin?.module) aliases.set(key(item.name), origin.module);
             if (origin?.factory) factories.add(key(item.name));
             if (origin?.loader) requires.add(key(item.name));
           }
@@ -76,13 +102,15 @@ export function analyze(ts, path, text, imported = {}, compilerOptions = {}) {
         capabilities.push({line: line(node), module: specifier, kind: 'import'});
         if (ts.isImportDeclaration(node) && node.importClause) {
           const clause = node.importClause;
-          if (clause.name) aliases.set(key(clause.name), specifier);
+          if (clause.name) aliases.set(key(clause.name), {builtin: specifier});
           if (clause.namedBindings) {
-            if (ts.isNamespaceImport(clause.namedBindings)) aliases.set(key(clause.namedBindings.name), specifier);
+            if (ts.isNamespaceImport(clause.namedBindings)) aliases.set(key(clause.namedBindings.name), {builtin: specifier});
             else for (const item of clause.namedBindings.elements) {
               if (item.isTypeOnly) continue;
-              if (normalize(specifier) !== 'module' || (item.propertyName ?? item.name).text === 'createRequire') aliases.set(key(item.name), specifier);
-              if (normalize(specifier) === 'module' && (item.propertyName ?? item.name).text === 'createRequire') factories.add(key(item.name));
+              const info = exportInfo(specifier, (item.propertyName ?? item.name).text, item);
+              if (info.module) aliases.set(key(item.name), info.module);
+              if (info.factory) factories.add(key(item.name));
+              if (info.loader) requires.add(key(item.name));
             }
           }
         }
@@ -92,7 +120,7 @@ export function analyze(ts, path, text, imported = {}, compilerOptions = {}) {
       if (node.isTypeOnly) return;
       edge(node, node.moduleReference.expression);
       const specifier = literal(node.moduleReference.expression);
-      if (specifier && sensitive.has(normalize(specifier))) aliases.set(key(node.name), specifier);
+      if (specifier && sensitive.has(normalize(specifier))) aliases.set(key(node.name), {builtin: specifier});
     }
     if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer && ts.isVariableDeclarationList(node.parent) && node.parent.flags & ts.NodeFlags.Const) {
       if (constants.has(key(node.name))) constants.set(key(node.name), null);
@@ -105,17 +133,21 @@ export function analyze(ts, path, text, imported = {}, compilerOptions = {}) {
   const originOf = value => {
     const node = unwrap(value);
     if (!node) return null;
-    if (ts.isIdentifier(node)) return aliases.get(key(node)) ?? null;
+    if (ts.isIdentifier(node)) return aliases.get(key(node)) ?? (networkGlobal(node) ? 'global:' + node.text : ['$global:globalThis', '$global:global'].includes(key(node)) ? {namespace: {fetch: {module: 'global:fetch'}, WebSocket: {module: 'global:WebSocket'}}} : null);
     if (object(node)) {
+      if (key(object(node)) === '$global:globalThis' && ['fetch', 'WebSocket'].includes(member(node))) return 'global:' + member(node);
       if (processAliases.has(key(object(node))) && (['binding', 'dlopen'].includes(member(node)) || member(node) === null)) return 'node:process';
       const parent = originOf(object(node));
-      if (parent?.namespace) return parent.namespace[member(node)]?.module ?? null;
-      if (normalize(parent) === 'module' && member(node) !== 'createRequire' && member(node) !== null) return null;
+      if (parent?.builtin) return exportInfo(parent.builtin, member(node), node).module ?? null;
+      if (parent?.namespace) {
+        if (member(node) === null) throw new CensusFailure(path, 'binding', 'unknown sensitive namespace access at ' + line(node));
+        return importedInfo(parent.namespace, member(node), node)?.module ?? null;
+      }
       return parent;
     }
     if (ts.isCallExpression(node) && (loader(node.expression) || node.expression.kind === ts.SyntaxKind.ImportKeyword)) {
       const specifier = literal(node.arguments[0]);
-      if (specifier && sensitive.has(normalize(specifier))) return specifier;
+      if (specifier && sensitive.has(normalize(specifier))) return {builtin: specifier};
     }
     if (ts.isObjectLiteralExpression(node) || ts.isArrayLiteralExpression(node)) {
       const namespace = {};
@@ -146,8 +178,9 @@ export function analyze(ts, path, text, imported = {}, compilerOptions = {}) {
   };
   const descriptor = value => ({module: originOf(value), factory: factory(value), loader: loader(value), process: processAliases.has(key(unwrap(value)))});
   const hasSensitive = info => !!(info.module || info.factory || info.loader || info.process);
-  const propertyInfo = (info, property) => {
-    if (info.module?.namespace) return info.module.namespace[property] ?? {};
+  const propertyInfo = (info, property, node) => {
+    if (info.module?.builtin) return exportInfo(info.module.builtin, property, node);
+    if (info.module?.namespace) return importedInfo(info.module.namespace, property, node) ?? {};
     if (info.process) return ['binding', 'dlopen'].includes(property) ? {module: 'node:process'} : {};
     if (normalize(info.module) === 'module') return property === 'createRequire' ? {module: info.module, factory: true} : {};
     return info.module ? {module: info.module} : {};
@@ -187,7 +220,7 @@ export function analyze(ts, path, text, imported = {}, compilerOptions = {}) {
             else { if (hasSensitive(selected)) throw new CensusFailure(path, 'binding', 'unsupported sensitive object pattern at ' + line(item)); continue; }
             const property = rest ? null : objectPattern ? name && ts.isIdentifier(name) ? name.text : name && ts.isComputedPropertyName(name) ? literal(name.expression) : literal(name) : String(index);
             if (!rest && property === null && hasSensitive(selected)) throw new CensusFailure(path, 'binding', 'unsupported computed sensitive pattern at ' + line(item));
-            let next = rest ? selected : propertyInfo(selected, property);
+            let next = rest ? selected : propertyInfo(selected, property, item);
             if (rest && arrayPattern && selected.module?.namespace) {
               const namespace = Object.fromEntries(Object.entries(selected.module.namespace).filter(([key]) => /^\d+$/.test(key) && Number(key) >= index).map(([key, value]) => [String(Number(key) - index), value]));
               next = {module: {namespace}};
@@ -220,10 +253,17 @@ export function analyze(ts, path, text, imported = {}, compilerOptions = {}) {
     if (ts.isIdentifier(node) && constants.get(key(node)) && !assignments.has(key(node)) && !seen.has(key(node))) return executable(constants.get(key(node)), new Set([...seen, key(node)]));
     return null;
   };
-  const origins = origin => typeof origin === 'string' ? [origin] : Object.values(origin?.namespace ?? {}).flatMap(value => origins(value.module));
+  const origins = origin => typeof origin === 'string' ? [origin] : origin?.builtin ? [origin.builtin] : Object.values(origin?.namespace ?? {}).flatMap(value => origins(value.module));
   walk(source, node => {
+    if (ts.isIdentifier(node) && ['$global:globalThis', '$global:global'].includes(key(node))) {
+      const target = object(node.parent) === node ? originOf(node.parent) : originOf(node);
+      for (const module of new Set(origins(target))) capabilities.push({line: line(node), module, kind: 'reference'});
+    }
+    if (networkGlobal(node)) capabilities.push({line: line(node), module: 'global:' + node.text, kind: 'reference'});
+    if (object(node) && key(object(node)) === '$global:globalThis' && ['fetch', 'WebSocket'].includes(member(node))) capabilities.push({line: line(node), module: 'global:' + member(node), kind: 'reference'});
     if (ts.isIdentifier(node) && aliases.has(key(node))) {
       const parent = node.parent;
+      if (object(parent) === node && originOf(parent) === null) return;
       const kind = ts.isImportSpecifier(parent) || ts.isNamespaceImport(parent) || ts.isImportClause(parent) || ts.isImportEqualsDeclaration(parent) ? 'import' : bindingNodes.has(node) ? 'binding' : 'reference';
       const origin = aliases.get(key(node));
       for (const module of new Set(origins(origin))) capabilities.push({line: line(node), module, kind});
@@ -252,19 +292,19 @@ export function analyze(ts, path, text, imported = {}, compilerOptions = {}) {
     if (ts.isExportDeclaration(statement)) {
       if (erased(statement)) continue;
       const specifier = statement.moduleSpecifier && literal(statement.moduleSpecifier);
-      const direct = Object.fromEntries(['spawn', 'spawnSync', 'exec', 'execSync', 'execFile', 'execFileSync', 'fork', 'Worker', 'default', 'createRequire'].map(name => [name, {module: specifier, factory: name === 'createRequire'}]));
-      const available = specifier ? sensitive.has(normalize(specifier)) ? direct : imported[specifier] ?? {} : null;
+      const builtin = specifier && sensitive.has(normalize(specifier));
+      const available = specifier ? builtin ? {'*': {module: {builtin: specifier}}} : imported[specifier] ?? {} : null;
       if (statement.exportClause && ts.isNamedExports(statement.exportClause)) {
         for (const item of statement.exportClause.elements) {
           if (item.isTypeOnly) continue;
           const binding = item.propertyName ?? item.name;
           const symbol = lexicalSymbol(binding);
           const local = symbol && symbols.get(symbol);
-          const origin = available ? available[binding.text] : aliases.has(local) ? {module: aliases.get(local), factory: factories.has(local), loader: requires.has(local)} : null;
-          if (origin) exports[item.name.text] = origin;
+          const origin = available ? importedInfo(available, binding.text, item) : aliases.has(local) ? {module: aliases.get(local), factory: factories.has(local), loader: requires.has(local)} : null;
+          if (origin?.module) exports[item.name.text] = origin;
         }
       } else if (statement.exportClause && ts.isNamespaceExport(statement.exportClause)) {
-        exports[statement.exportClause.name.text] = {module: {namespace: available}};
+        exports[statement.exportClause.name.text] = {module: builtin ? {builtin: specifier} : {namespace: available}};
       } else if (!statement.exportClause && specifier) Object.assign(exports, available);
     }
     if (ts.isExportAssignment(statement) && !statement.isExportEquals) {
@@ -328,6 +368,26 @@ function validateFiles(ts, root, audit) {
     return options;
   };
   const entryRoles = new Set();
+  if (audit.nodeEntries) {
+    const roles = new Set();
+    if (!Array.isArray(audit.nodeEntries) || audit.nodeEntries.length !== 3) errors.push('exactly three Node entries required');
+    for (const row of audit.nodeEntries) {
+      if (!['reader', 'test-runner', 'runner-host-main'].includes(row.role) || roles.has(row.role) || !files.get(row.path)?.siblingClosure || files.get(row.path)?.sha256 !== row.sha256) errors.push('invalid Node entry pin');
+      roles.add(row.role);
+    }
+    const pin = audit.entryPins?.find(row => row.role === 'reader-entry');
+    const reader = audit.nodeEntries.find(row => row.role === 'reader');
+    if (pin && reader) {
+      const parsed = ts.createSourceFile(pin.path, pin.context, ts.ScriptTarget.Latest, true);
+      const targets = [];
+      const visit = node => {
+        if (ts.isNewExpression(node) && node.expression.getText(parsed) === 'URL' && node.arguments?.length === 2 && ts.isStringLiteral(node.arguments[0]) && node.arguments[1].getText(parsed) === 'import.meta.url') targets.push(relative(root, resolve(root, dirname(pin.path), node.arguments[0].text)).split(sep).join('/'));
+        ts.forEachChild(node, visit);
+      };
+      visit(parsed);
+      if (targets.length !== 1 || targets[0] !== reader.path) errors.push('reader entry does not match reviewed literal URL');
+    } else errors.push('reader entry declaration missing');
+  }
   for (const pin of audit.entryPins ?? []) {
     const file = files.get(pin.path);
     const validPath = file?.siblingClosure && resolve(root, pin.path).startsWith(root + sep) && inFile(pin.path, 'entry-pin', () => realpathSync(resolve(root, pin.path))) === resolve(root, pin.path);
