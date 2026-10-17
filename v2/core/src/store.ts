@@ -2211,10 +2211,7 @@ export class CoreStore {
       message.urgency,
       message.enqueuedAt,
     );
-    this.stmt(
-      `INSERT INTO meta(key, value) VALUES('mail_history_projection_seq', ?)
-       ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-    ).run(String(seq));
+
   }
 
   /** One-time bounded-memory projection fill for stores created by older builds. */

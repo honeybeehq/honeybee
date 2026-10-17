@@ -477,3 +477,23 @@ test("mail history reads only fixed deletion columns, not an unbounded audit pay
     rig.cleanup();
   }
 });
+
+test("lazy legacy history fill cannot be skipped by a fresh send after reopen", () => {
+  const rig = harness(); let store = rig.open();
+  try {
+    const bee = makeBee(store, "lazy-cursor").bee;
+    const old = store.send(bee.id, "old unprojected").message;
+    store.close();
+    const db = new DatabaseSync(rig.path);
+    db.prepare("DELETE FROM mail_history_enqueues WHERE message_id = ?").run(old.id);
+    db.prepare("DELETE FROM meta WHERE key = 'mail_history_projection_seq'").run();
+    db.close();
+    store = rig.open();
+    const fresh = store.send(bee.id, "fresh projected").message;
+    assert.deepEqual(store.mailHistory().messages.map(row => row.messageId), [fresh.id, old.id]);
+    assert.deepEqual(store.pendingMail(bee.id).messages.map(row => row.id), [old.id, fresh.id]);
+    assert.equal(store.mailOrigin(old.id), "mail.send");
+    store.close(); store = rig.open();
+    assert.deepEqual(store.mailHistory().messages.map(row => row.messageId), [fresh.id, old.id]);
+  } finally { store.close(); rig.cleanup(); }
+});
