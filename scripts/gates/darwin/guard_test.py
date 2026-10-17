@@ -14,11 +14,21 @@ import unittest
 from unittest.mock import patch
 import node_bootstrap
 import guard
+from physical_test import without_ip_bind
 
 from guard import DIRS, PROTECTED, Refusal, absolute_compiler_jobs, close_socket_controls, compiler_metadata_literals, compiler_profile, compiler_tools, environment, launchagents, make_socket_controls, profile, receipt_hashes, run, seed_cache, select_node, validate, write_json
 
 
 class GuardTests(unittest.TestCase):
+    def test_no_ip_bind_variant_changes_only_one_rule(self):
+        policy = profile(self.root, self.home, self.base)
+        rule = '(allow network-bind (local ip "localhost:*"))'
+        self.assertEqual(without_ip_bind(policy), policy.replace(rule, '', 1))
+        self.assertEqual(len(policy) - len(without_ip_bind(policy)), len(rule))
+        for invalid in ('', policy + rule):
+            with self.assertRaises(AssertionError):
+                without_ip_bind(invalid)
+
     def test_signal_arguments_are_numeric_on_python39(self):
         class LegacySignal(IntEnum):
             SIGTERM = 15
