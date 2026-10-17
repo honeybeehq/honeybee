@@ -1,0 +1,97 @@
+{
+  "version": 1,
+  "files": [
+    {
+      "path": "v2/daemon/tests/delivery-file.test.ts",
+      "outer": [
+        "secure file publication preserves bytes, permissions, and idempotent inode",
+        "file bytes are bounded before native publication",
+        "sender strings cannot enter the path and separate bees never share files",
+        "symlink root is rejected without touching its target",
+        "symlink ancestor is rejected without touching its target",
+        "symlink content is rejected without touching its target",
+        "symlink bee is rejected without touching its target",
+        "symlink file is rejected without touching its target",
+        "unsafe existing directory-mode is refused",
+        "unsafe existing file-mode is refused",
+        "unsafe existing file-directory is refused",
+        "writer refuses worktree paths, control characters and missing helper",
+        "cleanup validates UUID, canonical roots, and worktree exclusion",
+        "published content reconciles leftover partial stages durably",
+        "concurrent matching publishers converge without replacing the final inode",
+        "accepting root mode 700 is checked natively",
+        "accepting root mode 755 is checked natively",
+        "accepting root mode 720 is checked natively",
+        "accepting root mode 702 is checked natively",
+        "accepting root mode 1777 is checked natively",
+        "development scale: publication and retry with ten thousand retained files",
+        "competing different-content publishers cannot replace the winning bytes",
+        "remove racing a publication leaves either absent or complete content and retry converges",
+        "production worktree search defaults to the filesystem root without walking it in development",
+        "metadata-only git file ancestor depth 0 refuses an unrelated delivery root",
+        "metadata-only git directory ancestor depth 0 refuses an unrelated delivery root",
+        "metadata-only git file ancestor depth 1 refuses an unrelated delivery root",
+        "metadata-only git directory ancestor depth 1 refuses an unrelated delivery root",
+        "metadata-only git file ancestor depth 2 refuses an unrelated delivery root",
+        "metadata-only git directory ancestor depth 2 refuses an unrelated delivery root"
+      ],
+      "sibling": [],
+      "excluded": [
+        "first publication fsync 1 error recovers idempotently",
+        "first publication fsync 1 before recovers idempotently",
+        "first publication fsync 1 after recovers idempotently",
+        "first publication fsync 2 error recovers idempotently",
+        "first publication fsync 2 before recovers idempotently",
+        "first publication fsync 2 after recovers idempotently",
+        "first publication fsync 3 error recovers idempotently",
+        "first publication fsync 3 before recovers idempotently",
+        "first publication fsync 3 after recovers idempotently",
+        "first publication fsync 4 error recovers idempotently",
+        "first publication fsync 4 before recovers idempotently",
+        "first publication fsync 4 after recovers idempotently",
+        "publication unlinkat error remains visible and retry reconciles stages",
+        "publication close error remains visible and retry reconciles stages",
+        "native simulated foreign-owned root refuses publication",
+        "native directory swap after link refuses publication",
+        "native simulated mount-device boundary refuses publication",
+        "cleanup unlinkat boundary 1 fails visibly and retry converges",
+        "cleanup unlinkat boundary 2 fails visibly and retry converges",
+        "cleanup fsync boundary 3 fails visibly and retry converges"
+      ]
+    },
+    {
+      "path": "v2/daemon/tests/delivery-file-read.test.ts",
+      "outer": [
+        "default Darwin dataDir and delivery-content for a /Users home are outside default scratch paths and TMPDIR",
+        "real HSR asynchronous confirmation settles from exact passive proof",
+        "real HSR asynchronous confirmation with lost outbound-attempt state stays UNKNOWN",
+        "real codex pointer confirmation stays pending without UNKNOWN notices",
+        "real codex pointer confirmation refusal retries the saved publication",
+        "real muse pointer confirmation stays pending without UNKNOWN notices",
+        "real muse pointer confirmation refusal retries the saved publication",
+        "SIGKILL after in_flight on a surviving HSR generation becomes UNKNOWN and later mail flows"
+      ],
+      "sibling": [
+        "Darwin OS-level file read outside cwd: hsr; tool-policy read UNVERIFIED (OS-level only)",
+        "Darwin OS-level file read outside cwd: cell-sandbox; tool-policy read UNVERIFIED (OS-level only)",
+        "Darwin OS-level file read outside cwd: satellite-default; tool-policy read UNVERIFIED (OS-level only)"
+      ],
+      "excluded": []
+    },
+    {
+      "path": "v2/daemon/tests/multiline-fallback-tmux.test.ts",
+      "outer": [
+        "real type-mode terminal phone pointer reads original frame and never repeats after store reopen",
+        "real type-mode terminal phone pointer post-Enter file-read commit-throw corruption warns may-have-delivered once",
+        "real ordinary paste post-Enter commit failure and corruption cannot claim not-delivered",
+        "real pointer phase clears and retries the same publication",
+        "real pointer phase quarantines all later mail",
+        "real pointer phase unset_failure",
+        "real pointer phase missing_identity",
+        "real pointer phase legacy_query"
+      ],
+      "sibling": [],
+      "excluded": []
+    }
+  ]
+}
