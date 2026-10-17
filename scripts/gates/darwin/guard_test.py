@@ -111,6 +111,11 @@ class GuardTests(unittest.TestCase):
         for source in ("socket.bind(0, '127.0.0.1')", "server.listen(0, '127.0.0.1')", "server.listen({port:0,host:'127.0.0.1'})", "server.listen({host:'::1',port:0}, callback)"):
             self.assertFalse(listener_static.violations(importing + source), source)
 
+    def test_bind_object_overloads_need_audit(self):
+        importing = "import dgram from 'node:dgram';\n"
+        for source in ("socket.bind({port:0,host:'127.0.0.1'})", "socket.bind({port:0,address:'127.0.0.1'})", "socket.bind({port:0,host:'127.0.0.1',address:target})"):
+            self.assertTrue(listener_static.violations(importing + source), source)
+
     def test_static_allowlist_changed_fingerprint_fails(self):
         folder = self.base / 'tests'
         folder.mkdir()

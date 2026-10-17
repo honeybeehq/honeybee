@@ -48,7 +48,7 @@ def violations(text):
         reason = 'unresolved listen/bind target or omitted host'
         if args and literal_unix(args[0]):
             reason = None
-        elif args and literal_options_loopback(args[0]):
+        elif args and operation == 'listen' and literal_options_loopback(args[0]):
             reason = None
         elif args and len(args) >= 2 and literal_port(args[0]) and literal_loopback(args[1]):
             reason = None
