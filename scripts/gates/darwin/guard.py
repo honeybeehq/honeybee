@@ -337,7 +337,7 @@ def run(args):
     if version.returncode or major is None:
         raise Refusal('compiler version unavailable; receipts retained at ' + str(root))
     resource = str(Path(tools['toolchain']) / 'usr/lib/clang' / major.group(1).decode('ascii'))
-    compile_command = ['/usr/bin/sandbox-exec', '-f', str(root / 'compiler.sb'), tools['clang'], '-ccc-install-dir', str(Path(tools['clang']).parent), '-resource-dir', resource, '-isysroot', tools['sdk'], '--ld-path=' + tools['ld'], '-fmodules-cache-path=' + env['CLANG_MODULE_CACHE_PATH'], str(workspace / 'scripts/gates/darwin/scope.c'), '-o', str(identity)]
+    compile_command = ['/usr/bin/sandbox-exec', '-f', str(root / 'compiler.sb'), tools['clang'], '-fintegrated-cc1', '-ccc-install-dir', str(Path(tools['clang']).parent), '-resource-dir', resource, '-isysroot', tools['sdk'], '--ld-path=' + tools['ld'], '-fmodules-cache-path=' + env['CLANG_MODULE_CACHE_PATH'], str(workspace / 'scripts/gates/darwin/scope.c'), '-o', str(identity)]
     dry_command = compile_command + ['-###']
     write_json(root / 'compiler-command.json', {'argv': compile_command, 'dryRunArgv': dry_command, 'noLauncher': True}, root)
     dry_run = subprocess.run(dry_command, cwd=workspace, env=env, capture_output=True)
