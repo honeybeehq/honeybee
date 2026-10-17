@@ -48,7 +48,7 @@ int main(void) {
             binary = root / 'group'
             result = subprocess.run(['/usr/bin/cc', '-std=c11', '-Wall', '-Wextra', '-Werror', str(file), '-o', str(binary)], capture_output=True, text=True, timeout=10)
             self.assertEqual(result.returncode, 0, result.stderr)
-            result = subprocess.run([str(binary)], input="1\n7 42\n2\n77\n88\n", capture_output=True, text=True, timeout=2)
+            result = subprocess.run([str(binary)], input="1\n7 42\n2\n77\n88\n1\n11 10 100 1\n", capture_output=True, text=True, timeout=2)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
@@ -76,7 +76,7 @@ int main(void) {
 #define PROC_PIDFDVNODEPATHINFO 3
 #define PROX_FDTYPE_VNODE 1
 struct proc_regionwithpathinfo { struct { unsigned long long pri_address,pri_size; } prp_prinfo; struct { struct { struct { unsigned int vst_dev; unsigned long long vst_ino; } vi_stat; } vip_vi; } prp_vip; };
-struct proc_bsdinfo { unsigned int pbi_uid,pbi_status,pbi_pgid; unsigned long long pbi_start_tvsec,pbi_start_tvusec; };
+struct proc_bsdinfo { unsigned int pbi_uid,pbi_status,pbi_pgid,pbi_ppid; unsigned long long pbi_start_tvsec,pbi_start_tvusec; };
 struct vnode_path { char vip_path[4096]; };
 struct proc_vnodepathinfo { struct vnode_path pvi_cdir; };
 struct proc_fdinfo { unsigned int proc_fdtype; int proc_fd; };
@@ -85,7 +85,7 @@ static int mode=0,foreign_read=0,stage=0,checks=0,observed_uid_skip=0,query_inde
 static unsigned int getuid(void) { return 501; }
 static int getpid(void) { return 99; }
 static char *realpath(const char *input,char *out) { if(mode==92&&!strcmp(input,"/System/Library/Agent")){strcpy(out,"/Users/other/Agent");return out;}if(!strcmp(input,"/fixture/t/nonexistent")){errno=ENOENT;return NULL;}strcpy(out,input);return out; }
-static int identity(int pid,struct proc_bsdinfo *b) { if(pid==12)foreign_read=1;if(mode==17){errno=EPERM;return 0;}b->pbi_uid=pid==12||mode==16?999:501;b->pbi_status=1;b->pbi_pgid=mode==30?88:11;b->pbi_start_tvsec=pid==10?150:mode==19?250:mode==20||mode==47?160:mode==28?199:100;b->pbi_start_tvusec=1;return 1; }
+static int identity(int pid,struct proc_bsdinfo *b) { if(pid==12)foreign_read=1;if(mode==17){errno=EPERM;return 0;}b->pbi_ppid=10;b->pbi_uid=pid==12||mode==16?999:501;b->pbi_status=1;b->pbi_pgid=mode==30?88:11;b->pbi_start_tvsec=pid==10?150:mode==19?250:mode==20||mode==47?160:mode==28?199:100;b->pbi_start_tvusec=1;return 1; }
 static int same_birth(int pid,unsigned long long sec,unsigned long long usec) { (void)pid;(void)sec;(void)usec;checks++;errno=0;if((mode==3&&stage==1)||(mode==4&&stage==2)||(mode==5&&stage==3)||(mode==6&&stage==4)||(mode==7&&stage==1)||(mode==8&&stage==4)||(mode==13&&checks>=3))return 3;if(mode==11&&stage==1)return 4;return 0; }
 static int proc_listpids(unsigned int type,unsigned int uid,void *out,int bytes) { if(type!=PROC_UID_ONLY||uid!=501){foreign_read=1;return 0;}if(mode==1){errno=EPERM;return 0;}if(out){int p[]={10,11,99};if(bytes<12)return -1;memcpy(out,p,sizeof(p));}return 12; }
 struct stat { unsigned int st_dev; unsigned long long st_ino; };
@@ -93,17 +93,23 @@ static int stat(const char *path,struct stat *out) { (void)path;out->st_dev=7;ou
 static int csops(int pid,unsigned int op,void *out,size_t size) { (void)pid;if(op!=CS_OPS_STATUS||size!=sizeof(unsigned int))return -1;if(mode==82){errno=EPERM;return -1;}*(unsigned int*)out=mode==81?0:CS_PLATFORM_BINARY;return 0; }
 static void *dlsym(void *handle,const char *name) { (void)handle;if(strcmp(name,"csops"))foreign_read=1;return mode==99?NULL:(void*)csops; }
 static int getsid(int pid) { if(pid==10)return 10;return mode==21?10:mode==26?66:mode==29?77:11; }
-static int proc_pidpath(int pid,void *out,unsigned int size) { (void)size;if(pid==12)foreign_read=1;if(mode>=80){const char *paths[]={"/System/Library/Agent","/System/Library/Agent","/System/Library/Agent","/bin/sh","/sbin/tool","/usr/bin/tool","/usr/local/tool","/Applications/Agent","/Users/other/Agent","/System/LibraryX/Agent","/usr/libexecfoo/Agent","/System/ApplicationsX/Agent","/System/Library/Agent","/System/Library/Agent","/System/Applications/Agent","/usr/libexec/Agent","/usr/sbin/Agent","/System/Library/Agent","/System/Library/Agent","/System/Library/Agent"};if(mode==98){errno=ENOENT;return 0;}strcpy(out,paths[mode-80]);return (int)strlen(out);}if((mode>=18&&mode<=30)||mode==50){errno=mode==27||mode==50?EPERM:ENOENT;return 0;}strcpy(out,mode>=31&&mode!=49?"/outside/node":"/fixture/node");return 14; }
+static int proc_pidpath(int pid,void *out,unsigned int size) { (void)size;if(pid==12)foreign_read=1;if(mode>=103){strcpy(out,"/System/Library/Agent");return 21;}if(mode>=80&&mode<=99){const char *paths[]={"/System/Library/Agent","/System/Library/Agent","/System/Library/Agent","/bin/sh","/sbin/tool","/usr/bin/tool","/usr/local/tool","/Applications/Agent","/Users/other/Agent","/System/LibraryX/Agent","/usr/libexecfoo/Agent","/System/ApplicationsX/Agent","/System/Library/Agent","/System/Library/Agent","/System/Applications/Agent","/usr/libexec/Agent","/usr/sbin/Agent","/System/Library/Agent","/System/Library/Agent","/System/Library/Agent"};if(mode==98){errno=ENOENT;return 0;}strcpy(out,paths[mode-80]);return (int)strlen(out);}if((mode>=18&&mode<=30)||mode==50||mode==100||mode==101||mode==102){errno=mode==27||mode==50?EPERM:ENOENT;return 0;}strcpy(out,mode>=31&&mode!=49?"/outside/node":"/fixture/node");return 14; }
 static int proc_pidinfo(int pid,int flavor,unsigned long long arg,void *out,int size) {
  (void)size;if(pid==12)foreign_read=1;
- if(flavor==PROC_PIDREGIONPATHINFO){if((mode==24||mode==25||(mode>=80&&mode!=97))&&arg==0){struct proc_regionwithpathinfo *r=out;r->prp_prinfo.pri_address=4096;r->prp_prinfo.pri_size=4096;r->prp_vip.vip_vi.vi_stat.vst_dev=7;r->prp_vip.vip_vi.vi_stat.vst_ino=mode==24||mode==93?42:43;return sizeof(*r);}errno=ENOENT;return 0;}
+ if(flavor==PROC_PIDREGIONPATHINFO){
+ int first=arg==0;
+ if((mode==24||mode==25||(mode>=80&&mode<=99&&mode!=97)||(mode>=100&&mode!=107))&&first){struct proc_regionwithpathinfo *r=out;r->prp_prinfo.pri_address=4096;r->prp_prinfo.pri_size=4096;r->prp_vip.vip_vi.vi_stat.vst_dev=7;r->prp_vip.vip_vi.vi_stat.vst_ino=mode==24||mode==93?42:43;return sizeof(*r);}
+ if((mode==102||mode==105)&&!first&&arg==8192){struct proc_regionwithpathinfo *r=out;r->prp_prinfo.pri_address=8192;r->prp_prinfo.pri_size=4096;r->prp_vip.vip_vi.vi_stat.vst_dev=7;r->prp_vip.vip_vi.vi_stat.vst_ino=42;return sizeof(*r);}
+ if((mode==100||mode==101||mode==103||mode==104)&&!first){errno=mode==100||mode==103?EPERM:0;return mode==100||mode==103?0:1;}
+ errno=(mode==18||mode==97||mode==107)?EPERM:EINVAL;return 0;}
+
  if(flavor==PROC_PIDVNODEPATHINFO){stage=1;if(mode==3||mode==9){errno=mode==3?ESRCH:EACCES;return -1;}strcpy(((struct proc_vnodepathinfo*)out)->pvi_cdir.vip_path,mode>=18&&mode!=22&&mode!=48?"/outside":"/fixture/cwd");return sizeof(struct proc_vnodepathinfo);}
  if(!out){stage=2;if(mode==4){errno=ESRCH;return -1;}return (mode==12||mode==14||mode==15?2:1)*sizeof(struct proc_fdinfo);}
  stage=3;
  if(mode==2||mode==5||mode==10){errno=mode==5?ESRCH:EPERM;return -1;}
  ((struct proc_fdinfo*)out)->proc_fdtype=PROX_FDTYPE_VNODE;((struct proc_fdinfo*)out)->proc_fd=3;if(mode==12||mode==14||mode==15){((struct proc_fdinfo*)out)[1].proc_fdtype=PROX_FDTYPE_VNODE;((struct proc_fdinfo*)out)[1].proc_fd=4;return 2*sizeof(struct proc_fdinfo);}return sizeof(struct proc_fdinfo);
 }
-static int proc_pidfdinfo(int pid,int fd,int flavor,void *out,int size) { (void)pid;(void)fd;(void)flavor;(void)size;stage=4;if(mode>=31){errno=EPERM;return -1;}if(mode==6||(fd==3&&(mode==12||mode==14||mode==15))){errno=mode==6?ESRCH:mode==12?EBADF:mode==14?ENOENT:EPERM;return -1;}strcpy(((struct vnode_fdinfowithpath*)out)->pvip.vip_path,mode>=18&&mode!=23?"/outside":"/fixture/open");return sizeof(struct vnode_fdinfowithpath); }
+static int proc_pidfdinfo(int pid,int fd,int flavor,void *out,int size) { (void)pid;(void)fd;(void)flavor;(void)size;stage=4;if((mode>=31&&mode<100)||mode>=103){errno=EPERM;return -1;}if(mode==6||(fd==3&&(mode==12||mode==14||mode==15))){errno=mode==6?ESRCH:mode==12?EBADF:mode==14?ENOENT:EPERM;return -1;}strcpy(((struct vnode_fdinfowithpath*)out)->pvip.vip_path,mode>=18&&mode!=23?"/outside":"/fixture/open");return sizeof(struct vnode_fdinfowithpath); }
 typedef int (*sandbox_check_function)(pid_t,const char*,int,...);
 static int fake_sandbox_check(pid_t pid,const char *op,int filter,...) { (void)pid;(void)filter;if(!op)return mode==41||mode>=80?0:1;if(strcmp(op,"file-read-data")&&strcmp(op,"file-write-data")&&strcmp(op,"file-write-create")&&strcmp(op,"file-write-unlink")){errno=EINVAL;return -1;}int index=query_index++;if(mode==40){errno=EPERM;return 1;}if(mode==73&&!strcmp(op,"file-write-create")){errno=EINVAL;return -1;}if(mode>=60&&mode<=73){int writes[]={1,3,5,7,8,9,10,11,12,13,14,15};if(index<8&&index%2==0)return 0;if(mode>=61&&mode<=72&&index==writes[mode-61])return 0;}if(mode>=32&&mode<=39&&index==mode-32)return 0;return 1; }
 static sandbox_check_function sandbox_checker(void) { return mode==44?NULL:fake_sandbox_check; }
@@ -118,10 +124,15 @@ int main(int argc,char **argv) { mode=argc>1?atoi(argv[1]):0;int rc=quiescence(1
             binary = root / 'quiescent'
             result = subprocess.run(['/usr/bin/cc', '-std=c11', '-Wall', '-Wextra', '-Werror', str(source), '-o', str(binary)], capture_output=True, text=True, timeout=10)
             self.assertEqual(result.returncode, 0, result.stderr)
-            result = subprocess.run([str(binary)], input="1\n7 42\n2\n77\n88\n", capture_output=True, text=True, timeout=2)
+            result = subprocess.run([str(binary)], input="1\n7 42\n2\n77\n88\n1\n11 10 100 1\n", capture_output=True, text=True, timeout=2)
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertIn('11\t/fixture/open', result.stdout)
+            self.assertIn('OWN\t11\t10\t100\t1\tfd\topen', result.stdout)
             self.assertIn('COMPLETE', result.stdout)
+            foreign = subprocess.run([str(binary)], input="1\n7 42\n0\n0\n", capture_output=True, text=True, timeout=2)
+            self.assertEqual(foreign.returncode, 0, foreign.stderr)
+            self.assertEqual(foreign.stdout, 'FOREIGN\tcwd\t1\nFOREIGN\texe\t1\nFOREIGN\tfd\t1\nCOMPLETE\n')
+            self.assertNotIn('/fixture', foreign.stdout + foreign.stderr)
+            self.assertNotIn('OWN', foreign.stdout)
             cases = {
                 1: ('enumeration error', 4), 2: ('live fd read error', 4),
                 3: ('exit before vnode read', 0), 4: ('exit at fd sizing', 0),
@@ -130,13 +141,14 @@ int main(int argc,char **argv) { mode=argc>1?atoi(argv[1]):0;int rc=quiescence(1
                 9: ('live vnode read error', 4), 10: ('live fd-list error', 4),
                 11: ('birth mismatch', 4), 12: ('live EBADF skips fd and continues', 0),
                 13: ('exit after matched paths before final fence', 0),
-                14: ('live ENOENT skips fd and continues', 0), 15: ('live EPERM fails', 4), 16: ('uid changed after enumeration skips', 0), 17: ('same uid identity EPERM fails', 4), 18: ('pre-root unlinked unavailable region allowed', 0), 19: ('post-root unlinked fails', 4), 20: ('gate descendant birth fails', 4), 21: ('gate session or pgid fails', 4), 22: ('unlinked dirty cwd fails', 4), 23: ('unlinked dirty fd fails', 4), 24: ('region inode in manifest fails', 4), 25: ('region inode outside manifest allowed', 0), 26: ('root-owned session leader informational only', 0), 27: ('pidpath EPERM still fails', 4), 28: ('one second margin fails', 4), 29: ('sid in retained gate launch set fails', 4), 30: ('pgid in retained gate launch set fails', 4), 31: ('fd EPERM all eight denied accepts', 0), **{mode: ('read-only alternative or data-write refusal',0 if mode%2==0 else 4) for mode in range(32,40)}, 40: ('sandbox query error fails',4), 41: ('not sandboxed fails',4), 44: ('SPI unavailable fails',4), 47: ('fd EPERM gate process fails',4), 48: ('fd EPERM dirty cwd fails',4), 49: ('fd EPERM dirty exe fails',4), 50: ('exe EPERM fails before fd exception',4),60:('read allowed twelve writes denied accepts',0),**{mode:('each of twelve write allows fails',4) for mode in range(61,73)},73:('unknown write-create op errors',4),**{mode:('platform binary prefix and status proof',0 if mode in (80,94,95,96) else 4) for mode in range(80,100)}}
+                14: ('live ENOENT skips fd and continues', 0), 15: ('live EPERM fails', 4), 16: ('uid changed after enumeration skips', 0), 17: ('same uid identity EPERM fails', 4), 18: ('pre-root unlinked unavailable region allowed', 0), 19: ('post-root unlinked fails', 4), 20: ('gate descendant birth fails', 4), 21: ('gate session or pgid fails', 4), 22: ('unlinked dirty cwd fails', 4), 23: ('unlinked dirty fd fails', 4), 24: ('region inode in manifest fails', 4), 25: ('region inode outside manifest allowed', 0), 26: ('root-owned session leader informational only', 0), 27: ('pidpath EPERM still fails', 4), 28: ('one second margin fails', 4), 29: ('sid in retained gate launch set fails', 4), 30: ('pgid in retained gate launch set fails', 4), 31: ('fd EPERM all eight denied accepts', 0), **{mode: ('read-only alternative or data-write refusal',0 if mode%2==0 else 4) for mode in range(32,40)}, 40: ('sandbox query error fails',4), 41: ('not sandboxed fails',4), 44: ('SPI unavailable fails',4), 47: ('fd EPERM gate process fails',4), 48: ('fd EPERM dirty cwd fails',4), 49: ('fd EPERM dirty exe fails',4), 50: ('exe EPERM fails before fd exception',4),60:('read allowed twelve writes denied accepts',0),**{mode:('each of twelve write allows fails',4) for mode in range(61,73)},73:('unknown write-create op errors',4),**{mode:('platform binary prefix and status proof',0 if mode in (80,94,95,96) else 4) for mode in range(80,100)},100:('region mid-walk error refuses ENOENT',4),101:('region short read refuses ENOENT',4),102:('later inventory inode refuses ENOENT',4),103:('main image then error refuses platform',4),104:('main image then short read refuses platform',4),105:('main image then inventory inode refuses platform',4),106:('complete platform walk accepts main image',0),107:('first unavailable refuses platform',4)}
             for mode, (name, expected) in cases.items():
                 with self.subTest(case=name):
-                    result = subprocess.run([str(binary), str(mode)], input="1\n7 42\n2\n77\n88\n", capture_output=True, text=True, timeout=2)
+                    result = subprocess.run([str(binary), str(mode)], input="1\n7 42\n2\n77\n88\n1\n11 10 100 1\n", capture_output=True, text=True, timeout=2)
                     self.assertEqual(result.returncode, expected, result.stderr)
                     if mode in (12, 14):
-                        self.assertEqual(result.stdout, '11\t/fixture/open\nCOMPLETE\n')
+                        self.assertIn('OWN\t11\t10\t100\t1\tfd\topen\n', result.stdout)
+                        self.assertTrue(result.stdout.endswith('COMPLETE\n'))
                     elif not expected:
                         self.assertEqual(result.stdout, 'COMPLETE\n')
                         reason = json.loads(result.stderr)
@@ -145,7 +157,7 @@ int main(int argc,char **argv) { mode=argc>1?atoi(argv[1]):0;int rc=quiescence(1
                             self.assertEqual(reason['counts']['fdDeniedQueries'],8)
                             self.assertEqual(reason['fdFailedQueryResults'],[-2]*16)
                             self.assertEqual(sum(reason['fdAllowedByQuery'].values()),0)
-                        if mode in (80,94,95,96):
+                        if mode in (80,94,95,96,106):
                             self.assertEqual(reason['counts']['fdUnobservablePlatformBinary'],1)
                             self.assertEqual(reason['counts']['fdUnobservableSandboxDenied'],0)
                             self.assertEqual(reason['counts']['fdUnobservableWriteDenied'],0)
@@ -166,6 +178,10 @@ int main(int argc,char **argv) { mode=argc>1?atoi(argv[1]):0;int rc=quiescence(1
                         reason = json.loads(result.stderr)
                         self.assertEqual(reason['type'], 'QuiescenceFailure')
                         self.assertEqual(reason['counts']['failed'], 1)
+                        if mode in (100,101,103,104):
+                            self.assertEqual(reason['counts']['regionPartial'],1)
+                        if mode==107:
+                            self.assertEqual(reason['counts']['regionUnavailable'],1)
                         self.assertNotIn('/fixture', result.stderr)
                         self.assertNotIn('pid', reason)
                         if 32 <= mode <= 39:

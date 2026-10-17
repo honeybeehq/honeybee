@@ -166,26 +166,48 @@ def prepare(root, workspace, node, audit, controls, native, dependencies):
     return sealed, destination, str(copied_node)
 
 
+FOREIGN_ROOT_USE_COUNTS = {'cwd': 0, 'exe': 0, 'fd': 0}
+UNOBSERVED_OWN_CHILDREN = []
+
+
+def record_leftover(leftovers, value):
+    birth = value.get('birth')
+    if birth is None:
+        UNOBSERVED_OWN_CHILDREN.append({key: item for key, item in value.items() if key != 'birth'})
+        return
+    if tuple(map(str, birth)) not in GATE_LAUNCH_BIRTHS:
+        raise ValueError('leftover lacks retained own birth')
+    leftovers.append(value)
+
+
 def root_users(root, output, controller_pid):
-    root = str(root.resolve(strict=True))
     lines = output.splitlines()
     if not lines or lines[-1] != 'COMPLETE':
         raise ValueError('same-uid root-use observation absent or incomplete')
     rows = []
+    foreign = dict.fromkeys(('cwd', 'exe', 'fd'), 0)
     for line in lines[:-1]:
         parts = line.split('\t')
-        if len(parts) != 2 or not parts[0].isdigit() or int(parts[0]) <= 0:
+        if len(parts) == 3 and parts[0] == 'FOREIGN' and parts[1] in foreign and parts[2].isdigit():
+            foreign[parts[1]] += int(parts[2])
+        elif len(parts) == 7 and parts[0] == 'OWN' and all(value.isdigit() for value in parts[1:5]) and parts[5] in foreign:
+            birth = parts[1:5]
+            relative = Path(parts[6])
+            if int(birth[0]) <= 0 or tuple(birth) not in GATE_LAUNCH_BIRTHS or relative.is_absolute() or '..' in relative.parts:
+                raise ValueError('unverified own root-use observation')
+            if int(birth[0]) != controller_pid:
+                rows.append({'pid': int(birth[0]), 'birth': birth, 'category': parts[5], 'path': str(relative)})
+        else:
             raise ValueError('malformed same-uid process observation')
-        pid, path = int(parts[0]), parts[1]
-        if pid != controller_pid and (path == root or path.startswith(root + '/')):
-            rows.append({'pid': pid, 'path': path})
+    FOREIGN_ROOT_USE_COUNTS.update(foreign)
     return rows
 
 
 class BusyRoot(ValueError):
-    def __init__(self, rows):
+    def __init__(self, rows, foreign=None):
         self.rows = rows
-        super().__init__('another same-uid process retains run-root access: ' + str(rows))
+        self.foreign_counts = dict(foreign or dict.fromkeys(('cwd', 'exe', 'fd'), 0))
+        super().__init__('run-root access remains: ownCount=' + str(len(rows)) + '; foreignRootUseCounts=' + str(self.foreign_counts))
 
 
 SEALED_PROBES = {}
@@ -290,6 +312,7 @@ def quiescence_input(root, helper):
         os.close(descriptor)
     text = str(len(inodes)) + '\n' + ''.join(str(dev) + ' ' + str(ino) + '\n' for dev, ino in sorted(inodes))
     text += str(len(GATE_LAUNCH_PIDS)) + '\n' + ''.join(str(pid) + '\n' for pid in sorted(GATE_LAUNCH_PIDS))
+    text += str(len(GATE_LAUNCH_BIRTHS)) + '\n' + ''.join(' '.join(birth) + '\n' for birth in sorted(GATE_LAUNCH_BIRTHS))
     return [str(helper), 'quiescence', str(os.getpid()), key, str(stamp['beforeMkdirNs'] // 1000), str(probe), str(package), str(absent)], text
 
 
@@ -300,8 +323,8 @@ def require_quiescent(root, helper):
     if observed.returncode != 0:
         raise ValueError('same-uid root-use observation unresolved')
     rows = root_users(root, observed.stdout, os.getpid())
-    if rows:
-        raise BusyRoot(rows)
+    if rows or any(FOREIGN_ROOT_USE_COUNTS.values()):
+        raise BusyRoot(rows, FOREIGN_ROOT_USE_COUNTS)
     return rows
 
 
@@ -310,7 +333,13 @@ QUIESCENCE_OBSERVATIONS = []
 
 def quiescence_evidence(result):
     import json
-    evidence = {'exit': result.returncode, 'reason': None}
+    foreign = dict.fromkeys(('cwd', 'exe', 'fd'), 0)
+    for line in result.stdout.splitlines():
+        parts = line.split('\t')
+        if len(parts) == 3 and parts[0] == 'FOREIGN' and parts[1] in foreign and parts[2].isdigit():
+            foreign[parts[1]] += int(parts[2])
+    FOREIGN_ROOT_USE_COUNTS.update(foreign)
+    evidence = {'exit': result.returncode, 'reason': None, 'foreignRootUseCounts': foreign}
     if result.returncode or result.stderr:
         try:
             if len(result.stderr) > 4096:
@@ -322,7 +351,7 @@ def quiescence_evidence(result):
                 raise ValueError('unexpected quiescence diagnostic value')
             if type(reason['errnoNumber']) is not int or type(reason['sameBirth']) is not int or reason['sameBirth'] not in (-1, 0, 3, 4):
                 raise ValueError('unexpected quiescence numeric value')
-            if set(reason['counts']) != {'scanned', 'skippedGone', 'skippedUidChanged', 'skippedFdClosed', 'matched', 'failed', 'exeUnlinkedPreRoot', 'regionCompared', 'regionUnavailable', 'sessionLeaderNotUidListed', 'fdUnobservableSandboxDenied', 'fdNonGateFailed', 'fdCleanFailed', 'fdSandboxFailed', 'fdDeniedQueries', 'fdAllowedQueries', 'fdQueryErrors', 'fdNotSandboxed', 'fdUnobservableWriteDenied', 'fdUnobservablePlatformBinary', 'notPlatform', 'pathDisallowed', 'csopsError', 'csopsUnavailable', 'inodeMatch', 'platformInodeUnobserved'} or any(type(value) is not int or value < 0 for value in reason['counts'].values()):
+            if set(reason['counts']) != {'scanned', 'skippedGone', 'skippedUidChanged', 'skippedFdClosed', 'matched', 'failed', 'exeUnlinkedPreRoot', 'regionCompared', 'regionUnavailable', 'regionPartial', 'sessionLeaderNotUidListed', 'fdUnobservableSandboxDenied', 'fdNonGateFailed', 'fdCleanFailed', 'fdSandboxFailed', 'fdDeniedQueries', 'fdAllowedQueries', 'fdQueryErrors', 'fdNotSandboxed', 'fdUnobservableWriteDenied', 'fdUnobservablePlatformBinary', 'notPlatform', 'pathDisallowed', 'csopsError', 'csopsUnavailable', 'inodeMatch', 'platformInodeUnobserved'} or any(type(value) is not int or value < 0 for value in reason['counts'].values()):
                 raise ValueError('unexpected quiescence counts')
             slots = {'root:read', 'root:write', 'probe:read', 'probe:write', 'src:read', 'src:write', 'absent:read', 'absent:write', 'root:create', 'root:unlink', 'probe:create', 'probe:unlink', 'src:create', 'src:unlink', 'absent:create', 'absent:unlink'}
             if not isinstance(reason['fdAllowedByQuery'], dict) or set(reason['fdAllowedByQuery']) != slots or any(type(value) is not int or value < 0 for value in reason['fdAllowedByQuery'].values()):

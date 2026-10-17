@@ -82,7 +82,7 @@ def child(api, root, helper, node, reader, cwd, env, sandboxed, profile, content
             uses = focused_seal.root_users(root, result.stdout, os.getpid())
             if not any(item['pid'] == process.pid for item in uses):
                 raise ValueError('real quiescence failed to detect own cwd holder')
-            row['liveQuiescence'] = {'detected': True, 'rows': uses}
+            row['liveQuiescence'] = {'detected': True, 'rows': [item for item in uses if item['birth'] == birth]}
         process.stdin.write(b'1')
         process.stdin.flush()
         process.wait(timeout=5)
@@ -110,7 +110,7 @@ def child(api, root, helper, node, reader, cwd, env, sandboxed, profile, content
             row['ok'] = False
         finally:
             if process.poll() is None:
-                api.LEFTOVER_CHILDREN.append({'pid': process.pid, 'birth': birth, 'reason': 'scope control cleanup unresolved; no unfenced signal', 'selfExpiresSeconds': 30})
+                focused_seal.record_leftover(api.LEFTOVER_CHILDREN, {'pid': process.pid, 'birth': birth, 'reason': 'scope control cleanup unresolved; no unfenced signal', 'selfExpiresSeconds': 30})
                 row['ok'] = False
             for stream in (process.stdin, process.stdout, process.stderr):
                 try:

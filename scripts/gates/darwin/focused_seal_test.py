@@ -2,6 +2,7 @@ from pathlib import Path
 import os
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import focused_seal
 from focused_seal import copy_dependencies, copy_file, digest, prepare, root_users
@@ -110,14 +111,30 @@ class SealTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, 'sealed probe'):
                     prepare(root, root / 'src', '/node', {}, {}, {}, {})
 
-    def test_same_uid_open_file_cwd_and_image_are_all_root_uses(self):
-        with tempfile.TemporaryDirectory() as temporary:
+    def test_own_root_uses_keep_birth_and_relative_path_foreign_uses_keep_only_counts(self):
+        with tempfile.TemporaryDirectory() as temporary, patch.object(focused_seal, 'GATE_LAUNCH_BIRTHS', {('11','10','100','1')}):
             root = Path(temporary).resolve()
-            output = '10\t' + str(root / 'controller') + '\n11\t' + str(root / 'cwd') + '\n11\t' + str(root / 'node') + '\n11\t' + str(root / 'open') + '\n12\t/elsewhere\nCOMPLETE\n'
+            output = 'OWN\t11\t10\t100\t1\tcwd\tsrc\nFOREIGN\tfd\t2\nCOMPLETE\n'
             rows = root_users(root, output, 10)
-            self.assertEqual([row['pid'] for row in rows], [11, 11, 11])
-            with self.assertRaisesRegex(ValueError, 'absent'):
-                root_users(root, '', os.getpid())
+            self.assertEqual(rows, [{'pid': 11, 'birth': ['11','10','100','1'], 'category': 'cwd', 'path': 'src'}])
+            self.assertEqual(focused_seal.FOREIGN_ROOT_USE_COUNTS, {'cwd':0,'exe':0,'fd':2})
+            error = focused_seal.BusyRoot(rows, focused_seal.FOREIGN_ROOT_USE_COUNTS)
+            self.assertNotIn('11', str(error))
+            self.assertNotIn(str(root), str(error))
+            for bad in ('', 'OWN\t12\t10\t100\t1\tcwd\tsrc\nCOMPLETE\n', 'FOREIGN\tfd\t2\t/private/foreign\nCOMPLETE\n', 'OWN\t11\t10\t100\t1\tcwd\t/absolute\nCOMPLETE\n'):
+                with self.assertRaises(ValueError):
+                    root_users(root, bad, 10)
+
+    def test_leftovers_require_a_retained_birth_and_never_store_none(self):
+        with patch.object(focused_seal, 'GATE_LAUNCH_BIRTHS', {('11','10','100','1')}), patch.object(focused_seal, 'UNOBSERVED_OWN_CHILDREN', []):
+            rows = []
+            focused_seal.record_leftover(rows, {'pid':11,'birth':['11','10','100','1']})
+            focused_seal.record_leftover(rows, {'pid':12,'birth':None,'reason':'birth unobserved, not fenced'})
+            self.assertEqual(len(rows),1)
+            self.assertTrue(all(row['birth'] is not None for row in rows))
+            self.assertNotIn('birth', focused_seal.UNOBSERVED_OWN_CHILDREN[0])
+            with self.assertRaises(ValueError):
+                focused_seal.record_leftover(rows, {'pid':13,'birth':['13','10','100','1']})
 
 
 if __name__ == '__main__':

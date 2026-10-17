@@ -78,7 +78,7 @@ def write_json(path, value, root):
     if not inside(path.resolve(), root.resolve()):
         raise Refusal('write outside run root')
     if path == Path(root) / 'receipt.json' and isinstance(value, dict):
-        value = dict(value, rootCreation=focused_seal.ROOT_CREATION.get(str(root.resolve())), exeUnlinkedLimit=focused_seal.UNLINKED_LIMIT, fdUnobservableLimit=focused_seal.FD_UNOBSERVABLE_LIMIT, fdUnobservableDisclosure=focused_seal.fd_disclosure((focused_seal.QUIESCENCE_OBSERVATIONS[-1].get('reason') or {}).get('counts', {}).get('fdUnobservableSandboxDenied', 0) if focused_seal.QUIESCENCE_OBSERVATIONS else 0), fdUnobservableWriteDeniedDisclosure=focused_seal.fd_write_disclosure((focused_seal.QUIESCENCE_OBSERVATIONS[-1].get('reason') or {}).get('counts', {}).get('fdUnobservableWriteDenied', 0) if focused_seal.QUIESCENCE_OBSERVATIONS else 0), fdUnobservablePlatformBinaryDisclosure=focused_seal.fd_platform_disclosure((focused_seal.QUIESCENCE_OBSERVATIONS[-1].get('reason') or {}).get('counts', {}).get('fdUnobservablePlatformBinary', 0) if focused_seal.QUIESCENCE_OBSERVATIONS else 0), fdDisclosureCountScope='most recent quiescence scan; each retained observation also carries its own disclosure', gateLaunchBirths=sorted(focused_seal.GATE_LAUNCH_BIRTHS), gateLaunchPids=sorted(focused_seal.GATE_LAUNCH_PIDS), quiescenceObservations=list(focused_seal.QUIESCENCE_OBSERVATIONS), gitBoundary=GIT_AUDITS.get(str(root.resolve())), entryNotes=list(ENTRY_NOTES), leftoverChild=value.get('leftoverChild') or list(LEFTOVER_CHILDREN) or None, listenerLimit=LISTENER_LIMIT, staticBindLimit=STATIC_BIND_LIMIT, hostLock=LOCK_METADATA.get(str(Path(root).resolve())))
+        value = dict(value, rootCreation=focused_seal.ROOT_CREATION.get(str(root.resolve())), exeUnlinkedLimit=focused_seal.UNLINKED_LIMIT, fdUnobservableLimit=focused_seal.FD_UNOBSERVABLE_LIMIT, fdUnobservableDisclosure=focused_seal.fd_disclosure((focused_seal.QUIESCENCE_OBSERVATIONS[-1].get('reason') or {}).get('counts', {}).get('fdUnobservableSandboxDenied', 0) if focused_seal.QUIESCENCE_OBSERVATIONS else 0), fdUnobservableWriteDeniedDisclosure=focused_seal.fd_write_disclosure((focused_seal.QUIESCENCE_OBSERVATIONS[-1].get('reason') or {}).get('counts', {}).get('fdUnobservableWriteDenied', 0) if focused_seal.QUIESCENCE_OBSERVATIONS else 0), fdUnobservablePlatformBinaryDisclosure=focused_seal.fd_platform_disclosure((focused_seal.QUIESCENCE_OBSERVATIONS[-1].get('reason') or {}).get('counts', {}).get('fdUnobservablePlatformBinary', 0) if focused_seal.QUIESCENCE_OBSERVATIONS else 0), fdDisclosureCountScope='most recent quiescence scan; each retained observation also carries its own disclosure', foreignRootUseCounts=dict(focused_seal.FOREIGN_ROOT_USE_COUNTS), unobservedOwnChildren=list(focused_seal.UNOBSERVED_OWN_CHILDREN), gateLaunchBirths=sorted(focused_seal.GATE_LAUNCH_BIRTHS), gateLaunchPids=sorted(focused_seal.GATE_LAUNCH_PIDS), quiescenceObservations=list(focused_seal.QUIESCENCE_OBSERVATIONS), gitBoundary=GIT_AUDITS.get(str(root.resolve())), entryNotes=list(ENTRY_NOTES), leftoverChild=value.get('leftoverChild') or list(LEFTOVER_CHILDREN) or None, listenerLimit=LISTENER_LIMIT, staticBindLimit=STATIC_BIND_LIMIT, hostLock=LOCK_METADATA.get(str(Path(root).resolve())))
     path.write_text(json.dumps(value, indent=2) + '\n')
 
 
@@ -553,12 +553,12 @@ def tree_scan_self_test(root, workspace, prefix, helper, env):
                         if status.returncode == 3:
                             break
                 if status.returncode != 3:
-                    LEFTOVER_CHILDREN.append({'pid': row[0], 'birth': row, 'reason': 'fenced cleanup unresolved'})
+                    focused_seal.record_leftover(LEFTOVER_CHILDREN, {'pid': row[0], 'birth': row, 'reason': 'fenced cleanup unresolved'})
                     failure = failure or 'scan preflight retained child cleanup unresolved'
             for name in ('tree-parent', 'tree-child', 'tree-grandchild'):
                 path = root / (name + '-pid')
                 if path.exists() and path.read_text().strip() not in births:
-                    LEFTOVER_CHILDREN.append({'pid': path.read_text().strip(), 'birth': None, 'reason': 'birth unobserved, not fenced', 'fixture': name})
+                    focused_seal.record_leftover(LEFTOVER_CHILDREN, {'pid': path.read_text().strip(), 'birth': None, 'reason': 'birth unobserved, not fenced', 'fixture': name})
                     failure = failure or 'scan preflight unobserved child'
             try:
                 child.wait(timeout=2)
@@ -642,7 +642,7 @@ def reparent_listener_self_test(root, workspace, prefix, helper, env):
             candidate_path = root / 'reparent-child-pid'
             candidate_pid = candidate_path.read_text().strip() if candidate_path.exists() else None
             if candidate_pid and not any(row[0] == candidate_pid for row in cleanup_births.values()):
-                LEFTOVER_CHILDREN.append({'pid': candidate_pid, 'birth': None, 'reason': 'birth unobserved, not fenced', 'argv': [env['SCG_PYTHON_BIN'], '-B', str(workspace / 'scripts/gates/darwin/listener_fixture.py'), 'reparent-child']})
+                focused_seal.record_leftover(LEFTOVER_CHILDREN, {'pid': candidate_pid, 'birth': None, 'reason': 'birth unobserved, not fenced', 'argv': [env['SCG_PYTHON_BIN'], '-B', str(workspace / 'scripts/gates/darwin/listener_fixture.py'), 'reparent-child']})
             (root / 'reparent-abort').write_text('abort\n')
             for birth in sorted(cleanup_births.values(), key=lambda row: row[0] == str(parent.pid)):
                 for sig in (signal.SIGTERM, signal.SIGKILL):
@@ -656,12 +656,12 @@ def reparent_listener_self_test(root, workspace, prefix, helper, env):
                         break
                 status = subprocess.run([str(helper), 'status', *birth], capture_output=True, text=True)
                 if status.returncode != 3:
-                    LEFTOVER_CHILDREN.append({'pid': birth[0], 'birth': birth, 'reason': 'fenced cleanup unresolved', 'statusExit': status.returncode})
+                    focused_seal.record_leftover(LEFTOVER_CHILDREN, {'pid': birth[0], 'birth': birth, 'reason': 'fenced cleanup unresolved', 'statusExit': status.returncode})
             try:
                 parent.wait(timeout=2)
             except subprocess.TimeoutExpired:
                 if parent_birth is None:
-                    LEFTOVER_CHILDREN.append({'pid': parent.pid, 'birth': None, 'reason': 'birth unobserved, not fenced', 'argv': parent.args})
+                    focused_seal.record_leftover(LEFTOVER_CHILDREN, {'pid': parent.pid, 'birth': None, 'reason': 'birth unobserved, not fenced', 'argv': parent.args})
             check = subprocess.run([str(helper), 'status', *retained], capture_output=True, text=True) if retained else None
             result = {'proto': 'TCP', 'case': 'retained reparented grandchild', 'expectedClassification': 'FAIL', 'detected': detected, 'failure': failure, 'birth': retained, 'parentBirth': parent_birth, 'retainedBirths': list(cleanup_births.values()), 'firstSightTree': tree, 'samples': samples, 'signals': signals, 'leftoverChild': list(LEFTOVER_CHILDREN), 'scopeObservations': SCOPE_OBSERVATIONS[observations_start:], 'childExit': 'gone or zombie' if check and check.returncode == 3 else None, 'noRemoteConnect': True}
             write_json(root / 'listener-reparent-self-test.json', result, root)

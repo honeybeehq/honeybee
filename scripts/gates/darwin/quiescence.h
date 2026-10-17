@@ -1,4 +1,4 @@
-struct quiescence_counts { int scanned, skipped_gone, skipped_uid_changed, skipped_fd_closed, matched, failed, exe_unlinked_pre_root, region_compared, region_unavailable, session_leader_not_uid_listed, fd_unobservable, fd_non_gate_failed, fd_clean_failed, fd_sandbox_failed, fd_denied_queries, fd_allowed_queries, fd_query_errors, fd_not_sandboxed, fd_write_denied, fd_platform, platform_not, platform_path_disallowed, platform_csops_error, platform_csops_unavailable, platform_inode_match, platform_inode_unobserved, fd_read_allowed[4], fd_read_denied[4], fd_allowed_by_query[16], fd_failed_results[16]; };
+struct quiescence_counts { int scanned, skipped_gone, skipped_uid_changed, skipped_fd_closed, matched, failed, exe_unlinked_pre_root, region_compared, region_unavailable, region_partial, session_leader_not_uid_listed, fd_unobservable, fd_non_gate_failed, fd_clean_failed, fd_sandbox_failed, fd_denied_queries, fd_allowed_queries, fd_query_errors, fd_not_sandboxed, fd_write_denied, fd_platform, platform_not, platform_path_disallowed, platform_csops_error, platform_csops_unavailable, platform_inode_match, platform_inode_unobserved, fd_read_allowed[4], fd_read_denied[4], fd_allowed_by_query[16], fd_failed_results[16]; };
 static const char *quiescence_errno(int value) {
   switch (value) {
     case 0: return "NONE";
@@ -14,7 +14,7 @@ static const char *quiescence_errno(int value) {
   }
 }
 static int quiescence_report(const char *call, int error, int birth, struct quiescence_counts *counts) {
-  fprintf(stderr, "{\"type\":\"%s\",\"call\":\"%s\",\"errno\":\"%s\",\"errnoNumber\":%d,\"sameBirth\":%d,\"counts\":{\"scanned\":%d,\"skippedGone\":%d,\"skippedUidChanged\":%d,\"skippedFdClosed\":%d,\"matched\":%d,\"failed\":%d,\"exeUnlinkedPreRoot\":%d,\"regionCompared\":%d,\"regionUnavailable\":%d,\"sessionLeaderNotUidListed\":%d,\"fdUnobservableSandboxDenied\":%d,\"fdNonGateFailed\":%d,\"fdCleanFailed\":%d,\"fdSandboxFailed\":%d,\"fdDeniedQueries\":%d,\"fdAllowedQueries\":%d,\"fdQueryErrors\":%d,\"fdNotSandboxed\":%d,\"fdUnobservableWriteDenied\":%d,\"fdUnobservablePlatformBinary\":%d,\"notPlatform\":%d,\"pathDisallowed\":%d,\"csopsError\":%d,\"csopsUnavailable\":%d,\"inodeMatch\":%d,\"platformInodeUnobserved\":%d}", counts->failed ? "QuiescenceFailure" : "QuiescenceComplete", call, quiescence_errno(error), error, birth, counts->scanned, counts->skipped_gone, counts->skipped_uid_changed, counts->skipped_fd_closed, counts->matched, counts->failed, counts->exe_unlinked_pre_root, counts->region_compared, counts->region_unavailable, counts->session_leader_not_uid_listed, counts->fd_unobservable, counts->fd_non_gate_failed, counts->fd_clean_failed, counts->fd_sandbox_failed, counts->fd_denied_queries, counts->fd_allowed_queries, counts->fd_query_errors, counts->fd_not_sandboxed, counts->fd_write_denied, counts->fd_platform, counts->platform_not, counts->platform_path_disallowed, counts->platform_csops_error, counts->platform_csops_unavailable, counts->platform_inode_match, counts->platform_inode_unobserved);
+  fprintf(stderr, "{\"type\":\"%s\",\"call\":\"%s\",\"errno\":\"%s\",\"errnoNumber\":%d,\"sameBirth\":%d,\"counts\":{\"scanned\":%d,\"skippedGone\":%d,\"skippedUidChanged\":%d,\"skippedFdClosed\":%d,\"matched\":%d,\"failed\":%d,\"exeUnlinkedPreRoot\":%d,\"regionCompared\":%d,\"regionUnavailable\":%d,\"regionPartial\":%d,\"sessionLeaderNotUidListed\":%d,\"fdUnobservableSandboxDenied\":%d,\"fdNonGateFailed\":%d,\"fdCleanFailed\":%d,\"fdSandboxFailed\":%d,\"fdDeniedQueries\":%d,\"fdAllowedQueries\":%d,\"fdQueryErrors\":%d,\"fdNotSandboxed\":%d,\"fdUnobservableWriteDenied\":%d,\"fdUnobservablePlatformBinary\":%d,\"notPlatform\":%d,\"pathDisallowed\":%d,\"csopsError\":%d,\"csopsUnavailable\":%d,\"inodeMatch\":%d,\"platformInodeUnobserved\":%d}", counts->failed ? "QuiescenceFailure" : "QuiescenceComplete", call, quiescence_errno(error), error, birth, counts->scanned, counts->skipped_gone, counts->skipped_uid_changed, counts->skipped_fd_closed, counts->matched, counts->failed, counts->exe_unlinked_pre_root, counts->region_compared, counts->region_unavailable, counts->region_partial, counts->session_leader_not_uid_listed, counts->fd_unobservable, counts->fd_non_gate_failed, counts->fd_clean_failed, counts->fd_sandbox_failed, counts->fd_denied_queries, counts->fd_allowed_queries, counts->fd_query_errors, counts->fd_not_sandboxed, counts->fd_write_denied, counts->fd_platform, counts->platform_not, counts->platform_path_disallowed, counts->platform_csops_error, counts->platform_csops_unavailable, counts->platform_inode_match, counts->platform_inode_unobserved);
   const char *slots[] = {"root:read", "root:write", "probe:read", "probe:write", "src:read", "src:write", "absent:read", "absent:write", "root:create", "root:unlink", "probe:create", "probe:unlink", "src:create", "src:unlink", "absent:create", "absent:unlink"};
   fputs(",\"fdAllowedByQuery\":{", stderr);
   for (int index = 0; index < 16; index++) fprintf(stderr, "%s\"%s\":%d", index ? "," : "", slots[index], counts->fd_allowed_by_query[index]);
@@ -36,6 +36,13 @@ static int root_path(const char *path, const char *root) {
 struct root_inode { unsigned long long dev, ino; };
 static struct root_inode root_inodes[1000000];
 static int gate_launch_pids[1000000], gate_launch_count;
+struct gate_birth { int pid, ppid; unsigned long long sec, usec; };
+static struct gate_birth gate_births[1000000];
+static int gate_birth_count;
+static int gate_own(int pid, struct proc_bsdinfo *birth) {
+  for (int index = 0; index < gate_birth_count; index++) if (gate_births[index].pid == pid && gate_births[index].sec == birth->pbi_start_tvsec && gate_births[index].usec == birth->pbi_start_tvusec) return index + 1;
+  return 0;
+}
 static int unlinked_session(int pid, struct proc_bsdinfo *birth, int controller, int *pids, int count, unsigned long long created, struct quiescence_counts *counts, int count_unlisted) {
   struct proc_bsdinfo owner, current;
   if (pid == controller || !identity(controller, &owner) || birth->pbi_start_tvsec >= owner.pbi_start_tvsec || birth->pbi_start_tvsec >= created / 1000000 - 1) return 0;
@@ -49,27 +56,34 @@ static int unlinked_session(int pid, struct proc_bsdinfo *birth, int controller,
   return !same_birth(controller, owner.pbi_start_tvsec, owner.pbi_start_tvusec) && !same_birth(pid, birth->pbi_start_tvsec, birth->pbi_start_tvusec) && getsid(pid) == session;
 
 }
-static int unlinked_regions(int pid, struct proc_bsdinfo *birth, int inode_count, struct quiescence_counts *counts) {
+enum region_state { REGION_REJECTED, REGION_COMPLETE, REGION_UNAVAILABLE_FIRST, REGION_PARTIAL };
+static enum region_state region_walk(int pid, struct proc_bsdinfo *birth, int inode_count, struct quiescence_counts *counts, unsigned long long image_dev, unsigned long long image_ino, int *image_seen) {
   unsigned long long address = 0;
-  int compared = 0;
   for (int index = 0; index < 65536; index++) {
     struct proc_regionwithpathinfo region;
     memset(&region, 0, sizeof(region));
+    errno = 0;
     int got = proc_pidinfo(pid, PROC_PIDREGIONPATHINFO, address, &region, sizeof(region));
-    if (same_birth(pid, birth->pbi_start_tvsec, birth->pbi_start_tvusec)) return 0;
-    if (got != (int)sizeof(region)) { if (!compared) counts->region_unavailable++; return 1; }
+    int error = errno;
+    if (same_birth(pid, birth->pbi_start_tvsec, birth->pbi_start_tvusec)) return REGION_REJECTED;
+    if (got != (int)sizeof(region) || error) {
+      if (!index) { counts->region_unavailable++; return REGION_UNAVAILABLE_FIRST; }
+      if (!got && error == EINVAL) return REGION_COMPLETE;
+      counts->region_partial++;
+      return REGION_PARTIAL;
+    }
     unsigned long long dev = (unsigned int)region.prp_vip.vip_vi.vi_stat.vst_dev, ino = region.prp_vip.vip_vi.vi_stat.vst_ino;
     if (ino) {
-      compared = 1;
       counts->region_compared++;
-      for (int item = 0; item < inode_count; item++) if (root_inodes[item].dev == dev && root_inodes[item].ino == ino) return 0;
+      for (int item = 0; item < inode_count; item++) if (root_inodes[item].dev == dev && root_inodes[item].ino == ino) { counts->platform_inode_match++; return REGION_REJECTED; }
+      if (image_ino && dev == image_dev && ino == image_ino) *image_seen = 1;
     }
     unsigned long long next = region.prp_prinfo.pri_address + region.prp_prinfo.pri_size;
-    if (!region.prp_prinfo.pri_size || next <= address) { counts->region_unavailable++; return 1; }
+    if (!region.prp_prinfo.pri_size || next <= address || next < region.prp_prinfo.pri_address) { counts->region_partial++; return REGION_PARTIAL; }
     address = next;
   }
-  counts->region_unavailable++;
-  return 1;
+  counts->region_partial++;
+  return REGION_PARTIAL;
 }
 static int platform_fd_proof(int pid, struct proc_bsdinfo *birth, int unlinked, int inode_count, struct quiescence_counts *counts) {
   char image[PROC_PIDPATHINFO_MAXSIZE], canonical[PATH_MAX];
@@ -94,19 +108,9 @@ static int platform_fd_proof(int pid, struct proc_bsdinfo *birth, int unlinked, 
   if (stat(canonical, &file) || same_birth(pid, birth->pbi_start_tvsec, birth->pbi_start_tvusec)) { counts->platform_inode_unobserved++; return 0; }
   unsigned long long dev = (unsigned int)file.st_dev, ino = file.st_ino;
   for (int index = 0; index < inode_count; index++) if (root_inodes[index].dev == dev && root_inodes[index].ino == ino) { counts->platform_inode_match++; return 0; }
-  unsigned long long address = 0;
-  for (int index = 0; index < 65536; index++) {
-    struct proc_regionwithpathinfo region;
-    memset(&region, 0, sizeof(region));
-    got = proc_pidinfo(pid, PROC_PIDREGIONPATHINFO, address, &region, sizeof(region));
-    if (got != (int)sizeof(region) || same_birth(pid, birth->pbi_start_tvsec, birth->pbi_start_tvusec)) break;
-    unsigned long long region_dev = (unsigned int)region.prp_vip.vip_vi.vi_stat.vst_dev, region_ino = region.prp_vip.vip_vi.vi_stat.vst_ino;
-    for (int item = 0; item < inode_count; item++) if (region_ino && root_inodes[item].dev == region_dev && root_inodes[item].ino == region_ino) { counts->platform_inode_match++; return 0; }
-    if (region_ino && region_dev == dev && region_ino == ino) return !same_birth(pid, birth->pbi_start_tvsec, birth->pbi_start_tvusec);
-    unsigned long long next = region.prp_prinfo.pri_address + region.prp_prinfo.pri_size;
-    if (!region.prp_prinfo.pri_size || next <= address) break;
-    address = next;
-  }
+  int image_seen = 0;
+  enum region_state state = region_walk(pid, birth, inode_count, counts, dev, ino, &image_seen);
+  if (state == REGION_COMPLETE && image_seen) return 1;
   counts->platform_inode_unobserved++;
   return 0;
 }
@@ -120,6 +124,9 @@ static int quiescence(int controller, const char *root, unsigned long long creat
   for (int index = 0; index < inode_count; index++) if (scanf("%llu %llu", &root_inodes[index].dev, &root_inodes[index].ino) != 2) return quiescence_failure("root", EINVAL, -1, &counts);
   if (scanf("%d", &gate_launch_count) != 1 || gate_launch_count < 0 || gate_launch_count > 1000000) return quiescence_failure("root", EINVAL, -1, &counts);
   for (int index = 0; index < gate_launch_count; index++) if (scanf("%d", &gate_launch_pids[index]) != 1 || gate_launch_pids[index] <= 0) return quiescence_failure("root", EINVAL, -1, &counts);
+  if (scanf("%d", &gate_birth_count) != 1 || gate_birth_count < 0 || gate_birth_count > 1000000) return quiescence_failure("root", EINVAL, -1, &counts);
+  for (int index = 0; index < gate_birth_count; index++) if (scanf("%d %d %llu %llu", &gate_births[index].pid, &gate_births[index].ppid, &gate_births[index].sec, &gate_births[index].usec) != 4 || gate_births[index].pid <= 0 || gate_births[index].ppid < 0) return quiescence_failure("root", EINVAL, -1, &counts);
+  int foreign_counts[3] = {0};
   char trailing;
   if (scanf(" %c", &trailing) != EOF) return quiescence_failure("root", EINVAL, -1, &counts);
   char canonical[PATH_MAX];
@@ -144,7 +151,7 @@ static int quiescence(int controller, const char *root, unsigned long long creat
     if (birth.pbi_uid != getuid()) { counts.skipped_uid_changed++; continue; }
     if (birth.pbi_status == 5) continue;
     struct proc_vnodepathinfo paths;
-    char image[PROC_PIDPATHINFO_MAXSIZE], matched[PATH_MAX] = {0};
+    char image[PROC_PIDPATHINFO_MAXSIZE], matched[3][PATH_MAX] = {{0}};
     int unlinked = 0, region_proven = 0, fd_unobservable = 0;
     errno = 0;
     int read_size = proc_pidinfo(pid, PROC_PIDVNODEPATHINFO, 0, &paths, sizeof(paths));
@@ -158,7 +165,9 @@ static int quiescence(int controller, const char *root, unsigned long long creat
       if (read_size > 0) read_size = sizeof(paths);
       else if (read_error == ENOENT && unlinked_session(pid, &birth, controller, pids, got, created, &counts, 1)) {
         int previous_regions = counts.region_compared;
-        if (!unlinked_regions(pid, &birth, inode_count, &counts)) { failed = 1; failure_call = "region inode"; failure_errno = ENOENT; failure_birth = same_birth(pid, birth.pbi_start_tvsec, birth.pbi_start_tvusec); continue; }
+        int image_seen = 0;
+        enum region_state state = region_walk(pid, &birth, inode_count, &counts, 0, 0, &image_seen);
+        if (state != REGION_COMPLETE && state != REGION_UNAVAILABLE_FIRST) { failed = 1; failure_call = "region inode"; failure_errno = ENOENT; failure_birth = same_birth(pid, birth.pbi_start_tvsec, birth.pbi_start_tvusec); continue; }
         region_proven = counts.region_compared > previous_regions;
         image[0] = 0;
         unlinked = 1;
@@ -174,7 +183,7 @@ static int quiescence(int controller, const char *root, unsigned long long creat
     int status = same_birth(pid, birth.pbi_start_tvsec, birth.pbi_start_tvusec);
     if (status) { if (status == 3) counts.skipped_gone++; else { failed = 1; failure_call = "birth"; failure_errno = errno; failure_birth = status; } continue; }
     const char *names[] = {paths.pvi_cdir.vip_path, image};
-    for (int part = 0; part < 2; part++) if (root_path(names[part], root)) snprintf(matched, sizeof(matched), "%s", names[part]);
+    for (int part = 0; part < 2; part++) if (root_path(names[part], root)) snprintf(matched[part], sizeof(matched[part]), "%s", names[part]);
     errno = 0;
     int bytes = proc_pidinfo(pid, PROC_PIDLISTFDS, 0, NULL, 0);
     if (errno || bytes < 0 || bytes > 16777216) {
@@ -213,17 +222,26 @@ static int quiescence(int controller, const char *root, unsigned long long creat
       }
       status = same_birth(pid, birth.pbi_start_tvsec, birth.pbi_start_tvusec);
       if (status) { if (status == 3) { gone = 1; counts.skipped_gone++; } else { failed = 1; failure_call = "birth"; failure_errno = errno; failure_birth = status; } break; }
-      if (root_path(vnode.pvip.vip_path, root)) snprintf(matched, sizeof(matched), "%s", vnode.pvip.vip_path);
+      if (root_path(vnode.pvip.vip_path, root)) snprintf(matched[2], sizeof(matched[2]), "%s", vnode.pvip.vip_path);
     }
     free(fds);
     if (gone || failed) continue;
     status = same_birth(pid, birth.pbi_start_tvsec, birth.pbi_start_tvusec);
+    if (!status && (matched[0][0] || matched[1][0] || matched[2][0])) {
+      counts.matched++;
+      const char *categories[] = {"cwd", "exe", "fd"};
+      for (int part = 0; part < 3; part++) if (matched[part][0]) {
+        int own = gate_own(pid, &birth);
+        if (own) printf("OWN\t%d\t%u\t%llu\t%llu\t%s\t%s\n", pid, (unsigned int)gate_births[own - 1].ppid, birth.pbi_start_tvsec, birth.pbi_start_tvusec, categories[part], matched[part][strlen(root)] ? matched[part] + strlen(root) + 1 : ".");
+        else foreign_counts[part]++;
+      }
+    }
     if (status == 4) { failed = 1; failure_call = "birth"; failure_errno = errno; failure_birth = status; }
     else if (status == 3) counts.skipped_gone++;
     else if (!status && fd_unobservable) {
       failure_call = "fdinfo"; failure_errno = EPERM; failure_birth = 0;
       if (!unlinked_session(pid, &birth, controller, pids, got, created, &counts, !unlinked)) { counts.fd_non_gate_failed++; failed = 1; }
-      else if (matched[0] || (unlinked && !region_proven)) { counts.fd_clean_failed++; failed = 1; }
+      else if ((matched[0][0] || matched[1][0] || matched[2][0]) || (unlinked && !region_proven)) { counts.fd_clean_failed++; failed = 1; }
       else {
         int results[16], allowed_by_query[16] = {0};
         for (int index = 0; index < 16; index++) results[index] = -2;
@@ -239,15 +257,16 @@ static int quiescence(int controller, const char *root, unsigned long long creat
         }
       }
     }
-    else if (!status && matched[0]) {
+    else if (!status && (matched[0][0] || matched[1][0] || matched[2][0])) {
       if (unlinked) { failed = 1; failure_call = "unlinked policy"; failure_errno = ENOENT; failure_birth = 0; }
-      else { counts.matched++; printf("%d\t%s\n", pid, matched); }
     } else if (!status && unlinked) {
       if (!unlinked_session(pid, &birth, controller, pids, got, created, &counts, 0)) { failed = 1; failure_call = "unlinked policy"; failure_errno = ENOENT; failure_birth = 0; }
       else counts.exe_unlinked_pre_root++;
     }
   }
   free(pids);
+  const char *categories[] = {"cwd", "exe", "fd"};
+  for (int part = 0; part < 3; part++) if (foreign_counts[part]) printf("FOREIGN\t%s\t%d\n", categories[part], foreign_counts[part]);
   if (failed) return quiescence_failure(failure_call, failure_errno, failure_birth, &counts);
   quiescence_report("none", 0, -1, &counts);
   puts("COMPLETE");
