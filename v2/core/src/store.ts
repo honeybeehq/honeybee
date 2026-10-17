@@ -3548,8 +3548,8 @@ export class CoreStore {
     return row ? JSON.parse(String(row.input_json)) as PhoneInput : undefined;
   }
 
-  private withPhoneInput<T extends { messageId: number }>(message: T): T & { phoneOrigin?: PhoneInput["envelope"] } {
-    const input = this.phoneInput(message.messageId);
+  private withPhoneInput<T>(message: T, messageId: number): T & { phoneOrigin?: PhoneInput["envelope"] } {
+    const input = this.phoneInput(messageId);
     return input ? { ...message, phoneOrigin: input.envelope } : message;
   }
 
@@ -3736,7 +3736,7 @@ export class CoreStore {
        ORDER BY m.id
        LIMIT ?`,
     ).all(beeId, limit + 1) as Row[];
-    const candidates = rows.slice(0, limit).map(row => this.withPhoneInput(mailPendingMessage(row)));
+    const candidates = rows.slice(0, limit).map(row => this.withPhoneInput(mailPendingMessage(row), Number(row.message_id)));
     const messages: MailPendingMessage[] = [];
     let bodyBytes = 0;
     let jsonBytes = 0;
@@ -3784,7 +3784,7 @@ export class CoreStore {
        WHERE seq <= ? AND seq < ?
        ORDER BY seq DESC LIMIT ?`,
     ).all(snapshotSeq, beforeSeq, limit + 1) as Row[];
-    const candidates = enqueueRows.slice(0, limit).map(row => this.withPhoneInput(mailHistoryEnqueue(row)));
+    const candidates = enqueueRows.slice(0, limit).map(row => this.withPhoneInput(mailHistoryEnqueue(row), Number(row.message_id)));
 
     // Exactly three indexed point reads per candidate at most. Repeated
     // expedites or historical duplicate terminal rows cannot enlarge work.
