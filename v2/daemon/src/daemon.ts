@@ -1698,7 +1698,7 @@ export class HiveDaemon {
         return this.mustStore().compareAndSetExecutionClaim(params, conn.executionCoordinatorUid);
       case "rpc.execution.resolve":
         if (conn.executionCoordinatorUid === undefined) throw new RpcError("caller_not_trusted", "Execution requires an authenticated local coordinator");
-        return this.mustStore().resolveExecution(params);
+        return this.mustStore().resolveExecution(params, conn.executionCoordinatorUid);
       case "rpc.execution.execute": {
         if (params.verb === "spawn") throw new ExecutionFenceError("rpc_execution_fence_unsupported", "Spawn execution fencing requires phase B; no fallback is permitted");
         if (conn.executionCoordinatorUid === undefined) throw new RpcError("caller_not_trusted", "Execution requires an authenticated local coordinator");
@@ -1715,6 +1715,7 @@ export class HiveDaemon {
   }
 
   private dispatch(verb: RpcVerb, params: Record<string, unknown>, conn: RpcConn): unknown {
+    if (verb.startsWith("rpc.execution.")) throw new RpcError("rpc_execution_fence_unsupported", "Execution fencing is dark: local coordinator installation is NOT_COVERED");
     assertLocalHandoffRpc(verb, params, conn);
     this.assertNotForeignHarnessStart(verb, params, conn);
     if (typeof params.beeId === "string" && ["stop", "revive", "archive", "bee.swapAccount", "bee.setArgs", "bee.reconfigure", "bee.move", "bee.handoff", "bee.fork", "bee.interrupt"].includes(verb)) {
@@ -1737,11 +1738,6 @@ export class HiveDaemon {
       if (operation && ((operation.phase !== "ready" && operation.phase !== "failed") || (operation.worker && pidAlive(operation.worker.pid)))) throw new RpcError("thread_busy", "Thread operation still owns execution; wait for settlement before deletion");
     }
     switch (verb) {
-      case "rpc.execution.coordinator.register":
-      case "rpc.execution.claim.compareAndSet":
-      case "rpc.execution.resolve":
-      case "rpc.execution.execute":
-        throw new RpcError("rpc_execution_fence_unsupported", "Execution fencing is dark: local coordinator installation is NOT_COVERED");
       case "rpc.effect.status":
         if (Object.keys(params).length) throw new RpcError("invalid_request", "Effect status takes no parameters");
         return this.mustStore().effectCoverage();

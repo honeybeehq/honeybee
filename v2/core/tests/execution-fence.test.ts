@@ -55,7 +55,7 @@ test("claim advancement refuses stale queued archive as a side receipt and settl
     const receipt = f.execute();
     f.advance();
     assert.equal(f.store.getCommand(receipt.commandId!)?.status, "done");
-    const resolved = f.store.resolveExecution(f.request);
+    const resolved = f.store.resolveExecution(f.request, 1000);
     assert.ok("executionReceipt" in resolved);
     assert.equal(resolved.executionReceipt.status, "refused_stale");
     assert.equal(f.store.getBee(f.bee.id)?.lifecycle, "active");
@@ -74,7 +74,7 @@ test("claimed archive blocks advancement until its lifecycle transaction complet
     assert.equal(f.store.executeArchiveCommand(command!.id), true);
     f.store.completeCommand(command!.id);
     assert.equal(f.store.getBee(f.bee.id)?.lifecycle, "archived");
-    const resolved = f.store.resolveExecution(f.request);
+    const resolved = f.store.resolveExecution(f.request, 1000);
     assert.ok("executionReceipt" in resolved); assert.equal(resolved.executionReceipt.status, "completed");
     f.advance();
   } finally { f.cleanup(); }
@@ -102,7 +102,7 @@ test("every reopen retires queued execution; command claim refuses and positive 
     while ((cmd = store.claimNextCommand())) store.completeCommand(cmd.id);
     assert.equal(store.getCommand(receipt.commandId!)?.status, "done");
     assert.equal(store.getBee(f.bee.id)?.lifecycle, "active");
-    const resolved = store.resolveExecution(f.request); assert.ok("executionReceipt" in resolved); assert.equal(resolved.executionReceipt.status, "refused_stale");
+    const resolved = store.resolveExecution(f.request, 1000); assert.ok("executionReceipt" in resolved); assert.equal(resolved.executionReceipt.status, "refused_stale");
   } finally { store.close(); f.h.cleanup(); }
 });
 
@@ -115,7 +115,7 @@ test("archive lifecycle transaction rechecks the live grant after command claim"
     db.prepare("UPDATE rpc_execution_claims SET claim=?").run(JSON.stringify({ ...f.claim, generation: 2, claimId: "out-of-band" }));
     assert.equal(f.store.executeArchiveCommand(receipt.commandId!), false);
     assert.equal(f.store.getBee(f.bee.id)?.lifecycle, "active");
-    const resolved = f.store.resolveExecution(f.request); assert.ok("executionReceipt" in resolved); assert.equal(resolved.executionReceipt.status, "refused_stale");
+    const resolved = f.store.resolveExecution(f.request, 1000); assert.ok("executionReceipt" in resolved); assert.equal(resolved.executionReceipt.status, "refused_stale");
   } finally { f.cleanup(); }
 });
 
@@ -126,7 +126,7 @@ test("paused old invocation refuses after owner ACK, records zero-effect receipt
     assert.throws(f.execute, error => code("rpc_execution_stale")(error) && (error as ExecutionFenceError).details?.executionReceipt !== undefined);
     assert.equal(f.store.getCommandByIdempotencyKey(f.claim.idempotencyKey), null);
     assert.equal(f.store.getBee(f.bee.id)?.lifecycle, "active");
-    const observed = f.store.resolveExecution(f.request); assert.ok("executionReceipt" in observed); assert.equal(observed.executionReceipt.status, "refused_stale");
+    const observed = f.store.resolveExecution(f.request, 1000); assert.ok("executionReceipt" in observed); assert.equal(observed.executionReceipt.status, "refused_stale");
     const { digestVersion, verb, resource, requestDigest, idempotencyKey, ...executionFence } = next;
     const replacement = f.execute({ digestVersion, verb, resource, requestDigest, idempotencyKey, executionFence, args: f.request.args });
     assert.equal(replacement.idempotencyKey, f.claim.idempotencyKey);
@@ -147,6 +147,6 @@ test("archive lifecycle commit before command settlement cannot rearchive after 
     while ((command = store.claimNextCommand())) store.completeCommand(command.id);
     assert.equal(store.getBee(f.bee.id)?.lifecycle, "active");
     assert.equal(store.getCommand(receipt.commandId!)?.status, "done");
-    const observed = store.resolveExecution(f.request); assert.ok("executionReceipt" in observed); assert.equal(observed.executionReceipt.status, "completed");
+    const observed = store.resolveExecution(f.request, 1000); assert.ok("executionReceipt" in observed); assert.equal(observed.executionReceipt.status, "completed");
   } finally { store.close(); f.h.cleanup(); }
 });

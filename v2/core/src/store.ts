@@ -4688,9 +4688,10 @@ export class CoreStore {
     return outcome.receipt!;
   }
 
-  resolveExecution(value: unknown) {
+  resolveExecution(value: unknown, uid: number) {
     const request = executionRequest(value);
     return this.tx(() => {
+      this.executionLedger.requireCoordinator(request.executionFence.issuerId, uid);
       const receipt = this.executionLedger.observation(request);
       if (receipt) return { ...this.effectCoverage(), admissionReceipt: this.lookupRpcResult(request.idempotencyKey), executionReceipt: receipt };
       const observation = this.effectLedger.observe(request.idempotencyKey, request.verb);
