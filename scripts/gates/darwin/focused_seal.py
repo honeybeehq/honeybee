@@ -210,6 +210,10 @@ def fd_disclosure(count):
     return "fd introspection denied by MAC for " + str(count) + " same-uid sandboxed processes; accepted because each one's own sandbox denies read and write on the run root; an fd passed in over IPC by another process is not excluded."
 
 
+def fd_write_disclosure(count):
+    return str(count) + " same-uid sandboxed processes with MAC-denied fd introspection may READ the run root; each one's own sandbox denies write and create on all probed root paths; integrity relies on that write denial plus N1 before/after hashing; read access and an fd passed in over IPC are not excluded."
+
+
 FD_UNOBSERVABLE_LIMIT = 'fdUnobservableSandboxDenied: fd-passing residual remains; sampled sandbox denial on the four probe paths does not prove that a pre-existing or passed descriptor cannot access another root path.'
 UNLINKED_LIMIT = 'exeUnlinkedPreRoot accepted by birth-time; exec-after-birth of a since-unlinked root binary by a non-gate process is not excluded.'
 
@@ -308,23 +312,27 @@ def quiescence_evidence(result):
             if len(result.stderr) > 4096:
                 raise ValueError('oversized quiescence diagnostic')
             reason = json.loads(result.stderr)
-            if set(reason) != {'type', 'call', 'errno', 'errnoNumber', 'sameBirth', 'counts', 'fdAllowedByQuery', 'fdFailedQueryResults'} or reason['type'] != ('QuiescenceFailure' if result.returncode else 'QuiescenceComplete'):
+            if set(reason) != {'type', 'call', 'errno', 'errnoNumber', 'sameBirth', 'counts', 'fdAllowedByQuery', 'fdFailedQueryResults', 'fdWriteDeniedReadResults'} or reason['type'] != ('QuiescenceFailure' if result.returncode else 'QuiescenceComplete'):
                 raise ValueError('unexpected quiescence diagnostic schema')
             if reason['call'] not in ('root', 'allocation', 'proc_listpids', 'pidinfo vnode', 'pidpath', 'listfds', 'fdinfo', 'birth', 'none', 'unlinked policy', 'region inode') or reason['errno'] not in ('NONE', 'EPERM', 'EACCES', 'ESRCH', 'EBADF', 'ENOENT', 'EINVAL', 'ENOMEM', 'EINTR', 'OTHER'):
                 raise ValueError('unexpected quiescence diagnostic value')
             if type(reason['errnoNumber']) is not int or type(reason['sameBirth']) is not int or reason['sameBirth'] not in (-1, 0, 3, 4):
                 raise ValueError('unexpected quiescence numeric value')
-            if set(reason['counts']) != {'scanned', 'skippedGone', 'skippedUidChanged', 'skippedFdClosed', 'matched', 'failed', 'exeUnlinkedPreRoot', 'regionCompared', 'regionUnavailable', 'sessionLeaderNotUidListed', 'fdUnobservableSandboxDenied', 'fdNonGateFailed', 'fdCleanFailed', 'fdSandboxFailed', 'fdDeniedQueries', 'fdAllowedQueries', 'fdQueryErrors', 'fdNotSandboxed'} or any(type(value) is not int or value < 0 for value in reason['counts'].values()):
+            if set(reason['counts']) != {'scanned', 'skippedGone', 'skippedUidChanged', 'skippedFdClosed', 'matched', 'failed', 'exeUnlinkedPreRoot', 'regionCompared', 'regionUnavailable', 'sessionLeaderNotUidListed', 'fdUnobservableSandboxDenied', 'fdNonGateFailed', 'fdCleanFailed', 'fdSandboxFailed', 'fdDeniedQueries', 'fdAllowedQueries', 'fdQueryErrors', 'fdNotSandboxed', 'fdUnobservableWriteDenied'} or any(type(value) is not int or value < 0 for value in reason['counts'].values()):
                 raise ValueError('unexpected quiescence counts')
-            slots = {'root:read', 'root:write', 'probe:read', 'probe:write', 'src:read', 'src:write', 'absent:read', 'absent:write'}
+            slots = {'root:read', 'root:write', 'probe:read', 'probe:write', 'src:read', 'src:write', 'absent:read', 'absent:write', 'root:create', 'root:unlink', 'probe:create', 'probe:unlink', 'src:create', 'src:unlink', 'absent:create', 'absent:unlink'}
             if not isinstance(reason['fdAllowedByQuery'], dict) or set(reason['fdAllowedByQuery']) != slots or any(type(value) is not int or value < 0 for value in reason['fdAllowedByQuery'].values()):
                 raise ValueError('unexpected fixed-slot query counts')
-            if not isinstance(reason['fdFailedQueryResults'], list) or len(reason['fdFailedQueryResults']) != 8 or any(type(value) is not int or value not in (-2, -1, 0, 1) for value in reason['fdFailedQueryResults']):
+            if not isinstance(reason['fdFailedQueryResults'], list) or len(reason['fdFailedQueryResults']) != 16 or any(type(value) is not int or value not in (-2, -1, 0, 1) for value in reason['fdFailedQueryResults']):
                 raise ValueError('unexpected anonymous query vector')
+            reads = reason['fdWriteDeniedReadResults']
+            if not isinstance(reads, dict) or set(reads) != {'root:read', 'probe:read', 'src:read', 'absent:read'} or any(not isinstance(row, dict) or set(row) != {'allowed', 'denied'} or any(type(value) is not int or value < 0 for value in row.values()) for row in reads.values()):
+                raise ValueError('unexpected write-denied read diagnostics')
             evidence['reason'] = reason
         except (ValueError, TypeError, KeyError):
             evidence['reason'] = {'type': 'UnobservedQuiescenceFailure'}
     counts = evidence.get('reason', {}).get('counts', {}) if isinstance(evidence.get('reason'), dict) else {}
+    evidence['fdUnobservableWriteDeniedDisclosure'] = fd_write_disclosure(counts.get('fdUnobservableWriteDenied', 0))
     evidence['fdUnobservableDisclosure'] = fd_disclosure(counts.get('fdUnobservableSandboxDenied', 0))
     QUIESCENCE_OBSERVATIONS.append(evidence)
     return evidence

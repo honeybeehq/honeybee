@@ -144,21 +144,24 @@ static int quiescence_sandbox_denied(int pid, unsigned long long sec, unsigned l
   int error = errno;
   if (error || (sandboxed != 0 && sandboxed != 1) || same_birth(pid, sec, usec)) { (*errors)++; return 0; }
   if (!sandboxed) { (*not_sandboxed)++; return 0; }
-  int had_allowed = 0;
-  const char *operations[] = {"file-read-data", "file-write-data"};
-  for (int path = 0; path < 4; path++) for (int operation = 0; operation < 2; operation++) {
-    int slot = path * 2 + operation;
+  int had_allowed = 0, writes_denied = 1;
+  const char *operations[] = {"file-read-data", "file-write-data", "file-write-create", "file-write-unlink"};
+  for (int slot = 0; slot < 16; slot++) {
+    int path = slot < 8 ? slot / 2 : (slot - 8) / 2;
+    int operation = slot < 8 ? slot % 2 : 2 + (slot - 8) % 2;
     if (same_birth(pid, sec, usec)) { results[slot] = -1; (*errors)++; return 0; }
     errno = 0;
     int result = check(pid, operations[operation], 1, paths[path]);
     error = errno;
     if (error || (result != 0 && result != 1) || same_birth(pid, sec, usec)) { results[slot] = -1; (*errors)++; return 0; }
     results[slot] = result;
-    if (!result) { (*allowed)++; allowed_by_query[slot]++; had_allowed = 1; }
+    if (!result) { (*allowed)++; allowed_by_query[slot]++; had_allowed = 1; if (operation) writes_denied = 0; }
     else (*denied)++;
+    if (slot == 7 && !had_allowed) return 1;
   }
   if (same_birth(pid, sec, usec)) { (*errors)++; return 0; }
-  return !had_allowed;
+  return writes_denied ? 2 : 0;
+
 }
 static int node_observation(int pid, unsigned long long sec, unsigned long long usec, const char *expected_node, const char *reader, const char *preloader) {
   int rc = same_birth(pid, sec, usec);

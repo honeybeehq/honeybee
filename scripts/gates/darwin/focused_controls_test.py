@@ -23,11 +23,11 @@ class ScopeControlTests(unittest.TestCase):
                     scope_controls.observation(bad_output, '/node', '/reader', '/work', sandboxed, bad_policy)
 
     def test_quiescence_reason_is_bounded_and_has_no_foreign_fields(self):
-        reason = {'type': 'QuiescenceFailure', 'call': 'pidinfo vnode', 'errno': 'EPERM', 'errnoNumber': 1, 'sameBirth': 0, 'counts': {'scanned': 2, 'skippedGone': 0, 'skippedUidChanged': 0, 'skippedFdClosed': 0, 'matched': 0, 'failed': 1, 'exeUnlinkedPreRoot': 0, 'regionCompared': 0, 'regionUnavailable': 0, 'sessionLeaderNotUidListed': 0, 'fdUnobservableSandboxDenied': 0, 'fdNonGateFailed': 0, 'fdCleanFailed': 0, 'fdSandboxFailed': 0, 'fdDeniedQueries': 0, 'fdAllowedQueries': 0, 'fdQueryErrors': 0, 'fdNotSandboxed': 0}}
-        reason.update(fdAllowedByQuery=dict.fromkeys(('root:read', 'root:write', 'probe:read', 'probe:write', 'src:read', 'src:write', 'absent:read', 'absent:write'), 0), fdFailedQueryResults=[-2] * 8)
+        reason = {'type': 'QuiescenceFailure', 'call': 'pidinfo vnode', 'errno': 'EPERM', 'errnoNumber': 1, 'sameBirth': 0, 'counts': {'scanned': 2, 'skippedGone': 0, 'skippedUidChanged': 0, 'skippedFdClosed': 0, 'matched': 0, 'failed': 1, 'exeUnlinkedPreRoot': 0, 'regionCompared': 0, 'regionUnavailable': 0, 'sessionLeaderNotUidListed': 0, 'fdUnobservableSandboxDenied': 0, 'fdNonGateFailed': 0, 'fdCleanFailed': 0, 'fdSandboxFailed': 0, 'fdDeniedQueries': 0, 'fdAllowedQueries': 0, 'fdQueryErrors': 0, 'fdNotSandboxed': 0, 'fdUnobservableWriteDenied': 0}}
+        reason.update(fdAllowedByQuery=dict.fromkeys(('root:read', 'root:write', 'probe:read', 'probe:write', 'src:read', 'src:write', 'absent:read', 'absent:write', 'root:create', 'root:unlink', 'probe:create', 'probe:unlink', 'src:create', 'src:unlink', 'absent:create', 'absent:unlink'), 0), fdFailedQueryResults=[-2] * 16, fdWriteDeniedReadResults={slot: {'allowed': 0, 'denied': 0} for slot in ('root:read', 'probe:read', 'src:read', 'absent:read')})
         result = subprocess.CompletedProcess([], 4, '', json.dumps(reason))
         evidence = focused_seal.quiescence_evidence(result)
-        self.assertEqual(evidence, {'exit': 4, 'reason': reason, 'fdUnobservableDisclosure': focused_seal.fd_disclosure(0)})
+        self.assertEqual(evidence, {'exit': 4, 'reason': reason, 'fdUnobservableDisclosure': focused_seal.fd_disclosure(0), 'fdUnobservableWriteDeniedDisclosure': focused_seal.fd_write_disclosure(0)})
         result.stderr = json.dumps(dict(reason, path='/foreign/private'))
         self.assertEqual(focused_seal.quiescence_evidence(result)['reason'], {'type': 'UnobservedQuiescenceFailure'})
         result.stderr = 'x' * 4097
@@ -35,8 +35,8 @@ class ScopeControlTests(unittest.TestCase):
 
     def test_prelaunch_failure_and_receipt_retain_reason_and_exit(self):
         import guard
-        reason = {'type': 'QuiescenceFailure', 'call': 'fdinfo', 'errno': 'EPERM', 'errnoNumber': 1, 'sameBirth': 0, 'counts': {'scanned': 1, 'skippedGone': 0, 'skippedUidChanged': 0, 'skippedFdClosed': 0, 'matched': 0, 'failed': 1, 'exeUnlinkedPreRoot': 0, 'regionCompared': 0, 'regionUnavailable': 0, 'sessionLeaderNotUidListed': 0, 'fdUnobservableSandboxDenied': 0, 'fdNonGateFailed': 0, 'fdCleanFailed': 0, 'fdSandboxFailed': 0, 'fdDeniedQueries': 0, 'fdAllowedQueries': 0, 'fdQueryErrors': 0, 'fdNotSandboxed': 0}}
-        reason.update(fdAllowedByQuery=dict.fromkeys(('root:read', 'root:write', 'probe:read', 'probe:write', 'src:read', 'src:write', 'absent:read', 'absent:write'), 0), fdFailedQueryResults=[-2] * 8)
+        reason = {'type': 'QuiescenceFailure', 'call': 'fdinfo', 'errno': 'EPERM', 'errnoNumber': 1, 'sameBirth': 0, 'counts': {'scanned': 1, 'skippedGone': 0, 'skippedUidChanged': 0, 'skippedFdClosed': 0, 'matched': 0, 'failed': 1, 'exeUnlinkedPreRoot': 0, 'regionCompared': 0, 'regionUnavailable': 0, 'sessionLeaderNotUidListed': 0, 'fdUnobservableSandboxDenied': 0, 'fdNonGateFailed': 0, 'fdCleanFailed': 0, 'fdSandboxFailed': 0, 'fdDeniedQueries': 0, 'fdAllowedQueries': 0, 'fdQueryErrors': 0, 'fdNotSandboxed': 0, 'fdUnobservableWriteDenied': 0}}
+        reason.update(fdAllowedByQuery=dict.fromkeys(('root:read', 'root:write', 'probe:read', 'probe:write', 'src:read', 'src:write', 'absent:read', 'absent:write', 'root:create', 'root:unlink', 'probe:create', 'probe:unlink', 'src:create', 'src:unlink', 'absent:create', 'absent:unlink'), 0), fdFailedQueryResults=[-2] * 16, fdWriteDeniedReadResults={slot: {'allowed': 0, 'denied': 0} for slot in ('root:read', 'probe:read', 'src:read', 'absent:read')})
         result = subprocess.CompletedProcess([], 4, '', json.dumps(reason))
         with tempfile.TemporaryDirectory() as temporary, patch.object(focused_seal, 'QUIESCENCE_OBSERVATIONS', []), patch.object(focused_seal.subprocess, 'run', return_value=result):
             root = Path(temporary).resolve()
@@ -48,7 +48,7 @@ class ScopeControlTests(unittest.TestCase):
                 focused_seal.require_quiescent(root, root / 'scope')
             guard.write_json(root / 'receipt.json', {'exit': 90}, root)
             receipt = json.loads((root / 'receipt.json').read_text())
-            self.assertEqual(receipt['quiescenceObservations'], [{'exit': 4, 'reason': reason, 'fdUnobservableDisclosure': focused_seal.fd_disclosure(0)}])
+            self.assertEqual(receipt['quiescenceObservations'], [{'exit': 4, 'reason': reason, 'fdUnobservableDisclosure': focused_seal.fd_disclosure(0), 'fdUnobservableWriteDeniedDisclosure': focused_seal.fd_write_disclosure(0)}])
             self.assertEqual(receipt['fdUnobservableDisclosure'], focused_seal.fd_disclosure(0))
 
     def test_root_clock_and_inode_inventory_are_controller_owned_and_retained(self):
@@ -87,10 +87,11 @@ class ScopeControlTests(unittest.TestCase):
     def test_fd_disclosure_is_verbatim_with_scan_count(self):
         expected = "fd introspection denied by MAC for 3 same-uid sandboxed processes; accepted because each one's own sandbox denies read and write on the run root; an fd passed in over IPC by another process is not excluded."
         self.assertEqual(focused_seal.fd_disclosure(3), expected)
-        counts = dict.fromkeys(('scanned', 'skippedGone', 'skippedUidChanged', 'skippedFdClosed', 'matched', 'failed', 'exeUnlinkedPreRoot', 'regionCompared', 'regionUnavailable', 'sessionLeaderNotUidListed', 'fdUnobservableSandboxDenied', 'fdNonGateFailed', 'fdCleanFailed', 'fdSandboxFailed', 'fdDeniedQueries', 'fdAllowedQueries', 'fdQueryErrors', 'fdNotSandboxed'), 0)
+        self.assertEqual(focused_seal.fd_write_disclosure(2), "2 same-uid sandboxed processes with MAC-denied fd introspection may READ the run root; each one's own sandbox denies write and create on all probed root paths; integrity relies on that write denial plus N1 before/after hashing; read access and an fd passed in over IPC are not excluded.")
+        counts = dict.fromkeys(('scanned', 'skippedGone', 'skippedUidChanged', 'skippedFdClosed', 'matched', 'failed', 'exeUnlinkedPreRoot', 'regionCompared', 'regionUnavailable', 'sessionLeaderNotUidListed', 'fdUnobservableSandboxDenied', 'fdNonGateFailed', 'fdCleanFailed', 'fdSandboxFailed', 'fdDeniedQueries', 'fdAllowedQueries', 'fdQueryErrors', 'fdNotSandboxed', 'fdUnobservableWriteDenied'), 0)
         counts['fdUnobservableSandboxDenied'] = 3
         reason = {'type': 'QuiescenceComplete', 'call': 'none', 'errno': 'NONE', 'errnoNumber': 0, 'sameBirth': -1, 'counts': counts}
-        reason.update(fdAllowedByQuery=dict.fromkeys(('root:read', 'root:write', 'probe:read', 'probe:write', 'src:read', 'src:write', 'absent:read', 'absent:write'), 0), fdFailedQueryResults=[-2] * 8)
+        reason.update(fdAllowedByQuery=dict.fromkeys(('root:read', 'root:write', 'probe:read', 'probe:write', 'src:read', 'src:write', 'absent:read', 'absent:write', 'root:create', 'root:unlink', 'probe:create', 'probe:unlink', 'src:create', 'src:unlink', 'absent:create', 'absent:unlink'), 0), fdFailedQueryResults=[-2] * 16, fdWriteDeniedReadResults={slot: {'allowed': 0, 'denied': 0} for slot in ('root:read', 'probe:read', 'src:read', 'absent:read')})
         evidence = focused_seal.quiescence_evidence(subprocess.CompletedProcess([], 0, 'COMPLETE\n', json.dumps(reason)))
         self.assertEqual(evidence['fdUnobservableDisclosure'], expected)
 

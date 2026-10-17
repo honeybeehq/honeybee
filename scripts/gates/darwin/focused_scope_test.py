@@ -97,7 +97,7 @@ static int proc_pidinfo(int pid,int flavor,unsigned long long arg,void *out,int 
 }
 static int proc_pidfdinfo(int pid,int fd,int flavor,void *out,int size) { (void)pid;(void)fd;(void)flavor;(void)size;stage=4;if(mode>=31){errno=EPERM;return -1;}if(mode==6||(fd==3&&(mode==12||mode==14||mode==15))){errno=mode==6?ESRCH:mode==12?EBADF:mode==14?ENOENT:EPERM;return -1;}strcpy(((struct vnode_fdinfowithpath*)out)->pvip.vip_path,mode>=18&&mode!=23?"/outside":"/fixture/open");return sizeof(struct vnode_fdinfowithpath); }
 typedef int (*sandbox_check_function)(pid_t,const char*,int,...);
-static int fake_sandbox_check(pid_t pid,const char *op,int filter,...) { (void)pid;(void)filter;if(!op)return mode==41?0:1;int index=query_index++;if(mode==40){errno=EPERM;return 1;}if(mode>=32&&mode<=39&&index==mode-32)return 0;return 1; }
+static int fake_sandbox_check(pid_t pid,const char *op,int filter,...) { (void)pid;(void)filter;if(!op)return mode==41?0:1;if(strcmp(op,"file-read-data")&&strcmp(op,"file-write-data")&&strcmp(op,"file-write-create")&&strcmp(op,"file-write-unlink")){errno=EINVAL;return -1;}int index=query_index++;if(mode==40){errno=EPERM;return 1;}if(mode==73&&!strcmp(op,"file-write-create")){errno=EINVAL;return -1;}if(mode>=60&&mode<=73){int writes[]={1,3,5,7,8,9,10,11,12,13,14,15};if(index<8&&index%2==0)return 0;if(mode>=61&&mode<=72&&index==writes[mode-61])return 0;}if(mode>=32&&mode<=39&&index==mode-32)return 0;return 1; }
 static sandbox_check_function sandbox_checker(void) { return mode==44?NULL:fake_sandbox_check; }
 '''
         main = r'''
@@ -122,7 +122,7 @@ int main(int argc,char **argv) { mode=argc>1?atoi(argv[1]):0;int rc=quiescence(1
                 9: ('live vnode read error', 4), 10: ('live fd-list error', 4),
                 11: ('birth mismatch', 4), 12: ('live EBADF skips fd and continues', 0),
                 13: ('exit after matched paths before final fence', 0),
-                14: ('live ENOENT skips fd and continues', 0), 15: ('live EPERM fails', 4), 16: ('uid changed after enumeration skips', 0), 17: ('same uid identity EPERM fails', 4), 18: ('pre-root unlinked unavailable region allowed', 0), 19: ('post-root unlinked fails', 4), 20: ('gate descendant birth fails', 4), 21: ('gate session or pgid fails', 4), 22: ('unlinked dirty cwd fails', 4), 23: ('unlinked dirty fd fails', 4), 24: ('region inode in manifest fails', 4), 25: ('region inode outside manifest allowed', 0), 26: ('root-owned session leader informational only', 0), 27: ('pidpath EPERM still fails', 4), 28: ('one second margin fails', 4), 29: ('sid in retained gate launch set fails', 4), 30: ('pgid in retained gate launch set fails', 4), 31: ('fd EPERM all eight denied accepts', 0), **{mode: ('each individual allowed query fails',4) for mode in range(32,40)}, 40: ('sandbox query error fails',4), 41: ('not sandboxed fails',4), 44: ('SPI unavailable fails',4), 47: ('fd EPERM gate process fails',4), 48: ('fd EPERM dirty cwd fails',4), 49: ('fd EPERM dirty exe fails',4), 50: ('exe EPERM fails before fd exception',4)}
+                14: ('live ENOENT skips fd and continues', 0), 15: ('live EPERM fails', 4), 16: ('uid changed after enumeration skips', 0), 17: ('same uid identity EPERM fails', 4), 18: ('pre-root unlinked unavailable region allowed', 0), 19: ('post-root unlinked fails', 4), 20: ('gate descendant birth fails', 4), 21: ('gate session or pgid fails', 4), 22: ('unlinked dirty cwd fails', 4), 23: ('unlinked dirty fd fails', 4), 24: ('region inode in manifest fails', 4), 25: ('region inode outside manifest allowed', 0), 26: ('root-owned session leader informational only', 0), 27: ('pidpath EPERM still fails', 4), 28: ('one second margin fails', 4), 29: ('sid in retained gate launch set fails', 4), 30: ('pgid in retained gate launch set fails', 4), 31: ('fd EPERM all eight denied accepts', 0), **{mode: ('read-only alternative or data-write refusal',0 if mode%2==0 else 4) for mode in range(32,40)}, 40: ('sandbox query error fails',4), 41: ('not sandboxed fails',4), 44: ('SPI unavailable fails',4), 47: ('fd EPERM gate process fails',4), 48: ('fd EPERM dirty cwd fails',4), 49: ('fd EPERM dirty exe fails',4), 50: ('exe EPERM fails before fd exception',4),60:('read allowed twelve writes denied accepts',0),**{mode:('each of twelve write allows fails',4) for mode in range(61,73)},73:('unknown write-create op errors',4)}
             for mode, (name, expected) in cases.items():
                 with self.subTest(case=name):
                     result = subprocess.run([str(binary), str(mode)], input="1\n7 42\n2\n77\n88\n", capture_output=True, text=True, timeout=2)
@@ -135,8 +135,13 @@ int main(int argc,char **argv) { mode=argc>1?atoi(argv[1]):0;int rc=quiescence(1
                         if mode==31:
                             self.assertEqual(reason['counts']['fdUnobservableSandboxDenied'],1)
                             self.assertEqual(reason['counts']['fdDeniedQueries'],8)
-                            self.assertEqual(reason['fdFailedQueryResults'],[-2]*8)
+                            self.assertEqual(reason['fdFailedQueryResults'],[-2]*16)
                             self.assertEqual(sum(reason['fdAllowedByQuery'].values()),0)
+                        if mode==60 or mode in (32,34,36,38):
+                            self.assertEqual(reason['counts']['fdUnobservableWriteDenied'],1)
+                            self.assertEqual(reason['counts']['fdUnobservableSandboxDenied'],0)
+                            self.assertEqual(sum(row['allowed'] for row in reason['fdWriteDeniedReadResults'].values()),4 if mode==60 else 1)
+                            self.assertEqual(reason['fdFailedQueryResults'],[-2]*16)
                         if mode==26:
                             self.assertEqual(reason['counts']['exeUnlinkedPreRoot'], 1)
                             self.assertGreaterEqual(reason['counts']['sessionLeaderNotUidListed'], 1)
@@ -154,18 +159,26 @@ int main(int argc,char **argv) { mode=argc>1?atoi(argv[1]):0;int rc=quiescence(1
                         if 32 <= mode <= 39:
                             self.assertEqual(reason['counts']['fdSandboxFailed'],1)
                             self.assertEqual(reason['counts']['fdAllowedQueries'],1)
-                            slots = ('root:read','root:write','probe:read','probe:write','src:read','src:write','absent:read','absent:write')
+                            slots = ('root:read','root:write','probe:read','probe:write','src:read','src:write','absent:read','absent:write','root:create','root:unlink','probe:create','probe:unlink','src:create','src:unlink','absent:create','absent:unlink')
                             self.assertEqual(reason['fdAllowedByQuery'], {slot:int(index==mode-32) for index,slot in enumerate(slots)})
-                            self.assertEqual(reason['fdFailedQueryResults'], [int(index!=mode-32) for index in range(8)])
+                            self.assertEqual(reason['fdFailedQueryResults'], [int(index!=mode-32) for index in range(16)])
                         if mode in (40,44):
                             self.assertEqual(reason['counts']['fdQueryErrors'],1)
-                            if mode==40:self.assertEqual(reason['fdFailedQueryResults'],[-1]+[-2]*7)
+                            if mode==40:self.assertEqual(reason['fdFailedQueryResults'],[-1]+[-2]*15)
                         if mode==41:
                             self.assertEqual(reason['counts']['fdNotSandboxed'],1)
                         if mode==47:
                             self.assertEqual(reason['counts']['fdNonGateFailed'],1)
                         if mode in (48,49):
                             self.assertEqual(reason['counts']['fdCleanFailed'],1)
+                        if 61<=mode<=72:
+                            self.assertEqual(reason['counts']['fdSandboxFailed'],1)
+                            writes=(1,3,5,7,8,9,10,11,12,13,14,15)
+                            expected=[0 if index in (0,2,4,6,writes[mode-61]) else 1 for index in range(16)]
+                            self.assertEqual(reason['fdFailedQueryResults'],expected)
+                        if mode==73:
+                            self.assertEqual(reason['fdFailedQueryResults'],[0,1]*4+[-1]+[-2]*7)
+                            self.assertEqual(reason['counts']['fdQueryErrors'],1)
                         if mode == 17:
                             self.assertEqual((reason['call'], reason['errno']), ('birth', 'EPERM'))
                         if mode == 15:
