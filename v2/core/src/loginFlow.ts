@@ -240,7 +240,16 @@ function credentialValue(value: string): boolean {
     }
   }
   if (/\b(?:Bearer\s+|(?:sk|xai|ghp|github_pat)[-_][a-z0-9]|eyJ[a-z0-9_-]+\.eyJ|-----BEGIN .*PRIVATE KEY)/i.test(decoded)) return true;
-  for (const match of decoded.matchAll(/(?:^|[?&#;\s])([^=?&#;\s]+)=/g)) {
+  if (/^https?:/i.test(decoded)) {
+    try {
+      const nested = new URL(decoded);
+      if (nested.username || nested.password || nested.hash) return true;
+      if ([...nested.searchParams].some(([name, content]) => credentialParameter(name) || credentialValue(content))) return true;
+    } catch {
+      return true;
+    }
+  }
+  for (const match of decoded.matchAll(/(?:^|[?&#;\s{,"'])([a-z0-9_%.-]+)["']?\s*[:=]/gi)) {
     if (credentialParameter(match[1]!)) return true;
   }
   return false;

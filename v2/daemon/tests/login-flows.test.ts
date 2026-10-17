@@ -1385,7 +1385,7 @@ test("redaction: userinfo and nested credentials refuse; Claude flag is restrict
 
 test("redaction: unsafe CLI URLs fail typed without reaching persisted or mirrored fields", async () => {
   for (const [harness, homeEnv, file] of [["grok", "GROK_HOME", "auth.json"], ["kimi", "KIMI_CODE_HOME", "credentials/kimi-code.json"], ["agy", "HOME", ".gemini/antigravity-cli/antigravity-oauth-token"], ["codex", "CODEX_HOME", "auth.json"], ["muse", "XDG_CONFIG_HOME", "muse/auth.json"], ["cursor", "CURSOR_CONFIG_DIR", "auth.json"]]) {
-    for (const url of ["https://user:planted-pass@auth.openai.com/oauth/authorize?client_id=app", "https://auth.openai.com/oauth/authorize?next=https%3A%2F%2Fcallback.example%2F%3Ftoken%3Dplanted-nested", "https://auth.openai.com/oauth/authorize?extra=sk-planted-key"]) {
+    for (const url of ["https://user:planted-pass@auth.openai.com/oauth/authorize?client_id=app", "https://auth.openai.com/oauth/authorize?next=https%3A%2F%2Fcallback.example%2F%3Ftoken%3Dplanted-nested", "https://auth.openai.com/oauth/authorize?extra=sk-planted-key", "https://auth.openai.com/oauth/authorize?redirect_uri=https%3A%2F%2Fu%3Aplanted-nested-pass%40callback.example%2Fdone", "https://auth.openai.com/oauth/authorize?metadata=%7B%22access_token%22%3A%22planted-json%22%7D"]) {
       const r = rig({ agents: fakeCliAgent(harness!, homeEnv!, file!, { FAKE_CLI_URL: url, FAKE_CLI_HANG: "1" }) });
       const { flows } = services(r);
       try {
@@ -1414,6 +1414,29 @@ test("redaction: CLI-echoed callback URLs never project codes, tokens or fragmen
     } finally {
       await flows.shutdown();
       r.cleanup();
+    }
+  }
+});
+
+test("redaction: encoded submitted values in CLI state or userCode are held before projection", async () => {
+  for (const [harness, homeEnv, file] of [["grok", "GROK_HOME", "auth.json"], ["kimi", "KIMI_CODE_HOME", "credentials/kimi-code.json"], ["agy", "HOME", ".gemini/antigravity-cli/antigravity-oauth-token"]]) {
+    for (const channel of harness === "agy" ? ["url"] : ["url", "userCode"]) {
+      const input = channel === "url" ? "short&planted" : "ABC";
+      const encoded = channel === "url" ? encodeURIComponent(input) : Buffer.from(input).toString("base64");
+      const r = rig({ agents: fakeCliAgent(harness!, homeEnv!, file!, { FAKE_CLI_URL: "https://auth.example/authorize?state=public", FAKE_CLI_PROMPT: harness === "agy" ? "agy" : "code", FAKE_CLI_EXPECT: input, ...(channel === "url" ? { FAKE_CLI_AFTER_INPUT_URL: `https://auth.example/authorize?state=${encoded}` } : { FAKE_CLI_AFTER_INPUT_CODE: `${encoded}-AAAA` }) }) });
+      const { flows } = services(r);
+      try {
+        const { flow } = await flows.start(account(r, harness!, "encoded"));
+        await waitFor(() => r.store.getLoginFlow(flow.id)?.phase === "waiting_input" ? true : null, "prompt", CLI_READY_TIMEOUT_MS, 20);
+        await flows.submit(flow.id, { code: input });
+        const failed = await waitFor(() => { const f = r.store.getLoginFlow(flow.id); return f?.phase === "failed" ? f : null; }, `encoded echo refused ${harness} ${channel}`, CLI_READY_TIMEOUT_MS, 20);
+        assert.equal(failed.error?.code, "provider_error");
+        assert.ok(!redactionSurfaces(r).includes(encoded));
+        if (input !== "ABC") assert.ok(!redactionSurfaces(r).includes(input));
+      } finally {
+        await flows.shutdown();
+        r.cleanup();
+      }
     }
   }
 });

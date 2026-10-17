@@ -304,3 +304,43 @@ test("rpc.login.3: a completed login survives a restart as succeeded; account.re
     cleanup();
   }
 });
+
+test("rpc.redaction: actual snapshot and watch projection never carry CLI URL credentials", async () => {
+  for (const unsafe of [false, true]) {
+    const url = unsafe ? "https://u:planted-pass@auth.openai.com/oauth/authorize?client_id=app" : "https://auth.openai.com/oauth/authorize?client_id=app&redirect_uri=http%3A%2F%2Flocalhost%3A1455%2Fauth%2Fcallback&state=public&scope=openid&code_verifier=planted-verifier&token=planted-token#planted-fragment";
+    const { dir, cleanup } = makeDaemonDir({ accounts: { loginWorkerBackend: "pipe" }, agents: { codex: { command: process.execPath, args: [], adapter: "codex", login: { command: process.execPath, args: [FAKE_CLI] }, env: { FAKE_LOGIN_HOME_ENV: "CODEX_HOME", FAKE_LOGIN_FILE: "auth.json", FAKE_CLI_URL: url, FAKE_CLI_HANG: "1" } } } });
+    let daemon: DaemonHandle | null = null;
+    try {
+      daemon = await startDaemon(dir);
+      const client = await daemon.client();
+      const watch = await daemon.client();
+      const frames: WatchFrame[] = [];
+      watch.onEvent = (frame: WatchFrame) => frames.push(frame);
+      await watch.request("watch");
+      const added = await client.request<AccountAddResult>("account.add", { harness: "codex", label: "redaction" });
+      const started = await client.request<AccountLoginStartResult>("account.login.start", { id: added.account.id });
+      const flow = await waitPhase(client, started.flow.id, [unsafe ? "failed" : "waiting_browser"], "URL policy applied");
+      if (unsafe) assert.equal(flow.error?.code, "provider_error");
+      else {
+        const clean = new URL(flow.authorizationUrl!);
+        assert.equal(clean.searchParams.get("client_id"), "app");
+        assert.equal(clean.searchParams.get("state"), "public");
+        assert.equal(clean.searchParams.get("scope"), "openid");
+        assert.equal(clean.searchParams.get("redirect_uri"), "http://localhost:1455/auth/callback");
+      }
+      await waitFor(() => frames.some((frame) => frame.type === "delta" && frame.events.some((event) => event.kind === "login_flow.put" && (event.payload as { flow?: { phase?: string } }).flow?.phase === flow.phase)) ? true : null, "mirror delta", 5000);
+      const snapshot = await client.request<SnapshotResult>("snapshot");
+      assert.equal(snapshot.loginFlows[0]?.phase, flow.phase);
+      assert.doesNotMatch(JSON.stringify({ snapshot, frames, flow }), /planted-/);
+      client.close();
+      watch.close();
+      await daemon.stop();
+      daemon = null;
+      assert.doesNotMatch(dumpSqlite(join(dir, "core.sqlite3")), /planted-/);
+      assert.doesNotMatch(daemonLog(dir), /planted-/);
+    } finally {
+      await daemon?.stop().catch(() => {});
+      cleanup();
+    }
+  }
+});

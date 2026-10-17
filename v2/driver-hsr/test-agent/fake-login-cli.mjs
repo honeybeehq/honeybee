@@ -74,7 +74,7 @@ async function main() {
     out(`Enter this one-time code: ${process.env.FAKE_CLI_CODE}\n`);
   }
   if (process.env.FAKE_CLI_PROMPT) {
-    const prompt = process.env.FAKE_CLI_PROMPT === "apikey" ? "Paste your API key here: " : "Paste code here if prompted: ";
+    const prompt = process.env.FAKE_CLI_PROMPT === "agy" ? "Or, paste the authorization code here and press Enter: " : process.env.FAKE_CLI_PROMPT === "apikey" ? "Paste your API key here: " : "Paste code here if prompted: ";
     const expected = process.env.FAKE_CLI_EXPECT ?? "good";
     const rl = createInterface({ input: process.stdin, terminal: false });
     out(prompt);
@@ -83,6 +83,9 @@ async function main() {
       if (process.env.FAKE_CLI_ECHO === "1") out(`${value}\n`);
       log("input_received");
       if (value === expected) {
+        if (process.env.FAKE_CLI_AFTER_INPUT_URL) out(`Open this URL: ${process.env.FAKE_CLI_AFTER_INPUT_URL}\n`);
+        if (process.env.FAKE_CLI_AFTER_INPUT_CODE) out(`Enter this one-time code: ${process.env.FAKE_CLI_AFTER_INPUT_CODE}\n`);
+        if (process.env.FAKE_CLI_AFTER_INPUT_URL || process.env.FAKE_CLI_AFTER_INPUT_CODE) await sleep(200);
         out("\nAuthenticating…\n");
         await sleep(20);
         writeCredential();

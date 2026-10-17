@@ -18,6 +18,21 @@ export class LoginRedactor {
     }
   }
 
+  contains(text: string): boolean {
+    let normalized = text.replace(/%[0-9a-f]{2}/gi, (part) => part.toUpperCase());
+    for (let i = 0; i < 3; i++) {
+      try {
+        const next = decodeURIComponent(normalized);
+        if (next === normalized) break;
+        if ([...this.values].some((value) => next.includes(value))) return true;
+        normalized = next;
+      } catch {
+        break;
+      }
+    }
+    return [...this.values].some((value) => normalized.includes(value.replace(/%[0-9a-f]{2}/gi, (part) => part.toUpperCase())));
+  }
+
   redact(text: string): string {
     const values = [...this.values].sort((a, b) => b.length - a.length);
     let result = text.replace(/%[0-9a-f]{2}/gi, (part) => part.toUpperCase()).replace(/https?:[^\s<>"']+/gi, () => "[redacted URL]");

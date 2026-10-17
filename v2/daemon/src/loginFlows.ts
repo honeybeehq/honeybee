@@ -553,6 +553,9 @@ export class LoginFlowService {
 
   private patch(flowId: string, patch: LoginFlowPatch, reason: string): LoginFlowRow {
     const redactor = this.redactors.get(flowId) ?? new LoginRedactor();
+    if (patch.authorizationUrl && redactor.contains(patch.authorizationUrl) || patch.userCode && redactor.contains(patch.userCode)) {
+      return this.fail(flowId, err("provider_error", "The sign-in response was refused because it may contain submitted credentials."), true);
+    }
     const safePatch = { ...patch };
     if (safePatch.error) safePatch.error = { ...safePatch.error, message: redactor.redact(safePatch.error.message).slice(0, 200) };
     if (safePatch.detail) safePatch.detail = redactor.redact(safePatch.detail);
