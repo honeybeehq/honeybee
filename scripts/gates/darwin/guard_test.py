@@ -1,4 +1,5 @@
 import ast
+from enum import IntEnum
 import hashlib
 import io
 import json
@@ -18,6 +19,27 @@ from guard import DIRS, PROTECTED, Refusal, absolute_compiler_jobs, close_socket
 
 
 class GuardTests(unittest.TestCase):
+    def test_signal_arguments_are_numeric_on_python39(self):
+        class LegacySignal(IntEnum):
+            SIGTERM = 15
+            SIGKILL = 9
+
+            def __str__(self):
+                return 'Signals.' + self.name
+
+        count = 0
+        for filename in ('guard.py', 'physical_test.py'):
+            tree = ast.parse(Path(__file__).with_name(filename).read_text())
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.List) or not any(isinstance(item, ast.Constant) and item.value == 'signal' for item in node.elts):
+                    continue
+                expression = ast.Expression(node.elts[-1])
+                for sig in LegacySignal:
+                    value = eval(compile(expression, filename, 'eval'), {'sig': sig, 'signal': SimpleNamespace(SIGTERM=sig)})
+                    self.assertEqual(value, str(int(sig)))
+                count += 1
+        self.assertEqual(count, 4)
+
     def test_profile_parentheses_balance_outside_strings(self):
         text = profile(Path('/private/var/tmp/g.test'), Path('/Users/example'), Path('/lane'))
         depth = 0

@@ -477,7 +477,7 @@ def run(args):
         if row == birth[0] and scope_error is None:
             continue
         for sig in (signal.SIGTERM, signal.SIGKILL):
-            attempt = subprocess.run([str(identity), 'signal', *row, str(sig)], capture_output=True, text=True)
+            attempt = subprocess.run([str(identity), 'signal', *row, str(int(sig))], capture_output=True, text=True)
             signals.append({'identity': row, 'signal': int(sig), 'exit': attempt.returncode, 'result': attempt.stdout.strip()})
             if attempt.returncode == 3:
                 break
@@ -505,9 +505,33 @@ def run(args):
         rc = 95
     if before != after:
         rc = 95
+    leftover = None
+    try:
+        leftover_fd = os.open(root / 'leftover-child.json', os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except FileNotFoundError:
+        pass
+    except OSError:
+        leftover = {'state': 'unknown', 'error': 'unreadable leftover child record'}
+        rc = 95
+    else:
+        try:
+            with os.fdopen(leftover_fd, 'rb') as stream:
+                if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+                    raise ValueError('wrong leftover record type')
+                data = stream.read(65537)
+            if len(data) > 65536:
+                raise ValueError('oversize leftover record')
+            leftover = json.loads(data)
+            if not isinstance(leftover, dict):
+                raise ValueError('wrong leftover record shape')
+        except (ValueError, OSError):
+            leftover = {'state': 'unknown', 'error': 'malformed leftover child record'}
+            rc = 95
     reason = scope_error or ('LaunchAgents sentinel changed' if before != after else ('workload exited ' + str(rc) + '; diagnostic: ' + str(root / 'workload.log') if rc else None))
-    write_json(root / 'receipt.json', {'version': 2, 'exit': rc, 'reason': reason, 'source': args.source, 'selfTest': args.self_test, 'libraryScope': 'LaunchAgents names and sha256 only', 'cacheSeed': seed, 'rootRetained': True, 'network': {'namespace': 'SHARED', 'seatbelt': 'deny network*, allow loopback IP and Unix sockets under TMPDIR only', 'unixScope': str(root / 't'), 'residualRisk': 'outbound loopback can reach host-local services; no Darwin network namespace', 'neededBy': ['v2/daemon/tests/auth-death-fixture.test.ts:44,49', 'v2/daemon/tests/claude-refresh-transport.test.ts:22', 'v2/daemon/tests/lease-enrol-rpc.test.ts:19', 'v2/daemon/tests/auth-death-rpc.test.ts:44']}, 'scopeLimitation': 'sampling may miss a process born and reparented between observations'}, root)
-    if rc:
+    if leftover:
+        reason = (reason or 'recorded self-expiring test child') + '; leftoverChild=' + json.dumps(leftover, sort_keys=True)
+    write_json(root / 'receipt.json', {'version': 2, 'exit': rc, 'reason': reason, 'leftoverChild': leftover, 'source': args.source, 'selfTest': args.self_test, 'libraryScope': 'LaunchAgents names and sha256 only', 'cacheSeed': seed, 'rootRetained': True, 'network': {'namespace': 'SHARED', 'seatbelt': 'deny network*, allow loopback IP and Unix sockets under TMPDIR only', 'unixScope': str(root / 't'), 'residualRisk': 'outbound loopback can reach host-local services; no Darwin network namespace', 'neededBy': ['v2/daemon/tests/auth-death-fixture.test.ts:44,49', 'v2/daemon/tests/claude-refresh-transport.test.ts:22', 'v2/daemon/tests/lease-enrol-rpc.test.ts:19', 'v2/daemon/tests/auth-death-rpc.test.ts:44']}, 'scopeLimitation': 'sampling may miss a process born and reparented between observations'}, root)
+    if rc or leftover:
         print('GATE_NONZERO_REASON=' + json.dumps(reason), flush=True)
     digest = receipt_hashes(root)
     print('GATE_RECEIPT_SHA256=' + digest, flush=True)

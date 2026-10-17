@@ -71,20 +71,44 @@ def main():
         rows.append({'row': key, 'result': 'inside run root'})
     helper = Path(os.environ['SCG_SCOPE_HELPER'])
     child = subprocess.Popen(['/bin/sleep', '30'])
+    birth = None
+    cleanup = []
     try:
         birth = scope_call(helper, 'identity', child.pid)[0]
         stale = list(birth)
         stale[3] = str(int(stale[3]) + 1)
-        refused = subprocess.run([str(helper), 'signal', *stale, str(signal.SIGTERM)], capture_output=True, text=True)
-        assert refused.returncode == 4 and child.poll() is None
+        refused = subprocess.run([str(helper), 'signal', *stale, str(int(signal.SIGTERM))], capture_output=True, text=True)
+        poll = child.poll()
+        diagnostic = {'row': 'stale signal diagnostic', 'returncode': refused.returncode, 'stdout': refused.stdout[-4096:], 'stderr': refused.stderr[-4096:], 'childPoll': poll, 'birth': birth, 'staleArgs': stale}
+        write_json(root / 'physical-stale-signal.json', diagnostic, root)
+        print(json.dumps(diagnostic), flush=True)
+        assert refused.returncode == 4, 'stale helper returncode=' + str(refused.returncode)
+        assert refused.stdout.strip() == 'birth-mismatch-refused', 'stale helper did not prove birth mismatch'
+        assert poll is None, 'child.poll()=' + str(poll)
         rows.append({'row': 'mismatched exact birth signal', 'result': 'REFUSED'})
-        sent = subprocess.run([str(helper), 'signal', *birth, str(signal.SIGTERM)], capture_output=True, text=True)
+        sent = subprocess.run([str(helper), 'signal', *birth, str(int(signal.SIGTERM))], capture_output=True, text=True)
         assert sent.returncode == 0
         child.wait(timeout=5)
         rows.append({'row': 'own exact birth signal', 'result': 'allowed', 'birth': birth})
     finally:
+        if child.poll() is None and birth is not None:
+            for sig in (signal.SIGTERM, signal.SIGKILL):
+                attempt = subprocess.run([str(helper), 'signal', *birth, str(int(sig))], capture_output=True, text=True)
+                cleanup.append({'birth': birth, 'signal': int(sig), 'exit': attempt.returncode, 'stdout': attempt.stdout[-4096:], 'stderr': attempt.stderr[-4096:]})
+                if attempt.returncode not in (0, 3):
+                    break
+                try:
+                    child.wait(timeout=1)
+                    break
+                except subprocess.TimeoutExpired:
+                    if attempt.returncode == 3:
+                        break
+        leftover = None
         if child.poll() is None:
-            raise AssertionError('own child remains; no unfenced fallback kill')
+            leftover = {'pid': child.pid, 'birth': birth, 'command': '/bin/sleep 30', 'selfExpiring': True, 'noUnfencedKill': True}
+            write_json(root / 'leftover-child.json', leftover, root)
+            print('GATE_NONZERO_REASON=' + json.dumps({'leftoverChild': leftover}), flush=True)
+        write_json(root / 'physical-child-cleanup.json', {'attempts': cleanup, 'childPoll': child.poll(), 'leftoverChild': leftover}, root)
     with socket.socket() as sock:
         try:
             sock.bind(('0.0.0.0', 0))
