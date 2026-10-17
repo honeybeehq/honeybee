@@ -2,7 +2,6 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { harness } from "./helpers.ts";
 import { executionRequestDigest, type ExecutionClaim, type ExecutionRequest, ExecutionFenceError } from "../src/executionFence.ts";
-import type { ExecutionStart } from "../src/executionStart.ts";
 
 const code = (code: string) => (error: unknown) => error instanceof ExecutionFenceError && error.code === code;
 function fixture() {
@@ -84,4 +83,20 @@ test("crash after release commit remains busy across reopen and cannot fall back
     assert.throws(()=>store.executionRuntimeHooks().bindAndRelease(start,{pid:100,birth:"darwin:123:999998"}),code("rpc_execution_history_unknown"));
     assert.throws(()=>store.prepareExecutionStart("fenced-bee",2),code("rpc_execution_history_unknown"));
   }finally{store.close();f.h.cleanup();}
+});
+
+test("stale spawn admission records a typed zero-effect receipt before preparation",()=>{
+  const f=fixture();try{
+    f.advance();
+    assert.throws(f.begin,(error: unknown)=>{
+      assert.ok(error instanceof ExecutionFenceError);
+      assert.equal(error.code,"rpc_execution_stale");
+      assert.equal((error.details as {executionReceipt:{status:string}}).executionReceipt.status,"refused_stale");
+      return true;
+    });
+    assert.equal(f.store.listBees().length,0);
+    const observed=f.store.resolveExecution(f.request,1000);
+    assert.ok("executionReceipt" in observed);
+    assert.equal(observed.executionReceipt.status,"refused_stale");
+  }finally{f.close();}
 });

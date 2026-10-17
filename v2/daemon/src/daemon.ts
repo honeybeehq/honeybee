@@ -1194,7 +1194,7 @@ export class HiveDaemon {
       }
       let account = store.getAccount(bee.account);
       if (!account) continue;
-      if (this.moveOffWeeklyCeiling(bee, account)) {
+      if (!execution && this.moveOffWeeklyCeiling(bee, account)) {
         bee = store.getBee(beeId);
         account = bee?.account ? store.getAccount(bee.account) : null;
         if (!bee || !account) continue;

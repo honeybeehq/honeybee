@@ -178,7 +178,10 @@ function bindToTestFixtureLease(lease: string | undefined): void {
 export function runRunnerHost(configPath: string): void {
   const cfg = JSON.parse(readFileSync(configPath, "utf8")) as RunnerHostConfig;
   bindToTestFixtureLease(process.env.HIVE_TEST_FIXTURE_LEASE);
-  if (cfg.executionStart) { runGatedRunnerHost(cfg,sessionLogLine); return; }
+  if (Object.hasOwn(cfg,"executionStart") || Object.hasOwn(cfg,"executionOwner")) {
+    if (!cfg.executionStart || !cfg.executionOwner) throw new Error("Missing fenced host origin");
+    runGatedRunnerHost(cfg,sessionLogLine); return;
+  }
   mkdirSync(dirname(cfg.sessionLogPath), { recursive: true });
   mkdirSync(dirname(cfg.observationLogPath), { recursive: true });
   // Exact generation journal exists before the status becomes adoptable.

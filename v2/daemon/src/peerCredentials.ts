@@ -52,7 +52,7 @@ export class PeerCredentials {
     const kernel = type();
     const hostPlatform = kernel === "Darwin" ? "darwin" : kernel === "Linux" ? "linux" : "unsupported";
     const target = options.target ?? `${hostPlatform}-${process.arch}`;
-    const root = fileURLToPath(new URL(import.meta.url.endsWith(".ts") ? "../../../dist/v2/peercred/" : "./peercred/", import.meta.url));
+    const root = fileURLToPath(new URL(fileURLToPath(import.meta.url).endsWith(".ts") ? "../../../dist/v2/peercred/" : "./peercred/", import.meta.url));
     const directory = options.directory ?? join(root, target);
     this.status = {state: "ready", target, artifactPath: join(directory, "peercred.node"), reason: null};
     try { validatePeerArtifact(directory, target); }

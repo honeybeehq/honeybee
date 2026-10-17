@@ -4670,15 +4670,22 @@ export class CoreStore {
   beginFencedSpawn(value: unknown, uid: number) {
     const request = executionRequest(value);
     if (request.verb !== "spawn" || !["hsr","cell"].includes(String(request.args.substrate ?? "hsr"))) throw new ExecutionFenceError("rpc_execution_fence_unsupported", "Fenced spawn requires HSR or Cell agent-start handshake");
-    return this.tx(() => {
+    const outcome = this.tx(() => {
       this.executionLedger.requireCoordinator(request.executionFence.issuerId, uid);
-      const prior = this.executionLedger.prepare(request);
+      let prior;
+      try { prior = this.executionLedger.prepare(request); }
+      catch (error) {
+        if (!(error instanceof ExecutionFenceError) || error.code !== "rpc_execution_stale") throw error;
+        return { refused: this.executionLedger.refusedAdmission(request) };
+      }
       if (prior) return { request, receipt: prior, fresh: false };
       if (this.lookupRpcResult(request.idempotencyKey) || this.getCommandByIdempotencyKey(request.idempotencyKey)) throw new ExecutionFenceError("rpc_execution_history_unknown", "Spawn key has unknown prior admission");
       const receipt = this.executionLedger.beginSpawn(request);
       this.executionStarts.bindBee({ ...request.executionFence, digestVersion: request.digestVersion, verb: request.verb, resource: request.resource, requestDigest: request.requestDigest, idempotencyKey: request.idempotencyKey });
       return { request, receipt, fresh: true };
     });
+    if (outcome.refused) throw new ExecutionFenceError("rpc_execution_stale", "Execution claim is stale; this invocation added zero effects", { executionReceipt: outcome.refused });
+    return { request: outcome.request!, receipt: outcome.receipt!, fresh: outcome.fresh! };
   }
 
   checkSpawnPreparation(request: ExecutionRequest, operation: string): void {

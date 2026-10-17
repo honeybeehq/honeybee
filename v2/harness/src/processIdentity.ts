@@ -26,7 +26,7 @@ export function exactProcessBirth(pid: number): string | null {
   try {
     if (!reader) {
       const target = process.platform + "-" + process.arch;
-      const root = fileURLToPath(new URL(import.meta.url.endsWith(".ts") ? "../../../dist/v2/peercred/" : "./peercred/", import.meta.url));
+      const root = fileURLToPath(new URL(fileURLToPath(import.meta.url).endsWith(".ts") ? "../../../dist/v2/peercred/" : "./peercred/", import.meta.url));
       const path = validatePeerArtifact(join(root, target), target);
       const bridge = createRequire(import.meta.url)(path) as { processBirth?: (pid: number) => unknown };
       if (typeof bridge.processBirth !== "function") return null;
