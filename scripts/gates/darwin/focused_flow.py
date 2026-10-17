@@ -116,6 +116,7 @@ def supervise(api, root, workspace, env, argv, tag, timeout=600, trace=None, sib
     with log.open('xb') as output:
         try:
             proc = subprocess.Popen([sys.executable, '-B', str(workspace / 'scripts/gates/darwin/start_wait.py'), str(read_fd), *argv], pass_fds=(read_fd,) + ((trace.write_fd,) if trace is not None else ()) + ((mediation.request_fd, mediation.response_fd, mediation.lock_read_fd, mediation.lock_write_fd) if mediation is not None and trace is not None else ()), cwd=workspace, env=env, stdout=output, stderr=subprocess.STDOUT, start_new_session=sibling)
+            focused_seal.remember_launch(proc.pid)
         except OSError:
             os.close(read_fd)
             os.close(release_fd)

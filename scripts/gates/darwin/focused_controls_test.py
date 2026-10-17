@@ -60,6 +60,18 @@ class ScopeControlTests(unittest.TestCase):
             file.unlink()
             self.assertIn(str(key[0]) + ' ' + str(key[1]), focused_seal.quiescence_input(root, root / 'scope')[1])
 
+    def test_own_launch_history_survives_exit_and_is_sent_over_stdin(self):
+        with tempfile.TemporaryDirectory() as temporary, patch.object(focused_seal, 'GATE_LAUNCH_PIDS', set()), patch.object(focused_seal, 'GATE_LAUNCH_BIRTHS', set()):
+            root = Path(temporary).resolve()
+            focused_seal.ROOT_CREATION[str(root)] = {'beforeMkdirNs': 200000000000}
+            focused_seal.remember_launch(77)
+            focused_seal.remember_birth(['88', '77', '100', '1'])
+            focused_seal.remember_birth(['88', '77', '101', '1'])
+            self.assertEqual(len(focused_seal.GATE_LAUNCH_BIRTHS), 2)
+            command, inventory = focused_seal.quiescence_input(root, root / 'scope')
+            self.assertTrue(inventory.endswith('2\n77\n88\n'))
+            self.assertNotIn('77', command)
+
     @unittest.skipUnless(sys.platform == 'darwin', 'real controller scope controls run only on Darwin')
     def test_real_controller_controls_preceded_self_test_body(self):
         report = json.loads((Path(os.environ['GATE_ROOT']) / 'scope-control-self-tests.json').read_text())

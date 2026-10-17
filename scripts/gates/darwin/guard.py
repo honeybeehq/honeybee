@@ -78,7 +78,7 @@ def write_json(path, value, root):
     if not inside(path.resolve(), root.resolve()):
         raise Refusal('write outside run root')
     if path == Path(root) / 'receipt.json' and isinstance(value, dict):
-        value = dict(value, rootCreation=focused_seal.ROOT_CREATION.get(str(root.resolve())), exeUnlinkedLimit=focused_seal.UNLINKED_LIMIT, quiescenceObservations=list(focused_seal.QUIESCENCE_OBSERVATIONS), gitBoundary=GIT_AUDITS.get(str(root.resolve())), entryNotes=list(ENTRY_NOTES), leftoverChild=value.get('leftoverChild') or list(LEFTOVER_CHILDREN) or None, listenerLimit=LISTENER_LIMIT, staticBindLimit=STATIC_BIND_LIMIT, hostLock=LOCK_METADATA.get(str(Path(root).resolve())))
+        value = dict(value, rootCreation=focused_seal.ROOT_CREATION.get(str(root.resolve())), exeUnlinkedLimit=focused_seal.UNLINKED_LIMIT, gateLaunchBirths=sorted(focused_seal.GATE_LAUNCH_BIRTHS), gateLaunchPids=sorted(focused_seal.GATE_LAUNCH_PIDS), quiescenceObservations=list(focused_seal.QUIESCENCE_OBSERVATIONS), gitBoundary=GIT_AUDITS.get(str(root.resolve())), entryNotes=list(ENTRY_NOTES), leftoverChild=value.get('leftoverChild') or list(LEFTOVER_CHILDREN) or None, listenerLimit=LISTENER_LIMIT, staticBindLimit=STATIC_BIND_LIMIT, hostLock=LOCK_METADATA.get(str(Path(root).resolve())))
     path.write_text(json.dumps(value, indent=2) + '\n')
 
 
@@ -414,7 +414,11 @@ def scope_call(helper, command, *args, timeout=2):
     value = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
     SCOPE_OBSERVATIONS.append({'time': time.time(), 'argv': argv, 'exit': value.returncode, 'stdout': value.stdout, 'stderr': value.stderr})
     value.check_returncode()
-    return [line.split() for line in value.stdout.splitlines()]
+    rows = [line.split() for line in value.stdout.splitlines()]
+    if command in ('identity', 'scan'):
+        for row in rows:
+            focused_seal.remember_birth(row)
+    return rows
 
 
 def sample_listeners(helper, birth):
@@ -457,6 +461,7 @@ def listener_self_tests(root, workspace, prefix, helper, env):
         read_fd, release_fd = os.pipe()
         with (root / ('listener-fixture-' + proto + '.log')).open('wb') as output:
             child = subprocess.Popen([sys.executable, '-B', str(workspace / 'scripts/gates/darwin/start_wait.py'), str(read_fd), *prefix, env['SCG_PYTHON_BIN'], '-B', str(workspace / 'scripts/gates/darwin/listener_fixture.py'), proto], pass_fds=(read_fd,), cwd=workspace, env=env, stdout=output, stderr=subprocess.STDOUT)
+            focused_seal.remember_launch(child.pid)
             os.close(read_fd)
             birth = None
             samples = []
@@ -508,6 +513,7 @@ def tree_scan_self_test(root, workspace, prefix, helper, env):
     observations_start = len(SCOPE_OBSERVATIONS)
     with (root / 'tree-scan-fixture.log').open('wb') as output:
         child = subprocess.Popen([*prefix, env['SCG_PYTHON_BIN'], '-B', str(workspace / 'scripts/gates/darwin/listener_fixture.py'), 'tree-parent'], cwd=workspace, env=env, stdout=output, stderr=subprocess.STDOUT)
+        focused_seal.remember_launch(child.pid)
         try:
             birth = scope_call(helper, 'identity', child.pid)[0]
             if birth[1] != str(os.getpid()):
@@ -576,6 +582,7 @@ def reparent_listener_self_test(root, workspace, prefix, helper, env):
     observations_start = len(SCOPE_OBSERVATIONS)
     with (root / 'listener-fixture-reparent.log').open('wb') as output:
         parent = subprocess.Popen([sys.executable, '-B', str(workspace / 'scripts/gates/darwin/start_wait.py'), str(read_fd), *prefix, env['SCG_PYTHON_BIN'], '-B', str(workspace / 'scripts/gates/darwin/listener_fixture.py'), 'reparent-parent'], pass_fds=(read_fd,), cwd=workspace, env=env, stdout=output, stderr=subprocess.STDOUT)
+        focused_seal.remember_launch(parent.pid)
         os.close(read_fd)
         tree = []
         try:
@@ -815,6 +822,7 @@ def run(args):
     read_fd, release_fd = os.pipe()
     command = prefix + ['/bin/bash', str(workspace / 'scripts/gates/darwin/workload.sh'), str(workspace / args.body)]
     proc = subprocess.Popen([sys.executable, '-B', str(workspace / 'scripts/gates/darwin/start_wait.py'), str(read_fd), *command], pass_fds=(read_fd,), cwd=workspace, env=env, stdout=output, stderr=subprocess.STDOUT)
+    focused_seal.remember_launch(proc.pid)
     os.close(read_fd)
     write_json(root / 'workload-dispatch.json', {'pid': proc.pid, 'time': time.time(), 'cwd': str(workspace)}, root)
     try:

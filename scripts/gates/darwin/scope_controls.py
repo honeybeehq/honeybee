@@ -56,12 +56,14 @@ def identity(helper, pid):
     values = lines[0].split() if len(lines) == 1 else []
     if result.returncode or len(values) != 4 or not all(value.isdigit() for value in values) or int(values[0]) != pid:
         raise ValueError('scope control child birth unavailable')
+    focused_seal.remember_birth(values)
     return values
 
 
 def child(api, root, helper, node, reader, cwd, env, sandboxed, profile, content, sealed):
     command = (['/usr/bin/sandbox-exec', '-f', str(profile)] if sandboxed else []) + [node, str(reader)]
     process = subprocess.Popen(command, cwd=cwd, env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
+    focused_seal.remember_launch(process.pid)
     birth = None
     row = {'command': command, 'cwd': str(cwd), 'expectedSandboxed': sandboxed, 'cleanup': []}
     try:

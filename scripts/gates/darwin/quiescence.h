@@ -27,17 +27,19 @@ static int root_path(const char *path, const char *root) {
 }
 struct root_inode { unsigned long long dev, ino; };
 static struct root_inode root_inodes[1000000];
-static int unlinked_session(int pid, struct proc_bsdinfo *birth, int controller, int *pids, int count, unsigned long long created, struct quiescence_counts *counts) {
-  struct proc_bsdinfo owner, leader;
-  if (!identity(controller, &owner) || birth->pbi_start_tvsec >= owner.pbi_start_tvsec || birth->pbi_start_tvsec >= created / 1000000 - 1) return 0;
+static int gate_launch_pids[1000000], gate_launch_count;
+static int unlinked_session(int pid, struct proc_bsdinfo *birth, int controller, int *pids, int count, unsigned long long created, struct quiescence_counts *counts, int count_unlisted) {
+  struct proc_bsdinfo owner, current;
+  if (pid == controller || !identity(controller, &owner) || birth->pbi_start_tvsec >= owner.pbi_start_tvsec || birth->pbi_start_tvsec >= created / 1000000 - 1) return 0;
+  if (!identity(pid, &current) || current.pbi_start_tvsec != birth->pbi_start_tvsec || current.pbi_start_tvusec != birth->pbi_start_tvusec || current.pbi_uid != getuid()) return 0;
   int session = getsid(pid), owner_session = getsid(controller);
   if (session <= 0 || owner_session <= 0 || session == owner_session) return 0;
   int listed = 0;
   for (int index = 0; index < count; index++) if (pids[index] == session) listed = 1;
-  if (!listed) { counts->session_leader_not_uid_listed++; return 0; }
-  if (!identity(session, &leader) || leader.pbi_uid != getuid() || leader.pbi_status == 5 || leader.pbi_start_tvsec >= owner.pbi_start_tvsec) return 0;
-  if (getsid(session) != session || getsid(pid) != session || same_birth(session, leader.pbi_start_tvsec, leader.pbi_start_tvusec)) return 0;
-  return !same_birth(controller, owner.pbi_start_tvsec, owner.pbi_start_tvusec) && !same_birth(pid, birth->pbi_start_tvsec, birth->pbi_start_tvusec);
+  if (!listed && count_unlisted) counts->session_leader_not_uid_listed++;
+  for (int index = 0; index < gate_launch_count; index++) if (session == gate_launch_pids[index] || current.pbi_pgid == (unsigned int)gate_launch_pids[index]) return 0;
+  return !same_birth(controller, owner.pbi_start_tvsec, owner.pbi_start_tvusec) && !same_birth(pid, birth->pbi_start_tvsec, birth->pbi_start_tvusec) && getsid(pid) == session;
+
 }
 static int unlinked_regions(int pid, struct proc_bsdinfo *birth, int inode_count, struct quiescence_counts *counts) {
   unsigned long long address = 0;
@@ -68,6 +70,8 @@ static int quiescence(int controller, const char *root, unsigned long long creat
   int inode_count = 0;
   if (created < 2000000 || scanf("%d", &inode_count) != 1 || inode_count < 0 || inode_count > 1000000) return quiescence_failure("root", EINVAL, -1, &counts);
   for (int index = 0; index < inode_count; index++) if (scanf("%llu %llu", &root_inodes[index].dev, &root_inodes[index].ino) != 2) return quiescence_failure("root", EINVAL, -1, &counts);
+  if (scanf("%d", &gate_launch_count) != 1 || gate_launch_count < 0 || gate_launch_count > 1000000) return quiescence_failure("root", EINVAL, -1, &counts);
+  for (int index = 0; index < gate_launch_count; index++) if (scanf("%d", &gate_launch_pids[index]) != 1 || gate_launch_pids[index] <= 0) return quiescence_failure("root", EINVAL, -1, &counts);
   char trailing;
   if (scanf(" %c", &trailing) != EOF) return quiescence_failure("root", EINVAL, -1, &counts);
   char canonical[PATH_MAX];
@@ -104,7 +108,7 @@ static int quiescence(int controller, const char *root, unsigned long long creat
       read_error = errno;
       read_call = "pidpath";
       if (read_size > 0) read_size = sizeof(paths);
-      else if (read_error == ENOENT && unlinked_session(pid, &birth, controller, pids, got, created, &counts)) {
+      else if (read_error == ENOENT && unlinked_session(pid, &birth, controller, pids, got, created, &counts, 1)) {
         if (!unlinked_regions(pid, &birth, inode_count, &counts)) { failed = 1; failure_call = "region inode"; failure_errno = ENOENT; failure_birth = same_birth(pid, birth.pbi_start_tvsec, birth.pbi_start_tvusec); continue; }
         image[0] = 0;
         unlinked = 1;
@@ -169,7 +173,7 @@ static int quiescence(int controller, const char *root, unsigned long long creat
       if (unlinked) { failed = 1; failure_call = "unlinked policy"; failure_errno = ENOENT; failure_birth = 0; }
       else { counts.matched++; printf("%d\t%s\n", pid, matched); }
     } else if (!status && unlinked) {
-      if (!unlinked_session(pid, &birth, controller, pids, got, created, &counts)) { failed = 1; failure_call = "unlinked policy"; failure_errno = ENOENT; failure_birth = 0; }
+      if (!unlinked_session(pid, &birth, controller, pids, got, created, &counts, 0)) { failed = 1; failure_call = "unlinked policy"; failure_errno = ENOENT; failure_birth = 0; }
       else counts.exe_unlinked_pre_root++;
     }
   }

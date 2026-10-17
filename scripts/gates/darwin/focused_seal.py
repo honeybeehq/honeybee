@@ -182,6 +182,21 @@ class BusyRoot(ValueError):
         super().__init__('another same-uid process retains run-root access: ' + str(rows))
 
 
+GATE_LAUNCH_PIDS = set()
+GATE_LAUNCH_BIRTHS = set()
+
+
+def remember_launch(pid):
+    GATE_LAUNCH_PIDS.add(int(pid))
+
+
+def remember_birth(birth):
+    if len(birth) != 4 or not all(str(value).isdigit() for value in birth):
+        raise ValueError('malformed gate launch birth')
+    GATE_LAUNCH_BIRTHS.add(tuple(map(str, birth)))
+    remember_launch(birth[0])
+
+
 ROOT_CREATION = {}
 ROOT_INODES = {}
 UNLINKED_LIMIT = 'exeUnlinkedPreRoot accepted by birth-time; exec-after-birth of a since-unlinked root binary by a non-gate process is not excluded.'
@@ -218,6 +233,7 @@ def quiescence_input(root, helper):
     finally:
         os.close(descriptor)
     text = str(len(inodes)) + '\n' + ''.join(str(dev) + ' ' + str(ino) + '\n' for dev, ino in sorted(inodes))
+    text += str(len(GATE_LAUNCH_PIDS)) + '\n' + ''.join(str(pid) + '\n' for pid in sorted(GATE_LAUNCH_PIDS))
     return [str(helper), 'quiescence', str(os.getpid()), key, str(stamp['beforeMkdirNs'] // 1000)], text
 
 
