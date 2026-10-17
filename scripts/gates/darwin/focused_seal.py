@@ -308,7 +308,7 @@ def quiescence_evidence(result):
             if len(result.stderr) > 4096:
                 raise ValueError('oversized quiescence diagnostic')
             reason = json.loads(result.stderr)
-            if set(reason) != {'type', 'call', 'errno', 'errnoNumber', 'sameBirth', 'counts'} or reason['type'] != ('QuiescenceFailure' if result.returncode else 'QuiescenceComplete'):
+            if set(reason) != {'type', 'call', 'errno', 'errnoNumber', 'sameBirth', 'counts', 'fdAllowedByQuery', 'fdFailedQueryResults'} or reason['type'] != ('QuiescenceFailure' if result.returncode else 'QuiescenceComplete'):
                 raise ValueError('unexpected quiescence diagnostic schema')
             if reason['call'] not in ('root', 'allocation', 'proc_listpids', 'pidinfo vnode', 'pidpath', 'listfds', 'fdinfo', 'birth', 'none', 'unlinked policy', 'region inode') or reason['errno'] not in ('NONE', 'EPERM', 'EACCES', 'ESRCH', 'EBADF', 'ENOENT', 'EINVAL', 'ENOMEM', 'EINTR', 'OTHER'):
                 raise ValueError('unexpected quiescence diagnostic value')
@@ -316,6 +316,11 @@ def quiescence_evidence(result):
                 raise ValueError('unexpected quiescence numeric value')
             if set(reason['counts']) != {'scanned', 'skippedGone', 'skippedUidChanged', 'skippedFdClosed', 'matched', 'failed', 'exeUnlinkedPreRoot', 'regionCompared', 'regionUnavailable', 'sessionLeaderNotUidListed', 'fdUnobservableSandboxDenied', 'fdNonGateFailed', 'fdCleanFailed', 'fdSandboxFailed', 'fdDeniedQueries', 'fdAllowedQueries', 'fdQueryErrors', 'fdNotSandboxed'} or any(type(value) is not int or value < 0 for value in reason['counts'].values()):
                 raise ValueError('unexpected quiescence counts')
+            slots = {'root:read', 'root:write', 'probe:read', 'probe:write', 'src:read', 'src:write', 'absent:read', 'absent:write'}
+            if not isinstance(reason['fdAllowedByQuery'], dict) or set(reason['fdAllowedByQuery']) != slots or any(type(value) is not int or value < 0 for value in reason['fdAllowedByQuery'].values()):
+                raise ValueError('unexpected fixed-slot query counts')
+            if not isinstance(reason['fdFailedQueryResults'], list) or len(reason['fdFailedQueryResults']) != 8 or any(type(value) is not int or value not in (-2, -1, 0, 1) for value in reason['fdFailedQueryResults']):
+                raise ValueError('unexpected anonymous query vector')
             evidence['reason'] = reason
         except (ValueError, TypeError, KeyError):
             evidence['reason'] = {'type': 'UnobservedQuiescenceFailure'}

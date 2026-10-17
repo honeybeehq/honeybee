@@ -24,6 +24,7 @@ class ScopeControlTests(unittest.TestCase):
 
     def test_quiescence_reason_is_bounded_and_has_no_foreign_fields(self):
         reason = {'type': 'QuiescenceFailure', 'call': 'pidinfo vnode', 'errno': 'EPERM', 'errnoNumber': 1, 'sameBirth': 0, 'counts': {'scanned': 2, 'skippedGone': 0, 'skippedUidChanged': 0, 'skippedFdClosed': 0, 'matched': 0, 'failed': 1, 'exeUnlinkedPreRoot': 0, 'regionCompared': 0, 'regionUnavailable': 0, 'sessionLeaderNotUidListed': 0, 'fdUnobservableSandboxDenied': 0, 'fdNonGateFailed': 0, 'fdCleanFailed': 0, 'fdSandboxFailed': 0, 'fdDeniedQueries': 0, 'fdAllowedQueries': 0, 'fdQueryErrors': 0, 'fdNotSandboxed': 0}}
+        reason.update(fdAllowedByQuery=dict.fromkeys(('root:read', 'root:write', 'probe:read', 'probe:write', 'src:read', 'src:write', 'absent:read', 'absent:write'), 0), fdFailedQueryResults=[-2] * 8)
         result = subprocess.CompletedProcess([], 4, '', json.dumps(reason))
         evidence = focused_seal.quiescence_evidence(result)
         self.assertEqual(evidence, {'exit': 4, 'reason': reason, 'fdUnobservableDisclosure': focused_seal.fd_disclosure(0)})
@@ -35,6 +36,7 @@ class ScopeControlTests(unittest.TestCase):
     def test_prelaunch_failure_and_receipt_retain_reason_and_exit(self):
         import guard
         reason = {'type': 'QuiescenceFailure', 'call': 'fdinfo', 'errno': 'EPERM', 'errnoNumber': 1, 'sameBirth': 0, 'counts': {'scanned': 1, 'skippedGone': 0, 'skippedUidChanged': 0, 'skippedFdClosed': 0, 'matched': 0, 'failed': 1, 'exeUnlinkedPreRoot': 0, 'regionCompared': 0, 'regionUnavailable': 0, 'sessionLeaderNotUidListed': 0, 'fdUnobservableSandboxDenied': 0, 'fdNonGateFailed': 0, 'fdCleanFailed': 0, 'fdSandboxFailed': 0, 'fdDeniedQueries': 0, 'fdAllowedQueries': 0, 'fdQueryErrors': 0, 'fdNotSandboxed': 0}}
+        reason.update(fdAllowedByQuery=dict.fromkeys(('root:read', 'root:write', 'probe:read', 'probe:write', 'src:read', 'src:write', 'absent:read', 'absent:write'), 0), fdFailedQueryResults=[-2] * 8)
         result = subprocess.CompletedProcess([], 4, '', json.dumps(reason))
         with tempfile.TemporaryDirectory() as temporary, patch.object(focused_seal, 'QUIESCENCE_OBSERVATIONS', []), patch.object(focused_seal.subprocess, 'run', return_value=result):
             root = Path(temporary).resolve()
@@ -88,6 +90,7 @@ class ScopeControlTests(unittest.TestCase):
         counts = dict.fromkeys(('scanned', 'skippedGone', 'skippedUidChanged', 'skippedFdClosed', 'matched', 'failed', 'exeUnlinkedPreRoot', 'regionCompared', 'regionUnavailable', 'sessionLeaderNotUidListed', 'fdUnobservableSandboxDenied', 'fdNonGateFailed', 'fdCleanFailed', 'fdSandboxFailed', 'fdDeniedQueries', 'fdAllowedQueries', 'fdQueryErrors', 'fdNotSandboxed'), 0)
         counts['fdUnobservableSandboxDenied'] = 3
         reason = {'type': 'QuiescenceComplete', 'call': 'none', 'errno': 'NONE', 'errnoNumber': 0, 'sameBirth': -1, 'counts': counts}
+        reason.update(fdAllowedByQuery=dict.fromkeys(('root:read', 'root:write', 'probe:read', 'probe:write', 'src:read', 'src:write', 'absent:read', 'absent:write'), 0), fdFailedQueryResults=[-2] * 8)
         evidence = focused_seal.quiescence_evidence(subprocess.CompletedProcess([], 0, 'COMPLETE\n', json.dumps(reason)))
         self.assertEqual(evidence['fdUnobservableDisclosure'], expected)
 

@@ -40,7 +40,7 @@ static int same_birth(int pid, unsigned long long sec, unsigned long long usec) 
   if (b.pbi_start_tvsec != sec || b.pbi_start_tvusec != usec) return 4;
   return b.pbi_status == 5 ? 3 : 0;
 }
-static int quiescence_sandbox_denied(int pid, unsigned long long sec, unsigned long long usec, char **paths, int *denied, int *allowed, int *errors, int *not_sandboxed);
+static int quiescence_sandbox_denied(int pid, unsigned long long sec, unsigned long long usec, char **paths, int *denied, int *allowed, int *errors, int *not_sandboxed, int *allowed_by_query, int *results);
 #include "quiescence.h"
 static int listeners(int pid, unsigned long long sec, unsigned long long usec, int connected) {
   int rc = same_birth(pid, sec, usec);
@@ -126,7 +126,7 @@ typedef int (*sandbox_check_function)(pid_t, const char *, int, ...);
 static sandbox_check_function sandbox_checker(void) {
   return (sandbox_check_function)dlsym(RTLD_DEFAULT, "sandbox_check");
 }
-static int quiescence_sandbox_denied(int pid, unsigned long long sec, unsigned long long usec, char **paths, int *denied, int *allowed, int *errors, int *not_sandboxed) {
+static int quiescence_sandbox_denied(int pid, unsigned long long sec, unsigned long long usec, char **paths, int *denied, int *allowed, int *errors, int *not_sandboxed, int *allowed_by_query, int *results) {
   char canonical[PATH_MAX], parent[PATH_MAX];
   for (int index = 0; index < 3; index++) if (!realpath(paths[index], canonical) || strcmp(canonical, paths[index])) { (*errors)++; return 0; }
   if (strlen(paths[3]) >= sizeof(parent)) { (*errors)++; return 0; }
@@ -144,18 +144,21 @@ static int quiescence_sandbox_denied(int pid, unsigned long long sec, unsigned l
   int error = errno;
   if (error || (sandboxed != 0 && sandboxed != 1) || same_birth(pid, sec, usec)) { (*errors)++; return 0; }
   if (!sandboxed) { (*not_sandboxed)++; return 0; }
+  int had_allowed = 0;
   const char *operations[] = {"file-read-data", "file-write-data"};
   for (int path = 0; path < 4; path++) for (int operation = 0; operation < 2; operation++) {
-    if (same_birth(pid, sec, usec)) { (*errors)++; return 0; }
+    int slot = path * 2 + operation;
+    if (same_birth(pid, sec, usec)) { results[slot] = -1; (*errors)++; return 0; }
     errno = 0;
     int result = check(pid, operations[operation], 1, paths[path]);
     error = errno;
-    if (error || (result != 0 && result != 1) || same_birth(pid, sec, usec)) { (*errors)++; return 0; }
-    if (!result) { (*allowed)++; return 0; }
-    (*denied)++;
+    if (error || (result != 0 && result != 1) || same_birth(pid, sec, usec)) { results[slot] = -1; (*errors)++; return 0; }
+    results[slot] = result;
+    if (!result) { (*allowed)++; allowed_by_query[slot]++; had_allowed = 1; }
+    else (*denied)++;
   }
   if (same_birth(pid, sec, usec)) { (*errors)++; return 0; }
-  return 1;
+  return !had_allowed;
 }
 static int node_observation(int pid, unsigned long long sec, unsigned long long usec, const char *expected_node, const char *reader, const char *preloader) {
   int rc = same_birth(pid, sec, usec);

@@ -135,6 +135,8 @@ int main(int argc,char **argv) { mode=argc>1?atoi(argv[1]):0;int rc=quiescence(1
                         if mode==31:
                             self.assertEqual(reason['counts']['fdUnobservableSandboxDenied'],1)
                             self.assertEqual(reason['counts']['fdDeniedQueries'],8)
+                            self.assertEqual(reason['fdFailedQueryResults'],[-2]*8)
+                            self.assertEqual(sum(reason['fdAllowedByQuery'].values()),0)
                         if mode==26:
                             self.assertEqual(reason['counts']['exeUnlinkedPreRoot'], 1)
                             self.assertGreaterEqual(reason['counts']['sessionLeaderNotUidListed'], 1)
@@ -152,8 +154,12 @@ int main(int argc,char **argv) { mode=argc>1?atoi(argv[1]):0;int rc=quiescence(1
                         if 32 <= mode <= 39:
                             self.assertEqual(reason['counts']['fdSandboxFailed'],1)
                             self.assertEqual(reason['counts']['fdAllowedQueries'],1)
+                            slots = ('root:read','root:write','probe:read','probe:write','src:read','src:write','absent:read','absent:write')
+                            self.assertEqual(reason['fdAllowedByQuery'], {slot:int(index==mode-32) for index,slot in enumerate(slots)})
+                            self.assertEqual(reason['fdFailedQueryResults'], [int(index!=mode-32) for index in range(8)])
                         if mode in (40,44):
                             self.assertEqual(reason['counts']['fdQueryErrors'],1)
+                            if mode==40:self.assertEqual(reason['fdFailedQueryResults'],[-1]+[-2]*7)
                         if mode==41:
                             self.assertEqual(reason['counts']['fdNotSandboxed'],1)
                         if mode==47:
