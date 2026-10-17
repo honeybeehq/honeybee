@@ -492,8 +492,9 @@ def reparent_listener_self_test(root, workspace, prefix, helper, env):
 
 
 def run(args):
-    if any(key.startswith(('HIVE_', 'APIARY_')) for key in os.environ):
-        raise Refusal('stamped controller environment')
+    stamped_keys = sorted(key for key in os.environ if key.startswith(('HIVE_', 'APIARY_')))
+    if stamped_keys:
+        raise Refusal('stamped controller environment: ' + ','.join(stamped_keys))
     lane = Path.cwd().resolve()
     try:
         real_home = Path(pwd.getpwuid(os.getuid()).pw_dir).resolve()

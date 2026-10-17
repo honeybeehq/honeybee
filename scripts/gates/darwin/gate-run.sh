@@ -1,5 +1,6 @@
 #!/bin/sh
-if /usr/bin/env | /usr/bin/cut -d= -f1 | /usr/bin/grep -Eq '^(HIVE_|APIARY_)'; then echo 'REFUSING: stamped controller environment'; exit 90; fi
+stamped_keys=$(/usr/bin/env | /usr/bin/cut -d= -f1 | /usr/bin/grep -E '^(HIVE_|APIARY_)' | LC_ALL=C /usr/bin/sort | /usr/bin/paste -sd, -)
+if [ -n "$stamped_keys" ]; then printf 'REFUSING: stamped controller environment: %s\n' "$stamped_keys"; exit 90; fi
 set -eu
 execute=0
 if [ "${1:-}" = --execute ]; then execute=1; shift; fi

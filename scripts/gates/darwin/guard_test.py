@@ -28,8 +28,13 @@ class GuardTests(unittest.TestCase):
                 env = {'PATH': '/usr/bin:/bin', 'HOME': str(self.base), key: 'must-never-be-printed'}
                 result = subprocess.run(['/bin/sh', str(directory / name)], env=env, cwd=self.base, capture_output=True, text=True)
                 self.assertEqual(result.returncode, 90)
-                self.assertEqual(result.stdout.strip(), 'REFUSING: stamped controller environment')
+                self.assertEqual(result.stdout.strip(), 'REFUSING: stamped controller environment: ' + key)
                 self.assertNotIn('must-never-be-printed', result.stdout + result.stderr)
+            env = {'PATH': '/usr/bin:/bin', 'HOME': str(self.base), 'HIVE_Z': 'secret-z', 'APIARY_A': 'secret-a'}
+            result = subprocess.run(['/bin/sh', str(directory / name)], env=env, cwd=self.base, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 90)
+            self.assertEqual(result.stdout.strip(), 'REFUSING: stamped controller environment: APIARY_A,HIVE_Z')
+            self.assertNotIn('secret-', result.stdout + result.stderr)
 
     def test_stamped_python_controller_refuses_before_identity_or_write(self):
         with patch.dict(os.environ, {'APIARY_TEST_STAMP': 'not-printed'}, clear=True), patch('guard.pwd.getpwuid') as passwd, patch('guard.os.open') as opened, self.assertRaisesRegex(Refusal, 'stamped controller environment'):
