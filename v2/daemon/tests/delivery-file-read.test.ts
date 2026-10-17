@@ -16,10 +16,20 @@ import { DeliveryFiles } from "../src/deliveryFile.ts";
 import { defaultDataDir } from "../src/config.ts";
 import { deliveryContentRoot } from "../src/multilineFallback.ts";
 import { ensureDeliveryFileArtifact } from "./delivery-file-build.ts";
+import { DELIVERY_READ_SOCKET_NAME, deliveryReadFixtureBase, outsideLinuxPrivateMounts } from "./delivery-file-read-root.ts";
 
 before(ensureDeliveryFileArtifact);
 for (const substrate of ["hsr", "cell-sandbox", "satellite-default"] as const) test(`${process.platform === "darwin" ? "Darwin " : ""}OS-level file read outside cwd: ${substrate}; tool-policy read UNVERIFIED (OS-level only)`, {skip: process.platform !== "linux" && process.platform !== "darwin"}, async t => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "fr-"))), data = join(root, "data"), work = join(root, "work");
+  const needsVisibleRoot = process.platform === "linux" && substrate !== "hsr";
+  const base = deliveryReadFixtureBase(process.platform, substrate !== "hsr", tmpdir(), process.env.RUNNER_TEMP, process.cwd());
+  mkdirSync(base, {recursive: true, mode: 0o700});
+  const canonicalBase = realpathSync(base);
+  if (needsVisibleRoot) assert.ok(outsideLinuxPrivateMounts(canonicalBase), "Sandboxed Linux delivery read fixture base resolves inside a private mount");
+  const root = realpathSync(mkdtempSync(join(canonicalBase, "fr-"))), data = join(root, "data"), work = join(root, "work");
+  if (needsVisibleRoot) assert.ok(outsideLinuxPrivateMounts(root), "Sandboxed Linux delivery read fixture root is hidden by a private mount");
+  const maxSocketPathBytes = Buffer.byteLength(join(root, "s", DELIVERY_READ_SOCKET_NAME));
+  assert.ok(maxSocketPathBytes <= 103, `Delivery read fixture longest socket path is ${maxSocketPathBytes} bytes; maximum is 103`);
+  t.diagnostic(`fixture max socket path bytes: ${maxSocketPathBytes}`);
   mkdirSync(data, {mode: 0o700}); mkdirSync(work, {mode: 0o700});
   mkdirSync(join(root, "s"), {mode: 0o700});
   const id = randomUUID(), content = `Honeybee delivery content: publication=${id}\n\nnonce-${randomUUID()}`;

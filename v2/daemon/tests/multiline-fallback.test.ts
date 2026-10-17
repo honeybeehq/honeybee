@@ -4,7 +4,8 @@ import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import os, { tmpdir } from "node:os";
+import { syncBuiltinESMExports } from "node:module";
 import { join } from "node:path";
 import { openCoreStore } from "../../core/src/store.ts";
 import { PHONE_FORMAT, renderPhoneInput, type PhoneOriginRequest } from "../../core/src/phoneOrigin.ts";
@@ -14,6 +15,8 @@ import { DaemonCore } from "../src/loops.ts";
 import { FakeDriver } from "./helpers.ts";
 import { ensureDeliveryFileArtifact } from "./delivery-file-build.ts";
 import { deliveryContentRoot } from "../src/multilineFallback.ts";
+import { defaultDataDir } from "../src/config.ts";
+import { deliveryReadFixtureBase } from "./delivery-file-read-root.ts";
 
 before(ensureDeliveryFileArtifact);
 class PointerDriver extends FakeDriver {
@@ -256,6 +259,34 @@ test("runtime-area content pins Cell retention through archive and cleans after 
   assert.equal(r.store.retainsMultilineRuntimeContent(r.bee.id, r.data), true);
   rmSync(join(r.root, "work"), {recursive: true}); r.store.deleteBee(r.bee.id); r.step();
   assert.equal(existsSync(path), false); assert.equal(r.store.retainsMultilineRuntimeContent(r.bee.id, r.data), false);
+});
+test("read fixture keeps Darwin tmpdir and moves sandboxed Linux roots outside private mounts", () => {
+  const darwinTmp = "/private/var/tmp/g.fixture/sealed-target/sibling/t";
+  assert.equal(deliveryReadFixtureBase("darwin", true, darwinTmp, "/runner/temp", "/workspace"), darwinTmp);
+  assert.equal(deliveryReadFixtureBase("linux", true, "/tmp", "/home/runner/work/_temp", "/workspace"), "/home/runner/work/_temp");
+  assert.equal(deliveryReadFixtureBase("linux", true, "/tmp", undefined, "/workspace"), "/workspace/.fr");
+  assert.equal(deliveryReadFixtureBase("linux", true, "/var/tmp", undefined, "/workspace"), "/workspace/.fr");
+  assert.equal(deliveryReadFixtureBase("linux", false, "/tmp", undefined, "/workspace"), "/tmp");
+  assert.throws(() => deliveryReadFixtureBase("linux", true, "/tmp", undefined, "/tmp/work"), /outside private mounts/);
+  assert.throws(() => deliveryReadFixtureBase("linux", true, "/tmp", undefined, "/workspace/" + "x".repeat(120)), /candidate lengths/);
+});
+test("default Linux dataDir and delivery-content for a /home user are outside private temporary mounts", t => {
+  const home = "/home/delivery-fixture";
+  const mockedHome = t.mock.method(os, "homedir", () => home);
+  let data: string;
+  try {
+    syncBuiltinESMExports();
+    data = defaultDataDir({});
+  } finally {
+    mockedHome.mock.restore();
+    syncBuiltinESMExports();
+  }
+  assert.equal(data, join(home, ".hive", "v2"));
+  const root = deliveryContentRoot(data, "cell", true, null, "linux");
+  const content = join(root, "delivery-content", "owner-bee", "publication.txt");
+  for (const mount of ["/tmp", "/var/tmp", "/dev"]) {
+    for (const path of [data, root, content]) assert.ok(path !== mount && !path.startsWith(mount + "/"));
+  }
 });
 test("Cell private mount policy chooses only the own runtime area or a typed unreadable hold", () => {
   for (const primary of ["/tmp/data", "/var/tmp/data", "/dev/shm/data"]) {
